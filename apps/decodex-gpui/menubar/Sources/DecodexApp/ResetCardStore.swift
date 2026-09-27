@@ -1,3 +1,4 @@
+import OSLog
 import AppKit
 import Foundation
 import Observation
@@ -549,26 +550,35 @@ final class ResetCardStore {
 				result = refreshed
 			}
 		}
+		schedulePendingRecovery(initialDelay: .zero)
+	}
+
+	private func schedulePendingRecovery(initialDelay: Duration = .seconds(1)) {
+		Logger(subsystem: "box.acg.decodex", category: "reset-recovery").notice("Schedule recovery; pending=\(self.pendingAttempts.count), task=\(self.pendingRecoveryTask != nil), stopping=\(self.isPreparingForTermination)")
+		guard pendingRecoveryTask == nil, !pendingAttempts.isEmpty, !isPreparingForTermination else { return }
 		pendingRecoveryTask = Task { [weak self] in
-			guard var shouldRetry = await self?.recoverPendingAttempts() else {
-				return
-			}
-
-			for delay in retryDelays {
-				guard shouldRetry, Task.isCancelled == false else {
-					return
+			defer { self?.pendingRecoveryTask = nil }
+			do { try await Task.sleep(for: initialDelay) } catch { return }
+			var checks = 0
+			while !Task.isCancelled {
+				if checks > 0 {
+					let delays = self?.startupRetryDelays ?? []
+					let delay = checks <= delays.count ? delays[checks - 1] : .seconds(5)
+					do { try await Task.sleep(for: delay) } catch { return }
 				}
-
-				do {
-					try await Task.sleep(for: delay)
-				} catch {
-					return
+				guard let store = self, !store.isPreparingForTermination, !store.pendingAttempts.isEmpty else { return }
+				if store.submittingKey != nil {
+					checks += 1
+					continue
 				}
-
-				guard let retry = await self?.recoverPendingAttempts() else {
-					return
+				let retry = await store.recoverPendingAttempts()
+				checks += 1
+				if checks >= 6 {
+					for attempt in store.pendingAttempts {
+						store.setPendingStatus(.retrying(detail: "The result is not confirmed yet. Checking the saved request; no card will be used again."), for: attempt)
+					}
 				}
-				shouldRetry = retry
+				if !retry { return }
 			}
 		}
 	}
@@ -835,6 +845,7 @@ final class ResetCardStore {
 			return
 		}
 		_ = await recoverPendingAttempts()
+		schedulePendingRecovery()
 	}
 
 	private func performObservationRefresh() async {
@@ -1226,7 +1237,9 @@ final class ResetCardStore {
 		}
 
 		quotaFillOrigins[attempt.idempotencyKey] = [current.fiveHourQuota, current.sevenDayQuota]
-		return await submit(attempt)
+		let completion = await submit(attempt)
+		if !completion.resolved { schedulePendingRecovery() }
+		return completion
 	}
 
 	func checkPendingStatus(_ attempt: ResetCardUseAttempt) async {
@@ -1949,7 +1962,9 @@ final class ResetCardStore {
 			}
 
 			do {
+				Logger(subsystem: "box.acg.decodex", category: "reset-recovery").notice("Reading saved reset result")
 				let state = try await client.status(for: attempt)
+				Logger(subsystem: "box.acg.decodex", category: "reset-recovery").notice("Reset result returned: \(String(describing: state), privacy: .public)")
 				switch state {
 				case .completed, .failedBeforeEffect:
 					_ = await apply(state, to: attempt)
@@ -1999,6 +2014,7 @@ final class ResetCardStore {
 			return
 		}
 		if let updated = pendingStore.remove(attempt) {
+			Logger(subsystem: "box.acg.decodex", category: "reset-recovery").notice("Retired completed request; remaining=\(updated.count)")
 			pendingAttempts = updated
 			reconcilePendingStatuses()
 		}
@@ -3617,6 +3633,11 @@ final class ResetCardStore {
 		generation: UInt64
 	) -> Bool {
 		guard generation == codexProjectionRequestGeneration else {
+			return false
+		}
+		// Waiting for a stable auth-file read is inconclusive, just like a transport
+		// failure. Keep the last confirmed projection until a definitive read changes it.
+		guard projection != .unavailable else {
 			return false
 		}
 		if case .current(let accountID, let accountRevision, _) = projection {

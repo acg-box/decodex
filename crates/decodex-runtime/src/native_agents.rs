@@ -17,11 +17,11 @@ pub(crate) async fn read(
 	cursor: Option<&str>,
 ) -> NativeAgentsResult {
 	let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
-        let owner = store.get_chief_work_item(work.into()).await.ok()?;
+        let owner = store.get_agent_work_item(work.into()).await.ok()?;
         let root = owner.codex_thread_id?;
         if let Some(thread) = thread {
             if thread == root { return None; }
-            let verified = crate::chief::native_subagents::request_owner(store,client,thread).await.ok()?;
+            let verified = crate::agent::native_subagents::request_owner(store,client,thread).await.ok()?;
             if verified.id != work { return None; }
             let value = client.thread_read(json!({"threadId":thread,"includeTurns":true})).await.ok()?;
             return conversation(&value,thread);

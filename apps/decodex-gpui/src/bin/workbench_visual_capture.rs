@@ -54,7 +54,7 @@ use std::path::PathBuf;
 
 use gpui::{AppContext as _, VisualTestAppContext, px, size};
 
-use crate::shell::{Destination, Shell, chief_surface::ChiefSurface};
+use crate::shell::{Destination, Shell, agent_surface::AgentSurface};
 #[cfg(target_os = "macos")] use {objc2_app_kit as _, objc2_foundation as _};
 
 fn main() -> gpui::Result<()> {
@@ -71,8 +71,8 @@ fn main() -> gpui::Result<()> {
 	let left_sidebar_visible = std::env::var("DECODEX_VISUAL_SIDEBAR").as_deref() != Ok("hidden");
 	let inspector_visible = std::env::var("DECODEX_VISUAL_CONTEXT").as_deref() != Ok("hidden");
 	let panel_motion = std::env::var("DECODEX_VISUAL_PANEL_MOTION").ok();
-	let send_message = std::env::var("DECODEX_VISUAL_CHIEF_SEND").ok();
-	let steer_receipt = std::env::var("DECODEX_VISUAL_CHIEF_STEER_RECEIPT").ok();
+	let send_message = std::env::var("DECODEX_VISUAL_AGENT_SEND").ok();
+	let steer_receipt = std::env::var("DECODEX_VISUAL_AGENT_STEER_RECEIPT").ok();
 	let live_app_ui = std::env::var_os("DECODEX_VISUAL_APP_UI_EXECUTE").is_some();
 	let live_media = std::env::var_os("DECODEX_VISUAL_MEDIA").is_some();
 	let automatic_recap = std::env::var_os("DECODEX_VISUAL_AUTO_RECAP").is_some();
@@ -81,14 +81,14 @@ fn main() -> gpui::Result<()> {
 		|| automatic_recap
 		|| live_app_ui
 		|| live_media)
-		&& std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").is_none()
+		&& std::env::var_os("DECODEX_VISUAL_AGENT_ROOT").is_none()
 	{
 		return Err(std::io::Error::other("Command capture requires a disposable root").into());
 	}
 	let (app_ui_mode, integrations) = layout_fixtures()?;
 	// The explicit root supplies protocol evidence; command probes require their own flags.
 	// Never use the installed profile as an implicit screenshot source.
-	let service_projection = std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT")
+	let service_projection = std::env::var_os("DECODEX_VISUAL_AGENT_ROOT")
 		.map(|root| {
 			read_service_projection(
 				PathBuf::from(root),
@@ -100,7 +100,7 @@ fn main() -> gpui::Result<()> {
 	let window: gpui::AnyWindowHandle = if integrations {
 		cx.open_offscreen_window(size(px(1180.0), px(1400.0)), |_, cx| {
 			cx.new(|cx| {
-				let mut surface = ChiefSurface::new(cx);
+				let mut surface = AgentSurface::new(cx);
 				surface.visual_integrations(cx);
 				surface
 			})
@@ -109,7 +109,7 @@ fn main() -> gpui::Result<()> {
 	} else if let Some(mode) = app_ui_mode {
 		cx.open_offscreen_window(size(px(1248.0), px(840.0)), |_, cx| {
 			cx.new(|cx| {
-				let mut surface = ChiefSurface::new(cx);
+				let mut surface = AgentSurface::new(cx);
 				surface.visual_app_ui_confirmation(mode == "unknown", cx);
 				surface
 			})
@@ -121,20 +121,20 @@ fn main() -> gpui::Result<()> {
 		let handle = cx.open_offscreen_window(size(px(1_248.0), px(840.0)), |_, cx| {
 			cx.new(|cx| {
 				let mut surface =
-					ChiefSurface::visual_from_service(snapshot, selected, history, request, cx);
+					AgentSurface::visual_from_service(snapshot, selected, history, request, cx);
 				surface.visual_guardian_reviews(guardian);
 				surface
 			})
 		})?;
 		if live_app_ui {
 			let root = PathBuf::from(
-				std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").expect("explicit root"),
+				std::env::var_os("DECODEX_VISUAL_AGENT_ROOT").expect("explicit root"),
 			);
 			prove_app_ui(&mut cx, handle, profile.clone(), &root, &output)?;
 		}
 		if live_media {
 			let root = PathBuf::from(
-				std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").expect("explicit root"),
+				std::env::var_os("DECODEX_VISUAL_AGENT_ROOT").expect("explicit root"),
 			);
 			prove_media(&mut cx, handle, profile.clone(), &root, &output)?;
 		}
@@ -210,7 +210,7 @@ fn layout_fixtures() -> gpui::Result<(Option<String>, bool)> {
 	let app_ui_mode = std::env::var("DECODEX_VISUAL_APP_UI").ok();
 	let integrations = std::env::var_os("DECODEX_VISUAL_INTEGRATIONS").is_some();
 	if integrations
-		&& (app_ui_mode.is_some() || std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").is_some())
+		&& (app_ui_mode.is_some() || std::env::var_os("DECODEX_VISUAL_AGENT_ROOT").is_some())
 	{
 		return Err(std::io::Error::other(
 			"Integration layout fixture cannot use a service source",
@@ -223,7 +223,7 @@ fn layout_fixtures() -> gpui::Result<(Option<String>, bool)> {
 	{
 		return Err(std::io::Error::other("Unknown App UI capture fixture").into());
 	}
-	if app_ui_mode.is_some() && std::env::var_os("DECODEX_VISUAL_CHIEF_ROOT").is_some() {
+	if app_ui_mode.is_some() && std::env::var_os("DECODEX_VISUAL_AGENT_ROOT").is_some() {
 		return Err(std::io::Error::other(
 			"App UI layout fixtures cannot be combined with service evidence",
 		)
@@ -233,11 +233,11 @@ fn layout_fixtures() -> gpui::Result<(Option<String>, bool)> {
 }
 
 type ServiceProjection = (
-	decodex_protocol::ChiefSnapshotResult,
+	decodex_protocol::AgentSnapshotResult,
 	Option<String>,
-	Option<decodex_protocol::ChiefHistoryResult>,
-	Option<decodex_protocol::ChiefRequestResult>,
-	Option<decodex_protocol::ChiefGuardianReviewsResult>,
+	Option<decodex_protocol::AgentHistoryResult>,
+	Option<decodex_protocol::AgentRequestResult>,
+	Option<decodex_protocol::AgentGuardianReviewsResult>,
 	decodex_protocol::ClientProfile,
 );
 
@@ -261,13 +261,13 @@ fn read_service_projection(
 	let profile = decodex_protocol::ClientProfile::load(&root, None)
 		.map_err(|error| std::io::Error::other(format!("capture profile: {error:?}")))?;
 	let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
-	let client = decodex_protocol::ChiefClient::new(profile.clone());
+	let client = decodex_protocol::AgentClient::new(profile.clone());
 	let snapshot = runtime
 		.block_on(client.query())
 		.map_err(|error| std::io::Error::other(format!("capture snapshot: {error:?}")))?;
 	let selected = match &snapshot {
-		decodex_protocol::ChiefSnapshotResult::Available(snapshot) =>
-			std::env::var("DECODEX_VISUAL_CHIEF_WORK")
+		decodex_protocol::AgentSnapshotResult::Available(snapshot) =>
+			std::env::var("DECODEX_VISUAL_AGENT_WORK")
 				.ok()
 				.filter(|id| snapshot.work_items.iter().any(|work| &work.id == id))
 				.or_else(|| {
@@ -283,10 +283,10 @@ fn read_service_projection(
 		let id = decodex_protocol::EntityId::new(id.clone()).expect("validated snapshot identity");
 		runtime
 			.block_on(client.history(id))
-			.unwrap_or(decodex_protocol::ChiefHistoryResult::Unavailable)
+			.unwrap_or(decodex_protocol::AgentHistoryResult::Unavailable)
 	});
 	let request = match &snapshot {
-		decodex_protocol::ChiefSnapshotResult::Available(snapshot) => snapshot
+		decodex_protocol::AgentSnapshotResult::Available(snapshot) => snapshot
 			.pending_events
 			.iter()
 			.find(|event| {
@@ -297,7 +297,7 @@ fn read_service_projection(
 			.map(|event| {
 				runtime
 					.block_on(client.request(event.id))
-					.unwrap_or(decodex_protocol::ChiefRequestResult::Unavailable)
+					.unwrap_or(decodex_protocol::AgentRequestResult::Unavailable)
 			}),
 		_ => None,
 	};
@@ -307,7 +307,7 @@ fn read_service_projection(
 				decodex_protocol::EntityId::new(id.clone()).expect("validated work"),
 				None,
 			))
-			.unwrap_or(decodex_protocol::ChiefGuardianReviewsResult::Unavailable)
+			.unwrap_or(decodex_protocol::AgentGuardianReviewsResult::Unavailable)
 	});
 	std::fs::write(
 		output.with_extension("evidence.json"),
@@ -433,7 +433,7 @@ fn capture_interactions(
 
 fn capture_destination() -> Destination {
 	match std::env::var("DECODEX_VISUAL_DESTINATION").as_deref() {
-		Ok("chief") => Destination::Chief,
+		Ok("agent") => Destination::Agent,
 		Ok("accounts") => Destination::Accounts,
 		Ok("health") => Destination::Health,
 		Ok("settings") => Destination::Settings,
@@ -443,14 +443,14 @@ fn capture_destination() -> Destination {
 
 fn prove_composer_send(
 	cx: &mut VisualTestAppContext,
-	handle: gpui::WindowHandle<ChiefSurface>,
+	handle: gpui::WindowHandle<AgentSurface>,
 	profile: decodex_protocol::ClientProfile,
 	message: &str,
 	output: &std::path::Path,
 ) -> gpui::Result<()> {
 	cx.update_window(handle.into(), |view, window, cx| {
-		view.downcast::<ChiefSurface>()
-			.expect("Chief capture root")
+		view.downcast::<AgentSurface>()
+			.expect("Agent capture root")
 			.update(cx, |surface, cx| surface.visual_prepare_send(profile, message, window, cx));
 		window.draw(cx).clear();
 	})?;
@@ -459,14 +459,14 @@ fn prove_composer_send(
 		cx.run_until_parked();
 		std::thread::sleep(std::time::Duration::from_millis(500));
 		cx.update_window(handle.into(), |view, _, cx| {
-			view.downcast::<ChiefSurface>()
-				.expect("Chief capture root")
-				.update(cx, ChiefSurface::refresh)
+			view.downcast::<AgentSurface>()
+				.expect("Agent capture root")
+				.update(cx, AgentSurface::refresh)
 		})?;
 		cx.run_until_parked();
 		let evidence = cx.update_window(handle.into(), |view, _, cx| {
-			view.downcast::<ChiefSurface>()
-				.expect("Chief capture root")
+			view.downcast::<AgentSurface>()
+				.expect("Agent capture root")
 				.update(cx, |surface, cx| surface.visual_send_evidence(cx))
 		})?;
 		std::fs::write(
@@ -496,7 +496,7 @@ fn prove_composer_send(
 
 fn prove_automatic_recap(
 	cx: &mut VisualTestAppContext,
-	handle: gpui::WindowHandle<ChiefSurface>,
+	handle: gpui::WindowHandle<AgentSurface>,
 	profile: decodex_protocol::ClientProfile,
 	output: &std::path::Path,
 ) -> gpui::Result<()> {
@@ -505,17 +505,17 @@ fn prove_automatic_recap(
 	eprintln!("Automatic recap fixture: initial draw");
 	cx.update_window(handle.into(), |_, window, cx| window.draw(cx).clear())?;
 	cx.update_window(handle.into(), |view, _, cx| {
-		view.downcast::<ChiefSurface>()
-			.expect("Chief capture root")
+		view.downcast::<AgentSurface>()
+			.expect("Agent capture root")
 			.update(cx, |s, cx| s.visual_begin_automatic_recap(profile, cx));
 	})?;
 	eprintln!("Automatic recap fixture: driver armed");
 	for _ in 0..60 {
 		cx.run_until_parked();
 		let evidence = cx.update_window(handle.into(), |view, _, cx| {
-			view.downcast::<ChiefSurface>()
-				.expect("Chief capture root")
-				.update(cx, ChiefSurface::visual_automatic_recap_evidence)
+			view.downcast::<AgentSurface>()
+				.expect("Agent capture root")
+				.update(cx, AgentSurface::visual_automatic_recap_evidence)
 		})?;
 		std::fs::write(output.with_extension("recap.json"), serde_json::to_vec_pretty(&evidence)?)?;
 		if evidence["automatic"] == true && evidence["state"]["phase"] == "ready" {
@@ -528,7 +528,7 @@ fn prove_automatic_recap(
 
 fn prove_app_ui(
 	cx: &mut VisualTestAppContext,
-	handle: gpui::WindowHandle<ChiefSurface>,
+	handle: gpui::WindowHandle<AgentSurface>,
 	profile: decodex_protocol::ClientProfile,
 	root: &std::path::Path,
 	output: &std::path::Path,
@@ -536,7 +536,7 @@ fn prove_app_ui(
 	let source: serde_json::Value = serde_json::from_slice(&std::fs::read(
 		root.parent().expect("fixture parent").join("app-ui-source.json"),
 	)?)?;
-	let request: decodex_protocol::ChiefAppUiRequest =
+	let request: decodex_protocol::AgentAppUiRequest =
 		serde_json::from_value(source["request"].clone())?;
 	let account = source["account"]
 		.as_str()
@@ -544,7 +544,7 @@ fn prove_app_ui(
 		.to_owned();
 	cx.background_executor.allow_parking();
 	cx.update_window(handle.into(), |view, window, cx| {
-		view.downcast::<ChiefSurface>().expect("Chief capture").update(cx, |surface, cx| {
+		view.downcast::<AgentSurface>().expect("Agent capture").update(cx, |surface, cx| {
 			surface.visual_open_live_app_ui(profile, request, account, window, cx)
 		});
 	})?;
@@ -553,8 +553,8 @@ fn prove_app_ui(
 		cx.run_until_parked();
 		let evidence = cx.update_window(handle.into(), |view, window, cx| {
 			window.draw(cx).clear();
-			view.downcast::<ChiefSurface>()
-				.expect("Chief capture")
+			view.downcast::<AgentSurface>()
+				.expect("Agent capture")
 				.update(cx, |surface, cx| surface.visual_live_app_ui_evidence(false, cx))
 		})?;
 		std::fs::write(
@@ -573,8 +573,8 @@ fn prove_app_ui(
 			cx.capture_screenshot(handle.into())?
 				.save(output.with_extension("confirmation.png"))?;
 			cx.update_window(handle.into(), |view, _, cx| {
-				view.downcast::<ChiefSurface>()
-					.expect("Chief capture")
+				view.downcast::<AgentSurface>()
+					.expect("Agent capture")
 					.update(cx, |surface, cx| surface.visual_live_app_ui_evidence(true, cx))
 			})?;
 			confirmed = true;
@@ -598,16 +598,16 @@ fn prove_app_ui(
 
 fn prove_media(
 	cx: &mut VisualTestAppContext,
-	handle: gpui::WindowHandle<ChiefSurface>,
+	handle: gpui::WindowHandle<AgentSurface>,
 	profile: decodex_protocol::ClientProfile,
 	root: &std::path::Path,
 	output: &std::path::Path,
 ) -> gpui::Result<()> {
-	let request: decodex_protocol::ChiefMediaRequest = serde_json::from_slice(&std::fs::read(
+	let request: decodex_protocol::AgentMediaRequest = serde_json::from_slice(&std::fs::read(
 		root.parent().expect("fixture parent").join("media-source.json"),
 	)?)?;
 	let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
-	let client = decodex_protocol::ChiefClient::new(profile.clone());
+	let client = decodex_protocol::AgentClient::new(profile.clone());
 	let (history, timeline) = runtime
 		.block_on(async {
 			Ok::<_, decodex_protocol::ClientFailure>((
@@ -618,7 +618,7 @@ fn prove_media(
 		.map_err(|error| std::io::Error::other(format!("media source: {error:?}")))?;
 	cx.background_executor.allow_parking();
 	cx.update_window(handle.into(), |view, _, cx| {
-		view.downcast::<ChiefSurface>().expect("Chief capture").update(cx, |surface, cx| {
+		view.downcast::<AgentSurface>().expect("Agent capture").update(cx, |surface, cx| {
 			surface.visual_preview_native_media(profile, request, history, timeline, cx)
 		})
 	})?
@@ -627,7 +627,7 @@ fn prove_media(
 		cx.run_until_parked();
 		let evidence = cx.update_window(handle.into(), |view, window, cx| {
 			window.draw(cx).clear();
-			view.downcast::<ChiefSurface>().expect("Chief capture").read(cx).visual_media_evidence()
+			view.downcast::<AgentSurface>().expect("Agent capture").read(cx).visual_media_evidence()
 		})?;
 		std::fs::write(output.with_extension("media.json"), serde_json::to_vec_pretty(&evidence)?)?;
 		if evidence["imageLoaded"] == true {
@@ -646,14 +646,14 @@ fn prove_media(
 
 fn prove_steer_receipt(
 	cx: &mut VisualTestAppContext,
-	handle: gpui::WindowHandle<ChiefSurface>,
+	handle: gpui::WindowHandle<AgentSurface>,
 	profile: decodex_protocol::ClientProfile,
 	identity: &str,
 	output: &std::path::Path,
 ) -> gpui::Result<()> {
-	let identity: decodex_protocol::ChiefSteerIdentity = serde_json::from_str(identity)?;
+	let identity: decodex_protocol::AgentSteerIdentity = serde_json::from_str(identity)?;
 	let before = cx.update_window(handle.into(), |view, window, cx| {
-		let evidence = view.downcast::<ChiefSurface>().expect("Chief capture root").update(
+		let evidence = view.downcast::<AgentSurface>().expect("Agent capture root").update(
 			cx,
 			|surface, cx| {
 				surface.visual_uncertain_steer(profile, identity.clone(), cx);
@@ -668,17 +668,17 @@ fn prove_steer_receipt(
 	}
 	for _ in 0..40 {
 		cx.update_window(handle.into(), |view, _, cx| {
-			view.downcast::<ChiefSurface>()
-				.expect("Chief capture root")
-				.update(cx, ChiefSurface::refresh)
+			view.downcast::<AgentSurface>()
+				.expect("Agent capture root")
+				.update(cx, AgentSurface::refresh)
 		})?;
 		cx.run_until_parked();
 		std::thread::sleep(std::time::Duration::from_millis(250));
 		cx.run_until_parked();
 		let after = cx.update_window(handle.into(), |view, window, cx| {
 			window.draw(cx).clear();
-			view.downcast::<ChiefSurface>()
-				.expect("Chief capture root")
+			view.downcast::<AgentSurface>()
+				.expect("Agent capture root")
 				.update(cx, |surface, cx| surface.visual_send_evidence(cx))
 		})?;
 		if after["uncertain"] == false {

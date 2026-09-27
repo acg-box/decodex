@@ -1,6 +1,6 @@
 //! Domain, application, configuration, and owned local-storage foundations for Decodex vNext.
 
-/// Maximum complete native Chief message and persisted approval envelope, in bytes.
+/// Maximum complete native Agent message and persisted approval envelope, in bytes.
 pub const MAX_NATIVE_MESSAGE_BYTES: usize = 8 * 1024 * 1024;
 
 /// Two native messages plus bounded local routing metadata for a file approval.

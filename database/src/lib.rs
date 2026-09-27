@@ -5,70 +5,70 @@ mod account_lifecycle;
 mod account_profiles;
 mod account_usage;
 mod accounts;
-mod chief_native_turns;
-mod chief_turn_execution;
-pub use chief_turn_execution::ChiefTurnExecution;
-mod chief_dispatch_rejection;
-pub use chief_dispatch_rejection::ChiefDispatchRefusal;
+mod agent_native_turns;
+mod agent_turn_execution;
+pub use agent_turn_execution::AgentTurnExecution;
+mod agent_dispatch_rejection;
+pub use agent_dispatch_rejection::AgentDispatchRefusal;
 
-mod chief;
-mod chief_request_payload;
-mod chief_settings_observations;
-pub use chief_settings_observations::ChiefTaskSettingsObservation;
-mod chief_app_ui_calls;
-pub use chief_app_ui_calls::{ChiefAppUiCallAttempt, ChiefAppUiCallReceipt};
-mod chief_app_settings;
-mod chief_config_journal;
-pub use chief_app_settings::{
-	ChiefAppSettingsAttempt, ChiefAppSettingsObservation, ChiefAppSettingsReceipt,
-	ChiefConfigReceipt,
+mod agent;
+mod agent_request_payload;
+mod agent_settings_observations;
+pub use agent_settings_observations::AgentTaskSettingsObservation;
+mod agent_app_ui_calls;
+pub use agent_app_ui_calls::{AgentAppUiCallAttempt, AgentAppUiCallReceipt};
+mod agent_app_settings;
+mod agent_config_journal;
+pub use agent_app_settings::{
+	AgentAppSettingsAttempt, AgentAppSettingsObservation, AgentAppSettingsReceipt,
+	AgentConfigReceipt,
 };
-pub use chief_config_journal::ChiefConfigOwner;
-mod chief_hooks;
-pub use chief_hooks::{ChiefHookAttempt, ChiefHookObservation, ChiefHookOwner, ChiefHookReceipt};
-mod chief_prompt_edit;
-mod chief_prompt_inputs;
-pub use chief_prompt_edit::{ChiefPromptEditAttempt, ChiefPromptEditReceipt};
-pub use chief_prompt_inputs::ChiefPromptInput;
-mod chief_prompt_upload;
-pub use chief_prompt_upload::ChiefPromptUpload;
-mod chief_models;
-pub use chief_models::{
-	ChiefLegacyModelPending, ChiefManualModelSource, ChiefModelAttempt, ChiefModelHistory,
-	ChiefModelReceipt, ChiefModelRecoveryContext,
+pub use agent_config_journal::AgentConfigOwner;
+mod agent_hooks;
+pub use agent_hooks::{AgentHookAttempt, AgentHookObservation, AgentHookOwner, AgentHookReceipt};
+mod agent_prompt_edit;
+mod agent_prompt_inputs;
+pub use agent_prompt_edit::{AgentPromptEditAttempt, AgentPromptEditReceipt};
+pub use agent_prompt_inputs::AgentPromptInput;
+mod agent_prompt_upload;
+pub use agent_prompt_upload::AgentPromptUpload;
+mod agent_models;
+pub use agent_models::{
+	AgentLegacyModelPending, AgentManualModelSource, AgentModelAttempt, AgentModelHistory,
+	AgentModelReceipt, AgentModelRecoveryContext,
 };
-mod chief_plugins;
-pub use chief_plugins::{ChiefPluginAttempt, ChiefPluginReceipt};
-mod chief_permissions;
-pub use chief_permissions::{ChiefPermissionAttempt, ChiefPermissionReceipt};
-mod chief_live_settings;
-pub use chief_live_settings::{
-	ChiefLiveSettingsAttempt, ChiefLiveSettingsEdit, ChiefLiveSettingsReceipt,
+mod agent_plugins;
+pub use agent_plugins::{AgentPluginAttempt, AgentPluginReceipt};
+mod agent_permissions;
+pub use agent_permissions::{AgentPermissionAttempt, AgentPermissionReceipt};
+mod agent_live_settings;
+pub use agent_live_settings::{
+	AgentLiveSettingsAttempt, AgentLiveSettingsEdit, AgentLiveSettingsReceipt,
 };
-mod chief_install;
-pub use chief_install::{ChiefInstallAttempt, ChiefInstallRequirements};
-mod chief_guardian;
-pub use chief_guardian::{ChiefGuardianObservation, ChiefGuardianReview};
-mod chief_auth_recovery;
-pub use chief_auth_recovery::ChiefAuthRecoveryObservation;
-mod chief_misalignment;
-pub use chief_misalignment::ChiefMisalignment;
-mod chief_output;
-mod chief_reasoning_summary;
-pub use chief_reasoning_summary::ChiefReasoningSummaryChange;
-mod chief_question_rebuild;
-mod chief_questions;
-mod chief_response_usage;
-pub use chief_response_usage::ChiefResponseUsageSummary;
-mod chief_task_references;
-pub use chief_questions::ChiefAsyncQuestion;
-mod chief_process;
-mod chief_voice;
-mod chief_voice_history;
-pub use chief_output::{ChiefLiveOutput, ChiefOutputUpdate};
-pub use chief_voice::ChiefVoiceCall;
-pub use chief_voice_history::{
-	ChiefVoiceHistory, ChiefVoiceHistoryRevision, ChiefVoiceTranscript, ChiefVoiceTranscriptCall,
+mod agent_install;
+pub use agent_install::{AgentInstallAttempt, AgentInstallRequirements};
+mod agent_guardian;
+pub use agent_guardian::{AgentGuardianObservation, AgentGuardianReview};
+mod agent_auth_recovery;
+pub use agent_auth_recovery::AgentAuthRecoveryObservation;
+mod agent_misalignment;
+pub use agent_misalignment::AgentMisalignment;
+mod agent_output;
+mod agent_reasoning_summary;
+pub use agent_reasoning_summary::AgentReasoningSummaryChange;
+mod agent_question_rebuild;
+mod agent_questions;
+mod agent_response_usage;
+pub use agent_response_usage::AgentResponseUsageSummary;
+mod agent_task_references;
+pub use agent_questions::AgentAsyncQuestion;
+mod agent_process;
+mod agent_voice;
+mod agent_voice_history;
+pub use agent_output::{AgentLiveOutput, AgentOutputUpdate};
+pub use agent_voice::AgentVoiceCall;
+pub use agent_voice_history::{
+	AgentVoiceHistory, AgentVoiceHistoryRevision, AgentVoiceTranscript, AgentVoiceTranscriptCall,
 };
 mod command;
 mod continuations;
@@ -105,12 +105,12 @@ pub use self::{
 		AccountProfileSnapshot,
 	},
 	accounts::AccountMetadata,
-	chief::{
-		ChiefCapacityRetry, ChiefDependency, ChiefDispatchState, ChiefDisposition, ChiefInboxEvent,
-		ChiefStoreSnapshot, ChiefTurnMetrics, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus,
-		EnqueueChiefEvent,
+	agent::{
+		AgentCapacityRetry, AgentDependency, AgentDispatchState, AgentDisposition, AgentInboxEvent,
+		AgentStoreSnapshot, AgentTurnMetrics, AgentWorkItem, AgentWorkKind, AgentWorkStatus,
+		EnqueueAgentEvent,
 	},
-	chief_process::ChiefProcessBinding,
+	agent_process::AgentProcessBinding,
 	command::CommandIdentity,
 	continuations::{
 		ContextPackRecord, ContinuationPlanEffect, PlanContinuation, PlanInitialThreadContinuation,
@@ -198,7 +198,7 @@ pub struct SqliteStore {
 }
 
 struct StoreInner {
-	chief_output_revision: tokio::sync::watch::Sender<u64>,
+	agent_output_revision: tokio::sync::watch::Sender<u64>,
 	connection: Mutex<Connection>,
 	path: PathBuf,
 	closed: AtomicBool,
@@ -236,7 +236,7 @@ impl SqliteStore {
 		migrations::migrate(&mut connection)?;
 		Ok(Self {
 			inner: Arc::new(StoreInner {
-				chief_output_revision: tokio::sync::watch::channel(0).0,
+				agent_output_revision: tokio::sync::watch::channel(0).0,
 				connection: Mutex::new(connection),
 				path,
 				closed: AtomicBool::new(false),
@@ -252,7 +252,7 @@ impl SqliteStore {
 		migrations::migrate(&mut connection)?;
 		Ok(Self {
 			inner: Arc::new(StoreInner {
-				chief_output_revision: tokio::sync::watch::channel(0).0,
+				agent_output_revision: tokio::sync::watch::channel(0).0,
 				connection: Mutex::new(connection),
 				path,
 				closed: AtomicBool::new(false),
@@ -393,33 +393,6 @@ mod tests {
 	const OPERATION_THREE: &str = "20000000-0000-4000-8000-000000000003";
 	const DIGEST_ONE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 	const DIGEST_TWO: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-	const SCHEMA_TEN_MIGRATIONS: [(&str, &str); 10] = [
-		("local_product", include_str!("../migrations/0001_local_product.sql")),
-		(
-			"nonempty_task_instructions",
-			include_str!("../migrations/0002_nonempty_task_instructions.sql"),
-		),
-		(
-			"quick_task_execution_controls",
-			include_str!("../migrations/0003_quick_task_execution_controls.sql"),
-		),
-		("context_pack_fallback", include_str!("../migrations/0004_context_pack_fallback.sql")),
-		("adaptive_factory_spine", include_str!("../migrations/0005_adaptive_factory_spine.sql")),
-		("repeatable_program_loop", include_str!("../migrations/0006_repeatable_program_loop.sql")),
-		(
-			"builtin_domain_pack_binding",
-			include_str!("../migrations/0007_builtin_domain_pack_binding.sql"),
-		),
-		(
-			"account_reauthentication_takeover",
-			include_str!("../migrations/0008_account_reauthentication_takeover.sql"),
-		),
-		("durable_account_route", include_str!("../migrations/0009_durable_account_route.sql")),
-		(
-			"pending_account_route_progress",
-			include_str!("../migrations/0010_pending_account_route_progress.sql"),
-		),
-	];
 
 	fn fixture_key(version: u64, digest: &str, operation: &str) -> CredentialKey {
 		CredentialKey {
@@ -496,312 +469,11 @@ mod tests {
 			migrations::expected_migration_digests()
 				.into_iter()
 				.enumerate()
-				.map(|(index, digest)| ((index + 1) as i64, digest))
+				.map(|(index, digest)| (48 + index as i64, digest))
 				.collect::<Vec<_>>()
 		);
 		drop(store);
 		SqliteStore::open_test(&path).expect("reopen exact schema");
-	}
-
-	#[test]
-	fn upgrades_v1_task_profile_to_the_executable_nonempty_contract() {
-		let directory = tempdir().expect("temporary directory");
-		let path = directory.path().join("decodex.sqlite3");
-		let connection = Connection::open(&path).expect("open V1 fixture");
-		migrations::configure(&connection).expect("configure V1 fixture");
-		connection
-			.execute_batch(include_str!("../migrations/0001_local_product.sql"))
-			.expect("apply V1 fixture");
-		connection
-			.execute(
-				"INSERT INTO schema_migrations (version, name, sha256, applied_at_micros)
-				 VALUES (1, 'local_product', ?1, 1)",
-				rusqlite::params![migrations::expected_migration_digests()[0]],
-			)
-			.expect("record V1 fixture");
-		connection
-			.pragma_update(None, "application_id", migrations::APPLICATION_ID)
-			.expect("set V1 application identity");
-		connection.pragma_update(None, "user_version", 1).expect("set V1 version");
-		drop(connection);
-
-		let store = SqliteStore::open_test(&path).expect("upgrade V1 fixture");
-		let (revision, instructions, table_sql): (i64, String, String) = store
-			.with_connection(|connection| {
-				let (revision, instructions) = connection
-					.query_row(
-						"SELECT revision, instructions FROM role_profiles WHERE role = 'task'",
-						[],
-						|row| Ok((row.get(0)?, row.get(1)?)),
-					)
-					.map_err(super::error::sqlite_error)?;
-				let table_sql = connection
-					.query_row(
-						"SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'role_profiles'",
-						[],
-						|row| row.get(0),
-					)
-					.map_err(super::error::sqlite_error)?;
-				Ok((revision, instructions, table_sql))
-			})
-			.expect("read upgraded Task profile");
-		assert_eq!(revision, 2);
-		assert_eq!(instructions, "Follow the user request for this task.");
-		assert!(table_sql.contains("BETWEEN 1 AND 65536"));
-	}
-
-	#[tokio::test]
-	async fn upgrades_v7_refresh_ambiguity_without_settling_or_rewriting_it() {
-		let directory = tempdir().expect("temporary directory");
-		let path = directory.path().join("decodex.sqlite3");
-		let connection = Connection::open(&path).expect("open V7 fixture");
-		migrations::configure(&connection).expect("configure V7 fixture");
-		let sources = [
-			("local_product", include_str!("../migrations/0001_local_product.sql")),
-			(
-				"nonempty_task_instructions",
-				include_str!("../migrations/0002_nonempty_task_instructions.sql"),
-			),
-			(
-				"quick_task_execution_controls",
-				include_str!("../migrations/0003_quick_task_execution_controls.sql"),
-			),
-			("context_pack_fallback", include_str!("../migrations/0004_context_pack_fallback.sql")),
-			(
-				"adaptive_factory_spine",
-				include_str!("../migrations/0005_adaptive_factory_spine.sql"),
-			),
-			(
-				"repeatable_program_loop",
-				include_str!("../migrations/0006_repeatable_program_loop.sql"),
-			),
-			(
-				"builtin_domain_pack_binding",
-				include_str!("../migrations/0007_builtin_domain_pack_binding.sql"),
-			),
-		];
-		let digests = migrations::expected_migration_digests();
-		for (index, (name, source)) in sources.into_iter().enumerate() {
-			connection.execute_batch(source).expect("apply V7 migration fixture");
-			connection
-				.execute(
-					"INSERT INTO schema_migrations (version, name, sha256, applied_at_micros)
-					 VALUES (?1, ?2, ?3, ?4)",
-					rusqlite::params![(index + 1) as i64, name, digests[index], (index + 1) as i64],
-				)
-				.expect("record V7 migration fixture");
-		}
-		connection
-			.pragma_update(None, "application_id", migrations::APPLICATION_ID)
-			.expect("set application identity");
-		connection.pragma_update(None, "user_version", 7).expect("set V7 version");
-		connection
-			.execute(
-				"INSERT INTO account_identities (account_id, created_at_micros) VALUES (?1, 1)",
-				rusqlite::params![ACCOUNT],
-			)
-			.expect("seed account identity");
-		connection
-			.execute(
-				"INSERT INTO account_operations (
-				   operation_id, account_id, kind, phase, expected_account_revision,
-				   provider, provider_account_id, recovery_code, created_at_micros,
-				   updated_at_micros
-				 ) VALUES (?1, ?2, 'refresh', 'recovery_required', 1, 'chatgpt',
-				           'provider-account', 'provider_refresh_ambiguous', 1, 1)",
-				rusqlite::params![OPERATION_TWO, ACCOUNT],
-			)
-			.expect("seed refresh ambiguity");
-		drop(connection);
-
-		let store = SqliteStore::open_test(&path).expect("upgrade V7 fixture");
-		let ambiguity = store
-			.read_account_operation(
-				&AccountOperationId::new(OPERATION_TWO).expect("operation identity"),
-			)
-			.await
-			.expect("read upgraded ambiguity")
-			.expect("ambiguity remains present");
-		assert_eq!(ambiguity.phase, AccountOperationPhase::RecoveryRequired);
-		assert_eq!(ambiguity.recovery_code.as_deref(), Some("provider_refresh_ambiguous"));
-		assert!(ambiguity.recovery_operation_id.is_none());
-		assert!(ambiguity.superseded_by_operation_id.is_none());
-	}
-
-	#[tokio::test]
-	async fn upgrades_exact_v10_ledger_with_default_desktop_settings_and_preserved_facts() {
-		let directory = tempdir().expect("temporary directory");
-		let path = directory.path().join("decodex.sqlite3");
-		let connection = Connection::open(&path).expect("open V10 fixture");
-		migrations::configure(&connection).expect("configure V10 fixture");
-		let digests = migrations::expected_migration_digests();
-		for (index, (name, source)) in SCHEMA_TEN_MIGRATIONS.into_iter().enumerate() {
-			connection.execute_batch(source).expect("apply V10 migration fixture");
-			connection
-				.execute(
-					"INSERT INTO schema_migrations (version, name, sha256, applied_at_micros)
-					 VALUES (?1, ?2, ?3, ?4)",
-					rusqlite::params![(index + 1) as i64, name, digests[index], (index + 1) as i64],
-				)
-				.expect("record V10 migration fixture");
-		}
-		connection
-			.pragma_update(None, "application_id", migrations::APPLICATION_ID)
-			.expect("set V10 application identity");
-		connection.pragma_update(None, "user_version", 10).expect("set V10 version");
-		connection
-			.execute(
-				"INSERT INTO account_identities (account_id, created_at_micros) VALUES (?1, 10)",
-				rusqlite::params![ACCOUNT],
-			)
-			.expect("seed V10 account identity");
-		connection
-			.execute(
-				"UPDATE role_profiles
-				 SET revision = 10,
-				     instructions = 'Preserve this schema-10 task profile.',
-				     updated_at_micros = 10
-				 WHERE role = 'task'",
-				[],
-			)
-			.expect("seed V10 task profile");
-		assert_eq!(
-			connection
-				.query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row.get::<_, i64>(0))
-				.expect("count V10 migration ledger"),
-			10
-		);
-		drop(connection);
-
-		let store = SqliteStore::open_test(&path).expect("upgrade exact V10 fixture");
-		assert_eq!(
-			store.read_desktop_settings().await.expect("read migrated desktop settings"),
-			super::DesktopSettings {
-				show_in_menu_bar: true,
-				auto_activate_quota: true,
-				auto_recap: false,
-				revision: 1
-			}
-		);
-		let (version, migration_name, migration_digest, account_created_at, profile) = store
-			.with_connection(|connection| {
-				let version = connection
-					.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
-					.map_err(super::error::sqlite_error)?;
-				let (migration_name, migration_digest) = connection
-					.query_row(
-						"SELECT name, sha256 FROM schema_migrations WHERE version = 11",
-						[],
-						|row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-					)
-					.map_err(super::error::sqlite_error)?;
-				let account_created_at = connection
-					.query_row(
-						"SELECT created_at_micros FROM account_identities WHERE account_id = ?1",
-						rusqlite::params![ACCOUNT],
-						|row| row.get::<_, i64>(0),
-					)
-					.map_err(super::error::sqlite_error)?;
-				let profile = connection
-					.query_row(
-						"SELECT revision, instructions, updated_at_micros
-						 FROM role_profiles WHERE role = 'task'",
-						[],
-						|row| {
-							Ok((
-								row.get::<_, i64>(0)?,
-								row.get::<_, String>(1)?,
-								row.get::<_, i64>(2)?,
-							))
-						},
-					)
-					.map_err(super::error::sqlite_error)?;
-				Ok((version, migration_name, migration_digest, account_created_at, profile))
-			})
-			.expect("read V11 upgrade evidence");
-		assert_eq!(version, i64::try_from(digests.len()).unwrap());
-		assert_eq!(migration_name, "desktop_settings");
-		assert_eq!(migration_digest, digests[10]);
-		assert_eq!(account_created_at, 10);
-		assert_eq!(profile, (10, "Preserve this schema-10 task profile.".to_owned(), 10));
-	}
-
-	#[tokio::test]
-	async fn schema_11_reserved_route_is_terminal_non_replayable_and_preserves_account_state() {
-		let directory = tempdir().expect("temporary directory");
-		let path = directory.path().join("decodex.sqlite3");
-		let connection = Connection::open(&path).expect("open schema-11 fixture");
-		migrations::configure(&connection).expect("configure fixture");
-		let digests = migrations::expected_migration_digests();
-		for (index, (name, source)) in SCHEMA_TEN_MIGRATIONS.into_iter().enumerate() {
-			connection.execute_batch(source).expect("apply migration");
-			connection
-				.execute(
-					"INSERT INTO schema_migrations VALUES (?1, ?2, ?3, ?4)",
-					rusqlite::params![(index + 1) as i64, name, digests[index], (index + 1) as i64],
-				)
-				.expect("record migration");
-		}
-		connection
-			.execute_batch(include_str!("../migrations/0011_desktop_settings.sql"))
-			.expect("apply schema 11");
-		connection
-			.execute(
-				"INSERT INTO schema_migrations VALUES (11, 'desktop_settings', ?1, 11)",
-				rusqlite::params![digests[10]],
-			)
-			.expect("record schema 11");
-		connection.pragma_update(None, "application_id", migrations::APPLICATION_ID).unwrap();
-		connection.pragma_update(None, "user_version", 11).unwrap();
-		let request = r#"{"name":"route_account","arguments":{"operation_id":"20000000-0000-4000-8000-000000000099","account_id":"10000000-0000-4000-8000-000000000001","expected_account_revision":1}}"#;
-		connection.execute_batch(&format!(r#"
-			INSERT INTO account_identities VALUES ('{ACCOUNT}', 20);
-			INSERT INTO account_operations (operation_id,account_id,kind,phase,provider,provider_account_id,requested_display_label,requested_enabled,created_at_micros,updated_at_micros,completed_at_micros)
-			VALUES ('{OPERATION_ONE}','{ACCOUNT}','enroll','committed','chatgpt','provider-account','Iris',1,20,20,20);
-			INSERT INTO accounts VALUES ('{ACCOUNT}','Iris',1,'available',1,'chatgpt','provider-account','exact',20,20,NULL);
-			INSERT INTO account_credentials VALUES ('{ACCOUNT}',1,1,'{DIGEST_ONE}','{OPERATION_ONE}','chatgpt','provider-account',X'01020304',20);
-			INSERT INTO account_routing_order VALUES ('{ACCOUNT}',0,20);
-			UPDATE account_routing_control SET mode='fixed', fixed_account_id='{ACCOUNT}', revision=2, updated_at_micros=20;
-		"#)).expect("seed preserved account state");
-		connection.execute(
-			"INSERT INTO command_receipts (protocol,idempotency_key,request_sha256,operation,entity_id,expected_revision,state,response_json,claim_token,claim_expires_at_micros,reserved_at_micros,completed_at_micros,request_json,progress_json)
-			 VALUES ('decodex/account-command/1','legacy-route',?1,'route_account','account-routing',2,'reserved',NULL,'30000000-0000-4000-8000-000000000001',100,20,NULL,?2,?3)",
-			rusqlite::params![DIGEST_TWO, request, r#"{"outcome":"pending"}"#],
-		).expect("seed pending Route");
-		let before = connection.query_row(
-			"SELECT a.display_label,a.enabled,a.revision,c.payload,r.mode,r.fixed_account_id,r.revision FROM accounts a JOIN account_credentials c USING(account_id) JOIN account_routing_control r ON r.singleton=1 WHERE a.account_id=?1",
-			rusqlite::params![ACCOUNT],
-			|row| Ok((row.get::<_,String>(0)?,row.get::<_,i64>(1)?,row.get::<_,i64>(2)?,row.get::<_,Vec<u8>>(3)?,row.get::<_,String>(4)?,row.get::<_,String>(5)?,row.get::<_,i64>(6)?)),
-		).unwrap();
-		drop(connection);
-
-		let store = SqliteStore::open_test(&path).expect("migrate schema 11 to 12");
-		store.with_connection(|connection| {
-			let after = connection.query_row(
-				"SELECT a.display_label,a.enabled,a.revision,c.payload,r.mode,r.fixed_account_id,r.revision FROM accounts a JOIN account_credentials c USING(account_id) JOIN account_routing_control r ON r.singleton=1 WHERE a.account_id=?1",
-				rusqlite::params![ACCOUNT],
-				|row| Ok((row.get::<_,String>(0)?,row.get::<_,i64>(1)?,row.get::<_,i64>(2)?,row.get::<_,Vec<u8>>(3)?,row.get::<_,String>(4)?,row.get::<_,String>(5)?,row.get::<_,i64>(6)?)),
-			).map_err(super::error::sqlite_error)?;
-			assert_eq!(after, before);
-			let receipt_count: i64 = connection.query_row("SELECT COUNT(*) FROM command_receipts WHERE idempotency_key='legacy-route'", [], |row| row.get(0)).map_err(super::error::sqlite_error)?;
-			assert_eq!(receipt_count, 0, "legacy request/progress authority is not replayable");
-			let audit: (String,String) = connection.query_row("SELECT terminal_reason,request_sha256 FROM legacy_account_route_interruptions WHERE idempotency_key='legacy-route'", [], |row| Ok((row.get(0)?,row.get(1)?))).map_err(super::error::sqlite_error)?;
-			assert_eq!(audit, ("interrupted_by_upgrade".to_owned(), DIGEST_TWO.to_owned()));
-			Ok(())
-		}).expect("verify terminal migration");
-		let replay = CommandIdentity::new("legacy-route", br#"{"name":"route_account"}"#)
-			.expect("replay identity");
-		assert!(matches!(
-			store
-				.reserve_account_command(
-					&replay,
-					AccountCommandKind::Route,
-					"account-routing",
-					None,
-				)
-				.await,
-			Err(StoreError::IdempotencyConflict)
-		));
 	}
 
 	#[test]
@@ -813,7 +485,7 @@ mod tests {
 			.with_connection(|connection| {
 				connection
 					.execute(
-						"UPDATE schema_migrations SET sha256 = ?1 WHERE version = 1",
+						"UPDATE schema_migrations SET sha256 = ?1 WHERE version = 48",
 						rusqlite::params![DIGEST_ONE],
 					)
 					.map_err(super::error::sqlite_error)?;

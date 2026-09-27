@@ -12,8 +12,8 @@ pub(crate) use status::{
 	count_preference as notification_count_preference, question_notice_preference,
 };
 
-#[path = "chief_surface.rs"] pub(crate) mod chief_surface;
-use chief_surface::ChiefSurface;
+#[path = "agent_surface.rs"] pub(crate) mod agent_surface;
+use agent_surface::AgentSurface;
 #[path = "shell_navigation.rs"] mod navigation;
 #[path = "workspace_symbols.rs"] mod workspace_symbols;
 
@@ -303,7 +303,7 @@ actions!(
 		FocusNext,
 		FocusPrevious,
 		ActivateDestination,
-		ActivateChief,
+		ActivateAgent,
 		ActivateConversations,
 		ActivateHealth,
 		ActivateSettings,
@@ -330,7 +330,7 @@ actions!(
 /// Stable shell destinations. Each live destination remains issue-owned.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Destination {
-	Chief,
+	Agent,
 	Advisor,
 	Projects,
 	Conversations,
@@ -343,7 +343,7 @@ pub(crate) enum Destination {
 
 impl Destination {
 	pub(crate) const ALL: [Self; 9] = [
-		Self::Chief,
+		Self::Agent,
 		Self::Advisor,
 		Self::Projects,
 		Self::Conversations,
@@ -356,7 +356,7 @@ impl Destination {
 
 	pub(crate) const fn label(self) -> &'static str {
 		match self {
-			Self::Chief => "Main",
+			Self::Agent => "Main",
 			Self::Advisor => "Advisor",
 			Self::Projects => "Projects",
 			Self::Conversations => "History",
@@ -370,7 +370,7 @@ impl Destination {
 
 	const fn description(self) -> &'static str {
 		match self {
-			Self::Chief => "Open Chief",
+			Self::Agent => "Open Agent",
 			Self::Advisor => "Review guidance and bounded decisions.",
 			Self::Projects => "Own repositories and product context.",
 			Self::Conversations =>
@@ -475,8 +475,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
 	cx.bind_keys([
 		KeyBinding::new("tab", FocusNext, None),
 		KeyBinding::new("shift-tab", FocusPrevious, None),
-		KeyBinding::new("cmd-2", ActivateChief, None),
-		KeyBinding::new("cmd-1", ActivateChief, None),
+		KeyBinding::new("cmd-2", ActivateAgent, None),
+		KeyBinding::new("cmd-1", ActivateAgent, None),
 		KeyBinding::new("cmd-3", ActivateHealth, None),
 		KeyBinding::new("cmd-,", ActivateSettings, None),
 		KeyBinding::new("cmd-e", ToggleSidebar, None),
@@ -527,7 +527,7 @@ pub(crate) struct Shell {
 	destination_focus: Vec<FocusHandle>,
 	refresh_focus: FocusHandle,
 	composer: Entity<ComposerInput>,
-	chief: Entity<ChiefSurface>,
+	agent: Entity<AgentSurface>,
 	settings: Entity<SettingsSurface>,
 	account_login: Option<Arc<AccountLoginController>>,
 	account_login_status: Option<AccountLoginStatus>,
@@ -570,15 +570,15 @@ pub(crate) struct Shell {
 impl Shell {
 	pub(crate) fn drafts_ready_for_quit(&mut self, cx: &mut Context<Self>) -> bool {
 		self.sync_ordinary_drafts(cx);
-		self.chief.update(cx, |surface, cx| surface.drafts_ready_for_quit(cx))
+		self.agent.update(cx, |surface, cx| surface.drafts_ready_for_quit(cx))
 	}
 
 	pub(crate) fn flush_drafts_for_quit(&mut self, cx: &mut Context<Self>) -> Task<bool> {
 		self.sync_ordinary_drafts(cx);
-		self.chief.update(cx, |surface, cx| surface.flush_drafts_for_quit(cx))
+		self.agent.update(cx, |surface, cx| surface.flush_drafts_for_quit(cx))
 	}
 
-	pub(crate) fn with_chief_profile(
+	pub(crate) fn with_agent_profile(
 		mut self,
 		profile: Option<decodex_protocol::ClientProfile>,
 		cx: &mut Context<Self>,
@@ -586,7 +586,7 @@ impl Shell {
 		self.account_emails = Default::default();
 		self.reset_cards.profile = profile.clone();
 		let cwd = self.conversations.working_directory();
-		self.chief.update(cx, |surface, cx| {
+		self.agent.update(cx, |surface, cx| {
 			surface.bind_profile(profile, cx);
 			surface.seed_context(cwd, vec![], cx);
 			surface.refresh(cx);
@@ -615,8 +615,8 @@ impl Shell {
 			cx.notify();
 		})
 		.detach();
-		let chief = cx.new(ChiefSurface::new);
-		cx.observe(&chief, |shell, _, cx| {
+		let agent = cx.new(AgentSurface::new);
+		cx.observe(&agent, |shell, _, cx| {
 			shell.record_navigation(cx);
 			shell.sync_ordinary_drafts(cx);
 			cx.notify();
@@ -640,7 +640,7 @@ impl Shell {
 		Self {
 			settings_window: None,
 			settings_selected: Destination::Settings,
-			selected: Destination::Chief,
+			selected: Destination::Agent,
 			inspector_tab: InspectorTab::Context,
 			left_sidebar_visible: true,
 			left_sidebar_mounted: true,
@@ -653,7 +653,7 @@ impl Shell {
 			destination_focus,
 			refresh_focus,
 			composer,
-			chief,
+			agent,
 			settings,
 			account_login: None,
 			account_login_status: None,
@@ -935,7 +935,7 @@ impl Shell {
 					"turn-01",
 					"tool",
 					"tool_call",
-					"Inspected Shell, Conversations, Chief, and HistoryPager ownership boundaries",
+					"Inspected Shell, Conversations, Agent, and HistoryPager ownership boundaries",
 					3,
 				),
 				item(
@@ -943,7 +943,7 @@ impl Shell {
 					"turn-01",
 					"assistant",
 					"message",
-					"The first pass is now a compact Workbench: integrated title bar, horizontal sessions, dense transcript, floating composer, and a real Work Item inspector. Chief coordinates work and its dependencies.",
+					"The first pass is now a compact Workbench: integrated title bar, horizontal sessions, dense transcript, floating composer, and a real Work Item inspector. Agent coordinates work and its dependencies.",
 					4,
 				),
 				item(
@@ -1008,9 +1008,9 @@ impl Shell {
 	) -> Self {
 		let mut shell = Self::visual_workbench(window, cx);
 		shell.selected = destination;
-		if destination == Destination::Chief {
+		if destination == Destination::Agent {
 			shell.connection = ConnectionView::Stopped;
-			shell.chief.update(cx, |surface, cx| {
+			shell.agent.update(cx, |surface, cx| {
 				surface.visual_workspace_fixture(cx);
 				if let Ok(page) = std::env::var("DECODEX_VISUAL_WORKSPACE_PAGE") {
 					surface
@@ -1072,11 +1072,11 @@ impl Shell {
 			self.accounts_controller.deactivate();
 		}
 
-		if self.selected == Destination::Chief {
-			self.chief.update(cx, ChiefSurface::stop_voice);
+		if self.selected == Destination::Agent {
+			self.agent.update(cx, AgentSurface::stop_voice);
 		}
 		self.selected = destination;
-		if destination == Destination::Chief {
+		if destination == Destination::Agent {
 			let cwd = self.conversations.working_directory();
 			let accounts = self
 				.accounts
@@ -1086,8 +1086,8 @@ impl Shell {
 					(account.account_id.as_str().to_owned(), account.alias.as_str().to_owned())
 				})
 				.collect();
-			self.chief.update(cx, |surface, cx| surface.seed_context(cwd, accounts, cx));
-			self.chief.update(cx, ChiefSurface::refresh);
+			self.agent.update(cx, |surface, cx| surface.seed_context(cwd, accounts, cx));
+			self.agent.update(cx, AgentSurface::refresh);
 		}
 		if destination == Destination::Health {
 			self.health_query.activate();
@@ -1108,8 +1108,8 @@ impl Shell {
 		cx.notify();
 	}
 
-	fn activate_chief(&mut self, _: &ActivateChief, _: &mut Window, cx: &mut Context<Self>) {
-		self.select_destination(Destination::Chief, cx);
+	fn activate_agent(&mut self, _: &ActivateAgent, _: &mut Window, cx: &mut Context<Self>) {
+		self.select_destination(Destination::Agent, cx);
 	}
 
 	fn activate_conversations(
@@ -1180,18 +1180,18 @@ impl Shell {
 	}
 
 	fn toggle_sidebar(&mut self, _: &ToggleSidebar, _: &mut Window, cx: &mut Context<Self>) {
-		if self.selected == Destination::Chief {
-			self.chief.update(cx, ChiefSurface::toggle_workspace_sidebar);
+		if self.selected == Destination::Agent {
+			self.agent.update(cx, AgentSurface::toggle_workspace_sidebar);
 		}
-		if self.selected != Destination::Chief {
+		if self.selected != Destination::Agent {
 			self.set_left_sidebar_visible(!self.left_sidebar_visible, cx);
 		}
 		cx.stop_propagation();
 	}
 
 	fn toggle_inspector(&mut self, _: &ToggleInspector, _: &mut Window, cx: &mut Context<Self>) {
-		if self.selected == Destination::Chief {
-			self.chief.update(cx, ChiefSurface::toggle_agent_tree);
+		if self.selected == Destination::Agent {
+			self.agent.update(cx, AgentSurface::toggle_agent_tree);
 		}
 		if self.selected == Destination::Conversations {
 			self.set_inspector_visible(!self.inspector_visible, cx);
@@ -1208,20 +1208,20 @@ impl Shell {
 		if event.keystroke.key != "escape" || event.is_held {
 			return;
 		}
-		if self.selected == Destination::Chief {
+		if self.selected == Destination::Agent {
 			if self.status_open {
 				self.status_open = false;
 				cx.notify();
 				return;
 			}
-			self.chief.update(cx, ChiefSurface::escape_interrupt);
+			self.agent.update(cx, AgentSurface::escape_interrupt);
 			cx.stop_propagation();
 		}
 	}
 
 	fn toggle_graph(&mut self, _: &ToggleGraph, _: &mut Window, cx: &mut Context<Self>) {
-		if self.selected == Destination::Chief {
-			self.chief.update(cx, ChiefSurface::toggle_workspace_graph);
+		if self.selected == Destination::Agent {
+			self.agent.update(cx, AgentSurface::toggle_workspace_graph);
 		}
 		cx.stop_propagation();
 	}
@@ -2026,9 +2026,9 @@ fn publish_views(
 	while let Ok(view) = views.try_recv() {
 		let _ = shell.update(cx, |shell, cx| {
 			if connection_requires_recovery(shell.connection, view) {
-				shell.chief.update(cx, ChiefSurface::mark_stale);
+				shell.agent.update(cx, AgentSurface::mark_stale);
 			} else if shell.connection != view && matches!(view, ConnectionView::Online { .. }) {
-				shell.chief.update(cx, |s, cx| s.refresh(cx));
+				shell.agent.update(cx, |s, cx| s.refresh(cx));
 			}
 			shell.connection = view;
 			cx.notify();
@@ -2051,9 +2051,9 @@ fn publish_views(
 		let account_profile = shell.account_profile_controller.snapshot();
 		let desktop_settings = shell.desktop_settings.snapshot();
 		let auto_recap = desktop_settings.settings.is_some_and(|s| s.auto_recap)
-			&& shell.selected == Destination::Chief
+			&& shell.selected == Destination::Agent
 			&& matches!(shell.connection, ConnectionView::Online { .. });
-		shell.chief.update(cx, |s, cx| s.poll_automatic_recap(auto_recap, cx));
+		shell.agent.update(cx, |s, cx| s.poll_automatic_recap(auto_recap, cx));
 		let health = shell.health_query.snapshot();
 		if shell.selected == Destination::Conversations
 			&& shell.pending_submission.is_none()
@@ -2141,7 +2141,7 @@ fn floating_window_controls(
 		.child(
 			ui_theme::floating_group()
 				.pl(px(74.0))
-				.child(chief_panel_control(shell, 0, cx))
+				.child(agent_panel_control(shell, 0, cx))
 				.child(shell.navigation_control(false, cx))
 				.child(shell.navigation_control(true, cx)),
 		)
@@ -2203,16 +2203,16 @@ fn topbar_controls(
 		.expect("Settings destination");
 	ui_theme::floating_group()
 		.text_size(px(11.0))
-		.when(shell.selected == Destination::Chief, |controls| {
+		.when(shell.selected == Destination::Agent, |controls| {
 			controls
-				.when(shell.chief.read(cx).workspace_panels()[2].1, |group| {
-					group.child(chief_panel_control(shell, 2, cx))
+				.when(shell.agent.read(cx).workspace_panels()[2].1, |group| {
+					group.child(agent_panel_control(shell, 2, cx))
 				})
-				.when(shell.chief.read(cx).workspace_panels()[1].1, |group| {
-					group.child(chief_panel_control(shell, 1, cx))
+				.when(shell.agent.read(cx).workspace_panels()[1].1, |group| {
+					group.child(agent_panel_control(shell, 1, cx))
 				})
-				.when(shell.chief.read(cx).workspace_panels()[3].1, |group| {
-					group.child(chief_panel_control(shell, 3, cx))
+				.when(shell.agent.read(cx).workspace_panels()[3].1, |group| {
+					group.child(agent_panel_control(shell, 3, cx))
 				})
 		})
 		.when(shell.selected == Destination::Conversations, |controls| {
@@ -2277,11 +2277,11 @@ fn topbar_controls(
 		.into_any_element()
 }
 
-fn chief_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyElement {
-	let (active, enabled) = if index == 0 && shell.selected != Destination::Chief {
+fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyElement {
+	let (active, enabled) = if index == 0 && shell.selected != Destination::Agent {
 		(shell.left_sidebar_visible, true)
 	} else {
-		shell.chief.read(cx).workspace_panels()[index]
+		shell.agent.read(cx).workspace_panels()[index]
 	};
 	let label = match (index, enabled) {
 		(0, _) => "Toggle sidebar · Command-E",
@@ -2292,7 +2292,7 @@ fn chief_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		_ => "History · no messages yet",
 	};
 	div()
-		.id(("chief-panel-control", index))
+		.id(("agent-panel-control", index))
 		.role(Role::Button)
 		.tab_index(0)
 		.aria_label(label)
@@ -2313,34 +2313,34 @@ fn chief_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 			cx.stop_propagation();
 		})
 		.on_click(cx.listener(move |s, _, _, cx| {
-			if enabled && index == 0 && s.selected != Destination::Chief {
+			if enabled && index == 0 && s.selected != Destination::Agent {
 				s.set_left_sidebar_visible(!s.left_sidebar_visible, cx);
 			} else if enabled {
-				s.chief.update(cx, |chief, cx| match index {
-					0 => chief.toggle_workspace_sidebar(cx),
-					1 => chief.toggle_workspace_graph(cx),
-					2 => chief.toggle_workspace_timeline(cx),
-					_ => chief.toggle_agent_tree(cx),
+				s.agent.update(cx, |agent, cx| match index {
+					0 => agent.toggle_workspace_sidebar(cx),
+					1 => agent.toggle_workspace_graph(cx),
+					2 => agent.toggle_workspace_timeline(cx),
+					_ => agent.toggle_agent_tree(cx),
 				});
 			}
 		}))
 		.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
 			if enabled && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-				if index == 0 && s.selected != Destination::Chief {
+				if index == 0 && s.selected != Destination::Agent {
 					s.set_left_sidebar_visible(!s.left_sidebar_visible, cx);
 					cx.stop_propagation();
 					return;
 				}
-				s.chief.update(cx, |chief, cx| match index {
-					0 => chief.toggle_workspace_sidebar(cx),
-					1 => chief.toggle_workspace_graph(cx),
-					2 => chief.toggle_workspace_timeline(cx),
-					_ => chief.toggle_agent_tree(cx),
+				s.agent.update(cx, |agent, cx| match index {
+					0 => agent.toggle_workspace_sidebar(cx),
+					1 => agent.toggle_workspace_graph(cx),
+					2 => agent.toggle_workspace_timeline(cx),
+					_ => agent.toggle_agent_tree(cx),
 				});
 				cx.stop_propagation();
 			}
 		}))
-		.child(ChiefSurface::panel_glyph(index))
+		.child(AgentSurface::panel_glyph(index))
 		.smooth()
 		.enabled(enabled)
 		.into_any_element()
@@ -3227,10 +3227,10 @@ fn account_profile_facts(profile: &decodex_protocol::AccountProfileDto) -> Vec<S
 		facts.push(format!("Plan · {}", account_plan_label(plan.as_str())));
 	}
 	if let Some(tokens) = profile.lifetime_tokens {
-		facts.push(format!("Lifetime · {} tokens", chief_surface::compact_tokens(tokens)));
+		facts.push(format!("Lifetime · {} tokens", agent_surface::compact_tokens(tokens)));
 	}
 	if let Some(tokens) = profile.peak_daily_tokens {
-		facts.push(format!("Peak day · {} tokens", chief_surface::compact_tokens(tokens)));
+		facts.push(format!("Peak day · {} tokens", agent_surface::compact_tokens(tokens)));
 	}
 	if let Some(days) = profile.current_streak_days {
 		facts.push(format!("Streak · {days} days"));
@@ -4383,9 +4383,9 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				)
 				.child(
 					div()
-						.id("open-chief")
+						.id("open-agent")
 						.role(Role::Button)
-						.aria_label("Open Chief")
+						.aria_label("Open Agent")
 						.h(px(26.0))
 						.px_2()
 						.flex()
@@ -4400,9 +4400,9 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
 						.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 						.on_click(cx.listener(|shell, _, _, cx| {
-							shell.select_destination(Destination::Chief, cx);
+							shell.select_destination(Destination::Agent, cx);
 						}))
-						.child("Open Chief")
+						.child("Open Agent")
 						.smooth(),
 				),
 		)
@@ -4736,15 +4736,15 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let mut row =
 		div().id("conversation-service-tiers").flex().flex_wrap().gap_2().text_size(px(11.));
-	if let Some(notice) = shell.chief.read(cx).ordinary_draft_notice() {
+	if let Some(notice) = shell.agent.read(cx).ordinary_draft_notice() {
 		row = row.child(div().id("ordinary-draft-storage-notice").child(notice.to_owned())).child(
 			div()
 				.id("ordinary-draft-recovery")
 				.cursor_pointer()
 				.child("Review saved drafts")
 				.on_click(cx.listener(|shell, _, _, cx| {
-					shell.chief.update(cx, |chief, cx| chief.show_ordinary_draft_recovery(cx));
-					shell.selected = Destination::Chief;
+					shell.agent.update(cx, |agent, cx| agent.show_ordinary_draft_recovery(cx));
+					shell.selected = Destination::Agent;
 					cx.notify();
 				})),
 		);
@@ -4797,7 +4797,7 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 	);
 	{
 		let models = shell.quick.catalog.as_deref().unwrap_or(&[]);
-		let mut choices = vec![decodex_protocol::ChiefServiceTierDto {
+		let mut choices = vec![decodex_protocol::AgentServiceTierDto {
 			id: decodex_protocol::ServiceTier::standard(),
 			name: "Standard".into(),
 			description: String::new(),
@@ -5085,14 +5085,14 @@ fn destination_content(
 ) -> AnyElement {
 	let selected = shell.selected;
 	match selected {
-		Destination::Chief => {
+		Destination::Agent => {
 			return div()
 				.id("destination-content")
 				.flex_1()
 				.min_w_0()
 				.min_h_0()
 				.flex()
-				.child(shell.chief.clone())
+				.child(shell.agent.clone())
 				.into_any_element();
 		},
 		Destination::Conversations => {
@@ -5148,7 +5148,7 @@ fn settings_navigation(
 		.gap(px(3.0))
 		.text_size(px(ui_theme::BODY_SIZE))
 		.pr(px(16.))
-		.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
+		.bg(rgba(ui_theme::AGENT_SIDEBAR_MATERIAL))
 		.child(
 			div()
 				.px_2()
@@ -5230,7 +5230,7 @@ fn settings_workspace_content(
 		.min_h_0()
 		.h_full()
 		.overflow_hidden()
-		.bg(rgba(ui_theme::CHIEF_SIDEBAR_MATERIAL))
+		.bg(rgba(ui_theme::AGENT_SIDEBAR_MATERIAL))
 		.pt(px(WINDOW_CONTROLS_CLEARANCE))
 		.flex()
 		.flex_col();
@@ -5442,43 +5442,43 @@ impl Render for Shell {
 			.on_action(cx.listener(Self::focus_next))
 			.on_action(cx.listener(Self::focus_previous))
 			.on_action(cx.listener(Self::activate_conversations))
-			.on_action(cx.listener(Self::activate_chief))
+			.on_action(cx.listener(Self::activate_agent))
 			.on_action(cx.listener(Self::activate_health))
 			.on_action(cx.listener(Self::activate_settings))
 			.on_action(cx.listener(Self::toggle_sidebar))
 			.on_action(cx.listener(|s, _: &ShrinkPanel, window, cx| {
-				if s.selected == Destination::Chief {
-					s.chief.update(cx, |a, cx| a.resize_panel(-24.0, false, false, window, cx));
+				if s.selected == Destination::Agent {
+					s.agent.update(cx, |a, cx| a.resize_panel(-24.0, false, false, window, cx));
 					cx.stop_propagation();
 				}
 			}))
 			.on_action(cx.listener(|s, _: &GrowPanel, window, cx| {
-				if s.selected == Destination::Chief {
-					s.chief.update(cx, |a, cx| a.resize_panel(24.0, false, false, window, cx));
+				if s.selected == Destination::Agent {
+					s.agent.update(cx, |a, cx| a.resize_panel(24.0, false, false, window, cx));
 					cx.stop_propagation();
 				}
 			}))
 			.on_action(cx.listener(|s, _: &ResetPanel, window, cx| {
-				if s.selected == Destination::Chief {
-					s.chief.update(cx, |a, cx| a.resize_panel(0.0, true, false, window, cx));
+				if s.selected == Destination::Agent {
+					s.agent.update(cx, |a, cx| a.resize_panel(0.0, true, false, window, cx));
 					cx.stop_propagation();
 				}
 			}))
 			.on_action(cx.listener(|s, _: &ShrinkPanels, window, cx| {
-				if s.selected == Destination::Chief {
-					s.chief.update(cx, |a, cx| a.resize_panel(-24.0, false, true, window, cx));
+				if s.selected == Destination::Agent {
+					s.agent.update(cx, |a, cx| a.resize_panel(-24.0, false, true, window, cx));
 					cx.stop_propagation();
 				}
 			}))
 			.on_action(cx.listener(|s, _: &GrowPanels, window, cx| {
-				if s.selected == Destination::Chief {
-					s.chief.update(cx, |a, cx| a.resize_panel(24.0, false, true, window, cx));
+				if s.selected == Destination::Agent {
+					s.agent.update(cx, |a, cx| a.resize_panel(24.0, false, true, window, cx));
 					cx.stop_propagation();
 				}
 			}))
 			.on_action(cx.listener(|s, _: &ResetPanels, window, cx| {
-				if s.selected == Destination::Chief {
-					s.chief.update(cx, |a, cx| a.resize_panel(0.0, true, true, window, cx));
+				if s.selected == Destination::Agent {
+					s.agent.update(cx, |a, cx| a.resize_panel(0.0, true, true, window, cx));
 					cx.stop_propagation();
 				}
 			}))
@@ -5505,8 +5505,8 @@ impl Render for Shell {
 			.text_color(rgb(WB_TEXT));
 
 		#[cfg(all(target_os = "macos", not(test)))]
-		self.chief.update(cx, |chief, cx| {
-			chief.prepare_native_composer(self.selected == Destination::Chief, window, cx)
+		self.agent.update(cx, |agent, cx| {
+			agent.prepare_native_composer(self.selected == Destination::Agent, window, cx)
 		});
 		let controls = floating_window_controls(self, &presentation, window, cx);
 		#[cfg(all(target_os = "macos", not(test)))]
@@ -6175,7 +6175,7 @@ mod tests {
 				destination.label(),
 				matches!(
 					destination,
-					Destination::Chief
+					Destination::Agent
 						| Destination::Conversations
 						| Destination::Accounts
 						| Destination::Health
@@ -6959,18 +6959,18 @@ mod tests {
 	#[gpui::test]
 	fn settings_window_preserves_workspace_and_reuses_one_window(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
-		let before = shell.read_with(visual, |s, cx| s.chief.read(cx).workspace_panels());
+		let before = shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels());
 		visual.simulate_keystrokes("cmd-,");
 		let handle = shell.read_with(visual, |s, _| {
-			assert_eq!(s.selected, Destination::Chief);
+			assert_eq!(s.selected, Destination::Agent);
 			s.settings_window.expect("settings window")
 		});
 		shell.update(visual, |s, cx| s.open_settings_window(Destination::Accounts, cx));
 		shell.read_with(visual, |s, cx| {
-			assert_eq!(s.selected, Destination::Chief);
+			assert_eq!(s.selected, Destination::Agent);
 			assert_eq!(s.settings_selected, Destination::Accounts);
 			assert_eq!(s.settings_window.unwrap(), handle);
-			assert_eq!(s.chief.read(cx).workspace_panels(), before);
+			assert_eq!(s.agent.read(cx).workspace_panels(), before);
 		});
 		handle.update(visual, |_, window, _| window.remove_window()).unwrap();
 		shell.read_with(visual, |s, _| assert!(s.settings_window.is_none()));
@@ -6984,7 +6984,7 @@ mod tests {
 		shell.update(visual, |s, cx| s.open_settings_window(Destination::Settings, cx));
 		shell.read_with(visual, |s, _| {
 			assert_ne!(s.settings_window.unwrap(), handle);
-			assert_eq!(s.selected, Destination::Chief);
+			assert_eq!(s.selected, Destination::Agent);
 		});
 	}
 
@@ -6992,23 +6992,23 @@ mod tests {
 	fn back_forward_restore_worker_and_settings_without_duplicate_history(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 		shell.update(visual, |s, cx| {
-			s.chief.update(cx, |chief, cx| chief.visual_workspace_fixture(cx))
+			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
 		});
 		shell.update(visual, |s, cx| {
-			s.chief.update(cx, |chief, cx| chief.restore_work(Some("verify"), cx));
+			s.agent.update(cx, |agent, cx| agent.restore_work(Some("verify"), cx));
 			s.record_navigation(cx);
 		});
 		shell.update(visual, |s, cx| s.select_destination(Destination::Settings, cx));
 		visual.simulate_keystrokes("cmd-[");
 		shell.read_with(visual, |s, cx| {
-			assert_eq!(s.selected, Destination::Chief);
-			assert_eq!(s.chief.read(cx).navigation_work().as_deref(), Some("verify"));
+			assert_eq!(s.selected, Destination::Agent);
+			assert_eq!(s.agent.read(cx).navigation_work().as_deref(), Some("verify"));
 		});
 		visual.simulate_keystrokes("cmd-[");
-		assert_eq!(shell.read_with(visual, |s, cx| s.chief.read(cx).navigation_work()), None);
+		assert_eq!(shell.read_with(visual, |s, cx| s.agent.read(cx).navigation_work()), None);
 		visual.simulate_keystrokes("cmd-]");
 		assert_eq!(
-			shell.read_with(visual, |s, cx| s.chief.read(cx).navigation_work()),
+			shell.read_with(visual, |s, cx| s.agent.read(cx).navigation_work()),
 			Some("verify".into())
 		);
 		visual.simulate_keystrokes("cmd-]");
@@ -7016,13 +7016,13 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn chief_panel_shortcuts_control_the_current_work_page(cx: &mut TestAppContext) {
+	fn agent_panel_shortcuts_control_the_current_work_page(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 		shell.update(visual, |s, cx| {
-			s.chief.update(cx, |chief, cx| chief.visual_workspace_fixture(cx))
+			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
 		});
 		let panels = |visual: &mut VisualTestContext| {
-			shell.read_with(visual, |s, cx| s.chief.read(cx).workspace_panels())
+			shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels())
 		};
 		assert_eq!(panels(visual), [(true, true), (true, true), (true, true), (true, true)]);
 		visual.simulate_keystrokes("cmd-j");
@@ -7039,12 +7039,12 @@ mod tests {
 	fn panel_resize_keyboard_bindings_reach_the_focused_panel(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 		visual.simulate_resize(gpui::size(px(1400.), px(1000.)));
-		shell.update(visual, |s, cx| s.chief.update(cx, |a, cx| a.visual_workspace_fixture(cx)));
+		shell.update(visual, |s, cx| s.agent.update(cx, |a, cx| a.visual_workspace_fixture(cx)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
 		let dimensions = |visual: &mut VisualTestContext| {
-			shell.read_with(visual, |s, cx| s.chief.read(cx).panel_dimensions())
+			shell.read_with(visual, |s, cx| s.agent.read(cx).panel_dimensions())
 		};
 		let initial = dimensions(visual);
 		visual.simulate_click(gpui::point(px(50.), px(170.)), Default::default());

@@ -315,7 +315,7 @@ pub(crate) struct FencedProcess {
 
 enum GenerationAdmission {
 	Conversation(Box<FreshConversationProcessGeneration>),
-	Chief { root_id: String, operation_key: String },
+	Agent { root_id: String, operation_key: String },
 }
 impl FencedProcess {
 	#[cfg(test)]
@@ -658,8 +658,8 @@ impl ProcessGenerationControl {
 		.await
 	}
 
-	/// Admit a retained Chief generation through the same account and process fences.
-	pub(crate) async fn spawn_fenced_chief(
+	/// Admit a retained Agent generation through the same account and process fences.
+	pub(crate) async fn spawn_fenced_agent(
 		&self,
 		root_id: String,
 		operation_key: String,
@@ -671,7 +671,7 @@ impl ProcessGenerationControl {
 			generation_id,
 			execution_authorization,
 			launch,
-			GenerationAdmission::Chief { root_id, operation_key },
+			GenerationAdmission::Agent { root_id, operation_key },
 		)
 		.await
 	}
@@ -700,10 +700,10 @@ impl ProcessGenerationControl {
 						*admission,
 					)
 					.await,
-			GenerationAdmission::Chief { root_id, operation_key } =>
+			GenerationAdmission::Agent { root_id, operation_key } =>
 				self.inner
 					.store
-					.prepare_chief_bound_process_generation(
+					.prepare_agent_bound_process_generation(
 						&intent,
 						&account_binding,
 						&root_id,

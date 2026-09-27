@@ -176,14 +176,14 @@ impl Shell {
 			.collect::<Vec<_>>();
 		self.account_notifications(&mut notices);
 		self.profile_notifications(&mut notices);
-		let chief = self.chief.read(cx);
-		if let Some((identity, detail)) = chief.question_arrival_notice() {
+		let agent = self.agent.read(cx);
+		if let Some((identity, detail)) = agent.question_arrival_notice() {
 			let mut notice = Notice::new("Question", detail, Recovery::None);
 			notice.identity = Some(identity);
 			notices.insert(0, notice);
 		}
 		notices.extend(
-			chief
+			agent
 				.operation_notices()
 				.into_iter()
 				.map(|(title, detail)| Notice::new(title, detail, Recovery::None)),

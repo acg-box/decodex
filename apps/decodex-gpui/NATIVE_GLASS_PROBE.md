@@ -59,7 +59,7 @@ pass.
 The user manually tested the probe and reported that all tested behavior matched
 expectations. The probe was then closed at the user's request.
 
-The Chief composer now uses `native_glass_panel::GlassPanel` on supported macOS.
+The Agent composer now uses `native_glass_panel::GlassPanel` on supported macOS.
 It owns the real GPUI foreground through `NSGlassEffectView.contentView` and reuses
 the existing editor, attachments, model controls, dictation, and Live controls.
 Menus stay in the parent window. Global overlays temporarily use the original

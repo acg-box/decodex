@@ -1,24 +1,24 @@
 use super::*;
-use crate::{ChiefNativeGoal, ChiefNativeGoalResult, ChiefNativeGoalStatus};
+use crate::{AgentNativeGoal, AgentNativeGoalResult, AgentNativeGoalStatus};
 
-fn observed(change: &str) -> ChiefNativeGoalResult {
+fn observed(change: &str) -> AgentNativeGoalResult {
 	match change {
-		"unavailable" => return ChiefNativeGoalResult::Unavailable,
-		"unsupported" => return ChiefNativeGoalResult::Unsupported,
-		"disabled" => return ChiefNativeGoalResult::Disabled,
+		"unavailable" => return AgentNativeGoalResult::Unavailable,
+		"unsupported" => return AgentNativeGoalResult::Unsupported,
+		"disabled" => return AgentNativeGoalResult::Disabled,
 		_ => {},
 	}
-	ChiefNativeGoalResult::Available {
+	AgentNativeGoalResult::Available {
 		work_id: EntityId::new(if change == "work" { "other" } else { "work" })
 			.expect("valid fixture identity"),
 		thread_id: EntityId::new(if change == "thread" { "other" } else { "native-exact" })
 			.expect("valid fixture identity"),
 		observed_at_micros: 123,
-		goal: matches!(change, "present" | "goal_thread").then(|| ChiefNativeGoal {
+		goal: matches!(change, "present" | "goal_thread").then(|| AgentNativeGoal {
 			thread_id: if change == "goal_thread" { "other" } else { "native-exact" }.into(),
 			objective: "Retain the native goal".into(),
 			objective_truncated: false,
-			status: ChiefNativeGoalStatus::Active,
+			status: AgentNativeGoalStatus::Active,
 			token_budget: None,
 			tokens_used: 0,
 			time_used_seconds: 0,
@@ -60,14 +60,14 @@ async fn native_goal_preserves_authoritative_empty_and_rejects_crossed_sources()
 				panic!("read-only goal query")
 			};
 			assert!(
-				matches!(query.payload, crate::QueryPayload::GetChiefNativeGoal { work_id, thread_id } if work_id.as_str()=="work" && thread_id.as_str()=="native-exact")
+				matches!(query.payload, crate::QueryPayload::GetAgentNativeGoal { work_id, thread_id } if work_id.as_str()=="work" && thread_id.as_str()=="native-exact")
 			);
 			socket
 				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(SERVER_ID).unwrap(),
 					query_id: query.query_id,
-					payload: QueryResultPayload::ChiefNativeGoal(returned),
+					payload: QueryResultPayload::AgentNativeGoal(returned),
 				})))
 				.await
 				.unwrap();
@@ -78,7 +78,7 @@ async fn native_goal_preserves_authoritative_empty_and_rejects_crossed_sources()
 			);
 			listener.cleanup().unwrap();
 		});
-		let result = crate::ChiefClient::new(profile)
+		let result = crate::AgentClient::new(profile)
 			.native_goal(EntityId::new("work").unwrap(), EntityId::new("native-exact").unwrap())
 			.await;
 		server.await.unwrap();

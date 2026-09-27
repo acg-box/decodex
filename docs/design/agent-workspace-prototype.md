@@ -59,7 +59,7 @@ behavioral instructions do not establish a durable verification guarantee.
 
 ## Live output delivery
 
-Protocol 2.45 adds `WaitForChiefOutput`. The visible managed conversation owns one
+Protocol 2.45 adds `WaitForAgentOutput`. The visible managed conversation owns one
 cancellable local observation connection. A query waits for a persistence signal
 or a 20-second heartbeat. It does not start, resume, or steer a turn.
 

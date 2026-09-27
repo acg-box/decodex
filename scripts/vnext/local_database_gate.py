@@ -17,82 +17,10 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATIONS = (
-    (1, "local_product", ROOT / "database/migrations/0001_local_product.sql"),
-    (
-        2,
-        "nonempty_task_instructions",
-        ROOT / "database/migrations/0002_nonempty_task_instructions.sql",
-    ),
-    (
-        3,
-        "quick_task_execution_controls",
-        ROOT / "database/migrations/0003_quick_task_execution_controls.sql",
-    ),
-    (
-        4,
-        "context_pack_fallback",
-        ROOT / "database/migrations/0004_context_pack_fallback.sql",
-    ),
-    (
-        5,
-        "adaptive_factory_spine",
-        ROOT / "database/migrations/0005_adaptive_factory_spine.sql",
-    ),
-    (
-        6,
-        "repeatable_program_loop",
-        ROOT / "database/migrations/0006_repeatable_program_loop.sql",
-    ),
-    (
-        7,
-        "builtin_domain_pack_binding",
-        ROOT / "database/migrations/0007_builtin_domain_pack_binding.sql",
-    ),
-    (
-        8,
-        "account_reauthentication_takeover",
-        ROOT / "database/migrations/0008_account_reauthentication_takeover.sql",
-    ),
-    (
-        9,
-        "durable_account_route",
-        ROOT / "database/migrations/0009_durable_account_route.sql",
-    ),
-    (
-        10,
-        "pending_account_route_progress",
-        ROOT / "database/migrations/0010_pending_account_route_progress.sql",
-    ),
-    (
-        11,
-        "desktop_settings",
-        ROOT / "database/migrations/0011_desktop_settings.sql",
-    ),
-    (
-        12,
-        "terminal_account_route_upgrade",
-        ROOT / "database/migrations/0012_terminal_account_route_upgrade.sql",
-    ),
-    (13, "chief_work", ROOT / "database/migrations/0013_chief_work.sql"),
-    (14, "optional_quota_window", ROOT / "database/migrations/0014_optional_quota_window.sql"),
-    (15, "chief_live_output", ROOT / "database/migrations/0015_chief_live_output.sql"),
-    (16, "chief_managers", ROOT / "database/migrations/0016_chief_managers.sql"),
-    (17, "chief_tool_versions", ROOT / "database/migrations/0017_chief_tool_versions.sql"),
-    (18, "chief_usage", ROOT / "database/migrations/0018_chief_usage.sql"),
-    (19, "process_kernel_recovery", ROOT / "database/migrations/0019_process_kernel_recovery.sql"),
-    (20, "chief_turn_usage", ROOT / "database/migrations/0020_chief_turn_usage.sql"),
-    (21, "chief_account_rotation", ROOT / "database/migrations/0021_chief_account_rotation.sql"),
-    (22, "chief_voice_calls", ROOT / "database/migrations/0022_chief_voice_calls.sql"),
-    (23, "chief_observation_indexes", ROOT / "database/migrations/0015_chief_observation_indexes.sql"),
-    (24, "chief_capacity_retry", ROOT / "database/migrations/0016_chief_capacity_retry.sql"),
-    (25, "chief_async_questions", ROOT / "database/migrations/0025_chief_async_questions.sql"),
-    (26, "chief_misalignment", ROOT / "database/migrations/0026_chief_misalignment.sql"),
-    (27, "chief_guardian_reviews", ROOT / "database/migrations/0027_chief_guardian_reviews.sql"),
-    (28, "conversation_service_tier", ROOT / "database/migrations/0028_conversation_service_tier.sql"),
-    (29, "reset_card_operations", ROOT / "database/migrations/0029_reset_card_operations.sql"),
-    (30, "quota_activation", ROOT / "database/migrations/0030_quota_activation.sql"),
-    (31, "quota_activation_observation", ROOT / "database/migrations/0031_quota_activation_observation.sql"),
+    (48, "agent_baseline", ROOT / "database/migrations/0048_agent_baseline.sql"),
+    (49, "native_settings_and_model_source", ROOT / "database/migrations/0049_native_settings_and_model_source.sql"),
 )
+
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
 MIGRATION_DIGEST_DOMAIN = b"decodex-sqlite-migration-v1\0"
@@ -100,6 +28,11 @@ COMMAND_TIMEOUT_SECONDS = 10 * 60
 OUTPUT_LIMIT_BYTES = 64 * 1024
 REQUIRED_TABLES = frozenset(
     {
+        "account_usage_observations",
+        "agent_async_skips",
+        "agent_prompt_input_chunks",
+        "agent_prompt_inputs",
+        "agent_request_payloads",
         "schema_migrations",
         "reset_card_operations",
         "account_identities",
@@ -125,6 +58,7 @@ REQUIRED_TABLES = frozenset(
         "history_items",
         "runtime_command_receipts",
         "conversation_routing_successors",
+        "conversation_native_settings",
         "process_execution_epochs",
         "process_generations",
         "process_generation_death_evidence",
@@ -144,26 +78,26 @@ REQUIRED_TABLES = frozenset(
         "program_domain_pack_bindings",
         "desktop_settings",
         "account_quota_activation",
-        "chief_work_items",
-        "chief_dependencies",
-        "chief_inbox_events",
-        "chief_process_bindings",
-        "chief_root_settings",
-        "chief_capacity_retries",
-        "chief_live_output",
-        "chief_managers",
-        "chief_workspaces",
-        "chief_tool_versions",
-        "chief_thread_revisions",
-        "chief_usage",
-        "chief_voice_calls",
-        "chief_voice_observed_turns",
-        "chief_async_questions",
-        "chief_async_answers",
-        "chief_async_recovery",
-        "chief_misalignment",
-        "chief_guardian_reviews",
-        "chief_guardian_approvals",
+        "agent_work_items",
+        "agent_dependencies",
+        "agent_inbox_events",
+        "agent_process_bindings",
+        "agent_root_settings",
+        "agent_capacity_retries",
+        "agent_live_output",
+        "agent_managers",
+        "agent_workspaces",
+        "agent_tool_versions",
+        "agent_thread_revisions",
+        "agent_usage",
+        "agent_voice_calls",
+        "agent_voice_observed_turns",
+        "agent_async_questions",
+        "agent_async_answers",
+        "agent_async_recovery",
+        "agent_misalignment",
+        "agent_guardian_reviews",
+        "agent_guardian_approvals",
 
     }
 )
@@ -286,7 +220,7 @@ def inspect_database(path: Path) -> dict[str, object]:
         if "connection" in locals():
             connection.close()
 
-    if application_id != APPLICATION_ID or user_version != len(MIGRATIONS):
+    if application_id != APPLICATION_ID or user_version != MIGRATIONS[-1][0]:
         raise GateFailure("SQLite application or schema version differs")
     if str(journal_mode).lower() != "wal" or quick_check != "ok" or foreign_key_violations:
         raise GateFailure("SQLite integrity or journal configuration differs")

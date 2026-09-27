@@ -1,84 +1,84 @@
 //! Typed vNext wire contracts and same-UID local transport shared by clients and
 //! `decodex serve`.
 
-mod chief_requested_decision;
-pub use chief_requested_decision::{ChiefRequestedDecision, requested_decision_response};
+mod agent_requested_decision;
+pub use agent_requested_decision::{AgentRequestedDecision, requested_decision_response};
 
 mod account_login;
-mod chief;
-mod chief_prompt_draft;
-mod chief_prompt_edit;
-mod chief_prompt_send;
-mod chief_prompt_upload;
-pub use chief_prompt_draft::{DesktopPromptEditDraft, PromptDraft};
-pub use chief_prompt_send::{PromptInputSend, PromptInputSendIdentity, PromptInputSendStatus};
-pub use chief_prompt_upload::{PromptInputUpload, PromptInputUploadStatus};
-mod chief_recap;
-pub use chief_prompt_edit::{PromptEditEvidence, PromptEditPhase, PromptEditStatus};
-mod chief_voice_settings;
-pub use chief_recap::{TaskRecap, TaskRecapPhase, TaskRecapStatus};
-pub use chief_voice_settings::ChiefVoiceSettingsResult;
-mod chief_app_exposure;
-pub use chief_app_exposure::{ChiefAppExposureResult, ChiefToolExposureSurface};
+mod agent;
+mod agent_prompt_draft;
+mod agent_prompt_edit;
+mod agent_prompt_send;
+mod agent_prompt_upload;
+pub use agent_prompt_draft::{DesktopPromptEditDraft, PromptDraft};
+pub use agent_prompt_send::{PromptInputSend, PromptInputSendIdentity, PromptInputSendStatus};
+pub use agent_prompt_upload::{PromptInputUpload, PromptInputUploadStatus};
+mod agent_recap;
+pub use agent_prompt_edit::{PromptEditEvidence, PromptEditPhase, PromptEditStatus};
+mod agent_voice_settings;
+pub use agent_recap::{TaskRecap, TaskRecapPhase, TaskRecapStatus};
+pub use agent_voice_settings::AgentVoiceSettingsResult;
+mod agent_app_exposure;
+pub use agent_app_exposure::{AgentAppExposureResult, AgentToolExposureSurface};
 mod native_agents;
 pub use native_agents::{NativeAgentDto, NativeAgentMessage, NativeAgentsResult};
-mod chief_archive;
-pub use chief_archive::ChiefArchiveResult;
-mod chief_guardian;
-pub use chief_guardian::{
-	ChiefGuardianDetailResult, ChiefGuardianReviewDto, ChiefGuardianReviewsResult,
-	ChiefGuardianStatus, ChiefGuardianSubmission, GUARDIAN_DETAIL_PAGE_BYTES,
+mod agent_archive;
+pub use agent_archive::AgentArchiveResult;
+mod agent_guardian;
+pub use agent_guardian::{
+	AgentGuardianDetailResult, AgentGuardianReviewDto, AgentGuardianReviewsResult,
+	AgentGuardianStatus, AgentGuardianSubmission, GUARDIAN_DETAIL_PAGE_BYTES,
 };
-mod chief_integrations;
-pub use chief_integrations::{ChiefAppInventory, ChiefAppStatusDto};
-mod chief_app_ui_call;
-pub use chief_app_ui_call::{
-	CHIEF_APP_UI_RECEIPT_CHUNK_BYTES, ChiefAppUiCall, ChiefAppUiCallReview,
-	ChiefAppUiReceiptRequest, ChiefAppUiReceiptResult, ChiefPendingAppUiCall,
-	MAX_CHIEF_APP_UI_CALL_BYTES, MAX_CHIEF_APP_UI_RECEIPT_BYTES,
+mod agent_integrations;
+pub use agent_integrations::{AgentAppInventory, AgentAppStatusDto};
+mod agent_app_ui_call;
+pub use agent_app_ui_call::{
+	AGENT_APP_UI_RECEIPT_CHUNK_BYTES, AgentAppUiCall, AgentAppUiCallReview,
+	AgentAppUiReceiptRequest, AgentAppUiReceiptResult, AgentPendingAppUiCall,
+	MAX_AGENT_APP_UI_CALL_BYTES, MAX_AGENT_APP_UI_RECEIPT_BYTES,
 };
-mod chief_app_ui;
-pub use chief_app_ui::{
-	CHIEF_APP_UI_CHUNK_BYTES, ChiefAppUiRequest, ChiefAppUiResult, MAX_CHIEF_APP_UI_BYTES,
+mod agent_app_ui;
+pub use agent_app_ui::{
+	AGENT_APP_UI_CHUNK_BYTES, AgentAppUiRequest, AgentAppUiResult, MAX_AGENT_APP_UI_BYTES,
 };
-mod chief_media;
-pub use chief_media::{
-	CHIEF_MEDIA_CHUNK_BYTES, ChiefMediaRequest, ChiefMediaResult, MAX_CHIEF_MEDIA_BYTES,
+mod agent_media;
+pub use agent_media::{
+	AGENT_MEDIA_CHUNK_BYTES, AgentMediaRequest, AgentMediaResult, MAX_AGENT_MEDIA_BYTES,
 };
-mod chief_native_goal;
-pub use chief_native_goal::{ChiefNativeGoal, ChiefNativeGoalResult, ChiefNativeGoalStatus};
-mod chief_app_settings;
-pub use chief_app_settings::{
-	ChiefAppApprovalMode, ChiefAppReviewer, ChiefAppSettingEdit, ChiefAppSettingsResult,
-	ChiefConfigEditReceipt, ChiefSavedAppConnection, ChiefSavedAppSettingsResult,
+mod agent_native_goal;
+pub use agent_native_goal::{AgentNativeGoal, AgentNativeGoalResult, AgentNativeGoalStatus};
+mod agent_app_settings;
+pub use agent_app_settings::{
+	AgentAppApprovalMode, AgentAppReviewer, AgentAppSettingEdit, AgentAppSettingsResult,
+	AgentConfigEditReceipt, AgentSavedAppConnection, AgentSavedAppSettingsResult,
 };
-mod chief_hooks;
-pub use chief_hooks::{
-	ChiefHookChange, ChiefHookDto, ChiefHookEditReceipt, ChiefHookSettingsState,
+mod agent_hooks;
+pub use agent_hooks::{
+	AgentHookChange, AgentHookDto, AgentHookEditReceipt, AgentHookSettingsState,
 };
-mod chief_models;
-pub use chief_models::{
-	ChiefModelOutcome, ChiefModelResponse, ChiefModelSelectionReceipt, ChiefModelSelectionState,
+mod agent_models;
+pub use agent_models::{
+	AgentModelOutcome, AgentModelResponse, AgentModelSelectionReceipt, AgentModelSelectionState,
 };
-mod chief_plugins;
-pub use chief_plugins::{ChiefPluginOutcome, ChiefPluginSelectionState};
-mod chief_permissions;
-pub use chief_permissions::{ChiefPermissionOutcome, ChiefPermissionProfile, ChiefPermissionState};
-mod chief_live_settings;
-pub use chief_live_settings::{
-	ChiefLiveModelSelection, ChiefLiveReviewerOutcome, ChiefLiveReviewerState, ChiefReviewer,
+mod agent_plugins;
+pub use agent_plugins::{AgentPluginOutcome, AgentPluginSelectionState};
+mod agent_permissions;
+pub use agent_permissions::{AgentPermissionOutcome, AgentPermissionProfile, AgentPermissionState};
+mod agent_live_settings;
+pub use agent_live_settings::{
+	AgentLiveModelSelection, AgentLiveReviewerOutcome, AgentLiveReviewerState, AgentReviewer,
 };
-mod chief_model_settings;
-mod chief_timeline;
-pub use chief_model_settings::ChiefModelSettingsResult;
-mod chief_usage_estimate;
-pub use chief_timeline::{
-	ChiefTimelineAttachment, ChiefTimelineAttachmentSource, ChiefTimelineContent,
-	ChiefTimelineEntry, ChiefTimelineError, ChiefTimelinePage, ChiefTimelinePromotedContent,
-	ChiefTimelineResult,
+mod agent_model_settings;
+mod agent_timeline;
+pub use agent_model_settings::AgentModelSettingsResult;
+mod agent_usage_estimate;
+pub use agent_timeline::{
+	AgentTimelineAttachment, AgentTimelineAttachmentSource, AgentTimelineContent,
+	AgentTimelineEntry, AgentTimelineError, AgentTimelinePage, AgentTimelinePromotedContent,
+	AgentTimelineResult,
 };
-pub use chief_usage_estimate::{
-	ChiefUsageEstimateResult, ThreadUsageEstimate, ThreadUsageEstimateGroup,
+pub use agent_usage_estimate::{
+	AgentUsageEstimateResult, ThreadUsageEstimate, ThreadUsageEstimateGroup,
 };
 mod conversation_receipts;
 mod conversation_turn_outcomes;
@@ -88,34 +88,34 @@ pub use conversation_turn_outcomes::{
 mod mcp_install;
 mod mcp_login;
 mod model_catalog;
-pub use chief_integrations::{
-	ChiefIntegrationsResult, ChiefMcpInventory, ChiefMcpStatusDto, ChiefPluginInventory,
-	ChiefPluginStatusDto,
+pub use agent_integrations::{
+	AgentIntegrationsResult, AgentMcpInventory, AgentMcpStatusDto, AgentPluginInventory,
+	AgentPluginStatusDto,
 };
 pub use conversation_receipts::{
 	ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
 };
-pub use mcp_install::{ChiefInstallApp, ChiefInstallState, McpInstallSuggestion, McpInstallTarget};
+pub use mcp_install::{AgentInstallApp, AgentInstallState, McpInstallSuggestion, McpInstallTarget};
 pub use mcp_login::{McpAuthorizationUrl, McpLoginPhase, McpLoginRequest, McpLoginStatus};
 pub use model_catalog::{
 	ConversationModelReview, ConversationModelReviewResult, InitialExecutionDefaults,
 	InitialModelCatalogRequest, InitialModelCatalogResult, InitialModelDefaults,
 	InitialModelSource, ModelCatalogPurpose,
 };
-mod chief_questions;
-pub use chief::{
-	ChiefActionDto, ChiefActivityDetailCursor, ChiefActivityDetailResult, ChiefActivityDto,
-	ChiefAttachmentDto, ChiefCapabilitiesResult, ChiefHistoryEntryDto, ChiefHistoryReceiptDto,
-	ChiefHistoryResult, ChiefHistorySourceDto, ChiefInputReceiptsResult, ChiefLiveMessageDto,
-	ChiefLiveMessageKind, ChiefMisalignmentDto, ChiefModelDto, ChiefModelUpgradeDto,
-	ChiefOutputResult, ChiefRequestResult, ChiefRequestText, ChiefResourceDto,
-	ChiefResourcesResult, ChiefSandboxDto, ChiefServiceTierDto, ChiefStartDto,
-	ChiefTaskReferenceDto, ChiefTurnUsageDto, ChiefUsageDto, ChiefWorkspaceDto,
+mod agent_questions;
+pub use agent::{
+	AgentActionDto, AgentActivityDetailCursor, AgentActivityDetailResult, AgentActivityDto,
+	AgentAttachmentDto, AgentCapabilitiesResult, AgentHistoryEntryDto, AgentHistoryReceiptDto,
+	AgentHistoryResult, AgentHistorySourceDto, AgentInputReceiptsResult, AgentLiveMessageDto,
+	AgentLiveMessageKind, AgentMisalignmentDto, AgentModelDto, AgentModelUpgradeDto,
+	AgentOutputResult, AgentRequestResult, AgentRequestText, AgentResourceDto,
+	AgentResourcesResult, AgentSandboxDto, AgentServiceTierDto, AgentStartDto,
+	AgentTaskReferenceDto, AgentTurnUsageDto, AgentUsageDto, AgentWorkspaceDto,
 };
-pub use chief_questions::{
-	ChiefAsyncQuestionDto, ChiefAsyncQuestionReply, chief_async_question_id,
-	chief_async_question_reply, parse_chief_async_question_replies, project_chief_async_questions,
-	render_chief_async_question_history,
+pub use agent_questions::{
+	AgentAsyncQuestionDto, AgentAsyncQuestionReply, agent_async_question_id,
+	agent_async_question_reply, parse_agent_async_question_replies, project_agent_async_questions,
+	render_agent_async_question_history,
 };
 mod client;
 mod conversation;
@@ -138,7 +138,7 @@ pub use account_recovery::{
 };
 pub use reset_card_recovery::{AccountResetCardOperationResult, ResetCardOperationView};
 mod wire;
-pub use voice::{ChiefVoicePhase, ChiefVoiceRequest, ChiefVoiceStatus, VoiceSdp};
+pub use voice::{AgentVoicePhase, AgentVoiceRequest, AgentVoiceStatus, VoiceSdp};
 
 pub use self::{
 	account_login::{
@@ -147,15 +147,15 @@ pub use self::{
 		AccountLoginResponseEnvelope, AccountLoginStart, AccountLoginState, AccountLoginStatus,
 		AccountLoginUrl, MAX_ACCOUNT_LOGIN_URL_BYTES,
 	},
-	chief::{
-		ChiefDependencyDto, ChiefDispatchStateDto, ChiefPendingEventDto, ChiefSnapshotDto,
-		ChiefSnapshotResult, ChiefWorkItemDto, ChiefWorkKindDto, ChiefWorkStatusDto,
-		MAX_CHIEF_DEPENDENCIES, MAX_CHIEF_PENDING_EVENTS, MAX_CHIEF_SNAPSHOT_BYTES,
-		MAX_CHIEF_WORK_ITEMS,
+	agent::{
+		AgentDependencyDto, AgentDispatchStateDto, AgentPendingEventDto, AgentSnapshotDto,
+		AgentSnapshotResult, AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto,
+		MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS, MAX_AGENT_SNAPSHOT_BYTES,
+		MAX_AGENT_WORK_ITEMS,
 	},
 	client::{
-		AccountClient, AccountCommandResponse, AccountLoginClient, ChiefClient,
-		ChiefCommandResponse, ClientFailure, ClientProfile, DoctorClient, ProfileKind,
+		AccountClient, AccountCommandResponse, AccountLoginClient, AgentClient,
+		AgentCommandResponse, ClientFailure, ClientProfile, DoctorClient, ProfileKind,
 		ResetCardClient, ResetCardConsumeResponse,
 	},
 	conversation::{
@@ -232,7 +232,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 95 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 96 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
@@ -323,10 +323,10 @@ pub use mcp_elicitation::{
 
 mod weather;
 pub use weather::WeatherForecast;
-mod chief_execution;
-pub use chief_execution::ChiefExecutionOverrides;
-mod chief_steer;
-pub use chief_steer::{ChiefSteerIdentity, ChiefSteerReceiptResult};
+mod agent_execution;
+pub use agent_execution::AgentExecutionOverrides;
+mod agent_steer;
+pub use agent_steer::{AgentSteerIdentity, AgentSteerReceiptResult};
 mod desktop_drafts;
 mod desktop_ordinary_drafts;
 pub use decodex_core::{

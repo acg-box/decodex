@@ -282,7 +282,7 @@ impl ProductState for ProductStore {
 
 /// Runtime-owned application service retaining the selected adapter and doctor report.
 pub(crate) struct ServiceApplication {
-	chief: Option<crate::chief_host::ChiefHost>,
+	agent: Option<crate::agent_host::AgentHost>,
 	store: ProductStore,
 	process_generations: Option<ProcessGenerationControl>,
 	provider_attempts: Option<ProviderAttemptControl>,
@@ -299,20 +299,20 @@ pub(crate) struct ServiceApplication {
 impl ServiceApplication {
 	async fn query_guardian(&self, query: &QueryPayload) -> QueryResultPayload {
 		match query {
-			QueryPayload::GetChiefGuardianReviews { work_id, before } =>
-				QueryResultPayload::ChiefGuardianReviews(
+			QueryPayload::GetAgentGuardianReviews { work_id, before } =>
+				QueryResultPayload::AgentGuardianReviews(
 					query_guardian_reviews(
 						&self.store,
-						self.chief.as_ref(),
+						self.agent.as_ref(),
 						work_id.as_str(),
 						*before,
 					)
 					.await,
 				),
-			QueryPayload::GetChiefGuardianDetail { work_id, review_row, review_digest, offset } =>
-				QueryResultPayload::ChiefGuardianDetail(match &self.store {
+			QueryPayload::GetAgentGuardianDetail { work_id, review_row, review_digest, offset } =>
+				QueryResultPayload::AgentGuardianDetail(match &self.store {
 					ProductStore::Available(store) =>
-						crate::chief_guardian::detail(
+						crate::agent_guardian::detail(
 							store,
 							work_id.as_str(),
 							*review_row,
@@ -321,79 +321,79 @@ impl ServiceApplication {
 						)
 						.await,
 					ProductStore::Unavailable(_) =>
-						decodex_protocol::ChiefGuardianDetailResult::Unavailable,
+						decodex_protocol::AgentGuardianDetailResult::Unavailable,
 				}),
 			_ => unreachable!("only Guardian queries reach this owner"),
 		}
 	}
 
 	async fn query_native_goal(&self, work: &str, thread: &str) -> QueryResultPayload {
-		QueryResultPayload::ChiefNativeGoal(match &self.chief {
-			Some(chief) => chief.native_goal(work, thread).await,
-			None => decodex_protocol::ChiefNativeGoalResult::Unavailable,
+		QueryResultPayload::AgentNativeGoal(match &self.agent {
+			Some(agent) => agent.native_goal(work, thread).await,
+			None => decodex_protocol::AgentNativeGoalResult::Unavailable,
 		})
 	}
 
 	async fn query_app_exposure(&self, work: &str, connector: &str) -> QueryResultPayload {
-		QueryResultPayload::ChiefAppExposure(match &self.chief {
-			Some(chief) => chief.app_tool_exposure(work, connector).await,
-			None => decodex_protocol::ChiefAppExposureResult::Unavailable,
+		QueryResultPayload::AgentAppExposure(match &self.agent {
+			Some(agent) => agent.app_tool_exposure(work, connector).await,
+			None => decodex_protocol::AgentAppExposureResult::Unavailable,
 		})
 	}
 
 	async fn query_integrations(&self, work: &str) -> QueryResultPayload {
-		QueryResultPayload::ChiefIntegrations(match &self.chief {
-			Some(chief) => chief.integrations(work).await,
-			None => decodex_protocol::ChiefIntegrationsResult::Unavailable,
+		QueryResultPayload::AgentIntegrations(match &self.agent {
+			Some(agent) => agent.integrations(work).await,
+			None => decodex_protocol::AgentIntegrationsResult::Unavailable,
 		})
 	}
 
 	async fn query_app_settings(&self, work: &str, event: i64) -> QueryResultPayload {
-		QueryResultPayload::ChiefAppSettings(match &self.chief {
-			Some(chief) => chief.app_settings(work, event).await,
-			None => decodex_protocol::ChiefAppSettingsResult::Unavailable,
+		QueryResultPayload::AgentAppSettings(match &self.agent {
+			Some(agent) => agent.app_settings(work, event).await,
+			None => decodex_protocol::AgentAppSettingsResult::Unavailable,
 		})
 	}
 
 	async fn query_saved_app_settings(&self, work: &str) -> QueryResultPayload {
-		QueryResultPayload::ChiefSavedAppSettings(match &self.chief {
-			Some(chief) => chief.saved_app_settings(work).await,
-			None => decodex_protocol::ChiefSavedAppSettingsResult::Unavailable,
+		QueryResultPayload::AgentSavedAppSettings(match &self.agent {
+			Some(agent) => agent.saved_app_settings(work).await,
+			None => decodex_protocol::AgentSavedAppSettingsResult::Unavailable,
 		})
 	}
 
 	async fn query_hook_settings(&self, work: &str) -> QueryResultPayload {
-		QueryResultPayload::ChiefHookSettings(match &self.chief {
-			Some(chief) => chief.hook_settings(work).await,
-			None => decodex_protocol::ChiefHookSettingsState::Unavailable,
+		QueryResultPayload::AgentHookSettings(match &self.agent {
+			Some(agent) => agent.hook_settings(work).await,
+			None => decodex_protocol::AgentHookSettingsState::Unavailable,
 		})
 	}
 
 	async fn query_plugin_selection(&self, work: &str) -> QueryResultPayload {
-		QueryResultPayload::ChiefPluginSelection(match &self.chief {
-			Some(chief) => chief.plugin_selection(work).await,
-			None => decodex_protocol::ChiefPluginSelectionState::Unavailable,
+		QueryResultPayload::AgentPluginSelection(match &self.agent {
+			Some(agent) => agent.plugin_selection(work).await,
+			None => decodex_protocol::AgentPluginSelectionState::Unavailable,
 		})
 	}
 
 	async fn query_model_selection(&self, work: &str) -> QueryResultPayload {
-		QueryResultPayload::ChiefModelSelection(match &self.chief {
-			Some(chief) => chief.model_selection(work).await,
-			None => decodex_protocol::ChiefModelSelectionState::Unavailable,
+		QueryResultPayload::AgentModelSelection(match &self.agent {
+			Some(agent) => agent.model_selection(work).await,
+			None => decodex_protocol::AgentModelSelectionState::Unavailable,
 		})
 	}
 
 	async fn query_permission_profiles(&self, work: &str) -> QueryResultPayload {
-		QueryResultPayload::ChiefPermissionProfiles(match &self.chief {
-			Some(chief) => chief.permission_profiles(work).await,
-			None => decodex_protocol::ChiefPermissionState::Unavailable,
+		QueryResultPayload::AgentPermissionProfiles(match &self.agent {
+			Some(agent) => agent.permission_profiles(work).await,
+			None => decodex_protocol::AgentPermissionState::Unavailable,
 		})
 	}
 
 	async fn query_live_reviewer(&self, work: &str, include_models: bool) -> QueryResultPayload {
-		QueryResultPayload::ChiefLiveReviewer(match &self.chief {
-			Some(chief) => chief.live_reviewer(work, include_models).await,
-			None => decodex_protocol::ChiefLiveReviewerState::Unavailable,
+		QueryResultPayload::AgentLiveReviewer(match &self.agent {
+			Some(agent) => agent.live_reviewer(work, include_models).await,
+			None => decodex_protocol::AgentLiveReviewerState::Unavailable,
 		})
 	}
 
@@ -401,18 +401,18 @@ impl ServiceApplication {
 		&self,
 		request: &decodex_protocol::DictationRequest,
 	) -> QueryResultPayload {
-		QueryResultPayload::Dictation(match &self.chief {
-			Some(chief) => chief.dictation(request).await,
+		QueryResultPayload::Dictation(match &self.agent {
+			Some(agent) => agent.dictation(request).await,
 			None =>
-				crate::dictation::failed(request.session_id().clone(), "Chief is not connected."),
+				crate::dictation::failed(request.session_id().clone(), "Agent is not connected."),
 		})
 	}
 
-	fn query_voice(&self, request: &decodex_protocol::ChiefVoiceRequest) -> QueryResultPayload {
-		QueryResultPayload::ChiefVoice(match &self.chief {
-			Some(chief) => chief.voice(request),
+	fn query_voice(&self, request: &decodex_protocol::AgentVoiceRequest) -> QueryResultPayload {
+		QueryResultPayload::AgentVoice(match &self.agent {
+			Some(agent) => agent.voice(request),
 			None =>
-				crate::chief_voice::failed(request.session_id().clone(), "Chief is not connected."),
+				crate::agent_voice::failed(request.session_id().clone(), "Agent is not connected."),
 		})
 	}
 
@@ -423,20 +423,20 @@ impl ServiceApplication {
 	) -> QueryResultPayload {
 		let result = match &self.store {
 			ProductStore::Available(store) =>
-				match store.wait_chief_output(work_id.as_str().into(), after_revision).await {
+				match store.wait_agent_output(work_id.as_str().into(), after_revision).await {
 					Ok((revision, output)) => {
-						let messages = query_chief_live(output);
-						decodex_protocol::ChiefOutputResult::Available {
+						let messages = query_agent_live(output);
+						decodex_protocol::AgentOutputResult::Available {
 							revision,
 							work_id: work_id.clone(),
 							messages,
 						}
 					},
-					Err(_) => decodex_protocol::ChiefOutputResult::Unavailable,
+					Err(_) => decodex_protocol::AgentOutputResult::Unavailable,
 				},
-			_ => decodex_protocol::ChiefOutputResult::Unavailable,
+			_ => decodex_protocol::AgentOutputResult::Unavailable,
 		};
-		QueryResultPayload::ChiefOutput(result)
+		QueryResultPayload::AgentOutput(result)
 	}
 
 	async fn query_native_agents(
@@ -445,9 +445,9 @@ impl ServiceApplication {
 		thread: Option<&WireText>,
 		cursor: Option<&WireText>,
 	) -> QueryResultPayload {
-		QueryResultPayload::NativeAgents(match &self.chief {
-			Some(chief) =>
-				chief
+		QueryResultPayload::NativeAgents(match &self.agent {
+			Some(agent) =>
+				agent
 					.native_agents(
 						work.as_str(),
 						thread.map(WireText::as_str),
@@ -460,11 +460,11 @@ impl ServiceApplication {
 
 	async fn query_history(&self, work: &str, before: Option<i64>) -> QueryResultPayload {
 		let mut history =
-			query_chief_history_page(&self.store, work, before, self.chief.as_ref()).await;
-		if let Some(chief) = &self.chief {
-			chief.enrich_weather(work, &mut history).await;
+			query_agent_history_page(&self.store, work, before, self.agent.as_ref()).await;
+		if let Some(agent) = &self.agent {
+			agent.enrich_weather(work, &mut history).await;
 		}
-		QueryResultPayload::ChiefHistory(history)
+		QueryResultPayload::AgentHistory(history)
 	}
 
 	async fn query_activity_detail(
@@ -472,56 +472,56 @@ impl ServiceApplication {
 		work: &decodex_protocol::EntityId,
 		turn: &decodex_protocol::WireText,
 		item: &decodex_protocol::WireText,
-		cursor: Option<&decodex_protocol::ChiefActivityDetailCursor>,
+		cursor: Option<&decodex_protocol::AgentActivityDetailCursor>,
 	) -> QueryResultPayload {
-		QueryResultPayload::ChiefActivityDetail(match &self.chief {
-			Some(chief) =>
-				chief.activity_detail(work.as_str(), turn.as_str(), item.as_str(), cursor).await,
-			None => decodex_protocol::ChiefActivityDetailResult::Unavailable,
+		QueryResultPayload::AgentActivityDetail(match &self.agent {
+			Some(agent) =>
+				agent.activity_detail(work.as_str(), turn.as_str(), item.as_str(), cursor).await,
+			None => decodex_protocol::AgentActivityDetailResult::Unavailable,
 		})
 	}
 
 	async fn query_input_receipts(&self, work: &str, after: Option<i64>) -> QueryResultPayload {
-		QueryResultPayload::ChiefInputReceipts(
-			query_chief_input_receipts(&self.store, work, after).await,
+		QueryResultPayload::AgentInputReceipts(
+			query_agent_input_receipts(&self.store, work, after).await,
 		)
 	}
 
-	async fn query_chief_snapshot(&self) -> QueryResultPayload {
-		let before = match &self.chief {
-			Some(chief) => chief.runtime_source().await,
+	async fn query_agent_snapshot(&self) -> QueryResultPayload {
+		let before = match &self.agent {
+			Some(agent) => agent.runtime_source().await,
 			None => None,
 		};
-		let mut result = query_chief_snapshot(&self.store).await;
-		let after = match &self.chief {
-			Some(chief) => chief.runtime_source().await,
+		let mut result = query_agent_snapshot(&self.store).await;
+		let after = match &self.agent {
+			Some(agent) => agent.runtime_source().await,
 			None => None,
 		};
-		if let decodex_protocol::ChiefSnapshotResult::Available(snapshot) = &mut result {
+		if let decodex_protocol::AgentSnapshotResult::Available(snapshot) = &mut result {
 			snapshot.runtime_source = if before == after { after } else { None };
 			if !snapshot.is_valid() {
-				result = decodex_protocol::ChiefSnapshotResult::Unavailable;
+				result = decodex_protocol::AgentSnapshotResult::Unavailable;
 			}
 		}
-		QueryResultPayload::ChiefSnapshot(result)
+		QueryResultPayload::AgentSnapshot(result)
 	}
 
 	async fn query_model_settings(&self, work: &str) -> QueryResultPayload {
-		QueryResultPayload::ChiefModelSettings(match &self.chief {
-			Some(chief) => chief.model_settings(work).await,
-			None => decodex_protocol::ChiefModelSettingsResult::Unavailable,
+		QueryResultPayload::AgentModelSettings(match &self.agent {
+			Some(agent) => agent.model_settings(work).await,
+			None => decodex_protocol::AgentModelSettingsResult::Unavailable,
 		})
 	}
 
 	async fn query_prompt_edit(&self, query: &QueryPayload) -> QueryResultPayload {
-		let QueryPayload::GetChiefPromptEdit { work_id, thread_id, review_token, offset } = query
+		let QueryPayload::GetAgentPromptEdit { work_id, thread_id, review_token, offset } = query
 		else {
 			unreachable!("prompt edit query")
 		};
 		let (work, thread) = (work_id.clone(), thread_id.clone());
-		QueryResultPayload::ChiefPromptEdit(match &self.chief {
-			Some(chief) =>
-				chief.prompt_edit_status(work, thread, review_token.as_ref(), *offset).await,
+		QueryResultPayload::AgentPromptEdit(match &self.agent {
+			Some(agent) =>
+				agent.prompt_edit_status(work, thread, review_token.as_ref(), *offset).await,
 			None => decodex_protocol::PromptEditStatus {
 				work_id: work,
 				thread_id: thread,
@@ -532,34 +532,34 @@ impl ServiceApplication {
 	}
 
 	async fn query_recap(&self, work: EntityId) -> QueryResultPayload {
-		QueryResultPayload::ChiefRecap(match &self.chief {
-			Some(chief) => chief.recap_status(work).await,
-			None => crate::chief_recap::Recaps::default().status(work, None),
+		QueryResultPayload::AgentRecap(match &self.agent {
+			Some(agent) => agent.recap_status(work).await,
+			None => crate::agent_recap::Recaps::default().status(work, None),
 		})
 	}
 
 	async fn query_voice_settings(&self, work: &str) -> QueryResultPayload {
-		QueryResultPayload::ChiefVoiceSettings(match &self.chief {
-			Some(chief) => chief.voice_settings(work).await,
-			None => decodex_protocol::ChiefVoiceSettingsResult::Unavailable,
+		QueryResultPayload::AgentVoiceSettings(match &self.agent {
+			Some(agent) => agent.voice_settings(work).await,
+			None => decodex_protocol::AgentVoiceSettingsResult::Unavailable,
 		})
 	}
 
 	async fn query_usage_estimate(&self, work: &str) -> QueryResultPayload {
-		QueryResultPayload::ChiefUsageEstimate(match &self.chief {
-			Some(chief) => chief.usage_estimate(work).await,
-			None => decodex_protocol::ChiefUsageEstimateResult::Unavailable,
+		QueryResultPayload::AgentUsageEstimate(match &self.agent {
+			Some(agent) => agent.usage_estimate(work).await,
+			None => decodex_protocol::AgentUsageEstimateResult::Unavailable,
 		})
 	}
 
 	async fn query_steer_receipt(
 		&self,
-		identity: &decodex_protocol::ChiefSteerIdentity,
+		identity: &decodex_protocol::AgentSteerIdentity,
 	) -> QueryResultPayload {
-		use decodex_protocol::ChiefSteerReceiptResult as Receipt;
+		use decodex_protocol::AgentSteerReceiptResult as Receipt;
 		let result = match &self.store {
 			ProductStore::Available(store) => match store
-				.chief_steer_confirmed(
+				.agent_steer_confirmed(
 					identity.work_id.as_str().into(),
 					identity.thread_id.as_str().into(),
 					identity.turn_id.as_str().into(),
@@ -573,16 +573,16 @@ impl ServiceApplication {
 			},
 			_ => Receipt::Unavailable,
 		};
-		QueryResultPayload::ChiefSteerReceipt(result)
+		QueryResultPayload::AgentSteerReceipt(result)
 	}
 
 	async fn query_media(
 		&self,
-		request: &decodex_protocol::ChiefMediaRequest,
+		request: &decodex_protocol::AgentMediaRequest,
 	) -> QueryResultPayload {
-		QueryResultPayload::ChiefMedia(match &self.chief {
-			Some(chief) => chief.media(request).await,
-			None => decodex_protocol::ChiefMediaResult::Unavailable,
+		QueryResultPayload::AgentMedia(match &self.agent {
+			Some(agent) => agent.media(request).await,
+			None => decodex_protocol::AgentMediaResult::Unavailable,
 		})
 	}
 
@@ -592,9 +592,9 @@ impl ServiceApplication {
 		thread: &str,
 		cursor: Option<&str>,
 	) -> QueryResultPayload {
-		QueryResultPayload::ChiefTimeline(match &self.chief {
-			Some(chief) => chief.timeline(work, thread, cursor).await,
-			None => decodex_protocol::ChiefTimelineResult::Unavailable,
+		QueryResultPayload::AgentTimeline(match &self.agent {
+			Some(agent) => agent.timeline(work, thread, cursor).await,
+			None => decodex_protocol::AgentTimelineResult::Unavailable,
 		})
 	}
 
@@ -608,13 +608,13 @@ impl ServiceApplication {
 		doctor: DoctorReport,
 	) -> Self {
 		let (publication_stop, _) = watch::channel(false);
-		let chief = match (&store, conversations.runtime()) {
+		let agent = match (&store, conversations.runtime()) {
 			(ProductStore::Available(store), Some(runtime)) =>
-				Some(crate::chief_host::ChiefHost::new(store.clone(), runtime.clone())),
+				Some(crate::agent_host::AgentHost::new(store.clone(), runtime.clone())),
 			_ => None,
 		};
 		Self {
-			chief,
+			agent,
 			store,
 			process_generations,
 			provider_attempts,
@@ -646,8 +646,8 @@ impl ServiceApplication {
 		mut self,
 		account_observations: Option<AccountObservationService>,
 	) -> Self {
-		self.chief =
-			self.chief.take().map(|chief| chief.with_observations(account_observations.clone()));
+		self.agent =
+			self.agent.take().map(|agent| agent.with_observations(account_observations.clone()));
 		self.account_observations = account_observations;
 
 		self
@@ -2151,8 +2151,8 @@ impl Application for ServiceApplication {
 		stop: watch::Receiver<bool>,
 	) -> Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
 		let mut tasks: Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> = Vec::new();
-		if let Some(chief) = &self.chief {
-			tasks.push(Box::pin(chief.clone().serve(stop.clone())));
+		if let Some(agent) = &self.agent {
+			tasks.push(Box::pin(agent.clone().serve(stop.clone())));
 		}
 		if let Some(control) = &self.process_generations {
 			tasks.push(Box::pin(control.reconciliation_task(stop.clone())));
@@ -2200,28 +2200,28 @@ impl Application for ServiceApplication {
 		match &command.payload {
 			CommandPayload::SendAccountRecoveryNudge { source, action } =>
 				self.execute_recovery_nudge(command, source, *action).await,
-			CommandPayload::Chief { action } => {
-				let chief = self
-					.chief
+			CommandPayload::Agent { action } => {
+				let agent = self
+					.agent
 					.as_ref()
-					.ok_or_else(|| application_unavailable("Chief service is unavailable"))?;
-				let id = chief
+					.ok_or_else(|| application_unavailable("Agent service is unavailable"))?;
+				let id = agent
 					.submit(command.idempotency_key.as_str().into(), *action.clone())
 					.await
 					.map_err(|error| match error {
-						crate::chief_host::ChiefHostError::Rejected(reason) =>
+						crate::agent_host::AgentHostError::Rejected(reason) =>
 							application_unavailable(reason),
-						crate::chief_host::ChiefHostError::Unknown(_) =>
+						crate::agent_host::AgentHostError::Unknown(_) =>
 							CommandError::AcceptanceUnknown,
 					})?;
 				let work_id = EntityId::new(id)
-					.map_err(|_| application_unavailable("invalid Chief identity"))?;
+					.map_err(|_| application_unavailable("invalid Agent identity"))?;
 				Ok(ApplicationPublication {
 					channel: Channel::ProjectWork,
 					entity_id: work_id.clone(),
 					entity_revision: EntityRevision(0),
-					result: ResultPayload::ChiefAccepted { work_id: work_id.clone() },
-					event: EventPayload::ChiefChanged { work_id },
+					result: ResultPayload::AgentAccepted { work_id: work_id.clone() },
+					event: EventPayload::AgentChanged { work_id },
 				})
 			},
 			CommandPayload::SetDesktopSettings { .. } =>
@@ -2318,83 +2318,83 @@ impl Application for ServiceApplication {
 				self.query_ordinary_recovery(&query.payload).await,
 			QueryPayload::GetConversationModelReview { .. }
 			| QueryPayload::GetInitialModelCatalog { .. }
-			| QueryPayload::GetChiefCapabilities
+			| QueryPayload::GetAgentCapabilities
 			| QueryPayload::GetConversationModelSettings { .. }
 			| QueryPayload::GetConversationCapabilities { .. } => self.query_model_catalog(query).await,
 
 			QueryPayload::ExchangeDictation { request } => self.query_dictation(request).await,
-			QueryPayload::ExchangeChiefVoice { request } => self.query_voice(request),
+			QueryPayload::ExchangeAgentVoice { request } => self.query_voice(request),
 
-			QueryPayload::GetChiefResources { work_id } =>
+			QueryPayload::GetAgentResources { work_id } =>
 				self.query_resources(work_id.as_str()).await,
 
 			QueryPayload::ExchangeMcpLogin { request } =>
-				QueryResultPayload::McpLogin(query_mcp_login(self.chief.as_ref(), request).await),
-			QueryPayload::GetChiefNativeGoal { work_id, thread_id } =>
+				QueryResultPayload::McpLogin(query_mcp_login(self.agent.as_ref(), request).await),
+			QueryPayload::GetAgentNativeGoal { work_id, thread_id } =>
 				self.query_native_goal(work_id.as_str(), thread_id.as_str()).await,
-			QueryPayload::GetChiefAppSettings { work_id, event_id } =>
+			QueryPayload::GetAgentAppSettings { work_id, event_id } =>
 				self.query_app_settings(work_id.as_str(), *event_id).await,
-			QueryPayload::GetChiefSavedAppSettings { work_id } =>
+			QueryPayload::GetAgentSavedAppSettings { work_id } =>
 				self.query_saved_app_settings(work_id.as_str()).await,
-			QueryPayload::GetChiefHookSettings { work_id } =>
+			QueryPayload::GetAgentHookSettings { work_id } =>
 				self.query_hook_settings(work_id.as_str()).await,
-			QueryPayload::GetChiefPluginSelection { work_id } =>
+			QueryPayload::GetAgentPluginSelection { work_id } =>
 				self.query_plugin_selection(work_id.as_str()).await,
-			QueryPayload::GetChiefModelSelection { work_id } =>
+			QueryPayload::GetAgentModelSelection { work_id } =>
 				self.query_model_selection(work_id.as_str()).await,
-			QueryPayload::GetChiefPermissionProfiles { work_id } =>
+			QueryPayload::GetAgentPermissionProfiles { work_id } =>
 				self.query_permission_profiles(work_id.as_str()).await,
-			QueryPayload::GetChiefLiveReviewer { work_id, include_models } =>
+			QueryPayload::GetAgentLiveReviewer { work_id, include_models } =>
 				self.query_live_reviewer(work_id.as_str(), *include_models).await,
-			QueryPayload::GetChiefModelSettings { work_id } =>
+			QueryPayload::GetAgentModelSettings { work_id } =>
 				self.query_model_settings(work_id.as_str()).await,
-			edit @ QueryPayload::GetChiefPromptEdit { .. } => self.query_prompt_edit(edit).await,
-			QueryPayload::GetChiefPromptInputDirectory { .. }
-			| QueryPayload::GetChiefPromptInputSend { .. }
-			| QueryPayload::GetChiefPromptInputUpload { .. } =>
+			edit @ QueryPayload::GetAgentPromptEdit { .. } => self.query_prompt_edit(edit).await,
+			QueryPayload::GetAgentPromptInputDirectory { .. }
+			| QueryPayload::GetAgentPromptInputSend { .. }
+			| QueryPayload::GetAgentPromptInputUpload { .. } =>
 				self.query_prompt_input(&query.payload).await,
-			QueryPayload::GetChiefRecap { work_id } => self.query_recap(work_id.clone()).await,
-			QueryPayload::GetChiefVoiceSettings { work_id } =>
+			QueryPayload::GetAgentRecap { work_id } => self.query_recap(work_id.clone()).await,
+			QueryPayload::GetAgentVoiceSettings { work_id } =>
 				self.query_voice_settings(work_id.as_str()).await,
-			QueryPayload::GetChiefUsageEstimate { work_id } =>
+			QueryPayload::GetAgentUsageEstimate { work_id } =>
 				self.query_usage_estimate(work_id.as_str()).await,
-			QueryPayload::GetChiefInputReceipts { work_id, after } =>
+			QueryPayload::GetAgentInputReceipts { work_id, after } =>
 				self.query_input_receipts(work_id.as_str(), *after).await,
-			QueryPayload::GetChiefSteerReceipt { identity } =>
+			QueryPayload::GetAgentSteerReceipt { identity } =>
 				self.query_steer_receipt(identity).await,
-			QueryPayload::GetChiefPendingAppUiCall { .. }
-			| QueryPayload::GetChiefAppUiReceipt { .. }
-			| QueryPayload::ReviewChiefAppUiCall { .. }
-			| QueryPayload::GetChiefAppUiSource { .. }
-			| QueryPayload::GetChiefAppUi { .. } => self.query_app_ui(&query.payload).await,
-			QueryPayload::GetChiefMedia { request } => self.query_media(request).await,
-			QueryPayload::GetChiefTimeline { work_id, thread_id, cursor } =>
+			QueryPayload::GetAgentPendingAppUiCall { .. }
+			| QueryPayload::GetAgentAppUiReceipt { .. }
+			| QueryPayload::ReviewAgentAppUiCall { .. }
+			| QueryPayload::GetAgentAppUiSource { .. }
+			| QueryPayload::GetAgentAppUi { .. } => self.query_app_ui(&query.payload).await,
+			QueryPayload::GetAgentMedia { request } => self.query_media(request).await,
+			QueryPayload::GetAgentTimeline { work_id, thread_id, cursor } =>
 				self.query_timeline(
 					work_id.as_str(),
 					thread_id.as_str(),
 					cursor.as_ref().map(|c| c.as_str()),
 				)
 				.await,
-			QueryPayload::GetChiefAppExposure { work_id, connector_id } =>
+			QueryPayload::GetAgentAppExposure { work_id, connector_id } =>
 				self.query_app_exposure(work_id.as_str(), connector_id.as_str()).await,
-			QueryPayload::GetChiefIntegrations { work_id } =>
+			QueryPayload::GetAgentIntegrations { work_id } =>
 				self.query_integrations(work_id.as_str()).await,
-			QueryPayload::GetChiefActivityDetail { work_id, turn_id, item_id, cursor } =>
+			QueryPayload::GetAgentActivityDetail { work_id, turn_id, item_id, cursor } =>
 				self.query_activity_detail(work_id, turn_id, item_id, cursor.as_ref()).await,
-			QueryPayload::GetChiefRequest { event_id } => self.query_request(*event_id, None).await,
-			QueryPayload::GetChiefRequestPage { event_id, digest, offset } =>
+			QueryPayload::GetAgentRequest { event_id } => self.query_request(*event_id, None).await,
+			QueryPayload::GetAgentRequestPage { event_id, digest, offset } =>
 				self.query_request(*event_id, Some((digest.as_str(), *offset))).await,
-			QueryPayload::WaitForChiefOutput { work_id, after_revision } =>
+			QueryPayload::WaitForAgentOutput { work_id, after_revision } =>
 				self.query_output(work_id, *after_revision).await,
 			QueryPayload::GetNativeAgents { work_id, thread_id, cursor } =>
 				self.query_native_agents(work_id, thread_id.as_ref(), cursor.as_ref()).await,
-			QueryPayload::GetChiefHistory { work_id, before } =>
+			QueryPayload::GetAgentHistory { work_id, before } =>
 				self.query_history(work_id.as_str(), *before).await,
-			QueryPayload::GetChiefArchiveState { .. }
-			| QueryPayload::GetChiefInstallState { .. } => self.query_native_lifecycle(&query.payload).await,
-			QueryPayload::GetChiefGuardianReviews { .. }
-			| QueryPayload::GetChiefGuardianDetail { .. } => self.query_guardian(&query.payload).await,
-			QueryPayload::GetChiefSnapshot => self.query_chief_snapshot().await,
+			QueryPayload::GetAgentArchiveState { .. }
+			| QueryPayload::GetAgentInstallState { .. } => self.query_native_lifecycle(&query.payload).await,
+			QueryPayload::GetAgentGuardianReviews { .. }
+			| QueryPayload::GetAgentGuardianDetail { .. } => self.query_guardian(&query.payload).await,
+			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot().await,
 			QueryPayload::GetDesktopSettings =>
 				QueryResultPayload::DesktopSettings(self.desktop_settings().await),
 			QueryPayload::ListPrograms => QueryResultPayload::Programs(self.program_list().await),
@@ -4168,33 +4168,33 @@ fn command_reset_error(error: ResetCardServiceError, expected: EntityRevision) -
 	}
 }
 
-async fn query_chief_request_with_details(
+async fn query_agent_request_with_details(
 	store: &ProductStore,
 	event_id: i64,
-	chief: Option<&crate::chief_host::ChiefHost>,
-) -> decodex_protocol::ChiefRequestResult {
-	use decodex_protocol::ChiefRequestResult;
-	let (Some(chief), ProductStore::Available(database)) = (chief, store) else {
-		return ChiefRequestResult::Unavailable;
+	agent: Option<&crate::agent_host::AgentHost>,
+) -> decodex_protocol::AgentRequestResult {
+	use decodex_protocol::AgentRequestResult;
+	let (Some(agent), ProductStore::Available(database)) = (agent, store) else {
+		return AgentRequestResult::Unavailable;
 	};
-	let Ok(event) = database.get_chief_inbox_event(event_id).await else {
-		return ChiefRequestResult::Unavailable;
+	let Ok(event) = database.get_agent_inbox_event(event_id).await else {
+		return AgentRequestResult::Unavailable;
 	};
 	let Ok(payload) = serde_json::from_str::<serde_json::Value>(&event.payload) else {
-		return ChiefRequestResult::Unavailable;
+		return AgentRequestResult::Unavailable;
 	};
-	if !chief.request_is_live(&payload) {
-		return ChiefRequestResult::Unavailable;
+	if !agent.request_is_live(&payload) {
+		return AgentRequestResult::Unavailable;
 	}
-	let request = query_chief_request_scoped(store, event_id, true).await;
-	if !chief.request_is_live(&payload) {
-		return ChiefRequestResult::Unavailable;
+	let request = query_agent_request_scoped(store, event_id, true).await;
+	if !agent.request_is_live(&payload) {
+		return AgentRequestResult::Unavailable;
 	}
-	if !matches!(&request, ChiefRequestResult::Available { method, .. } if method == "item/fileChange/requestApproval")
+	if !matches!(&request, AgentRequestResult::Available { method, .. } if method == "item/fileChange/requestApproval")
 	{
 		return request;
 	}
-	if crate::chief_detail::saved_file_changes(&payload).is_some() {
+	if crate::agent_detail::saved_file_changes(&payload).is_some() {
 		return request;
 	}
 	let params = &payload["params"];
@@ -4203,32 +4203,32 @@ async fn query_chief_request_with_details(
 	else {
 		return request;
 	};
-	let detail = chief.file_approval_detail(thread, turn, item).await;
+	let detail = agent.file_approval_detail(thread, turn, item).await;
 	// A native read can overlap connection replacement or request resolution.
-	let current = query_chief_request_scoped(store, event_id, true).await;
-	if current != request || !chief.request_is_live(&payload) {
-		return ChiefRequestResult::Unavailable;
+	let current = query_agent_request_scoped(store, event_id, true).await;
+	if current != request || !agent.request_is_live(&payload) {
+		return AgentRequestResult::Unavailable;
 	}
 	attach_file_approval_detail(request, detail)
 }
 
 fn attach_file_approval_detail(
-	mut request: decodex_protocol::ChiefRequestResult,
-	detail: decodex_protocol::ChiefActivityDetailResult,
-) -> decodex_protocol::ChiefRequestResult {
-	if let decodex_protocol::ChiefRequestResult::Available { method, request_json, .. } =
+	mut request: decodex_protocol::AgentRequestResult,
+	detail: decodex_protocol::AgentActivityDetailResult,
+) -> decodex_protocol::AgentRequestResult {
+	if let decodex_protocol::AgentRequestResult::Available { method, request_json, .. } =
 		&mut request
 		&& method == "item/fileChange/requestApproval"
-		&& let decodex_protocol::ChiefActivityDetailResult::Available { text, truncated, .. } =
+		&& let decodex_protocol::AgentActivityDetailResult::Available { text, truncated, .. } =
 			detail
 		&& let Ok(mut fields) = serde_json::from_str::<serde_json::Value>(request_json.as_str())
 	{
 		fields["changeDetails"] = serde_json::json!(text);
 		fields["changeDetailsTruncated"] = serde_json::json!(truncated);
-		if let Ok(updated) = decodex_protocol::ChiefRequestText::new(fields.to_string()) {
+		if let Ok(updated) = decodex_protocol::AgentRequestText::new(fields.to_string()) {
 			*request_json = updated;
 		} else {
-			return decodex_protocol::ChiefRequestResult::Unavailable;
+			return decodex_protocol::AgentRequestResult::Unavailable;
 		}
 	}
 	request
@@ -4250,23 +4250,23 @@ impl ServiceApplication {
 	}
 
 	async fn query_resources(&self, work_id: &str) -> QueryResultPayload {
-		QueryResultPayload::ChiefResources(match &self.chief {
-			Some(chief) => chief.resources(work_id).await,
-			None => decodex_protocol::ChiefResourcesResult::Unavailable,
+		QueryResultPayload::AgentResources(match &self.agent {
+			Some(agent) => agent.resources(work_id).await,
+			None => decodex_protocol::AgentResourcesResult::Unavailable,
 		})
 	}
 
 	async fn query_native_lifecycle(&self, payload: &QueryPayload) -> QueryResultPayload {
 		match payload {
-			QueryPayload::GetChiefArchiveState { work_id } =>
-				QueryResultPayload::ChiefArchiveState(match &self.chief {
-					Some(chief) => chief.archive_state(work_id.as_str()).await,
-					None => decodex_protocol::ChiefArchiveResult::Unavailable,
+			QueryPayload::GetAgentArchiveState { work_id } =>
+				QueryResultPayload::AgentArchiveState(match &self.agent {
+					Some(agent) => agent.archive_state(work_id.as_str()).await,
+					None => decodex_protocol::AgentArchiveResult::Unavailable,
 				}),
-			QueryPayload::GetChiefInstallState { work_id, event_id } =>
-				QueryResultPayload::ChiefInstallState(match &self.chief {
-					Some(chief) => chief.install_state(work_id.as_str(), *event_id).await,
-					None => decodex_protocol::ChiefInstallState::Unavailable,
+			QueryPayload::GetAgentInstallState { work_id, event_id } =>
+				QueryResultPayload::AgentInstallState(match &self.agent {
+					Some(agent) => agent.install_state(work_id.as_str(), *event_id).await,
+					None => decodex_protocol::AgentInstallState::Unavailable,
 				}),
 			_ => unreachable!("native lifecycle query dispatched above"),
 		}
@@ -4274,27 +4274,27 @@ impl ServiceApplication {
 
 	async fn query_prompt_input(&self, payload: &QueryPayload) -> QueryResultPayload {
 		match payload {
-			QueryPayload::GetChiefPromptInputDirectory { work_id, thread_id } =>
-				QueryResultPayload::ChiefPromptInputDirectory {
+			QueryPayload::GetAgentPromptInputDirectory { work_id, thread_id } =>
+				QueryResultPayload::AgentPromptInputDirectory {
 					work_id: work_id.clone(),
 					thread_id: thread_id.clone(),
-					directory: match &self.chief {
-						Some(chief) =>
-							chief.prompt_input_directory(work_id.as_str(), thread_id.as_str()).await,
+					directory: match &self.agent {
+						Some(agent) =>
+							agent.prompt_input_directory(work_id.as_str(), thread_id.as_str()).await,
 						None => None,
 					},
 				},
-			QueryPayload::GetChiefPromptInputSend { identity } =>
-				QueryResultPayload::ChiefPromptInputSend(match &self.chief {
-					Some(chief) => chief.prompt_send_status(identity.clone()).await,
+			QueryPayload::GetAgentPromptInputSend { identity } =>
+				QueryResultPayload::AgentPromptInputSend(match &self.agent {
+					Some(agent) => agent.prompt_send_status(identity.clone()).await,
 					None => decodex_protocol::PromptInputSendStatus {
 						identity: identity.clone(),
 						accepted_event_id: None,
 					},
 				}),
-			QueryPayload::GetChiefPromptInputUpload { upload } =>
-				QueryResultPayload::ChiefPromptInputUpload(match &self.chief {
-					Some(chief) => chief.prompt_upload_status(upload.clone()).await,
+			QueryPayload::GetAgentPromptInputUpload { upload } =>
+				QueryResultPayload::AgentPromptInputUpload(match &self.agent {
+					Some(agent) => agent.prompt_upload_status(upload.clone()).await,
 					None => decodex_protocol::PromptInputUploadStatus::Unavailable {
 						upload: upload.clone(),
 					},
@@ -4305,35 +4305,35 @@ impl ServiceApplication {
 
 	async fn query_app_ui(&self, payload: &QueryPayload) -> QueryResultPayload {
 		match payload {
-			QueryPayload::GetChiefPendingAppUiCall { work_id } =>
-				QueryResultPayload::ChiefPendingAppUiCall(match &self.store {
+			QueryPayload::GetAgentPendingAppUiCall { work_id } =>
+				QueryResultPayload::AgentPendingAppUiCall(match &self.store {
 					ProductStore::Available(store) =>
-						crate::chief_app_ui_receipt::pending(store, work_id).await,
+						crate::agent_app_ui_receipt::pending(store, work_id).await,
 					ProductStore::Unavailable(_) =>
-						decodex_protocol::ChiefPendingAppUiCall::Unavailable,
+						decodex_protocol::AgentPendingAppUiCall::Unavailable,
 				}),
-			QueryPayload::GetChiefAppUiReceipt { request } =>
-				QueryResultPayload::ChiefAppUiReceipt(match &self.store {
+			QueryPayload::GetAgentAppUiReceipt { request } =>
+				QueryResultPayload::AgentAppUiReceipt(match &self.store {
 					ProductStore::Available(store) =>
-						crate::chief_app_ui_receipt::read(store, request).await,
+						crate::agent_app_ui_receipt::read(store, request).await,
 					ProductStore::Unavailable(_) =>
-						decodex_protocol::ChiefAppUiReceiptResult::Unavailable,
+						decodex_protocol::AgentAppUiReceiptResult::Unavailable,
 				}),
-			QueryPayload::ReviewChiefAppUiCall { request } =>
-				QueryResultPayload::ChiefAppUiCallReview(match &self.chief {
-					Some(chief) => chief.review_app_ui_call(request).await,
-					None => decodex_protocol::ChiefAppUiCallReview::Unavailable,
+			QueryPayload::ReviewAgentAppUiCall { request } =>
+				QueryResultPayload::AgentAppUiCallReview(match &self.agent {
+					Some(agent) => agent.review_app_ui_call(request).await,
+					None => decodex_protocol::AgentAppUiCallReview::Unavailable,
 				}),
-			QueryPayload::GetChiefAppUiSource { work_id, thread_id, fingerprint } =>
-				QueryResultPayload::ChiefAppUiSource(match &self.chief {
-					Some(chief) =>
-						chief.app_ui_source(work_id.as_str(), thread_id.as_str(), fingerprint).await,
+			QueryPayload::GetAgentAppUiSource { work_id, thread_id, fingerprint } =>
+				QueryResultPayload::AgentAppUiSource(match &self.agent {
+					Some(agent) =>
+						agent.app_ui_source(work_id.as_str(), thread_id.as_str(), fingerprint).await,
 					None => false,
 				}),
-			QueryPayload::GetChiefAppUi { request } =>
-				QueryResultPayload::ChiefAppUi(match &self.chief {
-					Some(chief) => chief.app_ui(request).await,
-					None => decodex_protocol::ChiefAppUiResult::Unavailable,
+			QueryPayload::GetAgentAppUi { request } =>
+				QueryResultPayload::AgentAppUi(match &self.agent {
+					Some(agent) => agent.app_ui(request).await,
+					None => decodex_protocol::AgentAppUiResult::Unavailable,
 				}),
 			_ => unreachable!("query_app_ui dispatched above"),
 		}
@@ -4426,10 +4426,10 @@ impl ServiceApplication {
 							.await,
 					None => decodex_protocol::InitialModelCatalogResult::Unavailable,
 				}),
-			QueryPayload::GetChiefCapabilities =>
-				QueryResultPayload::ChiefCapabilities(match &self.chief {
-					Some(chief) => chief.capabilities().await,
-					None => decodex_protocol::ChiefCapabilitiesResult::Unavailable,
+			QueryPayload::GetAgentCapabilities =>
+				QueryResultPayload::AgentCapabilities(match &self.agent {
+					Some(agent) => agent.capabilities().await,
+					None => decodex_protocol::AgentCapabilitiesResult::Unavailable,
 				}),
 			QueryPayload::GetConversationModelSettings { conversation_id } =>
 				QueryResultPayload::ConversationModelSettings(match self.conversations.runtime() {
@@ -4442,7 +4442,7 @@ impl ServiceApplication {
 			QueryPayload::GetConversationCapabilities { conversation_id } =>
 				QueryResultPayload::ConversationCapabilities(match self.conversations.runtime() {
 					Some(runtime) => runtime.model_capabilities(conversation_id.as_str()).await,
-					None => decodex_protocol::ChiefCapabilitiesResult::Unavailable,
+					None => decodex_protocol::AgentCapabilitiesResult::Unavailable,
 				}),
 			_ => unreachable!("model catalog query dispatched above"),
 		}
@@ -4464,35 +4464,35 @@ impl ServiceApplication {
 }
 
 async fn query_mcp_login(
-	chief: Option<&crate::chief_host::ChiefHost>,
+	agent: Option<&crate::agent_host::AgentHost>,
 	request: &decodex_protocol::McpLoginRequest,
 ) -> decodex_protocol::McpLoginStatus {
-	match chief {
-		Some(chief) => chief.mcp_login(request).await,
+	match agent {
+		Some(agent) => agent.mcp_login(request).await,
 		None => crate::mcp_login::status(
 			request,
 			decodex_protocol::McpLoginPhase::Disconnected,
-			"Chief is not connected.",
+			"Agent is not connected.",
 		),
 	}
 }
 
 async fn query_guardian_reviews(
 	store: &ProductStore,
-	chief: Option<&crate::chief_host::ChiefHost>,
+	agent: Option<&crate::agent_host::AgentHost>,
 	work: &str,
 	before: Option<i64>,
-) -> decodex_protocol::ChiefGuardianReviewsResult {
+) -> decodex_protocol::AgentGuardianReviewsResult {
 	match store {
 		ProductStore::Available(store) =>
-			crate::chief_guardian::read(
+			crate::agent_guardian::read(
 				store,
 				work,
 				before,
-				chief.and_then(|host| host.guardian_generation()),
+				agent.and_then(|host| host.guardian_generation()),
 			)
 			.await,
-		ProductStore::Unavailable(_) => decodex_protocol::ChiefGuardianReviewsResult::Unavailable,
+		ProductStore::Unavailable(_) => decodex_protocol::AgentGuardianReviewsResult::Unavailable,
 	}
 }
 
@@ -4503,14 +4503,14 @@ impl ServiceApplication {
 		continuation: Option<(&str, usize)>,
 	) -> QueryResultPayload {
 		let request =
-			query_chief_request_with_details(&self.store, event_id, self.chief.as_ref()).await;
+			query_agent_request_with_details(&self.store, event_id, self.agent.as_ref()).await;
 		let (digest, offset) =
 			continuation.map(|(digest, offset)| (Some(digest), offset)).unwrap_or((None, 0));
-		QueryResultPayload::ChiefRequest(page_chief_request(request, digest, offset))
+		QueryResultPayload::AgentRequest(page_agent_request(request, digest, offset))
 	}
 }
 
-fn chief_request_metadata(value: &serde_json::Value) -> Option<serde_json::Value> {
+fn agent_request_metadata(value: &serde_json::Value) -> Option<serde_json::Value> {
 	let meta = value.as_object()?;
 	let selected_meta: serde_json::Map<String, serde_json::Value> = meta
 		.iter()
@@ -4544,7 +4544,7 @@ fn chief_request_metadata(value: &serde_json::Value) -> Option<serde_json::Value
 
 fn request_belongs_to_work(
 	payload: &serde_json::Value,
-	work: &decodex_database::ChiefWorkItem,
+	work: &decodex_database::AgentWorkItem,
 	native_live: bool,
 ) -> bool {
 	let Some(params) = payload["params"].as_object() else { return false };
@@ -4564,54 +4564,54 @@ fn request_belongs_to_work(
 		|| (!native_live
 			&& !native_child
 			&& !standalone_elicitation
-			&& (work.dispatch_state != decodex_database::ChiefDispatchState::Running
+			&& (work.dispatch_state != decodex_database::AgentDispatchState::Running
 				|| work.active_turn_id.is_none()
 				|| params.get("turnId").and_then(serde_json::Value::as_str)
 					!= work.active_turn_id.as_deref())))
 }
 
 #[cfg(test)]
-async fn query_chief_request(
+async fn query_agent_request(
 	store: &ProductStore,
 	event_id: i64,
-) -> decodex_protocol::ChiefRequestResult {
-	query_chief_request_scoped(store, event_id, false).await
+) -> decodex_protocol::AgentRequestResult {
+	query_agent_request_scoped(store, event_id, false).await
 }
 
-async fn query_chief_request_scoped(
+async fn query_agent_request_scoped(
 	store: &ProductStore,
 	event_id: i64,
 	native_live: bool,
-) -> decodex_protocol::ChiefRequestResult {
-	use decodex_protocol::ChiefRequestResult;
+) -> decodex_protocol::AgentRequestResult {
+	use decodex_protocol::AgentRequestResult;
 	let ProductStore::Available(store) = store else {
-		return ChiefRequestResult::Unavailable;
+		return AgentRequestResult::Unavailable;
 	};
-	let Ok(event) = store.get_chief_inbox_event(event_id).await else {
-		return ChiefRequestResult::Unavailable;
+	let Ok(event) = store.get_agent_inbox_event(event_id).await else {
+		return AgentRequestResult::Unavailable;
 	};
 	if event.disposition.is_some()
 		|| !matches!(
 			event.event_kind.as_str(),
 			"permission_pending" | "user_input_pending" | "server_request_pending"
 		) {
-		return ChiefRequestResult::Unavailable;
+		return AgentRequestResult::Unavailable;
 	}
 	let Ok(payload) = serde_json::from_str::<serde_json::Value>(&event.payload) else {
-		return ChiefRequestResult::Unavailable;
+		return AgentRequestResult::Unavailable;
 	};
 	let Some(params) = payload["params"].as_object() else {
-		return ChiefRequestResult::Unavailable;
+		return AgentRequestResult::Unavailable;
 	};
-	let Ok(work) = store.get_chief_work_item(event.work_item_id.clone()).await else {
-		return ChiefRequestResult::Unavailable;
+	let Ok(work) = store.get_agent_work_item(event.work_item_id.clone()).await else {
+		return AgentRequestResult::Unavailable;
 	};
 	if !request_belongs_to_work(&payload, &work, native_live) {
-		return ChiefRequestResult::Unavailable;
+		return AgentRequestResult::Unavailable;
 	}
 
 	let Some(method) = payload["method"].as_str() else {
-		return ChiefRequestResult::Unavailable;
+		return AgentRequestResult::Unavailable;
 	};
 	let keys: &[&str] = match method {
 		"item/commandExecution/requestApproval" => &[
@@ -4640,13 +4640,13 @@ async fn query_chief_request_scoped(
 			"description",
 			"_meta",
 		],
-		_ => return ChiefRequestResult::Unavailable,
+		_ => return AgentRequestResult::Unavailable,
 	};
 	let mut selected = serde_json::Map::new();
 	for key in keys {
 		if let Some(value) = params.get(*key) {
 			if *key == "_meta" {
-				if let Some(meta) = chief_request_metadata(value) {
+				if let Some(meta) = agent_request_metadata(value) {
 					selected.insert("_meta".into(), meta);
 				}
 				continue;
@@ -4671,7 +4671,7 @@ async fn query_chief_request_scoped(
 				_ => false,
 			};
 			if !valid {
-				return ChiefRequestResult::Unavailable;
+				return AgentRequestResult::Unavailable;
 			}
 			selected.insert((*key).into(), value.clone());
 		}
@@ -4679,16 +4679,16 @@ async fn query_chief_request_scoped(
 	if method == "item/commandExecution/requestApproval" && !selected.contains_key("kind") {
 		selected.insert("kind".into(), serde_json::json!("command"));
 	}
-	if let Some(text) = crate::chief_detail::saved_file_changes(&payload) {
+	if let Some(text) = crate::agent_detail::saved_file_changes(&payload) {
 		selected.insert("changeDetails".into(), serde_json::json!(text));
 		selected.insert("changeDetailsTruncated".into(), serde_json::json!(false));
 	}
 	let Ok(request_json) =
-		decodex_protocol::ChiefRequestText::new(serde_json::Value::Object(selected).to_string())
+		decodex_protocol::AgentRequestText::new(serde_json::Value::Object(selected).to_string())
 	else {
-		return ChiefRequestResult::Unavailable;
+		return AgentRequestResult::Unavailable;
 	};
-	ChiefRequestResult::Available {
+	AgentRequestResult::Available {
 		event_id,
 		work_id: event.work_item_id,
 		method: method.into(),
@@ -4696,12 +4696,12 @@ async fn query_chief_request_scoped(
 	}
 }
 
-fn page_chief_request(
-	request: decodex_protocol::ChiefRequestResult,
+fn page_agent_request(
+	request: decodex_protocol::AgentRequestResult,
 	expected_digest: Option<&str>,
 	offset: usize,
-) -> decodex_protocol::ChiefRequestResult {
-	use decodex_protocol::ChiefRequestResult as Request;
+) -> decodex_protocol::AgentRequestResult {
+	use decodex_protocol::AgentRequestResult as Request;
 	use sha2::{Digest as _, Sha256};
 	let Request::Available { event_id, work_id, method, request_json } = &request else {
 		return Request::Unavailable;
@@ -4744,9 +4744,9 @@ fn page_chief_request(
 	}
 }
 
-fn chief_user_message_text(value: &serde_json::Value) -> String {
+fn agent_user_message_text(value: &serde_json::Value) -> String {
 	let raw = value["text"].as_str().unwrap_or("");
-	let mut text = decodex_protocol::render_chief_async_question_history(raw);
+	let mut text = decodex_protocol::render_agent_async_question_history(raw);
 	if let Some(files) = value.pointer("/options/attachments").and_then(serde_json::Value::as_array)
 	{
 		for file in files.iter().take(16) {
@@ -4760,14 +4760,14 @@ fn chief_user_message_text(value: &serde_json::Value) -> String {
 }
 
 #[cfg(test)]
-async fn query_chief_history(
+async fn query_agent_history(
 	store: &ProductStore,
 	id: &str,
-) -> decodex_protocol::ChiefHistoryResult {
-	query_chief_history_page(store, id, None, None).await
+) -> decodex_protocol::AgentHistoryResult {
+	query_agent_history_page(store, id, None, None).await
 }
 
-fn chief_history_notice(kind: &str, value: &serde_json::Value) -> String {
+fn agent_history_notice(kind: &str, value: &serde_json::Value) -> String {
 	if kind == "steer_pending" {
 		return "Steer delivery is unconfirmed. Inspect the current response before sending again."
 			.into();
@@ -4780,7 +4780,7 @@ fn chief_history_notice(kind: &str, value: &serde_json::Value) -> String {
 	}
 }
 
-fn chief_assistant_history(
+fn agent_assistant_history(
 	value: &serde_json::Value,
 	has_more: &mut bool,
 ) -> (&'static str, String) {
@@ -4825,10 +4825,10 @@ fn chief_assistant_history(
 	("assistant", text)
 }
 
-fn completed_chief_history(
+fn completed_agent_history(
 	value: &serde_json::Value,
 	has_more: &mut bool,
-	pending_retry: Option<&decodex_database::ChiefCapacityRetry>,
+	pending_retry: Option<&decodex_database::AgentCapacityRetry>,
 	event_id: i64,
 	completed_message_ids: &mut Vec<(String, String)>,
 ) -> (&'static str, String) {
@@ -4846,7 +4846,7 @@ fn completed_chief_history(
 				.filter_map(|item| Some((turn.to_owned(), item["id"].as_str()?.to_owned()))),
 		);
 	}
-	let (message_kind, mut text) = chief_assistant_history(value, has_more);
+	let (message_kind, mut text) = agent_assistant_history(value, has_more);
 	// Capacity handling is process state, not an assistant response. Keep the
 	// original provider error in the persisted event rather than stacking it
 	// with a contradictory instruction to change models during an active retry.
@@ -4897,16 +4897,16 @@ fn completed_chief_history(
 	}
 }
 
-async fn query_chief_input_receipts(
+async fn query_agent_input_receipts(
 	store: &ProductStore,
 	work: &str,
 	after: Option<i64>,
-) -> decodex_protocol::ChiefInputReceiptsResult {
-	use decodex_protocol::ChiefInputReceiptsResult as Result;
+) -> decodex_protocol::AgentInputReceiptsResult {
+	use decodex_protocol::AgentInputReceiptsResult as Result;
 	let ProductStore::Available(store) = store else {
 		return Result::Unavailable;
 	};
-	let Ok(events) = store.read_chief_unconfirmed_inputs(work.into(), after, 33).await else {
+	let Ok(events) = store.read_agent_unconfirmed_inputs(work.into(), after, 33).await else {
 		return Result::Unavailable;
 	};
 	let Ok(work_id) = decodex_protocol::EntityId::new(work) else {
@@ -4923,16 +4923,16 @@ async fn query_chief_input_receipts(
 		let (kind, text) = if event.event_kind == "work_instruction" {
 			("instruction", value["text"].as_str().unwrap_or_default().to_owned())
 		} else {
-			("user", chief_user_message_text(&value))
+			("user", agent_user_message_text(&value))
 		};
-		let mut entry = chief_history_entry(&event, &value, kind, String::new());
+		let mut entry = agent_history_entry(&event, &value, kind, String::new());
 		let Ok(metadata) = serde_json::to_vec(&entry) else {
 			return Result::Unavailable;
 		};
 		if metadata.len() + 4 >= remaining {
 			break;
 		}
-		let (text, trimmed) = bound_chief_text(text, (remaining - metadata.len() - 4).min(8192));
+		let (text, trimmed) = bound_agent_text(text, (remaining - metadata.len() - 4).min(8192));
 		shortened |= trimmed;
 		entry.text = text;
 		let Ok(encoded) = serde_json::to_vec(&entry) else {
@@ -4946,31 +4946,31 @@ async fn query_chief_input_receipts(
 	Result::Available { work_id, entries, next_after, shortened }
 }
 
-async fn query_chief_history_page(
+async fn query_agent_history_page(
 	store: &ProductStore,
 	id: &str,
 	before: Option<i64>,
-	chief: Option<&crate::chief_host::ChiefHost>,
-) -> decodex_protocol::ChiefHistoryResult {
-	use decodex_protocol::ChiefHistoryResult;
+	agent: Option<&crate::agent_host::AgentHost>,
+) -> decodex_protocol::AgentHistoryResult {
+	use decodex_protocol::AgentHistoryResult;
 	let ProductStore::Available(store) = store else {
-		return ChiefHistoryResult::Unavailable;
+		return AgentHistoryResult::Unavailable;
 	};
-	let Ok((events, partial)) = store.read_chief_transcript(id.into(), before, 33).await else {
-		return ChiefHistoryResult::Unavailable;
+	let Ok((events, partial)) = store.read_agent_transcript(id.into(), before, 33).await else {
+		return AgentHistoryResult::Unavailable;
 	};
-	let Ok(precaution) = store.chief_misalignment(id.into()).await else {
-		return ChiefHistoryResult::Unavailable;
+	let Ok(precaution) = store.agent_misalignment(id.into()).await else {
+		return AgentHistoryResult::Unavailable;
 	};
 	let misalignment = precaution
 		.map(|saved| {
-			let live_token = chief.and_then(|chief| chief.misalignment_review_token(&saved));
+			let live_token = agent.and_then(|agent| agent.misalignment_review_token(&saved));
 			let details: serde_json::Value = saved
 				.details_json
 				.as_deref()
 				.and_then(|value| serde_json::from_str(value).ok())
 				.unwrap_or_default();
-			decodex_protocol::ChiefMisalignmentDto {
+			decodex_protocol::AgentMisalignmentDto {
 				review_id: live_token.clone().unwrap_or_else(|| saved.review_id()),
 				explanation: details["detailedExplanation"]
 					.as_str()
@@ -4985,20 +4985,20 @@ async fn query_chief_history_page(
 			}
 		})
 		.map(Box::new);
-	let Ok(questions_recovering) = store.chief_async_questions_recovering(id.into()).await else {
-		return ChiefHistoryResult::Unavailable;
+	let Ok(questions_recovering) = store.agent_async_questions_recovering(id.into()).await else {
+		return AgentHistoryResult::Unavailable;
 	};
-	let Ok(pending_questions) = store.read_chief_async_questions(id.into()).await else {
-		return ChiefHistoryResult::Unavailable;
+	let Ok(pending_questions) = store.read_agent_async_questions(id.into()).await else {
+		return AgentHistoryResult::Unavailable;
 	};
 	let mut questions = Vec::new();
 	let mut questions_truncated = false;
 	let mut question_bytes = 2;
 	for pending in pending_questions {
 		let Ok(mut question) =
-			serde_json::from_str::<decodex_protocol::ChiefAsyncQuestionDto>(&pending.question_json)
+			serde_json::from_str::<decodex_protocol::AgentAsyncQuestionDto>(&pending.question_json)
 		else {
-			return ChiefHistoryResult::Unavailable;
+			return AgentHistoryResult::Unavailable;
 		};
 		question.arrived_live = pending.arrived_live;
 		let cost = serde_json::to_vec(&question).expect("serializable question").len() + 1;
@@ -5011,11 +5011,11 @@ async fn query_chief_history_page(
 		question_bytes += cost;
 		questions.push(question);
 	}
-	let pending_retry = store.pending_chief_capacity_retry(id.into()).await.ok().flatten();
-	let RenderedChiefHistory { entries, has_more, next_before } =
-		render_chief_history(events, question_bytes, pending_retry);
-	let live = query_chief_live(partial);
-	ChiefHistoryResult::Available {
+	let pending_retry = store.pending_agent_capacity_retry(id.into()).await.ok().flatten();
+	let RenderedAgentHistory { entries, has_more, next_before } =
+		render_agent_history(events, question_bytes, pending_retry);
+	let live = query_agent_live(partial);
+	AgentHistoryResult::Available {
 		questions,
 		questions_truncated,
 		questions_recovering,
@@ -5025,7 +5025,7 @@ async fn query_chief_history_page(
 		next_before,
 		live,
 		usage: store
-			.read_chief_usage(id.into())
+			.read_agent_usage(id.into())
 			.await
 			.ok()
 			.flatten()
@@ -5033,24 +5033,24 @@ async fn query_chief_history_page(
 	}
 }
 
-struct RenderedChiefHistory {
-	entries: Vec<decodex_protocol::ChiefHistoryEntryDto>,
+struct RenderedAgentHistory {
+	entries: Vec<decodex_protocol::AgentHistoryEntryDto>,
 	has_more: bool,
 	next_before: Option<i64>,
 }
 
 #[cfg(test)]
-pub(crate) fn render_chief_history_for_test(
-	events: Vec<decodex_database::ChiefInboxEvent>,
-) -> Vec<decodex_protocol::ChiefHistoryEntryDto> {
-	render_chief_history(events, 0, None).entries
+pub(crate) fn render_agent_history_for_test(
+	events: Vec<decodex_database::AgentInboxEvent>,
+) -> Vec<decodex_protocol::AgentHistoryEntryDto> {
+	render_agent_history(events, 0, None).entries
 }
 
-fn chief_history_shows_disposition(event_kind: &str, kind: &str) -> bool {
+fn agent_history_shows_disposition(event_kind: &str, kind: &str) -> bool {
 	kind == "unsent_input"
 		|| !matches!(
 			event_kind,
-			"chief_turn_completed"
+			"agent_turn_completed"
 				| "worker_turn_completed"
 				| "user_message"
 				| "voice_user"
@@ -5069,11 +5069,11 @@ fn chief_history_shows_disposition(event_kind: &str, kind: &str) -> bool {
 		)
 }
 
-fn render_chief_history(
-	events: Vec<decodex_database::ChiefInboxEvent>,
+fn render_agent_history(
+	events: Vec<decodex_database::AgentInboxEvent>,
 	question_bytes: usize,
-	pending_retry: Option<decodex_database::ChiefCapacityRetry>,
-) -> RenderedChiefHistory {
+	pending_retry: Option<decodex_database::AgentCapacityRetry>,
+) -> RenderedAgentHistory {
 	let older_available = events.len() > 32;
 	let mut has_more = older_available;
 	let mut rendered_messages = std::collections::HashSet::<(String, String)>::new();
@@ -5096,11 +5096,11 @@ fn render_chief_history(
 			"config_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a configuration warning.").to_owned()),
 			"strict_review_notice" => ("execution_notice", "Codex requested additional safety checks for this turn. Tool calls may take longer; no action is required for this notice.".into()),
 			"activity_started" | "activity_completed" => ("activity", String::new()),
-            "user_message" if event.disposition == Some(decodex_database::ChiefDisposition::UserDecision) && event.delivered_turn_id.is_none() =>
-                ("unsent_input", chief_user_message_text(&value)),
+            "user_message" if event.disposition == Some(decodex_database::AgentDisposition::UserDecision) && event.delivered_turn_id.is_none() =>
+                ("unsent_input", agent_user_message_text(&value)),
 			"user_message" | "async_question_answer" | "voice_user" =>
-				("user", chief_user_message_text(&value)),
-			"voice_assistant" => ("assistant", chief_user_message_text(&value)),
+				("user", agent_user_message_text(&value)),
+			"voice_assistant" => ("assistant", agent_user_message_text(&value)),
 
 			"work_instruction" => ("instruction", value["text"].as_str().unwrap_or("").to_owned()),
 			"assistant_message" => {
@@ -5114,8 +5114,8 @@ fn render_chief_history(
 				("assistant", value["item"]["text"].as_str().unwrap_or("").to_owned())
 			},
 			"context_compacted" => ("system", "Codex compacted the thread context.".into()),
-			"chief_turn_completed" | "worker_turn_completed" | "capacity_retry" =>
-				completed_chief_history(
+			"agent_turn_completed" | "worker_turn_completed" | "capacity_retry" =>
+				completed_agent_history(
 					&value,
 					&mut has_more,
 					pending_retry.as_ref(),
@@ -5131,13 +5131,13 @@ fn render_chief_history(
 			| "wake_failed"
 			| "event_processing_failed"
 			| "followup_processing_failed"
-			| "connection_needs_attention" => ("system", chief_history_notice(&event.event_kind, &value)),
+			| "connection_needs_attention" => ("system", agent_history_notice(&event.event_kind, &value)),
 			_ => ("system", event.event_kind.clone()),
 		};
 		if let Some(note) = event
 			.disposition_note
 			.as_ref()
-			.filter(|_| chief_history_shows_disposition(&event.event_kind, kind))
+			.filter(|_| agent_history_shows_disposition(&event.event_kind, kind))
 		{
 			text.push_str(if kind == "unsent_input" { "\n\n" } else { "\n\nDisposition: " });
 			text.push_str(note);
@@ -5147,7 +5147,7 @@ fn render_chief_history(
 		}
 		let activity_cost = if kind == "activity" { event.payload.len() } else { 0 }
 			+ serde_json::to_vec(&(
-				chief_history_receipt(&event),
+				agent_history_receipt(&event),
 				partial_history_source(&event, &value),
 			))
 			.map_or(remaining, |v| v.len());
@@ -5161,7 +5161,7 @@ fn render_chief_history(
 			break;
 		}
 		let (bounded, shortened) =
-			bound_chief_text(text, remaining.saturating_sub(160 + activity_cost));
+			bound_agent_text(text, remaining.saturating_sub(160 + activity_cost));
 		has_more |= shortened;
 		text = bounded;
 		remaining = remaining.saturating_sub(
@@ -5175,7 +5175,7 @@ fn render_chief_history(
 			rendered_sources.extend(completed_partial_sources(&value));
 			rendered_messages.extend(completed_message_ids);
 		}
-		entries.push(chief_history_entry(&event, &value, kind, text));
+		entries.push(agent_history_entry(&event, &value, kind, text));
 		if remaining == 0 {
 			has_more = true;
 			break;
@@ -5187,11 +5187,11 @@ fn render_chief_history(
 	} else {
 		None
 	};
-	RenderedChiefHistory { entries, has_more, next_before }
+	RenderedAgentHistory { entries, has_more, next_before }
 }
 
 fn append_task_reference_labels(text: &mut String, value: &serde_json::Value) {
-	let Ok(references) = serde_json::from_value::<Vec<decodex_protocol::ChiefTaskReferenceDto>>(
+	let Ok(references) = serde_json::from_value::<Vec<decodex_protocol::AgentTaskReferenceDto>>(
 		value.pointer("/options/taskReferences").cloned().unwrap_or(serde_json::Value::Null),
 	) else {
 		return;
@@ -5235,7 +5235,7 @@ mod task_reference_display_tests {
 }
 
 fn partial_history_text(
-	event: &decodex_database::ChiefInboxEvent,
+	event: &decodex_database::AgentInboxEvent,
 	value: &serde_json::Value,
 	rendered: &std::collections::HashSet<(String, String, String)>,
 ) -> Option<(&'static str, String)> {
@@ -5280,24 +5280,24 @@ fn completed_partial_sources(value: &serde_json::Value) -> Vec<(String, String, 
 }
 
 fn partial_history_source(
-	event: &decodex_database::ChiefInboxEvent,
+	event: &decodex_database::AgentInboxEvent,
 	value: &serde_json::Value,
-) -> Option<decodex_protocol::ChiefHistorySourceDto> {
+) -> Option<decodex_protocol::AgentHistorySourceDto> {
 	(event.event_kind == "partial_output").then_some(())?;
-	Some(decodex_protocol::ChiefHistorySourceDto {
+	Some(decodex_protocol::AgentHistorySourceDto {
 		thread_id: value["threadId"].as_str()?.into(),
 		turn_id: value["turnId"].as_str()?.into(),
 		item_id: value["itemId"].as_str()?.into(),
 	})
 }
 
-fn chief_history_entry(
-	event: &decodex_database::ChiefInboxEvent,
+fn agent_history_entry(
+	event: &decodex_database::AgentInboxEvent,
 	value: &serde_json::Value,
 	kind: &str,
 	text: String,
-) -> decodex_protocol::ChiefHistoryEntryDto {
-	decodex_protocol::ChiefHistoryEntryDto {
+) -> decodex_protocol::AgentHistoryEntryDto {
+	decodex_protocol::AgentHistoryEntryDto {
 		native_source: partial_history_source(event, value),
 		turn_id: value
 			.pointer("/threadReadback/turnId")
@@ -5305,7 +5305,7 @@ fn chief_history_entry(
 			.and_then(serde_json::Value::as_str)
 			.map(str::to_owned),
 		weather: Vec::new(),
-		receipt: chief_history_receipt(event),
+		receipt: agent_history_receipt(event),
 		activity: if event.event_kind.starts_with("activity_") {
 			serde_json::from_value(value.clone()).ok()
 		} else {
@@ -5315,7 +5315,7 @@ fn chief_history_entry(
 			let usage: decodex_codex::ThreadTokenUsage =
 				serde_json::from_value(value.pointer("/threadReadback/tokenUsage")?.clone())
 					.ok()?;
-			usage.is_valid().then_some(decodex_protocol::ChiefTurnUsageDto {
+			usage.is_valid().then_some(decodex_protocol::AgentTurnUsageDto {
 				input_tokens: usage.last.input_tokens,
 				output_tokens: usage.last.output_tokens,
 			})
@@ -5328,24 +5328,24 @@ fn chief_history_entry(
 	}
 }
 
-fn chief_history_receipt(
-	event: &decodex_database::ChiefInboxEvent,
-) -> Option<decodex_protocol::ChiefHistoryReceiptDto> {
+fn agent_history_receipt(
+	event: &decodex_database::AgentInboxEvent,
+) -> Option<decodex_protocol::AgentHistoryReceiptDto> {
 	if event.event_kind.is_empty()
 		|| event.event_kind.len() > 80
 		|| event.delivered_turn_id.as_ref().is_some_and(|id| id.len() > 512)
 	{
 		return None;
 	}
-	Some(decodex_protocol::ChiefHistoryReceiptDto {
-		voice_session_id: chief_voice_receipt_session(event),
+	Some(decodex_protocol::AgentHistoryReceiptDto {
+		voice_session_id: agent_voice_receipt_session(event),
 		event_kind: event.event_kind.clone(),
 		delivered_turn_id: event.delivered_turn_id.clone().filter(|id| !id.is_empty()),
 		disposed: event.disposition.is_some(),
 	})
 }
 
-fn chief_voice_receipt_session(event: &decodex_database::ChiefInboxEvent) -> Option<String> {
+fn agent_voice_receipt_session(event: &decodex_database::AgentInboxEvent) -> Option<String> {
 	if !matches!(event.event_kind.as_str(), "voice_user" | "voice_assistant") {
 		return None;
 	}
@@ -5359,7 +5359,7 @@ mod history_receipt_tests {
 
 	#[test]
 	fn live_summary_projection_redacts_credentials_and_ignores_unknown_kinds() {
-		let output = |kind: &str, text: &str| decodex_database::ChiefLiveOutput {
+		let output = |kind: &str, text: &str| decodex_database::AgentLiveOutput {
 			id: 1,
 			turn_id: "turn".into(),
 			item_id: kind.into(),
@@ -5368,7 +5368,7 @@ mod history_receipt_tests {
 			truncated: false,
 		};
 		let synthetic = "Bearer abcdefghijklmnop";
-		let messages = super::query_chief_live(vec![
+		let messages = super::query_agent_live(vec![
 			output("reasoningSummary", synthetic),
 			output("unsupported", "Internal only"),
 			output("plan", "Public plan"),
@@ -5383,7 +5383,7 @@ mod history_receipt_tests {
 	}
 	#[test]
 	fn native_warning_is_a_notice_without_submission_receipt() {
-		let event = decodex_database::ChiefInboxEvent {
+		let event = decodex_database::AgentInboxEvent {
 			id: 1,
 			source_event_id: "warning-source".into(),
 			work_item_id: "work".into(),
@@ -5391,7 +5391,7 @@ mod history_receipt_tests {
 			payload: serde_json::json!({"text":"Codex warning: Previous instructions retained"})
 				.to_string(),
 			created_at_micros: 1,
-			disposition: Some(decodex_database::ChiefDisposition::Resolved),
+			disposition: Some(decodex_database::AgentDisposition::Resolved),
 			disposition_note: Some("Observed native warning".into()),
 			disposed_at_micros: Some(1),
 			delivered_turn_id: None,
@@ -5399,7 +5399,7 @@ mod history_receipt_tests {
 		let mut provenance = event.clone();
 		provenance.id = 2;
 		provenance.event_kind = "reasoning_voice_handoff".into();
-		let result = super::render_chief_history(vec![event, provenance], 0, None);
+		let result = super::render_agent_history(vec![event, provenance], 0, None);
 		assert_eq!(result.entries.len(), 1);
 		assert_eq!(result.entries[0].kind, "execution_notice");
 		assert_eq!(result.entries[0].text, "Codex warning: Previous instructions retained");
@@ -5407,20 +5407,20 @@ mod history_receipt_tests {
 	}
 	#[test]
 	fn refused_input_stays_visible_with_attachments_without_calling_unknown_input_unsent() {
-		let mut event = decodex_database::ChiefInboxEvent {
+		let mut event = decodex_database::AgentInboxEvent {
             id: 1, source_event_id: "input".into(), work_item_id: "work".into(), event_kind: "user_message".into(),
             payload: serde_json::json!({"text":"Keep this input","options":{"attachments":[{"path":"/tmp/retained.txt","image":false}]}}).to_string(),
-            created_at_micros: 1, disposition: Some(decodex_database::ChiefDisposition::UserDecision),
+            created_at_micros: 1, disposition: Some(decodex_database::AgentDisposition::UserDecision),
             disposition_note: Some("Not sent: the local connection queue is full.".into()), disposed_at_micros: Some(2), delivered_turn_id: None,
         };
-		let rows = super::render_chief_history(vec![event.clone()], 0, None).entries;
+		let rows = super::render_agent_history(vec![event.clone()], 0, None).entries;
 		assert_eq!(rows[0].kind, "unsent_input");
 		assert!(rows[0].text.contains("Keep this input"));
 		assert!(rows[0].text.contains("Attached: /tmp/retained.txt"));
 		assert!(rows[0].text.contains("Not sent: the local connection queue is full."));
 		for turn in ["", "acknowledged"] {
 			event.delivered_turn_id = Some(turn.into());
-			let rows = super::render_chief_history(vec![event.clone()], 0, None).entries;
+			let rows = super::render_agent_history(vec![event.clone()], 0, None).entries;
 			assert_eq!(rows[0].kind, "user", "a claimed or acknowledged turn is not known-unsent");
 			assert!(!rows[0].text.contains("Not sent:"));
 		}
@@ -5428,19 +5428,19 @@ mod history_receipt_tests {
 
 	#[test]
 	fn checklist_history_keeps_the_observation_label_and_no_disposition_prose() {
-		let event = decodex_database::ChiefInboxEvent {
+		let event = decodex_database::AgentInboxEvent {
 			id: 1,
 			source_event_id: "source".into(),
 			work_item_id: "work".into(),
 			event_kind: "plan_updated".into(),
 			payload: serde_json::json!({"text":"- **Pending**: Verify"}).to_string(),
 			created_at_micros: 1,
-			disposition: Some(decodex_database::ChiefDisposition::Resolved),
+			disposition: Some(decodex_database::AgentDisposition::Resolved),
 			disposition_note: Some("Observed native checklist".into()),
 			disposed_at_micros: Some(1),
 			delivered_turn_id: Some("turn".into()),
 		};
-		let result = super::render_chief_history(vec![event], 0, None);
+		let result = super::render_agent_history(vec![event], 0, None);
 		assert_eq!(result.entries.len(), 1);
 		assert_eq!(result.entries[0].kind, "checklist");
 		assert_eq!(result.entries[0].text, "- **Pending**: Verify");
@@ -5451,7 +5451,7 @@ mod history_receipt_tests {
 	}
 	#[test]
 	fn disposition_does_not_imply_native_delivery_and_opaque_ids_are_not_truncated() {
-		let mut event = decodex_database::ChiefInboxEvent {
+		let mut event = decodex_database::AgentInboxEvent {
 			id: 1,
 			source_event_id: "source".into(),
 			work_item_id: "work".into(),
@@ -5464,7 +5464,7 @@ mod history_receipt_tests {
 			delivered_turn_id: None,
 		};
 		let entry =
-			super::chief_history_entry(&event, &serde_json::json!({}), "user", "Answer".into());
+			super::agent_history_entry(&event, &serde_json::json!({}), "user", "Answer".into());
 		let receipt = entry.receipt.unwrap();
 		assert_eq!(receipt.event_kind, "async_question_answer");
 		assert!(!receipt.disposed);
@@ -5472,28 +5472,28 @@ mod history_receipt_tests {
 		// A claimed or uncertain dispatch uses an empty native turn fence in the store.
 		event.delivered_turn_id = Some(String::new());
 		let claimed =
-			super::chief_history_entry(&event, &serde_json::json!({}), "user", "Answer".into())
+			super::agent_history_entry(&event, &serde_json::json!({}), "user", "Answer".into())
 				.receipt
 				.expect("uncertain input stays visible");
 		assert!(claimed.delivered_turn_id.is_none() && !claimed.disposed);
-		event.disposition = Some(decodex_database::ChiefDisposition::Resolved);
-		let receipt = super::chief_history_receipt(&event).unwrap();
+		event.disposition = Some(decodex_database::AgentDisposition::Resolved);
+		let receipt = super::agent_history_receipt(&event).unwrap();
 		assert!(receipt.disposed);
 		assert!(receipt.delivered_turn_id.is_none());
 		event.delivered_turn_id = Some("native-turn".into());
-		let receipt = super::chief_history_receipt(&event).unwrap();
+		let receipt = super::agent_history_receipt(&event).unwrap();
 		assert_eq!(receipt.delivered_turn_id.as_deref(), Some("native-turn"));
 		event.delivered_turn_id = Some("x".repeat(513));
-		assert!(super::chief_history_receipt(&event).is_none());
+		assert!(super::agent_history_receipt(&event).is_none());
 		event.delivered_turn_id = None;
 		event.event_kind = "voice_user".into();
 		event.source_event_id = serde_json::json!(["voice_transcript", "call", 7]).to_string();
 		assert_eq!(
-			super::chief_history_receipt(&event).unwrap().voice_session_id.as_deref(),
+			super::agent_history_receipt(&event).unwrap().voice_session_id.as_deref(),
 			Some("call")
 		);
 		event.event_kind = "user_message".into();
-		assert!(super::chief_history_receipt(&event).unwrap().voice_session_id.is_none());
+		assert!(super::agent_history_receipt(&event).unwrap().voice_session_id.is_none());
 		event.event_kind = "voice_assistant".into();
 		for source in [
 			serde_json::json!(["wrong", "call", 7]),
@@ -5503,12 +5503,12 @@ mod history_receipt_tests {
 			serde_json::json!(["voice_transcript", "x".repeat(513), 7]),
 		] {
 			event.source_event_id = source.to_string();
-			assert!(super::chief_history_receipt(&event).unwrap().voice_session_id.is_none());
+			assert!(super::agent_history_receipt(&event).unwrap().voice_session_id.is_none());
 		}
 	}
 }
 
-fn bound_chief_text(mut text: String, encoded_budget: usize) -> (String, bool) {
+fn bound_agent_text(mut text: String, encoded_budget: usize) -> (String, bool) {
 	if serde_json::to_vec(&text).is_ok_and(|encoded| encoded.len() <= encoded_budget) {
 		return (text, false);
 	}
@@ -5533,19 +5533,19 @@ fn bound_chief_text(mut text: String, encoded_budget: usize) -> (String, bool) {
 	(text, true)
 }
 
-fn query_chief_live(
-	partial: Vec<decodex_database::ChiefLiveOutput>,
-) -> Vec<decodex_protocol::ChiefLiveMessageDto> {
+fn query_agent_live(
+	partial: Vec<decodex_database::AgentLiveOutput>,
+) -> Vec<decodex_protocol::AgentLiveMessageDto> {
 	let mut live = Vec::new();
 	let mut budget = 65536usize;
 	for mut output in partial {
 		let kind = match output.kind.as_str() {
-			"agentMessage" => decodex_protocol::ChiefLiveMessageKind::AgentMessage,
-			"plan" => decodex_protocol::ChiefLiveMessageKind::Plan,
-			"reasoningSummary" => decodex_protocol::ChiefLiveMessageKind::ReasoningSummary,
+			"agentMessage" => decodex_protocol::AgentLiveMessageKind::AgentMessage,
+			"plan" => decodex_protocol::AgentLiveMessageKind::Plan,
+			"reasoningSummary" => decodex_protocol::AgentLiveMessageKind::ReasoningSummary,
 			_ => continue,
 		};
-		if kind == decodex_protocol::ChiefLiveMessageKind::ReasoningSummary
+		if kind == decodex_protocol::AgentLiveMessageKind::ReasoningSummary
 			&& decodex_core::contains_credential_material(&output.text)
 		{
 			output.text = "Sensitive details omitted".into();
@@ -5560,13 +5560,13 @@ fn query_chief_live(
 		if metadata >= budget {
 			break;
 		}
-		let (text, shortened) = bound_chief_text(output.text, budget - metadata);
+		let (text, shortened) = bound_agent_text(output.text, budget - metadata);
 		let truncated = output.truncated || shortened;
 		budget = budget.saturating_sub(
 			serde_json::to_vec(&text).map_or(budget, |encoded| encoded.len()) + metadata,
 		);
 
-		live.push(decodex_protocol::ChiefLiveMessageDto {
+		live.push(decodex_protocol::AgentLiveMessageDto {
 			kind,
 			turn_id: output.turn_id,
 			item_id: output.item_id,
@@ -5577,34 +5577,34 @@ fn query_chief_live(
 	live
 }
 
-async fn query_chief_snapshot(store: &ProductStore) -> decodex_protocol::ChiefSnapshotResult {
+async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSnapshotResult {
 	use decodex_database::{
-		ChiefDispatchState, ChiefStoreSnapshot, ChiefWorkKind, ChiefWorkStatus,
+		AgentDispatchState, AgentStoreSnapshot, AgentWorkKind, AgentWorkStatus,
 	};
 	use decodex_protocol::{
-		ChiefDependencyDto, ChiefDispatchStateDto, ChiefPendingEventDto, ChiefSnapshotDto,
-		ChiefSnapshotResult, ChiefWorkItemDto, ChiefWorkKindDto, ChiefWorkStatusDto,
-		MAX_CHIEF_DEPENDENCIES, MAX_CHIEF_PENDING_EVENTS, MAX_CHIEF_WORK_ITEMS,
+		AgentDependencyDto, AgentDispatchStateDto, AgentPendingEventDto, AgentSnapshotDto,
+		AgentSnapshotResult, AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto,
+		MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS, MAX_AGENT_WORK_ITEMS,
 	};
 	let ProductStore::Available(store) = store else {
-		return ChiefSnapshotResult::Unavailable;
+		return AgentSnapshotResult::Unavailable;
 	};
 	let records = match store
-		.read_chief_snapshot(MAX_CHIEF_WORK_ITEMS, MAX_CHIEF_DEPENDENCIES, MAX_CHIEF_PENDING_EVENTS)
+		.read_agent_snapshot(MAX_AGENT_WORK_ITEMS, MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS)
 		.await
 	{
 		Ok(records) => records,
-		Err(_) => return ChiefSnapshotResult::Unavailable,
+		Err(_) => return AgentSnapshotResult::Unavailable,
 	};
 	let (work_items, dependencies, pending_events, managers, workspaces) = match records {
-		ChiefStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
-			return ChiefSnapshotResult::CapacityExceeded {
+		AgentStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
+			return AgentSnapshotResult::CapacityExceeded {
 				work_items,
 				dependencies,
 				pending_events,
 			};
 		},
-		ChiefStoreSnapshot::Complete {
+		AgentStoreSnapshot::Complete {
 			work_items,
 			dependencies,
 			pending_events,
@@ -5613,45 +5613,45 @@ async fn query_chief_snapshot(store: &ProductStore) -> decodex_protocol::ChiefSn
 		} => (work_items, dependencies, pending_events, managers, workspaces),
 	};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
-	let snapshot = ChiefSnapshotDto {
+	let snapshot = AgentSnapshotDto {
 		runtime_source: None,
 		workspaces: workspaces
 			.into_iter()
-			.map(|(chief_id, name, directory)| decodex_protocol::ChiefWorkspaceDto {
-				chief_id,
+			.map(|(agent_id, name, directory)| decodex_protocol::AgentWorkspaceDto {
+				agent_id,
 				name,
 				directory,
 			})
 			.collect(),
 		work_items: work_items
 			.into_iter()
-			.map(|item| ChiefWorkItemDto {
+			.map(|item| AgentWorkItemDto {
 				id: item.id.clone(),
 				parent_goal_id: item.parent_goal_id.clone(),
 				kind: match item.kind {
-					ChiefWorkKind::Goal =>
+					AgentWorkKind::Goal =>
 						if item.parent_goal_id.is_some() && managers.contains(&item.id) {
-							ChiefWorkKindDto::Manager
+							AgentWorkKindDto::Manager
 						} else {
-							ChiefWorkKindDto::Goal
+							AgentWorkKindDto::Goal
 						},
-					ChiefWorkKind::Task => ChiefWorkKindDto::Task,
+					AgentWorkKind::Task => AgentWorkKindDto::Task,
 				},
 				title: item.title,
 				codex_thread_id: item.codex_thread_id,
 				active_turn_id: item.active_turn_id,
 				dispatch_state: match item.dispatch_state {
-					ChiefDispatchState::Idle => ChiefDispatchStateDto::Idle,
-					ChiefDispatchState::Dispatching => ChiefDispatchStateDto::Dispatching,
-					ChiefDispatchState::Running => ChiefDispatchStateDto::Running,
-					ChiefDispatchState::Unknown => ChiefDispatchStateDto::Unknown,
+					AgentDispatchState::Idle => AgentDispatchStateDto::Idle,
+					AgentDispatchState::Dispatching => AgentDispatchStateDto::Dispatching,
+					AgentDispatchState::Running => AgentDispatchStateDto::Running,
+					AgentDispatchState::Unknown => AgentDispatchStateDto::Unknown,
 				},
 				status: match item.status {
-					ChiefWorkStatus::Open => ChiefWorkStatusDto::Open,
-					ChiefWorkStatus::Resolved => ChiefWorkStatusDto::Resolved,
-					ChiefWorkStatus::FollowUp => ChiefWorkStatusDto::FollowUp,
-					ChiefWorkStatus::Wait => ChiefWorkStatusDto::Wait,
-					ChiefWorkStatus::UserDecision => ChiefWorkStatusDto::UserDecision,
+					AgentWorkStatus::Open => AgentWorkStatusDto::Open,
+					AgentWorkStatus::Resolved => AgentWorkStatusDto::Resolved,
+					AgentWorkStatus::FollowUp => AgentWorkStatusDto::FollowUp,
+					AgentWorkStatus::Wait => AgentWorkStatusDto::Wait,
+					AgentWorkStatus::UserDecision => AgentWorkStatusDto::UserDecision,
 				},
 				next_check_at_micros: item.next_check_at_micros,
 				created_at_micros: item.created_at_micros,
@@ -5660,14 +5660,14 @@ async fn query_chief_snapshot(store: &ProductStore) -> decodex_protocol::ChiefSn
 			.collect(),
 		dependencies: dependencies
 			.into_iter()
-			.map(|edge| ChiefDependencyDto {
+			.map(|edge| AgentDependencyDto {
 				work_item_id: edge.work_item_id,
 				depends_on_id: edge.depends_on_id,
 			})
 			.collect(),
 		pending_events: pending_events
 			.into_iter()
-			.map(|event| ChiefPendingEventDto {
+			.map(|event| AgentPendingEventDto {
 				id: event.id,
 				source_event_id: event.source_event_id,
 				work_item_id: event.work_item_id,
@@ -5678,18 +5678,18 @@ async fn query_chief_snapshot(store: &ProductStore) -> decodex_protocol::ChiefSn
 			.collect(),
 	};
 	if serde_json::to_vec(&snapshot)
-		.is_ok_and(|bytes| bytes.len() > decodex_protocol::MAX_CHIEF_SNAPSHOT_BYTES)
+		.is_ok_and(|bytes| bytes.len() > decodex_protocol::MAX_AGENT_SNAPSHOT_BYTES)
 	{
-		return ChiefSnapshotResult::CapacityExceeded {
+		return AgentSnapshotResult::CapacityExceeded {
 			work_items: counts.0,
 			dependencies: counts.1,
 			pending_events: counts.2,
 		};
 	}
 	if snapshot.is_valid() {
-		ChiefSnapshotResult::Available(snapshot)
+		AgentSnapshotResult::Available(snapshot)
 	} else {
-		ChiefSnapshotResult::Unavailable
+		AgentSnapshotResult::Unavailable
 	}
 }
 
@@ -5866,19 +5866,19 @@ fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {
 mod tests {
 	#[test]
 	fn async_reply_history_is_readable_without_interpreting_partial_envelopes() {
-		let question = decodex_protocol::ChiefAsyncQuestionDto {
+		let question = decodex_protocol::AgentAsyncQuestionDto {
 			arrived_live: false,
 			id: "question-1".into(),
 			title: "Which region?".into(),
 			options: vec![],
 		};
-		let reply = decodex_protocol::chief_async_question_reply(&question, "Europe").unwrap();
+		let reply = decodex_protocol::agent_async_question_reply(&question, "Europe").unwrap();
 		assert_eq!(
-			super::chief_user_message_text(&serde_json::json!({"text": reply.as_str()})),
+			super::agent_user_message_text(&serde_json::json!({"text": reply.as_str()})),
 			"> Which region?\n\nEurope"
 		);
 		let quoted = format!("An example: {}", reply.as_str());
-		assert_eq!(super::chief_user_message_text(&serde_json::json!({"text": quoted})), quoted);
+		assert_eq!(super::agent_user_message_text(&serde_json::json!({"text": quoted})), quoted);
 	}
 	use crate::account_launch::{ResetCardFailureCode, ResetCardOperationStatus};
 	use decodex_core::{
@@ -5910,31 +5910,31 @@ mod tests {
 	};
 
 	#[tokio::test]
-	async fn chief_read_projection_uses_store_and_excludes_private_content() {
+	async fn agent_read_projection_uses_store_and_excludes_private_content() {
 		use decodex_database::{
-			ChiefDispatchState, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus, EnqueueChiefEvent,
+			AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus, EnqueueAgentEvent,
 		};
-		use decodex_protocol::ChiefSnapshotResult;
+		use decodex_protocol::AgentSnapshotResult;
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
-		let ChiefSnapshotResult::Available(empty) = super::query_chief_snapshot(&owner).await
+		let AgentSnapshotResult::Available(empty) = super::query_agent_snapshot(&owner).await
 		else {
 			panic!("empty store must be available");
 		};
 		assert!(empty.work_items.is_empty());
 		store
-			.create_chief_work_item(ChiefWorkItem {
+			.create_agent_work_item(AgentWorkItem {
 				id: "goal".into(),
 				parent_goal_id: None,
-				kind: ChiefWorkKind::Goal,
+				kind: AgentWorkKind::Goal,
 				title: "Inspect real work".into(),
 				instructions: "private instructions marker".into(),
 				codex_thread_id: None,
-				dispatch_state: ChiefDispatchState::Idle,
+				dispatch_state: AgentDispatchState::Idle,
 				active_turn_id: None,
-				status: ChiefWorkStatus::Open,
+				status: AgentWorkStatus::Open,
 				next_check_at_micros: None,
 				created_at_micros: 1,
 				updated_at_micros: 1,
@@ -5942,7 +5942,7 @@ mod tests {
 			.await
 			.unwrap();
 		store
-			.enqueue_chief_event(EnqueueChiefEvent {
+			.enqueue_agent_event(EnqueueAgentEvent {
 				source_event_id: "source:1".into(),
 				work_item_id: "goal".into(),
 				event_kind: "automation_result".into(),
@@ -5950,7 +5950,7 @@ mod tests {
 			})
 			.await
 			.unwrap();
-		let ChiefSnapshotResult::Available(snapshot) = super::query_chief_snapshot(&owner).await
+		let AgentSnapshotResult::Available(snapshot) = super::query_agent_snapshot(&owner).await
 		else {
 			panic!("real work must be available");
 		};
@@ -5963,22 +5963,22 @@ mod tests {
 		assert!(!encoded.contains("private provider"));
 		assert!(!encoded.contains("payload"));
 		store.close();
-		assert_eq!(super::query_chief_snapshot(&owner).await, ChiefSnapshotResult::Unavailable);
+		assert_eq!(super::query_agent_snapshot(&owner).await, AgentSnapshotResult::Unavailable);
 	}
 
-	async fn chief_query_work(store: &SqliteStore, id: &str) {
-		use decodex_database::{ChiefDispatchState, ChiefWorkItem, ChiefWorkKind, ChiefWorkStatus};
+	async fn agent_query_work(store: &SqliteStore, id: &str) {
+		use decodex_database::{AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus};
 		store
-			.create_chief_work_item(ChiefWorkItem {
+			.create_agent_work_item(AgentWorkItem {
 				id: id.into(),
 				parent_goal_id: None,
-				kind: ChiefWorkKind::Goal,
+				kind: AgentWorkKind::Goal,
 				title: id.into(),
 				instructions: "private instructions".into(),
 				codex_thread_id: None,
-				dispatch_state: ChiefDispatchState::Idle,
+				dispatch_state: AgentDispatchState::Idle,
 				active_turn_id: None,
-				status: ChiefWorkStatus::Open,
+				status: AgentWorkStatus::Open,
 				next_check_at_micros: None,
 				created_at_micros: 1,
 				updated_at_micros: 1,
@@ -5989,20 +5989,20 @@ mod tests {
 
 	#[tokio::test]
 	async fn unconfirmed_input_pages_survive_history_eviction_restart_and_delivery_changes() {
-		use decodex_database::{ChiefDisposition, EnqueueChiefEvent};
-		use decodex_protocol::{ChiefHistoryResult, ChiefInputReceiptsResult as Receipts};
+		use decodex_database::{AgentDisposition, EnqueueAgentEvent};
+		use decodex_protocol::{AgentHistoryResult, AgentInputReceiptsResult as Receipts};
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		chief_query_work(&store, "chosen").await;
-		chief_query_work(&store, "peer").await;
-		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
+		agent_query_work(&store, "chosen").await;
+		agent_query_work(&store, "peer").await;
+		store.bind_agent_thread("chosen".into(), "thread".into()).await.unwrap();
 		let mut ids = Vec::new();
 		for n in 0..40 {
 			let text = if n == 39 { "界".repeat(10000) } else { format!("Input {n}") };
 			ids.push(
 				store
-					.enqueue_chief_event(EnqueueChiefEvent {
+					.enqueue_agent_event(EnqueueAgentEvent {
 						source_event_id: format!("input-{n}"),
 						work_item_id: "chosen".into(),
 						event_kind: ["user_message", "async_question_answer", "work_instruction"]
@@ -6015,9 +6015,9 @@ mod tests {
 					.id,
 			);
 		}
-		store.begin_chief_dispatch_with_events("chosen".into(), vec![ids[0]]).await.unwrap();
+		store.begin_agent_dispatch_with_events("chosen".into(), vec![ids[0]]).await.unwrap();
 		store
-			.enqueue_chief_event(EnqueueChiefEvent {
+			.enqueue_agent_event(EnqueueAgentEvent {
 				source_event_id: "peer-input".into(),
 				work_item_id: "peer".into(),
 				event_kind: "user_message".into(),
@@ -6027,7 +6027,7 @@ mod tests {
 			.unwrap();
 		for n in 0..50 {
 			store
-				.enqueue_chief_event(EnqueueChiefEvent {
+				.enqueue_agent_event(EnqueueAgentEvent {
 					source_event_id: format!("output-{n}"),
 					work_item_id: "chosen".into(),
 					event_kind: "assistant_message".into(),
@@ -6039,14 +6039,14 @@ mod tests {
 		drop(store);
 		let reopened = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(reopened.clone());
-		let ChiefHistoryResult::Available { entries, .. } =
-			super::query_chief_history(&owner, "chosen").await
+		let AgentHistoryResult::Available { entries, .. } =
+			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("history")
 		};
 		assert!(entries.iter().all(|entry| entry.kind != "user"));
 		let Receipts::Available { entries, next_after, shortened, .. } =
-			super::query_chief_input_receipts(&owner, "chosen", None).await
+			super::query_agent_input_receipts(&owner, "chosen", None).await
 		else {
 			panic!("pending inputs")
 		};
@@ -6059,7 +6059,7 @@ mod tests {
 				.as_ref()
 				.is_some_and(|receipt| receipt.delivered_turn_id.is_none() && !receipt.disposed)
 		);
-		let second = super::query_chief_input_receipts(&owner, "chosen", next_after).await;
+		let second = super::query_agent_input_receipts(&owner, "chosen", next_after).await;
 		assert!(serde_json::to_vec(&second).unwrap().len() < 64 * 1024);
 		let Receipts::Available { entries, next_after, shortened, .. } = second else {
 			panic!("second page")
@@ -6069,24 +6069,24 @@ mod tests {
 		assert!(entries.last().unwrap().text.ends_with('界'));
 		// A separate client acknowledges/disposes records; a fresh query must remove both.
 		let other = reopened.clone();
-		other.acknowledge_chief_dispatch("chosen".into(), "accepted-turn".into()).await.unwrap();
+		other.acknowledge_agent_dispatch("chosen".into(), "accepted-turn".into()).await.unwrap();
 		other
-			.dispose_chief_event(ids[1], ChiefDisposition::Resolved, "Handled".into(), None)
+			.dispose_agent_event(ids[1], AgentDisposition::Resolved, "Handled".into(), None)
 			.await
 			.unwrap();
 		let Receipts::Available { entries, .. } =
-			super::query_chief_input_receipts(&owner, "chosen", None).await
+			super::query_agent_input_receipts(&owner, "chosen", None).await
 		else {
 			panic!("fresh inputs")
 		};
 		assert!(entries.iter().all(|entry| entry.id != ids[0] && entry.id != ids[1]));
 		assert_eq!(entries[0].id, ids[2]);
 		assert_eq!(
-			super::query_chief_input_receipts(&owner, "chosen", Some(0)).await,
+			super::query_agent_input_receipts(&owner, "chosen", Some(0)).await,
 			Receipts::Unavailable
 		);
 		assert_eq!(
-			super::query_chief_input_receipts(&owner, "missing", None).await,
+			super::query_agent_input_receipts(&owner, "missing", None).await,
 			Receipts::Unavailable
 		);
 	}
@@ -6097,16 +6097,16 @@ mod tests {
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
-		chief_query_work(&store, "chosen").await;
-		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
-		store.begin_chief_dispatch("chosen".into()).await.unwrap();
-		store.acknowledge_chief_dispatch("chosen".into(), "turn".into()).await.unwrap();
-		let event=store.complete_chief_turn_with_event("chosen".into(),"turn".into(),decodex_database::EnqueueChiefEvent {
-			source_event_id:"capacity".into(),work_item_id:"chosen".into(),event_kind:"chief_turn_completed".into(),
+		agent_query_work(&store, "chosen").await;
+		store.bind_agent_thread("chosen".into(), "thread".into()).await.unwrap();
+		store.begin_agent_dispatch("chosen".into()).await.unwrap();
+		store.acknowledge_agent_dispatch("chosen".into(), "turn".into()).await.unwrap();
+		let event=store.complete_agent_turn_with_event("chosen".into(),"turn".into(),decodex_database::EnqueueAgentEvent {
+			source_event_id:"capacity".into(),work_item_id:"chosen".into(),event_kind:"agent_turn_completed".into(),
 			payload:serde_json::json!({"terminal":{"turn":{"status":"failed","error":{"message":"Selected model is at capacity.","codexErrorInfo":"serverOverloaded"}}},"threadReadback":{"capacityRetryEligible":true}}).to_string()
 		}).await.unwrap();
-		let decodex_protocol::ChiefHistoryResult::Available { entries, .. } =
-			super::query_chief_history(&owner, "chosen").await
+		let decodex_protocol::AgentHistoryResult::Available { entries, .. } =
+			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("history");
 		};
@@ -6114,7 +6114,7 @@ mod tests {
 		assert_eq!(entries[0].id, event.id);
 		assert_eq!(entries[0].text, "Model busy · retry 1/3 scheduled automatically.");
 		assert!(!entries[0].text.contains("Execution failed"));
-		let (kind, text) = super::completed_chief_history(
+		let (kind, text) = super::completed_agent_history(
 			&serde_json::json!({"terminal":{"turn":{"status":"failed","error":{"message":"Selected model is at capacity."}}},"capacityRetry":{"attempt":1}}),
 			&mut false,
 			None,
@@ -6124,9 +6124,9 @@ mod tests {
 		assert_eq!(kind, "execution_notice");
 		assert_eq!(text, "Model was busy · automatic retry requested.");
 
-		store.cancel_chief_capacity_retry("chosen".into(), event.id).await.unwrap();
-		let decodex_protocol::ChiefHistoryResult::Available { entries, .. } =
-			super::query_chief_history(&owner, "chosen").await
+		store.cancel_agent_capacity_retry("chosen".into(), event.id).await.unwrap();
+		let decodex_protocol::AgentHistoryResult::Available { entries, .. } =
+			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("history");
 		};
@@ -6138,8 +6138,8 @@ mod tests {
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		chief_query_work(&store, "chosen").await;
-		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
+		agent_query_work(&store, "chosen").await;
+		store.bind_agent_thread("chosen".into(), "thread".into()).await.unwrap();
 		let record = |id: &str| {
 			vec![(
 				id.to_owned(),
@@ -6147,7 +6147,7 @@ mod tests {
 			)]
 		};
 		store
-			.record_chief_async_questions(
+			.record_agent_async_questions(
 				"thread".into(),
 				"turn".into(),
 				"old".into(),
@@ -6156,7 +6156,7 @@ mod tests {
 			.await
 			.unwrap();
 		store
-			.record_live_chief_async_questions(
+			.record_live_agent_async_questions(
 				"thread".into(),
 				"turn".into(),
 				"live".into(),
@@ -6165,8 +6165,8 @@ mod tests {
 			.await
 			.unwrap();
 		let owner = ProductStore::Available(store.clone());
-		let decodex_protocol::ChiefHistoryResult::Available { questions, .. } =
-			super::query_chief_history(&owner, "chosen").await
+		let decodex_protocol::AgentHistoryResult::Available { questions, .. } =
+			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("history")
 		};
@@ -6174,9 +6174,9 @@ mod tests {
 		assert!(!questions[0].arrived_live);
 		assert!(questions[1].arrived_live);
 		let other = SqliteStore::open(&root.paths()).unwrap();
-		other.resolve_chief_async_questions("thread".into(), vec!["live".into()]).await.unwrap();
-		let decodex_protocol::ChiefHistoryResult::Available { questions, .. } =
-			super::query_chief_history(&owner, "chosen").await
+		other.resolve_agent_async_questions("thread".into(), vec!["live".into()]).await.unwrap();
+		let decodex_protocol::AgentHistoryResult::Available { questions, .. } =
+			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("history")
 		};
@@ -6186,20 +6186,20 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn chief_history_deduplicates_async_questions_against_terminal_readback() {
-		use decodex_database::EnqueueChiefEvent;
-		use decodex_protocol::ChiefHistoryResult;
+	async fn agent_history_deduplicates_async_questions_against_terminal_readback() {
+		use decodex_database::EnqueueAgentEvent;
+		use decodex_protocol::AgentHistoryResult;
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
-		chief_query_work(&store, "chosen").await;
-		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
-		store.begin_chief_dispatch("chosen".into()).await.unwrap();
-		store.acknowledge_chief_dispatch("chosen".into(), "turn".into()).await.unwrap();
+		agent_query_work(&store, "chosen").await;
+		store.bind_agent_thread("chosen".into(), "thread".into()).await.unwrap();
+		store.begin_agent_dispatch("chosen".into()).await.unwrap();
+		store.acknowledge_agent_dispatch("chosen".into(), "turn".into()).await.unwrap();
 		let question = serde_json::json!({"id":"question","type":"agentMessage","delivery":"async","text":"Which format?\n- PDF\n- Markdown"});
 		store
-			.record_chief_observation(EnqueueChiefEvent {
+			.record_agent_observation(EnqueueAgentEvent {
 				source_event_id: "question".into(),
 				work_item_id: "chosen".into(),
 				event_kind: "assistant_message".into(),
@@ -6211,7 +6211,7 @@ mod tests {
 		let counts = serde_json::json!({"totalTokens":1200,"inputTokens":1000,"cachedInputTokens":500,"outputTokens":200,"reasoningOutputTokens":100});
 		let usage = serde_json::json!({"total":counts,"last":counts,"modelContextWindow":128000});
 		store
-			.record_chief_observation(EnqueueChiefEvent {
+			.record_agent_observation(EnqueueAgentEvent {
 				source_event_id: "usage".into(),
 				work_item_id: "chosen".into(),
 				event_kind: "token_usage".into(),
@@ -6221,18 +6221,18 @@ mod tests {
 			})
 			.await
 			.unwrap();
-		let ChiefHistoryResult::Available { entries, .. } =
-			super::query_chief_history(&owner, "chosen").await
+		let AgentHistoryResult::Available { entries, .. } =
+			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("history");
 		};
 		assert!(entries.iter().any(|entry| entry.text.contains("Which format?")));
-		store.complete_chief_turn_with_event("chosen".into(), "turn".into(), EnqueueChiefEvent {
-			source_event_id:"completed".into(),work_item_id:"chosen".into(),event_kind:"chief_turn_completed".into(),
+		store.complete_agent_turn_with_event("chosen".into(), "turn".into(), EnqueueAgentEvent {
+			source_event_id:"completed".into(),work_item_id:"chosen".into(),event_kind:"agent_turn_completed".into(),
 			payload:serde_json::json!({"threadReadback":{"turnId":"turn","assistantMessages":[question],"tokenUsage":usage}}).to_string()
 		}).await.unwrap();
-		let ChiefHistoryResult::Available { entries, .. } =
-			super::query_chief_history(&owner, "chosen").await
+		let AgentHistoryResult::Available { entries, .. } =
+			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("history");
 		};
@@ -6255,17 +6255,17 @@ mod tests {
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		chief_query_work(&store, "chosen").await;
-		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
-		store.begin_chief_dispatch("chosen".into()).await.unwrap();
-		store.acknowledge_chief_dispatch("chosen".into(), "turn".into()).await.unwrap();
+		agent_query_work(&store, "chosen").await;
+		store.bind_agent_thread("chosen".into(), "thread".into()).await.unwrap();
+		store.begin_agent_dispatch("chosen".into()).await.unwrap();
+		store.acknowledge_agent_dispatch("chosen".into(), "turn".into()).await.unwrap();
 		let details = serde_json::json!({"detailedExplanation":"Review scope","steer":{"message":"Continue within scope"}}).to_string();
 		store
-			.record_chief_misalignment("thread".into(), "turn".into(), Some(details))
+			.record_agent_misalignment("thread".into(), "turn".into(), Some(details))
 			.await
 			.unwrap();
-		let decodex_protocol::ChiefHistoryResult::Available { misalignment: Some(review), .. } =
-			super::query_chief_history(&ProductStore::Available(store), "chosen").await
+		let decodex_protocol::AgentHistoryResult::Available { misalignment: Some(review), .. } =
+			super::query_agent_history(&ProductStore::Available(store), "chosen").await
 		else {
 			panic!("precaution must remain visible");
 		};
@@ -6278,17 +6278,17 @@ mod tests {
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		chief_query_work(&store, "chosen").await;
-		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
-		store.begin_chief_dispatch("chosen".into()).await.unwrap();
-		store.acknowledge_chief_dispatch("chosen".into(), "turn".into()).await.unwrap();
-		store.record_chief_strict_review("thread".into(), "turn".into(), 10, None).await.unwrap();
-		store.mark_chief_dispatch_unknown("chosen".into()).await.unwrap();
-		store.record_chief_strict_review("thread".into(), "turn".into(), 20, None).await.unwrap();
+		agent_query_work(&store, "chosen").await;
+		store.bind_agent_thread("chosen".into(), "thread".into()).await.unwrap();
+		store.begin_agent_dispatch("chosen".into()).await.unwrap();
+		store.acknowledge_agent_dispatch("chosen".into(), "turn".into()).await.unwrap();
+		store.record_agent_strict_review("thread".into(), "turn".into(), 10, None).await.unwrap();
+		store.mark_agent_dispatch_unknown("chosen".into()).await.unwrap();
+		store.record_agent_strict_review("thread".into(), "turn".into(), 20, None).await.unwrap();
 		drop(store);
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		let decodex_protocol::ChiefHistoryResult::Available { entries, .. } =
-			super::query_chief_history(&ProductStore::Available(store.clone()), "chosen").await
+		let decodex_protocol::AgentHistoryResult::Available { entries, .. } =
+			super::query_agent_history(&ProductStore::Available(store.clone()), "chosen").await
 		else {
 			panic!("history")
 		};
@@ -6297,19 +6297,19 @@ mod tests {
 		assert!(entries[0].text.starts_with("Codex requested additional safety checks"));
 		assert!(!entries[0].text.contains("Disposition:"));
 		assert!(!entries[0].text.contains("approved"));
-		assert!(store.list_chief_wake_events("chosen".into(), 32).await.unwrap().is_empty());
+		assert!(store.list_agent_wake_events("chosen".into(), 32).await.unwrap().is_empty());
 	}
 
 	#[tokio::test]
-	async fn chief_activity_history_projects_receipts_without_disposition_prose() {
+	async fn agent_activity_history_projects_receipts_without_disposition_prose() {
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		chief_query_work(&store, "chosen").await;
-		store.bind_chief_thread("chosen".into(), "thread".into()).await.unwrap();
-		store.begin_chief_dispatch("chosen".into()).await.unwrap();
-		store.acknowledge_chief_dispatch("chosen".into(), "turn".into()).await.unwrap();
-		let activity = decodex_protocol::ChiefActivityDto {
+		agent_query_work(&store, "chosen").await;
+		store.bind_agent_thread("chosen".into(), "thread".into()).await.unwrap();
+		store.begin_agent_dispatch("chosen".into()).await.unwrap();
+		store.acknowledge_agent_dispatch("chosen".into(), "turn".into()).await.unwrap();
+		let activity = decodex_protocol::AgentActivityDto {
 			turn_id: "turn".into(),
 			item_id: "item".into(),
 			kind: "contextCompaction".into(),
@@ -6319,7 +6319,7 @@ mod tests {
 			duration_ms: None,
 		};
 		store
-			.record_chief_activity(
+			.record_agent_activity(
 				"thread".into(),
 				"turn".into(),
 				"item".into(),
@@ -6328,8 +6328,8 @@ mod tests {
 			)
 			.await
 			.unwrap();
-		let decodex_protocol::ChiefHistoryResult::Available { entries, .. } =
-			super::query_chief_history(&ProductStore::Available(store), "chosen").await
+		let decodex_protocol::AgentHistoryResult::Available { entries, .. } =
+			super::query_agent_history(&ProductStore::Available(store), "chosen").await
 		else {
 			panic!("history");
 		};
@@ -6339,22 +6339,22 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn chief_history_query_selects_latest_work_and_bounds_utf8_content() {
-		use decodex_database::EnqueueChiefEvent;
-		use decodex_protocol::ChiefHistoryResult;
+	async fn agent_history_query_selects_latest_work_and_bounds_utf8_content() {
+		use decodex_database::EnqueueAgentEvent;
+		use decodex_protocol::AgentHistoryResult;
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
-		chief_query_work(&store, "chosen").await;
-		chief_query_work(&store, "other").await;
+		agent_query_work(&store, "chosen").await;
+		agent_query_work(&store, "other").await;
 		assert_eq!(
-			super::query_chief_history(&owner, "missing").await,
-			ChiefHistoryResult::Unavailable
+			super::query_agent_history(&owner, "missing").await,
+			AgentHistoryResult::Unavailable
 		);
 		for index in 0..35 {
 			store
-				.enqueue_chief_event(EnqueueChiefEvent {
+				.enqueue_agent_event(EnqueueAgentEvent {
 					source_event_id: format!("chosen-{index}"),
 					work_item_id: "chosen".into(),
 					event_kind: "user_message".into(),
@@ -6364,7 +6364,7 @@ mod tests {
 				.unwrap();
 		}
 		store
-			.enqueue_chief_event(EnqueueChiefEvent {
+			.enqueue_agent_event(EnqueueAgentEvent {
 				source_event_id: "other-1".into(),
 				work_item_id: "other".into(),
 				event_kind: "user_message".into(),
@@ -6372,8 +6372,8 @@ mod tests {
 			})
 			.await
 			.unwrap();
-		let ChiefHistoryResult::Available { entries, has_more, .. } =
-			super::query_chief_history(&owner, "chosen").await
+		let AgentHistoryResult::Available { entries, has_more, .. } =
+			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("selected history");
 		};
@@ -6383,8 +6383,8 @@ mod tests {
 		assert_eq!(entries.last().unwrap().text, "message-34");
 		assert!(entries.windows(2).all(|pair| pair[0].id < pair[1].id));
 		let before = entries.first().unwrap().id;
-		let ChiefHistoryResult::Available { entries: older, next_before, live, .. } =
-			super::query_chief_history_page(&owner, "chosen", Some(before), None).await
+		let AgentHistoryResult::Available { entries: older, next_before, live, .. } =
+			super::query_agent_history_page(&owner, "chosen", Some(before), None).await
 		else {
 			panic!("older page");
 		};
@@ -6398,7 +6398,7 @@ mod tests {
 
 		for index in 0..9 {
 			store
-				.enqueue_chief_event(EnqueueChiefEvent {
+				.enqueue_agent_event(EnqueueAgentEvent {
 					source_event_id: format!("large-{index}"),
 					work_item_id: "chosen".into(),
 					event_kind: "user_message".into(),
@@ -6407,8 +6407,8 @@ mod tests {
 				.await
 				.unwrap();
 		}
-		let ChiefHistoryResult::Available { entries, has_more, .. } =
-			super::query_chief_history(&owner, "chosen").await
+		let AgentHistoryResult::Available { entries, has_more, .. } =
+			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("bounded history");
 		};
@@ -6421,32 +6421,32 @@ mod tests {
 	#[test]
 	fn empty_interrupted_turn_is_a_normal_stop_not_a_failure() {
 		let value = serde_json::json!({"terminal":{"turn":{"status":"interrupted"}},"threadReadback":{"assistantMessages":[]}});
-		let (kind, text) = super::chief_assistant_history(&value, &mut false);
+		let (kind, text) = super::agent_assistant_history(&value, &mut false);
 		assert_eq!(kind, "stopped");
 		assert_eq!(text, "Stopped");
 	}
 
 	#[tokio::test]
-	async fn chief_history_reads_structured_and_legacy_assistant_results() {
-		use decodex_database::EnqueueChiefEvent;
-		use decodex_protocol::ChiefHistoryResult;
+	async fn agent_history_reads_structured_and_legacy_assistant_results() {
+		use decodex_database::EnqueueAgentEvent;
+		use decodex_protocol::AgentHistoryResult;
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
-		chief_query_work(&store, "chosen").await;
+		agent_query_work(&store, "chosen").await;
 		for (index, messages, truncated) in [
 			(0, serde_json::json!([{ "text": "legacy result" }]).to_string().into(), false),
 			(1, serde_json::json!([{ "text": "界🙂\"\\\n".repeat(4000) }]), true),
 		] {
-			store.enqueue_chief_event(EnqueueChiefEvent {
+			store.enqueue_agent_event(EnqueueAgentEvent {
 				source_event_id: format!("assistant-{index}"), work_item_id: "chosen".into(),
-				event_kind: "chief_turn_completed".into(),
+				event_kind: "agent_turn_completed".into(),
 				payload: serde_json::json!({"threadReadback": {"assistantMessages":messages,"truncated":truncated}}).to_string(),
 			}).await.unwrap();
 		}
-		let ChiefHistoryResult::Available { entries, has_more, .. } =
-			super::query_chief_history(&owner, "chosen").await
+		let AgentHistoryResult::Available { entries, has_more, .. } =
+			super::query_agent_history(&owner, "chosen").await
 		else {
 			panic!("history available");
 		};
@@ -6460,47 +6460,47 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn chief_history_explains_provider_failure_without_submitting_continuation() {
+	async fn agent_history_explains_provider_failure_without_submitting_continuation() {
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		chief_query_work(&store, "chosen").await;
-		store.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
-			source_event_id:"failure".into(),work_item_id:"chosen".into(),event_kind:"chief_turn_completed".into(),
+		agent_query_work(&store, "chosen").await;
+		store.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
+			source_event_id:"failure".into(),work_item_id:"chosen".into(),event_kind:"agent_turn_completed".into(),
 			payload:serde_json::json!({"terminal":{"turn":{"status":"failed","error":{"message":"Provider stopped the turn.","misalignment":{"detailedExplanation":"Please clarify the intended scope.","steer":{"message":"unconfirmed continuation"}}}}}}).to_string(),
 		}).await.unwrap();
-		let decodex_protocol::ChiefHistoryResult::Available { entries, .. } =
-			super::query_chief_history(&ProductStore::Available(store.clone()), "chosen").await
+		let decodex_protocol::AgentHistoryResult::Available { entries, .. } =
+			super::query_agent_history(&ProductStore::Available(store.clone()), "chosen").await
 		else {
 			panic!("history");
 		};
 		assert!(entries[0].text.contains("Provider stopped the turn."));
 		assert!(entries[0].text.contains("Please clarify the intended scope."));
 		assert!(!entries[0].text.contains("unconfirmed continuation"));
-		assert!(store.list_chief_wake_events("chosen".into(), 10).await.unwrap().is_empty());
+		assert!(store.list_agent_wake_events("chosen".into(), 10).await.unwrap().is_empty());
 	}
 
 	#[test]
 	fn file_approval_details_preserve_request_identity_and_do_not_enrich_other_methods() {
-		use decodex_protocol::{ChiefActivityDetailResult, ChiefRequestResult};
+		use decodex_protocol::{AgentActivityDetailResult, AgentRequestResult};
 		for method in ["item/fileChange/requestApproval", "item/tool/requestUserInput"] {
-			let request = ChiefRequestResult::Available {
+			let request = AgentRequestResult::Available {
 				event_id: 7,
 				work_id: "work".into(),
 				method: method.into(),
-				request_json: decodex_protocol::ChiefRequestText::new("{\"reason\":\"Review\"}")
+				request_json: decodex_protocol::AgentRequestText::new("{\"reason\":\"Review\"}")
 					.unwrap(),
 			};
 			assert_eq!(
 				super::attach_file_approval_detail(
 					request.clone(),
-					ChiefActivityDetailResult::Unavailable
+					AgentActivityDetailResult::Unavailable
 				),
 				request
 			);
 			let enriched = super::attach_file_approval_detail(
 				request.clone(),
-				ChiefActivityDetailResult::Available {
+				AgentActivityDetailResult::Available {
 					text: "Path: /tmp/file\n+new".into(),
 					offset: 0,
 					next: None,
@@ -6511,7 +6511,7 @@ mod tests {
 				assert_eq!(enriched, request);
 				continue;
 			}
-			let ChiefRequestResult::Available { event_id, work_id, request_json, .. } = enriched
+			let AgentRequestResult::Available { event_id, work_id, request_json, .. } = enriched
 			else {
 				panic!("request");
 			};
@@ -6523,7 +6523,7 @@ mod tests {
 			assert!(fields["changeDetails"].as_str().unwrap().contains("/tmp/file"));
 			let oversized = super::attach_file_approval_detail(
 				request,
-				ChiefActivityDetailResult::Available {
+				AgentActivityDetailResult::Available {
 					text: "x".repeat(decodex_core::MAX_APPROVAL_ENVELOPE_BYTES),
 					offset: 0,
 					next: None,
@@ -6531,8 +6531,8 @@ mod tests {
 				},
 			);
 			assert_eq!(
-				super::page_chief_request(oversized, None, 0),
-				ChiefRequestResult::Unavailable
+				super::page_agent_request(oversized, None, 0),
+				AgentRequestResult::Unavailable
 			);
 		}
 	}
@@ -6543,16 +6543,16 @@ mod tests {
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
-		chief_query_work(&store, "worker").await;
-		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
+		agent_query_work(&store, "worker").await;
+		store.bind_agent_thread("worker".into(), "thread".into()).await.unwrap();
 		let meta = serde_json::json!({"codex_approval_kind":"tool_suggestion","tool_type":"plugin","suggest_type":"install","tool_id":"sample@market","tool_name":"Sample","suggestion_id":"suggestion-1","remote_plugin_id":"plugins~sample","app_connector_ids":["connector-1"],"install_url":"https://chatgpt.com/apps/sample","private_token":"PRIVATE_TOKEN"});
-		let event = store.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
+		let event = store.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 			source_event_id: "install-suggestion".into(), work_item_id: "worker".into(),
 			event_kind: "server_request_pending".into(),
 			payload: serde_json::json!({"method":"mcpServer/elicitation/request","id":"private-rpc-id","params":{"threadId":"thread","serverName":"codex_apps","mode":"form","message":"Install Sample","requestedSchema":{"type":"object","properties":{}},"_meta":meta}}).to_string(),
 		}).await.unwrap();
-		let decodex_protocol::ChiefRequestResult::Available { request_json, .. } =
-			super::query_chief_request(&owner, event.id).await
+		let decodex_protocol::AgentRequestResult::Available { request_json, .. } =
+			super::query_agent_request(&owner, event.id).await
 		else {
 			panic!("pending suggestion");
 		};
@@ -6565,10 +6565,10 @@ mod tests {
 		assert_eq!(suggestion.install_url(), Some("https://chatgpt.com/apps/sample"));
 		assert!(!request_json.as_str().contains("PRIVATE_TOKEN"));
 		assert!(!request_json.as_str().contains("private-rpc-id"));
-		store.acknowledge_chief_request_event(event.id).await.unwrap();
+		store.acknowledge_agent_request_event(event.id).await.unwrap();
 		assert_eq!(
-			super::query_chief_request(&owner, event.id).await,
-			decodex_protocol::ChiefRequestResult::Unavailable
+			super::query_agent_request(&owner, event.id).await,
+			decodex_protocol::AgentRequestResult::Unavailable
 		);
 	}
 
@@ -6578,8 +6578,8 @@ mod tests {
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
-		chief_query_work(&store, "worker").await;
-		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
+		agent_query_work(&store, "worker").await;
+		store.bind_agent_thread("worker".into(), "thread".into()).await.unwrap();
 		for (index, thread, turn, available) in [
 			(0, "thread", serde_json::Value::Null, true),
 			(1, "other", serde_json::Value::Null, false),
@@ -6596,7 +6596,7 @@ mod tests {
 			};
 			let payload = serde_json::json!({"method":"mcpServer/elicitation/request","params":{"threadId":thread,"turnId":turn,"serverName":"calendar","mode":mode,"message":"Choose a date","requestedSchema":schema,"challenge":"PRIVATE_CHALLENGE","_meta":{"tool_name":"calendar.create","connector_id":"calendar","link_id":"work-link","link_is_implicit":false,"private_token":"PRIVATE_TOKEN"}}});
 			let event = store
-				.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
+				.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 					source_event_id: format!("elicitation-{index}"),
 					work_item_id: "worker".into(),
 					event_kind: "server_request_pending".into(),
@@ -6604,12 +6604,12 @@ mod tests {
 				})
 				.await
 				.unwrap();
-			let result = super::query_chief_request(&owner, event.id).await;
+			let result = super::query_agent_request(&owner, event.id).await;
 			assert_eq!(
-				matches!(result, decodex_protocol::ChiefRequestResult::Available { .. }),
+				matches!(result, decodex_protocol::AgentRequestResult::Available { .. }),
 				available
 			);
-			if let decodex_protocol::ChiefRequestResult::Available { request_json, .. } = result {
+			if let decodex_protocol::AgentRequestResult::Available { request_json, .. } = result {
 				let value: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
 				assert_eq!(value["mode"], mode);
 				assert_eq!(value["requestedSchema"], schema);
@@ -6624,53 +6624,53 @@ mod tests {
 
 	#[tokio::test]
 	async fn live_background_approval_is_visible_after_its_origin_turn_ends() {
-		use decodex_database::EnqueueChiefEvent;
-		use decodex_protocol::ChiefRequestResult;
+		use decodex_database::EnqueueAgentEvent;
+		use decodex_protocol::AgentRequestResult;
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		chief_query_work(&store, "worker").await;
-		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
-		store.begin_chief_dispatch("worker".into()).await.unwrap();
-		store.acknowledge_chief_dispatch("worker".into(), "new-turn".into()).await.unwrap();
+		agent_query_work(&store, "worker").await;
+		store.bind_agent_thread("worker".into(), "thread".into()).await.unwrap();
+		store.begin_agent_dispatch("worker".into()).await.unwrap();
+		store.acknowledge_agent_dispatch("worker".into(), "new-turn".into()).await.unwrap();
 		let owner = ProductStore::Available(store.clone());
 		for (index, thread) in ["thread", "foreign"].into_iter().enumerate() {
-			let event = store.enqueue_chief_event(EnqueueChiefEvent {
+			let event = store.enqueue_agent_event(EnqueueAgentEvent {
 				source_event_id:format!("background-approval-{index}"),work_item_id:"worker".into(),event_kind:"permission_pending".into(),
 				payload:serde_json::json!({"id":index,"method":"item/commandExecution/requestApproval","params":{"threadId":thread,"turnId":"old-turn","command":"curl https://example.test","cwd":"/original","environmentId":"original-executor","networkApprovalContext":{"host":"example.test","protocol":"https"},"availableDecisions":["accept","decline"]}}).to_string(),
 			}).await.unwrap();
 			assert_eq!(
-				super::query_chief_request_scoped(&owner, event.id, false).await,
-				ChiefRequestResult::Unavailable
+				super::query_agent_request_scoped(&owner, event.id, false).await,
+				AgentRequestResult::Unavailable
 			);
-			let live = super::query_chief_request_scoped(&owner, event.id, true).await;
+			let live = super::query_agent_request_scoped(&owner, event.id, true).await;
 			if index == 1 {
-				assert_eq!(live, ChiefRequestResult::Unavailable);
+				assert_eq!(live, AgentRequestResult::Unavailable);
 				continue;
 			}
-			let ChiefRequestResult::Available { request_json, .. } = live else {
+			let AgentRequestResult::Available { request_json, .. } = live else {
 				panic!("still-live background approval")
 			};
 			let fields: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
 			assert_eq!(fields["cwd"], "/original");
 			assert_eq!(fields["environmentId"], "original-executor");
 			assert_eq!(fields["networkApprovalContext"]["host"], "example.test");
-			store.acknowledge_chief_request_event(event.id).await.unwrap();
+			store.acknowledge_agent_request_event(event.id).await.unwrap();
 			assert_eq!(
-				super::query_chief_request_scoped(&owner, event.id, true).await,
-				ChiefRequestResult::Unavailable
+				super::query_agent_request_scoped(&owner, event.id, true).await,
+				AgentRequestResult::Unavailable
 			);
 		}
 	}
 
 	#[tokio::test]
 	async fn complete_file_approval_pages_bind_the_enriched_diff() {
-		use decodex_protocol::{ChiefActivityDetailResult, ChiefRequestResult};
-		let request = ChiefRequestResult::Available {
+		use decodex_protocol::{AgentActivityDetailResult, AgentRequestResult};
+		let request = AgentRequestResult::Available {
 			event_id: 77,
 			work_id: "work".into(),
 			method: "item/fileChange/requestApproval".into(),
-			request_json: decodex_protocol::ChiefRequestText::new(
+			request_json: decodex_protocol::AgentRequestText::new(
 				"{\"reason\":\"Review changes\"}",
 			)
 			.unwrap(),
@@ -6678,59 +6678,59 @@ mod tests {
 		let diff = format!("Path: /tmp/patch\n{} REQUIRED DIFF SUFFIX", "+界\n".repeat(20000));
 		let enriched = super::attach_file_approval_detail(
 			request.clone(),
-			ChiefActivityDetailResult::Available {
+			AgentActivityDetailResult::Available {
 				text: diff.clone(),
 				truncated: false,
 				offset: 0,
 				next: None,
 			},
 		);
-		let mut page = super::page_chief_request(enriched.clone(), None, 0);
+		let mut page = super::page_agent_request(enriched.clone(), None, 0);
 		let mut complete = String::new();
 		loop {
-			let ChiefRequestResult::Page { text, digest, next_offset, .. } = page else {
+			let AgentRequestResult::Page { text, digest, next_offset, .. } = page else {
 				panic!("file detail page")
 			};
 			complete.push_str(text.as_str());
 			let Some(offset) = next_offset else { break };
 			assert_eq!(
-				super::page_chief_request(request.clone(), Some(&digest), offset),
-				ChiefRequestResult::Unavailable
+				super::page_agent_request(request.clone(), Some(&digest), offset),
+				AgentRequestResult::Unavailable
 			);
-			page = super::page_chief_request(enriched.clone(), Some(&digest), offset);
+			page = super::page_agent_request(enriched.clone(), Some(&digest), offset);
 		}
 		let fields: serde_json::Value = serde_json::from_str(&complete).unwrap();
 		assert_eq!(fields["changeDetails"], diff);
 		assert_eq!(fields["changeDetailsTruncated"], false);
 		let changed = super::attach_file_approval_detail(
 			request,
-			ChiefActivityDetailResult::Available {
+			AgentActivityDetailResult::Available {
 				text: format!("{diff} CHANGED"),
 				truncated: false,
 				offset: 0,
 				next: None,
 			},
 		);
-		let ChiefRequestResult::Page { digest, next_offset: Some(offset), .. } =
-			super::page_chief_request(enriched, None, 0)
+		let AgentRequestResult::Page { digest, next_offset: Some(offset), .. } =
+			super::page_agent_request(enriched, None, 0)
 		else {
 			panic!("first page")
 		};
 		assert_eq!(
-			super::page_chief_request(changed, Some(&digest), offset),
-			ChiefRequestResult::Unavailable
+			super::page_agent_request(changed, Some(&digest), offset),
+			AgentRequestResult::Unavailable
 		);
 	}
 
 	#[tokio::test]
 	async fn saved_child_file_approval_projects_exact_diff_without_parent_active_turn() {
-		use decodex_database::EnqueueChiefEvent;
-		use decodex_protocol::ChiefRequestResult;
+		use decodex_database::EnqueueAgentEvent;
+		use decodex_protocol::AgentRequestResult;
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		chief_query_work(&store, "parent").await;
-		store.bind_chief_thread("parent".into(), "parent-thread".into()).await.unwrap();
+		agent_query_work(&store, "parent").await;
+		store.bind_agent_thread("parent".into(), "parent-thread".into()).await.unwrap();
 		let diff = format!("+{} FINAL DIFF", "界".repeat(30000));
 		let payload = serde_json::json!({"id":7,"method":"item/fileChange/requestApproval","ownerThreadId":"parent-thread",
 			"params":{"threadId":"child-thread","turnId":"child-turn","itemId":"patch"},
@@ -6739,7 +6739,7 @@ mod tests {
 			let mut payload = payload.clone();
 			payload["ownerThreadId"] = serde_json::json!(owner_thread);
 			let event = store
-				.enqueue_chief_event(EnqueueChiefEvent {
+				.enqueue_agent_event(EnqueueAgentEvent {
 					source_event_id: format!("child-file-{index}"),
 					work_item_id: "parent".into(),
 					event_kind: "permission_pending".into(),
@@ -6748,22 +6748,22 @@ mod tests {
 				.await
 				.unwrap();
 			let owner = ProductStore::Available(SqliteStore::open(&root.paths()).unwrap());
-			let projected = super::query_chief_request_scoped(&owner, event.id, true).await;
+			let projected = super::query_agent_request_scoped(&owner, event.id, true).await;
 			if index == 1 {
-				assert_eq!(projected, ChiefRequestResult::Unavailable);
+				assert_eq!(projected, AgentRequestResult::Unavailable);
 				continue;
 			}
-			let ChiefRequestResult::Available { work_id, request_json, .. } = projected else {
+			let AgentRequestResult::Available { work_id, request_json, .. } = projected else {
 				panic!("saved child detail")
 			};
 			assert_eq!(work_id, "parent");
 			let fields: serde_json::Value = serde_json::from_str(request_json.as_str()).unwrap();
 			assert!(fields["changeDetails"].as_str().unwrap().ends_with(&diff));
 			assert_eq!(fields["changeDetailsTruncated"], false);
-			store.acknowledge_chief_request_event(event.id).await.unwrap();
+			store.acknowledge_agent_request_event(event.id).await.unwrap();
 			assert_eq!(
-				super::query_chief_request_scoped(&owner, event.id, true).await,
-				ChiefRequestResult::Unavailable
+				super::query_agent_request_scoped(&owner, event.id, true).await,
+				AgentRequestResult::Unavailable
 			);
 		}
 	}
@@ -6773,8 +6773,8 @@ mod tests {
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		chief_query_work(&store, "worker").await;
-		let mut work = store.get_chief_work_item("worker".into()).await.unwrap();
+		agent_query_work(&store, "worker").await;
+		let mut work = store.get_agent_work_item("worker".into()).await.unwrap();
 		work.codex_thread_id = Some("parent".into());
 		let mut payload = serde_json::json!({"method":"item/commandExecution/requestApproval","ownerThreadId":"parent","params":{"threadId":"parent","turnId":"old-turn"}});
 		assert!(!super::request_belongs_to_work(&payload, &work, false));
@@ -6787,25 +6787,25 @@ mod tests {
 
 	#[tokio::test]
 	async fn saved_file_approval_pages_keep_complete_diff_and_reject_changed_evidence() {
-		use decodex_protocol::ChiefRequestResult as Request;
+		use decodex_protocol::AgentRequestResult as Request;
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		chief_query_work(&store, "worker").await;
-		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
-		store.begin_chief_dispatch("worker".into()).await.unwrap();
-		store.acknowledge_chief_dispatch("worker".into(), "turn".into()).await.unwrap();
+		agent_query_work(&store, "worker").await;
+		store.bind_agent_thread("worker".into(), "thread".into()).await.unwrap();
+		store.begin_agent_dispatch("worker".into()).await.unwrap();
+		store.acknowledge_agent_dispatch("worker".into(), "turn".into()).await.unwrap();
 		let diff = format!("+{} REQUIRED FILE SUFFIX", "界".repeat(30000));
 		let file = serde_json::json!({"id":"patch","type":"fileChange","changes":[{"path":"/tmp/fixture","kind":{"type":"add"},"diff":diff}]});
-		let event=store.enqueue_chief_event(decodex_database::EnqueueChiefEvent{source_event_id:"file".into(),work_item_id:"worker".into(),event_kind:"permission_pending".into(),payload:serde_json::json!({"id":7,"method":"item/fileChange/requestApproval","params":{"threadId":"thread","turnId":"turn","itemId":"patch","reason":"Review"},"fileChange":file}).to_string()}).await.unwrap();
+		let event=store.enqueue_agent_event(decodex_database::EnqueueAgentEvent{source_event_id:"file".into(),work_item_id:"worker".into(),event_kind:"permission_pending".into(),payload:serde_json::json!({"id":7,"method":"item/fileChange/requestApproval","params":{"threadId":"thread","turnId":"turn","itemId":"patch","reason":"Review"},"fileChange":file}).to_string()}).await.unwrap();
 		let owner = ProductStore::Available(store);
-		let request = super::query_chief_request(&owner, event.id).await;
+		let request = super::query_agent_request(&owner, event.id).await;
 		let mut offset = 0;
 		let mut digest = None;
 		let mut assembled = String::new();
 		loop {
 			let Request::Page { text, digest: current, next_offset, .. } =
-				super::page_chief_request(request.clone(), digest.as_deref(), offset)
+				super::page_agent_request(request.clone(), digest.as_deref(), offset)
 			else {
 				panic!("file page")
 			};
@@ -6825,29 +6825,29 @@ mod tests {
 			event_id,
 			work_id,
 			method,
-			request_json: decodex_protocol::ChiefRequestText::new(
+			request_json: decodex_protocol::AgentRequestText::new(
 				assembled.replace("REQUIRED FILE SUFFIX", "CHANGED FILE SUFFIX"),
 			)
 			.unwrap(),
 		};
-		assert_eq!(super::page_chief_request(changed, digest.as_deref(), 0), Request::Unavailable);
+		assert_eq!(super::page_agent_request(changed, digest.as_deref(), 0), Request::Unavailable);
 	}
 
 	#[tokio::test]
 	async fn large_request_pages_preserve_selected_action_and_recheck_liveness() {
-		use decodex_database::EnqueueChiefEvent;
-		use decodex_protocol::ChiefRequestResult as Request;
+		use decodex_database::EnqueueAgentEvent;
+		use decodex_protocol::AgentRequestResult as Request;
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
-		chief_query_work(&store, "worker").await;
-		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
-		store.begin_chief_dispatch("worker".into()).await.unwrap();
-		store.acknowledge_chief_dispatch("worker".into(), "turn".into()).await.unwrap();
+		agent_query_work(&store, "worker").await;
+		store.bind_agent_thread("worker".into(), "thread".into()).await.unwrap();
+		store.begin_agent_dispatch("worker".into()).await.unwrap();
+		store.acknowledge_agent_dispatch("worker".into(), "turn".into()).await.unwrap();
 		let command = "echo 界🙂\\\"\n".repeat(20_000) + "REQUIRED SUFFIX";
 		let event = store
-			.enqueue_chief_event(EnqueueChiefEvent {
+			.enqueue_agent_event(EnqueueAgentEvent {
 				source_event_id: "large-request".into(),
 				work_item_id: "worker".into(),
 				event_kind: "permission_pending".into(),
@@ -6860,7 +6860,7 @@ mod tests {
 			.await
 			.unwrap();
 		assert_eq!(
-			super::query_chief_request_with_details(&owner, event.id, None).await,
+			super::query_agent_request_with_details(&owner, event.id, None).await,
 			Request::Unavailable,
 			"Stored content alone is not a live request"
 		);
@@ -6869,8 +6869,8 @@ mod tests {
 		let mut digest: Option<String> = None;
 		let mut assembled = String::new();
 		loop {
-			let request = super::query_chief_request(&owner, event.id).await;
-			let page = super::page_chief_request(request, digest.as_deref(), offset);
+			let request = super::query_agent_request(&owner, event.id).await;
+			let page = super::page_agent_request(request, digest.as_deref(), offset);
 			assert!(serde_json::to_vec(&page).unwrap().len() < 64 * 1024);
 			let Request::Page {
 				event_id,
@@ -6895,17 +6895,17 @@ mod tests {
 		assert!(!assembled.contains("PRIVATE PROVIDER FIELD"));
 		assert!(selected.get("threadId").is_none());
 		assert_eq!(
-			super::page_chief_request(
-				super::query_chief_request(&owner, event.id).await,
+			super::page_agent_request(
+				super::query_agent_request(&owner, event.id).await,
 				Some("wrong"),
 				8192
 			),
 			Request::Unavailable
 		);
-		store.acknowledge_chief_request_event(event.id).await.unwrap();
+		store.acknowledge_agent_request_event(event.id).await.unwrap();
 		assert_eq!(
-			super::page_chief_request(
-				super::query_chief_request(&owner, event.id).await,
+			super::page_agent_request(
+				super::query_agent_request(&owner, event.id).await,
 				digest.as_deref(),
 				offset
 			),
@@ -6914,23 +6914,23 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn chief_request_query_filters_private_fields_and_rejects_stale_malformed_or_resolved() {
-		use decodex_database::EnqueueChiefEvent;
-		use decodex_protocol::ChiefRequestResult;
+	async fn agent_request_query_filters_private_fields_and_rejects_stale_malformed_or_resolved() {
+		use decodex_database::EnqueueAgentEvent;
+		use decodex_protocol::AgentRequestResult;
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
-		chief_query_work(&store, "worker").await;
-		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
-		store.begin_chief_dispatch("worker".into()).await.unwrap();
-		store.acknowledge_chief_dispatch("worker".into(), "turn".into()).await.unwrap();
+		agent_query_work(&store, "worker").await;
+		store.bind_agent_thread("worker".into(), "thread".into()).await.unwrap();
+		store.begin_agent_dispatch("worker".into()).await.unwrap();
+		store.acknowledge_agent_dispatch("worker".into(), "turn".into()).await.unwrap();
 		let payload = serde_json::json!({"method":"item/commandExecution/requestApproval", "id":"private-request-id", "token":"private-top-level", "params": {
 			"threadId":"thread", "turnId":"turn", "command":"pwd", "cwd":"/tmp", "reason":"inspect directory",
 			"availableDecisions":["accept","decline"], "authorization":"private-credential", "env":{"SECRET":"private-env"}
 		}});
 		let event = store
-			.enqueue_chief_event(EnqueueChiefEvent {
+			.enqueue_agent_event(EnqueueAgentEvent {
 				source_event_id: "request-1".into(),
 				work_item_id: "worker".into(),
 				event_kind: "permission_pending".into(),
@@ -6938,8 +6938,8 @@ mod tests {
 			})
 			.await
 			.unwrap();
-		let ChiefRequestResult::Available { event_id, work_id, request_json, .. } =
-			super::query_chief_request(&owner, event.id).await
+		let AgentRequestResult::Available { event_id, work_id, request_json, .. } =
+			super::query_agent_request(&owner, event.id).await
 		else {
 			panic!("live request");
 		};
@@ -6957,7 +6957,7 @@ mod tests {
 		stdin["params"]["availableDecisions"] = serde_json::Value::Null;
 		stdin["params"]["additionalPermissions"] = serde_json::json!({"network":{"enabled":true}});
 		let stdin = store
-			.enqueue_chief_event(EnqueueChiefEvent {
+			.enqueue_agent_event(EnqueueAgentEvent {
 				source_event_id: "stdin-request".into(),
 				work_item_id: "worker".into(),
 				event_kind: "permission_pending".into(),
@@ -6965,8 +6965,8 @@ mod tests {
 			})
 			.await
 			.unwrap();
-		let ChiefRequestResult::Available { request_json, .. } =
-			super::query_chief_request(&owner, stdin.id).await
+		let AgentRequestResult::Available { request_json, .. } =
+			super::query_agent_request(&owner, stdin.id).await
 		else {
 			panic!("stdin request");
 		};
@@ -6974,10 +6974,10 @@ mod tests {
 		assert_eq!(selected["kind"], "writeStdin");
 		assert_eq!(selected["additionalPermissions"]["network"]["enabled"], true);
 		assert!(!request_json.as_str().contains("private"));
-		store.acknowledge_chief_request_event(event.id).await.unwrap();
+		store.acknowledge_agent_request_event(event.id).await.unwrap();
 		assert_eq!(
-			super::query_chief_request(&owner, event.id).await,
-			ChiefRequestResult::Unavailable
+			super::query_agent_request(&owner, event.id).await,
+			AgentRequestResult::Unavailable
 		);
 		let mut invalids = Vec::new();
 		let mut unknown_kind = payload.clone();
@@ -6999,7 +6999,7 @@ mod tests {
 		invalids.push(serde_json::Value::Null);
 		for (index, payload) in invalids.into_iter().enumerate() {
 			let event = store
-				.enqueue_chief_event(EnqueueChiefEvent {
+				.enqueue_agent_event(EnqueueAgentEvent {
 					source_event_id: format!("invalid-{index}"),
 					work_item_id: "worker".into(),
 					event_kind: "permission_pending".into(),
@@ -7008,14 +7008,14 @@ mod tests {
 				.await
 				.unwrap();
 			assert_eq!(
-				super::query_chief_request(&owner, event.id).await,
-				ChiefRequestResult::Unavailable,
+				super::query_agent_request(&owner, event.id).await,
+				AgentRequestResult::Unavailable,
 				"case {index}"
 			);
 		}
 		assert_eq!(
-			super::query_chief_request(&owner, 99999).await,
-			ChiefRequestResult::Unavailable
+			super::query_agent_request(&owner, 99999).await,
+			AgentRequestResult::Unavailable
 		);
 	}
 
@@ -7025,10 +7025,10 @@ mod tests {
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
-		chief_query_work(&store, "worker").await;
-		store.bind_chief_thread("worker".into(), "thread".into()).await.unwrap();
-		store.begin_chief_dispatch("worker".into()).await.unwrap();
-		store.acknowledge_chief_dispatch("worker".into(), "turn".into()).await.unwrap();
+		agent_query_work(&store, "worker").await;
+		store.bind_agent_thread("worker".into(), "thread".into()).await.unwrap();
+		store.begin_agent_dispatch("worker".into()).await.unwrap();
+		store.acknowledge_agent_dispatch("worker".into(), "turn".into()).await.unwrap();
 		for method in ["item/permissions/requestApproval", "item/commandExecution/requestApproval"]
 		{
 			for (index, environment) in
@@ -7039,7 +7039,7 @@ mod tests {
 				let permissions = serde_json::json!({"fileSystem":{"entries":[{"path":{"type":"special","value":{"kind":"project_roots"}},"access":"write"}]}});
 				let payload = serde_json::json!({"method":method,"params":{"threadId":"thread","turnId":"turn","environmentId":environment,"cwd":"C:\\workspace","permissions":permissions,"privateToken":"hidden"}});
 				let event = store
-					.enqueue_chief_event(decodex_database::EnqueueChiefEvent {
+					.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
 						source_event_id: format!("executor-{method}-{index}"),
 						work_item_id: "worker".into(),
 						event_kind: "permission_pending".into(),
@@ -7047,12 +7047,12 @@ mod tests {
 					})
 					.await
 					.unwrap();
-				let result = super::query_chief_request(&owner, event.id).await;
+				let result = super::query_agent_request(&owner, event.id).await;
 				if environment.is_number() {
-					assert_eq!(result, decodex_protocol::ChiefRequestResult::Unavailable);
+					assert_eq!(result, decodex_protocol::AgentRequestResult::Unavailable);
 					continue;
 				}
-				let decodex_protocol::ChiefRequestResult::Available { request_json, .. } = result
+				let decodex_protocol::AgentRequestResult::Available { request_json, .. } = result
 				else {
 					panic!("permission request")
 				};
@@ -7068,8 +7068,8 @@ mod tests {
 	}
 
 	async fn assert_question_metadata_projection(store: &SqliteStore, owner: &ProductStore) {
-		use decodex_database::EnqueueChiefEvent;
-		use decodex_protocol::ChiefRequestResult;
+		use decodex_database::EnqueueAgentEvent;
+		use decodex_protocol::AgentRequestResult;
 		for (index, blocking) in
 			[serde_json::json!(false), serde_json::json!(true), serde_json::json!("false")]
 				.into_iter()
@@ -7077,7 +7077,7 @@ mod tests {
 		{
 			let request = serde_json::json!({"method":"item/tool/requestUserInput","params":{"threadId":"thread","turnId":"turn","questions":[],"isBlocking":blocking,"autoResolutionMs":1}});
 			let event = store
-				.enqueue_chief_event(EnqueueChiefEvent {
+				.enqueue_agent_event(EnqueueAgentEvent {
 					source_event_id: format!("question-{index}"),
 					work_item_id: "worker".into(),
 					event_kind: "user_input_pending".into(),
@@ -7085,9 +7085,9 @@ mod tests {
 				})
 				.await
 				.unwrap();
-			let result = super::query_chief_request(owner, event.id).await;
+			let result = super::query_agent_request(owner, event.id).await;
 			if blocking.is_boolean() {
-				let ChiefRequestResult::Available { request_json, .. } = result else {
+				let AgentRequestResult::Available { request_json, .. } = result else {
 					panic!("question metadata");
 				};
 				let fields: serde_json::Value =
@@ -7095,7 +7095,7 @@ mod tests {
 				assert_eq!(fields["isBlocking"], blocking);
 				assert!(fields.get("autoResolutionMs").is_none());
 			} else {
-				assert_eq!(result, ChiefRequestResult::Unavailable);
+				assert_eq!(result, AgentRequestResult::Unavailable);
 			}
 		}
 	}

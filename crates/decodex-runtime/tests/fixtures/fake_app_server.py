@@ -265,9 +265,9 @@ for line in sys.stdin:
         time.sleep(60)
     method = message.get("method")
     if method == "initialize":
-        if mode in ("chief-form-capabilities", "ordinary-capabilities"):
+        if mode in ("agent-form-capabilities", "ordinary-capabilities"):
             capabilities = message["params"]["capabilities"]
-            if mode == "chief-form-capabilities":
+            if mode == "agent-form-capabilities":
                 assert capabilities["extensions"] == {"openai/elicitation": {"form": {}}}
             else:
                 assert "extensions" not in capabilities

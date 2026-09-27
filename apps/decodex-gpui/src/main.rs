@@ -72,7 +72,7 @@ fn main() {
 		install_native_quit_preflight(cx);
 		shell::bind_keys(cx);
 		let profile = ClientProfile::load_default(None);
-		let chief_profile = profile.as_ref().ok().cloned();
+		let agent_profile = profile.as_ref().ok().cloned();
 		let bundled_daemon = profile.as_ref().ok().and_then(|profile| {
 			bundled_daemon::BundledDaemonSupervisor::launch_for_profile(profile).ok().flatten()
 		});
@@ -103,7 +103,7 @@ fn main() {
 					cx.new(|cx| {
 						Shell::new(window, cx, initial_connection)
 							.with_account_login(account_login)
-							.with_chief_profile(chief_profile, cx)
+							.with_agent_profile(agent_profile, cx)
 					})
 				},
 			)

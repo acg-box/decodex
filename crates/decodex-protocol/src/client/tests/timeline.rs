@@ -22,10 +22,10 @@ async fn summary_history_rejects_crossed_work_and_thread() {
 				panic!("read-only query")
 			};
 			assert!(
-				matches!(&query.payload, crate::QueryPayload::GetChiefTimeline {work_id, thread_id, cursor}
+				matches!(&query.payload, crate::QueryPayload::GetAgentTimeline {work_id, thread_id, cursor}
                 if work_id.as_str() == "root" && thread_id.as_str() == "native" && cursor.is_none())
 			);
-			let result = crate::ChiefTimelineResult::Summary {
+			let result = crate::AgentTimelineResult::Summary {
 				work_id: EntityId::new(if mode == "work" { "other" } else { "root" })
 					.expect("work"),
 				account_id: EntityId::new("account").expect("account"),
@@ -37,14 +37,14 @@ async fn summary_history_rejects_crossed_work_and_thread() {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(SERVER_ID).expect("server"),
 					query_id: query.query_id,
-					payload: QueryResultPayload::ChiefTimeline(result),
+					payload: QueryResultPayload::AgentTimeline(result),
 				})))
 				.await
 				.expect("reply");
 			drop(socket);
 			listener.cleanup().expect("cleanup");
 		});
-		let result = crate::ChiefClient::new(profile)
+		let result = crate::AgentClient::new(profile)
 			.timeline(
 				EntityId::new("root").expect("work"),
 				EntityId::new("native").expect("thread"),
@@ -53,7 +53,7 @@ async fn summary_history_rejects_crossed_work_and_thread() {
 			.await;
 		server.await.expect("server task");
 		if mode == "valid" {
-			assert!(matches!(result, Ok(crate::ChiefTimelineResult::Summary { .. })));
+			assert!(matches!(result, Ok(crate::AgentTimelineResult::Summary { .. })));
 		} else {
 			assert!(matches!(result, Err(ClientFailure::ProtocolMalformed)));
 		}

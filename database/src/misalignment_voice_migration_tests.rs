@@ -8,7 +8,7 @@ fn voice_precaution_upgrade_preserves_unknown_legacy_cause() {
 	let directory = tempfile::tempdir().unwrap();
 	let mut connection = Connection::open(directory.path().join("voice.sqlite3")).unwrap();
 	configure(&connection).unwrap();
-	for migration in &MIGRATIONS[..47] {
+	for migration in &MIGRATIONS[..1] {
 		connection.execute_batch(migration.sql).unwrap();
 		connection
 			.execute(
@@ -18,17 +18,17 @@ fn voice_precaution_upgrade_preserves_unknown_legacy_cause() {
 			.unwrap();
 	}
 	connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
-	connection.pragma_update(None, "user_version", 47).unwrap();
-	connection.execute("INSERT INTO chief_work_items(id,kind,title,instructions,status,created_at_micros,updated_at_micros) VALUES('work','goal','Goal','Keep input','open',1,1)",[]).unwrap();
+	connection.pragma_update(None, "user_version", 48).unwrap();
+	connection.execute("INSERT INTO agent_work_items(id,kind,title,instructions,status,created_at_micros,updated_at_micros) VALUES('work','goal','Goal','Keep input','open',1,1)",[]).unwrap();
 	connection
-		.execute("INSERT INTO chief_misalignment VALUES('work','thread','turn','{}',1)", [])
+		.execute("INSERT INTO agent_misalignment VALUES('work','thread','turn','{}',1)", [])
 		.unwrap();
 	let original = schema_inventory(&connection).unwrap();
 	migrate(&mut connection).unwrap();
 	verify(&connection).unwrap();
 	let saved: (String, String, String, i64, bool) = connection
 		.query_row(
-			"SELECT thread_id,turn_id,details_json,created_at_micros,retired_voice FROM chief_misalignment",
+			"SELECT thread_id,turn_id,details_json,created_at_micros,retired_voice FROM agent_misalignment",
 			[],
 			|r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
 		)
@@ -37,12 +37,21 @@ fn voice_precaution_upgrade_preserves_unknown_legacy_cause() {
 		schema_inventory(&connection)
 			.unwrap()
 			.into_iter()
-			.filter(|r| r.2 != "chief_misalignment")
+			.filter(|r| !matches!(
+				r.2.as_str(),
+				"agent_misalignment" | "quick_task_requests" | "conversation_native_settings"
+			))
 			.collect::<Vec<_>>(),
-		original.into_iter().filter(|r| r.2 != "chief_misalignment").collect::<Vec<_>>()
+		original
+			.into_iter()
+			.filter(|r| !matches!(
+				r.2.as_str(),
+				"agent_misalignment" | "quick_task_requests" | "conversation_native_settings"
+			))
+			.collect::<Vec<_>>()
 	);
 	assert_eq!(saved, ("thread".into(), "turn".into(), "{}".into(), 1, true));
-	assert!(connection.execute("UPDATE chief_misalignment SET retired_voice=2", []).is_err());
+	assert!(connection.execute("UPDATE agent_misalignment SET retired_voice=2", []).is_err());
 	migrate(&mut connection).unwrap();
 	verify(&connection).unwrap();
 }
