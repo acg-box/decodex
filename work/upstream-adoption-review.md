@@ -21,6 +21,16 @@ means a product behavior or control that the user can assess for removal. Mixed
 rows need a finer split before removal. These labels are review classifications,
 not instructions to delete code or weaken native enforcement.
 
+## Installed-native child input limit
+
+The restored child approval and service-tier qualification passes. The explicit
+child MCP human-input fixture fails on the installed 0.158.0-alpha.2 executable:
+both browser-auth and user-input markers receive empty-form acceptance instead
+of root-thread handoff. The fixed cutoff requires handoff. Keep this contract
+unqualified and retain its strict opt-in test; ordinary CI is not proof of it.
+See [the binary fingerprint, source comparison and limits](native-child-mcp-qualification.md).
+No replacement MCP approval implementation or executable update is introduced.
+
 ## Live model control restoration
 
 Current-turn model selection is optional. It differs from the delivered future-turn

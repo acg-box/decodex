@@ -59,6 +59,15 @@ unchanged configuration file. Close this test-file disposition only; persisted
 legacy recovery compatibility and shared owners remain open. See
 [native task model qualification](native-task-model-qualification.md).
 
+## Native child input discrepancy recorded on 2026-09-26
+
+Restore the complete child approval/tier fixture and MCP helper/server. Preserve
+the newer descendant inspection checks. Child approval passes, but both explicit
+MCP human-input markers are automatically accepted by the installed native binary
+instead of returning root handoff. Preserve the failure and strict assertions.
+These three file rows remain open. See
+[the native compatibility evidence](native-child-mcp-qualification.md).
+
 ## Current-turn model control restored on 2026-09-26
 
 Verify the original SHA-256 and read the full snapshot difference for five files.
