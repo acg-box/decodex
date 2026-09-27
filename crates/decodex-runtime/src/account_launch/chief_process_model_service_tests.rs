@@ -10,7 +10,7 @@ use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 #[tokio::test]
 async fn model_service_preserves_unknown_receipts_and_never_replays_a_review() {
-	for outcome in ["queued", "rejected", "unknown", "unknown-live"] {
+	for outcome in ["queued", "queued-unobserved", "rejected", "unknown", "unknown-live"] {
 		tokio::time::timeout(std::time::Duration::from_secs(15), scenario(outcome))
 			.await
 			.expect("bounded model service");
@@ -67,7 +67,7 @@ async fn scenario(outcome: &'static str) {
 	assert_eq!(writes.load(Ordering::Acquire), 0);
 	let result =
 		write(&owned.store, source, "thread", review_token.as_str(), "scoped", "first").await;
-	assert_eq!(result.is_ok(), outcome == "queued");
+	assert_eq!(result.is_ok(), matches!(outcome, "queued" | "queued-unobserved"));
 	assert_eq!(writes.load(Ordering::Acquire), 1);
 	if outcome == "queued" {
 		let state = crate::chief_models::read(&owned.store, source).await;
@@ -81,6 +81,12 @@ async fn scenario(outcome: &'static str) {
 	}
 	let expected = if outcome == "queued" {
 		"target_observed"
+	} else if outcome == "queued-unobserved" {
+		assert!(matches!(
+			crate::chief_models::read(&owned.store, source).await,
+			ChiefModelSelectionState::Pending { .. }
+		));
+		"queued"
 	} else if outcome == "unknown-live" {
 		"unknown"
 	} else {
@@ -156,6 +162,7 @@ async fn serve(remote: tokio::io::DuplexStream, writes: Arc<AtomicUsize>, outcom
 						w.write_all(format!("{event}\n").as_bytes()).await.expect("publication");
 						json!({"id":id,"result":{}})
 					},
+					"queued-unobserved" => json!({"id":id,"result":{}}),
 					"rejected" =>
 						json!({"id":id,"error":{"code":-32602,"message":"Native policy refused"}}),
 					"unknown-live" =>
@@ -254,5 +261,5 @@ async fn reject_restored_settings(
 }
 
 fn settings(model: &str) -> Value {
-	json!({"model":model,"modelProvider":"fixture","effort":"high","serviceTier":null,"cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"},"disabledPluginIds":[],"activePermissionProfile":{"id":":read-only"}})
+	json!({"model":model,"modelProvider":"fixture","effort":"high","serviceTier":"priority","cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"},"disabledPluginIds":[],"activePermissionProfile":{"id":":read-only"}})
 }

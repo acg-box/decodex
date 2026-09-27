@@ -76,6 +76,15 @@ instead of returning root handoff. Preserve the failure and strict assertions.
 These three file rows remain open. See
 [the native compatibility evidence](native-child-mcp-qualification.md).
 
+## Model review regressions reconciled on 2026-09-26
+
+Two inherited observation tests are already retained byte-for-byte. Restore both
+live-model review tests and add queued-without-publication to the current model
+service test. All five focused tests and strict lint pass. The old manual task
+selection test also covers a retired recovery journal; its persistence review
+remains open, so do not close this complete file row. See
+[model review regressions](model-review-regressions.md).
+
 ## Current-turn model control restored on 2026-09-26
 
 Verify the original SHA-256 and read the full snapshot difference for five files.

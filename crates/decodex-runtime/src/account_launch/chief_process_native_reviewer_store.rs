@@ -335,6 +335,7 @@ impl OwnedReviewer {
 }
 
 #[path = "chief_process_model_service_tests.rs"] mod model_service_tests;
+#[path = "chief_process_model_settings_tests.rs"] mod model_settings_tests;
 #[path = "chief_process_plugin_service_tests.rs"] mod plugin_service_tests;
 
 impl OwnedReviewer {
