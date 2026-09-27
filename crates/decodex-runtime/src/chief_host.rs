@@ -85,6 +85,8 @@ struct Request {
 
 #[derive(Clone)]
 pub(crate) struct ChiefHost {
+	observations: Option<crate::account_observation::AccountObservationService>,
+	recovery_cursor: Arc<Mutex<Option<String>>>,
 	prompt_edits: prompt_edit::Reviews,
 	recaps: crate::chief_recap::Recaps,
 	weather_cache: Arc<Mutex<Option<weather::CachedWeather>>>,
@@ -113,6 +115,8 @@ impl ChiefHost {
 	pub(crate) fn new(store: SqliteStore, runtime: ConversationRuntime) -> Self {
 		let (sender, receiver) = mpsc::channel(32);
 		Self {
+			observations: None,
+			recovery_cursor: Default::default(),
 			voice: crate::chief_voice::VoiceGateway::new(),
 			recaps: Default::default(),
 			prompt_edits: Default::default(),
@@ -124,6 +128,67 @@ impl ChiefHost {
 			sender,
 			receiver: Arc::new(Mutex::new(Some(receiver))),
 		}
+	}
+
+	pub(crate) fn with_observations(
+		mut self,
+		observations: Option<crate::account_observation::AccountObservationService>,
+	) -> Self {
+		self.observations = observations;
+		self
+	}
+
+	async fn recover_models(
+		&self,
+		chief: &ChiefCoordinator,
+		events: &mpsc::Receiver<ServerEvent>,
+	) -> Result<(), ChiefError> {
+		let Some(observations) = &self.observations else {
+			return Ok(());
+		};
+		if !events.is_empty() {
+			return Ok(());
+		}
+		let mut items: Vec<_> = self
+			.store
+			.list_chief_work_items()
+			.await?
+			.into_iter()
+			.filter(|work| {
+				work.status != decodex_database::ChiefWorkStatus::Resolved
+					&& work.dispatch_state == decodex_database::ChiefDispatchState::Idle
+					&& work.codex_thread_id.is_some()
+			})
+			.collect();
+		items.sort_by(|a, b| a.id.cmp(&b.id));
+		let previous = self.recovery_cursor.lock().await.clone();
+		let next = items
+			.iter()
+			.position(|work| previous.as_ref().is_none_or(|last| work.id > *last))
+			.unwrap_or(0);
+		if !items.is_empty() {
+			items.rotate_left(next);
+		}
+		if let Some(work) = items.first() {
+			*self.recovery_cursor.lock().await = Some(work.id.clone());
+			let thread = work.codex_thread_id.as_deref().expect("filtered native thread");
+			tokio::time::timeout(
+				Duration::from_secs(12),
+				crate::chief_models::recover_ordinary_model(
+					&self.store,
+					|| async {
+						let source = self.timeline_source(&work.id, thread).await?;
+						(chief.native_generation() == Some(&source.key.generation))
+							.then_some(source)
+					},
+					|account, revision| async move { observations.recovery(&account, revision).await },
+					events,
+				),
+			)
+			.await
+			.map_err(|_| ChiefError::Invalid("model recovery observation timed out".into()))??;
+		}
+		Ok(())
 	}
 
 	pub(crate) fn voice(
@@ -958,6 +1023,10 @@ impl ChiefHost {
 						self.dictation.expire().await;
 						self.mcp_login.expire().await;
 						if let Some(request)=self.voice.expire() {self.handle_voice(request,&mut active).await;}
+						if let Some((root, chief, events)) = active.as_mut()
+							&& self.recover_models(chief, events).await.is_err() {
+							self.record_error(root, "recovery_needs_attention").await;
+						}
 						self.rotate_exhausted(&mut active).await;
 						recovery.restore_if_due(
 							&mut active, tokio::time::Instant::now(), self.restore()

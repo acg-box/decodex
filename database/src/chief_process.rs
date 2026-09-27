@@ -214,6 +214,7 @@ mod tests {
 	mod auth_recovery;
 	mod guardian_notices;
 	mod hooks;
+	mod model_fallback;
 	mod model_legacy;
 	mod models;
 	mod native_turns;

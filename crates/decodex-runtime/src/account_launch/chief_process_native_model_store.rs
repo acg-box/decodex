@@ -59,6 +59,7 @@ pub(super) async fn reserve(
 			.or_else(|| client.configured_task_models(thread).expect("current model").0.effort),
 		review_token: "a".repeat(64),
 		attempt_id: "model-selection".into(),
+		recovery: None,
 	};
 	let id = store
 		.reserve_chief_model_selection(attempt.clone())

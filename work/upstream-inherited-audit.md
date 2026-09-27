@@ -9,6 +9,20 @@ This audit covers inherited files, not the 1,569 upstream commits. File counts d
 not measure feature completion. A merged capability can touch many files, and
 one shared file can contain both delivered and outstanding behavior.
 
+## Ordinary automatic fallback restored on 2026-09-26
+
+Restore the bounded native adapter, automatic policy and installed-native
+qualification through the current shared model-selection owner. Preserve manual
+selection, exact source/banner validation, tier confirmation and durable no-replay
+semantics. The native fixture retains every inherited assertion; only its shared
+Responses helper changes. See [ordinary model fallback](ordinary-model-fallback.md)
+for the optional-policy classification, evidence and removal dependencies.
+
+Close these three complete file rows only. All snapshot hashes match. The 360-row
+register has 87 pending content-review rows, down from 90. The legacy database
+terminal-history files, shared runtime modules and final desktop acceptance stay
+open. Counts describe files, not feature completion.
+
 ## Lost steer reply regression restored on 2026-09-26
 
 Restore the complete inherited `chief/tests/steer_receipts.rs` file byte-for-byte

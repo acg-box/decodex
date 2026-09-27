@@ -646,6 +646,8 @@ impl ServiceApplication {
 		mut self,
 		account_observations: Option<AccountObservationService>,
 	) -> Self {
+		self.chief =
+			self.chief.take().map(|chief| chief.with_observations(account_observations.clone()));
 		self.account_observations = account_observations;
 
 		self

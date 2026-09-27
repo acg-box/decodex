@@ -138,6 +138,7 @@ async fn prepare_unknown_model_selection(
 		effort: None,
 		review_token: DIGEST.into(),
 		attempt_id: "first".into(),
+		recovery: None,
 	};
 	let reserved = store.reserve_chief_model_selection(attempt.clone()).await.unwrap().unwrap();
 	assert!(
