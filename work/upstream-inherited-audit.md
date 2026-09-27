@@ -889,3 +889,12 @@ and percentage label. The complete original/current diff is accounted for; close
 this one file row. This changes no quota, account-reset action or system setting.
 All three quota tests and strict GPUI lint with all features and targets pass.
 Signed macOS accessibility acceptance remains in the final desktop pass.
+
+## Observed checklist and historical activity restored on 2026-09-26
+
+An installed-native regression received checklist notifications but found no saved
+record. Restore the pre-baseline observation/storage/history/display path and the
+inherited delayed-MCP activity association. Preserve no-wake, exact-source and
+latest-observation rules, plus current output notifications and partial-output
+retention. Close the two complete database file dispositions; shared owners stay
+open. See [observed checklist recovery](observed-checklist-recovery.md).

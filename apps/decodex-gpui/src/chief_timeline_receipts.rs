@@ -7,6 +7,26 @@ use decodex_protocol::ChiefHistoryEntryDto;
 use gpui::{InteractiveElement, StatefulInteractiveElement};
 
 impl ChiefSurface {
+	fn earlier_local_records(
+		&self,
+		available: bool,
+		cx: &mut Context<Self>,
+	) -> Option<gpui::AnyElement> {
+		available.then(|| {
+			div()
+				.id("native-earlier-local-records")
+				.debug_selector(|| "native-earlier-local-records".into())
+				.cursor_pointer()
+				.on_click(cx.listener(|surface, _, _, cx| surface.load_older_history(cx)))
+				.child(if self.loading_older {
+					"Loading earlier records…"
+				} else {
+					"Load earlier local records"
+				})
+				.into_any_element()
+		})
+	}
+
 	pub(in super::super) fn native_receipts_panel(
 		&self,
 		work: &ChiefWorkItemDto,
@@ -22,20 +42,7 @@ impl ChiefSurface {
 				.into_any_element();
 		};
 		let cursor = self.older_history.get(&work.id).map_or(*next_before, |(_, cursor)| *cursor);
-		if cursor.is_some() {
-			panel = panel.child(
-				div()
-					.id("native-earlier-local-records")
-					.debug_selector(|| "native-earlier-local-records".into())
-					.cursor_pointer()
-					.on_click(cx.listener(|surface, _, _, cx| surface.load_older_history(cx)))
-					.child(if self.loading_older {
-						"Loading earlier records…"
-					} else {
-						"Load earlier local records"
-					}),
-			);
-		}
+		panel = panel.children(self.earlier_local_records(cursor.is_some(), cx));
 		let mut saved = std::collections::BTreeMap::new();
 		if let Some((older, _)) = self.older_history.get(&work.id) {
 			for entry in older {
@@ -44,6 +51,9 @@ impl ChiefSurface {
 		}
 		saved.extend(entries.iter().map(|entry| (entry.id, entry)));
 		for entry in saved.values() {
+			if super::super::progress::checklist_superseded(entry, saved.values().copied()) {
+				continue;
+			}
 			if entry.kind == "auth_recovery" {
 				panel = panel.child(auth_recovery_entry(entry));
 				continue;
@@ -69,6 +79,15 @@ impl ChiefSurface {
 				continue;
 			};
 			let mut row = div()
+				.debug_selector({
+					let id = entry.id;
+					let kind = match entry.kind.as_str() {
+						"checklist" => "checklist",
+						"partial_answer" | "partial_plan" => "partial",
+						_ => "local",
+					};
+					move || format!("{kind}-receipt-{id}")
+				})
 				.flex()
 				.flex_col()
 				.gap_1()
@@ -148,6 +167,9 @@ fn partial_replaced(
 }
 
 fn receipt_label(entry: &ChiefHistoryEntryDto) -> Option<&'static str> {
+	if entry.kind == "checklist" {
+		return Some("Recorded checklist");
+	}
 	if entry.kind == "partial_plan" {
 		return Some("Proposed plan · Unfinished");
 	}
@@ -183,6 +205,50 @@ fn receipt_label(entry: &ChiefHistoryEntryDto) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn recorded_checklist_renders_in_saved_and_native_views(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+		surface.update(visual, |s,cx| {
+            s.visual_workspace_fixture(cx);
+            s.graph_visible=false;
+            let Some((_,ChiefHistoryResult::Available {entries,..}))=&mut s.history else {panic!("fixture history")};
+            entries.clear();
+            entries.push(ChiefHistoryEntryDto {native_source:None,turn_id:Some("turn".into()),weather:vec![],id:92,kind:"checklist".into(),text:"- **Completed**: Inspect source\n- **Pending**: Verify changes\n\nLast observed checklist for this turn.".into(),created_at_micros:1,receipt:None,activity:None,usage:None,duration_ms:None});
+            entries[0].receipt = Some(decodex_protocol::ChiefHistoryReceiptDto { event_kind:"plan_updated".into(),delivered_turn_id:Some("turn".into()),disposed:true});
+            let mut old = entries[0].clone(); old.id=91; old.text="Stale checklist".into();
+            s.older_history.insert(s.selected.clone().unwrap(),(vec![old],None));
+            cx.notify();
+        });
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("checklist-receipt-92").is_some());
+		assert!(visual.debug_bounds("checklist-receipt-91").is_none());
+		surface.update(visual, |s, cx| {
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| Some(&w.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("native-thread".into());
+			s.native_history.binding = Some(super::super::Binding {
+				work: work.id.clone(),
+				thread: "native-thread".into(),
+				account: "account".into(),
+			});
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("checklist-receipt-92").is_some());
+		assert!(visual.debug_bounds("checklist-receipt-91").is_none());
+	}
+
 	#[gpui::test]
 	fn auth_recovery_history_is_visible_as_a_recorded_notice(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| ChiefSurface::new(cx));

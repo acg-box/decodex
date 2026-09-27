@@ -5058,6 +5058,7 @@ fn chief_history_shows_disposition(event_kind: &str, kind: &str) -> bool {
 				| "config_warning"
 				| "native_warning"
 				| "partial_output"
+				| "plan_updated"
 		)
 }
 
@@ -5082,6 +5083,7 @@ fn render_chief_history(
 				let Some(display) = partial_history_text(&event, &value, &rendered_sources) else { continue; };
 				display
 			},
+			"plan_updated" => ("checklist", value["text"].as_str().unwrap_or("Checklist unavailable.").to_owned()),
 			"native_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a warning.").to_owned()),
 			"config_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a configuration warning.").to_owned()),
 			"strict_review_notice" => ("execution_notice", "Codex requested additional safety checks for this turn. Tool calls may take longer; no action is required for this notice.".into()),
@@ -5357,6 +5359,29 @@ mod history_receipt_tests {
 		}
 	}
 
+	#[test]
+	fn checklist_history_keeps_the_observation_label_and_no_disposition_prose() {
+		let event = decodex_database::ChiefInboxEvent {
+			id: 1,
+			source_event_id: "source".into(),
+			work_item_id: "work".into(),
+			event_kind: "plan_updated".into(),
+			payload: serde_json::json!({"text":"- **Pending**: Verify"}).to_string(),
+			created_at_micros: 1,
+			disposition: Some(decodex_database::ChiefDisposition::Resolved),
+			disposition_note: Some("Observed native checklist".into()),
+			disposed_at_micros: Some(1),
+			delivered_turn_id: Some("turn".into()),
+		};
+		let result = super::render_chief_history(vec![event], 0, None);
+		assert_eq!(result.entries.len(), 1);
+		assert_eq!(result.entries[0].kind, "checklist");
+		assert_eq!(result.entries[0].text, "- **Pending**: Verify");
+		assert_eq!(
+			result.entries[0].receipt.as_ref().unwrap().delivered_turn_id.as_deref(),
+			Some("turn")
+		);
+	}
 	#[test]
 	fn disposition_does_not_imply_native_delivery_and_opaque_ids_are_not_truncated() {
 		let mut event = decodex_database::ChiefInboxEvent {

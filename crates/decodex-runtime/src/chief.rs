@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 mod activity;
 mod archive;
 mod async_projection;
+mod checklist;
 mod file_changes;
 mod guardian;
 mod install;
@@ -1425,6 +1426,17 @@ impl ChiefCoordinator {
 				return Ok(());
 			}
 			self.observe_question_state_notification(method, params).await?;
+			if method == "turn/plan/updated"
+				&& let Some(text) = checklist::text(params)
+			{
+				self.store
+					.record_chief_checklist(
+						exact(params, "/threadId")?,
+						exact(params, "/turnId")?,
+						text,
+					)
+					.await?;
+			}
 			if self.observe_live_text(method, params).await? {
 				return Ok(());
 			}
