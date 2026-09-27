@@ -15,10 +15,8 @@ pub(super) struct VoiceUi {
 	connected: bool,
 	connection_status: String,
 	muted: bool,
-	caption: String,
-	caption_role: &'static str,
-	caption_turn: String,
-	started_at_micros: i64,
+	captions: Vec<Caption>,
+	matched_receipts: std::collections::BTreeSet<i64>,
 	levels: std::collections::VecDeque<f32>,
 	follow: bool,
 }
@@ -37,7 +35,7 @@ impl ChiefSurface {
 
 	pub(crate) fn stop_voice(&mut self, cx: &mut Context<Self>) {
 		self.cancel_dictation(cx);
-		self.voice = None;
+		self.retire_voice_media();
 		cx.notify();
 	}
 
@@ -56,7 +54,7 @@ impl ChiefSurface {
 			.or_else(|| self.root_id())
 			.and_then(|id| EntityId::new(id).ok())
 		else {
-			self.feedback = "Start a Agent conversation before opening Live voice.".into();
+			self.feedback = "Start an Agent conversation before opening Live voice.".into();
 			cx.notify();
 			return;
 		};
@@ -84,13 +82,8 @@ impl ChiefSurface {
 			connected: false,
 			connection_status: "Preparing audio…".into(),
 			muted: false,
-			caption: String::new(),
-			caption_role: "You",
-			caption_turn: String::new(),
-			started_at_micros: std::time::SystemTime::now()
-				.duration_since(std::time::UNIX_EPOCH)
-				.unwrap_or_default()
-				.as_micros() as i64,
+			captions: Vec::new(),
+			matched_receipts: Default::default(),
 			levels: std::collections::VecDeque::from(vec![0.; 40]),
 			follow: true,
 		});
@@ -129,9 +122,7 @@ impl ChiefSurface {
 						})
 						.await;
 					let _ = surface.update(cx, |s, cx| {
-						if let Some(result) = result {
-							s.apply_voice_status(result, cx);
-						}
+						s.apply_voice_response(&session, result, cx);
 					});
 				}
 				cx.background_executor().timer(Duration::from_millis(100)).await;
@@ -170,29 +161,49 @@ impl ChiefSurface {
 						.push_back(event["level"].as_f64().unwrap_or_default().clamp(0., 1.) as f32);
 				},
 				Some("caption") => {
-					update_caption(
-						&event["event"],
-						&mut voice.caption_turn,
-						&mut voice.caption_role,
-						&mut voice.caption,
-					);
+					update_caption(&event["event"], &mut voice.captions);
 				},
 				Some("error" | "ended") => {
 					if event["type"] == "error" {
 						self.feedback =
 							event["message"].as_str().unwrap_or("Voice disconnected.").into();
 					}
-					self.voice = None;
+					self.retire_voice_media();
 					cx.notify();
 					return None;
 				},
 				_ => {},
 			}
 		}
-		cx.notify();
-		Some(voice.request.take().or_else(|| {
+		let request = voice.request.take().or_else(|| {
 			voice.signaling.then(|| ChiefVoiceRequest::Poll { session_id: voice.session.clone() })
-		}))
+		});
+		if let Some((work, history)) = self.history.take() {
+			self.reconcile_voice_captions(&work, &history);
+			self.history = Some((work, history));
+		}
+		cx.notify();
+		Some(request)
+	}
+
+	fn apply_voice_response(
+		&mut self,
+		session: &EntityId,
+		status: Option<decodex_protocol::ChiefVoiceStatus>,
+		cx: &mut Context<Self>,
+	) {
+		if !self.voice.as_ref().is_some_and(|voice| &voice.session == session) {
+			return;
+		}
+		if let Some(status) = status {
+			self.apply_voice_status(status, cx);
+		} else {
+			// Signaling can disconnect while WebRTC still sends microphone audio.
+			// Dropping media stops local capture; the loop then stops this exact session.
+			self.retire_voice_media();
+			self.feedback = "Voice stopped because the service connection was lost.".into();
+			cx.notify();
+		}
 	}
 
 	fn apply_voice_status(
@@ -219,7 +230,7 @@ impl ChiefSurface {
 				if let Some(message) = status.message {
 					self.feedback = message.as_str().into();
 				}
-				self.voice = None;
+				self.retire_voice_media();
 			},
 		}
 		cx.notify();
@@ -373,7 +384,7 @@ impl ChiefSurface {
 					"End".into(),
 					"End voice call · Existing work continues",
 					|s, cx| {
-						s.voice = None;
+						s.retire_voice_media();
 						s.load_history(cx);
 						cx.notify();
 					},
@@ -383,32 +394,94 @@ impl ChiefSurface {
 		)
 	}
 
-	pub(super) fn live_chat_caption(&self) -> Option<gpui::AnyElement> {
-		let v = self.voice.as_ref()?;
-		if v.caption.is_empty() {
+	fn retire_voice_media(&mut self) {
+		if let Some(mut voice) = self.voice.take() {
+			drain_caption_events(&mut voice.captions, || voice.media.poll());
+			for caption in &mut voice.captions {
+				caption.complete = true;
+			}
+			self.retired_voice_captions.push(CaptionHistory {
+				session: voice.session,
+				matched_receipts: voice.matched_receipts,
+				work: voice.work,
+				captions: voice.captions,
+			});
+		}
+		if let Some((work, history)) = self.history.take() {
+			self.reconcile_voice_captions(&work, &history);
+			self.history = Some((work, history));
+		}
+	}
+
+	pub(super) fn reconcile_voice_captions(&mut self, work: &str, history: &ChiefHistoryResult) {
+		let ChiefHistoryResult::Available { entries, .. } = history else { return };
+		for call in self.retired_voice_captions.iter_mut().filter(|v| v.work.as_str() == work) {
+			reconcile_captions(
+				&call.session,
+				&mut call.captions,
+				&mut call.matched_receipts,
+				entries,
+			);
+		}
+		self.retired_voice_captions.retain(|v| !v.captions.is_empty());
+		if let Some(call) = self.voice.as_mut().filter(|v| v.work.as_str() == work) {
+			reconcile_captions(
+				&call.session,
+				&mut call.captions,
+				&mut call.matched_receipts,
+				entries,
+			);
+		}
+	}
+
+	pub(super) fn live_chat_caption(&self, work: &str) -> Option<gpui::AnyElement> {
+		let captions = self
+			.retired_voice_captions
+			.iter()
+			.filter(|v| v.work.as_str() == work)
+			.flat_map(|v| &v.captions)
+			.chain(
+				self.voice
+					.as_ref()
+					.filter(|v| v.work.as_str() == work)
+					.into_iter()
+					.flat_map(|v| &v.captions),
+			);
+		let mut captions: Vec<_> = captions.filter(|c| !c.text.is_empty()).collect();
+		// Keep completed order; duplex live user text stays above the live reply.
+		captions.sort_by_key(|c| {
+			if c.complete {
+				0
+			} else if c.role == "user" {
+				1
+			} else {
+				2
+			}
+		});
+		if captions.is_empty() {
 			return None;
 		}
-		let kind = if v.caption_role == "You" { "user" } else { "assistant" };
-		if self.history.as_ref().is_some_and(|(_, history)| {
-            matches!(history, ChiefHistoryResult::Available { entries, .. } if entries.iter().any(|entry|
-                entry.created_at_micros >= v.started_at_micros && entry.kind == kind && entry.text.trim() == v.caption.trim()))
-        }) { return None; }
-
 		Some(
-			history_entry(&decodex_protocol::ChiefHistoryEntryDto {
-				native_source: None,
-				turn_id: None,
-				weather: Vec::new(),
-				receipt: None,
-				activity: None,
-				usage: None,
-				duration_ms: None,
-				id: -1,
-				kind: kind.into(),
-				text: v.caption.clone(),
-				created_at_micros: 0,
-			})
-			.into_any_element(),
+			div()
+				.flex()
+				.flex_col()
+				.children(captions.into_iter().enumerate().map(|(i, caption)| {
+					history_entry(&decodex_protocol::ChiefHistoryEntryDto {
+						native_source: None,
+						turn_id: None,
+						weather: Vec::new(),
+						receipt: None,
+						activity: None,
+						usage: None,
+						duration_ms: None,
+						id: -(i as i64) - 1,
+						kind: caption.role.into(),
+						text: caption.text.clone(),
+						created_at_micros: 0,
+					})
+					.into_any_element()
+				}))
+				.into_any_element(),
 		)
 	}
 
@@ -418,8 +491,12 @@ impl ChiefSurface {
 		let current = f32::from(scroll.offset().y);
 		let target = -f32::from(scroll.max_offset().y);
 		if (target - current).abs() > 0.5 {
-			scroll.set_offset(gpui::point(px(0.), px(current + (target - current) * 0.24)));
-			crate::ui_motion::request_frame(window, cx);
+			let reduced = crate::ui_motion::reduced();
+			let next = if reduced { target } else { current + (target - current) * 0.24 };
+			scroll.set_offset(gpui::point(px(0.), px(next)));
+			if !reduced {
+				crate::ui_motion::request_frame(window, cx);
+			}
 			cx.notify();
 		}
 	}
@@ -524,80 +601,333 @@ impl Media {
 	}
 }
 
-/// Use turn identity so delayed final text cannot replace the other speaker's caption.
-fn update_caption(event: &Value, turn: &mut String, role: &mut &'static str, text: &mut String) {
-	match event["type"].as_str() {
-		Some("turn.created") => {
-			let Some(id) = event.pointer("/turn/id").and_then(Value::as_str) else { return };
-			*turn = id.into();
-			*role = if event.pointer("/turn/role").and_then(Value::as_str) == Some("assistant") {
-				"Chief"
-			} else {
-				"You"
-			};
-			*text = event
-				.pointer("/turn/transcript")
-				.and_then(Value::as_str)
-				.unwrap_or_default()
-				.into();
-		},
-		Some("turn.delta") if event["turn_id"].as_str() == Some(turn.as_str()) => {
-			text.push_str(event["delta"].as_str().unwrap_or_default());
-		},
-		Some("turn.done")
-			if event.pointer("/turn/id").and_then(Value::as_str) == Some(turn.as_str()) =>
+#[derive(Clone, Debug)]
+struct Caption {
+	complete: bool,
+	turn: String,
+	role: &'static str,
+	text: String,
+}
+
+pub(super) struct CaptionHistory {
+	session: EntityId,
+	work: EntityId,
+	captions: Vec<Caption>,
+	matched_receipts: std::collections::BTreeSet<i64>,
+}
+
+fn reconcile_captions(
+	session: &EntityId,
+	captions: &mut Vec<Caption>,
+	matched: &mut std::collections::BTreeSet<i64>,
+	entries: &[decodex_protocol::ChiefHistoryEntryDto],
+) {
+	captions.retain(|caption| {
+		if !caption.complete {
+			return true;
+		}
+		if caption.text.is_empty() {
+			return false;
+		}
+		let found = entries.iter().find(|entry| {
+			!matched.contains(&entry.id)
+				&& entry.kind == caption.role
+				&& entry.text.trim() == caption.text.trim()
+				&& entry.receipt.as_ref().is_some_and(|receipt| {
+					receipt.voice_session_id.as_deref() == Some(session.as_str())
+						&& receipt.event_kind == format!("voice_{}", caption.role)
+						&& receipt.disposed
+				})
+		});
+		if let Some(entry) = found {
+			matched.insert(entry.id);
+			false
+		} else {
+			true
+		}
+	});
+}
+
+/// Consume the host's already queued text before releasing the media object.
+/// The native mailbox has a 128-event bound; retirement never waits for more input.
+fn drain_caption_events(captions: &mut Vec<Caption>, mut poll: impl FnMut() -> Option<Value>) {
+	for _ in 0..128 {
+		let Some(event) = poll() else { break };
+		if event["type"] == "caption" {
+			update_caption(&event["event"], captions);
+		}
+	}
+}
+
+/// Keep each turn until history can replace it, including interleaved final updates.
+fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
+	let kind = event["type"].as_str().unwrap_or_default();
+	let added_role = match kind {
+		"input_transcript.added" => Some("user"),
+		"output_transcript.added" => Some("assistant"),
+		_ => None,
+	};
+	if let Some(role) = added_role {
+		let Some(delta) = event.pointer("/item/text").and_then(Value::as_str) else { return };
+		if delta.is_empty() {
+			return;
+		}
+		if !captions.iter().any(|c| c.role == role && !c.complete) {
+			captions.push(Caption {
+				complete: false,
+				turn: String::new(),
+				role,
+				text: String::new(),
+			});
+		}
+		let caption = captions
+			.iter_mut()
+			.rev()
+			.find(|c| c.role == role && !c.complete)
+			.expect("unfinished caption exists after insertion");
+		caption.text.push_str(delta);
+		bound_caption(caption);
+		return;
+	}
+	let id = if kind == "turn.delta" {
+		event["turn_id"].as_str()
+	} else {
+		event.pointer("/turn/id").and_then(Value::as_str)
+	}
+	.filter(|id| !id.is_empty());
+	let role = match event.pointer("/turn/role").and_then(Value::as_str) {
+		Some("user") => Some("user"),
+		Some("assistant") => Some("assistant"),
+		_ => None,
+	};
+	if kind == "turn.created" {
+		let (Some(id), Some(role)) = (id, role) else { return };
+		if !captions.iter().any(|c| c.turn == id) {
+			captions.push(Caption { complete: false, turn: id.into(), role, text: String::new() });
+		}
+	}
+	// Frameless v3 finals can omit the turn ID, including a final with no deltas.
+	if kind == "turn.done" && id.is_none() {
+		let Some(role) = role else { return };
+		let Some(text) = event.pointer("/turn/transcript").and_then(Value::as_str) else { return };
+		if !captions.iter().any(|c| c.role == role && !c.complete) {
+			if text.is_empty() {
+				return;
+			}
+			captions.push(Caption {
+				complete: false,
+				turn: String::new(),
+				role,
+				text: String::new(),
+			});
+		}
+		let caption = captions
+			.iter_mut()
+			.rev()
+			.find(|c| c.role == role && !c.complete)
+			.expect("unfinished caption exists after insertion");
+		caption.text = text.into();
+		caption.complete = true;
+		bound_caption(caption);
+		return;
+	}
+	let Some(id) = id else { return };
+	if kind == "turn.done"
+		&& !captions.iter().any(|c| c.turn == id)
+		&& let Some(role) = role
+	{
+		if let Some(caption) =
+			captions.iter_mut().rev().find(|c| c.turn.is_empty() && c.role == role && !c.complete)
 		{
-			if let Some(final_text) = event.pointer("/turn/transcript").and_then(Value::as_str) {
-				*text = final_text.into();
+			// Some peers add identity only to the final.
+			caption.turn = id.into();
+		} else if event
+			.pointer("/turn/transcript")
+			.and_then(Value::as_str)
+			.is_some_and(|text| !text.is_empty())
+		{
+			// The native parser also accepts a final when no delta was received.
+			captions.push(Caption { complete: false, turn: id.into(), role, text: String::new() });
+		}
+	}
+
+	let Some(caption) = captions.iter_mut().find(|c| c.turn == id) else { return };
+	if kind == "turn.done" {
+		caption.complete = true;
+	}
+	match kind {
+		"turn.created" | "turn.done" => {
+			if let Some(text) = event.pointer("/turn/transcript").and_then(Value::as_str) {
+				caption.text = text.into();
 			}
 		},
+		"turn.delta" => caption.text.push_str(event["delta"].as_str().unwrap_or_default()),
 		_ => return,
 	}
-	if text.chars().count() > 32768 {
-		*text = text.chars().take(32768).collect();
+	bound_caption(caption);
+}
+
+fn bound_caption(caption: &mut Caption) {
+	let mut end = caption.text.len().min(32_768);
+	while !caption.text.is_char_boundary(end) {
+		end -= 1;
 	}
+	caption.text.truncate(end);
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use gpui::{EntityInputHandler as _, Focusable as _};
 	#[test]
-	fn captions_follow_turns_and_ignore_late_other_speaker_final() {
-		let (mut turn, mut role, mut text) = (String::new(), "You", String::new());
+	fn captions_preserve_both_speakers_and_late_finals() {
+		let mut captions = Vec::new();
 		for event in [
 			json!({"type":"turn.created","turn":{"id":"u","role":"user","transcript":"Hello"}}),
+			json!({"type":"turn.created","turn":{"id":"a","role":"assistant","transcript":"Hi"}}),
 			json!({"type":"turn.delta","turn_id":"u","delta":" world"}),
+			json!({"type":"turn.done","turn":{"id":"u","transcript":"Hello, world!"}}),
 		] {
-			update_caption(&event, &mut turn, &mut role, &mut text);
+			update_caption(&event, &mut captions);
 		}
-		assert_eq!(text, "Hello world");
-		update_caption(
-			&json!({"type":"turn.created","turn":{"id":"a","role":"assistant","transcript":"Hi"}}),
-			&mut turn,
-			&mut role,
-			&mut text,
+		assert_eq!(
+			captions.iter().map(|c| (c.role, c.text.as_str())).collect::<Vec<_>>(),
+			vec![("user", "Hello, world!"), ("assistant", "Hi")]
 		);
 		update_caption(
-			&json!({"type":"turn.done","turn":{"id":"u","transcript":"Hello, world!"}}),
-			&mut turn,
-			&mut role,
-			&mut text,
+			&json!({"type":"turn.done","turn":{"id":"a","transcript":""}}),
+			&mut captions,
 		);
-		assert_eq!((role, text.as_str()), ("Chief", "Hi"));
+		assert_eq!(captions[0].text, "Hello, world!");
+		assert!(captions[1].text.is_empty());
+	}
+
+	#[test]
+	fn frameless_captions_accept_interleaved_deltas_and_idless_finals() {
+		let mut captions = Vec::new();
+		for event in [
+			json!({"type":"input_transcript.added","item":{"text":"hello"}}),
+			json!({"type":"output_transcript.added","item":{"text":"reply"}}),
+			json!({"type":"input_transcript.added","item":{"text":" world"}}),
+			json!({"type":"turn.done","turn":{"role":"user","transcript":"Hello, world!"}}),
+			json!({"type":"turn.done","turn":{"id":"late-id","role":"assistant","transcript":"Reply."}}),
+			json!({"type":"turn.done","turn":{"id":"final-only","role":"user","transcript":"Another sentence."}}),
+		] {
+			update_caption(&event, &mut captions);
+		}
+		assert_eq!(
+			captions.iter().map(|c| (c.role, c.text.as_str(), c.complete)).collect::<Vec<_>>(),
+			vec![
+				("user", "Hello, world!", true),
+				("assistant", "Reply.", true),
+				("user", "Another sentence.", true)
+			]
+		);
 		update_caption(
-			&json!({"type":"turn.done","turn":{"id":"a","transcript":"Hi!"}}),
-			&mut turn,
-			&mut role,
-			&mut text,
+			&json!({"type":"input_transcript.added","item":{"text":"discard"}}),
+			&mut captions,
 		);
-		assert_eq!(text, "Hi!");
+		update_caption(
+			&json!({"type":"turn.done","turn":{"role":"user","transcript":""}}),
+			&mut captions,
+		);
+		assert_eq!(captions.len(), 4);
+		assert!(captions[3].text.is_empty() && captions[3].complete);
+		update_caption(
+			&json!({"type":"input_transcript.added","item":{"text":"界".repeat(12000)}}),
+			&mut captions,
+		);
+		assert_eq!(captions[4].text.len(), 32766);
+	}
+
+	#[test]
+	fn retiring_media_reads_queued_corrections_before_finalizing_captions() {
+		let mut captions = Vec::new();
+		update_caption(
+			&json!({"type":"input_transcript.added","item":{"text":"uncorrected"}}),
+			&mut captions,
+		);
+		let mut pending = std::collections::VecDeque::from([
+			json!({"type":"level","level":0.2}),
+			json!({"type":"caption","event":{"type":"turn.done","turn":{"role":"user","transcript":"Corrected final."}}}),
+			json!({"type":"caption","event":{"type":"output_transcript.added","item":{"text":"Reply"}}}),
+			json!({"type":"ended"}),
+		]);
+		drain_caption_events(&mut captions, || pending.pop_front());
+		assert!(pending.is_empty());
+		assert_eq!(
+			captions.iter().map(|c| (c.role, c.text.as_str(), c.complete)).collect::<Vec<_>>(),
+			vec![("user", "Corrected final.", true), ("assistant", "Reply", false)]
+		);
+		let mut polled = 0;
+		drain_caption_events(&mut captions, || {
+			polled += 1;
+			Some(json!({"type":"level"}))
+		});
+		assert_eq!(polled, 128, "Retirement must not wait for an ongoing producer");
+	}
+
+	struct VoiceComposerView(Entity<ChiefSurface>);
+	impl Render for VoiceComposerView {
+		fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+			self.0.update(cx, |s, cx| s.render_composer_capsule(false, window, cx))
+		}
+	}
+
+	#[gpui::test]
+	fn active_voice_keeps_the_draft_visible_and_editable(cx: &mut gpui::TestAppContext) {
+		cx.update(crate::composer_input::bind_keys);
+		let (view, visual) = cx.add_window_view(|_, cx| {
+			let surface = cx.new(ChiefSurface::new);
+			surface.update(cx, |s, cx| {
+				s.composer.update(cx, |input, cx| input.set_content("Draft", cx));
+				s.voice = Some(VoiceUi {
+					media: Media,
+					session: EntityId::new("call").unwrap(),
+					work: EntityId::new("chief").unwrap(),
+					request: None,
+					answered: true,
+					signaling: true,
+					connected: true,
+					connection_status: "Live".into(),
+					muted: false,
+					captions: Vec::new(),
+					matched_receipts: Default::default(),
+					levels: Default::default(),
+					follow: true,
+				});
+			});
+			VoiceComposerView(surface)
+		});
+		let surface = view.read_with(visual, |v, _| v.0.clone());
+		let input = surface.read_with(visual, |s, _| s.composer.clone());
+		for width in [320., 800.] {
+			visual.update(|window, cx| {
+				window.resize(gpui::size(px(width), px(400.)));
+				window.focus(&input.focus_handle(cx), cx);
+				window.draw(cx).clear();
+			});
+			visual.update(|window, cx| {
+				input.update(cx, |input, cx| {
+					let text = input
+						.bounds_for_range(0..5, Default::default(), window, cx)
+						.expect("the visible draft must have text layout");
+					assert!(text.size.width > px(0.) && text.size.height > px(0.));
+					assert!(text.origin.x >= px(0.) && text.origin.y >= px(0.));
+					assert!(text.origin.x + text.size.width <= px(width));
+				});
+			});
+		}
+		visual.simulate_keystrokes("shift-enter");
+		input.read_with(visual, |input, _| assert_eq!(input.content(), "Draft\n"));
+		surface.read_with(visual, |s, _| assert!(s.voice.is_some()));
 	}
 	#[gpui::test]
-	fn saved_voice_message_replaces_caption_without_hiding_an_older_repeat(
+	fn saved_voice_caption_and_disconnect_remain_bound_to_the_current_call(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(ChiefSurface::new);
-		surface.update(cx, |s, _| {
+		surface.update(cx, |s, cx| {
 			s.voice = Some(VoiceUi {
 				media: Media,
 				session: EntityId::new("call").expect("id"),
@@ -608,14 +938,17 @@ mod tests {
 				connected: true,
 				connection_status: "Live".into(),
 				muted: false,
-				caption: "Hello".into(),
-				caption_role: "You",
-				caption_turn: "turn".into(),
-				started_at_micros: 100,
+				matched_receipts: Default::default(),
+				captions: vec![Caption {
+					complete: true,
+					turn: "turn".into(),
+					role: "user",
+					text: "Hello".into(),
+				}],
 				levels: Default::default(),
 				follow: true,
 			});
-			let history = |time| ChiefHistoryResult::Available {
+			let history = |session: Option<&str>| ChiefHistoryResult::Available {
 				questions: vec![],
 				questions_truncated: false,
 				questions_recovering: false,
@@ -628,22 +961,71 @@ mod tests {
 					native_source: None,
 					turn_id: None,
 					weather: Vec::new(),
-					receipt: None,
+					receipt: session.map(|session| decodex_protocol::ChiefHistoryReceiptDto {
+						voice_session_id: Some(session.into()),
+						event_kind: "voice_user".into(),
+						delivered_turn_id: None,
+						disposed: true,
+					}),
 					activity: None,
 					usage: None,
 					duration_ms: None,
 					id: 1,
 					kind: "user".into(),
 					text: "Hello".into(),
-					created_at_micros: time,
+					created_at_micros: 100,
 				}],
 			};
-			s.history = Some(("chief".into(), history(99)));
-			assert!(s.live_chat_caption().is_some());
-			s.history = Some(("chief".into(), history(101)));
-			assert!(s.live_chat_caption().is_none());
-			s.voice.as_mut().expect("voice").caption_role = "Chief";
-			assert!(s.live_chat_caption().is_some());
+			for sample in [history(None), history(Some("other-call"))] {
+				s.reconcile_voice_captions("chief", &sample);
+				assert!(s.live_chat_caption("chief").is_some());
+			}
+			s.reconcile_voice_captions("other-work", &history(Some("call")));
+			assert!(s.live_chat_caption("chief").is_some());
+			s.reconcile_voice_captions("chief", &history(Some("call")));
+			assert!(s.live_chat_caption("chief").is_none());
+
+			s.voice.as_mut().unwrap().captions.push(Caption {
+				complete: true,
+				turn: "repeat".into(),
+				role: "user",
+				text: "Hello".into(),
+			});
+			s.reconcile_voice_captions("chief", &history(Some("call")));
+			assert!(
+				s.live_chat_caption("chief").is_some(),
+				"One receipt must not hide two captions"
+			);
+
+			assert!(s.live_chat_caption("other-work").is_none());
+
+			s.voice.as_mut().expect("voice").captions[0].role = "assistant";
+			assert!(s.live_chat_caption("chief").is_some());
+			s.apply_voice_response(&EntityId::new("old-call").expect("id"), None, cx);
+			assert!(s.voice.is_some(), "An old request must not stop the current call");
+			s.apply_voice_response(&EntityId::new("call").expect("id"), None, cx);
+			assert!(s.voice.is_none(), "A failed control connection must retire local media");
+			assert!(
+				s.live_chat_caption("chief").is_some(),
+				"Retired media must retain text until history arrives"
+			);
+			assert!(s.live_chat_caption("other-work").is_none());
+
+			let mut saved = history(Some("call"));
+			if let ChiefHistoryResult::Available { entries, .. } = &mut saved {
+				entries[0].id = 2;
+				entries[0].kind = "assistant".into();
+				entries[0].receipt.as_mut().unwrap().event_kind = "voice_assistant".into();
+			}
+			s.reconcile_voice_captions("chief", &saved);
+			assert!(s.retired_voice_captions.is_empty());
+			s.history = None;
+			assert!(
+				s.live_chat_caption("chief").is_none(),
+				"Pagination cannot resurrect accepted captions"
+			);
+			assert!(s.feedback.contains("service connection was lost"));
+			assert!(s.poll_voice_media(cx).is_none(), "The loop must enter exact-session cleanup");
 		});
 	}
 }

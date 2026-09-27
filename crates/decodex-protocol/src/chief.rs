@@ -144,6 +144,9 @@ pub struct ChiefHistorySourceDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChiefHistoryReceiptDto {
+	/// Durable voice call identity; absent for non-voice and older receipts.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub voice_session_id: Option<String>,
 	/// Original local event category, not the displayed user/assistant role.
 	pub event_kind: String,
 	/// Acknowledged native turn. Absence means unconfirmed, not necessarily unsent.
@@ -924,6 +927,23 @@ pub enum ChiefSnapshotResult {
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn voice_receipt_identity_preserves_legacy_wire_and_roundtrips() {
+		let legacy =
+			serde_json::json!({"event_kind":"voice_user","delivered_turn_id":null,"disposed":true});
+		let mut receipt: super::ChiefHistoryReceiptDto =
+			serde_json::from_value(legacy.clone()).unwrap();
+		assert!(receipt.voice_session_id.is_none());
+		assert_eq!(serde_json::to_value(&receipt).unwrap(), legacy);
+		receipt.voice_session_id = Some("opaque call/1".into());
+		let encoded = serde_json::to_value(&receipt).unwrap();
+		assert_eq!(encoded["voice_session_id"], "opaque call/1");
+		assert_eq!(
+			serde_json::from_value::<super::ChiefHistoryReceiptDto>(encoded).unwrap(),
+			receipt
+		);
+	}
+
 	#[test]
 	fn guardian_approval_command_carries_only_saved_review_identity() {
 		let mut value = serde_json::json!({"action":"approve_guardian_denial","data":{

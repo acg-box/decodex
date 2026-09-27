@@ -146,6 +146,7 @@ mod tests {
 					turn_id: None,
 					weather: Vec::new(),
 					receipt: Some(ChiefHistoryReceiptDto {
+						voice_session_id: None,
 						event_kind: "user_message".into(),
 						delivered_turn_id: None,
 						disposed: false,
