@@ -820,6 +820,14 @@ This documentation refresh checked snapshot hashes, current committed bytes, all
 three registered migration mappings, current refusal/payload owners, stash
 identities and GitHub PR state. No application code or production data changed. The register deliberately leaves uncertain rows open.
 
+## Voice caption and control-loss recovery restored on 2026-09-27
+
+Reproduce unrelated saved text incorrectly hiding the current caption. Restore
+the complete inherited voice UI, call receipt identity and its surface/composer
+integration. See [the change and qualification](voice-caption-recovery.md).
+Close only this full voice-file row; shared owners and live/signed audio
+acceptance remain open. Local protocol 2.95 protects strict older readers.
+
 ## Voice failure retention restored on 2026-09-26
 
 The complete `crates/decodex-runtime/src/chief_voice.rs` matches its verified

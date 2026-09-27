@@ -310,6 +310,8 @@ impl ChiefSurface {
 	) -> gpui::Stateful<gpui::Div> {
 		let editor = div()
 			.id("composer-editor-area")
+			.flex()
+			.flex_col()
 			.flex_1()
 			.min_w_0()
 			.when(native, |d| {
@@ -325,8 +327,8 @@ impl ChiefSurface {
 				s.submit(cx);
 				cx.stop_propagation();
 			}))
-			.when(self.voice.is_none(), |d| d.child(self.composer.clone()))
-			.children(self.voice_controls(window, cx));
+			.children(self.voice_controls(window, cx))
+			.child(self.composer.clone());
 		div()
 			.id("chief-composer")
 			.occlude()
@@ -361,8 +363,8 @@ impl ChiefSurface {
 			.on_drop(cx.listener(|s, paths: &gpui::ExternalPaths, _, cx| {
 				s.attach_paths(paths.0.to_vec(), cx)
 			}))
-			.children(if self.voice.is_none() { self.attachment_row(cx) } else { None })
-			.children(if self.voice.is_none() { self.task_reference_row(cx) } else { None })
+			.children(self.attachment_row(cx))
+			.children(self.task_reference_row(cx))
 			.child(
 				div()
 					.w_full()

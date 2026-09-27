@@ -88,6 +88,7 @@ pub(crate) struct ChiefSurface {
 	#[cfg(all(target_os = "macos", not(test)))]
 	native_composer: native_composer::NativeComposer,
 	voice: Option<voice::VoiceUi>,
+	retired_voice_captions: Vec<voice::CaptionHistory>,
 	voice_task: Option<Task<()>>,
 	voice_settings: voice_settings::Panel,
 	recap: recap::Panel,
@@ -341,6 +342,7 @@ impl ChiefSurface {
 		let ChiefInputs { model, cwd, composer } = inputs;
 		Self {
 			voice: None,
+			retired_voice_captions: Vec::new(),
 			voice_task: None,
 			voice_settings: Default::default(),
 			recap: Default::default(),
@@ -611,6 +613,7 @@ impl ChiefSurface {
 								surface.feedback.clear();
 							}
 						}
+						surface.reconcile_voice_captions(&id, &history);
 						surface.prepare_async_question_inputs(&id, &history, cx);
 						surface.history_cache.insert(id.clone(), history.clone());
 						surface.history = Some((id, history));
@@ -1741,7 +1744,12 @@ impl ChiefSurface {
 			.child(self.prompt_edit_panel(&work.id, cx))
 			.child(self.native_timeline_panel(work, cx));
 		if self.native_history_active(work) {
-			return self.history_activity(panel.child(self.native_receipts_panel(work, cx)), work);
+			return self.history_activity(
+				panel
+					.child(self.native_receipts_panel(work, cx))
+					.children(self.live_chat_caption(&work.id)),
+				work,
+			);
 		}
 		let mut panel = panel.debug_selector(|| "saved-local-history".into());
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
@@ -1841,7 +1849,7 @@ impl ChiefSurface {
 					})),
 			);
 		}
-		panel.children(self.live_chat_caption())
+		panel.children(self.live_chat_caption(&work.id))
 	}
 
 	fn capacity_retry_control(

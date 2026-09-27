@@ -4817,7 +4817,7 @@ max_entry_bytes = 0
 
 	#[test]
 	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 94 });
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 95 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
@@ -6111,6 +6111,7 @@ max_entry_bytes = 0
 					turn_id: None,
 					weather: Vec::new(),
 					receipt: Some(crate::ChiefHistoryReceiptDto {
+						voice_session_id: None,
 						event_kind: "user_message".into(),
 						delivered_turn_id: (change == "delivered").then(|| "turn".into()),
 						disposed: change == "disposed",

@@ -236,3 +236,11 @@ Seven native tests passed; the separate opt-in subscription qualification test w
 skipped. The new PCM test verifies stereo 48 kHz to mono 24 kHz conversion, bounded
 chunks, and the complete final audio duration with a small resampling filter tail.
 The GPUI suite passed 173 tests (five opt-in cases ignored); strict Clippy passed.
+
+## Restored call-bound captions and editable drafts
+
+The current [caption recovery](voice-caption-recovery.md) supersedes the older
+Live-hides-composer behavior above. Restore the inherited visible editable draft,
+per-call transcript receipts, both speakers and local audio cleanup after service
+loss. Targeted and rendered tests are recorded separately from the outstanding
+physical audio and signed application acceptance.

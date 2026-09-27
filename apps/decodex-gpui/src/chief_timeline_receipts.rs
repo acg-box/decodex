@@ -288,7 +288,7 @@ mod tests {
             let Some((_,ChiefHistoryResult::Available {entries,..}))=&mut s.history else {panic!("fixture history")};
             entries.clear();
             entries.push(ChiefHistoryEntryDto {native_source:None,turn_id:Some("turn".into()),weather:vec![],id:92,kind:"checklist".into(),text:"- **Completed**: Inspect source\n- **Pending**: Verify changes\n\nLast observed checklist for this turn.".into(),created_at_micros:1,receipt:None,activity:None,usage:None,duration_ms:None});
-            entries[0].receipt = Some(decodex_protocol::ChiefHistoryReceiptDto { event_kind:"plan_updated".into(),delivered_turn_id:Some("turn".into()),disposed:true});
+            entries[0].receipt = Some(decodex_protocol::ChiefHistoryReceiptDto { voice_session_id: None, event_kind:"plan_updated".into(),delivered_turn_id:Some("turn".into()),disposed:true});
             let mut old = entries[0].clone(); old.id=91; old.text="Stale checklist".into();
             s.older_history.insert(s.selected.clone().unwrap(),(vec![old],None));
             cx.notify();
@@ -373,6 +373,7 @@ mod tests {
 			turn_id: None,
 			weather: Vec::new(),
 			receipt: Some(decodex_protocol::ChiefHistoryReceiptDto {
+				voice_session_id: None,
 				event_kind: "user_message".into(),
 				delivered_turn_id: None,
 				disposed: false,

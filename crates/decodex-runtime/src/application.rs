@@ -5332,10 +5332,20 @@ fn chief_history_receipt(
 		return None;
 	}
 	Some(decodex_protocol::ChiefHistoryReceiptDto {
+		voice_session_id: chief_voice_receipt_session(event),
 		event_kind: event.event_kind.clone(),
 		delivered_turn_id: event.delivered_turn_id.clone().filter(|id| !id.is_empty()),
 		disposed: event.disposition.is_some(),
 	})
+}
+
+fn chief_voice_receipt_session(event: &decodex_database::ChiefInboxEvent) -> Option<String> {
+	if !matches!(event.event_kind.as_str(), "voice_user" | "voice_assistant") {
+		return None;
+	}
+	let (kind, session, _sequence): (String, String, u64) =
+		serde_json::from_str(&event.source_event_id).ok()?;
+	(kind == "voice_transcript" && !session.is_empty() && session.len() <= 512).then_some(session)
 }
 
 #[cfg(test)]
@@ -5420,6 +5430,26 @@ mod history_receipt_tests {
 		assert_eq!(receipt.delivered_turn_id.as_deref(), Some("native-turn"));
 		event.delivered_turn_id = Some("x".repeat(513));
 		assert!(super::chief_history_receipt(&event).is_none());
+		event.delivered_turn_id = None;
+		event.event_kind = "voice_user".into();
+		event.source_event_id = serde_json::json!(["voice_transcript", "call", 7]).to_string();
+		assert_eq!(
+			super::chief_history_receipt(&event).unwrap().voice_session_id.as_deref(),
+			Some("call")
+		);
+		event.event_kind = "user_message".into();
+		assert!(super::chief_history_receipt(&event).unwrap().voice_session_id.is_none());
+		event.event_kind = "voice_assistant".into();
+		for source in [
+			serde_json::json!(["wrong", "call", 7]),
+			serde_json::json!(["voice_transcript", "", 7]),
+			serde_json::json!(["voice_transcript", "call", -1]),
+			serde_json::json!(["voice_transcript", "call", 7, "extra"]),
+			serde_json::json!(["voice_transcript", "x".repeat(513), 7]),
+		] {
+			event.source_event_id = source.to_string();
+			assert!(super::chief_history_receipt(&event).unwrap().voice_session_id.is_none());
+		}
 	}
 }
 
