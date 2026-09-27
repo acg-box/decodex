@@ -1467,3 +1467,13 @@ current child MCP failure. The tab-paste rendered regression passes. The complet
 main.rs diff only adds two retained modules. See [the complete scope mapping](overview-record-reconciliation.md).
 Close these three rows only; nine file comparisons remain in the current union.
 Signed desktop and native qualification limits remain open.
+
+## Shared catalog and request presentation reconciled on 2026-09-27
+
+Restore the missing-model notice after reproducing its rendered regression. Restore
+the distinction between inherited task speed and an explicit tier while preserving
+configured Flex. Restore complete command/permission executor display coverage.
+Thirteen catalog/model tests, seven request tests and strict GPUI Clippy pass.
+See [the complete source mapping](desktop-catalog-request-reconciliation.md). Close
+these two shared-file rows; seven file comparisons remain in the current union.
+Fresh signed desktop and native qualification limits remain open.
