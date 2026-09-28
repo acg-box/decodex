@@ -114,3 +114,22 @@ struct ResetCardUseConfirmation: Equatable {
 		}
 	}
 }
+
+/// Keep an unresolved operation on its card, even while inventory is refreshing.
+enum ResetCardChipPresentation {
+	static func targets(
+		inventory: [ResetCardUseTarget], pending: [ResetCardUseAttempt],
+		completed: ResetCardUseAttempt?, dismissedKey: String?
+	) -> [ResetCardUseTarget] {
+		var result = inventory
+		for attempt in pending + (completed.map { [$0] } ?? []) {
+			if !result.contains(where: { $0.descriptor == attempt.target.descriptor }) {
+				result.append(attempt.target)
+			}
+		}
+		if let completed, dismissedKey == completed.idempotencyKey {
+			result.removeAll { $0.descriptor == completed.target.descriptor }
+		}
+		return result.sorted { $0.descriptor.expiresAtUnixSeconds < $1.descriptor.expiresAtUnixSeconds }
+	}
+}

@@ -19,12 +19,23 @@ pub(super) fn parts(item: &Value) -> Vec<String> {
 			}
 		}
 	}
+	if let Some(arguments) = item.get("arguments").filter(|v| !v.is_null()) {
+		let formatted = arguments.as_str().and_then(|s| serde_json::from_str::<Value>(s).ok());
+		let value = formatted.as_ref().unwrap_or(arguments);
+		let text = value.as_str().map(str::to_owned).unwrap_or_else(|| {
+			serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
+		});
+		parts.push(format!("Input\n{text}"));
+	}
 	let content = item.pointer("/result/content").or_else(|| item.get("contentItems"));
 	for block in content.and_then(Value::as_array).into_iter().flatten() {
 		content_parts(block, &mut parts);
 	}
 	if let Some(structured) = item.pointer("/result/structuredContent").filter(|v| !v.is_null()) {
-		parts.push(format!("Structured result:\n{structured}"));
+		parts.push(format!(
+			"Structured result:\n{}",
+			serde_json::to_string_pretty(structured).unwrap_or_else(|_| structured.to_string())
+		));
 	}
 	if item["status"] == "failed" || item["success"] == false {
 		parts.push("Tool reported failure".into());

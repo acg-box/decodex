@@ -163,8 +163,8 @@ impl AgentSurface {
 			}
 			panel = panel.child(self.app_exposure_panel(work, cx));
 			let text = match result {
-				None => "Reading native integration status…".into(),
-				Some(result) => integration_text(result),
+				None => crate::ui_loading::loading("Loading tools and plugins").into_any_element(),
+				Some(result) => div().child(integration_text(result)).into_any_element(),
 			};
 			panel = panel.child(
 				div()
@@ -345,7 +345,9 @@ impl AgentSurface {
 
 	fn load_integrations(&mut self, work: &str, cx: &mut Context<Self>) {
 		self.integrations_task = None;
-		self.integrations = Some((work.into(), None));
+		if !self.integrations.as_ref().is_some_and(|(owner, _)| owner == work) {
+			self.integrations = Some((work.into(), None));
+		}
 		let Some(profile) = self.profile.clone() else {
 			self.integrations = Some((work.into(), Some(AgentIntegrationsResult::Unavailable)));
 			cx.notify();

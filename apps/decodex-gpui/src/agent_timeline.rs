@@ -3,6 +3,7 @@ use super::*;
 use decodex_protocol::{AgentTimelineContent as Content, AgentTimelineEntry, AgentTimelinePage};
 use std::collections::BTreeSet;
 #[path = "agent_timeline_app_ui.rs"] mod app_ui;
+#[path = "agent_timeline_groups.rs"] mod groups;
 #[path = "agent_timeline_inputs.rs"] mod inputs;
 #[path = "agent_timeline_media.rs"] mod media;
 #[path = "agent_timeline_receipts.rs"] mod receipts;
@@ -123,6 +124,23 @@ impl AgentSurface {
 			})
 	}
 
+	pub(super) fn native_history_loading(&self, work: &AgentWorkItemDto) -> bool {
+		if self.native_history.show_saved
+			|| self.native_history_active(work)
+			|| self.native_history.failures > 0
+			|| work.codex_thread_id.is_none()
+		{
+			return false;
+		}
+		match self.native_history.requested.as_ref() {
+			None => self.profile.is_some(),
+			Some((id, thread)) =>
+				self.native_history.task.is_some()
+					&& id == &work.id
+					&& Some(thread) == work.codex_thread_id.as_ref(),
+		}
+	}
+
 	pub(super) fn native_timeline_panel(
 		&self,
 		work: &AgentWorkItemDto,
@@ -130,7 +148,7 @@ impl AgentSurface {
 	) -> gpui::AnyElement {
 		let owner = work.id.clone();
 		let thread = work.codex_thread_id.clone();
-		let mut panel = div().flex().flex_col().gap_2().child(
+		let mut panel = div().flex().flex_col().gap(px(scroll::ROW_GAP)).child(
 			div().debug_selector(|| "native-latest-action".into()).child(self.workspace_action(
 				"native-timeline-refresh".into(),
 				"Latest native history".into(),
@@ -143,17 +161,15 @@ impl AgentSurface {
 			)),
 		);
 		panel = panel.child(self.render_native_app_recovery(work, cx));
+		// Reserve the first-load state before the request starts, but retain
+		// existing history during background refreshes and fallback retries.
+		if self.native_history_loading(work) {
+			panel = panel.child(crate::ui_loading::conversation("Loading conversation"));
+		}
+
 		if self.native_history.requested.as_ref().is_some_and(|(id, thread)| {
 			id == &work.id && Some(thread) == work.codex_thread_id.as_ref()
 		}) {
-			// A background refresh must not change transcript height. Inserting a
-			// loading row on every poll makes bottom-follow repeatedly scroll back.
-			let has_history = self.native_history.binding.as_ref().is_some_and(|binding| {
-				binding.work == work.id && Some(&binding.thread) == work.codex_thread_id.as_ref()
-			});
-			if self.native_history.task.is_some() && !has_history {
-				panel = panel.child(muted("Loading native history…"));
-			}
 			if let Some(message) = self.native_history.notice {
 				panel = panel.child(
 					div().debug_selector(|| "native-history-notice".into()).child(muted(message)),
@@ -211,8 +227,98 @@ impl AgentSurface {
 			for item in &self.native_history.summary {
 				panel = panel.child(self.native_summary_row(work, item, cx));
 			}
-			for entry in &self.native_history.entries {
+			let groups =
+				groups::groups(&self.native_history.entries, &self.native_history.expanded_turns);
+			let mut collapsed = BTreeSet::new();
+			let mut headers = std::collections::BTreeMap::new();
+
+			for group in &groups {
+				headers.insert(group.indices[0], group);
+				collapsed.extend(group.indices.iter().skip(1).copied());
+			}
+			self.prepare_process_folds(work, &collapsed);
+			let mut hidden = Vec::new();
+			for (index, entry) in self.native_history.entries.iter().enumerate() {
+				if let Some(group) = headers.get(&index) {
+					if !hidden.is_empty() {
+						panel = panel
+							.child(self.native_history_spacer(work, std::mem::take(&mut hidden)));
+					}
+					let owner = cx.entity();
+					let indices = group.indices.clone();
+					let source_work = work.clone();
+					let header = (index == group.first_index)
+						.then(|| self.turn_process_header(work, group, entry, cx));
+					let body = div()
+						.w_full()
+						.debug_selector(|| "turn-process-block".into())
+						.children(header)
+						.child(crate::ui_motion::disclosure_lazy(
+							SharedString::from(format!(
+								"turn-process-body-{}-{}-{}",
+								work.id,
+								group.turn,
+								serde_json::json!(key(entry))
+							)),
+							group.expanded,
+							move |cx| {
+								owner.update(cx, |s, cx| {
+									div()
+										.w_full()
+										.flex()
+										.flex_col()
+										.gap(px(8.))
+										.ml(px(8.))
+										.border_l_1()
+										.border_color(rgba(0xffffff14))
+										.pl(px(14.))
+										.children(
+											indices
+												.iter()
+												.filter_map(|index| {
+													s.native_history.entries.get(*index)
+												})
+												.map(|entry| {
+													s.native_timeline_content(
+														&source_work,
+														entry,
+														&format!(
+															"process-{}-{}",
+															source_work.id,
+															serde_json::json!(key(entry))
+														),
+														cx,
+													)
+												}),
+										)
+										.into_any_element()
+								})
+							},
+						));
+					panel = panel.child(self.native_scroll_row(
+						work,
+						entry,
+						body.into_any_element(),
+						cx,
+					));
+					continue;
+				}
+
+				if collapsed.contains(&index) {
+					continue;
+				}
+				if let Some(height) = self.native_offscreen_height(work, entry) {
+					hidden.push((entry, height));
+					continue;
+				}
+				if !hidden.is_empty() {
+					panel =
+						panel.child(self.native_history_spacer(work, std::mem::take(&mut hidden)));
+				}
 				panel = panel.child(self.native_timeline_row(work, entry, cx));
+			}
+			if !hidden.is_empty() {
+				panel = panel.child(self.native_history_spacer(work, hidden));
 			}
 			if let Some(messages) = self.streamed_output(work) {
 				for message in messages.iter().filter(|message| {
@@ -227,6 +333,13 @@ impl AgentSurface {
                 }
 			}
 		}
+		panel = panel.child(crate::ui_working::Working {
+			key: format!("working-{}", work.id),
+			turn: (work.dispatch_state == AgentDispatchStateDto::Running)
+				.then(|| work.active_turn_id.clone())
+				.flatten()
+                .filter(|turn| !self.native_history.entries.iter().any(|entry| matches!(&entry.content, Content::TurnBoundary { turn_id, completed: true, .. } if turn_id == turn))),
+		});
 		panel.into_any_element()
 	}
 
@@ -258,6 +371,21 @@ impl AgentSurface {
 	fn refresh_native_history(&mut self, binding: Binding, page: AgentTimelinePage) -> bool {
 		let jump = self.native_history.viewport.take_latest_request();
 		let work = binding.work.clone();
+		// Do not fold a running process out from under a reader browsing history.
+		if self.history_follow_paused.contains(&work) && !self.native_history.entries.is_empty() {
+			for entry in &page.entries {
+				if let Content::TurnBoundary { turn_id, completed: true, .. } = &entry.content {
+					let already_finished = self.native_history.entries.iter().any(|old| {
+						matches!(&old.content,
+						Content::TurnBoundary {turn_id: old_turn, completed: true, ..} if old_turn == turn_id)
+					});
+					if !already_finished {
+						self.native_history.expanded_turns.insert(turn_id.clone());
+					}
+				}
+			}
+		}
+
 		let accepted = if jump {
 			self.native_history.replace(binding, page)
 		} else {
@@ -405,6 +533,7 @@ pub(super) struct Timeline {
 	unsupported: bool,
 	browsing_window: bool,
 	show_saved: bool,
+	expanded_turns: BTreeSet<String>,
 	viewport: scroll::Viewport,
 	notice: Option<&'static str>,
 	seen_cursors: BTreeSet<String>,
@@ -527,6 +656,7 @@ impl Timeline {
 			self.revision = self.revision.wrapping_add(1);
 		}
 		if self.binding.as_ref() != Some(&binding) {
+			self.expanded_turns.clear();
 			self.preview.clear();
 			self.app_ui.clear();
 		}
@@ -624,6 +754,53 @@ pub(super) fn key(entry: &AgentTimelineEntry) -> (u64, u8, &str) {
 mod tests {
 	use super::*;
 	#[gpui::test]
+	fn pending_native_read_does_not_flash_local_records(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| Some(&w.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("thread".into());
+			s.native_history.requested = Some((work.id.clone(), "thread".into()));
+			s.native_history.task = Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_some());
+		assert!(visual.debug_bounds("saved-local-history").is_none());
+		// A failed native read still permits the saved-history fallback.
+		surface.update(visual, |s, cx| {
+			s.native_history.task = None;
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_none());
+		assert!(visual.debug_bounds("saved-local-history").is_some());
+		// Retrying a failed read must retain the fallback, too.
+		surface.update(visual, |s, cx| {
+			s.native_history.failed(None, std::time::Instant::now());
+			s.native_history.task = Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_none());
+		assert!(visual.debug_bounds("saved-local-history").is_some());
+	}
+
+	#[gpui::test]
 	fn summary_recovery_renders_notice_and_copies_only_message_text(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
@@ -653,6 +830,7 @@ mod tests {
 			s.native_history.accept_summary(
 				binding,
 				vec![Content::Item {
+					phase: None,
 					turn_id: "turn".into(),
 					item_id: "answer".into(),
 					kind: "agentMessage".into(),
@@ -694,6 +872,7 @@ mod tests {
 		let binding =
 			Binding { work: "work".into(), thread: "thread".into(), account: "account".into() };
 		let item = Content::Item {
+			phase: None,
 			turn_id: "turn".into(),
 			item_id: "answer".into(),
 			kind: "agentMessage".into(),

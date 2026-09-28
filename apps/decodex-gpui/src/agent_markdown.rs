@@ -527,6 +527,42 @@ pub(super) fn response_text(text: &str) -> String {
 	out.trim_end().into()
 }
 
+pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
+	let document = cache::document(text);
+	div()
+		.flex()
+		.flex_col()
+		.gap_1()
+		.text_size(px(12.))
+		.line_height(px(19.))
+		.text_color(rgb(ui_theme::TEXT_MUTED))
+		.children(document.nodes.get_or_init(|| parse(text)).iter().enumerate().map(|(i, node)| {
+			let key = format!("{key}-{i}");
+			if let Node::Block(Kind::Heading(_) | Kind::Paragraph, children) = node {
+				div()
+					.font_weight(FontWeight::NORMAL)
+					.child({
+						let mut out = Inline::default();
+						append_inline(children, HighlightStyle::default(), None, &mut out);
+						for (_, style) in &mut out.highlights {
+							style.font_weight = None;
+						}
+						selectable_text::SelectableText {
+							key: key.clone(),
+							text: out.text,
+							highlights: out.highlights,
+							links: out.links,
+						}
+						.into_any_element()
+					})
+					.into_any_element()
+			} else {
+				render_node(node, &key)
+			}
+		}))
+		.into_any_element()
+}
+
 pub(super) fn render(text: &str, key: &str) -> AnyElement {
 	let document = cache::document(text);
 	div()

@@ -92,6 +92,9 @@ pub enum AgentTimelineContent {
 		item_id: String,
 		/// Native item kind; unknown kinds remain visible as unsupported items.
 		kind: String,
+		/// Native assistant message phase. Missing phases remain unknown.
+		#[serde(default)]
+		phase: Option<String>,
 		/// Public message text, if present.
 		text: String,
 		/// Some message content was omitted by the display bound.

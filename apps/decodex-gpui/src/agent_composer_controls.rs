@@ -81,15 +81,19 @@ impl AgentSurface {
 			.gap(px(2.));
 		let models = match self.current_model_catalog(cx) {
 			Some(decodex_protocol::AgentCapabilitiesResult::Available { models, .. }) => models,
+			_ if self.capability_task.is_some() =>
+				return palette
+					.min_h(px(64.))
+					.child(crate::ui_loading::loading("Loading models"))
+					.into_any_element(),
 			_ =>
 				return palette
-					.child(div().text_size(px(11.)).text_color(rgb(ui_theme::TEXT_MUTED)).child(
-						if self.capability_task.is_some() {
-							"Loading models…"
-						} else {
-							"Model options are unavailable. Refresh after selecting an account and working directory."
-						},
-					))
+					.child(
+						div()
+							.text_size(px(11.))
+							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.child("Model options are unavailable. Reopen to retry."),
+					)
 					.into_any_element(),
 		};
 		let mut models: Vec<_> = models.iter().collect();

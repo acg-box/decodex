@@ -125,7 +125,7 @@ impl AgentSurface {
 					panel = panel.child(muted("No remaining unconfirmed inputs on this page."));
 				}
 			},
-			None => panel = panel.child(muted("Loading local delivery records…")),
+			None => panel = panel.child(crate::ui_loading::loading("Loading delivery records")),
 			_ => panel = panel.child(muted("Local delivery records could not be read. Retrying…")),
 		}
 		panel.into_any_element()

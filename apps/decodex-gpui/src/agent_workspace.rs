@@ -46,7 +46,7 @@ impl AgentSurface {
 	pub(crate) fn workspace_panels(&self) -> [(bool, bool); 4] {
 		[
 			(self.sidebar_visible, true),
-			(self.graph_visible && self.has_work(), self.has_work()),
+			(self.graph_visible && self.reserve_workspace_panels(), self.has_work()),
 			(
 				self.timeline_visible && selected_history_available(self),
 				selected_history_available(self),
@@ -70,6 +70,11 @@ impl AgentSurface {
 		self.graph_visible = !self.graph_visible;
 		self.graph_expanded = false;
 		cx.notify();
+	}
+
+	// Unknown data must not collapse panels that the workspace intends to show.
+	pub(super) fn reserve_workspace_panels(&self) -> bool {
+		self.snapshot.is_none() || self.has_work()
 	}
 
 	pub(super) fn has_work(&self) -> bool {
@@ -428,18 +433,18 @@ impl AgentSurface {
 		panel.child(self.sidebar_resize_handle(cx)).into_any_element()
 	}
 
-	fn workspace_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
+	pub(super) fn workspace_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
 		let mut row = div()
 			.id("agent-pages")
 			.role(Role::TabList)
 			.aria_label("Open conversations")
-			.h(px(35.0))
-			.min_h(px(35.0))
+			.h(px(28.0))
+			.min_h(px(28.0))
+			.min_w_0()
+			.overflow_x_scroll()
 			.flex()
 			.items_center()
-			.gap_1()
-			.px_2()
-			.pb(px(4.));
+			.gap_1();
 		let root = self.root_id();
 		let mut pages = vec![(root.clone().unwrap_or_default(), "Main".to_owned(), false)];
 		if let Some(snapshot) = &self.snapshot {
@@ -456,6 +461,7 @@ impl AgentSurface {
 				self.selected.as_ref() == Some(&id) || (!closable && self.selected.is_none());
 			let select = id.clone();
 			let mut tab = div()
+				.flex_none()
 				.flex()
 				.items_center()
 				.h(px(28.))
@@ -749,6 +755,16 @@ impl AgentSurface {
 				};
 				transcript = transcript.child(content);
 			}
+		} else if self.snapshot.is_none() {
+			transcript = transcript.child(div().size_full().flex().items_center().child(
+				crate::ui_loading::conversation(
+					if matches!(self.state, LoadState::Unavailable | LoadState::Stale) {
+						"Connecting to workspace"
+					} else {
+						"Loading workspace"
+					},
+				),
+			));
 		} else {
 			transcript = transcript.child(self.workspace_welcome(window, cx));
 		}
@@ -786,6 +802,8 @@ impl AgentSurface {
 			.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)));
 		if let (Some(snapshot), Some(work)) = (&self.snapshot, &selected) {
 			chat = chat.child(self.work_context(snapshot, work, cx));
+		} else {
+			chat = chat.child(div().h(px(36.)).flex_none());
 		}
 
 		let transcript = self.workspace_transcript(selected.as_ref(), is_agent, window, cx);
@@ -866,7 +884,6 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.bg(rgba(ui_theme::AGENT_SIDEBAR_MATERIAL))
-			.when(!self.pages.is_empty(), |main| main.child(self.workspace_tabs(cx)))
 			.child(body);
 
 		self.workspace_resize_root(cx)
@@ -945,6 +962,7 @@ impl AgentSurface {
 
 	fn workspace_welcome(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
 		div()
+			.debug_selector(|| "workspace-welcome".into())
 			.size_full()
 			.flex()
 			.flex_col()
@@ -1033,7 +1051,7 @@ impl AgentSurface {
 			cx.listener(|s, _, _, _| s.focused_panel = Some(workspace_size::Panel::Bottom)),
 		);
 		let Some(snapshot) = &self.snapshot else {
-			return panel.child(div().p_4().child("Work graph unavailable")).into_any_element();
+			return panel.into_any_element();
 		};
 		let layout = self.workspace_graph_layout();
 		let zoom = self.graph_zoom;
@@ -1968,6 +1986,59 @@ mod tests {
 				)
 			})
 		}
+	}
+
+	#[gpui::test]
+	fn first_snapshot_has_feedback_without_replacing_retained_history(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.state = LoadState::Loading;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		let reserved = visual.update(|window, cx| {
+			let s = surface.read(cx);
+			(s.agent_tree_width(window), s.workspace_graph_size(window, true))
+		});
+		let skeleton = visual.debug_bounds("loading-feedback-Loading workspace").unwrap();
+		assert!(skeleton.size.height >= px(260.), "first load reserves a reading surface");
+		assert!(skeleton.size.width > px(200.));
+		surface.update(visual, |s, cx| {
+			s.state = LoadState::Unavailable;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("loading-feedback-Connecting to workspace").is_some());
+		assert!(
+			visual.debug_bounds("workspace-welcome").is_none(),
+			"a cold connection is not an empty conversation"
+		);
+
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.state = LoadState::Loading;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("loading-feedback-Loading workspace").is_none());
+		let loaded = visual.update(|window, cx| {
+			let s = surface.read(cx);
+			(s.agent_tree_width(window), s.workspace_graph_size(window, true))
+		});
+		assert_eq!(reserved, loaded, "the first snapshot fills existing panel slots");
+		let header = visual.debug_bounds("workspace-conversation-header").unwrap();
+		surface.update(visual, |s, cx| {
+			s.pages.push("release".into());
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert_eq!(
+			header,
+			visual.debug_bounds("workspace-conversation-header").unwrap(),
+			"opening the first tab must not add another layout row"
+		);
 	}
 
 	#[gpui::test]

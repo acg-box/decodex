@@ -46,6 +46,7 @@ impl AgentSurface {
 					.child(muted(graph::state_in(snapshot, work).0)),
 			)
 			.child(self.inspection_resources(&work.id, cx))
+			.child(self.native_receipts_panel(work, true, cx))
 			.when_some(work.parent_goal_id.as_ref(), |panel, parent| {
 				panel.child(self.relation("Reports to", snapshot, parent, cx))
 			})
@@ -140,7 +141,7 @@ impl AgentSurface {
 					}
 					rows = rows.child(row);
 				},
-			Some(None) => rows = rows.child(muted("Loading records…")),
+			Some(None) => rows = rows.child(crate::ui_loading::loading("Loading records")),
 			Some(Some(
 				AgentResourcesResult::Unavailable | AgentResourcesResult::CapacityExceeded,
 			)) => rows = rows.child(muted("Records are unavailable.")),

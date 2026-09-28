@@ -303,6 +303,7 @@ fn ordinary(row: &Value) -> Option<Content> {
 		.flatten()
 		.any(|uri| uri.as_str().is_some_and(|uri| uri.starts_with("ui://") && uri.len() > 5));
 	Some(Content::Item {
+		phase: item["phase"].as_str().map(str::to_owned),
 		app_ui,
 		turn_id,
 		item_id: id(&item["id"])?,
@@ -496,6 +497,16 @@ mod tests {
 		row["item"]["text"] = Value::Null;
 		assert!(ordinary(&row).is_none());
 	}
+	#[test]
+	fn assistant_phase_survives_the_public_timeline_projection() {
+		for phase in ["commentary", "final_answer"] {
+			let row = json!({"turnId":"turn","item":{"id":"item","type":"agentMessage","text":"Public text","phase":phase}});
+			assert!(
+				matches!(ordinary(&row).unwrap(),Content::Item {phase:Some(observed),..} if observed == phase)
+			);
+		}
+	}
+
 	#[test]
 	fn failed_turn_keeps_public_reason_and_explicit_bounds() {
 		let mut row = json!({"type":"turnCompleted","position":9,"turnId":"turn",

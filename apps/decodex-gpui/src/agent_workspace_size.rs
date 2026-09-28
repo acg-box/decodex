@@ -105,7 +105,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_graph_size(&self, window: &Window, wide: bool) -> (f32, f32) {
-		if !self.graph_visible || !self.has_work() {
+		if !self.graph_visible || !self.reserve_workspace_panels() {
 			return (0.0, 0.0);
 		}
 		let viewport = window.viewport_size();
@@ -114,11 +114,10 @@ impl AgentSurface {
 		} else {
 			0.0
 		};
-		let tabs = if self.pages.is_empty() { 0.0 } else { 35.0 };
 
 		let available = (
 			f32::from(viewport.width) - sidebar - self.agent_tree_width(window),
-			(f32::from(viewport.height) - super::super::WINDOW_CONTROLS_CLEARANCE - tabs).max(0.0),
+			(f32::from(viewport.height) - super::super::WINDOW_CONTROLS_CLEARANCE).max(0.0),
 		);
 		if !self.graph_expanded {
 			return (
@@ -131,8 +130,7 @@ impl AgentSurface {
 			self.graph_zoom,
 			(
 				f32::from(viewport.width) - sidebar - self.agent_tree_width(window),
-				(f32::from(viewport.height) - super::super::WINDOW_CONTROLS_CLEARANCE - tabs)
-					.max(0.0),
+				(f32::from(viewport.height) - super::super::WINDOW_CONTROLS_CLEARANCE).max(0.0),
 			),
 			self.graph_expanded,
 		)

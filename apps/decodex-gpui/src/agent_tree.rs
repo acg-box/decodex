@@ -100,7 +100,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn agent_tree_width(&self, window: &Window) -> f32 {
-		if !self.agent_tree_visible || self.graph_expanded || !self.has_work() {
+		if !self.agent_tree_visible || self.graph_expanded || !self.reserve_workspace_panels() {
 			return 0.0;
 		}
 		let width = f32::from(window.viewport_size().width);

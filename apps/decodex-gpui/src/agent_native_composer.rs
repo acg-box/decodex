@@ -48,7 +48,9 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
+		// Inline tool disclosures do not cover or replace the native composer.
 		let requested = allowed
+			&& self.snapshot.is_some()
 			&& self.native_agents.selected.is_none()
 			&& !self.selected_is_archived()
 			&& self.composer_unavailable_reason().is_none()
@@ -56,7 +58,6 @@ impl AgentSurface {
 			&& native_glass_panel::available()
 			&& self.resources.is_none()
 			&& self.integrations.is_none()
-			&& self.activity_detail.value.is_none()
 			&& self.usage_estimate.is_none()
 			&& !self.graph_expanded;
 		let now = std::time::Instant::now();

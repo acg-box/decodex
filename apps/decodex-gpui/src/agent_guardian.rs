@@ -493,7 +493,7 @@ impl AgentSurface {
 			}
 		}
 		if self.guardian.detail_request.is_some() {
-			panel = panel.child("Loading review details…");
+			panel = panel.child(crate::ui_loading::loading("Loading review"));
 		}
 		panel.into_any_element()
 	}

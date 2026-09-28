@@ -34,10 +34,12 @@ mod native_menu_bar;
 mod panel_preferences;
 mod settings_surface;
 mod shell;
+mod ui_loading;
 mod ui_motion;
 mod ui_preferences;
 mod ui_scroll;
 mod ui_theme;
+mod ui_working;
 
 #[cfg(target_os = "macos")] use objc2 as _;
 use std::{cell::RefCell, rc::Rc, sync::Arc};

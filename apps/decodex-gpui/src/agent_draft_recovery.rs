@@ -301,10 +301,28 @@ mod tests {
 			assert!(s.draft_storage_notice().unwrap().contains("Too many recovered"));
 		});
 		assert_eq!(store.load().unwrap().revision, 2);
+		// Recovery controls belong to a loaded empty workspace, not the cold
+		// startup screen before the first snapshot is known.
+		surface.update(visual, |s, cx| {
+			s.snapshot = Some(decodex_protocol::AgentSnapshotDto {
+				runtime_source: None,
+				workspaces: vec![],
+				work_items: vec![],
+				dependencies: vec![],
+				pending_events: vec![],
+			});
+			cx.notify();
+		});
+
 		visual.simulate_resize(gpui::size(gpui::px(1200.0), gpui::px(1000.0)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+
 		let remove = visual.debug_bounds("draft-copy-remove-0").unwrap();
 		visual.simulate_click(remove.center(), gpui::Modifiers::default());
 		visual.update(|window, cx| {
@@ -366,10 +384,28 @@ mod tests {
 			s.bind_profile(Some(profile.clone()), cx);
 			s.composer.update(cx, |input, cx| input.set_content("Unsaved current input", cx));
 		});
+		// Recovery controls belong to a loaded empty workspace, not the cold
+		// startup screen before the first snapshot is known.
+		surface.update(visual, |s, cx| {
+			s.snapshot = Some(decodex_protocol::AgentSnapshotDto {
+				runtime_source: None,
+				workspaces: vec![],
+				work_items: vec![],
+				dependencies: vec![],
+				pending_events: vec![],
+			});
+			cx.notify();
+		});
+
 		visual.simulate_resize(gpui::size(gpui::px(1100.0), gpui::px(800.0)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+
 		let toggle = visual.debug_bounds("draft-copies-toggle").unwrap();
 		visual.simulate_click(toggle.center(), gpui::Modifiers::default());
 		visual.update(|window, cx| {
@@ -503,10 +539,28 @@ mod tests {
 			s.bind_profile(Some(profile.clone()), cx);
 			assert!(s.can_keep_both_drafts());
 		});
+		// Recovery controls belong to a loaded empty workspace, not the cold
+		// startup screen before the first snapshot is known.
+		surface.update(visual, |s, cx| {
+			s.snapshot = Some(decodex_protocol::AgentSnapshotDto {
+				runtime_source: None,
+				workspaces: vec![],
+				work_items: vec![],
+				dependencies: vec![],
+				pending_events: vec![],
+			});
+			cx.notify();
+		});
+
 		visual.simulate_resize(gpui::size(gpui::px(1000.0), gpui::px(700.0)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+
 		let button = visual
 			.debug_bounds("draft-keep-both")
 			.expect("visible recovery action before a task exists");

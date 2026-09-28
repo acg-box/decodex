@@ -5,6 +5,7 @@ use decodex_protocol::{AgentActivityDetailCursor, AgentActivityDetailResult, Age
 #[derive(Default)]
 pub(super) struct ActivityDetailState {
 	pub value: Option<(String, Option<AgentActivityDetailResult>)>,
+	closing: Option<(String, Option<AgentActivityDetailResult>)>,
 	pub revision: u64,
 	pub task: Option<Task<()>>,
 }
@@ -13,10 +14,11 @@ impl AgentSurface {
 	pub(super) fn clear_activity_detail(&mut self) {
 		self.activity_detail.revision += 1;
 		self.activity_detail.value = None;
+		self.activity_detail.closing = None;
 		self.activity_detail.task = None;
 	}
 
-	fn activity_detail_key(&self, ids: &(String, String, String)) -> Option<String> {
+	pub(super) fn activity_detail_key(&self, ids: &(String, String, String)) -> Option<String> {
 		if self.state != LoadState::Ready
 			&& !(self.state == LoadState::Loading && self.status_before_refresh.is_none())
 		{
@@ -78,13 +80,25 @@ impl AgentSurface {
 			.value
 			.as_ref()
 			.filter(|(id, _)| id == &key)
-			.and_then(|(_, result)| result.as_ref());
+			.and_then(|(_, result)| result.as_ref())
+			.or_else(|| {
+				self.activity_detail
+					.closing
+					.as_ref()
+					.filter(|(id, _)| id == &key)
+					.and_then(|(_, result)| result.as_ref())
+			});
 		let body = match result {
 			Some(AgentActivityDetailResult::Available { text, offset, next, .. }) => {
 				let first_ids = ids.clone();
 				let next_ids = ids.clone();
 				div()
-					.child(text.clone())
+					.child(super::selectable_text::SelectableText {
+						key: format!("detail-text-{key}-{offset}"),
+						text: text.clone(),
+						highlights: Vec::new(),
+						links: Vec::new(),
+					})
 					.when(*offset > 0, |d| {
 						d.child(self.workspace_action(
 							"detail-first".into(),
@@ -112,8 +126,22 @@ impl AgentSurface {
 			},
 			Some(AgentActivityDetailResult::Unavailable) =>
 				div().child("Source details are unavailable. Collapse and reopen to retry."),
-			None => div().child("Loading details…"),
+			None => div().child(crate::ui_loading::loading("Loading details")),
 		};
+		let metadata_key = format!("tool-reference-{key}");
+		let metadata_open = self.expanded_records.contains(&metadata_key);
+		let metadata_toggle = self.workspace_action(
+			metadata_key.clone(),
+			"Technical details".into(),
+			move |s, cx| {
+				if !s.expanded_records.remove(&metadata_key) {
+					s.expanded_records.insert(metadata_key.clone());
+				}
+				cx.notify();
+			},
+			cx,
+		);
+
 		div()
 			.child(
 				row.id(SharedString::from(key.clone()))
@@ -135,20 +163,39 @@ impl AgentSurface {
 					.smooth(),
 			)
 			.child(disclosure(
-				"worker-tool-detail",
+				SharedString::from(format!("worker-tool-detail-{key}")),
 				expanded,
 				div()
 					.id(SharedString::from(format!("detail-scroll-{key}")))
+					.flex()
+					.flex_col()
+					.gap(px(8.))
 					.max_h(px(280.))
 					.overflow_y_scroll()
 					.p(px(10.))
 					.rounded(px(7.))
 					.bg(rgba(0x10101445))
 					.font_family("Menlo")
-					.text_size(px(10.5))
+					.text_size(px(11.5))
 					.line_height(px(16.))
 					.text_color(rgb(ui_theme::TEXT))
-					.child(body),
+					.child(body)
+					.child(metadata_toggle)
+					.child(disclosure(
+						SharedString::from(format!("tool-reference-body-{key}")),
+						metadata_open,
+						div().mt(px(6.)).text_color(rgb(ui_theme::TEXT_MUTED)).child(
+							super::selectable_text::SelectableText {
+								key: format!("detail-metadata-{key}"),
+								text: format!(
+									"{} · {}\nTurn {}\nCall {}",
+									item.kind, item.status, item.turn_id, item.item_id
+								),
+								highlights: Vec::new(),
+								links: Vec::new(),
+							},
+						),
+					)),
 			))
 			.into_any_element()
 	}
@@ -160,7 +207,7 @@ impl AgentSurface {
 		self.activity_detail.revision += 1;
 		self.activity_detail.task = None;
 		if self.activity_detail.value.as_ref().is_some_and(|(selected, _)| selected == &key) {
-			self.activity_detail.value = None;
+			self.activity_detail.closing = self.activity_detail.value.take();
 			cx.notify();
 			return;
 		}
@@ -179,6 +226,9 @@ impl AgentSurface {
 		self.activity_detail.revision += 1;
 		let revision = self.activity_detail.revision;
 		self.activity_detail.task = None;
+		if let Some(previous) = self.activity_detail.value.take() {
+			self.activity_detail.closing = Some(previous);
+		}
 		self.activity_detail.value = Some((key.clone(), None));
 		let Some(profile) = self.profile.clone() else {
 			self.activity_detail.value = Some((key, Some(AgentActivityDetailResult::Unavailable)));
@@ -300,6 +350,15 @@ mod tests {
 					));
 				}
 			}
+            s.apply_result(Ok(AgentSnapshotResult::Available(snapshot)));
+            let key = s.activity_detail_key(&ids).unwrap();
+            s.activity_detail.value = Some((key.clone(),Some(result())));
+            s.toggle_activity_detail(ids,cx);
+            assert!(s.activity_detail.value.is_none());
+            assert!(matches!(&s.activity_detail.closing, Some((id,Some(AgentActivityDetailResult::Available {text,..}))) if id == &key && text == "Passed"));
+            s.clear_activity_detail();
+            assert!(s.activity_detail.closing.is_none());
+
 		});
 	}
 }

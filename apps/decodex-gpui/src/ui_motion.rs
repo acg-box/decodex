@@ -365,16 +365,31 @@ mod tests {
 
 #[derive(IntoElement)]
 pub(crate) struct Disclosure {
-	id: &'static str,
+	id: ElementId,
 	visible: bool,
-	child: gpui::AnyElement,
+	child: Box<dyn FnOnce(&mut App) -> gpui::AnyElement>,
 }
 
-pub(crate) fn disclosure(id: &'static str, visible: bool, child: impl IntoElement) -> Disclosure {
-	Disclosure { id, visible, child: child.into_any_element() }
+pub(crate) fn disclosure(
+	id: impl Into<ElementId>,
+	visible: bool,
+	child: impl IntoElement,
+) -> Disclosure {
+	let child = child.into_any_element();
+	disclosure_lazy(id, visible, move |_| child)
+}
+
+/// Do not construct Markdown and tool details for fully collapsed processes.
+pub(crate) fn disclosure_lazy(
+	id: impl Into<ElementId>,
+	visible: bool,
+	child: impl FnOnce(&mut App) -> gpui::AnyElement + 'static,
+) -> Disclosure {
+	Disclosure { id: id.into(), visible, child: Box::new(child) }
 }
 
 struct DisclosureState {
+	visible: bool,
 	height: f32,
 	tween: Tween,
 }
@@ -382,20 +397,32 @@ struct DisclosureState {
 impl RenderOnce for Disclosure {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(self.id, cx, |_, _| DisclosureState {
+			visible: false,
 			height: 0.0,
 			tween: Tween::new(0.0),
 		});
 		let now = Instant::now();
 		let (height, moving) = state.update(cx, |s, _| {
-			s.tween.target(if self.visible { s.height } else { 0.0 }, now);
+			if self.visible && s.visible && s.tween.to > 0. && !s.tween.moving(now) {
+				// Once open, let inner disclosures and new content own their size.
+				// Animating both parent and child would make the parent lag behind.
+				s.tween = Tween::new(s.height);
+			} else {
+				s.tween.target(if self.visible { s.height } else { 0.0 }, now);
+			}
+			s.visible = self.visible;
 			(s.tween.sample(now), s.tween.moving(now))
 		});
 		if moving {
 			request_frame(window, cx);
 		}
-		div().w_full().h(px(height)).flex_none().overflow_hidden().when(
-			self.visible || height > 0.1,
-			|slot| {
+		div()
+			.w_full()
+			.h(px(height))
+			.when(self.visible && !moving && height > 0.1, |slot| slot.h_auto())
+			.flex_none()
+			.overflow_hidden()
+			.when(self.visible || height > 0.1, |slot| {
 				slot.child(
 					div()
 						.w_full()
@@ -411,10 +438,9 @@ impl RenderOnce for Disclosure {
 								});
 							}
 						})
-						.child(self.child),
+						.child((self.child)(cx)),
 				)
-			},
-		)
+			})
 	}
 }
 
@@ -457,22 +483,16 @@ impl RenderOnce for Arrival {
 	}
 }
 
-/// A content-sized popover that fades without stretching or clipping its contents.
+/// Fixed-anchor fallback until a whole-surface composited transition is available.
+/// Do not use per-primitive opacity or translate an already opaque card.
 #[derive(IntoElement)]
 pub(crate) struct Popover {
 	unframed: bool,
-	id: &'static str,
-	kind: &'static str,
 	visible: bool,
 	child: gpui::AnyElement,
 }
-pub(crate) fn popover(
-	id: &'static str,
-	kind: &'static str,
-	visible: bool,
-	child: impl IntoElement,
-) -> Popover {
-	Popover { id, kind, visible, child: child.into_any_element(), unframed: false }
+pub(crate) fn popover(visible: bool, child: impl IntoElement) -> Popover {
+	Popover { visible, child: child.into_any_element(), unframed: false }
 }
 impl Popover {
 	pub(crate) fn unframed(mut self, unframed: bool) -> Self {
@@ -481,29 +501,13 @@ impl Popover {
 	}
 }
 impl RenderOnce for Popover {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state(self.id, cx, |_, _| (self.kind, Tween::new(0.)));
-		let now = Instant::now();
-		let (opacity, moving) = state.update(cx, |s, _| {
-			if s.0 != self.kind {
-				s.0 = self.kind;
-				s.1 = Tween::new(0.);
-			}
-			s.1.duration = Duration::from_millis(180);
-			s.1.target(if self.visible { 1. } else { 0. }, now);
-			(s.1.sample(now), s.1.moving(now))
-		});
-		if moving {
-			request_frame(window, cx);
-		}
-		if opacity <= 0.001 {
+	fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+		if !self.visible {
 			return div().w_full().into_any_element();
 		}
 		div()
 			.w_full()
 			.relative()
-			.top(px((1. - opacity) * 4.))
-			.opacity(opacity)
 			.when(!self.unframed, |surface| {
 				surface.rounded(px(14.)).bg(gpui::rgb(0x29292d)).shadow(vec![gpui::BoxShadow {
 					inset: false,

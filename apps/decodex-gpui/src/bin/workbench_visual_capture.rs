@@ -42,8 +42,9 @@ mod settings_surface;
 #[path = "../shell.rs"]
 mod shell;
 #[allow(dead_code)]
-#[path = "../ui_motion.rs"]
-mod ui_motion;
+#[path = "../ui_loading.rs"]
+mod ui_loading;
+#[path = "../ui_motion.rs"] mod ui_motion;
 #[allow(dead_code)]
 #[path = "../ui_preferences.rs"]
 mod ui_preferences;
@@ -53,6 +54,7 @@ mod ui_scroll;
 #[allow(dead_code)]
 #[path = "../ui_theme.rs"]
 mod ui_theme;
+#[path = "../ui_working.rs"] mod ui_working;
 #[allow(dead_code)]
 #[cfg(target_os = "macos")]
 use objc2 as _;

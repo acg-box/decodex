@@ -5,6 +5,8 @@ use super::{
 	muted,
 };
 
+use gpui::StatefulInteractiveElement as _;
+
 impl AgentSurface {
 	pub(super) fn native_summary_row(
 		&self,
@@ -52,33 +54,20 @@ impl AgentSurface {
 	) -> gpui::AnyElement {
 		let identity = serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string();
 		let selector = format!("native-history-{identity}");
-		let placeholder = match &entry.content {
-			Content::Item { kind, turn_id, item_id, attachments, app_ui, text, .. }
-				if matches!(kind.as_str(), "userMessage" | "agentMessage")
-					&& attachments.is_empty()
-					&& !app_ui
-					&& !text.contains("![")
-					&& work.active_turn_id.as_deref() != Some(turn_id)
-					&& !self.native_history.weather.contains_key(turn_id)
-					&& self.native_live_message(work, turn_id, item_id).is_none() =>
-				self.transcript_scroll.get(&work.id).and_then(|scroll| {
-					self.native_history.viewport.offscreen_height(
-						entry,
-						scroll.offset().y.into(),
-						scroll.bounds().size.height.into(),
-					)
-				}),
-			_ => None,
-		};
-		let content = if let Some(height) = placeholder {
+		let content = self.native_timeline_content(work, entry, &identity, cx);
+		let process = matches!(&entry.content, Content::Item { kind, phase, activity, attachments, app_ui: false, .. }
+            if attachments.is_empty() && (activity.is_some() || matches!(kind.as_str(), "reasoning" | "plan")
+                || (kind == "agentMessage" && phase.as_deref() == Some("commentary"))));
+		let content = if process {
 			div()
-				.w_full()
-				.h(gpui::px(height))
-				.flex_none()
-				.debug_selector(|| "native-history-placeholder".into())
+				.ml(gpui::px(8.))
+				.border_l_1()
+				.border_color(gpui::rgba(0xffffff14))
+				.pl(gpui::px(14.))
+				.child(content)
 				.into_any_element()
 		} else {
-			self.native_timeline_content(work, entry, &identity, cx)
+			content
 		};
 		let content = self.anchored_native_history_entry(work, entry, content);
 		let content = self.native_scroll_row(work, entry, content, cx);
@@ -89,6 +78,39 @@ impl AgentSurface {
 			.min_w_0()
 			.child(content)
 			.into_any_element()
+	}
+
+	pub(super) fn native_offscreen_height(
+		&self,
+		work: &AgentWorkItemDto,
+		entry: &AgentTimelineEntry,
+	) -> Option<f32> {
+		let can_window = match &entry.content {
+			Content::Item { turn_id, item_id, attachments, app_ui, text, activity, .. }
+				if attachments.is_empty()
+					&& (activity.is_none() || self.activity_detail.value.is_none())
+					&& !app_ui
+					&& !text.contains("![")
+					&& work.active_turn_id.as_deref() != Some(turn_id)
+					&& !self.native_history.weather.contains_key(turn_id)
+					&& self.native_live_message(work, turn_id, item_id).is_none() =>
+				true,
+			Content::TurnBoundary { completed: true, turn_id, .. }
+				if work.active_turn_id.as_deref() != Some(turn_id) =>
+				true,
+			_ => false,
+		};
+		can_window
+			.then(|| {
+				self.transcript_scroll.get(&work.id).and_then(|scroll| {
+					self.native_history.viewport.offscreen_height(
+						entry,
+						scroll.offset().y.into(),
+						scroll.bounds().size.height.into(),
+					)
+				})
+			})
+			.flatten()
 	}
 
 	fn native_live_message(
@@ -171,7 +193,7 @@ impl AgentSurface {
 		message
 	}
 
-	fn native_timeline_content(
+	pub(super) fn native_timeline_content(
 		&self,
 		work: &AgentWorkItemDto,
 		entry: &AgentTimelineEntry,
@@ -195,11 +217,21 @@ impl AgentSurface {
 					"Voice conversation ended"
 				}))
 				.into_any_element(),
-			Content::TurnBoundary { completed, turn_id, error, .. } => {
+			Content::TurnBoundary { completed, turn_id, status, error, .. } => {
 				let has_reply = self.native_history.entries.iter().any(|entry| matches!(&entry.content, Content::Item { turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage"));
 				row.when(*completed && !has_reply, |row| {
 					row.child(self.native_turn_metrics(&entry.content, identity, cx))
 				})
+				.when(
+					*completed && matches!(status.as_deref(), Some("interrupted" | "failed")),
+					|row| {
+						row.child(muted(if status.as_deref() == Some("interrupted") {
+							"Stopped"
+						} else {
+							"Failed"
+						}))
+					},
+				)
 				.children(error.as_ref().map(|error| div().child(error.message.clone())))
 				.into_any_element()
 			},
@@ -242,7 +274,9 @@ impl AgentSurface {
 			activity,
 			turn_id,
 			item_id,
+			phase,
 			attachments,
+			..
 		} = content
 		else {
 			unreachable!("item renderer")
@@ -255,6 +289,12 @@ impl AgentSurface {
 		let (text, truncated) = draft.map_or((text.as_str(), *truncated), |message| {
 			(message.text.as_str(), message.truncated)
 		});
+		if kind == "agentMessage"
+			&& phase.as_deref() == Some("commentary")
+			&& attachments.is_empty()
+		{
+			return markdown::render_process(text, identity);
+		}
 		if matches!(kind.as_str(), "userMessage" | "agentMessage") {
 			let message = self.native_message_entry(work, turn_id, text, kind);
 			let mut body = div().debug_selector(|| "native-promotion-content".into());
@@ -291,24 +331,132 @@ impl AgentSurface {
 			{
 				let (owner, thread, turn, item) =
 					(work.id.clone(), thread.clone(), turn_id.clone(), item_id.clone());
-				body = body.child(self.workspace_action(
-					format!("review-prompt-{identity}"),
-					"Review earlier input".into(),
-					move |s, cx| s.review_prompt(&owner, &thread, &turn, &item, cx),
-					cx,
-				));
+				let group: SharedString = format!("history-input-{identity}").into();
+				let keyboard_source = (owner.clone(), thread.clone(), turn.clone(), item.clone());
+				let edit = div()
+					.id(SharedString::from(format!("review-prompt-{identity}")))
+					.role(gpui::Role::Button)
+					.tab_index(0)
+					.aria_label("Edit message")
+					.size(gpui::px(24.))
+					.flex()
+					.items_center()
+					.justify_center()
+					.rounded(gpui::px(6.))
+					.opacity(0.)
+					.group_hover(group.clone(), |style| style.opacity(1.))
+					.focus(|style| style.opacity(1.))
+					.cursor_pointer()
+					.hover(|style| style.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)))
+					.on_click(cx.listener(move |s, _, _, cx| {
+						s.review_prompt(&owner, &thread, &turn, &item, cx);
+					}))
+					.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+							let (owner, thread, turn, item) = &keyboard_source;
+							s.review_prompt(owner, thread, turn, item, cx);
+							cx.stop_propagation();
+						}
+					}))
+					.child(
+						gpui::canvas(
+							|_, _, _| (),
+							|bounds, _, window, _| {
+								let point =
+									|x, y| bounds.origin + gpui::point(gpui::px(x), gpui::px(y));
+								let mut path = gpui::PathBuilder::stroke(gpui::px(1.1));
+								path.move_to(point(2., 9.));
+								path.line_to(point(9., 2.));
+								path.line_to(point(12., 5.));
+								path.line_to(point(5., 12.));
+								path.line_to(point(1., 13.));
+								path.close();
+								path.move_to(point(7., 4.));
+								path.line_to(point(10., 7.));
+								if let Ok(path) = path.build() {
+									window.paint_path(path, gpui::rgb(crate::ui_theme::TEXT_MUTED));
+								}
+							},
+						)
+						.size(gpui::px(14.)),
+					);
+				body = body.group(group).child(div().flex().justify_end().child(edit));
 			}
 			return body.into_any_element();
+		}
+		if let Some(activity) = activity
+			&& !*app_ui
+			&& attachments.is_empty()
+		{
+			let label = if matches!(kind.as_str(), "dynamicToolCall" | "mcpToolCall")
+				&& !activity.detail.is_empty()
+			{
+				activity.detail.clone()
+			} else {
+				activity.label.clone()
+			};
+			let expanded = self
+				.activity_detail_key(&(work.id.clone(), turn_id.clone(), item_id.clone()))
+				.is_some_and(|key| {
+					self.activity_detail.value.as_ref().is_some_and(|(current, _)| current == &key)
+				});
+			let symbol = match activity.status.as_str() {
+				"failed" | "declined" => "!",
+				"running" => "◌",
+				_ => "✓",
+			};
+			let row = div()
+				.w_full()
+				.min_w_0()
+				.flex()
+				.items_center()
+				.gap(gpui::px(8.))
+				.py(gpui::px(5.))
+				.rounded(gpui::px(6.))
+				.text_size(gpui::px(12.))
+				.line_height(gpui::px(18.))
+				.text_color(gpui::rgb(crate::ui_theme::TEXT_MUTED))
+				.child(
+					// Status glyph advances differ; reserve one stable column for every state.
+					div()
+						.w(gpui::px(16.))
+						.h(gpui::px(18.))
+						.flex_none()
+						.flex()
+						.items_center()
+						.justify_center()
+						.child(if activity.status == "running" {
+							crate::ui_loading::loading("").into_any_element()
+						} else {
+							div().child(symbol).into_any_element()
+						}),
+				)
+				.child(div().flex_1().min_w_0().child(label))
+				.when(matches!(activity.status.as_str(), "failed" | "declined"), |d| {
+					d.child(activity.status.clone())
+				})
+				.when_some(activity.duration_ms.filter(|ms| *ms > 0), |d, ms| {
+					d.child(if ms < 1000 {
+						format!("{ms}ms")
+					} else {
+						format!("{:.1}s", ms as f64 / 1000.)
+					})
+				})
+				.child(crate::shell::workspace_symbols::process_chevron(
+					SharedString::from(format!("tool-chevron-{identity}")),
+					expanded,
+				));
+			return self.detail_row(work, activity, row, cx);
 		}
 		let label = match kind.as_str() {
 			"userMessage" => "You",
 			"agentMessage" => "Assistant",
 			"plan" => "Proposed plan",
-			"reasoning" => "Reasoning summary",
+			"reasoning" => "Thinking",
 			"functionCallOutput" => "Tool result",
 			_ => kind,
 		};
-		let mut row = row.child(muted(label));
+		let mut row = row.when(kind != "reasoning", |row| row.child(muted(label)));
 		if *app_ui {
 			row = row.child(self.native_app_ui_action(work, turn_id, item_id, cx));
 		}
@@ -321,11 +469,13 @@ impl AgentSurface {
 				"reasoning" => "native-reasoning-summary",
 				_ => "native-promotion-content",
 			};
-			row = row.child(
-				div()
-					.debug_selector(move || selector.into())
-					.child(markdown::render(text, identity)),
-			);
+			row = row.child(div().debug_selector(move || selector.into()).child(
+				if kind == "reasoning" {
+					markdown::render_process(text, identity)
+				} else {
+					markdown::render(text, identity)
+				},
+			));
 		}
 		if truncated {
 			row = row.child(muted("Some content was omitted from this history preview."));
@@ -626,6 +776,7 @@ mod tests {
 		AgentTimelineEntry {
 			position: 6,
 			content: Content::Item {
+				phase: None,
 				app_ui: false,
 				turn_id: "plan-turn".into(),
 				item_id: "plan-item".into(),
@@ -642,7 +793,7 @@ mod tests {
 		vec![
 			AgentTimelineEntry {
 				position: 0,
-				content: Content::Item { app_ui: false,
+				content: Content::Item { phase: None, app_ui: false,
 					turn_id: "turn".into(),
 					item_id: "input".into(),
 					kind: "userMessage".into(),
@@ -659,7 +810,7 @@ mod tests {
 			},
 			AgentTimelineEntry {
 				position: 1,
-				content: Content::Item { app_ui: false,
+				content: Content::Item { phase: None, app_ui: false,
 					turn_id: "turn".into(),
 					item_id: "message".into(),
 					kind: "agentMessage".into(),
@@ -836,6 +987,7 @@ mod tests {
 			entries.push(AgentTimelineEntry {
 				position: 100,
 				content: Content::Item {
+					phase: None,
 					app_ui: false,
 					turn_id: "summary-turn".into(),
 					item_id: "summary-item".into(),
@@ -915,10 +1067,6 @@ mod tests {
 			gpui::MouseButton::Left,
 			Default::default(),
 		);
-		visual.update(|window, cx| {
-			window.draw(cx).clear();
-		});
-		std::thread::sleep(std::time::Duration::from_millis(220));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
@@ -1060,6 +1208,7 @@ mod tests {
 					entries: vec![AgentTimelineEntry {
 						position: 1,
 						content: Content::Item {
+							phase: None,
 							turn_id: "turn".into(),
 							item_id: "widget".into(),
 							kind: "mcpToolCall".into(),

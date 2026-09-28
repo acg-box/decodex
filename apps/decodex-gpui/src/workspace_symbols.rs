@@ -111,3 +111,45 @@ impl gpui::RenderOnce for DisclosureChevron {
 		.flex_none()
 	}
 }
+
+/// A single centered chevron rotates instead of exchanging font glyphs.
+#[derive(gpui::IntoElement)]
+pub(super) struct ProcessChevron {
+	id: gpui::ElementId,
+	expanded: bool,
+}
+
+pub(super) fn process_chevron(id: impl Into<gpui::ElementId>, expanded: bool) -> ProcessChevron {
+	ProcessChevron { id: id.into(), expanded }
+}
+
+impl gpui::RenderOnce for ProcessChevron {
+	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
+		let progress =
+			crate::ui_motion::value(self.id, if self.expanded { 1. } else { 0. }, window, cx);
+		let angle = progress * std::f32::consts::FRAC_PI_2;
+		gpui::canvas(
+			|_, _, _| (),
+			move |bounds, _, window, _| {
+				let mut path = gpui::PathBuilder::stroke(px(1.4));
+				for (i, (x, y)) in [(-2., -3.5), (1.5, 0.), (-2., 3.5)].into_iter().enumerate() {
+					let point = bounds.center()
+						+ gpui::point(
+							px(x * angle.cos() - y * angle.sin()),
+							px(x * angle.sin() + y * angle.cos()),
+						);
+					if i == 0 {
+						path.move_to(point);
+					} else {
+						path.line_to(point);
+					}
+				}
+				if let Ok(path) = path.build() {
+					window.paint_path(path, window.text_style().color);
+				}
+			},
+		)
+		.size(px(12.))
+		.flex_none()
+	}
+}

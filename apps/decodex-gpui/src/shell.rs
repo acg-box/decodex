@@ -2204,17 +2204,11 @@ fn topbar_controls(
 	ui_theme::floating_group()
 		.text_size(px(11.0))
 		.when(shell.selected == Destination::Agent, |controls| {
-			controls
-				.when(shell.agent.read(cx).workspace_panels()[2].1, |group| {
-					group.child(agent_panel_control(shell, 2, cx))
-				})
-				.when(shell.agent.read(cx).workspace_panels()[1].1, |group| {
-					group.child(agent_panel_control(shell, 1, cx))
-				})
-				.when(shell.agent.read(cx).workspace_panels()[3].1, |group| {
-					group.child(agent_panel_control(shell, 3, cx))
-				})
-		})
+            // Keep global controls in place while their data is loading.
+            controls.child(agent_panel_control(shell, 2, cx))
+                .child(agent_panel_control(shell, 1, cx))
+                .child(agent_panel_control(shell, 3, cx))
+        })
 		.when(shell.selected == Destination::Conversations, |controls| {
 			controls.child(topbar_sessions_toggle(left_sidebar_visible, cx))
 		})
@@ -2307,8 +2301,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		.justify_center()
 		.when(active, |el| el.bg(rgba(0xffffff0c)))
 		.when(!enabled, |el| el.opacity(0.35))
-		.hover(|el| el.bg(rgba(crate::ui_theme::HOVER_FILL)))
-		.cursor_pointer()
+		.when(enabled, |el| el.cursor_pointer().hover(|el| el.bg(rgba(crate::ui_theme::HOVER_FILL))))
 		.occlude()
 		.on_mouse_down(MouseButton::Left, |_, window, cx| {
 			window.prevent_default();
@@ -2848,7 +2841,24 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.flex()
 						.flex_col()
 						.gap_2()
-						.when(count == 0, |list| {
+						.when(count == 0 && snapshot.load != AccountsLoadState::Ready, |list| {
+							list.child(
+								if matches!(
+									snapshot.load,
+									AccountsLoadState::NeverRequested | AccountsLoadState::Loading
+								) {
+									crate::ui_loading::loading("Loading accounts")
+										.into_any_element()
+								} else {
+									div()
+										.text_size(px(11.))
+										.text_color(rgb(WB_TEXT_MUTED))
+										.child(accounts_load_label(snapshot.load))
+										.into_any_element()
+								},
+							)
+						})
+						.when(count == 0 && snapshot.load == AccountsLoadState::Ready, |list| {
 							list.child(
 								div()
 									.h(px(100.0))
@@ -2863,6 +2873,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 									.bg(rgba(0xffffff04))
 									.text_size(px(11.0))
 									.text_color(rgb(WB_TEXT_MUTED))
+									.debug_selector(|| "accounts-empty".into())
 									.child("No accounts added")
 									.child(
 										div()
@@ -6238,6 +6249,31 @@ mod tests {
 		assert_eq!(adjacent_conversation_index(Some(0), 3, -1), Some(0));
 		assert_eq!(adjacent_conversation_index(Some(1), 3, 1), Some(2));
 		assert_eq!(adjacent_conversation_index(Some(2), 3, 1), Some(2));
+	}
+
+	#[gpui::test]
+	fn account_first_read_does_not_claim_an_empty_pool(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		for load in
+			[AccountsLoadState::Loading, AccountsLoadState::Ready, AccountsLoadState::Offline]
+		{
+			shell.update(visual, |s, cx| {
+				s.visual_accounts_and_health();
+				s.accounts.accounts.clear();
+				s.accounts.load = load;
+				s.selected = Destination::Accounts;
+				cx.notify();
+			});
+			visual.update(|window, cx| window.draw(cx).clear());
+			assert_eq!(
+				visual.debug_bounds("accounts-empty").is_some(),
+				load == AccountsLoadState::Ready
+			);
+			assert_eq!(
+				visual.debug_bounds("loading-feedback-Loading accounts").is_some(),
+				load == AccountsLoadState::Loading
+			);
+		}
 	}
 
 	#[gpui::test]

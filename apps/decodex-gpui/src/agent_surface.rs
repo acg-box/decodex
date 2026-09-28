@@ -1598,7 +1598,9 @@ impl AgentSurface {
 		div()
 			.flex_none()
 			.px_4()
-			.py_1()
+			.h(px(36.))
+			.justify_center()
+			.debug_selector(|| "workspace-conversation-header".into())
 			.flex()
 			.flex_col()
 			.child(
@@ -1606,12 +1608,16 @@ impl AgentSurface {
 					.flex()
 					.items_center()
 					.justify_between()
-					.child(
+					.gap(px(12.))
+					.child(div().flex_1().min_w_0().child(if self.pages.is_empty() {
 						div()
 							.text_size(px(12.))
 							.text_color(rgb(ui_theme::TEXT_MUTED))
-							.child(format!("{} · {status}", self.work_label(work))),
-					)
+							.child(format!("{} · {status}", self.work_label(work)))
+							.into_any_element()
+					} else {
+						self.workspace_tabs(cx)
+					}))
 					.child(
 						div()
 							.child(self.workspace_action(
@@ -1789,10 +1795,15 @@ impl AgentSurface {
 		if self.native_history_active(work) {
 			return self.history_activity(
 				panel
-					.child(self.native_receipts_panel(work, cx))
+					.child(self.native_receipts_panel(work, false, cx))
 					.children(self.live_chat_caption(&work.id)),
 				work,
 			);
+		}
+		// Local records use a different grouping and must not flash before the
+		// native transcript arrives. They remain available after a failed read.
+		if self.native_history_loading(work) {
+			return panel;
 		}
 		let mut panel = panel.debug_selector(|| "saved-local-history".into());
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
@@ -1850,7 +1861,7 @@ impl AgentSurface {
 			},
 			Some(AgentHistoryResult::Unavailable) =>
 				panel = panel.child(muted("Messages could not be loaded. Retrying…")),
-			None => panel = panel.child(muted("Loading messages…")),
+			None => panel = panel.child(crate::ui_loading::conversation("Loading conversation")),
 		}
 		self.history_activity(panel, work)
 	}
