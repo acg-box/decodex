@@ -145,7 +145,7 @@ impl gpui::RenderOnce for ProcessChevron {
 					}
 				}
 				if let Ok(path) = path.build() {
-					window.paint_path(path, gpui::rgb(crate::ui_theme::TEXT_MUTED));
+					window.paint_path(path, window.text_style().color);
 				}
 			},
 		)
