@@ -253,7 +253,10 @@ impl AgentSurface {
 										.flex()
 										.flex_col()
 										.gap(px(8.))
-										.pl(px(18.))
+										.ml(px(8.))
+										.border_l_1()
+										.border_color(rgba(0xffffff14))
+										.pl(px(14.))
 										.children(
 											indices
 												.iter()
@@ -315,6 +318,13 @@ impl AgentSurface {
                 }
 			}
 		}
+		panel = panel.child(crate::ui_working::Working {
+			key: format!("working-{}", work.id),
+			turn: (work.dispatch_state == AgentDispatchStateDto::Running)
+				.then(|| work.active_turn_id.clone())
+				.flatten()
+                .filter(|turn| !self.native_history.entries.iter().any(|entry| matches!(&entry.content, Content::TurnBoundary { turn_id, completed: true, .. } if turn_id == turn))),
+		});
 		panel.into_any_element()
 	}
 

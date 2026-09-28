@@ -55,6 +55,20 @@ impl AgentSurface {
 		let identity = serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string();
 		let selector = format!("native-history-{identity}");
 		let content = self.native_timeline_content(work, entry, &identity, cx);
+		let process = matches!(&entry.content, Content::Item { kind, phase, activity, attachments, app_ui: false, .. }
+            if attachments.is_empty() && (activity.is_some() || matches!(kind.as_str(), "reasoning" | "plan")
+                || (kind == "agentMessage" && phase.as_deref() == Some("commentary"))));
+		let content = if process {
+			div()
+				.ml(gpui::px(8.))
+				.border_l_1()
+				.border_color(gpui::rgba(0xffffff14))
+				.pl(gpui::px(14.))
+				.child(content)
+				.into_any_element()
+		} else {
+			content
+		};
 		let content = self.anchored_native_history_entry(work, entry, content);
 		let content = self.native_scroll_row(work, entry, content, cx);
 		div()
