@@ -7,39 +7,27 @@ use std::{
 
 // Use the approved logo silhouette, including its lightning and cursor cutouts.
 static CLOUD: LazyLock<Arc<Image>> = LazyLock::new(|| {
-	Arc::new(Image::from_bytes(
-		ImageFormat::Svg,
-		include_bytes!(
-			"../../../assets/app-icon/liquid-glass/01-mercury-cloud/AppIcon.icon/Assets/shape-0.svg"
-		)
-		.to_vec(),
-	))
+	let svg = include_str!("../../../assets/app-icon/liquid-glass/01-mercury-cloud/AppIcon.icon/Assets/shape-0.svg")
+        .replace("<g transform", r##"<defs><linearGradient id="glass" x1="0" y1="0" x2="0.7" y2="1"><stop stop-color="#eefbff"/><stop offset=".42" stop-color="#a2ddf4"/><stop offset=".72" stop-color="#64b8dc"/><stop offset="1" stop-color="#b9ecfc"/></linearGradient></defs><g transform"##)
+        .replace(r#"fill="white""#, r##"fill="url(#glass)" stroke="#d2f2ff" stroke-opacity=".45" stroke-width="6""##);
+	Arc::new(Image::from_bytes(ImageFormat::Svg, svg.into_bytes()))
 });
-// Same grid as scripts/assets/build_liquid_glass_icons.swift.
-const CELLS: [(f32, f32, f32); 15] = [
-	(0., 0., 0.18),
-	(1., 0., 0.43),
-	(3., 0., 0.82),
-	(6., 0., 0.90),
-	(0., 1., 0.10),
-	(1., 1., 0.25),
-	(2., 1., 0.55),
-	(4., 1., 0.69),
-	(1., 2., 0.12),
-	(2., 2., 0.32),
-	(3., 2., 0.62),
-	(5., 2., 0.84),
-	(2., 3., 0.14),
-	(3., 3., 0.38),
-	(4., 3., 0.57),
-];
 
-fn tile(time: f32, col: f32, row: f32, strength: f32) -> (f32, f32, f32) {
-	let wave = (1. - (time * std::f32::consts::TAU / 3.2 - col * 0.32 - row * 0.2).cos()) * 0.5;
-	let travel = wave * strength;
-	let x = ((444. + col * 64.) * 1.18 - 114.58) * 24. / 1024.;
-	let y = ((284. + row * 64.) * 1.18 - 68.56) * 24. / 1024.;
-	(x + travel * (2. + col * 0.5), y - travel * (1.5 + (3. - row) * 0.6), travel)
+fn smooth(value: f32) -> f32 {
+	let t = value.clamp(0., 1.);
+	t * t * (3. - 2. * t)
+}
+
+// Staggered births hide recycling at zero alpha. Every particle only travels outwards.
+fn particle(time: f32, index: usize) -> (f32, f32, f32, f32) {
+	let p = (time / 2.8 + index as f32 / 18.).rem_euclid(1.);
+	let lane = (index % 4) as f32;
+	let seed = ((index * 7) % 11) as f32 / 10.;
+	let x = 11.3 + lane * 1.77 + p * (7. + seed * 3.);
+	let y = 6.2 + lane * 1.77 - p * (5. + seed * 3.)
+		+ (p * std::f32::consts::PI).sin() * 0.7 * (seed - 0.5);
+	let alpha = smooth(p / 0.12) * (1. - smooth((p - 0.55) / 0.45)) * (0.6 + seed * 0.35);
+	(x, y, 1.75 - p * 0.8, alpha)
 }
 
 #[derive(Default)]
@@ -99,7 +87,7 @@ impl RenderOnce for Working {
 			.child(
 				div()
 					.relative()
-					.w(px(28.))
+					.w(px(32.))
 					.h(px(24.))
 					.flex_none()
 					.child(
@@ -108,26 +96,35 @@ impl RenderOnce for Working {
 							.top_0()
 							.left_0()
 							.size(px(24.))
-							.opacity(0.82 * settle),
+							.opacity(0.9 * settle),
 					)
 					.child(
 						canvas(
 							|_, _, _| (),
 							move |bounds, _, window, _| {
-								let clock = time - closing.unwrap_or_default();
-								for (col, row, fade) in CELLS {
-									let (x, y, travel) =
-										tile(clock, col, row, if reduced { 0. } else { settle });
-									let edge = 1.77 - travel * 0.3;
+								for index in 0..18 {
+									let (x, y, edge, alpha) =
+										particle(if reduced { 1.4 } else { time }, index);
+									let alpha = alpha * settle;
 									let b = Bounds::new(
 										bounds.origin + point(px(x), px(y)),
 										size(px(edge), px(edge)),
 									);
 									window.paint_quad(fill(
 										b,
-										rgba(0xdedeeaff).opacity(
-											(1. - fade * 0.7) * (1. - travel * 0.45) * settle,
+										linear_gradient(
+											155.,
+											linear_color_stop(rgba(0xdff7ffff).opacity(alpha), 0.),
+											linear_color_stop(
+												rgba(0x6fc5ecff).opacity(alpha * 0.7),
+												1.,
+											),
 										),
+									));
+									let rim = Bounds::new(b.origin, size(b.size.width, px(0.35)));
+									window.paint_quad(fill(
+										rim,
+										rgba(0xf1fcffff).opacity(alpha * 0.55),
 									));
 								}
 							},
@@ -138,5 +135,22 @@ impl RenderOnce for Working {
 			)
 			.child(div().opacity(settle).child("Working"))
 			.into_any_element()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::particle;
+	#[test]
+	fn particles_fade_before_recycling_and_move_outwards() {
+		for i in 0..18 {
+			let birth = (1. - i as f32 / 18.) * 2.8;
+			let before = particle(birth - 0.0001, i);
+			let after = particle(birth + 0.0001, i);
+			assert!(before.3 < 0.001 && after.3 < 0.001);
+			let first = particle(birth + 0.3, i);
+			let later = particle(birth + 1.5, i);
+			assert!(later.0 > first.0 && later.1 < first.1);
+		}
 	}
 }
