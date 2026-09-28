@@ -360,8 +360,12 @@ impl AgentSurface {
 				.when(matches!(activity.status.as_str(), "failed" | "declined"), |d| {
 					d.child(activity.status.clone())
 				})
-				.when_some(activity.duration_ms, |d, ms| {
-					d.child(format!("{:.1}s", ms as f64 / 1000.))
+				.when_some(activity.duration_ms.filter(|ms| *ms > 0), |d, ms| {
+					d.child(if ms < 1000 {
+						format!("{ms}ms")
+					} else {
+						format!("{:.1}s", ms as f64 / 1000.)
+					})
 				})
 				.child("›");
 			return self.detail_row(work, activity, row, cx);
@@ -374,7 +378,7 @@ impl AgentSurface {
 			"functionCallOutput" => "Tool result",
 			_ => kind,
 		};
-		let mut row = row.child(muted(label));
+		let mut row = row.when(kind != "reasoning", |row| row.child(muted(label)));
 		if *app_ui {
 			row = row.child(self.native_app_ui_action(work, turn_id, item_id, cx));
 		}
@@ -389,17 +393,7 @@ impl AgentSurface {
 			};
 			row = row.child(div().debug_selector(move || selector.into()).child(
 				if kind == "reasoning" {
-					div()
-						.text_size(gpui::px(12.))
-						.line_height(gpui::px(19.))
-						.text_color(gpui::rgb(crate::ui_theme::TEXT_MUTED))
-						.child(super::super::selectable_text::SelectableText {
-							key: identity.into(),
-							text: text.into(),
-							highlights: Vec::new(),
-							links: Vec::new(),
-						})
-						.into_any_element()
+					markdown::render_process(text, identity)
 				} else {
 					markdown::render(text, identity)
 				},
