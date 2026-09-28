@@ -6,7 +6,7 @@ tags: ["decodex", "architecture"]
 openwiki_generated: true
 verified:
   - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
+    at: 2026-09-28T06:22:45.949Z
 sources:
   - id: openwiki-source-100fa03c93c368ebc1fbbd5a
     resource: repo://automations/decodex/prompts/content-manager.md
@@ -14,11 +14,11 @@ sources:
     resource: repo://automations/decodex/prompts/xurl-publisher.md
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
-generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+generated: { by: "codex", at: "2026-09-28T06:22:45.949Z" }
 ---
 
 
-> Current configuration: `automations/portfolio.toml` declares ACTIVE defaults for the content roles and an explicit PAUSED override for the upstream Maintainer. The PAUSED-first sequence below is historical activation procedure, not a report that today's host is paused. Verify native task definitions separately; repository configuration does not prove execution. This documentation refresh publishes nothing and changes no schedule.
+> Current configuration: `automations/portfolio.toml` declares ACTIVE defaults for the content roles and an explicit ACTIVE setting for the upstream Maintainer. The PAUSED-first sequence below is historical activation procedure, not a report that today's host is paused. Verify native task definitions separately; repository configuration does not prove execution. This documentation refresh publishes nothing and changes no schedule.
 
 # Decodex Content Automation
 

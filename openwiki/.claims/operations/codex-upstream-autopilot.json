@@ -1,28 +1,28 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e380ad205c30dc9f694d3d0ac106f83636a55356731e0740404efb1efb9916d1",
+  "pageVersion": "sha256:2159bff103c0aca03550c0e85ddf6be61d48b980d605359bacc7818f83b164fc",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
-      "statement": "The current upstream portfolio uses one paused Maintainer; native content research and publication are separate roles.",
+      "statement": "The current upstream portfolio uses one active Maintainer; native content research and publication are separate roles.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:b7852f69f78beca97b4451e47ef6e8a9145fd60d477b0fd5ea2d905f5400bb5c"
+          "version": "repo-file-v1:sha256:7099dcd9b3b9b34ac9ea83e98525b565711173eeb380041d2e844f5ba69aee8f"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:2a3bd4f20db212b1d56acb29b911ba198dd87711ead1626316a0402458e5d3c3"
+          "version": "repo-file-v1:sha256:074b8d2d8e9c6c25046a5330e32975624891ba25db2332569158f1225eee98b7"
         }
       ]
     },
     {
       "id": "claim_d1a992e40d1147c3928b5de580178ed5",
-      "statement": "The portfolio defines three native automation roles and configures the upstream Maintainer paused with worktree execution.",
+      "statement": "The portfolio defines three native automation roles and configures the upstream Maintainer active with worktree execution.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:b7852f69f78beca97b4451e47ef6e8a9145fd60d477b0fd5ea2d905f5400bb5c"
+          "version": "repo-file-v1:sha256:7099dcd9b3b9b34ac9ea83e98525b565711173eeb380041d2e844f5ba69aee8f"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:2a3bd4f20db212b1d56acb29b911ba198dd87711ead1626316a0402458e5d3c3"
+          "version": "repo-file-v1:sha256:074b8d2d8e9c6c25046a5330e32975624891ba25db2332569158f1225eee98b7"
         }
       ]
     },
@@ -45,10 +45,30 @@
           "version": "repo-file-v1:sha256:d44cfac26a4e6530095703c75a034c342df29f0fdb319abe8a4d99d9fd9aac4f"
         }
       ]
+    },
+    {
+      "id": "claim_8be6c3a5a64f4abeb9a04557f9044213",
+      "statement": "The dated readback verifies the 1569-commit reviewed interval and records 493 later commits, while complete earlier per-commit coverage remains uncertified.",
+      "evidence": [
+        {
+          "resource": "repo://docs/archive/upstream-2026-09/coverage-readback-20260928.json",
+          "version": "repo-file-v1:sha256:a4a25d5b914a6477a2cc26ced631e58a241d8cf268094cb70d274127710bb101"
+        }
+      ]
+    },
+    {
+      "id": "claim_6b8f885058714b72a0b0af451249105f",
+      "statement": "The daily maintenance prompt limits automatic implementation to retained capabilities, requires user selection for new features and uses an approximate 30-minute active-work boundary with durable continuation.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:074b8d2d8e9c6c25046a5330e32975624891ba25db2332569158f1225eee98b7"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "at": "2026-09-28T06:22:45.949Z"
   }
 }

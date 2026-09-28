@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3de59b93d0649624643f024774baba22aa87c0e0da626c223d2a65be951b4a14",
+  "pageVersion": "sha256:22d20208150271ad252ca29bf2dfef69eb4e7053b655732540a0f3157d10698f",
   "claims": [
     {
       "id": "claim_ebacb67e562646d8af9fccd8e644cb32",
@@ -14,7 +14,7 @@
     },
     {
       "id": "claim_58efa26b5e4e42c4b7f8a05763ec1de2",
-      "statement": "The checked-in portfolio defines three native tasks, with the upstream Maintainer paused and Radar and Publisher retained as separate auxiliary tools.",
+      "statement": "The checked-in portfolio defines three native tasks, with the upstream Maintainer active and Radar and Publisher retained as separate auxiliary tools.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-publisher/src/lib.rs",
@@ -26,13 +26,13 @@
         },
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:b7852f69f78beca97b4451e47ef6e8a9145fd60d477b0fd5ea2d905f5400bb5c"
+          "version": "repo-file-v1:sha256:7099dcd9b3b9b34ac9ea83e98525b565711173eeb380041d2e844f5ba69aee8f"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "at": "2026-09-28T06:22:45.949Z"
   }
 }
