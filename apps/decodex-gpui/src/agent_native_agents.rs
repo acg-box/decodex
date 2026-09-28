@@ -278,7 +278,7 @@ impl AgentSurface {
 					);
 				}
 			},
-			None => body = body.child(muted("Loading conversation…")),
+			None => body = body.child(crate::ui_loading::loading("Loading conversation")),
 			_ => body = body.child(muted("This agent's conversation is unavailable. Retrying…")),
 		}
 		(body.into_any_element(), can_input)

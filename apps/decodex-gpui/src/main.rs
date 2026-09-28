@@ -34,6 +34,7 @@ mod native_menu_bar;
 mod panel_preferences;
 mod settings_surface;
 mod shell;
+mod ui_loading;
 mod ui_motion;
 mod ui_preferences;
 mod ui_scroll;

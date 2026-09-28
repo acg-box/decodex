@@ -42,8 +42,9 @@ mod settings_surface;
 #[path = "../shell.rs"]
 mod shell;
 #[allow(dead_code)]
-#[path = "../ui_motion.rs"]
-mod ui_motion;
+#[path = "../ui_loading.rs"]
+mod ui_loading;
+#[path = "../ui_motion.rs"] mod ui_motion;
 #[allow(dead_code)]
 #[path = "../ui_preferences.rs"]
 mod ui_preferences;

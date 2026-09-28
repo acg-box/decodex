@@ -27,7 +27,7 @@ impl AgentSurface {
 		);
 		if let Some((_, result)) = opened {
 			let body = match result {
-				None => div().child("Loading task resources…"),
+				None => div().child(crate::ui_loading::loading("Loading resources")),
 				Some(AgentResourcesResult::Unsupported) =>
 					div().child("This Codex provider does not support task resources."),
 				Some(AgentResourcesResult::Unavailable) =>

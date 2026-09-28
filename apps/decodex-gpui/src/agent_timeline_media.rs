@@ -96,7 +96,9 @@ impl AgentSurface {
 						.object_fit(gpui::ObjectFit::Contain),
 				);
 			}
-			if let Some(notice) = preview.notice {
+			if preview.task.is_some() {
+				row = row.child(crate::ui_loading::loading("Loading image"));
+			} else if let Some(notice) = preview.notice {
 				row = row.child(muted(notice));
 			}
 		}

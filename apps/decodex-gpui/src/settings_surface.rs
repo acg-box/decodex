@@ -284,7 +284,30 @@ impl SettingsSurface {
 		cx.notify();
 	}
 
-	fn toggle(&self, preference: DesktopPreference, cx: &mut Context<Self>) -> impl IntoElement {
+	fn toggle(&self, preference: DesktopPreference, cx: &mut Context<Self>) -> gpui::AnyElement {
+		if self.snapshot.settings.is_none() {
+			return div()
+				.id(match preference {
+					DesktopPreference::MenuBar => "menubar-loading",
+					DesktopPreference::Quota => "quota-loading",
+					DesktopPreference::Recap => "recap-loading",
+				})
+				.w(px(28.))
+				.flex()
+				.justify_center()
+				.child(
+					if matches!(
+						self.snapshot.load,
+						DesktopSettingsLoadState::NeverRequested
+							| DesktopSettingsLoadState::Loading
+					) {
+						crate::ui_loading::loading("").into_any_element()
+					} else {
+						div().text_color(rgb(TEXT_MUTED)).child("—").into_any_element()
+					},
+				)
+				.into_any_element();
+		}
 		let enabled = self.snapshot.settings.is_some_and(|settings| match preference {
 			DesktopPreference::MenuBar => settings.show_in_menu_bar,
 			DesktopPreference::Quota => settings.auto_activate_quota,
@@ -343,6 +366,7 @@ impl SettingsSurface {
 			))
 			.smooth()
 			.enabled(interactive)
+			.into_any_element()
 	}
 
 	fn launch_at_login_toggle(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -855,6 +879,22 @@ mod tests {
 	use gpui::{TestAppContext, size};
 
 	use super::*;
+
+	#[gpui::test]
+	fn unloaded_preferences_do_not_look_disabled(cx: &mut TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| {
+			SettingsSurface::new(DesktopSettingsController::production(), cx)
+		});
+		surface.update(visual, |s, cx| {
+			s.snapshot.settings = None;
+			s.snapshot.load = DesktopSettingsLoadState::Loading;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("menubar-surface-toggle").is_none());
+		assert!(visual.debug_bounds("automatic-recap-toggle").is_none());
+		assert!(visual.debug_bounds("loading-feedback-").is_some());
+	}
 
 	#[gpui::test]
 	fn short_settings_window_scrolls_to_last_row(cx: &mut TestAppContext) {

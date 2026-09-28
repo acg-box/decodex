@@ -13,16 +13,15 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Option<gpui::AnyElement> {
 		available.then(|| {
+			if self.loading_older {
+				return crate::ui_loading::loading("Loading earlier records").into_any_element();
+			}
 			div()
 				.id("native-earlier-local-records")
 				.debug_selector(|| "native-earlier-local-records".into())
 				.cursor_pointer()
 				.on_click(cx.listener(|surface, _, _, cx| surface.load_older_history(cx)))
-				.child(if self.loading_older {
-					"Loading earlier records…"
-				} else {
-					"Load earlier local records"
-				})
+				.child("Load earlier local records")
 				.into_any_element()
 		})
 	}

@@ -140,7 +140,7 @@ impl AgentSurface {
 					}
 					rows = rows.child(row);
 				},
-			Some(None) => rows = rows.child(muted("Loading records…")),
+			Some(None) => rows = rows.child(crate::ui_loading::loading("Loading records")),
 			Some(Some(
 				AgentResourcesResult::Unavailable | AgentResourcesResult::CapacityExceeded,
 			)) => rows = rows.child(muted("Records are unavailable.")),

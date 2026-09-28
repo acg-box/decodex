@@ -112,7 +112,7 @@ impl AgentSurface {
 			},
 			Some(AgentActivityDetailResult::Unavailable) =>
 				div().child("Source details are unavailable. Collapse and reopen to retry."),
-			None => div().child("Loading details…"),
+			None => div().child(crate::ui_loading::loading("Loading details")),
 		};
 		div()
 			.child(

@@ -749,6 +749,9 @@ impl AgentSurface {
 				};
 				transcript = transcript.child(content);
 			}
+		} else if self.snapshot.is_none() && self.state == LoadState::Loading {
+			transcript = transcript
+				.child(div().p_4().child(crate::ui_loading::loading("Loading workspace")));
 		} else {
 			transcript = transcript.child(self.workspace_welcome(window, cx));
 		}
@@ -1967,6 +1970,26 @@ mod tests {
 				)
 			})
 		}
+	}
+
+	#[gpui::test]
+	fn first_snapshot_has_feedback_without_replacing_retained_history(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.state = LoadState::Loading;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("loading-feedback-Loading workspace").is_some());
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.state = LoadState::Loading;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("loading-feedback-Loading workspace").is_none());
 	}
 
 	#[gpui::test]
