@@ -23,7 +23,7 @@ generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 
 # Commands and validation
 
-Use the smallest check that proves the changed contract. Broaden testing for shared runtime, protocol, database or packaging changes. The repository uses stable Rust for builds and tests; the formatter command is independently pinned in Makefile.toml.
+Use the smallest check that proves the changed contract. Broaden testing for shared runtime, protocol, database or packaging changes. The repository uses stable Rust for builds and tests; formatting uses the unversioned `nightly` channel selected by `Makefile.toml`. Do not select numbered compiler versions or dated nightly versions. Run `cargo make fmt-rust` to format and `cargo make fmt-rust-check` to check formatting.
 
 ## Source and runtime owners
 
