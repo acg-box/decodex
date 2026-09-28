@@ -23,7 +23,7 @@ pub(super) fn effort_indicator(level: &str) -> gpui::AnyElement {
 		.flex()
 		.items_center()
 		.gap(px(7.))
-		.child(div().text_size(px(10.5)).child(level_label(level)))
+		.child(div().text_size(px(11.)).child(level_label(level)))
 		.into_any_element()
 }
 

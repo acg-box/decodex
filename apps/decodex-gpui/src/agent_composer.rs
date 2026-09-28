@@ -370,7 +370,7 @@ impl AgentSurface {
 					.w_full()
 					.flex()
 					.items_center()
-					.gap(px(6.))
+					.gap(px(4.))
 					.child(self.composer_control(
 						"attach",
 						"+".into(),
@@ -397,7 +397,7 @@ impl AgentSurface {
 						.mb(px(if left { 8. } else { 10. }))
 						.when(left, |d| d.left(px(0.)))
 						// Align with the model trigger: inset + mic/send widths + toolbar gaps.
-						.when(!left, |d| d.right(px(79.)))
+						.when(!left, |d| d.right(px(70.)))
 						.w(px(if menu == Some("agent-settings") {
 							380.
 						} else if left {
@@ -534,7 +534,7 @@ impl AgentSurface {
 			.flex_none()
 			.flex()
 			.items_center()
-			.gap(px(4.0))
+			.gap(px(1.0))
 			.children(self.usage_line(cx))
 			.child(self.composer_control(
 				"model",
@@ -647,12 +647,14 @@ impl AgentSurface {
 			} else {
 				ui_theme::TEXT_MUTED
 			}))
-			.when(id == "model", |d| d.px(px(6.)))
+			.when(id == "model", |d| {
+				d.px(px(4.)).text_size(px(11.)).font_weight(gpui::FontWeight::NORMAL)
+			})
 			.when(["attachment-item", "audio-item", "delivery"].contains(&id), |d| {
 				d.w_full().h(px(32.)).justify_start().text_size(px(12.))
 			})
 			.when(self.composer_menu == Some(id), |d| d.bg(rgba(0xffffff12)))
-			.when(send, |d| d.w(px(28.)).h(px(28.)).rounded_full().ml(px(5.)).bg(rgb(0x515155)))
+			.when(send, |d| d.w(px(28.)).h(px(28.)).rounded_full().ml(px(2.)).bg(rgb(0x515155)))
 			.when(id == "audio-item", |d| d.aria_expanded(self.composer_menu == Some("microphone")))
 			.cursor_pointer()
 			.hover(move |d| {
