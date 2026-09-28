@@ -19,7 +19,8 @@ No stored history is rewritten.
   nonempty final answer are present on the loaded page.
 - Keep user input, final answers, unknown message phases, attachments, and App UI
   entries visible. Fold commentary, public reasoning summaries, plans, and terminal
-  tool activity behind a steps control. No private reasoning is requested.
+  tool activity behind one `N earlier messages` control per native turn. Place the
+  control immediately before the final answer. No private reasoning is requested.
 - Retain explicit expansion during refresh. Clear expansion when the binding changes.
 - If the reader is browsing history, keep newly completed processes open.
 - Keep the control anchored during manual toggles. Invalidate measured row heights
@@ -35,11 +36,13 @@ history. Do not guess a final reply from the last assistant message.
 
 Process sections and tool details use a centered, vector-drawn chevron that
 rotates 90 degrees over the shared 200 ms transition. The content reveals its
-measured height below the control and stays mounted through closing. Reversals
+measured height at its original position and stays mounted through closing. Reversals
 start from the current height. Respect reduced motion.
 
 Construct process content lazily, only during expansion or closing. Once open,
 use natural height so nested tool details do not receive a second delayed height
 animation. Give each disclosure an identity from its native work, turn and item.
 Split process segments around interleaved input or interactive content to preserve
-source order. Do not move user input into a collapsed process.
+source order. These segments share one total count and one control. Steer input
+belongs to its native turn and stays visible. Do not move user input into a
+collapsed process. Keep the final-answer anchor stable throughout disclosure motion.

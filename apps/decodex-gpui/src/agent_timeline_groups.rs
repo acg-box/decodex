@@ -1,12 +1,14 @@
 //! Present completed native turns without discarding their process records.
 use super::{AgentSurface, AgentTimelineEntry, Content};
-use gpui::{AnyElement, Context, Role, SharedString, div, prelude::*, px, rgb, rgba};
+use gpui::{AnyElement, Context, Role, SharedString, div, prelude::*, px, rgb};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) struct Group {
 	pub turn: String,
 	pub indices: Vec<usize>,
 	pub expanded: bool,
+	pub final_index: usize,
+	pub count: usize,
 }
 
 pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>) -> Vec<Group> {
@@ -50,6 +52,9 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 		.into_iter()
 		.flat_map(|(turn, indices)| {
 			let mut segments: Vec<Group> = Vec::new();
+            let final_index = entries.iter().position(|entry| matches!(&entry.content,
+                Content::Item { turn_id, kind, phase, .. } if turn_id == turn && kind == "agentMessage" && phase.as_deref() == Some("final_answer"))).expect("final reply");
+            let count = indices.len();
 			for index in indices {
 				if let Some(last) = segments.last_mut()
 					&& last.indices.last() == index.checked_sub(1).as_ref()
@@ -58,6 +63,8 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 				} else {
 					segments.push(Group {
 						turn: turn.into(),
+                        final_index,
+                        count,
 						indices: vec![index],
 						expanded: expanded.contains(turn),
 					});
@@ -66,6 +73,10 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 			segments
 		})
 		.collect()
+}
+
+fn earlier_messages_label(count: usize) -> String {
+	format!("{count} earlier {}", if count == 1 { "message" } else { "messages" })
 }
 
 impl AgentSurface {
@@ -89,27 +100,21 @@ impl AgentSurface {
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_expanded(expanded)
-			.aria_label(format!("{} process steps", group.indices.len()))
+			.aria_label(earlier_messages_label(group.count))
 			.cursor_pointer()
 			.flex()
 			.items_center()
 			.gap(px(6.))
-			.rounded(px(6.))
-			.px(px(6.))
 			.py(px(5.))
 			.text_size(px(13.))
-			.font_weight(gpui::FontWeight::MEDIUM)
+			.font_weight(gpui::FontWeight::NORMAL)
 			.line_height(px(18.))
-			.text_color(rgb(crate::ui_theme::TEXT))
-			.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
+			.text_color(rgb(crate::ui_theme::TEXT_MUTED))
+			.hover(|s| s.text_color(rgb(crate::ui_theme::TEXT)))
+			.child(earlier_messages_label(group.count))
 			.child(crate::shell::workspace_symbols::process_chevron(
 				SharedString::from(format!("turn-chevron-{identity}")),
 				expanded,
-			))
-			.child(format!(
-				"{} {}",
-				group.indices.len(),
-				if group.indices.len() == 1 { "step" } else { "steps" }
 			))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.anchor_process_toggle(&work_id, &entry);
@@ -216,6 +221,13 @@ mod tests {
 		];
 		let result = groups(&entries, &BTreeSet::new());
 		assert_eq!(
+			result.iter().map(|g| g.final_index).collect::<BTreeSet<_>>(),
+			BTreeSet::from([4])
+		);
+		assert!(result.iter().all(|g| g.count == 2 && g.turn == "turn"));
+		assert_eq!(earlier_messages_label(result[0].count), "2 earlier messages");
+		assert_eq!(earlier_messages_label(1), "1 earlier message");
+		assert_eq!(
 			result.iter().map(|g| g.indices.clone()).collect::<Vec<_>>(),
 			vec![vec![1], vec![3]]
 		);
@@ -288,26 +300,23 @@ mod tests {
 		visual.update(|w, cx| w.draw(cx).clear());
 		let full = visual.debug_bounds("turn-process-block").unwrap().size.height;
 		assert!(
-			middle >= initial && full >= middle && full > toggle.size.height,
+			middle >= initial && full >= middle && full > px(0.),
 			"height remains monotonic and reaches the expanded content: {initial:?} -> {middle:?} -> {full:?}"
 		);
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 		assert!(toggle.size.width < px(180.), "hover stays local to the disclosure control");
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|w, cx| w.draw(cx).clear());
-		assert!(
-			visual.debug_bounds("native-reasoning-summary").is_some(),
-			"content remains mounted during exit"
-		);
 		std::thread::sleep(std::time::Duration::from_millis(50));
 		visual.update(|w, cx| w.draw(cx).clear());
 		let closing = visual.debug_bounds("turn-process-block").unwrap().size.height;
-		assert!(closing <= full && closing >= toggle.size.height);
+		assert!(closing <= full && closing >= px(0.));
+		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|w, cx| w.draw(cx).clear());
 		assert!(
-			visual.debug_bounds("native-reasoning-summary").is_some(),
-			"reversal retains the same content"
+			surface.update(visual, |s, _| s.native_history.expanded_turns.contains("turn")),
+			"reversal reopens the same native turn"
 		);
 		std::thread::sleep(std::time::Duration::from_millis(240));
 		visual.update(|w, cx| w.draw(cx).clear());

@@ -24,6 +24,7 @@ struct Geometry {
 	layout: Option<Layout>,
 	pinned: Option<RowKey>,
 	pending: Option<Anchor>,
+	process_motion_until: Option<std::time::Instant>,
 	revision: u64,
 	latest_requested: bool,
 }
@@ -89,6 +90,7 @@ impl Viewport {
 		state.rows.retain(|key, _| keys.contains(key));
 		if state.pending.as_ref().is_some_and(|anchor| !keys.contains(&anchor.key)) {
 			state.pending = None;
+			state.process_motion_until = None;
 		}
 	}
 
@@ -127,7 +129,13 @@ impl Geometry {
 		}
 		let pending = self.pending.take()?;
 		let (top, _) = self.rows.get(&pending.key)?;
-		Some((pending.viewport_top - *top).clamp(-maximum.max(0.0), 0.0))
+		let offset = (pending.viewport_top - *top).clamp(-maximum.max(0.0), 0.0);
+		if self.process_motion_until.is_some_and(|until| std::time::Instant::now() < until) {
+			self.pending = Some(Anchor { scheduled: false, ..pending });
+		} else {
+			self.process_motion_until = None;
+		}
+		Some(offset)
 	}
 }
 
@@ -153,6 +161,8 @@ impl AgentSurface {
 	pub(super) fn anchor_process_toggle(&mut self, work: &str, entry: &AgentTimelineEntry) {
 		let mut state = self.native_history.viewport.0.borrow_mut();
 		let key = row_key(entry);
+		state.process_motion_until =
+			Some(std::time::Instant::now() + std::time::Duration::from_millis(240));
 		if let (Some((top, _)), Some(scroll)) =
 			(state.rows.get(&key), self.transcript_scroll.get(work))
 		{
@@ -181,6 +191,7 @@ impl AgentSurface {
 	pub(in super::super) fn cancel_native_scroll_anchor(&self) {
 		let mut state = self.native_history.viewport.0.borrow_mut();
 		state.pending = None;
+		state.process_motion_until = None;
 		state.latest_requested = false;
 	}
 
@@ -304,8 +315,10 @@ impl AgentSurface {
 						if let Some(offset) =
 							geometry.borrow_mut().finish(revision, scroll.max_offset().y.into())
 						{
-							scroll.set_offset(point(scroll.offset().x, px(offset)));
-							cx.notify();
+							if (f32::from(scroll.offset().y) - offset).abs() > 0.1 {
+								scroll.set_offset(point(scroll.offset().x, px(offset)));
+								cx.notify();
+							}
 						}
 					});
 				});
@@ -318,6 +331,24 @@ impl AgentSurface {
 mod tests {
 	use super::*;
 	use decodex_protocol::AgentTimelineContent as Content;
+
+	#[test]
+	fn disclosure_anchor_tracks_each_layout_until_motion_finishes() {
+		let key = row_key(&row(1));
+		let mut geometry = Geometry::default();
+		geometry.pending =
+			Some(Anchor { key: key.clone(), viewport_top: 100., revision: 1, scheduled: false });
+		geometry.process_motion_until =
+			Some(std::time::Instant::now() + std::time::Duration::from_secs(1));
+		assert_eq!(geometry.measure(key.clone(), 300., 20.), Some(1));
+		assert_eq!(geometry.finish(1, 1000.), Some(-200.));
+		assert_eq!(geometry.measure(key.clone(), 420., 20.), Some(1));
+		assert_eq!(geometry.finish(1, 1000.), Some(-320.));
+		geometry.process_motion_until = Some(std::time::Instant::now());
+		assert_eq!(geometry.measure(key, 500., 20.), Some(1));
+		assert_eq!(geometry.finish(1, 1000.), Some(-400.));
+		assert!(geometry.pending.is_none());
+	}
 
 	fn row(position: u64) -> AgentTimelineEntry {
 		AgentTimelineEntry {
