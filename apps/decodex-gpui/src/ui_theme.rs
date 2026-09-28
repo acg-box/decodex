@@ -14,7 +14,7 @@ pub(crate) const BODY_LINE_HEIGHT: f32 = 19.0;
 pub(crate) const PANEL_HEADER_HEIGHT: f32 = 30.0;
 pub(crate) const TREE_ROW_HEIGHT: f32 = 24.0;
 pub(crate) const MESSAGE_GAP: f32 = 20.0;
-pub(crate) const METADATA_GAP: f32 = 6.0;
+pub(crate) const METADATA_GAP: f32 = 4.0;
 
 pub(crate) const CONTROL_SIZE: f32 = 28.0;
 pub(crate) const CHROME_CONTROL_SIZE: f32 = 24.0;

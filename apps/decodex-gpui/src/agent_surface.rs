@@ -2215,7 +2215,6 @@ fn reply_metrics(entry: &decodex_protocol::AgentHistoryEntryDto) -> impl IntoEle
 		duration_ms: entry.duration_ms,
 		status: None,
 		usage: entry.usage.clone(),
-		diagnostics: None,
 	}
 }
 

@@ -187,8 +187,7 @@ impl AgentSurface {
 		identity: &str,
 		_cx: &mut Context<Self>,
 	) -> gpui::AnyElement {
-		let Content::TurnBoundary { duration_ms, status, usage, usage_summary, .. } = boundary
-		else {
+		let Content::TurnBoundary { duration_ms, status, usage, .. } = boundary else {
 			return div().into_any_element();
 		};
 		super::super::response_metrics::ResponseMetrics {
@@ -196,7 +195,6 @@ impl AgentSurface {
 			duration_ms: *duration_ms,
 			status: status.clone(),
 			usage: usage.clone(),
-			diagnostics: usage_summary.clone(),
 		}
 		.into_any_element()
 	}
@@ -690,7 +688,7 @@ mod tests {
 					completed: true,
 					status: Some("failed".into()),
 					duration_ms: Some(100),
-					usage: None, usage_summary: Some(
+					usage: Some(decodex_protocol::AgentTurnUsageDto { input_tokens: 120, output_tokens: 30, details: None }), usage_summary: Some(
 						"Turn tokens: input 120, output 30.\nThread total tokens: 900.\nObserved responses: 1. Showing 1 recorded amounts; units are provider-defined.\nResponse fixture: 0.12345678901234567890.".into(),
 					),
 					error: Some(decodex_protocol::AgentTimelineError {
@@ -865,13 +863,13 @@ mod tests {
 		assert!(bounds.iter().all(|bounds| bounds.size.height > px(0.)));
 		assert!(bounds.windows(2).all(|pair| pair[0].bottom() <= pair[1].top()));
 		assert!(visual.debug_bounds("native-turn-usage").is_none());
-		let details = visual.debug_bounds("turn-details-toggle").expect("compact details control");
+		let details = visual.debug_bounds("turn-metrics-hover").expect("compact details control");
 		visual.simulate_mouse_move(details.center(), gpui::MouseButton::Left, Default::default());
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
-		let details = visual.debug_bounds("turn-details-toggle").unwrap();
-		visual.simulate_click(details.center(), Default::default());
+		let details = visual.debug_bounds("turn-metrics-hover").unwrap();
+		visual.simulate_mouse_move(details.center(), gpui::MouseButton::Left, Default::default());
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
@@ -881,11 +879,15 @@ mod tests {
 		});
 		assert_eq!(
 			details,
-			visual.debug_bounds("turn-details-toggle").unwrap(),
+			visual.debug_bounds("turn-metrics-hover").unwrap(),
 			"details must not shift the transcript"
 		);
 		assert!(visual.debug_bounds("native-turn-usage").is_some());
-		visual.simulate_click(gpui::point(px(1390.), px(1390.)), Default::default());
+		visual.simulate_mouse_move(
+			gpui::point(px(1390.), px(1390.)),
+			gpui::MouseButton::Left,
+			Default::default(),
+		);
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
@@ -893,11 +895,8 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
-		assert!(
-			visual.debug_bounds("native-turn-usage").is_none(),
-			"clicking outside closes details"
-		);
-		assert_eq!(details, visual.debug_bounds("turn-details-toggle").unwrap());
+		assert!(visual.debug_bounds("native-turn-usage").is_none(), "moving away closes details");
+		assert_eq!(details, visual.debug_bounds("turn-metrics-hover").unwrap());
 
 		assert!(visual.debug_bounds("native-plan-content").is_some());
 		assert!(visual.debug_bounds("native-promotion-content").is_some());
