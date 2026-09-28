@@ -198,7 +198,21 @@ impl PromptDraft {
 					);
 					true
 				},
-				Some("image") => string("url") || string("fileId"),
+				Some("image") => {
+					// Match native app-server image_url::is_remote_image_url before
+					// an edit removes later turns and hands this input back for sending.
+					if part["url"].as_str().is_some_and(|url| {
+						url.split_once(':').is_some_and(|(scheme, _)| {
+							scheme.eq_ignore_ascii_case("http")
+								|| scheme.eq_ignore_ascii_case("https")
+						})
+					}) {
+						return Err(
+							"Remote image URLs cannot be sent; use an inline image or a local image file",
+						);
+					}
+					string("url") || string("fileId")
+				},
 				Some("localImage" | "localAudio") => string("path"),
 				Some("audio") => string("url"),
 				Some("skill" | "mention") => string("name") && string("path"),
@@ -448,6 +462,25 @@ mod tests {
 			let retained = PromptDraft::new(vec![part.clone()]).unwrap();
 			assert!(retained.validate_native_input().is_err());
 			assert_eq!(retained.parts(), &[part]);
+		}
+	}
+
+	#[test]
+	fn native_input_rejects_remote_images_without_changing_the_retained_draft() {
+		for url in
+			["http://example.test/image.png", "HTTPS://example.test/image.png", "hTtP:relative"]
+		{
+			let part = json!({"type":"image","url":url,"fileId":"file","detail":"original"});
+			let draft = PromptDraft::new(vec![part.clone()]).unwrap();
+			assert!(draft.validate_native_input().unwrap_err().contains("Remote image URLs"));
+			assert_eq!(draft.parts(), &[part]);
+		}
+		for part in [
+			json!({"type":"image","url":"data:image/png;base64,AA=="}),
+			json!({"type":"localImage","path":"/fixture/image.png"}),
+			json!({"type":"image","fileId":"native-file"}),
+		] {
+			PromptDraft::new(vec![part]).unwrap().validate_native_input().unwrap();
 		}
 	}
 
