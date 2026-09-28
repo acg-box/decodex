@@ -250,7 +250,8 @@ impl AgentSurface {
 										.w_full()
 										.flex()
 										.flex_col()
-										.gap(px(scroll::ROW_GAP))
+										.gap(px(8.))
+										.pl(px(18.))
 										.children(
 											indices
 												.iter()
@@ -431,7 +432,8 @@ impl AgentSurface {
 					account_id,
 					thread_id,
 					items,
-				}) = &result && sent_cursor.is_none()
+				}) = &result
+					&& sent_cursor.is_none()
 					&& work_id.as_str() == work
 					&& thread_id == &thread
 				{

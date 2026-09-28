@@ -29,10 +29,13 @@ impl AgentSurface {
 	pub(in super::super) fn native_receipts_panel(
 		&self,
 		work: &AgentWorkItemDto,
+		diagnostics: bool,
 		cx: &mut Context<Self>,
 	) -> gpui::AnyElement {
-		let mut panel =
-			div().flex().flex_col().gap_2().child(self.native_input_receipts_panel(work, cx));
+		let mut panel = div().flex().flex_col().gap_2();
+		if !diagnostics {
+			panel = panel.child(self.native_input_receipts_panel(work, cx));
+		}
 		let Some((_, AgentHistoryResult::Available { entries, live, next_before, .. })) =
 			self.history.as_ref().filter(|(id, _)| id == &work.id)
 		else {
@@ -42,19 +45,19 @@ impl AgentSurface {
 		};
 		let cursor = self.older_history.get(&work.id).map_or(*next_before, |(_, cursor)| *cursor);
 		let records_key = format!("local-records-{}", work.id);
-		let expanded = self.expanded_records.contains(&records_key);
+		let expanded = diagnostics && self.expanded_records.contains(&records_key);
 		let has_records = cursor.is_some()
 			|| entries.iter().any(|entry| {
 				entry.kind == "auth_recovery"
 					|| receipt_label(entry) == Some("Local execution record")
 			});
-		if has_records {
+		if has_records && diagnostics {
 			panel = panel.child(
 				div()
 					.id("local-records-toggle")
 					.cursor_pointer()
 					.text_size(gpui::px(11.))
-					.child(muted(if expanded { "Activity ⌃" } else { "Activity ›" }))
+					.child(muted(if expanded { "Diagnostics ⌄" } else { "Diagnostics ›" }))
 					.on_click(cx.listener(move |s, _, _, cx| {
 						if !s.expanded_records.remove(&records_key) {
 							s.expanded_records.insert(records_key.clone());
@@ -78,6 +81,9 @@ impl AgentSurface {
 				continue;
 			}
 			if entry.kind == "auth_recovery" {
+				if diagnostics && !expanded {
+					continue;
+				}
 				if !expanded && entry.receipt.as_ref().is_some_and(|r| r.disposed) {
 					continue;
 				}
@@ -104,6 +110,9 @@ impl AgentSurface {
 			let Some(label) = receipt_label(entry) else {
 				continue;
 			};
+			if diagnostics && label != "Local execution record" {
+				continue;
+			}
 			if label == "Local execution record" && !expanded {
 				continue;
 			}
@@ -137,6 +146,9 @@ impl AgentSurface {
 				);
 			}
 			panel = panel.child(row);
+		}
+		if diagnostics {
+			return panel.into_any_element();
 		}
 		for message in live {
 			if self.native_history.entries.iter().any(|entry| match &entry.content {
@@ -391,7 +403,8 @@ mod tests {
 				.debug_bounds("auth-recovery-receipt-91")
 				.expect("native conversation keeps authentication receipts visible")
 				.size
-				.height > gpui::px(0.)
+				.height
+				> gpui::px(0.)
 		);
 	}
 

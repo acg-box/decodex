@@ -46,6 +46,7 @@ impl AgentSurface {
 					.child(muted(graph::state_in(snapshot, work).0)),
 			)
 			.child(self.inspection_resources(&work.id, cx))
+			.child(self.native_receipts_panel(work, true, cx))
 			.when_some(work.parent_goal_id.as_ref(), |panel, parent| {
 				panel.child(self.relation("Reports to", snapshot, parent, cx))
 			})

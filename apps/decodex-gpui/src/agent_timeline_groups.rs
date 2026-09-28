@@ -97,9 +97,10 @@ impl AgentSurface {
 			.rounded(px(6.))
 			.px(px(6.))
 			.py(px(5.))
-			.text_size(px(12.))
+			.text_size(px(13.))
+			.font_weight(gpui::FontWeight::MEDIUM)
 			.line_height(px(18.))
-			.text_color(rgb(crate::ui_theme::TEXT_MUTED))
+			.text_color(rgb(crate::ui_theme::TEXT))
 			.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
 			.child(crate::shell::workspace_symbols::process_chevron(
 				SharedString::from(format!("turn-chevron-{identity}")),

@@ -128,6 +128,20 @@ impl AgentSurface {
 				div().child("Source details are unavailable. Collapse and reopen to retry."),
 			None => div().child(crate::ui_loading::loading("Loading details")),
 		};
+		let metadata_key = format!("tool-reference-{key}");
+		let metadata_open = self.expanded_records.contains(&metadata_key);
+		let metadata_toggle = self.workspace_action(
+			metadata_key.clone(),
+			"Technical details".into(),
+			move |s, cx| {
+				if !s.expanded_records.remove(&metadata_key) {
+					s.expanded_records.insert(metadata_key.clone());
+				}
+				cx.notify();
+			},
+			cx,
+		);
+
 		div()
 			.child(
 				row.id(SharedString::from(key.clone()))
@@ -165,16 +179,23 @@ impl AgentSurface {
 					.text_size(px(11.5))
 					.line_height(px(16.))
 					.text_color(rgb(ui_theme::TEXT))
-					.child(super::selectable_text::SelectableText {
-						key: format!("detail-metadata-{key}"),
-						text: format!(
-							"{} · {}\nTurn {}\nCall {}",
-							item.kind, item.status, item.turn_id, item.item_id
+					.child(body)
+					.child(metadata_toggle)
+					.child(disclosure(
+						SharedString::from(format!("tool-reference-body-{key}")),
+						metadata_open,
+						div().mt(px(6.)).text_color(rgb(ui_theme::TEXT_MUTED)).child(
+							super::selectable_text::SelectableText {
+								key: format!("detail-metadata-{key}"),
+								text: format!(
+									"{} · {}\nTurn {}\nCall {}",
+									item.kind, item.status, item.turn_id, item.item_id
+								),
+								highlights: Vec::new(),
+								links: Vec::new(),
+							},
 						),
-						highlights: Vec::new(),
-						links: Vec::new(),
-					})
-					.child(body),
+					)),
 			))
 			.into_any_element()
 	}

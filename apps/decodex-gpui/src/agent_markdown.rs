@@ -107,7 +107,8 @@ fn parse(text: &str) -> Vec<Node> {
 						let crlf =
 							matches!(stack.last(), Some((Kind::Code | Kind::Mermaid { .. }, _)))
 								&& value.starts_with('\n')
-								&& range.start > 0 && text.as_bytes()[range.start - 1] == b'\r';
+								&& range.start > 0
+								&& text.as_bytes()[range.start - 1] == b'\r';
 						Node::Text(if crlf { format!("\r{value}") } else { value.into_string() })
 					},
 					Event::Code(text) =>
@@ -435,9 +436,11 @@ fn render_item(nodes: &[Node], key: &str) -> Vec<AnyElement> {
 			node,
 			Node::Block(
 				Kind::Paragraph
-					| Kind::List(_) | Kind::Code
+					| Kind::List(_)
+					| Kind::Code
 					| Kind::Mermaid { .. }
-					| Kind::Quote | Kind::Table,
+					| Kind::Quote
+					| Kind::Table,
 				_
 			) | Node::Rule
 		) {
@@ -535,10 +538,23 @@ pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 		.text_color(rgb(ui_theme::TEXT_MUTED))
 		.children(document.nodes.get_or_init(|| parse(text)).iter().enumerate().map(|(i, node)| {
 			let key = format!("{key}-{i}");
-			if let Node::Block(Kind::Heading(_), children) = node {
+			if let Node::Block(Kind::Heading(_) | Kind::Paragraph, children) = node {
 				div()
-					.font_weight(FontWeight::MEDIUM)
-					.child(inline(children, &key))
+					.font_weight(FontWeight::NORMAL)
+					.child({
+						let mut out = Inline::default();
+						append_inline(children, HighlightStyle::default(), None, &mut out);
+						for (_, style) in &mut out.highlights {
+							style.font_weight = None;
+						}
+						selectable_text::SelectableText {
+							key: key.clone(),
+							text: out.text,
+							highlights: out.highlights,
+							links: out.links,
+						}
+						.into_any_element()
+					})
 					.into_any_element()
 			} else {
 				render_node(node, &key)

@@ -1789,7 +1789,7 @@ impl AgentSurface {
 		if self.native_history_active(work) {
 			return self.history_activity(
 				panel
-					.child(self.native_receipts_panel(work, cx))
+					.child(self.native_receipts_panel(work, false, cx))
 					.children(self.live_chat_caption(&work.id)),
 				work,
 			);
@@ -1885,7 +1885,9 @@ impl AgentSurface {
 										0.35 + 0.65
 											* ((phase * std::f32::consts::TAU
 												- index as f32 * 0.7)
-												.sin() * 0.5 + 0.5),
+												.sin()
+												* 0.5
+												+ 0.5),
 									)
 								},
 							)
