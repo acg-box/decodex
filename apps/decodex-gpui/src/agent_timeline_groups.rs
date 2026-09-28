@@ -7,7 +7,7 @@ pub(super) struct Group {
 	pub turn: String,
 	pub indices: Vec<usize>,
 	pub expanded: bool,
-	pub final_index: usize,
+	pub first_index: usize,
 	pub count: usize,
 }
 
@@ -52,9 +52,8 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 		.into_iter()
 		.flat_map(|(turn, indices)| {
 			let mut segments: Vec<Group> = Vec::new();
-            let final_index = entries.iter().position(|entry| matches!(&entry.content,
-                Content::Item { turn_id, kind, phase, .. } if turn_id == turn && kind == "agentMessage" && phase.as_deref() == Some("final_answer"))).expect("final reply");
-            let count = indices.len();
+			let first_index = indices[0];
+			let count = indices.len();
 			for index in indices {
 				if let Some(last) = segments.last_mut()
 					&& last.indices.last() == index.checked_sub(1).as_ref()
@@ -63,8 +62,8 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 				} else {
 					segments.push(Group {
 						turn: turn.into(),
-                        final_index,
-                        count,
+						first_index,
+						count,
 						indices: vec![index],
 						expanded: expanded.contains(turn),
 					});
@@ -221,8 +220,8 @@ mod tests {
 		];
 		let result = groups(&entries, &BTreeSet::new());
 		assert_eq!(
-			result.iter().map(|g| g.final_index).collect::<BTreeSet<_>>(),
-			BTreeSet::from([4])
+			result.iter().map(|g| g.first_index).collect::<BTreeSet<_>>(),
+			BTreeSet::from([1])
 		);
 		assert!(result.iter().all(|g| g.count == 2 && g.turn == "turn"));
 		assert_eq!(earlier_messages_label(result[0].count), "2 earlier messages");
@@ -299,6 +298,12 @@ mod tests {
 		std::thread::sleep(std::time::Duration::from_millis(180));
 		visual.update(|w, cx| w.draw(cx).clear());
 		let full = visual.debug_bounds("turn-process-block").unwrap().size.height;
+		let process = visual.debug_bounds("native-reasoning-summary").unwrap();
+		let header = visual.debug_bounds("turn-process-toggle").unwrap();
+		assert!(
+			process.origin.y >= header.origin.y + header.size.height,
+			"disclosed content must appear below its control"
+		);
 		assert!(
 			middle >= initial && full >= middle && full > px(0.),
 			"height remains monotonic and reaches the expanded content: {initial:?} -> {middle:?} -> {full:?}"

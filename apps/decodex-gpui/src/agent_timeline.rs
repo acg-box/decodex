@@ -216,10 +216,9 @@ impl AgentSurface {
 				groups::groups(&self.native_history.entries, &self.native_history.expanded_turns);
 			let mut collapsed = BTreeSet::new();
 			let mut headers = std::collections::BTreeMap::new();
-			let mut replies = std::collections::BTreeMap::new();
+
 			for group in &groups {
 				headers.insert(group.indices[0], group);
-				replies.entry(group.final_index).or_insert(group);
 				collapsed.extend(group.indices.iter().skip(1).copied());
 			}
 			self.prepare_process_folds(work, &collapsed);
@@ -233,8 +232,13 @@ impl AgentSurface {
 					let owner = cx.entity();
 					let indices = group.indices.clone();
 					let source_work = work.clone();
-					let body = div().w_full().debug_selector(|| "turn-process-block".into()).child(
-						crate::ui_motion::disclosure_lazy(
+					let header = (index == group.first_index)
+						.then(|| self.turn_process_header(work, group, entry, cx));
+					let body = div()
+						.w_full()
+						.debug_selector(|| "turn-process-block".into())
+						.children(header)
+						.child(crate::ui_motion::disclosure_lazy(
 							SharedString::from(format!(
 								"turn-process-body-{}-{}-{}",
 								work.id,
@@ -272,8 +276,7 @@ impl AgentSurface {
 										.into_any_element()
 								})
 							},
-						),
-					);
+						));
 					panel = panel.child(self.native_scroll_row(
 						work,
 						entry,
@@ -283,22 +286,6 @@ impl AgentSurface {
 					continue;
 				}
 
-				if let Some(group) = replies.get(&index) {
-					if !hidden.is_empty() {
-						panel = panel
-							.child(self.native_history_spacer(work, std::mem::take(&mut hidden)));
-					}
-					let header = self.turn_process_header(work, group, entry, cx);
-					let identity =
-						serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string();
-					let content = self.native_timeline_content(work, entry, &identity, cx);
-					let body =
-						div().w_full().flex().flex_col().gap(px(12.)).child(header).child(content);
-					let body =
-						self.anchored_native_history_entry(work, entry, body.into_any_element());
-					panel = panel.child(self.native_scroll_row(work, entry, body, cx));
-					continue;
-				}
 				if collapsed.contains(&index) {
 					continue;
 				}

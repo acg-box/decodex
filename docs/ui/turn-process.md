@@ -20,7 +20,7 @@ No stored history is rewritten.
 - Keep user input, final answers, unknown message phases, attachments, and App UI
   entries visible. Fold commentary, public reasoning summaries, plans, and terminal
   tool activity behind one `N earlier messages` control per native turn. Place the
-  control immediately before the final answer. No private reasoning is requested.
+  control before the first process segment. Expand content below this control. No private reasoning is requested.
 - Retain explicit expansion during refresh. Clear expansion when the binding changes.
 - If the reader is browsing history, keep newly completed processes open.
 - Keep the control anchored during manual toggles. Invalidate measured row heights
@@ -45,4 +45,4 @@ animation. Give each disclosure an identity from its native work, turn and item.
 Split process segments around interleaved input or interactive content to preserve
 source order. These segments share one total count and one control. Steer input
 belongs to its native turn and stays visible. Do not move user input into a
-collapsed process. Keep the final-answer anchor stable throughout disclosure motion.
+collapsed process. Keep the disclosure control stable throughout its motion.
