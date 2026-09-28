@@ -218,9 +218,7 @@ impl AgentSurface {
 			let mut headers = std::collections::BTreeMap::new();
 			for group in &groups {
 				headers.insert(group.indices[0], group);
-				if !group.expanded {
-					collapsed.extend(group.indices.iter().copied());
-				}
+				collapsed.extend(group.indices.iter().skip(1).copied());
 			}
 			self.prepare_process_folds(work, &collapsed);
 			let mut hidden = Vec::new();
@@ -231,14 +229,51 @@ impl AgentSurface {
 							.child(self.native_history_spacer(work, std::mem::take(&mut hidden)));
 					}
 					let header = self.turn_process_header(work, group, entry, cx);
-					let body = div().w_full().child(header).when(group.expanded, |d| {
-						d.child(self.native_timeline_content(
-							work,
-							entry,
-							&format!("process-{}-{}", work.id, group.turn),
-							cx,
-						))
-					});
+					let owner = cx.entity();
+					let indices = group.indices.clone();
+					let source_work = work.clone();
+					let body = div()
+						.w_full()
+						.debug_selector(|| "turn-process-block".into())
+						.child(header)
+						.child(crate::ui_motion::disclosure_lazy(
+							SharedString::from(format!(
+								"turn-process-body-{}-{}-{}",
+								work.id,
+								group.turn,
+								serde_json::json!(key(entry))
+							)),
+							group.expanded,
+							move |cx| {
+								owner.update(cx, |s, cx| {
+									div()
+										.w_full()
+										.flex()
+										.flex_col()
+										.gap(px(scroll::ROW_GAP))
+										.children(
+											indices
+												.iter()
+												.filter_map(|index| {
+													s.native_history.entries.get(*index)
+												})
+												.map(|entry| {
+													s.native_timeline_content(
+														&source_work,
+														entry,
+														&format!(
+															"process-{}-{}",
+															source_work.id,
+															serde_json::json!(key(entry))
+														),
+														cx,
+													)
+												}),
+										)
+										.into_any_element()
+								})
+							},
+						));
 					panel = panel.child(self.native_scroll_row(
 						work,
 						entry,

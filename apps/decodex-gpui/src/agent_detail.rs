@@ -16,7 +16,7 @@ impl AgentSurface {
 		self.activity_detail.task = None;
 	}
 
-	fn activity_detail_key(&self, ids: &(String, String, String)) -> Option<String> {
+	pub(super) fn activity_detail_key(&self, ids: &(String, String, String)) -> Option<String> {
 		if self.state != LoadState::Ready
 			&& !(self.state == LoadState::Loading && self.status_before_refresh.is_none())
 		{
@@ -140,7 +140,7 @@ impl AgentSurface {
 					.smooth(),
 			)
 			.child(disclosure(
-				"worker-tool-detail",
+				SharedString::from(format!("worker-tool-detail-{key}")),
 				expanded,
 				div()
 					.id(SharedString::from(format!("detail-scroll-{key}")))

@@ -365,16 +365,31 @@ mod tests {
 
 #[derive(IntoElement)]
 pub(crate) struct Disclosure {
-	id: &'static str,
+	id: ElementId,
 	visible: bool,
-	child: gpui::AnyElement,
+	child: Box<dyn FnOnce(&mut App) -> gpui::AnyElement>,
 }
 
-pub(crate) fn disclosure(id: &'static str, visible: bool, child: impl IntoElement) -> Disclosure {
-	Disclosure { id, visible, child: child.into_any_element() }
+pub(crate) fn disclosure(
+	id: impl Into<ElementId>,
+	visible: bool,
+	child: impl IntoElement,
+) -> Disclosure {
+	let child = child.into_any_element();
+	disclosure_lazy(id, visible, move |_| child)
+}
+
+/// Do not construct Markdown and tool details for fully collapsed processes.
+pub(crate) fn disclosure_lazy(
+	id: impl Into<ElementId>,
+	visible: bool,
+	child: impl FnOnce(&mut App) -> gpui::AnyElement + 'static,
+) -> Disclosure {
+	Disclosure { id: id.into(), visible, child: Box::new(child) }
 }
 
 struct DisclosureState {
+	visible: bool,
 	height: f32,
 	tween: Tween,
 }
@@ -382,20 +397,32 @@ struct DisclosureState {
 impl RenderOnce for Disclosure {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(self.id, cx, |_, _| DisclosureState {
+			visible: false,
 			height: 0.0,
 			tween: Tween::new(0.0),
 		});
 		let now = Instant::now();
 		let (height, moving) = state.update(cx, |s, _| {
-			s.tween.target(if self.visible { s.height } else { 0.0 }, now);
+			if self.visible && s.visible && s.tween.to > 0. && !s.tween.moving(now) {
+				// Once open, let inner disclosures and new content own their size.
+				// Animating both parent and child would make the parent lag behind.
+				s.tween = Tween::new(s.height);
+			} else {
+				s.tween.target(if self.visible { s.height } else { 0.0 }, now);
+			}
+			s.visible = self.visible;
 			(s.tween.sample(now), s.tween.moving(now))
 		});
 		if moving {
 			request_frame(window, cx);
 		}
-		div().w_full().h(px(height)).flex_none().overflow_hidden().when(
-			self.visible || height > 0.1,
-			|slot| {
+		div()
+			.w_full()
+			.h(px(height))
+			.when(self.visible && !moving && height > 0.1, |slot| slot.h_auto())
+			.flex_none()
+			.overflow_hidden()
+			.when(self.visible || height > 0.1, |slot| {
 				slot.child(
 					div()
 						.w_full()
@@ -411,10 +438,9 @@ impl RenderOnce for Disclosure {
 								});
 							}
 						})
-						.child(self.child),
+						.child((self.child)(cx)),
 				)
-			},
-		)
+			})
 	}
 }
 

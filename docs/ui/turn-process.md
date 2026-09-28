@@ -30,3 +30,16 @@ No stored history is rewritten.
 
 The conservative fallback for old records without phase metadata is expanded
 history. Do not guess a final reply from the last assistant message.
+
+## Manual disclosure motion
+
+Process sections and tool details use a centered, vector-drawn chevron that
+rotates 90 degrees over the shared 200 ms transition. The content reveals its
+measured height below the control and stays mounted through closing. Reversals
+start from the current height. Respect reduced motion.
+
+Construct process content lazily, only during expansion or closing. Once open,
+use natural height so nested tool details do not receive a second delayed height
+animation. Give each disclosure an identity from its native work, turn and item.
+Split process segments around interleaved input or interactive content to preserve
+source order. Do not move user input into a collapsed process.

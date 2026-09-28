@@ -45,12 +45,25 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 			steps.entry(turn_id).or_default().push(index);
 		}
 	}
+	// Keep interleaved user messages and interactive items in source order.
 	steps
 		.into_iter()
-		.map(|(turn, indices)| Group {
-			turn: turn.into(),
-			indices,
-			expanded: expanded.contains(turn),
+		.flat_map(|(turn, indices)| {
+			let mut segments: Vec<Group> = Vec::new();
+			for index in indices {
+				if let Some(last) = segments.last_mut()
+					&& last.indices.last() == index.checked_sub(1).as_ref()
+				{
+					last.indices.push(index);
+				} else {
+					segments.push(Group {
+						turn: turn.into(),
+						indices: vec![index],
+						expanded: expanded.contains(turn),
+					});
+				}
+			}
+			segments
 		})
 		.collect()
 }
@@ -63,13 +76,15 @@ impl AgentSurface {
 		entry: &AgentTimelineEntry,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let identity =
+			serde_json::json!([work.id, work.codex_thread_id, super::key(entry)]).to_string();
 		let turn = group.turn.clone();
 		let work_id = work.id.clone();
 		let entry = entry.clone();
 		let expanded = group.expanded;
 		let keyboard = (work_id.clone(), entry.clone(), turn.clone());
 		let control = div()
-			.id(SharedString::from(format!("turn-process-{turn}")))
+			.id(SharedString::from(format!("turn-process-{identity}")))
 			.debug_selector(|| "turn-process-toggle".into())
 			.role(Role::Button)
 			.tab_index(0)
@@ -86,8 +101,15 @@ impl AgentSurface {
 			.line_height(px(18.))
 			.text_color(rgb(crate::ui_theme::TEXT_MUTED))
 			.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
-			.child(div().w(px(12.)).text_size(px(16.)).child(if expanded { "⌄" } else { "›" }))
-			.child(format!("{} steps", group.indices.len()))
+			.child(crate::shell::workspace_symbols::process_chevron(
+				SharedString::from(format!("turn-chevron-{identity}")),
+				expanded,
+			))
+			.child(format!(
+				"{} {}",
+				group.indices.len(),
+				if group.indices.len() == 1 { "step" } else { "steps" }
+			))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.anchor_process_toggle(&work_id, &entry);
 				if !s.native_history.expanded_turns.remove(&turn) {
@@ -181,6 +203,23 @@ mod tests {
 		}
 		assert!(groups(&entries, &BTreeSet::new()).is_empty());
 	}
+	#[test]
+	fn interleaved_user_input_splits_process_segments_without_reordering() {
+		let entries = vec![
+			message(0, "userMessage", None),
+			message(1, "reasoning", None),
+			message(2, "userMessage", None),
+			message(3, "reasoning", None),
+			message(4, "agentMessage", Some("final_answer")),
+			completed("completed"),
+		];
+		let result = groups(&entries, &BTreeSet::new());
+		assert_eq!(
+			result.iter().map(|g| g.indices.clone()).collect::<Vec<_>>(),
+			vec![vec![1], vec![3]]
+		);
+	}
+
 	#[gpui::test]
 	fn completed_process_can_be_opened_without_replacing_the_final_reply(
 		cx: &mut gpui::TestAppContext,
@@ -240,9 +279,42 @@ mod tests {
 			visual.debug_bounds("native-reasoning-summary").is_some(),
 			"refresh preserves an explicit expansion"
 		);
+		let initial = visual.debug_bounds("turn-process-block").unwrap().size.height;
+		std::thread::sleep(std::time::Duration::from_millis(60));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let middle = visual.debug_bounds("turn-process-block").unwrap().size.height;
+		std::thread::sleep(std::time::Duration::from_millis(180));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let full = visual.debug_bounds("turn-process-block").unwrap().size.height;
+		assert!(
+			middle >= initial && full >= middle && full > toggle.size.height,
+			"height remains monotonic and reaches the expanded content: {initial:?} -> {middle:?} -> {full:?}"
+		);
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 		assert!(toggle.size.width < px(180.), "hover stays local to the disclosure control");
 		visual.simulate_click(toggle.center(), Default::default());
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(
+			visual.debug_bounds("native-reasoning-summary").is_some(),
+			"content remains mounted during exit"
+		);
+		std::thread::sleep(std::time::Duration::from_millis(50));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let closing = visual.debug_bounds("turn-process-block").unwrap().size.height;
+		assert!(closing <= full && closing >= toggle.size.height);
+		visual.simulate_click(toggle.center(), Default::default());
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(
+			visual.debug_bounds("native-reasoning-summary").is_some(),
+			"reversal retains the same content"
+		);
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert_eq!(visual.debug_bounds("turn-process-block").unwrap().size.height, full);
+		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
+		visual.simulate_click(toggle.center(), Default::default());
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(240));
 		visual.update(|w, cx| w.draw(cx).clear());
 		assert!(visual.debug_bounds("native-reasoning-summary").is_none());
 	}

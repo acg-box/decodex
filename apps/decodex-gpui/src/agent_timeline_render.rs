@@ -334,6 +334,11 @@ impl AgentSurface {
 			} else {
 				activity.label.clone()
 			};
+			let expanded = self
+				.activity_detail_key(&(work.id.clone(), turn_id.clone(), item_id.clone()))
+				.is_some_and(|key| {
+					self.activity_detail.value.as_ref().is_some_and(|(current, _)| current == &key)
+				});
 			let symbol = match activity.status.as_str() {
 				"failed" | "declined" => "!",
 				"running" => "◌",
@@ -367,7 +372,10 @@ impl AgentSurface {
 						format!("{:.1}s", ms as f64 / 1000.)
 					})
 				})
-				.child("›");
+				.child(crate::shell::workspace_symbols::process_chevron(
+					SharedString::from(format!("tool-chevron-{identity}")),
+					expanded,
+				));
 			return self.detail_row(work, activity, row, cx);
 		}
 		let label = match kind.as_str() {
