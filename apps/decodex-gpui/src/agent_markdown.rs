@@ -373,7 +373,7 @@ impl gpui::RenderOnce for CopyButton {
 			.justify_center()
 			.rounded(px(6.))
 			.cursor_pointer()
-			.hover(|s| s.bg(rgba(0xffffff10)))
+			.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
 			.on_click(move |_, _, cx| {
 				clipboard::copy(click_text.clone(), self.rich, cx);
 				click_state.update(cx, |s, cx| {

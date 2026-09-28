@@ -154,7 +154,9 @@ impl SettingsSurface {
 					.when(interactive, |toggle| {
 						toggle
 							.cursor_pointer()
-							.hover(|d| d.border_color(rgb(TEXT_MUTED)))
+							.hover(move |d| {
+								d.border_color(rgb(if enabled { BLUE } else { TEXT_MUTED }))
+							})
 							.on_click(
 								cx.listener(move |s, _, _, cx| s.power_request(Some(!enabled), cx)),
 							)

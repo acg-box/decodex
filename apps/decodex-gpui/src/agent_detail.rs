@@ -122,7 +122,7 @@ impl AgentSurface {
 					.aria_label(format!("Inspect {}", item.label))
 					.aria_expanded(expanded)
 					.cursor_pointer()
-					.hover(|d| d.bg(rgba(0xffffff08)))
+					.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
 					.on_click(
 						cx.listener(move |s, _, _, cx| s.toggle_activity_detail(click.clone(), cx)),
 					)

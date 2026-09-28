@@ -277,7 +277,16 @@ impl AgentSurface {
 			})
 			.rounded(px(5.0))
 			.cursor_pointer()
-			.hover(|s| s.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL)))
+			.when(!is_tree, |button| {
+				button.hover(move |s| {
+					s.bg(rgba(if active {
+						ui_theme::SELECTED_HOVER_FILL
+					} else {
+						ui_theme::HOVER_FILL
+					}))
+				})
+			})
+			.when(is_tree, |button| button.hover(|s| s.text_color(rgb(ui_theme::TEXT))))
 			.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
 			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {

@@ -535,7 +535,7 @@ impl AgentSurface {
 						.gap(px(5.))
 						.opacity(opacity)
 						.cursor_pointer()
-						.hover(|d| d.bg(rgba(0x48484eff)))
+						.hover(|d| d.bg(rgba(0x302d397c)))
 						.on_click(cx.listener(|s, _, _, cx| s.jump_to_latest(cx)))
 						.on_key_down(cx.listener(|s, e: &gpui::KeyDownEvent, _, cx| {
 							if ["enter", "space"].contains(&e.keystroke.key.as_str()) {

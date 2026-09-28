@@ -135,7 +135,7 @@ impl AgentSurface {
 					if let Some(link) = link {
 						row = row
 							.cursor_pointer()
-							.hover(|row| row.bg(rgba(0xffffff0c)))
+							.hover(|row| row.bg(rgba(crate::ui_theme::HOVER_FILL)))
 							.on_click(cx.listener(move |_, _, _, cx| cx.open_url(link.as_str())));
 					}
 					rows = rows.child(row);

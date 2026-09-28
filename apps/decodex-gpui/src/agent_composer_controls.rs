@@ -118,7 +118,14 @@ impl AgentSurface {
 						.items_center()
 						.justify_between()
 						.cursor_pointer()
-						.hover(|d| d.bg(rgba(0xffffff22)).text_color(rgb(ui_theme::TEXT)))
+						.hover(move |d| {
+							d.bg(rgba(if selected {
+								ui_theme::SELECTED_HOVER_FILL
+							} else {
+								ui_theme::HOVER_FILL
+							}))
+							.text_color(rgb(ui_theme::TEXT))
+						})
 						.on_click(cx.listener(move |s, _, _, cx| {
 							s.select_composer_option("model", &click_model, cx)
 						}))

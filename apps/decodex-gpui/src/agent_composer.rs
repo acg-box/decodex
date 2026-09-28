@@ -607,6 +607,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let send = id == "send";
+		let menu_active = self.composer_menu == Some(id);
 		let target = cx.entity().downgrade();
 		let tooltip = if id == "model" { "Model and reasoning".to_owned() } else { tip.to_owned() };
 		div()
@@ -654,7 +655,17 @@ impl AgentSurface {
 			.when(send, |d| d.w(px(28.)).h(px(28.)).rounded_full().ml(px(5.)).bg(rgb(0x515155)))
 			.when(id == "audio-item", |d| d.aria_expanded(self.composer_menu == Some("microphone")))
 			.cursor_pointer()
-			.hover(move |d| d.bg(if send { rgba(0xffffff24) } else { rgba(0xffffff0c) }))
+			.hover(move |d| {
+				d.bg(if send {
+					rgb(0x606064)
+				} else {
+					rgba(if menu_active {
+						ui_theme::SELECTED_HOVER_FILL
+					} else {
+						ui_theme::HOVER_FILL
+					})
+				})
+			})
 			.when(!["model", "attachment-item", "audio-item"].contains(&id), |d| {
 				d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
 			})
@@ -862,7 +873,9 @@ impl AgentSurface {
 												.items_center()
 												.justify_center()
 												.rounded(px(5.))
-												.hover(|s| s.bg(gpui::rgba(0xffffff12)))
+												.hover(|s| {
+													s.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
+												})
 												.child("ⓘ")
 												.on_click(cx.listener(|s, _, _, cx| {
 													if !s.expanded_records.remove("model-notices") {

@@ -61,7 +61,13 @@ impl AgentSurface {
 					.text_size(gpui::px(11.))
 					.rounded(gpui::px(8.))
 					.bg(gpui::rgba(if chosen { 0xffffff16 } else { 0x00000000 }))
-					.hover(|s| s.bg(gpui::rgba(0xffffff20)))
+					.hover(move |s| {
+						s.bg(gpui::rgba(if chosen {
+							crate::ui_theme::SELECTED_HOVER_FILL
+						} else {
+							crate::ui_theme::HOVER_FILL
+						}))
+					})
 					.on_click(cx.listener(move |s, _, _, cx| {
 						if id.as_str() == "default"
 							|| s.selected_model(cx).is_some_and(|model| {

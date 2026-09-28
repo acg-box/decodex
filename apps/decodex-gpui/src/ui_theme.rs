@@ -79,9 +79,12 @@ pub(crate) const TOPBAR_MATERIAL: u32 = 0x15151b68;
 pub(crate) const AGENT_SIDEBAR_MATERIAL: u32 = 0x17171c58;
 pub(crate) const AGENT_CHAT_OVERLAY: u32 = 0x17171c0e;
 pub(crate) const SIDEBAR_MATERIAL: u32 = 0x100e1584;
-pub(crate) const SURFACE_MATERIAL: u32 = 0x100e152a;
 pub(crate) const SURFACE_RAISED_MATERIAL: u32 = 0x17151e46;
 pub(crate) const COMPOSER_MATERIAL: u32 = 0x22222888;
+// Neutral feedback brightens the existing material without replacing it with an opaque tile.
+pub(crate) const HOVER_FILL: u32 = 0xffffff0c;
+pub(crate) const PRESSED_FILL: u32 = 0xffffff18;
+pub(crate) const SELECTED_HOVER_FILL: u32 = 0xffffff1b;
 pub(crate) const FIELD_MATERIAL: u32 = 0xffffff08;
 pub(crate) const SURFACE_OVERLAY_MATERIAL: u32 = 0x1d1a2470;
 
@@ -112,7 +115,6 @@ mod tests {
 			CONTENT_MATERIAL,
 			TOPBAR_MATERIAL,
 			SIDEBAR_MATERIAL,
-			SURFACE_MATERIAL,
 			SURFACE_RAISED_MATERIAL,
 			COMPOSER_MATERIAL,
 			FIELD_MATERIAL,

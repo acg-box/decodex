@@ -237,7 +237,7 @@ impl AgentSurface {
 								.items_center()
 								.justify_center()
 								.rounded(gpui::px(5.))
-								.hover(|s| s.bg(gpui::rgba(0xffffff12)))
+								.hover(|s| s.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)))
 								.child("ⓘ")
 								.on_click(cx.listener(move |s, _, _, cx| {
 									if !s.expanded_records.remove(&id) {

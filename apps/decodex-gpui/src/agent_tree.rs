@@ -22,7 +22,13 @@ pub(super) fn tree_row(id: String, depth: usize, selected: bool) -> gpui::Statef
 		.gap(px(4.))
 		.rounded(px(5.))
 		.when(selected, |row| row.bg(rgba(0xffffff0b)))
-		.hover(|row| row.bg(rgba(0xffffff08)))
+		.hover(move |row| {
+			row.bg(rgba(if selected {
+				ui_theme::SELECTED_HOVER_FILL
+			} else {
+				ui_theme::HOVER_FILL
+			}))
+		})
 		.when(depth > 0, |row| {
 			row.child(
 				div()
@@ -163,7 +169,7 @@ impl AgentSurface {
 			.justify_center()
 			.rounded(px(4.))
 			.cursor_pointer()
-			.hover(|s| s.bg(rgba(0xffffff10)))
+			.hover(|s| s.text_color(rgb(ui_theme::TEXT)))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				if !s.agent_tree_collapsed.remove(&click_id) {
 					s.agent_tree_collapsed.insert(click_id.clone());

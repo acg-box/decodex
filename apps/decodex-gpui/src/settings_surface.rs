@@ -318,8 +318,10 @@ impl SettingsSurface {
 			.when(interactive, |toggle| {
 				toggle
 					.cursor_pointer()
-					.hover(|element| element.border_color(rgb(TEXT_MUTED)))
-					.active(|element| element.opacity(0.78))
+					.hover(move |element| {
+						element.border_color(rgb(if enabled { BLUE } else { TEXT_MUTED }))
+					})
+					.active(|element| element.opacity(0.9))
 					.focus_visible(|element| element.border_color(rgb(BLUE)))
 					.on_click(cx.listener(match preference {
 						DesktopPreference::Quota => Self::toggle_activation,
@@ -365,8 +367,10 @@ impl SettingsSurface {
 			.when(interactive, |toggle| {
 				toggle
 					.cursor_pointer()
-					.hover(|element| element.border_color(rgb(TEXT_MUTED)))
-					.active(|element| element.opacity(0.78))
+					.hover(move |element| {
+						element.border_color(rgb(if enabled { BLUE } else { TEXT_MUTED }))
+					})
+					.active(|element| element.opacity(0.9))
 					.focus_visible(|element| element.border_color(rgb(BLUE)))
 					.on_click(cx.listener(Self::toggle_launch_at_login))
 			})
@@ -419,7 +423,7 @@ impl SettingsSurface {
 				.border_color(rgb(if enabled { BLUE } else { LINE }))
 				.bg(if enabled { rgba(0x8baaf730) } else { rgba(0xffffff0c) })
 				.cursor_pointer()
-				.hover(|d| d.border_color(rgb(TEXT_MUTED)))
+				.hover(move |d| d.border_color(rgb(if enabled { BLUE } else { TEXT_MUTED })))
 				.focus_visible(|d| d.border_color(rgb(BLUE)))
 				.on_click(cx.listener(move |_, _, _, cx| {
 					preference(Some(!enabled));
@@ -481,7 +485,7 @@ impl SettingsSurface {
 										.justify_center()
 										.rounded(px(7.))
 										.cursor_pointer()
-										.hover(|s| s.bg(rgba(0xffffff12)))
+										.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
 										.on_click(cx.listener(move |_, _, _, cx| {
 											let mut pref = PanelDefaults::configured();
 											if sidebar {
@@ -566,7 +570,7 @@ impl SettingsSurface {
 							.text_size(px(11.))
 							.cursor_pointer()
 							.when(value == current, |d| d.bg(rgba(0xffffff16)))
-							.hover(|d| d.bg(rgba(0xffffff12)))
+							.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
 							.on_click(cx.listener(move |_, _, _, cx| {
 								value.select(cx);
 								cx.notify();
@@ -614,7 +618,7 @@ impl SettingsSurface {
 							.text_size(px(11.))
 							.cursor_pointer()
 							.when(value == style, |d| d.bg(rgba(0xffffff16)))
-							.hover(|d| d.bg(rgba(0xffffff12)))
+							.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
 							.on_click(cx.listener(move |_, _, _, cx| {
 								value.select(cx);
 								cx.notify();

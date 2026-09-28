@@ -2261,8 +2261,10 @@ fn topbar_controls(
 				)
 				.occlude()
 				.cursor_pointer()
-				.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-				.active(|element| element.bg(rgba(0xffffff14)))
+				.hover(|element| {
+					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+				})
+				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 				.focus_visible(|element| element.border_color(rgba(0x8baaf780)))
 				.on_mouse_down(MouseButton::Left, |_, window, cx| {
 					window.prevent_default();
@@ -2305,7 +2307,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		.justify_center()
 		.when(active, |el| el.bg(rgba(0xffffff0c)))
 		.when(!enabled, |el| el.opacity(0.35))
-		.hover(|el| el.bg(rgba(0xffffff12)))
+		.hover(|el| el.bg(rgba(crate::ui_theme::HOVER_FILL)))
 		.cursor_pointer()
 		.occlude()
 		.on_mouse_down(MouseButton::Left, |_, window, cx| {
@@ -2634,8 +2636,10 @@ fn refresh_control(
 				.on_action(cx.listener(Shell::refresh_health))
 				.on_click(cx.listener(|shell, _, _, cx| shell.request_health_refresh(cx)))
 				.cursor_pointer()
-				.hover(|element| element.bg(rgba(0xffffff0f)).text_color(rgb(WB_TEXT)))
-				.active(|element| element.bg(rgba(0xffffff1c)).opacity(0.82))
+				.hover(|element| {
+					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+				})
+				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 		})
 		.text_size(px(11.0))
@@ -2896,8 +2900,10 @@ fn account_mode_button(
 		.when(can_manage && !selected, |button| {
 			button
 				.cursor_pointer()
-				.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
-				.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
+				.hover(|element| {
+					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+				})
+				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 				.on_click(cx.listener(|shell, _, _, cx| shell.select_balanced_accounts(cx)))
 		})
 		.child(label)
@@ -3276,8 +3282,10 @@ fn account_login_button(
 		.when(enabled, |button| {
 			button
 				.cursor_pointer()
-				.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
-				.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
+				.hover(|element| {
+					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+				})
+				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 		})
 		.child(label)
 }
@@ -3546,8 +3554,12 @@ fn account_pool_summary(
 					.when(pin_enabled, |button| {
 						button
 							.cursor_pointer()
-							.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
-							.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
+							.hover(|element| {
+								element
+									.bg(rgba(crate::ui_theme::HOVER_FILL))
+									.text_color(rgb(WB_TEXT))
+							})
+							.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 							.on_click(cx.listener(move |shell, _, _, cx| {
 								cx.stop_propagation();
 								shell.select_fixed_account(&account_id, cx);
@@ -3735,8 +3747,10 @@ fn account_row_action(
 		.when(enabled, |button| {
 			button
 				.cursor_pointer()
-				.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
-				.active(|element| element.opacity(0.82))
+				.hover(|element| {
+					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+				})
+				.active(|element| element.opacity(0.9))
 		})
 		.child(label)
 }
@@ -4050,8 +4064,8 @@ fn inspector_tab(
 		.font_weight(if is_selected { FontWeight::MEDIUM } else { FontWeight::NORMAL })
 		.text_color(if is_selected { rgb(WB_TEXT) } else { rgb(WB_TEXT_FAINT) })
 		.cursor_pointer()
-		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-		.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
+		.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 		.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 		.on_click(cx.listener(move |shell, _, _, cx| {
 			shell.inspector_tab = tab;
@@ -4396,8 +4410,10 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_MUTED))
 						.cursor_pointer()
-						.hover(|element| element.bg(rgba(0xffffff09)).text_color(rgb(WB_TEXT)))
-						.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+						.hover(|element| {
+							element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+						})
+						.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 						.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 						.on_click(cx.listener(|shell, _, _, cx| {
 							shell.select_destination(Destination::Agent, cx);
@@ -4551,11 +4567,12 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.text_size(px(11.0))
 		.text_color(if can_previous { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
 		.when(can_previous, |element| {
-			element.cursor_pointer().hover(|element| element.bg(rgb(0x25324a))).on_click(
-				cx.listener(|shell, _, window, cx| {
+			element
+				.cursor_pointer()
+				.hover(|element| element.bg(rgba(ui_theme::HOVER_FILL)))
+				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.show_previous_history(window, cx);
-				}),
-			)
+				}))
 		})
 		.child("Earlier");
 	let retry = div()
@@ -4571,11 +4588,12 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.text_size(px(11.0))
 		.text_color(if can_retry { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
 		.when(can_retry, |element| {
-			element.cursor_pointer().hover(|element| element.bg(rgb(0x25324a))).on_click(
-				cx.listener(|shell, _, window, cx| {
+			element
+				.cursor_pointer()
+				.hover(|element| element.bg(rgba(ui_theme::HOVER_FILL)))
+				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.retry_history(window, cx);
-				}),
-			)
+				}))
 		})
 		.child("Retry");
 	let next = div()
@@ -4592,11 +4610,12 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.text_size(px(11.0))
 		.text_color(if can_next { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
 		.when(can_next, |element| {
-			element.cursor_pointer().hover(|element| element.bg(rgb(0x25324a))).on_click(
-				cx.listener(|shell, _, window, cx| {
+			element
+				.cursor_pointer()
+				.hover(|element| element.bg(rgba(ui_theme::HOVER_FILL)))
+				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.show_next_history(window, cx);
-				}),
-			)
+				}))
 		})
 		.child("Later");
 
@@ -5198,7 +5217,13 @@ fn settings_navigation(
 				.items_center()
 				.cursor_pointer()
 				.when(active, |row| row.bg(rgba(0xffffff0c)).text_color(rgb(ui_theme::TEXT)))
-				.hover(|row| row.bg(rgba(ui_theme::SURFACE_MATERIAL)))
+				.hover(move |row| {
+					row.bg(rgba(if active {
+						ui_theme::SELECTED_HOVER_FILL
+					} else {
+						ui_theme::HOVER_FILL
+					}))
+				})
 				.on_click(cx.listener(move |s, _, _, cx| {
 					s.select_settings_destination(destination, standalone, cx);
 					if let Some(category) = category {
@@ -5576,8 +5601,8 @@ fn composer_interrupt(can_interrupt: bool, cx: &mut Context<Shell>) -> AnyElemen
 		.when(can_interrupt, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(rgba(0xffffff0a)))
-				.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+				.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)))
+				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.interrupt_conversation(window, cx);
@@ -5639,7 +5664,7 @@ fn composer_model_control(model_label: String, cx: &mut Context<Shell>) -> AnyEl
 		.text_size(px(11.0))
 		.text_color(rgb(WB_TEXT_MUTED))
 		.cursor_pointer()
-		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
 		.active(|element| element.opacity(0.72))
 		.on_click(cx.listener(|shell, _, _, cx| shell.cycle_conversation_model(cx)))
 		.child(model_label)
@@ -5665,7 +5690,7 @@ fn composer_fast_control(fast_enabled: bool, cx: &mut Context<Shell>) -> AnyElem
 		.text_size(px(11.0))
 		.text_color(if fast_enabled { rgb(WB_AMBER) } else { rgb(WB_TEXT_MUTED) })
 		.cursor_pointer()
-		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
 		.active(|element| element.opacity(0.72))
 		.on_click(cx.listener(|shell, _, _, cx| shell.toggle_conversation_fast(cx)))
 		.child(div().size(px(4.0)).rounded_full().bg(if fast_enabled {
@@ -5695,7 +5720,7 @@ fn composer_effort_control(effort_label: String, cx: &mut Context<Shell>) -> Any
 		.text_size(px(11.0))
 		.text_color(rgb(WB_TEXT_MUTED))
 		.cursor_pointer()
-		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
 		.active(|element| element.opacity(0.72))
 		.on_click(cx.listener(|shell, _, _, cx| shell.cycle_conversation_effort(cx)))
 		.child(effort_label)
@@ -5724,8 +5749,8 @@ fn topbar_sessions_toggle(left_sidebar_visible: bool, cx: &mut Context<Shell>) -
 			window.prevent_default();
 			cx.stop_propagation();
 		})
-		.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
-		.active(|element| element.bg(rgba(0xffffff1c)).opacity(0.82))
+		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
+		.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 		.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.set_left_sidebar_visible(!shell.left_sidebar_visible, cx);
@@ -5756,8 +5781,8 @@ fn topbar_inspector_toggle(inspector_visible: bool, cx: &mut Context<Shell>) -> 
 			window.prevent_default();
 			cx.stop_propagation();
 		})
-		.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
-		.active(|element| element.bg(rgba(0xffffff1c)).opacity(0.82))
+		.hover(|element| element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT)))
+		.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 		.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.set_inspector_visible(!shell.inspector_visible, cx);
@@ -5841,8 +5866,10 @@ fn account_pool_header(
 						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_MUTED))
 						.cursor_pointer()
-						.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
-						.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
+						.hover(|element| {
+							element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+						})
+						.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 						.on_click(cx.listener(|shell, _, _, cx| {
 							shell.refresh_accounts(cx);
 						}))
@@ -5932,8 +5959,10 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 				.bg(if is_selected { rgba(0xffffff0f) } else { rgba(0x00000000) })
 				.text_size(px(11.0))
 				.text_color(if is_selected { rgb(WB_TEXT) } else { rgb(WB_TEXT_MUTED) })
-				.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-				.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+				.hover(|element| {
+					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+				})
+				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 				.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 				.cursor_pointer()
 				.on_click(cx.listener(move |shell, _, window, cx| {
@@ -6060,8 +6089,10 @@ fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 						.border_color(rgba(0xffffff14))
 						.text_size(px(11.0))
 						.text_color(rgb(WB_TEXT_MUTED))
-						.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-						.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+						.hover(|element| {
+							element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+						})
+						.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 						.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 						.cursor_pointer()
 						.on_click(cx.listener(|shell, _, window, cx| {
@@ -6097,8 +6128,10 @@ fn conversation_refresh_button(
 		.when(can_refresh_all, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-				.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+				.hover(|element| {
+					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+				})
+				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.refresh_conversation(window, cx);
 				}))
@@ -6123,8 +6156,10 @@ fn conversation_archive_button(can_control: bool, cx: &mut Context<Shell>) -> An
 		.when(can_control, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-				.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+				.hover(|element| {
+					element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
+				})
+				.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.archive_conversation(window, cx);
 				}))

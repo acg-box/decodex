@@ -111,7 +111,7 @@ impl Shell {
 						.text_size(px(11.))
 						.text_color(rgb(WB_TEXT_MUTED))
 						.cursor_pointer()
-						.hover(|s| s.bg(rgba(0xffffff0c)))
+						.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
 						.on_click(cx.listener(move |s, _, _, cx| {
 							s.status_open = !open;
 							cx.notify();
@@ -377,7 +377,7 @@ impl Shell {
 											.justify_center()
 											.rounded(px(5.))
 											.cursor_pointer()
-											.hover(|d| d.bg(rgba(0xffffff0c)))
+											.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
 											.on_click(cx.listener(move |s, _, _, cx| {
 												s.dismissed_notifications
 													.borrow_mut()
@@ -429,7 +429,7 @@ impl Shell {
 			.text_size(px(11.))
 			.text_color(rgb(WB_BLUE))
 			.cursor_pointer()
-			.hover(|d| d.bg(rgba(0xffffff0c)))
+			.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
 			.on_click(cx.listener(move |s, event, window, cx| {
 				s.status_open = false;
 				match recovery {

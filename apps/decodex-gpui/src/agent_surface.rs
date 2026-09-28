@@ -2288,7 +2288,7 @@ impl AgentSurface {
 					.items_center()
 					.cursor_pointer()
 					.rounded(px(6.0))
-					.hover(|s| s.bg(rgba(0xffffff09)))
+					.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
 					.on_click(cx.listener(|s, _, _, cx| {
 						s.setup_expanded = !s.setup_expanded;
 						cx.notify();
