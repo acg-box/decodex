@@ -74,24 +74,8 @@ pub(crate) fn conversation(label: &'static str) -> ConversationLoading {
 }
 
 impl RenderOnce for ConversationLoading {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let clock = window.use_keyed_state(
-			SharedString::from(format!("conversation-loading-{}", self.label)),
-			cx,
-			|_, _| Instant::now(),
-		);
-		let reduced = crate::ui_motion::reduced();
-		let breath = if reduced {
-			0.5
-		} else {
-			let elapsed = clock.read(cx).elapsed().as_secs_f32();
-			0.5 - 0.5 * (elapsed * std::f32::consts::TAU / 2.4).cos()
-		};
-		if !reduced {
-			crate::ui_motion::request_frame(window, cx);
-		}
-		let tint = rgba(0xffffff0d).opacity(0.65 + breath * 0.35);
-		let line = |width| div().w(relative(width)).h(px(9.)).rounded_full().bg(tint);
+	fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+		// The history shape is unknown until read. Do not invent bubbles or text lengths.
 		div()
 			.id(SharedString::from(format!("conversation-loading-surface-{}", self.label)))
 			.role(Role::Status)
@@ -100,42 +84,17 @@ impl RenderOnce for ConversationLoading {
 			.w_full()
 			.min_h(px(260.))
 			.flex()
+			.items_center()
 			.justify_center()
-			.px(px(32.))
-			.py(px(40.))
 			.child(
 				div()
-					.w_full()
-					.max_w(px(560.))
 					.flex()
-					.flex_col()
-					.gap(px(36.))
-					.child(
-						div()
-							.w_full()
-							.flex()
-							.justify_end()
-							.child(div().w(relative(0.36)).h(px(36.)).rounded(px(18.)).bg(tint)),
-					)
-					.child(
-						div()
-							.w_full()
-							.flex()
-							.flex_col()
-							.gap(px(12.))
-							.child(line(0.82))
-							.child(line(1.))
-							.child(line(0.64)),
-					)
-					.child(
-						div()
-							.w_full()
-							.flex()
-							.flex_col()
-							.gap(px(12.))
-							.child(line(0.94))
-							.child(line(0.48)),
-					),
+					.items_center()
+					.gap(px(8.))
+					.text_size(px(12.))
+					.text_color(rgb(crate::ui_theme::TEXT_MUTED))
+					.child(loading(""))
+					.child(self.label),
 			)
 	}
 }

@@ -105,7 +105,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_graph_size(&self, window: &Window, wide: bool) -> (f32, f32) {
-		if !self.graph_visible || !self.has_work() {
+		if !self.graph_visible || !self.reserve_workspace_panels() {
 			return (0.0, 0.0);
 		}
 		let viewport = window.viewport_size();

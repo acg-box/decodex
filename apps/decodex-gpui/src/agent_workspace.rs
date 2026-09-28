@@ -46,7 +46,7 @@ impl AgentSurface {
 	pub(crate) fn workspace_panels(&self) -> [(bool, bool); 4] {
 		[
 			(self.sidebar_visible, true),
-			(self.graph_visible && self.has_work(), self.has_work()),
+			(self.graph_visible && self.reserve_workspace_panels(), self.has_work()),
 			(
 				self.timeline_visible && selected_history_available(self),
 				selected_history_available(self),
@@ -70,6 +70,11 @@ impl AgentSurface {
 		self.graph_visible = !self.graph_visible;
 		self.graph_expanded = false;
 		cx.notify();
+	}
+
+	// Unknown data must not collapse panels that the workspace intends to show.
+	pub(super) fn reserve_workspace_panels(&self) -> bool {
+		self.snapshot.is_none() || self.has_work()
 	}
 
 	pub(super) fn has_work(&self) -> bool {
@@ -750,7 +755,13 @@ impl AgentSurface {
 				transcript = transcript.child(content);
 			}
 		} else if self.snapshot.is_none() && self.state == LoadState::Loading {
-			transcript = transcript.child(crate::ui_loading::conversation("Loading workspace"));
+			transcript = transcript.child(
+				div()
+					.size_full()
+					.flex()
+					.items_center()
+					.child(crate::ui_loading::conversation("Loading workspace")),
+			);
 		} else {
 			transcript = transcript.child(self.workspace_welcome(window, cx));
 		}
@@ -1034,7 +1045,7 @@ impl AgentSurface {
 			cx.listener(|s, _, _, _| s.focused_panel = Some(workspace_size::Panel::Bottom)),
 		);
 		let Some(snapshot) = &self.snapshot else {
-			return panel.child(div().p_4().child("Work graph unavailable")).into_any_element();
+			return panel.into_any_element();
 		};
 		let layout = self.workspace_graph_layout();
 		let zoom = self.graph_zoom;
@@ -1981,6 +1992,10 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(|w, cx| w.draw(cx).clear());
+		let reserved = visual.update(|window, cx| {
+			let s = surface.read(cx);
+			(s.agent_tree_width(window), s.workspace_graph_size(window, true))
+		});
 		let skeleton = visual.debug_bounds("loading-feedback-Loading workspace").unwrap();
 		assert!(skeleton.size.height >= px(260.), "first load reserves a reading surface");
 		assert!(skeleton.size.width > px(200.));
@@ -1991,6 +2006,11 @@ mod tests {
 		});
 		visual.update(|w, cx| w.draw(cx).clear());
 		assert!(visual.debug_bounds("loading-feedback-Loading workspace").is_none());
+		let loaded = visual.update(|window, cx| {
+			let s = surface.read(cx);
+			(s.agent_tree_width(window), s.workspace_graph_size(window, true))
+		});
+		assert_eq!(reserved, loaded, "the first snapshot fills existing panel slots");
 	}
 
 	#[gpui::test]
