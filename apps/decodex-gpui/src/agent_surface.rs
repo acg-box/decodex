@@ -2152,16 +2152,13 @@ fn history_entry_with_metrics(
 						.child(muted("Agent instructions"))
 				})
 				.child(markdown::render(&visible_text, &format!("message-{identity}")))
-				.children(entry.weather.iter().enumerate().map(|(i, forecast)| {
-					let date = time::OffsetDateTime::from_unix_timestamp(
-						entry.created_at_micros / 1_000_000,
-					)
-					.ok()
-					.filter(|_| entry.created_at_micros > 0)
-					.map(|d| format!("{} · Saved forecast", d.date()))
-					.unwrap_or_else(|| "Saved forecast".into());
-					weather::render(forecast, &date, &format!("{identity}-{i}"))
-				}))
+				.children(
+					entry
+						.weather
+						.iter()
+						.enumerate()
+						.map(|(i, forecast)| weather::render(forecast, &format!("{identity}-{i}"))),
+				)
 				.when(!user, |body| {
 					body.child(
 						div()

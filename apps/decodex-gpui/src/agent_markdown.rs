@@ -682,7 +682,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 		let card = visual.debug_bounds("weather-card-42-0").expect("inline weather card");
-		assert_eq!(card.size.width, px(360.));
+		assert_eq!(card.size.width, px(280.));
 		assert!(card.size.height < px(170.));
 		let copy = visual.debug_bounds("copy-response-42").unwrap();
 		visual.simulate_click(copy.center(), gpui::Modifiers::default());
