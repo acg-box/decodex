@@ -110,7 +110,8 @@ pub use agent::{
 	AgentLiveMessageKind, AgentMisalignmentDto, AgentModelDto, AgentModelUpgradeDto,
 	AgentOutputResult, AgentRequestResult, AgentRequestText, AgentResourceDto,
 	AgentResourcesResult, AgentSandboxDto, AgentServiceTierDto, AgentStartDto,
-	AgentTaskReferenceDto, AgentTurnUsageDto, AgentUsageDto, AgentWorkspaceDto,
+	AgentTaskReferenceDto, AgentTurnUsageDto, AgentUsageDetailsDto, AgentUsageDto,
+	AgentWorkspaceDto,
 };
 pub use agent_questions::{
 	AgentAsyncQuestionDto, AgentAsyncQuestionReply, agent_async_question_id,
@@ -232,7 +233,7 @@ use decodex_core::FoundationStatus;
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 97 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 99 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

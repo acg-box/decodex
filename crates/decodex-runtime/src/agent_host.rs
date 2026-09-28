@@ -756,12 +756,16 @@ impl AgentHost {
 		thread: &str,
 		cursor: Option<&str>,
 	) -> decodex_protocol::AgentTimelineResult {
-		crate::agent::timeline::read(
+		let mut result = crate::agent::timeline::read(
 			Some(&self.store),
 			|| self.timeline_source(work, thread),
 			cursor,
 		)
-		.await
+		.await;
+		if let decodex_protocol::AgentTimelineResult::Available { page, .. } = &mut result {
+			self.enrich_timeline_weather(page).await;
+		}
+		result
 	}
 
 	async fn acknowledge_app_ui_call(

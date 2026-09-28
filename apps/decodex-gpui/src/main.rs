@@ -34,6 +34,8 @@ mod panel_preferences;
 mod settings_surface;
 mod shell;
 mod ui_motion;
+mod ui_preferences;
+mod ui_scroll;
 mod ui_theme;
 
 #[cfg(target_os = "macos")] use objc2 as _;

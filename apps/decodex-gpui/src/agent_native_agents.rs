@@ -196,30 +196,47 @@ impl AgentSurface {
 			let work = owner.to_owned();
 			let thread = agent.thread_id.clone();
 			let label = agent.title.clone();
-			rows = rows.child(
+			let key = format!("native:{owner}:{}", agent.thread_id);
+			let expanded = !self.agent_tree_collapsed.contains(&key);
+			let has_children = self.native_agents.lists.get(owner).is_some_and(|list| {
+				list.iter().any(|child| child.parent_thread_id == agent.thread_id)
+			});
+			let selected = self
+				.native_agents
+				.selected
+				.as_ref()
+				.is_some_and(|(o, t)| o == owner && t == &agent.thread_id);
+			let row = agent_tree::tree_row(
+				format!("native-agent-row-{}", agent.thread_id),
+				depth,
+				selected,
+			)
+			.child(if has_children {
+				self.tree_toggle(key.clone(), &label, expanded, cx)
+			} else {
+				div().w(px(agent_tree::DISCLOSURE)).flex_none().into_any_element()
+			})
+			.child(div().flex_1().min_w_0().child(self.workspace_action(
+				format!("native-agent-open-{thread}"),
+				label,
+				move |s, cx| s.open_native_agent(&work, &thread, cx),
+				cx,
+			)))
+			.child(
 				div()
-					.h(px(ui_theme::TREE_ROW_HEIGHT))
-					.pl(px(8. + depth as f32 * 14.))
-					.flex()
-					.items_center()
-					.gap_1()
-					.child(div().flex_1().min_w_0().child(self.workspace_action(
-						format!("native-agent-{thread}"),
-						label,
-						move |s, cx| s.open_native_agent(&work, &thread, cx),
-						cx,
-					)))
-					.child(
-						div()
-							.text_size(px(10.))
-							.text_color(rgb(ui_theme::TEXT_MUTED))
-							.child(format!("L{depth} · {}", agent.status)),
-					),
+					.text_size(px(ui_theme::CAPTION_SIZE))
+					.flex_none()
+					.text_color(rgb(ui_theme::TEXT_MUTED))
+					.child(format!("L{depth} · {}", agent.status)),
 			);
-			count += 1;
 			let (children, n) = self.native_branches(owner, &agent.thread_id, depth + 1, cx);
-			rows = rows.child(children);
-			count += n;
+			rows = rows.child(row).child(crate::ui_motion::reveal(
+				SharedString::from(format!("tree-children-{key}")),
+				if expanded { n as f32 * ui_theme::TREE_ROW_HEIGHT } else { 0. },
+				false,
+				agent_tree::tree_children(depth).child(children),
+			));
+			count += 1 + if expanded { n } else { 0 };
 		}
 		(rows.into_any_element(), count)
 	}

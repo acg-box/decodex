@@ -106,7 +106,7 @@ impl AgentSurface {
 						.py_1()
 						.rounded(px(6.))
 						.cursor_pointer()
-						.hover(|d| d.bg(rgba(0xffffff0a)))
+						.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
 						.child(
 							div()
 								.text_size(px(12.))

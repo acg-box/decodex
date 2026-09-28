@@ -14,35 +14,53 @@ fn symbol(condition: &str) -> &'static str {
 		"☁"
 	}
 }
-pub(super) fn render(
-	weather: &decodex_protocol::WeatherForecast,
-	date: &str,
-	key: &str,
-) -> AnyElement {
-	WeatherCard { weather: weather.clone(), date: date.into(), key: key.into() }.into_any_element()
+pub(super) fn render(weather: &decodex_protocol::WeatherForecast, key: &str) -> AnyElement {
+	WeatherCard { weather: weather.clone(), key: key.into() }.into_any_element()
 }
 #[derive(IntoElement)]
 struct WeatherCard {
 	weather: decodex_protocol::WeatherForecast,
-	date: String,
 	key: String,
 }
+#[derive(Default)]
+struct PageMotion {
+	target: usize,
+	from: f32,
+	started: Option<std::time::Instant>,
+}
+impl PageMotion {
+	fn position(&self) -> f32 {
+		let t = self.started.map(|at| (at.elapsed().as_secs_f32() / 0.24).min(1.)).unwrap_or(1.);
+		self.from + (self.target as f32 - self.from) * (1. - (1. - t).powi(3))
+	}
+
+	fn select(&mut self, target: usize) {
+		if self.target != target {
+			self.from = self.position();
+			self.target = target;
+			self.started = Some(std::time::Instant::now());
+		}
+	}
+}
+
 impl RenderOnce for WeatherCard {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let weather = &self.weather;
-		let date = &self.date;
 		let key = &self.key;
 		let pages = weather.hours.len().div_ceil(6).max(1);
 		let state = window.use_keyed_state(
 			SharedString::from(format!("weather-page-{key}")),
 			cx,
-			|_, _| (0usize, None::<std::time::Instant>),
+			|_, _| PageMotion::default(),
 		);
-		let (selected, started) = *state.read(cx);
-		let page = selected.min(pages - 1);
-		let progress = started.map(|t| (t.elapsed().as_secs_f32() / 0.18).min(1.)).unwrap_or(1.);
-		let eased = 1. - (1. - progress).powi(3);
-		if progress < 1. {
+		let page = state.read(cx).target.min(pages - 1);
+		let position = state.read(cx).position().clamp(0., (pages - 1) as f32);
+		if (position - page as f32).abs() > 0.001 {
+			let state = state.clone();
+			window.on_next_frame(move |window, cx| {
+				state.update(cx, |_, cx| cx.notify());
+				window.refresh();
+			});
 			window.request_animation_frame();
 		}
 
@@ -52,63 +70,80 @@ impl RenderOnce for WeatherCard {
 			.id(SharedString::from(format!("weather-card-{key}")))
 			.debug_selector(move || selector.clone())
 			.mt(px(14.))
-			.w(px(360.))
+			.w(px(280.))
 			.max_w_full()
 			.flex_none()
-			.rounded(px(18.))
-			.bg(rgba(0xffffff0b))
+			.rounded(px(14.))
+			.bg(rgba(0xffffff08))
+			.border_1()
+			.border_color(rgba(0xffffff10))
 			.shadow(vec![BoxShadow {
 				inset: false,
-				color: rgba(0x00000022).into(),
-				offset: point(px(0.), px(5.)),
-				blur_radius: px(18.),
-				spread_radius: px(-5.),
+				color: rgba(0x0000000d).into(),
+				offset: point(px(0.), px(3.)),
+				blur_radius: px(10.),
+				spread_radius: px(-3.),
 			}])
-			.px(px(14.))
-			.py(px(12.))
+			.px(px(12.))
+			.py(px(9.))
 			.flex()
 			.flex_col()
-			.gap(px(6.))
-			.child(weather_header(weather, date))
+			.gap(px(5.))
+			.child(weather_header(weather))
 			.child(
-				div()
-					.id(SharedString::from(format!("weather-hours-{key}")))
-					.flex()
-					.relative()
-					.left(px(8. * (1. - eased)))
-					.opacity(eased)
-					.children(weather.hours.iter().enumerate().skip(page * 6).take(6).map(
-						|(i, (hour, condition, t))| {
+				div().relative().w_full().h(px(56.)).overflow_hidden().child(
+					div()
+						.absolute()
+						.top_0()
+						.left(gpui::relative(-position))
+						.w(gpui::relative(pages as f32))
+						.h_full()
+						.flex()
+						.children((0..pages).map(|index| {
 							div()
-								.id(SharedString::from(format!("weather-hour-{key}-{i}")))
-								.debug_selector(move || format!("weather-hour-{i}"))
+								.w(gpui::relative(1. / pages as f32))
 								.flex_none()
-								.w(px(55.))
-								.py(px(4.))
-								.rounded(px(10.))
+								.h_full()
 								.flex()
-								.flex_col()
-								.items_center()
-								.gap_1()
-								.child(
-									div()
-										.text_size(px(10.))
-										.text_color(rgb(0xaab9c9))
-										.child(hour.trim_start_matches('0').replace(":00", "")),
+								.children(
+									weather.hours.iter().enumerate().skip(index * 6).take(6).map(
+										|(i, (hour, condition, t))| {
+											div()
+												.id(SharedString::from(format!(
+													"weather-hour-{key}-{i}"
+												)))
+												.debug_selector(move || format!("weather-hour-{i}"))
+												.w(gpui::relative(1. / 6.))
+												.flex_none()
+												.min_w_0()
+												.flex()
+												.flex_col()
+												.items_center()
+												.justify_center()
+												.gap(px(3.))
+												.child(
+													div()
+														.text_size(px(9.))
+														.text_color(rgb(0xaaa4af))
+														.child(
+															hour.trim_start_matches('0')
+																.replace(":00", ""),
+														),
+												)
+												.child(
+													div()
+														.text_size(px(13.))
+														.text_color(rgb(0xd5e3f1))
+														.child(symbol(condition)),
+												)
+												.child(
+													div().text_size(px(11.)).child(format!("{t}°")),
+												)
+										},
+									),
 								)
-								.child(
-									div()
-										.text_size(px(15.))
-										.text_color(rgb(if condition.contains("sun") {
-											0xefcc86
-										} else {
-											0xd5e3f1
-										}))
-										.child(symbol(condition)),
-								)
-								.child(div().text_size(px(13.)).child(format!("{t}°")))
-						},
-					)),
+						})),
+				),
 			)
 			.when(pages > 1, |card| {
 				card.child(div().flex().justify_center().children((0..pages).map(|index| {
@@ -119,8 +154,8 @@ impl RenderOnce for WeatherCard {
 						.debug_selector(move || selector.clone())
 						.role(Role::Button)
 						.aria_label(format!("Forecast page {} of {}", index + 1, pages))
-						.w(px(22.))
-						.h(px(12.))
+						.w(px(16.))
+						.h(px(16.))
 						.flex()
 						.items_center()
 						.justify_center()
@@ -129,10 +164,8 @@ impl RenderOnce for WeatherCard {
 						.hover(|s| s.bg(rgba(0xffffff0a)))
 						.on_click(move |_, window, cx| {
 							state.update(cx, |s, cx| {
-								if s.0 != index {
-									*s = (index, Some(std::time::Instant::now()));
-									cx.notify();
-								}
+								s.select(index);
+								cx.notify();
 							});
 							window.refresh();
 						})
@@ -147,7 +180,7 @@ impl RenderOnce for WeatherCard {
 	}
 }
 
-fn weather_header(weather: &decodex_protocol::WeatherForecast, date: &str) -> AnyElement {
+fn weather_header(weather: &decodex_protocol::WeatherForecast) -> AnyElement {
 	let location = weather.location.split(", ").next().unwrap_or(&weather.location);
 	div()
 		.flex()
@@ -157,18 +190,20 @@ fn weather_header(weather: &decodex_protocol::WeatherForecast, date: &str) -> An
 			div()
 				.flex()
 				.flex_col()
-				.gap_1()
+				.gap(px(2.))
+				.line_height(px(14.))
 				.child(
 					div()
-						.text_size(px(13.))
+						.text_size(px(12.))
 						.font_weight(FontWeight::SEMIBOLD)
 						.child(location.to_owned()),
 				)
-				.child(div().text_size(px(11.)).text_color(rgb(0xaab9c9)).child(format!(
-					"{} · {}",
-					weather.condition,
-					date.split(" · ").next().unwrap_or(date)
-				))),
+				.child(
+					div()
+						.text_size(px(10.))
+						.text_color(rgb(0xaaa4af))
+						.child(weather.condition.clone()),
+				),
 		)
 		.child(
 			div()
@@ -177,14 +212,14 @@ fn weather_header(weather: &decodex_protocol::WeatherForecast, date: &str) -> An
 				.gap_2()
 				.child(
 					div()
-						.text_size(px(20.))
+						.text_size(px(16.))
 						.text_color(rgb(0xd5e3f1))
 						.child(symbol(&weather.condition)),
 				)
 				.child(
 					div()
-						.text_size(px(28.))
-						.line_height(px(32.))
+						.text_size(px(23.))
+						.line_height(px(26.))
 						.child(format!("{}°", weather.celsius)),
 				),
 		)
@@ -210,7 +245,7 @@ mod tests {
 				.id("parent")
 				.size_full()
 				.on_scroll_wheel(move |_, _, _| count.set(count.get() + 1))
-				.child(super::render(&forecast, "Sep 23", "test"))
+				.child(super::render(&forecast, "test"))
 		}
 	}
 	#[gpui::test]
@@ -256,7 +291,18 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
-		assert!(visual.debug_bounds("weather-hour-0").is_none());
+		let first_frame = visual.debug_bounds("weather-hour-0").unwrap().origin.x;
+		std::thread::sleep(std::time::Duration::from_millis(100));
+		visual.update(|w, cx| {
+			w.draw(cx).clear();
+		});
+		let middle = visual.debug_bounds("weather-hour-0").unwrap().origin.x;
+		assert!(middle < first_frame);
+		std::thread::sleep(std::time::Duration::from_millis(180));
+		visual.update(|w, cx| {
+			w.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("weather-hour-6").unwrap().left() < bounds.right());
 		assert!(visual.debug_bounds("weather-hour-6").is_some());
 		assert!(visual.debug_bounds("weather-hour-11").is_some());
 		let dot = visual.debug_bounds("weather-page-test-0").unwrap();
@@ -265,6 +311,10 @@ mod tests {
 			window.draw(cx).clear();
 		});
 		assert!(visual.debug_bounds("weather-hour-0").is_some());
-		assert!(visual.debug_bounds("weather-hour-6").is_none());
+		std::thread::sleep(std::time::Duration::from_millis(280));
+		visual.update(|w, cx| {
+			w.draw(cx).clear();
+		});
+		assert!((visual.debug_bounds("weather-hour-0").unwrap().origin.x - start).abs() < px(1.));
 	}
 }

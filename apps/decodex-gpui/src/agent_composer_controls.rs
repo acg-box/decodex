@@ -23,7 +23,7 @@ pub(super) fn effort_indicator(level: &str) -> gpui::AnyElement {
 		.flex()
 		.items_center()
 		.gap(px(7.))
-		.child(div().text_size(px(10.5)).child(level_label(level)))
+		.child(div().text_size(px(11.)).child(level_label(level)))
 		.into_any_element()
 }
 
@@ -68,26 +68,7 @@ pub(super) fn launch_mark() -> impl IntoElement {
 
 impl AgentSurface {
 	pub(super) fn model_palette(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-		div()
-			.flex()
-			.flex_col()
-			.gap_2()
-			.child(self.catalog_model_palette(cx))
-			.child(
-				div()
-					.flex()
-					.flex_col()
-					.gap_1()
-					.child(
-						div()
-							.text_size(px(11.))
-							.text_color(rgb(ui_theme::TEXT_MUTED))
-							.child("Exact model ID"),
-					)
-					.child(div().h(px(36.)).child(self.exact_model_input.clone()))
-					.child(self.apply_exact_model_button(cx)),
-			)
-			.into_any_element()
+		self.catalog_model_palette(cx)
 	}
 
 	fn catalog_model_palette(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -137,7 +118,14 @@ impl AgentSurface {
 						.items_center()
 						.justify_between()
 						.cursor_pointer()
-						.hover(|d| d.bg(rgba(0xffffff22)).text_color(rgb(ui_theme::TEXT)))
+						.hover(move |d| {
+							d.bg(rgba(if selected {
+								ui_theme::SELECTED_HOVER_FILL
+							} else {
+								ui_theme::HOVER_FILL
+							}))
+							.text_color(rgb(ui_theme::TEXT))
+						})
 						.on_click(cx.listener(move |s, _, _, cx| {
 							s.select_composer_option("model", &click_model, cx)
 						}))
@@ -287,113 +275,5 @@ impl gpui::RenderOnce for PrimaryMark {
 			);
 		}
 		row
-	}
-}
-
-#[cfg(test)]
-mod exact_model_tests {
-	use super::super::*;
-	fn action(surface: &AgentSurface, owner: &str) -> AgentActionDto {
-		surface.configured_send(
-			EntityId::new(owner).unwrap(),
-			HistoryText::new("continue").unwrap(),
-			vec![],
-		)
-	}
-	fn choice(action: AgentActionDto) -> decodex_protocol::AgentExecutionOverrides {
-		let AgentActionDto::SendConfigured { execution, .. } = action else {
-			panic!("expected queued message")
-		};
-		execution
-	}
-	struct ExactModelView {
-		surface: Entity<AgentSurface>,
-	}
-	impl Render for ExactModelView {
-		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-			div().w(px(400.)).child(self.surface.update(cx, |s, cx| s.model_palette(cx)))
-		}
-	}
-
-	#[gpui::test]
-	fn exact_model_click_preserves_task_scope_without_a_catalog(cx: &mut gpui::TestAppContext) {
-		let (view, visual) = cx.add_window_view(|_, cx| {
-			let surface = cx.new(AgentSurface::new);
-			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
-			surface.update(cx, |s, cx| {
-				s.visual_workspace_fixture(cx);
-				s.steer = false;
-				s.exact_model_input
-					.update(cx, |input, cx| input.set_content("  provider-custom-model  ", cx));
-				assert!(choice(action(s, "agent")).is_empty());
-			});
-			ExactModelView { surface }
-		});
-		let surface = view.read_with(visual, |v, _| v.surface.clone());
-		visual.update(|window, cx| {
-			window.resize(gpui::size(px(900.), px(600.)));
-			window.draw(cx).clear();
-		});
-		let button = visual.debug_bounds("apply-exact-model").expect("exact model apply control");
-		visual.simulate_click(button.center(), Default::default());
-		surface.update(visual, |s, cx| {
-			assert_eq!(
-				choice(action(s, "agent")).model.as_ref().map(|m| m.as_str()),
-				Some("provider-custom-model"),
-				"feedback: {}",
-				s.feedback
-			);
-			assert!(choice(action(s, "other-manager")).is_empty());
-			assert!(!s.sending);
-			s.exact_model_input.update(cx, |input, cx| input.set_content(" ", cx));
-		});
-		visual.update(|window, cx| {
-			window.resize(gpui::size(px(900.), px(600.)));
-			window.draw(cx).clear();
-		});
-		let button = visual.debug_bounds("apply-exact-model").expect("exact model apply control");
-		visual.simulate_click(button.center(), Default::default());
-		surface.update(visual, |s, _| {
-			assert_eq!(s.feedback, "Enter an exact model ID.");
-			assert_eq!(
-				choice(action(s, "agent")).model.as_ref().map(|m| m.as_str()),
-				Some("provider-custom-model"),
-				"feedback: {}",
-				s.feedback
-			);
-		});
-	}
-	#[gpui::test]
-	fn exact_model_creation_keeps_unselected_native_defaults(cx: &mut gpui::TestAppContext) {
-		let (view, visual) = cx.add_window_view(|_, cx| {
-			let surface = cx.new(AgentSurface::new);
-			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
-			surface.update(cx, |s, cx| {
-				let selected = s.model.read(cx).content().to_owned();
-				s.exact_model_input
-					.update(cx, |input, cx| input.set_content("  custom-start-model  ", cx));
-				assert_eq!(s.model.read(cx).content(), selected);
-				s.creation_inherit_effort = true;
-				assert!(!s.creation_intent.model);
-			});
-			ExactModelView { surface }
-		});
-		let surface = view.read_with(visual, |v, _| v.surface.clone());
-		visual.update(|window, cx| {
-			window.resize(gpui::size(px(900.), px(600.)));
-			window.draw(cx).clear();
-		});
-		let button =
-			visual.debug_bounds("apply-exact-model").expect("new-task exact model control");
-		visual.simulate_click(button.center(), Default::default());
-		surface.update(visual, |s, cx| {
-			assert_eq!(s.model.read(cx).content(), "custom-start-model");
-			assert!(s.creation_intent.model);
-			assert!(!s.creation_intent.reasoning && !s.creation_intent.service_tier);
-			assert!(s.creation_inherit_effort);
-			assert!(s.creation_defaults_need_refresh(cx));
-			assert!(s.draft_profiles.execution.choice("agent").is_empty());
-			assert!(!s.sending && s.submission.command.is_none());
-		});
 	}
 }

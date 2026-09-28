@@ -532,7 +532,7 @@ impl AgentSurface {
 			.items_center()
 			.rounded(px(5.0))
 			.cursor_pointer()
-			.hover(|s| s.bg(rgba(0xffffff10)))
+			.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
 			.text_color(rgb(ui_theme::BLUE))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				if s.generation == generation && s.request_reader.revision == revision

@@ -293,7 +293,7 @@ impl AgentSurface {
 					.text_size(px(12.))
 					.child(div().flex_1().min_w_0().text_ellipsis().child(label))
 					.child(div().w(px(12.)).child(if selected { "✓" } else { "" }))
-					.hover(|d| d.bg(rgba(0xffffff10)))
+					.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
 					.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
 						if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 							s.audio_input = keyboard_input.clone();

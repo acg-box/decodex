@@ -13,17 +13,12 @@ pub(super) struct CatalogContext {
 
 impl AgentSurface {
 	pub(super) fn service_tier_picker(&self, cx: &Context<Self>) -> gpui::AnyElement {
-		let mut panel = gpui::div().id("service-tier-picker").flex().flex_col().gap_2();
-		let mut tiers = vec![decodex_protocol::AgentServiceTierDto {
-			id: decodex_protocol::ServiceTier::standard(),
-			name: "Standard".into(),
-			description: String::new(),
-		}];
-		if let Some(model) = self.selected_model(cx) {
-			tiers.extend(
-				model.service_tiers.iter().filter(|tier| tier.id.as_str() != "default").cloned(),
-			);
-		}
+		let mut panel = gpui::div().id("service-tier-picker").flex().items_center().gap_1();
+		let supports_fast = self.selected_model(cx).is_some_and(|model| model.supports_fast);
+		let tiers = [
+			(decodex_protocol::ServiceTier::standard(), "Standard", true),
+			(decodex_protocol::ServiceTier::from_fast(true), "Fast", supports_fast),
+		];
 		let selected = if let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id())
 		{
 			self.draft_profiles.execution.choice(&owner).selected_service_tier()
@@ -34,21 +29,13 @@ impl AgentSurface {
 					.unwrap_or_else(|| decodex_protocol::ServiceTier::from_fast(self.fast)),
 			)
 		};
-		if selected.is_none() {
-			panel = panel.child(
-				gpui::div()
-					.debug_selector(|| "tier-inherited".into())
-					.child(super::muted("Use task speed unless changed.")),
-			);
-		}
-		if selected.as_ref().is_some_and(|selected| {
-			selected.as_str() == "flex" && !tiers.iter().any(|tier| &tier.id == selected)
-		}) {
-			panel = panel.child("Flex · configured");
-		}
-		for tier in tiers {
-			let id = tier.id.clone();
-			let chosen = selected.as_ref() == Some(&id);
+		let selected = selected.unwrap_or_else(|| {
+			self.service_tier
+				.clone()
+				.unwrap_or_else(|| decodex_protocol::ServiceTier::from_fast(self.fast))
+		});
+		for (id, label, available) in tiers {
+			let chosen = selected == id;
 			panel = panel.child(
 				gpui::div()
 					.id(gpui::SharedString::from(format!("tier-{}", id.as_str())))
@@ -56,16 +43,23 @@ impl AgentSurface {
 						let label = format!("tier-{}", id.as_str());
 						move || label.clone()
 					})
-					.cursor_pointer()
+					.when(available, |d| d.cursor_pointer())
+					.when(!available, |d| d.opacity(0.4))
 					.px_2()
 					.py_1()
-					.child(format!("{}{}", if chosen { "✓ " } else { "" }, tier.name))
-					.child(super::muted(tier.description))
+					.child(format!("{}{}", if chosen { "✓ " } else { "" }, label))
+					.text_size(gpui::px(11.))
+					.rounded(gpui::px(8.))
+					.bg(gpui::rgba(if chosen { 0xffffff16 } else { 0x00000000 }))
+					.hover(move |s| {
+						s.bg(gpui::rgba(if chosen {
+							crate::ui_theme::SELECTED_HOVER_FILL
+						} else {
+							crate::ui_theme::HOVER_FILL
+						}))
+					})
 					.on_click(cx.listener(move |s, _, _, cx| {
-						if id.as_str() == "default"
-							|| s.selected_model(cx).is_some_and(|model| {
-								model.service_tiers.iter().any(|tier| tier.id == id)
-							}) {
+						if available {
 							s.fast = id.as_str() == "priority";
 							s.service_tier = Some(id.clone());
 							s.mark_tier_intent();
@@ -74,60 +68,6 @@ impl AgentSurface {
 						}
 					})),
 			);
-		}
-		panel.into_any_element()
-	}
-
-	pub(super) fn model_notice_panel(&self, cx: &Context<Self>) -> gpui::AnyElement {
-		let mut panel = gpui::div()
-			.id("model-catalog-notices")
-			.debug_selector(|| "model-catalog-notices".into())
-			.flex()
-			.flex_col()
-			.gap_2();
-		if let Some(model) = self.selected_model(cx) {
-			if let Some(programs) = &model.available_cyber_programs {
-				let names = if programs.is_empty() {
-					"None advertised".into()
-				} else {
-					programs.join(", ")
-				};
-				panel = panel.child(
-					gpui::div()
-						.id("model-access-programs")
-						.debug_selector(|| "model-access-programs".into())
-						.child(super::muted(format!("Catalog access programs: {names}"))),
-				);
-			}
-			if let Some(notice) = &model.availability {
-				panel = panel.child(super::muted(notice.clone()));
-			}
-			if let Some(upgrade) = &model.upgrade {
-				panel = panel
-					.child(super::muted(format!("Suggested upgrade: {}", upgrade.model.as_str())));
-				if let Some(timestamp) = upgrade.retirement_at
-					&& let Ok(date) = time::OffsetDateTime::from_unix_timestamp(timestamp)
-				{
-					panel = panel.child(super::muted(format!(
-						"Scheduled retirement: {} (UTC)",
-						date.date()
-					)));
-				}
-				if let Some(notice) = &upgrade.notice {
-					panel = panel.child(super::muted(notice.clone()));
-				}
-			}
-		} else if matches!(
-			self.current_model_catalog(cx),
-			Some(AgentCapabilitiesResult::Available { .. })
-		) && let Some(model) =
-			self.composer_model_value(cx).filter(|model| !model.is_empty())
-		{
-			panel = panel.child(gpui::div().debug_selector(|| "model-not-listed".into()).child(
-				super::muted(format!(
-					"{model} is not listed in the current model catalog. You can choose a listed model below."
-				)),
-			));
 		}
 		panel.into_any_element()
 	}
@@ -467,7 +407,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn advertised_tier_selection_is_explicit_and_invalidated_by_catalog_changes(
+	fn speed_picker_only_offers_standard_and_fast_and_rechecks_catalog(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -482,14 +422,14 @@ mod tests {
 					name: "Custom".into(),
 					efforts: vec![ConversationReasoningEffort::High],
 					default_effort: Some(ConversationReasoningEffort::High),
-					supports_fast: false,
+					supports_fast: true,
 					available_cyber_programs: None,
 					supports_images: true,
 					availability: None,
 					upgrade: None,
 					service_tiers: vec![decodex_protocol::AgentServiceTierDto {
-						id: decodex_protocol::ServiceTier::new("ultrafast").unwrap(),
-						name: "Ultrafast".into(),
+						id: decodex_protocol::ServiceTier::from_fast(true),
+						name: "Priority".into(),
 						description: "Increased usage".into(),
 					}],
 					default_service_tier: Some(
@@ -514,14 +454,17 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
-		assert!(visual.debug_bounds("tier-inherited").is_some());
-		let bounds = visual.debug_bounds("tier-ultrafast").expect("advertised tier visible");
+		assert!(visual.debug_bounds("tier-inherited").is_none());
+		assert!(visual.debug_bounds("tier-default").is_some());
+		assert!(visual.debug_bounds("tier-ultrafast").is_none());
+		let bounds = visual.debug_bounds("tier-priority").expect("Fast tier visible");
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, cx| {
-			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "ultrafast");
+			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "priority");
 			assert!(s.composer_capability_error(cx).is_none());
 			if let Some(AgentCapabilitiesResult::Available { models, .. }) = &mut s.capabilities {
 				models[0].service_tiers.clear();
+				models[0].supports_fast = false;
 			}
 			s.reconcile_model_options(cx);
 			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "default");
@@ -553,113 +496,6 @@ mod tests {
 		});
 	}
 
-	#[gpui::test]
-	fn missing_model_notice_requires_a_current_catalog(cx: &mut gpui::TestAppContext) {
-		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		surface.update(visual, |s, cx| {
-			s.visual_workspace_fixture(cx);
-			s.model.update(cx, |input, cx| input.set_content("saved-model", cx));
-			s.mark_model_intent(cx);
-			s.composer_menu = Some("model");
-			s.composer_menu_content = Some("model");
-			s.capabilities_context = s.catalog_context(cx);
-		});
-		for (catalog, expected) in [
-			(None, false),
-			(Some(AgentCapabilitiesResult::Unavailable), false),
-			(
-				Some(AgentCapabilitiesResult::Available { models: vec![], memory_enabled: None }),
-				true,
-			),
-		] {
-			surface.update(visual, |s, cx| {
-				s.capabilities = catalog;
-				s.reconcile_model_options(cx);
-				assert_eq!(s.composer_model_value(cx).as_deref(), Some("saved-model"));
-				cx.notify();
-			});
-			visual.update(|window, cx| {
-				window.resize(gpui::size(gpui::px(1280.0), gpui::px(1200.0)));
-				window.draw(cx).clear();
-			});
-			assert_eq!(visual.debug_bounds("model-not-listed").is_some(), expected);
-		}
-		surface.update(visual, |s, cx| {
-			s.account.update(cx, |input, cx| {
-				input.set_content("00000000-0000-4000-8000-000000000099", cx)
-			});
-			cx.notify();
-		});
-		visual.update(|window, cx| window.draw(cx).clear());
-		assert!(visual.debug_bounds("model-not-listed").is_none());
-		surface.update(visual, |s, cx| {
-			assert_eq!(s.composer_model_value(cx).as_deref(), Some("saved-model"));
-			s.draft_profiles.execution = Default::default();
-			s.capabilities_context = s.catalog_context(cx);
-			assert_eq!(s.composer_model_value(cx), None);
-			assert_eq!(s.composer_model_label(cx), "Task model");
-			cx.notify();
-		});
-		visual.update(|window, cx| window.draw(cx).clear());
-		assert!(visual.debug_bounds("model-not-listed").is_none());
-	}
-
-	#[gpui::test]
-	fn model_notices_refresh_without_replacing_selected_model(cx: &mut gpui::TestAppContext) {
-		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		surface.update(visual, |s, cx| {
-			s.visual_workspace_fixture(cx);
-			s.capabilities = Some(AgentCapabilitiesResult::Available {
-				memory_enabled: None,
-				models: vec![AgentModelDto {
-					model: decodex_protocol::ConversationModel::new("current-model").unwrap(),
-					name: "Current model".into(),
-					efforts: vec![ConversationReasoningEffort::High],
-					default_effort: Some(ConversationReasoningEffort::High),
-					supports_fast: false,
-					service_tiers: vec![],
-					default_service_tier: None,
-					available_cyber_programs: None,
-					supports_images: true,
-					availability: Some("Available for this account".into()),
-					upgrade: Some(decodex_protocol::AgentModelUpgradeDto {
-						model: decodex_protocol::ConversationModel::new("replacement").unwrap(),
-						notice: Some("A replacement is available".into()),
-						retirement_at: Some(1800000000),
-					}),
-				}],
-			});
-			s.model.update(cx, |input, cx| input.set_content("current-model", cx));
-			s.mark_model_intent(cx);
-			s.reconcile_model_options(cx);
-			s.composer_menu = Some("model");
-			s.composer_menu_content = Some("model");
-			assert_eq!(s.model.read(cx).content(), "current-model");
-		});
-		visual.update(|window, cx| {
-			window.resize(gpui::size(gpui::px(1280.0), gpui::px(1200.0)));
-			window.draw(cx).clear();
-		});
-		let bounds = visual.debug_bounds("model-catalog-notices").expect("visible model notices");
-		assert!(bounds.size.height > gpui::px(20.0));
-		surface.update(visual, |s, cx| assert_eq!(s.model.read(cx).content(), "current-model"));
-		for programs in [Some(vec!["standard".into(), "daybreakBlue".into()]), Some(vec![]), None] {
-			let visible = programs.is_some();
-			surface.update(visual, |s, cx| {
-				let Some(AgentCapabilitiesResult::Available { models, .. }) = &mut s.capabilities
-				else {
-					panic!("catalog fixture")
-				};
-				models[0].available_cyber_programs = programs;
-				assert_eq!(s.model.read(cx).content(), "current-model");
-				cx.notify();
-			});
-			visual.update(|window, cx| {
-				window.draw(cx).clear();
-			});
-			assert_eq!(visual.debug_bounds("model-access-programs").is_some(), visible);
-		}
-	}
 	#[gpui::test]
 	fn configured_flex_survives_missing_catalog_and_fast_support(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);

@@ -128,6 +128,19 @@ impl AgentSurface {
 				weather: Vec::new(),
 			});
 		message.text = text.into();
+		if kind == "agentMessage"
+			&& let Some(forecasts) = self.native_history.weather.get(turn_id)
+		{
+			message.weather = forecasts
+				.iter()
+				.filter(|f| {
+					["weather", "forecast"].iter().any(|kind| {
+						text.contains(&format!("\u{e200}{kind}\u{e202}{}\u{e201}", f.reference))
+					})
+				})
+				.cloned()
+				.collect();
+		}
 		message
 	}
 
@@ -155,32 +168,35 @@ impl AgentSurface {
 					"Voice conversation ended"
 				}))
 				.into_any_element(),
-			Content::TurnBoundary {
-				completed, status, duration_ms, error, usage_summary, ..
-			} => {
-				let label = if *completed {
-					format!(
-						"Turn {}{}",
-						status.as_deref().unwrap_or("ended"),
-						duration_ms.map(|ms| format!(" · {ms} ms")).unwrap_or_default()
-					)
-				} else {
-					"Turn started".into()
-				};
-				row.child(muted(&label))
-					.children(usage_summary.as_ref().map(|summary| {
-						div().debug_selector(|| "native-turn-usage".into()).child(muted(summary))
-					}))
-					.children(error.as_ref().map(|error| {
-						div().child(error.message.clone()).children(
-							error.truncated.then(|| muted("Error details shortened or omitted.")),
-						)
-					}))
-					.into_any_element()
+			Content::TurnBoundary { completed, turn_id, error, .. } => {
+				let has_reply = self.native_history.entries.iter().any(|entry| matches!(&entry.content, Content::Item { turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage"));
+				row.when(*completed && !has_reply, |row| {
+					row.child(self.native_turn_metrics(&entry.content, identity, cx))
+				})
+				.children(error.as_ref().map(|error| div().child(error.message.clone())))
+				.into_any_element()
 			},
 			content @ Content::Promotion { .. } =>
 				self.native_promotion(work, content, identity, cx),
 		}
+	}
+
+	fn native_turn_metrics(
+		&self,
+		boundary: &Content,
+		identity: &str,
+		_cx: &mut Context<Self>,
+	) -> gpui::AnyElement {
+		let Content::TurnBoundary { duration_ms, status, usage, .. } = boundary else {
+			return div().into_any_element();
+		};
+		super::super::response_metrics::ResponseMetrics {
+			key: identity.into(),
+			duration_ms: *duration_ms,
+			status: status.clone(),
+			usage: usage.clone(),
+		}
+		.into_any_element()
 	}
 
 	fn native_item_content(
@@ -229,7 +245,16 @@ impl AgentSurface {
 					text.to_owned(),
 				))
 			} else {
-				body.child(super::super::history_entry_with_key(&message, identity))
+				let last_reply = self.native_history.entries.iter().rev().find_map(|entry| {
+					match &entry.content {
+						Content::Item { turn_id: turn, item_id, kind, .. }
+							if turn == turn_id && kind == "agentMessage" =>
+							Some(item_id),
+						_ => None,
+					}
+				});
+				let metrics = (kind == "agentMessage" && last_reply == Some(item_id)).then(|| self.native_history.entries.iter().find(|entry| matches!(&entry.content, Content::TurnBoundary { turn_id: turn, completed: true, .. } if turn == turn_id))).flatten().map(|entry| self.native_turn_metrics(&entry.content, identity, cx));
+				body.child(super::super::history_entry_with_metrics(&message, identity, metrics))
 			};
 			if truncated {
 				body = body.child(muted("Some content was omitted from this history preview."));
@@ -403,6 +428,38 @@ mod tests {
 	use gpui::{AppContext, px, size};
 
 	#[gpui::test]
+	fn native_weather_does_not_require_a_duplicate_local_message(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let work = s.snapshot.as_ref().unwrap().work_items[0].clone();
+			s.history = None;
+			let forecast = decodex_protocol::WeatherForecast::parse(include_str!(
+				"../examples/fixtures/singapore-weather.txt"
+			))
+			.unwrap();
+			s.native_history.weather.insert("weather-turn".into(), vec![forecast.clone()]);
+			for kind in ["weather", "forecast"] {
+				let text = format!("Cloudy. \u{e200}{kind}\u{e202}{}\u{e201}", forecast.reference);
+				assert_eq!(
+					s.native_message_entry(&work, "weather-turn", &text, "agentMessage").weather,
+					vec![forecast.clone()]
+				);
+				assert!(
+					s.native_message_entry(&work, "different-turn", &text, "agentMessage")
+						.weather
+						.is_empty()
+				);
+				assert!(
+					s.native_message_entry(&work, "weather-turn", &text, "userMessage")
+						.weather
+						.is_empty()
+				);
+			}
+		});
+	}
+
+	#[gpui::test]
 	fn native_message_metadata_preserves_the_provider_role(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
 		surface.update(cx, |s, cx| {
@@ -491,6 +548,7 @@ mod tests {
 					thread_id: "native-thread".into(),
 					entries: vec![entry],
 					next_cursor: None,
+					weather: Default::default(),
 					active_realtime_session_at_page_start: None,
 				},
 			);
@@ -630,7 +688,7 @@ mod tests {
 					completed: true,
 					status: Some("failed".into()),
 					duration_ms: Some(100),
-					usage_summary: Some(
+					usage: Some(decodex_protocol::AgentTurnUsageDto { input_tokens: 120, output_tokens: 30, details: None }), usage_summary: Some(
 						"Turn tokens: input 120, output 30.\nThread total tokens: 900.\nObserved responses: 1. Showing 1 recorded amounts; units are provider-defined.\nResponse fixture: 0.12345678901234567890.".into(),
 					),
 					error: Some(decodex_protocol::AgentTimelineError {
@@ -670,6 +728,7 @@ mod tests {
 					thread_id: "native-thread".into(),
 					entries: vec![],
 					next_cursor: None,
+					weather: Default::default(),
 					active_realtime_session_at_page_start: None
 				}
 			));
@@ -780,6 +839,7 @@ mod tests {
 					thread_id: "native-thread".into(),
 					entries,
 					next_cursor: None,
+					weather: Default::default(),
 					active_realtime_session_at_page_start: None
 				}
 			));
@@ -790,13 +850,54 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+		// Settle the workspace's sidebar entrance before measuring the footer.
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+
 		let bounds = selectors
 			.into_iter()
 			.map(|selector| visual.debug_bounds(Box::leak(selector.into_boxed_str())).unwrap())
 			.collect::<Vec<_>>();
 		assert!(bounds.iter().all(|bounds| bounds.size.height > px(0.)));
 		assert!(bounds.windows(2).all(|pair| pair[0].bottom() <= pair[1].top()));
+		assert!(visual.debug_bounds("native-turn-usage").is_none());
+		let details = visual.debug_bounds("turn-metrics-hover").expect("compact details control");
+		visual.simulate_mouse_move(details.center(), gpui::MouseButton::Left, Default::default());
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let details = visual.debug_bounds("turn-metrics-hover").unwrap();
+		visual.simulate_mouse_move(details.center(), gpui::MouseButton::Left, Default::default());
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		std::thread::sleep(std::time::Duration::from_millis(220));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert_eq!(
+			details,
+			visual.debug_bounds("turn-metrics-hover").unwrap(),
+			"details must not shift the transcript"
+		);
 		assert!(visual.debug_bounds("native-turn-usage").is_some());
+		visual.simulate_mouse_move(
+			gpui::point(px(1390.), px(1390.)),
+			gpui::MouseButton::Left,
+			Default::default(),
+		);
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		std::thread::sleep(std::time::Duration::from_millis(220));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("native-turn-usage").is_none(), "moving away closes details");
+		assert_eq!(details, visual.debug_bounds("turn-metrics-hover").unwrap());
+
 		assert!(visual.debug_bounds("native-plan-content").is_some());
 		assert!(visual.debug_bounds("native-promotion-content").is_some());
 		assert!(visual.debug_bounds("native-reasoning-summary").is_some());
@@ -870,6 +971,7 @@ mod tests {
 					thread_id: "native-thread".into(),
 					entries: vec![],
 					next_cursor: None,
+					weather: Default::default(),
 					active_realtime_session_at_page_start: None
 				}
 			));
@@ -926,6 +1028,7 @@ mod tests {
 				AgentTimelinePage {
 					thread_id: "native-thread".into(),
 					next_cursor: None,
+					weather: Default::default(),
 					active_realtime_session_at_page_start: None,
 					entries: vec![AgentTimelineEntry {
 						position: 1,

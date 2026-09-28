@@ -201,19 +201,17 @@ struct Feedback {
 	hovered: bool,
 	pressed: bool,
 	opacity: Tween,
-	offset: Tween,
 }
 
 impl Feedback {
 	fn update(&mut self) {
-		self.offset.target(if self.pressed { 1.5 } else { 0.0 }, Instant::now());
 		self.opacity.target(
 			if self.pressed {
-				0.62
+				0.90
 			} else if self.hovered {
 				1.0
 			} else {
-				0.88
+				0.96
 			},
 			Instant::now(),
 		);
@@ -229,14 +227,12 @@ impl RenderOnce for Control {
 		let state = window.use_keyed_state(id, cx, |_, _| Feedback {
 			hovered: false,
 			pressed: false,
-			opacity: Tween::new(0.88),
-			offset: Tween::new(0.0),
+			opacity: Tween::new(0.96),
 		});
 		let now = Instant::now();
 		let feedback = state.read(cx);
-		let moving = feedback.opacity.moving(now) || feedback.offset.moving(now);
+		let moving = feedback.opacity.moving(now);
 		let opacity = feedback.opacity.sample(now);
-		let offset = feedback.offset.sample(now);
 		if moving {
 			request_frame(window, cx);
 		}
@@ -248,7 +244,6 @@ impl RenderOnce for Control {
 		let click = state.clone();
 		self.div
 			.relative()
-			.top(px(offset))
 			.opacity(opacity)
 			.on_hover(move |hovered, _, cx| {
 				hover.update(cx, |s, cx| {
@@ -294,10 +289,7 @@ impl RenderOnce for Control {
 				click.update(cx, |s, cx| {
 					s.pressed = false;
 					s.update();
-					s.offset.from = 1.5;
-					s.offset.to = 0.0;
-					s.offset.started = Instant::now();
-					s.opacity.from = 0.62;
+					s.opacity.from = 0.90;
 					s.opacity.started = Instant::now();
 					cx.notify();
 				})

@@ -45,7 +45,7 @@ impl Render for Preview {
 					.line_height(px(22.))
 					.child("Mostly cloudy in Singapore, with showers possible overnight."),
 			)
-			.child(weather_card::render(&self.forecast, "Sep 23", "preview"))
+			.child(weather_card::render(&self.forecast, "preview"))
 			.child(
 				div()
 					.id("copy-weather")

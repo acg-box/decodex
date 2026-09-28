@@ -10,6 +10,9 @@ pub struct AgentTimelinePage {
 	pub entries: Vec<AgentTimelineEntry>,
 	/// Opaque cursor for the next older page, bound to this thread.
 	pub next_cursor: Option<String>,
+	/// Weather cards keyed by the exact native turn.
+	#[serde(default)]
+	pub weather: std::collections::BTreeMap<String, Vec<crate::WeatherForecast>>,
 	/// Voice session active immediately before the first entry, if any.
 	pub active_realtime_session_at_page_start: Option<String>,
 }
@@ -154,6 +157,9 @@ pub enum AgentTimelineContent {
 		duration_ms: Option<u64>,
 		/// Saved provider usage for this exact completed turn. Native timeline has no usage field.
 		usage_summary: Option<String>,
+		/// Compact token counts for this exact turn.
+		#[serde(default)]
+		usage: Option<crate::AgentTurnUsageDto>,
 		/// Public provider failure message, when present.
 		error: Option<AgentTimelineError>,
 	},

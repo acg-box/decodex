@@ -1,6 +1,9 @@
 //! Conversation-first desktop presentation. All displayed work comes from the service.
 use super::*;
-use crate::ui_motion::{SmoothControl, reveal};
+use crate::{
+	ui_motion::{SmoothControl, reveal},
+	ui_scroll::SmoothScrollArea,
+};
 use gpui::{AnyElement, MouseButton, PathBuilder, canvas, point};
 
 const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
@@ -223,6 +226,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let is_tab = id.starts_with("page-");
+		let is_tree = id.starts_with("agent-open-") || id.starts_with("native-agent-open-");
 		let is_event = id.starts_with("event-");
 		let is_prompt = id.starts_with("prompt-")
 			|| id.starts_with("saved-prompt-")
@@ -276,7 +280,16 @@ impl AgentSurface {
 			})
 			.rounded(px(5.0))
 			.cursor_pointer()
-			.hover(|s| s.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL)))
+			.when(!is_tree, |button| {
+				button.hover(move |s| {
+					s.bg(rgba(if active {
+						ui_theme::SELECTED_HOVER_FILL
+					} else {
+						ui_theme::HOVER_FILL
+					}))
+				})
+			})
+			.when(is_tree, |button| button.hover(|s| s.text_color(rgb(ui_theme::TEXT))))
 			.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
 			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
@@ -284,6 +297,9 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}))
+			.when(is_tree, |button| {
+				button.px_0().py_0().h(px(ui_theme::TREE_ROW_HEIGHT)).w_full().min_w_0()
+			})
 			.when(is_event || is_prompt, |button| button.w_full().min_w_0())
 			.child(if let Some(icon) = icon {
 				icon
@@ -408,7 +424,7 @@ impl AgentSurface {
 				list = list.child(row);
 			}
 		}
-		panel = panel.child(list);
+		panel = panel.child(list.smooth_scroll("workspace-sidebar-scroll"));
 		panel.child(self.sidebar_resize_handle(cx)).into_any_element()
 	}
 
@@ -1459,7 +1475,7 @@ impl AgentSurface {
 					});
 					entries.clear();
 					for (i,(kind,text)) in [("user","请整理检查结果，并说明下一步安排。"),("assistant","## 检查完成\n\n两位下属已提交报告，**现有会话保持可用**。\n\n- 登录流程：保留原会话\n- 启动流程：继续验证性能\n\n| 工作 | 结果 | 下一步 |\n|---|---|---|\n| 登录检查 | 已验收 | 合并检查结果 |\n| 启动检查 | 待验证 | 补充冷启动数据 |\n\n### 验证命令\n```rust\nlet status = review.result();\nassert!(status.is_verified());\n```\n\n查看 [源码](/Users/x/code/acg-box/decodex/apps/decodex-gpui/src/agent_surface.rs:1)，再确认 `review` 的结果。")].into_iter().enumerate() {
-                        entries.push(decodex_protocol::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: (kind == "assistant").then_some(decodex_protocol::AgentTurnUsageDto {input_tokens:24860,output_tokens:1820}),duration_ms: (kind == "assistant").then_some(18400),id:i as i64+1,kind:kind.into(),text:text.into(),created_at_micros:1789480440000000});
+                        entries.push(decodex_protocol::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: (kind == "assistant").then_some(decodex_protocol::AgentTurnUsageDto {details:None,input_tokens:24860,output_tokens:1820}),duration_ms: (kind == "assistant").then_some(18400),id:i as i64+1,kind:kind.into(),text:text.into(),created_at_micros:1789480440000000});
                     }
 				}
 			},

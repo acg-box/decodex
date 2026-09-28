@@ -232,6 +232,7 @@ mod tests {
 						thread_id: "thread".into(),
 						entries: vec![row(10)],
 						next_cursor: None,
+						weather: Default::default(),
 						active_realtime_session_at_page_start: None,
 					}
 				));
@@ -275,6 +276,7 @@ mod tests {
 							thread_id: "thread".into(),
 							entries: (100..105).map(row).collect(),
 							next_cursor: None,
+							weather: Default::default(),
 							active_realtime_session_at_page_start: None,
 						}
 					));
@@ -319,6 +321,7 @@ mod tests {
 					thread_id: "thread".into(),
 					entries: (0..4).map(row).collect(),
 					next_cursor: None,
+					weather: Default::default(),
 					active_realtime_session_at_page_start: None
 				}
 			));
@@ -412,6 +415,7 @@ mod tests {
 					thread_id: "thread".into(),
 					entries: (10..1010).map(short).collect(),
 					next_cursor: Some("older".into()),
+					weather: Default::default(),
 					active_realtime_session_at_page_start: None,
 				}
 			));
@@ -440,6 +444,7 @@ mod tests {
 					thread_id: "thread".into(),
 					entries: (1..4).map(short).collect(),
 					next_cursor: None,
+					weather: Default::default(),
 					active_realtime_session_at_page_start: None,
 				}
 			));
@@ -493,6 +498,7 @@ mod tests {
 					thread_id: "thread".into(),
 					entries: (10..13).map(row).collect(),
 					next_cursor: Some("older".into()),
+					weather: Default::default(),
 					active_realtime_session_at_page_start: None,
 				}
 			));
@@ -522,6 +528,7 @@ mod tests {
 					thread_id: "thread".into(),
 					entries: (1..4).map(row).collect(),
 					next_cursor: None,
+					weather: Default::default(),
 					active_realtime_session_at_page_start: None,
 				}
 			));

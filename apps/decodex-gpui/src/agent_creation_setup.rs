@@ -100,7 +100,7 @@ impl AgentSurface {
 			.cursor_pointer()
 			.px_2()
 			.py_1()
-			.child(label)
+			.child("Auto")
 			.on_click(cx.listener(|s, _, _, cx| s.toggle_creation_effort(cx)))
 			.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
 				if !event.is_held && matches!(event.keystroke.key.as_str(), "enter" | "space") {

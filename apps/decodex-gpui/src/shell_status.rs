@@ -111,7 +111,7 @@ impl Shell {
 						.text_size(px(11.))
 						.text_color(rgb(WB_TEXT_MUTED))
 						.cursor_pointer()
-						.hover(|s| s.bg(rgba(0xffffff0c)))
+						.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
 						.on_click(cx.listener(move |s, _, _, cx| {
 							s.status_open = !open;
 							cx.notify();
@@ -377,7 +377,7 @@ impl Shell {
 											.justify_center()
 											.rounded(px(5.))
 											.cursor_pointer()
-											.hover(|d| d.bg(rgba(0xffffff0c)))
+											.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
 											.on_click(cx.listener(move |s, _, _, cx| {
 												s.dismissed_notifications
 													.borrow_mut()
@@ -429,7 +429,7 @@ impl Shell {
 			.text_size(px(11.))
 			.text_color(rgb(WB_BLUE))
 			.cursor_pointer()
-			.hover(|d| d.bg(rgba(0xffffff0c)))
+			.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
 			.on_click(cx.listener(move |s, event, window, cx| {
 				s.status_open = false;
 				match recovery {
@@ -453,60 +453,12 @@ impl Shell {
 
 pub(crate) fn count_preference(value: Option<bool>) -> bool {
 	static VALUE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);
-	notice_preference("DecodexNotificationCount", &VALUE, value, false)
+	crate::ui_preferences::boolean("DecodexNotificationCount", &VALUE, value, false)
 }
 
 pub(crate) fn question_notice_preference(value: Option<bool>) -> bool {
 	static VALUE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);
-	notice_preference("DecodexQuestionNotices", &VALUE, value, true)
-}
-
-fn notice_preference(
-	key: &str,
-	cache: &std::sync::atomic::AtomicU8,
-	value: Option<bool>,
-	default: bool,
-) -> bool {
-	use std::sync::atomic::Ordering;
-	if let Some(value) = value {
-		stored_notice_preference(key, Some(value), default);
-		cache.store(u8::from(value), Ordering::Relaxed);
-		return value;
-	}
-	let cached = cache.load(Ordering::Relaxed);
-	if cached != u8::MAX {
-		return cached != 0;
-	}
-	let value = stored_notice_preference(key, None, default);
-	cache.store(u8::from(value), Ordering::Relaxed);
-	value
-}
-
-// Host-local appearance only; clearing notices never changes service state.
-#[cfg(all(target_os = "macos", not(test)))]
-fn stored_notice_preference(key: &str, value: Option<bool>, default: bool) -> bool {
-	use objc2::{
-		msg_send,
-		rc::Retained,
-		runtime::{AnyClass, AnyObject},
-	};
-	unsafe {
-		let defaults: Retained<AnyObject> =
-			msg_send![AnyClass::get(c"NSUserDefaults").expect("Foundation"), standardUserDefaults];
-		let key = objc2_foundation::NSString::from_str(key);
-		if let Some(value) = value {
-			let _: () = msg_send![&*defaults, setBool: value, forKey: &*key];
-		}
-		let stored: Option<Retained<AnyObject>> = msg_send![&*defaults, objectForKey: &*key];
-		if stored.is_none() {
-			return default;
-		}
-		msg_send![&*defaults, boolForKey: &*key]
-	}
-}
-#[cfg(not(all(target_os = "macos", not(test))))]
-fn stored_notice_preference(_: &str, value: Option<bool>, default: bool) -> bool {
-	value.unwrap_or(default)
+	crate::ui_preferences::boolean("DecodexQuestionNotices", &VALUE, value, true)
 }
 
 #[cfg(test)]

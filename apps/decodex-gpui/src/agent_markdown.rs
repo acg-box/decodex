@@ -373,7 +373,7 @@ impl gpui::RenderOnce for CopyButton {
 			.justify_center()
 			.rounded(px(6.))
 			.cursor_pointer()
-			.hover(|s| s.bg(rgba(0xffffff10)))
+			.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
 			.on_click(move |_, _, cx| {
 				clipboard::copy(click_text.clone(), self.rich, cx);
 				click_state.update(cx, |s, cx| {
@@ -480,7 +480,7 @@ fn parse_plain_text(text: &str) -> String {
 /// Text fallback for the observed weather widget. Keep the stored source intact.
 /// Full snapshots are parsed, including incomplete streaming/reveal prefixes.
 pub(super) fn response_text(text: &str) -> String {
-	const PREFIX: &str = "\u{e200}weather\u{e202}";
+	const PREFIXES: [&str; 2] = ["\u{e200}weather\u{e202}", "\u{e200}forecast\u{e202}"];
 	if !text.contains('\u{e200}') {
 		return text.into();
 	}
@@ -497,7 +497,8 @@ pub(super) fn response_text(text: &str) -> String {
 			continue;
 		}
 		let tail = &text[start..];
-		let end = if let Some(payload) = tail.strip_prefix(PREFIX) {
+		let end = if let Some(prefix) = PREFIXES.iter().find(|prefix| tail.starts_with(**prefix)) {
+			let payload = &tail[prefix.len()..];
 			if let Some(end) = payload.find('\u{e201}') {
 				let reference = &payload[..end];
 				if reference.is_empty()
@@ -505,13 +506,13 @@ pub(super) fn response_text(text: &str) -> String {
 				{
 					continue;
 				}
-				start + PREFIX.len() + end + '\u{e201}'.len_utf8()
+				start + prefix.len() + end + '\u{e201}'.len_utf8()
 			} else if payload.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
 				text.len()
 			} else {
 				continue;
 			}
-		} else if PREFIX.starts_with(tail) {
+		} else if PREFIXES.iter().any(|prefix| prefix.starts_with(tail)) {
 			text.len()
 		} else {
 			continue;
@@ -562,6 +563,18 @@ mod tests {
 		] {
 			assert_eq!(response_text(&source), source);
 		}
+	}
+
+	#[test]
+	fn forecast_marker_and_stream_prefixes_are_hidden_without_changing_code() {
+		let marker = "\u{e200}forecast\u{e202}turn0forecast0\u{e201}";
+		for end in marker.char_indices().map(|(i, _)| i).chain([marker.len()]) {
+			assert_eq!(
+				response_text(&format!("Cloudy.\n{}", &marker[..end])).trim_end(),
+				"Cloudy."
+			);
+		}
+		assert_eq!(response_text(&format!("`{marker}`")), format!("`{marker}`"));
 	}
 
 	#[test]
@@ -669,7 +682,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 		let card = visual.debug_bounds("weather-card-42-0").expect("inline weather card");
-		assert_eq!(card.size.width, px(360.));
+		assert_eq!(card.size.width, px(280.));
 		assert!(card.size.height < px(170.));
 		let copy = visual.debug_bounds("copy-response-42").unwrap();
 		visual.simulate_click(copy.center(), gpui::Modifiers::default());
