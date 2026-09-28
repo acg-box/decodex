@@ -20,6 +20,7 @@ pub(super) struct Viewport(Rc<RefCell<Geometry>>);
 #[derive(Default)]
 struct Geometry {
 	rows: BTreeMap<RowKey, (f32, f32)>,
+	folded: std::collections::BTreeSet<RowKey>,
 	layout: Option<Layout>,
 	pinned: Option<RowKey>,
 	pending: Option<Anchor>,
@@ -147,6 +148,34 @@ impl AgentSurface {
 			rail_visible: self.timeline_visible,
 			graph_expanded: self.graph_expanded,
 		});
+	}
+
+	pub(super) fn anchor_process_toggle(&mut self, work: &str, entry: &AgentTimelineEntry) {
+		let mut state = self.native_history.viewport.0.borrow_mut();
+		let key = row_key(entry);
+		if let (Some((top, _)), Some(scroll)) =
+			(state.rows.get(&key), self.transcript_scroll.get(work))
+		{
+			let viewport_top = *top + f32::from(scroll.offset().y);
+			state.revision += 1;
+			state.pending =
+				Some(Anchor { key, viewport_top, revision: state.revision, scheduled: false });
+		}
+		state.rows.clear();
+		self.wheel_scroll = None;
+	}
+
+	pub(super) fn prepare_process_folds(
+		&self,
+		_work: &AgentWorkItemDto,
+		hidden: &std::collections::BTreeSet<usize>,
+	) {
+		let folded = hidden.iter().map(|i| row_key(&self.native_history.entries[*i])).collect();
+		let mut state = self.native_history.viewport.0.borrow_mut();
+		if state.folded != folded {
+			state.folded = folded;
+			state.rows.clear();
+		}
 	}
 
 	pub(in super::super) fn cancel_native_scroll_anchor(&self) {
@@ -294,6 +323,7 @@ mod tests {
 		AgentTimelineEntry {
 			position,
 			content: Content::Item {
+				phase: None,
 				app_ui: false,
 				turn_id: "turn".into(),
 				item_id: format!("item-{position}"),

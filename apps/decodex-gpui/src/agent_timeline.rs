@@ -3,6 +3,7 @@ use super::*;
 use decodex_protocol::{AgentTimelineContent as Content, AgentTimelineEntry, AgentTimelinePage};
 use std::collections::BTreeSet;
 #[path = "agent_timeline_app_ui.rs"] mod app_ui;
+#[path = "agent_timeline_groups.rs"] mod groups;
 #[path = "agent_timeline_inputs.rs"] mod inputs;
 #[path = "agent_timeline_media.rs"] mod media;
 #[path = "agent_timeline_receipts.rs"] mod receipts;
@@ -211,8 +212,44 @@ impl AgentSurface {
 			for item in &self.native_history.summary {
 				panel = panel.child(self.native_summary_row(work, item, cx));
 			}
+			let groups =
+				groups::groups(&self.native_history.entries, &self.native_history.expanded_turns);
+			let mut collapsed = BTreeSet::new();
+			let mut headers = std::collections::BTreeMap::new();
+			for group in &groups {
+				headers.insert(group.indices[0], group);
+				if !group.expanded {
+					collapsed.extend(group.indices.iter().copied());
+				}
+			}
+			self.prepare_process_folds(work, &collapsed);
 			let mut hidden = Vec::new();
-			for entry in &self.native_history.entries {
+			for (index, entry) in self.native_history.entries.iter().enumerate() {
+				if let Some(group) = headers.get(&index) {
+					if !hidden.is_empty() {
+						panel = panel
+							.child(self.native_history_spacer(work, std::mem::take(&mut hidden)));
+					}
+					let header = self.turn_process_header(work, group, entry, cx);
+					let body = div().w_full().child(header).when(group.expanded, |d| {
+						d.child(self.native_timeline_content(
+							work,
+							entry,
+							&format!("process-{}-{}", work.id, group.turn),
+							cx,
+						))
+					});
+					panel = panel.child(self.native_scroll_row(
+						work,
+						entry,
+						body.into_any_element(),
+						cx,
+					));
+					continue;
+				}
+				if collapsed.contains(&index) {
+					continue;
+				}
 				if let Some(height) = self.native_offscreen_height(work, entry) {
 					hidden.push((entry, height));
 					continue;
@@ -270,6 +307,21 @@ impl AgentSurface {
 	fn refresh_native_history(&mut self, binding: Binding, page: AgentTimelinePage) -> bool {
 		let jump = self.native_history.viewport.take_latest_request();
 		let work = binding.work.clone();
+		// Do not fold a running process out from under a reader browsing history.
+		if self.history_follow_paused.contains(&work) && !self.native_history.entries.is_empty() {
+			for entry in &page.entries {
+				if let Content::TurnBoundary { turn_id, completed: true, .. } = &entry.content {
+					let already_finished = self.native_history.entries.iter().any(|old| {
+						matches!(&old.content,
+						Content::TurnBoundary {turn_id: old_turn, completed: true, ..} if old_turn == turn_id)
+					});
+					if !already_finished {
+						self.native_history.expanded_turns.insert(turn_id.clone());
+					}
+				}
+			}
+		}
+
 		let accepted = if jump {
 			self.native_history.replace(binding, page)
 		} else {
@@ -416,6 +468,7 @@ pub(super) struct Timeline {
 	unsupported: bool,
 	browsing_window: bool,
 	show_saved: bool,
+	expanded_turns: BTreeSet<String>,
 	viewport: scroll::Viewport,
 	notice: Option<&'static str>,
 	seen_cursors: BTreeSet<String>,
@@ -538,6 +591,7 @@ impl Timeline {
 			self.revision = self.revision.wrapping_add(1);
 		}
 		if self.binding.as_ref() != Some(&binding) {
+			self.expanded_turns.clear();
 			self.preview.clear();
 			self.app_ui.clear();
 		}
@@ -664,6 +718,7 @@ mod tests {
 			s.native_history.accept_summary(
 				binding,
 				vec![Content::Item {
+					phase: None,
 					turn_id: "turn".into(),
 					item_id: "answer".into(),
 					kind: "agentMessage".into(),
@@ -705,6 +760,7 @@ mod tests {
 		let binding =
 			Binding { work: "work".into(), thread: "thread".into(), account: "account".into() };
 		let item = Content::Item {
+			phase: None,
 			turn_id: "turn".into(),
 			item_id: "answer".into(),
 			kind: "agentMessage".into(),

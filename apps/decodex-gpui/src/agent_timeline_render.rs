@@ -176,7 +176,7 @@ impl AgentSurface {
 		message
 	}
 
-	fn native_timeline_content(
+	pub(super) fn native_timeline_content(
 		&self,
 		work: &AgentWorkItemDto,
 		entry: &AgentTimelineEntry,
@@ -200,11 +200,21 @@ impl AgentSurface {
 					"Voice conversation ended"
 				}))
 				.into_any_element(),
-			Content::TurnBoundary { completed, turn_id, error, .. } => {
+			Content::TurnBoundary { completed, turn_id, status, error, .. } => {
 				let has_reply = self.native_history.entries.iter().any(|entry| matches!(&entry.content, Content::Item { turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage"));
 				row.when(*completed && !has_reply, |row| {
 					row.child(self.native_turn_metrics(&entry.content, identity, cx))
 				})
+				.when(
+					*completed && matches!(status.as_deref(), Some("interrupted" | "failed")),
+					|row| {
+						row.child(muted(if status.as_deref() == Some("interrupted") {
+							"Stopped"
+						} else {
+							"Failed"
+						}))
+					},
+				)
 				.children(error.as_ref().map(|error| div().child(error.message.clone())))
 				.into_any_element()
 			},
@@ -247,7 +257,9 @@ impl AgentSurface {
 			activity,
 			turn_id,
 			item_id,
+			phase,
 			attachments,
+			..
 		} = content
 		else {
 			unreachable!("item renderer")
@@ -260,6 +272,12 @@ impl AgentSurface {
 		let (text, truncated) = draft.map_or((text.as_str(), *truncated), |message| {
 			(message.text.as_str(), message.truncated)
 		});
+		if kind == "agentMessage"
+			&& phase.as_deref() == Some("commentary")
+			&& attachments.is_empty()
+		{
+			return markdown::render_process(text, identity);
+		}
 		if matches!(kind.as_str(), "userMessage" | "agentMessage") {
 			let message = self.native_message_entry(work, turn_id, text, kind);
 			let mut body = div().debug_selector(|| "native-promotion-content".into());
@@ -305,11 +323,54 @@ impl AgentSurface {
 			}
 			return body.into_any_element();
 		}
+		if let Some(activity) = activity
+			&& !*app_ui
+			&& attachments.is_empty()
+		{
+			let label = if matches!(kind.as_str(), "dynamicToolCall" | "mcpToolCall")
+				&& !activity.detail.is_empty()
+			{
+				activity.detail.clone()
+			} else {
+				activity.label.clone()
+			};
+			let symbol = match activity.status.as_str() {
+				"failed" | "declined" => "!",
+				"running" => "◌",
+				_ => "✓",
+			};
+			let row = div()
+				.w_full()
+				.min_w_0()
+				.flex()
+				.items_center()
+				.gap(gpui::px(8.))
+				.px(gpui::px(6.))
+				.py(gpui::px(5.))
+				.rounded(gpui::px(6.))
+				.text_size(gpui::px(12.))
+				.line_height(gpui::px(18.))
+				.text_color(gpui::rgb(crate::ui_theme::TEXT_MUTED))
+				.child(if activity.status == "running" {
+					crate::ui_loading::loading("").into_any_element()
+				} else {
+					div().child(symbol).into_any_element()
+				})
+				.child(div().flex_1().min_w_0().child(label))
+				.when(matches!(activity.status.as_str(), "failed" | "declined"), |d| {
+					d.child(activity.status.clone())
+				})
+				.when_some(activity.duration_ms, |d, ms| {
+					d.child(format!("{:.1}s", ms as f64 / 1000.))
+				})
+				.child("›");
+			return self.detail_row(work, activity, row, cx);
+		}
 		let label = match kind.as_str() {
 			"userMessage" => "You",
 			"agentMessage" => "Assistant",
 			"plan" => "Proposed plan",
-			"reasoning" => "Reasoning summary",
+			"reasoning" => "Thinking",
 			"functionCallOutput" => "Tool result",
 			_ => kind,
 		};
@@ -326,11 +387,23 @@ impl AgentSurface {
 				"reasoning" => "native-reasoning-summary",
 				_ => "native-promotion-content",
 			};
-			row = row.child(
-				div()
-					.debug_selector(move || selector.into())
-					.child(markdown::render(text, identity)),
-			);
+			row = row.child(div().debug_selector(move || selector.into()).child(
+				if kind == "reasoning" {
+					div()
+						.text_size(gpui::px(12.))
+						.line_height(gpui::px(19.))
+						.text_color(gpui::rgb(crate::ui_theme::TEXT_MUTED))
+						.child(super::super::selectable_text::SelectableText {
+							key: identity.into(),
+							text: text.into(),
+							highlights: Vec::new(),
+							links: Vec::new(),
+						})
+						.into_any_element()
+				} else {
+					markdown::render(text, identity)
+				},
+			));
 		}
 		if truncated {
 			row = row.child(muted("Some content was omitted from this history preview."));
@@ -631,6 +704,7 @@ mod tests {
 		AgentTimelineEntry {
 			position: 6,
 			content: Content::Item {
+				phase: None,
 				app_ui: false,
 				turn_id: "plan-turn".into(),
 				item_id: "plan-item".into(),
@@ -647,7 +721,7 @@ mod tests {
 		vec![
 			AgentTimelineEntry {
 				position: 0,
-				content: Content::Item { app_ui: false,
+				content: Content::Item { phase: None, app_ui: false,
 					turn_id: "turn".into(),
 					item_id: "input".into(),
 					kind: "userMessage".into(),
@@ -664,7 +738,7 @@ mod tests {
 			},
 			AgentTimelineEntry {
 				position: 1,
-				content: Content::Item { app_ui: false,
+				content: Content::Item { phase: None, app_ui: false,
 					turn_id: "turn".into(),
 					item_id: "message".into(),
 					kind: "agentMessage".into(),
@@ -841,6 +915,7 @@ mod tests {
 			entries.push(AgentTimelineEntry {
 				position: 100,
 				content: Content::Item {
+					phase: None,
 					app_ui: false,
 					turn_id: "summary-turn".into(),
 					item_id: "summary-item".into(),
@@ -1061,6 +1136,7 @@ mod tests {
 					entries: vec![AgentTimelineEntry {
 						position: 1,
 						content: Content::Item {
+							phase: None,
 							turn_id: "turn".into(),
 							item_id: "widget".into(),
 							kind: "mcpToolCall".into(),

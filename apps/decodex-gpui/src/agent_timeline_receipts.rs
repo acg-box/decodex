@@ -438,6 +438,7 @@ mod tests {
 			decodex_protocol::AgentTimelineEntry {
 				position: 1,
 				content: Content::Item {
+					phase: None,
 					app_ui: false,
 					turn_id: turn.into(),
 					item_id: id.into(),

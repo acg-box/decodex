@@ -524,6 +524,29 @@ pub(super) fn response_text(text: &str) -> String {
 	out.trim_end().into()
 }
 
+pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
+	let document = cache::document(text);
+	div()
+		.flex()
+		.flex_col()
+		.gap_1()
+		.text_size(px(12.))
+		.line_height(px(19.))
+		.text_color(rgb(ui_theme::TEXT_MUTED))
+		.children(document.nodes.get_or_init(|| parse(text)).iter().enumerate().map(|(i, node)| {
+			let key = format!("{key}-{i}");
+			if let Node::Block(Kind::Heading(_), children) = node {
+				div()
+					.font_weight(FontWeight::MEDIUM)
+					.child(inline(children, &key))
+					.into_any_element()
+			} else {
+				render_node(node, &key)
+			}
+		}))
+		.into_any_element()
+}
+
 pub(super) fn render(text: &str, key: &str) -> AnyElement {
 	let document = cache::document(text);
 	div()

@@ -780,6 +780,7 @@ mod tests {
 		let row = |position, user| AgentTimelineEntry {
 			position,
 			content: Content::Item {
+				phase: None,
 				app_ui: false,
 				turn_id: "turn".into(),
 				item_id: format!("item-{position}"),
@@ -897,6 +898,7 @@ mod tests {
 				AgentTimelineEntry {
 					position: 5,
 					content: Content::Item {
+						phase: None,
 						app_ui: false,
 						turn_id: "turn".into(),
 						item_id: "same-id".into(),
@@ -988,7 +990,7 @@ mod tests {
 				content: if i % 3 == 2 { Content::TurnBoundary {
 					turn_id: format!("turn-{}", i / 3), completed: true, status: Some("completed".into()),
 					duration_ms: Some(3200), usage: None, usage_summary: None, error: None,
-				} } else { Content::Item {
+				} } else { Content::Item { phase: None,
 					app_ui: false,
 					turn_id: format!("turn-{}", i / 3), item_id: format!("message-{i}"),
 					kind: if i % 3 == 0 { "userMessage" } else { "agentMessage" }.into(),
