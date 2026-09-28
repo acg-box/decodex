@@ -457,7 +457,38 @@ impl RenderOnce for Arrival {
 	}
 }
 
-/// A content-sized popover that fades without stretching or clipping its contents.
+/// GPUI opacity applies to individual paint primitives, not a composited card.
+/// Keep popup text, fill and shadow opaque together and animate only their position.
+/// Native NSWindow overlays may use whole-window alpha instead (native_presence).
+pub(crate) fn popover_progress(
+	id: impl Into<ElementId>,
+	kind: &'static str,
+	visible: bool,
+	window: &mut Window,
+	cx: &mut App,
+) -> f32 {
+	let state = window.use_keyed_state(id.into(), cx, |_, _| (kind, Tween::new(0.)));
+	let now = Instant::now();
+	let (progress, moving) = state.update(cx, |s, _| {
+		if s.0 != kind {
+			s.0 = kind;
+			s.1 = Tween::new(0.);
+		}
+		let target = if visible { 1. } else { 0. };
+		if s.1.to != target {
+			// Sample the old duration before changing it when a hover reverses mid-flight.
+			s.1.target(target, now);
+			s.1.duration = Duration::from_millis(if visible { 140 } else { 90 });
+		}
+		(s.1.sample(now), s.1.moving(now))
+	});
+	if moving {
+		request_frame(window, cx);
+	}
+	progress
+}
+
+/// A content-sized popover that moves as a complete card without stretching its contents.
 #[derive(IntoElement)]
 pub(crate) struct Popover {
 	unframed: bool,
@@ -482,28 +513,14 @@ impl Popover {
 }
 impl RenderOnce for Popover {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state(self.id, cx, |_, _| (self.kind, Tween::new(0.)));
-		let now = Instant::now();
-		let (opacity, moving) = state.update(cx, |s, _| {
-			if s.0 != self.kind {
-				s.0 = self.kind;
-				s.1 = Tween::new(0.);
-			}
-			s.1.duration = Duration::from_millis(180);
-			s.1.target(if self.visible { 1. } else { 0. }, now);
-			(s.1.sample(now), s.1.moving(now))
-		});
-		if moving {
-			request_frame(window, cx);
-		}
-		if opacity <= 0.001 {
+		let progress = popover_progress(self.id, self.kind, self.visible, window, cx);
+		if progress <= 0.001 {
 			return div().w_full().into_any_element();
 		}
 		div()
 			.w_full()
 			.relative()
-			.top(px((1. - opacity) * 4.))
-			.opacity(opacity)
+			.top(px((1. - progress) * 4.))
 			.when(!self.unframed, |surface| {
 				surface.rounded(px(14.)).bg(gpui::rgb(0x29292d)).shadow(vec![gpui::BoxShadow {
 					inset: false,

@@ -80,15 +80,13 @@ impl RenderOnce for ResponseMetrics {
 		let open = state.read(cx).0;
 		let anchor = state.read(cx).1.origin;
 		let has_details = self.usage.is_some();
-		let progress = crate::ui_motion::value(
+		let progress = crate::ui_motion::popover_progress(
 			SharedString::from(format!("response-details-motion-{}", self.key)),
-			if open { 1. } else { 0. },
+			"response-details",
+			open,
 			window,
 			cx,
 		);
-		if (progress - if open { 1. } else { 0. }).abs() > 0.001 {
-			window.on_next_frame(|window, _| window.refresh());
-		}
 
 		let duration = self.duration_ms.map(duration_label);
 		let label = duration.clone().or(self.status).unwrap_or_default();
@@ -143,7 +141,7 @@ impl RenderOnce for ResponseMetrics {
 					}
 				}
 			}
-			panel.opacity(progress).into_any_element()
+			panel.into_any_element()
 		} else {
 			div().into_any_element()
 		};
@@ -184,12 +182,11 @@ impl RenderOnce for ResponseMetrics {
 			})
 			.when(has_details, |d| {
 				d.hover(|d| d.text_color(rgb(ui_theme::TEXT)))
-					.on_hover(move |hovered, window, cx| {
+					.on_hover(move |hovered, _, cx| {
 						hover_state.update(cx, |state, cx| {
 							state.0 = *hovered;
 							cx.notify();
 						});
-						window.refresh();
 					})
 					.child(
 						canvas(
@@ -207,7 +204,7 @@ impl RenderOnce for ResponseMetrics {
 								anchored()
 									.anchor(Anchor::BottomLeft)
 									.position(anchor)
-									.offset(point(px(0.), px(-6.)))
+									.offset(point(px(0.), px(-6. + (1. - progress) * 4.)))
 									.snap_to_window_with_margin(px(8.))
 									.child(panel),
 							)
