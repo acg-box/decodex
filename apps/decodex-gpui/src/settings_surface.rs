@@ -5,7 +5,10 @@
 
 #[path = "settings_power.rs"] mod power;
 
-use crate::ui_motion::{SmoothControl, switch_knob};
+use crate::{
+	ui_motion::{SmoothControl, switch_knob},
+	ui_scroll::SmoothScrollArea,
+};
 use gpui::{
 	Context, Render, Role, SharedString, Window, accesskit::Toggled, div, prelude::*, px, rgb, rgba,
 };
@@ -396,7 +399,7 @@ impl SettingsSurface {
 }
 
 impl SettingsSurface {
-	fn notification_control(
+	fn preference_control(
 		&self,
 		id: &'static str,
 		knob: &'static str,
@@ -686,14 +689,14 @@ impl SettingsSurface {
 				.child(
 					group()
 						.child(settings_group_title("Notifications"))
-						.child(self.notification_control(
+						.child(self.preference_control(
 							"notification-count-preference",
 							"notification-count-knob",
 							"Show notification count",
 							crate::shell::notification_count_preference,
 							cx,
 						))
-						.child(self.notification_control(
+						.child(self.preference_control(
 							"question-notice-preference",
 							"question-notice-knob",
 							"Show new question notices",
@@ -713,6 +716,12 @@ impl SettingsSurface {
 					group()
 						.child(settings_group_title("Panel layout"))
 						.child(self.panel_controls(cx)),
+				)
+				.child(
+					group().child(settings_group_title("Scrolling")).child(self.preference_control(
+						"smooth-scrolling", "smooth-scrolling-knob", "Smooth scrolling",
+						crate::ui_scroll::preference, cx,
+					)),
 				)
 				.child(
 					group()
@@ -770,7 +779,8 @@ impl Render for SettingsSurface {
 							.gap(px(ui_theme::SETTINGS_GROUP_GAP))
 							.child(ui_theme::settings_title(self.category.title()))
 							.child(self.category_content(cx)),
-					),
+					)
+					.smooth_scroll(("settings-smooth-scroll", self.category as usize)),
 			)
 	}
 }

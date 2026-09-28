@@ -340,7 +340,7 @@ fn completed_recap_remains_reachable_with_pixel_and_line_scrolling(cx: &mut gpui
 		// Pixel gestures move immediately; discrete wheel gestures settle after
 		// their interpolation interval before reachability can be asserted.
 		if matches!(delta, gpui::ScrollDelta::Lines(_)) {
-			std::thread::sleep(std::time::Duration::from_millis(150));
+			std::thread::sleep(std::time::Duration::from_millis(600));
 		}
 		surface.update(visual, |_, cx| cx.notify());
 		visual.update(|window, cx| window.draw(cx).clear());

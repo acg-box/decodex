@@ -1,6 +1,9 @@
 //! Conversation-first desktop presentation. All displayed work comes from the service.
 use super::*;
-use crate::ui_motion::{SmoothControl, reveal};
+use crate::{
+	ui_motion::{SmoothControl, reveal},
+	ui_scroll::SmoothScrollArea,
+};
 use gpui::{AnyElement, MouseButton, PathBuilder, canvas, point};
 
 const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
@@ -421,7 +424,7 @@ impl AgentSurface {
 				list = list.child(row);
 			}
 		}
-		panel = panel.child(list);
+		panel = panel.child(list.smooth_scroll("workspace-sidebar-scroll"));
 		panel.child(self.sidebar_resize_handle(cx)).into_any_element()
 	}
 

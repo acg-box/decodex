@@ -53,24 +53,7 @@ pub(super) struct HistoryNavigation {
 
 pub(super) struct WheelScroll {
 	work: String,
-	from: f32,
-	to: f32,
-	started: std::time::Instant,
-}
-
-impl WheelScroll {
-	fn sample(&self, now: std::time::Instant) -> (f32, bool) {
-		let t = (now.duration_since(self.started).as_secs_f32() / 0.12).min(1.);
-		(self.from + (self.to - self.from) * (1. - (1. - t).powi(3)), t < 1.)
-	}
-
-	fn retarget(&mut self, current: f32, delta: f32, maximum: f32, now: std::time::Instant) {
-		// Accumulate quick notches, but discard old-direction travel on reversal.
-		let base = if (self.to - current) * delta > 0. { self.to } else { current };
-		self.from = current;
-		self.to = (base + delta).clamp(-maximum.max(0.), 0.);
-		self.started = now;
-	}
+	motion: crate::ui_scroll::Motion,
 }
 
 const HISTORY_ANCHOR_INSET: f32 = 56.0;
@@ -295,18 +278,15 @@ impl AgentSurface {
 		self.history_navigation = None;
 		self.history_selected = None;
 		if let Some(scroll) = self.selected.as_ref().and_then(|id| self.transcript_scroll.get(id)) {
-			let smooth =
-				matches!(event.delta, gpui::ScrollDelta::Lines(_)) && !crate::ui_motion::reduced();
+			let smooth = crate::ui_scroll::smooth(event.delta);
 			if smooth {
 				let now = std::time::Instant::now();
 				let current = f32::from(scroll.offset().y);
 				let wheel = self.wheel_scroll.get_or_insert_with(|| WheelScroll {
 					work: self.selected.clone().unwrap_or_default(),
-					from: current,
-					to: current,
-					started: now,
+					motion: crate::ui_scroll::Motion::new(current, now),
 				});
-				wheel.retarget(current, delta.y.into(), scroll.max_offset().y.into(), now);
+				wheel.motion.retarget(current, delta.y.into(), scroll.max_offset().y.into(), now);
 			} else {
 				self.wheel_scroll = None;
 				let offset = (scroll.offset().y + delta.y).clamp(-scroll.max_offset().y, px(0.));
@@ -339,14 +319,18 @@ impl AgentSurface {
 			if self.selected.as_ref() != Some(&wheel.work) {
 				self.wheel_scroll = None;
 			} else if let Some(scroll) = self.transcript_scroll.get(&wheel.work) {
-				let (offset, moving) = wheel.sample(std::time::Instant::now());
+				let (offset, moving) = if crate::ui_scroll::enabled() {
+					wheel.motion.sample(std::time::Instant::now())
+				} else {
+					(wheel.motion.to, false)
+				};
 				let offset = offset.clamp(-f32::from(scroll.max_offset().y).max(0.), 0.);
 				scroll.set_offset(point(px(0.), px(offset)));
-				if moving && !crate::ui_motion::reduced() {
+				if moving {
 					crate::ui_motion::request_frame(window, cx);
 					cx.notify();
 				} else {
-					let following = wheel.to < wheel.from
+					let following = wheel.motion.to < wheel.motion.from
 						&& (offset + f32::from(scroll.max_offset().y)).abs() < 1.;
 					if following {
 						self.history_follow_paused.remove(&wheel.work);
@@ -1085,12 +1069,13 @@ mod tests {
 			};
 			s.scroll_history(&event, cx);
 			assert_eq!(scroll.offset().y, px(-50.), "notches must not jump immediately");
-			let first = s.wheel_scroll.as_ref().unwrap().to;
+			let first = s.wheel_scroll.as_ref().unwrap().motion.to;
 			s.scroll_history(&event, cx);
 			let wheel = s.wheel_scroll.as_ref().unwrap();
-			assert!(wheel.to < first, "successive notches accumulate");
-			let midpoint = wheel.sample(wheel.started + std::time::Duration::from_millis(60)).0;
-			assert!(midpoint < -50. && midpoint > wheel.to);
+			assert!(wheel.motion.to < first, "successive notches accumulate");
+			let midpoint =
+				wheel.motion.sample(wheel.motion.started + std::time::Duration::from_millis(60)).0;
+			assert!(midpoint < -50. && midpoint > wheel.motion.to);
 			scroll.set_offset(point(px(0.), px(midpoint)));
 			s.scroll_history(
 				&gpui::ScrollWheelEvent {
@@ -1100,7 +1085,7 @@ mod tests {
 				cx,
 			);
 			assert!(
-				s.wheel_scroll.as_ref().unwrap().to > midpoint,
+				s.wheel_scroll.as_ref().unwrap().motion.to > midpoint,
 				"reversal cancels pending forward travel"
 			);
 			s.scroll_history(
@@ -1118,11 +1103,15 @@ mod tests {
 	#[test]
 	fn wheel_animation_finishes_exactly_and_clamps_at_boundaries() {
 		let now = std::time::Instant::now();
-		let mut wheel = WheelScroll { work: "agent".into(), from: -20., to: -20., started: now };
-		wheel.retarget(-20., -1000., 200., now);
-		assert_eq!(wheel.sample(now + std::time::Duration::from_millis(120)), (-200., false));
-		wheel.retarget(-80., 1000., 200., now);
-		assert_eq!(wheel.to, 0.);
+		let mut wheel =
+			WheelScroll { work: "agent".into(), motion: crate::ui_scroll::Motion::new(-20., now) };
+		wheel.motion.retarget(-20., -1000., 200., now);
+		assert_eq!(
+			wheel.motion.sample(now + std::time::Duration::from_millis(600)),
+			(-200., false)
+		);
+		wheel.motion.retarget(-80., 1000., 200., now);
+		assert_eq!(wheel.motion.to, 0.);
 	}
 
 	#[gpui::test]

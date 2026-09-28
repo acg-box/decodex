@@ -1,5 +1,6 @@
 //! Agent ownership tree, separate from work dependencies in the graph.
 use super::*;
+use crate::ui_scroll::SmoothScrollArea;
 use gpui::AnyElement;
 
 const INSET: f32 = 8.;
@@ -139,7 +140,7 @@ impl AgentSurface {
 							.child("Agents"),
 					),
 			)
-			.child(list)
+			.child(list.smooth_scroll("agent-tree-scroll"))
 			.into_any_element()
 	}
 
