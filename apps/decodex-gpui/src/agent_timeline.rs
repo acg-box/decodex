@@ -152,7 +152,7 @@ impl AgentSurface {
 				binding.work == work.id && Some(&binding.thread) == work.codex_thread_id.as_ref()
 			});
 			if self.native_history.task.is_some() && !has_history {
-				panel = panel.child(crate::ui_loading::loading("Loading conversation"));
+				panel = panel.child(crate::ui_loading::conversation("Loading conversation"));
 			}
 			if let Some(message) = self.native_history.notice {
 				panel = panel.child(

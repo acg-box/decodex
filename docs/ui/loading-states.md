@@ -3,7 +3,10 @@
 ## Rules
 
 - Distinguish a first read, a refresh, an empty result, and a failed read.
-- Show an immediate compact status in the area that is loading. Use `ui_loading`
+- First workspace and conversation reads use a low-contrast chat skeleton with
+  a right-aligned message shape and left-aligned reading lines. It reserves the
+  reading area, breathes gently, and respects reduced motion. No dummy text is shown.
+- Use a compact status only inside a small loading area. Use `ui_loading::loading`
   for first reads. It reserves 24 pixels, starts motion after 150 ms, and respects
   reduced motion. It stops when the loading row is removed. Do not force a
   minimum wait or display a fabricated percentage.

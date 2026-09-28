@@ -750,8 +750,7 @@ impl AgentSurface {
 				transcript = transcript.child(content);
 			}
 		} else if self.snapshot.is_none() && self.state == LoadState::Loading {
-			transcript = transcript
-				.child(div().p_4().child(crate::ui_loading::loading("Loading workspace")));
+			transcript = transcript.child(crate::ui_loading::conversation("Loading workspace"));
 		} else {
 			transcript = transcript.child(self.workspace_welcome(window, cx));
 		}
@@ -1982,7 +1981,9 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(|w, cx| w.draw(cx).clear());
-		assert!(visual.debug_bounds("loading-feedback-Loading workspace").is_some());
+		let skeleton = visual.debug_bounds("loading-feedback-Loading workspace").unwrap();
+		assert!(skeleton.size.height >= px(260.), "first load reserves a reading surface");
+		assert!(skeleton.size.width > px(200.));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.state = LoadState::Loading;
