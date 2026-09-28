@@ -7,7 +7,6 @@ pub(super) struct Panel {
 	owner: Option<String>,
 	result: Option<State>,
 	epoch: u64,
-	read_failures: u8,
 	last_read: Option<std::time::Instant>,
 	request: Option<Task<()>>,
 	mutation: Option<Task<()>>,
@@ -20,15 +19,11 @@ impl Panel {
 		let failed =
 			matches!(result, State::Unavailable | State::Unconfirmed | State::CapacityExceeded);
 		if failed {
-			self.read_failures = self.read_failures.saturating_add(1);
-			if explicit || self.read_failures >= 2 {
-				self.feedback =
-					"Archive status is temporarily unavailable. Checking again automatically."
-						.into();
+			if explicit {
+				self.feedback = "Could not check archive status. Try again.".into();
 			}
 			// An incomplete background read must not replace the last confirmed state.
 		} else {
-			self.read_failures = 0;
 			self.feedback.clear();
 			self.result = Some(result);
 		}
@@ -43,7 +38,6 @@ impl AgentSurface {
 		self.archive.mutation = None;
 		self.archive.mutation_key = None;
 		self.archive.last_read = None;
-		self.archive.read_failures = 0;
 		self.archive.feedback.clear();
 	}
 
@@ -427,10 +421,14 @@ mod background_read_tests {
 		panel.apply_read(State::Unavailable, false);
 		assert!(panel.feedback.is_empty());
 		assert!(matches!(panel.result, Some(State::Active { .. })));
-		panel.apply_read(State::Unavailable, false);
-		assert!(!panel.feedback.is_empty());
+		for failure in [State::Unavailable, State::Unconfirmed, State::CapacityExceeded] {
+			panel.apply_read(failure, false);
+			assert!(panel.feedback.is_empty(), "background polling must not insert a banner");
+			assert!(matches!(panel.result, Some(State::Active { .. })));
+		}
+		panel.apply_read(State::Unavailable, true);
+		assert_eq!(panel.feedback, "Could not check archive status. Try again.");
 		panel.apply_read(State::Active { thread_id: "thread".into() }, false);
 		assert!(panel.feedback.is_empty());
-		assert_eq!(panel.read_failures, 0);
 	}
 }
