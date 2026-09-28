@@ -82,7 +82,6 @@ impl RenderOnce for ResponseMetrics {
 		let has_details = self.usage.is_some();
 		let progress = crate::ui_motion::popover_progress(
 			SharedString::from(format!("response-details-motion-{}", self.key)),
-			"response-details",
 			open,
 			window,
 			cx,
@@ -91,7 +90,7 @@ impl RenderOnce for ResponseMetrics {
 		let duration = self.duration_ms.map(duration_label);
 		let label = duration.clone().or(self.status).unwrap_or_default();
 		let has_duration = duration.is_some();
-		let panel = if progress > 0.001 {
+		let panel = if open || progress > 0.001 {
 			let mut panel = div()
 				.id(SharedString::from(format!("response-detail-panel-{}", self.key)))
 				.debug_selector(|| "native-turn-usage".into())
@@ -198,13 +197,16 @@ impl RenderOnce for ResponseMetrics {
 						.absolute()
 						.inset_0(),
 					)
-					.when(progress > 0.001, |d| {
+					.when(open || progress > 0.001, |d| {
 						d.child(
 							deferred(
 								anchored()
 									.anchor(Anchor::BottomLeft)
 									.position(anchor)
-									.offset(point(px(0.), px(-6. + (1. - progress) * 4.)))
+									.offset(point(
+										px(0.),
+										px(-10. + crate::ui_motion::popover_offset(progress)),
+									))
 									.snap_to_window_with_margin(px(8.))
 									.child(panel),
 							)

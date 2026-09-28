@@ -927,7 +927,7 @@ mod tests {
 			visual.debug_bounds("native-turn-usage").is_some(),
 			"closing must retain the complete card until its exit finishes"
 		);
-		std::thread::sleep(std::time::Duration::from_millis(120));
+		std::thread::sleep(std::time::Duration::from_millis(320));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});

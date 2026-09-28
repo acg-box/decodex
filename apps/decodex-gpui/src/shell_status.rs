@@ -90,9 +90,7 @@ impl Shell {
 					.on_children_prepainted(move |bounds, _, _| {
 						popup_bounds.set(bounds.first().copied())
 					})
-					.when(!native, |d| {
-						d.child(popover("status-panel-motion", "status", open, panel))
-					}),
+					.when(!native, |d| d.child(popover("status-panel-motion", open, panel))),
 			)
 			.child(
 				ui_theme::floating_group().child(

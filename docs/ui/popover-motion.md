@@ -10,7 +10,9 @@ GPUI at `92f315647f776854053fc334b73110d97964bc5f` applies `Div::opacity`
 separately to paint primitives (`Window::with_element_opacity`, `paint_quad`,
 `paint_drop_shadows`, and `paint_glyph`). It does not first composite a card into
 one surface. Do not treat it as whole-card alpha. Our in-window cards remain
-opaque and move four pixels, with a 140 ms entry and a 90 ms exit. This avoids
+opaque and move eight pixels with one critically damped spring. The spring
+keeps position and velocity when direction changes and settles in about 300 ms.
+Changing menu content does not restart the motion. This avoids
 a faint-content phase that can leave a dark surface visually dominant.
 
 Native notification windows have a different boundary: `native_presence` drives
