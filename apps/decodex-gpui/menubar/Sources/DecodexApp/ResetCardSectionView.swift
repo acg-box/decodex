@@ -88,6 +88,7 @@ struct ResetCardAccountRow: View {
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var confirmation = ResetCardUseConfirmation()
 	@State private var confirmationSecondsRemaining = 0
+	@State private var dismissedResetKey: String?
 	@State private var isReorderHandleHovered = false
 	@State private var isReorderHandleDragging = false
 
@@ -146,12 +147,6 @@ struct ResetCardAccountRow: View {
 			}
 			HStack(alignment: .bottom, spacing: PanelSpacing.compact) {
 				cardInventory
-				if let pending = store.pendingAttempts.first(where: { $0.target.accountID == state.account.accountID }) {
-					InlineAccountFeedback(
-						text: store.pendingStatus(for: pending).text + " Decodex checks automatically; do not use another card.",
-						isPending: true
-					)
-				}
 				Spacer(minLength: 0)
 				reorderHandle
 			}
@@ -173,6 +168,14 @@ struct ResetCardAccountRow: View {
 			confirmation.cancelPendingConfirmation()
 			confirmationSecondsRemaining = 0
 		}
+		.task(id: completedFill?.attempt.idempotencyKey) {
+			guard let fill = completedFill else { return }
+			let remaining = 0.35 - Date().timeIntervalSince(fill.started)
+			if remaining > 0, !reduceMotion {
+				do { try await Task.sleep(for: .seconds(remaining)) } catch { return }
+			}
+			dismissedResetKey = fill.attempt.idempotencyKey
+		}
 		.task(id: countdownAttempt) {
 			await runConfirmationCountdown(for: countdownAttempt)
 		}
@@ -180,6 +183,7 @@ struct ResetCardAccountRow: View {
 		.animation(rowStateAnimation, value: state.account.enabled)
 		.animation(rowStateAnimation, value: exceptionalStatusText)
 		.animation(rowStateAnimation, value: inventoryPresentation)
+		.animation(rowStateAnimation, value: presentedTargets)
 		.animation(rowStateAnimation, value: showsReorderHandle)
 		.animation(rowStateAnimation, value: isReorderHandleHovered)
 	}
@@ -424,17 +428,14 @@ struct ResetCardAccountRow: View {
 
 	@ViewBuilder
 	private var cardInventory: some View {
-		switch inventoryPresentation {
-		case .loginRequired, .checking, .connecting, .unavailable, .empty:
-			EmptyView()
-		case .available:
+		if !presentedTargets.isEmpty {
 			HorizontalCardScroller {
 				HStack(spacing: PanelSpacing.compact) {
 					Image(systemName: "arrow.clockwise")
 						.font(PanelFont.tertiary)
 						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 						.accessibilityHidden(true)
-					ForEach(state.targets, id: \.self) { target in
+					ForEach(presentedTargets, id: \.descriptor) { target in
 						Button {
 							tap(target)
 						} label: {
@@ -443,10 +444,10 @@ struct ResetCardAccountRow: View {
 						.buttonStyle(
 							ResetCardChipButtonStyle(
 								isArmed: confirmation.isArmed(target),
-								isBusy: store.blocksNewAttempt(for: target) && confirmation.isSubmitting(target)
+								isBusy: isUsing(target)
 							)
 						)
-						.disabled(store.blocksNewAttempt(for: target))
+						.disabled(store.blocksNewAttempt(for: target) || isUsed(target))
 						.accessibilityLabel(accessibilityLabel(target))
 						.accessibilityHint(accessibilityHint(target))
 						.help(help(target))
@@ -458,30 +459,36 @@ struct ResetCardAccountRow: View {
 					}
 				}
 				.fixedSize()
-				.animation(rowStateAnimation, value: state.targets)
+				.animation(rowStateAnimation, value: presentedTargets)
 			}
 			.frame(height: 22)
 			.fixedSize(horizontal: false, vertical: true)
 		}
 	}
 
-	private func inventoryProgress(
-		_ text: String,
-		help: String
-	) -> some View {
-		HStack(spacing: PanelSpacing.related) {
-			ProgressView()
-				.controlSize(.mini)
-				.accessibilityHidden(true)
+	private var completedFill: ResetQuotaFill? { store.quotaFill(for: state.account) }
 
-			Text(text)
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.lineLimit(1)
+	private var accountPending: [ResetCardUseAttempt] {
+		store.pendingAttempts.filter {
+			$0.target.accountID == state.account.accountID
+				&& $0.target.authority == state.account.authority
 		}
-		.help(help)
-		.accessibilityElement(children: .ignore)
-		.accessibilityLabel(text)
+	}
+
+	private var presentedTargets: [ResetCardUseTarget] {
+		ResetCardChipPresentation.targets(
+			inventory: state.targets, pending: accountPending,
+			completed: completedFill?.attempt,
+			dismissedKey: dismissedResetKey)
+	}
+
+	private func isUsed(_ target: ResetCardUseTarget) -> Bool {
+		completedFill?.attempt.target.descriptor == target.descriptor
+	}
+
+	private func isUsing(_ target: ResetCardUseTarget) -> Bool {
+		!isUsed(target) && (confirmation.isSubmitting(target)
+			|| accountPending.contains { $0.target.descriptor == target.descriptor })
 	}
 
 	private var inventoryPresentation: ResetCardInventoryPresentation {
@@ -503,6 +510,7 @@ struct ResetCardAccountRow: View {
 			HStack(spacing: PanelSpacing.micro) {
 				Text(cardChipTitle(target))
 					.contentTransition(.opacity)
+					.opacity(isUsing(target) ? 0.75 : 1)
 			}
 			.foregroundStyle(cardChipForeground(target))
 		}
@@ -518,7 +526,7 @@ struct ResetCardAccountRow: View {
 		)
 		.animation(
 			rowStateAnimation,
-			value: confirmation.isSubmitting(target)
+			value: isUsing(target)
 		)
 		.animation(
 			rowStateAnimation,
@@ -527,9 +535,8 @@ struct ResetCardAccountRow: View {
 	}
 
 	private func cardChipTitle(_ target: ResetCardUseTarget) -> String {
-		if confirmation.isSubmitting(target) {
-			return normalCardChipTitle(target)
-		}
+		if isUsed(target) { return "✓ Used" }
+		if isUsing(target) { return "Using…" }
 		if confirmation.isArmed(target) {
 			let seconds =
 				confirmationSecondsRemaining > 0
@@ -546,7 +553,7 @@ struct ResetCardAccountRow: View {
 	}
 
 	private func cardChipForeground(_ target: ResetCardUseTarget) -> Color {
-		if confirmation.isSubmitting(target) {
+		if isUsing(target) || isUsed(target) {
 			return PanelPalette.actionBlue(colorScheme)
 		}
 		return confirmation.isArmed(target)
@@ -561,6 +568,8 @@ struct ResetCardAccountRow: View {
 	}
 
 	private func accessibilityHint(_ target: ResetCardUseTarget) -> String {
+		if isUsed(target) { return "Reset confirmed." }
+		if isUsing(target) { return "Using this Reset Card. Waiting for server confirmation." }
 		if confirmation.isSubmitting {
 			return confirmation.isSubmitting(target)
 				? "The request is in progress."
@@ -574,6 +583,8 @@ struct ResetCardAccountRow: View {
 
 	private func help(_ target: ResetCardUseTarget) -> String {
 		let label = accessibilityLabel(target)
+		if isUsed(target) { return "Reset confirmed." }
+		if isUsing(target) { return "Using this Reset Card. Waiting for server confirmation." }
 		if confirmation.isSubmitting {
 			return confirmation.isSubmitting(target)
 				? "\(label). The request is in progress."
@@ -728,6 +739,9 @@ private struct ResetCardChipButtonStyle: ButtonStyle {
 			.frame(minHeight: 20)
 			.background {
 				shape.fill(fillColor)
+					.phaseAnimator(isBusy && !reduceMotion ? [false, true] : [false]) { content, pulse in
+						content.opacity(pulse ? 0.4 : 1)
+					} animation: { _ in .easeInOut(duration: 0.8) }
 			}
 			.overlay {
 				shape.strokeBorder(borderColor, lineWidth: 1)

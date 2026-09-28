@@ -160,6 +160,35 @@ final class ResetCardUseConfirmationTests: XCTestCase {
 		XCTAssertNotEqual(revisionOne, revisionTwo)
 	}
 
+	func testPendingCardStaysVisibleDuringInventoryRefreshWithoutDuplication() throws {
+		let target = try makeTarget(expiresAt: 200)
+		let attempt = ResetCardUseAttempt(target: target, idempotencyKey: "pending")
+		XCTAssertEqual(ResetCardChipPresentation.targets(inventory: [], pending: [attempt],
+			completed: nil, dismissedKey: nil), [target])
+		let refreshed = try makeTarget(expiresAt: 200, revision: 8)
+		XCTAssertEqual(ResetCardChipPresentation.targets(inventory: [refreshed], pending: [attempt],
+			completed: nil, dismissedKey: nil), [refreshed])
+	}
+
+	func testConfirmedCardExitsWithoutReturningFromStaleInventory() throws {
+		let used = try makeTarget(expiresAt: 200)
+		let other = try makeTarget(expiresAt: 300)
+		let attempt = ResetCardUseAttempt(target: used, idempotencyKey: "confirmed")
+		XCTAssertEqual(ResetCardChipPresentation.targets(inventory: [other], pending: [],
+			completed: attempt, dismissedKey: nil), [used, other])
+		XCTAssertEqual(ResetCardChipPresentation.targets(inventory: [used, other], pending: [],
+			completed: attempt, dismissedKey: "confirmed"), [other])
+		// An older completion must not hide a newer confirmed card before its exit.
+		XCTAssertEqual(ResetCardChipPresentation.targets(inventory: [used], pending: [],
+			completed: attempt, dismissedKey: "older"), [used])
+	}
+
+	func testFailedRequestLeavesInventoryCardAvailable() throws {
+		let target = try makeTarget(expiresAt: 200)
+		XCTAssertEqual(ResetCardChipPresentation.targets(inventory: [target], pending: [],
+			completed: nil, dismissedKey: nil), [target])
+	}
+
 	private func makeTarget(
 		expiresAt: Int64,
 		revision: UInt64 = 7

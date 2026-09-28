@@ -2,35 +2,6 @@ import Foundation
 import XCTest
 
 final class ResetCardArchitectureTests: XCTestCase {
-	func testPendingResetCardUsesOneAutomaticStatusRow() throws {
-		let sourceURL = URL(fileURLWithPath: #filePath)
-			.deletingLastPathComponent()
-			.deletingLastPathComponent()
-			.deletingLastPathComponent()
-			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
-		let rows = try String(
-			contentsOf: sourceURL.appendingPathComponent("ResetCardSectionView.swift"),
-			encoding: .utf8
-		)
-		let store = try String(
-			contentsOf: sourceURL.appendingPathComponent("ResetCardStore.swift"),
-			encoding: .utf8
-		)
-
-		XCTAssertTrue(rows.contains("InlineAccountFeedback("))
-		XCTAssertTrue(
-			rows.contains("Decodex checks automatically; do not use another card.")
-		)
-		XCTAssertTrue(
-			rows.contains(".frame(maxWidth: .infinity, alignment: .leading)")
-		)
-		XCTAssertTrue(store.contains("Checking reset result…"))
-		XCTAssertTrue(store.contains("Check delayed; retrying…"))
-		XCTAssertFalse(rows.contains("Checking Reset Cards…"))
-		XCTAssertFalse(rows.contains("ResetCardInventoryPendingView()"))
-		XCTAssertFalse(rows.contains("Button(\"Resume\")"))
-		XCTAssertFalse(store.contains("Resume the pending request"))
-	}
 
 	func testQuotaMotionUsesOneValueAndHonorsReduceMotion() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
@@ -100,7 +71,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 			controls.contains(".contentTransition(.symbolEffect(.replace))")
 		)
 		XCTAssertTrue(rows.contains("value: identity.text"))
-		XCTAssertTrue(rows.contains("value: state.targets"))
+		XCTAssertTrue(rows.contains("value: presentedTargets"))
 		XCTAssertTrue(rows.contains("value: confirmationSecondsRemaining"))
 		XCTAssertTrue(
 			login.contains("value: store.accountReauthentication?.phase")
