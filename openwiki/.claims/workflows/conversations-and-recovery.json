@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:f39331d4aaffa72ad8c6ecdf35fa2ad9543f8b06d2acec915ee0af17c635ad13",
+  "claims": [
+    {
+      "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
+      "statement": "Prompt editing reserves an exact native input/history review before a single mutation and recovers its outcome through reads rather than replay.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/prompt_edit.rs",
+          "version": "repo-file-v1:sha256:da13d59efb4f8042dc8512849da3fbe6df79b3e3567e6ea9c45be12e0275109e"
+        }
+      ]
+    },
+    {
+      "id": "claim_7e586e76bce74613953b2e9a9dde1e87",
+      "statement": "The signed desktop draft record qualifies ordinary Agent draft restart and shared-store conflict/export only for its specified artifact.",
+      "evidence": [
+        {
+          "resource": "repo://docs/archive/upstream-2026-09/signed-draft-acceptance.md",
+          "version": "repo-file-v1:sha256:c850b108e76dde79f7198202820bb683cf072090072d7ef811e7bf25c123d808"
+        }
+      ]
+    },
+    {
+      "id": "claim_de5405ee49d0471b8f2d15549d51c307",
+      "statement": "Manual and automatic recap remain separate retained product capabilities; automatic recap is off by default.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_recap_automatic.rs",
+          "version": "repo-file-v1:sha256:5f38208e1f4a9f22ade2bd33aed151571a345bfaa0e0f101b768e0a67981ace8"
+        },
+        {
+          "resource": "repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md",
+          "version": "repo-file-v1:sha256:d44cfac26a4e6530095703c75a034c342df29f0fdb319abe8a4d99d9fd9aac4f"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
+  }
+}

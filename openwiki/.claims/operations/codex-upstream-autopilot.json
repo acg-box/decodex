@@ -1,32 +1,54 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:636fb3dca33ef4dcf8ecb5b81117a5313ec2d189ff03bab58f21554313010ff7",
+  "pageVersion": "sha256:e380ad205c30dc9f694d3d0ac106f83636a55356731e0740404efb1efb9916d1",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
-      "statement": "The upstream portfolio separates implementation, independent review/landing and health roles using checked-in native automation definitions and role prompts.",
+      "statement": "The current upstream portfolio uses one paused Maintainer; native content research and publication are separate roles.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:db1107d522d96fea9e710ecc950f03734b63fc2dc6eebbb51658661f2e91203b"
-        },
-        {
-          "resource": "repo://automations/upstream/prompts/health.md",
-          "version": "repo-file-v1:sha256:5f8ee34b6dd8c7a83dd27cd640442631bb61ab8c46170d4100148d3e1bbe2cb3"
+          "version": "repo-file-v1:sha256:b7852f69f78beca97b4451e47ef6e8a9145fd60d477b0fd5ea2d905f5400bb5c"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:414d70e8654583138d55caaf1cffce4ef93f03702eaa31275fac08f1614b4c4c"
-        },
+          "version": "repo-file-v1:sha256:2a3bd4f20db212b1d56acb29b911ba198dd87711ead1626316a0402458e5d3c3"
+        }
+      ]
+    },
+    {
+      "id": "claim_d1a992e40d1147c3928b5de580178ed5",
+      "statement": "The portfolio defines three native automation roles and configures the upstream Maintainer paused with worktree execution.",
+      "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/reviewer.md",
-          "version": "repo-file-v1:sha256:d4f7acc91d9d71a964509443533a447a9daaca369873cd92ea4f8b3c7e990572"
+          "resource": "repo://automations/portfolio.toml",
+          "version": "repo-file-v1:sha256:b7852f69f78beca97b4451e47ef6e8a9145fd60d477b0fd5ea2d905f5400bb5c"
+        }
+      ]
+    },
+    {
+      "id": "claim_20f862e0b35549ef978a425fa27717a0",
+      "statement": "Upstream maintenance must tie necessary adaptations to existing consumers and wait for a user decision before implementing new optional features.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:2a3bd4f20db212b1d56acb29b911ba198dd87711ead1626316a0402458e5d3c3"
+        }
+      ]
+    },
+    {
+      "id": "claim_1c87dbb182b54d83b974027848a47334",
+      "statement": "The retained product decision retires O24 and preserves the other listed optional capabilities.",
+      "evidence": [
+        {
+          "resource": "repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md",
+          "version": "repo-file-v1:sha256:d44cfac26a4e6530095703c75a034c342df29f0fdb319abe8a4d99d9fd9aac4f"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
   }
 }

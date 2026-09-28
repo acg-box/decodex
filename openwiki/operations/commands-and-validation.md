@@ -4,8 +4,8 @@ title: "Commands and validation"
 description: "Commands and validation"
 tags: ["decodex", "architecture"]
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
@@ -17,8 +17,9 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
+
 
 # Commands and validation
 
@@ -31,7 +32,7 @@ Use the smallest check that proves the changed contract. Broaden testing for sha
 | `database/` | SQLite schema, migration ledger, transactions and restart fixtures |
 | `decodex-core` | Domain types, bounded identities, paths and pure policies |
 | `decodex-codex` | Native app-server transport and adapters |
-| `decodex-runtime` | Service application, account effects, conversations and Chief |
+| `decodex-runtime` | Service application, account effects, conversations and Agent |
 | `decodex-protocol` | Exact typed local wire contract and clients |
 | `apps/decodex-cli` | Unified `decodex` commands and `serve` |
 | `apps/decodex-gpui` | GPUI app, native Swift libraries and UI tests |
@@ -80,8 +81,6 @@ cargo make test-automations
 python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json
 cargo +stable test -p radar
 cargo +stable test -p decodex-publisher
-npm --prefix site run check
-npm --prefix site run build
 ```
 
 Makefile.toml owns the complete gate and tool-specific formatter/linter settings. Use repository lockfiles and already-managed tools. A missing prerequisite is not a source defect and does not authorize arbitrary toolchain replacement.
@@ -91,3 +90,7 @@ Makefile.toml owns the complete gate and tool-specific formatter/linter settings
 Report source checks, unit tests, signed build, visual acceptance, provider acceptance, PR merge and installed release separately. For UI changes test focus, typing, selection, scrolling, panel transitions and task switching. Preserve failure output; screenshots that fail or return blank do not establish that the app itself is blank.
 
 [Wiki maintenance](wiki-maintenance.md) describes the separate documentation lifecycle.
+
+## Documentation-only work
+
+For documentation consolidation, validate page Claims, migration coverage, relative links and source paths. Do not rebuild the desktop or launch provider fixtures solely for a Markdown move. Keep historical test counts attached to their original revision. System-temporary fixtures must be cleaned after use; HOME is not a test-output directory.

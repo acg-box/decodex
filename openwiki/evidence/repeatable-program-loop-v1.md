@@ -4,15 +4,16 @@ title: "Historical Repeatable Program Loop V1 evidence"
 description: "Historical Repeatable Program Loop V1 evidence"
 tags: ["decodex", "architecture"]
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
-  - id: openwiki-source-62a590c4bbdbb97b35d44eb8
-    resource: repo://database/migrations/0006_repeatable_program_loop.sql
   - id: openwiki-source-dd24c2ff3c2515a21892e312
     resource: repo://database/src/program_cycles.rs
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
+
+
+> Current compatibility boundary: `database/src/program_cycles.rs` provides read-only historical Program aggregates and lineage. This page does not restore a Program execution or write pipeline. See [Agent coordination](../architecture/chief-coordination.md).
 
 # Current status
 

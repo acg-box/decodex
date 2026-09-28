@@ -5,27 +5,28 @@ description: "Adaptive Program design and current Chief boundary"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
-  - id: openwiki-source-e525513ca8a9d5ce4fbb5336
-    resource: repo://crates/decodex-runtime/src/chief/instructions.md
-  - id: openwiki-source-cf0b0e7ae1282e29ac1dd184
-    resource: repo://crates/decodex-runtime/src/domain_packs.rs
+  - id: openwiki-source-acd129fd3a88516b785fc929
+    resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-dd24c2ff3c2515a21892e312
     resource: repo://database/src/program_cycles.rs
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
+
+
+> Current compatibility boundary: `database/src/program_cycles.rs` provides read-only historical Program aggregates and lineage. This page does not restore a Program execution or write pipeline. See [Agent coordination](../architecture/chief-coordination.md).
 
 # Current implementation boundary
 
 This page preserves the August Program design record below. Its claims about the then-current GUI, daemon name, deferred multi-agent work, and prior dogfood results are historical, not current product acceptance.
 
-The active desktop now centers on Chief and native conversation threads. `chief/instructions.md` permits general-purpose work and recursive coordination. The agent tree and Chief dependency graph replace the old Factory presentation. Program persistence and built-in Domain Pack projections still exist in `database/src/program_cycles.rs` and `crates/decodex-runtime/src/domain_packs.rs`; their presence does not imply a current Factory tab or public extension SDK.
+The active desktop now centers on Agent and native conversation threads. `agent/instructions.md` permits general-purpose work and recursive coordination. The agent tree and Agent dependency graph replace the old Factory presentation. Program persistence and built-in Domain Pack projections still exist in `database/src/program_cycles.rs` and `crates/decodex-runtime/src/domain_packs.rs`; their presence does not imply a current Factory tab or public extension SDK.
 
 The service entrypoint is `decodex serve`. Repository/GitHub effect orchestration has been retired. A Program proposal or retained historical command never grants fresh effect authority.
 
-Use [Chief coordination](../architecture/chief-coordination.md), [Desktop workspace](../architecture/desktop-workspace.md), and [Runtime architecture](../architecture/runtime-architecture.md) for current behavior. Keep the design rationale below as context, including its original scope and dated validation limits.
+Use [Agent coordination](../architecture/chief-coordination.md), [Desktop workspace](../architecture/desktop-workspace.md), and [Runtime architecture](../architecture/runtime-architecture.md) for current behavior. Keep the design rationale below as context, including its original scope and dated validation limits.
 
 ---
 

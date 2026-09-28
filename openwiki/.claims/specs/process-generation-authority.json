@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e95554f31158bd62c647f665e14add90db99b3d8ce51c3b4c0a02b50383c6335",
+  "pageVersion": "sha256:0cd08efefab8b9138bd1f5dd9f56f904dfb98da1c01e24a92a221a26a4897fb2",
   "claims": [
     {
       "id": "claim_2be91f3b07f54663a6f4b76c366b7238",
@@ -14,11 +14,11 @@
     },
     {
       "id": "claim_11e86017a41b40cd9ae9e0d2685e6633",
-      "statement": "SQLite process transitions and Chief affinity release require valid positive death evidence, including correctly identified prior-boot termination.",
+      "statement": "SQLite process transitions and Agent affinity release require valid positive death evidence, including correctly identified prior-boot termination.",
       "evidence": [
         {
-          "resource": "repo://database/src/chief_process.rs#L313-L371",
-          "version": "repo-lines-v1:sha256:406d31b4a29bc0370b2ded807c0a9dcc77a07f4deb508ec597f2a70f1cbf6766:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YmJhNzQ0YmRmMDhjZjIzODdmMTU3MjYyNmU0NGNjMDA2NGY0NTUyOTgwNmJjODE3OTNmYzAyZTJiYTJmMzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyMzg1NjVhYTc5ZDkyYjY0M2VhYjAwYmMzYWY5N2RmNDg3NTc3MWI0MWQyYTMwMTdlMDgxMDRjZjg5YmZhNTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyNTZmNGFiNDk1NGQzNDFkOTI0YWI2NmVkZDQwMGRiYjNiYTM1ZGJhMzBhN2EwNTMxOWFhYzM5ODFkMWRlMmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNmY2ZmMmQ5MzJjZTM3ZWY3YjdkZGFlMDhmMWJhMDY3MGFhZDYzNTk0ZjBhNjY5NmIzODU4YTJkYzBmODAyMzcifQ"
+          "resource": "repo://database/src/agent_process.rs#L313-L377",
+          "version": "repo-lines-v1:sha256:fbb39e4deb2476092dc5317a96126f75981bb7d81efddbbbaea1481cec7c7182:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzNzRkNWE5ZWQzYjM4ZjQyYzliMzliMWZhYWMwOTA1MjM0YjZjNWYxMDFjN2RlNTQ5YWI0NzQyMDVjZWIzZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhZGEyMDY4ZTQ0ZWY2OTVlZjkzYTI3Yzc2ZGM3MTE5Yjk1ZTlhN2U2ZjE3YjRlMjM1YWIzMDkwMzgyOGFkOWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ0OTdmMTI2YjA2YTMxZTI5YWQzNmIzNmJhZDZmNjdhMTg0ZGNlYmE5Mjc2NGEzMDkwYWIwNDEyYWIwYzY3ZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5ZGEzMGZmOWQ1NmI5Y2JlM2FlZTBjNmQ3NGVhODg1ODE2MzU3YmU4MDc5NWU0NzVlY2M1NmZlMzNiMWI2MTEifQ"
         },
         {
           "resource": "repo://database/src/process_generations.rs",
@@ -28,7 +28,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
   }
 }

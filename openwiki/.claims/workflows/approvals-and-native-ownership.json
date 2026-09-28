@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:d9f0950331f6b90bfe8c31601ac293837375f7cf1b720a025507491607a76eb5",
+  "claims": [
+    {
+      "id": "claim_180212e57d1d44369eb0d24fc94defa4",
+      "statement": "Native child approval ownership requires bounded verified thread-spawn ancestry; a fork does not establish local manager authority.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/native_subagents.rs#L19-L49",
+          "version": "repo-lines-v1:sha256:e0c70c957d7b999833d1e2ab29c77b8b4af5407b97d6e2598769718a1c993b3d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyMmI2NzA0Y2VkMTY3ZjE5YjRkNWI5YWQ2ZWU4NmExZjIwMjNjMmRiNzUwZmE0ZTEzMjZiMTdlNDhmNzU1NDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwMTVjMGI0ZWJmMmNiYzE3NWVlNzc0NDllNzkxNjRjMjQ3YmU3Y2I2M2MzNjgzZWZiYTA3MTNmMjEwOTMxYmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_93d3bcdbe8d7453a859bc6e3c5527c5a",
+      "statement": "Guardian observations preserve review evidence but do not independently authorize execution or wake work.",
+      "evidence": [
+        {
+          "resource": "repo://database/src/agent_guardian.rs#L1-L61",
+          "version": "repo-lines-v1:sha256:855ee41f95df95b59e63c10e0d0026b8a569dd54588e69166b79f097869b1a22:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3NTI0ODBkZWIyMzI1ZGJiYTJkM2Q2ZjczMGI2N2MwZGIxMTJlODY0MTk1YjdhNmNmZGY0MzM2ZmYwMmRhMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkMTMxZjYzNzk2ZTIzZGI0MzFlNzc3ZTljZTk1Zjk0ZTg0MTE3Yzk0MTFkYTFkMjIxMmFmNDJjYTI5ZGVkZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2MmIxOWE1NThjODY1YzUwNjY4MmVjZGEyMjM1ZDYxNGMwNDkxYzhiNjFiOGQ3NTljZmI5YTFjOWJjOWQyNDQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7794ce46bd49485aab9d0fcaf944c1b6",
+      "statement": "The recorded native child MCP form qualification has an unresolved root-handoff limitation.",
+      "evidence": [
+        {
+          "resource": "repo://docs/archive/upstream-2026-09/native-child-mcp-qualification.md",
+          "version": "repo-file-v1:sha256:b30ca68741e32985931bfbad1272d64b86aefcc712fef39209a9175d2be585d8"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
+  }
+}

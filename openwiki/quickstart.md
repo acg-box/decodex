@@ -1,18 +1,20 @@
 ---
 type: Reference
 title: "OpenWiki quickstart"
-description: "OpenWiki quickstart"
+description: "Task-oriented entrypoints for current Decodex architecture, workflows, product scope and historical evidence."
 tags: ["decodex", "architecture"]
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
-  - id: openwiki-source-477d041b92b25547bc39e55d
-    resource: repo://apps/decodex-gpui/src/chief_graph.rs
-  - id: openwiki-source-a78ea5fe51f1eae9468e41e0
-    resource: repo://apps/decodex-gpui/src/chief_tree.rs
+  - id: openwiki-source-ec2c431b14759817413ba09e
+    resource: repo://apps/decodex-gpui/src/agent_graph.rs
+  - id: openwiki-source-51a4755f3c4ddd78511e5c8e
+    resource: repo://apps/decodex-gpui/src/agent_tree.rs
+  - id: openwiki-source-14193a66abfb7d3230f476bf
+    resource: repo://automations/portfolio.toml
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
@@ -21,50 +23,52 @@ sources:
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
+  - id: openwiki-source-e7e2b18dcd23b3b9fac7753b
+    resource: repo://docs/archive/upstream-2026-09/migration-map.tsv
+  - id: openwiki-source-8d4b61fd83ed007c18390abe
+    resource: repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
+
 
 # OpenWiki quickstart
 
-Decodex is a local general-purpose multi-agent workspace above Codex app-server. The user normally talks to Chief. Chief can discuss or act directly, organize workers and subordinate Chiefs, assess results, and retain review records. Codex owns native execution; Decodex owns product coordination, account policy and presentation.
+Decodex is a local workspace above Codex app-server. The primary Agent can discuss work, act directly, or coordinate other agents. Codex owns native conversation execution. Decodex owns local work relationships, account policy, recovery and presentation. “Chief” in older filenames and records is the former Agent name.
 
 ## Start by task
 
-| Task | Read first | Source owner |
-| --- | --- | --- |
-| Understand execution and persistence | [Runtime architecture](architecture/runtime-architecture.md) | CLI `serve`, runtime bootstrap, SQLite |
-| Change Chief organization, requests or recovery | [Chief coordination](architecture/chief-coordination.md) | `chief.rs`, `chief_host.rs`, `database/src/chief.rs` |
-| Change conversation UI, graph/tree, glass or settings | [Desktop workspace](architecture/desktop-workspace.md) | GPUI shell, Chief workspace, native panels |
-| Change account login or routing | [Account lifecycle](specs/account-lifecycle-authority.md), [Login](specs/account-login-authority.md) | AccountService and login manager |
-| Diagnose local state | [Database operations](operations/local-database.md) | SQLite store and service |
-| Change speech input | [Subscription voice](integrations/subscription-voice.md) | Dictation gateway, realtime Chief, Swift media host |
-| Redeem/reset quota | [Reset Cards](operations/reset-cards.md), [Activation](operations/quota-activation.md) | Account API and durable operations |
-| Build and test | [Commands and validation](operations/commands-and-validation.md) | Makefile.toml and macOS scripts |
-| Maintain Codex compatibility | [Upstream adaptation](operations/codex-upstream-autopilot.md) | Native automation portfolio |
-| Maintain evidence/public content | [Auxiliary tools](integrations/plugins-automations-and-auxiliary-tools.md) | Radar, Publisher, Astro site |
-| Refresh this Wiki | [Wiki maintenance](operations/wiki-maintenance.md) | OpenWiki page/Claim lifecycle |
+| Task | Read first |
+| --- | --- |
+| Understand service, clients and storage | [Runtime architecture](architecture/runtime-architecture.md) |
+| Trace Agent coordination and native children | [Agent coordination](architecture/chief-coordination.md) |
+| Change conversation presentation | [Desktop workspace](architecture/desktop-workspace.md) |
+| Change input, drafts, history editing or recap | [Conversations and recovery](workflows/conversations-and-recovery.md) |
+| Change model, effort or task settings | [Models and settings](workflows/models-and-settings.md) |
+| Handle an approval or provider question | [Approvals and ownership](workflows/approvals-and-native-ownership.md) |
+| Change MCP, plugins, App widgets or hooks | [Tools and integrations](integrations/tools-plugins-and-apps.md) |
+| Change dictation, live voice or voice preferences | [Subscription voice](integrations/subscription-voice.md) |
+| Diagnose account selection or activation | [Accounts and routing](operations/accounts-and-routing.md) |
+| Diagnose storage | [Local database](operations/local-database.md) |
+| Decide which upstream capabilities belong here | [Product scope](decisions/upstream-product-scope.md) |
+| Review an upstream change | [Upstream maintenance](operations/codex-upstream-autopilot.md) |
+| Choose checks and understand their limits | [Commands](operations/commands-and-validation.md), [acceptance boundaries](testing/upstream-acceptance-boundaries.md) |
+| Maintain documentation | [Wiki maintenance](operations/wiki-maintenance.md) |
+| Find old PR, scan or acceptance evidence | [September 2026 archive](../docs/archive/upstream-2026-09/README.md) |
 
 ## Current boundaries
 
-- `decodex serve` is the sole service and product-state owner. There is no current `decodexd` executable.
-- SQLite at `~/.decodex/server/decodex.sqlite3` is the only normal product store. Current schema is 30 and local protocol is exactly 2.43.
-- GPUI and CLI use typed local clients. The app's Swift libraries and attached glass windows do not create additional product authorities.
-- Chief's agent tree represents ownership; its graph represents dependencies and reports. The old Factory Program/Domain lens is historical.
-- Known unavailable conversations reject sending. History remains readable. An uncertain provider outcome is not safe to replay.
-- Account Route is synchronous and service-owned. Older Pending-route DTOs and timer explanations are superseded.
-- Reset Cards require explicit redemption; weekly quota activation is a separate configurable minimal request.
-- Voice dictation produces an editable streaming draft with final correction; live voice attaches to the native Chief thread.
+- `decodex serve` is the service and SQLite product-state owner. GPUI and CLI use typed local clients. The bundled helper is `decodex`, not `decodexd`.
+- This source revision uses exact local protocol **2.97** and SQLite schema **49**. Read the protocol constant and migration owner when updating these values.
+- The Agent graph presents dependencies and reports; the separate tree presents parent ownership. Historical Factory diagrams do not define the current desktop.
+- Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.
+- Unknown submission outcomes require exact receipts or native history. They do not authorize replay. Unavailable conversations keep readable history.
+- The user retained O01–O23 and O25–O26. O24 records no new AWS/Bedrock recovery notices; saved notices remain readable.
+- The upstream maintainer is configured **PAUSED**. Documentation generation does not enable it, install an app or publish a release.
 
-## Build and acceptance
+## Build and evidence
 
-Use stable Rust and a full selected Xcode installation. Packaging honors `DEVELOPER_DIR` but does not require `Xcode-beta.app`. Run focused checks first, then the applicable repository gate. Unit tests, signed packaging, visible UI acceptance, live provider behavior, merge and installation are different evidence.
+Use stable Rust and the repository-owned commands. macOS packaging uses the selected Xcode installation or an explicit `DEVELOPER_DIR`. A unit test, native fixture, signed desktop check, merge and installation prove different things. Keep version-specific limits visible.
 
-## Historical material
-
-The decisions, private-artifact archive and dated evidence pages preserve original receipts and rationale. They are not live setup instructions. Do not follow old disposable-database instructions, restore retired repository/GitHub orchestration, or infer that an old schema/protocol number is current.
-
-[SQLite decision](decisions/sqlite-local-product.md) remains applicable. [Adaptive Program design](decisions/adaptive-program-extension-architecture.md) retains design context; Program persistence and built-in projections remain distinct from today's Chief UI.
-
-An old setup comment is not proof of automatic Wiki updates. Check the maintenance page and actual host/workflow state.
+The dated archive replaces `work/` as historical evidence. It is not another current product manual or an unfinished work queue. Old temporary test paths can have been removed after their results were retained.

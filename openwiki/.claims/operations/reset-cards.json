@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d08aa2d5f2c946030ea0fd26359c43db2a27a5ab94155f8e0b372f4fb685f702",
+  "pageVersion": "sha256:ef597afa8b50748f71e9ce5160c035722573c758f103991ae7a6ae84d0a3659b",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -22,17 +22,17 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift",
-          "version": "repo-file-v1:sha256:ac1a10f04bb40ef7e02b8d90bc3ecd3598b58d058af25a059d80a7eaceb506ae"
+          "version": "repo-file-v1:sha256:bc17b08a96207a2d36a82cce6166a3344df9d055b4d64d6379da424e655164e1"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
-          "version": "repo-file-v1:sha256:5c3b59762e91d7a6eebf29c3df86c5882e318758bedbd81958780466a0f99d3f"
+          "version": "repo-file-v1:sha256:c7608c0ab52ffb67c0faefa8e92c243e003e03d8859703561a5cedcf24f09a29"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
   }
 }

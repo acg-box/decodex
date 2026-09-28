@@ -4,21 +4,22 @@ title: "Historical Program Graph Surface V1 evidence"
 description: "Historical Program Graph Surface V1 evidence"
 tags: ["decodex", "architecture"]
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
-  - id: openwiki-source-477d041b92b25547bc39e55d
-    resource: repo://apps/decodex-gpui/src/chief_graph.rs
-  - id: openwiki-source-a78ea5fe51f1eae9468e41e0
-    resource: repo://apps/decodex-gpui/src/chief_tree.rs
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+  - id: openwiki-source-ec2c431b14759817413ba09e
+    resource: repo://apps/decodex-gpui/src/agent_graph.rs
+  - id: openwiki-source-51a4755f3c4ddd78511e5c8e
+    resource: repo://apps/decodex-gpui/src/agent_tree.rs
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
+
 
 # Current graph replacement
 
 The Program/Domain lens implementation recorded below is no longer in the active source tree. Its eight former implementation Claims are retired from the current evidence set because their owners (`program_graph.rs`, `factory_surface.rs`, `programs.rs`, and `factory_visual_capture.rs`) were removed. Their old results remain historical prose, not claims about today's graph.
 
-Current graph behavior lives in `chief_graph.rs` and `chief_workspace.rs`. It projects Chief work dependencies and report links; agent ownership is a separate `chief_tree.rs` projection. Tests and capture paths must follow those owners and `bin/workbench_visual_capture.rs`. Do not infer the old cache, lens, keyboard, or fixture guarantees for the replacement graph.
+Current graph behavior lives in `agent_graph.rs` and `agent_workspace.rs`. It projects Agent work dependencies and report links; agent ownership is a separate `agent_tree.rs` projection. Tests and capture paths must follow those owners and `bin/workbench_visual_capture.rs`. Do not infer the old cache, lens, keyboard, or fixture guarantees for the replacement graph.
 
 See [Desktop workspace](../architecture/desktop-workspace.md).
 

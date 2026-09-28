@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:67ddd0db27ad8077525852c94c53e3a6f7f05aed6a566c4bbb3fa34e926c3d97",
+  "pageVersion": "sha256:3e81086266e6661bf4d66492de13a24f152c68b62c9c5ff889fefaee2bb8755d",
   "claims": [
     {
       "id": "claim_0943befab78d47f4ab01fd80e6a28bbb",
-      "statement": "Normal product storage is a serialized SQLite connection owned by the service, with bundled migrations and schema version 30.",
+      "statement": "Normal product storage is a serialized SQLite connection owned by the service, with bundled migrations and schema version 49.",
       "evidence": [
         {
-          "resource": "repo://database/src/lib.rs#L138-L211",
-          "version": "repo-lines-v1:sha256:075e69ede11340a2110300d4a403cf768518dc7b68e0fda4fe79db247623647c:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyM2Q0ODA0NzA4NzM4ZjJlNjhhZDFiNmFmZGEyMzE1ZDliMzI3Yjk3YmNlNmY4NTRkNDM2NWUwYzdmMmUxMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliMzRkNDhmZWY2YTBhMTQ3YmFhMzFhMTZmY2FjZDczNzU5MGRiNjM1YWIzNmEwNDA1MTRkNzkxZDZiMWNiZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI5NGU2NzM3MWY2YmY5ZWUzYjRmNzdlYzhjM2I1ZjUzMTNhM2UxZTc1MjE5NDFmOGM3NDNiMzMwMWM3MTI2ZmYifQ"
+          "resource": "repo://database/src/lib.rs#L170-L290",
+          "version": "repo-lines-v1:sha256:4ac26ea41feaa500daf8eae901dca134702ace3d35b5f58043f0411526c663a5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxZjhmZmM1ODFmZGQxYjEwNmQ2ZTRiYzk4MTE5YTFhYjRhZGFjOTMxMmNkOGU0ZTJhNTE3MjViOGJjMTQxMmMyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJjNTgzNTcyNWJlYjdhMmFlNDk2Y2JlOWZlNWU5ZTcxOWMwMmQ2NDNiOTk2MzI1OWU1MzI2NGY0MDZlMTdiOGZjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxYWU5OTc3YjUxMDI5YzU2Y2Y3ZGI5YzM0ZDZkMWQwOTQ2MGRiZTRmMmRlMTFlYzRiYWJjMmIyM2I0ODA5NjdjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4NjQyNzM5YzQ1MjMxMmRmZDAzN2QxOTJmNjdmNjMxZmQ0N2M2NTk2Nzc2YmY5ZTFjODFlMTYxNjg3MGI0NjkwIn0"
         },
         {
-          "resource": "repo://database/src/migrations.rs#L1-L20",
-          "version": "repo-lines-v1:sha256:40dac9327dc815afb9a8ea4c59ca5bf33431a42c3de60fd2fa6754587e7bfca1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwZmU2Y2ZlZWI1MTRhNTYwMTY2OGU0OTg4ODM4YWIxZWMzZmI4ZmU5Y2U0MDY4ZmMyOTgyYWFlYWMwY2Q5NmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViYWZlYjc5YTFmZTdjMWViMDcwNDc3NzgyZTk1ZmVlMjA1MDMyMWNmYzliODZlNWNmZTgxYzYwNTA2ZjUxZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkMjI2OGE5Y2M3MDJlMzljZmI1OTViZTBlNWQ4NGM2NDVmOTk1NDY2YjQ2NjVlOWVmZjY2MjY1ZGE5NWVhYzUifQ"
+          "resource": "repo://database/src/migrations.rs#L1-L106",
+          "version": "repo-lines-v1:sha256:129bc9a5ba0b7e8736c0657dcb79c01b31a64990eab4ac1fdef823e775efea6e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMGZlNmNmZWViNTE0YTU2MDE2NjhlNDk4ODgzOGFiMWVjM2ZiOGZlOWNlNDA2OGZjMjk4MmFhZWFjMGNkOTZmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1OWMyOTU1OTc1NmJmNmYwZjcyMWVmNjg2NjBjM2VhMGE0Y2E3NGVjMTA1YmQzZGNmNzY2MjVkMDQzZDcxNGIwIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxYjU3ODE3MjY1OTJhNzRlZmQ0ZGMzYzQzOGU2N2Y0ZmM5YmY4YWU0OWM1NjkyNzg5OTkwNzFhNmFiODYyNDRmIn0"
         }
       ]
     },
@@ -28,7 +28,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
   }
 }

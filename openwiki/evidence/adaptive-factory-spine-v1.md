@@ -4,19 +4,22 @@ title: "Historical Adaptive Factory Spine V1 evidence"
 description: "Historical Adaptive Factory Spine V1 evidence"
 tags: ["decodex", "architecture"]
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
-  - id: openwiki-source-477d041b92b25547bc39e55d
-    resource: repo://apps/decodex-gpui/src/chief_graph.rs
+  - id: openwiki-source-ec2c431b14759817413ba09e
+    resource: repo://apps/decodex-gpui/src/agent_graph.rs
   - id: openwiki-source-dd24c2ff3c2515a21892e312
     resource: repo://database/src/program_cycles.rs
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
+
+
+> Current compatibility boundary: `database/src/program_cycles.rs` provides read-only historical Program aggregates and lineage. This page does not restore a Program execution or write pipeline. See [Agent coordination](../architecture/chief-coordination.md).
 
 # Current status
 
-The one-cycle August receipt below remains historical. Program records still have a SQLite owner, but the old Factory UI and Quick Task source paths are not current desktop entrypoints. The active workspace uses Chief conversations, an ownership tree, and a dependency graph. This refresh does not rerun the recorded dogfood or extend its acceptance to current builds.
+The one-cycle August receipt below remains historical. Program records still have a SQLite owner, but the old Factory UI and Quick Task source paths are not current desktop entrypoints. The active workspace uses Agent conversations, an ownership tree, and a dependency graph. This refresh does not rerun the recorded dogfood or extend its acceptance to current builds.
 
 See [current architecture](../architecture/runtime-architecture.md) and [validation commands](../operations/commands-and-validation.md).
 
