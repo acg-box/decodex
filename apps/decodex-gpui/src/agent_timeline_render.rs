@@ -293,10 +293,7 @@ impl AgentSurface {
 			&& phase.as_deref() == Some("commentary")
 			&& attachments.is_empty()
 		{
-			return div()
-				.pl(gpui::px(24.))
-				.child(markdown::render_process(text, identity))
-				.into_any_element();
+			return markdown::render_process(text, identity);
 		}
 		if matches!(kind.as_str(), "userMessage" | "agentMessage") {
 			let message = self.native_message_entry(work, turn_id, text, kind);
@@ -472,16 +469,13 @@ impl AgentSurface {
 				"reasoning" => "native-reasoning-summary",
 				_ => "native-promotion-content",
 			};
-			row = row.child(
-				div()
-					.when(matches!(kind.as_str(), "reasoning" | "plan"), |d| d.pl(gpui::px(24.)))
-					.debug_selector(move || selector.into())
-					.child(if kind == "reasoning" {
-						markdown::render_process(text, identity)
-					} else {
-						markdown::render(text, identity)
-					}),
-			);
+			row = row.child(div().debug_selector(move || selector.into()).child(
+				if kind == "reasoning" {
+					markdown::render_process(text, identity)
+				} else {
+					markdown::render(text, identity)
+				},
+			));
 		}
 		if truncated {
 			row = row.child(muted("Some content was omitted from this history preview."));

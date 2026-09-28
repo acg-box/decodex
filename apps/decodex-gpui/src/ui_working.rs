@@ -1,6 +1,46 @@
 //! A small pixel cloud for live work. The clock belongs to the observed native turn.
 use gpui::{prelude::*, *};
-use std::time::Instant;
+use std::{
+	sync::{Arc, LazyLock},
+	time::Instant,
+};
+
+// Use the approved logo silhouette, including its lightning and cursor cutouts.
+static CLOUD: LazyLock<Arc<Image>> = LazyLock::new(|| {
+	Arc::new(Image::from_bytes(
+		ImageFormat::Svg,
+		include_bytes!(
+			"../../../assets/app-icon/liquid-glass/01-mercury-cloud/AppIcon.icon/Assets/shape-0.svg"
+		)
+		.to_vec(),
+	))
+});
+// Same grid as scripts/assets/build_liquid_glass_icons.swift.
+const CELLS: [(f32, f32, f32); 15] = [
+	(0., 0., 0.18),
+	(1., 0., 0.43),
+	(3., 0., 0.82),
+	(6., 0., 0.90),
+	(0., 1., 0.10),
+	(1., 1., 0.25),
+	(2., 1., 0.55),
+	(4., 1., 0.69),
+	(1., 2., 0.12),
+	(2., 2., 0.32),
+	(3., 2., 0.62),
+	(5., 2., 0.84),
+	(2., 3., 0.14),
+	(3., 3., 0.38),
+	(4., 3., 0.57),
+];
+
+fn tile(time: f32, col: f32, row: f32, strength: f32) -> (f32, f32, f32) {
+	let wave = (1. - (time * std::f32::consts::TAU / 3.2 - col * 0.32 - row * 0.2).cos()) * 0.5;
+	let travel = wave * strength;
+	let x = ((444. + col * 64.) * 1.18 - 114.58) * 24. / 1024.;
+	let y = ((284. + row * 64.) * 1.18 - 68.56) * 24. / 1024.;
+	(x + travel * (2. + col * 0.5), y - travel * (1.5 + (3. - row) * 0.6), travel)
+}
 
 #[derive(Default)]
 struct Motion {
@@ -57,57 +97,44 @@ impl RenderOnce for Working {
 			.line_height(px(18.))
 			.text_color(rgb(crate::ui_theme::TEXT_MUTED))
 			.child(
-				canvas(
-					|_, _, _| (),
-					move |bounds, _, window, _| {
-						// A stable cloud silhouette, with its right edge dissolving into square
-						// cells.
-						let cells = [
-							(1., 4.),
-							(1., 5.),
-							(2., 3.),
-							(2., 4.),
-							(2., 5.),
-							(3., 2.),
-							(3., 3.),
-							(3., 4.),
-							(3., 5.),
-							(4., 2.),
-							(4., 3.),
-							(4., 4.),
-							(4., 5.),
-							(5., 3.),
-							(5., 4.),
-							(5., 5.),
-							(6., 4.),
-							(6., 5.),
-						];
-						for (x, y) in cells {
-							let b = Bounds::new(
-								bounds.origin + point(px(x * 1.7), px(y * 1.7)),
-								size(px(1.8), px(1.8)),
-							);
-							window.paint_quad(fill(b, rgba(0xd5d6dda0).opacity(settle)));
-						}
-						for i in 0..6 {
-							let phase = time * 1.65 + i as f32 * 0.9;
-							let drift =
-								if reduced { 0.25 } else { (1. - phase.cos()) * 0.5 * settle };
-							let x = 9. + (i % 3) as f32 * 2. + drift * 2.4;
-							let y = 3. + (i / 3) as f32 * 3. - drift * 1.8;
-							let b = Bounds::new(
-								bounds.origin + point(px(x), px(y)),
-								size(px(1.5), px(1.5)),
-							);
-							window.paint_quad(fill(
-								b,
-								rgba(0xe4e5ecff).opacity((0.8 - drift * 0.5) * settle),
-							));
-						}
-					},
-				)
-				.size(px(18.))
-				.flex_none(),
+				div()
+					.relative()
+					.w(px(28.))
+					.h(px(24.))
+					.flex_none()
+					.child(
+						img(CLOUD.clone())
+							.absolute()
+							.top_0()
+							.left_0()
+							.size(px(24.))
+							.opacity(0.82 * settle),
+					)
+					.child(
+						canvas(
+							|_, _, _| (),
+							move |bounds, _, window, _| {
+								let clock = time - closing.unwrap_or_default();
+								for (col, row, fade) in CELLS {
+									let (x, y, travel) =
+										tile(clock, col, row, if reduced { 0. } else { settle });
+									let edge = 1.77 - travel * 0.3;
+									let b = Bounds::new(
+										bounds.origin + point(px(x), px(y)),
+										size(px(edge), px(edge)),
+									);
+									window.paint_quad(fill(
+										b,
+										rgba(0xdedeeaff).opacity(
+											(1. - fade * 0.7) * (1. - travel * 0.45) * settle,
+										),
+									));
+								}
+							},
+						)
+						.absolute()
+						.size_full(),
+					),
 			)
 			.child(div().opacity(settle).child("Working"))
 			.into_any_element()
