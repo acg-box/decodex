@@ -719,6 +719,7 @@ impl AgentSurface {
 			.or_default()
 			.clone();
 		let mut transcript = div()
+			.debug_selector(|| "workspace-transcript".into())
 			.id(SharedString::from(format!(
 				"transcript-{}",
 				self.selected.as_deref().unwrap_or("agent")
