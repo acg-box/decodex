@@ -11,6 +11,50 @@ fn options() -> TemporaryStructuredOptions {
 	}
 }
 
+#[tokio::test]
+async fn temporary_permissions_override_builtin_defaults_but_preserve_custom_profiles() {
+	for profile in [None, Some(":workspace"), Some(":read-only"), Some("restricted")] {
+		let (local, remote) = tokio::io::duplex(16384);
+		let (read, write) = tokio::io::split(local);
+		let (client, _events) = AppServerClient::from_io(read, write);
+		let server = tokio::spawn(async move {
+			let (read, mut write) = tokio::io::split(remote);
+			let mut lines = BufReader::new(read).lines();
+			for method in ["config/read", "thread/start", "thread/unsubscribe"] {
+				let req: Value =
+					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+				assert_eq!(req["method"], method);
+				let result = match method {
+					"config/read" => json!({"config":{"default_permissions":":workspace"}}),
+					"thread/start" => {
+						let params = &req["params"];
+						if profile == Some("restricted") {
+							assert_eq!(params["permissions"], "restricted");
+							assert!(params.get("sandbox").is_none());
+							assert!(params["config"].get("default_permissions").is_none());
+						} else {
+							assert_eq!(params["sandbox"], "read-only");
+							assert!(params.get("permissions").is_none());
+							assert_eq!(params["config"]["default_permissions"], ":read-only");
+						}
+						json!({"thread":{"id":"temporary","ephemeral":true},
+							"sandbox":{"type":"readOnly"},"activePermissionProfile":{"id":profile}})
+					},
+					_ => json!({"status":"unsubscribed"}),
+				};
+				write
+					.write_all(format!("{}\n", json!({"id":req["id"],"result":result})).as_bytes())
+					.await
+					.unwrap();
+			}
+		});
+		let mut options = options();
+		options.active_permission_profile = profile.map(str::to_owned);
+		client.start_temporary_structured(options).await.unwrap().cancel().await.unwrap();
+		server.await.unwrap();
+	}
+}
+
 #[test]
 fn isolation_disables_effective_and_observed_mcp_without_mutating_configuration() {
 	let effective = json!({"mcp_servers":{"native":{"required":true,"command":"must-not-run"}}});
