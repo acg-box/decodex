@@ -403,11 +403,21 @@ impl AgentSurface {
 				.text_size(gpui::px(12.))
 				.line_height(gpui::px(18.))
 				.text_color(gpui::rgb(crate::ui_theme::TEXT_MUTED))
-				.child(if activity.status == "running" {
-					crate::ui_loading::loading("").into_any_element()
-				} else {
-					div().child(symbol).into_any_element()
-				})
+				.child(
+					// Status glyph advances differ; reserve one stable column for every state.
+					div()
+						.w(gpui::px(16.))
+						.h(gpui::px(18.))
+						.flex_none()
+						.flex()
+						.items_center()
+						.justify_center()
+						.child(if activity.status == "running" {
+							crate::ui_loading::loading("").into_any_element()
+						} else {
+							div().child(symbol).into_any_element()
+						}),
+				)
 				.child(div().flex_1().min_w_0().child(label))
 				.when(matches!(activity.status.as_str(), "failed" | "declined"), |d| {
 					d.child(activity.status.clone())
