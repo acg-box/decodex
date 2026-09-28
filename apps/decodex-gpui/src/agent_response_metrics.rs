@@ -1,4 +1,4 @@
-//! Compact response statistics with an hover details, independent of transcript layout.
+//! Compact response statistics with hover details, independent of transcript layout.
 use super::{compact_tokens, ui_theme};
 use decodex_protocol::AgentTurnUsageDto;
 use gpui::{prelude::*, *};
@@ -33,6 +33,43 @@ fn number(label: &'static str, value: Option<u64>) -> Option<Div> {
 	value.map(|value| row(label, compact_tokens(value)))
 }
 
+fn duration_label(ms: u64) -> String {
+	if ms >= 3_600_000 {
+		format!("{}h {}m", ms / 3_600_000, ms % 3_600_000 / 60_000)
+	} else if ms >= 60_000 {
+		format!("{}m {}s", ms / 60_000, ms % 60_000 / 1000)
+	} else {
+		format!("{:.1}s", ms as f64 / 1000.)
+	}
+}
+
+fn duration_icon() -> impl IntoElement {
+	canvas(
+		|_, _, _| (),
+		|bounds, _, window, _| {
+			let mut path = PathBuilder::stroke(px(1.));
+			for step in 0..=32 {
+				let angle = step as f32 * std::f32::consts::TAU / 32.;
+				let p = bounds.origin
+					+ point(px(5.5 + 4.25 * angle.cos()), px(5.5 + 4.25 * angle.sin()));
+				if step == 0 {
+					path.move_to(p);
+				} else {
+					path.line_to(p);
+				}
+			}
+			path.move_to(bounds.origin + point(px(5.5), px(2.5)));
+			path.line_to(bounds.origin + point(px(5.5), px(5.5)));
+			path.line_to(bounds.origin + point(px(7.5), px(6.5)));
+			if let Ok(path) = path.build() {
+				window.paint_path(path, rgb(ui_theme::TEXT_MUTED));
+			}
+		},
+	)
+	.size(px(11.))
+	.flex_none()
+}
+
 impl RenderOnce for ResponseMetrics {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(
@@ -53,18 +90,9 @@ impl RenderOnce for ResponseMetrics {
 			window.on_next_frame(|window, _| window.refresh());
 		}
 
-		let duration = self.duration_ms.map(|ms| {
-			if ms >= 60_000 {
-				format!("{}m {}s", ms / 60_000, ms % 60_000 / 1000)
-			} else {
-				format!("{:.1}s", ms as f64 / 1000.)
-			}
-		});
-		let label = duration
-			.as_ref()
-			.map(|time| format!("Worked for {time}"))
-			.or(self.status)
-			.unwrap_or_default();
+		let duration = self.duration_ms.map(duration_label);
+		let label = duration.clone().or(self.status).unwrap_or_default();
+		let has_duration = duration.is_some();
 		let panel = if progress > 0.001 {
 			let mut panel = div()
 				.id(SharedString::from(format!("response-detail-panel-{}", self.key)))
@@ -134,7 +162,16 @@ impl RenderOnce for ResponseMetrics {
 			.gap(px(6.))
 			.text_size(px(ui_theme::CAPTION_SIZE))
 			.text_color(rgb(ui_theme::TEXT_MUTED))
-			.when(!label.is_empty(), |d| d.child(label))
+			.when(!label.is_empty(), |d| {
+				d.child(
+					div()
+						.flex()
+						.items_center()
+						.gap(px(3.))
+						.when(has_duration, |d| d.child(duration_icon()))
+						.child(label),
+				)
+			})
 			.when_some(self.usage, |d, u| {
 				d.child(
 					div()
