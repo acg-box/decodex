@@ -338,7 +338,7 @@ impl AgentSurface {
 					.role(gpui::Role::Button)
 					.tab_index(0)
 					.aria_label("Edit message")
-					.size(gpui::px(24.))
+					.size(gpui::px(crate::ui_theme::USER_MESSAGE_ACTION_SIZE))
 					.flex()
 					.items_center()
 					.justify_center()

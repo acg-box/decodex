@@ -77,6 +77,11 @@ impl AgentSurface {
 		}
 		saved.extend(entries.iter().map(|entry| (entry.id, entry)));
 		for entry in saved.values() {
+			if receipt_label(entry) == Some("Local input · Delivery not confirmed")
+				&& self.preview_covers_receipt(&work.id, entry.id, &entry.text)
+			{
+				continue;
+			}
 			if super::super::progress::checklist_superseded(entry, saved.values().copied()) {
 				continue;
 			}

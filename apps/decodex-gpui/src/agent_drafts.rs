@@ -5,6 +5,7 @@ use std::{collections::BTreeMap, mem};
 
 #[derive(Default)]
 pub(super) struct SubmissionState {
+	pub(super) previews: Vec<super::send_preview::Preview>,
 	pub(super) waiting: Option<QueuedCommand>,
 	pub(super) unconfirmed: Vec<IdempotencyKey>,
 	pub(super) command: Option<Task<()>>,
@@ -109,6 +110,7 @@ impl AgentSurface {
 	}
 
 	fn take_drafts(&mut self, cx: &Context<Self>) -> Drafts {
+		self.submission.previews.clear();
 		Drafts {
 			creation: self.creation_setup(cx),
 			unconfirmed: mem::take(&mut self.submission.unconfirmed),

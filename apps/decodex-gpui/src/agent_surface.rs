@@ -40,6 +40,7 @@
 #[path = "agent_response_metrics.rs"] mod response_metrics;
 #[path = "agent_saved_app_settings.rs"] mod saved_app_settings;
 #[path = "agent_selectable_text.rs"] mod selectable_text;
+#[path = "agent_send_preview.rs"] mod send_preview;
 #[path = "agent_steer_receipts.rs"] mod steer_receipts;
 #[path = "agent_text_reveal.rs"] mod text_reveal;
 #[path = "agent_usage_estimates.rs"] mod usage_estimates;
@@ -57,8 +58,8 @@ use decodex_protocol::{
 	IdempotencyKey, WireText,
 };
 use gpui::{
-	AnimationExt, ClipboardItem, Context, Entity, FocusHandle, FontWeight, Render, Role,
-	SharedString, Task, Window, div, prelude::*, px, rgb, rgba,
+	ClipboardItem, Context, Entity, FocusHandle, FontWeight, Render, Role, SharedString, Task,
+	Window, div, prelude::*, px, rgb, rgba,
 };
 
 use crate::{
@@ -914,7 +915,6 @@ impl AgentSurface {
 						self.configured_send(root_id, text, attachments),
 					action => action,
 				};
-				self.follow_latest_after_send(cx);
 				self.execute(action, Some(text), cx);
 			},
 			Err(message) => {
@@ -1007,6 +1007,10 @@ impl AgentSurface {
 			draft,
 		};
 		self.fence_command_draft(&mut pending);
+		self.capture_send_preview(&pending);
+		if pending.draft.is_some() {
+			self.follow_latest_after_send(cx);
+		}
 		self.sending = true;
 		self.feedback = "Waiting for durable acceptance…".into();
 		if pending.steer.is_some() {
@@ -1059,6 +1063,10 @@ impl AgentSurface {
 			return;
 		}
 		self.sending = false;
+		self.finish_send_preview(
+			&pending,
+			matches!(&result, Ok(AgentCommandResponse::Accepted { .. })),
+		);
 		self.remove_command_draft_fence(&pending);
 		if !matches!(&result, Ok(AgentCommandResponse::Accepted { .. })) {
 			self.retain_failed_command_draft(
@@ -1127,15 +1135,12 @@ impl AgentSurface {
 	) {
 		let surface = self;
 		match result {
-			Ok(AgentCommandResponse::Accepted { work_id }) => {
+			Ok(AgentCommandResponse::Accepted { .. }) => {
 				surface.feedback = if draft.is_some() {
 					"Message saved · Waiting for agent…".into()
 				} else {
 					String::new()
 				};
-				if draft.is_some() && surface.selected.as_deref() == Some(work_id.as_str()) {
-					surface.follow_latest_after_send(cx);
-				}
 				if draft == Some(surface.composer.read(cx).content()) {
 					surface.composer.update(cx, |input, cx| {
 						input.clear(cx);
@@ -1308,11 +1313,7 @@ impl AgentSurface {
 			cx.notify();
 			return;
 		};
-		self.status_before_refresh = match self.state {
-			LoadState::Stale | LoadState::Unavailable | LoadState::Capacity { .. } =>
-				Some(self.state.clone()),
-			_ => None,
-		};
+		self.status_before_refresh = Some(self.state.clone());
 		self.state = LoadState::Loading;
 		self.generation += 1;
 		let generation = self.generation;
@@ -1891,39 +1892,14 @@ impl AgentSurface {
 			AgentDispatchStateDto::Running | AgentDispatchStateDto::Dispatching
 		) || (self.selected.as_ref() == Some(&work.id)
 			&& (self.sending || self.feedback == "Message saved · Waiting for agent…"));
-		if active && self.composer_unavailable_reason().is_none() {
-			panel = panel.child(
-				div()
-					.id("reply-activity")
-					.role(Role::Status)
-					.aria_label("Agent is working")
-					.h(px(22.))
-					.flex()
-					.items_center()
-					.gap(px(4.))
-					.children((0..3).map(|index| {
-						div()
-							.size(px(4.))
-							.rounded_full()
-							.bg(rgb(ui_theme::TEXT_MUTED))
-							.with_animation(
-								format!("reply-working-{index}"),
-								gpui::Animation::new(std::time::Duration::from_millis(1100))
-									.repeat(),
-								move |dot, phase| {
-									dot.opacity(
-										0.35 + 0.65
-											* ((phase * std::f32::consts::TAU
-												- index as f32 * 0.7)
-												.sin()
-												* 0.5
-												+ 0.5),
-									)
-								},
-							)
-					})),
-			);
+		if !self.native_history_active(work) {
+			panel = panel.children(self.send_previews(&work.id));
 		}
+		panel = panel.child(crate::ui_working::Working {
+			key: format!("working-{}", work.id),
+			turn: (active && self.composer_unavailable_reason().is_none()).then(|| work.id.clone()),
+		});
+
 		panel.children(self.live_chat_caption(&work.id))
 	}
 

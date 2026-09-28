@@ -320,11 +320,12 @@ impl AgentSurface {
 			if !hidden.is_empty() {
 				panel = panel.child(self.native_history_spacer(work, hidden));
 			}
+			panel = panel.children(self.send_previews(&work.id));
 			if let Some(messages) = self.streamed_output(work) {
 				for message in messages.iter().filter(|message| {
                     work.active_turn_id.as_deref() == Some(&message.turn_id)
                         && !self.native_history.entries.iter().any(|entry| matches!(&entry.content,
-                            Content::Item { turn_id, item_id, .. } if turn_id == &message.turn_id && item_id == &message.item_id))
+                            decodex_protocol::AgentTimelineContent::Item { turn_id, item_id, .. } if turn_id == &message.turn_id && item_id == &message.item_id))
                 }) {
                     panel = panel.child(super::text_reveal::StreamingText {
                         text: message.text.clone(),
@@ -333,13 +334,6 @@ impl AgentSurface {
                 }
 			}
 		}
-		panel = panel.child(crate::ui_working::Working {
-			key: format!("working-{}", work.id),
-			turn: (work.dispatch_state == AgentDispatchStateDto::Running)
-				.then(|| work.active_turn_id.clone())
-				.flatten()
-                .filter(|turn| !self.native_history.entries.iter().any(|entry| matches!(&entry.content, Content::TurnBoundary { turn_id, completed: true, .. } if turn_id == turn))),
-		});
 		panel.into_any_element()
 	}
 
@@ -540,6 +534,10 @@ pub(super) struct Timeline {
 }
 
 impl Timeline {
+	pub(super) fn summary_only(&self) -> bool {
+		!self.summary.is_empty()
+	}
+
 	pub(super) fn reset(&mut self) {
 		*self = Self { epoch: self.epoch.wrapping_add(1), ..Default::default() };
 	}
