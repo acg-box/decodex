@@ -53,7 +53,8 @@ impl SqliteStore {
 			|| operation.expires_at <= operation.granted_at
 			|| operation.exact_credit_id.as_ref().is_none_or(|id| {
 				id.is_empty() || id.len() > 1024 || id.chars().any(char::is_control)
-			}) || operation.state != "prepared"
+			})
+			|| operation.state != "prepared"
 			|| operation.outcome.is_some()
 			|| operation.failure.is_some()
 		{

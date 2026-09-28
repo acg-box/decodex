@@ -63,10 +63,12 @@ impl AccountProfileController {
 			|| !same_recovery_source(snapshot.recovery.as_ref(), Some(&ticket.source))
 			|| snapshot.recovery.as_ref().is_some_and(|current| {
 				current.observed_at_unix_micros < ticket.source.observed_at_unix_micros
-			}) || !matches!(
-			snapshot.recovery.as_ref().map(|r| &r.state),
-			Some(AccountRecoveryState::Current(_))
-		) || !prepared.valid_for(&ticket.source, ticket.action)
+			})
+			|| !matches!(
+				snapshot.recovery.as_ref().map(|r| &r.state),
+				Some(AccountRecoveryState::Current(_))
+			)
+			|| !prepared.valid_for(&ticket.source, ticket.action)
 		{
 			return None;
 		}

@@ -994,7 +994,8 @@ impl Conversations {
 							models,
 							defaults,
 						},
-					) = &result.payload && actual == &working_directory
+					) = &result.payload
+						&& actual == &working_directory
 						&& *account_revision > 0
 					{
 						state.catalog_source = Some(CatalogSource::Initial {
@@ -2107,9 +2108,10 @@ impl State {
 				&& (self.ordinary_execution_ready()
 					|| self.selected_task().is_some_and(|task| {
 						task.state == ConversationState::ModelSettingsReviewRequired
-					}))) || (self.selected.is_none()
-				&& self.requested_selection.is_none()
-				&& self.creation_ready()))
+					})))
+				|| (self.selected.is_none()
+					&& self.requested_selection.is_none()
+					&& self.creation_ready()))
 				&& self.session.is_some()
 				&& self.refresh_batch.is_none()
 				&& self.pending_command.is_none()

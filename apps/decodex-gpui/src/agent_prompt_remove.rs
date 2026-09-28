@@ -167,7 +167,8 @@ impl AgentSurface {
 					cx,
 					move |s, cx| {
 						if let Some(removal) = &mut s.prompt_edit.removal
-							&& removal.key == key && !removal.markers.insert(identity)
+							&& removal.key == key
+							&& !removal.markers.insert(identity)
 						{
 							removal.markers.remove(&identity);
 						}

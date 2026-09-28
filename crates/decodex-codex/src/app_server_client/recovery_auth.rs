@@ -29,7 +29,8 @@ fn project(value: &Value) -> NativeRecoveryAuth {
 				if matches!(
 					kind.as_str(),
 					"apikey"
-						| "headers" | "agentIdentity"
+						| "headers"
+						| "agentIdentity"
 						| "personalAccessToken"
 						| "workloadIdentity"
 				) =>

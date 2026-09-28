@@ -233,3 +233,7 @@ The [migration map](migration-map.tsv) records all 185 original work files and t
 | [voice-settings-reconciliation.md](voice-settings-reconciliation.md) | [Voice](../../../openwiki/integrations/subscription-voice.md) |
 | [voice-settings.md](voice-settings.md) | [Voice](../../../openwiki/integrations/subscription-voice.md) |
 | [voice-transcript-recovery.md](voice-transcript-recovery.md) | [Voice](../../../openwiki/integrations/subscription-voice.md) |
+
+## Later coverage readback
+
+The [2026-09-28 Git readback](coverage-readback-20260928.json) verifies the original 1,569-commit inventory, records the then-current upstream head and its 493-commit delta, and keeps earlier uncertified coverage explicit. This is a dated observation, not an advancing review cursor; the active automation cursor is stored separately.

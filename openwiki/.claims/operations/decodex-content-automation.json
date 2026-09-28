@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:26351f1c6e2ee71578cc19445c851f43459092c6f14056f4781dbbeadd9a11fb",
+  "pageVersion": "sha256:b89329ed13649c88e83070564bbe56726b4bea24434bb9e0ad1f323e963d1865",
   "claims": [
     {
       "id": "claim_b9d9d60a2b70439da2780d92ae95c878",
-      "statement": "The portfolio separates content research from X publication and gives the upstream Maintainer an explicit PAUSED override.",
+      "statement": "The portfolio separates content research from X publication and gives the upstream Maintainer an explicit ACTIVE setting.",
       "evidence": [
         {
           "resource": "repo://automations/decodex/prompts/content-manager.md",
@@ -16,13 +16,13 @@
         },
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:b7852f69f78beca97b4451e47ef6e8a9145fd60d477b0fd5ea2d905f5400bb5c"
+          "version": "repo-file-v1:sha256:7099dcd9b3b9b34ac9ea83e98525b565711173eeb380041d2e844f5ba69aee8f"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "at": "2026-09-28T06:22:45.949Z"
   }
 }

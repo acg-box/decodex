@@ -39,7 +39,8 @@ impl Shell {
 						- px(ui_theme::CONTROL_MARGIN
 							+ ui_theme::CONTROL_GROUP_HEIGHT
 							+ ui_theme::CONTROL_MARGIN
-							- 12. + height),
+							- 12.
+							+ height),
 				),
 				size(px(328.), px(height)),
 			);

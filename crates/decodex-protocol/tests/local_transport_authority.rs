@@ -62,7 +62,8 @@ async fn first_publication_creates_only_its_private_namespace_parent() {
 		fs::metadata(paths.server_dir())
 			.expect("read created server directory")
 			.permissions()
-			.mode() & 0o777,
+			.mode()
+			& 0o777,
 		0o700,
 	);
 	assert!(!paths.server_identity_file().exists());

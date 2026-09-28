@@ -228,7 +228,7 @@ dependencies = [
 command = "rustup"
 args = [
 	"run",
-	"nightly-2026-07-16",
+	"nightly",
 	"cargo",
 	"fmt",
 	"--all",
@@ -238,7 +238,7 @@ args = [
 extend = "fmt-rust"
 args = [
 	"run",
-	"nightly-2026-07-16",
+	"nightly",
 	"cargo",
 	"fmt",
 	"--all",

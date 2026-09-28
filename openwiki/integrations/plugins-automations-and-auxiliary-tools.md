@@ -5,7 +5,7 @@ description: "Native integrations, automations and auxiliary tools"
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
+    at: 2026-09-28T06:22:45.949Z
 sources:
   - id: openwiki-source-c03bc4468425d8e7887133da
     resource: repo://apps/decodex-publisher/src/lib.rs
@@ -15,7 +15,7 @@ sources:
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-e9d609e612bb7e44111ec4b1
     resource: repo://crates/decodex-runtime/src/agent_integrations.rs
-generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+generated: { by: "codex", at: "2026-09-28T06:22:45.949Z" }
 ---
 
 
@@ -29,7 +29,7 @@ Plugin installation, MCP login, forms, resource links, and task references have 
 
 ## Automation boundary
 
-`automations/portfolio.toml` defines three managed native roles: the paused upstream Maintainer, Content Manager and Xurl Publisher. Desired configuration does not prove host registration or execution. The retired upstream Reviewer and Health roles are not active requirements. Agent follow-up events are a separate service behavior.
+`automations/portfolio.toml` defines three managed native roles: the active upstream Maintainer, Content Manager and Xurl Publisher. Desired configuration does not prove host registration or execution. The retired upstream Reviewer and Health roles are not active requirements. Agent follow-up events are a separate service behavior.
 
 ```sh
 python3 automations/decodex/scripts/config/render_automation_plan.py --json

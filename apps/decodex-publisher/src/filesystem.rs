@@ -928,9 +928,9 @@ fn clean_absolute_path_inner(source: &Path, depth: usize) -> Result<PathBuf> {
 							return clean_absolute_path_inner(&resolved, depth + 1);
 						},
 						Ok(metadata) => {
-							root_owned_prefix =
-								metadata.uid() == 0
-									&& metadata.is_dir() && metadata.permissions().mode() & 0o022 == 0;
+							root_owned_prefix = metadata.uid() == 0
+								&& metadata.is_dir()
+								&& metadata.permissions().mode() & 0o022 == 0;
 						},
 						Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
 							root_owned_prefix = false;

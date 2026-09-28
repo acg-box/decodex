@@ -138,7 +138,8 @@ impl AppServerClient {
 					Some(Value::Null) => return Ok(rows),
 					Some(Value::String(next))
 						if !next.is_empty()
-							&& next.len() <= 4096 && cursors.insert(next.clone()) =>
+							&& next.len() <= 4096
+							&& cursors.insert(next.clone()) =>
 						cursor = Some(next.clone()),
 					_ => return Err(ClientError::InvalidFrame),
 				}

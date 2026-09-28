@@ -573,7 +573,11 @@ fn reset_card_observation_semantically_equal(
 				&& quota_observation_semantically_equal(
 					&left.five_hour_quota,
 					&right.five_hour_quota,
-				) && quota_observation_semantically_equal(&left.seven_day_quota, &right.seven_day_quota),
+				)
+				&& quota_observation_semantically_equal(
+					&left.seven_day_quota,
+					&right.seven_day_quota,
+				),
 		(
 			Ok(ResetCardInventoryObservation::ObservationFailed(left)),
 			Ok(ResetCardInventoryObservation::ObservationFailed(right)),
@@ -583,7 +587,11 @@ fn reset_card_observation_semantically_equal(
 				&& quota_observation_semantically_equal(
 					&left.five_hour_quota,
 					&right.five_hour_quota,
-				) && quota_observation_semantically_equal(&left.seven_day_quota, &right.seven_day_quota)
+				)
+				&& quota_observation_semantically_equal(
+					&left.seven_day_quota,
+					&right.seven_day_quota,
+				)
 				&& left.error == right.error,
 		(Err(left), Err(right)) => left == right,
 		_ => false,

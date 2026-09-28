@@ -59,16 +59,24 @@ pub(super) fn known_voice(voice: &str) -> bool {
 	matches!(
 		voice,
 		"alloy"
-			| "arbor" | "ash"
+			| "arbor"
+			| "ash"
 			| "ballad"
 			| "breeze"
-			| "cedar" | "coral"
-			| "cove" | "echo"
-			| "ember" | "juniper"
-			| "maple" | "marin"
-			| "sage" | "shimmer"
-			| "sol" | "spruce"
-			| "vale" | "verse"
+			| "cedar"
+			| "coral"
+			| "cove"
+			| "echo"
+			| "ember"
+			| "juniper"
+			| "maple"
+			| "marin"
+			| "sage"
+			| "shimmer"
+			| "sol"
+			| "spruce"
+			| "vale"
+			| "verse"
 	)
 }
 

@@ -85,7 +85,8 @@ where
 		|| source().await.is_none_or(|after| {
 			after.key != before.key
 				|| after.client.connection_identity() != before.client.connection_identity()
-		}) || !settings.voices.iter().any(|v| v == voice)
+		})
+		|| !settings.voices.iter().any(|v| v == voice)
 	{
 		return Err(Rejected("Voice settings changed. Refresh the voice list."));
 	}

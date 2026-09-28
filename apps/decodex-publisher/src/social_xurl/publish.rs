@@ -836,7 +836,8 @@ fn prepare_identity_recovery(
 		|| attempt.calls.as_slice().last().is_none_or(|call| {
 			!matches!(call.operation.as_str(), "identity_read" | "identity_read_reconcile")
 				|| !matches!(call.status.as_str(), "inflight" | "failed" | "invalid" | "uncertain")
-		}) || attempt.calls.iter().any(|call| call.operation == "content_create")
+		})
+		|| attempt.calls.iter().any(|call| call.operation == "content_create")
 	{
 		return Err(eyre::eyre!(
 			"identity recovery requires one interrupted identity read and no create effect"
@@ -2153,10 +2154,12 @@ fn validate_verified_call_sequence(attempt: &XurlAttempt) -> Result<()> {
 		|| identity_calls.last().is_none_or(|call| {
 			!matches!(call.operation.as_str(), "identity_read" | "identity_read_reconcile")
 				|| call.status != "succeeded"
-		}) || identity_calls[..identity_calls.len() - 1].iter().any(|call| {
-		call.operation != "identity_read"
-			|| !matches!(call.status.as_str(), "failed" | "invalid" | "uncertain")
-	}) || read_calls.is_empty()
+		})
+		|| identity_calls[..identity_calls.len() - 1].iter().any(|call| {
+			call.operation != "identity_read"
+				|| !matches!(call.status.as_str(), "failed" | "invalid" | "uncertain")
+		})
+		|| read_calls.is_empty()
 		|| read_calls.len() > 3
 		|| read_calls.last().is_none_or(|call| {
 			!matches!(
@@ -2166,15 +2169,16 @@ fn validate_verified_call_sequence(attempt: &XurlAttempt) -> Result<()> {
 					| "post_read_retry"
 					| "post_read_reconcile"
 			) || call.status != "succeeded"
-		}) || read_calls[..read_calls.len() - 1].iter().any(|call| {
-		!matches!(
-			call.operation.as_str(),
-			"post_read_initial"
-				| "post_read_initial_reconcile"
-				| "post_read_retry"
-				| "post_read_reconcile"
-		) || !matches!(call.status.as_str(), "failed" | "invalid" | "uncertain")
-	}) {
+		})
+		|| read_calls[..read_calls.len() - 1].iter().any(|call| {
+			!matches!(
+				call.operation.as_str(),
+				"post_read_initial"
+					| "post_read_initial_reconcile"
+					| "post_read_retry"
+					| "post_read_reconcile"
+			) || !matches!(call.status.as_str(), "failed" | "invalid" | "uncertain")
+		}) {
 		return Err(eyre::eyre!("verified xurl attempt has an invalid paid-call sequence"));
 	}
 	let reserved = attempt

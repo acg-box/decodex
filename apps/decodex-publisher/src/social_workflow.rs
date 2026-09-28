@@ -502,10 +502,9 @@ fn recover_one_interrupted_effect(
 						&root,
 						&paths.reservations,
 						&typed.reservation_ref,
-					)?) || matches!(
-					status,
-					Some("create_inflight" | "create_uncertain" | "published")
-				) {
+					)?)
+					|| matches!(status, Some("create_inflight" | "create_uncertain" | "published"))
+				{
 					true
 				} else {
 					crate::social_xurl::terminal_publication_recovery(

@@ -517,10 +517,12 @@ impl SettingsSurface {
 											let mut pref = PanelDefaults::configured();
 											if sidebar {
 												pref.sidebar = (i32::from(pref.sidebar) + delta)
-													.clamp(160, 480) as u16;
+													.clamp(160, 480)
+													as u16;
 											} else {
 												pref.dock = (i32::from(pref.dock) + delta)
-													.clamp(120, 480) as u16;
+													.clamp(120, 480)
+													as u16;
 											}
 											pref.select(cx);
 										}))

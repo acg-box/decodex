@@ -265,7 +265,8 @@ fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyEle
 								conversation_id,
 								message,
 								..
-							} = &command.payload && outcome == Outcome::Completed
+							} = &command.payload
+								&& outcome == Outcome::Completed
 								&& shell.conversations.ordinary_editor_owner().as_ref()
 									== Some(conversation_id)
 								&& shell.composer.read(cx).content() == message.as_str()

@@ -160,9 +160,10 @@ impl AgentCoordinator {
 			|| config.cwd.is_empty()
 			|| config.agent_effort.as_ref().is_some_and(|effort| {
 				decodex_protocol::ConversationReasoningEffort::new(effort).is_err()
-			}) || config.worker_effort.as_ref().is_some_and(|effort| {
-			decodex_protocol::ConversationReasoningEffort::new(effort).is_err()
-		}) {
+			})
+			|| config.worker_effort.as_ref().is_some_and(|effort| {
+				decodex_protocol::ConversationReasoningEffort::new(effort).is_err()
+			}) {
 			return Err(AgentError::Invalid(
 				"valid model, optional effort and cwd required".into(),
 			));
@@ -331,7 +332,8 @@ impl AgentCoordinator {
 		if let Ok(Some(usage)) = self
 			.store
 			.read_agent_usage_observation(item.id.clone(), thread.clone(), turn.clone())
-			.await && let Ok(value) = serde_json::from_str::<Value>(&usage.payload)
+			.await
+			&& let Ok(value) = serde_json::from_str::<Value>(&usage.payload)
 		{
 			evidence["tokenUsage"] = value["tokenUsage"].clone();
 		}

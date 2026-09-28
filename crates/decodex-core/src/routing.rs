@@ -891,7 +891,8 @@ fn validated_quota_facts(
 		|| members.iter().enumerate().any(|(index, member)| member.position != index + 1)
 		|| members.iter().enumerate().any(|(index, member)| {
 			members[..index].iter().any(|prior| prior.account_id == member.account_id)
-		}) || members.iter().filter(|member| member.sticky).count() > 1
+		})
+		|| members.iter().filter(|member| member.sticky).count() > 1
 		|| members.iter().any(|member| {
 			(member.disposition == RoutingMemberDisposition::Excluded)
 				!= member.blockers.contains(&RoutingBlocker::ExcludedByPolicy)
@@ -975,9 +976,11 @@ fn quota_fact_current(fact: &RoutingDecisionQuotaFact, decided_at_micros: i64) -
 				&& fact.resets_at_provenance.as_ref().is_some_and(|value| {
 					provenance_complete(value, revision, fact.resets_at_micros)
 				})
-		}) && fact.observed_at_micros.is_some_and(|observed| {
-		observed <= decided_at_micros && decided_at_micros - observed <= 300_000_000
-	}) && fact.resets_at_micros.is_some_and(|resets| resets > decided_at_micros)
+		})
+		&& fact.observed_at_micros.is_some_and(|observed| {
+			observed <= decided_at_micros && decided_at_micros - observed <= 300_000_000
+		})
+		&& fact.resets_at_micros.is_some_and(|resets| resets > decided_at_micros)
 }
 
 fn is_depletion_blocker(blocker: RoutingBlocker) -> bool {

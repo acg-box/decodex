@@ -332,7 +332,8 @@ pub(super) fn panel(shell: &Shell, cx: &mut Context<Shell>) -> Option<AnyElement
 				let descriptor = card.descriptor;
 				let revision = *account_revision;
 				let can_use = !state.blocked
-					&& !busy && *details_complete
+					&& !busy
+					&& *details_complete
 					&& descriptor.expires_at_unix_seconds()
 						> time::OffsetDateTime::now_utc().unix_timestamp();
 				content = content.child(
@@ -406,10 +407,12 @@ pub(super) fn panel(shell: &Shell, cx: &mut Context<Shell>) -> Option<AnyElement
 								true,
 							)
 							.debug_selector(|| "reset-cancel".into())
-							.on_click(cx.listener(|shell, _, _, cx| {
-								shell.reset_cards.confirmation = None;
-								cx.notify();
-							})),
+							.on_click(cx.listener(
+								|shell, _, _, cx| {
+									shell.reset_cards.confirmation = None;
+									cx.notify();
+								},
+							)),
 						),
 				),
 		);

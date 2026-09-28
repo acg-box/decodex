@@ -92,7 +92,8 @@ impl AgentCoordinator {
 					&& let Some(native_turn) =
 						history.pointer("/thread/turns").and_then(Value::as_array).and_then(
 							|turns| turns.iter().find(|value| value["id"].as_str() == Some(turn)),
-						) && native_turn["status"] == "failed"
+						)
+					&& native_turn["status"] == "failed"
 					&& native_turn["error"]["codexErrorInfo"] == "misalignmentPolicyViolation"
 				{
 					self.store

@@ -276,7 +276,8 @@ impl State {
 			_ => ConversationCreationReceiptResult::Unavailable,
 		};
 		if let ConversationCreationReceiptResult::Recorded { conversation_id, creation_revision } =
-			&result && (conversation_id != &request.conversation_id || creation_revision.0 == 0)
+			&result
+			&& (conversation_id != &request.conversation_id || creation_revision.0 == 0)
 		{
 			return (ConversationRouteOutcome::Refused, false);
 		}

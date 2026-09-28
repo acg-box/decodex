@@ -2023,8 +2023,9 @@ impl ConversationRuntime {
 						plan.plan.source_runtime_session_revision,
 					),
 					turn_id: command.turn_id.clone(),
-				}) || plan.plan.fallback_runtime_session_id.as_ref()
-			!= Some(&runtime_session.runtime_session_id)
+				})
+			|| plan.plan.fallback_runtime_session_id.as_ref()
+				!= Some(&runtime_session.runtime_session_id)
 			|| runtime_session.conversation_id != command.conversation_id
 			|| runtime_session.state != RuntimeSessionState::Starting
 			|| runtime_session.revision != 1
@@ -2526,7 +2527,8 @@ impl ConversationRuntime {
 							plan.runtime_session.as_ref().is_some_and(|session| {
 								session.conversation_id == plan.plan.conversation_id
 									&& session.state == RuntimeSessionState::Starting
-									&& session.revision == 1 && session.codex_thread_id.is_none()
+									&& session.revision == 1
+									&& session.codex_thread_id.is_none()
 									&& session.account_snapshot.source_account_id
 										== plan.plan.selected_account_id
 							}) && plan.fallback_context_pack.is_some(),
