@@ -260,7 +260,7 @@ impl AgentSurface {
 		};
 		let icon = panel_icon(&id);
 		let icon_only = icon.is_some();
-		let show_tip = icon_only || is_tab || id.starts_with("attention-");
+		let show_tip = icon_only || id.starts_with("attention-");
 		let tip = accessible.clone();
 		let action = std::rc::Rc::new(action);
 		let keyboard = action.clone();
@@ -285,7 +285,7 @@ impl AgentSurface {
 			})
 			.rounded(px(5.0))
 			.cursor_pointer()
-			.when(!is_tree, |button| {
+			.when(!is_tree && !is_tab, |button| {
 				button.hover(move |s| {
 					s.bg(rgba(if active {
 						ui_theme::SELECTED_HOVER_FILL
@@ -304,6 +304,17 @@ impl AgentSurface {
 			}))
 			.when(is_tree, |button| {
 				button.px_0().py_0().h(px(ui_theme::TREE_ROW_HEIGHT)).w_full().min_w_0()
+			})
+			.when(is_tab, |button| {
+				button
+					.h(px(26.))
+					.py_0()
+					.px(px(10.))
+					.max_w(px(160.))
+					.text_size(px(12.))
+					.line_height(px(18.))
+					.text_color(rgb(if active { ui_theme::TEXT } else { ui_theme::TEXT_MUTED }))
+					.hover(|style| style.text_color(rgb(ui_theme::TEXT)))
 			})
 			.when(is_event || is_prompt, |button| button.w_full().min_w_0())
 			.child(if let Some(icon) = icon {
@@ -460,27 +471,56 @@ impl AgentSurface {
 			let active =
 				self.selected.as_ref() == Some(&id) || (!closable && self.selected.is_none());
 			let select = id.clone();
+			let group = SharedString::from(format!("conversation-tab-{id}"));
 			let mut tab = div()
+				.id(group.clone())
+				.group(group.clone())
 				.flex_none()
 				.flex()
 				.items_center()
-				.h(px(28.))
-				.rounded(px(8.))
-				.when(active, |tab| tab.bg(rgba(0xffffff0d)))
+				.h(px(26.))
+				.rounded(px(7.))
+				.when(active, |tab| tab.bg(rgba(0xffffff0b)))
+				.hover(move |style| style.bg(rgba(if active { 0xffffff10 } else { 0xffffff06 })))
 				.child(self.workspace_action(
 					format!("page-{id}"),
-					label,
+					label.clone(),
 					move |s, cx| s.open_page(&select, cx),
 					cx,
 				));
 			if closable {
 				let close = id.clone();
-				tab = tab.child(self.workspace_action(
-					format!("close-{id}"),
-					"×".into(),
-					move |s, cx| s.close_page(&close, cx),
-					cx,
-				));
+				let keyboard = close.clone();
+				tab = tab.child(
+					div()
+						.id(SharedString::from(format!("close-{id}")))
+						.role(Role::Button)
+						.tab_index(0)
+						.aria_label(format!("Close {label}"))
+						.size(px(20.))
+						.mr(px(3.))
+						.rounded(px(5.))
+						.flex()
+						.items_center()
+						.justify_center()
+						.cursor_pointer()
+						.opacity(if active { 0.65 } else { 0.0 })
+						.group_hover(group, |style| style.opacity(1.))
+						.focus(|style| style.opacity(1.))
+						.hover(|style| style.bg(rgba(0xffffff10)))
+						.child(super::super::workspace_symbols::icon(
+							super::super::workspace_symbols::Symbol::Close,
+						))
+						.on_click(cx.listener(move |s, _, _, cx| s.close_page(&close, cx)))
+						.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+							if !event.is_held
+								&& ["enter", "space"].contains(&event.keystroke.key.as_str())
+							{
+								s.close_page(&keyboard, cx);
+								cx.stop_propagation();
+							}
+						})),
+				);
 			}
 			row = row.child(tab);
 		}
