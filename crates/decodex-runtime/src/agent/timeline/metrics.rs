@@ -32,6 +32,18 @@ pub(crate) async fn enrich(
 				.filter(|u| {
 					u.input_tokens <= i64::MAX as u64 && u.output_tokens <= i64::MAX as u64
 				});
+			if let Some(usage) = usage {
+				usage.details = Some(usage_details(
+					saved
+						.iter()
+						.find(|saved| &saved.turn_id == turn_id)
+						.and_then(|saved| saved.observation_json.as_deref()),
+					responses
+						.iter()
+						.find(|row| &row.turn_id == turn_id)
+						.map(|row| row.observed_count as u64),
+				));
+			}
 			let tokens = saved.iter().find(|saved| &saved.turn_id == turn_id).and_then(summary);
 			let response = response_summary(&responses, turn_id);
 			let parts = [tokens, response].into_iter().flatten().collect::<Vec<_>>();
@@ -39,6 +51,25 @@ pub(crate) async fn enrich(
 		}
 	}
 	Ok(())
+}
+
+fn usage_details(
+	observation: Option<&str>,
+	responses: Option<u64>,
+) -> decodex_protocol::AgentUsageDetailsDto {
+	let mut details = decodex_protocol::AgentUsageDetailsDto { responses, ..Default::default() };
+	if let Some(usage) = observation
+		.and_then(|json| serde_json::from_str::<decodex_codex::ThreadTokenUsage>(json).ok())
+		.filter(|usage| usage.is_valid())
+	{
+		details.last_input = Some(usage.last.input_tokens);
+		details.cached_input = Some(usage.last.cached_input_tokens);
+		details.last_output = Some(usage.last.output_tokens);
+		details.reasoning_output = Some(usage.last.reasoning_output_tokens);
+		details.thread_total = Some(usage.total.total_tokens);
+		details.context_capacity = usage.model_context_window;
+	}
+	details
 }
 
 fn response_summary(
@@ -102,6 +133,23 @@ fn summary(saved: &decodex_database::AgentTurnMetrics) -> Option<String> {
 mod tests {
 	use super::*;
 	use serde_json::json;
+	#[test]
+	fn structured_details_keep_response_totals_separate_and_missing_values_unknown() {
+		let missing = usage_details(None, Some(2));
+		assert_eq!(missing.responses, Some(2));
+		assert_eq!(missing.last_input, None);
+		let counts = json!({"totalTokens":63197,"inputTokens":63045,"cachedInputTokens":62592,"outputTokens":152,"reasoningOutputTokens":85});
+		let value = json!({"last":counts,"total":{"totalTokens":2759729,"inputTokens":2700000,"cachedInputTokens":2000000,"outputTokens":59729,"reasoningOutputTokens":0},"modelContextWindow":380000}).to_string();
+		let details = usage_details(Some(&value), Some(2));
+		assert_eq!(details.last_input, Some(63045));
+		assert_eq!(details.cached_input, Some(62592));
+		assert_eq!(details.last_output, Some(152));
+		assert_eq!(details.reasoning_output, Some(85));
+		assert_eq!(details.thread_total, Some(2759729));
+		assert_eq!(details.context_capacity, Some(380000));
+		assert_eq!(usage_details(Some("{}"), None).last_output, None);
+	}
+
 	#[test]
 	fn response_amounts_preserve_precision_and_missing_values_without_currency_assumptions() {
 		let rows = vec![

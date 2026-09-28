@@ -5311,6 +5311,7 @@ fn agent_history_entry(
 				serde_json::from_value(value.pointer("/threadReadback/tokenUsage")?.clone())
 					.ok()?;
 			usage.is_valid().then_some(decodex_protocol::AgentTurnUsageDto {
+				details: None,
 				input_tokens: usage.last.input_tokens,
 				output_tokens: usage.last.output_tokens,
 			})

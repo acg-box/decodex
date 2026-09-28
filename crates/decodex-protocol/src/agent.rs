@@ -189,10 +189,32 @@ pub struct AgentLiveMessageDto {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentTurnUsageDto {
+	/// Optional structured observations for the response details popover.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub details: Option<AgentUsageDetailsDto>,
 	/// Input tokens, including cached input.
 	pub input_tokens: u64,
 	/// Output tokens, including reasoning.
 	pub output_tokens: u64,
+}
+
+/// Observed last-response counters, distinct from whole-turn and thread totals.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct AgentUsageDetailsDto {
+	/// Last response input, including cached input.
+	pub last_input: Option<u64>,
+	/// Cached input, a subset of last response input.
+	pub cached_input: Option<u64>,
+	/// Last response output, including reasoning.
+	pub last_output: Option<u64>,
+	/// Reasoning output, a subset of last response output.
+	pub reasoning_output: Option<u64>,
+	/// Lifetime tokens observed for this thread, not context occupancy.
+	pub thread_total: Option<u64>,
+	/// Provider-reported maximum context capacity.
+	pub context_capacity: Option<u64>,
+	/// Number of provider responses observed during this turn.
+	pub responses: Option<u64>,
 }
 
 /// Latest provider-observed conversation usage. Counts are cumulative, not per message.
