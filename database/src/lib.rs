@@ -1,6 +1,7 @@
 #![allow(missing_docs)] // Internal persistence DTOs are defined by the schema and owner APIs.
 //! Bundled SQLite product-state authority for local Decodex.
 
+mod account_alias;
 mod account_lifecycle;
 mod account_profiles;
 mod account_usage;

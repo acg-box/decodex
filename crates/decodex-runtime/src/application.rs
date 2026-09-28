@@ -73,7 +73,7 @@ use crate::{
 	account_service::{
 		AccountLifecycleError, AccountManualRecoveryAction, AccountManualRecoveryOutcome,
 		AccountRouteCommit, AccountRouteFailure, AccountRouteResult, AccountService,
-		CodexAuthProjectionInspection, stable_account_alias,
+		CodexAuthProjectionInspection,
 	},
 	conversation::{
 		ControlConversation, ConversationCapability, ConversationControlOutcome,
@@ -3532,11 +3532,7 @@ fn account_dto(account: AccountRecord) -> Result<AccountDto, ()> {
 	if account.tombstoned {
 		return Err(());
 	}
-	let alias = account
-		.credential
-		.as_ref()
-		.map(|binding| stable_account_alias(&binding.provider))
-		.unwrap_or_else(|| account.label.clone());
+	let alias = account.label.clone();
 	let credential = account
 		.credential
 		.map(|binding| {

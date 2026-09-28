@@ -54,170 +54,10 @@ const ROUTE_MINIMUM_ACCESS_TOKEN_VALIDITY: Duration = Duration::from_secs(20);
 const MAX_REFRESH_ERROR_BODY_BYTES: u64 = 4_096;
 const PROVIDER_REFRESH_OUTCOME_UNKNOWN: &str = "provider_refresh_outcome_unknown";
 const TOMBSTONE_ENROLLMENT_COLLISION: &str = "tombstone_enrollment_collision";
-const ACCOUNT_ALIAS_DOMAIN: &[u8] = b"decodex/account-alias/v2\0";
 const CODEX_AUTH_PROJECTION_DOMAIN: &[u8] = b"decodex/codex-auth-projection/v1\0";
 const SHARED_AUTH_IMPORT_OPERATION_DOMAIN: &[u8] = b"decodex/shared-auth-import-operation/v1\0";
-const ACCOUNT_ALIAS_WORDS: [&str; 44] = [
-	"Alex", "Avery", "Bailey", "Blake", "Casey", "Charlie", "Clara", "Dana", "Drew", "Eden",
-	"Elliot", "Emery", "Evan", "Finley", "Harper", "Hayden", "Iris", "Jamie", "Jordan", "Kai",
-	"Kendall", "Lane", "Liam", "Logan", "Mason", "Maya", "Mia", "Morgan", "Noah", "Nora", "Owen",
-	"Paige", "Parker", "Quinn", "Reese", "Remy", "Riley", "Rowan", "Sage", "Sasha", "Sidney",
-	"Taylor", "Theo", "Val",
-];
-
-// Keep these tables ordered: the provider account ID deterministically selects a name.
-const ACCOUNT_ALIAS_SURNAMES: &[&str] = &[
-	"Abbott",
-	"Adler",
-	"Archer",
-	"Ashford",
-	"Ashton",
-	"Atwood",
-	"Baldwin",
-	"Bancroft",
-	"Barrett",
-	"Baxter",
-	"Bellamy",
-	"Bennett",
-	"Benson",
-	"Bishop",
-	"Blair",
-	"Blake",
-	"Bowen",
-	"Bradley",
-	"Brooks",
-	"Browning",
-	"Bryant",
-	"Burke",
-	"Callahan",
-	"Campbell",
-	"Carson",
-	"Carter",
-	"Chandler",
-	"Clark",
-	"Collins",
-	"Cooper",
-	"Crawford",
-	"Dalton",
-	"Dawson",
-	"Delaney",
-	"Donovan",
-	"Douglas",
-	"Duncan",
-	"Easton",
-	"Ellis",
-	"Emerson",
-	"Everett",
-	"Fairfax",
-	"Fletcher",
-	"Flynn",
-	"Ford",
-	"Foster",
-	"Fox",
-	"Franklin",
-	"Gardner",
-	"Gibson",
-	"Graham",
-	"Grant",
-	"Gray",
-	"Griffin",
-	"Hale",
-	"Hamilton",
-	"Harlow",
-	"Harper",
-	"Harrison",
-	"Hart",
-	"Hayes",
-	"Henderson",
-	"Holden",
-	"Holland",
-	"Hudson",
-	"Hughes",
-	"Hunter",
-	"Irving",
-	"Jackson",
-	"James",
-	"Jensen",
-	"Jordan",
-	"Keaton",
-	"Keller",
-	"Kennedy",
-	"King",
-	"Knight",
-	"Lane",
-	"Lawson",
-	"Lennox",
-	"Lewis",
-	"Lincoln",
-	"Logan",
-	"Lowe",
-	"Maddox",
-	"Marshall",
-	"Mason",
-	"Maxwell",
-	"Mercer",
-	"Miller",
-	"Monroe",
-	"Morgan",
-	"Morris",
-	"Nash",
-	"Nelson",
-	"Nolan",
-	"Oakley",
-	"Oliver",
-	"Palmer",
-	"Parker",
-	"Pierce",
-	"Porter",
-	"Prescott",
-	"Quinn",
-	"Reed",
-	"Reeves",
-	"Reynolds",
-	"Rhodes",
-	"Riley",
-	"Rivera",
-	"Rowan",
-	"Russell",
-	"Sawyer",
-	"Scott",
-	"Shaw",
-	"Sinclair",
-	"Spencer",
-	"Sterling",
-	"Stone",
-	"Sullivan",
-	"Sutton",
-	"Taylor",
-	"Turner",
-	"Vaughn",
-	"Walker",
-	"Warren",
-	"Wells",
-	"Wilder",
-];
-
-/// Derive the stable public account alias from the canonical credential-negative provider binding.
 pub(crate) fn stable_account_alias(provider: &ProviderIdentity) -> String {
-	let provider_kind = match provider.provider() {
-		AccountProvider::Chatgpt => b"chatgpt".as_slice(),
-	};
-	let digest = Sha256::new()
-		.chain_update(ACCOUNT_ALIAS_DOMAIN)
-		.chain_update(provider_kind)
-		.chain_update(b"\0")
-		.chain_update(provider.account_id().as_bytes())
-		.finalize();
-	let selector = u64::from_be_bytes([
-		digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
-	]);
-	let word_count =
-		u64::try_from(ACCOUNT_ALIAS_WORDS.len()).expect("account alias word count fits u64");
-	let index =
-		usize::try_from(selector % word_count).expect("account alias word index fits usize");
-	let surname_seed = u64::from_be_bytes(digest[8..16].try_into().expect("digest segment"));
-	let surname = ACCOUNT_ALIAS_SURNAMES[surname_seed as usize % ACCOUNT_ALIAS_SURNAMES.len()];
-	format!("{} {surname}", ACCOUNT_ALIAS_WORDS[index])
+	decodex_core::account_alias_candidate(provider, 0)
 }
 
 fn codex_auth_projection_digest(account: &AccountRecord, binding: &CredentialBinding) -> String {
@@ -5392,10 +5232,10 @@ mod tests {
 	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
 	use super::process_test_refresh_endpoint_is_safe;
 	use super::{
-		ACCOUNT_ALIAS_WORDS, AccountLifecycleError, AccountService, CodexAuthProjectionError,
-		CredentialImportError, CredentialRefreshError, CredentialRefreshPort,
-		CredentialRefreshResult, CredentialSecretBundle, CredentialStoreError, HostCredentialStore,
-		ImportedCredential, PROVIDER_REFRESH_OUTCOME_UNKNOWN, PreparedRefreshReconciliation,
+		AccountLifecycleError, AccountService, CodexAuthProjectionError, CredentialImportError,
+		CredentialRefreshError, CredentialRefreshPort, CredentialRefreshResult,
+		CredentialSecretBundle, CredentialStoreError, HostCredentialStore, ImportedCredential,
+		PROVIDER_REFRESH_OUTCOME_UNKNOWN, PreparedRefreshReconciliation,
 		ReauthenticationReplayDisposition, RefreshResponse, accepted_phase,
 		access_token_needs_refresh, account_lock_for, callback_uses_current_successor,
 		classify_prepared_refresh_reconciliation, classify_reauthentication_replay,
@@ -5410,7 +5250,7 @@ mod tests {
 	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
 	use super::{REFRESH_ENDPOINT, refresh_endpoint};
 	use std::{
-		collections::{HashMap, HashSet},
+		collections::HashMap,
 		fs,
 		io::{Read as _, Write as _},
 		net::TcpListener,
@@ -6310,27 +6150,6 @@ mod tests {
 			classify_refresh_transport_failure(&dropped_error),
 			CredentialRefreshError::Ambiguous
 		);
-	}
-
-	#[test]
-	fn stable_alias_uses_the_canonical_provider_binding_vector() {
-		let provider =
-			ProviderIdentity::new(AccountProvider::Chatgpt, "433463f7-74ae-4a7e-ab10-9667f9e4919e")
-				.unwrap();
-
-		assert_eq!(stable_account_alias(&provider), "Val Gray");
-	}
-
-	#[test]
-	fn stable_alias_word_table_is_closed_unique_and_canonical() {
-		assert_eq!(ACCOUNT_ALIAS_WORDS.len(), 44);
-		assert_eq!(ACCOUNT_ALIAS_WORDS.iter().copied().collect::<HashSet<_>>().len(), 44);
-		assert!(ACCOUNT_ALIAS_WORDS.iter().all(|word| {
-			let bytes = word.as_bytes();
-			(2..=16).contains(&bytes.len())
-				&& bytes[0].is_ascii_uppercase()
-				&& bytes[1..].iter().all(u8::is_ascii_lowercase)
-		}));
 	}
 
 	#[tokio::test]

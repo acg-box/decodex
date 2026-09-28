@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MIGRATIONS = (
     (48, "agent_baseline", ROOT / "database/migrations/0048_agent_baseline.sql"),
     (49, "native_settings_and_model_source", ROOT / "database/migrations/0049_native_settings_and_model_source.sql"),
+    (50, "unique_account_names", ROOT / "database/migrations/0050_unique_account_names.sql"),
 )
 
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")

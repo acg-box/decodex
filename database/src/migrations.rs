@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 49;
+const CURRENT_SCHEMA_VERSION: i64 = 50;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -25,6 +25,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 49,
 		name: "native_settings_and_model_source",
 		sql: include_str!("../migrations/0049_native_settings_and_model_source.sql"),
+	},
+	Migration {
+		version: 50,
+		name: "unique_account_names",
+		sql: include_str!("../migrations/0050_unique_account_names.sql"),
 	},
 ];
 
@@ -73,6 +78,9 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> 
 			.transaction_with_behavior(TransactionBehavior::Immediate)
 			.map_err(sqlite_error)?;
 		transaction.execute_batch(migration.sql).map_err(sqlite_error)?;
+		if migration.version == 50 {
+			crate::account_alias::migrate_names(&transaction)?;
+		}
 		transaction
 			.execute(
 				"INSERT INTO schema_migrations (version, name, sha256, applied_at_micros)
@@ -251,3 +259,7 @@ mod initial_model_source_tests;
 #[cfg(test)]
 #[path = "misalignment_voice_migration_tests.rs"]
 mod misalignment_voice_tests;
+
+#[cfg(test)]
+#[path = "account_alias_migration_tests.rs"]
+mod account_alias_tests;

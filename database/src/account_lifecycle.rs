@@ -1335,10 +1335,8 @@ fn commit_account_operation(
 			{
 				return Ok(Some(AccountLifecycleRejection::StaleAccount));
 			}
-			let label = operation
-				.requested_display_label
-				.as_ref()
-				.ok_or(StoreError::InvalidInput("account label is absent"))?;
+			let label = crate::account_alias::for_enrollment(connection, &target.provider)
+				.map_err(StoreError::from)?;
 			let enabled = operation
 				.requested_enabled
 				.ok_or(StoreError::InvalidInput("account enablement is absent"))?;
