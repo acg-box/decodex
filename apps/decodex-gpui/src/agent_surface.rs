@@ -37,6 +37,7 @@
 #[path = "agent_recap.rs"] mod recap;
 #[path = "agent_requests.rs"] mod requests;
 #[path = "agent_resources.rs"] mod resources;
+#[path = "agent_response_metrics.rs"] mod response_metrics;
 #[path = "agent_saved_app_settings.rs"] mod saved_app_settings;
 #[path = "agent_selectable_text.rs"] mod selectable_text;
 #[path = "agent_steer_receipts.rs"] mod steer_receipts;
@@ -2164,8 +2165,8 @@ fn history_entry_with_metrics(
 						div()
 							.mt(px(ui_theme::METADATA_GAP))
 							.flex()
-							.items_start()
-							.gap(px(8.))
+							.items_center()
+							.gap(px(2.))
 							.child(
 								metrics.unwrap_or_else(|| reply_metrics(entry).into_any_element()),
 							)
@@ -2208,49 +2209,14 @@ pub(crate) fn compact_tokens(value: u64) -> String {
 	format!("{}{suffix}", text.trim_end_matches(".0"))
 }
 
-struct ReplyMetricsTip(String);
-impl Render for ReplyMetricsTip {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		div()
-			.px_3()
-			.py_2()
-			.rounded(px(8.))
-			.bg(rgb(0x242429))
-			.text_size(px(ui_theme::CAPTION_SIZE))
-			.text_color(rgb(ui_theme::TEXT))
-			.child(self.0.clone())
-	}
-}
 fn reply_metrics(entry: &decodex_protocol::AgentHistoryEntryDto) -> impl IntoElement {
-	let label = entry
-		.duration_ms
-		.map(|duration| {
-			if duration >= 60_000 {
-				format!("Worked for {}m {}s", duration / 60_000, duration % 60_000 / 1000)
-			} else {
-				format!("Worked for {:.1}s", duration as f64 / 1000.0)
-			}
-		})
-		.unwrap_or_else(|| "Details".into());
-	div()
-		.id(SharedString::from(format!("reply-details-{}", entry.id)))
-		.h(px(24.))
-		.flex()
-		.items_center()
-		.gap(px(4.))
-		.text_size(px(ui_theme::CAPTION_SIZE))
-		.text_color(rgb(ui_theme::TEXT_MUTED))
-		.when(entry.duration_ms.is_some() || entry.usage.is_some(), |row| row.child(label))
-		.when_some(entry.usage.as_ref(), |row, usage| {
-			let detail = format!(
-				"In {} · Out {} tokens",
-				compact_tokens(usage.input_tokens),
-				compact_tokens(usage.output_tokens)
-			);
-			row.child("›")
-				.hover(|s| s.text_color(rgb(ui_theme::TEXT)))
-				.tooltip(move |_, cx| cx.new(|_| ReplyMetricsTip(detail.clone())).into())
-		})
+	response_metrics::ResponseMetrics {
+		key: format!("local-{}", entry.id),
+		duration_ms: entry.duration_ms,
+		status: None,
+		usage: entry.usage.clone(),
+		diagnostics: None,
+	}
 }
 
 impl AgentSurface {}
