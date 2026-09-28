@@ -8,7 +8,7 @@ use std::{
 // Use the approved logo silhouette, including its lightning and cursor cutouts.
 static CLOUD: LazyLock<Arc<Image>> = LazyLock::new(|| {
 	let svg = include_str!("../../../assets/app-icon/liquid-glass/01-mercury-cloud/AppIcon.icon/Assets/shape-0.svg")
-        .replace("<g transform", r##"<defs><linearGradient id="glass" x1="0" y1="0" x2="0.7" y2="1"><stop stop-color="#d9faff"/><stop offset=".42" stop-color="#63d2f1"/><stop offset=".72" stop-color="#159fd6"/><stop offset="1" stop-color="#8de5fa"/></linearGradient></defs><g transform"##)
+        .replace("<g transform", r##"<defs><linearGradient id="glass" x1="0" y1="0" x2="0.7" y2="1"><stop stop-color="#edf4f6"/><stop offset=".42" stop-color="#c6dde6"/><stop offset=".72" stop-color="#91b8ca"/><stop offset="1" stop-color="#d8e9ed"/></linearGradient></defs><g transform"##)
         .replace(r#"fill="white""#, r##"fill="url(#glass)" stroke="#d2f2ff" stroke-opacity=".45" stroke-width="6""##);
 	Arc::new(Image::from_bytes(ImageFormat::Svg, svg.into_bytes()))
 });
@@ -115,9 +115,9 @@ impl RenderOnce for Working {
 										b,
 										linear_gradient(
 											155.,
-											linear_color_stop(rgba(0xdff7ffff).opacity(alpha), 0.),
+											linear_color_stop(rgba(0xe8f3f8ff).opacity(alpha), 0.),
 											linear_color_stop(
-												rgba(0x42bde9ff).opacity(alpha * 0.7),
+												rgba(0x9ec8d9ff).opacity(alpha * 0.7),
 												1.,
 											),
 										),
