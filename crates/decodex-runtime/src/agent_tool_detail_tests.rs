@@ -149,11 +149,29 @@ fn image_path_and_app_context_are_descriptive_native_evidence() {
 		assert!(text.contains(expected), "{expected}");
 	}
 	assert!(!text.contains("DO_NOT_RENDER"));
-	assert!(!text.contains("ARGUMENT_MUST_NOT_AUTHORIZE"));
+	assert!(text.contains("\"link_id\": \"ARGUMENT_MUST_NOT_AUTHORIZE\""));
+	assert!(
+		!text.contains("Link: ARGUMENT_MUST_NOT_AUTHORIZE"),
+		"input is not authoritative App metadata"
+	);
 	let mut partial = item;
 	partial["appContext"] = json!({"appName":"Calendar","linkId":false,"resourceUri":null});
 	let text = project_text(&history(partial), "thread", "turn", "item").unwrap();
 	assert!(text.contains("App: Calendar"));
 	assert!(!text.contains("Link:"));
 	assert!(!text.contains("Resource:"));
+}
+
+#[test]
+fn dynamic_inputs_are_readable_without_exposing_sensitive_arguments() {
+	let item = json!({"id":"item","type":"dynamicToolCall","tool":"read","arguments":{"path":"src/main.rs","lines":10},"contentItems":[{"type":"text","text":"Result"}]});
+	let text = project_text(&history(item.clone()), "thread", "turn", "item").unwrap();
+	assert!(text.contains("Input\n{\n"));
+	assert!(text.contains("src/main.rs"));
+	let mut sensitive = item;
+	sensitive["arguments"] = json!({"token":"Bearer fixture-private-access-token-123456789"});
+	let text = project_text(&history(sensitive), "thread", "turn", "item").unwrap();
+	assert!(!text.contains("fixture-private-access-token"));
+	assert!(text.contains("[Sensitive content omitted]"));
+	assert!(text.contains("Result"));
 }

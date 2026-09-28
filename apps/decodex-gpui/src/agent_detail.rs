@@ -84,7 +84,12 @@ impl AgentSurface {
 				let first_ids = ids.clone();
 				let next_ids = ids.clone();
 				div()
-					.child(text.clone())
+					.child(super::selectable_text::SelectableText {
+						key: format!("detail-text-{key}-{offset}"),
+						text: text.clone(),
+						highlights: Vec::new(),
+						links: Vec::new(),
+					})
 					.when(*offset > 0, |d| {
 						d.child(self.workspace_action(
 							"detail-first".into(),
@@ -139,15 +144,27 @@ impl AgentSurface {
 				expanded,
 				div()
 					.id(SharedString::from(format!("detail-scroll-{key}")))
+					.flex()
+					.flex_col()
+					.gap(px(8.))
 					.max_h(px(280.))
 					.overflow_y_scroll()
 					.p(px(10.))
 					.rounded(px(7.))
 					.bg(rgba(0x10101445))
 					.font_family("Menlo")
-					.text_size(px(10.5))
+					.text_size(px(11.5))
 					.line_height(px(16.))
 					.text_color(rgb(ui_theme::TEXT))
+					.child(super::selectable_text::SelectableText {
+						key: format!("detail-metadata-{key}"),
+						text: format!(
+							"{} · {}\nTurn {}\nCall {}",
+							item.kind, item.status, item.turn_id, item.item_id
+						),
+						highlights: Vec::new(),
+						links: Vec::new(),
+					})
 					.child(body),
 			))
 			.into_any_element()
