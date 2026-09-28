@@ -98,6 +98,7 @@ impl AgentSurface {
 			self.history_hover = None;
 			self.history_navigation = None;
 			self.history_marks_work = work;
+			self.history_marks_revision = None;
 		}
 		if native {
 			self.prepare_native_history_marks();
@@ -167,6 +168,11 @@ impl AgentSurface {
 		let Some(binding) = &self.native_history.binding else {
 			return;
 		};
+		let revision = (self.native_history.epoch, self.native_history.revision);
+		if self.history_marks_revision == Some(revision) {
+			return;
+		}
+		self.history_marks_revision = Some(revision);
 		self.transcript_scroll.entry(binding.work.clone()).or_default();
 		let mut retained = std::collections::BTreeSet::new();
 		let mut current = None;
@@ -953,6 +959,7 @@ mod tests {
 			assert_eq!(s.history_selected.as_ref(), Some(&keys[0]));
 			assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(keys[0].clone()));
 			s.native_history.entries.remove(0);
+			s.native_history.revision += 1;
 			cx.notify();
 		});
 		visual.update(|window, cx| {
@@ -963,6 +970,68 @@ mod tests {
 			assert!(!s.history_marks.contains_key(&keys[0]));
 			assert!(s.history_marks.contains_key(&keys[1]));
 		});
+	}
+
+	#[gpui::test]
+	#[ignore = "Manual CPU draw benchmark; use --release, not a GPU FPS measurement"]
+	fn long_history_scroll_draw_benchmark(cx: &mut gpui::TestAppContext) {
+		use decodex_protocol::{AgentTimelineContent as Content, AgentTimelineEntry};
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(900.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.graph_visible = false;
+			let work = s.snapshot.as_mut().unwrap().work_items.iter_mut().find(|w| w.id == "agent").unwrap();
+			work.codex_thread_id = Some("benchmark-thread".into());
+			let entries = (0..300).map(|i| AgentTimelineEntry {
+				position: i,
+				content: if i % 3 == 2 { Content::TurnBoundary {
+					turn_id: format!("turn-{}", i / 3), completed: true, status: Some("completed".into()),
+					duration_ms: Some(3200), usage: None, usage_summary: None, error: None,
+				} } else { Content::Item {
+					app_ui: false,
+					turn_id: format!("turn-{}", i / 3), item_id: format!("message-{i}"),
+					kind: if i % 3 == 0 { "userMessage" } else { "agentMessage" }.into(),
+					text: format!("## Message {i}\n\n{}", "Review **the result** and `src/main.rs`.\n\n- Keep history readable.\n- Preserve the scroll position.\n\n".repeat(4)),
+					truncated: false, activity: None, attachments: vec![],
+				} },
+			}).collect();
+			assert!(s.native_history.replace(super::super::native_timeline::Binding {
+				work: "agent".into(), thread: "benchmark-thread".into(), account: "benchmark".into(),
+			}, decodex_protocol::AgentTimelinePage {
+				thread_id: "benchmark-thread".into(), entries, next_cursor: None,
+				weather: Default::default(), active_realtime_session_at_page_start: None,
+			}));
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		let mut samples = Vec::new();
+		let mut maximum = None;
+		for frame in 0..70 {
+			surface.update(visual, |s, cx| {
+				s.latest_follow_work = None;
+				s.history_follow_paused.insert("agent".into());
+				s.transcript_scroll["agent"]
+					.set_offset(point(px(0.), px(-2000. - frame as f32 * 17.)));
+				cx.notify();
+			});
+			let start = std::time::Instant::now();
+			visual.update(|w, cx| w.draw(cx).clear());
+			if frame >= 10 {
+				samples.push(start.elapsed().as_secs_f64() * 1000.);
+				let current =
+					surface.read_with(visual, |s, _| s.transcript_scroll["agent"].max_offset().y);
+				if let Some(expected) = maximum {
+					assert_eq!(current, expected, "windowing must retain exact scroll extent");
+				}
+				maximum = Some(current);
+			}
+		}
+		samples.sort_by(f64::total_cmp);
+		eprintln!(
+			"scroll draw CPU, 300 entries, 60 warm frames: median={:.3}ms p95={:.3}ms max={:.3}ms",
+			samples[30], samples[57], samples[59]
+		);
 	}
 
 	#[test]

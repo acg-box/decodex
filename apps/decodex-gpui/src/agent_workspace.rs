@@ -889,6 +889,7 @@ impl AgentSurface {
 		}
 		self.restore_history_anchor(window, cx);
 		self.prepare_history_marks();
+		self.prepare_history_layout(window);
 		self.animate_history_scroll(window, cx);
 		self.follow_voice_scroll(window, cx);
 		if self.latest_follow_work == self.selected

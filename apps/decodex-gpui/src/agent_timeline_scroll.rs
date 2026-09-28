@@ -2,7 +2,7 @@
 use super::{
 	AgentSurface, AgentTimelineEntry, AgentTimelinePage, AgentWorkItemDto, Binding, Context, key,
 };
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, point, px};
+use gpui::{AnyElement, InteractiveElement, IntoElement, ParentElement, Styled, div, point, px};
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 type RowKey = (u64, u8, String);
@@ -18,9 +18,23 @@ pub(super) struct Viewport(Rc<RefCell<Geometry>>);
 #[derive(Default)]
 struct Geometry {
 	rows: BTreeMap<RowKey, (f32, f32)>,
+	layout: Option<Layout>,
+	pinned: Option<RowKey>,
 	pending: Option<Anchor>,
 	revision: u64,
 	latest_requested: bool,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct Layout {
+	window_width: f32,
+	left_width: f32,
+	right_width: f32,
+	transcript_width: f32,
+	left_visible: bool,
+	right_visible: bool,
+	rail_visible: bool,
+	graph_expanded: bool,
 }
 
 struct Anchor {
@@ -31,6 +45,33 @@ struct Anchor {
 }
 
 impl Viewport {
+	fn prepare_layout(&self, layout: Layout) {
+		let mut state = self.0.borrow_mut();
+		if state.layout != Some(layout) {
+			state.rows.clear();
+			state.layout = Some(layout);
+		}
+	}
+
+	/// Preserve measured space outside a bounded overscan buffer.
+	/// Never estimate heights or cull while a pagination anchor is pending.
+	pub(super) fn offscreen_height(
+		&self,
+		entry: &AgentTimelineEntry,
+		offset: f32,
+		height: f32,
+	) -> Option<f32> {
+		let state = self.0.borrow();
+		if state.pending.is_some() || state.pinned.as_ref() == Some(&row_key(entry)) || height <= 0.
+		{
+			return None;
+		}
+		let (top, row_height) = *state.rows.get(&row_key(entry))?;
+		let y = top + offset;
+		let overscan = (height * 0.5).clamp(160., 320.);
+		(y + row_height < -overscan || y > height + overscan).then_some(row_height)
+	}
+
 	pub(super) fn request_latest(&self) {
 		self.0.borrow_mut().latest_requested = true;
 	}
@@ -88,6 +129,24 @@ impl Geometry {
 }
 
 impl AgentSurface {
+	pub(in super::super) fn prepare_history_layout(&self, window: &gpui::Window) {
+		let width = self
+			.selected
+			.as_ref()
+			.and_then(|work| self.transcript_scroll.get(work))
+			.map_or(0., |scroll| f32::from(scroll.bounds().size.width));
+		self.native_history.viewport.prepare_layout(Layout {
+			window_width: f32::from(window.viewport_size().width),
+			left_width: self.sidebar_width,
+			right_width: self.agent_panel_width,
+			transcript_width: width,
+			left_visible: self.sidebar_visible,
+			right_visible: self.agent_tree_visible,
+			rail_visible: self.timeline_visible,
+			graph_expanded: self.graph_expanded,
+		});
+	}
+
 	pub(in super::super) fn cancel_native_scroll_anchor(&self) {
 		let mut state = self.native_history.viewport.0.borrow_mut();
 		state.pending = None;
@@ -136,11 +195,17 @@ impl AgentSurface {
 		let geometry = self.native_history.viewport.0.clone();
 		let surface = cx.entity().downgrade();
 		let owner = work.id.clone();
+		let selection = geometry.clone();
+		let selected_key = key.clone();
 		div()
 			.w_full()
 			.min_w_0()
 			.flex_none()
 			.child(row)
+			.capture_any_mouse_down(move |_, _, _| {
+				// Keep the interacted row alive so scrolling cannot discard text selection.
+				selection.borrow_mut().pinned = Some(selected_key.clone());
+			})
 			.on_children_prepainted(move |bounds, _, cx| {
 				let Some(bounds) = bounds.first() else {
 					return;
@@ -193,6 +258,42 @@ mod tests {
 				attachments: vec![],
 			},
 		}
+	}
+
+	#[test]
+	fn measured_rows_keep_space_and_selection_with_a_viewport_buffer() {
+		let viewport = Viewport::default();
+		let entry = row(1);
+		viewport.0.borrow_mut().measure(row_key(&entry), 5000., 700.);
+		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), Some(700.));
+		assert_eq!(viewport.offscreen_height(&entry, -4000., 900.), None);
+		assert_eq!(viewport.offscreen_height(&entry, -6000., 900.), None);
+		assert_eq!(viewport.offscreen_height(&entry, -7000., 900.), Some(700.));
+		viewport.0.borrow_mut().pinned = Some(row_key(&entry));
+		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), None);
+	}
+
+	#[test]
+	fn layout_changes_invalidate_measured_heights() {
+		let viewport = Viewport::default();
+		let mut layout = Layout {
+			window_width: 1400.,
+			left_width: 240.,
+			right_width: 240.,
+			transcript_width: 900.,
+			left_visible: true,
+			right_visible: true,
+			rail_visible: true,
+			graph_expanded: false,
+		};
+		viewport.prepare_layout(layout);
+		let entry = row(1);
+		viewport.0.borrow_mut().measure(row_key(&entry), 5000., 700.);
+		viewport.prepare_layout(layout);
+		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), Some(700.));
+		layout.left_width = 300.;
+		viewport.prepare_layout(layout);
+		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), None);
 	}
 
 	#[gpui::test]
