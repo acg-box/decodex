@@ -5,6 +5,7 @@ use decodex_protocol::{AgentActivityDetailCursor, AgentActivityDetailResult, Age
 #[derive(Default)]
 pub(super) struct ActivityDetailState {
 	pub value: Option<(String, Option<AgentActivityDetailResult>)>,
+	closing: Option<(String, Option<AgentActivityDetailResult>)>,
 	pub revision: u64,
 	pub task: Option<Task<()>>,
 }
@@ -13,6 +14,7 @@ impl AgentSurface {
 	pub(super) fn clear_activity_detail(&mut self) {
 		self.activity_detail.revision += 1;
 		self.activity_detail.value = None;
+		self.activity_detail.closing = None;
 		self.activity_detail.task = None;
 	}
 
@@ -78,7 +80,14 @@ impl AgentSurface {
 			.value
 			.as_ref()
 			.filter(|(id, _)| id == &key)
-			.and_then(|(_, result)| result.as_ref());
+			.and_then(|(_, result)| result.as_ref())
+			.or_else(|| {
+				self.activity_detail
+					.closing
+					.as_ref()
+					.filter(|(id, _)| id == &key)
+					.and_then(|(_, result)| result.as_ref())
+			});
 		let body = match result {
 			Some(AgentActivityDetailResult::Available { text, offset, next, .. }) => {
 				let first_ids = ids.clone();
@@ -177,7 +186,7 @@ impl AgentSurface {
 		self.activity_detail.revision += 1;
 		self.activity_detail.task = None;
 		if self.activity_detail.value.as_ref().is_some_and(|(selected, _)| selected == &key) {
-			self.activity_detail.value = None;
+			self.activity_detail.closing = self.activity_detail.value.take();
 			cx.notify();
 			return;
 		}
@@ -196,6 +205,9 @@ impl AgentSurface {
 		self.activity_detail.revision += 1;
 		let revision = self.activity_detail.revision;
 		self.activity_detail.task = None;
+		if let Some(previous) = self.activity_detail.value.take() {
+			self.activity_detail.closing = Some(previous);
+		}
 		self.activity_detail.value = Some((key.clone(), None));
 		let Some(profile) = self.profile.clone() else {
 			self.activity_detail.value = Some((key, Some(AgentActivityDetailResult::Unavailable)));
@@ -317,6 +329,15 @@ mod tests {
 					));
 				}
 			}
+            s.apply_result(Ok(AgentSnapshotResult::Available(snapshot)));
+            let key = s.activity_detail_key(&ids).unwrap();
+            s.activity_detail.value = Some((key.clone(),Some(result())));
+            s.toggle_activity_detail(ids,cx);
+            assert!(s.activity_detail.value.is_none());
+            assert!(matches!(&s.activity_detail.closing, Some((id,Some(AgentActivityDetailResult::Available {text,..}))) if id == &key && text == "Passed"));
+            s.clear_activity_detail();
+            assert!(s.activity_detail.closing.is_none());
+
 		});
 	}
 }
