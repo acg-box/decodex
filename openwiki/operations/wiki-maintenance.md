@@ -5,7 +5,7 @@ description: "Current documentation ownership, dated archives, the OpenWiki life
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
+    at: 2026-09-28T06:22:45.949Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -15,7 +15,7 @@ sources:
     resource: repo://docs/archive/upstream-2026-09/migration-map.tsv
   - id: openwiki-source-8ea98a5c00f00b259b6e3d8e
     resource: repo://docs/archive/upstream-2026-09/README.md
-generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+generated: { by: "codex", at: "2026-09-28T06:22:45.949Z" }
 ---
 
 
@@ -47,6 +47,6 @@ OpenWiki owns indexes, Claim sidecars, provenance and run state. Do not manufact
 
 ## Scheduling and effects
 
-The portfolio currently has three upstream/content roles and no dedicated Wiki role. The upstream Maintainer is paused. An old setup sentence does not prove a registered scheduled refresh. This consolidation does not enable a Wiki workflow, resume automation or publish a product release.
+The portfolio currently has three upstream/content roles and no dedicated Wiki role. The user authorized daily upstream maintenance on 2026-09-28. An old setup sentence does not prove a registered scheduled refresh. Wiki updates do not independently enable schedules or publish a product release.
 
 Check relative links, source references and the migration inventory for a documentation move. Run behavioral tests only when the change affects behavior. See [commands](commands-and-validation.md), [product decisions](../decisions/upstream-product-scope.md), and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).

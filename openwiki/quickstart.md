@@ -5,7 +5,7 @@ description: "Task-oriented entrypoints for current Decodex architecture, workfl
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
+    at: 2026-09-28T06:22:45.949Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
@@ -29,7 +29,7 @@ sources:
     resource: repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+generated: { by: "codex", at: "2026-09-28T06:22:45.949Z" }
 ---
 
 
@@ -65,7 +65,7 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.
 - Unknown submission outcomes require exact receipts or native history. They do not authorize replay. Unavailable conversations keep readable history.
 - The user retained O01–O23 and O25–O26. O24 records no new AWS/Bedrock recovery notices; saved notices remain readable.
-- The upstream maintainer is configured **PAUSED**. Documentation generation does not enable it, install an app or publish a release.
+- The upstream maintainer is configured **ACTIVE**. Documentation generation does not enable it, install an app or publish a release.
 
 ## Build and evidence
 

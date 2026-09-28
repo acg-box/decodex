@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5681e01eb615d6cded47c715ae76a55bbdc47712774ed3b8261fd787aec75fbf",
+  "pageVersion": "sha256:f00150468b1b1a7339971c35dccb108bb6c24210ebd8d0d20cd8874064e8bc78",
   "claims": [
     {
       "id": "claim_07eac3dd8c6142068d996cdae3e4884c",
-      "statement": "The checked-in portfolio has three upstream/content tasks and no dedicated OpenWiki task; the upstream Maintainer is paused.",
+      "statement": "The checked-in portfolio has three upstream/content tasks and no dedicated OpenWiki task; the upstream Maintainer is active.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:b7852f69f78beca97b4451e47ef6e8a9145fd60d477b0fd5ea2d905f5400bb5c"
+          "version": "repo-file-v1:sha256:7099dcd9b3b9b34ac9ea83e98525b565711173eeb380041d2e844f5ba69aee8f"
         }
       ]
     },
@@ -28,7 +28,7 @@
       "evidence": [
         {
           "resource": "repo://docs/archive/upstream-2026-09/README.md",
-          "version": "repo-file-v1:sha256:ac9b2dce335e4834039120b218a3785b68cada506a899eeaee9846bf2c925c99"
+          "version": "repo-file-v1:sha256:d06b013bbf0be4afbc4cd5d76c2a3f8315c794de3db92464b8850475ca3747cf"
         },
         {
           "resource": "repo://docs/archive/upstream-2026-09/migration-map.tsv",
@@ -49,6 +49,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "at": "2026-09-28T06:22:45.949Z"
   }
 }

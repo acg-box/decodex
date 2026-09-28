@@ -5,13 +5,13 @@ title: "Retained upstream product capabilities"
 description: "The retained core and optional capabilities, O24 retirement, and future upstream adoption decisions."
 verified:
   - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
+    at: 2026-09-28T06:22:45.949Z
 sources:
   - id: openwiki-source-e32adebfd6d3bf27dc186bad
     resource: repo://crates/decodex-runtime/src/agent/tests/auth_recovery.rs
   - id: openwiki-source-8d4b61fd83ed007c18390abe
     resource: repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md
-generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+generated: { by: "codex", at: "2026-09-28T06:22:45.949Z" }
 ---
 
 
@@ -93,4 +93,4 @@ optional capabilities. Do not revive earlier removal suggestions as pending work
 
 Repair existing retained consumers when an upstream change breaks compatibility or correctness. Propose new optional controls or policies before implementing them. Do not restore O24's notification consumer or receipt writer; keep saved historical receipts readable and native authentication intact. Do not revive earlier suggestions to remove other rows as pending user decisions.
 
-The upstream maintenance automation remains paused until the user explicitly resumes it. See [maintenance](../operations/codex-upstream-autopilot.md) and [acceptance limits](../testing/upstream-acceptance-boundaries.md).
+The user authorized daily upstream maintenance on 2026-09-28. This authorization covers existing-capability maintenance, not new optional features or app installation/release. See [maintenance](../operations/codex-upstream-autopilot.md) and [acceptance limits](../testing/upstream-acceptance-boundaries.md).
