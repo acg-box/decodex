@@ -1598,7 +1598,9 @@ impl AgentSurface {
 		div()
 			.flex_none()
 			.px_4()
-			.py_1()
+			.h(px(36.))
+			.justify_center()
+			.debug_selector(|| "workspace-conversation-header".into())
 			.flex()
 			.flex_col()
 			.child(
@@ -1606,12 +1608,16 @@ impl AgentSurface {
 					.flex()
 					.items_center()
 					.justify_between()
-					.child(
+					.gap(px(12.))
+					.child(div().flex_1().min_w_0().child(if self.pages.is_empty() {
 						div()
 							.text_size(px(12.))
 							.text_color(rgb(ui_theme::TEXT_MUTED))
-							.child(format!("{} · {status}", self.work_label(work))),
-					)
+							.child(format!("{} · {status}", self.work_label(work)))
+							.into_any_element()
+					} else {
+						self.workspace_tabs(cx)
+					}))
 					.child(
 						div()
 							.child(self.workspace_action(

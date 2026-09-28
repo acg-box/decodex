@@ -114,11 +114,10 @@ impl AgentSurface {
 		} else {
 			0.0
 		};
-		let tabs = if self.pages.is_empty() { 0.0 } else { 35.0 };
 
 		let available = (
 			f32::from(viewport.width) - sidebar - self.agent_tree_width(window),
-			(f32::from(viewport.height) - super::super::WINDOW_CONTROLS_CLEARANCE - tabs).max(0.0),
+			(f32::from(viewport.height) - super::super::WINDOW_CONTROLS_CLEARANCE).max(0.0),
 		);
 		if !self.graph_expanded {
 			return (
@@ -131,8 +130,7 @@ impl AgentSurface {
 			self.graph_zoom,
 			(
 				f32::from(viewport.width) - sidebar - self.agent_tree_width(window),
-				(f32::from(viewport.height) - super::super::WINDOW_CONTROLS_CLEARANCE - tabs)
-					.max(0.0),
+				(f32::from(viewport.height) - super::super::WINDOW_CONTROLS_CLEARANCE).max(0.0),
 			),
 			self.graph_expanded,
 		)

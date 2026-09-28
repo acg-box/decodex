@@ -433,18 +433,18 @@ impl AgentSurface {
 		panel.child(self.sidebar_resize_handle(cx)).into_any_element()
 	}
 
-	fn workspace_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
+	pub(super) fn workspace_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
 		let mut row = div()
 			.id("agent-pages")
 			.role(Role::TabList)
 			.aria_label("Open conversations")
-			.h(px(35.0))
-			.min_h(px(35.0))
+			.h(px(28.0))
+			.min_h(px(28.0))
+			.min_w_0()
+			.overflow_x_scroll()
 			.flex()
 			.items_center()
-			.gap_1()
-			.px_2()
-			.pb(px(4.));
+			.gap_1();
 		let root = self.root_id();
 		let mut pages = vec![(root.clone().unwrap_or_default(), "Main".to_owned(), false)];
 		if let Some(snapshot) = &self.snapshot {
@@ -461,6 +461,7 @@ impl AgentSurface {
 				self.selected.as_ref() == Some(&id) || (!closable && self.selected.is_none());
 			let select = id.clone();
 			let mut tab = div()
+				.flex_none()
 				.flex()
 				.items_center()
 				.h(px(28.))
@@ -801,6 +802,8 @@ impl AgentSurface {
 			.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)));
 		if let (Some(snapshot), Some(work)) = (&self.snapshot, &selected) {
 			chat = chat.child(self.work_context(snapshot, work, cx));
+		} else {
+			chat = chat.child(div().h(px(36.)).flex_none());
 		}
 
 		let transcript = self.workspace_transcript(selected.as_ref(), is_agent, window, cx);
@@ -881,7 +884,6 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.bg(rgba(ui_theme::AGENT_SIDEBAR_MATERIAL))
-			.when(!self.pages.is_empty(), |main| main.child(self.workspace_tabs(cx)))
 			.child(body);
 
 		self.workspace_resize_root(cx)
@@ -2026,6 +2028,17 @@ mod tests {
 			(s.agent_tree_width(window), s.workspace_graph_size(window, true))
 		});
 		assert_eq!(reserved, loaded, "the first snapshot fills existing panel slots");
+		let header = visual.debug_bounds("workspace-conversation-header").unwrap();
+		surface.update(visual, |s, cx| {
+			s.pages.push("release".into());
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert_eq!(
+			header,
+			visual.debug_bounds("workspace-conversation-header").unwrap(),
+			"opening the first tab must not add another layout row"
+		);
 	}
 
 	#[gpui::test]
