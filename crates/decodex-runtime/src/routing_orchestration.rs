@@ -592,7 +592,8 @@ fn valid_plan_shape(effect: &ContinuationPlanEffect) -> bool {
 				&& effect.runtime_session.as_ref().is_some_and(|session| {
 					effect.plan.fallback_runtime_session_id.as_ref()
 						== Some(&session.runtime_session_id)
-				}) && effect.fallback_context_pack.is_some(),
+				})
+				&& effect.fallback_context_pack.is_some(),
 	}
 }
 

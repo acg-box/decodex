@@ -52,3 +52,11 @@ verify actual workflow registration before claiming scheduled refresh. See
   supported. Keep Decodex-specific presentation and coordination in this repository.
 - Keep reference checkouts out of tracked application sources. Do not execute
   upstream setup scripts merely to read source or compare protocols.
+
+## Rust channel policy
+
+Use the unversioned `stable` channel for Rust builds and tests. Use the
+unversioned `nightly` channel for Rust formatting. Do not select numbered
+compiler versions or dated nightly versions in local tasks, CI, or container
+builds. Rust container images must follow the stable release with a floating
+distribution tag.

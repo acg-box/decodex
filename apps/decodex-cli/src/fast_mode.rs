@@ -418,7 +418,8 @@ mod tests {
 				fs::metadata(path.parent().expect("config must have a parent"))
 					.expect("Codex directory metadata must be readable")
 					.permissions()
-					.mode() & 0o777,
+					.mode()
+					& 0o777,
 				0o700
 			);
 			assert_eq!(

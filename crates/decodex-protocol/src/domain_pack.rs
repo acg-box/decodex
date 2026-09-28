@@ -158,17 +158,18 @@ impl DomainPackProjectionDto {
 				.iter()
 				.map(|capability| capability.id.as_str())
 				.collect::<HashSet<_>>()
-				.len() != descriptor.capabilities.len()
+				.len()
+				!= descriptor.capabilities.len()
 			|| descriptor.entity_types.is_empty()
 			|| descriptor.relation_types.is_empty()
 			|| descriptor.entity_types.len() > MAX_DOMAIN_PACK_ENTITIES
 			|| descriptor.relation_types.len() > MAX_DOMAIN_PACK_RELATIONS
 			|| descriptor.entity_types.iter().any(|kind| {
 				!kind.as_str().starts_with(&prefix) || !is_namespaced_symbol(kind.as_str())
-			}) || descriptor
-			.relation_types
-			.iter()
-			.any(|kind| !kind.as_str().starts_with(&prefix) || !is_namespaced_symbol(kind.as_str()))
+			})
+			|| descriptor.relation_types.iter().any(|kind| {
+				!kind.as_str().starts_with(&prefix) || !is_namespaced_symbol(kind.as_str())
+			})
 			|| descriptor.entity_types.iter().map(WireText::as_str).collect::<HashSet<_>>().len()
 				!= descriptor.entity_types.len()
 			|| descriptor.relation_types.iter().map(WireText::as_str).collect::<HashSet<_>>().len()
@@ -196,14 +197,16 @@ impl DomainPackProjectionDto {
 					|| entity.fields.iter().any(|field| {
 						field.label.as_str().is_empty() || field.value.as_str().is_empty()
 					})
-			}) || relations.iter().any(|relation| {
-			!relation.kind.as_str().starts_with(&prefix)
-				|| !is_namespaced_symbol(relation.kind.as_str())
-				|| !descriptor.relation_types.iter().any(|kind| kind == &relation.kind)
-				|| relation.from == relation.to
-				|| (!entity_ids.contains(relation.from.as_str()) && relation.from != *program_id)
-				|| !entity_ids.contains(relation.to.as_str())
-		}) {
+			})
+			|| relations.iter().any(|relation| {
+				!relation.kind.as_str().starts_with(&prefix)
+					|| !is_namespaced_symbol(relation.kind.as_str())
+					|| !descriptor.relation_types.iter().any(|kind| kind == &relation.kind)
+					|| relation.from == relation.to
+					|| (!entity_ids.contains(relation.from.as_str())
+						&& relation.from != *program_id)
+					|| !entity_ids.contains(relation.to.as_str())
+			}) {
 			return Err(DomainPackContractError::InvalidProjection);
 		}
 		Ok(Self { descriptor, entities, relations })

@@ -332,7 +332,8 @@ impl AgentSurface {
 					account_id,
 					thread_id,
 					items,
-				}) = &result && sent_cursor.is_none()
+				}) = &result
+					&& sent_cursor.is_none()
 					&& work_id.as_str() == work
 					&& thread_id == &thread
 				{

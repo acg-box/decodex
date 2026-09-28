@@ -310,15 +310,18 @@ pub(crate) fn validate_publication_cost_record(attempt: &XurlAttempt) -> Result<
 				| "identity_verified"
 				| "create_inflight"
 				| "create_uncertain"
-				| "created" | "read_inflight"
+				| "created"
+				| "read_inflight"
 				| "read_retry_inflight"
 				| "read_retry_pending"
 				| "read_reconcile_inflight"
 				| "read_reconcile_halted"
 				| READ_RECOVERY_EXHAUSTED_STATUS
-				| "halted" | "verified"
+				| "halted"
+				| "verified"
 				| "published"
-		) || OffsetDateTime::parse(&attempt.created_at, &Rfc3339).is_err()
+		)
+		|| OffsetDateTime::parse(&attempt.created_at, &Rfc3339).is_err()
 		|| OffsetDateTime::parse(&attempt.updated_at, &Rfc3339).is_err()
 		|| matches!(
 			attempt.status.as_str(),
@@ -357,8 +360,10 @@ pub(crate) fn validate_observation_cost_record(attempt: &XurlObservationAttempt)
 				| "read_reconcile_inflight"
 				| "read_reconcile_halted"
 				| READ_RECOVERY_EXHAUSTED_STATUS
-				| "halted" | "observed"
-		) || OffsetDateTime::parse(&attempt.created_at, &Rfc3339).is_err()
+				| "halted"
+				| "observed"
+		)
+		|| OffsetDateTime::parse(&attempt.created_at, &Rfc3339).is_err()
 		|| OffsetDateTime::parse(&attempt.updated_at, &Rfc3339).is_err()
 		|| attempt.status == READ_RECOVERY_EXHAUSTED_STATUS && attempt.reconciliation.is_none()
 	{
@@ -542,9 +547,11 @@ fn validate_publication_state(attempt: &XurlAttempt) -> Result<()> {
 					last,
 					&["identity_read", "identity_read_reconcile"],
 					&["succeeded", "failed", "invalid", "uncertain"],
-				)) && attempt.calls.iter().all(|call| {
-				matches!(call.operation.as_str(), "identity_read" | "identity_read_reconcile")
-			}) && attempt.post_id.is_none()
+				))
+				&& attempt.calls.iter().all(|call| {
+					matches!(call.operation.as_str(), "identity_read" | "identity_read_reconcile")
+				})
+				&& attempt.post_id.is_none()
 				&& attempt.published_url.is_none(),
 		IDENTITY_RECOVERY_EXHAUSTED_STATUS =>
 			call_state(last, &["identity_read_reconcile"], &["failed", "invalid", "uncertain"])
@@ -747,11 +754,16 @@ pub(super) fn valid_billing_month(value: &str) -> bool {
 		&& matches!(
 			&bytes[5..],
 			b"01"
-				| b"02" | b"03"
-				| b"04" | b"05"
-				| b"06" | b"07"
-				| b"08" | b"09"
-				| b"10" | b"11"
+				| b"02"
+				| b"03"
+				| b"04"
+				| b"05"
+				| b"06"
+				| b"07"
+				| b"08"
+				| b"09"
+				| b"10"
+				| b"11"
 				| b"12"
 		)
 }

@@ -5147,7 +5147,8 @@ fn render_agent_history(
 			))
 			.map_or(remaining, |v| v.len());
 		if serde_json::to_vec(&text).map_or(usize::MAX, |encoded| encoded.len())
-			+ 160 + activity_cost
+			+ 160
+			+ activity_cost
 			> remaining
 			&& !entries.is_empty()
 		{
@@ -5161,7 +5162,8 @@ fn render_agent_history(
 		text = bounded;
 		remaining = remaining.saturating_sub(
 			serde_json::to_vec(&text).map_or(remaining, |encoded| encoded.len())
-				+ 160 + activity_cost,
+				+ 160
+				+ activity_cost,
 		);
 
 		if !shortened

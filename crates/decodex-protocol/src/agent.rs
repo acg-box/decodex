@@ -903,7 +903,8 @@ impl AgentSnapshotDto {
 					&& self.work_items.iter().any(|work| {
 						work.id == workspace.agent_id && work.kind == AgentWorkKindDto::Manager
 					})
-			}) && self.work_items.len() <= MAX_AGENT_WORK_ITEMS
+			})
+			&& self.work_items.len() <= MAX_AGENT_WORK_ITEMS
 			&& self.dependencies.len() <= MAX_AGENT_DEPENDENCIES
 			&& self.pending_events.len() <= MAX_AGENT_PENDING_EVENTS
 			&& ids.len() == self.work_items.len()
@@ -916,15 +917,19 @@ impl AgentSnapshotDto {
 					&& item.created_at_micros >= 0
 					&& item.updated_at_micros >= item.created_at_micros
 					&& item.next_check_at_micros.is_none_or(|time| time >= 0)
-			}) && self.dependencies.iter().all(|edge| {
-			ids.contains(edge.work_item_id.as_str()) && ids.contains(edge.depends_on_id.as_str())
-		}) && self.pending_events.iter().all(|event| {
-			event.id > 0
-				&& text(&event.source_event_id, 2048)
-				&& ids.contains(event.work_item_id.as_str())
-				&& text(&event.event_kind, 128)
-				&& event.created_at_micros >= 0
-		}) && serde_json::to_vec(self).is_ok_and(|bytes| bytes.len() <= MAX_AGENT_SNAPSHOT_BYTES)
+			})
+			&& self.dependencies.iter().all(|edge| {
+				ids.contains(edge.work_item_id.as_str())
+					&& ids.contains(edge.depends_on_id.as_str())
+			})
+			&& self.pending_events.iter().all(|event| {
+				event.id > 0
+					&& text(&event.source_event_id, 2048)
+					&& ids.contains(event.work_item_id.as_str())
+					&& text(&event.event_kind, 128)
+					&& event.created_at_micros >= 0
+			})
+			&& serde_json::to_vec(self).is_ok_and(|bytes| bytes.len() <= MAX_AGENT_SNAPSHOT_BYTES)
 	}
 }
 

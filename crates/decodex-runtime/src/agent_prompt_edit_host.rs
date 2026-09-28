@@ -155,7 +155,8 @@ impl AgentHost {
 				.get(work.as_str())
 				.filter(|(when, r)| {
 					when.elapsed() < REVIEW_LIFETIME
-						&& r.is_live() && r.evidence().thread == thread.as_str()
+						&& r.is_live()
+						&& r.evidence().thread == thread.as_str()
 				})
 				.map(|(_, r)| r.evidence().clone())
 		};

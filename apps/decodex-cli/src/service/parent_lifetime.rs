@@ -56,7 +56,8 @@ fn validate_socket(raw_fd: RawFd) -> io::Result<()> {
 			std::ptr::from_mut(&mut socket_type).cast(),
 			&mut socket_type_len,
 		)
-	} != 0 || socket_type != libc::SOCK_STREAM
+	} != 0
+		|| socket_type != libc::SOCK_STREAM
 	{
 		return Err(io::Error::new(ErrorKind::InvalidInput, "parent channel is not a stream"));
 	}

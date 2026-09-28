@@ -552,10 +552,11 @@ async fn enroll_service_account(root: &DecodexRoot) -> SmokeResult<(AgentClient,
 					row.five_hour_quota.result,
 					decodex_protocol::AccountQuotaStateDto::Current { .. }
 						| decodex_protocol::AccountQuotaStateDto::NotApplicable
-				) && matches!(
-				row.seven_day_quota.result,
-				decodex_protocol::AccountQuotaStateDto::Current { .. }
-			) {
+				)
+				&& matches!(
+					row.seven_day_quota.result,
+					decodex_protocol::AccountQuotaStateDto::Current { .. }
+				) {
 				break;
 			}
 			tokio::time::sleep(Duration::from_secs(1)).await;

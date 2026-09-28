@@ -126,14 +126,16 @@ impl AgentSurface {
 							if let Some((_, _, status)) =
 								s.mcp_login.as_ref().filter(|(work, _, status)| {
 									work == &owner && status.session_id == session
-								}) && let Some(url) = status
-								.authorization_url
-								.as_ref()
-								.and_then(|url| reqwest::Url::parse(url.as_str()).ok())
-								.filter(|url| {
-									matches!(url.scheme(), "http" | "https")
-										&& url.username().is_empty() && url.password().is_none()
-								}) {
+								})
+								&& let Some(url) = status
+									.authorization_url
+									.as_ref()
+									.and_then(|url| reqwest::Url::parse(url.as_str()).ok())
+									.filter(|url| {
+										matches!(url.scheme(), "http" | "https")
+											&& url.username().is_empty()
+											&& url.password().is_none()
+									}) {
 								cx.open_url(url.as_str());
 							}
 						},

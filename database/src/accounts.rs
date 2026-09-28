@@ -40,7 +40,8 @@ impl SqliteStore {
 					&& matches!(
 						account.observed_state,
 						AccountState::Available | AccountState::Unknown | AccountState::Depleted
-					) && account.lifecycle_readiness == AccountLifecycleReadiness::Ready
+					)
+					&& account.lifecycle_readiness == AccountLifecycleReadiness::Ready
 					&& !account.tombstoned
 			}))
 		})

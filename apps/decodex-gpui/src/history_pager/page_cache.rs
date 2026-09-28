@@ -1479,7 +1479,8 @@ fn create_file_at(parent: RawFd, name: &CStr) -> io::Result<File> {
 				parent,
 				name.as_ptr(),
 				libc::O_RDWR
-					| libc::O_CREAT | libc::O_EXCL
+					| libc::O_CREAT
+					| libc::O_EXCL
 					| libc::O_NOFOLLOW
 					| libc::O_CLOEXEC
 					| libc::O_NONBLOCK,

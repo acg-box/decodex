@@ -187,7 +187,8 @@ async fn select_native_permissions(
 		.await
 		.unwrap()
 		.unwrap()
-		.state != "target_observed"
+		.state
+		!= "target_observed"
 	{
 		agent
 			.handle_event(events.recv().await.expect("native permission publication"))

@@ -392,7 +392,8 @@ mod tests {
 				.debug_bounds("auth-recovery-receipt-91")
 				.expect("native conversation keeps authentication receipts visible")
 				.size
-				.height > gpui::px(0.)
+				.height
+				> gpui::px(0.)
 		);
 	}
 

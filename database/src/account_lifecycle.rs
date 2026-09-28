@@ -1850,8 +1850,9 @@ fn is_legacy_tombstone_enrollment_collision_sync(
 		|| !matches!(
 			operation.phase,
 			AccountOperationPhase::StoreApplied | AccountOperationPhase::RecoveryRequired
-		) || (operation.phase == AccountOperationPhase::RecoveryRequired
-		&& operation.recovery_code.as_deref() != Some(RECOVERY_CODE))
+		)
+		|| (operation.phase == AccountOperationPhase::RecoveryRequired
+			&& operation.recovery_code.as_deref() != Some(RECOVERY_CODE))
 		|| operation.expected_account_revision.is_some()
 		|| operation.expected.is_some()
 		|| operation.requested_display_label.is_none()
@@ -2572,7 +2573,8 @@ fn allowed_operation_transition(
 			| (
 				AccountOperationPhase::ProviderEffectPending,
 				AccountOperationPhase::RecoveryRequired
-			) | (AccountOperationPhase::StoreApplied, AccountOperationPhase::Committed)
+			)
+			| (AccountOperationPhase::StoreApplied, AccountOperationPhase::Committed)
 			| (AccountOperationPhase::StoreApplied, AccountOperationPhase::RecoveryRequired)
 			| (AccountOperationPhase::RecoveryRequired, AccountOperationPhase::StoreApplied)
 			| (AccountOperationPhase::RecoveryRequired, AccountOperationPhase::Cancelled)

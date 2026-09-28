@@ -146,7 +146,8 @@ fn exact_transfer_is_atomic_replayable_and_retains_the_source() {
 		fs::metadata(paths.product_database_file())
 			.expect("database metadata")
 			.permissions()
-			.mode() & 0o777,
+			.mode()
+			& 0o777,
 		0o600,
 	);
 }

@@ -229,7 +229,8 @@ fn validate_pack_identity(identity: &DomainPackIdentity) -> Result<(), StoreErro
 			&& value.as_bytes().last().is_some_and(u8::is_ascii_alphanumeric)
 			&& value.bytes().all(|byte| {
 				byte.is_ascii_lowercase() || byte.is_ascii_digit() || b".-".contains(&byte)
-			}) && value.contains('.')
+			})
+			&& value.contains('.')
 			&& !value.contains("..")
 	};
 	let version_parts = identity.pack_version.split('.').collect::<Vec<_>>();

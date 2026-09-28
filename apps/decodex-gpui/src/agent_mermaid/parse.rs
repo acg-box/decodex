@@ -78,11 +78,24 @@ pub(super) fn check_label(label: &str) -> Result<(), RenderError> {
 				|| matches!(
 					ch,
 					'[' | ']'
-						| '{' | '}' | '|' | '<'
-						| '>' | '&' | '"' | '\\'
-						| '┌' | '┐' | '└' | '┘'
-						| '├' | '┤' | '╪' | '◄'
-				) || UnicodeWidthChar::width(ch).is_none_or(|width| width == 0)
+						| '{'
+						| '}'
+						| '|'
+						| '<'
+						| '>'
+						| '&'
+						| '"'
+						| '\\'
+						| '┌'
+						| '┐'
+						| '└'
+						| '┘'
+						| '├'
+						| '┤'
+						| '╪'
+						| '◄'
+				)
+				|| UnicodeWidthChar::width(ch).is_none_or(|width| width == 0)
 		}) {
 		return Err(RenderError::Unsupported);
 	}

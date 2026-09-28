@@ -45,7 +45,8 @@ impl AgentPromptEditAttempt {
 			|| self.content.iter().any(|v| !v.is_object())
 			|| serde_json::to_vec(self)
 				.map_err(|_| StoreError::InvalidInput("invalid prompt edit"))?
-				.len() > 8 * 1024 * 1024
+				.len()
+				> 8 * 1024 * 1024
 		{
 			return Err(StoreError::InvalidInput("invalid prompt edit"));
 		}

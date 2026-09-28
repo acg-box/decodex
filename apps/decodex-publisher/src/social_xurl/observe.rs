@@ -1044,17 +1044,19 @@ fn validate_attempt(
 				&& call.operation_id.as_deref().is_none_or(|operation_id| {
 					crate::social_publish::valid_run_id(operation_id)
 						&& operation_id != attempt.run_id
-				}) && matches!(
-				call.status.as_str(),
-				"inflight" | "succeeded" | "failed" | "invalid" | "uncertain"
-			)
-		}) && attempt.calls.iter().try_fold(READ_COST_MICROUSD, |total, call| {
-		if call.billing_month.is_some() {
-			total.checked_add(call.recorded_cost_ceiling_microusd)
-		} else {
-			Some(total)
-		}
-	}) == Some(attempt.reserved_cost_ceiling_microusd);
+				})
+				&& matches!(
+					call.status.as_str(),
+					"inflight" | "succeeded" | "failed" | "invalid" | "uncertain"
+				)
+		})
+		&& attempt.calls.iter().try_fold(READ_COST_MICROUSD, |total, call| {
+			if call.billing_month.is_some() {
+				total.checked_add(call.recorded_cost_ceiling_microusd)
+			} else {
+				Some(total)
+			}
+		}) == Some(attempt.reserved_cost_ceiling_microusd);
 	let mut recovery_owners =
 		attempt.calls.iter().filter_map(|call| call.operation_id.as_deref()).collect::<Vec<_>>();
 	recovery_owners.sort_unstable();
@@ -1067,8 +1069,10 @@ fn validate_attempt(
 				| "read_reconcile_inflight"
 				| "read_reconcile_halted"
 				| READ_RECOVERY_EXHAUSTED_STATUS
-				| "halted" | "observed"
-		) || attempt.post_ref != crate::path_arg(&context.root, &context.post_path)
+				| "halted"
+				| "observed"
+		)
+		|| attempt.post_ref != crate::path_arg(&context.root, &context.post_path)
 		|| attempt.post_id != context.post_id
 		|| attempt.publication_lineage_sha256 != context.publication_lineage_sha256
 		|| attempt.window != request.window

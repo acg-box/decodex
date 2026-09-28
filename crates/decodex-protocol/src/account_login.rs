@@ -307,7 +307,8 @@ impl AccountLoginStatus {
 		if !valid
 			|| self.prompt.as_ref().is_some_and(|prompt| {
 				prompt.verification_url.as_str().is_empty() || prompt.user_code.as_str().is_empty()
-			}) || self.authorization_url.as_ref().is_some_and(|url| url.as_str().is_empty())
+			})
+			|| self.authorization_url.as_ref().is_some_and(|url| url.as_str().is_empty())
 		{
 			return Err(AccountLoginContractError::InvalidStatus);
 		}

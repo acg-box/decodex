@@ -8,7 +8,7 @@ import unittest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FORMATTER_TOOLCHAIN = "nightly-2026-07-16"
+FORMATTER_TOOLCHAIN = "nightly"
 
 
 class GateContractTests(unittest.TestCase):
@@ -29,7 +29,7 @@ class GateContractTests(unittest.TestCase):
         cls.database_gate = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.database_gate)
 
-    def test_rust_format_tasks_use_the_pinned_formatter(self) -> None:
+    def test_rust_format_tasks_use_the_nightly_channel(self) -> None:
         self.assertEqual(self.tasks["fmt-rust"]["command"], "rustup")
         self.assertEqual(
             self.tasks["fmt-rust"]["args"],

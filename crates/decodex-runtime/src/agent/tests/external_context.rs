@@ -55,7 +55,8 @@ async fn native_delegation_preserves_tool_authority_and_history()
 						&& item["namespace"] == "decodex"
 						&& item["output"] == prompt
 				})
-				.count() != 1
+				.count()
+				!= 1
 			{
 				return Err("Delegated history lost tool provenance or duplicated input".into());
 			}

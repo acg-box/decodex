@@ -187,9 +187,12 @@ impl Recaps {
 				|| matches!(
 					method,
 					"turn/started"
-						| "turn/completed" | "thread/reverted"
-						| "thread/closed" | "thread/archived"
-						| "thread/deleted" | "thread/settings/updated"
+						| "turn/completed"
+						| "thread/reverted"
+						| "thread/closed"
+						| "thread/archived"
+						| "thread/deleted"
+						| "thread/settings/updated"
 				) {
 				for record in state.requests.values_mut().filter(|r| r.source.key.thread == thread)
 				{
