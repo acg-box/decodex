@@ -19,6 +19,7 @@ mod composer_input;
 mod conversations;
 mod creation_defaults;
 mod desktop_settings;
+mod frame_trace;
 mod health_query;
 #[cfg_attr(
 	not(test),
@@ -58,6 +59,7 @@ use crate::{
 };
 
 fn main() {
+	frame_trace::start();
 	let application = application();
 	let main_window: Rc<RefCell<Option<WindowHandle<Shell>>>> = Rc::new(RefCell::new(None));
 	application.on_reopen({
