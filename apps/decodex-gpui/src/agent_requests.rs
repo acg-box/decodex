@@ -602,6 +602,13 @@ mod timing_tests {
 			window.resize(gpui::size(px(1180.), px(1200.)));
 			window.draw(cx).clear();
 		});
+		// Let the fixture's dock-close animation settle before choosing a
+		// scroll offset and clicking the request pagination control.
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+
 		surface.update(visual, |s, cx| {
 			s.transcript_scroll.get(s.selected.as_ref().unwrap()).unwrap().scroll_to_bottom();
 			cx.notify();
