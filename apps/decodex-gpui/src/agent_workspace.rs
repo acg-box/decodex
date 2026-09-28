@@ -754,14 +754,16 @@ impl AgentSurface {
 				};
 				transcript = transcript.child(content);
 			}
-		} else if self.snapshot.is_none() && self.state == LoadState::Loading {
-			transcript = transcript.child(
-				div()
-					.size_full()
-					.flex()
-					.items_center()
-					.child(crate::ui_loading::conversation("Loading workspace")),
-			);
+		} else if self.snapshot.is_none() {
+			transcript = transcript.child(div().size_full().flex().items_center().child(
+				crate::ui_loading::conversation(
+					if matches!(self.state, LoadState::Unavailable | LoadState::Stale) {
+						"Connecting to workspace"
+					} else {
+						"Loading workspace"
+					},
+				),
+			));
 		} else {
 			transcript = transcript.child(self.workspace_welcome(window, cx));
 		}
@@ -958,6 +960,7 @@ impl AgentSurface {
 
 	fn workspace_welcome(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
 		div()
+			.debug_selector(|| "workspace-welcome".into())
 			.size_full()
 			.flex()
 			.flex_col()
@@ -1026,7 +1029,8 @@ impl AgentSurface {
 					.iter()
 					.filter(|w| w.parent_goal_id == work.parent_goal_id && w.kind == work.kind)
 					.position(|w| w.id == work.id)
-					.unwrap_or(0) + 1;
+					.unwrap_or(0)
+					+ 1;
 				return format!("Agent {position}");
 			}
 		}
@@ -1999,6 +2003,17 @@ mod tests {
 		let skeleton = visual.debug_bounds("loading-feedback-Loading workspace").unwrap();
 		assert!(skeleton.size.height >= px(260.), "first load reserves a reading surface");
 		assert!(skeleton.size.width > px(200.));
+		surface.update(visual, |s, cx| {
+			s.state = LoadState::Unavailable;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(visual.debug_bounds("loading-feedback-Connecting to workspace").is_some());
+		assert!(
+			visual.debug_bounds("workspace-welcome").is_none(),
+			"a cold connection is not an empty conversation"
+		);
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.state = LoadState::Loading;

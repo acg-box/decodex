@@ -2204,17 +2204,11 @@ fn topbar_controls(
 	ui_theme::floating_group()
 		.text_size(px(11.0))
 		.when(shell.selected == Destination::Agent, |controls| {
-			controls
-				.when(shell.agent.read(cx).workspace_panels()[2].1, |group| {
-					group.child(agent_panel_control(shell, 2, cx))
-				})
-				.when(shell.agent.read(cx).workspace_panels()[1].1, |group| {
-					group.child(agent_panel_control(shell, 1, cx))
-				})
-				.when(shell.agent.read(cx).workspace_panels()[3].1, |group| {
-					group.child(agent_panel_control(shell, 3, cx))
-				})
-		})
+            // Keep global controls in place while their data is loading.
+            controls.child(agent_panel_control(shell, 2, cx))
+                .child(agent_panel_control(shell, 1, cx))
+                .child(agent_panel_control(shell, 3, cx))
+        })
 		.when(shell.selected == Destination::Conversations, |controls| {
 			controls.child(topbar_sessions_toggle(left_sidebar_visible, cx))
 		})
@@ -2307,8 +2301,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		.justify_center()
 		.when(active, |el| el.bg(rgba(0xffffff0c)))
 		.when(!enabled, |el| el.opacity(0.35))
-		.hover(|el| el.bg(rgba(crate::ui_theme::HOVER_FILL)))
-		.cursor_pointer()
+		.when(enabled, |el| el.cursor_pointer().hover(|el| el.bg(rgba(crate::ui_theme::HOVER_FILL))))
 		.occlude()
 		.on_mouse_down(MouseButton::Left, |_, window, cx| {
 			window.prevent_default();
