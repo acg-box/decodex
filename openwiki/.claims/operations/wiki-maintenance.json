@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d495700d51dad469783754ab05cb69a4d98db8b951a8753232196583b40d367a",
+  "pageVersion": "sha256:5681e01eb615d6cded47c715ae76a55bbdc47712774ed3b8261fd787aec75fbf",
   "claims": [
     {
       "id": "claim_07eac3dd8c6142068d996cdae3e4884c",
-      "statement": "The checked-in managed automation portfolio has five upstream/content tasks and no dedicated OpenWiki task.",
+      "statement": "The checked-in portfolio has three upstream/content tasks and no dedicated OpenWiki task; the upstream Maintainer is paused.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:db1107d522d96fea9e710ecc950f03734b63fc2dc6eebbb51658661f2e91203b"
+          "version": "repo-file-v1:sha256:b7852f69f78beca97b4451e47ef6e8a9145fd60d477b0fd5ea2d905f5400bb5c"
         }
       ]
     },
@@ -18,13 +18,37 @@
       "evidence": [
         {
           "resource": "repo://AGENTS.md",
-          "version": "repo-file-v1:sha256:83b9b1a55a1eb759f211db3170601dae340d03b619d3d7c6c58c602c72884764"
+          "version": "repo-file-v1:sha256:03e81262a98b56240769d004a7133b159f959a21f312cde34c75c3b9ac0d2c4f"
+        }
+      ]
+    },
+    {
+      "id": "claim_6444b22414db4aafbfefdcb575a7fd61",
+      "statement": "The dated migration inventory accounts for 185 former work files and one root scan journal, including original hashes and current topic destinations.",
+      "evidence": [
+        {
+          "resource": "repo://docs/archive/upstream-2026-09/README.md",
+          "version": "repo-file-v1:sha256:ac9b2dce335e4834039120b218a3785b68cada506a899eeaee9846bf2c925c99"
+        },
+        {
+          "resource": "repo://docs/archive/upstream-2026-09/migration-map.tsv",
+          "version": "repo-file-v1:sha256:2e3bc512f5cc4f60780c8dd8257d9eae75938e711af18caa794fe5f38da0d02f"
+        }
+      ]
+    },
+    {
+      "id": "claim_7ebee7a27e3b4c26a04e7bd1b67cd45b",
+      "statement": "The repository assigns source authority to code and tests and OpenWiki ownership to generated Wiki/index maintenance.",
+      "evidence": [
+        {
+          "resource": "repo://AGENTS.md",
+          "version": "repo-file-v1:sha256:03e81262a98b56240769d004a7133b159f959a21f312cde34c75c3b9ac0d2c4f"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:55:18.668Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
   }
 }

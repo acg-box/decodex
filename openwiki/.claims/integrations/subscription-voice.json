@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:aaf3c9a7c54c1c0cd5c994515fbf2f287b296c3835817e21053d6435007efd9f",
+  "pageVersion": "sha256:7497f99f823f6542f157b1cc1b95915b0607f55596c944178edbaeede12d324a",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/dictation.rs",
-          "version": "repo-file-v1:sha256:a1a00fd93e8721fd89674c2181ba9b04e831f49f914f89cc33be7269d95719fc"
+          "version": "repo-file-v1:sha256:9465630d0e9bf8ac6ef6547932975672639549aeb6b713045a935f838bf2a6ac"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/dictation_native.rs",
@@ -28,17 +28,27 @@
     },
     {
       "id": "claim_2a943d0b1a444ac0a14d84a2271007b5",
-      "statement": "Live voice uses native thread/realtime RPC on an existing Chief thread and records native transcript observations.",
+      "statement": "Live voice uses native thread/realtime RPC on an existing Agent thread and records native transcript observations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/chief/voice.rs",
-          "version": "repo-file-v1:sha256:1ed43a972ee50060fdca36346158053734b9793b489c50ade5c82f52103a3cf2"
+          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs",
+          "version": "repo-file-v1:sha256:6cd2bc00d7fa4eb282db29ae52c66ce291fb5374054671238f13dcdaf9fd0ea1"
+        }
+      ]
+    },
+    {
+      "id": "claim_6bb4987da1834a8a923bf358416b7db3",
+      "statement": "Saving a reviewed native voice preference affects the next call and does not restart active audio.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs#L84-L110",
+          "version": "repo-lines-v1:sha256:bf2701321695fa2847e971ab48096e202d988f06f902970aa91d8a1a320db356:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiZjRlNzhjZmNkZDFlM2ZkM2Q2YjU2YjZjMDNmNTIyMTgzN2EwNTE4YWE5OGQ5MzA3ZDkxN2EzNTQwOGFmMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0NTczMmRlZWUxMDQzYWYwM2FlNDRkZmMzOTY4NDA0MzNjMjMxZTFmNjQ5ODg4Njg3OTYyZjc3ODAxNjlkODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYwMDllOTljNDZjZTA3MmFmMDViYjI3MGVkOGZmZjE5MTc1Y2EzYjA3MjY2NGYxNzQxMmEzODRjNGQ3ODliNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhN2IzM2IxNDZiODRiYzg4YzI5MzgxMmVjNmY5NWRiYTJkZGFmNTMzODk5OTc1NjI3ZjRhYTcyMmZmMGQ2MDEifQ"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
   }
 }

@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a326b02389de28ddcfb5bf6bf910a4e127a6c535ea37c0fe76fc660892192ed3",
+  "pageVersion": "sha256:fd6e3337ccdddadcda9049edfc3b739b1f33d7c62b76f8920f01b8fb8e592756",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
-      "statement": "The current GPUI workspace projects Chief dependencies and reports in its graph and parent-goal ownership in a separate agent tree, replacing the historical Factory graph surface.",
+      "statement": "The current GPUI workspace projects Agent dependencies and reports in its graph and parent-goal ownership in a separate agent tree, replacing the historical Factory graph surface.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/chief_graph.rs",
-          "version": "repo-file-v1:sha256:5a3384e2d16f934d4219029298886f343004a2a6b4d6c446a954cbceec0f1fa9"
+          "resource": "repo://apps/decodex-gpui/src/agent_graph.rs",
+          "version": "repo-file-v1:sha256:f010e2afaf8199dbb3171b7b608a3126f7108d63318846db5b44f0f766f7d94f"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/chief_tree.rs",
-          "version": "repo-file-v1:sha256:60dacc89eb6f114e504f1ec515683f8e76930504f65ccfd3a1d6245a0fc0525f"
+          "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
+          "version": "repo-file-v1:sha256:d82297354edf177d2eafe36456db750cf5a1b9fd93fbd62992579d46ba6945e9"
         }
       ]
     },
@@ -21,8 +21,8 @@
       "statement": "Account Route is now a synchronous service-owned operation with shared-auth liveness, exact-source projection and authoritative completion rather than the former Pending-route queue.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L888-L1268",
-          "version": "repo-lines-v1:sha256:d06441c225655a80df10431b72d0cc6aa8587f857939ccfb94e9fdc409224626:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJmMzlkNDE1ZDQ3ZDg0OGU5MWM0NTA5ZTdmMjg0NjkyNjNhNGZkOTU1NjczOGM0NDk0YjllMzViNjIwNzQ3ZDYxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxZjgxNjBkM2MxMzY1NTI2ODdmN2U0MTRkMzc0NDVlMDIzODgzOGRjYmZkOWU3N2I5ODAyMWYxNjkwMGI1YjZkIn0"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1022-L1450",
+          "version": "repo-lines-v1:sha256:3bc63564f22dcbe18faadb19dcf5ac2bbc371065163d27d48dd35cd740ded04f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDI5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5NDQ3ZGQ4ZWNhZmU0MzJlYTBlNzE5NjgzMzUxYjkzZjI4NmIxZWM5OTllM2QzMjk4OWM4MzhkYTJjZDA3OTQ4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4ZGExZTllYmUxM2I3YWRmZmI5MzM0NGQ1M2YzMTVjOGYxZjI1MmE4YmFlNWMyN2Y5OTg2NTM5Njg1ZGUwY2I0In0"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:d81b553fd495ac47cdcaf31f9b102301c4005c0a11077dd0bd15450a7644509e"
+          "version": "repo-file-v1:sha256:57b4d2a63db94ae56680b9fbb1aa2ff0fe991d13919e62caf37bcb70cac4e895"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -42,15 +42,15 @@
     },
     {
       "id": "claim_325a3cf92d084aaa90d48550b257bb5a",
-      "statement": "The current exact local protocol is 2.43 and the embedded SQLite migration boundary is schema 30.",
+      "statement": "The current exact local protocol is 2.97 and the embedded SQLite migration boundary is schema 49.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L146-L165",
-          "version": "repo-lines-v1:sha256:64f7e2463e867c18857c2f966fc5becb4dabdf06101765297cea74f83e687734:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzMWFhYzNkNWNiN2RmMTI5ZjIzNzEzMDdkMzg0OTRjMzE3ZWU5NWZjMWY0YjBlZDgzMDBkYmU3YWEzY2IyZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlYjExYWI4YjBkOWQ4MzRmMWFlZmZiNWRhODU0ZmE0ZGZmYjZmYjhhODhlZGFmNjA3NjVmNGVmYWZhYjlhOGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRjNzBlMTI4NDI0MWNhNmE3OGY0NTE0NzMyYzQ0OTE3Yzc5MWY4OWRlNDlhMzJlODE3MjAxNDQ0ZWE2MzFkNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L225-L252",
+          "version": "repo-lines-v1:sha256:cf9dce6cfa0174684f3d777af7762ffc147e87eb6ac0353b1edca12c95fec3a6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlNzBjOGNlZjcyZWM4NzE3MzIxY2Q2ZjIwNTUwMTRmMzBlN2NkNTZlOGNkNmVjMDhlYThlZTgwNTZhNDNhZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZjA5ZTgyOWRlMTFjOGMwY2M2ZTExNDJiYTM2ZTQ4ZDhiZTUyOGJiZjkzMjViNDBmMjFlMmMwMjVhZTc2MmYifQ"
         },
         {
-          "resource": "repo://database/src/migrations.rs#L1-L20",
-          "version": "repo-lines-v1:sha256:40dac9327dc815afb9a8ea4c59ca5bf33431a42c3de60fd2fa6754587e7bfca1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwZmU2Y2ZlZWI1MTRhNTYwMTY2OGU0OTg4ODM4YWIxZWMzZmI4ZmU5Y2U0MDY4ZmMyOTgyYWFlYWMwY2Q5NmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViYWZlYjc5YTFmZTdjMWViMDcwNDc3NzgyZTk1ZmVlMjA1MDMyMWNmYzliODZlNWNmZTgxYzYwNTA2ZjUxZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkMjI2OGE5Y2M3MDJlMzljZmI1OTViZTBlNWQ4NGM2NDVmOTk1NDY2YjQ2NjVlOWVmZjY2MjY1ZGE5NWVhYzUifQ"
+          "resource": "repo://database/src/migrations.rs#L1-L106",
+          "version": "repo-lines-v1:sha256:129bc9a5ba0b7e8736c0657dcb79c01b31a64990eab4ac1fdef823e775efea6e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMGZlNmNmZWViNTE0YTU2MDE2NjhlNDk4ODgzOGFiMWVjM2ZiOGZlOWNlNDA2OGZjMjk4MmFhZWFjMGNkOTZmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1OWMyOTU1OTc1NmJmNmYwZjcyMWVmNjg2NjBjM2VhMGE0Y2E3NGVjMTA1YmQzZGNmNzY2MjVkMDQzZDcxNGIwIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxYjU3ODE3MjY1OTJhNzRlZmQ0ZGMzYzQzOGU2N2Y0ZmM5YmY4YWU0OWM1NjkyNzg5OTkwNzFhNmFiODYyNDRmIn0"
         }
       ]
     },
@@ -59,18 +59,42 @@
       "statement": "The unified decodex executable provides serve, and the macOS package uses the selected Xcode installation unless explicitly overridden.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-cli/src/lib.rs#L122-L145",
-          "version": "repo-lines-v1:sha256:ed089ed4ae004250267989e71ccb43ccbe188d0b85281c2dfd9fb01cbd03f5fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0M2NmNjM4OGQ0NTVjNjliOGZmNWRlYmI0MmVhZmMzM2MwYTcwYmZhNjczNDJhMTIzODJkZTJiMjAzYmZiMGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllNDdjNmEyZGY1YTRiZmUwNTE5M2FmNDFmMGY2ZTllZDY0NmM5YmEyYmRiNTk4ZDY3MzEwZTNlZTY0NWRkMmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxZTBiZTVmMWYyNmMyNGVmNDhiNmU1ZDIyMmFmMTM5MWFlMTczMTc2Mjg4OTQyN2UzNGMwMmI4MTY0N2U3NWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwYzAxMGQzNTNjOTllYzE3YWUxODAxYjdjZDIxZGYzMDE4OWI4YmZjMjY2Y2JmZjVmZDc1ODg2YmZkYTE0ODYifQ"
+          "resource": "repo://apps/decodex-cli/src/lib.rs#L105-L160",
+          "version": "repo-lines-v1:sha256:9bffc9618b6a5f31071dc9c2abfff4e4a2d3b7effd58df1a462ba4e75dc2fdee:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiZmE4YTdiMjNmYjUzYmI3YzM0MWNlMGQ0Mzg5ZWZkMDJiMmE3MDYyOWY0MTMyYjRiMmUzNTIwYzY1MTBkZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyYTNhYTBmYWE3ZThkMzdjY2UyOGVmNGVjNTg0ZGRmM2FhNTkwZTlkZTU3MTgzZjBjZTU1NGNiOTc2ZmUxZGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjczZmM5NDUxOGYzMDhhZDViZGYyMTgwNDgxZDhmNmNlNTEzNzNlNjZlNTZjMDY5ZGMyZDcxMmI1NDAxNGY5ZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVmZDIwNTZiZDIzMGM2MjNjYjIzYjI4MGI1ZDM3OWViN2NmZWRiYWNmODI0OWNmMjM2OTQ3YWRiYjI0NGJjOTEifQ"
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh#L1-L40",
-          "version": "repo-lines-v1:sha256:4809bf1687b21800d64fcfb82d7be5583eca00d2052769cf45430c995db6191e:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4MDc2ZDNkMjhkMjFlMDIwMTJiMjBlYWY3ZGJmNzU0MDlhNjI3NzEzNDQzOTAyNWYyODJlMzY4ZTMzMDVhYmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyMWEzZDFjMGZmM2QxOGNkMzg5ZGJkYmZmMTI2ZDBkMjU4MjI4MWQ5MmUwYzAzNzcwMmFkMzM1OWI0NDk5YmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc4MDYwYzhlOTIyMGQ4Yjg3MGQ3MTEyMTNjMTFmN2QwZjA5ZjA5ODM4OWJiM2M3MjFhYTM2Y2M3OWVmMjkyMzkifQ"
+          "version": "repo-lines-v1:sha256:be8c2a6f299811a452df3a1803d6f0db68c3b8cb312d47d700b5fb78edca76e3:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4MDc2ZDNkMjhkMjFlMDIwMTJiMjBlYWY3ZGJmNzU0MDlhNjI3NzEzNDQzOTAyNWYyODJlMzY4ZTMzMDVhYmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2YzA4ZTBmOTk2NzVkM2M2YzI2OGZhNDQyMWRmNjU4ZDRmZmU0NTg5ZDI5Y2M4ZjFmYjFkYzY0YTQ0MDAwNzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiZGQyZGQyYjUzMzE1ZDkwMzlmM2M2OTA0MWUwZjc1NTZiYjRjYTU5YWYxY2UzYjkwZjRlZWQyZTA5YWJjY2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ff1c469c90a84778af3fc5cc4d53d84b",
+      "statement": "The upstream maintainer is configured paused and the user-retained product scope excludes new O24 provider recovery recording.",
+      "evidence": [
+        {
+          "resource": "repo://automations/portfolio.toml",
+          "version": "repo-file-v1:sha256:b7852f69f78beca97b4451e47ef6e8a9145fd60d477b0fd5ea2d905f5400bb5c"
+        },
+        {
+          "resource": "repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md",
+          "version": "repo-file-v1:sha256:d44cfac26a4e6530095703c75a034c342df29f0fdb319abe8a4d99d9fd9aac4f"
+        }
+      ]
+    },
+    {
+      "id": "claim_00e6fd750ac848f79e35f40f900b8e5d",
+      "statement": "The documentation migration records every former work file and the root scan journal in a dated archive with original hashes.",
+      "evidence": [
+        {
+          "resource": "repo://docs/archive/upstream-2026-09/migration-map.tsv",
+          "version": "repo-file-v1:sha256:2e3bc512f5cc4f60780c8dd8257d9eae75938e711af18caa794fe5f38da0d02f"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
   }
 }

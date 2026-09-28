@@ -5,8 +5,8 @@ description: "Local database operations"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:09:19.063Z
 sources:
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
@@ -20,7 +20,7 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-28T02:09:19.063Z" }
 ---
 
 # Local database operations
@@ -29,11 +29,11 @@ generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 
 The sole normal product store is `~/.decodex/server/decodex.sqlite3`, owned by `decodex serve`. GPUI, the menu-bar library and short-lived CLI commands use the local protocol. They must not inspect or mutate SQLite directly as a fallback.
 
-The store uses a serialized connection, owner-private paths, bundled SQLite and embedded migrations. Schema version 30 is current in this source revision. The migration ledger is authoritative; old schema-9/10/11 evidence is not a reason to rebuild or reset a user's database.
+The store uses a serialized connection, owner-private paths, bundled SQLite and embedded migrations. Schema version 49 is current in this source revision. The migration ledger is authoritative; old schema-9/10/11 evidence is not a reason to rebuild or reset a user's database.
 
 ## Installation and upgrade
 
-Select the app-bundled CLI installation or the standalone local-service installation. Do not install two competing service owners. The app includes a signed helper and native-client/menu-bar libraries; service and UI compatibility is checked. The exact local protocol is 2.43. An incompatible service is a version problem, not proof that history has disappeared.
+Select the app-bundled CLI installation or the standalone local-service installation. Do not install two competing service owners. The app includes a signed helper and native-client/menu-bar libraries; service and UI compatibility is checked. The exact local protocol is 2.97. An incompatible service is a version problem, not proof that history has disappeared.
 
 Use `decodex --help` and `decodex serve --help` from the installed artifact before operating a host. Use the repository stage/install scripts for that installation mode. Preserve database and credential rollback sources. A documentation refresh does not authorize deletion of retained data.
 
@@ -45,7 +45,7 @@ Current Route is a synchronous service-owned operation. The service locks routin
 
 Same-account refresh remains serialized through the credential owner. A valid non-older shared-auth winner can be adopted instead of writing back a losing token. Never print token values while diagnosing this path.
 
-Chief conversation ownership is a different boundary: unavailable conversations reject new input and preserve readable history. Checking availability is not a request to resend messages. See [Chief coordination](../architecture/chief-coordination.md).
+Agent conversation ownership is a different boundary: unavailable conversations reject new input and preserve readable history. Checking availability is not a request to resend messages. See [Agent coordination](../architecture/chief-coordination.md).
 
 ## Validation without touching production data
 
@@ -63,3 +63,7 @@ The database gate and unit tests use isolated fixtures. The staging test checks 
 - [Reset Cards](reset-cards.md): explicit redemption and durable uncertain outcomes.
 - [Weekly quota activation](quota-activation.md): deduplicated minimal subscription request.
 - [Commands and validation](commands-and-validation.md): active tools and evidence boundaries.
+
+## Current migration boundary
+
+This tree embeds baseline 48 and migration 49. The verifier checks migration identity and compatibility; old numbered migration files in historical receipts are not an instruction to reset or reconstruct user data. O24 retirement changes notification recording, not the schema or readability of saved events. See [accounts](accounts-and-routing.md).

@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7498e8193b5c99d8b72c842fe4d9ad8bf87dc2cc61352d401e0841597598cd7f",
+  "pageVersion": "sha256:362329e5cba5a374790e6d2e814b7d2b33a169b4be62bf35934524072e18df30",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
-      "statement": "Schema version 30 is the current ordered SQLite migration boundary; old Pending Route migrations are historical ledger entries rather than the current Route API.",
+      "statement": "Schema version 49 is the current ordered SQLite migration boundary; old Pending Route migrations are historical ledger entries rather than the current Route API.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/wire.rs#L2476-L2484",
-          "version": "repo-lines-v1:sha256:e6f0d2ce88368399c1a2dc9b31b29068fd09a4a988c6c978dfb91e04479e6037:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzNhYjQ1NmZjMjI2MDliNmE3ZWJmYjYyZWU0N2Y4MTMwMGI5ZThiZDk1ZDljOWUwYTQzYTQ5ZTk1MDk3OTczMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmNlNTE4YzM1NjcyZDFjMzQ0YzIxMTIxZmI5NmNmOGM5MTM1NWVjZjdhNWEzMmM1ZTMwMzMyYTc2NDIyNTgwOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjBmZDE4MzgzMGZiMTQwOTM5M2I1ZDI3ZTQxNzk3ZmUwMGQzNzRkZWRiZTczZmY1MjdjZjRlNjY1OGZiNjYyMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGY5YWJmY2JlMTZhZjQ4YWE1MDFiZmEwNDMyZjlmMWFkNGZlZTdmNTQzNmU5ZmE5NmE2MDM4NDExZjBkZDYwYSJ9"
+          "resource": "repo://crates/decodex-protocol/src/wire.rs#L2736-L2755",
+          "version": "repo-lines-v1:sha256:c8732a1fca3236a74206d2486be4283557748cf1054e76b756b94094104f9339:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllZThjNDRhYTA4ZGJlN2NjMDllYWFmNmMyMjJjMTVhYmVjODBhZDNjMWMyMGEyY2FhZjNhZTA0NDM5Njc4ZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllZThjNDRhYTA4ZGJlN2NjMDllYWFmNmMyMjJjMTVhYmVjODBhZDNjMWMyMGEyY2FhZjNhZTA0NDM5Njc4ZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE0OTM2ZjgxYTkyMjAyNzcyOWRjYmE4ZWQyY2IwNjhjNTAxMDQwZTA4MDJhZjI4ZDc4Y2ExNTY0MDYyMmRiNmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3Mzg4YmRmN2UyZmQxNjczOGJmNDRmYjY0NTFmMzViNjZjZjc2YjFlNzIzNzJmYTIyZDkxYTcyZmEzYjcxODIifQ"
         },
         {
           "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:e1dd3e69ef413f72ce15b0cc9c78cead5e197705b36c896dde779bd6ba971d4b"
+          "version": "repo-file-v1:sha256:fbc45b0a22cdd3e0bb555f7fcf71ec1f8aa9ecd2e7a466ab844780b6f1c5ab11"
         }
       ]
     },
@@ -21,8 +21,8 @@
       "statement": "Current Route is a synchronous service-owned operation with routing/account locks, refreshed revisions, liveness gates, exact shared-auth projection and authoritative completion rather than a Pending queue.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L888-L1268",
-          "version": "repo-lines-v1:sha256:d06441c225655a80df10431b72d0cc6aa8587f857939ccfb94e9fdc409224626:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJmMzlkNDE1ZDQ3ZDg0OGU5MWM0NTA5ZTdmMjg0NjkyNjNhNGZkOTU1NjczOGM0NDk0YjllMzViNjIwNzQ3ZDYxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxZjgxNjBkM2MxMzY1NTI2ODdmN2U0MTRkMzc0NDVlMDIzODgzOGRjYmZkOWU3N2I5ODAyMWYxNjkwMGI1YjZkIn0"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1022-L1450",
+          "version": "repo-lines-v1:sha256:3bc63564f22dcbe18faadb19dcf5ac2bbc371065163d27d48dd35cd740ded04f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDI5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5NDQ3ZGQ4ZWNhZmU0MzJlYTBlNzE5NjgzMzUxYjkzZjI4NmIxZWM5OTllM2QzMjk4OWM4MzhkYTJjZDA3OTQ4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4ZGExZTllYmUxM2I3YWRmZmI5MzM0NGQ1M2YzMTVjOGYxZjI1MmE4YmFlNWMyN2Y5OTg2NTM5Njg1ZGUwY2I0In0"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:d81b553fd495ac47cdcaf31f9b102301c4005c0a11077dd0bd15450a7644509e"
+          "version": "repo-file-v1:sha256:57b4d2a63db94ae56680b9fbb1aa2ff0fe991d13919e62caf37bcb70cac4e895"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -42,11 +42,11 @@
     },
     {
       "id": "claim_fe4524af54094183a1ec2920c50ec62c",
-      "statement": "Current local clients and service must agree on exact protocol 2.43; packaged native compatibility is checked separately by the bundle contract verifier.",
+      "statement": "Current local clients and service must agree on exact protocol 2.97; packaged native compatibility is checked separately by the bundle contract verifier.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L146-L166",
-          "version": "repo-lines-v1:sha256:3841b6b1c206508a08430d3e34e1e2d56c912936b8f7ee87ea9ef70abfd2825d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzMWFhYzNkNWNiN2RmMTI5ZjIzNzEzMDdkMzg0OTRjMzE3ZWU5NWZjMWY0YjBlZDgzMDBkYmU3YWEzY2IyZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRjNzBlMTI4NDI0MWNhNmE3OGY0NTE0NzMyYzQ0OTE3Yzc5MWY4OWRlNDlhMzJlODE3MjAxNDQ0ZWE2MzFkNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZjA5ZTgyOWRlMTFjOGMwY2M2ZTExNDJiYTM2ZTQ4ZDhiZTUyOGJiZjkzMjViNDBmMjFlMmMwMjVhZTc2MmYifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L225-L252",
+          "version": "repo-lines-v1:sha256:cf9dce6cfa0174684f3d777af7762ffc147e87eb6ac0353b1edca12c95fec3a6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlNzBjOGNlZjcyZWM4NzE3MzIxY2Q2ZjIwNTUwMTRmMzBlN2NkNTZlOGNkNmVjMDhlYThlZTgwNTZhNDNhZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZjA5ZTgyOWRlMTFjOGMwY2M2ZTExNDJiYTM2ZTQ4ZDhiZTUyOGJiZjkzMjViNDBmMjFlMmMwMjVhZTc2MmYifQ"
         },
         {
           "resource": "repo://scripts/macos/verify_decodex_bundle_contracts.py",
@@ -56,7 +56,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:09:19.063Z"
   }
 }

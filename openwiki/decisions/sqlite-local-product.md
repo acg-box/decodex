@@ -5,8 +5,8 @@ description: "SQLite Local-Product Decision"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
@@ -14,10 +14,11 @@ sources:
     resource: repo://database/src/lib.rs
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
 
-> Current decision retained: one local SQLite owner. The current schema version is 30; use the embedded migration ledger, not the historical no-migration server-store policy. See [Runtime architecture](../architecture/runtime-architecture.md).
+
+> Current decision retained: one local SQLite owner. The current schema version is 49; use the embedded migration ledger, not the historical no-migration server-store policy. See [Runtime architecture](../architecture/runtime-architecture.md).
 
 # SQLite Local-Product Decision
 

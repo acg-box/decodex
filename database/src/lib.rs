@@ -50,8 +50,6 @@ mod agent_install;
 pub use agent_install::{AgentInstallAttempt, AgentInstallRequirements};
 mod agent_guardian;
 pub use agent_guardian::{AgentGuardianObservation, AgentGuardianReview};
-mod agent_auth_recovery;
-pub use agent_auth_recovery::AgentAuthRecoveryObservation;
 mod agent_misalignment;
 pub use agent_misalignment::AgentMisalignment;
 mod agent_output;

@@ -5,8 +5,8 @@ description: "Historical server-store feasibility"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:55:18.668Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-9cb0f6612fed4591dd1bd8d3
     resource: repo://crates/decodex-core/src/blob.rs
@@ -14,8 +14,9 @@ sources:
     resource: repo://database/Cargo.toml
   - id: openwiki-source-0184655e2e99000280ce7bbe
     resource: repo://database/src/lib.rs
-generated: { by: "codex", at: "2026-09-22T05:55:18.668Z" }
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
+
 
 # Current scope
 

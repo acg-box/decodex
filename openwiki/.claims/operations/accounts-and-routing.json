@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:d13865a61ea407d7466d49c4e9f47ef4271ea3027fb481be017928186aa491d2",
+  "claims": [
+    {
+      "id": "claim_738021d152cc4128af3d3b4b217fe92c",
+      "statement": "Account Route holds service-owned routing/account locks and checks shared-auth liveness and exact source identity before authoritative completion.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1022-L1320",
+          "version": "repo-lines-v1:sha256:ecf6b66cb05099ab223a0ceb83c34e3898fa99c82ea8a6d161c42ec50eaa24b0:eyJzZWxlY3RlZExpbmVDb3VudCI6Mjk5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzNmVlNTc3YWFiYWRjYzJhZDU2YTQxN2QxMDk4YzlhZmM0ZTcwODZkMGY5MzhkMmRjNmZiOTIyNjAwYWUxNzg1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiYmJlODJhOGEzMjc2Yzc1YjEzYzIzN2RhN2Q1YjMwZTBiMWU0YjcxNTA2YTdjMWFhMzlhMTU1MjI4NmZjMDM1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_ea6097a0826447bf98f627e2490a9125",
+      "statement": "Quota activation uses the existing credential owner and native policy for a minimal non-persistent request, with durable handling of ambiguous outcomes.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_api/activation.rs#L1-L143",
+          "version": "repo-lines-v1:sha256:35914c32a2e07d65f15d3b332d3b9bfe5ecf23ec23791f1dd4c5d9494e5ea7cf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjOGVkYmNkYTRmMjdkMzNiZTM0ZDEzZTc2MWRlYmQ4Y2JmM2QwNWUxMjIyNWQzNjQ1MjE0NTU4ZWQ1ZmM4NWRlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyYjNjYThhNTNkODI1MzFkYmVlOTU1ZDhmNzM2ZTIyMDZhMWYyNWI3NzJmODM4ZDU5YTlhNDYyZWNlZDcwNGJhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhODgyNTVlZjE2YjYzNTQzMWY4NGZhYmQ3MTI0MGM3ZTYyN2QwNDExNTU1ZTE5NWY2OThjYWI3M2JjZTgxNmQyIn0"
+        },
+        {
+          "resource": "repo://database/src/quota_activation.rs",
+          "version": "repo-file-v1:sha256:0db2ba49bde40df89f2ceb694bb1d3364e6363ae9646f32d9183583fe0a84e88"
+        }
+      ]
+    },
+    {
+      "id": "claim_5c262c9fd086473b969dadc3876fd2c1",
+      "statement": "O24 retirement ignores new provider recovery notifications while preserving old receipts across store reopen without outgoing work.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/auth_recovery.rs",
+          "version": "repo-file-v1:sha256:8e6500b4e95225aacd3fd45b541af1af301fec12d15b46e33ef01707526c09a4"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
+  }
+}

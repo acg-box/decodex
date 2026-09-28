@@ -4,31 +4,32 @@ title: "Desktop workspace and native glass"
 description: "Desktop workspace and native glass"
 tags: ["decodex", "architecture"]
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
-  - id: openwiki-source-ed0b57b7a04c5fc4bc39b55b
-    resource: repo://apps/decodex-gpui/src/chief_archive.rs
-  - id: openwiki-source-477d041b92b25547bc39e55d
-    resource: repo://apps/decodex-gpui/src/chief_graph.rs
-  - id: openwiki-source-db29fbf14600d581ea3469e0
-    resource: repo://apps/decodex-gpui/src/chief_markdown.rs
-  - id: openwiki-source-d0fed23c6c28ca7a0ab936fa
-    resource: repo://apps/decodex-gpui/src/chief_native_composer.rs
-  - id: openwiki-source-dded6d228983ca3f173f14ba
-    resource: repo://apps/decodex-gpui/src/chief_selectable_text.rs
-  - id: openwiki-source-a78ea5fe51f1eae9468e41e0
-    resource: repo://apps/decodex-gpui/src/chief_tree.rs
+  - id: openwiki-source-6512b631b67649d924c16ba3
+    resource: repo://apps/decodex-gpui/src/agent_archive.rs
+  - id: openwiki-source-ec2c431b14759817413ba09e
+    resource: repo://apps/decodex-gpui/src/agent_graph.rs
+  - id: openwiki-source-2ee1164d01a09b38a208f1ac
+    resource: repo://apps/decodex-gpui/src/agent_markdown.rs
+  - id: openwiki-source-ae2ce5cda718ede63f50be9b
+    resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
+  - id: openwiki-source-77f7f96f348908c8779b5df6
+    resource: repo://apps/decodex-gpui/src/agent_selectable_text.rs
+  - id: openwiki-source-51a4755f3c4ddd78511e5c8e
+    resource: repo://apps/decodex-gpui/src/agent_tree.rs
   - id: openwiki-source-a1a71f71175b6cac3a5f1346
     resource: repo://apps/decodex-gpui/src/native_glass_panel.rs
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
+
 
 # Desktop workspace and native glass
 
 ## Information hierarchy
 
-The Chief conversation is the primary workspace. The left sidebar selects the overview and projects; the right agent tree describes ownership; the bottom graph describes work dependencies and reports. A historical Program/Factory graph is not the current desktop surface.
+The Agent conversation is the primary workspace. The left sidebar selects the overview and projects; the right agent tree describes ownership; the bottom graph describes work dependencies and reports. A historical Program/Factory graph is not the current desktop surface.
 
 Global shortcuts in `shell.rs` are Command-E for the left sidebar, Command-B for the inspector/agent side, and Command-J for the graph. Window controls stay in the global shell. Settings is a separate presentation with bounded scrolling and shared spacing tokens.
 
@@ -52,6 +53,10 @@ Ordinary operation feedback goes to the notification center. A conversation that
 
 ## Verification
 
-Use GPUI tests in `shell.rs`, `chief_workspace.rs`, `chief_activity.rs`, `chief_markdown.rs`, `chief_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
+Use GPUI tests in `shell.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
 
-See [Chief coordination](chief-coordination.md) and [Commands and validation](../operations/commands-and-validation.md).
+See [Agent coordination](chief-coordination.md) and [Commands and validation](../operations/commands-and-validation.md).
+
+## Retained presentation and drafts
+
+The composer preserves editable drafts and recovered copies. Rich Markdown retains math, Mermaid, weather and source-copy presentation without replacing native execution. MCP App widgets have a separate constrained WebKit host. See [conversations](../workflows/conversations-and-recovery.md), [widgets](../integrations/tools-plugins-and-apps.md) and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).

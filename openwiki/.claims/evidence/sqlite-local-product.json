@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d84ed8d92858f56df90eaa601295f9ec6338b28dbd69a3136b02b27fe6e7a7e2",
+  "pageVersion": "sha256:08358967066840194cbd8f7d1cf9d7fc3a2c4950ab4254cb8b36cca5c058e4b5",
   "claims": [
     {
       "id": "claim_57467868d3114a4f8efa994a912c927d",
-      "statement": "The current exact local protocol is 2.43; RouteAccount is a synchronous service-owned command with credential-negative completion or refusal rather than Pending-route diagnostics.",
+      "statement": "The current exact local protocol is 2.97; RouteAccount is a synchronous service-owned command with credential-negative completion or refusal rather than Pending-route diagnostics.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L146-L165",
-          "version": "repo-lines-v1:sha256:64f7e2463e867c18857c2f966fc5becb4dabdf06101765297cea74f83e687734:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzMWFhYzNkNWNiN2RmMTI5ZjIzNzEzMDdkMzg0OTRjMzE3ZWU5NWZjMWY0YjBlZDgzMDBkYmU3YWEzY2IyZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlYjExYWI4YjBkOWQ4MzRmMWFlZmZiNWRhODU0ZmE0ZGZmYjZmYjhhODhlZGFmNjA3NjVmNGVmYWZhYjlhOGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRjNzBlMTI4NDI0MWNhNmE3OGY0NTE0NzMyYzQ0OTE3Yzc5MWY4OWRlNDlhMzJlODE3MjAxNDQ0ZWE2MzFkNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L225-L252",
+          "version": "repo-lines-v1:sha256:cf9dce6cfa0174684f3d777af7762ffc147e87eb6ac0353b1edca12c95fec3a6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlNzBjOGNlZjcyZWM4NzE3MzIxY2Q2ZjIwNTUwMTRmMzBlN2NkNTZlOGNkNmVjMDhlYThlZTgwNTZhNDNhZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZjA5ZTgyOWRlMTFjOGMwY2M2ZTExNDJiYTM2ZTQ4ZDhiZTUyOGJiZjkzMjViNDBmMjFlMmMwMjVhZTc2MmYifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L888-L1268",
-          "version": "repo-lines-v1:sha256:d06441c225655a80df10431b72d0cc6aa8587f857939ccfb94e9fdc409224626:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJmMzlkNDE1ZDQ3ZDg0OGU5MWM0NTA5ZTdmMjg0NjkyNjNhNGZkOTU1NjczOGM0NDk0YjllMzViNjIwNzQ3ZDYxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxZjgxNjBkM2MxMzY1NTI2ODdmN2U0MTRkMzc0NDVlMDIzODgzOGRjYmZkOWU3N2I5ODAyMWYxNjkwMGI1YjZkIn0"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1022-L1450",
+          "version": "repo-lines-v1:sha256:3bc63564f22dcbe18faadb19dcf5ac2bbc371065163d27d48dd35cd740ded04f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDI5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5NDQ3ZGQ4ZWNhZmU0MzJlYTBlNzE5NjgzMzUxYjkzZjI4NmIxZWM5OTllM2QzMjk4OWM4MzhkYTJjZDA3OTQ4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4ZGExZTllYmUxM2I3YWRmZmI5MzM0NGQ1M2YzMTVjOGYxZjI1MmE4YmFlNWMyN2Y5OTg2NTM5Njg1ZGUwY2I0In0"
         }
       ]
     },
@@ -21,18 +21,18 @@
       "statement": "Desktop account controllers bind authoritative Route results to the current session, exact command and idempotency key without receiving credentials.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/accounts.rs#L478-L520",
-          "version": "repo-lines-v1:sha256:aa67ee5e6dfe838abed78e180262dff81fb16d7aaca5009c00a06a582055033a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlMmRkNTEyMWFkOTQ2OTM0ZmUyMDQxODg4ZWE4OWU2MzJhMTIzZDM0ZjljODgxMDBhNTAyODk5YjQyMzJkMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyNjYyMTE4NTBhNzA5NDEwODlkZmY3MTI2YWI1MzAyZTAwYzhmYWE2NDRhMTcwMjMyNGI0Njg1ZTBmYzkyYTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkNjhiMjFiN2NlZDM0ZWM3ZWM0YzZhZDZiZjQ3MzY0MDBmMmZjMTQwYmMyMWVmYzYzYTcyOWExYTMxODQ3MzEifQ"
+          "resource": "repo://apps/decodex-gpui/src/accounts.rs#L680-L788",
+          "version": "repo-lines-v1:sha256:4136df4ad65de520ab002976a6cb4225fbcc877f11a12e2d179fde82aee5264d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmM2JlNTA0YWJlMGNkYjIxNTU1ZTg1YWU0MmJiODJlMTBhYjcyOTA2N2VjOGU4YWQ2YTRjZTU3ZjJiZWIwMmQwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzZmIxY2VjNzdiYjk4YjEzYTBiMGNhYmMzODg2MGU0NWJkMzc2OTZhOGQzZWU3ZjU4NzAxNWMyMGI1NjA3MTAwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiZTQ3YTU4ZDIxMmY3NmY2MjgzYTFmMmNiOGM4MDBiMThhYWI0Njk0YTljZmZjNGYxOTM3YjYzZjJkZGE1OWM3In0"
         }
       ]
     },
     {
       "id": "claim_2cb85840131b4dd68e550452fba1f776",
-      "statement": "Schema 30 includes durable Reset Card operations and quota-activation records, and the signed bundle contract verifies a decodex helper.",
+      "statement": "Schema 49 includes durable Reset Card operations and quota-activation records, and the signed bundle contract verifies a decodex helper.",
       "evidence": [
         {
           "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:e1dd3e69ef413f72ce15b0cc9c78cead5e197705b36c896dde779bd6ba971d4b"
+          "version": "repo-file-v1:sha256:fbc45b0a22cdd3e0bb555f7fcf71ec1f8aa9ecd2e7a466ab844780b6f1c5ab11"
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
@@ -42,7 +42,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:55:18.668Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
   }
 }
