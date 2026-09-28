@@ -45,6 +45,15 @@ impl AgentSurface {
 		}
 	}
 
+	pub(super) fn open_recap(&mut self, work: &str, cx: &mut Context<Self>) {
+		if self.recap.work.as_deref() == Some(work)
+			&& (self.recap.state.is_some() || self.recap.busy())
+		{
+			return;
+		}
+		self.read_recap(work, false, cx);
+	}
+
 	fn read_recap(&mut self, work: &str, generate: bool, cx: &mut Context<Self>) {
 		self.request_recap(work, generate, false, cx);
 	}
@@ -63,7 +72,12 @@ impl AgentSurface {
 		{
 			return;
 		}
-		let Some(profile) = self.profile.clone() else { return };
+		let Some(profile) = self.profile.clone() else {
+			self.recap.work = Some(work.into());
+			self.recap.feedback = "Connect to the service to load this recap.".into();
+			cx.notify();
+			return;
+		};
 		let Some(item) =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == work))
 		else {
@@ -72,6 +86,10 @@ impl AgentSurface {
 		let Some(thread) =
 			item.codex_thread_id.as_ref().and_then(|s| WireText::new(s.clone()).ok())
 		else {
+			self.recap.work = Some(work.into());
+			self.recap.feedback =
+				"A recap is available after this agent starts a conversation.".into();
+			cx.notify();
 			return;
 		};
 		let Ok(owner) = EntityId::new(work) else { return };
@@ -145,31 +163,34 @@ impl AgentSurface {
 	}
 
 	pub(super) fn recap_panel(&self, work: &str, cx: &mut Context<Self>) -> gpui::AnyElement {
-		if self.native_agents.selected.is_some()
-			|| self
-				.snapshot
-				.as_ref()
-				.and_then(|s| s.work_items.iter().find(|w| w.id == work))
-				.is_none_or(|w| w.codex_thread_id.is_none())
-		{
+		if self.native_agents.selected.is_some() {
 			return div().into_any_element();
 		}
+
 		let owner = work.to_owned();
 		let opened = self.recap.work.as_deref() == Some(work);
-		let mut panel = div().flex().flex_col().items_start().gap_2().child(mcp_button(
-			"recap-toggle".into(),
-			"Task recap".into(),
-			opened,
-			cx,
-			move |s, cx| {
-				if s.recap.work.as_deref() == Some(&owner) {
-					s.reset_recap();
-					cx.notify();
-				} else {
-					s.read_recap(&owner, false, cx);
-				}
-			},
-		));
+		let mut panel = div()
+			.w_full()
+			.text_size(px(12.))
+			.line_height(px(18.))
+			.flex()
+			.flex_col()
+			.items_start()
+			.gap_2()
+			.child(mcp_button(
+				"recap-toggle".into(),
+				"Task recap".into(),
+				opened,
+				cx,
+				move |s, cx| {
+					if s.recap.work.as_deref() == Some(&owner) {
+						s.reset_recap();
+						cx.notify();
+					} else {
+						s.read_recap(&owner, false, cx);
+					}
+				},
+			));
 		if !opened {
 			return panel.into_any_element();
 		}
@@ -177,7 +198,8 @@ impl AgentSurface {
 			panel = panel.child(self.recap.feedback.clone());
 		}
 		if let Some(recap) = self.recap.state.as_ref().and_then(|s| s.recap.as_ref()) {
-			panel = panel.child(recap.summary.as_str().to_owned());
+			panel =
+				panel.child(markdown::render_process(recap.summary.as_str(), "task-recap-summary"));
 			if let Some(next) = &recap.next_action {
 				panel = panel.child(format!("Next: {}", next.as_str()));
 			}

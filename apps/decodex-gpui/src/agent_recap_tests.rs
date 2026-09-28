@@ -307,50 +307,31 @@ fn active_voice_rejection_is_shown_without_retrying_generation() {
 }
 
 #[gpui::test]
-fn completed_recap_remains_reachable_with_pixel_and_line_scrolling(cx: &mut gpui::TestAppContext) {
+fn recap_opens_outside_transcript_and_reports_a_missing_connection(cx: &mut gpui::TestAppContext) {
 	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-	visual.simulate_resize(gpui::size(px(1400.), px(500.)));
+	visual.simulate_resize(gpui::size(px(1400.), px(900.)));
 	surface.update(visual, |s, cx| {
 		s.visual_workspace_fixture(cx);
-		s.graph_visible = false;
-		s.visual_recap();
-		s.recap.state.as_mut().unwrap().recap.as_mut().unwrap().summary =
-			WireText::new("Recap.\n".repeat(60)).unwrap();
-		assert!(s.recap.state.as_ref().unwrap().recap.as_ref().unwrap().is_valid());
 		cx.notify();
 	});
 	visual.update(|window, cx| window.draw(cx).clear());
+	std::thread::sleep(std::time::Duration::from_millis(240));
+	visual.update(|window, cx| window.draw(cx).clear());
+	assert!(visual.debug_bounds("recap-toggle").is_none(), "no recap row in the transcript");
 	let scroll = surface.read_with(visual, |s, _| s.transcript_scroll["agent"].clone());
-	assert!(scroll.max_offset().y > px(1000.));
-	for delta in [
-		gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(10000.))),
-		gpui::ScrollDelta::Lines(gpui::point(0., 1000.)),
-	] {
-		surface.update(visual, |s, cx| {
-			scroll.scroll_to_bottom();
-			s.latest_follow_work = Some("agent".into());
-			cx.notify();
-		});
-		visual.update(|window, cx| window.draw(cx).clear());
-		visual.simulate_event(gpui::ScrollWheelEvent {
-			position: scroll.bounds().center(),
-			delta,
-			..Default::default()
-		});
-		// Pixel gestures move immediately; discrete wheel gestures settle after
-		// their interpolation interval before reachability can be asserted.
-		if matches!(delta, gpui::ScrollDelta::Lines(_)) {
-			std::thread::sleep(std::time::Duration::from_millis(600));
-		}
-		surface.update(visual, |_, cx| cx.notify());
-		visual.update(|window, cx| window.draw(cx).clear());
-		surface.read_with(visual, |s, _| {
-			assert!(s.latest_follow_work.is_none());
-			assert!(s.history_follow_paused.contains("agent"));
-		});
-		assert!(scroll.offset().y.abs() < px(1.), "recap start must be reachable");
-		let toggle = visual.debug_bounds("recap-toggle").expect("recap heading");
-		assert!(toggle.top() >= scroll.bounds().top());
-		assert!(toggle.bottom() <= scroll.bounds().bottom());
-	}
+	let height = scroll.max_offset();
+	surface.update(visual, |s, cx| {
+		s.details_visible = true;
+		s.open_recap("agent", cx);
+		assert_eq!(s.recap.work.as_deref(), Some("agent"));
+		assert!(s.recap.feedback.contains("Connect to the service"));
+	});
+	visual.update(|window, cx| window.draw(cx).clear());
+	std::thread::sleep(std::time::Duration::from_millis(240));
+	visual.update(|window, cx| window.draw(cx).clear());
+	let panel = visual.debug_bounds("work-inspection-scroll").unwrap();
+	let recap = visual.debug_bounds("recap-toggle").unwrap();
+	assert!(panel.contains(&recap.center()));
+	assert_eq!(scroll.max_offset(), height, "recap must not resize history");
+	assert!(visual.debug_bounds("recap-refresh").is_some());
 }

@@ -1789,7 +1789,6 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap(px(ui_theme::MESSAGE_GAP))
-			.child(self.recap_panel(&work.id, cx))
 			.child(self.prompt_edit_panel(&work.id, cx))
 			.child(self.native_timeline_panel(work, cx));
 		if self.native_history_active(work) {
