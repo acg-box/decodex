@@ -46,15 +46,17 @@ impl SqliteStore {
 				let mut changed = false;
 				for id in work {
 					if crate::agent_process::owns_work(&tx, &id, generation.as_deref())? {
-						changed |=
-							tx.execute("DELETE FROM agent_live_output WHERE work_id=?1", [&id])
-								.map_err(sqlite_error)? > 0;
-						changed |=
-							tx.execute(
+						changed |= tx
+							.execute("DELETE FROM agent_live_output WHERE work_id=?1", [&id])
+							.map_err(sqlite_error)?
+							> 0;
+						changed |= tx
+							.execute(
 								"DELETE FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='partial_output'",
 								[&id],
 							)
-							.map_err(sqlite_error)? > 0;
+							.map_err(sqlite_error)?
+							> 0;
 					}
 				}
 				tx.commit().map_err(sqlite_error)?;

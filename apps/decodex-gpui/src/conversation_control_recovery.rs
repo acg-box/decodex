@@ -231,7 +231,8 @@ fn observe(
 							current.state,
 							decodex_protocol::ConversationState::Ready
 								| decodex_protocol::ConversationState::Running
-						) && current.active_turn_id.as_ref() != Some(turn_id) =>
+						)
+						&& current.active_turn_id.as_ref() != Some(turn_id) =>
 					O::TurnInactive,
 				CommandPayload::InterruptConversation { turn_id, .. }
 					if current.active_turn_id.as_ref() == Some(turn_id) =>

@@ -1013,7 +1013,8 @@ impl AgentSurface {
 					.iter()
 					.filter(|w| w.parent_goal_id == work.parent_goal_id && w.kind == work.kind)
 					.position(|w| w.id == work.id)
-					.unwrap_or(0) + 1;
+					.unwrap_or(0)
+					+ 1;
 				return format!("Agent {position}");
 			}
 		}

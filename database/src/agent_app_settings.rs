@@ -70,7 +70,8 @@ fn target(field: &str, value: &Value) -> bool {
 			a.len() <= 3
 				&& a.iter().all(|v| {
 					v.as_str().is_some_and(|s| matches!(s, "code_mode" | "deferred" | "direct"))
-				}) && a.iter().collect::<std::collections::HashSet<_>>().len() == a.len()
+				})
+				&& a.iter().collect::<std::collections::HashSet<_>>().len() == a.len()
 		}),
 		"default_tools_approval_mode" =>
 			value.as_str().is_some_and(|v| matches!(v, "auto" | "prompt" | "writes" | "approve")),

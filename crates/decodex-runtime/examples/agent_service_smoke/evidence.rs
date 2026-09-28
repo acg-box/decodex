@@ -50,7 +50,8 @@ pub(super) async fn qualify(client: &AgentClient) -> SmokeResult<()> {
 					WireText::new(&item.item_id).map_err(|_| "invalid item identity")?,
 					None,
 				)
-				.await? && !text.is_empty()
+				.await?
+				&& !text.is_empty()
 			{
 				inspected_tool = true;
 				break;

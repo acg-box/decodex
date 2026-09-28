@@ -107,7 +107,8 @@ fn parse(text: &str) -> Vec<Node> {
 						let crlf =
 							matches!(stack.last(), Some((Kind::Code | Kind::Mermaid { .. }, _)))
 								&& value.starts_with('\n')
-								&& range.start > 0 && text.as_bytes()[range.start - 1] == b'\r';
+								&& range.start > 0
+								&& text.as_bytes()[range.start - 1] == b'\r';
 						Node::Text(if crlf { format!("\r{value}") } else { value.into_string() })
 					},
 					Event::Code(text) =>
@@ -435,9 +436,11 @@ fn render_item(nodes: &[Node], key: &str) -> Vec<AnyElement> {
 			node,
 			Node::Block(
 				Kind::Paragraph
-					| Kind::List(_) | Kind::Code
+					| Kind::List(_)
+					| Kind::Code
 					| Kind::Mermaid { .. }
-					| Kind::Quote | Kind::Table,
+					| Kind::Quote
+					| Kind::Table,
 				_
 			) | Node::Rule
 		) {

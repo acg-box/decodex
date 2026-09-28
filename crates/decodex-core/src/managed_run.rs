@@ -258,11 +258,14 @@ mod tests {
 							| (
 								ManagedRunLifecycle::Active,
 								ManagedRunPhase::Prepare
-									| ManagedRunPhase::Execute | ManagedRunPhase::Validate
-									| ManagedRunPhase::Review | ManagedRunPhase::Repair
+									| ManagedRunPhase::Execute
+									| ManagedRunPhase::Validate
+									| ManagedRunPhase::Review
+									| ManagedRunPhase::Repair
 									| ManagedRunPhase::Land,
 								None
-							) | (ManagedRunLifecycle::Waiting, _, Some(_))
+							)
+							| (ManagedRunLifecycle::Waiting, _, Some(_))
 							| (ManagedRunLifecycle::Terminal, ManagedRunPhase::Close, None)
 					);
 					assert_eq!(

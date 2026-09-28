@@ -101,7 +101,8 @@ impl AgentHost {
 			.agent_voice_history_revision(source.key.work.clone(), source.key.thread.clone())
 			.await
 			.ok()
-			.as_ref() != Some(voice)
+			.as_ref()
+			!= Some(voice)
 		{
 			return false;
 		}

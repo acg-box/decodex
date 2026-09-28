@@ -951,7 +951,8 @@ fn encoded_revision_length(
 	let header_length = CONTEXT_REVISION_MAGIC.len()
 		+ UUID_BYTES
 		+ encoded_owner_length(owner)
-		+ 8 + 1
+		+ 8
+		+ 1
 		+ predecessor_length
 		+ 2;
 	let length = items.iter().try_fold(header_length, |length, item| {

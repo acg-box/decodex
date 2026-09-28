@@ -135,7 +135,8 @@ where
 				"step_model_switching",
 				Some(&before.key.thread),
 			)
-			.await != Some(true)
+			.await
+				!= Some(true)
 			{
 				return None;
 			}

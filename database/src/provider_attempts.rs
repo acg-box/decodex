@@ -463,7 +463,8 @@ impl SqliteStore {
 				|| !matches!(
 					current.state,
 					ProviderAttemptState::DispatchAuthorized | ProviderAttemptState::Unknown
-				) || current.request_id != evidence.request_id
+				)
+				|| current.request_id != evidence.request_id
 				|| !current.provider_keys.contains(&evidence.provider_key)
 			{
 				return Ok(rejected(ProviderAttemptRejection::EvidenceMismatch, &current));

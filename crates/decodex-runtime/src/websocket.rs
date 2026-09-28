@@ -220,7 +220,8 @@ impl TerminationReceipt {
 				self.actor_command_deadline,
 				ActorCommandDeadlineClass::NoActiveCommand
 					| ActorCommandDeadlineClass::SettledBeforeDeadline
-			) && self.actor_commands_admitted == self.actor_commands_settled
+			)
+			&& self.actor_commands_admitted == self.actor_commands_settled
 			&& self.harvested_tasks == self.spawned_sessions.saturating_add(self.spawned_services)
 			&& self.expected_tasks == self.harvested_tasks
 	}

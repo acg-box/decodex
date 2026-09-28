@@ -599,7 +599,8 @@ impl ProviderAttemptService {
 						&& binding.conversation_revision == *conversation_revision
 						&& &binding.turn_id == turn_id
 						&& binding.turn_revision == 1
-				) && binding.runtime_session_id == plan.plan.source_runtime_session_id
+				)
+				&& binding.runtime_session_id == plan.plan.source_runtime_session_id
 				&& plan.plan.source_runtime_session_revision.checked_add(2)
 					== Some(binding.revision)
 				&& binding.fence_prior_revision == plan.plan.source_runtime_session_revision
@@ -624,8 +625,9 @@ impl ProviderAttemptService {
 						&& binding.conversation_revision == *conversation_revision
 						&& &binding.turn_id == turn_id
 						&& binding.turn_revision == 1
-				) && plan.plan.fallback_runtime_session_id.as_ref()
-				== Some(&binding.runtime_session_id)
+				)
+				&& plan.plan.fallback_runtime_session_id.as_ref()
+					== Some(&binding.runtime_session_id)
 				&& binding.fence_prior_revision == 1
 				&& binding.fence_revision == 2
 				&& binding.revision == 3 =>

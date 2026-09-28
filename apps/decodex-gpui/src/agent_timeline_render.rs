@@ -56,7 +56,8 @@ impl AgentSurface {
 			Content::Item { kind, turn_id, item_id, attachments, app_ui, text, .. }
 				if matches!(kind.as_str(), "userMessage" | "agentMessage")
 					&& attachments.is_empty()
-					&& !app_ui && !text.contains("![")
+					&& !app_ui
+					&& !text.contains("![")
 					&& work.active_turn_id.as_deref() != Some(turn_id)
 					&& !self.native_history.weather.contains_key(turn_id)
 					&& self.native_live_message(work, turn_id, item_id).is_none() =>

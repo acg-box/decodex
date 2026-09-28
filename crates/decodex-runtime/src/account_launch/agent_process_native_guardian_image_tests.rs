@@ -69,7 +69,8 @@ async fn finish(session: &mut NativeSession) -> bool {
 				if method.starts_with("item/autoApprovalReview/") {
 					denied |= decodex_codex::guardian::decode_review(&method, &params)
 						.expect("native review event")
-						.status == decodex_codex::guardian::ReviewStatus::Denied;
+						.status
+						== decodex_codex::guardian::ReviewStatus::Denied;
 				}
 				if method == "turn/completed" {
 					assert_eq!(params["turn"]["status"], "completed");

@@ -442,12 +442,13 @@ fn is_canonical_repository_identity(value: &str) -> bool {
 			byte.is_ascii_lowercase()
 				|| byte.is_ascii_digit()
 				|| matches!(byte, b'-' | b'_' | b'.' | b'/')
-		}) && value.split('/').all(|segment| {
-		!segment.is_empty()
-			&& !matches!(segment, "." | "..")
-			&& segment.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
-			&& segment.as_bytes().last().is_some_and(u8::is_ascii_alphanumeric)
-	})
+		})
+		&& value.split('/').all(|segment| {
+			!segment.is_empty()
+				&& !matches!(segment, "." | "..")
+				&& segment.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
+				&& segment.as_bytes().last().is_some_and(u8::is_ascii_alphanumeric)
+		})
 }
 
 fn is_normalized_absolute_host_path(path: &Path) -> bool {

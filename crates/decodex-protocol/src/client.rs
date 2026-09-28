@@ -1380,7 +1380,8 @@ impl AgentClient {
 									"user_message" | "async_question_answer" | "work_instruction"
 								)
 						})
-				}) || entries.windows(2).any(|pair| pair[0].id >= pair[1].id)
+				})
+				|| entries.windows(2).any(|pair| pair[0].id >= pair[1].id)
 				|| next_after
 					.is_some_and(|next| entries.last().is_none_or(|entry| entry.id != next))
 				|| serde_json::to_vec(&result).map_or(true, |encoded| encoded.len() > 64 * 1024))
@@ -1419,15 +1420,19 @@ impl AgentClient {
 					total_bytes,
 					bytes,
 					..
-				} = &result && (actual.as_ref() != &request
-					|| bytes.is_empty()
-					|| bytes.len() > crate::AGENT_MEDIA_CHUNK_BYTES
-					|| *total_bytes as usize > crate::MAX_AGENT_MEDIA_BYTES
-					|| u64::from(request.offset) + bytes.len() as u64 > u64::from(*total_bytes)
-					|| fingerprint.as_str().len() != 64
-					|| !fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
-					|| request.fingerprint.as_ref().is_some_and(|expected| expected != fingerprint)
-					|| mime_type.len() > 128)
+				} = &result
+					&& (actual.as_ref() != &request
+						|| bytes.is_empty()
+						|| bytes.len() > crate::AGENT_MEDIA_CHUNK_BYTES
+						|| *total_bytes as usize > crate::MAX_AGENT_MEDIA_BYTES
+						|| u64::from(request.offset) + bytes.len() as u64 > u64::from(*total_bytes)
+						|| fingerprint.as_str().len() != 64
+						|| !fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
+						|| request
+							.fingerprint
+							.as_ref()
+							.is_some_and(|expected| expected != fingerprint)
+						|| mime_type.len() > 128)
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -1488,9 +1493,10 @@ impl AgentClient {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
 		if let crate::AgentAppUiCallReview::Available { request: actual, review_token, .. } =
-			&result && (actual.as_ref() != &request
-			|| review_token.as_str().len() != 64
-			|| !review_token.as_str().bytes().all(|b| b.is_ascii_hexdigit()))
+			&result
+			&& (actual.as_ref() != &request
+				|| review_token.as_str().len() != 64
+				|| !review_token.as_str().bytes().all(|b| b.is_ascii_hexdigit()))
 		{
 			return Err(ClientFailure::ProtocolMalformed);
 		}
@@ -1554,16 +1560,20 @@ impl AgentClient {
 					total_bytes,
 					bytes,
 					..
-				} = &result && (actual.as_ref() != &request
-					|| source_fingerprint.as_str().len() != 64
-					|| !source_fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
-					|| bytes.is_empty()
-					|| bytes.len() > crate::AGENT_APP_UI_CHUNK_BYTES
-					|| *total_bytes as usize > crate::MAX_AGENT_APP_UI_BYTES
-					|| u64::from(request.offset) + bytes.len() as u64 > u64::from(*total_bytes)
-					|| fingerprint.as_str().len() != 64
-					|| !fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
-					|| request.fingerprint.as_ref().is_some_and(|expected| expected != fingerprint))
+				} = &result
+					&& (actual.as_ref() != &request
+						|| source_fingerprint.as_str().len() != 64
+						|| !source_fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
+						|| bytes.is_empty()
+						|| bytes.len() > crate::AGENT_APP_UI_CHUNK_BYTES
+						|| *total_bytes as usize > crate::MAX_AGENT_APP_UI_BYTES
+						|| u64::from(request.offset) + bytes.len() as u64 > u64::from(*total_bytes)
+						|| fingerprint.as_str().len() != 64
+						|| !fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
+						|| request
+							.fingerprint
+							.as_ref()
+							.is_some_and(|expected| expected != fingerprint))
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -1601,14 +1611,18 @@ impl AgentClient {
 					total_bytes,
 					bytes,
 					..
-				} = &result && (actual.as_ref() != &request
-					|| bytes.is_empty()
-					|| bytes.len() > crate::AGENT_APP_UI_RECEIPT_CHUNK_BYTES
-					|| *total_bytes as usize > crate::MAX_AGENT_APP_UI_RECEIPT_BYTES
-					|| u64::from(request.offset) + bytes.len() as u64 > u64::from(*total_bytes)
-					|| fingerprint.as_str().len() != 64
-					|| !fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
-					|| request.fingerprint.as_ref().is_some_and(|expected| expected != fingerprint))
+				} = &result
+					&& (actual.as_ref() != &request
+						|| bytes.is_empty()
+						|| bytes.len() > crate::AGENT_APP_UI_RECEIPT_CHUNK_BYTES
+						|| *total_bytes as usize > crate::MAX_AGENT_APP_UI_RECEIPT_BYTES
+						|| u64::from(request.offset) + bytes.len() as u64 > u64::from(*total_bytes)
+						|| fingerprint.as_str().len() != 64
+						|| !fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
+						|| request
+							.fingerprint
+							.as_ref()
+							.is_some_and(|expected| expected != fingerprint))
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -1655,7 +1669,8 @@ impl AgentClient {
 					work_id: actual,
 					thread_id: actual_thread,
 					..
-				} = &result && (actual != &work_id || actual_thread != thread_id.as_str())
+				} = &result
+					&& (actual != &work_id || actual_thread != thread_id.as_str())
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -1779,7 +1794,8 @@ impl AgentClient {
 			transport: ResetCardClient {
 				profile: self.transport.profile.clone(),
 				timeout: if refresh
-					|| restore || install
+					|| restore
+					|| install
 					|| matches!(
 						&action,
 						crate::AgentActionDto::SetAppToolExposure { .. }

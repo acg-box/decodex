@@ -75,7 +75,8 @@ impl Shell {
 						}
 						true
 					})
-					.ok() != Some(true)
+					.ok()
+					!= Some(true)
 				{
 					break;
 				}

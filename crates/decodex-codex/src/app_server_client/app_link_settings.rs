@@ -195,16 +195,18 @@ impl AppServerClient {
 						}
 						let entry = self.project_app_link(cwd, app, link, &response)?;
 						bytes += app.len()
-							+ link.len() + 128 + [
-							&entry.effective_mode,
-							&entry.effective_reviewer,
-							&entry.user_mode,
-							&entry.user_reviewer,
-						]
-						.iter()
-						.filter_map(|v| v.as_ref())
-						.map(|v| v.len())
-						.sum::<usize>();
+							+ link.len()
+							+ 128
+							+ [
+								&entry.effective_mode,
+								&entry.effective_reviewer,
+								&entry.user_mode,
+								&entry.user_reviewer,
+							]
+							.iter()
+							.filter_map(|v| v.as_ref())
+							.map(|v| v.len())
+							.sum::<usize>();
 						if bytes > 256 * 1024 {
 							return Err(ClientError::CapacityExceeded);
 						}

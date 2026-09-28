@@ -246,9 +246,10 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 				|| decodex_codex::app_server_client::is_thread_model_selection(&value["params"])
 				|| decodex_codex::app_server_client::is_thread_model_recovery_update(
 					&value["params"],
-				) || decodex_codex::app_server_client::is_thread_permission_selection(
-				&value["params"],
-			) {
+				)
+				|| decodex_codex::app_server_client::is_thread_permission_selection(
+					&value["params"],
+				) {
 				Ok(())
 			} else {
 				Err(ClientError::InvalidFrame)
@@ -280,9 +281,11 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "thread/realtime/start"
 					| "thread/realtime/stop"
 					| "thread/realtime/listVoices"
-					| "model/list" | "experimentalFeature/list"
+					| "model/list"
+					| "experimentalFeature/list"
 					| "permissionProfile/list"
-					| "hooks/list" | "config/read"
+					| "hooks/list"
+					| "config/read"
 					| "configRequirements/read"
 					| "thread/start"
 					| "thread/resume"
@@ -292,14 +295,17 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "mcpServer/resource/read"
 					| "mcpServer/tool/call"
 					| "plugin/installed"
-					| "plugin/list" | "plugin/read"
+					| "plugin/list"
+					| "plugin/read"
 					| "app/installed"
-					| "app/list" | "app/read"
+					| "app/list"
+					| "app/read"
 					| "account/usage/read"
 					| "thread/unarchive"
 					| "thread/revert"
 					| "thread/unsubscribe"
-					| "thread/read" | "thread/list"
+					| "thread/read"
+					| "thread/list"
 					| "thread/goal/get"
 					| "thread/turns/list"
 					| "thread/items/list"
@@ -312,7 +318,8 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "config/mcpServer/reload"
 					| "thread/archive"
 					| "thread/approveGuardianDeniedAction"
-					| "turn/start" | "turn/steer"
+					| "turn/start"
+					| "turn/steer"
 					| "turn/interrupt"
 			)
 		) {

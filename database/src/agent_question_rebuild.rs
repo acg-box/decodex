@@ -131,7 +131,8 @@ fn validate(
 				|| !ids.insert(q.question_id.as_str())
 				|| !serde_json::from_str::<serde_json::Value>(&q.question_json)
 					.is_ok_and(|v| v.is_object())
-		}) || answers.iter().any(|a| !valid(a, 4096))
+		})
+		|| answers.iter().any(|a| !valid(a, 4096))
 		|| questions
 			.iter()
 			.map(|q| {

@@ -481,39 +481,40 @@ impl AgentSurface {
 			let send_selector = format!("async-send-{question_id}");
 			let key_owner = owner.clone();
 			let key_question = question_id.clone();
-			card =
-				card.key_context("AsyncQuestion")
-					.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
-						let modifiers = event.keystroke.modifiers;
-						if event.keystroke.key == "enter"
-							&& !modifiers.shift && !modifiers.control
-							&& !modifiers.alt
-						{
-							if !event.is_held {
-								s.answer_async_question(&key_owner, &key_question, cx);
-							}
-							cx.stop_propagation();
+			card = card
+				.key_context("AsyncQuestion")
+				.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+					let modifiers = event.keystroke.modifiers;
+					if event.keystroke.key == "enter"
+						&& !modifiers.shift
+						&& !modifiers.control
+						&& !modifiers.alt
+					{
+						if !event.is_held {
+							s.answer_async_question(&key_owner, &key_question, cx);
 						}
-					}))
-					.on_action(cx.listener(move |s, _: &SubmitComposer, _, cx| {
-						s.answer_async_question(&enter_owner, &enter_question, cx);
 						cx.stop_propagation();
-					}))
-					.child(div().h(px(40.0)).child(input.clone()))
-					.child(
-						div()
-							.id(SharedString::from(format!("async-send-{question_id}")))
-							.debug_selector(move || send_selector)
-							.role(Role::Button)
-							.tab_index(0)
-							.aria_label("Send answer")
-							.p_2()
-							.cursor_pointer()
-							.on_click(cx.listener(move |s, _, _, cx| {
-								s.answer_async_question(&owner, &question_id, cx)
-							}))
-							.child("Send answer"),
-					);
+					}
+				}))
+				.on_action(cx.listener(move |s, _: &SubmitComposer, _, cx| {
+					s.answer_async_question(&enter_owner, &enter_question, cx);
+					cx.stop_propagation();
+				}))
+				.child(div().h(px(40.0)).child(input.clone()))
+				.child(
+					div()
+						.id(SharedString::from(format!("async-send-{question_id}")))
+						.debug_selector(move || send_selector)
+						.role(Role::Button)
+						.tab_index(0)
+						.aria_label("Send answer")
+						.p_2()
+						.cursor_pointer()
+						.on_click(cx.listener(move |s, _, _, cx| {
+							s.answer_async_question(&owner, &question_id, cx)
+						}))
+						.child("Send answer"),
+				);
 			panel = panel.child(card.child(self.async_question_skip(work, &question.id, cx)));
 		}
 		if *questions_truncated {

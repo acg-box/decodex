@@ -180,10 +180,11 @@ impl ProgramCycleDto {
 					|| node.summary.as_str().is_empty()
 					|| node.state.as_str().is_empty()
 					|| node.fields.len() > 8
-			}) || edges.iter().any(|edge| {
-			!node_ids.contains(edge.from.as_str()) && edge.from != program.program_id
-				|| !node_ids.contains(edge.to.as_str()) && edge.to != program.program_id
-		}) {
+			})
+			|| edges.iter().any(|edge| {
+				!node_ids.contains(edge.from.as_str()) && edge.from != program.program_id
+					|| !node_ids.contains(edge.to.as_str()) && edge.to != program.program_id
+			}) {
 			return Err(ProgramCycleContractError::InvalidProjection);
 		}
 		Ok(Self { program, non_goals, review_policy, domain_pack: None, nodes, edges })

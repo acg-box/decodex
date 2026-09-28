@@ -1885,7 +1885,9 @@ impl AgentSurface {
 										0.35 + 0.65
 											* ((phase * std::f32::consts::TAU
 												- index as f32 * 0.7)
-												.sin() * 0.5 + 0.5),
+												.sin()
+												* 0.5
+												+ 0.5),
 									)
 								},
 							)

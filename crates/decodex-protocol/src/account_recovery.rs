@@ -177,7 +177,8 @@ impl AccountRecoveryResult {
 						scalar(value, 4096)
 							&& url::Url::parse(value.as_str()).is_ok_and(|url| {
 								matches!(url.scheme(), "https" | "http")
-									&& url.host_str().is_some() && url.username().is_empty()
+									&& url.host_str().is_some()
+									&& url.username().is_empty()
 									&& url.password().is_none()
 							})
 					})
