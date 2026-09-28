@@ -75,7 +75,7 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 }
 
 fn earlier_messages_label(count: usize) -> String {
-	format!("{count} Earlier {}", if count == 1 { "message" } else { "messages" })
+	format!("{count} earlier {}", if count == 1 { "message" } else { "messages" })
 }
 
 impl AgentSurface {
@@ -224,8 +224,8 @@ mod tests {
 			BTreeSet::from([1])
 		);
 		assert!(result.iter().all(|g| g.count == 2 && g.turn == "turn"));
-		assert_eq!(earlier_messages_label(result[0].count), "2 Earlier messages");
-		assert_eq!(earlier_messages_label(1), "1 Earlier message");
+		assert_eq!(earlier_messages_label(result[0].count), "2 earlier messages");
+		assert_eq!(earlier_messages_label(1), "1 earlier message");
 		assert_eq!(
 			result.iter().map(|g| g.indices.clone()).collect::<Vec<_>>(),
 			vec![vec![1], vec![3]]
