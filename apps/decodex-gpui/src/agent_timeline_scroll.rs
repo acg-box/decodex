@@ -5,6 +5,8 @@ use super::{
 use gpui::{AnyElement, InteractiveElement, IntoElement, ParentElement, Styled, div, point, px};
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
+pub(super) const ROW_GAP: f32 = 8.;
+
 type RowKey = (u64, u8, String);
 
 fn row_key(entry: &AgentTimelineEntry) -> RowKey {
@@ -68,7 +70,7 @@ impl Viewport {
 		}
 		let (top, row_height) = *state.rows.get(&row_key(entry))?;
 		let y = top + offset;
-		let overscan = (height * 0.5).clamp(160., 320.);
+		let overscan = (height * 0.25).clamp(80., 160.);
 		(y + row_height < -overscan || y > height + overscan).then_some(row_height)
 	}
 
@@ -181,6 +183,50 @@ impl AgentSurface {
 		accepted
 	}
 
+	/// One layout node for consecutive offscreen rows, retaining their exact anchors.
+	pub(super) fn native_history_spacer(
+		&self,
+		work: &AgentWorkItemDto,
+		rows: Vec<(&AgentTimelineEntry, f32)>,
+	) -> AnyElement {
+		let scroll = self.transcript_scroll[&work.id].clone();
+		let geometry = self.native_history.viewport.0.clone();
+		let mut height = 0.;
+		let rows: Vec<_> = rows
+			.into_iter()
+			.map(|(entry, row_height)| {
+				let offset = height;
+				height += row_height + ROW_GAP;
+				let mark = self
+					.history_marks
+					.get(&super::super::activity::HistoryKey::native(
+						work.codex_thread_id.as_deref().unwrap_or_default(),
+						entry,
+					))
+					.map(|mark| mark.position.clone());
+				(row_key(entry), offset, row_height, mark)
+			})
+			.collect();
+		height = (height - ROW_GAP).max(0.);
+		div()
+			.w_full()
+			.flex_none()
+			.debug_selector(|| "native-history-spacer".into())
+			.child(div().h(px(height)))
+			.on_children_prepainted(move |bounds, _, _| {
+				let Some(bounds) = bounds.first() else { return };
+				let top = f32::from(bounds.origin.y - scroll.bounds().origin.y - scroll.offset().y);
+				let mut geometry = geometry.borrow_mut();
+				for (key, offset, height, mark) in &rows {
+					geometry.rows.insert(key.clone(), (top + offset, *height));
+					if let Some(mark) = mark {
+						mark.set(top + offset);
+					}
+				}
+			})
+			.into_any_element()
+	}
+
 	pub(super) fn native_scroll_row(
 		&self,
 		work: &AgentWorkItemDto,
@@ -267,7 +313,7 @@ mod tests {
 		viewport.0.borrow_mut().measure(row_key(&entry), 5000., 700.);
 		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), Some(700.));
 		assert_eq!(viewport.offscreen_height(&entry, -4000., 900.), None);
-		assert_eq!(viewport.offscreen_height(&entry, -6000., 900.), None);
+		assert_eq!(viewport.offscreen_height(&entry, -5800., 900.), None);
 		assert_eq!(viewport.offscreen_height(&entry, -7000., 900.), Some(700.));
 		viewport.0.borrow_mut().pinned = Some(row_key(&entry));
 		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), None);

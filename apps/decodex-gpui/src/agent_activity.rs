@@ -10,7 +10,7 @@ pub(super) enum HistoryKey {
 }
 
 impl HistoryKey {
-	fn native(thread: &str, entry: &decodex_protocol::AgentTimelineEntry) -> Self {
+	pub(super) fn native(thread: &str, entry: &decodex_protocol::AgentTimelineEntry) -> Self {
 		let (position, kind, id) = super::native_timeline::key(entry);
 		Self::Native { thread: thread.into(), position, kind, id: id.into() }
 	}
@@ -1005,6 +1005,12 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(|w, cx| w.draw(cx).clear());
+		let anchors = surface.read_with(visual, |s, _| {
+			s.history_marks
+				.iter()
+				.map(|(key, mark)| (key.clone(), mark.position.get()))
+				.collect::<BTreeMap<_, _>>()
+		});
 		let mut samples = Vec::new();
 		let mut maximum = None;
 		for frame in 0..70 {
@@ -1025,6 +1031,14 @@ mod tests {
 					assert_eq!(current, expected, "windowing must retain exact scroll extent");
 				}
 				maximum = Some(current);
+				surface.read_with(visual, |s, _| {
+					for (key, expected) in &anchors {
+						assert!(
+							(s.history_marks[key].position.get() - expected).abs() < 0.5,
+							"grouped rows must retain each timeline anchor"
+						);
+					}
+				});
 			}
 		}
 		samples.sort_by(f64::total_cmp);
@@ -1241,6 +1255,9 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+		// Panel animation uses wall time, including in optimized test builds.
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|window, cx| window.draw(cx).clear());
 		let scroll = surface.read_with(visual, |s, _| s.transcript_scroll["agent"].clone());
 		assert!(scroll.max_offset().y >= px(100.), "fixture must allow the full wheel delta");
 		assert!(
@@ -1366,6 +1383,8 @@ mod tests {
 			}
 			cx.notify();
 		});
+		// Let time-based panel transitions settle before checking the final scroll extent.
+		std::thread::sleep(std::time::Duration::from_millis(240));
 		for _ in 0..40 {
 			visual.update(|window, cx| window.draw(cx).clear());
 		}
@@ -1398,6 +1417,8 @@ mod tests {
 			assert!(s.history_navigation.is_none());
 			assert!(!s.history_follow_paused.contains("agent"));
 		});
+		// Let time-based panel transitions settle before checking the final scroll extent.
+		std::thread::sleep(std::time::Duration::from_millis(240));
 		for _ in 0..40 {
 			visual.update(|window, cx| window.draw(cx).clear());
 		}
@@ -1432,6 +1453,8 @@ mod tests {
 			scroll.set_offset(point(px(0.), scroll.offset().y + px(32.)));
 			assert_eq!(s.active_history_index(&scroll), s.history_marks.len() - 1);
 		});
+		// Let time-based panel transitions settle before checking the final scroll extent.
+		std::thread::sleep(std::time::Duration::from_millis(240));
 		for _ in 0..40 {
 			visual.update(|w, cx| w.draw(cx).clear());
 		}

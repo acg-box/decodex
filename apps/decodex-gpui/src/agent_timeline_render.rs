@@ -52,33 +52,7 @@ impl AgentSurface {
 	) -> gpui::AnyElement {
 		let identity = serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string();
 		let selector = format!("native-history-{identity}");
-		let placeholder = match &entry.content {
-			Content::Item { kind, turn_id, item_id, attachments, app_ui, text, .. }
-				if matches!(kind.as_str(), "userMessage" | "agentMessage")
-					&& attachments.is_empty()
-					&& !app_ui && !text.contains("![")
-					&& work.active_turn_id.as_deref() != Some(turn_id)
-					&& !self.native_history.weather.contains_key(turn_id)
-					&& self.native_live_message(work, turn_id, item_id).is_none() =>
-				self.transcript_scroll.get(&work.id).and_then(|scroll| {
-					self.native_history.viewport.offscreen_height(
-						entry,
-						scroll.offset().y.into(),
-						scroll.bounds().size.height.into(),
-					)
-				}),
-			_ => None,
-		};
-		let content = if let Some(height) = placeholder {
-			div()
-				.w_full()
-				.h(gpui::px(height))
-				.flex_none()
-				.debug_selector(|| "native-history-placeholder".into())
-				.into_any_element()
-		} else {
-			self.native_timeline_content(work, entry, &identity, cx)
-		};
+		let content = self.native_timeline_content(work, entry, &identity, cx);
 		let content = self.anchored_native_history_entry(work, entry, content);
 		let content = self.native_scroll_row(work, entry, content, cx);
 		div()
@@ -88,6 +62,38 @@ impl AgentSurface {
 			.min_w_0()
 			.child(content)
 			.into_any_element()
+	}
+
+	pub(super) fn native_offscreen_height(
+		&self,
+		work: &AgentWorkItemDto,
+		entry: &AgentTimelineEntry,
+	) -> Option<f32> {
+		let can_window = match &entry.content {
+			Content::Item { turn_id, item_id, attachments, app_ui, text, activity, .. }
+				if attachments.is_empty()
+					&& (activity.is_none() || self.activity_detail.value.is_none())
+					&& !app_ui && !text.contains("![")
+					&& work.active_turn_id.as_deref() != Some(turn_id)
+					&& !self.native_history.weather.contains_key(turn_id)
+					&& self.native_live_message(work, turn_id, item_id).is_none() =>
+				true,
+			Content::TurnBoundary { completed: true, turn_id, .. }
+				if work.active_turn_id.as_deref() != Some(turn_id) =>
+				true,
+			_ => false,
+		};
+		can_window
+			.then(|| {
+				self.transcript_scroll.get(&work.id).and_then(|scroll| {
+					self.native_history.viewport.offscreen_height(
+						entry,
+						scroll.offset().y.into(),
+						scroll.bounds().size.height.into(),
+					)
+				})
+			})
+			.flatten()
 	}
 
 	fn native_live_message(

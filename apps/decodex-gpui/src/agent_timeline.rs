@@ -130,7 +130,7 @@ impl AgentSurface {
 	) -> gpui::AnyElement {
 		let owner = work.id.clone();
 		let thread = work.codex_thread_id.clone();
-		let mut panel = div().flex().flex_col().gap_2().child(
+		let mut panel = div().flex().flex_col().gap(px(scroll::ROW_GAP)).child(
 			div().debug_selector(|| "native-latest-action".into()).child(self.workspace_action(
 				"native-timeline-refresh".into(),
 				"Latest native history".into(),
@@ -211,8 +211,20 @@ impl AgentSurface {
 			for item in &self.native_history.summary {
 				panel = panel.child(self.native_summary_row(work, item, cx));
 			}
+			let mut hidden = Vec::new();
 			for entry in &self.native_history.entries {
+				if let Some(height) = self.native_offscreen_height(work, entry) {
+					hidden.push((entry, height));
+					continue;
+				}
+				if !hidden.is_empty() {
+					panel =
+						panel.child(self.native_history_spacer(work, std::mem::take(&mut hidden)));
+				}
 				panel = panel.child(self.native_timeline_row(work, entry, cx));
+			}
+			if !hidden.is_empty() {
+				panel = panel.child(self.native_history_spacer(work, hidden));
 			}
 			if let Some(messages) = self.streamed_output(work) {
 				for message in messages.iter().filter(|message| {
