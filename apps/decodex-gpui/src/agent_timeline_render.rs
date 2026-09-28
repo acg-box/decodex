@@ -5,6 +5,8 @@ use super::{
 	muted,
 };
 
+use gpui::StatefulInteractiveElement as _;
+
 impl AgentSurface {
 	pub(super) fn native_summary_row(
 		&self,
@@ -73,7 +75,8 @@ impl AgentSurface {
 			Content::Item { turn_id, item_id, attachments, app_ui, text, activity, .. }
 				if attachments.is_empty()
 					&& (activity.is_none() || self.activity_detail.value.is_none())
-					&& !app_ui && !text.contains("![")
+					&& !app_ui
+					&& !text.contains("![")
 					&& work.active_turn_id.as_deref() != Some(turn_id)
 					&& !self.native_history.weather.contains_key(turn_id)
 					&& self.native_live_message(work, turn_id, item_id).is_none() =>
@@ -314,12 +317,56 @@ impl AgentSurface {
 			{
 				let (owner, thread, turn, item) =
 					(work.id.clone(), thread.clone(), turn_id.clone(), item_id.clone());
-				body = body.child(self.workspace_action(
-					format!("review-prompt-{identity}"),
-					"Review earlier input".into(),
-					move |s, cx| s.review_prompt(&owner, &thread, &turn, &item, cx),
-					cx,
-				));
+				let group: SharedString = format!("history-input-{identity}").into();
+				let keyboard_source = (owner.clone(), thread.clone(), turn.clone(), item.clone());
+				let edit = div()
+					.id(SharedString::from(format!("review-prompt-{identity}")))
+					.role(gpui::Role::Button)
+					.tab_index(0)
+					.aria_label("Edit message")
+					.size(gpui::px(24.))
+					.flex()
+					.items_center()
+					.justify_center()
+					.rounded(gpui::px(6.))
+					.opacity(0.)
+					.group_hover(group.clone(), |style| style.opacity(1.))
+					.focus(|style| style.opacity(1.))
+					.cursor_pointer()
+					.hover(|style| style.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)))
+					.on_click(cx.listener(move |s, _, _, cx| {
+						s.review_prompt(&owner, &thread, &turn, &item, cx);
+					}))
+					.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+							let (owner, thread, turn, item) = &keyboard_source;
+							s.review_prompt(owner, thread, turn, item, cx);
+							cx.stop_propagation();
+						}
+					}))
+					.child(
+						gpui::canvas(
+							|_, _, _| (),
+							|bounds, _, window, _| {
+								let point =
+									|x, y| bounds.origin + gpui::point(gpui::px(x), gpui::px(y));
+								let mut path = gpui::PathBuilder::stroke(gpui::px(1.1));
+								path.move_to(point(2., 9.));
+								path.line_to(point(9., 2.));
+								path.line_to(point(12., 5.));
+								path.line_to(point(5., 12.));
+								path.line_to(point(1., 13.));
+								path.close();
+								path.move_to(point(7., 4.));
+								path.line_to(point(10., 7.));
+								if let Ok(path) = path.build() {
+									window.paint_path(path, gpui::rgb(crate::ui_theme::TEXT_MUTED));
+								}
+							},
+						)
+						.size(gpui::px(14.)),
+					);
+				body = body.group(group).child(div().flex().justify_end().child(edit));
 			}
 			return body.into_any_element();
 		}
