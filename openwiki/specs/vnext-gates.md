@@ -5,15 +5,16 @@ description: "Historical Decodex vNext Gate Manifest"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
+
 
 > This record remains historical. Its old milestone gates, no-migration/disposable-data assumptions, executable paths and external issue status are not current instructions. Current SQLite migrations preserve product state; active checks are in Makefile.toml. Use [Current product contract](local-product-v1.md) and [Commands and validation](../operations/commands-and-validation.md). This refresh preserves original evidence and does not claim a new live acceptance result.
 

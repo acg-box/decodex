@@ -4,8 +4,8 @@ title: "Current local product contract"
 description: "Current local product contract"
 tags: ["decodex", "architecture"]
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -21,14 +21,15 @@ sources:
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
+
 
 # Current local product contract
 
 ## Product and storage
 
-Decodex is a local general-purpose agent workspace. Chief is the primary conversation and can organize workers and subordinate Chiefs. Ordinary native Conversations remain a separate execution path. The service is `decodex serve`; SQLite is the sole normal durable store, at schema version 30. The exact local protocol is 2.43.
+Decodex is a local general-purpose agent workspace. Agent is the primary conversation and can organize workers and subordinate Agents. Ordinary native Conversations remain a separate execution path. The service is `decodex serve`; SQLite is the sole normal durable store, at schema version 49. The exact local protocol is 2.97.
 
 Clients do not read SQLite, provider credentials or Codex auth files. The signed app contains one GUI executable, one unified service helper and native libraries. Attached glass windows are presentation components, not new state owners.
 
@@ -36,13 +37,13 @@ Clients do not read SQLite, provider credentials or Codex auth files. The signed
 
 Codex app-server owns provider execution and native thread history. The runtime binds exact account, process generation, thread and turn identities before accepting effects. It re-observes native state rather than assuming that another client cannot change a thread. A missing, interrupted or unknown result does not authorize replay.
 
-Chief retains work relationships, event dispositions, dependencies, reviews and follow-up obligations in SQLite. A worker result requires assessment before parent completion. Existing native threads are preserved during recovery; optional metadata errors are isolated from the main transport.
+Agent retains work relationships, event dispositions, dependencies, reviews and follow-up obligations in SQLite. A worker result requires assessment before parent completion. Existing native threads are preserved during recovery; optional metadata errors are isolated from the main transport.
 
 ## User interaction
 
 The conversation is primary. The tree represents ownership and the graph represents work relationships. Current archive/ownership failures appear within the selected conversation. Known external ownership rejects new messages rather than queuing them for later. Archive restore is explicit and verified by exact native identity/readback.
 
-Markdown text can be selected per block. Response metadata separates duration from optional usage details. Dictation updates the draft with partial and final transcript revisions; live voice attaches to the native Chief thread.
+Markdown text can be selected per block. Response metadata separates duration from optional usage details. Dictation updates the draft with partial and final transcript revisions; live voice attaches to the native Agent thread.
 
 ## Account effects
 
@@ -62,4 +63,4 @@ No historical disposable-database instruction applies to user data. Ordered migr
 
 ## Verification map
 
-Use [Chief coordination](../architecture/chief-coordination.md), [Desktop workspace](../architecture/desktop-workspace.md), [Account lifecycle](account-lifecycle-authority.md), [Login](account-login-authority.md), [Subscription voice](../integrations/subscription-voice.md) and [Commands and validation](../operations/commands-and-validation.md). Tests, signed packaging, live behavior and merged delivery are separate claims.
+Use [Agent coordination](../architecture/chief-coordination.md), [Desktop workspace](../architecture/desktop-workspace.md), [Account lifecycle](account-lifecycle-authority.md), [Login](account-login-authority.md), [Subscription voice](../integrations/subscription-voice.md) and [Commands and validation](../operations/commands-and-validation.md). Tests, signed packaging, live behavior and merged delivery are separate claims.

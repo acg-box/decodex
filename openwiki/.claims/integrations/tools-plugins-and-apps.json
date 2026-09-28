@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:dcc781706a6fa9f8d7810fedf6838e6868326a9e89b4a56bd8a5ab4bd63b0335",
+  "claims": [
+    {
+      "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
+      "statement": "Integration inventory is read independently and accepted only for the same selected native thread directory and live settings guard.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_integrations.rs#L1-L41",
+          "version": "repo-lines-v1:sha256:2c4fbecacbbd7d491b4b69fa454ff1b323142a267630081348e010758b1b13df:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1MWFiOTM5ODI3Y2Y0M2M3MjViYzVlZGIxZGQ5MjI4NGZlNDFhOTBhNjc0MjJhZGQxOWFmZjBjMjRjOTVhY2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3M2IwYmQ2NzNhMmU3YWZlZDk0MWU4MjEyZDAzOTYyZDZkOWY2M2M1OTZiZTkzY2YzNGVmZTdkZGNiNWQzZDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImViMzNiNGVjMGRhYjRjNTljMDY2YWNmMTVhOGUxZWRmMGU0NTRiMDM3NzFmNTIwMTI0NGFhYzhiZmFhNTVjYjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1495bc6ccda34cefac2c2ebfc3eea3d2",
+      "statement": "Shared Hook trust applies to reviewed content, while enablement is separate and affects other tasks using the same configuration file.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_hooks.rs#L180-L280",
+          "version": "repo-lines-v1:sha256:6abeccf71fdd228886d675ec9c8d9fa524f34c69034b8eab1fbc60bea5326c7a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxZWVmNWRlN2Q1Yzg3NThjNGI4MDVmODQ0NDBmMmQ0ZjllNzZkMGMxMDMxZTc1NzY0YjQ5NjhlODhhM2M0YTJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ZGM3NjAyMGJhZTcwNTc3ZTY0YjMzMGRjYTgzZmRmMjRmM2Q3NTkzYTAxNTRkOGFiZWM2ZGM2M2Y1ODk3ZmQ5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1NGUxOTVlZmZkNDk4MjZhYzA3MjQ2NDA1NzIwZWU5Y2FjYTBhNDI3ZGIxZTk2M2QzZjc2NTRjNGUyN2U2OTA3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzNDY3NWNmMmI2NDRmOTQxMDEyZjM3NTQ5YTRhMTBhN2QwZDNmZTIzNjAxNjg4MGE1YTcyMzZkNTBkYWI4MGQzIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_e448a67e13cd443abc02d9d43759af59",
+      "statement": "The MCP App host requires captured source-bound UI metadata and explicit tool-call approval, with bounded WebKit capabilities rather than general browser access.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_app_ui_call.rs",
+          "version": "repo-file-v1:sha256:91856806a45e9ff0b24be7015c51472bc1e71d9127ab393d9fcac3daa32e4df7"
+        },
+        {
+          "resource": "repo://docs/archive/upstream-2026-09/mcp-app-ui.md",
+          "version": "repo-file-v1:sha256:8fa03413673b09bb2fa50023cc9a633c364f631b5a438f48efdf8c673c0a6541"
+        }
+      ]
+    },
+    {
+      "id": "claim_391d43aaa254409c9cf411fdb95204cd",
+      "statement": "Task plugin selection changes native task exclusions rather than shared installation and takes effect in a subsequent native turn.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/thread_plugins.rs",
+          "version": "repo-file-v1:sha256:ba572cb7b5d46a4f1f3a99a30a6b2fa86fa2b11ceb0ce5f675397e6023e12705"
+        },
+        {
+          "resource": "repo://docs/archive/upstream-2026-09/thread-plugin-selection.md",
+          "version": "repo-file-v1:sha256:0c7b9c662a14fa80b217a1f7ff320a62e16250ca8e41b41f20ae0690a8ac17f0"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
+  }
+}

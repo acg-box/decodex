@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b607d244cd8c3bf2a4fc1876fcc127c013120cb75264ee0dc3c35cd90449584a",
+  "pageVersion": "sha256:c143b5d076f06d2ae4a77dde3a8639e99f938ae5ab6f5c441c7865695596ab83",
   "claims": [
     {
       "id": "claim_a3c49fc4897341d8af55579dc54de44e",
-      "statement": "Current account-login clients and service require exact local protocol 2.43 before exchanging typed login requests.",
+      "statement": "Current account-login clients and service require exact local protocol 2.97 before exchanging typed login requests.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/client.rs",
-          "version": "repo-file-v1:sha256:a7ef229e39cb5c8c52c331d3441039f9f91a9cdfedc0d9a57f9ae6ce55c72112"
+          "version": "repo-file-v1:sha256:75f91655b3e4abc425987cb4a6169b2c5e80e1e35f0a1d96ae661cda9dc42d3b"
         },
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L146-L166",
-          "version": "repo-lines-v1:sha256:3841b6b1c206508a08430d3e34e1e2d56c912936b8f7ee87ea9ef70abfd2825d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzMWFhYzNkNWNiN2RmMTI5ZjIzNzEzMDdkMzg0OTRjMzE3ZWU5NWZjMWY0YjBlZDgzMDBkYmU3YWEzY2IyZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRjNzBlMTI4NDI0MWNhNmE3OGY0NTE0NzMyYzQ0OTE3Yzc5MWY4OWRlNDlhMzJlODE3MjAxNDQ0ZWE2MzFkNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZjA5ZTgyOWRlMTFjOGMwY2M2ZTExNDJiYTM2ZTQ4ZDhiZTUyOGJiZjkzMjViNDBmMjFlMmMwMjVhZTc2MmYifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L225-L252",
+          "version": "repo-lines-v1:sha256:cf9dce6cfa0174684f3d777af7762ffc147e87eb6ac0353b1edca12c95fec3a6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlNzBjOGNlZjcyZWM4NzE3MzIxY2Q2ZjIwNTUwMTRmMzBlN2NkNTZlOGNkNmVjMDhlYThlZTgwNTZhNDNhZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZjA5ZTgyOWRlMTFjOGMwY2M2ZTExNDJiYTM2ZTQ4ZDhiZTUyOGJiZjkzMjViNDBmMjFlMmMwMjVhZTc2MmYifQ"
         }
       ]
     },
@@ -22,17 +22,17 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-account-login/src/lib.rs",
-          "version": "repo-file-v1:sha256:4835e3fc024feee3b29e8bf957601dd4c6b5565f168d1b97c069372ef21ddfef"
+          "version": "repo-file-v1:sha256:75e608ab0e956ac0ff83eecba11ed4fef1206cbc19ed91cb4a31205c0d64b225"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_login.rs",
-          "version": "repo-file-v1:sha256:ed735ec6696e1082f9a4ee713049cc045baa61ff6b5676ad657a0a3a89bb2d44"
+          "version": "repo-file-v1:sha256:bd3ca6d90a29f788db81f4ab944206ec6e7f52192fc7edf9a396ecf8a573ccfd"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
   }
 }

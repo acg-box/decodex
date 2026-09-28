@@ -5,8 +5,8 @@ description: "Decodex content automation"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-100fa03c93c368ebc1fbbd5a
     resource: repo://automations/decodex/prompts/content-manager.md
@@ -14,10 +14,11 @@ sources:
     resource: repo://automations/decodex/prompts/xurl-publisher.md
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
 
-> Current configuration: `automations/portfolio.toml` declares ACTIVE desired state. The PAUSED-first sequence below is historical activation procedure, not a report that today's host is paused. Verify native task definitions separately; repository configuration does not prove execution. This documentation refresh publishes nothing and changes no schedule.
+
+> Current configuration: `automations/portfolio.toml` declares ACTIVE defaults for the content roles and an explicit PAUSED override for the upstream Maintainer. The PAUSED-first sequence below is historical activation procedure, not a report that today's host is paused. Verify native task definitions separately; repository configuration does not prove execution. This documentation refresh publishes nothing and changes no schedule.
 
 # Decodex Content Automation
 
@@ -43,7 +44,7 @@ current manifest exactly; while it is `PAUSED`, Manager must not activate. First
 land the portfolio with `status = "PAUSED"` and run live acceptance only by
 explicit one-shot manual invocation. After all non-activation acceptance evidence
 passes, signed-land the one-line promotion to `status = "ACTIVE"`; Manager/native
-sync can then activate all five. No activation workflow engine or extra state exists.
+sync can then activate the selected content roles. No activation workflow engine or extra state exists.
 
 ## Editorial Loop
 

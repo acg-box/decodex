@@ -75,7 +75,7 @@ isolated stage does not mark the whole refactor complete.
 - Code owns message correlation, actual execution policy, persistence and wakeups.
 - Keep uncertain external dispatch visible; do not retry it blindly.
 - Existing account credentials, data and released migrations must remain intact.
-- Preserve the untracked `work/agent-architecture-review.html` design artifact.
+- Preserve the archived `docs/archive/upstream-2026-09/chief-architecture-review.html` design artifact.
 - Do not revive QuickTask, static Factory personas, or mandatory review cycles.
 - Keep one integration branch. Workers have separate file scopes; integration owns Git.
 
@@ -267,4 +267,4 @@ Native artifacts under `target/visual-tests/`:
 No installed profile has been migrated or replaced by this task. Active workflow
 cutover and combined acceptance are complete. Repository merge is a separate
 delivery fact recorded in the PR and final task response; installation is not
-implied by source acceptance. The existing user design artifact in `work/` is retained.
+implied by source acceptance. The user design artifact in `docs/archive/upstream-2026-09/` is retained.

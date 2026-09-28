@@ -1,0 +1,56 @@
+> Historical record, archived on 2026-09-27. Statements and test results apply to the revisions named below. Use the [OpenWiki quickstart](../../../openwiki/quickstart.md) for current behavior.
+
+# Preserve ordinary model boundaries
+
+The inherited ordinary model selector excluded `gpt-reserve` from its catalog,
+transport payload and reservation. The current manual selector lost those checks
+when it moved to a separate model-only request type. Restore them in the existing
+owners. A configured native model remains readable; this change only prevents an
+ordinary model control from entering Reserve.
+
+Fixed upstream `595cc91e8cbb1c2ca822d0311dcf12709410c582` distinguishes Reserve from
+ordinary usage in `protocol/src/error.rs`. Its TUI
+`luna_reserve_recovery_tests.rs` uses a separate recovery flow and a catalog entry
+with `show_in_picker=false`. This batch preserves Decodex's inherited ordinary
+scope; it does not implement that separate Reserve recovery workflow.
+
+The inherited reconciliation also required an enabled current account. Move the
+existing legacy-account availability check to the shared model observation
+entrypoint. Current and preserved journals now use that one check. A disabled
+account cannot release an old unknown model request, even after the old process
+is confirmed dead. A later valid publication can reconcile the request without
+resending it.
+
+Before the fixes, both the adapter and database accept a Reserve selection, and a
+disabled replacement owner marks an unknown request superseded. The regressions
+fail at those assertions. After the fixes, 19 adapter model tests, 19 database
+model tests, two service fixtures and strict adapter/database/runtime Clippy pass.
+The service catalog deliberately advertises Reserve to verify that the ordinary
+selector excludes it. Failure and validation logs:
+
+- `/tmp/decodex-ordinary-reserve-before.log`
+- `/tmp/decodex-model-disabled-owner-before.log`
+- `/tmp/decodex-model-owner-boundaries.log`
+- `/tmp/decodex-model-owner-service.log`
+- `/tmp/decodex-model-owner-boundaries-clippy.log`
+
+These are correctness boundaries for retained model controls and saved requests.
+The controls themselves remain optional for the user's removal review. No new
+journal, native workflow, schema or maintenance automation is added.
+
+## Preserved publication qualification
+
+The legacy automatic request fixture now covers an explicitly unset expected
+service tier. A missing tier, a malformed boolean and a different tier all leave
+the request pending. Only an explicit null publication can confirm the target.
+The receipt keeps its original queued response and automatic classification.
+All 21 database model tests and strict database Clippy pass in
+`/tmp/decodex-model-owner-observation.log` and
+`/tmp/decodex-model-owner-observation-clippy.log`.
+
+The inherited service test was also compared with the current command fixture.
+The current fixture rejects changed account, revision, generation, task and thread
+sources before a write. It rejects stale settings even when values return to their
+previous values. Lost replies remain unknown, survive database reopen and cannot
+replay under a new request key. These checks do not close the full inherited
+writer and service-file review, or prove installed desktop acceptance.

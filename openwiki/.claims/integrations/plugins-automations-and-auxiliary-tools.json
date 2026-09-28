@@ -1,20 +1,20 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c6e10d5f083560044526988cd5b748b9346b0a48d40bd90ccbb1c21f36968c90",
+  "pageVersion": "sha256:3de59b93d0649624643f024774baba22aa87c0e0da626c223d2a65be951b4a14",
   "claims": [
     {
       "id": "claim_ebacb67e562646d8af9fccd8e644cb32",
-      "statement": "Chief integration inventory is independently queried from native app-server and accepted only when the selected thread retains the same absolute working directory.",
+      "statement": "Agent integration inventory is independently queried from native app-server and accepted only when the selected thread retains the same absolute working directory.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/chief_integrations.rs#L1-L41",
-          "version": "repo-lines-v1:sha256:e6f88d56aeb79277a6cba14b86855120e26e21d100a6577641c6fcd6b84e24fe:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1MWFiOTM5ODI3Y2Y0M2M3MjViYzVlZGIxZGQ5MjI4NGZlNDFhOTBhNjc0MjJhZGQxOWFmZjBjMjRjOTVhY2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4N2YyOWI0NmVmNDkzMzk2YjA2NGMzMGUwZDQ1NjFjNTM1ZTlkOTI1YzcwN2UyNjcxZGNmMWNiZDg4ZDhlNmYifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_integrations.rs",
+          "version": "repo-file-v1:sha256:b86b88adef8ec7ac4c5d512dcb0d2f77b15bf2003675b73edc0de0d61b0d8d72"
         }
       ]
     },
     {
       "id": "claim_58efa26b5e4e42c4b7f8a05763ec1de2",
-      "statement": "The checked-in automation portfolio defines five native tasks, while Radar and Publisher remain separate auxiliary tools.",
+      "statement": "The checked-in portfolio defines three native tasks, with the upstream Maintainer paused and Radar and Publisher retained as separate auxiliary tools.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-publisher/src/lib.rs",
@@ -26,13 +26,13 @@
         },
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:db1107d522d96fea9e710ecc950f03734b63fc2dc6eebbb51658661f2e91203b"
+          "version": "repo-file-v1:sha256:b7852f69f78beca97b4451e47ef6e8a9145fd60d477b0fd5ea2d905f5400bb5c"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
   }
 }

@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a86ff0e1829374394a5d4ce482dc69ff28e1f81ddd4880d7594d18ef62cbb1e7",
+  "pageVersion": "sha256:5e36788587219f31dad7c884699e431108563e90c503e53e364167e5a08429a9",
   "claims": [
     {
       "id": "claim_d7063028d6a742dfa815d671fa660272",
       "statement": "Current cross-account Route is synchronous and rejects unsafe external liveness or auth-source changes instead of retaining a Pending-route queue.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L888-L1268",
-          "version": "repo-lines-v1:sha256:d06441c225655a80df10431b72d0cc6aa8587f857939ccfb94e9fdc409224626:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJmMzlkNDE1ZDQ3ZDg0OGU5MWM0NTA5ZTdmMjg0NjkyNjNhNGZkOTU1NjczOGM0NDk0YjllMzViNjIwNzQ3ZDYxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxZjgxNjBkM2MxMzY1NTI2ODdmN2U0MTRkMzc0NDVlMDIzODgzOGRjYmZkOWU3N2I5ODAyMWYxNjkwMGI1YjZkIn0"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1022-L1450",
+          "version": "repo-lines-v1:sha256:3bc63564f22dcbe18faadb19dcf5ac2bbc371065163d27d48dd35cd740ded04f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDI5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5NDQ3ZGQ4ZWNhZmU0MzJlYTBlNzE5NjgzMzUxYjkzZjI4NmIxZWM5OTllM2QzMjk4OWM4MzhkYTJjZDA3OTQ4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4ZGExZTllYmUxM2I3YWRmZmI5MzM0NGQ1M2YzMTVjOGYxZjI1MmE4YmFlNWMyN2Y5OTg2NTM5Njg1ZGUwY2I0In0"
         }
       ]
     },
@@ -18,7 +18,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:d81b553fd495ac47cdcaf31f9b102301c4005c0a11077dd0bd15450a7644509e"
+          "version": "repo-file-v1:sha256:57b4d2a63db94ae56680b9fbb1aa2ff0fe991d13919e62caf37bcb70cac4e895"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:d81b553fd495ac47cdcaf31f9b102301c4005c0a11077dd0bd15450a7644509e"
+          "version": "repo-file-v1:sha256:57b4d2a63db94ae56680b9fbb1aa2ff0fe991d13919e62caf37bcb70cac4e895"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -46,7 +46,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:d81b553fd495ac47cdcaf31f9b102301c4005c0a11077dd0bd15450a7644509e"
+          "version": "repo-file-v1:sha256:57b4d2a63db94ae56680b9fbb1aa2ff0fe991d13919e62caf37bcb70cac4e895"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -59,14 +59,14 @@
       "statement": "Desktop account controllers apply only authoritative results matching the active session, command identity, idempotency key and protocol, without receiving credentials.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/accounts.rs#L478-L520",
-          "version": "repo-lines-v1:sha256:aa67ee5e6dfe838abed78e180262dff81fb16d7aaca5009c00a06a582055033a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlMmRkNTEyMWFkOTQ2OTM0ZmUyMDQxODg4ZWE4OWU2MzJhMTIzZDM0ZjljODgxMDBhNTAyODk5YjQyMzJkMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyNjYyMTE4NTBhNzA5NDEwODlkZmY3MTI2YWI1MzAyZTAwYzhmYWE2NDRhMTcwMjMyNGI0Njg1ZTBmYzkyYTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkNjhiMjFiN2NlZDM0ZWM3ZWM0YzZhZDZiZjQ3MzY0MDBmMmZjMTQwYmMyMWVmYzYzYTcyOWExYTMxODQ3MzEifQ"
+          "resource": "repo://apps/decodex-gpui/src/accounts.rs#L680-L788",
+          "version": "repo-lines-v1:sha256:4136df4ad65de520ab002976a6cb4225fbcc877f11a12e2d179fde82aee5264d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmM2JlNTA0YWJlMGNkYjIxNTU1ZTg1YWU0MmJiODJlMTBhYjcyOTA2N2VjOGU4YWQ2YTRjZTU3ZjJiZWIwMmQwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzZmIxY2VjNzdiYjk4YjEzYTBiMGNhYmMzODg2MGU0NWJkMzc2OTZhOGQzZWU3ZjU4NzAxNWMyMGI1NjA3MTAwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiZTQ3YTU4ZDIxMmY3NmY2MjgzYTFmMmNiOGM4MDBiMThhYWI0Njk0YTljZmZjNGYxOTM3YjYzZjJkZGE1OWM3In0"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
   }
 }

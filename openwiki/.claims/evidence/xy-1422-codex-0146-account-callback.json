@@ -1,24 +1,24 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:de761696d0e88e622c072b754900e619ed07b57fb3ac3f35739eb4a239c8b84e",
+  "pageVersion": "sha256:6d649dc4a8dd104d529594cd0fcd15359541506baec95ad085d6fe73657fdd89",
   "claims": [
     {
       "id": "claim_a7bb59e2e7cb499c9824c3d07c49612c",
-      "statement": "Chief account-refresh callbacks are handled by the account-launch protocol bridge with exact request handling rather than by UI clients.",
+      "statement": "Agent account-refresh callbacks are handled by the account-launch protocol bridge with exact request handling rather than by UI clients.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/chief_process.rs",
-          "version": "repo-file-v1:sha256:c8f866be7d02fe30325fd6eec32b8ee1aad14d16f775a18b6303f41dd5acf8ac"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs",
+          "version": "repo-file-v1:sha256:586753ceef0aeb7570fdbcf6cecc7f3dadee0e06fca0bbd020041f64950e610c"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/protocol.rs",
-          "version": "repo-file-v1:sha256:0529c71d4a697f0939f5c06717d10de908443919f6cf51ae53ba9cccb1fdffee"
+          "version": "repo-file-v1:sha256:55ff724de05a493c48bc218f3431b8f663fefe09f4f9d39c19429f78cc787b47"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
   }
 }

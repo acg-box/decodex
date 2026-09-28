@@ -1,44 +1,52 @@
 ---
 type: Reference
-title: "Wiki maintenance and source verification"
-description: "Wiki maintenance and source verification"
+title: "Wiki and evidence maintenance"
+description: "Current documentation ownership, dated archives, the OpenWiki lifecycle and scheduling boundaries."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:55:18.668Z
+  - id: openwiki-source-e7e2b18dcd23b3b9fac7753b
+    resource: repo://docs/archive/upstream-2026-09/migration-map.tsv
+  - id: openwiki-source-8ea98a5c00f00b259b6e3d8e
+    resource: repo://docs/archive/upstream-2026-09/README.md
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
 
-# Wiki maintenance and source verification
 
-## Update authority
+# Wiki and evidence maintenance
 
-OpenWiki is a documentation and evidence index, not runtime authority. Source, protocol schemas and focused tests define implemented behavior. Dated receipts prove only their captured revision and scope.
+## One current knowledge entrypoint
 
-The supported host lifecycle is: resolve the Git root; begin an update; inspect current owners; submit a page plan; obtain one page job; research and write that page; submit its complete Claims; repeat; finish after the queue is complete. A source change that invalidates the plan requires a fresh plan.
+OpenWiki contains current architecture, workflows, product decisions, operations and testing boundaries. Source code and focused tests define implemented behavior. A historical receipt proves only its named revision, artifact and environment. Do not treat an old “remaining work” paragraph as a current requirement.
 
-Generated indexes, Claims sidecars, provenance and run state belong to OpenWiki. Do not manufacture freshness timestamps or treat a changed date as semantic validation. Reuse a Claim ID for the same proposition, revise its moved evidence, and retract claims whose owners no longer exist.
+The former `work/` collection and root scan journal are preserved in the [September 2026 archive](../../docs/archive/upstream-2026-09/README.md). Its [migration map](../../docs/archive/upstream-2026-09/migration-map.tsv) accounts for all 186 moved records with original hashes and current topic destinations. The root scan document is now a short navigation entrypoint.
 
-## Automation status
+## Where new material belongs
 
-At the start of this refresh, the repository had no checked-in OpenWiki GitHub Actions workflow, and the checked-in five-task automation portfolio had no Wiki role. An old AGENTS.md setup block said a scheduled workflow refreshed the Wiki; that comment alone was not evidence of an active schedule.
+| Material | Owner |
+| --- | --- |
+| Current behavior, source relationships and supported workflows | The corresponding OpenWiki architecture, workflow or integration page |
+| User product choices and stable tradeoffs | OpenWiki decisions |
+| Commands, diagnostics and maintenance procedure | OpenWiki operations |
+| Revision-specific PR reconciliation, experiments and acceptance receipts | A dated archive or evidence page with an explicit scope |
+| Temporary task continuation and local logs | The task's local working area; clean after delivery |
 
-OpenWiki's finish/setup mechanism may refresh its own managed integration files. Inspect the resulting workflow and GitHub registration before claiming automation is enabled or has run. This update must not independently invent a scheduler or edit managed setup blocks.
+Consolidate related explanations instead of creating a page for every commit. Do not duplicate a product contract in a new `work/` directory. Keep old records intact as history when they contain distinct evidence, and link from current pages to the relevant record. Old temporary fixture paths can be unavailable after cleanup; they must not be represented as permanent artifacts.
 
-## Full refresh scope
+## OpenWiki update lifecycle
 
-Current pages cover the unified service, SQLite, Chief coordination, native desktop glass, subscription voice, account login/routing, Reset Cards, quota activation, build/validation, and auxiliary tools. Historical Program, server-store, private-artifact and proof receipts remain clearly scoped archives. Their old commands and binary identities are not current instructions.
+Resolve the Git root, begin an update, inspect source owners, submit a page plan and process the assigned page jobs in order. Read each existing page and its Claims before changing it. Retain stable Claim IDs for the same proposition; revise moved evidence and retract propositions the page no longer makes. Submit Claims through OpenWiki and finish only when the queue is complete.
 
-For each update, check:
-- entrypoints, public operation names, protocol versions and migration boundaries;
-- source paths and link targets;
-- transient versus durable state and positive outcome evidence;
-- current versus retired product surfaces;
-- tests that support each Claim, without pretending those tests ran during documentation generation.
+OpenWiki owns indexes, Claim sidecars, provenance and run state. Do not manufacture verification dates or edit those files by hand. A path change requires updating affected page evidence through the same lifecycle. Generated page metadata means documentation validation, not a fresh execution of every cited test.
 
-Use [Commands and validation](commands-and-validation.md) for executable checks and [Quickstart](../quickstart.md) for navigation. A completed Wiki run, a Git commit, a merged PR and a deployed application are separate outcomes.
+## Scheduling and effects
+
+The portfolio currently has three upstream/content roles and no dedicated Wiki role. The upstream Maintainer is paused. An old setup sentence does not prove a registered scheduled refresh. This consolidation does not enable a Wiki workflow, resume automation or publish a product release.
+
+Check relative links, source references and the migration inventory for a documentation move. Run behavioral tests only when the change affects behavior. See [commands](commands-and-validation.md), [product decisions](../decisions/upstream-product-scope.md), and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).

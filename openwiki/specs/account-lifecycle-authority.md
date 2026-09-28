@@ -4,8 +4,8 @@ title: "Account lifecycle authority"
 description: "Account lifecycle authority"
 tags: ["decodex", "architecture"]
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-acf49c93c3e80379f0023c71
     resource: repo://apps/decodex-gpui/src/accounts.rs
@@ -13,8 +13,9 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
+
 
 # Account lifecycle authority
 
@@ -40,9 +41,9 @@ A generation-bound refresh callback may return a registry successor only for the
 
 ## Recovery and controls
 
-Enable/disable, order, selection, logout and manual recovery are service-owned operations. Durable state must survive restart; a timeout after a provider effect is not a fresh attempt authorization. Route, ordinary conversation account continuity, Chief account rotation, Reset Card redemption and weekly activation have different state owners and must not be conflated.
+Enable/disable, order, selection, logout and manual recovery are service-owned operations. Durable state must survive restart; a timeout after a provider effect is not a fresh attempt authorization. Route, ordinary conversation account continuity, Agent account rotation, Reset Card redemption and weekly activation have different state owners and must not be conflated.
 
-Current startup preserves SQLite migrations and user state. Historical disposable-store instructions do not apply. See [Login authority](account-login-authority.md), [Database operations](../operations/local-database.md), [Chief coordination](../architecture/chief-coordination.md) and [Reset Cards](../operations/reset-cards.md).
+Current startup preserves SQLite migrations and user state. Historical disposable-store instructions do not apply. See [Login authority](account-login-authority.md), [Database operations](../operations/local-database.md), [Agent coordination](../architecture/chief-coordination.md) and [Reset Cards](../operations/reset-cards.md).
 
 ## Tests
 

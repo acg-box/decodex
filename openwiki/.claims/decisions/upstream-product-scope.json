@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:197f5fa9743dad4a38574b83de4d793fdb475b6b60ba1fd571e3cdbd158f8734",
+  "claims": [
+    {
+      "id": "claim_4b262c8e975f46a4898c192700c6930e",
+      "statement": "The user retained O01-O23 and O25-O26 and retired only O24 provider authentication recovery recording.",
+      "evidence": [
+        {
+          "resource": "repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md",
+          "version": "repo-file-v1:sha256:d44cfac26a4e6530095703c75a034c342df29f0fdb319abe8a4d99d9fd9aac4f"
+        }
+      ]
+    },
+    {
+      "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
+      "statement": "Retiring O24 preserves old recovery history without recording new notifications or triggering outgoing work.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/auth_recovery.rs",
+          "version": "repo-file-v1:sha256:8e6500b4e95225aacd3fd45b541af1af301fec12d15b46e33ef01707526c09a4"
+        }
+      ]
+    },
+    {
+      "id": "claim_701e4f336ffa4097b7ed152bd3faf315",
+      "statement": "The listed optional behavior includes restored baseline capabilities and does not turn unimplemented research or native-only APIs into delivered local features.",
+      "evidence": [
+        {
+          "resource": "repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md",
+          "version": "repo-file-v1:sha256:d44cfac26a4e6530095703c75a034c342df29f0fdb319abe8a4d99d9fd9aac4f"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
+  }
+}

@@ -5,15 +5,16 @@ description: "Historical natural quota timestamp evidence"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
+  - by: openwiki/0.6.0
+    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-719d4c65d5e0573bf61c8fd8
     resource: repo://crates/decodex-core/src/quota.rs
   - id: openwiki-source-b52eea0658a5f27f944ae338
     resource: repo://crates/decodex-runtime/src/account_api/activation.rs
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 ---
+
 
 # Current scope
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b2004604aa49fa1fbf27cb36e552011ce8e6ba1c9a6738a4fa71c86c2f498991",
+  "pageVersion": "sha256:764eaf2faa9a4511017e4b0a59669a8ba7a44be533a44144b0635786a25d7e2a",
   "claims": [
     {
       "id": "claim_79c842ad33614f3197ab19742e285944",
@@ -8,13 +8,13 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/process_supervisor.rs",
-          "version": "repo-file-v1:sha256:f1dd64f8b025eb8ead12254cabb5b47be83279a0178b9975f1dd238590cb1209"
+          "version": "repo-file-v1:sha256:ffe7cd1d7b8f1b003beae5e80c4cf18e119755250a3f4eb858b109b1487c9628"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
   }
 }

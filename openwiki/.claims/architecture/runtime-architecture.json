@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8c0dfec591141fcc071def631c48af05de708b81d570cd80dfbff90f33b7339c",
+  "pageVersion": "sha256:93c1d6a87860514918f7dc6b3b9211b34e1e72933e35e47fa32e1bafb1704193",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -12,11 +12,11 @@
         },
         {
           "resource": "repo://apps/decodex-cli/src/lib.rs",
-          "version": "repo-file-v1:sha256:50f45a7b0e78078ebb1800025505db016cfb14faeafc0ed229292709ce8ba8c3"
+          "version": "repo-file-v1:sha256:d713872e0479d8f93772bc6c401b26dda5b1f33e97117817e7830e3c15c7dd1e"
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
-          "version": "repo-file-v1:sha256:f6c5dfd4297b9a65d950da5248fe3a1e038a800679112337d4ef4068a8180a47"
+          "version": "repo-file-v1:sha256:0a9d2c995e5b757358d6b210d925487d74ec2860ef5ef5b65f160f69defcd715"
         }
       ]
     },
@@ -42,7 +42,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-28T02:19:36.307Z"
   }
 }
