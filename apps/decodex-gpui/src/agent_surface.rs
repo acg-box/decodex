@@ -1490,7 +1490,7 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn operation_notices(&self) -> Vec<(&'static str, String)> {
-		[
+		let mut notices: Vec<_> = [
 			("Review", &self.guardian.feedback),
 			("Installation", &self.installation.feedback),
 			("Tools and plugins", &self.integration_feedback),
@@ -1499,7 +1499,27 @@ impl AgentSurface {
 		.into_iter()
 		.filter(|(_, detail)| !detail.is_empty())
 		.map(|(title, detail)| (title, detail.clone()))
-		.collect()
+		.collect();
+		let mut seen = std::collections::BTreeSet::new();
+		let histories =
+			self.history.iter().map(|(_, history)| history).chain(self.history_cache.values());
+		for history in histories {
+			if let AgentHistoryResult::Available { entries, .. } = history {
+				for entry in entries.iter().filter(|entry| startup_feature_warning(entry)) {
+					if seen.insert(entry.text.clone()) {
+						notices.push(("Experimental Codex features", entry.text.clone()));
+					}
+				}
+			}
+		}
+		for (entries, _) in self.older_history.values() {
+			for entry in entries.iter().filter(|entry| startup_feature_warning(entry)) {
+				if seen.insert(entry.text.clone()) {
+					notices.push(("Experimental Codex features", entry.text.clone()));
+				}
+			}
+		}
+		notices
 	}
 
 	pub(crate) fn status_notice(&self) -> Option<(&'static str, String, bool)> {
@@ -2004,6 +2024,13 @@ impl AgentSurface {
 	}
 }
 
+// This startup advisory describes the Codex environment, not a failed turn.
+// Keep the original stored record, but present it once in the notification center.
+fn startup_feature_warning(entry: &decodex_protocol::AgentHistoryEntryDto) -> bool {
+	entry.kind == "execution_notice"
+		&& entry.text.starts_with("Codex warning: Under-development features enabled:")
+}
+
 fn unique_command() -> String {
 	static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 	let time = std::time::SystemTime::now()
@@ -2406,6 +2433,41 @@ mod tests {
 			.on_children_prepainted(move |value, _, _| *bounds.borrow_mut() = value)
 		}
 	}
+	#[gpui::test]
+	fn startup_warnings_are_deduplicated_across_loaded_conversations(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let (_, history) = s.history.as_mut().unwrap();
+			let AgentHistoryResult::Available { entries, .. } = history else {
+				panic!("fixture");
+			};
+			let mut notice = entries[0].clone();
+			notice.kind = "execution_notice".into();
+			notice.text = "Codex warning: Under-development features enabled: chronicle.".into();
+			assert!(startup_feature_warning(&notice));
+			entries.extend([notice.clone(), notice]);
+			s.history_cache.insert("other-agent".into(), history.clone());
+			assert_eq!(
+				s.operation_notices()
+					.iter()
+					.filter(|(title, _)| *title == "Experimental Codex features")
+					.count(),
+				1
+			);
+			s.history = None;
+			assert_eq!(
+				s.operation_notices()
+					.iter()
+					.filter(|(title, _)| *title == "Experimental Codex features")
+					.count(),
+				1
+			);
+		});
+	}
+
 	#[gpui::test]
 	fn user_bubbles_stay_right_aligned_at_multiple_widths(cx: &mut gpui::TestAppContext) {
 		for width in [640.0, 1248.0] {

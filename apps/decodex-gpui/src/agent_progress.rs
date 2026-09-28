@@ -39,7 +39,9 @@ impl AgentSurface {
 		let mut result = Vec::new();
 		let mut pending: Vec<&AgentActivityDto> = Vec::new();
 		for entry in &entries {
-			if checklist_superseded(entry, entries.iter().copied()) {
+			if super::startup_feature_warning(entry)
+				|| checklist_superseded(entry, entries.iter().copied())
+			{
 				continue;
 			}
 			if let Some(activity) = &entry.activity {
