@@ -336,37 +336,6 @@ impl RenderOnce for SwitchKnob {
 mod tests {
 	use super::*;
 	#[test]
-	fn popover_reversal_keeps_position_and_velocity() {
-		let start = Instant::now();
-		let mut motion = PopoverMotion::new(start);
-		motion.advance(true, start, false);
-		let now = start + Duration::from_millis(60);
-		motion.advance(true, now, false);
-		let before = (motion.position, motion.velocity);
-		motion.advance(false, now, false);
-		assert_eq!(before, (motion.position, motion.velocity));
-		let (position, moving) = motion.advance(false, now + Duration::from_millis(320), false);
-		assert_eq!(position, 0.);
-		assert!(!moving);
-	}
-
-	#[test]
-	fn popover_motion_is_independent_of_frame_cadence() {
-		let start = Instant::now();
-		let mut frequent = PopoverMotion::new(start);
-		let mut sparse = PopoverMotion::new(start);
-		frequent.advance(true, start, false);
-		sparse.advance(true, start, false);
-		for millis in 1..=160 {
-			frequent.advance(true, start + Duration::from_millis(millis), false);
-		}
-		sparse.advance(true, start + Duration::from_millis(160), false);
-		assert!((frequent.position - sparse.position).abs() < 0.00001);
-		assert!((frequent.velocity - sparse.velocity).abs() < 0.0001);
-		assert_eq!(sparse.advance(false, start + Duration::from_millis(161), true), (0., false));
-	}
-
-	#[test]
 	fn reduced_motion_finishes_an_in_progress_transition_immediately() {
 		let mut tween = Tween::new(0.0);
 		let start = Instant::now();
@@ -488,71 +457,16 @@ impl RenderOnce for Arrival {
 	}
 }
 
-/// GPUI opacity applies to individual paint primitives, not a composited card.
-/// Keep popup text, fill and shadow opaque together and animate only their position.
-/// Native NSWindow overlays may use whole-window alpha instead (native_presence).
-struct PopoverMotion {
-	position: f32,
-	velocity: f32,
-	target: f32,
-	updated: Instant,
-}
-
-impl PopoverMotion {
-	fn new(now: Instant) -> Self {
-		Self { position: 0., velocity: 0., target: 0., updated: now }
-	}
-
-	fn advance(&mut self, visible: bool, now: Instant, reduced: bool) -> (f32, bool) {
-		let elapsed = now.duration_since(self.updated).as_secs_f32();
-		self.updated = now;
-		// Solve a critically damped spring analytically. Frame cadence does not
-		// change its duration, and reversing preserves both position and velocity.
-		let displacement = self.position - self.target;
-		let coefficient = self.velocity + 38. * displacement;
-		let decay = (-38. * elapsed).exp();
-		self.position = self.target + (displacement + coefficient * elapsed) * decay;
-		self.velocity = (self.velocity - 38. * coefficient * elapsed) * decay;
-		self.target = if visible { 1. } else { 0. };
-		let settled = (self.position - self.target).abs() < 0.001 && self.velocity.abs() < 0.03;
-		if reduced || settled {
-			self.position = self.target;
-			self.velocity = 0.;
-		}
-		(self.position, !reduced && !settled)
-	}
-}
-
-pub(crate) fn popover_progress(
-	id: impl Into<ElementId>,
-	visible: bool,
-	window: &mut Window,
-	cx: &mut App,
-) -> f32 {
-	let now = Instant::now();
-	let state = window.use_keyed_state(id.into(), cx, |_, _| PopoverMotion::new(now));
-	let (progress, moving) = state.update(cx, |s, _| s.advance(visible, now, reduced()));
-	if moving {
-		request_frame(window, cx);
-	}
-	progress
-}
-
-/// Shared travel for menus and anchored usage cards.
-pub(crate) fn popover_offset(progress: f32) -> f32 {
-	(1. - progress) * 8.
-}
-
-/// A content-sized popover that moves as a complete card without stretching its contents.
+/// Fixed-anchor fallback until a whole-surface composited transition is available.
+/// Do not use per-primitive opacity or translate an already opaque card.
 #[derive(IntoElement)]
 pub(crate) struct Popover {
 	unframed: bool,
-	id: &'static str,
 	visible: bool,
 	child: gpui::AnyElement,
 }
-pub(crate) fn popover(id: &'static str, visible: bool, child: impl IntoElement) -> Popover {
-	Popover { id, visible, child: child.into_any_element(), unframed: false }
+pub(crate) fn popover(visible: bool, child: impl IntoElement) -> Popover {
+	Popover { visible, child: child.into_any_element(), unframed: false }
 }
 impl Popover {
 	pub(crate) fn unframed(mut self, unframed: bool) -> Self {
@@ -561,15 +475,13 @@ impl Popover {
 	}
 }
 impl RenderOnce for Popover {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let progress = popover_progress(self.id, self.visible, window, cx);
-		if !self.visible && progress <= 0.001 {
+	fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+		if !self.visible {
 			return div().w_full().into_any_element();
 		}
 		div()
 			.w_full()
 			.relative()
-			.top(px(popover_offset(progress)))
 			.when(!self.unframed, |surface| {
 				surface.rounded(px(14.)).bg(gpui::rgb(0x29292d)).shadow(vec![gpui::BoxShadow {
 					inset: false,
