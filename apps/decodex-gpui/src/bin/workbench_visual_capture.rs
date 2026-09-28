@@ -45,6 +45,12 @@ mod shell;
 #[path = "../ui_motion.rs"]
 mod ui_motion;
 #[allow(dead_code)]
+#[path = "../ui_preferences.rs"]
+mod ui_preferences;
+#[allow(dead_code)]
+#[path = "../ui_scroll.rs"]
+mod ui_scroll;
+#[allow(dead_code)]
 #[path = "../ui_theme.rs"]
 mod ui_theme;
 #[allow(dead_code)]
