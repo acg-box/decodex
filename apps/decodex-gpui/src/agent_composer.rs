@@ -856,41 +856,7 @@ impl AgentSurface {
 								.rounded(px(14.))
 								.bg(rgb(0x29292d))
 								.child(self.model_palette(cx))
-								.child(
-									div()
-										.mt(px(6.))
-										.flex()
-										.items_center()
-										.justify_between()
-										.child(self.service_tier_picker(cx))
-										.child(
-											div()
-												.id("model-info-toggle")
-												.debug_selector(|| "model-info-toggle".into())
-												.cursor_pointer()
-												.text_size(px(11.))
-												.text_color(rgb(ui_theme::TEXT_MUTED))
-												.size(px(20.))
-												.flex()
-												.items_center()
-												.justify_center()
-												.rounded(px(5.))
-												.hover(|s| {
-													s.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
-												})
-												.child("ⓘ")
-												.on_click(cx.listener(|s, _, _, cx| {
-													if !s.expanded_records.remove("model-notices") {
-														s.expanded_records
-															.insert("model-notices".into());
-													}
-													cx.notify();
-												})),
-										),
-								)
-								.when(self.expanded_records.contains("model-notices"), |d| {
-									d.child(self.model_notice_panel(cx))
-								}),
+								.child(div().mt(px(6.)).child(self.service_tier_picker(cx))),
 						)
 						.child(
 							div()
