@@ -1,0 +1,60 @@
+> Historical record, archived on 2026-09-27. Statements and test results apply to the revisions named below. Use the [OpenWiki quickstart](../../../openwiki/quickstart.md) for current behavior.
+
+# Desktop draft recovery
+
+## Delivered boundary
+
+Editable Chief text, attachments, task references, and asynchronous question editors belong to the exact service profile. Disconnecting keeps the editors. Returning to a profile restores its in-memory inputs. A late command result cannot clear a different profile or newer text.
+
+Next-message model, effort, and tier choices belong to the conversation and carry a revision. SendConfigured contains only explicit changes. Acceptance clears only the captured revision. Steering keeps next-message choices. Full legacy execution objects remain readable. The original batch used protocol 2.48; the current exact service revision is defined by CURRENT_VERSION.
+
+The desktop captures profile-owned text, files, task references, explicit conversation settings, and question editors in a private revisioned store. It waits for publication of the exact command identity and original input before RPC dispatch. The original in-flight copy remains available if later edits are saved before a reply. Acceptance removes that exact copy; a known failure can retain it beside newer input. Unknown delivery blocks automatic replay after reopening.
+
+A concurrent writer produces a visible conflict. The user can keep both copies, restore a copy for its exact service, export it, or confirm removal of a copy with known delivery. Uncertain copies cannot be removed. Empty edits are saved as edits. Native quit waits for publication, rechecks the latest input, and cancels termination if publication fails. The AppKit bridge adds the missing termination callback without replacing GPUI lifecycle methods.
+
+## Upstream evidence
+
+Reference: openai/codex 595cc91e8cbb1c2ca822d0311dcf12709410c582, codex-rs/app-server-protocol/src/protocol/v2/turn.rs. TurnStartParams has optional model and effort overrides. An omitted service tier differs from an explicit standard tier. This batch preserves that distinction in queued message options; it does not establish complete native settings recovery.
+
+## Verification
+
+- Desktop binary tests: 286 passed, 5 ignored. This includes cold reopen with an in-flight original and later edit, accepted-copy cleanup, profile changes before dispatch, busy/conflicting writers, restored question inputs, export, recovery button clicks, and quit flush/recheck.
+- Repository strict Clippy passed for all desktop targets and features.
+- The preceding input-ownership batch passed 88 core, 106 protocol, 481 runtime, and 117 Chief desktop tests.
+
+These are source and test results. The AppKit callback test uses an isolated delegate class. It is not signed desktop quit/relaunch acceptance.
+
+## Remaining acceptance and integration
+
+Build and test a fresh signed desktop with isolated fixture storage. Verify the real menu, Dock, and keyboard quit paths, cancelled quit on conflict, relaunch recovery, and export. Do not run capture fixtures against the user's draft store.
+
+## Exact steering receipt recovery
+
+A positive receipt now requires the saved work, native thread, turn, and client submission ID. The coordinator consumes native userMessage.clientId from completed items and exact terminal or cold history. The local read-only query returns confirmed, unconfirmed, or unavailable. Only a matching confirmed response can release the desktop submission fence. Missing history and pending-list absence never authorize replay.
+
+The desktop retains later edits and other outstanding command IDs. It settles matching recovery-copy uncertainty without discarding the saved text. A delayed duplicate RPC acceptance is idempotent after native receipt confirmation.
+
+Verification: 84 database tests, 107 protocol tests, 481 runtime tests (9 ignored), and 288 desktop tests (5 ignored). Strict Clippy passed for all four affected packages. Installed codex-cli 0.155.0-alpha.16.3 passed an isolated app-server qualification with a loopback Responses backend. Both live receipt delivery and cold recovery after the turn became idle confirmed the exact submission, passed through the real local query transport, and retained exactly two inference requests: the original and the intentional steer. Restart and receipt queries issued no model work. Reference: upstream 595cc91e8cbb1c2ca822d0311dcf12709410c582 TurnSteerParams.client_user_message_id.
+
+Older local steering records without the original thread identity remain unconfirmed; do not infer acceptance from matching text. General uncertain non-steering submissions, new-task configuration drafts, and task-setting presentation still need their own integration audit. Real signed desktop quit/relaunch acceptance remains outstanding.
+
+## Ordinary input before service setup
+
+Local draft schema 7 introduced ordinary input by exact working directory before a
+service profile is selected. These records cannot contain a conversation ID,
+parked conversation editors, or unresolved commands. They use the existing shared
+writer and quit flush.
+
+Keep-both reconciliation retains displaced input as a recoverable copy, including
+ordinary editors. On the first profile binding, input moves to that profile.
+A conflicting saved profile remains recoverable, and unresolved delivery records
+remain in the selected profile. Later profile changes do not move that input again.
+The schema checks the aggregate encoded size and existing recovery capacity before
+publication. No restore or migration authorizes a send.
+
+## Complete inherited owner reconciliation
+
+The [current reconciliation](desktop-draft-reconciliation.md) maps the complete
+inherited document and three shared storage files. Local schema 10 and the 32 MiB
+aggregate bound supersede older schema/capacity notes. Source and test evidence
+do not close the remaining signed desktop acceptance above.

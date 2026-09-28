@@ -16,4 +16,4 @@ Scope policy: Necessary core app-server and protocol adaptations must be tied to
 
 This automation is paused at the user's request. Completion of the current manual fixed-cutoff update does not authorize enabling it. Wait for explicit later user instruction before resumption.
 
-Product decisions in `work/upstream-feature-decisions.md` define the retained scope. The user retired O24 provider authentication recovery history. Do not restore its notification consumer or receipt writer. Keep existing history readable and native authentication unchanged. The other listed optional capabilities are retained; maintaining them does not authorize unrelated new features.
+Product decisions in `openwiki/decisions/upstream-product-scope.md` define the retained scope. The user retired O24 provider authentication recovery history. Do not restore its notification consumer or receipt writer. Keep existing history readable and native authentication unchanged. The other listed optional capabilities are retained; maintaining them does not authorize unrelated new features.
