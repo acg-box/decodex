@@ -541,6 +541,13 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+		// The fixture closes the initially reserved dock. Measure refreshes only
+		// after that independent panel animation has settled.
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+
 		let scroll = surface.read_with(visual, |s, _| s.transcript_scroll[&work].clone());
 		scroll.set_offset(point(px(0.), px(-300.)));
 		visual.update(|window, cx| {

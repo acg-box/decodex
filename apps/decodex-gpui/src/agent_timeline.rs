@@ -124,6 +124,23 @@ impl AgentSurface {
 			})
 	}
 
+	pub(super) fn native_history_loading(&self, work: &AgentWorkItemDto) -> bool {
+		if self.native_history.show_saved
+			|| self.native_history_active(work)
+			|| self.native_history.failures > 0
+			|| work.codex_thread_id.is_none()
+		{
+			return false;
+		}
+		match self.native_history.requested.as_ref() {
+			None => self.profile.is_some(),
+			Some((id, thread)) =>
+				self.native_history.task.is_some()
+					&& id == &work.id
+					&& Some(thread) == work.codex_thread_id.as_ref(),
+		}
+	}
+
 	pub(super) fn native_timeline_panel(
 		&self,
 		work: &AgentWorkItemDto,
@@ -144,17 +161,15 @@ impl AgentSurface {
 			)),
 		);
 		panel = panel.child(self.render_native_app_recovery(work, cx));
+		// Reserve the first-load state before the request starts, but retain
+		// existing history during background refreshes and fallback retries.
+		if self.native_history_loading(work) {
+			panel = panel.child(crate::ui_loading::conversation("Loading conversation"));
+		}
+
 		if self.native_history.requested.as_ref().is_some_and(|(id, thread)| {
 			id == &work.id && Some(thread) == work.codex_thread_id.as_ref()
 		}) {
-			// A background refresh must not change transcript height. Inserting a
-			// loading row on every poll makes bottom-follow repeatedly scroll back.
-			let has_history = self.native_history.binding.as_ref().is_some_and(|binding| {
-				binding.work == work.id && Some(&binding.thread) == work.codex_thread_id.as_ref()
-			});
-			if self.native_history.task.is_some() && !has_history {
-				panel = panel.child(crate::ui_loading::conversation("Loading conversation"));
-			}
 			if let Some(message) = self.native_history.notice {
 				panel = panel.child(
 					div().debug_selector(|| "native-history-notice".into()).child(muted(message)),
@@ -738,6 +753,53 @@ pub(super) fn key(entry: &AgentTimelineEntry) -> (u64, u8, &str) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn pending_native_read_does_not_flash_local_records(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| Some(&w.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("thread".into());
+			s.native_history.requested = Some((work.id.clone(), "thread".into()));
+			s.native_history.task = Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_some());
+		assert!(visual.debug_bounds("saved-local-history").is_none());
+		// A failed native read still permits the saved-history fallback.
+		surface.update(visual, |s, cx| {
+			s.native_history.task = None;
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_none());
+		assert!(visual.debug_bounds("saved-local-history").is_some());
+		// Retrying a failed read must retain the fallback, too.
+		surface.update(visual, |s, cx| {
+			s.native_history.failed(None, std::time::Instant::now());
+			s.native_history.task = Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_none());
+		assert!(visual.debug_bounds("saved-local-history").is_some());
+	}
+
 	#[gpui::test]
 	fn summary_recovery_renders_notice_and_copies_only_message_text(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));

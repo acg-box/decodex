@@ -1800,6 +1800,11 @@ impl AgentSurface {
 				work,
 			);
 		}
+		// Local records use a different grouping and must not flash before the
+		// native transcript arrives. They remain available after a failed read.
+		if self.native_history_loading(work) {
+			return panel;
+		}
 		let mut panel = panel.debug_selector(|| "saved-local-history".into());
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
 			Some(AgentHistoryResult::Available {
