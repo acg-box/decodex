@@ -390,6 +390,7 @@ pub(super) struct Timeline {
 	input_receipts: inputs::InputReceipts,
 	pub task: Option<Task<()>>,
 	pub epoch: u64,
+	pub revision: u64,
 	pub binding: Option<Binding>,
 	pub entries: Vec<AgentTimelineEntry>,
 	pub weather: std::collections::BTreeMap<String, Vec<decodex_protocol::WeatherForecast>>,
@@ -468,6 +469,7 @@ impl Timeline {
 	}
 
 	fn clear_page(&mut self) {
+		self.revision = self.revision.wrapping_add(1);
 		self.preview.clear();
 		self.app_ui.clear();
 		self.viewport = Default::default();
@@ -514,8 +516,15 @@ impl Timeline {
 		{
 			return false;
 		}
+		let changed = self.binding.as_ref() != Some(&binding)
+			|| self.entries != page.entries
+			|| self.weather != page.weather
+			|| !self.summary.is_empty();
 		self.summary.clear();
-		self.viewport = Default::default();
+		if changed {
+			self.viewport = Default::default();
+			self.revision = self.revision.wrapping_add(1);
+		}
 		if self.binding.as_ref() != Some(&binding) {
 			self.preview.clear();
 			self.app_ui.clear();
@@ -567,6 +576,7 @@ impl Timeline {
 		}
 		self.weather.extend(page.weather);
 		self.entries.splice(0..0, page.entries);
+		self.revision = self.revision.wrapping_add(1);
 		while !bounded(&self.entries) {
 			self.entries.pop();
 			self.browsing_window = true;
@@ -825,6 +835,17 @@ mod tests {
 			active_realtime_session_at_page_start: session.map(str::to_owned),
 		}
 	}
+	#[test]
+	fn unchanged_refresh_keeps_layout_revision_but_same_length_edits_invalidate_it() {
+		let mut state = Timeline::default();
+		assert!(state.replace(binding(), page(vec![boundary(1, false)], None, None)));
+		let revision = state.revision;
+		assert!(state.replace(binding(), page(vec![boundary(1, false)], None, None)));
+		assert_eq!(state.revision, revision);
+		assert!(state.replace(binding(), page(vec![boundary(1, true)], None, None)));
+		assert_ne!(state.revision, revision);
+	}
+
 	#[test]
 	fn failed_reads_retry_without_retaining_unverified_rows_or_hammering_legacy_threads() {
 		let now = std::time::Instant::now();

@@ -88,6 +88,7 @@ struct AreaState {
 impl RenderOnce for ScrollArea {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(self.id, cx, |_, _| AreaState::default());
+		let owner = window.current_view();
 		let scroll = state.update(cx, |s, cx| {
 			if let Some(motion) = &s.motion {
 				let (offset, moving) =
@@ -98,7 +99,7 @@ impl RenderOnce for ScrollArea {
 				));
 				if moving {
 					crate::ui_motion::request_frame(window, cx);
-					window.on_next_frame(|window, _| window.refresh());
+					cx.notify();
 				} else {
 					s.motion = None;
 				}
@@ -106,7 +107,7 @@ impl RenderOnce for ScrollArea {
 			s.scroll.clone()
 		});
 		self.content.overflow_hidden().track_scroll(&scroll).on_scroll_wheel(
-			move |event, window, cx| {
+			move |event, _window, cx| {
 				let delta = event.delta.pixel_delta(px(crate::ui_theme::BODY_LINE_HEIGHT)).y;
 				if delta == px(0.) {
 					return;
@@ -131,7 +132,7 @@ impl RenderOnce for ScrollArea {
 					}
 				});
 				cx.stop_propagation();
-				window.refresh();
+				cx.notify(owner);
 			},
 		)
 	}
