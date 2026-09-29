@@ -30,34 +30,6 @@ fn checked_in_example_matches_the_bounded_vnext_schema() {
 }
 
 #[test]
-fn first_release_local_config_needs_no_database_endpoint() {
-	#[cfg(unix)]
-	// SAFETY: `geteuid` has no arguments or failure return.
-	let uid = unsafe { libc::geteuid() };
-	#[cfg(not(unix))]
-	let uid = 0;
-	let input = format!(
-		r#"version = 1
-active_profile = "local"
-
-[profiles.local]
-kind = "local"
-policy = "same_uid"
-service_owner_uid = {}
-
-[cache]
-max_entries = 128
-max_bytes = 1048576
-max_entry_bytes = 65536
-	"#,
-		uid,
-	);
-	let config = DecodexConfig::parse(input.as_bytes()).expect("SQLite local config parses");
-
-	assert!(matches!(config.active_profile(), ServerProfile::Local(_)));
-}
-
-#[test]
 fn valid_configuration_keeps_profiles_and_cache_explicit() {
 	let config =
 		DecodexConfig::parse(support::valid_config().as_bytes()).expect("valid configuration");

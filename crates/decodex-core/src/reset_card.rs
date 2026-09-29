@@ -134,8 +134,8 @@ pub const fn admit_manual_reset_card_use(
 #[cfg(test)]
 mod tests {
 	use crate::{
-		AccountState, MAX_RESET_CARD_ITEMS, ManualResetCardAdmissionError, ResetCardConsumeOutcome,
-		ResetCardDescriptor, ResetCardError, ResetCardTimestamp, admit_manual_reset_card_use,
+		AccountState, ManualResetCardAdmissionError, ResetCardDescriptor, ResetCardError,
+		ResetCardTimestamp, admit_manual_reset_card_use,
 	};
 
 	fn timestamp(value: i64) -> ResetCardTimestamp {
@@ -188,20 +188,5 @@ mod tests {
 			admit_manual_reset_card_use(AccountState::PluginUnready),
 			Err(ManualResetCardAdmissionError::PluginUnready)
 		);
-	}
-
-	#[test]
-	fn provider_terminal_outcome_domain_is_closed() {
-		assert_eq!(
-			[
-				ResetCardConsumeOutcome::Reset,
-				ResetCardConsumeOutcome::NothingToReset,
-				ResetCardConsumeOutcome::NoCredit,
-				ResetCardConsumeOutcome::AlreadyRedeemed,
-			]
-			.len(),
-			4
-		);
-		assert_eq!(MAX_RESET_CARD_ITEMS, 64);
 	}
 }

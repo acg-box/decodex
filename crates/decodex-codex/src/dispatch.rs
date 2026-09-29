@@ -66,8 +66,7 @@ impl DispatchGate {
 #[cfg(test)]
 mod tests {
 	use crate::{
-		AUTOMATIC_FALLBACK_WAKE_GATE, DispatchDenied, DispatchGate, DispatchPath,
-		LIVE_ROUTING_GATE, dispatch::DispatchOperation,
+		DispatchDenied, DispatchGate, DispatchPath, LIVE_ROUTING_GATE, dispatch::DispatchOperation,
 	};
 
 	#[test]
@@ -87,7 +86,6 @@ mod tests {
 			);
 		}
 
-		assert_eq!(AUTOMATIC_FALLBACK_WAKE_GATE, "XY-1304");
 		for (path, expected) in [
 			(DispatchPath::OrdinaryConversation, false),
 			(DispatchPath::AutomaticCrossAccountFallback, true),

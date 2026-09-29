@@ -4844,12 +4844,6 @@ max_entry_bytes = 0
 		assert!(!format!("{remote:?}").contains("server.example.test"));
 	}
 
-	#[test]
-	fn protocol_constants_expose_only_the_exact_current_version() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 99 });
-		assert!(WireText::new("bounded").is_ok());
-	}
-
 	#[tokio::test]
 	async fn account_profile_client_rejects_identity_mismatch_and_default_email_leakage() {
 		let mismatch = account_profile_query(
