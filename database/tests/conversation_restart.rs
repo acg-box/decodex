@@ -339,6 +339,26 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		ProviderDuplicateRisk::OriginalIntent,
 	)
 	.expect("provider-attempt preparation");
+	let mut malformed = preparation.clone();
+	malformed.request_digest = "z".repeat(64);
+	assert!(
+		matches!(
+			store
+				.prepare_provider_attempt(
+					&malformed,
+					&generation_id,
+					3,
+					&execution_epoch_id,
+					Some(&RuntimeSessionBindingReceipt::from_binding(&bound_session)),
+					(Some(1), Some(1)),
+				)
+				.await,
+			Err(decodex_database::StoreError::InvalidInput(_))
+		),
+		"non-hex request digest must not create a durable attempt"
+	);
+	assert!(store.read_provider_attempt(&attempt_id).await.unwrap().is_none());
+
 	let prepared = match store
 		.prepare_provider_attempt(
 			&preparation,
