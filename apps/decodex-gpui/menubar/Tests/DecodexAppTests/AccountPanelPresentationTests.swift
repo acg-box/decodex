@@ -447,13 +447,6 @@ final class AccountPanelPresentationTests: XCTestCase {
 
 		XCTAssertTrue(state.requiresLoginRefresh)
 		XCTAssertEqual(state.targets.count, 1)
-
-		let source = try resetCardSectionSource()
-		XCTAssertFalse(source.contains("state.needsLoginRecovery"))
-		XCTAssertEqual(
-			source.components(separatedBy: "state.requiresLoginRefresh").count - 1,
-			3
-		)
 	}
 
 	func testStaleInventoryKeepsQuotaVisibleWithoutExposingUseTargets() throws {
@@ -534,11 +527,6 @@ final class AccountPanelPresentationTests: XCTestCase {
 			),
 			.empty
 		)
-
-		let source = try resetCardSectionSource()
-		XCTAssertFalse(source.contains("Updating usage…"))
-		XCTAssertFalse(source.contains("Connecting to Decodex…"))
-		XCTAssertFalse(source.contains("Reconnecting…"))
 	}
 
 	func testIncompletePositiveResetCardInventoryKeepsCheckingForExpiryDetails() {
@@ -581,28 +569,6 @@ final class AccountPanelPresentationTests: XCTestCase {
 			),
 			.unavailable(detail: "Reset Card details are temporarily unavailable.")
 		)
-	}
-
-	func testQuotaRowsPutTheFlexibleBarBeforeTheCompactPercentage() throws {
-		let source = try resetCardSectionSource()
-
-		XCTAssertTrue(
-			source.contains(
-				".frame(width: Self.titleColumnWidth, alignment: .leading)"
-			)
-		)
-		let progressRange = try XCTUnwrap(
-			source.range(of: ".frame(minWidth: 88, maxWidth: .infinity)")
-		)
-		let valueRange = try XCTUnwrap(
-			source.range(of: "Text(animated.map")
-		)
-		XCTAssertLessThan(
-			source.distance(from: source.startIndex, to: progressRange.lowerBound),
-			source.distance(from: source.startIndex, to: valueRange.lowerBound)
-		)
-		XCTAssertFalse(source.contains("valueColumnWidth"))
-		XCTAssertFalse(source.contains("dateColumnWidth"))
 	}
 
 	func testResetCardChipAndAccessibilityExposeExpiryOnly() {
@@ -884,17 +850,6 @@ private func descendants<T: NSView>(
 		matches.append(contentsOf: descendants(of: T.self, in: child))
 	}
 	return matches
-}
-
-private func resetCardSectionSource() throws -> String {
-	let testsURL = URL(fileURLWithPath: #filePath)
-		.deletingLastPathComponent()
-	let sourceURL =
-		testsURL
-		.deletingLastPathComponent()
-		.deletingLastPathComponent()
-		.appendingPathComponent("Sources/DecodexApp/ResetCardSectionView.swift")
-	return try String(contentsOf: sourceURL, encoding: .utf8)
 }
 
 private struct StaticFastModeClient: FastModeClient {

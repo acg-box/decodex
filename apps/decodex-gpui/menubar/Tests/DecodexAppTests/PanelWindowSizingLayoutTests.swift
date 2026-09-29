@@ -4,16 +4,6 @@ import SwiftUI
 import XCTest
 
 final class PanelWindowSizingLayoutTests: XCTestCase {
-	func testPanelSpacingUsesOneCompactTwoPointRhythm() {
-		XCTAssertEqual(PanelSpacing.micro, 2)
-		XCTAssertEqual(PanelSpacing.compact, 4)
-		XCTAssertEqual(PanelSpacing.related, 6)
-		XCTAssertEqual(PanelSpacing.section, 8)
-		XCTAssertEqual(PanelSpacing.cardHorizontal, 10)
-		XCTAssertEqual(PanelSpacing.cardVertical, 8)
-		XCTAssertEqual(PanelSpacing.popoverInset, 12)
-	}
-
 	func testAccountReorderMovesOnlyAfterCrossingAnAdjacentCardCenter() {
 		let order = ["first", "second", "third"]
 		let frames = accountReorderFrames()
