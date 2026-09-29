@@ -29,6 +29,24 @@ pub(super) fn terminal(params: &Value) -> Value {
 	json!({"threadId":params["threadId"],"turn":retained,"detailsOmitted":omitted})
 }
 
+/// Recover only the final assistant item from an explicit native completion summary.
+pub(super) fn completion_summary(turn: &Value) -> Option<Value> {
+	if turn["status"] != "completed" || turn["itemsView"] != "summary" {
+		return None;
+	}
+	turn["items"]
+		.as_array()?
+		.iter()
+		.rev()
+		.find(|item| {
+			item["type"] == "agentMessage"
+				&& item["id"].as_str().is_some_and(|id| !id.is_empty() && id.len() <= 512)
+				&& item["text"].as_str().is_some_and(|text| !text.trim().is_empty())
+				&& (item["phase"].is_null() || item["phase"] == "final_answer")
+		})
+		.cloned()
+}
+
 pub(super) fn collect(turn: Option<&Value>) -> (Vec<Value>, bool) {
 	let mut items: Vec<_> = turn
 		.and_then(|turn| turn["items"].as_array())

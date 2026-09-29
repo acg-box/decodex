@@ -1212,7 +1212,7 @@ impl ServiceApplication {
 					.map(|descriptor| {
 						ResetCardDescriptorDto::new(
 							descriptor.granted_at().unix_seconds(),
-							descriptor.expires_at().unix_seconds(),
+							descriptor.expires_at().map(ResetCardTimestamp::unix_seconds),
 						)
 						.map(|descriptor| ResetCardObservationDto { descriptor })
 						.map_err(|_| ())
@@ -3403,7 +3403,10 @@ fn conversation_summary_publication(
 fn core_reset_descriptor(descriptor: ResetCardDescriptorDto) -> Result<ResetCardDescriptor, ()> {
 	let granted = ResetCardTimestamp::from_unix_seconds(descriptor.granted_at_unix_seconds())
 		.map_err(|_| ())?;
-	let expires = ResetCardTimestamp::from_unix_seconds(descriptor.expires_at_unix_seconds())
+	let expires = descriptor
+		.expires_at_unix_seconds()
+		.map(ResetCardTimestamp::from_unix_seconds)
+		.transpose()
 		.map_err(|_| ())?;
 
 	ResetCardDescriptor::new(granted, expires).map_err(|_| ())
@@ -3412,7 +3415,7 @@ fn core_reset_descriptor(descriptor: ResetCardDescriptorDto) -> Result<ResetCard
 fn reset_descriptor_dto(descriptor: ResetCardDescriptor) -> ResetCardDescriptorDto {
 	ResetCardDescriptorDto::new(
 		descriptor.granted_at().unix_seconds(),
-		descriptor.expires_at().unix_seconds(),
+		descriptor.expires_at().map(ResetCardTimestamp::unix_seconds),
 	)
 	.expect("validated core reset-card descriptor maps to the wire contract")
 }

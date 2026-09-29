@@ -268,7 +268,7 @@ for line in sys.stdin:
         if mode in ("agent-form-capabilities", "ordinary-capabilities"):
             capabilities = message["params"]["capabilities"]
             if mode == "agent-form-capabilities":
-                assert capabilities["extensions"] == {"openai/elicitation": {"form": {}}}
+                assert capabilities["extensions"] == {"openai/form": {}, "io.modelcontextprotocol/ui": {"mimeTypes": ["text/html;profile=mcp-app"]}}
             else:
                 assert "extensions" not in capabilities
         if mode == "exact-config-warning-flood":

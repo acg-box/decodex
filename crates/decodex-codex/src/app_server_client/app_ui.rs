@@ -250,7 +250,11 @@ fn hosted_callback_owned(
 	let Some(tools) = app["toolSummaries"].as_array() else { return Ok(false) };
 	let mut matched = tools.iter().filter(|tool| tool["name"] == name);
 	let Some(summary) = matched.next() else { return Ok(false) };
-	if matched.next().is_some() || summary["isEnabled"] != true {
+	// Native AppToolSummary defaults an omitted isEnabled to true.
+	// Explicit false and malformed values still prevent invocation.
+	if matched.next().is_some()
+		|| !matches!(summary.get("isEnabled"), None | Some(Value::Bool(true)))
+	{
 		return Ok(false);
 	}
 	let explicit =
@@ -576,6 +580,35 @@ mod tests {
 			!hosted_callback_owned(&apps, "other", "calendar.find", &selected, &origin, &json!({}))
 				.unwrap()
 		);
+		for (enabled, expected) in [
+			(None, true),
+			(Some(json!(false)), false),
+			(Some(Value::Null), false),
+			(Some(json!("true")), false),
+		] {
+			let mut candidate = apps.clone();
+			let summary = candidate["apps"][0]["toolSummaries"][0].as_object_mut().unwrap();
+			match enabled {
+				Some(value) => {
+					summary.insert("isEnabled".into(), value);
+				},
+				None => {
+					summary.remove("isEnabled");
+				},
+			}
+			assert_eq!(
+				hosted_callback_owned(
+					&candidate,
+					"calendar",
+					"calendar.find",
+					&selected,
+					&origin,
+					&json!({})
+				)
+				.unwrap(),
+				expected
+			);
+		}
 		let mut explicit = selected.clone();
 		explicit["_meta"]["_codex_apps"] = json!({"requires_explicit_link_id":true});
 		for arguments in [json!({}), json!({"link_id":"link-2"}), json!({"link_id":false})] {

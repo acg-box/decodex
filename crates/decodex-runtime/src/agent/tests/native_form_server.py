@@ -43,7 +43,7 @@ for line in sys.stdin:
         if len(sys.argv) > 3 and sys.argv[3] == "true":
             params = {"mode": "openai/userVerification", "title": "Verify fixture",
                       "description": "Synthetic unsupported request", "challenge": "AQID"}
-        method = "openai/elicitation/create"
+        method = "openai/form"
         if len(sys.argv) > 4:
             method = "elicitation/create"
             params["_meta"].update({"codex_request_type": "approval_request",

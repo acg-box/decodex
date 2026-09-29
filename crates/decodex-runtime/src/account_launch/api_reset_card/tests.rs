@@ -331,3 +331,29 @@ async fn expired_cards_and_known_no_effect_outcomes_remain_distinct() {
 		assert_eq!(fake.sends.load(Ordering::SeqCst), 1);
 	}
 }
+
+#[tokio::test]
+async fn nonexpiring_reset_card_keeps_exact_id_and_replay_protection() {
+	let (_dir, store, fake, runtime, account, _) = fixture();
+	let credits = decodex_codex::decode_account_api_reset_credits(br#"{"available_count":1,"credits":[{"id":"nonexpiring-credit","reset_type":"codexRateLimits","status":"available","granted_at":100,"expires_at":null}]}"#).unwrap();
+	let descriptor = credits.credits[0].descriptor();
+	fake.inventory.lock().unwrap().credits = credits.credits;
+	runtime.prepare("nonexpiring", &account, 1, descriptor).await.unwrap();
+	assert!(
+		store
+			.reset_card_operation("nonexpiring".into())
+			.await
+			.unwrap()
+			.unwrap()
+			.expires_at
+			.is_none()
+	);
+	runtime.process_pending().await;
+	runtime.prepare("nonexpiring", &account, 1, descriptor).await.unwrap();
+	runtime.process_pending().await;
+	assert_eq!(fake.sends.load(Ordering::SeqCst), 1);
+	assert_eq!(
+		*fake.identities.lock().unwrap(),
+		vec![("nonexpiring".into(), "nonexpiring-credit".into())]
+	);
+}

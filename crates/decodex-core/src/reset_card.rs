@@ -32,15 +32,16 @@ impl ResetCardTimestamp {
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ResetCardDescriptor {
 	granted_at: ResetCardTimestamp,
-	expires_at: ResetCardTimestamp,
+	expires_at: Option<ResetCardTimestamp>,
 }
 impl ResetCardDescriptor {
-	/// Construct a descriptor only when expiry is strictly after grant.
-	pub const fn new(
+	/// Construct a descriptor with no expiry or an expiry strictly after grant.
+	pub fn new(
 		granted_at: ResetCardTimestamp,
-		expires_at: ResetCardTimestamp,
+		expires_at: impl Into<Option<ResetCardTimestamp>>,
 	) -> Result<Self, ResetCardError> {
-		if expires_at.0 <= granted_at.0 {
+		let expires_at = expires_at.into();
+		if expires_at.is_some_and(|expiry| expiry.0 <= granted_at.0) {
 			Err(ResetCardError::ExpirationNotAfterGrant)
 		} else {
 			Ok(Self { granted_at, expires_at })
@@ -52,8 +53,8 @@ impl ResetCardDescriptor {
 		self.granted_at
 	}
 
-	/// Read the exact expiry timestamp.
-	pub const fn expires_at(self) -> ResetCardTimestamp {
+	/// Read the exact expiry timestamp, or None for a non-expiring card.
+	pub const fn expires_at(self) -> Option<ResetCardTimestamp> {
 		self.expires_at
 	}
 }
@@ -157,7 +158,7 @@ mod tests {
 		let descriptor = ResetCardDescriptor::new(timestamp(100), timestamp(200)).unwrap();
 
 		assert_eq!(descriptor.granted_at().unix_seconds(), 100);
-		assert_eq!(descriptor.expires_at().unix_seconds(), 200);
+		assert_eq!(descriptor.expires_at().map(ResetCardTimestamp::unix_seconds), Some(200));
 		assert_eq!(
 			ResetCardDescriptor::new(timestamp(100), timestamp(100)),
 			Err(ResetCardError::ExpirationNotAfterGrant)

@@ -23,7 +23,7 @@ pub struct CredentialSecretBundle {
 	refresh_token: String,
 	id_token: Option<String>,
 	plan_type: Option<String>,
-	provider_email: String,
+	provider_email: Option<String>,
 	token_type: String,
 	access_token_expires_at_unix_micros: i64,
 }
@@ -34,15 +34,15 @@ impl CredentialSecretBundle {
 		refresh_token: String,
 		id_token: Option<String>,
 		plan_type: Option<String>,
-		provider_email: String,
+		provider_email: Option<String>,
 		token_type: String,
 		access_token_expires_at_unix_micros: i64,
 	) -> Result<Self, CredentialStoreError> {
 		if access_token.is_empty()
 			|| refresh_token.is_empty()
-			|| provider_email.is_empty()
-			|| provider_email.len() > 320
-			|| provider_email.chars().any(char::is_control)
+			|| provider_email.as_ref().is_some_and(|email| {
+				email.is_empty() || email.len() > 320 || email.chars().any(char::is_control)
+			})
 			|| !token_type.eq_ignore_ascii_case("bearer")
 			|| access_token_expires_at_unix_micros <= 0
 		{
@@ -81,8 +81,8 @@ impl CredentialSecretBundle {
 	}
 
 	/// Borrow the provider email used for exact post-login account readback.
-	pub fn provider_email(&self) -> &str {
-		&self.provider_email
+	pub fn provider_email(&self) -> Option<&str> {
+		self.provider_email.as_deref()
 	}
 
 	/// Borrow the closed OAuth token type.
@@ -148,7 +148,7 @@ impl StoredCredential {
 				refresh_token: String::new(),
 				id_token: None,
 				plan_type: None,
-				provider_email: String::new(),
+				provider_email: None,
 				token_type: String::new(),
 				access_token_expires_at_unix_micros: 0,
 			},
@@ -269,7 +269,7 @@ struct PersistedCredentialV1 {
 	refresh_token: String,
 	id_token: Option<String>,
 	plan_type: Option<String>,
-	provider_email: String,
+	provider_email: Option<String>,
 	token_type: String,
 	access_token_expires_at_unix_micros: i64,
 }
@@ -425,3 +425,25 @@ pub(crate) fn seal_exact_read(
 mod sqlite_store;
 
 pub use sqlite_store::SqliteCredentialStore;
+
+#[cfg(test)]
+mod optional_email_tests {
+	use super::*;
+	use serde_json::json;
+
+	#[test]
+	fn stored_credentials_preserve_null_email_and_read_existing_string_email() {
+		for email in [None, Some(Value::Null), Some(Value::String("user@example.test".into()))] {
+			let mut record = json!({"schema_version":1,"account_id":"account","credential_version":1,"writer_operation_id":"operation","provider":"chatgpt","provider_account_id":"provider","access_token":"synthetic-access","refresh_token":"synthetic-refresh","id_token":null,"plan_type":"pro","token_type":"bearer","access_token_expires_at_unix_micros":100});
+			if let Some(email) = email.clone() {
+				record["provider_email"] = email;
+			}
+			let decoded: PersistedCredentialV1 = serde_json::from_value(record).unwrap();
+			let encoded = serde_json::to_value(&decoded).unwrap();
+			let bundle = decoded.into_bundle().unwrap();
+			assert_eq!(bundle.provider_email(), email.as_ref().and_then(Value::as_str));
+			assert_eq!(encoded["provider_email"], email.unwrap_or(Value::Null));
+		}
+	}
+	use serde_json::Value;
+}

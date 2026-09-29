@@ -543,7 +543,7 @@ struct ResetCardPendingAttemptStore {
 			&& DecodexNativeClient.isCanonicalAccountID(target.accountID)
 			&& target.expectedRevision > 0
 			&& descriptor.grantedAtUnixSeconds >= 0
-			&& descriptor.expiresAtUnixSeconds > descriptor.grantedAtUnixSeconds
+			&& (descriptor.expiresAtUnixSeconds.map { $0 > descriptor.grantedAtUnixSeconds } ?? true)
 			&& DecodexNativeClient.isCanonicalUUID(attempt.idempotencyKey)
 	}
 

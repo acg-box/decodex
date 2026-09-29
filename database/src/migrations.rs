@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 50;
+const CURRENT_SCHEMA_VERSION: i64 = 51;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -30,6 +30,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 50,
 		name: "unique_account_names",
 		sql: include_str!("../migrations/0050_unique_account_names.sql"),
+	},
+	Migration {
+		version: 51,
+		name: "nullable_reset_credit_expiry",
+		sql: include_str!("../migrations/0051_nullable_reset_credit_expiry.sql"),
 	},
 ];
 
@@ -263,3 +268,7 @@ mod misalignment_voice_tests;
 #[cfg(test)]
 #[path = "account_alias_migration_tests.rs"]
 mod account_alias_tests;
+
+#[cfg(test)]
+#[path = "reset_credit_expiry_migration_tests.rs"]
+mod reset_credit_expiry_tests;

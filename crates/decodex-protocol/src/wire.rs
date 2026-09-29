@@ -854,21 +854,22 @@ impl<'de> Deserialize<'de> for HistoryBlobLength {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize)]
 pub struct ResetCardDescriptorDto {
 	granted_at_unix_seconds: i64,
-	expires_at_unix_seconds: i64,
+	expires_at_unix_seconds: Option<i64>,
 }
 impl ResetCardDescriptorDto {
 	/// Validate one public reset-card descriptor.
 	pub fn new(
 		granted_at_unix_seconds: i64,
-		expires_at_unix_seconds: i64,
+		expires_at_unix_seconds: impl Into<Option<i64>>,
 	) -> Result<Self, ResetCardDescriptorError> {
+		let expires_at_unix_seconds = expires_at_unix_seconds.into();
 		if granted_at_unix_seconds < 0 {
 			return Err(ResetCardDescriptorError::NegativeGrantedAt);
 		}
-		if expires_at_unix_seconds < 0 {
+		if expires_at_unix_seconds.is_some_and(|expiry| expiry < 0) {
 			return Err(ResetCardDescriptorError::NegativeExpiresAt);
 		}
-		if expires_at_unix_seconds <= granted_at_unix_seconds {
+		if expires_at_unix_seconds.is_some_and(|expiry| expiry <= granted_at_unix_seconds) {
 			return Err(ResetCardDescriptorError::InvalidWindow);
 		}
 
@@ -880,8 +881,8 @@ impl ResetCardDescriptorDto {
 		self.granted_at_unix_seconds
 	}
 
-	/// Return the expiry timestamp, which is later than the grant timestamp.
-	pub const fn expires_at_unix_seconds(self) -> i64 {
+	/// Return the expiry timestamp, or None when the card does not expire.
+	pub const fn expires_at_unix_seconds(self) -> Option<i64> {
 		self.expires_at_unix_seconds
 	}
 }
@@ -894,7 +895,7 @@ impl<'de> Deserialize<'de> for ResetCardDescriptorDto {
 		#[serde(deny_unknown_fields)]
 		struct RawDescriptor {
 			granted_at_unix_seconds: i64,
-			expires_at_unix_seconds: i64,
+			expires_at_unix_seconds: Option<i64>,
 		}
 
 		let raw = RawDescriptor::deserialize(deserializer)?;

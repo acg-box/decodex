@@ -669,9 +669,10 @@ struct ResetCardAccountRow: View {
 	}
 
 	static func cardExpiryText(
-		_ unixSeconds: Int64,
+		_ unixSeconds: Int64?,
 		timeZone: TimeZone = .current
 	) -> String {
+		guard let unixSeconds else { return "No expiry" }
 		let date = Date(timeIntervalSince1970: TimeInterval(unixSeconds))
 		var dayStyle = Date.FormatStyle.dateTime
 			.month(.abbreviated)
@@ -689,9 +690,10 @@ struct ResetCardAccountRow: View {
 	}
 
 	static func cardAccessibilityLabel(
-		expiresAtUnixSeconds: Int64,
+		expiresAtUnixSeconds: Int64?,
 		timeZone: TimeZone = .current
 	) -> String {
+		guard let expiresAtUnixSeconds else { return "Reset Card, no expiry" }
 		let expiry = cardExpiryText(
 			expiresAtUnixSeconds,
 			timeZone: timeZone

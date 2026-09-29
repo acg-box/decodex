@@ -2,6 +2,18 @@
 import XCTest
 
 final class ResetCardUseConfirmationTests: XCTestCase {
+	func testNonexpiringCardRetainsIdentityAndRequiresTheSameConfirmation() throws {
+		let descriptor = try ResetCardDescriptor(grantedAtUnixSeconds: 100, expiresAtUnixSeconds: nil)
+		let encoded = try JSONEncoder().encode(descriptor)
+		XCTAssertEqual(try JSONDecoder().decode(ResetCardDescriptor.self, from: encoded), descriptor)
+		XCTAssertEqual(ResetCardAccountRow.cardExpiryText(nil), "No expiry")
+		XCTAssertEqual(ResetCardAccountRow.cardAccessibilityLabel(expiresAtUnixSeconds: nil), "Reset Card, no expiry")
+		let target = try makeTarget(expiresAt: nil)
+		var confirmation = ResetCardUseConfirmation()
+		XCTAssertNil(confirmation.tap(target, makeIdempotencyKey: { "stable-key" }))
+		XCTAssertEqual(confirmation.tap(target)?.idempotencyKey, "stable-key")
+	}
+
 	func testFirstTapArmsImmediatelyAndSecondTapSubmitsTheSameAttempt() throws {
 		let target = try makeTarget(expiresAt: 200)
 		var confirmation = ResetCardUseConfirmation()
@@ -190,7 +202,7 @@ final class ResetCardUseConfirmationTests: XCTestCase {
 	}
 
 	private func makeTarget(
-		expiresAt: Int64,
+		expiresAt: Int64?,
 		revision: UInt64 = 7
 	) throws -> ResetCardUseTarget {
 		ResetCardUseTarget(

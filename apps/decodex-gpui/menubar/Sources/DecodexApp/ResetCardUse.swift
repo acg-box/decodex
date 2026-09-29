@@ -2,11 +2,11 @@ import Foundation
 
 struct ResetCardDescriptor: Codable, Hashable, Sendable {
 	let grantedAtUnixSeconds: Int64
-	let expiresAtUnixSeconds: Int64
+	let expiresAtUnixSeconds: Int64?
 
-	init(grantedAtUnixSeconds: Int64, expiresAtUnixSeconds: Int64) throws {
+	init(grantedAtUnixSeconds: Int64, expiresAtUnixSeconds: Int64?) throws {
 		guard grantedAtUnixSeconds >= 0,
-			expiresAtUnixSeconds > grantedAtUnixSeconds
+			expiresAtUnixSeconds.map({ $0 > grantedAtUnixSeconds }) ?? true
 		else {
 			throw ResetCardClientError.invalidResponse
 		}
@@ -130,6 +130,9 @@ enum ResetCardChipPresentation {
 		if let completed, dismissedKey == completed.idempotencyKey {
 			result.removeAll { $0.descriptor == completed.target.descriptor }
 		}
-		return result.sorted { $0.descriptor.expiresAtUnixSeconds < $1.descriptor.expiresAtUnixSeconds }
+		return result.sorted { left, right in
+			guard let expiry = left.descriptor.expiresAtUnixSeconds else { return false }
+			return right.descriptor.expiresAtUnixSeconds.map { expiry < $0 } ?? true
+		}
 	}
 }

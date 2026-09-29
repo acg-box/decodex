@@ -7416,7 +7416,7 @@ mod tests {
 			"old-refresh".to_owned(),
 			Some(identity_token("old-provider-account", "old@example.test", "free")),
 			Some("free".to_owned()),
-			"old@example.test".to_owned(),
+			Some("old@example.test".to_owned()),
 			"bearer".to_owned(),
 			2_000_000,
 		)
@@ -7496,7 +7496,7 @@ mod tests {
 			refresh_token.to_owned(),
 			Some(identity_token(provider_account_id, "shared@example.test", "pro")),
 			Some("pro".to_owned()),
-			"shared@example.test".to_owned(),
+			Some("shared@example.test".to_owned()),
 			"bearer".to_owned(),
 			expires_at_unix_micros,
 		)
@@ -7877,7 +7877,7 @@ mod tests {
 
 		assert_eq!(refreshed.returned_provider.account_id(), "fresh-provider-account");
 		assert_eq!(refreshed.bundle.id_token(), Some(fresh_id_token.as_str()));
-		assert_eq!(refreshed.bundle.provider_email(), "fresh@example.test");
+		assert_eq!(refreshed.bundle.provider_email(), Some("fresh@example.test"));
 		assert_eq!(refreshed.bundle.plan_type(), Some("pro"));
 		assert_eq!(refreshed.bundle.refresh_token(), "old-refresh");
 		assert_eq!(

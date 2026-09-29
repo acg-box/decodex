@@ -63,7 +63,7 @@ async fn native_openai_form_negotiates_and_round_trips_through_agent() {
 						if method == "mcpServer/elicitation/request" =>
 					{
 						assert!(!verification, "undeclared verification must not become a Agent form");
-						assert_eq!(params["mode"], "openaiForm");
+						assert_eq!(params["mode"], "openai/form");
 						assert_eq!(params["_meta"]["fixture/source"], "native-mcp");
 						if opaque { assert_eq!(params["requestedSchema"], true); } else {
                             assert_eq!(params["requestedSchema"]["properties"]["answer"]["oneOf"][0]["const"], "wire-value");
@@ -211,7 +211,10 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>) {
 fn assert_record(path: &std::path::Path, action: &str) {
 	let recorded: Value =
 		serde_json::from_slice(&std::fs::read(path).expect("fixture record")).expect("record JSON");
-	assert_eq!(recorded["capabilities"]["extensions"], json!({"openai/elicitation":{"form":{}}}));
+	assert_eq!(
+		recorded["capabilities"]["extensions"],
+		json!({"openai/form":{},"io.modelcontextprotocol/ui":{"mimeTypes":["text/html;profile=mcp-app"]}})
+	);
 	let replies = recorded["replies"].as_array().expect("MCP replies");
 	assert_eq!(replies.len(), 1);
 	if action == "error" {

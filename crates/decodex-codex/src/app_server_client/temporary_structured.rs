@@ -57,6 +57,8 @@ impl AppServerClient {
 			params["permissions"] = json!(profile);
 		} else {
 			params["sandbox"] = json!("read-only");
+			// Managed profile defaults take precedence over the legacy sandbox override.
+			params["config"]["default_permissions"] = json!(":read-only");
 		}
 		let response = tokio::time::timeout(DEADLINE, self.thread_start(params))
 			.await
