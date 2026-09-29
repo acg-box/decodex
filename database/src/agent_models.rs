@@ -563,7 +563,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn running_model_edits_serialize_with_permission_and_plugin_edits() {
+	async fn running_model_edits_respect_permissions_and_historical_plugin_edits() {
 		let dir = tempfile::tempdir().unwrap();
 		let store = setup(&dir.path().join("mixed.sqlite3")).await;
 		let observed = facts(&store, Some("original"), 'a').await;
@@ -612,16 +612,23 @@ mod tests {
 			review_token: "c".repeat(64),
 			attempt_id: "permission".into(),
 		};
-		assert!(store.reserve_agent_plugin_selection(plugin.clone()).await.unwrap().is_none());
 		assert!(
 			store.reserve_agent_permission_selection(permission.clone()).await.unwrap().is_none()
 		);
 		store.finish_agent_model_selection(id, model, "rejected".into()).await.unwrap();
-		let id = store.reserve_agent_plugin_selection(plugin.clone()).await.unwrap().unwrap();
+		crate::agent_plugins::seed_legacy_selection(&store, plugin, Some("unknown")).await;
 		assert!(
 			store.reserve_agent_model_selection(attempt(observed, 'b')).await.unwrap().is_none()
 		);
-		store.finish_agent_plugin_selection(id, plugin, "rejected".into()).await.unwrap();
+		store
+			.record_agent_task_plugins_publication(
+				"thread".into(),
+				None,
+				Some(json!({"disabledPluginIds":["scoped"]}).to_string()),
+				"b".repeat(64),
+			)
+			.await
+			.unwrap();
 		let id =
 			store.reserve_agent_permission_selection(permission.clone()).await.unwrap().unwrap();
 		assert!(
