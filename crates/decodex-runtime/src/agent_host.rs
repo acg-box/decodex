@@ -1113,6 +1113,22 @@ impl AgentHost {
 				Err(AgentHostError::Rejected(
 					"Configure connector approvals in Codex for this account.",
 				)),
+			AgentActionDto::EditNativeGoal { work_id, thread_id, review_token, edit } => {
+				crate::agent_native_goal::write(
+					&self.store,
+					|| async {
+						let owner =
+							self.store.get_agent_work_item(work_id.as_str().into()).await.ok()?;
+						self.timeline_source(work_id.as_str(), owner.codex_thread_id.as_deref()?)
+							.await
+					},
+					thread_id.as_str(),
+					review_token.as_str(),
+					&edit,
+				)
+				.await?;
+				Ok(work_id.as_str().into())
+			},
 			AgentActionDto::SetVoicePreference { work_id, review_token, voice } =>
 				self.set_voice_preference(work_id.as_str(), review_token.as_str(), voice.as_str())
 					.await,
@@ -1205,7 +1221,8 @@ impl AgentHost {
 					.await,
 			action @ (Action::GenerateRecap { .. } | Action::CancelRecap { .. }) =>
 				self.handle_recap(&key, action).await,
-			action @ (Action::SetVoicePreference { .. }
+			action @ (Action::EditNativeGoal { .. }
+			| Action::SetVoicePreference { .. }
 			| Action::SetAppToolExposure { .. }
 			| Action::ConfirmAppUiTool { .. }
 			| Action::AcknowledgeAppUiCall { .. }

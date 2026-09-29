@@ -442,6 +442,18 @@ pub enum AgentActionDto {
 		request_id: crate::WireText,
 	},
 
+	/// Edit one exact, reviewed native goal.
+	EditNativeGoal {
+		/// Owning local task.
+		work_id: crate::EntityId,
+		/// Exact native conversation.
+		thread_id: crate::EntityId,
+		/// Source-bound goal review.
+		review_token: crate::WireText,
+		/// Explicit goal fields to change.
+		edit: crate::AgentGoalEdit,
+	},
+
 	/// Save a reviewed voice preference for subsequent calls.
 	SetVoicePreference {
 		/// Owning task.
