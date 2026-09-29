@@ -7,7 +7,7 @@ use decodex_protocol::{
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message;
 fn fixture() -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<()>) {
-	super::super::wire_test_support::fixture(move |listener| serve(listener))
+	super::super::wire_test_support::fixture(serve)
 }
 
 async fn serve(listener: tokio::net::UnixListener) {
