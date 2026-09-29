@@ -111,6 +111,7 @@ fn project_mcp(result: Result<Vec<Value>, ClientError>) -> AgentMcpInventory {
 		servers.push(AgentMcpStatusDto {
 			name: name.into(),
 			plugin_id: optional(&row["pluginId"]),
+			presentation: server_presentation(&row["serverInfo"]),
 			runtime_status: optional(&row["runtimeStatus"]),
 			auth_status: text(auth),
 			tool_count: tools.len(),
@@ -128,6 +129,21 @@ fn project_mcp(result: Result<Vec<Value>, ClientError>) -> AgentMcpInventory {
 		});
 	}
 	AgentMcpInventory::Available { servers }
+}
+
+fn server_presentation(info: &Value) -> Option<String> {
+	let name = info["title"]
+		.as_str()
+		.filter(|s| !s.trim().is_empty())
+		.or_else(|| info["name"].as_str())?;
+	let version = info["version"].as_str()?;
+	let mut lines = vec![format!("{} · {}", text(name), text(version))];
+	for field in ["description", "websiteUrl"] {
+		if let Some(value) = info[field].as_str().filter(|s| !s.trim().is_empty()) {
+			lines.push(text(value));
+		}
+	}
+	Some(lines.join("\n"))
 }
 
 pub(crate) fn project_plugins(result: Result<Value, ClientError>) -> AgentPluginInventory {
@@ -195,6 +211,20 @@ pub(crate) fn project_plugins(result: Result<Value, ClientError>) -> AgentPlugin
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn initialized_server_presentation_uses_public_fields_without_fetching_icons() {
+		let info = json!({"name":"server-id","title":"Reference docs","version":"1.2","description":"Read documentation","websiteUrl":"https://example.invalid","icons":[{"src":"PRIVATE_ICON"}],"private":"PRIVATE_METADATA"});
+		assert_eq!(
+			server_presentation(&info).as_deref(),
+			Some("Reference docs · 1.2\nRead documentation\nhttps://example.invalid")
+		);
+		assert_eq!(
+			server_presentation(&json!({"name":"server-id","version":"1"})).as_deref(),
+			Some("server-id · 1")
+		);
+		assert!(server_presentation(&Value::Null).is_none());
+		assert!(server_presentation(&json!({"title":"Partial"})).is_none());
+	}
 	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 	#[test]

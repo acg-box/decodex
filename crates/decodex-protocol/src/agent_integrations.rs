@@ -40,6 +40,9 @@ pub struct AgentMcpStatusDto {
 	pub name: String,
 	/// Native owning plugin when known.
 	pub plugin_id: Option<String>,
+	/// Public presentation advertised by the initialized server, when available.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub presentation: Option<String>,
 	/// Connection state, or None when native state is unavailable.
 	pub runtime_status: Option<String>,
 	/// Authentication observation, independent of the connection state.

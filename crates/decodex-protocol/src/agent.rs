@@ -91,6 +91,12 @@ pub struct AgentActivityDto {
 	pub label: String,
 	/// Selected public facts such as file paths and exit codes.
 	pub detail: String,
+	/// Native plugin attribution; this does not grant tool permissions.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub plugin_id: Option<String>,
+	/// Advisory MCP annotation, not an enforced sandbox or permission guarantee.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub read_only_hint: Option<bool>,
 	/// Native Unix timestamp of this lifecycle event, in milliseconds.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub native_timestamp_ms: Option<u64>,

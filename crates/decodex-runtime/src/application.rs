@@ -6337,6 +6337,8 @@ mod tests {
 			status: "completed".into(),
 			label: "Compacting context".into(),
 			detail: String::new(),
+			plugin_id: None,
+			read_only_hint: None,
 			native_timestamp_ms: None,
 			duration_ms: None,
 		};

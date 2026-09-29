@@ -883,7 +883,7 @@ impl AgentHost {
 							if let Some(event)=event.as_ref() && let Some(generation)=agent.native_generation() {
 								self.mcp_login.observe(generation,event).await;
 								if let ServerEvent::Notification { method, params } = event
-									&& matches!(method.as_str(), "configWarning" | "warning")
+									&& matches!(method.as_str(), "configWarning" | "warning" | "mcpServer/startupStatus/updated")
 									&& crate::native_config_warning::record_notification(&self.store, root, generation, method, params).await.is_err() {
 									self.record_error(root,"event_processing_failed").await;
 								}

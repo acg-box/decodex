@@ -235,6 +235,8 @@ impl AgentSurface {
 					label: label.into(),
 					detail: detail.into(),
 					status: status.into(),
+					plugin_id: None,
+					read_only_hint: None,
 					native_timestamp_ms: None,
 					duration_ms: (status == "completed").then_some(1200),
 				}),

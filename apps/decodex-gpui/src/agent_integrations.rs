@@ -37,6 +37,7 @@ impl AgentSurface {
 					servers: vec![decodex_protocol::AgentMcpStatusDto {
 						name: "Local MCP fixture".into(),
 						plugin_id: None,
+						presentation: None,
 						runtime_status: Some("authenticationRequired".into()),
 						auth_status: "notLoggedIn".into(),
 						tool_count: 0,
@@ -202,6 +203,9 @@ fn integration_text(result: &AgentIntegrationsResult) -> String {
 					_ => "Authentication status unknown",
 				};
 				lines.push(format!("{} — {runtime}; {auth}", server.name));
+				if let Some(presentation) = &server.presentation {
+					lines.push(presentation.clone());
+				}
 				lines.push(match &server.advertised_capabilities {
 					None => "Advertised capabilities: unavailable".into(),
 					Some(names) if names.is_empty() => "Advertised capabilities: none".into(),
@@ -332,6 +336,7 @@ mod tests {
 				servers: vec![decodex_protocol::AgentMcpStatusDto {
 					name: "test".into(),
 					plugin_id: None,
+					presentation: Some("Reference docs · 1.2".into()),
 					runtime_status: Some("authenticationRequired".into()),
 					auth_status: "notLoggedIn".into(),
 					tool_count: 0,
@@ -349,6 +354,7 @@ mod tests {
 				errors: vec!["Invalid repository configuration".into()],
 			},
 		});
+		assert!(text.contains("Reference docs · 1.2"));
 		assert!(text.contains("Sign-in required"));
 		assert!(text.contains("Tool discovery failed"));
 		assert!(text.contains("Advertised capabilities: tools, extensions/openai/settings"));
