@@ -153,13 +153,16 @@ fn symlinked_owned_directory_fails_closed() {
 #[test]
 fn symlinked_root_ancestor_cannot_redirect_writes_into_codex_home() {
 	let home = tempfile::tempdir().expect("temporary home");
-	let codex_home = home.path().join(".codex");
-	let alias = home.path().join("state-alias");
+	let canonical_home = home.path().canonicalize().expect("canonical temporary home");
+	let codex_home = canonical_home.join(".codex");
+	let alias = canonical_home.join("state-alias");
 
 	fs::create_dir(&codex_home).expect("Codex home fixture");
-	std::os::unix::fs::symlink(&codex_home, &alias).expect("ancestor symlink fixture");
-
+	fs::create_dir(&alias).expect("ordinary ancestor fixture");
 	let root = DecodexRoot::new(alias.join("decodex-state")).expect("lexically separate root");
+	root.paths().ensure_layout().expect("ordinary ancestor permits layout creation");
+	fs::rename(&alias, canonical_home.join("original-ancestor")).expect("retain ordinary ancestor");
+	std::os::unix::fs::symlink(&codex_home, &alias).expect("ancestor symlink fixture");
 
 	assert_eq!(root.paths().ensure_layout(), Err(PathError::Symlink));
 	assert_eq!(fs::read_dir(&codex_home).expect("read Codex home").count(), 0);
