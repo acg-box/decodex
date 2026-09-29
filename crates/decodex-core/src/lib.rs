@@ -10,7 +10,6 @@ mod account;
 mod account_alias;
 pub use account_alias::account_alias_candidate;
 mod agent;
-mod automation;
 mod blob;
 mod cache;
 mod config;
@@ -49,15 +48,6 @@ pub use self::{
 		ProviderIdentity,
 	},
 	agent::{AgentError, AgentId},
-	automation::{
-		AutomationDedupeKey, AutomationDefinition, AutomationError, AutomationFiring,
-		AutomationFiringId, AutomationFiringSource, AutomationId, AutomationOccurrenceId,
-		AutomationRepositorySource, AutomationRevision, AutomationSchedule, AutomationState,
-		AutomationSymbol, AutomationTarget, AutomationTimestamp, AutomationTrigger,
-		MAX_AUTOMATION_RRULE_BYTES, MAX_AUTOMATION_SYMBOL_BYTES,
-		MAX_AUTOMATION_TIMESTAMP_MICROSECONDS, MAX_AUTOMATION_TIMEZONE_BYTES,
-		propose_automation_firing,
-	},
 	blob::{
 		BlobHash, BlobInventoryCursor, BlobInventoryEntry, BlobInventoryPage, BlobStore,
 		MAX_BLOB_BYTES,
@@ -121,7 +111,7 @@ pub use self::{
 		ProgramProvenance, ProgramQuietPeriod, ProgramReviewClassification, ProgramReviewId,
 		ProgramSignal, ProgramState, ProgramTimestamp, ReviewCadence, compile_program_context,
 	},
-	project::{MAX_REPOSITORY_IDENTITY_BYTES, ProjectError, ProjectId, RepositoryIdentity},
+	project::{ProjectError, ProjectId},
 	provider_attempt::{
 		MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES, MAX_PROVIDER_REQUEST_KEY_BYTES, ManagedExecutionId,
 		ProviderAttempt, ProviderAttemptConsumer, ProviderAttemptError, ProviderAttemptId,

@@ -1,11 +1,8 @@
-//! Canonical Project and repository identities retained by domain references.
+//! Canonical Project identities retained by domain references.
 use std::{
 	error::Error,
 	fmt::{Display, Formatter},
 };
-
-/// Maximum UTF-8 bytes in one stable repository identity.
-pub const MAX_REPOSITORY_IDENTITY_BYTES: usize = 128;
 
 /// Stable canonical Project identity.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -34,47 +31,17 @@ impl Display for ProjectId {
 	}
 }
 
-/// Stable repository identity independent from its current server-host root.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct RepositoryIdentity(String);
-impl RepositoryIdentity {
-	/// Parse bounded canonical lowercase repository identity text.
-	pub fn new(value: impl Into<String>) -> Result<Self, ProjectError> {
-		let value = value.into();
-
-		if !is_canonical_repository_identity(&value) {
-			return Err(ProjectError::InvalidRepositoryIdentity);
-		}
-
-		Ok(Self(value))
-	}
-
-	/// Borrow the canonical repository identity.
-	pub fn as_str(&self) -> &str {
-		&self.0
-	}
-}
-
-impl Display for RepositoryIdentity {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str(&self.0)
-	}
-}
-
-/// Closed Project or repository identity validation failure.
+/// Closed Project identity validation failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProjectError {
 	/// Project identity was not one canonical UUID version 4.
 	InvalidProjectId,
-	/// Repository identity was empty, unbounded, or noncanonical.
-	InvalidRepositoryIdentity,
 }
 impl Error for ProjectError {}
 impl Display for ProjectError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(match self {
 			Self::InvalidProjectId => "invalid Project identity",
-			Self::InvalidRepositoryIdentity => "invalid repository identity",
 		})
 	}
 }
@@ -96,25 +63,9 @@ fn is_canonical_uuid_v4(value: &str) -> bool {
 		})
 }
 
-fn is_canonical_repository_identity(value: &str) -> bool {
-	!value.is_empty()
-		&& value.len() <= MAX_REPOSITORY_IDENTITY_BYTES
-		&& value.bytes().all(|byte| {
-			byte.is_ascii_lowercase()
-				|| byte.is_ascii_digit()
-				|| matches!(byte, b'-' | b'_' | b'.' | b'/')
-		})
-		&& value.split('/').all(|segment| {
-			!segment.is_empty()
-				&& !matches!(segment, "." | "..")
-				&& segment.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
-				&& segment.as_bytes().last().is_some_and(u8::is_ascii_alphanumeric)
-		})
-}
-
 #[cfg(test)]
 mod tests {
-	use crate::{ProjectError, ProjectId, RepositoryIdentity};
+	use crate::{ProjectError, ProjectId};
 	#[test]
 	fn project_ids_reject_noncanonical_uuid_shapes_and_versions() {
 		for value in [
@@ -126,17 +77,6 @@ mod tests {
 			"not-a-canonical-project-id",
 		] {
 			assert_eq!(ProjectId::new(value), Err(ProjectError::InvalidProjectId));
-		}
-	}
-
-	#[test]
-	fn repository_identity_is_canonical() {
-		assert_eq!(RepositoryIdentity::new("acg-box/decodex").unwrap().as_str(), "acg-box/decodex");
-		for identity in ["", "Acg-Box/decodex", "acg-box//decodex", "../decodex"] {
-			assert_eq!(
-				RepositoryIdentity::new(identity),
-				Err(ProjectError::InvalidRepositoryIdentity)
-			);
 		}
 	}
 }
