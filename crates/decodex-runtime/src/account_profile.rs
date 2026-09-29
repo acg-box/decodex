@@ -337,7 +337,12 @@ struct ProfileClaims {
 impl ProfileClaims {
 	fn from_stored(stored: &StoredCredential, include_email: bool) -> Self {
 		let email = include_email
-			.then(|| normalized_bounded_text(stored.bundle().provider_email(), 320))
+			.then(|| {
+				stored
+					.bundle()
+					.provider_email()
+					.and_then(|email| normalized_bounded_text(email, 320))
+			})
 			.flatten();
 		let plan_type =
 			stored.bundle().plan_type().and_then(|value| normalized_bounded_text(value, 128));

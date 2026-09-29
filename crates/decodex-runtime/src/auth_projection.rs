@@ -1071,7 +1071,7 @@ mod tests {
 			format!("refresh-{suffix}"),
 			id_token.map(str::to_owned),
 			Some("pro".to_owned()),
-			format!("{suffix}@example.test"),
+			Some(format!("{suffix}@example.test")),
 			"bearer".to_owned(),
 			4_000_000,
 		)

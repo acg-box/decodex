@@ -154,7 +154,7 @@ impl CredentialVault for ActivationVault<'_> {
 			self.credential.binding.provider.account_id(),
 			bundle.plan_type(),
 		)?;
-		Ok(AccountIdentity::from_observation("chatgpt", Some(bundle.provider_email()), true))
+		Ok(AccountIdentity::from_observation("chatgpt", bundle.provider_email(), true))
 	}
 }
 
