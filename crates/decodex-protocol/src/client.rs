@@ -1779,43 +1779,22 @@ impl AgentClient {
 	) -> Result<AgentCommandResponse, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let attempted = AtomicBool::new(false);
-		let refresh = matches!(&action, crate::AgentActionDto::RefreshIntegrations { .. });
-		let install = matches!(&action, crate::AgentActionDto::InstallSuggestedPlugin { .. });
-		let restore = matches!(&action, crate::AgentActionDto::RestoreArchivedThread { .. });
-		let timeout = if matches!(&action, crate::AgentActionDto::ConfirmAppUiTool { .. }) {
-			Duration::from_secs(100)
-		} else if refresh
-			|| install
-			|| matches!(
-				&action,
-				crate::AgentActionDto::SetAppToolExposure { .. }
-					| crate::AgentActionDto::ConfirmAppUiTool { .. }
-					| crate::AgentActionDto::EditNativeGoal { .. }
-					| crate::AgentActionDto::SetVoicePreference { .. }
-					| crate::AgentActionDto::SetTaskPlugin { .. }
-			) {
-			Duration::from_secs(65)
-		} else {
-			RESET_CARD_CLIENT_TIMEOUT
+		let extended_timeout = match &action {
+			crate::AgentActionDto::ConfirmAppUiTool { .. } => Some(Duration::from_secs(100)),
+			crate::AgentActionDto::RefreshIntegrations { .. }
+			| crate::AgentActionDto::InstallSuggestedPlugin { .. }
+			| crate::AgentActionDto::SetAppToolExposure { .. }
+			| crate::AgentActionDto::EditNativeGoal { .. }
+			| crate::AgentActionDto::SetVoicePreference { .. }
+			| crate::AgentActionDto::SetTaskPlugin { .. } => Some(Duration::from_secs(65)),
+			crate::AgentActionDto::RestoreArchivedThread { .. } => Some(RESET_CARD_CLIENT_TIMEOUT),
+			_ => None,
 		};
+		let timeout = extended_timeout.unwrap_or(RESET_CARD_CLIENT_TIMEOUT);
 		let executor = Self {
 			transport: ResetCardClient {
 				profile: self.transport.profile.clone(),
-				timeout: if refresh
-					|| restore
-					|| install
-					|| matches!(
-						&action,
-						crate::AgentActionDto::SetAppToolExposure { .. }
-							| crate::AgentActionDto::ConfirmAppUiTool { .. }
-							| crate::AgentActionDto::EditNativeGoal { .. }
-							| crate::AgentActionDto::SetVoicePreference { .. }
-							| crate::AgentActionDto::SetTaskPlugin { .. }
-					) {
-					timeout
-				} else {
-					self.transport.timeout
-				},
+				timeout: extended_timeout.unwrap_or(self.transport.timeout),
 			},
 		};
 		let result =
