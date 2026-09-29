@@ -271,7 +271,7 @@ pub struct AccountOperationStatus {
 	pub operation_id: AccountOperationId,
 	/// Operation effect class.
 	pub kind: AccountOperationKind,
-	/// Current nonterminal phase.
+	/// Current unsettled phase, including required manual recovery.
 	pub phase: AccountOperationPhase,
 	/// Stable manual-recovery reason, when required.
 	pub recovery_code: Option<String>,
@@ -519,7 +519,7 @@ pub enum AccountState {
 	Unavailable,
 	/// No current evidence establishes readiness.
 	Unknown,
-	/// Fresh evidence reports availability; live routing remains separately disabled.
+	/// Provider-observed availability; routing requires separate admission checks.
 	Available,
 	/// A known quota window is depleted.
 	Depleted,
