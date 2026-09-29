@@ -3,6 +3,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 #[path = "tests/archive.rs"] mod archive;
 #[path = "tests/async_recovery.rs"] mod async_recovery;
+#[path = "tests/background_terminals.rs"] mod background_terminals;
 #[path = "tests/capacity.rs"] mod capacity;
 #[path = "tests/closing_resume.rs"] mod closing_resume;
 #[path = "tests/drain_rejection.rs"] mod drain_rejection;
@@ -643,6 +644,9 @@ async fn serve_fixture(
 				json!({"thread":{"id":request["params"]["threadId"]}})
 			},
 			Some("turn/steer") => json!({"turnId":request["params"]["expectedTurnId"]}),
+			Some("thread/backgroundTerminals/list") => history["_background"].clone(),
+			Some("thread/backgroundTerminals/terminate") =>
+				json!({"terminated":history["_terminated"]}),
 			Some("thread/goal/get") => json!({"goal":history["_goal"]}),
 			Some("thread/read") => fixture_thread_read(&request, &history, &settings, turns),
 			Some("thread/turns/list") => {
