@@ -10,12 +10,9 @@ mod account;
 mod account_alias;
 pub use account_alias::account_alias_candidate;
 mod agent;
-mod automation;
-mod automation_delivery;
 mod blob;
 mod cache;
 mod config;
-mod context_revision;
 mod continuation;
 mod conversation;
 mod execution;
@@ -50,23 +47,7 @@ pub use self::{
 		CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion,
 		ProviderIdentity,
 	},
-	agent::{
-		Agent, AgentError, AgentId, AgentRepository, AgentRole, AgentStatus,
-		lead_status_for_project,
-	},
-	automation::{
-		AutomationDedupeKey, AutomationDefinition, AutomationError, AutomationFiring,
-		AutomationFiringId, AutomationFiringSource, AutomationId, AutomationOccurrenceId,
-		AutomationRepositorySource, AutomationRevision, AutomationSchedule, AutomationState,
-		AutomationSymbol, AutomationTarget, AutomationTimestamp, AutomationTrigger,
-		MAX_AUTOMATION_RRULE_BYTES, MAX_AUTOMATION_SYMBOL_BYTES,
-		MAX_AUTOMATION_TIMESTAMP_MICROSECONDS, MAX_AUTOMATION_TIMEZONE_BYTES,
-		propose_automation_firing,
-	},
-	automation_delivery::{
-		AutomationDeliveryError, AutomationDeliveryIntent, AutomationDeliveryIntentId,
-		AutomationDeliveryReceipt, AutomationDeliveryReceiptId, AutomationFiringInput,
-	},
+	agent::{AgentError, AgentId},
 	blob::{
 		BlobHash, BlobInventoryCursor, BlobInventoryEntry, BlobInventoryPage, BlobStore,
 		MAX_BLOB_BYTES,
@@ -75,15 +56,6 @@ pub use self::{
 	config::{
 		CacheConfig, ConfigError, DecodexClientConfig, DecodexConfig, LocalProfile,
 		LocalTrustPolicy, MAX_CONFIG_BYTES, ProfileName, RemoteProfile, ServerProfile,
-	},
-	context_revision::{
-		ContextRevision, ContextRevisionDecision, ContextRevisionError, ContextRevisionId,
-		ContextRevisionItem, ContextRevisionItemId, ContextRevisionItemKind,
-		ContextRevisionItemProvenance, ContextRevisionNumber, ContextRevisionOperation,
-		ContextRevisionOwner, ContextRevisionReference, ContextRevisionSource,
-		MAX_CONTEXT_REVISION_BYTES, MAX_CONTEXT_REVISION_ITEM_BYTES, MAX_CONTEXT_REVISION_ITEMS,
-		decide_create_context_revision, decide_pin_context_item, decide_supersede_context_revision,
-		decide_unpin_context_item,
 	},
 	continuation::{
 		ContinuationCommandOutcome, ContinuationPlan, ContinuationPlanKind, ContinuationRejection,
@@ -118,12 +90,7 @@ pub use self::{
 		ManagedRunWaitReason,
 	},
 	paths::{DecodexPaths, DecodexRoot, PathError},
-	policy::{
-		AcceptedPolicyRevision, MAX_POLICY_PROVENANCE_BYTES, MAX_POLICY_SNAPSHOT_FIELDS,
-		MAX_POLICY_SNAPSHOT_KEY_BYTES, MAX_POLICY_SNAPSHOT_VALUE_BYTES, Policy, PolicyError,
-		PolicyId, PolicyProvenance, PolicyRepository, PolicyRevision, PolicyRevisionAcceptance,
-		PolicyRevisionId, PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp,
-	},
+	policy::{PolicyError, PolicyId, PolicyRevision, PolicyRevisionId},
 	process_generation::{
 		BoundProcessGeneration, MAX_PROCESS_IDENTITY_BYTES, MAX_PROCESS_RUNNER_IDENTITY_BYTES,
 		ProcessAccountQuarantine, ProcessAuthorityLossReason, ProcessBootIdentity,
@@ -144,13 +111,7 @@ pub use self::{
 		ProgramProvenance, ProgramQuietPeriod, ProgramReviewClassification, ProgramReviewId,
 		ProgramSignal, ProgramState, ProgramTimestamp, ReviewCadence, compile_program_context,
 	},
-	project::{
-		MAX_PROJECT_METADATA_FIELDS, MAX_PROJECT_METADATA_KEY_BYTES,
-		MAX_PROJECT_METADATA_VALUE_BYTES, MAX_PROJECT_PATH_BYTES, MAX_REPOSITORY_IDENTITY_BYTES,
-		Project, ProjectAuthority, ProjectError, ProjectId, ProjectMetadata, ProjectMetadataValue,
-		ProjectRepository, ProjectRepositoryBinding, ProjectStatus, RepositoryIdentity,
-		ServerProjectPath,
-	},
+	project::{ProjectError, ProjectId},
 	provider_attempt::{
 		MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES, MAX_PROVIDER_REQUEST_KEY_BYTES, ManagedExecutionId,
 		ProviderAttempt, ProviderAttemptConsumer, ProviderAttemptError, ProviderAttemptId,

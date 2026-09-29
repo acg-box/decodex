@@ -12,7 +12,7 @@ use std::{
 	io::{Read, Write},
 };
 
-use crate::path_unix;
+#[cfg(unix)] use crate::path_unix;
 
 pub(crate) const PRIVATE_DIRECTORY_MODE: u32 = 0o700;
 pub(crate) const PRIVATE_FILE_MODE: u32 = 0o600;
@@ -617,10 +617,7 @@ fn ensure_private_directory(path: &Path) -> Result<(), PathError> {
 	match fs::symlink_metadata(path) {
 		Ok(metadata) => verify_private_directory_metadata(&metadata),
 		Err(error) if error.kind() == io::ErrorKind::NotFound => {
-			let mut builder = DirBuilder::new();
-
-			#[cfg(unix)]
-			builder.mode(PRIVATE_DIRECTORY_MODE);
+			let builder = DirBuilder::new();
 
 			match builder.create(path) {
 				Ok(()) => {},

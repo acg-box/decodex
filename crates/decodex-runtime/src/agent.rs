@@ -27,6 +27,7 @@ pub use prompt_edit::PromptEditReview;
 mod reasoning;
 pub(crate) use reasoning::voice_handoff;
 mod background_terminals;
+pub(crate) mod image_generation;
 mod result_messages;
 mod resume_recovery;
 mod task_history;
