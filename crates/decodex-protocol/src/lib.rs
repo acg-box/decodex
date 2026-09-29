@@ -41,6 +41,10 @@ mod agent_app_ui;
 pub use agent_app_ui::{
 	AGENT_APP_UI_CHUNK_BYTES, AgentAppUiRequest, AgentAppUiResult, MAX_AGENT_APP_UI_BYTES,
 };
+mod agent_transcript;
+pub use agent_transcript::{
+	AgentTranscriptRequest, AgentTranscriptResult, MAX_TRANSCRIPT_BYTES, TRANSCRIPT_CHUNK_BYTES,
+};
 mod agent_media;
 pub use agent_media::{
 	AGENT_MEDIA_CHUNK_BYTES, AgentMediaRequest, AgentMediaResult, MAX_AGENT_MEDIA_BYTES,

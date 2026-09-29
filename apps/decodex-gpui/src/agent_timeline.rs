@@ -527,6 +527,10 @@ pub(super) struct Timeline {
 }
 
 impl Timeline {
+	pub(super) fn visible_export_items(&self) -> impl Iterator<Item = &Content> {
+		self.entries.iter().map(|entry| &entry.content).chain(self.summary.iter())
+	}
+
 	pub(super) fn summary_only(&self) -> bool {
 		!self.summary.is_empty()
 	}

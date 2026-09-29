@@ -44,6 +44,7 @@ mod history;
 mod history_summary;
 mod prompt_edit;
 mod resume;
+mod transcript;
 pub use goals::{
 	NativeGoalUpdate, NativeThreadGoal, NativeThreadGoalStatus, is_goal_attachment_write,
 	is_native_goal_update,
