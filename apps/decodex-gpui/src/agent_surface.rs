@@ -2244,7 +2244,6 @@ impl Render for AgentSurface {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.observe_recap_focus(window, cx);
 		self.prepare_voice_media(window);
-		self.poll_native_app_ui(cx);
 		self.render_workspace(window, cx)
 	}
 }

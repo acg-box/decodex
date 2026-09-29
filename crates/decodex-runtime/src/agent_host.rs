@@ -795,56 +795,6 @@ impl AgentHost {
 		Ok(work.into())
 	}
 
-	pub(crate) async fn review_app_ui_call(
-		&self,
-		call: &decodex_protocol::AgentAppUiCall,
-	) -> decodex_protocol::AgentAppUiCallReview {
-		crate::agent_app_ui_call::read(
-			&self.store,
-			|| self.timeline_source(call.work_id.as_str(), call.thread_id.as_str()),
-			call,
-		)
-		.await
-	}
-
-	async fn execute_app_ui_call(
-		&self,
-		call: &decodex_protocol::AgentAppUiCall,
-		token: &decodex_protocol::EntityId,
-	) -> Result<String, AgentHostError> {
-		crate::agent_app_ui_call::execute(
-			&self.store,
-			|| self.timeline_source(call.work_id.as_str(), call.thread_id.as_str()),
-			call,
-			token,
-		)
-		.await?;
-		Ok(call.work_id.as_str().into())
-	}
-
-	pub(crate) async fn app_ui_source(
-		&self,
-		work: &str,
-		thread: &str,
-		fingerprint: &decodex_protocol::EntityId,
-	) -> bool {
-		self.timeline_source(work, thread).await.is_some_and(|source| {
-			source.client.thread_settings_guard(thread).is_some_and(|guard| guard.is_live())
-				&& crate::agent::timeline::app_ui::source_fingerprint(&source.key) == *fingerprint
-		})
-	}
-
-	pub(crate) async fn app_ui(
-		&self,
-		request: &decodex_protocol::AgentAppUiRequest,
-	) -> decodex_protocol::AgentAppUiResult {
-		crate::agent::timeline::app_ui::read(
-			|| self.timeline_source(request.work_id.as_str(), request.thread_id.as_str()),
-			request,
-		)
-		.await
-	}
-
 	pub(crate) async fn media(
 		&self,
 		request: &decodex_protocol::AgentMediaRequest,
@@ -1316,8 +1266,8 @@ impl AgentHost {
 					reservation_id,
 				)
 				.await,
-			AgentActionDto::ConfirmAppUiTool { request, review_token } =>
-				self.execute_app_ui_call(&request, &review_token).await,
+			AgentActionDto::ConfirmAppUiTool { .. } =>
+				Err(AgentHostError::Rejected("Embedded app views are no longer supported.")),
 			AgentActionDto::SetAppToolExposure { work_id, connector_id, review_token, omit } =>
 				self.set_app_tool_exposure((&work_id, &connector_id, &review_token), omit, key)
 					.await,

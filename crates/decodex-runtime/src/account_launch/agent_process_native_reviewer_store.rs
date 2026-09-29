@@ -535,8 +535,6 @@ impl OwnedReviewer {
 
 #[path = "agent_process_voice_settings_start_tests.rs"] mod voice_settings_start;
 
-#[path = "agent_process_app_ui_call_tests.rs"] mod app_ui_call;
-
 #[path = "agent_process_voice_tail_tests.rs"] mod voice_tail_tests;
 
 #[path = "agent_process_native_live_model_tests.rs"] mod live_model;

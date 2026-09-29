@@ -17,7 +17,7 @@ No stored history is rewritten.
 - Keep active, failed, and interrupted turns open.
 - Fold process items only after a successful terminal boundary and an explicit,
   nonempty final answer are present on the loaded page.
-- Keep user input, final answers, unknown message phases, attachments, and App UI
+- Keep user input, final answers, unknown message phases, and attachments
   entries visible. Fold commentary, public reasoning summaries, plans, and terminal
   tool activity behind one `N earlier messages` control per native turn. Place the
   control before the first process segment. Expand content below this control. No private reasoning is requested.

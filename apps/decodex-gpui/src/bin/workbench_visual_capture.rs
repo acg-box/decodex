@@ -81,28 +81,19 @@ fn main() -> gpui::Result<()> {
 	let panel_motion = std::env::var("DECODEX_VISUAL_PANEL_MOTION").ok();
 	let send_message = std::env::var("DECODEX_VISUAL_AGENT_SEND").ok();
 	let steer_receipt = std::env::var("DECODEX_VISUAL_AGENT_STEER_RECEIPT").ok();
-	let live_app_ui = std::env::var_os("DECODEX_VISUAL_APP_UI_EXECUTE").is_some();
 	let live_media = std::env::var_os("DECODEX_VISUAL_MEDIA").is_some();
 	let automatic_recap = std::env::var_os("DECODEX_VISUAL_AUTO_RECAP").is_some();
-	if (send_message.is_some()
-		|| steer_receipt.is_some()
-		|| automatic_recap
-		|| live_app_ui
-		|| live_media)
+	if (send_message.is_some() || steer_receipt.is_some() || automatic_recap || live_media)
 		&& std::env::var_os("DECODEX_VISUAL_AGENT_ROOT").is_none()
 	{
 		return Err(std::io::Error::other("Command capture requires a disposable root").into());
 	}
-	let (app_ui_mode, integrations) = layout_fixtures()?;
+	let integrations = layout_fixtures()?;
 	// The explicit root supplies protocol evidence; command probes require their own flags.
 	// Never use the installed profile as an implicit screenshot source.
 	let service_projection = std::env::var_os("DECODEX_VISUAL_AGENT_ROOT")
 		.map(|root| {
-			read_service_projection(
-				PathBuf::from(root),
-				&output,
-				automatic_recap || live_app_ui || live_media,
-			)
+			read_service_projection(PathBuf::from(root), &output, automatic_recap || live_media)
 		})
 		.transpose()?;
 	let window: gpui::AnyWindowHandle = if integrations {
@@ -110,15 +101,6 @@ fn main() -> gpui::Result<()> {
 			cx.new(|cx| {
 				let mut surface = AgentSurface::new(cx);
 				surface.visual_integrations(cx);
-				surface
-			})
-		})?
-		.into()
-	} else if let Some(mode) = app_ui_mode {
-		cx.open_offscreen_window(size(px(1248.0), px(840.0)), |_, cx| {
-			cx.new(|cx| {
-				let mut surface = AgentSurface::new(cx);
-				surface.visual_app_ui_confirmation(mode == "unknown", cx);
 				surface
 			})
 		})?
@@ -134,12 +116,6 @@ fn main() -> gpui::Result<()> {
 				surface
 			})
 		})?;
-		if live_app_ui {
-			let root = PathBuf::from(
-				std::env::var_os("DECODEX_VISUAL_AGENT_ROOT").expect("explicit root"),
-			);
-			prove_app_ui(&mut cx, handle, profile.clone(), &root, &output)?;
-		}
 		if live_media {
 			let root = PathBuf::from(
 				std::env::var_os("DECODEX_VISUAL_AGENT_ROOT").expect("explicit root"),
@@ -214,30 +190,15 @@ fn capture_integrations(
 	Ok(())
 }
 
-fn layout_fixtures() -> gpui::Result<(Option<String>, bool)> {
-	let app_ui_mode = std::env::var("DECODEX_VISUAL_APP_UI").ok();
+fn layout_fixtures() -> gpui::Result<bool> {
 	let integrations = std::env::var_os("DECODEX_VISUAL_INTEGRATIONS").is_some();
-	if integrations
-		&& (app_ui_mode.is_some() || std::env::var_os("DECODEX_VISUAL_AGENT_ROOT").is_some())
-	{
+	if integrations && std::env::var_os("DECODEX_VISUAL_AGENT_ROOT").is_some() {
 		return Err(std::io::Error::other(
 			"Integration layout fixture cannot use a service source",
 		)
 		.into());
 	}
-	if app_ui_mode
-		.as_ref()
-		.is_some_and(|mode| !["confirmation", "unknown"].contains(&mode.as_str()))
-	{
-		return Err(std::io::Error::other("Unknown App UI capture fixture").into());
-	}
-	if app_ui_mode.is_some() && std::env::var_os("DECODEX_VISUAL_AGENT_ROOT").is_some() {
-		return Err(std::io::Error::other(
-			"App UI layout fixtures cannot be combined with service evidence",
-		)
-		.into());
-	}
-	Ok((app_ui_mode, integrations))
+	Ok(integrations)
 }
 
 type ServiceProjection = (
@@ -532,76 +493,6 @@ fn prove_automatic_recap(
 		std::thread::sleep(std::time::Duration::from_millis(250));
 	}
 	Err(std::io::Error::other("Automatic recap did not reach Ready in the isolated capture").into())
-}
-
-fn prove_app_ui(
-	cx: &mut VisualTestAppContext,
-	handle: gpui::WindowHandle<AgentSurface>,
-	profile: decodex_protocol::ClientProfile,
-	root: &std::path::Path,
-	output: &std::path::Path,
-) -> gpui::Result<()> {
-	let source: serde_json::Value = serde_json::from_slice(&std::fs::read(
-		root.parent().expect("fixture parent").join("app-ui-source.json"),
-	)?)?;
-	let request: decodex_protocol::AgentAppUiRequest =
-		serde_json::from_value(source["request"].clone())?;
-	let account = source["account"]
-		.as_str()
-		.ok_or_else(|| std::io::Error::other("fixture account"))?
-		.to_owned();
-	cx.background_executor.allow_parking();
-	cx.update_window(handle.into(), |view, window, cx| {
-		view.downcast::<AgentSurface>().expect("Agent capture").update(cx, |surface, cx| {
-			surface.visual_open_live_app_ui(profile, request, account, window, cx)
-		});
-	})?;
-	let mut confirmed = false;
-	for _ in 0..80 {
-		cx.run_until_parked();
-		let evidence = cx.update_window(handle.into(), |view, window, cx| {
-			window.draw(cx).clear();
-			view.downcast::<AgentSurface>()
-				.expect("Agent capture")
-				.update(cx, |surface, cx| surface.visual_live_app_ui_evidence(false, cx))
-		})?;
-		std::fs::write(
-			output.with_extension("app-ui.json"),
-			serde_json::to_vec_pretty(&evidence)?,
-		)?;
-		if !confirmed && evidence["reviewReady"] == true {
-			let calls = std::fs::read_to_string(
-				root.parent().expect("fixture parent").join("widget-calls.jsonl"),
-			)?;
-			if calls.lines().count() != 2 {
-				return Err(
-					std::io::Error::other("Widget executed before desktop confirmation").into()
-				);
-			}
-			cx.capture_screenshot(handle.into())?
-				.save(output.with_extension("confirmation.png"))?;
-			cx.update_window(handle.into(), |view, _, cx| {
-				view.downcast::<AgentSurface>()
-					.expect("Agent capture")
-					.update(cx, |surface, cx| surface.visual_live_app_ui_evidence(true, cx))
-			})?;
-			confirmed = true;
-		}
-		if confirmed
-			&& evidence["receipt"]["state"] == "completed"
-			&& evidence["browserPing"] == "fixture-counter-42"
-		{
-			return Ok(());
-		}
-		// The deterministic GPUI executor does not service WebKit's native callbacks.
-		#[cfg(target_os = "macos")]
-		objc2_foundation::NSRunLoop::currentRunLoop()
-			.runUntilDate(&objc2_foundation::NSDate::dateWithTimeIntervalSinceNow(0.1));
-		#[cfg(not(target_os = "macos"))]
-		std::thread::sleep(std::time::Duration::from_millis(100));
-		cx.advance_clock(std::time::Duration::from_millis(100));
-	}
-	Err(std::io::Error::other("App UI did not complete its confirmed browser round trip").into())
 }
 
 fn prove_media(

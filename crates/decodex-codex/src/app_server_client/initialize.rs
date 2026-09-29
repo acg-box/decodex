@@ -21,14 +21,9 @@ impl Default for InitializeCapabilities {
 	}
 }
 impl InitializeCapabilities {
-	/// Declare the form and App UI routes consumed by the retained Agent.
+	/// Declare the native form route consumed by the retained Agent.
 	pub fn for_agent() -> Self {
-		Self {
-			extensions: Some(
-				json!({"openai/form":{},"io.modelcontextprotocol/ui":{"mimeTypes":["text/html;profile=mcp-app"]}}),
-			),
-			..Self::default()
-		}
+		Self { extensions: Some(json!({"openai/form":{}})), ..Self::default() }
 	}
 }
 
@@ -46,9 +41,7 @@ mod tests {
 		let mut agent = serde_json::to_value(InitializeCapabilities::for_agent()).unwrap();
 		assert_eq!(
 			agent.as_object_mut().unwrap().remove("extensions"),
-			Some(
-				json!({"openai/form":{},"io.modelcontextprotocol/ui":{"mimeTypes":["text/html;profile=mcp-app"]}})
-			)
+			Some(json!({"openai/form":{}}))
 		);
 		assert_eq!(agent, ordinary);
 	}
