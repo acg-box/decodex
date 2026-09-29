@@ -1,10 +1,15 @@
-"""Synthetic empty-schema human-input MCP request; never accepts real credentials."""
+"""Synthetic child MCP input; never accepts real credentials."""
 import json
 import sys
 from pathlib import Path
 
 record = Path(sys.argv[1])
 marker = json.loads(sys.argv[2])
+interactive = sys.argv[3] == "true"
+schema = {"type": "object", "properties": {}}
+if interactive:
+    schema["properties"] = {"answer": {"type": "string"}}
+    schema["required"] = ["answer"]
 pending = None
 for line in sys.stdin:
     request = json.loads(line)
@@ -19,7 +24,7 @@ for line in sys.stdin:
         pending = request["id"]
         print(json.dumps({"jsonrpc": "2.0", "id": "input", "method": "elicitation/create", "params": {
             "mode": "form", "message": "Synthetic input", "_meta": marker,
-            "requestedSchema": {"type": "object", "properties": {}}}}), flush=True)
+            "requestedSchema": schema}}), flush=True)
         continue
     elif method is None and request.get("id") == "input":
         record.write_text(json.dumps(request))
