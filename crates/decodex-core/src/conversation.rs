@@ -12,7 +12,7 @@ use crate::{BlobHash, MAX_BLOB_BYTES};
 macro_rules! domain_id {
 	($name:ident, $label:literal) => {
 		#[doc = concat!("Stable logical ", $label, " identity.")]
-		#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+		#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 		#[serde(transparent)]
 		pub struct $name(String);
 
@@ -29,6 +29,12 @@ macro_rules! domain_id {
 			/// Borrow the canonical identity text.
 			pub fn as_str(&self) -> &str {
 				&self.0
+			}
+		}
+
+		impl<'de> Deserialize<'de> for $name {
+			fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+				Self::new(String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
 			}
 		}
 
@@ -1616,6 +1622,28 @@ mod tests {
 			PossibleSideEffects,
 		},
 	};
+
+	#[test]
+	fn domain_ids_preserve_constructor_invariants_when_decoded() {
+		fn check<T: serde::de::DeserializeOwned + serde::Serialize>() {
+			let valid = "00000000-0000-7000-9000-000000000001";
+			let decoded: T = serde_json::from_value(serde_json::json!(valid)).unwrap();
+			assert_eq!(serde_json::to_value(decoded).unwrap(), serde_json::json!(valid));
+			for invalid in [
+				"",
+				"not-an-id",
+				"00000000-0000-7000-9000-00000000000A",
+				"00000000000070009000000000000001",
+			] {
+				assert!(serde_json::from_value::<T>(serde_json::json!(invalid)).is_err());
+			}
+		}
+		check::<crate::ConversationId>();
+		check::<crate::RuntimeSessionId>();
+		check::<crate::TurnId>();
+		check::<crate::HistoryItemId>();
+		check::<crate::ArtifactId>();
+	}
 
 	#[test]
 	fn media_types_share_one_canonical_domain_invariant() {
