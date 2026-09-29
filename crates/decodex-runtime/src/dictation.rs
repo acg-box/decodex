@@ -44,9 +44,12 @@ impl DictationGateway {
 				);
 			};
 			// Native authentication stays in this service and its same-process URLSession adapter.
-			let Ok(mut auth) = client
-				.request("getAuthStatus", json!({"includeToken":true,"refreshToken":false}))
-				.await
+			// Release the session lock before the caller's five-second query deadline.
+			let Ok(Ok(mut auth)) = tokio::time::timeout(
+				Duration::from_secs(4),
+				client.request("getAuthStatus", json!({"includeToken":true,"refreshToken":false})),
+			)
+			.await
 			else {
 				return failed(id, "The native account connection could not authorize dictation.");
 			};
@@ -174,5 +177,42 @@ pub(crate) fn failed(session_id: EntityId, message: &str) -> DictationStatus {
 		phase: DictationPhase::Failed,
 		text: DictationBuffer::new("").expect("empty draft"),
 		message: WireText::new(message).ok(),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{DictationGateway, DictationPhase, DictationRequest};
+	use decodex_codex::app_server_client::AppServerClient;
+	use serde_json::json;
+	use std::time::Duration;
+	use tokio::{sync::mpsc, time::timeout};
+
+	#[tokio::test]
+	async fn stalled_authorization_releases_gateway_without_replay() {
+		let (_incoming, frames) = mpsc::channel(8);
+		let (outgoing, mut writes) = mpsc::channel(8);
+		let (client, _events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+		let gateway = DictationGateway::default();
+		let owner = gateway.clone();
+		let session_id = decodex_protocol::EntityId::new("dictation-timeout").unwrap();
+		let request = DictationRequest::Start { session_id };
+		let start = tokio::spawn(async move { owner.exchange(&request, Some(client)).await });
+		let frame = timeout(Duration::from_secs(1), writes.recv()).await.unwrap().unwrap();
+		assert_eq!(frame["method"], "getAuthStatus");
+		assert_eq!(frame["params"], json!({"includeToken":true,"refreshToken":false}));
+		let status = timeout(Duration::from_secs(5), start)
+			.await
+			.expect("authorization must finish before the client deadline")
+			.unwrap();
+		assert_eq!(status.phase, DictationPhase::Failed);
+		assert!(status.text.as_str().is_empty());
+		assert!(status.message.is_some());
+		timeout(Duration::from_secs(1), gateway.expire()).await.unwrap();
+		assert!(!timeout(Duration::from_secs(1), gateway.active()).await.unwrap());
+		let poll =
+			gateway.exchange(&DictationRequest::Poll { session_id: status.session_id }, None).await;
+		assert_eq!(poll.phase, DictationPhase::Failed);
+		assert!(writes.try_recv().is_err(), "authorization must not be replayed");
 	}
 }
