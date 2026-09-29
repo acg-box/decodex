@@ -411,6 +411,11 @@ impl AgentCoordinator {
 
 	async fn work_thread_params(&self, item: &AgentWorkItem) -> Result<Value, AgentError> {
 		let mut params = self.thread_params(self.is_manager(&item.id).await?);
+		// start_agent creates the personal user root; subordinate managers and workers
+		// must not inherit its eligibility for full-access user-input forms.
+		if item.parent_goal_id.is_none() {
+			params["threadSource"] = json!("user");
+		}
 		params["experimentalRawEvents"] = json!(true);
 		let work = self.store.list_agent_work_items().await?;
 		let workspaces = self.store.agent_workspaces().await?;

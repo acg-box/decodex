@@ -1471,6 +1471,8 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 	let starts: Vec<_> =
 		requests.iter().filter(|request| request["method"] == "thread/start").collect();
 	assert_eq!(starts.len(), 4);
+	assert_eq!(starts[0]["params"]["threadSource"], "user");
+	assert!(starts[1..].iter().all(|start| start["params"].get("threadSource").is_none()));
 	assert!(starts[1]["params"]["dynamicTools"].is_array());
 	assert!(starts[2]["params"]["dynamicTools"].is_array());
 	assert!(starts[3]["params"].get("dynamicTools").is_none());

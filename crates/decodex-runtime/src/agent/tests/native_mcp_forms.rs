@@ -109,7 +109,12 @@ async fn native_openai_form_negotiates_and_round_trips_through_agent() {
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY; isolated native MCP user review qualification"]
 async fn native_user_review_preserves_standard_form_and_url_requests() {
-	for mode in ["form", "url"] {
+	for (mode, approval, sandbox, expected_requests) in [
+		("form", "on-request", "read-only", 1),
+		("url", "on-request", "read-only", 1),
+		("input", "never", "danger-full-access", 1),
+		("form", "never", "danger-full-access", 0),
+	] {
 		let home = tempfile::tempdir().unwrap();
 		let path = home.path().canonicalize().unwrap();
 		let script = path.join("server.py");
@@ -136,8 +141,8 @@ async fn native_user_review_preserves_standard_form_and_url_requests() {
 		agent.client = client;
 		agent.config =
 			AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), path.display().to_string());
-		agent.config.sandbox = "read-only".into();
-		agent.config.approval_policy = json!("on-request");
+		agent.config.sandbox = sandbox.into();
+		agent.config.approval_policy = json!(approval);
 		let result = std::panic::AssertUnwindSafe(tokio::time::timeout(
 			std::time::Duration::from_secs(30), async {
 				agent.initialize().await.unwrap();
@@ -147,7 +152,7 @@ async fn native_user_review_preserves_standard_form_and_url_requests() {
 					let event = events.recv().await.expect("native MCP event");
 					let pending = match &event {
 						ServerEvent::Request { id, method, params } if method == "mcpServer/elicitation/request" => {
-							assert_eq!(params["mode"], mode);
+							assert_eq!(params["mode"], if mode == "input" { "form" } else { mode });
 							if mode == "url" { assert_eq!(params["url"], "https://example.test/approval"); }
 							else { assert_eq!(params["requestedSchema"]["required"], json!(["answer"])); }
 							Some(id.clone())
@@ -170,7 +175,7 @@ async fn native_user_review_preserves_standard_form_and_url_requests() {
 					}
 					if done { break; }
 				}
-				assert_eq!(request_count, 1);
+				assert_eq!(request_count, expected_requests, "{mode} under {approval}");
 				assert_record(&record, "decline");
 				assert_eq!(calls.load(Ordering::Acquire), 2);
 			},
@@ -211,10 +216,7 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>) {
 fn assert_record(path: &std::path::Path, action: &str) {
 	let recorded: Value =
 		serde_json::from_slice(&std::fs::read(path).expect("fixture record")).expect("record JSON");
-	assert_eq!(
-		recorded["capabilities"]["extensions"],
-		json!({"openai/form":{},"io.modelcontextprotocol/ui":{"mimeTypes":["text/html;profile=mcp-app"]}})
-	);
+	assert_eq!(recorded["capabilities"]["extensions"], json!({"openai/form":{}}));
 	let replies = recorded["replies"].as_array().expect("MCP replies");
 	assert_eq!(replies.len(), 1);
 	if action == "error" {
