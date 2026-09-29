@@ -25,7 +25,6 @@ use crate::{
 	},
 	provider_attempt_service::{ProviderAttemptControl, ProviderAttemptReadiness},
 };
-use decodex_codex::CodexAdapter;
 use decodex_core::{
 	Availability, BlobStore, ConfigError, DecodexConfig, DecodexPaths, DecodexRoot, PathError,
 	ProcessExecutionAuthorization, ProductState as _, ServerIdentity, ServerProfile,
@@ -176,7 +175,6 @@ impl ServiceBootstrap {
 				store,
 				process_generations,
 				provider_attempts,
-				CodexAdapter::unavailable(),
 				blob_store,
 				conversations,
 				doctor,

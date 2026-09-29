@@ -11,7 +11,6 @@ use std::{
 	time::{SystemTime, UNIX_EPOCH},
 };
 
-use decodex_codex::CodexAdapter;
 use decodex_core::{
 	AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
 	AccountOperationPhase, AccountQuotaDisposition, AccountQuotaObservationError,
@@ -290,7 +289,6 @@ pub(crate) struct ServiceApplication {
 	store: ProductStore,
 	process_generations: Option<ProcessGenerationControl>,
 	provider_attempts: Option<ProviderAttemptControl>,
-	_codex: CodexAdapter,
 	blob_store: Option<BlobStore>,
 	accounts: Option<Arc<AccountService>>,
 	publication_stop: watch::Sender<bool>,
@@ -605,7 +603,6 @@ impl ServiceApplication {
 		store: ProductStore,
 		process_generations: Option<ProcessGenerationControl>,
 		provider_attempts: Option<ProviderAttemptControl>,
-		codex: CodexAdapter,
 		blob_store: Option<BlobStore>,
 		conversations: ConversationCapability,
 		doctor: DoctorReport,
@@ -622,7 +619,6 @@ impl ServiceApplication {
 			store,
 			process_generations,
 			provider_attempts,
-			_codex: codex,
 			blob_store,
 			accounts: None,
 			publication_stop,

@@ -243,7 +243,6 @@ async fn qualify_query(
 		ProductStore::Available(store),
 		None,
 		None,
-		decodex_codex::CodexAdapter::unavailable(),
 		None,
 		crate::conversation::ConversationCapability::Unavailable(
 			decodex_protocol::ConversationUnavailableReason::AppServerProfile,

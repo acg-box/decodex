@@ -162,7 +162,6 @@ async fn creation_receipt_survives_store_and_service_restart_without_replay() {
 			ProductStore::Available(store.clone()),
 			None,
 			None,
-			decodex_codex::CodexAdapter::unavailable(),
 			None,
 			ConversationCapability::Unavailable(ConversationUnavailableReason::AppServerProfile),
 			doctor,

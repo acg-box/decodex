@@ -227,8 +227,6 @@ pub use self::{
 
 use serde::{Deserialize, Serialize};
 
-use decodex_core::FoundationStatus;
-
 /// Exact service-tier identity shared with the provider and persistence boundaries.
 pub use decodex_core::ServiceTier;
 
@@ -251,15 +249,6 @@ impl ProtocolVersion {
 
 		Ok(self)
 	}
-}
-
-/// The compile-time service announcement used before a socket is selected.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ServiceAnnouncement {
-	/// Application protocol version selected by the service.
-	pub version: ProtocolVersion,
-	/// Current authority-bearing adapter status.
-	pub foundation: FoundationStatus,
 }
 
 #[cfg(test)]
