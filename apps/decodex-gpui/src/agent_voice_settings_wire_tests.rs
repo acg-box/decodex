@@ -140,3 +140,33 @@ fn voice_call_options_are_bound_to_work_and_runtime_and_keep_blank_defaults(
 		assert_eq!(s.voice_call_options(&work, cx).unwrap(), Default::default());
 	});
 }
+
+#[gpui::test]
+fn changing_pages_retires_pending_voice_settings(cx: &mut gpui::TestAppContext) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.visual_workspace_fixture(cx);
+		let old = s.selected.clone().unwrap();
+		let next = s
+			.snapshot
+			.as_ref()
+			.unwrap()
+			.work_items
+			.iter()
+			.find(|work| work.id != old)
+			.unwrap()
+			.id
+			.clone();
+		s.voice_settings.work = Some(old);
+		s.voice_settings.task = Some(cx.spawn(async |_, _| std::future::pending().await));
+		let epoch = s.voice_settings.epoch;
+		s.open_page(&next, cx);
+		assert_eq!(s.selected.as_deref(), Some(next.as_str()));
+		assert!(
+			s.voice_settings.task.is_none(),
+			"The old read must not block settings on the new page"
+		);
+		assert!(s.voice_settings.work.is_none());
+		assert_ne!(s.voice_settings.epoch, epoch);
+	});
+}
