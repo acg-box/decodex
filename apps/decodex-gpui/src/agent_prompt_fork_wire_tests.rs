@@ -51,7 +51,7 @@ fn fork_recovery_retains_uncertainty_and_releases_only_matching_rejection(
 		let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
 		std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600)).unwrap();
 		listener.set_nonblocking(true).unwrap();
-		let server = serve_recovery(listener, original.clone(), response);
+		let server = serve_recovery(listener, original.clone(), response, vec![]);
 		surface.update(cx, |s, cx| s.recover_prompt_branch(original.clone(), cx));
 		let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
 		loop {
@@ -132,13 +132,14 @@ fn serve_recovery(
 	listener: std::os::unix::net::UnixListener,
 	original: DesktopPromptEditDraft,
 	response: PromptForkResult,
+	tail: Vec<(QueryPayload, QueryResultPayload)>,
 ) -> std::thread::JoinHandle<()> {
 	std::thread::spawn(move || {
 		tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(
 			async {
 				let listener = tokio::net::UnixListener::from_std(listener).unwrap();
 				tokio::time::timeout(std::time::Duration::from_secs(5), async {
-					for step in 0..2 {
+					for step in 0..(2 + tail.len()) {
 						let mut socket =
 							tokio_tungstenite::accept_async(listener.accept().await.unwrap().0)
 								.await
@@ -205,16 +206,34 @@ fn serve_recovery(
 									.await
 									.unwrap();
 							},
+							ClientMessage::Query(query) if step >= 2 => {
+								let (expected, payload) = &tail[step - 2];
+								assert_eq!(&query.payload, expected);
+								let result = ServerMessage::QueryResult(QueryResultEnvelope {
+									version: CURRENT_VERSION,
+									server_id: ServerId::new(SERVER).unwrap(),
+									query_id: query.query_id,
+									payload: payload.clone(),
+								});
+								socket
+									.send(Message::Text(
+										serde_json::to_string(&result).unwrap().into(),
+									))
+									.await
+									.unwrap();
+							},
+
 							_ => panic!("unexpected recovery request"),
 						}
 					}
 					assert!(
-						tokio::time::timeout(
-							std::time::Duration::from_millis(100),
-							listener.accept()
-						)
-						.await
-						.is_err(),
+						!tail.is_empty()
+							|| tokio::time::timeout(
+								std::time::Duration::from_millis(100),
+								listener.accept()
+							)
+							.await
+							.is_err(),
 						"recovery opened an unexpected third connection",
 					);
 				})
@@ -223,4 +242,131 @@ fn serve_recovery(
 			},
 		);
 	})
+}
+
+#[gpui::test]
+fn fork_recovery_opens_verified_target_and_keeps_edited_input(cx: &mut gpui::TestAppContext) {
+	cx.background_executor.allow_parking();
+	for boundary in [PromptForkBoundary::BeforeInput, PromptForkBoundary::AfterTurn] {
+		let (service, profile, _) = super::super::super::drafts::tests::profiles();
+		let surface = cx.new(AgentSurface::new);
+		let mut pending = install_pending(&surface, profile, cx);
+		let canonical = pending.input.clone();
+		pending.input.replace_text(0, 0..12, "Locally revised input").unwrap();
+		pending.fork.as_mut().unwrap().boundary = boundary;
+		surface.update(cx, |s, cx| s.install_prompt_editors(pending.clone(), cx).unwrap());
+		let (snapshot, source) = surface.read_with(cx, |s, _| {
+			let mut snapshot = s.snapshot.clone().unwrap();
+			let source = snapshot
+				.work_items
+				.iter()
+				.find(|w| w.id == pending.work_id.as_str())
+				.unwrap()
+				.clone();
+			let mut target = source.clone();
+			target.id = "branch".into();
+			target.codex_thread_id = Some("branch-thread".into());
+			snapshot.work_items.push(target);
+			assert!(snapshot.is_valid());
+			(snapshot, source)
+		});
+		let status = PromptForkStatus {
+			work_id: pending.work_id.clone(),
+			thread_id: pending.thread_id.clone(),
+			review_token: pending.review_token.clone(),
+			target_work_id: EntityId::new("branch").unwrap(),
+			target_thread_id: Some(WireText::new("branch-thread").unwrap()),
+			boundary,
+			phase: PromptForkPhase::Forked,
+			edit_receipt_id: (boundary == PromptForkBoundary::BeforeInput).then_some(42),
+		};
+		let tail = successful_reads(&pending, &canonical, &status, snapshot);
+		let socket = service.path().join("server/decodex.sock");
+		let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+		std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600)).unwrap();
+		listener.set_nonblocking(true).unwrap();
+		let server = serve_recovery(
+			listener,
+			pending.clone(),
+			PromptForkResult::Available(Some(status)),
+			tail,
+		);
+		surface.update(cx, |s, cx| s.recover_prompt_branch(pending.clone(), cx));
+		let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+		loop {
+			cx.run_until_parked();
+			if surface.read_with(cx, |s, _| s.prompt_edit.task.is_none()) {
+				break;
+			}
+			assert!(std::time::Instant::now() < deadline, "recovery did not finish");
+			std::thread::sleep(std::time::Duration::from_millis(5));
+		}
+		server.join().unwrap();
+		surface.update(cx, |s, cx| {
+			assert_eq!(s.selected.as_deref(), Some("branch"));
+			assert_eq!(
+				s.snapshot.as_ref().unwrap().work_items.iter().find(|w| w.id == source.id),
+				Some(&source)
+			);
+			let mut expected = pending.clone();
+			expected.fork = None;
+			expected.confirmation_key = None;
+			expected.handback_pending = boundary == PromptForkBoundary::BeforeInput;
+			if boundary == PromptForkBoundary::BeforeInput {
+				expected.work_id = EntityId::new("branch").unwrap();
+				expected.thread_id = WireText::new("branch-thread").unwrap();
+				expected.receipt_id = Some(42);
+				assert_eq!(s.prompt_edit.draft.as_ref(), Some(&expected));
+				assert_eq!(s.prompt_edit.editors[0].1.read(cx).content(), "Locally revised input");
+				assert!(s.saved_prompt_editors(pending.work_id.as_str()).is_empty());
+			} else {
+				assert!(s.prompt_edit.draft.is_none());
+				assert!(s.saved_prompt_editors("branch").is_empty());
+			}
+			assert_eq!(s.saved_prompt_editors(expected.work_id.as_str()), vec![expected]);
+			assert!(s.composer.read(cx).content().is_empty());
+			s.open_page(pending.work_id.as_str(), cx);
+			assert_eq!(s.composer.read(cx).content(), "Separate unsent input");
+		});
+	}
+}
+
+fn successful_reads(
+	pending: &DesktopPromptEditDraft,
+	canonical: &PromptDraft,
+	status: &PromptForkStatus,
+	snapshot: AgentSnapshotDto,
+) -> Vec<(QueryPayload, QueryResultPayload)> {
+	let mut replies = Vec::new();
+	if status.boundary == PromptForkBoundary::BeforeInput {
+		let fragment = serde_json::to_string(canonical.parts()).unwrap();
+		replies.push((
+			QueryPayload::GetAgentPromptEdit {
+				work_id: status.target_work_id.clone(),
+				thread_id: status.target_thread_id.clone().unwrap(),
+				review_token: None,
+				offset: 0,
+			},
+			QueryResultPayload::AgentPromptEdit(PromptEditStatus {
+				work_id: status.target_work_id.clone(),
+				thread_id: status.target_thread_id.clone().unwrap(),
+				phase: PromptEditPhase::Applied,
+				evidence: Some(PromptEditEvidence {
+					review_token: pending.review_token.clone(),
+					receipt_id: Some(42),
+					before_turn_id: pending.before_turn_id.clone(),
+					item_id: pending.item_id.clone(),
+					removed_turns: 1,
+					content_bytes: fragment.len() as u64,
+					offset: 0,
+					fragment,
+				}),
+			}),
+		));
+	}
+	replies.push((
+		QueryPayload::GetAgentSnapshot,
+		QueryResultPayload::AgentSnapshot(AgentSnapshotResult::Available(snapshot)),
+	));
+	replies
 }
