@@ -98,7 +98,8 @@ pub use self::{
 		ResetCardError, ResetCardTimestamp, admit_manual_reset_card_use,
 	},
 	routing::{
-		AccountRegistryQuotaFact, AccountRegistryQuotaObservation, AccountRegistryRoutingDecision,
+		ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS, AccountRegistryQuotaFact,
+		AccountRegistryQuotaObservation, AccountRegistryRoutingDecision,
 		AccountRegistryRoutingDecisionKind, AccountRegistryRoutingExclusion,
 		AccountRegistryRoutingKernelError, AccountRegistryRoutingMember,
 		AccountRegistryRoutingSnapshot, CodexCapability, RoutingBlocker, RoutingCommandOutcome,

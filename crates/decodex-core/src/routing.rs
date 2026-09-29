@@ -570,7 +570,8 @@ pub enum AccountRegistryRoutingKernelError {
 }
 
 const MAX_ACCOUNT_REGISTRY_TIMESTAMP_MICROS: i64 = 253_402_300_799_999_999;
-const ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS: i64 = 300_000_000;
+/// Maximum age of an Account Registry quota observation at the routing decision instant.
+pub const ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS: i64 = 300_000_000;
 
 /// Select an account at one closed-range UTC Unix microsecond instant without I/O or clocks.
 pub fn decide_account_registry_routing(
