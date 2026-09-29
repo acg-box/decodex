@@ -140,6 +140,10 @@ impl SqliteStore {
 		binding_receipt: Option<&RuntimeSessionBindingReceipt>,
 		expected_conversation_turn_revisions: (Option<i64>, Option<i64>),
 	) -> Result<PrepareProviderAttemptOutcome, StoreError> {
+		preparation
+			.validate()
+			.map_err(|_| StoreError::InvalidInput("ProviderAttempt preparation is malformed"))?;
+
 		if process_generation_revision <= 0 {
 			return Err(StoreError::InvalidInput(
 				"ProviderAttempt generation revision must be positive",

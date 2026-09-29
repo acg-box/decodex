@@ -195,16 +195,29 @@ impl ProviderAttemptPreparation {
 		provider_keys: ProviderRequestKeys,
 		duplicate_risk: ProviderDuplicateRisk,
 	) -> Result<Self, ProviderAttemptError> {
-		let continuation_plan_id = continuation_plan_id.into();
-		let request_digest = request_digest.into();
-		if !is_canonical_uuid(&continuation_plan_id) {
+		let preparation = Self {
+			attempt_id,
+			consumer,
+			continuation_plan_id: continuation_plan_id.into(),
+			request_id,
+			request_digest: request_digest.into(),
+			provider_keys,
+			duplicate_risk,
+		};
+		preparation.validate()?;
+		Ok(preparation)
+	}
+
+	/// Recheck public preparation fields before accepting them for persistence.
+	pub fn validate(&self) -> Result<(), ProviderAttemptError> {
+		if !is_canonical_uuid(&self.continuation_plan_id) {
 			return Err(ProviderAttemptError::InvalidContinuationPlanId);
 		}
-		if !is_sha256(&request_digest) {
+		if !is_sha256(&self.request_digest) {
 			return Err(ProviderAttemptError::InvalidRequestDigest);
 		}
 		if matches!(
-			&consumer,
+			&self.consumer,
 			ProviderAttemptConsumer::ManagedRunExecution {
 				managed_run_revision,
 				..
@@ -213,7 +226,7 @@ impl ProviderAttemptPreparation {
 			return Err(ProviderAttemptError::InvalidManagedRunRevision);
 		}
 		if matches!(
-			&duplicate_risk,
+			&self.duplicate_risk,
 			ProviderDuplicateRisk::AcknowledgedSuccessor {
 				acknowledgement_digest,
 				..
@@ -222,15 +235,7 @@ impl ProviderAttemptPreparation {
 			return Err(ProviderAttemptError::InvalidAcknowledgement);
 		}
 
-		Ok(Self {
-			attempt_id,
-			consumer,
-			continuation_plan_id,
-			request_id,
-			request_digest,
-			provider_keys,
-			duplicate_risk,
-		})
+		Ok(())
 	}
 }
 
