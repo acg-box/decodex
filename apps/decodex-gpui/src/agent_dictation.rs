@@ -14,7 +14,6 @@ pub(super) struct DictationUi {
 	expected: String,
 	request: Option<DictationRequest>,
 	audio: VecDeque<DictationBuffer>,
-	capture_started: bool,
 	network_ready: bool,
 	capture_ended: bool,
 	finishing: bool,
@@ -52,7 +51,6 @@ impl AgentSurface {
 			expected: original,
 			request: Some(DictationRequest::Start { session_id: id.clone() }),
 			audio: VecDeque::new(),
-			capture_started: true,
 			network_ready: false,
 			capture_ended: false,
 			finishing: false,
@@ -119,9 +117,6 @@ impl AgentSurface {
 		{
 			dictation.finishing = true;
 			dictation.status = "Finishing dictation…".into();
-			if !dictation.capture_started {
-				dictation.capture_ended = true;
-			}
 			dictation.media.command(serde_json::json!({"operation":"finish"}));
 		}
 		cx.notify();
@@ -336,7 +331,6 @@ mod tests {
 			expected: original.into(),
 			request: None,
 			audio: VecDeque::new(),
-			capture_started: true,
 			network_ready: true,
 			capture_ended: false,
 			finishing: false,
