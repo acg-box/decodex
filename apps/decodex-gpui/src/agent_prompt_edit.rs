@@ -633,6 +633,66 @@ impl AgentSurface {
 				),
 			);
 		}
+		panel = self.prompt_confirmation_actions(panel, cx);
+		let expected = draft.clone();
+		panel = panel.child(self.workspace_action(
+			"prompt-preflight".into(),
+			"Check edited input".into(),
+			move |s, cx| s.preflight_prompt_editor(expected.clone(), cx),
+			cx,
+		));
+		panel = panel.child(if self.prompt_editor_saved(draft) {
+			"Edited draft saved locally."
+		} else {
+			"Edited draft is not yet confirmed saved locally."
+		});
+		let expected = draft.clone();
+		panel = panel.child(self.workspace_action(
+			"prompt-recover".into(),
+			"Read history edit receipt".into(),
+			move |s, cx| s.recover_prompt_editor(expected.clone(), cx),
+			cx,
+		));
+		if draft.receipt_id.is_none() && !draft.handback_pending {
+			let original = draft.clone();
+			panel = panel.child(self.workspace_action(
+				"prompt-review-refresh".into(),
+				"Recheck original history".into(),
+				move |s, cx| {
+					let source = (
+						original.work_id.as_str(),
+						original.thread_id.as_str(),
+						original.before_turn_id.as_str(),
+						original.item_id.as_str(),
+					);
+					s.request_prompt_review(source, Some(original.clone()), cx);
+				},
+				cx,
+			));
+		}
+		for (index, _) in draft
+			.input
+			.parts()
+			.iter()
+			.enumerate()
+			.filter(|(_, part)| part["type"].as_str() != Some("text"))
+		{
+			let expected = draft.clone();
+			panel = panel.child(self.workspace_action(
+				format!("prompt-remove-{index}"),
+				format!("Remove {}…", removal::label(&draft.input, index)),
+				move |s, cx| s.begin_prompt_removal(index, &expected, cx),
+				cx,
+			));
+		}
+		panel
+	}
+
+	fn prompt_confirmation_actions(
+		&self,
+		mut panel: gpui::Div,
+		cx: &mut Context<Self>,
+	) -> gpui::Div {
 		if let Some(expected) = &self.prompt_edit.confirmation {
 			let original = expected.clone();
 			let branch = expected.clone();
@@ -688,57 +748,6 @@ impl AgentSurface {
 					},
 					cx,
 				));
-		}
-		let expected = draft.clone();
-		panel = panel.child(self.workspace_action(
-			"prompt-preflight".into(),
-			"Check edited input".into(),
-			move |s, cx| s.preflight_prompt_editor(expected.clone(), cx),
-			cx,
-		));
-		panel = panel.child(if self.prompt_editor_saved(draft) {
-			"Edited draft saved locally."
-		} else {
-			"Edited draft is not yet confirmed saved locally."
-		});
-		let expected = draft.clone();
-		panel = panel.child(self.workspace_action(
-			"prompt-recover".into(),
-			"Read history edit receipt".into(),
-			move |s, cx| s.recover_prompt_editor(expected.clone(), cx),
-			cx,
-		));
-		if draft.receipt_id.is_none() && !draft.handback_pending {
-			let original = draft.clone();
-			panel = panel.child(self.workspace_action(
-				"prompt-review-refresh".into(),
-				"Recheck original history".into(),
-				move |s, cx| {
-					let source = (
-						original.work_id.as_str(),
-						original.thread_id.as_str(),
-						original.before_turn_id.as_str(),
-						original.item_id.as_str(),
-					);
-					s.request_prompt_review(source, Some(original.clone()), cx);
-				},
-				cx,
-			));
-		}
-		for (index, _) in draft
-			.input
-			.parts()
-			.iter()
-			.enumerate()
-			.filter(|(_, part)| part["type"].as_str() != Some("text"))
-		{
-			let expected = draft.clone();
-			panel = panel.child(self.workspace_action(
-				format!("prompt-remove-{index}"),
-				format!("Remove {}…", removal::label(&draft.input, index)),
-				move |s, cx| s.begin_prompt_removal(index, &expected, cx),
-				cx,
-			));
 		}
 		panel
 	}
