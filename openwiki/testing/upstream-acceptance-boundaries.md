@@ -1,19 +1,24 @@
 ---
 type: Reference
-tags: [decodex, architecture]
 title: "Upstream integration acceptance boundaries"
-description: "What source audits, native fixtures, signed desktop tests and merges do and do not prove."
+description: "Source, native fixture, signed desktop, installation and physical voice evidence boundaries."
+tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T13:52:19.644Z
 sources:
+  - id: openwiki-source-4a57fba4bea69171318c6323
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
+  - id: openwiki-source-68238f7343c9fc1bd11783f3
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs
+  - id: openwiki-source-ec5c9f32d2135154f4297a49
+    resource: repo://crates/decodex-runtime/src/conversation.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T06:24:17.023Z
+generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 ---
-
 
 # Upstream integration acceptance boundaries
 
@@ -41,4 +46,12 @@ The embedded MCP HTML viewer and local plugin management are retired. Their old 
 
 ## Proportionate validation
 
-Choose the smallest test that can fail for the changed behavior. Preserve complete failure output and the actual artifact identity. Do not rerun long desktop or physical-provider flows to remove every historical open statement. Use system-temporary fixtures and remove owned test processes and data when done. Documentation consolidation alone does not justify a fresh model call, application launch or complete Rust rebuild.
+Choose the smallest test that can fail for the changed behavior. Preserve complete failure output and the actual artifact identity. Do not rerun long desktop or physical-provider flows to remove every historical open statement. Use isolated, task-owned fixtures that satisfy the runtime path rules, and remove owned test processes and data when done. Documentation consolidation alone does not justify a fresh model call, application launch or complete Rust rebuild.
+
+## Native branch and credential fixtures
+
+The ignored local-socket fixture can select native branch qualification with `DECODEX_TEST_NATIVE_FORK`. It requires an explicitly selected native binary, matching isolated `HOME` and `DECODEX_TEST_ACCOUNT_HOME`, and its fixture marker. The provider and accounts are synthetic. It checks an empty branch before the first input, an inclusive branch after that turn, preserved source history, distinct native identities, repeated-command readback and canonical draft handback. It asserts that branch creation and recovery do not add model requests.
+
+Place an execution fixture under the operating-system user's home, outside Codex-owned roots. Overriding `HOME` does not change the operating-system account home used by the selected-working-directory check. A fixture under `/tmp` can therefore fail before creating a conversation. Keep local socket paths short enough for the platform. Do not loosen product path checks to make a test run.
+
+PAT tests separately cover versioned import, native identity hydration, optional OAuth-only fields, exact child environment binding and shared-auth Route. Synthetic credentials do not prove the entitlement or validity of a production PAT. Never use production account data to repair a fixture setup failure.

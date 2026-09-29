@@ -1,12 +1,14 @@
 ---
 type: Reference
 title: "Agent coordination and native conversations"
-description: "Chief coordination and native conversations"
+description: "Local work ownership, native conversation dispatch, explicit branches and recovery."
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-09-29T09:20:11.292Z
+    at: 2026-09-29T13:52:19.644Z
 sources:
+  - id: openwiki-source-787f8ad27b8519fbed2bd039
+    resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
@@ -15,9 +17,15 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-52d3ef4824079f66e9063566
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
+  - id: openwiki-source-2a0e86d8a9789b05a13deccc
+    resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
+  - id: openwiki-source-58c0167d31c3e40dc89591ab
+    resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-51332b5dcd4b194b62fec905
     resource: repo://database/src/agent_guardian.rs
-generated: { by: "codex", at: "2026-09-29T09:20:11.292Z" }
+  - id: openwiki-source-e1fc2e0e81623c7dd7ff5417
+    resource: repo://database/src/agent_process.rs
+generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 ---
 
 # Agent coordination and native conversations
@@ -55,6 +63,16 @@ A future change must define a cutover before moving pending messages. Stop local
 Native child requests resolve through verified thread-spawn ancestry to the owning local work item, with cycle and depth bounds. A fork alone does not establish child authority. Child approvals retain the child's native identity; child ownership does not grant local manager-tool authority.
 
 Guardian observations are durable review evidence. They neither authorize execution nor wake work by themselves. Approval UI must answer the exact pending request and preserve uncertainty when acknowledgment is unavailable.
+
+## Explicit conversation branches
+
+A user can create a native branch before an input or after its completed turn. This is a separate action from a same-thread history edit. The source conversation keeps its history. Codex owns the new thread and copied context; `deferGoalContinuation` prevents the copied Goal from continuing as part of fork creation.
+
+Decodex reserves a new local work item before the native request. It saves the acknowledged native ID before a separate history read. A lost creation reply stays uncertain and cannot authorize another fork. Recovery of a known ID reads its exact source and prefix without starting a model turn.
+
+The branch is a sibling of its source, or a child of personal Main when Main is the source. It keeps the source role, workspace and recorded tool version. It does not copy pending inbox work or dependency edges. An acknowledged fork has an explicit ownership record that permits it to use the source process. Other subordinate managers do not gain that authority. A branch does not create another personal Main or silently upgrade native tools.
+
+Before-input branches use the existing canonical input and draft handback owner. After-turn branches do not prefill the selected input. See [conversation recovery](../workflows/conversations-and-recovery.md) for the user actions and uncertain-result behavior.
 
 ## Verification and navigation
 

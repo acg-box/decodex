@@ -1,18 +1,16 @@
 ---
 type: Reference
 title: "Historical vNext authority decision"
-description: "Historical vNext authority decision"
+description: "Current SQLite authority supersedes the historical disposable server-store design."
 tags: ["decodex", "architecture"]
-openwiki_generated: true
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
-generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T06:24:17.023Z
+generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 ---
-
 
 # Current authority supersedes this design
 

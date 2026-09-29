@@ -1,8 +1,11 @@
 ---
 type: Reference
 title: "Account lifecycle authority"
-description: "Account lifecycle authority"
+description: "Service-owned account effects, synchronous routing and exact credential refresh convergence."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-acf49c93c3e80379f0023c71
     resource: repo://apps/decodex-gpui/src/accounts.rs
@@ -10,12 +13,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
-generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T06:24:17.023Z
+generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 ---
-
 
 # Account lifecycle authority
 
@@ -44,6 +43,8 @@ A generation-bound refresh callback may return a registry successor only for the
 Enable/disable, order, selection, logout and manual recovery are service-owned operations. Durable state must survive restart; a timeout after a provider effect is not a fresh attempt authorization. Route, ordinary conversation account continuity, Agent account rotation, Reset Card redemption and weekly activation have different state owners and must not be conflated.
 
 Current startup preserves SQLite migrations and user state. Historical disposable-store instructions do not apply. See [Login authority](account-login-authority.md), [Database operations](../operations/local-database.md), [Agent coordination](../architecture/chief-coordination.md) and [Reset Cards](../operations/reset-cards.md).
+
+For imported native PAT accounts and their separate identity recheck path, read [account routing and recovery](../operations/accounts-and-routing.md).
 
 ## Tests
 

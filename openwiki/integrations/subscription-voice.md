@@ -1,8 +1,11 @@
 ---
 type: Reference
 title: "Subscription dictation and live voice"
-description: "Subscription dictation and live voice"
+description: "Native subscription audio ownership, per-call voice settings and on-demand WebRTC media hosting."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-ff4424492ebd38e298a4b243
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/VoiceMediaHost.swift
@@ -16,12 +19,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/dictation_native.rs
   - id: openwiki-source-7b941e7c2c91cb7415f05243
     resource: repo://crates/decodex-runtime/src/dictation.rs
-generated: { by: "codex", at: "2026-09-29T06:49:47.866Z" }
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T06:49:47.866Z
+generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 ---
-
 
 # Subscription dictation and live voice
 
@@ -44,7 +43,7 @@ Audio, authentication and the draft are not stored in SQLite by this gateway. St
 
 The coordinator uses native `thread/realtime/start` and `thread/realtime/stop` with the existing owned Agent thread and connection generation. Start requires a ready manager work item. Native transcript deltas and completion events update durable conversation observations; they are not simulated worker steps.
 
-The Swift media host creates its WebRTC WKWebView on demand when a live call starts. Normal native dictation and device enumeration do not require that browser view. Live audio still uses WebRTC; this change is not a fully native media transport or proof of installed-app acceptance.
+The Swift media host creates its WebRTC WKWebView on demand when a live call starts. Normal native dictation and device enumeration do not require that browser view. Live audio still uses WebRTC; this change is not a fully native media transport or proof of installed-app acceptance. Closing the media host stops capture, removes its message handler and releases its WebView. A complete native WebRTC replacement remains a separate decision; do not switch subscription voice to API-key billing.
 
 The Swift media host owns capture/playback and device selection. The service owns session binding and native RPC. Provider findings can retire local microphone authority even if stop acknowledgment is lost. Unknown native stop outcomes must not be treated as a guaranteed remote stop.
 
@@ -58,6 +57,6 @@ See [Agent coordination](../architecture/chief-coordination.md) and [Desktop wor
 
 ## Retained voice preferences and limitations
 
-The voice preference picker reads native catalog and effective project settings, then writes one reviewed `realtime.voice` preference with native version checking. It affects the next call and does not restart active audio. Project settings can override the saved preference. The effective-voice read in call startup remains a separate correctness responsibility.
+The voice preference picker reads native catalog and effective project settings, then writes one reviewed `realtime.voice` preference with native version checking. It affects the next call and does not restart active audio. Project settings can override the saved preference. At each call start, the coordinator reads the effective voice for the exact native thread and passes it to the v3 real-time request. The request retains startup context and requests transcript-tail flush at session end. Optional model and start/end instructions stay bound to that call.
 
 Configuration and synthetic media tests do not establish real microphone, WebRTC, audible next-call selection or late remote caption identity. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md). Memory configuration is separate from audio capture; see [Models and settings](../workflows/models-and-settings.md).

@@ -1,19 +1,31 @@
 ---
 type: Reference
-tags: [decodex, architecture]
 title: "Retained upstream product capabilities"
-description: "The retained core and optional capabilities, O24 retirement, and future upstream adoption decisions."
-sources:
-  - id: openwiki-source-a0063c7b07a1bc990ee9af6c
-    resource: repo://crates/decodex-runtime/src/account_launch/agent_process.rs
-  - id: openwiki-source-d8df4be72e86f8bd3d65cce8
-    resource: repo://crates/decodex-runtime/src/agent_plugins.rs
-  - id: openwiki-source-e32adebfd6d3bf27dc186bad
-    resource: repo://crates/decodex-runtime/src/agent/tests/auth_recovery.rs
-generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+description: "Current native integration, account and conversation scope, with excluded duplicate surfaces."
+tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-09-29T06:24:17.023Z
+    at: 2026-09-29T14:10:21.488Z
+sources:
+  - id: openwiki-source-b2084dffd07b4229957a0f94
+    resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
+  - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
+    resource: repo://apps/decodex-gpui/src/agent_prompt_fork.rs
+  - id: openwiki-source-01379a7fb49ab2d638863891
+    resource: repo://apps/decodex-gpui/src/agent_skills.rs
+  - id: openwiki-source-a0063c7b07a1bc990ee9af6c
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process.rs
+  - id: openwiki-source-e2f4e298ab0a4c683b92158d
+    resource: repo://crates/decodex-runtime/src/account_service/personal_access_token.rs
+  - id: openwiki-source-d8df4be72e86f8bd3d65cce8
+    resource: repo://crates/decodex-runtime/src/agent_plugins.rs
+  - id: openwiki-source-8b32cad13ab2428dd54bd986
+    resource: repo://crates/decodex-runtime/src/agent_skills.rs
+  - id: openwiki-source-e32adebfd6d3bf27dc186bad
+    resource: repo://crates/decodex-runtime/src/agent/tests/auth_recovery.rs
+  - id: openwiki-source-2da6601c3f30e806c504e991
+    resource: repo://crates/decodex-runtime/src/host_credentials.rs
+generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 ---
 
 # Product scope and native ownership
@@ -24,16 +36,19 @@ Decodex supplies a local workspace, account policy, work relationships and reada
 
 | Area | Decodex responsibility |
 | --- | --- |
-| Conversations | Preserve native thread and turn identity, canonical inputs, drafts, attachments and readable history. |
+| Conversations | Preserve native identity, canonical inputs, drafts and complete history export. Explicit native branches keep the original conversation; same-thread edits remain a separate choice. |
 | Agent coordination | Keep one accountable owner, durable dispositions and links to the work actually reviewed. Native subagents remain native execution. |
-| Tools and connections | Show observed capabilities and origin. Configure plugin installation and connections in Codex. Discovery is not authorization. |
+| Tools and connections | Show observed capabilities and origin, and select enabled native skills for input. Configure plugin installation and connections per account in Codex. Discovery does not install or enable tools. |
 | Rich output | Render supported Markdown and structured content. The embedded MCP HTML viewer and its callback execution path are retired. |
 | Approvals and recovery | Use exact current request identity and native enforcement. Unknown outcomes require reconciliation, not automatic replay. |
+| Accounts | Keep multi-account routing and native credential ownership. Imported ChatGPT PAT accounts use their verified identity without synthetic OAuth expiry or refresh tokens. |
 | Voice | Retain the subscription dictation and live paths described in the voice integration page. Source support is not an installed-app acceptance result. |
 
 The bridge admits installed-plugin observations but rejects local plugin list/read/install/reconcile management and MCP configuration reload. Historical plugin observations remain readable; these records do not restore removed management controls.
 
 Provider authentication recovery recording, formerly O24, is also retired. Saved recovery history remains readable without generating new notifications or outgoing work.
+
+The desktop does not need a duplicate plugin marketplace, plugin publishing workflow or embedded browser to use these native capabilities. A local skill picker selects an already enabled skill; it does not reproduce plugin setup.
 
 ## Adoption and evidence
 

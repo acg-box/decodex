@@ -1,8 +1,11 @@
 ---
 type: Reference
 title: "Service-owned account login"
-description: "Service-owned account login"
+description: "Transient login sessions, exact protocol compatibility and service-owned credential installation."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-c740d34a4e6c4e581873e50e
     resource: repo://crates/decodex-account-login/src/lib.rs
@@ -12,12 +15,8 @@ sources:
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-f803d54b7400ecfa8c7f5247
     resource: repo://crates/decodex-runtime/src/account_login.rs
-generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T09:20:11.292Z
+generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 ---
-
 
 # Service-owned account login
 

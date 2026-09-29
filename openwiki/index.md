@@ -4,7 +4,7 @@ okf_version: "0.2"
 
 # Files
 
-- [OpenWiki quickstart](quickstart.md) - Task-oriented entrypoints for current Decodex architecture, workflows, product scope and historical evidence.
+- [OpenWiki quickstart](quickstart.md) - Task entrypoints for current native conversations, account routing, product scope and evidence.
 
 # Directories
 
