@@ -14,6 +14,12 @@ fn symbol(condition: &str) -> &'static str {
 		"☁"
 	}
 }
+fn hour_label(hour: &str) -> String {
+	let short = hour.trim_start_matches('0');
+	let short = if short.starts_with(':') { format!("0{short}") } else { short.to_owned() };
+	short.replace(":00", "")
+}
+
 pub(super) fn render(weather: &decodex_protocol::WeatherForecast, key: &str) -> AnyElement {
 	WeatherCard { weather: weather.clone(), key: key.into() }.into_any_element()
 }
@@ -108,37 +114,7 @@ impl RenderOnce for WeatherCard {
 								.children(
 									weather.hours.iter().enumerate().skip(index * 6).take(6).map(
 										|(i, (hour, condition, t))| {
-											div()
-												.id(SharedString::from(format!(
-													"weather-hour-{key}-{i}"
-												)))
-												.debug_selector(move || format!("weather-hour-{i}"))
-												.w(gpui::relative(1. / 6.))
-												.flex_none()
-												.min_w_0()
-												.flex()
-												.flex_col()
-												.items_center()
-												.justify_center()
-												.gap(px(3.))
-												.child(
-													div()
-														.text_size(px(9.))
-														.text_color(rgb(0xaaa4af))
-														.child(
-															hour.trim_start_matches('0')
-																.replace(":00", ""),
-														),
-												)
-												.child(
-													div()
-														.text_size(px(13.))
-														.text_color(rgb(0xd5e3f1))
-														.child(symbol(condition)),
-												)
-												.child(
-													div().text_size(px(11.)).child(format!("{t}°")),
-												)
+											weather_hour(key, i, hour, condition, *t)
 										},
 									),
 								)
@@ -178,6 +154,24 @@ impl RenderOnce for WeatherCard {
 			})
 			.into_any_element()
 	}
+}
+
+fn weather_hour(key: &str, i: usize, hour: &str, condition: &str, t: i32) -> AnyElement {
+	div()
+		.id(SharedString::from(format!("weather-hour-{key}-{i}")))
+		.debug_selector(move || format!("weather-hour-{i}"))
+		.w(gpui::relative(1. / 6.))
+		.flex_none()
+		.min_w_0()
+		.flex()
+		.flex_col()
+		.items_center()
+		.justify_center()
+		.gap(px(3.))
+		.child(div().text_size(px(9.)).text_color(rgb(0xaaa4af)).child(hour_label(hour)))
+		.child(div().text_size(px(13.)).text_color(rgb(0xd5e3f1)).child(symbol(condition)))
+		.child(div().text_size(px(11.)).child(format!("{t}°")))
+		.into_any_element()
 }
 
 fn weather_header(weather: &decodex_protocol::WeatherForecast) -> AnyElement {
@@ -231,6 +225,20 @@ mod tests {
 	use super::*;
 	use core::prelude::v1::test;
 	use gpui::{Context, Modifiers, Render, ScrollDelta, ScrollWheelEvent, size};
+	#[test]
+	fn compact_hours_keep_midnight_and_nonzero_minutes() {
+		for (source, expected) in [
+			("00:00", "0"),
+			("0:00", "0"),
+			("00:30", "0:30"),
+			("02:00 AM", "2 AM"),
+			("12:00 PM", "12 PM"),
+			("23:45", "23:45"),
+		] {
+			assert_eq!(hour_label(source), expected, "{source}");
+		}
+	}
+
 	struct Parent {
 		bubbled: std::rc::Rc<std::cell::Cell<usize>>,
 	}
