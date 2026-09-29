@@ -113,6 +113,28 @@ impl AppServerClient {
 		.map_err(|_| ClientError::Io)?
 	}
 
+	/// Export complete persisted conversation text in chronological order. This does not
+	/// resume the thread. Incomplete history is an error, never a partial transcript.
+	pub async fn thread_markdown_transcript(&self, thread: &str) -> Result<String, ClientError> {
+		tokio::time::timeout(std::time::Duration::from_secs(60), async {
+			let mut turns = self.turn_headers(thread, None, false).await?;
+			let mut budget = MAX_FRAME_BYTES;
+			for turn in &mut turns {
+				if !turn["items"].is_array()
+					|| turn.get("itemsView").is_some_and(|view| view != "full")
+				{
+					let id = turn["id"].as_str().ok_or(ClientError::InvalidFrame)?;
+					turn["items"] = self.read_turn_items(thread, id, &mut budget).await?;
+				} else {
+					charge(turn, &mut budget)?;
+				}
+			}
+			super::transcript::render(&turns)
+		})
+		.await
+		.map_err(|_| ClientError::Io)?
+	}
+
 	/// Read only the latest turn identity for a new voice call's recovery baseline.
 	pub async fn thread_latest_turn_id(&self, thread: &str) -> Result<Option<String>, ClientError> {
 		let turns = tokio::time::timeout(
@@ -376,6 +398,8 @@ mod tests {
 		let result = match mode {
 			Some(Some("__page_test__")) =>
 				client.thread_history_page("thread/opaque", Some("before"), 2).await,
+			Some(Some("__export_test__")) =>
+				client.thread_markdown_transcript("thread/opaque").await.map(Value::String),
 			Some(Some("__latest_test__")) =>
 				client.thread_latest_turn_id("thread/opaque").await.map(|id| json!(id)),
 			None => client.thread_read_turn("thread/opaque", "target").await,
@@ -389,6 +413,36 @@ mod tests {
 				.expect("history reader did not send the expected requests")
 				.unwrap(),
 		)
+	}
+
+	#[tokio::test]
+	async fn markdown_export_hydrates_every_turn_and_item_page_in_order() {
+		let (result, requests) = run(vec![
+			("thread/read", metadata()),
+			("thread/turns/list", json!({"data":[{"id":"new","itemsView":"notLoaded"}],"nextCursor":"older"})),
+			("thread/turns/list", json!({"data":[{"id":"old","itemsView":"notLoaded"}],"nextCursor":null})),
+			("thread/items/list", json!({"data":[{"turnId":"old","item":{"id":"a","type":"userMessage","content":[{"type":"text","text":"First question"}]}}],"nextCursor":"next"})),
+			("thread/items/list", json!({"data":[{"turnId":"old","item":{"id":"b","type":"agentMessage","text":"First answer"}}],"nextCursor":null})),
+			("thread/items/list", json!({"data":[{"turnId":"new","item":{"id":"c","type":"agentMessage","text":"Last answer"}}],"nextCursor":null})),
+		], Some(Some("__export_test__"))).await;
+		let result = result.unwrap();
+		let text = result.as_str().unwrap();
+		assert!(text.find("First question") < text.find("First answer"));
+		assert!(text.find("First answer") < text.find("Last answer"));
+		assert_eq!(requests[2]["params"]["cursor"], "older");
+		assert_eq!(requests[4]["params"]["cursor"], "next");
+	}
+	#[tokio::test]
+	async fn markdown_export_preserves_legacy_full_history() {
+		let header = json!({"thread":{"id":"thread/opaque","historyMode":"legacy","turns":[]}});
+		let history = json!({"thread":{"id":"thread/opaque","historyMode":"legacy","turns":[{"id":"one","items":[{"id":"a","type":"agentMessage","text":"Legacy **Markdown**"}]}]}});
+		let (result, requests) = run(
+			vec![("thread/read", header), ("thread/read", history)],
+			Some(Some("__export_test__")),
+		)
+		.await;
+		assert!(result.unwrap().as_str().unwrap().contains("Legacy **Markdown**"));
+		assert_eq!(requests[1]["params"]["includeTurns"], true);
 	}
 
 	#[tokio::test]

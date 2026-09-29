@@ -44,6 +44,7 @@ mod history;
 mod history_summary;
 mod prompt_edit;
 mod resume;
+mod transcript;
 pub use goals::{NativeThreadGoal, NativeThreadGoalStatus};
 pub use prompt_edit::PromptEditCandidate;
 mod initialize;
