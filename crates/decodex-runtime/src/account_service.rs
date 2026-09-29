@@ -5487,46 +5487,47 @@ mod tests {
 				})
 				.await
 				.unwrap();
-			let state = shared.state.lock().unwrap();
-			assert_eq!(
-				state.bundle.access_token(),
-				if liveness == CodexLiveness::Quiescent {
-					"synthetic-pat-2"
-				} else {
-					"synthetic-pat-1"
-				}
-			);
-			drop(state);
-			if liveness == CodexLiveness::Quiescent {
-				let snapshot = service.shared_auth.read_current_exact().unwrap();
-				let account = service.inspect(target).await.unwrap().account;
-				assert!(
-					service
-						.confirm_shared_auth_target_locked(target, account.revision, &snapshot)
-						.await
-						.unwrap()
-						.is_some()
+			{
+				let state = shared.state.lock().unwrap();
+				assert_eq!(
+					state.bundle.access_token(),
+					if liveness == CodexLiveness::Quiescent {
+						"synthetic-pat-2"
+					} else {
+						"synthetic-pat-1"
+					}
 				);
-				let process = service.process_credential(target, account.revision).await.unwrap();
-				assert_eq!(process.stored.bundle().access_token(), "synthetic-pat-2");
-				assert_eq!(process.stored.bundle().refresh_token(), None);
-				drop(process);
-				let unknown = SharedCodexAuthSnapshot::PersonalAccessToken {
-					version: snapshot.version().clone(),
-					token: zeroize::Zeroizing::new("unimported-external-pat".into()),
-				};
-				assert!(matches!(
-					service
-						.shared_auth_route_source(
-							target,
-							account.credential.as_ref().unwrap(),
-							unknown
-						)
-						.await,
-					Err(AccountLifecycleError::AuthSourceAccountUnknown)
-				));
+			}
+			if liveness == CodexLiveness::Quiescent {
+				assert_pat_route_readback(&service, target).await;
 			}
 		}
+	}
+
+	async fn assert_pat_route_readback(service: &AccountService, target: &AccountId) {
+		let snapshot = service.shared_auth.read_current_exact().unwrap();
+		let account = service.inspect(target).await.unwrap().account;
+		assert!(
+			service
+				.confirm_shared_auth_target_locked(target, account.revision, &snapshot)
+				.await
+				.unwrap()
+				.is_some()
+		);
+		let process = service.process_credential(target, account.revision).await.unwrap();
+		assert_eq!(process.stored.bundle().access_token(), "synthetic-pat-2");
+		assert_eq!(process.stored.bundle().refresh_token(), None);
+		drop(process);
+		let unknown = SharedCodexAuthSnapshot::PersonalAccessToken {
+			version: snapshot.version().clone(),
+			token: zeroize::Zeroizing::new("unimported-external-pat".into()),
+		};
+		assert!(matches!(
+			service
+				.shared_auth_route_source(target, account.credential.as_ref().unwrap(), unknown)
+				.await,
+			Err(AccountLifecycleError::AuthSourceAccountUnknown)
+		));
 	}
 
 	#[tokio::test]
