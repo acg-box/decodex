@@ -419,6 +419,29 @@ final class VoiceMediaHostTests: XCTestCase {
         XCTAssertFalse(window.contentView!.subviews.contains { $0 is WKWebView })
     }
 
+    func testClosedHostKeepsTerminalEventUntilPolled() throws {
+        _ = NSApplication.shared
+        var capture: DictationProbe?
+        let host = VoiceMediaHost(authorizationRequestForTesting: { $0(true) },
+                                  dictationFactoryForTesting: { emit in
+            let value = DictationProbe(emit: emit)
+            capture = value
+            return value
+        })
+        defer { host.close() }
+        XCTAssertTrue(host.command(#"{"operation":"dictate"}"#))
+        let source = try XCTUnwrap(capture)
+        for _ in 0..<129 { source.emit(["type":"pcm", "audio":"AAA="]) }
+        XCTAssertGreaterThan(source.stops, 0)
+        XCTAssertFalse(host.command(#"{"operation":"dictate"}"#), "Overflow must close the host")
+        let pointer = try XCTUnwrap(host.poll())
+        let event = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(String(cString: pointer).utf8)) as? [String: Any])
+        XCTAssertEqual(event["type"] as? String, "error")
+        XCTAssertEqual(event["message"] as? String, "Audio updates could not be delivered. The call stopped.")
+        host.close()
+        XCTAssertNil(host.poll())
+    }
+
     func testNativeDictationDoesNotCreateBrowserMedia() throws {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
