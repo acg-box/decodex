@@ -157,7 +157,7 @@ pub fn account_alias_candidate(provider: &ProviderIdentity, attempt: u64) -> Str
 			.iter()
 			.chain(ACCOUNT_ALIAS_SURNAMES)
 			.nth(index)
-			.unwrap()
+			.expect("alias index is below the combined dictionary length")
 			.to_string();
 	}
 	// A readable single word also works when the short-name dictionary is exhausted.
@@ -165,7 +165,7 @@ pub fn account_alias_candidate(provider: &ProviderIdentity, attempt: u64) -> Str
 	let starts = ["b", "d", "f", "g", "h", "k", "l", "m", "n", "p", "r", "s", "t", "v", "w", "z"];
 	let vowels = ["a", "e", "i", "o", "u"];
 	let mut name = String::with_capacity(10);
-	for pair in digest[..10].chunks_exact(2) {
+	for pair in digest[..10].as_chunks::<2>().0 {
 		name.push_str(starts[pair[0] as usize % starts.len()]);
 		name.push_str(vowels[pair[1] as usize % vowels.len()]);
 	}
