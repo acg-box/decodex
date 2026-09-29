@@ -1339,7 +1339,6 @@ final class ResetCardStore {
 		let idempotencyKey = Self.newCanonicalUUID()
 		await performAccountControl(
 			isEnrollment: true,
-			allowsDuringRefresh: true,
 			successMessage: "Account login imported.",
 			operation: {
 				try await accountControlClient.enrollFromSharedCodex(
@@ -1366,7 +1365,6 @@ final class ResetCardStore {
 		await performAccountControl(
 			accountID: accountID,
 			activity: .lifecycle,
-			allowsDuringRefresh: true,
 			successMessage: enabled ? "Account enabled." : "Account disabled.",
 			operation: {
 				try await accountControlClient.setAccountEnabled(
@@ -1392,7 +1390,6 @@ final class ResetCardStore {
 		await performAccountControl(
 			accountID: accountID,
 			activity: .lifecycle,
-			allowsDuringRefresh: true,
 			successMessage: "Account logged out.",
 			operation: {
 				try await accountControlClient.logoutAccount(
@@ -1431,7 +1428,6 @@ final class ResetCardStore {
 			accountID: accountID,
 			activity: .route,
 			isRoutingControl: true,
-			allowsDuringRefresh: true,
 			successMessage: nil,
 			operation: {
 				try await accountControlClient.routeAccount(
@@ -1452,7 +1448,6 @@ final class ResetCardStore {
 		}
 		await performAccountControl(
 			isRoutingControl: true,
-			allowsDuringRefresh: true,
 			successMessage: nil,
 			operation: {
 				try await accountControlClient.setBalancedSelection(
@@ -1544,7 +1539,6 @@ final class ResetCardStore {
 	) async {
 		await performAccountControl(
 			isRoutingControl: true,
-			allowsDuringRefresh: true,
 			successMessage: nil,
 			operation: {
 				try await accountControlClient.setAccountOrder(
@@ -1878,6 +1872,7 @@ final class ResetCardStore {
 	) async -> ResetCardUseCompletion {
 		switch error {
 		case .commandRejected:
+			quotaFillOrigins.removeValue(forKey: attempt.idempotencyKey)
 			message = ResetCardStoreMessage(
 				tone: .error,
 				accountID: attempt.target.accountID,
@@ -2185,10 +2180,7 @@ final class ResetCardStore {
 		}
 	}
 
-	private func refreshAccountDetails(
-		_ accountID: String,
-		refreshInventory: Bool = true
-	) async {
+	private func refreshAccountDetails(_ accountID: String) async {
 		guard let index = accounts.firstIndex(where: {
 			$0.account.accountID == accountID
 		}) else {
@@ -2212,19 +2204,17 @@ final class ResetCardStore {
 		}
 
 		await withTaskGroup(of: ResetCardAccountRead.self) { group in
-			if refreshInventory {
-				group.addTask {
-					do {
-						return .inventoryAvailable(
-							accountID: accountID,
-							try await inventoryReads.inventory(for: account)
-						)
-					} catch {
-						return .inventoryFailed(
-							accountID: accountID,
-							Self.clientError(error)
-						)
-					}
+			group.addTask {
+				do {
+					return .inventoryAvailable(
+						accountID: accountID,
+						try await inventoryReads.inventory(for: account)
+					)
+				} catch {
+					return .inventoryFailed(
+						accountID: accountID,
+						Self.clientError(error)
+					)
 				}
 			}
 			if let accountProfileClient, let profileRequest {
@@ -2307,10 +2297,7 @@ final class ResetCardStore {
 			if let snapshotRouting = snapshot.routing {
 				routing = snapshotRouting
 			}
-			var accountsNeedingDetails = [(
-				accountID: String,
-				refreshInventory: Bool
-			)]()
+			var accountsNeedingDetails = [String]()
 			accounts = snapshot.accounts.map { account in
 				let previous = previousByID[account.accountID]
 				let authority = snapshot.authority
@@ -2326,12 +2313,7 @@ final class ResetCardStore {
 					== bound.accountRevision
 				let retainedInventory = previous?.inventory
 				if sameRevision == false {
-					accountsNeedingDetails.append(
-						(
-							accountID: bound.accountID,
-							refreshInventory: true
-						)
-					)
+					accountsNeedingDetails.append(bound.accountID)
 				}
 				return ResetCardAccountState(
 					account: bound,
@@ -2355,13 +2337,8 @@ final class ResetCardStore {
 			prunePostUseReconciliationsForCurrentAccounts()
 			pruneProfileEmailCache()
 			reconcileAccountSkeletonRevisionTargets()
-			for details in accountsNeedingDetails {
-				scheduleAccountControlFollowUp(
-					.account(
-						details.accountID,
-						refreshInventory: details.refreshInventory
-					)
-				)
+			for accountID in accountsNeedingDetails {
+				scheduleAccountControlFollowUp(.account(accountID))
 			}
 			// Keep the same snapshot-before-projection fence in background skeleton
 			// reconciliation. The usable rows above are already published while this
@@ -3389,13 +3366,10 @@ final class ResetCardStore {
 		activity: AccountControlActivity? = nil,
 		isEnrollment: Bool = false,
 		isRoutingControl: Bool = false,
-		allowsDuringRefresh: Bool = false,
 		successMessage: String?,
 		operation: () async throws -> AccountControlResult
 	) async {
-		guard isRefreshing == false
-			|| (allowsDuringRefresh && refreshSkeletonIsPublished)
-		else {
+		guard canPerformDirectAccountControl else {
 			return
 		}
 		if let accountID {
@@ -3474,7 +3448,7 @@ final class ResetCardStore {
 
 	private enum AccountControlFollowUp {
 		case none
-		case account(String, refreshInventory: Bool)
+		case account(String)
 		case skeleton
 	}
 
@@ -3546,7 +3520,7 @@ final class ResetCardStore {
 				accountRevision: bound.accountRevision
 			)
 		}
-		return sameRevision ? .none : .account(account.accountID, refreshInventory: true)
+		return sameRevision ? .none : .account(account.accountID)
 	}
 
 	@discardableResult
@@ -3575,12 +3549,9 @@ final class ResetCardStore {
 		switch followUp {
 		case .none:
 			return
-		case .account(let accountID, let refreshInventory):
+		case .account(let accountID):
 			Task { [weak self] in
-				await self?.refreshAccountDetails(
-					accountID,
-					refreshInventory: refreshInventory
-				)
+				await self?.refreshAccountDetails(accountID)
 			}
 		case .skeleton:
 			requestSkeletonRefresh()
