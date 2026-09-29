@@ -272,3 +272,51 @@ async fn native_external_context_runs_through_coordinator() -> Result<(), Box<dy
 	process.shutdown().await?;
 	outcome
 }
+
+#[tokio::test]
+async fn structured_work_context_tracks_the_current_work_without_changing_user_input() {
+	let (mut agent, mut sent, _home) = fixture().await;
+	agent.start_agent("manager", "User-owned goal").await.unwrap();
+	let work = agent.store.get_agent_work_item("manager".into()).await.unwrap();
+	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let turn = requests.iter().find(|request| request["method"] == "turn/start").unwrap();
+	assert_eq!(turn["params"]["input"][0]["text"], "User-owned goal");
+	let fragment = &turn["params"]["additionalContext"]["decodex_work_identity"];
+	assert_eq!(fragment["kind"], "untrusted");
+	let identity: Value = serde_json::from_str(fragment["value"].as_str().unwrap()).unwrap();
+	assert_eq!(
+		identity,
+		json!({"workId":"manager","parentWorkId":null,"workThreadId":work.codex_thread_id})
+	);
+	assert!(!fragment.to_string().contains("User-owned goal"));
+	agent
+		.steer_work(
+			"manager",
+			work.active_turn_id.as_deref().unwrap(),
+			"steer-context",
+			"Keep working",
+			&[],
+		)
+		.await
+		.unwrap();
+	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let steer = requests.iter().find(|request| request["method"] == "turn/steer").unwrap();
+	assert_eq!(steer["params"]["additionalContext"], turn["params"]["additionalContext"]);
+	assert_eq!(steer["params"]["input"][0]["text"], "Keep working");
+	agent.create_worker("manager", "child", "Subordinate fixture work").await.unwrap();
+	let child = agent.store.get_agent_work_item("child".into()).await.unwrap();
+	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let child_turn = requests.iter().find(|request| request["method"] == "turn/start").unwrap();
+	let identity: Value = serde_json::from_str(
+		child_turn["params"]["additionalContext"]["decodex_work_identity"]["value"]
+			.as_str()
+			.unwrap(),
+	)
+	.unwrap();
+	assert_eq!(
+		identity,
+		json!({"workId":"child","parentWorkId":"manager","workThreadId":child.codex_thread_id})
+	);
+	assert_eq!(child_turn["params"]["input"], json!([]));
+	assert_eq!(child_turn["params"]["toolOutput"]["name"], "work_instruction");
+}
