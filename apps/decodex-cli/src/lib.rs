@@ -606,39 +606,37 @@ mod tests {
 
 	#[test]
 	fn doctor_human_and_json_preserve_every_component_status_and_issue() {
-		let statuses = DoctorIssue::ALL
-			.into_iter()
-			.chain([DoctorIssue::NotProbed])
-			.map(DoctorStatus::Unavailable);
-		let report = report(statuses);
-		let human = crate::render_report(
-			DiagnosticCommand::Doctor,
-			OutputFormat::Human,
-			ProfileKind::Remote,
-			&report,
-		);
-		let json = crate::render_report(
-			DiagnosticCommand::Doctor,
-			OutputFormat::Json,
-			ProfileKind::Remote,
-			&report,
-		);
-
-		for component in DoctorComponent::ALL {
-			assert!(human.text().contains(crate::component_name(component)));
-		}
 		for issue in DoctorIssue::ALL {
-			assert!(human.text().contains(crate::issue_name(issue)));
+			for status in [DoctorStatus::Unavailable(issue), DoctorStatus::Unknown(issue)] {
+				let report = report(std::iter::repeat(status));
+				let human = crate::render_report(
+					DiagnosticCommand::Doctor,
+					OutputFormat::Human,
+					ProfileKind::Remote,
+					&report,
+				);
+				let json = crate::render_report(
+					DiagnosticCommand::Doctor,
+					OutputFormat::Json,
+					ProfileKind::Remote,
+					&report,
+				);
+				for component in DoctorComponent::ALL {
+					assert!(human.text().lines().any(|line| line
+						== format!(
+							"{}: {}",
+							crate::component_name(component),
+							crate::status_name(status)
+						)));
+				}
+				let value: serde_json::Value = serde_json::from_str(json.text()).unwrap();
+				let decoded: DoctorReport =
+					serde_json::from_value(value["report"].clone()).unwrap();
+				assert_eq!(decoded, report);
+				assert_eq!(human.exit_code(), 1);
+				assert_eq!(json.exit_code(), 1);
+			}
 		}
-
-		let value: serde_json::Value =
-			serde_json::from_str(json.text()).expect("test operation must succeed");
-		let decoded: DoctorReport =
-			serde_json::from_value(value["report"].clone()).expect("test operation must succeed");
-
-		assert_eq!(decoded, report);
-		assert_eq!(human.exit_code(), 1);
-		assert_eq!(json.exit_code(), 1);
 	}
 
 	#[test]

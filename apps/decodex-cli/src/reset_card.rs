@@ -371,7 +371,7 @@ async fn poll_operation(
 }
 
 fn parse_account_id(value: String) -> Result<EntityId, InputFailure> {
-	if !is_canonical_uuid(&value) {
+	if !crate::is_canonical_uuid(&value) {
 		return Err(InputFailure::InvalidAccountId);
 	}
 
@@ -801,14 +801,6 @@ const fn client_failure_code(failure: ClientFailure) -> &'static str {
 		ClientFailure::RemoteMutationUnsupported => "remote_mutation_unsupported",
 		ClientFailure::ApplicationAcceptanceUnknown => "application_acceptance_unknown",
 	}
-}
-
-fn is_canonical_uuid(value: &str) -> bool {
-	value.len() == 36
-		&& value.bytes().enumerate().all(|(index, byte)| match index {
-			8 | 13 | 18 | 23 => byte == b'-',
-			_ => byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'),
-		})
 }
 
 #[cfg(test)]
