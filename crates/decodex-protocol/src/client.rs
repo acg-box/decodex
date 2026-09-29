@@ -3676,16 +3676,18 @@ mod tests {
 			let (temp, authority) = local_transport();
 			let mut listener = authority.bind().await.unwrap();
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let offset = if case == 3 { 0 } else { 3 };
+			let text = if case == 5 {
+				"x".repeat(crate::GUARDIAN_DETAIL_PAGE_BYTES + 1)
+			} else {
+				"中文".into()
+			};
 			let reply = crate::AgentGuardianDetailResult::Available {
 				row_id: if case == 1 { 43 } else { 42 },
 				digest: if case == 2 { "stale" } else { "exact" }.into(),
-				offset: if case == 3 { 0 } else { 3 },
-				total_bytes: 9,
-				text: if case == 5 {
-					"x".repeat(crate::GUARDIAN_DETAIL_PAGE_BYTES + 1)
-				} else {
-					"中文".into()
-				},
+				offset,
+				total_bytes: offset + text.len(),
+				text,
 				next_offset: (case == 4).then_some(9),
 			};
 			let server = tokio::spawn(async move {
