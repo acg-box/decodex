@@ -53,9 +53,11 @@ actor ResetCardInventoryReadCoordinator {
 	func inventory(
 		for account: ResetCardAccountRecord
 	) async throws -> ResetCardInventory {
+		try Task.checkCancellation()
 		let accountID = account.accountID
 		while effectAccountIDs.contains(accountID) {
 			await waitForEffect(accountID)
+			try Task.checkCancellation()
 		}
 		let epoch = epochs[accountID, default: 0]
 		if let operation = operations[accountID],

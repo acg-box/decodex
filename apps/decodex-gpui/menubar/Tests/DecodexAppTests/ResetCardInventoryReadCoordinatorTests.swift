@@ -103,6 +103,36 @@ final class ResetCardInventoryReadCoordinatorTests: XCTestCase {
 		XCTAssertEqual(maximumActiveCallCount, 1)
 	}
 
+	func testCancelledReadsDoNotStartDaemonRequests() async throws {
+		let account = Self.account
+		for waitForEffect in [false, true] {
+			let client = CoordinatedInventoryClient(account: account, blocksReads: false)
+			let coordinator = ResetCardInventoryReadCoordinator(client: client)
+			if waitForEffect {
+				await coordinator.beginEffect(account.accountID)
+			}
+			let read = Task {
+				if !waitForEffect {
+					withUnsafeCurrentTask { $0?.cancel() }
+				}
+				return try await coordinator.inventory(for: account)
+			}
+			if waitForEffect {
+				try await Task.sleep(for: .milliseconds(20))
+				read.cancel()
+				await coordinator.endEffect(account.accountID)
+			}
+			do {
+				_ = try await read.value
+				XCTFail("A cancelled caller must not start another daemon read.")
+			} catch is CancellationError {
+				// Expected: shared read ownership must not erase caller cancellation.
+			}
+			let calls = await client.callCount()
+			XCTAssertEqual(calls, 0)
+		}
+	}
+
 	private func waitForCallCount(
 		_ expected: Int,
 		client: CoordinatedInventoryClient
@@ -142,13 +172,15 @@ private enum CoordinatorTestError: Error {
 
 private actor CoordinatedInventoryClient: ResetCardClient {
 	private let account: ResetCardAccountRecord
+	private let blocksReads: Bool
 	private var calls = 0
 	private var activeCalls = 0
 	private var maximumActiveCalls = 0
 	private var pendingCalls = [Int: CheckedContinuation<Void, Never>]()
 
-	init(account: ResetCardAccountRecord) {
+	init(account: ResetCardAccountRecord, blocksReads: Bool = true) {
 		self.account = account
+		self.blocksReads = blocksReads
 	}
 
 	func accounts(
@@ -164,8 +196,10 @@ private actor CoordinatedInventoryClient: ResetCardClient {
 		let call = calls
 		activeCalls += 1
 		maximumActiveCalls = max(maximumActiveCalls, activeCalls)
-		await withCheckedContinuation { continuation in
-			pendingCalls[call] = continuation
+		if blocksReads {
+			await withCheckedContinuation { continuation in
+				pendingCalls[call] = continuation
+			}
 		}
 		activeCalls -= 1
 		return ResetCardInventory(
