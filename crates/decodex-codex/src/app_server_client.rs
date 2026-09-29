@@ -65,10 +65,7 @@ pub use permissions::{
 	NativePermissionProfile, NativeTaskPermissions, ThreadPermissionSelection,
 	ThreadPermissionSelectionQueued, is_thread_permission_selection,
 };
-pub use thread_plugins::{
-	NativeTaskPlugins, ThreadPluginSelection, ThreadPluginSelectionQueued,
-	is_thread_plugin_selection,
-};
+pub use thread_plugins::NativeTaskPlugins;
 mod app_link_settings;
 mod hooks;
 mod model_defaults;
