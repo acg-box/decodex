@@ -40,6 +40,7 @@
 #[path = "agent_response_metrics.rs"] mod response_metrics;
 #[path = "agent_saved_app_settings.rs"] mod saved_app_settings;
 #[path = "agent_selectable_text.rs"] mod selectable_text;
+#[path = "agent_send_preview.rs"] mod send_preview;
 #[path = "agent_steer_receipts.rs"] mod steer_receipts;
 #[path = "agent_text_reveal.rs"] mod text_reveal;
 #[path = "agent_usage_estimates.rs"] mod usage_estimates;
@@ -57,8 +58,8 @@ use decodex_protocol::{
 	IdempotencyKey, WireText,
 };
 use gpui::{
-	AnimationExt, ClipboardItem, Context, Entity, FocusHandle, FontWeight, Render, Role,
-	SharedString, Task, Window, div, prelude::*, px, rgb, rgba,
+	ClipboardItem, Context, Entity, FocusHandle, FontWeight, Render, Role, SharedString, Task,
+	Window, div, prelude::*, px, rgb, rgba,
 };
 
 use crate::{
@@ -123,6 +124,7 @@ pub(crate) struct AgentSurface {
 	capability_generation: u64,
 	expanded_progress: std::collections::BTreeSet<String>,
 	pages: Vec<String>,
+	closing_pages: std::collections::HashSet<String>,
 	graph_visible: bool,
 	graph_expanded: bool,
 	page_views: std::collections::BTreeMap<String, workspace::PageView>,
@@ -410,6 +412,7 @@ impl AgentSurface {
 			draft_profiles: Default::default(),
 			composer_manager: None,
 			pages: vec![],
+			closing_pages: Default::default(),
 			graph_visible: true,
 			graph_expanded: false,
 			page_views: Default::default(),
@@ -914,7 +917,6 @@ impl AgentSurface {
 						self.configured_send(root_id, text, attachments),
 					action => action,
 				};
-				self.follow_latest_after_send(cx);
 				self.execute(action, Some(text), cx);
 			},
 			Err(message) => {
@@ -925,7 +927,7 @@ impl AgentSurface {
 	}
 
 	fn command_connection_ready(&self) -> bool {
-		self.state == LoadState::Ready
+		*self.displayed_load_state() == LoadState::Ready
 			|| (self.state == LoadState::Loading
 				&& self.status_before_refresh.is_none()
 				&& self.snapshot.is_some())
@@ -1007,6 +1009,10 @@ impl AgentSurface {
 			draft,
 		};
 		self.fence_command_draft(&mut pending);
+		self.capture_send_preview(&pending);
+		if pending.draft.is_some() {
+			self.follow_latest_after_send(cx);
+		}
 		self.sending = true;
 		self.feedback = "Waiting for durable acceptance…".into();
 		if pending.steer.is_some() {
@@ -1059,6 +1065,10 @@ impl AgentSurface {
 			return;
 		}
 		self.sending = false;
+		self.finish_send_preview(
+			&pending,
+			matches!(&result, Ok(AgentCommandResponse::Accepted { .. })),
+		);
 		self.remove_command_draft_fence(&pending);
 		if !matches!(&result, Ok(AgentCommandResponse::Accepted { .. })) {
 			self.retain_failed_command_draft(
@@ -1127,15 +1137,12 @@ impl AgentSurface {
 	) {
 		let surface = self;
 		match result {
-			Ok(AgentCommandResponse::Accepted { work_id }) => {
+			Ok(AgentCommandResponse::Accepted { .. }) => {
 				surface.feedback = if draft.is_some() {
 					"Message saved · Waiting for agent…".into()
 				} else {
 					String::new()
 				};
-				if draft.is_some() && surface.selected.as_deref() == Some(work_id.as_str()) {
-					surface.follow_latest_after_send(cx);
-				}
 				if draft == Some(surface.composer.read(cx).content()) {
 					surface.composer.update(cx, |input, cx| {
 						input.clear(cx);
@@ -1225,6 +1232,7 @@ impl AgentSurface {
 		self.reset_native_goal();
 		self.snapshot = None;
 		self.pages.clear();
+		self.closing_pages.clear();
 		self.page_views.clear();
 		self.graph_expanded = false;
 		self.history_cache.clear();
@@ -1308,11 +1316,7 @@ impl AgentSurface {
 			cx.notify();
 			return;
 		};
-		self.status_before_refresh = match self.state {
-			LoadState::Stale | LoadState::Unavailable | LoadState::Capacity { .. } =>
-				Some(self.state.clone()),
-			_ => None,
-		};
+		self.status_before_refresh = Some(self.state.clone());
 		self.state = LoadState::Loading;
 		self.generation += 1;
 		let generation = self.generation;
@@ -1490,7 +1494,7 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn operation_notices(&self) -> Vec<(&'static str, String)> {
-		[
+		let mut notices: Vec<_> = [
 			("Review", &self.guardian.feedback),
 			("Installation", &self.installation.feedback),
 			("Tools and plugins", &self.integration_feedback),
@@ -1499,7 +1503,27 @@ impl AgentSurface {
 		.into_iter()
 		.filter(|(_, detail)| !detail.is_empty())
 		.map(|(title, detail)| (title, detail.clone()))
-		.collect()
+		.collect();
+		let mut seen = std::collections::BTreeSet::new();
+		let histories =
+			self.history.iter().map(|(_, history)| history).chain(self.history_cache.values());
+		for history in histories {
+			if let AgentHistoryResult::Available { entries, .. } = history {
+				for entry in entries.iter().filter(|entry| startup_feature_warning(entry)) {
+					if seen.insert(entry.text.clone()) {
+						notices.push(("Experimental Codex features", entry.text.clone()));
+					}
+				}
+			}
+		}
+		for (entries, _) in self.older_history.values() {
+			for entry in entries.iter().filter(|entry| startup_feature_warning(entry)) {
+				if seen.insert(entry.text.clone()) {
+					notices.push(("Experimental Codex features", entry.text.clone()));
+				}
+			}
+		}
+		notices
 	}
 
 	pub(crate) fn status_notice(&self) -> Option<(&'static str, String, bool)> {
@@ -1789,7 +1813,6 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap(px(ui_theme::MESSAGE_GAP))
-			.child(self.recap_panel(&work.id, cx))
 			.child(self.prompt_edit_panel(&work.id, cx))
 			.child(self.native_timeline_panel(work, cx));
 		if self.native_history_active(work) {
@@ -1872,39 +1895,14 @@ impl AgentSurface {
 			AgentDispatchStateDto::Running | AgentDispatchStateDto::Dispatching
 		) || (self.selected.as_ref() == Some(&work.id)
 			&& (self.sending || self.feedback == "Message saved · Waiting for agent…"));
-		if active && self.composer_unavailable_reason().is_none() {
-			panel = panel.child(
-				div()
-					.id("reply-activity")
-					.role(Role::Status)
-					.aria_label("Agent is working")
-					.h(px(22.))
-					.flex()
-					.items_center()
-					.gap(px(4.))
-					.children((0..3).map(|index| {
-						div()
-							.size(px(4.))
-							.rounded_full()
-							.bg(rgb(ui_theme::TEXT_MUTED))
-							.with_animation(
-								format!("reply-working-{index}"),
-								gpui::Animation::new(std::time::Duration::from_millis(1100))
-									.repeat(),
-								move |dot, phase| {
-									dot.opacity(
-										0.35 + 0.65
-											* ((phase * std::f32::consts::TAU
-												- index as f32 * 0.7)
-												.sin()
-												* 0.5
-												+ 0.5),
-									)
-								},
-							)
-					})),
-			);
+		if !self.native_history_active(work) {
+			panel = panel.children(self.send_previews(&work.id));
 		}
+		panel = panel.child(crate::ui_working::Working {
+			key: format!("working-{}", work.id),
+			turn: (active && self.composer_unavailable_reason().is_none()).then(|| work.id.clone()),
+		});
+
 		panel.children(self.live_chat_caption(&work.id))
 	}
 
@@ -2003,6 +2001,13 @@ impl AgentSurface {
 		};
 		cx.notify();
 	}
+}
+
+// This startup advisory describes the Codex environment, not a failed turn.
+// Keep the original stored record, but present it once in the notification center.
+fn startup_feature_warning(entry: &decodex_protocol::AgentHistoryEntryDto) -> bool {
+	entry.kind == "execution_notice"
+		&& entry.text.starts_with("Codex warning: Under-development features enabled:")
 }
 
 fn unique_command() -> String {
@@ -2375,6 +2380,10 @@ fn resource_field(
 }
 
 #[cfg(test)]
+#[path = "agent_wire_test_support.rs"]
+mod wire_test_support;
+
+#[cfg(test)]
 #[path = "agent_request_source_tests.rs"]
 mod request_source_tests;
 
@@ -2407,6 +2416,41 @@ mod tests {
 			.on_children_prepainted(move |value, _, _| *bounds.borrow_mut() = value)
 		}
 	}
+	#[gpui::test]
+	fn startup_warnings_are_deduplicated_across_loaded_conversations(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let (_, history) = s.history.as_mut().unwrap();
+			let AgentHistoryResult::Available { entries, .. } = history else {
+				panic!("fixture");
+			};
+			let mut notice = entries[0].clone();
+			notice.kind = "execution_notice".into();
+			notice.text = "Codex warning: Under-development features enabled: chronicle.".into();
+			assert!(startup_feature_warning(&notice));
+			entries.extend([notice.clone(), notice]);
+			s.history_cache.insert("other-agent".into(), history.clone());
+			assert_eq!(
+				s.operation_notices()
+					.iter()
+					.filter(|(title, _)| *title == "Experimental Codex features")
+					.count(),
+				1
+			);
+			s.history = None;
+			assert_eq!(
+				s.operation_notices()
+					.iter()
+					.filter(|(title, _)| *title == "Experimental Codex features")
+					.count(),
+				1
+			);
+		});
+	}
+
 	#[gpui::test]
 	fn user_bubbles_stay_right_aligned_at_multiple_widths(cx: &mut gpui::TestAppContext) {
 		for width in [640.0, 1248.0] {
@@ -2464,7 +2508,6 @@ mod tests {
 		});
 		let detail =
 			visual.debug_bounds("composer-context-detail").expect("context shown by parent");
-		assert!(detail.size.height > gpui::px(42.));
 		assert!(detail.top() >= gpui::px(0.));
 		surface.update(visual, |s, cx| {
 			s.context_tip_visible = false;

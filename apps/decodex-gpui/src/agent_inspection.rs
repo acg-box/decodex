@@ -45,6 +45,7 @@ impl AgentSurface {
 					.child(div().font_weight(FontWeight::MEDIUM).child(self.work_label(work)))
 					.child(muted(graph::state_in(snapshot, work).0)),
 			)
+			.child(self.recap_panel(&work.id, cx))
 			.child(self.inspection_resources(&work.id, cx))
 			.child(self.native_receipts_panel(work, true, cx))
 			.when_some(work.parent_goal_id.as_ref(), |panel, parent| {

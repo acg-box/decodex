@@ -174,6 +174,58 @@ impl RenderOnce for Reveal {
 	}
 }
 
+/// Collapse the whole tab footprint, including its gutter, without squeezing its label.
+#[derive(IntoElement)]
+pub(crate) struct TabReveal {
+	pub id: ElementId,
+	pub visible: bool,
+	pub child: gpui::AnyElement,
+	pub closed: Box<dyn FnOnce(&mut App)>,
+}
+
+impl RenderOnce for TabReveal {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let state = window.use_keyed_state(self.id, cx, |_, _| (0.0_f32, Tween::new(0.0)));
+		let now = Instant::now();
+		let (width, progress, moving) = state.update(cx, |s, _| {
+			s.1.target(if self.visible { 1.0 } else { 0.0 }, now);
+			(s.0, s.1.sample(now), s.1.moving(now))
+		});
+		if moving {
+			request_frame(window, cx);
+		}
+		if !self.visible && !moving {
+			cx.defer(self.closed);
+		}
+		div()
+			.flex_none()
+			.w(px((width + 4.0) * progress))
+			.h(px(28.0))
+			.overflow_hidden()
+			.flex()
+			.items_center()
+			.child(
+				div()
+					.flex_none()
+					.flex()
+					.items_center()
+					.opacity(progress)
+					.on_children_prepainted(move |bounds, _, cx| {
+						if let Some(bounds) = bounds.first() {
+							let measured = f32::from(bounds.size.width);
+							state.update(cx, |s, cx| {
+								if (s.0 - measured).abs() > 0.5 {
+									s.0 = measured;
+									cx.notify();
+								}
+							});
+						}
+					})
+					.child(self.child),
+			)
+	}
+}
+
 #[derive(IntoElement)]
 pub(crate) struct Control {
 	div: Stateful<Div>,

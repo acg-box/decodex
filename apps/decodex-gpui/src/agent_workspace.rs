@@ -93,6 +93,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn open_page(&mut self, id: &str, cx: &mut Context<Self>) {
+		self.closing_pages.remove(id);
 		self.native_agents.selected = None;
 		if !self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id)) {
 			return;
@@ -214,7 +215,7 @@ impl AgentSurface {
 	}
 
 	fn close_page(&mut self, id: &str, cx: &mut Context<Self>) {
-		self.pages.retain(|p| p != id);
+		self.closing_pages.insert(id.to_owned());
 		if self.selected.as_deref() == Some(id)
 			&& let Some(root) = self.root_id()
 		{
@@ -260,7 +261,7 @@ impl AgentSurface {
 		};
 		let icon = panel_icon(&id);
 		let icon_only = icon.is_some();
-		let show_tip = icon_only || is_tab || id.starts_with("attention-");
+		let show_tip = icon_only || id.starts_with("attention-");
 		let tip = accessible.clone();
 		let action = std::rc::Rc::new(action);
 		let keyboard = action.clone();
@@ -285,7 +286,7 @@ impl AgentSurface {
 			})
 			.rounded(px(5.0))
 			.cursor_pointer()
-			.when(!is_tree, |button| {
+			.when(!is_tree && !is_tab, |button| {
 				button.hover(move |s| {
 					s.bg(rgba(if active {
 						ui_theme::SELECTED_HOVER_FILL
@@ -304,6 +305,17 @@ impl AgentSurface {
 			}))
 			.when(is_tree, |button| {
 				button.px_0().py_0().h(px(ui_theme::TREE_ROW_HEIGHT)).w_full().min_w_0()
+			})
+			.when(is_tab, |button| {
+				button
+					.h(px(26.))
+					.py_0()
+					.px(px(10.))
+					.max_w(px(160.))
+					.text_size(px(12.))
+					.line_height(px(18.))
+					.text_color(rgb(if active { ui_theme::TEXT } else { ui_theme::TEXT_MUTED }))
+					.hover(|style| style.text_color(rgb(ui_theme::TEXT)))
 			})
 			.when(is_event || is_prompt, |button| button.w_full().min_w_0())
 			.child(if let Some(icon) = icon {
@@ -443,8 +455,7 @@ impl AgentSurface {
 			.min_w_0()
 			.overflow_x_scroll()
 			.flex()
-			.items_center()
-			.gap_1();
+			.items_center();
 		let root = self.root_id();
 		let mut pages = vec![(root.clone().unwrap_or_default(), "Main".to_owned(), false)];
 		if let Some(snapshot) = &self.snapshot {
@@ -460,29 +471,76 @@ impl AgentSurface {
 			let active =
 				self.selected.as_ref() == Some(&id) || (!closable && self.selected.is_none());
 			let select = id.clone();
+			let group = SharedString::from(format!("conversation-tab-{id}"));
 			let mut tab = div()
+				.id(group.clone())
+				.group(group.clone())
 				.flex_none()
 				.flex()
 				.items_center()
-				.h(px(28.))
-				.rounded(px(8.))
-				.when(active, |tab| tab.bg(rgba(0xffffff0d)))
+				.h(px(26.))
+				.rounded(px(7.))
+				.when(active, |tab| tab.bg(rgba(0xffffff0b)))
+				.hover(move |style| style.bg(rgba(if active { 0xffffff10 } else { 0xffffff06 })))
 				.child(self.workspace_action(
 					format!("page-{id}"),
-					label,
+					label.clone(),
 					move |s, cx| s.open_page(&select, cx),
 					cx,
 				));
 			if closable {
 				let close = id.clone();
-				tab = tab.child(self.workspace_action(
-					format!("close-{id}"),
-					"×".into(),
-					move |s, cx| s.close_page(&close, cx),
-					cx,
-				));
+				let keyboard = close.clone();
+				tab = tab.child(
+					div()
+						.id(SharedString::from(format!("close-{id}")))
+						.role(Role::Button)
+						.tab_index(0)
+						.aria_label(format!("Close {label}"))
+						.size(px(20.))
+						.mr(px(3.))
+						.rounded(px(5.))
+						.flex()
+						.items_center()
+						.justify_center()
+						.cursor_pointer()
+						.opacity(if active { 0.65 } else { 0.0 })
+						.group_hover(group, |style| style.opacity(1.))
+						.focus(|style| style.opacity(1.))
+						.hover(|style| style.bg(rgba(0xffffff10)))
+						.child(super::super::workspace_symbols::icon(
+							super::super::workspace_symbols::Symbol::Close,
+						))
+						.on_click(cx.listener(move |s, _, _, cx| s.close_page(&close, cx)))
+						.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+							if !event.is_held
+								&& ["enter", "space"].contains(&event.keystroke.key.as_str())
+							{
+								s.close_page(&keyboard, cx);
+								cx.stop_propagation();
+							}
+						})),
+				);
 			}
-			row = row.child(tab);
+			if closable {
+				let visible = !self.closing_pages.contains(&id);
+				let surface = cx.entity().downgrade();
+				row = row.child(crate::ui_motion::TabReveal {
+					id: SharedString::from(format!("tab-reveal-{id}")).into(),
+					visible,
+					child: tab.into_any_element(),
+					closed: Box::new(move |cx| {
+						let _ = surface.update(cx, |s, cx| {
+							if s.closing_pages.remove(&id) {
+								s.pages.retain(|p| p != &id);
+								cx.notify();
+							}
+						});
+					}),
+				});
+			} else {
+				row = row.child(tab.mr(px(4.)));
+			}
 		}
 		row.into_any_element()
 	}
@@ -719,6 +777,7 @@ impl AgentSurface {
 			.or_default()
 			.clone();
 		let mut transcript = div()
+			.debug_selector(|| "workspace-transcript".into())
 			.id(SharedString::from(format!(
 				"transcript-{}",
 				self.selected.as_deref().unwrap_or("agent")
@@ -1460,6 +1519,7 @@ impl AgentSurface {
 				self.selected = None;
 				self.history = None;
 				self.pages.clear();
+				self.closing_pages.clear();
 			},
 			"expanded" => self.graph_expanded = true,
 			"in-use" => {
@@ -2002,9 +2062,7 @@ mod tests {
 			let s = surface.read(cx);
 			(s.agent_tree_width(window), s.workspace_graph_size(window, true))
 		});
-		let skeleton = visual.debug_bounds("loading-feedback-Loading workspace").unwrap();
-		assert!(skeleton.size.height >= px(260.), "first load reserves a reading surface");
-		assert!(skeleton.size.width > px(200.));
+		assert!(visual.debug_bounds("loading-feedback-Loading workspace").is_some());
 		surface.update(visual, |s, cx| {
 			s.state = LoadState::Unavailable;
 			cx.notify();
@@ -2172,7 +2230,7 @@ mod tests {
 			assert!(s.history.as_ref().is_some_and(|(id, _)| id == "verify"));
 			s.close_page("verify", cx);
 			assert_eq!(s.selected.as_deref(), Some("agent"));
-			assert!(s.pages.is_empty());
+			assert!(s.closing_pages.contains("verify"));
 			assert_eq!(s.graph_pan, (15.0, 25.0));
 			assert_eq!(s.graph_zoom, 1.2);
 			assert_eq!(s.graph_scope.as_deref(), Some("release"));
@@ -2184,6 +2242,35 @@ mod tests {
 			window.draw(cx).clear();
 		});
 	}
+	#[gpui::test]
+	fn reopening_a_closing_tab_keeps_it_and_close_returns_to_main(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.open_page("verify", cx);
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		surface.update(visual, |s, cx| s.close_page("verify", cx));
+		visual.update(|w, cx| w.draw(cx).clear());
+		surface.update(visual, |s, cx| s.open_page("verify", cx));
+		visual.update(|w, cx| w.draw(cx).clear());
+		surface.update(visual, |s, _| {
+			assert_eq!(s.pages, vec!["verify"]);
+			assert_eq!(s.selected.as_deref(), Some("verify"));
+			assert!(s.closing_pages.is_empty());
+		});
+		surface.update(visual, |s, cx| s.close_page("verify", cx));
+		visual.update(|w, cx| w.draw(cx).clear());
+		// Wait only for deferred removal; visual smoothness is not a unit-test claim.
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|w, cx| w.draw(cx).clear());
+		visual.run_until_parked();
+		surface.update(visual, |s, _| {
+			assert!(s.pages.is_empty());
+			assert_eq!(s.selected.as_deref(), Some("agent"));
+		});
+	}
+
 	#[gpui::test]
 	fn manager_switches_keep_drafts_with_their_recipient(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));

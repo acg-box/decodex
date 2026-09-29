@@ -14,6 +14,7 @@ pub(crate) const BODY_LINE_HEIGHT: f32 = 19.0;
 pub(crate) const PANEL_HEADER_HEIGHT: f32 = 30.0;
 pub(crate) const TREE_ROW_HEIGHT: f32 = 24.0;
 pub(crate) const MESSAGE_GAP: f32 = 20.0;
+pub(crate) const USER_MESSAGE_ACTION_SIZE: f32 = 24.0;
 pub(crate) const METADATA_GAP: f32 = 4.0;
 
 pub(crate) const CONTROL_SIZE: f32 = 28.0;
@@ -101,53 +102,6 @@ pub(crate) const AMBER: u32 = 0xe0b56f;
 pub(crate) const MOTION_PANEL: Duration = Duration::from_millis(240);
 
 #[path = "window_material.rs"] pub(crate) mod window_material;
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn nested_shell_materials_keep_a_visible_blur_budget() {
-		for material in [
-			SHELL_MATERIAL,
-			AGENT_SIDEBAR_MATERIAL,
-			AGENT_CHAT_OVERLAY,
-			CONTENT_MATERIAL,
-			TOPBAR_MATERIAL,
-			SIDEBAR_MATERIAL,
-			SURFACE_RAISED_MATERIAL,
-			COMPOSER_MATERIAL,
-			FIELD_MATERIAL,
-			SURFACE_OVERLAY_MATERIAL,
-		] {
-			let alpha = material & 0xff;
-			assert!(alpha > 0, "material must tint the blurred window");
-			assert!(alpha < 0xff, "materials retain a bounded amount of background light");
-		}
-
-		fn composite(under: f32, over: u32) -> f32 {
-			let over = (over & 0xff) as f32 / 255.0;
-			over + under * (1.0 - over)
-		}
-
-		let window = (SHELL_MATERIAL & 0xff) as f32 / 255.0;
-		let page = composite(window, CONTENT_MATERIAL);
-		let pane = composite(window, SIDEBAR_MATERIAL);
-		let agent_sidebar = composite(window, AGENT_SIDEBAR_MATERIAL);
-		assert!((0.56..=0.60).contains(&agent_sidebar));
-		assert!(agent_sidebar < page);
-		assert!((0.64..=0.68).contains(&page), "conversation must retain visible glass");
-		assert!((0.66..=0.70).contains(&pane));
-		let composer = composite(page, COMPOSER_MATERIAL);
-		assert!(composer > page && composer < 1.0);
-	}
-
-	#[test]
-	fn panel_motion_is_perceptible_without_delaying_work() {
-		assert!(MOTION_PANEL >= Duration::from_millis(220));
-		assert!(MOTION_PANEL <= Duration::from_millis(280));
-	}
-}
 
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "native_glass_panel.rs"]

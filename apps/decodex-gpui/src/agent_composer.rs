@@ -468,6 +468,20 @@ impl AgentSurface {
 				cx,
 			))
 			.child(self.composer_control(
+				"task-recap-item",
+				"Task recap".into(),
+				"Task recap",
+				|s, cx| {
+					s.composer_menu = None;
+					s.details_visible = true;
+					if let Some(work) = s.selected.clone() {
+						s.open_recap(&work, cx);
+					}
+					cx.notify();
+				},
+				cx,
+			))
+			.child(self.composer_control(
 				"task-reference-item",
 				"Reference task…".into(),
 				"Select a task to read",

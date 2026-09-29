@@ -267,18 +267,14 @@ mod tests {
 	use crate::{CURRENT_VERSION, ProtocolVersion};
 
 	#[test]
-	fn only_the_exact_current_version_is_accepted() {
+	fn negotiation_accepts_only_the_current_major_and_minor() {
 		assert_eq!(CURRENT_VERSION.negotiate(), Ok(CURRENT_VERSION));
-		assert_eq!(ProtocolVersion { major: 2, minor: 42 }.negotiate(), Err(CURRENT_VERSION));
-		assert_eq!(ProtocolVersion { major: 2, minor: 40 }.negotiate(), Err(CURRENT_VERSION));
-		assert_eq!(ProtocolVersion { major: 2, minor: 16 }.negotiate(), Err(CURRENT_VERSION));
-	}
-
-	#[test]
-	fn any_version_mismatch_requires_the_one_current_version() {
-		let requested = ProtocolVersion { major: 1, minor: 5 };
-
-		assert_eq!(requested.negotiate(), Err(CURRENT_VERSION));
+		for requested in [
+			ProtocolVersion { major: CURRENT_VERSION.major ^ 1, ..CURRENT_VERSION },
+			ProtocolVersion { minor: CURRENT_VERSION.minor ^ 1, ..CURRENT_VERSION },
+		] {
+			assert_eq!(requested.negotiate(), Err(CURRENT_VERSION));
+		}
 	}
 
 	#[cfg(any(target_os = "linux", target_os = "macos"))]

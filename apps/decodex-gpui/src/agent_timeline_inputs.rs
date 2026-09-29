@@ -94,6 +94,9 @@ impl AgentSurface {
 				shortened,
 			}) if work_id.as_str() == work.id => {
 				for entry in entries {
+					if self.preview_covers_receipt(&work.id, entry.id, &entry.text) {
+						continue;
+					}
 					panel = panel.child(
 						div()
 							.debug_selector(|| "unconfirmed-native-input".into())

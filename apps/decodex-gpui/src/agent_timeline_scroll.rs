@@ -158,7 +158,14 @@ impl AgentSurface {
 		});
 	}
 
-	pub(super) fn anchor_process_toggle(&mut self, work: &str, entry: &AgentTimelineEntry) {
+	pub(in super::super) fn anchor_process_toggle(
+		&mut self,
+		work: &str,
+		entry: &AgentTimelineEntry,
+	) {
+		self.latest_follow_work = None;
+		self.history_follow_paused.insert(work.into());
+		self.history_navigation = None;
 		let mut state = self.native_history.viewport.0.borrow_mut();
 		let key = row_key(entry);
 		state.process_motion_until =

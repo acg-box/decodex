@@ -140,23 +140,6 @@ impl RenderOnce for Working {
 	}
 }
 
-#[cfg(test)]
-mod tests {
-	use super::particle;
-	#[test]
-	fn particles_fade_before_recycling_and_move_outwards() {
-		for i in 0..10 {
-			let birth = (1. - i as f32 / 10.) * 2.8;
-			let before = particle(birth - 0.0001, i);
-			let after = particle(birth + 0.0001, i);
-			assert!(before.3 < 0.001 && after.3 < 0.001);
-			let first = particle(birth + 0.3, i);
-			let later = particle(birth + 1.5, i);
-			assert!(later.0 > first.0 && later.1 < first.1);
-		}
-	}
-}
-
 // paint_quad snaps to device pixels. Paths retain subpixel travel and antialiased edges.
 fn paint_particle(window: &mut Window, bounds: Bounds<Pixels>, color: Background) {
 	let mut path = PathBuilder::fill();

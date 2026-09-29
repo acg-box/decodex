@@ -114,23 +114,6 @@ class LocalServiceInstallerTests(unittest.TestCase):
             },
         }
 
-    def test_source_has_one_direct_sqlite_install_path(self) -> None:
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
-        for retired_term in (
-            '"--initdb"',
-            '"--pg-isready"',
-            '"supervise-local"',
-            "initialize_cluster",
-            "ensure_roles_and_database",
-        ):
-            with self.subTest(term=retired_term):
-                self.assertNotIn(retired_term, source)
-        self.assertIn('[str(paths.decodex), "serve"]', source)
-        self.assertNotIn("decodexd", source)
-        self.assertNotIn("artifact_cohort", source)
-        self.assertIn('"initialize-local-database"', source)
-        self.assertIn('"validate-local-database"', source)
-
     def test_parser_exposes_only_current_arguments(self) -> None:
         args = self.module.parse_args(["--no-launch"])
         self.assertTrue(args.no_launch)

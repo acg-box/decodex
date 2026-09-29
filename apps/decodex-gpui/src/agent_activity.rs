@@ -560,9 +560,11 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		// History nodes are transient while switching agents. Only the explicit
+		// visibility control may resize the rail and move the transcript.
 		crate::ui_motion::reveal(
 			"history-rail-reveal",
-			if self.timeline_visible && !self.history_marks.is_empty() { 44.0 } else { 0.0 },
+			if self.timeline_visible { 44.0 } else { 0.0 },
 			true,
 			self.history_rail(window, cx),
 		)
@@ -737,6 +739,48 @@ impl Render for HistoryPreview {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[gpui::test]
+	fn agent_loading_keeps_transcript_horizontal_bounds(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(size(px(1400.), px(900.)));
+		let saved = surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			(s.selected.clone(), s.history.clone())
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let original = visual.debug_bounds("workspace-transcript").unwrap();
+		for loading in [true, false] {
+			surface.update(visual, |s, cx| {
+				s.selected = if loading { Some("release".into()) } else { saved.0.clone() };
+				s.history = if loading { None } else { saved.1.clone() };
+				cx.notify();
+			});
+			for delay in [0, 100, 140] {
+				std::thread::sleep(std::time::Duration::from_millis(delay));
+				visual.update(|w, cx| w.draw(cx).clear());
+				let bounds = visual.debug_bounds("workspace-transcript").unwrap();
+				assert_eq!(
+					bounds.origin.x, original.origin.x,
+					"history loading must not move text"
+				);
+				assert_eq!(bounds.size.width, original.size.width);
+			}
+		}
+		// The explicit toggle still controls the reserved rail width.
+		surface.update(visual, |s, cx| {
+			s.timeline_visible = false;
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|w, cx| w.draw(cx).clear());
+		assert!(
+			visual.debug_bounds("workspace-transcript").unwrap().size.width > original.size.width
+		);
+	}
+
 	#[gpui::test]
 	fn deferred_navigation_finish_does_not_end_a_newer_jump(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));

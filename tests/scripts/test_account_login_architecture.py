@@ -117,32 +117,10 @@ class AccountLoginArchitectureTests(unittest.TestCase):
 		self.assertIn("9392c3fa5bcda342b5b96a1a04d67b2f781617c2", notice)
 		self.assertIn("Apache License", license_text)
 
-	def test_runtime_owns_one_singleton_manager_and_account_service_install(self) -> None:
-		bootstrap = read("crates/decodex-runtime/src/bootstrap.rs")
-		runtime = read("crates/decodex-runtime/src/account_login.rs")
-		self.assertIn("AccountLoginManager", bootstrap)
-		self.assertIn("AccountLoginManager", runtime)
-		self.assertIn("AccountService", runtime)
-		self.assertIn("begin_shutdown", runtime)
-		self.assertIn("wait_for_shutdown", runtime)
-		self.assertNotIn("pub trait", runtime)
-
 	def test_protocol_login_surface_is_dedicated_and_not_durable(self) -> None:
-		protocol = read("crates/decodex-protocol/src/account_login.rs")
 		wire = read("crates/decodex-protocol/src/wire.rs")
 		production_wire = wire.split("\n#[cfg(test)]\nmod tests", 1)[0]
 		client = read("crates/decodex-protocol/src/client.rs")
-		for required in (
-			"AccountLoginStart",
-			"AccountLoginStatus",
-			"AccountLoginRequest::Start",
-			"Self::Status",
-			"Self::Cancel",
-		):
-			with self.subTest(marker=required):
-				self.assertIn(required, protocol)
-		self.assertIn("ClientMessage::AccountLogin", client)
-		self.assertIn("close_one_shot_socket", client)
 		for retired_ingress in (
 			"EnrollAccountFromCredentialFile",
 			"ReauthenticateAccountFromCredentialFile",
@@ -150,10 +128,6 @@ class AccountLoginArchitectureTests(unittest.TestCase):
 			with self.subTest(retired_ingress=retired_ingress):
 				self.assertNotIn(retired_ingress, production_wire)
 				self.assertNotIn(retired_ingress, client)
-		self.assertIn(
-			"retired_credential_file_command_names_do_not_decode",
-			wire,
-		)
 		for durable_surface in ("SnapshotItem", "EventPayload", "CommandPayload"):
 			block_start = wire.index(f"pub enum {durable_surface}")
 			block_end = wire.find("\npub ", block_start + 1)

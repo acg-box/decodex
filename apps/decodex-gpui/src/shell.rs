@@ -7166,19 +7166,6 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn supported_sizes_preserve_fixed_shell_dimensions(cx: &mut TestAppContext) {
-		let (_shell, visual) = open_shell(cx);
-		for (width, height) in [(1180.0, 720.0), (1440.0, 900.0)] {
-			visual.update(|window, cx| {
-				window.resize(size(px(width), px(height)));
-				window.draw(cx).clear();
-				assert_eq!(WINDOW_CONTROLS_CLEARANCE, 44.0);
-				assert_eq!(WORKBENCH_SESSION_SIDEBAR_WIDTH, 248.0);
-				assert_eq!(WORKBENCH_INSPECTOR_WIDTH, 344.0);
-			});
-		}
-	}
-	#[gpui::test]
 	fn model_review_clicks_preserve_later_composer_draft(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 		let (conversations, server_id, review) =

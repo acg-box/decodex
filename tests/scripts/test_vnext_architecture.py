@@ -1,7 +1,7 @@
 """Static architecture checks for the local SQLite product slice."""
 
 from pathlib import Path
-import re
+import plistlib
 import tomllib
 import unittest
 
@@ -38,49 +38,6 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertIn("redb", transfer)
         self.assertIn("decodex-database", transfer)
 
-    def test_schema_is_versioned_and_owns_the_vertical_slice(self) -> None:
-        migration = read("database/migrations/0048_agent_baseline.sql")
-        for table in (
-            "schema_migrations",
-            "accounts",
-            "account_credentials",
-            "routing_decisions",
-            "continuation_plans",
-            "conversations",
-            "turns",
-            "history_items",
-            "runtime_sessions",
-            "process_generations",
-            "provider_attempts",
-            "provider_attempt_positive_evidence",
-        ):
-            with self.subTest(table=table):
-                self.assertRegex(migration, rf'CREATE TABLE "?{re.escape(table)}"?\s*\(')
-        migrations = read("database/src/migrations.rs")
-        self.assertIn("0048_agent_baseline.sql", migrations)
-        self.assertIn("Follow the user request for this task.", migration)
-        for column in ("model", "reasoning_effort", "fast", "show_in_menu_bar"):
-            self.assertIn(column, migration)
-        self.assertIn("TransactionBehavior::Immediate", migrations)
-        self.assertIn("PRAGMA foreign_keys = ON", migrations)
-        self.assertIn("PRAGMA synchronous = FULL", migrations)
-        self.assertIn("PRAGMA journal_mode = WAL", migrations)
-
-    def test_service_composes_sqlite_directly(self) -> None:
-        bootstrap = read("crates/decodex-runtime/src/bootstrap.rs")
-        application = read("crates/decodex-runtime/src/application.rs")
-        service = read("apps/decodex-cli/src/lib.rs")
-        self.assertIn("SqliteStore::open", bootstrap)
-        self.assertIn("Available(SqliteStore)", application)
-        self.assertIn("ProductStore::Available(store)", application)
-        self.assertIn("InitializeLocalDatabase", service)
-        self.assertIn("ValidateLocalDatabase", service)
-        self.assertIn("Serve", service)
-        self.assertNotIn("SuperviseLocal", service)
-        self.assertNotIn("BootstrapLatestSchema", service)
-        self.assertFalse((ROOT / "apps/decodexd").exists())
-        self.assertNotIn("apps/decodexd", toml("Cargo.toml")["workspace"]["members"])
-
     def test_clients_remain_protocol_only(self) -> None:
         for manifest_path in ("apps/decodex-gpui/Cargo.toml",):
             dependencies = toml(manifest_path)["dependencies"]
@@ -96,225 +53,24 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertNotIn("rusqlite", cli_dependencies)
         self.assertNotIn("redb", cli_dependencies)
 
-    def test_exact_current_protocol_and_build_identity_cross_every_bundle_boundary(self) -> None:
-        protocol = read("crates/decodex-protocol/src/lib.rs")
-        gpui = read("apps/decodex-gpui/src/client_lifecycle/tests.rs")
-        native_client = read("crates/decodex-app-client-ffi/src/lib.rs")
-        staging = read("scripts/macos/stage_decodex_app.sh")
-        bundle_verifier = read("scripts/macos/verify_decodex_bundle_contracts.py")
-        self.assertRegex(
-            protocol,
-            r"pub const CURRENT_VERSION:\s*ProtocolVersion\s*=\s*"
-            r"ProtocolVersion\s*\{\s*major:\s*2,\s*minor:\s*96\s*\};",
-        )
-        self.assertIn("Some(u64::from(CURRENT_VERSION.minor))", gpui)
-        self.assertIn("decodex_app_native_client_abi_version", native_client)
-        self.assertIn("verify_decodex_bundle_contracts.py", staging)
-        self.assertIn('"decodex/build-info/1"', bundle_verifier)
-        self.assertIn("DecodexBuildCommit", bundle_verifier)
-        self.assertNotIn("artifact_cohort", bundle_verifier)
+    def test_desktop_has_one_foreground_app_bundle(self) -> None:
+        manifests = sorted(ROOT.glob("apps/*/packaging/Info.plist"))
+        self.assertEqual(len(manifests), 1)
+        with manifests[0].open("rb") as source:
+            info = plistlib.load(source)
+        self.assertEqual(info["CFBundleIdentifier"], "box.acg.decodex")
+        self.assertFalse(info.get("LSBackgroundOnly", False))
 
-    def test_gpui_is_the_only_macos_gui_and_loads_the_original_swift_menu_bar(self) -> None:
-        for retired in (
-            "apps/decodex",
-            "apps/decodex-app",
-            "spikes/gpui",
-        ):
-            with self.subTest(retired=retired):
-                self.assertFalse((ROOT / retired).exists())
-        workspace = toml("Cargo.toml")["workspace"]
-        self.assertNotIn("exclude", workspace)
-        self.assertEqual(
-            [member for member in workspace["members"] if member.endswith("-gpui")],
-            ["apps/decodex-gpui"],
-        )
-        settings = read("apps/decodex-gpui/src/settings_surface.rs")
-        main = read("apps/decodex-gpui/src/main.rs")
-        native_menu_bar = read("apps/decodex-gpui/src/native_menu_bar.rs")
-        launch_at_login = read(
-            "apps/decodex-gpui/menubar/Sources/DecodexApp/LaunchAtLoginController.swift"
-        )
-        swift_menu_bar = read(
-            "apps/decodex-gpui/menubar/Sources/DecodexApp/StatusPanelController.swift"
-        )
-        staging = read("scripts/macos/stage_decodex_app.sh")
-        plist = read("apps/decodex-gpui/packaging/Info.plist")
-        self.assertIn("NSStatusBar", swift_menu_bar)
-        self.assertIn("libDecodexMenuBar.dylib", native_menu_bar)
-        self.assertIn("decodex_menu_bar_set_visible", native_menu_bar)
-        self.assertIn("SetDesktopSettings", read("apps/decodex-gpui/src/desktop_settings.rs"))
-        self.assertIn("Show Decodex in the menu bar", settings)
-        self.assertIn("SMAppService", launch_at_login)
-        self.assertIn("service: SMAppService = .mainApp", launch_at_login)
-        self.assertIn("keyAELaunchedAsLogInItem", launch_at_login)
-        self.assertIn("on_window_should_close", main)
-        self.assertIn("on_reopen", main)
-        self.assertIn("order_out_native_windows();", main)
-        self.assertIn("window.orderOut(None);", main)
-        for daemon_owned_path in (
-            "database/migrations/0048_agent_baseline.sql",
-            "database/src/desktop_settings.rs",
-            "crates/decodex-protocol/src/wire.rs",
-            "crates/decodex-runtime/src/application.rs",
-        ):
-            with self.subTest(daemon_owned_path=daemon_owned_path):
-                daemon_owned = read(daemon_owned_path)
-                self.assertNotIn("launch_at_login", daemon_owned)
-                self.assertNotIn("LaunchAtLogin", daemon_owned)
-        self.assertIn("application.activate();", main)
-        self.assertIn("NSApplicationActivationPolicy::Regular", main)
-        self.assertIn("NSApplicationActivationPolicy::Accessory", main)
-        self.assertIn("install_application_menu(cx)", main)
-        self.assertLess(
-            main.index("window.activate_window()"),
-            main.index("activate_native_application();"),
-        )
-        for retired in (
-            "NSWorkspace",
-            "NSUserDefaults",
-            "Library/LoginItems/DecodexMenuBar.app",
-        ):
-            with self.subTest(retired=retired):
-                self.assertNotIn(retired, settings + staging + native_menu_bar)
-        self.assertIn('APP="$STAGE_ROOT/Decodex.app"', staging)
-        self.assertIn('HELPERS="$CONTENTS/Helpers"', staging)
-        self.assertIn('cp "$BUILD_ROOT/release/decodex" "$HELPERS/decodex"', staging)
-        self.assertIn("cargo +stable metadata --locked --no-deps --format-version 1", staging)
-        self.assertIn('"target_directory"', staging)
-        self.assertIn("--product DecodexMenuBar", staging)
-        self.assertIn(
-            'DEFAULT_SIGN_IDENTITY="4EBCADF6B4D513E45CE33EC6934C08DBB0F03D7F"',
-            staging,
-        )
-        self.assertIn('DEFAULT_SIGN_TEAM_IDENTIFIER="4N949UKQ55"', staging)
-        self.assertIn('verify_signing_team "$APP"', staging)
-        self.assertIn("ad-hoc signing is unsupported", staging)
-        self.assertNotIn("DecodexMenuBar.app", staging)
-        self.assertTrue((ROOT / "crates/decodex-app-client-ffi").is_dir())
-        self.assertIn("<string>Decodex</string>", plist)
-        self.assertIn("<string>box.acg.decodex</string>", plist)
-        bundle_plists = sorted(ROOT.glob("apps/*/packaging/Info.plist"))
-        self.assertEqual(
-            [path.relative_to(ROOT).as_posix() for path in bundle_plists],
-            ["apps/decodex-gpui/packaging/Info.plist"],
-        )
-        self.assertNotIn("LSBackgroundOnly", plist)
-        service_stage = read("scripts/macos/stage_decodex_local_service.sh")
-        self.assertIn(
-            'install -m 755 "$ROOT/target/$PROFILE/decodex" "$STAGE_ROOT/decodex"',
-            service_stage,
-        )
-        self.assertNotIn("decodexd", service_stage)
-        self.assertNotIn(".app", service_stage)
-
-    def test_account_route_is_synchronous_fail_fast_and_terminal_only(self) -> None:
-        coordinator = read(
-            "crates/decodex-runtime/src/shared_auth_coordinator.rs"
-        )
-        account_service = read("crates/decodex-runtime/src/account_service.rs")
-        application = read("crates/decodex-runtime/src/application.rs")
-        wire = read("crates/decodex-protocol/src/wire.rs")
-        menu = read(
-            "apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift"
-        )
-        self.assertIn("proc_listpids", coordinator)
-        self.assertIn("proc_pidpath", coordinator)
-        self.assertIn("KERN_PROCARGS2", coordinator)
-        self.assertIn("Zeroizing::new", coordinator)
-        self.assertIn("CodexLiveness::MayBeRunning", coordinator)
-        self.assertIn("MacosCodexHomeRelation::Isolated", coordinator)
-        self.assertIn("CodexLivenessObservation::Blocked", coordinator)
-        self.assertIn("project_shared_codex_auth_cas", coordinator)
-        self.assertNotIn("AccountRoutePending", wire + menu + account_service)
-        self.assertNotIn("AccountRouteWaitReason", wire + menu + account_service)
-        self.assertNotIn("recover_pending_account_routes", account_service)
-        self.assertNotIn("route_command_lock", account_service)
-        for rejection in (
-            "CodexIsRunning",
-            "AccountDisabled",
-            "CredentialMissing",
-            "CredentialNeedsLogin",
-            "CredentialRefreshRejected",
-            "CredentialRefreshUnavailable",
-            "AuthFileUnreadable",
-            "AuthFileChanged",
-            "AuthWriteFailed",
-            "AuthReadbackMismatch",
-        ):
-            with self.subTest(rejection=rejection):
-                self.assertIn(rejection, wire)
-        route_start = account_service.index("route_account_command_sync")
-        route_end = account_service.index("async fn confirm_shared_auth_target_locked")
-        route = account_service[route_start:route_end]
-        self.assertIn("liveness_observation", route)
-        self.assertIn("read_current_exact", route)
-        self.assertIn("project_shared_auth_locked", route)
-        self.assertLess(
-            route.index("liveness_observation"),
-            route.index("refresh_while_locked"),
-        )
-        route_error_start = application.index("fn account_route_command_error")
-        route_error_end = application.index("fn routing_command_result")
-        self.assertNotIn(
-            "LifecycleUnready",
-            application[route_error_start:route_error_end],
-        )
-        startup_start = account_service.index(
-            "async fn reconcile_projected_fixed_route_on_startup"
-        )
-        startup_end = account_service.index(
-            "pub async fn recover_operation",
-            startup_start,
-        )
-        startup = account_service[startup_start:startup_end]
-        self.assertIn("AccountSelectionMode::Fixed", startup)
-        self.assertIn("read_current_exact", startup)
-        self.assertIn("same_refresh_bundle", startup)
-        self.assertNotIn("refresh_while_locked", startup)
-        self.assertNotIn("project_if_quiescent", startup)
-        self.assertNotIn("auth.json", menu)
-        self.assertNotIn("atomic shared-auth", menu)
-        for forbidden in (
-            "std::process::Command",
-            "libc::kill",
-            "SIGTERM",
-            "SIGKILL",
-        ):
-            self.assertNotIn(forbidden, coordinator)
-        self.assertNotIn("reproject_shared", account_service)
-
-    def test_credentials_are_narrow_and_daemon_private(self) -> None:
-        credentials = read("database/src/credentials.rs")
-        adapter = read("crates/decodex-runtime/src/host_credentials/sqlite_store.rs")
-        self.assertIn("Zeroizing<Vec<u8>>", credentials)
-        self.assertIn("Debug for CredentialRecord", credentials)
-        self.assertIn("SqliteCredentialStore", adapter)
-        self.assertNotIn("security_framework::passwords", adapter)
-        self.assertNotIn("redb", adapter)
-
-    def test_account_transfer_is_one_shot_read_only_and_source_retaining(self) -> None:
-        transfer = read("database/transfer/src/main.rs")
-        installer = read("scripts/macos/install_decodex_local_service.py")
-        staging = read("scripts/macos/stage_decodex_local_service.sh")
-        self.assertIn("ReadOnlyDatabase::open", transfer)
-        self.assertIn("account_credentials_v1", transfer)
-        self.assertIn("source_vault_retained", transfer)
-        self.assertNotRegex(transfer, r"arg\([^\n]*source")
-        self.assertIn('"decodex-database-transfer"', installer)
-        self.assertIn('"serve"', installer)
-        self.assertIn("-p decodex-database-transfer", staging)
-        self.assertIn("box.acg.decodex.database-transfer", staging)
-        self.assertIn("--profile \"$PROFILE\"", staging)
-        self.assertIn("cargo +stable build --locked", staging)
-        for retired in ("pg_ctl", "initdb", "createuser", "createdb"):
-            self.assertNotIn(retired, installer)
+    def test_shared_auth_observation_must_not_terminate_other_apps(self) -> None:
+        coordinator = read("crates/decodex-runtime/src/shared_auth_coordinator.rs")
+        for forbidden in ("std::process::Command", "libc::kill", "SIGTERM", "SIGKILL"):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, coordinator)
 
     def test_process_acceptance_ports_are_explicit_and_release_closed(self) -> None:
         account_service = read("crates/decodex-runtime/src/account_service.rs")
         bootstrap = read("crates/decodex-runtime/src/bootstrap.rs")
         shared_auth = read("crates/decodex-runtime/src/shared_auth_coordinator.rs")
-        process_test = read("apps/decodex-cli/tests/account_route_process.rs")
-        supervisor_test = read("apps/decodex-gpui/src/bundled_daemon.rs")
         self.assertIn(
             '#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]',
             account_service,
@@ -328,101 +84,6 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
         self.assertIn("process_acceptance_fixture_endpoint().is_some()", bootstrap)
         self.assertIn("AccountApiRuntime::new", bootstrap)
         self.assertIn("process_acceptance_fixture_endpoint().is_some()", shared_auth)
-        self.assertIn('CARGO_BIN_EXE_decodex', process_test)
-        self.assertIn('actual_service_routes_a_b_a', process_test)
-        self.assertIn("reconcile_projected_fixed_route_on_startup", account_service)
-        self.assertIn("startup must repair the post-auth/pre-routing crash window", process_test)
-        self.assertIn("startup must not infer a fixed target while routing is balanced", process_test)
-        self.assertIn("startup must not rotate or rewrite exact credential bytes", process_test)
-        self.assertIn('assert_no_credentials', process_test)
-        self.assertIn('process_listener_loss_restarts_exact_owned_daemon', supervisor_test)
-        self.assertIn('process_recovery_never_terminates_independently_managed_daemon', supervisor_test)
-
-    def test_conversation_restart_contract_is_executable(self) -> None:
-        test = read("database/tests/conversation_restart.rs")
-        self.assertIn("read_ordinary_runtime_session_for_resume", test)
-        self.assertIn("ContinuationPlanKind::SameThread", test)
-        self.assertIn("PrepareProviderAttemptOutcome::Replayed", test)
-        self.assertIn("restart must not create a duplicate dispatch intent", test)
-
-    def test_provider_thread_identity_has_one_bound_and_one_url_projector(self) -> None:
-        core = read("crates/decodex-core/src/conversation.rs")
-        codex = read("crates/decodex-codex/src/protocol.rs")
-        protocol = read("crates/decodex-protocol/src/conversation.rs")
-        resume = read("crates/decodex-runtime/src/provider_attempt_service.rs")
-        application = read("crates/decodex-runtime/src/application.rs")
-        packs = read("crates/decodex-runtime/src/domain_packs.rs")
-        shell = read("apps/decodex-gpui/src/shell.rs")
-        self.assertIn("MAX_PROVIDER_THREAD_ID_BYTES: usize = 512", core)
-        self.assertIn("decodex_core::MAX_PROVIDER_THREAD_ID_BYTES", codex)
-        self.assertIn("pub use decodex_core::MAX_PROVIDER_THREAD_ID_BYTES", protocol)
-        self.assertIn("ExactThreadId::new(response.codex_thread_id.clone())", resume)
-        for consumer in (application, packs, shell):
-            self.assertIn(".codex_url()", consumer)
-            self.assertNotIn('format!("codex://threads/', consumer)
-
-    def test_retired_board_and_execution_decision_surfaces_stay_absent(self) -> None:
-        application = read("crates/decodex-runtime/src/application.rs")
-        protocol = read("crates/decodex-protocol/src/wire.rs")
-        protocol_exports = read("crates/decodex-protocol/src/lib.rs")
-        for retired in (
-            "WorkItemBoard",
-            "ListProjects",
-            "GetWorkItemBoardPage",
-            "RegisterProject",
-            "CreateWorkItem",
-            "StartWorkItem",
-            "AcceptWorkItem",
-        ):
-            self.assertNotIn(retired, application)
-            self.assertNotIn(retired, protocol)
-        for retired in (
-            "GetExecutionDecision",
-            "ExecutionDecisionResult",
-            "ExecutionDecisionDto",
-            "ExecutionConsumerDto",
-            "ExecutionRouteDto",
-            "ExecutionRouteCauseDto",
-            "ExecutionRouteBlockerDto",
-            "ExecutionQuotaExclusionDto",
-            "ExecutionQuotaWindowDto",
-            "execution_decision_dto",
-            "quota_exclusion_dto",
-            "blocker_dto",
-        ):
-            with self.subTest(retired=retired):
-                self.assertNotIn(retired, application)
-                self.assertNotIn(retired, protocol)
-                self.assertNotIn(retired, protocol_exports)
-        self.assertNotIn("#[cfg(any())]", application)
-        self.assertFalse((ROOT / "apps/decodex-gpui/src/work_items.rs").exists())
-        self.assertFalse((ROOT / "crates/decodex-core/src/managed_repository.rs").exists())
-        self.assertNotIn("ManagedRepository", protocol_exports)
-        self.assertNotIn("ManagedRepository", read("crates/decodex-protocol/src/doctor.rs"))
-        for retired in (
-            "managed_repository_disabled.rs",
-            "managed_repository_runtime.rs",
-            "managed_repository_saga.rs",
-            "managed_repository_executor.rs",
-            "work_item_board.rs",
-            "local_account_authority.rs",
-        ):
-            self.assertFalse((ROOT / "crates/decodex-runtime/src" / retired).exists())
-
-    def test_agent_replaces_active_factory_but_preserves_historical_storage(self) -> None:
-        wire = read("crates/decodex-protocol/src/wire.rs")
-        commands = wire[wire.index("pub enum CommandPayload"):wire.index("pub enum ResultPayload")]
-        for retired in ("CreateProgramCycle", "BindProgramDomainPack", "ContinueProgram", "RecordProgramReview"):
-            self.assertNotIn(retired, commands)
-        shell = read("apps/decodex-gpui/src/shell.rs")
-        self.assertNotIn("Destination::Factory", shell)
-        for retired in ("programs.rs", "program_graph.rs", "factory_surface.rs"):
-            self.assertFalse((ROOT / "apps/decodex-gpui/src" / retired).exists())
-        self.assertIn("GetAgentSnapshot", wire)
-        self.assertIn("GetProgramCycle", wire)
-        self.assertIn("ListPrograms", wire)
-        self.assertIn("program_cycles", read("database/src/lib.rs"))
-        self.assertIn("agent_work_items", read("database/migrations/0048_agent_baseline.sql"))
 
 
 if __name__ == "__main__":

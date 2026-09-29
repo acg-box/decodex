@@ -19,9 +19,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn activity_detail_key(&self, ids: &(String, String, String)) -> Option<String> {
-		if self.state != LoadState::Ready
-			&& !(self.state == LoadState::Loading && self.status_before_refresh.is_none())
-		{
+		if !self.command_connection_ready() {
 			return None;
 		}
 		let snapshot = self.snapshot.as_ref()?;
@@ -143,6 +141,9 @@ impl AgentSurface {
 		);
 
 		div()
+			.w_full()
+			.min_w_0()
+			.debug_selector(|| "tool-detail-row".into())
 			.child(
 				row.id(SharedString::from(key.clone()))
 					.role(Role::Button)
@@ -167,6 +168,8 @@ impl AgentSurface {
 				expanded,
 				div()
 					.id(SharedString::from(format!("detail-scroll-{key}")))
+					.w_full()
+					.min_w_0()
 					.flex()
 					.flex_col()
 					.gap(px(8.))
@@ -204,6 +207,14 @@ impl AgentSurface {
 		let Some(key) = self.activity_detail_key(&ids) else {
 			return;
 		};
+		self.latest_follow_work = None;
+		self.history_follow_paused.insert(ids.0.clone());
+		self.history_navigation = None;
+		if let Some(entry) = self.native_history.entries.iter().find(|entry| matches!(&entry.content,
+			decodex_protocol::AgentTimelineContent::Item { turn_id, item_id, .. } if turn_id == &ids.1 && item_id == &ids.2)).cloned() {
+			self.anchor_process_toggle(&ids.0, &entry);
+		}
+
 		self.activity_detail.revision += 1;
 		self.activity_detail.task = None;
 		if self.activity_detail.value.as_ref().is_some_and(|(selected, _)| selected == &key) {
@@ -265,6 +276,138 @@ mod tests {
 	use super::*;
 
 	#[gpui::test]
+	fn expanded_tool_stays_inside_transcript_and_survives_background_refresh(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(px(900.), px(1000.)));
+		let ids = ("agent".to_owned(), "turn".to_owned(), "search".to_owned());
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.snapshot.as_mut().unwrap().runtime_source = Some(EntityId::new("source").unwrap());
+			s.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == "agent")
+				.unwrap()
+				.codex_thread_id = Some("thread".into());
+			s.native_history.binding = Some(native_timeline::Binding {
+				work: "agent".into(),
+				thread: "thread".into(),
+				account: "account".into(),
+			});
+			s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
+				position: 0,
+				content: decodex_protocol::AgentTimelineContent::Item {
+					turn_id: "turn".into(),
+					item_id: "search".into(),
+					kind: "webSearch".into(),
+					text: String::new(),
+					phase: None,
+					truncated: false,
+					app_ui: false,
+					attachments: vec![],
+					activity: Some(AgentActivityDto {
+						turn_id: "turn".into(),
+						item_id: "search".into(),
+						kind: "webSearch".into(),
+						status: "completed".into(),
+						label: "Searching the web for a long query with several terms".into(),
+						detail: String::new(),
+						duration_ms: Some(12345),
+					}),
+				},
+			});
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let row = visual.debug_bounds("tool-detail-row").unwrap();
+		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
+		assert!(row.right() <= transcript.right(), "tool indent must fit the transcript");
+		let standalone_arrow = visual.debug_bounds("tool-chevron-bounds").unwrap();
+		let arrow = standalone_arrow;
+		assert!(arrow.right() <= row.right(), "arrow {arrow:?} must fit row {row:?}");
+		visual.simulate_click(row.center(), Default::default());
+		surface.update(visual, |s, cx| {
+			assert!(s.history_follow_paused.contains("agent"));
+			let key = s.activity_detail_key(&ids).unwrap();
+			s.activity_detail.value = Some((
+				key,
+				Some(AgentActivityDetailResult::Available {
+					text: "Search details\n".repeat(30),
+					truncated: false,
+					offset: 0,
+					next: None,
+				}),
+			));
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(300));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let expanded = visual.debug_bounds("tool-detail-row").unwrap();
+		assert!(expanded.size.height > row.size.height);
+		for refreshing in [true, false, true, false] {
+			surface.update(visual, |s, cx| {
+				s.state = if refreshing { LoadState::Loading } else { LoadState::Ready };
+				s.status_before_refresh = refreshing.then_some(LoadState::Ready);
+				cx.notify();
+			});
+			visual.update(|w, cx| w.draw(cx).clear());
+			assert_eq!(visual.debug_bounds("tool-detail-row").unwrap(), expanded);
+		}
+		// Completed turns use the folded-history path, not the standalone tool row.
+		surface.update(visual, |s, cx| {
+			let mut final_entry = s.native_history.entries[0].clone();
+			final_entry.position = 1;
+			if let decodex_protocol::AgentTimelineContent::Item {
+				kind,
+				item_id,
+				text,
+				phase,
+				activity,
+				..
+			} = &mut final_entry.content
+			{
+				*kind = "agentMessage".into();
+				*item_id = "final".into();
+				*text = "Done".into();
+				*phase = Some("final_answer".into());
+				*activity = None;
+			}
+			s.native_history.entries.push(final_entry);
+			s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
+				position: 2,
+				content: decodex_protocol::AgentTimelineContent::TurnBoundary {
+					turn_id: "turn".into(),
+					completed: true,
+					status: Some("completed".into()),
+					duration_ms: Some(500),
+					usage_summary: None,
+					usage: None,
+					error: None,
+				},
+			});
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
+		visual.simulate_click(toggle.center(), Default::default());
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let arrow = visual.debug_bounds("tool-chevron-bounds").unwrap();
+		assert!(
+			arrow.right() <= standalone_arrow.right(),
+			"grouped arrow {arrow:?} must align with standalone arrow {standalone_arrow:?}"
+		);
+	}
+
+	#[gpui::test]
 	fn activity_details_reject_replaced_sources_and_reopened_requests(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -297,13 +440,19 @@ mod tests {
 				next: None,
 			};
 			for change in
-				["none", "source", "thread", "reopen", "disconnect", "unavailable", "profile"]
+				["none", "refresh", "source", "thread", "reopen", "disconnect", "unavailable", "profile"]
 			{
 				s.apply_result(Ok(AgentSnapshotResult::Available(snapshot.clone())));
 				let key = s.activity_detail_key(&ids).unwrap();
 				let revision = s.activity_detail.revision;
 				s.activity_detail.value = Some((key.clone(), None));
 				match change {
+					"refresh" => {
+						s.state = LoadState::Loading;
+						s.status_before_refresh = Some(LoadState::Ready);
+						assert_eq!(s.activity_detail_key(&ids).as_ref(), Some(&key));
+						assert!(s.command_connection_ready());
+					},
 					"source" => {
 						let mut replacement = snapshot.clone();
 						replacement.runtime_source = Some(EntityId::new("replacement").unwrap());
@@ -337,7 +486,7 @@ mod tests {
 				}
 				assert_eq!(
 					s.accept_activity_detail(&ids, key, revision, result()),
-					change == "none",
+					matches!(change, "none" | "refresh"),
 					"{change}"
 				);
 				if change == "reopen" {

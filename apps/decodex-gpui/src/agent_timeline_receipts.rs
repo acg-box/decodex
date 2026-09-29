@@ -77,6 +77,11 @@ impl AgentSurface {
 		}
 		saved.extend(entries.iter().map(|entry| (entry.id, entry)));
 		for entry in saved.values() {
+			if receipt_label(entry) == Some("Local input · Delivery not confirmed")
+				&& self.preview_covers_receipt(&work.id, entry.id, &entry.text)
+			{
+				continue;
+			}
 			if super::super::progress::checklist_superseded(entry, saved.values().copied()) {
 				continue;
 			}
@@ -208,6 +213,9 @@ fn partial_replaced(
 }
 
 fn receipt_label(entry: &AgentHistoryEntryDto) -> Option<&'static str> {
+	if super::super::startup_feature_warning(entry) {
+		return None;
+	}
 	if entry.kind == "checklist" {
 		return Some("Recorded checklist");
 	}
@@ -438,6 +446,10 @@ mod tests {
 		entry.kind = "capacity_retry_pending".into();
 		assert_eq!(receipt_label(&entry), Some("Automatic retry"));
 		entry.kind = "execution_notice".into();
+		assert_eq!(receipt_label(&entry), Some("Execution notice"));
+		entry.text = "Codex warning: Under-development features enabled: chronicle.".into();
+		assert_eq!(receipt_label(&entry), None);
+		entry.text = "Codex warning: Previous instructions retained".into();
 		assert_eq!(receipt_label(&entry), Some("Execution notice"));
 	}
 	#[test]
