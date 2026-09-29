@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3802dad4f2521b4c83d2765f2bb13774b81fe9f9e5af719d54e6a48c41fa4c85",
+  "pageVersion": "sha256:eaf722215c57ae2b67b3ebef1a754a9db6ec3daa0eea34c985851182b22f3c19",
   "claims": [
     {
       "id": "claim_57467868d3114a4f8efa994a912c927d",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs#L237-L259",
-          "version": "repo-lines-v1:sha256:b770c9a26e9cbe13841408ddea450fc92d182707cde6b15825825db87f8e8927:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhY2FhOWQ5NjMzNTkwNTgxZWZmYTEyYjU5YTJhYTJhN2RmNGIyNTU4MTRhM2VlNWUwN2QxNDA1NTA3NGJiNTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyNzVhZjI5NTk0ODM4MTFjZjk5NzI3Yzc4MjZiNmY4MTIwMzkzNWI0MjFkZDhmNThiYzc4YWRhZTBlYjBhM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
+          "version": "repo-lines-v1:sha256:cbb41257061817a0fabd8cdf5e0156e2f8f635acaaeb0e7ee3eea8122e0bf5e1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5NzlkMjViM2RkYmZhZGYxMDM5N2UwYmNjZjY3NGIwY2M3MGIxOWI0N2QyMGRhNzAzN2Y5ZTRhNjQzOTIzNjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzNTc5NTc3ZTZlNTFjMjI3MGQ3OTQxY2U5YjA2YTQ3YzI5NzVmMzYwNjFmMmVjZTdlZWEzYmI2NmEyNjg3M2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyZDU0YmQ0MTk5NjQ0MjhlZjYyYTM3ZTQ3YjEwMDZmZWQ2ZDBhMzFhMzFmMGJlNGY2ZDU3OWUxMmUwNDUwYjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3NzkxMTA1NDVkYzA5MDU1ZmFhZDE3MzA3NTFhZTM5MTgwNWQ3NTNmZjMwN2E1Y2U3MjkxMjgxZWNhOTllZWEifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L864-L1450",
-          "version": "repo-lines-v1:sha256:cf166ca3c634fef2cd0678d88f423e0063534930997dbead21d02c485074d487:eyJzZWxlY3RlZExpbmVDb3VudCI6NTg3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2YWMzYmVjNjlhMTQ0NDk4NmQyYTFkYTc2ODI3ZjYxODYwNDY2ZDg5NmEyMzJmNmJjZTAwZTU5ZWE2MjJiZWY1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI4MTFkZGY3NTUxNjNlNDE4Mjg1MmM2MDUxZWFjN2Y0ZjRiZmJiNGIyMjU5OWVmOGI3ZDBmNmMyMDQzZDVjNjRjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4NDljMmJiYjM1MDM1ZmIwMDZhOTY2NjUzMWVhNGE0ZGU0N2VlZDQzMjViYTAxZDExYmUwODM2ODI3NDEyOGViIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzYTljYjVjOTYxMjEwNTAwNzExYmQ5OWNkOTg2MTUxNzFjOTIyZWM3ZTczYTE4MjgxYzE2N2U1YzIzMDA1NzIyIn0"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L913-L1310",
+          "version": "repo-lines-v1:sha256:c50e54a80f8f027a64edd4e195fa62a5ed046cf20cbc10d1caa71d50c1d148f2:eyJzZWxlY3RlZExpbmVDb3VudCI6Mzk4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMjFkMmJlNmI3YzRhNGUzNmZlOTg0ZTY3MjliNmQ3ZjBhMDA5MDA2ZGY3MzA5NzQ2YzkxZDNjZDU3NWMxYmVmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiYjhkNmU5MDM5OWVmMzI4MWRiNWQ4NmZlYzBmMWYxMzM3ODIyN2FiNjAzZDJhMWY1NTkxMmFkYjNjZjcyOTVlIn0"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:a1bad7a50ee5a8d076f96fe0c08d9abd63fc11a832a55dcba3239ef1f41fe006"
+          "version": "repo-file-v1:sha256:b4b4b996b4803220a893de0e2f800a0e752c655ccb4546ab097c6be94f34f5dc"
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
@@ -43,6 +43,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-29T09:20:11.292Z"
+    "at": "2026-09-29T13:52:19.644Z"
   }
 }

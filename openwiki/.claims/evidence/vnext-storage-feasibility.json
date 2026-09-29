@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:709b30fdf888f743c110d75590020c70b0d84657af80beadb673c80547f0daf3",
+  "pageVersion": "sha256:ee80dc566a13142cdd61d13ce0d0ce19f7b1c81fd09969b5fd2272a412735ebb",
   "claims": [
     {
       "id": "claim_d4de35fa50cd406cb07a9de8f8d2f369",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-core/src/blob.rs",
-          "version": "repo-file-v1:sha256:d882de98b3388bc53fb8c31fc61f43911b70e31653581d19a8f4e6fcac5736be"
+          "version": "repo-file-v1:sha256:48f8c6f10b3080e866c3b56401ab8428e823900a1fa9698f05193e7058d4e2da"
         },
         {
           "resource": "repo://database/Cargo.toml",
@@ -16,13 +16,13 @@
         },
         {
           "resource": "repo://database/src/lib.rs",
-          "version": "repo-file-v1:sha256:37f693bd1d91dda37852535c860341c2da827a42a5c5fc86d4c6d5c5bd624873"
+          "version": "repo-file-v1:sha256:e49aedc5f8f73c3b7b1028c4a5b61ebd7880a91654e153a9530095f379e8fddf"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-29T06:24:17.023Z"
+    "at": "2026-09-29T13:52:19.644Z"
   }
 }

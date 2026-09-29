@@ -1,26 +1,31 @@
 ---
 type: Reference
 title: "Local database operations"
-description: "Local database operations"
+description: "Service-owned SQLite upgrades, account routing and durable credential and branch records."
 tags: ["decodex", "architecture"]
-openwiki_generated: true
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
-  - id: openwiki-source-268229e2b9f21dae93c32513
-    resource: repo://crates/decodex-protocol/src/wire.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
+  - id: openwiki-source-a09c082db4ad1473c4d1e557
+    resource: repo://crates/decodex-runtime/src/application.rs
+  - id: openwiki-source-2da6601c3f30e806c504e991
+    resource: repo://crates/decodex-runtime/src/host_credentials.rs
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
+  - id: openwiki-source-8076269b8760701249ad3b9c
+    resource: repo://database/migrations/0052_personal_access_token_credentials.sql
+  - id: openwiki-source-58c0167d31c3e40dc89591ab
+    resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T09:20:11.292Z
+generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 ---
 
 # Local database operations
@@ -67,3 +72,9 @@ The database gate and unit tests use isolated fixtures. The staging test checks 
 ## Current migration boundary
 
 The embedded migration ledger defines the baseline and ordered upgrades. The verifier checks migration identity and compatibility; old numbered migration files in historical receipts are not an instruction to reset or reconstruct user data. O24 retirement changes notification recording, not the schema or readability of saved events. See [accounts](accounts-and-routing.md).
+
+## Credential and branch records
+
+OAuth credentials retain their version-1 payload and fingerprint representation. PAT credentials use version 2 and retain verified user identity without fabricated OAuth refresh or expiry values. Migration 52 rebuilds the credential and process-generation schema checks to accept both versions. The migration copies existing values, recreates the Agent process authority trigger, checks foreign keys before commit and restores foreign-key enforcement on both success and failure. Use the migration owner; do not edit these tables manually.
+
+Explicit conversation branches reuse durable inbox event records for their intent, native acknowledgement and observed prefix. The target work and native thread are independent from the source. Before-input branches then reuse the existing canonical prompt-edit draft and upload records. Unknown creation does not authorize a second request. See [conversation recovery](../workflows/conversations-and-recovery.md).

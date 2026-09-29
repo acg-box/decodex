@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:aad013842918a50a1abb9db3c1e1b33c3ff22a4edb2d2aaa2b1fa87bee7c812a",
+  "pageVersion": "sha256:0749ea34fe78df686648bb5679bfbdf28c3103edff623fb3b14d3307e457424a",
   "claims": [
     {
       "id": "claim_738021d152cc4128af3d3b4b217fe92c",
@@ -35,10 +35,60 @@
           "version": "repo-file-v1:sha256:8e6500b4e95225aacd3fd45b541af1af301fec12d15b46e33ef01707526c09a4"
         }
       ]
+    },
+    {
+      "id": "claim_dd0234c255644979992fc724e6ad75c4",
+      "statement": "PAT import accepts native ChatGPT or explicit version-2 credential input and derives account/user identity from the fixed native whoami authority; mixed credential modes and FedRAMP metadata are rejected.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_import.rs#L147-L221",
+          "version": "repo-lines-v1:sha256:f840c809589c7f090031a7c623ed7280afc6a86c706aa8ab23bc5905aafaeb6a:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NjAyMWJjNDgwOTk3YjUxZmViODlkYjA4YThiMzc2YWE4NjBlMWU2OWFjNGM5Y2Q1OTZkMDc3Yjg5MzM0ZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4NzU2ODI2NDQ5ZmM5NTJjZDVkMWRiZDAxNTZhNmU0ZmE1NWI1N2RjYjBlNTU1Mjg1ODYyMmQ5ZjBiNWE2YzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjczNDlkMzM4MzZjMGUxZjgxMjBjZGY5YzAxNGYwNjlhMGZjN2RlYjhmNjBhMzk4OWUzNmE3Y2Q0NGI2ZWEwNzUifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service/personal_access_token.rs#L13-L93",
+          "version": "repo-lines-v1:sha256:d5ee9587a5245d6fb28310518639552a403f78980bcdafb011685d199ab9e28c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1Y2Y1ZmMyM2YyYTZkMjNjM2VhNTFlNzJmNWU4OTZjNzU1NWZiYWEwNWNkNWIxZWExODJiZjk2MThhOGU4MWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3YzAzNTAwOWVhMzgwYTFkYTNhZjRjMmE4OTYwNTAyYTBhNjA0OGY4ZjFjYWViMzVlYzlmYjUzNGJjY2YxOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0Nzc3ZGE2NzlmNTczOGU0ODA1YTg1Mzc2NmRiMjAzN2IyMDA5MjdkNTg4Y2U4NzllNjExMDUyNDYwNTc2ZjkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_422a7f21c2e941f19df536831fabbb7f",
+      "statement": "PAT child authentication uses the exact selected credential through CODEX_ACCESS_TOKEN and verifies native personalAccessToken mode with token output disabled instead of OAuth login or refresh.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/macos_attested_spawn.rs#L304-L352",
+          "version": "repo-lines-v1:sha256:338876d019d3c6b2d0985f35fec3326f49877ba1051aabd75c87b68d897be8c9:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4NmEyNjAyNmQ1Y2Y0MTRlZDEwMGNhMWJhMDI1ZjQwNmIzNDk4NWMzNjJmODlkZWM5ZTA2ZDk5Nzc1ZTVhNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwOTMxZGU5OTg5MzJlMDQyOWIyNzIxOThlMTc3OThhMTMwZTY2MTQwNmM5ZDVlZjhiNGJlZjVjMGRkNDM2Y2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJhZjFkOTc0MDU1Nzc1Njk1YzhkMWQ1N2U2NTM2ODY1NzgwMjZkNjE4ZDM3MWVhNzcwMTA1M2JkNjRiNzU0NGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBmNGZlMjBlOWIxMzQ0NmU4ZTYyNDhkOGU3ODg2NWE1MDZlZDA5ZTgwYzAyMjFiYjY3OGQxOWViN2RiNGNhOGQifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L1651-L1688",
+          "version": "repo-lines-v1:sha256:2be5081ff5b3ff8053c08ae3395e03700a6f8fdc665c206a267c791727daac98:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0NTg0NjI0YWI4NDA5ZjAxYTViZGViMjNjZGQ0MTEyN2UxMmZiMzdjNjY1NzkwMjYzNDc1MmE4YjJjY2Q4ODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU0Y2NlNjE3N2UxNzYxYzMyYWZmYWY5YjYzMjkyMmUyZTE4YzE5YzEzNGQ3ZGRhOWI5ODJlNTRmMjJmNzFlMWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4M2RhMzc1NzI2OWFhMjA0MzliZGU2ZmZkMzMxMjRhYjUwMTc4M2EyYjhiODU0ODZjNjlhMGM4YmQyZTJiMjIifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L245-L260",
+          "version": "repo-lines-v1:sha256:ee5739301a34dfc3503322d19546e99300a858db5c028c0437b7a3af75f5ccbd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2OGFmMGQzZmJhZWMwMTU1NzY5ZWZmNDQ4MjcyNzkwYzkyZTc0ODI5NzFkZTBiNzRlMTMxNGNhMzk4ZDk4NDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4MjNjMzFmOTg1NDFiMmRjNTRkNDVmODZjM2M0OGU2ZjQ1MjkxMWNhMDRhN2ZjYWExMjkxOTA0NDgzOTk0ODMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1YWZkOGRkMmQzYzY5YjA4MzI3MzFiNzNjNzA4NjZmZDJhYmQxODI4ZWE2YWE2N2M0MzFmNmM2M2ExNjUwZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwM2Q1YjU4YWY5MTZlZTVhMGFmODRmYTc3Y2Y3MjU1MTg1ZmJkZDQ0M2M4YWY0ZTEwMTIxZGJhODg2MTFlOGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_08095e8ea159440ab4e717a8dd62fae4",
+      "statement": "Known imported PAT sources can be resolved from exact stored bindings without per-observation network hydration; unknown shared PAT sources require explicit import, and explicit refresh rechecks the same account and user identity.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1770-L1809",
+          "version": "repo-lines-v1:sha256:35732eba2a824acd2457dbea43194b850a14c2478b86f2e8c1319c9fe91adc19:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5YWYzYmIwNGFiMDM5NDBhNDA4YzUwNzJhNWNjZGUxZjhjNTFlNzlhMjJiMTVlOTk0M2U5MWVjYTJhYzI4MWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhMzg4MTA1ODJjNzhlNzJiOTgwYmI5MGUxM2ZhMTRjODU2MTkxYzM3NGRjNTE5ZjFmNzhjMzczZTA1ZTRkZWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJhYjViNTBjZTY0NGIzM2ZkODhmYWQwOWRmNjM4ZjIwODg1MzhiYWE5NDZlOGJkYzBlNDU0YzI3ZTk4Y2JlYzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0NmQ2YTkzNTIwZWZkNDRhZjY5MzY2MTU3NDNmNDdiOWQyNGZlOTY3Y2I1ZTQ0M2FjZmEwMTczODBlMmQxNTEifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L714-L747",
+          "version": "repo-lines-v1:sha256:187211b1aa8defcaffd3ea05ed20336336fe739b915a3121cbb51f4935daf477:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0NTIwNzYwNTdkNGM3MjdkN2VmZjc3YTZkYTU2MDNmNzNlYjJiYjg0NDJiY2Q0MGI1YjVhNmM3ZTZlYWU4NDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1YWIxYjE4MGEzZDA2MjE2OWI4YzBlYTU2ODlkMTM3MGI4NjVlMDlmMDE5NWI3MGM0MmIxM2IwOTFmZmM3YmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzYjZmYzQyNDNmYjRkZDZmODgyMTcwNmUxYWQ5MjAzZDNlYmY3OGQ2NmRmZTBmYTE5ZTNiZTg5NjRkZjBjYzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNmMWU2NGMwYzEyN2UxNDJkMzUwMDM4YTA4NzNkNjBjODE5MDUzNDM5MWI1Y2U0NDM0ZjUzNDhmZGExMDg4NzYifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L812-L831",
+          "version": "repo-lines-v1:sha256:89bfbfdbd3a533ea8944647f3717c047444c4735f6f5228d972bcc64c87af94b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyNWIxYzAxMTQ0NDBlNGVmMmQ2OGE1NGM5Y2FjMDA5MGMyNWQyNDliODQ5ZjIwMDUyMTU1ZWM5Y2Y1N2RkNWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4OTNhOWU1NWMwMDVmMzMyYmUwZTAxNGI5ZGRmOTVkNWM4OWQ5Y2MxNjc2YmQzM2M4Yzg4NWZjMTliMGM2MTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJmZDg0ZmY1MWNkMzMwMTdkMTFjY2U5MWNjOWExYTg3MjliODJlMDU4MTkwNmVmMmQ5NzFlZjIwMGE3MzhjZWUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-29T06:24:17.023Z"
+    "at": "2026-09-29T13:52:19.644Z"
   }
 }

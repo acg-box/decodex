@@ -1,20 +1,18 @@
 ---
 type: Reference
 title: "Private-artifact operations and delivery (retired design)"
-description: "Private-artifact operations and delivery (retired design)"
+description: "Retired design evidence with no current product execution or delivery authority."
 tags: ["decodex", "architecture"]
-openwiki_generated: true
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-3adfd3b6f748de8e64e56048
     resource: repo://crates/decodex-core/src/lib.rs
   - id: openwiki-source-84ef09bd6eced2583113d6a7
     resource: repo://crates/decodex-runtime/src/lib.rs
-generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T09:20:11.292Z
+generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 ---
-
 
 > Current status: this is a frozen historical archive, not a live runtime, schema, generator input or delivery obligation. The original candidate/Linear status and hashes below are preserved observations; this refresh does not re-verify external issue closure or rerun those experiments. Current product owners are documented in [Runtime architecture](../../architecture/runtime-architecture.md). Repository/PR effect orchestration remains retired, and the current Rust exports do not restore this private-artifact design.
 

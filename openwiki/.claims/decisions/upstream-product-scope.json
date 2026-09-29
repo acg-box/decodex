@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bdaf950f626536f7a60b4fe9459c01759ea24eeeb8589c817dbdc9baee975820",
+  "pageVersion": "sha256:878425b1f543abf83909109ecf36ce9b6dc5bf40f536df9956995ec7992c2f2c",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -17,18 +17,50 @@
       "statement": "The native bridge retains installed-plugin observations but rejects plugin list/read/install/reconcile management and MCP configuration reload; historical plugin state is still persisted as observations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L473-L509",
-          "version": "repo-lines-v1:sha256:65aa68ed36df9cda29c0ba07615b539a78e5bf5ca841aa807619ef6cd2168177:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzNWI0ZmQ2YjE3MDRhMzdhYzRiYjQxNGNhM2ZmN2Y1MTEwNmFiYTVlMDE4NTdlOTM2ZGI0MzlmZTA4NzY0MzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3MWE0NjM5ZDJjNWZjNjI1ZDg2NTQzYmFiZTg3YzgwYzQ5ZjEyZTkwNjhhNzEzMWRjYTYwNjMyMWIwNTc1ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L351-L408",
+          "version": "repo-lines-v1:sha256:082bcbb977dfaec89336ad3ea5075877480d651e9b951a5e9c4f9122a6ee9b17:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2MGI4OGEwNWQ1YjUzODQ3NjAyMjliZTYwNTcyZmU2MmIxYzI5Y2RjNTdlZGI1ZTY5NTFkYWE0ZmQ0NmM4MDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1Y2Y1ZmMyM2YyYTZkMjNjM2VhNTFlNzJmNWU4OTZjNzU1NWZiYWEwNWNkNWIxZWExODJiZjk2MThhOGU4MWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4N2JiNWU3ODcwMzg1ZjBlZDRkZDUzYWNkMTFjZjI4NTJlZjgzZmQzYWU1OGNlMWYwM2Y1YzY3OTVhMjlhMjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk2M2I4ZmM5MWVhMzE4ZTU3Y2ZlOTM3Y2E1ODllYjlhZTcxNDc1OGM3ZGUyOTRmNTgyN2ViODQ2NTM3MDBiOWQifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L597-L649",
+          "version": "repo-lines-v1:sha256:21ed29886129df8d0443b07268db665d3883b7216baa91a015df7df2a0510868:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwNjhlYjNjYzhmYzliYTA0ZDdmZTExMmZiOWQ4NDZhYWQzN2Y1OTRiNmVlZmZhY2Y2YTNlNjQ2MGE4NzhjNTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyZjg5NmMyYmJhMjNjZDNlNzJiMTE5YjYxMTY0MmI2MjA5MjQzZDY4MjU4NjYyOWRlZjVhNzk2ZDQ5M2UwOTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5MTUyMDQ1YWI5NmJhYTA5ZGFhOWQwOTk4ZjU5OTc0Mjg0YWIxYTg2ZDhmN2RkM2Y3ZmMzZmM4NDdiOWNlZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiYWNhMWQ4YWZhN2JmZGU3MmQxNmM4MmY5ZjExODk2ZWE4OTRjNjNiNTMwZmE3OTExNGFlY2ZmNDRlZTkyNWQifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_plugins.rs",
           "version": "repo-file-v1:sha256:e518ba3f7b32bd44391e9c289d34a53163d895c4293e117bad98c302cae564f8"
         }
       ]
+    },
+    {
+      "id": "claim_37deca34f5a34d0fb77d67cf5e1b3f9c",
+      "statement": "The skill picker projects only enabled native skills for the selected workspace, preserves exact skill paths, and does not install or enable plugin candidates.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_skills.rs#L133-L174",
+          "version": "repo-lines-v1:sha256:1dc6b00f9d75ac68ff7fa53ee5187aebc3126f898d2237d0a2ae2fbac9b1f4c6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyZjllNzlkOTEwYmI4ZWNhZDRiZDRlNmVmNzI1MGQ1NmY0NjY2NzU1NTI5OGVmOWY2NTQ1MTM0NDg0ZTYwNTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ZDNhNmQ5MDk3MWRkNTg5OWFjODQzZGNlMzY4NDQ1YTZlNDY3YWY4NmExMGRjZDFhOWE2NDBiMTc1NDNkN2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRmMzFhMDMwYmYwOTJlMDI2MDdiZWUxNzU0ZGVlZjJmZWU0OWJjMjFmYTc0NDFhZjNjNmZiMmRjMjRiNmQ0MGEifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_skills.rs#L1-L108",
+          "version": "repo-lines-v1:sha256:7d14dbe453b8aa8967275217456ae4e4c5fe860303ea23b53f8756e2a64cb3af:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3MDM2NmQ2ZjAyOGJlZDE3OTk4ODVlZmU0NTYwYTEyYTU3YTAzYWZlZjkwZjY3ZDI5ZTBmODI1NmRmY2Q1OTc3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzY2JhYjQ1MGQyN2U5OTJmZjhmMDQ1ODE2MTVkMTliYTc3ZWFhYmRlM2EwZDZlNmU3NmZlZmFkNTgzMjdhOTljIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiMmEwYzk2MjM0MTIxOTYyMzdmOTg2NTY3YjIyNDgyODhiZWQ0NzdiYmM0Y2ZmYjcwMWQ0OWZiNjA5MGU0M2JlIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_6acffe523794435ab678c805db6b4604",
+      "statement": "The desktop offers explicit source-preserving native branch choices alongside same-thread edits and keeps branch input as a canonical draft until a separate send.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L620-L696",
+          "version": "repo-lines-v1:sha256:b4d56005ea5e65c0ba7a5d40b8e3b1e623a737bac2ac57938eeea8b2b7fc86e4:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2M2Q5NWMyNDI1NzFjZDgwMDg1YzBlODc4MjExMzJkOTIzMDY5Y2Q4ZTNjZDg0YTg3MmRiMzNmNGE4OTJmZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiZDA0YzkyZTg0MDM4MGZlY2ZmODI2MDhkZDVmNjhlODZjNmFmYjQ0NTgwYWY0NDcwZjFmYzMxNDNjOGI1YzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4YTRiYWEzNjNhOTU3ZjZkODM3MTYwNzRhYjY3OTBjY2RhNDNkYTE0Y2Q0OWRlMzdmN2JkZjE3NGZkYTAzZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNlZGUzMGNiODI5OTNhMzcwYWE3N2Y4YjI3N2MzOTkyMGNjN2RkZmViNGEyNWI1MTNlMTA4ZTE5NjI2NjVlNzQifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs",
+          "version": "repo-file-v1:sha256:a18152b03bc215e0cbfeae02e948d616e259dcbd97cf96d14c0f54833771fb27"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-29T06:24:17.023Z"
+    "at": "2026-09-29T13:52:19.644Z"
   }
 }

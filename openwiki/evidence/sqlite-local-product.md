@@ -1,8 +1,11 @@
 ---
 type: Reference
-title: "SQLite local-product evidence and current verification boundary"
-description: "SQLite local-product evidence and current verification boundary"
+title: "SQLite local product evidence and current verification boundary"
+description: "Current source owners and the limitations of retained desktop and storage evidence."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-acf49c93c3e80379f0023c71
     resource: repo://apps/decodex-gpui/src/accounts.rs
@@ -14,20 +17,16 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T09:20:11.292Z
+generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 ---
-
 
 # Current verification boundary
 
 The detailed receipt below describes the older desktop consolidation, not the current build. Its protocol 2.11, cohort 7, schema 11, decodexd helper, Factory UI, and statement that Reset Card GUI consumption is absent are superseded.
 
-The current local protocol is 2.99. SQLite schema 51 includes durable Reset Card operations and quota activation. The package contains `Contents/Helpers/decodex`; Accounts and CLI now expose service-owned Reset Card operations with account-scoped recovery. `scripts/macos/test_decodex_app_stage.sh` verifies bundle identity, signatures and native ABI, including a negative mismatch fixture. These source-defined checks are not a fresh live acceptance receipt from this documentation run.
+Read `CURRENT_VERSION` and the embedded migration ledger for the current protocol and schema. SQLite retains durable Reset Card operations and quota activation. The package contains `Contents/Helpers/decodex`; Accounts and CLI now expose service-owned Reset Card operations with account-scoped recovery. `scripts/macos/test_decodex_app_stage.sh` verifies bundle identity, signatures and native ABI, including a negative mismatch fixture. These source-defined checks are not a fresh live acceptance receipt from this documentation run.
 
-Current Route is synchronous and credential-negative. The service returns authoritative completion or refusal; the historical Pending Route process-list DTO is no longer present. Desktop clients bind the result to their active session and exact command. Existing Claim IDs are updated to those current owners.
+Current Route is synchronous and credential-negative. The service returns authoritative completion or refusal; the historical Pending Route process-list DTO is no longer present. Desktop clients bind the result to their active session and exact command. 
 
 See [Runtime architecture](../architecture/runtime-architecture.md), [Reset Cards](../operations/reset-cards.md), and [Commands and validation](../operations/commands-and-validation.md).
 

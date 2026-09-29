@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:61be414926a5a9ab0a6853e70a949967d71a6568933681c8af6cf9b1d6e84076",
+  "pageVersion": "sha256:4c4fe4e76a4a30cb7ee6cfa2af45c7c9975ac413d7cceb6d3bce964504b4a818",
   "claims": [
     {
       "id": "claim_d7063028d6a742dfa815d671fa660272",
       "statement": "Current cross-account Route is synchronous and rejects unsafe external liveness or auth-source changes instead of retaining a Pending-route queue.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1022-L1450",
-          "version": "repo-lines-v1:sha256:3bc63564f22dcbe18faadb19dcf5ac2bbc371065163d27d48dd35cd740ded04f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDI5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5NDQ3ZGQ4ZWNhZmU0MzJlYTBlNzE5NjgzMzUxYjkzZjI4NmIxZWM5OTllM2QzMjk4OWM4MzhkYTJjZDA3OTQ4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4ZGExZTllYmUxM2I3YWRmZmI5MzM0NGQ1M2YzMTVjOGYxZjI1MmE4YmFlNWMyN2Y5OTg2NTM5Njg1ZGUwY2I0In0"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L913-L1310",
+          "version": "repo-lines-v1:sha256:c50e54a80f8f027a64edd4e195fa62a5ed046cf20cbc10d1caa71d50c1d148f2:eyJzZWxlY3RlZExpbmVDb3VudCI6Mzk4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMjFkMmJlNmI3YzRhNGUzNmZlOTg0ZTY3MjliNmQ3ZjBhMDA5MDA2ZGY3MzA5NzQ2YzkxZDNjZDU3NWMxYmVmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiYjhkNmU5MDM5OWVmMzI4MWRiNWQ4NmZlYzBmMWYxMzM3ODIyN2FiNjAzZDJhMWY1NTkxMmFkYjNjZjcyOTVlIn0"
         }
       ]
     },
@@ -18,7 +18,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:af698e3efc963ce71b7c71248725049d8fe51a6c3bb019f97fea73b4c47359df"
+          "version": "repo-file-v1:sha256:7f7d963c6c2519d21dfedaaa257e117afa6753dd64cd832ac0ec16ec9f3362d0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:af698e3efc963ce71b7c71248725049d8fe51a6c3bb019f97fea73b4c47359df"
+          "version": "repo-file-v1:sha256:7f7d963c6c2519d21dfedaaa257e117afa6753dd64cd832ac0ec16ec9f3362d0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -46,7 +46,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:af698e3efc963ce71b7c71248725049d8fe51a6c3bb019f97fea73b4c47359df"
+          "version": "repo-file-v1:sha256:7f7d963c6c2519d21dfedaaa257e117afa6753dd64cd832ac0ec16ec9f3362d0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -67,6 +67,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-29T06:24:17.023Z"
+    "at": "2026-09-29T13:52:19.644Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7eb426c8f9f1945d1686253e31a6fbea73e6a1e3f00cc1f1acc6a2cef4e70346",
+  "pageVersion": "sha256:abf308a6e150f7b021eb1112b08e11a7a32ea283c06bcdd8d11ed46f0846492a",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -15,10 +15,42 @@
           "version": "repo-file-v1:sha256:ce67aa0933e6ca0612dabaddcd98f8babd9fcf53202ccc40ab1e0400d378d466"
         }
       ]
+    },
+    {
+      "id": "claim_b11f2c2354954ab187887ef965023960",
+      "statement": "The isolated native fork socket fixture verifies exclusive/inclusive branch prefixes, exact source preservation, distinct branch identities, idempotent command readback and canonical draft handback without extra model requests.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
+          "version": "repo-file-v1:sha256:e12185031935e930d1a54544ab969866627a0deee731fdfff3f534421b11e09c"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs#L16-L30",
+          "version": "repo-lines-v1:sha256:6dacf786407fd12945f7f17cf1e1def0b0e74488a125eedbbee057358eef182c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhODRkMTlkYjljMWVlN2I2YzRjMjNkZWEwMzkxMzZhNDUyZmM4NDRmNmNhM2ZjZDQwN2IyYTM5MjRmOWZlOGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5M2E5NjI4MWY4NTllYTY0NWEwMTVmM2Y3OWEzMzdiY2Q3ZDNkYTQ0MjQ2ZDdlMDMyNzdhNGMxN2ExZTQ5ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc2MGM4YWRkZjZiMTU5MmI2OTc1YWNhZjU5MzIxNWM2YzEzNjNiZDZlNzFiNTA2NzkwYzJiNjlkOWE3YzA4MGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFjMjllZDNiOTQ0MWQ5ODNmY2VmZjUwYWVhY2Y2OWNhOTM0ZWI5YjE3NjkxOTJmMjhkMWY4YzIyNDBmYzU3ZGYifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs#L211-L219",
+          "version": "repo-lines-v1:sha256:d7b93d9faf9c78f08c1dd694044eaba25592bf33ccadd6ebef8f6b66ae7bea8d:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2ZhYzE4YTNiNTQ5ODY5MDRjMjc3OGE0MGNmNWRlYzRmZWJjNTYyY2U1ZGE5OGU1NjcyYzFlYzY3NjlhYjYxOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTVkYzkwODczYjczNDRhNzYxYjc2YWJmNmZiNjM3M2Q2YjM3MTg0M2NhMjkzNDE5NjRmNzYyYzA4ZGQ5ZTdjNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWMwZmU0MDc5MmI4MjVkYTQ3ZjM5N2I4ZTcwNzA3ZDYzZjE4NmNiMzBhY2ExY2U4YzM2Nzc4NmRmZGM4MGExYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTlhYzRkMDc3MjljMmM3Zjg5NDRkZTgyNTQxMzM1OWU3OWNkOGQ4MGZmYTkzMzA4NGQxNGY5MGE4ZTkxMTc3MyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_430293c7d0cf47c2a499c1e2e59747b3",
+      "statement": "Selected working directories must remain under the operating-system account home verified through filesystem identities; an environment HOME override alone does not satisfy that boundary.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/conversation.rs#L128-L147",
+          "version": "repo-lines-v1:sha256:fc6c9e1b1fa7a5b4426df825490b42c16575ffa611ebcde54c3a8be665c46d69:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkM2M2ZTliZjE4NWQ3ZDIwNGFkMmNlZDAwMDhiZWEyMDJhZmE1Yzg3MjIyZmRhNmIzMDU3ZDM0NDM4MDY2ZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJmYmMxNzBlYzk5YWNkMmQwODIzZjM2YmQzMWY4YTYzOTc4MTQ1YTJiZDdjOTliZWQwMjI2NDlmZGU2MTc5MzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5ZDZlZTM1MzA0YmQ1MzczMmJmNjBjNTM3OWQzZGJiOWFjOWNiNWZlN2QyMTI3MWQzMDhkYmZkYzcxZDQ0YTMifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/conversation.rs#L207-L240",
+          "version": "repo-lines-v1:sha256:7273a53e3377e50c0c765c8b854e1f04a0c91f37435596ae68ded9943d7e4470:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxYTAyZjBjMDZkYmU2ZmU4ZTYwYTQ1ODY2NmI3MzBjNjdjY2VkYWUzMmY2YmFiZGEyMWExOWYwMTYxMTc2OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY0YzliZjlhNDNlY2M1ZTJhMjEwNGQ1ZGRjZTI4OGE4N2RjYTIyODY2NjM2N2NhMDUzNGE3YWIyZDM2ZGJhMTQifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-29T06:24:17.023Z"
+    "at": "2026-09-29T13:52:19.644Z"
   }
 }

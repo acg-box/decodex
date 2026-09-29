@@ -1,8 +1,11 @@
 ---
 type: Reference
 title: "Current local product contract"
-description: "Current local product contract"
+description: "Current desktop, service, native conversation and account authority boundaries."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -10,20 +13,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/accounts.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
-  - id: openwiki-source-268229e2b9f21dae93c32513
-    resource: repo://crates/decodex-protocol/src/wire.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
+  - id: openwiki-source-a09c082db4ad1473c4d1e557
+    resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
-generated: { by: "codex", at: "2026-09-29T09:20:11.292Z" }
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T09:20:11.292Z
+generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 ---
-
 
 # Current local product contract
 
@@ -60,6 +59,8 @@ Reset Card redemption is explicit and durably one-attempt. Weekly activation is 
 Program cycles and compiled-in Domain Pack projections remain storage/runtime mechanisms. The historical Factory graph is not the current UI. Built-in repository/PR/check-run orchestration and the private-artifact lane are retired; old evidence must not reactivate them.
 
 No historical disposable-database instruction applies to user data. Ordered migrations, compatibility refusal and preserved recovery evidence are the current boundary.
+
+Conversation branches and canonical input handback are described in [conversation recovery](../workflows/conversations-and-recovery.md). Imported native PAT credentials are described in [account operations](../operations/accounts-and-routing.md).
 
 ## Verification map
 

@@ -1,9 +1,11 @@
 ---
 type: Reference
-title: "SQLite Local-Product Decision"
-description: "SQLite Local-Product Decision"
+title: "SQLite local product decision"
+description: "One service-owned SQLite database and its migration and transfer boundaries."
 tags: ["decodex", "architecture"]
-openwiki_generated: true
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
@@ -11,12 +13,8 @@ sources:
     resource: repo://database/src/lib.rs
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
-generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T06:24:17.023Z
+generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 ---
-
 
 > Current decision retained: one local SQLite owner. Use the embedded migration ledger for the current schema version, not the historical no-migration server-store policy. See [Runtime architecture](../architecture/runtime-architecture.md).
 
