@@ -4,15 +4,15 @@ title: "Historical Codex runtime proof"
 description: "Historical Codex runtime proof"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-ba9677fef0b3a23f71d07771
     resource: repo://crates/decodex-runtime/src/agent_capabilities.rs
   - id: openwiki-source-e9d609e612bb7e44111ec4b1
     resource: repo://crates/decodex-runtime/src/agent_integrations.rs
 generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T09:20:11.292Z
 ---
 
 

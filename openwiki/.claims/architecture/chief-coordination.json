@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0f85e124ad009e30ec6e798608dcf84a208148bf4c11016479b6fe739698351c",
+  "pageVersion": "sha256:956079996a75e71994fa8a3bdbdea3e1617bdaf9a0855f9815a583a035c49ace",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -45,10 +45,24 @@
           "version": "repo-file-v1:sha256:c5bbeb1ece1e6f2e72166872d99b2f0fcb2576544f534e332968e5292bb50518"
         }
       ]
+    },
+    {
+      "id": "claim_eb92c50003be45429c434a8109ff9656",
+      "statement": "Decodex checks work dependencies and dispatch state before recording dispatch intent and submitting a native turn; inbox inputs include user messages, async question answers, and application evidence with different roles.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1055-L1130",
+          "version": "repo-lines-v1:sha256:1b8ef88b40897024ef555464616b6f5f95d8b1b80afcc5d964e433c669464495:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4ZDE3MDczMDIxNDc4MGEyOTI5YTZjMjdhYmY5MGMwOGExNDkwZjVlYzcyYWZlZTYzNTNhZDU3NTdmOWZhNzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0OWUyMTdjMzVhYTMwMzZhZDlmN2Q1OGI4MGY5NWJmMzllOTlkZGFhZjRjOWQ3Mzg1ODZkZGZkNjYxNzk4YTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4ZmQyODE0MjUwZjk2MTU1ZDcxYjY1YjY4NDdjNTM0ZDYwN2EwY2M5N2Y5MmIzZmY5ZTQyMDdmNTFkMGYxOTEifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L861-L985",
+          "version": "repo-lines-v1:sha256:6f6904e3082222e16a9b8063bed03ad89893b7b6ab4849b8222b3f24f0cc3d21:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmN2VjZWM5NTg0NmM3MTE1MjkwMjUxZmE1YjAwZjk3MDE5ZWY3Njk2OWM4YjhkYjVlNjcxMDJlNzdhMDU0NmMzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MzNhMWI4NDVjYWUyY2IzOWM1YjNhMzgzZjUxMjQyZTljOWNmOWQwMzA1YjFiZTgwNzJkOTlmZGRhMmEyYTE5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5ZWZjNmY1ZmU2N2UzYjg3YzI3OWJiMTQxYjExOTFhOWQ0YWQwZmQ3N2Y5ZDllMTUzNzczM2I5NjY2ZTI3OGVkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyMmJkZTVkY2Q2NTZhN2QzMzNkYTIzMGY4ZTMxYzRjNDhkNWI0MWIzYmI5NGJkNmRiZWYxY2E0OGM1MDhiMWRhIn0"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:09:19.063Z"
+    "at": "2026-09-29T09:20:11.292Z"
   }
 }

@@ -5,7 +5,7 @@ description: "Chief coordination and native conversations"
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-09-28T02:09:19.063Z
+    at: 2026-09-29T09:20:11.292Z
 sources:
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
@@ -17,7 +17,7 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
   - id: openwiki-source-51332b5dcd4b194b62fec905
     resource: repo://database/src/agent_guardian.rs
-generated: { by: "codex", at: "2026-09-28T02:09:19.063Z" }
+generated: { by: "codex", at: "2026-09-29T09:20:11.292Z" }
 ---
 
 # Agent coordination and native conversations
@@ -37,6 +37,18 @@ Work, inbox events, dependencies, dispositions, process bindings, usage and pend
 Existing Agent threads retain their identity and native capabilities; resumption does not fork an older thread merely to attach a new tool set. Prior-boot process death requires positive kernel evidence. Optional metadata failures do not close the shared transport.
 
 When another client owns the conversation, sending is unavailable. The host rejects input when this state is known, without queuing a message. A race can leave previously accepted but unsent input; that input is retained as a user-decision record, not automatically resent when ownership becomes available. Availability checks do not create turns. Archive restoration is a separate, explicit desired-state operation.
+
+## Inbox ownership and native queues
+
+Keep the Decodex inbox as the dispatch owner for Decodex work. A native user-message queue is not a replacement for the work scheduler. Do not write the same input to both queues.
+
+Before dispatch, Decodex checks dependencies, work state and native thread ownership. It selects the execution settings, records the dispatch intent, then calls `turn/start`. The inbox also contains async question answers and external work evidence. These records have different input roles and recovery rules. A queued user message cannot represent all of them.
+
+The native `thread/queue` API stores user input for a native thread. Its start request does not carry Decodex dependencies, account selection or the local dispatch receipt. The upstream queue deletes an item after native admission reports `Started`. This deletion does not commit the Decodex receipt. See the [native queue implementation at the reviewed revision](https://github.com/openai/codex/blob/a397079287e6638b39dda329835350d93222681f/codex-rs/ext/queue/src/service.rs#L365-L445). This is source evidence, not a claim that Decodex has adopted or qualified that queue.
+
+The current decision is to retain the existing inbox and direct native turn admission. There is no data migration and no second native enqueue operation. Native conversations and their existing queues remain native-owned; this decision does not remove their data.
+
+A future change must define a cutover before moving pending messages. Stop local dispatch for the exact source, reconcile every uncertain send against native history, and map each eligible user input to one stable native submission ID. Keep async answers and application evidence under their existing owners. Delete a local pending record only after the exact native submission or admitted turn is observed. On rollback, reconcile native admission before restoring local dispatch. Do not replay uncertain input or treat queue deletion as proof of delivery. Such a change must also preserve dependency checks and per-message execution settings; the current native queue API is not a drop-in replacement.
 
 ## Native child requests and approvals
 

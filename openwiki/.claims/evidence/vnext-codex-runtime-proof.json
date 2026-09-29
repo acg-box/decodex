@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a32d5d6c4dec69bd4f2e7f3c1d3d1ec55a288d3e44c1e9cbd9875516440ac11c",
+  "pageVersion": "sha256:72610fa411b76038f7fe2ac9342679a867aa9f3909305ca496a8418b352c95e3",
   "claims": [
     {
       "id": "claim_b69de84d807640bcbd9808643772b613",
@@ -12,13 +12,13 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_integrations.rs",
-          "version": "repo-file-v1:sha256:b86b88adef8ec7ac4c5d512dcb0d2f77b15bf2003675b73edc0de0d61b0d8d72"
+          "version": "repo-file-v1:sha256:0c87851dac99151b222518ca86420f0dcf36d85e15c7c7ac44efc4c5974055eb"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "at": "2026-09-29T09:20:11.292Z"
   }
 }
