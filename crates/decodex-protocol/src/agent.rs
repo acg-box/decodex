@@ -333,7 +333,8 @@ pub enum AgentSandboxDto {
 	FullAccess,
 }
 
-/// A user-selected local file. Images use native vision input; other files are references.
+/// A user-selected local file or directory. Images use native vision input; other paths are
+/// references.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentAttachmentDto {

@@ -1749,12 +1749,12 @@ fn validate_attachments(
 	files: &[decodex_protocol::AgentAttachmentDto],
 ) -> Result<(), &'static str> {
 	if files.len() > 16 {
-		return Err("Attach at most 16 files");
+		return Err("Attach at most 16 files or folders");
 	}
 	for file in files {
 		let path = std::path::Path::new(file.path.as_str());
-		if !path.is_absolute() || !path.is_file() {
-			return Err("An attached file is no longer available");
+		if !path.is_absolute() || !(path.is_file() || (!file.image && path.is_dir())) {
+			return Err("An attached file or folder is no longer available");
 		}
 	}
 	Ok(())
@@ -1902,6 +1902,24 @@ pub(crate) async fn queue_start_for_native_test(
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn directory_references_remain_paths_and_cannot_be_sent_as_images() {
+		let directory = tempfile::tempdir().unwrap();
+		let path = directory.path().join("folder.png");
+		std::fs::create_dir(&path).unwrap();
+		let mut reference = decodex_protocol::AgentAttachmentDto {
+			path: decodex_protocol::ConversationWorkingDirectory::new(path.to_str().unwrap())
+				.unwrap(),
+			image: false,
+		};
+		assert!(super::validate_attachments(&[reference.clone()]).is_ok());
+		reference.image = true;
+		assert!(super::validate_attachments(&[reference.clone()]).is_err());
+		reference.image = false;
+		std::fs::remove_dir(&path).unwrap();
+		assert!(super::validate_attachments(&[reference]).is_err());
+	}
+
 	#[tokio::test]
 	async fn request_liveness_rejects_reused_rpc_identity_after_reconnect() {
 		use decodex_codex::app_server_client::AppServerClient;

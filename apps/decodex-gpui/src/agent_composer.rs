@@ -990,7 +990,7 @@ impl AgentSurface {
 	fn pick_attachments(&mut self, cx: &mut Context<Self>) {
 		let result = cx.prompt_for_paths(gpui::PathPromptOptions {
 			files: true,
-			directories: false,
+			directories: true,
 			multiple: true,
 			prompt: Some("Add to message".into()),
 		});
@@ -1005,16 +1005,17 @@ impl AgentSurface {
 	fn attach_paths(&mut self, paths: Vec<std::path::PathBuf>, cx: &mut Context<Self>) {
 		for path in paths {
 			if self.attachments.len() >= 16 {
-				self.feedback = "Attach at most 16 files.".into();
+				self.feedback = "Attach at most 16 files or folders.".into();
 				break;
 			}
-			let Some(path) = path.canonicalize().ok().filter(|p| p.is_file()) else {
-				self.feedback = "The attached file is not available.".into();
+			let Some(path) = path.canonicalize().ok().filter(|p| p.is_file() || p.is_dir()) else {
+				self.feedback = "The selected file or folder is not available.".into();
 				continue;
 			};
-			let image = path.extension().and_then(|s| s.to_str()).is_some_and(|s| {
-				["png", "jpg", "jpeg", "webp", "gif"].contains(&s.to_ascii_lowercase().as_str())
-			});
+			let image = path.is_file()
+				&& path.extension().and_then(|s| s.to_str()).is_some_and(|s| {
+					["png", "jpg", "jpeg", "webp", "gif"].contains(&s.to_ascii_lowercase().as_str())
+				});
 			let Ok(path) = ConversationWorkingDirectory::new(path.to_string_lossy().as_ref())
 			else {
 				continue;
@@ -1104,6 +1105,27 @@ fn context_ring(fraction: f32) -> impl IntoElement {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[gpui::test]
+	fn composer_accepts_directory_references_without_image_conversion(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let directory = tempfile::tempdir().unwrap();
+		let folder = directory.path().join("notes.png");
+		std::fs::create_dir(&folder).unwrap();
+		let file = directory.path().join("reference.txt");
+		std::fs::write(&file, "Fixture reference").unwrap();
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.attach_paths(vec![folder.clone(), file.clone(), folder.clone()], cx);
+			assert_eq!(s.attachments.len(), 2);
+			assert!(!s.attachments.iter().any(|attachment| attachment.image));
+			assert_eq!(
+				s.attachments[0].path.as_str(),
+				folder.canonicalize().unwrap().to_str().unwrap()
+			);
+		});
+	}
 
 	#[gpui::test]
 	fn delivered_messages_do_not_keep_the_composer_waiting_after_stop(
