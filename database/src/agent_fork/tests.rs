@@ -46,13 +46,21 @@ fn attempt(boundary: AgentForkBoundary) -> AgentForkAttempt {
 
 #[tokio::test]
 async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_source() {
-	for boundary in [AgentForkBoundary::BeforeInput, AgentForkBoundary::AfterTurn] {
+	for (boundary, before, expected) in [
+		(AgentForkBoundary::BeforeInput, "first", vec![]),
+		(AgentForkBoundary::AfterTurn, "first", vec!["first"]),
+		(AgentForkBoundary::BeforeInput, "second", vec!["first"]),
+		(AgentForkBoundary::AfterTurn, "second", vec!["first", "second"]),
+	] {
+		let expected: Vec<String> = expected.into_iter().map(String::from).collect();
 		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("fork.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 		seed(&store).await;
 		let original = store.get_agent_work_item("main".into()).await.unwrap();
-		let a = attempt(boundary);
+		let mut a = attempt(boundary);
+		a.source.before_turn_id = before.into();
+		assert_eq!(a.expected_turns(), Some(expected.as_slice()));
 		let saved = store.reserve_agent_fork(a.clone()).await.unwrap().unwrap();
 		assert_eq!(saved.state, "reserved");
 		assert!(
@@ -75,11 +83,7 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 		);
 		assert!(
 			store
-				.acknowledge_agent_fork(
-					a.clone(),
-					"source-native".into(),
-					a.expected_turns().unwrap().to_vec()
-				)
+				.acknowledge_agent_fork(a.clone(), "source-native".into(), expected.clone())
 				.await
 				.is_err()
 		);
@@ -113,11 +117,7 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 				.is_err()
 		);
 		let result = store
-			.acknowledge_agent_fork(
-				a.clone(),
-				"fork-native".into(),
-				a.expected_turns().unwrap().to_vec(),
-			)
+			.acknowledge_agent_fork(a.clone(), "fork-native".into(), expected.clone())
 			.await
 			.unwrap()
 			.unwrap();
@@ -130,11 +130,7 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 		assert!(store.agent_manager_ids().await.unwrap().contains(&"branch".into()));
 		assert_eq!(
 			store
-				.acknowledge_agent_fork(
-					a.clone(),
-					"fork-native".into(),
-					a.expected_turns().unwrap().to_vec()
-				)
+				.acknowledge_agent_fork(a.clone(), "fork-native".into(), expected.clone())
 				.await
 				.unwrap()
 				.unwrap(),
