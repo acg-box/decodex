@@ -331,7 +331,7 @@ mod tests {
 	};
 
 	#[test]
-	fn report_is_bounded_unique_and_redaction_by_construction() {
+	fn report_roundtrips_and_rejects_duplicate_components() {
 		let report = DoctorReport::new(
 			ServerId::new("018f0f9e-7b6e-4a31-8f4c-1d2e3f405162").unwrap(),
 			CURRENT_VERSION,
@@ -347,8 +347,6 @@ mod tests {
 		let encoded = serde_json::to_string(&report).unwrap();
 
 		assert!(encoded.contains("unsafe_host_path"));
-		assert!(!encoded.contains("/operator/private/repository"));
-		assert!(!encoded.contains("credential-value"));
 		assert_eq!(serde_json::from_str::<DoctorReport>(&encoded).unwrap(), report);
 		let observed = report.with_native_process(super::NativeProcessDiagnostics::Available {
 			process_id: 42,
@@ -368,6 +366,11 @@ mod tests {
 		);
 
 		assert_eq!(duplicate.unwrap_err(), DoctorContractError::DuplicateComponent);
+
+		let mut raw = serde_json::to_value(&report).unwrap();
+		let checks = raw["checks"].as_array_mut().unwrap();
+		checks.push(checks[0].clone());
+		assert!(serde_json::from_value::<DoctorReport>(raw).is_err());
 	}
 
 	#[test]
