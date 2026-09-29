@@ -17,7 +17,6 @@ mod async_projection;
 mod checklist;
 mod file_changes;
 mod guardian;
-mod install;
 pub(crate) mod misalignment;
 mod native_settings;
 pub(crate) mod native_subagents;
@@ -568,47 +567,32 @@ impl AgentCoordinator {
 		if payload["connectionId"].as_str() != Some(self.client.connection_identity()) {
 			return Err(AgentError::Rejected("Native request connection has changed.".into()));
 		}
-		let mut install_guard = None;
 		if payload["method"] == "mcpServer/elicitation/request" {
 			decodex_protocol::validate_mcp_response(&payload["params"], &response)
 				.map_err(AgentError::Rejected)?;
 			if response["action"] == "accept"
 				&& payload["params"]["_meta"]["codex_approval_kind"] == "tool_suggestion"
 			{
-				self.verify_install_suggestion_complete(event_id).await?;
-				install_guard = Some(self.install_request_guard(event_id).await?);
+				return Err(AgentError::Rejected(
+					"Configure this integration in Codex, then retry the task.".into(),
+				));
 			}
 		}
-		let guard = match install_guard {
-			Some(guard) => guard,
-			None => self
-				.client
-				.server_request_guard(
-					&request_id,
-					payload["method"].as_str().unwrap_or_default(),
-					&payload["params"],
-				)
-				.ok_or_else(|| {
-					AgentError::Rejected(
-						"Native request has changed or is no longer pending.".into(),
-					)
-				})?,
-		};
+		let guard = self
+			.client
+			.server_request_guard(
+				&request_id,
+				payload["method"].as_str().unwrap_or_default(),
+				&payload["params"],
+			)
+			.ok_or_else(|| {
+				AgentError::Rejected("Native request has changed or is no longer pending.".into())
+			})?;
 		// The transport consumes only the exact original request guard before writing.
 		self.client.respond_guarded(request_id.clone(), response, guard).await?;
 		self.pending_requests.remove(&request_id);
 		self.store.acknowledge_agent_request_event(event_id).await?;
 		Ok(())
-	}
-
-	pub(crate) async fn refresh_integrations(&self, work: &str) -> Result<bool, AgentError> {
-		let thread = self
-			.store
-			.get_agent_work_item(work.into())
-			.await?
-			.codex_thread_id
-			.ok_or_else(|| AgentError::Rejected("Task has no native thread".into()))?;
-		Ok(self.client.refresh_integrations(&thread).await?)
 	}
 
 	pub(crate) async fn add_resource_link(

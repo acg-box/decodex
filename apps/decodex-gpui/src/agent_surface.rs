@@ -29,7 +29,6 @@
 #[path = "agent_timeline.rs"] mod native_timeline;
 #[path = "agent_output_stream.rs"] mod output_stream;
 #[path = "agent_permissions.rs"] mod permissions;
-#[path = "agent_plugins.rs"] mod plugins;
 #[path = "agent_progress.rs"] mod progress;
 #[path = "agent_prompt_edit.rs"] mod prompt_edit;
 #[path = "agent_prompts.rs"] mod prompts;
@@ -109,10 +108,6 @@ pub(crate) struct AgentSurface {
 	native_history: native_timeline::Timeline,
 	integrations: Option<(String, Option<decodex_protocol::AgentIntegrationsResult>)>,
 	integrations_task: Option<Task<()>>,
-	integration_refresh_task: Option<Task<()>>,
-	integration_feedback: String,
-	mcp_login: Option<(String, String, decodex_protocol::McpLoginStatus)>,
-	mcp_login_task: Option<Task<()>>,
 	resource_mutation_task: Option<Task<()>>,
 	resource_feedback: String,
 	resource_title: Entity<ComposerInput>,
@@ -195,7 +190,6 @@ pub(crate) struct AgentSurface {
 	model_settings: model_settings::Panel,
 	live_reviewer: live_settings::Panel,
 	permission_profiles: permissions::Panel,
-	task_plugins: plugins::Panel,
 	task_models: models::Panel,
 	hook_settings: hooks::Panel,
 	app_exposure: app_exposure::Panel,
@@ -236,7 +230,6 @@ pub(crate) struct AgentSurface {
 	guardian: guardian::Panel,
 	archive: archive::Panel,
 	mcp_form_event: Option<i64>,
-	installation: install::Panel,
 	mcp_url_opened: Option<(i64, String)>,
 	mcp_inputs: std::collections::BTreeMap<String, Entity<ComposerInput>>,
 	mcp_answers: std::collections::BTreeMap<String, serde_json::Value>,
@@ -374,10 +367,6 @@ impl AgentSurface {
 			native_history: Default::default(),
 			integrations: None,
 			integrations_task: None,
-			integration_refresh_task: None,
-			integration_feedback: String::new(),
-			mcp_login: None,
-			mcp_login_task: None,
 			resource_mutation_task: None,
 			resource_feedback: String::new(),
 			resource_title: resource_field("Link title", "Resource title", cx),
@@ -457,7 +446,6 @@ impl AgentSurface {
 			model_settings: Default::default(),
 			live_reviewer: Default::default(),
 			permission_profiles: Default::default(),
-			task_plugins: Default::default(),
 			task_models: Default::default(),
 			hook_settings: Default::default(),
 			app_exposure: Default::default(),
@@ -494,7 +482,6 @@ impl AgentSurface {
 			guardian: Default::default(),
 			archive: Default::default(),
 			mcp_form_event: None,
-			installation: Default::default(),
 			mcp_url_opened: None,
 			mcp_inputs: Default::default(),
 			mcp_answers: Default::default(),
@@ -1204,10 +1191,6 @@ impl AgentSurface {
 		self.clear_usage_estimate();
 		self.integrations = None;
 		self.integrations_task = None;
-		self.integration_refresh_task = None;
-		self.integration_feedback.clear();
-		self.mcp_login = None;
-		self.mcp_login_task = None;
 		self.resource_mutation_task = None;
 		self.resource_feedback.clear();
 		self.resource_title.update(cx, |input, cx| input.clear(cx));
@@ -1220,7 +1203,6 @@ impl AgentSurface {
 		self.reset_model_settings();
 		self.reset_live_reviewer();
 		self.reset_permission_profiles();
-		self.reset_task_plugins();
 		self.reset_task_models();
 		self.reset_hook_settings();
 		self.reset_app_exposure();
@@ -1299,7 +1281,6 @@ impl AgentSurface {
 		self.guardian_disconnected();
 		self.archive_disconnected();
 		self.reset_native_goal();
-		self.installation_disconnected();
 		self.task = None;
 		self.state =
 			if self.snapshot.is_some() { LoadState::Stale } else { LoadState::Unavailable };
@@ -1363,7 +1344,6 @@ impl AgentSurface {
 			self.reset_model_settings();
 			self.reset_live_reviewer();
 			self.reset_permission_profiles();
-			self.reset_task_plugins();
 			self.reset_task_models();
 			self.reset_hook_settings();
 			self.reset_app_exposure();
@@ -1383,7 +1363,6 @@ impl AgentSurface {
 				self.invalidate_model_settings(&snapshot);
 				self.invalidate_live_reviewer_for_snapshot(&snapshot);
 				self.invalidate_permission_profiles(&snapshot);
-				self.invalidate_task_plugins(&snapshot);
 				self.invalidate_task_models(&snapshot);
 				self.invalidate_hook_settings(&snapshot);
 				self.invalidate_app_exposure(&snapshot);
@@ -1494,16 +1473,12 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn operation_notices(&self) -> Vec<(&'static str, String)> {
-		let mut notices: Vec<_> = [
-			("Review", &self.guardian.feedback),
-			("Installation", &self.installation.feedback),
-			("Tools and plugins", &self.integration_feedback),
-			("Task resources", &self.resource_feedback),
-		]
-		.into_iter()
-		.filter(|(_, detail)| !detail.is_empty())
-		.map(|(title, detail)| (title, detail.clone()))
-		.collect();
+		let mut notices: Vec<_> =
+			[("Review", &self.guardian.feedback), ("Task resources", &self.resource_feedback)]
+				.into_iter()
+				.filter(|(_, detail)| !detail.is_empty())
+				.map(|(title, detail)| (title, detail.clone()))
+				.collect();
 		let mut seen = std::collections::BTreeSet::new();
 		let histories =
 			self.history.iter().map(|(_, history)| history).chain(self.history_cache.values());
@@ -2327,7 +2302,6 @@ impl AgentSurface {
 									.child(self.model_settings_panel(item, cx))
 									.child(self.live_reviewer_panel(item, cx))
 									.child(self.permission_profiles_panel(item, cx))
-									.child(self.task_plugins_panel(item, cx))
 									.child(self.task_models_panel(item, cx))
 									.child(self.hook_settings_panel(item, cx))
 									.child(self.saved_app_settings_panel(item, cx))

@@ -82,10 +82,8 @@ pub use hooks::{
 	HookSettingsChange, HookSettingsReview, HookSettingsWrite, is_hook_settings_write,
 };
 mod live_reviews;
-mod plugin_install;
 mod server_requests;
 mod timeline;
-pub use plugin_install::{PluginInstallReceipt, PluginInstallTarget};
 use server_requests::ServerRequests;
 pub use server_requests::{HistoryGuard, ServerRequestGuard, invalidates_question_state};
 mod usage;
@@ -233,7 +231,6 @@ pub struct AppServerClient {
 	outbound: mpsc::Sender<Outbound>,
 	closed: watch::Sender<bool>,
 	server_requests: ServerRequests,
-	install_receipts: plugin_install::InstallReceipts,
 }
 
 /// Explicit process owner. Dropping a client or completing a turn never kills this process.
@@ -390,7 +387,6 @@ impl AppServerClient {
 				outbound,
 				closed,
 				server_requests,
-				install_receipts: Default::default(),
 			},
 			receiver,
 		)
@@ -426,7 +422,6 @@ impl AppServerClient {
 				outbound,
 				closed,
 				server_requests,
-				install_receipts: Default::default(),
 			},
 			receiver,
 		))
@@ -434,7 +429,6 @@ impl AppServerClient {
 
 	/// Revoke all clones without waiting. Already submitted requests remain ambiguous.
 	pub fn close(&self) {
-		self.install_receipts.clear();
 		self.server_requests.clear();
 		self.closed.send_replace(true);
 	}

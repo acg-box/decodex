@@ -104,8 +104,6 @@ impl AgentSurface {
 			self.clear_usage_estimate();
 			self.integrations = None;
 			self.integrations_task = None;
-			self.integration_refresh_task = None;
-			self.integration_feedback.clear();
 			self.resource_mutation_task = None;
 			self.resource_feedback.clear();
 		}
@@ -193,7 +191,6 @@ impl AgentSurface {
 		self.reset_model_settings();
 		self.reset_live_reviewer();
 		self.reset_permission_profiles();
-		self.reset_task_plugins();
 		self.reset_task_models();
 		self.reset_hook_settings();
 		self.reset_app_settings();

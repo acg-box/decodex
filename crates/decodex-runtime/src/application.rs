@@ -373,11 +373,10 @@ impl ServiceApplication {
 		})
 	}
 
-	async fn query_plugin_selection(&self, work: &str) -> QueryResultPayload {
-		QueryResultPayload::AgentPluginSelection(match &self.agent {
-			Some(agent) => agent.plugin_selection(work).await,
-			None => decodex_protocol::AgentPluginSelectionState::Unavailable,
-		})
+	async fn query_plugin_selection(&self, _work: &str) -> QueryResultPayload {
+		QueryResultPayload::AgentPluginSelection(
+			decodex_protocol::AgentPluginSelectionState::Unavailable,
+		)
 	}
 
 	async fn query_model_selection(&self, work: &str) -> QueryResultPayload {
@@ -4261,11 +4260,9 @@ impl ServiceApplication {
 					Some(agent) => agent.archive_state(work_id.as_str()).await,
 					None => decodex_protocol::AgentArchiveResult::Unavailable,
 				}),
-			QueryPayload::GetAgentInstallState { work_id, event_id } =>
-				QueryResultPayload::AgentInstallState(match &self.agent {
-					Some(agent) => agent.install_state(work_id.as_str(), *event_id).await,
-					None => decodex_protocol::AgentInstallState::Unavailable,
-				}),
+			QueryPayload::GetAgentInstallState { .. } => QueryResultPayload::AgentInstallState(
+				decodex_protocol::AgentInstallState::Unavailable,
+			),
 			_ => unreachable!("native lifecycle query dispatched above"),
 		}
 	}

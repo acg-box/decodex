@@ -7,7 +7,6 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[path = "tests/closing_resume.rs"] mod closing_resume;
 #[path = "tests/drain_rejection.rs"] mod drain_rejection;
 #[path = "tests/guardian.rs"] mod guardian;
-#[path = "tests/install.rs"] mod install;
 #[path = "tests/large_approval.rs"] mod large_approval;
 #[path = "tests/live_file_approval.rs"] mod live_file_approval;
 #[path = "tests/native_checklist.rs"] mod native_checklist;
