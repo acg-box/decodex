@@ -128,8 +128,10 @@ impl SettingsSurface {
 	}
 
 	pub(crate) fn refresh(&mut self, cx: &mut Context<Self>) {
+		self.refresh_launch_at_login();
 		self.refresh_power(cx);
 		self.synchronize(cx);
+		cx.notify();
 	}
 
 	fn apply_snapshot(&mut self, snapshot: DesktopSettingsSnapshot) {
@@ -881,6 +883,26 @@ mod tests {
 	use gpui::{TestAppContext, size};
 
 	use super::*;
+
+	#[gpui::test]
+	fn refresh_reads_external_login_item_changes(cx: &mut TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| {
+			SettingsSurface::new(DesktopSettingsController::production(), cx)
+		});
+		surface.update(visual, |s, cx| {
+			// Keep this test on the simulated login bridge, with no host power query.
+			s.power.pending = true;
+			for (enabled, expected) in
+				[(true, LaunchAtLoginState::Enabled), (false, LaunchAtLoginState::NotRegistered)]
+			{
+				s.menu_bar.set_launch_at_login(enabled).expect("simulate external system change");
+				s.refresh(cx);
+				assert_eq!(s.launch_at_login, expected);
+				assert_eq!(s.launch_at_login_detail.as_ref(), launch_at_login_detail(expected));
+				assert!(!s.notifications().iter().any(|(title, _)| *title == "Launch at login"));
+			}
+		});
+	}
 
 	#[gpui::test]
 	fn unloaded_preferences_do_not_look_disabled(cx: &mut TestAppContext) {
