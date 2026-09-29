@@ -21,6 +21,7 @@ fn catalog(efforts: Vec<ConversationReasoningEffort>) -> AgentCapabilitiesResult
 			efforts,
 			supports_fast: false,
 			available_cyber_programs: None,
+			specialty: None,
 			supports_images: true,
 			availability: None,
 			upgrade: None,

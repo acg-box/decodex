@@ -1058,6 +1058,9 @@ pub struct AgentModelDto {
 	/// Known caller-specific catalog programs; None means metadata was not supplied.
 	/// This observation never grants access or selects a program for inference.
 	pub available_cyber_programs: Option<Vec<String>>,
+	/// Provider-defined model specialty. Informational; does not change task permissions.
+	#[serde(default)]
+	pub specialty: Option<String>,
 	/// The provider accepts image input for this model.
 	pub supports_images: bool,
 	/// Provider availability information for the current account, when supplied.

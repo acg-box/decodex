@@ -1475,6 +1475,7 @@ impl AgentSurface {
 						service_tiers: vec![],
 						default_service_tier: None,
 						available_cyber_programs: None,
+						specialty: None,
 						supports_images: true,
 						availability: None,
 						upgrade: None,

@@ -325,7 +325,7 @@ impl AgentSurface {
 			let selected = model.model.clone();
 			choices = choices.child(mcp_button(
 				format!("task-model-{index}"),
-				model.name.clone(),
+				super::model_settings::model_choice_label(model),
 				false,
 				cx,
 				move |s, cx| s.choose_task_model(selected.clone(), cx),

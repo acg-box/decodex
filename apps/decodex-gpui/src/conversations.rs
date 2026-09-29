@@ -3488,6 +3488,7 @@ pub(crate) mod tests {
 			default_effort: Some(ConversationReasoningEffort::High),
 			supports_fast: false,
 			available_cyber_programs: None,
+			specialty: None,
 			supports_images: true,
 			availability: None,
 			upgrade: None,
