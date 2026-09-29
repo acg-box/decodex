@@ -379,53 +379,55 @@ pub(super) fn panel(shell: &Shell, cx: &mut Context<Shell>) -> Option<AnyElement
 		},
 	}
 	if let Some((descriptor, _)) = state.confirmation {
-		content = content.child(
-			div()
-				.flex()
-				.flex_col()
-				.gap_2()
-				.child(format!(
-					"Use one Reset Card for {alias}, expiring {}? This cannot be undone.",
-					descriptor
-						.expires_at_unix_seconds()
-						.map(date)
-						.unwrap_or_else(|| "Never".into())
-				))
-				.child(
-					div()
-						.flex()
-						.gap_2()
-						.child(
-							account_row_action(
-								"reset-confirm",
-								0,
-								"Confirm use of one Reset Card",
-								"Confirm · use 1 card",
-								true,
-							)
-							.on_click(cx.listener(|shell, _, _, cx| shell.confirm_reset_card(cx))),
-						)
-						.child(
-							account_row_action(
-								"reset-cancel",
-								0,
-								"Cancel Reset Card selection",
-								"Cancel",
-								true,
-							)
-							.debug_selector(|| "reset-cancel".into())
-							.on_click(cx.listener(
-								|shell, _, _, cx| {
-									shell.reset_cards.confirmation = None;
-									cx.notify();
-								},
-							)),
-						),
-				),
-		);
+		content = content.child(confirmation_panel(alias, descriptor, cx));
 	}
 	Some(content.into_any_element())
 }
+fn confirmation_panel(
+	alias: &str,
+	descriptor: ResetCardDescriptorDto,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	div()
+		.flex()
+		.flex_col()
+		.gap_2()
+		.child(format!(
+			"Use one Reset Card for {alias}, expiring {}? This cannot be undone.",
+			descriptor.expires_at_unix_seconds().map(date).unwrap_or_else(|| "Never".into())
+		))
+		.child(
+			div()
+				.flex()
+				.gap_2()
+				.child(
+					account_row_action(
+						"reset-confirm",
+						0,
+						"Confirm use of one Reset Card",
+						"Confirm · use 1 card",
+						true,
+					)
+					.on_click(cx.listener(|shell, _, _, cx| shell.confirm_reset_card(cx))),
+				)
+				.child(
+					account_row_action(
+						"reset-cancel",
+						0,
+						"Cancel Reset Card selection",
+						"Cancel",
+						true,
+					)
+					.debug_selector(|| "reset-cancel".into())
+					.on_click(cx.listener(|shell, _, _, cx| {
+						shell.reset_cards.confirmation = None;
+						cx.notify();
+					})),
+				),
+		)
+		.into_any_element()
+}
+
 fn panel_header(alias: &str, busy: bool, cx: &mut Context<Shell>) -> AnyElement {
 	div()
 		.flex()
