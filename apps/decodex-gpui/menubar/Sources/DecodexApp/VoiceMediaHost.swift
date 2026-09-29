@@ -346,7 +346,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
         let capture;
         let failureMessage = "The microphone could not open. Check its connection and Decodex microphone permission in System Settings.";
         try {
-          connectionTimeout = setTimeout(() => { if (active === generation) { stop(); emit({type:'error',message:'The microphone did not open. Check its connection and try again.'}); } }, 15000);
+          connectionTimeout = setTimeout(() => { if (active === generation) { stop(); emit({type:'error',message:'The audio startup timed out. Check the input device and try again.'}); } }, 15000);
           const knownInputs = input ? await navigator.mediaDevices.enumerateDevices() : [];
           if (active !== generation) return;
           const preferred = knownInputs.find(d => d.kind === 'audioinput' && (d.label === input || d.label.startsWith(input + ' (')));
@@ -368,7 +368,6 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
           if (active !== generation) { capture.getTracks().forEach(track => track.stop()); return; }
           microphone = capture;
           capture.getAudioTracks().forEach(track => track.enabled = !muted);
-          clearTimeout(connectionTimeout);
           failureMessage = "The audio runtime could not initialize. Check the input device and start a new call.";
           if (dictation) {
             audioContext = new AudioContext({sampleRate:24000});
@@ -386,6 +385,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
             source.connect(processor); processor.connect(audioContext.destination);
             await audioContext.resume();
             if (active !== generation) return;
+            clearTimeout(connectionTimeout);
             emit({type:'dictation_ready'}); return;
           }
           audioContext = new AudioContext();
@@ -395,6 +395,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
           source.connect(analyser); analyser.connect(silent); silent.connect(audioContext.destination);
           await audioContext.resume();
           if (active !== generation) return;
+          clearTimeout(connectionTimeout);
           levelTimer = setInterval(() => {
             const values = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(values);
             emit({type:'level',level:Math.min(1,Math.sqrt(values.reduce((sum,v)=>sum+v*v,0)/values.length)*5)});
