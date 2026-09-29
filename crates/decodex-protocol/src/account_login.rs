@@ -382,7 +382,7 @@ mod tests {
 	#[test]
 	fn waiting_status_requires_exactly_one_ui_payload() {
 		let session_id = entity("018f0f9e-7b6e-4a31-8f4c-1d2e3f405162");
-		let invalid = AccountLoginStatus {
+		let mut status = AccountLoginStatus {
 			session_id,
 			state: AccountLoginState::WaitingForBrowser,
 			prompt: None,
@@ -390,22 +390,45 @@ mod tests {
 			failure: None,
 			resolved_account_id: None,
 		};
-		assert_eq!(invalid.validate(), Err(AccountLoginContractError::InvalidStatus));
+		assert_eq!(status.validate(), Err(AccountLoginContractError::InvalidStatus));
+		status.authorization_url =
+			Some(AccountLoginUrl::new("https://auth.openai.com/fixture").unwrap());
+		assert_eq!(status.validate(), Ok(()));
+		status.prompt = Some(AccountLoginPrompt {
+			verification_url: AccountLoginUrl::new("https://auth.openai.com/device").unwrap(),
+			user_code: WireText::new("ABCD-EFGH").unwrap(),
+		});
+		assert_eq!(status.validate(), Err(AccountLoginContractError::InvalidStatus));
+		status.authorization_url = None;
+		assert_eq!(status.validate(), Ok(()));
 	}
 
 	#[test]
 	fn terminal_status_cannot_retain_authorization_material() {
-		let status = AccountLoginStatus {
-			session_id: entity("018f0f9e-7b6e-4a31-8f4c-1d2e3f405162"),
-			state: AccountLoginState::Failed,
-			prompt: None,
-			authorization_url: Some(
-				AccountLoginUrl::new("https://auth.openai.com/fixture").expect("fixture URL"),
-			),
-			failure: Some(AccountLoginFailure::LoginFailed),
-			resolved_account_id: None,
-		};
-		assert_eq!(status.validate(), Err(AccountLoginContractError::InvalidStatus));
+		for state in
+			[AccountLoginState::Completed, AccountLoginState::Failed, AccountLoginState::Cancelled]
+		{
+			let mut status = AccountLoginStatus {
+				session_id: entity("018f0f9e-7b6e-4a31-8f4c-1d2e3f405162"),
+				state,
+				prompt: None,
+				authorization_url: None,
+				failure: (state == AccountLoginState::Failed)
+					.then_some(AccountLoginFailure::LoginFailed),
+				resolved_account_id: (state == AccountLoginState::Completed)
+					.then(|| entity("038f0f9e-7b6e-4a31-8f4c-1d2e3f405164")),
+			};
+			assert_eq!(status.validate(), Ok(()));
+			status.authorization_url =
+				Some(AccountLoginUrl::new("https://auth.openai.com/fixture").unwrap());
+			assert_eq!(status.validate(), Err(AccountLoginContractError::InvalidStatus));
+			status.authorization_url = None;
+			status.prompt = Some(AccountLoginPrompt {
+				verification_url: AccountLoginUrl::new("https://auth.openai.com/device").unwrap(),
+				user_code: WireText::new("ABCD-EFGH").unwrap(),
+			});
+			assert_eq!(status.validate(), Err(AccountLoginContractError::InvalidStatus));
+		}
 	}
 
 	#[test]
@@ -418,5 +441,8 @@ mod tests {
 		)
 		.expect("encode boundary URL");
 		assert!(serde_json::from_str::<AccountLoginUrl>(&encoded).is_ok());
+		let oversized =
+			serde_json::to_string(&"x".repeat(MAX_ACCOUNT_LOGIN_URL_BYTES + 1)).unwrap();
+		assert!(serde_json::from_str::<AccountLoginUrl>(&oversized).is_err());
 	}
 }
