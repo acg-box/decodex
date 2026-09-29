@@ -42,10 +42,7 @@ pub use self::{
 		CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion,
 		ProviderIdentity,
 	},
-	blob::{
-		BlobHash, BlobInventoryCursor, BlobInventoryEntry, BlobInventoryPage, BlobStore,
-		MAX_BLOB_BYTES,
-	},
+	blob::{BlobHash, BlobStore, MAX_BLOB_BYTES},
 	cache::{CacheLimits, MAX_CACHE_BYTES, MAX_CACHE_ENTRIES, MAX_CACHE_ENTRY_BYTES},
 	config::{
 		CacheConfig, ConfigError, DecodexClientConfig, DecodexConfig, LocalProfile,
