@@ -89,7 +89,80 @@ pub fn is_native_goal_update(params: &Value) -> bool {
 			.is_none_or(|value| value.is_null() || value.as_i64().is_some_and(|budget| budget > 0))
 }
 
+/// Only the fixed native goal attachment layout can cross the retained bridge.
+pub fn is_goal_attachment_write(method: &str, params: &Value) -> bool {
+	let Some(path) = params["path"].as_str().map(std::path::Path::new) else {
+		return false;
+	};
+	if !path.is_absolute()
+		|| path.components().any(|c| matches!(c, std::path::Component::ParentDir))
+	{
+		return false;
+	}
+	let directory = if method == "fs/writeFile" {
+		if path.file_name().and_then(|s| s.to_str()) != Some("goal-objective.md") {
+			return false;
+		}
+		let Some(parent) = path.parent() else { return false };
+		parent
+	} else {
+		path
+	};
+	let valid_directory = directory
+		.file_name()
+		.and_then(|s| s.to_str())
+		.is_some_and(|id| decodex_core::AccountOperationId::new(id).is_ok())
+		&& directory.parent().and_then(|p| p.file_name()).and_then(|s| s.to_str())
+			== Some("attachments");
+	valid_directory
+		&& match method {
+			"fs/createDirectory" =>
+				params.as_object().is_some_and(|p| p.len() == 2) && params["recursive"] == true,
+			"fs/writeFile" =>
+				params.as_object().is_some_and(|p| p.len() == 2)
+					&& params["dataBase64"].as_str().is_some_and(|s| s.len() <= 128 * 1024),
+			_ => false,
+		}
+}
+
 impl AppServerClient {
+	/// Keep long objective text in the native attachment layout, without truncation.
+	pub async fn materialize_goal_objective(
+		&self,
+		text: &str,
+		guard: HistoryGuard,
+	) -> Result<String, ClientError> {
+		if text.trim().is_empty() || text.len() > 64 * 1024 {
+			return Err(ClientError::InvalidFrame);
+		}
+		if text.chars().count() <= 4000 {
+			return Ok(text.into());
+		}
+		let home = self.native_home.get().ok_or(ClientError::InvalidFrame)?;
+		let id = decodex_core::AccountOperationId::generate().map_err(|_| ClientError::Io)?;
+		let directory = home.join("attachments").join(id.as_str());
+		let path = directory.join("goal-objective.md");
+		let path = path.to_str().ok_or(ClientError::InvalidFrame)?;
+		let reference = format!("Read the Codex goal objective file at {path} before continuing.");
+		if reference.chars().count() > 4000 {
+			return Err(ClientError::InvalidFrame);
+		}
+		self.request_with_history(
+			"fs/createDirectory",
+			json!({"path":directory,"recursive":true}),
+			guard.clone(),
+		)
+		.await?;
+		use base64::{Engine as _, engine::general_purpose::STANDARD};
+		self.request_with_history(
+			"fs/writeFile",
+			json!({"path":path,"dataBase64":STANDARD.encode(text)}),
+			guard,
+		)
+		.await?;
+		Ok(reference)
+	}
+
 	/// Apply one caller-authorized goal edit once, using the current native connection guard.
 	/// Native policy remains authoritative for configured budget limits and scheduling.
 	pub async fn update_thread_goal(
@@ -250,6 +323,28 @@ mod edit_tests {
 			Err(ClientError::Remote(_))
 		));
 		assert_eq!(client.thread_goal(thread).await.unwrap().unwrap().token_budget, Some(100));
+		let long_text = "Long goal objective line.\n".repeat(700);
+		let reference = client.materialize_goal_objective(&long_text, guard()).await.unwrap();
+		let file = reference
+			.strip_prefix("Read the Codex goal objective file at ")
+			.unwrap()
+			.strip_suffix(" before continuing.")
+			.unwrap();
+		assert!(
+			std::path::Path::new(file)
+				.starts_with(home.path().canonicalize().unwrap().join("attachments"))
+		);
+		assert_eq!(std::fs::read_to_string(file).unwrap(), long_text);
+		let edited = client
+			.update_thread_goal(
+				thread,
+				&NativeGoalUpdate { objective: Some(reference.clone()), ..Default::default() },
+				guard(),
+			)
+			.await
+			.unwrap();
+		assert_eq!(edited.objective, reference);
+		assert_eq!(edited.status, NativeThreadGoalStatus::Paused);
 		child.kill().await.unwrap();
 		child.wait().await.unwrap();
 	}
