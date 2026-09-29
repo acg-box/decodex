@@ -1256,7 +1256,7 @@ impl AgentCoordinator {
 		if !extras.task_references.is_empty()
 			&& (!self.is_manager(id).await? || self.store.agent_tool_version(id.into()).await? < 3)
 		{
-			return Err(AgentError::Rejected("Task history tools are unavailable in this running turn; send after the manager upgrades.".into()));
+			return Err(AgentError::Rejected("This conversation does not support task references. Remove the references to send the message.".into()));
 		}
 
 		if self.store.agent_misalignment(id.into()).await?.is_some() {
