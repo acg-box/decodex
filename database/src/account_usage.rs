@@ -226,9 +226,25 @@ mod tests {
 			})
 			.await
 			.unwrap();
-		let invalid = AccountQuotaWindowObservation { duration_minutes: 300, ..window };
+		assert_window_write_rolls_back(&reopened, account, successor).await;
+	}
+
+	async fn assert_window_write_rolls_back(
+		store: &SqliteStore,
+		account: AccountId,
+		successor: AccountUsageObservation,
+	) {
+		let first = AccountQuotaWindowObservation {
+			duration_minutes: 300,
+			observed_at_unix_micros: Some(400),
+			disposition: AccountQuotaDisposition::Current(
+				AccountQuotaWindow::new(300, 25, i64::MAX).unwrap(),
+			),
+		};
+		// The first window writes successfully; the second has the wrong duration.
+		let invalid = first;
 		assert!(
-			reopened
+			store
 				.observe_account_usage(
 					&account,
 					AccountUsageObservation {
@@ -236,17 +252,24 @@ mod tests {
 						ordinary_usage_allowed: Some(true),
 						..successor
 					},
-					[Some(invalid), None]
+					[Some(first), Some(invalid)]
 				)
 				.await
 				.is_err()
 		);
-		reopened
+		store
 			.run(move |connection| {
 				assert_eq!(
 					read_usage_observation(connection, &account)?,
 					Some(successor),
 					"invalid window rolls back the entire observation"
+				);
+				let count: i64 = connection
+					.query_row("SELECT count(*) FROM account_quota_facts", [], |row| row.get(0))
+					.unwrap();
+				assert_eq!(
+					count, 0,
+					"the first window must roll back with the rejected second window"
 				);
 				Ok(())
 			})
