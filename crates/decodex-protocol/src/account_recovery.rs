@@ -202,6 +202,7 @@ mod tests {
 			service_tiers: Vec::new(),
 			default_service_tier: None,
 			available_cyber_programs: None,
+			specialty: None,
 			supports_images: false,
 			availability: None,
 			upgrade: None,
