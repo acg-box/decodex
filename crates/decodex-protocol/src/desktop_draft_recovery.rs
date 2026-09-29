@@ -309,6 +309,7 @@ mod tests {
 			review_token: crate::WireText::new("b".repeat(64)).unwrap(),
 			receipt_id: None,
 			confirmation_key: None,
+			fork: None,
 			pending_send: None,
 			handback_pending: false,
 			input,

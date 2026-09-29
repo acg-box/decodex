@@ -17,6 +17,17 @@ impl Render for View {
 
 #[gpui::test]
 fn confirmation_waits_for_disk_and_keeps_the_main_composer(cx: &mut gpui::TestAppContext) {
+	run_confirmation(cx, None);
+}
+#[gpui::test]
+fn branch_confirmation_saves_choice_before_native_dispatch(cx: &mut gpui::TestAppContext) {
+	run_confirmation(cx, Some(PromptForkBoundary::BeforeInput));
+}
+#[gpui::test]
+fn branch_after_turn_needs_no_input_preflight(cx: &mut gpui::TestAppContext) {
+	run_confirmation(cx, Some(PromptForkBoundary::AfterTurn));
+}
+fn run_confirmation(cx: &mut gpui::TestAppContext, boundary: Option<PromptForkBoundary>) {
 	cx.background_executor.allow_parking();
 	let (service, profile, _) = super::super::tests::profiles();
 	let directory = tempfile::tempdir().unwrap();
@@ -34,7 +45,7 @@ fn confirmation_waits_for_disk_and_keeps_the_main_composer(cx: &mut gpui::TestAp
 		tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
 			let listener = tokio::net::UnixListener::from_std(listener).unwrap();
 			tokio::time::timeout(std::time::Duration::from_secs(10), async {
-				for step in 0..4 {
+				for step in (0..4).filter(|step| boundary != Some(PromptForkBoundary::AfterTurn) || *step != 2) {
 					let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap().0).await.unwrap();
 					let _ = socket.next().await;
 					for message in [ServerMessage::Welcome(ServerWelcome { version: CURRENT_VERSION, server_id: ServerId::new(SERVER).unwrap(), instance_id: None, cursor: Cursor(0), reconnect: ReconnectMode::Snapshot }), ServerMessage::Snapshot(SnapshotEnvelope { version: CURRENT_VERSION, server_id: ServerId::new(SERVER).unwrap(), cursor: Cursor(0), items: vec![] })] {
@@ -53,6 +64,16 @@ fn confirmation_waits_for_disk_and_keeps_the_main_composer(cx: &mut gpui::TestAp
 									assert_eq!(saved.confirmation_key.as_ref(), Some(&command.idempotency_key));
 									assert!(saved.handback_pending && saved.receipt_id.is_none());
 									assert_eq!(saved.input.parts()[0]["text"], "Original retained input");
+									assert_eq!(disk.profiles[&scope].composer.text, "Unrelated main input");
+									work_id
+								},
+								AgentActionDto::ForkPromptEdit { work_id, review_token, target_work_id, boundary: actual, .. } if step == 3 => {
+									assert_eq!(Some(actual), boundary);
+									let disk = DesktopDraftDocument::decode(&inspect.load().unwrap().payload).unwrap();
+									let saved = &disk.profiles[&scope].prompt_edits[review_token.as_str()];
+									assert_eq!(saved.confirmation_key.as_ref(), Some(&command.idempotency_key));
+									assert_eq!(saved.fork, Some(PromptForkIntent {target_work_id, boundary: actual}));
+									assert!(saved.handback_pending && saved.receipt_id.is_none());
 									assert_eq!(disk.profiles[&scope].composer.text, "Unrelated main input");
 									work_id
 								},
@@ -104,7 +125,14 @@ fn confirmation_waits_for_disk_and_keeps_the_main_composer(cx: &mut gpui::TestAp
 		});
 		View { surface, work }
 	});
-	for button in ["prompt-confirm-review", "prompt-confirm-apply"] {
+	for button in [
+		"prompt-confirm-review",
+		match boundary {
+			None => "prompt-confirm-apply",
+			Some(PromptForkBoundary::BeforeInput) => "prompt-confirm-branch",
+			Some(PromptForkBoundary::AfterTurn) => "prompt-confirm-after",
+		},
+	] {
 		let mut bounds = None;
 		for _ in 0..200 {
 			visual.run_until_parked();

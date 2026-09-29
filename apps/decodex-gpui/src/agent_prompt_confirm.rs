@@ -8,6 +8,24 @@ impl AgentSurface {
 		expected: DesktopPromptEditDraft,
 		cx: &mut Context<Self>,
 	) {
+		self.confirm_prompt_choice(expected, None, cx);
+	}
+
+	pub(super) fn confirm_prompt_branch(
+		&mut self,
+		expected: DesktopPromptEditDraft,
+		boundary: decodex_protocol::PromptForkBoundary,
+		cx: &mut Context<Self>,
+	) {
+		self.confirm_prompt_choice(expected, Some(boundary), cx);
+	}
+
+	fn confirm_prompt_choice(
+		&mut self,
+		expected: DesktopPromptEditDraft,
+		boundary: Option<decodex_protocol::PromptForkBoundary>,
+		cx: &mut Context<Self>,
+	) {
 		if !self.prompt_confirmation_eligible(&expected) {
 			return;
 		}
@@ -18,11 +36,18 @@ impl AgentSurface {
 		let pending = if resuming {
 			expected.clone()
 		} else {
-			let Ok(pending) = expected.begin_confirmation(
+			let Ok(mut pending) = expected.begin_confirmation(
 				IdempotencyKey::new(unique_command()).expect("bounded command identity"),
 			) else {
 				return;
 			};
+			if let Some(boundary) = boundary {
+				pending.fork = Some(decodex_protocol::PromptForkIntent {
+					target_work_id: EntityId::new(unique_command())
+						.expect("bounded branch identity"),
+					boundary,
+				});
+			}
 			pending
 		};
 		let execution = self.draft_profiles.execution.choice(expected.work_id.as_str());
@@ -132,8 +157,8 @@ impl AgentSurface {
 			Ok(Ok(AgentCommandResponse::Rejected { .. })) => self
 				.cancel_unsent_prompt_confirmation(
 					pending,
-					false,
-					"Confirmation was rejected. Draft retained; review the history again.",
+					resuming,
+					"Confirmation was rejected. Draft retained; read any saved receipt before reviewing again.",
 					cx,
 				),
 			Ok(Err(_)) if !resuming => self.cancel_unsent_prompt_confirmation(
@@ -240,6 +265,7 @@ impl AgentSurface {
 			&& current.receipt_id.is_none()
 		{
 			current.confirmation_key = None;
+			current.fork = None;
 			current.handback_pending = false;
 			if self.stage_prompt_editor(current.clone(), cx).is_ok() {
 				self.prompt_edit.draft = Some(current);
@@ -282,31 +308,48 @@ async fn confirm_worker(
 	),
 ) {
 	let (checked, permitted, completed) = channels;
-	let result = match readable_local_media(&worker_draft.input) {
-		Err(message) => Err(message),
-		Ok(()) => client
-			.preflight_prompt_input(
-				worker_draft.work_id.clone(),
-				worker_draft.thread_id.clone(),
-				&worker_draft.input,
-				&execution,
-			)
-			.await
-			.map_err(|_| "Input or thread settings could not be checked. History was not changed."),
+	let result = if worker_draft
+		.fork
+		.as_ref()
+		.is_some_and(|fork| fork.boundary == decodex_protocol::PromptForkBoundary::AfterTurn)
+	{
+		Ok(()) // No input is sent or restored for a branch after a completed turn.
+	} else {
+		match readable_local_media(&worker_draft.input) {
+			Err(message) => Err(message),
+			Ok(()) => client
+				.preflight_prompt_input(
+					worker_draft.work_id.clone(),
+					worker_draft.thread_id.clone(),
+					&worker_draft.input,
+					&execution,
+				)
+				.await
+				.map_err(
+					|_| "Input or thread settings could not be checked. History was not changed.",
+				),
+		}
 	};
 	let qualified = result.is_ok();
 	if checked.send(result).is_err() || !qualified || permitted.await.is_err() {
 		return;
 	}
+	let action = match worker_draft.fork {
+		Some(fork) => AgentActionDto::ForkPromptEdit {
+			work_id: worker_draft.work_id,
+			thread_id: worker_draft.thread_id,
+			review_token: worker_draft.review_token,
+			target_work_id: fork.target_work_id,
+			boundary: fork.boundary,
+		},
+		None => AgentActionDto::ConfirmPromptEdit {
+			work_id: worker_draft.work_id,
+			thread_id: worker_draft.thread_id,
+			review_token: worker_draft.review_token,
+		},
+	};
 	let result = client
-		.execute(
-			AgentActionDto::ConfirmPromptEdit {
-				work_id: worker_draft.work_id,
-				thread_id: worker_draft.thread_id,
-				review_token: worker_draft.review_token,
-			},
-			worker_draft.confirmation_key.expect("retained confirmation identity"),
-		)
+		.execute(action, worker_draft.confirmation_key.expect("retained confirmation identity"))
 		.await;
 	let _ = completed.send(result);
 }

@@ -2,6 +2,7 @@
 use super::*;
 use decodex_protocol::{DesktopPromptEditDraft, PromptDraft, PromptEditPhase};
 #[path = "agent_prompt_confirm.rs"] mod confirmation;
+#[path = "agent_prompt_fork.rs"] mod fork;
 #[path = "agent_prompt_handback.rs"] mod handback;
 #[path = "agent_prompt_remove.rs"] mod removal;
 #[path = "agent_prompt_send.rs"] mod sending;
@@ -72,6 +73,7 @@ impl AgentSurface {
 			review_token: WireText::new("a".repeat(64)).expect("fixture review token"),
 			receipt_id: None,
 			confirmation_key: None,
+			fork: None,
 			pending_send: None,
 			handback_pending: false,
 			input,
@@ -175,6 +177,10 @@ impl AgentSurface {
 	}
 
 	fn recover_prompt_editor(&mut self, expected: DesktopPromptEditDraft, cx: &mut Context<Self>) {
+		if expected.fork.is_some() {
+			self.recover_prompt_branch(expected, cx);
+			return;
+		}
 		if self.prompt_edit.task.is_some()
 			|| !self.prompt_editor_source_current()
 			|| self.prompt_edit.draft.as_ref() != Some(&expected)
@@ -399,6 +405,7 @@ impl AgentSurface {
 								receipt_id: None,
 								handback_pending: false,
 								confirmation_key: None,
+								fork: None,
 			pending_send: None,
 								input,
 							},
@@ -610,7 +617,7 @@ impl AgentSurface {
 					if draft.confirmation_key.is_some() {
 						"Continue saved confirmation…"
 					} else {
-						"Confirm history edit…"
+						"Choose edit or branch…"
 					}
 					.into(),
 					move |s, cx| {
@@ -627,10 +634,60 @@ impl AgentSurface {
 			);
 		}
 		if let Some(expected) = &self.prompt_edit.confirmation {
-			let expected = expected.clone();
-			panel = panel.child("Remove the selected turn and all later turns? Workspace file changes remain. The edited draft will be kept and will not be sent.")
-				.child(self.workspace_action("prompt-confirm-apply".into(), "Remove turns and keep draft".into(), move |s, cx| s.confirm_prompt_editor(expected.clone(), cx), cx))
-				.child(self.workspace_action("prompt-confirm-cancel".into(), "Cancel".into(), |s, cx| { s.prompt_edit.confirmation = None; cx.notify(); }, cx));
+			let original = expected.clone();
+			let branch = expected.clone();
+			let after = expected.clone();
+			panel = panel.child("Choose where to continue. A new branch keeps the original conversation unchanged. Editing the original removes the selected turn and all later turns; workspace file changes remain. Nothing is sent automatically.");
+			if expected.confirmation_key.is_none() {
+				panel = panel
+					.child(self.workspace_action(
+						"prompt-confirm-branch".into(),
+						"Edit in new branch".into(),
+						move |s, cx| {
+							s.confirm_prompt_branch(
+								branch.clone(),
+								decodex_protocol::PromptForkBoundary::BeforeInput,
+								cx,
+							)
+						},
+						cx,
+					))
+					.child(self.workspace_action(
+						"prompt-confirm-after".into(),
+						"Branch after this turn".into(),
+						move |s, cx| {
+							s.confirm_prompt_branch(
+								after.clone(),
+								decodex_protocol::PromptForkBoundary::AfterTurn,
+								cx,
+							)
+						},
+						cx,
+					));
+			}
+			panel = panel
+				.child(
+					self.workspace_action(
+						"prompt-confirm-apply".into(),
+						if expected.confirmation_key.is_some() {
+							"Continue saved choice"
+						} else {
+							"Remove turns from original and keep draft"
+						}
+						.into(),
+						move |s, cx| s.confirm_prompt_editor(original.clone(), cx),
+						cx,
+					),
+				)
+				.child(self.workspace_action(
+					"prompt-confirm-cancel".into(),
+					"Cancel".into(),
+					|s, cx| {
+						s.prompt_edit.confirmation = None;
+						cx.notify();
+					},
+					cx,
+				));
 		}
 		let expected = draft.clone();
 		panel = panel.child(self.workspace_action(
@@ -735,6 +792,7 @@ mod tests {
 					receipt_id: None,
 					handback_pending: false,
 					confirmation_key: None,
+					fork: None,
 					pending_send: None,
 					input: PromptDraft::new(vec![
 						serde_json::json!({"type":"text","text":"Original"}),

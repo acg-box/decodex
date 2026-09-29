@@ -596,6 +596,39 @@ impl AgentClient {
 		}
 	}
 
+	/// Read an exact branch receipt without replaying native creation.
+	pub async fn prompt_fork(
+		&self,
+		work: EntityId,
+		review: crate::WireText,
+	) -> Result<crate::PromptForkResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"agent-prompt-fork",
+				QueryPayload::GetAgentPromptFork {
+					work_id: work.clone(),
+					review_token: review.clone(),
+				},
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::AgentPromptFork(result) => {
+				if let crate::PromptForkResult::Available(Some(status)) = &result {
+					if status.work_id != work || status.review_token != review {
+						return Err(ClientFailure::ProtocolMalformed);
+					}
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read the existing recap; this method never starts a model request.
 	pub async fn recap(&self, work_id: EntityId) -> Result<crate::TaskRecapStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
@@ -1974,6 +2007,7 @@ impl AgentClient {
 fn agent_action_work_id(action: &crate::AgentActionDto) -> &EntityId {
 	match action {
 		crate::AgentActionDto::AcknowledgeAppUiCall { work_id, .. } => work_id,
+		crate::AgentActionDto::ForkPromptEdit { target_work_id, .. } => target_work_id,
 		crate::AgentActionDto::ConfirmAppUiTool { request, .. } => &request.work_id,
 		crate::AgentActionDto::UploadPromptInput { upload, .. }
 		| crate::AgentActionDto::CompletePromptInputUpload { upload } => &upload.work_id,
@@ -1988,6 +2022,7 @@ fn agent_action_work_id(action: &crate::AgentActionDto) -> &EntityId {
 		| crate::AgentActionDto::AcknowledgePromptEditDraft { work_id, .. }
 		| crate::AgentActionDto::PreparePromptEdit { work_id, .. }
 		| crate::AgentActionDto::ConfirmPromptEdit { work_id, .. }
+		| crate::AgentActionDto::RecoverPromptFork { work_id, .. }
 		| crate::AgentActionDto::RecoverPromptEdit { work_id, .. }
 		| crate::AgentActionDto::GenerateRecap { work_id, .. }
 		| crate::AgentActionDto::CancelRecap { work_id, .. }

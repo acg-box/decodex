@@ -66,6 +66,7 @@ fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut gpui::TestAppCon
 					review_token: WireText::new("a".repeat(64)).unwrap(),
 					receipt_id: Some(10),
 					confirmation_key: None,
+					fork: None,
 					pending_send: None,
 					handback_pending: false,
 					input,

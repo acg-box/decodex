@@ -34,6 +34,9 @@ pub struct DesktopPromptEditDraft {
 	/// Exact confirmation command retained before dispatch until a native receipt is read.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub confirmation_key: Option<crate::IdempotencyKey>,
+	/// Explicit branch destination saved before native creation, absent for same-thread edits.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub fork: Option<crate::PromptForkIntent>,
 	/// A single pending send; input must remain unchanged until acceptance is resolved.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub pending_send: Option<crate::PromptInputSend>,
@@ -162,6 +165,11 @@ impl DesktopPromptEditDraft {
 			|| self.item_id.as_str().is_empty()
 			|| self.review_token.as_str().len() != 64
 			|| !self.review_token.as_str().bytes().all(|b| b.is_ascii_hexdigit())
+			|| self.fork.as_ref().is_some_and(|fork| {
+				fork.target_work_id == self.work_id
+					|| self.confirmation_key.is_none()
+					|| self.receipt_id.is_some()
+			})
 			|| self.receipt_id.is_some_and(|id| id <= 0)
 			|| self.handback_pending && self.receipt_id.is_none() && self.confirmation_key.is_none()
 			|| self.confirmation_key.is_some()
@@ -496,6 +504,7 @@ mod tests {
 			receipt_id: None,
 			handback_pending: false,
 			confirmation_key: None,
+			fork: None,
 			pending_send: None,
 			input: sample(),
 		};
@@ -531,6 +540,7 @@ mod tests {
 			receipt_id: None,
 			handback_pending: false,
 			confirmation_key: None,
+			fork: None,
 			pending_send: None,
 			input: original.clone(),
 		};
@@ -796,6 +806,7 @@ mod tests {
 				receipt_id: Some(42),
 				handback_pending: true,
 				confirmation_key: None,
+				fork: None,
 				pending_send: None,
 				input,
 			},
@@ -861,6 +872,7 @@ mod tests {
 				receipt_id: Some(42),
 				handback_pending: true,
 				confirmation_key: None,
+				fork: None,
 				pending_send: None,
 				input: sample(),
 			},

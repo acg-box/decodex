@@ -2199,6 +2199,13 @@ pub enum QueryPayload {
 		/// UTF-8 byte offset, zero for the first page.
 		offset: u64,
 	},
+	/// Read an exact saved fork receipt. This query does not recover or create native threads.
+	GetAgentPromptFork {
+		/// Source local owner.
+		work_id: EntityId,
+		/// Original review identity.
+		review_token: WireText,
+	},
 	/// Read existing recap state without starting inference.
 	GetAgentRecap {
 		/// Owning task.
@@ -3134,6 +3141,8 @@ pub enum QueryResultPayload {
 	AgentRecap(crate::TaskRecapStatus),
 	/// Canonical source-bound prompt-edit evidence page.
 	AgentPromptEdit(crate::PromptEditStatus),
+	/// Exact branch receipt, absent when no attempt was saved.
+	AgentPromptFork(crate::PromptForkResult),
 	/// Task-scoped native voice preferences.
 	AgentVoiceSettings(crate::AgentVoiceSettingsResult),
 	/// Native web-search defaults and permitted modes.

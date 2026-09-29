@@ -28,7 +28,7 @@ pub struct AgentPromptEditReceipt {
 }
 
 impl AgentPromptEditAttempt {
-	fn validate(&self) -> Result<(), StoreError> {
+	pub(crate) fn validate(&self) -> Result<(), StoreError> {
 		let valid =
 			|v: &str| !v.trim().is_empty() && v.len() <= 512 && !v.chars().any(char::is_control);
 		let mut unique = std::collections::BTreeSet::new();
@@ -53,7 +53,7 @@ impl AgentPromptEditAttempt {
 		Ok(())
 	}
 
-	fn key(&self) -> String {
+	pub(crate) fn key(&self) -> String {
 		let digest = Sha256::digest(
 			json!([self.work, self.thread, self.review_token]).to_string().as_bytes(),
 		);

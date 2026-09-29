@@ -43,6 +43,8 @@ mod goals;
 mod history;
 mod history_summary;
 mod prompt_edit;
+mod thread_fork;
+pub use thread_fork::ThreadForkBoundary;
 mod provider_wait;
 mod resume;
 mod transcript;
@@ -852,7 +854,7 @@ async fn run_frames(
 						sequence = next;
 						let id = RequestId::Number(sequence);
 						let permissions=match method.as_str() {
-							"thread/start"=>Some(PermissionHydration::Start{revision:server_requests.permission_revision()}),
+							"thread/start"|"thread/fork"=>Some(PermissionHydration::Start{revision:server_requests.permission_revision()}),
 							"thread/resume"=>params["threadId"].as_str().and_then(|thread|server_requests.thread_settings_guard(thread).map(|guard|PermissionHydration::Resume{thread:thread.into(),guard})),
 							_=>None,
 						};

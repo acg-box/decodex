@@ -2,6 +2,7 @@
 use super::*;
 #[path = "agent_process_native_active_shutdown_tests.rs"] mod active_shutdown;
 #[path = "agent_process_native_desktop_acceptance.rs"] mod desktop;
+#[path = "agent_process_native_fork_tests.rs"] mod fork;
 #[path = "agent_process_native_media_socket_tests.rs"] mod media;
 #[path = "agent_process_native_recap_reply_proxy.rs"] mod reply_proxy;
 use crate::{ProtocolServer, ServerConfig};
@@ -212,6 +213,9 @@ async fn check(
 	let thread = settled(client).await;
 	qualify_completed_progress(client, &work, &thread, account, requests).await;
 	let native = runtime.agent_client().expect("active native client");
+	if std::env::var_os("DECODEX_TEST_NATIVE_FORK").is_some() {
+		return fork::check(client, &native, store, &work, &thread, requests, home).await;
+	}
 	qualify_summary_read(&native, &thread, requests).await;
 	qualify_prompt_selection(&native, &thread, requests).await;
 	let before = native.thread_latest_turn_id(&thread).await.expect("native parent turn");
