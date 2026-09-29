@@ -322,6 +322,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 			Some(
 				"getAuthStatus"
 					| "thread/realtime/start"
+					| "thread/realtime/appendSpeech"
 					| "thread/realtime/stop"
 					| "thread/realtime/listVoices"
 					| "model/list"

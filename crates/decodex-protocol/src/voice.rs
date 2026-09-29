@@ -67,6 +67,13 @@ pub enum AgentVoiceRequest {
 		#[serde(default)]
 		options: AgentVoiceOptions,
 	},
+	/// Read selected reply text through an existing call. Send once; do not replay on timeout.
+	Speak {
+		/// Exact call identity.
+		session_id: EntityId,
+		/// Displayed assistant text chosen by the user, bounded to one history frame.
+		text: crate::HistoryText,
+	},
 	/// Observe the exact call and renew its UI-presence lease.
 	Poll {
 		/// Exact call identity, never an implicit current session.
@@ -83,6 +90,7 @@ impl AgentVoiceRequest {
 	pub fn session_id(&self) -> &EntityId {
 		match self {
 			Self::Start { session_id, .. }
+			| Self::Speak { session_id, .. }
 			| Self::Poll { session_id }
 			| Self::Stop { session_id } => session_id,
 		}
