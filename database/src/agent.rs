@@ -518,7 +518,7 @@ impl SqliteStore {
 	}
 
 	/// Claim before the external effect. A restart never resets a dispatch claim.
-	/// Delivered events remain pending until a separate explicit disposition.
+	/// Claiming delivery does not dispose events.
 	pub async fn begin_agent_dispatch_with_events(
 		&self,
 		id: String,
@@ -890,13 +890,10 @@ impl SqliteStore {
             if let Some((id, _)) = pending {
                 tx.execute("UPDATE agent_inbox_events SET disposition='resolved', disposition_note='Superseded by a newer connection diagnostic; connectivity is not yet restored.', disposed_at_micros=max(created_at_micros,?2) WHERE id=?1", params![id,unix_micros()?]).map_err(sqlite_error)?;
             }
-            {
-				let now = unix_micros()?;
-				let previous: i64 = tx.query_row("SELECT coalesce(max(id),0) FROM agent_inbox_events WHERE work_item_id=?1", [&root], |row| row.get(0)).map_err(sqlite_error)?;
-				let source = serde_json::json!(["agent_connection", root, previous]).to_string();
-				let payload = serde_json::json!({"recovery":detail}).to_string();
-				tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES(?1,?2,'reconnection_needs_attention',?3,?4)", params![source,root,payload,now]).map_err(sqlite_error)?;
-			}
+			let now = unix_micros()?;
+			let previous: i64 = tx.query_row("SELECT coalesce(max(id),0) FROM agent_inbox_events WHERE work_item_id=?1", [&root], |row| row.get(0)).map_err(sqlite_error)?;
+			let source = serde_json::json!(["agent_connection", root, previous]).to_string();
+			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES(?1,?2,'reconnection_needs_attention',?3,?4)", params![source,root,payload,now]).map_err(sqlite_error)?;
 			tx.commit().map_err(sqlite_error)?;
 			Ok(())
 		}).await
