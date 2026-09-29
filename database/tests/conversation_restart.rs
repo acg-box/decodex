@@ -320,6 +320,59 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	};
 	assert_eq!(bound_session.revision, 3);
 	assert_eq!(bound_session.codex_thread_id, codex_thread_id);
+	let replayed = store
+		.bind_runtime_session_thread("conversation-thread-binding", &thread_binding)
+		.await
+		.expect("replay committed thread binding");
+	assert_eq!(replayed, BindRuntimeSessionThreadOutcome::Replayed(bound_session.clone()));
+	let reopened_binding_store = SqliteStore::open(&paths).expect("reopen committed binding");
+	assert_eq!(
+		reopened_binding_store
+			.bind_runtime_session_thread("conversation-thread-binding", &thread_binding)
+			.await
+			.expect("replay binding after reopen"),
+		BindRuntimeSessionThreadOutcome::Replayed(bound_session.clone())
+	);
+	assert_eq!(
+		reopened_binding_store
+			.reconcile_conversation_thread_establishment(
+				&ReconcileConversationThreadEstablishment {
+					conversation_id: conversation_id.clone(),
+					expected_conversation_revision: 1,
+					runtime_session_id: initial_session.runtime_session_id.clone(),
+					expected_runtime_session_revision: 1,
+					turn_id: route.turn_id.clone(),
+					expected_turn_revision: 1,
+					continuation_plan_id: INITIAL_PLAN_ID.into(),
+					routing_decision_id: route.decision_id.clone(),
+					selected_account_id: account_id.clone(),
+					process_generation_id: generation_id.clone(),
+				}
+			)
+			.await
+			.expect("recover lost binding receipt"),
+		ConversationThreadEstablishmentReadback::Bound(bound_session.clone())
+	);
+	for field in ["conversation_revision", "turn_revision", "request_digest", "response_digest"] {
+		let mut changed = thread_binding.clone();
+		match field {
+			"conversation_revision" => changed.expected_conversation_revision += 1,
+			"turn_revision" => changed.expected_turn_revision += 1,
+			"request_digest" => changed.thread_start_request_sha256 = DIGEST_C.into(),
+			_ => changed.successful_response.response_sha256 = DIGEST_C.into(),
+		}
+		assert!(
+			matches!(
+				reopened_binding_store
+					.bind_runtime_session_thread("conversation-thread-binding", &changed)
+					.await
+					.expect("reject changed binding replay"),
+				BindRuntimeSessionThreadOutcome::Rejected(_)
+			),
+			"changed {field} must not replay the original binding"
+		);
+	}
+	drop(reopened_binding_store);
 	verify_native_settings_observations(&store, &root, &bound_session, &generation_id).await;
 
 	let attempt_id = ProviderAttemptId::new(ATTEMPT_ID).expect("attempt identity");
@@ -492,6 +545,16 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		other => panic!("Conversation terminalization was not applied: {other:?}"),
 	};
 	assert_eq!(terminalized.runtime_session_revision, 4);
+	assert!(
+		matches!(
+			store
+				.bind_runtime_session_thread("conversation-thread-binding", &thread_binding)
+				.await
+				.expect("read stale establishment request"),
+			BindRuntimeSessionThreadOutcome::Rejected(_)
+		),
+		"a completed turn must not restore old establishment authority"
+	);
 	assert_eq!(
 		store
 			.conversation_history(&blob_store, &conversation_id, None, 10)
