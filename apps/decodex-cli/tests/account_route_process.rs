@@ -53,7 +53,7 @@ async fn actual_service_routes_a_b_a_restarts_and_routes_again_with_exact_readba
 	let import_b = fixture.write_import("account-b.json", &initial_b);
 	let refresh = RefreshServer::start(vec![(initial_b.refresh_token.clone(), routed_b.clone())]);
 	fixture.set_codex_running(true);
-	let mut first =
+	let first =
 		RunningDaemon::start(fixture.home(), refresh.endpoint(), fixture.codex_running_marker());
 	let client = fixture.client();
 
@@ -105,7 +105,7 @@ async fn actual_service_routes_a_b_a_restarts_and_routes_again_with_exact_readba
 	fixture.write_shared_auth(&routed_b);
 	let interrupted_auth = fixture.auth_bytes();
 	let interrupted_credential = fixture.credential_bytes(ACCOUNT_B);
-	let mut restarted =
+	let restarted =
 		RunningDaemon::start(fixture.home(), refresh.endpoint(), fixture.codex_running_marker());
 	assert!(
 		matches!(fixture.routing_mode().await, AccountSelectionMode::Fixed(ref account_id) if account_id.as_str() == ACCOUNT_B),
@@ -126,7 +126,7 @@ async fn actual_service_routes_a_b_a_restarts_and_routes_again_with_exact_readba
 	fixture.set_balanced_routing().await;
 	let balanced_auth = fixture.auth_bytes();
 	let balanced_credential = fixture.credential_bytes(ACCOUNT_B);
-	let mut balanced =
+	let balanced =
 		RunningDaemon::start(fixture.home(), refresh.endpoint(), fixture.codex_running_marker());
 	assert_eq!(
 		fixture.routing_mode().await,
@@ -519,7 +519,7 @@ impl RefreshServer {
 		let thread_stop = Arc::clone(&stop);
 		let thread = thread::spawn(move || {
 			let mut script = VecDeque::from(script);
-			while !thread_stop.load(Ordering::Acquire) || !script.is_empty() {
+			while !thread_stop.load(Ordering::Acquire) {
 				match listener.accept() {
 					Ok((stream, _)) => serve_refresh(stream, &mut script),
 					Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
@@ -585,8 +585,7 @@ struct RunningDaemon {
 	child: Child,
 	stdout: Arc<Mutex<Vec<u8>>>,
 	stderr: Arc<Mutex<Vec<u8>>>,
-	stdout_reader: JoinHandle<()>,
-	stderr_reader: JoinHandle<()>,
+	readers: Vec<JoinHandle<()>>,
 }
 
 impl RunningDaemon {
@@ -628,10 +627,10 @@ impl RunningDaemon {
 			let _ = child.wait();
 			panic!("actual daemon did not become ready");
 		}
-		Self { child, stdout, stderr, stdout_reader, stderr_reader }
+		Self { child, stdout, stderr, readers: vec![stdout_reader, stderr_reader] }
 	}
 
-	fn stop(&mut self) -> Vec<u8> {
+	fn stop(mut self) -> Vec<u8> {
 		assert!(
 			unsafe { libc::kill(self.child.id() as libc::pid_t, libc::SIGTERM) } == 0,
 			"signal actual daemon"
@@ -645,10 +644,9 @@ impl RunningDaemon {
 			thread::sleep(Duration::from_millis(20));
 		};
 		assert!(status.success(), "actual daemon must stop cleanly");
-		let stdout_reader = std::mem::replace(&mut self.stdout_reader, thread::spawn(|| {}));
-		let stderr_reader = std::mem::replace(&mut self.stderr_reader, thread::spawn(|| {}));
-		stdout_reader.join().expect("join daemon stdout reader");
-		stderr_reader.join().expect("join daemon stderr reader");
+		for reader in self.readers.drain(..) {
+			reader.join().expect("join daemon output reader");
+		}
 		let mut output = self.stdout.lock().expect("lock final daemon stdout").clone();
 		output.extend_from_slice(&self.stderr.lock().expect("lock final daemon stderr"));
 		output
