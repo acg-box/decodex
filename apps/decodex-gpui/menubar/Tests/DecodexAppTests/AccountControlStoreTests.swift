@@ -2033,6 +2033,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 			uniqueKeysWithValues: availableAccounts.map { ($0.accountID, $0) }
 		)
 		let capturedAccounts = routing.order.compactMap { accountsByID[$0] }
+		let capturedRouting = routing
 		if let snapshotGate,
 			snapshotReadCount > (snapshotWaitsAfterFirstRead ? 1 : 0)
 		{
@@ -2050,7 +2051,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 						? secondaryAccount
 						: nil
 				},
-			routing: routing
+			routing: capturesSnapshotBeforeWait ? capturedRouting : routing
 		)
 	}
 
