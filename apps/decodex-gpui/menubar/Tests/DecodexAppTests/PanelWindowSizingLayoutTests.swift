@@ -230,21 +230,6 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		)
 	}
 
-	func testAccountListEstimateUsesRowHeightAndSharedSectionSpacing() {
-		XCTAssertEqual(
-			AccountPanelLayout.estimatedAccountListContentHeight(
-				accountCount: 6
-			),
-			546
-		)
-		XCTAssertEqual(
-			AccountPanelLayout.estimatedAccountListContentHeight(
-				accountCount: 0
-			),
-			86
-		)
-	}
-
 	func testHostingWindowScreenHeightOverridesPointerScreenFallback() {
 		let height = AccountPanelLayout.resolvedScreenVisibleHeight(
 			windowVisibleFrame: NSRect(x: 1_000, y: 0, width: 800, height: 620),

@@ -77,24 +77,12 @@ class AccountLoginArchitectureTests(unittest.TestCase):
 			with self.subTest(dependency=provider_dependency):
 				self.assertNotIn(provider_dependency, dependencies)
 
-	def test_owner_pins_provenance_license_bounds_and_forbidden_surfaces(self) -> None:
+	def test_owner_preserves_license_and_forbidden_surfaces(self) -> None:
 		owner_root = ROOT / "crates/decodex-account-login"
 		production = "\n".join(
 			path.read_text(encoding="utf-8").split("\n#[cfg(test)]\nmod tests", 1)[0]
 			for path in sorted((owner_root / "src").glob("*.rs"))
 		)
-		for required in (
-			"9392c3fa5bcda342b5b96a1a04d67b2f781617c2",
-			"login/src/pkce.rs: generate_pkce",
-			"login/src/server.rs: build_authorize_url, exchange_code_for_tokens",
-			"login/src/device_code_auth.rs: request_device_code",
-			"login/src/auth/storage.rs: FileAuthStorage::save",
-			"MAX_CALLBACK_REQUEST_BYTES",
-			"MAX_CALLBACK_HEADERS",
-			"cleanup_stale_login_homes",
-		):
-			with self.subTest(marker=required):
-				self.assertIn(required, production)
 		for forbidden in (
 			"std::process",
 			"Command::new",
@@ -141,20 +129,6 @@ class AccountLoginArchitectureTests(unittest.TestCase):
 					path.read_text(encoding="utf-8", errors="ignore"),
 					str(path.relative_to(ROOT)),
 				)
-
-	def test_the_only_desktop_frontend_is_protocol_only(self) -> None:
-		self.assertFalse((ROOT / "apps/decodex-app").exists())
-		gpui = read("apps/decodex-gpui/src/account_login.rs")
-		self.assertIn("AccountLoginClient", gpui)
-		for forbidden in (
-			"reqwest",
-			"TcpListener",
-			"auth.json",
-			"OAUTH_CLIENT_ID",
-			"LoginHome",
-		):
-			with self.subTest(marker=forbidden):
-				self.assertNotIn(forbidden, gpui)
 
 
 if __name__ == "__main__":

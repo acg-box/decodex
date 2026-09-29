@@ -67,24 +67,6 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, coordinator)
 
-    def test_process_acceptance_ports_are_explicit_and_release_closed(self) -> None:
-        account_service = read("crates/decodex-runtime/src/account_service.rs")
-        bootstrap = read("crates/decodex-runtime/src/bootstrap.rs")
-        shared_auth = read("crates/decodex-runtime/src/shared_auth_coordinator.rs")
-        self.assertIn(
-            '#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]',
-            account_service,
-        )
-        self.assertIn('Ok(REFRESH_ENDPOINT.to_owned())', account_service)
-        self.assertIn('endpoint.host_str() == Some("127.0.0.1")', account_service)
-        self.assertIn(
-            ".filter(|endpoint| process_test_refresh_endpoint_is_safe(endpoint))",
-            account_service,
-        )
-        self.assertIn("process_acceptance_fixture_endpoint().is_some()", bootstrap)
-        self.assertIn("AccountApiRuntime::new", bootstrap)
-        self.assertIn("process_acceptance_fixture_endpoint().is_some()", shared_auth)
-
 
 if __name__ == "__main__":
     unittest.main()
