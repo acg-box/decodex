@@ -1348,26 +1348,8 @@ impl AgentHost {
 			},
 			Action::RefreshIntegrations { .. } =>
 				Err(AgentHostError::Rejected("Update plugins and connections in Codex.")),
-			Action::AddResourceLink { work_id, title, url } => {
-				let (_, agent, _) = active.as_ref().ok_or("Agent is not connected")?;
-				agent
-					.add_resource_link(work_id.as_str(), title.as_str(), url.as_str())
-					.await
-					.map_err(resource_error)?;
-				Ok(work_id.as_str().into())
-			},
-			Action::RemoveResource { work_id, attachment_type, identity_key } => {
-				let (_, agent, _) = active.as_ref().ok_or("Agent is not connected")?;
-				agent
-					.remove_resource(
-						work_id.as_str(),
-						attachment_type.as_str(),
-						identity_key.as_str(),
-					)
-					.await
-					.map_err(resource_error)?;
-				Ok(work_id.as_str().into())
-			},
+			action @ (Action::AddResourceLink { .. } | Action::RemoveResource { .. }) =>
+				Self::handle_resource_change(action, active).await,
 
 			Action::StartConfigured { .. } | Action::SendConfigured { .. } =>
 				unreachable!("normalized input"),
@@ -1419,6 +1401,36 @@ impl AgentHost {
 			},
 			Action::AutomationResult { work_id, source_event_id, payload } =>
 				self.accept_automation_result(work_id, source_event_id, payload, active).await,
+		}
+	}
+
+	async fn handle_resource_change(
+		action: AgentActionDto,
+		active: &Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, AgentHostError> {
+		use decodex_protocol::AgentActionDto as Action;
+		match action {
+			Action::AddResourceLink { work_id, title, url } => {
+				let (_, agent, _) = active.as_ref().ok_or("Agent is not connected")?;
+				agent
+					.add_resource_link(work_id.as_str(), title.as_str(), url.as_str())
+					.await
+					.map_err(resource_error)?;
+				Ok(work_id.as_str().into())
+			},
+			Action::RemoveResource { work_id, attachment_type, identity_key } => {
+				let (_, agent, _) = active.as_ref().ok_or("Agent is not connected")?;
+				agent
+					.remove_resource(
+						work_id.as_str(),
+						attachment_type.as_str(),
+						identity_key.as_str(),
+					)
+					.await
+					.map_err(resource_error)?;
+				Ok(work_id.as_str().into())
+			},
+			_ => unreachable!("resource action"),
 		}
 	}
 
