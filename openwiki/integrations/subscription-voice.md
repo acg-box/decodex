@@ -3,10 +3,9 @@ type: Reference
 title: "Subscription dictation and live voice"
 description: "Subscription dictation and live voice"
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
 sources:
+  - id: openwiki-source-ff4424492ebd38e298a4b243
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/VoiceMediaHost.swift
   - id: openwiki-source-2e244c19d3ad0a0d54117218
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexTransport/DictationStream.swift
   - id: openwiki-source-c990afbb3dfa828de42edbc3
@@ -17,7 +16,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/dictation_native.rs
   - id: openwiki-source-7b941e7c2c91cb7415f05243
     resource: repo://crates/decodex-runtime/src/dictation.rs
-generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+generated: { by: "codex", at: "2026-09-29T06:49:47.866Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:49:47.866Z
 ---
 
 
@@ -42,6 +44,8 @@ Audio, authentication and the draft are not stored in SQLite by this gateway. St
 
 The coordinator uses native `thread/realtime/start` and `thread/realtime/stop` with the existing owned Agent thread and connection generation. Start requires a ready manager work item. Native transcript deltas and completion events update durable conversation observations; they are not simulated worker steps.
 
+The Swift media host creates its WebRTC WKWebView on demand when a live call starts. Normal native dictation and device enumeration do not require that browser view. Live audio still uses WebRTC; this change is not a fully native media transport or proof of installed-app acceptance.
+
 The Swift media host owns capture/playback and device selection. The service owns session binding and native RPC. Provider findings can retire local microphone authority even if stop acknowledgment is lost. Unknown native stop outcomes must not be treated as a guaranteed remote stop.
 
 ## UI and verification
@@ -54,6 +58,6 @@ See [Agent coordination](../architecture/chief-coordination.md) and [Desktop wor
 
 ## Retained voice preferences and limitations
 
-O22 and O25 remain retained product capabilities. The voice preference picker reads native catalog and effective project settings, then writes one reviewed `realtime.voice` preference with native version checking. It affects the next call and does not restart active audio. Project settings can override the saved preference. The effective-voice read in call startup remains a separate correctness responsibility.
+The voice preference picker reads native catalog and effective project settings, then writes one reviewed `realtime.voice` preference with native version checking. It affects the next call and does not restart active audio. Project settings can override the saved preference. The effective-voice read in call startup remains a separate correctness responsibility.
 
-Configuration and synthetic media tests do not establish real microphone, WebRTC, audible next-call selection or late remote caption identity. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) and the [dated voice records](../../docs/archive/upstream-2026-09/voice-settings.md). No external memory service is part of this integration; the retained [memory research](../../docs/archive/upstream-2026-09/agent-memory-research.md) records a native-first decision rather than a new local backend.
+Configuration and synthetic media tests do not establish real microphone, WebRTC, audible next-call selection or late remote caption identity. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md). Memory configuration is separate from audio capture; see [Models and settings](../workflows/models-and-settings.md).

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ef597afa8b50748f71e9ce5160c035722573c758f103991ae7a6ae84d0a3659b",
+  "pageVersion": "sha256:065da49c787da2997929e6a0fa964c837b8f081a314c02696187d256cce4e5b3",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -8,31 +8,35 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/api_reset_card.rs",
-          "version": "repo-file-v1:sha256:4d0e8711afcf7f7106d2d46560165f4ae76db0ea95b04e7812ed9506834d8b1b"
+          "version": "repo-file-v1:sha256:d78504e3a89d24462f4774b64c2e33655217c4950b7b925fb8fd97c3a7711810"
         },
         {
           "resource": "repo://database/src/reset_cards.rs",
-          "version": "repo-file-v1:sha256:23cd65e411f304717703d2b94a4c86ff4fae609ebf319ef01f3d06cc1df06025"
+          "version": "repo-file-v1:sha256:6b4ff169c9dbeee42ee4a5bb6de07e2ffdecf02228295fc13f394b4c3ca0066c"
         }
       ]
     },
     {
       "id": "claim_14bd43c1ca984071b3d6a10b07d65c08",
-      "statement": "The desktop Reset Card view restores account-scoped operation state through the protocol rather than a UI-owned persistent journal.",
+      "statement": "Reset Card clients restore account-scoped service operation state; the Swift client also retains a bounded pending-attempt journal for reconciliation without owning provider completion.",
       "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardPendingAttemptStore.swift",
+          "version": "repo-file-v1:sha256:b5da04b6c0f3c74e0f2c248871d9e253fb8d61ef942ead881dee4cb537f786f1"
+        },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift",
           "version": "repo-file-v1:sha256:bc17b08a96207a2d36a82cce6166a3344df9d055b4d64d6379da424e655164e1"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
-          "version": "repo-file-v1:sha256:c7608c0ab52ffb67c0faefa8e92c243e003e03d8859703561a5cedcf24f09a29"
+          "version": "repo-file-v1:sha256:cd133c82bd231eb74e7ae6e27906c6a31f71548f6b3185c39f126cc58ac480e5"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "at": "2026-09-29T06:24:17.023Z"
   }
 }

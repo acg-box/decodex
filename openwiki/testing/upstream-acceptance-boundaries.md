@@ -3,19 +3,15 @@ type: Reference
 tags: [decodex, architecture]
 title: "Upstream integration acceptance boundaries"
 description: "What source audits, native fixtures, signed desktop tests and merges do and do not prove."
+sources:
+  - id: openwiki-source-c8b1a2a9f2113ec43d4066da
+    resource: repo://Makefile.toml
+  - id: openwiki-source-76081c1a47ca8cf32593de34
+    resource: repo://scripts/macos/test_decodex_app_stage.sh
+generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
-sources:
-  - id: openwiki-source-4753c3bdf2916fd807c75377
-    resource: repo://docs/archive/upstream-2026-09/native-child-mcp-qualification.md
-  - id: openwiki-source-1c42e27415f1b607c139a462
-    resource: repo://docs/archive/upstream-2026-09/native-flex-qualification.md
-  - id: openwiki-source-c29a139ba78abf924bfd2cc2
-    resource: repo://docs/archive/upstream-2026-09/signed-draft-acceptance.md
-  - id: openwiki-source-8d4b61fd83ed007c18390abe
-    resource: repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md
-generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+    at: 2026-09-29T06:24:17.023Z
 ---
 
 
@@ -31,24 +27,17 @@ generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 | Signed desktop acceptance | The recorded artifact and exact interactions | Installation, notarization, public release or all UI surfaces |
 | PR merge and remote readback | Code is in the specified main history | The user's installed app contains it |
 
-The fixed upstream scan covered 1,569 commits. The inherited audit classified 360 paths. The user review grouped eight core areas and 26 optional rows, including restored baseline behavior. These numbers are not interchangeable.
+## Current check owners
 
-## Recorded desktop evidence
+`Makefile.toml` defines workspace checks. Isolated native fixtures exercise a named Codex binary and must keep their declared environment and effect prerequisites. The signed bundle contract checks packaging, signatures and ABI compatibility; it does not exercise live microphone, network or focus behavior.
 
-The [signed draft acceptance](../../docs/archive/upstream-2026-09/signed-draft-acceptance.md) names artifact `cc0895c3a440a544d6c414028456abd0b469cc77`. It records ordinary Agent composer input retained over restart without submission, shared-store conflict, cancelled Quit and export, plus response/recap display on return. Earlier records for `0658` or `a15fe830` apply to their own artifacts.
+For native compatibility, record the upstream commit separately from the installed binary and generated schema. Test the actual consumer contract. A schema field or retained database row is not proof of a delivered UI or supported execution path.
 
-The evidence does not establish a general focus fix for every attached window. It does not turn a cancelled long background timer test into a pass. Physical voice, Dock behavior and broader lifecycle coverage must retain their stated limits. Removed private fixture directories are historical locations, not current downloadable evidence.
+## Historical receipts
 
-## Native and product limits
+Past experiments remain in Git history with their original revision and limitations. Do not repeat a dated test count as current validation or turn an old unresolved experiment into a new requirement. New acceptance reports must identify the checked artifact, inputs, observed outcome and remaining uncertainty.
 
-- Explicit runtime Flex changes are not qualified across cold resume in the same way as configured Flex.
-- Native child MCP browser-auth/user-input has a recorded root-handoff mismatch on the tested binary.
-- Physical voice/WebRTC and late remote caption identity retain their precise recorded limits.
-- Independent browser/device-code enrollment does not establish a global native enrollment-policy owner.
-- MCP App streams, widgets without captured resource URIs and general browser capabilities are not delivered by the current widget host.
-- Full Analytics dashboards, a Daybreak selector, generic experimental settings and an external memory service are not local feature deliveries merely because upstream APIs or research exist.
-
-See [native limits](../../docs/archive/upstream-2026-09/source-preservation-native-limits.md), [child MCP qualification](../../docs/archive/upstream-2026-09/native-child-mcp-qualification.md), [voice records](../../docs/archive/upstream-2026-09/voice-settings.md), and [product decisions](../decisions/upstream-product-scope.md).
+The embedded MCP HTML viewer and local plugin management are retired. Their old acceptance records do not require reintroducing those features. Voice still needs separate physical capture, subscription transport and transcript checks. See [current scope](../decisions/upstream-product-scope.md) and [subscription voice](../integrations/subscription-voice.md).
 
 ## Proportionate validation
 

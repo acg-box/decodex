@@ -4,13 +4,13 @@ title: "Historical retained-title validation"
 description: "Historical retained-title validation"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
 sources:
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
 generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:24:17.023Z
 ---
 
 > Current validation is owned by Makefile.toml and the [current command guide](commands-and-validation.md). The retained-title server-store commands below remain non-executable provenance; this refresh does not restore them. Current thread history and naming use native conversation adapters.

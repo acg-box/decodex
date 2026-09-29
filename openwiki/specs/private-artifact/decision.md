@@ -4,17 +4,15 @@ title: "Private-artifact authority retirement decision"
 description: "Private-artifact authority retirement decision"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-3adfd3b6f748de8e64e56048
     resource: repo://crates/decodex-core/src/lib.rs
   - id: openwiki-source-84ef09bd6eced2583113d6a7
     resource: repo://crates/decodex-runtime/src/lib.rs
-  - id: openwiki-source-3c403ef8c31a897cb5857c6f
-    resource: repo://docs/archive/upstream-2026-09/managed-repository-retirement.md
 generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:24:17.023Z
 ---
 
 

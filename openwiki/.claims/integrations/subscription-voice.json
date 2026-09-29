@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7497f99f823f6542f157b1cc1b95915b0607f55596c944178edbaeede12d324a",
+  "pageVersion": "sha256:2dfa3fa5e1c02b5850715f475cd771494f10fd39dca36f89d744eaed0fa075db",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -45,10 +45,20 @@
           "version": "repo-lines-v1:sha256:bf2701321695fa2847e971ab48096e202d988f06f902970aa91d8a1a320db356:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiZjRlNzhjZmNkZDFlM2ZkM2Q2YjU2YjZjMDNmNTIyMTgzN2EwNTE4YWE5OGQ5MzA3ZDkxN2EzNTQwOGFmMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0NTczMmRlZWUxMDQzYWYwM2FlNDRkZmMzOTY4NDA0MzNjMjMxZTFmNjQ5ODg4Njg3OTYyZjc3ODAxNjlkODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYwMDllOTljNDZjZTA3MmFmMDViYjI3MGVkOGZmZjE5MTc1Y2EzYjA3MjY2NGYxNzQxMmEzODRjNGQ3ODliNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhN2IzM2IxNDZiODRiYzg4YzI5MzgxMmVjNmY5NWRiYTJkZGFmNTMzODk5OTc1NjI3ZjRhYTcyMmZmMGQ2MDEifQ"
         }
       ]
+    },
+    {
+      "id": "claim_a8eb6185fcbd4aabbb34194c80765dbb",
+      "statement": "Normal VoiceMediaHost construction does not create a WKWebView; the WebRTC path creates it on demand while native dictation has a separate capture branch.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/VoiceMediaHost.swift#L8-L135",
+          "version": "repo-lines-v1:sha256:d985a354f4922e42377fd5b40abdf3c539a8b5fc3672a994b45975252c788aad:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0YjhmNjY1MTI1YjIwMjFjN2FkNjgxNDk0YTViYzgyNTQ5MDk0MTBjODMyNWQ1YTM5M2RhMzRkNjlhNWViZDYzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMDVlZTE3NGU4YWNkY2EzODliZGU3NTgwYzU5NmYxOWNjZDVlOGQyYWQ5MDMzZWVmYzBiNDRlNjFmOWY2OWQ1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyNGFmZWIwN2Y4MzJhYjNkODlkNzhhZDdjNzFlZDkwODQzNzYxNmNiMTUzNTJhZThhMDE4MWRlMjQ4MmZmOWFhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4YmNiMGU3MTBmOWQxM2MyYzE1ZjgzNjhhNzA2NTQxN2I2YjVmYTM4NjdlMDU3ZmYyMWE4YjAwYzhmNDkyM2Y2In0"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "at": "2026-09-29T06:49:47.866Z"
   }
 }

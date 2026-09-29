@@ -1,44 +1,24 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2137c1d4eb7b58b065d3412b2122637417b159f838feb3c0a6ad7a679a48eef8",
+  "pageVersion": "sha256:7eb426c8f9f1945d1686253e31a6fbea73e6a1e3f00cc1f1acc6a2cef4e70346",
   "claims": [
     {
-      "id": "claim_0cc5b37e7ebe4fb0beb6246619c1f77e",
-      "statement": "The archived feature inventory separates the 1569-commit scan, 360-path audit, eight core groups and 26 optional decision rows.",
+      "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
+      "statement": "Repository Rust validation is defined by Makefile.toml; signed application staging has a separate executable bundle contract check.",
       "evidence": [
         {
-          "resource": "repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md",
-          "version": "repo-file-v1:sha256:d44cfac26a4e6530095703c75a034c342df29f0fdb319abe8a4d99d9fd9aac4f"
-        }
-      ]
-    },
-    {
-      "id": "claim_b981e3bb60d6416f8f3c6138f195b23f",
-      "statement": "Signed draft acceptance is scoped to the named cc0895c3 artifact and does not establish a general child-window focus repair or product release.",
-      "evidence": [
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/signed-draft-acceptance.md",
-          "version": "repo-file-v1:sha256:c850b108e76dde79f7198202820bb683cf072090072d7ef811e7bf25c123d808"
-        }
-      ]
-    },
-    {
-      "id": "claim_5f08a564941e4768af122303abeba77e",
-      "statement": "Recorded native limitations include child MCP handoff and explicit Flex cold-resume behavior; passing other fixtures does not close those limitations.",
-      "evidence": [
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/native-child-mcp-qualification.md",
-          "version": "repo-file-v1:sha256:b30ca68741e32985931bfbad1272d64b86aefcc712fef39209a9175d2be585d8"
+          "resource": "repo://Makefile.toml#L407-L417",
+          "version": "repo-lines-v1:sha256:b8ea2dc41b2a4aada9e3e093725bc8519e1d31c90a9fad3f8379adb28d57d782:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkMWRmNWFmYjM4MmRkY2MwNzI3N2VlNDE0ZjM4NDMxZjFkYjcxN2ZiYmQyZGE2ZGMyNjJjMDY2NzYwNTI1MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdjMjI1ZjEzMzI3OWVkMWE4ZDlhODg4OGU2OWNhM2ZhYzMzYTUwNWFkMzY5OTczNGRjNmUxMTU0OTc4NzM1ZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3NmQ2ZTY1OTlmOWU5MTVmNzY4OGFiMmM3OGFjMmNkZDk3YjBjZjM0MzM3NjVjZTk2NjQyNjBkYTg4ZmU0MTAifQ"
         },
         {
-          "resource": "repo://docs/archive/upstream-2026-09/native-flex-qualification.md",
-          "version": "repo-file-v1:sha256:9dba0bda8d2d5dadcdf83d18659170ea8e213ac1cd4cdee0df495923d8cc9b76"
+          "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
+          "version": "repo-file-v1:sha256:ce67aa0933e6ca0612dabaddcd98f8babd9fcf53202ccc40ab1e0400d378d466"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "at": "2026-09-29T06:24:17.023Z"
   }
 }

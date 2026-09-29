@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2159bff103c0aca03550c0e85ddf6be61d48b980d605359bacc7818f83b164fc",
+  "pageVersion": "sha256:4ef3e6cc29ce0a52e958e3e15a9ebe931ede08159c51240400cb434323815295",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -37,26 +37,6 @@
       ]
     },
     {
-      "id": "claim_1c87dbb182b54d83b974027848a47334",
-      "statement": "The retained product decision retires O24 and preserves the other listed optional capabilities.",
-      "evidence": [
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md",
-          "version": "repo-file-v1:sha256:d44cfac26a4e6530095703c75a034c342df29f0fdb319abe8a4d99d9fd9aac4f"
-        }
-      ]
-    },
-    {
-      "id": "claim_8be6c3a5a64f4abeb9a04557f9044213",
-      "statement": "The dated readback verifies the 1569-commit reviewed interval and records 493 later commits, while complete earlier per-commit coverage remains uncertified.",
-      "evidence": [
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/coverage-readback-20260928.json",
-          "version": "repo-file-v1:sha256:a4a25d5b914a6477a2cc26ced631e58a241d8cf268094cb70d274127710bb101"
-        }
-      ]
-    },
-    {
       "id": "claim_6b8f885058714b72a0b0af451249105f",
       "statement": "The daily maintenance prompt limits automatic implementation to retained capabilities, requires user selection for new features and uses an approximate 30-minute active-work boundary with durable continuation.",
       "evidence": [
@@ -69,6 +49,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T06:22:45.949Z"
+    "at": "2026-09-29T06:24:17.023Z"
   }
 }

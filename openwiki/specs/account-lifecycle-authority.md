@@ -3,9 +3,6 @@ type: Reference
 title: "Account lifecycle authority"
 description: "Account lifecycle authority"
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-acf49c93c3e80379f0023c71
     resource: repo://apps/decodex-gpui/src/accounts.rs
@@ -14,6 +11,9 @@ sources:
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
 generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:24:17.023Z
 ---
 
 

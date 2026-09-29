@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:519e716a956f3dce6a0e065268275748b5cca9a67eb80e53476b8ae4e4652445",
+  "pageVersion": "sha256:f1ae3bb25daf0e619a27baf604ab3dfe7d20e6fb36f133a2ec638d0d25d413ba",
   "claims": [
     {
       "id": "claim_e480523a6db548e38ccc830852ec0ff2",
@@ -8,21 +8,17 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-core/src/lib.rs",
-          "version": "repo-file-v1:sha256:93527fc5d163e77c4bf461249cbc31d218d43abc4c8e9d776f88f136613255cb"
+          "version": "repo-file-v1:sha256:a9df53f4338c2084571928bf18eaf1ead874eedef9b9b0712f444209bf202afe"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/lib.rs",
-          "version": "repo-file-v1:sha256:e52399e5d81d5f6d618d017768e09710b1d7029a4509d826c081a31b09d94520"
-        },
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/managed-repository-retirement.md",
-          "version": "repo-file-v1:sha256:4fb37d9a9e44dd1301d9f40d8439efd330b320e9b5402051983b00c175b41d12"
+          "version": "repo-file-v1:sha256:5c7f29933dd269ab6e1d01fd5ed5a242c860abe086e2bc2a8759dd8cf6d9a7f4"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "at": "2026-09-29T06:24:17.023Z"
   }
 }

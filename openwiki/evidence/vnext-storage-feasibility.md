@@ -4,9 +4,6 @@ title: "Historical server-store feasibility"
 description: "Historical server-store feasibility"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-9cb0f6612fed4591dd1bd8d3
     resource: repo://crates/decodex-core/src/blob.rs
@@ -15,6 +12,9 @@ sources:
   - id: openwiki-source-0184655e2e99000280ce7bbe
     resource: repo://database/src/lib.rs
 generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:24:17.023Z
 ---
 
 

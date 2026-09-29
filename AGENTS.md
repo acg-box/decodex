@@ -1,6 +1,6 @@
 ## OpenWiki
 
-This repository uses `openwiki/` as its project knowledge entrypoint.
+Maintain project documentation only in `openwiki/` through the OpenWiki generation lifecycle. Do not create a separate `docs/` tree or copy old documents into the wiki one for one. Consolidate by current system responsibilities and reader tasks. Git history retains retired plans and revision-specific records; link an exact historical revision only when it is necessary evidence. Keep root entrypoints concise.
 
 Start here:
 - [OpenWiki quickstart](openwiki/quickstart.md)

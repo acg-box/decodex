@@ -4,9 +4,6 @@ title: "Radar And Publisher Contracts"
 description: "Radar And Publisher Contracts"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
 sources:
   - id: openwiki-source-8afa0db2c4f33cb5f9924d1c
     resource: repo://apps/decodex-publisher/src/social_contracts.rs
@@ -18,7 +15,10 @@ sources:
     resource: repo://site/astro.config.mjs
   - id: openwiki-source-cb47fe9c0d47072a7555387e
     resource: repo://site/package.json
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-29T06:49:47.866Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:49:47.866Z
 ---
 
 > Current boundary rechecked: Radar and Publisher remain auxiliary CLIs in the Rust workspace. The retirement of built-in repository/PR orchestration does not remove these tools or grant them Chief product-state authority. Checked-in automation definitions are desired state, not proof that a host scheduler is running. See [Wiki maintenance](../operations/wiki-maintenance.md) for documentation freshness.
@@ -38,7 +38,7 @@ Radar owns optional repository-local research artifacts:
 - `signal_entry/v1` and `release_delta/v1` for static content;
 - the bounded private Radar cache and disposable ledger.
 
-Radar has no native scheduled role in the exact-five portfolio. The Maintainer
+Radar has no native scheduled role in the current three-role portfolio. The Maintainer
 and Content Manager may use its output as discovery or supporting editorial
 input. They can also research official sources directly.
 

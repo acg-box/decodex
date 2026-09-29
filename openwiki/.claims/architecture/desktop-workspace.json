@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0aca6e110394978aed5e15f9df4577633daf7441880abddc0cd2bbb38a5a4a0f",
+  "pageVersion": "sha256:be94707e23b9b10aa8549be9d583f907539d76722a0ad804fc29a68ede67bef9",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:d82297354edf177d2eafe36456db750cf5a1b9fd93fbd62992579d46ba6945e9"
+          "version": "repo-file-v1:sha256:a9764933d0bea4a2c6c7ca125d64a4eb6bae71a2f3a88682682222e5ab1b677e"
         }
       ]
     },
@@ -22,7 +22,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_composer.rs",
-          "version": "repo-file-v1:sha256:2a5ea475f06b77e1c74bd9f8dd8de33f2ca34738439297c29420fc7a9dea33a9"
+          "version": "repo-file-v1:sha256:0d0237362159864d4ee2f9b624f03a3c24c80ecf51d238968d739c4adaa57aba"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_glass_panel.rs",
@@ -32,11 +32,11 @@
     },
     {
       "id": "claim_dbd2402450704881af1cd208148925b5",
-      "statement": "A first transient background archive-read failure preserves confirmed state without showing an error; repeated failures or explicit checks show feedback.",
+      "statement": "Background archive-read failures preserve the last confirmed state; explicit failed checks show local feedback.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_archive.rs#L1-L60",
-          "version": "repo-lines-v1:sha256:1e3a048a950c921fce008899c42889b83f649ab2fb02e58c0ecbb0ced34b2fa6:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1YWM0MjVlZmIwYjBiMzAwZjQzY2Q2NjkwMDQwNjI5MjRhZTRjZTU4ZGMyZDZmNzdmN2EyZTVlMDIwYzUyMGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkODFmYmUzZGJjOTU5MTA5YjY4NjM5MzFkMDM4YmY5ZGUxNDZiOWIzMzY5YmIwNTI2NWJkMzZjNTE1NzUwZDIifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_archive.rs#L17-L30",
+          "version": "repo-lines-v1:sha256:2e2d11a9bf91d49002deb3416d838a76331b59cc86ce0a2450e3ad17a7291929:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjOTYxMjE0NDUzMzgxMGJkYjBkYWY3Y2EwYTliZGNmMDhmZmUzZTMzZWM0NGYyMjQ1OTUwYmJlYjU2YjI3MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiNTA2MmQ2YmQ5MzNmNDIxNjRiNGUzM2FiMGMyYzIwMjU5YzgyNzUxMjU0MTViZDY2ZjI4NWRjYjg3MWQyODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIifQ"
         }
       ]
     },
@@ -46,7 +46,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_markdown.rs",
-          "version": "repo-file-v1:sha256:d49d340f8eb24499f930f3a431c11f2f885ef8b0e29a7ff5557b90dc77e59312"
+          "version": "repo-file-v1:sha256:5dd090fec0cb205bc03c58e5b7f68df381ac853ca7c058bcde1e214e4dc4e1a3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_selectable_text.rs",
@@ -57,6 +57,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "at": "2026-09-29T06:24:17.023Z"
   }
 }

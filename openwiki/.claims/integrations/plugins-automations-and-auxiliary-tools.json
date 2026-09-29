@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:22d20208150271ad252ca29bf2dfef69eb4e7053b655732540a0f3157d10698f",
+  "pageVersion": "sha256:c3981d82e642a801a557db758f2e8486189226e946b5d7e6407ee596486bd802",
   "claims": [
     {
       "id": "claim_ebacb67e562646d8af9fccd8e644cb32",
@@ -22,7 +22,7 @@
         },
         {
           "resource": "repo://apps/radar/src/lib.rs",
-          "version": "repo-file-v1:sha256:e56cc6b2f0540708cc14b96558ed9243978b5fd67b7584c28f1eaa46cf7acd0c"
+          "version": "repo-file-v1:sha256:7f6662cabd8836e41665c673700d24b91c1a9d7c3f28e7ba77aad02adcd529af"
         },
         {
           "resource": "repo://automations/portfolio.toml",
@@ -33,6 +33,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T06:22:45.949Z"
+    "at": "2026-09-29T06:24:17.023Z"
   }
 }

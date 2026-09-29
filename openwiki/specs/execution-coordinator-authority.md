@@ -4,15 +4,15 @@ title: "Execution coordination: current owners and historical design"
 description: "Execution coordination: current owners and historical design"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-ec5c9f32d2135154f4297a49
     resource: repo://crates/decodex-runtime/src/conversation.rs
 generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:24:17.023Z
 ---
 
 

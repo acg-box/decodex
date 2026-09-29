@@ -3,9 +3,6 @@ type: Reference
 title: "Native integrations, automations and auxiliary tools"
 description: "Native integrations, automations and auxiliary tools"
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T06:22:45.949Z
 sources:
   - id: openwiki-source-c03bc4468425d8e7887133da
     resource: repo://apps/decodex-publisher/src/lib.rs
@@ -15,7 +12,10 @@ sources:
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-e9d609e612bb7e44111ec4b1
     resource: repo://crates/decodex-runtime/src/agent_integrations.rs
-generated: { by: "codex", at: "2026-09-28T06:22:45.949Z" }
+generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:24:17.023Z
 ---
 
 
@@ -25,7 +25,7 @@ generated: { by: "codex", at: "2026-09-28T06:22:45.949Z" }
 
 The service reads MCP status and installed plugins independently from native app-server. It reads the selected thread before and after the query and requires the same absolute working directory. Unsupported, unavailable and capacity-exceeded results remain distinct. A failed optional inventory does not prove that no tools are installed.
 
-Plugin installation, MCP login, forms, resource links, and task references have separate typed operations. Inventory is not installation authority. UI clients do not copy credentials, directly edit native configuration, or substitute host files for account-owned state.
+Plugin installation and connection configuration belong to Codex. Decodex retains read-only observations, native forms, resource links and task references. Inventory is not installation authority. UI clients do not copy credentials, directly edit native configuration, or substitute host files for account-owned state.
 
 ## Automation boundary
 
@@ -47,4 +47,4 @@ The retained static-site source is outside the current upstream-maintenance scop
 
 `Decodex.app` is the sole GUI. Its Swift menu bar and native client library are in-process components; the local helper is `decodex serve`. See [Runtime architecture](../architecture/runtime-architecture.md), [Radar and Publisher contracts](radar-publisher-contracts.md), and [Subscription voice](subscription-voice.md).
 
-For task plugins, App widgets, Hook trust and connection policy, use [Tools, plugins and Apps](tools-plugins-and-apps.md).
+For tool observations, native forms and the retired local management boundary, use [Tools and connections](tools-plugins-and-apps.md).

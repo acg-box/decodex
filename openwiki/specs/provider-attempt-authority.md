@@ -4,13 +4,13 @@ title: "ProviderAttempt authority"
 description: "ProviderAttempt authority"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
 sources:
   - id: openwiki-source-54d282edcc6b29f87710c554
     resource: repo://crates/decodex-runtime/src/provider_attempt_service.rs
 generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:24:17.023Z
 ---
 
 # ProviderAttempt authority
