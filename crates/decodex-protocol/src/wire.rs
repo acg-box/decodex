@@ -2114,10 +2114,7 @@ impl Serialize for AccountInspectResult {
 			Unavailable,
 		}
 		let raw = match self {
-			Self::Available(account) => {
-				validate_account_dto(account).map_err(S::Error::custom)?;
-				Raw::Available(account)
-			},
+			Self::Available(account) => Raw::Available(account),
 			Self::NotFound => Raw::NotFound,
 			Self::Unavailable => Raw::Unavailable,
 		};
@@ -2137,10 +2134,7 @@ impl<'de> Deserialize<'de> for AccountInspectResult {
 			Unavailable,
 		}
 		match Raw::deserialize(deserializer)? {
-			Raw::Available(account) => {
-				validate_account_dto(&account).map_err(D::Error::custom)?;
-				Ok(Self::Available(account))
-			},
+			Raw::Available(account) => Ok(Self::Available(account)),
 			Raw::NotFound => Ok(Self::NotFound),
 			Raw::Unavailable => Ok(Self::Unavailable),
 		}
@@ -3833,16 +3827,12 @@ fn validate_accounts_result(
 	if accounts.len() > 512 {
 		return Err("account result exceeds cardinality bound");
 	}
-	for account in accounts {
-		validate_account_dto(account)?;
-	}
 	let universe =
 		accounts.iter().map(|account| account.account_id.as_str()).collect::<HashSet<_>>();
 	if universe.len() != accounts.len() {
 		return Err("account result contains duplicate identities");
 	}
 	if let Some(routing) = routing {
-		validate_routing_control(routing)?;
 		if routing.order.len() != accounts.len() {
 			return Err("account routing control is incomplete");
 		}
@@ -4209,6 +4199,67 @@ mod tests {
 		let encoded = serde_json::to_value(&result).expect("account rows should serialize");
 		assert!(encoded["data"]["routing"].is_null());
 		assert_eq!(serde_json::from_value::<AccountsResult>(encoded).unwrap(), result);
+
+		let AccountsResult::Available { accounts, .. } = result else { unreachable!() };
+		let account = accounts[0].clone();
+		let inspect = super::AccountInspectResult::Available(Box::new(account.clone()));
+		let mut encoded = serde_json::to_value(&inspect).unwrap();
+		assert_eq!(
+			serde_json::from_value::<super::AccountInspectResult>(encoded.clone()).unwrap(),
+			inspect
+		);
+		encoded["data"]["account_revision"] = 0.into();
+		assert!(serde_json::from_value::<super::AccountInspectResult>(encoded).is_err());
+		let mut invalid = account.clone();
+		invalid.account_revision = EntityRevision(0);
+		assert!(
+			serde_json::to_value(super::AccountInspectResult::Available(Box::new(invalid.clone())))
+				.is_err()
+		);
+
+		let valid = AccountsResult::Available {
+			accounts: vec![account.clone()],
+			routing: Some(super::AccountRoutingControlDto {
+				revision: EntityRevision(1),
+				mode: super::AccountSelectionModeDto::Balanced,
+				order: vec![account.account_id.clone()],
+			}),
+		};
+		let encoded = serde_json::to_value(&valid).unwrap();
+		assert_eq!(serde_json::from_value::<AccountsResult>(encoded.clone()).unwrap(), valid);
+		for path in ["account", "routing", "duplicate", "permutation"] {
+			let mut value = encoded.clone();
+			let mut outbound = valid.clone();
+			let AccountsResult::Available { accounts, routing } = &mut outbound else {
+				unreachable!()
+			};
+			match path {
+				"account" => {
+					value["data"]["accounts"][0]["account_revision"] = 0.into();
+					accounts[0] = invalid.clone();
+				},
+				"routing" => {
+					value["data"]["routing"]["revision"] = 0.into();
+					routing.as_mut().unwrap().revision = EntityRevision(0);
+				},
+				"duplicate" => {
+					value["data"]["accounts"]
+						.as_array_mut()
+						.unwrap()
+						.push(serde_json::to_value(&account).unwrap());
+					accounts.push(account.clone());
+					value["data"]["routing"] = serde_json::Value::Null;
+					*routing = None;
+				},
+				_ => {
+					let other = "11234567-89ab-4def-8123-456789abcdef";
+					value["data"]["routing"]["order"][0] = other.into();
+					routing.as_mut().unwrap().order[0] = EntityId::new(other).unwrap();
+				},
+			}
+			assert!(serde_json::from_value::<AccountsResult>(value).is_err(), "{path}");
+			assert!(serde_json::to_value(outbound).is_err(), "{path}");
+		}
 	}
 
 	#[test]
