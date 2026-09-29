@@ -102,29 +102,8 @@ fn run_confirmation(cx: &mut gpui::TestAppContext, boundary: Option<PromptForkBo
 		});
 		done.send(()).unwrap();
 	});
-	let (view, visual) = cx.add_window_view(|_, cx| {
-		let surface = cx.new(AgentSurface::new);
-		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
-		let work = surface.update(cx, |s, cx| {
-			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
-			s.bind_profile(Some(profile.clone()), cx);
-			s.visual_workspace_fixture(cx);
-			s.state = LoadState::Ready;
-			let work = s.selected.clone().unwrap();
-			s.snapshot
-				.as_mut()
-				.unwrap()
-				.work_items
-				.iter_mut()
-				.find(|item| item.id == work)
-				.unwrap()
-				.codex_thread_id = Some("thread".into());
-			s.composer.update(cx, |input, cx| input.set_content("Unrelated main input", cx));
-			s.review_prompt(&work, "thread", "turn", "item", cx);
-			work
-		});
-		View { surface, work }
-	});
+	let (view, visual) =
+		cx.add_window_view(|_, cx| confirmation_view(store.clone(), profile.clone(), cx));
 	for button in [
 		"prompt-confirm-review",
 		match boundary {
@@ -162,4 +141,32 @@ fn run_confirmation(cx: &mut gpui::TestAppContext, boundary: Option<PromptForkBo
 	surface.read_with(visual, |s, cx| {
 		assert_eq!(s.composer.read(cx).content(), "Unrelated main input")
 	});
+}
+
+fn confirmation_view(
+	store: ClientDraftStore,
+	profile: ClientProfile,
+	cx: &mut Context<View>,
+) -> View {
+	let surface = cx.new(AgentSurface::new);
+	cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+	let work = surface.update(cx, |s, cx| {
+		s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+		s.bind_profile(Some(profile.clone()), cx);
+		s.visual_workspace_fixture(cx);
+		s.state = LoadState::Ready;
+		let work = s.selected.clone().unwrap();
+		s.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|item| item.id == work)
+			.unwrap()
+			.codex_thread_id = Some("thread".into());
+		s.composer.update(cx, |input, cx| input.set_content("Unrelated main input", cx));
+		s.review_prompt(&work, "thread", "turn", "item", cx);
+		work
+	});
+	View { surface, work }
 }
