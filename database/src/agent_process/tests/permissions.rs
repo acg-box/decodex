@@ -2,16 +2,6 @@
 use super::*;
 use serde_json::json;
 
-fn identity(number: u32) -> decodex_core::ProcessIdentity {
-	decodex_core::ProcessIdentity::new(
-		ProcessBootIdentity::new("fixture-boot").unwrap(),
-		number,
-		decodex_core::ProcessStartIdentity::new(format!("fixture-{number}")).unwrap(),
-		number,
-		number,
-	)
-	.unwrap()
-}
 fn facts(profile: Option<&str>) -> String {
 	json!({"profileId":profile,"cwd":"/native","approvalsReviewer":"user","approvalPolicy":"on-request","sandboxPolicy":{"type":"readOnly"}}).to_string()
 }
@@ -199,20 +189,4 @@ async fn prepare_unknown_permission_selection(
 		"unknown"
 	);
 	(reserved, attempt)
-}
-
-async fn confirm_original_process_death(store: &SqliteStore) {
-	let evidence = ProcessDeathEvidence::new(
-		ProcessDeathEvidenceId::new("50000000-0000-4000-8000-000000000001").unwrap(),
-		generation_id(1),
-		ProcessDeathEvidenceKind::OwnedChildExit,
-		ProcessBootIdentity::new("fixture-boot").unwrap(),
-		Some(identity(123)),
-		DIGEST,
-	)
-	.unwrap();
-	assert!(matches!(
-		store.record_process_generation_death(4, &evidence).await.unwrap(),
-		crate::ProcessGenerationMutationOutcome::Applied(_)
-	));
 }
