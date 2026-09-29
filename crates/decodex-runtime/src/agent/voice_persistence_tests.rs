@@ -44,8 +44,18 @@ async fn fixture() -> (
 	tempfile::TempDir,
 	rusqlite::Connection,
 ) {
-	let (mut agent, mut sent, directory) =
-		super::super::tests::fixture_with_history(json!({})).await;
+	fixture_with_history(json!({})).await
+}
+
+async fn fixture_with_history(
+	history: Value,
+) -> (
+	AgentCoordinator,
+	tokio::sync::mpsc::UnboundedReceiver<Value>,
+	tempfile::TempDir,
+	rusqlite::Connection,
+) {
+	let (mut agent, mut sent, directory) = super::super::tests::fixture_with_history(history).await;
 	let owner = crate::agent_model_settings::tests::OwnedReviewer::new(
 		directory.path(),
 		&agent.client,
@@ -249,4 +259,69 @@ async fn voice_start_rejects_independent_manager_before_native_requests() {
 	assert!(result.is_err());
 	assert!(sent.try_recv().is_err(), "foreign voice target must not be resumed or started");
 	assert_eq!(agent.store.open_agent_voice_calls().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn cold_voice_recovery_keeps_original_generation_and_never_replays_input() {
+	for same_generation_first in [false, true] {
+		let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[
+		{"id":"before-call","status":"completed","items":[]},
+		{"id":"opaque turn/1","status":"completed","items":[]},
+		{"id":"spoken-turn","status":"completed","items":[
+			{"id":"reply","type":"agentMessage","text":"Saved spoken reply"}]}]}}});
+		let (mut agent, mut sent, directory, database) = fixture_with_history(history).await;
+		agent.store.complete_agent_turn("root".into(), "opaque turn/1".into()).await.unwrap();
+		let original = agent.voice.as_ref().unwrap().generation.clone();
+		// A transport retry in the original generation may observe history, but cannot close
+		// authority.
+		if same_generation_first {
+			assert!(agent.recover_voice_calls().await.is_err());
+			assert_eq!(agent.store.open_agent_voice_calls().await.unwrap().len(), 1);
+		}
+		let root =
+			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("state"))
+				.unwrap();
+		let reopened = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+		let mut cold =
+			AgentCoordinator::new(reopened, agent.client.clone(), agent.config.clone()).unwrap();
+		drop(agent);
+		// The host supplies a newly admitted generation; process admission is tested separately.
+		cold.attach_voice_host("new-admitted-generation".into(), VoiceGateway::new());
+		cold.recover_voice_calls().await.unwrap();
+		assert!(cold.store.open_agent_voice_calls().await.unwrap().is_empty());
+		let item = cold.store.get_agent_work_item("root".into()).await.unwrap();
+		assert_eq!(item.dispatch_state, decodex_database::AgentDispatchState::Idle);
+		assert!(item.active_turn_id.is_none());
+		let observed: Vec<(String, String)> = database
+			.prepare(
+				"SELECT generation_id,turn_id FROM agent_voice_observed_turns ORDER BY turn_id",
+			)
+			.unwrap()
+			.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+			.unwrap()
+			.collect::<Result<_, _>>()
+			.unwrap();
+		assert_eq!(observed, vec![(original, "spoken-turn".into())]);
+		let receipts: Vec<String> = database
+			.prepare(
+				"SELECT payload FROM agent_inbox_events WHERE event_kind='agent_turn_completed'",
+			)
+			.unwrap()
+			.query_map([], |r| r.get(0))
+			.unwrap()
+			.collect::<Result<_, _>>()
+			.unwrap();
+		assert_eq!(receipts.len(), 1);
+		let receipt: Value = serde_json::from_str(&receipts[0]).unwrap();
+		assert_eq!(receipt["terminal"]["turn"]["id"], "spoken-turn");
+		assert!(receipts[0].contains("Saved spoken reply"));
+		let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+		assert!(requests.iter().any(|r| r["method"] == "thread/resume"));
+		assert!(requests.iter().all(|r| matches!(
+			r["method"].as_str(),
+			Some("thread/resume" | "thread/read" | "thread/turns/list" | "thread/items/list")
+		)));
+		cold.recover_voice_calls().await.unwrap();
+		assert!(sent.try_recv().is_err(), "closed calls need no further native recovery");
+	}
 }
