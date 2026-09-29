@@ -51,7 +51,7 @@ fn results_are_redacted_before_utf8_display_limit() {
 	assert!(text.contains("public result"));
 	let (text, truncated) = detail(json!({"results":[{"content":"界".repeat(10000)}]}));
 	assert!(truncated);
-	assert!(text.len() <= 24 * 1024);
+	assert!(text.len() <= 8 * 1024);
 }
 
 #[tokio::test]
