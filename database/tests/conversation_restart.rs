@@ -1298,7 +1298,6 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 							.is_none()
 					);
 				},
-				other => panic!("unexpected route: {other:?}"),
 			}
 		}
 	}

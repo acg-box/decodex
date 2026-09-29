@@ -956,10 +956,23 @@ fn quota_classification(
 	let Some(account) = decision.selected_account_id.as_ref() else {
 		return "unknown";
 	};
-	let complete = snapshot.quota_facts.iter().filter(|fact| &fact.account_id == account).all(|fact| {
-		matches!(fact.observation, AccountRegistryQuotaObservation::Current { used_percent, .. } if used_percent < 100)
-			|| matches!(fact.observation, AccountRegistryQuotaObservation::NotApplicable { .. })
-	});
+	let now = snapshot.resolved_at_micros;
+	let fresh = |observed| {
+		observed <= now && now - observed <= decodex_core::ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS
+	};
+	let complete = snapshot.quota_facts.iter().filter(|fact| &fact.account_id == account).all(
+		|fact| match fact.observation {
+			AccountRegistryQuotaObservation::Current {
+				used_percent,
+				observed_at_micros,
+				resets_at_micros,
+			} => used_percent < 100 && fresh(observed_at_micros) && resets_at_micros > now,
+			AccountRegistryQuotaObservation::NotApplicable { observed_at_micros } =>
+				fresh(observed_at_micros),
+			AccountRegistryQuotaObservation::Missing
+			| AccountRegistryQuotaObservation::ObservationError { .. } => false,
+		},
+	);
 	if complete { "known_available" } else { "unknown" }
 }
 
@@ -1051,4 +1064,71 @@ fn integer(value: Option<&Value>) -> Result<i64, StoreError> {
 
 fn incompatible(reason: &'static str) -> StoreError {
 	StoreError::Incompatible(format!("stored {reason} is malformed"))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{
+		AccountId, AccountRegistryQuotaFact, AccountRegistryQuotaObservation,
+		AccountRegistryRoutingMember, AccountRegistryRoutingSnapshot, AccountSelectionMode,
+		QuotaWindowClass, decide_account_registry_routing, quota_classification,
+	};
+
+	#[test]
+	fn selected_quota_classification_preserves_freshness_and_reset_boundaries() {
+		let now = 400_000_000;
+		let account = AccountId::new("10000000-0000-4000-8000-000000000001").unwrap();
+		let current =
+			|observed_at_micros, resets_at_micros| AccountRegistryQuotaObservation::Current {
+				used_percent: 10,
+				observed_at_micros,
+				resets_at_micros,
+			};
+		for (observation, expected) in [
+			(current(now - 300_000_000, now + 1), "known_available"),
+			(current(now - 300_000_001, now + 1), "unknown"),
+			(current(now - 1, now), "unknown"),
+			(
+				AccountRegistryQuotaObservation::NotApplicable { observed_at_micros: now },
+				"known_available",
+			),
+			(
+				AccountRegistryQuotaObservation::NotApplicable {
+					observed_at_micros: now - 300_000_001,
+				},
+				"unknown",
+			),
+		] {
+			let snapshot = AccountRegistryRoutingSnapshot {
+				snapshot_id: "quota-classification".into(),
+				routing_revision: 1,
+				mode: AccountSelectionMode::Fixed(account.clone()),
+				task_role_profile_revision: 1,
+				resolved_at_micros: now,
+				members: vec![AccountRegistryRoutingMember {
+					position: 1,
+					account_id: account.clone(),
+					account_revision: 1,
+					blockers: vec![],
+				}],
+				quota_facts: vec![
+					AccountRegistryQuotaFact {
+						account_id: account.clone(),
+						window: QuotaWindowClass::FiveHour,
+						duration_minutes: 300,
+						observation,
+					},
+					AccountRegistryQuotaFact {
+						account_id: account.clone(),
+						window: QuotaWindowClass::SevenDay,
+						duration_minutes: 10080,
+						observation: current(now, now + 1),
+					},
+				],
+			};
+			let decision = decide_account_registry_routing(&snapshot, now).unwrap();
+			assert_eq!(decision.selected_account_id.as_ref(), Some(&account));
+			assert_eq!(quota_classification(&decision, &snapshot), expected);
+		}
+	}
 }
