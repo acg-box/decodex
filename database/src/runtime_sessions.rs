@@ -905,13 +905,17 @@ fn thread_fence_authority(
 		.transpose()
 }
 
+// Binding advances the session once after the start fence. Remove that increment from
+// fence coordinates; subsequent session or conversation changes still invalidate old requests.
 fn read_thread_fence(
 	connection: &rusqlite::Connection,
 	runtime_session_id: &RuntimeSessionId,
 ) -> Result<RuntimeSessionThreadFenceReadback, StoreError> {
 	let row = connection
 		.query_row(
-			"SELECT s.thread_start_fence_key, s.conversation_id, c.revision, s.revision,
+			"SELECT s.thread_start_fence_key, s.conversation_id, c.revision,
+		        CASE WHEN s.thread_start_binding_key IS NULL THEN s.revision
+		             ELSE s.revision - 1 END,
 		        s.thread_start_turn_id, s.thread_start_continuation_plan_id,
 		        s.thread_start_routing_decision_id, s.account_id,
 		        s.thread_start_process_generation_id,
@@ -1033,6 +1037,11 @@ fn binding_matches(
 	binding: &BindRuntimeSessionThread,
 ) -> bool {
 	readback.conversation_id == binding.conversation_id
+		&& readback.conversation_revision == binding.expected_conversation_revision
+		&& readback.turn_revision == binding.expected_turn_revision
+		&& readback.thread_start_request_sha256 == binding.thread_start_request_sha256
+		&& readback.thread_start_response_id == binding.successful_response.response_id
+		&& readback.thread_start_response_sha256 == binding.successful_response.response_sha256
 		&& readback.runtime_session_id == binding.runtime_session_id
 		&& readback.prior_revision == binding.expected_revision
 		&& readback.turn_id == binding.turn_id
