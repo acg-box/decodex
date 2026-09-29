@@ -167,12 +167,11 @@ impl AgentSurface {
 
 		if self.native_history.requested.as_ref().is_some_and(|(id, thread)| {
 			id == &work.id && Some(thread) == work.codex_thread_id.as_ref()
-		}) {
-			if let Some(message) = self.native_history.notice {
-				panel = panel.child(
-					div().debug_selector(|| "native-history-notice".into()).child(muted(message)),
-				);
-			}
+		}) && let Some(message) = self.native_history.notice
+		{
+			panel = panel.child(
+				div().debug_selector(|| "native-history-notice".into()).child(muted(message)),
+			);
 		}
 		if self
 			.native_history
@@ -225,95 +224,7 @@ impl AgentSurface {
 			for item in &self.native_history.summary {
 				panel = panel.child(self.native_summary_row(work, item, cx));
 			}
-			let groups =
-				groups::groups(&self.native_history.entries, &self.native_history.expanded_turns);
-			let mut collapsed = BTreeSet::new();
-			let mut headers = std::collections::BTreeMap::new();
-
-			for group in &groups {
-				headers.insert(group.indices[0], group);
-				collapsed.extend(group.indices.iter().skip(1).copied());
-			}
-			self.prepare_process_folds(work, &collapsed);
-			let mut hidden = Vec::new();
-			let empty_reasoning = groups::empty_completed_reasoning(&self.native_history.entries);
-			for (index, entry) in self.native_history.entries.iter().enumerate() {
-				if empty_reasoning.contains(&index) {
-					continue;
-				}
-				if let Some(group) = headers.get(&index) {
-					if !hidden.is_empty() {
-						panel = panel
-							.child(self.native_history_spacer(work, std::mem::take(&mut hidden)));
-					}
-					let owner = cx.entity();
-					let indices = group.indices.clone();
-					let source_work = work.clone();
-					let header = (index == group.first_index)
-						.then(|| self.turn_process_header(work, group, entry, cx));
-					let body = div()
-						.w_full()
-						.debug_selector(|| "turn-process-block".into())
-						.children(header)
-						.child(crate::ui_motion::disclosure_lazy(
-							SharedString::from(format!(
-								"turn-process-body-{}-{}-{}",
-								work.id,
-								group.turn,
-								serde_json::json!(key(entry))
-							)),
-							group.expanded,
-							move |cx| {
-								owner.update(cx, |s, cx| {
-									render::process_indent(
-										div().w_full().flex().flex_col().gap(px(8.)).children(
-											indices
-												.iter()
-												.filter_map(|index| {
-													s.native_history.entries.get(*index)
-												})
-												.map(|entry| {
-													s.native_timeline_content(
-														&source_work,
-														entry,
-														&format!(
-															"process-{}-{}",
-															source_work.id,
-															serde_json::json!(key(entry))
-														),
-														cx,
-													)
-												}),
-										),
-									)
-								})
-							},
-						));
-					panel = panel.child(self.native_scroll_row(
-						work,
-						entry,
-						body.into_any_element(),
-						cx,
-					));
-					continue;
-				}
-
-				if collapsed.contains(&index) {
-					continue;
-				}
-				if let Some(height) = self.native_offscreen_height(work, entry) {
-					hidden.push((entry, height));
-					continue;
-				}
-				if !hidden.is_empty() {
-					panel =
-						panel.child(self.native_history_spacer(work, std::mem::take(&mut hidden)));
-				}
-				panel = panel.child(self.native_timeline_row(work, entry, cx));
-			}
-			if !hidden.is_empty() {
-				panel = panel.child(self.native_history_spacer(work, hidden));
-			}
+			panel = self.append_native_history_rows(panel, work, cx);
 			panel = panel.children(self.send_previews(&work.id));
 			if let Some(messages) = self.streamed_output(work) {
 				for message in messages.iter().filter(|message| {
@@ -329,6 +240,99 @@ impl AgentSurface {
 			}
 		}
 		panel.into_any_element()
+	}
+
+	fn append_native_history_rows(
+		&self,
+		mut panel: gpui::Div,
+		work: &AgentWorkItemDto,
+		cx: &mut Context<Self>,
+	) -> gpui::Div {
+		let groups =
+			groups::groups(&self.native_history.entries, &self.native_history.expanded_turns);
+		let mut collapsed = BTreeSet::new();
+		let mut headers = std::collections::BTreeMap::new();
+
+		for group in &groups {
+			headers.insert(group.indices[0], group);
+			collapsed.extend(group.indices.iter().skip(1).copied());
+		}
+		self.prepare_process_folds(work, &collapsed);
+		let mut hidden = Vec::new();
+		let empty_reasoning = groups::empty_completed_reasoning(&self.native_history.entries);
+		for (index, entry) in self.native_history.entries.iter().enumerate() {
+			if empty_reasoning.contains(&index) {
+				continue;
+			}
+			if let Some(group) = headers.get(&index) {
+				if !hidden.is_empty() {
+					panel =
+						panel.child(self.native_history_spacer(work, std::mem::take(&mut hidden)));
+				}
+				let owner = cx.entity();
+				let indices = group.indices.clone();
+				let source_work = work.clone();
+				let header = (index == group.first_index)
+					.then(|| self.turn_process_header(work, group, entry, cx));
+				let body = div()
+					.w_full()
+					.debug_selector(|| "turn-process-block".into())
+					.children(header)
+					.child(crate::ui_motion::disclosure_lazy(
+						SharedString::from(format!(
+							"turn-process-body-{}-{}-{}",
+							work.id,
+							group.turn,
+							serde_json::json!(key(entry))
+						)),
+						group.expanded,
+						move |cx| {
+							owner.update(cx, |s, cx| {
+								render::process_indent(
+									div().w_full().flex().flex_col().gap(px(8.)).children(
+										indices
+											.iter()
+											.filter_map(|index| {
+												s.native_history.entries.get(*index)
+											})
+											.map(|entry| {
+												s.native_timeline_content(
+													&source_work,
+													entry,
+													&format!(
+														"process-{}-{}",
+														source_work.id,
+														serde_json::json!(key(entry))
+													),
+													cx,
+												)
+											}),
+									),
+								)
+							})
+						},
+					));
+				panel =
+					panel.child(self.native_scroll_row(work, entry, body.into_any_element(), cx));
+				continue;
+			}
+
+			if collapsed.contains(&index) {
+				continue;
+			}
+			if let Some(height) = self.native_offscreen_height(work, entry) {
+				hidden.push((entry, height));
+				continue;
+			}
+			if !hidden.is_empty() {
+				panel = panel.child(self.native_history_spacer(work, std::mem::take(&mut hidden)));
+			}
+			panel = panel.child(self.native_timeline_row(work, entry, cx));
+		}
+		if !hidden.is_empty() {
+			panel = panel.child(self.native_history_spacer(work, hidden));
+		}
+		panel
 	}
 
 	fn read_latest_native_history(&mut self, work: &str, thread: &str, cx: &mut Context<Self>) {
