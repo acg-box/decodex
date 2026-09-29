@@ -33,7 +33,7 @@ impl AgentSurface {
 			return;
 		}
 		let Some(profile) = self.profile.clone() else { return };
-		let Ok(mut media) = self.take_voice_media(window) else {
+		let Ok(mut media) = Media::new(window) else {
 			self.feedback = "Dictation requires the current signed macOS application.".into();
 			cx.notify();
 			return;

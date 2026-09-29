@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import XCTest
+import WebKit
 
 @testable import DecodexApp
 
@@ -399,6 +400,8 @@ final class VoiceMediaHostTests: XCTestCase {
         let pointer = try XCTUnwrap(decodexVoiceMediaCreate(Unmanaged.passUnretained(view).toOpaque()))
         defer { decodexVoiceMediaDestroy(pointer) }
         let host = Unmanaged<VoiceMediaHost>.fromOpaque(pointer).takeUnretainedValue()
+        XCTAssertFalse(host.hasHostWindow, "Creating the host must not create browser media")
+        XCTAssertTrue(host.command(#"{"operation":"start"}"#))
         XCTAssertTrue(host.hasHostWindow)
     }
 
@@ -407,11 +410,36 @@ final class VoiceMediaHostTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
         let host = VoiceMediaHost(hostWindow: window)
         defer { host.close() }
+        XCTAssertFalse(window.contentView!.subviews.contains { $0 is WKWebView })
         XCTAssertTrue(host.command(#"{"operation":"devices"}"#))
         let pointer = try XCTUnwrap(host.poll())
         let value = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(String(cString:pointer).utf8)) as? [String:Any])
         XCTAssertEqual(value["type"] as? String, "devices")
         XCTAssertNotNil(value["inputs"] as? [String])
+        XCTAssertFalse(window.contentView!.subviews.contains { $0 is WKWebView })
+    }
+
+    func testNativeDictationDoesNotCreateBrowserMedia() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+        var capture: DictationProbe?
+        let host = VoiceMediaHost(hostWindow: window,
+                                  authorizationRequestForTesting: { $0(true) },
+                                  dictationFactoryForTesting: { emit in
+            let value = DictationProbe(emit: emit)
+            capture = value
+            return value
+        })
+        defer { host.close() }
+        XCTAssertTrue(host.command(#"{"operation":"dictate"}"#))
+        XCTAssertNotNil(capture)
+        XCTAssertFalse(window.contentView!.subviews.contains { $0 is WKWebView })
+        XCTAssertTrue(host.command(#"{"operation":"finish"}"#))
+        XCTAssertEqual(capture?.finishes, 1)
+        capture?.emit(["type":"ended"])
+        XCTAssertNotNil(host.poll())
+        XCTAssertNil(host.poll(), "Native dictation must not emit browser preparation events")
+        XCTAssertFalse(window.contentView!.subviews.contains { $0 is WKWebView })
     }
 
     func testVisibleWindowFallbackBindsMediaWithoutKeyWindow() {
