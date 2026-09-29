@@ -166,7 +166,6 @@ mod tests {
 			assert_eq!(receipt(&store).await.attempt, original);
 			assert_eq!(receipt(&store).await.state, state.unwrap_or("reserved"));
 			assert!(store.begin_agent_dispatch("work".into()).await.is_err());
-			assert!(store.begin_agent_tool_upgrade("work".into(), "thread".into()).await.is_err());
 			facts(&store, None, 'b').await;
 			facts(&store, Some("other"), 'c').await;
 			store

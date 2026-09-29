@@ -288,7 +288,6 @@ async fn restart_keeps_unknown_edit_fenced_until_exact_prefix_and_draft_release(
 	);
 	assert!(store.reserve_agent_prompt_edit(a.clone()).await.unwrap().is_none());
 	assert!(store.begin_agent_dispatch_with_events("task".into(), vec![]).await.is_err());
-	assert!(store.begin_agent_tool_upgrade("task".into(), "native".into()).await.is_err());
 	assert!(store.enqueue_agent_event(input("new")).await.is_err());
 	assert!(store.begin_agent_dispatch_with_events("other".into(), vec![]).await.is_ok());
 	assert!(

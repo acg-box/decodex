@@ -65,17 +65,16 @@ async fn upgraded_manager_can_read_previous_thread_after_store_reopen() {
 	let root =
 		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
 			.unwrap();
-	// Retain history for migrations completed by older Decodex versions.
-	agent.store.begin_agent_tool_upgrade("agent".into(), "opaque thread/1".into()).await.unwrap();
-	agent
-		.store
-		.finish_agent_tool_upgrade(
-			"agent".into(),
-			"opaque thread/1".into(),
-			"historic-new-thread".into(),
+	// Seed a migration completed by an older release; current code never upgrades threads.
+	let database = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+	database
+		.execute_batch(
+			"UPDATE agent_work_items SET codex_thread_id='historic-new-thread' WHERE id='agent';
+		 INSERT INTO agent_thread_revisions(work_id,old_thread_id,new_thread_id,created_at_micros)
+		 VALUES('agent','opaque thread/1','historic-new-thread',1);",
 		)
-		.await
 		.unwrap();
+	drop(database);
 	let current = agent.store.get_agent_work_item("agent".into()).await.unwrap();
 
 	agent.store = SqliteStore::open(&root.paths()).unwrap();
