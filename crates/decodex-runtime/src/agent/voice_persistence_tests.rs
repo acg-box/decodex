@@ -225,3 +225,28 @@ async fn precaution_storage_failure_does_not_prevent_native_stop() {
 	assert_eq!(count, 1);
 	assert!(agent.voice.as_ref().expect("voice").session.is_none());
 }
+
+#[tokio::test]
+async fn voice_start_rejects_independent_manager_before_native_requests() {
+	use decodex_protocol::EntityId;
+	let (mut agent, mut sent, _directory, _database) = fixture().await;
+	let mut manager = agent.store.get_agent_work_item("root".into()).await.unwrap();
+	manager.id = "independent".into();
+	manager.parent_goal_id = Some("root".into());
+	manager.codex_thread_id = None;
+	manager.dispatch_state = decodex_database::AgentDispatchState::Idle;
+	manager.active_turn_id = None;
+	agent.store.create_agent_manager(manager, None).await.unwrap();
+	agent.store.bind_agent_thread("independent".into(), "other-thread".into()).await.unwrap();
+	let result = agent
+		.voice_request(AgentVoiceRequest::Start {
+			session_id: EntityId::new("other-call").unwrap(),
+			work_id: EntityId::new("independent").unwrap(),
+			offer: VoiceSdp::new("offer".into()).unwrap(),
+			options: Default::default(),
+		})
+		.await;
+	assert!(result.is_err());
+	assert!(sent.try_recv().is_err(), "foreign voice target must not be resumed or started");
+	assert_eq!(agent.store.open_agent_voice_calls().await.unwrap().len(), 1);
+}
