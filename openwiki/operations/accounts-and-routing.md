@@ -3,9 +3,6 @@ type: Reference
 title: "Account routing and recovery"
 description: "Service-owned OAuth and native PAT import, exact routing and account recovery boundaries."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-b52eea0658a5f27f944ae338
     resource: repo://crates/decodex-runtime/src/account_api/activation.rs
@@ -24,6 +21,9 @@ sources:
   - id: openwiki-source-9b561c5dd3054cdff0599fb9
     resource: repo://database/src/quota_activation.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-29T20:08:07.145Z
 ---
 
 # Account routing and recovery

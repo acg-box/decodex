@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bd901dc16f0902b8e5f4a4d1362f0ad297c77885b48ebf9e2812c3f2e40a9ea5",
+  "pageVersion": "sha256:2b595d3b0a7a7e2f7bc037dcf2a93a7ff494734da09a02e06e7ef53a74f21d3a",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/dictation.rs",
-          "version": "repo-file-v1:sha256:9465630d0e9bf8ac6ef6547932975672639549aeb6b713045a935f838bf2a6ac"
+          "version": "repo-file-v1:sha256:54cea9bc3ef72ba20b3935c3d0bb4b028138a8ccc0b1b0f5c79a957794cae029"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/dictation_native.rs",
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/voice.rs",
-          "version": "repo-file-v1:sha256:5aa00edde06aa4a30a28794eb99d396e50418cb48c9173b2f9873b9228e35c58"
+          "version": "repo-file-v1:sha256:1d32a998326ce209389aec440b31eaa930883a067d455aeb2ccf134d30f64cb1"
         }
       ]
     },
@@ -61,8 +61,8 @@
       "statement": "Live call startup reads the effective voice for the exact native thread and sends it in the v3 real-time request with startup context and transcript-tail flushing; optional model and start/end instructions are call-scoped.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L125-L185",
-          "version": "repo-lines-v1:sha256:e99766c82652fd0909723f7f9a02620a7a54363ff7b39eda8edcf5f12e08020e:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3ZjIzY2QwYTJlM2Q2OTUzNzA3OGFjODJlZDg2NGUxYmJiNDc5N2NiNzMyZDQyYTllOTYwOGI1MDYzZThlOTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3MjM5M2E5YmVlOTU1NzE5MjQxYjcxM2IxNmNkMmIwYTNmMzQwZjVmNWE1ZTg4ZTQxM2VmODVjY2Q5MzlmMTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4NjI0ZjBjMzVjZjFmN2FlMjBkNmVhZWE3YzM3OWExNjM4MmE1ZmM3NTFhNGNkNzhjMTZkNGQyYjI0OTIwNGEifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L144-L199",
+          "version": "repo-lines-v1:sha256:1724e1ba194cf192e0ea4a2e71dac64f796ebe1f1a3f6baf92d8b5bab91d218b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3ZjIzY2QwYTJlM2Q2OTUzNzA3OGFjODJlZDg2NGUxYmJiNDc5N2NiNzMyZDQyYTllOTYwOGI1MDYzZThlOTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3MjM5M2E5YmVlOTU1NzE5MjQxYjcxM2IxNmNkMmIwYTNmMzQwZjVmNWE1ZTg4ZTQxM2VmODVjY2Q5MzlmMTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4NjI0ZjBjMzVjZjFmN2FlMjBkNmVhZWE3YzM3OWExNjM4MmE1ZmM3NTFhNGNkNzhjMTZkNGQyYjI0OTIwNGEifQ"
         }
       ]
     },
@@ -71,14 +71,28 @@
       "statement": "Closing the Swift voice media host stops native capture, removes the WebView message handler and media activity, and releases the WebView.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/VoiceMediaHost.swift#L306-L322",
-          "version": "repo-lines-v1:sha256:75de9f87df6c47cdc5609ec6e36696e93716b205f3fa2441b6253fe1affcb5b2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyMjZmZmZjMTY5ZGJjMjAxNzAzOTI0MDZkNzQyYzUwYWQ0MTViZGYzOGJkY2QzOGJiODJiZjk0NjMxZWQ0MGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhNWQ0YWZkOWZlMTEwNzZkNTk1ZmU0MWQ3NDcxYTJjMTE3ZWI3N2YyMzQ5OWI2ZThlMTYxNTZmODIwYzVhMTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzMzQxYmYzN2E1MTJmZjMwNmU5ZGZlOWNhZGE1Y2IzNjUxYWJiODQ3Yjc4ZjIzZDFlNTk0YmU4ODk1ZTI2NmEifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/VoiceMediaHost.swift#L306-L323",
+          "version": "repo-lines-v1:sha256:11ed495d5420850459a73432d30801bd3eb89974211e76a3ad35c579efedf556:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyMjZmZmZjMTY5ZGJjMjAxNzAzOTI0MDZkNzQyYzUwYWQ0MTViZGYzOGJkY2QzOGJiODJiZjk0NjMxZWQ0MGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhNWQ0YWZkOWZlMTEwNzZkNTk1ZmU0MWQ3NDcxYTJjMTE3ZWI3N2YyMzQ5OWI2ZThlMTYxNTZmODIwYzVhMTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzMzQxYmYzN2E1MTJmZjMwNmU5ZGZlOWNhZGE1Y2IzNjUxYWJiODQ3Yjc4ZjIzZDFlNTk0YmU4ODk1ZTI2NmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3794db058135474a810f8c80e8945a61",
+      "statement": "Local live-voice transcript storage preserves newer received text when a final is its shorter prefix, marks that saved text incomplete, and ignores empty finals without replaying transcript input; expanded finals and ordinary corrections remain supported.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/voice.rs#L282-L308",
+          "version": "repo-lines-v1:sha256:24510d932e4d5628ae0ca8122616dcf24da553525d2a16c3f382d65f0baad61e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5NmJlODAyMzA0ZGY2ZmZkOGIzNWUxN2VmY2MyYzQ0MTkzMzVkNmMzMWQ2ZjU1Yzg3ZjkzZjU2ZTYzYTQyMGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNjAyNTViNGZiNjJlODIzODBhMTRhZDU4MzRiMWZjNjZmNWY2ZTBlZmMwZDI1ZDJmNThmMDc2ODAxMTY1MDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwNjFmNGExYjZkMzI3ZDU3ZDMxNzY3NjgzNWQ5MWQ3NGExYjdiMzM0NWE3YjFkY2E4NzNkZjFmYjA4NWRkMGQifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/voice_persistence_tests.rs",
+          "version": "repo-file-v1:sha256:98dc96c5403b969797bc21c526b8025b354fddd213eaf6e5a21fa6686b81da9c"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.0",
-    "at": "2026-09-29T13:52:19.644Z"
+    "by": "openwiki/0.6.1",
+    "at": "2026-09-29T20:08:07.145Z"
   }
 }

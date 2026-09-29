@@ -3,9 +3,6 @@ type: Reference
 title: "Account lifecycle authority"
 description: "Service-owned account effects, synchronous routing and exact credential refresh convergence."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-acf49c93c3e80379f0023c71
     resource: repo://apps/decodex-gpui/src/accounts.rs
@@ -14,6 +11,9 @@ sources:
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-29T20:08:07.145Z
 ---
 
 # Account lifecycle authority
