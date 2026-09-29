@@ -86,46 +86,7 @@ impl AgentSurface {
 					.filter(|(id, _)| id == &key)
 					.and_then(|(_, result)| result.as_ref())
 			});
-		let body = match result {
-			Some(AgentActivityDetailResult::Available { text, offset, next, .. }) => {
-				let first_ids = ids.clone();
-				let next_ids = ids.clone();
-				div()
-					.child(super::selectable_text::SelectableText {
-						key: format!("detail-text-{key}-{offset}"),
-						text: text.clone(),
-						highlights: Vec::new(),
-						links: Vec::new(),
-					})
-					.when(*offset > 0, |d| {
-						d.child(self.workspace_action(
-							"detail-first".into(),
-							"Back to start".into(),
-							move |s, cx| s.load_activity_detail(first_ids.clone(), None, cx),
-							cx,
-						))
-					})
-					.when_some(next.clone(), |d, cursor| {
-						d.child(div().debug_selector(|| "detail-next-action".into()).child(
-							self.workspace_action(
-								"detail-next".into(),
-								"Read next portion".into(),
-								move |s, cx| {
-									s.load_activity_detail(
-										next_ids.clone(),
-										Some(cursor.clone()),
-										cx,
-									)
-								},
-								cx,
-							),
-						))
-					})
-			},
-			Some(AgentActivityDetailResult::Unavailable) =>
-				div().child("Source details are unavailable. Collapse and reopen to retry."),
-			None => div().child(crate::ui_loading::loading("Loading details")),
-		};
+		let body = self.activity_detail_body(&ids, &key, result, cx);
 		let metadata_key = format!("tool-reference-{key}");
 		let metadata_open = self.expanded_records.contains(&metadata_key);
 		let metadata_toggle = self.workspace_action(
@@ -203,6 +164,55 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	fn activity_detail_body(
+		&self,
+		ids: &(String, String, String),
+		key: &str,
+		result: Option<&AgentActivityDetailResult>,
+		cx: &mut Context<Self>,
+	) -> gpui::Div {
+		match result {
+			Some(AgentActivityDetailResult::Available { text, offset, next, .. }) => {
+				let first_ids = ids.clone();
+				let next_ids = ids.clone();
+				div()
+					.child(super::selectable_text::SelectableText {
+						key: format!("detail-text-{key}-{offset}"),
+						text: text.clone(),
+						highlights: Vec::new(),
+						links: Vec::new(),
+					})
+					.when(*offset > 0, |d| {
+						d.child(self.workspace_action(
+							"detail-first".into(),
+							"Back to start".into(),
+							move |s, cx| s.load_activity_detail(first_ids.clone(), None, cx),
+							cx,
+						))
+					})
+					.when_some(next.clone(), |d, cursor| {
+						d.child(div().debug_selector(|| "detail-next-action".into()).child(
+							self.workspace_action(
+								"detail-next".into(),
+								"Read next portion".into(),
+								move |s, cx| {
+									s.load_activity_detail(
+										next_ids.clone(),
+										Some(cursor.clone()),
+										cx,
+									)
+								},
+								cx,
+							),
+						))
+					})
+			},
+			Some(AgentActivityDetailResult::Unavailable) =>
+				div().child("Source details are unavailable. Collapse and reopen to retry."),
+			None => div().child(crate::ui_loading::loading("Loading details")),
+		}
+	}
+
 	fn toggle_activity_detail(&mut self, ids: (String, String, String), cx: &mut Context<Self>) {
 		let Some(key) = self.activity_detail_key(&ids) else {
 			return;
@@ -275,6 +285,50 @@ impl AgentSurface {
 mod tests {
 	use super::*;
 
+	fn prepare_tool_history(s: &mut AgentSurface, cx: &mut Context<AgentSurface>) {
+		s.visual_workspace_fixture(cx);
+		s.snapshot.as_mut().unwrap().runtime_source = Some(EntityId::new("source").unwrap());
+		s.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|w| w.id == "agent")
+			.unwrap()
+			.codex_thread_id = Some("thread".into());
+		s.native_history.binding = Some(native_timeline::Binding {
+			work: "agent".into(),
+			thread: "thread".into(),
+			account: "account".into(),
+		});
+		s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
+			position: 0,
+			content: decodex_protocol::AgentTimelineContent::Item {
+				turn_id: "turn".into(),
+				item_id: "search".into(),
+				kind: "webSearch".into(),
+				text: String::new(),
+				phase: None,
+				truncated: false,
+				app_ui: false,
+				attachments: vec![],
+				activity: Some(AgentActivityDto {
+					turn_id: "turn".into(),
+					item_id: "search".into(),
+					kind: "webSearch".into(),
+					status: "completed".into(),
+					label: "Searching the web for a long query with several terms".into(),
+					detail: String::new(),
+					plugin_id: None,
+					read_only_hint: None,
+					native_timestamp_ms: None,
+					duration_ms: Some(12345),
+				}),
+			},
+		});
+		cx.notify();
+	}
+
 	#[gpui::test]
 	fn expanded_tool_stays_inside_transcript_and_survives_background_refresh(
 		cx: &mut gpui::TestAppContext,
@@ -282,49 +336,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		visual.simulate_resize(gpui::size(px(900.), px(1000.)));
 		let ids = ("agent".to_owned(), "turn".to_owned(), "search".to_owned());
-		surface.update(visual, |s, cx| {
-			s.visual_workspace_fixture(cx);
-			s.snapshot.as_mut().unwrap().runtime_source = Some(EntityId::new("source").unwrap());
-			s.snapshot
-				.as_mut()
-				.unwrap()
-				.work_items
-				.iter_mut()
-				.find(|w| w.id == "agent")
-				.unwrap()
-				.codex_thread_id = Some("thread".into());
-			s.native_history.binding = Some(native_timeline::Binding {
-				work: "agent".into(),
-				thread: "thread".into(),
-				account: "account".into(),
-			});
-			s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
-				position: 0,
-				content: decodex_protocol::AgentTimelineContent::Item {
-					turn_id: "turn".into(),
-					item_id: "search".into(),
-					kind: "webSearch".into(),
-					text: String::new(),
-					phase: None,
-					truncated: false,
-					app_ui: false,
-					attachments: vec![],
-					activity: Some(AgentActivityDto {
-						turn_id: "turn".into(),
-						item_id: "search".into(),
-						kind: "webSearch".into(),
-						status: "completed".into(),
-						label: "Searching the web for a long query with several terms".into(),
-						detail: String::new(),
-						plugin_id: None,
-						read_only_hint: None,
-						native_timestamp_ms: None,
-						duration_ms: Some(12345),
-					}),
-				},
-			});
-			cx.notify();
-		});
+		surface.update(visual, prepare_tool_history);
 		visual.update(|w, cx| w.draw(cx).clear());
 		std::thread::sleep(std::time::Duration::from_millis(240));
 		visual.update(|w, cx| w.draw(cx).clear());

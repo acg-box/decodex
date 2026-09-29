@@ -1,7 +1,11 @@
 //! Compact response statistics with hover details, independent of transcript layout.
 use super::{compact_tokens, ui_theme};
 use decodex_protocol::AgentTurnUsageDto;
-use gpui::{prelude::*, *};
+use gpui::{
+	Anchor, AnyElement, App, Bounds, BoxShadow, Div, FontWeight, IntoElement, PathBuilder, Pixels,
+	RenderOnce, SharedString, Window, anchored, canvas, deferred, div, point, prelude::*, px, rgb,
+	rgba,
+};
 
 #[derive(IntoElement)]
 pub(super) struct ResponseMetrics {
@@ -74,6 +78,79 @@ fn duration_icon() -> impl IntoElement {
 	.flex_none()
 }
 
+fn details_panel(
+	key: &str,
+	duration: Option<String>,
+	usage: Option<&AgentTurnUsageDto>,
+) -> AnyElement {
+	let mut panel = div()
+		.id(SharedString::from(format!("response-detail-panel-{}", key)))
+		.debug_selector(|| "native-turn-usage".into())
+		.occlude()
+		.cursor_default()
+		.on_click(|_, _, cx| cx.stop_propagation())
+		.w(px(272.))
+		.whitespace_normal()
+		.p(px(14.))
+		.rounded(px(12.))
+		.bg(rgb(0x29292d))
+		.text_size(px(12.))
+		.line_height(px(15.))
+		.flex()
+		.flex_col()
+		.gap(px(2.))
+		.shadow(vec![BoxShadow {
+			inset: false,
+			color: rgba(0x00000024).into(),
+			offset: point(px(0.), px(4.)),
+			blur_radius: px(12.),
+			spread_radius: px(-3.),
+		}]);
+
+	panel = panel.child(
+		div()
+			.flex()
+			.justify_between()
+			.mb(px(8.))
+			.child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child("Turn details"))
+			.child(div().text_color(rgb(ui_theme::TEXT_MUTED)).child(duration.unwrap_or_default())),
+	);
+	if let Some(usage) = usage {
+		panel = panel
+			.child(
+				div()
+					.flex()
+					.justify_end()
+					.text_color(rgb(ui_theme::TEXT_MUTED))
+					.child(div().w(px(58.)).text_right().child("Input"))
+					.child(div().w(px(58.)).text_right().child("Output")),
+			)
+			.child(usage_row("This turn", Some(usage.input_tokens), Some(usage.output_tokens)));
+		if let Some(details) = &usage.details {
+			if details.last_input.is_some() || details.last_output.is_some() {
+				panel = panel.child(usage_row(
+					"Last response",
+					details.last_input,
+					details.last_output,
+				));
+			}
+			if details.cached_input.is_some() {
+				panel = panel.child(usage_row("  Cached", details.cached_input, None));
+			}
+			if details.reasoning_output.is_some() {
+				panel = panel.child(usage_row("  Reasoning", None, details.reasoning_output));
+			}
+			panel = panel
+				.child(div().h(px(6.)))
+				.children(number("Model responses", details.responses))
+				.children(number("Conversation total", details.thread_total))
+				.children(number("Context capacity", details.context_capacity));
+		}
+	}
+
+	panel.into_any_element()
+}
+
 impl RenderOnce for ResponseMetrics {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(
@@ -89,86 +166,7 @@ impl RenderOnce for ResponseMetrics {
 		let label = duration.clone().or(self.status).unwrap_or_default();
 		let has_duration = duration.is_some();
 		let panel = if open {
-			let mut panel = div()
-				.id(SharedString::from(format!("response-detail-panel-{}", self.key)))
-				.debug_selector(|| "native-turn-usage".into())
-				.occlude()
-				.cursor_default()
-				.on_click(|_, _, cx| cx.stop_propagation())
-				.w(px(272.))
-				.whitespace_normal()
-				.p(px(14.))
-				.rounded(px(12.))
-				.bg(rgb(0x29292d))
-				.text_size(px(12.))
-				.line_height(px(15.))
-				.flex()
-				.flex_col()
-				.gap(px(2.))
-				.shadow(vec![BoxShadow {
-					inset: false,
-					color: rgba(0x00000024).into(),
-					offset: point(px(0.), px(4.)),
-					blur_radius: px(12.),
-					spread_radius: px(-3.),
-				}]);
-
-			panel = panel.child(
-				div()
-					.flex()
-					.justify_between()
-					.mb(px(8.))
-					.child(
-						div()
-							.text_size(px(13.))
-							.font_weight(FontWeight::MEDIUM)
-							.child("Turn details"),
-					)
-					.child(
-						div()
-							.text_color(rgb(ui_theme::TEXT_MUTED))
-							.child(duration.unwrap_or_default()),
-					),
-			);
-			if let Some(usage) = &self.usage {
-				panel = panel
-					.child(
-						div()
-							.flex()
-							.justify_end()
-							.text_color(rgb(ui_theme::TEXT_MUTED))
-							.child(div().w(px(58.)).text_right().child("Input"))
-							.child(div().w(px(58.)).text_right().child("Output")),
-					)
-					.child(usage_row(
-						"This turn",
-						Some(usage.input_tokens),
-						Some(usage.output_tokens),
-					));
-				if let Some(details) = &usage.details {
-					if details.last_input.is_some() || details.last_output.is_some() {
-						panel = panel.child(usage_row(
-							"Last response",
-							details.last_input,
-							details.last_output,
-						));
-					}
-					if details.cached_input.is_some() {
-						panel = panel.child(usage_row("  Cached", details.cached_input, None));
-					}
-					if details.reasoning_output.is_some() {
-						panel =
-							panel.child(usage_row("  Reasoning", None, details.reasoning_output));
-					}
-					panel = panel
-						.child(div().h(px(6.)))
-						.children(number("Model responses", details.responses))
-						.children(number("Conversation total", details.thread_total))
-						.children(number("Context capacity", details.context_capacity));
-				}
-			}
-
-			panel.into_any_element()
+			details_panel(&self.key, duration, self.usage.as_ref())
 		} else {
 			div().into_any_element()
 		};
