@@ -10,6 +10,7 @@ use std::{
 };
 
 #[path = "agent_markdown_cache.rs"] mod cache;
+#[path = "agent_code_comments.rs"] mod code_comments;
 
 #[path = "agent_clipboard.rs"] mod clipboard;
 #[path = "agent_math/mod.rs"] mod math;
@@ -84,6 +85,12 @@ fn parse(text: &str) -> Vec<Node> {
 					flattened -= 1;
 				} else if stack.len() > 1 {
 					let (mut kind, children) = stack.pop().expect("open block");
+					if matches!(kind, Kind::Paragraph)
+						&& let Some(comments) = code_comments::nodes(&text[range.clone()])
+					{
+						stack.last_mut().expect("root").1.extend(comments);
+						continue;
+					}
 					if let Kind::Mermaid { fence, content_end } = &kind
 						&& !mermaid_view::has_closing_fence(text, fence.clone(), *content_end)
 					{
