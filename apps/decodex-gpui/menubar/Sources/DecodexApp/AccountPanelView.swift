@@ -30,7 +30,7 @@ struct AccountPanelView: View {
 
 	init(
 		store: ResetCardStore,
-		fastModeStore: FastModeStore = FastModeStore(),
+		fastModeStore: FastModeStore,
 		layoutVisibleFrameOverride: CGRect? = nil,
 		loadsExternalState: Bool = true,
 		onContentSizeChange: @escaping (CGSize) -> Void = { _ in }
@@ -80,14 +80,6 @@ struct AccountPanelView: View {
 		// system appearance changes.
 		.id(colorScheme == .dark ? "account-panel-dark" : "account-panel-light")
 		.animation(panelLayoutAnimation, value: store.accountReauthentication != nil)
-		.task {
-			guard loadsExternalState else {
-				return
-			}
-			if fastMode.hasLoaded == false {
-				await fastMode.load()
-			}
-		}
 		.task(id: accountPrivacy) {
 			guard loadsExternalState else {
 				return
