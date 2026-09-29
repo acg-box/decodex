@@ -67,7 +67,6 @@ impl PromptEditStatus {
 			return matches!(self.phase, PromptEditPhase::Idle | PromptEditPhase::Unavailable);
 		};
 		!matches!(self.phase, PromptEditPhase::Idle | PromptEditPhase::Unavailable)
-			&& !self.thread_id.as_str().is_empty()
 			&& e.review_token.as_str().len() == 64
 			&& e.review_token.as_str().bytes().all(|b| b.is_ascii_hexdigit())
 			&& !e.before_turn_id.as_str().is_empty()
