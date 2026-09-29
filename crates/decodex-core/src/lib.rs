@@ -11,7 +11,6 @@ mod account_alias;
 pub use account_alias::account_alias_candidate;
 mod agent;
 mod automation;
-mod automation_delivery;
 mod blob;
 mod cache;
 mod config;
@@ -49,10 +48,7 @@ pub use self::{
 		CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion,
 		ProviderIdentity,
 	},
-	agent::{
-		Agent, AgentError, AgentId, AgentRepository, AgentRole, AgentStatus,
-		lead_status_for_project,
-	},
+	agent::{AgentError, AgentId},
 	automation::{
 		AutomationDedupeKey, AutomationDefinition, AutomationError, AutomationFiring,
 		AutomationFiringId, AutomationFiringSource, AutomationId, AutomationOccurrenceId,
@@ -61,10 +57,6 @@ pub use self::{
 		MAX_AUTOMATION_RRULE_BYTES, MAX_AUTOMATION_SYMBOL_BYTES,
 		MAX_AUTOMATION_TIMESTAMP_MICROSECONDS, MAX_AUTOMATION_TIMEZONE_BYTES,
 		propose_automation_firing,
-	},
-	automation_delivery::{
-		AutomationDeliveryError, AutomationDeliveryIntent, AutomationDeliveryIntentId,
-		AutomationDeliveryReceipt, AutomationDeliveryReceiptId, AutomationFiringInput,
 	},
 	blob::{
 		BlobHash, BlobInventoryCursor, BlobInventoryEntry, BlobInventoryPage, BlobStore,
@@ -129,13 +121,7 @@ pub use self::{
 		ProgramProvenance, ProgramQuietPeriod, ProgramReviewClassification, ProgramReviewId,
 		ProgramSignal, ProgramState, ProgramTimestamp, ReviewCadence, compile_program_context,
 	},
-	project::{
-		MAX_PROJECT_METADATA_FIELDS, MAX_PROJECT_METADATA_KEY_BYTES,
-		MAX_PROJECT_METADATA_VALUE_BYTES, MAX_PROJECT_PATH_BYTES, MAX_REPOSITORY_IDENTITY_BYTES,
-		Project, ProjectAuthority, ProjectError, ProjectId, ProjectMetadata, ProjectMetadataValue,
-		ProjectRepository, ProjectRepositoryBinding, ProjectStatus, RepositoryIdentity,
-		ServerProjectPath,
-	},
+	project::{MAX_REPOSITORY_IDENTITY_BYTES, ProjectError, ProjectId, RepositoryIdentity},
 	provider_attempt::{
 		MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES, MAX_PROVIDER_REQUEST_KEY_BYTES, ManagedExecutionId,
 		ProviderAttempt, ProviderAttemptConsumer, ProviderAttemptError, ProviderAttemptId,
