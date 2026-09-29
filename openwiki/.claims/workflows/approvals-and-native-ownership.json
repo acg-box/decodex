@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d9f0950331f6b90bfe8c31601ac293837375f7cf1b720a025507491607a76eb5",
+  "pageVersion": "sha256:3315c172d39c3262ad92badb525ea6ab7ccdfbdb0b90915b6d80ec69d2b24cac",
   "claims": [
     {
       "id": "claim_180212e57d1d44369eb0d24fc94defa4",
@@ -21,20 +21,10 @@
           "version": "repo-lines-v1:sha256:855ee41f95df95b59e63c10e0d0026b8a569dd54588e69166b79f097869b1a22:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3NTI0ODBkZWIyMzI1ZGJiYTJkM2Q2ZjczMGI2N2MwZGIxMTJlODY0MTk1YjdhNmNmZGY0MzM2ZmYwMmRhMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkMTMxZjYzNzk2ZTIzZGI0MzFlNzc3ZTljZTk1Zjk0ZTg0MTE3Yzk0MTFkYTFkMjIxMmFmNDJjYTI5ZGVkZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2MmIxOWE1NThjODY1YzUwNjY4MmVjZGEyMjM1ZDYxNGMwNDkxYzhiNjFiOGQ3NTljZmI5YTFjOWJjOWQyNDQifQ"
         }
       ]
-    },
-    {
-      "id": "claim_7794ce46bd49485aab9d0fcaf944c1b6",
-      "statement": "The recorded native child MCP form qualification has an unresolved root-handoff limitation.",
-      "evidence": [
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/native-child-mcp-qualification.md",
-          "version": "repo-file-v1:sha256:b30ca68741e32985931bfbad1272d64b86aefcc712fef39209a9175d2be585d8"
-        }
-      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "at": "2026-09-29T06:24:17.023Z"
   }
 }

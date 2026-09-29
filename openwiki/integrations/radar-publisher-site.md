@@ -4,9 +4,6 @@ title: "Radar, Publisher, And Site Contracts"
 description: "Radar, Publisher, And Site Contracts"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
 sources:
   - id: openwiki-source-8afa0db2c4f33cb5f9924d1c
     resource: repo://apps/decodex-publisher/src/social_contracts.rs
@@ -18,7 +15,10 @@ sources:
     resource: repo://site/astro.config.mjs
   - id: openwiki-source-cb47fe9c0d47072a7555387e
     resource: repo://site/package.json
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-09-29T06:49:47.866Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:49:47.866Z
 ---
 
 > Current boundary rechecked: Radar and Publisher remain auxiliary CLIs in the Rust workspace. The retirement of built-in repository/PR orchestration does not remove these tools or grant them Chief product-state authority. Checked-in automation definitions are desired state, not proof that a host scheduler is running. See [Wiki maintenance](../operations/wiki-maintenance.md) for documentation freshness.
@@ -35,7 +35,7 @@ architecture](../architecture/runtime-architecture.md).
 Radar is an optional auxiliary tool for GitHub and Codex evidence. It owns change
 bundles, review queues, upstream impact artifacts, signal entries, release deltas,
 bounded local retention, validation, and bundle generation. Radar has no native
-schedule and is not workflow state for the five managed automations.
+schedule and is not workflow state for the three managed automations.
 
 Radar artifacts live under `.agent/automations/radar/cache` when generated locally. Checked-in source for Radar behavior lives in `apps/radar/`, `automations/radar/`, and related tests.
 

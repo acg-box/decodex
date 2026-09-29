@@ -3,17 +3,15 @@ type: Reference
 tags: [decodex, architecture]
 title: "Approvals and native request ownership"
 description: "Complete request evidence, native child ownership, Guardian observations and explicit decisions."
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-52d3ef4824079f66e9063566
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
   - id: openwiki-source-51332b5dcd4b194b62fec905
     resource: repo://database/src/agent_guardian.rs
-  - id: openwiki-source-4753c3bdf2916fd807c75377
-    resource: repo://docs/archive/upstream-2026-09/native-child-mcp-qualification.md
-generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:24:17.023Z
 ---
 
 
@@ -37,6 +35,6 @@ Task permission/reviewer settings and App connection settings are configuration 
 
 ## Boundaries and tests
 
-The installed binary has a recorded native child MCP browser-auth/user-input limitation: an empty acceptance can appear instead of the required root handoff. Do not advertise complete child interaction from successful ancestry or permission tests. General login policy and native execution admission also have separate owners.
+Verify child browser-auth and user-input handoff against the installed binary. Successful ancestry or permission tests do not establish complete child interaction. General login policy and native execution admission have separate owners.
 
 Start with `agent/native_subagents.rs`, `agent/guardian.rs`, `agent_guardian.rs`, the large-request payload owner and the corresponding native tests. See [tools and integrations](../integrations/tools-plugins-and-apps.md) and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).

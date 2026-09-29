@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:303f6d8b2042d8fee7c438a35b2f5f7fd860f3b163c907d216c5fe9057a1a7c5",
+  "claims": [
+    {
+      "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
+      "statement": "Completed process groups require a successful turn boundary and an explicit nonempty final answer; interleaved user inputs, attachments and interactive items retain their positions.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_groups.rs#L14-L74",
+          "version": "repo-lines-v1:sha256:a1a20e8d1ed06d0ff1fdde3322fef89530bae3145ad45b4584c54b46020df0d6:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxOGZlYmM4MWMyNzI5YTdiNjM2MGRiZGZmNTBmYjZjOTViOGVkMzM0MmEwNjE0NTg4YTA3MjQwMDI5MTMxMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzZDBmNjk3Y2NlNjViYTY5MGIwZDI1ZDc5MTdjMWRhYTM5NDVlZTFmZWUwZWNiYjJlNjYwNGRhNjYwNjVlNDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ2NDA3MTllOWIwMWJmMjc5NWY0ZTdhYjU1OTMxN2ZmZWNmMDBlOWY2NGU4NDk1NTk3NTc0ODQ0NTBlNGYxZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiY2M3MDE3MDk4OGFiZThlMjUwYWU5YTBmYTNlNDU4NDA2MDI4MDQwZjM2OTkxMGFmMzM0NjRiODRmODc4OWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4c994fc692174ac7bb62aa906a46029d",
+      "statement": "Response metadata presents compact duration and token counts with a deferred window-anchored hover overlay rather than expanded transcript content.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs#L175-L241",
+          "version": "repo-lines-v1:sha256:2ad9f385e356ecb77903c091f35ad899d6c0e82c8f6d927f9be0dc465bc2961d:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3MDM0NGZjNjkwMGIzZWJiYjU0MjkxOTVlYWE2MjVkZjM2MDY3M2FlZGY0Y2Q1YmY1MGNmODNmODEyNzk3ODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyMmU4ZDNkNzYxZjMxZWQ3YWI2YTI0YjRlMGMzODJmZGFmNzYwYzRhMDgyYjJiMjU3YTE4MDFhZjIzNzlhMjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwMmRiOGRhZWZiYWZiZWM5NzJlYWU1ZmFjZDZiY2IyNWE1ODBlMGQ4YTA4OGM2M2Y0MGJkMmEyZTdlYzBkYzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQwMzk5NDVmNzEzY2VjY2MyYTJiZTk4MWFiNWM1ZWVhMzdmOTVmOTc2OWU1NzVjZDhlZDlhOWZjYmFmZGYwNmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3830e67bf485401b969db85907737a47",
+      "statement": "First-read conversation loading reserves a centered neutral surface rather than predicting the shape of unloaded messages.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_loading.rs",
+          "version": "repo-file-v1:sha256:a7bd7f3433f7c4114f6198c1b58c3cd20a11504426aa4810fefebc55b67ca39a"
+        }
+      ]
+    },
+    {
+      "id": "claim_db7a69c23698468587f610b31c09fe20",
+      "statement": "The shared GPUI popover renders a fixed opaque subtree without per-primitive opacity or slide transitions; animation requests prefer the native workspace frame owner on macOS.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L32-L41",
+          "version": "repo-lines-v1:sha256:a8625f9de22b9b03c901ec5a9a42849ebdcb0ef54642e4f40eadaaf6752066f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiZmJlMzViNmQ5MzMyZTc4ODdiNTlmZDJkMzYzNDhkMzg5NjcyMzE2ODM5ODljNzI5ODZjNjEyNDkxOWYyZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxMGYzYzM4YjczYzdiZDQ2NzJiY2NlMTNjMGI2ZDY5ZGM4MTMzOWYwOTZmMmIxZDFhYThiZDUwZDM4ZThhY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmNTg0NDhmMTQ3Y2Q1OWM5ZThjZTIxMjdiOTg3NjFlYjZmYjI0OTcyYWVjMDFkN2EyNDdjNDBiOWNiNDIxZmYifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L540-L575",
+          "version": "repo-lines-v1:sha256:313013e4000b071df5400aa86b9ac1b77465ac39130a45cc2ce508caa3623bbf:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1MzlkZGFkNDJjNDhiMDY2Mjk0MGJiN2Y5MGFkOWQ1YzBjZGNkODlkMmIyMWZiMWYyMzViM2ZhZDcyNTY3NTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZkNTk0MGM0YzQwNmE3ZjY4ZTY2ZTVjM2Q0NWNmZDEzNzBkYjJhMDY4N2Y0YmM4M2Q3NDdkZWNlZGQ1YTRhZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-29T06:24:17.023Z"
+  }
+}

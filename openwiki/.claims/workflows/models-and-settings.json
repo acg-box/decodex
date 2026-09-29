@@ -1,44 +1,20 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:86fc0201cfb81641ab04f6bda0176785b58cf5c9abc06eb1d02e66840520463e",
+  "pageVersion": "sha256:1803c03d9267f3860d62926c405ff8504b05452bcbdbe689b51ac71af396d1b1",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
-      "statement": "Saved task, live-turn and explicit input model choices have distinct retained scopes and must preserve native inheritance and execution ownership.",
+      "statement": "Model settings observations are accepted only while native settings, exact task ownership and account/process source identity remain current.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_model_settings.rs",
-          "version": "repo-file-v1:sha256:70ce6684b88d2aed2c40e73ec27e9fbbc675d9fb347a6f3854fc6191ae339459"
-        },
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md",
-          "version": "repo-file-v1:sha256:d44cfac26a4e6530095703c75a034c342df29f0fdb319abe8a4d99d9fd9aac4f"
-        }
-      ]
-    },
-    {
-      "id": "claim_95c434cdc24e412f8a88fa9d35328860",
-      "statement": "Displayed model access programs are informational and do not select a program, grant access or change quota.",
-      "evidence": [
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/model-access-programs.md",
-          "version": "repo-file-v1:sha256:a285e6e162e9cb016292d2963a54be4f69a75fed40b3127468471ce0e93e7718"
-        }
-      ]
-    },
-    {
-      "id": "claim_02d30ba57e1d460bb2680df11cbc1240",
-      "statement": "The recorded native Flex qualification distinguishes configured Flex from an explicit setting change across cold resume.",
-      "evidence": [
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/native-flex-qualification.md",
-          "version": "repo-file-v1:sha256:9dba0bda8d2d5dadcdf83d18659170ea8e213ac1cd4cdee0df495923d8cc9b76"
+          "resource": "repo://crates/decodex-runtime/src/agent_model_settings.rs#L1-L35",
+          "version": "repo-lines-v1:sha256:689dbe7891080b8ec8b970db697873f5db563daf50b4f1c161071c46ae63b541:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Zjc3MmEwYzE4N2UzOTg4NWI1YmQ1MWQyNjM1ZmM5NDM1OTMwN2FmY2U2NjNlMTlkOTIxZmU1YTgxNTk0NWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjM2EyMDc3NGQ1YzJiYjRjNzkwYzE4ODkwYTljNDk0Y2NiNTEwZmM4ZThjMDllYzc0NTE5YmMxNjRmYzc4NGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwN2E3ZmIzYzJlY2QxOTNhNjVkYTVmMjgyYzliNDhiYTFiMzRiMWE0MjNkMmUwNDEyZWEwNzM5Yjc3MGE5NDIifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "at": "2026-09-29T06:24:17.023Z"
   }
 }

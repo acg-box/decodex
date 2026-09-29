@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f83bc00e35c4331de75195c2392dcdb4a5319a7b33347aad0fe3acb9cfacb599",
+  "pageVersion": "sha256:5a2f3531dcb5954458fff8dd67f2a88fc21ef9a149af696250595712339df62d",
   "claims": [
     {
       "id": "claim_1f4a4c1330fa4cd98cb1e98b2f8afe62",
@@ -8,13 +8,13 @@
       "evidence": [
         {
           "resource": "repo://Makefile.toml",
-          "version": "repo-file-v1:sha256:6d2f47e4fb4b9a66bf2eac40d7fb5ee153822d312b44db7052e008b50a91b4c2"
+          "version": "repo-file-v1:sha256:a8e168c7aa6154d49b1deeb6ab92ba6b924e16f3fecc1adbcfd8c89d8d65e583"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-29T06:24:17.023Z"
   }
 }

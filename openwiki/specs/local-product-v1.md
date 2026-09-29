@@ -3,9 +3,6 @@ type: Reference
 title: "Current local product contract"
 description: "Current local product contract"
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-98e7b23c4cc276d20fcb4649
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
@@ -21,7 +18,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
-generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+generated: { by: "codex", at: "2026-09-29T06:49:47.866Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:49:47.866Z
 ---
 
 
@@ -29,7 +29,7 @@ generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
 
 ## Product and storage
 
-Decodex is a local general-purpose agent workspace. Agent is the primary conversation and can organize workers and subordinate Agents. Ordinary native Conversations remain a separate execution path. The service is `decodex serve`; SQLite is the sole normal durable store, at schema version 49. The exact local protocol is 2.97.
+Decodex is a local general-purpose agent workspace. Agent is the primary conversation and can organize workers and subordinate Agents. Ordinary native Conversations remain a separate execution path. The service is `decodex serve`; SQLite is the sole normal durable store, at schema version 51. The exact local protocol is 2.99.
 
 Clients do not read SQLite, provider credentials or Codex auth files. The signed app contains one GUI executable, one unified service helper and native libraries. Attached glass windows are presentation components, not new state owners.
 

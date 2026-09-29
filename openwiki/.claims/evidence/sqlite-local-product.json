@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:08358967066840194cbd8f7d1cf9d7fc3a2c4950ab4254cb8b36cca5c058e4b5",
+  "pageVersion": "sha256:041c60b755f9a1d2eeef30747080e23e42165de88891279d57b950644e88cafb",
   "claims": [
     {
       "id": "claim_57467868d3114a4f8efa994a912c927d",
-      "statement": "The current exact local protocol is 2.97; RouteAccount is a synchronous service-owned command with credential-negative completion or refusal rather than Pending-route diagnostics.",
+      "statement": "The local protocol version is defined by CURRENT_VERSION; RouteAccount is a synchronous service-owned command with credential-negative completion or refusal rather than Pending-route diagnostics.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs#L225-L252",
-          "version": "repo-lines-v1:sha256:cf9dce6cfa0174684f3d777af7762ffc147e87eb6ac0353b1edca12c95fec3a6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlNzBjOGNlZjcyZWM4NzE3MzIxY2Q2ZjIwNTUwMTRmMzBlN2NkNTZlOGNkNmVjMDhlYThlZTgwNTZhNDNhZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZjA5ZTgyOWRlMTFjOGMwY2M2ZTExNDJiYTM2ZTQ4ZDhiZTUyOGJiZjkzMjViNDBmMjFlMmMwMjVhZTc2MmYifQ"
+          "version": "repo-lines-v1:sha256:3625cf2fffb27b654477954bc3f6a4d160c775581fad9e0e6415fc719f6d03f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlNzBjOGNlZjcyZWM4NzE3MzIxY2Q2ZjIwNTUwMTRmMzBlN2NkNTZlOGNkNmVjMDhlYThlZTgwNTZhNDNhZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZjA5ZTgyOWRlMTFjOGMwY2M2ZTExNDJiYTM2ZTQ4ZDhiZTUyOGJiZjkzMjViNDBmMjFlMmMwMjVhZTc2MmYifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1022-L1450",
@@ -28,11 +28,11 @@
     },
     {
       "id": "claim_2cb85840131b4dd68e550452fba1f776",
-      "statement": "Schema 49 includes durable Reset Card operations and quota-activation records, and the signed bundle contract verifies a decodex helper.",
+      "statement": "The embedded SQLite schema includes durable Reset Card operations and quota-activation records, and the signed bundle contract verifies a decodex helper.",
       "evidence": [
         {
           "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:fbc45b0a22cdd3e0bb555f7fcf71ec1f8aa9ecd2e7a466ab844780b6f1c5ab11"
+          "version": "repo-file-v1:sha256:a1bad7a50ee5a8d076f96fe0c08d9abd63fc11a832a55dcba3239ef1f41fe006"
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
@@ -43,6 +43,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "at": "2026-09-29T06:24:17.023Z"
   }
 }

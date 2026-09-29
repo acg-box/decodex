@@ -3,13 +3,13 @@ type: Reference
 title: "Historical Repeatable Program Loop V1 evidence"
 description: "Historical Repeatable Program Loop V1 evidence"
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-dd24c2ff3c2515a21892e312
     resource: repo://database/src/program_cycles.rs
 generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:24:17.023Z
 ---
 
 
