@@ -1067,9 +1067,6 @@ impl ConversationThreadStartResponseWire {
 		validate_label(&self.model_provider, MAX_CONVERSATION_MODEL_PROVIDER_BYTES)
 			.map_err(|()| ConversationContractError::InvalidModelProvider)?;
 		self.sandbox.validate()?;
-		if self.multi_agent_mode != ConversationMultiAgentModeWire::ExplicitRequestOnly {
-			return Err(ConversationContractError::ResponseSemanticMismatch);
-		}
 
 		Ok(())
 	}
@@ -1115,9 +1112,6 @@ impl ConversationThreadResumeResponseWire {
 		validate_label(&self.model_provider, MAX_CONVERSATION_MODEL_PROVIDER_BYTES)
 			.map_err(|()| ConversationContractError::InvalidModelProvider)?;
 		self.sandbox.validate()?;
-		if self.multi_agent_mode != ConversationMultiAgentModeWire::ExplicitRequestOnly {
-			return Err(ConversationContractError::ResponseSemanticMismatch);
-		}
 		if self.initial_turns_page.is_some() {
 			return Err(ConversationContractError::UnexpectedResponseCollection);
 		}
@@ -1411,6 +1405,7 @@ impl<'de> Deserialize<'de> for ConversationReasoningEffortWire {
 	}
 }
 
+// Native delegation policy is descriptive, not a caller-selected binding invariant.
 #[allow(dead_code)]
 #[derive(Clone, Default, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -2061,6 +2056,36 @@ mod tests {
 			"reasoningEffort": "high",
 			"multiAgentMode": "explicitRequestOnly",
 		})
+	}
+
+	#[test]
+	fn native_multi_agent_modes_do_not_override_thread_identity_contracts() {
+		for mode in
+			[json!("explicitRequestOnly"), json!("proactive"), json!({"custom":"Native policy"})]
+		{
+			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+			response["multiAgentMode"] = mode;
+			let bytes = serde_json::to_vec(&response).unwrap();
+			assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_ok());
+			assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_ok());
+			response["thread"]["id"] = json!("other-thread");
+			assert!(
+				decode_conversation_thread_resume_response(
+					&resume_request(),
+					&serde_json::to_vec(&response).unwrap()
+				)
+				.is_err()
+			);
+		}
+		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+		response["multiAgentMode"] = json!("unknown-mode");
+		assert!(
+			decode_conversation_thread_start_response(
+				&start_request(),
+				&serde_json::to_vec(&response).unwrap()
+			)
+			.is_err()
+		);
 	}
 
 	#[test]
