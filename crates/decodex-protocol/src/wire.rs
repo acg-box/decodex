@@ -1595,14 +1595,9 @@ impl Serialize for AccountProfileResult {
 			},
 		}
 		let raw = match self {
-			Self::Current(profile) => {
-				validate_account_profile(profile).map_err(S::Error::custom)?;
-				Raw::Current(profile)
-			},
-			Self::Cached { profile, refresh_error } => {
-				validate_account_profile(profile).map_err(S::Error::custom)?;
-				Raw::Cached { profile, refresh_error: *refresh_error }
-			},
+			Self::Current(profile) => Raw::Current(profile),
+			Self::Cached { profile, refresh_error } =>
+				Raw::Cached { profile, refresh_error: *refresh_error },
 			Self::Unavailable { error, email, plan_type } => {
 				validate_account_profile_claims(email, plan_type.as_ref())
 					.map_err(S::Error::custom)?;
@@ -1632,14 +1627,8 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 			},
 		}
 		match Raw::deserialize(deserializer)? {
-			Raw::Current(profile) => {
-				validate_account_profile(&profile).map_err(D::Error::custom)?;
-				Ok(Self::Current(profile))
-			},
-			Raw::Cached { profile, refresh_error } => {
-				validate_account_profile(&profile).map_err(D::Error::custom)?;
-				Ok(Self::Cached { profile, refresh_error })
-			},
+			Raw::Current(profile) => Ok(Self::Current(profile)),
+			Raw::Cached { profile, refresh_error } => Ok(Self::Cached { profile, refresh_error }),
 			Raw::Unavailable { error, email, plan_type } => {
 				validate_account_profile_claims(&email, plan_type.as_ref())
 					.map_err(D::Error::custom)?;
@@ -5308,6 +5297,29 @@ mod tests {
 				tokens: 900,
 			}],
 		};
+		for mut result in [
+			AccountProfileResult::Current(Box::new(profile.clone())),
+			AccountProfileResult::Cached {
+				profile: Box::new(profile.clone()),
+				refresh_error: AccountProfileErrorDto::ProviderUnavailable,
+			},
+		] {
+			let mut wire = serde_json::to_value(&result).unwrap();
+			assert_eq!(
+				serde_json::from_value::<AccountProfileResult>(wire.clone()).unwrap(),
+				result
+			);
+			let (profile, wire_profile) = match &mut result {
+				AccountProfileResult::Current(profile) => (profile, &mut wire["data"]),
+				AccountProfileResult::Cached { profile, .. } =>
+					(profile, &mut wire["data"]["profile"]),
+				AccountProfileResult::Unavailable { .. } => unreachable!(),
+			};
+			profile.account_revision = EntityRevision(0);
+			wire_profile["account_revision"] = serde_json::json!(0);
+			assert!(serde_json::to_value(&result).is_err());
+			assert!(serde_json::from_value::<AccountProfileResult>(wire).is_err());
+		}
 		let encoded =
 			serde_json::to_value(AccountProfileResult::Current(Box::new(profile))).unwrap();
 
