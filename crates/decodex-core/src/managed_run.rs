@@ -1,13 +1,9 @@
-//! ManagedRun identities, execution assignments, and lifecycle algebra.
+//! Canonical ManagedRun identities retained by execution and evidence references.
 
 use std::{
 	error::Error,
 	fmt::{Display, Formatter},
 };
-
-use serde::{Deserialize, Serialize};
-
-use crate::{ProjectId, RuntimeSessionId, WorkItemId};
 
 macro_rules! managed_run_id {
 	($name:ident, $label:literal, $error:ident) => {
@@ -44,167 +40,13 @@ managed_run_id!(ManagedRunId, "ManagedRun", InvalidManagedRunId);
 pub enum ManagedRunError {
 	/// ManagedRun identity was not canonical UUID-v4 text.
 	InvalidManagedRunId,
-	/// Lifecycle, phase, and wait reason did not form a legal state.
-	InvalidState,
-	/// An optimistic revision was not positive.
-	InvalidRevision,
 }
 impl Error for ManagedRunError {}
 impl Display for ManagedRunError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(match self {
 			Self::InvalidManagedRunId => "invalid ManagedRun identity",
-			Self::InvalidState => "invalid ManagedRun lifecycle, phase, and wait combination",
-			Self::InvalidRevision => "invalid ManagedRun revision",
 		})
-	}
-}
-
-/// Complete lifecycle vocabulary; persistence in this slice accepts only `waiting`.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ManagedRunLifecycle {
-	/// Execution has not been acquired.
-	Queued,
-	/// A future owner is actively advancing the run.
-	Active,
-	/// Progress is explicitly blocked.
-	Waiting,
-	/// A future owner ended the run.
-	Terminal,
-}
-
-/// Closed phase vocabulary independent of lifecycle.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ManagedRunPhase {
-	/// Prepare exact execution inputs.
-	Prepare,
-	/// Perform implementation work.
-	Execute,
-	/// Validate owned output.
-	Validate,
-	/// Obtain independent review.
-	Review,
-	/// Repair accepted findings.
-	Repair,
-	/// Land accepted work.
-	Land,
-	/// Close the execution record.
-	Close,
-}
-
-/// Typed reason that keeps a ManagedRun inert.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ManagedRunWaitReason {
-	/// Usage capacity is unavailable or unproven.
-	Usage,
-	/// Authentication is unavailable or unproven.
-	Auth,
-	/// Required plugin readiness is unavailable or unproven.
-	Plugin,
-	/// A declared dependency prevents progress.
-	Dependency,
-	/// Required approval is absent.
-	Approval,
-	/// Explicit user input is required.
-	User,
-	/// An external authority or readback remains unresolved.
-	External,
-	/// ProcessGeneration or ProviderAttempt authority requires positive reconciliation.
-	Reconciliation,
-	/// No independent reviewer is available.
-	ReviewerUnavailable,
-	/// Independent review failed without accepted completion.
-	ReviewerFailed,
-	/// Reviewer output is missing or ambiguous and grants no completion.
-	ReviewerAmbiguous,
-}
-
-/// Pure, validated lifecycle algebra.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ManagedRunState {
-	/// The only legal queued state.
-	Queued,
-	/// Active state for a non-close phase.
-	Active(ManagedRunPhase),
-	/// Inert state with an exact phase and typed reason.
-	Waiting(ManagedRunPhase, ManagedRunWaitReason),
-	/// The only legal terminal state.
-	Terminal,
-}
-impl ManagedRunState {
-	/// Validate raw persistence parts and reject every non-canonical combination.
-	pub const fn from_parts(
-		lifecycle: ManagedRunLifecycle,
-		phase: ManagedRunPhase,
-		wait_reason: Option<ManagedRunWaitReason>,
-	) -> Result<Self, ManagedRunError> {
-		match (lifecycle, phase, wait_reason) {
-			(ManagedRunLifecycle::Queued, ManagedRunPhase::Prepare, None) => Ok(Self::Queued),
-			(ManagedRunLifecycle::Active, active_phase, None)
-				if !matches!(active_phase, ManagedRunPhase::Close) =>
-				Ok(Self::Active(active_phase)),
-			(ManagedRunLifecycle::Waiting, waiting_phase, Some(reason)) =>
-				Ok(Self::Waiting(waiting_phase, reason)),
-			(ManagedRunLifecycle::Terminal, ManagedRunPhase::Close, None) => Ok(Self::Terminal),
-			_ => Err(ManagedRunError::InvalidState),
-		}
-	}
-
-	/// Return canonical raw parts for persistence or readback.
-	pub const fn parts(
-		self,
-	) -> (ManagedRunLifecycle, ManagedRunPhase, Option<ManagedRunWaitReason>) {
-		match self {
-			Self::Queued => (ManagedRunLifecycle::Queued, ManagedRunPhase::Prepare, None),
-			Self::Active(phase) => (ManagedRunLifecycle::Active, phase, None),
-			Self::Waiting(phase, reason) => (ManagedRunLifecycle::Waiting, phase, Some(reason)),
-			Self::Terminal => (ManagedRunLifecycle::Terminal, ManagedRunPhase::Close, None),
-		}
-	}
-}
-
-/// Execution-only role that cannot represent Advisor or Lead authority.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExecutionAssignmentRole {
-	/// Owning implementation Task for this exact run.
-	Task,
-	/// Independent Reviewer for this exact run.
-	Reviewer,
-}
-
-/// Exact-run execution identity; it is not a durable Agent.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ExecutionAssignment {
-	/// Owning ManagedRun identity.
-	pub managed_run_id: ManagedRunId,
-	/// Exact RuntimeSession bound to this assignment.
-	pub runtime_session_id: RuntimeSessionId,
-	/// Execution-only role.
-	pub role: ExecutionAssignmentRole,
-}
-
-/// Structural inert ManagedRun readback identity.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ManagedRunIdentity {
-	/// Canonical run identity.
-	pub managed_run_id: ManagedRunId,
-	/// Exact owning Project.
-	pub project_id: ProjectId,
-	/// Exact canonical WorkItem.
-	pub work_item_id: WorkItemId,
-	/// Authoritative RuntimeSession for safety transitions.
-	pub runtime_session_id: RuntimeSessionId,
-	/// Positive optimistic revision.
-	pub revision: u64,
-}
-impl ManagedRunIdentity {
-	/// Reject a non-positive stored revision.
-	pub const fn validate(&self) -> Result<(), ManagedRunError> {
-		if self.revision == 0 { Err(ManagedRunError::InvalidRevision) } else { Ok(()) }
 	}
 }
 
@@ -223,57 +65,4 @@ fn is_canonical_uuid_v4(value: &str) -> bool {
 	bytes.iter().enumerate().all(|(index, byte)| {
 		matches!(index, 8 | 13 | 18 | 23) || byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')
 	})
-}
-
-#[cfg(test)]
-mod tests {
-	use super::{ManagedRunLifecycle, ManagedRunPhase, ManagedRunState, ManagedRunWaitReason};
-
-	#[test]
-	fn state_algebra_accepts_only_canonical_lifecycle_phase_wait_combinations() {
-		let lifecycles = [
-			ManagedRunLifecycle::Queued,
-			ManagedRunLifecycle::Active,
-			ManagedRunLifecycle::Waiting,
-			ManagedRunLifecycle::Terminal,
-		];
-		let phases = [
-			ManagedRunPhase::Prepare,
-			ManagedRunPhase::Execute,
-			ManagedRunPhase::Validate,
-			ManagedRunPhase::Review,
-			ManagedRunPhase::Repair,
-			ManagedRunPhase::Land,
-			ManagedRunPhase::Close,
-		];
-		let reasons =
-			[None, Some(ManagedRunWaitReason::Usage), Some(ManagedRunWaitReason::ReviewerFailed)];
-
-		for lifecycle in lifecycles {
-			for phase in phases {
-				for reason in reasons {
-					let expected = matches!(
-						(lifecycle, phase, reason),
-						(ManagedRunLifecycle::Queued, ManagedRunPhase::Prepare, None)
-							| (
-								ManagedRunLifecycle::Active,
-								ManagedRunPhase::Prepare
-									| ManagedRunPhase::Execute
-									| ManagedRunPhase::Validate
-									| ManagedRunPhase::Review
-									| ManagedRunPhase::Repair
-									| ManagedRunPhase::Land,
-								None
-							)
-							| (ManagedRunLifecycle::Waiting, _, Some(_))
-							| (ManagedRunLifecycle::Terminal, ManagedRunPhase::Close, None)
-					);
-					assert_eq!(
-						ManagedRunState::from_parts(lifecycle, phase, reason).is_ok(),
-						expected
-					);
-				}
-			}
-		}
-	}
 }
