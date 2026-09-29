@@ -151,7 +151,6 @@ struct CommandReservation {
 	claim_token: String,
 }
 
-#[derive(Clone)]
 struct AccountBase {
 	account_id: String,
 	label: String,
@@ -894,7 +893,6 @@ impl SqliteStore {
 	}
 }
 
-#[allow(clippy::too_many_arguments)] // One transaction needs the command descriptor, reclaim mode, supersession result, and exact Route fence.
 fn reserve_command_sync(
 	connection: &mut Connection,
 	command: CommandIdentity,
