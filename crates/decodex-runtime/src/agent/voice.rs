@@ -125,7 +125,6 @@ impl AgentCoordinator {
 				}
 				let thread = item
 					.codex_thread_id
-					.clone()
 					.ok_or_else(|| AgentError::Invalid("Agent thread is not ready".into()))?;
 				let generation = self
 					.voice

@@ -287,8 +287,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 			};
 		}
 		if method == "thread/settings/update" {
-			return if decodex_codex::app_server_client::is_thread_plugin_selection(&value["params"])
-				|| decodex_codex::app_server_client::is_thread_model_selection(&value["params"])
+			return if decodex_codex::app_server_client::is_thread_model_selection(&value["params"])
 				|| decodex_codex::app_server_client::is_thread_model_recovery_update(
 					&value["params"],
 				)
@@ -379,26 +378,6 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 		}
 	}
 	Ok(())
-}
-
-#[cfg(test)]
-#[test]
-fn plugin_settings_bridge_accepts_only_bounded_exact_exclusions() {
-	use serde_json::json;
-	let mut requests = HashSet::new();
-	let mut frame = json!({"id":42,"method":"thread/settings/update","params":{"threadId":"thread","disabledPluginIds":["sample@test"]}});
-	assert!(validate_outbound(&frame, &mut requests).is_ok());
-	for field in ["permissions", "model", "config", "approvalPolicy"] {
-		let mut mixed = frame.clone();
-		mixed["params"][field] = json!("unexpected");
-		assert!(validate_outbound(&mixed, &mut requests).is_err());
-	}
-	let mut shared = frame.clone();
-	shared["method"] = json!("config/batchWrite");
-	assert!(validate_outbound(&shared, &mut requests).is_err());
-	frame["params"] =
-		json!({"threadId":"thread","disabledPluginIds":["sample@test","sample@test"]});
-	assert!(validate_outbound(&frame, &mut requests).is_err());
 }
 
 #[cfg(test)]
@@ -580,6 +559,13 @@ mod tests {
 
 	#[test]
 	fn conversation_metadata_reads_use_the_native_bridge() {
+		for disabled in [json!([]), json!(["sample@test"])] {
+			assert!(validate_outbound(
+				&json!({"id":1,"method":"thread/settings/update","params":{"threadId":"thread","disabledPluginIds":disabled}}),
+				&mut HashSet::new()
+			).is_err(), "Retired local plugin selection");
+		}
+
 		for method in [
 			"plugin/list",
 			"plugin/read",
