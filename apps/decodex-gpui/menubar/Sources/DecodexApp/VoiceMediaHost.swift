@@ -304,6 +304,8 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     }
 
     func close() {
+        // A terminal event can be polled after the media host has closed.
+        if let retainedEvent { free(retainedEvent); self.retainedEvent = nil }
         guard !isClosed else { return }
         isClosed = true
         captureIdentity = nil
@@ -318,7 +320,6 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
         webView?.navigationDelegate = nil
         webView?.removeFromSuperview()
         webView = nil
-        if let retainedEvent { free(retainedEvent); self.retainedEvent = nil }
     }
 
     static let document = #"""
