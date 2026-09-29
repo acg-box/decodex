@@ -48,8 +48,6 @@ mod agent_live_settings;
 pub use agent_live_settings::{
 	AgentLiveSettingsAttempt, AgentLiveSettingsEdit, AgentLiveSettingsReceipt,
 };
-mod agent_install;
-pub use agent_install::{AgentInstallAttempt, AgentInstallRequirements};
 mod agent_guardian;
 pub use agent_guardian::{AgentGuardianObservation, AgentGuardianReview};
 mod agent_misalignment;
