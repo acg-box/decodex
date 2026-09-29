@@ -1774,33 +1774,7 @@ impl AccountService {
 		shared_family: SharedFamilyRefreshPolicy,
 	) -> Result<RefreshResolution, CredentialRefreshError> {
 		if stored.bundle().is_personal_access_token() {
-			let imported =
-				resolve_import(Ok(crate::account_import::CredentialSource::PersonalAccessToken(
-					zeroize::Zeroizing::new(stored.bundle().access_token().to_owned()),
-				)))
-				.await
-				.map_err(|error| match error {
-					CredentialImportError::InvalidCredential
-					| CredentialImportError::ProviderMismatch => CredentialRefreshError::Rejected,
-					_ => CredentialRefreshError::Unavailable,
-				})?;
-			if imported.provider != current.provider
-				|| imported.bundle.personal_access_token_user_id()
-					!= stored.bundle().personal_access_token_user_id()
-			{
-				return Err(CredentialRefreshError::Rejected);
-			}
-			return Ok(if same_refresh_bundle(stored.bundle(), &imported.bundle) {
-				RefreshResolution::Current
-			} else {
-				RefreshResolution::Rotate {
-					refreshed: CredentialRefreshResult {
-						returned_provider: imported.provider,
-						bundle: imported.bundle,
-					},
-					projected_source: None,
-				}
-			});
+			return Self::refresh_personal_access_token(current, stored).await;
 		}
 		let now_unix_micros =
 			current_unix_micros().map_err(|_| CredentialRefreshError::Unavailable)?;
@@ -1910,6 +1884,39 @@ impl AccountService {
 			.map(|refreshed| RefreshResolution::Rotate { refreshed, projected_source: None }),
 			Err(error) => Err(error),
 		}
+	}
+
+	async fn refresh_personal_access_token(
+		current: &CredentialBinding,
+		stored: StoredCredential,
+	) -> Result<RefreshResolution, CredentialRefreshError> {
+		let imported =
+			resolve_import(Ok(crate::account_import::CredentialSource::PersonalAccessToken(
+				zeroize::Zeroizing::new(stored.bundle().access_token().to_owned()),
+			)))
+			.await
+			.map_err(|error| match error {
+				CredentialImportError::InvalidCredential
+				| CredentialImportError::ProviderMismatch => CredentialRefreshError::Rejected,
+				_ => CredentialRefreshError::Unavailable,
+			})?;
+		if imported.provider != current.provider
+			|| imported.bundle.personal_access_token_user_id()
+				!= stored.bundle().personal_access_token_user_id()
+		{
+			return Err(CredentialRefreshError::Rejected);
+		}
+		Ok(if same_refresh_bundle(stored.bundle(), &imported.bundle) {
+			RefreshResolution::Current
+		} else {
+			RefreshResolution::Rotate {
+				refreshed: CredentialRefreshResult {
+					returned_provider: imported.provider,
+					bundle: imported.bundle,
+				},
+				projected_source: None,
+			}
+		})
 	}
 
 	async fn refresh_predecessor(
