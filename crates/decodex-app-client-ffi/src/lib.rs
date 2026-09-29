@@ -1177,7 +1177,7 @@ mod tests {
 
 	#[test]
 	fn exported_abi_is_exact() {
-		assert_eq!(decodex_app_native_client_abi_version(), ABI_VERSION);
+		assert_eq!(decodex_app_native_client_abi_version(), 1);
 	}
 
 	#[test]
@@ -1288,13 +1288,13 @@ mod tests {
 		);
 		assert!(
 			serde_json::from_str::<Request>(&format!(
-				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_reauthentication","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","idempotency_key":"{operation_id}","codex_bin":"/Applications/Codex.app/Contents/Resources/codex","login_method":"browser_redirect"}}"#
+				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_reauthentication","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","idempotency_key":"{operation_id}","login_method":"browser_redirect"}}"#
 			))
 			.is_err()
 		);
 		assert!(
 			serde_json::from_str::<Request>(&format!(
-				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_reauthentication","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","expected_revision":7,"idempotency_key":"{operation_id}","codex_bin":"/Applications/Codex.app/Contents/Resources/codex"}}"#
+				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_reauthentication","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","expected_revision":7,"idempotency_key":"{operation_id}"}}"#
 			))
 			.is_err()
 		);
@@ -1334,25 +1334,25 @@ mod tests {
 		);
 		assert!(
 			serde_json::from_str::<Request>(&format!(
-				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_enrollment","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","idempotency_key":"{operation_id}","codex_bin":"/Applications/Codex.app/Contents/Resources/codex"}}"#
+				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_enrollment","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","idempotency_key":"{operation_id}","login_method":"device_code"}}"#
 			))
 			.is_err()
 		);
 		assert!(
 			serde_json::from_str::<Request>(&format!(
-				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_enrollment","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","enabled":true,"idempotency_key":"{operation_id}","codex_bin":"/Applications/Codex.app/Contents/Resources/codex"}}"#
+				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_enrollment","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","enabled":true,"idempotency_key":"{operation_id}"}}"#
 			))
 			.is_err()
 		);
 		assert!(
 			serde_json::from_str::<Request>(&format!(
-				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_enrollment","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","enabled":true,"expected_revision":7,"idempotency_key":"{operation_id}","codex_bin":"/Applications/Codex.app/Contents/Resources/codex","login_method":"device_code"}}"#
+				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_enrollment","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","enabled":true,"expected_revision":7,"idempotency_key":"{operation_id}","login_method":"device_code"}}"#
 			))
 			.is_err()
 		);
 		assert!(
 			serde_json::from_str::<Request>(&format!(
-				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_enrollment","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","enabled":true,"idempotency_key":"{operation_id}","codex_bin":"/Applications/Codex.app/Contents/Resources/codex","login_method":"future_method"}}"#
+				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_enrollment","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","enabled":true,"idempotency_key":"{operation_id}","login_method":"future_method"}}"#
 			))
 			.is_err()
 		);
@@ -1450,23 +1450,38 @@ mod tests {
 	}
 
 	#[test]
-	fn output_buffer_round_trips_through_the_public_free_function() {
+	fn public_request_returns_an_owned_failure_buffer() {
 		let mut pointer = ptr::null_mut();
 		let mut len = 0;
-		let status = write_failure(
-			&mut pointer,
-			&mut len,
-			"request",
-			ResponseFailure::Bridge(BridgeFailure::InvalidRequest),
-		);
+		let input = br#"{"schema":"decodex/app-native-client/1","operation":"list_accounts"}"#;
+		// SAFETY: Input and output buffers remain valid for the complete call.
+		let status = unsafe {
+			decodex_app_native_client_request(
+				ptr::null_mut(),
+				input.as_ptr(),
+				input.len(),
+				&mut pointer,
+				&mut len,
+			)
+		};
 
 		assert_eq!(status, 0);
 		assert!(!pointer.is_null());
 		assert!(len > 0);
-		// SAFETY: This test passes the exact pair returned by `write_failure`.
-		unsafe {
-			decodex_app_native_client_free(pointer, len);
-		}
+		// SAFETY: The public call returned this exact live pointer/length pair.
+		let response: serde_json::Value =
+			unsafe { serde_json::from_slice(slice::from_raw_parts(pointer, len)).unwrap() };
+		assert_eq!(
+			response,
+			serde_json::json!({
+				"schema": "decodex/app-native-client/1",
+				"outcome": "failure",
+				"operation": "list_accounts",
+				"failure": "invalid_handle"
+			})
+		);
+		// SAFETY: Release the exact allocation once after inspecting its contents.
+		unsafe { decodex_app_native_client_free(pointer, len) };
 	}
 
 	#[test]
