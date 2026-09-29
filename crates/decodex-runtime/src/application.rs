@@ -2352,6 +2352,29 @@ impl Application for ServiceApplication {
 			QueryPayload::GetAgentRecap { work_id } => self.query_recap(work_id.clone()).await,
 			QueryPayload::GetAgentVoiceSettings { work_id } =>
 				self.query_voice_settings(work_id.as_str()).await,
+			QueryPayload::GetAgentSkills { target, filter } =>
+				QueryResultPayload::AgentSkills(match target {
+					decodex_protocol::AgentSkillsTarget::Existing { work_id } =>
+						match &self.agent {
+							Some(agent) => agent.skills(work_id.as_str(), filter.as_str()).await,
+							None => decodex_protocol::AgentSkillsResult::Unavailable,
+						},
+					decodex_protocol::AgentSkillsTarget::New { request } => match (
+						self.conversations.runtime(),
+						self.agent.as_ref().and_then(|agent| agent.skill_roots()),
+					) {
+						(Some(runtime), Some(roots)) =>
+							runtime
+								.initial_skills(
+									query.query_id.as_str(),
+									request.clone(),
+									filter.as_str().into(),
+									roots,
+								)
+								.await,
+						_ => decodex_protocol::AgentSkillsResult::Unavailable,
+					},
+				}),
 			QueryPayload::GetAgentSearchSettings { work_id } =>
 				self.query_search_settings(work_id.as_str()).await,
 			QueryPayload::GetAgentUsageEstimate { work_id } =>

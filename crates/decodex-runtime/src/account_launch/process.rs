@@ -1071,6 +1071,43 @@ impl AttestedProcessChild {
 		(result, events)
 	}
 
+	/// Inspect skills on the initialized metadata process with the service's captured roots.
+	pub(crate) fn read_ordinary_skills(
+		&mut self,
+		cwd: &str,
+		roots: Option<&[String]>,
+	) -> (Result<serde_json::Value, ConversationProcessError>, Vec<ConversationProcessEvent>) {
+		let mut events = Vec::new();
+		let result = (|| {
+			self.require_ordinary_turns_initialized()?;
+			let mut calls = Vec::new();
+			if let Some(roots) = roots {
+				calls.push(("skills/extraRoots/set", serde_json::json!({"extraRoots":roots})));
+			}
+			calls.push(("skills/list", serde_json::json!({"cwds":[cwd],"forceReload":true})));
+			let mut value = serde_json::Value::Null;
+			for (method, params) in calls {
+				let request = self.process.prepare_conversation_request(method, &params)?;
+				value = self
+					.process
+					.conversation_request_buffered(
+						request,
+						self.timeout.min(Duration::from_secs(8)),
+						false,
+						&mut events,
+						|bytes| {
+							serde_json::from_slice(bytes).map_err(|_| {
+								decodex_codex::ConversationContractError::MalformedResponse
+							})
+						},
+					)?
+					.value;
+			}
+			Ok(value)
+		})();
+		(result, events)
+	}
+
 	/// Read one model page on the existing account-bound transport and retain interleaved events.
 	pub(crate) fn read_ordinary_model_page(
 		&mut self,

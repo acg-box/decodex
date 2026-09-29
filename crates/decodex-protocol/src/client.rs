@@ -650,6 +650,40 @@ impl AgentClient {
 		}
 	}
 
+	/// Read enabled skills from the requested native source without starting work.
+	pub async fn skills(
+		&self,
+		target: crate::AgentSkillsTarget,
+		filter: crate::WireText,
+	) -> Result<crate::AgentSkillsResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(40),
+		};
+		let completed = time::timeout(
+			Duration::from_secs(40),
+			transport.query_inner(
+				"agent-skills",
+				QueryPayload::GetAgentSkills { target: target.clone(), filter },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::AgentSkills(result) => {
+				if let crate::AgentSkillsResult::Available { target: actual, .. } = &result
+					&& actual != &target
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read the current task's search defaults and permitted modes.
 	pub async fn search_settings(
 		&self,

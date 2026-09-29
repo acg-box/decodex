@@ -91,6 +91,7 @@ mod execution_overrides;
 mod model_catalog;
 mod model_settings;
 mod non_submission;
+mod skill_catalog;
 use execution_overrides::{apply_start_overrides, apply_turn_overrides, inherit_resume_settings};
 mod resume_retry;
 

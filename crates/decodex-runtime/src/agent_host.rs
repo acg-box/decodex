@@ -1144,6 +1144,25 @@ impl AgentHost {
 		Ok(work.into())
 	}
 
+	pub(crate) fn skill_roots(&self) -> Option<crate::agent_skill_roots::RuntimeSkillRoots> {
+		self.skill_roots.as_ref().ok().cloned()
+	}
+
+	pub(crate) async fn skills(
+		&self,
+		work: &str,
+		filter: &str,
+	) -> decodex_protocol::AgentSkillsResult {
+		crate::agent_skills::read(
+			|| async {
+				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, owner.codex_thread_id.as_deref()?).await
+			},
+			filter,
+		)
+		.await
+	}
+
 	pub(crate) async fn search_settings(
 		&self,
 		work: &str,
@@ -1795,10 +1814,20 @@ fn validate_attachments(
 	files: &[decodex_protocol::AgentAttachmentDto],
 ) -> Result<(), &'static str> {
 	if files.len() > 16 {
-		return Err("Attach at most 16 files or folders");
+		return Err("Select at most 16 files, folders or skills");
 	}
 	for file in files {
+		if let Some(name) = &file.skill_name
+			&& (file.image
+				|| name.as_str().trim().is_empty()
+				|| name.as_str().chars().any(char::is_control))
+		{
+			return Err("The selected skill reference is invalid");
+		}
 		let path = std::path::Path::new(file.path.as_str());
+		if file.skill_name.is_some() && !path.is_file() {
+			return Err("The selected skill is no longer available");
+		}
 		if !path.is_absolute() || !(path.is_file() || (!file.image && path.is_dir())) {
 			return Err("An attached file or folder is no longer available");
 		}
@@ -1957,6 +1986,7 @@ mod tests {
 			path: decodex_protocol::ConversationWorkingDirectory::new(path.to_str().unwrap())
 				.unwrap(),
 			image: false,
+			skill_name: None,
 		};
 		assert!(super::validate_attachments(&[reference.clone()]).is_ok());
 		reference.image = true;

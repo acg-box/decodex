@@ -39,6 +39,7 @@
 #[path = "agent_search_settings.rs"] mod search_settings;
 #[path = "agent_selectable_text.rs"] mod selectable_text;
 #[path = "agent_send_preview.rs"] mod send_preview;
+#[path = "agent_skills.rs"] mod skills;
 #[path = "agent_steer_receipts.rs"] mod steer_receipts;
 #[path = "agent_text_reveal.rs"] mod text_reveal;
 #[path = "agent_transcript.rs"] mod transcript;
@@ -93,6 +94,7 @@ pub(crate) struct AgentSurface {
 	voice_task: Option<Task<()>>,
 	voice_settings: voice_settings::Panel,
 	search_settings: search_settings::Panel,
+	skills: skills::Picker,
 	recap: recap::Panel,
 	prompt_edit: prompt_edit::Panel,
 	automatic_recap: recap::Automatic,
@@ -351,6 +353,7 @@ impl AgentSurface {
 			voice_task: None,
 			voice_settings: Default::default(),
 			search_settings: Default::default(),
+			skills: Default::default(),
 			recap: Default::default(),
 			prompt_edit: Default::default(),
 			automatic_recap: Default::default(),
@@ -830,7 +833,7 @@ impl AgentSurface {
 		}
 		let build = || -> Result<AgentActionDto, String> {
 			let prompt = HistoryText::new(if text.trim().is_empty() {
-				"Please inspect the selected tasks and attached files.".into()
+				"Please use the selected skills and inspect the selected tasks and files.".into()
 			} else {
 				text.clone()
 			})
@@ -1206,6 +1209,7 @@ impl AgentSurface {
 		self.reset_app_exposure();
 		self.reset_voice_settings();
 		self.reset_search_settings();
+		self.reset_skill_picker();
 		self.reset_recap();
 		self.reset_prompt_edit();
 		self.reset_native_goal();
@@ -1268,6 +1272,7 @@ impl AgentSurface {
 		self.reset_app_exposure();
 		self.reset_voice_settings();
 		self.reset_search_settings();
+		self.reset_skill_picker();
 		self.reset_recap();
 		self.reset_prompt_edit();
 		self.question_notices = Default::default();
@@ -1345,6 +1350,7 @@ impl AgentSurface {
 			self.reset_app_exposure();
 			self.reset_voice_settings();
 			self.reset_search_settings();
+			self.reset_skill_picker();
 			self.reset_recap();
 			self.reset_prompt_edit();
 			self.reset_native_goal();
@@ -2810,6 +2816,7 @@ mod tests {
 			s.attachments.push(decodex_protocol::AgentAttachmentDto {
 				path: ConversationWorkingDirectory::new("/tmp/draft.png").unwrap(),
 				image: true,
+				skill_name: None,
 			});
 			s.task_references.push(decodex_protocol::AgentTaskReferenceDto {
 				work_id: EntityId::new("evidence").unwrap(),
@@ -2864,6 +2871,7 @@ mod tests {
 			let file = decodex_protocol::AgentAttachmentDto {
 				path: ConversationWorkingDirectory::new("/tmp/draft.png").unwrap(),
 				image: true,
+				skill_name: None,
 			};
 			let pending = PendingCommand {
 				recovery: None,

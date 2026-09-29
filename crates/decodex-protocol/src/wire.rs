@@ -2209,6 +2209,13 @@ pub enum QueryPayload {
 		/// Owning task.
 		work_id: EntityId,
 	},
+	/// Discover enabled skills for an existing Agent or new Agent account selection.
+	GetAgentSkills {
+		/// Source to inspect without creating a thread.
+		target: crate::AgentSkillsTarget,
+		/// Case-insensitive name and description filter.
+		filter: WireText,
+	},
 	/// Read the current native search defaults and effective project preference.
 	GetAgentSearchSettings {
 		/// Owning task.
@@ -3131,6 +3138,8 @@ pub enum QueryResultPayload {
 	AgentVoiceSettings(crate::AgentVoiceSettingsResult),
 	/// Native web-search defaults and permitted modes.
 	AgentSearchSettings(crate::AgentSearchSettingsResult),
+	/// Enabled native skills for the exact requested source.
+	AgentSkills(crate::AgentSkillsResult),
 	/// Native connector exposure configuration.
 	AgentAppExposure(crate::AgentAppExposureResult),
 	/// Exact current-turn reviewer inspection and publication receipt.
@@ -3534,6 +3543,15 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 					|| expected_revision.0 == 0
 					|| expected_revision.0 > i64::MAX as u64 =>
 				Err("model review query coordinates are invalid"),
+			QueryPayload::GetAgentSkills {
+				target: crate::AgentSkillsTarget::New { request },
+				..
+			} if request.purpose != crate::ModelCatalogPurpose::Agent
+				|| request
+					.account_id
+					.as_ref()
+					.is_some_and(|id| !is_canonical_uuid(id.as_str())) =>
+				Err("skill catalog account does not match Agent routing"),
 			QueryPayload::GetInitialModelCatalog { request }
 				if request
 					.account_id

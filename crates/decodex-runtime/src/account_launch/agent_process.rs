@@ -330,6 +330,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "model/list"
 					| "experimentalFeature/list"
 					| "skills/extraRoots/set"
+					| "skills/list"
 					| "server/diagnostics"
 					| "permissionProfile/list"
 					| "hooks/list"

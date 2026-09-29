@@ -464,3 +464,5 @@ async fn serve_fixture_frames(
 
 #[path = "agent_process_native_capacity_tests.rs"] mod capacity;
 #[path = "agent_process_native_realtime_tests.rs"] mod realtime;
+
+#[path = "agent_process_native_skills_tests.rs"] mod skills;

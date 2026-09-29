@@ -50,6 +50,29 @@ impl ConversationRuntime {
 		key: &str,
 		request: InitialModelCatalogRequest,
 	) -> Option<InitialModelCatalogResult> {
+		let runtime = self.clone();
+		let (account_id, account_revision, working_directory, (models, defaults)) = self
+			.discover_initial_metadata(key, request, move |child, directory| {
+				read_initial_defaults(child, directory, || runtime.is_shutting_down())
+			})
+			.await?;
+		let result = InitialModelCatalogResult::Available {
+			account_id,
+			account_revision,
+			working_directory,
+			models,
+			defaults: Some(Box::new(defaults)),
+		};
+		(serde_json::to_vec(&result).ok()?.len() <= 128 * 1024).then_some(result)
+	}
+
+	/// Share account selection, process lifetime and final source checks for initial catalogs.
+	pub(super) async fn discover_initial_metadata<T: Send + 'static>(
+		&self,
+		key: &str,
+		request: InitialModelCatalogRequest,
+		read: impl FnOnce(&mut AttestedProcessChild, &str) -> Option<T> + Send + 'static,
+	) -> Option<(EntityId, i64, decodex_protocol::ConversationWorkingDirectory, T)> {
 		let preferred =
 			request.account_id.as_ref().map(|id| AccountId::new(id.as_str())).transpose().ok()?;
 		let now =
@@ -86,9 +109,15 @@ impl ConversationRuntime {
 			});
 		let source = account.clone();
 		let directory = request.working_directory.as_str().to_owned();
-		let (models, defaults) = tokio::task::spawn_blocking(move || {
-			runtime
-				.read_initial_catalog_process(&source, revision, &directory, credential, callback)
+		let value = tokio::task::spawn_blocking(move || {
+			runtime.read_metadata_process(
+				&source,
+				revision,
+				&directory,
+				credential,
+				callback,
+				|child| read(child, &directory),
+			)
 		})
 		.await
 		.ok()??;
@@ -108,28 +137,7 @@ impl ConversationRuntime {
 		if current.account.account_id != account || current.account.revision != revision {
 			return None;
 		}
-		let result = InitialModelCatalogResult::Available {
-			account_id: EntityId::new(account.as_str()).ok()?,
-			account_revision: revision,
-			working_directory: request.working_directory,
-			models,
-			defaults: Some(Box::new(defaults)),
-		};
-		// Leave room for the public envelope and transport framing.
-		(serde_json::to_vec(&result).ok()?.len() <= 128 * 1024).then_some(result)
-	}
-
-	fn read_initial_catalog_process(
-		&self,
-		account: &AccountId,
-		revision: i64,
-		directory: &str,
-		credential: AccountProcessCredential,
-		callback: Arc<dyn ProcessAccountRefreshCallback>,
-	) -> Option<(Vec<AgentModelDto>, InitialModelDefaults)> {
-		self.read_metadata_process(account, revision, directory, credential, callback, |child| {
-			read_initial_defaults(child, directory, || self.is_shutting_down())
-		})
+		Some((EntityId::new(account.as_str()).ok()?, revision, request.working_directory, value))
 	}
 
 	pub(super) fn read_metadata_process<T>(

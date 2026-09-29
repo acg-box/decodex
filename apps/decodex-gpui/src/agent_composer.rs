@@ -374,7 +374,7 @@ impl AgentSurface {
 					.child(self.composer_control(
 						"attach",
 						"+".into(),
-						"Attachments and microphone",
+						"Attachments, skills and microphone",
 						|s, cx| s.toggle_composer_menu("attachments", cx),
 						cx,
 					))
@@ -385,7 +385,10 @@ impl AgentSurface {
 
 	pub(super) fn render_composer_popover(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let menu = self.composer_menu.or(self.composer_menu_content);
-		let left = matches!(menu, Some("attachments" | "microphone" | "tasks" | "agent-settings"));
+		let left = matches!(
+			menu,
+			Some("attachments" | "microphone" | "tasks" | "skills" | "agent-settings")
+		);
 		div()
 			.absolute()
 			.inset_0()
@@ -398,7 +401,7 @@ impl AgentSurface {
 						.when(left, |d| d.left(px(0.)))
 						// Align with the model trigger: inset + mic/send widths + toolbar gaps.
 						.when(!left, |d| d.right(px(70.)))
-						.w(px(if menu == Some("agent-settings") {
+						.w(px(if matches!(menu, Some("agent-settings" | "skills")) {
 							380.
 						} else if left {
 							280.
@@ -465,6 +468,13 @@ impl AgentSurface {
 					s.composer_menu = None;
 					s.pick_attachments(cx);
 				},
+				cx,
+			))
+			.child(self.composer_control(
+				"skill-item",
+				"Use skill…".into(),
+				"Select a native skill",
+				|s, cx| s.open_skill_picker(cx),
 				cx,
 			))
 			.child(self.composer_control(
@@ -853,6 +863,8 @@ impl AgentSurface {
 				.gap(px(10.))
 				.child(if menu == "tasks" {
 					self.task_reference_options(cx)
+				} else if menu == "skills" {
+					self.skill_options(cx)
 				} else if menu == "agent-settings" {
 					self.render_preferences(cx).into_any_element()
 				} else if matches!(menu, "attachments" | "microphone") {
@@ -946,11 +958,24 @@ impl AgentSurface {
 		let mut row = div().flex().flex_wrap().gap_1().px_1();
 		for file in &self.attachments {
 			let path = std::path::PathBuf::from(file.path.as_str());
-			let label = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+			let label = file
+				.skill_name
+				.as_ref()
+				.map(|name| format!("Skill: {}", name.as_str()))
+				.unwrap_or_else(|| {
+					path.file_name().unwrap_or_default().to_string_lossy().into_owned()
+				});
 			let remove = file.clone();
 			row = row.child(
 				div()
-					.id(SharedString::from(format!("attachment-{}", file.path.as_str())))
+					.id(SharedString::from(
+						serde_json::json!([
+							"attachment",
+							file.path.as_str(),
+							file.skill_name.as_ref().map(WireText::as_str)
+						])
+						.to_string(),
+					))
 					.role(Role::Button)
 					.tab_index(0)
 					.aria_label(format!("Remove attachment {label}"))
@@ -1020,7 +1045,7 @@ impl AgentSurface {
 			else {
 				continue;
 			};
-			let file = AgentAttachmentDto { path, image };
+			let file = AgentAttachmentDto { path, image, skill_name: None };
 			if !self.attachments.contains(&file) {
 				self.attachments.push(file);
 			}

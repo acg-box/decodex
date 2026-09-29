@@ -1843,14 +1843,14 @@ fn partial_message_settings_preserve_existing_values_and_explicit_standard_clear
 }
 
 #[tokio::test]
-async fn configured_message_dispatches_native_images_and_exact_turn_settings_once() {
+async fn configured_message_dispatches_native_images_skills_and_exact_turn_settings_once() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;
 	AgentCoordinator::reserve_root(&coordinator.store, "agent", "Personal Agent").await.unwrap();
 	coordinator.store.enqueue_agent_event(EnqueueAgentEvent {
         source_event_id:"configured-message".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),
         payload:json!({"text":"Inspect these files", "options":{
             "execution":{"model":"different-model","reasoning_effort":"high","fast":true},
-            "attachments":[{"path":"/tmp/example.png","image":true},{"path":"/tmp/example.rs","image":false}]}}).to_string(),
+            "attachments":[{"path":"/tmp/example.png","image":true},{"path":"/tmp/example.rs","image":false},{"path":"/tmp/skills (exact)/SKILL.md","image":false,"skill_name":"selected-skill"}]}}).to_string(),
     }).await.unwrap();
 	coordinator.wake_pending().await.unwrap();
 	coordinator.wake_pending().await.unwrap();
@@ -1866,6 +1866,10 @@ async fn configured_message_dispatches_native_images_and_exact_turn_settings_onc
 	assert_eq!(params["input"][0]["text"], "Inspect these files");
 	assert_eq!(params["input"][1], json!({"type":"localImage","path":"/tmp/example.png"}));
 	assert!(params["input"][2]["text"].as_str().unwrap().contains("/tmp/example.rs"));
+	assert_eq!(
+		params["input"][3],
+		json!({"type":"skill","name":"selected-skill","path":"/tmp/skills (exact)/SKILL.md"})
+	);
 	let mut params = json!({"input":[],"serviceTier":"priority"});
 	apply_message_options(&mut params,&json!({"options":{"execution":{"model":"selected-model","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string()).unwrap();
 	assert!(params["serviceTier"].is_null());
