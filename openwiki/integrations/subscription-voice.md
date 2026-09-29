@@ -3,9 +3,6 @@ type: Reference
 title: "Subscription dictation and live voice"
 description: "Native subscription audio ownership, per-call voice settings and on-demand WebRTC media hosting."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-ff4424492ebd38e298a4b243
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/VoiceMediaHost.swift
@@ -13,13 +10,18 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexTransport/DictationStream.swift
   - id: openwiki-source-c990afbb3dfa828de42edbc3
     resource: repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs
+  - id: openwiki-source-91dfc90839432583cfb2a467
+    resource: repo://crates/decodex-runtime/src/agent/voice_persistence_tests.rs
   - id: openwiki-source-b415683824e98dc4ed730738
     resource: repo://crates/decodex-runtime/src/agent/voice.rs
   - id: openwiki-source-2465dd41e7771bea4f7b9c61
     resource: repo://crates/decodex-runtime/src/dictation_native.rs
   - id: openwiki-source-7b941e7c2c91cb7415f05243
     resource: repo://crates/decodex-runtime/src/dictation.rs
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+generated: { by: "codex", at: "2026-09-29T20:08:07.145Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-29T20:08:07.145Z
 ---
 
 # Subscription dictation and live voice
@@ -42,6 +44,8 @@ Audio, authentication and the draft are not stored in SQLite by this gateway. St
 ## Live voice
 
 The coordinator uses native `thread/realtime/start` and `thread/realtime/stop` with the existing owned Agent thread and connection generation. Start requires a ready manager work item. Native transcript deltas and completion events update durable conversation observations; they are not simulated worker steps.
+
+Local transcript storage keeps newer received text when a delayed final is a shorter prefix of that text. The saved text remains marked incomplete. An empty final does not erase the received tail; normal closure can save it. Expanded finals and normal transcription corrections still replace provisional text. Saving a transcript never resubmits it as native input.
 
 The Swift media host creates its WebRTC WKWebView on demand when a live call starts. Normal native dictation and device enumeration do not require that browser view. Live audio still uses WebRTC; this change is not a fully native media transport or proof of installed-app acceptance. Closing the media host stops capture, removes its message handler and releases its WebView. A complete native WebRTC replacement remains a separate decision; do not switch subscription voice to API-key billing.
 

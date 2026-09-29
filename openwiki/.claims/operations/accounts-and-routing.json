@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0749ea34fe78df686648bb5679bfbdf28c3103edff623fb3b14d3307e457424a",
+  "pageVersion": "sha256:ecb7fc0bd04f4022ca9ded9220f670264f02a4bad4ae252a900779709a514014",
   "claims": [
     {
       "id": "claim_738021d152cc4128af3d3b4b217fe92c",
       "statement": "Account Route holds service-owned routing/account locks and checks shared-auth liveness and exact source identity before authoritative completion.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1022-L1320",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L913-L1211",
           "version": "repo-lines-v1:sha256:ecf6b66cb05099ab223a0ceb83c34e3898fa99c82ea8a6d161c42ec50eaa24b0:eyJzZWxlY3RlZExpbmVDb3VudCI6Mjk5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzNmVlNTc3YWFiYWRjYzJhZDU2YTQxN2QxMDk4YzlhZmM0ZTcwODZkMGY5MzhkMmRjNmZiOTIyNjAwYWUxNzg1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiYmJlODJhOGEzMjc2Yzc1YjEzYzIzN2RhN2Q1YjMwZTBiMWU0YjcxNTA2YTdjMWFhMzlhMTU1MjI4NmZjMDM1In0"
         }
       ]
@@ -73,8 +73,8 @@
       "statement": "Known imported PAT sources can be resolved from exact stored bindings without per-observation network hydration; unknown shared PAT sources require explicit import, and explicit refresh rechecks the same account and user identity.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1770-L1809",
-          "version": "repo-lines-v1:sha256:35732eba2a824acd2457dbea43194b850a14c2478b86f2e8c1319c9fe91adc19:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5YWYzYmIwNGFiMDM5NDBhNDA4YzUwNzJhNWNjZGUxZjhjNTFlNzlhMjJiMTVlOTk0M2U5MWVjYTJhYzI4MWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhMzg4MTA1ODJjNzhlNzJiOTgwYmI5MGUxM2ZhMTRjODU2MTkxYzM3NGRjNTE5ZjFmNzhjMzczZTA1ZTRkZWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJhYjViNTBjZTY0NGIzM2ZkODhmYWQwOWRmNjM4ZjIwODg1MzhiYWE5NDZlOGJkYzBlNDU0YzI3ZTk4Y2JlYzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0NmQ2YTkzNTIwZWZkNDRhZjY5MzY2MTU3NDNmNDdiOWQyNGZlOTY3Y2I1ZTQ0M2FjZmEwMTczODBlMmQxNTEifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1770-L1783",
+          "version": "repo-lines-v1:sha256:868b3554ebf842c680b4be5367613c2c1b28285724bf16a7fad6add34c727e94:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5YWYzYmIwNGFiMDM5NDBhNDA4YzUwNzJhNWNjZGUxZjhjNTFlNzlhMjJiMTVlOTk0M2U5MWVjYTJhYzI4MWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhMzg4MTA1ODJjNzhlNzJiOTgwYmI5MGUxM2ZhMTRjODU2MTkxYzM3NGRjNTE5ZjFmNzhjMzczZTA1ZTRkZWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJhYjViNTBjZTY0NGIzM2ZkODhmYWQwOWRmNjM4ZjIwODg1MzhiYWE5NDZlOGJkYzBlNDU0YzI3ZTk4Y2JlYzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0NmQ2YTkzNTIwZWZkNDRhZjY5MzY2MTU3NDNmNDdiOWQyNGZlOTY3Y2I1ZTQ0M2FjZmEwMTczODBlMmQxNTEifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs#L714-L747",
@@ -88,7 +88,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.0",
-    "at": "2026-09-29T13:52:19.644Z"
+    "by": "openwiki/0.6.1",
+    "at": "2026-09-29T20:08:07.145Z"
   }
 }

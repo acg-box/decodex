@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f657f5e5b7d4ff2ed620b9c1d00ad0bdf77e795954bf493de65fdda6e13da444",
+  "pageVersion": "sha256:1d358d8a03ab22c5bc3195bdf09c3452cc36afd71f9efc5e98dc29edc0653d57",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -22,7 +22,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_composer.rs",
-          "version": "repo-file-v1:sha256:0d0237362159864d4ee2f9b624f03a3c24c80ecf51d238968d739c4adaa57aba"
+          "version": "repo-file-v1:sha256:82d4047d749aad23813407d4abbe8ec6234734dbb8d7651263d425c32ee29d28"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_glass_panel.rs",
@@ -56,7 +56,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.0",
-    "at": "2026-09-29T09:20:11.292Z"
+    "by": "openwiki/0.6.1",
+    "at": "2026-09-29T20:08:07.145Z"
   }
 }

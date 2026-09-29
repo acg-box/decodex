@@ -3,15 +3,15 @@ type: Reference
 title: "Historical Codex 0.146 callback receipt"
 description: "Version-bound account callback proof and the current service-owned callback boundary."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process.rs
   - id: openwiki-source-893c832a870570c6aae3b312
     resource: repo://crates/decodex-runtime/src/account_launch/protocol.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-29T20:08:07.145Z
 ---
 
 # Current scope

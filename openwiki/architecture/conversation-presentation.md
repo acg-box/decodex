@@ -14,8 +14,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_motion.rs
 generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
 verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T09:20:11.292Z
+  - by: openwiki/0.6.1
+    at: 2026-09-29T20:08:07.145Z
 ---
 
 # Conversation presentation and motion
