@@ -2209,6 +2209,11 @@ pub enum QueryPayload {
 		/// Owning task.
 		work_id: EntityId,
 	},
+	/// Read the current native search defaults and effective project preference.
+	GetAgentSearchSettings {
+		/// Owning task.
+		work_id: EntityId,
+	},
 
 	/// Read connector exposure for an owned task.
 	GetAgentAppExposure {
@@ -3124,6 +3129,8 @@ pub enum QueryResultPayload {
 	AgentPromptEdit(crate::PromptEditStatus),
 	/// Task-scoped native voice preferences.
 	AgentVoiceSettings(crate::AgentVoiceSettingsResult),
+	/// Native web-search defaults and permitted modes.
+	AgentSearchSettings(crate::AgentSearchSettingsResult),
 	/// Native connector exposure configuration.
 	AgentAppExposure(crate::AgentAppExposureResult),
 	/// Exact current-turn reviewer inspection and publication receipt.

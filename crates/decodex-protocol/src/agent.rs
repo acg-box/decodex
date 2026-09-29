@@ -465,6 +465,16 @@ pub enum AgentActionDto {
 		voice: crate::WireText,
 	},
 
+	/// Save a reviewed search preference for new conversations.
+	SetSearchPreference {
+		/// Owning task.
+		work_id: crate::EntityId,
+		/// Current source and configuration identity.
+		review_token: crate::WireText,
+		/// Explicit supported search selection.
+		mode: crate::WireText,
+	},
+
 	/// Acknowledge an unknown outcome without replaying or changing that outcome.
 	AcknowledgeAppUiCall {
 		/// Exact owning task.

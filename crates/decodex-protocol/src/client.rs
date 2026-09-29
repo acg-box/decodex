@@ -650,6 +650,39 @@ impl AgentClient {
 		}
 	}
 
+	/// Read the current task's search defaults and permitted modes.
+	pub async fn search_settings(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::AgentSearchSettingsResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(35),
+		};
+		let completed = time::timeout(
+			Duration::from_secs(35),
+			transport.query_inner(
+				"agent-search-settings",
+				QueryPayload::GetAgentSearchSettings { work_id: work_id.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::AgentSearchSettings(result) => {
+				if let crate::AgentSearchSettingsResult::Available { work_id: actual, .. } = &result
+					&& actual != &work_id
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read connector exposure from the current task source.
 	pub async fn app_tool_exposure(
 		&self,
@@ -1786,6 +1819,7 @@ impl AgentClient {
 			| crate::AgentActionDto::SetAppToolExposure { .. }
 			| crate::AgentActionDto::EditNativeGoal { .. }
 			| crate::AgentActionDto::SetVoicePreference { .. }
+			| crate::AgentActionDto::SetSearchPreference { .. }
 			| crate::AgentActionDto::SetTaskPlugin { .. } => Some(Duration::from_secs(65)),
 			crate::AgentActionDto::RestoreArchivedThread { .. } => Some(RESET_CARD_CLIENT_TIMEOUT),
 			_ => None,
@@ -1925,6 +1959,7 @@ fn agent_action_work_id(action: &crate::AgentActionDto) -> &EntityId {
 		| crate::AgentActionDto::CancelRecap { work_id, .. }
 		| crate::AgentActionDto::EditNativeGoal { work_id, .. }
 		| crate::AgentActionDto::SetVoicePreference { work_id, .. }
+		| crate::AgentActionDto::SetSearchPreference { work_id, .. }
 		| crate::AgentActionDto::SetAppSetting { work_id, .. }
 		| crate::AgentActionDto::SetSavedAppSetting { work_id, .. } => work_id,
 		crate::AgentActionDto::Start(start)
