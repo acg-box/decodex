@@ -258,124 +258,121 @@ fn validate_goal_attachment_owner(
 
 fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result<(), ClientError> {
 	if let Some(method) = value.get("method") {
-		if let Some(method @ ("fs/createDirectory" | "fs/writeFile")) = method.as_str() {
-			return if decodex_codex::app_server_client::is_goal_attachment_write(
-				method,
-				&value["params"],
-			) {
-				Ok(())
-			} else {
-				Err(ClientError::InvalidFrame)
-			};
-		}
-		if method == "thread/goal/set" {
-			return if decodex_codex::app_server_client::is_native_goal_update(&value["params"]) {
-				Ok(())
-			} else {
-				Err(ClientError::InvalidFrame)
-			};
-		}
-		if method == "config/batchWrite" {
-			return if decodex_codex::app_server_client::is_hook_settings_write(&value["params"])
-				|| decodex_codex::app_server_client::is_app_tool_exposure_write(&value["params"])
-				|| decodex_codex::app_server_client::is_realtime_voice_write(&value["params"])
-				|| decodex_codex::app_server_client::is_search_mode_write(&value["params"])
-			{
-				Ok(())
-			} else {
-				Err(ClientError::InvalidFrame)
-			};
-		}
-		if method == "thread/settings/update" {
-			return if decodex_codex::app_server_client::is_thread_model_selection(&value["params"])
-				|| decodex_codex::app_server_client::is_thread_model_recovery_update(
-					&value["params"],
-				)
-				|| decodex_codex::app_server_client::is_thread_permission_selection(
-					&value["params"],
-				) {
-				Ok(())
-			} else {
-				Err(ClientError::InvalidFrame)
-			};
-		}
-		if method == "account/sendAddCreditsNudgeEmail" {
-			let params = &value["params"];
-			return if params.as_object().is_some_and(|p| p.len() == 1)
-				&& matches!(params["creditType"].as_str(), Some("credits" | "usage_limit"))
-			{
-				Ok(())
-			} else {
-				Err(ClientError::InvalidFrame)
-			};
-		}
-		if method == "turn/settings/update" {
-			return if decodex_codex::app_server_client::is_live_reviewer_update(&value["params"])
-				|| decodex_codex::app_server_client::is_live_model_update(&value["params"])
-			{
-				Ok(())
-			} else {
-				Err(ClientError::InvalidFrame)
-			};
-		}
-		if !matches!(
-			method.as_str(),
-			Some(
-				"getAuthStatus"
-					| "thread/realtime/start"
-					| "thread/realtime/appendSpeech"
-					| "thread/realtime/stop"
-					| "thread/realtime/listVoices"
-					| "model/list"
-					| "experimentalFeature/list"
-					| "skills/extraRoots/set"
-					| "skills/list"
-					| "server/diagnostics"
-					| "permissionProfile/list"
-					| "hooks/list"
-					| "config/read"
-					| "configRequirements/read"
-					| "thread/start"
-					| "thread/resume"
-					| "thread/inject_items"
-					| "thread/attachment/list"
-					| "mcpServerStatus/list"
-					| "plugin/installed"
-					| "app/installed"
-					| "app/list"
-					| "app/read"
-					| "account/usage/read"
-					| "thread/unarchive"
-					| "thread/revert"
-					| "thread/unsubscribe"
-					| "thread/read"
-					| "thread/list"
-					| "thread/backgroundTerminals/list"
-					| "thread/backgroundTerminals/terminate"
-					| "thread/search"
-					| "thread/searchOccurrences"
-					| "thread/goal/get"
-					| "thread/turns/list"
-					| "thread/items/list"
-					| "thread/timeline/list"
-					| "thread/attachment/add"
-					| "thread/attachment/remove"
-					| "mcpServer/oauth/login"
-					| "thread/archive"
-					| "thread/approveGuardianDeniedAction"
-					| "turn/start"
-					| "turn/steer"
-					| "turn/interrupt"
-			)
-		) {
-			return Err(ClientError::InvalidFrame);
-		}
-	} else {
-		let id = serde_json::from_value(value.get("id").cloned().ok_or(ClientError::InvalidFrame)?)
-			.map_err(|_| ClientError::InvalidFrame)?;
-		if !requests.remove(&id) {
-			return Err(ClientError::InvalidFrame);
-		}
+		return validate_outbound_method(method, &value["params"]);
+	}
+	let id = serde_json::from_value(value.get("id").cloned().ok_or(ClientError::InvalidFrame)?)
+		.map_err(|_| ClientError::InvalidFrame)?;
+	if !requests.remove(&id) {
+		return Err(ClientError::InvalidFrame);
+	}
+	Ok(())
+}
+
+fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), ClientError> {
+	if let Some(method @ ("fs/createDirectory" | "fs/writeFile")) = method.as_str() {
+		return if decodex_codex::app_server_client::is_goal_attachment_write(method, params) {
+			Ok(())
+		} else {
+			Err(ClientError::InvalidFrame)
+		};
+	}
+	if method == "thread/goal/set" {
+		return if decodex_codex::app_server_client::is_native_goal_update(params) {
+			Ok(())
+		} else {
+			Err(ClientError::InvalidFrame)
+		};
+	}
+	if method == "config/batchWrite" {
+		return if decodex_codex::app_server_client::is_hook_settings_write(params)
+			|| decodex_codex::app_server_client::is_app_tool_exposure_write(params)
+			|| decodex_codex::app_server_client::is_realtime_voice_write(params)
+			|| decodex_codex::app_server_client::is_search_mode_write(params)
+		{
+			Ok(())
+		} else {
+			Err(ClientError::InvalidFrame)
+		};
+	}
+	if method == "thread/settings/update" {
+		return if decodex_codex::app_server_client::is_thread_model_selection(params)
+			|| decodex_codex::app_server_client::is_thread_model_recovery_update(params)
+			|| decodex_codex::app_server_client::is_thread_permission_selection(params)
+		{
+			Ok(())
+		} else {
+			Err(ClientError::InvalidFrame)
+		};
+	}
+	if method == "account/sendAddCreditsNudgeEmail" {
+		return if params.as_object().is_some_and(|p| p.len() == 1)
+			&& matches!(params["creditType"].as_str(), Some("credits" | "usage_limit"))
+		{
+			Ok(())
+		} else {
+			Err(ClientError::InvalidFrame)
+		};
+	}
+	if method == "turn/settings/update" {
+		return if decodex_codex::app_server_client::is_live_reviewer_update(params)
+			|| decodex_codex::app_server_client::is_live_model_update(params)
+		{
+			Ok(())
+		} else {
+			Err(ClientError::InvalidFrame)
+		};
+	}
+	if !matches!(
+		method.as_str(),
+		Some(
+			"getAuthStatus"
+				| "thread/realtime/start"
+				| "thread/realtime/appendSpeech"
+				| "thread/realtime/stop"
+				| "thread/realtime/listVoices"
+				| "model/list"
+				| "experimentalFeature/list"
+				| "skills/extraRoots/set"
+				| "skills/list"
+				| "server/diagnostics"
+				| "permissionProfile/list"
+				| "hooks/list"
+				| "config/read"
+				| "configRequirements/read"
+				| "thread/start"
+				| "thread/resume"
+				| "thread/inject_items"
+				| "thread/attachment/list"
+				| "mcpServerStatus/list"
+				| "plugin/installed"
+				| "app/installed"
+				| "app/list"
+				| "app/read"
+				| "account/usage/read"
+				| "thread/unarchive"
+				| "thread/revert"
+				| "thread/unsubscribe"
+				| "thread/read"
+				| "thread/list"
+				| "thread/backgroundTerminals/list"
+				| "thread/backgroundTerminals/terminate"
+				| "thread/search"
+				| "thread/searchOccurrences"
+				| "thread/goal/get"
+				| "thread/turns/list"
+				| "thread/items/list"
+				| "thread/timeline/list"
+				| "thread/attachment/add"
+				| "thread/attachment/remove"
+				| "mcpServer/oauth/login"
+				| "thread/archive"
+				| "thread/approveGuardianDeniedAction"
+				| "turn/start"
+				| "turn/steer"
+				| "turn/interrupt"
+		)
+	) {
+		return Err(ClientError::InvalidFrame);
 	}
 	Ok(())
 }
