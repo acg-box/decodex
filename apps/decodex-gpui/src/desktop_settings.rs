@@ -163,6 +163,7 @@ impl DesktopSettingsController {
 		state.pending_query = None;
 		state.in_flight_query = None;
 		state.session = Some(binding);
+		state.settings_are_current = false;
 		let query_queued = state.queue_query();
 		let command_queued = state.pending_command.is_some();
 		drop(state);
@@ -263,10 +264,7 @@ impl DesktopSettingsController {
 			return;
 		}
 		let mut state = self.lock();
-		if state.settings.is_none_or(|current| settings.revision >= current.revision) {
-			state.settings = Some(*settings);
-			state.load = DesktopSettingsLoadState::Ready;
-		}
+		state.apply_settings(*settings);
 	}
 
 	pub(crate) fn route_query_result(
@@ -297,7 +295,7 @@ impl DesktopSettingsController {
 			QueryResultPayload::DesktopSettings(DesktopSettingsResult::Available(settings))
 				if settings.is_valid() =>
 			{
-				state.settings = Some(*settings);
+				state.apply_settings(*settings);
 				state.load = DesktopSettingsLoadState::Ready;
 				if state.in_flight_command.is_none() && state.pending_command.is_none() {
 					state.command = DesktopSettingsCommandState::Idle;
@@ -393,7 +391,7 @@ impl DesktopSettingsController {
 					&& settings.is_valid()
 					&& result.entity_revision == Some(settings.revision)
 				{
-					state.settings = Some(*settings);
+					state.apply_settings(*settings);
 					state.load = DesktopSettingsLoadState::Ready;
 					state.command = DesktopSettingsCommandState::Accepted;
 					DesktopSettingsRouteOutcome::Fresh
@@ -446,6 +444,8 @@ struct State {
 	load: DesktopSettingsLoadState,
 	command: DesktopSettingsCommandState,
 	settings: Option<DesktopSettingsDto>,
+	// Cached values from a previous connection are not a revision floor for this connection.
+	settings_are_current: bool,
 }
 
 impl State {
@@ -460,6 +460,17 @@ impl State {
 			load: DesktopSettingsLoadState::NeverRequested,
 			command: DesktopSettingsCommandState::Idle,
 			settings: None,
+			settings_are_current: false,
+		}
+	}
+
+	fn apply_settings(&mut self, settings: DesktopSettingsDto) {
+		if !self.settings_are_current
+			|| self.settings.is_none_or(|current| settings.revision >= current.revision)
+		{
+			self.settings = Some(settings);
+			self.settings_are_current = true;
+			self.load = DesktopSettingsLoadState::Ready;
 		}
 	}
 
@@ -662,6 +673,68 @@ mod tests {
 		assert_eq!(snapshot.load, DesktopSettingsLoadState::Ready);
 		assert!(snapshot.can_toggle);
 		assert!(snapshot.settings.expect("settings are available").show_in_menu_bar);
+	}
+
+	#[tokio::test]
+	async fn query_readback_preserves_newer_events_in_each_connection() {
+		let controller = DesktopSettingsController::production();
+		let server = server();
+		for (generation, query_revision, event_revision) in [(1, 8, 9), (2, 2, 3)] {
+			controller.bind_session(generation, server.clone());
+			let DesktopSettingsDispatch::Query(query) =
+				controller.next_dispatch(generation, &server).await
+			else {
+				panic!("connection must query settings")
+			};
+			let newer = DesktopSettingsDto {
+				show_in_menu_bar: false,
+				auto_activate_quota: false,
+				auto_recap: true,
+				revision: EntityRevision(event_revision),
+			};
+			controller.apply_event(&decodex_protocol::EventEnvelope {
+				version: CURRENT_VERSION,
+				server_id: server.clone(),
+				cursor: decodex_protocol::Cursor(1),
+				channel: decodex_protocol::Channel::Control,
+				entity_id: decodex_protocol::EntityId::new(
+					decodex_protocol::DESKTOP_SETTINGS_ENTITY_ID,
+				)
+				.unwrap(),
+				entity_revision: newer.revision,
+				correlation_id: decodex_protocol::CorrelationId::new("settings-event").unwrap(),
+				causation_id: None,
+				payload: decodex_protocol::EventPayload::DesktopSettingsChanged { settings: newer },
+			});
+			assert_eq!(controller.snapshot().settings, Some(newer));
+			assert!(!controller.snapshot().can_toggle, "query is still pending");
+			controller.route_query_result(
+				generation,
+				&server,
+				&QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: server.clone(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::DesktopSettings(DesktopSettingsResult::Available(
+						DesktopSettingsDto {
+							show_in_menu_bar: true,
+							auto_activate_quota: true,
+							auto_recap: false,
+							revision: EntityRevision(query_revision),
+						},
+					)),
+				},
+			);
+			assert_eq!(controller.snapshot().settings, Some(newer));
+			assert!(controller.snapshot().can_toggle);
+			controller.set_auto_recap(false).expect("queue with latest revision");
+			let dispatch = controller.next_dispatch(generation, &server).await;
+			assert_eq!(
+				dispatch.command().expect("settings command").expected_revision,
+				Some(newer.revision)
+			);
+			controller.session_ended(generation);
+		}
 	}
 
 	#[tokio::test]
