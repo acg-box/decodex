@@ -21,6 +21,9 @@ struct NextCall {
 
 impl AgentSurface {
 	fn voice_option_target(&self, work: &str) -> Option<(String, String, Option<EntityId>)> {
+		if self.composer_manager.clone().or_else(|| self.root_id()).as_deref() != Some(work) {
+			return None;
+		}
 		let snapshot = self.snapshot.as_ref()?;
 		let item = snapshot.work_items.iter().find(|item| item.id == work)?;
 		Some((work.into(), item.codex_thread_id.clone()?, snapshot.runtime_source.clone()))
@@ -60,6 +63,9 @@ impl AgentSurface {
 	}
 
 	fn advanced_voice_options(&self, work: &str, cx: &mut Context<Self>) -> gpui::AnyElement {
+		if self.voice_option_target(work).is_none() {
+			return div().into_any_element();
+		}
 		let owner = work.to_owned();
 		let active = self
 			.voice_settings
