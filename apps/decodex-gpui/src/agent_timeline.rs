@@ -236,7 +236,11 @@ impl AgentSurface {
 			}
 			self.prepare_process_folds(work, &collapsed);
 			let mut hidden = Vec::new();
+			let empty_reasoning = groups::empty_completed_reasoning(&self.native_history.entries);
 			for (index, entry) in self.native_history.entries.iter().enumerate() {
+				if empty_reasoning.contains(&index) {
+					continue;
+				}
 				if let Some(group) = headers.get(&index) {
 					if !hidden.is_empty() {
 						panel = panel
