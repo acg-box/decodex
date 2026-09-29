@@ -52,19 +52,7 @@ impl AgentSurface {
 					|| receipt_label(entry) == Some("Local execution record")
 			});
 		if has_records && diagnostics {
-			panel = panel.child(
-				div()
-					.id("local-records-toggle")
-					.cursor_pointer()
-					.text_size(gpui::px(11.))
-					.child(muted(if expanded { "Diagnostics ⌄" } else { "Diagnostics ›" }))
-					.on_click(cx.listener(move |s, _, _, cx| {
-						if !s.expanded_records.remove(&records_key) {
-							s.expanded_records.insert(records_key.clone());
-						}
-						cx.notify();
-					})),
-			);
+			panel = panel.child(self.local_records_toggle(records_key, expanded, cx));
 		}
 		if expanded {
 			panel = panel.children(self.earlier_local_records(cursor.is_some(), cx));
@@ -155,6 +143,34 @@ impl AgentSurface {
 		if diagnostics {
 			return panel.into_any_element();
 		}
+		panel.children(self.native_live_receipts(live)).into_any_element()
+	}
+
+	fn local_records_toggle(
+		&self,
+		records_key: String,
+		expanded: bool,
+		cx: &mut Context<Self>,
+	) -> gpui::AnyElement {
+		div()
+			.id("local-records-toggle")
+			.cursor_pointer()
+			.text_size(gpui::px(11.))
+			.child(muted(if expanded { "Diagnostics ⌄" } else { "Diagnostics ›" }))
+			.on_click(cx.listener(move |s, _, _, cx| {
+				if !s.expanded_records.remove(&records_key) {
+					s.expanded_records.insert(records_key.clone());
+				}
+				cx.notify();
+			}))
+			.into_any_element()
+	}
+
+	fn native_live_receipts(
+		&self,
+		live: &[decodex_protocol::AgentLiveMessageDto],
+	) -> Vec<gpui::AnyElement> {
+		let mut rows = Vec::new();
 		for message in live {
 			if self.native_history.entries.iter().any(|entry| match &entry.content {
 				Content::Item { turn_id, item_id, .. } =>
@@ -165,7 +181,7 @@ impl AgentSurface {
 			}) {
 				continue;
 			}
-			panel = panel.child(
+			rows.push(
 				div()
 					.debug_selector({
 						let selector = match message.kind {
@@ -193,10 +209,11 @@ impl AgentSurface {
 						message
 							.truncated
 							.then(|| muted("Partial output shortened; waiting for saved result.")),
-					),
+					)
+					.into_any_element(),
 			);
 		}
-		panel.into_any_element()
+		rows
 	}
 }
 
