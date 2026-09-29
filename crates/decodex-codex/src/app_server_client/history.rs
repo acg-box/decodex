@@ -427,8 +427,11 @@ mod tests {
 		], Some(Some("__export_test__"))).await;
 		let result = result.unwrap();
 		let text = result.as_str().unwrap();
-		assert!(text.find("First question") < text.find("First answer"));
-		assert!(text.find("First answer") < text.find("Last answer"));
+		let question = text.find("First question").expect("exported first question");
+		let first_answer = text.find("First answer").expect("exported first answer");
+		let last_answer = text.find("Last answer").expect("exported last answer");
+		assert!(question < first_answer);
+		assert!(first_answer < last_answer);
 		assert_eq!(requests[2]["params"]["cursor"], "older");
 		assert_eq!(requests[4]["params"]["cursor"], "next");
 	}

@@ -737,10 +737,10 @@ impl AccountService {
 			{
 				return Ok(SharedCodexAuthSnapshot::Managed {
 					version,
-					credential: ImportedCredential {
+					credential: Box::new(ImportedCredential {
 						provider: binding.provider.clone(),
 						bundle: stored.into_bundle(),
-					},
+					}),
 				});
 			}
 		}
@@ -816,7 +816,7 @@ impl AccountService {
 		snapshot: SharedCodexAuthSnapshot,
 	) -> Result<RouteSharedAuthSnapshot, AccountLifecycleError> {
 		let (version, credential) = match self.resolve_shared_pat(snapshot).await? {
-			SharedCodexAuthSnapshot::Managed { version, credential } => (version, credential),
+			SharedCodexAuthSnapshot::Managed { version, credential } => (version, *credential),
 			SharedCodexAuthSnapshot::PersonalAccessToken { .. } =>
 				return Err(AccountLifecycleError::AuthSourceAccountUnknown),
 			SharedCodexAuthSnapshot::Unmanaged { version } => {
@@ -1849,7 +1849,7 @@ impl AccountService {
 					return Ok(RefreshResolution::Current);
 				}
 				if let Some(winner) =
-					matching_shared_refresh(current, stored.bundle(), now_unix_micros, Ok(latest))
+					matching_shared_refresh(current, stored.bundle(), now_unix_micros, Ok(*latest))
 				{
 					return Ok(RefreshResolution::Rotate {
 						refreshed: winner,
@@ -1858,7 +1858,7 @@ impl AccountService {
 				}
 				return Err(CredentialRefreshError::OwnerBusy);
 			} else if let Some(shared) =
-				matching_shared_refresh(current, stored.bundle(), now_unix_micros, Ok(credential))
+				matching_shared_refresh(current, stored.bundle(), now_unix_micros, Ok(*credential))
 			{
 				return Ok(RefreshResolution::Rotate { refreshed: shared, projected_source: None });
 			} else {
@@ -1941,7 +1941,7 @@ impl AccountService {
 			.read_current_exact()
 			.map_err(|_| CredentialImportError::Unavailable)?
 		{
-			SharedCodexAuthSnapshot::Managed { credential, .. } => Ok(credential),
+			SharedCodexAuthSnapshot::Managed { credential, .. } => Ok(*credential),
 			SharedCodexAuthSnapshot::Unmanaged { .. }
 			| SharedCodexAuthSnapshot::PersonalAccessToken { .. } => Err(CredentialImportError::Unavailable),
 		}
@@ -5037,7 +5037,7 @@ fn classify_shared_refresh_convergence(
 	if bundle_matches_binding(account_id, expected, &credential.bundle) {
 		return SharedRefreshConvergence::Previous(version);
 	}
-	matching_shared_refresh(target, target_bundle, now_unix_micros, Ok(credential))
+	matching_shared_refresh(target, target_bundle, now_unix_micros, Ok(*credential))
 		.map_or(SharedRefreshConvergence::Conflict, SharedRefreshConvergence::Winner)
 }
 
@@ -5937,10 +5937,10 @@ mod tests {
 			}
 			Ok(SharedCodexAuthSnapshot::Managed {
 				version,
-				credential: ImportedCredential {
+				credential: Box::new(ImportedCredential {
 					provider: state.provider.clone(),
 					bundle: state.bundle.clone(),
-				},
+				}),
 			})
 		}
 
