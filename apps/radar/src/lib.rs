@@ -96,7 +96,6 @@ use serde_json::{self, Map, Value};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::prelude::eyre;
-#[cfg(test)] use artifact_validation::has_legacy_multi_agent_v2_context;
 use artifact_validation::{
 	ValidationState, validate_analysis_draft, validate_artifact, validate_artifact_errors,
 	validate_artifact_for_path, validate_signal_file, validate_signal_slug_uniqueness,
