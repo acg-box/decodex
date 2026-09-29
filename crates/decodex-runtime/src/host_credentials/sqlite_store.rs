@@ -6,7 +6,7 @@ use decodex_core::{AccountId, CredentialBinding, CredentialVersion};
 use decodex_database::{CredentialKey, CredentialRecord, DatabaseError, SqliteStore};
 
 use super::{
-	CredentialSecretBundle, CredentialStoreError, HostCredentialStore, PersistedCredentialV1,
+	CredentialSecretBundle, CredentialStoreError, HostCredentialStore, PersistedCredential,
 	StoredCredential, decode, encode, enforce_exact, fingerprint, provider_text, seal_exact_read,
 };
 
@@ -24,7 +24,7 @@ impl SqliteCredentialStore {
 	fn read_record(
 		&self,
 		account_id: &AccountId,
-	) -> Result<(PersistedCredentialV1, CredentialBinding), CredentialStoreError> {
+	) -> Result<(PersistedCredential, CredentialBinding), CredentialStoreError> {
 		let record = self.store.read_credential(account_id.as_str()).map_err(map_read_error)?;
 		let (persisted, fingerprint) = decode(record.payload.to_vec())?;
 		if persisted.account_id()? != *account_id {
@@ -54,7 +54,7 @@ impl HostCredentialStore for SqliteCredentialStore {
 		if target.version.get() != 1 {
 			return Err(CredentialStoreError::VersionConflict);
 		}
-		let persisted = PersistedCredentialV1::new(
+		let persisted = PersistedCredential::new(
 			account_id,
 			&target.writer_operation_id,
 			CredentialVersion::new(1).map_err(|_| CredentialStoreError::InvalidBundle)?,
@@ -89,7 +89,7 @@ impl HostCredentialStore for SqliteCredentialStore {
 			Ok(_) => return Err(CredentialStoreError::AlreadyExists),
 			Err(error) => return Err(map_read_error(error)),
 		}
-		let persisted = PersistedCredentialV1::new(
+		let persisted = PersistedCredential::new(
 			account_id,
 			&target.writer_operation_id,
 			next,
@@ -131,7 +131,7 @@ impl HostCredentialStore for SqliteCredentialStore {
 		}
 		let (_, actual) = self.read_record(account_id)?;
 		enforce_exact(&actual, expected)?;
-		let persisted = PersistedCredentialV1::new(
+		let persisted = PersistedCredential::new(
 			account_id,
 			&target.writer_operation_id,
 			next,

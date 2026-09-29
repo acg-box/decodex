@@ -43,6 +43,8 @@ fn voice_precaution_upgrade_preserves_unknown_legacy_cause() {
 					| "quick_task_requests"
 					| "conversation_native_settings"
 					| "reset_card_operations"
+					| "account_credentials"
+					| "process_generations"
 			))
 			.collect::<Vec<_>>(),
 		original
@@ -53,6 +55,8 @@ fn voice_precaution_upgrade_preserves_unknown_legacy_cause() {
 					| "quick_task_requests"
 					| "conversation_native_settings"
 					| "reset_card_operations"
+					| "account_credentials"
+					| "process_generations"
 			))
 			.collect::<Vec<_>>()
 	);

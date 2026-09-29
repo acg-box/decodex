@@ -72,10 +72,12 @@ pub struct CredentialStoreSchemaVersion(u16);
 impl CredentialStoreSchemaVersion {
 	/// Initial closed host credential-bundle schema.
 	pub const V1: Self = Self(1);
+	/// Credential records that can hold a personal access token without OAuth fields.
+	pub const V2: Self = Self(2);
 
 	/// Construct a supported store schema version.
 	pub const fn new(value: u16) -> Result<Self, AccountError> {
-		if value == Self::V1.0 {
+		if value == Self::V1.0 || value == Self::V2.0 {
 			Ok(Self(value))
 		} else {
 			Err(AccountError::UnsupportedCredentialStoreSchema)

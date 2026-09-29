@@ -400,7 +400,9 @@ fn encode_auth(
 		tokens: Tokens {
 			id_token,
 			access_token: bundle.access_token(),
-			refresh_token: bundle.refresh_token(),
+			refresh_token: bundle
+				.refresh_token()
+				.ok_or(CodexAuthProjectionError::InvalidCredential)?,
 			account_id: provider_account_id,
 		},
 		last_refresh: now_rfc3339()?,
@@ -458,7 +460,7 @@ fn current_auth_matches(
 		&& auth.tokens.account_id == provider_account_id
 		&& auth.tokens.id_token == id_token
 		&& auth.tokens.access_token == bundle.access_token()
-		&& auth.tokens.refresh_token == bundle.refresh_token())
+		&& Some(auth.tokens.refresh_token.as_str()) == bundle.refresh_token())
 }
 
 #[derive(Deserialize)]

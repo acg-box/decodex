@@ -105,11 +105,18 @@ fn shared_auth_import_operation_id(
 		.chain_update(b"\0")
 		.chain_update(bundle.access_token().as_bytes())
 		.chain_update(b"\0")
-		.chain_update(bundle.refresh_token().as_bytes())
+		.chain_update(
+			bundle.refresh_token().ok_or(AccountLifecycleError::InvalidOperation)?.as_bytes(),
+		)
 		.chain_update(b"\0")
 		.chain_update(bundle.id_token().unwrap_or_default().as_bytes())
 		.chain_update(b"\0")
-		.chain_update(bundle.access_token_expires_at_unix_micros().to_be_bytes())
+		.chain_update(
+			bundle
+				.access_token_expires_at_unix_micros()
+				.ok_or(AccountLifecycleError::InvalidOperation)?
+				.to_be_bytes(),
+		)
 		.finalize();
 	operation_id_from_digest(&digest)
 }
@@ -266,7 +273,7 @@ impl CredentialRefreshPort for OpenAiCredentialRefresher {
 		let request = RefreshRequest {
 			client_id: CHATGPT_OAUTH_CLIENT_ID,
 			grant_type: "refresh_token",
-			refresh_token: current.refresh_token(),
+			refresh_token: current.refresh_token().ok_or(CredentialRefreshError::Rejected)?,
 		};
 		let endpoint = refresh_endpoint()?;
 		let response = self
@@ -402,8 +409,11 @@ fn credential_refresh_result(
 		.take()
 		.filter(|value| !value.is_empty())
 		.ok_or(CredentialRefreshError::Ambiguous)?;
-	let refresh_token =
-		refreshed.refresh_token.take().unwrap_or_else(|| current.refresh_token().to_owned());
+	let refresh_token = refreshed
+		.refresh_token
+		.take()
+		.or_else(|| current.refresh_token().map(str::to_owned))
+		.ok_or(CredentialRefreshError::Rejected)?;
 	let id_token = refreshed
 		.id_token
 		.take()
@@ -4826,7 +4836,7 @@ fn current_unix_micros() -> Result<i64, AccountLifecycleError> {
 }
 
 fn access_token_needs_refresh(
-	expires_at_unix_micros: i64,
+	expires_at_unix_micros: Option<i64>,
 	now_unix_micros: i64,
 	minimum_validity: Duration,
 ) -> Result<bool, AccountLifecycleError> {
@@ -4835,11 +4845,11 @@ fn access_token_needs_refresh(
 	let required_until = now_unix_micros
 		.checked_add(minimum_validity_micros)
 		.ok_or(AccountLifecycleError::InvalidOperation)?;
-	Ok(expires_at_unix_micros <= required_until)
+	Ok(expires_at_unix_micros.is_some_and(|expiry| expiry <= required_until))
 }
 
 fn require_refreshed_access_token_for_observation(
-	expires_at_unix_micros: i64,
+	expires_at_unix_micros: Option<i64>,
 	now_unix_micros: i64,
 	minimum_validity: Duration,
 ) -> Result<(), AccountLifecycleError> {
@@ -4950,7 +4960,11 @@ fn matching_shared_refresh(
 	match shared {
 		Ok(imported)
 			if imported.provider == current.provider
-				&& imported.bundle.access_token_expires_at_unix_micros() > now_unix_micros
+				&& !current_bundle.is_personal_access_token()
+				&& imported
+					.bundle
+					.access_token_expires_at_unix_micros()
+					.is_some_and(|expiry| expiry > now_unix_micros)
 				&& imported.bundle.access_token_expires_at_unix_micros()
 					>= current_bundle.access_token_expires_at_unix_micros()
 				&& !same_refresh_bundle(current_bundle, &imported.bundle) =>
@@ -4979,6 +4993,7 @@ fn same_refresh_bundle(first: &CredentialSecretBundle, second: &CredentialSecret
 		&& first.plan_type() == second.plan_type()
 		&& first.provider_email() == second.provider_email()
 		&& first.token_type() == second.token_type()
+		&& first.personal_access_token_user_id() == second.personal_access_token_user_id()
 		&& first.access_token_expires_at_unix_micros()
 			== second.access_token_expires_at_unix_micros()
 }
@@ -5655,7 +5670,10 @@ mod tests {
 
 		fn current_tokens(&self) -> (String, String) {
 			let state = self.state.lock().expect("shared auth state");
-			(state.bundle.access_token().to_owned(), state.bundle.refresh_token().to_owned())
+			(
+				state.bundle.access_token().to_owned(),
+				state.bundle.refresh_token().expect("OAuth fixture").to_owned(),
+			)
 		}
 	}
 
@@ -5949,19 +5967,20 @@ mod tests {
 		let now = 1_000_000_i64;
 		let minimum_validity = Duration::from_micros(500);
 
-		assert!(access_token_needs_refresh(now - 1, now, minimum_validity).unwrap());
-		assert!(access_token_needs_refresh(now + 500, now, minimum_validity).unwrap());
-		assert!(!access_token_needs_refresh(now + 501, now, minimum_validity).unwrap());
+		assert!(access_token_needs_refresh(Some(now - 1), now, minimum_validity).unwrap());
+		assert!(access_token_needs_refresh(Some(now + 500), now, minimum_validity).unwrap());
+		assert!(!access_token_needs_refresh(Some(now + 501), now, minimum_validity).unwrap());
+		assert!(!access_token_needs_refresh(None, now, minimum_validity).unwrap());
 		assert!(matches!(
-			access_token_needs_refresh(i64::MAX, i64::MAX, minimum_validity),
+			access_token_needs_refresh(Some(i64::MAX), i64::MAX, minimum_validity),
 			Err(AccountLifecycleError::InvalidOperation)
 		));
 		assert!(matches!(
-			require_refreshed_access_token_for_observation(now + 500, now, minimum_validity),
+			require_refreshed_access_token_for_observation(Some(now + 500), now, minimum_validity),
 			Err(AccountLifecycleError::Refresh(CredentialRefreshError::Unavailable))
 		));
 		assert!(
-			require_refreshed_access_token_for_observation(now + 501, now, minimum_validity)
+			require_refreshed_access_token_for_observation(Some(now + 501), now, minimum_validity)
 				.is_ok()
 		);
 	}
@@ -7879,10 +7898,10 @@ mod tests {
 		assert_eq!(refreshed.bundle.id_token(), Some(fresh_id_token.as_str()));
 		assert_eq!(refreshed.bundle.provider_email(), Some("fresh@example.test"));
 		assert_eq!(refreshed.bundle.plan_type(), Some("pro"));
-		assert_eq!(refreshed.bundle.refresh_token(), "old-refresh");
+		assert_eq!(refreshed.bundle.refresh_token(), Some("old-refresh"));
 		assert_eq!(
 			refreshed.bundle.access_token_expires_at_unix_micros(),
-			61_000_000,
+			Some(61_000_000),
 			"stored expiry must use the access-token authority used by shared-auth readback",
 		);
 

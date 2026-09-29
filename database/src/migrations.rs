@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 51;
+const CURRENT_SCHEMA_VERSION: i64 = 52;
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -35,6 +35,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 51,
 		name: "nullable_reset_credit_expiry",
 		sql: include_str!("../migrations/0051_nullable_reset_credit_expiry.sql"),
+	},
+	Migration {
+		version: 52,
+		name: "personal_access_token_credentials",
+		sql: include_str!("../migrations/0052_personal_access_token_credentials.sql"),
 	},
 ];
 
@@ -77,25 +82,49 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> 
 		if migration.version <= applied_version(connection)? {
 			continue;
 		}
-		let digest = migration_digest(migration.sql);
-		let now = now_micros()?;
-		let transaction = connection
-			.transaction_with_behavior(TransactionBehavior::Immediate)
-			.map_err(sqlite_error)?;
-		transaction.execute_batch(migration.sql).map_err(sqlite_error)?;
-		if migration.version == 50 {
-			crate::account_alias::migrate_names(&transaction)?;
+		// SQLite table rebuilds must leave dependent rows and their original FK targets intact.
+		if migration.version == 52 {
+			connection.pragma_update(None, "foreign_keys", false).map_err(sqlite_error)?;
 		}
-		transaction
-			.execute(
-				"INSERT INTO schema_migrations (version, name, sha256, applied_at_micros)
+		let applied = (|| -> Result<(), DatabaseError> {
+			let digest = migration_digest(migration.sql);
+			let now = now_micros()?;
+			let transaction = connection
+				.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(sqlite_error)?;
+			transaction.execute_batch(migration.sql).map_err(sqlite_error)?;
+			if migration.version == 50 {
+				crate::account_alias::migrate_names(&transaction)?;
+			}
+			transaction
+				.execute(
+					"INSERT INTO schema_migrations (version, name, sha256, applied_at_micros)
 				 VALUES (?1, ?2, ?3, ?4)",
-				params![migration.version, migration.name, digest, now],
-			)
-			.map_err(sqlite_error)?;
-		transaction.pragma_update(None, "application_id", APPLICATION_ID).map_err(sqlite_error)?;
-		transaction.pragma_update(None, "user_version", migration.version).map_err(sqlite_error)?;
-		transaction.commit().map_err(sqlite_error)?;
+					params![migration.version, migration.name, digest, now],
+				)
+				.map_err(sqlite_error)?;
+			transaction
+				.pragma_update(None, "application_id", APPLICATION_ID)
+				.map_err(sqlite_error)?;
+			transaction
+				.pragma_update(None, "user_version", migration.version)
+				.map_err(sqlite_error)?;
+			if migration.version == 52
+				&& transaction
+					.query_row("PRAGMA foreign_key_check", [], |_| Ok(()))
+					.optional()
+					.map_err(sqlite_error)?
+					.is_some()
+			{
+				return Err(DatabaseError::Incompatible);
+			}
+			transaction.commit().map_err(sqlite_error)?;
+			Ok(())
+		})();
+		if migration.version == 52 {
+			connection.pragma_update(None, "foreign_keys", true).map_err(sqlite_error)?;
+		}
+		applied?;
 	}
 
 	verify(connection)
@@ -272,3 +301,7 @@ mod account_alias_tests;
 #[cfg(test)]
 #[path = "reset_credit_expiry_migration_tests.rs"]
 mod reset_credit_expiry_tests;
+
+#[cfg(test)]
+#[path = "pat_credential_migration_tests.rs"]
+mod pat_credential_tests;
