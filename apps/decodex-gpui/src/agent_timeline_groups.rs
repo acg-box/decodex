@@ -11,7 +11,32 @@ pub(super) struct Group {
 	pub count: usize,
 }
 
+/// Hide only empty terminal reasoning. Keep live, truncated and attachment-bearing rows.
+pub(super) fn empty_completed_reasoning(entries: &[AgentTimelineEntry]) -> BTreeSet<usize> {
+	let completed: BTreeSet<_> = entries
+		.iter()
+		.filter_map(|entry| match &entry.content {
+			Content::TurnBoundary { turn_id, completed: true, .. } => Some(turn_id.as_str()),
+			_ => None,
+		})
+		.collect();
+	entries
+		.iter()
+		.enumerate()
+		.filter_map(|(index, entry)| match &entry.content {
+			Content::Item { turn_id, kind, text, truncated: false, attachments, .. }
+				if kind == "reasoning"
+					&& text.trim().is_empty()
+					&& attachments.is_empty()
+					&& completed.contains(turn_id.as_str()) =>
+				Some(index),
+			_ => None,
+		})
+		.collect()
+}
+
 pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>) -> Vec<Group> {
+	let empty = empty_completed_reasoning(entries);
 	let finished: BTreeSet<_> = entries
 		.iter()
 		.filter_map(|e| match &e.content {
@@ -34,6 +59,9 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 		.collect();
 	let mut steps: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
 	for (index, entry) in entries.iter().enumerate() {
+		if empty.contains(&index) {
+			continue;
+		}
 		if let Content::Item { turn_id, kind, phase, app_ui: false, attachments, activity, .. } =
 			&entry.content
 			&& finished.contains(turn_id.as_str())
@@ -170,6 +198,29 @@ mod tests {
 			},
 		}
 	}
+	#[test]
+	fn empty_reasoning_disappears_only_after_completion_and_does_not_count_as_process() {
+		let mut entries =
+			vec![message(1, "reasoning", None), message(2, "agentMessage", Some("final_answer"))];
+		if let Content::Item { text, .. } = &mut entries[0].content {
+			*text = " \n\t".into();
+		}
+		assert!(empty_completed_reasoning(&entries).is_empty());
+		entries.push(completed("completed"));
+		assert_eq!(empty_completed_reasoning(&entries), BTreeSet::from([0]));
+		assert!(groups(&entries, &BTreeSet::new()).is_empty());
+		if let Content::Item { truncated, .. } = &mut entries[0].content {
+			*truncated = true;
+		}
+		assert!(empty_completed_reasoning(&entries).is_empty());
+		if let Content::Item { text, truncated, .. } = &mut entries[0].content {
+			*text = "Retained summary".into();
+			*truncated = false;
+		}
+		assert!(empty_completed_reasoning(&entries).is_empty());
+		assert_eq!(groups(&entries, &BTreeSet::new())[0].count, 1);
+	}
+
 	#[test]
 	fn only_finished_turns_with_explicit_final_answers_fold() {
 		let mut entries = vec![
