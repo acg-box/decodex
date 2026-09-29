@@ -177,14 +177,14 @@ pub async fn execute(
 		AccountCommand::Inspect(args) => {
 			let account_id = match entity(&args.account_id) {
 				Ok(value) => value,
-				Err(output) => return output,
+				Err(error) => return error.render(format),
 			};
 			return render("inspect", format, client.inspect(account_id).await);
 		},
 		AccountCommand::Profile(args) => {
 			let account_id = match entity(&args.account_id) {
 				Ok(value) => value,
-				Err(output) => return output,
+				Err(error) => return error.render(format),
 			};
 			return render("profile", format, client.profile(account_id, args.include_email).await);
 		},
@@ -194,14 +194,14 @@ pub async fn execute(
 		AccountCommand::Route(args) => {
 			let input = (entity(&args.account_id), idempotency_key(args.idempotency_key));
 			let (Ok(account_id), Ok(key)) = input else {
-				return invalid_input();
+				return InvalidInput.render(format);
 			};
 			return render_command(format, client.route_account(account_id, key).await);
 		},
 		AccountCommand::SetBalancedSelection(args) => {
 			let input = (revision(args.expected_revision), idempotency_key(args.idempotency_key));
 			let (Ok(routing_revision), Ok(key)) = input else {
-				return invalid_input();
+				return InvalidInput.render(format);
 			};
 			return render_command(
 				format,
@@ -215,7 +215,7 @@ pub async fn execute(
 				idempotency_key(args.idempotency_key),
 			);
 			let (Ok(order), Ok(routing_revision), Ok(key)) = input else {
-				return invalid_input();
+				return InvalidInput.render(format);
 			};
 			return render_command(
 				format,
@@ -225,7 +225,7 @@ pub async fn execute(
 		command => {
 			let (payload, expected_revision, key) = match prepare_command(command) {
 				Ok(value) => value,
-				Err(output) => return output,
+				Err(error) => return error.render(format),
 			};
 			return render_command(format, client.execute(payload, expected_revision, key).await);
 		},
@@ -234,7 +234,7 @@ pub async fn execute(
 
 type PreparedCommand = (CommandPayload, Option<EntityRevision>, IdempotencyKey);
 
-fn prepare_command(command: AccountCommand) -> Result<PreparedCommand, CommandOutput> {
+fn prepare_command(command: AccountCommand) -> Result<PreparedCommand, InvalidInput> {
 	match command {
 		AccountCommand::Enroll(args) => command_input(
 			CommandPayload::EnrollAccountFromSharedCodex {
@@ -306,7 +306,7 @@ fn prepare_command(command: AccountCommand) -> Result<PreparedCommand, CommandOu
 		| AccountCommand::CodexProjection
 		| AccountCommand::Route(_)
 		| AccountCommand::SetBalancedSelection(_)
-		| AccountCommand::SetAccountOrder(_) => Err(invalid_input()),
+		| AccountCommand::SetAccountOrder(_) => Err(InvalidInput),
 	}
 }
 
@@ -314,40 +314,40 @@ fn command_input(
 	payload: CommandPayload,
 	expected_revision: Option<EntityRevision>,
 	idempotency_key: String,
-) -> Result<(CommandPayload, Option<EntityRevision>, IdempotencyKey), CommandOutput> {
-	let key = IdempotencyKey::new(idempotency_key).map_err(|_| invalid_input())?;
+) -> Result<(CommandPayload, Option<EntityRevision>, IdempotencyKey), InvalidInput> {
+	let key = self::idempotency_key(idempotency_key)?;
 	Ok((payload, expected_revision, key))
 }
 
-fn entity(value: &str) -> Result<EntityId, CommandOutput> {
+fn entity(value: &str) -> Result<EntityId, InvalidInput> {
 	if !crate::is_canonical_uuid(value) {
-		return Err(invalid_input());
+		return Err(InvalidInput);
 	}
-	EntityId::new(value.to_owned()).map_err(|_| invalid_input())
+	EntityId::new(value.to_owned()).map_err(|_| InvalidInput)
 }
 
-fn revision(value: u64) -> Result<EntityRevision, CommandOutput> {
-	if value == 0 { Err(invalid_input()) } else { Ok(EntityRevision(value)) }
+fn revision(value: u64) -> Result<EntityRevision, InvalidInput> {
+	if value == 0 { Err(InvalidInput) } else { Ok(EntityRevision(value)) }
 }
 
-fn idempotency_key(value: String) -> Result<IdempotencyKey, CommandOutput> {
-	IdempotencyKey::new(value).map_err(|_| invalid_input())
+fn idempotency_key(value: String) -> Result<IdempotencyKey, InvalidInput> {
+	IdempotencyKey::new(value).map_err(|_| InvalidInput)
 }
 
-fn account_order(values: &[String]) -> Result<Vec<EntityId>, CommandOutput> {
+fn account_order(values: &[String]) -> Result<Vec<EntityId>, InvalidInput> {
 	if values.len() > 512 {
-		return Err(invalid_input());
+		return Err(InvalidInput);
 	}
 	let order = values.iter().map(|value| entity(value)).collect::<Result<Vec<_>, _>>()?;
 	let unique = order.iter().map(EntityId::as_str).collect::<std::collections::HashSet<_>>();
 	if unique.len() != order.len() {
-		return Err(invalid_input());
+		return Err(InvalidInput);
 	}
 	Ok(order)
 }
 
-fn text(value: String) -> Result<WireText, CommandOutput> {
-	WireText::new(value).map_err(|_| invalid_input())
+fn text(value: String) -> Result<WireText, InvalidInput> {
+	WireText::new(value).map_err(|_| InvalidInput)
 }
 
 fn render<T: Serialize>(
@@ -407,11 +407,20 @@ fn failure_output(format: OutputFormat, failure: decodex_protocol::ClientFailure
 	CommandOutput { text, exit_code: 2, error_stream: matches!(format, OutputFormat::Human) }
 }
 
-fn invalid_input() -> CommandOutput {
-	CommandOutput {
-		text: "decodex account: invalid bounded account input".to_owned(),
-		exit_code: 2,
-		error_stream: true,
+struct InvalidInput;
+
+impl InvalidInput {
+	fn render(self, format: OutputFormat) -> CommandOutput {
+		let text = match format {
+			OutputFormat::Human => "decodex account: invalid bounded account input".to_owned(),
+			OutputFormat::Json => serde_json::to_string(&serde_json::json!({
+				"schema": ACCOUNT_OUTPUT_SCHEMA,
+				"outcome": "failure",
+				"failure": "invalid_input",
+			}))
+			.expect("closed input failure serialization cannot fail"),
+		};
+		CommandOutput { text, exit_code: 2, error_stream: format == OutputFormat::Human }
 	}
 }
 
