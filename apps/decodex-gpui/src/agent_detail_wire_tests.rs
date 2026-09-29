@@ -85,6 +85,7 @@ impl Render for DetailView {
 					status: "completed".into(),
 					label: "Patch".into(),
 					detail: String::new(),
+					native_timestamp_ms: None,
 					duration_ms: None,
 				},
 				div().child("Patch"),

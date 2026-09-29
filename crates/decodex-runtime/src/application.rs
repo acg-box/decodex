@@ -6337,6 +6337,7 @@ mod tests {
 			status: "completed".into(),
 			label: "Compacting context".into(),
 			detail: String::new(),
+			native_timestamp_ms: None,
 			duration_ms: None,
 		};
 		store

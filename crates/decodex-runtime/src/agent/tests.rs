@@ -157,6 +157,91 @@ async fn subagent_activity_survives_parent_completion_and_restart_without_waking
 }
 
 #[tokio::test]
+async fn native_activity_duration_pairs_exact_receipts_and_survives_restart() {
+	let (mut agent, _sent, directory) = fixture().await;
+	agent.start_agent("agent", "Work").await.unwrap();
+	let cases = [
+		("paired", Some(1000), Some(2250), None, Some(1250)),
+		("explicit", Some(1000), Some(2250), Some(900), Some(900)),
+		("zero", Some(1000), Some(1000), None, Some(0)),
+		("reversed", Some(2250), Some(1000), None, None),
+		("missing-start", None, Some(2250), None, None),
+		("missing-end", Some(1000), None, None, None),
+		("negative", Some(-1), Some(2250), None, None),
+	];
+	for (id, start, end, explicit, _) in cases {
+		// A receipt from another thread must never provide the missing start.
+		for (thread, stamp) in [("foreign", Some(500)), ("opaque thread/1", start)] {
+			agent
+				.handle_event(ServerEvent::Notification {
+					method: "item/started".into(),
+					params: json!({"threadId":thread,"turnId":"opaque turn/1","startedAtMs":stamp,
+					"item":{"id":id,"type":"webSearch"}}),
+				})
+				.await
+				.unwrap();
+		}
+		for _ in 0..2 {
+			agent
+				.handle_event(ServerEvent::Notification {
+					method: "item/completed".into(),
+					params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","completedAtMs":end,
+					"item":{"id":id,"type":"webSearch","durationMs":explicit}}),
+				})
+				.await
+				.unwrap();
+		}
+	}
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	drop(agent);
+	let store = SqliteStore::open(&root.paths()).unwrap();
+	let (history, _) = store.read_agent_transcript("agent".into(), None, 32).await.unwrap();
+	let activities: Vec<decodex_protocol::AgentActivityDto> = history
+		.iter()
+		.filter(|event| event.event_kind == "activity_completed")
+		.map(|event| serde_json::from_str(&event.payload).unwrap())
+		.collect();
+	assert_eq!(activities.len(), cases.len());
+	let rows = cases
+		.iter()
+		.enumerate()
+		.map(|(position, (id, _, _, explicit, _))| {
+			json!({"type":"item","position":position,"turnId":"opaque turn/1",
+			"item":{"id":id,"type":"webSearch","status":"completed","durationMs":explicit}})
+		})
+		.collect::<Vec<_>>();
+	let native = json!({"data":rows,"nextCursor":null,"activeRealtimeSessionAtPageStart":null});
+	let mut page = timeline::project("opaque thread/1", &native).unwrap();
+	timeline::metrics::enrich(&store, "agent", &mut page).await.unwrap();
+	for (id, _, _, _, expected) in cases {
+		assert_eq!(
+			activities.iter().find(|activity| activity.item_id == id).unwrap().duration_ms,
+			expected,
+			"{id}"
+		);
+		let activity = page
+			.entries
+			.iter()
+			.find_map(|entry| match &entry.content {
+				decodex_protocol::AgentTimelineContent::Item { item_id, activity, .. }
+					if item_id == id =>
+					activity.as_ref(),
+				_ => None,
+			})
+			.unwrap();
+		assert_eq!(activity.duration_ms, expected, "native timeline: {id}");
+	}
+	let mut other = timeline::project("foreign", &native).unwrap();
+	timeline::metrics::enrich(&store, "agent", &mut other).await.unwrap();
+	assert!(
+		matches!(&other.entries[0].content, decodex_protocol::AgentTimelineContent::Item { activity: Some(activity), .. } if activity.duration_ms.is_none())
+	);
+	assert!(store.list_agent_wake_events("agent".into(), 32).await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn terminal_readback_recovers_missed_subagent_activity() {
 	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"idle"},"turns":[{"id":"opaque turn/1","status":"completed","items":[{"id":"recovered","type":"subAgentActivity","kind":"started","agentThreadId":"child","agentPath":"/root/worker"}]}]}}});
 	let (mut agent, _sent, _directory) = fixture_with_history(history).await;

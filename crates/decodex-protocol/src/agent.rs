@@ -91,7 +91,10 @@ pub struct AgentActivityDto {
 	pub label: String,
 	/// Selected public facts such as file paths and exit codes.
 	pub detail: String,
-	/// Provider-reported duration, when available.
+	/// Native Unix timestamp of this lifecycle event, in milliseconds.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub native_timestamp_ms: Option<u64>,
+	/// Provider-reported duration or elapsed native lifecycle time, when available.
 	pub duration_ms: Option<u64>,
 }
 

@@ -6,6 +6,31 @@ pub(crate) async fn enrich(
 	work: &str,
 	page: &mut AgentTimelinePage,
 ) -> Result<(), decodex_database::StoreError> {
+	let items = page
+		.entries
+		.iter()
+		.filter_map(|entry| match &entry.content {
+			Content::Item { turn_id, item_id, activity: Some(activity), .. }
+				if activity.duration_ms.is_none() && activity.status != "running" =>
+				Some((turn_id.clone(), item_id.clone())),
+			_ => None,
+		})
+		.collect::<Vec<_>>();
+	if !items.is_empty() {
+		let durations =
+			store.read_agent_activity_durations(work.into(), page.thread_id.clone(), items).await?;
+		for entry in &mut page.entries {
+			if let Content::Item { turn_id, item_id, activity: Some(activity), .. } =
+				&mut entry.content
+				&& activity.duration_ms.is_none()
+				&& activity.status != "running"
+				&& let Some((_, _, duration)) =
+					durations.iter().find(|(turn, item, _)| turn == turn_id && item == item_id)
+			{
+				activity.duration_ms = Some(*duration);
+			}
+		}
+	}
 	let turns = page
 		.entries
 		.iter()

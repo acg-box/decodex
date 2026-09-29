@@ -91,6 +91,8 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 		status: status.into(),
 		label: label.into(),
 		detail: detail.chars().filter(|c| !c.is_control()).take(160).collect(),
+		native_timestamp_ms: params[if completed { "completedAtMs" } else { "startedAtMs" }]
+			.as_u64(),
 		duration_ms: item["durationMs"].as_u64(),
 	})
 }

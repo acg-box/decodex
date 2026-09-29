@@ -235,6 +235,7 @@ impl AgentSurface {
 					label: label.into(),
 					detail: detail.into(),
 					status: status.into(),
+					native_timestamp_ms: None,
 					duration_ms: (status == "completed").then_some(1200),
 				}),
 				usage: None,
