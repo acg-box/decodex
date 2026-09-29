@@ -1,13 +1,8 @@
-//! Immutable App UI tool attempts. A saved attempt never grants permission to replay.
-use crate::{
-	AgentConfigOwner, SqliteStore, StoreError,
-	agent_config_journal::{digest, owned, text},
-	error::sqlite_error,
-	unix_micros,
-};
+//! Historical App UI tool receipts. Reads and recovery never replay a saved attempt.
+use crate::{AgentConfigOwner, SqliteStore, StoreError, error::sqlite_error, unix_micros};
 use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AgentAppUiCallAttempt {
@@ -31,80 +26,17 @@ pub struct AgentAppUiCallReceipt {
 }
 
 impl SqliteStore {
-	/// Call only after explicit confirmation and native source/catalog revalidation.
-	/// Only the caller that receives Some(id) can dispatch; all others must read the receipt.
-	pub async fn reserve_agent_app_ui_call(
-		&self,
-		attempt: AgentAppUiCallAttempt,
-	) -> Result<Option<i64>, StoreError> {
-		if ![
-			&attempt.owner.work,
-			&attempt.owner.thread,
-			&attempt.owner.generation,
-			&attempt.owner.account,
-			&attempt.turn,
-			&attempt.item,
-			&attempt.server,
-			&attempt.tool,
-			&attempt.attempt_id,
-		]
-		.iter()
-		.all(|v| text(v))
-			|| attempt.attempt_id.len() > 512
-			|| !digest(&attempt.source_fingerprint)
-			|| !digest(&attempt.review_token)
-			|| !attempt.arguments.is_object()
-		{
-			return Err(StoreError::InvalidInput("invalid App UI call"));
-		}
-		let payload = serde_json::to_string(&attempt)
-			.map_err(|_| StoreError::InvalidInput("invalid App UI call"))?;
-		if payload.len() > decodex_core::MAX_NATIVE_MESSAGE_BYTES {
-			return Err(StoreError::InvalidInput("App UI call exceeds capacity"));
-		}
-		self.run(move|c|{
-            let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
-            if !owned(&tx,&attempt.owner)? {return Err(StoreError::OwnershipLost("App UI call owner"));}
-            let blocked:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events a LEFT JOIN agent_inbox_events r ON r.source_event_id=a.source_event_id||':result' LEFT JOIN agent_inbox_events k ON k.source_event_id=a.source_event_id||':ack' WHERE a.event_kind='app_ui_tool_attempt' AND a.work_item_id=?1 AND ((COALESCE(r.disposition_note,'reserved') IN ('reserved','unknown') AND k.id IS NULL) OR json_extract(a.payload,'$.attempt_id')=?2 OR json_extract(a.payload,'$.review_token')=?3))",params![attempt.owner.work,attempt.attempt_id,attempt.review_token],|r|r.get(0)).map_err(sqlite_error)?;
-            if blocked {return Ok(None);}
-            let now=unix_micros()?;
-            let source=format!("app-ui-tool:{}",attempt.attempt_id);
-            let summary=json!({"owner":attempt.owner,"turn":attempt.turn,"item":attempt.item,"server":attempt.server,"tool":attempt.tool,"attempt_id":attempt.attempt_id,"review_token":attempt.review_token,"detailsStored":true}).to_string();
-            let inserted=tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'app_ui_tool_attempt',?3,?4,'resolved','reserved',?4)",params![source,attempt.owner.work,summary,now]).map_err(sqlite_error)?;
-            if inserted!=1 {return Ok(None);}
-            let id=tx.last_insert_rowid();
-            tx.execute("INSERT INTO agent_request_payloads(event_id,payload) VALUES(?1,?2)",params![id,payload]).map_err(sqlite_error)?;
-            tx.commit().map_err(sqlite_error)?;
-            Ok(Some(id))
-        }).await
-	}
-
-	/// Retain a result once. Unknown preserves ambiguity; unsent requires positive local evidence.
-	pub async fn finish_agent_app_ui_call(
+	/// Save uncertainty once after the original process is proved dead.
+	async fn mark_agent_app_ui_call_unknown(
 		&self,
 		id: i64,
 		attempt_id: String,
-		state: String,
-		result: Option<Value>,
 	) -> Result<bool, StoreError> {
-		if !matches!(state.as_str(), "completed" | "unknown" | "unsent")
-			|| (state == "completed") != result.is_some()
-			|| result.as_ref().is_some_and(|result| {
-				!result.is_object()
-					|| !result["content"].is_array()
-					|| (!result["isError"].is_null() && !result["isError"].is_boolean())
-			}) {
-			return Err(StoreError::InvalidInput("invalid App UI call result"));
-		}
-		let payload =
-			serde_json::to_string(&json!({"result":result})).expect("JSON result serializes");
-		if payload.len() > decodex_core::MAX_NATIVE_MESSAGE_BYTES {
-			return Err(StoreError::InvalidInput("App UI result exceeds capacity"));
-		}
+		let payload = r#"{"result":null}"#;
 		self.run(move|c|{
             let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
             let now=unix_micros()?;
-            let inserted=tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) SELECT source_event_id||':result',work_item_id,'app_ui_tool_result','{}',?4,'resolved',?3,?4 FROM agent_inbox_events WHERE id=?1 AND event_kind='app_ui_tool_attempt' AND json_extract(payload,'$.attempt_id')=?2",params![id,attempt_id,state,now]).map_err(sqlite_error)?;
+            let inserted=tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) SELECT source_event_id||':result',work_item_id,'app_ui_tool_result','{}',?4,'resolved',?3,?4 FROM agent_inbox_events WHERE id=?1 AND event_kind='app_ui_tool_attempt' AND json_extract(payload,'$.attempt_id')=?2",params![id,attempt_id,"unknown",now]).map_err(sqlite_error)?;
             if inserted!=1 {return Ok(false);}
             tx.execute("INSERT INTO agent_request_payloads(event_id,payload) VALUES(?1,?2)",params![tx.last_insert_rowid(),payload]).map_err(sqlite_error)?;
             tx.commit().map_err(sqlite_error)?; Ok(true)
@@ -152,13 +84,12 @@ impl SqliteStore {
 			match row { Some((id,generation)) if crate::agent_config_journal::dead(c,&generation)?=>Ok(Some(id)),_=>Ok(None) }
 		}).await?;
 		match id {
-			Some(id) => self.finish_agent_app_ui_call(id, attempt_id, "unknown".into(), None).await,
+			Some(id) => self.mark_agent_app_ui_call_unknown(id, attempt_id).await,
 			None => Ok(false),
 		}
 	}
 
-	/// An explicit user acknowledgment permits later, separately confirmed calls. Never replay this
-	/// call.
+	/// Acknowledge historical uncertainty without changing the outcome or replaying the call.
 	pub async fn acknowledge_agent_app_ui_uncertainty(
 		&self,
 		work: String,

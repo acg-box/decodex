@@ -19,21 +19,66 @@ fn attempt(token: char) -> AgentAppUiCallAttempt {
 	}
 }
 
+// These rows were written by the retired embedded App UI executor.
+async fn seed_call(
+	store: &SqliteStore,
+	attempt: AgentAppUiCallAttempt,
+	outcome: Option<(String, Option<serde_json::Value>)>,
+) -> i64 {
+	store.run(move |connection| {
+        let source = format!("app-ui-tool:{}", attempt.attempt_id);
+        let summary = json!({"owner":attempt.owner,"turn":attempt.turn,"item":attempt.item,
+            "server":attempt.server,"tool":attempt.tool,"attempt_id":attempt.attempt_id,
+            "review_token":attempt.review_token,"detailsStored":true}).to_string();
+        connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'app_ui_tool_attempt',?3,1,'resolved','reserved',1)",rusqlite::params![source,attempt.owner.work,summary]).unwrap();
+        let id = connection.last_insert_rowid();
+        connection.execute("INSERT INTO agent_request_payloads(event_id,payload) VALUES(?1,?2)",rusqlite::params![id,serde_json::to_string(&attempt).unwrap()]).unwrap();
+        if let Some((state, result)) = outcome {
+            connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'app_ui_tool_result','{}',2,'resolved',?3,2)",rusqlite::params![format!("{source}:result"),attempt.owner.work,state]).unwrap();
+            connection.execute("INSERT INTO agent_request_payloads(event_id,payload) VALUES(?1,?2)",rusqlite::params![connection.last_insert_rowid(),json!({"result":result}).to_string()]).unwrap();
+        }
+        Ok(id)
+    }).await.unwrap()
+}
+
 #[tokio::test]
-async fn app_ui_calls_reserve_once_and_preserve_unknown_after_reopen() {
+async fn historical_unknown_app_ui_calls_preserve_evidence_and_acknowledgment() {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("app-ui.sqlite3");
 	let store = setup(&path).await;
 	let a = attempt('b');
-	let mut wrong = a.clone();
-	wrong.owner.account = owner(2).account;
-	assert!(store.reserve_agent_app_ui_call(wrong).await.is_err());
-	let (first, second) = tokio::join!(
-		store.reserve_agent_app_ui_call(a.clone()),
-		store.reserve_agent_app_ui_call(a.clone())
+	let id = seed_call(&store, a.clone(), Some(("unknown".into(), None))).await;
+	drop(store);
+	let store = SqliteStore::open_test(&path).unwrap();
+	let unknown = store
+		.agent_app_ui_call_receipt(a.owner.work.clone(), a.attempt_id.clone())
+		.await
+		.unwrap()
+		.unwrap();
+	assert_eq!(unknown.attempt, a);
+	assert_eq!(unknown.state, "unknown");
+	assert!(!unknown.uncertainty_acknowledged);
+	assert_eq!(
+		store.pending_agent_app_ui_call(a.owner.work.clone()).await.unwrap().unwrap().id,
+		id
 	);
-	assert_ne!(first.as_ref().unwrap().is_some(), second.as_ref().unwrap().is_some());
-	let id = first.unwrap().or(second.unwrap()).unwrap();
+	for (work, operation) in
+		[(owner(2).work, a.attempt_id.clone()), (a.owner.work.clone(), "wrong".into())]
+	{
+		assert!(!store.acknowledge_agent_app_ui_uncertainty(work, id, operation).await.unwrap());
+	}
+	assert!(
+		store
+			.acknowledge_agent_app_ui_uncertainty(a.owner.work.clone(), id, a.attempt_id.clone())
+			.await
+			.unwrap()
+	);
+	assert!(
+		!store
+			.acknowledge_agent_app_ui_uncertainty(a.owner.work.clone(), id, a.attempt_id.clone())
+			.await
+			.unwrap()
+	);
 	drop(store);
 	let store = SqliteStore::open_test(&path).unwrap();
 	let receipt = store
@@ -42,71 +87,10 @@ async fn app_ui_calls_reserve_once_and_preserve_unknown_after_reopen() {
 		.unwrap()
 		.unwrap();
 	assert_eq!(receipt.attempt, a);
-	assert_eq!(receipt.state, "reserved");
-	assert!(!receipt.uncertainty_acknowledged);
-	assert!(store.reserve_agent_app_ui_call(attempt('c')).await.unwrap().is_none());
-	assert!(
-		!store.finish_agent_app_ui_call(id, "wrong".into(), "unknown".into(), None).await.unwrap()
-	);
-	assert!(
-		store
-			.finish_agent_app_ui_call(id, a.attempt_id.clone(), "unknown".into(), None)
-			.await
-			.unwrap()
-	);
-	assert!(
-		!store
-			.finish_agent_app_ui_call(
-				id,
-				a.attempt_id.clone(),
-				"completed".into(),
-				Some(json!({"content":[]}))
-			)
-			.await
-			.unwrap()
-	);
-	drop(store);
-	let store = SqliteStore::open_test(&path).unwrap();
-	let unknown = store
-		.agent_app_ui_call_receipt(a.owner.work.clone(), a.attempt_id.clone())
-		.await
-		.unwrap()
-		.unwrap();
-	assert_eq!(unknown.state, "unknown");
-	assert_eq!(
-		store.pending_agent_app_ui_call(a.owner.work.clone()).await.unwrap().unwrap().id,
-		id
-	);
-	assert!(store.reserve_agent_app_ui_call(attempt('c')).await.unwrap().is_none());
-	assert!(
-		!store
-			.acknowledge_agent_app_ui_uncertainty(owner(2).work, id, a.attempt_id.clone())
-			.await
-			.unwrap()
-	);
-	assert!(
-		store
-			.acknowledge_agent_app_ui_uncertainty(a.owner.work.clone(), id, a.attempt_id.clone())
-			.await
-			.unwrap()
-	);
-	assert!(
-		store.reserve_agent_app_ui_call(a.clone()).await.unwrap().is_none(),
-		"acknowledgment cannot authorize replay"
-	);
-	let receipt =
-		store.agent_app_ui_call_receipt(a.owner.work, a.attempt_id).await.unwrap().unwrap();
 	assert_eq!(receipt.state, "unknown");
-	assert!(
-		store
-			.pending_agent_app_ui_call(receipt.attempt.owner.work.clone())
-			.await
-			.unwrap()
-			.is_none()
-	);
 	assert!(receipt.uncertainty_acknowledged);
 	assert!(receipt.result.is_none());
-	assert!(store.reserve_agent_app_ui_call(attempt('c')).await.unwrap().is_some());
+	assert!(store.pending_agent_app_ui_call(a.owner.work).await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -115,19 +99,9 @@ async fn app_ui_results_preserve_large_content_and_exact_receipt_identity() {
 	let path = dir.path().join("app-ui-result.sqlite3");
 	let store = setup(&path).await;
 	let a = attempt('d');
-	let id = store.reserve_agent_app_ui_call(a.clone()).await.unwrap().unwrap();
 	let result = json!({"content":[{"type":"text","text":"y".repeat(70000)}],"structuredContent":{"value":7},"_meta":{"view":"retained"}});
-	assert!(
-		store
-			.finish_agent_app_ui_call(
-				id,
-				a.attempt_id.clone(),
-				"completed".into(),
-				Some(result.clone())
-			)
-			.await
-			.unwrap()
-	);
+	let id = seed_call(&store, a.clone(), Some(("completed".into(), Some(result.clone())))).await;
+
 	drop(store);
 	let store = SqliteStore::open_test(&path).unwrap();
 	let receipt = store
@@ -147,18 +121,26 @@ async fn app_ui_results_preserve_large_content_and_exact_receipt_identity() {
 	assert!(
 		!store.acknowledge_agent_app_ui_uncertainty(a.owner.work, id, a.attempt_id).await.unwrap()
 	);
-	let mut replay = attempt('d');
-	replay.attempt_id = "new-attempt-same-review".into();
-	assert!(store.reserve_agent_app_ui_call(replay).await.unwrap().is_none());
-	assert!(store.reserve_agent_app_ui_call(attempt('e')).await.unwrap().is_some());
 }
 
 #[tokio::test]
 async fn unfinished_app_call_requires_positive_process_death_before_recovery() {
 	let dir = tempfile::tempdir().unwrap();
-	let store = setup(&dir.path().join("recovery.sqlite3")).await;
+	let path = dir.path().join("recovery.sqlite3");
+	let store = setup(&path).await;
 	let a = attempt('f');
-	let id = store.reserve_agent_app_ui_call(a.clone()).await.unwrap().unwrap();
+	let id = seed_call(&store, a.clone(), None).await;
+	drop(store);
+	let store = SqliteStore::open_test(&path).unwrap();
+	let reserved = store
+		.agent_app_ui_call_receipt(a.owner.work.clone(), a.attempt_id.clone())
+		.await
+		.unwrap()
+		.unwrap();
+	assert_eq!(reserved.attempt, a);
+	assert_eq!(reserved.state, "reserved");
+	assert!(reserved.result.is_none());
+	assert!(!reserved.uncertainty_acknowledged);
 	assert!(
 		!store.recover_agent_app_ui_call(a.owner.work.clone(), a.attempt_id.clone()).await.unwrap()
 	);
