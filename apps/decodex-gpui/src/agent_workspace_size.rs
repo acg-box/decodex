@@ -110,6 +110,20 @@ impl AgentSurface {
 		layout
 	}
 
+	pub(super) fn workspace_sidebar_width(&self, window: &Window) -> f32 {
+		let width = f32::from(window.viewport_size().width);
+		if self.workspace.sidebar_visible && width > 1000. {
+			sidebar_width(self.workspace.sidebar_width, width)
+		} else {
+			0.
+		}
+	}
+
+	pub(crate) fn topbar_insets(&self, window: &Window) -> (f32, f32) {
+		// Keep room for the fixed global controls when either sidebar is hidden.
+		(self.workspace_sidebar_width(window).max(180.), self.agent_tree_width(window).max(140.))
+	}
+
 	pub(super) fn workspace_graph_size(&self, window: &Window, wide: bool) -> (f32, f32) {
 		if !self.workspace.graph_visible || !self.reserve_workspace_panels() {
 			return (0.0, 0.0);

@@ -2621,6 +2621,29 @@ fn floating_window_controls(
 	_window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
+	let conversation_header = (shell.selected == Destination::Agent).then(|| {
+		shell.agent.update(cx, |agent, cx| {
+			let (left, right) = agent.topbar_insets(_window);
+			gpui::div()
+				.absolute()
+				.left(gpui::px(left - ui_theme::CONTROL_MARGIN))
+				.right(gpui::px(right - ui_theme::CONTROL_MARGIN))
+				.h_full()
+				.flex()
+				.items_center()
+				.min_w_0()
+				.child(
+					gpui::div()
+						.id("conversation-topbar-controls")
+						.max_w_full()
+						.min_w_0()
+						.occlude()
+						.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+						.on_click(|_, _, cx| cx.stop_propagation())
+						.child(agent.work_context(cx)),
+				)
+		})
+	});
 	gpui::div()
 		.id("floating-window-controls")
 		.role(Role::Navigation)
@@ -2662,6 +2685,7 @@ fn floating_window_controls(
 				.child(shell.navigation_control(true, cx)),
 		)
 		.child(topbar_controls(shell, presentation, cx))
+		.children(conversation_header)
 		.into_any_element()
 }
 

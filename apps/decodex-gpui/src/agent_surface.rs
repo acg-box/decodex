@@ -1659,19 +1659,16 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn work_context(
-		&self,
-		snapshot: &AgentSnapshotDto,
-		work: &AgentWorkItemDto,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
+	pub(super) fn work_context(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
 		let target = cx.entity();
-		let status = graph::state_in(snapshot, work).0;
-
 		gpui::div()
 			.flex_none()
-			.px_4()
-			.h(gpui::px(36.))
+			.max_w_full()
+			.min_w_0()
+			.px(gpui::px(3.))
+			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT))
+			.rounded(gpui::px(ui_theme::CONTROL_RADIUS))
+			.bg(gpui::rgba(ui_theme::TOPBAR_MATERIAL))
 			.justify_center()
 			.debug_selector(|| "workspace-conversation-header".into())
 			.flex()
@@ -1682,22 +1679,12 @@ impl AgentSurface {
 					.items_center()
 					.justify_between()
 					.gap(gpui::px(12.))
-					.child(gpui::div().flex_1().min_w_0().child(
-						if self.workspace.pages.is_empty() {
-							gpui::div()
-								.text_size(gpui::px(12.))
-								.text_color(gpui::rgb(TEXT_MUTED))
-								.child(format!("{} · {status}", self.work_label(work)))
-								.into_any_element()
-						} else {
-							self.workspace_tabs(cx)
-						},
-					))
+					.child(gpui::div().flex_1().min_w_0().child(self.workspace_tabs(cx)))
 					.child(
 						gpui::div()
 							.child(self.workspace_action(
 								"inspect-work".into(),
-								"Details".into(),
+								"⋯".into(),
 								|s, cx| {
 									s.workspace.details_visible = !s.workspace.details_visible;
 

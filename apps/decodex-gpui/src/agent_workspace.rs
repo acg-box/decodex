@@ -318,13 +318,14 @@ impl AgentSurface {
 				"graph-close" => "Close graph",
 				"zoom-in" => "Zoom in",
 				"zoom-out" => "Zoom out",
+				"inspect-work" => "Work details",
 				_ => label.as_str(),
 			}
 			.to_owned()
 		};
 		let icon = panel_icon(&id);
 		let icon_only = icon.is_some();
-		let show_tip = icon_only || id.starts_with("attention-");
+		let show_tip = icon_only || id.starts_with("attention-") || id == "inspect-work";
 		let tip = accessible.clone();
 		let action = Rc::new(action);
 		let keyboard = action.clone();
@@ -949,12 +950,6 @@ impl AgentSurface {
 		chat = chat
 			.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)));
 
-		if let (Some(snapshot), Some(work)) = (&self.snapshot, &selected) {
-			chat = chat.child(self.work_context(snapshot, work, cx));
-		} else {
-			chat = chat.child(gpui::div().h(gpui::px(36.)).flex_none());
-		}
-
 		let transcript = self.workspace_transcript(selected.as_ref(), is_agent, window, cx);
 		let rail_width = ui_motion::value(
 			"history-rail-width",
@@ -1053,8 +1048,18 @@ impl AgentSurface {
 				gpui::deferred(
 					gpui::div()
 						.absolute()
-						.top(gpui::px(38. + (1. - presence) * 5.))
-						.right(gpui::px(12.))
+						.top(gpui::px(8. + (1. - presence) * 5.))
+						.left(gpui::px(
+							self.menu_trigger_bounds
+								.get("inspect-work")
+								.map(|bounds| {
+									f32::from(bounds.origin.x + bounds.size.width)
+										- self.workspace_sidebar_width(window)
+										- 320.
+								})
+								.unwrap_or(12.)
+								.max(12.),
+						))
 						.w(gpui::px(320.))
 						.max_w_full()
 						.opacity(presence)
@@ -2195,7 +2200,7 @@ fn panel_icon(id: &str) -> Option<AnyElement> {
 mod tests {
 	use std::thread;
 
-	use gpui::{AppContext as _, Focusable as _};
+	use gpui::{AppContext as _, Focusable as _, ParentElement as _, Styled as _};
 
 	use crate::shell::agent_surface::workspace::{
 		AgentHistoryResult, AgentSurface, Context, ConversationWorkingDirectory, IntoElement,
@@ -2345,9 +2350,7 @@ mod tests {
 		});
 
 		assert_eq!(reserved, loaded, "the first snapshot fills existing panel slots");
-
-		let header = visual.debug_bounds("workspace-conversation-header").unwrap();
-
+		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
 		surface.update(visual, |s, cx| {
 			s.workspace.pages.push("release".into());
 			cx.notify();
@@ -2355,8 +2358,8 @@ mod tests {
 		visual.update(|w, cx| w.draw(cx).clear());
 
 		assert_eq!(
-			header,
-			visual.debug_bounds("workspace-conversation-header").unwrap(),
+			transcript,
+			visual.debug_bounds("workspace-transcript").unwrap(),
 			"opening the first tab must not add another layout row"
 		);
 	}
@@ -2551,11 +2554,23 @@ mod tests {
 			window.draw(cx).clear();
 		});
 	}
+	struct WorkspaceWithTabs(gpui::Entity<AgentSurface>);
+
+	impl gpui::Render for WorkspaceWithTabs {
+		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+			gpui::div()
+				.size_full()
+				.flex()
+				.flex_col()
+				.child(self.0.update(cx, |surface, cx| surface.work_context(cx)))
+				.child(self.0.clone())
+		}
+	}
 
 	#[gpui::test]
 	fn reopening_a_closing_tab_keeps_it_and_close_returns_to_main(cx: &mut gpui::TestAppContext) {
-		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-
+		let surface = cx.new(AgentSurface::new);
+		let (_, visual) = cx.add_window_view(|_, _| WorkspaceWithTabs(surface.clone()));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.open_page("verify", cx);
