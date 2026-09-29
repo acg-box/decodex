@@ -257,9 +257,8 @@ pub fn mcp_form_content(
 				return Err(format!("{} does not meet the required length.", field.title));
 			}
 		}
-		if let Some(number) = value.as_f64()
-			&& (field.schema["minimum"].as_f64().is_some_and(|min| number < min)
-				|| field.schema["maximum"].as_f64().is_some_and(|max| number > max))
+		if compare_numbers(value, &field.schema["minimum"]) == Some(std::cmp::Ordering::Less)
+			|| compare_numbers(value, &field.schema["maximum"]) == Some(std::cmp::Ordering::Greater)
 		{
 			return Err(format!("{} is outside the allowed range.", field.title));
 		}
@@ -273,6 +272,16 @@ pub fn mcp_form_content(
 		return Err("Response is too large; shorten the answers.".into());
 	}
 	Ok(content)
+}
+
+fn compare_numbers(left: &Value, right: &Value) -> Option<std::cmp::Ordering> {
+	let integer =
+		|value: &Value| value.as_i64().map(i128::from).or_else(|| value.as_u64().map(i128::from));
+	if let (Some(left), Some(right)) = (integer(left), integer(right)) {
+		Some(left.cmp(&right))
+	} else {
+		left.as_f64()?.partial_cmp(&right.as_f64()?)
+	}
 }
 
 /// Validate an MCP reply against its original request before consuming live response authority.
@@ -420,6 +429,34 @@ mod tests {
 			)
 			.is_err()
 		);
+	}
+
+	#[test]
+	fn integer_bounds_preserve_precision_above_the_float_integer_range() {
+		for (bound, limit, valid, invalid) in [
+			(
+				"maximum",
+				json!(9007199254740992u64),
+				json!(9007199254740992u64),
+				json!(9007199254740993u64),
+			),
+			(
+				"minimum",
+				json!(-9007199254740992i64),
+				json!(-9007199254740992i64),
+				json!(-9007199254740993i64),
+			),
+			("maximum", json!(u64::MAX - 1), json!(u64::MAX - 1), json!(u64::MAX)),
+		] {
+			let mut schema = json!({"type":"object","properties":{"count":{"type":"integer"}}});
+			schema["properties"]["count"][bound] = limit;
+			let fields = mcp_form_fields(&schema).unwrap();
+			assert!(mcp_form_content(&fields, &BTreeMap::from([("count".into(), valid)])).is_ok());
+			assert!(
+				mcp_form_content(&fields, &BTreeMap::from([("count".into(), invalid)])).is_err(),
+				"{bound}"
+			);
+		}
 	}
 
 	#[test]
