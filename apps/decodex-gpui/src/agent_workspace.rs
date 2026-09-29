@@ -2165,6 +2165,7 @@ mod tests {
 			s.attachments = vec![decodex_protocol::AgentAttachmentDto {
 				path: ConversationWorkingDirectory::new("/tmp/retained.txt").unwrap(),
 				image: false,
+				skill_name: None,
 			}];
 			s.composer.clone()
 		});

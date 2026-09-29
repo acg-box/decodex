@@ -404,6 +404,7 @@ mod tests {
 					path: crate::ConversationWorkingDirectory::new("/tmp/selected image.png")
 						.unwrap(),
 					image: true,
+					skill_name: None,
 				}],
 				references: vec![AgentTaskReferenceDto {
 					work_id: EntityId::new("related").unwrap(),
@@ -494,7 +495,15 @@ mod tests {
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
 		let store = crate::ClientDraftStore::open_at(&root).unwrap();
-		let original = document();
+		let mut original = document();
+		original.profiles.get_mut(&"a".repeat(64)).unwrap().composer.attachments.push(
+			AgentAttachmentDto {
+				path: crate::ConversationWorkingDirectory::new("/tmp/skills (exact)/SKILL.md")
+					.unwrap(),
+				image: false,
+				skill_name: Some(WireText::new("selected-skill").unwrap()),
+			},
+		);
 		store.save(0, &original.encode().unwrap()).unwrap();
 		drop(store);
 		let reopened = crate::ClientDraftStore::open_at(&root).unwrap();

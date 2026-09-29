@@ -1061,6 +1061,7 @@ mod tests {
 			s.attachments.push(decodex_protocol::AgentAttachmentDto {
 				path: ConversationWorkingDirectory::new("/tmp/local.png").unwrap(),
 				image: true,
+				skill_name: None,
 			});
 			assert!(!s.drafts_ready_for_quit(cx));
 		});
@@ -1388,6 +1389,7 @@ mod tests {
 			s.attachments.push(decodex_protocol::AgentAttachmentDto {
 				path: ConversationWorkingDirectory::new("/tmp/selected.png").unwrap(),
 				image: true,
+				skill_name: None,
 			});
 			s.restored_question_drafts.push(decodex_protocol::DesktopQuestionDraft {
 				work_id: EntityId::new("work").unwrap(),

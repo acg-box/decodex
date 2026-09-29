@@ -198,6 +198,7 @@ mod tests {
 			let file = decodex_protocol::AgentAttachmentDto {
 				path: ConversationWorkingDirectory::new("/tmp/first.png").unwrap(),
 				image: true,
+				skill_name: None,
 			};
 			let reference = decodex_protocol::AgentTaskReferenceDto {
 				work_id: EntityId::new("task").unwrap(),

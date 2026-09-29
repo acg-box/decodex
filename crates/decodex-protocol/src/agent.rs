@@ -333,8 +333,8 @@ pub enum AgentSandboxDto {
 	FullAccess,
 }
 
-/// A user-selected local file or directory. Images use native vision input; other paths are
-/// references.
+/// A user-selected local file, directory, or skill. Images use native vision input;
+/// skills use exact native skill input; other paths are references.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentAttachmentDto {
@@ -342,6 +342,9 @@ pub struct AgentAttachmentDto {
 	pub path: crate::ConversationWorkingDirectory,
 	/// Send this file as a native image input.
 	pub image: bool,
+	/// Exact native skill name when this path is an explicit skill reference.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub skill_name: Option<crate::WireText>,
 }
 
 /// A task explicitly selected by the user as readable evidence.

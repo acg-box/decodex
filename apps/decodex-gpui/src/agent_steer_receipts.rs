@@ -108,6 +108,7 @@ mod tests {
 				let file = |path| decodex_protocol::AgentAttachmentDto {
 					path: ConversationWorkingDirectory::new(path).unwrap(),
 					image: true,
+					skill_name: None,
 				};
 				let sent = file("/tmp/sent.png");
 				let later = file("/tmp/later.png");

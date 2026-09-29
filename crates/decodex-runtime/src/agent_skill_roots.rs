@@ -30,6 +30,10 @@ impl RuntimeSkillRoots {
 		Ok(Self(Some(roots)))
 	}
 
+	pub(crate) fn values(&self) -> Option<&[String]> {
+		self.0.as_deref()
+	}
+
 	pub(crate) async fn apply(&self, client: &AppServerClient) -> Result<(), &'static str> {
 		let Some(roots) = &self.0 else {
 			return Ok(());
