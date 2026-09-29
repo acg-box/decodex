@@ -12,6 +12,7 @@ use super::*;
 #[path = "agent_process_native_flex_tests.rs"] mod flex;
 #[path = "agent_process_native_folder_trust_tests.rs"] mod folder_trust;
 #[path = "agent_process_native_goal_tests.rs"] mod goals;
+#[path = "agent_process_native_hook_settings_tests.rs"] mod hook_settings;
 #[path = "agent_process_native_misalignment_tests.rs"] mod misalignment;
 #[path = "agent_process_native_model_recovery_tests.rs"] mod model_recovery;
 #[path = "agent_process_native_model_tests.rs"] mod models;
