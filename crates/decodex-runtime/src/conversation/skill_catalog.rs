@@ -17,7 +17,15 @@ impl ConversationRuntime {
 		if request.purpose != ModelCatalogPurpose::Agent {
 			return AgentSkillsResult::Unavailable;
 		}
-		let Ok(permit) = self.inner.initial_catalog.clone().try_lock_owned() else {
+		// Opening the attachment menu also refreshes the model catalog. Wait for that
+		// shared metadata owner instead of reporting a spurious unavailable skill list.
+		let started = std::time::Instant::now();
+		let Ok(permit) = tokio::time::timeout(
+			Duration::from_secs(25),
+			self.inner.initial_catalog.clone().lock_owned(),
+		)
+		.await
+		else {
 			return AgentSkillsResult::Unavailable;
 		};
 		let (reply, received) = tokio::sync::oneshot::channel();
@@ -44,7 +52,7 @@ impl ConversationRuntime {
 			let _ = reply.send(result);
 		});
 		drop(workers);
-		tokio::time::timeout(Duration::from_secs(35), received)
+		tokio::time::timeout(Duration::from_secs(35).saturating_sub(started.elapsed()), received)
 			.await
 			.ok()
 			.and_then(Result::ok)
