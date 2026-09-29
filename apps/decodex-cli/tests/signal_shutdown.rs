@@ -42,6 +42,34 @@ fn sigkill_stale_socket_is_recovered_by_the_next_daemon() {
 	assert!(!socket.exists(), "replacement daemon must clean its exact publication");
 }
 
+#[test]
+fn parent_channel_eof_waits_for_transport_cleanup() {
+	assert_parent_cleanup(false);
+}
+
+#[test]
+fn parent_channel_data_reports_failure_after_transport_cleanup() {
+	assert_parent_cleanup(true);
+}
+
+fn assert_parent_cleanup(send_data: bool) {
+	use std::{
+		io::Write as _,
+		os::{fd::AsRawFd as _, unix::net::UnixStream},
+	};
+	let (_home, canonical_home, socket) = fixture();
+	let (mut parent, child) = UnixStream::pair().expect("create parent channel");
+	let daemon = RunningDaemon::start_with_parent(&canonical_home, Some(child.as_raw_fd()));
+	drop(child);
+	if send_data {
+		parent.write_all(&[1]).expect("send invalid parent-channel data");
+	}
+	drop(parent);
+	let status = daemon.wait();
+	assert_eq!(status.code(), Some(if send_data { 2 } else { 0 }));
+	assert!(!socket.exists(), "parent-channel termination must await socket cleanup");
+}
+
 fn fixture() -> (TempDir, PathBuf, PathBuf) {
 	#[cfg(target_os = "macos")]
 	let home = TempDir::new_in("/private/tmp").expect("create short daemon test home");
@@ -114,13 +142,27 @@ struct RunningDaemon {
 
 impl RunningDaemon {
 	fn start(home: &Path) -> Self {
-		let mut child = Command::new(env!("CARGO_BIN_EXE_decodex"))
-			.arg("serve")
-			.env("HOME", home)
-			.env("PATH", home.join("bin"))
-			.stdout(Stdio::piped())
-			.spawn()
-			.expect("start daemon test process");
+		Self::start_with_parent(home, None)
+	}
+
+	fn start_with_parent(home: &Path, parent_fd: Option<std::os::fd::RawFd>) -> Self {
+		use std::os::unix::process::CommandExt as _;
+		let mut command = Command::new(env!("CARGO_BIN_EXE_decodex"));
+		command.arg("serve").env("HOME", home).env("PATH", home.join("bin")).stdout(Stdio::piped());
+		if let Some(fd) = parent_fd {
+			command.args(["--parent-fd", &fd.to_string()]);
+			// SAFETY: only async-signal-safe fcntl runs before exec; the caller retains fd until
+			// spawn.
+			unsafe {
+				command.pre_exec(move || {
+					if libc::fcntl(fd, libc::F_SETFD, 0) < 0 {
+						return Err(std::io::Error::last_os_error());
+					}
+					Ok(())
+				});
+			}
+		}
+		let mut child = command.spawn().expect("start daemon test process");
 		let stdout = child.stdout.take().expect("capture daemon stdout");
 		let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
 		let reader = thread::spawn(move || {
@@ -143,7 +185,7 @@ impl RunningDaemon {
 		Self { child, reader }
 	}
 
-	fn signal(mut self, signal: libc::c_int) -> ExitStatus {
+	fn signal(self, signal: libc::c_int) -> ExitStatus {
 		assert_eq!(
 			// SAFETY: the child PID came from `Child`; tests pass only defined Unix signals.
 			unsafe { libc::kill(self.child.id() as libc::pid_t, signal) },
@@ -151,6 +193,10 @@ impl RunningDaemon {
 			"send Unix process signal",
 		);
 
+		self.wait()
+	}
+
+	fn wait(mut self) -> ExitStatus {
 		let deadline = Instant::now() + Duration::from_secs(20);
 		let status = loop {
 			if let Some(status) = self.child.try_wait().expect("poll daemon exit") {
@@ -160,7 +206,7 @@ impl RunningDaemon {
 				let _ = self.child.kill();
 				let status = self.child.wait().expect("reap daemon after shutdown timeout");
 				self.reader.join().expect("join daemon output reader");
-				panic!("daemon did not exit after Unix signal: {status}");
+				panic!("daemon did not exit after shutdown request: {status}");
 			}
 			thread::sleep(Duration::from_millis(20));
 		};

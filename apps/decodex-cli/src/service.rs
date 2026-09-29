@@ -59,12 +59,12 @@ async fn serve_inner(parent_fd: Option<i32>, root: Option<&Path>) -> Result<(), 
 				result?;
 			},
 			signal = signals.recv() => {
-				signal?;
 				bound.shutdown().await?;
+				signal?;
 			},
 			parent = parent_lifetime.wait_for_parent_exit() => {
-				parent?;
 				bound.shutdown().await?;
+				parent?;
 			},
 		}
 	} else {
@@ -85,8 +85,8 @@ async fn wait_for_shutdown(
 			result?;
 		},
 		signal = signals.recv() => {
-			signal?;
 			bound.shutdown().await?;
+			signal?;
 		},
 	}
 	Ok(())

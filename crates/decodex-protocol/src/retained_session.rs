@@ -333,6 +333,10 @@ impl RetainedSession {
 		}
 
 		if let Some(snapshot) = self.initial_snapshot.take() {
+			if self.cancellation.is_cancelled() {
+				self.terminate();
+				return Err(RetainedSessionFailure::Cancelled);
+			}
 			return Ok(self.checkpoint_delivery(snapshot));
 		}
 
@@ -1500,6 +1504,26 @@ mod tests {
 		drop(session);
 
 		task.await.expect("test operation must succeed");
+	}
+
+	#[tokio::test]
+	async fn cancellation_discards_the_buffered_snapshot_without_advancing_checkpoint() {
+		let (config, server_task, _temp) = fixture(|mut socket| async move {
+			hello(&mut socket).await;
+			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 7, ReconnectMode::Snapshot))
+				.await;
+			send(&mut socket, snapshot(SERVER_ID, 7)).await;
+			while socket.next().await.is_some() {}
+		})
+		.await;
+		let cancellation = SessionCancellation::new();
+		let mut session =
+			RetainedSession::connect(config, None, cancellation.clone()).await.unwrap();
+		cancellation.cancel();
+		assert_eq!(session.next().await.unwrap_err(), RetainedSessionFailure::Cancelled);
+		assert_eq!(session.checkpoint(), None);
+		assert_eq!(session.next().await.unwrap_err(), RetainedSessionFailure::Closed);
+		server_task.await.unwrap();
 	}
 
 	#[tokio::test]
