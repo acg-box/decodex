@@ -1,5 +1,9 @@
-//! A small pixel cloud for live work. The clock belongs to the observed native turn.
-use gpui::{prelude::*, *};
+//! A small pixel cloud for live work. The clock follows one conversation's active state.
+use gpui::{
+	App, Background, Bounds, Image, ImageFormat, IntoElement, PathBuilder, Pixels, RenderOnce,
+	Role, SharedString, Window, canvas, div, img, linear_color_stop, linear_gradient, point,
+	prelude::*, px, rgb, rgba, size,
+};
 use std::{
 	sync::{Arc, LazyLock},
 	time::Instant,

@@ -1,5 +1,8 @@
 //! Compact feedback for a first read. Refreshes with retained content stay quiet.
-use gpui::{prelude::*, *};
+use gpui::{
+	App, IntoElement, PathBuilder, RenderOnce, Role, SharedString, Window, canvas, div, point,
+	prelude::*, px, rgb,
+};
 use std::time::Instant;
 
 #[derive(IntoElement)]
