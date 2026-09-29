@@ -4,15 +4,16 @@ use super::{AgentCoordinator, AgentError, Value, json};
 impl AgentCoordinator {
 	pub(super) async fn hydrate_dispatch_thread(&mut self, thread: &str) -> Result<(), AgentError> {
 		if !self.loaded_threads.contains(thread) {
+			let revision = self.client.history_revision();
 			let response = self
 				.client
-				.thread_resume(Self::resume_params(thread))
+				.thread_resume(Self::resume_usage_params(thread))
 				.await
 				.map_err(|error| super::resume_error(error, thread))?;
 			if !Self::hydrated_thread_matches(&response, thread) {
 				return Err(AgentError::Invalid("resumed thread settings are invalid".into()));
 			}
-			let last_turn = self.expect_usage_replay(thread, &response).await;
+			let last_turn = self.expect_usage_replay(thread, &response, revision).await;
 			self.store.validate_agent_usage_resume(thread.to_owned(), last_turn).await?;
 			self.loaded_threads.insert(thread.to_owned());
 			self.persist_task_settings(thread).await?;
@@ -53,6 +54,13 @@ impl AgentCoordinator {
 		.await?;
 		crate::agent_models::persist_current(&self.store, &self.client, thread, generation).await?;
 		Ok(())
+	}
+
+	pub(super) fn resume_usage_params(thread: &str) -> Value {
+		let mut params = Self::resume_params(thread);
+		params["initialTurnsPage"] =
+			json!({"limit":1,"sortDirection":"desc","itemsView":"summary"});
+		params
 	}
 
 	pub(super) fn resume_params(thread: &str) -> Value {

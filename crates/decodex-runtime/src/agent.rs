@@ -484,21 +484,49 @@ impl AgentCoordinator {
 		Ok(self.store.get_agent_work_item(id.into()).await?)
 	}
 
-	async fn expect_usage_replay(&mut self, thread: &str, response: &Value) -> Option<String> {
+	async fn expect_usage_replay(
+		&mut self,
+		thread: &str,
+		response: &Value,
+		revision: u64,
+	) -> Option<String> {
 		if response.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
 			return None;
 		}
-		let revision = self.client.history_revision();
-		let mut turns: Vec<String> = response
-			.pointer("/thread/turns")
+		if self.client.history_revision() != revision {
+			self.usage_replays.remove(thread);
+			return None;
+		}
+		// Only usage hydration requests this one-row descending summary. An empty
+		// page is known-empty; omission on an older server still uses bounded history.
+		let initial = response
+			.pointer("/initialTurnsPage/data")
 			.and_then(Value::as_array)
-			.into_iter()
-			.flatten()
-			.filter_map(|turn| turn["id"].as_str().map(str::to_owned))
-			.collect();
-		// excludeTurns resumes omit the history used to identify the replayed counter.
-		// Read only the latest native turn; do not hydrate unbounded history or replay input.
-		if turns.is_empty()
+			.filter(|turns| turns.len() <= 1)
+			.and_then(|turns| {
+				turns
+					.iter()
+					.map(|turn| {
+						turn["id"]
+							.as_str()
+							.filter(|id| !id.is_empty() && id.len() <= 512)
+							.map(str::to_owned)
+					})
+					.collect::<Option<Vec<_>>>()
+			});
+		let has_initial = initial.is_some();
+		let mut turns: Vec<String> = initial.unwrap_or_else(|| {
+			response
+				.pointer("/thread/turns")
+				.and_then(Value::as_array)
+				.into_iter()
+				.flatten()
+				.filter_map(|turn| turn["id"].as_str().map(str::to_owned))
+				.collect()
+		});
+		// Legacy responses omit the bootstrap page. Read only their latest turn.
+		if !has_initial
+			&& turns.is_empty()
 			&& let Ok(Some(turn)) = self.client.thread_latest_turn_id(thread).await
 		{
 			turns.push(turn);
