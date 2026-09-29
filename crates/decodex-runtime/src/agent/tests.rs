@@ -643,6 +643,8 @@ async fn serve_fixture(
 				json!({"thread":{"id":request["params"]["threadId"]}})
 			},
 			Some("turn/steer") => json!({"turnId":request["params"]["expectedTurnId"]}),
+			Some("thread/search") => history["_search"].clone(),
+			Some("thread/searchOccurrences") => history["_occurrences"].clone(),
 			Some("thread/goal/get") => json!({"goal":history["_goal"]}),
 			Some("thread/read") => fixture_thread_read(&request, &history, &settings, turns),
 			Some("thread/turns/list") => {

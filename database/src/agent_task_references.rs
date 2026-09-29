@@ -1,7 +1,7 @@
 //! Exact native-history grants carried by delivered user messages.
 
 use crate::{SqliteStore, StoreError, error::sqlite_error};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension as _, params};
 use serde_json::Value;
 use std::collections::HashSet;
 
@@ -23,6 +23,26 @@ impl SqliteStore {
 				 AND json_extract(CASE WHEN r.type='object' THEN r.value ELSE '{}' END,'$.workId')=?2 AND json_extract(CASE WHEN r.type='object' THEN r.value ELSE '{}' END,'$.threadId')=?3)",
 				params![recipient,target,thread], |row| row.get(0),
 			).map_err(|error| sqlite_error(error).into())
+		}).await
+	}
+
+	/// Resolve an exact delivered reference without scanning every work item during native search.
+	pub async fn agent_task_reference_target(
+		&self,
+		recipient: String,
+		thread: String,
+	) -> Result<Option<String>, StoreError> {
+		self.run(move |connection| {
+			connection.query_row(
+				"SELECT DISTINCT w.id FROM agent_inbox_events e,
+				 json_each(CASE WHEN json_valid(e.payload) THEN e.payload ELSE '{}' END,'$.options.taskReferences') r
+				 JOIN agent_work_items w ON w.id=json_extract(CASE WHEN r.type='object' THEN r.value ELSE '{}' END,'$.workId')
+				 WHERE e.work_item_id=?1 AND e.delivery_work_item_id=?1
+				 AND e.event_kind='user_message' AND e.delivered_turn_id IS NOT NULL AND e.delivered_turn_id<>''
+				 AND json_extract(CASE WHEN json_valid(e.payload) THEN e.payload ELSE '{}' END,'$.source')='user'
+				 AND json_extract(CASE WHEN r.type='object' THEN r.value ELSE '{}' END,'$.threadId')=?2
+				 ORDER BY w.id LIMIT 1", params![recipient,thread], |row| row.get(0),
+			).optional().map_err(|error| sqlite_error(error).into())
 		}).await
 	}
 }
