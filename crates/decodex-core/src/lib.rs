@@ -230,3 +230,6 @@ mod client_drafts;
 pub use client_drafts::{
 	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES,
 };
+
+mod fast_mode;
+pub use fast_mode::{FastModeFailure, global_fast_mode_enabled, set_global_fast_mode_enabled};
