@@ -3,9 +3,6 @@ type: Reference
 title: "OpenWiki quickstart"
 description: "Task entrypoints for current native conversations, account routing, product scope and evidence."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
@@ -26,6 +23,9 @@ sources:
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-29T20:08:07.145Z
 ---
 
 # OpenWiki quickstart

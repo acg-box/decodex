@@ -3,9 +3,6 @@ type: Reference
 title: "Upstream integration acceptance boundaries"
 description: "Source, native fixture, signed desktop, installation and physical voice evidence boundaries."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
@@ -18,6 +15,9 @@ sources:
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-29T20:08:07.145Z
 ---
 
 # Upstream integration acceptance boundaries

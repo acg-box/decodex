@@ -3,9 +3,6 @@ type: Reference
 title: "Conversation input, history and recovery"
 description: "Explicit native branches, same-thread edits, canonical drafts, complete export and uncertain result recovery."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-0a913db08f7e3fac688dbce5
     resource: repo://apps/decodex-gpui/src/agent_prompt_confirm.rs
@@ -17,11 +14,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_recap_automatic.rs
   - id: openwiki-source-5606e779f593d160176b0a27
     resource: repo://apps/decodex-gpui/src/agent_transcript.rs
+  - id: openwiki-source-dc292a3cdb3064363ab29907
+    resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
   - id: openwiki-source-5a9a9e8bb72a23939f23f6f6
     resource: repo://crates/decodex-runtime/src/agent_transcript.rs
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+generated: { by: "codex", at: "2026-09-29T20:08:07.145Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-29T20:08:07.145Z
 ---
 
 # Conversation input, history and recovery
@@ -63,6 +65,8 @@ Complete Markdown export reads the full native conversation through its history 
 ## Recap and questions
 
 Manual recap is available. Automatic recap is a separate preference and defaults off; it is unrelated to scheduled upstream maintenance. Recap generation uses the native task and exact publication identity. A foreground result does not qualify a long background eligibility timer.
+
+Recap uses a temporary native thread with tools disabled. For absent or built-in permission profiles, it selects the native `:read-only` default explicitly, so a managed workspace default cannot override the read-only request. An explicit custom profile keeps its own restrictions. The adapter checks the returned profile or sandbox and the ephemeral-thread flag before it starts inference.
 
 Asynchronous questions keep explicit answers and Skip. The separately retained nonblocking timeout policy can produce an empty answer after its grace/countdown conditions; it is not a general permission to answer questions for the user.
 

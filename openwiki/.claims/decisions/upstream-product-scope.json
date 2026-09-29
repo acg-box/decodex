@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ef9e5d67e10f7fcc6993151598511ce4f451786332c61427a044127eff4c7539",
+  "pageVersion": "sha256:706e1f8bb5bfe6a1c6a52dee49ca61629e483b863d5ad8333e8d091f2bcd481f",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -17,12 +17,12 @@
       "statement": "The native bridge retains installed-plugin observations but rejects plugin list/read/install/reconcile management and MCP configuration reload; historical plugin state is still persisted as observations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L351-L408",
-          "version": "repo-lines-v1:sha256:082bcbb977dfaec89336ad3ea5075877480d651e9b951a5e9c4f9122a6ee9b17:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2MGI4OGEwNWQ1YjUzODQ3NjAyMjliZTYwNTcyZmU2MmIxYzI5Y2RjNTdlZGI1ZTY5NTFkYWE0ZmQ0NmM4MDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1Y2Y1ZmMyM2YyYTZkMjNjM2VhNTFlNzJmNWU4OTZjNzU1NWZiYWEwNWNkNWIxZWExODJiZjk2MThhOGU4MWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4N2JiNWU3ODcwMzg1ZjBlZDRkZDUzYWNkMTFjZjI4NTJlZjgzZmQzYWU1OGNlMWYwM2Y1YzY3OTVhMjlhMjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk2M2I4ZmM5MWVhMzE4ZTU3Y2ZlOTM3Y2E1ODllYjlhZTcxNDc1OGM3ZGUyOTRmNTgyN2ViODQ2NTM3MDBiOWQifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L329-L382",
+          "version": "repo-lines-v1:sha256:48d8c7bd30cc797da6856d9d76d302742069073d919840386655dda2bbfc55d9:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2NDMwZjM4OTUyZTg5YTZkZmFiODAxNDliMGViNTE2ZTcxYWI4Yjc0N2U0MTBjZTUwZDNmZmUyNWY2ODBiNjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwN2VlZTk4OTVlZTY0YmU3MGUyMjg3M2Q5MzFkODk0NWU4OWFlOGQxMjMzNmNlYzZkYWU3YjNkZGQ1MWU1YjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1YTYzY2MwNzZmYjdkZWI0YWM4ZmZhMTFiYTRjZTI0MTQ2NTY4MTZlZDE3NjI5Y2QwNzMwNTU2M2U3NjZlNTgifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L597-L649",
-          "version": "repo-lines-v1:sha256:21ed29886129df8d0443b07268db665d3883b7216baa91a015df7df2a0510868:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwNjhlYjNjYzhmYzliYTA0ZDdmZTExMmZiOWQ4NDZhYWQzN2Y1OTRiNmVlZmZhY2Y2YTNlNjQ2MGE4NzhjNTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyZjg5NmMyYmJhMjNjZDNlNzJiMTE5YjYxMTY0MmI2MjA5MjQzZDY4MjU4NjYyOWRlZjVhNzk2ZDQ5M2UwOTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5MTUyMDQ1YWI5NmJhYTA5ZGFhOWQwOTk4ZjU5OTc0Mjg0YWIxYTg2ZDhmN2RkM2Y3ZmMzZmM4NDdiOWNlZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiYWNhMWQ4YWZhN2JmZGU3MmQxNmM4MmY5ZjExODk2ZWE4OTRjNjNiNTMwZmE3OTExNGFlY2ZmNDRlZTkyNWQifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L618-L649",
+          "version": "repo-lines-v1:sha256:6affb1d4baf1346e2e51162abab22f6d707796741de9748ed7af4e563258fa14:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5ZjE4YTdjN2YyMDNjYTc0NjE2M2RhM2NjM2I1M2JhZTQwNjRmNTNkZmQ4NzdjZDFiYmU3Y2UwOTU4ZmJmYTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzMTJmMGQyMTMzNGVlODgwYjU2NTQ2MmFjYzUwNmE4ODg4MDhhMTNmN2ZkZjZlZDM3N2FlNzYzOGFhM2YxYzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4Njg5NmM1ODk2Nzg3OGRlYjUxYmEwYTUwYjgzYWM4YjlkNTZiMDJhMDc2Y2RkMmFkOGMzNmNmMjI4NDc2OTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNjhiNDRjN2ZkZDI0OTdiNWU2ZjU2MGIyZWMzZDBiZTRjZDVmYWYxMmJhYTU3ZGNhN2E2NzZjMjJmM2RlNjUifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_plugins.rs",
@@ -49,12 +49,12 @@
       "statement": "The desktop offers explicit source-preserving native branch choices alongside same-thread edits and keeps branch input as a canonical draft until a separate send.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L620-L696",
-          "version": "repo-lines-v1:sha256:b4d56005ea5e65c0ba7a5d40b8e3b1e623a737bac2ac57938eeea8b2b7fc86e4:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2M2Q5NWMyNDI1NzFjZDgwMDg1YzBlODc4MjExMzJkOTIzMDY5Y2Q4ZTNjZDg0YTg3MmRiMzNmNGE4OTJmZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiZDA0YzkyZTg0MDM4MGZlY2ZmODI2MDhkZDVmNjhlODZjNmFmYjQ0NTgwYWY0NDcwZjFmYzMxNDNjOGI1YzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4YTRiYWEzNjNhOTU3ZjZkODM3MTYwNzRhYjY3OTBjY2RhNDNkYTE0Y2Q0OWRlMzdmN2JkZjE3NGZkYTAzZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNlZGUzMGNiODI5OTNhMzcwYWE3N2Y4YjI3N2MzOTkyMGNjN2RkZmViNGEyNWI1MTNlMTA4ZTE5NjI2NjVlNzQifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L620-L641",
+          "version": "repo-lines-v1:sha256:ecb9df4b77a02cd2390e16ce369fdb45f2939a36418218c50db6bb7c5b08cb6f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2M2Q5NWMyNDI1NzFjZDgwMDg1YzBlODc4MjExMzJkOTIzMDY5Y2Q4ZTNjZDg0YTg3MmRiMzNmNGE4OTJmZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiZDA0YzkyZTg0MDM4MGZlY2ZmODI2MDhkZDVmNjhlODZjNmFmYjQ0NTgwYWY0NDcwZjFmYzMxNDNjOGI1YzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4YTRiYWEzNjNhOTU3ZjZkODM3MTYwNzRhYjY3OTBjY2RhNDNkYTE0Y2Q0OWRlMzdmN2JkZjE3NGZkYTAzZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNlZGUzMGNiODI5OTNhMzcwYWE3N2Y4YjI3N2MzOTkyMGNjN2RkZmViNGEyNWI1MTNlMTA4ZTE5NjI2NjVlNzQifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs",
-          "version": "repo-file-v1:sha256:a18152b03bc215e0cbfeae02e948d616e259dcbd97cf96d14c0f54833771fb27"
+          "version": "repo-file-v1:sha256:92527401ad11e03f7df820a16dbccb7e54c29cc787921a3f567670f946a965df"
         }
       ]
     },
@@ -74,7 +74,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.0",
-    "at": "2026-09-29T14:10:21.488Z"
+    "by": "openwiki/0.6.1",
+    "at": "2026-09-29T20:08:07.145Z"
   }
 }

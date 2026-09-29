@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4494b95ea4f1fb1508781c1b71e0a9f3698f36edec75154f3dd59ed1779e688a",
+  "pageVersion": "sha256:abfbe998d6aa6e8036d4a90c04be0bfbf4f593ce423fdc099fe4bececb784e27",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -17,7 +17,7 @@
       "statement": "Response metadata presents compact duration and token counts with a deferred window-anchored hover overlay rather than expanded transcript content.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs#L175-L241",
+          "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs#L173-L239",
           "version": "repo-lines-v1:sha256:2ad9f385e356ecb77903c091f35ad899d6c0e82c8f6d927f9be0dc465bc2961d:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3MDM0NGZjNjkwMGIzZWJiYjU0MjkxOTVlYWE2MjVkZjM2MDY3M2FlZGY0Y2Q1YmY1MGNmODNmODEyNzk3ODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyMmU4ZDNkNzYxZjMxZWQ3YWI2YTI0YjRlMGMzODJmZGFmNzYwYzRhMDgyYjJiMjU3YTE4MDFhZjIzNzlhMjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwMmRiOGRhZWZiYWZiZWM5NzJlYWU1ZmFjZDZiY2IyNWE1ODBlMGQ4YTA4OGM2M2Y0MGJkMmEyZTdlYzBkYzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQwMzk5NDVmNzEzY2VjY2MyYTJiZTk4MWFiNWM1ZWVhMzdmOTVmOTc2OWU1NzVjZDhlZDlhOWZjYmFmZGYwNmEifQ"
         }
       ]
@@ -28,7 +28,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/ui_loading.rs",
-          "version": "repo-file-v1:sha256:a7bd7f3433f7c4114f6198c1b58c3cd20a11504426aa4810fefebc55b67ca39a"
+          "version": "repo-file-v1:sha256:f869ea4098f9140c14fb0305b76260d2cdba6c9a29ef8d8f376cd93c68e85c74"
         }
       ]
     },
@@ -48,7 +48,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.0",
-    "at": "2026-09-29T09:20:11.292Z"
+    "by": "openwiki/0.6.1",
+    "at": "2026-09-29T20:08:07.145Z"
   }
 }
