@@ -15,7 +15,6 @@ mod config;
 mod continuation;
 mod conversation;
 mod execution;
-mod experiment;
 mod identity;
 mod managed_run;
 #[cfg(unix)] mod path_unix;
@@ -29,7 +28,6 @@ mod reset_card;
 mod routing;
 mod service_tier;
 mod storage;
-mod wake;
 mod work_item;
 
 pub use service_tier::{InvalidServiceTier, ServiceTier};
@@ -73,12 +71,6 @@ pub use self::{
 		is_credential_metadata_key,
 	},
 	execution::ExecutionConsumer,
-	experiment::{
-		CodexExperimentCommandOutcome, CodexExperimentCreationPossible, CodexExperimentIdentity,
-		CodexExperimentObservation, CodexExperimentObservationKind, CodexExperimentPrepared,
-		CodexExperimentRejection, CodexExperimentRetainedTitleAttestation, CodexExperimentState,
-		CodexExperimentThreadBinding, CodexExperimentTitleSetPossible,
-	},
 	identity::ServerIdentity,
 	managed_run::{ManagedRunError, ManagedRunId},
 	paths::{DecodexPaths, DecodexRoot, PathError},
@@ -119,11 +111,6 @@ pub use self::{
 		RoutingDecisionCause, RoutingRejection, decide_account_registry_routing,
 	},
 	storage::StorageError,
-	wake::{
-		WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease, WaitingUsageWakeRejection,
-		WaitingUsageWakeState, WaitingUsageWakeTerminalReason, WaitingUsageWakeTransition,
-		WaitingUsageWakeTransitionKind,
-	},
 	work_item::{WorkItemError, WorkItemId, WorkItemState},
 };
 
