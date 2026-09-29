@@ -72,8 +72,27 @@ pub(crate) async fn record_notification(
 	match method {
 		"warning" => record_warning(store, root, generation, params).await,
 		"configWarning" => record(store, root, generation, params).await,
+		"mcpServer/startupStatus/updated" => {
+			if let Some(value) = mcp_reauthentication_notice(params) {
+				record_warning(store, root, generation, &value).await?;
+			}
+			Ok(())
+		},
 		_ => Ok(()),
 	}
+}
+
+fn mcp_reauthentication_notice(params: &Value) -> Option<Value> {
+	if params["status"] != "failed" || params["failureReason"] != "reauthenticationRequired" {
+		return None;
+	}
+	let name = params["name"].as_str()?.trim();
+	if name.is_empty() || name.len() > 512 {
+		return None;
+	}
+	warning(
+		&json!({"threadId":params["threadId"],"message":format!("MCP server {name} needs you to sign in again. Open Codex for this account to reconnect it.")}),
+	)
 }
 
 /// Keep only the public message and exact optional thread identity.
@@ -159,6 +178,19 @@ fn settings_error_message(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn mcp_reauthentication_requires_explicit_native_cause() {
+		let mut params = json!({"threadId":"thread","name":"docs","status":"failed","failureReason":"reauthenticationRequired","error":"PRIVATE_ERROR"});
+		let notice = mcp_reauthentication_notice(&params).unwrap();
+		assert_eq!(notice["threadId"], "thread");
+		assert!(notice["message"].as_str().unwrap().contains("Open Codex for this account"));
+		assert!(!notice.to_string().contains("PRIVATE_ERROR"));
+		params["failureReason"] = Value::Null;
+		assert!(mcp_reauthentication_notice(&params).is_none());
+		params["failureReason"] = json!("reauthenticationRequired");
+		params["status"] = json!("ready");
+		assert!(mcp_reauthentication_notice(&params).is_none());
+	}
 	#[test]
 	fn settings_errors_keep_actionable_causes_but_hide_private_material() {
 		use decodex_codex::app_server_client::RpcError;

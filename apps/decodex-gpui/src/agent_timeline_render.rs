@@ -440,6 +440,15 @@ impl AgentSurface {
 						}),
 				)
 				.child(div().flex_1().min_w_0().text_ellipsis().child(label))
+				.when_some(activity.plugin_id.clone(), |d, plugin| {
+					d.child(
+						div()
+							.max_w(gpui::px(140.))
+							.text_ellipsis()
+							.child(format!("Plugin: {plugin}")),
+					)
+				})
+				.when(activity.read_only_hint == Some(true), |d| d.child("Read-only hint"))
 				.when(matches!(activity.status.as_str(), "failed" | "declined"), |d| {
 					d.child(activity.status.clone())
 				})

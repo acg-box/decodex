@@ -316,6 +316,8 @@ mod tests {
 						status: "completed".into(),
 						label: "Searching the web for a long query with several terms".into(),
 						detail: String::new(),
+						plugin_id: None,
+						read_only_hint: None,
 						native_timestamp_ms: None,
 						duration_ms: Some(12345),
 					}),

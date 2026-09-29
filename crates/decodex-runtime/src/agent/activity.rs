@@ -91,6 +91,11 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 		status: status.into(),
 		label: label.into(),
 		detail: detail.chars().filter(|c| !c.is_control()).take(160).collect(),
+		plugin_id: item["pluginId"]
+			.as_str()
+			.filter(|id| !id.is_empty() && !decodex_core::contains_credential_material(id))
+			.map(|id| id.chars().filter(|c| !c.is_control()).take(160).collect()),
+		read_only_hint: if kind == "mcpToolCall" { item["readOnlyHint"].as_bool() } else { None },
 		native_timestamp_ms: params[if completed { "completedAtMs" } else { "startedAtMs" }]
 			.as_u64(),
 		duration_ms: item["durationMs"].as_u64(),
@@ -122,6 +127,28 @@ fn search_exit_without_failure(item: &Value) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::project;
+	#[test]
+	fn mcp_attribution_and_advisory_hint_preserve_missing_history() {
+		let mut value = serde_json::json!({"turnId":"turn","item":{"type":"mcpToolCall","id":"item","server":"docs","tool":"read","pluginId":"docs@example","readOnlyHint":true}});
+		for completed in [false, true] {
+			let activity = project(&value, completed).unwrap();
+			assert_eq!(activity.plugin_id.as_deref(), Some("docs@example"));
+			assert_eq!(activity.read_only_hint, Some(true));
+		}
+		for (hint, expected) in [
+			(serde_json::json!(false), Some(false)),
+			(serde_json::Value::Null, None),
+			(serde_json::json!("true"), None),
+		] {
+			value["item"]["readOnlyHint"] = hint;
+			assert_eq!(project(&value, true).unwrap().read_only_hint, expected);
+		}
+		value["item"].as_object_mut().unwrap().remove("pluginId");
+		assert!(project(&value, true).unwrap().plugin_id.is_none());
+		let old = serde_json::json!({"turn_id":"turn","item_id":"item","kind":"mcpToolCall","status":"completed","label":"Using tool","detail":"docs","duration_ms":null});
+		let old: decodex_protocol::AgentActivityDto = serde_json::from_value(old).unwrap();
+		assert!(old.plugin_id.is_none() && old.read_only_hint.is_none());
+	}
 	#[test]
 	fn web_action_labels_do_not_expose_raw_parameters() {
 		for (kind, label) in [
