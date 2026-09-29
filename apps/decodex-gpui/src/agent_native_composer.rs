@@ -13,7 +13,7 @@ use gpui::{
 pub(super) struct NativeComposer {
 	pub(super) enabled: bool,
 	child: Option<WindowHandle<ComposerPanel>>,
-	bounds: Option<Bounds<Pixels>>,
+	pub(super) bounds: Option<Bounds<Pixels>>,
 
 	height: f32,
 	creating: bool,

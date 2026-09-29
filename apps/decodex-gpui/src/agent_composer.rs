@@ -810,6 +810,14 @@ impl AgentSurface {
 	fn composer_options(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
 		// Keep content mounted while the disclosure animates closed.
 		let menu = self.composer_menu.or(self.composer_menu_content)?;
+		let anchor = self.menu_trigger_bounds.get("attach").copied();
+		#[cfg(all(target_os = "macos", not(test)))]
+		let anchor =
+			if self.native_composer.enabled { self.native_composer.bounds } else { anchor };
+		// The native composer is a child window. Its parent-space anchor, rather than
+		// the child control bounds, gives the space available above the popover.
+		let settings_height =
+			anchor.map_or(320., |bounds| (f32::from(bounds.origin.y) - 32.).clamp(1., 480.));
 		Some(
 			div()
 				.id("composer-menu-popover")
@@ -852,7 +860,12 @@ impl AgentSurface {
 				} else if menu == "skills" {
 					self.skill_options(cx)
 				} else if menu == "agent-settings" {
-					self.render_preferences(cx).into_any_element()
+					div()
+						.id("agent-settings-scroll")
+						.max_h(px(settings_height))
+						.overflow_y_scroll()
+						.child(self.render_preferences(cx))
+						.into_any_element()
 				} else if matches!(menu, "attachments" | "microphone") {
 					self.attachment_options(cx)
 				} else {
