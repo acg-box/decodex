@@ -282,6 +282,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "thread/realtime/listVoices"
 					| "model/list"
 					| "experimentalFeature/list"
+					| "server/diagnostics"
 					| "permissionProfile/list"
 					| "hooks/list"
 					| "config/read"

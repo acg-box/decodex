@@ -42,6 +42,7 @@ mod host_credentials;
 mod mcp_login;
 mod native_agents;
 mod native_config_warning;
+mod native_diagnostics;
 mod process_platform;
 mod process_supervisor;
 mod provider_attempt_service;
