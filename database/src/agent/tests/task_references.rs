@@ -37,11 +37,21 @@ async fn grant_requires_delivery_and_survives_reopen_without_following_new_threa
 	assert!(allowed(&store, "recipient", "target-thread").await);
 	assert!(!allowed(&store, "target", "target-thread").await);
 	assert!(!allowed(&store, "recipient", "new-thread").await);
-	store.begin_agent_tool_upgrade("target".into(), "target-thread".into()).await.unwrap();
+	// Seed a migration completed by an older release; current code never upgrades threads.
 	store
-		.finish_agent_tool_upgrade("target".into(), "target-thread".into(), "new-thread".into())
+		.run(|connection| {
+			connection
+				.execute_batch(
+					"UPDATE agent_work_items SET codex_thread_id='new-thread' WHERE id='target';
+				 INSERT INTO agent_thread_revisions(work_id,old_thread_id,new_thread_id,created_at_micros)
+				 VALUES('target','target-thread','new-thread',1);",
+				)
+				.map_err(crate::error::sqlite_error)?;
+			Ok(())
+		})
 		.await
 		.unwrap();
+
 	drop(store);
 	let reopened = SqliteStore::open_test(&path).unwrap();
 	assert!(allowed(&reopened, "recipient", "target-thread").await);

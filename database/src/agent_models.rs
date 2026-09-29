@@ -391,7 +391,6 @@ mod tests {
 		drop(store);
 		let store = SqliteStore::open_test(&path).unwrap();
 		assert_eq!(receipt(&store).await.state, "reserved");
-		assert!(store.begin_agent_tool_upgrade("work".into(), "thread".into()).await.is_err());
 		assert!(
 			store.reserve_agent_model_selection(attempt(observed, 'c')).await.unwrap().is_none()
 		);

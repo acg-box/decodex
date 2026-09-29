@@ -270,38 +270,6 @@ impl SqliteStore {
 		})
 		.await
 	}
-
-	pub async fn begin_agent_tool_upgrade(
-		&self,
-		id: String,
-		old_thread: String,
-	) -> Result<(), StoreError> {
-		self.run(move |connection| {
-            let tx=connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
-            if crate::agent_prompt_edit::pending(&tx,&id)? || crate::agent_permissions::pending(&tx,&id)? || crate::agent_plugins::pending(&tx,&id)? || crate::agent_models::pending(&tx,&id)? {return Err(crate::DatabaseError::Conflict.into());}
-            let changed=tx.execute("UPDATE agent_work_items SET dispatch_state='dispatching' WHERE id=?1 AND codex_thread_id=?2 AND dispatch_state='idle' AND active_turn_id IS NULL",params![id,old_thread]).map_err(sqlite_error)?;
-            if changed!=1 { return Err(crate::DatabaseError::Conflict.into()); }
-            tx.commit().map_err(sqlite_error)?;
-            Ok(())
-        }).await
-	}
-
-	pub async fn finish_agent_tool_upgrade(
-		&self,
-		id: String,
-		old_thread: String,
-		new_thread: String,
-	) -> Result<(), StoreError> {
-		self.run(move |connection| {
-            let tx=connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
-            let changed=tx.execute("UPDATE agent_work_items SET codex_thread_id=?3,dispatch_state='idle' WHERE id=?1 AND codex_thread_id=?2 AND dispatch_state='dispatching' AND active_turn_id IS NULL",params![id,old_thread,new_thread]).map_err(sqlite_error)?;
-            if changed!=1 { return Err(crate::DatabaseError::Conflict.into()); }
-            tx.execute("INSERT INTO agent_thread_revisions(work_id,old_thread_id,new_thread_id,created_at_micros) VALUES(?1,?2,?3,?4)",params![id,old_thread,new_thread,crate::unix_micros()?]).map_err(sqlite_error)?;
-            tx.execute("INSERT INTO agent_tool_versions(work_id,version) VALUES(?1,3) ON CONFLICT(work_id) DO UPDATE SET version=3",[id]).map_err(sqlite_error)?;
-            tx.commit().map_err(sqlite_error)?;
-            Ok(())
-        }).await
-	}
 }
 
 pub(crate) fn read_live(
