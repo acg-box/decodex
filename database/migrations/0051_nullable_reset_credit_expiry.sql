@@ -15,7 +15,7 @@ CREATE TABLE reset_card_operations_nullable (
         OR (state = 'completed' AND exact_credit_id IS NULL AND outcome IS NOT NULL AND failure IS NULL)
         OR (state = 'failed' AND exact_credit_id IS NULL AND outcome IS NULL AND failure IS NOT NULL))
 ) STRICT;
-INSERT INTO reset_card_operations_nullable SELECT * FROM reset_card_operations;
+INSERT INTO reset_card_operations_nullable SELECT * FROM reset_card_operations ORDER BY rowid;
 DROP TABLE reset_card_operations;
 ALTER TABLE reset_card_operations_nullable RENAME TO reset_card_operations;
 CREATE UNIQUE INDEX reset_card_active_account ON reset_card_operations(account_id)
