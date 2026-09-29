@@ -230,6 +230,13 @@ fn pump(
 
 fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result<(), ClientError> {
 	if let Some(method) = value.get("method") {
+		if method == "thread/goal/set" {
+			return if decodex_codex::app_server_client::is_native_goal_update(&value["params"]) {
+				Ok(())
+			} else {
+				Err(ClientError::InvalidFrame)
+			};
+		}
 		if method == "config/batchWrite" {
 			return if decodex_codex::app_server_client::is_hook_settings_write(&value["params"])
 				|| decodex_codex::app_server_client::is_app_tool_exposure_write(&value["params"])
@@ -429,7 +436,7 @@ mod tests {
 	}
 
 	#[test]
-	fn goal_bridge_allows_observation_without_goal_mutation() {
+	fn goal_bridge_requires_explicit_valid_edits_and_keeps_clear_unsupported() {
 		for (method, allowed) in
 			[("thread/goal/get", true), ("thread/goal/set", false), ("thread/goal/clear", false)]
 		{
@@ -440,6 +447,38 @@ mod tests {
 				)
 				.is_ok(),
 				allowed
+			);
+		}
+		for edit in [
+			json!({"objective":"Updated objective"}),
+			json!({"tokenBudget":1234}),
+			json!({"tokenBudget":null}),
+			json!({"status":"paused"}),
+		] {
+			let mut params = edit;
+			params["threadId"] = json!("thread");
+			assert!(
+				validate_outbound(
+					&json!({"id":2,"method":"thread/goal/set","params":params}),
+					&mut HashSet::new()
+				)
+				.is_ok()
+			);
+		}
+		for edit in [
+			json!({"status":"usageLimited"}),
+			json!({"tokenBudget":0}),
+			json!({"objective":""}),
+			json!({"objective":"New", "cwd":"/other"}),
+		] {
+			let mut params = edit;
+			params["threadId"] = json!("thread");
+			assert!(
+				validate_outbound(
+					&json!({"id":3,"method":"thread/goal/set","params":params}),
+					&mut HashSet::new()
+				)
+				.is_err()
 			);
 		}
 	}
