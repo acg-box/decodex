@@ -104,7 +104,6 @@ impl AgentSurface {
 			self.clear_usage_estimate();
 			self.integrations = None;
 			self.integrations_task = None;
-			self.integration_feedback.clear();
 			self.resource_mutation_task = None;
 			self.resource_feedback.clear();
 		}

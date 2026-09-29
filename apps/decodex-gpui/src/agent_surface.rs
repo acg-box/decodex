@@ -108,7 +108,6 @@ pub(crate) struct AgentSurface {
 	native_history: native_timeline::Timeline,
 	integrations: Option<(String, Option<decodex_protocol::AgentIntegrationsResult>)>,
 	integrations_task: Option<Task<()>>,
-	integration_feedback: String,
 	resource_mutation_task: Option<Task<()>>,
 	resource_feedback: String,
 	resource_title: Entity<ComposerInput>,
@@ -368,7 +367,6 @@ impl AgentSurface {
 			native_history: Default::default(),
 			integrations: None,
 			integrations_task: None,
-			integration_feedback: String::new(),
 			resource_mutation_task: None,
 			resource_feedback: String::new(),
 			resource_title: resource_field("Link title", "Resource title", cx),
@@ -1193,7 +1191,6 @@ impl AgentSurface {
 		self.clear_usage_estimate();
 		self.integrations = None;
 		self.integrations_task = None;
-		self.integration_feedback.clear();
 		self.resource_mutation_task = None;
 		self.resource_feedback.clear();
 		self.resource_title.update(cx, |input, cx| input.clear(cx));
@@ -1476,15 +1473,12 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn operation_notices(&self) -> Vec<(&'static str, String)> {
-		let mut notices: Vec<_> = [
-			("Review", &self.guardian.feedback),
-			("Tools and plugins", &self.integration_feedback),
-			("Task resources", &self.resource_feedback),
-		]
-		.into_iter()
-		.filter(|(_, detail)| !detail.is_empty())
-		.map(|(title, detail)| (title, detail.clone()))
-		.collect();
+		let mut notices: Vec<_> =
+			[("Review", &self.guardian.feedback), ("Task resources", &self.resource_feedback)]
+				.into_iter()
+				.filter(|(_, detail)| !detail.is_empty())
+				.map(|(title, detail)| (title, detail.clone()))
+				.collect();
 		let mut seen = std::collections::BTreeSet::new();
 		let histories =
 			self.history.iter().map(|(_, history)| history).chain(self.history_cache.values());
