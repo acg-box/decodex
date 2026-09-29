@@ -18,7 +18,6 @@ pub(super) enum Symbol {
 	Agents,
 	Fast,
 	ChevronDown,
-	Voice,
 	Microphone,
 	Bell,
 	BellAttention,
@@ -36,8 +35,8 @@ pub(super) enum Symbol {
 	Lock,
 }
 
-static IMAGES: LazyLock<[Arc<Image>; 29]> = LazyLock::new(|| {
-	let sources: [&[u8]; 29] = [
+static IMAGES: LazyLock<[Arc<Image>; 28]> = LazyLock::new(|| {
+	let sources: [&[u8]; 28] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
 		include_bytes!("../../../assets/workspace-symbols/graph.png"),
 		include_bytes!("../../../assets/workspace-symbols/timeline.png"),
@@ -51,7 +50,6 @@ static IMAGES: LazyLock<[Arc<Image>; 29]> = LazyLock::new(|| {
 		include_bytes!("../../../assets/workspace-symbols/agents.png"),
 		include_bytes!("../../../assets/workspace-symbols/fast.png"),
 		include_bytes!("../../../assets/workspace-symbols/chevron-down.png"),
-		include_bytes!("../../../assets/workspace-symbols/voice.png"),
 		include_bytes!("../../../assets/workspace-symbols/microphone.png"),
 		include_bytes!("../../../assets/workspace-symbols/bell.png"),
 		include_bytes!("../../../assets/workspace-symbols/bell-attention.png"),
