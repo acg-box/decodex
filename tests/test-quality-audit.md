@@ -15,7 +15,7 @@ This audit does not claim mutation coverage or a line-by-line security review.
 | Domain boundaries | Core, protocol, account login, FFI | Pending | Review duplicate contracts and fixtures |
 | Execution | Codex adapter, runtime | Pending | Review native/fake-server distinctions and state-recovery coverage |
 | Persistence | Database and transfer | Pending | Review migration fixtures and duplicate setup |
-| Remaining desktop | GPUI and menu bar | Pending | Finish fixture and assertion review |
+| Remaining desktop | GPUI and menu bar | Reviewed | Run shared application tests once; preserve preview-specific tests |
 | Automation products | Radar and Publisher; site | Pending | Review parser, provenance, publication, and deployment protections |
 
 ## Tooling
@@ -33,3 +33,17 @@ This audit does not claim mutation coverage or a line-by-line security review.
   retention, quota conversion, diagnostic runner path resolution, and bundle identity.
 - Retain the shell acceptance scripts: they launch actual processes or inspect
   staged bundles. They are not source snapshots.
+
+## Desktop test ownership
+
+- The visual-capture binary imports 569 application tests. The glass probe imports
+  another 10. Their test names are all present in the main GPUI binary; neither
+  tool defines its own test. The default nextest filter runs those tests in the
+  main binary only. `--all-targets --all-features` still compiles the tools.
+- `test = false` does not exclude these targets when `--all-targets` is used.
+  Use the existing nextest configuration instead of a second test command.
+- Keep the weather preview target: it has its own saved-payload parsing check.
+- Remove the curated quote count assertion. Keep attribution, length, language,
+  display, and non-repetition checks so the catalog can change without test edits.
+- Retain menu bar interaction, account routing, reset-card lifecycle, and native
+  credential/ownership boundary tests. Visual constants are not acceptance evidence.

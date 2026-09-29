@@ -152,7 +152,6 @@ mod tests {
 
 	#[test]
 	fn offline_quotes_are_short_attributed_and_non_repeating() {
-		assert_eq!(CURATED.len(), 12);
 		for quote in CURATED.iter() {
 			assert!(quote.q.is_ascii() && quote.q.len() <= 80);
 			assert!(!quote.a.is_empty());
