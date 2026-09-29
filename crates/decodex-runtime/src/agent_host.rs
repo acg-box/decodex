@@ -89,6 +89,7 @@ pub(crate) struct AgentHost {
 	recovery_cursor: Arc<Mutex<Option<String>>>,
 	prompt_edits: prompt_edit::Reviews,
 	recaps: crate::agent_recap::Recaps,
+	transcripts: crate::agent_transcript::Transcripts,
 	weather_cache: Arc<Mutex<Option<weather::CachedWeather>>>,
 	voice: crate::agent_voice::VoiceGateway,
 	dictation: crate::dictation::DictationGateway,
@@ -119,6 +120,7 @@ impl AgentHost {
 			recovery_cursor: Default::default(),
 			voice: crate::agent_voice::VoiceGateway::new(),
 			recaps: Default::default(),
+			transcripts: Default::default(),
 			prompt_edits: Default::default(),
 			weather_cache: Arc::new(Mutex::new(None)),
 			dictation: Default::default(),
@@ -727,6 +729,18 @@ impl AgentHost {
 			return Err(AgentHostError::Unknown("Read the saved app call acknowledgment."));
 		}
 		Ok(work.into())
+	}
+
+	pub(crate) async fn transcript(
+		&self,
+		request: &decodex_protocol::AgentTranscriptRequest,
+	) -> decodex_protocol::AgentTranscriptResult {
+		self.transcripts
+			.read(
+				|| self.timeline_source(request.work_id.as_str(), request.thread_id.as_str()),
+				request,
+			)
+			.await
 	}
 
 	pub(crate) async fn media(

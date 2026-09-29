@@ -5,10 +5,11 @@ use serde_json::Value;
 pub(super) fn render(turns: &[Value]) -> Result<String, ClientError> {
 	let mut output = String::from("# Conversation\n\n");
 	let mut review_mode = false;
-	for turn in turns {
+	for (index, turn) in turns.iter().enumerate() {
+		let hidden_review = index > 0 && nested_review(&turns[index - 1], turn);
 		for item in turn["items"].as_array().ok_or(ClientError::InvalidFrame)? {
 			match item["type"].as_str() {
-				Some("userMessage") if review_mode => {},
+				Some("userMessage") if review_mode || hidden_review => {},
 				Some("userMessage") => {
 					let content = item["content"].as_array().ok_or(ClientError::InvalidFrame)?;
 					let mut body = String::new();
@@ -75,7 +76,10 @@ pub(super) fn render(turns: &[Value]) -> Result<String, ClientError> {
 						for part in content {
 							body.push_str("\n\n");
 							body.push_str(
-								part["text"].as_str().unwrap_or("[Non-text tool result]"),
+								part["text"]
+									.as_str()
+									.or_else(|| part["inputText"].as_str())
+									.unwrap_or("[Non-text tool result]"),
 							);
 						}
 					}
@@ -99,6 +103,26 @@ pub(super) fn render(turns: &[Value]) -> Result<String, ClientError> {
 	}
 	Ok(output)
 }
+// Native review sessions can leave an interrupted synthetic turn after review closes.
+fn nested_review(previous: &Value, turn: &Value) -> bool {
+	if previous["status"] != "completed"
+		|| turn["status"] != "interrupted"
+		|| !turn["completedAt"].is_null()
+	{
+		return false;
+	}
+	let Some(items) = previous["items"].as_array() else { return false };
+	if !["enteredReviewMode", "exitedReviewMode"]
+		.iter()
+		.all(|kind| items.iter().any(|item| item["type"] == *kind))
+	{
+		return false;
+	}
+	let Some(items) = turn["items"].as_array() else { return false };
+	let messages = items.iter().filter(|item| item["type"] == "userMessage").collect::<Vec<_>>();
+	messages.len() == 2 && messages[0]["content"] == messages[1]["content"]
+}
+
 fn section(out: &mut String, title: &str, body: &str) {
 	if body.trim().is_empty() {
 		return;
@@ -115,6 +139,17 @@ fn fenced(text: &str) -> String {
 mod tests {
 	use super::*;
 	use serde_json::json;
+	#[test]
+	fn markdown_omits_synthetic_nested_review_prompts_but_retains_next_user() {
+		let synthetic = json!({"type":"userMessage","content":[{"type":"text","text":"Synthetic review prompt"}]});
+		let text=render(&[
+			json!({"status":"completed","items":[{"type":"enteredReviewMode"},{"type":"exitedReviewMode"}]}),
+			json!({"status":"interrupted","completedAt":null,"items":[synthetic.clone(),synthetic]}),
+			json!({"status":"completed","items":[{"type":"userMessage","content":[{"type":"text","text":"Real question"}]}]}),
+		]).unwrap();
+		assert!(!text.contains("Synthetic review prompt"));
+		assert!(text.contains("Real question"));
+	}
 	#[test]
 	fn markdown_preserves_messages_and_hides_raw_reasoning_and_review_prompts() {
 		let text = "# Heading\n\n```rust\nlet a = 1;\n```\n\n[Link](https://example.com)";

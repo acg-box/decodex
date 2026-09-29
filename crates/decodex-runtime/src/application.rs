@@ -2366,6 +2366,11 @@ impl Application for ServiceApplication {
 			| QueryPayload::ReviewAgentAppUiCall { .. }
 			| QueryPayload::GetAgentAppUiSource { .. }
 			| QueryPayload::GetAgentAppUi { .. } => self.query_app_ui(&query.payload).await,
+			QueryPayload::GetAgentTranscript { request } =>
+				QueryResultPayload::AgentTranscript(match &self.agent {
+					Some(agent) => agent.transcript(request).await,
+					None => decodex_protocol::AgentTranscriptResult::Unavailable,
+				}),
 			QueryPayload::GetAgentMedia { request } => self.query_media(request).await,
 			QueryPayload::GetAgentTimeline { work_id, thread_id, cursor } =>
 				self.query_timeline(

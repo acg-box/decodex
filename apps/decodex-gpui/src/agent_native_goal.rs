@@ -30,7 +30,7 @@ impl AgentSurface {
 		}
 	}
 
-	fn native_goal_target(&self) -> Option<(String, String)> {
+	pub(super) fn native_goal_target(&self) -> Option<(String, String)> {
 		let work = self.selected.as_ref()?;
 		if let Some((owner, thread)) = &self.native_agents.selected {
 			return (owner == work).then(|| (owner.clone(), thread.clone()));
