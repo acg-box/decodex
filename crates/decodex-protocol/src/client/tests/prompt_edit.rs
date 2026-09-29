@@ -47,10 +47,11 @@ async fn prompt_edit_pages_preserve_canonical_content_and_reject_changed_evidenc
 						item_id: WireText::new("item").unwrap(),
 						removed_turns: 2,
 						content_bytes: encoded.len() as u64,
-						offset: cursor as u64 + u64::from(page == 1 && mode == "wrong-offset"),
+						offset: cursor as u64 - u64::from(page == 1 && mode == "wrong-offset"),
 						fragment: encoded[cursor..end].into(),
 					}),
 				};
+				assert!(result.is_valid(), "fixture must reach cross-page validation: {mode}");
 				cursor = end;
 				socket
 					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
