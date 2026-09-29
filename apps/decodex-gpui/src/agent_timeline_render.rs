@@ -278,7 +278,6 @@ impl AgentSurface {
 		identity: &str,
 		cx: &mut Context<Self>,
 	) -> gpui::AnyElement {
-		let row = div().w_full().min_w_0().flex().flex_col().gap_1();
 		let Content::Item {
 			app_ui,
 			text,
@@ -356,143 +355,30 @@ impl AgentSurface {
 			if truncated {
 				body = body.child(muted("Some content was omitted from this history preview."));
 			}
-			if kind == "userMessage"
-				&& let Some(thread) = &work.codex_thread_id
-			{
-				let (owner, thread, turn, item) =
-					(work.id.clone(), thread.clone(), turn_id.clone(), item_id.clone());
-				let group: SharedString = format!("history-input-{identity}").into();
-				let keyboard_source = (owner.clone(), thread.clone(), turn.clone(), item.clone());
-				let edit = div()
-					.id(SharedString::from(format!("review-prompt-{identity}")))
-					.role(gpui::Role::Button)
-					.tab_index(0)
-					.aria_label("Edit message")
-					.size(gpui::px(crate::ui_theme::USER_MESSAGE_ACTION_SIZE))
-					.flex()
-					.items_center()
-					.justify_center()
-					.rounded(gpui::px(6.))
-					.opacity(0.)
-					.group_hover(group.clone(), |style| style.opacity(1.))
-					.focus(|style| style.opacity(1.))
-					.cursor_pointer()
-					.hover(|style| style.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)))
-					.on_click(cx.listener(move |s, _, _, cx| {
-						s.review_prompt(&owner, &thread, &turn, &item, cx);
-					}))
-					.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
-						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-							let (owner, thread, turn, item) = &keyboard_source;
-							s.review_prompt(owner, thread, turn, item, cx);
-							cx.stop_propagation();
-						}
-					}))
-					.child(
-						gpui::canvas(
-							|_, _, _| (),
-							|bounds, _, window, _| {
-								let point =
-									|x, y| bounds.origin + gpui::point(gpui::px(x), gpui::px(y));
-								let mut path = gpui::PathBuilder::stroke(gpui::px(1.1));
-								path.move_to(point(2., 9.));
-								path.line_to(point(9., 2.));
-								path.line_to(point(12., 5.));
-								path.line_to(point(5., 12.));
-								path.line_to(point(1., 13.));
-								path.close();
-								path.move_to(point(7., 4.));
-								path.line_to(point(10., 7.));
-								if let Ok(path) = path.build() {
-									window.paint_path(path, gpui::rgb(crate::ui_theme::TEXT_MUTED));
-								}
-							},
-						)
-						.size(gpui::px(14.)),
-					);
-				body = body.group(group).child(div().flex().justify_end().child(edit));
+			if kind == "userMessage" {
+				body = self.native_prompt_row(work, content, identity, body, cx);
 			}
 			return body.into_any_element();
 		}
-		if let Some(activity) = activity
-			&& !*app_ui
-			&& attachments.is_empty()
-		{
-			let label = if matches!(kind.as_str(), "dynamicToolCall" | "mcpToolCall")
-				&& !activity.detail.is_empty()
-			{
-				activity.detail.clone()
-			} else {
-				activity.label.clone()
-			};
-			let expanded = self
-				.activity_detail_key(&(work.id.clone(), turn_id.clone(), item_id.clone()))
-				.is_some_and(|key| {
-					self.activity_detail.value.as_ref().is_some_and(|(current, _)| current == &key)
-				});
-			let symbol = match activity.status.as_str() {
-				"failed" | "declined" => "!",
-				"running" => "◌",
-				_ => "✓",
-			};
-			let row = div()
-				.w_full()
-				.min_w_0()
-				.flex()
-				.items_center()
-				.gap(gpui::px(8.))
-				.py(gpui::px(5.))
-				.rounded(gpui::px(6.))
-				.text_size(gpui::px(12.))
-				.line_height(gpui::px(18.))
-				.text_color(gpui::rgb(crate::ui_theme::TEXT_MUTED))
-				.child(
-					// Status glyph advances differ; reserve one stable column for every state.
-					div()
-						.w(gpui::px(16.))
-						.h(gpui::px(18.))
-						.flex_none()
-						.flex()
-						.items_center()
-						.justify_center()
-						.child(if activity.status == "running" {
-							crate::ui_loading::loading("").into_any_element()
-						} else {
-							div().child(symbol).into_any_element()
-						}),
-				)
-				.child(div().flex_1().min_w_0().text_ellipsis().child(label))
-				.when_some(activity.plugin_id.clone(), |d, plugin| {
-					d.child(
-						div()
-							.max_w(gpui::px(140.))
-							.text_ellipsis()
-							.child(format!("Plugin: {plugin}")),
-					)
-				})
-				.when(activity.read_only_hint == Some(true), |d| d.child("Read-only hint"))
-				.when(matches!(activity.status.as_str(), "failed" | "declined"), |d| {
-					d.child(activity.status.clone())
-				})
-				.when_some(activity.duration_ms.filter(|ms| *ms > 0), |d, ms| {
-					d.child(if ms < 1000 {
-						format!("{ms}ms")
-					} else {
-						format!("{:.1}s", ms as f64 / 1000.)
-					})
-				})
-				.child(
-					div()
-						.debug_selector(|| "tool-chevron-bounds".into())
-						.flex_none()
-						.size(gpui::px(12.))
-						.child(crate::shell::workspace_symbols::process_chevron(
-							SharedString::from(format!("tool-chevron-{identity}")),
-							expanded,
-						)),
-				);
-			return self.detail_row(work, activity, row, cx);
+		if activity.is_some() && !*app_ui && attachments.is_empty() {
+			return self.native_activity_content(work, content, identity, cx);
 		}
+		self.native_item_text(work, content, identity, text, truncated, cx)
+	}
+
+	fn native_item_text(
+		&self,
+		work: &AgentWorkItemDto,
+		content: &Content,
+		identity: &str,
+		text: &str,
+		truncated: bool,
+		cx: &mut Context<Self>,
+	) -> gpui::AnyElement {
+		let Content::Item { kind, turn_id, item_id, attachments, activity, .. } = content else {
+			unreachable!("item text renderer")
+		};
+		let row = div().w_full().min_w_0().flex().flex_col().gap_1();
 		let label = match kind.as_str() {
 			"userMessage" => "You",
 			"agentMessage" => "Assistant",
@@ -538,6 +424,154 @@ impl AgentSurface {
 			);
 		}
 		row.into_any_element()
+	}
+
+	fn native_prompt_row(
+		&self,
+		work: &AgentWorkItemDto,
+		content: &Content,
+		identity: &str,
+		body: gpui::Div,
+		cx: &mut Context<Self>,
+	) -> gpui::Div {
+		let Content::Item { turn_id, item_id, .. } = content else {
+			unreachable!("prompt renderer")
+		};
+		let Some(thread) = &work.codex_thread_id else { return body };
+		let (owner, thread, turn, item) =
+			(work.id.clone(), thread.clone(), turn_id.clone(), item_id.clone());
+		let group: SharedString = format!("history-input-{identity}").into();
+		let keyboard_source = (owner.clone(), thread.clone(), turn.clone(), item.clone());
+		let edit = div()
+			.id(SharedString::from(format!("review-prompt-{identity}")))
+			.role(gpui::Role::Button)
+			.tab_index(0)
+			.aria_label("Edit message")
+			.size(gpui::px(crate::ui_theme::USER_MESSAGE_ACTION_SIZE))
+			.flex()
+			.items_center()
+			.justify_center()
+			.rounded(gpui::px(6.))
+			.opacity(0.)
+			.group_hover(group.clone(), |style| style.opacity(1.))
+			.focus(|style| style.opacity(1.))
+			.cursor_pointer()
+			.hover(|style| style.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)))
+			.on_click(cx.listener(move |s, _, _, cx| {
+				s.review_prompt(&owner, &thread, &turn, &item, cx);
+			}))
+			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+				if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+					let (owner, thread, turn, item) = &keyboard_source;
+					s.review_prompt(owner, thread, turn, item, cx);
+					cx.stop_propagation();
+				}
+			}))
+			.child(
+				gpui::canvas(
+					|_, _, _| (),
+					|bounds, _, window, _| {
+						let point = |x, y| bounds.origin + gpui::point(gpui::px(x), gpui::px(y));
+						let mut path = gpui::PathBuilder::stroke(gpui::px(1.1));
+						path.move_to(point(2., 9.));
+						path.line_to(point(9., 2.));
+						path.line_to(point(12., 5.));
+						path.line_to(point(5., 12.));
+						path.line_to(point(1., 13.));
+						path.close();
+						path.move_to(point(7., 4.));
+						path.line_to(point(10., 7.));
+						if let Ok(path) = path.build() {
+							window.paint_path(path, gpui::rgb(crate::ui_theme::TEXT_MUTED));
+						}
+					},
+				)
+				.size(gpui::px(14.)),
+			);
+		body.group(group).child(div().flex().justify_end().child(edit))
+	}
+
+	fn native_activity_content(
+		&self,
+		work: &AgentWorkItemDto,
+		content: &Content,
+		identity: &str,
+		cx: &mut Context<Self>,
+	) -> gpui::AnyElement {
+		let Content::Item { activity: Some(activity), kind, turn_id, item_id, .. } = content else {
+			unreachable!("activity renderer")
+		};
+		let label = if matches!(kind.as_str(), "dynamicToolCall" | "mcpToolCall")
+			&& !activity.detail.is_empty()
+		{
+			activity.detail.clone()
+		} else {
+			activity.label.clone()
+		};
+		let expanded = self
+			.activity_detail_key(&(work.id.clone(), turn_id.clone(), item_id.clone()))
+			.is_some_and(|key| {
+				self.activity_detail.value.as_ref().is_some_and(|(current, _)| current == &key)
+			});
+		let symbol = match activity.status.as_str() {
+			"failed" | "declined" => "!",
+			"running" => "◌",
+			_ => "✓",
+		};
+		let row = div()
+			.w_full()
+			.min_w_0()
+			.flex()
+			.items_center()
+			.gap(gpui::px(8.))
+			.py(gpui::px(5.))
+			.rounded(gpui::px(6.))
+			.text_size(gpui::px(12.))
+			.line_height(gpui::px(18.))
+			.text_color(gpui::rgb(crate::ui_theme::TEXT_MUTED))
+			.child(
+				// Status glyph advances differ; reserve one stable column for every state.
+				div()
+					.w(gpui::px(16.))
+					.h(gpui::px(18.))
+					.flex_none()
+					.flex()
+					.items_center()
+					.justify_center()
+					.child(if activity.status == "running" {
+						crate::ui_loading::loading("").into_any_element()
+					} else {
+						div().child(symbol).into_any_element()
+					}),
+			)
+			.child(div().flex_1().min_w_0().text_ellipsis().child(label))
+			.when_some(activity.plugin_id.clone(), |d, plugin| {
+				d.child(
+					div().max_w(gpui::px(140.)).text_ellipsis().child(format!("Plugin: {plugin}")),
+				)
+			})
+			.when(activity.read_only_hint == Some(true), |d| d.child("Read-only hint"))
+			.when(matches!(activity.status.as_str(), "failed" | "declined"), |d| {
+				d.child(activity.status.clone())
+			})
+			.when_some(activity.duration_ms.filter(|ms| *ms > 0), |d, ms| {
+				d.child(if ms < 1000 {
+					format!("{ms}ms")
+				} else {
+					format!("{:.1}s", ms as f64 / 1000.)
+				})
+			})
+			.child(
+				div()
+					.debug_selector(|| "tool-chevron-bounds".into())
+					.flex_none()
+					.size(gpui::px(12.))
+					.child(crate::shell::workspace_symbols::process_chevron(
+						SharedString::from(format!("tool-chevron-{identity}")),
+						expanded,
+					)),
+			);
+		self.detail_row(work, activity, row, cx)
 	}
 
 	fn native_promotion(
@@ -1009,68 +1043,73 @@ mod tests {
 		assert!(visual.debug_bounds("native-reasoning-summary").is_some());
 	}
 
+	fn prepare_rendered_history(
+		s: &mut AgentSurface,
+		cx: &mut Context<AgentSurface>,
+	) -> Vec<String> {
+		s.visual_workspace_fixture(cx);
+		s.graph_visible = false;
+		let work = s
+			.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|work| Some(&work.id) == s.selected.as_ref())
+			.unwrap();
+		work.codex_thread_id = Some("native-thread".into());
+		let mut entries = rendered_entries();
+		entries.push(AgentTimelineEntry {
+			position: 100,
+			content: Content::Item {
+				phase: None,
+				app_ui: false,
+				turn_id: "summary-turn".into(),
+				item_id: "summary-item".into(),
+				kind: "reasoning".into(),
+				text: "Checking the request.".into(),
+				truncated: false,
+				activity: None,
+				attachments: vec![],
+			},
+		});
+		let selectors = entries
+			.iter()
+			.map(|entry| {
+				format!(
+					"native-history-{}",
+					serde_json::json!([work.id, work.codex_thread_id, super::key(entry)])
+				)
+			})
+			.collect::<Vec<_>>();
+		let mut history = Timeline::default();
+		assert!(history.replace(
+			Binding {
+				work: work.id.clone(),
+				thread: "native-thread".into(),
+				account: "account".into()
+			},
+			AgentTimelinePage {
+				thread_id: "native-thread".into(),
+				entries,
+				next_cursor: None,
+				weather: Default::default(),
+				safety_buffering_turn_id: None,
+				active_realtime_session_at_page_start: None
+			}
+		));
+		s.native_history = history;
+		cx.notify();
+		selectors
+	}
+
 	#[gpui::test]
 	fn native_messages_and_promotions_render_with_distinct_provider_identities(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		visual.simulate_resize(size(px(1400.), px(1400.)));
-		let selectors = surface.update(visual, |s, cx| {
-			s.visual_workspace_fixture(cx);
-			s.graph_visible = false;
-			let work = s
-				.snapshot
-				.as_mut()
-				.unwrap()
-				.work_items
-				.iter_mut()
-				.find(|work| Some(&work.id) == s.selected.as_ref())
-				.unwrap();
-			work.codex_thread_id = Some("native-thread".into());
-			let mut entries = rendered_entries();
-			entries.push(AgentTimelineEntry {
-				position: 100,
-				content: Content::Item {
-					phase: None,
-					app_ui: false,
-					turn_id: "summary-turn".into(),
-					item_id: "summary-item".into(),
-					kind: "reasoning".into(),
-					text: "Checking the request.".into(),
-					truncated: false,
-					activity: None,
-					attachments: vec![],
-				},
-			});
-			let selectors = entries
-				.iter()
-				.map(|entry| {
-					format!(
-						"native-history-{}",
-						serde_json::json!([work.id, work.codex_thread_id, super::key(entry)])
-					)
-				})
-				.collect::<Vec<_>>();
-			let mut history = Timeline::default();
-			assert!(history.replace(
-				Binding {
-					work: work.id.clone(),
-					thread: "native-thread".into(),
-					account: "account".into()
-				},
-				AgentTimelinePage {
-					thread_id: "native-thread".into(),
-					entries,
-					next_cursor: None,
-					weather: Default::default(),
-					safety_buffering_turn_id: None,
-					active_realtime_session_at_page_start: None
-				}
-			));
-			s.native_history = history;
-			cx.notify();
-			selectors
-		});
+		let selectors = surface.update(visual, prepare_rendered_history);
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
