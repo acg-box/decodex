@@ -577,26 +577,14 @@ fn is_canonical_uuid(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use crate::account::{AccountError, AccountId, AccountState};
+	use crate::account::{AccountError, AccountId};
 
 	#[test]
-	fn account_identity_and_health_are_non_secret_closed_types() {
+	fn account_identity_preserves_its_non_secret_canonical_value() {
 		let account = AccountId::new("10000000-0000-4000-8000-000000000001").unwrap();
 
 		assert_eq!(account.as_str(), "10000000-0000-4000-8000-000000000001");
 		assert_eq!(format!("{account:?}"), "AccountId(\"10000000-0000-4000-8000-000000000001\")");
-		assert_eq!(
-			[
-				AccountState::Unavailable,
-				AccountState::Unknown,
-				AccountState::Available,
-				AccountState::Depleted,
-				AccountState::AuthFailed,
-				AccountState::PluginUnready,
-			]
-			.len(),
-			6
-		);
 	}
 
 	#[test]
