@@ -3729,17 +3729,6 @@ final class ResetCardStore {
 }
 
 private extension ResetCardClientError {
-	var isConnectionFailure: Bool {
-		switch self {
-		case .transportDisconnected:
-			return true
-		case .nativeClientUnavailable, .timedOut, .transportBackpressured,
-			.outputTooLarge, .commandRejected, .useDefinitelyNotDispatched,
-			.usePotentiallyDispatched, .invalidResponse, .service:
-			return false
-		}
-	}
-
 	var isRetryableReadFailure: Bool {
 		switch self {
 		case .nativeClientUnavailable, .timedOut, .transportDisconnected,
