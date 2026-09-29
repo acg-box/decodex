@@ -20,15 +20,14 @@ use tokio_tungstenite::{
 
 use crate::{
 	AccountInitialSelectionResult, AccountInspectResult, AccountLoginRequest,
-	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, AccountLoginStart,
-	AccountLoginStatus, AccountObservationSignal, AccountProfileEmailDto, AccountProfileResult,
-	AccountSelectionModeDto, AccountsResult, CURRENT_VERSION, ClientCommandId, ClientHello,
-	ClientMessage, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandOutcome,
-	CommandPayload, CorrelationId, DoctorReport, EntityId, EntityRevision, IdempotencyKey,
-	ProtocolVersion, QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition,
-	Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult,
-	ResetCardOperationResult, ResultPayload, RetainedSessionConfig, RetainedSessionFailure,
-	ServerId, ServerMessage,
+	AccountLoginRequestEnvelope, AccountLoginStart, AccountLoginStatus, AccountObservationSignal,
+	AccountProfileEmailDto, AccountProfileResult, AccountSelectionModeDto, AccountsResult,
+	CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult,
+	CommandEnvelope, CommandError, CommandOutcome, CommandPayload, CorrelationId, DoctorReport,
+	EntityId, EntityRevision, IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId,
+	QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope,
+	ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult, ResultPayload,
+	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 };
 use decodex_core::{
@@ -2611,42 +2610,29 @@ impl AccountLoginClient {
 		&self,
 		start: AccountLoginStart,
 	) -> Result<AccountLoginStatus, ClientFailure> {
-		let expected_session_id = start.session_id.clone();
 		self.exchange(
 			"decodex-account-login-start",
 			AccountLoginRequest::Start { start: Box::new(start) },
-			&expected_session_id,
 		)
 		.await
 	}
 
 	/// Read one daemon-lifetime login status without retaining it in a client cache.
 	pub async fn status(&self, session_id: EntityId) -> Result<AccountLoginStatus, ClientFailure> {
-		let expected_session_id = session_id.clone();
-		self.exchange(
-			"decodex-account-login-status",
-			AccountLoginRequest::Status { session_id },
-			&expected_session_id,
-		)
-		.await
+		self.exchange("decodex-account-login-status", AccountLoginRequest::Status { session_id })
+			.await
 	}
 
 	/// Cancel one session and wait for daemon-owned terminal cleanup.
 	pub async fn cancel(&self, session_id: EntityId) -> Result<AccountLoginStatus, ClientFailure> {
-		let expected_session_id = session_id.clone();
-		self.exchange(
-			"decodex-account-login-cancel",
-			AccountLoginRequest::Cancel { session_id },
-			&expected_session_id,
-		)
-		.await
+		self.exchange("decodex-account-login-cancel", AccountLoginRequest::Cancel { session_id })
+			.await
 	}
 
 	async fn exchange(
 		&self,
 		request_identity: &'static str,
 		request: AccountLoginRequest,
-		expected_session_id: &EntityId,
 	) -> Result<AccountLoginStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
 		if request.validate().is_err() {
@@ -2657,18 +2643,15 @@ impl AccountLoginClient {
 				.await
 				.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
-		let status = completed.value.status;
-		if status.session_id != *expected_session_id || status.validate().is_err() {
-			return Err(ClientFailure::ProtocolMalformed);
-		}
-		Ok(status)
+		Ok(completed.value)
 	}
 
 	async fn exchange_inner(
 		&self,
 		request_identity: &'static str,
 		request: AccountLoginRequest,
-	) -> Result<CompletedOneShot<AccountLoginResponseEnvelope>, ClientFailure> {
+	) -> Result<CompletedOneShot<AccountLoginStatus>, ClientFailure> {
+		let expected_session_id = request.session_id().clone();
 		let mut socket = self.transport.connect().await?;
 		let request_id = QueryId::new(request_identity)
 			.expect("fixed account-login request identity is bounded and nonempty");
@@ -2688,10 +2671,13 @@ impl AccountLoginClient {
 				ServerMessage::AccountLogin(response) => {
 					self.transport
 						.verify_version_and_server(response.version, &response.server_id)?;
-					if response.request_id != request_id || response.status.validate().is_err() {
+					if response.request_id != request_id
+						|| response.status.session_id != expected_session_id
+						|| response.status.validate().is_err()
+					{
 						return Err(ClientFailure::ProtocolMalformed);
 					}
-					return Ok(CompletedOneShot::new(response, socket));
+					return Ok(CompletedOneShot::new(response.status, socket));
 				},
 				ServerMessage::Event(event) =>
 					self.transport.verify_version_and_server(event.version, &event.server_id)?,
@@ -3417,6 +3403,7 @@ fn version_failure(_version: ProtocolVersion) -> ClientFailure {
 
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests {
+	mod account_login;
 	mod native_goal;
 	mod plugin_selection;
 	mod prompt_edit;
