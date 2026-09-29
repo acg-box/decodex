@@ -111,7 +111,6 @@ enum AccountPanelLayout {
 	static let panelWidth: CGFloat = 276
 	static let minimumAccountListHeight: CGFloat = 110
 	static let estimatedAccountRowHeight: CGFloat = 84
-	static let statusMaximumHeight: CGFloat = 92
 	// Combined header/activity card and panel spacing.
 	static let fixedChromeHeight: CGFloat = 90
 
@@ -128,24 +127,18 @@ enum AccountPanelLayout {
 	static func accountListHeight(
 		accountCount: Int,
 		measuredContentHeight: CGFloat,
-		windowVisibleFrame: CGRect?,
-		additionalChromeHeight: CGFloat = 0
+		windowVisibleFrame: CGRect?
 	) -> CGFloat {
 		let visibleHeight = resolvedScreenVisibleHeight(
 			windowVisibleFrame: windowVisibleFrame,
 			fallback: activeScreenVisibleHeight()
 		)
-		let boundedAdditionalChromeHeight =
-			additionalChromeHeight.isFinite
-			? max(0, additionalChromeHeight)
-			: 0
 		let screenBound = max(
 			minimumAccountListHeight,
 			visibleHeight
 				- screenVerticalMargin
 				- panelVerticalPadding
 				- fixedChromeHeight
-				- boundedAdditionalChromeHeight
 		)
 		let contentEstimate = estimatedAccountListContentHeight(
 			accountCount: accountCount

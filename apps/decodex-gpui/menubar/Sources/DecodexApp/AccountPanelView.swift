@@ -556,21 +556,11 @@ struct AccountPanelView: View {
 		return PanelMotion.accountReorder
 	}
 
-	private var accountListContentHeight: CGFloat {
-		AccountPanelLayout.resolvedAccountListContentHeight(
-			measured: measuredAccountListContentHeight,
-			estimated: AccountPanelLayout.estimatedAccountListContentHeight(
-				accountCount: store.accounts.count
-			)
-		)
-	}
-
 	private var accountListViewportHeight: CGFloat {
 		AccountPanelLayout.accountListHeight(
 			accountCount: store.accounts.count,
 			measuredContentHeight: measuredAccountListContentHeight,
-			windowVisibleFrame: layoutVisibleFrameOverride ?? panelScreenVisibleFrame,
-				additionalChromeHeight: 0
+			windowVisibleFrame: layoutVisibleFrameOverride ?? panelScreenVisibleFrame
 		)
 	}
 

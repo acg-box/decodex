@@ -285,22 +285,5 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		)
 	}
 
-	func testBoundedStatusViewportReducesAccountViewportWithinScreen() {
-		let height = AccountPanelLayout.accountListHeight(
-			accountCount: 6,
-			measuredContentHeight: 900,
-			windowVisibleFrame: NSRect(x: 0, y: 0, width: 800, height: 675),
-			additionalChromeHeight: AccountPanelLayout.statusMaximumHeight
-		)
-
-		XCTAssertEqual(
-			height,
-			675
-				- AccountPanelLayout.screenVerticalMargin
-				- AccountPanelLayout.panelVerticalPadding
-				- AccountPanelLayout.fixedChromeHeight
-				- AccountPanelLayout.statusMaximumHeight
-		)
-	}
 
 }
