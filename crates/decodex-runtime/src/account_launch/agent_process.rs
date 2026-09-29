@@ -346,6 +346,8 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "thread/unsubscribe"
 					| "thread/read"
 					| "thread/list"
+					| "thread/search"
+					| "thread/searchOccurrences"
 					| "thread/goal/get"
 					| "thread/turns/list"
 					| "thread/items/list"
