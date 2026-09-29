@@ -76,6 +76,7 @@ impl DesktopOrdinaryDraft {
 					}
 				},
 				CommandPayload::SubmitConversationTurn { .. }
+				| CommandPayload::ReviewConversationModelSettings { .. }
 				| CommandPayload::ArchiveConversation { .. }
 				| CommandPayload::CreateConversationRoutingSuccessor { .. }
 				| CommandPayload::InterruptConversation { .. }
@@ -200,6 +201,37 @@ mod tests {
 		);
 		let old = DesktopDraftDocument::decode(br#"{"version":4,"profiles":{}}"#).unwrap();
 		assert_eq!(old.version, 10);
+	}
+
+	#[test]
+	fn model_review_command_retains_original_source_and_choices_after_reopen() {
+		let mut original = document("Later editor text", "review-once");
+		let ordinary = original
+			.profiles
+			.get_mut(&"a".repeat(64))
+			.unwrap()
+			.ordinary
+			.get_mut("/tmp/work")
+			.unwrap();
+		let command = &mut ordinary.unconfirmed[0];
+		command.expected_revision = Some(crate::EntityRevision(3));
+		command.payload = CommandPayload::ReviewConversationModelSettings {
+			conversation_id: EntityId::new("30000000-0000-4000-8000-000000000001").unwrap(),
+			execution: ordinary.composer.execution.clone(),
+			source: crate::InitialModelSource {
+				account_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+				account_revision: 7,
+			},
+		};
+		let directory = tempfile::tempdir().unwrap();
+		let path = directory.path().canonicalize().unwrap().join("drafts");
+		let store = ClientDraftStore::open_at(&path).unwrap();
+		store.save(0, &original.encode().unwrap()).unwrap();
+		drop(store);
+		let reopened = ClientDraftStore::open_at(&path).unwrap();
+		let restored = DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
+		assert!(restored == original);
+		assert!(restored.profiles[&"a".repeat(64)].has_unconfirmed_delivery());
 	}
 
 	#[test]
