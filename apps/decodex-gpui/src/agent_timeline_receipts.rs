@@ -155,6 +155,14 @@ impl AgentSurface {
 		if diagnostics {
 			return panel.into_any_element();
 		}
+		panel.children(self.native_live_receipts(live)).into_any_element()
+	}
+
+	fn native_live_receipts(
+		&self,
+		live: &[decodex_protocol::AgentLiveMessageDto],
+	) -> Vec<gpui::AnyElement> {
+		let mut rows = Vec::new();
 		for message in live {
 			if self.native_history.entries.iter().any(|entry| match &entry.content {
 				Content::Item { turn_id, item_id, .. } =>
@@ -165,7 +173,7 @@ impl AgentSurface {
 			}) {
 				continue;
 			}
-			panel = panel.child(
+			rows.push(
 				div()
 					.debug_selector({
 						let selector = match message.kind {
@@ -193,10 +201,11 @@ impl AgentSurface {
 						message
 							.truncated
 							.then(|| muted("Partial output shortened; waiting for saved result.")),
-					),
+					)
+					.into_any_element(),
 			);
 		}
-		panel.into_any_element()
+		rows
 	}
 }
 
