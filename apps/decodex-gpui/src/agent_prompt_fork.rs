@@ -26,88 +26,7 @@ impl AgentSurface {
 						.enable_all()
 						.build()
 						.map_err(|_| "Could not start branch recovery")?;
-					runtime.block_on(async {
-						let client = AgentClient::new(profile);
-						let _ = client
-							.execute(
-								AgentActionDto::RecoverPromptFork {
-									work_id: original.work_id.clone(),
-									review_token: original.review_token.clone(),
-								},
-								IdempotencyKey::new(unique_command())
-									.map_err(|_| "Invalid recovery identity")?,
-							)
-							.await;
-						let result = client
-							.prompt_fork(original.work_id.clone(), original.review_token.clone())
-							.await
-							.map_err(|_| "Branch receipt is unavailable")?;
-						let PromptForkResult::Available(Some(status)) = result else {
-							return Err(
-								"Branch receipt is unavailable. Keep this draft and read the receipt again.",
-							);
-						};
-						let intent = original.fork.as_ref().ok_or("Branch intent is missing")?;
-						if status.thread_id != original.thread_id
-							|| status.target_work_id != intent.target_work_id
-							|| status.boundary != intent.boundary
-						{
-							return Err("Branch receipt does not match this draft");
-						}
-						match status.phase {
-							PromptForkPhase::Uncertain =>
-								return Err(
-									"Branch acceptance is uncertain. Keep the saved draft; do not create the branch again.",
-								),
-							PromptForkPhase::Acknowledged =>
-								return Err(
-									"Branch identity is saved. Read the receipt again to finish history recovery.",
-								),
-							PromptForkPhase::Rejected => {
-								let mut retained = original;
-								retained.fork = None;
-								retained.confirmation_key = None;
-								retained.handback_pending = false;
-								return Ok((retained, None));
-							},
-							PromptForkPhase::Forked => {},
-						}
-						let target_thread =
-							status.target_thread_id.ok_or("Branch identity is missing")?;
-						let mut retained = original;
-						retained.fork = None;
-						retained.confirmation_key = None;
-						retained.handback_pending = false;
-						if status.boundary == PromptForkBoundary::BeforeInput {
-							let (edit, content) = client
-								.prompt_edit(status.target_work_id.clone(), target_thread.clone())
-								.await
-								.map_err(|_| "Branch input receipt is unavailable")?;
-							let input =
-								PromptDraft::new(content.ok_or("Branch input is unavailable")?)?;
-							retained.work_id = status.target_work_id.clone();
-							retained.thread_id = target_thread.clone();
-							retained = retained.recover_receipt(&edit, &input)?;
-							if retained.receipt_id != status.edit_receipt_id {
-								return Err("Branch draft receipt changed");
-							}
-						}
-						let snapshot =
-							client.query().await.map_err(|_| "Branch task list is unavailable")?;
-						let AgentSnapshotResult::Available(ref available) = snapshot else {
-							return Err("Branch task list is unavailable");
-						};
-						if !available.work_items.iter().any(|w| {
-							w.id == status.target_work_id.as_str()
-								&& w.codex_thread_id.as_deref() == Some(target_thread.as_str())
-						}) {
-							return Err("Branch task is not ready");
-						}
-						Ok((
-							retained,
-							Some((status.target_work_id, target_thread, status.boundary, snapshot)),
-						))
-					})
+					runtime.block_on(recover_branch(AgentClient::new(profile), original))
 				})();
 				let _ = send.send(result);
 			});
@@ -145,4 +64,82 @@ impl AgentSurface {
 		}));
 		cx.notify();
 	}
+}
+
+type BranchRecovery = Result<
+	(DesktopPromptEditDraft, Option<(EntityId, WireText, PromptForkBoundary, AgentSnapshotResult)>),
+	&'static str,
+>;
+
+async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -> BranchRecovery {
+	let _ = client
+		.execute(
+			AgentActionDto::RecoverPromptFork {
+				work_id: original.work_id.clone(),
+				review_token: original.review_token.clone(),
+			},
+			IdempotencyKey::new(unique_command()).map_err(|_| "Invalid recovery identity")?,
+		)
+		.await;
+	let result = client
+		.prompt_fork(original.work_id.clone(), original.review_token.clone())
+		.await
+		.map_err(|_| "Branch receipt is unavailable")?;
+	let PromptForkResult::Available(Some(status)) = result else {
+		return Err("Branch receipt is unavailable. Keep this draft and read the receipt again.");
+	};
+	let intent = original.fork.as_ref().ok_or("Branch intent is missing")?;
+	if status.thread_id != original.thread_id
+		|| status.target_work_id != intent.target_work_id
+		|| status.boundary != intent.boundary
+	{
+		return Err("Branch receipt does not match this draft");
+	}
+	match status.phase {
+		PromptForkPhase::Uncertain =>
+			return Err(
+				"Branch acceptance is uncertain. Keep the saved draft; do not create the branch again.",
+			),
+		PromptForkPhase::Acknowledged =>
+			return Err(
+				"Branch identity is saved. Read the receipt again to finish history recovery.",
+			),
+		PromptForkPhase::Rejected => {
+			let mut retained = original;
+			retained.fork = None;
+			retained.confirmation_key = None;
+			retained.handback_pending = false;
+			return Ok((retained, None));
+		},
+		PromptForkPhase::Forked => {},
+	}
+	let target_thread = status.target_thread_id.ok_or("Branch identity is missing")?;
+	let mut retained = original;
+	retained.fork = None;
+	retained.confirmation_key = None;
+	retained.handback_pending = false;
+	if status.boundary == PromptForkBoundary::BeforeInput {
+		let (edit, content) = client
+			.prompt_edit(status.target_work_id.clone(), target_thread.clone())
+			.await
+			.map_err(|_| "Branch input receipt is unavailable")?;
+		let input = PromptDraft::new(content.ok_or("Branch input is unavailable")?)?;
+		retained.work_id = status.target_work_id.clone();
+		retained.thread_id = target_thread.clone();
+		retained = retained.recover_receipt(&edit, &input)?;
+		if retained.receipt_id != status.edit_receipt_id {
+			return Err("Branch draft receipt changed");
+		}
+	}
+	let snapshot = client.query().await.map_err(|_| "Branch task list is unavailable")?;
+	let AgentSnapshotResult::Available(ref available) = snapshot else {
+		return Err("Branch task list is unavailable");
+	};
+	if !available.work_items.iter().any(|w| {
+		w.id == status.target_work_id.as_str()
+			&& w.codex_thread_id.as_deref() == Some(target_thread.as_str())
+	}) {
+		return Err("Branch task is not ready");
+	}
+	Ok((retained, Some((status.target_work_id, target_thread, status.boundary, snapshot))))
 }
