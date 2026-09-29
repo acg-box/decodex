@@ -1,4 +1,4 @@
-//! Duration and confidence types used by routing observations.
+//! Duration types used by routing observations.
 
 /// The only quota-window identities accepted by the vNext policy.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -27,17 +27,6 @@ impl QuotaWindowClass {
 			Self::SevenDay => 10_080,
 		}
 	}
-}
-
-/// Confidence attached to one otherwise well-formed observation.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum ObservationConfidence {
-	/// The source did not establish a confidence level.
-	Unknown,
-	/// The evidence is explicitly below the policy threshold.
-	Low,
-	/// The evidence meets the policy threshold.
-	High,
 }
 
 /// A duration that is not one of the two closed quota-window classes.
