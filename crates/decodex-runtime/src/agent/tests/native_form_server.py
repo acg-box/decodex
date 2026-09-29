@@ -46,8 +46,9 @@ for line in sys.stdin:
         method = "openai/form"
         if len(sys.argv) > 4:
             method = "elicitation/create"
-            params["_meta"].update({"codex_request_type": "approval_request",
-                                  "codex_approval_kind": "mcp_tool_call", "tool_name": "form_fixture"})
+            if sys.argv[4] != "input":
+                params["_meta"].update({"codex_request_type": "approval_request",
+                                      "codex_approval_kind": "mcp_tool_call", "tool_name": "form_fixture"})
             if sys.argv[4] == "url":
                 params.pop("requestedSchema")
                 params.update({"mode": "url", "url": "https://example.test/approval",

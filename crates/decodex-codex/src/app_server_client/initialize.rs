@@ -23,7 +23,10 @@ impl Default for InitializeCapabilities {
 impl InitializeCapabilities {
 	/// Declare the native form route consumed by the retained Agent.
 	pub fn for_agent() -> Self {
-		Self { extensions: Some(json!({"openai/form":{}})), ..Self::default() }
+		Self {
+			extensions: Some(json!({"openai/form":{},"openai/standard-form-input":{}})),
+			..Self::default()
+		}
 	}
 }
 
@@ -41,7 +44,7 @@ mod tests {
 		let mut agent = serde_json::to_value(InitializeCapabilities::for_agent()).unwrap();
 		assert_eq!(
 			agent.as_object_mut().unwrap().remove("extensions"),
-			Some(json!({"openai/form":{}}))
+			Some(json!({"openai/form":{},"openai/standard-form-input":{}}))
 		);
 		assert_eq!(agent, ordinary);
 	}
