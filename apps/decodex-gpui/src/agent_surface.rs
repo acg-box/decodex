@@ -40,6 +40,7 @@
 #[path = "agent_send_preview.rs"] mod send_preview;
 #[path = "agent_steer_receipts.rs"] mod steer_receipts;
 #[path = "agent_text_reveal.rs"] mod text_reveal;
+#[path = "agent_transcript.rs"] mod transcript;
 #[path = "agent_usage_estimates.rs"] mod usage_estimates;
 #[path = "agent_voice.rs"] mod voice;
 #[path = "agent_voice_settings.rs"] mod voice_settings;
@@ -237,6 +238,8 @@ pub(crate) struct AgentSurface {
 		std::collections::BTreeMap<(String, String), async_questions::ChoiceDraft>,
 	async_question_inputs: std::collections::BTreeMap<(String, String), Entity<ComposerInput>>,
 	details_visible: bool,
+	transcript_busy: bool,
+	transcript_failed: bool,
 	accounts: Vec<(String, String)>,
 	setup_expanded: bool,
 }
@@ -430,6 +433,8 @@ impl AgentSurface {
 			transcript_scroll: Default::default(),
 			history_follow_paused: Default::default(),
 			details_visible: false,
+			transcript_busy: false,
+			transcript_failed: false,
 			accounts: vec![],
 			setup_expanded: false,
 			composer,
@@ -2271,6 +2276,7 @@ impl AgentSurface {
 					.child(self.voice_settings_panel(work, cx))
 					.child(self.usage_estimate_panel(work, cx))
 					.child(self.native_goal_panel(cx))
+					.child(self.transcript_panel(cx))
 					.children(
 						self.snapshot
 							.as_ref()

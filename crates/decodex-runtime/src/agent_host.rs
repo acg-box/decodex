@@ -89,6 +89,7 @@ pub(crate) struct AgentHost {
 	recovery_cursor: Arc<Mutex<Option<String>>>,
 	prompt_edits: prompt_edit::Reviews,
 	recaps: crate::agent_recap::Recaps,
+	transcripts: crate::agent_transcript::Transcripts,
 	weather_cache: Arc<Mutex<Option<weather::CachedWeather>>>,
 	voice: crate::agent_voice::VoiceGateway,
 	dictation: crate::dictation::DictationGateway,
@@ -119,6 +120,7 @@ impl AgentHost {
 			recovery_cursor: Default::default(),
 			voice: crate::agent_voice::VoiceGateway::new(),
 			recaps: Default::default(),
+			transcripts: Default::default(),
 			prompt_edits: Default::default(),
 			weather_cache: Arc::new(Mutex::new(None)),
 			dictation: Default::default(),
@@ -666,6 +668,38 @@ impl AgentHost {
 			return Err(AgentHostError::Unknown("Read the saved app call acknowledgment."));
 		}
 		Ok(work.into())
+	}
+
+	pub(crate) async fn transcript(
+		&self,
+		request: &decodex_protocol::AgentTranscriptRequest,
+	) -> decodex_protocol::AgentTranscriptResult {
+		self.transcripts
+			.read(
+				|| async {
+					let work = request.work_id.as_str();
+					let thread = request.thread_id.as_str();
+					let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
+					let mut source =
+						self.timeline_source(work, owner.codex_thread_id.as_deref()?).await?;
+					if source.key.thread != thread {
+						let child_owner = crate::agent::native_subagents::request_owner(
+							&self.store,
+							&source.client,
+							thread,
+						)
+						.await
+						.ok()?;
+						if child_owner.id != work {
+							return None;
+						}
+						source.key.thread = thread.into();
+					}
+					Some(source)
+				},
+				request,
+			)
+			.await
 	}
 
 	pub(crate) async fn media(

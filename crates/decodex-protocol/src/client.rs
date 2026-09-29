@@ -1337,6 +1337,63 @@ impl AgentClient {
 		Ok(result)
 	}
 
+	/// Download one complete Markdown transcript without changing the conversation.
+	pub async fn transcript(
+		&self,
+		work_id: EntityId,
+		thread_id: EntityId,
+	) -> Result<String, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(70),
+		};
+		let mut request =
+			crate::AgentTranscriptRequest { work_id, thread_id, offset: 0, token: None };
+		let mut output = Vec::new();
+		let mut expected = None;
+		loop {
+			let completed = time::timeout(
+				transport.timeout,
+				transport.query_inner(
+					"agent-transcript",
+					QueryPayload::GetAgentTranscript { request: request.clone() },
+				),
+			)
+			.await
+			.map_err(|_| ClientFailure::ProtocolTimeout)??;
+			close_one_shot_socket(completed.socket).await;
+			let QueryResultPayload::AgentTranscript(crate::AgentTranscriptResult::Available {
+				request: actual,
+				account_id,
+				token,
+				total_bytes,
+				bytes,
+			}) = completed.value
+			else {
+				return Err(ClientFailure::ProtocolMalformed);
+			};
+			if actual != request
+				|| bytes.is_empty()
+				|| bytes.len() > crate::TRANSCRIPT_CHUNK_BYTES
+				|| total_bytes as usize > crate::MAX_TRANSCRIPT_BYTES
+				|| output.len() + bytes.len() > total_bytes as usize
+				|| expected
+					.as_ref()
+					.is_some_and(|value| value != &(account_id.clone(), token.clone(), total_bytes))
+			{
+				return Err(ClientFailure::ProtocolMalformed);
+			}
+			expected = Some((account_id, token.clone(), total_bytes));
+			output.extend_from_slice(&bytes);
+			if output.len() == total_bytes as usize {
+				return String::from_utf8(output).map_err(|_| ClientFailure::ProtocolMalformed);
+			}
+			request.offset = output.len() as u32;
+			request.token = Some(token);
+		}
+	}
+
 	/// Read a bounded native attachment chunk without executing the thread.
 	pub async fn media(
 		&self,

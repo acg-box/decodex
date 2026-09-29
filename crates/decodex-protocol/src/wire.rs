@@ -2391,6 +2391,11 @@ pub enum QueryPayload {
 		request: crate::AgentAppUiRequest,
 	},
 	/// Read a bounded chunk of an exact native attachment.
+	GetAgentTranscript {
+		/// Exact conversation and export continuation.
+		request: crate::AgentTranscriptRequest,
+	},
+	/// Read a native attachment.
 	GetAgentMedia {
 		/// Source identity and continuation.
 		request: crate::AgentMediaRequest,
@@ -3190,6 +3195,8 @@ pub enum QueryResultPayload {
 	AgentTimeline(crate::AgentTimelineResult),
 	/// Exact native attachment content.
 	AgentMedia(crate::AgentMediaResult),
+	/// Markdown export document chunk.
+	AgentTranscript(crate::AgentTranscriptResult),
 	/// Source-bound MCP App UI resource document.
 	AgentAppUi(crate::AgentAppUiResult),
 	/// Current source equality; this grants no tool execution authority.
