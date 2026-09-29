@@ -264,7 +264,7 @@ pub(super) fn spawn_suspended(
 
 /// Spawn the accepted private-stdio profile from the canonical executable and keep it suspended.
 ///
-/// This is a closed environment profile. It cannot project caller-selected names or values.
+/// Only the fixed startup environment and the selected PAT can enter this profile.
 pub(super) fn spawn_private_stdio_suspended(
 	identity: &AttestedCodeIdentity,
 	args: &[OsString],
