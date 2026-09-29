@@ -334,8 +334,9 @@ pub(super) fn panel(shell: &Shell, cx: &mut Context<Shell>) -> Option<AnyElement
 				let can_use = !state.blocked
 					&& !busy
 					&& *details_complete
-					&& descriptor.expires_at_unix_seconds()
-						> time::OffsetDateTime::now_utc().unix_timestamp();
+					&& descriptor.expires_at_unix_seconds().is_none_or(|expiry| {
+						expiry > time::OffsetDateTime::now_utc().unix_timestamp()
+					});
 				content = content.child(
 					div()
 						.flex()
@@ -344,7 +345,10 @@ pub(super) fn panel(shell: &Shell, cx: &mut Context<Shell>) -> Option<AnyElement
 						.child(format!(
 							"Granted {} · expires {}",
 							date(descriptor.granted_at_unix_seconds()),
-							date(descriptor.expires_at_unix_seconds())
+							descriptor
+								.expires_at_unix_seconds()
+								.map(date)
+								.unwrap_or_else(|| "Never".into())
 						))
 						.child(
 							account_row_action(
@@ -382,7 +386,10 @@ pub(super) fn panel(shell: &Shell, cx: &mut Context<Shell>) -> Option<AnyElement
 				.gap_2()
 				.child(format!(
 					"Use one Reset Card for {alias}, expiring {}? This cannot be undone.",
-					date(descriptor.expires_at_unix_seconds())
+					descriptor
+						.expires_at_unix_seconds()
+						.map(date)
+						.unwrap_or_else(|| "Never".into())
 				))
 				.child(
 					div()

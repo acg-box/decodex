@@ -40,9 +40,9 @@ pub enum ResetCardCommand {
 		/// Public reset-card grant timestamp in Unix seconds.
 		#[arg(long, value_name = "SECONDS")]
 		granted_at: i64,
-		/// Public reset-card expiry timestamp in Unix seconds.
+		/// Public reset-card expiry timestamp in Unix seconds; omit for a non-expiring card.
 		#[arg(long, value_name = "SECONDS")]
-		expires_at: i64,
+		expires_at: Option<i64>,
 		/// Required optimistic account revision.
 		#[arg(long, value_name = "N")]
 		expected_revision: u64,
@@ -430,7 +430,10 @@ fn render_inventory(
 						output,
 						"\ngranted_at={} expires_at={}",
 						card.descriptor.granted_at_unix_seconds(),
-						card.descriptor.expires_at_unix_seconds(),
+						card.descriptor
+							.expires_at_unix_seconds()
+							.map(|value| value.to_string())
+							.unwrap_or_else(|| "none".into()),
 					);
 				}
 
@@ -1041,7 +1044,7 @@ cache = {{}}
 				super::ResetCardCommand::Use {
 					account: "40000000-0000-4000-8000-000000000001".into(),
 					granted_at: 1,
-					expires_at: 2,
+					expires_at: Some(2),
 					expected_revision: 1,
 					idempotency_key: "operator-key".into(),
 					yes: false,
@@ -1052,7 +1055,7 @@ cache = {{}}
 				super::ResetCardCommand::Use {
 					account: "not-an-account".into(),
 					granted_at: 1,
-					expires_at: 2,
+					expires_at: Some(2),
 					expected_revision: 1,
 					idempotency_key: "operator-key".into(),
 					yes: true,
@@ -1063,7 +1066,7 @@ cache = {{}}
 				super::ResetCardCommand::Use {
 					account: "40000000-0000-4000-8000-000000000001".into(),
 					granted_at: 2,
-					expires_at: 1,
+					expires_at: Some(1),
 					expected_revision: 1,
 					idempotency_key: "operator-key".into(),
 					yes: true,
@@ -1074,7 +1077,7 @@ cache = {{}}
 				super::ResetCardCommand::Use {
 					account: "40000000-0000-4000-8000-000000000001".into(),
 					granted_at: 1,
-					expires_at: 2,
+					expires_at: Some(2),
 					expected_revision: 1,
 					idempotency_key: "operator-key".into(),
 					yes: true,
@@ -1136,7 +1139,7 @@ cache = {{}}
 			super::ResetCardCommand::Use {
 				account: "not-an-account".into(),
 				granted_at: 2,
-				expires_at: 1,
+				expires_at: Some(1),
 				expected_revision: 1,
 				idempotency_key: "\n".into(),
 				yes: false,
@@ -1164,7 +1167,7 @@ cache = {{}}
 			super::ResetCardCommand::Use {
 				account: "40000000-0000-4000-8000-000000000001".into(),
 				granted_at: 1,
-				expires_at: 2,
+				expires_at: Some(2),
 				expected_revision: 1,
 				idempotency_key: "operator-key".into(),
 				yes: true,

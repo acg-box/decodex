@@ -444,18 +444,18 @@ pub fn decode_account_api_reset_credits(
 							continue;
 						},
 					};
-					let expires_at = match parse_provider_timestamp(Some(expires_at)) {
-						Some(value) => value,
-						None => {
+					let expires_at = if expires_at.is_null() {
+						None
+					} else {
+						let Some(expiry) = parse_provider_timestamp(Some(expires_at))
+							.and_then(|value| ResetCardTimestamp::from_unix_seconds(value).ok())
+						else {
 							details_complete = false;
 							continue;
-						},
+						};
+						Some(expiry)
 					};
 					let Ok(granted_at) = ResetCardTimestamp::from_unix_seconds(granted_at) else {
-						details_complete = false;
-						continue;
-					};
-					let Ok(expires_at) = ResetCardTimestamp::from_unix_seconds(expires_at) else {
 						details_complete = false;
 						continue;
 					};
@@ -1195,6 +1195,21 @@ mod tests {
 		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
 		assert_eq!(usage.quota_windows[0].result, Ok(None));
 		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().duration_minutes, 10_080);
+	}
+
+	#[test]
+	fn nonexpiring_reset_credits_are_complete_but_missing_expiry_is_not() {
+		let mut body = serde_json::json!({"available_count":1,"credits":[{"id":"credit","reset_type":"codexRateLimits","status":"available","granted_at":100,"expires_at":null}]});
+		let credits =
+			decode_account_api_reset_credits(&serde_json::to_vec(&body).unwrap()).unwrap();
+		assert!(credits.details_complete);
+		assert!(credits.credits[0].descriptor().expires_at().is_none());
+		body["credits"][0].as_object_mut().unwrap().remove("expires_at");
+		assert!(
+			!decode_account_api_reset_credits(&serde_json::to_vec(&body).unwrap())
+				.unwrap()
+				.details_complete
+		);
 	}
 
 	#[test]

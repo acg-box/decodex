@@ -8,7 +8,7 @@ use super::{
 };
 use crate::account_api::{AccountApiInventory, AccountApiRuntime};
 use decodex_codex::{ExactResetCreditId, ResetCardIdempotencyKey};
-use decodex_core::{AccountId, ResetCardConsumeOutcome, ResetCardDescriptor};
+use decodex_core::{AccountId, ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp};
 use decodex_database::{ResetCardOperation, SqliteStore, StoreError};
 use provider::ResetCardProvider;
 use std::{
@@ -92,7 +92,7 @@ impl ApiResetCardRuntime {
 			if old.account_id != account_id.as_str()
 				|| old.account_revision != revision
 				|| old.granted_at != descriptor.granted_at().unix_seconds()
-				|| old.expires_at != descriptor.expires_at().unix_seconds()
+				|| old.expires_at != descriptor.expires_at().map(ResetCardTimestamp::unix_seconds)
 			{
 				return Err(ResetCardServiceError::IdempotencyConflict);
 			}
@@ -115,7 +115,7 @@ impl ApiResetCardRuntime {
 				account_id: account_id.as_str().to_owned(),
 				account_revision: revision,
 				granted_at: descriptor.granted_at().unix_seconds(),
-				expires_at: descriptor.expires_at().unix_seconds(),
+				expires_at: descriptor.expires_at().map(ResetCardTimestamp::unix_seconds),
 				exact_credit_id: Some(credit.as_str().to_owned()),
 				state: "prepared".into(),
 				outcome: None,
@@ -238,7 +238,10 @@ impl ApiResetCardRuntime {
 		use decodex_core::ResetCardTimestamp;
 		let descriptor = ResetCardTimestamp::from_unix_seconds(operation.granted_at)
 			.and_then(|grant| {
-				ResetCardTimestamp::from_unix_seconds(operation.expires_at)
+				operation
+					.expires_at
+					.map(ResetCardTimestamp::from_unix_seconds)
+					.transpose()
 					.and_then(|expiry| ResetCardDescriptor::new(grant, expiry))
 			})
 			.map_err(|_| ResetCardServiceError::InventoryChanged)?;
@@ -266,7 +269,10 @@ fn select_credit(
 		.duration_since(UNIX_EPOCH)
 		.map_err(|_| ResetCardServiceError::InvalidRequest)?
 		.as_secs();
-	if now >= u64::try_from(descriptor.expires_at().unix_seconds()).unwrap_or(0) {
+	if descriptor
+		.expires_at()
+		.is_some_and(|expiry| now >= u64::try_from(expiry.unix_seconds()).unwrap_or(0))
+	{
 		return Err(ResetCardServiceError::InventoryChanged);
 	}
 	let mut matches = inventory.credits.iter().filter(|card| card.descriptor() == descriptor);
