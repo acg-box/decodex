@@ -532,6 +532,13 @@ impl ServiceApplication {
 		})
 	}
 
+	async fn query_search_settings(&self, work: &str) -> QueryResultPayload {
+		QueryResultPayload::AgentSearchSettings(match &self.agent {
+			Some(agent) => agent.search_settings(work).await,
+			None => decodex_protocol::AgentSearchSettingsResult::Unavailable,
+		})
+	}
+
 	async fn query_usage_estimate(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentUsageEstimate(match &self.agent {
 			Some(agent) => agent.usage_estimate(work).await,
@@ -2345,6 +2352,8 @@ impl Application for ServiceApplication {
 			QueryPayload::GetAgentRecap { work_id } => self.query_recap(work_id.clone()).await,
 			QueryPayload::GetAgentVoiceSettings { work_id } =>
 				self.query_voice_settings(work_id.as_str()).await,
+			QueryPayload::GetAgentSearchSettings { work_id } =>
+				self.query_search_settings(work_id.as_str()).await,
 			QueryPayload::GetAgentUsageEstimate { work_id } =>
 				self.query_usage_estimate(work_id.as_str()).await,
 			QueryPayload::GetAgentInputReceipts { work_id, after } =>

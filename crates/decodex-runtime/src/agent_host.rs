@@ -1144,6 +1144,35 @@ impl AgentHost {
 		Ok(work.into())
 	}
 
+	pub(crate) async fn search_settings(
+		&self,
+		work: &str,
+	) -> decodex_protocol::AgentSearchSettingsResult {
+		crate::agent_search_settings::read(|| async {
+			let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
+			self.timeline_source(work, owner.codex_thread_id.as_deref()?).await
+		})
+		.await
+	}
+
+	async fn set_search_preference(
+		&self,
+		work: &str,
+		review: &str,
+		mode: &str,
+	) -> Result<String, AgentHostError> {
+		crate::agent_search_settings::write(
+			|| async {
+				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
+				self.timeline_source(work, owner.codex_thread_id.as_deref()?).await
+			},
+			review,
+			mode,
+		)
+		.await?;
+		Ok(work.into())
+	}
+
 	async fn handle_settings(
 		&self,
 		key: &str,
@@ -1172,6 +1201,9 @@ impl AgentHost {
 			},
 			AgentActionDto::SetVoicePreference { work_id, review_token, voice } =>
 				self.set_voice_preference(work_id.as_str(), review_token.as_str(), voice.as_str())
+					.await,
+			AgentActionDto::SetSearchPreference { work_id, review_token, mode } =>
+				self.set_search_preference(work_id.as_str(), review_token.as_str(), mode.as_str())
 					.await,
 			AgentActionDto::AcknowledgeAppUiCall { work_id, operation_id, reservation_id } =>
 				self.acknowledge_app_ui_call(
@@ -1264,6 +1296,7 @@ impl AgentHost {
 				self.handle_recap(&key, action).await,
 			action @ (Action::EditNativeGoal { .. }
 			| Action::SetVoicePreference { .. }
+			| Action::SetSearchPreference { .. }
 			| Action::SetAppToolExposure { .. }
 			| Action::ConfirmAppUiTool { .. }
 			| Action::AcknowledgeAppUiCall { .. }

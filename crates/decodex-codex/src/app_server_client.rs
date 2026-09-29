@@ -73,6 +73,8 @@ mod app_link_settings;
 mod hooks;
 mod model_defaults;
 mod realtime_preferences;
+mod search_preferences;
+pub use search_preferences::{NativeSearchSettings, is_search_mode_write};
 mod realtime_settings;
 mod temporary_structured;
 pub use app_link_settings::AppLinkSettings;

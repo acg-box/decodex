@@ -36,6 +36,7 @@
 #[path = "agent_requests.rs"] mod requests;
 #[path = "agent_resources.rs"] mod resources;
 #[path = "agent_response_metrics.rs"] mod response_metrics;
+#[path = "agent_search_settings.rs"] mod search_settings;
 #[path = "agent_selectable_text.rs"] mod selectable_text;
 #[path = "agent_send_preview.rs"] mod send_preview;
 #[path = "agent_steer_receipts.rs"] mod steer_receipts;
@@ -91,6 +92,7 @@ pub(crate) struct AgentSurface {
 	retired_voice_captions: Vec<voice::CaptionHistory>,
 	voice_task: Option<Task<()>>,
 	voice_settings: voice_settings::Panel,
+	search_settings: search_settings::Panel,
 	recap: recap::Panel,
 	prompt_edit: prompt_edit::Panel,
 	automatic_recap: recap::Automatic,
@@ -348,6 +350,7 @@ impl AgentSurface {
 			retired_voice_captions: Vec::new(),
 			voice_task: None,
 			voice_settings: Default::default(),
+			search_settings: Default::default(),
 			recap: Default::default(),
 			prompt_edit: Default::default(),
 			automatic_recap: Default::default(),
@@ -1202,6 +1205,7 @@ impl AgentSurface {
 		self.reset_hook_settings();
 		self.reset_app_exposure();
 		self.reset_voice_settings();
+		self.reset_search_settings();
 		self.reset_recap();
 		self.reset_prompt_edit();
 		self.reset_native_goal();
@@ -1263,6 +1267,7 @@ impl AgentSurface {
 		self.reset_model_settings();
 		self.reset_app_exposure();
 		self.reset_voice_settings();
+		self.reset_search_settings();
 		self.reset_recap();
 		self.reset_prompt_edit();
 		self.question_notices = Default::default();
@@ -1339,6 +1344,7 @@ impl AgentSurface {
 			self.reset_hook_settings();
 			self.reset_app_exposure();
 			self.reset_voice_settings();
+			self.reset_search_settings();
 			self.reset_recap();
 			self.reset_prompt_edit();
 			self.reset_native_goal();
@@ -1356,6 +1362,7 @@ impl AgentSurface {
 				self.invalidate_hook_settings(&snapshot);
 				self.invalidate_app_exposure(&snapshot);
 				self.invalidate_voice_settings(&snapshot);
+				self.invalidate_search_settings(&snapshot);
 				self.invalidate_recap(&snapshot);
 				self.invalidate_prompt_edit(&snapshot);
 				self.invalidate_native_goal(&snapshot);
@@ -2286,6 +2293,7 @@ impl AgentSurface {
 					.child(self.resources_panel(work, cx))
 					.child(self.integrations_panel(work, cx))
 					.child(self.voice_settings_panel(work, cx))
+					.child(self.search_settings_panel(work, cx))
 					.child(self.usage_estimate_panel(work, cx))
 					.child(self.native_goal_panel(cx))
 					.child(self.transcript_panel(cx))

@@ -15,8 +15,10 @@ pub use agent_prompt_send::{PromptInputSend, PromptInputSendIdentity, PromptInpu
 pub use agent_prompt_upload::{PromptInputUpload, PromptInputUploadStatus};
 mod agent_recap;
 pub use agent_prompt_edit::{PromptEditEvidence, PromptEditPhase, PromptEditStatus};
+mod agent_search_settings;
 mod agent_voice_settings;
 pub use agent_recap::{TaskRecap, TaskRecapPhase, TaskRecapStatus};
+pub use agent_search_settings::AgentSearchSettingsResult;
 pub use agent_voice_settings::AgentVoiceSettingsResult;
 mod agent_app_exposure;
 pub use agent_app_exposure::{AgentAppExposureResult, AgentToolExposureSurface};
@@ -240,7 +242,7 @@ use serde::{Deserialize, Serialize};
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 107 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 108 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
