@@ -1657,9 +1657,13 @@ impl AgentClient {
 		request: crate::InitialModelCatalogRequest,
 	) -> Result<crate::InitialModelCatalogResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+		let transport = ResetCardClient {
+			profile: self.transport.profile.clone(),
+			timeout: Duration::from_secs(40),
+		};
 		let completed = time::timeout(
-			Duration::from_secs(40),
-			self.transport.query_inner(
+			transport.timeout,
+			transport.query_inner(
 				"initial-model-catalog",
 				QueryPayload::GetInitialModelCatalog { request },
 			),
@@ -3380,6 +3384,54 @@ mod tests {
 	use decodex_core::{DecodexRoot, LocalTrustPolicy, ServerIdentity};
 
 	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
+
+	#[tokio::test]
+	async fn initial_model_catalog_waits_beyond_the_ordinary_query_deadline() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let request = crate::InitialModelCatalogRequest {
+			working_directory: crate::ConversationWorkingDirectory::new("/tmp").unwrap(),
+			purpose: crate::ModelCatalogPurpose::Conversation,
+			account_id: None,
+		};
+		let expected = request.clone();
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let mut socket =
+				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
+			let _ = socket.next().await;
+			for message in initial(SERVER_ID) {
+				socket.send(message).await.unwrap();
+			}
+			let Message::Text(wire) = socket.next().await.unwrap().unwrap() else {
+				panic!("query");
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&wire).unwrap() else {
+				panic!("query");
+			};
+			assert!(
+				matches!(query.payload, crate::QueryPayload::GetInitialModelCatalog { request } if request == expected)
+			);
+			time::sleep(super::CLIENT_TIMEOUT + Duration::from_millis(100)).await;
+			// A broken client may already have closed at the ordinary query deadline.
+			let _ = socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::InitialModelCatalog(
+						crate::InitialModelCatalogResult::Unavailable,
+					),
+				})))
+				.await;
+			drop(socket);
+			listener.cleanup().unwrap();
+		});
+		let result = crate::AgentClient::new(profile).initial_model_catalog(request).await;
+		server.await.unwrap();
+		assert_eq!(result, Ok(crate::InitialModelCatalogResult::Unavailable));
+	}
 
 	#[tokio::test]
 	async fn agent_output_stream_reuses_connection_and_cancels_without_replay() {
