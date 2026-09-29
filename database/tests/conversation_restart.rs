@@ -404,6 +404,29 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		ProviderAttemptMutationOutcome::Applied(ref mutation)
 			if mutation.revision == 3 && mutation.state == ProviderAttemptState::Succeeded
 	));
+	assert!(matches!(
+		store.record_provider_attempt_positive_evidence(2, &evidence).await.unwrap(),
+		ProviderAttemptMutationOutcome::Replayed(ref mutation)
+			if mutation.revision == 3 && mutation.state == ProviderAttemptState::Succeeded
+	));
+	let mut changed_witness = evidence.clone();
+	changed_witness.witness_digest = "f".repeat(64);
+	let mut changed_outcome = evidence.clone();
+	changed_outcome.outcome = ProviderTerminalOutcome::FailedDefinitive;
+	let mut changed_receipt = evidence.clone();
+	changed_receipt.provider_receipt_id = None;
+	for changed in [changed_witness, changed_outcome, changed_receipt] {
+		assert!(
+			matches!(
+				store.record_provider_attempt_positive_evidence(2, &changed).await.unwrap(),
+				ProviderAttemptMutationOutcome::Rejected {
+					rejection: decodex_database::ProviderAttemptRejection::EvidenceConflict,
+					actual,
+				} if actual.revision == 3 && actual.state == ProviderAttemptState::Succeeded
+			),
+			"changed evidence must not replay a terminal receipt"
+		);
+	}
 	let terminalized = match store
 		.terminalize_conversation_turn(
 			"conversation-terminalization",

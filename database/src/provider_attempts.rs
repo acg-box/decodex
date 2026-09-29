@@ -453,7 +453,9 @@ impl SqliteStore {
 				});
 			};
 			if current.state.is_terminal() {
-				return if current.terminal_evidence_id.as_ref() == Some(&evidence.evidence_id) {
+				return if current.terminal_evidence_id.as_ref() == Some(&evidence.evidence_id)
+					&& positive_evidence_matches(&transaction, &evidence)?
+				{
 					Ok(ProviderAttemptMutationOutcome::Replayed(mutation(&current)))
 				} else {
 					Ok(rejected(ProviderAttemptRejection::EvidenceConflict, &current))
@@ -798,6 +800,36 @@ fn parse_attempt_row(row: AttemptRow) -> Result<ProviderAttempt, StoreError> {
 		created_at_micros: row.21,
 		updated_at_micros: row.22,
 	})
+}
+
+fn positive_evidence_matches(
+	connection: &rusqlite::Connection,
+	evidence: &ProviderPositiveEvidence,
+) -> Result<bool, StoreError> {
+	connection
+		.query_row(
+			"SELECT EXISTS (
+            SELECT 1 FROM provider_attempt_positive_evidence
+            WHERE evidence_id = ?1 AND attempt_id = ?2 AND request_id = ?3
+              AND source = ?4 AND outcome = ?5 AND provider_key = ?6
+              AND provider_receipt_id IS ?7 AND provider_thread_id IS ?8
+              AND provider_turn_id IS ?9 AND witness_sha256 = ?10
+        )",
+			params![
+				evidence.evidence_id.as_str(),
+				evidence.attempt_id.as_str(),
+				evidence.request_id.as_str(),
+				evidence.source.as_sql(),
+				evidence.outcome.as_sql(),
+				evidence.provider_key.as_str(),
+				evidence.provider_receipt_id,
+				evidence.provider_thread_id,
+				evidence.provider_turn_id,
+				evidence.witness_digest,
+			],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)
 }
 
 fn provider_keys(keys: &ProviderRequestKeys) -> (Option<&str>, Option<&str>) {
