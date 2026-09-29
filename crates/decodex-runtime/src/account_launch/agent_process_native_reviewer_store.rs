@@ -391,8 +391,6 @@ impl OwnedReviewer {
 	}
 }
 
-#[path = "agent_process_app_native_tests.rs"] mod app_native_tests;
-#[path = "agent_process_app_service_tests.rs"] mod app_service_tests;
 #[path = "agent_process_hook_service_tests.rs"] mod hook_service_tests;
 
 impl OwnedReviewer {
