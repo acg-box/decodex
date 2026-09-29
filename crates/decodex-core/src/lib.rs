@@ -9,7 +9,6 @@ pub const MAX_APPROVAL_ENVELOPE_BYTES: usize = 2 * MAX_NATIVE_MESSAGE_BYTES + 65
 mod account;
 mod account_alias;
 pub use account_alias::account_alias_candidate;
-mod agent;
 mod blob;
 mod cache;
 mod config;
@@ -21,10 +20,8 @@ mod identity;
 mod managed_run;
 #[cfg(unix)] mod path_unix;
 mod paths;
-mod policy;
 mod process_generation;
 mod program;
-mod project;
 mod provider_attempt;
 mod quota;
 mod repository_revision;
@@ -47,7 +44,6 @@ pub use self::{
 		CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion,
 		ProviderIdentity,
 	},
-	agent::{AgentError, AgentId},
 	blob::{
 		BlobHash, BlobInventoryCursor, BlobInventoryEntry, BlobInventoryPage, BlobStore,
 		MAX_BLOB_BYTES,
@@ -86,7 +82,6 @@ pub use self::{
 	identity::ServerIdentity,
 	managed_run::{ManagedRunError, ManagedRunId},
 	paths::{DecodexPaths, DecodexRoot, PathError},
-	policy::{PolicyError, PolicyId, PolicyRevision, PolicyRevisionId},
 	process_generation::{
 		BoundProcessGeneration, MAX_PROCESS_IDENTITY_BYTES, MAX_PROCESS_RUNNER_IDENTITY_BYTES,
 		ProcessAccountQuarantine, ProcessAuthorityLossReason, ProcessBootIdentity,
@@ -97,17 +92,10 @@ pub use self::{
 		ProcessRunnerIdentity, ProcessStartIdentity,
 	},
 	program::{
-		MAX_OBJECTIVE_CRITERIA, MAX_PROGRAM_CONTEXT_BYTES, MAX_PROGRAM_CONTEXT_DECISIONS,
-		MAX_PROGRAM_NAME_BYTES, MAX_PROGRAM_OBSERVATIONS, MAX_PROGRAM_PROJECTION_NODES,
-		MAX_PROGRAM_TEXT_BYTES, MAX_PROGRAM_TIMESTAMP_MICROSECONDS, MAX_REVIEW_CADENCE_DAYS,
-		Objective, ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState,
-		Program, ProgramClaimId, ProgramContext, ProgramContextDecision, ProgramContextInput,
-		ProgramCorrelationId, ProgramError, ProgramEvidenceId, ProgramEvidenceKind, ProgramId,
-		ProgramMetric, ProgramObservationId, ProgramObservationProvenance, ProgramProposalId,
-		ProgramProvenance, ProgramQuietPeriod, ProgramReviewClassification, ProgramReviewId,
-		ProgramSignal, ProgramState, ProgramTimestamp, ReviewCadence, compile_program_context,
+		MAX_PROGRAM_PROJECTION_NODES, ObjectiveId, ObjectiveState, ProgramClaimId, ProgramError,
+		ProgramEvidenceId, ProgramEvidenceKind, ProgramId, ProgramObservationId, ProgramProposalId,
+		ProgramReviewClassification, ProgramReviewId, ProgramState,
 	},
-	project::{ProjectError, ProjectId},
 	provider_attempt::{
 		MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES, MAX_PROVIDER_REQUEST_KEY_BYTES, ManagedExecutionId,
 		ProviderAttempt, ProviderAttemptConsumer, ProviderAttemptError, ProviderAttemptId,
