@@ -821,11 +821,12 @@ fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
 }
 
 fn bound_caption(caption: &mut Caption) {
-	let mut end = caption.text.len().min(32_768);
-	while !caption.text.is_char_boundary(end) {
-		end -= 1;
+	// Match persisted voice tails so history can replace the live caption.
+	let mut start = caption.text.len().saturating_sub(32_768);
+	while !caption.text.is_char_boundary(start) {
+		start += 1;
 	}
-	caption.text.truncate(end);
+	caption.text.drain(..start);
 }
 
 #[cfg(test)]
@@ -891,6 +892,33 @@ mod tests {
 			&mut captions,
 		);
 		assert_eq!(captions[4].text.len(), 32766);
+	}
+
+	#[test]
+	fn long_live_captions_keep_the_latest_utf8_correction() {
+		let prefix = "Old opening ".to_owned() + &"界".repeat(11_000);
+		let suffix = " The latest correction must remain.";
+		for finalized in [false, true] {
+			let mut captions = Vec::new();
+			if finalized {
+				update_caption(
+					&json!({"type":"turn.done","turn":{"role":"user","transcript":prefix.clone()+suffix}}),
+					&mut captions,
+				);
+			} else {
+				for text in [&*prefix, suffix] {
+					update_caption(
+						&json!({"type":"input_transcript.added","item":{"text":text}}),
+						&mut captions,
+					);
+				}
+			}
+			assert_eq!(captions.len(), 1);
+			assert!(captions[0].text.len() <= 32_768);
+			assert!(captions[0].text.ends_with(suffix));
+			assert!(!captions[0].text.contains("Old opening"));
+			assert_eq!(captions[0].complete, finalized);
+		}
 	}
 
 	#[test]
