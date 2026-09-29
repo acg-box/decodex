@@ -238,6 +238,31 @@ mod tests {
 	const DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 	const OTHER_DIGEST: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
+	fn identity(number: u32) -> decodex_core::ProcessIdentity {
+		decodex_core::ProcessIdentity::new(
+			ProcessBootIdentity::new("fixture-boot").unwrap(),
+			number,
+			decodex_core::ProcessStartIdentity::new(format!("fixture-{number}")).unwrap(),
+			number,
+			number,
+		)
+		.unwrap()
+	}
+	async fn confirm_original_process_death(store: &SqliteStore) {
+		let evidence = ProcessDeathEvidence::new(
+			ProcessDeathEvidenceId::new("50000000-0000-4000-8000-000000000001").unwrap(),
+			generation_id(1),
+			ProcessDeathEvidenceKind::OwnedChildExit,
+			ProcessBootIdentity::new("fixture-boot").unwrap(),
+			Some(identity(123)),
+			DIGEST,
+		)
+		.unwrap();
+		assert!(matches!(
+			store.record_process_generation_death(4, &evidence).await.unwrap(),
+			crate::ProcessGenerationMutationOutcome::Applied(_)
+		));
+	}
 	fn account_id(number: u8) -> AccountId {
 		AccountId::new(format!("10000000-0000-4000-8000-{number:012}")).unwrap()
 	}

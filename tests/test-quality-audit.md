@@ -12,9 +12,9 @@ This audit does not claim mutation coverage or a line-by-line security review.
 | --- | --- | --- | --- |
 | Existing cleanup | GPUI, menu bar, static script gates, core/protocol | PR #1690 | Remove visual/source snapshots; preserve behavior; share socket setup |
 | Tooling | CLI, scripts, automation | In review | Remove copied configuration values; retain actual process, file, and runtime reconciliation tests |
-| Domain boundaries | Core, protocol, account login, FFI | Pending | Review duplicate contracts and fixtures |
-| Execution | Codex adapter, runtime | Pending | Review native/fake-server distinctions and state-recovery coverage |
-| Persistence | Database and transfer | Pending | Review migration fixtures and duplicate setup |
+| Domain boundaries | Core, protocol, account login, FFI | Reviewed | Retain wire, digest, ABI, callback, and file-integrity contracts |
+| Execution | Codex adapter, runtime | Reviewed | Share identical native attestation setup; preserve initialization order and native/fake-server boundaries |
+| Persistence | Database and transfer | Reviewed | Share repeated bound-work and process-death setup; keep migration and recovery assertions |
 | Remaining desktop | GPUI and menu bar | Reviewed | Run shared application tests once; preserve preview-specific tests |
 | Automation products | Radar and Publisher; site | Pending | Review parser, provenance, publication, and deployment protections |
 
@@ -47,3 +47,29 @@ This audit does not claim mutation coverage or a line-by-line security review.
   display, and non-repetition checks so the catalog can change without test edits.
 - Retain menu bar interaction, account routing, reset-card lifecycle, and native
   credential/ownership boundary tests. Visual constants are not acceptance evidence.
+
+## Domain, execution, and persistence
+
+- Consolidate the identical process identity/death fixture used by model, plugin,
+  permission, and prompt-edit recovery tests. Each scenario keeps its own native
+  observations, restart, stale-owner, and lost-reply assertions.
+- Share the bound-work store fixture used by model, plugin, and permission tests.
+  Keep each feature's publication and receipt assertions local.
+- Reuse native executable attestation and synthetic credentials. Keep the
+  activation-policy test's separate launch sequence: it applies policy before
+  initialization, unlike the ordinary control fixture.
+- Keep historical migration SQL fixtures. Creating a current schema instead would
+  remove evidence that persisted older data survives migration.
+- Keep canonical digest, public ABI, bounded decoding, OAuth callback, credential
+  redaction, filesystem identity, and transfer tests. Exact values are contracts
+  in these cases, not incidental implementation snapshots.
+- CLI and FFI fast-mode tests have similar bodies but call separate implementations
+  with different file access paths. Neither test suite replaces the other.
+- Native adapter tests and runtime tests also cross different authority boundaries.
+  Their approval and completion helpers stay local; no shared cross-crate test
+  framework is introduced for two small helpers.
+- Retain the local-transport fixture in both protocol test modules. Consolidating
+  two small setup functions would introduce a module dependency without removing
+  duplicate behavior checks.
+- Real native tests remain opt-in where they require an installed binary, signing,
+  or external service. Compilation does not claim live acceptance of those tests.

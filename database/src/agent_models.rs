@@ -315,34 +315,12 @@ pub(crate) fn observe(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus};
+	use crate::tests::bound_agent_store as setup;
 
 	fn settings(model: &str) -> Value {
 		json!({"model":model,"modelProvider":"fixture","effort":"high","serviceTier":null})
 	}
 
-	async fn setup(path: &std::path::Path) -> SqliteStore {
-		let store = SqliteStore::open_test(path).unwrap();
-		store
-			.create_agent_work_item(AgentWorkItem {
-				id: "work".into(),
-				parent_goal_id: None,
-				kind: AgentWorkKind::Goal,
-				title: "Fixture".into(),
-				instructions: "Fixture".into(),
-				codex_thread_id: None,
-				status: AgentWorkStatus::Open,
-				next_check_at_micros: None,
-				created_at_micros: 1,
-				updated_at_micros: 1,
-				active_turn_id: None,
-				dispatch_state: AgentDispatchState::Idle,
-			})
-			.await
-			.unwrap();
-		store.bind_agent_thread("work".into(), "thread".into()).await.unwrap();
-		store
-	}
 	async fn facts(store: &SqliteStore, profile: Option<&str>, digest: char) -> i64 {
 		store
 			.record_agent_task_models_publication(

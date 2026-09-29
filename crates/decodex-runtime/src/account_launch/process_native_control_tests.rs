@@ -71,7 +71,7 @@ pub(crate) fn read_native_account(child: &mut AttestedProcessChild) -> serde_jso
 		.expect("account routing through the attested process")
 }
 
-struct SyntheticVault(AccountId);
+pub(super) struct SyntheticVault(pub(super) AccountId);
 impl CredentialVault for SyntheticVault {
 	fn project(
 		&self,

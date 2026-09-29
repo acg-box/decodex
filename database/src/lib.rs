@@ -386,6 +386,29 @@ mod tests {
 		unix_micros,
 	};
 
+	pub(crate) async fn bound_agent_store(path: &std::path::Path) -> SqliteStore {
+		let store = SqliteStore::open_test(path).unwrap();
+		store
+			.create_agent_work_item(crate::AgentWorkItem {
+				id: "work".into(),
+				parent_goal_id: None,
+				kind: crate::AgentWorkKind::Goal,
+				title: "Fixture".into(),
+				instructions: "Fixture".into(),
+				codex_thread_id: None,
+				status: crate::AgentWorkStatus::Open,
+				next_check_at_micros: None,
+				created_at_micros: 1,
+				updated_at_micros: 1,
+				active_turn_id: None,
+				dispatch_state: crate::AgentDispatchState::Idle,
+			})
+			.await
+			.unwrap();
+		store.bind_agent_thread("work".into(), "thread".into()).await.unwrap();
+		store
+	}
+
 	const ACCOUNT: &str = "10000000-0000-4000-8000-000000000001";
 	const OPERATION_ONE: &str = "20000000-0000-4000-8000-000000000001";
 	const OPERATION_TWO: &str = "20000000-0000-4000-8000-000000000002";
