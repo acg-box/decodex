@@ -45,6 +45,8 @@ impl DesktopDraftDocument {
 	///
 	/// Changed local profiles take precedence, with replaced disk states retained
 	/// as source-bound alternatives. Unchanged local profiles keep newer disk data.
+	/// Unconfirmed sends and branches keep their exact saved operation records;
+	/// displaced local edits remain available as alternatives.
 	/// The caller must publish using the freshly read revision's compare-and-swap,
 	/// and reconcile edits made while that write was in flight before updating UI.
 	pub fn reconcile_keep_both(
@@ -229,14 +231,14 @@ impl DesktopDraftDocument {
 
 fn displaces_pending_prompt(selected: &DesktopProfileDraft, other: &DesktopProfileDraft) -> bool {
 	other.prompt_edits.iter().any(|(review, draft)| {
-		draft.pending_send.is_some()
+		(draft.pending_send.is_some() || draft.fork.is_some())
 			&& selected.prompt_edits.get(review).is_some_and(|local| local != draft)
 	})
 }
 
 fn retain_fences(selected: &mut DesktopProfileDraft, other: &DesktopProfileDraft) {
 	for (review, draft) in &other.prompt_edits {
-		if draft.pending_send.is_some() {
+		if draft.pending_send.is_some() || draft.fork.is_some() {
 			selected.prompt_edits.insert(review.clone(), draft.clone());
 			continue;
 		}
@@ -331,7 +333,14 @@ mod tests {
 			.unwrap();
 		let mut handback = restored.clone();
 		handback.handback_pending = true;
-		for remote in [confirming, handback, sending] {
+		let mut branching = confirming.clone();
+		branching.fork = Some(crate::PromptForkIntent {
+			target_work_id: EntityId::new("branch").unwrap(),
+			boundary: crate::PromptForkBoundary::BeforeInput,
+		});
+		let mut branch_after = branching.clone();
+		branch_after.fork.as_mut().unwrap().boundary = crate::PromptForkBoundary::AfterTurn;
+		for remote in [confirming, branching, branch_after, handback, sending] {
 			let mut base = DesktopDraftDocument::default();
 			base.profiles.insert(scope.clone(), profile("occupied composer"));
 			base.profiles
@@ -360,11 +369,13 @@ mod tests {
 				.prompt_edits
 				.insert(review.clone(), remote.clone());
 			let merged = local.reconcile_keep_both(&base, &disk).unwrap();
+			let merged = DesktopDraftDocument::decode(&merged.encode().unwrap()).unwrap();
 			let active = &merged.profiles[&scope].prompt_edits[&review];
-			if remote.pending_send.is_none() {
+			if remote.pending_send.is_none() && remote.fork.is_none() {
 				assert_eq!(active.input, edited.input);
 				assert_eq!(active.receipt_id, remote.receipt_id);
 				assert_eq!(active.confirmation_key, remote.confirmation_key);
+				assert_eq!(active.fork, remote.fork);
 				assert!(active.handback_pending);
 				continue;
 			}
