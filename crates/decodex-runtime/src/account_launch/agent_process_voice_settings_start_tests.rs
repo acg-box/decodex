@@ -51,6 +51,17 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 				session_id: EntityId::new("voice").unwrap(),
 				work_id: EntityId::new("root").unwrap(),
 				offer: VoiceSdp::new("offer".into()).unwrap(),
+				options: if voice == "juniper" {
+					decodex_protocol::AgentVoiceOptions {
+						model: Some(decodex_protocol::WireText::new("realtime-fixture").unwrap()),
+						start_instructions: Some(
+							decodex_protocol::HistoryText::new("Start fixture").unwrap(),
+						),
+						end_instructions: Some(decodex_protocol::HistoryText::new("").unwrap()),
+					}
+				} else {
+					Default::default()
+				},
 			})
 			.await;
 		assert_eq!(result.is_err(), fails);
@@ -63,6 +74,19 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 		assert_eq!(starts.len(), usize::from(!fails));
 		assert_eq!(owned.store.open_agent_voice_calls().await.unwrap().len(), usize::from(!fails));
 		if let Some(start) = starts.first() {
+			assert_eq!(start["params"]["version"], "v3");
+			assert_eq!(start["params"]["transport"]["type"], "webrtc");
+			assert_eq!(start["params"]["outputModality"], "audio");
+			if voice == "juniper" {
+				assert_eq!(start["params"]["model"], "realtime-fixture");
+				assert_eq!(start["params"]["realtimeStartInstructions"], "Start fixture");
+				assert_eq!(start["params"]["realtimeEndInstructions"], "");
+			} else {
+				for field in ["model", "realtimeStartInstructions", "realtimeEndInstructions"] {
+					assert!(start["params"].get(field).is_none());
+				}
+			}
+
 			assert_eq!(
 				start["params"]["voice"],
 				if voice == "future_voice" { Value::Null } else { json!(voice) }

@@ -38,9 +38,15 @@ impl VoiceGateway {
 		let unavailable = || failed(request.session_id().clone(), "Voice service is unavailable.");
 		let Ok(mut slot) = self.call.lock() else { return unavailable() };
 		match request {
-			AgentVoiceRequest::Start { session_id, work_id, offer } => {
+			AgentVoiceRequest::Start { session_id, work_id, offer, options } => {
 				use sha2::{Digest as _, Sha256};
-				let signature = (work_id.clone(), Sha256::digest(offer.as_str().as_bytes()).into());
+				let signature = (
+					work_id.clone(),
+					Sha256::digest(
+						serde_json::to_vec(&(offer, options)).expect("serializable call settings"),
+					)
+					.into(),
+				);
 				if let Some(call) = slot.as_mut() {
 					if call.status.session_id == *session_id {
 						return if call.signature == signature {
@@ -167,6 +173,7 @@ mod tests {
 			session_id: id.clone(),
 			work_id: EntityId::new("agent").unwrap(),
 			offer: VoiceSdp::new("offer".into()).unwrap(),
+			options: Default::default(),
 		});
 		commands.recv().await.unwrap();
 		gateway.update(
@@ -193,11 +200,19 @@ mod tests {
 			session_id: id.clone(),
 			work_id: EntityId::new("agent").unwrap(),
 			offer: VoiceSdp::new("offer".into()).unwrap(),
+			options: Default::default(),
 		};
 		assert_eq!(gateway.exchange(&request).phase, AgentVoicePhase::Connecting);
 		assert!(commands.recv().await.is_some());
 		assert_eq!(gateway.exchange(&request).phase, AgentVoicePhase::Connecting);
 		assert!(commands.try_recv().is_err());
+		let mut changed = request.clone();
+		if let AgentVoiceRequest::Start { options, .. } = &mut changed {
+			options.model = Some(WireText::new("different-model").unwrap());
+		}
+		assert_eq!(gateway.exchange(&changed).phase, AgentVoicePhase::Failed);
+		assert!(commands.try_recv().is_err(), "changed call options cannot replay signaling");
+
 		gateway.exchange(&AgentVoiceRequest::Stop { session_id: id.clone() });
 		gateway.exchange(&AgentVoiceRequest::Stop { session_id: id });
 		assert!(commands.try_recv().is_ok());

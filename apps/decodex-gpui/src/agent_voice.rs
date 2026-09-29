@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use std::time::Duration;
 
 pub(super) struct VoiceUi {
+	options: decodex_protocol::AgentVoiceOptions,
 	media: Media,
 	session: EntityId,
 	work: EntityId,
@@ -46,6 +47,14 @@ impl AgentSurface {
 			cx.notify();
 			return;
 		};
+		let options = match self.voice_call_options(work.as_str(), cx) {
+			Ok(options) => options,
+			Err(message) => {
+				self.feedback = message.into();
+				cx.notify();
+				return;
+			},
+		};
 		let mut media = match Media::new(window) {
 			Ok(media) => media,
 			Err(()) => {
@@ -61,6 +70,7 @@ impl AgentSurface {
 		}
 		let session = EntityId::new(unique_command()).expect("bounded voice identity");
 		self.voice = Some(VoiceUi {
+			options,
 			media,
 			session: session.clone(),
 			work,
@@ -136,6 +146,7 @@ impl AgentSurface {
 						session_id: voice.session.clone(),
 						work_id: voice.work.clone(),
 						offer,
+						options: voice.options.clone(),
 					});
 				},
 				Some("connected") => voice.connected = true,
@@ -868,6 +879,7 @@ mod tests {
 			surface.update(cx, |s, cx| {
 				s.composer.update(cx, |input, cx| input.set_content("Draft", cx));
 				s.voice = Some(VoiceUi {
+					options: Default::default(),
 					media: Media,
 					session: EntityId::new("call").unwrap(),
 					work: EntityId::new("agent").unwrap(),
@@ -915,6 +927,7 @@ mod tests {
 		let surface = cx.new(AgentSurface::new);
 		surface.update(cx, |s, cx| {
 			s.voice = Some(VoiceUi {
+				options: Default::default(),
 				media: Media,
 				session: EntityId::new("call").expect("id"),
 				work: EntityId::new("agent").expect("id"),

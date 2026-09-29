@@ -4,6 +4,7 @@ use decodex_protocol::AgentVoiceSettingsResult as State;
 
 #[derive(Default)]
 pub(super) struct Panel {
+	next: Option<NextCall>,
 	work: Option<String>,
 	state: Option<State>,
 	task: Option<Task<()>>,
@@ -11,7 +12,109 @@ pub(super) struct Panel {
 	feedback: String,
 }
 
+struct NextCall {
+	target: (String, String, Option<EntityId>),
+	model: Entity<ComposerInput>,
+	start: Entity<ComposerInput>,
+	end: Entity<ComposerInput>,
+}
+
 impl AgentSurface {
+	fn voice_option_target(&self, work: &str) -> Option<(String, String, Option<EntityId>)> {
+		let snapshot = self.snapshot.as_ref()?;
+		let item = snapshot.work_items.iter().find(|item| item.id == work)?;
+		Some((work.into(), item.codex_thread_id.clone()?, snapshot.runtime_source.clone()))
+	}
+
+	pub(super) fn voice_call_options(
+		&self,
+		work: &str,
+		cx: &Context<Self>,
+	) -> Result<decodex_protocol::AgentVoiceOptions, &'static str> {
+		let Some(next) = self
+			.voice_settings
+			.next
+			.as_ref()
+			.filter(|next| Some(&next.target) == self.voice_option_target(work).as_ref())
+		else {
+			return Ok(Default::default());
+		};
+		let value = |input: &Entity<ComposerInput>| {
+			let value = input.read(cx).content().trim().to_owned();
+			(!value.is_empty()).then_some(value)
+		};
+		Ok(decodex_protocol::AgentVoiceOptions {
+			model: value(&next.model)
+				.map(WireText::new)
+				.transpose()
+				.map_err(|_| "The realtime model name is too long.")?,
+			start_instructions: value(&next.start)
+				.map(decodex_protocol::HistoryText::new)
+				.transpose()
+				.map_err(|_| "The voice start instructions are too long.")?,
+			end_instructions: value(&next.end)
+				.map(decodex_protocol::HistoryText::new)
+				.transpose()
+				.map_err(|_| "The voice end instructions are too long.")?,
+		})
+	}
+
+	fn advanced_voice_options(&self, work: &str, cx: &mut Context<Self>) -> gpui::AnyElement {
+		let owner = work.to_owned();
+		let active = self
+			.voice_settings
+			.next
+			.as_ref()
+			.is_some_and(|next| Some(&next.target) == self.voice_option_target(work).as_ref());
+		let mut panel = div().flex().flex_col().gap_2().child(mcp_button(
+			"voice-call-options".into(),
+			if active { "Clear call overrides" } else { "Advanced call options" }.into(),
+			active,
+			cx,
+			move |s, cx| {
+				if active {
+					s.voice_settings.next = None;
+				} else if let Some(target) = s.voice_option_target(&owner) {
+					s.voice_settings.next = Some(NextCall {
+						target,
+						model: cx.new(|cx| {
+							ComposerInput::with_placeholder(
+								0,
+								"Configured voice model",
+								"Realtime model override",
+								cx,
+							)
+						}),
+						start: cx.new(|cx| {
+							ComposerInput::with_placeholder(
+								0,
+								"Default start behavior",
+								"Voice start instructions",
+								cx,
+							)
+						}),
+						end: cx.new(|cx| {
+							ComposerInput::with_placeholder(
+								0,
+								"Default end behavior",
+								"Voice end instructions",
+								cx,
+							)
+						}),
+					});
+				}
+				cx.notify();
+			},
+		));
+		if active && let Some(next) = &self.voice_settings.next {
+			panel=panel.child("Applies when you start a call. Blank fields use configured defaults. Changes do not affect an active call.")
+                .child("Realtime model").child(next.model.clone())
+                .child("Instructions for the Agent when voice starts").child(div().h(px(90.)).child(next.start.clone()))
+                .child("Instructions for the Agent when voice ends").child(div().h(px(90.)).child(next.end.clone()));
+		}
+		panel.into_any_element()
+	}
+
 	pub(super) fn invalidate_voice_settings(&mut self, next: &AgentSnapshotDto) {
 		let Some(work) = &self.voice_settings.work else { return };
 		let before =
@@ -119,7 +222,9 @@ impl AgentSurface {
 			cx,
 			move |s, cx| {
 				if s.voice_settings.work.as_deref() == Some(&owner) {
+					let next = s.voice_settings.next.take();
 					s.reset_voice_settings();
+					s.voice_settings.next = next;
 					cx.notify();
 				} else {
 					s.update_voice_settings(&owner, None, cx);
@@ -175,7 +280,7 @@ impl AgentSurface {
 		} else {
 			panel = panel.child("Voice settings are unavailable. Refresh to try again.");
 		}
-		panel.into_any_element()
+		panel.child(self.advanced_voice_options(work, cx)).into_any_element()
 	}
 }
 

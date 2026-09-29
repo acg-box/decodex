@@ -106,7 +106,7 @@ impl AgentCoordinator {
 		request: AgentVoiceRequest,
 	) -> Result<(), AgentError> {
 		match request {
-			AgentVoiceRequest::Start { session_id, work_id, offer } => {
+			AgentVoiceRequest::Start { session_id, work_id, offer, options } => {
 				if self.store.agent_misalignment(work_id.as_str().into()).await?.is_some() {
 					return Err(AgentError::Invalid(
 						"This conversation is paused for provider findings.".into(),
@@ -163,12 +163,22 @@ impl AgentCoordinator {
 				self.voice.as_mut().expect("voice host").transcript_complete = Default::default();
 				self.voice.as_mut().expect("voice host").session =
 					Some((session_id.as_str().into(), thread.clone()));
-				let result=self.client.request("thread/realtime/start",json!({
-                    "threadId":thread,"version":"v3","outputModality":"audio","voice":selected_voice,
-                    "includeStartupContext":true,"flushTranscriptTailOnSessionEnd":true,
-                    "prompt":"Continue this Agent conversation by voice. Wait for the user's new spoken request before starting new work. Use the existing conversation and its tools when the user asks for work.",
-                    "transport":{"type":"webrtc","sdp":offer.as_str()}
-                })).await;
+				let mut params = json!({
+					"threadId":thread,"version":"v3","outputModality":"audio","voice":selected_voice,
+					"includeStartupContext":true,"flushTranscriptTailOnSessionEnd":true,
+					"prompt":"Continue this Agent conversation by voice. Wait for the user's new spoken request before starting new work. Use the existing conversation and its tools when the user asks for work.",
+					"transport":{"type":"webrtc","sdp":offer.as_str()}
+				});
+				if let Some(model) = options.model {
+					params["model"] = json!(model.as_str());
+				}
+				if let Some(instructions) = options.start_instructions {
+					params["realtimeStartInstructions"] = json!(instructions.as_str());
+				}
+				if let Some(instructions) = options.end_instructions {
+					params["realtimeEndInstructions"] = json!(instructions.as_str());
+				}
+				let result = self.client.request("thread/realtime/start", params).await;
 				if matches!(&result, Err(ClientError::Remote(_))) {
 					self.store.close_agent_voice_call(session_id.as_str().into()).await?;
 					self.voice.as_mut().expect("voice host").session = None;
@@ -378,6 +388,7 @@ mod tests {
 				session_id: EntityId::new("voice").unwrap(),
 				work_id: EntityId::new("agent").unwrap(),
 				offer: VoiceSdp::new("offer".into()).unwrap(),
+				options: Default::default(),
 			});
 			agent.voice.as_mut().unwrap().session =
 				Some(("voice".into(), "opaque thread/1".into()));
@@ -438,6 +449,7 @@ mod tests {
 				session_id: EntityId::new("voice").unwrap(),
 				work_id: EntityId::new("agent").unwrap(),
 				offer: VoiceSdp::new("offer".into()).unwrap(),
+				options: Default::default(),
 			};
 			gateway.exchange(&start);
 			agent.voice.as_mut().unwrap().session =
