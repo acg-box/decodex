@@ -354,6 +354,17 @@ impl AgentSurface {
 		let voice_hidden: BTreeSet<_> =
 			voice_groups.iter().flat_map(|g| g.indices.iter().skip(1).copied()).collect();
 		let empty_reasoning = groups::empty_completed_reasoning(&self.timeline.native.entries);
+		let replied_turns: BTreeSet<_> = self
+			.timeline
+			.native
+			.entries
+			.iter()
+			.filter_map(|entry| match &entry.content {
+				AgentTimelineContent::Item { turn_id, kind, .. } if kind == "agentMessage" =>
+					Some(turn_id),
+				_ => None,
+			})
+			.collect();
 		let mut hidden = Vec::new();
 
 		for (index, entry) in self.timeline.native.entries.iter().enumerate() {
@@ -401,6 +412,13 @@ impl AgentSurface {
 				continue;
 			}
 			if voice_hidden.contains(&index) {
+				continue;
+			}
+			if matches!(&entry.content,
+				AgentTimelineContent::TurnBoundary { completed: true, turn_id, status, error: None, .. }
+				if replied_turns.contains(turn_id)
+					&& !matches!(status.as_deref(), Some("interrupted" | "failed")))
+			{
 				continue;
 			}
 			if empty_reasoning.contains(&index) {
