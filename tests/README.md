@@ -62,3 +62,9 @@ all tests in the repository have received a line-by-line audit.
 - Retained core routing, filesystem integrity, credential redaction, database
   restart, CLI process, and publisher dispatch protections. Similar vocabulary
   across these tests does not make their failure cases interchangeable.
+
+The default nextest profile executes shared GPUI unit tests in the main app
+binary. The screenshot tool and native-glass probe import those same modules,
+so their duplicate test suites are filtered out. All targets still compile.
+Use `--ignore-default-filter` only when diagnosing those diagnostic binaries.
+The weather example has a separate parsing test and stays in the test set.
