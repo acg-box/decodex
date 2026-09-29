@@ -27,6 +27,7 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 		"closed",
 		"redacted",
 		"long",
+		"unicode",
 	] {
 		let home = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
@@ -95,7 +96,7 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 		.await;
 		server.await.unwrap();
 		match case {
-			"root" | "child" | "redacted" | "long" => {
+			"root" | "child" | "redacted" | "long" | "unicode" => {
 				let Result::Available { work_id, thread_id, goal: Some(goal), .. } = result else {
 					panic!("{case}")
 				};
@@ -105,7 +106,7 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 				assert_eq!(goal.time_used_seconds, 7);
 				assert_eq!(goal.token_budget, Some(11));
 				assert_eq!(goal.objective_truncated, matches!(case, "redacted" | "long"));
-				assert!(goal.objective.len() <= 8192);
+				assert!(goal.objective.len() <= 16_000);
 				assert!(!goal.objective.contains("private-access"));
 			},
 			"missing" => assert!(matches!(result, Result::Available { goal: None, .. })),
@@ -159,6 +160,7 @@ async fn serve(remote: tokio::io::DuplexStream, target: &str, case: &str) {
 	let objective = match case {
 		"redacted" => "Bearer fixture-private-access-token-123456789".into(),
 		"long" => "界".repeat(5000),
+		"unicode" => "界".repeat(4000),
 		_ => "Native objective".into(),
 	};
 	let response = match case {
@@ -172,4 +174,86 @@ async fn serve(remote: tokio::io::DuplexStream, target: &str, case: &str) {
 			json!({"id":request["id"],"result":{"goal":{"threadId":target,"objective":objective,"status":"budgetLimited","tokenBudget":11,"tokensUsed":12,"timeUsedSeconds":7,"createdAt":1,"updatedAt":2}}}),
 	};
 	writer.write_all(format!("{response}\n").as_bytes()).await.expect("goal wire fixture");
+}
+
+#[tokio::test]
+async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writing() {
+	for case in ["accepted", "stale", "account"] {
+		let home = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
+		root.paths().ensure_layout().unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let (local, remote) = tokio::io::duplex(65536);
+		let (reader, writer) = tokio::io::split(local);
+		let (client, _) = AppServerClient::from_io(reader, writer);
+		let key = SourceKey {
+			generation: ProcessGenerationId::new("10000000-0000-4000-8000-000000000001").unwrap(),
+			account: AccountId::new("30000000-0000-4000-8000-000000000003").unwrap(),
+			revision: 1,
+			history_revision: client.history_revision(),
+			thread: "root".into(),
+			work: "work".into(),
+		};
+		let raw = json!({"threadId":"root","objective":"Original","status":"paused","tokenBudget":50,"tokensUsed":1,"timeUsedSeconds":1,"createdAt":1,"updatedAt":1});
+		let goal = serde_json::from_value(raw.clone()).unwrap();
+		let review =
+			review_token(&Source { key: key.clone(), client: client.clone() }, "root", Some(&goal));
+		let (release, done) = tokio::sync::oneshot::channel();
+		let server = tokio::spawn(async move {
+			let (reader, mut writer) = tokio::io::split(remote);
+			let mut lines = BufReader::new(reader).lines();
+			let mut current = raw;
+			let read: Value =
+				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+			assert_eq!(read["method"], "thread/goal/get");
+			if case == "stale" {
+				current["objective"] = json!("Other edit");
+			}
+			current["tokensUsed"] = json!(2); // Usage updates do not invalidate semantic edits.
+			writer
+				.write_all(
+					format!("{}\n", json!({"id":read["id"],"result":{"goal":current}})).as_bytes(),
+				)
+				.await
+				.unwrap();
+			if case == "accepted" {
+				let update: Value =
+					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+				assert_eq!(update["method"], "thread/goal/set");
+				assert_eq!(update["params"], json!({"threadId":"root","objective":"Updated"}));
+				current["objective"] = json!("Updated");
+				writer
+					.write_all(
+						format!("{}\n", json!({"id":update["id"],"result":{"goal":current}}))
+							.as_bytes(),
+					)
+					.await
+					.unwrap();
+			}
+			let _ = done.await;
+		});
+		let calls = AtomicUsize::new(0);
+		let result = write(
+			&store,
+			|| {
+				let mut key = key.clone();
+				let client = client.clone();
+				if calls.fetch_add(1, Ordering::SeqCst) > 0 && case == "account" {
+					key.account = AccountId::new("40000000-0000-4000-8000-000000000004").unwrap();
+				}
+				async move { Some(Source { key, client }) }
+			},
+			"root",
+			&review,
+			&decodex_protocol::AgentGoalEdit {
+				objective: Some("Updated".into()),
+				status: None,
+				budget: decodex_protocol::AgentGoalBudgetEdit::Keep,
+			},
+		)
+		.await;
+		assert_eq!(result.is_ok(), case == "accepted", "{case}: {result:?}");
+		let _ = release.send(());
+		server.await.unwrap();
+	}
 }

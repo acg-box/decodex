@@ -209,6 +209,10 @@ pub(crate) struct AccountBinding {
 	refresh_callback: Option<Arc<dyn AccountRefreshCallback>>,
 }
 impl AccountBinding {
+	pub(super) fn codex_home(&self) -> &std::path::Path {
+		&self.expected_codex_home
+	}
+
 	/// Bind one child to the account resolved from the child's immutable Codex home.
 	pub fn shared_home(account_id: AccountId) -> Result<Self, SupervisionError> {
 		let home = env::var_os("HOME")

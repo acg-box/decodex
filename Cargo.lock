@@ -1529,6 +1529,7 @@ dependencies = [
 name = "decodex-codex"
 version = "0.2.0"
 dependencies = [
+ "base64",
  "decodex-core",
  "serde",
  "serde_json",

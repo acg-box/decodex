@@ -50,7 +50,10 @@ pub use agent_media::{
 	AGENT_MEDIA_CHUNK_BYTES, AgentMediaRequest, AgentMediaResult, MAX_AGENT_MEDIA_BYTES,
 };
 mod agent_native_goal;
-pub use agent_native_goal::{AgentNativeGoal, AgentNativeGoalResult, AgentNativeGoalStatus};
+pub use agent_native_goal::{
+	AgentGoalBudgetEdit, AgentGoalEdit, AgentNativeGoal, AgentNativeGoalResult,
+	AgentNativeGoalStatus,
+};
 mod agent_app_settings;
 pub use agent_app_settings::{
 	AgentAppApprovalMode, AgentAppReviewer, AgentAppSettingEdit, AgentAppSettingsResult,
@@ -235,7 +238,7 @@ use serde::{Deserialize, Serialize};
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 103 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 104 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

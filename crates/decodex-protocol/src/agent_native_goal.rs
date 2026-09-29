@@ -54,6 +54,9 @@ pub enum AgentNativeGoalResult {
 		thread_id: crate::EntityId,
 		/// Time this read completed, in Unix microseconds.
 		observed_at_micros: i64,
+		/// Source and semantic goal identity for an explicit edit.
+		#[serde(default)]
+		review_token: Option<crate::WireText>,
 		/// Null means the native thread has no goal.
 		goal: Option<AgentNativeGoal>,
 	},
@@ -63,4 +66,27 @@ pub enum AgentNativeGoalResult {
 	Unsupported,
 	/// The source changed or the read could not be confirmed.
 	Unavailable,
+}
+
+/// Explicit change to the native token budget.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "tokens", rename_all = "snake_case")]
+pub enum AgentGoalBudgetEdit {
+	/// Keep the current goal budget.
+	Keep,
+	/// Reset the explicit budget, retaining any configured native maximum.
+	Reset,
+	/// Set a positive budget, subject to native policy.
+	Set(i64),
+}
+/// Edits to one reviewed native goal. Text can be materialized as a native attachment.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentGoalEdit {
+	/// New objective; absent means preserve it.
+	pub objective: Option<String>,
+	/// Explicit active, paused, or complete state; absent means preserve it.
+	pub status: Option<AgentNativeGoalStatus>,
+	/// Explicit budget operation.
+	pub budget: AgentGoalBudgetEdit,
 }

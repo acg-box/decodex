@@ -45,7 +45,10 @@ mod history_summary;
 mod prompt_edit;
 mod resume;
 mod transcript;
-pub use goals::{NativeThreadGoal, NativeThreadGoalStatus};
+pub use goals::{
+	NativeGoalUpdate, NativeThreadGoal, NativeThreadGoalStatus, is_goal_attachment_write,
+	is_native_goal_update,
+};
 pub use prompt_edit::PromptEditCandidate;
 mod initialize;
 mod live_settings;
@@ -226,6 +229,7 @@ enum Outbound {
 #[derive(Clone)]
 pub struct AppServerClient {
 	connection_identity: String,
+	native_home: std::sync::Arc<std::sync::OnceLock<std::path::PathBuf>>,
 	outbound: mpsc::Sender<Outbound>,
 	closed: watch::Sender<bool>,
 	server_requests: ServerRequests,
@@ -276,6 +280,17 @@ impl AppServerClient {
 		let bytes = serde_json::to_vec(&envelope).map_err(|_| ClientError::InvalidFrame)?;
 		if bytes.len() > MAX_FRAME_BYTES {
 			return Err(ClientError::RequestTooLarge);
+		}
+		Ok(())
+	}
+
+	/// Bind the native host home reported by initialization or attested process admission.
+	pub fn bind_native_home(&self, home: std::path::PathBuf) -> Result<(), ClientError> {
+		if !home.is_absolute() {
+			return Err(ClientError::InvalidFrame);
+		}
+		if self.native_home.set(home.clone()).is_err() && self.native_home.get() != Some(&home) {
+			return Err(ClientError::InvalidFrame);
 		}
 		Ok(())
 	}
@@ -382,6 +397,7 @@ impl AppServerClient {
 		(
 			Self {
 				connection_identity: new_connection_identity(),
+				native_home: Default::default(),
 				outbound,
 				closed,
 				server_requests,
@@ -417,6 +433,7 @@ impl AppServerClient {
 		Ok((
 			Self {
 				connection_identity: new_connection_identity(),
+				native_home: Default::default(),
 				outbound,
 				closed,
 				server_requests,
@@ -608,6 +625,9 @@ impl AppServerClient {
 	/// Complete the initialization handshake on a fresh connection only.
 	pub async fn initialize(&self, params: Value) -> Result<Value, ClientError> {
 		let result = self.request("initialize", params).await?;
+		if let Some(home) = result["codexHome"].as_str() {
+			self.bind_native_home(std::path::PathBuf::from(home))?;
+		}
 		self.notify("initialized", Value::Null).await?;
 		Ok(result)
 	}

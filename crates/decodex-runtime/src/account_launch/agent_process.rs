@@ -46,6 +46,7 @@ impl AgentProcessBridge {
 		let (incoming, frames) = mpsc::channel(BRIDGE_CAPACITY);
 		let (outgoing, commands) = mpsc::channel(BRIDGE_CAPACITY);
 		let (client, events) = AppServerClient::from_framed(next_request_id, frames, outgoing)?;
+		client.bind_native_home(binding.codex_home().to_path_buf())?;
 		let cancelled = Arc::new(AtomicBool::new(false));
 		let worker_cancelled = Arc::clone(&cancelled);
 		let worker = thread::Builder::new()
@@ -68,6 +69,7 @@ impl AgentProcessBridge {
 					incoming,
 					&worker_cancelled,
 					&protocol_limit_exceeded,
+					Some(binding.codex_home()),
 					|writer, id, bytes| {
 						SupervisedProcess::service_inbound_request(
 							&binding,
@@ -154,6 +156,7 @@ fn pump(
 	events: mpsc::Sender<Result<Value, ClientError>>,
 	cancelled: &AtomicBool,
 	protocol_limit_exceeded: &AtomicBool,
+	native_home: Option<&std::path::Path>,
 	mut refresh: impl FnMut(&mut Box<dyn Write + Send>, u64, &[u8]) -> Result<(), ClientError>,
 ) -> Result<(), ClientError> {
 	let mut requests = HashSet::new();
@@ -167,7 +170,9 @@ fn pump(
 				Err(mpsc::error::TryRecvError::Empty) => break,
 				Err(mpsc::error::TryRecvError::Disconnected) => return Err(ClientError::Closed),
 			};
-			if let Err(error) = validate_outbound(&value, &mut requests) {
+			if let Err(error) = validate_outbound(&value, &mut requests)
+				.and_then(|_| validate_goal_attachment_owner(&value, native_home))
+			{
 				if value.get("method").and_then(Value::as_str).is_some()
 					&& let Some(id) = value
 						.get("id")
@@ -228,8 +233,47 @@ fn pump(
 	}
 }
 
+fn validate_goal_attachment_owner(
+	value: &Value,
+	native_home: Option<&std::path::Path>,
+) -> Result<(), ClientError> {
+	let method = value["method"].as_str().unwrap_or("");
+	if !matches!(method, "fs/createDirectory" | "fs/writeFile") {
+		return Ok(());
+	}
+	let home = native_home.ok_or(ClientError::InvalidFrame)?;
+	let path =
+		std::path::Path::new(value["params"]["path"].as_str().ok_or(ClientError::InvalidFrame)?);
+	let directory = if method == "fs/writeFile" {
+		path.parent().ok_or(ClientError::InvalidFrame)?
+	} else {
+		path
+	};
+	if directory.parent() != Some(home.join("attachments").as_path()) {
+		return Err(ClientError::InvalidFrame);
+	}
+	Ok(())
+}
+
 fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result<(), ClientError> {
 	if let Some(method) = value.get("method") {
+		if matches!(method.as_str(), Some("fs/createDirectory" | "fs/writeFile")) {
+			return if decodex_codex::app_server_client::is_goal_attachment_write(
+				method.as_str().unwrap(),
+				&value["params"],
+			) {
+				Ok(())
+			} else {
+				Err(ClientError::InvalidFrame)
+			};
+		}
+		if method == "thread/goal/set" {
+			return if decodex_codex::app_server_client::is_native_goal_update(&value["params"]) {
+				Ok(())
+			} else {
+				Err(ClientError::InvalidFrame)
+			};
+		}
 		if method == "config/batchWrite" {
 			return if decodex_codex::app_server_client::is_hook_settings_write(&value["params"])
 				|| decodex_codex::app_server_client::is_app_tool_exposure_write(&value["params"])
@@ -429,7 +473,29 @@ mod tests {
 	}
 
 	#[test]
-	fn goal_bridge_allows_observation_without_goal_mutation() {
+	fn goal_attachments_stay_in_the_admitted_native_home() {
+		let home = std::path::Path::new("/fixture/.codex");
+		let request = json!({"method":"fs/writeFile","params":{"path":"/fixture/.codex/attachments/20000000-0000-4000-8000-000000000002/goal-objective.md","dataBase64":"b2JqZWN0aXZl"}});
+		assert!(validate_outbound(&request, &mut HashSet::new()).is_ok());
+		assert!(validate_goal_attachment_owner(&request, Some(home)).is_ok());
+		assert!(
+			validate_goal_attachment_owner(&request, Some(std::path::Path::new("/other/.codex")))
+				.is_err()
+		);
+		assert!(validate_goal_attachment_owner(&request, None).is_err());
+		for path in [
+			"/fixture/.codex/auth.json",
+			"/fixture/.codex/attachments/../goal-objective.md",
+			"/fixture/.codex/attachments/20000000-0000-4000-8000-000000000002/config.toml",
+		] {
+			let mut invalid = request.clone();
+			invalid["params"]["path"] = json!(path);
+			assert!(validate_outbound(&invalid, &mut HashSet::new()).is_err());
+		}
+	}
+
+	#[test]
+	fn goal_bridge_requires_explicit_valid_edits_and_keeps_clear_unsupported() {
 		for (method, allowed) in
 			[("thread/goal/get", true), ("thread/goal/set", false), ("thread/goal/clear", false)]
 		{
@@ -440,6 +506,38 @@ mod tests {
 				)
 				.is_ok(),
 				allowed
+			);
+		}
+		for edit in [
+			json!({"objective":"Updated objective"}),
+			json!({"tokenBudget":1234}),
+			json!({"tokenBudget":null}),
+			json!({"status":"paused"}),
+		] {
+			let mut params = edit;
+			params["threadId"] = json!("thread");
+			assert!(
+				validate_outbound(
+					&json!({"id":2,"method":"thread/goal/set","params":params}),
+					&mut HashSet::new()
+				)
+				.is_ok()
+			);
+		}
+		for edit in [
+			json!({"status":"usageLimited"}),
+			json!({"tokenBudget":0}),
+			json!({"objective":""}),
+			json!({"objective":"New", "cwd":"/other"}),
+		] {
+			let mut params = edit;
+			params["threadId"] = json!("thread");
+			assert!(
+				validate_outbound(
+					&json!({"id":3,"method":"thread/goal/set","params":params}),
+					&mut HashSet::new()
+				)
+				.is_err()
 			);
 		}
 	}
@@ -461,6 +559,7 @@ mod tests {
 			events,
 			&AtomicBool::new(false),
 			&AtomicBool::new(false),
+			None,
 			|_, _, _| panic!("no refresh expected"),
 		);
 		assert!(matches!(result, Err(ClientError::Closed)));
@@ -568,6 +667,7 @@ mod tests {
 			events,
 			&AtomicBool::new(false),
 			&AtomicBool::new(false),
+			None,
 			|_, id, bytes| {
 				assert_eq!(id, 17);
 				assert!(bytes.windows(b"unauthorized".len()).any(|part| part == b"unauthorized"));
@@ -596,6 +696,7 @@ mod tests {
 			events,
 			&AtomicBool::new(false),
 			&AtomicBool::new(false),
+			None,
 			|_, _, _| panic!("not an account callback"),
 		);
 		assert_eq!(

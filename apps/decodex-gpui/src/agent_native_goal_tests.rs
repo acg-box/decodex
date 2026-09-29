@@ -90,6 +90,7 @@ async fn serve(listener: tokio::net::UnixListener) {
 				work_id,
 				thread_id: EntityId::new(target).expect("thread"),
 				observed_at_micros: 1_000_000,
+				review_token: None,
 				goal,
 			}),
 		});

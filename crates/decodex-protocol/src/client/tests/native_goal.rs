@@ -14,6 +14,7 @@ fn observed(change: &str) -> AgentNativeGoalResult {
 		thread_id: EntityId::new(if change == "thread" { "other" } else { "native-exact" })
 			.expect("valid fixture identity"),
 		observed_at_micros: 123,
+		review_token: None,
 		goal: matches!(change, "present" | "goal_thread").then(|| AgentNativeGoal {
 			thread_id: if change == "goal_thread" { "other" } else { "native-exact" }.into(),
 			objective: "Retain the native goal".into(),

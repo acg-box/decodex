@@ -1790,6 +1790,7 @@ impl AgentClient {
 				&action,
 				crate::AgentActionDto::SetAppToolExposure { .. }
 					| crate::AgentActionDto::ConfirmAppUiTool { .. }
+					| crate::AgentActionDto::EditNativeGoal { .. }
 					| crate::AgentActionDto::SetVoicePreference { .. }
 					| crate::AgentActionDto::SetTaskPlugin { .. }
 			) {
@@ -1807,6 +1808,7 @@ impl AgentClient {
 						&action,
 						crate::AgentActionDto::SetAppToolExposure { .. }
 							| crate::AgentActionDto::ConfirmAppUiTool { .. }
+							| crate::AgentActionDto::EditNativeGoal { .. }
 							| crate::AgentActionDto::SetVoicePreference { .. }
 							| crate::AgentActionDto::SetTaskPlugin { .. }
 					) {
@@ -1942,6 +1944,7 @@ fn agent_action_work_id(action: &crate::AgentActionDto) -> &EntityId {
 		| crate::AgentActionDto::RecoverPromptEdit { work_id, .. }
 		| crate::AgentActionDto::GenerateRecap { work_id, .. }
 		| crate::AgentActionDto::CancelRecap { work_id, .. }
+		| crate::AgentActionDto::EditNativeGoal { work_id, .. }
 		| crate::AgentActionDto::SetVoicePreference { work_id, .. }
 		| crate::AgentActionDto::SetAppSetting { work_id, .. }
 		| crate::AgentActionDto::SetSavedAppSetting { work_id, .. } => work_id,

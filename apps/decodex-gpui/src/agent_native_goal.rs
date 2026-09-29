@@ -2,6 +2,7 @@
 use super::*;
 use decodex_protocol::AgentNativeGoalResult as Result;
 use std::time::Instant;
+#[path = "agent_goal_editor.rs"] mod editor;
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -10,6 +11,8 @@ pub(super) struct Panel {
 	task: Option<Task<()>>,
 	epoch: u64,
 	read_at: Option<Instant>,
+	editor: Option<editor::Editor>,
+	feedback: String,
 }
 impl AgentSurface {
 	pub(super) fn reset_native_goal(&mut self) {
@@ -47,7 +50,8 @@ impl AgentSurface {
 	}
 
 	pub(super) fn refresh_native_goal(&mut self, cx: &mut Context<Self>) {
-		if self.native_goal.target.is_some()
+		if self.native_goal.editor.is_none()
+			&& self.native_goal.target.is_some()
 			&& self.native_goal.read_at.is_none_or(|at| at.elapsed().as_secs() >= 5)
 		{
 			self.load_native_goal(cx);
@@ -119,7 +123,10 @@ impl AgentSurface {
 					.unwrap_or_else(|| "Reading native goal…".into()),
 			);
 		}
-		panel.into_any_element()
+		panel
+			.child(self.goal_edit_controls(cx))
+			.child(self.native_goal.feedback.clone())
+			.into_any_element()
 	}
 }
 fn goal_text(result: &Result) -> String {
