@@ -2660,13 +2660,17 @@ final class ResetCardStore {
 		guard candidate.observedAtUnixMicros == existing.observedAtUnixMicros else {
 			return false
 		}
-		if candidate == existing {
-			return true
+		// Refresh status can change while the persisted snapshot stays the same.
+		guard candidate.accountID == existing.accountID,
+			candidate.planType == existing.planType,
+			candidate.displayName == existing.displayName,
+			candidate.username == existing.username,
+			candidate.snapshot == existing.snapshot
+		else {
+			return false
 		}
-		return allowsEmailEnrichment
-			&& existing.email == nil
-			&& candidate.email != nil
-			&& existing.redactingEmail() == candidate.redactingEmail()
+		return candidate.email == existing.email
+			|| (allowsEmailEnrichment && existing.email == nil && candidate.email != nil)
 	}
 
 	private func refreshProfiles() async {
