@@ -76,10 +76,12 @@ async fn qualify(
 		serde_json::to_vec(&json!({"models":[model]})).expect("native ordinary effort fixture"),
 	)
 	.expect("native ordinary effort fixture");
+	// Use a different thread tier so an ignored per-turn override fails the wire assertion.
+	let configured_tier = if tier_override { "default" } else { "flex" };
 	let reasoning = configured
 		.map(|value| format!("model_reasoning_effort={}\n", json!(value)))
 		.unwrap_or_default();
-	std::fs::write(home.path().join("config.toml"), format!("{reasoning}model={}\nservice_tier=\"flex\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nfast_mode=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(model_name),json!(catalog))).expect("native ordinary effort fixture");
+	std::fs::write(home.path().join("config.toml"), format!("{reasoning}model={}\nservice_tier=\"{configured_tier}\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nfast_mode=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(model_name),json!(catalog))).expect("native ordinary effort fixture");
 	let mut session = NativeSession::start(&binary, home.path());
 	let start = ConversationThreadStartRequest::new(
 		"stale-display-model",
@@ -94,7 +96,7 @@ async fn qualify(
 	wire["sandbox"] = json!("read-only");
 	let started = session.client.thread_start(wire).await.expect("native ordinary effort fixture");
 	if inherit {
-		assert_eq!(started["serviceTier"], "flex");
+		assert_eq!(started["serviceTier"], if tier_override { Value::Null } else { json!("flex") });
 	}
 	let id = started["thread"]["id"].as_str().expect("native ordinary effort fixture").to_owned();
 	let first_client_id = "50000000-0000-4000-8000-000000000001";
@@ -121,6 +123,9 @@ async fn qualify(
 		.thread_resume(serde_json::to_value(&resume).expect("typed resume wire"))
 		.await
 		.expect("native ordinary effort fixture");
+	if tier_override {
+		assert_eq!(response["serviceTier"], Value::Null, "per-turn Flex must not persist");
+	}
 	let decoded = decode_conversation_thread_resume_response(
 		&resume,
 		&serde_json::to_vec(&response).expect("native resume response"),
