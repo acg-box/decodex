@@ -93,7 +93,6 @@ private struct DecodexNativeFastModeWire: Decodable {
 final class FastModeStore {
 	private(set) var isEnabled = false
 	private(set) var isLoading = false
-	private(set) var hasLoaded = false
 	private(set) var errorMessage: String?
 	@ObservationIgnored private let client: any FastModeClient
 
@@ -108,7 +107,6 @@ final class FastModeStore {
 		isLoading = true
 		defer {
 			isLoading = false
-			hasLoaded = true
 		}
 		do {
 			isEnabled = try await client.status()
@@ -126,7 +124,6 @@ final class FastModeStore {
 		isLoading = true
 		defer {
 			isLoading = false
-			hasLoaded = true
 		}
 		do {
 			isEnabled = try await client.setEnabled(isEnabled == false)
