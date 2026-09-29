@@ -2380,6 +2380,10 @@ fn resource_field(
 }
 
 #[cfg(test)]
+#[path = "agent_wire_test_support.rs"]
+mod wire_test_support;
+
+#[cfg(test)]
 #[path = "agent_request_source_tests.rs"]
 mod request_source_tests;
 

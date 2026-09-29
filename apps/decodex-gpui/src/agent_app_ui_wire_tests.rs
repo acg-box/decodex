@@ -5,40 +5,16 @@ use decodex_protocol::{
 	ReconnectMode, ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
 };
 use futures_util::{SinkExt, StreamExt};
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use tokio_tungstenite::tungstenite::Message;
 
-const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
+use super::super::wire_test_support::SERVER;
 const DOCUMENT: &[u8] =
 	br#"{"item":{"id":"image"},"resources":[{"text":"<button>Fixture</button>"}]}"#;
 
 pub(super) fn fixture(
 	mode: &'static str,
 ) -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<AgentAppUiRequest>>) {
-	let root = tempfile::tempdir_in("/tmp").unwrap();
-	let path = root.path().canonicalize().unwrap();
-	let server = path.join("server");
-	std::fs::create_dir(&server).unwrap();
-	std::fs::set_permissions(&server, std::fs::Permissions::from_mode(0o700)).unwrap();
-	let uid = std::fs::metadata(&path).unwrap().uid();
-	let config = path.join("config.toml");
-	std::fs::write(&config,format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"{SERVER}\"\n")).unwrap();
-	std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
-	let socket_path = server.join("decodex.sock");
-	let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
-	std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600)).unwrap();
-	listener.set_nonblocking(true).unwrap();
-	let profile = ClientProfile::load(&path, None).unwrap();
-	let thread = std::thread::spawn(move || {
-		let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-		runtime.block_on(async {
-			let listener = tokio::net::UnixListener::from_std(listener).unwrap();
-			tokio::time::timeout(std::time::Duration::from_secs(5), serve(listener, mode))
-				.await
-				.unwrap()
-		})
-	});
-	(root, profile, thread)
+	super::super::wire_test_support::fixture(move |listener| serve(listener, mode))
 }
 
 async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<AgentAppUiRequest> {
