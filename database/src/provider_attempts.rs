@@ -461,6 +461,10 @@ impl SqliteStore {
 					Ok(rejected(ProviderAttemptRejection::EvidenceConflict, &current))
 				};
 			}
+			if evidence.validate().is_err() {
+				return Ok(rejected(ProviderAttemptRejection::InvalidEvidence, &current));
+			}
+
 			if current.revision != expected_revision
 				|| !matches!(
 					current.state,

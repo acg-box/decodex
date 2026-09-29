@@ -392,41 +392,7 @@ impl ProviderPositiveEvidence {
 		provider_turn_id: Option<String>,
 		witness_digest: impl Into<String>,
 	) -> Result<Self, ProviderAttemptError> {
-		let witness_digest = witness_digest.into();
-		if !is_sha256(&witness_digest)
-			|| [&provider_receipt_id, &provider_thread_id, &provider_turn_id]
-				.into_iter()
-				.flatten()
-				.any(|value| {
-					!is_bounded_provider_identity(value, MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES)
-				}) {
-			return Err(ProviderAttemptError::InvalidPositiveEvidence);
-		}
-
-		let valid_shape = match source {
-			ProviderEvidenceSource::ProviderReceipt =>
-				outcome != ProviderTerminalOutcome::NotSubmitted && provider_receipt_id.is_some(),
-			ProviderEvidenceSource::PositiveIdempotencyLookup => true,
-			ProviderEvidenceSource::ExactTurnReadback =>
-				outcome != ProviderTerminalOutcome::NotSubmitted
-					&& provider_receipt_id.is_none()
-					&& provider_thread_id.is_none()
-					&& provider_turn_id.is_some(),
-			ProviderEvidenceSource::ExactThreadReadback =>
-				outcome != ProviderTerminalOutcome::NotSubmitted
-					&& provider_receipt_id.is_none()
-					&& provider_thread_id.is_some()
-					&& provider_turn_id.is_some(),
-			ProviderEvidenceSource::PositiveNonSubmissionReceipt =>
-				outcome == ProviderTerminalOutcome::NotSubmitted
-					&& provider_receipt_id.is_some()
-					&& provider_turn_id.is_none(),
-		};
-		if !valid_shape {
-			return Err(ProviderAttemptError::InvalidPositiveEvidence);
-		}
-
-		Ok(Self {
+		let evidence = Self {
 			evidence_id,
 			attempt_id,
 			request_id,
@@ -436,8 +402,49 @@ impl ProviderPositiveEvidence {
 			provider_receipt_id,
 			provider_thread_id,
 			provider_turn_id,
-			witness_digest,
-		})
+			witness_digest: witness_digest.into(),
+		};
+		evidence.validate()?;
+		Ok(evidence)
+	}
+
+	/// Recheck the evidence shape before persistence because its fields are public.
+	pub fn validate(&self) -> Result<(), ProviderAttemptError> {
+		if !is_sha256(&self.witness_digest)
+			|| [&self.provider_receipt_id, &self.provider_thread_id, &self.provider_turn_id]
+				.into_iter()
+				.flatten()
+				.any(|value| {
+					!is_bounded_provider_identity(value, MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES)
+				}) {
+			return Err(ProviderAttemptError::InvalidPositiveEvidence);
+		}
+
+		let valid_shape = match self.source {
+			ProviderEvidenceSource::ProviderReceipt =>
+				self.outcome != ProviderTerminalOutcome::NotSubmitted
+					&& self.provider_receipt_id.is_some(),
+			ProviderEvidenceSource::PositiveIdempotencyLookup => true,
+			ProviderEvidenceSource::ExactTurnReadback =>
+				self.outcome != ProviderTerminalOutcome::NotSubmitted
+					&& self.provider_receipt_id.is_none()
+					&& self.provider_thread_id.is_none()
+					&& self.provider_turn_id.is_some(),
+			ProviderEvidenceSource::ExactThreadReadback =>
+				self.outcome != ProviderTerminalOutcome::NotSubmitted
+					&& self.provider_receipt_id.is_none()
+					&& self.provider_thread_id.is_some()
+					&& self.provider_turn_id.is_some(),
+			ProviderEvidenceSource::PositiveNonSubmissionReceipt =>
+				self.outcome == ProviderTerminalOutcome::NotSubmitted
+					&& self.provider_receipt_id.is_some()
+					&& self.provider_turn_id.is_none(),
+		};
+		if !valid_shape {
+			return Err(ProviderAttemptError::InvalidPositiveEvidence);
+		}
+
+		Ok(())
 	}
 }
 

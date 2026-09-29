@@ -396,6 +396,25 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		DIGEST_D,
 	)
 	.expect("positive provider evidence");
+	let mut missing_receipt = evidence.clone();
+	missing_receipt.provider_receipt_id = None;
+	let mut invalid_digest = evidence.clone();
+	invalid_digest.witness_digest = "z".repeat(64);
+	let mut oversized_turn = evidence.clone();
+	oversized_turn.provider_turn_id = Some("x".repeat(513));
+	for invalid in [missing_receipt, invalid_digest, oversized_turn] {
+		assert!(
+			matches!(
+				store.record_provider_attempt_positive_evidence(2, &invalid).await.unwrap(),
+				ProviderAttemptMutationOutcome::Rejected {
+					rejection: decodex_database::ProviderAttemptRejection::InvalidEvidence,
+					actual,
+				} if actual.revision == 2 && actual.state == ProviderAttemptState::DispatchAuthorized
+			),
+			"malformed evidence must not terminalize an attempt"
+		);
+	}
+
 	assert!(matches!(
 		store
 			.record_provider_attempt_positive_evidence(2, &evidence)
