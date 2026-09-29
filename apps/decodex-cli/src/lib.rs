@@ -127,6 +127,13 @@ pub enum Command {
 	#[command(hide = true)]
 	BuildInfo,
 	/// Serve the same-UID Decodex protocol and own local product state.
+	///
+	/// DECODEX_SKILL_ROOTS optionally supplies absolute host skill directories as a
+	/// platform path list (colon-separated on macOS). The service reads it at startup
+	/// and applies the same host roots to each fresh Agent process and selected account.
+	/// Unset it to use native discovery
+	/// only. Restart the service after changes. It does not install plugins or alter
+	/// per-account plugin configuration.
 	Serve {
 		/// Inherited Unix socket whose EOF binds this service to one desktop-app lifetime.
 		#[arg(long, hide = true)]
