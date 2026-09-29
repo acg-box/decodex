@@ -25,7 +25,7 @@ async fn qualify_hooks() {
 		.expect("thread");
 	let thread = started["thread"]["id"].as_str().expect("thread id").to_owned();
 	assert_eq!(turn(&mut session, &thread).await, 0, "untrusted hook must not execute");
-	super::super::reviewer::trust_hook(&session.client, &root, &thread).await;
+	super::reviewer::trust_hook(&session.client, &root, &thread).await;
 	assert_eq!(turn(&mut session, &thread).await, 1, "native reload activates reviewed hook");
 	change(&session, &root, &thread, HookSettingsChange::Enabled(false)).await;
 	assert_eq!(turn(&mut session, &thread).await, 0, "disabled trusted hook must not execute");
@@ -79,4 +79,45 @@ async fn change(
 		session.client.write_hook_settings(params, guard).await.expect("write"),
 		HookSettingsWrite::Saved
 	);
+}
+
+fn setup(root: &std::path::Path, address: std::net::SocketAddr) {
+	let plugin = root.join("plugins/cache/test/sample/local");
+	std::fs::create_dir_all(plugin.join(".codex-plugin")).expect("plugin");
+	std::fs::create_dir_all(plugin.join("hooks")).expect("hooks");
+	std::fs::create_dir(root.join(".git")).expect("repository");
+	std::fs::create_dir_all(root.join(".agents/plugins")).expect("marketplace");
+	std::fs::write(plugin.join(".codex-plugin/plugin.json"), r#"{"name":"sample"}"#)
+		.expect("manifest");
+	std::fs::write(plugin.join("hooks/hooks.json"),json!({"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"echo isolated-plugin-hook"}]}]}}).to_string()).expect("hook");
+	std::fs::write(root.join(".agents/plugins/marketplace.json"),json!({"name":"test","plugins":[{"name":"sample","source":{"source":"local","path":"./plugins/cache/test/sample/local"}}]}).to_string()).expect("marketplace");
+	std::fs::write(root.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nplugins=true\nhooks=true\n[plugins.\"sample@test\"]\nenabled=true\n[projects.{}]\ntrust_level=\"trusted\"\n[model_providers.fixture]\nname=\"Isolated plugin fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(root))).expect("config");
+}
+
+async fn turn(session: &mut NativeSession, thread: &str) -> usize {
+	let started = session
+		.client
+		.turn_start(
+			json!({"threadId":thread,"input":[{"type":"text","text":"Finish the isolated fixture turn"}]}),
+		)
+		.await
+		.expect("turn");
+	let turn = started["turn"]["id"].as_str().expect("turn id");
+	let mut hooks = 0;
+	loop {
+		if let ServerEvent::Notification { method, params } =
+			session.events.recv().await.expect("turn event")
+		{
+			if method == "hook/started" {
+				hooks += 1;
+			}
+			if method == "turn/completed"
+				&& params["threadId"] == thread
+				&& params["turn"]["id"] == turn
+			{
+				assert_eq!(params["turn"]["status"], "completed");
+				return hooks;
+			}
+		}
+	}
 }
