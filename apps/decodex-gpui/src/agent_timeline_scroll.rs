@@ -321,11 +321,10 @@ impl AgentSurface {
 						}
 						if let Some(offset) =
 							geometry.borrow_mut().finish(revision, scroll.max_offset().y.into())
+							&& (f32::from(scroll.offset().y) - offset).abs() > 0.1
 						{
-							if (f32::from(scroll.offset().y) - offset).abs() > 0.1 {
-								scroll.set_offset(point(scroll.offset().x, px(offset)));
-								cx.notify();
-							}
+							scroll.set_offset(point(scroll.offset().x, px(offset)));
+							cx.notify();
 						}
 					});
 				});
@@ -342,11 +341,18 @@ mod tests {
 	#[test]
 	fn disclosure_anchor_tracks_each_layout_until_motion_finishes() {
 		let key = row_key(&row(1));
-		let mut geometry = Geometry::default();
-		geometry.pending =
-			Some(Anchor { key: key.clone(), viewport_top: 100., revision: 1, scheduled: false });
-		geometry.process_motion_until =
-			Some(std::time::Instant::now() + std::time::Duration::from_secs(1));
+		let mut geometry = Geometry {
+			pending: Some(Anchor {
+				key: key.clone(),
+				viewport_top: 100.,
+				revision: 1,
+				scheduled: false,
+			}),
+			process_motion_until: Some(
+				std::time::Instant::now() + std::time::Duration::from_secs(1),
+			),
+			..Default::default()
+		};
 		assert_eq!(geometry.measure(key.clone(), 300., 20.), Some(1));
 		assert_eq!(geometry.finish(1, 1000.), Some(-200.));
 		assert_eq!(geometry.measure(key.clone(), 420., 20.), Some(1));
