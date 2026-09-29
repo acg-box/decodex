@@ -6,8 +6,8 @@ import XCTest
 final class ResetCardStoreRecoveryTests: XCTestCase {
 	func testNewPendingUseAutomaticallyObservesCompletionWithoutManualRefresh() async throws {
 		let fixture = try makeSubmissionFixture(
-			useDocument: "prepared", exitCode: 0,
-			statusDocument: #"{"state":"completed","data":{"outcome":"reset"}}"#
+			useResult: .success(.prepared),
+			status: .completed(.reset)
 		)
 		defer { fixture.remove() }
 		let store = ResetCardStore(client: fixture.client, pendingStore: fixture.pendingStore)
@@ -23,17 +23,21 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 	}
 
 	func testOnlyConfirmedLiveResetStartsQuotaFill() async throws {
-		for outcome in ["reset", "no_credit", "nothing_to_reset"] {
+		for (state, fillsQuota) in [
+			(ResetCardOperationState.completed(.reset), true),
+			(.completed(.noCredit), false),
+			(.completed(.nothingToReset), false),
+		] {
 			let fixture = try makeSubmissionFixture(
-				useDocument: "prepared", exitCode: 0,
-				statusDocument: "{\"state\":\"completed\",\"data\":{\"outcome\":\"\(outcome)\"}}"
+				useResult: .success(.prepared),
+				status: state
 			)
 			defer { fixture.remove() }
 			let store = ResetCardStore(client: fixture.client, pendingStore: fixture.pendingStore)
 			await store.refresh()
 			_ = await store.use(fixture.attempt)
 			await store.checkPendingStatus(fixture.attempt)
-			XCTAssertEqual(store.quotaFills[fixture.attempt.target.accountID] != nil, outcome == "reset")
+			XCTAssertEqual(store.quotaFills[fixture.attempt.target.accountID] != nil, fillsQuota)
 			let started = store.quotaFills[fixture.attempt.target.accountID]?.started
 			await store.refresh()
 			XCTAssertEqual(store.quotaFills[fixture.attempt.target.accountID]?.started, started)
@@ -41,7 +45,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 	}
 
 	func testRefreshResolvesPersistedCompletedOperation() async throws {
-		let fixture = try makeFixture(state: #"{"state":"completed","data":{"outcome":"reset"}}"#)
+		let fixture = try makeFixture(state: .completed(.reset))
 		defer { fixture.remove() }
 		XCTAssertEqual(fixture.pendingStore.insert(fixture.attempt), [fixture.attempt])
 		let store = ResetCardStore(
@@ -61,7 +65,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 	}
 
 	func testRefreshRetainsPersistedAmbiguousOperation() async throws {
-		let fixture = try makeFixture(state: #"{"state":"effect_ambiguous"}"#)
+		let fixture = try makeFixture(state: .effectAmbiguous)
 		defer { fixture.remove() }
 		XCTAssertEqual(fixture.pendingStore.insert(fixture.attempt), [fixture.attempt])
 		let store = ResetCardStore(
@@ -85,7 +89,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 
 	func testRefreshRetainsPendingAttemptWhenAuthoritativeStatusIsUnavailable() async throws {
 		let fixture = try makeFixture(
-			state: #"{"state":"unavailable","data":{"error":"product_state_unavailable"}}"#
+			state: .unavailable(.productStateUnavailable)
 		)
 		defer { fixture.remove() }
 		XCTAssertEqual(fixture.pendingStore.insert(fixture.attempt), [fixture.attempt])
@@ -109,10 +113,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 
 	func testDefinitelyNotDispatchedRetainsThePersistentPendingAttempt() async throws {
 		let fixture = try makeSubmissionFixture(
-			useDocument: """
-			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"failure","idempotency_key":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405161","dispatch_state":"definitely_not_dispatched","failure":"configuration_missing"}
-			""",
-			exitCode: 2
+			useResult: .failure(.useDefinitelyNotDispatched)
 		)
 		defer { fixture.remove() }
 		let store = ResetCardStore(
@@ -137,10 +138,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 
 	func testPotentiallyDispatchedStatusCheckDoesNotRedispatch() async throws {
 		let fixture = try makeSubmissionFixture(
-			useDocument: """
-			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"failure","idempotency_key":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405161","dispatch_state":"potentially_dispatched","failure":"protocol_timeout"}
-			""",
-			exitCode: 2
+			useResult: .failure(.usePotentiallyDispatched)
 		)
 		defer { fixture.remove() }
 		let store = ResetCardStore(
@@ -179,10 +177,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 
 	func testRejectedBeforeAcceptanceRemovesThePersistentPendingAttempt() async throws {
 		let fixture = try makeSubmissionFixture(
-			useDocument: """
-			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"rejected","idempotency_key":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405161","dispatch_state":"rejected_before_acceptance","error":{"reason":"idempotency_conflict"}}
-			""",
-			exitCode: 1
+			useResult: .failure(.commandRejected)
 		)
 		defer { fixture.remove() }
 		let store = ResetCardStore(
@@ -208,13 +203,8 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 
 	func testAmbiguousPendingTargetRejectsANewKeyWithoutDispatch() async throws {
 		let fixture = try makeSubmissionFixture(
-			useDocument: """
-			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"accepted","idempotency_key":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405161","dispatch_state":"durably_accepted","state":{"state":"prepared","data":{"account_id":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405160","account_revision":7,"descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200}}}}
-			""",
-			exitCode: 0,
-			statusDocument: """
-			{"schema":"decodex/reset-card-cli/1","command":"status","outcome":"effect_ambiguous","idempotency_key":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405161","state":{"state":"effect_ambiguous"}}
-			"""
+			useResult: .success(.prepared),
+			status: .effectAmbiguous
 		)
 		defer { fixture.remove() }
 		XCTAssertEqual(fixture.pendingStore.insert(fixture.attempt), [fixture.attempt])
@@ -249,10 +239,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 
 	func testSixtyFifthPendingAttemptIsRejectedBeforeDispatch() async throws {
 		let fixture = try makeSubmissionFixture(
-			useDocument: """
-			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"accepted","idempotency_key":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405161","dispatch_state":"durably_accepted","state":{"state":"prepared","data":{"account_id":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405160","account_revision":7,"descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200}}}}
-			""",
-			exitCode: 0
+			useResult: .success(.prepared)
 		)
 		defer { fixture.remove() }
 		let retained = try (1...ResetCardPendingAttemptStore.maximumAttempts).map { index in
@@ -302,10 +289,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 
 	func testCorruptRecoveryJournalBlocksNewUseWithoutDeletingEvidence() async throws {
 		let fixture = try makeSubmissionFixture(
-			useDocument: """
-			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"accepted","idempotency_key":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405161","dispatch_state":"durably_accepted","state":{"state":"prepared","data":{"account_id":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405160","account_revision":7,"descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200}}}}
-			""",
-			exitCode: 0
+			useResult: .success(.prepared)
 		)
 		defer { fixture.remove() }
 		let corrupt = Data("not-json".utf8)
@@ -339,10 +323,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 
 	func testBlockedJournalStillQueriesStatusForARecoverableAttempt() async throws {
 		let fixture = try makeSubmissionFixture(
-			useDocument: """
-			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"accepted","idempotency_key":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405161","dispatch_state":"durably_accepted","state":{"state":"prepared","data":{"account_id":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405160","account_revision":7,"descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200}}}}
-			""",
-			exitCode: 0
+			useResult: .success(.prepared)
 		)
 		defer { fixture.remove() }
 		XCTAssertEqual(fixture.pendingStore.insert(fixture.attempt), [fixture.attempt])
@@ -379,10 +360,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 
 	func testPendingStatusCheckKeepsItsPinnedAuthorityAfterActiveProfileChanges() async throws {
 		let fixture = try makeSubmissionFixture(
-			useDocument: """
-			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"accepted","idempotency_key":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405161","dispatch_state":"durably_accepted","account_id":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405160","descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200},"account_revision":7,"state":{"state":"prepared","data":{"account_id":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405160","account_revision":7,"descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200}}}}
-			""",
-			exitCode: 1,
+			useResult: .success(.prepared),
 			discoveredProfileName: "other",
 			discoveredServerID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 		)
@@ -414,10 +392,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 
 	func testStaleInstanceCannotCheckAfterAnotherInstanceRemovesTheKey() async throws {
 		let fixture = try makeSubmissionFixture(
-			useDocument: """
-			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"failure","idempotency_key":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405161","dispatch_state":"potentially_dispatched","failure":"protocol_timeout"}
-			""",
-			exitCode: 2
+			useResult: .failure(.usePotentiallyDispatched)
 		)
 		defer { fixture.remove() }
 		XCTAssertEqual(fixture.pendingStore.insert(fixture.attempt), [fixture.attempt])
@@ -507,18 +482,17 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		)
 	}
 
-	private func makeFixture(state: String) throws -> StoreRecoveryFixture {
+	private func makeFixture(state: ResetCardOperationState) throws -> StoreRecoveryFixture {
 		let directory = try makePrivateRecoveryDirectory()
 		let journalURL = directory.appendingPathComponent("pending.json")
 		let pendingStore = ResetCardPendingAttemptStore(journalURL: journalURL)
 		let attempt = try recoveryAttempt()
 		let recorder = RecoveryInvocationRecorder()
-		let status = operationState(from: state)
 		let client = RecoveryClient(
 			accounts: [],
 			inventory: nil,
 			recorder: recorder,
-			status: { _ in status },
+			status: { _ in state },
 			use: { _ in .prepared }
 		)
 		return StoreRecoveryFixture(
@@ -532,13 +506,11 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 	}
 
 	private func makeSubmissionFixture(
-		useDocument: String,
-		exitCode: Int32,
-		statusDocument: String? = nil,
+		useResult: Result<ResetCardOperationState, ResetCardClientError>,
+		status: ResetCardOperationState = .notFound,
 		discoveredProfileName: String = "local",
 		discoveredServerID: String = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 	) throws -> StoreRecoveryFixture {
-		_ = exitCode
 		let directory = try makePrivateRecoveryDirectory()
 		let journalURL = directory.appendingPathComponent("pending.json")
 		let pendingStore = ResetCardPendingAttemptStore(journalURL: journalURL)
@@ -561,38 +533,12 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			sevenDayQuota: .unknown(durationMinutes: 10_080),
 			observationError: nil
 		)
-		let status = statusDocument.map(operationState(from:)) ?? .notFound
-		let useError: ResetCardClientError?
-		let useState: ResetCardOperationState
-		if useDocument.contains("definitely_not_dispatched") {
-			useError = .useDefinitelyNotDispatched
-			useState = .notFound
-		} else if useDocument.contains("potentially_dispatched") {
-			useError = .usePotentiallyDispatched
-			useState = .notFound
-		} else if useDocument.contains("rejected_before_acceptance")
-			|| useDocument.contains(#""outcome":"rejected""#)
-		{
-			useError = .commandRejected
-			useState = .notFound
-		} else if useDocument.contains(#""state":"effect_ambiguous""#) {
-			useError = nil
-			useState = .effectAmbiguous
-		} else {
-			useError = nil
-			useState = .prepared
-		}
 		let client = RecoveryClient(
 			accounts: [account],
 			inventory: inventory,
 			recorder: recorder,
 			status: { _ in status },
-			use: { _ in
-				if let useError {
-					throw useError
-				}
-				return useState
-			}
+			use: { _ in try useResult.get() }
 		)
 		return StoreRecoveryFixture(
 			directory: directory,
@@ -691,24 +637,6 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			fiveHourQuota: .unknown(durationMinutes: 300),
 			sevenDayQuota: .unknown(durationMinutes: 10_080)
 		)
-	}
-
-	private func operationState(from document: String) -> ResetCardOperationState {
-		if document.contains(#""state":"completed""#) {
-			if document.contains("nothing_to_reset") { return .completed(.nothingToReset) }
-			if document.contains("no_credit") { return .completed(.noCredit) }
-			return .completed(.reset)
-		}
-		if document.contains(#""state":"effect_ambiguous""#) {
-			return .effectAmbiguous
-		}
-		if document.contains(#""state":"unavailable""#) {
-			return .unavailable(.productStateUnavailable)
-		}
-		if document.contains(#""state":"prepared""#) {
-			return .prepared
-		}
-		return .notFound
 	}
 
 	private func waitForFile(_ url: URL) async throws {
