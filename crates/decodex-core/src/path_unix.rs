@@ -11,18 +11,14 @@ use std::{
 	mem::MaybeUninit,
 	os::{
 		fd::{AsRawFd as _, FromRawFd as _, RawFd},
-		unix::{
-			ffi::{OsStrExt as _, OsStringExt as _},
-			fs::MetadataExt as _,
-		},
+		unix::{ffi::OsStrExt as _, fs::MetadataExt as _},
 	},
 	path::{Component, Path, PathBuf},
 };
 
 use libc::{
-	AT_SYMLINK_NOFOLLOW, DIR, F_DUPFD_CLOEXEC, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW,
-	O_NONBLOCK, O_RDONLY, O_RDWR, O_WRONLY, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG, c_int, c_uint,
-	mode_t, stat, uid_t,
+	AT_SYMLINK_NOFOLLOW, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_NONBLOCK, O_RDONLY,
+	O_RDWR, O_WRONLY, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG, c_int, c_uint, mode_t, stat, uid_t,
 };
 
 use crate::{
@@ -41,70 +37,6 @@ const TRAVERSAL_DIRECTORY_ACCESS: c_int = O_RDONLY;
 enum ExpectedKind {
 	Directory,
 	File,
-}
-
-struct DirectoryStream(*mut DIR);
-impl DirectoryStream {
-	fn open(directory: &File) -> Result<Self, PathError> {
-		// SAFETY: `fcntl` duplicates an open descriptor and does not retain pointers.
-		let descriptor = unsafe { libc::fcntl(directory.as_raw_fd(), F_DUPFD_CLOEXEC, 0) };
-
-		if descriptor == -1 {
-			return Err(paths::io_error(IoOperation::List, io::Error::last_os_error()));
-		}
-
-		// SAFETY: `descriptor` is a fresh directory descriptor. On success, `fdopendir`
-		// assumes ownership; on failure, this function closes it below.
-		let stream = unsafe { libc::fdopendir(descriptor) };
-
-		if stream.is_null() {
-			let error = io::Error::last_os_error();
-
-			// SAFETY: ownership was not transferred when `fdopendir` returned null.
-			unsafe { libc::close(descriptor) };
-
-			return Err(paths::io_error(IoOperation::List, error));
-		}
-
-		Ok(Self(stream))
-	}
-
-	fn next_name(&mut self) -> Result<Option<OsString>, PathError> {
-		loop {
-			clear_errno();
-
-			// SAFETY: `self.0` remains an open `DIR` until `Drop`; `readdir` owns the
-			// returned entry storage until the next call on this stream.
-			let entry = unsafe { libc::readdir(self.0) };
-
-			if entry.is_null() {
-				let error = current_errno();
-
-				return if error == 0 {
-					Ok(None)
-				} else {
-					Err(paths::io_error(IoOperation::List, io::Error::from_raw_os_error(error)))
-				};
-			}
-
-			// SAFETY: a non-null `dirent` from `readdir` contains a NUL-terminated
-			// `d_name` valid until the next call on this stream.
-			let bytes = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) }.to_bytes();
-
-			if matches!(bytes, b"." | b"..") {
-				continue;
-			}
-
-			return Ok(Some(OsString::from_vec(bytes.to_vec())));
-		}
-	}
-}
-
-impl Drop for DirectoryStream {
-	fn drop(&mut self) {
-		// SAFETY: `self.0` is a non-null `DIR` uniquely owned by this guard.
-		unsafe { libc::closedir(self.0) };
-	}
 }
 
 pub(crate) fn ensure_layout(paths: &DecodexPaths) -> Result<(), PathError> {
@@ -264,29 +196,6 @@ pub(crate) fn remove_private_file(paths: &DecodexPaths, path: &Path) -> Result<(
 	parent.sync_all().map_err(|error| paths::io_error(IoOperation::Sync, error))
 }
 
-pub(crate) fn visit_private_files<E>(
-	paths: &DecodexPaths,
-	directory: &Path,
-	mut visitor: impl FnMut(PathBuf, Metadata) -> Result<(), E>,
-) -> Result<(), E>
-where
-	E: From<PathError>,
-{
-	let directory_file = open_owned_directory(paths, directory).map_err(E::from)?;
-	let mut stream = DirectoryStream::open(&directory_file).map_err(E::from)?;
-
-	while let Some(name) = stream.next_name().map_err(E::from)? {
-		let file = open_private_file_at(&directory_file, &name).map_err(E::from)?;
-		let metadata = file
-			.metadata()
-			.map_err(|error| E::from(paths::io_error(IoOperation::Inspect, error)))?;
-
-		visitor(directory.join(name), metadata)?;
-	}
-
-	Ok(())
-}
-
 fn open_root(paths: &DecodexPaths, create: bool) -> Result<File, PathError> {
 	let root = paths.root().as_path();
 	let components = root
@@ -328,28 +237,6 @@ fn open_filesystem_root() -> Result<File, PathError> {
 		unsafe { libc::open(path.as_ptr(), TRAVERSAL_DIRECTORY_ACCESS | O_DIRECTORY | O_CLOEXEC) };
 
 	file_from_descriptor(descriptor, IoOperation::Open)
-}
-
-fn open_owned_directory(paths: &DecodexPaths, path: &Path) -> Result<File, PathError> {
-	let relative = path.strip_prefix(paths.root().as_path()).map_err(|_| PathError::Escape)?;
-
-	paths::validate_relative(relative)?;
-
-	let mut directory = open_root(paths, false)?;
-
-	for component in relative.components() {
-		let Component::Normal(name) = component else {
-			return Err(PathError::Escape);
-		};
-
-		directory = open_directory_at(&directory, name)?;
-
-		verify_private_directory_metadata(
-			&directory.metadata().map_err(|error| paths::io_error(IoOperation::Inspect, error))?,
-		)?;
-	}
-
-	Ok(directory)
 }
 
 fn open_file_parent(paths: &DecodexPaths, path: &Path) -> Result<(File, OsString), PathError> {
@@ -688,31 +575,6 @@ fn zero_result(result: i32, operation: IoOperation) -> Result<(), PathError> {
 
 fn c_name(name: &OsStr) -> Result<CString, PathError> {
 	CString::new(name.as_bytes()).map_err(|_| PathError::Escape)
-}
-
-#[cfg(target_vendor = "apple")]
-fn clear_errno() {
-	// SAFETY: `__error` returns the calling thread's errno slot.
-	unsafe { *libc::__error() = 0 };
-}
-
-#[cfg(any(target_os = "android", target_os = "linux"))]
-fn clear_errno() {
-	// SAFETY: `__errno_location` returns the calling thread's errno slot.
-	unsafe { *libc::__errno_location() = 0 };
-}
-
-#[cfg(not(any(target_vendor = "apple", target_os = "android", target_os = "linux")))]
-fn clear_errno() {}
-
-#[cfg(any(target_vendor = "apple", target_os = "android", target_os = "linux"))]
-fn current_errno() -> i32 {
-	io::Error::last_os_error().raw_os_error().unwrap_or(0)
-}
-
-#[cfg(not(any(target_vendor = "apple", target_os = "android", target_os = "linux")))]
-fn current_errno() -> i32 {
-	0
 }
 
 fn hex(bytes: &[u8]) -> String {

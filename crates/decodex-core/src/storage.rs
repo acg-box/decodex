@@ -21,15 +21,6 @@ pub enum StorageError {
 	},
 	/// Cache limits were zero, inconsistent, or above hard ceilings.
 	InvalidCacheLimits,
-	/// Cache key was empty or oversized.
-	InvalidCacheKey,
-	/// One cache entry exceeded its configured bound.
-	CacheEntryTooLarge {
-		/// Maximum accepted entry bytes.
-		limit: usize,
-	},
-	/// Existing cache usage could not be represented safely.
-	CacheBoundOverflow,
 	/// An unexpected filename appeared in the owned cache directory.
 	InvalidCacheEntry,
 }
@@ -42,11 +33,6 @@ impl Display for StorageError {
 				formatter.write_str("blob integrity verification failed"),
 			Self::BlobTooLarge { limit } => write!(formatter, "blob exceeds {limit} bytes"),
 			Self::InvalidCacheLimits => formatter.write_str("invalid disposable-cache limits"),
-			Self::InvalidCacheKey => formatter.write_str("invalid disposable-cache key"),
-			Self::CacheEntryTooLarge { limit } => {
-				write!(formatter, "cache entry exceeds {limit} bytes")
-			},
-			Self::CacheBoundOverflow => formatter.write_str("cache usage exceeds numeric bounds"),
 			Self::InvalidCacheEntry => formatter.write_str("invalid disposable-cache entry"),
 		}
 	}

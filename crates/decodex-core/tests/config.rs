@@ -152,16 +152,20 @@ fn malformed_unknown_and_oversized_configuration_are_bounded_and_redacted() {
 
 #[test]
 fn successful_config_debug_redacts_operator_strings() {
+	let host = "xy1306-secret-marker.example";
+	let profile = "private-profile-marker";
 	let input = support::valid_config()
-		.replace("server.example.test", "xy1306-secret-marker.example")
-		.replace("database = \"decodex\"", "database = \"xy1306_secret_marker\"")
-		.replace("user = \"decodex\"", "user = \"xy1306_secret_user\"");
+		.replace("server.example.test", host)
+		.replace(r#"active_profile = "local""#, &format!(r#"active_profile = "{profile}""#))
+		.replace("[profiles.local]", &format!("[profiles.{profile}]"));
 	let config = DecodexConfig::parse(input.as_bytes()).expect("valid marked configuration");
-	let debug = format!("{config:?}");
+	let client = DecodexClientConfig::parse(input.as_bytes()).expect("valid client projection");
 
-	assert!(!debug.contains("xy1306-secret-marker"));
-	assert!(!debug.contains("xy1306_secret_marker"));
-	assert!(!debug.contains("xy1306_secret_user"));
+	for debug in [format!("{config:?}"), format!("{client:?}"), format!("{:?}", config.profiles())]
+	{
+		assert!(!debug.contains(host));
+		assert!(!debug.contains(profile));
+	}
 }
 
 #[test]

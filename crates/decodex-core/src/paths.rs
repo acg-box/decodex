@@ -4,12 +4,11 @@ use std::{
 	env,
 	ffi::OsStr,
 	fmt::{Debug, Display, Formatter},
-	fs::Metadata,
 	io,
 	path::{Component, Path, PathBuf},
 };
 #[cfg(not(unix))] use std::{
-	fs::{self, DirBuilder, OpenOptions},
+	fs::{self, DirBuilder, Metadata, OpenOptions},
 	io::{Read, Write},
 };
 
@@ -336,21 +335,12 @@ pub enum IoOperation {
 	Link,
 	Rename,
 	Remove,
-	List,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum AtomicMode {
 	CreateOnly,
 	Replace,
-}
-
-pub(crate) fn is_atomic_temporary_file(path: &Path) -> bool {
-	let Some(name) = path.file_name().and_then(OsStr::to_str) else { return false };
-	let Some(random) = name.strip_prefix(ATOMIC_TEMPORARY_PREFIX) else { return false };
-
-	random.len() == 32
-		&& random.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
 }
 
 pub(crate) fn read_private_file(
@@ -447,56 +437,6 @@ pub(crate) fn remove_private_file(paths: &DecodexPaths, path: &Path) -> Result<(
 		fs::remove_file(path).map_err(|error| io_error(IoOperation::Remove, error))?;
 
 		sync_directory(path.parent().ok_or(PathError::Escape)?)
-	}
-}
-
-pub(crate) fn visit_private_files<E>(
-	paths: &DecodexPaths,
-	directory: &Path,
-	visitor: impl FnMut(PathBuf, Metadata) -> Result<(), E>,
-) -> Result<(), E>
-where
-	E: From<PathError>,
-{
-	#[cfg(unix)]
-	{
-		path_unix::visit_private_files(paths, directory, visitor)
-	}
-
-	#[cfg(not(unix))]
-	{
-		let relative =
-			directory.strip_prefix(paths.root.as_path()).map_err(|_| PathError::Escape.into())?;
-
-		validate_relative(relative).map_err(E::from)?;
-		verify_existing_ancestors(paths.root.as_path()).map_err(E::from)?;
-		verify_private_directory(directory).map_err(E::from)?;
-
-		let entries =
-			fs::read_dir(directory).map_err(|error| E::from(io_error(IoOperation::List, error)))?;
-		let mut visitor = visitor;
-
-		for entry in entries {
-			let entry = entry.map_err(|error| E::from(io_error(IoOperation::List, error)))?;
-			let path = entry.path();
-			let metadata = fs::symlink_metadata(&path)
-				.map_err(|error| E::from(io_error(IoOperation::Inspect, error)))?;
-			let file_type = entry
-				.file_type()
-				.map_err(|error| E::from(io_error(IoOperation::Inspect, error)))?;
-
-			if file_type.is_symlink() {
-				return Err(PathError::Symlink.into());
-			}
-			if !file_type.is_file() {
-				return Err(PathError::UnexpectedFileKind.into());
-			}
-
-			verify_private_file_metadata(&metadata).map_err(E::from)?;
-			visitor(path, metadata)?;
-		}
-
-		Ok(())
 	}
 }
 
