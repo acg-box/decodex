@@ -676,7 +676,27 @@ impl AgentHost {
 	) -> decodex_protocol::AgentTranscriptResult {
 		self.transcripts
 			.read(
-				|| self.timeline_source(request.work_id.as_str(), request.thread_id.as_str()),
+				|| async {
+					let work = request.work_id.as_str();
+					let thread = request.thread_id.as_str();
+					let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
+					let mut source =
+						self.timeline_source(work, owner.codex_thread_id.as_deref()?).await?;
+					if source.key.thread != thread {
+						let child_owner = crate::agent::native_subagents::request_owner(
+							&self.store,
+							&source.client,
+							thread,
+						)
+						.await
+						.ok()?;
+						if child_owner.id != work {
+							return None;
+						}
+						source.key.thread = thread.into();
+					}
+					Some(source)
+				},
 				request,
 			)
 			.await
