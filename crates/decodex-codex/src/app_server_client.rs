@@ -729,7 +729,8 @@ async fn run<R, W>(
 			let frame = match read {
 				Err(_) => Err(ClientError::Io),
 				Ok(0) => Err(ClientError::Closed),
-				Ok(_) if bytes.len() > MAX_FRAME_BYTES => Err(ClientError::FrameTooLarge),
+				Ok(_) if bytes.strip_suffix(b"\n").unwrap_or(&bytes).len() > MAX_FRAME_BYTES =>
+					Err(ClientError::FrameTooLarge),
 				Ok(_) if bytes.last() != Some(&b'\n') => Err(ClientError::InvalidFrame),
 				Ok(_) =>
 					serde_json::from_slice::<Value>(&bytes).map_err(|_| ClientError::InvalidFrame),
@@ -1399,6 +1400,36 @@ mod tests {
 		}
 		assert!(events.try_recv().is_err());
 		client.shutdown().await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn exact_frame_body_limit_excludes_the_line_delimiter() {
+		let (client, mut events, _reader, mut writer) = connection();
+		let mut frame = json!({"method":"tick","params":{"text":""}});
+		let overhead = serde_json::to_vec(&frame).unwrap().len();
+		frame["params"]["text"] = json!("x".repeat(MAX_FRAME_BYTES - overhead));
+		write_frame(&mut writer, frame).await.unwrap();
+		assert!(matches!(
+			timeout(Duration::from_secs(2), events.recv()).await.unwrap(),
+			Some(ServerEvent::Notification { method, params })
+				if method == "tick" && params["text"].as_str().unwrap().len() == MAX_FRAME_BYTES - overhead
+		));
+		client.shutdown().await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn unterminated_frames_at_and_beyond_the_body_limit_are_rejected() {
+		for size in [MAX_FRAME_BYTES, MAX_FRAME_BYTES + 1] {
+			let (_client, mut events, _reader, mut writer) = connection();
+			writer.write_all(&vec![b' '; size]).await.unwrap();
+			writer.shutdown().await.unwrap();
+			let event = timeout(Duration::from_secs(2), events.recv()).await.unwrap();
+			if size == MAX_FRAME_BYTES {
+				assert!(matches!(event, Some(ServerEvent::Closed(ClientError::InvalidFrame))));
+			} else {
+				assert!(matches!(event, Some(ServerEvent::Closed(ClientError::FrameTooLarge))));
+			}
+		}
 	}
 
 	#[tokio::test]
