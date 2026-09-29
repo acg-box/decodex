@@ -5879,7 +5879,7 @@ max_entry_bytes = 0
 				let total_bytes = match change {
 					"total" => 4,
 					"capacity" => crate::MAX_AGENT_MEDIA_BYTES as u32 + 1,
-					_ => 5 + crate::AGENT_MEDIA_CHUNK_BYTES as u32,
+					_ => 5 + bytes.len() as u32,
 				};
 				let result = crate::AgentMediaResult::Available {
 					request: Box::new(returned),
@@ -5966,7 +5966,7 @@ max_entry_bytes = 0
 				let total_bytes = match change {
 					"total" => 4,
 					"capacity" => crate::MAX_AGENT_APP_UI_BYTES as u32 + 1,
-					_ => 5 + crate::AGENT_APP_UI_CHUNK_BYTES as u32,
+					_ => 5 + bytes.len() as u32,
 				};
 				let result = crate::AgentAppUiResult::Available {
 					request: Box::new(returned),
@@ -6052,7 +6052,7 @@ max_entry_bytes = 0
 				let total_bytes = match change {
 					"total" => 4,
 					"capacity" => crate::MAX_AGENT_APP_UI_RECEIPT_BYTES as u32 + 1,
-					_ => 5 + crate::AGENT_APP_UI_RECEIPT_CHUNK_BYTES as u32,
+					_ => 5 + bytes.len() as u32,
 				};
 				let result = crate::AgentAppUiReceiptResult::Available {
 					request: Box::new(returned),
@@ -6131,8 +6131,8 @@ max_entry_bytes = 0
 				let result = crate::AgentInputReceiptsResult::Available {
 					work_id: EntityId::new(if change == "work" { "other" } else { "work" })
 						.unwrap(),
+					next_after: Some(if change == "cursor" { 42 } else { entry.id }),
 					entries: vec![entry],
-					next_after: Some(if change == "cursor" { 42 } else { 41 }),
 					shortened: false,
 				};
 				socket
