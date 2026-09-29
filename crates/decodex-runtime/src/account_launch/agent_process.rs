@@ -270,32 +270,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 
 fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), ClientError> {
 	if method == "thread/fork" {
-		let identity = |value: &Value| {
-			value.as_str().is_some_and(|id| {
-				!id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control)
-			})
-		};
-		return if params.as_object().is_some_and(|p| {
-			p.len() == 4
-				&& p.keys().all(|key| {
-					matches!(
-						key.as_str(),
-						"threadId"
-							| "beforeTurnId"
-							| "lastTurnId"
-							| "deferGoalContinuation"
-							| "excludeTurns"
-					)
-				})
-		}) && identity(&params["threadId"])
-			&& (identity(&params["beforeTurnId"]) ^ identity(&params["lastTurnId"]))
-			&& params["deferGoalContinuation"] == true
-			&& params["excludeTurns"] == true
-		{
-			Ok(())
-		} else {
-			Err(ClientError::InvalidFrame)
-		};
+		return validate_fork_request(params);
 	}
 	if let Some(method @ ("fs/createDirectory" | "fs/writeFile")) = method.as_str() {
 		return if decodex_codex::app_server_client::is_goal_attachment_write(method, params) {
@@ -403,6 +378,35 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 		return Err(ClientError::InvalidFrame);
 	}
 	Ok(())
+}
+
+fn validate_fork_request(params: &Value) -> Result<(), ClientError> {
+	let identity = |value: &Value| {
+		value.as_str().is_some_and(|id| {
+			!id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control)
+		})
+	};
+	if params.as_object().is_some_and(|p| {
+		p.len() == 4
+			&& p.keys().all(|key| {
+				matches!(
+					key.as_str(),
+					"threadId"
+						| "beforeTurnId"
+						| "lastTurnId"
+						| "deferGoalContinuation"
+						| "excludeTurns"
+				)
+			})
+	}) && identity(&params["threadId"])
+		&& (identity(&params["beforeTurnId"]) ^ identity(&params["lastTurnId"]))
+		&& params["deferGoalContinuation"] == true
+		&& params["excludeTurns"] == true
+	{
+		Ok(())
+	} else {
+		Err(ClientError::InvalidFrame)
+	}
 }
 
 #[cfg(test)]
