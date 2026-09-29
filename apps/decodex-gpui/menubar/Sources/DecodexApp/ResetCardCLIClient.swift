@@ -1526,35 +1526,6 @@ private enum ResetCardOperationWireResult: Decodable, Sendable {
 		}
 	}
 
-	var outerOutcome: String {
-		switch self {
-		case .value(.notFound):
-			return "not_found"
-		case .value(.prepared):
-			return "prepared"
-		case .value(.effectAmbiguous):
-			return "effect_ambiguous"
-		case .value(.completed):
-			return "completed"
-		case .value(.failedBeforeEffect):
-			return "failed_before_effect"
-		case .value(.unavailable):
-			return "unavailable"
-		}
-	}
-
-	var expectedExitCode: Int32 {
-		switch self {
-		case .value(.completed):
-			return 0
-		case .value(.unavailable):
-			return 2
-		case .value(.notFound), .value(.prepared), .value(.effectAmbiguous),
-			.value(.failedBeforeEffect):
-			return 1
-		}
-	}
-
 	var state: ResetCardOperationState {
 		switch self {
 		case .value(let state):
