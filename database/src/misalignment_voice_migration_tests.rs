@@ -39,14 +39,20 @@ fn voice_precaution_upgrade_preserves_unknown_legacy_cause() {
 			.into_iter()
 			.filter(|r| !matches!(
 				r.2.as_str(),
-				"agent_misalignment" | "quick_task_requests" | "conversation_native_settings"
+				"agent_misalignment"
+					| "quick_task_requests"
+					| "conversation_native_settings"
+					| "reset_card_operations"
 			))
 			.collect::<Vec<_>>(),
 		original
 			.into_iter()
 			.filter(|r| !matches!(
 				r.2.as_str(),
-				"agent_misalignment" | "quick_task_requests" | "conversation_native_settings"
+				"agent_misalignment"
+					| "quick_task_requests"
+					| "conversation_native_settings"
+					| "reset_card_operations"
 			))
 			.collect::<Vec<_>>()
 	);

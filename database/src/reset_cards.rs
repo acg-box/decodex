@@ -11,7 +11,7 @@ pub struct ResetCardOperation {
 	pub account_id: String,
 	pub account_revision: i64,
 	pub granted_at: i64,
-	pub expires_at: i64,
+	pub expires_at: Option<i64>,
 	pub exact_credit_id: Option<String>,
 	pub state: String,
 	pub outcome: Option<String>,
@@ -50,7 +50,7 @@ impl SqliteStore {
 			|| decodex_core::AccountId::new(operation.account_id.clone()).is_err()
 			|| operation.account_revision <= 0
 			|| operation.granted_at < 0
-			|| operation.expires_at <= operation.granted_at
+			|| operation.expires_at.is_some_and(|expiry| expiry <= operation.granted_at)
 			|| operation.exact_credit_id.as_ref().is_none_or(|id| {
 				id.is_empty() || id.len() > 1024 || id.chars().any(char::is_control)
 			})

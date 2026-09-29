@@ -104,7 +104,7 @@ enum Request {
 		schema: String,
 		account_id: String,
 		granted_at_unix_seconds: i64,
-		expires_at_unix_seconds: i64,
+		expires_at_unix_seconds: Option<i64>,
 		expected_revision: u64,
 		idempotency_key: String,
 	},
@@ -975,7 +975,7 @@ async fn consume_reset_card(
 	profile: ClientProfile,
 	account_id: String,
 	granted_at_unix_seconds: i64,
-	expires_at_unix_seconds: i64,
+	expires_at_unix_seconds: Option<i64>,
 	expected_revision: u64,
 	idempotency_key: String,
 ) -> Result<Value, RequestFailure> {

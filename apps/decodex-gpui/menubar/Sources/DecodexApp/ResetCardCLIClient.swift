@@ -1245,7 +1245,7 @@ private struct ResetCardQuotaErrorWire: Decodable, Sendable {
 
 private struct ResetCardDescriptorWire: Decodable, Sendable {
 	let grantedAtUnixSeconds: Int64
-	let expiresAtUnixSeconds: Int64
+	let expiresAtUnixSeconds: Int64?
 
 	enum CodingKeys: String, CodingKey {
 		case grantedAtUnixSeconds = "granted_at_unix_seconds"
@@ -1263,7 +1263,7 @@ private struct ResetCardDescriptorWire: Decodable, Sendable {
 			forKey: .grantedAtUnixSeconds
 		)
 		expiresAtUnixSeconds = try container.decode(
-			Int64.self,
+			Int64?.self,
 			forKey: .expiresAtUnixSeconds
 		)
 	}
