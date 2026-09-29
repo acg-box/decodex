@@ -54,7 +54,7 @@ impl AgentCoordinator {
 		else {
 			return Ok(());
 		};
-		let params = Self::resume_params(thread);
+		let params = Self::resume_usage_params(thread);
 		let revision = history_revision.unwrap_or_else(|| self.client.history_revision());
 		let Some(guard) = self.client.history_guard(revision) else { return Ok(()) };
 		let result = self.client.request_with_history("thread/resume", params, guard).await;
@@ -88,7 +88,7 @@ impl AgentCoordinator {
 		if !Self::hydrated_thread_matches(&resumed, thread) {
 			return Ok(());
 		}
-		self.expect_usage_replay(thread, &resumed).await;
+		self.expect_usage_replay(thread, &resumed, revision).await;
 		self.loaded_threads.insert(thread.clone());
 		self.persist_task_settings(thread).await?;
 		let Ok(history) = self.client.thread_read_turn(thread, turn).await else {

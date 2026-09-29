@@ -20,7 +20,7 @@ async fn cold_resume_preserves_task_selection_and_partial_user_changes() {
 	let resume = requests.iter().find(|r| r["method"] == "thread/resume").unwrap();
 	assert_eq!(
 		resume["params"],
-		json!({"threadId":"opaque thread/1","excludeTurns":true,"experimentalRawEvents":true})
+		json!({"threadId":"opaque thread/1","excludeTurns":true,"experimentalRawEvents":true,"initialTurnsPage":{"limit":1,"sortDirection":"desc","itemsView":"summary"}})
 	);
 	let turn = requests.iter().find(|r| r["method"] == "turn/start").unwrap();
 	assert_eq!(turn["params"]["model"], "chosen-model");
@@ -149,4 +149,42 @@ async fn capacity_retry_keeps_the_acknowledged_selection_after_store_reopen() {
 	assert_eq!(starts[0]["params"]["model"], "selected-model");
 	assert_eq!(starts[0]["params"]["effort"], "high");
 	assert_eq!(starts[0]["params"]["toolOutput"]["name"], "capacity_retry");
+}
+
+#[tokio::test]
+async fn resume_bootstrap_avoids_a_second_history_read_and_does_not_replay_input() {
+	let (mut agent, mut sent, _home) = fixture_with_history(
+		json!({"thread":{"thread":{"id":"thread","turns":[{"id":"latest","items":[]}]}}}),
+	)
+	.await;
+	for page in [
+		json!({"data":[{"id":"latest","items":[],"itemsView":"summary"}],"nextCursor":"older"}),
+		json!({"data":[],"nextCursor":null}),
+	] {
+		let response = json!({"thread":{"id":"thread","turns":[]},"initialTurnsPage":page});
+		let latest =
+			agent.expect_usage_replay("thread", &response, agent.client.history_revision()).await;
+		assert_eq!(latest.as_deref(), page["data"][0]["id"].as_str());
+		assert!(sent.try_recv().is_err(), "bootstrap data must not cause another RPC or input");
+	}
+	let legacy = json!({"thread":{"id":"thread","turns":[]}});
+	assert_eq!(
+		agent
+			.expect_usage_replay("thread", &legacy, agent.client.history_revision())
+			.await
+			.as_deref(),
+		Some("latest")
+	);
+	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	assert!(!requests.is_empty());
+	assert!(requests.iter().all(|request| request["method"] == "thread/read"));
+	let stale = json!({"thread":{"id":"thread"},"initialTurnsPage":{"data":[{"id":"stale"}]}});
+	assert!(
+		agent
+			.expect_usage_replay("thread", &stale, agent.client.history_revision() + 1)
+			.await
+			.is_none()
+	);
+	assert!(!agent.usage_replays.contains_key("thread"));
+	assert!(sent.try_recv().is_err());
 }
