@@ -108,12 +108,7 @@ pub use self::{
 		ManagedRunWaitReason,
 	},
 	paths::{DecodexPaths, DecodexRoot, PathError},
-	policy::{
-		AcceptedPolicyRevision, MAX_POLICY_PROVENANCE_BYTES, MAX_POLICY_SNAPSHOT_FIELDS,
-		MAX_POLICY_SNAPSHOT_KEY_BYTES, MAX_POLICY_SNAPSHOT_VALUE_BYTES, Policy, PolicyError,
-		PolicyId, PolicyProvenance, PolicyRepository, PolicyRevision, PolicyRevisionAcceptance,
-		PolicyRevisionId, PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp,
-	},
+	policy::{PolicyError, PolicyId, PolicyRevision, PolicyRevisionId},
 	process_generation::{
 		BoundProcessGeneration, MAX_PROCESS_IDENTITY_BYTES, MAX_PROCESS_RUNNER_IDENTITY_BYTES,
 		ProcessAccountQuarantine, ProcessAuthorityLossReason, ProcessBootIdentity,
