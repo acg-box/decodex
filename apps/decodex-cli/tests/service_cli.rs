@@ -110,3 +110,101 @@ fn database_initialize_and_validate_are_owned_by_the_unified_binary() {
 	);
 	assert!(validate.stdout.is_empty());
 }
+
+#[cfg(unix)]
+#[test]
+fn account_validation_respects_json_and_human_output_before_transport() {
+	use std::{
+		fs,
+		os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+	};
+	let temporary = TempDir::new().unwrap();
+	let root = temporary.path().canonicalize().unwrap().join("root");
+	fs::create_dir(&root).unwrap();
+	fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+	let uid = fs::metadata(&root).unwrap().uid();
+	let config = root.join("config.toml");
+	fs::write(
+		&config,
+		format!(
+			r#"version = 1
+active_profile = "local"
+cache = {{}}
+[profiles.local]
+kind = "local"
+policy = "same_uid"
+service_owner_uid = {uid}
+expected_server_identity = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162"
+"#
+		),
+	)
+	.unwrap();
+	fs::set_permissions(config, fs::Permissions::from_mode(0o600)).unwrap();
+	let id = "40000000-0000-4000-8000-000000000001";
+	let duplicate_order = format!("{id},{id}");
+	let oversized_source = "x".repeat(decodex_protocol::MAX_WIRE_TEXT_BYTES + 1);
+	let cases = [
+		vec!["inspect", "--account-id", "invalid"],
+		vec!["profile", "--account-id", "invalid"],
+		vec!["route", "--account-id", id, "--idempotency-key", ""],
+		vec!["set-balanced-selection", "--expected-revision", "0", "--idempotency-key", "valid"],
+		vec![
+			"set-account-order",
+			"--order",
+			&duplicate_order,
+			"--expected-revision",
+			"1",
+			"--idempotency-key",
+			"valid",
+		],
+		vec![
+			"enroll",
+			"--operation-id",
+			"invalid",
+			"--account-id",
+			id,
+			"--idempotency-key",
+			"valid",
+		],
+		vec![
+			"import",
+			"--operation-id",
+			id,
+			"--account-id",
+			id,
+			"--source",
+			&oversized_source,
+			"--idempotency-key",
+			"valid",
+		],
+	];
+	for args in cases {
+		for format in ["json", "human"] {
+			let output = Command::new(env!("CARGO_BIN_EXE_decodex"))
+				.arg("--root")
+				.arg(&root)
+				.args(["--output", format, "account"])
+				.args(&args)
+				.output()
+				.unwrap();
+			assert_eq!(output.status.code(), Some(2), "{args:?}");
+			if format == "json" {
+				assert!(
+					output.stderr.is_empty(),
+					"{args:?}: {}",
+					String::from_utf8_lossy(&output.stderr)
+				);
+				assert_eq!(
+					serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+					serde_json::json!({"schema":"decodex/cli-account/1","outcome":"failure","failure":"invalid_input"})
+				);
+			} else {
+				assert!(output.stdout.is_empty());
+				assert_eq!(
+					String::from_utf8(output.stderr).unwrap(),
+					"decodex account: invalid bounded account input\n"
+				);
+			}
+		}
+	}
+}
