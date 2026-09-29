@@ -50,6 +50,8 @@ where
 				{
 					Ok(mut page) => {
 						promotions::enrich(&before.client, &mut page).await;
+						page.safety_buffering_turn_id =
+							before.client.safety_buffering_turn(&before.key.thread);
 						if let Some(store) = store
 							&& metrics::enrich(store, &before.key.work, &mut page).await.is_err()
 						{
@@ -218,6 +220,7 @@ fn project_fields(
 		entries: rows.iter().filter(visible).map(entry).collect::<Option<Vec<_>>>()?,
 		next_cursor: nullable_text(value.get("nextCursor")?, 4096)?,
 		weather: Default::default(),
+		safety_buffering_turn_id: None,
 		active_realtime_session_at_page_start: nullable_text(
 			value.get("activeRealtimeSessionAtPageStart")?,
 			512,

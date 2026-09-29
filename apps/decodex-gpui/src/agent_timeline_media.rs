@@ -272,6 +272,7 @@ mod tests {
 				entries: vec![],
 				next_cursor: None,
 				weather: Default::default(),
+				safety_buffering_turn_id: None,
 				active_realtime_session_at_page_start: None,
 			};
 			assert!(surface.native_history.replace(binding.clone(), page.clone()));
@@ -345,6 +346,7 @@ mod tests {
 				}],
 				next_cursor: None,
 				weather: Default::default(),
+				safety_buffering_turn_id: None,
 				active_realtime_session_at_page_start: None,
 			};
 			assert!(surface.native_history.replace(binding.clone(), page.clone()));
@@ -404,6 +406,7 @@ mod tests {
 				entries: vec![],
 				next_cursor: None,
 				weather: Default::default(),
+				safety_buffering_turn_id: None,
 				active_realtime_session_at_page_start: None,
 			};
 			assert!(surface.native_history.replace(binding.clone(), page.clone()));

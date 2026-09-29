@@ -746,6 +746,7 @@ mod tests {
 					entries: vec![entry],
 					next_cursor: None,
 					weather: Default::default(),
+					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				},
 			);
@@ -927,6 +928,7 @@ mod tests {
 					entries: vec![],
 					next_cursor: None,
 					weather: Default::default(),
+					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None
 				}
 			));
@@ -1039,6 +1041,7 @@ mod tests {
 					entries,
 					next_cursor: None,
 					weather: Default::default(),
+					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None
 				}
 			));
@@ -1167,6 +1170,7 @@ mod tests {
 					entries: vec![],
 					next_cursor: None,
 					weather: Default::default(),
+					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None
 				}
 			));
@@ -1224,6 +1228,7 @@ mod tests {
 					thread_id: "native-thread".into(),
 					next_cursor: None,
 					weather: Default::default(),
+					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 					entries: vec![AgentTimelineEntry {
 						position: 1,

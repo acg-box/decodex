@@ -861,6 +861,7 @@ mod tests {
 					entries: vec![row(10, true), row(11, false), row(20, true), row(21, false)],
 					next_cursor: Some("older".into()),
 					weather: Default::default(),
+					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}
 			));
@@ -889,6 +890,7 @@ mod tests {
 					entries: vec![row(1, false)],
 					next_cursor: None,
 					weather: Default::default(),
+					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}
 			));
@@ -979,6 +981,7 @@ mod tests {
 					entries,
 					next_cursor: None,
 					weather: Default::default(),
+					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None
 				}
 			));
@@ -1046,7 +1049,7 @@ mod tests {
 				work: "agent".into(), thread: "benchmark-thread".into(), account: "benchmark".into(),
 			}, decodex_protocol::AgentTimelinePage {
 				thread_id: "benchmark-thread".into(), entries, next_cursor: None,
-				weather: Default::default(), active_realtime_session_at_page_start: None,
+				weather: Default::default(), safety_buffering_turn_id: None, active_realtime_session_at_page_start: None,
 			}));
 			cx.notify();
 		});

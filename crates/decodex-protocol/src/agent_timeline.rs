@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 /// One exact native page, oldest entry first. The continuation reads older entries.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AgentTimelinePage {
+	/// Live turn whose provider explicitly requests a safety buffering indicator.
+	/// This is connection state, not saved history or an approval request.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub safety_buffering_turn_id: Option<String>,
 	/// Thread whose native cursor and entries this page contains.
 	pub thread_id: String,
 	/// Stable native entries in canonical order, including equal-position boundaries.
