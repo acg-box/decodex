@@ -133,6 +133,33 @@ final class ResetCardInventoryReadCoordinatorTests: XCTestCase {
 		}
 	}
 
+	func testClearedReadCompletionCannotRemoveItsReplacement() async throws {
+		let account = Self.account
+		for clearAll in [false, true] {
+			let client = CoordinatedInventoryClient(account: account)
+			let coordinator = ResetCardInventoryReadCoordinator(client: client)
+			let old = Task { try await coordinator.inventory(for: account) }
+			try await waitForCallCount(1, client: client)
+			if clearAll {
+				await coordinator.cancelAll()
+			} else {
+				await coordinator.discard(account.accountID)
+			}
+			let replacement = Task { try await coordinator.inventory(for: account) }
+			try await waitForCallCount(2, client: client)
+			// Model a synchronous daemon read that finishes despite cancellation.
+			await client.release(call: 1)
+			_ = try await old.value
+			let shared = Task { try await coordinator.inventory(for: account) }
+			try await Task.sleep(for: .milliseconds(20))
+			let calls = await client.callCount()
+			XCTAssertEqual(calls, 2, "Old completion must not evict the replacement read.")
+			await client.releaseAll()
+			_ = try await replacement.value
+			_ = try await shared.value
+		}
+	}
+
 	private func waitForCallCount(
 		_ expected: Int,
 		client: CoordinatedInventoryClient
