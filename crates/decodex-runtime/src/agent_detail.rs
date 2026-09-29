@@ -145,6 +145,12 @@ fn project_text(history: &Value, thread: &str, turn: &str, item: &str) -> Option
 			},
 		"mcpToolCall" | "dynamicToolCall" => parts.extend(tool_detail::parts(item)),
 		"functionCallOutput" => parts.extend(crate::agent::timeline::tool_output::parts(item)?),
+		"imageGeneration" => {
+			parts.push(format!("Image generation: {}", item["status"].as_str()?));
+			if let Some(detail) = crate::agent::image_generation::quota_detail(item) {
+				parts.push(detail);
+			}
+		},
 		"imageView" => {
 			parts.push(format!("Execution environment image: {}", item["path"].as_str()?));
 			parts.push("The native record does not identify the executor. Image bytes are unavailable through this record.".into());
@@ -277,6 +283,24 @@ mod web_tests;
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn image_quota_is_visible_in_timeline_and_exact_activity_details() {
+		let item = json!({"id":"image","type":"imageGeneration","status":"failed","failure":{"type":"usageLimitExceeded","limitId":"image_gen","resetsAt":1790683200},"result":""});
+		let page=crate::agent::timeline::project("thread",&json!({"data":[{"type":"item","turnId":"turn","position":0,"item":item}],"nextCursor":null,"activeRealtimeSessionAtPageStart":null})).unwrap();
+		let decodex_protocol::AgentTimelineContent::Item { activity: Some(activity), .. } =
+			&page.entries[0].content
+		else {
+			panic!("image activity")
+		};
+		assert_eq!(activity.label, "Image generation limit reached");
+		assert_eq!(activity.status, "failed");
+		let history = json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[item]}]}});
+		let text = project_text(&history, "thread", "turn", "image").unwrap();
+		assert!(text.contains("Image generation usage limit reached"));
+		assert!(text.contains("2026-09-29T12:00:00Z"));
+		assert!(project_text(&history, "other", "turn", "image").is_none());
+	}
+
 	#[test]
 	fn exact_source_required_and_reasoning_not_projected() {
 		let history = json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"item","type":"commandExecution","command":"cargo test","aggregatedOutput":"Passed","exitCode":0},{"id":"private","type":"reasoning","text":"private"}]}]}});

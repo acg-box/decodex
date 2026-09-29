@@ -36,6 +36,8 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 		"functionCallOutput" => "Tool result",
 		"contextCompaction" => "Compacting context",
 		"imageView" => "Viewing image",
+		"imageGeneration" if super::image_generation::is_quota_failure(item) =>
+			"Image generation limit reached",
 		"imageGeneration" => "Generating image",
 		_ => return None,
 	};
@@ -65,6 +67,7 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 		},
 		"commandExecution" =>
 			item["exitCode"].as_i64().map_or_else(String::new, |code| format!("Exit code {code}")),
+		"imageGeneration" => super::image_generation::quota_detail(item).unwrap_or_default(),
 		"fileChange" => item["changes"]
 			.as_array()
 			.map_or_else(String::new, |changes| format!("{} files", changes.len())),
