@@ -4339,9 +4339,9 @@ mod tests {
 		];
 
 		for (index, (name, arguments)) in command_arguments.into_iter().enumerate() {
-			let message = serde_json::json!({
+			let mut message = serde_json::json!({
 				"type": "command",
-				"data": {
+				"body": {
 					"version": CURRENT_VERSION,
 					"client_command_id": format!("retired-board-command-{index}"),
 					"idempotency_key": format!("retired/board/{index}"),
@@ -4351,10 +4351,12 @@ mod tests {
 					"payload": {"name": name, "arguments": arguments}
 				}
 			});
-			assert!(
-				decode_client_message(&message.to_string()).is_err(),
-				"retired command {name} must not decode",
-			);
+			let error = decode_client_message(&message.to_string()).unwrap_err();
+			assert!(error.to_string().contains(&format!("unknown variant `{name}`")), "{error}");
+			message["body"]["payload"] = serde_json::json!({
+				"name": "refresh_system_observation", "arguments": {"entity_id": "system"}
+			});
+			assert!(decode_client_message(&message.to_string()).is_ok());
 		}
 
 		for payload in [
@@ -4369,15 +4371,19 @@ mod tests {
 				}
 			}),
 		] {
-			let message = serde_json::json!({
+			let mut message = serde_json::json!({
 				"type": "query",
-				"data": {
+				"body": {
 					"version": CURRENT_VERSION,
 					"query_id": "retired-board-query",
 					"payload": payload
 				}
 			});
-			assert!(decode_client_message(&message.to_string()).is_err());
+			let name = payload["name"].as_str().unwrap();
+			let error = decode_client_message(&message.to_string()).unwrap_err();
+			assert!(error.to_string().contains(&format!("unknown variant `{name}`")), "{error}");
+			message["body"]["payload"] = serde_json::json!({"name": "get_doctor_status"});
+			assert!(decode_client_message(&message.to_string()).is_ok());
 		}
 	}
 
@@ -5160,18 +5166,6 @@ mod tests {
 				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
-		let oversized = serde_json::json!({
-			"outcome":"available",
-			"data":{
-				"account_id":account_id,
-				"account_revision":1,
-				"reported_available_count":u64::try_from(MAX_RESET_CARD_ITEMS + 1).unwrap(),
-				"details_complete":true,
-				"cards":vec![card; MAX_RESET_CARD_ITEMS + 1],
-				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
-				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
-			}
-		});
 		let bounded_cards = (0..MAX_RESET_CARD_ITEMS)
 			.map(|index| {
 				serde_json::json!({
@@ -5194,6 +5188,12 @@ mod tests {
 				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
+
+		let mut oversized = bounded.clone();
+		oversized["data"]["reported_available_count"] = (MAX_RESET_CARD_ITEMS + 1).into();
+		oversized["data"]["cards"].as_array_mut().unwrap().push(serde_json::json!({
+			"descriptor":{"granted_at_unix_seconds":1000,"expires_at_unix_seconds":1001}
+		}));
 
 		assert_eq!(MAX_RESET_CARD_ITEMS, 64);
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(bounded).is_ok());
