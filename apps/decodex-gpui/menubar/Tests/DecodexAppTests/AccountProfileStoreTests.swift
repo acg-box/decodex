@@ -208,6 +208,39 @@ final class AccountProfileStoreTests: XCTestCase {
 		XCTAssertNotNil(store.accounts.first?.profileDegradationText)
 	}
 
+	func testSameSnapshotUpdatesRefreshFailureAndRecovery() async throws {
+		let fixture = try PendingFixture()
+		defer { fixture.remove() }
+		let freshness: [AccountProfileFreshness] = [
+			.current,
+			.cached(refreshError: .unauthorized),
+			.cached(refreshError: .providerUnavailable),
+			.current,
+		]
+		let client = SequencedProfileStoreClient(results: freshness.map {
+			.available(profileObservation(
+				observedAt: 300,
+				lifetimeTokens: 3_000,
+				freshness: $0
+			))
+		})
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		for (index, expected) in freshness.enumerated() {
+			await store.refresh()
+			let state = try XCTUnwrap(store.accounts.first)
+			XCTAssertEqual(state.profile?.freshness, expected)
+			XCTAssertEqual(state.profile?.observedAtUnixMicros, 300)
+			XCTAssertEqual(state.profile?.snapshot.lifetimeTokens, 3_000)
+			XCTAssertNil(state.profileError)
+			XCTAssertEqual(state.requiresLoginRefresh, index == 1)
+		}
+	}
+
 	func testSameTimestampContentDriftCannotReplaceRetainedProfile() async throws {
 		let fixture = try PendingFixture()
 		defer { fixture.remove() }
