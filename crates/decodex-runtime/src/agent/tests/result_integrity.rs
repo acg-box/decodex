@@ -68,3 +68,49 @@ async fn recovery_saves_large_result_without_duplicating_terminal_items() {
 		assert!(text.starts_with(retained));
 	}
 }
+
+#[tokio::test]
+async fn completion_summary_repairs_missing_final_output_without_claiming_full_readback() {
+	for readback in [
+		Err(ClientError::Closed),
+		Ok(
+			json!({"thread":{"id":"foreign","turns":[{"id":"opaque turn/1","items":[{"type":"agentMessage","id":"foreign-answer","text":"Foreign output"}]}]}}),
+		),
+	] {
+		let (mut coordinator, _sent, _directory) = fixture().await;
+		coordinator.start_agent("agent", "Coordinate").await.unwrap();
+		coordinator.observe_live_text("item/agentMessage/delta", &json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"answer","delta":"Partial"})).await.unwrap();
+		let params = json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","itemsView":"summary","items":[{"type":"agentMessage","id":"answer","phase":"final_answer","text":"Complete answer"}]}});
+		coordinator.record_terminal(params.clone(), readback, true).await.unwrap();
+		// A repeated terminal cannot append or replace output for a finished turn.
+		coordinator.record_terminal(params, Err(ClientError::Closed), true).await.unwrap();
+		let output = coordinator.store.read_agent_output("agent".into()).await.unwrap();
+		assert!(output.is_empty(), "terminal event replaces transient output");
+		let events = coordinator.store.read_agent_work_events("agent".into(), 20).await.unwrap();
+		let completed: Vec<_> =
+			events.iter().filter(|e| e.event_kind == "agent_turn_completed").collect();
+		assert_eq!(completed.len(), 1);
+		let payload: Value = serde_json::from_str(&completed[0].payload).unwrap();
+		assert_eq!(payload["threadReadback"]["threadId"], "opaque thread/1");
+		assert_eq!(payload["threadReadback"]["turnId"], "opaque turn/1");
+		assert_eq!(payload["threadReadback"]["exactTurnReadback"], false);
+		assert_eq!(payload["threadReadback"]["assistantMessagesSource"], "turnCompletionSummary");
+		assert_eq!(payload["threadReadback"]["assistantMessages"][0]["text"], "Complete answer");
+	}
+}
+
+#[test]
+fn completion_summary_excludes_nonfinal_and_unscoped_items() {
+	let turn = json!({"status":"completed","itemsView":"summary","items":[
+		{"type":"agentMessage","id":"valid","text":"Legacy final"},
+		{"type":"agentMessage","id":"comment","phase":"commentary","text":"Progress"},
+		{"type":"agentMessage","id":"empty","phase":"final_answer","text":" "},
+		{"type":"agentMessage","phase":"final_answer","text":"Missing identity"}
+	]});
+	assert_eq!(result_messages::completion_summary(&turn).unwrap()["id"], "valid");
+	for (field, value) in [("status", "failed"), ("itemsView", "notLoaded")] {
+		let mut invalid = turn.clone();
+		invalid[field] = json!(value);
+		assert!(result_messages::completion_summary(&invalid).is_none());
+	}
+}

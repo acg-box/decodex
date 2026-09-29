@@ -282,16 +282,15 @@ impl AgentCoordinator {
 		}
 		let mut evidence = match history {
 			Ok(value) => {
-				let exact_turn =
-					value.pointer("/thread/turns").and_then(Value::as_array).and_then(|turns| {
-						turns.iter().find(|entry| entry["id"].as_str() == Some(&turn))
-					});
-				if value.pointer("/thread/id").and_then(Value::as_str) == Some(thread.as_str()) {
-					for entry in
-						exact_turn.and_then(|turn| turn["items"].as_array()).into_iter().flatten()
-					{
-						self.observe_terminal_item(&thread, &turn, entry).await?;
-					}
+				let exact_turn = (value.pointer("/thread/id").and_then(Value::as_str)
+					== Some(thread.as_str()))
+				.then(|| value.pointer("/thread/turns").and_then(Value::as_array))
+				.flatten()
+				.and_then(|turns| turns.iter().find(|entry| entry["id"].as_str() == Some(&turn)));
+				for entry in
+					exact_turn.and_then(|turn| turn["items"].as_array()).into_iter().flatten()
+				{
+					self.observe_terminal_item(&thread, &turn, entry).await?;
 				}
 				let (messages, truncated) = result_messages::collect(exact_turn);
 				let retry_eligible = value.pointer("/thread/id").and_then(Value::as_str)
@@ -309,6 +308,21 @@ impl AgentCoordinator {
 				json!({"readbackError":bounded,"truncated":bounded.len()<detail.len()})
 			},
 		};
+		if evidence["exactTurnReadback"] != true {
+			// A completion summary can repair a dropped final item, but cannot prove
+			// that full turn history was read. Keep the readback failure visible.
+			evidence["exactTurnReadback"] = json!(false);
+			if let Some(summary) = result_messages::completion_summary(&params["turn"]) {
+				self.observe_terminal_item(&thread, &turn, &summary).await?;
+				let (messages, truncated) =
+					result_messages::collect(Some(&json!({"items":[summary]})));
+				evidence["threadId"] = json!(thread);
+				evidence["turnId"] = json!(turn);
+				evidence["assistantMessages"] = json!(messages);
+				evidence["assistantMessagesSource"] = json!("turnCompletionSummary");
+				evidence["truncated"] = json!(truncated || evidence["truncated"] == true);
+			}
+		}
 		if evidence["capacityRetryEligible"] == true
 			&& self
 				.store
