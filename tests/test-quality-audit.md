@@ -16,7 +16,7 @@ This audit does not claim mutation coverage or a line-by-line security review.
 | Execution | Codex adapter, runtime | Reviewed | Share identical native attestation setup; preserve initialization order and native/fake-server boundaries |
 | Persistence | Database and transfer | Reviewed | Share repeated bound-work and process-death setup; keep migration and recovery assertions |
 | Remaining desktop | GPUI and menu bar | Reviewed | Run shared application tests once; preserve preview-specific tests |
-| Automation products | Radar and Publisher; site | Pending | Review parser, provenance, publication, and deployment protections |
+| Automation products | Radar and Publisher; site | Reviewed | Remove obsolete wording scans; preserve parser, provenance, and publication checks |
 
 ## Tooling
 
@@ -73,3 +73,16 @@ This audit does not claim mutation coverage or a line-by-line security review.
   duplicate behavior checks.
 - Real native tests remain opt-in where they require an installed binary, signing,
   or external service. Compilation does not claim live acceptance of those tests.
+
+## Automation products
+
+- Remove two Radar tests that scanned application source, generated content, and
+  OpenWiki pages for retired words. These reject valid historical explanations
+  and do not prove runtime behavior. Remove their now-unused traversal helpers.
+- Keep actual artifact validation for legacy tool references, obsolete schema,
+  duplicate slugs, material refresh comparison, provenance, and review states.
+- Keep Publisher dispatch idempotence, receipts, file identity, authority,
+  payload bounds, and paid-publication checks. The static raw-client boundary
+  check remains a narrow anti-bypass check, not proof of publication behavior.
+- Site has no separate tracked unit-test suite. No site build or deployment gate
+  is removed by this cleanup.
