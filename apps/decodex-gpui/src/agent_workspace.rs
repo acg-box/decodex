@@ -99,6 +99,7 @@ impl AgentSurface {
 			return;
 		}
 		if self.selected.as_deref() != Some(id) {
+			self.reset_voice_settings();
 			self.resources = None;
 			self.resources_task = None;
 			self.clear_usage_estimate();
