@@ -27,7 +27,9 @@ pub use agent_app_settings::{
 pub use agent_config_journal::AgentConfigOwner;
 mod agent_hooks;
 pub use agent_hooks::{AgentHookAttempt, AgentHookObservation, AgentHookOwner, AgentHookReceipt};
+mod agent_fork;
 mod agent_prompt_edit;
+pub use agent_fork::{AgentForkAttempt, AgentForkBoundary, AgentForkReceipt};
 mod agent_prompt_inputs;
 pub use agent_prompt_edit::{AgentPromptEditAttempt, AgentPromptEditReceipt};
 pub use agent_prompt_inputs::AgentPromptInput;

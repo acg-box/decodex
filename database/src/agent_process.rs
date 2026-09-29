@@ -192,11 +192,16 @@ pub(crate) fn owns_work(
 	generation: Option<&str>,
 ) -> Result<bool, StoreError> {
 	if let Some(generation) = generation {
+		// An acknowledged user fork keeps its source process owner. Ordinary subordinate
+		// managers remain outside this traversal; a mere role or pending fork is not authority.
 		connection.query_row("WITH RECURSIVE owned(id,root_id) AS (
 			SELECT b.root_id,b.root_id FROM agent_process_bindings b JOIN process_generations g ON g.generation_id=b.generation_id
 			WHERE b.generation_id=?1 AND g.state='ready' AND b.rowid=(SELECT rowid FROM agent_process_bindings WHERE root_id=b.root_id ORDER BY created_at_micros DESC,rowid DESC LIMIT 1)
 			UNION SELECT w.id,owned.root_id FROM agent_work_items w JOIN owned ON w.parent_goal_id=owned.id
-			WHERE NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=w.id))
+			WHERE NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=w.id)
+				OR EXISTS(SELECT 1 FROM agent_inbox_events a JOIN agent_inbox_events o ON o.source_event_id=a.source_event_id||':observation'
+					WHERE a.event_kind='thread_fork_attempt' AND o.event_kind='thread_fork_observation' AND o.disposition_note='forked'
+					AND json_extract(a.payload,'$.target_work')=w.id AND json_extract(o.payload,'$.thread')=w.codex_thread_id))
 			SELECT EXISTS(SELECT 1 FROM owned WHERE id=?2)", params![generation,work], |r|r.get(0)).map_err(sql_error)
 	} else {
 		// Direct coordinator transports have no durable process host. They cannot
@@ -211,6 +216,7 @@ pub(crate) fn owns_work(
 mod tests {
 	mod app_settings;
 	mod app_ui_calls;
+	mod fork;
 	mod guardian_notices;
 	mod hooks;
 	mod model_fallback;

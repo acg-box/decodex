@@ -18,7 +18,7 @@ pub enum AgentWorkKind {
 }
 
 impl AgentWorkKind {
-	fn as_str(self) -> &'static str {
+	pub(crate) fn as_str(self) -> &'static str {
 		match self {
 			Self::Goal => "goal",
 			Self::Task => "task",
@@ -1213,7 +1213,7 @@ fn work_exists(connection: &Connection, id: &str) -> Result<bool, StoreError> {
 		.map_err(|error| sqlite_error(error).into())
 }
 
-fn read_work(connection: &Connection, id: &str) -> Result<AgentWorkItem, StoreError> {
+pub(crate) fn read_work(connection: &Connection, id: &str) -> Result<AgentWorkItem, StoreError> {
 	connection
 		.query_row("SELECT * FROM agent_work_items WHERE id = ?1", [id], work_row)
 		.optional()
