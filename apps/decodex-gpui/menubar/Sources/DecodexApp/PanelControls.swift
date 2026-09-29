@@ -4,7 +4,6 @@ struct PanelIconButtonView: View {
 	let symbol: String
 	let tint: Color
 	let isActive: Bool
-	let isDestructive: Bool
 	let isDisabled: Bool
 	let isSubtle: Bool
 	let isPrimary: Bool
@@ -18,7 +17,6 @@ struct PanelIconButtonView: View {
 		symbol: String,
 		tint: Color,
 		isActive: Bool,
-		isDestructive: Bool = false,
 		isDisabled: Bool = false,
 		isSubtle: Bool = false,
 		isPrimary: Bool = false,
@@ -29,7 +27,6 @@ struct PanelIconButtonView: View {
 		self.symbol = symbol
 		self.tint = tint
 		self.isActive = isActive
-		self.isDestructive = isDestructive
 		self.isDisabled = isDisabled
 		self.isSubtle = isSubtle
 		self.isPrimary = isPrimary
@@ -75,9 +72,6 @@ struct PanelIconButtonView: View {
 		}
 		if isDisabled {
 			return PanelPalette.secondaryText(colorScheme)
-		}
-		if isDestructive {
-			return tint.opacity(colorScheme == .dark ? 0.96 : 0.9)
 		}
 		if isPrimary {
 			return tint.opacity(colorScheme == .dark ? 1 : 0.96)
