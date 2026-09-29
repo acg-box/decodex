@@ -59,6 +59,7 @@ fn binding(token: &str, provider: &str, fail: bool) -> (AccountBinding, Arc<Atom
 			.expect("operation"),
 	};
 	let binding = AccountBinding {
+		personal_access_token: None,
 		account_id: AccountId::new("10000000-0000-4000-8000-000000000001").expect("account"),
 		expected_codex_home: PathBuf::from("/unused-fixture"),
 		process_binding: Some(
@@ -91,6 +92,24 @@ fn handle(
 	)?;
 	let bytes = capture.0.lock().expect("capture").clone();
 	Ok(bytes)
+}
+
+#[test]
+fn pat_bound_child_cannot_invoke_the_oauth_refresh_owner() {
+	let (mut binding, calls) = binding("synthetic-oauth", PROVIDER, false);
+	binding.personal_access_token = Some(Zeroizing::new("synthetic-pat".into()));
+	let method = decodex_codex::schema::ACCOUNT_REFRESH_CALLBACK_METHOD;
+	let result = handle(
+		&binding,
+		17,
+		method,
+		&json!({"id":17,"method":method,"params":{"reason":"unauthorized"}}),
+	)
+	.unwrap();
+	assert_eq!(calls.load(Ordering::SeqCst), 0);
+	let response: Value = serde_json::from_slice(&result).unwrap();
+	assert_eq!(response["error"]["code"], -32601);
+	assert!(!String::from_utf8(result).unwrap().contains("synthetic"));
 }
 #[test]
 fn refresh_owner_preserves_optional_fields_and_rejects_wrong_identity_before_reply() {

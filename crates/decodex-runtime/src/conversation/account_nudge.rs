@@ -58,7 +58,7 @@ impl ConversationRuntime {
 			let directory = owner.inner.launch_profile.control_working_directory();
 			let Some(directory_text) = directory.to_str() else { return Status::Unavailable; };
 			let Ok(selected) = SelectedWorkingDirectory::acquire(directory_text) else { return Status::Unavailable; };
-			let Ok(binding) = AccountBinding::shared_home_bound(account.clone(), credential.binding, callback) else { return Status::Unavailable; };
+			let Ok(binding) = AccountBinding::shared_home_bound(account.clone(), credential.binding, callback).and_then(|binding| binding.with_credential(&credential.stored)) else { return Status::Unavailable; };
 			let vault = ConversationCredentialVault { account_id: account.clone(), stored: credential.stored };
 			let Ok(permit) = owner.inner.capacity.reserve(account.clone(), revision) else { return Status::Unavailable; };
 			let Ok(launch) = AttestedAppServerLaunch::bind_selected_control_working_directory(owner.inner.launch_profile.clone(), directory, binding, Duration::from_secs(8), permit, Arc::new(selected)) else { return Status::Unavailable; };

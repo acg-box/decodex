@@ -29,6 +29,12 @@ pub(crate) struct ImportedCredential {
 	pub bundle: CredentialSecretBundle,
 }
 
+/// Local input before a PAT has been hydrated by the account-service network owner.
+pub(crate) enum CredentialSource {
+	Oauth(Box<ImportedCredential>),
+	PersonalAccessToken(Zeroizing<String>),
+}
+
 pub(crate) struct DecodedChatgptIdentity {
 	pub provider: ProviderIdentity,
 	pub provider_email: Option<String>,
@@ -36,7 +42,7 @@ pub(crate) struct DecodedChatgptIdentity {
 }
 
 /// Read the normal Codex-owned shared auth file without modifying it.
-pub(crate) fn read_shared_codex_credential() -> Result<ImportedCredential, CredentialImportError> {
+pub(crate) fn read_shared_codex_credential() -> Result<CredentialSource, CredentialImportError> {
 	let home = std::env::var_os("HOME")
 		.filter(|value| !value.is_empty())
 		.ok_or(CredentialImportError::UnsafeSource)?;
@@ -46,21 +52,21 @@ pub(crate) fn read_shared_codex_credential() -> Result<ImportedCredential, Crede
 /// Read one explicit owner-private source selected by a credential-negative descriptor.
 pub(crate) fn read_explicit_credential_file(
 	descriptor: &str,
-) -> Result<ImportedCredential, CredentialImportError> {
+) -> Result<CredentialSource, CredentialImportError> {
 	read_explicit_source(descriptor, SourceKind::VersionedImport)
 }
 
 /// Read one explicit owner-private Codex auth file for an existing-account reauthentication.
 pub(crate) fn read_explicit_shared_codex_credential_file(
 	descriptor: &str,
-) -> Result<ImportedCredential, CredentialImportError> {
+) -> Result<CredentialSource, CredentialImportError> {
 	read_explicit_source(descriptor, SourceKind::SharedCodex)
 }
 
 fn read_explicit_source(
 	descriptor: &str,
 	source_kind: SourceKind,
-) -> Result<ImportedCredential, CredentialImportError> {
+) -> Result<CredentialSource, CredentialImportError> {
 	if descriptor.is_empty() || descriptor.len() > 4096 || descriptor.chars().any(char::is_control)
 	{
 		return Err(CredentialImportError::InvalidSource);
@@ -81,7 +87,7 @@ enum SourceKind {
 fn read_credential_file(
 	path: &Path,
 	source_kind: SourceKind,
-) -> Result<ImportedCredential, CredentialImportError> {
+) -> Result<CredentialSource, CredentialImportError> {
 	validate_components(path)?;
 	let mut options = OpenOptions::new();
 	options.read(true).custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
@@ -89,8 +95,8 @@ fn read_credential_file(
 	validate_open_file(&file)?;
 	let bytes = read_bounded(file)?;
 	match source_kind {
-		SourceKind::SharedCodex => parse_shared_codex(&bytes),
-		SourceKind::VersionedImport => parse_versioned_import(&bytes),
+		SourceKind::SharedCodex => parse_shared_codex_source(&bytes),
+		SourceKind::VersionedImport => parse_versioned_source(&bytes),
 	}
 }
 
@@ -136,6 +142,81 @@ fn read_bounded(file: File) -> Result<Zeroizing<Vec<u8>>, CredentialImportError>
 		return Err(CredentialImportError::InvalidCredential);
 	}
 	Ok(bytes)
+}
+
+#[derive(Deserialize)]
+struct SourceMode {
+	auth_mode: Option<String>,
+	schema: Option<String>,
+	personal_access_token: Option<serde::de::IgnoredAny>,
+}
+
+#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
+#[serde(deny_unknown_fields)]
+struct PersonalAccessTokenSource {
+	auth_mode: Option<String>,
+	schema: Option<String>,
+	provider: Option<String>,
+	personal_access_token: String,
+	#[serde(rename = "OPENAI_API_KEY")]
+	api_key: Option<String>,
+	#[zeroize(skip)]
+	tokens: Option<serde::de::IgnoredAny>,
+	last_refresh: Option<String>,
+	#[zeroize(skip)]
+	agent_identity: Option<serde::de::IgnoredAny>,
+	#[zeroize(skip)]
+	bedrock_api_key: Option<serde::de::IgnoredAny>,
+}
+
+pub(crate) fn parse_shared_codex_source(
+	bytes: &[u8],
+) -> Result<CredentialSource, CredentialImportError> {
+	let mode: SourceMode =
+		serde_json::from_slice(bytes).map_err(|_| CredentialImportError::InvalidCredential)?;
+	if mode.auth_mode.as_deref() == Some("personalAccessToken")
+		|| (mode.auth_mode.is_none() && mode.personal_access_token.is_some())
+	{
+		parse_pat_source(bytes, false)
+	} else {
+		parse_shared_codex(bytes).map(|credential| CredentialSource::Oauth(Box::new(credential)))
+	}
+}
+
+fn parse_versioned_source(bytes: &[u8]) -> Result<CredentialSource, CredentialImportError> {
+	let mode: SourceMode =
+		serde_json::from_slice(bytes).map_err(|_| CredentialImportError::InvalidCredential)?;
+	if mode.schema.as_deref() == Some("decodex/account-credential-import/2") {
+		parse_pat_source(bytes, true)
+	} else {
+		parse_versioned_import(bytes)
+			.map(|credential| CredentialSource::Oauth(Box::new(credential)))
+	}
+}
+
+fn parse_pat_source(
+	bytes: &[u8],
+	versioned: bool,
+) -> Result<CredentialSource, CredentialImportError> {
+	let mut source: PersonalAccessTokenSource =
+		serde_json::from_slice(bytes).map_err(|_| CredentialImportError::InvalidCredential)?;
+	if source.api_key.is_some()
+		|| source.tokens.is_some()
+		|| source.agent_identity.is_some()
+		|| source.bedrock_api_key.is_some()
+		|| source.auth_mode.as_deref().is_some_and(|mode| mode != "personalAccessToken")
+		|| if versioned {
+			source.schema.as_deref() != Some("decodex/account-credential-import/2")
+				|| source.provider.as_deref() != Some("chatgpt")
+		} else {
+			source.schema.is_some() || source.provider.is_some()
+		} {
+		return Err(CredentialImportError::InvalidCredential);
+	}
+	validate_token(&source.personal_access_token)?;
+	Ok(CredentialSource::PersonalAccessToken(Zeroizing::new(std::mem::take(
+		&mut source.personal_access_token,
+	))))
 }
 
 #[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -498,7 +579,11 @@ mod tests {
 			"last_refresh": null
 		}));
 
-		let imported = read_explicit_shared_codex_credential_file(&path).unwrap();
+		let super::CredentialSource::Oauth(imported) =
+			read_explicit_shared_codex_credential_file(&path).unwrap()
+		else {
+			panic!("expected OAuth source")
+		};
 
 		assert_eq!(imported.provider.account_id(), account_id);
 		assert_eq!(imported.bundle.provider_email(), Some("fresh@example.test"));
@@ -524,5 +609,38 @@ mod tests {
 			read_explicit_shared_codex_credential_file(&path),
 			Err(CredentialImportError::UnsafeSource)
 		));
+	}
+
+	#[test]
+	fn native_and_versioned_pat_files_require_identity_hydration() {
+		let native = json!({"auth_mode":"personalAccessToken","OPENAI_API_KEY":null,"personal_access_token":"synthetic-pat"});
+		let (_temp, path) = owner_private_json(native.clone());
+		let super::CredentialSource::PersonalAccessToken(token) =
+			read_explicit_shared_codex_credential_file(&path).unwrap()
+		else {
+			panic!("expected PAT source")
+		};
+		assert_eq!(token.as_str(), "synthetic-pat");
+		let (_temp, path) = owner_private_json(
+			json!({"schema":"decodex/account-credential-import/2","provider":"chatgpt","personal_access_token":"synthetic-pat"}),
+		);
+		assert!(matches!(
+			super::read_explicit_credential_file(&path),
+			Ok(super::CredentialSource::PersonalAccessToken(_))
+		));
+		for (field, value) in [
+			("OPENAI_API_KEY", json!("unexpected-key")),
+			("tokens", json!({"access_token":"mixed"})),
+			("agent_identity", json!("mixed")),
+			("bedrock_api_key", json!({"api_key":"mixed"})),
+			("personal_access_token", json!("\ninvalid")),
+		] {
+			let mut invalid = native.clone();
+			invalid[field] = value;
+			assert!(
+				super::parse_shared_codex_source(&serde_json::to_vec(&invalid).unwrap()).is_err(),
+				"{field}"
+			);
+		}
 	}
 }

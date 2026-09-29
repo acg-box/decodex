@@ -116,8 +116,9 @@ pub(crate) async fn read_activation_policy(
 			profile.account_callback_attestation().callback_profile_sha256,
 		)
 		.map_err(|_| ())?;
-		let binding =
-			AccountBinding::shared_home_fixed(account_id.clone(), binding).map_err(|_| ())?;
+		let binding = AccountBinding::shared_home_fixed(account_id.clone(), binding)
+			.and_then(|binding| binding.with_credential(&credential.stored))
+			.map_err(|_| ())?;
 		let capacity = RunnerCapacity::daemon().map_err(|_| ())?;
 		let permit =
 			capacity.reserve(account_id.clone(), credential.account_revision).map_err(|_| ())?;
@@ -149,11 +150,15 @@ impl CredentialVault for ActivationVault<'_> {
 			return Err(CredentialVaultError::Unavailable);
 		}
 		let bundle = self.credential.stored.bundle();
-		projection.authenticate_chatgpt(
-			bundle.access_token(),
-			self.credential.binding.provider.account_id(),
-			bundle.plan_type(),
-		)?;
+		if bundle.is_personal_access_token() {
+			projection.authenticate_personal_access_token(bundle.access_token())?;
+		} else {
+			projection.authenticate_chatgpt(
+				bundle.access_token(),
+				self.credential.binding.provider.account_id(),
+				bundle.plan_type(),
+			)?;
+		}
 		Ok(AccountIdentity::from_observation("chatgpt", bundle.provider_email(), true))
 	}
 }

@@ -241,19 +241,24 @@ impl AccountApiRuntime {
 		credential: &AccountApiCredential,
 		usage: AccountApiUsage,
 	) -> Result<AccountApiInventory, AccountApiRuntimeError> {
-		let (ordinary_usage_allowed, conditions, banner, recovery_context) = credential
-			.stored
-			.bundle()
-			.id_token()
-			.and_then(|token| {
-				let account_id = credential.binding.provider.account_id();
-				let user_id = crate::account_import::usage_user_id(token, account_id)?;
-				Some((
+		let account_id = credential.binding.provider.account_id();
+		let bundle = credential.stored.bundle();
+		let user_id = bundle
+			.personal_access_token_user_id()
+			.map(|user_id| zeroize::Zeroizing::new(user_id.to_owned()))
+			.or_else(|| {
+				bundle
+					.id_token()
+					.and_then(|token| crate::account_import::usage_user_id(token, account_id))
+			});
+		let (ordinary_usage_allowed, conditions, banner, recovery_context) = user_id
+			.map(|user_id| {
+				(
 					usage.ordinary_usage_allowed_for(account_id, &user_id),
 					usage.conditions_for(account_id, &user_id),
 					usage.banner_for(account_id, &user_id),
 					usage.recovery_context_for(account_id, &user_id),
-				))
+				)
 			})
 			.unwrap_or_default();
 		let Some(reported_available_count) = usage.reported_available_count else {

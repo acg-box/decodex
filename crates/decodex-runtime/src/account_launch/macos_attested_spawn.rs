@@ -26,6 +26,8 @@ use std::{
 	time::Duration,
 };
 
+use zeroize::Zeroizing;
+
 use core_foundation::{
 	base::{CFGetTypeID, CFTypeRef, OSStatus, TCFType as _},
 	data::{CFDataGetBytePtr, CFDataGetLength, CFDataGetTypeID, CFDataRef},
@@ -268,13 +270,14 @@ pub(super) fn spawn_private_stdio_suspended(
 	args: &[OsString],
 	working_directory: &Path,
 	home: &Path,
+	personal_access_token: Option<&str>,
 ) -> io::Result<SuspendedAttestedSpawn> {
 	spawn_suspended_with_environment(
 		identity,
 		args,
 		SuspendedWorkingDirectory::Path(working_directory),
 		home,
-		SuspendedEnvironment::PrivateStdioDisabledEphemeral,
+		SuspendedEnvironment::PrivateStdioDisabledEphemeral { personal_access_token },
 	)
 }
 
@@ -284,20 +287,21 @@ pub(super) fn spawn_private_stdio_suspended_at(
 	args: &[OsString],
 	working_directory_descriptor: libc::c_int,
 	home: &Path,
+	personal_access_token: Option<&str>,
 ) -> io::Result<SuspendedAttestedSpawn> {
 	spawn_suspended_with_environment(
 		identity,
 		args,
 		SuspendedWorkingDirectory::Descriptor(working_directory_descriptor),
 		home,
-		SuspendedEnvironment::PrivateStdioDisabledEphemeral,
+		SuspendedEnvironment::PrivateStdioDisabledEphemeral { personal_access_token },
 	)
 }
 
 #[derive(Clone, Copy)]
-enum SuspendedEnvironment {
+enum SuspendedEnvironment<'a> {
 	HomeAndSystemPath,
-	PrivateStdioDisabledEphemeral,
+	PrivateStdioDisabledEphemeral { personal_access_token: Option<&'a str> },
 }
 
 #[derive(Clone, Copy)]
@@ -311,7 +315,7 @@ fn spawn_suspended_with_environment(
 	args: &[OsString],
 	working_directory: SuspendedWorkingDirectory<'_>,
 	home: &Path,
-	environment: SuspendedEnvironment,
+	environment: SuspendedEnvironment<'_>,
 ) -> io::Result<SuspendedAttestedSpawn> {
 	let spawned_execution_path = identity.execution_path.clone();
 	let executable = os_string(identity.execution_path.as_os_str())?;
@@ -332,23 +336,35 @@ fn spawn_suspended_with_environment(
 		.map_err(|_| invalid_input("child PATH contains a NUL byte"))?;
 	let private_stdio_environment = match environment {
 		SuspendedEnvironment::HomeAndSystemPath => None,
-		SuspendedEnvironment::PrivateStdioDisabledEphemeral => Some(environment_entry(
+		SuspendedEnvironment::PrivateStdioDisabledEphemeral { .. } => Some(environment_entry(
 			PRIVATE_STDIO_STARTUP_ENV.as_bytes(),
 			OsStr::new(PRIVATE_STDIO_STARTUP_VALUE),
 		)?),
+	};
+	let pat_environment = match environment {
+		SuspendedEnvironment::PrivateStdioDisabledEphemeral {
+			personal_access_token: Some(token),
+		} => Some(Zeroizing::new(
+			environment_entry(b"CODEX_ACCESS_TOKEN", OsStr::new(token))?.into_bytes_with_nul(),
+		)),
+		_ => None,
 	};
 	let mut argv_pointers = argv
 		.iter()
 		.map(|value| value.as_ptr().cast_mut())
 		.chain(std::iter::once(ptr::null_mut()))
 		.collect::<Vec<_>>();
-	let mut environment_pointers =
-		[Some(&home_environment), Some(&path_environment), private_stdio_environment.as_ref()]
-			.into_iter()
-			.flatten()
-			.map(|value| value.as_ptr().cast_mut())
-			.chain(std::iter::once(ptr::null_mut()))
-			.collect::<Vec<_>>();
+	let mut environment_pointers = [
+		Some(home_environment.as_ptr()),
+		Some(path_environment.as_ptr()),
+		private_stdio_environment.as_ref().map(|value| value.as_ptr()),
+		pat_environment.as_ref().map(|value| value.as_ptr().cast()),
+	]
+	.into_iter()
+	.flatten()
+	.map(|value| value.cast_mut())
+	.chain(std::iter::once(ptr::null_mut()))
+	.collect::<Vec<_>>();
 
 	let protocol = ProtocolFifos::new()?;
 	let mut actions = SpawnFileActions::new()?;
@@ -1169,32 +1185,46 @@ mod tests {
 
 	#[test]
 	fn private_stdio_spawn_uses_canonical_path_and_exact_closed_environment() {
-		let identity = system_identity("/usr/bin/env");
-		let canonical = fs::canonicalize("/usr/bin/env").unwrap();
-		let working = TempDir::new().unwrap();
-		let suspended =
-			spawn_private_stdio_suspended(&identity, &[], working.path(), working.path()).unwrap();
+		for token in [None, Some("synthetic-pat")] {
+			let identity = system_identity("/usr/bin/env");
+			let canonical = fs::canonicalize("/usr/bin/env").unwrap();
+			let working = TempDir::new().unwrap();
+			let suspended = spawn_private_stdio_suspended(
+				&identity,
+				&[],
+				working.path(),
+				working.path(),
+				token,
+			)
+			.unwrap();
 
-		assert_eq!(suspended.execution_path, canonical);
+			assert_eq!(suspended.execution_path, canonical);
 
-		let spawned = suspended.attest_and_resume(&identity).unwrap();
+			let spawned = suspended.attest_and_resume(&identity).unwrap();
 
-		drop(spawned.stdin);
+			drop(spawned.stdin);
 
-		let mut output = String::new();
-		let mut stdout = spawned.stdout;
-		let mut child = spawned.child;
+			let mut output = String::new();
+			let mut stdout = spawned.stdout;
+			let mut child = spawned.child;
 
-		stdout.read_to_string(&mut output).unwrap();
+			stdout.read_to_string(&mut output).unwrap();
 
-		let environment =
-			output.lines().map(|line| line.split_once('=').unwrap()).collect::<BTreeMap<_, _>>();
+			let environment = output
+				.lines()
+				.map(|line| line.split_once('=').unwrap())
+				.collect::<BTreeMap<_, _>>();
 
-		assert!(child.wait().unwrap().success());
-		assert_eq!(environment.len(), 3);
-		assert_eq!(environment.get("HOME"), Some(&working.path().to_str().unwrap()));
-		assert_eq!(environment.get("PATH"), Some(&CHILD_PATH));
-		assert_eq!(environment.get(PRIVATE_STDIO_STARTUP_ENV), Some(&PRIVATE_STDIO_STARTUP_VALUE));
+			assert!(child.wait().unwrap().success());
+			assert_eq!(environment.len(), if token.is_some() { 4 } else { 3 });
+			assert_eq!(environment.get("CODEX_ACCESS_TOKEN").copied(), token);
+			assert_eq!(environment.get("HOME"), Some(&working.path().to_str().unwrap()));
+			assert_eq!(environment.get("PATH"), Some(&CHILD_PATH));
+			assert_eq!(
+				environment.get(PRIVATE_STDIO_STARTUP_ENV),
+				Some(&PRIVATE_STDIO_STARTUP_VALUE)
+			);
+		}
 	}
 
 	#[test]
