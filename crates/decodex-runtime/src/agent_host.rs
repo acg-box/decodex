@@ -843,7 +843,7 @@ impl AgentHost {
 					},
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
-						let history_edit = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..});
+						let history_edit = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..});
 						if !history_edit && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
 						let suppress_wake = history_edit || matches!(&request.action,AgentActionDto::GenerateRecap{..}|AgentActionDto::CancelRecap{..});
 						self.recaps.note_input(&request.action);
@@ -1307,6 +1307,8 @@ impl AgentHost {
 			| Action::CompletePromptInputUpload { .. }) => self.handle_prompt_upload(action).await,
 			action @ (Action::PreparePromptEdit { .. }
 			| Action::ConfirmPromptEdit { .. }
+			| Action::ForkPromptEdit { .. }
+			| Action::RecoverPromptFork { .. }
 			| Action::RecoverPromptEdit { .. }
 			| Action::AcknowledgePromptEditDraft { .. }) =>
 				self.handle_prompt_edit(&key, action, active.as_mut().map(|(_, agent, _)| agent))

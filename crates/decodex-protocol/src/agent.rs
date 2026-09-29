@@ -412,6 +412,26 @@ pub enum AgentActionDto {
 		/// Token returned by the complete review query.
 		review_token: crate::WireText,
 	},
+	/// Create a source-preserving branch from one retained review. Never replay native creation.
+	ForkPromptEdit {
+		/// Source local owner.
+		work_id: crate::EntityId,
+		/// Source native conversation.
+		thread_id: crate::WireText,
+		/// Exact service-held review.
+		review_token: crate::WireText,
+		/// New local owner, saved with the desktop intent before dispatch.
+		target_work_id: crate::EntityId,
+		/// Explicit prefix choice.
+		boundary: crate::PromptForkBoundary,
+	},
+	/// Recover a saved fork identity by reading only.
+	RecoverPromptFork {
+		/// Original local owner.
+		work_id: crate::EntityId,
+		/// Exact original review.
+		review_token: crate::WireText,
+	},
 	/// Recover native history by reading only; do not release the desktop draft fence.
 	RecoverPromptEdit {
 		/// Local owner.

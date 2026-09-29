@@ -69,6 +69,7 @@ fn prompt_handback_saves_and_refreshes_before_acknowledgement(cx: &mut gpui::Tes
 					review_token: WireText::new("a".repeat(64)).unwrap(),
 					receipt_id: Some(10),
 					confirmation_key: None,
+					fork: None,
 					pending_send: None,
 					handback_pending: true,
 					input,

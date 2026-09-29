@@ -82,6 +82,62 @@ impl AgentHost {
 				})?;
 				Ok(work_id.as_str().into())
 			},
+			Action::ForkPromptEdit {
+				work_id,
+				thread_id,
+				review_token,
+				target_work_id,
+				boundary,
+			} => {
+				let boundary = match boundary {
+					decodex_protocol::PromptForkBoundary::BeforeInput =>
+						decodex_database::AgentForkBoundary::BeforeInput,
+					decodex_protocol::PromptForkBoundary::AfterTurn =>
+						decodex_database::AgentForkBoundary::AfterTurn,
+				};
+				if let Some(receipt) = self
+					.store
+					.agent_fork_receipt(work_id.as_str().into(), review_token.as_str().into())
+					.await
+					.map_err(|_| "Branch receipt is unavailable")?
+				{
+					if receipt.attempt.source.thread != thread_id.as_str()
+						|| receipt.attempt.target_work != target_work_id.as_str()
+						|| receipt.attempt.boundary != boundary
+					{
+						return Err("Branch intent changed".into());
+					}
+					return Ok(target_work_id.as_str().into());
+				}
+				let review = {
+					let mut reviews = self.prompt_edits.lock().await;
+					let (when, review) =
+						reviews.get(work_id.as_str()).ok_or("Prompt review expired")?;
+					if when.elapsed() >= REVIEW_LIFETIME
+						|| review.evidence().thread != thread_id.as_str()
+						|| review.evidence().review_token != review_token.as_str()
+					{
+						return Err("Prompt review changed".into());
+					}
+					reviews.remove(work_id.as_str()).ok_or("Prompt review expired")?.1
+				};
+				agent
+					.fork_prompt_edit(review, target_work_id.as_str().into(), boundary)
+					.await
+					.map_err(|_| {
+						AgentHostError::Unknown(
+							"Branch creation could not be confirmed; read its receipt",
+						)
+					})?;
+				Ok(target_work_id.as_str().into())
+			},
+			Action::RecoverPromptFork { work_id, review_token } => {
+				agent
+					.recover_prompt_fork(work_id.as_str(), review_token.as_str())
+					.await
+					.map_err(|_| AgentHostError::Unknown("Branch history could not be reloaded"))?;
+				Ok(work_id.as_str().into())
+			},
 			Action::RecoverPromptEdit { work_id, thread_id } => {
 				agent.recover_prompt_edit(work_id.as_str(), thread_id.as_str()).await.map_err(
 					|_| AgentHostError::Unknown("Prompt edit history could not be reloaded"),
@@ -266,5 +322,51 @@ mod tests {
 		assert_eq!(restored, expected);
 		assert!(fragment(&a, None, (expected.find('界').unwrap() + 1) as u64).is_none());
 		assert!(fragment(&a, None, expected.len() as u64).is_none());
+	}
+}
+
+/// Read saved branch state without requiring a live native process.
+impl AgentHost {
+	pub(crate) async fn prompt_fork_status(
+		&self,
+		work: &EntityId,
+		review: &WireText,
+	) -> decodex_protocol::PromptForkResult {
+		use decodex_protocol::{
+			PromptForkBoundary as Boundary, PromptForkPhase as Phase, PromptForkResult as Result,
+			PromptForkStatus,
+		};
+		let saved =
+			match self.store.agent_fork_receipt(work.as_str().into(), review.as_str().into()).await
+			{
+				Ok(Some(saved)) => saved,
+				Ok(None) => return Result::Available(None),
+				Err(_) => return Result::Unavailable,
+			};
+		let convert = || -> Option<PromptForkStatus> {
+			Some(PromptForkStatus {
+				work_id: work.clone(),
+				thread_id: WireText::new(saved.attempt.source.thread).ok()?,
+				review_token: review.clone(),
+				target_work_id: EntityId::new(saved.attempt.target_work).ok()?,
+				target_thread_id: saved.target_thread.map(WireText::new).transpose().ok()?,
+				boundary: match saved.attempt.boundary {
+					decodex_database::AgentForkBoundary::BeforeInput => Boundary::BeforeInput,
+					decodex_database::AgentForkBoundary::AfterTurn => Boundary::AfterTurn,
+				},
+				phase: match saved.state.as_str() {
+					"reserved" => Phase::Uncertain,
+					"acknowledged" => Phase::Acknowledged,
+					"forked" => Phase::Forked,
+					"rejected" => Phase::Rejected,
+					_ => return None,
+				},
+				edit_receipt_id: saved.edit_receipt_id,
+			})
+		};
+		match convert() {
+			Some(status) => Result::Available(Some(status)),
+			None => Result::Unavailable,
+		}
 	}
 }

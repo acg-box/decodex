@@ -2345,6 +2345,11 @@ impl Application for ServiceApplication {
 			QueryPayload::GetAgentModelSettings { work_id } =>
 				self.query_model_settings(work_id.as_str()).await,
 			edit @ QueryPayload::GetAgentPromptEdit { .. } => self.query_prompt_edit(edit).await,
+			QueryPayload::GetAgentPromptFork { work_id, review_token } =>
+				QueryResultPayload::AgentPromptFork(match &self.agent {
+					Some(agent) => agent.prompt_fork_status(work_id, review_token).await,
+					None => decodex_protocol::PromptForkResult::Unavailable,
+				}),
 			QueryPayload::GetAgentPromptInputDirectory { .. }
 			| QueryPayload::GetAgentPromptInputSend { .. }
 			| QueryPayload::GetAgentPromptInputUpload { .. } =>

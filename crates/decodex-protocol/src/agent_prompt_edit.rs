@@ -85,3 +85,69 @@ impl PromptEditStatus {
 			}
 	}
 }
+
+/// Explicit native prefix selection. Both choices preserve the source conversation.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptForkBoundary {
+	/// Copy only turns before the reviewed input and restore that input as a draft.
+	BeforeInput,
+	/// Copy the reviewed completed turn and all earlier turns.
+	AfterTurn,
+}
+
+/// Durable branch progress. Reading it never creates another branch.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptForkPhase {
+	/// Native acceptance is not known. Do not replay the request.
+	Uncertain,
+	/// Native identity is saved; read-only history recovery remains.
+	Acknowledged,
+	/// Native prefix and local ownership are ready.
+	Forked,
+	/// Native request was rejected before creation.
+	Rejected,
+}
+
+/// One branch receipt; canonical input remains in the existing paginated edit query.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PromptForkStatus {
+	/// Original local owner.
+	pub work_id: EntityId,
+	/// Original native conversation.
+	pub thread_id: WireText,
+	/// Exact review identity.
+	pub review_token: WireText,
+	/// New local owner reserved before the native request.
+	pub target_work_id: EntityId,
+	/// Saved native acknowledgement, if received.
+	pub target_thread_id: Option<WireText>,
+	/// Explicit prefix choice.
+	pub boundary: PromptForkBoundary,
+	/// Durable progress.
+	pub phase: PromptForkPhase,
+	/// Before-input branches use the existing canonical draft handback.
+	pub edit_receipt_id: Option<i64>,
+}
+
+/// Distinguish an absent attempt from an unavailable receipt store.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "status", content = "receipt", rename_all = "snake_case")]
+pub enum PromptForkResult {
+	/// Read completed; no receipt means this exact review has not been reserved.
+	Available(Option<PromptForkStatus>),
+	/// Read failed; do not infer that no branch exists.
+	Unavailable,
+}
+
+/// Desktop intent persists the branch choice and destination before submission.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PromptForkIntent {
+	/// Reserved local destination identity.
+	pub target_work_id: EntityId,
+	/// Explicit prefix choice.
+	pub boundary: PromptForkBoundary,
+}

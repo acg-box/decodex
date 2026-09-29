@@ -269,6 +269,34 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 }
 
 fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), ClientError> {
+	if method == "thread/fork" {
+		let identity = |value: &Value| {
+			value.as_str().is_some_and(|id| {
+				!id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control)
+			})
+		};
+		return if params.as_object().is_some_and(|p| {
+			p.len() == 4
+				&& p.keys().all(|key| {
+					matches!(
+						key.as_str(),
+						"threadId"
+							| "beforeTurnId"
+							| "lastTurnId"
+							| "deferGoalContinuation"
+							| "excludeTurns"
+					)
+				})
+		}) && identity(&params["threadId"])
+			&& (identity(&params["beforeTurnId"]) ^ identity(&params["lastTurnId"]))
+			&& params["deferGoalContinuation"] == true
+			&& params["excludeTurns"] == true
+		{
+			Ok(())
+		} else {
+			Err(ClientError::InvalidFrame)
+		};
+	}
 	if let Some(method @ ("fs/createDirectory" | "fs/writeFile")) = method.as_str() {
 		return if decodex_codex::app_server_client::is_goal_attachment_write(method, params) {
 			Ok(())
@@ -382,6 +410,30 @@ mod tests {
 	use super::*;
 	use serde_json::json;
 	use std::sync::mpsc as sync_mpsc;
+	#[test]
+	fn fork_bridge_preserves_explicit_boundary_and_deferred_goal() {
+		for boundary in ["beforeTurnId", "lastTurnId"] {
+			let mut params =
+				json!({"threadId":"source","deferGoalContinuation":true,"excludeTurns":true});
+			params[boundary] = json!("selected");
+			assert!(validate_outbound_method(&json!("thread/fork"), &params).is_ok());
+			for (field, value) in [
+				("path", json!("/unreviewed/history.jsonl")),
+				("deferGoalContinuation", json!(false)),
+				("excludeTurns", json!(false)),
+				("threadId", json!("")),
+				(
+					if boundary == "beforeTurnId" { "lastTurnId" } else { "beforeTurnId" },
+					json!("other"),
+				),
+			] {
+				let mut invalid = params.clone();
+				invalid[field] = value;
+				assert!(validate_outbound_method(&json!("thread/fork"), &invalid).is_err());
+			}
+		}
+	}
+
 	#[test]
 	fn account_notification_bridge_accepts_only_exact_native_purposes() {
 		for (params, valid) in [

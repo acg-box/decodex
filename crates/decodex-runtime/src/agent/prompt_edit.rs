@@ -22,6 +22,119 @@ impl PromptEditReview {
 }
 
 impl AgentCoordinator {
+	/// Create one explicit branch from a retained review, without changing the source.
+	pub async fn fork_prompt_edit(
+		&mut self,
+		review: PromptEditReview,
+		target_work: String,
+		boundary: decodex_database::AgentForkBoundary,
+	) -> Result<decodex_database::AgentForkReceipt, AgentError> {
+		use decodex_codex::app_server_client::ThreadForkBoundary;
+		use decodex_database::{AgentForkAttempt, AgentForkBoundary};
+		let a = review.attempt;
+		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
+		if a.generation != generation || !review.guard.is_live() {
+			return Err(rejected());
+		}
+		let Some(current) =
+			self.client.prompt_edit_candidate(&a.thread, &a.before_turn_id, &a.item_id).await?
+		else {
+			return Err(rejected());
+		};
+		if current.content != a.content || current.turn_ids != a.turn_ids || !review.guard.is_live()
+		{
+			return Err(rejected());
+		}
+		let attempt = AgentForkAttempt { source: a, target_work, boundary };
+		self.store.reserve_agent_fork(attempt.clone()).await?.ok_or_else(rejected)?;
+		let native_boundary = match boundary {
+			AgentForkBoundary::BeforeInput =>
+				ThreadForkBoundary::BeforeInput(&attempt.source.before_turn_id),
+			AgentForkBoundary::AfterTurn =>
+				ThreadForkBoundary::AfterTurn(&attempt.source.before_turn_id),
+		};
+		let response = tokio::time::timeout(
+			Duration::from_secs(60),
+			self.client.fork_thread_at_boundary(
+				&attempt.source.thread,
+				native_boundary,
+				current.guard,
+			),
+		)
+		.await;
+		match response {
+			Ok(Ok(response)) => {
+				let thread = response["thread"]["id"].as_str().ok_or_else(rejected)?.to_owned();
+				self.store
+					.record_agent_fork_identity(attempt.clone(), thread.clone())
+					.await?
+					.ok_or_else(rejected)?;
+				self.loaded_threads.insert(thread);
+				let _ = self
+					.recover_prompt_fork(&attempt.source.work, &attempt.source.review_token)
+					.await;
+			},
+			Ok(Err(
+				ClientError::StaleHistory
+				| ClientError::RequestTooLarge
+				| ClientError::RequestQueueFull,
+			)) => {
+				self.store.reject_agent_fork(attempt.clone()).await?;
+			},
+			Ok(Err(ClientError::Remote(error))) if (-32602..=-32600).contains(&error.code) => {
+				self.store.reject_agent_fork(attempt.clone()).await?;
+			},
+			_ => {}, // Unknown acceptance keeps the durable reservation; never submit another fork.
+		}
+		self.store
+			.agent_fork_receipt(attempt.source.work, attempt.source.review_token)
+			.await?
+			.ok_or_else(rejected)
+	}
+
+	/// Finish a known fork by reading its identity and exact prefix. No resume or model turn.
+	pub async fn recover_prompt_fork(
+		&mut self,
+		source_work: &str,
+		review_token: &str,
+	) -> Result<Option<decodex_database::AgentForkReceipt>, AgentError> {
+		let Some(saved) =
+			self.store.agent_fork_receipt(source_work.into(), review_token.into()).await?
+		else {
+			return Ok(None);
+		};
+		if saved.state != "acknowledged" {
+			return Ok(Some(saved));
+		}
+		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
+		if !self
+			.store
+			.agent_thread_is_owned(
+				source_work.into(),
+				saved.attempt.source.thread.clone(),
+				generation,
+			)
+			.await?
+		{
+			return Err(rejected());
+		}
+		let thread = saved.target_thread.as_ref().ok_or_else(rejected)?;
+		let metadata = self.client.thread_read(json!({"threadId":thread})).await?;
+		if metadata["thread"]["id"] != thread.as_str()
+			|| metadata["thread"]["forkedFromId"] != saved.attempt.source.thread
+		{
+			return Err(rejected());
+		}
+		let (turns, guard) = self.read_edit_history(thread).await?;
+		if !guard.is_live() {
+			return Err(rejected());
+		}
+		self.store
+			.acknowledge_agent_fork(saved.attempt, thread.clone(), turns)
+			.await
+			.map_err(Into::into)
+	}
+
 	/// Read a non-waking review for exact visible input. The caller owns visible-selection and
 	/// attachment-restoration validation; this method also excludes internal voice handoffs.
 	pub async fn prepare_prompt_edit(

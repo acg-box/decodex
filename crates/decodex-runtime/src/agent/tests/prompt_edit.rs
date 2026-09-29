@@ -15,9 +15,19 @@ fn transport(
 	let (log, reads) = tokio::sync::mpsc::unbounded_channel();
 	let server = tokio::spawn(async move {
 		let mut selected_reads = 0;
+		let mut fork: Option<Vec<Value>> = None;
 		while let Some(request) = writes.recv().await {
 			log.send(request.clone()).unwrap();
-			assert_eq!(request["params"]["threadId"], "opaque thread/1");
+			let is_fork = request["params"]["threadId"] == "branch-thread";
+			assert!(is_fork || request["params"]["threadId"] == "opaque thread/1");
+			if is_fork && mode == "fork-read-failure" {
+				return;
+			}
+			let visible = if is_fork {
+				fork.clone().unwrap_or_else(|| history.lock().unwrap()[..1].to_vec())
+			} else {
+				history.lock().unwrap().clone()
+			};
 			let method = request["method"].as_str().unwrap();
 			if method == "thread/revert" {
 				assert_eq!(
@@ -36,10 +46,29 @@ fn transport(
 				}
 			}
 			let result = match method {
+				"thread/fork" => {
+					assert!(mode.starts_with("fork"));
+					assert_eq!(request["params"]["deferGoalContinuation"], true);
+					assert_eq!(request["params"]["excludeTurns"], true);
+					let after = request["params"].get("lastTurnId").is_some();
+					let selected = request["params"]
+						[if after { "lastTurnId" } else { "beforeTurnId" }]
+					.as_str()
+					.unwrap();
+					let end = visible.iter().position(|t| t["id"] == selected).unwrap()
+						+ usize::from(after);
+					fork = Some(visible[..end].to_vec());
+					if mode == "fork-lost-reply" {
+						return;
+					}
+					json!({"thread":{"id":"branch-thread","forkedFromId":"opaque thread/1","historyMode":"paginated","turns":[]}})
+				},
+				"thread/read" if is_fork =>
+					json!({"thread":{"id":"branch-thread","forkedFromId":"opaque thread/1","historyMode":"paginated","turns":[]}}),
 				"thread/read" | "thread/revert" =>
 					json!({"thread":{"id":"opaque thread/1","historyMode":"paginated","turns":[]}}),
 				"thread/turns/list" => {
-					let mut turns = history.lock().unwrap().clone();
+					let mut turns = visible.clone();
 					turns.reverse();
 					turns.truncate(request["params"]["limit"].as_u64().unwrap() as usize);
 					if request["params"]["itemsView"] != "full" {
@@ -51,11 +80,10 @@ fn transport(
 				},
 				"thread/items/list" => {
 					let turn = request["params"]["turnId"].as_str().unwrap();
-					let mut items =
-						history.lock().unwrap().iter().find(|t| t["id"] == turn).unwrap()["items"]
-							.as_array()
-							.unwrap()
-							.clone();
+					let mut items = visible.iter().find(|t| t["id"] == turn).unwrap()["items"]
+						.as_array()
+						.unwrap()
+						.clone();
 					if turn == "selected" {
 						selected_reads += 1;
 						if mode == "changed-content" && selected_reads > 1 {
@@ -271,4 +299,91 @@ async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_
 	assert!(agent.store.enqueue_agent_event(foreign).await.is_err());
 	server.abort();
 	let _ = server.await;
+}
+
+#[tokio::test]
+async fn prompt_fork_preserves_source_and_recovers_acknowledged_identity_without_replay() {
+	use decodex_database::AgentForkBoundary;
+	for (mode, boundary) in [
+		("fork-success", AgentForkBoundary::BeforeInput),
+		("fork-success", AgentForkBoundary::AfterTurn),
+		("fork-read-failure", AgentForkBoundary::BeforeInput),
+		("fork-lost-reply", AgentForkBoundary::BeforeInput),
+	] {
+		let (mut agent, _old_reads, _directory) = fixture().await;
+		agent.start_agent("agent", "Start").await.unwrap();
+		complete(&mut agent, "agent").await;
+		let native = history();
+		let original = native.lock().unwrap().clone();
+		let (client, mut reads, server) = transport(mode, native.clone());
+		agent.client = client;
+		let review = agent
+			.prepare_prompt_edit(
+				"agent",
+				"opaque thread/1",
+				"selected",
+				"selected-input",
+				"fork-review",
+			)
+			.await
+			.unwrap()
+			.unwrap();
+		let token = review.evidence().review_token.clone();
+		let content = review.evidence().content.clone();
+		let receipt = agent.fork_prompt_edit(review, "branch-work".into(), boundary).await.unwrap();
+		assert_eq!(*native.lock().unwrap(), original);
+		assert!(
+			agent
+				.store
+				.agent_prompt_edit_receipt("agent".into(), "opaque thread/1".into())
+				.await
+				.unwrap()
+				.is_none()
+		);
+		let requests = std::iter::from_fn(|| reads.try_recv().ok()).collect::<Vec<_>>();
+		assert_eq!(requests.iter().filter(|r| r["method"] == "thread/fork").count(), 1);
+		assert!(requests.iter().all(|r| !matches!(
+			r["method"].as_str(),
+			Some("thread/revert" | "turn/start" | "thread/resume")
+		)));
+		assert_eq!(
+			receipt.state,
+			match mode {
+				"fork-lost-reply" => "reserved",
+				"fork-read-failure" => "acknowledged",
+				_ => "forked",
+			}
+		);
+		if mode == "fork-success" {
+			let draft = agent
+				.store
+				.agent_prompt_edit_receipt("branch-work".into(), "branch-thread".into())
+				.await
+				.unwrap();
+			assert_eq!(draft.is_some(), boundary == AgentForkBoundary::BeforeInput);
+			if let Some(draft) = draft {
+				assert_eq!(draft.attempt.content, content);
+			}
+		} else {
+			let store = agent.store.clone();
+			let config = agent.config.clone();
+			drop(agent);
+			let (fresh, mut recovery_reads, recovery_server) =
+				transport("fork-recovery", native.clone());
+			let mut recovered = AgentCoordinator::new(store, fresh, config).unwrap();
+			let recovered = recovered.recover_prompt_fork("agent", &token).await.unwrap().unwrap();
+			assert_eq!(
+				recovered.state,
+				if mode == "fork-lost-reply" { "reserved" } else { "forked" }
+			);
+			assert!(std::iter::from_fn(|| recovery_reads.try_recv().ok()).all(|r| matches!(
+				r["method"].as_str(),
+				Some("thread/read" | "thread/turns/list" | "thread/items/list")
+			)));
+			recovery_server.abort();
+			let _ = recovery_server.await;
+		}
+		server.abort();
+		let _ = server.await;
+	}
 }

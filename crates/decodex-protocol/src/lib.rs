@@ -14,7 +14,10 @@ pub use agent_prompt_draft::{DesktopPromptEditDraft, PromptDraft};
 pub use agent_prompt_send::{PromptInputSend, PromptInputSendIdentity, PromptInputSendStatus};
 pub use agent_prompt_upload::{PromptInputUpload, PromptInputUploadStatus};
 mod agent_recap;
-pub use agent_prompt_edit::{PromptEditEvidence, PromptEditPhase, PromptEditStatus};
+pub use agent_prompt_edit::{
+	PromptEditEvidence, PromptEditPhase, PromptEditStatus, PromptForkBoundary, PromptForkIntent,
+	PromptForkPhase, PromptForkResult, PromptForkStatus,
+};
 mod agent_search_settings;
 mod agent_skills;
 pub use agent_skills::{AgentSkillDto, AgentSkillsPage, AgentSkillsResult, AgentSkillsTarget};

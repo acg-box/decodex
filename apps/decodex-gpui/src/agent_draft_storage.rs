@@ -797,6 +797,7 @@ mod tests {
 			review_token: WireText::new("a".repeat(64)).unwrap(),
 			receipt_id: Some(42),
 			confirmation_key: None,
+			fork: None,
 			pending_send: None,
 			handback_pending: false,
 			input,
@@ -874,6 +875,7 @@ mod tests {
 			receipt_id: Some(42),
 			handback_pending: true,
 			confirmation_key: None,
+			fork: None,
 			pending_send: None,
 			input,
 		};
@@ -1792,6 +1794,7 @@ mod ordinary_owner_tests {
 						receipt_id: Some(42),
 						handback_pending: true,
 						confirmation_key: None,
+						fork: None,
 						pending_send: None,
 						input: decodex_protocol::PromptDraft::new(vec![
 							serde_json::json!({"type":"image","fileId":"retained-native-file"}),
