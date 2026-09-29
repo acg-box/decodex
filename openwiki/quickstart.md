@@ -22,10 +22,10 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+generated: { by: "codex", at: "2026-09-29T06:54:38.514Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-09-29T06:24:17.023Z
+    at: 2026-09-29T06:54:38.514Z
 ---
 
 
@@ -50,6 +50,7 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 | Decide which upstream capabilities belong here | [Product scope](decisions/upstream-product-scope.md) |
 | Review an upstream change | [Upstream maintenance](operations/codex-upstream-autopilot.md) |
 | Choose checks and understand their limits | [Commands](operations/commands-and-validation.md), [acceptance boundaries](testing/upstream-acceptance-boundaries.md) |
+| Improve tests without weakening contracts | [Test quality](testing/test-quality.md) |
 | Maintain documentation | [Wiki maintenance](operations/wiki-maintenance.md) |
 
 ## Current boundaries

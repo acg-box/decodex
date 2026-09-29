@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:c1a6f8abdf95e305353ab38cc47005764751ffa52fb75557d9706745bc399c0d",
+  "claims": [
+    {
+      "id": "claim_070657bf065541118dc7ae41cdeffc2c",
+      "statement": "The default nextest profile avoids executing shared application tests again in diagnostic binaries and serializes app-server process fixtures.",
+      "evidence": [
+        {
+          "resource": "repo://.config/nextest.toml",
+          "version": "repo-file-v1:sha256:01e45e1739251c51d547f661cedbe17902b63699eb84dd6e585b0d68ad6f51d8"
+        }
+      ]
+    },
+    {
+      "id": "claim_40aeb09f25134e4bb5a4d3f9cb2c53c3",
+      "statement": "The login crate tests real callback parsing limits and private login-home cleanup, including filesystem identity drift.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-account-login/src/lib.rs#L1761-L1810",
+          "version": "repo-lines-v1:sha256:0b8a6e1af08675bfa868c003d1f145c3f02c1c97f39c3536d42fb17e47199206:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzNWI0ZmQ2YjE3MDRhMzdhYzRiYjQxNGNhM2ZmN2Y1MTEwNmFiYTVlMDE4NTdlOTM2ZGI0MzlmZTA4NzY0MzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhZDM3MTQ2M2VjODQ5ZWRiNDc1MmM5Nzg3ODk4YzNjMGZjNDExMWU2MTQyZWRlNjNhYzNlNmZkNTE1NjVlZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlkNWJjZjE4NDg5NTJhMDMxOWE1ZTM0ZmMyN2MxYjVkNzQ1OWI4ZjJhMTEzYzc0NDgyOWQ3Y2I5YmJjNzM1YWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_301b1cce284646b093ea44f63a9fa99d",
+      "statement": "Refresh endpoint tests exercise the fixed ordinary-build authority and, under the debug fixture feature, reject unsafe loopback endpoint forms.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L7438-L7463",
+          "version": "repo-lines-v1:sha256:2dfee16e7e7fa3a62de08df4e0cc4e92d0a492c9dade8e3af6fba634a83d7a45:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5MTgzMDM2MzhmYTY2ODY5MTg3NmI4NmY2OGU5MDlhNTIwMDU3NzkzODFlZTliZTM5ZjNlMTM3YjgzMmE3MDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyNjEzZTJkNzA5ZTU5MjJlZjIyMThhZWRiMDQ0N2QzOWI1OTY2ZWQ0ZWJiOWMwYTEyMmU5M2EwYmU0MTk1NGMifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-29T06:54:38.514Z"
+  }
+}
