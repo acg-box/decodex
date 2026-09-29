@@ -258,6 +258,27 @@ final class AccountControlNativeClientTests: XCTestCase {
 		XCTAssertTrue(recorder.requests.isEmpty)
 	}
 
+	func testServiceVersionMismatchPreservesPotentialDispatch() async throws {
+		let authority = authority
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "set_balanced_selection",
+				authority: authority,
+				data: #"{"outcome":"potentially_dispatched","data":{"failure":"service_version_mismatch"}}"#
+			)
+		}
+		do {
+			_ = try await client.setBalancedSelection(
+				authority: authority,
+				expectedRoutingRevision: 9,
+				idempotencyKey: idempotencyKey
+			)
+			XCTFail("A potentially dispatched command must remain uncertain.")
+		} catch let error as AccountControlError {
+			XCTAssertEqual(error, .potentiallyDispatched)
+		}
+	}
+
 	func testTypedRejectionRetainsCurrentOwningRevision() async throws {
 		let authority = authority
 		let client = DecodexNativeClient { _, _ in

@@ -1527,6 +1527,7 @@ private enum AccountControlClientFailureWire: String, Decodable {
 	case protocolTimeout = "protocol_timeout"
 	case protocolMajorMismatch = "protocol_major_mismatch"
 	case protocolMinorMismatch = "protocol_minor_mismatch"
+	case serviceVersionMismatch = "service_version_mismatch"
 	case serverIdentityMismatch = "server_identity_mismatch"
 	case protocolMalformed = "protocol_malformed"
 	case protocolViolation = "protocol_violation"
