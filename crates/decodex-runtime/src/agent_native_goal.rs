@@ -33,7 +33,11 @@ where
 			let goal = goal
 				.map(|goal| {
 					let sensitive = decodex_core::contains_credential_material(&goal.objective);
-					let end = goal.objective.floor_char_boundary(goal.objective.len().min(8192));
+					let end = goal
+						.objective
+						.char_indices()
+						.nth(4_000)
+						.map_or(goal.objective.len(), |(index, _)| index);
 					let truncated = sensitive || end < goal.objective.len();
 					let mut value = serde_json::to_value(&goal).ok()?;
 					value["objective"] = serde_json::json!(if sensitive {

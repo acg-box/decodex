@@ -166,12 +166,17 @@ impl AgentSurface {
 		let text = editor.objective.read(cx).content().to_owned();
 		let budget = editor.budget.read(cx).content().trim().to_owned();
 		let objective = (text != editor.original_objective || editor.new_goal).then_some(text);
+		if objective.as_ref().is_some_and(|text| text.trim().is_empty() || text.len() > 64 * 1024) {
+			self.native_goal.feedback = "Enter an objective no larger than 64 KiB.".into();
+			cx.notify();
+			return;
+		}
 		let budget = if budget == editor.original_budget {
 			Budget::Keep
 		} else if budget.is_empty() {
 			Budget::Reset
 		} else {
-			let Ok(tokens) = budget.parse::<i64>() else {
+			let Some(tokens) = budget.parse::<i64>().ok().filter(|tokens| *tokens > 0) else {
 				self.native_goal.feedback = "Enter a positive whole-number token budget.".into();
 				cx.notify();
 				return;

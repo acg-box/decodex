@@ -27,6 +27,7 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 		"closed",
 		"redacted",
 		"long",
+		"unicode",
 	] {
 		let home = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
@@ -95,7 +96,7 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 		.await;
 		server.await.unwrap();
 		match case {
-			"root" | "child" | "redacted" | "long" => {
+			"root" | "child" | "redacted" | "long" | "unicode" => {
 				let Result::Available { work_id, thread_id, goal: Some(goal), .. } = result else {
 					panic!("{case}")
 				};
@@ -105,7 +106,7 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 				assert_eq!(goal.time_used_seconds, 7);
 				assert_eq!(goal.token_budget, Some(11));
 				assert_eq!(goal.objective_truncated, matches!(case, "redacted" | "long"));
-				assert!(goal.objective.len() <= 8192);
+				assert!(goal.objective.len() <= 16_000);
 				assert!(!goal.objective.contains("private-access"));
 			},
 			"missing" => assert!(matches!(result, Result::Available { goal: None, .. })),
@@ -159,6 +160,7 @@ async fn serve(remote: tokio::io::DuplexStream, target: &str, case: &str) {
 	let objective = match case {
 		"redacted" => "Bearer fixture-private-access-token-123456789".into(),
 		"long" => "界".repeat(5000),
+		"unicode" => "界".repeat(4000),
 		_ => "Native objective".into(),
 	};
 	let response = match case {
