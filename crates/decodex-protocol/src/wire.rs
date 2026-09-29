@@ -1,4 +1,4 @@
-//! Structured JSON envelopes for the exact-current V2.36 WebSocket connection.
+//! Structured JSON envelopes for the exact-current WebSocket connection.
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
@@ -21,7 +21,7 @@ use crate::{
 	program_cycle::{ProgramCycleResult, ProgramListResult},
 };
 
-/// Maximum UTF-8 size of any human-readable text carried by V2.36.
+/// Maximum UTF-8 size of any human-readable text carried by the wire protocol.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
 /// Maximum UTF-8 size of one logical-command idempotency key.
 pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
@@ -136,7 +136,7 @@ impl<'de> Deserialize<'de> for HistoryCursorToken {
 	}
 }
 
-/// A string-backed wire scalar exceeded its V2.36 byte limit.
+/// A string-backed wire scalar exceeded its wire byte limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WireScalarTooLong {
 	actual_bytes: usize,
@@ -460,7 +460,7 @@ pub struct ResumeCursor {
 	pub server_id: ServerId,
 	/// Ephemeral publication epoch that issued the cursor.
 	///
-	/// A V2.36 resume requires this field. Older hello envelopes can omit it
+	/// An exact-current resume requires this field. Older hello envelopes can omit it
 	/// only so negotiation can return a typed version refusal.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
@@ -511,7 +511,7 @@ pub struct ServerWelcome {
 	pub server_id: ServerId,
 	/// Ephemeral identity of the in-memory publication epoch.
 	///
-	/// This is present in the exact-current V2.36 welcome.
+	/// This is present in the exact-current welcome.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
@@ -1595,14 +1595,9 @@ impl Serialize for AccountProfileResult {
 			},
 		}
 		let raw = match self {
-			Self::Current(profile) => {
-				validate_account_profile(profile).map_err(S::Error::custom)?;
-				Raw::Current(profile)
-			},
-			Self::Cached { profile, refresh_error } => {
-				validate_account_profile(profile).map_err(S::Error::custom)?;
-				Raw::Cached { profile, refresh_error: *refresh_error }
-			},
+			Self::Current(profile) => Raw::Current(profile),
+			Self::Cached { profile, refresh_error } =>
+				Raw::Cached { profile, refresh_error: *refresh_error },
 			Self::Unavailable { error, email, plan_type } => {
 				validate_account_profile_claims(email, plan_type.as_ref())
 					.map_err(S::Error::custom)?;
@@ -1632,14 +1627,8 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 			},
 		}
 		match Raw::deserialize(deserializer)? {
-			Raw::Current(profile) => {
-				validate_account_profile(&profile).map_err(D::Error::custom)?;
-				Ok(Self::Current(profile))
-			},
-			Raw::Cached { profile, refresh_error } => {
-				validate_account_profile(&profile).map_err(D::Error::custom)?;
-				Ok(Self::Cached { profile, refresh_error })
-			},
+			Raw::Current(profile) => Ok(Self::Current(profile)),
+			Raw::Cached { profile, refresh_error } => Ok(Self::Cached { profile, refresh_error }),
 			Raw::Unavailable { error, email, plan_type } => {
 				validate_account_profile_claims(&email, plan_type.as_ref())
 					.map_err(D::Error::custom)?;
@@ -1652,7 +1641,7 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. The V2.36 account contract accepts 300 and 10080 minutes only.
+	/// Exact window duration. The account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -2125,10 +2114,7 @@ impl Serialize for AccountInspectResult {
 			Unavailable,
 		}
 		let raw = match self {
-			Self::Available(account) => {
-				validate_account_dto(account).map_err(S::Error::custom)?;
-				Raw::Available(account)
-			},
+			Self::Available(account) => Raw::Available(account),
 			Self::NotFound => Raw::NotFound,
 			Self::Unavailable => Raw::Unavailable,
 		};
@@ -2148,10 +2134,7 @@ impl<'de> Deserialize<'de> for AccountInspectResult {
 			Unavailable,
 		}
 		match Raw::deserialize(deserializer)? {
-			Raw::Available(account) => {
-				validate_account_dto(&account).map_err(D::Error::custom)?;
-				Ok(Self::Available(account))
-			},
+			Raw::Available(account) => Ok(Self::Available(account)),
 			Raw::NotFound => Ok(Self::NotFound),
 			Raw::Unavailable => Ok(Self::Unavailable),
 		}
@@ -2184,7 +2167,7 @@ impl AccountObservationSignal {
 	}
 }
 
-/// Live queries available through the exact-current V2.36 protocol.
+/// Live queries available through the exact-current protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
@@ -2600,7 +2583,7 @@ impl QueryPayload {
 	}
 }
 
-/// Commands available through the exact-current V2.36 protocol.
+/// Commands available through the exact-current protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
@@ -3118,7 +3101,7 @@ impl ResultPayload {
 	}
 }
 
-/// Typed live-query results available through the exact-current V2.36 protocol.
+/// Typed live-query results available through the exact-current protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
@@ -3505,12 +3488,12 @@ pub enum Refusal {
 	},
 }
 
-/// Serialize a message using the only V2.36 wire encoding.
+/// Serialize a message using the JSON wire encoding.
 pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 	serde_json::to_string(message)
 }
 
-/// Parse a client message using the only V2.36 wire encoding.
+/// Parse a client message using the JSON wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
 	validate_client_message(&decoded).map_err(|reason| {
@@ -3844,16 +3827,12 @@ fn validate_accounts_result(
 	if accounts.len() > 512 {
 		return Err("account result exceeds cardinality bound");
 	}
-	for account in accounts {
-		validate_account_dto(account)?;
-	}
 	let universe =
 		accounts.iter().map(|account| account.account_id.as_str()).collect::<HashSet<_>>();
 	if universe.len() != accounts.len() {
 		return Err("account result contains duplicate identities");
 	}
 	if let Some(routing) = routing {
-		validate_routing_control(routing)?;
 		if routing.order.len() != accounts.len() {
 			return Err("account routing control is incomplete");
 		}
@@ -4220,6 +4199,67 @@ mod tests {
 		let encoded = serde_json::to_value(&result).expect("account rows should serialize");
 		assert!(encoded["data"]["routing"].is_null());
 		assert_eq!(serde_json::from_value::<AccountsResult>(encoded).unwrap(), result);
+
+		let AccountsResult::Available { accounts, .. } = result else { unreachable!() };
+		let account = accounts[0].clone();
+		let inspect = super::AccountInspectResult::Available(Box::new(account.clone()));
+		let mut encoded = serde_json::to_value(&inspect).unwrap();
+		assert_eq!(
+			serde_json::from_value::<super::AccountInspectResult>(encoded.clone()).unwrap(),
+			inspect
+		);
+		encoded["data"]["account_revision"] = 0.into();
+		assert!(serde_json::from_value::<super::AccountInspectResult>(encoded).is_err());
+		let mut invalid = account.clone();
+		invalid.account_revision = EntityRevision(0);
+		assert!(
+			serde_json::to_value(super::AccountInspectResult::Available(Box::new(invalid.clone())))
+				.is_err()
+		);
+
+		let valid = AccountsResult::Available {
+			accounts: vec![account.clone()],
+			routing: Some(super::AccountRoutingControlDto {
+				revision: EntityRevision(1),
+				mode: super::AccountSelectionModeDto::Balanced,
+				order: vec![account.account_id.clone()],
+			}),
+		};
+		let encoded = serde_json::to_value(&valid).unwrap();
+		assert_eq!(serde_json::from_value::<AccountsResult>(encoded.clone()).unwrap(), valid);
+		for path in ["account", "routing", "duplicate", "permutation"] {
+			let mut value = encoded.clone();
+			let mut outbound = valid.clone();
+			let AccountsResult::Available { accounts, routing } = &mut outbound else {
+				unreachable!()
+			};
+			match path {
+				"account" => {
+					value["data"]["accounts"][0]["account_revision"] = 0.into();
+					accounts[0] = invalid.clone();
+				},
+				"routing" => {
+					value["data"]["routing"]["revision"] = 0.into();
+					routing.as_mut().unwrap().revision = EntityRevision(0);
+				},
+				"duplicate" => {
+					value["data"]["accounts"]
+						.as_array_mut()
+						.unwrap()
+						.push(serde_json::to_value(&account).unwrap());
+					accounts.push(account.clone());
+					value["data"]["routing"] = serde_json::Value::Null;
+					*routing = None;
+				},
+				_ => {
+					let other = "11234567-89ab-4def-8123-456789abcdef";
+					value["data"]["routing"]["order"][0] = other.into();
+					routing.as_mut().unwrap().order[0] = EntityId::new(other).unwrap();
+				},
+			}
+			assert!(serde_json::from_value::<AccountsResult>(value).is_err(), "{path}");
+			assert!(serde_json::to_value(outbound).is_err(), "{path}");
+		}
 	}
 
 	#[test]
@@ -4299,9 +4339,9 @@ mod tests {
 		];
 
 		for (index, (name, arguments)) in command_arguments.into_iter().enumerate() {
-			let message = serde_json::json!({
+			let mut message = serde_json::json!({
 				"type": "command",
-				"data": {
+				"body": {
 					"version": CURRENT_VERSION,
 					"client_command_id": format!("retired-board-command-{index}"),
 					"idempotency_key": format!("retired/board/{index}"),
@@ -4311,10 +4351,12 @@ mod tests {
 					"payload": {"name": name, "arguments": arguments}
 				}
 			});
-			assert!(
-				decode_client_message(&message.to_string()).is_err(),
-				"retired command {name} must not decode",
-			);
+			let error = decode_client_message(&message.to_string()).unwrap_err();
+			assert!(error.to_string().contains(&format!("unknown variant `{name}`")), "{error}");
+			message["body"]["payload"] = serde_json::json!({
+				"name": "refresh_system_observation", "arguments": {"entity_id": "system"}
+			});
+			assert!(decode_client_message(&message.to_string()).is_ok());
 		}
 
 		for payload in [
@@ -4329,15 +4371,19 @@ mod tests {
 				}
 			}),
 		] {
-			let message = serde_json::json!({
+			let mut message = serde_json::json!({
 				"type": "query",
-				"data": {
+				"body": {
 					"version": CURRENT_VERSION,
 					"query_id": "retired-board-query",
 					"payload": payload
 				}
 			});
-			assert!(decode_client_message(&message.to_string()).is_err());
+			let name = payload["name"].as_str().unwrap();
+			let error = decode_client_message(&message.to_string()).unwrap_err();
+			assert!(error.to_string().contains(&format!("unknown variant `{name}`")), "{error}");
+			message["body"]["payload"] = serde_json::json!({"name": "get_doctor_status"});
+			assert!(decode_client_message(&message.to_string()).is_ok());
 		}
 	}
 
@@ -4970,25 +5016,33 @@ mod tests {
 
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
-			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":102},"#,
-				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
+			format!(
+				concat!(
+					r#"{{"type":"hello","body":{{"version":{{"major":{major},"minor":{minor}}},"#,
+					r#""resume":{{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}}}}"#,
+				),
+				major = CURRENT_VERSION.major,
+				minor = CURRENT_VERSION.minor
 			)
 		);
 	}
 
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
-		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":102},"#,
-			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
+		let current_without_instance = format!(
+			concat!(
+				r#"{{"type":"hello","body":{{"version":{{"major":{major},"minor":{minor}}},"#,
+				r#""resume":{{"server_id":"server-a","cursor":42}}}}}}"#,
+			),
+			major = CURRENT_VERSION.major,
+			minor = CURRENT_VERSION.minor
 		);
 		let old_hello = concat!(
 			r#"{"type":"hello","body":{"version":{"major":1,"minor":5},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 
-		assert!(decode_client_message(current_without_instance).is_err());
+		assert!(decode_client_message(&current_without_instance).is_err());
 
 		let ClientMessage::Hello(hello) = decode_client_message(old_hello).unwrap() else {
 			panic!("expected hello");
@@ -5021,13 +5075,17 @@ mod tests {
 
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
-			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":102},"#,
-				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
-				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
-				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
-				r#""account_id":"40000000-0000-4000-8000-000000000001","descriptor":{"#,
-				r#""granted_at_unix_seconds":1700000000,"expires_at_unix_seconds":1700003600}}}}}"#,
+			format!(
+				concat!(
+					r#"{{"type":"command","body":{{"version":{{"major":{major},"minor":{minor}}},"#,
+					r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
+					r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
+					r#""causation_id":null,"payload":{{"name":"consume_reset_card","arguments":{{"#,
+					r#""account_id":"40000000-0000-4000-8000-000000000001","descriptor":{{"#,
+					r#""granted_at_unix_seconds":1700000000,"expires_at_unix_seconds":1700003600}}}}}}}}}}"#,
+				),
+				major = CURRENT_VERSION.major,
+				minor = CURRENT_VERSION.minor
 			)
 		);
 		assert_eq!(
@@ -5108,18 +5166,6 @@ mod tests {
 				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
-		let oversized = serde_json::json!({
-			"outcome":"available",
-			"data":{
-				"account_id":account_id,
-				"account_revision":1,
-				"reported_available_count":u64::try_from(MAX_RESET_CARD_ITEMS + 1).unwrap(),
-				"details_complete":true,
-				"cards":vec![card; MAX_RESET_CARD_ITEMS + 1],
-				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
-				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
-			}
-		});
 		let bounded_cards = (0..MAX_RESET_CARD_ITEMS)
 			.map(|index| {
 				serde_json::json!({
@@ -5142,6 +5188,12 @@ mod tests {
 				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
+
+		let mut oversized = bounded.clone();
+		oversized["data"]["reported_available_count"] = (MAX_RESET_CARD_ITEMS + 1).into();
+		oversized["data"]["cards"].as_array_mut().unwrap().push(serde_json::json!({
+			"descriptor":{"granted_at_unix_seconds":1000,"expires_at_unix_seconds":1001}
+		}));
 
 		assert_eq!(MAX_RESET_CARD_ITEMS, 64);
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(bounded).is_ok());
@@ -5308,6 +5360,29 @@ mod tests {
 				tokens: 900,
 			}],
 		};
+		for mut result in [
+			AccountProfileResult::Current(Box::new(profile.clone())),
+			AccountProfileResult::Cached {
+				profile: Box::new(profile.clone()),
+				refresh_error: AccountProfileErrorDto::ProviderUnavailable,
+			},
+		] {
+			let mut wire = serde_json::to_value(&result).unwrap();
+			assert_eq!(
+				serde_json::from_value::<AccountProfileResult>(wire.clone()).unwrap(),
+				result
+			);
+			let (profile, wire_profile) = match &mut result {
+				AccountProfileResult::Current(profile) => (profile, &mut wire["data"]),
+				AccountProfileResult::Cached { profile, .. } =>
+					(profile, &mut wire["data"]["profile"]),
+				AccountProfileResult::Unavailable { .. } => unreachable!(),
+			};
+			profile.account_revision = EntityRevision(0);
+			wire_profile["account_revision"] = serde_json::json!(0);
+			assert!(serde_json::to_value(&result).is_err());
+			assert!(serde_json::from_value::<AccountProfileResult>(wire).is_err());
+		}
 		let encoded =
 			serde_json::to_value(AccountProfileResult::Current(Box::new(profile))).unwrap();
 

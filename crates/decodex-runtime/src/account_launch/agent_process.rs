@@ -348,6 +348,8 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "thread/list"
 					| "thread/backgroundTerminals/list"
 					| "thread/backgroundTerminals/terminate"
+					| "thread/search"
+					| "thread/searchOccurrences"
 					| "thread/goal/get"
 					| "thread/turns/list"
 					| "thread/items/list"

@@ -12,6 +12,12 @@ impl AgentCoordinator {
 		if !self.is_manager(&agent.id).await? {
 			return Err(AgentError::Invalid("history reading requires a manager".into()));
 		}
+		if args.get("id").is_some() != args.get("threadId").is_some() {
+			return Err(AgentError::Invalid("id and threadId must be supplied together".into()));
+		}
+		if args.get("searchTerm").is_some() && args.get("id").is_none() {
+			return self.search_work_history(agent, args).await;
+		}
 		let id = exact(args, "/id")?;
 		let expected = exact(args, "/threadId")?;
 		let all = self.store.list_agent_work_items().await?;
@@ -53,6 +59,15 @@ impl AgentCoordinator {
 			Some(Value::Bool(value)) => *value,
 			_ => return Err(AgentError::Invalid("includeOutputs must be boolean".into())),
 		};
+		if args.get("searchTerm").is_some() {
+			let page = self.native_history_search(args, Some(&expected)).await?;
+			let current = self.store.get_agent_work_item(id.clone()).await?;
+			if current.codex_thread_id != work.codex_thread_id {
+				return Err(AgentError::Invalid("work thread changed during search".into()));
+			}
+			return Ok(json!({"workId":id,"threadId":expected,"occurrences":page["data"],
+				"nextCursor":page["nextCursor"],"evidenceOnly":true,"sourceUrl":source_url(&expected)}));
+		}
 		let native = self.client.thread_history_page(&expected, cursor, limit).await?;
 		let current = self.store.get_agent_work_item(id.clone()).await?;
 		if current.codex_thread_id != work.codex_thread_id {
@@ -74,6 +89,135 @@ impl AgentCoordinator {
 		}
 		Ok(result)
 	}
+
+	async fn search_work_history(
+		&self,
+		agent: &AgentWorkItem,
+		args: &Value,
+	) -> Result<Value, AgentError> {
+		let page = self.native_history_search(args, None).await?;
+		// Filter after the native read against current ownership. A native match never grants
+		// access.
+		let all = self.store.list_agent_work_items().await?;
+		let managers = self.store.agent_manager_ids().await?;
+
+		let mut permitted = std::collections::HashMap::new();
+		for work in &all {
+			if work.id == agent.id || belongs_to(work, &agent.id, &all, &managers) {
+				if let Some(thread) = &work.codex_thread_id {
+					permitted.insert(thread.clone(), work.id.clone());
+				}
+				for thread in self.store.agent_previous_threads(work.id.clone()).await? {
+					permitted.insert(thread, work.id.clone());
+				}
+			}
+		}
+		let mut matches = Vec::new();
+		for row in page["data"].as_array().expect("validated search page") {
+			let thread = row["threadId"].as_str().expect("validated thread");
+			let work = match permitted.get(thread) {
+				Some(work) => Some(work.clone()),
+				None =>
+					self.store.agent_task_reference_target(agent.id.clone(), thread.into()).await?,
+			};
+			if let Some(work) = work {
+				matches.push(json!({"workId":work,"threadId":thread,"title":row["title"],
+					"snippet":row["snippet"],"sourceUrl":source_url(thread)}));
+			}
+		}
+
+		Ok(json!({"matches":matches,"nextCursor":page["nextCursor"],"evidenceOnly":true,
+			"scope":"current native connection; owned work and user-selected task references",
+			"pageMayBeEmptyAfterScopeFilter":true}))
+	}
+
+	async fn native_history_search(
+		&self,
+		args: &Value,
+		thread: Option<&str>,
+	) -> Result<Value, AgentError> {
+		let query = args["searchTerm"]
+			.as_str()
+			.filter(|s| !s.trim().is_empty() && s.len() <= 512)
+			.ok_or_else(|| AgentError::Invalid("searchTerm must contain 1 to 512 bytes".into()))?;
+		let cursor = match args.get("cursor") {
+			None | Some(Value::Null) => Value::Null,
+			Some(Value::String(s)) if !s.is_empty() && s.len() <= 4096 => json!(s),
+			_ => return Err(AgentError::Invalid("invalid search cursor".into())),
+		};
+		let mut params = json!({"searchTerm":query,"cursor":cursor,"limit":20});
+		let method = if let Some(thread) = thread {
+			params["threadId"] = json!(thread);
+			"thread/searchOccurrences"
+		} else {
+			let archived = match args.get("archived") {
+				None => false,
+				Some(Value::Bool(value)) => *value,
+				_ => return Err(AgentError::Invalid("archived must be boolean".into())),
+			};
+			params["archived"] = json!(archived);
+			params["sortKey"] = json!("recency_at");
+			params["sourceKinds"] = json!([
+				"cli",
+				"vscode",
+				"exec",
+				"appServer",
+				"subAgent",
+				"subAgentReview",
+				"subAgentCompact",
+				"subAgentThreadSpawn",
+				"subAgentOther",
+				"unknown"
+			]);
+			"thread/search"
+		};
+		let page = tokio::time::timeout(
+			std::time::Duration::from_secs(20),
+			self.client.request(method, params),
+		)
+		.await
+		.map_err(|_| AgentError::Invalid("native search timed out".into()))??;
+		let invalid = || AgentError::Invalid("invalid or oversized native search page".into());
+		let rows = page["data"].as_array().filter(|rows| rows.len() <= 20).ok_or_else(invalid)?;
+		let next = match page.get("nextCursor").ok_or_else(invalid)? {
+			Value::Null => Value::Null,
+			Value::String(next)
+				if !next.is_empty() && next.len() <= 4096 && page["nextCursor"] != cursor =>
+				json!(next),
+			_ => return Err(invalid()),
+		};
+		let mut data = Vec::new();
+		for row in rows {
+			let snippet =
+				row["snippet"].as_str().filter(|s| s.len() <= 8192).ok_or_else(invalid)?;
+			let projected = if thread.is_some() {
+				let turn = exact(row, "/turnId")?;
+				let item = exact(row, "/itemId")?;
+				let turn_cursor = row["turnCursor"]
+					.as_str()
+					.filter(|s| !s.is_empty() && s.len() <= 4096)
+					.ok_or_else(invalid)?;
+				json!({"turnId":turn,"itemId":item,"turnCursor":turn_cursor,"snippet":snippet,
+					"snippetMatchRange":row["snippetMatchRange"],"rangeEncoding":"utf16"})
+			} else {
+				let id = exact(row, "/thread/id")?;
+				let title = row["thread"]["name"].as_str().filter(|s| s.len() <= 4096);
+				json!({"threadId":id,"title":title,"snippet":snippet})
+			};
+			data.push(projected);
+		}
+		let result = json!({"data":data,"nextCursor":next});
+		if result.to_string().len() > 64 * 1024 {
+			return Err(invalid());
+		}
+		Ok(result)
+	}
+}
+
+fn source_url(thread: &str) -> String {
+	let mut url = reqwest::Url::parse("codex://threads/").expect("constant URL");
+	url.path_segments_mut().expect("hierarchical URL").pop_if_empty().push(thread);
+	url.into()
 }
 
 fn summarize_turn(turn: &Value, outputs: bool) -> Value {

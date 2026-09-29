@@ -647,6 +647,8 @@ async fn serve_fixture(
 			Some("thread/backgroundTerminals/list") => history["_background"].clone(),
 			Some("thread/backgroundTerminals/terminate") =>
 				json!({"terminated":history["_terminated"]}),
+			Some("thread/search") => history["_search"].clone(),
+			Some("thread/searchOccurrences") => history["_occurrences"].clone(),
 			Some("thread/goal/get") => json!({"goal":history["_goal"]}),
 			Some("thread/read") => fixture_thread_read(&request, &history, &settings, turns),
 			Some("thread/turns/list") => {
