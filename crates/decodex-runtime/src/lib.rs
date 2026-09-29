@@ -29,6 +29,7 @@ mod agent_permissions;
 mod agent_plugins;
 mod agent_recap;
 mod agent_resources;
+mod agent_skill_roots;
 mod agent_transcript;
 mod agent_usage_estimate;
 mod agent_voice;

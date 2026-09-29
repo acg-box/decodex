@@ -85,6 +85,7 @@ struct Request {
 
 #[derive(Clone)]
 pub(crate) struct AgentHost {
+	skill_roots: Result<crate::agent_skill_roots::RuntimeSkillRoots, &'static str>,
 	observations: Option<crate::account_observation::AccountObservationService>,
 	recovery_cursor: Arc<Mutex<Option<String>>>,
 	prompt_edits: prompt_edit::Reviews,
@@ -117,6 +118,7 @@ impl AgentHost {
 		let (sender, receiver) = mpsc::channel(32);
 		Self {
 			observations: None,
+			skill_roots: crate::agent_skill_roots::RuntimeSkillRoots::from_environment(),
 			recovery_cursor: Default::default(),
 			voice: crate::agent_voice::VoiceGateway::new(),
 			recaps: Default::default(),
@@ -1576,6 +1578,7 @@ impl AgentHost {
 		config: AgentConfig,
 		account_id: Option<AccountId>,
 	) -> Result<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>), &'static str> {
+		let skill_roots = self.skill_roots.as_ref().map_err(|error| *error)?;
 		let connection = match self
 			.runtime
 			.open_agent_connection(StartAgentProcess {
@@ -1611,6 +1614,11 @@ impl AgentHost {
 		}) {
 			let _ = self.runtime.close_agent_connection(root).await;
 			return Err("Agent process binding did not match the admitted account");
+		}
+		if let Err(message) = skill_roots.apply(&connection.client).await {
+			let _ = self.runtime.close_agent_connection(root).await;
+			let _ = self.store.record_agent_connection_failure(root.into(), message.into()).await;
+			return Err(message);
 		}
 		let mut coordinator =
 			match AgentCoordinator::new(self.store.clone(), connection.client, config) {
