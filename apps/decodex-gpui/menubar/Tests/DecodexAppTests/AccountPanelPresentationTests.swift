@@ -499,37 +499,25 @@ final class AccountPanelPresentationTests: XCTestCase {
 			state.targets.isEmpty,
 			"A retained inventory is display-only after the account revision advances."
 		)
-		XCTAssertEqual(
-			ResetCardInventoryPresentation(
-				state: state
-			),
-			.empty
+		XCTAssertTrue(
+			ResetCardAccountState(
+				account: account,
+				inventory: staleInventory,
+				error: .transportDisconnected,
+				isRefreshing: false
+			).targets.isEmpty
 		)
-		XCTAssertEqual(
-			ResetCardInventoryPresentation(
-				state: ResetCardAccountState(
-					account: account,
-					inventory: staleInventory,
-					error: .transportDisconnected,
-					isRefreshing: false
-				)
-			),
-			.empty
-		)
-		XCTAssertEqual(
-			ResetCardInventoryPresentation(
-				state: ResetCardAccountState(
-					account: account,
-					inventory: staleInventory,
-					error: nil,
-					isRefreshing: true
-				)
-			),
-			.empty
+		XCTAssertTrue(
+			ResetCardAccountState(
+				account: account,
+				inventory: staleInventory,
+				error: nil,
+				isRefreshing: true
+			).targets.isEmpty
 		)
 	}
 
-	func testIncompletePositiveResetCardInventoryKeepsCheckingForExpiryDetails() {
+	func testIncompletePositiveResetCardInventoryExposesNoUseTargets() {
 		let authority = ResetCardAuthority(
 			profileName: "local",
 			serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -563,12 +551,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 			isRefreshing: false
 		)
 
-		XCTAssertEqual(
-			ResetCardInventoryPresentation(
-				state: state
-			),
-			.unavailable(detail: "Reset Card details are temporarily unavailable.")
-		)
+		XCTAssertTrue(state.targets.isEmpty)
 	}
 
 	func testResetCardChipAndAccessibilityExposeExpiryOnly() {

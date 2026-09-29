@@ -443,7 +443,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 
 		let state = try XCTUnwrap(store.accounts.first)
 		XCTAssertFalse(state.isRefreshing)
-		XCTAssertEqual(ResetCardInventoryPresentation(state: state), .available)
+		XCTAssertFalse(state.targets.isEmpty)
 
 		await client.releaseInventoryRead()
 		try await waitUntil {
@@ -793,7 +793,6 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		XCTAssertEqual(state.fiveHourQuota, retainedInventory.fiveHourQuota)
 		XCTAssertEqual(state.error, .service(.providerUnavailable))
 		XCTAssertFalse(state.targets.isEmpty)
-		XCTAssertEqual(ResetCardInventoryPresentation(state: state), .available)
 	}
 
 	func testCompletedUseReconcilesInBackgroundAcrossTransientContention() async throws {
@@ -857,12 +856,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		XCTAssertEqual(updating.fiveHourQuota, retainedInventory.fiveHourQuota)
 		XCTAssertTrue(updating.isRefreshing)
 		XCTAssertTrue(store.blocksNewAttempt(for: attempt.target))
-		XCTAssertEqual(
-			ResetCardInventoryPresentation(
-				state: updating
-			),
-			.available
-		)
+		XCTAssertFalse(updating.targets.isEmpty)
 
 		try await waitUntil {
 			store.accounts.first?.inventory == restoredInventory
@@ -944,12 +938,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		XCTAssertNil(afterPreEffectRead.error)
 		XCTAssertTrue(afterPreEffectRead.isRefreshing)
 		XCTAssertTrue(store.blocksNewAttempt(for: attempt.target))
-		XCTAssertEqual(
-			ResetCardInventoryPresentation(
-				state: afterPreEffectRead
-			),
-			.available
-		)
+		XCTAssertFalse(afterPreEffectRead.targets.isEmpty)
 
 		await client.releaseInventoryCall(3)
 		try await waitUntil {
