@@ -168,8 +168,6 @@ pub(crate) struct AgentSurface {
 	fast: bool,
 	service_tier: Option<decodex_protocol::ServiceTier>,
 	steer: bool,
-	media_spare: Option<voice::Media>,
-	media_warm_attempted: bool,
 	effort_focus: gpui::FocusHandle,
 	effort_drag: Option<(f32, f32)>,
 	effort_pointer: Option<f32>,
@@ -379,8 +377,6 @@ impl AgentSurface {
 			fast: false,
 			service_tier: None,
 			steer: true,
-			media_spare: None,
-			media_warm_attempted: false,
 			effort_focus: cx.focus_handle(),
 			effort_drag: None,
 			effort_pointer: None,
@@ -2218,7 +2214,6 @@ impl AgentSurface {}
 impl Render for AgentSurface {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.observe_recap_focus(window, cx);
-		self.prepare_voice_media(window);
 		self.render_workspace(window, cx)
 	}
 }

@@ -11,7 +11,9 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     private var retainedEvent: UnsafeMutablePointer<CChar>?
     private var isClosed = false
     private var isReady = false
-    private let initializedAt = Date()
+    private var initializedAt = Date()
+    private weak var hostWindow: NSWindow?
+    private var sampleForTesting: Data?
     private var initializationFailed = false
     private var pendingCommand: String?
     private var captureRequestedAt: Date?
@@ -32,6 +34,17 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
         self.dictationFactoryForTesting = dictationFactoryForTesting
         super.init()
         syntheticAudio = syntheticAudioForTesting
+        self.hostWindow = hostWindow
+        self.sampleForTesting = sampleForTesting
+        #if DEBUG
+        // Browser fixtures prepare their synthetic media document explicitly.
+        if syntheticAudio { prepareWebRTC() }
+        #endif
+    }
+
+    private func prepareWebRTC() {
+        guard webView == nil, !isClosed else { return }
+        initializedAt = Date()
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = Self.mediaDataStore
         configuration.mediaTypesRequiringUserActionForPlayback = []
@@ -51,13 +64,13 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
         content.addSubview(view, positioned: .below, relativeTo: nil)
         var document = Self.document
         #if DEBUG
-        if syntheticAudioForTesting {
+        if syntheticAudio {
             document = document.replacingOccurrences(
                 of: "await navigator.mediaDevices.getUserMedia({video:false,audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}})",
                 with: "(window.testAudioContext = new AudioContext(), window.testAudioDestination = testAudioContext.createMediaStreamDestination(), testAudioDestination.stream)"
             )
         }
-        if syntheticAudioForTesting, let sampleForTesting {
+        if syntheticAudio, let sampleForTesting {
             document = document.replacingOccurrences(of: "/* TEST_AUDIO */", with:
                 "const sample = Uint8Array.from(atob('" + sampleForTesting.base64EncodedString() + "'),c=>c.charCodeAt(0)); (async()=>{const source=testAudioContext.createBufferSource();source.buffer=await testAudioContext.decodeAudioData(sample.buffer);source.connect(testAudioDestination);source.connect(testAudioContext.destination);source.start();await testAudioContext.resume();})();")
         }
@@ -111,6 +124,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
             return true
         }
         if operation == "start" || operation == "dictate" {
+            prepareWebRTC()
             if !isReady && pendingCommand != nil { return false }
             captureCancelled = false
             captureIdentity = UUID()
@@ -220,7 +234,7 @@ final class VoiceMediaHost: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNa
     #endif
 
     func poll() -> UnsafePointer<CChar>? {
-        if !isReady && nativeDictation == nil && !initializationFailed && initializedAt.timeIntervalSinceNow < -10 {
+        if webView != nil && !isReady && nativeDictation == nil && !initializationFailed && initializedAt.timeIntervalSinceNow < -10 {
             initializationFailed = true
             emit(["type":"error", "message":"The audio host did not initialize. Start a new call."])
         }
