@@ -229,6 +229,11 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 					)
 					.await
 					.unwrap();
+			} else {
+				tokio::select! {
+					_ = done => return,
+					_ = lines.next_line() => panic!("Rejected {case} edit sent another request"),
+				}
 			}
 			let _ = done.await;
 		});
@@ -252,7 +257,14 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 			},
 		)
 		.await;
-		assert_eq!(result.is_ok(), case == "accepted", "{case}: {result:?}");
+		if case == "accepted" {
+			result.unwrap();
+		} else {
+			assert!(
+				matches!(result, Err(crate::agent_host::AgentHostError::Rejected(_))),
+				"{case}: {result:?}"
+			);
+		}
 		let _ = release.send(());
 		server.await.unwrap();
 	}
