@@ -741,7 +741,6 @@ fn detail_service(store: SqliteStore) -> crate::application::ServiceApplication 
 		crate::application::ProductStore::Available(store),
 		None,
 		None,
-		decodex_codex::CodexAdapter::unavailable(),
 		None,
 		crate::conversation::ConversationCapability::Unavailable(
 			decodex_protocol::ConversationUnavailableReason::AppServerProfile,

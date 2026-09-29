@@ -201,7 +201,6 @@ pub(super) fn application(
 		ProductStore::Available(store.clone()),
 		None,
 		None,
-		decodex_codex::CodexAdapter::unavailable(),
 		Some(decodex_core::BlobStore::open(root.paths()).expect("fixture blobs")),
 		ConversationCapability::Ready(runtime.clone()),
 		doctor,

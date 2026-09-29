@@ -25,7 +25,6 @@ async fn automatic_recap_preference_uses_existing_command_and_readback_owner() {
 		ProductStore::Available(store),
 		None,
 		None,
-		CodexAdapter::unavailable(),
 		None,
 		ConversationCapability::Unavailable(
 			decodex_protocol::ConversationUnavailableReason::AppServerProfile,
