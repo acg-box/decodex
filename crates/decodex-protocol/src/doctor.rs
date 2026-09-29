@@ -348,11 +348,12 @@ mod tests {
 
 		assert!(encoded.contains("unsafe_host_path"));
 		assert_eq!(serde_json::from_str::<DoctorReport>(&encoded).unwrap(), report);
-		let observed = report.with_native_process(super::NativeProcessDiagnostics::Available {
-			process_id: 42,
-			resident_memory_bytes: Some(1024),
-			physical_footprint_bytes: None,
-		});
+		let observed =
+			report.clone().with_native_process(super::NativeProcessDiagnostics::Available {
+				process_id: 42,
+				resident_memory_bytes: Some(1024),
+				physical_footprint_bytes: None,
+			});
 		let encoded = serde_json::to_string(&observed).unwrap();
 		assert_eq!(serde_json::from_str::<DoctorReport>(&encoded).unwrap(), observed);
 
