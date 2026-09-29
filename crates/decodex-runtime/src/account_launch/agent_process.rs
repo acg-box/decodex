@@ -292,11 +292,7 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "thread/inject_items"
 					| "thread/attachment/list"
 					| "mcpServerStatus/list"
-					| "mcpServer/resource/read"
-					| "mcpServer/tool/call"
 					| "plugin/installed"
-					| "plugin/list"
-					| "plugin/read"
 					| "app/installed"
 					| "app/list"
 					| "app/read"
@@ -313,9 +309,6 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 					| "thread/attachment/add"
 					| "thread/attachment/remove"
 					| "mcpServer/oauth/login"
-					| "plugin/install"
-					| "plugin/reconcile"
-					| "config/mcpServer/reload"
 					| "thread/archive"
 					| "thread/approveGuardianDeniedAction"
 					| "turn/start"
@@ -480,13 +473,28 @@ mod tests {
 	#[test]
 	fn conversation_metadata_reads_use_the_native_bridge() {
 		for method in [
-			"thread/attachment/list",
-			"mcpServerStatus/list",
-			"mcpServer/resource/read",
-			"app/read",
-			"plugin/installed",
 			"plugin/list",
 			"plugin/read",
+			"plugin/install",
+			"plugin/reconcile",
+			"config/mcpServer/reload",
+			"mcpServer/resource/read",
+			"mcpServer/tool/call",
+		] {
+			assert!(
+				validate_outbound(
+					&json!({"id":1,"method":method,"params":{}}),
+					&mut HashSet::new()
+				)
+				.is_err(),
+				"Retired client operation: {method}"
+			);
+		}
+		for method in [
+			"thread/attachment/list",
+			"mcpServerStatus/list",
+			"app/read",
+			"plugin/installed",
 			"app/list",
 			"account/usage/read",
 		] {
@@ -858,13 +866,6 @@ mod tests {
 				("thread/attachment/list", json!({"data":[],"nextCursor":null})),
 				("mcpServerStatus/list", json!({"data":[],"nextCursor":null})),
 				("plugin/installed", json!({"marketplaces":[],"marketplaceLoadErrors":[]})),
-				(
-					"plugin/reconcile",
-					json!({"changedPlugins":[],"failedRemotePluginIds":[],"failedMaterializationRemotePluginIds":[]}),
-				),
-				("config/mcpServer/reload", json!({})),
-				("app/list", json!({"data":[],"nextCursor":null})),
-				("app/installed", json!({"apps":[]})),
 			] {
 				let Some(Ok(line)) = lines.next() else {
 					return;
@@ -891,7 +892,6 @@ mod tests {
 			client.installed_plugins_for_directory("/project").await.unwrap()["marketplaces"],
 			json!([])
 		);
-		assert!(client.refresh_integrations("thread").await.unwrap());
 		server.join().unwrap();
 		drop(bridge);
 	}

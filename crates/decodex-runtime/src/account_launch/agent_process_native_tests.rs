@@ -17,7 +17,6 @@ use super::*;
 #[path = "agent_process_native_model_tests.rs"] mod models;
 #[path = "agent_process_native_ordinary_effort_tests.rs"] mod ordinary_effort;
 #[path = "agent_process_native_permission_tests.rs"] mod permissions;
-#[path = "agent_process_native_plugin_tests.rs"] mod plugins;
 #[path = "agent_process_native_recap_service_tests.rs"] mod recap_service;
 #[path = "agent_process_native_reviewer_tests.rs"] mod reviewer;
 #[path = "agent_process_native_steer_tests.rs"] mod steer;

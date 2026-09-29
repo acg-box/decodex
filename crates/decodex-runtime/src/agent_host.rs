@@ -333,48 +333,6 @@ impl AgentHost {
 		}
 	}
 
-	pub(crate) async fn install_state(
-		&self,
-		work: &str,
-		event: i64,
-	) -> decodex_protocol::AgentInstallState {
-		use decodex_protocol::AgentInstallState;
-		let Some((generation, client)) = self.runtime.agent_catalog_client() else {
-			return AgentInstallState::Unavailable;
-		};
-		let Some(thread) =
-			self.store.get_agent_work_item(work.into()).await.ok().and_then(|w| w.codex_thread_id)
-		else {
-			return AgentInstallState::Unavailable;
-		};
-		let owned = || {
-			self.store.agent_thread_is_owned(
-				work.into(),
-				thread.clone(),
-				Some(generation.as_str().into()),
-			)
-		};
-		if !owned().await.unwrap_or(false) {
-			return AgentInstallState::Unavailable;
-		}
-		let result = tokio::time::timeout(
-			Duration::from_secs(40),
-			crate::agent_install::inspect(&self.store, &client, work, event),
-		)
-		.await
-		.ok()
-		.flatten();
-		if !owned().await.unwrap_or(false)
-			|| !self
-				.runtime
-				.agent_catalog_client()
-				.is_some_and(|(current, _)| current == generation)
-		{
-			return AgentInstallState::Unavailable;
-		}
-		result.map(|v| v.state).unwrap_or(AgentInstallState::Unavailable)
-	}
-
 	pub(crate) fn guardian_generation(&self) -> Option<String> {
 		self.runtime.agent_catalog_client().map(|(generation, _)| generation.as_str().to_owned())
 	}
@@ -510,34 +468,6 @@ impl AgentHost {
 		change: crate::agent_hooks::Selection<'_>,
 	) -> Result<String, AgentHostError> {
 		crate::agent_hooks::write(
-			&self.store,
-			|| async {
-				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
-				self.timeline_source(work, &owner.codex_thread_id?).await
-			},
-			change,
-		)
-		.await?;
-		Ok(work.into())
-	}
-
-	pub(crate) async fn plugin_selection(
-		&self,
-		work: &str,
-	) -> decodex_protocol::AgentPluginSelectionState {
-		crate::agent_plugins::read(&self.store, || async {
-			let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
-			self.timeline_source(work, &owner.codex_thread_id?).await
-		})
-		.await
-	}
-
-	async fn set_task_plugin(
-		&self,
-		work: &str,
-		change: crate::agent_plugins::Change<'_>,
-	) -> Result<String, AgentHostError> {
-		crate::agent_plugins::write(
 			&self.store,
 			|| async {
 				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
@@ -1300,24 +1230,8 @@ impl AgentHost {
 					},
 				)
 				.await,
-			AgentActionDto::SetTaskPlugin {
-				work_id,
-				thread_id,
-				review_token,
-				plugin_id,
-				enabled,
-			} =>
-				self.set_task_plugin(
-					work_id.as_str(),
-					crate::agent_plugins::Change {
-						thread: thread_id.as_str(),
-						review: review_token.as_str(),
-						plugin: plugin_id.as_str(),
-						enabled,
-						attempt_id: key,
-					},
-				)
-				.await,
+			AgentActionDto::SetTaskPlugin { .. } =>
+				Err(AgentHostError::Rejected("Configure plugins in Codex for this account.")),
 			AgentActionDto::SetTaskModel { work_id, thread_id, review_token, model, effort } =>
 				self.set_task_model(
 					work_id.as_str(),
@@ -1394,9 +1308,8 @@ impl AgentHost {
 					expected_turn.as_ref().map(|turn| turn.as_str()),
 				)
 				.await,
-			Action::InstallSuggestedPlugin { work_id, event_id, review_token } =>
-				self.install_plugin(work_id.as_str(), event_id, review_token.as_str(), &key, active)
-					.await,
+			Action::InstallSuggestedPlugin { .. } =>
+				Err(AgentHostError::Rejected("Install plugins in Codex for this account.")),
 			Action::RestoreArchivedThread { work_id, thread_id } => {
 				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
 				agent.restore_archived_thread(work_id.as_str(),thread_id.as_str()).await.map_err(|error|match error {
@@ -1405,8 +1318,8 @@ impl AgentHost {
                 })?;
 				Ok(work_id.as_str().into())
 			},
-			Action::RefreshIntegrations { work_id } =>
-				self.refresh_integrations(work_id.as_str(), active).await,
+			Action::RefreshIntegrations { .. } =>
+				Err(AgentHostError::Rejected("Update plugins and connections in Codex.")),
 			Action::AddResourceLink { work_id, title, url } => {
 				let (_, agent, _) = active.as_ref().ok_or("Agent is not connected")?;
 				agent
@@ -1528,50 +1441,6 @@ impl AgentHost {
 			.await
 			.map_err(steer_input_error)?;
 		Ok(work_id.as_str().into())
-	}
-
-	async fn install_plugin(
-		&self,
-		work: &str,
-		event_id: i64,
-		review: &str,
-		key: &str,
-		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
-	) -> Result<String, AgentHostError> {
-		let (_, agent, _) = active.as_ref().ok_or("Agent is not connected")?;
-		agent.install_suggested_plugin(work, event_id, review, key).await.map_err(|error| {
-			match error {
-				AgentError::Rejected(_) => AgentHostError::Rejected(
-					"Installation was not started. Refresh the suggestion and review its current details.",
-				),
-				_ => AgentHostError::Unknown(
-					"Installation is not confirmed. Read its current status; do not repeat the installation.",
-				),
-			}
-		})?;
-		Ok(work.into())
-	}
-
-	async fn refresh_integrations(
-		&self,
-		work: &str,
-		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
-	) -> Result<String, AgentHostError> {
-		let (_, agent, _) = active.as_ref().ok_or("Agent is not connected")?;
-		match agent.refresh_integrations(work).await {
-			Ok(true) => Ok(work.into()),
-			Ok(false) => Err(AgentHostError::Rejected(
-				"Some plugin updates failed and cached versions may remain. MCP reload was acknowledged; read the refreshed status before retrying.",
-			)),
-			Err(AgentError::Rejected(_)) =>
-				Err(AgentHostError::Rejected("The task no longer has a native thread.")),
-			Err(AgentError::Transport(ClientError::Remote(_))) => Err(AgentHostError::Unknown(
-				"Native refresh returned an error and may have partly applied. Inspect the current integration status before retrying.",
-			)),
-			Err(_) => Err(AgentHostError::Unknown(
-				"Integration refresh could not be confirmed. Read current status; do not automatically retry.",
-			)),
-		}
 	}
 
 	async fn respond_requested(

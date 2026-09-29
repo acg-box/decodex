@@ -68,7 +68,7 @@ impl AgentSurface {
 		let work_id = work.to_owned();
 		let mut panel = div().flex().flex_col().gap_2().child(integration_button(
 			"integration-toggle",
-			"Tools and plugins",
+			"Tool status",
 			cx,
 			move |s, cx| {
 				if s.integrations.as_ref().is_some_and(|(owner, _)| owner == &work_id) {
@@ -82,6 +82,8 @@ impl AgentSurface {
 			},
 		));
 		if let Some((_, result)) = opened {
+			panel =
+				panel.child(muted("Configure plugins and connections in Codex for this account."));
 			let refresh = work.to_owned();
 			panel = panel.child(integration_button(
 				"integration-refresh",
@@ -89,59 +91,6 @@ impl AgentSurface {
 				cx,
 				move |s, cx| s.load_integrations(&refresh, cx),
 			));
-			let refresh_work = work.to_owned();
-			panel=panel.child(integration_button("integration-reload","Sync plugins and tools",cx,move |s,cx|s.refresh_native_integrations(&refresh_work,cx)))
-                .child(muted("Updates shared plugin bundles, reloads MCP configuration and refreshes App tools for this task. Connection status is checked separately."));
-			if let Some(AgentIntegrationsResult::Available {
-				mcp: AgentMcpInventory::Available { servers },
-				..
-			}) = result
-			{
-				for (index, server) in servers.iter().enumerate().filter(|(_, server)| {
-					server.auth_status != "unsupported"
-						&& server.runtime_status.as_deref() != Some("disabled")
-				}) {
-					let owner = work.to_owned();
-					let server_name = server.name.clone();
-					panel = panel.child(integration_button(
-						format!("integration-signin-{index}"),
-						format!("Sign in to {}", server.name),
-						cx,
-						move |s, cx| s.start_mcp_login(&owner, &server_name, cx),
-					));
-				}
-			}
-			if let Some((owner, _, status)) =
-				self.mcp_login.as_ref().filter(|(owner, _, _)| owner == work)
-			{
-				panel = panel.child(status.message.as_str().to_owned());
-				if status.authorization_url.is_some() {
-					let owner = owner.clone();
-					let session = status.session_id.clone();
-					panel = panel.child(integration_button(
-						"integration-open-signin",
-						"Open authorization page",
-						cx,
-						move |s, cx| {
-							if let Some((_, _, status)) =
-								s.mcp_login.as_ref().filter(|(work, _, status)| {
-									work == &owner && status.session_id == session
-								})
-								&& let Some(url) = status
-									.authorization_url
-									.as_ref()
-									.and_then(|url| reqwest::Url::parse(url.as_str()).ok())
-									.filter(|url| {
-										matches!(url.scheme(), "http" | "https")
-											&& url.username().is_empty()
-											&& url.password().is_none()
-									}) {
-								cx.open_url(url.as_str());
-							}
-						},
-					));
-				}
-			}
 			if let Some(AgentIntegrationsResult::Available {
 				apps: AgentAppInventory::Available { apps },
 				..
@@ -176,171 +125,6 @@ impl AgentSurface {
 			);
 		}
 		panel.into_any_element()
-	}
-
-	fn start_mcp_login(&mut self, work: &str, server: &str, cx: &mut Context<Self>) {
-		use decodex_protocol::{McpLoginPhase, McpLoginRequest, McpLoginStatus};
-		if self.mcp_login_task.is_some() {
-			self.integration_feedback = "Another native MCP sign-in is still pending.".into();
-			cx.notify();
-			return;
-		}
-		let Some(profile) = self.profile.clone() else {
-			self.integration_feedback = "No service profile is configured.".into();
-			cx.notify();
-			return;
-		};
-		if self.selected.as_deref() != Some(work) {
-			return;
-		}
-		let (Ok(work_id), Ok(server_name), Ok(session_id)) = (
-			EntityId::new(work.to_owned()),
-			WireText::new(server.to_owned()),
-			EntityId::new(unique_command()),
-		) else {
-			return;
-		};
-		let initial = McpLoginStatus {
-			session_id: session_id.clone(),
-			phase: McpLoginPhase::Starting,
-			authorization_url: None,
-			message: WireText::new("Starting native MCP sign-in…")
-				.expect("static OAuth status fits wire bounds"),
-		};
-		self.mcp_login = Some((work.into(), server.into(), initial));
-		let work = work.to_owned();
-		let server = server.to_owned();
-		let generation = self.generation;
-		self.mcp_login_task = Some(cx.spawn(async move |surface, cx| {
-			let mut first = Some(McpLoginRequest::Start {
-				session_id: session_id.clone(),
-				work_id: work_id.clone(),
-				server_name,
-			});
-			let started = std::time::Instant::now();
-			loop {
-				let request = first.take().unwrap_or_else(|| McpLoginRequest::Poll {
-					session_id: session_id.clone(),
-					work_id: work_id.clone(),
-				});
-				let profile = profile.clone();
-				let received = cx
-					.background_executor()
-					.spawn(async move {
-						let runtime = tokio::runtime::Builder::new_current_thread()
-							.enable_all()
-							.build()
-							.ok()?;
-						runtime.block_on(AgentClient::new(profile).mcp_login(request)).ok()
-					})
-					.await;
-				let mut status = received.unwrap_or_else(|| McpLoginStatus {
-					session_id: session_id.clone(),
-					phase: McpLoginPhase::Unknown,
-					authorization_url: None,
-					message: WireText::new(
-						"Native sign-in is not confirmed. Checking without replaying the request…",
-					)
-					.expect("static OAuth status fits wire bounds"),
-				});
-				if started.elapsed() > std::time::Duration::from_secs(180)
-					&& !matches!(
-						status.phase,
-						McpLoginPhase::NativeCompleted
-							| McpLoginPhase::Failed
-							| McpLoginPhase::Disconnected
-					) {
-					status.phase = McpLoginPhase::Expired;
-					status.authorization_url = None;
-					status.message = WireText::new(
-						"Waiting expired. Refresh server status before starting another sign-in.",
-					)
-					.expect("static OAuth status fits wire bounds");
-				}
-				let completed = status.phase == McpLoginPhase::NativeCompleted;
-				let terminal = matches!(
-					status.phase,
-					McpLoginPhase::NativeCompleted
-						| McpLoginPhase::Failed
-						| McpLoginPhase::Disconnected
-						| McpLoginPhase::Expired
-				);
-				let keep = surface
-					.update(cx, |s, cx| {
-						if s.generation != generation
-							|| !s.mcp_login.as_ref().is_some_and(|(owner, _, current)| {
-								owner == &work && current.session_id == session_id
-							}) {
-							return false;
-						}
-						s.mcp_login = Some((work.clone(), server.clone(), status));
-						if terminal {
-							s.mcp_login_task = None;
-						}
-						if completed && s.selected.as_deref() == Some(work.as_str()) {
-							s.load_integrations(&work, cx);
-						}
-						cx.notify();
-						!terminal
-					})
-					.unwrap_or(false);
-				if !keep {
-					break;
-				}
-				cx.background_executor().timer(std::time::Duration::from_secs(1)).await;
-			}
-		}));
-		cx.notify();
-	}
-
-	fn refresh_native_integrations(&mut self, work: &str, cx: &mut Context<Self>) {
-		if self.integration_refresh_task.is_some() || self.selected.as_deref() != Some(work) {
-			return;
-		}
-		let Some(profile) = self.profile.clone() else {
-			self.integration_feedback = "No service profile is configured.".into();
-			cx.notify();
-			return;
-		};
-		let Ok(work_id) = EntityId::new(work.to_owned()) else {
-			return;
-		};
-		self.integrations_task = None;
-		let generation = self.generation;
-		let work = work.to_owned();
-		self.integration_feedback = "Synchronizing shared integrations…".into();
-		let request = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
-			let client = AgentClient::new(profile);
-			let key = IdempotencyKey::new(unique_command()).ok()?;
-			let result =
-				runtime
-					.block_on(client.execute(
-						AgentActionDto::RefreshIntegrations { work_id: work_id.clone() },
-						key,
-					))
-					.ok();
-			let status = runtime.block_on(client.integrations(work_id)).ok();
-			Some((result, status))
-		});
-		self.integration_refresh_task = Some(cx.spawn(async move |surface, cx| {
-			let (receipt, status) = request.await.unwrap_or((None, None));
-			let _ = surface.update(cx, |s, cx| {
-				if s.generation != generation || s.selected.as_deref() != Some(work.as_str()) {
-					return;
-				}
-				s.integration_refresh_task = None;
-				s.integration_feedback = integration_refresh_feedback(receipt);
-				if s.integrations.as_ref().is_some_and(|(owner, _)| owner == &work) {
-					s.integrations_task = None;
-					s.integrations =
-						Some((work, Some(status.unwrap_or(AgentIntegrationsResult::Unavailable))));
-				}
-				cx.notify();
-			});
-		}));
-		cx.notify();
 	}
 
 	fn load_integrations(&mut self, work: &str, cx: &mut Context<Self>) {
@@ -378,15 +162,6 @@ impl AgentSurface {
 		}));
 		cx.notify();
 	}
-}
-
-fn integration_refresh_feedback(receipt: Option<AgentCommandResponse>) -> String {
-	match receipt {
-        Some(AgentCommandResponse::Accepted {..})=>"Native configuration reload was acknowledged. Check the connection and discovery states below; acknowledgement does not mean every tool is ready.".into(),
-        Some(AgentCommandResponse::Rejected {error:decodex_protocol::CommandError::ApplicationUnavailable {message}})=>message.as_str().into(),
-        Some(AgentCommandResponse::Rejected {..})=>"Integration refresh was not accepted. Read current status before trying again.".into(),
-        _=>"Integration refresh could not be confirmed and may have partly applied. Read current status before trying again.".into(),
-    }
 }
 
 fn integration_text(result: &AgentIntegrationsResult) -> String {
@@ -548,99 +323,6 @@ fn app_inventory_text(inventory: &AgentAppInventory) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	#[gpui::test]
-	fn mcp_login_opens_only_on_click_and_remains_scoped_to_its_task(cx: &mut gpui::TestAppContext) {
-		use decodex_protocol::{McpAuthorizationUrl, McpLoginPhase, McpLoginStatus};
-		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		surface.update(visual, |s, _| {
-			let work = |id: &str| AgentWorkItemDto {
-				id: id.into(),
-				parent_goal_id: None,
-				kind: decodex_protocol::AgentWorkKindDto::Goal,
-				title: id.into(),
-				codex_thread_id: Some(format!("thread-{id}")),
-				active_turn_id: None,
-				dispatch_state: AgentDispatchStateDto::Idle,
-				status: AgentWorkStatusDto::Open,
-				next_check_at_micros: None,
-				created_at_micros: 1,
-				updated_at_micros: 1,
-			};
-			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
-				runtime_source: None,
-				workspaces: vec![],
-				work_items: vec![work("root"), work("other")],
-				dependencies: vec![],
-				pending_events: vec![],
-			})));
-			s.composer_menu = Some("agent-settings");
-			s.composer_menu_content = Some("agent-settings");
-			s.integrations = Some(("root".into(), Some(AgentIntegrationsResult::Unavailable)));
-			s.mcp_login = Some((
-				"root".into(),
-				"server".into(),
-				McpLoginStatus {
-					session_id: EntityId::new("intent").unwrap(),
-					phase: McpLoginPhase::AwaitingUser,
-					authorization_url: Some(
-						McpAuthorizationUrl::new("https://example.test/authorize".into()).unwrap(),
-					),
-					message: WireText::new("Continue in your browser").unwrap(),
-				},
-			));
-		});
-		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.), px(1400.)));
-			window.draw(cx).clear();
-		});
-		std::thread::sleep(std::time::Duration::from_millis(220));
-		visual.update(|window, cx| {
-			window.draw(cx).clear();
-		});
-		assert!(visual.opened_url().is_none());
-		let bounds =
-			visual.debug_bounds("integration-open-signin").expect("explicit authorization control");
-		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
-		assert_eq!(visual.opened_url().as_deref(), Some("https://example.test/authorize"));
-		surface.update(visual, |s, cx| {
-			assert_eq!(s.mcp_login.as_ref().unwrap().2.phase, McpLoginPhase::AwaitingUser);
-			s.open_page("other", cx);
-			assert_eq!(s.mcp_login.as_ref().unwrap().0, "root");
-		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear();
-		});
-		assert!(visual.debug_bounds("integration-open-signin").is_none());
-		surface.update(visual, |s, cx| {
-			s.open_page("root", cx);
-			s.composer_menu = Some("agent-settings");
-			s.composer_menu_content = Some("agent-settings");
-			s.integrations = Some(("root".into(), Some(AgentIntegrationsResult::Unavailable)));
-			let status = &mut s.mcp_login.as_mut().unwrap().2;
-			status.phase = McpLoginPhase::Expired;
-			status.authorization_url = None;
-		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear();
-		});
-		assert!(visual.debug_bounds("integration-open-signin").is_none());
-	}
-
-	#[test]
-	fn refresh_receipt_never_claims_runtime_readiness() {
-		let accepted = integration_refresh_feedback(Some(AgentCommandResponse::Accepted {
-			work_id: EntityId::new("work").unwrap(),
-		}));
-		assert!(accepted.contains("does not mean every tool is ready"));
-		assert!(integration_refresh_feedback(None).contains("may have partly applied"));
-		let rejected = integration_refresh_feedback(Some(AgentCommandResponse::Rejected {
-			error: decodex_protocol::CommandError::ApplicationUnavailable {
-				message: WireText::new("Some plugin updates failed").unwrap(),
-			},
-		}));
-		assert_eq!(rejected, "Some plugin updates failed");
-	}
-
 	#[test]
 	fn incomplete_plugin_discovery_and_mcp_failure_never_render_as_empty_success() {
 		let text = integration_text(&AgentIntegrationsResult::Available {
