@@ -364,13 +364,16 @@ mod tests {
 	#[test]
 	fn output_is_bounded_at_utf8_boundary() {
 		let history = json!({"thread":{"id":"t","turns":[{"id":"u","items":[{"id":"i","type":"commandExecution","aggregatedOutput":"界".repeat(10000)}]}]}});
-		let Some(AgentActivityDetailResult::Available { text, truncated, .. }) =
+		let Some(AgentActivityDetailResult::Available { text, truncated, offset, next }) =
 			page(&project_text(&history, "t", "u", "i").unwrap(), "scope", None)
 		else {
 			panic!("detail");
 		};
 		assert!(truncated);
-		assert!(text.len() <= 24 * 1024);
+		assert!(text.len() <= 8 * 1024);
+		assert_eq!(text, "界".repeat(2730));
+		assert_eq!(offset, 0);
+		assert_eq!(next.unwrap().offset, 8190);
 	}
 	#[test]
 	fn complete_detail_is_not_shortened_before_request_paging() {
