@@ -328,6 +328,9 @@ mod tests {
 		let row = visual.debug_bounds("tool-detail-row").unwrap();
 		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
 		assert!(row.right() <= transcript.right(), "tool indent must fit the transcript");
+		let standalone_arrow = visual.debug_bounds("tool-chevron-bounds").unwrap();
+		let arrow = standalone_arrow;
+		assert!(arrow.right() <= row.right(), "arrow {arrow:?} must fit row {row:?}");
 		visual.simulate_click(row.center(), Default::default());
 		surface.update(visual, |s, cx| {
 			assert!(s.history_follow_paused.contains("agent"));
@@ -357,6 +360,51 @@ mod tests {
 			visual.update(|w, cx| w.draw(cx).clear());
 			assert_eq!(visual.debug_bounds("tool-detail-row").unwrap(), expanded);
 		}
+		// Completed turns use the folded-history path, not the standalone tool row.
+		surface.update(visual, |s, cx| {
+			let mut final_entry = s.native_history.entries[0].clone();
+			final_entry.position = 1;
+			if let decodex_protocol::AgentTimelineContent::Item {
+				kind,
+				item_id,
+				text,
+				phase,
+				activity,
+				..
+			} = &mut final_entry.content
+			{
+				*kind = "agentMessage".into();
+				*item_id = "final".into();
+				*text = "Done".into();
+				*phase = Some("final_answer".into());
+				*activity = None;
+			}
+			s.native_history.entries.push(final_entry);
+			s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
+				position: 2,
+				content: decodex_protocol::AgentTimelineContent::TurnBoundary {
+					turn_id: "turn".into(),
+					completed: true,
+					status: Some("completed".into()),
+					duration_ms: Some(500),
+					usage_summary: None,
+					usage: None,
+					error: None,
+				},
+			});
+			cx.notify();
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
+		visual.simulate_click(toggle.center(), Default::default());
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let arrow = visual.debug_bounds("tool-chevron-bounds").unwrap();
+		assert!(
+			arrow.right() <= standalone_arrow.right(),
+			"grouped arrow {arrow:?} must align with standalone arrow {standalone_arrow:?}"
+		);
 	}
 
 	#[gpui::test]

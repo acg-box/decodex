@@ -7,6 +7,24 @@ use super::{
 
 use gpui::StatefulInteractiveElement as _;
 
+/// Keep the guide gutter inside the available transcript width in both rendering paths.
+pub(super) fn process_indent(content: impl IntoElement) -> gpui::AnyElement {
+	div()
+		.w_full()
+		.min_w_0()
+		.pl(gpui::px(8.))
+		.child(
+			div()
+				.w_full()
+				.min_w_0()
+				.border_l_1()
+				.border_color(gpui::rgba(0xffffff14))
+				.pl(gpui::px(14.))
+				.child(content),
+		)
+		.into_any_element()
+}
+
 impl AgentSurface {
 	pub(super) fn native_summary_row(
 		&self,
@@ -58,24 +76,7 @@ impl AgentSurface {
 		let process = matches!(&entry.content, Content::Item { kind, phase, activity, attachments, app_ui: false, .. }
             if attachments.is_empty() && (activity.is_some() || matches!(kind.as_str(), "reasoning" | "plan")
                 || (kind == "agentMessage" && phase.as_deref() == Some("commentary"))));
-		let content = if process {
-			div()
-				.w_full()
-				.min_w_0()
-				.pl(gpui::px(8.))
-				.child(
-					div()
-						.w_full()
-						.min_w_0()
-						.border_l_1()
-						.border_color(gpui::rgba(0xffffff14))
-						.pl(gpui::px(14.))
-						.child(content),
-				)
-				.into_any_element()
-		} else {
-			content
-		};
+		let content = if process { process_indent(content) } else { content };
 		let content = self.anchored_native_history_entry(work, entry, content);
 		let content = self.native_scroll_row(work, entry, content, cx);
 		div()
@@ -449,10 +450,16 @@ impl AgentSurface {
 						format!("{:.1}s", ms as f64 / 1000.)
 					})
 				})
-				.child(crate::shell::workspace_symbols::process_chevron(
-					SharedString::from(format!("tool-chevron-{identity}")),
-					expanded,
-				));
+				.child(
+					div()
+						.debug_selector(|| "tool-chevron-bounds".into())
+						.flex_none()
+						.size(gpui::px(12.))
+						.child(crate::shell::workspace_symbols::process_chevron(
+							SharedString::from(format!("tool-chevron-{identity}")),
+							expanded,
+						)),
+				);
 			return self.detail_row(work, activity, row, cx);
 		}
 		let label = match kind.as_str() {

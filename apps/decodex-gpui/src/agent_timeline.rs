@@ -263,16 +263,8 @@ impl AgentSurface {
 							group.expanded,
 							move |cx| {
 								owner.update(cx, |s, cx| {
-									div()
-										.w_full()
-										.flex()
-										.flex_col()
-										.gap(px(8.))
-										.ml(px(8.))
-										.border_l_1()
-										.border_color(rgba(0xffffff14))
-										.pl(px(14.))
-										.children(
+									render::process_indent(
+										div().w_full().flex().flex_col().gap(px(8.)).children(
 											indices
 												.iter()
 												.filter_map(|index| {
@@ -290,8 +282,8 @@ impl AgentSurface {
 														cx,
 													)
 												}),
-										)
-										.into_any_element()
+										),
+									)
 								})
 							},
 						));
