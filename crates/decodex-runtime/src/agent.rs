@@ -1095,6 +1095,7 @@ impl AgentCoordinator {
 			.ok_or_else(|| AgentError::Invalid("unbound work".into()))?;
 		let mut params = json!({"threadId":thread,
             "input":[{"type":"text","text":prompt,"text_elements":[]}]});
+		params["additionalContext"] = work_identity_context(item, thread);
 		let mut external = Vec::new();
 		let mut has_user_input = false;
 		let mut automated = false;
@@ -1272,8 +1273,10 @@ impl AgentCoordinator {
 				"The running turn changed. Your draft is preserved.".into(),
 			));
 		}
-		let thread =
-			work.codex_thread_id.ok_or_else(|| AgentError::Invalid("unbound work".into()))?;
+		let thread = work
+			.codex_thread_id
+			.clone()
+			.ok_or_else(|| AgentError::Invalid("unbound work".into()))?;
 		let mut input = vec![json!({"type":"text","text":text,"text_elements":[]})];
 		append_attachments(&mut input, extras.attachments);
 		append_task_references(&mut input, extras.task_references);
@@ -1289,7 +1292,7 @@ impl AgentCoordinator {
 				StoreError::InvalidInput(message) => AgentError::Rejected(message.into()),
 				other => other.into(),
 			})?;
-		let params = json!({"threadId":thread,"expectedTurnId":expected_turn,"clientUserMessageId":key,"input":input});
+		let params = json!({"threadId":thread,"expectedTurnId":expected_turn,"clientUserMessageId":key,"input":input,"additionalContext":work_identity_context(&work, &thread)});
 		let result = if let Some(guard) = history_guard {
 			self.client.request_with_history("turn/steer", params, guard).await
 		} else {
@@ -2116,6 +2119,16 @@ impl AgentCoordinator {
 		}
 		Ok(())
 	}
+}
+
+/// Current work identity is application-supplied data, not a user request or permission grant.
+/// Native additionalContext owns deduplication. Preserve event outputs and input receipts
+/// separately.
+fn work_identity_context(item: &AgentWorkItem, thread: &str) -> Value {
+	json!({"decodex_work_identity":{
+		"kind":"untrusted",
+		"value":json!({"workId":item.id,"parentWorkId":item.parent_goal_id,"workThreadId":thread}).to_string()
+	}})
 }
 
 pub(super) fn apply_message_options(params: &mut Value, payload: &str) -> Result<(), AgentError> {

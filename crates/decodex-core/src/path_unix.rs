@@ -186,16 +186,6 @@ pub(crate) fn atomic_write(
 	result
 }
 
-pub(crate) fn remove_private_file(paths: &DecodexPaths, path: &Path) -> Result<(), PathError> {
-	let (parent, name) = open_file_parent(paths, path)?;
-	let file = open_private_file_at(&parent, &name)?;
-
-	unlink_at(&parent, &name)?;
-	drop(file);
-
-	parent.sync_all().map_err(|error| paths::io_error(IoOperation::Sync, error))
-}
-
 fn open_root(paths: &DecodexPaths, create: bool) -> Result<File, PathError> {
 	let root = paths.root().as_path();
 	let components = root

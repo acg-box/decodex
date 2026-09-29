@@ -56,8 +56,6 @@ domain_id!(HistoryItemId, "history item");
 
 domain_id!(ArtifactId, "artifact");
 
-/// Largest domain-owned title accepted before persistence or protocol rendering.
-pub const MAX_CONVERSATION_TITLE_BYTES: usize = 512;
 /// Largest exact opaque provider-thread identity accepted across app-server and persistence.
 pub const MAX_PROVIDER_THREAD_ID_BYTES: usize = 512;
 /// Largest payload retained inline in durable-store history rows.
@@ -119,16 +117,6 @@ impl Display for ConversationError {
 				formatter.write_str("Context Pack requires a pinned source"),
 		}
 	}
-}
-
-/// Logical conversation lifecycle, independent of account and Codex-thread identity.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ConversationStatus {
-	/// Conversation accepts new persisted turns.
-	Open,
-	/// Conversation is retained for inspection but closed to mutation.
-	Archived,
 }
 
 /// Lifecycle observed for one manually bound runtime segment.
@@ -272,16 +260,6 @@ impl NormalizedPayload {
 	}
 }
 
-/// Inert rollover or fallback proposal classification.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProposedTransitionKind {
-	/// Proposed size or latency rollover.
-	Rollover,
-	/// Proposed recovery or account-failure fallback.
-	Fallback,
-}
-
 /// Provenance category included in a compiled Context Pack.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -396,160 +374,6 @@ impl<'de> Deserialize<'de> for HistoryMetadata {
 	}
 }
 
-/// Durable logical dialogue. It intentionally has no account or Codex thread field.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Conversation {
-	/// Stable logical identity.
-	pub id: ConversationId,
-	/// Bounded user-visible title.
-	pub title: String,
-	/// Current logical lifecycle.
-	pub status: ConversationStatus,
-	/// Optimistic entity revision.
-	pub revision: u64,
-}
-impl Conversation {
-	/// Create revision one of an open logical Conversation.
-	pub fn new(id: ConversationId, title: impl Into<String>) -> Result<Self, ConversationError> {
-		let title = title.into();
-
-		validate_nonempty(&title, MAX_CONVERSATION_TITLE_BYTES, "conversation title")?;
-
-		Ok(Self { id, title, status: ConversationStatus::Open, revision: 1 })
-	}
-}
-
-/// Immutable non-secret account facts captured at RuntimeSession creation.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct AccountSnapshot {
-	/// Non-secret source account identity.
-	pub account_id: String,
-	/// Non-secret display label captured at binding time.
-	pub display_label: String,
-	/// Observed account state captured at binding time.
-	pub observed_state: String,
-	/// Source account revision captured immutably.
-	pub source_revision: u64,
-}
-impl AccountSnapshot {
-	/// Validate immutable non-secret account facts.
-	pub fn new(
-		account_id: impl Into<String>,
-		display_label: impl Into<String>,
-		observed_state: impl Into<String>,
-		source_revision: u64,
-	) -> Result<Self, ConversationError> {
-		let account_id = account_id.into();
-		let display_label = display_label.into();
-		let observed_state = observed_state.into();
-
-		validate_nonempty(&account_id, 128, "account snapshot identity")?;
-		validate_nonempty(&display_label, 128, "account snapshot label")?;
-		validate_symbol(&observed_state, 64, "account snapshot state")?;
-		validate_revision(source_revision, "account snapshot")?;
-
-		Ok(Self { account_id, display_label, observed_state, source_revision })
-	}
-}
-
-/// Immutable user-selected RoleProfile facts captured at RuntimeSession creation.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProfileSnapshot {
-	/// Source RoleProfile identity.
-	pub profile_id: String,
-	/// Selected role.
-	pub role: String,
-	/// Selected model.
-	pub model: String,
-	/// Selected reasoning effort.
-	pub reasoning_effort: String,
-	/// Selected service tier.
-	pub service_tier: String,
-	/// Digest of the exact instruction bytes.
-	pub instructions_digest: BlobHash,
-	/// Source RoleProfile revision.
-	pub source_revision: u64,
-}
-impl ProfileSnapshot {
-	/// Validate an immutable RoleProfile snapshot.
-	#[allow(clippy::too_many_arguments)]
-	pub fn new(
-		profile_id: impl Into<String>,
-		role: impl Into<String>,
-		model: impl Into<String>,
-		reasoning_effort: impl Into<String>,
-		service_tier: impl Into<String>,
-		instructions_digest: BlobHash,
-		source_revision: u64,
-	) -> Result<Self, ConversationError> {
-		let profile_id = profile_id.into();
-		let role = role.into();
-		let model = model.into();
-		let reasoning_effort = reasoning_effort.into();
-		let service_tier = service_tier.into();
-
-		validate_nonempty(&profile_id, 128, "profile snapshot identity")?;
-		validate_symbol(&role, 32, "profile snapshot role")?;
-		validate_nonempty(&model, 128, "profile snapshot model")?;
-		validate_symbol(&reasoning_effort, 32, "profile snapshot reasoning effort")?;
-		validate_symbol(&service_tier, 32, "profile snapshot service tier")?;
-		validate_revision(source_revision, "profile snapshot")?;
-
-		Ok(Self {
-			profile_id,
-			role,
-			model,
-			reasoning_effort,
-			service_tier,
-			instructions_digest,
-			source_revision,
-		})
-	}
-}
-
-/// A manually or synthetically bound Codex thread segment. Construction cannot select
-/// an account, start a process, or dispatch a turn.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RuntimeSession {
-	/// Stable runtime-segment identity.
-	pub id: RuntimeSessionId,
-	/// Parent logical Conversation.
-	pub conversation_id: ConversationId,
-	/// Explicitly supplied Codex thread identity, if known.
-	pub codex_thread_id: Option<String>,
-	/// Immutable non-secret account snapshot.
-	pub account_snapshot: AccountSnapshot,
-	/// Immutable selected profile snapshot.
-	pub profile_snapshot: ProfileSnapshot,
-	/// Persisted runtime state.
-	pub state: RuntimeSessionState,
-	/// Last manually observed Codex turn identity.
-	pub last_known_turn_id: Option<String>,
-	/// Optimistic entity revision.
-	pub revision: u64,
-}
-
-/// One normalized logical turn correlated to a RuntimeSession.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Turn {
-	/// Stable turn identity.
-	pub id: TurnId,
-	/// Parent logical Conversation.
-	pub conversation_id: ConversationId,
-	/// Runtime segment that produced this turn.
-	pub runtime_session_id: RuntimeSessionId,
-	/// Monotonic position inside the logical Conversation.
-	pub sequence: u64,
-	/// Normalized author role.
-	pub role: TurnRole,
-	/// Explicit side-effect uncertainty.
-	pub possible_side_effects: PossibleSideEffects,
-	/// Current lifecycle.
-	pub status: TurnStatus,
-	/// Optimistic entity revision.
-	pub revision: u64,
-}
-
 /// durable-store metadata for verified content-addressed bytes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArtifactReference {
@@ -574,56 +398,6 @@ impl ArtifactReference {
 		}
 
 		Ok(Self { hash, byte_length, media_type })
-	}
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-/// One normalized persisted item within a logical turn.
-pub struct HistoryItem {
-	/// Stable item identity.
-	pub id: HistoryItemId,
-	/// Parent turn identity.
-	pub turn_id: TurnId,
-	/// Stable position inside the turn.
-	pub ordinal: u32,
-	/// Normalized item class.
-	pub kind: HistoryItemKind,
-	/// Stream lifecycle.
-	pub status: ItemStatus,
-	/// Bounded payload representation.
-	pub payload: NormalizedPayload,
-	/// Optimistic entity revision.
-	pub revision: u64,
-}
-
-/// Inert representation only. There is deliberately no transition executor or enabled flag.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProposedTransition {
-	/// Proposed transition class.
-	pub kind: ProposedTransitionKind,
-	/// Logical Conversation preserved by the proposal.
-	pub conversation_id: ConversationId,
-	/// Runtime segment the proposal would replace.
-	pub from_session_id: RuntimeSessionId,
-	/// Exact proposed Context Pack digest.
-	pub context_pack_digest: BlobHash,
-	/// Bounded operator-inspectable rationale.
-	pub reason: String,
-}
-impl ProposedTransition {
-	/// Construct an inert proposal without any execution capability.
-	pub fn new(
-		kind: ProposedTransitionKind,
-		conversation_id: ConversationId,
-		from_session_id: RuntimeSessionId,
-		context_pack_digest: BlobHash,
-		reason: impl Into<String>,
-	) -> Result<Self, ConversationError> {
-		let reason = reason.into();
-
-		validate_nonempty(&reason, 512, "transition reason")?;
-
-		Ok(Self { kind, conversation_id, from_session_id, context_pack_digest, reason })
 	}
 }
 
@@ -1588,21 +1362,6 @@ fn validate_nonempty(
 	}
 }
 
-fn validate_symbol(
-	value: &str,
-	max_bytes: usize,
-	field: &'static str,
-) -> Result<(), ConversationError> {
-	validate_nonempty(value, max_bytes, field)?;
-
-	if value.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
-	{
-		Ok(())
-	} else {
-		Err(ConversationError::InvalidBound(field))
-	}
-}
-
 fn validate_revision(value: u64, field: &'static str) -> Result<(), ConversationError> {
 	if value == 0 { Err(ConversationError::InvalidRevision(field)) } else { Ok(()) }
 }
@@ -1613,13 +1372,12 @@ mod tests {
 
 	use crate::{
 		ArtifactId, ArtifactReference, BlobHash, ContextPackSource, ContextSourceDisposition,
-		ContextSourceKind, ConversationError, ConversationId, ConversationStatus, HistoryMediaType,
-		HistoryMetadata, HistoryMetadataValue, MAX_CONTEXT_SOURCE_INPUT_BYTES, MAX_CONTEXT_SOURCES,
+		ContextSourceKind, ConversationError, ConversationId, HistoryMediaType, HistoryMetadata,
+		HistoryMetadataValue, MAX_CONTEXT_SOURCE_INPUT_BYTES, MAX_CONTEXT_SOURCES,
 		MAX_HISTORY_METADATA_FIELDS, MAX_INLINE_HISTORY_BYTES, NormalizedPayload,
 		PinnedContextSource,
 		conversation::{
-			self, ContextPackInput, ContextPackPolicy, Conversation, MIN_CONTEXT_PACK_BYTES,
-			PossibleSideEffects,
+			self, ContextPackInput, ContextPackPolicy, MIN_CONTEXT_PACK_BYTES, PossibleSideEffects,
 		},
 	};
 
@@ -1669,14 +1427,6 @@ mod tests {
 
 	fn id() -> ConversationId {
 		ConversationId::new("00000000-0000-4000-8000-000000000001").unwrap()
-	}
-
-	#[test]
-	fn logical_conversation_has_no_runtime_or_account_identity() {
-		let conversation = Conversation::new(id(), "A durable dialogue").unwrap();
-
-		assert_eq!(conversation.status, ConversationStatus::Open);
-		assert_eq!(conversation.revision, 1);
 	}
 
 	#[test]

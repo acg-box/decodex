@@ -422,24 +422,6 @@ pub(crate) fn atomic_write_replace(
 	}
 }
 
-pub(crate) fn remove_private_file(paths: &DecodexPaths, path: &Path) -> Result<(), PathError> {
-	#[cfg(unix)]
-	{
-		path_unix::remove_private_file(paths, path)
-	}
-
-	#[cfg(not(unix))]
-	{
-		paths.validate_file_parent(path)?;
-
-		private_file_metadata(path)?;
-
-		fs::remove_file(path).map_err(|error| io_error(IoOperation::Remove, error))?;
-
-		sync_directory(path.parent().ok_or(PathError::Escape)?)
-	}
-}
-
 pub(crate) fn validate_relative(path: &Path) -> Result<(), PathError> {
 	if path.is_absolute() {
 		return Err(PathError::Escape);

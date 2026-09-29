@@ -149,6 +149,7 @@ struct Header<'a> {
 	method: Option<&'a str>,
 }
 
+#[allow(clippy::too_many_arguments)] // Keep bridge I/O, revocation and credential callback explicit.
 fn pump(
 	writer: &mut Box<dyn Write + Send>,
 	stdout: Receiver<InboundFrame>,
@@ -257,9 +258,9 @@ fn validate_goal_attachment_owner(
 
 fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result<(), ClientError> {
 	if let Some(method) = value.get("method") {
-		if matches!(method.as_str(), Some("fs/createDirectory" | "fs/writeFile")) {
+		if let Some(method @ ("fs/createDirectory" | "fs/writeFile")) = method.as_str() {
 			return if decodex_codex::app_server_client::is_goal_attachment_write(
-				method.as_str().unwrap(),
+				method,
 				&value["params"],
 			) {
 				Ok(())
@@ -832,14 +833,33 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn bridge_drop_closes_pending_rpc_without_killing_a_peer_process() {
+	async fn bridge_drop_closes_an_in_flight_rpc() {
+		struct RequestWriter {
+			bytes: Vec<u8>,
+			flushed: Option<tokio::sync::oneshot::Sender<Vec<u8>>>,
+		}
+		impl Write for RequestWriter {
+			fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+				self.bytes.extend_from_slice(bytes);
+				Ok(bytes.len())
+			}
+
+			fn flush(&mut self) -> io::Result<()> {
+				if let Some(flushed) = self.flushed.take() {
+					let _ = flushed.send(std::mem::take(&mut self.bytes));
+				}
+				Ok(())
+			}
+		}
+		let (flushed, request) = tokio::sync::oneshot::channel();
+
 		let (_sender, stdout) = sync_mpsc::sync_channel(4);
 		let binding = AccountBinding::fixture(
 			decodex_core::AccountId::new("10000000-0000-4000-8000-000000000001").unwrap(),
 			"/tmp/.codex".into(),
 		);
 		let (bridge, client, _events) = AgentProcessBridge::start(
-			Box::new(io::sink()),
+			Box::new(RequestWriter { bytes: Vec::new(), flushed: Some(flushed) }),
 			stdout,
 			binding,
 			Arc::new(AtomicBool::new(false)),
@@ -852,6 +872,11 @@ mod tests {
 			tokio::spawn(
 				async move { pending_client.thread_read(json!({"threadId":"peer"})).await },
 			);
+		let frame = tokio::time::timeout(Duration::from_secs(2), request).await.unwrap().unwrap();
+		let frame: Value = serde_json::from_slice(&frame).unwrap();
+		assert_eq!(frame["method"], "thread/read");
+		assert_eq!(frame["params"]["threadId"], "peer");
+		assert!(!pending.is_finished(), "request must await a response before bridge shutdown");
 		drop(bridge);
 		assert!(matches!(
 			tokio::time::timeout(Duration::from_secs(2), pending).await.unwrap().unwrap(),

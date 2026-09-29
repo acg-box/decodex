@@ -2303,6 +2303,7 @@ impl Application for ServiceApplication {
 		}
 	}
 
+	#[allow(clippy::too_many_lines)] // Keep the exhaustive query-to-owner dispatch in one match.
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
 			QueryPayload::GetConversationTurnOutcome { .. }
