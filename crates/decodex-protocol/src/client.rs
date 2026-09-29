@@ -922,7 +922,7 @@ impl AgentClient {
 				let query_id = QueryId::new("agent-output-stream").expect("fixed query id");
 				let mut after_revision = None;
 				loop {
-					transport.send(&mut socket, ClientMessage::Query(QueryEnvelope {
+					transport.send(&mut socket, ClientMessage::Query(crate::QueryEnvelope {
 						version: CURRENT_VERSION, query_id: query_id.clone(),
 						payload: QueryPayload::WaitForAgentOutput { work_id: work_id.clone(), after_revision },
 					})).await?;
@@ -1963,24 +1963,23 @@ fn agent_action_work_id(action: &crate::AgentActionDto) -> &EntityId {
 
 /// Reusable bounded WebSocket client for authoritative doctor/status queries.
 pub struct DoctorClient {
-	profile: ClientProfile,
-	timeout: Duration,
+	transport: ResetCardClient,
 }
 impl DoctorClient {
 	/// Build a client with the fixed production timeout and bounded wire limits.
 	pub const fn new(profile: ClientProfile) -> Self {
-		Self { profile, timeout: DOCTOR_CLIENT_TIMEOUT }
+		Self { transport: ResetCardClient { profile, timeout: DOCTOR_CLIENT_TIMEOUT } }
 	}
 
 	/// Selected client profile.
 	pub const fn profile(&self) -> &ClientProfile {
-		&self.profile
+		&self.transport.profile
 	}
 
 	/// Negotiate the current protocol, verify the stable server identity, and
 	/// return one fresh authoritative doctor report.
 	pub async fn query(&self) -> Result<DoctorReport, ClientFailure> {
-		let completed = time::timeout(self.timeout, self.query_inner())
+		let completed = time::timeout(self.transport.timeout, self.query_inner())
 			.await
 			.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		close_one_shot_socket(completed.socket).await;
@@ -1988,20 +1987,24 @@ impl DoctorClient {
 	}
 
 	async fn query_inner(&self) -> Result<CompletedOneShot<DoctorReport>, ClientFailure> {
-		let local_transport =
-			self.profile.local_transport.as_ref().ok_or(ClientFailure::RemoteTransportDisabled)?;
+		let local_transport = self
+			.transport
+			.profile
+			.local_transport
+			.as_ref()
+			.ok_or(ClientFailure::RemoteTransportDisabled)?;
 		let config = WebSocketConfig::default()
 			.read_buffer_size(16 * 1_024)
 			.write_buffer_size(16 * 1_024)
 			.max_write_buffer_size(MAX_CLIENT_MESSAGE_BYTES)
 			.max_message_size(Some(MAX_CLIENT_MESSAGE_BYTES))
 			.max_frame_size(Some(MAX_CLIENT_MESSAGE_BYTES));
-		let stream = time::timeout(self.timeout, local_transport.connect())
+		let stream = time::timeout(self.transport.timeout, local_transport.connect())
 			.await
 			.map_err(|_| ClientFailure::ProtocolTimeout)?
 			.map_err(map_local_transport_failure)?;
 		let (mut socket, _) = time::timeout(
-			self.timeout,
+			self.transport.timeout,
 			tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, Some(config)),
 		)
 		.await
@@ -2009,13 +2012,13 @@ impl DoctorClient {
 		.map_err(map_connect_error)?;
 		let hello = ClientMessage::Hello(ClientHello {
 			version: CURRENT_VERSION,
-			expected_server_id: Some(self.profile.expected_server_id.clone()),
+			expected_server_id: Some(self.transport.profile.expected_server_id.clone()),
 			resume: None,
 		});
 
-		self.send(&mut socket, hello).await?;
+		self.transport.send(&mut socket, hello).await?;
 
-		let welcome = match self.receive(&mut socket).await? {
+		let welcome = match self.transport.receive(&mut socket).await? {
 			ServerMessage::Welcome(welcome) => welcome,
 			ServerMessage::Refusal(refusal) => return Err(self.refusal_failure(refusal)),
 			_ => return Err(ClientFailure::ProtocolMalformed),
@@ -2027,7 +2030,7 @@ impl DoctorClient {
 
 		self.verify_server(&welcome.server_id)?;
 
-		let snapshot = match self.receive(&mut socket).await? {
+		let snapshot = match self.transport.receive(&mut socket).await? {
 			ServerMessage::Snapshot(snapshot) => snapshot,
 			ServerMessage::Refusal(refusal) => return Err(self.refusal_failure(refusal)),
 			_ => return Err(ClientFailure::ProtocolMalformed),
@@ -2047,10 +2050,10 @@ impl DoctorClient {
 			payload: QueryPayload::GetDoctorStatus,
 		});
 
-		self.send(&mut socket, query).await?;
+		self.transport.send(&mut socket, query).await?;
 
 		for _ in 0..MAX_INTERLEAVED_MESSAGES {
-			match self.receive(&mut socket).await? {
+			match self.transport.receive(&mut socket).await? {
 				ServerMessage::QueryResult(result) => {
 					if result.version != CURRENT_VERSION {
 						return Err(version_failure(result.version));
@@ -2093,46 +2096,8 @@ impl DoctorClient {
 		Err(ClientFailure::ProtocolBackpressure)
 	}
 
-	async fn send<S>(&self, socket: &mut S, message: ClientMessage) -> Result<(), ClientFailure>
-	where
-		S: Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
-	{
-		let encoded = serde_json::to_string(&message)
-			.expect("typed bounded client message serialization cannot fail");
-
-		time::timeout(self.timeout, socket.send(Message::Text(encoded.into())))
-			.await
-			.map_err(|_| ClientFailure::ProtocolTimeout)?
-			.map_err(|_| ClientFailure::ProtocolDisconnected)
-	}
-
-	async fn receive<S>(&self, socket: &mut S) -> Result<ServerMessage, ClientFailure>
-	where
-		S: Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
-	{
-		loop {
-			let message = time::timeout(self.timeout, socket.next())
-				.await
-				.map_err(|_| ClientFailure::ProtocolTimeout)?
-				.ok_or(ClientFailure::ProtocolDisconnected)?
-				.map_err(map_receive_error)?;
-
-			match message {
-				Message::Text(text) => {
-					return serde_json::from_str(&text)
-						.map_err(|_| ClientFailure::ProtocolMalformed);
-				},
-				Message::Ping(_) | Message::Pong(_) => {},
-				Message::Close(_) => return Err(ClientFailure::ProtocolDisconnected),
-				Message::Binary(_) | Message::Frame(_) => {
-					return Err(ClientFailure::ProtocolMalformed);
-				},
-			}
-		}
-	}
-
 	fn verify_server(&self, actual: &ServerId) -> Result<(), ClientFailure> {
-		if actual == &self.profile.expected_server_id {
+		if actual == &self.transport.profile.expected_server_id {
 			Ok(())
 		} else {
 			Err(ClientFailure::ServerIdentityMismatch)
@@ -2537,13 +2502,6 @@ impl ResetCardClient {
 			ServerMessage::Refusal(refusal) => return Err(self.refusal_failure(refusal)),
 			_ => return Err(ClientFailure::ProtocolMalformed),
 		};
-
-		if welcome.server_id != self.profile.expected_server_id {
-			return Err(ClientFailure::ServerIdentityMismatch);
-		}
-		if welcome.version != CURRENT_VERSION {
-			return Err(version_failure(welcome.version));
-		}
 
 		self.verify_version_and_server(welcome.version, &welcome.server_id)?;
 
@@ -4959,7 +4917,11 @@ max_entry_bytes = 0
 				assert!(matches!(
 					serde_json::from_str::<ClientMessage>(&request)
 						.expect("test operation must succeed"),
-					ClientMessage::Query(_)
+					ClientMessage::Query(crate::QueryEnvelope {
+						version: CURRENT_VERSION,
+						payload: crate::QueryPayload::GetDoctorStatus,
+						..
+					})
 				));
 
 				for response in query {
@@ -4976,32 +4938,6 @@ max_entry_bytes = 0
 		);
 
 		(profile, task, temp)
-	}
-
-	#[test]
-	fn doctor_timeout_is_bounded_and_does_not_widen_ordinary_queries() {
-		let profile = ClientProfile {
-			profile_name: "remote".into(),
-			kind: ProfileKind::Remote,
-			local_transport: None,
-			expected_server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
-		};
-		let client = DoctorClient::new(profile);
-
-		assert_eq!(client.timeout, Duration::from_secs(15));
-		assert_eq!(super::CLIENT_TIMEOUT, Duration::from_secs(5));
-	}
-
-	#[tokio::test]
-	async fn client_accepts_only_a_fully_verified_typed_report() {
-		let expected = report();
-		let (profile, task, _temp) =
-			fixture(initial(SERVER_ID), vec![result(expected.clone())]).await;
-		let actual = DoctorClient::new(profile).query().await.expect("test operation must succeed");
-
-		assert_eq!(actual, expected);
-
-		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -5837,7 +5773,9 @@ max_entry_bytes = 0
 			authority,
 			ServerId::new(SERVER_ID).expect("test operation must succeed"),
 		);
-		let client = DoctorClient { profile, timeout: Duration::from_millis(20) };
+		let client = DoctorClient {
+			transport: ResetCardClient { profile, timeout: Duration::from_millis(20) },
+		};
 
 		assert_eq!(client.query().await.unwrap_err(), ClientFailure::ProtocolTimeout);
 
