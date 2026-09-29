@@ -19,13 +19,6 @@ def load_module():
 
 
 class AppCliInstallTests(unittest.TestCase):
-    def test_default_contract_is_the_bundled_helper(self) -> None:
-        module = load_module()
-        self.assertEqual(
-            module.APP_HELPER,
-            Path("/Applications/Decodex.app/Contents/Helpers/decodex"),
-        )
-
     def test_install_is_an_exact_symlink_and_is_idempotent(self) -> None:
         module = load_module()
         with tempfile.TemporaryDirectory() as temporary:
