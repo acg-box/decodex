@@ -118,7 +118,24 @@ async fn explicit_delivered_reference_reads_only_selected_foreign_thread() {
 		.await
 		.unwrap();
 	assert!(agent.read_work_history(&root, &args).await.is_err());
+	assert_eq!(
+		agent
+			.store
+			.agent_task_reference_target("agent".into(), target.codex_thread_id.clone().unwrap())
+			.await
+			.unwrap(),
+		None
+	);
 	agent.store.finish_agent_steer(event, true).await.unwrap();
+	assert_eq!(
+		agent
+			.store
+			.agent_task_reference_target("agent".into(), target.codex_thread_id.clone().unwrap())
+			.await
+			.unwrap()
+			.as_deref(),
+		Some("target")
+	);
 	let page = agent.read_work_history(&root, &args).await.unwrap();
 	assert_eq!(page["turns"][0]["items"][0]["text"], "selected evidence");
 	assert_eq!(page["previousThreadIds"], json!([]));
@@ -249,4 +266,86 @@ async fn stale_reference_and_old_running_tools_reject_before_native_steer() {
 			.iter()
 			.all(|e| e.event_kind != "steer_pending")
 	);
+}
+
+#[tokio::test]
+async fn native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources() {
+	let history = json!({"_search":{"data":[
+		{"thread":{"id":"opaque thread/1","name":"Root"},"snippet":"matched body"},
+		{"thread":{"id":"foreign-thread","name":"PRIVATE_TITLE"},"snippet":"PRIVATE_BODY"}
+	],"nextCursor":"more"},"_occurrences":{"data":[{"turnId":"turn-hit","itemId":"item-hit",
+		"snippet":"matched body","snippetMatchRange":{"start":0,"end":7},"turnCursor":"exact-turn"}],"nextCursor":null}});
+	let (mut agent, mut sent, _directory) = fixture_with_history(history).await;
+	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	let page = agent
+		.read_work_history(&manager, &json!({"searchTerm":"matched","archived":true}))
+		.await
+		.unwrap();
+	assert_eq!(page["matches"].as_array().unwrap().len(), 1);
+	assert_eq!(page["nextCursor"], "more");
+	assert_eq!(page["matches"][0]["sourceUrl"], "codex://threads/opaque%20thread%2F1");
+	assert!(!page.to_string().contains("PRIVATE"));
+	let hits = agent
+		.read_work_history(
+			&manager,
+			&json!({"id":"agent","threadId":manager.codex_thread_id,"searchTerm":"matched"}),
+		)
+		.await
+		.unwrap();
+	assert_eq!(hits["occurrences"][0]["turnCursor"], "exact-turn");
+	assert_eq!(hits["occurrences"][0]["itemId"], "item-hit");
+	assert_eq!(hits["occurrences"][0]["rangeEncoding"], "utf16");
+	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	assert_eq!(requests.len(), 2);
+	assert_eq!(requests[0]["method"], "thread/search");
+	assert_eq!(requests[0]["params"]["archived"], true);
+	assert_eq!(requests[1]["method"], "thread/searchOccurrences");
+	assert_eq!(
+		agent.store.get_agent_work_item("agent".into()).await.unwrap().active_turn_id,
+		manager.active_turn_id
+	);
+}
+
+#[tokio::test]
+async fn native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors() {
+	let (mut agent, _sent, _directory) = fixture_with_history(json!({"_search":{"data":[
+		{"thread":{"id":"foreign-thread"},"snippet":"hidden"}],"nextCursor":"more"}}))
+	.await;
+	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
+	let page = agent.read_work_history(&manager, &json!({"searchTerm":"term"})).await.unwrap();
+	assert_eq!(page["matches"], json!([]));
+	assert_eq!(page["nextCursor"], "more");
+	assert!(
+		agent
+			.read_work_history(&manager, &json!({"searchTerm":"term","cursor":"more"}))
+			.await
+			.is_err()
+	);
+}
+
+#[tokio::test]
+async fn native_occurrence_search_rejects_foreign_scope_before_rpc() {
+	let (mut agent, mut sent, _directory) = fixture().await;
+	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
+	let _child = agent.create_manager("agent", "child", "Manage", None).await.unwrap();
+	let worker = agent.create_worker("child", "worker", "Investigate").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	assert!(
+		agent
+			.read_work_history(
+				&manager,
+				&json!({"id":"worker","threadId":worker.codex_thread_id,"searchTerm":"secret"})
+			)
+			.await
+			.is_err()
+	);
+	assert!(agent.read_work_history(&worker, &json!({"searchTerm":"secret"})).await.is_err());
+	assert!(
+		agent
+			.read_work_history(&manager, &json!({"threadId":"foreign","searchTerm":"secret"}))
+			.await
+			.is_err()
+	);
+	assert!(sent.try_recv().is_err());
 }
