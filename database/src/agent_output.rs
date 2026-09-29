@@ -439,6 +439,26 @@ impl SqliteStore {
 		}).await
 	}
 
+	/// Read saved activity durations for the exact bound native thread and item identities.
+	pub async fn read_agent_activity_durations(
+		&self,
+		work: String,
+		thread: String,
+		items: Vec<(String, String)>,
+	) -> Result<Vec<(String, String, u64)>, StoreError> {
+		if items.len() > 100
+			|| items.iter().any(|(turn, item)| turn.len() > 512 || item.len() > 512)
+		{
+			return Err(StoreError::InvalidInput("invalid activity identities"));
+		}
+		let items = serde_json::to_string(&items).expect("serializable identities");
+		self.run(move |connection| {
+			connection.prepare("SELECT json_extract(requested.value,'$[0]'),json_extract(requested.value,'$[1]'),json_extract(e.payload,'$.duration_ms') FROM json_each(?3) requested JOIN agent_inbox_events e ON e.source_event_id=json_array('activity',?1,json_extract(requested.value,'$[0]'),json_extract(requested.value,'$[1]'),'completed') JOIN agent_work_items w ON w.id=e.work_item_id WHERE w.id=?1 AND w.codex_thread_id=?2 AND json_type(e.payload,'$.duration_ms')='integer' AND json_extract(e.payload,'$.duration_ms')>=0")
+				.map_err(sqlite_error)?.query_map(params![work,thread,items], |row| Ok((row.get(0)?,row.get(1)?,row.get::<_, i64>(2)? as u64)))
+				.map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error| sqlite_error(error).into())
+		}).await
+	}
+
 	/// Append an immutable activity receipt without changing work status or waking an agent.
 	pub async fn record_agent_activity(
 		&self,
@@ -473,12 +493,50 @@ impl SqliteStore {
 			if count>=256 { return Ok(()); }
 			let stage=if completed {"completed"} else {"started"};
 			let source=serde_json::json!(["activity",work,turn,item,stage]).to_string();
+			let payload = if completed { activity_duration(&tx, &work, &turn, &item, payload)? } else { payload };
 			let now=crate::unix_micros()?;
 			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,?3,?4,?5,'resolved','Observed execution activity',?5,?2,?6) ON CONFLICT(source_event_id) DO NOTHING",params![source,work,format!("activity_{stage}"),payload,now,turn]).map_err(sqlite_error)?;
 			tx.commit().map_err(sqlite_error)?;
 			Ok(())
 		}).await
 	}
+}
+
+// Use the native lifecycle clock, never receipt arrival time. Keep the original
+// receipts immutable and leave old or incomplete histories without an estimate.
+fn activity_duration(
+	tx: &rusqlite::Transaction<'_>,
+	work: &str,
+	turn: &str,
+	item: &str,
+	payload: String,
+) -> Result<String, StoreError> {
+	let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&payload) else {
+		return Ok(payload);
+	};
+	let Some(end) = value["native_timestamp_ms"].as_u64() else {
+		return Ok(payload);
+	};
+	if value["duration_ms"].as_u64().is_some() {
+		return Ok(payload);
+	}
+	let source = serde_json::json!(["activity", work, turn, item, "started"]).to_string();
+	let start: Option<String> = tx
+		.query_row(
+			"SELECT payload FROM agent_inbox_events WHERE source_event_id=?1",
+			params![source],
+			|row| row.get(0),
+		)
+		.optional()
+		.map_err(sqlite_error)?;
+	let start = start
+		.and_then(|payload| serde_json::from_str::<serde_json::Value>(&payload).ok())
+		.and_then(|value| value["native_timestamp_ms"].as_u64());
+	if let Some(duration) = start.and_then(|start| end.checked_sub(start)) {
+		value["duration_ms"] = serde_json::json!(duration);
+		return Ok(value.to_string());
+	}
+	Ok(payload)
 }
 
 impl SqliteStore {
