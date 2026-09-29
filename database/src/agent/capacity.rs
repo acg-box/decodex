@@ -133,7 +133,7 @@ impl SqliteStore {
 		self.run(move |connection| {
             let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
             let item=read_work(&tx,&work)?;
-            if item.dispatch_state!=AgentDispatchState::Idle || item.codex_thread_id.is_none() || crate::agent_prompt_edit::pending(&tx,&work)? { return Err(DatabaseError::Conflict.into()); }
+            if item.dispatch_state!=AgentDispatchState::Idle || item.codex_thread_id.is_none() || crate::agent_prompt_edit::pending(&tx,&work)? || crate::agent_permissions::pending(&tx,&work)? || crate::agent_plugins::pending(&tx,&work)? || crate::agent_models::pending(&tx,&work)? { return Err(DatabaseError::Conflict.into()); }
             let retry=tx.query_row("SELECT * FROM agent_capacity_retries WHERE event_id=?1 AND work_item_id=?2 AND state='pending' AND due_at_micros<=?3",params![event,work,now],retry_row).optional().map_err(sqlite_error)?.ok_or(DatabaseError::Conflict)?;
             tx.execute("UPDATE agent_capacity_retries SET state='claimed' WHERE event_id=?1",[event]).map_err(sqlite_error)?;
             tx.execute("UPDATE agent_inbox_events SET disposition='resolved', disposition_note='Automatic capacity retry requested.', disposed_at_micros=max(created_at_micros,?2) WHERE id=?1 AND disposition IS NULL",params![event,unix_micros()?]).map_err(sqlite_error)?;
