@@ -618,10 +618,10 @@ impl AgentClient {
 		close_one_shot_socket(completed.socket).await;
 		match completed.value {
 			QueryResultPayload::AgentPromptFork(result) => {
-				if let crate::PromptForkResult::Available(Some(status)) = &result {
-					if status.work_id != work || status.review_token != review {
-						return Err(ClientFailure::ProtocolMalformed);
-					}
+				if let crate::PromptForkResult::Available(Some(status)) = &result
+					&& (status.work_id != work || status.review_token != review)
+				{
+					return Err(ClientFailure::ProtocolMalformed);
 				}
 				Ok(result)
 			},
