@@ -14,7 +14,6 @@ mod account_service;
 mod agent;
 mod agent_app_exposure;
 mod agent_app_settings;
-mod agent_app_ui_call;
 mod agent_app_ui_receipt;
 mod agent_capabilities;
 mod agent_config_settings;

@@ -2,7 +2,6 @@
 use super::*;
 use decodex_protocol::{AgentTimelineContent as Content, AgentTimelineEntry, AgentTimelinePage};
 use std::collections::BTreeSet;
-#[path = "agent_timeline_app_ui.rs"] mod app_ui;
 #[path = "agent_timeline_groups.rs"] mod groups;
 #[path = "agent_timeline_inputs.rs"] mod inputs;
 #[path = "agent_timeline_media.rs"] mod media;
@@ -160,7 +159,6 @@ impl AgentSurface {
 				cx,
 			)),
 		);
-		panel = panel.child(self.render_native_app_recovery(work, cx));
 		// Reserve the first-load state before the request starts, but retain
 		// existing history during background refreshes and fallback retries.
 		if self.native_history_loading(work) {
@@ -501,7 +499,6 @@ pub(super) struct Binding {
 #[derive(Default)]
 pub(super) struct Timeline {
 	preview: media::Preview,
-	app_ui: app_ui::State,
 	input_receipts: inputs::InputReceipts,
 	pub task: Option<Task<()>>,
 	pub epoch: u64,
@@ -591,7 +588,6 @@ impl Timeline {
 	fn clear_page(&mut self) {
 		self.revision = self.revision.wrapping_add(1);
 		self.preview.clear();
-		self.app_ui.clear();
 		self.viewport = Default::default();
 		self.binding = None;
 		self.entries.clear();
@@ -648,7 +644,6 @@ impl Timeline {
 		if self.binding.as_ref() != Some(&binding) {
 			self.expanded_turns.clear();
 			self.preview.clear();
-			self.app_ui.clear();
 		}
 		self.binding = Some(binding);
 		self.weather = page.weather;

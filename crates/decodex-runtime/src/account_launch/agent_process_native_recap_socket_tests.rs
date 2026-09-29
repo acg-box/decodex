@@ -1,7 +1,6 @@
 //! Real local socket, Agent host and installed Codex; only the model provider is synthetic.
 use super::*;
 #[path = "agent_process_native_active_shutdown_tests.rs"] mod active_shutdown;
-#[path = "agent_process_native_app_ui_socket_tests.rs"] mod app_ui;
 #[path = "agent_process_native_desktop_acceptance.rs"] mod desktop;
 #[path = "agent_process_native_media_socket_tests.rs"] mod media;
 #[path = "agent_process_native_recap_reply_proxy.rs"] mod reply_proxy;
@@ -96,9 +95,6 @@ async fn qualify(home: &std::path::Path) {
 	)
 	.expect("catalog");
 	std::fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=true\nsupports_websockets=false\n", json!(catalog))).expect("fixture config");
-	if std::env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") {
-		app_ui::configure(home);
-	}
 	let root = DecodexRoot::new(home.join(if interactive { ".decodex" } else { "product" }))
 		.expect("fixture root");
 	root.paths().ensure_layout().expect("private layout");
@@ -160,8 +156,6 @@ async fn qualify(home: &std::path::Path) {
 		async {
 			if interactive {
 				desktop::check(&client, home, &account, &requests).await;
-			} else if std::env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") {
-				app_ui::check(&client, &runtime, home, &account, &requests).await;
 			} else if std::env::var("DECODEX_TEST_MEDIA").as_deref() == Ok("1") {
 				media::check(&client, &runtime, home, &account, &requests).await;
 			} else {

@@ -471,9 +471,6 @@ impl AgentSurface {
 			_ => kind,
 		};
 		let mut row = row.when(kind != "reasoning", |row| row.child(muted(label)));
-		if *app_ui {
-			row = row.child(self.native_app_ui_action(work, turn_id, item_id, cx));
-		}
 		for attachment in attachments {
 			row = row.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
 		}

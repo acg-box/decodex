@@ -4317,22 +4317,12 @@ impl ServiceApplication {
 					ProductStore::Unavailable(_) =>
 						decodex_protocol::AgentAppUiReceiptResult::Unavailable,
 				}),
-			QueryPayload::ReviewAgentAppUiCall { request } =>
-				QueryResultPayload::AgentAppUiCallReview(match &self.agent {
-					Some(agent) => agent.review_app_ui_call(request).await,
-					None => decodex_protocol::AgentAppUiCallReview::Unavailable,
-				}),
-			QueryPayload::GetAgentAppUiSource { work_id, thread_id, fingerprint } =>
-				QueryResultPayload::AgentAppUiSource(match &self.agent {
-					Some(agent) =>
-						agent.app_ui_source(work_id.as_str(), thread_id.as_str(), fingerprint).await,
-					None => false,
-				}),
-			QueryPayload::GetAgentAppUi { request } =>
-				QueryResultPayload::AgentAppUi(match &self.agent {
-					Some(agent) => agent.app_ui(request).await,
-					None => decodex_protocol::AgentAppUiResult::Unavailable,
-				}),
+			QueryPayload::ReviewAgentAppUiCall { .. } => QueryResultPayload::AgentAppUiCallReview(
+				decodex_protocol::AgentAppUiCallReview::Unavailable,
+			),
+			QueryPayload::GetAgentAppUiSource { .. } => QueryResultPayload::AgentAppUiSource(false),
+			QueryPayload::GetAgentAppUi { .. } =>
+				QueryResultPayload::AgentAppUi(decodex_protocol::AgentAppUiResult::Unsupported),
 			_ => unreachable!("query_app_ui dispatched above"),
 		}
 	}
