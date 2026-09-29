@@ -32,47 +32,6 @@ struct InlineAccountFeedback: View {
 	}
 }
 
-enum ResetCardInventoryPresentation: Equatable {
-	case loginRequired
-	case checking
-	case connecting(detail: String)
-	case unavailable(detail: String)
-	case empty
-	case available
-
-	init(
-		state: ResetCardAccountState
-	) {
-		if state.requiresLoginRefresh {
-			self = .loginRequired
-			return
-		}
-
-		if case .connecting(let detail) = state.inventoryFailure {
-			if state.inventory == nil {
-				self = .connecting(detail: detail)
-				return
-			}
-		}
-
-		if case .unavailable(let detail) = state.inventoryFailure {
-			self = .unavailable(detail: detail)
-			return
-		}
-		guard let inventory = state.inventory else {
-			self = .checking
-			return
-		}
-		guard inventory.detailsComplete else {
-			self = .unavailable(
-				detail: "Reset Card details are temporarily unavailable."
-			)
-			return
-		}
-		self = state.targets.isEmpty ? .empty : .available
-	}
-}
-
 struct ResetCardAccountRow: View {
 	private static let confirmationWindowSeconds = 5
 
@@ -182,7 +141,6 @@ struct ResetCardAccountRow: View {
 		.animation(rowStateAnimation, value: detailedAccountID)
 		.animation(rowStateAnimation, value: state.account.enabled)
 		.animation(rowStateAnimation, value: exceptionalStatusText)
-		.animation(rowStateAnimation, value: inventoryPresentation)
 		.animation(rowStateAnimation, value: presentedTargets)
 		.animation(rowStateAnimation, value: showsReorderHandle)
 		.animation(rowStateAnimation, value: isReorderHandleHovered)
@@ -491,10 +449,6 @@ struct ResetCardAccountRow: View {
 			|| accountPending.contains { $0.target.descriptor == target.descriptor })
 	}
 
-	private var inventoryPresentation: ResetCardInventoryPresentation {
-		ResetCardInventoryPresentation(state: state)
-	}
-
 	private var countdownAttempt: ResetCardUseAttempt? {
 		confirmation.isSubmitting ? nil : confirmation.armedAttempt
 	}
@@ -710,19 +664,6 @@ struct ResetCardAccountRow: View {
 			timeZone.abbreviation(for: date)
 			?? timeZone.identifier
 		return "Reset Card, expires \(spokenExpiry) \(zone)"
-	}
-}
-
-private struct ResetCardInventoryPendingView: View {
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		ProgressView()
-			.controlSize(.mini)
-			.frame(width: 16, height: 16)
-			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-			.help("Reset Card inventory is updating in the background.")
-			.accessibilityLabel("Reset Card inventory is updating")
 	}
 }
 

@@ -3,12 +3,6 @@ import AppKit
 import Foundation
 import Observation
 
-enum ResetCardInventoryFailure: Equatable {
-	case retryable(detail: String)
-	case connecting(detail: String)
-	case unavailable(detail: String)
-}
-
 struct ResetCardAccountState: Identifiable, Equatable {
 	let account: ResetCardAccountRecord
 	let inventory: ResetCardInventory?
@@ -63,23 +57,6 @@ struct ResetCardAccountState: Identifiable, Equatable {
 		}
 		return inventory.accountID == account.accountID
 			&& inventory.accountRevision == account.accountRevision
-	}
-
-	var inventoryFailure: ResetCardInventoryFailure? {
-		if let error {
-			if error.isConnectionFailure {
-				return .connecting(detail: error.localizedDescription)
-			}
-			return error.isRetryableReadFailure
-				? .retryable(detail: error.localizedDescription)
-				: .unavailable(detail: error.localizedDescription)
-		}
-		if let error = inventory?.observationError {
-			return error.isRetryableReadFailure
-				? .retryable(detail: error.presentation)
-				: .unavailable(detail: error.presentation)
-		}
-		return nil
 	}
 
 	private static func preferredQuota(
@@ -3752,17 +3729,6 @@ final class ResetCardStore {
 }
 
 private extension ResetCardClientError {
-	var isConnectionFailure: Bool {
-		switch self {
-		case .transportDisconnected:
-			return true
-		case .nativeClientUnavailable, .timedOut, .transportBackpressured,
-			.outputTooLarge, .commandRejected, .useDefinitelyNotDispatched,
-			.usePotentiallyDispatched, .invalidResponse, .service:
-			return false
-		}
-	}
-
 	var isRetryableReadFailure: Bool {
 		switch self {
 		case .nativeClientUnavailable, .timedOut, .transportDisconnected,
