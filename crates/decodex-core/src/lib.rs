@@ -71,10 +71,7 @@ pub use self::{
 		BlobHash, BlobInventoryCursor, BlobInventoryEntry, BlobInventoryPage, BlobStore,
 		MAX_BLOB_BYTES,
 	},
-	cache::{
-		BoundedCache, CacheLimits, CacheUsage, MAX_CACHE_BYTES, MAX_CACHE_ENTRIES,
-		MAX_CACHE_ENTRY_BYTES,
-	},
+	cache::{CacheLimits, MAX_CACHE_BYTES, MAX_CACHE_ENTRIES, MAX_CACHE_ENTRY_BYTES},
 	config::{
 		CacheConfig, ConfigError, DecodexClientConfig, DecodexConfig, LocalProfile,
 		LocalTrustPolicy, MAX_CONFIG_BYTES, ProfileName, RemoteProfile, ServerProfile,
