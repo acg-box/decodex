@@ -220,7 +220,8 @@ impl std::fmt::Debug for AccountApiResetCredit {
 pub struct AccountApiResetCredits {
 	/// Provider-reported available count.
 	pub reported_available_count: u64,
-	/// Validated available cards.  The list is empty when details are incomplete.
+	/// Validated available cards. The list can be partial when details are incomplete.
+	/// Check `details_complete` before using these cards.
 	pub credits: Vec<AccountApiResetCredit>,
 	/// Whether every available credit was safely decoded and matched the count.
 	pub details_complete: bool,
