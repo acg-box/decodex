@@ -69,7 +69,7 @@ mod tests {
 		use std::sync::atomic::{AtomicBool, Ordering};
 		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 		assert_eq!(read(|| None).await, Result::Inactive);
-		for changed in [false, true] {
+		for state in ["same", "stopped", "replaced"] {
 			let (local, remote) = tokio::io::duplex(4096);
 			let (reader, writer) = tokio::io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
@@ -91,11 +91,17 @@ mod tests {
 			});
 			let called = AtomicBool::new(false);
 			let result = read(|| {
-				if called.swap(true, Ordering::SeqCst) && changed {
+				let after_response = called.swap(true, Ordering::SeqCst);
+				if after_response && state == "stopped" {
 					None
 				} else {
 					Some((
-						ProcessGenerationId::new("10000000-0000-4000-8000-000000000001").unwrap(),
+						ProcessGenerationId::new(if after_response && state == "replaced" {
+							"10000000-0000-4000-8000-000000000002"
+						} else {
+							"10000000-0000-4000-8000-000000000001"
+						})
+						.unwrap(),
 						client.clone(),
 					))
 				}
@@ -104,7 +110,7 @@ mod tests {
 			server.await.unwrap();
 			assert_eq!(
 				result,
-				if changed {
+				if state != "same" {
 					Result::Unavailable
 				} else {
 					Result::Available {
