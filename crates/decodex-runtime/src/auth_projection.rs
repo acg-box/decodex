@@ -56,7 +56,7 @@ pub(crate) struct SharedCodexAuthVersion {
 
 /// One stable, bounded read of the normal shared Codex auth source.
 pub(crate) enum SharedCodexAuthSnapshot {
-	Managed { version: SharedCodexAuthVersion, credential: ImportedCredential },
+	Managed { version: SharedCodexAuthVersion, credential: Box<ImportedCredential> },
 	Unmanaged { version: SharedCodexAuthVersion },
 }
 
@@ -550,7 +550,7 @@ fn read_snapshot_from_directory(
 	}
 	let credential =
 		parse_shared_codex(&bytes).map_err(|_| CodexAuthProjectionError::Unavailable)?;
-	Ok(SharedCodexAuthSnapshot::Managed { version, credential })
+	Ok(SharedCodexAuthSnapshot::Managed { version, credential: Box::new(credential) })
 }
 
 fn read_file_version(directory: &File) -> Result<SharedCodexAuthVersion, CodexAuthProjectionError> {
