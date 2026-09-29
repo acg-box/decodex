@@ -325,3 +325,45 @@ async fn cold_voice_recovery_keeps_original_generation_and_never_replays_input()
 		assert!(sent.try_recv().is_err(), "closed calls need no further native recovery");
 	}
 }
+
+#[tokio::test]
+async fn delayed_or_empty_voice_final_preserves_newer_received_text() {
+	for role in ["user", "assistant"] {
+		for (delta, final_text, expected, complete) in [
+			("Okay.I will check", "Okay.", "Okay.I will check", false),
+			("Received words", "", "Received words", false),
+			("A bunch ", "A bunch of stuff.", "A bunch of stuff.", true),
+			("Provisional words.", "Corrected final words.", "Corrected final words.", true),
+		] {
+			let (mut agent, mut sent, _directory, database) = fixture().await;
+			for (method, params) in [
+				(
+					"thread/realtime/transcript/delta",
+					json!({"threadId":"opaque thread/1","role":role,"delta":delta}),
+				),
+				(
+					"thread/realtime/transcript/done",
+					json!({"threadId":"opaque thread/1","role":role,"text":final_text}),
+				),
+				("thread/realtime/closed", json!({"threadId":"opaque thread/1"})),
+			] {
+				agent
+					.voice_event(&ServerEvent::Notification { method: method.into(), params })
+					.await
+					.unwrap();
+			}
+			let rows: Vec<String> = database
+				.prepare("SELECT payload FROM agent_inbox_events WHERE event_kind=? ORDER BY id")
+				.unwrap()
+				.query_map([format!("voice_{role}")], |row| row.get(0))
+				.unwrap()
+				.collect::<Result<_, _>>()
+				.unwrap();
+			assert_eq!(rows.len(), 1, "one saved utterance for {role}");
+			let saved: Value = serde_json::from_str(&rows[0]).unwrap();
+			assert_eq!(saved["text"], expected);
+			assert_eq!(saved["complete"], complete);
+			assert!(sent.try_recv().is_err(), "transcript reconciliation cannot replay input");
+		}
+	}
+}
