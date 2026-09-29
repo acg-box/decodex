@@ -662,13 +662,7 @@ impl AgentSurface {
 			.justify_center()
 			.text_size(px(12.0))
 			.line_height(px(16.0))
-			.text_color(rgb(if send {
-				ui_theme::TEXT
-			} else if id == "fast" && self.fast {
-				ui_theme::BLUE
-			} else {
-				ui_theme::TEXT_MUTED
-			}))
+			.text_color(rgb(if send { ui_theme::TEXT } else { ui_theme::TEXT_MUTED }))
 			.when(id == "model", |d| {
 				d.px(px(4.)).text_size(px(11.)).font_weight(gpui::FontWeight::NORMAL)
 			})
@@ -771,15 +765,7 @@ impl AgentSurface {
 					self.composer_menu == Some("microphone"),
 				))
 				.into_any_element(),
-			"voice" => icon(Symbol::Voice),
 			"dictation" => icon(Symbol::Microphone),
-			"fast" => div()
-				.flex()
-				.items_center()
-				.gap(px(3.))
-				.opacity(if self.fast { 1.0 } else { 0.65 })
-				.child(icon(Symbol::Fast))
-				.into_any_element(),
 			"delivery" => div()
 				.w_full()
 				.flex()
