@@ -101,6 +101,25 @@ impl AgentCoordinator {
 		});
 	}
 
+	async fn owned_voice_generation(&self, work: &str, thread: &str) -> Result<String, AgentError> {
+		let generation = self
+			.voice
+			.as_ref()
+			.ok_or_else(|| AgentError::Invalid("voice host unavailable".into()))?
+			.generation
+			.clone();
+		if !self
+			.store
+			.agent_thread_is_owned(work.into(), thread.into(), Some(generation.clone()))
+			.await?
+		{
+			return Err(AgentError::Invalid(
+				"Voice thread is not owned by the active process".into(),
+			));
+		}
+		Ok(generation)
+	}
+
 	pub(crate) async fn voice_request(
 		&mut self,
 		request: AgentVoiceRequest,
@@ -126,12 +145,7 @@ impl AgentCoordinator {
 				let thread = item
 					.codex_thread_id
 					.ok_or_else(|| AgentError::Invalid("Agent thread is not ready".into()))?;
-				let generation = self
-					.voice
-					.as_ref()
-					.ok_or_else(|| AgentError::Invalid("voice host unavailable".into()))?
-					.generation
-					.clone();
+				let generation = self.owned_voice_generation(work_id.as_str(), &thread).await?;
 				if !self.loaded_threads.contains(&thread) {
 					let mut params = Self::resume_params(&thread);
 					params["config"]["features.realtime_conversation"] = json!(true);

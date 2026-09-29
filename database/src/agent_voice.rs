@@ -47,14 +47,11 @@ impl SqliteStore {
 		}
 		self.run(move |connection| {
             let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
-            let owned:bool=tx.query_row("WITH RECURSIVE family(id) AS (
-                SELECT root_id FROM agent_process_bindings WHERE generation_id=?3
-                UNION SELECT w.id FROM agent_work_items w JOIN family f ON w.parent_goal_id=f.id)
-                SELECT EXISTS(SELECT 1 FROM agent_work_items w JOIN process_generations g ON g.generation_id=?3
-                    WHERE w.id=?1 AND w.codex_thread_id=?2 AND w.dispatch_state IN ('idle','running')
-                    AND w.id IN (SELECT id FROM family) AND g.state='ready')",
-                params![call.work_id,call.thread_id,call.generation_id],|r|r.get(0)).map_err(sqlite_error)?;
-            if !owned || crate::agent_prompt_edit::pending(&tx,&call.work_id)? { return Err(DatabaseError::Conflict.into()); }
+            let bound:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items
+                WHERE id=?1 AND codex_thread_id=?2 AND dispatch_state IN ('idle','running'))",
+                params![call.work_id,call.thread_id],|r|r.get(0)).map_err(sqlite_error)?;
+            if !bound || !crate::agent_process::owns_work(&tx,&call.work_id,Some(&call.generation_id))?
+                || crate::agent_prompt_edit::pending(&tx,&call.work_id)? { return Err(DatabaseError::Conflict.into()); }
             tx.execute("INSERT INTO agent_voice_calls(session_id,work_id,thread_id,generation_id,baseline_turn_id,created_at_micros)
                 VALUES(?1,?2,?3,?4,?5,?6)",params![call.session_id,call.work_id,call.thread_id,call.generation_id,call.baseline_turn_id,unix_micros()?]).map_err(sqlite_error)?;
             tx.commit().map_err(sqlite_error)?;

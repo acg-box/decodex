@@ -69,6 +69,25 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 			.await
 			.unwrap()
 	);
+	for (work, thread, allowed) in [
+		("unrelated-manager", "unrelated-native", false),
+		("root", "native-source", true),
+		("branch", "native-fork", true),
+	] {
+		let result = store
+			.begin_agent_voice_call(crate::AgentVoiceCall {
+				session_id: format!("voice-{work}"),
+				work_id: work.into(),
+				thread_id: thread.into(),
+				generation_id: generation_id(1).as_str().into(),
+				baseline_turn_id: None,
+			})
+			.await;
+		assert_eq!(result.is_ok(), allowed, "voice admission for {work}");
+		if allowed {
+			store.close_agent_voice_call(format!("voice-{work}")).await.unwrap();
+		}
+	}
 	assert!(
 		store
 			.agent_thread_is_owned("root".into(), "native-source".into(), generation)
