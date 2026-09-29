@@ -124,6 +124,7 @@ pub(crate) struct AgentSurface {
 	capability_generation: u64,
 	expanded_progress: std::collections::BTreeSet<String>,
 	pages: Vec<String>,
+	closing_pages: std::collections::HashSet<String>,
 	graph_visible: bool,
 	graph_expanded: bool,
 	page_views: std::collections::BTreeMap<String, workspace::PageView>,
@@ -411,6 +412,7 @@ impl AgentSurface {
 			draft_profiles: Default::default(),
 			composer_manager: None,
 			pages: vec![],
+			closing_pages: Default::default(),
 			graph_visible: true,
 			graph_expanded: false,
 			page_views: Default::default(),
@@ -1230,6 +1232,7 @@ impl AgentSurface {
 		self.reset_native_goal();
 		self.snapshot = None;
 		self.pages.clear();
+		self.closing_pages.clear();
 		self.page_views.clear();
 		self.graph_expanded = false;
 		self.history_cache.clear();

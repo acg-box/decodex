@@ -93,6 +93,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn open_page(&mut self, id: &str, cx: &mut Context<Self>) {
+		self.closing_pages.remove(id);
 		self.native_agents.selected = None;
 		if !self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id)) {
 			return;
@@ -214,7 +215,7 @@ impl AgentSurface {
 	}
 
 	fn close_page(&mut self, id: &str, cx: &mut Context<Self>) {
-		self.pages.retain(|p| p != id);
+		self.closing_pages.insert(id.to_owned());
 		if self.selected.as_deref() == Some(id)
 			&& let Some(root) = self.root_id()
 		{
@@ -454,8 +455,7 @@ impl AgentSurface {
 			.min_w_0()
 			.overflow_x_scroll()
 			.flex()
-			.items_center()
-			.gap_1();
+			.items_center();
 		let root = self.root_id();
 		let mut pages = vec![(root.clone().unwrap_or_default(), "Main".to_owned(), false)];
 		if let Some(snapshot) = &self.snapshot {
@@ -522,7 +522,25 @@ impl AgentSurface {
 						})),
 				);
 			}
-			row = row.child(tab);
+			if closable {
+				let visible = !self.closing_pages.contains(&id);
+				let surface = cx.entity().downgrade();
+				row = row.child(crate::ui_motion::TabReveal {
+					id: SharedString::from(format!("tab-reveal-{id}")).into(),
+					visible,
+					child: tab.into_any_element(),
+					closed: Box::new(move |cx| {
+						let _ = surface.update(cx, |s, cx| {
+							if s.closing_pages.remove(&id) {
+								s.pages.retain(|p| p != &id);
+								cx.notify();
+							}
+						});
+					}),
+				});
+			} else {
+				row = row.child(tab.mr(px(4.)));
+			}
 		}
 		row.into_any_element()
 	}
@@ -1501,6 +1519,7 @@ impl AgentSurface {
 				self.selected = None;
 				self.history = None;
 				self.pages.clear();
+				self.closing_pages.clear();
 			},
 			"expanded" => self.graph_expanded = true,
 			"in-use" => {
@@ -2213,7 +2232,7 @@ mod tests {
 			assert!(s.history.as_ref().is_some_and(|(id, _)| id == "verify"));
 			s.close_page("verify", cx);
 			assert_eq!(s.selected.as_deref(), Some("agent"));
-			assert!(s.pages.is_empty());
+			assert!(s.closing_pages.contains("verify"));
 			assert_eq!(s.graph_pan, (15.0, 25.0));
 			assert_eq!(s.graph_zoom, 1.2);
 			assert_eq!(s.graph_scope.as_deref(), Some("release"));
@@ -2225,6 +2244,48 @@ mod tests {
 			window.draw(cx).clear();
 		});
 	}
+	#[gpui::test]
+	fn tab_width_animates_and_reopening_cancels_removal(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(px(1400.), px(900.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.open_page("verify", cx);
+		});
+		visual.update(|w, cx| w.draw(cx).clear());
+		let start = visual.debug_bounds("animated-conversation-tab").unwrap().size.width;
+		std::thread::sleep(std::time::Duration::from_millis(80));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let middle = visual.debug_bounds("animated-conversation-tab").unwrap().size.width;
+		std::thread::sleep(std::time::Duration::from_millis(160));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let full = visual.debug_bounds("animated-conversation-tab").unwrap().size.width;
+		assert!(start < middle && middle < full, "{start:?} {middle:?} {full:?}");
+		let header = visual.debug_bounds("workspace-conversation-header").unwrap();
+		surface.update(visual, |s, cx| s.close_page("verify", cx));
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(80));
+		visual.update(|w, cx| w.draw(cx).clear());
+		let closing = visual.debug_bounds("animated-conversation-tab").unwrap().size.width;
+		assert!(closing > px(0.) && closing < full);
+		surface.update(visual, |s, cx| s.open_page("verify", cx));
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|w, cx| w.draw(cx).clear());
+		surface.update(visual, |s, _| {
+			assert_eq!(s.pages, vec!["verify"]);
+			assert!(s.closing_pages.is_empty());
+		});
+		assert_eq!(visual.debug_bounds("animated-conversation-tab").unwrap().size.width, full);
+		assert_eq!(visual.debug_bounds("workspace-conversation-header").unwrap(), header);
+		surface.update(visual, |s, cx| s.close_page("verify", cx));
+		visual.update(|w, cx| w.draw(cx).clear());
+		std::thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(|w, cx| w.draw(cx).clear());
+		visual.run_until_parked();
+		surface.update(visual, |s, _| assert!(s.pages.is_empty()));
+	}
+
 	#[gpui::test]
 	fn manager_switches_keep_drafts_with_their_recipient(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
