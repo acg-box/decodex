@@ -698,8 +698,13 @@ impl ServiceApplication {
 			})
 			.collect();
 
+		let native = match &self.agent {
+			Some(agent) => agent.process_diagnostics().await,
+			None => decodex_protocol::NativeProcessDiagnostics::Inactive,
+		};
 		DoctorReport::new(self.doctor.server_id().clone(), self.doctor.version(), checks)
 			.expect("refresh preserves the bounded closed doctor shape")
+			.with_native_process(native)
 	}
 }
 

@@ -13,12 +13,35 @@ use crate::{ProtocolVersion, ServerId};
 /// Maximum number of typed checks in one doctor report.
 pub const MAX_DOCTOR_CHECKS: usize = 32;
 
+/// One refresh of the active native process; this is not a leak diagnosis.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum NativeProcessDiagnostics {
+	/// No native Agent process is active. A Health refresh does not start one.
+	Inactive,
+	/// The installed native process has no diagnostics endpoint.
+	Unsupported,
+	/// The sample failed or its process changed during the query.
+	Unavailable,
+	/// Native process-local resource observations.
+	Available {
+		/// Native process ID.
+		process_id: u32,
+		/// Resident memory, when the platform reports it.
+		resident_memory_bytes: Option<u64>,
+		/// Physical footprint, when the platform reports it.
+		physical_footprint_bytes: Option<u64>,
+	},
+}
+
 /// One authoritative, server-produced doctor/status report.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct DoctorReport {
 	server_id: ServerId,
 	version: ProtocolVersion,
 	checks: Vec<DoctorCheck>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	native_process: Option<NativeProcessDiagnostics>,
 }
 impl DoctorReport {
 	/// Construct a bounded report with at most one check for each typed component.
@@ -37,7 +60,18 @@ impl DoctorReport {
 			return Err(DoctorContractError::DuplicateComponent);
 		}
 
-		Ok(Self { server_id, version, checks })
+		Ok(Self { server_id, version, checks, native_process: None })
+	}
+
+	/// Attach an optional process observation without changing component readiness.
+	pub fn with_native_process(mut self, observation: NativeProcessDiagnostics) -> Self {
+		self.native_process = Some(observation);
+		self
+	}
+
+	/// Most recent native process observation in this report.
+	pub fn native_process(&self) -> Option<&NativeProcessDiagnostics> {
+		self.native_process.as_ref()
 	}
 
 	/// Stable identity of the server host that produced the report.
@@ -80,11 +114,15 @@ impl<'de> Deserialize<'de> for DoctorReport {
 			server_id: ServerId,
 			version: ProtocolVersion,
 			checks: Vec<DoctorCheck>,
+			native_process: Option<NativeProcessDiagnostics>,
 		}
 
 		let raw = RawDoctorReport::deserialize(deserializer)?;
 
-		Self::new(raw.server_id, raw.version, raw.checks).map_err(D::Error::custom)
+		let mut report =
+			Self::new(raw.server_id, raw.version, raw.checks).map_err(D::Error::custom)?;
+		report.native_process = raw.native_process;
+		Ok(report)
 	}
 }
 
@@ -310,6 +348,14 @@ mod tests {
 
 		assert!(encoded.contains("unsafe_host_path"));
 		assert_eq!(serde_json::from_str::<DoctorReport>(&encoded).unwrap(), report);
+		let observed =
+			report.clone().with_native_process(super::NativeProcessDiagnostics::Available {
+				process_id: 42,
+				resident_memory_bytes: Some(1024),
+				physical_footprint_bytes: None,
+			});
+		let encoded = serde_json::to_string(&observed).unwrap();
+		assert_eq!(serde_json::from_str::<DoctorReport>(&encoded).unwrap(), observed);
 
 		let duplicate = DoctorReport::new(
 			ServerId::new("server").unwrap(),

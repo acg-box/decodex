@@ -4995,6 +4995,30 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.into_any_element()
 }
 
+fn native_process_summary(value: Option<&decodex_protocol::NativeProcessDiagnostics>) -> String {
+	use decodex_protocol::NativeProcessDiagnostics as Native;
+	let memory = |value: Option<u64>| {
+		value.map_or_else(
+			|| "Not reported".into(),
+			|bytes| format!("{:.1} MiB", bytes as f64 / 1_048_576.),
+		)
+	};
+	match value {
+		None => "No native process sample yet.".into(),
+		Some(Native::Inactive) => "No active Agent process. Refresh does not start one.".into(),
+		Some(Native::Unsupported) =>
+			"This Codex version does not provide process diagnostics.".into(),
+		Some(Native::Unavailable) =>
+			"The process sample is unavailable. Refresh to try again.".into(),
+		Some(Native::Available { process_id, resident_memory_bytes, physical_footprint_bytes }) =>
+			format!(
+				"PID {process_id} · Resident: {} · Physical footprint: {}",
+				memory(*resident_memory_bytes),
+				memory(*physical_footprint_bytes)
+			),
+	}
+}
+
 fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 	let presentation = health_presentation(snapshot);
 
@@ -5042,6 +5066,30 @@ fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 				.flex()
 				.flex_col()
 				.gap_4()
+				.child(
+					div()
+						.id("health-native-process")
+						.flex()
+						.flex_col()
+						.gap_2()
+						.child(
+							div()
+								.text_size(px(12.))
+								.font_weight(FontWeight::SEMIBOLD)
+								.child("Active Agent process"),
+						)
+						.child(div().text_size(px(11.)).text_color(rgb(WB_TEXT_MUTED)).child(
+							native_process_summary(
+								snapshot.report.as_ref().and_then(|report| report.native_process()),
+							),
+						))
+						.child(
+							div()
+								.text_size(px(11.))
+								.text_color(rgb(WB_TEXT_MUTED))
+								.child("Process-local snapshot from the latest Health refresh."),
+						),
+				)
 				.child(health_component_section(
 					"health-core-components",
 					"Core services",
@@ -6783,6 +6831,21 @@ mod tests {
 			account_rejection_label(AccountCommandRejectionDto::CredentialNeedsLogin),
 			"This account needs you to sign in again."
 		);
+	}
+
+	#[test]
+	fn native_health_keeps_missing_memory_distinct_from_zero() {
+		use decodex_protocol::NativeProcessDiagnostics as Native;
+		let text = native_process_summary(Some(&Native::Available {
+			process_id: 42,
+			resident_memory_bytes: None,
+			physical_footprint_bytes: Some(0),
+		}));
+		assert!(text.contains("PID 42"));
+		assert!(text.contains("Resident: Not reported"));
+		assert!(text.contains("Physical footprint: 0.0 MiB"));
+		assert!(native_process_summary(Some(&Native::Inactive)).contains("does not start"));
+		assert!(native_process_summary(Some(&Native::Unsupported)).contains("does not provide"));
 	}
 
 	#[test]
