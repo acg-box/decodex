@@ -288,9 +288,19 @@ impl AgentCoordinator {
 					if voice.transcript_complete[index] {
 						voice.save_transcript_tail(&self.store, &id, index).await?;
 					}
-					voice.transcript_tail[index].clear();
-					append_transcript_tail(&mut voice.transcript_tail[index], text);
-					voice.transcript_complete[index] = text.len() <= TRANSCRIPT_TAIL_BYTES;
+					if text.is_empty() {
+						return Ok(());
+					}
+					// Native V3 can publish an old final after newer speech deltas.
+					// Preserve that received suffix, but do not mark it finalized.
+					let delayed = voice.transcript_tail[index].len() > text.len()
+						&& voice.transcript_tail[index].starts_with(text);
+					if !delayed {
+						voice.transcript_tail[index].clear();
+						append_transcript_tail(&mut voice.transcript_tail[index], text);
+					}
+					voice.transcript_complete[index] =
+						!delayed && text.len() <= TRANSCRIPT_TAIL_BYTES;
 					voice.save_transcript_tail(&self.store, &id, index).await?;
 				}
 			},
