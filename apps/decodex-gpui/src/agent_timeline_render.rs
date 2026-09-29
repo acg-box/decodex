@@ -60,11 +60,18 @@ impl AgentSurface {
                 || (kind == "agentMessage" && phase.as_deref() == Some("commentary"))));
 		let content = if process {
 			div()
-				.ml(gpui::px(8.))
-				.border_l_1()
-				.border_color(gpui::rgba(0xffffff14))
-				.pl(gpui::px(14.))
-				.child(content)
+				.w_full()
+				.min_w_0()
+				.pl(gpui::px(8.))
+				.child(
+					div()
+						.w_full()
+						.min_w_0()
+						.border_l_1()
+						.border_color(gpui::rgba(0xffffff14))
+						.pl(gpui::px(14.))
+						.child(content),
+				)
 				.into_any_element()
 		} else {
 			content
@@ -431,7 +438,7 @@ impl AgentSurface {
 							div().child(symbol).into_any_element()
 						}),
 				)
-				.child(div().flex_1().min_w_0().child(label))
+				.child(div().flex_1().min_w_0().text_ellipsis().child(label))
 				.when(matches!(activity.status.as_str(), "failed" | "declined"), |d| {
 					d.child(activity.status.clone())
 				})

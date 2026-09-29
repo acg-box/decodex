@@ -925,7 +925,7 @@ impl AgentSurface {
 	}
 
 	fn command_connection_ready(&self) -> bool {
-		self.state == LoadState::Ready
+		*self.displayed_load_state() == LoadState::Ready
 			|| (self.state == LoadState::Loading
 				&& self.status_before_refresh.is_none()
 				&& self.snapshot.is_some())
