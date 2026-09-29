@@ -149,6 +149,7 @@ struct Header<'a> {
 	method: Option<&'a str>,
 }
 
+#[allow(clippy::too_many_arguments)] // Keep bridge I/O, revocation and credential callback explicit.
 fn pump(
 	writer: &mut Box<dyn Write + Send>,
 	stdout: Receiver<InboundFrame>,
@@ -257,9 +258,9 @@ fn validate_goal_attachment_owner(
 
 fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result<(), ClientError> {
 	if let Some(method) = value.get("method") {
-		if matches!(method.as_str(), Some("fs/createDirectory" | "fs/writeFile")) {
+		if let Some(method @ ("fs/createDirectory" | "fs/writeFile")) = method.as_str() {
 			return if decodex_codex::app_server_client::is_goal_attachment_write(
-				method.as_str().unwrap(),
+				method,
 				&value["params"],
 			) {
 				Ok(())

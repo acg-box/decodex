@@ -45,7 +45,6 @@ pub enum ConversationInitialRouteOutcome {
 	Fresh(ConversationInitialRoute),
 	Replayed(ConversationInitialRoute),
 	Rejected(RoutingRejection),
-	ReplayedRejection(RoutingRejection),
 }
 
 /// Exact non-selecting continuation binding over one active Conversation session.

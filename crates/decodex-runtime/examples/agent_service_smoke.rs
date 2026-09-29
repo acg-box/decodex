@@ -12,6 +12,7 @@ use rusqlite as _;
 #[cfg(target_os = "macos")] use security_framework as _;
 use serde as _;
 use sha2 as _;
+use time as _;
 use tokio_tungstenite as _;
 use zeroize as _;
 // Uses a disposable database, enrolling the current Codex login through AccountClient.

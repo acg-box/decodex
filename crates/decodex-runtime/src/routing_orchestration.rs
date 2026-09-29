@@ -247,11 +247,8 @@ impl ExecutionCoordinator {
 			Ok(ConversationInitialRouteOutcome::Rejected(rejection))
 				if rejection.code == "initial_model_source_changed" =>
 				return PreProcessOutcome::ModelSettingsReviewRequired,
-			Ok(
-				ConversationInitialRouteOutcome::Rejected(_)
-				| ConversationInitialRouteOutcome::ReplayedRejection(_),
-			)
-			| Err(_) => return failed(ExecutionFailureKind::Other),
+			Ok(ConversationInitialRouteOutcome::Rejected(_)) | Err(_) =>
+				return failed(ExecutionFailureKind::Other),
 		};
 		match route.decision.kind {
 			AccountRegistryRoutingDecisionKind::Selected =>
