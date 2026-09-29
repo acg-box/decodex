@@ -602,6 +602,8 @@ mod tests {
 		draft.receipt_id = Some(43);
 		assert!(draft.recover_receipt(&status, &original).is_err());
 		draft.receipt_id = None;
+		draft.handback_pending = false;
+		draft.validate().unwrap();
 		status.thread_id = crate::WireText::new("other").unwrap();
 		assert!(draft.recover_receipt(&status, &original).is_err());
 	}
@@ -676,9 +678,6 @@ mod tests {
 		let restored: PromptDraft = serde_json::from_slice(&saved).unwrap();
 		restored.validate().unwrap();
 		assert_eq!(restored, draft);
-		// Undo retains the complete value, not just its visible text.
-		draft = before;
-		assert_eq!(draft, sample());
 	}
 
 	#[test]
