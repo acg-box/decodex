@@ -337,6 +337,10 @@ impl AgentHost {
 		self.runtime.agent_catalog_client().map(|(generation, _)| generation.as_str().to_owned())
 	}
 
+	pub(crate) async fn process_diagnostics(&self) -> decodex_protocol::NativeProcessDiagnostics {
+		crate::native_diagnostics::read(|| self.runtime.agent_catalog_client()).await
+	}
+
 	pub(crate) async fn runtime_source(&self) -> Option<decodex_protocol::EntityId> {
 		use sha2::{Digest, Sha256};
 		let (generation, account, revision, client) = self.runtime.agent_usage_source().await?;
