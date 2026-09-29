@@ -3,9 +3,6 @@ type: Architecture
 title: Conversation presentation and motion
 description: How Decodex keeps final answers readable, retains work details, and renders loading and floating controls without disturbing the transcript.
 tags: [desktop, conversation, motion]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T06:24:17.023Z
 sources:
   - id: openwiki-source-15d320ea458ddf705d950ba9
     resource: repo://apps/decodex-gpui/src/agent_response_metrics.rs
@@ -16,6 +13,9 @@ sources:
   - id: openwiki-source-afbf2d30c0979a844373d8e5
     resource: repo://apps/decodex-gpui/src/ui_motion.rs
 generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T09:20:11.292Z
 ---
 
 # Conversation presentation and motion

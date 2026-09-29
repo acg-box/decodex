@@ -18,10 +18,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
-generated: { by: "codex", at: "2026-09-29T06:49:47.866Z" }
+generated: { by: "codex", at: "2026-09-29T09:20:11.292Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-09-29T06:49:47.866Z
+    at: 2026-09-29T09:20:11.292Z
 ---
 
 
@@ -29,7 +29,7 @@ verified:
 
 ## Product and storage
 
-Decodex is a local general-purpose agent workspace. Agent is the primary conversation and can organize workers and subordinate Agents. Ordinary native Conversations remain a separate execution path. The service is `decodex serve`; SQLite is the sole normal durable store, at schema version 51. The exact local protocol is 2.99.
+Decodex is a local general-purpose agent workspace. Agent is the primary conversation and can organize workers and subordinate Agents. Ordinary native Conversations remain a separate execution path. The service is `decodex serve`; SQLite is the sole normal durable store. The embedded migration ledger defines its schema version. `CURRENT_VERSION` in the protocol crate defines the exact client/service protocol.
 
 Clients do not read SQLite, provider credentials or Codex auth files. The signed app contains one GUI executable, one unified service helper and native libraries. Attached glass windows are presentation components, not new state owners.
 

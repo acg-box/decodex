@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:303f6d8b2042d8fee7c438a35b2f5f7fd860f3b163c907d216c5fe9057a1a7c5",
+  "pageVersion": "sha256:4494b95ea4f1fb1508781c1b71e0a9f3698f36edec75154f3dd59ed1779e688a",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
       "statement": "Completed process groups require a successful turn boundary and an explicit nonempty final answer; interleaved user inputs, attachments and interactive items retain their positions.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline_groups.rs#L14-L74",
-          "version": "repo-lines-v1:sha256:a1a20e8d1ed06d0ff1fdde3322fef89530bae3145ad45b4584c54b46020df0d6:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxOGZlYmM4MWMyNzI5YTdiNjM2MGRiZGZmNTBmYjZjOTViOGVkMzM0MmEwNjE0NTg4YTA3MjQwMDI5MTMxMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzZDBmNjk3Y2NlNjViYTY5MGIwZDI1ZDc5MTdjMWRhYTM5NDVlZTFmZWUwZWNiYjJlNjYwNGRhNjYwNjVlNDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ2NDA3MTllOWIwMWJmMjc5NWY0ZTdhYjU1OTMxN2ZmZWNmMDBlOWY2NGU4NDk1NTk3NTc0ODQ0NTBlNGYxZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiY2M3MDE3MDk4OGFiZThlMjUwYWU5YTBmYTNlNDU4NDA2MDI4MDQwZjM2OTkxMGFmMzM0NjRiODRmODc4OWIifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_groups.rs#L39-L106",
+          "version": "repo-lines-v1:sha256:d9c0f10ff428056c3463179149a813178a87b6d5c8574e14fb259e19a86db922:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlODA3MWY4ZmUwMmRkYjM1NGNkNjhjNGJkNDVkYzMyYjAwN2E2OTJjYTI1ZTk0NmMwZTZjYmVmNzJkYWI4NGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzZjczYzEwZDg5MzMzYWE3ZDFjZDZiOTE1MDM2NTE0NjNjZWYxYjc1YjI0MGJiNjE0OGVhYzdmNzgxOTViNWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ0NDM0MzYxMzZmZWJhOTE4YWI5YWMwZDg3ZjAzZWFlMmI0ZWEwODA2MjZjN2I0YzE0ZjY2ZTg1MGIzOTZiOWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIifQ"
         }
       ]
     },
@@ -49,6 +49,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-29T06:24:17.023Z"
+    "at": "2026-09-29T09:20:11.292Z"
   }
 }
