@@ -12,7 +12,7 @@ async fn plugin_recovery_requires_dead_old_process_and_current_complete_owner_fa
 		let dir = tempfile::tempdir().unwrap();
 		let path = dir.path().join("plugins.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
-		let (reserved, attempt) = prepare_unknown_plugin_selection(&store, profile).await;
+		prepare_unknown_plugin_selection(&store, profile).await;
 		confirm_original_process_death(&store).await;
 		assert!(matches!(
 			store
@@ -82,9 +82,6 @@ async fn plugin_recovery_requires_dead_old_process_and_current_complete_owner_fa
 			store.agent_plugin_receipt("root".into(), "task".into()).await.unwrap().unwrap().state,
 			expected
 		);
-		assert!(
-			!store.finish_agent_plugin_selection(reserved, attempt, "queued".into()).await.unwrap()
-		);
 		drop(store);
 		let store = SqliteStore::open_test(&path).unwrap();
 		assert_eq!(
@@ -96,10 +93,7 @@ async fn plugin_recovery_requires_dead_old_process_and_current_complete_owner_fa
 	}
 }
 
-async fn prepare_unknown_plugin_selection(
-	store: &SqliteStore,
-	profile: Option<&str>,
-) -> (i64, crate::AgentPluginAttempt) {
+async fn prepare_unknown_plugin_selection(store: &SqliteStore, profile: Option<&str>) {
 	seed(store).await;
 	store.bind_agent_thread("root".into(), "task".into()).await.unwrap();
 	store
@@ -127,13 +121,7 @@ async fn prepare_unknown_plugin_selection(
 		review_token: DIGEST.into(),
 		attempt_id: "first".into(),
 	};
-	let reserved = store.reserve_agent_plugin_selection(attempt.clone()).await.unwrap().unwrap();
-	assert!(
-		store
-			.finish_agent_plugin_selection(reserved, attempt.clone(), "unknown".into())
-			.await
-			.unwrap()
-	);
+	crate::agent_plugins::seed_legacy_selection(store, attempt, Some("unknown")).await;
 	store
 		.mark_process_generation_death_unknown(
 			&generation_id(1),
@@ -165,5 +153,4 @@ async fn prepare_unknown_plugin_selection(
 		store.agent_plugin_receipt("root".into(), "task".into()).await.unwrap().unwrap().state,
 		"unknown"
 	);
-	(reserved, attempt)
 }

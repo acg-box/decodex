@@ -1,9 +1,8 @@
-//! Durable plugin selection attempts. A queued response never proves application.
+//! Read and reconcile historical plugin selections after local plugin writes were retired.
 use crate::{SqliteStore, StoreError, agent_process::owns_work, error::sqlite_error, unix_micros};
-use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
+use rusqlite::{OptionalExtension as _, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest as _, Sha256};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AgentPluginAttempt {
@@ -32,78 +31,11 @@ fn valid_ids(ids: &[String]) -> bool {
 		&& ids.iter().collect::<std::collections::HashSet<_>>().len() == ids.len()
 }
 
-impl AgentPluginAttempt {
-	fn validate(&self) -> Result<(), StoreError> {
-		if [&self.work, &self.thread, &self.attempt_id]
-			.into_iter()
-			.chain(self.generation.iter())
-			.any(|s| s.trim().is_empty() || s.len() > 512 || s.chars().any(char::is_control))
-			|| !valid_ids(&self.disabled_plugin_ids)
-			|| self.settings_event <= 0
-			|| self.review_token.len() != 64
-			|| !self.review_token.bytes().all(|b| b.is_ascii_hexdigit())
-		{
-			return Err(StoreError::InvalidInput("invalid plugin selection"));
-		}
-		Ok(())
-	}
-
-	fn key(&self) -> String {
-		// A new request ID cannot replay an already reserved review.
-		let identity = json!([self.work, self.thread, self.review_token]);
-		let digest: String = Sha256::digest(identity.to_string().as_bytes())
-			.iter()
-			.map(|b| format!("{b:02x}"))
-			.collect();
-		format!("plugin-selection:{digest}")
-	}
-}
-
 pub(crate) fn pending(connection: &rusqlite::Connection, work: &str) -> Result<bool, StoreError> {
 	connection.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events e WHERE e.work_item_id=?1 AND e.event_kind='plugin_selection' AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND r.event_kind='plugin_selection_result' AND json_extract(r.payload,'$.state')='rejected') OR (r.source_event_id=e.source_event_id||':observation' AND r.event_kind='plugin_selection_observation')))", [work], |r|r.get(0)).map_err(|e|sqlite_error(e).into())
 }
 
 impl SqliteStore {
-	/// Reserve one idle or running owned task edit against the exact saved observation. The caller
-	/// must also preserve unrelated exclusions and bind these facts to a current transport
-	/// settings guard.
-	pub async fn reserve_agent_plugin_selection(
-		&self,
-		attempt: AgentPluginAttempt,
-	) -> Result<Option<i64>, StoreError> {
-		attempt.validate()?;
-		self.run(move |connection| {
-			let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
-			if !owns_work(&tx,&attempt.work,attempt.generation.as_deref())? || crate::agent_prompt_edit::pending(&tx,&attempt.work)? || pending(&tx,&attempt.work)? || crate::agent_models::pending(&tx,&attempt.work)? || crate::agent_permissions::pending(&tx,&attempt.work)? { return Ok(None); }
-			let valid: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items w JOIN agent_inbox_events e ON e.work_item_id=w.id WHERE w.id=?1 AND w.codex_thread_id=?2 AND ((w.dispatch_state='idle' AND w.active_turn_id IS NULL) OR (w.dispatch_state='running' AND w.active_turn_id IS NOT NULL)) AND w.status<>'resolved' AND e.id=?4 AND e.event_kind='native_task_plugins' AND json_extract(e.payload,'$.threadId')=?2 AND json_extract(e.payload,'$.generationId') IS ?3 AND json_type(e.payload,'$.settings.disabledPluginIds')='array' AND json_extract(e.payload,'$.settings.disabledPluginIds') IS NOT ?5 AND e.id=(SELECT max(n.id) FROM agent_inbox_events n WHERE n.work_item_id=w.id AND n.event_kind='native_task_plugins' AND json_extract(n.payload,'$.threadId')=?2 AND json_extract(n.payload,'$.generationId') IS ?3))",params![attempt.work,attempt.thread,attempt.generation,attempt.settings_event,serde_json::to_string(&attempt.disabled_plugin_ids).expect("serializable selection")],|r|r.get(0)).map_err(sqlite_error)?;
-			if !valid {return Ok(None);}
-			let conflict: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_misalignment WHERE work_id=?1)",[&attempt.work],|r|r.get(0)).map_err(sqlite_error)?;
-			if conflict {return Ok(None);}
-			let key=attempt.key();
-			let now=unix_micros()?;
-			let changed=tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'plugin_selection',?3,?4,'resolved','Plugin selection reserved; not confirmed.',?4)",params![key,attempt.work,json!({"attempt":attempt}).to_string(),now]).map_err(sqlite_error)?;
-			let id=tx.last_insert_rowid();tx.commit().map_err(sqlite_error)?;Ok((changed==1).then_some(id))
-		}).await
-	}
-
-	/// Append one immutable RPC outcome; it cannot replace a separately observed target state.
-	pub async fn finish_agent_plugin_selection(
-		&self,
-		event: i64,
-		attempt: AgentPluginAttempt,
-		state: String,
-	) -> Result<bool, StoreError> {
-		attempt.validate()?;
-		if !matches!(state.as_str(), "queued" | "rejected" | "unknown") {
-			return Err(StoreError::InvalidInput("invalid plugin response"));
-		}
-		self.run(move |connection| {
-			let key=attempt.key();
-			let expected=json!({"attempt":attempt}).to_string();
-			Ok(connection.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) SELECT source_event_id||':result',work_item_id,'plugin_selection_result',?4,?5,'resolved','Native RPC outcome; application is separate.',?5 FROM agent_inbox_events WHERE id=?1 AND source_event_id=?2 AND payload=?3 AND event_kind='plugin_selection'",params![event,key,expected,json!({"reservation":event,"state":state}).to_string(),unix_micros()?]).map_err(sqlite_error)?==1)
-		}).await
-	}
-
 	pub async fn agent_plugin_receipt(
 		&self,
 		work: String,
@@ -169,6 +101,26 @@ pub(crate) fn observe(
 }
 
 #[cfg(test)]
+pub(crate) async fn seed_legacy_selection(
+	store: &SqliteStore,
+	attempt: AgentPluginAttempt,
+	state: Option<&str>,
+) {
+	let state = state.map(str::to_owned);
+	store.run(move |connection| {
+		// Historical journal rows, not a replacement implementation of the retired writer.
+		let key = format!("plugin-selection:{}", attempt.review_token);
+		let payload = json!({"attempt":{"work":attempt.work,"thread":attempt.thread,"generation":attempt.generation,"settings_event":attempt.settings_event,"disabled_plugin_ids":attempt.disabled_plugin_ids,"review_token":attempt.review_token,"attempt_id":attempt.attempt_id}});
+		connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'plugin_selection',?3,1,'resolved','Historical fixture',1)", params![key,attempt.work,payload.to_string()]).map_err(sqlite_error)?;
+		let id=connection.last_insert_rowid();
+		if let Some(state)=state {
+			connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'plugin_selection_result',?3,2,'resolved','Historical fixture',2)",params![format!("{key}:result"),attempt.work,json!({"reservation":id,"state":state}).to_string()]).map_err(sqlite_error)?;
+		}
+		Ok(())
+	}).await.expect("load historical plugin selection");
+}
+
+#[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::tests::bound_agent_store as setup;
@@ -185,15 +137,15 @@ mod tests {
 			.unwrap()
 			.unwrap()
 	}
-	fn attempt(settings_event: i64, token: char) -> AgentPluginAttempt {
+	fn attempt(settings_event: i64) -> AgentPluginAttempt {
 		AgentPluginAttempt {
 			work: "work".into(),
 			thread: "thread".into(),
 			generation: None,
 			settings_event,
 			disabled_plugin_ids: vec!["scoped".into()],
-			review_token: token.to_string().repeat(64),
-			attempt_id: format!("attempt-{token}"),
+			review_token: "a".repeat(64),
+			attempt_id: "legacy".into(),
 		}
 	}
 	async fn receipt(store: &SqliteStore) -> AgentPluginReceipt {
@@ -201,117 +153,71 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn plugin_reservation_survives_crash_and_blocks_dispatch_until_native_confirmation() {
+	async fn historical_pending_plugin_edits_block_dispatch_until_current_confirmation() {
+		for state in [None, Some("queued"), Some("unknown")] {
+			let dir = tempfile::tempdir().unwrap();
+			let path = dir.path().join("state.sqlite3");
+			let store = setup(&path).await;
+			let observed = facts(&store, Some("readonly"), 'a').await;
+			let original = attempt(observed);
+			seed_legacy_selection(&store, original.clone(), state).await;
+			drop(store);
+			let store = SqliteStore::open_test(&path).unwrap();
+			assert_eq!(receipt(&store).await.attempt, original);
+			assert_eq!(receipt(&store).await.state, state.unwrap_or("reserved"));
+			assert!(store.begin_agent_dispatch("work".into()).await.is_err());
+			assert!(store.begin_agent_tool_upgrade("work".into(), "thread".into()).await.is_err());
+			facts(&store, None, 'b').await;
+			facts(&store, Some("other"), 'c').await;
+			store
+				.record_agent_task_plugins(
+					"thread".into(),
+					None,
+					Some(json!({"disabledPluginIds":["scoped"]}).to_string()),
+					"d".repeat(64),
+				)
+				.await
+				.unwrap();
+			assert_eq!(
+				receipt(&store).await.state,
+				state.unwrap_or("reserved"),
+				"historical or unmatched facts cannot settle a write"
+			);
+			facts(&store, Some("scoped"), 'e').await;
+			assert_eq!(receipt(&store).await.state, "target_observed");
+			assert!(store.begin_agent_dispatch("work".into()).await.is_ok());
+			assert!(store.list_pending_agent_events(100).await.unwrap().is_empty());
+		}
+	}
+
+	#[tokio::test]
+	async fn historical_rejection_is_not_replaced_by_later_plugin_observation() {
 		let dir = tempfile::tempdir().unwrap();
 		let path = dir.path().join("state.sqlite3");
 		let store = setup(&path).await;
 		let observed = facts(&store, Some("readonly"), 'a').await;
-		let a = attempt(observed, 'a');
-		let b = attempt(observed, 'b');
-		let (one, two) = tokio::join!(
-			store.reserve_agent_plugin_selection(a.clone()),
-			store.reserve_agent_plugin_selection(b.clone())
-		);
-		assert_ne!(one.as_ref().unwrap().is_some(), two.as_ref().unwrap().is_some());
-		let (id, winning) =
-			if let Some(id) = one.unwrap() { (id, a) } else { (two.unwrap().unwrap(), b) };
-		assert!(store.begin_agent_dispatch("work".into()).await.is_err());
-		assert!(store.list_pending_agent_events(100).await.unwrap().is_empty());
+		seed_legacy_selection(&store, attempt(observed), Some("rejected")).await;
+		facts(&store, Some("scoped"), 'b').await;
 		drop(store);
 		let store = SqliteStore::open_test(&path).unwrap();
-		assert_eq!(receipt(&store).await.state, "reserved");
-		assert!(store.begin_agent_tool_upgrade("work".into(), "thread".into()).await.is_err());
-		assert!(
-			store.reserve_agent_plugin_selection(attempt(observed, 'c')).await.unwrap().is_none()
-		);
-		assert!(
-			store
-				.finish_agent_plugin_selection(id, winning.clone(), "unknown".into())
-				.await
-				.unwrap()
-		);
-		assert!(!store.finish_agent_plugin_selection(id, winning, "queued".into()).await.unwrap());
-		assert_eq!(receipt(&store).await.state, "unknown");
-		facts(&store, None, 'b').await;
-		assert_eq!(receipt(&store).await.state, "unknown");
-		facts(&store, Some("other"), 'c').await;
-		assert_eq!(receipt(&store).await.state, "unknown");
-		assert!(store.begin_agent_dispatch("work".into()).await.is_err());
-		store
-			.record_agent_task_plugins(
-				"thread".into(),
-				None,
-				Some(json!({"disabledPluginIds":["scoped"]}).to_string()),
-				"d".repeat(64),
-			)
-			.await
-			.unwrap();
-		assert_eq!(
-			receipt(&store).await.state,
-			"unknown",
-			"historical facts cannot settle a write"
-		);
-		facts(&store, Some("scoped"), 'd').await;
-		assert_eq!(receipt(&store).await.state, "target_observed");
+		assert_eq!(receipt(&store).await.state, "rejected");
 		assert!(store.begin_agent_dispatch("work".into()).await.is_ok());
-		assert!(store.list_pending_agent_events(100).await.unwrap().is_empty());
 	}
 
 	#[tokio::test]
-	async fn plugin_publication_before_ack_wins_and_rejected_review_cannot_replay() {
-		let dir = tempfile::tempdir().unwrap();
-		let store = setup(&dir.path().join("state.sqlite3")).await;
-		let first = facts(&store, Some("readonly"), 'a').await;
-		let newer = facts(&store, Some("other"), 'b').await;
-		assert!(store.reserve_agent_plugin_selection(attempt(first, 'a')).await.unwrap().is_none());
-		let a = attempt(newer, 'a');
-		let id = store.reserve_agent_plugin_selection(a.clone()).await.unwrap().unwrap();
-		let mut forged = a.clone();
-		forged.disabled_plugin_ids = vec!["different".into()];
-		assert!(!store.finish_agent_plugin_selection(id, forged, "rejected".into()).await.unwrap());
-		facts(&store, Some("scoped"), 'c').await;
-		assert!(store.finish_agent_plugin_selection(id, a.clone(), "queued".into()).await.unwrap());
-		assert_eq!(receipt(&store).await.state, "target_observed");
-		let reverted = facts(&store, Some("readonly"), 'd').await;
-		let mut replay = a;
-		replay.settings_event = reverted;
-		replay.attempt_id = "new-client-key".into();
-		assert!(store.reserve_agent_plugin_selection(replay).await.unwrap().is_none());
-		let next = attempt(reverted, 'b');
-		let next_id = store.reserve_agent_plugin_selection(next.clone()).await.unwrap().unwrap();
-		assert!(
-			store
-				.finish_agent_plugin_selection(next_id, next.clone(), "rejected".into())
-				.await
-				.unwrap()
-		);
-		facts(&store, Some("scoped"), 'e').await;
-		assert_eq!(receipt(&store).await.state, "rejected");
-		assert!(store.reserve_agent_plugin_selection(next).await.unwrap().is_none());
-		assert!(store.begin_agent_dispatch("work".into()).await.is_ok());
-	}
-	#[tokio::test]
-	async fn running_plugin_and_permission_edits_cannot_race() {
+	async fn historical_plugin_edit_blocks_running_permission_selection() {
 		let dir = tempfile::tempdir().unwrap();
 		let store = setup(&dir.path().join("mixed.sqlite3")).await;
-		let plugin_event = facts(&store, Some("original"), 'a').await;
-		let permission_event=store.record_agent_task_permissions_publication("thread".into(),None,Some(json!({"profileId":":read-only","cwd":"/native","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"}}).to_string()),"a".repeat(64)).await.unwrap().unwrap();
+		let observed = facts(&store, Some("original"), 'a').await;
+		let event=store.record_agent_task_permissions_publication("thread".into(),None,Some(json!({"profileId":":read-only","cwd":"/native","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"}}).to_string()),"a".repeat(64)).await.unwrap().unwrap();
 		store.begin_agent_dispatch("work".into()).await.unwrap();
-		assert!(
-			store
-				.reserve_agent_plugin_selection(attempt(plugin_event, 'a'))
-				.await
-				.unwrap()
-				.is_none()
-		);
 		store.acknowledge_agent_dispatch("work".into(), "active".into()).await.unwrap();
-		let plugin = attempt(plugin_event, 'a');
-		let id = store.reserve_agent_plugin_selection(plugin.clone()).await.unwrap().unwrap();
+		seed_legacy_selection(&store, attempt(observed), Some("unknown")).await;
 		let permission = crate::AgentPermissionAttempt {
 			work: "work".into(),
 			thread: "thread".into(),
 			generation: None,
-			settings_event: permission_event,
+			settings_event: event,
 			profile: "scoped".into(),
 			review_token: "b".repeat(64),
 			attempt_id: "permission".into(),
@@ -319,24 +225,8 @@ mod tests {
 		assert!(
 			store.reserve_agent_permission_selection(permission.clone()).await.unwrap().is_none()
 		);
-		store.finish_agent_plugin_selection(id, plugin, "rejected".into()).await.unwrap();
-		let id =
-			store.reserve_agent_permission_selection(permission.clone()).await.unwrap().unwrap();
-		assert!(
-			store
-				.reserve_agent_plugin_selection(attempt(plugin_event, 'b'))
-				.await
-				.unwrap()
-				.is_none()
-		);
-		store.finish_agent_permission_selection(id, permission, "rejected".into()).await.unwrap();
-		assert!(
-			store
-				.reserve_agent_plugin_selection(attempt(plugin_event, 'b'))
-				.await
-				.unwrap()
-				.is_some()
-		);
+		facts(&store, Some("scoped"), 'c').await;
+		assert!(store.reserve_agent_permission_selection(permission).await.unwrap().is_some());
 		assert_eq!(
 			store.get_agent_work_item("work".into()).await.unwrap().active_turn_id.as_deref(),
 			Some("active")
@@ -377,10 +267,7 @@ mod tests {
 				.unwrap()
 				.is_none()
 		);
-		let attempt = attempt(reverted, 'a');
-		let reserved =
-			store.reserve_agent_plugin_selection(attempt.clone()).await.unwrap().unwrap();
-		store.finish_agent_plugin_selection(reserved, attempt, "queued".into()).await.unwrap();
+		seed_legacy_selection(&store, attempt(reverted), Some("queued")).await;
 		facts(&store, Some("scoped"), 'b').await;
 		assert_eq!(
 			store.read_agent_work_events("work".into(), 1).await.unwrap(),
