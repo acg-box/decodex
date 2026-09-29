@@ -35,30 +35,6 @@ pub enum AgentAppReviewer {
 	AutoReview,
 }
 
-impl AgentAppSettingEdit {
-	/// Exact native leaf name and value; None removes this override only.
-	pub fn native_value(&self) -> (&'static str, Option<&'static str>) {
-		match self {
-			Self::ApprovalMode(mode) => (
-				"default_tools_approval_mode",
-				mode.map(|mode| match mode {
-					AgentAppApprovalMode::Auto => "auto",
-					AgentAppApprovalMode::Prompt => "prompt",
-					AgentAppApprovalMode::Writes => "writes",
-					AgentAppApprovalMode::Approve => "approve",
-				}),
-			),
-			Self::Reviewer(reviewer) => (
-				"approvals_reviewer",
-				reviewer.map(|reviewer| match reviewer {
-					AgentAppReviewer::User => "user",
-					AgentAppReviewer::AutoReview => "auto_review",
-				}),
-			),
-		}
-	}
-}
-
 /// Configuration readback, distinct from effective tool policy or live approval readiness.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
@@ -153,20 +129,13 @@ mod tests {
 	use serde_json::json;
 	#[test]
 	fn setting_edits_preserve_inheritance_and_reject_unoffered_fields_and_values() {
-		for (wire, expected) in [
-			(
-				json!({"field":"approval_mode","value":"prompt"}),
-				("default_tools_approval_mode", Some("prompt")),
-			),
-			(json!({"field":"approval_mode","value":null}), ("default_tools_approval_mode", None)),
-			(
-				json!({"field":"reviewer","value":"auto_review"}),
-				("approvals_reviewer", Some("auto_review")),
-			),
-			(json!({"field":"reviewer","value":null}), ("approvals_reviewer", None)),
+		for wire in [
+			json!({"field":"approval_mode","value":"prompt"}),
+			json!({"field":"approval_mode","value":null}),
+			json!({"field":"reviewer","value":"auto_review"}),
+			json!({"field":"reviewer","value":null}),
 		] {
 			let edit: AgentAppSettingEdit = serde_json::from_value(wire.clone()).unwrap();
-			assert_eq!(edit.native_value(), expected);
 			assert_eq!(serde_json::to_value(edit).unwrap(), wire);
 		}
 		for wire in [
