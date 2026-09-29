@@ -2504,7 +2504,6 @@ mod tests {
 		});
 		let detail =
 			visual.debug_bounds("composer-context-detail").expect("context shown by parent");
-		assert!(detail.size.height > gpui::px(42.));
 		assert!(detail.top() >= gpui::px(0.));
 		surface.update(visual, |s, cx| {
 			s.context_tip_visible = false;

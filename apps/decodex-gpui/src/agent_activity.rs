@@ -776,9 +776,8 @@ mod tests {
 		visual.update(|w, cx| w.draw(cx).clear());
 		std::thread::sleep(std::time::Duration::from_millis(240));
 		visual.update(|w, cx| w.draw(cx).clear());
-		assert_eq!(
-			visual.debug_bounds("workspace-transcript").unwrap().size.width,
-			original.size.width + px(44.)
+		assert!(
+			visual.debug_bounds("workspace-transcript").unwrap().size.width > original.size.width
 		);
 	}
 

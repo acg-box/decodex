@@ -198,7 +198,6 @@ impl RenderOnce for TabReveal {
 			cx.defer(self.closed);
 		}
 		div()
-			.debug_selector(|| "animated-conversation-tab".into())
 			.flex_none()
 			.w(px((width + 4.0) * progress))
 			.h(px(28.0))

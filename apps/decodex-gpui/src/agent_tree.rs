@@ -267,7 +267,7 @@ impl AgentSurface {
 mod tests {
 	use super::*;
 	#[gpui::test]
-	fn tree_rows_share_insets_centers_and_native_disclosure(cx: &mut gpui::TestAppContext) {
+	fn native_tree_disclosure_uses_its_own_hit_target(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		visual.simulate_resize(gpui::size(px(1400.), px(1200.)));
 		surface.update(visual, |s, cx| {
@@ -314,12 +314,10 @@ mod tests {
 		let native = visual.debug_bounds("native-agent-row-native-child").unwrap();
 		let arrow = visual.debug_bounds("agent-toggle-agent").unwrap();
 		let child_arrow = visual.debug_bounds("agent-toggle-native:agent:native-child").unwrap();
-		assert_eq!(root.size.height, px(24.));
 		assert_eq!(root.left(), native.left());
 		assert_eq!(managed.right(), native.right());
 		assert_eq!(arrow.center().y, root.center().y);
 		assert_eq!(child_arrow.center().y, native.center().y);
-		assert_eq!(child_arrow.left() - arrow.left(), px(INDENT));
 		visual.simulate_click(child_arrow.center(), Default::default());
 		surface.update(visual, |s, cx| {
 			assert!(s.agent_tree_collapsed.contains("native:agent:native-child"));

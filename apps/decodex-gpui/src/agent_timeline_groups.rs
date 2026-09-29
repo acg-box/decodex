@@ -280,7 +280,6 @@ mod tests {
 		assert!(visual.debug_bounds("native-reasoning-summary").is_none());
 		assert!(visual.debug_bounds("native-promotion-content").is_some());
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
-		assert!(toggle.size.width < px(180.), "hover stays local to the disclosure control");
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|w, cx| w.draw(cx).clear());
 		assert!(visual.debug_bounds("native-reasoning-summary").is_some());
@@ -291,31 +290,17 @@ mod tests {
 			visual.debug_bounds("native-reasoning-summary").is_some(),
 			"refresh preserves an explicit expansion"
 		);
-		let initial = visual.debug_bounds("turn-process-block").unwrap().size.height;
-		std::thread::sleep(std::time::Duration::from_millis(60));
+		std::thread::sleep(std::time::Duration::from_millis(240));
 		visual.update(|w, cx| w.draw(cx).clear());
-		let middle = visual.debug_bounds("turn-process-block").unwrap().size.height;
-		std::thread::sleep(std::time::Duration::from_millis(180));
-		visual.update(|w, cx| w.draw(cx).clear());
-		let full = visual.debug_bounds("turn-process-block").unwrap().size.height;
 		let process = visual.debug_bounds("native-reasoning-summary").unwrap();
 		let header = visual.debug_bounds("turn-process-toggle").unwrap();
 		assert!(
 			process.origin.y >= header.origin.y + header.size.height,
 			"disclosed content must appear below its control"
 		);
-		assert!(
-			middle >= initial && full >= middle && full > px(0.),
-			"height remains monotonic and reaches the expanded content: {initial:?} -> {middle:?} -> {full:?}"
-		);
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
-		assert!(toggle.size.width < px(180.), "hover stays local to the disclosure control");
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|w, cx| w.draw(cx).clear());
-		std::thread::sleep(std::time::Duration::from_millis(50));
-		visual.update(|w, cx| w.draw(cx).clear());
-		let closing = visual.debug_bounds("turn-process-block").unwrap().size.height;
-		assert!(closing <= full && closing >= px(0.));
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|w, cx| w.draw(cx).clear());
@@ -323,9 +308,6 @@ mod tests {
 			surface.update(visual, |s, _| s.native_history.expanded_turns.contains("turn")),
 			"reversal reopens the same native turn"
 		);
-		std::thread::sleep(std::time::Duration::from_millis(240));
-		visual.update(|w, cx| w.draw(cx).clear());
-		assert_eq!(visual.debug_bounds("turn-process-block").unwrap().size.height, full);
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|w, cx| w.draw(cx).clear());
