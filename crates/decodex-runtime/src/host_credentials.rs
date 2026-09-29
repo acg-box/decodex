@@ -20,12 +20,13 @@ const MAX_CREDENTIAL_RECORD_BYTES: usize = 1024 * 1024;
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct CredentialSecretBundle {
 	access_token: String,
-	refresh_token: String,
+	refresh_token: Option<String>,
 	id_token: Option<String>,
 	plan_type: Option<String>,
 	provider_email: Option<String>,
 	token_type: String,
-	access_token_expires_at_unix_micros: i64,
+	access_token_expires_at_unix_micros: Option<i64>,
+	personal_access_token_user_id: Option<String>,
 }
 impl CredentialSecretBundle {
 	/// Construct the complete ChatGPT bundle needed by Codex login and host refresh.
@@ -51,13 +52,55 @@ impl CredentialSecretBundle {
 
 		Ok(Self {
 			access_token,
-			refresh_token,
+			refresh_token: Some(refresh_token),
 			id_token,
 			plan_type,
 			provider_email,
 			token_type: "bearer".to_owned(),
-			access_token_expires_at_unix_micros,
+			access_token_expires_at_unix_micros: Some(access_token_expires_at_unix_micros),
+			personal_access_token_user_id: None,
 		})
+	}
+
+	/// Construct a PAT bundle after the native whoami endpoint verifies its account and user.
+	/// PAT credentials do not have an OAuth refresh token or a JWT expiry.
+	pub fn personal_access_token(
+		access_token: String,
+		user_id: String,
+		plan_type: Option<String>,
+		provider_email: Option<String>,
+	) -> Result<Self, CredentialStoreError> {
+		if access_token.is_empty()
+			|| access_token.len() > 64 * 1024
+			|| access_token.chars().any(char::is_control)
+			|| user_id.is_empty()
+			|| user_id.len() > 512
+			|| user_id.chars().any(char::is_control)
+			|| provider_email.as_ref().is_some_and(|email| {
+				email.is_empty() || email.len() > 320 || email.chars().any(char::is_control)
+			}) {
+			return Err(CredentialStoreError::InvalidBundle);
+		}
+		Ok(Self {
+			access_token,
+			refresh_token: None,
+			id_token: None,
+			plan_type,
+			provider_email,
+			token_type: "bearer".to_owned(),
+			access_token_expires_at_unix_micros: None,
+			personal_access_token_user_id: Some(user_id),
+		})
+	}
+
+	/// Whether this bundle uses native personal-access-token authentication.
+	pub fn is_personal_access_token(&self) -> bool {
+		self.personal_access_token_user_id.is_some()
+	}
+
+	/// Borrow the user identity returned by PAT whoami.
+	pub fn personal_access_token_user_id(&self) -> Option<&str> {
+		self.personal_access_token_user_id.as_deref()
 	}
 
 	/// Borrow the access token for one immediate Codex projection.
@@ -66,8 +109,8 @@ impl CredentialSecretBundle {
 	}
 
 	/// Borrow the refresh token for one serialized provider refresh.
-	pub fn refresh_token(&self) -> &str {
-		&self.refresh_token
+	pub fn refresh_token(&self) -> Option<&str> {
+		self.refresh_token.as_deref()
 	}
 
 	/// Borrow the optional ID token.
@@ -85,13 +128,13 @@ impl CredentialSecretBundle {
 		self.provider_email.as_deref()
 	}
 
-	/// Borrow the closed OAuth token type.
+	/// Borrow the bearer token type shared by OAuth and PAT authentication.
 	pub fn token_type(&self) -> &str {
 		&self.token_type
 	}
 
-	/// Return the exact access-token expiry in Unix microseconds.
-	pub const fn access_token_expires_at_unix_micros(&self) -> i64 {
+	/// Return the JWT expiry in Unix microseconds. PAT credentials have no JWT expiry.
+	pub const fn access_token_expires_at_unix_micros(&self) -> Option<i64> {
 		self.access_token_expires_at_unix_micros
 	}
 
@@ -103,7 +146,7 @@ impl CredentialSecretBundle {
 		version: CredentialVersion,
 		provider: &ProviderIdentity,
 	) -> Result<CredentialBinding, CredentialStoreError> {
-		let persisted = PersistedCredentialV1::new(
+		let persisted = PersistedCredential::new(
 			account_id,
 			writer_operation_id,
 			version,
@@ -145,12 +188,13 @@ impl StoredCredential {
 			&mut self.bundle,
 			CredentialSecretBundle {
 				access_token: String::new(),
-				refresh_token: String::new(),
+				refresh_token: None,
 				id_token: None,
 				plan_type: None,
 				provider_email: None,
 				token_type: String::new(),
-				access_token_expires_at_unix_micros: 0,
+				access_token_expires_at_unix_micros: None,
+				personal_access_token_user_id: None,
 			},
 		)
 	}
@@ -258,7 +302,7 @@ impl Display for CredentialStoreError {
 
 #[derive(Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 #[serde(deny_unknown_fields)]
-struct PersistedCredentialV1 {
+struct PersistedCredential {
 	schema_version: u16,
 	account_id: String,
 	credential_version: u64,
@@ -266,14 +310,16 @@ struct PersistedCredentialV1 {
 	provider: String,
 	provider_account_id: String,
 	access_token: String,
-	refresh_token: String,
+	refresh_token: Option<String>,
 	id_token: Option<String>,
 	plan_type: Option<String>,
 	provider_email: Option<String>,
 	token_type: String,
-	access_token_expires_at_unix_micros: i64,
+	access_token_expires_at_unix_micros: Option<i64>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	personal_access_token_user_id: Option<String>,
 }
-impl PersistedCredentialV1 {
+impl PersistedCredential {
 	fn new(
 		account_id: &AccountId,
 		writer_operation_id: &AccountOperationId,
@@ -282,7 +328,11 @@ impl PersistedCredentialV1 {
 		mut bundle: CredentialSecretBundle,
 	) -> Self {
 		Self {
-			schema_version: CredentialStoreSchemaVersion::V1.get(),
+			schema_version: if bundle.is_personal_access_token() {
+				CredentialStoreSchemaVersion::V2.get()
+			} else {
+				CredentialStoreSchemaVersion::V1.get()
+			},
 			account_id: account_id.as_str().to_owned(),
 			credential_version: version.get(),
 			writer_operation_id: writer_operation_id.as_str().to_owned(),
@@ -295,6 +345,7 @@ impl PersistedCredentialV1 {
 			provider_email: std::mem::take(&mut bundle.provider_email),
 			token_type: std::mem::take(&mut bundle.token_type),
 			access_token_expires_at_unix_micros: bundle.access_token_expires_at_unix_micros,
+			personal_access_token_user_id: bundle.personal_access_token_user_id.take(),
 		}
 	}
 
@@ -325,14 +376,36 @@ impl PersistedCredentialV1 {
 	}
 
 	fn into_bundle(mut self) -> Result<CredentialSecretBundle, CredentialStoreError> {
+		if self.schema_version == CredentialStoreSchemaVersion::V2.get() {
+			if self.refresh_token.is_some()
+				|| self.id_token.is_some()
+				|| self.access_token_expires_at_unix_micros.is_some()
+				|| self.token_type != "bearer"
+			{
+				return Err(CredentialStoreError::CorruptBundle);
+			}
+			return CredentialSecretBundle::personal_access_token(
+				std::mem::take(&mut self.access_token),
+				self.personal_access_token_user_id
+					.take()
+					.ok_or(CredentialStoreError::CorruptBundle)?,
+				self.plan_type.take(),
+				self.provider_email.take(),
+			);
+		}
+		if self.schema_version != CredentialStoreSchemaVersion::V1.get()
+			|| self.personal_access_token_user_id.is_some()
+		{
+			return Err(CredentialStoreError::CorruptBundle);
+		}
 		CredentialSecretBundle::chatgpt(
 			std::mem::take(&mut self.access_token),
-			std::mem::take(&mut self.refresh_token),
+			self.refresh_token.take().ok_or(CredentialStoreError::CorruptBundle)?,
 			self.id_token.take(),
 			self.plan_type.take(),
 			std::mem::take(&mut self.provider_email),
 			std::mem::take(&mut self.token_type),
-			self.access_token_expires_at_unix_micros,
+			self.access_token_expires_at_unix_micros.ok_or(CredentialStoreError::CorruptBundle)?,
 		)
 	}
 
@@ -341,7 +414,7 @@ impl PersistedCredentialV1 {
 	}
 }
 
-fn encode(persisted: &PersistedCredentialV1) -> Result<Zeroizing<Vec<u8>>, CredentialStoreError> {
+fn encode(persisted: &PersistedCredential) -> Result<Zeroizing<Vec<u8>>, CredentialStoreError> {
 	let bytes = serde_json::to_vec(persisted).map_err(|_| CredentialStoreError::InvalidBundle)?;
 	if bytes.len() > MAX_CREDENTIAL_RECORD_BYTES {
 		return Err(CredentialStoreError::InvalidBundle);
@@ -352,7 +425,7 @@ fn encode(persisted: &PersistedCredentialV1) -> Result<Zeroizing<Vec<u8>>, Crede
 
 fn decode(
 	bytes: Vec<u8>,
-) -> Result<(PersistedCredentialV1, CredentialFingerprint), CredentialStoreError> {
+) -> Result<(PersistedCredential, CredentialFingerprint), CredentialStoreError> {
 	if bytes.len() > MAX_CREDENTIAL_RECORD_BYTES {
 		return Err(CredentialStoreError::CorruptBundle);
 	}
@@ -438,7 +511,7 @@ mod optional_email_tests {
 			if let Some(email) = email.clone() {
 				record["provider_email"] = email;
 			}
-			let decoded: PersistedCredentialV1 = serde_json::from_value(record).unwrap();
+			let decoded: PersistedCredential = serde_json::from_value(record).unwrap();
 			let encoded = serde_json::to_value(&decoded).unwrap();
 			let bundle = decoded.into_bundle().unwrap();
 			assert_eq!(bundle.provider_email(), email.as_ref().and_then(Value::as_str));
@@ -446,4 +519,132 @@ mod optional_email_tests {
 		}
 	}
 	use serde_json::Value;
+}
+
+#[cfg(test)]
+mod personal_access_token_tests {
+	use super::*;
+
+	const OAUTH_RECORD: &[u8] = br#"{"schema_version":1,"account_id":"account","credential_version":1,"writer_operation_id":"operation","provider":"chatgpt","provider_account_id":"provider","access_token":"synthetic-access","refresh_token":"synthetic-refresh","id_token":null,"plan_type":"pro","provider_email":null,"token_type":"bearer","access_token_expires_at_unix_micros":100}"#;
+
+	#[test]
+	fn oauth_record_keeps_exact_bytes_and_fingerprint() {
+		let (record, original_fingerprint) = decode(OAUTH_RECORD.to_vec()).unwrap();
+		let encoded = encode(&record).unwrap();
+		assert_eq!(encoded.as_slice(), OAUTH_RECORD);
+		assert_eq!(fingerprint(&encoded).unwrap(), original_fingerprint);
+		let bundle = record.into_bundle().unwrap();
+		assert!(!bundle.is_personal_access_token());
+		assert_eq!(bundle.refresh_token(), Some("synthetic-refresh"));
+		assert_eq!(bundle.access_token_expires_at_unix_micros(), Some(100));
+	}
+
+	#[test]
+	fn pat_roundtrip_preserves_identity_without_oauth_fields() {
+		let mut record: serde_json::Value = serde_json::from_slice(OAUTH_RECORD).unwrap();
+		record["account_id"] = "20000000-0000-4000-8000-000000000039".into();
+		record["writer_operation_id"] = "30000000-0000-4000-8000-000000000039".into();
+		record["schema_version"] = 2.into();
+		record["refresh_token"] = serde_json::Value::Null;
+		record["access_token_expires_at_unix_micros"] = serde_json::Value::Null;
+		record["personal_access_token_user_id"] = "pat-user".into();
+		let (decoded, _) = decode(serde_json::to_vec(&record).unwrap()).unwrap();
+		let bundle = decoded.into_bundle().unwrap();
+		assert!(bundle.is_personal_access_token());
+		assert_eq!(bundle.personal_access_token_user_id(), Some("pat-user"));
+		assert_eq!(bundle.refresh_token(), None);
+		assert_eq!(bundle.access_token_expires_at_unix_micros(), None);
+		let persisted = PersistedCredential::new(
+			&AccountId::new("20000000-0000-4000-8000-000000000039").unwrap(),
+			&AccountOperationId::new("30000000-0000-4000-8000-000000000039").unwrap(),
+			CredentialVersion::new(1).unwrap(),
+			&ProviderIdentity::new(AccountProvider::Chatgpt, "provider").unwrap(),
+			bundle,
+		);
+		assert_eq!(serde_json::to_value(&persisted).unwrap(), record);
+		assert!(!format!("{:?}", persisted.into_bundle().unwrap()).contains("synthetic-access"));
+	}
+
+	#[test]
+	fn pat_rejects_oauth_material_and_missing_user_identity() {
+		let oauth: serde_json::Value = serde_json::from_slice(OAUTH_RECORD).unwrap();
+		let mut pat = oauth.clone();
+		pat["schema_version"] = 2.into();
+		pat["refresh_token"] = serde_json::Value::Null;
+		pat["access_token_expires_at_unix_micros"] = serde_json::Value::Null;
+		pat["personal_access_token_user_id"] = "pat-user".into();
+		for (key, value) in [
+			("refresh_token", "unexpected-refresh".into()),
+			("id_token", "unexpected-id-token".into()),
+			("access_token_expires_at_unix_micros", 100.into()),
+			("personal_access_token_user_id", serde_json::Value::Null),
+			("schema_version", 1.into()),
+		] {
+			let mut invalid = pat.clone();
+			invalid[key] = value;
+			let decoded: PersistedCredential = serde_json::from_value(invalid).unwrap();
+			assert!(decoded.into_bundle().is_err(), "{key}");
+		}
+	}
+
+	#[tokio::test]
+	async fn pat_store_reopens_and_allows_exact_oauth_reauthentication() {
+		let directory = tempfile::tempdir().unwrap();
+		let root =
+			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let database = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+		let store = SqliteCredentialStore::new(database.clone());
+		let account = AccountId::new("20000000-0000-4000-8000-000000000039").unwrap();
+		let operation = AccountOperationId::new("30000000-0000-4000-8000-000000000039").unwrap();
+		let provider = ProviderIdentity::new(AccountProvider::Chatgpt, "provider").unwrap();
+		let bundle = CredentialSecretBundle::personal_access_token(
+			"synthetic-pat".into(),
+			"pat-user".into(),
+			Some("pro".into()),
+			None,
+		)
+		.unwrap();
+		let binding = bundle
+			.binding_for(&account, &operation, CredentialVersion::new(1).unwrap(), &provider)
+			.unwrap();
+		assert_eq!(binding.schema_version, CredentialStoreSchemaVersion::V2);
+		database
+			.prepare_account_operation(&decodex_database::AccountOperationPreparation {
+				operation_id: operation.clone(),
+				account_id: account.clone(),
+				kind: decodex_core::AccountOperationKind::Enroll,
+				display_label: Some("PAT fixture".into()),
+				enabled: Some(true),
+				expected_account_revision: None,
+				expected: None,
+				target: Some(binding.clone()),
+				provider: provider.clone(),
+			})
+			.await
+			.unwrap();
+		store.create(&account, &binding, bundle).unwrap();
+		drop(store);
+		drop(database);
+		let store =
+			SqliteCredentialStore::new(decodex_database::SqliteStore::open(&root.paths()).unwrap());
+		let restored = store.read_exact(&account, &binding).unwrap();
+		assert_eq!(restored.bundle().access_token(), "synthetic-pat");
+		assert_eq!(restored.bundle().personal_access_token_user_id(), Some("pat-user"));
+		let oauth = CredentialSecretBundle::chatgpt(
+			"synthetic-access".into(),
+			"synthetic-refresh".into(),
+			None,
+			None,
+			None,
+			"bearer".into(),
+			100,
+		)
+		.unwrap();
+		let next = oauth
+			.binding_for(&account, &operation, CredentialVersion::new(2).unwrap(), &provider)
+			.unwrap();
+		store.compare_and_swap_rotate(&account, &binding, &next, oauth).unwrap();
+		assert!(store.read_exact(&account, &binding).is_err());
+		assert!(!store.read_exact(&account, &next).unwrap().bundle().is_personal_access_token());
+	}
 }
