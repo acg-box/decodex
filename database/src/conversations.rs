@@ -1465,7 +1465,7 @@ impl SqliteStore {
 				&key,
 				&request_sha,
 				"admit_initial_quick_task_turn",
-				request.message.conversation_id.as_str(),
+				request.message.turn_id.as_str(),
 			)? {
 				let admission: InitialConversationTurnAdmissionReadback =
 					serde_json::from_str(&response)

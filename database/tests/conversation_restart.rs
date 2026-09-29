@@ -148,24 +148,25 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	assert_eq!(initial_session.state, RuntimeSessionState::Starting);
 	assert_eq!(initial_session.account_snapshot.source_account_id, account_id);
 
+	let admission_request = AdmitInitialConversationTurn {
+		expected_conversation_revision: 1,
+		expected_runtime_session_revision: 1,
+		continuation_plan_id: INITIAL_PLAN_ID.to_owned(),
+		message: history_item(
+			&conversation_id,
+			&initial_session.runtime_session_id,
+			&route.turn_id,
+			1,
+			TurnRole::User,
+			INITIAL_HISTORY_ID,
+			"Start the persisted task.",
+		),
+	};
 	let initial_admission = store
 		.admit_initial_conversation_turn(
 			&blob_store,
 			"conversation-initial-admission",
-			&AdmitInitialConversationTurn {
-				expected_conversation_revision: 1,
-				expected_runtime_session_revision: 1,
-				continuation_plan_id: INITIAL_PLAN_ID.to_owned(),
-				message: history_item(
-					&conversation_id,
-					&initial_session.runtime_session_id,
-					&route.turn_id,
-					1,
-					TurnRole::User,
-					INITIAL_HISTORY_ID,
-					"Start the persisted task.",
-				),
-			},
+			&admission_request,
 		)
 		.await
 		.expect("admit initial user Turn");
@@ -174,6 +175,58 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		InitialConversationTurnAdmissionOutcome::Fresh(ref admission)
 			if admission.turn.turn_id == route.turn_id && admission.turn.revision == 1
 	));
+
+	let admission_replay = store
+		.admit_initial_conversation_turn(
+			&blob_store,
+			"conversation-initial-admission",
+			&admission_request,
+		)
+		.await
+		.expect("replay committed initial turn admission");
+	let InitialConversationTurnAdmissionOutcome::Fresh(original_admission) = &initial_admission
+	else {
+		panic!("original admission is fresh");
+	};
+	assert_eq!(
+		admission_replay,
+		InitialConversationTurnAdmissionOutcome::Replayed(original_admission.clone())
+	);
+
+	let reopened_admission_store = SqliteStore::open(&paths).expect("reopen initial admission");
+	assert_eq!(
+		reopened_admission_store
+			.admit_initial_conversation_turn(
+				&blob_store,
+				"conversation-initial-admission",
+				&admission_request
+			)
+			.await
+			.expect("replay initial admission after reopen"),
+		InitialConversationTurnAdmissionOutcome::Replayed(original_admission.clone())
+	);
+	let mut changed_admission = admission_request.clone();
+	changed_admission.message.text = "Different initial user input".into();
+	assert!(matches!(
+		reopened_admission_store
+			.admit_initial_conversation_turn(
+				&blob_store,
+				"conversation-initial-admission",
+				&changed_admission
+			)
+			.await,
+		Err(decodex_database::StoreError::IdempotencyConflict)
+	));
+	assert_eq!(
+		reopened_admission_store
+			.conversation_history(&blob_store, &conversation_id, None, 10)
+			.await
+			.expect("initial history remains unique")
+			.entries
+			.len(),
+		1
+	);
+	drop(reopened_admission_store);
 
 	let generation_id = ProcessGenerationId::new(GENERATION_ID).expect("generation identity");
 	let process_admission = match store
