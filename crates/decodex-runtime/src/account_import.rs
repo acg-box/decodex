@@ -31,7 +31,7 @@ pub(crate) struct ImportedCredential {
 
 pub(crate) struct DecodedChatgptIdentity {
 	pub provider: ProviderIdentity,
-	pub provider_email: String,
+	pub provider_email: Option<String>,
 	pub plan_type: Option<String>,
 }
 
@@ -163,7 +163,7 @@ struct VersionedImport {
 	schema: String,
 	provider: String,
 	provider_account_id: String,
-	provider_email: String,
+	provider_email: Option<String>,
 	access_token: String,
 	refresh_token: String,
 	id_token: Option<String>,
@@ -261,7 +261,9 @@ fn parse_versioned_import(bytes: &[u8]) -> Result<ImportedCredential, Credential
 		return Err(CredentialImportError::InvalidCredential);
 	}
 	validate_scalar(&import.provider_account_id, MAX_PROVIDER_ACCOUNT_ID_BYTES)?;
-	validate_scalar(&import.provider_email, MAX_EMAIL_BYTES)?;
+	if let Some(email) = &import.provider_email {
+		validate_scalar(email, MAX_EMAIL_BYTES)?;
+	}
 	validate_token(&import.access_token)?;
 	validate_token(&import.refresh_token)?;
 	if let Some(id_token) = import.id_token.as_ref() {
@@ -320,12 +322,14 @@ pub(crate) fn decode_chatgpt_identity(
 	let mut authority = claims.authority.take().ok_or(CredentialImportError::InvalidCredential)?;
 	let provider_account_id =
 		authority.chatgpt_account_id.take().ok_or(CredentialImportError::InvalidCredential)?;
-	let provider_email = claims.email.take().ok_or(CredentialImportError::InvalidCredential)?;
+	let provider_email = claims.email.take();
 	let plan_type = authority.chatgpt_plan_type.take();
 	validate_scalar(&provider_account_id, MAX_PROVIDER_ACCOUNT_ID_BYTES)?;
-	validate_scalar(&provider_email, MAX_EMAIL_BYTES)?;
-	if !provider_email.contains('@') {
-		return Err(CredentialImportError::InvalidCredential);
+	if let Some(email) = &provider_email {
+		validate_scalar(email, MAX_EMAIL_BYTES)?;
+		if !email.contains('@') {
+			return Err(CredentialImportError::InvalidCredential);
+		}
 	}
 	if let Some(plan_type) = plan_type.as_ref() {
 		validate_scalar(plan_type, MAX_PLAN_TYPE_BYTES)?;
@@ -430,8 +434,23 @@ mod tests {
 		.unwrap();
 
 		assert_eq!(identity.provider.account_id(), "fresh-provider-account");
-		assert_eq!(identity.provider_email, "fresh@example.test");
+		assert_eq!(identity.provider_email.as_deref(), Some("fresh@example.test"));
 		assert_eq!(identity.plan_type.as_deref(), Some("pro"));
+	}
+
+	#[test]
+	fn chatgpt_identity_preserves_missing_email_without_relaxing_account_identity() {
+		for email in [None, Some(serde_json::Value::Null)] {
+			let mut claims = json!({"https://api.openai.com/auth":{"chatgpt_account_id":"exact-account","chatgpt_plan_type":"pro"}});
+			if let Some(email) = email {
+				claims["email"] = email;
+			}
+			let identity = decode_chatgpt_identity(&token(claims.clone())).unwrap();
+			assert!(identity.provider_email.is_none());
+			assert_eq!(identity.provider.account_id(), "exact-account");
+			claims["https://api.openai.com/auth"]["chatgpt_account_id"] = json!("");
+			assert!(decode_chatgpt_identity(&token(claims)).is_err());
+		}
 	}
 
 	#[test]
@@ -482,7 +501,7 @@ mod tests {
 		let imported = read_explicit_shared_codex_credential_file(&path).unwrap();
 
 		assert_eq!(imported.provider.account_id(), account_id);
-		assert_eq!(imported.bundle.provider_email(), "fresh@example.test");
+		assert_eq!(imported.bundle.provider_email(), Some("fresh@example.test"));
 		assert_eq!(imported.bundle.plan_type(), Some("pro"));
 	}
 
