@@ -1865,6 +1865,18 @@ impl AgentSurface {
 			turn: (active && self.composer_unavailable_reason().is_none()).then(|| work.id.clone()),
 		});
 
+		if active
+			&& self.native_history_active(work)
+			&& work.active_turn_id.is_some()
+			&& self.native_history.safety_buffering_turn_id == work.active_turn_id
+		{
+			panel = panel.child(
+				div()
+					.id("native-safety-buffering")
+					.role(Role::Status)
+					.child(muted("Waiting for provider safety checks…")),
+			);
+		}
 		panel.children(self.live_chat_caption(&work.id))
 	}
 

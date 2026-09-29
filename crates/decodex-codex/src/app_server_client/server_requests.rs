@@ -20,6 +20,7 @@ pub(super) struct ServerRequests(
 	super::permission_observations::SettingsObservations<super::NativeTaskPlugins>,
 	super::permission_observations::SettingsObservations<super::NativeTaskModelSettings>,
 	super::live_reviews::LiveReviews,
+	super::provider_wait::ProviderWait,
 );
 struct Entry {
 	thread: String,
@@ -98,6 +99,10 @@ fn digest(method: &str, params: &Value) -> [u8; 32] {
 	Sha256::digest(json!([method, params]).to_string().as_bytes()).into()
 }
 impl ServerRequests {
+	pub(super) fn safety_buffering_turn(&self, thread: &str) -> Option<String> {
+		self.8.buffering_turn(thread)
+	}
+
 	pub(super) fn live_misalignment_review(
 		&self,
 		thread: &str,
@@ -260,6 +265,7 @@ impl ServerRequests {
 	}
 
 	pub(super) fn clear(&self) {
+		self.8.clear();
 		self.7.clear();
 		self.3.clear();
 		self.4.clear();
@@ -331,6 +337,7 @@ impl ServerRequests {
 
 	pub(super) fn observe(&self, event: &ServerEvent) -> Result<(), ClientError> {
 		self.7.observe(event)?;
+		self.8.observe(event);
 		self.observe_permission_event(event);
 		let mut rows = self.0.lock().map_err(|_| ClientError::Closed)?;
 		if let ServerEvent::Notification { method, params } = event

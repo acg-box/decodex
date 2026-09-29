@@ -319,6 +319,7 @@ mod tests {
 					],
 					next_cursor: None,
 					weather: Default::default(),
+					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}
 			));

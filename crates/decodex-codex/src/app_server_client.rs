@@ -43,6 +43,7 @@ mod goals;
 mod history;
 mod history_summary;
 mod prompt_edit;
+mod provider_wait;
 mod resume;
 mod transcript;
 pub use goals::{

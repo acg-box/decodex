@@ -478,6 +478,7 @@ impl AgentSurface {
 					if accepted {
 						s.native_history.recovered();
 					} else {
+						s.native_history.safety_buffering_turn_id = None;
 						s.native_history.notice = Some(
 							"History changed or the display limit was reached. Refresh native history.",
 						);
@@ -509,6 +510,7 @@ pub(super) struct Timeline {
 	pub revision: u64,
 	pub binding: Option<Binding>,
 	pub entries: Vec<AgentTimelineEntry>,
+	pub safety_buffering_turn_id: Option<String>,
 	pub weather: std::collections::BTreeMap<String, Vec<decodex_protocol::WeatherForecast>>,
 	summary: Vec<Content>,
 	pub older_cursor: Option<String>,
@@ -600,6 +602,7 @@ impl Timeline {
 		self.binding = None;
 		self.entries.clear();
 		self.weather.clear();
+		self.safety_buffering_turn_id = None;
 		self.summary.clear();
 		self.older_cursor = None;
 		self.opening_session = None;
@@ -624,6 +627,7 @@ impl Timeline {
 			&& page.entries.len() >= self.entries.len() - start
 			&& bounded(self.entries[..start].iter().chain(&page.entries))
 		{
+			self.safety_buffering_turn_id = page.safety_buffering_turn_id;
 			self.weather.extend(page.weather);
 			self.entries.splice(start.., page.entries);
 			return true;
@@ -654,6 +658,7 @@ impl Timeline {
 			self.preview.clear();
 		}
 		self.binding = Some(binding);
+		self.safety_buffering_turn_id = page.safety_buffering_turn_id;
 		self.weather = page.weather;
 		self.entries = page.entries;
 		self.older_cursor = page.next_cursor;
@@ -891,6 +896,7 @@ mod tests {
 				entries: vec![AgentTimelineEntry { position: 77, content: item }],
 				next_cursor: Some("real-cursor".into()),
 				weather: Default::default(),
+				safety_buffering_turn_id: None,
 				active_realtime_session_at_page_start: None
 			}
 		));
@@ -1005,9 +1011,28 @@ mod tests {
 			entries,
 			next_cursor: next.map(str::to_owned),
 			weather: Default::default(),
+			safety_buffering_turn_id: None,
 			active_realtime_session_at_page_start: session.map(str::to_owned),
 		}
 	}
+	#[test]
+	fn safety_buffering_refresh_clears_without_changing_transcript_layout() {
+		let mut state = Timeline::default();
+		let mut current = page(vec![boundary(1, false)], Some("older"), None);
+		current.safety_buffering_turn_id = Some("turn".into());
+		assert!(state.replace(binding(), current.clone()));
+		let revision = state.revision;
+		assert_eq!(state.safety_buffering_turn_id.as_deref(), Some("turn"));
+		current.safety_buffering_turn_id = None;
+		assert!(state.refresh(binding(), current.clone()));
+		assert!(state.safety_buffering_turn_id.is_none());
+		assert_eq!(state.revision, revision);
+		current.safety_buffering_turn_id = Some("turn".into());
+		assert!(state.refresh(binding(), current));
+		state.failed(None, std::time::Instant::now());
+		assert!(state.safety_buffering_turn_id.is_none());
+	}
+
 	#[test]
 	fn unchanged_refresh_keeps_layout_revision_but_same_length_edits_invalidate_it() {
 		let mut state = Timeline::default();
