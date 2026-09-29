@@ -157,10 +157,12 @@ mod tests {
 		}}));
 		assert_eq!(value["turn"]["startedAt"], 1700000000);
 		assert_eq!(value["turn"]["completedAt"], 1700000125);
+		assert_eq!(value["turn"]["durationMs"], 125000);
 		assert_eq!(value["detailsOmitted"], false);
 		let old = terminal(&json!({"turn":{"id":"old","status":"completed"}}));
 		assert!(old["turn"]["startedAt"].is_null());
 		assert!(old["turn"]["completedAt"].is_null());
+		assert!(old["turn"]["durationMs"].is_null());
 		for invalid in [json!(-1), json!("x".repeat(70000)), json!({"unexpected":true})] {
 			let bounded = terminal(&json!({"turn":{"id":"turn","startedAt":invalid,
 				"completedAt":invalid,"durationMs":invalid}}));
@@ -170,15 +172,6 @@ mod tests {
 			assert_eq!(bounded["detailsOmitted"], true);
 			assert!(bounded.to_string().len() < 512);
 		}
-	}
-
-	#[test]
-	fn terminal_preserves_provider_duration_without_inventing_old_metrics() {
-		let value = terminal(
-			&json!({"threadId":"thread","turn":{"id":"turn","status":"completed","durationMs":12345}}),
-		);
-		assert_eq!(value["turn"]["durationMs"], 12345);
-		assert!(terminal(&json!({"turn":{"id":"old"}}))["turn"]["durationMs"].is_null());
 	}
 
 	#[test]
