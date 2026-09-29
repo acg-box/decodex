@@ -748,59 +748,6 @@ impl AgentClient {
 		}
 	}
 
-	/// Inspect app connection settings and the last shared edit.
-	pub async fn app_settings(
-		&self,
-		work_id: EntityId,
-		event_id: i64,
-	) -> Result<crate::AgentAppSettingsResult, ClientFailure> {
-		self.transport.require_local_profile()?;
-		let transport = ResetCardClient {
-			profile: self.transport.profile.clone(),
-			timeout: Duration::from_secs(45),
-		};
-		let completed = time::timeout(
-			Duration::from_secs(45),
-			transport.query_inner(
-				"agent-app-settings",
-				QueryPayload::GetAgentAppSettings { work_id, event_id },
-			),
-		)
-		.await
-		.map_err(|_| ClientFailure::ProtocolTimeout)??;
-		close_one_shot_socket(completed.socket).await;
-		match completed.value {
-			QueryResultPayload::AgentAppSettings(result) => Ok(result),
-			_ => Err(ClientFailure::ProtocolMalformed),
-		}
-	}
-
-	/// Inspect saved app connection settings and the last durable edit.
-	pub async fn saved_app_settings(
-		&self,
-		work_id: EntityId,
-	) -> Result<crate::AgentSavedAppSettingsResult, ClientFailure> {
-		self.transport.require_local_profile()?;
-		let transport = ResetCardClient {
-			profile: self.transport.profile.clone(),
-			timeout: Duration::from_secs(45),
-		};
-		let completed = time::timeout(
-			Duration::from_secs(45),
-			transport.query_inner(
-				"agent-saved-app-settings",
-				QueryPayload::GetAgentSavedAppSettings { work_id },
-			),
-		)
-		.await
-		.map_err(|_| ClientFailure::ProtocolTimeout)??;
-		close_one_shot_socket(completed.socket).await;
-		match completed.value {
-			QueryResultPayload::AgentSavedAppSettings(result) => Ok(result),
-			_ => Err(ClientFailure::ProtocolMalformed),
-		}
-	}
-
 	/// Inspect shared hook settings and the last durable edit.
 	pub async fn hook_settings(
 		&self,
