@@ -150,17 +150,7 @@ pub use self::{
 		WaitingUsageWakeState, WaitingUsageWakeTerminalReason, WaitingUsageWakeTransition,
 		WaitingUsageWakeTransitionKind,
 	},
-	work_item::{
-		MAX_WORK_ITEM_CRITERIA, MAX_WORK_ITEM_GRAPH_EDGES, MAX_WORK_ITEM_GRAPH_NODES,
-		MAX_WORK_ITEM_OBJECTIVES, MAX_WORK_ITEM_READINESS_CONTEXT,
-		MAX_WORK_ITEM_READINESS_RELATIONS, MAX_WORK_ITEM_TEXT_BYTES,
-		MAX_WORK_ITEM_TIMESTAMP_MICROSECONDS, MAX_WORK_ITEM_TITLE_BYTES, ReadinessAssessment,
-		ReadinessObservations, ReadinessReason, RelatedWorkItemObservation, WorkItem,
-		WorkItemCorrelationId, WorkItemEdge, WorkItemEdgeKind, WorkItemError, WorkItemId,
-		WorkItemNode, WorkItemObjectiveObservation, WorkItemObjectiveRef, WorkItemPriority,
-		WorkItemProgramObservation, WorkItemProgramRef, WorkItemProvenance, WorkItemState,
-		WorkItemTimestamp, assess_work_item_readiness, validate_work_item_graph,
-	},
+	work_item::{WorkItemError, WorkItemId, WorkItemState},
 };
 
 #[cfg(test)] use tempfile as _;
