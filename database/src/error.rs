@@ -63,18 +63,6 @@ pub enum StoreError {
 	Blob(StorageError),
 }
 
-impl StoreError {
-	pub fn bootstrap_failure(&self) -> BootstrapFailure {
-		match self {
-			Self::UnsafeHostPath | Self::Database(DatabaseError::UnsafePath) =>
-				BootstrapFailure::UnsafeHostPath,
-			Self::Incompatible(_) | Self::Database(DatabaseError::Incompatible) =>
-				BootstrapFailure::Incompatible,
-			_ => BootstrapFailure::Unreachable,
-		}
-	}
-}
-
 impl Display for StoreError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
