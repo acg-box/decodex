@@ -152,6 +152,7 @@ impl ConversationRuntime {
 		let selected = Arc::new(SelectedWorkingDirectory::acquire(directory).ok()?);
 		let binding =
 			AccountBinding::shared_home_bound(account.clone(), credential.binding, callback)
+				.and_then(|binding| binding.with_credential(&credential.stored))
 				.ok()?;
 		let vault =
 			ConversationCredentialVault { account_id: account.clone(), stored: credential.stored };

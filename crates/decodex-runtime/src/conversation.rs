@@ -4357,6 +4357,7 @@ impl ConversationRuntime {
 				Arc::new(ConversationRefreshCallback { accounts, runtime, generation_id });
 			let binding =
 				AccountBinding::shared_home_bound(account_id.clone(), credential.binding, callback)
+					.and_then(|binding| binding.with_credential(&credential.stored))
 					.map_err(|_| ConversationControlOutcome::Unavailable)?;
 			let vault = ConversationCredentialVault {
 				account_id: account_id.clone(),
@@ -4710,6 +4711,7 @@ impl ConversationRuntime {
 					credential.binding,
 					callback,
 				)
+				.and_then(|binding| binding.with_credential(&credential.stored))
 				.map_err(|_| ConversationManualRecovery::ProcessUnavailable)?;
 				let vault = ConversationCredentialVault {
 					account_id: account_id_for_launch.clone(),
@@ -5927,11 +5929,15 @@ impl CredentialVault for ConversationCredentialVault {
 		}
 		let binding = self.stored.binding();
 		let bundle = self.stored.bundle();
-		projection.authenticate_chatgpt(
-			bundle.access_token(),
-			binding.provider.account_id(),
-			bundle.plan_type(),
-		)?;
+		if bundle.is_personal_access_token() {
+			projection.authenticate_personal_access_token(bundle.access_token())?;
+		} else {
+			projection.authenticate_chatgpt(
+				bundle.access_token(),
+				binding.provider.account_id(),
+				bundle.plan_type(),
+			)?;
+		}
 		Ok(AccountIdentity::from_observation("chatgpt", bundle.provider_email(), true))
 	}
 }

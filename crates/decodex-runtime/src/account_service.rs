@@ -1,5 +1,8 @@
 //! Sole service coordinator for durable account state and credential effects.
 
+mod personal_access_token;
+use personal_access_token::resolve_import;
+
 use std::{
 	collections::HashMap,
 	error::Error,
@@ -708,14 +711,50 @@ impl AccountService {
 		Ok(self.store.read_account_routing_control().await?)
 	}
 
+	/// Resolve a shared PAT against an exact imported credential, without polling whoami.
+	/// Unknown or externally replaced PATs require explicit import/reauthentication.
+	async fn resolve_shared_pat(
+		&self,
+		snapshot: SharedCodexAuthSnapshot,
+	) -> Result<SharedCodexAuthSnapshot, AccountLifecycleError> {
+		let SharedCodexAuthSnapshot::PersonalAccessToken { version, token } = snapshot else {
+			return Ok(snapshot);
+		};
+		for account in self.store.read_account_registry(None, MAX_ACCOUNT_READ).await? {
+			if account.tombstoned {
+				continue;
+			}
+			let Some(binding) = account.credential.as_ref().filter(|binding| {
+				binding.schema_version == decodex_core::CredentialStoreSchemaVersion::V2
+			}) else {
+				continue;
+			};
+			let Ok(stored) = self.credentials.read_exact(&account.account_id, binding) else {
+				continue;
+			};
+			if stored.bundle().is_personal_access_token()
+				&& stored.bundle().access_token() == token.as_str()
+			{
+				return Ok(SharedCodexAuthSnapshot::Managed {
+					version,
+					credential: Box::new(ImportedCredential {
+						provider: binding.provider.clone(),
+						bundle: stored.into_bundle(),
+					}),
+				});
+			}
+		}
+		Ok(SharedCodexAuthSnapshot::PersonalAccessToken { version, token })
+	}
+
 	/// Match the safe shared Codex auth identity against current credential-negative bindings.
 	pub(crate) async fn codex_auth_projection(&self) -> CodexAuthProjectionInspection {
 		let credential = match self.shared_auth.read_current_stable() {
-			StableSharedAuthRead::Ready(snapshot) => match *snapshot {
-				SharedCodexAuthSnapshot::Managed { credential, .. } => credential,
-				SharedCodexAuthSnapshot::Unmanaged { .. } => {
-					return CodexAuthProjectionInspection::Unmanaged;
-				},
+			StableSharedAuthRead::Ready(snapshot) => match self.resolve_shared_pat(*snapshot).await
+			{
+				Ok(SharedCodexAuthSnapshot::Managed { credential, .. }) => credential,
+				Ok(_) => return CodexAuthProjectionInspection::Unmanaged,
+				Err(_) => return CodexAuthProjectionInspection::Unavailable,
 			},
 			StableSharedAuthRead::Waiting | StableSharedAuthRead::Unavailable => {
 				return CodexAuthProjectionInspection::Unavailable;
@@ -776,8 +815,10 @@ impl AccountService {
 		target_binding: &CredentialBinding,
 		snapshot: SharedCodexAuthSnapshot,
 	) -> Result<RouteSharedAuthSnapshot, AccountLifecycleError> {
-		let (version, credential) = match snapshot {
+		let (version, credential) = match self.resolve_shared_pat(snapshot).await? {
 			SharedCodexAuthSnapshot::Managed { version, credential } => (version, *credential),
+			SharedCodexAuthSnapshot::PersonalAccessToken { .. } =>
+				return Err(AccountLifecycleError::AuthSourceAccountUnknown),
 			SharedCodexAuthSnapshot::Unmanaged { version } => {
 				return Ok(RouteSharedAuthSnapshot { version, source: None });
 			},
@@ -1282,16 +1323,19 @@ impl AccountService {
 		expected_revision: i64,
 		snapshot: &SharedCodexAuthSnapshot,
 	) -> Result<Option<(i64, String)>, AccountLifecycleError> {
-		let SharedCodexAuthSnapshot::Managed { credential, .. } = snapshot else {
-			return Ok(None);
-		};
 		let account = self.load_account(account_id).await?;
 		let binding = projection_binding(&account, expected_revision)?;
-		if binding.provider != credential.provider {
-			return Ok(None);
-		}
 		let stored = self.credentials.read_exact(account_id, binding)?;
-		if !same_refresh_bundle(stored.bundle(), &credential.bundle) {
+		let matches = match snapshot {
+			SharedCodexAuthSnapshot::Managed { credential, .. } =>
+				binding.provider == credential.provider
+					&& same_refresh_bundle(stored.bundle(), &credential.bundle),
+			SharedCodexAuthSnapshot::PersonalAccessToken { token, .. } =>
+				stored.bundle().is_personal_access_token()
+					&& stored.bundle().access_token() == token.as_str(),
+			SharedCodexAuthSnapshot::Unmanaged { .. } => false,
+		};
+		if !matches {
 			return Ok(None);
 		}
 		Ok(Some((account.revision, codex_auth_projection_digest(&account, binding))))
@@ -1313,18 +1357,20 @@ impl AccountService {
 			.read_exact(account_id, &binding)
 			.map_err(AccountLifecycleError::from)
 			.map_err(SharedAuthProjectionError::Rejected)?;
-		let id_token = stored
-			.bundle()
-			.id_token()
-			.ok_or(AccountLifecycleError::CredentialAbsent)
-			.map_err(SharedAuthProjectionError::Rejected)?;
-		let identity = decode_chatgpt_identity(id_token)
-			.map_err(AccountLifecycleError::from)
-			.map_err(SharedAuthProjectionError::Rejected)?;
-		if identity.provider != binding.provider {
-			return Err(SharedAuthProjectionError::Rejected(
-				AccountLifecycleError::ProviderMismatch,
-			));
+		if !stored.bundle().is_personal_access_token() {
+			let id_token = stored
+				.bundle()
+				.id_token()
+				.ok_or(AccountLifecycleError::CredentialAbsent)
+				.map_err(SharedAuthProjectionError::Rejected)?;
+			let identity = decode_chatgpt_identity(id_token)
+				.map_err(AccountLifecycleError::from)
+				.map_err(SharedAuthProjectionError::Rejected)?;
+			if identity.provider != binding.provider {
+				return Err(SharedAuthProjectionError::Rejected(
+					AccountLifecycleError::ProviderMismatch,
+				));
+			}
 		}
 		let latest =
 			self.load_account(account_id).await.map_err(SharedAuthProjectionError::Rejected)?;
@@ -1365,7 +1411,7 @@ impl AccountService {
 			+ Send
 			+ 'static,
 	{
-		let imported = match read_shared_codex_credential() {
+		let imported = match resolve_import(read_shared_codex_credential()).await {
 			Ok(imported) => imported,
 			Err(error) => {
 				return self
@@ -1405,14 +1451,17 @@ impl AccountService {
 			+ Send
 			+ 'static,
 	{
-		let imported = match read_explicit_shared_codex_credential_file(source_descriptor) {
-			Ok(imported) => imported,
-			Err(error) => {
-				return self
-					.complete_account_command_error(lease, error.into(), build_response)
-					.await;
-			},
-		};
+		let imported =
+			match resolve_import(read_explicit_shared_codex_credential_file(source_descriptor))
+				.await
+			{
+				Ok(imported) => imported,
+				Err(error) => {
+					return self
+						.complete_account_command_error(lease, error.into(), build_response)
+						.await;
+				},
+			};
 		let alias = stable_account_alias(&imported.provider);
 		self.install_credentials_command(
 			lease,
@@ -1444,7 +1493,8 @@ impl AccountService {
 			+ Send
 			+ 'static,
 	{
-		let imported = match read_explicit_credential_file(source_descriptor) {
+		let imported = match resolve_import(read_explicit_credential_file(source_descriptor)).await
+		{
 			Ok(imported) => imported,
 			Err(error) => {
 				return self
@@ -1723,6 +1773,35 @@ impl AccountService {
 		stored: StoredCredential,
 		shared_family: SharedFamilyRefreshPolicy,
 	) -> Result<RefreshResolution, CredentialRefreshError> {
+		if stored.bundle().is_personal_access_token() {
+			let imported =
+				resolve_import(Ok(crate::account_import::CredentialSource::PersonalAccessToken(
+					zeroize::Zeroizing::new(stored.bundle().access_token().to_owned()),
+				)))
+				.await
+				.map_err(|error| match error {
+					CredentialImportError::InvalidCredential
+					| CredentialImportError::ProviderMismatch => CredentialRefreshError::Rejected,
+					_ => CredentialRefreshError::Unavailable,
+				})?;
+			if imported.provider != current.provider
+				|| imported.bundle.personal_access_token_user_id()
+					!= stored.bundle().personal_access_token_user_id()
+			{
+				return Err(CredentialRefreshError::Rejected);
+			}
+			return Ok(if same_refresh_bundle(stored.bundle(), &imported.bundle) {
+				RefreshResolution::Current
+			} else {
+				RefreshResolution::Rotate {
+					refreshed: CredentialRefreshResult {
+						returned_provider: imported.provider,
+						bundle: imported.bundle,
+					},
+					projected_source: None,
+				}
+			});
+		}
 		let now_unix_micros =
 			current_unix_micros().map_err(|_| CredentialRefreshError::Unavailable)?;
 		let shared = match self.shared_auth.read_current_exact() {
@@ -1736,8 +1815,13 @@ impl AccountService {
 			Some(SharedCodexAuthSnapshot::Managed { credential, .. })
 				if credential.provider != current.provider
 		);
-		let shared_is_unmanaged =
-			matches!(&shared, Some(SharedCodexAuthSnapshot::Unmanaged { .. }));
+		let shared_is_unmanaged = matches!(
+			&shared,
+			Some(
+				SharedCodexAuthSnapshot::Unmanaged { .. }
+					| SharedCodexAuthSnapshot::PersonalAccessToken { .. }
+			)
+		);
 		if let Some(SharedCodexAuthSnapshot::Managed { version, credential }) = shared
 			&& credential.provider == current.provider
 		{
@@ -1858,7 +1942,8 @@ impl AccountService {
 			.map_err(|_| CredentialImportError::Unavailable)?
 		{
 			SharedCodexAuthSnapshot::Managed { credential, .. } => Ok(*credential),
-			SharedCodexAuthSnapshot::Unmanaged { .. } => Err(CredentialImportError::Unavailable),
+			SharedCodexAuthSnapshot::Unmanaged { .. }
+			| SharedCodexAuthSnapshot::PersonalAccessToken { .. } => Err(CredentialImportError::Unavailable),
 		}
 	}
 
@@ -2230,13 +2315,16 @@ impl AccountService {
 			source_descriptor,
 			account,
 		} = input;
-		let (current, imported, target) = match self.reauthentication_material(
-			account,
-			expected_account_revision,
-			account_id,
-			&operation_id,
-			source_descriptor,
-		) {
+		let (current, imported, target) = match self
+			.reauthentication_material(
+				account,
+				expected_account_revision,
+				account_id,
+				&operation_id,
+				source_descriptor,
+			)
+			.await
+		{
 			Ok(material) => material,
 			Err(error) => {
 				return self.complete_account_command_error(lease, error, build_response).await;
@@ -2328,7 +2416,7 @@ impl AccountService {
 		.await
 	}
 
-	fn reauthentication_material(
+	async fn reauthentication_material(
 		&self,
 		account: &AccountRecord,
 		expected_account_revision: i64,
@@ -2338,7 +2426,8 @@ impl AccountService {
 	) -> Result<(CredentialBinding, ImportedCredential, CredentialBinding), AccountLifecycleError>
 	{
 		let current = reauthentication_current(account, expected_account_revision)?;
-		let imported = read_explicit_shared_codex_credential_file(source_descriptor)?;
+		let imported =
+			resolve_import(read_explicit_shared_codex_credential_file(source_descriptor)).await?;
 		let target = reauthentication_target(&current, account_id, operation_id, &imported)?;
 		self.credentials.read_exact(account_id, &current)?;
 		Ok((current, imported, target))
@@ -3644,6 +3733,7 @@ impl AccountService {
 			Ok(snapshot) => *snapshot,
 			Err(_) => return Ok(()),
 		};
+		let snapshot = self.resolve_shared_pat(snapshot).await?;
 		let SharedCodexAuthSnapshot::Managed { credential, .. } = snapshot else {
 			return Ok(());
 		};
@@ -5293,6 +5383,153 @@ mod tests {
 	const OBSERVED_AT_MICROS: i64 = 1_000_000;
 
 	#[tokio::test]
+	async fn pat_accounts_route_only_after_quiescence_and_keep_exact_readback() {
+		for liveness in [CodexLiveness::MayBeRunning, CodexLiveness::Quiescent] {
+			let directory = tempdir().unwrap();
+			let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+			let store = SqliteStore::open(&root.paths()).unwrap();
+			let pat = |index| {
+				CredentialSecretBundle::personal_access_token(
+					format!("synthetic-pat-{index}"),
+					format!("user-{index}"),
+					Some("pro".into()),
+					None,
+				)
+				.unwrap()
+			};
+			let shared = Arc::new(RefreshRaceSharedAuthFile::new("pat-provider-1", pat(1)));
+			let service = AccountService::new(
+				store.clone(),
+				Arc::new(SqliteCredentialStore::new(store.clone())),
+				Arc::new(UnusedCredentialRefresher),
+			)
+			.with_shared_auth_coordinator(test_coordinator(shared.clone(), liveness));
+			service
+				.attest_callback_capability(super::CodexAccountCapabilityAttestation {
+					build_identity: "codex-test-build".into(),
+					executable_sha256: "1".repeat(64),
+					schema_sha256: "2".repeat(64),
+					callback_profile_sha256: "1".repeat(64),
+					login_chatgpt_auth_tokens: true,
+					refresh_callback: true,
+				})
+				.await
+				.unwrap();
+			let mut accounts = Vec::new();
+			for index in [1, 2] {
+				let account =
+					AccountId::new(format!("21000000-0000-4000-8000-{index:012}")).unwrap();
+				let operation =
+					AccountOperationId::new(format!("22000000-0000-4000-8000-{index:012}"))
+						.unwrap();
+				let command =
+					CommandIdentity::new(format!("pat-import-{index}"), b"synthetic import")
+						.unwrap();
+				let AccountCommandReceiptClaim::Owned(lease) = store
+					.reserve_account_command(
+						&command,
+						AccountCommandKind::Import,
+						account.as_str(),
+						None,
+					)
+					.await
+					.unwrap()
+				else {
+					panic!("new receipt")
+				};
+				let provider = ProviderIdentity::new(
+					AccountProvider::Chatgpt,
+					format!("pat-provider-{index}"),
+				)
+				.unwrap();
+				let response = service
+					.install_credentials_command(
+						lease,
+						operation,
+						account.clone(),
+						AccountOperationKind::Import,
+						super::stable_account_alias(&provider),
+						true,
+						provider,
+						pat(index),
+						|result| {
+							assert!(result.is_ok());
+							Ok(json!({"outcome":"imported"}))
+						},
+					)
+					.await
+					.unwrap();
+				assert_eq!(response["outcome"], "imported");
+				accounts.push(account);
+			}
+			let target = &accounts[1];
+			let command = CommandIdentity::new("pat-route", b"second PAT account").unwrap();
+			let AccountCommandReceiptClaim::Owned(lease) = store
+				.reserve_account_command(&command, AccountCommandKind::Route, target.as_str(), None)
+				.await
+				.unwrap()
+			else {
+				panic!("new route")
+			};
+			service
+				.route_account_command_sync(lease, target, move |result| {
+					if liveness == CodexLiveness::Quiescent {
+						assert!(result.is_ok());
+					} else {
+						assert!(matches!(
+							result,
+							Err(super::AccountRouteFailure::Lifecycle(
+								AccountLifecycleError::CodexIsRunning
+							))
+						));
+					}
+					Ok(json!({"outcome":"checked"}))
+				})
+				.await
+				.unwrap();
+			let state = shared.state.lock().unwrap();
+			assert_eq!(
+				state.bundle.access_token(),
+				if liveness == CodexLiveness::Quiescent {
+					"synthetic-pat-2"
+				} else {
+					"synthetic-pat-1"
+				}
+			);
+			drop(state);
+			if liveness == CodexLiveness::Quiescent {
+				let snapshot = service.shared_auth.read_current_exact().unwrap();
+				let account = service.inspect(target).await.unwrap().account;
+				assert!(
+					service
+						.confirm_shared_auth_target_locked(target, account.revision, &snapshot)
+						.await
+						.unwrap()
+						.is_some()
+				);
+				let process = service.process_credential(target, account.revision).await.unwrap();
+				assert_eq!(process.stored.bundle().access_token(), "synthetic-pat-2");
+				assert_eq!(process.stored.bundle().refresh_token(), None);
+				drop(process);
+				let unknown = SharedCodexAuthSnapshot::PersonalAccessToken {
+					version: snapshot.version().clone(),
+					token: zeroize::Zeroizing::new("unimported-external-pat".into()),
+				};
+				assert!(matches!(
+					service
+						.shared_auth_route_source(
+							target,
+							account.credential.as_ref().unwrap(),
+							unknown
+						)
+						.await,
+					Err(AccountLifecycleError::AuthSourceAccountUnknown)
+				));
+			}
+		}
+	}
+
+	#[tokio::test]
 	async fn quiescent_route_distinguishes_unknown_source_and_conflicting_credential() {
 		use decodex_database::{AccountCommandKind, AccountCommandReceiptClaim, CommandIdentity};
 		for conflict in [false, true] {
@@ -5691,6 +5928,12 @@ mod tests {
 			let version = Self::version(state.sequence);
 			if &version.stamp != expected {
 				return Err(CodexAuthProjectionError::SourceChanged);
+			}
+			if state.bundle.is_personal_access_token() {
+				return Ok(SharedCodexAuthSnapshot::PersonalAccessToken {
+					version,
+					token: zeroize::Zeroizing::new(state.bundle.access_token().to_owned()),
+				});
 			}
 			Ok(SharedCodexAuthSnapshot::Managed {
 				version,

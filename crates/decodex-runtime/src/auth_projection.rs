@@ -22,7 +22,7 @@ use sha2::{Digest as _, Sha256};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::{
-	account_import::{ImportedCredential, parse_shared_codex},
+	account_import::{CredentialSource, ImportedCredential, parse_shared_codex_source},
 	host_credentials::CredentialSecretBundle,
 };
 
@@ -57,13 +57,16 @@ pub(crate) struct SharedCodexAuthVersion {
 /// One stable, bounded read of the normal shared Codex auth source.
 pub(crate) enum SharedCodexAuthSnapshot {
 	Managed { version: SharedCodexAuthVersion, credential: Box<ImportedCredential> },
+	PersonalAccessToken { version: SharedCodexAuthVersion, token: Zeroizing<String> },
 	Unmanaged { version: SharedCodexAuthVersion },
 }
 
 impl SharedCodexAuthSnapshot {
 	pub(crate) const fn version(&self) -> &SharedCodexAuthVersion {
 		match self {
-			Self::Managed { version, .. } | Self::Unmanaged { version } => version,
+			Self::Managed { version, .. }
+			| Self::PersonalAccessToken { version, .. }
+			| Self::Unmanaged { version } => version,
 		}
 	}
 }
@@ -167,32 +170,30 @@ fn project_shared_codex_auth_with_precondition_at(
 	let _guard = PROJECTION_LOCK.lock().map_err(|_| CodexAuthProjectionError::Unavailable)?;
 	let directory = open_codex_directory(home)?;
 	let identity = directory_identity(&directory)?;
-	let expected_target = if let Some((expected_bundle, expected_provider_account_id)) =
-		expected_source
-	{
-		let before = inspect_target(&directory)?;
-		let id_token = bundle.id_token().ok_or(CodexAuthProjectionError::MissingIdentityToken)?;
-		let target_is_current =
-			current_auth_matches(&directory, bundle, id_token, provider_account_id)?;
-		let source_is_current = if target_is_current {
-			true
+	let expected_target =
+		if let Some((expected_bundle, expected_provider_account_id)) = expected_source {
+			let before = inspect_target(&directory)?;
+			let id_token = bundle.id_token();
+			let target_is_current =
+				current_auth_matches(&directory, bundle, id_token, provider_account_id)?;
+			let source_is_current = if target_is_current {
+				true
+			} else {
+				let expected_id_token = expected_bundle.id_token();
+				current_auth_matches(
+					&directory,
+					expected_bundle,
+					expected_id_token,
+					expected_provider_account_id,
+				)?
+			};
+			if !source_is_current || inspect_target(&directory)? != before {
+				return Err(CodexAuthProjectionError::SourceChanged);
+			}
+			Some(before)
 		} else {
-			let expected_id_token =
-				expected_bundle.id_token().ok_or(CodexAuthProjectionError::MissingIdentityToken)?;
-			current_auth_matches(
-				&directory,
-				expected_bundle,
-				expected_id_token,
-				expected_provider_account_id,
-			)?
+			None
 		};
-		if !source_is_current || inspect_target(&directory)? != before {
-			return Err(CodexAuthProjectionError::SourceChanged);
-		}
-		Some(before)
-	} else {
-		None
-	};
 	let mutation = project_to_directory_inner(
 		&directory,
 		bundle,
@@ -264,7 +265,7 @@ fn project_to_directory_inner(
 	{
 		return Err(CodexAuthProjectionError::SourceChanged);
 	}
-	let id_token = bundle.id_token().ok_or(CodexAuthProjectionError::MissingIdentityToken)?;
+	let id_token = bundle.id_token();
 	if current_auth_matches(directory, bundle, id_token, provider_account_id)? {
 		return Ok(ProjectionMutation::AlreadyCurrent);
 	}
@@ -374,9 +375,26 @@ enum ProjectionFault {
 
 fn encode_auth(
 	bundle: &CredentialSecretBundle,
-	id_token: &str,
+	id_token: Option<&str>,
 	provider_account_id: &str,
 ) -> Result<Zeroizing<Vec<u8>>, CodexAuthProjectionError> {
+	if bundle.is_personal_access_token() {
+		#[derive(Serialize)]
+		struct PatAuth<'a> {
+			auth_mode: &'static str,
+			#[serde(rename = "OPENAI_API_KEY")]
+			api_key: Option<&'a str>,
+			personal_access_token: &'a str,
+		}
+		let encoded = serde_json::to_vec(&PatAuth {
+			auth_mode: "personalAccessToken",
+			api_key: None,
+			personal_access_token: bundle.access_token(),
+		})
+		.map_err(|_| CodexAuthProjectionError::Unavailable)?;
+		return Ok(Zeroizing::new(encoded));
+	}
+	let id_token = id_token.ok_or(CodexAuthProjectionError::MissingIdentityToken)?;
 	#[derive(Serialize)]
 	struct Tokens<'a> {
 		id_token: &'a str,
@@ -440,7 +458,7 @@ struct ExistingTokens {
 fn current_auth_matches(
 	directory: &File,
 	bundle: &CredentialSecretBundle,
-	id_token: &str,
+	id_token: Option<&str>,
 	provider_account_id: &str,
 ) -> Result<bool, CodexAuthProjectionError> {
 	let Some(expected_identity) = inspect_target(directory)? else {
@@ -452,13 +470,18 @@ fn current_auth_matches(
 		return Err(CodexAuthProjectionError::UnsafePath);
 	}
 	let bytes = read_bounded(&mut target)?;
+	if bundle.is_personal_access_token() {
+		return Ok(
+			matches!(parse_shared_codex_source(&bytes), Ok(CredentialSource::PersonalAccessToken(token)) if token.as_str() == bundle.access_token()),
+		);
+	}
 	let Ok(auth) = serde_json::from_slice::<ExistingAuth>(&bytes) else {
 		return Ok(false);
 	};
 	Ok(auth.auth_mode == "chatgpt"
 		&& auth.api_key.is_none()
 		&& auth.tokens.account_id == provider_account_id
-		&& auth.tokens.id_token == id_token
+		&& Some(auth.tokens.id_token.as_str()) == id_token
 		&& auth.tokens.access_token == bundle.access_token()
 		&& Some(auth.tokens.refresh_token.as_str()) == bundle.refresh_token())
 }
@@ -466,7 +489,9 @@ fn current_auth_matches(
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct IdentityOnlyAuth {
-	auth_mode: String,
+	auth_mode: Option<String>,
+	#[serde(default, rename = "personal_access_token")]
+	_personal_access_token: Option<IgnoredAny>,
 	#[serde(rename = "OPENAI_API_KEY", default)]
 	_api_key: Option<IgnoredAny>,
 	#[serde(default, rename = "tokens")]
@@ -503,7 +528,7 @@ fn read_identity_from_directory(
 	let bytes = read_bounded(&mut target)?;
 	let auth = serde_json::from_slice::<IdentityOnlyAuth>(&bytes)
 		.map_err(|_| CodexAuthProjectionError::Unavailable)?;
-	if auth.auth_mode != "chatgpt" {
+	if auth.auth_mode.as_deref() != Some("chatgpt") {
 		return Ok(SharedCodexAuthIdentity::Unmanaged);
 	}
 	let account_id = auth
@@ -545,12 +570,18 @@ fn read_snapshot_from_directory(
 		SharedCodexAuthVersion { stamp: actual, sha256: Some(Sha256::digest(&bytes).into()) };
 	let auth = serde_json::from_slice::<IdentityOnlyAuth>(&bytes)
 		.map_err(|_| CodexAuthProjectionError::Unavailable)?;
-	if auth.auth_mode != "chatgpt" {
+	if auth.auth_mode.as_deref() != Some("chatgpt")
+		&& auth.auth_mode.as_deref() != Some("personalAccessToken")
+		&& !(auth.auth_mode.is_none() && auth._personal_access_token.is_some())
+	{
 		return Ok(SharedCodexAuthSnapshot::Unmanaged { version });
 	}
-	let credential =
-		parse_shared_codex(&bytes).map_err(|_| CodexAuthProjectionError::Unavailable)?;
-	Ok(SharedCodexAuthSnapshot::Managed { version, credential: Box::new(credential) })
+	match parse_shared_codex_source(&bytes).map_err(|_| CodexAuthProjectionError::Unavailable)? {
+		CredentialSource::Oauth(credential) =>
+			Ok(SharedCodexAuthSnapshot::Managed { version, credential }),
+		CredentialSource::PersonalAccessToken(token) =>
+			Ok(SharedCodexAuthSnapshot::PersonalAccessToken { version, token }),
+	}
 }
 
 fn read_file_version(directory: &File) -> Result<SharedCodexAuthVersion, CodexAuthProjectionError> {
@@ -1188,6 +1219,62 @@ mod tests {
 	}
 
 	#[test]
+	fn pat_projection_uses_native_shape_and_preserves_changed_source() {
+		let home = fixture_home();
+		let directory = open_codex_directory(home.path()).unwrap();
+		let bundle = CredentialSecretBundle::personal_access_token(
+			"synthetic-pat".into(),
+			"pat-user".into(),
+			Some("pro".into()),
+			None,
+		)
+		.unwrap();
+		let absent =
+			read_snapshot_from_directory(&directory, &read_file_stamp(&directory).unwrap())
+				.unwrap();
+		project_shared_codex_auth_cas_at(
+			home.path(),
+			&bundle,
+			"pat-account",
+			absent.version(),
+			ProjectionFault::None,
+		)
+		.unwrap();
+		assert_eq!(
+			read_auth(home.path()),
+			serde_json::json!({"auth_mode":"personalAccessToken","OPENAI_API_KEY":null,"personal_access_token":"synthetic-pat"})
+		);
+		let first = read_snapshot_from_directory(&directory, &read_file_stamp(&directory).unwrap())
+			.unwrap();
+		assert!(
+			matches!(&first, super::SharedCodexAuthSnapshot::PersonalAccessToken { token, .. } if token.as_str() == "synthetic-pat")
+		);
+		let target = home.path().join(".codex/auth.json");
+		let inode = fs::metadata(&target).unwrap().ino();
+		project_shared_codex_auth_cas_at(
+			home.path(),
+			&bundle,
+			"pat-account",
+			first.version(),
+			ProjectionFault::None,
+		)
+		.unwrap();
+		assert_eq!(inode, fs::metadata(&target).unwrap().ino());
+		fs::write(&target, br#"{"auth_mode":"personalAccessToken","OPENAI_API_KEY":null,"personal_access_token":"external-pat"}"#).unwrap();
+		assert_eq!(
+			project_shared_codex_auth_cas_at(
+				home.path(),
+				&bundle,
+				"pat-account",
+				first.version(),
+				ProjectionFault::None
+			),
+			Err(CodexAuthProjectionError::SourceChanged)
+		);
+		assert_eq!(read_auth(home.path())["personal_access_token"], "external-pat");
+	}
+
+	#[test]
 	fn exact_readback_rejects_stale_tokens_for_the_same_provider_identity() {
 		let home = fixture_home();
 		let directory = open_codex_directory(home.path()).unwrap();
@@ -1197,7 +1284,7 @@ mod tests {
 			current_auth_matches(
 				&directory,
 				&bundle(Some("id-one"), "one"),
-				"id-one",
+				Some("id-one"),
 				"provider-one",
 			)
 			.unwrap()
@@ -1206,7 +1293,7 @@ mod tests {
 			!current_auth_matches(
 				&directory,
 				&bundle(Some("id-two"), "two"),
-				"id-two",
+				Some("id-two"),
 				"provider-one",
 			)
 			.unwrap()
@@ -1223,8 +1310,12 @@ mod tests {
 
 		project_to_directory(&directory, &rotated, "provider-one").unwrap();
 
-		assert!(current_auth_matches(&directory, &rotated, "id-two", "provider-one").unwrap());
-		assert!(!current_auth_matches(&directory, &initial, "id-one", "provider-one").unwrap());
+		assert!(
+			current_auth_matches(&directory, &rotated, Some("id-two"), "provider-one").unwrap()
+		);
+		assert!(
+			!current_auth_matches(&directory, &initial, Some("id-one"), "provider-one").unwrap()
+		);
 	}
 
 	#[test]
@@ -1360,8 +1451,13 @@ mod tests {
 
 			let directory = open_codex_directory(home.path()).unwrap();
 			assert!(
-				current_auth_matches(&directory, &bundle, "id-reconcile", "provider-reconcile",)
-					.unwrap(),
+				current_auth_matches(
+					&directory,
+					&bundle,
+					Some("id-reconcile"),
+					"provider-reconcile",
+				)
+				.unwrap(),
 				"{fault:?}",
 			);
 			project_shared_codex_auth_at(

@@ -23,6 +23,7 @@ fn control_child(binary: &OsStr, home: &Path) -> AttestedProcessChild {
 			.expect("fixture operation"),
 	};
 	let binding = AccountBinding {
+		personal_access_token: None,
 		account_id: account.clone(),
 		expected_codex_home: codex_home,
 		process_binding: Some(

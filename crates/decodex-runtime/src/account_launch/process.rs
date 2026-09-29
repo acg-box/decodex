@@ -207,6 +207,7 @@ pub(crate) struct AccountBinding {
 	expected_codex_home: PathBuf,
 	process_binding: Option<ProcessGenerationAccountBinding>,
 	refresh_callback: Option<Arc<dyn AccountRefreshCallback>>,
+	personal_access_token: Option<Zeroizing<String>>,
 }
 impl AccountBinding {
 	pub(super) fn codex_home(&self) -> &std::path::Path {
@@ -224,6 +225,7 @@ impl AccountBinding {
 			expected_codex_home: PathBuf::from(home).join(".codex"),
 			process_binding: None,
 			refresh_callback: None,
+			personal_access_token: None,
 		})
 	}
 
@@ -237,6 +239,21 @@ impl AccountBinding {
 		binding.process_binding = Some(process_binding);
 		binding.refresh_callback = Some(refresh_callback);
 		Ok(binding)
+	}
+
+	/// Bind a PAT only from the exact stored credential selected by the account owner.
+	pub(crate) fn with_credential(
+		mut self,
+		stored: &crate::StoredCredential,
+	) -> Result<Self, SupervisionError> {
+		if &self.process_binding()?.credential != stored.binding() {
+			return Err(SupervisionError::InvalidBinding);
+		}
+		if stored.bundle().is_personal_access_token() {
+			self.personal_access_token =
+				Some(Zeroizing::new(stored.bundle().access_token().to_owned()));
+		}
+		Ok(self)
 	}
 
 	/// Bind a short read-only policy lookup to a credential held by the API owner.
@@ -257,6 +274,7 @@ impl AccountBinding {
 			expected_codex_home,
 			process_binding: None,
 			refresh_callback: None,
+			personal_access_token: None,
 		}
 	}
 
@@ -264,7 +282,13 @@ impl AccountBinding {
 	#[cfg(test)]
 	#[doc(hidden)]
 	pub fn fixture(account_id: AccountId, expected_codex_home: PathBuf) -> Self {
-		Self { account_id, expected_codex_home, process_binding: None, refresh_callback: None }
+		Self {
+			account_id,
+			expected_codex_home,
+			process_binding: None,
+			refresh_callback: None,
+			personal_access_token: None,
+		}
 	}
 
 	/// Exact non-secret account selected before process creation.
@@ -622,6 +646,12 @@ impl AttestedAppServerProfile {
 			!= process_binding.refresh_callback_profile_sha256
 		{
 			return Err(SupervisionError::LaunchCapabilityUnavailable.into());
+		}
+		if (process_binding.credential.schema_version
+			== decodex_core::CredentialStoreSchemaVersion::V2)
+			!= binding.personal_access_token.is_some()
+		{
+			return Err(SupervisionError::InvalidBinding.into());
 		}
 		let runner_identity =
 			attested_launch_identity(&self.command, &binding, &self.build, self.capability)?;
@@ -1622,6 +1652,41 @@ pub(crate) struct CredentialProjection<'a> {
 	used: bool,
 }
 impl CredentialProjection<'_> {
+	/// Verify the native PAT mode established by this child's exact launch environment.
+	pub fn authenticate_personal_access_token(
+		&mut self,
+		token: &str,
+	) -> Result<(), CredentialVaultError> {
+		if self.used {
+			return Err(CredentialVaultError::ProjectionAlreadyUsed);
+		}
+		self.used = true;
+		if self.process.binding.personal_access_token.as_deref().map(String::as_str) != Some(token)
+		{
+			return Err(CredentialVaultError::ProjectionRejected);
+		}
+		#[derive(Deserialize)]
+		#[serde(rename_all = "camelCase")]
+		struct Status {
+			auth_method: Option<String>,
+			auth_token: Option<serde::de::IgnoredAny>,
+		}
+		let status: Status = self
+			.process
+			.request(
+				ReadOnlyMethod::GetAuthStatus,
+				&serde_json::json!({"includeToken":false}),
+				self.timeout,
+			)
+			.map_err(|_| CredentialVaultError::ProjectionRejected)?;
+		if status.auth_method.as_deref() != Some("personalAccessToken")
+			|| status.auth_token.is_some()
+		{
+			return Err(CredentialVaultError::ProjectionRejected);
+		}
+		Ok(())
+	}
+
 	/// Authenticate this child with ChatGPT tokens held by the host vault.
 	pub fn authenticate_chatgpt(
 		&mut self,
@@ -1631,6 +1696,9 @@ impl CredentialProjection<'_> {
 	) -> Result<(), CredentialVaultError> {
 		if self.used {
 			return Err(CredentialVaultError::ProjectionAlreadyUsed);
+		}
+		if self.process.binding.personal_access_token.is_some() {
+			return Err(CredentialVaultError::ProjectionRejected);
 		}
 
 		self.used = true;
@@ -2283,7 +2351,9 @@ impl SupervisedProcess {
 		method: &str,
 		line: &[u8],
 	) -> Result<(), ProbeError> {
-		if method != decodex_codex::schema::ACCOUNT_REFRESH_CALLBACK_METHOD {
+		if method != decodex_codex::schema::ACCOUNT_REFRESH_CALLBACK_METHOD
+			|| binding.personal_access_token.is_some()
+		{
 			return Self::write_bound_json(
 				stdin,
 				&OutboundRpcError {
@@ -2910,6 +2980,7 @@ fn spawn_attested_protocol_process(
 					&command.app_server_args,
 					check.working_directory_descriptor(),
 					home,
+					binding.personal_access_token.as_deref().map(String::as_str),
 				),
 			(ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1, None) =>
 				spawn_private_stdio_suspended(
@@ -2917,6 +2988,7 @@ fn spawn_attested_protocol_process(
 					&command.app_server_args,
 					&command.working_directory,
 					home,
+					binding.personal_access_token.as_deref().map(String::as_str),
 				),
 		}
 		.map_err(|_| SupervisionError::SpawnFailed)?;
@@ -3369,6 +3441,8 @@ pub enum ReadOnlyMethod {
 	AccountLoginStart,
 	/// Read the immutable process account.
 	AccountRead,
+	/// Verify native authentication mode without requesting a credential.
+	GetAuthStatus,
 	/// Read current managed configuration requirements.
 	ConfigRequirementsRead,
 	/// Read a bounded page of threads.
@@ -3382,6 +3456,7 @@ impl ReadOnlyMethod {
 			Self::Initialize => "initialize",
 			Self::AccountLoginStart => "account/login/start",
 			Self::AccountRead => "account/read",
+			Self::GetAuthStatus => "getAuthStatus",
 			Self::ConfigRequirementsRead => "configRequirements/read",
 			Self::ThreadList => "thread/list",
 			Self::ThreadRead => "thread/read",
@@ -4813,6 +4888,14 @@ fn attested_launch_identity(
 		b"refresh-callback-profile",
 		process_binding.refresh_callback_profile_sha256.as_bytes(),
 	);
+	if binding.personal_access_token.is_some() {
+		hash_launch_field(&mut digest, b"environment-name", b"CODEX_ACCESS_TOKEN");
+		hash_launch_field(
+			&mut digest,
+			b"environment-credential-binding",
+			process_binding.credential.fingerprint.as_str().as_bytes(),
+		);
+	}
 	hash_launch_field(&mut digest, b"capability", capability.identity().as_bytes());
 
 	ProcessRunnerIdentity::new(format!("sha256:{}", hex_digest(&digest.finalize())))
@@ -5326,7 +5409,11 @@ fn configure_child_environment(
 	command: &mut Command,
 	binding: &AccountBinding,
 ) -> Result<(), SupervisionError> {
-	configure_home_environment(command, &binding.expected_codex_home)
+	configure_home_environment(command, &binding.expected_codex_home)?;
+	if let Some(token) = &binding.personal_access_token {
+		command.env("CODEX_ACCESS_TOKEN", token.as_str());
+	}
+	Ok(())
 }
 
 fn configure_home_environment(
@@ -5619,6 +5706,7 @@ pub(crate) mod tests {
 				.unwrap(),
 			),
 			refresh_callback: None,
+			personal_access_token: None,
 		}
 	}
 
@@ -5663,6 +5751,69 @@ pub(crate) mod tests {
 		assert_ne!(first.runner_identity, second.runner_identity);
 		assert_eq!(first.account_binding().account_revision, 1);
 		assert_eq!(second.account_binding().account_revision, 2);
+	}
+
+	#[test]
+	fn pat_launch_requires_the_exact_stored_credential_before_deriving_intent() {
+		let temp = TempDir::new().unwrap();
+		let profile = AttestedAppServerProfile::attest_for_test(
+			fake_command("normal", temp.path(), None),
+			Path::new("/tmp/.codex"),
+			Duration::from_secs(5),
+		)
+		.unwrap();
+		let account = AccountId::new("10000000-0000-4000-8000-000000000001").unwrap();
+		let mut binding = profile_binding(
+			account.clone(),
+			1,
+			profile.generated.account_callback_profile_sha256().to_owned(),
+		);
+		let original = binding.process_binding().unwrap().credential.clone();
+		let stored = |token: &str| {
+			let bundle = crate::CredentialSecretBundle::personal_access_token(
+				token.into(),
+				"pat-user".into(),
+				Some("pro".into()),
+				None,
+			)
+			.unwrap();
+			let credential = bundle
+				.binding_for(
+					&account,
+					&original.writer_operation_id,
+					original.version,
+					&original.provider,
+				)
+				.unwrap();
+			crate::host_credentials::seal_exact_read(&account, &credential, &credential, bundle)
+				.unwrap()
+		};
+		let selected = stored("synthetic-selected-pat");
+		binding.process_binding.as_mut().unwrap().credential = selected.binding().clone();
+		assert!(binding.clone().with_credential(&stored("synthetic-other-pat")).is_err());
+		let capacity = RunnerCapacity::try_with_limit(1).unwrap();
+		assert!(
+			AttestedAppServerLaunch::bind(
+				profile.clone(),
+				binding.clone(),
+				Duration::from_secs(5),
+				capacity.reserve(account.clone(), 1).unwrap()
+			)
+			.is_err()
+		);
+		let launch = AttestedAppServerLaunch::bind(
+			profile,
+			binding.with_credential(&selected).unwrap(),
+			Duration::from_secs(5),
+			capacity.reserve(account, 1).unwrap(),
+		)
+		.unwrap();
+		assert_eq!(launch.account_binding().credential, *selected.binding());
+		assert_eq!(
+			launch.binding.personal_access_token.as_deref().map(String::as_str),
+			Some("synthetic-selected-pat")
+		);
+		assert!(!format!("{:?}", launch.binding).contains("synthetic-selected-pat"));
 	}
 
 	struct LateSerializationFailure<'a>(&'a str);
