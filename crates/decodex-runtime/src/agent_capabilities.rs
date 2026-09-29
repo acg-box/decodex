@@ -236,6 +236,14 @@ fn project_model(value: &Value) -> Option<AgentModelDto> {
 		service_tiers,
 		default_service_tier,
 		available_cyber_programs,
+		specialty: value["modelSpecialty"]
+			.as_str()
+			.filter(|value| {
+				!value.trim().is_empty()
+					&& value.len() <= 128
+					&& !value.chars().any(char::is_control)
+			})
+			.map(str::to_owned),
 		supports_images,
 		availability: notice(&value["availabilityNux"]["message"]),
 		upgrade,
@@ -449,6 +457,23 @@ mod tests {
 		let projected = project_model(&value).unwrap();
 		assert_eq!(projected.default_service_tier.unwrap().as_str(), "flex");
 		assert!(projected.service_tiers.is_empty(), "a default is not an advertised selection");
+	}
+
+	#[test]
+	fn catalog_preserves_specialty_without_guessing_from_model_names() {
+		let mut value =
+			json!({"model":"cyber-example","displayName":"Example","supportedReasoningEfforts":[]});
+		assert_eq!(project_model(&value).unwrap().specialty, None);
+		for specialty in ["cyber", "future-specialty"] {
+			value["modelSpecialty"] = json!(specialty);
+			assert_eq!(project_model(&value).unwrap().specialty.as_deref(), Some(specialty));
+		}
+		for invalid in
+			[Value::Null, json!(42), json!(""), json!("bad\nlabel"), json!("x".repeat(129))]
+		{
+			value["modelSpecialty"] = invalid;
+			assert_eq!(project_model(&value).unwrap().specialty, None);
+		}
 	}
 
 	#[test]

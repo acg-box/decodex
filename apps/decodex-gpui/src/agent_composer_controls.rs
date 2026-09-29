@@ -104,7 +104,7 @@ impl AgentSurface {
 				let model = entry.model.as_str().to_owned();
 				let click_model = model.clone();
 				let selected = self.composer_model_value(cx).as_deref() == Some(model.as_str());
-				let full = entry.name.clone();
+				let full = super::model_settings::model_choice_label(entry);
 
 				row = row.child(
 					div()

@@ -313,7 +313,7 @@ impl AgentSurface {
 				decodex_protocol::AgentLiveModelSelection { model: model.model.clone(), effort };
 			choices = choices.child(mcp_button(
 				format!("live-model-choice-{index}"),
-				model.name.clone(),
+				super::model_settings::model_choice_label(model),
 				false,
 				cx,
 				move |s, cx| {
