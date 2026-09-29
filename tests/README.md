@@ -36,3 +36,29 @@ Test supported behavior, not the current spelling of its implementation.
 
 The cleanup leaves protocol, recovery, database, and credential protections in
 place. Static authority checks that remain are not runtime or security proofs.
+
+## Broader review (2026-09-29)
+
+The follow-up inspected Rust protocol and domain tests, database and transfer
+coverage, CLI process tests, script gates, and repeated GPUI wire-test setup.
+This is a targeted review of duplication and weak assertions, not a claim that
+all tests in the repository have received a line-by-line audit.
+
+- Removed the reset outcome test that asserted the length of its own four-item
+  literal array. It could not detect a new enum variant.
+- Removed a protocol-version constant copy. Combined version negotiation cases
+  into current, different-major, and different-minor behavior checks.
+- Removed a duplicate local configuration parse case. The retained configuration
+  test already checks that local profile and also verifies its owner and policy.
+- Removed static checks for retired protocol names, credential debug helper
+  names, thread URL helper calls, transfer statements, and installer statements.
+  Retained `wire.rs` decode tests, `credential_compare_and_swap_is_exact_and_debug_is_redacted`,
+  provider thread ID/URL tests, `database/transfer/tests/transfer.rs`, and installer
+  invocation tests execute those behaviors.
+- Removed assertions that process acceptance tests have specific names or text.
+  Retained the release fixture boundary checks and the executable acceptance tests.
+- Shared temporary socket setup and welcome exchange across GPUI feature tests.
+  Each feature still owns its scenario, expected request, and lost-reply assertions.
+- Retained core routing, filesystem integrity, credential redaction, database
+  restart, CLI process, and publisher dispatch protections. Similar vocabulary
+  across these tests does not make their failure cases interchangeable.
