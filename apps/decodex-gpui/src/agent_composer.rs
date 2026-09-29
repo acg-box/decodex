@@ -999,6 +999,8 @@ impl AgentSurface {
 	}
 
 	fn pick_attachments(&mut self, cx: &mut Context<Self>) {
+		let epoch = self.command_epoch;
+		let owner = self.composer_manager.clone();
 		let result = cx.prompt_for_paths(gpui::PathPromptOptions {
 			files: true,
 			directories: true,
@@ -1007,7 +1009,11 @@ impl AgentSurface {
 		});
 		cx.spawn(async move |s, cx| {
 			if let Ok(Ok(Some(paths))) = result.await {
-				let _ = s.update(cx, |s, cx| s.attach_paths(paths, cx));
+				let _ = s.update(cx, |s, cx| {
+					if s.command_epoch == epoch && s.composer_manager == owner {
+						s.attach_paths(paths, cx);
+					}
+				});
 			}
 		})
 		.detach();
@@ -1116,6 +1122,59 @@ fn context_ring(fraction: f32) -> impl IntoElement {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[gpui::test]
+	fn attachment_picker_keeps_the_opening_draft_owner(cx: &mut gpui::TestAppContext) {
+		let directory = tempfile::tempdir().unwrap();
+		let file = directory.path().join("reference.txt");
+		std::fs::write(&file, "Fixture reference").unwrap();
+		for change in ["none", "edit", "selection", "manager", "profile", "cancel"] {
+			let surface = cx.new(AgentSurface::new);
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.snapshot
+					.as_mut()
+					.unwrap()
+					.work_items
+					.iter_mut()
+					.find(|work| work.id == "release")
+					.unwrap()
+					.kind = decodex_protocol::AgentWorkKindDto::Manager;
+				s.open_page("agent", cx);
+				s.composer.update(cx, |input, cx| input.set_content("Opening draft", cx));
+				s.pick_attachments(cx);
+			});
+			assert!(cx.did_prompt_for_paths());
+			surface.update(cx, |s, cx| match change {
+				"edit" => s.composer.update(cx, |input, cx| input.set_content("Later edit", cx)),
+				"selection" => s.open_page("verify", cx),
+				"manager" => s.open_page("release", cx),
+				"profile" => s.bind_profile(None, cx),
+				_ => {},
+			});
+			cx.simulate_path_prompt_response(|options| {
+				assert!(options.files && options.directories && options.multiple);
+				(change != "cancel").then(|| vec![file.clone()])
+			});
+			cx.run_until_parked();
+			surface.update(cx, |s, cx| {
+				assert_eq!(
+					s.attachments.len(),
+					usize::from(matches!(change, "none" | "edit" | "selection")),
+					"{change}"
+				);
+				assert_eq!(
+					s.composer.read(cx).content(),
+					match change {
+						"edit" => "Later edit",
+						"manager" => "",
+						_ => "Opening draft",
+					}
+				);
+				assert!(!s.sending);
+			});
+		}
+	}
 
 	#[gpui::test]
 	fn composer_accepts_directory_references_without_image_conversion(
