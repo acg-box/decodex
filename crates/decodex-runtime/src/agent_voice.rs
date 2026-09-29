@@ -38,9 +38,15 @@ impl VoiceGateway {
 		let unavailable = || failed(request.session_id().clone(), "Voice service is unavailable.");
 		let Ok(mut slot) = self.call.lock() else { return unavailable() };
 		match request {
-			AgentVoiceRequest::Start { session_id, work_id, offer } => {
+			AgentVoiceRequest::Start { session_id, work_id, offer, options } => {
 				use sha2::{Digest as _, Sha256};
-				let signature = (work_id.clone(), Sha256::digest(offer.as_str().as_bytes()).into());
+				let signature = (
+					work_id.clone(),
+					Sha256::digest(
+						serde_json::to_vec(&(offer, options)).expect("serializable call settings"),
+					)
+					.into(),
+				);
 				if let Some(call) = slot.as_mut() {
 					if call.status.session_id == *session_id {
 						return if call.signature == signature {
@@ -73,6 +79,28 @@ impl VoiceGateway {
 				});
 				status
 			},
+			AgentVoiceRequest::Speak { session_id, text } => {
+				let Some(call) = slot.as_mut().filter(|c| c.status.session_id == *session_id)
+				else {
+					return failed(
+						session_id.clone(),
+						"This voice session is no longer available.",
+					);
+				};
+				let mut status = call.status.clone();
+				let message = if call.stopping || status.phase != AgentVoicePhase::Ready {
+					"Read-aloud requires a connected voice call."
+				} else if text.as_str().trim().is_empty() {
+					"There is no reply text to read aloud."
+				} else if self.sender.try_send(request.clone()).is_err() {
+					"Read-aloud could not be queued. It was not retried."
+				} else {
+					call.seen = Instant::now();
+					"Read-aloud request queued."
+				};
+				status.message = WireText::new(message).ok();
+				status
+			},
 			AgentVoiceRequest::Poll { session_id } | AgentVoiceRequest::Stop { session_id } => {
 				let Some(call) = slot.as_mut().filter(|c| c.status.session_id == *session_id)
 				else {
@@ -88,7 +116,13 @@ impl VoiceGateway {
 					}
 					call.stopping = true;
 				}
-				call.status.clone()
+				let status = call.status.clone();
+				if matches!(request, AgentVoiceRequest::Poll { .. })
+					&& status.phase == AgentVoicePhase::Ready
+				{
+					call.status.message = None;
+				}
+				status
 			},
 		}
 	}
@@ -114,6 +148,16 @@ impl VoiceGateway {
 			call.status.phase = phase;
 			call.status.answer = answer;
 			call.status.message = message.and_then(|v| WireText::new(v).ok());
+		}
+	}
+
+	/// Report a one-shot speech result without changing media connection state.
+	pub(crate) fn notice(&self, id: &str, message: &str) {
+		if let Ok(mut slot) = self.call.lock()
+			&& let Some(call) = slot.as_mut().filter(|c| {
+				c.status.session_id.as_str() == id && c.status.phase == AgentVoicePhase::Ready
+			}) {
+			call.status.message = WireText::new(message).ok();
 		}
 	}
 
@@ -167,6 +211,7 @@ mod tests {
 			session_id: id.clone(),
 			work_id: EntityId::new("agent").unwrap(),
 			offer: VoiceSdp::new("offer".into()).unwrap(),
+			options: Default::default(),
 		});
 		commands.recv().await.unwrap();
 		gateway.update(
@@ -185,6 +230,51 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn selected_speech_is_one_shot_and_notices_do_not_end_media() {
+		let gateway = VoiceGateway::new();
+		let mut commands = gateway.take_receiver().await.unwrap();
+		let id = EntityId::new("call").unwrap();
+		gateway.exchange(&AgentVoiceRequest::Start {
+			session_id: id.clone(),
+			work_id: EntityId::new("agent").unwrap(),
+			offer: VoiceSdp::new("offer".into()).unwrap(),
+			options: Default::default(),
+		});
+		commands.recv().await.unwrap();
+		let speak = AgentVoiceRequest::Speak {
+			session_id: id.clone(),
+			text: decodex_protocol::HistoryText::new("Reply").unwrap(),
+		};
+		gateway.exchange(&speak);
+		assert!(commands.try_recv().is_err(), "connecting cannot speak");
+		gateway.update(
+			"call",
+			AgentVoicePhase::Ready,
+			Some(VoiceSdp::new("answer".into()).unwrap()),
+			None,
+		);
+		gateway.exchange(&AgentVoiceRequest::Speak {
+			session_id: EntityId::new("other").unwrap(),
+			text: decodex_protocol::HistoryText::new("Foreign").unwrap(),
+		});
+		assert!(commands.try_recv().is_err(), "foreign call cannot speak");
+		assert_eq!(gateway.exchange(&speak).phase, AgentVoicePhase::Ready);
+		assert_eq!(commands.recv().await.unwrap(), speak);
+		gateway.notice("call", "Read-aloud could not be confirmed. It was not retried.");
+		let poll = AgentVoiceRequest::Poll { session_id: id.clone() };
+		let status = gateway.exchange(&poll);
+		assert_eq!(status.phase, AgentVoicePhase::Ready);
+		assert!(status.answer.is_some());
+		assert!(status.message.unwrap().as_str().contains("not retried"));
+		assert!(gateway.exchange(&poll).message.is_none());
+		assert!(commands.try_recv().is_err(), "poll never replays speech");
+		gateway.exchange(&AgentVoiceRequest::Stop { session_id: id });
+		commands.recv().await.unwrap();
+		gateway.exchange(&speak);
+		assert!(commands.try_recv().is_err(), "stopping cannot speak");
+	}
+
+	#[tokio::test]
 	async fn lost_start_response_is_observed_without_replaying_a_call() {
 		let gateway = VoiceGateway::new();
 		let mut commands = gateway.take_receiver().await.unwrap();
@@ -193,11 +283,19 @@ mod tests {
 			session_id: id.clone(),
 			work_id: EntityId::new("agent").unwrap(),
 			offer: VoiceSdp::new("offer".into()).unwrap(),
+			options: Default::default(),
 		};
 		assert_eq!(gateway.exchange(&request).phase, AgentVoicePhase::Connecting);
 		assert!(commands.recv().await.is_some());
 		assert_eq!(gateway.exchange(&request).phase, AgentVoicePhase::Connecting);
 		assert!(commands.try_recv().is_err());
+		let mut changed = request.clone();
+		if let AgentVoiceRequest::Start { options, .. } = &mut changed {
+			options.model = Some(WireText::new("different-model").unwrap());
+		}
+		assert_eq!(gateway.exchange(&changed).phase, AgentVoicePhase::Failed);
+		assert!(commands.try_recv().is_err(), "changed call options cannot replay signaling");
+
 		gateway.exchange(&AgentVoiceRequest::Stop { session_id: id.clone() });
 		gateway.exchange(&AgentVoiceRequest::Stop { session_id: id });
 		assert!(commands.try_recv().is_ok());

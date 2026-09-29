@@ -41,6 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		session_id: session.clone(),
 		work_id: EntityId::new(work).map_err(|_| "invalid Agent identity")?,
 		offer,
+		options: Default::default(),
 	};
 	let result = async {
 		let mut status = client.voice(start).await?;

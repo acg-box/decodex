@@ -930,6 +930,7 @@ impl AgentHost {
 		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
 	) {
 		let id = request.session_id().as_str().to_owned();
+		let speech = matches!(&request, decodex_protocol::AgentVoiceRequest::Speak { .. });
 		let result = match active.as_mut() {
 			Some((_, agent, _)) =>
 				tokio::time::timeout(Duration::from_secs(30), agent.voice_request(request))
@@ -942,6 +943,10 @@ impl AgentHost {
 			None => Err(AgentError::Invalid("Agent is reconnecting".into())),
 		};
 		if let Err(error) = result {
+			if speech {
+				self.voice.notice(&id, "Read-aloud could not be confirmed. It was not retried.");
+				return;
+			}
 			let detail = match error {
 				AgentError::Transport(ClientError::Remote(error)) =>
 					crate::agent_voice::provider_error_message(&error.message).into(),

@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use std::time::Duration;
 
 pub(super) struct VoiceUi {
+	options: decodex_protocol::AgentVoiceOptions,
 	media: Media,
 	session: EntityId,
 	work: EntityId,
@@ -24,6 +25,59 @@ impl AgentSurface {
 	pub(crate) fn stop_voice(&mut self, cx: &mut Context<Self>) {
 		self.cancel_dictation(cx);
 		self.retire_voice_media();
+		cx.notify();
+	}
+
+	pub(super) fn voice_read_action(
+		&self,
+		work: &str,
+		identity: &str,
+		text: &str,
+		partial: bool,
+		cx: &mut Context<Self>,
+	) -> Option<gpui::AnyElement> {
+		let voice = self.voice.as_ref().filter(|v| {
+			v.work.as_str() == work && v.connected && v.answered && v.request.is_none()
+		})?;
+		if text.trim().is_empty() {
+			return None;
+		}
+		let (work, text, session) = (work.to_owned(), text.to_owned(), voice.session.clone());
+		Some(self.workspace_action(
+			format!("voice-read-{identity}"),
+			if partial { "Read shown text" } else { "Read aloud" }.into(),
+			move |s, cx| s.queue_voice_speech(&work, &session, &text, cx),
+			cx,
+		))
+	}
+
+	fn queue_voice_speech(
+		&mut self,
+		work: &str,
+		session: &EntityId,
+		text: &str,
+		cx: &mut Context<Self>,
+	) {
+		let Some(voice) = self.voice.as_mut().filter(|v| {
+			v.work.as_str() == work
+				&& &v.session == session
+				&& v.connected
+				&& v.answered
+				&& v.request.is_none()
+		}) else {
+			return;
+		};
+		if text.trim().is_empty() {
+			return;
+		}
+		match decodex_protocol::HistoryText::new(text) {
+			Ok(text) => {
+				voice.request =
+					Some(AgentVoiceRequest::Speak { session_id: session.clone(), text });
+				self.feedback = "Sending read-aloud request…".into();
+			},
+			Err(_) => self.feedback = "This reply is too long to read aloud in one request.".into(),
+		}
 		cx.notify();
 	}
 
@@ -46,6 +100,14 @@ impl AgentSurface {
 			cx.notify();
 			return;
 		};
+		let options = match self.voice_call_options(work.as_str(), cx) {
+			Ok(options) => options,
+			Err(message) => {
+				self.feedback = message.into();
+				cx.notify();
+				return;
+			},
+		};
 		let mut media = match Media::new(window) {
 			Ok(media) => media,
 			Err(()) => {
@@ -61,6 +123,7 @@ impl AgentSurface {
 		}
 		let session = EntityId::new(unique_command()).expect("bounded voice identity");
 		self.voice = Some(VoiceUi {
+			options,
 			media,
 			session: session.clone(),
 			work,
@@ -136,6 +199,7 @@ impl AgentSurface {
 						session_id: voice.session.clone(),
 						work_id: voice.work.clone(),
 						offer,
+						options: voice.options.clone(),
 					});
 				},
 				Some("connected") => voice.connected = true,
@@ -207,6 +271,9 @@ impl AgentSurface {
 				voice.request = Some(AgentVoiceRequest::Poll { session_id: voice.session.clone() });
 			},
 			AgentVoicePhase::Ready => {
+				if let Some(message) = status.message {
+					self.feedback = message.as_str().into();
+				}
 				if !voice.answered
 					&& let Some(answer) = status.answer
 				{
@@ -861,6 +928,69 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn selected_speech_stays_bound_to_the_call_and_preserves_the_draft(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.composer.update(cx, |input, cx| input.set_content("Draft", cx));
+			let id = EntityId::new("call").unwrap();
+			s.voice = Some(VoiceUi {
+				options: Default::default(),
+				media: Media,
+				session: id.clone(),
+				work: EntityId::new("agent").unwrap(),
+				request: None,
+				answered: true,
+				signaling: true,
+				connected: true,
+				connection_status: "Live".into(),
+				muted: false,
+				captions: Vec::new(),
+				matched_receipts: Default::default(),
+				levels: Default::default(),
+				follow: true,
+			});
+			s.queue_voice_speech("other", &id, "Wrong work", cx);
+			s.queue_voice_speech(
+				"agent",
+				&EntityId::new("previous-call").unwrap(),
+				"Stale button",
+				cx,
+			);
+			assert!(s.voice.as_ref().unwrap().request.is_none());
+			s.queue_voice_speech("agent", &id, &"x".repeat(65_537), cx);
+			assert!(s.voice.as_ref().unwrap().request.is_none(), "no silent truncation");
+			s.queue_voice_speech("agent", &id, "Selected reply", cx);
+			s.queue_voice_speech("agent", &id, "Do not replace pending output", cx);
+			assert_eq!(
+				s.poll_voice_media(cx).unwrap().unwrap(),
+				AgentVoiceRequest::Speak {
+					session_id: id.clone(),
+					text: decodex_protocol::HistoryText::new("Selected reply").unwrap(),
+				}
+			);
+			assert!(matches!(
+				s.poll_voice_media(cx).unwrap().unwrap(),
+				AgentVoiceRequest::Poll { .. }
+			));
+			s.apply_voice_status(
+				decodex_protocol::AgentVoiceStatus {
+					session_id: id,
+					phase: AgentVoicePhase::Ready,
+					answer: None,
+					message: decodex_protocol::WireText::new("Read-aloud could not be confirmed.")
+						.ok(),
+				},
+				cx,
+			);
+			assert!(s.voice.as_ref().unwrap().connected);
+			assert!(s.feedback.contains("not be confirmed"));
+			assert_eq!(s.composer.read(cx).content(), "Draft");
+		});
+	}
+
+	#[gpui::test]
 	fn active_voice_keeps_the_draft_visible_and_editable(cx: &mut gpui::TestAppContext) {
 		cx.update(crate::composer_input::bind_keys);
 		let (view, visual) = cx.add_window_view(|_, cx| {
@@ -868,6 +998,7 @@ mod tests {
 			surface.update(cx, |s, cx| {
 				s.composer.update(cx, |input, cx| input.set_content("Draft", cx));
 				s.voice = Some(VoiceUi {
+					options: Default::default(),
 					media: Media,
 					session: EntityId::new("call").unwrap(),
 					work: EntityId::new("agent").unwrap(),
@@ -915,6 +1046,7 @@ mod tests {
 		let surface = cx.new(AgentSurface::new);
 		surface.update(cx, |s, cx| {
 			s.voice = Some(VoiceUi {
+				options: Default::default(),
 				media: Media,
 				session: EntityId::new("call").expect("id"),
 				work: EntityId::new("agent").expect("id"),

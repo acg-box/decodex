@@ -61,6 +61,11 @@ impl AgentSurface {
 				text.clone(),
 			));
 		}
+		if kind == "agentMessage"
+			&& let Some(action) = self.voice_read_action(&work.id, &identity, text, *truncated, cx)
+		{
+			row = row.child(action);
+		}
 		row.into_any_element()
 	}
 
@@ -301,7 +306,14 @@ impl AgentSurface {
 			&& phase.as_deref() == Some("commentary")
 			&& attachments.is_empty()
 		{
-			return markdown::render_process(text, identity);
+			let body = markdown::render_process(text, identity);
+			return if let Some(action) =
+				self.voice_read_action(&work.id, identity, text, truncated || draft.is_some(), cx)
+			{
+				div().child(body).child(action).into_any_element()
+			} else {
+				body
+			};
 		}
 		if matches!(kind.as_str(), "userMessage" | "agentMessage") {
 			let message = self.native_message_entry(work, turn_id, text, kind);
@@ -331,6 +343,16 @@ impl AgentSurface {
 				let metrics = (kind == "agentMessage" && last_reply == Some(item_id)).then(|| self.native_history.entries.iter().find(|entry| matches!(&entry.content, Content::TurnBoundary { turn_id: turn, completed: true, .. } if turn == turn_id))).flatten().map(|entry| self.native_turn_metrics(&entry.content, identity, cx));
 				body.child(super::super::history_entry_with_metrics(&message, identity, metrics))
 			};
+			if kind == "agentMessage"
+				&& let Some(action) = self.voice_read_action(
+					&work.id,
+					identity,
+					text,
+					truncated || draft.is_some(),
+					cx,
+				) {
+				body = body.child(action);
+			}
 			if truncated {
 				body = body.child(muted("Some content was omitted from this history preview."));
 			}

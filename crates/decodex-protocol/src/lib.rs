@@ -146,7 +146,9 @@ pub use account_recovery::{
 };
 pub use reset_card_recovery::{AccountResetCardOperationResult, ResetCardOperationView};
 mod wire;
-pub use voice::{AgentVoicePhase, AgentVoiceRequest, AgentVoiceStatus, VoiceSdp};
+pub use voice::{
+	AgentVoiceOptions, AgentVoicePhase, AgentVoiceRequest, AgentVoiceStatus, VoiceSdp,
+};
 
 pub use self::{
 	account_login::{
@@ -238,7 +240,7 @@ use serde::{Deserialize, Serialize};
 pub use decodex_core::ServiceTier;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 106 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 107 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

@@ -31,6 +31,26 @@ impl<'de> Deserialize<'de> for VoiceSdp {
 	}
 }
 
+/// Optional settings for one call. Omitted fields retain native configuration and defaults.
+#[derive(Clone, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentVoiceOptions {
+	/// Native realtime model name for this call only.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub model: Option<WireText>,
+	/// Instructions for the backing Agent when voice starts; distinct from the voice prompt.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub start_instructions: Option<crate::HistoryText>,
+	/// Instructions for the backing Agent when voice ends.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub end_instructions: Option<crate::HistoryText>,
+}
+impl std::fmt::Debug for AgentVoiceOptions {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("AgentVoiceOptions").finish_non_exhaustive()
+	}
+}
+
 /// Explicit ephemeral media operations. Lost responses never authorize a new call.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
@@ -43,6 +63,16 @@ pub enum AgentVoiceRequest {
 		work_id: EntityId,
 		/// Private local WebRTC offer.
 		offer: VoiceSdp,
+		/// Immutable options captured before this call starts.
+		#[serde(default)]
+		options: AgentVoiceOptions,
+	},
+	/// Read selected reply text through an existing call. Send once; do not replay on timeout.
+	Speak {
+		/// Exact call identity.
+		session_id: EntityId,
+		/// Displayed assistant text chosen by the user, bounded to one history frame.
+		text: crate::HistoryText,
 	},
 	/// Observe the exact call and renew its UI-presence lease.
 	Poll {
@@ -60,6 +90,7 @@ impl AgentVoiceRequest {
 	pub fn session_id(&self) -> &EntityId {
 		match self {
 			Self::Start { session_id, .. }
+			| Self::Speak { session_id, .. }
 			| Self::Poll { session_id }
 			| Self::Stop { session_id } => session_id,
 		}

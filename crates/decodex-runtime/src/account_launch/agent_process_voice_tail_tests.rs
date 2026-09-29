@@ -99,6 +99,7 @@ async fn check_disconnected_tails(
 		session_id: EntityId::new("voice").expect("voice transcript fixture"),
 		work_id: EntityId::new("root").expect("voice transcript fixture"),
 		offer: VoiceSdp::new("offer".into()).expect("voice transcript fixture"),
+		options: Default::default(),
 	};
 	gateway.exchange(&start);
 	agent.voice_request(start).await.expect("voice transcript fixture");

@@ -106,7 +106,7 @@ impl AgentCoordinator {
 		request: AgentVoiceRequest,
 	) -> Result<(), AgentError> {
 		match request {
-			AgentVoiceRequest::Start { session_id, work_id, offer } => {
+			AgentVoiceRequest::Start { session_id, work_id, offer, options } => {
 				if self.store.agent_misalignment(work_id.as_str().into()).await?.is_some() {
 					return Err(AgentError::Invalid(
 						"This conversation is paused for provider findings.".into(),
@@ -163,17 +163,53 @@ impl AgentCoordinator {
 				self.voice.as_mut().expect("voice host").transcript_complete = Default::default();
 				self.voice.as_mut().expect("voice host").session =
 					Some((session_id.as_str().into(), thread.clone()));
-				let result=self.client.request("thread/realtime/start",json!({
-                    "threadId":thread,"version":"v3","outputModality":"audio","voice":selected_voice,
-                    "includeStartupContext":true,"flushTranscriptTailOnSessionEnd":true,
-                    "prompt":"Continue this Agent conversation by voice. Wait for the user's new spoken request before starting new work. Use the existing conversation and its tools when the user asks for work.",
-                    "transport":{"type":"webrtc","sdp":offer.as_str()}
-                })).await;
+				let mut params = json!({
+					"threadId":thread,"version":"v3","outputModality":"audio","voice":selected_voice,
+					"includeStartupContext":true,"flushTranscriptTailOnSessionEnd":true,
+					"prompt":"Continue this Agent conversation by voice. Wait for the user's new spoken request before starting new work. Use the existing conversation and its tools when the user asks for work.",
+					"transport":{"type":"webrtc","sdp":offer.as_str()}
+				});
+				if let Some(model) = options.model {
+					params["model"] = json!(model.as_str());
+				}
+				if let Some(instructions) = options.start_instructions {
+					params["realtimeStartInstructions"] = json!(instructions.as_str());
+				}
+				if let Some(instructions) = options.end_instructions {
+					params["realtimeEndInstructions"] = json!(instructions.as_str());
+				}
+				let result = self.client.request("thread/realtime/start", params).await;
 				if matches!(&result, Err(ClientError::Remote(_))) {
 					self.store.close_agent_voice_call(session_id.as_str().into()).await?;
 					self.voice.as_mut().expect("voice host").session = None;
 				}
 				result?;
+			},
+			AgentVoiceRequest::Speak { session_id, text } => {
+				let voice = self.voice.as_ref().filter(|v| v.answer_seen && !v.precaution_retired);
+				let Some((voice, thread)) = voice.and_then(|voice| {
+					voice
+						.session
+						.as_ref()
+						.filter(|(id, _)| id == session_id.as_str())
+						.map(|(_, thread)| (voice, thread))
+				}) else {
+					return Err(AgentError::Invalid(
+						"Read-aloud call is no longer available.".into(),
+					));
+				};
+				if text.as_str().trim().is_empty() {
+					return Err(AgentError::Invalid("Read-aloud text is empty.".into()));
+				}
+				self.client
+					.request(
+						"thread/realtime/appendSpeech",
+						json!({
+							"threadId":thread, "text":text.as_str()
+						}),
+					)
+					.await?;
+				voice.gateway.notice(session_id.as_str(), "Read-aloud request sent.");
 			},
 			AgentVoiceRequest::Stop { session_id } => {
 				let session = self
@@ -364,6 +400,36 @@ mod tests {
 	use super::*;
 
 	#[tokio::test]
+	async fn selected_speech_uses_only_the_existing_native_call() {
+		use decodex_protocol::{EntityId, HistoryText};
+		let (mut agent, mut sent, _directory) =
+			super::super::tests::fixture_with_history(json!({})).await;
+		agent.start_agent("agent", "Coordinate").await.unwrap();
+		agent.attach_voice_host("generation".into(), VoiceGateway::new());
+		let voice = agent.voice.as_mut().unwrap();
+		voice.session = Some(("call".into(), "opaque thread/1".into()));
+		voice.answer_seen = true;
+		while sent.try_recv().is_ok() {}
+		let request = |id| AgentVoiceRequest::Speak {
+			session_id: EntityId::new(id).unwrap(),
+			text: HistoryText::new("Selected reply").unwrap(),
+		};
+		assert!(agent.voice_request(request("other")).await.is_err());
+		assert!(sent.try_recv().is_err());
+		agent.voice_request(request("call")).await.unwrap();
+		let frames: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+		assert_eq!(frames.len(), 1, "no resume, start, or new user turn");
+		assert_eq!(frames[0]["method"], "thread/realtime/appendSpeech");
+		assert_eq!(
+			frames[0]["params"],
+			json!({"threadId":"opaque thread/1","text":"Selected reply"})
+		);
+		agent.voice.as_mut().unwrap().precaution_retired = true;
+		assert!(agent.voice_request(request("call")).await.is_err());
+		assert!(sent.try_recv().is_err());
+	}
+
+	#[tokio::test]
 	async fn precaution_storage_failure_still_retires_voice_and_requests_native_stop() {
 		use decodex_protocol::EntityId;
 		for disconnected in [false, true] {
@@ -378,6 +444,7 @@ mod tests {
 				session_id: EntityId::new("voice").unwrap(),
 				work_id: EntityId::new("agent").unwrap(),
 				offer: VoiceSdp::new("offer".into()).unwrap(),
+				options: Default::default(),
 			});
 			agent.voice.as_mut().unwrap().session =
 				Some(("voice".into(), "opaque thread/1".into()));
@@ -438,6 +505,7 @@ mod tests {
 				session_id: EntityId::new("voice").unwrap(),
 				work_id: EntityId::new("agent").unwrap(),
 				offer: VoiceSdp::new("offer".into()).unwrap(),
+				options: Default::default(),
 			};
 			gateway.exchange(&start);
 			agent.voice.as_mut().unwrap().session =

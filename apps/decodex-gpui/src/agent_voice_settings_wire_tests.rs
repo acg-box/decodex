@@ -114,3 +114,29 @@ fn changed_native_source_retires_voice_panel_epoch(cx: &mut gpui::TestAppContext
 		assert_ne!(s.voice_settings.epoch, epoch);
 	});
 }
+
+#[gpui::test]
+fn voice_call_options_are_bound_to_work_and_runtime_and_keep_blank_defaults(
+	cx: &mut gpui::TestAppContext,
+) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.visual_workspace_fixture(cx);
+		let work = s.snapshot.as_ref().unwrap().work_items[0].id.clone();
+		s.snapshot.as_mut().unwrap().work_items[0].codex_thread_id = Some("voice-thread".into());
+		let model = cx.new(|cx| ComposerInput::new(0, cx));
+		let start = cx.new(|cx| ComposerInput::new(0, cx));
+		let end = cx.new(|cx| ComposerInput::new(0, cx));
+		model.update(cx, |input, cx| input.set_content("realtime-fixture", cx));
+		start.update(cx, |input, cx| input.set_content("Start fixture", cx));
+		s.voice_settings.next =
+			Some(NextCall { target: s.voice_option_target(&work).unwrap(), model, start, end });
+		let options = s.voice_call_options(&work, cx).unwrap();
+		assert_eq!(options.model.unwrap().as_str(), "realtime-fixture");
+		assert_eq!(options.start_instructions.unwrap().as_str(), "Start fixture");
+		assert!(options.end_instructions.is_none());
+		assert_eq!(s.voice_call_options("another-work", cx).unwrap(), Default::default());
+		s.snapshot.as_mut().unwrap().runtime_source = Some(EntityId::new("new-runtime").unwrap());
+		assert_eq!(s.voice_call_options(&work, cx).unwrap(), Default::default());
+	});
+}

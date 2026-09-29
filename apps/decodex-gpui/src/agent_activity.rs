@@ -156,11 +156,17 @@ impl AgentSurface {
 	pub(super) fn anchored_history_entry(
 		&self,
 		entry: &decodex_protocol::AgentHistoryEntryDto,
+		work: &str,
+		cx: &mut Context<Self>,
 	) -> AnyElement {
-		self.anchor_history_row(
-			&HistoryKey::Local(entry.id),
-			history_entry(entry).into_any_element(),
-		)
+		let mut body = history_entry(entry).into_any_element();
+		if entry.kind == "assistant"
+			&& let Some(action) =
+				self.voice_read_action(work, &format!("saved-{}", entry.id), &entry.text, true, cx)
+		{
+			body = div().child(body).child(action).into_any_element();
+		}
+		self.anchor_history_row(&HistoryKey::Local(entry.id), body)
 	}
 
 	fn prepare_native_history_marks(&mut self) {

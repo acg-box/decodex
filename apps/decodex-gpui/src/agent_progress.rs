@@ -71,7 +71,7 @@ impl AgentSurface {
 							.flex()
 							.flex_col()
 							.gap_1()
-							.child(self.anchored_history_entry(entry))
+							.child(self.anchored_history_entry(entry, &work.id, cx))
 							.child(
 								div().debug_selector(|| "capacity-retry-cancel".into()).child(
 									self.capacity_retry_control(work.id.clone(), entry.id, cx),
@@ -80,7 +80,8 @@ impl AgentSurface {
 							.into_any_element(),
 					);
 				} else {
-					result.push(self.anchored_history_entry(entry).into_any_element());
+					result
+						.push(self.anchored_history_entry(entry, &work.id, cx).into_any_element());
 				}
 			}
 		}
