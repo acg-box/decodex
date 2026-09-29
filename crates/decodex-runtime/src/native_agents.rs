@@ -26,7 +26,7 @@ pub(crate) async fn read(
             let value = client.thread_read(json!({"threadId":thread,"includeTurns":true})).await.ok()?;
             return conversation(&value,thread);
         }
-        let value = client.request("thread/list",json!({"ancestorThreadId":root,"sourceKinds":["subAgentThreadSpawn"],"limit":100,"cursor":cursor,"useStateDbOnly":true})).await.ok()?;
+        let value = client.request("thread/list",json!({"ancestorThreadId":root,"sourceKinds":["subAgentThreadSpawn"],"sortKey":"recency_at","sortDirection":"desc","limit":100,"cursor":cursor,"useStateDbOnly":true})).await.ok()?;
         let data = value["data"].as_array()?;
         if data.len()>100 {return None;}
         let agents = data.iter().filter_map(|item| {

@@ -2975,7 +2975,9 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 					)
 				})
 				.when_some(prompt, |details, (code, url)| {
-					details.child(account_login_prompt(code, url))
+					details.child(account_login_prompt(code, url)).child(
+						div().text_size(px(10.5)).text_color(rgb(WB_TEXT_MUTED)).child("Use this code only for the sign-in you started in Decodex. Cancel if someone else asked you to enter a code."),
+					)
 				}),
 		)
 		.child(
