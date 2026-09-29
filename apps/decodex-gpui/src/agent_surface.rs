@@ -3,7 +3,6 @@
 #[path = "agent_activity.rs"] mod activity;
 #[path = "agent_tree.rs"] mod agent_tree;
 #[path = "agent_app_exposure.rs"] mod app_exposure;
-#[path = "agent_app_settings.rs"] mod app_settings;
 #[path = "agent_archive.rs"] mod archive;
 #[path = "agent_async_questions.rs"] mod async_questions;
 #[path = "agent_capabilities.rs"] mod capabilities;
@@ -37,7 +36,6 @@
 #[path = "agent_requests.rs"] mod requests;
 #[path = "agent_resources.rs"] mod resources;
 #[path = "agent_response_metrics.rs"] mod response_metrics;
-#[path = "agent_saved_app_settings.rs"] mod saved_app_settings;
 #[path = "agent_selectable_text.rs"] mod selectable_text;
 #[path = "agent_send_preview.rs"] mod send_preview;
 #[path = "agent_steer_receipts.rs"] mod steer_receipts;
@@ -192,8 +190,6 @@ pub(crate) struct AgentSurface {
 	task_models: models::Panel,
 	hook_settings: hooks::Panel,
 	app_exposure: app_exposure::Panel,
-	app_settings: app_settings::Panel,
-	saved_app_settings: saved_app_settings::Panel,
 	native_goal: native_goal::Panel,
 	model: Entity<ComposerInput>,
 	cwd: Entity<ComposerInput>,
@@ -450,8 +446,6 @@ impl AgentSurface {
 			task_models: Default::default(),
 			hook_settings: Default::default(),
 			app_exposure: Default::default(),
-			app_settings: Default::default(),
-			saved_app_settings: Default::default(),
 			native_goal: Default::default(),
 			cwd,
 			account: Self::account_input(cx),
@@ -1207,8 +1201,6 @@ impl AgentSurface {
 		self.reset_task_models();
 		self.reset_hook_settings();
 		self.reset_app_exposure();
-		self.reset_app_settings();
-		self.reset_saved_app_settings();
 		self.reset_voice_settings();
 		self.reset_recap();
 		self.reset_prompt_edit();
@@ -1270,8 +1262,6 @@ impl AgentSurface {
 		self.reset_capabilities();
 		self.reset_model_settings();
 		self.reset_app_exposure();
-		self.reset_app_settings();
-		self.reset_saved_app_settings();
 		self.reset_voice_settings();
 		self.reset_recap();
 		self.reset_prompt_edit();
@@ -1348,8 +1338,6 @@ impl AgentSurface {
 			self.reset_task_models();
 			self.reset_hook_settings();
 			self.reset_app_exposure();
-			self.reset_app_settings();
-			self.reset_saved_app_settings();
 			self.reset_voice_settings();
 			self.reset_recap();
 			self.reset_prompt_edit();
@@ -1367,8 +1355,6 @@ impl AgentSurface {
 				self.invalidate_task_models(&snapshot);
 				self.invalidate_hook_settings(&snapshot);
 				self.invalidate_app_exposure(&snapshot);
-				self.invalidate_app_settings(&snapshot);
-				self.invalidate_saved_app_settings(&snapshot);
 				self.invalidate_voice_settings(&snapshot);
 				self.invalidate_recap(&snapshot);
 				self.invalidate_prompt_edit(&snapshot);
@@ -2305,7 +2291,6 @@ impl AgentSurface {
 									.child(self.permission_profiles_panel(item, cx))
 									.child(self.task_models_panel(item, cx))
 									.child(self.hook_settings_panel(item, cx))
-									.child(self.saved_app_settings_panel(item, cx))
 							}),
 					)
 			})

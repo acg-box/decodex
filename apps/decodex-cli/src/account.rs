@@ -426,7 +426,7 @@ mod tests {
 
 	use crate::{Cli, Command, OutputFormat};
 
-	use super::{ACCOUNT_OUTPUT_SCHEMA, AccountCommand, OutputDocument, render_command};
+	use super::{AccountCommand, render_command};
 
 	const OPERATION_ID: &str = "40000000-0000-4000-8000-000000000001";
 	const ACCOUNT_ID: &str = "40000000-0000-4000-8000-000000000002";
@@ -618,15 +618,16 @@ mod tests {
 				tokens: 900,
 			}],
 		};
-		let document = OutputDocument {
-			schema: ACCOUNT_OUTPUT_SCHEMA,
-			command: "profile",
-			outcome: "success",
-			result: AccountProfileResult::Current(Box::new(profile.clone())),
-		};
+		let document = super::render(
+			"profile",
+			OutputFormat::Json,
+			Ok(AccountProfileResult::Current(Box::new(profile.clone()))),
+		);
+		assert_eq!(document.exit_code(), 0);
+		assert!(!document.is_error_stream());
 
 		assert_eq!(
-			serde_json::to_value(document).unwrap(),
+			serde_json::from_str::<serde_json::Value>(document.text()).unwrap(),
 			serde_json::json!({
 				"schema": "decodex/cli-account/1",
 				"command": "profile",
@@ -652,17 +653,18 @@ mod tests {
 			}),
 		);
 
-		let cached = OutputDocument {
-			schema: ACCOUNT_OUTPUT_SCHEMA,
-			command: "profile",
-			outcome: "success",
-			result: AccountProfileResult::Cached {
+		let cached = super::render(
+			"profile",
+			OutputFormat::Json,
+			Ok(AccountProfileResult::Cached {
 				profile: Box::new(profile),
 				refresh_error: AccountProfileErrorDto::CredentialBusy,
-			},
-		};
+			}),
+		);
+		assert_eq!(cached.exit_code(), 0);
+		assert!(!cached.is_error_stream());
 		assert_eq!(
-			serde_json::to_value(cached).unwrap(),
+			serde_json::from_str::<serde_json::Value>(cached.text()).unwrap(),
 			serde_json::json!({
 				"schema": "decodex/cli-account/1",
 				"command": "profile",
@@ -691,18 +693,19 @@ mod tests {
 			}),
 		);
 
-		let unavailable = OutputDocument {
-			schema: ACCOUNT_OUTPUT_SCHEMA,
-			command: "profile",
-			outcome: "success",
-			result: AccountProfileResult::Unavailable {
+		let unavailable = super::render(
+			"profile",
+			OutputFormat::Json,
+			Ok(AccountProfileResult::Unavailable {
 				error: AccountProfileErrorDto::ProviderUnavailable,
 				email: AccountProfileEmailDto::Redacted,
 				plan_type: Some(WireText::new("pro").unwrap()),
-			},
-		};
+			}),
+		);
+		assert_eq!(unavailable.exit_code(), 0);
+		assert!(!unavailable.is_error_stream());
 		assert_eq!(
-			serde_json::to_value(unavailable).unwrap(),
+			serde_json::from_str::<serde_json::Value>(unavailable.text()).unwrap(),
 			serde_json::json!({
 				"schema": "decodex/cli-account/1",
 				"command": "profile",

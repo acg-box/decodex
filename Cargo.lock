@@ -1502,12 +1502,9 @@ name = "decodex-app-client-ffi"
 version = "0.2.0"
 dependencies = [
  "decodex-protocol",
- "libc",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
- "toml_edit 0.22.27",
 ]
 
 [[package]]
@@ -1526,7 +1523,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
- "toml_edit 0.22.27",
 ]
 
 [[package]]
@@ -1555,6 +1551,7 @@ dependencies = [
  "sha2 0.11.0",
  "tempfile",
  "toml 1.1.2+spec-1.1.0",
+ "toml_edit 0.22.27",
 ]
 
 [[package]]

@@ -5,8 +5,6 @@
 //! is a short-lived protocol exchange; Swift never receives credential bytes
 //! or a credential-file path.
 
-mod fast_mode;
-
 use std::{
 	collections::HashMap,
 	ffi::c_void,
@@ -254,7 +252,7 @@ enum BridgeFailure {
 enum ResponseFailure {
 	Client(ClientFailure),
 	Bridge(BridgeFailure),
-	FastMode(fast_mode::FastModeFailure),
+	FastMode(decodex_protocol::FastModeFailure),
 }
 
 #[derive(Serialize)]
@@ -316,7 +314,7 @@ impl From<ResetCardConsumeResponse> for ResetCardConsumeDto {
 enum RequestFailure {
 	Client(ClientFailure),
 	Bridge(BridgeFailure),
-	FastMode(fast_mode::FastModeFailure),
+	FastMode(decodex_protocol::FastModeFailure),
 }
 
 impl From<ClientFailure> for RequestFailure {
@@ -937,12 +935,13 @@ async fn cancel_account_reauthentication(
 }
 
 fn fast_mode_status() -> Result<Value, RequestFailure> {
-	let enabled = fast_mode::status().map_err(RequestFailure::FastMode)?;
+	let enabled = decodex_protocol::global_fast_mode_enabled().map_err(RequestFailure::FastMode)?;
 	to_value(FastModeData { enabled })
 }
 
 fn set_fast_mode(enabled: bool) -> Result<Value, RequestFailure> {
-	let enabled = fast_mode::set_enabled(enabled).map_err(RequestFailure::FastMode)?;
+	let enabled = decodex_protocol::set_global_fast_mode_enabled(enabled)
+		.map_err(RequestFailure::FastMode)?;
 	to_value(FastModeData { enabled })
 }
 
@@ -1441,7 +1440,7 @@ mod tests {
 			schema: RESPONSE_SCHEMA,
 			outcome: "failure",
 			operation: "fast_mode_status",
-			failure: ResponseFailure::FastMode(fast_mode::FastModeFailure::ConfigInvalid),
+			failure: ResponseFailure::FastMode(decodex_protocol::FastModeFailure::ConfigInvalid),
 		};
 		let value = serde_json::to_value(response).expect("response must serialize");
 

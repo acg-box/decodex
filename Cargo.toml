@@ -25,7 +25,6 @@ repository  = "https://github.com/acg-box/decodex"
 version     = "0.2.0"
 
 [workspace.dependencies]
-unicode-width        = { version = "~0.2" }
 decodex-account-login = { path = "crates/decodex-account-login" }
 decodex-codex         = { path = "crates/decodex-codex" }
 decodex-core          = { path = "crates/decodex-core" }
@@ -33,6 +32,7 @@ decodex-database      = { path = "database" }
 decodex-protocol      = { path = "crates/decodex-protocol" }
 decodex-runtime       = { path = "crates/decodex-runtime" }
 pulldown-cmark        = { version = "~0.10", default-features = false }
+unicode-width         = { version = "~0.2" }
 
 base64             = { version = "0.22" }
 clap               = { version = "4.6", features = ["derive"] }
@@ -61,7 +61,7 @@ time               = { version = "0.3", features = ["formatting"] }
 tokio              = { version = "1.52.3", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-tungstenite  = { version = "0.29" }
 toml               = { version = "1.1" }
-toml_edit          = { version = "0.25" }
+toml_edit          = { version = "~0.22" }
 tracing            = { version = "0.1" }
 tracing-appender   = { version = "0.2" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
