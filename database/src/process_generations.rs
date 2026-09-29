@@ -256,7 +256,6 @@ impl SqliteStore {
 			expected_revision,
 			ProcessGenerationState::Starting,
 			ProcessGenerationState::Ready,
-			None,
 		)
 		.await
 	}
@@ -271,7 +270,6 @@ impl SqliteStore {
 			expected_revision,
 			ProcessGenerationState::Ready,
 			ProcessGenerationState::Stopping,
-			None,
 		)
 		.await
 	}
@@ -283,7 +281,7 @@ impl SqliteStore {
 		reason: ProcessAuthorityLossReason,
 	) -> Result<ProcessGenerationMutationOutcome, StoreError> {
 		let generation_id = generation_id.clone();
-		self.mutate_generation(generation_id, expected_revision, move |connection, current, now| {
+		self.mutate_generation(generation_id, move |connection, current, now| {
 			if current.state == ProcessGenerationState::DeathUnknown
 				&& current.authority_loss_reason == Some(reason)
 				&& current.revision == expected_revision.saturating_add(1)
@@ -317,7 +315,7 @@ impl SqliteStore {
 	) -> Result<ProcessGenerationMutationOutcome, StoreError> {
 		let evidence = evidence.clone();
 		let generation_id = evidence.generation_id.clone();
-		self.mutate_generation(generation_id, expected_revision, move |connection, current, now| {
+		self.mutate_generation(generation_id, move |connection, current, now| {
 			if current.state == ProcessGenerationState::Dead {
 				return if current.death_evidence_id.as_ref() == Some(&evidence.evidence_id) {
 					Ok(ProcessGenerationMutationOutcome::Replayed(mutation(current)))
@@ -416,13 +414,12 @@ impl SqliteStore {
 		expected_revision: i64,
 		expected_state: ProcessGenerationState,
 		target_state: ProcessGenerationState,
-		_loss: Option<ProcessAuthorityLossReason>,
 	) -> Result<ProcessGenerationMutationOutcome, StoreError> {
 		if expected_revision <= 0 {
 			return Err(StoreError::InvalidInput("ProcessGeneration revision must be positive"));
 		}
 		let generation_id = generation_id.clone();
-		self.mutate_generation(generation_id, expected_revision, move |connection, current, now| {
+		self.mutate_generation(generation_id, move |connection, current, now| {
 			if current.state == target_state
 				&& current.revision == expected_revision.saturating_add(1)
 			{
@@ -453,7 +450,6 @@ impl SqliteStore {
 	async fn mutate_generation<F>(
 		&self,
 		generation_id: ProcessGenerationId,
-		_expected_revision: i64,
 		operation: F,
 	) -> Result<ProcessGenerationMutationOutcome, StoreError>
 	where
