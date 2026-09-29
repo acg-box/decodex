@@ -25,6 +25,7 @@ use futures_util as _;
 use serde as _;
 use serde_json as _;
 use sha2 as _;
+use time as _;
 use tokio as _;
 use tokio_tungstenite as _;
 use zeroize as _;
