@@ -161,11 +161,11 @@ impl AgentSurface {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
 	use super::*;
 	use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-	pub(super) fn profiles() -> (tempfile::TempDir, ClientProfile, ClientProfile) {
+	pub(in super::super) fn profiles() -> (tempfile::TempDir, ClientProfile, ClientProfile) {
 		let root = tempfile::tempdir_in("/tmp").unwrap();
 		let path = root.path().canonicalize().unwrap();
 		std::fs::create_dir(path.join("server")).unwrap();

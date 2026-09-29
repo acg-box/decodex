@@ -143,3 +143,7 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 	}
 	Ok((retained, Some((status.target_work_id, target_thread, status.boundary, snapshot))))
 }
+
+#[cfg(test)]
+#[path = "agent_prompt_fork_wire_tests.rs"]
+mod tests;
