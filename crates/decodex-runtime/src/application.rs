@@ -350,20 +350,6 @@ impl ServiceApplication {
 		})
 	}
 
-	async fn query_app_settings(&self, work: &str, event: i64) -> QueryResultPayload {
-		QueryResultPayload::AgentAppSettings(match &self.agent {
-			Some(agent) => agent.app_settings(work, event).await,
-			None => decodex_protocol::AgentAppSettingsResult::Unavailable,
-		})
-	}
-
-	async fn query_saved_app_settings(&self, work: &str) -> QueryResultPayload {
-		QueryResultPayload::AgentSavedAppSettings(match &self.agent {
-			Some(agent) => agent.saved_app_settings(work).await,
-			None => decodex_protocol::AgentSavedAppSettingsResult::Unavailable,
-		})
-	}
-
 	async fn query_hook_settings(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentHookSettings(match &self.agent {
 			Some(agent) => agent.hook_settings(work).await,
@@ -2331,10 +2317,13 @@ impl Application for ServiceApplication {
 				QueryResultPayload::McpLogin(query_mcp_login(self.agent.as_ref(), request).await),
 			QueryPayload::GetAgentNativeGoal { work_id, thread_id } =>
 				self.query_native_goal(work_id.as_str(), thread_id.as_str()).await,
-			QueryPayload::GetAgentAppSettings { work_id, event_id } =>
-				self.query_app_settings(work_id.as_str(), *event_id).await,
-			QueryPayload::GetAgentSavedAppSettings { work_id } =>
-				self.query_saved_app_settings(work_id.as_str()).await,
+			QueryPayload::GetAgentAppSettings { .. } => QueryResultPayload::AgentAppSettings(
+				decodex_protocol::AgentAppSettingsResult::Unavailable,
+			),
+			QueryPayload::GetAgentSavedAppSettings { .. } =>
+				QueryResultPayload::AgentSavedAppSettings(
+					decodex_protocol::AgentSavedAppSettingsResult::Unavailable,
+				),
 			QueryPayload::GetAgentHookSettings { work_id } =>
 				self.query_hook_settings(work_id.as_str()).await,
 			QueryPayload::GetAgentPluginSelection { work_id } =>

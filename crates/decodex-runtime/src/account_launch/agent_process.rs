@@ -232,7 +232,6 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 	if let Some(method) = value.get("method") {
 		if method == "config/batchWrite" {
 			return if decodex_codex::app_server_client::is_hook_settings_write(&value["params"])
-				|| decodex_codex::app_server_client::is_app_link_settings_write(&value["params"])
 				|| decodex_codex::app_server_client::is_app_tool_exposure_write(&value["params"])
 				|| decodex_codex::app_server_client::is_realtime_voice_write(&value["params"])
 			{
@@ -655,46 +654,16 @@ mod tests {
 	}
 
 	#[test]
-	fn account_settings_bridge_accepts_only_versioned_single_leaf_edits() {
-		let mut requests = HashSet::new();
-		let valid = json!({"id":42,"method":"config/batchWrite","params":{
-			"filePath":"/fixture/config.toml","expectedVersion":"v1","reloadUserConfig":true,
-			"edits":[{"keyPath":"apps.\"日历.app\".links.\"work.\\\"link\\\\one\".approvals_reviewer",
-				"mergeStrategy":"replace","value":"auto_review"}]}});
-		assert!(validate_outbound(&valid, &mut requests).is_ok());
-		for path in [
-			"approvals_reviewer",
-			"apps.\"calendar\".enabled",
-			"apps.app.links.work.approvals_reviewer",
-			"apps.\"app\".links.\"work\".enabled",
-			"apps.\"app\".links.\"work\".approvals_reviewer.extra",
-			"apps.\"\".links.\"work\".approvals_reviewer",
-			"apps.\"app\".links.\"work",
-		] {
-			let mut invalid = valid.clone();
-			invalid["params"]["edits"][0]["keyPath"] = json!(path);
-			assert!(validate_outbound(&invalid, &mut requests).is_err(), "{path}");
+	fn retired_connector_approval_writes_are_rejected() {
+		for field in ["approvals_reviewer", "default_tools_approval_mode"] {
+			for value in [json!("auto"), Value::Null] {
+				let request = json!({"id":42,"method":"config/batchWrite","params":{
+					"filePath":"/fixture/config.toml","expectedVersion":"v1","reloadUserConfig":true,
+					"edits":[{"keyPath":format!("apps.\"calendar\".links.\"work\".{field}"),
+						"mergeStrategy":"replace","value":value}]}});
+				assert!(validate_outbound(&request, &mut HashSet::new()).is_err());
+			}
 		}
-		for (pointer, replacement) in [
-			("/params/expectedVersion", Value::Null),
-			("/params/filePath", json!("relative.toml")),
-			("/params/reloadUserConfig", json!(false)),
-			("/params/edits/0/mergeStrategy", json!("upsert")),
-			("/params/edits/0/value", json!("future_unknown")),
-		] {
-			let mut invalid = valid.clone();
-			*invalid.pointer_mut(pointer).unwrap() = replacement;
-			assert!(validate_outbound(&invalid, &mut requests).is_err(), "{pointer}");
-		}
-		let mut invalid = valid.clone();
-		invalid["params"]["edits"]
-			.as_array_mut()
-			.unwrap()
-			.push(json!({"keyPath":"model","value":"other","mergeStrategy":"replace"}));
-		assert!(validate_outbound(&invalid, &mut requests).is_err());
-		let mut clear = valid;
-		clear["params"]["edits"][0]["value"] = Value::Null;
-		assert!(validate_outbound(&clear, &mut requests).is_ok());
 	}
 
 	#[test]

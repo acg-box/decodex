@@ -394,67 +394,6 @@ impl AgentHost {
 		.await
 	}
 
-	pub(crate) async fn app_settings(
-		&self,
-		work: &str,
-		event: i64,
-	) -> decodex_protocol::AgentAppSettingsResult {
-		crate::agent_app_settings::read(
-			&self.store,
-			|| async {
-				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
-				self.timeline_source(work, &owner.codex_thread_id?).await
-			},
-			event,
-		)
-		.await
-	}
-
-	async fn set_app_setting(
-		&self,
-		work: &str,
-		change: crate::agent_app_settings::Selection<'_>,
-	) -> Result<String, AgentHostError> {
-		crate::agent_app_settings::write(
-			&self.store,
-			|| async {
-				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
-				self.timeline_source(work, &owner.codex_thread_id?).await
-			},
-			change,
-		)
-		.await?;
-		Ok(work.into())
-	}
-
-	pub(crate) async fn saved_app_settings(
-		&self,
-		work: &str,
-	) -> decodex_protocol::AgentSavedAppSettingsResult {
-		crate::agent_app_settings::read_saved(&self.store, || async {
-			let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
-			self.timeline_source(work, &owner.codex_thread_id?).await
-		})
-		.await
-	}
-
-	async fn set_saved_app_setting(
-		&self,
-		work: &str,
-		change: crate::agent_app_settings::SavedSelection<'_>,
-	) -> Result<String, AgentHostError> {
-		crate::agent_app_settings::write_saved(
-			&self.store,
-			|| async {
-				let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
-				self.timeline_source(work, &owner.codex_thread_id?).await
-			},
-			change,
-		)
-		.await?;
-		Ok(work.into())
-	}
-
 	pub(crate) async fn hook_settings(
 		&self,
 		work: &str,
@@ -1170,26 +1109,10 @@ impl AgentHost {
 		action: AgentActionDto,
 	) -> Result<String, AgentHostError> {
 		match action {
-			AgentActionDto::SetSavedAppSetting {
-				work_id,
-				thread_id,
-				connector_id,
-				link_id,
-				review_token,
-				edit,
-			} =>
-				self.set_saved_app_setting(
-					work_id.as_str(),
-					crate::agent_app_settings::SavedSelection {
-						thread: thread_id.as_str(),
-						connector: connector_id.as_str(),
-						link: link_id.as_str(),
-						review: review_token.as_str(),
-						edit: &edit,
-						attempt_id: key,
-					},
-				)
-				.await,
+			AgentActionDto::SetSavedAppSetting { .. } | AgentActionDto::SetAppSetting { .. } =>
+				Err(AgentHostError::Rejected(
+					"Configure connector approvals in Codex for this account.",
+				)),
 			AgentActionDto::SetVoicePreference { work_id, review_token, voice } =>
 				self.set_voice_preference(work_id.as_str(), review_token.as_str(), voice.as_str())
 					.await,
@@ -1205,17 +1128,6 @@ impl AgentHost {
 			AgentActionDto::SetAppToolExposure { work_id, connector_id, review_token, omit } =>
 				self.set_app_tool_exposure((&work_id, &connector_id, &review_token), omit, key)
 					.await,
-			AgentActionDto::SetAppSetting { work_id, event_id, review_token, edit } =>
-				self.set_app_setting(
-					work_id.as_str(),
-					crate::agent_app_settings::Selection {
-						event: event_id,
-						review: review_token.as_str(),
-						edit: &edit,
-						attempt_id: key,
-					},
-				)
-				.await,
 			AgentActionDto::SetHookSetting {
 				work_id,
 				thread_id,
