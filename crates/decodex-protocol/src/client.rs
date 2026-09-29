@@ -2383,12 +2383,7 @@ impl ResetCardClient {
 						|| receipt.idempotency_key != idempotency_key
 						|| (receipt.disposition != ReceiptDisposition::Duplicate
 							&& receipt.original_client_command_id != client_command_id)
-						|| !matches!(
-							receipt.disposition,
-							ReceiptDisposition::Executed
-								| ReceiptDisposition::Duplicate
-								| ReceiptDisposition::Refused
-						) {
+					{
 						return Err(ClientFailure::ProtocolMalformed);
 					}
 
