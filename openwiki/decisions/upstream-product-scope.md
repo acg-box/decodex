@@ -5,7 +5,7 @@ description: "Current native integration, account and conversation scope, with e
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-09-29T13:52:19.644Z
+    at: 2026-09-29T14:10:21.488Z
 sources:
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
@@ -15,12 +15,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process.rs
+  - id: openwiki-source-e2f4e298ab0a4c683b92158d
+    resource: repo://crates/decodex-runtime/src/account_service/personal_access_token.rs
   - id: openwiki-source-d8df4be72e86f8bd3d65cce8
     resource: repo://crates/decodex-runtime/src/agent_plugins.rs
   - id: openwiki-source-8b32cad13ab2428dd54bd986
     resource: repo://crates/decodex-runtime/src/agent_skills.rs
   - id: openwiki-source-e32adebfd6d3bf27dc186bad
     resource: repo://crates/decodex-runtime/src/agent/tests/auth_recovery.rs
+  - id: openwiki-source-2da6601c3f30e806c504e991
+    resource: repo://crates/decodex-runtime/src/host_credentials.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 ---
 

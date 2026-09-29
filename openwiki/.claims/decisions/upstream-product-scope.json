@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:878425b1f543abf83909109ecf36ce9b6dc5bf40f536df9956995ec7992c2f2c",
+  "pageVersion": "sha256:ef9e5d67e10f7fcc6993151598511ce4f451786332c61427a044127eff4c7539",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -57,10 +57,24 @@
           "version": "repo-file-v1:sha256:a18152b03bc215e0cbfeae02e948d616e259dcbd97cf96d14c0f54833771fb27"
         }
       ]
+    },
+    {
+      "id": "claim_6dacf69d95764fb2a4411f9b49c6c4a8",
+      "statement": "Imported ChatGPT PAT accounts use identity verified by the native whoami authority and retain no synthetic OAuth refresh token or expiry.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service/personal_access_token.rs#L34-L93",
+          "version": "repo-lines-v1:sha256:b849c8f787263b00883cb80ba6d91d5dec5ae6134bcb601f158503cf595fe762:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1Y2Y1ZmMyM2YyYTZkMjNjM2VhNTFlNzJmNWU4OTZjNzU1NWZiYWEwNWNkNWIxZWExODJiZjk2MThhOGU4MWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY1ZmQ3NzNjM2YxZWYxNDIxNTYwNDY0ODU5Zjc5ODZiNTczMGQ5MzdjNzg0MzAxODFkOGYzMWRkYzkzOTNiZmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0Nzc3ZGE2NzlmNTczOGU0ODA1YTg1Mzc2NmRiMjAzN2IyMDA5MjdkNTg4Y2U4NzllNjExMDUyNDYwNTc2ZjkifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/host_credentials.rs#L67-L104",
+          "version": "repo-lines-v1:sha256:af55ea063afc3deab0130ee93bdbc1b8257f30a9d28b4ea661f41cd294cdcb2f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2MDNmNTEwZmI3MTRkODhmZjA5YzczMWE4ZWUyMTUxYzAxZjI3YjgzZTRjNzg2MzQ2NjVjMGMwOGRhOWI2OTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkNTI0YjhjMGYyYzBmOTMwYzQzMGNjNDE4ODgxOTc3ZmYyY2M0NGQ4NGJjNTU1YjQ5MDQ4NzY1Yjc2Mjk4Y2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5YTUzMjBiZDcxYzkwNmY0NTAzMzQ0MjZjYTkzMTk1OTlmNGE5YjA3MmQ3YmQ3ZTRiYzUwNmJhMDg4ZjljMWMifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-29T13:52:19.644Z"
+    "at": "2026-09-29T14:10:21.488Z"
   }
 }
