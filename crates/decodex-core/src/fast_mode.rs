@@ -1,4 +1,5 @@
-//! In-process Codex Fast mode configuration.
+//! Shared local configuration for the global Codex Fast feature gate.
+//! Thread service-tier selections have a separate owner.
 
 #[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt as _};
@@ -17,24 +18,52 @@ use toml_edit::{DocumentMut, Item, Table};
 const MAX_CONFIG_BYTES: u64 = 1_048_576;
 const TEMP_FILE_ATTEMPTS: u8 = 16;
 
+/// Closed configuration failures without file paths or parser excerpts.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum FastModeFailure {
+pub enum FastModeFailure {
+	/// The user home is absent.
 	HomeUnavailable,
+	/// The configuration path is not safe to use.
 	UnsafeConfigPath,
+	/// The configuration cannot be read.
 	ConfigUnavailable,
+	/// The configuration exceeds the byte limit.
 	ConfigTooLarge,
+	/// The configuration is not valid TOML.
 	ConfigInvalid,
+	/// The features value is not a table.
 	FeaturesNotTable,
+	/// The Fast feature value is not a Boolean.
 	FastModeNotBoolean,
+	/// The configuration update did not complete.
 	WriteFailed,
 }
 
-pub(crate) fn status() -> Result<bool, FastModeFailure> {
+impl std::fmt::Display for FastModeFailure {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str(match self {
+			Self::HomeUnavailable => "the current user home is unavailable",
+			Self::UnsafeConfigPath => "the Codex config path is unsafe",
+			Self::ConfigUnavailable => "the Codex config is unavailable",
+			Self::ConfigTooLarge => "the Codex config exceeds the supported size",
+			Self::ConfigInvalid => "the Codex config is invalid TOML",
+			Self::FeaturesNotTable => "`features` is not a TOML table",
+			Self::FastModeNotBoolean => "`features.fast_mode` is not a Boolean",
+			Self::WriteFailed => "the Codex config could not be updated",
+		})
+	}
+}
+
+/// Read the global Fast feature gate from the normal user configuration.
+/// An absent value inherits the native default, which enables the feature.
+pub fn global_fast_mode_enabled() -> Result<bool, FastModeFailure> {
 	status_at_path(&codex_config_path(env::var_os("HOME"))?)
 }
 
-pub(crate) fn set_enabled(enabled: bool) -> Result<bool, FastModeFailure> {
+/// Set the global Fast feature gate while preserving unrelated settings and comments.
+/// This does not select a service tier for any thread.
+pub fn set_global_fast_mode_enabled(enabled: bool) -> Result<bool, FastModeFailure> {
 	set_at_path(&codex_config_path(env::var_os("HOME"))?, enabled)
 }
 
@@ -145,11 +174,11 @@ fn is_symlink_open_error(error: &Error) -> bool {
 
 fn read_fast_mode(document: &DocumentMut) -> Result<bool, FastModeFailure> {
 	let Some(features) = document.get("features") else {
-		return Ok(false);
+		return Ok(true);
 	};
 	let features = features.as_table_like().ok_or(FastModeFailure::FeaturesNotTable)?;
 	let Some(value) = features.get("fast_mode") else {
-		return Ok(false);
+		return Ok(true);
 	};
 
 	value.as_bool().ok_or(FastModeFailure::FastModeNotBoolean)
@@ -266,12 +295,19 @@ mod tests {
 	}
 
 	#[test]
-	fn missing_config_reports_disabled_without_creating_files() {
-		let temp = tempfile::tempdir().expect("temporary directory must be created");
-		let path = config_path(&temp);
-
-		assert!(!super::status_at_path(&path).expect("missing config must be readable"));
-		assert!(!path.exists());
+	fn absent_fast_mode_inherits_native_default_without_writing_config() {
+		for input in
+			[None, Some(""), Some("model = \"gpt-5.6\"\n"), Some("[features]\nplugins = true\n")]
+		{
+			let temp = tempfile::tempdir().expect("temporary directory");
+			let path = config_path(&temp);
+			if let Some(input) = input {
+				fs::create_dir(path.parent().unwrap()).unwrap();
+				fs::write(&path, input).unwrap();
+			}
+			assert!(super::status_at_path(&path).expect("native default is enabled"));
+			assert_eq!(fs::read_to_string(&path).ok().as_deref(), input);
+		}
 	}
 
 	#[test]
@@ -304,6 +340,9 @@ mod tests {
 		let path = config_path(&temp);
 
 		super::set_at_path(&path, false).expect("Fast mode must be disabled");
+		assert!(
+			!super::status_at_path(&path).expect("explicit false overrides the native default")
+		);
 
 		assert_eq!(
 			fs::read_to_string(&path).expect("config must be readable"),

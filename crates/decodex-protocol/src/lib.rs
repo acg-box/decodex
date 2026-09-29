@@ -325,3 +325,6 @@ pub use desktop_drafts::{
 pub use desktop_ordinary_drafts::{DesktopOrdinaryComposerDraft, DesktopOrdinaryDraft};
 
 pub use conversation::{ConversationExecutionOverrides, ConversationModelSettingsResult};
+
+/// Shared global client settings; these do not change thread execution settings.
+pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fast_mode_enabled};

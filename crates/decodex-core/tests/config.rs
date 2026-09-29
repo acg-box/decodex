@@ -12,6 +12,7 @@ use serde_json as _;
 use sha2 as _;
 use tempfile::NamedTempFile;
 use toml as _;
+use toml_edit as _;
 
 use decodex_core::{
 	ConfigError, DecodexClientConfig, DecodexConfig, LocalTrustPolicy, MAX_CONFIG_BYTES, PathError,
