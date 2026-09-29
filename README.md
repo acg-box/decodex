@@ -18,7 +18,7 @@ The personal Agent coordinates goals through independent Codex threads. It recei
 worker and automation results, requests repairs in the original worker thread, and
 reports decisions to the user. SQLite preserves work relationships and obligations
 across service restarts. Ordinary Conversations remain available for direct work.
-See [Agent refactor status](AGENT_REFACTOR.md) for acceptance evidence and open gaps.
+See [Agent coordination](openwiki/architecture/chief-coordination.md) for the current ownership model.
 
 ## Working with Agent
 
@@ -242,7 +242,7 @@ cargo make check
 
 Start with the [OpenWiki quickstart](openwiki/quickstart.md) for the repository index.
 Generated pages can lag this refactor; current source, tests and
-[Agent delivery evidence](AGENT_REFACTOR.md) take precedence for the new workflow.
+[Agent coordination](openwiki/architecture/chief-coordination.md) take precedence for the new workflow.
 
 ## License
 

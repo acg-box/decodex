@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b3afc6d3f5901313d64252cf247cf79c0d957ff5d76e9a39a6c3a9f0b998343a",
+  "pageVersion": "sha256:2875eb8ddbc0f24e39fc93b7660a6698f79b18df50dd5cbec56e8d10c057afc6",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:d82297354edf177d2eafe36456db750cf5a1b9fd93fbd62992579d46ba6945e9"
+          "version": "repo-file-v1:sha256:a9764933d0bea4a2c6c7ca125d64a4eb6bae71a2f3a88682682222e5ab1b677e"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:57b4d2a63db94ae56680b9fbb1aa2ff0fe991d13919e62caf37bcb70cac4e895"
+          "version": "repo-file-v1:sha256:af698e3efc963ce71b7c71248725049d8fe51a6c3bb019f97fea73b4c47359df"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -42,15 +42,15 @@
     },
     {
       "id": "claim_325a3cf92d084aaa90d48550b257bb5a",
-      "statement": "The current exact local protocol is 2.97 and the embedded SQLite migration boundary is schema 49.",
+      "statement": "The protocol crate CURRENT_VERSION and the embedded SQLite migration ledger define current local compatibility.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs#L225-L252",
-          "version": "repo-lines-v1:sha256:cf9dce6cfa0174684f3d777af7762ffc147e87eb6ac0353b1edca12c95fec3a6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlNzBjOGNlZjcyZWM4NzE3MzIxY2Q2ZjIwNTUwMTRmMzBlN2NkNTZlOGNkNmVjMDhlYThlZTgwNTZhNDNhZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZjA5ZTgyOWRlMTFjOGMwY2M2ZTExNDJiYTM2ZTQ4ZDhiZTUyOGJiZjkzMjViNDBmMjFlMmMwMjVhZTc2MmYifQ"
+          "version": "repo-lines-v1:sha256:3625cf2fffb27b654477954bc3f6a4d160c775581fad9e0e6415fc719f6d03f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlNzBjOGNlZjcyZWM4NzE3MzIxY2Q2ZjIwNTUwMTRmMzBlN2NkNTZlOGNkNmVjMDhlYThlZTgwNTZhNDNhZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZjA5ZTgyOWRlMTFjOGMwY2M2ZTExNDJiYTM2ZTQ4ZDhiZTUyOGJiZjkzMjViNDBmMjFlMmMwMjVhZTc2MmYifQ"
         },
         {
           "resource": "repo://database/src/migrations.rs#L1-L106",
-          "version": "repo-lines-v1:sha256:129bc9a5ba0b7e8736c0657dcb79c01b31a64990eab4ac1fdef823e775efea6e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMGZlNmNmZWViNTE0YTU2MDE2NjhlNDk4ODgzOGFiMWVjM2ZiOGZlOWNlNDA2OGZjMjk4MmFhZWFjMGNkOTZmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1OWMyOTU1OTc1NmJmNmYwZjcyMWVmNjg2NjBjM2VhMGE0Y2E3NGVjMTA1YmQzZGNmNzY2MjVkMDQzZDcxNGIwIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxYjU3ODE3MjY1OTJhNzRlZmQ0ZGMzYzQzOGU2N2Y0ZmM5YmY4YWU0OWM1NjkyNzg5OTkwNzFhNmFiODYyNDRmIn0"
+          "version": "repo-lines-v1:sha256:df77fc28fa944b55a524fa32c8cbae6581bad8ae652a35cb8d01945fa6386018:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMGZlNmNmZWViNTE0YTU2MDE2NjhlNDk4ODgzOGFiMWVjM2ZiOGZlOWNlNDA2OGZjMjk4MmFhZWFjMGNkOTZmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1OWMyOTU1OTc1NmJmNmYwZjcyMWVmNjg2NjBjM2VhMGE0Y2E3NGVjMTA1YmQzZGNmNzY2MjVkMDQzZDcxNGIwIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxYjU3ODE3MjY1OTJhNzRlZmQ0ZGMzYzQzOGU2N2Y0ZmM5YmY4YWU0OWM1NjkyNzg5OTkwNzFhNmFiODYyNDRmIn0"
         }
       ]
     },
@@ -70,31 +70,17 @@
     },
     {
       "id": "claim_ff1c469c90a84778af3fc5cc4d53d84b",
-      "statement": "The upstream maintainer is configured active and the user-retained product scope excludes new O24 provider recovery recording.",
+      "statement": "The checked-in portfolio configures the upstream Maintainer as active; configuration is separate from host registration and execution.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
           "version": "repo-file-v1:sha256:7099dcd9b3b9b34ac9ea83e98525b565711173eeb380041d2e844f5ba69aee8f"
-        },
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md",
-          "version": "repo-file-v1:sha256:d44cfac26a4e6530095703c75a034c342df29f0fdb319abe8a4d99d9fd9aac4f"
-        }
-      ]
-    },
-    {
-      "id": "claim_00e6fd750ac848f79e35f40f900b8e5d",
-      "statement": "The documentation migration records every former work file and the root scan journal in a dated archive with original hashes.",
-      "evidence": [
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/migration-map.tsv",
-          "version": "repo-file-v1:sha256:2e3bc512f5cc4f60780c8dd8257d9eae75938e711af18caa794fe5f38da0d02f"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T06:22:45.949Z"
+    "at": "2026-09-29T06:24:17.023Z"
   }
 }

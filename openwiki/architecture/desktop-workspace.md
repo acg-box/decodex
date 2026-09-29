@@ -3,9 +3,6 @@ type: Reference
 title: "Desktop workspace and native glass"
 description: "Desktop workspace and native glass"
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-6512b631b67649d924c16ba3
     resource: repo://apps/decodex-gpui/src/agent_archive.rs
@@ -21,7 +18,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
   - id: openwiki-source-a1a71f71175b6cac3a5f1346
     resource: repo://apps/decodex-gpui/src/native_glass_panel.rs
-generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:24:17.023Z
 ---
 
 
@@ -43,20 +43,20 @@ The composer is unavailable for archived or blocked conversations and certain de
 
 ## Reading and input
 
-Markdown renders native text, code, lists, and links. Text selection and clipboard operations are read-only. Selection currently belongs to each rendered text block; this is not one continuous selection across all messages. Copy controls show short success feedback. Response duration is primary metadata; compact token details are available from its detail affordance.
+Markdown renders native text, code, lists, and links. Text selection and clipboard operations are read-only. Selection currently belongs to each rendered text block; this is not one continuous selection across all messages. Copy controls show short success feedback. Duration and abbreviated token counts remain together at the end of each answer; hovering this row shows detailed usage without changing transcript height.
 
 The history rail follows the reading position. Expanding connection details must preserve the anchor. A centered jump-to-latest control represents ongoing work while the user reads older messages. Input controls expose attachments, delivery policy, model/effort, microphone, and live voice without moving execution authority into the UI.
 
 ## State and errors
 
-Ordinary operation feedback goes to the notification center. A conversation that cannot send displays its reason in that conversation and hides the composer. Archived history has an explicit Unarchive control. One transient background archive-read failure does not replace confirmed state or immediately flash an error; repeated failures remain visible.
+Ordinary operation feedback goes to the notification center. A conversation that cannot send displays its reason in that conversation and hides the composer. Archived history has an explicit Unarchive control. Background archive-read failures preserve the last confirmed state. Explicit failed checks show local feedback.
 
 ## Verification
 
 Use GPUI tests in `shell.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
 
-See [Agent coordination](chief-coordination.md) and [Commands and validation](../operations/commands-and-validation.md).
+See [Conversation presentation and motion](conversation-presentation.md), [Agent coordination](chief-coordination.md) and [Commands and validation](../operations/commands-and-validation.md).
 
 ## Retained presentation and drafts
 
-The composer preserves editable drafts and recovered copies. Rich Markdown retains math, Mermaid, weather and source-copy presentation without replacing native execution. MCP App widgets have a separate constrained WebKit host. See [conversations](../workflows/conversations-and-recovery.md), [widgets](../integrations/tools-plugins-and-apps.md) and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
+The composer preserves editable drafts and recovered copies. Rich Markdown retains math, Mermaid, weather and source-copy presentation without replacing native execution. The embedded MCP HTML viewer is retired. Ordinary tools and native form prompts remain available. See [conversations](../workflows/conversations-and-recovery.md), [tools](../integrations/tools-plugins-and-apps.md) and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).

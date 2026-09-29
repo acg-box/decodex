@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f00150468b1b1a7339971c35dccb108bb6c24210ebd8d0d20cd8874064e8bc78",
+  "pageVersion": "sha256:883698d5ba14e5cb2124f3e801daedaf7dc4eb71f39cf8af280094021a05a158",
   "claims": [
     {
       "id": "claim_07eac3dd8c6142068d996cdae3e4884c",
@@ -18,37 +18,23 @@
       "evidence": [
         {
           "resource": "repo://AGENTS.md",
-          "version": "repo-file-v1:sha256:03e81262a98b56240769d004a7133b159f959a21f312cde34c75c3b9ac0d2c4f"
+          "version": "repo-file-v1:sha256:676141264f698e0b2f379861abd7f71bfb8f49148bd154517f83dc83cf019a0e"
         }
       ]
     },
     {
-      "id": "claim_6444b22414db4aafbfefdcb575a7fd61",
-      "statement": "The dated migration inventory accounts for 185 former work files and one root scan journal, including original hashes and current topic destinations.",
+      "id": "claim_65e9d744408946448717cbfea1cbbe23",
+      "statement": "Project documentation is maintained only through OpenWiki, consolidated by system responsibility and reader task; retired plans and revision-specific records remain in Git history rather than a copied docs tree.",
       "evidence": [
         {
-          "resource": "repo://docs/archive/upstream-2026-09/README.md",
-          "version": "repo-file-v1:sha256:d06b013bbf0be4afbc4cd5d76c2a3f8315c794de3db92464b8850475ca3747cf"
-        },
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/migration-map.tsv",
-          "version": "repo-file-v1:sha256:2e3bc512f5cc4f60780c8dd8257d9eae75938e711af18caa794fe5f38da0d02f"
-        }
-      ]
-    },
-    {
-      "id": "claim_7ebee7a27e3b4c26a04e7bd1b67cd45b",
-      "statement": "The repository assigns source authority to code and tests and OpenWiki ownership to generated Wiki/index maintenance.",
-      "evidence": [
-        {
-          "resource": "repo://AGENTS.md",
-          "version": "repo-file-v1:sha256:03e81262a98b56240769d004a7133b159f959a21f312cde34c75c3b9ac0d2c4f"
+          "resource": "repo://AGENTS.md#L1-L12",
+          "version": "repo-lines-v1:sha256:b23ff053bc2972d005819bcaeaea1990e8edfe96ec1cce00f43a4c0b4ec89d9c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0ODM2ZWQ3ZTAwNTM3NzVhMGE5NjZjZTg2MTM0YjIzNDdkODUxYTdiMDJmNDgxMmJlYjJjNTlkMWM2OGQ1MjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkYTVjYTdkNTJiYjc2N2JjMDI3ZWY0ZWFiNDdhMmJkNjRmZTQzMTdkZjJkYTQ1ZWE4NzE3ZTA5YTI1ZjA3MmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjViY2U1ZmFiYTExMGU0NTk1YTYxNGVmMTNiM2M3NWZjN2QzZWUxYjY3MDE1ZGNmMTFmZTgwZWM0OGY2MmJjMWMifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T06:22:45.949Z"
+    "at": "2026-09-29T06:24:17.023Z"
   }
 }

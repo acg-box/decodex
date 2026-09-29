@@ -4,9 +4,6 @@ title: "Local database operations"
 description: "Local database operations"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T02:09:19.063Z
 sources:
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
@@ -20,7 +17,10 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-09-28T02:09:19.063Z" }
+generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:24:17.023Z
 ---
 
 # Local database operations
@@ -29,11 +29,11 @@ generated: { by: "codex", at: "2026-09-28T02:09:19.063Z" }
 
 The sole normal product store is `~/.decodex/server/decodex.sqlite3`, owned by `decodex serve`. GPUI, the menu-bar library and short-lived CLI commands use the local protocol. They must not inspect or mutate SQLite directly as a fallback.
 
-The store uses a serialized connection, owner-private paths, bundled SQLite and embedded migrations. Schema version 49 is current in this source revision. The migration ledger is authoritative; old schema-9/10/11 evidence is not a reason to rebuild or reset a user's database.
+The store uses a serialized connection, owner-private paths, bundled SQLite and embedded migrations. Read `database/src/migrations.rs` for the current schema boundary. The migration ledger is authoritative; old schema-9/10/11 evidence is not a reason to rebuild or reset a user's database.
 
 ## Installation and upgrade
 
-Select the app-bundled CLI installation or the standalone local-service installation. Do not install two competing service owners. The app includes a signed helper and native-client/menu-bar libraries; service and UI compatibility is checked. The exact local protocol is 2.97. An incompatible service is a version problem, not proof that history has disappeared.
+Select the app-bundled CLI installation or the standalone local-service installation. Do not install two competing service owners. The app includes a signed helper and native-client/menu-bar libraries; service and UI compatibility is checked. Clients must match `CURRENT_VERSION` from the local protocol crate. An incompatible service is a version problem, not proof that history has disappeared.
 
 Use `decodex --help` and `decodex serve --help` from the installed artifact before operating a host. Use the repository stage/install scripts for that installation mode. Preserve database and credential rollback sources. A documentation refresh does not authorize deletion of retained data.
 
@@ -66,4 +66,4 @@ The database gate and unit tests use isolated fixtures. The staging test checks 
 
 ## Current migration boundary
 
-This tree embeds baseline 48 and migration 49. The verifier checks migration identity and compatibility; old numbered migration files in historical receipts are not an instruction to reset or reconstruct user data. O24 retirement changes notification recording, not the schema or readability of saved events. See [accounts](accounts-and-routing.md).
+The embedded migration ledger defines the baseline and ordered upgrades. The verifier checks migration identity and compatibility; old numbered migration files in historical receipts are not an instruction to reset or reconstruct user data. O24 retirement changes notification recording, not the schema or readability of saved events. See [accounts](accounts-and-routing.md).

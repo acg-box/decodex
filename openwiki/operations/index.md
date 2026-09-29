@@ -1,7 +1,7 @@
 # Files
 
 - [Account routing and recovery](accounts-and-routing.md) - Service-owned routing, credential convergence, quota activation and retired provider recovery recording.
-- [Codex upstream maintenance](codex-upstream-autopilot.md) - Paused upstream maintenance, incremental consumer review, optional feature decisions and focused delivery.
+- [Codex upstream maintenance](codex-upstream-autopilot.md) - Incremental upstream review against retained consumers, native ownership and focused delivery.
 - [Commands and validation](commands-and-validation.md) - Commands and validation
 - [Decodex content automation](decodex-content-automation.md) - Decodex content automation
 - [Local database operations](local-database.md) - Local database operations

@@ -4,10 +4,9 @@ title: "Reset Card operation"
 description: "Reset Card operation"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
 sources:
+  - id: openwiki-source-8c181bb99ef43f180f70a6b8
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardPendingAttemptStore.swift
   - id: openwiki-source-08a47b3cdc5d2b1cdae95c23
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift
   - id: openwiki-source-4b6e253ef76717138b4dd66e
@@ -16,11 +15,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/api_reset_card.rs
   - id: openwiki-source-b931569075c8af059aefa4d2
     resource: repo://database/src/reset_cards.rs
-generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:24:17.023Z
 ---
 
 
-> Current scope: Reset Card redemption is available in Accounts and the explicit CLI, with durable account-scoped recovery. Schema 49 retains the schema-29 operation ledger and adds separate weekly activation. The source/release comparison below is a version-bound implementation receipt, not a statement of the currently installed Codex version. Quota refill animation displays confirmed results; it does not redeem a card. See [Weekly activation](quota-activation.md).
+> Current scope: Reset Card redemption is available in Accounts and the explicit CLI, with durable account-scoped recovery. The embedded schema owns the redemption ledger and separate weekly activation records. The source/release comparison below is a version-bound implementation receipt, not a statement of the currently installed Codex version. Quota refill animation displays confirmed results; it does not redeem a card. See [Weekly activation](quota-activation.md).
 
 # Reset Card operation
 
@@ -35,7 +37,7 @@ status. The CLI offers the same service through `reset-card list`, `use`, and
 
 ## Ownership and safety
 
-The service owns the operation in SQLite migration 29. It holds the account
+The service owns the operation in SQLite. It holds the account
 mutation lock while it validates credentials, revision, and the exact card. It
 rejects incomplete inventory, duplicate descriptors, expired cards, and a changed
 account or private credit ID. Account health does not depend on an optional Codex
@@ -58,18 +60,15 @@ ledger or choose another request key to force a retry. This conservative behavio
 can require provider-side confirmation before a future recovery feature resolves
 it. No automatic recovery spends a card.
 
-The UI can discover the latest operation by account after restart. No UI database,
-credential access, or persistent client journal is used. Private credit IDs do not
-cross the protocol and are removed from terminal ledger rows. The schema upgrade
-adds an empty table and index; it does not alter existing account or credential
-rows. Older schema-28 binaries reject schema 29. Downgrade requires the normal
-pre-upgrade database backup, not deletion of pending operation evidence.
+The UI restores account-scoped operation status through the service. The Swift client also keeps a bounded owner-private pending-attempt journal so an unconfirmed request can be reconciled after restart. That journal does not own provider completion or authorize another redemption. Private credit IDs stay inside the service and are removed from terminal ledger rows.
+
+Use the current embedded migration ledger for upgrade compatibility. Preserve pending operations and database backups; never clear evidence to force another attempt.
 
 ## Provider contract and validation boundary
 
 The implementation was compared with official `openai/codex` commit
 `a2de8fedcc3abe3cdde09b43515db820fb6b95b5`, including backend-client
-`rate_limit_resets.rs` and its tests. The installed `codex-cli 0.155.0-alpha.9.2`
+`rate_limit_resets.rs` and its tests. The historical `codex-cli 0.155.0-alpha.9.2`
 experimental app-server schema also exposes reset-credit consumption. Decodex
 uses the same backend contract through its existing account API owner so an
 explicit account-pool operation does not depend on starting a Codex process.

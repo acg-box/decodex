@@ -1,17 +1,7 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7509a01b730fb515f3375843933016635f112bc8dd0d5a489e7b16f37b9ca06f",
+  "pageVersion": "sha256:bdaf950f626536f7a60b4fe9459c01759ea24eeeb8589c817dbdc9baee975820",
   "claims": [
-    {
-      "id": "claim_4b262c8e975f46a4898c192700c6930e",
-      "statement": "The user retained O01-O23 and O25-O26 and retired only O24 provider authentication recovery recording.",
-      "evidence": [
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md",
-          "version": "repo-file-v1:sha256:d44cfac26a4e6530095703c75a034c342df29f0fdb319abe8a4d99d9fd9aac4f"
-        }
-      ]
-    },
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
       "statement": "Retiring O24 preserves old recovery history without recording new notifications or triggering outgoing work.",
@@ -23,18 +13,22 @@
       ]
     },
     {
-      "id": "claim_701e4f336ffa4097b7ed152bd3faf315",
-      "statement": "The listed optional behavior includes restored baseline capabilities and does not turn unimplemented research or native-only APIs into delivered local features.",
+      "id": "claim_8a8becf0a6a848f3a290c898f7fd3367",
+      "statement": "The native bridge retains installed-plugin observations but rejects plugin list/read/install/reconcile management and MCP configuration reload; historical plugin state is still persisted as observations.",
       "evidence": [
         {
-          "resource": "repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md",
-          "version": "repo-file-v1:sha256:d44cfac26a4e6530095703c75a034c342df29f0fdb319abe8a4d99d9fd9aac4f"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L473-L509",
+          "version": "repo-lines-v1:sha256:65aa68ed36df9cda29c0ba07615b539a78e5bf5ca841aa807619ef6cd2168177:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzNWI0ZmQ2YjE3MDRhMzdhYzRiYjQxNGNhM2ZmN2Y1MTEwNmFiYTVlMDE4NTdlOTM2ZGI0MzlmZTA4NzY0MzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3MWE0NjM5ZDJjNWZjNjI1ZDg2NTQzYmFiZTg3YzgwYzQ5ZjEyZTkwNjhhNzEzMWRjYTYwNjMyMWIwNTc1ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_plugins.rs",
+          "version": "repo-file-v1:sha256:e518ba3f7b32bd44391e9c289d34a53163d895c4293e117bad98c302cae564f8"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T06:22:45.949Z"
+    "at": "2026-09-29T06:24:17.023Z"
   }
 }

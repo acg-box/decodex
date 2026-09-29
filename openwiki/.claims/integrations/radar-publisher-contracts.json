@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bd0cef33dab53a69aeaf68a12089161949c339accd4095a5f14b16537e626809",
+  "pageVersion": "sha256:40879f5d7219d1b79327ca4321cbfd970379e8732b817142f52551cce1751314",
   "claims": [
     {
       "id": "claim_86c25cbab2c043ba9c7f55a2af5d3ca5",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://apps/decodex-publisher/src/social_workflow.rs",
-          "version": "repo-file-v1:sha256:979fbcec14001b9e6a0300095651c22f0192f14178d43ffeca3971415a09b3e6"
+          "version": "repo-file-v1:sha256:926edb02891ab8296587774cd5a482007a478de1009bfcb579f503e613f27ef7"
         },
         {
           "resource": "repo://apps/radar/src/paths.rs",
@@ -36,7 +36,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-22T05:36:11.119Z"
+    "by": "openwiki/0.6.0",
+    "at": "2026-09-29T06:49:47.866Z"
   }
 }

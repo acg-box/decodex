@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:dcc781706a6fa9f8d7810fedf6838e6868326a9e89b4a56bd8a5ab4bd63b0335",
+  "pageVersion": "sha256:cb885ef2f749c9f09ad2174bc67cc3e005207b7ccb1253eb1eab56f081d45abf",
   "claims": [
     {
       "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
@@ -23,36 +23,18 @@
       ]
     },
     {
-      "id": "claim_e448a67e13cd443abc02d9d43759af59",
-      "statement": "The MCP App host requires captured source-bound UI metadata and explicit tool-call approval, with bounded WebKit capabilities rather than general browser access.",
+      "id": "claim_4b74f3abfe834826aaef0af902c291cc",
+      "statement": "The account-owned bridge rejects local plugin management and retired widget resource/tool-call methods while retaining native integration observations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_app_ui_call.rs",
-          "version": "repo-file-v1:sha256:91856806a45e9ff0b24be7015c51472bc1e71d9127ab393d9fcac3daa32e4df7"
-        },
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/mcp-app-ui.md",
-          "version": "repo-file-v1:sha256:8fa03413673b09bb2fa50023cc9a633c364f631b5a438f48efdf8c673c0a6541"
-        }
-      ]
-    },
-    {
-      "id": "claim_391d43aaa254409c9cf411fdb95204cd",
-      "statement": "Task plugin selection changes native task exclusions rather than shared installation and takes effect in a subsequent native turn.",
-      "evidence": [
-        {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/thread_plugins.rs",
-          "version": "repo-file-v1:sha256:ba572cb7b5d46a4f1f3a99a30a6b2fa86fa2b11ceb0ce5f675397e6023e12705"
-        },
-        {
-          "resource": "repo://docs/archive/upstream-2026-09/thread-plugin-selection.md",
-          "version": "repo-file-v1:sha256:0c7b9c662a14fa80b217a1f7ff320a62e16250ca8e41b41f20ae0690a8ac17f0"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L473-L509",
+          "version": "repo-lines-v1:sha256:65aa68ed36df9cda29c0ba07615b539a78e5bf5ca841aa807619ef6cd2168177:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzNWI0ZmQ2YjE3MDRhMzdhYzRiYjQxNGNhM2ZmN2Y1MTEwNmFiYTVlMDE4NTdlOTM2ZGI0MzlmZTA4NzY0MzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3MWE0NjM5ZDJjNWZjNjI1ZDg2NTQzYmFiZTg3YzgwYzQ5ZjEyZTkwNjhhNzEzMWRjYTYwNjMyMWIwNTc1ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "at": "2026-09-29T06:24:17.023Z"
   }
 }

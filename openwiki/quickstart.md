@@ -3,9 +3,6 @@ type: Reference
 title: "OpenWiki quickstart"
 description: "Task-oriented entrypoints for current Decodex architecture, workflows, product scope and historical evidence."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T06:22:45.949Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
@@ -23,13 +20,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
-  - id: openwiki-source-e7e2b18dcd23b3b9fac7753b
-    resource: repo://docs/archive/upstream-2026-09/migration-map.tsv
-  - id: openwiki-source-8d4b61fd83ed007c18390abe
-    resource: repo://docs/archive/upstream-2026-09/upstream-feature-decisions.md
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-09-28T06:22:45.949Z" }
+generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-09-29T06:24:17.023Z
 ---
 
 
@@ -43,11 +39,11 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 | --- | --- |
 | Understand service, clients and storage | [Runtime architecture](architecture/runtime-architecture.md) |
 | Trace Agent coordination and native children | [Agent coordination](architecture/chief-coordination.md) |
-| Change conversation presentation | [Desktop workspace](architecture/desktop-workspace.md) |
+| Change conversation layout, loading or motion | [Conversation presentation](architecture/conversation-presentation.md), [Desktop workspace](architecture/desktop-workspace.md) |
 | Change input, drafts, history editing or recap | [Conversations and recovery](workflows/conversations-and-recovery.md) |
 | Change model, effort or task settings | [Models and settings](workflows/models-and-settings.md) |
 | Handle an approval or provider question | [Approvals and ownership](workflows/approvals-and-native-ownership.md) |
-| Change MCP, plugins, App widgets or hooks | [Tools and integrations](integrations/tools-plugins-and-apps.md) |
+| Understand tools, connections and native ownership | [Tools and integrations](integrations/tools-plugins-and-apps.md) |
 | Change dictation, live voice or voice preferences | [Subscription voice](integrations/subscription-voice.md) |
 | Diagnose account selection or activation | [Accounts and routing](operations/accounts-and-routing.md) |
 | Diagnose storage | [Local database](operations/local-database.md) |
@@ -55,20 +51,19 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 | Review an upstream change | [Upstream maintenance](operations/codex-upstream-autopilot.md) |
 | Choose checks and understand their limits | [Commands](operations/commands-and-validation.md), [acceptance boundaries](testing/upstream-acceptance-boundaries.md) |
 | Maintain documentation | [Wiki maintenance](operations/wiki-maintenance.md) |
-| Find old PR, scan or acceptance evidence | [September 2026 archive](../docs/archive/upstream-2026-09/README.md) |
 
 ## Current boundaries
 
 - `decodex serve` is the service and SQLite product-state owner. GPUI and CLI use typed local clients. The bundled helper is `decodex`, not `decodexd`.
-- This source revision uses exact local protocol **2.97** and SQLite schema **49**. Read the protocol constant and migration owner when updating these values.
+- The protocol crate’s `CURRENT_VERSION` and the embedded migration ledger define compatibility. Read these owners instead of copying version numbers into operational instructions.
 - The Agent graph presents dependencies and reports; the separate tree presents parent ownership. Historical Factory diagrams do not define the current desktop.
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.
 - Unknown submission outcomes require exact receipts or native history. They do not authorize replay. Unavailable conversations keep readable history.
-- The user retained O01–O23 and O25–O26. O24 records no new AWS/Bedrock recovery notices; saved notices remain readable.
+- Local plugin management and embedded MCP HTML widgets are retired. Codex owns configuration and native execution; Decodex retains tool observations, native forms and readable history.
 - The upstream maintainer is configured **ACTIVE**. Documentation generation does not enable it, install an app or publish a release.
 
 ## Build and evidence
 
 Use stable Rust and the repository-owned commands. macOS packaging uses the selected Xcode installation or an explicit `DEVELOPER_DIR`. A unit test, native fixture, signed desktop check, merge and installation prove different things. Keep version-specific limits visible.
 
-The dated archive replaces `work/` as historical evidence. It is not another current product manual or an unfinished work queue. Old temporary test paths can have been removed after their results were retained.
+Maintain documentation through OpenWiki. Consolidate by current system behavior and reader tasks; do not recreate a page for each retired document. Previous plans and revision-specific receipts remain in Git history. They are not a current work queue.
