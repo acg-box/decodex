@@ -801,11 +801,17 @@ fn descend_private_directory<'a>(
 						"private state directory has no trusted user-owned anchor"
 					));
 				}
-				unix_fs::mkdirat(
+				let created = match unix_fs::mkdirat(
 					&current.file,
 					name,
 					Mode::from_bits_retain(PRIVATE_DIRECTORY_MODE),
-				)?;
+				) {
+					Ok(()) => true,
+					// Another creator may win after openat returned NOENT. Reopen
+					// without following links and validate it as an existing directory.
+					Err(Errno::EXIST) => false,
+					Err(error) => return Err(error.into()),
+				};
 				(
 					unix_fs::openat(
 						&current.file,
@@ -813,7 +819,7 @@ fn descend_private_directory<'a>(
 						OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
 						Mode::empty(),
 					)?,
-					true,
+					created,
 				)
 			},
 			Err(Errno::NOENT) => return Err(Errno::NOENT.into()),
@@ -993,6 +999,35 @@ mod tests {
 		open_pinned_sandbox_private_root, open_pinned_sandbox_read_root, open_private_directory,
 		repo_local_test_directory, validate_sandbox_test_output, write_new_json_in_parent,
 	};
+
+	#[test]
+	fn concurrent_private_directory_creation_accepts_the_same_owned_directory() {
+		let temp = repo_local_test_directory("publisher-concurrent-directory-");
+		let target = temp.path().join("shared/a/b/c/d/e/f/g/h");
+		let barrier = std::sync::Barrier::new(16);
+		std::thread::scope(|scope| {
+			let handles: Vec<_> = (0..16)
+				.map(|_| {
+					let target = &target;
+					let barrier = &barrier;
+					scope.spawn(move || {
+						barrier.wait();
+						open_private_directory(target, true)
+					})
+				})
+				.collect();
+			let directories: Vec<_> = handles
+				.into_iter()
+				.map(|handle| handle.join().unwrap().expect("concurrent directory creation"))
+				.collect();
+			let expected = directories[0].file.metadata().unwrap();
+			for directory in directories {
+				let metadata = directory.file.metadata().unwrap();
+				assert_eq!((metadata.dev(), metadata.ino()), (expected.dev(), expected.ino()));
+				assert_eq!(metadata.permissions().mode() & 0o777, 0o700);
+			}
+		});
+	}
 
 	#[test]
 	fn private_json_reads_reject_fifos_without_blocking_for_lineage_and_staging() {

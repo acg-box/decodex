@@ -10,8 +10,8 @@ This audit does not claim mutation coverage or a line-by-line security review.
 
 | Batch | Owners | Status | Decision |
 | --- | --- | --- | --- |
-| Existing cleanup | GPUI, menu bar, static script gates, core/protocol | PR #1690 | Remove visual/source snapshots; preserve behavior; share socket setup |
-| Tooling | CLI, scripts, automation | In review | Remove copied configuration values; retain actual process, file, and runtime reconciliation tests |
+| Existing cleanup | GPUI, menu bar, static script gates, core/protocol | Merged (#1690) | Remove visual/source snapshots; preserve behavior; share socket setup |
+| Tooling | CLI, scripts, automation | Reviewed (#1697) | Remove copied configuration values; retain actual process, file, and runtime reconciliation tests |
 | Domain boundaries | Core, protocol, account login, FFI | Reviewed | Retain wire, digest, ABI, callback, and file-integrity contracts |
 | Execution | Codex adapter, runtime | Reviewed | Share identical native attestation setup; preserve initialization order and native/fake-server boundaries |
 | Persistence | Database and transfer | Reviewed | Share repeated bound-work and process-death setup; keep migration and recovery assertions |
@@ -86,3 +86,25 @@ This audit does not claim mutation coverage or a line-by-line security review.
   check remains a narrow anti-bypass check, not proof of publication behavior.
 - Site has no separate tracked unit-test suite. No site build or deployment gate
   is removed by this cleanup.
+
+## Failure found during the full run
+
+The first all-targets run failed in Publisher while preparing the shared local
+output directory: two creators can both observe `ENOENT`, then one receives
+`EEXIST` from `mkdirat`. A concurrent native filesystem test reproduced this
+failure before the fix. The fix accepts only that creation race, then reopens
+with `O_NOFOLLOW` and validates the existing directory. It does not change the
+permissions of a directory created by another caller. The Publisher suite passes
+after the fix, including its path replacement and sandbox checks.
+
+## Review result
+
+All tracked test owners in the inventory have been reviewed for the categories
+in this document. There are no deferred cleanup batches from this review.
+Small local fixtures can remain where sharing adds coupling without simplifying
+their scenarios. New findings should use the same behavior-first standard;
+this review is not a target for a test-count or line-count reduction.
+
+Delivery is split into the initial cleanup (#1690), tooling (#1697), desktop
+execution ownership (#1698), recovery fixtures (#1699), Radar scans (#1700), and
+the Publisher concurrency fix. Each batch has its own focused validation.
