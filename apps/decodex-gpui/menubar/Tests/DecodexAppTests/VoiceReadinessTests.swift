@@ -62,6 +62,22 @@ final class VoiceReadinessTests: XCTestCase {
         }
     }
 
+    func testAudioInitializationRetainsDeadlineAndIgnoresLateResume() throws {
+        for operation in ["start", "dictate"] {
+            let context = try fixture()
+            run("fixture.holdResume=true; window.decodexVoice.command({operation:'" + operation + "'})", context)
+            XCTAssertEqual(value("fixture.timeouts.size", context).toInt32(), 1,
+                           "Audio initialization must retain the startup deadline")
+            run("const deadline=fixture.timeouts.values().next().value; fixture.timeouts.clear(); deadline?.()", context)
+            XCTAssertEqual(value("fixture.count('error')", context).toInt32(), 1)
+            XCTAssertTrue(value("fixture.track.stopped", context).toBool())
+            run("fixture.resumePending()", context)
+            XCTAssertEqual(value("fixture.count('offer')", context).toInt32(), 1)
+            XCTAssertEqual(value("fixture.count('dictation_ready')", context).toInt32(), 0)
+            XCTAssertEqual(value("fixture.timeouts.size", context).toInt32(), 0)
+        }
+    }
+
     func testStoppedOfferDoesNotSetDescriptionOrEmitForTheNextCall() throws {
         let context = try fixture()
         run("fixture.holdOffer=true; window.decodexVoice.command({operation:'start'})", context)
@@ -114,7 +130,7 @@ final class VoiceReadinessTests: XCTestCase {
 
     private static let environment = #"""
     const fixture = {
-      events: [], timeouts: new Set(), nextTimer: 0, microphoneCalls:0, track: {enabled:true, stopped:false, stop(){this.stopped=true}},
+      events: [], timeouts: new Map(), nextTimer: 0, microphoneCalls:0, track: {enabled:true, stopped:false, stop(){this.stopped=true}},
       count(type){return this.events.filter(event=>event.type===type).length},
       connect(){this.peer.connectionState='connected'; this.peer.onconnectionstatechange()},
       open(){this.peer.channel.readyState='open'; this.peer.channel.onopen()}
@@ -124,7 +140,7 @@ final class VoiceReadinessTests: XCTestCase {
     const navigator = {mediaDevices:{async enumerateDevices(){if(fixture.holdEnumeration) return await new Promise(resolve=>{fixture.enumerationPending=resolve}); return []},async getUserMedia(){fixture.microphoneCalls++;fixture.track.stopped=false; return {
       getAudioTracks(){return [fixture.track]}, getTracks(){return [fixture.track]}
     }}}};
-    const setTimeout = ()=>{const id=++fixture.nextTimer;fixture.timeouts.add(id);return id};
+    const setTimeout = callback=>{const id=++fixture.nextTimer;fixture.timeouts.set(id,callback);return id};
     const clearTimeout = id=>fixture.timeouts.delete(id), setInterval = ()=>1, clearInterval = ()=>{};
     class AudioContext {
       constructor(){this.destination={}}
