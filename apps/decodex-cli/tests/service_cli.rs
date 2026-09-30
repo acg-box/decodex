@@ -3,7 +3,12 @@
 #![allow(unused_crate_dependencies)]
 
 use std::process::Command;
+#[cfg(unix)] use std::{
+	fs,
+	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+};
 
+use serde_json::Value;
 use tempfile::TempDir;
 
 #[test]
@@ -48,8 +53,7 @@ fn build_info_exits_without_starting_the_service() {
 		.env("HOME", home.path())
 		.output()
 		.expect("run build-info");
-	let value: serde_json::Value =
-		serde_json::from_slice(&output.stdout).expect("build-info output is JSON");
+	let value: Value = serde_json::from_slice(&output.stdout).expect("build-info output is JSON");
 
 	assert!(output.status.success());
 	assert_eq!(value["schema"], "decodex/build-info/1");
@@ -115,11 +119,6 @@ fn database_initialize_and_validate_are_owned_by_the_unified_binary() {
 #[cfg(unix)]
 #[test]
 fn account_validation_respects_json_and_human_output_before_transport() {
-	use std::{
-		fs,
-		os::unix::fs::{MetadataExt as _, PermissionsExt as _},
-	};
-
 	let temporary = TempDir::new().unwrap();
 	let root = temporary.path().canonicalize().unwrap().join("root");
 
