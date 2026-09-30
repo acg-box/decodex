@@ -58,10 +58,10 @@ struct AccountProfileDetailView: View {
 
 	private var statusText: String? {
 		guard let profile = state.profile else {
-			return state.isProfileRefreshing ? "Loading activity…" : "No activity"
+			return state.isProfileRefreshing ? "Loading activity…" : "Activity unavailable"
 		}
 		if profile.isCached || state.profileDegradationText != nil {
-			return state.requiresLoginRefresh ? "Sign in again · Saved data" : "Saved data"
+			return state.requiresLoginRefresh ? "Sign in again" : "Couldn’t update activity"
 		}
 		return quotaDiagnostic == nil ? nil : "Usage unavailable"
 	}

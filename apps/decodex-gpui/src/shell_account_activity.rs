@@ -26,7 +26,11 @@ pub(super) fn panel(shell: &Shell, account: &decodex_protocol::EntityId) -> AnyE
 		) => profile,
 		_ =>
 			return content
-				.child(if snapshot.is_none() { "Loading activity…" } else { "No activity" })
+				.child(if snapshot.is_none() {
+					"Loading activity…"
+				} else {
+					"Activity unavailable"
+				})
 				.into_any_element(),
 	};
 	content = content.child(
@@ -70,7 +74,7 @@ pub(super) fn panel(shell: &Shell, account: &decodex_protocol::EntityId) -> AnyE
 	{
 		let requires_login = crate::account_profile::requires_login(*refresh_error);
 		let color = if requires_login { crate::ui_theme::ERROR } else { crate::ui_theme::AMBER };
-		let message = if requires_login { "Sign in again · Saved data" } else { "Saved data" };
+		let message = if requires_login { "Sign in again" } else { "Couldn’t update activity" };
 		content = content.child(
 			div()
 				.id("account-activity-status")
@@ -80,9 +84,9 @@ pub(super) fn panel(shell: &Shell, account: &decodex_protocol::EntityId) -> AnyE
 				.tooltip(move |_, cx| {
 					cx.new(|_| StatusTooltip {
 						text: if requires_login {
-							"Showing saved activity. Sign in again to refresh it."
+							"Sign in again to update your activity."
 						} else {
-							"Showing saved activity because refresh is unavailable."
+							"Your activity couldn’t be updated. Try again later."
 						}
 						.into(),
 						color,

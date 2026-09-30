@@ -9,7 +9,7 @@ enum AccountLoginMode: Equatable {
 		case .enrollment:
 			return "Add account"
 		case .reauthentication:
-			return "Refresh login"
+			return "Sign in again"
 		}
 	}
 
@@ -18,7 +18,7 @@ enum AccountLoginMode: Equatable {
 		case .enrollment:
 			return "Add account"
 		case .reauthentication:
-			return "Refresh login"
+			return "Sign in again"
 		}
 	}
 

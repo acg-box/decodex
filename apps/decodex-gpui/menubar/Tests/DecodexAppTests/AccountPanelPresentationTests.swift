@@ -287,7 +287,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 
 		XCTAssertFalse(presentation.canRequestCancellation)
 		XCTAssertFalse(presentation.canCloseWithoutCancellation)
-		XCTAssertEqual(presentation.title, "Refresh login")
+		XCTAssertEqual(presentation.title, "Sign in again")
 		XCTAssertEqual(presentation.headerAccountLabel, "Val")
 		XCTAssertEqual(presentation.statusText, "Saving login")
 		XCTAssertTrue(presentation.showsStatusText)
