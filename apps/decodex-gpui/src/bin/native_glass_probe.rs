@@ -25,6 +25,11 @@ fn main() {
 
 #[cfg(target_os = "macos")]
 fn main() {
+	#[cfg(not(test))]
+	if std::env::args().any(|arg| arg == "--material-update") {
+		probe::run_material_update();
+		return;
+	}
 	if std::env::args().any(|arg| arg == "--quit-preflight") {
 		probe::run_quit_preflight();
 		return;
@@ -53,6 +58,78 @@ mod probe {
 		input: Entity<ComposerInput>,
 		parent: Entity<Backdrop>,
 		clear: bool,
+	}
+
+	/// Exercise the production overlay owner without a daemon or user preferences.
+	#[cfg(not(test))]
+	pub fn run_material_update() {
+		use crate::ui_theme::{native_glass_panel::GlassPanel, window_material};
+		gpui_platform::application().run(|cx| {
+			let open = |cx: &mut App| {
+				cx.open_window(
+					WindowOptions { show: false, focus: false, ..Default::default() },
+					|_, cx| cx.new(|_| Backdrop { child: None, submitted: String::new() }),
+				)
+				.expect("open isolated material fixture")
+			};
+			let parent = open(cx);
+			let child = open(cx);
+			parent
+				.update(cx, |_, parent, cx| {
+					child
+						.update(cx, |_, window, _| {
+							let mut panel = GlassPanel::install_overlay(parent, window)
+								.expect("install production status overlay");
+							panel.place(Bounds::new(
+								point(px(0.), px(0.)),
+								size(px(328.), px(240.)),
+							));
+							let content =
+								native_window(window).contentView().expect("live material fixture");
+							let foreground = native_view(window);
+							let owner =
+								unsafe { foreground.superview() }.expect("live material fixture");
+							let count = content.subviews().len();
+							for style in [
+								window_material::GlassStyle::Clear,
+								window_material::GlassStyle::Regular,
+							] {
+								window_material::apply(window, style);
+								assert_eq!(
+									content.subviews().len(),
+									count,
+									"material update must not add a backdrop to the status overlay"
+								);
+								assert!(
+									std::ptr::eq(
+										&*unsafe { foreground.superview() }
+											.expect("live material fixture"),
+										&*owner
+									),
+									"the production panel must retain its foreground"
+								);
+							}
+							eprintln!(
+								"material-probe: status overlay preserved across Clear and Regular"
+							);
+						})
+						.expect("live material fixture");
+					window_material::apply(parent, window_material::GlassStyle::Regular);
+					let class = AnyClass::get(c"NSGlassEffectView").expect("macOS glass class");
+					assert!(
+						native_window(parent)
+							.contentView()
+							.expect("parent content")
+							.subviews()
+							.iter()
+							.any(|v| unsafe { msg_send![&**v, isKindOfClass: class] }),
+						"ordinary windows still receive their material"
+					);
+					eprintln!("material-probe: ordinary window material applied");
+				})
+				.expect("live material fixture");
+			cx.defer(|cx| cx.quit());
+		});
 	}
 
 	pub fn run_quit_preflight() {

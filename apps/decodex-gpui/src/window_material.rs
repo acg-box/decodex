@@ -46,6 +46,10 @@ pub(crate) fn configure(window: &mut Window) {
 /// GPUI can ignore blur on platforms without compositor support.
 pub(crate) fn apply(window: &mut Window, style: GlassStyle) {
 	#[cfg(all(target_os = "macos", not(test)))]
+	if super::native_glass_panel::owns_material(window) {
+		return;
+	}
+	#[cfg(all(target_os = "macos", not(test)))]
 	if macos::apply(window, style) {
 		return;
 	}
