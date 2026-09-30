@@ -10,7 +10,11 @@ pub(super) fn commit_bundle_item(commit: &Value) -> Result<Value> {
 		.and_then(|author| author.get("login"))
 		.and_then(Value::as_str)
 		.or_else(|| author.and_then(|author| author.get("name")).and_then(Value::as_str));
-	let committed_at = author.and_then(|author| author.get("date")).cloned().unwrap_or(Value::Null);
+	let committed_at = payload
+		.get("committer")
+		.and_then(Value::as_object)
+		.and_then(|committer| committer.get("date"))
+		.and_then(Value::as_str);
 
 	Ok(serde_json::json!({
 		"sha": crate::required_string(commit, "sha", "commit.sha")?,

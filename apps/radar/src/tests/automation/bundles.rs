@@ -280,3 +280,48 @@ fn receiptable_bundle() -> serde_json::Value {
 	bundle["examples_refs"] = serde_json::json!([]);
 	bundle
 }
+
+#[test]
+fn bundle_commit_time_uses_committer_without_changing_author_identity() {
+	let mut commit = serde_json::json!({
+		"sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"html_url": "https://github.com/openai/codex/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"author": {"login": "author-login"},
+		"commit": {
+			"message": "Add capability",
+			"author": {"name": "Original author", "date": "2026-01-01T00:00:00Z"},
+			"committer": {"name": "Committer", "date": "2026-06-01T00:00:00Z"}
+		},
+		"files": [{"filename": "src/lib.rs", "status": "modified", "additions": 1, "deletions": 0}]
+	});
+	let pr = serde_json::json!({"number": 1, "title": "Add capability", "body": null, "state": "open", "html_url": "https://github.com/openai/codex/pull/1", "labels": []});
+	let bundle =
+		crate::build_commit_bundle_from_sources("openai/codex", &commit, "main", &[]).unwrap();
+	let pr_bundle = crate::build_pr_bundle_from_sources(
+		"openai/codex",
+		&pr,
+		&[commit.clone()],
+		commit["files"].as_array().unwrap(),
+		"main",
+		&[],
+	)
+	.unwrap();
+	for bundle in [&bundle, &pr_bundle] {
+		assert_eq!(bundle["commits"][0]["committed_at"], "2026-06-01T00:00:00Z");
+		assert_eq!(bundle["commits"][0]["author"], "author-login");
+		let mut analysis = fixtures::valid_signal();
+		analysis.as_object_mut().unwrap().remove("published_at");
+		let signal = crate::rendered_signal(bundle, &analysis, None, vec![]).unwrap();
+		assert_eq!(signal["published_at"], "2026-06-01T00:00:00Z");
+	}
+	commit["author"] = serde_json::Value::Null;
+	for committer in
+		[serde_json::Value::Null, serde_json::json!({}), serde_json::json!({"date": 7})]
+	{
+		commit["commit"]["committer"] = committer;
+		let bundle =
+			crate::build_commit_bundle_from_sources("openai/codex", &commit, "main", &[]).unwrap();
+		assert!(bundle["commits"][0]["committed_at"].is_null());
+		assert_eq!(bundle["commits"][0]["author"], "Original author");
+	}
+}
