@@ -113,7 +113,6 @@ impl AgentSurface {
 		};
 		self.app_exposure.epoch = self.app_exposure.epoch.wrapping_add(1);
 		let epoch = self.app_exposure.epoch;
-		let generation = self.generation;
 		self.app_exposure.owner = Some((work.into(), connector.into()));
 		self.app_exposure.state = None;
 		self.app_exposure.feedback =
@@ -133,7 +132,7 @@ impl AgentSurface {
 		self.app_exposure.task=Some(cx.spawn(async move |surface,cx| {
    let result=future.await;
    let _=surface.update(cx,|s,cx| {
-    if s.generation!=generation || s.app_exposure.epoch!=epoch {return;}
+    if s.app_exposure.epoch!=epoch {return;}
     s.app_exposure.task=None;
     if s.selected.as_ref()!=Some(&work) || s.snapshot.as_ref().is_none_or(|v|v.runtime_source.as_ref()!=Some(&source) || !v.work_items.iter().any(|w|w.id==work && w.codex_thread_id.as_ref()==Some(&thread))) {s.reset_app_exposure();cx.notify();return;}
     let (outcome,state)=result.unwrap_or((None,State::Unavailable));
