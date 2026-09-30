@@ -109,6 +109,8 @@ enum DecodexNativeFailure: String, Decodable, Sendable {
 	case invalidHandle = "invalid_handle"
 	case runtimeUnavailable = "runtime_unavailable"
 	case internalFailure = "internal_failure"
+	case resetCardRejected = "reset_card_rejected"
+	case resetCardPossiblyDispatched = "reset_card_possibly_dispatched"
 	case homeUnavailable = "home_unavailable"
 	case unsafeConfigPath = "unsafe_config_path"
 	case configUnavailable = "config_unavailable"
@@ -129,7 +131,9 @@ enum DecodexNativeFailure: String, Decodable, Sendable {
 		case .runtimeUnavailable, .invalidHandle, .internalFailure,
 			.serviceVersionMismatch:
 			return .nativeClientUnavailable
-		case .applicationAcceptanceUnknown:
+		case .resetCardRejected:
+			return .commandRejected
+		case .applicationAcceptanceUnknown, .resetCardPossiblyDispatched:
 			return .usePotentiallyDispatched
 		case .homeUnavailable, .unsafeConfigPath, .configUnavailable, .configTooLarge,
 			.configInvalid, .featuresNotTable, .fastModeNotBoolean, .writeFailed:

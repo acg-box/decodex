@@ -5,20 +5,26 @@ description: "Reset Card operation"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
 sources:
+  - id: openwiki-source-a21355e56f76651beb4dffc4
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardCLIClient.swift
   - id: openwiki-source-8c181bb99ef43f180f70a6b8
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardPendingAttemptStore.swift
   - id: openwiki-source-08a47b3cdc5d2b1cdae95c23
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift
   - id: openwiki-source-4b6e253ef76717138b4dd66e
     resource: repo://apps/decodex-gpui/src/shell_reset_cards.rs
+  - id: openwiki-source-bee528a70eef19ac76275c5e
+    resource: repo://crates/decodex-app-client-ffi/src/lib.rs
+  - id: openwiki-source-6230c010baca677fa60c32c1
+    resource: repo://crates/decodex-protocol/src/client.rs
   - id: openwiki-source-d99870a603f95fac1e865fb2
     resource: repo://crates/decodex-runtime/src/account_launch/api_reset_card.rs
   - id: openwiki-source-b931569075c8af059aefa4d2
     resource: repo://database/src/reset_cards.rs
-generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+generated: { by: "codex", at: "2026-09-30T09:17:35.615Z" }
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-29T20:08:07.145Z
+    at: 2026-09-30T09:17:35.615Z
 ---
 
 
@@ -61,6 +67,8 @@ can require provider-side confirmation before a future recovery feature resolves
 it. No automatic recovery spends a card.
 
 The UI restores account-scoped operation status through the service. The Swift client also keeps a bounded owner-private pending-attempt journal so an unconfirmed request can be reconciled after restart. That journal does not own provider completion or authorize another redemption. Private credit IDs stay inside the service and are removed from terminal ledger rows.
+
+The Rust protocol client validates the selected account, descriptor, revision, request key and receipt before it reports consumption. The native `consume_reset_card` operation returns the validated operation state or an explicit rejection/possible-dispatch failure. Swift presents that result; it does not decode service command receipts a second time. A possible dispatch preserves the original pending request for status reads. The old `use_reset_card` native operation is not accepted, so a mixed native library cannot interpret the changed response contract.
 
 Use the current embedded migration ledger for upgrade compatibility. Preserve pending operations and database backups; never clear evidence to force another attempt.
 
