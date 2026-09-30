@@ -15,13 +15,24 @@ pub(in crate::release_delta::backfill) fn signal_backfill_paths(
 }
 
 fn repo_path_stem(repo: &str) -> String {
-	repo.chars()
-		.map(
-			|character| {
-				if character.is_ascii_alphanumeric() { character.to_ascii_lowercase() } else { '-' }
-			},
-		)
-		.collect::<String>()
-		.trim_matches('-')
-		.to_owned()
+	crate::percent_encode(&repo.to_ascii_lowercase())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::repo_path_stem;
+
+	#[test]
+	fn backfill_repository_stems_do_not_collapse_distinct_names() {
+		for (first, second) in
+			[("a-b/c", "a/b-c"), ("a/b.c", "a/b-c"), ("a/b_c", "a/b-c"), ("a/b", "a%2Fb")]
+		{
+			assert_ne!(repo_path_stem(first), repo_path_stem(second), "{first} and {second}");
+		}
+		assert_eq!(repo_path_stem("OpenAI/Codex"), repo_path_stem("openai/codex"));
+		for repo in ["a-b/c", "a/b.c", "a/b_c", "a%2Fb", "../example"] {
+			let name = format!("{}-pr-42.json", repo_path_stem(repo));
+			assert_eq!(std::path::Path::new(&name).components().count(), 1);
+		}
+	}
 }
