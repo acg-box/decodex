@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:cae2f8f15f748e99df2b4832a408c12ba7576d5ab78a9cf11f4f17c5f967eeee",
+  "pageVersion": "sha256:36d076a6b81f9b6824c0f6a053beec9cf5aa12f3ef14be7d621791148c81031d",
   "claims": [
     {
       "id": "claim_57467868d3114a4f8efa994a912c927d",
@@ -11,7 +11,7 @@
           "version": "repo-lines-v1:sha256:cbb41257061817a0fabd8cdf5e0156e2f8f635acaaeb0e7ee3eea8122e0bf5e1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5NzlkMjViM2RkYmZhZGYxMDM5N2UwYmNjZjY3NGIwY2M3MGIxOWI0N2QyMGRhNzAzN2Y5ZTRhNjQzOTIzNjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzNTc5NTc3ZTZlNTFjMjI3MGQ3OTQxY2U5YjA2YTQ3YzI5NzVmMzYwNjFmMmVjZTdlZWEzYmI2NmEyNjg3M2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyZDU0YmQ0MTk5NjQ0MjhlZjYyYTM3ZTQ3YjEwMDZmZWQ2ZDBhMzFhMzFmMGJlNGY2ZDU3OWUxMmUwNDUwYjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3NzkxMTA1NDVkYzA5MDU1ZmFhZDE3MzA3NTFhZTM5MTgwNWQ3NTNmZjMwN2E1Y2U3MjkxMjgxZWNhOTllZWEifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L913-L1310",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L914-L1311",
           "version": "repo-lines-v1:sha256:c50e54a80f8f027a64edd4e195fa62a5ed046cf20cbc10d1caa71d50c1d148f2:eyJzZWxlY3RlZExpbmVDb3VudCI6Mzk4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMjFkMmJlNmI3YzRhNGUzNmZlOTg0ZTY3MjliNmQ3ZjBhMDA5MDA2ZGY3MzA5NzQ2YzkxZDNjZDU3NWMxYmVmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiYjhkNmU5MDM5OWVmMzI4MWRiNWQ4NmZlYzBmMWYxMzM3ODIyN2FiNjAzZDJhMWY1NTkxMmFkYjNjZjcyOTVlIn0"
         }
       ]
@@ -21,7 +21,7 @@
       "statement": "Desktop account controllers bind authoritative Route results to the current session, exact command and idempotency key without receiving credentials.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/accounts.rs#L680-L788",
+          "resource": "repo://apps/decodex-gpui/src/accounts.rs#L679-L787",
           "version": "repo-lines-v1:sha256:4136df4ad65de520ab002976a6cb4225fbcc877f11a12e2d179fde82aee5264d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmM2JlNTA0YWJlMGNkYjIxNTU1ZTg1YWU0MmJiODJlMTBhYjcyOTA2N2VjOGU4YWQ2YTRjZTU3ZjJiZWIwMmQwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzZmIxY2VjNzdiYjk4YjEzYTBiMGNhYmMzODg2MGU0NWJkMzc2OTZhOGQzZWU3ZjU4NzAxNWMyMGI1NjA3MTAwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiZTQ3YTU4ZDIxMmY3NmY2MjgzYTFmMmNiOGM4MDBiMThhYWI0Njk0YTljZmZjNGYxOTM3YjYzZjJkZGE1OWM3In0"
         }
       ]
@@ -36,13 +36,13 @@
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
-          "version": "repo-file-v1:sha256:ce67aa0933e6ca0612dabaddcd98f8babd9fcf53202ccc40ab1e0400d378d466"
+          "version": "repo-file-v1:sha256:ffbd9dd595d24178c67079b9a34b7b8cc6409e90b8e6222e9c931bd31edbcf09"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.0",
-    "at": "2026-09-29T14:10:21.488Z"
+    "by": "openwiki/0.6.1",
+    "at": "2026-09-30T09:06:10.197Z"
   }
 }

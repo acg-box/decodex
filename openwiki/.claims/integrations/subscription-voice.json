@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:31aa355eb53c36dbb13e8425d3766975fbef00b4d1e52bd32ea1ee30aeca7fb5",
+  "pageVersion": "sha256:3c798f68710347b39f23dd8a9795e95190b1a68f25748ebf08a82e433326d107",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -56,11 +56,19 @@
     },
     {
       "id": "claim_a8eb6185fcbd4aabbb34194c80765dbb",
-      "statement": "Normal VoiceMediaHost construction does not create a WKWebView; the WebRTC path creates it on demand while native dictation has a separate capture branch.",
+      "statement": "Live voice uses a Rust native libwebrtc peer connection without WebView, with Swift permission and device discovery and Apple AVAudioEngine capture and playback through Rust Objective-C bindings.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/VoiceMediaHost.swift#L8-L135",
-          "version": "repo-lines-v1:sha256:d985a354f4922e42377fd5b40abdf3c539a8b5fc3672a994b45975252c788aad:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0YjhmNjY1MTI1YjIwMjFjN2FkNjgxNDk0YTViYzgyNTQ5MDk0MTBjODMyNWQ1YTM5M2RhMzRkNjlhNWViZDYzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMDVlZTE3NGU4YWNkY2EzODliZGU3NTgwYzU5NmYxOWNjZDVlOGQyYWQ5MDMzZWVmYzBiNDRlNjFmOWY2OWQ1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyNGFmZWIwN2Y4MzJhYjNkODlkNzhhZDdjNzFlZDkwODQzNzYxNmNiMTUzNTJhZThhMDE4MWRlMjQ4MmZmOWFhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4YmNiMGU3MTBmOWQxM2MyYzE1ZjgzNjhhNzA2NTQxN2I2YjVmYTM4NjdlMDU3ZmYyMWE4YjAwYzhmNDkyM2Y2In0"
+          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
+          "version": "repo-file-v1:sha256:b555e70715a99a330f0dfb5e0bc055b68c276b2312017f5a91e3a1aa7c27905e"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
+          "version": "repo-file-v1:sha256:1abe4d7a143391e2fe21e1cdb1535dd2d71fd74c704239c6a4216cd182159a7a"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
+          "version": "repo-file-v1:sha256:16497f780e2d85f9ae1cfc46a1b0e999b18bd805ed8fe59c82b0a9d4aaf50720"
         }
       ]
     },
@@ -76,11 +84,19 @@
     },
     {
       "id": "claim_427ae08c2cdd4644b6e47c2eb01815f2",
-      "statement": "Closing the Swift voice media host stops native capture, removes the WebView message handler and media activity, and releases the WebView.",
+      "statement": "Closing the Rust live media owner stops the Apple audio engine and cancels the peer connection worker; each call has independent bounded queues.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/VoiceMediaHost.swift#L306-L323",
-          "version": "repo-lines-v1:sha256:11ed495d5420850459a73432d30801bd3eb89974211e76a3ad35c579efedf556:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyMjZmZmZjMTY5ZGJjMjAxNzAzOTI0MDZkNzQyYzUwYWQ0MTViZGYzOGJkY2QzOGJiODJiZjk0NjMxZWQ0MGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhNWQ0YWZkOWZlMTEwNzZkNTk1ZmU0MWQ3NDcxYTJjMTE3ZWI3N2YyMzQ5OWI2ZThlMTYxNTZmODIwYzVhMTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzMzQxYmYzN2E1MTJmZjMwNmU5ZGZlOWNhZGE1Y2IzNjUxYWJiODQ3Yjc4ZjIzZDFlNTk0YmU4ODk1ZTI2NmEifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
+          "version": "repo-file-v1:sha256:b555e70715a99a330f0dfb5e0bc055b68c276b2312017f5a91e3a1aa7c27905e"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
+          "version": "repo-file-v1:sha256:1abe4d7a143391e2fe21e1cdb1535dd2d71fd74c704239c6a4216cd182159a7a"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
+          "version": "repo-file-v1:sha256:16497f780e2d85f9ae1cfc46a1b0e999b18bd805ed8fe59c82b0a9d4aaf50720"
         }
       ]
     },
@@ -104,7 +120,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DictationCapture.swift",
-          "version": "repo-file-v1:sha256:3d887623682a9c3939809c96644d858ab1ee328da2ae57327584ee67d95af536"
+          "version": "repo-file-v1:sha256:54785baab5f5604d2c0102bf2d7b59f39fb398bde9bf1ebdfb2ad22d376560e5"
         }
       ]
     },
@@ -117,10 +133,56 @@
           "version": "repo-file-v1:sha256:ad526fe9fa9bb69b94f65c7993d71eafd11f38b865510dee4ded09efc16aaf34"
         }
       ]
+    },
+    {
+      "id": "claim_ae8030cb5b684b559c0241f70e2fb587",
+      "statement": "Live audio uses one voice-processing AVAudioEngine with 48 kHz mono client connections and bounded PCM queues to a 10 ms transport loop; libwebrtc device audio and duplicate processing are disabled.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
+          "version": "repo-file-v1:sha256:1abe4d7a143391e2fe21e1cdb1535dd2d71fd74c704239c6a4216cd182159a7a"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
+          "version": "repo-file-v1:sha256:16497f780e2d85f9ae1cfc46a1b0e999b18bd805ed8fe59c82b0a9d4aaf50720"
+        }
+      ]
+    },
+    {
+      "id": "claim_605a177892684fe4b712720f039792fe",
+      "statement": "Native media ABI 3 uses a static libwebrtc archive with Objective-C linking and bundled third-party license notices.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/build.rs",
+          "version": "repo-file-v1:sha256:c9a06f15ba56fc6e3676b0b378f09becf4a7cf7e90f1b5c244af45b9ee1aee8e"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
+          "version": "repo-file-v1:sha256:b555e70715a99a330f0dfb5e0bc055b68c276b2312017f5a91e3a1aa7c27905e"
+        },
+        {
+          "resource": "repo://scripts/macos/stage_decodex_app.sh",
+          "version": "repo-file-v1:sha256:80b601b4db221f2e70952b78dcb183b116b926cff760cd8ea43ad7d763306f0e"
+        }
+      ]
+    },
+    {
+      "id": "claim_079c4413bfe54bc89e78c9c0fa9b6148",
+      "statement": "Native transport tests cover actual loopback audio, captions, mute before negotiation and after connection, and buffer release; an ignored hardware test covers Apple capture and playback but not provider entitlement or sound quality.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
+          "version": "repo-file-v1:sha256:1abe4d7a143391e2fe21e1cdb1535dd2d71fd74c704239c6a4216cd182159a7a"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
+          "version": "repo-file-v1:sha256:16497f780e2d85f9ae1cfc46a1b0e999b18bd805ed8fe59c82b0a9d4aaf50720"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T08:20:44.128Z"
+    "at": "2026-09-30T09:06:10.197Z"
   }
 }

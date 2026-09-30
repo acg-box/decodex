@@ -16,8 +16,8 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
 generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
 verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T06:24:17.023Z
+  - by: openwiki/0.6.1
+    at: 2026-09-30T09:06:10.197Z
 ---
 
 

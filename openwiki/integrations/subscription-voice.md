@@ -4,12 +4,18 @@ title: "Subscription dictation and live voice"
 description: "Native subscription audio ownership, per-call voice settings and on-demand WebRTC media hosting."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-759ed0025679548e066b427b
+    resource: repo://apps/decodex-gpui/build.rs
   - id: openwiki-source-3e2768126a812e862f175d21
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DictationCapture.swift
-  - id: openwiki-source-ff4424492ebd38e298a4b243
-    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/VoiceMediaHost.swift
   - id: openwiki-source-2e244c19d3ad0a0d54117218
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexTransport/DictationStream.swift
+  - id: openwiki-source-32bb36aae256aa57e6e82bd0
+    resource: repo://apps/decodex-gpui/src/agent_voice.rs
+  - id: openwiki-source-7647aba6b390035d3777c2b5
+    resource: repo://apps/decodex-gpui/src/native_voice_audio.rs
+  - id: openwiki-source-d1f06f7b22d0c2eec328d95f
+    resource: repo://apps/decodex-gpui/src/native_voice_transport.rs
   - id: openwiki-source-c990afbb3dfa828de42edbc3
     resource: repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs
   - id: openwiki-source-91dfc90839432583cfb2a467
@@ -22,10 +28,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/dictation_transcript.rs
   - id: openwiki-source-7b941e7c2c91cb7415f05243
     resource: repo://crates/decodex-runtime/src/dictation.rs
-generated: { by: "codex", at: "2026-09-30T08:20:44.128Z" }
+  - id: openwiki-source-3b57179b92b257bc3fff51a1
+    resource: repo://scripts/macos/stage_decodex_app.sh
+generated: { by: "codex", at: "2026-09-30T09:06:10.197Z" }
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-30T08:20:44.128Z
+    at: 2026-09-30T09:06:10.197Z
 ---
 
 # Subscription dictation and live voice
@@ -55,15 +63,19 @@ The coordinator uses native `thread/realtime/start` and `thread/realtime/stop` w
 
 Local transcript storage keeps newer received text when a delayed final is a shorter prefix of that text. The saved text remains marked incomplete. An empty final does not erase the received tail; normal closure can save it. Expanded finals and normal transcription corrections still replace provisional text. Saving a transcript never resubmits it as native input.
 
-The Swift media host creates its WebRTC WKWebView on demand when a live call starts. Normal native dictation and device enumeration do not require that browser view. Live audio still uses WebRTC; this change is not a fully native media transport or proof of installed-app acceptance. Closing the media host stops capture, removes its message handler and releases its WebView. A complete native WebRTC replacement remains a separate decision; do not switch subscription voice to API-key billing.
+The Rust media owner creates a native libwebrtc peer connection for each live call. No WebView or JavaScript media runtime is used. Swift handles microphone permission and device discovery; Rust calls Apple AVAudioEngine through Objective-C bindings for live capture and playback. The service retains subscription authentication, session binding and native RPC.
 
-The Swift media host owns capture/playback and device selection. The service owns session binding and native RPC. Provider findings can retire local microphone authority even if stop acknowledgment is lost. Unknown native stop outcomes must not be treated as a guaranteed remote stop.
+One AVAudioEngine processes both microphone and remote playback audio. All client connections use 48 kHz mono; Apple handles hardware conversion and voice processing. Bounded PCM queues connect the audio callbacks to a 10 ms transport loop. The libwebrtc device module and duplicate audio processing are disabled. The ordered data channel carries caption events, and readiness requires both the peer connection and that channel. Mute disables the outgoing track, including when requested before negotiation.
+
+Closing the Rust media owner stops the Apple engine and cancels the peer connection worker. Each call has separate queues. Provider findings can retire local microphone authority even if stop acknowledgment is lost. Unknown native stop outcomes must not be treated as a guaranteed remote stop.
+
+The native media ABI is version 3. The static libwebrtc archive needs the Objective-C linker flag in the GPUI build script. Bundles include its license notices under `Resources/ThirdPartyNotices`. Subscription voice does not switch to API-key billing.
 
 ## UI and verification
 
 The normal composer receives dictation text. Live voice uses its own waveform/voice state in that area. The selected input device applies to capture, not to a model-selector control.
 
-Focused tests live in the Rust dictation/voice modules and Swift `DictationCaptureTests` and `VoiceMediaHostTests`. Rust `dictation_transcript.rs` tests cover segment order, stale revisions, final corrections and transcript limits. Live acceptance separately requires microphone permission, selected-device capture, partial text, final correction, and both live transcript roles. Unit tests do not establish provider entitlement or network latency.
+Focused tests live in the Rust dictation/voice modules and Swift `DictationCaptureTests` and `VoiceMediaHostTests`. Rust `dictation_transcript.rs` tests cover segment order, stale revisions, final corrections and transcript limits. The native transport loopback test covers offer/answer, bidirectional audio, captions, mute before negotiation, subsequent mute changes and buffer release. The opt-in Apple hardware test checks capture and playback on one engine. Neither test proves audible quality, echo cancellation quality, device changes or provider entitlement. Live acceptance separately requires microphone permission, selected-device capture, partial text, final correction, and both live transcript roles. Unit tests do not establish provider entitlement or network latency.
 
 See [Agent coordination](../architecture/chief-coordination.md) and [Desktop workspace](../architecture/desktop-workspace.md).
 

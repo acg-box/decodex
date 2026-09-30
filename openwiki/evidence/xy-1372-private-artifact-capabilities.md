@@ -4,15 +4,15 @@ title: "Historical private-artifact feasibility evidence"
 description: "Historical private-artifact feasibility evidence"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:55:18.668Z
 sources:
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
 generated: { by: "codex", at: "2026-09-22T05:55:18.668Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-30T09:06:10.197Z
 ---
 
 # Current scope

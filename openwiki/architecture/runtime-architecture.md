@@ -4,8 +4,8 @@ title: "Runtime architecture"
 description: "Service, native execution, desktop bundle and persistent state ownership."
 tags: ["decodex", "architecture"]
 verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T13:52:19.644Z
+  - by: openwiki/0.6.1
+    at: 2026-09-30T09:06:10.197Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
