@@ -1,4 +1,5 @@
 use super::*;
+use crate::error;
 
 fn request(source: &str, method: &str, kind: &str) -> EnqueueAgentEvent {
 	EnqueueAgentEvent {
@@ -25,7 +26,7 @@ async fn large_approval_details_are_atomic_exact_and_compact_in_scans() {
 	let input =
 		request("native-request", "item/commandExecution/requestApproval", "permission_pending");
 
-	store.with_connection(|connection| connection.execute_batch("CREATE TRIGGER reject_details BEFORE INSERT ON agent_request_payloads BEGIN SELECT RAISE(ABORT,'fixture write failure'); END;").map_err(sqlite_error)).unwrap();
+	store.with_connection(|connection| connection.execute_batch("CREATE TRIGGER reject_details BEFORE INSERT ON agent_request_payloads BEGIN SELECT RAISE(ABORT,'fixture write failure'); END;").map_err(error::sqlite_error)).unwrap();
 
 	assert!(store.enqueue_agent_event(input.clone()).await.is_err());
 
@@ -35,7 +36,7 @@ async fn large_approval_details_are_atomic_exact_and_compact_in_scans() {
 
 	store
 		.with_connection(|connection| {
-			connection.execute_batch("DROP TRIGGER reject_details;").map_err(sqlite_error)
+			connection.execute_batch("DROP TRIGGER reject_details;").map_err(error::sqlite_error)
 		})
 		.unwrap();
 

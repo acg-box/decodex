@@ -1,5 +1,5 @@
 use super::*;
-use crate::AgentTurnExecution;
+use crate::{AgentTurnExecution, error};
 
 #[tokio::test]
 async fn execution_selection_is_atomic_exact_non_waking_and_not_inferred_after_reopen() {
@@ -10,7 +10,7 @@ async fn execution_selection_is_atomic_exact_non_waking_and_not_inferred_after_r
 	store.create_agent_work_item(item("agent", None)).await.unwrap();
 	store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 	store.with_connection(|connection| {
-		connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('visible','agent','assistant_message','{}',1,'resolved','visible fixture',1)",[]).map_err(sqlite_error)?;
+		connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('visible','agent','assistant_message','{}',1,'resolved','visible fixture',1)",[]).map_err(error::sqlite_error)?;
 
 		Ok(())
 	}).unwrap();

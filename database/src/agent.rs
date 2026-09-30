@@ -7,10 +7,15 @@ pub use capacity::AgentCapacityRetry;
 
 pub(crate) use capacity::cancel_pending as cancel_pending_capacity;
 
-use rusqlite::{Connection, OptionalExtension as _, Row, TransactionBehavior, params};
+use rusqlite::{Connection, Error, OptionalExtension as _, Row, TransactionBehavior};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-use crate::{DatabaseError, SqliteStore, StoreError, error::sqlite_error, unix_micros};
+use crate::{
+	AgentLiveOutput, AgentTurnExecution, DatabaseError, SqliteStore, StoreError, agent_models,
+	agent_output, agent_permissions, agent_plugins, agent_prompt_edit, agent_prompt_inputs,
+	agent_questions, agent_request_payload, agent_task_references, agent_turn_execution, error,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -176,8 +181,8 @@ impl SqliteStore {
 
 		self.run(move |connection| {
 			connection.prepare("SELECT requested.value,json_extract(e.payload,'$.usage'),json_extract(e.payload,'$.threadReadback.tokenUsage') FROM json_each(?3) requested JOIN agent_inbox_events e ON e.source_event_id=json_array('turn/completed',?2,requested.value) WHERE e.work_item_id=?1 AND e.event_kind IN ('agent_turn_completed','worker_turn_completed') AND json_extract(e.payload,'$.terminal.threadId')=?2 AND json_extract(e.payload,'$.terminal.turn.id')=requested.value")
-				.map_err(sqlite_error)?.query_map(params![work,thread,turns],|row|Ok(AgentTurnMetrics {turn_id:row.get(0)?,usage_json:row.get(1)?,observation_json:row.get(2)?}))
-				.map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|sqlite_error(error).into())
+				.map_err(error::sqlite_error)?.query_map(rusqlite::params![work,thread,turns],|row|Ok(AgentTurnMetrics {turn_id:row.get(0)?,usage_json:row.get(1)?,observation_json:row.get(2)?}))
+				.map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -203,8 +208,8 @@ impl SqliteStore {
 			read_work(connection, &work_id)?;
 
 			connection.prepare("SELECT * FROM (SELECT * FROM agent_inbox_events WHERE work_item_id = ?1 AND event_kind NOT IN ('reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release') AND (?3 IS NULL OR id < ?3) ORDER BY id DESC LIMIT ?2) ORDER BY id")
-				.map_err(sqlite_error)?.query_map(params![work_id, limit, before], event_row)
-				.map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
+				.map_err(error::sqlite_error)?.query_map(rusqlite::params![work_id, limit, before], event_row)
+				.map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -225,8 +230,8 @@ impl SqliteStore {
 			read_work(connection, &work_id)?;
 
 			connection.prepare("SELECT * FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind IN ('user_message','async_question_answer','work_instruction') AND disposition IS NULL AND (delivered_turn_id IS NULL OR delivered_turn_id='') AND (?2 IS NULL OR id>?2) ORDER BY id LIMIT ?3")
-				.map_err(sqlite_error)?.query_map(params![work_id,after,limit],event_row)
-				.map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|sqlite_error(error).into())
+				.map_err(error::sqlite_error)?.query_map(rusqlite::params![work_id,after,limit],event_row)
+				.map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -236,18 +241,18 @@ impl SqliteStore {
 		id: String,
 		before: Option<i64>,
 		limit: usize,
-	) -> Result<(Vec<AgentInboxEvent>, Vec<crate::AgentLiveOutput>), StoreError> {
+	) -> Result<(Vec<AgentInboxEvent>, Vec<AgentLiveOutput>), StoreError> {
 		let limit = page_limit(limit)?;
 
 		self.run(move |connection| {
-            let tx=connection.transaction().map_err(sqlite_error)?;
+            let tx=connection.transaction().map_err(error::sqlite_error)?;
 
             read_work(&tx,&id)?;
 
-            let events=tx.prepare("SELECT * FROM (SELECT e.* FROM agent_inbox_events e WHERE work_item_id=?1 AND event_kind NOT IN ('reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release') AND (event_kind<>'activity_started' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events c WHERE c.source_event_id=json_array('activity',e.work_item_id,json_extract(e.payload,'$.turn_id'),json_extract(e.payload,'$.item_id'),'completed'))) AND (event_kind<>'plan_updated' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events p WHERE p.work_item_id=e.work_item_id AND p.event_kind='plan_updated' AND p.delivered_turn_id=e.delivered_turn_id AND json_extract(p.payload,'$.threadId')=json_extract(e.payload,'$.threadId') AND p.id>e.id)) AND (event_kind<>'steer_pending' OR disposition IS NULL) AND (?3 IS NULL OR id<?3) ORDER BY id DESC LIMIT ?2) ORDER BY id").map_err(sqlite_error)?.query_map(params![id,limit,before],event_row).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(sqlite_error)?;
-            let live=if before.is_none() {crate::agent_output::read_live(&tx,&id)?} else {vec![]};
+            let events=tx.prepare("SELECT * FROM (SELECT e.* FROM agent_inbox_events e WHERE work_item_id=?1 AND event_kind NOT IN ('reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release') AND (event_kind<>'activity_started' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events c WHERE c.source_event_id=json_array('activity',e.work_item_id,json_extract(e.payload,'$.turn_id'),json_extract(e.payload,'$.item_id'),'completed'))) AND (event_kind<>'plan_updated' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events p WHERE p.work_item_id=e.work_item_id AND p.event_kind='plan_updated' AND p.delivered_turn_id=e.delivered_turn_id AND json_extract(p.payload,'$.threadId')=json_extract(e.payload,'$.threadId') AND p.id>e.id)) AND (event_kind<>'steer_pending' OR disposition IS NULL) AND (?3 IS NULL OR id<?3) ORDER BY id DESC LIMIT ?2) ORDER BY id").map_err(error::sqlite_error)?.query_map(rusqlite::params![id,limit,before],event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
+            let live=if before.is_none() {agent_output::read_live(&tx,&id)?} else {vec![]};
 
-            tx.commit().map_err(sqlite_error)?;
+            tx.commit().map_err(error::sqlite_error)?;
 
             Ok((events,live))
         }).await
@@ -255,8 +260,8 @@ impl SqliteStore {
 
 	/// Return executable manager identities, including the original root.
 	pub async fn agent_manager_ids(&self) -> Result<Vec<String>, StoreError> {
-		self.run(|connection| connection.prepare("SELECT id FROM agent_work_items WHERE parent_goal_id IS NULL UNION SELECT work_id FROM agent_managers").map_err(sqlite_error)?
-            .query_map([],|row|row.get(0)).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|sqlite_error(error).into())).await
+		self.run(|connection| connection.prepare("SELECT id FROM agent_work_items WHERE parent_goal_id IS NULL UNION SELECT work_id FROM agent_managers").map_err(error::sqlite_error)?
+            .query_map([],|row|row.get(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|error::sqlite_error(error).into())).await
 	}
 
 	/// Read persisted project scopes owned by managers.
@@ -264,11 +269,11 @@ impl SqliteStore {
 		self.run(|connection| {
 			connection
 				.prepare("SELECT agent_id,name,directory FROM agent_workspaces ORDER BY agent_id")
-				.map_err(sqlite_error)?
+				.map_err(error::sqlite_error)?
 				.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
-				.map_err(sqlite_error)?
+				.map_err(error::sqlite_error)?
 				.collect::<Result<Vec<_>, _>>()
-				.map_err(|error| sqlite_error(error).into())
+				.map_err(|error| error::sqlite_error(error).into())
 		})
 		.await
 	}
@@ -289,9 +294,9 @@ impl SqliteStore {
 		page_limit(event_limit)?;
 
 		self.run(move |connection| {
-			let transaction = connection.transaction().map_err(sqlite_error)?;
+			let transaction = connection.transaction().map_err(error::sqlite_error)?;
 			let count = |sql| -> Result<u64, StoreError> {
-				let count: i64 = transaction.query_row(sql, [], |row| row.get(0)).map_err(sqlite_error)?;
+				let count: i64 = transaction.query_row(sql, [], |row| row.get(0)).map_err(error::sqlite_error)?;
 
 				u64::try_from(count).map_err(|_| DatabaseError::Corrupt.into())
 			};
@@ -303,13 +308,13 @@ impl SqliteStore {
 				return Ok(AgentStoreSnapshot::CapacityExceeded { work_items: work_count, dependencies: dependency_count, pending_events: event_count });
 			}
 
-			let work_items = transaction.prepare("SELECT * FROM agent_work_items ORDER BY created_at_micros, id").map_err(sqlite_error)?.query_map([], work_row).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
-			let dependencies = transaction.prepare("SELECT work_item_id, depends_on_id FROM agent_dependencies ORDER BY work_item_id, depends_on_id").map_err(sqlite_error)?.query_map([], |row| Ok(AgentDependency { work_item_id: row.get(0)?, depends_on_id: row.get(1)? })).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
-			let pending_events = transaction.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL ORDER BY id").map_err(sqlite_error)?.query_map([], event_row).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
-            let managers=transaction.prepare("SELECT work_id FROM agent_managers").map_err(sqlite_error)?.query_map([],|row|row.get(0)).map_err(sqlite_error)?.collect::<Result<Vec<String>,_>>().map_err(sqlite_error)?;
-            let workspaces=transaction.prepare("SELECT agent_id,name,directory FROM agent_workspaces ORDER BY agent_id").map_err(sqlite_error)?.query_map([],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(sqlite_error)?.collect::<Result<Vec<(String,String,String)>,_>>().map_err(sqlite_error)?;
+			let work_items = transaction.prepare("SELECT * FROM agent_work_items ORDER BY created_at_micros, id").map_err(error::sqlite_error)?.query_map([], work_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(error::sqlite_error)?;
+			let dependencies = transaction.prepare("SELECT work_item_id, depends_on_id FROM agent_dependencies ORDER BY work_item_id, depends_on_id").map_err(error::sqlite_error)?.query_map([], |row| Ok(AgentDependency { work_item_id: row.get(0)?, depends_on_id: row.get(1)? })).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(error::sqlite_error)?;
+			let pending_events = transaction.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL ORDER BY id").map_err(error::sqlite_error)?.query_map([], event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(error::sqlite_error)?;
+            let managers=transaction.prepare("SELECT work_id FROM agent_managers").map_err(error::sqlite_error)?.query_map([],|row|row.get(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<String>,_>>().map_err(error::sqlite_error)?;
+            let workspaces=transaction.prepare("SELECT agent_id,name,directory FROM agent_workspaces ORDER BY agent_id").map_err(error::sqlite_error)?.query_map([],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(error::sqlite_error)?.collect::<Result<Vec<(String,String,String)>,_>>().map_err(error::sqlite_error)?;
 
-            transaction.commit().map_err(sqlite_error)?;
+            transaction.commit().map_err(error::sqlite_error)?;
 
             Ok(AgentStoreSnapshot::Complete { managers,workspaces,work_items, dependencies, pending_events })
 		}).await
@@ -376,7 +381,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sqlite_error)?;
+				.map_err(error::sqlite_error)?;
 
 			if let Some(parent) = &item.parent_goal_id {
 				let parent = read_work(&transaction, parent)?;
@@ -395,7 +400,7 @@ impl SqliteStore {
 					"INSERT INTO agent_work_items (id, parent_goal_id, kind, title, instructions,
 				codex_thread_id, status, next_check_at_micros, created_at_micros, updated_at_micros)
 				VALUES (?1, ?2, ?3, ?4, ?5, NULL, 'open', ?6, ?7, ?8)",
-					params![
+					rusqlite::params![
 						item.id,
 						item.parent_goal_id,
 						item.kind.as_str(),
@@ -406,7 +411,7 @@ impl SqliteStore {
 						item.updated_at_micros
 					],
 				)
-				.map_err(sqlite_error)?;
+				.map_err(error::sqlite_error)?;
 
 			if manager || item.parent_goal_id.is_none() {
 				transaction
@@ -414,20 +419,20 @@ impl SqliteStore {
 						"INSERT INTO agent_tool_versions(work_id,version) VALUES(?1,3)",
 						[&item.id],
 					)
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 			}
 			if manager {
 				transaction
 					.execute("INSERT INTO agent_managers(work_id) VALUES(?1)", [&item.id])
-					.map_err(sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				if let Some((name, directory)) = workspace {
 					transaction
 						.execute(
 							"INSERT INTO agent_workspaces(agent_id,name,directory) VALUES(?1,?2,?3)",
-							params![item.id, name, directory],
+							rusqlite::params![item.id, name, directory],
 						)
-						.map_err(sqlite_error)?;
+						.map_err(error::sqlite_error)?;
 				}
 			}
 
@@ -435,7 +440,7 @@ impl SqliteStore {
 				insert_dependency(&transaction, &item.id, &dependency)?;
 			}
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(item)
 		})
@@ -446,13 +451,13 @@ impl SqliteStore {
 		self.run(|connection| {
 			let mut statement = connection
 				.prepare("SELECT * FROM agent_work_items ORDER BY created_at_micros, id")
-				.map_err(sqlite_error)?;
+				.map_err(error::sqlite_error)?;
 
 			statement
 				.query_map([], work_row)
-				.map_err(sqlite_error)?
+				.map_err(error::sqlite_error)?
 				.collect::<Result<Vec<_>, _>>()
-				.map_err(|error| sqlite_error(error).into())
+				.map_err(|error| error::sqlite_error(error).into())
 		})
 		.await
 	}
@@ -474,16 +479,16 @@ impl SqliteStore {
 		}
 
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 
 			read_work(&transaction, &id)?;
 
 			transaction.execute("UPDATE agent_work_items SET status = ?2, next_check_at_micros = ?3, updated_at_micros = max(updated_at_micros, ?4) WHERE id = ?1",
-				params![id, status.as_str(), next_check_at_micros, unix_micros()?]).map_err(sqlite_error)?;
+				rusqlite::params![id, status.as_str(), next_check_at_micros, crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 			let item = read_work(&transaction, &id)?;
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(item)
 		}).await
@@ -497,23 +502,23 @@ impl SqliteStore {
 		bounded(&codex_thread_id, 512)?;
 
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let item = read_work(&transaction, &id)?;
 
 			if let Some(bound) = &item.codex_thread_id {
 				return if bound == &codex_thread_id { Ok(item) } else { Err(DatabaseError::Conflict.into()) };
 			}
 
-			let used: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE codex_thread_id = ?1)", [&codex_thread_id], |row| row.get(0)).map_err(sqlite_error)?;
+			let used: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE codex_thread_id = ?1)", [&codex_thread_id], |row| row.get(0)).map_err(error::sqlite_error)?;
 
 			if used { return Err(DatabaseError::Conflict.into()); }
 
 			transaction.execute("UPDATE agent_work_items SET codex_thread_id = ?2, updated_at_micros = max(updated_at_micros, ?3) WHERE id = ?1",
-				params![id, codex_thread_id, unix_micros()?]).map_err(sqlite_error)?;
+				rusqlite::params![id, codex_thread_id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 			let updated = read_work(&transaction, &id)?;
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(updated)
 		}).await
@@ -527,11 +532,11 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sqlite_error)?;
+				.map_err(error::sqlite_error)?;
 
 			insert_dependency(&transaction, &id, &depends_on)?;
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(())
 		})
@@ -548,16 +553,16 @@ impl SqliteStore {
 		id: String,
 	) -> Result<AgentWorkItem, StoreError> {
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let work = read_work(&transaction, &id)?;
 
 			if work.dispatch_state != AgentDispatchState::Idle || work.codex_thread_id.is_some() { return Err(DatabaseError::Conflict.into()); }
 
-			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'dispatching', updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", params![id, unix_micros()?]).map_err(sqlite_error)?;
+			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'dispatching', updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", rusqlite::params![id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 			let work = read_work(&transaction, &id)?;
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(work)
 		}).await
@@ -572,16 +577,16 @@ impl SqliteStore {
 		bounded(&thread_id, 512)?;
 
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let work = read_work(&transaction, &id)?;
 
 			if work.dispatch_state != AgentDispatchState::Dispatching || work.codex_thread_id.is_some() { return Err(DatabaseError::Conflict.into()); }
 
-			transaction.execute("UPDATE agent_work_items SET codex_thread_id = ?2, dispatch_state = 'idle', updated_at_micros = max(updated_at_micros, ?3) WHERE id = ?1", params![id, thread_id, unix_micros()?]).map_err(sqlite_error)?;
+			transaction.execute("UPDATE agent_work_items SET codex_thread_id = ?2, dispatch_state = 'idle', updated_at_micros = max(updated_at_micros, ?3) WHERE id = ?1", rusqlite::params![id, thread_id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 			let work = read_work(&transaction, &id)?;
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(work)
 		}).await
@@ -613,16 +618,16 @@ impl SqliteStore {
 		}
 
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let work = read_work(&transaction, &id)?;
 
-			if work.dispatch_state != AgentDispatchState::Idle || work.codex_thread_id.is_none() || (crate::agent_permissions::pending(&transaction, &id)? || crate::agent_plugins::pending(&transaction, &id)? || crate::agent_models::pending(&transaction, &id)? || crate::agent_prompt_edit::pending(&transaction, &id)?) {
+			if work.dispatch_state != AgentDispatchState::Idle || work.codex_thread_id.is_none() || (agent_permissions::pending(&transaction, &id)? || agent_plugins::pending(&transaction, &id)? || agent_models::pending(&transaction, &id)? || agent_prompt_edit::pending(&transaction, &id)?) {
 				return Err(DatabaseError::Conflict.into());
 			}
 
 			capacity::cancel_pending(&transaction, &id)?;
 
-			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'dispatching', updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", params![id, unix_micros()?]).map_err(sqlite_error)?;
+			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'dispatching', updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", rusqlite::params![id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 			for event_id in event_ids {
 				let changed = transaction.execute("WITH RECURSIVE owned(id) AS (
@@ -630,33 +635,33 @@ impl SqliteStore {
 					UPDATE agent_inbox_events SET delivery_work_item_id = ?2, delivered_turn_id = ''
 					WHERE id = ?1 AND work_item_id IN (SELECT id FROM owned) AND disposition IS NULL
 					AND (event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message') OR (event_kind='async_question_answer' AND work_item_id=?2 AND delivered_turn_id IS NULL)) AND (work_item_id=?2 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=work_item_id)) AND (work_item_id<>?2 OR event_kind<>'worker_turn_completed')
-					AND (delivered_turn_id IS NULL OR (delivery_work_item_id = ?2 AND delivered_turn_id != ''))", params![event_id, id]).map_err(sqlite_error)?;
+					AND (delivered_turn_id IS NULL OR (delivery_work_item_id = ?2 AND delivered_turn_id != ''))", rusqlite::params![event_id, id]).map_err(error::sqlite_error)?;
 
 				if changed != 1 { return Err(DatabaseError::Conflict.into()); }
 
                 let event = read_event(&transaction, event_id)?;
 
-                if event.event_kind == "user_message" { crate::agent_questions::retire_for_prompt(&transaction, &id, &event.payload)?; }
+                if event.event_kind == "user_message" { agent_questions::retire_for_prompt(&transaction, &id, &event.payload)?; }
 			}
 
-			if work.kind == AgentWorkKind::Task || transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=?1)",[&id],|row|row.get::<_,bool>(0)).map_err(sqlite_error)? {
-				transaction.execute("UPDATE agent_work_items SET status = 'open', next_check_at_micros = NULL WHERE id = ?1", [&id]).map_err(sqlite_error)?;
+			if work.kind == AgentWorkKind::Task || transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=?1)",[&id],|row|row.get::<_,bool>(0)).map_err(error::sqlite_error)? {
+				transaction.execute("UPDATE agent_work_items SET status = 'open', next_check_at_micros = NULL WHERE id = ?1", [&id]).map_err(error::sqlite_error)?;
 			}
 
 			if let Some(text)=instruction {
-				let now=unix_micros()?;
-				let previous:i64=transaction.query_row("SELECT coalesce(max(id),0) FROM agent_inbox_events WHERE work_item_id=?1",[&id],|row|row.get(0)).map_err(sqlite_error)?;
+				let now=crate::unix_micros()?;
+				let previous:i64=transaction.query_row("SELECT coalesce(max(id),0) FROM agent_inbox_events WHERE work_item_id=?1",[&id],|row|row.get(0)).map_err(error::sqlite_error)?;
 				let source=serde_json::json!(["work_instruction",id,previous]).to_string();
 				let payload=serde_json::json!({"text":text,"source":"manager"}).to_string();
 
 				if payload.len()>65536 {return Err(StoreError::InvalidInput("instruction exceeds saved event bound"));}
 
-				transaction.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'work_instruction',?3,?4,?2,'')",params![source,id,payload,now]).map_err(sqlite_error)?;
+				transaction.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'work_instruction',?3,?4,?2,'')",rusqlite::params![source,id,payload,now]).map_err(error::sqlite_error)?;
 			}
 
 			let work = read_work(&transaction, &id)?;
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(work)
 		}).await
@@ -674,16 +679,16 @@ impl SqliteStore {
 		bounded(&key, 512)?;
 
 		self.run(move |connection| {
-			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let work = read_work(&tx, &id)?;
 
 			if work.dispatch_state != AgentDispatchState::Running || work.active_turn_id.as_deref() != Some(&turn) {
 				return Err(DatabaseError::Conflict.into());
 			}
 
-			crate::agent_task_references::validate_references(&tx, &payload)?;
+			agent_task_references::validate_references(&tx, &payload)?;
 
-			let mut value: serde_json::Value = serde_json::from_str(&payload)
+			let mut value: Value = serde_json::from_str(&payload)
 				.map_err(|_| StoreError::InvalidInput("invalid steering input"))?;
 			let fields = value.as_object_mut().ok_or(StoreError::InvalidInput("invalid steering input"))?;
 
@@ -695,11 +700,11 @@ impl SqliteStore {
 
 			let source = serde_json::json!(["user_steer", id, key]).to_string();
 
-			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'steer_pending',?3,?4,?2,?5)",params![source,id,payload,unix_micros()?,turn]).map_err(sqlite_error)?;
+			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'steer_pending',?3,?4,?2,?5)",rusqlite::params![source,id,payload,crate::unix_micros()?,turn]).map_err(error::sqlite_error)?;
 
 			let event = tx.last_insert_rowid();
 
-			tx.commit().map_err(sqlite_error)?;
+			tx.commit().map_err(error::sqlite_error)?;
 
 			Ok(event)
 		}).await
@@ -710,11 +715,11 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let tx = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sqlite_error)?;
+				.map_err(error::sqlite_error)?;
 
 			steer::finish(&tx, event, accepted)?;
 
-			tx.commit().map_err(sqlite_error)?;
+			tx.commit().map_err(error::sqlite_error)?;
 
 			Ok(())
 		})
@@ -734,7 +739,7 @@ impl SqliteStore {
 		&self,
 		id: String,
 		turn_id: String,
-		execution: Option<crate::AgentTurnExecution>,
+		execution: Option<AgentTurnExecution>,
 	) -> Result<AgentWorkItem, StoreError> {
 		bounded(&turn_id, 512)?;
 
@@ -743,7 +748,7 @@ impl SqliteStore {
 		}
 
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let work = read_work(&transaction, &id)?;
 
 			if work.dispatch_state != AgentDispatchState::Dispatching { return Err(DatabaseError::Conflict.into()); }
@@ -751,18 +756,18 @@ impl SqliteStore {
 			if let Some(execution) = &execution {
 				let thread = work.codex_thread_id.as_deref().ok_or(DatabaseError::Conflict)?;
 
-				crate::agent_turn_execution::record(&transaction, &id, thread, &turn_id, execution)?;
+				agent_turn_execution::record(&transaction, &id, thread, &turn_id, execution)?;
 			}
 
-			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'running', active_turn_id = ?2, updated_at_micros = max(updated_at_micros, ?3) WHERE id = ?1", params![id, turn_id, unix_micros()?]).map_err(sqlite_error)?;
-			transaction.execute("UPDATE agent_usage SET turn_id=?2,baseline_input_tokens=json_extract(usage_json,'$.input_tokens'),baseline_output_tokens=json_extract(usage_json,'$.output_tokens'),turn_input_tokens=NULL,turn_output_tokens=NULL WHERE work_id=?1 AND thread_id=?3",params![id,turn_id,work.codex_thread_id]).map_err(sqlite_error)?;
-			transaction.execute("UPDATE agent_inbox_events SET delivered_turn_id = ?2 WHERE delivery_work_item_id = ?1 AND delivered_turn_id = '' AND disposition IS NULL", params![id, turn_id]).map_err(sqlite_error)?;
-			transaction.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Instruction accepted by the provider; completion is tracked separately.',disposed_at_micros=max(created_at_micros,?3) WHERE delivery_work_item_id=?1 AND delivered_turn_id=?2 AND event_kind='work_instruction' AND disposition IS NULL",params![id,turn_id,unix_micros()?]).map_err(sqlite_error)?;
-			transaction.execute("UPDATE agent_capacity_retries SET state='submitted',retry_turn_id=?2 WHERE work_item_id=?1 AND state='claimed'",params![id,turn_id]).map_err(sqlite_error)?;
+			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'running', active_turn_id = ?2, updated_at_micros = max(updated_at_micros, ?3) WHERE id = ?1", rusqlite::params![id, turn_id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
+			transaction.execute("UPDATE agent_usage SET turn_id=?2,baseline_input_tokens=json_extract(usage_json,'$.input_tokens'),baseline_output_tokens=json_extract(usage_json,'$.output_tokens'),turn_input_tokens=NULL,turn_output_tokens=NULL WHERE work_id=?1 AND thread_id=?3",rusqlite::params![id,turn_id,work.codex_thread_id]).map_err(error::sqlite_error)?;
+			transaction.execute("UPDATE agent_inbox_events SET delivered_turn_id = ?2 WHERE delivery_work_item_id = ?1 AND delivered_turn_id = '' AND disposition IS NULL", rusqlite::params![id, turn_id]).map_err(error::sqlite_error)?;
+			transaction.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Instruction accepted by the provider; completion is tracked separately.',disposed_at_micros=max(created_at_micros,?3) WHERE delivery_work_item_id=?1 AND delivered_turn_id=?2 AND event_kind='work_instruction' AND disposition IS NULL",rusqlite::params![id,turn_id,crate::unix_micros()?]).map_err(error::sqlite_error)?;
+			transaction.execute("UPDATE agent_capacity_retries SET state='submitted',retry_turn_id=?2 WHERE work_item_id=?1 AND state='claimed'",rusqlite::params![id,turn_id]).map_err(error::sqlite_error)?;
 
 			let work = read_work(&transaction, &id)?;
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(work)
 		}).await
@@ -774,18 +779,18 @@ impl SqliteStore {
 		turn_id: String,
 	) -> Result<AgentWorkItem, StoreError> {
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let work = read_work(&transaction, &id)?;
 
 			if work.dispatch_state != AgentDispatchState::Running || work.active_turn_id.as_deref() != Some(turn_id.as_str()) {
 				return Err(DatabaseError::Conflict.into());
 			}
 
-			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'idle', active_turn_id = NULL, updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", params![id, unix_micros()?]).map_err(sqlite_error)?;
+			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'idle', active_turn_id = NULL, updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", rusqlite::params![id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 			let work = read_work(&transaction, &id)?;
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(work)
 		}).await
@@ -807,13 +812,13 @@ impl SqliteStore {
 
 		let user_input_handled = ["agent_turn_completed", "worker_turn_completed"]
 			.contains(&input.event_kind.as_str())
-			&& serde_json::from_str::<serde_json::Value>(&input.payload).is_ok_and(|payload| {
-				payload.pointer("/terminal/turn/status").and_then(serde_json::Value::as_str)
+			&& serde_json::from_str::<Value>(&input.payload).is_ok_and(|payload| {
+				payload.pointer("/terminal/turn/status").and_then(Value::as_str)
 					== Some("completed")
 			});
 
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let work = read_work(&transaction, &id)?;
 
 			if work.dispatch_state != AgentDispatchState::Running || work.active_turn_id.as_deref() != Some(turn_id.as_str()) {
@@ -821,13 +826,13 @@ impl SqliteStore {
 			}
 
 			let mut input = input;
-            let mut payload: serde_json::Value = serde_json::from_str(&input.payload).unwrap_or_default();
+            let mut payload: Value = serde_json::from_str(&input.payload).unwrap_or_default();
             let eligible = work.status == AgentWorkStatus::Open
                 && matches!(input.event_kind.as_str(), "agent_turn_completed" | "worker_turn_completed")
-                && payload.pointer("/terminal/turn/status").and_then(serde_json::Value::as_str)==Some("failed")
-                && payload.pointer("/terminal/turn/error/codexErrorInfo").and_then(serde_json::Value::as_str)==Some("serverOverloaded")
+                && payload.pointer("/terminal/turn/status").and_then(Value::as_str)==Some("failed")
+                && payload.pointer("/terminal/turn/error/codexErrorInfo").and_then(Value::as_str)==Some("serverOverloaded")
                 && payload.pointer("/threadReadback/capacityRetryEligible")==Some(&serde_json::json!(true));
-            let mut retry = if eligible { capacity::next_retry(&transaction,&id,&turn_id,unix_micros()?)? } else { None };
+            let mut retry = if eligible { capacity::next_retry(&transaction,&id,&turn_id,crate::unix_micros()?)? } else { None };
 
             if eligible && retry.is_none() {
                 payload["capacityRetry"]=serde_json::json!({"exhausted":true,"attempt":3});
@@ -849,10 +854,10 @@ impl SqliteStore {
                 } else { retry=None; }
             }
             if let Some(thread) = work.codex_thread_id.as_deref() {
-                crate::agent_output::retain_partial_output(&transaction, &id, thread, &turn_id)?;
+                agent_output::retain_partial_output(&transaction, &id, thread, &turn_id)?;
             }
 
-			let previous = transaction.query_row("SELECT * FROM agent_inbox_events WHERE source_event_id = ?1", [&input.source_event_id], event_row).optional().map_err(sqlite_error)?;
+			let previous = transaction.query_row("SELECT * FROM agent_inbox_events WHERE source_event_id = ?1", [&input.source_event_id], event_row).optional().map_err(error::sqlite_error)?;
 			let event = if let Some(event) = previous {
 				if event.work_item_id != input.work_item_id || event.event_kind != input.event_kind || event.payload != input.payload {
 					return Err(StoreError::IdempotencyConflict);
@@ -861,28 +866,28 @@ impl SqliteStore {
 				event
 			} else {
 				transaction.execute("INSERT INTO agent_inbox_events (source_event_id, work_item_id, event_kind, payload, created_at_micros) VALUES (?1, ?2, ?3, ?4, ?5)",
-					params![input.source_event_id, input.work_item_id, input.event_kind, input.payload, unix_micros()?]).map_err(sqlite_error)?;
+					rusqlite::params![input.source_event_id, input.work_item_id, input.event_kind, input.payload, crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 				read_event(&transaction, transaction.last_insert_rowid())?
 			};
 
-			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'idle', active_turn_id = NULL, updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", params![id, unix_micros()?]).map_err(sqlite_error)?;
+			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'idle', active_turn_id = NULL, updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", rusqlite::params![id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 			let event = if event.event_kind == "agent_turn_completed" && event.disposition.is_none() {
-				transaction.execute("UPDATE agent_inbox_events SET disposition = 'resolved', disposition_note = 'Agent turn receipt recorded; work judgment is unchanged.', disposed_at_micros = max(created_at_micros, ?2) WHERE id = ?1", params![event.id, unix_micros()?]).map_err(sqlite_error)?;
+				transaction.execute("UPDATE agent_inbox_events SET disposition = 'resolved', disposition_note = 'Agent turn receipt recorded; work judgment is unchanged.', disposed_at_micros = max(created_at_micros, ?2) WHERE id = ?1", rusqlite::params![event.id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 				read_event(&transaction, event.id)?
 			} else { event };
 
 			if user_input_handled {
-				transaction.execute("UPDATE agent_inbox_events SET disposition = 'resolved', disposition_note = 'User input handled by completed Agent turn; work judgment is unchanged.', disposed_at_micros = max(created_at_micros, ?3) WHERE disposition IS NULL AND event_kind IN ('user_message', 'async_question_answer') AND delivery_work_item_id = ?1 AND delivered_turn_id = ?2", params![id, turn_id, unix_micros()?]).map_err(sqlite_error)?;
+				transaction.execute("UPDATE agent_inbox_events SET disposition = 'resolved', disposition_note = 'User input handled by completed Agent turn; work judgment is unchanged.', disposed_at_micros = max(created_at_micros, ?3) WHERE disposition IS NULL AND event_kind IN ('user_message', 'async_question_answer') AND delivery_work_item_id = ?1 AND delivered_turn_id = ?2", rusqlite::params![id, turn_id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
 			}
 
             if let Some((attempt,due))=retry {
-                transaction.execute("INSERT INTO agent_capacity_retries (event_id,work_item_id,failed_turn_id,attempt,due_at_micros,state) VALUES (?1,?2,?3,?4,?5,'pending')",params![event.id,id,turn_id,attempt,due]).map_err(sqlite_error)?;
+                transaction.execute("INSERT INTO agent_capacity_retries (event_id,work_item_id,failed_turn_id,attempt,due_at_micros,state) VALUES (?1,?2,?3,?4,?5,'pending')",rusqlite::params![event.id,id,turn_id,attempt,due]).map_err(error::sqlite_error)?;
             }
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(event)
 		}).await
@@ -898,7 +903,7 @@ impl SqliteStore {
 		bounded(&turn_id, 512)?;
 
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let work = read_work(&transaction, &id)?;
 
 			if !matches!(work.dispatch_state, AgentDispatchState::Dispatching | AgentDispatchState::Unknown) { return Err(DatabaseError::Conflict.into()); }
@@ -906,13 +911,13 @@ impl SqliteStore {
 				return Err(DatabaseError::Conflict.into());
 			}
 
-			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'running', active_turn_id = ?2, updated_at_micros = max(updated_at_micros, ?3) WHERE id = ?1", params![id, turn_id, unix_micros()?]).map_err(sqlite_error)?;
-			transaction.execute("UPDATE agent_inbox_events SET delivered_turn_id = ?2 WHERE delivery_work_item_id = ?1 AND delivered_turn_id = '' AND disposition IS NULL", params![id, turn_id]).map_err(sqlite_error)?;
-			transaction.execute("UPDATE agent_capacity_retries SET state='submitted',retry_turn_id=?2 WHERE work_item_id=?1 AND state='claimed'",params![id,turn_id]).map_err(sqlite_error)?;
+			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'running', active_turn_id = ?2, updated_at_micros = max(updated_at_micros, ?3) WHERE id = ?1", rusqlite::params![id, turn_id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
+			transaction.execute("UPDATE agent_inbox_events SET delivered_turn_id = ?2 WHERE delivery_work_item_id = ?1 AND delivered_turn_id = '' AND disposition IS NULL", rusqlite::params![id, turn_id]).map_err(error::sqlite_error)?;
+			transaction.execute("UPDATE agent_capacity_retries SET state='submitted',retry_turn_id=?2 WHERE work_item_id=?1 AND state='claimed'",rusqlite::params![id,turn_id]).map_err(error::sqlite_error)?;
 
 			let work = read_work(&transaction, &id)?;
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(work)
 		}).await
@@ -925,16 +930,16 @@ impl SqliteStore {
 		id: String,
 	) -> Result<AgentWorkItem, StoreError> {
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let work = read_work(&transaction, &id)?;
 
 			if !matches!(work.dispatch_state, AgentDispatchState::Dispatching | AgentDispatchState::Running) { return Err(DatabaseError::Conflict.into()); }
 
-			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'unknown', updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", params![id, unix_micros()?]).map_err(sqlite_error)?;
+			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'unknown', updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", rusqlite::params![id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 			let work = read_work(&transaction, &id)?;
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(work)
 		}).await
@@ -942,9 +947,9 @@ impl SqliteStore {
 
 	pub async fn list_agent_dependencies(&self) -> Result<Vec<AgentDependency>, StoreError> {
 		self.run(|connection| {
-			let mut statement = connection.prepare("SELECT work_item_id, depends_on_id FROM agent_dependencies ORDER BY work_item_id, depends_on_id").map_err(sqlite_error)?;
+			let mut statement = connection.prepare("SELECT work_item_id, depends_on_id FROM agent_dependencies ORDER BY work_item_id, depends_on_id").map_err(error::sqlite_error)?;
 
-			statement.query_map([], |row| Ok(AgentDependency { work_item_id: row.get(0)?, depends_on_id: row.get(1)? })).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
+			statement.query_map([], |row| Ok(AgentDependency { work_item_id: row.get(0)?, depends_on_id: row.get(1)? })).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -963,8 +968,7 @@ impl SqliteStore {
 		if !matches!(
 			input.event_kind.as_str(),
 			"assistant_message" | "token_usage" | "context_compacted"
-		) || !serde_json::from_str::<serde_json::Value>(&input.payload)
-			.is_ok_and(|value| value.is_object())
+		) || !serde_json::from_str::<Value>(&input.payload).is_ok_and(|value| value.is_object())
 		{
 			return Err(StoreError::InvalidInput("invalid Agent observation"));
 		}
@@ -980,8 +984,8 @@ impl SqliteStore {
 		turn_id: String,
 	) -> Result<Option<AgentInboxEvent>, StoreError> {
 		self.run(move |connection| {
-			connection.query_row("SELECT * FROM agent_inbox_events WHERE work_item_id = ?1 AND event_kind = 'token_usage' AND json_extract(payload, '$.threadId') = ?2 AND json_extract(payload, '$.turnId') = ?3 ORDER BY id DESC LIMIT 1", params![work_id, thread_id, turn_id], event_row)
-				.optional().map_err(|error| sqlite_error(error).into())
+			connection.query_row("SELECT * FROM agent_inbox_events WHERE work_item_id = ?1 AND event_kind = 'token_usage' AND json_extract(payload, '$.threadId') = ?2 AND json_extract(payload, '$.turnId') = ?3 ORDER BY id DESC LIMIT 1", rusqlite::params![work_id, thread_id, turn_id], event_row)
+				.optional().map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -993,14 +997,14 @@ impl SqliteStore {
 		bounded(&input.source_event_id, 2048)?;
 		bounded(&input.event_kind, 128)?;
 
-		let compact = crate::agent_request_payload::compact(&input)?;
+		let compact = agent_request_payload::compact(&input)?;
 
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
-			let previous = transaction.query_row("SELECT * FROM agent_inbox_events WHERE source_event_id = ?1", [&input.source_event_id], event_row).optional().map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
+			let previous = transaction.query_row("SELECT * FROM agent_inbox_events WHERE source_event_id = ?1", [&input.source_event_id], event_row).optional().map_err(error::sqlite_error)?;
 
 			if let Some(event) = previous {
-				let event = crate::agent_request_payload::hydrate(&transaction, event)?;
+				let event = agent_request_payload::hydrate(&transaction, event)?;
 
 				return if event.work_item_id == input.work_item_id && event.event_kind == input.event_kind && event.payload == input.payload {
 					Ok(event)
@@ -1008,30 +1012,30 @@ impl SqliteStore {
 			}
 
 			if !work_exists(&transaction, &input.work_item_id)? { return Err(DatabaseError::NotFound.into()); }
-			if input.event_kind == "user_message" && transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='thread_in_use_needs_attention' AND disposition IS NULL)", [&input.work_item_id], |row| row.get::<_, bool>(0)).map_err(sqlite_error)? {
+			if input.event_kind == "user_message" && transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='thread_in_use_needs_attention' AND disposition IS NULL)", [&input.work_item_id], |row| row.get::<_, bool>(0)).map_err(error::sqlite_error)? {
 				return Err(StoreError::AgentThreadInUse);
 			}
-			if matches!(input.event_kind.as_str(), "user_message" | "async_question_answer" | "steer_pending") && crate::agent_prompt_edit::pending(&transaction, &input.work_item_id)? { return Err(DatabaseError::Conflict.into()); }
-			if input.event_kind == "user_message" { crate::agent_task_references::validate_references(&transaction, &input.payload)?; crate::agent_prompt_inputs::validate_queued_input(&transaction, &input.work_item_id, &input.payload)?; }
-            if input.event_kind == "user_message" && transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_misalignment m JOIN agent_work_items w ON w.id=m.work_id AND w.codex_thread_id=m.thread_id WHERE m.work_id=?1)",[&input.work_item_id],|row|row.get::<_,bool>(0)).map_err(sqlite_error)? { return Err(StoreError::InvalidInput("conversation paused for provider findings")); }
+			if matches!(input.event_kind.as_str(), "user_message" | "async_question_answer" | "steer_pending") && agent_prompt_edit::pending(&transaction, &input.work_item_id)? { return Err(DatabaseError::Conflict.into()); }
+			if input.event_kind == "user_message" { agent_task_references::validate_references(&transaction, &input.payload)?; agent_prompt_inputs::validate_queued_input(&transaction, &input.work_item_id, &input.payload)?; }
+            if input.event_kind == "user_message" && transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_misalignment m JOIN agent_work_items w ON w.id=m.work_id AND w.codex_thread_id=m.thread_id WHERE m.work_id=?1)",[&input.work_item_id],|row|row.get::<_,bool>(0)).map_err(error::sqlite_error)? { return Err(StoreError::InvalidInput("conversation paused for provider findings")); }
 
-			let now = unix_micros()?;
+			let now = crate::unix_micros()?;
 
 			transaction.execute("INSERT INTO agent_inbox_events (source_event_id, work_item_id, event_kind, payload, created_at_micros, disposition, disposition_note, disposed_at_micros) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-				params![input.source_event_id, input.work_item_id, input.event_kind, compact.as_ref().unwrap_or(&input.payload), now,
-					observation.then_some("resolved"), observation.then_some("Provider observation recorded; work judgment unchanged."), observation.then_some(now)]).map_err(sqlite_error)?;
+				rusqlite::params![input.source_event_id, input.work_item_id, input.event_kind, compact.as_ref().unwrap_or(&input.payload), now,
+					observation.then_some("resolved"), observation.then_some("Provider observation recorded; work judgment unchanged."), observation.then_some(now)]).map_err(error::sqlite_error)?;
 
 			let event_id = transaction.last_insert_rowid();
 
 			if compact.is_some() {
-				transaction.execute("INSERT INTO agent_request_payloads(event_id,payload) VALUES(?1,?2)",params![event_id,input.payload]).map_err(sqlite_error)?;
+				transaction.execute("INSERT INTO agent_request_payloads(event_id,payload) VALUES(?1,?2)",rusqlite::params![event_id,input.payload]).map_err(error::sqlite_error)?;
 			}
 
 			let event = read_event(&transaction, event_id)?;
 
-            if input.event_kind == "user_message" { crate::agent_questions::retire_for_prompt(&transaction, &input.work_item_id, &input.payload)?; }
+            if input.event_kind == "user_message" { agent_questions::retire_for_prompt(&transaction, &input.work_item_id, &input.payload)?; }
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(event)
 		}).await
@@ -1047,22 +1051,22 @@ impl SqliteStore {
 		bounded(&detail, 65536)?;
 
 		self.run(move |connection| {
-			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let payload = serde_json::json!({"recovery":detail}).to_string();
-            let pending: Option<(i64, String)> = tx.query_row("SELECT id,payload FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='reconnection_needs_attention' AND disposition IS NULL ORDER BY id DESC LIMIT 1", [&root], |row| Ok((row.get(0)?,row.get(1)?))).optional().map_err(sqlite_error)?;
+            let pending: Option<(i64, String)> = tx.query_row("SELECT id,payload FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='reconnection_needs_attention' AND disposition IS NULL ORDER BY id DESC LIMIT 1", [&root], |row| Ok((row.get(0)?,row.get(1)?))).optional().map_err(error::sqlite_error)?;
 
             if pending.as_ref().is_some_and(|(_, previous)| previous == &payload) { return Ok(()); }
 
             if let Some((id, _)) = pending {
-                tx.execute("UPDATE agent_inbox_events SET disposition='resolved', disposition_note='Superseded by a newer connection diagnostic; connectivity is not yet restored.', disposed_at_micros=max(created_at_micros,?2) WHERE id=?1", params![id,unix_micros()?]).map_err(sqlite_error)?;
+                tx.execute("UPDATE agent_inbox_events SET disposition='resolved', disposition_note='Superseded by a newer connection diagnostic; connectivity is not yet restored.', disposed_at_micros=max(created_at_micros,?2) WHERE id=?1", rusqlite::params![id,crate::unix_micros()?]).map_err(error::sqlite_error)?;
             }
 
-			let now = unix_micros()?;
-			let previous: i64 = tx.query_row("SELECT coalesce(max(id),0) FROM agent_inbox_events WHERE work_item_id=?1", [&root], |row| row.get(0)).map_err(sqlite_error)?;
+			let now = crate::unix_micros()?;
+			let previous: i64 = tx.query_row("SELECT coalesce(max(id),0) FROM agent_inbox_events WHERE work_item_id=?1", [&root], |row| row.get(0)).map_err(error::sqlite_error)?;
 			let source = serde_json::json!(["agent_connection", root, previous]).to_string();
 
-			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES(?1,?2,'reconnection_needs_attention',?3,?4)", params![source,root,payload,now]).map_err(sqlite_error)?;
-			tx.commit().map_err(sqlite_error)?;
+			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES(?1,?2,'reconnection_needs_attention',?3,?4)", rusqlite::params![source,root,payload,now]).map_err(error::sqlite_error)?;
+			tx.commit().map_err(error::sqlite_error)?;
 
 			Ok(())
 		}).await
@@ -1071,7 +1075,7 @@ impl SqliteStore {
 	/// Close connection errors after an attested connection, without changing work judgment.
 	pub async fn resolve_agent_connection_failure(&self, root: String) -> Result<(), StoreError> {
 		self.run(move |connection| {
-			connection.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='The Agent connection was restored.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind='reconnection_needs_attention' AND disposition IS NULL",params![root,unix_micros()?]).map_err(sqlite_error)?;
+			connection.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='The Agent connection was restored.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind='reconnection_needs_attention' AND disposition IS NULL",rusqlite::params![root,crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 			Ok(())
 		}).await
@@ -1105,20 +1109,20 @@ impl SqliteStore {
 		bounded(&detail, 2048)?;
 
 		self.run(move |connection| {
-			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let payload = serde_json::json!({"recovery":detail}).to_string();
-			let same: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind=?3 AND payload=?2 AND disposition IS NULL)",params![root,payload,kind],|row|row.get(0)).map_err(sqlite_error)?;
+			let same: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind=?3 AND payload=?2 AND disposition IS NULL)",rusqlite::params![root,payload,kind],|row|row.get(0)).map_err(error::sqlite_error)?;
 
 			if !same {
-				tx.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Superseded by the current delivery diagnostic.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind IN ('wake_failed','followup_processing_failed','thread_in_use_needs_attention') AND disposition IS NULL",params![root,unix_micros()?]).map_err(sqlite_error)?;
+				tx.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Superseded by the current delivery diagnostic.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind IN ('wake_failed','followup_processing_failed','thread_in_use_needs_attention') AND disposition IS NULL",rusqlite::params![root,crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
-				let previous:i64 = tx.query_row("SELECT coalesce(max(id),0) FROM agent_inbox_events WHERE work_item_id=?1",[&root],|row|row.get(0)).map_err(sqlite_error)?;
+				let previous:i64 = tx.query_row("SELECT coalesce(max(id),0) FROM agent_inbox_events WHERE work_item_id=?1",[&root],|row|row.get(0)).map_err(error::sqlite_error)?;
 				let source = serde_json::json!(["agent_delivery",root,previous]).to_string();
 
-				tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES(?1,?2,?5,?3,?4)",params![source,root,payload,unix_micros()?,kind]).map_err(sqlite_error)?;
+				tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES(?1,?2,?5,?3,?4)",rusqlite::params![source,root,payload,crate::unix_micros()?,kind]).map_err(error::sqlite_error)?;
 			}
 
-			tx.commit().map_err(sqlite_error)?;
+			tx.commit().map_err(error::sqlite_error)?;
 
 			Ok(())
 		}).await
@@ -1128,7 +1132,7 @@ impl SqliteStore {
 	/// conflict.
 	pub async fn hold_agent_unsent_input(&self, work: String) -> Result<(), StoreError> {
 		self.run(move |connection| {
-            connection.execute("UPDATE agent_inbox_events SET disposition='user_decision', disposition_note='Not sent: conversation was in use elsewhere. Send again when ready.', disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind='user_message' AND disposition IS NULL AND delivered_turn_id IS NULL", params![work,unix_micros()?]).map_err(sqlite_error)?;
+            connection.execute("UPDATE agent_inbox_events SET disposition='user_decision', disposition_note='Not sent: conversation was in use elsewhere. Send again when ready.', disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind='user_message' AND disposition IS NULL AND delivered_turn_id IS NULL", rusqlite::params![work,crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
             Ok(())
         }).await
@@ -1137,7 +1141,7 @@ impl SqliteStore {
 	/// Successful delivery processing clears only delivery diagnostics, never work events.
 	pub async fn resolve_agent_delivery_failure(&self, root: String) -> Result<(), StoreError> {
 		self.run(move |connection| {
-			connection.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Agent delivery processing recovered.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind IN ('wake_failed','followup_processing_failed','thread_in_use_needs_attention') AND disposition IS NULL",params![root,unix_micros()?]).map_err(sqlite_error)?;
+			connection.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Agent delivery processing recovered.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind IN ('wake_failed','followup_processing_failed','thread_in_use_needs_attention') AND disposition IS NULL",rusqlite::params![root,crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
 			Ok(())
 		}).await
@@ -1151,7 +1155,7 @@ impl SqliteStore {
 		let limit = page_limit(limit)?;
 
 		self.run(move |connection| {
-			connection.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL AND delivered_turn_id IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message') ORDER BY id LIMIT ?1").map_err(sqlite_error)?.query_map([limit], event_row).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
+			connection.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL AND delivered_turn_id IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message') ORDER BY id LIMIT ?1").map_err(error::sqlite_error)?.query_map([limit], event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -1172,8 +1176,8 @@ impl SqliteStore {
                 AND (work_item_id <> ?1 OR event_kind <> 'worker_turn_completed') AND (work_item_id=?1 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=work_item_id))
 				AND (delivered_turn_id IS NULL OR (delivery_work_item_id = ?1 AND delivered_turn_id != ''))
 				ORDER BY delivered_turn_id IS NOT NULL, id LIMIT ?2")
-				.map_err(sqlite_error)?.query_map(params![agent_id, limit], event_row)
-				.map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
+				.map_err(error::sqlite_error)?.query_map(rusqlite::params![agent_id, limit], event_row)
+				.map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -1188,7 +1192,7 @@ impl SqliteStore {
 		let limit = page_limit(limit)?;
 
 		self.run(move |connection| {
-			connection.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL AND delivered_turn_id = ?1 ORDER BY id LIMIT ?2").map_err(sqlite_error)?.query_map(params![turn_id, limit], event_row).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
+			connection.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL AND delivered_turn_id = ?1 ORDER BY id LIMIT ?2").map_err(error::sqlite_error)?.query_map(rusqlite::params![turn_id, limit], event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -1197,9 +1201,9 @@ impl SqliteStore {
 		&self,
 	) -> Result<Vec<AgentInboxEvent>, StoreError> {
 		self.run(|connection| {
-			connection.prepare("SELECT * FROM agent_inbox_events WHERE event_kind='thread_in_use_needs_attention' AND disposition IS NULL ORDER BY id").map_err(sqlite_error)?
-				.query_map([], event_row).map_err(sqlite_error)?
-				.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
+			connection.prepare("SELECT * FROM agent_inbox_events WHERE event_kind='thread_in_use_needs_attention' AND disposition IS NULL ORDER BY id").map_err(error::sqlite_error)?
+				.query_map([], event_row).map_err(error::sqlite_error)?
+				.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -1215,13 +1219,13 @@ impl SqliteStore {
 				.prepare(
 					"SELECT * FROM agent_inbox_events WHERE disposition IS NULL ORDER BY id LIMIT ?1",
 				)
-				.map_err(sqlite_error)?;
+				.map_err(error::sqlite_error)?;
 
 			statement
 				.query_map([limit], event_row)
-				.map_err(sqlite_error)?
+				.map_err(error::sqlite_error)?
 				.collect::<Result<Vec<_>, _>>()
-				.map_err(|error| sqlite_error(error).into())
+				.map_err(|error| error::sqlite_error(error).into())
 		})
 		.await
 	}
@@ -1254,7 +1258,7 @@ impl SqliteStore {
 		note: &'static str,
 	) -> Result<AgentInboxEvent, StoreError> {
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let event = read_event(&transaction, event_id)?;
 
 			if !matches!(event.event_kind.as_str(), "permission_pending" | "user_input_pending" | "server_request_pending") {
@@ -1262,11 +1266,11 @@ impl SqliteStore {
 			}
 			if event.disposition.is_some() { return Err(DatabaseError::Conflict.into()); }
 
-			transaction.execute("UPDATE agent_inbox_events SET disposition = 'resolved', disposition_note = ?3, disposed_at_micros = max(created_at_micros, ?2) WHERE id = ?1 AND disposition IS NULL", params![event_id, unix_micros()?, note]).map_err(sqlite_error)?;
+			transaction.execute("UPDATE agent_inbox_events SET disposition = 'resolved', disposition_note = ?3, disposed_at_micros = max(created_at_micros, ?2) WHERE id = ?1 AND disposition IS NULL", rusqlite::params![event_id, crate::unix_micros()?, note]).map_err(error::sqlite_error)?;
 
 			let updated = read_event(&transaction, event_id)?;
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(updated)
 		}).await
@@ -1285,25 +1289,25 @@ impl SqliteStore {
 		bounded(&note, 65536)?;
 
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let source = read_event(&transaction, user_event_id)?;
-			let active: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id = ?1 AND (parent_goal_id IS NULL OR EXISTS(SELECT 1 FROM agent_managers WHERE work_id=?1)) AND active_turn_id = ?2 AND dispatch_state = 'running')",params![agent_id,turn_id],|row|row.get(0)).map_err(sqlite_error)?;
-			let descendant: bool = transaction.query_row("WITH RECURSIVE lineage(id,parent_goal_id) AS (SELECT id,parent_goal_id FROM agent_work_items WHERE id = ?1 UNION SELECT work.id,work.parent_goal_id FROM agent_work_items work JOIN lineage ON work.id = lineage.parent_goal_id) SELECT EXISTS(SELECT 1 FROM lineage WHERE id = ?2)",params![work_id,agent_id],|row|row.get(0)).map_err(sqlite_error)?;
+			let active: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id = ?1 AND (parent_goal_id IS NULL OR EXISTS(SELECT 1 FROM agent_managers WHERE work_id=?1)) AND active_turn_id = ?2 AND dispatch_state = 'running')",rusqlite::params![agent_id,turn_id],|row|row.get(0)).map_err(error::sqlite_error)?;
+			let descendant: bool = transaction.query_row("WITH RECURSIVE lineage(id,parent_goal_id) AS (SELECT id,parent_goal_id FROM agent_work_items WHERE id = ?1 UNION SELECT work.id,work.parent_goal_id FROM agent_work_items work JOIN lineage ON work.id = lineage.parent_goal_id) SELECT EXISTS(SELECT 1 FROM lineage WHERE id = ?2)",rusqlite::params![work_id,agent_id],|row|row.get(0)).map_err(error::sqlite_error)?;
 
 			if !active || !descendant || source.work_item_id != agent_id || !matches!(source.event_kind.as_str(), "user_message" | "async_question_answer") || source.delivered_turn_id.as_deref() != Some(&turn_id) || source.disposition.is_some() {
 				return Err(StoreError::InvalidInput("decision requires a current delivered user reply"));
 			}
 
-			let now = unix_micros()?;
-			let changed = transaction.execute("UPDATE agent_work_items SET status = 'resolved', next_check_at_micros = NULL, updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1 AND status = 'user_decision' AND dispatch_state = 'idle'",params![work_id,now]).map_err(sqlite_error)?;
+			let now = crate::unix_micros()?;
+			let changed = transaction.execute("UPDATE agent_work_items SET status = 'resolved', next_check_at_micros = NULL, updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1 AND status = 'user_decision' AND dispatch_state = 'idle'",rusqlite::params![work_id,now]).map_err(error::sqlite_error)?;
 
 			if changed != 1 {return Err(DatabaseError::Conflict.into());}
 
 			let source_id = serde_json::json!(["user_decision_resolved",work_id,user_event_id]).to_string();
 			let payload = serde_json::json!({"userEventId":user_event_id,"agentTurnId":turn_id,"summary":note}).to_string();
 
-			transaction.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES (?1,?2,'user_decision_resolved',?3,?4,'resolved',?5,?4)",params![source_id,work_id,payload,now,note]).map_err(sqlite_error)?;
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES (?1,?2,'user_decision_resolved',?3,?4,'resolved',?5,?4)",rusqlite::params![source_id,work_id,payload,now,note]).map_err(error::sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(())
 		}).await
@@ -1321,25 +1325,25 @@ impl SqliteStore {
 		bounded(&note, 65536)?;
 
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let event = read_event(&transaction,evidence_event_id)?;
-			let current:bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id = ?1 AND (parent_goal_id IS NULL OR EXISTS(SELECT 1 FROM agent_managers WHERE work_id=?1)) AND active_turn_id = ?2 AND dispatch_state = 'running')",params![agent_id,turn_id],|row|row.get(0)).map_err(sqlite_error)?;
-			let related:bool = transaction.query_row("WITH RECURSIVE family(id) AS (SELECT id FROM agent_work_items WHERE id = ?1 UNION SELECT work.id FROM agent_work_items work JOIN family ON work.parent_goal_id = family.id) SELECT EXISTS(SELECT 1 FROM family WHERE id = ?2)",params![goal_id,event.work_item_id],|row|row.get(0)).map_err(sqlite_error)?;
+			let current:bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id = ?1 AND (parent_goal_id IS NULL OR EXISTS(SELECT 1 FROM agent_managers WHERE work_id=?1)) AND active_turn_id = ?2 AND dispatch_state = 'running')",rusqlite::params![agent_id,turn_id],|row|row.get(0)).map_err(error::sqlite_error)?;
+			let related:bool = transaction.query_row("WITH RECURSIVE family(id) AS (SELECT id FROM agent_work_items WHERE id = ?1 UNION SELECT work.id FROM agent_work_items work JOIN family ON work.parent_goal_id = family.id) SELECT EXISTS(SELECT 1 FROM family WHERE id = ?2)",rusqlite::params![goal_id,event.work_item_id],|row|row.get(0)).map_err(error::sqlite_error)?;
 			let user_input = matches!(event.event_kind.as_str(), "user_message" | "async_question_answer") && event.work_item_id == agent_id;
 			let result = related && matches!(event.event_kind.as_str(),"worker_turn_completed"|"automation_result"|"followup_due");
 
 			if !current || event.delivered_turn_id.as_deref() != Some(&turn_id) || (!user_input && !result) {return Err(StoreError::InvalidInput("goal resolution requires current related evidence"));}
 
-			let now = unix_micros()?;
-			let changed = transaction.execute("UPDATE agent_work_items SET status = 'resolved', next_check_at_micros = NULL, updated_at_micros = max(updated_at_micros,?3) WHERE id = ?1 AND kind = 'goal' AND parent_goal_id = ?2 AND dispatch_state = 'idle' AND status <> 'resolved'",params![goal_id,agent_id,now]).map_err(sqlite_error)?;
+			let now = crate::unix_micros()?;
+			let changed = transaction.execute("UPDATE agent_work_items SET status = 'resolved', next_check_at_micros = NULL, updated_at_micros = max(updated_at_micros,?3) WHERE id = ?1 AND kind = 'goal' AND parent_goal_id = ?2 AND dispatch_state = 'idle' AND status <> 'resolved'",rusqlite::params![goal_id,agent_id,now]).map_err(error::sqlite_error)?;
 
 			if changed != 1 {return Err(DatabaseError::Conflict.into());}
 
 			let source = serde_json::json!(["goal_resolved",goal_id,evidence_event_id]).to_string();
 			let payload = serde_json::json!({"evidenceEventId":evidence_event_id,"agentTurnId":turn_id,"summary":note}).to_string();
 
-			transaction.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES (?1,?2,'goal_resolved',?3,?4,'resolved',?5,?4)",params![source,goal_id,payload,now,note]).map_err(sqlite_error)?;
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES (?1,?2,'goal_resolved',?3,?4,'resolved',?5,?4)",rusqlite::params![source,goal_id,payload,now,note]).map_err(error::sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(())
 		}).await
@@ -1362,21 +1366,21 @@ impl SqliteStore {
 		}
 
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let event = read_event(&transaction, id)?;
 
 			if event.disposition.is_some() { return Err(DatabaseError::Conflict.into()); }
 
-			let now = unix_micros()?.max(event.created_at_micros);
+			let now = crate::unix_micros()?.max(event.created_at_micros);
 
 			transaction.execute("UPDATE agent_inbox_events SET disposition = ?2, disposition_note = ?3, disposed_at_micros = ?4 WHERE id = ?1 AND disposition IS NULL",
-				params![id, disposition.as_str(), note, now]).map_err(sqlite_error)?;
+				rusqlite::params![id, disposition.as_str(), note, now]).map_err(error::sqlite_error)?;
 			transaction.execute("UPDATE agent_work_items SET status = ?2, next_check_at_micros = ?3, updated_at_micros = max(updated_at_micros, ?4) WHERE id = ?1",
-				params![event.work_item_id, disposition.as_str(), next_check_at_micros, now]).map_err(sqlite_error)?;
+				rusqlite::params![event.work_item_id, disposition.as_str(), next_check_at_micros, now]).map_err(error::sqlite_error)?;
 
 			let updated = read_event(&transaction, id)?;
 
-			transaction.commit().map_err(sqlite_error)?;
+			transaction.commit().map_err(error::sqlite_error)?;
 
 			Ok(updated)
 		}).await
@@ -1390,9 +1394,9 @@ impl SqliteStore {
 		let limit = page_limit(limit)?;
 
 		self.run(move |connection| {
-			let mut statement = connection.prepare("SELECT * FROM agent_work_items WHERE next_check_at_micros <= ?1 ORDER BY next_check_at_micros, id LIMIT ?2").map_err(sqlite_error)?;
+			let mut statement = connection.prepare("SELECT * FROM agent_work_items WHERE next_check_at_micros <= ?1 ORDER BY next_check_at_micros, id LIMIT ?2").map_err(error::sqlite_error)?;
 
-			statement.query_map(params![now_micros, limit], work_row).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
+			statement.query_map(rusqlite::params![now_micros, limit], work_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -1406,7 +1410,7 @@ impl SqliteStore {
 		let limit = page_limit(limit)?;
 
 		self.run(move |connection| {
-			connection.prepare("SELECT work.* FROM agent_work_items AS work WHERE next_check_at_micros <= ?1 AND NOT EXISTS (SELECT 1 FROM agent_inbox_events AS event WHERE event.source_event_id = json_array('followup_due', work.id, work.next_check_at_micros)) ORDER BY next_check_at_micros, id LIMIT ?2").map_err(sqlite_error)?.query_map(params![now_micros, limit], work_row).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
+			connection.prepare("SELECT work.* FROM agent_work_items AS work WHERE next_check_at_micros <= ?1 AND NOT EXISTS (SELECT 1 FROM agent_inbox_events AS event WHERE event.source_event_id = json_array('followup_due', work.id, work.next_check_at_micros)) ORDER BY next_check_at_micros, id LIMIT ?2").map_err(error::sqlite_error)?.query_map(rusqlite::params![now_micros, limit], work_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
 }
@@ -1415,7 +1419,7 @@ pub(crate) fn read_work(connection: &Connection, id: &str) -> Result<AgentWorkIt
 	connection
 		.query_row("SELECT * FROM agent_work_items WHERE id = ?1", [id], work_row)
 		.optional()
-		.map_err(sqlite_error)?
+		.map_err(error::sqlite_error)?
 		.ok_or_else(|| DatabaseError::NotFound.into())
 }
 
@@ -1446,13 +1450,13 @@ fn insert_dependency(
 
 	let cycle: bool = connection.query_row("WITH RECURSIVE ancestors(id) AS (
 		SELECT ?1 UNION SELECT depends_on_id FROM agent_dependencies JOIN ancestors ON work_item_id = ancestors.id)
-		SELECT EXISTS(SELECT 1 FROM ancestors WHERE id = ?2)", params![depends_on, id], |row| row.get(0)).map_err(sqlite_error)?;
+		SELECT EXISTS(SELECT 1 FROM ancestors WHERE id = ?2)", rusqlite::params![depends_on, id], |row| row.get(0)).map_err(error::sqlite_error)?;
 
 	if cycle {
 		return Err(StoreError::InvalidInput("Agent dependency would create a cycle"));
 	}
 
-	connection.execute("INSERT INTO agent_dependencies (work_item_id, depends_on_id) VALUES (?1, ?2) ON CONFLICT DO NOTHING", params![id, depends_on]).map_err(sqlite_error)?;
+	connection.execute("INSERT INTO agent_dependencies (work_item_id, depends_on_id) VALUES (?1, ?2) ON CONFLICT DO NOTHING", rusqlite::params![id, depends_on]).map_err(error::sqlite_error)?;
 
 	Ok(())
 }
@@ -1462,17 +1466,17 @@ fn work_exists(connection: &Connection, id: &str) -> Result<bool, StoreError> {
 		.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id = ?1)", [id], |row| {
 			row.get(0)
 		})
-		.map_err(|error| sqlite_error(error).into())
+		.map_err(|error| error::sqlite_error(error).into())
 }
 
 fn read_event(connection: &Connection, id: i64) -> Result<AgentInboxEvent, StoreError> {
 	let event = connection
 		.query_row("SELECT * FROM agent_inbox_events WHERE id = ?1", [id], event_row)
 		.optional()
-		.map_err(sqlite_error)?
+		.map_err(error::sqlite_error)?
 		.ok_or(DatabaseError::NotFound)?;
 
-	crate::agent_request_payload::hydrate(connection, event)
+	agent_request_payload::hydrate(connection, event)
 }
 
 fn work_row(row: &Row<'_>) -> rusqlite::Result<AgentWorkItem> {
@@ -1482,7 +1486,7 @@ fn work_row(row: &Row<'_>) -> rusqlite::Result<AgentWorkItem> {
 		"dispatching" => AgentDispatchState::Dispatching,
 		"running" => AgentDispatchState::Running,
 		"unknown" => AgentDispatchState::Unknown,
-		_ => return Err(rusqlite::Error::InvalidQuery),
+		_ => return Err(Error::InvalidQuery),
 	};
 	let status: String = row.get("status")?;
 	let status = match status.as_str() {
@@ -1491,13 +1495,13 @@ fn work_row(row: &Row<'_>) -> rusqlite::Result<AgentWorkItem> {
 		"follow_up" => AgentWorkStatus::FollowUp,
 		"wait" => AgentWorkStatus::Wait,
 		"user_decision" => AgentWorkStatus::UserDecision,
-		_ => return Err(rusqlite::Error::InvalidQuery),
+		_ => return Err(Error::InvalidQuery),
 	};
 	let kind: String = row.get("kind")?;
 	let kind = match kind.as_str() {
 		"goal" => AgentWorkKind::Goal,
 		"task" => AgentWorkKind::Task,
-		_ => return Err(rusqlite::Error::InvalidQuery),
+		_ => return Err(Error::InvalidQuery),
 	};
 
 	Ok(AgentWorkItem {
@@ -1524,7 +1528,7 @@ fn event_row(row: &Row<'_>) -> rusqlite::Result<AgentInboxEvent> {
 		Some("follow_up") => Some(AgentDisposition::FollowUp),
 		Some("wait") => Some(AgentDisposition::Wait),
 		Some("user_decision") => Some(AgentDisposition::UserDecision),
-		_ => return Err(rusqlite::Error::InvalidQuery),
+		_ => return Err(Error::InvalidQuery),
 	};
 
 	Ok(AgentInboxEvent {
@@ -1745,8 +1749,7 @@ mod tests {
 		assert_eq!(metrics.len(), 1);
 		assert_eq!(metrics[0].turn_id, "same/turn");
 		assert_eq!(
-			serde_json::from_str::<serde_json::Value>(metrics[0].usage_json.as_ref().unwrap())
-				.unwrap()["input_tokens"],
+			serde_json::from_str::<Value>(metrics[0].usage_json.as_ref().unwrap()).unwrap()["input_tokens"],
 			11
 		);
 		assert!(!format!("{metrics:?}").contains("PRIVATE_TRANSCRIPT"));
@@ -1827,10 +1830,7 @@ mod tests {
 			.unwrap()
 			.unwrap();
 
-		assert_eq!(
-			serde_json::from_str::<serde_json::Value>(&event.payload).unwrap()["sequence"],
-			2
-		);
+		assert_eq!(serde_json::from_str::<Value>(&event.payload).unwrap()["sequence"], 2);
 		assert!(
 			store
 				.read_agent_usage_observation("agent".into(), "thread".into(), "other".into())
@@ -2447,7 +2447,7 @@ mod tests {
 		assert_eq!(history[0].event_kind, "work_instruction");
 		assert_eq!(history[0].delivered_turn_id.as_deref(), Some("new-turn"));
 		assert_eq!(
-			serde_json::from_str::<serde_json::Value>(&history[0].payload).unwrap()["text"],
+			serde_json::from_str::<Value>(&history[0].payload).unwrap()["text"],
 			"Check the revised result"
 		);
 		assert!(store.list_undelivered_agent_events(10).await.unwrap().is_empty());
