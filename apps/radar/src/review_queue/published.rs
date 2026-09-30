@@ -41,12 +41,14 @@ pub(super) fn published_subjects(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::collections::HashSet;
+
+	use crate::{review_queue::published, tests::fixtures};
 
 	#[test]
 	fn published_pr_references_require_positive_decimal_numbers() {
 		let temp = tempfile::tempdir().unwrap();
-		let mut signal = crate::tests::fixtures::valid_signal();
+		let mut signal = fixtures::valid_signal();
 
 		for suffix in ["0", "00", "+1", "-1", "1?query", "18446744073709551616"] {
 			signal["source_refs"]["pr_url"] =
@@ -54,7 +56,7 @@ mod tests {
 
 			crate::write_json(&temp.path().join("signal.json"), &signal).unwrap();
 
-			let (prs, _) = published_subjects(temp.path(), "openai/codex").unwrap();
+			let (prs, _) = published::published_subjects(temp.path(), "openai/codex").unwrap();
 
 			assert!(prs.is_empty(), "invalid PR reference: {suffix}");
 		}
@@ -63,7 +65,7 @@ mod tests {
 	#[test]
 	fn foreign_signals_do_not_suppress_the_requested_repository() {
 		let temp = tempfile::tempdir().unwrap();
-		let mut foreign = crate::tests::fixtures::valid_signal();
+		let mut foreign = fixtures::valid_signal();
 
 		foreign["source_refs"]["repo"] = serde_json::json!("other/project");
 		foreign["source_refs"]["pr_url"] =
@@ -74,7 +76,7 @@ mod tests {
 
 		crate::write_json(&temp.path().join("openai-codex-pr-22414.json"), &foreign).unwrap();
 
-		let (prs, commits) = published_subjects(temp.path(), "openai/codex").unwrap();
+		let (prs, commits) = published::published_subjects(temp.path(), "openai/codex").unwrap();
 
 		assert!(prs.is_empty() && commits.is_empty());
 
@@ -82,11 +84,11 @@ mod tests {
 
 		crate::write_json(&temp.path().join("openai-codex-pr-22414.json"), &foreign).unwrap();
 
-		let (prs, commits) = published_subjects(temp.path(), "openai/codex").unwrap();
+		let (prs, commits) = published::published_subjects(temp.path(), "openai/codex").unwrap();
 
 		assert!(prs.is_empty() && commits.is_empty());
 
-		let mut matching = crate::tests::fixtures::valid_signal();
+		let mut matching = fixtures::valid_signal();
 
 		matching["source_refs"]["commit_urls"] = serde_json::json!([
 			"https://github.com/openai/codex/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -95,9 +97,9 @@ mod tests {
 
 		crate::write_json(&temp.path().join("openai-codex-pr-22414.json"), &matching).unwrap();
 
-		let (prs, commits) = published_subjects(temp.path(), "openai/codex").unwrap();
+		let (prs, commits) = published::published_subjects(temp.path(), "openai/codex").unwrap();
 
-		assert_eq!(prs, HashSet::from([22414]));
+		assert_eq!(prs, HashSet::from([22_414]));
 		assert_eq!(commits, HashSet::from(["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned()]));
 	}
 }
