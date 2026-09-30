@@ -13,26 +13,6 @@ fn sidebar_width(requested: f32, viewport: f32) -> f32 {
 	requested.clamp(160.0, (viewport - 600.0).clamp(160.0, 480.0))
 }
 
-fn graph_size(
-	layout: &graph::Layout,
-	zoom: f32,
-	available: (f32, f32),
-	expanded: bool,
-) -> (f32, f32) {
-	if expanded {
-		return available;
-	}
-	let bottom = layout.nodes.iter().map(|node| node.y + 52.0).fold(0.0_f32, f32::max);
-	let annotations =
-		if layout.edges.is_empty() { 0.0 } else { 16.0 } + if layout.cyclic { 18.0 } else { 0.0 };
-	// Pan changes the camera, never the panel bounds. Keep room for the conversation.
-	let height = (bottom * zoom + 24.0 + 84.0 + annotations)
-		.clamp(180.0, 360.0)
-		.min(available.1 * 0.45)
-		.min((available.1 - 240.0).max(0.0));
-	(available.0, height)
-}
-
 impl AgentSurface {
 	#[cfg(test)]
 	pub(crate) fn panel_dimensions(&self) -> (f32, f32, f32) {
@@ -125,15 +105,7 @@ impl AgentSurface {
 				self.graph_panel_height.clamp(120.0, 640.0).min((available.1 - 240.0).max(0.0)),
 			);
 		}
-		graph_size(
-			&self.workspace_graph_layout(),
-			self.graph_zoom,
-			(
-				f32::from(viewport.width) - sidebar - self.agent_tree_width(window),
-				(f32::from(viewport.height) - super::super::WINDOW_CONTROLS_CLEARANCE).max(0.0),
-			),
-			self.graph_expanded,
-		)
+		available
 	}
 
 	pub(super) fn sidebar_slot(
@@ -308,16 +280,44 @@ mod tests {
 		});
 	}
 
-	#[test]
-	fn graph_content_caps_and_expansion_are_independent() {
-		let mut layout = graph::Layout::default();
-		layout.nodes.push(graph::Node { id: "one".into(), x: 20.0, y: 32.0 });
-		let small = graph_size(&layout, 0.85, (1100.0, 800.0), false);
-		assert_eq!(small, (1100.0, 180.0));
-		layout.nodes.push(graph::Node { id: "far".into(), x: 1400.0, y: 1600.0 });
-		assert_eq!(graph_size(&layout, 0.85, (1100.0, 800.0), false), (1100.0, 360.0));
-		assert_eq!(graph_size(&layout, 0.85, (700.0, 300.0), false), (700.0, 60.0));
-		assert_eq!(graph_size(&layout, 0.85, (1100.0, 800.0), true), (1100.0, 800.0));
+	#[gpui::test]
+	fn graph_panel_respects_manual_height_and_available_space(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(px(1200.), px(900.)));
+		visual.update(|window, cx| {
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.sidebar_visible = false;
+				s.agent_tree_visible = false;
+				s.graph_visible = true;
+				s.graph_expanded = false;
+				s.graph_panel_height = 275.;
+				assert_eq!(s.workspace_graph_size(window, true), (1200., 275.));
+				s.graph_zoom = 1.8;
+				s.graph_pan = (800., 600.);
+				assert_eq!(s.workspace_graph_size(window, true), (1200., 275.));
+				s.graph_expanded = true;
+				assert_eq!(
+					s.workspace_graph_size(window, true),
+					(1200., 900. - super::super::super::WINDOW_CONTROLS_CLEARANCE)
+				);
+				s.graph_visible = false;
+				assert_eq!(s.workspace_graph_size(window, true), (0., 0.));
+				s.graph_visible = true;
+				s.graph_expanded = false;
+			});
+		});
+		visual.simulate_resize(gpui::size(px(1200.), px(300.)));
+		visual.update(|window, cx| {
+			surface.update(cx, |s, _| {
+				let (_, height) = s.workspace_graph_size(window, true);
+				assert_eq!(
+					height,
+					(300. - super::super::super::WINDOW_CONTROLS_CLEARANCE - 240.).max(0.)
+				);
+				assert_eq!(s.graph_panel_height, 275., "small windows retain the requested height");
+			});
+		});
 	}
 	#[test]
 	fn sidebar_limits_preserve_main_space() {
