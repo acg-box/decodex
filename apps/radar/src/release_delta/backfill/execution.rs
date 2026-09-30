@@ -1,8 +1,10 @@
-use std::{path::Path, process::Command};
+use std::{fs, path::Path, process::Command};
+
+use serde_json::Value;
 
 use crate::{
-	RUN_CODEX_ANALYSIS_SCRIPT, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
-	RadarRefreshReleaseDeltaRequest,
+	BUNDLE_SCHEMA, RUN_CODEX_ANALYSIS_SCRIPT, RadarBackfillReleaseRangeRequest,
+	RadarBundleBuildRequest, RadarRefreshReleaseDeltaRequest, operations,
 	prelude::{Result, eyre},
 	release_delta,
 };
@@ -22,7 +24,7 @@ pub(in crate::release_delta::backfill) fn run_build_bundle(
 		out: out.to_path_buf(),
 		notes: vec![note.to_owned()],
 	};
-	let bundle = crate::operations::build_bundle_payload(&build_request)?;
+	let bundle = operations::build_bundle_payload(&build_request)?;
 
 	crate::write_json(out, &bundle)?;
 
@@ -37,11 +39,11 @@ pub(in crate::release_delta::backfill) fn run_codex_analysis(
 ) -> Result<()> {
 	let bundle_payload = crate::load_json(bundle)?;
 
-	crate::validate_expected_schema(&bundle_payload, crate::BUNDLE_SCHEMA, "Bundle")?;
+	crate::validate_expected_schema(&bundle_payload, BUNDLE_SCHEMA, "Bundle")?;
 
 	let temp_parent = root.join("target/radar-analysis");
 
-	std::fs::create_dir_all(&temp_parent)?;
+	fs::create_dir_all(&temp_parent)?;
 
 	let temp_dir = tempfile::tempdir_in(temp_parent)?;
 	let copied_bundle = temp_dir.path().join("bundle.json");
@@ -65,7 +67,7 @@ pub(in crate::release_delta::backfill) fn run_codex_analysis(
 	}
 
 	let output = run_helper(command, RUN_CODEX_ANALYSIS_SCRIPT)?;
-	let payload: serde_json::Value = serde_json::from_slice(&output).map_err(|error| {
+	let payload: Value = serde_json::from_slice(&output).map_err(|error| {
 		eyre::eyre!("{RUN_CODEX_ANALYSIS_SCRIPT} returned invalid JSON: {error}")
 	})?;
 
@@ -138,7 +140,12 @@ fn run_helper(mut command: Command, script: &str) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::fs;
+
+	use crate::{
+		RUN_CODEX_ANALYSIS_SCRIPT, RadarBackfillReleaseRangeRequest,
+		release_delta::backfill::execution, tests::fixtures,
+	};
 
 	#[test]
 	fn analysis_export_is_cleaned_and_output_changes_only_after_valid_success() {
@@ -146,8 +153,8 @@ mod tests {
 		let root = temp.path().join("repo with spaces");
 		let helper = root.join(RUN_CODEX_ANALYSIS_SCRIPT);
 
-		std::fs::create_dir_all(helper.parent().unwrap()).unwrap();
-		std::fs::write(
+		fs::create_dir_all(helper.parent().unwrap()).unwrap();
+		fs::write(
 			&helper,
 			r#"
 import argparse, json, pathlib, sys
@@ -184,9 +191,9 @@ else:
 		let bundle_path = root.join("bundle.json");
 		let out = root.join("analysis.json");
 
-		crate::write_json(&bundle_path, &crate::tests::fixtures::valid_bundle()).unwrap();
+		crate::write_json(&bundle_path, &fixtures::valid_bundle()).unwrap();
 
-		let draft = crate::tests::fixtures::valid_signal();
+		let draft = fixtures::valid_signal();
 
 		crate::write_json(&root.join("draft.json"), &draft).unwrap();
 
@@ -216,29 +223,29 @@ else:
 			("invalid-json", Some("returned invalid JSON")),
 			("invalid-draft", Some("Analysis draft validation failed")),
 		] {
-			std::fs::write(root.join("mode"), mode).unwrap();
+			fs::write(root.join("mode"), mode).unwrap();
 
 			let previous = b"previous output must survive";
 
-			std::fs::write(&out, previous).unwrap();
+			fs::write(&out, previous).unwrap();
 
-			let result = run_codex_analysis(&root, &request, &bundle_path, &out);
+			let result = execution::run_codex_analysis(&root, &request, &bundle_path, &out);
 
 			if let Some(message) = expected_error {
 				assert!(result.unwrap_err().to_string().contains(message));
-				assert_eq!(std::fs::read(&out).unwrap(), previous);
+				assert_eq!(fs::read(&out).unwrap(), previous);
 			} else {
 				result.unwrap();
 
 				assert_eq!(crate::load_json(&out).unwrap(), draft);
 			}
 
-			assert_eq!(std::fs::read_dir(root.join("target/radar-analysis")).unwrap().count(), 0);
+			assert_eq!(fs::read_dir(root.join("target/radar-analysis")).unwrap().count(), 0);
 		}
 
 		request.python_bin = root.join("missing-helper").display().to_string();
 
-		assert!(run_codex_analysis(&root, &request, &bundle_path, &out).is_err());
-		assert_eq!(std::fs::read_dir(root.join("target/radar-analysis")).unwrap().count(), 0);
+		assert!(execution::run_codex_analysis(&root, &request, &bundle_path, &out).is_err());
+		assert_eq!(fs::read_dir(root.join("target/radar-analysis")).unwrap().count(), 0);
 	}
 }
