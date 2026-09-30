@@ -169,16 +169,25 @@ pub(crate) fn write_new_json(path: &Path, payload: &Value) -> Result<()> {
 	write_new_json_in_parent(&parent, &file_name, path, payload)
 }
 
+fn serialize_private_json(payload: &Value) -> Result<Vec<u8>> {
+	let mut bytes = serde_json::to_vec_pretty(payload)?;
+	bytes.push(b'\n');
+	if bytes.len() as u64 > MAX_PRIVATE_JSON_BYTES {
+		return Err(eyre::eyre!("private JSON exceeds its bounded write limit"));
+	}
+	Ok(bytes)
+}
+
 fn write_new_json_in_parent(
 	parent: &PrivateDirectory,
 	file_name: &OsStr,
 	path: &Path,
 	payload: &Value,
 ) -> Result<()> {
+	let bytes = serialize_private_json(payload)?;
 	let temporary_name = temporary_name(file_name)?;
 	let mut file = create_private_file(parent, &temporary_name)?;
-	file.write_all(serde_json::to_string_pretty(payload)?.as_bytes())?;
-	file.write_all(b"\n")?;
+	file.write_all(&bytes)?;
 	file.sync_all()?;
 	validate_private_json_metadata(path, &file.metadata()?)?;
 	drop(file);
@@ -215,10 +224,10 @@ pub(crate) fn replace_existing_json(path: &Path, expected: &Value, payload: &Val
 		return Err(eyre::eyre!("existing JSON changed before replacement"));
 	}
 
+	let bytes = serialize_private_json(payload)?;
 	let temporary_name = temporary_name(&file_name)?;
 	let mut replacement = create_private_file(&parent, &temporary_name)?;
-	replacement.write_all(serde_json::to_string_pretty(payload)?.as_bytes())?;
-	replacement.write_all(b"\n")?;
+	replacement.write_all(&bytes)?;
 	replacement.sync_all()?;
 	validate_private_json_metadata(path, &replacement.metadata()?)?;
 	drop(replacement);
@@ -1008,6 +1017,22 @@ mod tests {
 		open_pinned_sandbox_private_root, open_pinned_sandbox_read_root, open_private_directory,
 		repo_local_test_directory, validate_sandbox_test_output, write_new_json_in_parent,
 	};
+
+	#[test]
+	fn oversized_writes_leave_no_temporary_files_or_changed_records() {
+		let temp = tempfile::tempdir().expect("temporary directory");
+		let path = temp.path().join("record.json");
+		let oversized = json!({"text": "x".repeat(super::MAX_PRIVATE_JSON_BYTES as usize)});
+		assert!(super::write_new_json(&path, &oversized).is_err());
+		assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 0);
+
+		let original = json!({"value": 1});
+		super::write_new_json(&path, &original).unwrap();
+		let bytes = fs::read(&path).unwrap();
+		assert!(super::replace_existing_json(&path, &original, &oversized).is_err());
+		assert_eq!(fs::read(&path).unwrap(), bytes);
+		assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+	}
 
 	#[test]
 	fn concurrent_private_directory_creation_accepts_the_same_owned_directory() {
