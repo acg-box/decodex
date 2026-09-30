@@ -1,6 +1,8 @@
 //! Current-turn settings controls and local publication receipts.
 use serde::{Deserialize, Serialize};
 
+use crate::{AgentModelDto, ConversationModel, ConversationReasoningEffort, EntityId, WireText};
+
 /// Native approval reviewer selection shared by reviewer controls.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -34,19 +36,19 @@ pub enum AgentLiveReviewerState {
 	/// The task remains bound to the same process and account source.
 	Available {
 		/// Exact native thread; never follows a replacement.
-		thread_id: crate::EntityId,
+		thread_id: EntityId,
 		/// Exact active turn; never follows a successor.
-		turn_id: crate::EntityId,
+		turn_id: EntityId,
 		/// Opaque source and receipt version to review before editing.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// False while a previous operation on this process is still unresolved.
 		can_update: bool,
 		/// The last requested reviewer, not necessarily the current effective reviewer.
-		last_reviewer: Option<crate::AgentReviewer>,
+		last_reviewer: Option<AgentReviewer>,
 		/// Last locally requested model and effort, not observed inference settings.
-		last_model: Option<crate::AgentLiveModelSelection>,
+		last_model: Option<AgentLiveModelSelection>,
 		/// Account-bound choices when explicitly requested and live switching is enabled.
-		model_choices: Option<Vec<crate::AgentModelDto>>,
+		model_choices: Option<Vec<AgentModelDto>>,
 		/// Last local publication receipt. None means no recorded local edit.
 		last_outcome: Option<AgentLiveReviewerOutcome>,
 	},
@@ -59,7 +61,7 @@ pub enum AgentLiveReviewerState {
 #[serde(deny_unknown_fields)]
 pub struct AgentLiveModelSelection {
 	/// Requested model identifier.
-	pub model: crate::ConversationModel,
+	pub model: ConversationModel,
 	/// Requested reasoning effort.
-	pub effort: crate::ConversationReasoningEffort,
+	pub effort: ConversationReasoningEffort,
 }

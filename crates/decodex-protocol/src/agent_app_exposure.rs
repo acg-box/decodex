@@ -1,6 +1,7 @@
 //! Connector exposure preferences, independent of connected-account approval policy.
-use crate::{EntityId, WireText};
 use serde::{Deserialize, Serialize};
+
+use crate::{EntityId, WireText};
 
 /// A native model-facing tool surface that a connector preference can omit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -51,9 +52,9 @@ pub enum AgentAppExposureResult {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::AgentActionDto;
-	use serde_json::json;
+	use crate::{
+		AgentActionDto, AgentAppExposureResult, AgentToolExposureSurface, EntityId, WireText,
+	};
 
 	#[test]
 	fn exposure_wire_preserves_inheritance_and_rejects_unknown_write_surfaces() {
@@ -66,7 +67,7 @@ mod tests {
 			};
 			let mut value = serde_json::to_value(&action).unwrap();
 
-			assert_eq!(value["data"]["omit"], json!(omit));
+			assert_eq!(value["data"]["omit"], serde_json::json!(omit));
 
 			let decoded: AgentActionDto = serde_json::from_value(value.clone()).unwrap();
 
@@ -74,7 +75,7 @@ mod tests {
 				matches!(decoded, AgentActionDto::SetAppToolExposure { omit: actual, .. } if actual == omit)
 			);
 
-			value["data"]["omit"] = json!(["future-surface"]);
+			value["data"]["omit"] = serde_json::json!(["future-surface"]);
 
 			assert!(serde_json::from_value::<AgentActionDto>(value).is_err());
 		}
@@ -89,6 +90,9 @@ mod tests {
 			last_outcome: Some("unknown".into()),
 		};
 
-		assert_eq!(serde_json::from_value::<AgentAppExposureResult>(json!(state)).unwrap(), state);
+		assert_eq!(
+			serde_json::from_value::<AgentAppExposureResult>(serde_json::json!(state)).unwrap(),
+			state
+		);
 	}
 }

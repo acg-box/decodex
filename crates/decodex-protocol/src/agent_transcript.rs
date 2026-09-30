@@ -1,21 +1,25 @@
 //! Explicit Markdown transcript transfer. Each chunk belongs to one immutable export.
 use serde::{Deserialize, Serialize};
+
+use crate::EntityId;
+use decodex_core::MAX_NATIVE_MESSAGE_BYTES;
+
 /// Maximum complete Markdown document size.
-pub const MAX_TRANSCRIPT_BYTES: usize = decodex_core::MAX_NATIVE_MESSAGE_BYTES;
+pub const MAX_TRANSCRIPT_BYTES: usize = MAX_NATIVE_MESSAGE_BYTES;
 /// Binary chunks fit the local JSON frame even with escaped bytes.
-pub const TRANSCRIPT_CHUNK_BYTES: usize = 32 * 1024;
+pub const TRANSCRIPT_CHUNK_BYTES: usize = 32 * 1_024;
 /// Exact conversation and export continuation.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentTranscriptRequest {
 	/// Local task owner.
-	pub work_id: crate::EntityId,
+	pub work_id: EntityId,
 	/// Native conversation.
-	pub thread_id: crate::EntityId,
+	pub thread_id: EntityId,
 	/// Byte offset in the immutable document.
 	pub offset: u32,
 	/// Token returned by the first chunk; required for continuation.
-	pub token: Option<crate::EntityId>,
+	pub token: Option<EntityId>,
 }
 /// Complete-document chunks or an explicit read failure.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -26,9 +30,9 @@ pub enum AgentTranscriptResult {
 		/// Echo of the request.
 		request: AgentTranscriptRequest,
 		/// Account used to hydrate the document.
-		account_id: crate::EntityId,
+		account_id: EntityId,
 		/// Opaque export identity.
-		token: crate::EntityId,
+		token: EntityId,
 		/// Full document length.
 		total_bytes: u32,
 		/// Document bytes at the requested offset.

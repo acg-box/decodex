@@ -1,5 +1,8 @@
 //! Native goal snapshots, separate from Agent coordination state.
 use serde::{Deserialize, Serialize};
+
+use crate::{EntityId, WireText};
+
 /// Native scheduler state; a token limit is distinct from account usage limits.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,13 +52,13 @@ pub enum AgentNativeGoalResult {
 	/// The native read completed for the exact requested task and thread.
 	Available {
 		/// Local ownership identity.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact native thread, including a verified native child.
-		thread_id: crate::EntityId,
+		thread_id: EntityId,
 		/// Time this read completed, in Unix microseconds.
 		observed_at_micros: i64,
 		/// Source and semantic goal identity for an explicit edit.
-		review_token: Option<crate::WireText>,
+		review_token: Option<WireText>,
 		/// Null means the native thread has no goal.
 		goal: Option<AgentNativeGoal>,
 	},

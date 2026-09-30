@@ -1,6 +1,8 @@
 //! Voice preferences for the next native conversation.
 use serde::{Deserialize, Serialize};
 
+use crate::{EntityId, WireText};
+
 /// Current task-scoped voice selection and configuration identity.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
@@ -10,14 +12,14 @@ pub enum AgentVoiceSettingsResult {
 	/// Native catalog and effective project selection.
 	Available {
 		/// Task that owns these settings.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Source and native configuration version identity.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// Native catalog or upstream fallback choices for V3 voice conversations.
-		voices: Vec<crate::WireText>,
+		voices: Vec<WireText>,
 		/// Effective selection for this project.
-		effective: Option<crate::WireText>,
+		effective: Option<WireText>,
 		/// Saved user preference, which a project can override.
-		preference: Option<crate::WireText>,
+		preference: Option<WireText>,
 	},
 }
