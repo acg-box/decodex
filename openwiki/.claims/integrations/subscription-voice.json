@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e513ddd60b9e52f3dbbb8717c64e25af9a84a86893495b1030e6ae743303cc7f",
+  "pageVersion": "sha256:31aa355eb53c36dbb13e8425d3766975fbef00b4d1e52bd32ea1ee30aeca7fb5",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -8,25 +8,25 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/dictation.rs",
-          "version": "repo-file-v1:sha256:6adc80be4146b1131e7c36c5ca6da531bb4f73c2810ed43d144958c734d700cb"
+          "version": "repo-file-v1:sha256:421a0cf9a0ceed661acf2ff2bdf047b80c10fd1429146296bcd414568e055301"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/dictation_native.rs",
-          "version": "repo-file-v1:sha256:1f08cee6e523ce70ff6d1005109d0f93376b463841439ac0ff09c2d122b01124"
+          "version": "repo-file-v1:sha256:ad526fe9fa9bb69b94f65c7993d71eafd11f38b865510dee4ded09efc16aaf34"
         }
       ]
     },
     {
       "id": "claim_74856debb3a749dead1a1de66cd316be",
-      "statement": "The Rust dictation session reconciles segment ordering, revisions and final markers. Swift forwards incremental segments and terminates with an error when its event queue fills rather than discarding accepted segments.",
+      "statement": "The Rust dictation session constructs subscription messages, validates PCM frames, interprets server events and reconciles transcript ordering, revisions and finality. Swift forwards raw server messages and terminates with an error instead of discarding accepted messages when its event queue fills.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexTransport/DictationStream.swift",
-          "version": "repo-file-v1:sha256:a56c482e744cc261fbad49bd0dd32da7f538d1c5a1cb384c21059e4e76df7cb1"
+          "version": "repo-file-v1:sha256:909a4366b47974d7d6c771543da4f3a4c3e114162340ceffce6342c299f7d08a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/dictation.rs",
-          "version": "repo-file-v1:sha256:6adc80be4146b1131e7c36c5ca6da531bb4f73c2810ed43d144958c734d700cb"
+          "version": "repo-file-v1:sha256:421a0cf9a0ceed661acf2ff2bdf047b80c10fd1429146296bcd414568e055301"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/dictation_transcript.rs",
@@ -97,10 +97,30 @@
           "version": "repo-file-v1:sha256:98dc96c5403b969797bc21c526b8025b354fddd213eaf6e5a21fa6686b81da9c"
         }
       ]
+    },
+    {
+      "id": "claim_df5da7bde1244ccb896c5b328ec25d36",
+      "statement": "Dictation capture enables AVAudioEngine voice processing before device selection and format conversion, with minimum other-audio ducking.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DictationCapture.swift",
+          "version": "repo-file-v1:sha256:3d887623682a9c3939809c96644d858ab1ee328da2ae57327584ee67d95af536"
+        }
+      ]
+    },
+    {
+      "id": "claim_d24efcb0f530409faa43b4d673afa7a5",
+      "statement": "The Rust dictation adapter binds to the versioned decodex_dictation_create_v2 native symbol in the existing application library.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/dictation_native.rs",
+          "version": "repo-file-v1:sha256:ad526fe9fa9bb69b94f65c7993d71eafd11f38b865510dee4ded09efc16aaf34"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T08:07:44.872Z"
+    "at": "2026-09-30T08:20:44.128Z"
   }
 }
