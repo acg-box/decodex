@@ -11,14 +11,16 @@ if [[ $SIGN_IDENTITY == "-" ]]; then
 	exit 2
 fi
 
+BUILD_ROOT=$(cargo +stable metadata --locked --no-deps --format-version 1 | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')
+
 cargo +stable build --locked --profile "$PROFILE" \
 	-p decodex-cli \
 	-p decodex-database-transfer
 
 install -d -m 700 "$STAGE_ROOT"
-install -m 755 "$ROOT/target/$PROFILE/decodex" "$STAGE_ROOT/decodex"
+install -m 755 "$BUILD_ROOT/$PROFILE/decodex" "$STAGE_ROOT/decodex"
 install -m 755 \
-	"$ROOT/target/$PROFILE/decodex-database-transfer" \
+	"$BUILD_ROOT/$PROFILE/decodex-database-transfer" \
 	"$STAGE_ROOT/decodex-database-transfer"
 
 codesign --force --options runtime --timestamp=none \
