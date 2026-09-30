@@ -78,7 +78,7 @@ impl RenderOnce for QuotaMeter {
 		}
 		let color = quota_color(value);
 		div()
-			.w(px(122.))
+			.w(px(140.))
 			.flex()
 			.flex_col()
 			.gap_1()
@@ -99,7 +99,17 @@ impl RenderOnce for QuotaMeter {
 					.w_full()
 					.rounded_full()
 					.bg(rgba(0xffffff0c))
-					.child(div().h_full().w(px(value * 1.22)).rounded_full().bg(rgb(color))),
+					.child(div().h_full().w(px(value * 1.4)).rounded_full().bg(rgb(color))),
+			)
+			.children(
+				match self.quota.result {
+					AccountQuotaStateDto::Current { resets_at_unix_micros, .. } =>
+						reset_time(resets_at_unix_micros),
+					_ => None,
+				}
+				.map(|time| {
+					div().text_size(px(10.)).text_color(rgb(super::WB_TEXT_FAINT)).child(time)
+				}),
 			)
 	}
 }
@@ -172,5 +182,32 @@ mod tests {
 		assert_eq!(remaining(quota(1, 11)), Some(99.));
 		assert_eq!(fill.remaining(quota(64, 1), started, true), Some(100.));
 		assert_eq!(fill.remaining(quota(1, 11), started, true), None);
+	}
+}
+
+/// Match the native menu's local calendar date and 24-hour reset time.
+fn reset_time(micros: i64) -> Option<String> {
+	local_date_time(micros / 1_000_000)
+}
+
+pub(super) fn local_date_time(seconds: i64) -> Option<String> {
+	let seconds: libc::time_t = seconds.try_into().ok()?;
+	let mut local = std::mem::MaybeUninit::<libc::tm>::uninit();
+	let mut output = [0 as libc::c_char; 64];
+	// libc applies the host time zone, including the offset at the reset date.
+	unsafe {
+		if libc::localtime_r(&seconds, local.as_mut_ptr()).is_null() {
+			return None;
+		}
+		if libc::strftime(
+			output.as_mut_ptr(),
+			output.len(),
+			c"%b %d %H:%M".as_ptr(),
+			local.as_ptr(),
+		) == 0
+		{
+			return None;
+		}
+		Some(std::ffi::CStr::from_ptr(output.as_ptr()).to_string_lossy().into_owned())
 	}
 }

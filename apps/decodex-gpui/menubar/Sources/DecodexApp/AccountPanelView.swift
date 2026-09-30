@@ -23,7 +23,7 @@ struct AccountPanelView: View {
 	@State private var accountCardFrames = [String: CGRect]()
 	@State private var accountReorderInteraction: AccountReorderInteraction?
 	@State private var hoveredAccountID: String?
-	@State private var detailedAccountID: String?
+	@State private var detailedAccountIDs: Set<String> = []
 	@State private var fastMode: FastModeStore
 	@AppStorage("decodex.operator.accountPrivacy") private var accountPrivacy = AccountPrivacy.hidden
 	@AppStorage(PanelCardMaterial.storageKey) private var panelCardMaterialRawValue = PanelCardMaterial.thin.rawValue
@@ -220,14 +220,6 @@ struct AccountPanelView: View {
 			)
 
 			Menu {
-				Button("Refresh all") {
-					store.requestRefresh()
-				}
-				.disabled(
-					store.isAccountControlInProgress
-						|| store.submittingKey != nil
-				)
-
 				Picker("Material", selection: panelCardMaterialSelection) {
 					ForEach(PanelCardMaterial.allCases) { material in
 						Text(material.title)
@@ -291,7 +283,7 @@ struct AccountPanelView: View {
 							state: state,
 							store: store,
 							showsEmail: accountPrivacy == AccountPrivacy.visible,
-							detailedAccountID: $detailedAccountID,
+							detailedAccountIDs: $detailedAccountIDs,
 							isAccountCardHovered: hoveredAccountID == state.id,
 							isReorderGestureEnabled: canDragAccount(state.id),
 							onReorderDragChanged: { translationY in
@@ -586,7 +578,7 @@ struct AccountPanelView: View {
 					.foregroundStyle(PanelPalette.primaryText(colorScheme))
 					Text(
 						store.hasLoaded
-							? "Add a Codex login, then refresh."
+							? "Add a Codex login to get started."
 							: "The account service has not returned a complete list."
 				)
 				.font(PanelFont.emptyBody)

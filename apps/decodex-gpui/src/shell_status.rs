@@ -277,7 +277,11 @@ impl Shell {
 		) {
 			notices.push(Notice::new(
 				"Account profile",
-				account_profile_load_label(self.account_profile.load),
+				if self.account_profile.load == AccountProfileLoadState::Offline {
+					"Saved activity is offline."
+				} else {
+					"Saved activity could not be loaded."
+				},
 				Recovery::Accounts,
 			));
 		}

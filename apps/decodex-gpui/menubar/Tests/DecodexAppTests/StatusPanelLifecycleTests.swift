@@ -28,6 +28,46 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		XCTAssertGreaterThan(available.size.height, empty.size.height, "Healthy accounts must retain their usage rows")
 	}
 
+	func testAccountDisclosuresRemainIndependent() throws {
+		let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: root) }
+		let store = ResetCardStore(client: EmptyWidgetClient(), pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: root.appendingPathComponent("pending.json")))
+		var expanded: Set<String> = []
+		let binding = Binding(get: { expanded }, set: { expanded = $0 })
+		func row(_ id: String) -> ResetCardAccountRow {
+			let account = ResetCardAccountRecord(authority: ResetCardAuthority(profileName: "local", serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), accountID: id, alias: id, accountRevision: 1, enabled: true, observedState: .available, lifecycleReadiness: .ready, fiveHourQuota: .unknown(durationMinutes: 300), sevenDayQuota: .unknown(durationMinutes: 10_080))
+			return ResetCardAccountRow(state: ResetCardAccountState(account: account, inventory: nil, error: nil, isRefreshing: false), store: store, detailedAccountIDs: binding)
+		}
+		let first = row("11111111-1111-4111-8111-111111111111")
+		let second = row("22222222-2222-4222-8222-222222222222")
+		first.detailsBinding.wrappedValue = true
+		second.detailsBinding.wrappedValue = true
+		XCTAssertTrue(first.detailsBinding.wrappedValue)
+		XCTAssertTrue(second.detailsBinding.wrappedValue)
+		first.detailsBinding.wrappedValue = false
+		XCTAssertFalse(first.detailsBinding.wrappedValue)
+		XCTAssertTrue(second.detailsBinding.wrappedValue)
+	}
+
+	func testVisiblePanelHeightTransitionsAndCanReverse() async throws {
+		let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: root) }
+		let store = ResetCardStore(client: EmptyWidgetClient(), pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: root.appendingPathComponent("pending.json")))
+		let controller = StatusPanelController(store: store)
+		defer { controller.invalidate() }
+		controller.togglePanel()
+		try await Task.sleep(for: .milliseconds(350))
+		let initial = controller.panel.frame.size
+		controller.updatePanelContentSize(CGSize(width: initial.width, height: initial.height + 100))
+		try await Task.sleep(for: .milliseconds(80))
+		let middle = controller.panel.frame.height
+		XCTAssertGreaterThan(middle, initial.height)
+		XCTAssertLessThan(middle, initial.height + 100)
+		controller.updatePanelContentSize(initial)
+		try await Task.sleep(for: .milliseconds(360))
+		XCTAssertEqual(controller.panel.frame.height, initial.height, accuracy: 1)
+	}
+
 	func testMultipleCardsHaveScrollableOverflowWithoutScrollbars() async throws {
 		let authority = ResetCardAuthority(profileName: "local", serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 		let account = ResetCardAccountRecord(authority: authority, accountID: "11111111-1111-4111-8111-111111111111", alias: "Test", accountRevision: 1, enabled: true, observedState: .available, lifecycleReadiness: .ready, fiveHourQuota: .unknown(durationMinutes: 300), sevenDayQuota: .unknown(durationMinutes: 10_080))
@@ -37,7 +77,7 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		defer { try? FileManager.default.removeItem(at: root) }
 		let store = ResetCardStore(client: EmptyWidgetClient(), pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: root.appendingPathComponent("pending.json")))
 		let state = ResetCardAccountState(account: account, inventory: inventory, error: nil, isRefreshing: false)
-		let host = NSHostingView(rootView: ResetCardAccountRow(state: state, store: store))
+		let host = NSHostingView(rootView: ResetCardAccountRow(state: state, store: store, detailedAccountIDs: .constant([account.accountID])))
 		let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 120), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
 		window.contentView = host
 		window.orderFrontRegardless()

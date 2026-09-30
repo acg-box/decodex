@@ -672,13 +672,13 @@ final class AccountPanelPresentationTests: XCTestCase {
 					x: 0,
 					y: 0,
 					width: 800,
-					height: 675
+					height: 300
 				),
 				loadsExternalState: false
 			)
 		)
 		let window = NSWindow(
-			contentRect: NSRect(x: 0, y: 0, width: 340, height: 675),
+			contentRect: NSRect(x: 0, y: 0, width: 340, height: 300),
 			styleMask: [.borderless],
 			backing: .buffered,
 			defer: false
@@ -686,7 +686,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		window.contentView = hostingView
 		hostingView.frame =
 			window.contentView?.bounds
-			?? NSRect(x: 0, y: 0, width: 340, height: 675)
+			?? NSRect(x: 0, y: 0, width: 340, height: 300)
 
 		for _ in 0..<2 {
 			hostingView.layoutSubtreeIfNeeded()
@@ -703,7 +703,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 			return documentView.bounds.height > scrollView.contentView.bounds.height + 1
 		}
 		XCTAssertEqual(overflowingScrollViews.count, 1, "Only the account list scrolls; pending feedback stays inline.")
-		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 675)
+		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 300)
 	}
 }
 
