@@ -131,3 +131,95 @@ fn run_helper(mut command: Command, script: &str) -> Result<Vec<u8>> {
 
 	Err(eyre::eyre!("{script} failed: {details}"))
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn analysis_export_is_cleaned_and_output_changes_only_after_valid_success() {
+		let temp = tempfile::tempdir().unwrap();
+		let root = temp.path().join("repo with spaces");
+		let helper = root.join(RUN_CODEX_ANALYSIS_SCRIPT);
+		std::fs::create_dir_all(helper.parent().unwrap()).unwrap();
+		std::fs::write(
+			&helper,
+			r#"
+import argparse, json, pathlib, sys
+parser = argparse.ArgumentParser()
+parser.add_argument('--allow-ai-analysis-boundary', action='store_true')
+parser.add_argument('--bundle')
+parser.add_argument('--repo-root')
+parser.add_argument('--codex-bin')
+parser.add_argument('--model')
+args = parser.parse_args()
+root = pathlib.Path(args.repo_root).resolve()
+bundle = pathlib.Path(args.bundle).resolve()
+assert args.allow_ai_analysis_boundary
+assert args.codex_bin == 'never-invoke-codex'
+assert args.model == 'fixture-model'
+assert pathlib.Path.cwd().resolve() == root
+assert bundle.relative_to(root).parts[:2] == ('target', 'radar-analysis')
+assert bundle.parent.stat().st_mode & 0o077 == 0
+assert json.loads(bundle.read_text()) == json.loads((root / 'bundle.json').read_text())
+mode = (root / 'mode').read_text()
+if mode == 'fail':
+    print('fixture helper failure', file=sys.stderr)
+    sys.exit(17)
+if mode == 'invalid-json':
+    print('not JSON')
+elif mode == 'invalid-draft':
+    print('{}')
+else:
+    print((root / 'draft.json').read_text())
+"#,
+		)
+		.unwrap();
+		let bundle_path = root.join("bundle.json");
+		let out = root.join("analysis.json");
+		crate::write_json(&bundle_path, &crate::tests::fixtures::valid_bundle()).unwrap();
+		let draft = crate::tests::fixtures::valid_signal();
+		crate::write_json(&root.join("draft.json"), &draft).unwrap();
+		let mut request = RadarBackfillReleaseRangeRequest {
+			repo: "openai/codex".into(),
+			release_delta: root.join("release.json"),
+			stable_tag: None,
+			preview_tag: None,
+			signals_dir: root.join("signals"),
+			bundles_dir: root.join("bundles"),
+			analysis_dir: root.join("analysis"),
+			token_env: None,
+			codex_bin: "never-invoke-codex".into(),
+			model: Some("fixture-model".into()),
+			max_prs: None,
+			dry_run: false,
+			refresh_release_delta_first: false,
+			refresh_stable_limit: None,
+			refresh_preview_limit: None,
+			refresh_pair_limit: None,
+			python_bin: "python3".into(),
+		};
+		for (mode, expected_error) in [
+			("success", None),
+			("fail", Some("fixture helper failure")),
+			("invalid-json", Some("returned invalid JSON")),
+			("invalid-draft", Some("Analysis draft validation failed")),
+		] {
+			std::fs::write(root.join("mode"), mode).unwrap();
+			let previous = b"previous output must survive";
+			std::fs::write(&out, previous).unwrap();
+			let result = run_codex_analysis(&root, &request, &bundle_path, &out);
+			if let Some(message) = expected_error {
+				assert!(result.unwrap_err().to_string().contains(message));
+				assert_eq!(std::fs::read(&out).unwrap(), previous);
+			} else {
+				result.unwrap();
+				assert_eq!(crate::load_json(&out).unwrap(), draft);
+			}
+			assert_eq!(std::fs::read_dir(root.join("target/radar-analysis")).unwrap().count(), 0);
+		}
+		request.python_bin = root.join("missing-helper").display().to_string();
+		assert!(run_codex_analysis(&root, &request, &bundle_path, &out).is_err());
+		assert_eq!(std::fs::read_dir(root.join("target/radar-analysis")).unwrap().count(), 0);
+	}
+}
