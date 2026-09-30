@@ -68,15 +68,33 @@ impl GitHubApi {
 	}
 
 	pub(super) fn get_paginated(&self, url: &str) -> crate::prelude::Result<Vec<Value>> {
-		self.get_paginated_bounded(url, MAX_GITHUB_PAGES, MAX_GITHUB_PAGINATED_ITEMS)
+		self.get_paginated_bounded(url, None, MAX_GITHUB_PAGES, MAX_GITHUB_PAGINATED_ITEMS)
+			.map(|(_, items)| items)
+	}
+
+	pub(super) fn get_paginated_field(
+		&self,
+		url: &str,
+		field: &str,
+	) -> crate::prelude::Result<Value> {
+		let (mut payload, items) = self.get_paginated_bounded(
+			url,
+			Some(field),
+			MAX_GITHUB_PAGES,
+			MAX_GITHUB_PAGINATED_ITEMS,
+		)?;
+		payload[field] = Value::Array(items);
+		Ok(payload)
 	}
 
 	fn get_paginated_bounded(
 		&self,
 		url: &str,
+		field: Option<&str>,
 		max_pages: usize,
 		max_items: usize,
-	) -> crate::prelude::Result<Vec<Value>> {
+	) -> crate::prelude::Result<(Value, Vec<Value>)> {
+		let mut first_payload = Value::Null;
 		let mut items = Vec::new();
 		let mut next_url = Some(url.to_owned());
 		let mut visited = HashSet::new();
@@ -95,29 +113,41 @@ impl GitHubApi {
 			pages += 1;
 
 			let response = self.get(validated.as_str())?;
-			let Some(page_items) = response.payload.as_array() else {
-				eyre::bail!("Expected list payload from {url}");
+			let page_items = match field {
+				Some(field) => response
+					.payload
+					.get(field)
+					.and_then(Value::as_array)
+					.ok_or_else(|| eyre::eyre!("Expected list field {field} from {url}"))?,
+				None => response
+					.payload
+					.as_array()
+					.ok_or_else(|| eyre::eyre!("Expected list payload from {url}"))?,
 			};
 			if page_items.len() > max_items.saturating_sub(items.len()) {
 				eyre::bail!("GitHub API pagination exceeds the {max_items}-item limit");
 			}
 
 			items.extend(page_items.iter().cloned());
+			if field.is_some() && pages == 1 {
+				first_payload = response.payload;
+			}
 
 			next_url = response.next_url;
 		}
 
-		Ok(items)
+		Ok((first_payload, items))
 	}
 
 	#[cfg(test)]
 	pub(crate) fn get_paginated_for_test(
 		&self,
 		url: &str,
+		field: Option<&str>,
 		max_pages: usize,
 		max_items: usize,
 	) -> crate::prelude::Result<Vec<Value>> {
-		self.get_paginated_bounded(url, max_pages, max_items)
+		self.get_paginated_bounded(url, field, max_pages, max_items).map(|(_, items)| items)
 	}
 
 	fn validated_url(&self, url: &str) -> crate::prelude::Result<Url> {
