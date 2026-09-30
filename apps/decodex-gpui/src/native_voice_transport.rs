@@ -69,9 +69,7 @@ impl Transport {
 				runtime.block_on(async {
 					tokio::select! {
 						_ = cancelled => {},
-						result = run(pcm, requests, output.clone()) => {
-							if let Err(message) = result { output.send(json!({"type":"error","message":message})); }
-						}
+						_ = run(pcm, requests, output.clone()) => {},
 					}
 				});
 			})
@@ -105,24 +103,36 @@ impl Drop for Peer {
 	}
 }
 
-async fn run(
-	pcm: Pcm,
-	mut commands: channel::Receiver<Command>,
-	events: Events,
-) -> Result<(), &'static str> {
+async fn run(pcm: Pcm, commands: channel::Receiver<Command>, events: Events) {
 	let factory = PeerConnectionFactory::default();
 	// Apple owns capture, playback and DSP. No second audio device or processing chain.
 	factory.set_adm_recording_enabled(false);
 	factory.set_adm_playout_enabled(false);
 	let mut config = RtcConfiguration::default();
 	config.continual_gathering_policy = ContinualGatheringPolicy::GatherOnce;
-	let peer = Peer(
-		factory
-			.create_peer_connection(config)
-			.map_err(|_| "The audio connection could not start.")?,
-	);
-	// Drop the PCM endpoints before Peer::drop waits for native network teardown.
+	let peer = match factory.create_peer_connection(config) {
+		Ok(peer) => Peer(peer),
+		Err(_) => {
+			events.send(json!({"type":"error","message":"The audio connection could not start."}));
+			return;
+		},
+	};
+	// Drop PCM before synchronous peer teardown, including when this future is cancelled.
 	let mut pcm = pcm;
+	let result = run_media(&factory, &peer, &mut pcm, commands, events.clone()).await;
+	// Let the UI stop its audio device without waiting for native network teardown.
+	if let Err(message) = result {
+		events.send(json!({"type":"error","message":message}));
+	}
+}
+
+async fn run_media(
+	factory: &PeerConnectionFactory,
+	peer: &Peer,
+	pcm: &mut Pcm,
+	mut commands: channel::Receiver<Command>,
+	events: Events,
+) -> Result<(), &'static str> {
 	let source = NativeAudioSource::new(AudioSourceOptions::default(), 48_000, 1, 40);
 	let track = factory.create_audio_track("microphone", source.clone());
 	peer.0
@@ -258,6 +268,15 @@ mod tests {
 
 	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 	async fn native_call_exchanges_audio_captions_mutes_and_releases_buffers() {
+		call_lifecycle(false).await;
+	}
+
+	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+	async fn remote_channel_loss_reports_failure_and_releases_buffers() {
+		call_lifecycle(true).await;
+	}
+
+	async fn call_lifecycle(close_remote_channel: bool) {
 		tokio::time::timeout(Duration::from_secs(45), async {
 			let (mut input, captured) = rtrb::RingBuffer::new(4_800);
 			let (playback, mut output) = rtrb::RingBuffer::new(4_800);
@@ -343,7 +362,24 @@ mod tests {
 			assert!(muted < audible * 0.1, "muted microphone must not transmit the tone");
 			assert!(transport.command(Command::Mute(false)));
 			assert!(energy(&mut stream).await > audible * 0.3);
-			drop(transport);
+			if close_remote_channel {
+				data.close();
+				let failure = tokio::time::timeout(Duration::from_secs(3), async {
+					loop {
+						if let Some(value) = transport.poll()
+							&& value["type"] == "error"
+						{
+							break value;
+						}
+						tokio::time::sleep(Duration::from_millis(10)).await;
+					}
+				})
+				.await
+				.expect("remote channel loss reports failure");
+				assert_eq!(failure["message"], "The audio connection was lost.");
+			} else {
+				drop(transport);
+			}
 			tokio::time::timeout(Duration::from_secs(3), async {
 				while !output.is_abandoned() {
 					tokio::time::sleep(Duration::from_millis(10)).await;
