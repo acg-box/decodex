@@ -273,6 +273,8 @@ fn exercise_live_settings(cx: &mut gpui::TestAppContext, model: bool) {
 
 #[gpui::test]
 fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut gpui::TestAppContext) {
+	let (_root, profile, server) = super::super::wire_test_support::fixture(|_| async {});
+	server.join().unwrap();
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
 		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
@@ -291,7 +293,9 @@ fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut gpui
 	surface.update(visual, |s, cx| {
 		s.live_reviewer.reviewed = true;
 		s.live_reviewer.work = Some("root".into());
+		s.profile = Some(profile);
 		s.open_native_agent("root", "child", cx);
+		assert_eq!(s.native_agents.selected, Some(("root".into(), "child".into())));
 		assert!(!s.live_reviewer.reviewed);
 		assert!(s.live_reviewer.work.is_none());
 	});

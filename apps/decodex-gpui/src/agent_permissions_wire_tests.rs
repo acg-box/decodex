@@ -228,13 +228,17 @@ fn running_permissions_offer_both_named_and_builtin_profiles(cx: &mut gpui::Test
 
 #[gpui::test]
 fn child_navigation_and_disconnect_cannot_edit_parent_permissions(cx: &mut gpui::TestAppContext) {
+	let (_root, profile, server) = super::super::wire_test_support::fixture(|_| async {});
+	server.join().unwrap();
 	let surface = cx.new(AgentSurface::new);
 	surface.update(cx, |s, cx| {
 		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
 		s.permission_profiles.work = Some("root".into());
 		s.permission_profiles.state = Some(available());
 		s.permission_profiles.reviewed = true;
+		s.profile = Some(profile);
 		s.open_native_agent("root", "child", cx);
+		assert_eq!(s.native_agents.selected, Some(("root".into(), "child".into())));
 		assert!(!s.permission_profiles.reviewed);
 		assert!(s.permission_profiles.state.is_none());
 		s.update_permission_profiles("root".into(), Some(WireText::new("scoped").unwrap()), cx);
