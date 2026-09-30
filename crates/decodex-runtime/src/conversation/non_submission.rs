@@ -88,3 +88,7 @@ impl ConversationRuntime {
 		self.recover(readback, ConversationManualRecovery::ProcessUnavailable).await
 	}
 }
+
+#[cfg(test)]
+#[path = "non_submission_tests.rs"]
+mod tests;

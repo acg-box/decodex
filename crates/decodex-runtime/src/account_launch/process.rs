@@ -8040,6 +8040,15 @@ pub(crate) mod tests {
 			.unwrap()
 	}
 
+	pub(crate) fn ordinary_runtime_fixture_profile(directory: &Path) -> AttestedAppServerProfile {
+		AttestedAppServerProfile::attest_for_test(
+			fake_command("ordinary-capabilities", directory, None),
+			directory,
+			Duration::from_secs(2),
+		)
+		.expect("isolated ordinary runtime profile")
+	}
+
 	fn initialized_bound_process(mode: &str) -> (TempDir, SupervisedProcess) {
 		let temp = TempDir::new().unwrap();
 		let timeout = Duration::from_secs(2);
