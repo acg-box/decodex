@@ -275,13 +275,15 @@ fn project_to_directory_inner(
 		return Err(CodexAuthProjectionError::SourceChanged);
 	}
 	let (mut temporary, temporary_name) = create_temporary(directory)?;
-	temporary
-		.write_all(&encoded)
-		.and_then(|()| temporary.sync_all())
-		.map_err(|_| CodexAuthProjectionError::Unavailable)?;
-	set_exact_mode(&temporary)?;
 	let mut cleanup =
 		TemporaryEntry { directory: directory.as_raw_fd(), name: temporary_name, renamed: false };
+	temporary.write_all(&encoded).map_err(|_| CodexAuthProjectionError::Unavailable)?;
+	#[cfg(test)]
+	if fault == ProjectionFault::AfterTemporaryWrite {
+		return Err(CodexAuthProjectionError::Unavailable);
+	}
+	temporary.sync_all().map_err(|_| CodexAuthProjectionError::Unavailable)?;
+	set_exact_mode(&temporary)?;
 
 	if inspect_target(directory)? != original {
 		return Err(if expected_target.is_some() {
@@ -359,6 +361,8 @@ enum ProjectionMutation {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProjectionFault {
 	None,
+	#[cfg(test)]
+	AfterTemporaryWrite,
 	#[cfg(test)]
 	BeforeRename,
 	#[cfg(test)]
@@ -1413,6 +1417,34 @@ mod tests {
 			Err(CodexAuthProjectionError::Unavailable)
 		));
 		assert_eq!(fs::read(&target).unwrap(), b"{");
+	}
+
+	#[test]
+	fn temporary_write_failure_removes_credentials_and_preserves_existing_auth() {
+		for existing in [false, true] {
+			let home = fixture_home();
+			let directory = open_codex_directory(home.path()).unwrap();
+			let target = home.path().join(".codex/auth.json");
+			if existing {
+				project_to_directory(&directory, &bundle(Some("old-id"), "old"), "old-account")
+					.unwrap();
+			}
+			let before = fs::read(&target).ok();
+			assert_eq!(
+				project_shared_codex_auth_at(
+					home.path(),
+					&bundle(Some("new-id"), "new"),
+					"new-account",
+					ProjectionFault::AfterTemporaryWrite,
+				),
+				Err(CodexAuthProjectionError::Unavailable)
+			);
+			assert_eq!(fs::read(&target).ok(), before);
+			assert_eq!(
+				fs::read_dir(home.path().join(".codex")).unwrap().count(),
+				usize::from(existing)
+			);
+		}
 	}
 
 	#[test]
