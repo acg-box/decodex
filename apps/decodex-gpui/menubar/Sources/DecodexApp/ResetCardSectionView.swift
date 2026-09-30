@@ -43,7 +43,7 @@ struct ResetCardAccountRow: View {
 	let isReorderGestureEnabled: Bool
 	let onReorderDragChanged: (CGFloat) -> Void
 	let onReorderDragEnded: () -> Void
-	@Binding private var detailedAccountID: String?
+	@Binding private var detailedAccountIDs: Set<String>
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var confirmation = ResetCardUseConfirmation()
@@ -56,7 +56,7 @@ struct ResetCardAccountRow: View {
 		state: ResetCardAccountState,
 		store: ResetCardStore,
 		showsEmail: Bool = false,
-		detailedAccountID: Binding<String?> = .constant(nil),
+		detailedAccountIDs: Binding<Set<String>> = .constant([]),
 		isAccountCardHovered: Bool = false,
 		isReorderGestureEnabled: Bool = true,
 		onReorderDragChanged: @escaping (CGFloat) -> Void = { _ in },
@@ -69,7 +69,7 @@ struct ResetCardAccountRow: View {
 		self.isReorderGestureEnabled = isReorderGestureEnabled
 		self.onReorderDragChanged = onReorderDragChanged
 		self.onReorderDragEnded = onReorderDragEnded
-		_detailedAccountID = detailedAccountID
+		_detailedAccountIDs = detailedAccountIDs
 	}
 
 	var body: some View {
@@ -109,11 +109,13 @@ struct ResetCardAccountRow: View {
 				.opacity(state.account.enabled ? 1 : 0.45)
 			}
 			if detailsBinding.wrappedValue {
-				AccountProfileDetailView(state: state)
-					.padding(.top, PanelSpacing.related)
-					.transition(.panelInline)
+				VStack(alignment: .leading, spacing: PanelSpacing.related) {
+					AccountProfileDetailView(state: state)
+					cardInventory
+				}
+				.padding(.top, PanelSpacing.related)
+				.transition(.panelInline)
 			}
-			cardInventory
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.padding(.horizontal, PanelSpacing.cardHorizontal)
@@ -143,7 +145,7 @@ struct ResetCardAccountRow: View {
 		.task(id: countdownAttempt) {
 			await runConfirmationCountdown(for: countdownAttempt)
 		}
-		.animation(rowStateAnimation, value: detailedAccountID)
+		.animation(rowStateAnimation, value: detailedAccountIDs)
 		.animation(rowStateAnimation, value: state.account.enabled)
 		.animation(rowStateAnimation, value: exceptionalStatusText)
 		.animation(rowStateAnimation, value: presentedTargets)
@@ -350,13 +352,14 @@ struct ResetCardAccountRow: View {
 		return PanelPalette.destructive(colorScheme)
 	}
 
-	private var detailsBinding: Binding<Bool> {
+	var detailsBinding: Binding<Bool> {
 		Binding(
 			get: {
-				detailedAccountID == state.account.accountID
+				detailedAccountIDs.contains(state.account.accountID)
 			},
 			set: { isPresented in
-				detailedAccountID = isPresented ? state.account.accountID : nil
+				if isPresented { detailedAccountIDs.insert(state.account.accountID) }
+				else { detailedAccountIDs.remove(state.account.accountID) }
 			}
 		)
 	}

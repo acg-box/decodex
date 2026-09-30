@@ -8,9 +8,8 @@ use std::{
 use tokio::sync::Notify;
 
 use decodex_protocol::{
-	AccountProfileEmailDto, AccountProfileResult, AccountRecoveryResult, AccountRecoveryState,
-	CURRENT_VERSION, EntityId, EntityRevision, QueryEnvelope, QueryId, QueryPayload,
-	QueryResultEnvelope, QueryResultPayload, ServerId,
+	AccountProfileEmailDto, AccountProfileResult, CURRENT_VERSION, EntityId, EntityRevision,
+	QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId,
 };
 
 /// Bounded selected-profile state rendered by Accounts.
@@ -18,11 +17,8 @@ use decodex_protocol::{
 pub(crate) struct AccountProfileSnapshot {
 	pub(crate) selected: Option<EntityId>,
 	pub(crate) selected_revision: Option<EntityRevision>,
-	pub(crate) recovery: Option<AccountRecoveryResult>,
 	pub(crate) load: AccountProfileLoadState,
 	pub(crate) result: Option<AccountProfileResult>,
-	pub(crate) can_refresh: bool,
-	pub(crate) notification_generation: u64,
 }
 
 /// Finite account-profile query state.
@@ -83,11 +79,8 @@ impl AccountProfileController {
 			return;
 		}
 		{
-			state.invalidate_actions();
 			state.selected = Some(account_id);
 			state.selected_revision = revision;
-			state.recovery = None;
-			state.dismissed_banner = None;
 			state.pending.clear();
 			state.in_flight = None;
 			state.result = None;
@@ -99,30 +92,11 @@ impl AccountProfileController {
 		}
 	}
 
-	pub(crate) fn dismiss_recovery(&self, expected: &AccountRecoveryResult) -> bool {
-		let mut state = self.lock();
-		if state.snapshot().recovery.as_ref() != Some(expected) {
-			return false;
-		}
-		let AccountRecoveryState::Current(banner) = &expected.state else {
-			return false;
-		};
-		if !banner.dismissible {
-			return false;
-		}
-		state.invalidate_actions();
-		state.dismissed_banner = Some(banner.clone());
-		true
-	}
-
 	pub(crate) fn close(&self) {
 		let mut state = self.lock();
-		state.invalidate_actions();
 		state.refresh_due = false;
 		state.selected = None;
 		state.selected_revision = None;
-		state.recovery = None;
-		state.dismissed_banner = None;
 		state.pending.clear();
 		state.in_flight = None;
 		state.result = None;
@@ -131,11 +105,9 @@ impl AccountProfileController {
 
 	pub(crate) fn refresh(&self) -> bool {
 		let mut state = self.lock();
-		state.invalidate_actions();
 		state.request_observation_refresh = true;
 		state.pending.clear();
 		state.in_flight = None;
-		state.expire_recovery();
 		let queued = state.queue_query();
 		drop(state);
 		if queued {
@@ -155,9 +127,7 @@ impl AccountProfileController {
 		state.observation = None;
 		state.observation_generation = 0;
 		state.refresh_due = false;
-		state.invalidate_actions();
 		state.session = Some(binding);
-		state.expire_recovery();
 		let queued = state.queue_query();
 		drop(state);
 		if queued {
@@ -174,9 +144,7 @@ impl AccountProfileController {
 		state.in_flight = None;
 		state.observation = None;
 		state.refresh_due = false;
-		state.invalidate_actions();
 		state.session = None;
-		state.expire_recovery();
 		if state.selected.is_some() {
 			state.load = AccountProfileLoadState::Offline;
 		}
@@ -243,14 +211,9 @@ impl AccountProfileController {
 			state.in_flight = None;
 			state.load = AccountProfileLoadState::Refused;
 			state.pending.clear();
-			state.expire_recovery();
 			return AccountProfileRouteOutcome::Refused;
 		}
 		let valid = match (&in_flight.payload, &result.payload) {
-			(
-				QueryPayload::GetAccountRecovery { account_id, account_revision },
-				QueryResultPayload::AccountRecovery(recovery),
-			) => recovery.valid_for(account_id, *account_revision),
 			(
 				QueryPayload::GetAccountProfile { account_id, .. },
 				QueryResultPayload::AccountProfile(profile),
@@ -258,32 +221,10 @@ impl AccountProfileController {
 			_ => false,
 		};
 		state.in_flight = None;
-		if valid {
-			match &result.payload {
-				QueryResultPayload::AccountRecovery(recovery) => {
-					if !actions::same_recovery_source(state.recovery.as_ref(), Some(recovery)) {
-						state.invalidate_actions();
-					}
-					let retained = match &recovery.state {
-						AccountRecoveryState::Current(banner)
-						| AccountRecoveryState::Stale(banner) => state.dismissed_banner.as_ref() == Some(banner),
-						AccountRecoveryState::Unavailable => true,
-						_ => false,
-					};
-					if !retained {
-						state.dismissed_banner = None;
-					}
-					state.recovery = Some(recovery.clone());
-				},
-				QueryResultPayload::AccountProfile(profile) => state.result = Some(profile.clone()),
-				_ => unreachable!("validated account query kind"),
-			}
-		} else {
-			state.expire_recovery();
+		if valid && let QueryResultPayload::AccountProfile(profile) = &result.payload {
+			state.result = Some(profile.clone());
 		}
-		if state.refresh_due {
-			state.expire_recovery();
-		}
+
 		if state.refresh_due && state.pending.is_empty() {
 			state.refresh_due = false;
 			state.queue_query();
@@ -319,13 +260,9 @@ struct InFlightQuery {
 }
 
 struct State {
-	notification_generation: u64,
-	interaction_epoch: u64,
 	session: Option<SessionBinding>,
 	selected: Option<EntityId>,
 	selected_revision: Option<EntityRevision>,
-	recovery: Option<AccountRecoveryResult>,
-	dismissed_banner: Option<Box<decodex_protocol::AccountRecoveryBanner>>,
 	next_sequence: u64,
 	pending: VecDeque<QueryEnvelope>,
 	in_flight: Option<InFlightQuery>,
@@ -340,13 +277,9 @@ struct State {
 impl State {
 	const fn new() -> Self {
 		Self {
-			notification_generation: 0,
-			interaction_epoch: 0,
 			session: None,
 			selected: None,
 			selected_revision: None,
-			recovery: None,
-			dismissed_banner: None,
 			next_sequence: 0,
 			pending: VecDeque::new(),
 			in_flight: None,
@@ -360,49 +293,11 @@ impl State {
 	}
 
 	fn snapshot(&self) -> AccountProfileSnapshot {
-		let mut recovery = self.recovery.clone();
-		let now = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.ok()
-			.and_then(|duration| i64::try_from(duration.as_micros()).ok());
-		if let Some(result) = &mut recovery {
-			let fresh = now
-				.zip(result.observed_at_unix_micros)
-				.is_some_and(|(now, at)| at <= now && now - at <= 300_000_000);
-			if !fresh && let AccountRecoveryState::Current(banner) = &result.state {
-				result.state = AccountRecoveryState::Stale(banner.clone());
-			}
-		}
-		if recovery.as_ref().is_some_and(|result| match &result.state {
-			AccountRecoveryState::Current(banner) | AccountRecoveryState::Stale(banner) =>
-				self.dismissed_banner.as_ref() == Some(banner),
-			_ => false,
-		}) {
-			recovery = None;
-		}
 		AccountProfileSnapshot {
 			selected: self.selected.clone(),
 			selected_revision: self.selected_revision,
-			recovery,
 			load: self.load,
 			result: self.result.clone(),
-			notification_generation: self.notification_generation,
-			can_refresh: self.session.is_some()
-				&& self.selected.is_some()
-				&& self.pending.is_empty()
-				&& self.in_flight.is_none(),
-		}
-	}
-
-	fn invalidate_actions(&mut self) {
-		self.interaction_epoch = self.interaction_epoch.saturating_add(1);
-	}
-
-	fn expire_recovery(&mut self) {
-		if let Some(recovery) = &mut self.recovery
-			&& let AccountRecoveryState::Current(banner) = &recovery.state
-		{
-			recovery.state = AccountRecoveryState::Stale(banner.clone());
 		}
 	}
 
@@ -416,25 +311,12 @@ impl State {
 		if !self.pending.is_empty() || self.in_flight.is_some() {
 			return false;
 		}
-		let Some(sequence) = self.next_sequence.checked_add(2) else {
+		let Some(sequence) = self.next_sequence.checked_add(1) else {
 			self.load = AccountProfileLoadState::Refused;
 			return false;
 		};
 		self.next_sequence = sequence;
-		if let Some(account_revision) = self.selected_revision {
-			self.pending.push_back(QueryEnvelope {
-				version: CURRENT_VERSION,
-				query_id: QueryId::new(format!(
-					"gpui-account-recovery/{}/{sequence}",
-					binding.generation
-				))
-				.expect("bounded numeric recovery query identity"),
-				payload: QueryPayload::GetAccountRecovery {
-					account_id: account_id.clone(),
-					account_revision,
-				},
-			});
-		}
+
 		self.pending.push_back(QueryEnvelope {
 			version: CURRENT_VERSION,
 			query_id: QueryId::new(format!(
@@ -475,6 +357,58 @@ mod tests {
 	};
 
 	use super::{AccountProfileController, AccountProfileLoadState, AccountProfileRouteOutcome};
+
+	#[tokio::test]
+	async fn activity_reads_reject_old_revisions_and_then_wait_for_observation() {
+		use decodex_protocol::{AccountProfileDto, EntityRevision, QueryPayload};
+		let controller = AccountProfileController::production();
+		let server = ServerId::new("10000000-0000-4000-8000-000000000001").unwrap();
+		let account = EntityId::new("20000000-0000-4000-8000-000000000001").unwrap();
+		controller.bind_session(3, server.clone());
+		controller.select_at_revision(account.clone(), EntityRevision(2));
+		for revision in [1, 2] {
+			if revision == 2 {
+				controller.refresh();
+			}
+			let query = controller.next_dispatch(3, &server).await;
+			assert!(matches!(query.payload, QueryPayload::GetAccountProfile { .. }));
+			let result = AccountProfileResult::Current(Box::new(AccountProfileDto {
+				account_id: account.clone(),
+				account_revision: EntityRevision(revision),
+				observed_at_unix_micros: 0,
+				email: AccountProfileEmailDto::Redacted,
+				plan_type: None,
+				display_name: None,
+				username: None,
+				lifetime_tokens: None,
+				peak_daily_tokens: None,
+				longest_task_seconds: None,
+				current_streak_days: None,
+				longest_streak_days: None,
+				daily_usage: vec![],
+			}));
+			let outcome = controller.route_result(
+				3,
+				&server,
+				&QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: server.clone(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::AccountProfile(result),
+				},
+			);
+			assert_eq!(
+				outcome,
+				if revision == 1 {
+					AccountProfileRouteOutcome::Refused
+				} else {
+					AccountProfileRouteOutcome::Fresh
+				}
+			);
+		}
+		let observation = controller.next_dispatch(3, &server).await;
+		assert!(matches!(observation.payload, QueryPayload::WaitForAccountObservation { .. }));
+	}
 
 	#[tokio::test]
 	async fn selected_profile_is_one_exact_retained_session_query() {
@@ -569,27 +503,4 @@ mod tests {
 	}
 }
 
-#[cfg(test)]
-#[path = "account_profile_recovery_tests.rs"]
-mod recovery_tests;
-
 #[path = "account_profile/observation.rs"] mod observation;
-
-/// Substitute only the native time placeholder; keep provider copy as plain text.
-pub(crate) fn recovery_copy(text: &str, reset_at: Option<i64>) -> String {
-	let Some(reset) = reset_at.and_then(|at| time::OffsetDateTime::from_unix_timestamp(at).ok())
-	else {
-		return text.to_owned();
-	};
-	let (year, month, day) = reset.to_calendar_date();
-	let label = format!(
-		"{year:04}-{:02}-{day:02} {:02}:{:02} UTC",
-		month as u8,
-		reset.hour(),
-		reset.minute()
-	);
-	text.replace("{time}", &label)
-}
-
-#[path = "account_profile/actions.rs"] mod actions;
-pub(crate) use actions::RecoveryActionTicket;

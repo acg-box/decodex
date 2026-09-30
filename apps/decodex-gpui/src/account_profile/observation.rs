@@ -41,19 +41,13 @@ impl State {
 			&& result.server_id == *server_id;
 		self.observation = None;
 		let QueryResultPayload::AccountObservation(signal) = &result.payload else {
-			self.expire_recovery();
 			return AccountProfileRouteOutcome::Refused;
 		};
 		if !valid {
-			self.expire_recovery();
 			return AccountProfileRouteOutcome::Refused;
-		}
-		if self.observation_generation != signal.generation {
-			self.invalidate_actions();
 		}
 		self.observation_generation = signal.generation;
 		if self.selected.is_some() {
-			self.expire_recovery();
 			// A heartbeat refreshes observation timestamps too. Coalesce with an active pair.
 			self.refresh_due = !self.queue_query();
 		}
@@ -90,7 +84,6 @@ impl super::AccountProfileController {
 						&& &binding.server_id == server_id
 				}) {
 					state.observation = None;
-					state.expire_recovery();
 				}
 				drop(state);
 				self.inner.notify.notify_one();

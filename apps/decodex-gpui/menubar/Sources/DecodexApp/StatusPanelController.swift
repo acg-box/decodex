@@ -13,6 +13,8 @@ final class StatusPanelController: NSObject {
 	private let fastModeStore: FastModeStore
 	private var isPositioningPanel = false
 	private var isInvalidated = false
+	private var resizeTask: Task<Void, Never>?
+	private var targetContentSize = CGSize.zero
 	private var anchorRetryTask: Task<Void, Never>?
 	private var outsideClickMonitor: Any?
 	private var localClickMonitor: Any?
@@ -49,6 +51,7 @@ final class StatusPanelController: NSObject {
 			return
 		}
 		isInvalidated = true
+		resizeTask?.cancel()
 		stopObservingOutsideClicks()
 		anchorRetryTask?.cancel()
 		anchorRetryTask = nil
@@ -85,6 +88,8 @@ final class StatusPanelController: NSObject {
 	}
 
 	private func orderPanelOut() {
+		resizeTask?.cancel()
+		targetContentSize = .zero
 		stopObservingOutsideClicks()
 		anchorRetryTask?.cancel()
 		anchorRetryTask = nil
@@ -146,6 +151,7 @@ final class StatusPanelController: NSObject {
 	}
 
 	private func configurePanel() {
+		hostingView.sizingOptions = []
 		hostingView.wantsLayer = true
 		hostingView.layer?.backgroundColor = NSColor.clear.cgColor
 		panel.isReleasedWhenClosed = false
@@ -190,15 +196,33 @@ final class StatusPanelController: NSObject {
 		positionPanel()
 	}
 
-	private func updatePanelContentSize(_ size: CGSize) {
-		guard size.width > 0, size.height > 0 else {
+	func updatePanelContentSize(_ size: CGSize) {
+		guard size.width > 0, size.height > 0 else { return }
+		let roundedSize = PanelWindowSizingLayout.roundedContentSize(for: size)
+		guard roundedSize != targetContentSize else { return }
+		targetContentSize = roundedSize
+		resizeTask?.cancel()
+		guard panel.isVisible, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+			panel.setContentSize(roundedSize)
+			positionPanel()
 			return
 		}
-		let roundedSize = PanelWindowSizingLayout.roundedContentSize(for: size)
-		if panel.frame.size != roundedSize {
-			panel.setContentSize(roundedSize)
+		let initial = panel.frame.size
+		let started = ProcessInfo.processInfo.systemUptime
+		resizeTask = Task { @MainActor [weak self] in
+			while !Task.isCancelled {
+				guard let self else { return }
+				let progress = min(1, (ProcessInfo.processInfo.systemUptime - started) / 0.3)
+				let eased = 1 - pow(1 - progress, 3)
+				self.panel.setContentSize(NSSize(
+					width: initial.width + (roundedSize.width - initial.width) * eased,
+					height: initial.height + (roundedSize.height - initial.height) * eased
+				))
+				self.positionPanel()
+				if progress >= 1 { self.resizeTask = nil; return }
+				do { try await Task.sleep(for: .milliseconds(8)) } catch { return }
+			}
 		}
-		positionPanel()
 	}
 
 	@discardableResult

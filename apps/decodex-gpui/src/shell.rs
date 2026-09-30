@@ -1,10 +1,10 @@
 //! Production GPUI window, navigation, focus, and lifecycle rendering boundary.
+#[path = "shell_account_activity.rs"] mod account_activity;
 #[path = "account_identity.rs"] mod account_identity;
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "shell_native_status.rs"]
 mod native_status;
 #[path = "quota_meter.rs"] mod quota_meter;
-#[path = "shell_recovery_actions.rs"] mod recovery_actions;
 #[path = "shell_reset_cards.rs"] mod reset_cards;
 #[path = "shell_status.rs"] mod status;
 use crate::ui_motion::SmoothControl;
@@ -511,7 +511,6 @@ pub(crate) struct Shell {
 	ordinary_owner: Option<EntityId>,
 	ordinary_syncing: bool,
 	reset_cards: reset_cards::ResetCardsPanel,
-	recovery_actions: recovery_actions::RecoveryActions,
 	settings_window: Option<WindowHandle<SettingsWindow>>,
 	settings_selected: Destination,
 	selected: Destination,
@@ -539,6 +538,9 @@ pub(crate) struct Shell {
 	pending_account_logout: Option<EntityId>,
 	account_profile_controller: AccountProfileController,
 	account_profile: AccountProfileSnapshot,
+	expanded_accounts: std::collections::HashSet<EntityId>,
+	account_activity:
+		std::collections::HashMap<EntityId, (AccountProfileSnapshot, std::time::Instant)>,
 	account_emails: account_identity::Emails,
 	desktop_settings: DesktopSettingsController,
 	desktop_settings_snapshot: DesktopSettingsSnapshot,
@@ -584,6 +586,9 @@ impl Shell {
 		cx: &mut Context<Self>,
 	) -> Self {
 		self.account_emails = Default::default();
+		self.expanded_accounts.clear();
+		self.account_activity.clear();
+		self.reset_cards = Default::default();
 		self.reset_cards.profile = profile.clone();
 		let cwd = self.conversations.working_directory();
 		self.agent.update(cx, |surface, cx| {
@@ -664,9 +669,10 @@ impl Shell {
 			opened_account_login_url: None,
 			pending_account_logout: None,
 			reset_cards: reset_cards::ResetCardsPanel::default(),
-			recovery_actions: recovery_actions::RecoveryActions::default(),
 			account_profile_controller,
 			account_profile,
+			expanded_accounts: Default::default(),
+			account_activity: Default::default(),
 			account_emails: Default::default(),
 			desktop_settings,
 			desktop_settings_snapshot,
@@ -860,6 +866,8 @@ impl Shell {
 			can_route: true,
 			route_reopen_notice: false,
 		};
+		self.seed_account_activity();
+		self.reset_cards.seed_visual(&self.accounts.accounts);
 		let health_checks = DoctorComponent::ALL
 			.into_iter()
 			.map(|component| {
@@ -1009,6 +1017,13 @@ impl Shell {
 	) -> Self {
 		let mut shell = Self::visual_workbench(window, cx);
 		shell.selected = destination;
+		if destination == Destination::Accounts
+			&& std::env::var_os("DECODEX_VISUAL_ACCOUNTS_EXPANDED").is_some()
+		{
+			shell
+				.expanded_accounts
+				.extend(shell.accounts.accounts.iter().take(2).map(|a| a.account_id.clone()));
+		}
 		if destination == Destination::Agent {
 			shell.connection = ConnectionView::Stopped;
 			shell.agent.update(cx, |surface, cx| {
@@ -1310,14 +1325,6 @@ impl Shell {
 		self.accounts = self.accounts_controller.snapshot();
 	}
 
-	fn refresh_accounts(&mut self, cx: &mut Context<Self>) {
-		if self.accounts_controller.refresh() {
-			self.account_status = None;
-			self.synchronize_accounts();
-			cx.notify();
-		}
-	}
-
 	fn set_account_enabled(
 		&mut self,
 		account_id: &EntityId,
@@ -1386,25 +1393,55 @@ impl Shell {
 		cx.notify();
 	}
 
-	fn show_account_profile(&mut self, account_id: EntityId, cx: &mut Context<Self>) {
-		if let Some(account) = self.accounts.accounts.iter().find(|a| a.account_id == account_id) {
-			self.account_profile_controller
-				.select_at_revision(account_id, account.account_revision);
+	fn toggle_account_activity(&mut self, account: EntityId, cx: &mut Context<Self>) {
+		if !self.expanded_accounts.remove(&account) {
+			self.expanded_accounts.insert(account);
 		}
-		self.account_profile = self.account_profile_controller.snapshot();
+		self.refresh_expanded_activity();
 		cx.notify();
 	}
 
-	fn close_account_profile(&mut self, cx: &mut Context<Self>) {
-		self.account_profile_controller.close();
-		self.account_profile = self.account_profile_controller.snapshot();
-		cx.notify();
-	}
-
-	fn refresh_account_profile(&mut self, cx: &mut Context<Self>) {
-		let _ = self.account_profile_controller.refresh();
-		self.account_profile = self.account_profile_controller.snapshot();
-		cx.notify();
+	fn refresh_expanded_activity(&mut self) {
+		self.expanded_accounts
+			.retain(|id| self.accounts.accounts.iter().any(|a| &a.account_id == id));
+		self.account_activity.retain(|id, (cached, _)| {
+			self.accounts.accounts.iter().any(|a| {
+				&a.account_id == id && cached.selected_revision == Some(a.account_revision)
+			})
+		});
+		if self.account_profile.load == AccountProfileLoadState::Loading {
+			return;
+		}
+		let next = self.accounts.accounts.iter().find(|account| {
+			self.expanded_accounts.contains(&account.account_id)
+				&& self.account_activity.get(&account.account_id).is_none_or(|(snapshot, at)| {
+					snapshot.selected_revision != Some(account.account_revision)
+						|| at.elapsed() >= Duration::from_secs(30)
+				})
+		});
+		if let Some(account) = next {
+			if self.account_profile_controller.snapshot().selected.as_ref()
+				== Some(&account.account_id)
+			{
+				self.account_profile_controller.refresh();
+			} else {
+				self.account_profile_controller
+					.select_at_revision(account.account_id.clone(), account.account_revision);
+			}
+			self.account_profile = self.account_profile_controller.snapshot();
+			if matches!(
+				self.account_profile.load,
+				AccountProfileLoadState::Offline | AccountProfileLoadState::Refused
+			) {
+				self.account_activity.insert(
+					account.account_id.clone(),
+					(self.account_profile.clone(), std::time::Instant::now()),
+				);
+			}
+		} else if self.expanded_accounts.is_empty() {
+			self.account_profile_controller.close();
+			self.account_profile = self.account_profile_controller.snapshot();
+		}
 	}
 
 	fn start_account_enrollment(&mut self, method: AccountLoginMethod, cx: &mut Context<Self>) {
@@ -2027,6 +2064,7 @@ fn publish_views(
 	while let Ok(view) = views.try_recv() {
 		let _ = shell.update(cx, |shell, cx| {
 			if connection_requires_recovery(shell.connection, view) {
+				shell.account_activity.clear();
 				shell.agent.update(cx, AgentSurface::mark_stale);
 			} else if shell.connection != view && matches!(view, ConnectionView::Online { .. }) {
 				shell.agent.update(cx, |s, cx| s.refresh(cx));
@@ -2038,7 +2076,6 @@ fn publish_views(
 	let _ = shell.update(cx, |shell, cx| {
 		shell.poll_account_login(cx);
 		shell.poll_reset_cards(cx);
-		shell.poll_recovery_action(cx);
 		let accounts = shell.accounts_controller.snapshot();
 		if let Some(selected) = &shell.account_profile.selected {
 			if let Some(account) = accounts.accounts.iter().find(|a| &a.account_id == selected) {
@@ -2071,9 +2108,17 @@ fn publish_views(
 			cx.notify();
 		}
 		if account_profile != shell.account_profile {
+			if account_profile.load != AccountProfileLoadState::Loading
+				&& let Some(id) = &account_profile.selected
+			{
+				shell
+					.account_activity
+					.insert(id.clone(), (account_profile.clone(), std::time::Instant::now()));
+			}
 			shell.account_profile = account_profile;
 			cx.notify();
 		}
+		shell.refresh_expanded_activity();
 		if desktop_settings != shell.desktop_settings_snapshot {
 			shell.desktop_settings_snapshot = desktop_settings;
 			shell.settings.update(cx, SettingsSurface::synchronize);
@@ -2779,16 +2824,25 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 			);
 			div()
 				.w_full()
+				.rounded(px(8.))
+				.bg(rgba(0xffffff04))
 				.flex()
 				.flex_col()
-				.gap_1()
 				.child(row)
-				.when(shell.account_profile.selected.as_ref() == Some(&account.account_id), |row| {
-					row.child(account_profile_panel(shell, cx))
-				})
-				.when(shell.reset_cards.is_selected(&account.account_id), |row| {
-					row.children(reset_cards::panel(shell, cx))
-				})
+				.child(crate::ui_motion::disclosure(
+					SharedString::from(format!(
+						"account-expansion-{}",
+						account.account_id.as_str()
+					)),
+					shell.expanded_accounts.contains(&account.account_id),
+					div()
+						.w_full()
+						.flex()
+						.flex_col()
+						.gap_1()
+						.child(account_activity::panel(shell, &account.account_id))
+						.children(reset_cards::row(shell, account, cx)),
+				))
 				.into_any_element()
 		})
 		.collect()
@@ -3065,221 +3119,6 @@ fn account_login_prompt(code: String, url: String) -> AnyElement {
 		.into_any_element()
 }
 
-fn account_profile_panel(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
-	let selected = shell
-		.account_profile
-		.selected
-		.as_ref()
-		.map(|account| account.as_str().to_owned())
-		.unwrap_or_default();
-	let (status, facts) = match shell.account_profile.result.as_ref() {
-		Some(AccountProfileResult::Current(profile)) =>
-			("Account profile".to_owned(), account_profile_facts(profile)),
-		Some(AccountProfileResult::Cached { profile, .. }) =>
-			("Cached profile".to_owned(), account_profile_facts(profile)),
-		Some(AccountProfileResult::Unavailable { plan_type, .. }) => (
-			"No current profile".to_owned(),
-			plan_type
-				.as_ref()
-				.map(|plan| vec![format!("Plan · {}", account_plan_label(plan.as_str()))])
-				.unwrap_or_default(),
-		),
-		None => (
-			if shell.account_profile.load == AccountProfileLoadState::Loading {
-				"Loading profile…"
-			} else {
-				"No current profile"
-			}
-			.to_owned(),
-			Vec::new(),
-		),
-	};
-
-	div()
-		.id("account-profile-panel")
-		.px_4()
-		.py_3()
-		.flex()
-		.items_center()
-		.justify_between()
-		.gap_3()
-		.rounded(px(10.0))
-		.border_1()
-		.border_color(rgba(0xffffff12))
-		.bg(rgba(0xffffff04))
-		.child(
-			div()
-				.flex_1()
-				.min_w_0()
-				.flex()
-				.flex_col()
-				.gap_2()
-				.child(
-					div()
-						.flex()
-						.items_center()
-						.gap_2()
-						.child(
-							div()
-								.font_family(ui_theme::FONT_FAMILY)
-								.text_size(px(11.0))
-								.text_color(rgb(WB_BLUE))
-								.child("Account details"),
-						)
-						.child(
-							div()
-								.font_family(ui_theme::FONT_FAMILY)
-								.text_size(px(11.0))
-								.text_color(rgb(WB_TEXT_FAINT))
-								.child(selected),
-						),
-				)
-				.child(div().text_size(px(11.0)).text_color(rgb(WB_TEXT_MUTED)).child(status))
-				.children(account_recovery_copy(shell, cx))
-				.child(recovery_actions::status_panel(shell, cx))
-				.child(div().flex().flex_wrap().gap_2().children(facts.into_iter().map(|fact| {
-					div()
-						.px_2()
-						.py_1()
-						.rounded(px(5.0))
-						.bg(rgba(0xffffff08))
-						.font_family(ui_theme::FONT_FAMILY)
-						.text_size(px(11.0))
-						.text_color(rgb(WB_TEXT_FAINT))
-						.child(fact)
-				}))),
-		)
-		.child(
-			div()
-				.flex()
-				.items_center()
-				.gap_2()
-				.child(
-					account_login_button(
-						"account-profile-refresh",
-						"Refresh",
-						shell.account_profile.can_refresh,
-					)
-					.when(shell.account_profile.can_refresh, |button| {
-						button.on_click(cx.listener(|shell, _, _, cx| {
-							shell.refresh_account_profile(cx);
-						}))
-					}),
-				)
-				.child(
-					account_login_button("account-profile-close", "Close", true)
-						.on_click(cx.listener(|shell, _, _, cx| shell.close_account_profile(cx))),
-				),
-		)
-		.into_any_element()
-}
-
-fn account_recovery_copy(shell: &Shell, cx: &mut Context<Shell>) -> Option<AnyElement> {
-	use decodex_protocol::AccountRecoveryState;
-	let result = shell.account_profile.recovery.as_ref()?;
-	let (banner, stale) = match &result.state {
-		AccountRecoveryState::Current(banner) => (banner, false),
-		AccountRecoveryState::Stale(banner) => (banner, true),
-		_ => return None,
-	};
-	Some(
-		div()
-			.id("account-recovery-copy")
-			.flex()
-			.flex_col()
-			.gap_2()
-			.p_2()
-			.rounded(px(5.0))
-			.bg(rgba(0xffffff08))
-			.text_size(px(12.0))
-			.text_color(rgb(WB_TEXT_MUTED))
-			.child(div().text_color(rgb(WB_AMBER)).child(crate::account_profile::recovery_copy(
-				banner.title.as_str(),
-				banner.reset_at,
-			)))
-			.child(crate::account_profile::recovery_copy(
-				banner.description.as_str(),
-				banner.reset_at,
-			))
-			.children(
-				banner
-					.blocked_model_slug
-					.as_ref()
-					.map(|model| div().child(format!("Affected model · {}", model.as_str()))),
-			)
-			.when(stale, |panel| {
-				panel.child("This notice is out of date. Refresh account details.")
-			})
-			.child(recovery_actions::buttons(shell, result, cx))
-			.when(!stale && banner.dismissible, |panel| {
-				let expected = result.clone();
-				panel.child(
-					account_login_button("dismiss-account-notice", "Dismiss", true)
-						.debug_selector(|| "dismiss-account-notice".into())
-						.on_click(cx.listener(move |shell, _, _, cx| {
-							shell.account_profile_controller.dismiss_recovery(&expected);
-							shell.account_profile = shell.account_profile_controller.snapshot();
-							cx.notify();
-						})),
-				)
-			})
-			.into_any_element(),
-	)
-}
-
-// Match native account labels; preserve unknown provider values and stored SKU identity.
-fn account_plan_label(plan: &str) -> &str {
-	match plan.to_ascii_lowercase().as_str() {
-		"free" => "Free",
-		"go" => "Go",
-		"plus" => "Plus",
-		"pro" => "Pro",
-		"prolite" => "Pro Lite",
-		"self_serve_business_prolite" => "Business Premium",
-		"team" | "self_serve_business_usage_based" => "Business",
-		"enterprise_cbp_automation" => "Enterprise (Automation)",
-		"business" | "ent26" | "enterprise_cbp_usage_based" | "enterprise" | "hc" => "Enterprise",
-		"edu" | "education" => "Edu",
-		"edu_plus" => "Edu Plus",
-		"edu_pro" => "Edu Pro",
-		"unknown" => "Unknown",
-		_ => plan,
-	}
-}
-
-fn account_profile_facts(profile: &decodex_protocol::AccountProfileDto) -> Vec<String> {
-	let mut facts = Vec::new();
-	if let Some(plan) = &profile.plan_type {
-		facts.push(format!("Plan · {}", account_plan_label(plan.as_str())));
-	}
-	if let Some(tokens) = profile.lifetime_tokens {
-		facts.push(format!("Lifetime · {} tokens", agent_surface::compact_tokens(tokens)));
-	}
-	if let Some(tokens) = profile.peak_daily_tokens {
-		facts.push(format!("Peak day · {} tokens", agent_surface::compact_tokens(tokens)));
-	}
-	if let Some(days) = profile.current_streak_days {
-		facts.push(format!("Streak · {days} days"));
-	}
-	if let Some(seconds) = profile.longest_task_seconds {
-		facts.push(format!("Longest task · {seconds}s"));
-	}
-	if !profile.daily_usage.is_empty() {
-		facts.push(format!("{} days recorded", profile.daily_usage.len()));
-	}
-	facts
-}
-
-const fn account_profile_load_label(load: AccountProfileLoadState) -> &'static str {
-	match load {
-		AccountProfileLoadState::Closed => "Select an account profile.",
-		AccountProfileLoadState::Loading => "Loading the daemon-owned profile…",
-		AccountProfileLoadState::Ready => "Profile loaded.",
-		AccountProfileLoadState::Offline => "Profile is offline.",
-		AccountProfileLoadState::Refused => "The profile response was refused.",
-	}
-}
-
 fn account_login_button(
 	id: impl Into<gpui::ElementId>,
 	label: impl Into<SharedString>,
@@ -3463,7 +3302,6 @@ fn account_pool_row(
 	div()
 		.w_full()
 		.rounded(px(8.))
-		.bg(rgba(0xffffff04))
 		.id(("account-row", index))
 		.px(px(14.0))
 		.py(px(6.0))
@@ -3520,11 +3358,7 @@ fn account_pool_summary(
 		.cursor_pointer()
 		.hover(|style| style.bg(rgba(0xffffff05)))
 		.on_click(cx.listener(move |shell, _, _, cx| {
-			if shell.account_profile.selected.as_ref() == Some(&profile_id) {
-				shell.close_account_profile(cx);
-			} else {
-				shell.show_account_profile(profile_id.clone(), cx);
-			}
+			shell.toggle_account_activity(profile_id.clone(), cx);
 		}))
 		.flex()
 		.min_w_0()
@@ -3669,8 +3503,6 @@ fn account_management_actions(
 	let index = presentation.index;
 	let needs_login = account_needs_login(account);
 	let login_account_id = account.account_id.clone();
-	let reset_account_id = account.account_id.clone();
-	let reset_alias = account.alias.as_str().to_owned();
 	let logout_account_id = account.account_id.clone();
 	let login_account_revision = account.account_revision;
 	let login_recovery_operation_id = account_login_recovery_operation_id(account);
@@ -3680,21 +3512,6 @@ fn account_management_actions(
 		.justify_start()
 		.items_center()
 		.gap_1()
-		.when(!needs_login, |row| {
-			row.child(
-				account_icon_action(
-					"account-reset-cards",
-					index,
-					"Show Reset Cards",
-					workspace_symbols::Symbol::AccountLogin,
-					true,
-				)
-				.on_click(cx.listener(move |shell, _, _, cx| {
-					cx.stop_propagation();
-					shell.show_reset_cards(reset_account_id.clone(), reset_alias.clone(), cx)
-				})),
-			)
-		})
 		.when(needs_login, |row| {
 			row.child(
 				account_icon_action(
@@ -5952,30 +5769,7 @@ fn account_pool_header(
 					)
 					.on_click(cx.listener(|shell, _, _, cx| shell.toggle_account_emails(cx))),
 				)
-				.child(account_mode_button("Balanced", balanced, can_manage, cx))
-				.child(
-					div()
-						.id("accounts-refresh")
-						.role(Role::Button)
-						.aria_label("Refresh account pool")
-						.h(px(28.0))
-						.px_3()
-						.flex()
-						.items_center()
-						.rounded(px(7.0))
-						.text_size(px(11.0))
-						.text_color(rgb(WB_TEXT_MUTED))
-						.cursor_pointer()
-						.hover(|element| {
-							element.bg(rgba(crate::ui_theme::HOVER_FILL)).text_color(rgb(WB_TEXT))
-						})
-						.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
-						.on_click(cx.listener(|shell, _, _, cx| {
-							shell.refresh_accounts(cx);
-						}))
-						.child("Refresh")
-						.smooth(),
-				),
+				.child(account_mode_button("Balanced", balanced, can_manage, cx)),
 		)
 		.into_any_element()
 }
@@ -6385,9 +6179,7 @@ mod tests {
 			for id in ["account-login-0", "account-login-warning-0"] {
 				assert_eq!(visual.debug_bounds(id).is_some(), needs_login, "{id}");
 			}
-			for id in
-				["account-quota-0", "account-pin-0", "account-enabled-0", "account-reset-cards-0"]
-			{
+			for id in ["account-quota-0", "account-pin-0", "account-enabled-0"] {
 				assert_eq!(visual.debug_bounds(id).is_some(), !needs_login, "{id}");
 			}
 			assert!(visual.debug_bounds("account-logout-0").is_some());

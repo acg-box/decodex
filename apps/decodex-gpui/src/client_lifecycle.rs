@@ -743,7 +743,6 @@ impl ClientLifecycle {
 				}
 				self.conversations.apply_event(&conversation_event);
 				self.accounts.apply_event(&conversation_event);
-				self.account_profile.apply_event(&conversation_event);
 				self.desktop_settings.apply_event(&conversation_event);
 				let checkpoint = match io.confirm_applied(confirmation) {
 					Ok(checkpoint) => checkpoint,
