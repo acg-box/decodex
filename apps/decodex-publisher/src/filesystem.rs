@@ -263,6 +263,14 @@ pub(crate) fn require_contained_regular_file(path: &Path, root: &Path) -> Result
 }
 
 pub(crate) fn collect_json_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+	collect_json_files_inner(paths, true)
+}
+
+pub(crate) fn collect_required_json_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+	collect_json_files_inner(paths, false)
+}
+
+fn collect_json_files_inner(paths: &[PathBuf], allow_missing: bool) -> Result<Vec<PathBuf>> {
 	let mut files = Vec::new();
 	let mut limits = TraversalLimits::default();
 
@@ -271,7 +279,8 @@ pub(crate) fn collect_json_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
 		let absolute = clean_absolute_path(path)?;
 		let opened = match open_path(&absolute) {
 			Ok(opened) => opened,
-			Err(error) if error.downcast_ref::<Errno>() == Some(&Errno::NOENT) => continue,
+			Err(error) if allow_missing && error.downcast_ref::<Errno>() == Some(&Errno::NOENT) =>
+				continue,
 			Err(error) => return Err(error),
 		};
 		collect_opened_path(opened, display_path, &mut files, &mut limits)?;

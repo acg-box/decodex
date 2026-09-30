@@ -140,9 +140,12 @@ fn validate_social_at(root: &std::path::Path, paths: &[PathBuf]) -> Result<Socia
 	} else {
 		paths.to_vec()
 	};
-	let files = collect_json_files(
-		&paths.iter().map(|path| resolve_against(root, path)).collect::<Vec<_>>(),
-	)?;
+	let paths = paths.iter().map(|path| resolve_against(root, path)).collect::<Vec<_>>();
+	let files = if default_scope {
+		collect_json_files(&paths)?
+	} else {
+		filesystem::collect_required_json_files(&paths)?
+	};
 	let mut errors = Vec::new();
 
 	for path in &files {
