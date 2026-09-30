@@ -22,7 +22,7 @@ pub(crate) struct RadarBundleBuildRequest {
 }
 
 /// Exact-byte evidence for one installed deterministic bundle.
-#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RadarBundleBuildReceipt {
 	/// Versioned receipt contract.

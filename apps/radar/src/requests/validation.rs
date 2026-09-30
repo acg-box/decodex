@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
-use crate::{DEFAULT_LEDGER_PATH, DEFAULT_QUEUE_OUT, DEFAULT_SEARCH_LIMIT, DEFAULT_SIGNALS_DIR};
+use crate::{
+	DEFAULT_LEDGER_PATH, DEFAULT_QUEUE_OUT, DEFAULT_SEARCH_LIMIT, DEFAULT_SIGNALS_DIR,
+	RadarCacheGcReport,
+};
 
 /// Request to validate Radar JSON artifacts.
 #[derive(Debug)]
@@ -78,5 +81,5 @@ pub(crate) struct RadarValidationReport {
 	pub(crate) checked_files: usize,
 	/// Bounded retention evidence for default daily validation.
 	#[serde(skip_serializing_if = "Option::is_none")]
-	pub(crate) cache_gc: Option<crate::RadarCacheGcReport>,
+	pub(crate) cache_gc: Option<RadarCacheGcReport>,
 }

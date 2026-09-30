@@ -2,7 +2,11 @@
 
 #![allow(unused_crate_dependencies)]
 
-use std::{fs, os::unix::fs::PermissionsExt as _, process::Command};
+use std::{
+	fs::{self, Permissions},
+	os::unix::fs::PermissionsExt as _,
+	process::Command,
+};
 
 use serde_json::Value;
 
@@ -22,13 +26,13 @@ fn validate_cli_accepts_a_relative_queue_path_from_an_isolated_cwd() {
 		".agent/automations/radar/cache/github",
 		".agent/automations/radar/cache/github/review-queue",
 	] {
-		fs::set_permissions(cwd.path().join(directory), fs::Permissions::from_mode(0o700))
+		fs::set_permissions(cwd.path().join(directory), Permissions::from_mode(0o700))
 			.expect("private directory mode");
 	}
 
 	fs::write(&path, serde_json::to_vec_pretty(&valid_review_queue()).expect("queue JSON"))
 		.expect("queue write");
-	fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).expect("private queue mode");
+	fs::set_permissions(&path, Permissions::from_mode(0o600)).expect("private queue mode");
 
 	let output = Command::new(env!("CARGO_BIN_EXE_radar"))
 		.current_dir(cwd.path())

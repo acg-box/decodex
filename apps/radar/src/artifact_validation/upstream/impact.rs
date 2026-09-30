@@ -1,7 +1,7 @@
 use serde_json::{Map, Value};
 
 use crate::{
-	SIGNAL_CONFIDENCE,
+	SIGNAL_CONFIDENCE, UPSTREAM_SUBJECT_KINDS,
 	artifact_validation::{constants::UPSTREAM_IMPACT_KINDS, support},
 };
 
@@ -70,10 +70,10 @@ fn validate_review_lineage(lineage: Option<&Value>, errors: &mut Vec<String>) {
 		}
 	}
 
-	if !support::matches_one_of(lineage.get("subject_kind"), crate::UPSTREAM_SUBJECT_KINDS) {
+	if !support::matches_one_of(lineage.get("subject_kind"), UPSTREAM_SUBJECT_KINDS) {
 		errors.push(format!(
 			"review_lineage.subject_kind must be one of {}",
-			support::choices(crate::UPSTREAM_SUBJECT_KINDS)
+			support::choices(UPSTREAM_SUBJECT_KINDS)
 		));
 	}
 
