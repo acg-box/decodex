@@ -250,7 +250,7 @@ fn prepare_command(command: AccountCommand) -> Result<PreparedCommand, InvalidIn
 				operation_id: entity(&args.operation_id)?,
 				account_id: entity(&args.account_id)?,
 				enabled: args.enabled,
-				source_descriptor: text(args.source.to_string_lossy().into_owned())?,
+				source_descriptor: text(args.source.to_str().ok_or(InvalidInput)?.to_owned())?,
 			},
 			None,
 			args.idempotency_key,
@@ -514,6 +514,54 @@ mod tests {
 			import.command,
 			Command::Account(AccountCommand::Import(args)) if args.enabled
 		));
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn import_preserves_exact_unicode_paths_and_rejects_non_utf8_paths() {
+		use std::{ffi::OsString, os::unix::ffi::OsStringExt as _};
+		for (source, expected) in [
+			(
+				OsString::from("/private/账户/credentials.json"),
+				Some("/private/账户/credentials.json"),
+			),
+			(OsString::from("/private/�.json"), Some("/private/�.json")),
+			(OsString::from_vec(b"/private/\xff.json".to_vec()), None),
+		] {
+			let mut args: Vec<OsString> = [
+				"decodex",
+				"account",
+				"import",
+				"--operation-id",
+				OPERATION_ID,
+				"--account-id",
+				ACCOUNT_ID,
+				"--idempotency-key",
+				"fixture-import",
+				"--source",
+			]
+			.into_iter()
+			.map(OsString::from)
+			.collect();
+			args.push(source);
+			let cli = Cli::try_parse_from(args).expect("OS path argument must parse");
+			let Command::Account(command) = cli.command else { panic!("account command") };
+			match (super::prepare_command(command), expected) {
+				(
+					Ok((
+						decodex_protocol::CommandPayload::ImportAccountCredentialFile {
+							source_descriptor,
+							..
+						},
+						None,
+						_,
+					)),
+					Some(expected),
+				) => assert_eq!(source_descriptor.as_str(), expected),
+				(Err(_), None) => {},
+				_ => panic!("import must preserve its source path or reject it before dispatch"),
+			}
+		}
 	}
 
 	#[test]
