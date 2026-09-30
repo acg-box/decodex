@@ -359,7 +359,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		defer { try? FileManager.default.removeItem(at: directory) }
 		let store = ResetCardStore(
 			client: AccountPanelLayoutClient(),
-			pendingStore: ResetCardPendingAttemptStore(
+			pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request,
 				journalURL: directory.appendingPathComponent("pending.json")
 			),
 			startupRetryDelays: []
@@ -383,7 +383,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 			[.posixPermissions: 0o700],
 			ofItemAtPath: directory.path
 		)
-		let pendingStore = ResetCardPendingAttemptStore(
+		let pendingStore = ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request,
 			journalURL: directory.appendingPathComponent("pending.json")
 		)
 		let attempt = try pendingAttempt(1)
@@ -576,7 +576,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		defer { try? FileManager.default.removeItem(at: directory) }
 		let store = ResetCardStore(
 			client: FullAccountPanelClient(),
-			pendingStore: ResetCardPendingAttemptStore(
+			pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request,
 				journalURL: directory.appendingPathComponent("pending.json")
 			),
 			startupRetryDelays: []
@@ -649,7 +649,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 			[.posixPermissions: 0o700],
 			ofItemAtPath: directory.path
 		)
-		let pendingStore = ResetCardPendingAttemptStore(
+		let pendingStore = ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request,
 			journalURL: directory.appendingPathComponent("pending.json")
 		)
 		for index in 1...64 {

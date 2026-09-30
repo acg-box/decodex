@@ -11,7 +11,7 @@ final class ResetCardPendingAttemptStoreTests: XCTestCase {
 
 		XCTAssertEqual(fixture.store.insert(attempt), [attempt])
 
-		let reloaded = ResetCardPendingAttemptStore(
+		let reloaded = ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request,
 			journalURL: fixture.journalURL
 		)
 		XCTAssertEqual(reloaded.load(), .available([attempt]))
@@ -102,7 +102,7 @@ final class ResetCardPendingAttemptStoreTests: XCTestCase {
 			at: symlinkDirectory,
 			withDestinationURL: targetDirectory
 		)
-		let linkedStore = ResetCardPendingAttemptStore(
+		let linkedStore = ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request,
 			journalURL: symlinkDirectory.appendingPathComponent("pending.json")
 		)
 
@@ -118,7 +118,7 @@ final class ResetCardPendingAttemptStoreTests: XCTestCase {
 			[.posixPermissions: 0o755],
 			ofItemAtPath: targetDirectory.path
 		)
-		let nonPrivateStore = ResetCardPendingAttemptStore(
+		let nonPrivateStore = ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request,
 			journalURL: targetDirectory.appendingPathComponent("pending.json")
 		)
 		XCTAssertEqual(nonPrivateStore.load(), .recoveryBlocked([]))
@@ -227,7 +227,7 @@ final class ResetCardPendingAttemptStoreTests: XCTestCase {
 			0o600
 		)
 		XCTAssertEqual(
-			ResetCardPendingAttemptStore(journalURL: fixture.journalURL).load(),
+			ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: fixture.journalURL).load(),
 			.available([attempt])
 		)
 	}
@@ -270,7 +270,7 @@ final class ResetCardPendingAttemptStoreTests: XCTestCase {
 			),
 			idempotencyKey: "018f0f9e-7b6e-4a31-8f4c-000000000002"
 		)
-		let other = ResetCardPendingAttemptStore(journalURL: fixture.journalURL)
+		let other = ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: fixture.journalURL)
 
 		XCTAssertEqual(fixture.store.insert(first), [first])
 		XCTAssertEqual(other.insert(second), [first, second])
@@ -297,7 +297,7 @@ final class ResetCardPendingAttemptStoreTests: XCTestCase {
 
 		XCTAssertEqual(fixture.store.insert(first), [first])
 		XCTAssertNil(
-			ResetCardPendingAttemptStore(journalURL: fixture.journalURL)
+			ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: fixture.journalURL)
 				.insert(second)
 		)
 		XCTAssertEqual(fixture.store.load(), .available([first]))
@@ -380,7 +380,7 @@ final class ResetCardPendingAttemptStoreTests: XCTestCase {
 		return Fixture(
 			directory: directory,
 			journalURL: journalURL,
-			store: ResetCardPendingAttemptStore(journalURL: journalURL)
+			store: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: journalURL)
 		)
 	}
 }

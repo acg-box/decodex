@@ -11,20 +11,26 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardPendingAttemptStore.swift
   - id: openwiki-source-08a47b3cdc5d2b1cdae95c23
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift
-  - id: openwiki-source-4b6e253ef76717138b4dd66e
-    resource: repo://apps/decodex-gpui/src/shell_reset_cards.rs
+  - id: openwiki-source-6bb61549bdedebfcb6463cb5
+    resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ResetCardPendingAttemptStoreTests.swift
+  - id: openwiki-source-2fab31262c7d705356b67f7b
+    resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ResetCardStoreRecoveryTests.swift
   - id: openwiki-source-bee528a70eef19ac76275c5e
     resource: repo://crates/decodex-app-client-ffi/src/lib.rs
+  - id: openwiki-source-be5e68990eacc4bf6ca42685
+    resource: repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs
   - id: openwiki-source-6230c010baca677fa60c32c1
     resource: repo://crates/decodex-protocol/src/client.rs
   - id: openwiki-source-d99870a603f95fac1e865fb2
     resource: repo://crates/decodex-runtime/src/account_launch/api_reset_card.rs
   - id: openwiki-source-b931569075c8af059aefa4d2
     resource: repo://database/src/reset_cards.rs
-generated: { by: "codex", at: "2026-09-30T09:17:35.615Z" }
+  - id: openwiki-source-e0e48fb115095577a43dbc91
+    resource: repo://scripts/macos/test_native_app.sh
+generated: { by: "codex", at: "2026-09-30T09:24:46.437Z" }
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-30T09:17:35.615Z
+    at: 2026-09-30T09:24:46.437Z
 ---
 
 
@@ -66,9 +72,13 @@ ledger or choose another request key to force a retry. This conservative behavio
 can require provider-side confirmation before a future recovery feature resolves
 it. No automatic recovery spends a card.
 
-The UI restores account-scoped operation status through the service. The Swift client also keeps a bounded owner-private pending-attempt journal so an unconfirmed request can be reconciled after restart. That journal does not own provider completion or authorize another redemption. Private credit IDs stay inside the service and are removed from terminal ledger rows.
+The UI restores account-scoped operation status through the service. The Rust native-client library also keeps a bounded owner-private pending-attempt journal so an unconfirmed request can be reconciled after restart. Swift selects the application-support path and calls the versioned native journal API. That journal does not own provider completion or authorize another redemption. Private credit IDs stay inside the service and are removed from terminal ledger rows.
 
 The Rust protocol client validates the selected account, descriptor, revision, request key and receipt before it reports consumption. The native `consume_reset_card` operation returns the validated operation state or an explicit rejection/possible-dispatch failure. Swift presents that result; it does not decode service command receipts a second time. A possible dispatch preserves the original pending request for status reads. The old `use_reset_card` native operation is not accepted, so a mixed native library cannot interpret the changed response contract.
+
+The journal preserves `reset-card-pending-v1.json` and schema `decodex/reset-card-pending/2`. Rust owns validation, duplicate detection, recovery of valid entries, the 64-attempt limit, process and file locks, and synchronized atomic replacement. Unknown schemas or conflicting records block mutation without deleting the file. A native dispatch lease holds the same file lock across the async request and removes only the exact saved attempt after a definite result. A retained or failed result does not create a new key or send another request. Service recovery cannot replace this journal because a request can lose acknowledgment before the service has a readable operation.
+
+Run `scripts/macos/test_native_app.sh --filter 'ResetCardPendingAttemptStoreTests|ResetCardStoreRecoveryTests'` to exercise the actual Rust journal through Swift. Rust tests also check the legacy document and exclusion of another process while a dispatch lease is held.
 
 Use the current embedded migration ledger for upgrade compatibility. Preserve pending operations and database backups; never clear evidence to force another attempt.
 

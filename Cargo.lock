@@ -1570,6 +1570,7 @@ name = "decodex-app-client-ffi"
 version = "0.2.0"
 dependencies = [
  "decodex-protocol",
+ "libc",
  "serde",
  "serde_json",
  "tokio",

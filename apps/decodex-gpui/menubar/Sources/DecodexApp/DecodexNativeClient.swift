@@ -339,6 +339,23 @@ final class DecodexNativeClient: @unchecked Sendable, CustomDebugStringConvertib
 	}
 }
 
+extension DecodexNativeClient {
+	static func resetCardJournal(_ data: Data) throws -> Data {
+		let library = try DecodexNativeLibrary.shared.get()
+		var buffer: UnsafeMutablePointer<UInt8>?
+		var length = 0
+		let status = data.withUnsafeBytes { bytes in
+			library.journal(bytes.bindMemory(to: UInt8.self).baseAddress, data.count, &buffer, &length)
+		}
+		defer { if let buffer { library.free(buffer, length) } }
+		guard status == 0, let buffer, length > 0, length <= decodexNativeClientResponseLimit else {
+			throw ResetCardClientError.nativeClientUnavailable
+		}
+		return Data(bytes: buffer, count: length)
+	}
+}
+
+
 private final class DecodexNativeSession: @unchecked Sendable {
 	private let lock = NSLock()
 	private var client: UnsafeMutableRawPointer?
@@ -469,11 +486,13 @@ private final class DecodexNativeLibrary: @unchecked Sendable {
 		UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?,
 		UnsafeMutablePointer<Int>?
 	) -> Int32
+	typealias Journal = @convention(c) (UnsafePointer<UInt8>?, Int, UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?, UnsafeMutablePointer<Int>?) -> Int32
 	typealias Free = @convention(c) (UnsafeMutablePointer<UInt8>?, Int) -> Void
 	typealias Destroy = @convention(c) (UnsafeMutableRawPointer?) -> Void
 
 	static let shared = ResultBox()
 
+	let journal: Journal
 	let create: Create
 	let request: Request
 	let free: Free
@@ -498,6 +517,7 @@ private final class DecodexNativeLibrary: @unchecked Sendable {
 		self.image = image
 
 		do {
+			journal = try Self.symbol(image, named: "decodex_reset_card_journal_v1")
 			create = try Self.symbol(
 				image,
 				named: "decodex_app_native_client_create"

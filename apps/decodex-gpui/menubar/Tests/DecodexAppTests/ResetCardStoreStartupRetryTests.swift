@@ -992,7 +992,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 
 		return StartupRetryPendingFixture(
 			directory: directory,
-			store: ResetCardPendingAttemptStore(
+			store: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request,
 				journalURL: directory.appendingPathComponent("pending.json")
 			)
 		)

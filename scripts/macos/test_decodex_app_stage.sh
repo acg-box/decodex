@@ -82,6 +82,7 @@ nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_menu_
 nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_app_was_launched_as_login_item' >/dev/null
 nm -gj "$contents/Frameworks/libDecodexMenuBar.dylib" | grep -Fx '_decodex_menu_bar_destroy' >/dev/null
 nm -gj "$contents/Frameworks/libdecodex_app_client_ffi.dylib" | grep -Fx '_decodex_app_native_client_create' >/dev/null
+nm -gj "$contents/Frameworks/libdecodex_app_client_ffi.dylib" | grep -Fx '_decodex_reset_card_journal_v1' >/dev/null
 
 mismatch_library="$stage_root/libmismatched_native_client.dylib"
 rustc +stable --edition=2024 --crate-type cdylib \
