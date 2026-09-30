@@ -100,6 +100,7 @@ pub(super) fn path_for_storage(path: &Path) -> crate::prelude::Result<String> {
 		if path.components().any(|component| matches!(component, std::path::Component::ParentDir)) {
 			eyre::bail!("Radar cache artifact path must not contain '..'");
 		}
+
 		let cwd = env::current_dir()?;
 
 		return Ok(path.strip_prefix(&cwd).unwrap_or(path).display().to_string());

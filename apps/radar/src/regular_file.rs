@@ -38,9 +38,11 @@ pub(crate) fn read_regular_file_bounded(
 		max_bytes.checked_add(1).ok_or_else(|| eyre::eyre!("{label} read limit is too large"))?;
 
 	file.by_ref().take(read_limit).read_to_end(&mut payload)?;
+
 	if u64::try_from(payload.len()).unwrap_or(u64::MAX) > max_bytes {
 		eyre::bail!("{label} exceeds the bounded read limit");
 	}
+
 	let final_identity = identity_from_metadata(&file.metadata()?);
 	let (_, current_identity) = open_regular_file(path, label)?;
 

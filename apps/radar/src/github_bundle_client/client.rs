@@ -54,6 +54,7 @@ impl GithubClient {
 		let pulls = self.github_paginated(&format!(
 			"https://api.github.com/repos/{repo}/commits/{commit_sha}/pulls"
 		))?;
+
 		Ok(pulls.first().and_then(|first| crate::required_value_u64(first, "number").ok()))
 	}
 

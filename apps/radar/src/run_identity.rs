@@ -9,6 +9,7 @@ pub(crate) fn current_run_id() -> Result<String> {
 		.map_err(|_| eyre::eyre!("CODEX_THREAD_ID must be set to a lowercase UUID"))?;
 
 	validate_run_id(&run_id)?;
+
 	Ok(run_id)
 }
 

@@ -27,6 +27,7 @@ fn private_file(path: &std::path::Path, bytes: &[u8], modified: SystemTime) {
 	if let Some(parent) = path.parent() {
 		crate::ensure_private_directory(parent).expect("private parent should be created");
 	}
+
 	let mut file = crate::create_private_file(path).expect("private file should be created");
 
 	file.write_all(bytes).expect("fixture bytes should be written");
@@ -81,10 +82,12 @@ fn cache_gc_covers_every_writer_collection_and_recovers_crash_temporary_files() 
 	let mut strict = policy();
 
 	strict.max_files_per_collection = 1;
+
 	for collection in collections {
 		private_file(&root.join(collection).join("new.json"), b"1", recent);
 		private_file(&root.join(collection).join("old.json"), b"1", older);
 	}
+
 	private_file(&root.join("generated/new.json"), b"1", recent);
 	private_file(&root.join("generated/analysis/old.json"), b"1", older);
 	private_file(&root.join(".radar-tmp-crashed-root"), b"partial", recent);
@@ -95,10 +98,12 @@ fn cache_gc_covers_every_writer_collection_and_recovers_crash_temporary_files() 
 			.expect("cache GC should recover and retain every writer collection");
 
 	assert_eq!(report.files_removed, collections.len() + 3);
+
 	for collection in collections {
 		assert!(root.join(collection).join("new.json").exists());
 		assert!(!root.join(collection).join("old.json").exists());
 	}
+
 	assert!(root.join("generated/new.json").exists());
 	assert!(!root.join("generated/analysis/old.json").exists());
 	assert!(!root.join(".radar-tmp-crashed-root").exists());
@@ -113,6 +118,7 @@ fn cache_gc_prunes_ledger_rows_with_atomic_persistence() {
 	let connection = crate::ledger::open_ledger(&ledger).expect("ledger should open");
 
 	connection.close().expect("ledger fixture should persist");
+
 	let raw = rusqlite::Connection::open(&ledger).expect("raw oversized fixture should open");
 
 	raw.execute(
@@ -131,7 +137,9 @@ fn cache_gc_prunes_ledger_rows_with_atomic_persistence() {
 		],
 	)
 	.expect("oversized source cache rows should be inserted");
+
 	drop(raw);
+
 	let ledger_mode = fs::metadata(&ledger).unwrap().permissions().mode() & 0o777;
 	let before = fs::metadata(&ledger).expect("oversized ledger metadata should exist");
 
@@ -145,9 +153,11 @@ fn cache_gc_prunes_ledger_rows_with_atomic_persistence() {
 	.expect("ledger retention should succeed");
 
 	assert!(report.ledger_rows_removed >= 9_999);
+
 	let after = fs::metadata(&ledger).expect("retained ledger metadata should exist");
 
 	assert_ne!(before.ino(), after.ino());
+
 	for entry in fs::read_dir(ledger.parent().expect("ledger should have a parent"))
 		.expect("ledger parent should be readable")
 	{
@@ -165,12 +175,14 @@ fn cache_gc_prunes_ledger_rows_with_atomic_persistence() {
 			"unexpected SQLite or replacement sidecar: {name}"
 		);
 	}
+
 	let connection = crate::ledger::open_ledger(&ledger).expect("retained ledger should reopen");
 	let source_rows: i64 = connection
 		.query_row("SELECT COUNT(*) FROM source_cache", [], |row| row.get(0))
 		.expect("source row count should be read");
 
 	assert_eq!(source_rows, 2);
+
 	connection.close().expect("retained ledger should close");
 }
 
@@ -196,6 +208,7 @@ fn cache_gc_fails_closed_without_resetting_an_oversized_ledger() {
 	let mut strict = policy();
 
 	strict.ledger_max_bytes = 1;
+
 	let error = crate::cache_gc(&RadarCacheGcRequest {
 		cache_root: root,
 		policy: strict,
@@ -209,12 +222,14 @@ fn cache_gc_fails_closed_without_resetting_an_oversized_ledger() {
 		std::os::unix::fs::MetadataExt::ino(&before),
 		std::os::unix::fs::MetadataExt::ino(&after)
 	);
+
 	let reopened = crate::ledger::open_ledger(&ledger).expect("ledger must remain valid");
 	let rows: i64 = reopened
 		.query_row("SELECT COUNT(*) FROM source_cache", [], |row| row.get(0))
 		.expect("source cache rows should remain readable");
 
 	assert_eq!(rows, 1);
+
 	reopened.close().expect("preserved ledger should close");
 }
 
@@ -226,6 +241,7 @@ fn cache_io_is_owner_only_and_rejects_symlinks_and_wrong_modes() {
 
 	crate::write_json(&path, &serde_json::json!({"schema": "test"}))
 		.expect("private JSON should be written");
+
 	let directory_mode =
 		fs::metadata(path.parent().expect("parent should exist")).unwrap().permissions().mode()
 			& 0o777;
@@ -236,9 +252,11 @@ fn cache_io_is_owner_only_and_rejects_symlinks_and_wrong_modes() {
 
 	fs::set_permissions(&path, fs::Permissions::from_mode(0o644))
 		.expect("fixture mode should be weakened");
+
 	let mode_error = crate::load_json(&path).expect_err("wrong file mode must fail");
 
 	assert!(mode_error.to_string().contains("expected 0600"));
+
 	let owner_error =
 		crate::simulate_wrong_owner_error(&path).expect_err("wrong owner must fail validation");
 
@@ -250,6 +268,7 @@ fn cache_io_is_owner_only_and_rejects_symlinks_and_wrong_modes() {
 		.expect("GitHub cache root should exist");
 	std::os::unix::fs::symlink(temp_dir.path(), &symlink_parent)
 		.expect("symlink fixture should be created");
+
 	let symlink_error = crate::write_json(
 		&symlink_parent.join("impact.json"),
 		&serde_json::json!({"schema": "test"}),
@@ -263,6 +282,7 @@ fn cache_io_is_owner_only_and_rejects_symlinks_and_wrong_modes() {
 	crate::ensure_private_directory(&bad_root).expect("private cache root should be created");
 	fs::set_permissions(&bad_root, fs::Permissions::from_mode(0o755))
 		.expect("fixture directory mode should be weakened");
+
 	let directory_error = crate::cache_gc(&RadarCacheGcRequest {
 		cache_root: bad_root,
 		policy: policy(),
@@ -282,6 +302,7 @@ fn cache_io_rejects_a_symlink_before_the_fixed_cache_root() {
 	crate::ensure_private_directory(&actual_agent).expect("private target should be created");
 	std::os::unix::fs::symlink(&actual_agent, &linked_agent)
 		.expect("cache ancestor symlink should be created");
+
 	let path = linked_agent.join("automations/radar/cache/github/test-files/review.json");
 	let error = crate::write_json(&path, &serde_json::json!({"schema": "test"}))
 		.expect_err("cache ancestor symlink must fail closed");
@@ -298,6 +319,7 @@ fn cache_io_rejects_parent_traversal_hard_links_and_root_replacement() {
 
 	crate::write_json(&path, &serde_json::json!({"schema": "test"}))
 		.expect("private JSON should be written");
+
 	let traversal = root.join("github/../impact.json");
 	let traversal_error = crate::write_json(&traversal, &serde_json::json!({"schema": "test"}))
 		.expect_err("parent traversal must fail");
@@ -307,9 +329,11 @@ fn cache_io_rejects_parent_traversal_hard_links_and_root_replacement() {
 	let hard_link = root.join("github/test-files/review-copy.json");
 
 	fs::hard_link(&path, &hard_link).expect("hard-link fixture should be created");
+
 	let link_error = crate::load_json(&path).expect_err("multiply-linked cache file must fail");
 
 	assert!(link_error.to_string().contains("invalid link count"));
+
 	fs::remove_file(hard_link).expect("hard-link fixture should be removed");
 
 	let cache =
@@ -318,6 +342,7 @@ fn cache_io_rejects_parent_traversal_hard_links_and_root_replacement() {
 
 	fs::rename(&root, &displaced).expect("cache root should be displaced");
 	crate::ensure_private_directory(&root).expect("replacement root should be created");
+
 	let replacement_error = cache
 		.read(std::path::Path::new("github/test-files/review.json"))
 		.expect_err("open descriptor must reject root path replacement");
@@ -333,6 +358,7 @@ fn cache_io_rejects_reserved_lock_and_temporary_destinations_before_replacement(
 
 	crate::write_json(&ordinary, &serde_json::json!({"schema": "test"}))
 		.expect("ordinary output should initialize the cache");
+
 	let lock_path = root.join(".radar.lock");
 	let lock_before = fs::metadata(&lock_path).expect("cache lock should exist");
 	let lock_error = crate::write_json(&lock_path, &serde_json::json!({"replace": true}))
@@ -347,10 +373,12 @@ fn cache_io_rejects_reserved_lock_and_temporary_destinations_before_replacement(
 	assert!(lock_error.to_string().contains("reserved internal file name"));
 	assert!(temp_error.to_string().contains("reserved internal file name"));
 	assert_eq!(lock_before.ino(), lock_after.ino());
+
 	let cache =
 		crate::private_fs::PrivateCache::open_existing(&root).expect("cache root should reopen");
 
 	drop(cache.try_lock().expect("the original lock must remain authoritative"));
+
 	assert!(!root.join("github/test-files/.radar-tmp-forged").exists());
 }
 
@@ -362,6 +390,7 @@ fn private_cache_read_stops_at_the_bound_when_a_file_grows_after_metadata() {
 	let now = SystemTime::now();
 
 	private_file(&path, b"1234", now);
+
 	let append_path = path.clone();
 	let error = crate::private_fs::read_private_file_bounded_after_metadata(&path, 4, move || {
 		let mut file = fs::OpenOptions::new()
@@ -386,9 +415,11 @@ fn private_cache_bounded_read_rejects_a_fifo_without_blocking() {
 
 	crate::ensure_private_directory(path.parent().expect("FIFO parent should exist"))
 		.expect("private FIFO parent should be created");
+
 	let fifo = CString::new(path.as_os_str().as_bytes()).expect("FIFO path should not contain NUL");
 
 	assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0, "FIFO should be created");
+
 	let (sender, receiver) = mpsc::channel();
 	let reader = thread::spawn(move || {
 		let result = crate::private_fs::PrivateCache::open_existing(&root)
@@ -402,6 +433,7 @@ fn private_cache_bounded_read_rejects_a_fifo_without_blocking() {
 		.expect("private FIFO bounded read must not wait for a writer");
 
 	reader.join().expect("FIFO reader thread should finish");
+
 	let error = result.expect_err("a private FIFO must fail regular-file validation");
 
 	assert!(error.to_string().contains("regular"), "unexpected FIFO error: {error:?}");
@@ -415,11 +447,13 @@ fn private_cache_read_detects_an_mtime_preserving_in_place_rewrite() {
 	let modified = SystemTime::now() - Duration::from_secs(60);
 
 	private_file(&path, b"1234", modified);
+
 	let initial = fs::metadata(&path).expect("initial metadata should be readable");
 	let initial_ctime = (initial.ctime(), initial.ctime_nsec());
 	let rewrite_path = path.clone();
 	let error = crate::private_fs::read_private_file_bounded_after_metadata(&path, 4, move || {
 		thread::sleep(Duration::from_millis(10));
+
 		let mut file = fs::OpenOptions::new()
 			.write(true)
 			.truncate(true)
@@ -430,6 +464,7 @@ fn private_cache_read_detects_an_mtime_preserving_in_place_rewrite() {
 		file.sync_all().expect("replacement bytes should be visible");
 		file.set_times(FileTimes::new().set_modified(modified))
 			.expect("fixture mtime should be restored");
+
 		let changed = file.metadata().expect("changed metadata should be readable");
 
 		assert_ne!((changed.ctime(), changed.ctime_nsec()), initial_ctime);
@@ -447,9 +482,11 @@ fn private_entry_kind_rejects_replacement_between_snapshots() {
 	let displaced = path.with_file_name("original-review.json");
 
 	private_file(&path, b"old", SystemTime::now());
+
 	let replacement = path.clone();
 	let error = crate::private_fs::private_entry_kind_after_snapshot(&path, move || {
 		fs::rename(&replacement, displaced).expect("original entry should be displaced");
+
 		private_file(&replacement, b"new", SystemTime::now());
 	})
 	.expect_err("entry replacement between snapshots must fail closed");
@@ -468,6 +505,7 @@ fn private_entry_kind_rejects_disappearance_between_snapshots() {
 		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
 
 	private_file(&path, b"old", SystemTime::now());
+
 	let removed = path.clone();
 	let error = crate::private_fs::private_entry_kind_after_snapshot(&path, move || {
 		fs::remove_file(removed).expect("entry should be removed after its first snapshot");
@@ -489,6 +527,7 @@ fn private_entry_kind_rejects_symlink_substitution_between_snapshots() {
 	let displaced = path.with_file_name("original-review.json");
 
 	private_file(&path, b"old", SystemTime::now());
+
 	let substitute = path.clone();
 	let target = displaced.clone();
 	let error = crate::private_fs::private_entry_kind_after_snapshot(&path, move || {
@@ -541,7 +580,9 @@ fn cache_lock_serializes_writers_and_gc_deletion_revalidates_identity() {
 	let displaced = root.join("github/test-files/original.json");
 
 	fs::rename(&path, &displaced).expect("scanned file should be displaced");
+
 	private_file(&path, b"new", now);
+
 	let identity_error = lock
 		.remove_if_matches(relative, &expected)
 		.expect_err("GC must not delete a replacement file");

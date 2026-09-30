@@ -26,6 +26,7 @@ mod tests {
 		let client = GithubClient { api: server.api(None) };
 		let result = client.github_paginated(server.url());
 		let requests = server.finish_with_requests();
+
 		assert!(result.unwrap_err().to_string().contains("cycle detected"));
 		assert_eq!(requests.len(), 1);
 	}
@@ -42,15 +43,18 @@ mod tests {
 		let client = GithubClient { api: server.api(None) };
 		let result = client.github_paginated(server.url());
 		let _requests = server.finish_with_requests();
+
 		assert_eq!(
 			result.unwrap(),
 			vec![serde_json::json!(1), serde_json::json!(2), serde_json::json!(3)]
 		);
+
 		let body = serde_json::to_string(&vec![0; 10_001]).unwrap();
 		let server = spawn_server_with(1, |_, _| response("200 OK", &[], &body));
 		let client = GithubClient { api: server.api(None) };
 		let result = client.github_paginated(server.url());
 		let _requests = server.finish_with_requests();
+
 		assert!(result.unwrap_err().to_string().contains("10000-item limit"));
 	}
 }

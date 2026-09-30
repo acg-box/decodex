@@ -25,8 +25,10 @@ fn dry_run_backfill_selects_unpublished_release_window_prs() {
 		("foreign-host", "openai/codex", "https://example.com/openai/codex/pull/22415"),
 	] {
 		let mut signal = fixtures::valid_signal();
+
 		signal["source_refs"]["repo"] = serde_json::json!(repo);
 		signal["source_refs"]["pr_url"] = serde_json::json!(url);
+
 		fs::write(signals_dir.join(format!("{name}.json")), signal.to_string()).unwrap();
 	}
 
@@ -61,16 +63,21 @@ fn dry_run_backfill_selects_unpublished_release_window_prs() {
 		fs::read_to_string(temp_dir.path().join("release-delta.json")).unwrap(),
 		release_delta.to_string()
 	);
+
 	request.stable_tag = Some("rust-v0.1.0".into());
 	request.preview_tag = Some("rust-v0.2.0-alpha.1".into());
+
 	for (repo, expected_error) in [
 		(serde_json::json!("other/project"), "Release-delta repository must match openai/codex"),
 		(serde_json::Value::Null, "repo must be owner/name"),
 	] {
 		release_delta["repo"] = repo;
+
 		fs::write(&request.release_delta, release_delta.to_string()).unwrap();
+
 		let error =
 			crate::backfill_release_range(&request).expect_err("reject unrelated release artifact");
+
 		assert!(error.to_string().contains(expected_error), "{error}");
 	}
 }

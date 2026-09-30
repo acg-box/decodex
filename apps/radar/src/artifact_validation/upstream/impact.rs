@@ -14,6 +14,7 @@ pub(in crate::artifact_validation) fn validate_upstream_impact(
 			errors.push(format!("{field} must be a non-empty string"));
 		}
 	}
+
 	support::validate_rfc3339_field(entry, "reviewed_at", errors);
 
 	if support::string_field(entry, "repo").is_some_and(|repo| !repo.contains('/')) {
@@ -62,17 +63,20 @@ fn validate_review_lineage(lineage: Option<&Value>, errors: &mut Vec<String>) {
 		"review_lineage.artifact_sha256",
 		errors,
 	);
+
 	for field in ["slug", "subject_id"] {
 		if !support::is_non_empty_string(lineage.get(field)) {
 			errors.push(format!("review_lineage.{field} must be a non-empty string"));
 		}
 	}
+
 	if !support::matches_one_of(lineage.get("subject_kind"), crate::UPSTREAM_SUBJECT_KINDS) {
 		errors.push(format!(
 			"review_lineage.subject_kind must be one of {}",
 			support::choices(crate::UPSTREAM_SUBJECT_KINDS)
 		));
 	}
+
 	support::validate_git_object_id(
 		lineage.get("upstream_head"),
 		"review_lineage.upstream_head",

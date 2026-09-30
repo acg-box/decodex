@@ -35,6 +35,7 @@ pub(crate) fn ledger_ingest(request: &RadarLedgerIngestRequest) -> Result<BTreeM
 		request.analysis_path.as_deref(),
 		request.signal_path.as_deref(),
 	)?;
+
 	let summary = ledger::summary_counts(&connection)?;
 
 	connection.close()?;
@@ -103,6 +104,7 @@ pub(crate) fn ledger_artifact_link(
 			path: &request.path,
 		},
 	)?;
+
 	let summary = ledger::summary_counts(&connection)?;
 
 	connection.close()?;

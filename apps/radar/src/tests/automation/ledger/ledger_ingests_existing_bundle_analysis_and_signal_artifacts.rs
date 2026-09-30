@@ -7,8 +7,10 @@ use crate::{RadarLedgerIngestExistingRequest, tests::fixtures};
 #[test]
 fn ledger_ingests_existing_bundle_analysis_and_signal_artifacts() {
 	let temp_dir = crate::test_support::private_tempdir();
+
 	fs::set_permissions(temp_dir.path(), fs::Permissions::from_mode(0o700))
 		.expect("ledger directory should be private");
+
 	let bundles_dir = temp_dir.path().join("bundles");
 	let analysis_dir = temp_dir.path().join("analysis");
 	let signals_dir = temp_dir.path().join("signals");
@@ -86,5 +88,6 @@ fn ledger_ingest_existing_completes_with_the_canonical_cache_layout() {
 		.expect("canonical-cache ingest should succeed");
 
 	assert_eq!(result, Some(3));
+
 	handle.join().expect("canonical-cache ingest thread should finish");
 }

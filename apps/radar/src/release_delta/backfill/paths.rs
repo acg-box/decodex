@@ -29,9 +29,12 @@ mod tests {
 		{
 			assert_ne!(repo_path_stem(first), repo_path_stem(second), "{first} and {second}");
 		}
+
 		assert_eq!(repo_path_stem("OpenAI/Codex"), repo_path_stem("openai/codex"));
+
 		for repo in ["a-b/c", "a/b.c", "a/b_c", "a%2Fb", "../example"] {
 			let name = format!("{}-pr-42.json", repo_path_stem(repo));
+
 			assert_eq!(std::path::Path::new(&name).components().count(), 1);
 		}
 	}

@@ -11,7 +11,9 @@ fn validate_cli_accepts_a_relative_queue_path_from_an_isolated_cwd() {
 	let cwd = tempfile::tempdir().expect("isolated CLI cwd");
 	let relative = ".agent/automations/radar/cache/github/review-queue/openai-codex-latest.json";
 	let path = cwd.path().join(relative);
+
 	fs::create_dir_all(path.parent().expect("queue parent")).expect("private cache directories");
+
 	for directory in [
 		".agent",
 		".agent/automations",
@@ -23,6 +25,7 @@ fn validate_cli_accepts_a_relative_queue_path_from_an_isolated_cwd() {
 		fs::set_permissions(cwd.path().join(directory), fs::Permissions::from_mode(0o700))
 			.expect("private directory mode");
 	}
+
 	fs::write(&path, serde_json::to_vec_pretty(&valid_review_queue()).expect("queue JSON"))
 		.expect("queue write");
 	fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).expect("private queue mode");
@@ -32,12 +35,15 @@ fn validate_cli_accepts_a_relative_queue_path_from_an_isolated_cwd() {
 		.args(["validate", relative])
 		.output()
 		.expect("Radar CLI");
+
 	assert!(
 		output.status.success(),
 		"relative validation failed: {}",
 		String::from_utf8_lossy(&output.stderr)
 	);
+
 	let report: Value = serde_json::from_slice(&output.stdout).expect("JSON report");
+
 	assert_eq!(report["checked_files"], 1);
 }
 

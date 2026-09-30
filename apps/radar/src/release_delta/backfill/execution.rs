@@ -36,10 +36,13 @@ pub(in crate::release_delta::backfill) fn run_codex_analysis(
 	out: &Path,
 ) -> Result<()> {
 	let bundle_payload = crate::load_json(bundle)?;
+
 	crate::validate_expected_schema(&bundle_payload, crate::BUNDLE_SCHEMA, "Bundle")?;
+
 	let temp_parent = root.join("target/radar-analysis");
 
 	std::fs::create_dir_all(&temp_parent)?;
+
 	let temp_dir = tempfile::tempdir_in(temp_parent)?;
 	let copied_bundle = temp_dir.path().join("bundle.json");
 
@@ -67,6 +70,7 @@ pub(in crate::release_delta::backfill) fn run_codex_analysis(
 	})?;
 
 	crate::validate_analysis_draft(&payload)?;
+
 	crate::write_json(out, &payload)
 }
 
@@ -141,6 +145,7 @@ mod tests {
 		let temp = tempfile::tempdir().unwrap();
 		let root = temp.path().join("repo with spaces");
 		let helper = root.join(RUN_CODEX_ANALYSIS_SCRIPT);
+
 		std::fs::create_dir_all(helper.parent().unwrap()).unwrap();
 		std::fs::write(
 			&helper,
@@ -175,11 +180,16 @@ else:
 "#,
 		)
 		.unwrap();
+
 		let bundle_path = root.join("bundle.json");
 		let out = root.join("analysis.json");
+
 		crate::write_json(&bundle_path, &crate::tests::fixtures::valid_bundle()).unwrap();
+
 		let draft = crate::tests::fixtures::valid_signal();
+
 		crate::write_json(&root.join("draft.json"), &draft).unwrap();
+
 		let mut request = RadarBackfillReleaseRangeRequest {
 			repo: "openai/codex".into(),
 			release_delta: root.join("release.json"),
@@ -199,6 +209,7 @@ else:
 			refresh_pair_limit: None,
 			python_bin: "python3".into(),
 		};
+
 		for (mode, expected_error) in [
 			("success", None),
 			("fail", Some("fixture helper failure")),
@@ -206,19 +217,27 @@ else:
 			("invalid-draft", Some("Analysis draft validation failed")),
 		] {
 			std::fs::write(root.join("mode"), mode).unwrap();
+
 			let previous = b"previous output must survive";
+
 			std::fs::write(&out, previous).unwrap();
+
 			let result = run_codex_analysis(&root, &request, &bundle_path, &out);
+
 			if let Some(message) = expected_error {
 				assert!(result.unwrap_err().to_string().contains(message));
 				assert_eq!(std::fs::read(&out).unwrap(), previous);
 			} else {
 				result.unwrap();
+
 				assert_eq!(crate::load_json(&out).unwrap(), draft);
 			}
+
 			assert_eq!(std::fs::read_dir(root.join("target/radar-analysis")).unwrap().count(), 0);
 		}
+
 		request.python_bin = root.join("missing-helper").display().to_string();
+
 		assert!(run_codex_analysis(&root, &request, &bundle_path, &out).is_err());
 		assert_eq!(std::fs::read_dir(root.join("target/radar-analysis")).unwrap().count(), 0);
 	}

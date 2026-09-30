@@ -50,6 +50,7 @@ pub(super) fn build_release_comparison(
 fn comparison_url(repo: &str, stable_tag: &str, preview_tag: &str) -> String {
 	let stable_tag = crate::percent_encode(stable_tag);
 	let preview_tag = crate::percent_encode(preview_tag);
+
 	format!("https://api.github.com/repos/{repo}/compare/{stable_tag}...{preview_tag}?per_page=100")
 }
 
@@ -83,9 +84,11 @@ fn tracked_signal_slugs(
 			let instant = OffsetDateTime::parse(&value, &Rfc3339).map_err(|error| {
 				eyre::eyre!("Signal published_at must be an RFC3339 timestamp: {error}")
 			})?;
+
 			Ok((instant, signal))
 		})
 		.collect::<Result<Vec<_>>>()?;
+
 	sorted_signals.sort_by_key(|(instant, _)| std::cmp::Reverse(*instant));
 
 	Ok(sorted_signals
@@ -106,6 +109,7 @@ fn signal_commit_shas(signal: &Value) -> Vec<String> {
 	let Some(repo) = signal.pointer("/source_refs/repo").and_then(Value::as_str) else {
 		return Vec::new();
 	};
+
 	release_delta::string_array(signal.pointer("/source_refs/commit_urls"))
 		.into_iter()
 		.filter_map(|url| release_delta::extract_commit_sha_from_url(&url, repo))
@@ -114,6 +118,7 @@ fn signal_commit_shas(signal: &Value) -> Vec<String> {
 
 fn signal_pr_number(signal: &Value) -> Option<u64> {
 	let repo = signal.pointer("/source_refs/repo").and_then(Value::as_str)?;
+
 	signal
 		.pointer("/source_refs/pr_url")
 		.and_then(Value::as_str)
@@ -188,6 +193,7 @@ mod tests {
 				}
 			})
 		});
+
 		assert_eq!(
 			tracked_signal_slugs(&signals, &["abcdef1".into()], &[22414]).unwrap(),
 			vec!["matching-pr", "matching-commit"]
@@ -203,10 +209,13 @@ mod tests {
 		]
 		.map(|(slug, timestamp)| {
 			let mut signal = crate::tests::fixtures::valid_signal();
+
 			signal["slug"] = serde_json::json!(slug);
 			signal["published_at"] = serde_json::json!(timestamp);
+
 			signal
 		});
+
 		assert_eq!(
 			tracked_signal_slugs(&signals, &[], &[22414]).unwrap(),
 			vec!["fractional", "utc", "equivalent", "older"]
@@ -217,8 +226,11 @@ mod tests {
 	fn tracked_signals_reject_unparseable_publication_times() {
 		for timestamp in [serde_json::json!("not-a-time"), serde_json::Value::Null] {
 			let mut signal = crate::tests::fixtures::valid_signal();
+
 			signal["published_at"] = timestamp;
+
 			let error = tracked_signal_slugs(&[signal], &[], &[22414]).unwrap_err();
+
 			assert!(error.to_string().contains("published_at"), "{error}");
 		}
 	}
@@ -230,10 +242,14 @@ mod tests {
 			{}
 		]);
 		let numbers = compare_pr_numbers(commits.as_array().unwrap());
+
 		assert_eq!(numbers, vec![22414, 22416, i64::MAX as u64]);
+
 		let mut release = crate::tests::fixtures::valid_release_delta();
+
 		release["compare"]["pr_numbers"] = serde_json::json!(numbers);
 		release["comparisons"][0]["compare"]["pr_numbers"] = serde_json::json!(numbers);
+
 		assert!(crate::validate_artifact_errors(&release).is_empty());
 	}
 	#[test]
@@ -248,6 +264,7 @@ mod tests {
 		] {
 			let url =
 				reqwest::Url::parse(&comparison_url("openai/codex", stable, preview)).unwrap();
+
 			assert_eq!(url.fragment(), None);
 			assert_eq!(url.path(), expected_path);
 			assert_eq!(url.query(), Some("per_page=100"));

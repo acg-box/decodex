@@ -38,9 +38,11 @@ pub(super) fn record_commit(connection: &Connection, input: CommitInput<'_>) -> 
 	ledger::validate_text(input.sha, "sha", ledger::MAX_IDENTIFIER_BYTES)?;
 	ledger::validate_text(input.title, "title", ledger::MAX_TITLE_BYTES)?;
 	ledger::validate_text(input.url, "url", ledger::MAX_URL_BYTES)?;
+
 	if let Some(committed_at) = input.committed_at {
 		ledger::validate_text(committed_at, "committed_at", 64)?;
 	}
+
 	let timestamp = ledger::utc_now_iso()?;
 
 	ledger::bounded_write(connection, "upstream_commit", "last_seen_at", || {
@@ -84,6 +86,7 @@ pub(super) fn record_review(connection: &Connection, input: ReviewInput<'_>) -> 
 	ledger::require_member(input.status, REVIEW_STATUSES, "status")?;
 	ledger::validate_text(input.repo, "repo", ledger::MAX_IDENTIFIER_BYTES)?;
 	ledger::validate_text(input.subject_id, "subject_id", ledger::MAX_IDENTIFIER_BYTES)?;
+
 	if input.reason.len() > ledger::MAX_EVIDENCE_TEXT_BYTES {
 		eyre::bail!("reason must not exceed {} bytes", ledger::MAX_EVIDENCE_TEXT_BYTES);
 	}

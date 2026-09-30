@@ -62,6 +62,7 @@ pub(super) fn validate_bundle_files(files: Option<&Value>, errors: &mut Vec<Stri
 		for field in ["path", "status", "additions", "deletions"] {
 			let Some(value) = item.get(field) else {
 				errors.push(format!("files[{index}].{field} is required"));
+
 				continue;
 			};
 			let (valid, expected) = if matches!(field, "path" | "status") {
@@ -69,6 +70,7 @@ pub(super) fn validate_bundle_files(files: Option<&Value>, errors: &mut Vec<Stri
 			} else {
 				(value.as_i64().is_some_and(|value| value >= 0), "a non-negative integer")
 			};
+
 			if !valid {
 				errors.push(format!("files[{index}].{field} must be {expected}"));
 			}
@@ -86,6 +88,7 @@ pub(super) fn validate_bundle_pr(primary_pr: Option<&Value>, errors: &mut Vec<St
 	for field in ["number", "title", "body", "state", "labels", "url"] {
 		let Some(value) = primary_pr.get(field) else {
 			errors.push(format!("primary_pr.{field} is required"));
+
 			continue;
 		};
 		let (valid, expected) = match field {
@@ -99,6 +102,7 @@ pub(super) fn validate_bundle_pr(primary_pr: Option<&Value>, errors: &mut Vec<St
 			),
 			_ => (support::is_non_empty_string(Some(value)), "a non-empty string"),
 		};
+
 		if !valid {
 			errors.push(format!("primary_pr.{field} must be {expected}"));
 		}

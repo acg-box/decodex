@@ -52,6 +52,7 @@ pub(super) fn validate_git_object_id_list(
 
 			return;
 		};
+
 		if !seen.insert(item) {
 			errors.push(format!("{label} must not contain duplicate Git object ids"));
 

@@ -23,6 +23,7 @@ pub(crate) fn refresh_release_delta(
 	}
 	if request.dry_run {
 		println!("{}", release_delta::pretty_json(&payload)?);
+
 		let out = release_delta::absolute_repo_path(&root, &request.out);
 		let refresh =
 			release_delta::inspect_json_refresh(&out, &payload, RefreshKind::ReleaseDelta)?;
@@ -126,10 +127,12 @@ mod tests {
 					} else {
 						format!("rust-v0.117.0-alpha.{index}")
 					};
+
 					crate::tests::fixtures::release(&tag, index != 500)
 				})
 				.collect::<Vec<_>>();
 			let body = serde_json::to_string(&releases).unwrap();
+
 			if page < 5 {
 				response(
 					"200 OK",
@@ -141,18 +144,26 @@ mod tests {
 			}
 		});
 		let releases = github_releases(&server.api(None), server.url()).unwrap();
+
 		assert_eq!(releases.len(), 501);
+
 		let stable = release_delta::select_release(&releases, "rust-v", false).unwrap();
+
 		assert_eq!(stable["tag_name"], "rust-v0.116.0");
+
 		let mut request = RadarRefreshReleaseDeltaRequest {
 			stable_limit: 0,
 			preview_limit: 0,
 			..Default::default()
 		};
 		let (stable, preview) = release_delta::select_release_options(&request, &releases).unwrap();
+
 		assert_eq!((stable.len(), preview.len()), (1, 500));
+
 		request.preview_limit = 2;
+
 		let (stable, preview) = release_delta::select_release_options(&request, &releases).unwrap();
+
 		assert_eq!((stable.len(), preview.len()), (1, 2));
 		assert_eq!(server.finish_with_requests().len(), 6);
 	}

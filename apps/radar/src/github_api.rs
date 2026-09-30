@@ -80,6 +80,7 @@ impl GitHubApi {
 		if !(1..=MAX_GITHUB_PAGINATED_ITEMS).contains(&limit) {
 			eyre::bail!("GitHub API window must contain 1..={MAX_GITHUB_PAGINATED_ITEMS} items");
 		}
+
 		self.get_paginated_bounded(
 			url,
 			None,
@@ -102,7 +103,9 @@ impl GitHubApi {
 			MAX_GITHUB_PAGINATED_ITEMS,
 			None,
 		)?;
+
 		payload[field] = Value::Array(items);
+
 		Ok(payload)
 	}
 
@@ -130,6 +133,7 @@ impl GitHubApi {
 			if pages >= max_pages {
 				eyre::bail!("GitHub API pagination exceeds the {max_pages}-page limit");
 			}
+
 			pages += 1;
 
 			let response = self.get(validated.as_str())?;
@@ -144,20 +148,23 @@ impl GitHubApi {
 					.as_array()
 					.ok_or_else(|| eyre::eyre!("Expected list payload from {url}"))?,
 			};
+
 			if page_items.len() > max_items.saturating_sub(items.len()) {
 				eyre::bail!("GitHub API pagination exceeds the {max_items}-item limit");
 			}
 
 			let remaining =
 				stop_after.map_or(page_items.len(), |limit| limit.saturating_sub(items.len()));
+
 			items.extend(page_items.iter().take(remaining).cloned());
+
 			if field.is_some() && pages == 1 {
 				first_payload = response.payload;
 			}
-
 			if stop_after.is_some_and(|limit| items.len() >= limit) {
 				break;
 			}
+
 			next_url = response.next_url;
 		}
 

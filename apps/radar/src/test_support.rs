@@ -45,9 +45,11 @@ mod tests {
 
 		fs::write(&file, b"fixture").expect("fixture file should be written");
 		std::os::unix::fs::symlink(&file, &link).expect("fixture link should be created");
+
 		assert_eq!(fs::metadata(&path).expect("temporary root metadata").mode() & 0o777, 0o700);
 
 		drop(temporary);
+
 		assert!(!path.exists());
 	}
 
@@ -65,7 +67,9 @@ mod tests {
 		let path = temporary.path().to_path_buf();
 
 		assert_eq!(fs::metadata(&path).expect("temporary root metadata").mode() & 0o777, 0o700);
+
 		drop(temporary);
+
 		assert!(!path.exists());
 	}
 
@@ -79,16 +83,20 @@ mod tests {
 		fs::create_dir(&open_parent).expect("open parent should be created");
 		fs::set_permissions(&open_parent, fs::Permissions::from_mode(0o755))
 			.expect("open parent mode should be set");
+
 		private_fixture_directory(&private_parent);
+
 		std::os::unix::fs::symlink(&private_parent, &linked_parent)
 			.expect("parent symlink should be created");
 
 		assert!(crate::private_fs::create_private_test_directory(&open_parent).is_err());
+
 		let linked = crate::private_fs::create_private_test_directory(&linked_parent)
 			.expect("a canonicalized private parent symlink should be accepted");
 		let path = linked.path().to_path_buf();
 
 		drop(linked);
+
 		assert!(!path.exists());
 	}
 
@@ -99,9 +107,11 @@ mod tests {
 		let displaced = fixture.path().join("displaced");
 
 		private_fixture_directory(&parent);
+
 		let replacement = parent.clone();
 		let error = crate::private_fs::create_private_test_directory_with(&parent, || {
 			fs::rename(&replacement, &displaced).expect("parent should be displaced");
+
 			private_fixture_directory(&replacement);
 		})
 		.expect_err("parent replacement must fail closed");
@@ -125,7 +135,9 @@ mod tests {
 		let error = temporary
 			.remove_with_before_unlink(|| {
 				fs::rename(&path, &displaced).expect("test directory should be displaced");
+
 				private_fixture_directory(&path);
+
 				fs::write(&marker, b"replacement").expect("replacement marker should be written");
 			})
 			.expect_err("cleanup must reject a replacement binding");
@@ -136,7 +148,9 @@ mod tests {
 		fs::remove_file(&marker).expect("replacement marker should be removed");
 		fs::remove_dir(&path).expect("replacement directory should be removed");
 		fs::rename(&displaced, &path).expect("original directory binding should be restored");
+
 		drop(temporary);
+
 		assert!(!path.exists());
 	}
 }

@@ -44,7 +44,6 @@ fn explicit_github_token_env_must_exist() {
 		("DECODEX_TEST_MISSING_RADAR_TOKEN", None),
 		("GITHUB_TOKEN", Some("workflow-token")),
 	]);
-
 	let error = crate::github_token(Some("DECODEX_TEST_MISSING_RADAR_TOKEN"))
 		.expect_err("missing explicit token environment must fail");
 
@@ -95,6 +94,7 @@ fn validates_explicit_private_cache_files_by_absolute_path() {
 		.expect("private review should be written");
 	crate::write_json(&impact, &fixtures::valid_upstream_impact())
 		.expect("private impact should be written");
+
 	assert!(review.is_absolute());
 	assert!(impact.is_absolute());
 
@@ -133,14 +133,20 @@ fn validates_json_files_from_explicit_private_cache_directory() {
 fn bundle_validation_classifies_private_directories_before_file_extensions() {
 	let temp_dir = crate::test_support::private_tempdir();
 	let directory = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/bundles.json");
+
 	crate::write_json(&directory.join("bundle.json"), &fixtures::valid_bundle()).unwrap();
+
 	let report = crate::validate_bundles(&crate::RadarBundleValidateRequest {
 		paths: vec![directory.clone()],
 	})
 	.expect("a private directory ending in .json must be traversed");
+
 	assert_eq!(report.checked_files, 1);
+
 	let explicit_file = directory.join("bundle.txt");
+
 	crate::write_json(&explicit_file, &fixtures::valid_bundle()).unwrap();
+
 	assert_eq!(
 		crate::validate_bundles(&crate::RadarBundleValidateRequest {
 			paths: vec![explicit_file.clone()],
@@ -149,8 +155,11 @@ fn bundle_validation_classifies_private_directories_before_file_extensions() {
 		.checked_files,
 		1
 	);
+
 	let linked = directory.join("linked.json");
+
 	std::os::unix::fs::symlink(explicit_file, &linked).unwrap();
+
 	for invalid in [linked, directory.join("missing.json")] {
 		assert!(
 			crate::validate_bundles(&crate::RadarBundleValidateRequest { paths: vec![invalid] })
@@ -207,6 +216,7 @@ fn explicit_private_cache_file_validation_rejects_unexpected_entry_type() {
 
 	crate::ensure_private_directory(fifo.parent().expect("FIFO parent should exist"))
 		.expect("private FIFO parent should be created");
+
 	let fifo_path =
 		CString::new(fifo.as_os_str().as_bytes()).expect("FIFO path should not contain NUL");
 
@@ -291,6 +301,7 @@ fn source_freshness_gate_rejects_stale_queue_and_accepts_current_queue() {
 
 	queue["generated_at"] =
 		serde_json::json!(crate::utc_now_iso().expect("current timestamp should format"));
+
 	fs::write(&path, queue.to_string()).expect("current queue should be written");
 
 	let report = crate::validate(&RadarValidateRequest {
@@ -312,6 +323,7 @@ fn successful_equal_refresh_rewrites_the_observation_timestamp() {
 
 	old_queue["generated_at"] = serde_json::json!("2026-06-01T00:00:00Z");
 	refreshed_queue["generated_at"] = serde_json::json!("2026-06-02T00:00:00Z");
+
 	crate::write_json(&path, &old_queue).expect("old queue should be written");
 
 	let refresh = crate::core_io::refresh_json(&path, &refreshed_queue, crate::RefreshKind::Queue)
@@ -331,6 +343,7 @@ fn queue_refresh_report_binds_the_exact_written_queue_bytes() {
 	let mut queue = fixtures::valid_review_queue();
 
 	queue["generated_at"] = serde_json::json!("2026-06-02T00:00:00Z");
+
 	let refresh = crate::core_io::refresh_json(&path, &queue, crate::RefreshKind::Queue)
 		.expect("queue refresh should succeed");
 	let report = crate::queue_report(&queue, refresh, true).expect("queue report should build");
@@ -354,6 +367,7 @@ fn concurrent_refresh_compare_and_replace_is_one_monotonic_cache_operation() {
 	old_queue["generated_at"] = serde_json::json!("2026-06-01T00:00:00Z");
 	newest_queue["generated_at"] = serde_json::json!("2026-06-03T00:00:00Z");
 	stale_queue["generated_at"] = serde_json::json!("2026-06-02T00:00:00Z");
+
 	crate::write_json(&path, &old_queue).expect("old private queue should be written");
 
 	let (entered_sender, entered_receiver) = mpsc::channel();
@@ -373,10 +387,12 @@ fn concurrent_refresh_compare_and_replace_is_one_monotonic_cache_operation() {
 	});
 
 	entered_receiver.recv().expect("newest refresh should hold the cache lock");
+
 	let (stale_started_sender, stale_started_receiver) = mpsc::channel();
 	let stale_path = path.clone();
 	let stale = thread::spawn(move || {
 		stale_started_sender.send(()).expect("stale refresh should announce its attempt");
+
 		crate::core_io::refresh_json(&stale_path, &stale_queue, crate::RefreshKind::Queue)
 			.map_err(|error| error.to_string())
 	});
@@ -384,6 +400,7 @@ fn concurrent_refresh_compare_and_replace_is_one_monotonic_cache_operation() {
 	stale_started_receiver.recv().expect("stale refresh should attempt the cache lock");
 	release_sender.send(()).expect("newest refresh should be released");
 	newest.join().expect("newest refresh thread should finish").expect("newest refresh should win");
+
 	let stale_error = stale
 		.join()
 		.expect("stale refresh thread should finish")
@@ -405,9 +422,11 @@ fn concurrent_refresh_reports_material_change_against_the_artifact_it_replaces()
 	first_queue["generated_at"] = serde_json::json!("2026-06-02T00:00:00Z");
 	first_queue["source"]["upstream_head"] =
 		serde_json::json!("cccccccccccccccccccccccccccccccccccccccc");
+
 	let mut second_queue = first_queue.clone();
 
 	second_queue["generated_at"] = serde_json::json!("2026-06-03T00:00:00Z");
+
 	crate::write_json(&path, &old_queue).expect("old private queue should be written");
 
 	let (entered_sender, entered_receiver) = mpsc::channel();
@@ -427,6 +446,7 @@ fn concurrent_refresh_reports_material_change_against_the_artifact_it_replaces()
 	});
 
 	entered_receiver.recv().expect("first refresh should hold the cache lock");
+
 	let second_path = path.clone();
 	let second = thread::spawn(move || {
 		crate::core_io::refresh_json(&second_path, &second_queue, crate::RefreshKind::Queue)
@@ -434,6 +454,7 @@ fn concurrent_refresh_reports_material_change_against_the_artifact_it_replaces()
 	});
 
 	release_sender.send(()).expect("first refresh should be released");
+
 	let first_report = first
 		.join()
 		.expect("first refresh thread should finish")
@@ -455,6 +476,7 @@ fn refresh_rejects_corrupt_existing_json_without_replacing_it() {
 	let corrupt = b"{not-json";
 
 	fs::write(&path, corrupt).expect("corrupt fixture should be written");
+
 	let error = crate::core_io::refresh_json(
 		&path,
 		&fixtures::valid_review_queue(),
@@ -473,6 +495,7 @@ fn daily_default_presence_fails_closed_but_explicit_bootstrap_accepts_empty_cach
 		.expect_err("daily validation must reject an empty cache");
 
 	assert!(error.to_string().contains("requires current source snapshots"));
+
 	crate::validate_default_cache_presence(temp_dir.path(), true)
 		.expect("explicit bootstrap may accept an empty cache");
 }
@@ -483,6 +506,7 @@ fn explicit_bootstrap_rejects_explicit_validation_paths() {
 	let path = temp_dir.path().join("bundle.json");
 
 	fs::write(&path, fixtures::valid_bundle().to_string()).expect("bundle should be written");
+
 	let error = crate::validate(&RadarValidateRequest {
 		paths: vec![path],
 		max_age_hours: None,
