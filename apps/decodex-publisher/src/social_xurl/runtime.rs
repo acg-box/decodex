@@ -1,7 +1,7 @@
 #[cfg(unix)] use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 use std::{
 	ffi::{CStr, CString, OsStr, OsString},
-	fs::{self, File, Metadata, OpenOptions},
+	fs::{self, File, Metadata, OpenOptions, Permissions},
 	io::{self, Error, Read, Write as _},
 	mem::MaybeUninit,
 	ops::Deref,
@@ -16,11 +16,16 @@ use std::{
 	path::{Path, PathBuf},
 	process::{Command, Output, Stdio},
 	ptr,
-	sync::mpsc,
+	sync::mpsc::{self, Receiver, RecvTimeoutError},
 	thread::{self, JoinHandle},
 	time::{Duration, Instant},
 };
 
+use color_eyre::Report;
+use libc::{
+	_SC_GETPW_R_SIZE_MAX, F_GETPATH, LOCK_EX, LOCK_NB, O_CLOEXEC, O_EXEC, O_NOFOLLOW, O_NONBLOCK,
+	PATH_MAX, SIGKILL, passwd,
+};
 use rustix::{
 	fs::{AtFlags, Dir, Mode, OFlags},
 	io::Errno,
@@ -30,6 +35,7 @@ use sha2::{Digest as _, Sha256};
 use wait_timeout::ChildExt as _;
 
 use crate::{
+	filesystem,
 	prelude::{self, eyre},
 	social_xurl::{
 		auth_contract::{
@@ -59,10 +65,8 @@ pub(super) struct TrustedXurlBinary {
 impl TrustedXurlBinary {
 	#[cfg(test)]
 	pub(super) fn open_for_test(path: &Path) -> prelude::Result<Self> {
-		let reader = OpenOptions::new()
-			.read(true)
-			.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-			.open(path)?;
+		let reader =
+			OpenOptions::new().read(true).custom_flags(O_NOFOLLOW | O_CLOEXEC).open(path)?;
 		let metadata = reader.metadata()?;
 
 		validate_executable_metadata(&metadata, false)?;
@@ -247,7 +251,7 @@ pub(super) fn parse_read(
 	parse_read_output(&output.output, post_id, text, verified_user_id)
 }
 
-pub(super) fn failure(operation: &str, output: &Output) -> color_eyre::Report {
+pub(super) fn failure(operation: &str, output: &Output) -> Report {
 	eyre::eyre!(
 		"xurl {operation} failed with status {}; stderr_sha256={}",
 		output.status,
@@ -328,7 +332,7 @@ fn validate_owner_mode(
 fn read_verified_binary(path: &Path) -> prelude::Result<(Vec<u8>, String)> {
 	let mut file = OpenOptions::new()
 		.read(true)
-		.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+		.custom_flags(O_NOFOLLOW | O_NONBLOCK)
 		.open(path)
 		.map_err(|_| eyre::eyre!("resolved xurl target cannot be opened safely"))?;
 	let before = file.metadata()?;
@@ -377,7 +381,7 @@ fn install_private_copy(
 ) -> prelude::Result<TrustedXurlBinary> {
 	let repo_root = crate::repo_root()?;
 	let runtime_dir = repo_root.join(PRIVATE_RUNTIME_DIR);
-	let runtime = crate::filesystem::open_private_directory_descriptor(&runtime_dir, true)?;
+	let runtime = filesystem::open_private_directory_descriptor(&runtime_dir, true)?;
 
 	require_time_remaining(deadline)?;
 
@@ -393,7 +397,7 @@ fn install_private_copy_in(
 ) -> prelude::Result<TrustedXurlBinary> {
 	lock_execution_directory(runtime)?;
 
-	runtime.set_permissions(fs::Permissions::from_mode(0o700))?;
+	runtime.set_permissions(Permissions::from_mode(0o700))?;
 
 	validate_runtime_directory(runtime)?;
 	require_time_remaining(deadline)?;
@@ -443,7 +447,7 @@ fn create_private_copy(
 	)?;
 	let mut file = File::from(fd);
 
-	file.set_permissions(fs::Permissions::from_mode(0o500))?;
+	file.set_permissions(Permissions::from_mode(0o500))?;
 	file.write_all(bytes)?;
 	file.sync_all()?;
 
@@ -487,11 +491,7 @@ fn open_runtime_executable(runtime: &File, name: &OsString) -> prelude::Result<F
 	let name = CString::new(name.as_bytes())
 		.map_err(|_| eyre::eyre!("private xurl runtime filename is invalid"))?;
 	let fd = unsafe {
-		libc::openat(
-			runtime.as_raw_fd(),
-			name.as_ptr(),
-			libc::O_EXEC | libc::O_CLOEXEC | libc::O_NOFOLLOW,
-		)
+		libc::openat(runtime.as_raw_fd(), name.as_ptr(), O_EXEC | O_CLOEXEC | O_NOFOLLOW)
 	};
 
 	if fd == -1 {
@@ -508,8 +508,7 @@ fn open_runtime_executable(runtime: &File, name: &OsString) -> prelude::Result<F
 fn open_executable_path(path: &Path) -> prelude::Result<File> {
 	let path = CString::new(path.as_os_str().as_bytes())
 		.map_err(|_| eyre::eyre!("xurl executable path is invalid"))?;
-	let fd =
-		unsafe { libc::open(path.as_ptr(), libc::O_EXEC | libc::O_CLOEXEC | libc::O_NOFOLLOW) };
+	let fd = unsafe { libc::open(path.as_ptr(), O_EXEC | O_CLOEXEC | O_NOFOLLOW) };
 
 	if fd == -1 {
 		return Err(Error::last_os_error().into());
@@ -588,9 +587,8 @@ fn require_same_executable(readable: &Metadata, executable: &Metadata) -> prelud
 }
 
 fn descriptor_execution_path(binary: &TrustedXurlBinary) -> prelude::Result<(PathBuf, File)> {
-	let mut buffer = [0_i8; libc::PATH_MAX as usize];
-	let result =
-		unsafe { libc::fcntl(binary.file.as_raw_fd(), libc::F_GETPATH, buffer.as_mut_ptr()) };
+	let mut buffer = [0_i8; PATH_MAX as usize];
+	let result = unsafe { libc::fcntl(binary.file.as_raw_fd(), F_GETPATH, buffer.as_mut_ptr()) };
 
 	if result == -1 {
 		return Err(eyre::eyre!(
@@ -748,7 +746,7 @@ fn validate_runtime_gc_metadata(metadata: &Metadata) -> prelude::Result<()> {
 }
 
 fn lock_execution_directory(directory: &File) -> prelude::Result<()> {
-	if unsafe { libc::flock(directory.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == -1 {
+	if unsafe { libc::flock(directory.as_raw_fd(), LOCK_EX | LOCK_NB) } == -1 {
 		return Err(eyre::eyre!(
 			"another trusted xurl runtime operation is active: {}",
 			Error::last_os_error()
@@ -1089,7 +1087,7 @@ where
 
 fn spawn_bounded_reader(
 	reader: impl Read + Send + 'static,
-) -> (mpsc::Receiver<ReaderResult>, JoinHandle<()>) {
+) -> (Receiver<ReaderResult>, JoinHandle<()>) {
 	let (sender, receiver) = mpsc::sync_channel(1);
 	let handle = thread::spawn(move || {
 		let _ = sender.send(drain_bounded(reader));
@@ -1099,17 +1097,17 @@ fn spawn_bounded_reader(
 }
 
 fn receive_bounded_reader(
-	receiver: mpsc::Receiver<ReaderResult>,
+	receiver: Receiver<ReaderResult>,
 	handle: JoinHandle<()>,
 	deadline: Instant,
 	label: &str,
 ) -> prelude::Result<Vec<u8>> {
 	let output =
 		receiver.recv_timeout(remaining_time(deadline)?).map_err(|error| match error {
-			mpsc::RecvTimeoutError::Timeout => {
+			RecvTimeoutError::Timeout => {
 				eyre::eyre!("xurl execution exceeded its bounded deadline during output drain")
 			},
-			mpsc::RecvTimeoutError::Disconnected => eyre::eyre!("{label} failed"),
+			RecvTimeoutError::Disconnected => eyre::eyre!("{label} failed"),
 		})??;
 
 	handle.join().map_err(|_| eyre::eyre!("{label} failed"))?;
@@ -1132,12 +1130,12 @@ fn require_time_remaining(deadline: Instant) -> prelude::Result<()> {
 
 fn trusted_home_directory() -> prelude::Result<PathBuf> {
 	let uid = current_uid();
-	let suggested = unsafe { libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX) };
+	let suggested = unsafe { libc::sysconf(_SC_GETPW_R_SIZE_MAX) };
 	let buffer_size =
 		if suggested > 0 { usize::try_from(suggested).unwrap_or(16 * 1_024) } else { 16 * 1_024 }
 			.clamp(1_024, 1_024 * 1_024);
 	let mut buffer = vec![0_u8; buffer_size];
-	let mut password = MaybeUninit::<libc::passwd>::zeroed();
+	let mut password = MaybeUninit::<passwd>::zeroed();
 	let mut result = ptr::null_mut();
 	let code = unsafe {
 		libc::getpwuid_r(
@@ -1192,14 +1190,14 @@ fn validate_home_directory(path: &Path) -> prelude::Result<()> {
 fn kill_process_group(child_id: u32) {
 	if let Ok(process_group) = i32::try_from(child_id) {
 		unsafe {
-			libc::kill(-process_group, libc::SIGKILL);
+			libc::kill(-process_group, SIGKILL);
 		}
 	}
 }
 
 fn drain_bounded(mut reader: impl Read) -> io::Result<Vec<u8>> {
 	let mut retained = Vec::new();
-	let mut buffer = [0_u8; 8192];
+	let mut buffer = [0_u8; 8_192];
 
 	loop {
 		let read = reader.read(&mut buffer)?;
@@ -1426,7 +1424,6 @@ mod tests {
 		executable_script(&attacker, "xurl-current", "#!/bin/sh\nprintf 'malicious\\n'\nexit 99\n");
 
 		fs::rename(&runtime, &retained).expect("move validated runtime directory");
-
 		unix::fs::symlink(&attacker, &runtime).expect("replace runtime path");
 
 		let output =
