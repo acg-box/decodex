@@ -12,7 +12,6 @@ enum SourceKind {
 	OfficialCodex,
 	RadarSecondary,
 }
-
 impl SourceKind {
 	const fn label(self) -> &'static str {
 		match self {
@@ -341,9 +340,12 @@ fn validate_decision(value: Option<&Value>, errors: &mut Vec<String>) {
 
 #[cfg(test)]
 mod tests {
-	use serde_json::{Value, json};
+	use serde_json::Value;
 
-	use super::{SourceKind, classify_source_url, validate_sources};
+	use crate::social_validation::{
+		self,
+		candidate::{self, SourceKind},
+	};
 
 	const DECODEX_COMMIT_URL: &str =
 		"https://github.com/acg-box/decodex/commit/0123456789abcdef0123456789abcdef01234567";
@@ -383,7 +385,7 @@ mod tests {
 			"https://github.com/openai//codex",
 			"https://github.com\\openai/codex",
 		] {
-			assert_eq!(classify_source_url(url), None, "{url}");
+			assert_eq!(candidate::classify_source_url(url), None, "{url}");
 		}
 	}
 
@@ -434,7 +436,7 @@ mod tests {
 			(OFFICIAL_CODEX_URL, "radar_secondary", SourceKind::OfficialCodex),
 			(DECODEX_COMMIT_URL, "official_codex", SourceKind::LandedDecodex),
 		] {
-			assert_eq!(classify_source_url(url), Some(expected));
+			assert_eq!(candidate::classify_source_url(url), Some(expected));
 
 			let errors = source_errors(url, kind);
 
@@ -453,13 +455,13 @@ mod tests {
 	#[test]
 	fn candidate_claims_stay_bound_to_declared_sources() {
 		let mut candidate = candidate_with_source(OFFICIAL_CODEX_URL, "official_codex");
-		let validation = crate::social_validation::validate_social_artifact(&candidate);
+		let validation = social_validation::validate_social_artifact(&candidate);
 
 		assert!(validation.errors.is_empty(), "{:?}", validation.errors);
 
-		candidate["claims"][0]["evidence"] = json!("https://example.com/not-declared");
+		candidate["claims"][0]["evidence"] = serde_json::json!("https://example.com/not-declared");
 
-		let validation = crate::social_validation::validate_social_artifact(&candidate);
+		let validation = social_validation::validate_social_artifact(&candidate);
 
 		assert!(validation.errors.iter().any(|error| {
 			error.contains("claims[0].evidence must exactly match one declared source reference")
@@ -467,17 +469,17 @@ mod tests {
 	}
 
 	fn source_errors(url: &str, kind: &str) -> Vec<String> {
-		let refs = json!({"urls": [url]});
-		let kinds = json!({(url): kind});
+		let refs = serde_json::json!({"urls": [url]});
+		let kinds = serde_json::json!({(url): kind});
 		let mut errors = Vec::new();
 
-		validate_sources(Some(&refs), Some(&kinds), &mut errors);
+		candidate::validate_sources(Some(&refs), Some(&kinds), &mut errors);
 
 		errors
 	}
 
 	fn candidate_with_source(url: &str, kind: &str) -> Value {
-		json!({
+		serde_json::json!({
 			"schema": crate::SOCIAL_CANDIDATE_SCHEMA,
 			"slug": "source-classification",
 			"repo": "openai/codex",

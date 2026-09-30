@@ -1,6 +1,9 @@
 //! social_outcome/v1 schema validation.
 
-use crate::social_validation::{self, Map, Value};
+use crate::{
+	social_publish,
+	social_validation::{self, Map, Value},
+};
 
 const OUTCOME_WINDOWS: &[&str] = &["24h", "7d"];
 const METRIC_FIELDS: &[&str] = &["bookmarks", "likes", "replies", "reposts", "views"];
@@ -74,7 +77,7 @@ fn validate_owner(value: Option<&Value>, errors: &mut Vec<String>) {
 		errors.push("owner.automation_id must be decodex-xurl-publisher".into());
 	}
 	if social_validation::string_field(owner, "run_id")
-		.is_none_or(|value| !crate::social_publish::valid_run_id(value))
+		.is_none_or(|value| !social_publish::valid_run_id(value))
 	{
 		errors.push("owner.run_id must be a lowercase UUID".into());
 	}

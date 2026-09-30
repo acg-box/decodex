@@ -2,8 +2,9 @@
 
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::social_validation::{
-	self, Map, SOCIAL_POST_MODES, SOCIAL_PUBLISH_RESERVATION_STATUSES, Value,
+use crate::{
+	social_publish,
+	social_validation::{self, Map, SOCIAL_POST_MODES, SOCIAL_PUBLISH_RESERVATION_STATUSES, Value},
 };
 
 pub(super) fn validate_social_publish_reservation(
@@ -153,7 +154,7 @@ fn validate_social_publish_reservation_owner(owner: Option<&Value>, errors: &mut
 
 	let run_id = social_validation::string_field(owner, "run_id");
 
-	if run_id.is_none_or(|value| !crate::social_publish::valid_run_id(value)) {
+	if run_id.is_none_or(|value| !social_publish::valid_run_id(value)) {
 		errors.push("owner.run_id must be a lowercase UUID".into());
 	}
 }

@@ -52,7 +52,6 @@ pub(super) fn validate_social_post_lifecycle(entry: &Map<String, Value>, errors:
 
 #[cfg(test)]
 mod tests {
-	use serde_json::json;
 
 	#[test]
 	fn quote_eligibility_requires_a_live_published_post() {
@@ -65,7 +64,7 @@ mod tests {
 			("blocked", "live", true, false),
 			("failed", "live", false, true),
 		] {
-			let entry = json!({"status": status, "post_lifecycle": {
+			let entry = serde_json::json!({"status": status, "post_lifecycle": {
 				"current_state": state, "quote_eligible": eligible
 			}});
 			let mut errors = Vec::new();
