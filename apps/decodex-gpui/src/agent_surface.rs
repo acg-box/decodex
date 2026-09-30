@@ -1346,6 +1346,7 @@ impl AgentSurface {
 
 	fn apply_result(&mut self, result: Result<AgentSnapshotResult, ()>) {
 		if !matches!(&result, Ok(AgentSnapshotResult::Available(_))) {
+			self.guardian_disconnected();
 			self.reset_resources();
 			self.reset_integrations();
 			self.reset_model_settings();
@@ -1366,6 +1367,7 @@ impl AgentSurface {
 		}
 		match result {
 			Ok(AgentSnapshotResult::Available(snapshot)) => {
+				self.invalidate_guardian(&snapshot);
 				self.invalidate_resources(&snapshot);
 				self.invalidate_integrations(&snapshot);
 				self.invalidate_usage_estimate(&snapshot);

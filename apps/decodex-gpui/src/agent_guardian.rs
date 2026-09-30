@@ -150,7 +150,6 @@ impl AgentSurface {
 		let Ok(work_id) = EntityId::new(work.clone()) else {
 			return;
 		};
-		let generation = self.generation;
 		let epoch = self.guardian.epoch;
 		let before = self.guardian.before;
 		let request = cx.background_executor().spawn(async move {
@@ -161,10 +160,7 @@ impl AgentSurface {
 		self.guardian.request = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await.unwrap_or(Reviews::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
-				if s.generation != generation
-					|| s.selected.as_ref() != Some(&work)
-					|| s.guardian.epoch != epoch
-				{
+				if s.selected.as_ref() != Some(&work) || s.guardian.epoch != epoch {
 					return;
 				}
 				s.guardian.request = None;
@@ -180,6 +176,18 @@ impl AgentSurface {
 				|| self.guardian.stale
 				|| !self.guardian.pending.is_empty()
 				|| matches!(&self.guardian.result,Some(Reviews::Available {reviews,..}) if reviews.iter().any(|r|r.status==Status::InProgress || r.submission==Some(Submission::Pending))))
+	}
+
+	pub(super) fn invalidate_guardian(&mut self, next: &AgentSnapshotDto) {
+		let Some(work) = &self.guardian.owner else { return };
+		let before =
+			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
+		let after = next.work_items.iter().find(|w| &w.id == work);
+		if !matches!((before, after), (Some(a), Some(b)) if a.codex_thread_id == b.codex_thread_id)
+			|| self.snapshot.as_ref().is_none_or(|s| s.runtime_source != next.runtime_source)
+		{
+			self.guardian_disconnected();
+		}
 	}
 
 	pub(super) fn guardian_disconnected(&mut self) {
@@ -234,7 +242,6 @@ impl AgentSurface {
 		let (Ok(work_id), Ok(review_digest)) = (EntityId::new(work), WireText::new(digest)) else {
 			return;
 		};
-		let generation = self.generation;
 		let owner = work.to_owned();
 		self.guardian.feedback = "Submitting approval to Codex…".into();
 		let key = IdempotencyKey::new(unique_command()).expect("bounded identity");
@@ -260,8 +267,7 @@ impl AgentSurface {
 		self.guardian.mutation = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |s, cx| {
-				if s.generation != generation
-					|| s.guardian.owner.as_ref() != Some(&owner)
+				if s.guardian.owner.as_ref() != Some(&owner)
 					|| s.guardian.mutation_key.as_ref() != Some(&submitted_key)
 				{
 					return;
@@ -321,7 +327,6 @@ impl AgentSurface {
 		}
 		self.guardian.detail_serial = self.guardian.detail_serial.wrapping_add(1);
 		let serial = self.guardian.detail_serial;
-		let generation = self.generation;
 		let epoch = self.guardian.epoch;
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
@@ -338,8 +343,7 @@ impl AgentSurface {
 		self.guardian.detail_request = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await.unwrap_or(Detail::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
-				if s.generation != generation
-					|| s.selected.as_ref() != Some(&work)
+				if s.selected.as_ref() != Some(&work)
 					|| s.guardian.epoch != epoch
 					|| s.guardian.detail_serial != serial
 				{
@@ -820,5 +824,151 @@ mod tests {
 			window.draw(cx).clear();
 		});
 		assert!(visual.debug_bounds("guardian-approve-1").is_none());
+	}
+	#[gpui::test]
+	fn ordinary_refresh_keeps_guardian_list_details_and_submission_receipt(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use decodex_protocol::{
+			CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
+			QueryResultPayload, ServerId, ServerMessage,
+		};
+		use futures_util::{SinkExt, StreamExt};
+		use tokio_tungstenite::tungstenite::Message;
+		let (_dir, profile, server) = super::super::wire_test_support::fixture(
+			|listener| async move {
+				for index in 0..4 {
+					let mut socket = super::super::wire_test_support::accept(&listener).await;
+					let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+						panic!("text request")
+					};
+					let request: ClientMessage = serde_json::from_str(&text).unwrap();
+					if index == 2 {
+						let ClientMessage::Command(command) = request else {
+							panic!("one explicit submission")
+						};
+						let CommandPayload::Agent { action } = command.payload else {
+							panic!("Agent action")
+						};
+						assert!(
+							matches!(&*action, AgentActionDto::ApproveGuardianDenial { work_id, review_row: 1, review_digest } if work_id.as_str() == "root" && review_digest.as_str() == "original")
+						);
+						socket.close(None).await.unwrap();
+						continue;
+					}
+					let ClientMessage::Query(query) = request else {
+						panic!("readback, not another approval")
+					};
+					let payload = if index == 1 {
+						assert!(
+							matches!(&query.payload, QueryPayload::GetAgentGuardianDetail { work_id, review_row: 1, review_digest, offset: 0 } if work_id.as_str() == "root" && review_digest.as_str() == "original")
+						);
+						QueryResultPayload::AgentGuardianDetail(Detail::Available {
+							row_id: 1,
+							digest: "original".into(),
+							offset: 0,
+							text: "whole".into(),
+							total_bytes: 5,
+							next_offset: None,
+						})
+					} else {
+						assert!(
+							matches!(&query.payload, QueryPayload::GetAgentGuardianReviews { work_id, before: None } if work_id.as_str() == "root")
+						);
+						let mut saved = review();
+						saved.details_paged = true;
+						if index == 3 {
+							saved.submission = Some(Submission::Pending);
+							saved.can_approve = false;
+						}
+						QueryResultPayload::AgentGuardianReviews(page(saved))
+					};
+					let response = ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
+						query_id: query.query_id,
+						payload,
+					});
+					socket
+						.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
+						.await
+						.unwrap();
+				}
+			},
+		);
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, _| {
+			seed(s);
+			s.profile = Some(profile);
+		});
+		for stage in 0..3 {
+			surface.update(cx, |s, cx| {
+				match stage {
+					0 => s.load_guardian_reviews(cx),
+					1 => {
+						s.guardian.reviewed = Some((1, "original".into()));
+						s.load_guardian_detail(1, "original".into(), 0, cx);
+					},
+					_ => s.approve_guardian("root", 1, "original", cx),
+				}
+				s.generation += 1;
+				s.apply_result(Ok(AgentSnapshotResult::Available(s.snapshot.clone().unwrap())));
+			});
+			cx.run_until_parked();
+			surface.read_with(cx, |s, _| match stage {
+				0 => assert!(s.guardian.request.is_none(), "refresh stranded the review list"),
+				1 => {
+					assert!(s.guardian.detail_request.is_none(), "refresh stranded detail read");
+					assert!(s.guardian.detail.as_ref().unwrap().complete);
+				},
+				_ => {
+					assert!(s.guardian.mutation.is_none(), "refresh stranded submission receipt");
+					assert!(s.guardian.feedback.contains("unconfirmed"));
+					assert!(
+						s.guardian.pending.contains_key(&1),
+						"a lost reply must not reopen submission"
+					);
+				},
+			});
+		}
+		server.join().unwrap();
+	}
+
+	#[gpui::test]
+	fn guardian_history_stays_visible_but_stale_after_source_or_snapshot_failure(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		for change in ["source", "thread", "removed", "failed", "unavailable"] {
+			surface.update(cx, |s, _| {
+				seed(s);
+				s.guardian.pending.insert(1, "unconfirmed-command".into());
+				let saved = s.guardian.result.clone();
+				let epoch = s.guardian.epoch;
+				match change {
+					"source" => {
+						let mut next = s.snapshot.clone().unwrap();
+						next.runtime_source = Some(EntityId::new("new-source").unwrap());
+						s.apply_result(Ok(AgentSnapshotResult::Available(next)));
+					},
+					"thread" => {
+						let mut next = s.snapshot.clone().unwrap();
+						next.work_items[0].codex_thread_id = Some("replacement-thread".into());
+						s.apply_result(Ok(AgentSnapshotResult::Available(next)));
+					},
+					"removed" => {
+						let mut next = s.snapshot.clone().unwrap();
+						next.work_items.clear();
+						s.apply_result(Ok(AgentSnapshotResult::Available(next)));
+					},
+					"failed" => s.apply_result(Err(())),
+					_ => s.apply_result(Ok(AgentSnapshotResult::Unavailable)),
+				}
+				assert!(s.guardian.stale, "{change}");
+				assert_ne!(s.guardian.epoch, epoch);
+				assert_eq!(s.guardian.result, saved);
+				assert!(s.guardian.pending.contains_key(&1));
+			});
+		}
 	}
 }
