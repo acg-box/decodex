@@ -13,6 +13,15 @@ function appcastText(node, selector) {
   return target?.textContent?.trim() || "";
 }
 
+function appcastDownloadUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
 function appcastParse(xmlText) {
   const doc = new DOMParser().parseFromString(xmlText, "application/xml");
   if (doc.querySelector("parsererror")) {
@@ -22,7 +31,7 @@ function appcastParse(xmlText) {
   const items = Array.from(doc.querySelectorAll("channel > item"))
     .map((item) => {
       const enclosure = item.querySelector("enclosure");
-      const url = enclosure?.getAttribute("url") || "";
+      const url = appcastDownloadUrl(enclosure?.getAttribute("url") || "");
       const title = appcastText(item, "title");
       const shortVersion =
         item.getElementsByTagNameNS("*", "shortVersionString")[0]?.textContent?.trim() || title;
