@@ -8,16 +8,38 @@ pub use decodex_core::{
 use std::{
 	collections::HashSet,
 	fmt::{Display, Formatter},
+	io::ErrorKind,
 };
 
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _, ser::Error as _};
-use serde_json::Error;
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _, ser::Error as _};
 
 use crate::{
-	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, AgentSnapshotResult,
-	ConversationExecutionSettings, ConversationListCursor, ConversationListResult,
-	ConversationListSize, ConversationRecoveryAction, ConversationResult, ConversationSummary,
-	ConversationTurnOutcome, ConversationWorkingDirectory, DoctorReport, ProtocolVersion,
+	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, AccountRecoveryAction,
+	AccountRecoveryNudgeResult, AccountRecoveryNudgeStatus, AccountRecoveryPreparation,
+	AccountRecoveryResult, AccountRecoveryState, AccountResetCardOperationResult, AgentActionDto,
+	AgentActivityDetailCursor, AgentActivityDetailResult, AgentAppExposureResult,
+	AgentAppSettingsResult, AgentAppUiCall, AgentAppUiCallReview, AgentAppUiReceiptRequest,
+	AgentAppUiReceiptResult, AgentAppUiRequest, AgentAppUiResult, AgentArchiveResult,
+	AgentCapabilitiesResult, AgentGuardianDetailResult, AgentGuardianReviewsResult,
+	AgentHistoryResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
+	AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult,
+	AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult,
+	AgentPendingAppUiCall, AgentPermissionState, AgentPluginSelectionState, AgentRequestResult,
+	AgentResourcesResult, AgentSavedAppSettingsResult, AgentSearchSettingsResult,
+	AgentSkillsResult, AgentSkillsTarget, AgentSnapshotResult, AgentSteerIdentity,
+	AgentSteerReceiptResult, AgentTimelineResult, AgentTranscriptRequest, AgentTranscriptResult,
+	AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult, AgentVoiceStatus,
+	CURRENT_VERSION, ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
+	ConversationExecutionOverrides, ConversationExecutionSettings, ConversationListCursor,
+	ConversationListResult, ConversationListSize, ConversationModelReviewResult,
+	ConversationModelSettingsResult, ConversationRecoveryAction, ConversationResult,
+	ConversationSummary, ConversationTurnOutcome, ConversationTurnOutcomeRequest,
+	ConversationTurnOutcomeResult, ConversationUnavailableReason, ConversationWorkingDirectory,
+	DictationRequest, DictationStatus, DoctorReport, InitialModelCatalogRequest,
+	InitialModelCatalogResult, InitialModelSource, McpLoginRequest, McpLoginStatus,
+	ModelCatalogPurpose, NativeAgentsResult, PromptEditStatus, PromptForkResult,
+	PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus,
+	ProtocolVersion, TaskRecapStatus,
 	program_cycle::{ProgramCycleResult, ProgramListResult},
 };
 
@@ -34,6 +56,8 @@ pub const MAX_HISTORY_PAGE_SIZE: u16 = 8;
 pub const MAX_ACCOUNT_PROFILE_DAILY_USAGE: usize = 36;
 /// Maximum verified payload length representable in a history blob reference.
 pub const MAX_HISTORY_BLOB_BYTES: u64 = 64 * 1_024 * 1_024;
+/// Stable singleton identity for daemon-owned desktop settings.
+pub const DESKTOP_SETTINGS_ENTITY_ID: &str = "desktop-settings";
 
 /// Bounded human-readable wire text; artifact content cannot inhabit this type.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -396,9 +420,6 @@ pub struct Cursor(pub u64);
 #[serde(transparent)]
 pub struct EntityRevision(pub u64);
 
-/// Stable singleton identity for daemon-owned desktop settings.
-pub const DESKTOP_SETTINGS_ENTITY_ID: &str = "desktop-settings";
-
 /// Complete persistent desktop settings projection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -412,7 +433,6 @@ pub struct DesktopSettingsDto {
 	/// Positive optimistic revision of this singleton projection.
 	pub revision: EntityRevision,
 }
-
 impl DesktopSettingsDto {
 	/// Construct one valid positive-revision desktop settings projection.
 	pub const fn new(
@@ -977,7 +997,7 @@ pub enum ResetCardInventoryResult {
 impl Serialize for ResetCardInventoryResult {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
-		S: serde::Serializer,
+		S: Serializer,
 	{
 		#[derive(Serialize)]
 		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
@@ -1246,10 +1266,6 @@ pub enum ClientMessage {
 	AccountLogin(AccountLoginRequestEnvelope),
 }
 
-const fn version_supports_current(version: ProtocolVersion) -> bool {
-	version.major == crate::CURRENT_VERSION.major && version.minor == crate::CURRENT_VERSION.minor
-}
-
 /// Supported credential-negative account provider projection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -1443,51 +1459,6 @@ pub struct AccountProfileDto {
 	/// At most 36 unique ascending daily usage facts.
 	pub daily_usage: Vec<AccountProfileDailyUsageDto>,
 }
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct RawAccountProfileDto {
-	account_id: EntityId,
-	account_revision: EntityRevision,
-	observed_at_unix_micros: i64,
-	email: AccountProfileEmailDto,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	plan_type: Option<WireText>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	display_name: Option<WireText>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	username: Option<WireText>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	lifetime_tokens: Option<u64>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	peak_daily_tokens: Option<u64>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	longest_task_seconds: Option<u64>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	current_streak_days: Option<u32>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	longest_streak_days: Option<u32>,
-	daily_usage: Vec<AccountProfileDailyUsageDto>,
-}
-impl From<&AccountProfileDto> for RawAccountProfileDto {
-	fn from(profile: &AccountProfileDto) -> Self {
-		Self {
-			account_id: profile.account_id.clone(),
-			account_revision: profile.account_revision,
-			observed_at_unix_micros: profile.observed_at_unix_micros,
-			email: profile.email.clone(),
-			plan_type: profile.plan_type.clone(),
-			display_name: profile.display_name.clone(),
-			username: profile.username.clone(),
-			lifetime_tokens: profile.lifetime_tokens,
-			peak_daily_tokens: profile.peak_daily_tokens,
-			longest_task_seconds: profile.longest_task_seconds,
-			current_streak_days: profile.current_streak_days,
-			longest_streak_days: profile.longest_streak_days,
-			daily_usage: profile.daily_usage.clone(),
-		}
-	}
-}
 impl From<RawAccountProfileDto> for AccountProfileDto {
 	fn from(profile: RawAccountProfileDto) -> Self {
 		Self {
@@ -1507,16 +1478,18 @@ impl From<RawAccountProfileDto> for AccountProfileDto {
 		}
 	}
 }
+
 impl Serialize for AccountProfileDto {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
-		S: serde::Serializer,
+		S: Serializer,
 	{
 		validate_account_profile(self).map_err(S::Error::custom)?;
 
 		RawAccountProfileDto::from(self).serialize(serializer)
 	}
 }
+
 impl<'de> Deserialize<'de> for AccountProfileDto {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
@@ -1585,7 +1558,7 @@ pub enum AccountProfileResult {
 impl Serialize for AccountProfileResult {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
-		S: serde::Serializer,
+		S: Serializer,
 	{
 		#[derive(Serialize)]
 		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
@@ -1661,26 +1634,6 @@ pub struct AccountQuotaWindowDto {
 	/// Closed current, unknown, or error result.
 	pub result: AccountQuotaStateDto,
 }
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct RawAccountQuotaWindowDto {
-	duration_minutes: u32,
-	observed_at_unix_micros: RequiredQuotaObservationTime,
-	result: AccountQuotaStateDto,
-}
-#[derive(Deserialize, Serialize)]
-#[serde(transparent)]
-struct RequiredQuotaObservationTime(Option<i64>);
-impl From<AccountQuotaWindowDto> for RawAccountQuotaWindowDto {
-	fn from(quota: AccountQuotaWindowDto) -> Self {
-		Self {
-			duration_minutes: quota.duration_minutes,
-			observed_at_unix_micros: RequiredQuotaObservationTime(quota.observed_at_unix_micros),
-			result: quota.result,
-		}
-	}
-}
 impl From<RawAccountQuotaWindowDto> for AccountQuotaWindowDto {
 	fn from(quota: RawAccountQuotaWindowDto) -> Self {
 		Self {
@@ -1690,16 +1643,18 @@ impl From<RawAccountQuotaWindowDto> for AccountQuotaWindowDto {
 		}
 	}
 }
+
 impl Serialize for AccountQuotaWindowDto {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
-		S: serde::Serializer,
+		S: Serializer,
 	{
 		validate_public_quota_window(*self).map_err(S::Error::custom)?;
 
 		RawAccountQuotaWindowDto::from(*self).serialize(serializer)
 	}
 }
+
 impl<'de> Deserialize<'de> for AccountQuotaWindowDto {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
@@ -1737,39 +1692,6 @@ pub struct AccountDto {
 	/// Required 10,080-minute quota observation.
 	pub seven_day_quota: AccountQuotaWindowDto,
 }
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct RawAccountDto {
-	account_id: EntityId,
-	alias: WireText,
-	enabled: bool,
-	account_revision: EntityRevision,
-	observed_state: AccountObservedStateDto,
-	lifecycle_readiness: AccountLifecycleReadinessDto,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	credential_binding: Option<AccountCredentialBindingDto>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	unsettled_operation: Option<AccountUnsettledOperationDto>,
-	five_hour_quota: AccountQuotaWindowDto,
-	seven_day_quota: AccountQuotaWindowDto,
-}
-impl From<&AccountDto> for RawAccountDto {
-	fn from(account: &AccountDto) -> Self {
-		Self {
-			account_id: account.account_id.clone(),
-			alias: account.alias.clone(),
-			enabled: account.enabled,
-			account_revision: account.account_revision,
-			observed_state: account.observed_state,
-			lifecycle_readiness: account.lifecycle_readiness,
-			credential_binding: account.credential_binding.clone(),
-			unsettled_operation: account.unsettled_operation.clone(),
-			five_hour_quota: account.five_hour_quota,
-			seven_day_quota: account.seven_day_quota,
-		}
-	}
-}
 impl From<RawAccountDto> for AccountDto {
 	fn from(account: RawAccountDto) -> Self {
 		Self {
@@ -1786,16 +1708,18 @@ impl From<RawAccountDto> for AccountDto {
 		}
 	}
 }
+
 impl Serialize for AccountDto {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
-		S: serde::Serializer,
+		S: Serializer,
 	{
 		validate_account_dto(self).map_err(S::Error::custom)?;
 
 		RawAccountDto::from(self).serialize(serializer)
 	}
 }
+
 impl<'de> Deserialize<'de> for AccountDto {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
@@ -1829,11 +1753,10 @@ pub struct AccountRoutingControlDto {
 	/// Complete deterministic order of visible accounts.
 	pub order: Vec<EntityId>,
 }
-
 impl Serialize for AccountRoutingControlDto {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
-		S: serde::Serializer,
+		S: Serializer,
 	{
 		#[derive(Serialize)]
 		struct RawRoutingControl<'a> {
@@ -1915,7 +1838,7 @@ pub enum AccountInitialSelectionResult {
 impl Serialize for AccountInitialSelectionResult {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
-		S: serde::Serializer,
+		S: Serializer,
 	{
 		#[derive(Serialize)]
 		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
@@ -1996,6 +1919,53 @@ pub enum AccountsResult {
 	/// The account authority could not return a safe snapshot.
 	Unavailable,
 }
+impl Serialize for AccountsResult {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		#[derive(Serialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+		enum Raw<'a> {
+			Available { accounts: &'a [AccountDto], routing: Option<&'a AccountRoutingControlDto> },
+			Unavailable,
+		}
+
+		let raw = match self {
+			Self::Available { accounts, routing } => {
+				validate_accounts_result(accounts, routing.as_ref()).map_err(S::Error::custom)?;
+
+				Raw::Available { accounts, routing: routing.as_ref() }
+			},
+			Self::Unavailable => Raw::Unavailable,
+		};
+
+		raw.serialize(serializer)
+	}
+}
+
+impl<'de> Deserialize<'de> for AccountsResult {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
+		enum Raw {
+			Available { accounts: Vec<AccountDto>, routing: Option<AccountRoutingControlDto> },
+			Unavailable,
+		}
+
+		match Raw::deserialize(deserializer)? {
+			Raw::Available { accounts, routing } => {
+				validate_accounts_result(&accounts, routing.as_ref()).map_err(D::Error::custom)?;
+
+				Ok(Self::Available { accounts, routing })
+			},
+			Raw::Unavailable => Ok(Self::Unavailable),
+		}
+	}
+}
 
 /// Closed account inspection result.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2006,6 +1976,49 @@ pub enum AccountInspectResult {
 	NotFound,
 	/// The account authority could not return a safe result.
 	Unavailable,
+}
+impl Serialize for AccountInspectResult {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		#[derive(Serialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+		enum Raw<'a> {
+			Available(&'a AccountDto),
+			NotFound,
+			Unavailable,
+		}
+
+		let raw = match self {
+			Self::Available(account) => Raw::Available(account),
+			Self::NotFound => Raw::NotFound,
+			Self::Unavailable => Raw::Unavailable,
+		};
+
+		raw.serialize(serializer)
+	}
+}
+
+impl<'de> Deserialize<'de> for AccountInspectResult {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
+		enum Raw {
+			Available(Box<AccountDto>),
+			NotFound,
+			Unavailable,
+		}
+
+		match Raw::deserialize(deserializer)? {
+			Raw::Available(account) => Ok(Self::Available(account)),
+			Raw::NotFound => Ok(Self::NotFound),
+			Raw::Unavailable => Ok(Self::Unavailable),
+		}
+	}
 }
 
 /// Read-only state of the normal shared Codex authentication projection.
@@ -2025,11 +2038,10 @@ pub enum CodexAuthProjectionResult {
 	/// The shared auth state could not be read or matched safely.
 	Unavailable,
 }
-
 impl Serialize for CodexAuthProjectionResult {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
-		S: serde::Serializer,
+		S: Serializer,
 	{
 		#[derive(Serialize)]
 		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
@@ -2090,96 +2102,6 @@ impl<'de> Deserialize<'de> for CodexAuthProjectionResult {
 	}
 }
 
-impl Serialize for AccountsResult {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: serde::Serializer,
-	{
-		#[derive(Serialize)]
-		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
-		enum Raw<'a> {
-			Available { accounts: &'a [AccountDto], routing: Option<&'a AccountRoutingControlDto> },
-			Unavailable,
-		}
-
-		let raw = match self {
-			Self::Available { accounts, routing } => {
-				validate_accounts_result(accounts, routing.as_ref()).map_err(S::Error::custom)?;
-
-				Raw::Available { accounts, routing: routing.as_ref() }
-			},
-			Self::Unavailable => Raw::Unavailable,
-		};
-
-		raw.serialize(serializer)
-	}
-}
-impl<'de> Deserialize<'de> for AccountsResult {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		#[derive(Deserialize)]
-		#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
-		enum Raw {
-			Available { accounts: Vec<AccountDto>, routing: Option<AccountRoutingControlDto> },
-			Unavailable,
-		}
-
-		match Raw::deserialize(deserializer)? {
-			Raw::Available { accounts, routing } => {
-				validate_accounts_result(&accounts, routing.as_ref()).map_err(D::Error::custom)?;
-
-				Ok(Self::Available { accounts, routing })
-			},
-			Raw::Unavailable => Ok(Self::Unavailable),
-		}
-	}
-}
-
-impl Serialize for AccountInspectResult {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: serde::Serializer,
-	{
-		#[derive(Serialize)]
-		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
-		enum Raw<'a> {
-			Available(&'a AccountDto),
-			NotFound,
-			Unavailable,
-		}
-
-		let raw = match self {
-			Self::Available(account) => Raw::Available(account),
-			Self::NotFound => Raw::NotFound,
-			Self::Unavailable => Raw::Unavailable,
-		};
-
-		raw.serialize(serializer)
-	}
-}
-impl<'de> Deserialize<'de> for AccountInspectResult {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		#[derive(Deserialize)]
-		#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
-		enum Raw {
-			Available(Box<AccountDto>),
-			NotFound,
-			Unavailable,
-		}
-
-		match Raw::deserialize(deserializer)? {
-			Raw::Available(account) => Ok(Self::Available(account)),
-			Raw::NotFound => Ok(Self::NotFound),
-			Raw::Unavailable => Ok(Self::Unavailable),
-		}
-	}
-}
-
 /// Successful typed manual recovery disposition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -2220,12 +2142,12 @@ pub enum QueryPayload {
 	/// Read durable input transfer status without finalizing or submitting it.
 	GetAgentPromptInputSend {
 		/// Original source, content, command and execution identity.
-		identity: crate::PromptInputSendIdentity,
+		identity: PromptInputSendIdentity,
 	},
 	/// Read durable input transfer progress.
 	GetAgentPromptInputUpload {
 		/// Exact transfer identity.
-		upload: crate::PromptInputUpload,
+		upload: PromptInputUpload,
 	},
 	/// Read one bounded canonical-input fragment from the same reviewed history edit.
 	GetAgentPromptEdit {
@@ -2258,7 +2180,7 @@ pub enum QueryPayload {
 	/// Discover enabled skills for an existing Agent or new Agent account selection.
 	GetAgentSkills {
 		/// Source to inspect without creating a thread.
-		target: crate::AgentSkillsTarget,
+		target: AgentSkillsTarget,
 		/// Case-insensitive name and description filter.
 		filter: WireText,
 	},
@@ -2317,12 +2239,12 @@ pub enum QueryPayload {
 	/// Transient dictation transport owned by the service. No durable receipt or agent input.
 	ExchangeDictation {
 		/// Exact ephemeral operation.
-		request: crate::DictationRequest,
+		request: DictationRequest,
 	},
 	/// Exchange transient native voice signaling without a durable command receipt.
 	ExchangeAgentVoice {
 		/// Exact call operation, with memory-only session descriptions.
-		request: crate::AgentVoiceRequest,
+		request: AgentVoiceRequest,
 	},
 	/// Inspect one exact native activity item without changing the conversation.
 	GetAgentActivityDetail {
@@ -2333,19 +2255,19 @@ pub enum QueryPayload {
 		/// Exact source item.
 		item_id: WireText,
 		/// Continuation for the unchanged source.
-		cursor: Option<crate::AgentActivityDetailCursor>,
+		cursor: Option<AgentActivityDetailCursor>,
 	},
 	/// Read current native model and Memory configuration evidence.
 	GetAgentCapabilities,
 	/// Observe an original later-turn provider attempt without replay.
 	GetConversationTurnOutcome {
 		/// Stable original submission coordinates.
-		request: crate::ConversationTurnOutcomeRequest,
+		request: ConversationTurnOutcomeRequest,
 	},
 	/// Read exact local creation evidence without replaying a command.
 	GetConversationCreationReceipt {
 		/// Original request coordinates.
-		request: crate::ConversationCreationReceiptRequest,
+		request: ConversationCreationReceiptRequest,
 	},
 	/// Discover account-scoped model metadata before creating a thread.
 	/// Read saved input and fresh native choices for a blocked initial task.
@@ -2358,12 +2280,12 @@ pub enum QueryPayload {
 	/// Inspect native model choices before a conversation exists.
 	GetInitialModelCatalog {
 		/// Intended directory and account routing policy.
-		request: crate::InitialModelCatalogRequest,
+		request: InitialModelCatalogRequest,
 	},
 	/// Exchange an explicit ephemeral MCP sign-in operation.
 	ExchangeMcpLogin {
 		/// Caller-owned sign-in intent or observation.
-		request: crate::McpLoginRequest,
+		request: McpLoginRequest,
 	},
 	/// Read configured native model settings for one exact task.
 	GetAgentModelSettings {
@@ -2398,7 +2320,7 @@ pub enum QueryPayload {
 	/// Read positive evidence for one exact steering submission.
 	GetAgentSteerReceipt {
 		/// Identity captured before dispatch.
-		identity: crate::AgentSteerIdentity,
+		identity: AgentSteerIdentity,
 	},
 	/// Read saved App UI call evidence without repeating the native call.
 	/// Discover an unresolved App UI call without a live native source.
@@ -2409,12 +2331,12 @@ pub enum QueryPayload {
 	/// Read the exact saved operation.
 	GetAgentAppUiReceipt {
 		/// Exact saved operation and continuation.
-		request: crate::AgentAppUiReceiptRequest,
+		request: AgentAppUiReceiptRequest,
 	},
 	/// Read native evidence for a widget callback; never execute it.
 	ReviewAgentAppUiCall {
 		/// Complete proposed invocation.
-		request: crate::AgentAppUiCall,
+		request: AgentAppUiCall,
 	},
 	/// Check whether a displayed widget still belongs to the current native source.
 	GetAgentAppUiSource {
@@ -2428,17 +2350,17 @@ pub enum QueryPayload {
 	/// Read a source-bound MCP App UI document chunk.
 	GetAgentAppUi {
 		/// Exact native tool item and chunk continuation.
-		request: crate::AgentAppUiRequest,
+		request: AgentAppUiRequest,
 	},
 	/// Read a bounded chunk of an exact native attachment.
 	GetAgentTranscript {
 		/// Exact conversation and export continuation.
-		request: crate::AgentTranscriptRequest,
+		request: AgentTranscriptRequest,
 	},
 	/// Read a native attachment.
 	GetAgentMedia {
 		/// Source identity and continuation.
-		request: crate::AgentMediaRequest,
+		request: AgentMediaRequest,
 	},
 	/// Read one exact native timeline page without resuming the task.
 	GetAgentTimeline {
@@ -2594,16 +2516,16 @@ pub enum QueryPayload {
 		/// Exact affected account.
 		account_id: EntityId,
 		/// NotifyOwner or RequestIncrease.
-		action: crate::AccountRecoveryAction,
+		action: AccountRecoveryAction,
 		/// Omit to read the latest matching operation after restart.
 		operation_key: Option<IdempotencyKey>,
 	},
 	/// Revalidate a displayed recovery action without executing it.
 	PrepareAccountRecovery {
 		/// Exact displayed account-bound source.
-		source: Box<crate::AccountRecoveryResult>,
+		source: Box<AccountRecoveryResult>,
 		/// Explicitly selected action.
-		action: crate::AccountRecoveryAction,
+		action: AccountRecoveryAction,
 	},
 	/// Read daemon-owned exact-revision recovery copy without provider work.
 	GetAccountRecovery {
@@ -2648,14 +2570,14 @@ pub enum CommandPayload {
 	/// Send one source-bound workspace-owner notification after explicit user action.
 	SendAccountRecoveryNudge {
 		/// Exact recovery source confirmed by the user.
-		source: Box<crate::AccountRecoveryResult>,
+		source: Box<AccountRecoveryResult>,
 		/// NotifyOwner or URL-less RequestIncrease only.
-		action: crate::AccountRecoveryAction,
+		action: AccountRecoveryAction,
 	},
 	/// Submit one explicit Agent operation to the service-owned coordinator.
 	Agent {
 		/// Bounded operation and selected execution configuration.
-		action: Box<crate::AgentActionDto>,
+		action: Box<AgentActionDto>,
 	},
 	/// Replace the persistent menu-bar preference for the sole Decodex application.
 	SetDesktopSettings {
@@ -2680,7 +2602,7 @@ pub enum CommandPayload {
 		execution: ConversationExecutionSettings,
 		/// Source of the reviewed model settings; absent for legacy clients.
 		#[serde(skip_serializing_if = "Option::is_none")]
-		initial_model_source: Option<Box<crate::InitialModelSource>>,
+		initial_model_source: Option<Box<InitialModelSource>>,
 	},
 	/// Confirm refreshed model settings for a blocked, unstarted conversation and start it.
 	ReviewConversationModelSettings {
@@ -2689,7 +2611,7 @@ pub enum CommandPayload {
 		/// Explicit choices reviewed by the user.
 		execution: ConversationExecutionSettings,
 		/// Fresh discovery observation used for those choices.
-		source: crate::InitialModelSource,
+		source: InitialModelSource,
 	},
 	/// Resume the sole initial route for one routing-pending Conversation.
 	ResumeConversationRouting {
@@ -2720,7 +2642,7 @@ pub enum CommandPayload {
 		execution: ConversationExecutionSettings,
 		/// Explicit field choices. Absent preserves the legacy all-explicit command.
 		#[serde(skip_serializing_if = "Option::is_none")]
-		overrides: Option<crate::ConversationExecutionOverrides>,
+		overrides: Option<ConversationExecutionOverrides>,
 	},
 	/// Reconcile one selected Decodex task with its exact Codex archive state.
 	RefreshConversation {
@@ -2903,7 +2825,7 @@ pub enum EventPayload {
 		/// Stable operation key; retrying it never sends again.
 		operation_key: IdempotencyKey,
 		/// Native delivery evidence or uncertainty.
-		status: crate::AccountRecoveryNudgeStatus,
+		status: AccountRecoveryNudgeStatus,
 	},
 	/// A Agent operation was durably accepted or an interrupt was delivered.
 	AgentChanged {
@@ -3051,7 +2973,7 @@ pub enum ResultPayload {
 		/// Stable operation key; retrying it never sends again.
 		operation_key: IdempotencyKey,
 		/// Native delivery evidence or uncertainty.
-		status: crate::AccountRecoveryNudgeStatus,
+		status: AccountRecoveryNudgeStatus,
 	},
 	/// A Agent operation reached its explicit acceptance boundary.
 	AgentAccepted {
@@ -3153,7 +3075,6 @@ pub enum ResultPayload {
 		outcome: AccountManualRecoveryOutcomeDto,
 	},
 }
-
 impl ResultPayload {
 	/// Whether this terminal result can evolve after publication.
 	pub const fn is_evolving_receipt(&self) -> bool {
@@ -3166,9 +3087,9 @@ impl ResultPayload {
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
 	/// Durable data transfer status; not an inference receipt.
-	AgentPromptInputUpload(crate::PromptInputUploadStatus),
+	AgentPromptInputUpload(PromptInputUploadStatus),
 	/// Read-only canonical input acceptance.
-	AgentPromptInputSend(crate::PromptInputSendStatus),
+	AgentPromptInputSend(PromptInputSendStatus),
 	/// Source-bound local media base. Missing directory means unavailable.
 	AgentPromptInputDirectory {
 		/// Requested task.
@@ -3179,97 +3100,97 @@ pub enum QueryResultPayload {
 		directory: Option<WireText>,
 	},
 	/// Service-owned task recap state.
-	AgentRecap(crate::TaskRecapStatus),
+	AgentRecap(TaskRecapStatus),
 	/// Canonical source-bound prompt-edit evidence page.
-	AgentPromptEdit(crate::PromptEditStatus),
+	AgentPromptEdit(PromptEditStatus),
 	/// Exact branch receipt, absent when no attempt was saved.
-	AgentPromptFork(crate::PromptForkResult),
+	AgentPromptFork(PromptForkResult),
 	/// Task-scoped native voice preferences.
-	AgentVoiceSettings(crate::AgentVoiceSettingsResult),
+	AgentVoiceSettings(AgentVoiceSettingsResult),
 	/// Native web-search defaults and permitted modes.
-	AgentSearchSettings(crate::AgentSearchSettingsResult),
+	AgentSearchSettings(AgentSearchSettingsResult),
 	/// Enabled native skills for the exact requested source.
-	AgentSkills(crate::AgentSkillsResult),
+	AgentSkills(AgentSkillsResult),
 	/// Native connector exposure configuration.
-	AgentAppExposure(crate::AgentAppExposureResult),
+	AgentAppExposure(AgentAppExposureResult),
 	/// Exact current-turn reviewer inspection and publication receipt.
-	AgentLiveReviewer(crate::AgentLiveReviewerState),
+	AgentLiveReviewer(AgentLiveReviewerState),
 	/// Native permission review or pending selection.
-	AgentPermissionProfiles(crate::AgentPermissionState),
+	AgentPermissionProfiles(AgentPermissionState),
 	/// Task plugin selections and operation receipts.
-	AgentPluginSelection(crate::AgentPluginSelectionState),
+	AgentPluginSelection(AgentPluginSelectionState),
 	/// Native model selection and operation receipt.
-	AgentModelSelection(crate::AgentModelSelectionState),
+	AgentModelSelection(AgentModelSelectionState),
 	/// Current shared hook review.
-	AgentHookSettings(crate::AgentHookSettingsState),
+	AgentHookSettings(AgentHookSettingsState),
 	/// App connection settings and shared receipts.
-	AgentAppSettings(crate::AgentAppSettingsResult),
+	AgentAppSettings(AgentAppSettingsResult),
 	/// Saved app overrides and their shared receipt.
-	AgentSavedAppSettings(crate::AgentSavedAppSettingsResult),
+	AgentSavedAppSettings(AgentSavedAppSettingsResult),
 	/// Ephemeral voice signaling readback.
-	AgentVoice(crate::AgentVoiceStatus),
+	AgentVoice(AgentVoiceStatus),
 	/// Latest ephemeral dictation draft.
-	Dictation(crate::DictationStatus),
+	Dictation(DictationStatus),
 	/// Selected public tool evidence.
-	AgentActivityDetail(crate::AgentActivityDetailResult),
+	AgentActivityDetail(AgentActivityDetailResult),
 	/// Native model and Memory configuration evidence.
-	AgentCapabilities(crate::AgentCapabilitiesResult),
+	AgentCapabilities(AgentCapabilitiesResult),
 	/// Evidence for one original later-turn provider attempt.
-	ConversationTurnOutcome(crate::ConversationTurnOutcomeResult),
+	ConversationTurnOutcome(ConversationTurnOutcomeResult),
 	/// Exact local creation evidence, not provider completion.
-	ConversationCreationReceipt(crate::ConversationCreationReceiptResult),
+	ConversationCreationReceipt(ConversationCreationReceiptResult),
 	/// Native pre-conversation model metadata and its observation source.
-	InitialModelCatalog(crate::InitialModelCatalogResult),
+	InitialModelCatalog(InitialModelCatalogResult),
 	/// Saved request and current choices for explicit review.
-	ConversationModelReview(crate::ConversationModelReviewResult),
+	ConversationModelReview(ConversationModelReviewResult),
 	/// Source-bound Agent history, without raw provider frames.
-	AgentHistory(crate::AgentHistoryResult),
+	AgentHistory(AgentHistoryResult),
 	/// Transient current-turn output outside retained history publication.
-	AgentOutput(crate::AgentOutputResult),
+	AgentOutput(AgentOutputResult),
 	/// Native agent inspection result.
-	NativeAgents(crate::NativeAgentsResult),
+	NativeAgents(NativeAgentsResult),
 	/// Native resource associations for an exact work thread.
-	AgentResources(crate::AgentResourcesResult),
+	AgentResources(AgentResourcesResult),
 	/// Saved Guardian assessments and explicit user approval receipts.
-	AgentGuardianReviews(crate::AgentGuardianReviewsResult),
+	AgentGuardianReviews(AgentGuardianReviewsResult),
 	/// Exact saved action detail page.
-	AgentGuardianDetail(crate::AgentGuardianDetailResult),
+	AgentGuardianDetail(AgentGuardianDetailResult),
 	/// Current native archive membership, not a cached local flag.
-	AgentArchiveState(crate::AgentArchiveResult),
+	AgentArchiveState(AgentArchiveResult),
 	/// Fresh installation and authorization observations.
-	AgentInstallState(crate::AgentInstallState),
+	AgentInstallState(AgentInstallState),
 	/// Source-bound task integration observations.
-	AgentIntegrations(crate::AgentIntegrationsResult),
+	AgentIntegrations(AgentIntegrationsResult),
 	/// Bounded native mixed voice and task history.
-	AgentTimeline(crate::AgentTimelineResult),
+	AgentTimeline(AgentTimelineResult),
 	/// Exact native attachment content.
-	AgentMedia(crate::AgentMediaResult),
+	AgentMedia(AgentMediaResult),
 	/// Markdown export document chunk.
-	AgentTranscript(crate::AgentTranscriptResult),
+	AgentTranscript(AgentTranscriptResult),
 	/// Source-bound MCP App UI resource document.
-	AgentAppUi(crate::AgentAppUiResult),
+	AgentAppUi(AgentAppUiResult),
 	/// Current source equality; this grants no tool execution authority.
 	AgentAppUiSource(bool),
 	/// Native review for an explicit widget call confirmation.
-	AgentAppUiCallReview(crate::AgentAppUiCallReview),
+	AgentAppUiCallReview(AgentAppUiCallReview),
 	/// A bounded chunk of durable App UI call evidence.
-	AgentAppUiReceipt(crate::AgentAppUiReceiptResult),
+	AgentAppUiReceipt(AgentAppUiReceiptResult),
 	/// Work-owned unresolved operation discovery.
-	AgentPendingAppUiCall(crate::AgentPendingAppUiCall),
+	AgentPendingAppUiCall(AgentPendingAppUiCall),
 	/// Exact positive steering acceptance evidence.
-	AgentSteerReceipt(crate::AgentSteerReceiptResult),
+	AgentSteerReceipt(AgentSteerReceiptResult),
 	/// Independent unconfirmed input page.
-	AgentInputReceipts(crate::AgentInputReceiptsResult),
+	AgentInputReceipts(AgentInputReceiptsResult),
 	/// Native goal observation.
-	AgentNativeGoal(crate::AgentNativeGoalResult),
+	AgentNativeGoal(AgentNativeGoalResult),
 	/// Native usage estimate.
-	AgentUsageEstimate(crate::AgentUsageEstimateResult),
+	AgentUsageEstimate(AgentUsageEstimateResult),
 	/// Configured native model settings for one exact task.
-	AgentModelSettings(crate::AgentModelSettingsResult),
+	AgentModelSettings(AgentModelSettingsResult),
 	/// Ephemeral native MCP sign-in state.
-	McpLogin(crate::McpLoginStatus),
+	McpLogin(McpLoginStatus),
 	/// Selected pending request fields.
-	AgentRequest(crate::AgentRequestResult),
+	AgentRequest(AgentRequestResult),
 	/// Complete bounded Agent work and pending event projection.
 	AgentSnapshot(AgentSnapshotResult),
 	/// Complete daemon-owned desktop settings projection.
@@ -3283,9 +3204,9 @@ pub enum QueryResultPayload {
 	/// One exact ordinary Conversation readback.
 	Conversation(ConversationResult),
 	/// Model choices from the exact queried Conversation process, or unavailable.
-	ConversationCapabilities(crate::AgentCapabilitiesResult),
+	ConversationCapabilities(AgentCapabilitiesResult),
 	/// Configured model metadata for the original Conversation query.
-	ConversationModelSettings(crate::ConversationModelSettingsResult),
+	ConversationModelSettings(ConversationModelSettingsResult),
 	/// Bounded authoritative doctor/status readback.
 	DoctorStatus(DoctorReport),
 	/// Bounded daemon-owned logical-conversation history result.
@@ -3295,7 +3216,7 @@ pub enum QueryResultPayload {
 	/// Durable reset-card operation state.
 	ResetCardOperation(ResetCardOperationResult),
 	/// Account-scoped durable reset-card recovery projection.
-	AccountResetCardOperation(crate::AccountResetCardOperationResult),
+	AccountResetCardOperation(AccountResetCardOperationResult),
 	/// Daemon-owned accounts and user-owned routing controls.
 	Accounts(AccountsResult),
 	/// One account and exact lifecycle readiness.
@@ -3303,11 +3224,11 @@ pub enum QueryResultPayload {
 	/// One independent bounded account-profile observation.
 	AccountProfile(AccountProfileResult),
 	/// Exact-revision backend recovery copy and freshness.
-	AccountRecovery(crate::AccountRecoveryResult),
+	AccountRecovery(AccountRecoveryResult),
 	/// Source-revalidated recovery destination; no effect has executed.
-	AccountRecoveryPreparation(crate::AccountRecoveryPreparation),
+	AccountRecoveryPreparation(AccountRecoveryPreparation),
 	/// Durable account notification state.
-	AccountRecoveryNudge(crate::AccountRecoveryNudgeResult),
+	AccountRecoveryNudge(AccountRecoveryNudgeResult),
 	/// Deterministic initial account choice or typed recovery.
 	InitialAccountSelection(AccountInitialSelectionResult),
 	/// Current shared Codex authentication projection.
@@ -3447,7 +3368,7 @@ pub enum CommandError {
 	/// Conversation execution was unavailable when this daemon process assembled its owners.
 	ConversationUnavailable {
 		/// Closed startup reason. No credential, path, account, or provider text is representable.
-		unavailable_reason: crate::ConversationUnavailableReason,
+		unavailable_reason: ConversationUnavailableReason,
 	},
 	/// The application could not establish whether durable acceptance committed.
 	AcceptanceUnknown,
@@ -3554,26 +3475,129 @@ pub enum Refusal {
 	},
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(transparent)]
+struct RequiredQuotaObservationTime(Option<i64>);
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RawAccountProfileDto {
+	account_id: EntityId,
+	account_revision: EntityRevision,
+	observed_at_unix_micros: i64,
+	email: AccountProfileEmailDto,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	plan_type: Option<WireText>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	display_name: Option<WireText>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	username: Option<WireText>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	lifetime_tokens: Option<u64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	peak_daily_tokens: Option<u64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	longest_task_seconds: Option<u64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	current_streak_days: Option<u32>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	longest_streak_days: Option<u32>,
+	daily_usage: Vec<AccountProfileDailyUsageDto>,
+}
+impl From<&AccountProfileDto> for RawAccountProfileDto {
+	fn from(profile: &AccountProfileDto) -> Self {
+		Self {
+			account_id: profile.account_id.clone(),
+			account_revision: profile.account_revision,
+			observed_at_unix_micros: profile.observed_at_unix_micros,
+			email: profile.email.clone(),
+			plan_type: profile.plan_type.clone(),
+			display_name: profile.display_name.clone(),
+			username: profile.username.clone(),
+			lifetime_tokens: profile.lifetime_tokens,
+			peak_daily_tokens: profile.peak_daily_tokens,
+			longest_task_seconds: profile.longest_task_seconds,
+			current_streak_days: profile.current_streak_days,
+			longest_streak_days: profile.longest_streak_days,
+			daily_usage: profile.daily_usage.clone(),
+		}
+	}
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RawAccountQuotaWindowDto {
+	duration_minutes: u32,
+	observed_at_unix_micros: RequiredQuotaObservationTime,
+	result: AccountQuotaStateDto,
+}
+impl From<AccountQuotaWindowDto> for RawAccountQuotaWindowDto {
+	fn from(quota: AccountQuotaWindowDto) -> Self {
+		Self {
+			duration_minutes: quota.duration_minutes,
+			observed_at_unix_micros: RequiredQuotaObservationTime(quota.observed_at_unix_micros),
+			result: quota.result,
+		}
+	}
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RawAccountDto {
+	account_id: EntityId,
+	alias: WireText,
+	enabled: bool,
+	account_revision: EntityRevision,
+	observed_state: AccountObservedStateDto,
+	lifecycle_readiness: AccountLifecycleReadinessDto,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	credential_binding: Option<AccountCredentialBindingDto>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	unsettled_operation: Option<AccountUnsettledOperationDto>,
+	five_hour_quota: AccountQuotaWindowDto,
+	seven_day_quota: AccountQuotaWindowDto,
+}
+impl From<&AccountDto> for RawAccountDto {
+	fn from(account: &AccountDto) -> Self {
+		Self {
+			account_id: account.account_id.clone(),
+			alias: account.alias.clone(),
+			enabled: account.enabled,
+			account_revision: account.account_revision,
+			observed_state: account.observed_state,
+			lifecycle_readiness: account.lifecycle_readiness,
+			credential_binding: account.credential_binding.clone(),
+			unsettled_operation: account.unsettled_operation.clone(),
+			five_hour_quota: account.five_hour_quota,
+			seven_day_quota: account.seven_day_quota,
+		}
+	}
+}
+
 /// Serialize a message using the JSON wire encoding.
-pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
+pub fn encode_server_message(message: &ServerMessage) -> Result<String, serde_json::Error> {
 	serde_json::to_string(message)
 }
 
 /// Parse a client message using the JSON wire encoding.
-pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
+pub fn decode_client_message(message: &str) -> Result<ClientMessage, serde_json::Error> {
 	let decoded = serde_json::from_str(message)?;
 
 	validate_client_message(&decoded).map_err(|reason| {
-		serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidData, reason))
+		serde_json::Error::io(std::io::Error::new(ErrorKind::InvalidData, reason))
 	})?;
 
 	Ok(decoded)
 }
 
+const fn version_supports_current(version: ProtocolVersion) -> bool {
+	version.major == CURRENT_VERSION.major && version.minor == CURRENT_VERSION.minor
+}
+
 fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> {
 	match message {
 		ClientMessage::Hello(hello)
-			if hello.version == crate::CURRENT_VERSION
+			if hello.version == CURRENT_VERSION
 				&& hello.resume.as_ref().is_some_and(|resume| resume.instance_id.is_none()) =>
 			Err("current protocol resume requires a publication instance"),
 		ClientMessage::Hello(_) => Ok(()),
@@ -3595,21 +3619,19 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 					|| expected_revision.0 == 0
 					|| expected_revision.0 > i64::MAX as u64 =>
 				Err("model review query coordinates are invalid"),
-			QueryPayload::GetAgentSkills {
-				target: crate::AgentSkillsTarget::New { request },
-				..
-			} if request.purpose != crate::ModelCatalogPurpose::Agent
-				|| request
-					.account_id
-					.as_ref()
-					.is_some_and(|id| !is_canonical_uuid(id.as_str())) =>
+			QueryPayload::GetAgentSkills { target: AgentSkillsTarget::New { request }, .. }
+				if request.purpose != ModelCatalogPurpose::Agent
+					|| request
+						.account_id
+						.as_ref()
+						.is_some_and(|id| !is_canonical_uuid(id.as_str())) =>
 				Err("skill catalog account does not match Agent routing"),
 			QueryPayload::GetInitialModelCatalog { request }
 				if request
 					.account_id
 					.as_ref()
 					.is_some_and(|id| !is_canonical_uuid(id.as_str()))
-					|| (request.purpose == crate::ModelCatalogPurpose::Conversation
+					|| (request.purpose == ModelCatalogPurpose::Conversation
 						&& request.account_id.is_some()) =>
 				Err("initial model catalog account does not match its routing policy"),
 			QueryPayload::GetDesktopSettings => Ok(()),
@@ -3630,15 +3652,14 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 				if !is_canonical_uuid(account_id.as_str())
 					|| !matches!(
 						action,
-						crate::AccountRecoveryAction::NotifyOwner
-							| crate::AccountRecoveryAction::RequestIncrease
+						AccountRecoveryAction::NotifyOwner | AccountRecoveryAction::RequestIncrease
 					) =>
 				Err("account notification query source is invalid"),
 			QueryPayload::PrepareAccountRecovery { source, .. }
 				if !is_canonical_uuid(source.account_id.as_str())
 					|| !source.valid_for(&source.account_id, source.account_revision)
 					|| source.account_revision.0 > i64::MAX as u64
-					|| !matches!(source.state, crate::AccountRecoveryState::Current(_)) =>
+					|| !matches!(source.state, AccountRecoveryState::Current(_)) =>
 				Err("account recovery action source is invalid"),
 			QueryPayload::GetAccountRecovery { account_revision, .. }
 				if account_revision.0 == 0 || account_revision.0 > i64::MAX as u64 =>
@@ -3653,7 +3674,7 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 		},
 		ClientMessage::Command(command) => validate_account_command(command),
 		ClientMessage::AccountLogin(request) => {
-			if request.version != crate::CURRENT_VERSION || request.request.validate().is_err() {
+			if request.version != CURRENT_VERSION || request.request.validate().is_err() {
 				Err("account login request contract is invalid")
 			} else {
 				Ok(())
@@ -3713,7 +3734,7 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 
 			let source = source_descriptor.as_str();
 
-			if source.is_empty() || source.len() > 4096 || source.chars().any(char::is_control) {
+			if source.is_empty() || source.len() > 4_096 || source.chars().any(char::is_control) {
 				Err("account credential source descriptor is invalid")
 			} else {
 				Ok(())
@@ -4231,19 +4252,6 @@ fn validate_public_quota_window(quota: AccountQuotaWindowDto) -> Result<(), &'st
 
 #[cfg(test)]
 mod tests {
-	#[test]
-	fn optional_quota_requires_positive_timestamp_and_five_hour_duration() {
-		let value = serde_json::json!({"duration_minutes":300,"observed_at_unix_micros":12,"result":{"state":"not_applicable"}});
-		let quota: super::AccountQuotaWindowDto =
-			serde_json::from_value(value.clone()).expect("positive absence");
-
-		assert_eq!(quota.result, super::AccountQuotaStateDto::NotApplicable);
-		assert_eq!(serde_json::to_value(quota).expect("serialize absence"), value);
-
-		for (duration, time) in [(10080, Some(12)), (300, None), (300, Some(0)), (300, Some(-1))] {
-			assert!(serde_json::from_value::<super::AccountQuotaWindowDto>(serde_json::json!({"duration_minutes":duration,"observed_at_unix_micros":time,"result":{"state":"not_applicable"}})).is_err());
-		}
-	}
 	use crate::{
 		AccountCommandRejectionDto, AccountDto, AccountInitialSelectionResult,
 		AccountLifecycleReadinessDto, AccountObservationSignal, AccountObservedStateDto,
@@ -4258,11 +4266,25 @@ mod tests {
 		QueryResultPayload, ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId,
 		ServerInstanceId, Sha256Digest, WireText,
 		wire::{
-			ClientHello, ClientMessage, CommandEnvelope, CommandPayload, Cursor, EntityRevision,
-			QueryEnvelope, QueryPayload, ResetCardInventoryResult, ResetCardOperationResult,
-			ResumeCursor, decode_client_message,
+			self, ClientHello, ClientMessage, CommandEnvelope, CommandPayload, Cursor,
+			EntityRevision, QueryEnvelope, QueryPayload, ResetCardInventoryResult,
+			ResetCardOperationResult, ResumeCursor,
 		},
 	};
+
+	#[test]
+	fn optional_quota_requires_positive_timestamp_and_five_hour_duration() {
+		let value = serde_json::json!({"duration_minutes":300,"observed_at_unix_micros":12,"result":{"state":"not_applicable"}});
+		let quota: super::AccountQuotaWindowDto =
+			serde_json::from_value(value.clone()).expect("positive absence");
+
+		assert_eq!(quota.result, super::AccountQuotaStateDto::NotApplicable);
+		assert_eq!(serde_json::to_value(quota).expect("serialize absence"), value);
+
+		for (duration, time) in [(10_080, Some(12)), (300, None), (300, Some(0)), (300, Some(-1))] {
+			assert!(serde_json::from_value::<super::AccountQuotaWindowDto>(serde_json::json!({"duration_minutes":duration,"observed_at_unix_micros":time,"result":{"state":"not_applicable"}})).is_err());
+		}
+	}
 
 	#[test]
 	fn retired_stale_quota_state_is_rejected() {
@@ -4492,7 +4514,7 @@ mod tests {
 					"payload": {"name": name, "arguments": arguments}
 				}
 			});
-			let error = decode_client_message(&message.to_string()).unwrap_err();
+			let error = wire::decode_client_message(&message.to_string()).unwrap_err();
 
 			assert!(error.to_string().contains(&format!("unknown variant `{name}`")), "{error}");
 
@@ -4500,7 +4522,7 @@ mod tests {
 				"name": "refresh_system_observation", "arguments": {"entity_id": "system"}
 			});
 
-			assert!(decode_client_message(&message.to_string()).is_ok());
+			assert!(wire::decode_client_message(&message.to_string()).is_ok());
 		}
 		for payload in [
 			serde_json::json!({"name": "list_projects"}),
@@ -4523,13 +4545,13 @@ mod tests {
 				}
 			});
 			let name = payload["name"].as_str().unwrap();
-			let error = decode_client_message(&message.to_string()).unwrap_err();
+			let error = wire::decode_client_message(&message.to_string()).unwrap_err();
 
 			assert!(error.to_string().contains(&format!("unknown variant `{name}`")), "{error}");
 
 			message["body"]["payload"] = serde_json::json!({"name": "get_doctor_status"});
 
-			assert!(decode_client_message(&message.to_string()).is_ok());
+			assert!(wire::decode_client_message(&message.to_string()).is_ok());
 		}
 	}
 
@@ -4575,7 +4597,7 @@ mod tests {
 			});
 
 			assert_eq!(
-				decode_client_message(&serde_json::to_string(&query).unwrap()).unwrap(),
+				wire::decode_client_message(&serde_json::to_string(&query).unwrap()).unwrap(),
 				query
 			);
 		}
@@ -4590,7 +4612,7 @@ mod tests {
 		});
 		let encoded = serde_json::to_string(&remaining).expect("query serializes");
 
-		assert_eq!(decode_client_message(&encoded).unwrap(), remaining);
+		assert_eq!(wire::decode_client_message(&encoded).unwrap(), remaining);
 
 		let removed = serde_json::json!({
 			"type": "query",
@@ -4606,7 +4628,7 @@ mod tests {
 			}
 		});
 
-		assert!(decode_client_message(&removed.to_string()).is_err());
+		assert!(wire::decode_client_message(&removed.to_string()).is_err());
 	}
 
 	#[test]
@@ -4651,7 +4673,7 @@ mod tests {
 
 			let message = ClientMessage::Command(command.clone());
 			let encoded = serde_json::to_string(&message).expect("serialize source");
-			let decoded = decode_client_message(&encoded);
+			let decoded = wire::decode_client_message(&encoded);
 
 			assert_eq!(decoded.is_ok(), accepted);
 
@@ -4836,7 +4858,7 @@ mod tests {
 		let is_rejected = |payload, expected_revision| {
 			let encoded = serde_json::to_string(&command(payload, expected_revision)).unwrap();
 
-			decode_client_message(&encoded).is_err()
+			wire::decode_client_message(&encoded).is_err()
 		};
 
 		assert!(is_rejected(
@@ -5214,9 +5236,9 @@ mod tests {
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 
-		assert!(decode_client_message(&current_without_instance).is_err());
+		assert!(wire::decode_client_message(&current_without_instance).is_err());
 
-		let ClientMessage::Hello(hello) = decode_client_message(old_hello).unwrap() else {
+		let ClientMessage::Hello(hello) = wire::decode_client_message(old_hello).unwrap() else {
 			panic!("expected hello");
 		};
 
@@ -5312,7 +5334,7 @@ mod tests {
 				"details_complete":true,
 				"cards":[card.clone(),card.clone()],
 				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
-				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
+				"seven_day_quota":{"duration_minutes":10_080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
 		let incomplete = serde_json::json!({
@@ -5324,7 +5346,7 @@ mod tests {
 				"details_complete":true,
 				"cards":[card.clone()],
 				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
-				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
+				"seven_day_quota":{"duration_minutes":10_080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
 		let zero_revision = serde_json::json!({
@@ -5336,7 +5358,7 @@ mod tests {
 				"details_complete":true,
 				"cards":[card.clone()],
 				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
-				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
+				"seven_day_quota":{"duration_minutes":10_080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
 		let bounded_cards = (0..MAX_RESET_CARD_ITEMS)
@@ -5358,7 +5380,7 @@ mod tests {
 				"details_complete":true,
 				"cards":bounded_cards,
 				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
-				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
+				"seven_day_quota":{"duration_minutes":10_080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
 		let mut oversized = bounded.clone();
@@ -5366,7 +5388,7 @@ mod tests {
 		oversized["data"]["reported_available_count"] = (MAX_RESET_CARD_ITEMS + 1).into();
 
 		oversized["data"]["cards"].as_array_mut().unwrap().push(serde_json::json!({
-			"descriptor":{"granted_at_unix_seconds":1000,"expires_at_unix_seconds":1001}
+			"descriptor":{"granted_at_unix_seconds":1_000,"expires_at_unix_seconds":1_001}
 		}));
 
 		assert_eq!(MAX_RESET_CARD_ITEMS, 64);
@@ -5375,7 +5397,11 @@ mod tests {
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(incomplete).is_err());
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(zero_revision).is_err());
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(oversized).is_err());
+	}
 
+	#[test]
+	fn reset_card_partial_and_unavailable_inventory_states_preserve_contracts() {
+		let account_id = "40000000-0000-4000-8000-000000000001";
 		let partial = serde_json::json!({
 			"outcome":"available",
 			"data":{
@@ -5385,7 +5411,7 @@ mod tests {
 				"details_complete":false,
 				"cards":[],
 				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
-				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
+				"seven_day_quota":{"duration_minutes":10_080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
 
@@ -5400,7 +5426,7 @@ mod tests {
 				"details_complete":false,
 				"cards":[],
 				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
-				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
+				"seven_day_quota":{"duration_minutes":10_080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
 
@@ -5705,7 +5731,7 @@ mod tests {
 				},
 			});
 			let encoded = serde_json::to_string(&query).expect("encode review query");
-			let decoded = decode_client_message(&encoded);
+			let decoded = wire::decode_client_message(&encoded);
 
 			assert_eq!(decoded.is_ok(), accepted);
 
@@ -5744,7 +5770,7 @@ mod tests {
 			});
 			let encoded = serde_json::to_string(&message).expect("encode review");
 
-			assert_eq!(decode_client_message(&encoded).is_ok(), accepted);
+			assert_eq!(wire::decode_client_message(&encoded).is_ok(), accepted);
 		}
 	}
 }
