@@ -524,6 +524,7 @@ pub(crate) struct Shell {
 	connection: ConnectionView,
 	root_focus: FocusHandle,
 	destination_focus: Vec<FocusHandle>,
+	settings_focus: [FocusHandle; 4],
 	refresh_focus: FocusHandle,
 	composer: Entity<ComposerInput>,
 	agent: Entity<AgentSurface>,
@@ -656,6 +657,9 @@ impl Shell {
 			connection,
 			root_focus,
 			destination_focus,
+			settings_focus: std::array::from_fn(|index| {
+				cx.focus_handle().tab_index(index as isize).tab_stop(true)
+			}),
 			refresh_focus,
 			composer,
 			agent,
@@ -5074,6 +5078,7 @@ fn settings_navigation(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let mut navigation = div()
+		.tab_group()
 		.w(px(192.0))
 		.min_w(px(192.0))
 		.h_full()
@@ -5095,14 +5100,15 @@ fn settings_navigation(
 				.child("Settings"),
 		);
 	use crate::settings_surface::SettingsCategory;
-	for (destination, category, label) in [
+	for (section_index, (destination, category, label)) in [
 		(Destination::Settings, Some(SettingsCategory::General), "General"),
 		(Destination::Settings, Some(SettingsCategory::Appearance), "Appearance"),
 		(Destination::Accounts, None, "Accounts"),
 		(Destination::Health, None, "Diagnostics"),
-	] {
-		let index =
-			Destination::ALL.iter().position(|d| *d == destination).expect("settings destination");
+	]
+	.into_iter()
+	.enumerate()
+	{
 		let active = selected == destination
 			&& category.is_none_or(|category| shell.settings.read(cx).category == category);
 		navigation = navigation.child(
@@ -5111,10 +5117,7 @@ fn settings_navigation(
 				.role(Role::Tab)
 				.aria_label(label)
 				.aria_selected(active)
-				.tab_index(0)
-				.when(category.is_none() || category == Some(SettingsCategory::General), |row| {
-					row.track_focus(&shell.destination_focus[index])
-				})
+				.track_focus(&shell.settings_focus[section_index])
 				.key_context("Destination")
 				.on_action(cx.listener(move |s, _: &ActivateDestination, _, cx| {
 					s.select_settings_destination(destination, standalone, cx);
@@ -5221,7 +5224,7 @@ fn settings_workspace_content(
 		.min_h_0()
 		.flex()
 		.when(standalone || shell.left_sidebar_visible, |layout| layout.child(navigation))
-		.child(content)
+		.child(div().tab_group().tab_index(1).flex_1().min_w_0().min_h_0().flex().child(content))
 		.into_any_element()
 }
 
@@ -6919,20 +6922,52 @@ mod tests {
 		cx: &mut TestAppContext,
 	) {
 		let (shell, visual) = open_shell(cx);
-		for expected in [Destination::Settings, Destination::Accounts, Destination::Health] {
-			let focused = shell.read_with(visual, |shell, _| {
-				let index = Destination::ALL
-					.iter()
-					.position(|value| *value == expected)
-					.expect("test operation must succeed");
-				shell.destination_focus[index].clone()
-			});
+		for (index, expected) in
+			[(0, Destination::Settings), (2, Destination::Accounts), (3, Destination::Health)]
+		{
+			let focused = shell.read_with(visual, |shell, _| shell.settings_focus[index].clone());
 			shell.update(visual, |shell, cx| shell.select_destination(Destination::Settings, cx));
 			visual.update(|window, cx| window.focus(&focused, cx));
 			assert!(visual.update(|window, _| focused.is_focused(window)));
 			visual.simulate_keystrokes("enter");
 			assert_eq!(shell.read_with(visual, |shell, _| shell.selected), expected);
 		}
+	}
+
+	#[gpui::test]
+	fn settings_sections_are_reachable_with_tab_and_enter(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		visual.simulate_keystrokes("cmd-,");
+		let handle = shell.read_with(visual, |s, _| s.settings_window.expect("settings window"));
+		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		settings.update(|window, cx| window.draw(cx).clear());
+		for (index, (destination, category)) in [
+			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::General)),
+			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Appearance)),
+			(Destination::Accounts, None),
+			(Destination::Health, None),
+		]
+		.into_iter()
+		.enumerate()
+		{
+			settings.simulate_keystrokes("tab");
+			settings.update(|window, cx| {
+				assert!(
+					shell.read(cx).settings_focus[index].is_focused(window),
+					"section {index} must receive keyboard focus"
+				);
+			});
+			settings.simulate_keystrokes("enter");
+			shell.read_with(settings, |s, cx| {
+				assert_eq!(s.settings_selected, destination);
+				if let Some(category) = category {
+					assert_eq!(s.settings.read(cx).category, category);
+				}
+				assert_eq!(s.selected, Destination::Agent);
+			});
+		}
+		settings.simulate_keystrokes("shift-tab enter");
+		shell.read_with(settings, |s, _| assert_eq!(s.settings_selected, Destination::Accounts));
 	}
 
 	#[gpui::test]
