@@ -199,7 +199,7 @@ for (index,name) in names.enumerated() {
             .scaledBy(x:1.10,y:1.10).translatedBy(x:-markBounds.midX,y:-markBounds.midY)
         let menuBolt=expand(bolt,7).copy(using:&fit)!
         let menuCursor=expand(cursor,7).copy(using:&fit)!
-        menuShapes=[(index==0 ? rounded : flat).subtracting(menuBolt).subtracting(menuCursor)]
+        menuShapes=[flat.subtracting(menuBolt).subtracting(menuCursor)]
     }
     let bounds=iconBounds
     let rep=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:1024,pixelsHigh:1024,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
