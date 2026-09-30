@@ -11,8 +11,10 @@ pub(crate) fn refresh_queue(request: &RadarRefreshQueueRequest) -> Result<RadarR
 	let root = crate::repo_root()?;
 	let api = GitHubApi::new(crate::github_token(request.token_env.as_deref())?)?;
 	let build = crate::build_review_queue(request, &root, &api)?;
+
 	if request.dry_run {
 		println!("{}", crate::pretty_json(&build.queue)?);
+
 		let out = crate::absolute_repo_path(&root, &request.queue_out);
 		let refresh = crate::inspect_json_refresh(&out, &build.queue, RefreshKind::Queue)?;
 
@@ -28,15 +30,19 @@ pub(crate) fn refresh_queue(request: &RadarRefreshQueueRequest) -> Result<RadarR
 /// Validate the requested Radar artifact paths.
 pub(crate) fn validate(request: &RadarValidateRequest) -> Result<RadarValidationReport> {
 	let uses_default_paths = request.paths.is_empty();
+
 	if request.bootstrap && !uses_default_paths {
 		eyre::bail!(
 			"RADAR_BOOTSTRAP_SCOPE: --bootstrap is valid only for the empty fixed generated cache"
 		);
 	}
+
 	let paths = crate::validation_paths(&request.paths);
+
 	if uses_default_paths {
 		validate_default_cache_presence(Path::new("."), request.bootstrap)?;
 	}
+
 	let cache_gc = if uses_default_paths && !request.bootstrap {
 		Some(crate::cache_gc(&crate::RadarCacheGcRequest::default())?)
 	} else {
@@ -50,6 +56,7 @@ pub(crate) fn validate(request: &RadarValidateRequest) -> Result<RadarValidation
 	if max_age_hours == Some(0) {
 		eyre::bail!("source freshness limit must be at least one hour");
 	}
+
 	let mut state = ValidationState::new();
 	let mut errors = Vec::new();
 	let now = crate::OffsetDateTime::now_utc();
@@ -63,6 +70,7 @@ pub(crate) fn validate(request: &RadarValidateRequest) -> Result<RadarValidation
 		{
 			crate::validate_source_freshness(path, &payload, max_age_hours, now, &mut errors);
 		}
+
 		if validation.schema.as_deref() == Some(SIGNAL_SCHEMA) {
 			crate::validate_signal_slug_uniqueness(path, &payload, &mut state, &mut errors);
 		}
@@ -93,6 +101,7 @@ pub(crate) fn validate_default_cache_presence(root: &Path, bootstrap: bool) -> R
 			"RADAR_BOOTSTRAP_NONEMPTY: --bootstrap requires a completely empty generated cache"
 		);
 	}
+
 	let cache_root = root.join(crate::DEFAULT_CACHE_ROOT);
 	let cache = match crate::private_fs::PrivateCache::open_existing(&cache_root) {
 		Ok(cache) => cache,
@@ -144,6 +153,7 @@ pub(crate) fn validate_default_cache_presence(root: &Path, bootstrap: bool) -> R
 /// Build, install, and read back a deterministic GitHub change bundle.
 pub(crate) fn build_bundle(request: &RadarBundleBuildRequest) -> Result<RadarBundleBuildReceipt> {
 	validate_current_bundle_output_path(&request.out)?;
+
 	let bundle = build_bundle_payload(request)?;
 
 	crate::install_bundle(&request.out, &bundle)

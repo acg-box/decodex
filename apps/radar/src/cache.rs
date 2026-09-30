@@ -33,12 +33,14 @@ struct CacheFile {
 
 pub(crate) fn cache_gc(request: &RadarCacheGcRequest) -> Result<RadarCacheGcReport> {
 	validate_policy(request)?;
+
 	let cache = PrivateCache::open_or_create(&request.cache_root)?;
 	let lock = cache.lock()?;
 	let mut report =
 		RadarCacheGcReport { collections_pruned: 0, files_removed: 0, ledger_rows_removed: 0 };
 
 	recover_stale_temporary_files(&lock, Path::new(""), &mut report)?;
+
 	for relative in RETAINED_CACHE_COLLECTIONS {
 		prune_collection(&lock, Path::new(relative), request, &mut report)?;
 	}
@@ -72,9 +74,11 @@ fn prune_collection(
 	report: &mut RadarCacheGcReport,
 ) -> Result<()> {
 	lock.cache().create_directory_all(directory)?;
+
 	let mut files = Vec::new();
 
 	collect_collection_files(lock, directory, &mut files)?;
+
 	files.sort_by_key(|file| (Reverse(file.identity.modified()), Reverse(file.name.clone())));
 
 	let max_age = Duration::from_secs(request.policy.max_age_days.saturating_mul(24 * 60 * 60));
@@ -91,6 +95,7 @@ fn prune_collection(
 
 		if stale || exceeds_count || exceeds_bytes {
 			lock.remove_if_matches(&file.relative, &file.identity)?;
+
 			report.files_removed += 1;
 			pruned = true;
 		} else {
@@ -98,6 +103,7 @@ fn prune_collection(
 			retained_bytes = retained_bytes.saturating_add(file.identity.size());
 		}
 	}
+
 	if pruned {
 		report.collections_pruned += 1;
 	}
@@ -147,6 +153,7 @@ fn recover_stale_temporary_files(
 				let count = count_files(lock, &relative)?;
 
 				lock.remove_directory_atomic(&relative)?;
+
 				report.files_removed += count;
 			},
 			PrivateEntryKind::Directory => recover_stale_temporary_files(lock, &relative, report)?,
@@ -158,6 +165,7 @@ fn recover_stale_temporary_files(
 					.ok_or_else(|| eyre::eyre!("Radar temporary cache file lacks an identity"))?;
 
 				lock.remove_if_matches(&relative, &identity)?;
+
 				report.files_removed += 1;
 			},
 			PrivateEntryKind::File => {},
@@ -194,11 +202,13 @@ fn prune_ledger(
 		.map_err(|_| eyre::eyre!("Radar ledger row limit is too large"))?;
 
 	connection.execute_batch("BEGIN IMMEDIATE")?;
+
 	let prune_result = prune_ledger_rows(&connection, &cutoff, row_limit);
 
 	match prune_result {
 		Ok(removed) => {
 			connection.execute_batch("COMMIT")?;
+
 			report.ledger_rows_removed += removed;
 		},
 		Err(error) => {

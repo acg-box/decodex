@@ -76,6 +76,7 @@ mod tests {
 				]
 			}
 		});
+
 		assert_eq!(
 			subject_refs_for_signal(signal.as_object().unwrap()),
 			vec![RadarSubject {
@@ -84,6 +85,7 @@ mod tests {
 				subject_id: "abcdef3".into(),
 			}]
 		);
+
 		for (url, count) in [
 			("https://github.com/openai/codex/pull/22414/", 1),
 			("https://github.com/openai/codex/pull/", 0),
@@ -92,6 +94,7 @@ mod tests {
 		] {
 			let signal =
 				serde_json::json!({"source_refs": {"repo": "openai/codex", "pr_url": url}});
+
 			assert_eq!(subject_refs_for_signal(signal.as_object().unwrap()).len(), count, "{url}");
 		}
 	}

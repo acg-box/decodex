@@ -33,16 +33,17 @@ pub(crate) fn select_release_pairs(
 		})
 	})
 	.collect::<Vec<_>>();
-
 	let candidates = if previous_pairs.is_empty() {
 		compare_candidates(stable_releases, preview_releases)
 	} else {
 		previous_pairs
 	};
 	let mut pairs = unique_release_pairs(iter::once(default_pair).chain(candidates).collect());
+
 	if request.pair_limit > 0 {
 		pairs.truncate(request.pair_limit);
 	}
+
 	Ok(pairs)
 }
 
@@ -104,6 +105,7 @@ fn previous_signal_pairs(path: &Path, repo: &str) -> Result<Vec<(String, String)
 	} else {
 		path.exists()
 	};
+
 	if !exists {
 		return Ok(Vec::new());
 	}
@@ -111,9 +113,11 @@ fn previous_signal_pairs(path: &Path, repo: &str) -> Result<Vec<(String, String)
 	let Ok(previous) = release_delta::load_json(path) else {
 		return Ok(Vec::new());
 	};
+
 	if previous.get("repo").and_then(Value::as_str) != Some(repo) {
 		return Ok(Vec::new());
 	}
+
 	let mut keys = Vec::new();
 	let mut seen = BTreeSet::new();
 
@@ -147,7 +151,9 @@ mod tests {
 		let out = temp.path().join("release-delta.json");
 		let release = |tag: &str, preview: bool, published_at: &str| {
 			let mut payload = crate::tests::fixtures::release(tag, preview);
+
 			payload["published_at"] = serde_json::json!(published_at);
+
 			payload
 		};
 		let stable = [
@@ -164,6 +170,7 @@ mod tests {
 				pair_limit,
 				..Default::default()
 			};
+
 			select_release_pairs(&request, temp.path(), &stable[0], &preview[0], &stable, &preview)
 				.unwrap()
 				.into_iter()
@@ -176,10 +183,12 @@ mod tests {
 				.collect::<Vec<_>>()
 		};
 		let fresh = select(0);
+
 		assert_eq!(fresh.len(), 4);
 		assert_eq!(select(1), fresh[..1]);
 		assert_eq!(select(2), fresh[..2]);
 		assert_eq!(select(10), fresh);
+
 		for repo in [
 			serde_json::json!("other/project"),
 			serde_json::Value::Null,
@@ -193,8 +202,11 @@ mod tests {
 					"tracked_signal_slugs": ["signal"]
 				}]
 			});
+
 			crate::write_json(&out, &previous).unwrap();
+
 			let pairs = select(0);
+
 			if repo == "openai/codex" {
 				assert_eq!(
 					pairs,
@@ -206,11 +218,14 @@ mod tests {
 					"foreign or unidentified history must not restrict candidates"
 				);
 			}
+
 			assert_eq!(select(1), pairs[..1]);
 			assert_eq!(select(2), pairs[..pairs.len().min(2)]);
 			assert_eq!(select(10), pairs);
 		}
+
 		std::fs::write(&out, "{broken").unwrap();
+
 		assert_eq!(select(0), fresh);
 	}
 }

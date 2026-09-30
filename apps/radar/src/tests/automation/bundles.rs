@@ -105,6 +105,7 @@ fn installed_bundle_receipt_reports_exact_bytes_and_bounded_structure() {
 	let mut bundle = fixtures::valid_bundle();
 
 	bundle["files"][0]["patch_excerpt"] = serde_json::json!("+pub fn install_bundle() -> Receipt");
+
 	let files = bundle["files"].as_array_mut().expect("fixture files should be a list");
 
 	for (index, path) in [
@@ -123,6 +124,7 @@ fn installed_bundle_receipt_reports_exact_bytes_and_bounded_structure() {
 			"patch_excerpt": format!("+fn receipt_anchor_{index}() {{}}")
 		}));
 	}
+
 	bundle["docs_refs"] = serde_json::json!(["apps/radar/README.md", "docs/receipt.md"]);
 	bundle["examples_refs"] = serde_json::json!(["docs/examples/receipt.md"]);
 
@@ -147,6 +149,7 @@ fn installed_bundle_receipt_reports_exact_bytes_and_bounded_structure() {
 	let object = serialized.as_object().expect("receipt should be an object");
 
 	assert_eq!(object.len(), 10, "receipt surface must remain fixed and bounded");
+
 	for forbidden in ["repo", "bundle_path", "files", "commits", "patch_excerpt", "body"] {
 		assert!(!object.contains_key(forbidden), "receipt must not expose {forbidden}");
 	}
@@ -243,6 +246,7 @@ fn private_bundle_install_holds_one_cache_lock_through_readback() {
 				.find_map(|cause| cause.downcast_ref::<std::io::Error>())
 				.is_some_and(|error| error.kind() == std::io::ErrorKind::WouldBlock)
 		);
+
 		observed_locked.set(true);
 	})
 	.expect("the bundle should install under one cache lock");
@@ -263,6 +267,7 @@ fn bundle_install_and_build_output_are_private_and_bound_to_the_process_run() {
 
 	crate::operations::validate_current_bundle_output_path(&expected)
 		.expect("the exact current run bundle path should validate");
+
 	let stale_error = crate::operations::validate_current_bundle_output_path(&stale)
 		.expect_err("a stale run bundle path must fail before GitHub access");
 	let external_error = crate::install_bundle(&external, &receiptable_bundle())
@@ -278,6 +283,7 @@ fn receiptable_bundle() -> serde_json::Value {
 
 	bundle["docs_refs"] = serde_json::json!([]);
 	bundle["examples_refs"] = serde_json::json!([]);
+
 	bundle
 }
 
@@ -306,21 +312,30 @@ fn bundle_commit_time_uses_committer_without_changing_author_identity() {
 		&[],
 	)
 	.unwrap();
+
 	for bundle in [&bundle, &pr_bundle] {
 		assert_eq!(bundle["commits"][0]["committed_at"], "2026-06-01T00:00:00Z");
 		assert_eq!(bundle["commits"][0]["author"], "author-login");
+
 		let mut analysis = fixtures::valid_signal();
+
 		analysis.as_object_mut().unwrap().remove("published_at");
+
 		let signal = crate::rendered_signal(bundle, &analysis, None, vec![]).unwrap();
+
 		assert_eq!(signal["published_at"], "2026-06-01T00:00:00Z");
 	}
+
 	commit["author"] = serde_json::Value::Null;
+
 	for committer in
 		[serde_json::Value::Null, serde_json::json!({}), serde_json::json!({"date": 7})]
 	{
 		commit["commit"]["committer"] = committer;
+
 		let bundle =
 			crate::build_commit_bundle_from_sources("openai/codex", &commit, "main", &[]).unwrap();
+
 		assert!(bundle["commits"][0]["committed_at"].is_null());
 		assert_eq!(bundle["commits"][0]["author"], "Original author");
 	}

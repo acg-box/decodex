@@ -10,6 +10,7 @@ fn ledger_rejects_oversized_fields_without_persisting_them() {
 		.expect_err("oversized review reason must fail");
 
 	assert!(error.to_string().contains("reason must not exceed"));
+
 	drop(ledger);
 
 	let connection = crate::ledger::open_ledger(&path).expect("ledger should reopen");
@@ -18,6 +19,7 @@ fn ledger_rejects_oversized_fields_without_persisting_them() {
 		.expect("review count should be readable");
 
 	assert_eq!(rows, 0);
+
 	connection.close().expect("empty ledger should close");
 }
 
@@ -28,6 +30,7 @@ fn ledger_writer_prunes_oldest_rows_before_commit() {
 	let connection = crate::ledger::open_ledger(&path).expect("ledger should open");
 
 	connection.close().expect("initial ledger should persist");
+
 	let raw = rusqlite::Connection::open(&path).expect("fixture ledger should open directly");
 
 	raw.execute_batch(
@@ -60,6 +63,7 @@ fn ledger_writer_prunes_oldest_rows_before_commit() {
 			",
 	)
 	.expect("oversized fixture row set should be inserted");
+
 	drop(raw);
 
 	let open_error = crate::RadarLedger::open(&path)
@@ -74,6 +78,7 @@ fn ledger_writer_prunes_oldest_rows_before_commit() {
 		[],
 	)
 	.expect("fixture should return to the write boundary");
+
 	drop(raw);
 
 	let mut ledger = crate::RadarLedger::open(&path).expect("bounded ledger should open");
@@ -96,6 +101,7 @@ fn ledger_writer_prunes_oldest_rows_before_commit() {
 		.expect("review count should be readable");
 
 	assert_eq!(rows, crate::LEDGER_MAX_ROWS_PER_TABLE as i64);
+
 	connection.close().expect("bounded ledger should close");
 }
 

@@ -53,7 +53,6 @@ fn collect_json_path(path: &Path, files: &mut Vec<PathBuf>) -> crate::prelude::R
 
 		return Ok(());
 	}
-
 	if path.is_dir() {
 		let mut children = fs::read_dir(path)?
 			.map(|entry| entry.map(|entry| entry.path()))

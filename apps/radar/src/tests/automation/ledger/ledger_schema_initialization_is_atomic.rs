@@ -9,7 +9,9 @@ fn first_initialization_rolls_back_at_every_precommit_boundary_and_restarts_clea
 
 		std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o700))
 			.expect("ledger parent should be private");
+
 		let path = temp_dir.path().join(format!("{boundary}.sqlite3"));
+
 		drop(crate::create_private_file(&path).expect("ledger file should be created"));
 
 		let connection = Connection::open(&path).expect("empty ledger should open");
@@ -17,6 +19,7 @@ fn first_initialization_rolls_back_at_every_precommit_boundary_and_restarts_clea
 			.expect_err("injected initialization must fail");
 
 		assert!(error.to_string().contains("injected Radar ledger initialization failure"));
+
 		let user_tables: i64 = connection
 			.query_row(
 				"
@@ -30,6 +33,7 @@ fn first_initialization_rolls_back_at_every_precommit_boundary_and_restarts_clea
 			.expect("rolled-back table inventory should be readable");
 
 		assert_eq!(user_tables, 0, "{boundary} left a partial schema");
+
 		drop(connection);
 
 		let restarted =
@@ -41,6 +45,7 @@ fn first_initialization_rolls_back_at_every_precommit_boundary_and_restarts_clea
 			.expect("schema version should be stored");
 
 		assert_eq!(version, crate::SCHEMA_VERSION.to_string());
+
 		restarted.close().expect("restarted ledger should persist atomically");
 	}
 }

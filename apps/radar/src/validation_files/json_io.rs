@@ -61,13 +61,18 @@ mod tests {
 		let temp = tempfile::tempdir().expect("temporary directory");
 		let path = temp.path().join("artifact.json");
 		let staging = temp.path().join(format!(".artifact.json.tmp-{}", process::id()));
+
 		fs::write(&path, b"original artifact").unwrap();
 		fs::write(&staging, b"another writer's data").unwrap();
+
 		assert!(write_json(&path, &serde_json::json!({"updated": true})).is_err());
 		assert_eq!(fs::read(&path).unwrap(), b"original artifact");
 		assert_eq!(fs::read(&staging).unwrap(), b"another writer's data");
+
 		fs::remove_file(staging).unwrap();
+
 		write_json(&path, &serde_json::json!({"updated": true})).expect("write after collision");
+
 		assert_eq!(load_json(&path).unwrap(), serde_json::json!({"updated": true}));
 	}
 }

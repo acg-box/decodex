@@ -21,19 +21,24 @@ where
 	AfterWrite: FnOnce(),
 {
 	crate::validate_expected_schema(bundle, BUNDLE_SCHEMA, "Bundle")?;
+
 	let expected = pretty_json_bytes(bundle)?;
 
 	validate_bundle_size(expected.len())?;
+
 	let _ = bundle_evidence_from_bytes(&expected)?;
 
 	if !crate::is_radar_cache_path(path) {
 		eyre::bail!("bundle installation requires a private Radar cache path");
 	}
+
 	let (cache, relative) = crate::private_fs::private_cache_file(path)?;
 	let lock = cache.lock()?;
 
 	lock.write_atomic(&relative, &expected)?;
+
 	after_write();
+
 	let installed = lock.read_bounded(&relative, CACHE_MAX_BYTES_PER_COLLECTION)?;
 
 	receipt_from_installed_bytes(&expected, &installed)
@@ -46,15 +51,18 @@ fn receipt_from_installed_bytes(
 	if installed != expected {
 		eyre::bail!("installed bundle bytes do not match the deterministic build output");
 	}
+
 	bundle_evidence_from_bytes(installed)
 }
 
 fn bundle_evidence_from_bytes(bytes: &[u8]) -> Result<RadarBundleBuildReceipt> {
 	validate_bundle_size(bytes.len())?;
+
 	let bundle: Value = serde_json::from_slice(bytes)
 		.map_err(|error| eyre::eyre!("bundle JSON is invalid: {error}"))?;
 
 	crate::validate_expected_schema(&bundle, BUNDLE_SCHEMA, "Bundle")?;
+
 	let object = bundle.as_object().ok_or_else(|| eyre::eyre!("bundle must be an object"))?;
 	let analysis_mode = object
 		.get("analysis_mode")
@@ -140,6 +148,7 @@ fn pretty_json_bytes(value: &Value) -> Result<Vec<u8>> {
 	let mut bytes = serde_json::to_vec_pretty(value)?;
 
 	bytes.push(b'\n');
+
 	Ok(bytes)
 }
 

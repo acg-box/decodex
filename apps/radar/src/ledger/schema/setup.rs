@@ -13,7 +13,6 @@ use crate::{
 };
 
 const MAX_LEDGER_RECOVERY_BYTES: u64 = LEDGER_MAX_BYTES * 2;
-
 const SCHEMA_OBJECTS_SQL: &str = "
 	CREATE TABLE IF NOT EXISTS metadata (
 	  key TEXT PRIMARY KEY CHECK (length(CAST(key AS BLOB)) BETWEEN 1 AND 64),
@@ -123,7 +122,9 @@ impl RadarLedgerImage {
 			.connection
 			.take()
 			.ok_or_else(|| eyre::eyre!("Radar ledger connection is already closed"))?;
+
 		crate::ledger::validate_ledger_bounds(&connection)?;
+
 		let payload = {
 			let serialized = connection.serialize(MAIN_DB)?;
 
@@ -131,6 +132,7 @@ impl RadarLedgerImage {
 		};
 		let payload_bytes = u64::try_from(payload.len())
 			.map_err(|_| eyre::eyre!("Radar ledger serialized size is invalid"))?;
+
 		if payload_bytes > max_bytes {
 			eyre::bail!(
 				"{}: Radar ledger remains above the byte limit after oldest-first retention",
@@ -139,6 +141,7 @@ impl RadarLedgerImage {
 		}
 
 		connection.close().map_err(|(_, error)| error)?;
+
 		if self.original_bytes.as_deref() == Some(payload.as_slice()) {
 			let identity = self
 				.original_identity
@@ -205,6 +208,7 @@ fn open_connection_under_lock(
 	validate_bounds: bool,
 ) -> Result<RadarLedgerImage> {
 	let original_identity = lock.cache().metadata(relative)?;
+
 	if original_identity
 		.as_ref()
 		.is_some_and(|identity| identity.size() > MAX_LEDGER_RECOVERY_BYTES)
@@ -214,6 +218,7 @@ fn open_connection_under_lock(
 			crate::ledger::bounds::OVERSIZE_INCIDENT
 		);
 	}
+
 	let original_bytes = match &original_identity {
 		Some(identity) => {
 			let payload = lock.read_bounded(relative, MAX_LEDGER_RECOVERY_BYTES)?;
@@ -236,6 +241,7 @@ fn open_connection_under_lock(
 	}
 
 	initialize_ledger(&connection)?;
+
 	if validate_bounds {
 		crate::ledger::validate_ledger_bounds(&connection)?;
 	}
@@ -250,7 +256,9 @@ fn open_connection_under_lock(
 
 pub(crate) fn initialize_ledger(connection: &Connection) -> Result<()> {
 	configure_ledger_storage(connection)?;
+
 	connection.execute_batch("BEGIN IMMEDIATE")?;
+
 	let result = initialize_ledger_transaction(connection, InitFailureBoundary::None);
 
 	match result {
@@ -270,12 +278,17 @@ fn initialize_ledger_transaction(
 	failure: InitFailureBoundary,
 ) -> Result<()> {
 	let empty = require_current_schema_or_empty(connection)?;
+
 	fail_initialization(failure, InitFailureBoundary::AfterInventory)?;
+
 	if !empty {
 		return Ok(());
 	}
+
 	connection.execute_batch(SCHEMA_OBJECTS_SQL)?;
+
 	fail_initialization(failure, InitFailureBoundary::AfterObjects)?;
+
 	connection.execute(
 		"
 		INSERT INTO metadata (key, value)
@@ -284,8 +297,10 @@ fn initialize_ledger_transaction(
 		",
 		rusqlite::params![SCHEMA_VERSION.to_string()],
 	)?;
+
 	fail_initialization(failure, InitFailureBoundary::AfterVersion)?;
 	verify_current_schema(connection)?;
+
 	fail_initialization(failure, InitFailureBoundary::BeforeCommit)
 }
 
@@ -331,7 +346,9 @@ pub(crate) fn initialize_ledger_with_failure(
 	};
 
 	configure_ledger_storage(connection)?;
+
 	connection.execute_batch("BEGIN IMMEDIATE")?;
+
 	let result = initialize_ledger_transaction(connection, boundary);
 	let _ = connection.execute_batch("ROLLBACK");
 
@@ -348,6 +365,7 @@ fn require_current_schema_or_empty(connection: &Connection) -> Result<bool> {
 		[],
 		|row| row.get(0),
 	)?;
+
 	if user_table_count == 0 {
 		return Ok(true);
 	}
@@ -373,6 +391,7 @@ fn verify_current_schema(connection: &Connection) -> Result<()> {
 	let expected_connection = Connection::open_in_memory()?;
 
 	expected_connection.execute_batch(SCHEMA_OBJECTS_SQL)?;
+
 	let actual = schema_inventory(connection)?;
 	let expected = schema_inventory(&expected_connection)?;
 
@@ -382,7 +401,9 @@ fn verify_current_schema(connection: &Connection) -> Result<()> {
 			cache and bootstrap a clean ledger"
 		);
 	}
+
 	let auto_vacuum: i64 = connection.query_row("PRAGMA auto_vacuum", [], |row| row.get(0))?;
+
 	if auto_vacuum != 1 {
 		eyre::bail!(
 			"Radar ledger schema {SCHEMA_VERSION} must use full auto-vacuum; remove the local \
@@ -433,6 +454,7 @@ fn normalize_sql(sql: &str) -> String {
 	while let Some(character) = characters.next() {
 		if let Some(active) = quote {
 			normalized.push(character);
+
 			let closing = match active {
 				Quote::Bracket => ']',
 				Quote::Backtick => '`',
@@ -458,6 +480,7 @@ fn normalize_sql(sql: &str) -> String {
 		}
 		if pending_space {
 			normalized.push(' ');
+
 			pending_space = false;
 		}
 
@@ -468,6 +491,7 @@ fn normalize_sql(sql: &str) -> String {
 			'\'' => Some(Quote::Single),
 			_ => None,
 		};
+
 		normalized.extend(character.to_lowercase());
 	}
 

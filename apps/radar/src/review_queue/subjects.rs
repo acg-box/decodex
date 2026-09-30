@@ -65,6 +65,7 @@ fn commit_shas(bundle: &SourceBundle, seed_commit: &RecentCommit) -> Vec<String>
 	if !shas.contains(&seed_commit.sha) {
 		shas.push(seed_commit.sha.clone());
 	}
+
 	shas
 }
 
@@ -190,14 +191,23 @@ mod tests {
 			files: vec![],
 		};
 		let mut subject = subject_from_bundle(&bundle, "pr", "1", &seed);
+
 		assert_eq!(subject["commit_shas"], serde_json::json!([pr_commit, seed.sha]));
+
 		append_commit_sha(&mut subject, &seed.sha);
+
 		assert_eq!(subject["commit_shas"].as_array().unwrap().len(), 2);
+
 		bundle.commits.push(BundleCommit { sha: seed.sha.clone(), message: seed.title.clone() });
+
 		let subject = subject_from_bundle(&bundle, "pr", "1", &seed);
+
 		assert_eq!(subject["commit_shas"], serde_json::json!([pr_commit, seed.sha]));
+
 		bundle.commits.clear();
+
 		let subject = subject_from_bundle(&bundle, "pr", "1", &seed);
+
 		assert_eq!(subject["commit_shas"], serde_json::json!([seed.sha]));
 	}
 }

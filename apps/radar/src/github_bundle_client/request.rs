@@ -28,6 +28,7 @@ mod tests {
 		let server = spawn_server_with(4, |url, page| {
 			let files = (page * 100..((page + 1) * 100).min(301)).map(|i| serde_json::json!({"filename": format!("src/file-{i}.rs"), "status": "modified", "additions": 1, "deletions": 0})).collect::<Vec<_>>();
 			let body = serde_json::json!({"sha": "a".repeat(40), "html_url": "https://github.com/openai/codex/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "commit": {"message": format!("page-{page}"), "committer": {"date": "2026-06-01T00:00:00Z"}}, "files": files}).to_string();
+
 			if page < 3 {
 				response(
 					"200 OK",
@@ -45,6 +46,7 @@ mod tests {
 		let payload = payload.unwrap();
 		let bundle =
 			crate::build_commit_bundle_from_sources("openai/codex", &payload, "main", &[]).unwrap();
+
 		assert_eq!(bundle["files"].as_array().unwrap().len(), 301);
 		assert_eq!(bundle["files"][300]["path"], "src/file-300.rs");
 		assert_eq!(bundle["commits"][0]["message"], "page-0");

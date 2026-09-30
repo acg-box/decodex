@@ -32,15 +32,21 @@ fn analysis_helper_fails_closed_without_explicit_boundary_opt_in() {
 #[test]
 fn python_analysis_contracts_match_rust_for_invalid_json_fields() {
 	use serde_json::{Value, json};
+
 	let mut cases = Vec::new();
 	let bundle = crate::tests::fixtures::valid_bundle();
 	let draft = crate::tests::fixtures::valid_signal();
+
 	cases.push(("bundle", bundle.clone(), true));
 	cases.push(("draft", draft.clone(), true));
+
 	let mut commit_only = bundle.clone();
+
 	commit_only["analysis_mode"] = json!("commit_only");
+
 	commit_only.as_object_mut().unwrap().remove("primary_pr");
 	cases.push(("bundle", commit_only, true));
+
 	for (kind, original, paths) in [
 		(
 			"bundle",
@@ -62,14 +68,18 @@ fn python_analysis_contracts_match_rust_for_invalid_json_fields() {
 	] {
 		for path in paths {
 			let mut value = original.clone();
+
 			*value.pointer_mut(path).unwrap() = Value::Null;
+
 			cases.push((kind, value, false));
 		}
 	}
 	for path in ["/files/0/additions", "/files/0/deletions", "/primary_pr/number"] {
 		for invalid in [json!(true), json!(-1), json!(1.5), json!(9_223_372_036_854_775_808_u64)] {
 			let mut value = bundle.clone();
+
 			*value.pointer_mut(path).unwrap() = invalid;
+
 			cases.push(("bundle", value, false));
 		}
 	}
@@ -81,7 +91,9 @@ fn python_analysis_contracts_match_rust_for_invalid_json_fields() {
 	] {
 		for invalid in [json!([]), json!({})] {
 			let mut value = original.clone();
+
 			value[field] = invalid;
+
 			cases.push((kind, value, false));
 		}
 	}
@@ -92,31 +104,44 @@ fn python_analysis_contracts_match_rust_for_invalid_json_fields() {
 	}
 
 	let mut boundaries = bundle.clone();
+
 	boundaries["files"][0]["additions"] = json!(0);
 	boundaries["files"][0]["deletions"] = json!(i64::MAX);
 	boundaries["primary_pr"]["number"] = json!(i64::MAX);
+
 	cases.push(("bundle", boundaries, true));
+
 	for field in ["title", "summary", "why_it_matters"] {
 		let mut value = draft.clone();
+
 		value[field] = json!("");
+
 		cases.push(("draft", value, false));
 	}
 	for invalid in [json!(0), json!("")] {
 		let mut value = bundle.clone();
+
 		value["primary_pr"]["number"] = invalid;
+
 		cases.push(("bundle", value, false));
 	}
+
 	let mut invalid_labels = bundle.clone();
+
 	invalid_labels["primary_pr"]["labels"] = json!([""]);
+
 	cases.push(("bundle", invalid_labels, false));
+
 	for (kind, value, expected) in &cases {
 		let actual = if *kind == "bundle" {
 			crate::validate_artifact_errors(value).is_empty()
 		} else {
 			crate::validate_analysis_draft(value).is_ok()
 		};
+
 		assert_eq!(actual, *expected, "Rust {kind}: {value}");
 	}
+
 	let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
 	let output = Command::new("python3")
 		.arg("-c")
@@ -149,6 +174,7 @@ for kind, value, expected in cases:
         .arg(root)
 		.output()
 		.expect("Python contracts should execute");
+
 	assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
 }
 
@@ -203,6 +229,7 @@ with tempfile.TemporaryDirectory() as tmp:
     from analysis_runner.paths import repo_root_from
     assert repo_root_from(exported) == root
 "#).arg(root.join("automations/radar/scripts/github")).output().expect("Python path fixture should execute");
+
 	assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
 }
 
@@ -268,5 +295,6 @@ with tempfile.TemporaryDirectory() as tmp:
         else: raise AssertionError('invalid output accepted')
     assert all(not p.exists() for p in outputs)
 "#).arg(root.join("automations/radar/scripts/github")).output().expect("Python command fixture should execute");
+
 	assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
 }

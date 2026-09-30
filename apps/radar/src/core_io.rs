@@ -84,7 +84,6 @@ pub(crate) fn collect_bundle_json_files(paths: &[PathBuf]) -> crate::prelude::Re
 
 			continue;
 		}
-
 		if path.is_dir() {
 			files.extend(sorted_json_files(path)?);
 		} else if path.is_file() {
@@ -148,6 +147,7 @@ fn refresh_json_with_write_and_hook(
 	if crate::is_radar_cache_path(path) {
 		return refresh_private_json(path, payload, kind, write, refreshed_at, after_comparison);
 	}
+
 	let _directory_lock = acquire_external_refresh_lock(path, write)?;
 	let existing = match crate::load_json(path) {
 		Ok(existing) => Some(existing),
@@ -157,9 +157,11 @@ fn refresh_json_with_write_and_hook(
 	let material_changed = compare_refresh(existing.as_ref(), payload, &kind)?;
 
 	after_comparison();
+
 	if write {
 		crate::write_json(path, payload)?;
 	}
+
 	Ok(RefreshWriteReport { material_changed, written: write, refreshed_at })
 }
 
@@ -175,6 +177,7 @@ fn acquire_external_refresh_lock(
 	} else if !parent.exists() {
 		return Ok(None);
 	}
+
 	let directory = OpenOptions::new()
 		.read(true)
 		.custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
@@ -221,6 +224,7 @@ fn refresh_private_json(
 	let material_changed = compare_refresh(existing.as_ref(), payload, &kind)?;
 
 	after_comparison();
+
 	if write {
 		let mut output = serde_json::to_string_pretty(payload)?;
 

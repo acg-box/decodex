@@ -71,12 +71,17 @@ mod tests {
 			"schema": UPSTREAM_REVIEW_QUEUE_SCHEMA,
 			"generated_at": "2026-09-30T11:00:00Z"
 		});
+
 		for limit in [i64::MAX as u64 / 3600 + 1, i64::MAX as u64, u64::MAX] {
 			let mut errors = Vec::new();
+
 			validate_source_freshness(Path::new("queue.json"), &payload, limit, now, &mut errors);
+
 			assert_eq!(errors, ["queue.json: source freshness limit is too large"]);
 		}
+
 		let mut errors = Vec::new();
+
 		validate_source_freshness(
 			Path::new("queue.json"),
 			&payload,
@@ -84,6 +89,7 @@ mod tests {
 			now,
 			&mut errors,
 		);
+
 		assert!(errors.is_empty(), "largest representable hour limit remains valid");
 	}
 }

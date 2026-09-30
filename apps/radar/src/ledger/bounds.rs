@@ -75,6 +75,7 @@ pub(super) fn validate_ledger_bounds(connection: &Connection) -> Result<()> {
 	for (table, _) in TABLES {
 		let rows: i64 =
 			connection.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))?;
+
 		if rows > LEDGER_MAX_ROWS_PER_TABLE as i64 {
 			eyre::bail!("{ROW_LIMIT_INCIDENT}: Radar ledger table exceeds the row limit");
 		}
@@ -87,6 +88,7 @@ fn prune_table(connection: &Connection, table: &str, timestamp: &str, limit: usi
 	if !TABLES.contains(&(table, timestamp)) {
 		eyre::bail!("Radar ledger bound enforcement received an unknown table");
 	}
+
 	let limit =
 		i64::try_from(limit).map_err(|_| eyre::eyre!("Radar ledger row limit is too large"))?;
 
@@ -142,6 +144,7 @@ mod tests {
 				",
 			)
 			.expect("outer ledger transaction should start");
+
 		let error = bounded_write(&connection, "unknown_table", "fetched_at", || {
 			connection.execute(
 				"
@@ -160,6 +163,7 @@ mod tests {
 
 		assert!(error.to_string().contains("unknown table"));
 		assert_eq!(rows, 0);
+
 		connection.execute_batch("COMMIT").expect("outer transaction should remain usable");
 	}
 }

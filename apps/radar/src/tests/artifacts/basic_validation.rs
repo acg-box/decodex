@@ -69,10 +69,13 @@ fn empty_json_values_do_not_satisfy_try_instructions_or_effects() {
 		serde_json::json!({}),
 	] {
 		let mut signal = fixtures::valid_signal();
+
 		signal["kind"] = serde_json::json!("try_now");
 		signal["how_to_try"] = empty.clone();
 		signal["expected_effect"] = serde_json::json!("A visible result");
+
 		assertions::assert_errors(&signal, ["how_to_try is required"]);
+
 		assert!(
 			crate::validate_analysis_draft(&signal)
 				.unwrap_err()
@@ -82,7 +85,9 @@ fn empty_json_values_do_not_satisfy_try_instructions_or_effects() {
 
 		signal["how_to_try"] = serde_json::json!("Run the example");
 		signal["expected_effect"] = empty.clone();
+
 		assertions::assert_errors(&signal, ["expected_effect is required"]);
+
 		assert!(
 			crate::validate_analysis_draft(&signal)
 				.unwrap_err()
@@ -93,8 +98,10 @@ fn empty_json_values_do_not_satisfy_try_instructions_or_effects() {
 		signal["kind"] = serde_json::json!("capability");
 		signal["how_to_try"] = empty.clone();
 		signal["caveats"] = serde_json::json!([]);
+
 		let rendered =
 			crate::rendered_signal(&fixtures::valid_bundle(), &signal, None, vec![]).unwrap();
+
 		for field in ["how_to_try", "expected_effect", "caveats"] {
 			assert!(rendered.get(field).is_none(), "empty {field} should be omitted: {empty}");
 		}
@@ -104,9 +111,12 @@ fn empty_json_values_do_not_satisfy_try_instructions_or_effects() {
 #[test]
 fn bundle_validation_checks_required_field_types_without_rejecting_empty_content() {
 	let mut valid = fixtures::valid_bundle();
+
 	valid["files"][0]["additions"] = serde_json::json!(0);
 	valid["files"][0]["deletions"] = serde_json::json!(0);
+
 	assertions::assert_errors(&valid, []);
+
 	for (pointer, value, error) in [
 		("/files/0/path", serde_json::Value::Null, "files[0].path must be a non-empty string"),
 		("/files/0/status", serde_json::json!(42), "files[0].status must be a non-empty string"),
@@ -146,11 +156,15 @@ fn bundle_validation_checks_required_field_types_without_rejecting_empty_content
 		("/primary_pr/url", serde_json::Value::Null, "primary_pr.url must be a non-empty string"),
 	] {
 		let mut bundle = valid.clone();
+
 		*bundle.pointer_mut(pointer).unwrap() = value;
+
 		assertions::assert_errors(&bundle, [error]);
 	}
+
 	valid["analysis_mode"] = serde_json::json!("commit_only");
 	valid["primary_pr"] = serde_json::Value::Null;
+
 	assertions::assert_errors(&valid, []);
 }
 
@@ -181,6 +195,7 @@ fn rendered_config_flags_deduplicate_after_normalizing_aliases() {
 		"--enable unknown_feature",
 	];
 	let bundle = serde_json::json!({"extracted_flags": flags});
+
 	for analysis in [
 		serde_json::json!({}),
 		serde_json::json!({"config_flags": null}),
@@ -188,6 +203,7 @@ fn rendered_config_flags_deduplicate_after_normalizing_aliases() {
 	] {
 		assert_eq!(crate::rendered_config_flags(&bundle, &analysis, &known), expected);
 	}
+
 	assert!(
 		crate::rendered_config_flags(&bundle, &serde_json::json!({"config_flags": []}), &known)
 			.is_empty()
@@ -214,6 +230,7 @@ fn required_positive_integer_rejects_zero_and_wrong_json_types() {
 	] {
 		let error = crate::required_value_u64(&serde_json::json!({"number": value}), "number")
 			.expect_err("PR identity must be a positive integer");
+
 		assert!(error.to_string().contains("number must be a positive integer"));
 	}
 	for number in [1, u64::MAX] {

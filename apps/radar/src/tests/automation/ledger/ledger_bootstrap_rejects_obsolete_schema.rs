@@ -7,8 +7,10 @@ use crate::RadarLedgerBootstrapRequest;
 #[test]
 fn ledger_bootstrap_rejects_obsolete_schema() {
 	let temp_dir = crate::test_support::private_tempdir();
+
 	std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o700))
 		.expect("ledger directory should be private");
+
 	let db_path = temp_dir.path().join("radar.sqlite3");
 	let connection = Connection::open(&db_path).expect("temporary ledger should open");
 
@@ -23,7 +25,9 @@ fn ledger_bootstrap_rejects_obsolete_schema() {
 			",
 		)
 		.expect("obsolete schema should be created");
+
 	drop(connection);
+
 	std::fs::set_permissions(&db_path, std::fs::Permissions::from_mode(0o600))
 		.expect("obsolete ledger should be private");
 
@@ -39,8 +43,10 @@ fn ledger_bootstrap_rejects_obsolete_schema() {
 #[test]
 fn ledger_bootstrap_rejects_forged_current_version_with_obsolete_constraints() {
 	let temp_dir = crate::test_support::private_tempdir();
+
 	std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o700))
 		.expect("ledger directory should be private");
+
 	let db_path = temp_dir.path().join("radar.sqlite3");
 	let connection = Connection::open(&db_path).expect("temporary ledger should open");
 
@@ -67,7 +73,9 @@ fn ledger_bootstrap_rejects_forged_current_version_with_obsolete_constraints() {
 			",
 		)
 		.expect("forged schema should be created");
+
 	drop(connection);
+
 	std::fs::set_permissions(&db_path, std::fs::Permissions::from_mode(0o600))
 		.expect("forged ledger should be private");
 
@@ -83,10 +91,12 @@ fn ledger_bootstrap_preserves_quoted_literal_case_in_schema_attestation() {
 
 	std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o700))
 		.expect("ledger directory should be private");
+
 	let db_path = temp_dir.path().join("radar.sqlite3");
 	let initialized = crate::ledger::open_ledger(&db_path).expect("canonical ledger should open");
 
 	initialized.close().expect("canonical ledger should persist");
+
 	let connection = Connection::open(&db_path).expect("raw ledger should open");
 
 	connection
@@ -100,6 +110,7 @@ fn ledger_bootstrap_preserves_quoted_literal_case_in_schema_attestation() {
 			",
 		)
 		.expect("quoted status literal should be forged");
+
 	let forged_sql: String = connection
 		.query_row(
 			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'radar_review'",
@@ -109,7 +120,9 @@ fn ledger_bootstrap_preserves_quoted_literal_case_in_schema_attestation() {
 		.expect("forged schema SQL should be readable");
 
 	assert!(forged_sql.contains("'SEEN'"));
+
 	drop(connection);
+
 	let error = crate::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path })
 		.expect_err("case-distinct quoted constraints must fail exact attestation");
 

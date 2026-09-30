@@ -24,6 +24,7 @@ fn retries_truncated_success_body_for_idempotent_get() {
 	let response = api.get(server.url()).expect("truncated body should be retried");
 
 	assert_eq!(response.payload["ok"], true);
+
 	server.finish();
 }
 
@@ -37,6 +38,7 @@ fn retries_invalid_json_for_idempotent_get() {
 	let response = api.get(server.url()).expect("invalid JSON should be retried");
 
 	assert_eq!(response.payload["ok"], true);
+
 	server.finish();
 }
 
@@ -62,6 +64,7 @@ fn reports_structured_rate_limit_without_retrying() {
 	assert!(message.contains("remaining=0"));
 	assert!(message.contains("reset_epoch=1785132000"));
 	assert!(message.contains("retry_after=120"));
+
 	server.finish();
 }
 
@@ -89,9 +92,11 @@ fn pagination_rejects_cross_origin_links_before_forwarding_credentials() {
 		.expect_err("cross-origin pagination must fail");
 
 	assert!(error.to_string().contains("pinned origin"));
+
 	let requests = server.finish_with_requests();
 
 	assert_eq!(requests.len(), 1, "cross-origin pagination must not send a second request");
+
 	let request = requests[0].to_ascii_lowercase();
 
 	assert!(request.contains("host: github.test"));
@@ -110,6 +115,7 @@ fn pagination_detects_cycles_without_repeating_a_request() {
 		.expect_err("cyclic pagination must fail");
 
 	assert!(error.to_string().contains("cycle detected"));
+
 	server.finish();
 }
 
@@ -130,6 +136,7 @@ fn pagination_enforces_page_and_item_limits() {
 		.expect_err("third page must exceed the bound");
 
 	assert!(page_error.to_string().contains("2-page limit"));
+
 	page_server.finish();
 
 	let item_server = spawn_server(vec![response("200 OK", &[], "[1,2,3]")]);
@@ -139,6 +146,7 @@ fn pagination_enforces_page_and_item_limits() {
 		.expect_err("oversized item page must exceed the bound");
 
 	assert!(item_error.to_string().contains("2-item limit"));
+
 	item_server.finish();
 }
 
@@ -160,6 +168,7 @@ fn object_pagination_collects_all_commits_and_preserves_first_page_metadata() {
 			serde_json::json!({"commits": commits})
 		}
 		.to_string();
+
 		if index < 2 {
 			response(
 				"200 OK",
@@ -171,6 +180,7 @@ fn object_pagination_collects_all_commits_and_preserves_first_page_metadata() {
 		}
 	});
 	let payload = server.api(None).get_paginated_field(server.url(), "commits").unwrap();
+
 	assert_eq!(payload["status"], "ahead");
 	assert_eq!(payload["total_commits"], 251);
 	assert_eq!(payload["commits"].as_array().unwrap().len(), 251);
@@ -239,6 +249,7 @@ fn object_pagination_keeps_bounds_and_rejects_bad_pages() {
 			"Expected list field commits",
 		),
 	];
+
 	for (responses, max_pages, max_items, expected) in cases {
 		let expected_requests = responses.len();
 		let server = spawn_server(responses);
@@ -246,6 +257,7 @@ fn object_pagination_keeps_bounds_and_rejects_bad_pages() {
 			.api(Some("test-secret".into()))
 			.get_paginated_for_test(server.url(), Some("commits"), max_pages, max_items)
 			.expect_err("invalid object pagination must fail");
+
 		assert!(error.to_string().contains(expected), "{error}");
 		assert_eq!(server.finish_with_requests().len(), expected_requests);
 	}
@@ -272,6 +284,7 @@ impl TestServer {
 	pub(crate) fn finish_with_requests(self) -> Vec<String> {
 		self.stop.store(true, Ordering::Release);
 		self.thread.join().expect("test server should finish");
+
 		self.requests.lock().expect("request log should not be poisoned").clone()
 	}
 
@@ -288,7 +301,9 @@ fn spawn_server_responses(responses: Vec<String>) -> TestServer {
 	let directory = crate::test_support::private_tempdir();
 	let socket = directory.path().join("g.sock");
 	let listener = UnixListener::bind(&socket).expect("test listener should bind");
+
 	listener.set_nonblocking(true).expect("test listener should become nonblocking");
+
 	let url = "http://github.test/test".to_owned();
 	let requests = Arc::new(Mutex::new(Vec::new()));
 	let server_requests = Arc::clone(&requests);
@@ -303,6 +318,7 @@ fn spawn_server_responses(responses: Vec<String>) -> TestServer {
 					stream
 						.set_nonblocking(false)
 						.expect("accepted test stream should become blocking");
+
 					let mut request = [0_u8; 4096];
 					let read = stream.read(&mut request).expect("test request should be readable");
 
@@ -322,6 +338,7 @@ fn spawn_server_responses(responses: Vec<String>) -> TestServer {
 					if server_stop.load(Ordering::Acquire) {
 						break;
 					}
+
 					thread::sleep(Duration::from_millis(1));
 				},
 				Err(error) => panic!("test request should connect: {error}"),
@@ -359,10 +376,12 @@ fn bounded_window_pagination_stops_at_requested_count() {
 	let server = spawn_server_with(2, |url, page| {
 		let body =
 			serde_json::to_string(&(page * 100..(page + 1) * 100).collect::<Vec<_>>()).unwrap();
+
 		response("200 OK", &[("Link", &format!("<{url}?page={}>; rel=\"next\"", page + 2))], &body)
 	});
 	let items = server.api(None).get_paginated_up_to(server.url(), 150);
 	let requests = server.finish_with_requests();
+
 	assert_eq!(items.unwrap(), (0..150).map(serde_json::Value::from).collect::<Vec<_>>());
 	assert_eq!(requests.len(), 2);
 }
@@ -371,11 +390,16 @@ fn bounded_window_pagination_stops_at_requested_count() {
 fn bounded_window_pagination_handles_short_history_and_invalid_limits() {
 	let server = spawn_server_with(1, |_, _| response("200 OK", &[], "[1,2]"));
 	let items = server.api(None).get_paginated_up_to(server.url(), 150);
+
 	server.finish();
+
 	assert_eq!(items.unwrap().len(), 2);
+
 	let server = spawn_server_with(0, |_, _| unreachable!());
+
 	for limit in [0, 10_001] {
 		assert!(server.api(None).get_paginated_up_to(server.url(), limit).is_err());
 	}
+
 	assert!(server.finish_with_requests().is_empty());
 }

@@ -87,6 +87,7 @@ mod tests {
 	#[test]
 	fn build_requires_one_subject_and_commit_only_requires_a_commit() {
 		let base = ["radar", "bundle", "build", "--out", "bundle.json"];
+
 		for subject in [
 			vec!["--pr", "22414"],
 			vec!["--commit", "abc123"],

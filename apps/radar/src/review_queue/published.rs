@@ -47,11 +47,15 @@ mod tests {
 	fn published_pr_references_require_positive_decimal_numbers() {
 		let temp = tempfile::tempdir().unwrap();
 		let mut signal = crate::tests::fixtures::valid_signal();
+
 		for suffix in ["0", "00", "+1", "-1", "1?query", "18446744073709551616"] {
 			signal["source_refs"]["pr_url"] =
 				serde_json::json!(format!("https://github.com/openai/codex/pull/{suffix}"));
+
 			crate::write_json(&temp.path().join("signal.json"), &signal).unwrap();
+
 			let (prs, _) = published_subjects(temp.path(), "openai/codex").unwrap();
+
 			assert!(prs.is_empty(), "invalid PR reference: {suffix}");
 		}
 	}
@@ -60,28 +64,39 @@ mod tests {
 	fn foreign_signals_do_not_suppress_the_requested_repository() {
 		let temp = tempfile::tempdir().unwrap();
 		let mut foreign = crate::tests::fixtures::valid_signal();
+
 		foreign["source_refs"]["repo"] = serde_json::json!("other/project");
 		foreign["source_refs"]["pr_url"] =
 			serde_json::json!("https://github.com/other/project/pull/22414");
 		foreign["source_refs"]["commit_urls"] = serde_json::json!([
 			"https://github.com/other/project/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		]);
+
 		crate::write_json(&temp.path().join("openai-codex-pr-22414.json"), &foreign).unwrap();
+
 		let (prs, commits) = published_subjects(temp.path(), "openai/codex").unwrap();
+
 		assert!(prs.is_empty() && commits.is_empty());
 
 		foreign["source_refs"]["repo"] = serde_json::json!("openai/codex");
+
 		crate::write_json(&temp.path().join("openai-codex-pr-22414.json"), &foreign).unwrap();
+
 		let (prs, commits) = published_subjects(temp.path(), "openai/codex").unwrap();
+
 		assert!(prs.is_empty() && commits.is_empty());
 
 		let mut matching = crate::tests::fixtures::valid_signal();
+
 		matching["source_refs"]["commit_urls"] = serde_json::json!([
 			"https://github.com/openai/codex/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 			"https://example.com/openai/codex/commit/cccccccccccccccccccccccccccccccccccccccc"
 		]);
+
 		crate::write_json(&temp.path().join("openai-codex-pr-22414.json"), &matching).unwrap();
+
 		let (prs, commits) = published_subjects(temp.path(), "openai/codex").unwrap();
+
 		assert_eq!(prs, HashSet::from([22414]));
 		assert_eq!(commits, HashSet::from(["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned()]));
 	}

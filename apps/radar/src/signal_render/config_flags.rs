@@ -33,7 +33,6 @@ pub(super) fn normalized_config_flags(
 		{
 			continue;
 		}
-
 		if seen.insert(value.clone()) {
 			normalized.push(value);
 		}

@@ -14,6 +14,7 @@ pub(in crate::artifact_validation) fn validate_upstream_review(
 			errors.push(format!("{field} must be a non-empty string"));
 		}
 	}
+
 	support::validate_rfc3339_field(entry, "reviewed_at", errors);
 	support::validate_git_object_id(entry.get("upstream_head"), "upstream_head", errors);
 
@@ -109,6 +110,7 @@ fn validate_upstream_review_actions(next_actions: Option<&Value>, errors: &mut V
 
 			continue;
 		};
+
 		if !support::matches_one_of(action.get("type"), UPSTREAM_REVIEW_ACTION_TYPES) {
 			errors.push(format!(
 				"next_actions[{index}].type must be one of {}",
