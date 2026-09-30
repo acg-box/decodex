@@ -131,6 +131,15 @@ fn xurl_publish_and_outcomes_verify_account_text_and_exact_effects() {
 	assert_eq!(post["text"][0], POST_TEXT);
 	assert_eq!(post["publication"]["post_id"], "2000000000000000001");
 	assert_eq!(post["publication"]["verified_user_id"], "42");
+	for url in [
+		"https://x.com/decodexspace/status/2000000000000000002",
+		"https://x.com/decodexspace/status/",
+		"https://x.com/decodexspace/status/2000000000000000001?extra=1",
+	] {
+		let mut inconsistent = post.clone();
+		inconsistent["publication"]["published_urls"] = json!([url]);
+		assert!(crate::validate_generated_social_artifact(&inconsistent).is_err(), "{url}");
+	}
 
 	let retry = crate::social_xurl::publish_with_test_binary(&publish, &xurl)
 		.expect("local idempotent retry");

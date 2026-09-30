@@ -126,20 +126,15 @@ fn validate_social_post_publication(publication: Option<&Value>, errors: &mut Ve
 			errors.push(format!("publication.{field} must be a lowercase SHA-256 digest"));
 		}
 	}
-	if !publication.get("published_urls").is_some_and(|urls| {
-		social_validation::is_https_string_array(urls)
-			&& !social_validation::is_empty_or_missing_array(Some(urls))
-			&& urls.as_array().is_some_and(|urls| {
-				urls.len() == 1
-					&& urls.iter().all(|url| {
-						url.as_str().is_some_and(|url| {
-							url.starts_with("https://x.com/decodexspace/status/")
-						})
-					})
-			})
+	let expected_url = social_validation::string_field(publication, "post_id")
+		.map(|post_id| format!("https://x.com/decodexspace/status/{post_id}"));
+	if !publication.get("published_urls").and_then(Value::as_array).is_some_and(|urls| {
+		expected_url
+			.as_deref()
+			.is_some_and(|expected| urls.len() == 1 && urls[0].as_str() == Some(expected))
 	}) {
 		errors.push(
-			"publication.published_urls must contain exactly one decodexspace X status URL".into(),
+			"publication.published_urls must contain exactly the decodexspace X status URL for publication.post_id".into(),
 		);
 	}
 }
