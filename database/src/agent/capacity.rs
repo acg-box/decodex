@@ -35,6 +35,7 @@ pub(super) fn next_retry(
 		3 => 60_000_000,
 		_ => return Ok(None),
 	};
+
 	Ok(Some((
 		attempt,
 		now.checked_add(delay).ok_or(StoreError::InvalidInput("retry deadline overflow"))?,
@@ -61,6 +62,7 @@ fn cancel_pending_with_note(
 			[work],
 		)
 		.map_err(sqlite_error)?;
+
 	Ok(())
 }
 
@@ -73,6 +75,7 @@ impl SqliteStore {
 		generation: Option<String>,
 	) -> Result<(), StoreError> {
 		bounded(&thread, 512)?;
+
 		self.run(move |connection| {
 			let tx = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
@@ -84,6 +87,7 @@ impl SqliteStore {
 				.map_err(sqlite_error)?
 				.collect::<Result<Vec<_>, _>>()
 				.map_err(sqlite_error)?;
+
 			for id in work {
 				if crate::agent_process::owns_work(&tx, &id, generation.as_deref())? {
 					cancel_pending_with_note(
@@ -93,7 +97,9 @@ impl SqliteStore {
 					)?;
 				}
 			}
+
 			tx.commit().map_err(sqlite_error)?;
+
 			Ok(())
 		})
 		.await
@@ -133,13 +139,17 @@ impl SqliteStore {
 		self.run(move |connection| {
             let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
             let item=read_work(&tx,&work)?;
+
             if item.dispatch_state!=AgentDispatchState::Idle || item.codex_thread_id.is_none() || crate::agent_prompt_edit::pending(&tx,&work)? || crate::agent_permissions::pending(&tx,&work)? || crate::agent_plugins::pending(&tx,&work)? || crate::agent_models::pending(&tx,&work)? { return Err(DatabaseError::Conflict.into()); }
+
             let retry=tx.query_row("SELECT * FROM agent_capacity_retries WHERE event_id=?1 AND work_item_id=?2 AND state='pending' AND due_at_micros<=?3",params![event,work,now],retry_row).optional().map_err(sqlite_error)?.ok_or(DatabaseError::Conflict)?;
+
             tx.execute("UPDATE agent_capacity_retries SET state='claimed' WHERE event_id=?1",[event]).map_err(sqlite_error)?;
             tx.execute("UPDATE agent_inbox_events SET disposition='resolved', disposition_note='Automatic capacity retry requested.', disposed_at_micros=max(created_at_micros,?2) WHERE id=?1 AND disposition IS NULL",params![event,unix_micros()?]).map_err(sqlite_error)?;
             tx.execute("UPDATE agent_work_items SET dispatch_state='dispatching',updated_at_micros=max(updated_at_micros,?2) WHERE id=?1",params![work,unix_micros()?]).map_err(sqlite_error)?;
             // Carry delivery receipts forward, without copying user input into another prompt.
             tx.execute("UPDATE agent_inbox_events SET delivered_turn_id='' WHERE delivery_work_item_id=?1 AND delivered_turn_id=?2 AND disposition IS NULL",params![work,retry.failed_turn_id]).map_err(sqlite_error)?;
+
             tx.commit().map_err(sqlite_error)?; Ok(())
         }).await
 	}
@@ -152,15 +162,22 @@ impl SqliteStore {
 		self.run(move |connection| {
             let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
             let found: bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_capacity_retries WHERE event_id=?1 AND work_item_id=?2 AND state='pending')",params![event,work],|r|r.get(0)).map_err(sqlite_error)?;
+
             if !found { return Err(DatabaseError::Conflict.into()); }
+
             cancel_pending(&tx,&work)?;
+
             let item=read_work(&tx,&work)?;
+
             if item.parent_goal_id.is_some() {
                 let original=read_event(&tx,event)?;
                 let mut payload:serde_json::Value=serde_json::from_str(&original.payload).map_err(|_|StoreError::InvalidInput("invalid capacity receipt"))?;
+
                 payload["capacityRetry"]["cancelled"]=serde_json::json!(true);
+
                 tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES (?1,?2,'worker_turn_completed',?3,?4)",params![format!("capacity-cancel:{event}"),work,payload.to_string(),unix_micros()?]).map_err(sqlite_error)?;
             }
+
             tx.commit().map_err(sqlite_error)?; Ok(())
         }).await
 	}

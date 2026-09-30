@@ -84,6 +84,7 @@ pub(crate) fn latest(
 	scope: &str,
 ) -> Result<Option<AgentAppSettingsReceipt>, StoreError> {
 	let row:Option<(i64,String,String,Option<String>)>=c.query_row("SELECT a.id,a.payload,COALESCE(o.disposition_note,r.disposition_note,'reserved'),json_extract(r.payload,'$.version') FROM agent_inbox_events a LEFT JOIN agent_inbox_events r ON r.source_event_id='app-result:'||a.id AND r.event_kind='app_setting_result' LEFT JOIN agent_inbox_events o ON o.source_event_id='app-observation:'||a.id AND o.event_kind='app_setting_observation' WHERE a.event_kind='app_setting_attempt' AND json_extract(a.payload,'$.scope')=?1 ORDER BY a.id DESC LIMIT 1",[scope],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(sqlite_error)?;
+
 	row.map(|(id, payload, state, saved_version)| {
 		Ok(AgentAppSettingsReceipt {
 			id,
@@ -156,15 +157,21 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid app settings attempt"));
 		}
+
 		self.run(move|c|{
    let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+
    if !owned(&tx,&a.owner)? || !pending_request(&tx,&a)? {return Err(StoreError::OwnershipLost("app settings owner"));}
+
    let prior=latest(&tx,&a.scope)?;
+
    if prior.as_ref().map(|r|r.id)!=a.previous_id || !available(&tx,&a.scope,&a.review_token)? {return Ok(None);}
+
    let hash:String=Sha256::digest(json!([a.scope,a.review_token]).to_string().as_bytes()).iter().map(|b|format!("{b:02x}")).collect();
    let source=format!("app-attempt:{hash}");
    let now=unix_micros()?;
    let inserted=tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'app_setting_attempt',?3,?4,'resolved','reserved',?4)",params![source,a.owner.work,serde_json::to_string(&a).expect("app settings attempt"),now]).map_err(sqlite_error)?;
+
    let id=(inserted==1).then(||tx.last_insert_rowid());tx.commit().map_err(sqlite_error)?;Ok(id)
   }).await
 	}
@@ -183,6 +190,7 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid app settings result"));
 		}
+
 		self.run(move|c|Ok(c.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) SELECT 'app-result:'||id,work_item_id,'app_setting_result',json_object('reservation',id,'version',?5),?4,'resolved',?3,?4 FROM agent_inbox_events WHERE id=?1 AND event_kind='app_setting_attempt' AND json_extract(payload,'$.attempt_id')=?2 AND NOT EXISTS(SELECT 1 FROM agent_inbox_events o WHERE o.source_event_id='app-observation:'||?1)",params![id,attempt,state,unix_micros()?,version]).map_err(sqlite_error)?==1)).await
 	}
 
@@ -201,19 +209,27 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid app settings observation"));
 		}
+
 		self.run(move|c|{
    let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+
    if !owned(&tx,&o.owner)? {return Ok(false);}
+
    let Some(prior)=latest(&tx,&o.scope)? else {return Ok(false)};
    let a=&prior.attempt;
+
    if prior.id!=id || !unresolved(&prior.state) || a.connector!=o.connector || a.link!=o.link || a.field!=o.field {return Ok(false);}
+
    let same=a.owner.generation==o.owner.generation;
    let matches=o.value==a.value;
+
    if same && (!matches || a.config_version==o.config_version) {return Ok(false);}
    if !same && !dead(&tx,&a.owner.generation)? {return Ok(false);}
+
    let state=if matches {"target_observed"} else {"superseded"};
    let payload=json!({"reservation":id,"observer":o.owner,"configVersion":o.config_version,"value":o.value});let now=unix_micros()?;
    let changed=tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'app_setting_observation',?3,?4,'resolved',?5,?4)",params![format!("app-observation:{id}"),a.owner.work,payload.to_string(),now,state]).map_err(sqlite_error)?;
+
    tx.commit().map_err(sqlite_error)?;Ok(changed==1)
   }).await
 	}
@@ -227,6 +243,7 @@ fn pending_request(
 	let payload: Option<String> = c.query_row(
         "SELECT e.payload FROM agent_inbox_events e WHERE e.id=?1 AND e.work_item_id=?2 AND e.event_kind='server_request_pending' AND e.disposition IS NULL AND NOT EXISTS(SELECT 1 FROM agent_misalignment WHERE work_id=?2 AND thread_id=?3)",
         params![event_id,a.owner.work,a.owner.thread], |r|r.get(0)).optional().map_err(sqlite_error)?;
+
 	Ok(payload.as_deref().and_then(|p| serde_json::from_str::<Value>(p).ok()).is_some_and(|v| {
 		v["method"] == "mcpServer/elicitation/request"
 			&& v["params"]["serverName"] == "codex_apps"
@@ -254,6 +271,7 @@ impl SqliteStore {
 			let Some((_, kind)) = crate::agent_config_journal::latest_identity(&tx, &scope)? else {
 				return Ok(None);
 			};
+
 			if kind == "hook_setting_attempt" {
 				crate::agent_hooks::latest(&tx, &scope).map(|r| r.map(AgentConfigReceipt::Hook))
 			} else {

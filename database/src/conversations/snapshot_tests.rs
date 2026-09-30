@@ -25,6 +25,7 @@ impl ProjectionProbe {
 				error: None,
 			}),
 		};
+
 		probe
 			.store
 			.with_connection(|connection| {
@@ -38,10 +39,13 @@ impl ProjectionProbe {
 						std::ptr::from_mut(probe.writer.as_mut()).cast(),
 					)
 				};
+
 				assert_eq!(status, rusqlite::ffi::SQLITE_OK);
+
 				Ok(())
 			})
 			.expect("install deterministic projection probe");
+
 		probe
 	}
 }
@@ -60,6 +64,7 @@ impl Drop for ProjectionProbe {
 						std::ptr::null_mut(),
 					);
 				}
+
 				Ok(())
 			})
 			.expect("remove projection probe");
@@ -76,10 +81,13 @@ unsafe extern "C" fn commit_after_metadata(
 	// PROFILE callback. ProjectionProbe keeps the context alive until unregistering.
 	let writer = unsafe { &mut *context.cast::<Writer>() };
 	let sql = unsafe { rusqlite::ffi::sqlite3_sql(statement.cast()) };
+
 	if writer.fired || sql.is_null() {
 		return 0;
 	}
+
 	let sql = unsafe { CStr::from_ptr(sql) }.to_string_lossy();
+
 	if sql.starts_with("SELECT conversation_id, state, revision, updated_at_micros") {
 		writer.fired = true;
 		writer.error = writer
@@ -91,6 +99,7 @@ unsafe extern "C" fn commit_after_metadata(
 			.err()
 			.map(|error| error.to_string());
 	}
+
 	0
 }
 
@@ -101,6 +110,7 @@ async fn conversation_projection_keeps_one_snapshot_across_concurrent_commit() {
 		let path = directory.path().join("snapshot.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("fixture store");
 		let id = ConversationId::new("30000000-0000-4000-8000-000000000001").expect("fixture ID");
+
 		store
 			.create_conversation(
 				&CommandIdentity::new("snapshot-create", b"snapshot input").expect("command"),
@@ -118,6 +128,7 @@ async fn conversation_projection_keeps_one_snapshot_across_concurrent_commit() {
 			)
 			.await
 			.expect("create conversation");
+
 		let before = store
 			.read_ordinary_task_conversations(Some(&id), None, 1)
 			.await
@@ -126,11 +137,16 @@ async fn conversation_projection_keeps_one_snapshot_across_concurrent_commit() {
 		let during = store.read_ordinary_task_conversations(exact.then_some(&id), None, 1).await;
 		let fired = probe.writer.fired;
 		let error = probe.writer.error.clone();
+
 		drop(probe);
+
 		assert!(fired, "commit must occur between the production queries");
 		assert_eq!(error, None, "WAL writer must commit while the reader is active");
+
 		let during = during.expect("concurrent projection");
+
 		assert_eq!(during, before, "one read cannot combine old revision and new title");
+
 		let after = store
 			.read_ordinary_task_conversations(Some(&id), None, 1)
 			.await
@@ -141,6 +157,7 @@ async fn conversation_projection_keeps_one_snapshot_across_concurrent_commit() {
 		let [OrdinaryTaskConversationProjection::Current(before)] = before.as_slice() else {
 			panic!("initial conversation")
 		};
+
 		assert_eq!(after.title, "After concurrent commit");
 		assert_eq!(after.conversation_revision, before.conversation_revision + 1);
 	}

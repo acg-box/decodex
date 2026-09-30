@@ -80,16 +80,20 @@ impl SqliteStore {
 		request: &RouteConversationInitial,
 	) -> Result<ConversationInitialRouteOutcome, StoreError> {
 		validate_key(idempotency_key)?;
+
 		if request.expected_conversation_revision <= 0 {
 			return Err(StoreError::InvalidInput("Conversation revision must be positive"));
 		}
+
 		let key = idempotency_key.to_owned();
 		let request = request.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let request_sha = route_request_sha(&request);
+
 			if let Some((stored_sha, decision_id)) = transaction
 				.query_row(
 					"SELECT request_sha256, routing_decision_id FROM routing_decisions
@@ -103,8 +107,11 @@ impl SqliteStore {
 				if stored_sha != request_sha {
 					return Err(StoreError::IdempotencyConflict);
 				}
+
 				let route = read_initial_route_by_id(&transaction, &decision_id)?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(ConversationInitialRouteOutcome::Replayed(route));
 			}
 
@@ -122,12 +129,14 @@ impl SqliteStore {
 					|row| row.get(0),
 				)
 				.map_err(sql_error)?;
+
 			if !conversation_matches {
 				return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
 					operation: "route_quick_task_initial".to_owned(),
 					code: "conversation_mismatch".to_owned(),
 				}));
 			}
+
 			let already_bound: bool = transaction
 				.query_row(
 					"SELECT EXISTS (
@@ -139,6 +148,7 @@ impl SqliteStore {
 					|row| row.get(0),
 				)
 				.map_err(sql_error)?;
+
 			if already_bound {
 				return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
 					operation: "route_quick_task_initial".to_owned(),
@@ -153,19 +163,23 @@ impl SqliteStore {
 					|row| row.get(0),
 				)
 				.map_err(sql_error)?;
+
 			if review_required {
 				return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
 					operation: "route_quick_task_initial".to_owned(),
 					code: "initial_model_source_changed".to_owned(),
 				}));
 			}
+
 			let accounts = read_account_registry_sync(&transaction, None, 512)?;
+
 			if accounts.is_empty() {
 				return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
 					operation: "route_quick_task_initial".to_owned(),
 					code: "routing_authority_unavailable".to_owned(),
 				}));
 			}
+
 			let (mode, routing_revision) = read_routing_control(&transaction)?;
 			let profile_revision: i64 = transaction
 				.query_row("SELECT revision FROM role_profiles WHERE role = 'task'", [], |row| {
@@ -195,6 +209,7 @@ impl SqliteStore {
 					.find(|account| account.account_id == *selected)
 					.map(|account| account.revision)
 			});
+
 			if let Some(selected) = decision.selected_account_id.as_ref() {
 				let source_matches: bool = transaction
 					.query_row(
@@ -209,6 +224,7 @@ impl SqliteStore {
 						|row| row.get(0),
 					)
 					.map_err(sql_error)?;
+
 				if !source_matches {
 					transaction
 						.execute(
@@ -221,13 +237,16 @@ impl SqliteStore {
                         params![request.conversation_id.as_str(), decided_at_micros],
                     ).map_err(sql_error)?;
 					transaction.commit().map_err(sql_error)?;
+
 					return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
 						operation: "route_quick_task_initial".to_owned(),
 						code: "initial_model_source_changed".to_owned(),
 					}));
 				}
 			}
+
 			let quota_classification = quota_classification(&decision, &snapshot);
+
 			transaction
 				.execute(
 					"INSERT INTO routing_decisions (
@@ -261,6 +280,7 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			let route = ConversationInitialRoute {
 				decision_id,
 				operation_id,
@@ -276,7 +296,9 @@ impl SqliteStore {
 				decided_at_micros,
 				decision,
 			};
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(ConversationInitialRouteOutcome::Fresh(route))
 		})
 		.await
@@ -288,6 +310,7 @@ impl SqliteStore {
 		conversation_id: &ConversationId,
 	) -> Result<Option<ConversationInitialRoute>, StoreError> {
 		let conversation_id = conversation_id.clone();
+
 		self.run(move |connection| {
 			let decision_id = connection
 				.query_row(
@@ -299,6 +322,7 @@ impl SqliteStore {
 				)
 				.optional()
 				.map_err(sql_error)?;
+
 			decision_id.map(|id| read_initial_route_by_id(connection, &id)).transpose()
 		})
 		.await
@@ -312,6 +336,7 @@ impl SqliteStore {
 		request: &BindConversationContinuation,
 	) -> Result<RoutingCommandOutcome<ConversationContinuationBinding>, StoreError> {
 		validate_key(idempotency_key)?;
+
 		if request.expected_conversation_revision <= 0
 			|| request.expected_source_runtime_session_revision <= 0
 		{
@@ -319,13 +344,16 @@ impl SqliteStore {
 				"Conversation continuation coordinates are invalid",
 			));
 		}
+
 		let key = idempotency_key.to_owned();
 		let request = request.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let request_sha = continuation_request_sha(&request);
+
 			if let Some((stored_sha, decision_id)) = transaction
 				.query_row(
 					"SELECT request_sha256, routing_decision_id FROM routing_decisions
@@ -339,8 +367,11 @@ impl SqliteStore {
 				if stored_sha != request_sha {
 					return Err(StoreError::IdempotencyConflict);
 				}
+
 				let binding = read_continuation_binding(&transaction, &decision_id)?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(RoutingCommandOutcome::Success(binding));
 			}
 
@@ -400,6 +431,7 @@ impl SqliteStore {
 			};
 			let decision_id = random_uuid_v4()?;
 			let decided_at_micros = unix_micros().map_err(StoreError::from)?;
+
 			transaction
 				.execute(
 					"INSERT INTO routing_decisions (
@@ -432,6 +464,7 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			let binding = ConversationContinuationBinding {
 				decision_id,
 				consumer: ExecutionConsumer::ConversationTurn {
@@ -450,7 +483,9 @@ impl SqliteStore {
 				profile_snapshot_source_revision: profile_revision,
 				decided_at_micros,
 			};
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(RoutingCommandOutcome::Success(binding))
 		})
 		.await
@@ -476,6 +511,7 @@ fn build_snapshot(
 		})
 		.collect();
 	let mut quota_facts = Vec::with_capacity(accounts.len() * 2);
+
 	for account in accounts {
 		quota_facts.push(quota_fact(
 			&account.account_id,
@@ -488,6 +524,7 @@ fn build_snapshot(
 			account.seven_day_quota,
 		)?);
 	}
+
 	Ok(AccountRegistryRoutingSnapshot {
 		snapshot_id,
 		routing_revision,
@@ -501,6 +538,7 @@ fn build_snapshot(
 
 fn account_blockers(account: &AccountRecord) -> Vec<RoutingBlocker> {
 	let mut blockers = Vec::new();
+
 	if matches!(account.observed_state, AccountState::Unavailable) {
 		blockers.push(RoutingBlocker::AccountUnavailable);
 	}
@@ -530,8 +568,10 @@ fn account_blockers(account: &AccountRecord) -> Vec<RoutingBlocker> {
 	{
 		blockers.push(RoutingBlocker::AccountDisabled);
 	}
+
 	blockers.sort();
 	blockers.dedup();
+
 	blockers
 }
 
@@ -565,6 +605,7 @@ fn quota_fact(
 					.ok_or_else(|| StoreError::Incompatible("quota error time".to_owned()))?,
 			},
 	};
+
 	Ok(AccountRegistryQuotaFact {
 		account_id: account_id.clone(),
 		window,
@@ -591,6 +632,7 @@ fn read_routing_control(
 		),
 		_ => return Err(StoreError::Incompatible("routing control".to_owned())),
 	};
+
 	Ok((mode, revision))
 }
 
@@ -649,6 +691,7 @@ fn read_initial_route_by_id(
 				.map_err(|_| StoreError::Incompatible("routing exclusions JSON".to_owned()))?,
 		)?,
 	};
+
 	Ok(ConversationInitialRoute {
 		decision_id: decision_id.to_owned(),
 		operation_id: row.0,
@@ -706,6 +749,7 @@ fn read_continuation_binding(
 		TurnId::new(row.1).map_err(|_| StoreError::Incompatible("Turn identity".to_owned()))?;
 	let runtime_session_id = RuntimeSessionId::new(row.3)
 		.map_err(|_| StoreError::Incompatible("RuntimeSession identity".to_owned()))?;
+
 	Ok(ConversationContinuationBinding {
 		decision_id: decision_id.to_owned(),
 		consumer: ExecutionConsumer::ConversationTurn {
@@ -732,6 +776,7 @@ fn serialize_snapshot(snapshot: &AccountRegistryRoutingSnapshot) -> Result<Value
 			"account_id": account.as_str(),
 		}),
 	};
+
 	Ok(json!({
 		"snapshot_id": snapshot.snapshot_id,
 		"routing_revision": snapshot.routing_revision,
@@ -757,6 +802,7 @@ fn serialize_snapshot(snapshot: &AccountRegistryRoutingSnapshot) -> Result<Value
 					"observed_at_micros": observed_at_micros,
 				}),
 			};
+
 			json!({
 				"account_id": fact.account_id.as_str(),
 				"window": window_text(fact.window),
@@ -799,6 +845,7 @@ fn parse_snapshot(value: &Value) -> Result<AccountRegistryRoutingSnapshot, Store
 		.iter()
 		.map(parse_quota_fact)
 		.collect::<Result<Vec<_>, _>>()?;
+
 	Ok(AccountRegistryRoutingSnapshot {
 		snapshot_id,
 		routing_revision,
@@ -822,6 +869,7 @@ fn parse_member(value: &Value) -> Result<AccountRegistryRoutingMember, StoreErro
 				.ok_or_else(|| incompatible("routing blocker"))
 		})
 		.collect::<Result<Vec<_>, _>>()?;
+
 	Ok(AccountRegistryRoutingMember {
 		position: usize::try_from(integer(object.get("position"))?)
 			.map_err(|_| incompatible("routing position"))?,
@@ -864,6 +912,7 @@ fn parse_quota_fact(value: &Value) -> Result<AccountRegistryQuotaFact, StoreErro
 		},
 		_ => return Err(incompatible("quota observation kind")),
 	};
+
 	Ok(AccountRegistryQuotaFact { account_id, window, duration_minutes, observation })
 }
 
@@ -887,6 +936,7 @@ fn parse_causes(value: &Value) -> Result<Vec<RoutingDecisionCause>, StoreError> 
 		.iter()
 		.map(|value| {
 			let object = value.as_object().ok_or_else(|| incompatible("routing cause"))?;
+
 			Ok(RoutingDecisionCause {
 				account_id: AccountId::new(string(object.get("account_id"))?)
 					.map_err(|_| incompatible("routing cause account"))?,
@@ -925,6 +975,7 @@ fn parse_exclusions(
 		.iter()
 		.map(|value| {
 			let object = value.as_object().ok_or_else(|| incompatible("routing exclusion"))?;
+
 			Ok(decodex_core::AccountRegistryRoutingExclusion {
 				account_id: AccountId::new(string(object.get("account_id"))?)
 					.map_err(|_| incompatible("routing exclusion account"))?,
@@ -953,6 +1004,7 @@ fn quota_classification(
 	if decision.kind == AccountRegistryRoutingDecisionKind::Waiting {
 		return "known_depleted";
 	}
+
 	let Some(account) = decision.selected_account_id.as_ref() else {
 		return "unknown";
 	};
@@ -973,6 +1025,7 @@ fn quota_classification(
 			| AccountRegistryQuotaObservation::ObservationError { .. } => false,
 		},
 	);
+
 	if complete { "known_available" } else { "unknown" }
 }
 
@@ -1036,10 +1089,12 @@ fn continuation_request_sha(request: &BindConversationContinuation) -> String {
 
 fn digest(parts: &[&str]) -> String {
 	let mut digest = Sha256::new();
+
 	for part in parts {
 		digest.update(part.len().to_be_bytes());
 		digest.update(part.as_bytes());
 	}
+
 	digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -1047,6 +1102,7 @@ fn validate_key(key: &str) -> Result<(), StoreError> {
 	if key.is_empty() || key.len() > 256 || decodex_core::contains_credential_material(key) {
 		return Err(StoreError::InvalidInput("idempotency key is invalid"));
 	}
+
 	Ok(())
 }
 
@@ -1084,6 +1140,7 @@ mod tests {
 				observed_at_micros,
 				resets_at_micros,
 			};
+
 		for (observation, expected) in [
 			(current(now - 300_000_000, now + 1), "known_available"),
 			(current(now - 300_000_001, now + 1), "unknown"),
@@ -1127,6 +1184,7 @@ mod tests {
 				],
 			};
 			let decision = decide_account_registry_routing(&snapshot, now).unwrap();
+
 			assert_eq!(decision.selected_account_id.as_ref(), Some(&account));
 			assert_eq!(quota_classification(&decision, &snapshot), expected);
 		}

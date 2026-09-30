@@ -318,13 +318,16 @@ impl SqliteStore {
 		request: &PrepareConversationProcessGeneration,
 	) -> Result<PrepareConversationProcessGenerationOutcome, StoreError> {
 		validate_key(idempotency_key)?;
+
 		let key = idempotency_key.to_owned();
 		let request = request.clone();
 		let request_sha256 = process_admission_sha(&request);
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
+
 			if let Some(stored_sha) = transaction
 				.query_row(
 					"SELECT request_sha256 FROM runtime_command_receipts WHERE idempotency_key = ?1",
@@ -337,15 +340,20 @@ impl SqliteStore {
 				if stored_sha != request_sha256 {
 					return Err(StoreError::IdempotencyConflict);
 				}
+
 				let readback = ConversationProcessGenerationReadback {
 					request,
 					admission_revision: Some(1),
 					rejection: None,
 				};
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(PrepareConversationProcessGenerationOutcome::Replayed(readback));
 			}
+
 			let authority = process_admission_authority(&transaction, &request)?;
+
 			if let Some(rejection) = authority {
 				return Ok(PrepareConversationProcessGenerationOutcome::Rejected(
 					ConversationProcessGenerationReadback {
@@ -355,7 +363,9 @@ impl SqliteStore {
 					},
 				));
 			}
+
 			let now = unix_micros().map_err(StoreError::from)?;
+
 			transaction
 				.execute(
 					"INSERT INTO runtime_command_receipts (
@@ -365,12 +375,15 @@ impl SqliteStore {
 					params![key, request_sha256, request.process_generation_id.as_str(), now],
 				)
 				.map_err(sql_error)?;
+
 			let readback = ConversationProcessGenerationReadback {
 				request,
 				admission_revision: Some(1),
 				rejection: None,
 			};
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(PrepareConversationProcessGenerationOutcome::Fresh(
 				FreshConversationProcessGeneration {
 					idempotency_key: key,
@@ -389,6 +402,7 @@ impl SqliteStore {
 	) -> Result<FenceRuntimeSessionThreadStartOutcome, StoreError> {
 		validate_key(idempotency_key)?;
 		validate_sha(&fence.thread_start_request_sha256)?;
+
 		if fence.thread_start_request_id <= 0
 			|| fence.expected_revision <= 0
 			|| fence.expected_turn_revision != 1
@@ -396,12 +410,15 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("RuntimeSession thread fence is invalid"));
 		}
+
 		let key = idempotency_key.to_owned();
 		let fence = fence.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
+
 			if let Some(existing_key) = transaction
 				.query_row(
 					"SELECT thread_start_fence_key FROM runtime_sessions WHERE runtime_session_id = ?1",
@@ -413,7 +430,9 @@ impl SqliteStore {
 				.flatten()
 			{
 				let readback = read_thread_fence(&transaction, &fence.runtime_session_id)?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				return if existing_key == key && fence_matches(&readback, &fence) {
 					Ok(FenceRuntimeSessionThreadStartOutcome::Replayed(readback))
 				} else {
@@ -422,6 +441,7 @@ impl SqliteStore {
 					))
 				};
 			}
+
 			let route = thread_fence_authority(&transaction, &fence)?;
 			let Some((routing_decision_id, selected_account_id)) = route else {
 				return Ok(FenceRuntimeSessionThreadStartOutcome::Rejected(
@@ -462,11 +482,13 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			if changed != 1 {
 				return Ok(FenceRuntimeSessionThreadStartOutcome::Rejected(
 					RuntimeSessionThreadEstablishmentRejection::AuthorityUnavailable,
 				));
 			}
+
 			let readback = RuntimeSessionThreadFenceReadback {
 				fence_idempotency_key: key,
 				conversation_id: fence.conversation_id,
@@ -487,7 +509,9 @@ impl SqliteStore {
 				activity_sequence: revision,
 				outbox_id: revision,
 			};
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(FenceRuntimeSessionThreadStartOutcome::Fresh(FreshRuntimeSessionThreadStart {
 				readback,
 			}))
@@ -504,6 +528,7 @@ impl SqliteStore {
 		validate_key(&binding.fence_idempotency_key)?;
 		validate_sha(&binding.thread_start_request_sha256)?;
 		validate_sha(&binding.successful_response.response_sha256)?;
+
 		if binding.successful_response.response_id != binding.thread_start_request_id
 			|| binding.successful_response.codex_thread_id.is_empty()
 			|| binding.successful_response.codex_thread_id.len() > MAX_PROVIDER_THREAD_ID_BYTES
@@ -512,12 +537,15 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("RuntimeSession thread binding is invalid"));
 		}
+
 		let key = idempotency_key.to_owned();
 		let binding = binding.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
+
 			if let Some(existing_key) = transaction
 				.query_row(
 					"SELECT thread_start_binding_key FROM runtime_sessions WHERE runtime_session_id = ?1",
@@ -529,7 +557,9 @@ impl SqliteStore {
 				.flatten()
 			{
 				let readback = read_thread_binding(&transaction, &binding.runtime_session_id)?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				return if existing_key == key && binding_matches(&readback, &binding) {
 					Ok(BindRuntimeSessionThreadOutcome::Replayed(readback))
 				} else {
@@ -538,12 +568,15 @@ impl SqliteStore {
 					))
 				};
 			}
+
 			let fence = read_thread_fence(&transaction, &binding.runtime_session_id)?;
+
 			if !binding_matches_fence(&binding, &fence) {
 				return Ok(BindRuntimeSessionThreadOutcome::Rejected(
 					RuntimeSessionThreadEstablishmentRejection::AuthorityUnavailable,
 				));
 			}
+
 			let revision = binding
 				.expected_revision
 				.checked_add(1)
@@ -569,11 +602,13 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			if changed != 1 {
 				return Ok(BindRuntimeSessionThreadOutcome::Rejected(
 					RuntimeSessionThreadEstablishmentRejection::AuthorityUnavailable,
 				));
 			}
+
 			let readback = RuntimeSessionThreadBindingReadback {
 				conversation_id: binding.conversation_id,
 				conversation_revision: binding.expected_conversation_revision,
@@ -595,7 +630,9 @@ impl SqliteStore {
 				activity_sequence: revision,
 				outbox_id: revision,
 			};
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(BindRuntimeSessionThreadOutcome::Applied(readback))
 		})
 		.await
@@ -606,6 +643,7 @@ impl SqliteStore {
 		request: &ReconcileConversationThreadEstablishment,
 	) -> Result<ConversationThreadEstablishmentReadback, StoreError> {
 		let request = request.clone();
+
 		self.run(move |connection| {
 			let admission_sha256 = reconciliation_process_admission_sha(&request);
 			let state = connection
@@ -617,6 +655,7 @@ impl SqliteStore {
 				)
 				.optional()
 				.map_err(sql_error)?;
+
 			match state {
 				Some((Some(_), Some(_))) => Ok(ConversationThreadEstablishmentReadback::Bound(
 					read_thread_binding(connection, &request.runtime_session_id)?,
@@ -640,6 +679,7 @@ impl SqliteStore {
 						)
 						.optional()
 						.map_err(sql_error)?;
+
 					if let Some((state, revision, evidence)) = generation {
 						return Ok(match (state.as_str(), evidence) {
 							("dead", Some(evidence_id)) =>
@@ -653,6 +693,7 @@ impl SqliteStore {
 							_ => ConversationThreadEstablishmentReadback::Unknown,
 						});
 					}
+
 					let admission_evidence = connection
 						.query_row(
 							"SELECT MIN(idempotency_key) FROM runtime_command_receipts
@@ -662,6 +703,7 @@ impl SqliteStore {
 							|row| row.get::<_, Option<String>>(0),
 						)
 						.map_err(sql_error)?;
+
 					Ok(admission_evidence.map_or(
 						ConversationThreadEstablishmentReadback::Unknown,
 						|evidence_id| {
@@ -685,6 +727,7 @@ impl SqliteStore {
 		conversation_id: &ConversationId,
 	) -> Result<Option<OrdinaryRuntimeSessionResumeReadback>, StoreError> {
 		let conversation_id = conversation_id.clone();
+
 		self.run(move |connection| {
 			let row = connection
 				.query_row(
@@ -739,12 +782,14 @@ impl SqliteStore {
 				)
 				.optional()
 				.map_err(sql_error)?;
+
 			row.map(|row| {
 				if row.15.is_some() != row.16.is_some()
 					|| row.16.is_some_and(|revision| revision <= 0)
 				{
 					return Err(incompatible("active Turn coordinates"));
 				}
+
 				Ok(OrdinaryRuntimeSessionResumeReadback {
 					conversation_id,
 					conversation_revision: row.0,
@@ -848,6 +893,7 @@ fn process_admission_authority(
 		)
 		.optional()
 		.map_err(sql_error)?;
+
 	Ok(match turn {
 		None => Some(ConversationProcessGenerationRejection::MissingTurn),
 		Some((status, _, _)) if status != "active" =>
@@ -944,6 +990,7 @@ fn read_thread_fence(
 		)
 		.map_err(sql_error)?;
 	let revision = row.3;
+
 	Ok(RuntimeSessionThreadFenceReadback {
 		fence_idempotency_key: row.0,
 		conversation_id: ConversationId::new(row.1).map_err(|_| incompatible("Conversation"))?,
@@ -991,6 +1038,7 @@ fn read_thread_binding(
 			},
 		)
 		.map_err(sql_error)?;
+
 	Ok(RuntimeSessionThreadBindingReadback {
 		conversation_id: fence.conversation_id,
 		conversation_revision: fence.conversation_revision,
@@ -1110,9 +1158,11 @@ pub(crate) fn read_stored_runtime_session(
 			},
 		)
 		.map_err(sql_error)?;
+
 	if row.9 != RoleProfileRole::Task.as_sql() {
 		return Err(incompatible("RoleProfile role"));
 	}
+
 	let state = match row.18.as_str() {
 		"starting" => RuntimeSessionState::Starting,
 		"active" => RuntimeSessionState::Active,
@@ -1120,6 +1170,7 @@ pub(crate) fn read_stored_runtime_session(
 		"diverged" => RuntimeSessionState::Diverged,
 		_ => return Err(incompatible("RuntimeSession state")),
 	};
+
 	Ok(StoredRuntimeSession {
 		runtime_session_id: RuntimeSessionId::new(row.0)
 			.map_err(|_| incompatible("RuntimeSession identity"))?,
@@ -1190,10 +1241,12 @@ fn reconciliation_process_admission_sha(
 
 pub(crate) fn digest(parts: &[&str]) -> String {
 	let mut digest = Sha256::new();
+
 	for part in parts {
 		digest.update(part.len().to_be_bytes());
 		digest.update(part.as_bytes());
 	}
+
 	digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -1201,6 +1254,7 @@ fn validate_key(key: &str) -> Result<(), StoreError> {
 	if key.is_empty() || key.len() > 256 || decodex_core::contains_credential_material(key) {
 		return Err(StoreError::InvalidInput("idempotency key is invalid"));
 	}
+
 	Ok(())
 }
 
@@ -1210,6 +1264,7 @@ fn validate_sha(value: &str) -> Result<(), StoreError> {
 	{
 		return Err(StoreError::InvalidInput("SHA-256 value is invalid"));
 	}
+
 	Ok(())
 }
 

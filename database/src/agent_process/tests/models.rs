@@ -13,7 +13,9 @@ async fn model_recovery_requires_dead_old_process_and_current_complete_owner_fac
 		let path = dir.path().join("models.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 		let (reserved, attempt) = prepare_unknown_model_selection(&store, profile).await;
+
 		confirm_original_process_death(&store).await;
+
 		assert!(matches!(
 			store
 				.prepare_agent_bound_process_generation(
@@ -26,8 +28,10 @@ async fn model_recovery_requires_dead_old_process_and_current_complete_owner_fac
 				.unwrap(),
 			PrepareProcessGenerationOutcome::Fresh(_)
 		));
+
 		store.bind_process_generation_identity(&generation_id(2), 1, &identity(124)).await.unwrap();
 		store.mark_process_generation_ready(&generation_id(2), 2).await.unwrap();
+
 		assert!(
 			store
 				.record_agent_task_models_publication(
@@ -40,6 +44,7 @@ async fn model_recovery_requires_dead_old_process_and_current_complete_owner_fac
 				.unwrap()
 				.is_none()
 		);
+
 		store
 			.record_agent_task_models_publication(
 				"task".into(),
@@ -49,10 +54,12 @@ async fn model_recovery_requires_dead_old_process_and_current_complete_owner_fac
 			)
 			.await
 			.unwrap();
+
 		assert_eq!(
 			store.agent_model_receipt("root".into(), "task".into()).await.unwrap().unwrap().state,
 			"unknown"
 		);
+
 		store
 			.record_agent_task_models_publication(
 				"task".into(),
@@ -62,11 +69,13 @@ async fn model_recovery_requires_dead_old_process_and_current_complete_owner_fac
 			)
 			.await
 			.unwrap();
+
 		assert_eq!(
 			store.agent_model_receipt("root".into(), "task".into()).await.unwrap().unwrap().state,
 			"unknown"
 		);
 		assert!(store.begin_agent_dispatch("root".into()).await.is_err());
+
 		store
 			.record_agent_task_models_publication(
 				"task".into(),
@@ -77,7 +86,9 @@ async fn model_recovery_requires_dead_old_process_and_current_complete_owner_fac
 			.await
 			.unwrap()
 			.unwrap();
+
 		let expected = if profile == Some("scoped") { "target_observed" } else { "superseded" };
+
 		assert_eq!(
 			store.agent_model_receipt("root".into(), "task".into()).await.unwrap().unwrap().state,
 			expected
@@ -85,8 +96,11 @@ async fn model_recovery_requires_dead_old_process_and_current_complete_owner_fac
 		assert!(
 			!store.finish_agent_model_selection(reserved, attempt, "queued".into()).await.unwrap()
 		);
+
 		drop(store);
+
 		let store = SqliteStore::open_test(&path).unwrap();
+
 		assert_eq!(
 			store.agent_model_receipt("root".into(), "task".into()).await.unwrap().unwrap().state,
 			expected
@@ -101,6 +115,7 @@ async fn prepare_unknown_model_selection(
 	profile: Option<&str>,
 ) -> (i64, crate::AgentModelAttempt) {
 	seed(store).await;
+
 	store.bind_agent_thread("root".into(), "task".into()).await.unwrap();
 	store
 		.prepare_agent_bound_process_generation(&intent(1, 1), &binding(1), "root", "first")
@@ -108,6 +123,7 @@ async fn prepare_unknown_model_selection(
 		.unwrap();
 	store.bind_process_generation_identity(&generation_id(1), 1, &identity(123)).await.unwrap();
 	store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+
 	let event = store
 		.record_agent_task_models_publication(
 			"task".into(),
@@ -132,12 +148,14 @@ async fn prepare_unknown_model_selection(
 		recovery: None,
 	};
 	let reserved = store.reserve_agent_model_selection(attempt.clone()).await.unwrap().unwrap();
+
 	assert!(
 		store
 			.finish_agent_model_selection(reserved, attempt.clone(), "unknown".into())
 			.await
 			.unwrap()
 	);
+
 	store
 		.mark_process_generation_death_unknown(
 			&generation_id(1),
@@ -146,6 +164,7 @@ async fn prepare_unknown_model_selection(
 		)
 		.await
 		.unwrap();
+
 	assert!(matches!(
 		store
 			.prepare_agent_bound_process_generation(&intent(1, 2), &binding(1), "root", "too-early")
@@ -169,5 +188,6 @@ async fn prepare_unknown_model_selection(
 		store.agent_model_receipt("root".into(), "task".into()).await.unwrap().unwrap().state,
 		"unknown"
 	);
+
 	(reserved, attempt)
 }

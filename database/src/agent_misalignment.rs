@@ -12,8 +12,10 @@ pub struct AgentMisalignment {
 impl AgentMisalignment {
 	pub fn review_id(&self) -> String {
 		use sha2::{Digest as _, Sha256};
+
 		let identity =
 			serde_json::json!([self.thread_id, self.turn_id, self.details_json]).to_string();
+
 		Sha256::digest(identity.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect()
 	}
 }
@@ -30,6 +32,7 @@ impl SqliteStore {
 		if key.is_empty() || key.len() > 512 {
 			return Err(StoreError::InvalidInput("invalid continuation key"));
 		}
+
 		let details = expected
 			.details_json
 			.as_ref()
@@ -41,21 +44,30 @@ impl SqliteStore {
 			.and_then(serde_json::Value::as_str)
 			.filter(|text| !text.trim().is_empty() && text.len() <= 1024)
 			.ok_or(StoreError::InvalidInput("no valid continuation text"))?;
+
 		if !value["detailedExplanation"]
 			.as_str()
 			.is_some_and(|text| !text.trim().is_empty() && text.len() <= 65536)
 		{
 			return Err(StoreError::InvalidInput("no valid findings"));
 		}
+
 		let payload=serde_json::json!({"threadId":expected.thread_id,"turnId":expected.turn_id,"text":text}).to_string();
+
 		self.run(move |connection| {
             let tx=connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
             let changed=tx.execute("UPDATE agent_work_items SET dispatch_state='dispatching',updated_at_micros=max(updated_at_micros,?5) WHERE id=?1 AND codex_thread_id=?2 AND dispatch_state='idle' AND EXISTS(SELECT 1 FROM agent_misalignment WHERE work_id=?1 AND thread_id=?2 AND turn_id=?3 AND details_json IS ?4)",params![work,expected.thread_id,expected.turn_id,expected.details_json,unix_micros()?]).map_err(sqlite_error)?;
+
             if changed!=1 { return Err(crate::DatabaseError::Conflict.into()); }
+
             let source=serde_json::json!(["misalignment_continuation",work,key]).to_string();
+
             tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES(?1,?2,'misalignment_continuation_pending',?3,?4)",params![source,work,payload,unix_micros()?]).map_err(sqlite_error)?;
+
             let event=tx.last_insert_rowid();
+
             tx.commit().map_err(sqlite_error)?;
+
             Ok(event)
         }).await
 	}
@@ -74,15 +86,23 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid continuation turn"));
 		}
+
 		self.run(move |connection| {
             let tx=connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
             let current:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items w JOIN agent_misalignment m ON m.work_id=w.id WHERE w.id=?1 AND w.codex_thread_id=?2 AND w.dispatch_state='dispatching' AND m.thread_id=?2 AND m.turn_id=?3 AND m.details_json IS ?4)",params![work,expected.thread_id,expected.turn_id,expected.details_json],|row|row.get(0)).map_err(sqlite_error)?;
+
             if !current { return Err(crate::DatabaseError::Conflict.into()); }
+
             let changed=tx.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note=?3,disposed_at_micros=max(created_at_micros,?4) WHERE id=?1 AND work_item_id=?2 AND event_kind='misalignment_continuation_pending' AND disposition IS NULL",params![event,work,if accepted_turn.is_some(){"Explicit continuation acknowledged."}else{"Continuation rejected; precaution retained."},unix_micros()?]).map_err(sqlite_error)?;
+
             if changed!=1 { return Err(crate::DatabaseError::Conflict.into()); }
+
             tx.execute("UPDATE agent_work_items SET dispatch_state=?2,active_turn_id=?3,updated_at_micros=max(updated_at_micros,?4) WHERE id=?1",params![work,if accepted_turn.is_some(){"running"}else{"idle"},accepted_turn,unix_micros()?]).map_err(sqlite_error)?;
+
             if accepted_turn.is_some() { tx.execute("DELETE FROM agent_misalignment WHERE work_id=?1",[work]).map_err(sqlite_error)?; }
+
             tx.commit().map_err(sqlite_error)?;
+
             Ok(())
         }).await
 	}
@@ -97,9 +117,13 @@ impl SqliteStore {
 	) -> Result<(), StoreError> {
 		self.run(move |connection| {
 			let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
+
 			if !still_current() { return Ok(()); }
+
 			tx.execute("DELETE FROM agent_misalignment WHERE work_id=?1 AND thread_id=?2 AND turn_id=?3 AND details_json IS ?4 AND retired_voice=0 AND EXISTS(SELECT 1 FROM agent_work_items w WHERE w.id=?1 AND w.codex_thread_id=?2 AND w.dispatch_state='idle' AND w.active_turn_id IS NULL)", params![work, expected.thread_id, expected.turn_id, expected.details_json]).map_err(sqlite_error)?;
+
 			if still_current() { tx.commit().map_err(sqlite_error)?; }
+
 			Ok(())
 		}).await
 	}
@@ -114,6 +138,7 @@ impl SqliteStore {
 					[thread],
 				)
 				.map_err(sqlite_error)?;
+
 			Ok(())
 		})
 		.await
@@ -156,16 +181,20 @@ impl SqliteStore {
 			}) {
 			return Err(StoreError::InvalidInput("invalid misalignment evidence"));
 		}
+
 		self.run(move |connection| {
             let tx=connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
             let work:Option<String>=tx.query_row("SELECT id FROM agent_work_items WHERE codex_thread_id=?1 AND (active_turn_id=?2 OR (?3 AND dispatch_state='idle' AND active_turn_id IS NULL) OR (active_turn_id IS NULL AND EXISTS(SELECT 1 FROM agent_misalignment m WHERE m.work_id=agent_work_items.id AND m.thread_id=?1 AND m.turn_id=?2)))",params![thread,turn,restore_idle],|row|row.get(0)).optional().map_err(sqlite_error)?;
+
             if let Some(work)=work {
                 tx.execute("INSERT INTO agent_misalignment(work_id,thread_id,turn_id,details_json,created_at_micros,retired_voice) VALUES(?1,?2,?3,?4,?5,EXISTS(SELECT 1 FROM agent_voice_calls WHERE work_id=?1 AND thread_id=?2 AND closed_at_micros IS NULL)) ON CONFLICT(work_id) DO UPDATE SET thread_id=excluded.thread_id,turn_id=excluded.turn_id,details_json=CASE WHEN agent_misalignment.thread_id=excluded.thread_id AND agent_misalignment.turn_id=excluded.turn_id THEN coalesce(excluded.details_json,agent_misalignment.details_json) ELSE excluded.details_json END,retired_voice=CASE WHEN agent_misalignment.thread_id=excluded.thread_id THEN max(agent_misalignment.retired_voice,excluded.retired_voice) ELSE excluded.retired_voice END,created_at_micros=excluded.created_at_micros",params![work,thread,turn,details,unix_micros()?]).map_err(sqlite_error)?;
                 tx.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Input retired without delivery because the provider paused this conversation.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind IN ('user_message','async_question_answer') AND disposition IS NULL AND delivered_turn_id IS NULL",params![work,unix_micros()?]).map_err(sqlite_error)?;
                 tx.execute("UPDATE agent_capacity_retries SET state='cancelled' WHERE work_item_id=?1 AND state='pending'",[&work]).map_err(sqlite_error)?;
 
             }
+
             tx.commit().map_err(sqlite_error)?;
+
             Ok(())
         }).await
 	}

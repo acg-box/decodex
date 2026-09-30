@@ -149,6 +149,7 @@ impl SqliteStore {
 				"ProviderAttempt generation revision must be positive",
 			));
 		}
+
 		let (conversation_id, turn_id) = match &preparation.consumer {
 			ProviderAttemptConsumer::ConversationTurn { conversation_id, turn_id } =>
 				(conversation_id.clone(), turn_id.clone()),
@@ -163,19 +164,23 @@ impl SqliteStore {
 		let turn_revision = turn_revision.ok_or(StoreError::InvalidInput(
 			"Conversation ProviderAttempt requires a Turn revision",
 		))?;
+
 		if conversation_revision <= 0 || turn_revision != 1 {
 			return Err(StoreError::InvalidInput(
 				"Conversation ProviderAttempt revision is invalid",
 			));
 		}
+
 		let preparation = preparation.clone();
 		let process_generation_id = process_generation_id.clone();
 		let process_execution_epoch_id = process_execution_epoch_id.clone();
 		let binding_key = binding_receipt.map(|value| value.idempotency_key.clone());
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
+
 			if let Some(existing) = read_attempt(&transaction, preparation.attempt_id.as_str())? {
 				let same = existing.consumer == preparation.consumer
 					&& existing.continuation_plan_id == preparation.continuation_plan_id
@@ -185,7 +190,9 @@ impl SqliteStore {
 					&& existing.provider_keys == preparation.provider_keys
 					&& existing.duplicate_risk == preparation.duplicate_risk;
 				let actual = mutation(&existing);
+
 				transaction.commit().map_err(sql_error)?;
+
 				return if same {
 					Ok(PrepareProviderAttemptOutcome::Replayed(actual))
 				} else {
@@ -195,6 +202,7 @@ impl SqliteStore {
 					})
 				};
 			}
+
 			let authority = transaction
 				.query_row(
 					"SELECT p.routing_decision_id,
@@ -264,6 +272,7 @@ impl SqliteStore {
 					actual: empty_mutation(),
 				});
 			};
+
 			if !duplicate_risk_matches_plan(
 				&transaction,
 				&preparation.duplicate_risk,
@@ -278,9 +287,11 @@ impl SqliteStore {
 					actual: empty_mutation(),
 				});
 			}
+
 			let (idempotency, correlation) = provider_keys(&preparation.provider_keys);
 			let (predecessor, acknowledgement) = duplicate_risk(&preparation.duplicate_risk);
 			let now = unix_micros().map_err(StoreError::from)?;
+
 			transaction
 				.execute(
 					"INSERT INTO provider_attempts (
@@ -317,6 +328,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(PrepareProviderAttemptOutcome::Fresh(FreshPreparedProviderAttempt {
 				attempt_id: preparation.attempt_id,
 				revision: 1,
@@ -339,6 +351,7 @@ impl SqliteStore {
 		process_generation_revision: i64,
 	) -> Result<AuthorizeProviderDispatchOutcome, StoreError> {
 		let process_generation_id = process_generation_id.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
@@ -349,13 +362,17 @@ impl SqliteStore {
 					actual: empty_mutation(),
 				});
 			};
+
 			if current.state == ProviderAttemptState::DispatchAuthorized
 				&& current.revision == prepared.revision.saturating_add(1)
 			{
 				let actual = mutation(&current);
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(AuthorizeProviderDispatchOutcome::Replayed(actual));
 			}
+
 			let process_ready: bool = transaction
 				.query_row(
 					"SELECT EXISTS (SELECT 1 FROM process_generations WHERE generation_id = ?1
@@ -373,6 +390,7 @@ impl SqliteStore {
 						fence.turn_id.as_str(), fence.turn_revision], |row| row.get::<_, bool>(0),
 				).unwrap_or(false)
 			});
+
 			if current.revision != prepared.revision
 				|| current.state != ProviderAttemptState::Prepared
 				|| current.process_generation_id != process_generation_id
@@ -385,8 +403,10 @@ impl SqliteStore {
 					actual: mutation(&current),
 				});
 			}
+
 			let now = unix_micros().map_err(StoreError::from)?;
 			let revision = prepared.revision + 1;
+
 			transaction
 				.execute(
 					"UPDATE provider_attempts SET state = 'dispatch_authorized', revision = ?1,
@@ -395,6 +415,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(AuthorizeProviderDispatchOutcome::Fresh(FreshProviderDispatchFence {
 				attempt_id: prepared.attempt_id,
 				attempt_revision: revision,
@@ -430,6 +451,7 @@ impl SqliteStore {
 		if reason == ProviderAttemptUnknownReason::RestoreProjection {
 			return Err(StoreError::InvalidInput("restore projection is not a live transition"));
 		}
+
 		self.transition_attempt(
 			attempt_id,
 			expected_revision,
@@ -446,6 +468,7 @@ impl SqliteStore {
 		evidence: &ProviderPositiveEvidence,
 	) -> Result<ProviderAttemptMutationOutcome, StoreError> {
 		let evidence = evidence.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
@@ -456,6 +479,7 @@ impl SqliteStore {
 					actual: empty_mutation(),
 				});
 			};
+
 			if current.state.is_terminal() {
 				return if current.terminal_evidence_id.as_ref() == Some(&evidence.evidence_id)
 					&& positive_evidence_matches(&transaction, &evidence)?
@@ -468,7 +492,6 @@ impl SqliteStore {
 			if evidence.validate().is_err() {
 				return Ok(rejected(ProviderAttemptRejection::InvalidEvidence, &current));
 			}
-
 			if current.revision != expected_revision
 				|| !matches!(
 					current.state,
@@ -479,7 +502,9 @@ impl SqliteStore {
 			{
 				return Ok(rejected(ProviderAttemptRejection::EvidenceMismatch, &current));
 			}
+
 			let now = unix_micros().map_err(StoreError::from)?;
+
 			transaction
 				.execute(
 					"INSERT INTO provider_attempt_positive_evidence (
@@ -502,7 +527,9 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			let revision = expected_revision + 1;
+
 			transaction
 				.execute(
 					"UPDATE provider_attempts SET state = ?1, unknown_reason = NULL,
@@ -517,8 +544,11 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			crate::conversations::non_submission::finalize(&transaction, &current, &evidence, now)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(ProviderAttemptMutationOutcome::Applied(ProviderAttemptMutation {
 				revision,
 				state: evidence.outcome.state(),
@@ -537,6 +567,7 @@ impl SqliteStore {
 				 WHERE state IN ('prepared', 'dispatch_authorized')",
 				params![now],
 			).map_err(sql_error)?;
+
 			u64::try_from(changed).map_err(|_| incompatible("attempt projection count"))
 		})
 		.await
@@ -554,9 +585,11 @@ impl SqliteStore {
 				"ProviderAttempt read limit must be between 1 and 256",
 			));
 		}
+
 		let account = account_id.map(|value| value.as_str().to_owned());
 		let state = state.map(|value| value.as_sql().to_owned());
 		let after = after_attempt_id.map(|value| value.as_str().to_owned());
+
 		self.run(move |connection| {
 			let mut statement = connection
 				.prepare(
@@ -572,6 +605,7 @@ impl SqliteStore {
 				.map_err(sql_error)?
 				.collect::<Result<Vec<_>, _>>()
 				.map_err(sql_error)?;
+
 			ids.into_iter()
 				.map(|id| read_attempt(connection, &id)?.ok_or_else(|| incompatible("attempt")))
 				.collect()
@@ -584,6 +618,7 @@ impl SqliteStore {
 		attempt_id: &ProviderAttemptId,
 	) -> Result<Option<ProviderAttempt>, StoreError> {
 		let attempt_id = attempt_id.clone();
+
 		self.run(move |connection| read_attempt(connection, attempt_id.as_str())).await
 	}
 
@@ -595,10 +630,12 @@ impl SqliteStore {
 		if attempt.terminal_evidence_id.is_none() {
 			return Ok(false);
 		}
+
 		let id = attempt.attempt_id.clone();
 		let revision = attempt.revision;
 		let state = attempt.state.as_sql();
 		let request = attempt.request_id.clone();
+
 		self.run(move |connection| {
 			connection
 				.query_row(
@@ -628,7 +665,9 @@ impl SqliteStore {
 		if expected_revision <= 0 {
 			return Err(StoreError::InvalidInput("ProviderAttempt revision must be positive"));
 		}
+
 		let attempt_id = attempt_id.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
@@ -639,19 +678,24 @@ impl SqliteStore {
 					actual: empty_mutation(),
 				});
 			};
+
 			if current.state == target_state
 				&& current.revision == expected_revision.saturating_add(1)
 				&& current.unknown_reason == reason
 			{
 				let result = ProviderAttemptMutationOutcome::Replayed(mutation(&current));
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(result);
 			}
 			if current.revision != expected_revision || current.state != expected_state {
 				return Ok(rejected(ProviderAttemptRejection::StaleAttempt, &current));
 			}
+
 			let revision = expected_revision + 1;
 			let now = unix_micros().map_err(StoreError::from)?;
+
 			transaction
 				.execute(
 					"UPDATE provider_attempts SET state = ?1, unknown_reason = ?2,
@@ -666,6 +710,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(ProviderAttemptMutationOutcome::Applied(ProviderAttemptMutation {
 				revision,
 				state: target_state,
@@ -775,6 +820,7 @@ fn parse_attempt_row(row: AttemptRow) -> Result<ProviderAttempt, StoreError> {
 			},
 		_ => return Err(incompatible("duplicate-risk shape")),
 	};
+
 	Ok(ProviderAttempt {
 		attempt_id: ProviderAttemptId::new(row.0).map_err(|_| incompatible("attempt id"))?,
 		consumer: ProviderAttemptConsumer::ConversationTurn {
@@ -869,6 +915,7 @@ fn duplicate_risk_matches_plan(
 	if plan_kind != "context_pack_fallback" {
 		return Ok(matches!(risk, ProviderDuplicateRisk::OriginalIntent));
 	}
+
 	match risk {
 		ProviderDuplicateRisk::OriginalIntent => transaction
 			.query_row(
@@ -893,6 +940,7 @@ fn duplicate_risk_matches_plan(
 				]) {
 				return Ok(false);
 			}
+
 			transaction
 				.query_row(
 					"SELECT EXISTS (

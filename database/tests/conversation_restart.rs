@@ -81,7 +81,6 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	let blob_store = BlobStore::open(paths.clone()).expect("open blob store");
 	let store = SqliteStore::open(&paths).expect("open SQLite product store");
 	let (account_id, credential, alternate_account_id) = import_ready_accounts(&store).await;
-
 	let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation identity");
 	let conversation_command =
 		CommandIdentity::new("conversation-conversation", b"create restart conversation")
@@ -106,6 +105,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		)
 		.await
 		.expect("create Conversation conversation");
+
 	assert_eq!(conversation.revision, 1);
 
 	let route = match store
@@ -122,6 +122,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		ConversationInitialRouteOutcome::Fresh(route) => route,
 		other => panic!("initial route was not fresh: {other:?}"),
 	};
+
 	assert_eq!(route.decision.selected_account_id.as_ref(), Some(&account_id));
 
 	let initial_plan = match store
@@ -144,6 +145,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	};
 	let initial_session =
 		initial_plan.runtime_session.clone().expect("initial plan owns a RuntimeSession");
+
 	assert_eq!(initial_plan.plan.kind, ContinuationPlanKind::InitialThread);
 	assert_eq!(initial_session.state, RuntimeSessionState::Starting);
 	assert_eq!(initial_session.account_snapshot.source_account_id, account_id);
@@ -170,6 +172,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		)
 		.await
 		.expect("admit initial user Turn");
+
 	assert!(matches!(
 		initial_admission,
 		InitialConversationTurnAdmissionOutcome::Fresh(ref admission)
@@ -188,12 +191,14 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	else {
 		panic!("original admission is fresh");
 	};
+
 	assert_eq!(
 		admission_replay,
 		InitialConversationTurnAdmissionOutcome::Replayed(original_admission.clone())
 	);
 
 	let reopened_admission_store = SqliteStore::open(&paths).expect("reopen initial admission");
+
 	assert_eq!(
 		reopened_admission_store
 			.admit_initial_conversation_turn(
@@ -205,8 +210,11 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			.expect("replay initial admission after reopen"),
 		InitialConversationTurnAdmissionOutcome::Replayed(original_admission.clone())
 	);
+
 	let mut changed_admission = admission_request.clone();
+
 	changed_admission.message.text = "Different initial user input".into();
+
 	assert!(matches!(
 		reopened_admission_store
 			.admit_initial_conversation_turn(
@@ -226,6 +234,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			.len(),
 		1
 	);
+
 	drop(reopened_admission_store);
 
 	let generation_id = ProcessGenerationId::new(GENERATION_ID).expect("generation identity");
@@ -266,6 +275,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		})
 		.await
 		.expect("reconcile admitted generation before spawn");
+
 	assert!(matches!(
 		pre_spawn_readback,
 		ConversationThreadEstablishmentReadback::DefinitelyNotStarted(ref evidence)
@@ -273,6 +283,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 				&& evidence.kind == ConversationPreEffectEvidenceKind::AdmissionRejected
 				&& evidence.evidence_id == "conversation-process-admission"
 	));
+
 	let execution_epoch_id =
 		ProcessExecutionEpochId::new(EXECUTION_EPOCH_ID).expect("execution epoch identity");
 	let boot_id = ProcessBootIdentity::new("fixture-boot").expect("boot identity");
@@ -300,7 +311,9 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		PrepareProcessGenerationOutcome::Fresh(fence) => fence,
 		other => panic!("process generation was not fresh: {other:?}"),
 	};
+
 	assert_eq!(process_fence.revision(), 1);
+
 	let process_identity = ProcessIdentity::new(
 		boot_id,
 		41_001,
@@ -309,6 +322,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		41_001,
 	)
 	.expect("process identity");
+
 	assert!(matches!(
 		store
 			.bind_process_generation_identity(&generation_id, 1, &process_identity)
@@ -357,12 +371,15 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		codex_thread_id: codex_thread_id.clone(),
 	});
 	let mut oversized_binding = thread_binding.clone();
+
 	oversized_binding.successful_response.codex_thread_id =
 		"x".repeat(decodex_core::MAX_PROVIDER_THREAD_ID_BYTES + 1);
+
 	assert!(matches!(
 		store.bind_runtime_session_thread("oversized-provider-thread", &oversized_binding).await,
 		Err(decodex_database::StoreError::InvalidInput(_))
 	));
+
 	let bound_session = match store
 		.bind_runtime_session_thread("conversation-thread-binding", &thread_binding)
 		.await
@@ -371,14 +388,19 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		BindRuntimeSessionThreadOutcome::Applied(binding) => binding,
 		other => panic!("thread binding was not applied: {other:?}"),
 	};
+
 	assert_eq!(bound_session.revision, 3);
 	assert_eq!(bound_session.codex_thread_id, codex_thread_id);
+
 	let replayed = store
 		.bind_runtime_session_thread("conversation-thread-binding", &thread_binding)
 		.await
 		.expect("replay committed thread binding");
+
 	assert_eq!(replayed, BindRuntimeSessionThreadOutcome::Replayed(bound_session.clone()));
+
 	let reopened_binding_store = SqliteStore::open(&paths).expect("reopen committed binding");
+
 	assert_eq!(
 		reopened_binding_store
 			.bind_runtime_session_thread("conversation-thread-binding", &thread_binding)
@@ -406,14 +428,17 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			.expect("recover lost binding receipt"),
 		ConversationThreadEstablishmentReadback::Bound(bound_session.clone())
 	);
+
 	for field in ["conversation_revision", "turn_revision", "request_digest", "response_digest"] {
 		let mut changed = thread_binding.clone();
+
 		match field {
 			"conversation_revision" => changed.expected_conversation_revision += 1,
 			"turn_revision" => changed.expected_turn_revision += 1,
 			"request_digest" => changed.thread_start_request_sha256 = DIGEST_C.into(),
 			_ => changed.successful_response.response_sha256 = DIGEST_C.into(),
 		}
+
 		assert!(
 			matches!(
 				reopened_binding_store
@@ -425,6 +450,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			"changed {field} must not replay the original binding"
 		);
 	}
+
 	drop(reopened_binding_store);
 	verify_native_settings_observations(&store, &root, &bound_session, &generation_id).await;
 
@@ -446,7 +472,9 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	)
 	.expect("provider-attempt preparation");
 	let mut malformed = preparation.clone();
+
 	malformed.request_digest = "z".repeat(64);
+
 	assert!(
 		matches!(
 			store
@@ -488,9 +516,11 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		AuthorizeProviderDispatchOutcome::Fresh(fence) => fence,
 		other => panic!("provider dispatch was not freshly authorized: {other:?}"),
 	};
+
 	assert_eq!(authorized.attempt_revision(), 2);
 
 	let assistant_turn_id = TurnId::new(ASSISTANT_TURN_ID).expect("assistant Turn identity");
+
 	store
 		.record_history_item(
 			&blob_store,
@@ -508,6 +538,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		)
 		.await
 		.expect("record assistant response");
+
 	let evidence_id = ProviderEvidenceId::new(EVIDENCE_ID).expect("provider evidence identity");
 	let evidence = ProviderPositiveEvidence::new(
 		evidence_id.clone(),
@@ -523,11 +554,17 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	)
 	.expect("positive provider evidence");
 	let mut missing_receipt = evidence.clone();
+
 	missing_receipt.provider_receipt_id = None;
+
 	let mut invalid_digest = evidence.clone();
+
 	invalid_digest.witness_digest = "z".repeat(64);
+
 	let mut oversized_turn = evidence.clone();
+
 	oversized_turn.provider_turn_id = Some("x".repeat(513));
+
 	for invalid in [missing_receipt, invalid_digest, oversized_turn] {
 		assert!(
 			matches!(
@@ -554,12 +591,19 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		ProviderAttemptMutationOutcome::Replayed(ref mutation)
 			if mutation.revision == 3 && mutation.state == ProviderAttemptState::Succeeded
 	));
+
 	let mut changed_witness = evidence.clone();
+
 	changed_witness.witness_digest = "f".repeat(64);
+
 	let mut changed_outcome = evidence.clone();
+
 	changed_outcome.outcome = ProviderTerminalOutcome::FailedDefinitive;
+
 	let mut changed_receipt = evidence.clone();
+
 	changed_receipt.provider_receipt_id = None;
+
 	for changed in [changed_witness, changed_outcome, changed_receipt] {
 		assert!(
 			matches!(
@@ -572,6 +616,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			"changed evidence must not replay a terminal receipt"
 		);
 	}
+
 	let terminalized = match store
 		.terminalize_conversation_turn(
 			"conversation-terminalization",
@@ -597,6 +642,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		ConversationTerminalizationOutcome::Applied(readback) => readback,
 		other => panic!("Conversation terminalization was not applied: {other:?}"),
 	};
+
 	assert_eq!(terminalized.runtime_session_revision, 4);
 	assert!(
 		matches!(
@@ -617,6 +663,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			.len(),
 		2
 	);
+
 	let death = ProcessDeathEvidence::new(
 		ProcessDeathEvidenceId::new(DEATH_EVIDENCE_ID).expect("death evidence identity"),
 		generation_id.clone(),
@@ -626,6 +673,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		DIGEST_A,
 	)
 	.expect("positive process death evidence");
+
 	assert!(matches!(
 		store
 			.record_process_generation_death(3, &death)
@@ -636,10 +684,14 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	));
 
 	drop(store);
+
 	let reopened = SqliteStore::open(&paths).expect("reopen SQLite after daemon restart");
 	let saved = reopened.read_conversation_request(&conversation_id).await.unwrap().unwrap();
+
 	assert_eq!(saved.service_tier.unwrap().as_str(), "ultrafast");
+
 	reopened.revalidate().await.expect("revalidate reopened SQLite");
+
 	let routing = reopened
 		.read_account_routing_control()
 		.await
@@ -652,11 +704,14 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		RoutingControlOutcome::Updated { routing } => routing,
 		other => panic!("account routing did not update: {other:?}"),
 	};
+
 	assert_eq!(changed_routing.mode, AccountSelectionMode::Fixed(alternate_account_id.clone()));
+
 	let projection = reopened
 		.read_ordinary_task_conversations(Some(&conversation_id), None, 1)
 		.await
 		.expect("read durable Conversation projection after restart");
+
 	assert!(matches!(
 		projection.as_slice(),
 		[OrdinaryTaskConversationProjection::Current(row)]
@@ -666,6 +721,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 
 	let alternate_conversation_id =
 		ConversationId::new(ALTERNATE_CONVERSATION_ID).expect("alternate conversation identity");
+
 	reopened
 		.create_conversation(
 			&CommandIdentity::new(
@@ -687,6 +743,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		)
 		.await
 		.expect("create alternate Conversation conversation");
+
 	let alternate_route = match reopened
 		.route_conversation_initial(
 			"alternate-conversation-route",
@@ -701,6 +758,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		ConversationInitialRouteOutcome::Fresh(route) => route,
 		other => panic!("alternate initial route was not fresh: {other:?}"),
 	};
+
 	assert_eq!(
 		alternate_route.decision.selected_account_id.as_ref(),
 		Some(&alternate_account_id),
@@ -712,6 +770,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		.await
 		.expect("read restart projection")
 		.expect("active RuntimeSession survives restart");
+
 	assert_eq!(resume.runtime_session_id, initial_session.runtime_session_id);
 	assert_eq!(resume.runtime_session_revision, 4);
 	assert_eq!(resume.codex_thread_id, codex_thread_id);
@@ -731,6 +790,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		LATER_HISTORY_ID,
 		"Continue after restart.",
 	);
+
 	assert!(matches!(
 		reopened
 			.reserve_user_turn_with_history_item(
@@ -744,6 +804,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		TurnReservationOutcome::Fresh(ref reservation)
 			if reservation.turn_id == later_turn_id && reservation.sequence == 3
 	));
+
 	let continuation_binding = match reopened
 		.bind_conversation_continuation(
 			"conversation-continuation-route",
@@ -801,6 +862,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			panic!("restart continuation plan was rejected: {rejection:?}")
 		},
 	};
+
 	assert_eq!(continuation.plan.kind, ContinuationPlanKind::SameThread);
 	assert_eq!(continuation.plan.codex_thread_id.as_deref(), Some(codex_thread_id.as_str()));
 	assert_eq!(continuation.plan.source_runtime_session_id, resume.runtime_session_id);
@@ -815,8 +877,10 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			..
 		}) if attempt_id.as_str() == ATTEMPT_ID
 	));
+
 	let rehydrated_generation_id =
 		ProcessGenerationId::new(REHYDRATED_GENERATION_ID).expect("rehydrated generation identity");
+
 	assert!(matches!(
 		reopened
 			.prepare_conversation_process_generation(
@@ -838,7 +902,6 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			.expect("admit rehydrated process generation"),
 		PrepareConversationProcessGenerationOutcome::Fresh(_)
 	));
-
 	assert!(matches!(
 		reopened
 			.prepare_provider_attempt(
@@ -854,10 +917,12 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		PrepareProviderAttemptOutcome::Replayed(ref mutation)
 			if mutation.revision == 3 && mutation.state == ProviderAttemptState::Succeeded
 	));
+
 	let attempts = reopened
 		.read_provider_attempt_page(None, None, None, 16)
 		.await
 		.expect("read provider attempts");
+
 	assert_eq!(attempts.len(), 1, "restart must not create a duplicate dispatch intent");
 	assert_eq!(attempts[0].attempt_id, attempt_id);
 	assert_eq!(
@@ -888,6 +953,7 @@ async fn import_ready_accounts(store: &SqliteStore) -> (AccountId, CredentialBin
 		"Alternate fixture account",
 		b"opaque-alternate-fixture-credential",
 	);
+
 	assert_eq!(
 		store
 			.import_local_accounts(LocalAccountTransferBatch {
@@ -915,6 +981,7 @@ async fn import_ready_accounts(store: &SqliteStore) -> (AccountId, CredentialBin
 			.await
 			.expect("attest Codex account capability")
 	);
+
 	(account_id, credential, alternate_account_id)
 }
 
@@ -972,6 +1039,7 @@ fn fixture_account_transfer(
 			payload: Zeroizing::new(payload.to_vec()),
 		},
 	};
+
 	(typed_account_id, credential, transferred)
 }
 
@@ -1025,15 +1093,24 @@ async fn original_reasoning_choice_survives_reopen_and_idempotent_creation() {
 		};
 		let created = store.create_conversation(&command, &record).await.unwrap();
 		let original = store.read_conversation_request(&id).await.unwrap().unwrap();
+
 		assert_eq!(original.reasoning_effort.as_deref(), effort);
+
 		drop(store);
+
 		let reopened = SqliteStore::open(&paths).unwrap();
+
 		assert_eq!(reopened.read_conversation_request(&id).await.unwrap(), Some(original));
+
 		let replay = reopened.create_conversation(&command, &record).await.unwrap();
+
 		assert_eq!(replay, created);
+
 		for invalid in ["", "bad\neffort", &"x".repeat(129)] {
 			let mut rejected = record.clone();
+
 			rejected.reasoning_effort = Some(invalid.into());
+
 			assert!(
 				reopened
 					.create_conversation(
@@ -1055,7 +1132,9 @@ async fn creation_receipt_readback_is_exact_and_survives_reopen() {
 	let store = SqliteStore::open(&paths).unwrap();
 	let id = ConversationId::new(CONVERSATION_ID).unwrap();
 	let command = CommandIdentity::new("receipt-original", b"exact request").unwrap();
+
 	assert_eq!(store.read_conversation_creation_receipt(&command, &id).await.unwrap(), None);
+
 	let record = CreateConversationRecord {
 		initial_model_source: None,
 		conversation_id: id.clone(),
@@ -1068,24 +1147,34 @@ async fn creation_receipt_readback_is_exact_and_survives_reopen() {
 		service_tier: None,
 	};
 	let created = store.create_conversation(&command, &record).await.unwrap();
+
 	assert_eq!(
 		store.read_conversation_creation_receipt(&command, &id).await.unwrap(),
 		Some(created.clone())
 	);
+
 	let different_key = CommandIdentity::new("unseen-command", b"exact request").unwrap();
+
 	assert_eq!(store.read_conversation_creation_receipt(&different_key, &id).await.unwrap(), None);
+
 	let changed = CommandIdentity::new("receipt-original", b"changed request").unwrap();
+
 	assert!(matches!(
 		store.read_conversation_creation_receipt(&changed, &id).await,
 		Err(decodex_database::StoreError::IdempotencyConflict)
 	));
+
 	let other = ConversationId::new("30000000-0000-4000-8000-000000000099").unwrap();
+
 	assert!(matches!(
 		store.read_conversation_creation_receipt(&command, &other).await,
 		Err(decodex_database::StoreError::IdempotencyConflict)
 	));
+
 	drop(store);
+
 	let reopened = SqliteStore::open(&paths).unwrap();
+
 	assert_eq!(
 		reopened.read_conversation_creation_receipt(&command, &id).await.unwrap(),
 		Some(created)
@@ -1119,16 +1208,20 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_replays() {
 		initial_model_source: Some(source.clone()),
 	};
 	let created = store.create_conversation(&command, &record).await.unwrap();
+
 	drop(store);
+
 	let reopened = SqliteStore::open(&paths).unwrap();
 	let request =
 		reopened.read_conversation_request(&record.conversation_id).await.unwrap().unwrap();
+
 	assert_eq!(request.initial_model_source, Some(source.clone()));
 	assert_eq!(request.message, record.message);
 	assert_eq!(request.working_directory, record.working_directory);
 	assert_eq!(request.reasoning_effort, None);
 	assert_eq!(request.service_tier, None);
 	assert_eq!(reopened.create_conversation(&command, &record).await.unwrap(), created);
+
 	for replacement in [
 		None,
 		Some(decodex_database::InitialModelSource { account_revision: 8, ..source.clone() }),
@@ -1138,15 +1231,20 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_replays() {
 		}),
 	] {
 		let mut changed = record.clone();
+
 		changed.initial_model_source = replacement;
+
 		assert!(matches!(
 			reopened.create_conversation(&command, &changed).await,
 			Err(decodex_database::StoreError::IdempotencyConflict)
 		));
 	}
+
 	let mut invalid = record.clone();
+
 	invalid.initial_model_source =
 		Some(decodex_database::InitialModelSource { account_revision: 0, ..source });
+
 	assert!(matches!(
 		reopened.create_conversation(&command, &invalid).await,
 		Err(decodex_database::StoreError::InvalidInput(_))
@@ -1173,6 +1271,7 @@ async fn seed_model_review(store: &SqliteStore) -> CreateConversationRecord {
 			account_revision: 9,
 		}),
 	};
+
 	store
 		.create_conversation(
 			&CommandIdentity::new("review-create", b"original request").expect("command"),
@@ -1180,10 +1279,12 @@ async fn seed_model_review(store: &SqliteStore) -> CreateConversationRecord {
 		)
 		.await
 		.expect("save original request");
+
 	let before = store
 		.read_ordinary_task_conversations(Some(&request.conversation_id), None, 1)
 		.await
 		.expect("read before source rejection");
+
 	assert!(matches!(
 		store
 			.route_conversation_initial(
@@ -1197,6 +1298,7 @@ async fn seed_model_review(store: &SqliteStore) -> CreateConversationRecord {
 			.expect("block stale source"),
 		ConversationInitialRouteOutcome::Rejected(_)
 	));
+
 	let after = store
 		.read_ordinary_task_conversations(Some(&request.conversation_id), None, 1)
 		.await
@@ -1208,10 +1310,12 @@ async fn seed_model_review(store: &SqliteStore) -> CreateConversationRecord {
 	else {
 		panic!("current source task");
 	};
+
 	assert!(
 		after.updated_at_micros > before.updated_at_micros,
 		"other clients must accept the changed review state"
 	);
+
 	request
 }
 
@@ -1220,6 +1324,7 @@ async fn model_review_is_explicit_revision_fenced_and_idempotent_after_reopen() 
 	use decodex_database::{
 		InitialModelReviewOutcome, InitialModelSource, ReviewInitialModelSettings,
 	};
+
 	for (effort, tier) in [(None, None), (Some("low"), Some("flex"))] {
 		let temporary = tempdir().expect("temporary review store");
 		let root = DecodexRoot::new(temporary.path().canonicalize().expect("canonical root"))
@@ -1239,6 +1344,7 @@ async fn model_review_is_explicit_revision_fenced_and_idempotent_after_reopen() 
 				account_revision: 1,
 			},
 		};
+
 		assert_eq!(
 			store
 				.review_initial_model_settings("stale-review", &review)
@@ -1246,7 +1352,9 @@ async fn model_review_is_explicit_revision_fenced_and_idempotent_after_reopen() 
 				.expect("stale review"),
 			InitialModelReviewOutcome::Rejected
 		);
+
 		review.expected_revision = 1;
+
 		let (first, concurrent) = tokio::join!(
 			store.review_initial_model_settings("confirmed-review", &review),
 			store.review_initial_model_settings("concurrent-review", &review),
@@ -1264,25 +1372,33 @@ async fn model_review_is_explicit_revision_fenced_and_idempotent_after_reopen() 
 			) => "concurrent-review",
 			other => panic!("exactly one confirmation must win: {other:?}"),
 		};
+
 		drop(store);
+
 		let store = SqliteStore::open(&paths).expect("reopen reviewed request");
+
 		assert_eq!(
 			store.review_initial_model_settings(winning_key, &review).await.expect("replay review"),
 			InitialModelReviewOutcome::Applied { revision: 2, replayed: true }
 		);
+
 		let saved = store
 			.read_conversation_request(&original.conversation_id)
 			.await
 			.expect("read reviewed request")
 			.expect("saved request");
+
 		assert_eq!(saved.message, original.message);
 		assert_eq!(saved.working_directory, original.working_directory);
 		assert_eq!(saved.model, review.model);
 		assert_eq!(saved.reasoning_effort, review.reasoning_effort);
 		assert_eq!(saved.service_tier, review.service_tier.clone());
 		assert_eq!(saved.initial_model_source, Some(review.source.clone()));
+
 		let mut changed = review.clone();
+
 		changed.model = "gpt-5.6-sol".to_owned();
+
 		assert!(matches!(
 			store.review_initial_model_settings(winning_key, &changed).await,
 			Err(decodex_database::StoreError::IdempotencyConflict)
@@ -1300,7 +1416,9 @@ async fn model_review_is_explicit_revision_fenced_and_idempotent_after_reopen() 
 				.expect("route reviewed settings"),
 			ConversationInitialRouteOutcome::Fresh(_)
 		));
+
 		review.expected_revision = 2;
+
 		assert_eq!(
 			store
 				.review_initial_model_settings("review-after-route", &review)
@@ -1308,6 +1426,7 @@ async fn model_review_is_explicit_revision_fenced_and_idempotent_after_reopen() 
 				.expect("reject late review"),
 			InitialModelReviewOutcome::Rejected
 		);
+
 		let rows = store
 			.read_ordinary_task_conversations(Some(&original.conversation_id), None, 1)
 			.await
@@ -1315,6 +1434,7 @@ async fn model_review_is_explicit_revision_fenced_and_idempotent_after_reopen() 
 		let OrdinaryTaskConversationProjection::Current(task) = &rows[0] else {
 			panic!("current task");
 		};
+
 		assert!(!task.has_admitted_user_turn, "confirmation alone does not send");
 		assert!(task.runtime_session_id.is_none(), "confirmation alone does not spawn");
 	}
@@ -1330,7 +1450,9 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 			.expect("typed root");
 		let paths = root.paths();
 		let store = SqliteStore::open(&paths).expect("open source store");
+
 		import_ready_accounts(&store).await;
+
 		let source = decodex_database::InitialModelSource {
 			account_id: AccountId::new(source_id).expect("source identity"),
 			account_revision: source_revision,
@@ -1347,25 +1469,34 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 			initial_model_source: Some(source.clone()),
 		};
 		let command = CommandIdentity::new("source-create", b"source creation").expect("command");
+
 		store.create_conversation(&command, &request).await.expect("create source request");
+
 		drop(store);
+
 		let store = SqliteStore::open(&paths).expect("reopen source store");
 		let restored = store
 			.read_conversation_request(&request.conversation_id)
 			.await
 			.expect("read original request")
 			.expect("request persists");
+
 		assert_eq!(restored.initial_model_source, Some(source));
+
 		store.create_conversation(&command, &request).await.expect("same-source replay");
+
 		request.initial_model_source = None;
+
 		assert!(matches!(
 			store.create_conversation(&command, &request).await,
 			Err(decodex_database::StoreError::IdempotencyConflict)
 		));
+
 		let route_request = RouteConversationInitial {
 			conversation_id: request.conversation_id.clone(),
 			expected_conversation_revision: 1,
 		};
+
 		for replay in [false, true] {
 			// Use cold storage for the second attempt, including rejected creation.
 			let store = SqliteStore::open(&paths).expect("reopen before route attempt");
@@ -1373,14 +1504,17 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 				.route_conversation_initial("source-route", &route_request)
 				.await
 				.expect("route source-bound request");
+
 			match route {
 				ConversationInitialRouteOutcome::Fresh(_) => assert!(accepted && !replay),
 				ConversationInitialRouteOutcome::Replayed(_) => assert!(accepted && replay),
 				ConversationInitialRouteOutcome::Rejected(rejection) => {
 					assert!(!accepted);
 					assert_eq!(rejection.code, "initial_model_source_changed");
+
 					if !replay && source_id == ACCOUNT_ID {
 						let id = AccountId::new(ACCOUNT_ID).expect("fixed account");
+
 						assert!(matches!(
 							store
 								.set_account_enabled(&id, 1, false)
@@ -1403,6 +1537,7 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 					let OrdinaryTaskConversationProjection::Current(task) = &projections[0] else {
 						panic!("current task");
 					};
+
 					assert_eq!(task.pre_session_state, Some(decodex_database::OrdinaryTaskPreSessionState::ModelSettingsReviewRequired));
 					assert!(!task.has_admitted_user_turn);
 					assert!(task.runtime_session_id.is_none());
@@ -1427,9 +1562,12 @@ async fn routing_successor_retains_initial_model_source_after_reopen() {
 	let paths = root.paths();
 	let store = SqliteStore::open(&paths).expect("open successor source store");
 	let (account_id, _, _) = import_ready_accounts(&store).await;
+
 	store.set_account_enabled(&account_id, 1, false).await.expect("disable fixed account");
+
 	let source = decodex_database::InitialModelSource { account_id, account_revision: 1 };
 	let conversation_id = ConversationId::new(CONVERSATION_ID).expect("source conversation");
+
 	store
 		.create_conversation(
 			&CommandIdentity::new("successor-source-create", b"source creation").expect("command"),
@@ -1447,12 +1585,14 @@ async fn routing_successor_retains_initial_model_source_after_reopen() {
 		)
 		.await
 		.expect("create source");
+
 	assert!(
 		matches!(store.route_conversation_initial("successor-source-route", &RouteConversationInitial {
         conversation_id: conversation_id.clone(), expected_conversation_revision: 1,
     }).await.expect("persist no-route result"), ConversationInitialRouteOutcome::Fresh(route)
         if route.decision.selected_account_id.is_none())
 	);
+
 	let request = decodex_database::CreateConversationRoutingSuccessor {
 		source_conversation_id: conversation_id,
 		expected_source_revision: 1,
@@ -1465,8 +1605,11 @@ async fn routing_successor_retains_initial_model_source_after_reopen() {
 		decodex_database::ConversationRoutingSuccessorOutcome::Fresh(successor) => successor,
 		other => panic!("unexpected successor: {other:?}"),
 	};
+
 	drop(store);
+
 	let store = SqliteStore::open(&paths).expect("reopen successor");
+
 	assert_eq!(
 		store
 			.read_conversation_request(&successor.successor_conversation_id)
@@ -1495,9 +1638,11 @@ async fn advertised_reasoning_efforts_survive_create_review_and_reopen() {
 		let store = SqliteStore::open(&paths).expect("effort store");
 		let original = seed_model_review(&store).await;
 		let mut new_request = original.clone();
+
 		new_request.conversation_id =
 			ConversationId::new(ALTERNATE_CONVERSATION_ID).expect("new conversation");
 		new_request.reasoning_effort = Some(effort.to_owned());
+
 		store
 			.create_conversation(
 				&CommandIdentity::new("effort-create", effort.as_bytes()).expect("create identity"),
@@ -1505,6 +1650,7 @@ async fn advertised_reasoning_efforts_survive_create_review_and_reopen() {
 			)
 			.await
 			.expect("create with advertised effort");
+
 		let review = decodex_database::ReviewInitialModelSettings {
 			conversation_id: original.conversation_id.clone(),
 			expected_revision: 1,
@@ -1517,6 +1663,7 @@ async fn advertised_reasoning_efforts_survive_create_review_and_reopen() {
 				account_revision: 1,
 			},
 		};
+
 		assert!(matches!(
 			store
 				.review_initial_model_settings("effort-review", &review)
@@ -1524,8 +1671,11 @@ async fn advertised_reasoning_efforts_survive_create_review_and_reopen() {
 				.expect("review advertised effort"),
 			decodex_database::InitialModelReviewOutcome::Applied { revision: 2, replayed: false }
 		));
+
 		drop(store);
+
 		let store = SqliteStore::open(&paths).expect("reopen effort store");
+
 		for id in [&original.conversation_id, &new_request.conversation_id] {
 			assert_eq!(
 				store
@@ -1537,7 +1687,9 @@ async fn advertised_reasoning_efforts_survive_create_review_and_reopen() {
 				Some(effort.to_owned())
 			);
 		}
+
 		new_request.reasoning_effort = Some("bad\nvalue".to_owned());
+
 		assert!(matches!(
 			store
 				.create_conversation(
@@ -1565,8 +1717,10 @@ async fn verify_native_settings_observations(
 	let OrdinaryTaskConversationProjection::Current(row) = &rows[0] else {
 		panic!("current conversation")
 	};
+
 	assert!(row.native_settings.is_none());
 	assert!(original.is_some(), "saved execution intent remains available");
+
 	let mut observation = decodex_database::RecordConversationNativeSettings {
 		runtime_session_id: binding.runtime_session_id.clone(),
 		expected_session_revision: binding.revision,
@@ -1582,12 +1736,14 @@ async fn verify_native_settings_observations(
 			reasoning_effort: Some("ultra".into()),
 		},
 	};
+
 	assert!(
 		store
 			.record_conversation_native_settings(&observation)
 			.await
 			.expect("retain native settings")
 	);
+
 	let before = store
 		.conversation_native_settings(
 			binding.runtime_session_id.clone(),
@@ -1596,6 +1752,7 @@ async fn verify_native_settings_observations(
 		.await
 		.expect("read observation")
 		.expect("observed facts");
+
 	assert!(
 		store.record_conversation_native_settings(&observation).await.expect("idempotent response")
 	);
@@ -1609,29 +1766,42 @@ async fn verify_native_settings_observations(
 			.await
 			.expect("replay preserves timestamp")
 	);
+
 	observation.response_id = 1;
+
 	assert!(!store.record_conversation_native_settings(&observation).await.expect("late response"));
+
 	observation.response_id = 3;
 	observation.codex_thread_id = "foreign-thread".into();
+
 	assert!(
 		!store.record_conversation_native_settings(&observation).await.expect("foreign thread")
 	);
+
 	observation.codex_thread_id = binding.codex_thread_id.clone();
 	observation.expected_process_revision += 1;
+
 	assert!(
 		!store.record_conversation_native_settings(&observation).await.expect("changed process")
 	);
+
 	observation.expected_process_revision -= 1;
 	observation.expected_session_revision += 1;
+
 	assert!(
 		!store.record_conversation_native_settings(&observation).await.expect("changed session")
 	);
+
 	observation.expected_session_revision -= 1;
 	observation.settings.model_provider = " ".into();
+
 	assert!(store.record_conversation_native_settings(&observation).await.is_err());
+
 	observation.settings.model_provider = "replacement-provider".into();
 	observation.response_sha256 = DIGEST_C.into();
+
 	assert!(store.record_conversation_native_settings(&observation).await.expect("new response"));
+
 	let reopened = SqliteStore::open(&root.paths()).expect("reopen settings");
 	let after = reopened
 		.conversation_native_settings(
@@ -1641,6 +1811,7 @@ async fn verify_native_settings_observations(
 		.await
 		.expect("restored settings")
 		.expect("saved settings");
+
 	assert_eq!(after.settings, observation.settings);
 	assert!(after.observed_at_micros > before.observed_at_micros);
 	assert_eq!(after.process_generation_id, generation.as_str());
@@ -1652,6 +1823,7 @@ async fn verify_native_settings_observations(
 			.expect("original intent unchanged"),
 		original
 	);
+
 	let rows = reopened
 		.read_ordinary_task_conversations(Some(&binding.conversation_id), None, 1)
 		.await
@@ -1659,5 +1831,6 @@ async fn verify_native_settings_observations(
 	let OrdinaryTaskConversationProjection::Current(row) = &rows[0] else {
 		panic!("current conversation")
 	};
+
 	assert_eq!(row.native_settings.as_deref(), Some(&after));
 }

@@ -43,11 +43,13 @@ impl SqliteStore {
 		if expected_revision <= 0 {
 			return Err(StoreError::InvalidInput("desktop settings revision must be positive"));
 		}
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sqlite_error)?;
 			let current = read_desktop_settings(&transaction)?;
+
 			if current.revision != expected_revision {
 				return Err(StoreError::RevisionConflict {
 					entity: "desktop_settings".to_owned(),
@@ -55,6 +57,7 @@ impl SqliteStore {
 					actual: Some(current.revision),
 				});
 			}
+
 			let auto_activate_quota = auto_activate_quota.unwrap_or(current.auto_activate_quota);
 			let auto_recap = auto_recap.unwrap_or(current.auto_recap);
 			let revision = current
@@ -75,6 +78,7 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sqlite_error)?;
+
 			if changed != 1 {
 				return Err(StoreError::RevisionConflict {
 					entity: "desktop_settings".to_owned(),
@@ -82,7 +86,9 @@ impl SqliteStore {
 					actual: Some(current.revision),
 				});
 			}
+
 			transaction.commit().map_err(sqlite_error)?;
+
 			Ok(DesktopSettings { show_in_menu_bar, auto_activate_quota, auto_recap, revision })
 		})
 		.await
@@ -97,9 +103,11 @@ fn read_desktop_settings(connection: &Connection) -> Result<DesktopSettings, Sto
 			|row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, bool>(2)?, row.get::<_, bool>(3)?)),
 		)
 		.map_err(sqlite_error)?;
+
 	if !matches!(show_in_menu_bar, 0 | 1) || revision <= 0 {
 		return Err(StoreError::Incompatible("desktop_settings".to_owned()));
 	}
+
 	Ok(DesktopSettings {
 		show_in_menu_bar: show_in_menu_bar == 1,
 		auto_activate_quota,
@@ -119,27 +127,37 @@ mod tests {
 		let dir = tempdir().expect("test directory");
 		let path = dir.path().join("settings.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("store");
+
 		assert!(!store.read_desktop_settings().await.expect("defaults").auto_recap);
+
 		let enabled =
 			store.set_desktop_settings(1, true, None, Some(true)).await.expect("enable recap");
+
 		assert!(enabled.auto_recap && enabled.auto_activate_quota);
+
 		let other = store
 			.set_desktop_settings(enabled.revision, false, Some(false), None)
 			.await
 			.expect("other preferences");
+
 		assert!(other.auto_recap);
 		assert!(!other.show_in_menu_bar && !other.auto_activate_quota);
 		assert!(matches!(
 			store.set_desktop_settings(enabled.revision, true, None, Some(false)).await,
 			Err(StoreError::RevisionConflict { .. })
 		));
+
 		drop(store);
+
 		let store = SqliteStore::open_test(&path).expect("reopen");
+
 		assert_eq!(store.read_desktop_settings().await.expect("saved"), other);
+
 		let disabled = store
 			.set_desktop_settings(other.revision, false, None, Some(false))
 			.await
 			.expect("disable recap");
+
 		assert!(!disabled.auto_recap && !disabled.auto_activate_quota);
 	}
 
@@ -147,19 +165,26 @@ mod tests {
 	async fn menu_bar_changes_preserve_enabled_quota_activation() {
 		let dir = tempdir().expect("test directory");
 		let store = SqliteStore::open_test(&dir.path().join("settings.sqlite3")).expect("store");
+
 		assert!(store.read_desktop_settings().await.expect("defaults").auto_activate_quota);
+
 		let enabled = store.set_desktop_settings(1, true, Some(true), None).await.expect("enable");
 		let changed =
 			store.set_show_in_menu_bar(enabled.revision, false).await.expect("hide menu bar");
+
 		assert!(changed.auto_activate_quota);
 		assert!(!changed.show_in_menu_bar);
+
 		store
 			.set_desktop_settings(changed.revision, false, Some(false), None)
 			.await
 			.expect("disable activation");
+
 		drop(store);
+
 		let reopened =
 			SqliteStore::open_test(&dir.path().join("settings.sqlite3")).expect("reopen");
+
 		assert!(!reopened.read_desktop_settings().await.expect("saved choice").auto_activate_quota);
 	}
 
@@ -168,8 +193,8 @@ mod tests {
 		let directory = tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
-
 		let initial = store.read_desktop_settings().await.expect("read default settings");
+
 		assert!(initial.show_in_menu_bar);
 		assert_eq!(initial.revision, 1);
 
@@ -177,6 +202,7 @@ mod tests {
 			.set_show_in_menu_bar(initial.revision, false)
 			.await
 			.expect("persist disabled menu bar");
+
 		assert_eq!(changed.revision, 2);
 		assert!(!changed.show_in_menu_bar);
 		assert!(matches!(
@@ -185,7 +211,9 @@ mod tests {
 		));
 
 		drop(store);
+
 		let reopened = SqliteStore::open_test(&path).expect("reopen store");
+
 		assert_eq!(
 			reopened.read_desktop_settings().await.expect("read persisted settings"),
 			changed

@@ -96,36 +96,50 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid native settings source"));
 		}
+
 		let settings = settings
 			.map(|s| {
 				if s.len() > 65536 {
 					return Err(StoreError::InvalidInput("native settings exceed bound"));
 				}
+
 				serde_json::from_str::<Value>(&s)
 					.ok()
 					.filter(Value::is_object)
 					.ok_or(StoreError::InvalidInput("invalid projected native settings"))
 			})
 			.transpose()?;
+
 		self.run(move |connection| {
 			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			let (work,count): (Option<String>,i64) = tx.query_row("SELECT MIN(id),COUNT(*) FROM agent_work_items WHERE codex_thread_id=?1",[&thread],|r|Ok((r.get(0)?,r.get(1)?))).map_err(sqlite_error)?;
 			let Some(work) = work.filter(|_|count==1) else { return Ok(None); };
+
 			if !owns_work(&tx,&work,generation.as_deref())? { return Ok(None); }
+
 			let previous = latest(&tx,&work,&thread,generation.as_deref(),kind)?;
+
 			if previous.is_none() && settings.is_none() { return Ok(None); }
+
 			let encoded = settings.as_ref().map(Value::to_string);
+
 			if let Some(previous) = &previous && previous.settings_json == encoded && previous.source_digest == source_digest {
 				if publication {kind.observe(&tx,&work,&thread,generation.as_deref(),previous.id,settings.as_ref())?;}
+
 				tx.commit().map_err(sqlite_error)?; return Ok(Some(previous.id));
 			}
+
 			let payload = json!({"threadId":thread,"generationId":generation,"sourceDigest":source_digest,"settings":settings});
 			let identity = json!([kind.event(), work, previous.as_ref().map(|p|p.id), payload]);
 			let digest:String = Sha256::digest(identity.to_string().as_bytes()).iter().map(|b|format!("{b:02x}")).collect();
 			let now=unix_micros()?;
+
 			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,?5,?3,?4,'resolved','native observation',?4)",params![format!("native-task-settings:{digest}"),work,payload.to_string(),now,kind.event()]).map_err(sqlite_error)?;
+
 			let id=tx.last_insert_rowid();
+
 			if publication {kind.observe(&tx,&work,&thread,generation.as_deref(),id,settings.as_ref())?;}
+
 			tx.commit().map_err(sqlite_error)?; Ok(Some(id))
 		}).await
 	}
@@ -293,11 +307,15 @@ impl SqliteStore {
 					|r| r.get(0),
 				)
 				.map_err(sqlite_error)?;
+
 			if !bound || !owns_work(&tx, &work, generation.as_deref())? {
 				return Ok(None);
 			}
+
 			let result = latest(&tx, &work, &thread, generation.as_deref(), kind)?;
+
 			tx.commit().map_err(sqlite_error)?;
+
 			Ok(result)
 		})
 		.await

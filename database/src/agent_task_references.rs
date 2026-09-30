@@ -61,22 +61,29 @@ pub(crate) fn validate_references(
 	let references = references
 		.as_array()
 		.ok_or(StoreError::InvalidInput("task references must be an array"))?;
+
 	if references.len() > 16 || (!references.is_empty() && value["source"] != "user") {
 		return Err(StoreError::InvalidInput("invalid task reference authority or count"));
 	}
+
 	let mut seen = HashSet::new();
+
 	for reference in references {
 		let object =
 			reference.as_object().ok_or(StoreError::InvalidInput("invalid task reference"))?;
+
 		if object.len() != 3 {
 			return Err(StoreError::InvalidInput("invalid task reference fields"));
 		}
+
 		let target = field(reference, "workId", 512)?;
 		let thread = field(reference, "threadId", 512)?;
 		let _title = field(reference, "title", 1024)?;
+
 		if !seen.insert((target, thread)) {
 			return Err(StoreError::InvalidInput("duplicate task reference"));
 		}
+
 		let current: bool = connection
 			.query_row(
 				"SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2)",
@@ -84,10 +91,12 @@ pub(crate) fn validate_references(
 				|row| row.get(0),
 			)
 			.map_err(sqlite_error)?;
+
 		if !current {
 			return Err(StoreError::InvalidInput("referenced task changed; select it again"));
 		}
 	}
+
 	Ok(())
 }
 

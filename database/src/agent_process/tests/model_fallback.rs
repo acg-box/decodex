@@ -31,6 +31,7 @@ async fn publish(store: &SqliteStore, model: &str, tier: Value, digest: &str) ->
 
 async fn ready(store: &SqliteStore) -> crate::AgentModelAttempt {
 	seed(store).await;
+
 	store.bind_agent_thread("root".into(), "thread".into()).await.unwrap();
 	store
 		.prepare_agent_bound_process_generation(&intent(1, 1), &binding(1), "root", "first")
@@ -38,7 +39,9 @@ async fn ready(store: &SqliteStore) -> crate::AgentModelAttempt {
 		.unwrap();
 	store.bind_process_generation_identity(&generation_id(1), 1, &identity()).await.unwrap();
 	store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+
 	let event = publish(store, "blocked", json!("default"), DIGEST).await;
+
 	crate::AgentModelAttempt {
 		work: "root".into(),
 		thread: "thread".into(),
@@ -69,26 +72,40 @@ async fn automatic_model_reservation_binds_account_idle_and_explicit_input() {
 	let dir = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&dir.path().join("automatic.sqlite3")).unwrap();
 	let attempt = ready(&store).await;
+
 	for change in ["account", "revision", "model"] {
 		let mut stale = attempt.clone();
 		let recovery = stale.recovery.as_mut().unwrap();
+
 		match change {
 			"account" => recovery.account = account_id(2).as_str().into(),
 			"revision" => recovery.account_revision = 2,
 			_ => recovery.from_model = "different".into(),
 		}
+
 		assert!(store.reserve_agent_model_selection(stale).await.unwrap().is_none());
 	}
+
 	let mut reserve = attempt.clone();
+
 	reserve.model = "gpt-reserve".into();
+
 	assert!(store.reserve_agent_model_selection(reserve).await.is_err());
+
 	let mut incomplete = attempt.clone();
+
 	incomplete.effort = None;
+
 	assert!(store.reserve_agent_model_selection(incomplete).await.is_err());
+
 	store.begin_agent_dispatch("root".into()).await.unwrap();
+
 	assert!(store.reserve_agent_model_selection(attempt.clone()).await.unwrap().is_none());
+
 	store.acknowledge_agent_dispatch("root".into(), "turn".into()).await.unwrap();
+
 	assert!(store.reserve_agent_model_selection(attempt.clone()).await.unwrap().is_none());
+
 	store.complete_agent_turn("root".into(), "turn".into()).await.unwrap();
 	store
 		.enqueue_agent_event(crate::EnqueueAgentEvent {
@@ -100,6 +117,7 @@ async fn automatic_model_reservation_binds_account_idle_and_explicit_input() {
 		})
 		.await
 		.unwrap();
+
 	assert!(store.reserve_agent_model_selection(attempt).await.unwrap().is_none());
 	assert!(store.agent_model_receipt("root".into(), "thread".into()).await.unwrap().is_none());
 }
@@ -111,13 +129,20 @@ async fn automatic_model_receipts_require_tier_and_never_replay_after_reopen() {
 	let store = SqliteStore::open_test(&path).unwrap();
 	let attempt = ready(&store).await;
 	let id = store.reserve_agent_model_selection(attempt.clone()).await.unwrap().unwrap();
+
 	store.finish_agent_model_selection(id, attempt.clone(), "unknown".into()).await.unwrap();
+
 	drop(store);
+
 	let store = SqliteStore::open_test(&path).unwrap();
+
 	assert!(store.begin_agent_dispatch("root".into()).await.is_err());
 	assert!(store.reserve_agent_model_selection(attempt.clone()).await.unwrap().is_none());
+
 	publish(&store, "fallback", json!("default"), OTHER_DIGEST).await;
+
 	assert_eq!(receipt(&store).await.state, "unknown");
+
 	store
 		.record_agent_task_models_publication(
 			"thread".into(),
@@ -127,19 +152,25 @@ async fn automatic_model_receipts_require_tier_and_never_replay_after_reopen() {
 		)
 		.await
 		.unwrap();
+
 	assert_eq!(receipt(&store).await.state, "unknown", "missing tier is not an observed absence");
+
 	publish(&store, "fallback", json!("priority"), OTHER_DIGEST).await;
+
 	assert_eq!(receipt(&store).await.state, "target_observed");
+
 	let historical = store
 		.agent_model_history("root".into(), "thread".into(), generation_id(1).as_str().into())
 		.await
 		.expect("automatic history")
 		.expect("automatic receipt");
+
 	assert_eq!(
 		historical.response, "unknown",
 		"native confirmation cannot rewrite the RPC outcome"
 	);
 	assert!(!historical.manual && historical.target_observed && !historical.reconciled);
+
 	store
 		.run(|connection| {
 			connection
@@ -148,20 +179,26 @@ async fn automatic_model_receipts_require_tier_and_never_replay_after_reopen() {
 					[account_id(1).as_str()],
 				)
 				.map_err(crate::error::sqlite_error)?;
+
 			Ok(())
 		})
 		.await
 		.unwrap();
+
 	let mut replay = attempt;
+
 	replay.settings_event = publish(&store, "blocked", json!("default"), DIGEST).await;
 	replay.review_token = OTHER_DIGEST.into();
 	replay.attempt_id = "fresh-request".into();
 	replay.recovery.as_mut().unwrap().account_revision = 2;
+
 	assert!(
 		store.reserve_agent_model_selection(replay.clone()).await.unwrap().is_none(),
 		"refresh and new review cannot replay one banner"
 	);
+
 	replay.recovery.as_mut().unwrap().banner_digest = OTHER_DIGEST.into();
+
 	assert!(
 		store.reserve_agent_model_selection(replay).await.unwrap().is_some(),
 		"a genuinely new banner can reserve independently"
@@ -174,6 +211,7 @@ async fn automatic_model_confirmation_refuses_changed_account_revision() {
 	let store = SqliteStore::open_test(&dir.path().join("automatic.sqlite3")).unwrap();
 	let attempt = ready(&store).await;
 	let id = store.reserve_agent_model_selection(attempt.clone()).await.unwrap().unwrap();
+
 	store.finish_agent_model_selection(id, attempt, "queued".into()).await.unwrap();
 	store
 		.run(|connection| {
@@ -183,11 +221,14 @@ async fn automatic_model_confirmation_refuses_changed_account_revision() {
 					[account_id(1).as_str()],
 				)
 				.map_err(crate::error::sqlite_error)?;
+
 			Ok(())
 		})
 		.await
 		.unwrap();
+
 	publish(&store, "fallback", json!("priority"), OTHER_DIGEST).await;
+
 	assert_eq!(receipt(&store).await.state, "queued");
 	assert!(store.begin_agent_dispatch("root".into()).await.is_err());
 }
@@ -205,6 +246,7 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 	let dir = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&dir.path().join("automatic.sqlite3")).unwrap();
 	let mut attempt = ready(&store).await;
+
 	if manual {
 		attempt.recovery = None;
 		attempt.manual_source = Some(crate::AgentManualModelSource {
@@ -212,7 +254,9 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 			account_revision: 1,
 		});
 	}
+
 	let id = store.reserve_agent_model_selection(attempt.clone()).await.unwrap().unwrap();
+
 	store.finish_agent_model_selection(id, attempt, "unknown".into()).await.unwrap();
 	store
 		.mark_process_generation_death_unknown(
@@ -222,6 +266,7 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 		)
 		.await
 		.unwrap();
+
 	let evidence = ProcessDeathEvidence::new(
 		ProcessDeathEvidenceId::new("50000000-0000-4000-8000-000000000001").unwrap(),
 		generation_id(1),
@@ -231,7 +276,9 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 		DIGEST,
 	)
 	.unwrap();
+
 	store.record_process_generation_death(4, &evidence).await.unwrap();
+
 	assert!(matches!(
 		store
 			.prepare_agent_bound_process_generation(&intent(1, 2), &binding(1), "root", "new")
@@ -239,6 +286,7 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 			.unwrap(),
 		PrepareProcessGenerationOutcome::Fresh(_)
 	));
+
 	let next = decodex_core::ProcessIdentity::new(
 		ProcessBootIdentity::new("fixture-boot").unwrap(),
 		124,
@@ -247,8 +295,10 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 		124,
 	)
 	.unwrap();
+
 	store.bind_process_generation_identity(&generation_id(2), 1, &next).await.unwrap();
 	store.mark_process_generation_ready(&generation_id(2), 2).await.unwrap();
+
 	for enabled in [false, true] {
 		store
 			.run(move |connection| {
@@ -258,6 +308,7 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 						rusqlite::params![enabled, account_id(1).as_str()],
 					)
 					.map_err(crate::error::sqlite_error)?;
+
 				Ok(())
 			})
 			.await
@@ -267,6 +318,7 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 			Some(json!({"model":observed_model,"modelProvider":"fixture","effort":"high","serviceTier":"priority"}).to_string()),
 			OTHER_DIGEST.into(),
 		).await.unwrap().unwrap();
+
 		if !enabled {
 			assert_eq!(
 				receipt(&store).await.state,
@@ -276,16 +328,21 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 			assert!(store.begin_agent_dispatch("root".into()).await.is_err());
 		}
 	}
+
 	assert_eq!(receipt(&store).await.state, "superseded");
+
 	let historical = store
 		.agent_model_history("root".into(), "thread".into(), generation_id(2).as_str().into())
 		.await
 		.expect("reconciled history")
 		.expect("automatic receipt");
+
 	assert_eq!(historical.response, "unknown");
 	assert_eq!(historical.manual, manual);
 	assert!(!historical.target_observed && historical.reconciled);
+
 	assert_permissions_after_reconciliation(&store).await;
+
 	assert!(store.begin_agent_dispatch("root".into()).await.is_ok());
 }
 
@@ -309,6 +366,7 @@ async fn assert_permissions_after_reconciliation(store: &SqliteStore) {
 		.await
 		.unwrap()
 		.expect("reconciled model request must not block permission changes");
+
 	assert!(
 		store.finish_agent_permission_selection(id, permission, "rejected".into()).await.unwrap()
 	);
@@ -323,9 +381,11 @@ async fn manual_model_selection_respects_queued_execution_choices() {
 			let dir = tempfile::tempdir().unwrap();
 			let store = SqliteStore::open_test(&dir.path().join("manual-queue.sqlite3")).unwrap();
 			let mut attempt = ready(&store).await;
+
 			attempt.recovery = None;
 			attempt.model = "blocked".into();
 			attempt.effort = Some("low".into());
+
 			if running {
 				store.begin_agent_dispatch("root".into()).await.unwrap();
 				store
@@ -333,6 +393,7 @@ async fn manual_model_selection_respects_queued_execution_choices() {
 					.await
 					.unwrap();
 			}
+
 			store
 				.enqueue_agent_event(crate::EnqueueAgentEvent {
 					source_event_id: "queued-input".into(),
@@ -343,13 +404,17 @@ async fn manual_model_selection_respects_queued_execution_choices() {
 				})
 				.await
 				.unwrap();
+
 			let reserved = store.reserve_agent_model_selection(attempt).await.unwrap();
+
 			assert_eq!(
 				reserved.is_some(),
 				execution == json!({}),
 				"running={running}, execution={execution}"
 			);
+
 			let pending = store.list_pending_agent_events(100).await.unwrap();
+
 			assert_eq!(pending.len(), 1);
 			assert_eq!(
 				pending[0].source_event_id, "queued-input",
@@ -364,12 +429,15 @@ async fn manual_model_confirmation_keeps_the_reviewed_account_revision() {
 	let dir = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&dir.path().join("manual-source.sqlite3")).unwrap();
 	let mut attempt = ready(&store).await;
+
 	attempt.recovery = None;
 	attempt.manual_source = Some(crate::AgentManualModelSource {
 		account: account_id(1).as_str().into(),
 		account_revision: 1,
 	});
+
 	let id = store.reserve_agent_model_selection(attempt.clone()).await.unwrap().unwrap();
+
 	store.finish_agent_model_selection(id, attempt, "queued".into()).await.unwrap();
 	store
 		.run(|connection| {
@@ -379,11 +447,14 @@ async fn manual_model_confirmation_keeps_the_reviewed_account_revision() {
 					[account_id(1).as_str()],
 				)
 				.map_err(crate::error::sqlite_error)?;
+
 			Ok(())
 		})
 		.await
 		.unwrap();
+
 	publish(&store, "fallback", json!("priority"), OTHER_DIGEST).await;
+
 	assert_eq!(
 		receipt(&store).await.state,
 		"queued",
@@ -397,25 +468,36 @@ async fn manual_model_reservation_rechecks_its_account_and_retains_old_payload_s
 	let dir = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&dir.path().join("manual-reserve.sqlite3")).unwrap();
 	let mut attempt = ready(&store).await;
+
 	attempt.recovery = None;
+
 	let old = serde_json::to_value(&attempt).unwrap();
+
 	assert!(old.get("manual_source").is_none());
 	assert_eq!(serde_json::from_value::<crate::AgentModelAttempt>(old).unwrap(), attempt);
+
 	for (account, revision) in
 		[(account_id(2).as_str().to_owned(), 1), (account_id(1).as_str().to_owned(), 2)]
 	{
 		attempt.manual_source =
 			Some(crate::AgentManualModelSource { account, account_revision: revision });
+
 		assert!(store.reserve_agent_model_selection(attempt.clone()).await.unwrap().is_none());
 	}
+
 	attempt.manual_source = Some(crate::AgentManualModelSource {
 		account: account_id(1).as_str().into(),
 		account_revision: 1,
 	});
+
 	let id = store.reserve_agent_model_selection(attempt.clone()).await.unwrap().unwrap();
+
 	store.finish_agent_model_selection(id, attempt.clone(), "unknown".into()).await.unwrap();
+
 	publish(&store, "fallback", json!("priority"), OTHER_DIGEST).await;
+
 	let receipt = receipt(&store).await;
+
 	assert_eq!(receipt.state, "target_observed");
 	assert_eq!(receipt.attempt.manual_source, attempt.manual_source);
 }
@@ -425,8 +507,10 @@ async fn ordinary_model_selection_rejects_reserve() {
 	let dir = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&dir.path().join("ordinary-model.sqlite3")).unwrap();
 	let mut attempt = ready(&store).await;
+
 	attempt.recovery = None;
 	attempt.model = "gpt-reserve".into();
+
 	assert!(store.reserve_agent_model_selection(attempt).await.is_err());
 	assert!(store.agent_model_receipt("root".into(), "thread".into()).await.unwrap().is_none());
 }
@@ -434,6 +518,7 @@ async fn ordinary_model_selection_rejects_reserve() {
 #[tokio::test]
 async fn completed_legacy_fallback_cannot_replay_in_the_current_journal() {
 	use sha2::{Digest as _, Sha256};
+
 	for terminal in ["rejected", "observed", "reconciled"] {
 		let dir = tempfile::tempdir().unwrap();
 		let path = dir.path().join("legacy-identity.sqlite3");
@@ -462,30 +547,41 @@ async fn completed_legacy_fallback_cannot_replay_in_the_current_journal() {
             "from_model":recovery.from_model,"model":attempt.model,"effort":attempt.effort,
             "service_tier":recovery.service_tier},"state":"claimed"})
 		.to_string();
+
 		store.run(move |connection| {
             let insert = |key: &str, kind: &str, payload: &str| {
                 connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,'root',?2,?3,1,'resolved','Preserved legacy fixture',1)",rusqlite::params![key,kind,payload]).map_err(crate::error::sqlite_error)
             };
+
             insert(&key,"model_recovery",&original)?;
+
             let id=connection.last_insert_rowid();
             let (suffix, kind, state)=match terminal {
                 "rejected" => ("result","model_recovery_result","rejected"),
                 "observed" => ("observation","model_recovery_observation","target_observed"),
                 _ => ("reconciliation","model_selection_reconciled","superseded"),
             };
+
             insert(&format!("{key}:{suffix}"),kind,&json!({"reservation":id,"state":state}).to_string())?;
+
             Ok(())
         }).await.unwrap();
+
 		drop(store);
+
 		let store = SqliteStore::open_test(&path).unwrap();
+
 		assert!(!store.has_pending_agent_model_change("root".into()).await.unwrap());
 		assert!(
 			store.reserve_agent_model_selection(attempt.clone()).await.unwrap().is_none(),
 			"a completed legacy {terminal} occurrence must remain single-use"
 		);
 		assert!(store.agent_model_receipt("root".into(), "thread".into()).await.unwrap().is_none());
+
 		let mut next = attempt;
+
 		next.recovery.as_mut().unwrap().banner_digest = OTHER_DIGEST.into();
+
 		assert!(
 			store.reserve_agent_model_selection(next).await.unwrap().is_some(),
 			"a distinct banner occurrence may reserve"

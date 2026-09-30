@@ -57,7 +57,9 @@ impl SqliteStore {
 		observation: &AccountProfileObservation,
 	) -> Result<AccountProfileObservationOutcome, StoreError> {
 		validate_observation(observation)?;
+
 		let observation = observation.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
@@ -81,6 +83,7 @@ impl SqliteStore {
 			let Some((revision, provider, provider_account, tombstoned)) = account else {
 				return Ok(AccountProfileObservationOutcome::AccountUnavailable);
 			};
+
 			if tombstoned {
 				return Ok(AccountProfileObservationOutcome::AccountUnavailable);
 			}
@@ -90,6 +93,7 @@ impl SqliteStore {
 			{
 				return Ok(AccountProfileObservationOutcome::StaleAccount);
 			}
+
 			let prior = transaction
 				.query_row(
 					"SELECT observed_at_micros FROM account_profile_snapshots WHERE account_id = ?1",
@@ -98,9 +102,11 @@ impl SqliteStore {
 				)
 				.optional()
 				.map_err(super::account_lifecycle::sql_error)?;
+
 			if prior.is_some_and(|prior| prior >= observation.observed_at_unix_micros) {
 				return Ok(AccountProfileObservationOutcome::StaleObservation);
 			}
+
 			transaction
 				.execute(
 					"INSERT INTO account_profile_snapshots (
@@ -143,6 +149,7 @@ impl SqliteStore {
 					params![observation.account_id.as_str()],
 				)
 				.map_err(super::account_lifecycle::sql_error)?;
+
 			for fact in &observation.daily_usage {
 				transaction
 					.execute(
@@ -158,7 +165,9 @@ impl SqliteStore {
 					)
 					.map_err(super::account_lifecycle::sql_error)?;
 			}
+
 			transaction.commit().map_err(super::account_lifecycle::sql_error)?;
+
 			Ok(AccountProfileObservationOutcome::Observed)
 		})
 		.await
@@ -169,6 +178,7 @@ impl SqliteStore {
 		account_id: &AccountId,
 	) -> Result<Option<AccountProfileSnapshot>, StoreError> {
 		let account_id = account_id.clone();
+
 		self.run(move |connection| {
 			let row = connection
 				.query_row(
@@ -250,7 +260,9 @@ impl SqliteStore {
 					.collect::<Result<Vec<_>, _>>()
 					.map_err(super::account_lifecycle::sql_error)?,
 			};
+
 			validate_snapshot(&snapshot)?;
+
 			Ok(Some(snapshot))
 		})
 		.await
@@ -325,7 +337,9 @@ fn validate_shape(
 	{
 		return Err(StoreError::InvalidInput("account profile observation is empty"));
 	}
+
 	let mut previous = None;
+
 	for fact in daily_usage {
 		if fact.tokens < 0
 			|| !canonical_date(&fact.start_date)
@@ -333,8 +347,10 @@ fn validate_shape(
 		{
 			return Err(StoreError::InvalidInput("account profile daily usage is invalid"));
 		}
+
 		previous = Some(fact.start_date.as_str());
 	}
+
 	Ok(())
 }
 
@@ -344,6 +360,7 @@ fn bounded_text(value: &str, maximum: usize) -> bool {
 
 fn canonical_date(value: &str) -> bool {
 	let bytes = value.as_bytes();
+
 	if bytes.len() != 10
 		|| bytes[4] != b'-'
 		|| bytes[7] != b'-'
@@ -354,6 +371,7 @@ fn canonical_date(value: &str) -> bool {
 	{
 		return false;
 	}
+
 	let parse = |start: usize, end: usize| value[start..end].parse::<u32>().ok();
 	let (Some(year), Some(month), Some(day)) = (parse(0, 4), parse(5, 7), parse(8, 10)) else {
 		return false;
@@ -366,6 +384,7 @@ fn canonical_date(value: &str) -> bool {
 		2 => 28,
 		_ => return false,
 	};
+
 	year > 0 && (1..=maximum_day).contains(&day)
 }
 
@@ -390,11 +409,14 @@ mod tests {
 		let store = SqliteStore::open_test(&path).unwrap();
 		let account = AccountId::new("10000000-0000-4000-8000-000000000001").unwrap();
 		let id = account.clone();
+
 		store.run(move |connection| {
 			connection.execute("INSERT INTO account_identities VALUES (?1,1)",[id.as_str()]).unwrap();
 			connection.execute("INSERT INTO accounts(account_id,display_label,enabled,state,revision,provider,provider_account_id,created_at_micros,updated_at_micros) VALUES(?1,'Profile',1,'available',1,'chatgpt','provider',1,1)",[id.as_str()]).unwrap();
+
 			Ok(())
 		}).await.unwrap();
+
 		let mut observation = AccountProfileObservation {
 			account_id: account.clone(),
 			account_revision: 1,
@@ -412,24 +434,31 @@ mod tests {
 				tokens: 500,
 			}],
 		};
+
 		assert_eq!(
 			store.observe_account_profile(&observation).await.unwrap(),
 			AccountProfileObservationOutcome::Observed
 		);
+
 		for (timestamp, peak) in [(200, None), (300, Some(0))] {
 			observation.observed_at_unix_micros = timestamp;
 			observation.peak_daily_tokens = peak;
+
 			assert_eq!(
 				store.observe_account_profile(&observation).await.unwrap(),
 				AccountProfileObservationOutcome::Observed
 			);
+
 			let reopened = SqliteStore::open_test(&path).unwrap();
 			let snapshot = reopened.read_account_profile(&account).await.unwrap().unwrap();
+
 			assert_eq!(snapshot.peak_daily_tokens, peak);
 			assert_eq!(snapshot.daily_usage, observation.daily_usage);
 		}
+
 		observation.observed_at_unix_micros = 150;
 		observation.peak_daily_tokens = Some(900);
+
 		assert_eq!(
 			store.observe_account_profile(&observation).await.unwrap(),
 			AccountProfileObservationOutcome::StaleObservation

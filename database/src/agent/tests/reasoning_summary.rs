@@ -6,11 +6,14 @@ async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_
 	let directory = tempdir().unwrap();
 	let path = directory.path().join("summary.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
+
 	store.create_agent_work_item(item("agent", None)).await.unwrap();
 	store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 	store.begin_agent_dispatch("agent".into()).await.unwrap();
 	store.acknowledge_agent_dispatch("agent".into(), "turn".into()).await.unwrap();
+
 	let (revision, _) = store.wait_agent_output("agent".into(), None).await.unwrap();
+
 	store
 		.update_agent_reasoning_summary(
 			"thread".into(),
@@ -21,6 +24,7 @@ async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_
 		)
 		.await
 		.unwrap();
+
 	let (next, values) = tokio::time::timeout(
 		std::time::Duration::from_secs(1),
 		store.wait_agent_output("agent".into(), Some(revision)),
@@ -28,8 +32,10 @@ async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_
 	.await
 	.unwrap()
 	.unwrap();
+
 	assert_ne!(next, revision);
 	assert!(values[0].truncated);
+
 	for (index, text) in [(1, "Second."), (0, "First"), (0, ".")] {
 		store
 			.update_agent_reasoning_summary(
@@ -42,11 +48,15 @@ async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_
 			.await
 			.unwrap();
 	}
+
 	drop(store);
+
 	let store = SqliteStore::open_test(&path).unwrap();
 	let output = store.read_agent_output("agent".into()).await.unwrap();
+
 	assert_eq!(output[0].text, "First.\n\nSecond.");
 	assert_eq!(output[0].kind, "reasoningSummary");
+
 	store
 		.update_agent_reasoning_summary(
 			"thread".into(),
@@ -57,9 +67,13 @@ async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_
 		)
 		.await
 		.unwrap();
+
 	drop(store);
+
 	let store = SqliteStore::open_test(&path).unwrap();
+
 	assert_voice_origins(&store).await;
+
 	assert!(
 		store
 			.read_agent_transcript("agent".into(), None, 1)
@@ -69,6 +83,7 @@ async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_
 			.iter()
 			.all(|event| event.event_kind != "reasoning_voice_handoff")
 	);
+
 	store
 		.update_agent_reasoning_summary(
 			"thread".into(),
@@ -79,7 +94,9 @@ async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_
 		)
 		.await
 		.unwrap();
+
 	assert_eq!(store.read_agent_output("agent".into()).await.unwrap().len(), 1);
+
 	for (thread, turn, generation) in [
 		("other", "turn", None),
 		("thread", "old", None),
@@ -96,7 +113,9 @@ async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_
 			.await
 			.unwrap();
 	}
+
 	assert_eq!(store.read_agent_output("agent".into()).await.unwrap()[0].text, output[0].text);
+
 	assert_completion_and_bounds(&store).await;
 }
 
@@ -111,7 +130,9 @@ async fn assert_completion_and_bounds(store: &SqliteStore) {
 		)
 		.await
 		.unwrap();
+
 	assert!(store.read_agent_output("agent".into()).await.unwrap()[0].truncated);
+
 	store
 		.update_agent_reasoning_summary(
 			"thread".into(),
@@ -132,11 +153,13 @@ async fn assert_completion_and_bounds(store: &SqliteStore) {
 		)
 		.await
 		.unwrap();
+
 	assert_eq!(
 		store.read_agent_output("agent".into()).await.unwrap()[0].text,
 		"Corrected complete summary."
 	);
 	assert!(store.list_agent_wake_events("agent".into(), 32).await.unwrap().is_empty());
+
 	store
 		.update_agent_reasoning_summary(
 			"thread".into(),
@@ -147,8 +170,10 @@ async fn assert_completion_and_bounds(store: &SqliteStore) {
 		)
 		.await
 		.unwrap();
+
 	let output = store.read_agent_output("agent".into()).await.unwrap();
 	let large = output.iter().find(|row| row.item_id == "item").unwrap();
+
 	assert!(large.truncated && large.text.len() <= 65536 && large.text.chars().all(|c| c == '界'));
 }
 

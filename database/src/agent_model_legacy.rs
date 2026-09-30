@@ -61,7 +61,9 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection.transaction().map_err(sqlite_error)?;
 			let connection = &transaction;
+
 			if !owns_work(connection, &work, Some(&generation))? { return Ok(None); }
+
 			let row: Option<(String, Option<String>)> = connection.query_row(&format!("SELECT json_extract(e.payload,'$.attempt'),json_extract(r.payload,'$.state') FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id AND w.codex_thread_id=?2 LEFT JOIN agent_inbox_events r ON r.source_event_id=e.source_event_id||':result' AND r.event_kind='model_recovery_result' AND r.work_item_id=e.work_item_id WHERE e.work_item_id=?1 AND json_extract(e.payload,'$.attempt.thread')=?2 AND {UNRESOLVED} ORDER BY e.id DESC LIMIT 1"), params![work,thread], |row| Ok((row.get(0)?, row.get(1)?))).optional().map_err(sqlite_error)?;
 			let Some((raw, response)) = row else { return Ok(None); };
 			let attempt = decode(&raw)?;
@@ -72,7 +74,9 @@ impl SqliteStore {
 				_ => return Err(StoreError::InvalidInput("invalid legacy model response")),
 			};
 			let pending = AgentLegacyModelPending { model: attempt.model, effort: attempt.effort, state: state.into() };
+
 			transaction.commit().map_err(sqlite_error)?;
+
 			Ok(Some(pending))
 		}).await
 	}
@@ -97,6 +101,7 @@ pub(super) fn observe(
 	let attempt = decode(&raw)?;
 	let (suffix, kind, payload, note) = if attempt.generation == generation {
 		let account_current: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM accounts WHERE account_id=?1 AND revision=?2 AND enabled=1 AND tombstoned_at_micros IS NULL)", params![attempt.account,attempt.account_revision], |row| row.get(0)).map_err(sqlite_error)?;
+
 		if !account_current
 			|| settings["model"].as_str() != Some(&attempt.model)
 			|| settings["effort"].as_str() != Some(&attempt.effort)
@@ -105,6 +110,7 @@ pub(super) fn observe(
 		{
 			return Ok(());
 		}
+
 		(
 			":observation",
 			"model_recovery_observation",
@@ -113,9 +119,11 @@ pub(super) fn observe(
 		)
 	} else {
 		let dead: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM process_generations g JOIN process_generation_death_evidence d ON d.evidence_id=g.death_evidence_id AND d.generation_id=g.generation_id WHERE g.generation_id=?1 AND g.state='dead')", [&attempt.generation], |row| row.get(0)).map_err(sqlite_error)?;
+
 		if !dead {
 			return Ok(());
 		}
+
 		(
 			":reconciliation",
 			"model_selection_reconciled",
@@ -124,6 +132,8 @@ pub(super) fn observe(
 		)
 	};
 	let now = unix_micros()?;
+
 	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,?3,?4,?5,'resolved',?6,?5)", params![format!("{key}{suffix}"),work,kind,payload.to_string(),now,note]).map_err(sqlite_error)?;
+
 	Ok(())
 }

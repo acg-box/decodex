@@ -17,6 +17,7 @@ pub(crate) fn finalize(
 	{
 		return Ok(());
 	}
+
 	let ProviderAttemptConsumer::ConversationTurn { conversation_id, turn_id } = &attempt.consumer
 	else {
 		return Ok(());
@@ -45,15 +46,18 @@ pub(crate) fn finalize(
 			],
 		)
 		.map_err(sql_error)?;
+
 	if changed == 0 {
 		return Err(super::incompatible("non-submission does not match the active local input"));
 	}
+
 	let metadata = serde_json::json!({
 		"type": "native_turn_not_submitted",
 		"evidenceId": evidence.evidence_id.as_str(),
 		"response_sha256": evidence.witness_digest,
 	})
 	.to_string();
+
 	connection.execute(
 		"INSERT INTO history_items(history_item_id,conversation_id,turn_id,sequence,kind,
 		 role,status,media_type,inline_text,metadata_json,revision,created_at_micros,updated_at_micros)
@@ -63,5 +67,6 @@ pub(crate) fn finalize(
 		        "Codex confirmed that this input was not submitted. Reconnect and send again. Your input remains in history.",
 		        metadata,now],
 	).map_err(sql_error)?;
+
 	super::touch_conversation(connection, conversation_id, now)
 }

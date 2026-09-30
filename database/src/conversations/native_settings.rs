@@ -18,6 +18,7 @@ impl ConversationNativeSettings {
 		fn label(value: &str, limit: usize) -> bool {
 			!value.trim().is_empty() && value.len() <= limit && !value.chars().any(char::is_control)
 		}
+
 		label(&self.model, 128)
 			&& label(&self.model_provider, 512)
 			&& label(&self.cwd, 4096)
@@ -65,9 +66,11 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid native conversation settings"));
 		}
+
 		let input = input.clone();
 		let settings = serde_json::to_string(&input.settings)
 			.map_err(|_| StoreError::InvalidInput("invalid native settings encoding"))?;
+
 		self.run(move |connection| {
             let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
             let owner: Option<(String,i64,String)> = tx.query_row(
@@ -87,6 +90,7 @@ impl SqliteStore {
                 "SELECT process_generation_id,response_id,response_sha256,settings_json,observed_at_micros FROM conversation_native_settings WHERE runtime_session_id=?1",
                 [input.runtime_session_id.as_str()], |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)),
             ).optional().map_err(sql_error)?;
+
             if let Some((generation,id,digest,json,_)) = &prior {
                 if generation == input.process_generation_id.as_str() {
                     if *id >= input.response_id {
@@ -94,16 +98,20 @@ impl SqliteStore {
                     }
                 } else {
                     let dead: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM process_generations p JOIN process_generation_death_evidence d ON d.generation_id=p.generation_id AND d.evidence_id=p.death_evidence_id WHERE p.generation_id=?1 AND p.state='dead')", [generation], |r|r.get(0)).map_err(sql_error)?;
+
                     if !dead { return Ok(false); }
                 }
             }
+
             let now = unix_micros().map_err(StoreError::from)?.max(prior.as_ref().map_or(0,|p|p.4.saturating_add(1)));
+
             tx.execute("INSERT INTO conversation_native_settings(runtime_session_id,codex_thread_id,process_generation_id,process_generation_revision,account_id,account_revision,response_id,response_sha256,settings_json,observed_at_micros)
                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
                 ON CONFLICT(runtime_session_id) DO UPDATE SET codex_thread_id=excluded.codex_thread_id,process_generation_id=excluded.process_generation_id,process_generation_revision=excluded.process_generation_revision,account_id=excluded.account_id,account_revision=excluded.account_revision,response_id=excluded.response_id,response_sha256=excluded.response_sha256,settings_json=excluded.settings_json,observed_at_micros=excluded.observed_at_micros",
                 params![input.runtime_session_id.as_str(),input.codex_thread_id,input.process_generation_id.as_str(),input.expected_process_revision,account,revision,input.response_id,input.response_sha256,settings,now]).map_err(sql_error)?;
             tx.execute("UPDATE conversations SET updated_at_micros=MAX(updated_at_micros+1,?2) WHERE conversation_id=?1", params![conversation,now]).map_err(sql_error)?;
             tx.commit().map_err(sql_error)?;
+
             Ok(true)
         }).await
 	}
@@ -129,12 +137,15 @@ pub(super) fn read(
          WHERE n.runtime_session_id=?1 AND n.codex_thread_id=?2 AND s.codex_thread_id=n.codex_thread_id AND s.account_id=n.account_id",
         params![session,thread],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)),
     ).optional().map_err(sql_error)?;
+
 	row.map(|(json, time, generation, account, revision)| {
 		let settings: ConversationNativeSettings = serde_json::from_str(&json)
 			.map_err(|_| StoreError::InvalidInput("stored native settings are invalid"))?;
+
 		if !settings.valid() {
 			return Err(StoreError::InvalidInput("stored native settings exceed bounds"));
 		}
+
 		Ok(ConversationNativeSettingsObservation {
 			settings,
 			observed_at_micros: time,

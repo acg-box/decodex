@@ -25,7 +25,9 @@ impl SqliteStore {
 		if expected_revision < 1 {
 			return Err(StoreError::InvalidInput("expected revision must be positive"));
 		}
+
 		let account_id = account_id.clone();
+
 		self.run(move |connection| {
 			let account = super::account_lifecycle::read_account_registry_sync(
 				connection,
@@ -34,6 +36,7 @@ impl SqliteStore {
 			)?
 			.into_iter()
 			.next();
+
 			Ok(account.is_some_and(|account| {
 				account.revision == expected_revision
 					&& account.enabled
@@ -54,6 +57,7 @@ impl SqliteStore {
 		account_id: &AccountId,
 	) -> Result<Option<AccountMetadata>, StoreError> {
 		let account_id = account_id.clone();
+
 		self.run(move |connection| {
 			Ok(super::account_lifecycle::read_account_registry_sync(
 				connection,

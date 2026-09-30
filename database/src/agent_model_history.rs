@@ -37,7 +37,9 @@ impl SqliteStore {
 	) -> Result<Option<AgentModelHistory>, StoreError> {
 		self.run(move |connection| {
 			let tx = connection.transaction().map_err(sqlite_error)?;
+
 			if !owns_work(&tx, &work, Some(&generation))? { return Ok(None); }
+
 			let row = tx.query_row(
 				"SELECT e.id,e.event_kind,json_extract(e.payload,'$.attempt'),COALESCE(json_extract(r.payload,'$.state'),'reserved'),COALESCE(json_extract(o.payload,'$.state')='target_observed',0),(c.id IS NOT NULL OR COALESCE(json_extract(o.payload,'$.state')='superseded',0) OR COALESCE(json_extract(o.payload,'$.generationId')<>json_extract(e.payload,'$.attempt.generation'),0)) FROM agent_work_items w JOIN agent_inbox_events e ON e.work_item_id=w.id AND e.event_kind IN ('model_selection','model_recovery') LEFT JOIN agent_inbox_events r ON r.work_item_id=e.work_item_id AND r.source_event_id=e.source_event_id||':result' AND r.event_kind=e.event_kind||'_result' LEFT JOIN agent_inbox_events o ON o.work_item_id=e.work_item_id AND o.source_event_id=e.source_event_id||':observation' AND o.event_kind=e.event_kind||'_observation' LEFT JOIN agent_inbox_events c ON c.work_item_id=e.work_item_id AND c.source_event_id=e.source_event_id||':reconciliation' AND c.event_kind='model_selection_reconciled' WHERE w.id=?1 AND w.codex_thread_id=?2 AND json_extract(e.payload,'$.attempt.thread')=?2 ORDER BY e.id DESC LIMIT 1",
 				params![work,thread],
@@ -47,11 +49,13 @@ impl SqliteStore {
 			let selection: Selection = serde_json::from_str(&raw)
 				.map_err(|_| StoreError::InvalidInput("invalid saved model history"))?;
 			let legacy = kind == "model_recovery";
+
 			if !super::valid(&selection.model, 256)
 				|| selection.effort.as_deref().is_some_and(|effort| !super::valid(effort, 128))
 				|| (legacy && selection.effort.is_none()) {
 				return Err(StoreError::InvalidInput("invalid saved model history"));
 			}
+
 			let response = match response.as_str() {
 				"reserved" | "queued" | "rejected" | "unknown" => response,
 				"uncertain" if legacy => "unknown".into(),
@@ -62,7 +66,9 @@ impl SqliteStore {
 				manual: if legacy { selection.manual_review.is_some() } else { selection.recovery.is_none() },
 				response, target_observed, reconciled,
 			};
+
 			tx.commit().map_err(sqlite_error)?;
+
 			Ok(Some(history))
 		}).await
 	}

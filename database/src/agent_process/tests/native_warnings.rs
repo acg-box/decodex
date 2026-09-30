@@ -5,20 +5,27 @@ async fn native_warnings_stay_with_owned_threads_and_survive_reopen_without_waki
 	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("native-warnings.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
+
 	seed(&store).await;
+
 	store.bind_agent_thread("root".into(), "root-thread".into()).await.unwrap();
 	store.bind_agent_thread("second-root".into(), "other-thread".into()).await.unwrap();
+
 	let mut child = store.get_agent_work_item("root".into()).await.unwrap();
+
 	child.id = "child".into();
 	child.parent_goal_id = Some("root".into());
 	child.codex_thread_id = None;
+
 	store.create_agent_work_item(child).await.unwrap();
 	store.bind_agent_thread("child".into(), "child-thread".into()).await.unwrap();
 	store
 		.prepare_agent_bound_process_generation(&intent(1, 1), &binding(1), "root", "warnings")
 		.await
 		.unwrap();
+
 	let generation = generation_id(1).as_str().to_owned();
+
 	store
 		.record_agent_native_warning(
 			"root".into(),
@@ -29,7 +36,9 @@ async fn native_warnings_stay_with_owned_threads_and_survive_reopen_without_waki
 		)
 		.await
 		.unwrap();
+
 	mark_warning_process_ready(&store).await;
+
 	for (owner, thread) in [
 		(generation.clone(), Some("other-thread")),
 		(generation.clone(), Some("unknown")),
@@ -98,12 +107,16 @@ async fn native_warnings_stay_with_owned_threads_and_survive_reopen_without_waki
 		)
 		.await
 		.unwrap();
+
 	drop(store);
+
 	let store = SqliteStore::open_test(&path).unwrap();
+
 	for (work, expected) in
 		[("root", "Process notice"), ("child", "Retaining the last global instructions")]
 	{
 		let (events, _) = store.read_agent_transcript(work.into(), None, 100).await.unwrap();
+
 		assert_eq!(events.len(), if work == "root" { 2 } else { 1 });
 		assert_eq!(events[0].event_kind, "native_warning");
 		assert_eq!(
@@ -112,10 +125,12 @@ async fn native_warnings_stay_with_owned_threads_and_survive_reopen_without_waki
 		);
 		assert!(store.list_agent_wake_events(work.into(), 10).await.unwrap().is_empty());
 	}
+
 	assert!(
 		store.read_agent_transcript("second-root".into(), None, 10).await.unwrap().0.is_empty()
 	);
 	assert!(store.list_pending_agent_events(10).await.unwrap().is_empty());
+
 	store.revalidate().await.unwrap();
 }
 
@@ -128,6 +143,7 @@ async fn mark_warning_process_ready(store: &SqliteStore) {
 		1234,
 	)
 	.unwrap();
+
 	store.bind_process_generation_identity(&generation_id(1), 1, &identity).await.unwrap();
 	store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
 }

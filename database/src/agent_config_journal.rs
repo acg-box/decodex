@@ -22,6 +22,7 @@ pub(crate) fn owned(c: &rusqlite::Connection, owner: &AgentHookOwner) -> Result<
 	if !owns_work(c, &owner.work, Some(&owner.generation))? {
 		return Ok(false);
 	}
+
 	c.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items w JOIN process_generations g ON g.generation_id=?3 WHERE w.id=?1 AND w.codex_thread_id=?2 AND w.status<>'resolved' AND g.account_id=?4 AND g.state='ready')",params![owner.work,owner.thread,owner.generation,owner.account],|r|r.get(0)).map_err(|e|sqlite_error(e).into())
 }
 
@@ -41,6 +42,7 @@ pub(crate) fn available(
          AND (COALESCE(o.disposition_note,r.disposition_note,'reserved') IN ('reserved','unknown')
               OR json_extract(a.payload,'$.review_token')=?2))",
         params![scope,review], |r|r.get(0)).map_err(sqlite_error)?;
+
 	Ok(!blocked)
 }
 

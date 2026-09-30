@@ -4,8 +4,11 @@ use super::*;
 async fn native_turn_adoption_requires_ready_current_process_ownership() {
 	let directory = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&directory.path().join("native-owner.sqlite3")).unwrap();
+
 	seed(&store).await;
+
 	store.bind_agent_thread("root".into(), "thread".into()).await.unwrap();
+
 	for generation in [1, 2] {
 		store
 			.prepare_agent_bound_process_generation(
@@ -16,7 +19,9 @@ async fn native_turn_adoption_requires_ready_current_process_ownership() {
 			)
 			.await
 			.unwrap();
+
 		let current = Some(generation_id(generation).as_str().to_owned());
+
 		assert!(
 			!store
 				.observe_agent_native_turn(
@@ -39,6 +44,7 @@ async fn native_turn_adoption_requires_ready_current_process_ownership() {
 				.await
 				.unwrap()
 		);
+
 		let identity = decodex_core::ProcessIdentity::new(
 			ProcessBootIdentity::new("fixture-boot").unwrap(),
 			1234,
@@ -47,11 +53,13 @@ async fn native_turn_adoption_requires_ready_current_process_ownership() {
 			1234,
 		)
 		.unwrap();
+
 		store
 			.bind_process_generation_identity(&generation_id(generation), 1, &identity)
 			.await
 			.unwrap();
 		store.mark_process_generation_ready(&generation_id(generation), 2).await.unwrap();
+
 		if generation == 2 {
 			assert!(
 				!store
@@ -65,6 +73,7 @@ async fn native_turn_adoption_requires_ready_current_process_ownership() {
 					.unwrap()
 			);
 		}
+
 		assert!(
 			store
 				.observe_agent_native_turn(
@@ -76,7 +85,9 @@ async fn native_turn_adoption_requires_ready_current_process_ownership() {
 				.await
 				.unwrap()
 		);
+
 		store.complete_agent_turn("root".into(), "turn".into()).await.unwrap();
+
 		assert!(
 			!store
 				.observe_agent_native_turn(
@@ -88,6 +99,7 @@ async fn native_turn_adoption_requires_ready_current_process_ownership() {
 				.await
 				.unwrap()
 		);
+
 		let death = ProcessDeathEvidence::new(
 			ProcessDeathEvidenceId::new(format!("50000000-0000-4000-8000-{generation:012}"))
 				.unwrap(),
@@ -98,7 +110,9 @@ async fn native_turn_adoption_requires_ready_current_process_ownership() {
 			DIGEST,
 		)
 		.unwrap();
+
 		store.record_process_generation_death(3, &death).await.unwrap();
+
 		assert!(
 			!store
 				.observe_agent_native_turn("thread".into(), "other".into(), current, "dead".into())
@@ -110,7 +124,9 @@ async fn native_turn_adoption_requires_ready_current_process_ownership() {
 			AgentDispatchState::Idle
 		);
 	}
+
 	assert!(store.list_pending_agent_events(10).await.unwrap().is_empty());
 	assert!(store.list_agent_wake_events("root".into(), 10).await.unwrap().is_empty());
+
 	store.revalidate().await.unwrap();
 }

@@ -30,6 +30,7 @@ impl AgentGuardianReview {
 	/// Identity of the exact observed evidence shown for an explicit decision.
 	pub fn digest(&self) -> String {
 		use sha2::{Digest as _, Sha256};
+
 		let value = serde_json::json!([
 			self.id,
 			self.thread_id,
@@ -41,6 +42,7 @@ impl AgentGuardianReview {
 			self.conflicted
 		])
 		.to_string();
+
 		Sha256::digest(value.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect()
 	}
 }
@@ -55,6 +57,7 @@ impl SqliteStore {
 	) -> Result<(), StoreError> {
 		let o = observation;
 		let valid_id = |s: &str| !s.trim().is_empty() && s.len() <= 512;
+
 		if !valid_id(&o.thread_id)
 			|| !valid_id(&o.turn_id)
 			|| !valid_id(&o.review_id)
@@ -64,6 +67,7 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid Guardian observation"));
 		}
+
 		let value: Value = serde_json::from_str(&o.event_json)
 			.map_err(|_| StoreError::InvalidInput("invalid Guardian event"))?;
 		let status = value
@@ -72,6 +76,7 @@ impl SqliteStore {
 			.filter(|s| ["inProgress", "approved", "denied", "timedOut", "aborted"].contains(s))
 			.ok_or(StoreError::InvalidInput("invalid Guardian status"))?
 			.to_owned();
+
 		if value["threadId"] != o.thread_id
 			|| value["turnId"] != o.turn_id
 			|| value["reviewId"] != o.review_id
@@ -79,6 +84,7 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("Guardian event identity differs"));
 		}
+
 		self.run(move |connection| {
 			let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			let terminal = serde_json::json!(["turn/completed",o.thread_id,o.turn_id]).to_string();
@@ -92,13 +98,16 @@ impl SqliteStore {
 			// A production connection must still own this work through its latest ready
 			// native generation. Manager work is owned by its own process subtree.
 			if !owns_work(&tx, &work, o.generation_id.as_deref())? { return Ok(()); }
+
 			let previous: Option<(i64,String,String)> = tx.query_row(
 				"SELECT id,status,event_json FROM agent_guardian_reviews WHERE work_id=?1 AND thread_id=?2 AND turn_id=?3 AND review_id=?4",
 				params![work,o.thread_id,o.turn_id,o.review_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(sqlite_error)?;
 			let now = unix_micros()?;
+
 			if let Some((id, old_status, old_json)) = previous {
 				let old: Value = serde_json::from_str(&old_json).map_err(|_|StoreError::InvalidInput("invalid retained Guardian event"))?;
 				let same_action = old["action"] == value["action"] && old["targetItemId"] == value["targetItemId"] && old["startedAtMs"] == value["startedAtMs"];
+
 				if !same_action || (old_status != "inProgress" && status != "inProgress" && old != value) {
 					tx.execute("UPDATE agent_guardian_reviews SET conflicted=1,updated_at_micros=max(updated_at_micros,?2) WHERE id=?1",params![id,now]).map_err(sqlite_error)?;
 				} else if old_status == "inProgress" && status != "inProgress" {
@@ -107,7 +116,9 @@ impl SqliteStore {
 			} else {
 				tx.execute("INSERT INTO agent_guardian_reviews(work_id,thread_id,turn_id,review_id,connection_id,generation_id,status,event_json,created_at_micros,updated_at_micros) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?9)",params![work,o.thread_id,o.turn_id,o.review_id,o.connection_id,o.generation_id,status,o.event_json,now]).map_err(sqlite_error)?;
 			}
+
 			tx.commit().map_err(sqlite_error)?;
+
 			Ok(())
 		}).await
 	}
@@ -120,6 +131,7 @@ impl SqliteStore {
 		limit: usize,
 	) -> Result<Vec<AgentGuardianReview>, StoreError> {
 		let limit = limit.clamp(1, 100) as i64;
+
 		self.run(move |connection| {
 			connection
 				.prepare(&format!(
@@ -159,9 +171,11 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid Guardian approval identity"));
 		}
+
 		self.run(move |connection| {
 			let tx=connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			let review=read_review(&tx,&work,id)?.ok_or(crate::DatabaseError::Conflict)?;
+
 			if review.status!="denied" || review.conflicted || review.digest()!=digest
 				|| matches!(review.approval_state.as_deref(),Some("pending"|"submitted"))
 				|| !owns_work(&tx,&work,generation.as_deref())?
@@ -169,11 +183,17 @@ impl SqliteStore {
 			{
 				return Err(crate::DatabaseError::Conflict.into());
 			}
+
 			let current:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2 AND ((dispatch_state='idle' AND active_turn_id IS NULL) OR (dispatch_state='running' AND active_turn_id=?3)))",params![work,review.thread_id,review.turn_id],|r|r.get(0)).map_err(sqlite_error)?;
+
 			if !current { return Err(crate::DatabaseError::Conflict.into()); }
+
 			tx.execute("INSERT INTO agent_guardian_approvals(review_row_id,command_key,review_digest,connection_id,generation_id,state,created_at_micros) VALUES(?1,?2,?3,?4,?5,'pending',?6)",params![id,key,digest,connection_id,generation,unix_micros()?]).map_err(sqlite_error)?;
+
 			let claim=tx.last_insert_rowid();
+
 			tx.commit().map_err(sqlite_error)?;
+
 			Ok(claim)
 		}).await
 	}
@@ -186,7 +206,9 @@ impl SqliteStore {
 	) -> Result<(), StoreError> {
 		self.run(move |connection| {
 			let changed=connection.execute("UPDATE agent_guardian_approvals SET state=?2,finished_at_micros=max(created_at_micros,?3) WHERE id=?1 AND state='pending'",params![claim,if submitted {"submitted"} else {"rejected"},unix_micros()?]).map_err(sqlite_error)?;
+
 			if changed!=1 { return Err(crate::DatabaseError::Conflict.into()); }
+
 			Ok(())
 		}).await
 	}

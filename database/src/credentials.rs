@@ -42,6 +42,7 @@ impl SqliteStore {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sqlite_error)?;
+
 			transaction
 				.execute(
 					"INSERT OR IGNORE INTO account_identities (account_id, created_at_micros)
@@ -49,6 +50,7 @@ impl SqliteStore {
 					params![record.key.account_id, now],
 				)
 				.map_err(sqlite_error)?;
+
 			let inserted = transaction
 				.execute(
 					"INSERT INTO account_credentials (
@@ -75,9 +77,11 @@ impl SqliteStore {
 						DatabaseError::Conflict,
 					_ => sqlite_error(error),
 				})?;
+
 			if inserted != 1 {
 				return Err(DatabaseError::AlreadyExists);
 			}
+
 			transaction.commit().map_err(sqlite_error)
 		})
 	}
@@ -93,6 +97,7 @@ impl SqliteStore {
 					|row| {
 						let version = row.get::<_, i64>(1)?;
 						let schema = row.get::<_, i64>(0)?;
+
 						Ok((
 							schema,
 							version,
@@ -149,6 +154,7 @@ impl SqliteStore {
 		{
 			return Err(DatabaseError::Conflict);
 		}
+
 		self.with_connection(|connection| {
 			let changed = connection
 				.execute(
@@ -180,6 +186,7 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sqlite_error)?;
+
 			if changed == 1 { Ok(()) } else { Err(DatabaseError::Conflict) }
 		})
 	}
@@ -204,6 +211,7 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sqlite_error)?;
+
 			if changed == 1 { Ok(()) } else { Err(DatabaseError::NotFound) }
 		})
 	}
