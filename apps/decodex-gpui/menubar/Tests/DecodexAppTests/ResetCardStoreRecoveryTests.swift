@@ -64,6 +64,45 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		XCTAssertTrue(store.quotaFills.isEmpty)
 	}
 
+	func testBackgroundRecoveryRetriesTerminalJournalRemovalWithoutRedispatch() async throws {
+		let fixture = try makeFixture(state: .completed(.reset))
+		defer { fixture.remove() }
+		XCTAssertEqual(fixture.pendingStore.insert(fixture.attempt), [fixture.attempt])
+		var rejectRemoval = true
+		var removals = 0
+		let pending = ResetCardPendingAttemptStore(nativeRequest: { data in
+			let request = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+			if request?["operation"] as? String == "resolve" {
+				removals += 1
+				if rejectRemoval { throw ResetCardClientError.nativeClientUnavailable }
+			}
+			return try NativeJournalFixture.request(data)
+		}, journalURL: fixture.journalURL)
+		let store = ResetCardStore(
+			client: fixture.client, pendingStore: pending,
+			startupRetryDelays: [.milliseconds(10)]
+		)
+		store.start()
+		let firstDeadline = Date().addingTimeInterval(3)
+		while removals == 0 && Date() < firstDeadline {
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		XCTAssertGreaterThan(removals, 0)
+		XCTAssertEqual(store.pendingAttempts, [fixture.attempt])
+		XCTAssertEqual(store.message?.tone, .error)
+		XCTAssertEqual(fixture.pendingStore.load(), .available([fixture.attempt]))
+		rejectRemoval = false
+		let retryDeadline = Date().addingTimeInterval(3)
+		while !store.pendingAttempts.isEmpty && Date() < retryDeadline {
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		XCTAssertTrue(store.pendingAttempts.isEmpty)
+		XCTAssertEqual(fixture.pendingStore.load(), .available([]))
+		XCTAssertGreaterThan(removals, 1)
+		XCTAssertFalse(try fixture.invocations().contains { $0.contains("reset-card use") })
+		await store.prepareForApplicationTermination()
+	}
+
 	func testRefreshRetainsPersistedAmbiguousOperation() async throws {
 		let fixture = try makeFixture(state: .effectAmbiguous)
 		defer { fixture.remove() }
