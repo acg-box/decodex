@@ -21,13 +21,6 @@ mod creation_defaults;
 mod desktop_settings;
 mod frame_trace;
 mod health_query;
-#[cfg_attr(
-	not(test),
-	allow(
-		dead_code,
-		reason = "XY-1429 pager controls are composed by the later Conversation destination"
-	)
-)]
 mod history_pager;
 mod native_menu_bar;
 #[cfg(target_os = "macos")] mod native_quit;

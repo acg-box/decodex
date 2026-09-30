@@ -184,6 +184,7 @@ pub(super) struct CacheHit {
 }
 
 impl CacheHit {
+	#[cfg(test)]
 	pub(super) const fn page(&self) -> &ConversationHistoryPage {
 		&self.page
 	}
@@ -192,6 +193,7 @@ impl CacheHit {
 		self.page
 	}
 
+	#[cfg(test)]
 	pub(super) const fn fresh_received_at_unix_seconds(&self) -> i64 {
 		self.fresh_received_at_unix_seconds
 	}
@@ -221,9 +223,11 @@ pub(super) enum CacheDiagnostic {
 	Bounds,
 	Filesystem,
 	RecencyExhausted,
+	#[cfg(test)]
 	DurabilityFault,
 }
 
+#[cfg(test)]
 impl CacheDiagnostic {
 	pub(super) const fn as_str(self) -> &'static str {
 		match self {
@@ -272,6 +276,7 @@ impl CacheFailure {
 		Self { diagnostic }
 	}
 
+	#[cfg(test)]
 	pub(super) const fn diagnostic(&self) -> &'static str {
 		self.diagnostic.as_str()
 	}
