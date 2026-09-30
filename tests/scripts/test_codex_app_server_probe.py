@@ -1,6 +1,10 @@
 import importlib.util
 import io
 import json
+import os
+import threading
+import time
+from types import SimpleNamespace
 from pathlib import Path
 import tempfile
 import unittest
@@ -65,6 +69,58 @@ class CodexAppServerProbeTests(unittest.TestCase):
                 self.assertEqual(spawn.call_args.kwargs["env"]["CODEX_HOME"], str(selected))
                 self.assertEqual(spawn.call_args.kwargs["env"]["PATH"], "/fixture-bin")
                 self.assertEqual(spawn.call_args.kwargs["cwd"], Path("/fixture-project"))
+
+    def test_initialization_failure_closes_owned_process(self):
+        probe = load_probe()
+        with (
+            mock.patch.object(probe.subprocess, "Popen"),
+            mock.patch.object(probe.AppServer, "initialize", side_effect=probe.ProtocolError("fixture")),
+            mock.patch.object(probe.AppServer, "close") as close,
+            self.assertRaises(probe.ProtocolError),
+        ):
+            probe.AppServer("fixture", Path("/fixture"), Path("/fixture-home"))
+        close.assert_called_once_with()
+
+    def test_request_timeout_is_not_renewed_by_notifications(self):
+        probe = load_probe()
+        server = probe.AppServer.__new__(probe.AppServer)
+        server.next_id = 1
+        server.notifications = []
+        server.send = mock.Mock()
+        observed = []
+        def receive(timeout):
+            observed.append(timeout)
+            if len(observed) > 3:
+                raise probe.ProtocolError("fixture stop")
+            return {"method": "fixture/event", "params": {}}
+        server.receive = receive
+        with mock.patch.object(probe.time, "monotonic", side_effect=[0, 0, 0.6, 1.1, 1.2]):
+            with self.assertRaisesRegex(probe.ProtocolError, "timed out"):
+                server.request("fixture/request", timeout=1)
+        self.assertEqual(len(observed), 2)
+        self.assertAlmostEqual(observed[1], 0.4)
+
+    def test_partial_and_coalesced_frames(self):
+        probe = load_probe()
+        for partial in (False, True):
+            with self.subTest(partial=partial):
+                read_fd, write_fd = os.pipe()
+                with os.fdopen(read_fd, "rb", buffering=0) as reader:
+                    server = probe.AppServer.__new__(probe.AppServer)
+                    server.process = SimpleNamespace(stdout=reader, poll=lambda: 0)
+                    server.pending_frame = bytearray()
+                    os.write(write_fd, b'{' if partial else b'{"id":1}\n{"id":2}\n')
+                    timer = threading.Timer(0.3, os.close, args=(write_fd,))
+                    timer.start()
+                    try:
+                        if partial:
+                            with self.assertRaisesRegex(probe.ProtocolError, "timed out"):
+                                server.receive(0.05)
+                        else:
+                            self.assertEqual(server.receive(0.1), {"id": 1})
+                            self.assertEqual(server.receive(0.1), {"id": 2})
+                    finally:
+                        timer.join()
 
     def test_account_selection_does_not_emit_credentials(self):
         probe = load_probe()

@@ -39,38 +39,51 @@ class AppServer:
             env={**os.environ, "CODEX_HOME": str(codex_home)},
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
+            stderr=subprocess.DEVNULL,
+            bufsize=0,
         )
         self.next_id = 1
         self.notifications: list[dict[str, Any]] = []
         self.capability_observations: list[dict[str, Any]] = []
-        self.initialize()
+        self.pending_frame = bytearray()
+        try:
+            self.initialize()
+        except BaseException:
+            self.close()
+            raise
 
     def send(self, message: dict[str, Any]) -> None:
         if self.process.stdin is None:
             raise ProtocolError("app-server stdin is unavailable")
-        self.process.stdin.write(json.dumps(message, separators=(",", ":")) + "\n")
+        self.process.stdin.write((json.dumps(message, separators=(",", ":")) + "\n").encode("utf-8"))
         self.process.stdin.flush()
 
     def receive(self, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
         if self.process.stdout is None:
             raise ProtocolError("app-server stdout is unavailable")
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            remaining = max(0.0, deadline - time.monotonic())
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProtocolError("timed out waiting for app-server message")
+            newline = self.pending_frame.find(b"\n")
+            if newline >= 0:
+                line = bytes(self.pending_frame[:newline])
+                del self.pending_frame[:newline + 1]
+                try:
+                    message = json.loads(line)
+                except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                    raise ProtocolError("app-server emitted non-JSON stdout") from error
+                if not isinstance(message, dict):
+                    raise ProtocolError("app-server emitted a non-object message")
+                return message
             ready, _, _ = select.select([self.process.stdout], [], [], remaining)
             if not ready:
-                break
-            line = self.process.stdout.readline()
-            if not line:
+                raise ProtocolError("timed out waiting for app-server message")
+            chunk = os.read(self.process.stdout.fileno(), 65_536)
+            if not chunk:
                 raise ProtocolError(f"app-server exited with {self.process.poll()}")
-            try:
-                return json.loads(line)
-            except json.JSONDecodeError as error:
-                raise ProtocolError("app-server emitted non-JSON stdout") from error
-        raise ProtocolError("timed out waiting for app-server message")
+            self.pending_frame.extend(chunk)
 
     def request(
         self, method: str, params: Any | None = None, timeout: float = DEFAULT_TIMEOUT
@@ -81,8 +94,12 @@ class AppServer:
         if params is not None:
             message["params"] = params
         self.send(message)
+        deadline = time.monotonic() + timeout
         while True:
-            incoming = self.receive(timeout)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProtocolError("timed out waiting for app-server response")
+            incoming = self.receive(remaining)
             if incoming.get("id") == request_id:
                 if "error" in incoming:
                     error = incoming["error"]
@@ -115,7 +132,7 @@ class AppServer:
                     notification.get("params", {})
                 ):
                     return self.notifications.pop(index)
-            incoming = self.receive(max(0.1, deadline - time.monotonic()))
+            incoming = self.receive(max(0.0, deadline - time.monotonic()))
             if "method" in incoming and "id" not in incoming:
                 self.notifications.append(incoming)
             elif "method" in incoming and "id" in incoming:
@@ -297,7 +314,7 @@ def run_turn(server: AppServer, identifier: str, prompt: str) -> dict[str, Any]:
                 if isinstance(info, dict):
                     info = info.get("type")
                 raise ProtocolError(f"turn failed: codex_error_info={info or 'unknown'}")
-        incoming = server.receive(max(0.1, deadline - time.monotonic()))
+        incoming = server.receive(max(0.0, deadline - time.monotonic()))
         if "method" in incoming and "id" not in incoming:
             server.notifications.append(incoming)
         elif "method" in incoming and "id" in incoming:
