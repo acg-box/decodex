@@ -38,7 +38,7 @@ pub(crate) use self::{
 	social_record::{SocialRecordCandidateRequest, record_social_candidate},
 };
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Parser as _;
 use serde_json::Value;
@@ -129,7 +129,27 @@ pub(crate) fn validate_social(paths: &[PathBuf]) -> Result<SocialValidationRepor
 	validate_social_at(&root, paths)
 }
 
-fn validate_social_at(root: &std::path::Path, paths: &[PathBuf]) -> Result<SocialValidationReport> {
+pub(crate) fn validate_generated_social_artifact(payload: &Value) -> Result<()> {
+	let validation = social_validation::validate_social_artifact(payload);
+
+	if !validation.errors.is_empty() {
+		eyre::bail!("Social artifact validation failed:\n- {}", validation.errors.join("\n- "));
+	}
+
+	social_record::validate_publication_identity(payload)?;
+
+	Ok(())
+}
+
+pub(crate) fn publish_next(request: &SocialPublishNextRequest) -> Result<SocialPublishNextReport> {
+	social_workflow::publish_next(request)
+}
+
+pub(crate) fn observe_due(request: &SocialObserveDueRequest) -> Result<SocialObserveDueReport> {
+	social_workflow::observe_due(request)
+}
+
+fn validate_social_at(root: &Path, paths: &[PathBuf]) -> Result<SocialValidationReport> {
 	let default_scope = paths.is_empty();
 	let paths = if default_scope {
 		vec![
@@ -172,26 +192,6 @@ fn validate_social_at(root: &std::path::Path, paths: &[PathBuf]) -> Result<Socia
 	}
 
 	Ok(SocialValidationReport { checked_files: files.len(), errors })
-}
-
-pub(crate) fn validate_generated_social_artifact(payload: &Value) -> Result<()> {
-	let validation = social_validation::validate_social_artifact(payload);
-
-	if !validation.errors.is_empty() {
-		eyre::bail!("Social artifact validation failed:\n- {}", validation.errors.join("\n- "));
-	}
-
-	social_record::validate_publication_identity(payload)?;
-
-	Ok(())
-}
-
-pub(crate) fn publish_next(request: &SocialPublishNextRequest) -> Result<SocialPublishNextReport> {
-	social_workflow::publish_next(request)
-}
-
-pub(crate) fn observe_due(request: &SocialObserveDueRequest) -> Result<SocialObserveDueReport> {
-	social_workflow::observe_due(request)
 }
 
 #[cfg(test)] mod tests;
