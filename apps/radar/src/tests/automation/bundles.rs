@@ -1,9 +1,16 @@
-use std::{cell::Cell, fs};
+use std::{
+	cell::Cell,
+	fs,
+	io::{Error, ErrorKind},
+};
 
+use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-	RadarBundleValidateRequest,
+	DEFAULT_CACHE_ROOT, RadarBundleValidateRequest, operations,
+	private_fs::PrivateCache,
+	test_support,
 	tests::{assertions, env::TestEnvVars, fixtures},
 };
 
@@ -99,7 +106,7 @@ fn validates_bundle_directories_and_rejects_other_schemas() {
 
 #[test]
 fn installed_bundle_receipt_reports_exact_bytes_and_bounded_structure() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 	let bundle_path =
 		temp_dir.path().join(".agent/automations/radar/cache/github/bundles/test-run.json");
 	let mut bundle = fixtures::valid_bundle();
@@ -157,7 +164,7 @@ fn installed_bundle_receipt_reports_exact_bytes_and_bounded_structure() {
 
 #[test]
 fn bundle_install_rejects_invalid_input_before_writing() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 	let bundle_path =
 		temp_dir.path().join(".agent/automations/radar/cache/github/bundles/invalid.json");
 	let mut bundle = fixtures::valid_bundle();
@@ -175,7 +182,7 @@ fn bundle_install_rejects_invalid_input_before_writing() {
 
 #[test]
 fn bundle_install_rejects_invalid_receipt_structure_before_writing() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 	let bundle_path =
 		temp_dir.path().join(".agent/automations/radar/cache/github/bundles/invalid-shape.json");
 	let mut bundle = fixtures::valid_bundle();
@@ -193,7 +200,7 @@ fn bundle_install_rejects_invalid_receipt_structure_before_writing() {
 
 #[test]
 fn bundle_install_rejects_impossible_reference_counts_before_writing() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 	let bundle_path =
 		temp_dir.path().join(".agent/automations/radar/cache/github/bundles/invalid-count.json");
 	let mut bundle = fixtures::valid_bundle();
@@ -210,12 +217,12 @@ fn bundle_install_rejects_impossible_reference_counts_before_writing() {
 
 #[test]
 fn bundle_install_rejects_readback_mismatch_without_a_receipt() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 	let bundle_path =
 		temp_dir.path().join(".agent/automations/radar/cache/github/bundles/replaced.json");
 	let mut bundle = fixtures::valid_bundle();
 
-	bundle["files"][0]["patch_excerpt"] = serde_json::Value::Null;
+	bundle["files"][0]["patch_excerpt"] = Value::Null;
 	bundle["docs_refs"] = serde_json::json!([]);
 	bundle["examples_refs"] = serde_json::json!([]);
 
@@ -229,22 +236,22 @@ fn bundle_install_rejects_readback_mismatch_without_a_receipt() {
 
 #[test]
 fn private_bundle_install_holds_one_cache_lock_through_readback() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let cache_root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
+	let temp_dir = test_support::private_tempdir();
+	let cache_root = temp_dir.path().join(DEFAULT_CACHE_ROOT);
 	let bundle_path = cache_root.join("github/bundles/locked.json");
 	let bundle = receiptable_bundle();
 	let observed_locked = Cell::new(false);
 
 	crate::install_bundle_after_write(&bundle_path, &bundle, || {
-		let cache = crate::private_fs::PrivateCache::open_existing(&cache_root)
+		let cache = PrivateCache::open_existing(&cache_root)
 			.expect("the cache should remain open while installing");
 		let error = cache.try_lock().expect_err("a second cache lock must remain blocked");
 
 		assert!(
 			error
 				.chain()
-				.find_map(|cause| cause.downcast_ref::<std::io::Error>())
-				.is_some_and(|error| error.kind() == std::io::ErrorKind::WouldBlock)
+				.find_map(|cause| cause.downcast_ref::<Error>())
+				.is_some_and(|error| error.kind() == ErrorKind::WouldBlock)
 		);
 
 		observed_locked.set(true);
@@ -256,19 +263,19 @@ fn private_bundle_install_holds_one_cache_lock_through_readback() {
 
 #[test]
 fn bundle_install_and_build_output_are_private_and_bound_to_the_process_run() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 	let run_id = "019fa400-0000-7000-8000-000000000001";
 	let stale_run_id = "019fa400-0000-7000-8000-000000000002";
-	let cache_root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
+	let cache_root = temp_dir.path().join(DEFAULT_CACHE_ROOT);
 	let expected = cache_root.join(format!("github/bundles/{run_id}.json"));
 	let stale = cache_root.join(format!("github/bundles/{stale_run_id}.json"));
 	let external = temp_dir.path().join("bundle.json");
 	let _env = TestEnvVars::set(&[("CODEX_THREAD_ID", Some(run_id))]);
 
-	crate::operations::validate_current_bundle_output_path(&expected)
+	operations::validate_current_bundle_output_path(&expected)
 		.expect("the exact current run bundle path should validate");
 
-	let stale_error = crate::operations::validate_current_bundle_output_path(&stale)
+	let stale_error = operations::validate_current_bundle_output_path(&stale)
 		.expect_err("a stale run bundle path must fail before GitHub access");
 	let external_error = crate::install_bundle(&external, &receiptable_bundle())
 		.expect_err("bundle installation must have no external writer authority");
@@ -278,7 +285,7 @@ fn bundle_install_and_build_output_are_private_and_bound_to_the_process_run() {
 	assert!(!external.exists());
 }
 
-fn receiptable_bundle() -> serde_json::Value {
+fn receiptable_bundle() -> Value {
 	let mut bundle = fixtures::valid_bundle();
 
 	bundle["docs_refs"] = serde_json::json!([]);
@@ -326,11 +333,9 @@ fn bundle_commit_time_uses_committer_without_changing_author_identity() {
 		assert_eq!(signal["published_at"], "2026-06-01T00:00:00Z");
 	}
 
-	commit["author"] = serde_json::Value::Null;
+	commit["author"] = Value::Null;
 
-	for committer in
-		[serde_json::Value::Null, serde_json::json!({}), serde_json::json!({"date": 7})]
-	{
+	for committer in [Value::Null, serde_json::json!({}), serde_json::json!({"date": 7})] {
 		commit["commit"]["committer"] = committer;
 
 		let bundle =
