@@ -692,10 +692,10 @@ impl Media {
 					),
 			}
 		}
-		if let Some(transport) = &self.transport {
-			if let Some(event) = transport.poll() {
-				return Some(event);
-			}
+		if let Some(transport) = &self.transport
+			&& let Some(event) = transport.poll()
+		{
+			return Some(event);
 		}
 		if let Some(audio) = &self.audio {
 			if !audio.running() {
