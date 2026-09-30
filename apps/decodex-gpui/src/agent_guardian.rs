@@ -267,20 +267,31 @@ impl AgentSurface {
 		self.guardian.mutation = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |s, cx| {
-				if s.guardian.owner.as_ref() != Some(&owner)
-					|| s.guardian.mutation_key.as_ref() != Some(&submitted_key)
-				{
-					return;
-				}
-				if !s.guardian.finish_submission(row, &submitted_key, result) {
-					return;
-				}
-				s.guardian.request = None;
-				s.guardian.epoch = s.guardian.epoch.wrapping_add(1);
-				s.load_guardian_reviews(cx);
-				cx.notify();
+				s.finish_guardian_submission(&owner, row, &submitted_key, result, cx);
 			});
 		}));
+		cx.notify();
+	}
+
+	fn finish_guardian_submission(
+		&mut self,
+		owner: &str,
+		row: i64,
+		key: &str,
+		result: Result<AgentCommandResponse, ()>,
+		cx: &mut Context<Self>,
+	) {
+		if self.guardian.owner.as_deref() != Some(owner)
+			|| self.guardian.mutation_key.as_deref() != Some(key)
+		{
+			return;
+		}
+		if !self.guardian.finish_submission(row, key, result) {
+			return;
+		}
+		// Refreshing this list does not invalidate an exact saved-detail read.
+		self.guardian.request = None;
+		self.load_guardian_reviews(cx);
 		cx.notify();
 	}
 
@@ -970,5 +981,99 @@ mod tests {
 				assert!(s.guardian.pending.contains_key(&1));
 			});
 		}
+	}
+	#[gpui::test]
+	fn submission_readback_keeps_a_concurrent_detail_read(cx: &mut gpui::TestAppContext) {
+		use decodex_protocol::{
+			CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
+			ServerId, ServerMessage,
+		};
+		use futures_util::{SinkExt, StreamExt};
+		use tokio_tungstenite::tungstenite::Message;
+		let (_dir, profile, server) =
+			super::super::wire_test_support::fixture(|listener| async move {
+				let (mut lists, mut details) = (0, 0);
+				for _ in 0..2 {
+					let mut socket = super::super::wire_test_support::accept(&listener).await;
+					let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+						panic!("text query")
+					};
+					let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
+						panic!("readback only")
+					};
+					let payload = match &query.payload {
+						QueryPayload::GetAgentGuardianDetail {
+							work_id,
+							review_row: 1,
+							review_digest,
+							offset: 0,
+						} => {
+							assert_eq!(work_id.as_str(), "root");
+							assert_eq!(review_digest.as_str(), "original");
+							details += 1;
+							QueryResultPayload::AgentGuardianDetail(Detail::Available {
+								row_id: 1,
+								digest: "original".into(),
+								offset: 0,
+								text: "whole".into(),
+								total_bytes: 5,
+								next_offset: None,
+							})
+						},
+						QueryPayload::GetAgentGuardianReviews { work_id, before: None } => {
+							assert_eq!(work_id.as_str(), "root");
+							lists += 1;
+							let mut saved = review();
+							saved.details_paged = true;
+							saved.submission = Some(Submission::Pending);
+							saved.can_approve = false;
+							QueryResultPayload::AgentGuardianReviews(page(saved))
+						},
+						_ => panic!("exact review readback"),
+					};
+					let response = ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
+						query_id: query.query_id,
+						payload,
+					});
+					socket
+						.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
+						.await
+						.unwrap();
+				}
+				assert_eq!((lists, details), (1, 1));
+			});
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			seed(s);
+			if let Some(Reviews::Available { reviews, .. }) = &mut s.guardian.result {
+				reviews[0].details_paged = true;
+			}
+			s.profile = Some(profile);
+			s.guardian.mutation_key = Some("submission".into());
+			s.guardian.pending.insert(1, "submission".into());
+			s.load_guardian_detail(1, "original".into(), 0, cx);
+			assert!(s.guardian.detail_request.is_some());
+			// Settle the submission before the detail future can deliver its response.
+			s.finish_guardian_submission(
+				"root",
+				1,
+				"submission",
+				Ok(AgentCommandResponse::PotentiallyDispatched {
+					failure: decodex_protocol::ClientFailure::ProtocolDisconnected,
+				}),
+				cx,
+			);
+		});
+		cx.run_until_parked();
+		server.join().unwrap();
+		surface.read_with(cx, |s, _| {
+			assert!(s.guardian.detail_request.is_none(), "submission readback stranded concurrent details");
+			assert!(s.guardian.detail.as_ref().unwrap().complete);
+			assert!(matches!(s.guardian.detail.as_ref().and_then(|d| d.page.as_ref()), Some(Detail::Available { text, .. }) if text == "whole"));
+			assert!(s.guardian.pending.contains_key(&1));
+			assert!(s.guardian.feedback.contains("unconfirmed"));
+		});
 	}
 }
