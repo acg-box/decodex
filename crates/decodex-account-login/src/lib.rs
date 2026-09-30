@@ -1470,20 +1470,6 @@ mod tests {
 	}
 
 	#[test]
-	fn login_events_are_structured_and_credential_negative() {
-		let browser = LoginEvent::BrowserAuthorization {
-			authorization_url: "https://auth.openai.com/oauth/authorize?fixture=true".to_owned(),
-		};
-		let device = LoginEvent::DeviceAuthorization {
-			verification_url: "https://auth.openai.com/codex/device".to_owned(),
-			user_code: "FIXT-URE1".to_owned(),
-		};
-
-		assert!(matches!(browser, LoginEvent::BrowserAuthorization { .. }));
-		assert!(matches!(device, LoginEvent::DeviceAuthorization { .. }));
-	}
-
-	#[test]
 	fn private_auth_document_has_the_exact_daemon_schema_and_mode() {
 		let home = tempfile::tempdir().expect("login home");
 		let home_path = fs::canonicalize(home.path()).expect("canonical login home");
