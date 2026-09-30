@@ -48,7 +48,8 @@ impl State {
 		}
 		self.observation_generation = signal.generation;
 		if self.selected.is_some() {
-			// A heartbeat refreshes observation timestamps too. Coalesce with an active pair.
+			// A heartbeat refreshes observation timestamps too. Coalesce with an active profile
+			// read.
 			self.refresh_due = !self.queue_query();
 		}
 		AccountProfileRouteOutcome::Fresh
@@ -89,5 +90,100 @@ impl super::AccountProfileController {
 				self.inner.notify.notify_one();
 			},
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::account_profile::*;
+
+	fn source() -> (AccountProfileController, ServerId, EntityId) {
+		let controller = AccountProfileController::production();
+		let server = ServerId::new("10000000-0000-4000-8000-000000000001").unwrap();
+		let account = EntityId::new("20000000-0000-4000-8000-000000000001").unwrap();
+		controller.bind_session(3, server.clone());
+		controller.select_at_revision(account.clone(), EntityRevision(1));
+		(controller, server, account)
+	}
+
+	fn complete_profile(controller: &AccountProfileController, server: &ServerId) {
+		let profile = controller.try_take_dispatch(3, server).unwrap();
+		assert!(matches!(profile.payload, QueryPayload::GetAccountProfile { .. }));
+		let result = QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server.clone(),
+			query_id: profile.query_id,
+			payload: QueryResultPayload::AccountProfile(AccountProfileResult::Unavailable {
+				error: decodex_protocol::AccountProfileErrorDto::ProviderUnavailable,
+				email: AccountProfileEmailDto::Redacted,
+				plan_type: None,
+			}),
+		};
+		assert_eq!(controller.route_result(3, server, &result), AccountProfileRouteOutcome::Fresh);
+	}
+
+	#[test]
+	fn observation_wait_is_single_across_refresh_close_and_reopen() {
+		let (controller, server, account) = source();
+		complete_profile(&controller, &server);
+		let wait = controller.try_take_dispatch(3, &server).unwrap();
+		assert!(matches!(
+			wait.payload,
+			QueryPayload::WaitForAccountObservation { after_generation: 0, .. }
+		));
+		assert!(controller.try_take_dispatch(3, &server).is_none());
+		for _ in 0..4 {
+			assert!(controller.refresh());
+			complete_profile(&controller, &server);
+			assert!(controller.try_take_dispatch(3, &server).is_none());
+		}
+		controller.close();
+		assert!(controller.try_take_dispatch(3, &server).is_none());
+		controller.select_at_revision(account.clone(), EntityRevision(1));
+		complete_profile(&controller, &server);
+		assert!(controller.try_take_dispatch(3, &server).is_none());
+		let result = QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server.clone(),
+			query_id: wait.query_id,
+			payload: QueryResultPayload::AccountObservation(
+				decodex_protocol::AccountObservationSignal::new(7),
+			),
+		};
+		assert_eq!(controller.route_result(3, &server, &result), AccountProfileRouteOutcome::Fresh);
+		complete_profile(&controller, &server);
+		let wait = controller.try_take_dispatch(3, &server).unwrap();
+		assert!(matches!(
+			wait.payload,
+			QueryPayload::WaitForAccountObservation { after_generation: 7, .. }
+		));
+		controller.close();
+		let result = QueryResultEnvelope { query_id: wait.query_id, ..result };
+		assert_eq!(controller.route_result(3, &server, &result), AccountProfileRouteOutcome::Fresh);
+		assert!(controller.try_take_dispatch(3, &server).is_none());
+	}
+
+	#[test]
+	fn observation_during_profile_read_coalesces_one_followup_read() {
+		let (controller, server, _) = source();
+		complete_profile(&controller, &server);
+		let wait = controller.try_take_dispatch(3, &server).unwrap();
+		controller.refresh();
+		let result = QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server.clone(),
+			query_id: wait.query_id,
+			payload: QueryResultPayload::AccountObservation(
+				decodex_protocol::AccountObservationSignal::new(1),
+			),
+		};
+		assert_eq!(controller.route_result(3, &server, &result), AccountProfileRouteOutcome::Fresh);
+		complete_profile(&controller, &server);
+		complete_profile(&controller, &server);
+		assert!(matches!(
+			controller.try_take_dispatch(3, &server).unwrap().payload,
+			QueryPayload::WaitForAccountObservation { .. }
+		));
+		assert!(controller.try_take_dispatch(3, &server).is_none());
 	}
 }

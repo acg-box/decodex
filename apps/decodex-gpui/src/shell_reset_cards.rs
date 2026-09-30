@@ -517,10 +517,12 @@ impl ResetCardsPanel {
 						details_complete: true,
 						cards: vec![
 							ResetCardObservationDto {
-								descriptor: ResetCardDescriptorDto::new(1, 4102444800).unwrap(),
+								descriptor: ResetCardDescriptorDto::new(1, 4102444800)
+									.expect("fixture card"),
 							},
 							ResetCardObservationDto {
-								descriptor: ResetCardDescriptorDto::new(2, 4105123200).unwrap(),
+								descriptor: ResetCardDescriptorDto::new(2, 4105123200)
+									.expect("fixture card"),
 							},
 						],
 						five_hour_quota: account.five_hour_quota,
