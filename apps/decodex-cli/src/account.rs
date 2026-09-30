@@ -14,6 +14,8 @@ use decodex_protocol::{
 	CommandPayload, EntityId, EntityRevision, IdempotencyKey, WireText,
 };
 
+type PreparedCommand = (CommandPayload, Option<EntityRevision>, IdempotencyKey);
+
 const ACCOUNT_OUTPUT_SCHEMA: &str = "decodex/cli-account/1";
 
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
@@ -154,8 +156,6 @@ pub struct RecoverArgs {
 	#[arg(long)]
 	idempotency_key: String,
 }
-
-type PreparedCommand = (CommandPayload, Option<EntityRevision>, IdempotencyKey);
 
 #[derive(Serialize)]
 struct OutputDocument<T> {
