@@ -1,4 +1,7 @@
-use super::*;
+use crate::{
+	SqliteStore,
+	agent::{AgentDispatchState, AgentWorkStatus, EnqueueAgentEvent, tests},
+};
 
 #[tokio::test]
 async fn every_proven_capacity_refusal_preserves_failed_delivery_after_reopen() {
@@ -11,11 +14,11 @@ async fn every_proven_capacity_refusal_preserves_failed_delivery_after_reopen() 
 		Refusal::RequestTooLarge,
 		Refusal::RequestQueueFull,
 	] {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("refusal.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 
-		store.create_agent_work_item(item("agent", None)).await.unwrap();
+		store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
 		store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 
 		let input = store
@@ -35,7 +38,7 @@ async fn every_proven_capacity_refusal_preserves_failed_delivery_after_reopen() 
 			.complete_agent_turn_with_event(
 				"agent".into(),
 				"failed".into(),
-				capacity_failure("agent", "failed"),
+				tests::capacity_failure("agent", "failed"),
 			)
 			.await
 			.unwrap();
@@ -66,11 +69,11 @@ async fn every_proven_capacity_refusal_preserves_failed_delivery_after_reopen() 
 
 #[tokio::test]
 async fn capacity_retry_waits_for_unknown_permission_selection_after_reopen() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("pending-permission.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 
-	store.create_agent_work_item(item("agent", None)).await.unwrap();
+	store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
 	store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 	store.begin_agent_dispatch("agent".into()).await.unwrap();
 	store.acknowledge_agent_dispatch("agent".into(), "failed".into()).await.unwrap();
@@ -79,7 +82,7 @@ async fn capacity_retry_waits_for_unknown_permission_selection_after_reopen() {
 		.complete_agent_turn_with_event(
 			"agent".into(),
 			"failed".into(),
-			capacity_failure("agent", "failed"),
+			tests::capacity_failure("agent", "failed"),
 		)
 		.await
 		.unwrap();

@@ -1,4 +1,9 @@
-use super::*;
+use serde_json::Value;
+
+use crate::{
+	SqliteStore,
+	agent::{EnqueueAgentEvent, tests},
+};
 use serde_json::json;
 
 fn reference_payload(thread: &str) -> String {
@@ -14,12 +19,12 @@ async fn allowed(store: &SqliteStore, recipient: &str, thread: &str) -> bool {
 
 #[tokio::test]
 async fn grant_requires_delivery_and_survives_reopen_without_following_new_thread() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("references.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 
 	for id in ["recipient", "target"] {
-		store.create_agent_work_item(item(id, None)).await.unwrap();
+		store.create_agent_work_item(tests::item(id, None)).await.unwrap();
 		store.bind_agent_thread(id.into(), format!("{id}-thread")).await.unwrap();
 	}
 
@@ -70,11 +75,11 @@ async fn grant_requires_delivery_and_survives_reopen_without_following_new_threa
 
 #[tokio::test]
 async fn rejected_unknown_and_stale_steering_never_grant_access() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&directory.path().join("references.sqlite3")).unwrap();
 
 	for id in ["recipient", "target"] {
-		store.create_agent_work_item(item(id, None)).await.unwrap();
+		store.create_agent_work_item(tests::item(id, None)).await.unwrap();
 		store.bind_agent_thread(id.into(), format!("{id}-thread")).await.unwrap();
 	}
 
@@ -126,16 +131,15 @@ async fn rejected_unknown_and_stale_steering_never_grant_access() {
 
 #[tokio::test]
 async fn invalid_reference_input_is_atomic_and_legacy_text_does_not_grant() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&directory.path().join("references.sqlite3")).unwrap();
 
 	for id in ["recipient", "target"] {
-		store.create_agent_work_item(item(id, None)).await.unwrap();
+		store.create_agent_work_item(tests::item(id, None)).await.unwrap();
 		store.bind_agent_thread(id.into(), format!("{id}-thread")).await.unwrap();
 	}
 
-	let valid: serde_json::Value =
-		serde_json::from_str(&reference_payload("target-thread")).unwrap();
+	let valid: Value = serde_json::from_str(&reference_payload("target-thread")).unwrap();
 	let mut invalid = valid.clone();
 
 	invalid["options"]["taskReferences"] =

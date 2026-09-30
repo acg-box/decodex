@@ -1,4 +1,7 @@
-use super::*;
+use crate::{
+	SqliteStore,
+	agent::{AgentDisposition, AgentInboxEvent, EnqueueAgentEvent, tests},
+};
 
 async fn enqueue(store: &SqliteStore, source: &str, owner: &str, kind: &str) -> AgentInboxEvent {
 	store
@@ -14,11 +17,11 @@ async fn enqueue(store: &SqliteStore, source: &str, owner: &str, kind: &str) -> 
 
 #[tokio::test]
 async fn unresolved_evidence_survives_failed_interrupted_turns_and_reopen() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("agent.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 
-	store.create_agent_work_item(item("agent", None)).await.unwrap();
+	store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
 	store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 
 	let evidence = enqueue(&store, "original", "agent", "user_message").await;
@@ -109,11 +112,11 @@ async fn unresolved_evidence_survives_failed_interrupted_turns_and_reopen() {
 
 #[tokio::test]
 async fn event_reclaim_rejects_foreign_owners_provider_requests_and_unknown_dispatch() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
 
 	for id in ["agent", "other"] {
-		store.create_agent_work_item(item(id, None)).await.unwrap();
+		store.create_agent_work_item(tests::item(id, None)).await.unwrap();
 		store.bind_agent_thread(id.into(), format!("thread-{id}")).await.unwrap();
 	}
 

@@ -1,12 +1,17 @@
-use super::*;
+use serde_json::Value;
+
+use crate::{
+	SqliteStore,
+	agent::{AgentDispatchState, AgentWorkStatus, EnqueueAgentEvent, tests},
+};
 
 #[tokio::test]
 async fn activity_is_idempotent_turn_bound_and_never_wakes_work() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("activity.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 
-	store.create_agent_work_item(item("agent", None)).await.unwrap();
+	store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
 	store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 	store.begin_agent_dispatch("agent".into()).await.unwrap();
 	store.acknowledge_agent_dispatch("agent".into(), "turn".into()).await.unwrap();
@@ -65,11 +70,11 @@ async fn activity_is_idempotent_turn_bound_and_never_wakes_work() {
 
 #[tokio::test]
 async fn checklist_observations_keep_latest_aba_and_survive_restart_without_wake() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("checklist.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 
-	store.create_agent_work_item(item("agent", None)).await.unwrap();
+	store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
 	store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 	store.begin_agent_dispatch("agent".into()).await.unwrap();
 	store.acknowledge_agent_dispatch("agent".into(), "turn".into()).await.unwrap();
@@ -86,10 +91,7 @@ async fn checklist_observations_keep_latest_aba_and_survive_restart_without_wake
 
 	let latest_id = entries[0].id;
 
-	assert_eq!(
-		serde_json::from_str::<serde_json::Value>(&entries[0].payload).unwrap()["text"],
-		"A"
-	);
+	assert_eq!(serde_json::from_str::<Value>(&entries[0].payload).unwrap()["text"], "A");
 	assert!(
 		store
 			.read_agent_transcript("agent".into(), Some(latest_id), 32)
@@ -118,10 +120,7 @@ async fn checklist_observations_keep_latest_aba_and_survive_restart_without_wake
 
 	let (unchanged, _) = store.read_agent_transcript("agent".into(), None, 32).await.unwrap();
 
-	assert_eq!(
-		serde_json::from_str::<serde_json::Value>(&unchanged[0].payload).unwrap()["text"],
-		"124"
-	);
+	assert_eq!(serde_json::from_str::<Value>(&unchanged[0].payload).unwrap()["text"], "124");
 
 	for index in 0..140 {
 		store
@@ -139,11 +138,11 @@ async fn checklist_observations_keep_latest_aba_and_survive_restart_without_wake
 
 #[tokio::test]
 async fn delayed_mcp_activity_keeps_terminal_turn_without_changing_current_dispatch() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("late-mcp.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 
-	store.create_agent_work_item(item("agent", None)).await.unwrap();
+	store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
 	store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 	store.begin_agent_dispatch("agent".into()).await.unwrap();
 	store.acknowledge_agent_dispatch("agent".into(), "old".into()).await.unwrap();

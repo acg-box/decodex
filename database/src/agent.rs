@@ -357,12 +357,12 @@ impl SqliteStore {
 		depends_on: Vec<String>,
 	) -> Result<AgentWorkItem, StoreError> {
 		bounded(&item.id, 512)?;
-		bounded(&item.title, 1024)?;
-		bounded(&item.instructions, 65536)?;
+		bounded(&item.title, 1_024)?;
+		bounded(&item.instructions, 65_536)?;
 
 		if let Some((name, directory)) = &workspace {
 			bounded(name, 256)?;
-			bounded(directory, 4096)?;
+			bounded(directory, 4_096)?;
 		}
 
 		if item.status != AgentWorkStatus::Open
@@ -610,10 +610,10 @@ impl SqliteStore {
 		instruction: Option<String>,
 	) -> Result<AgentWorkItem, StoreError> {
 		if let Some(text) = &instruction {
-			bounded(text, 65536)?;
+			bounded(text, 65_536)?;
 		}
 
-		if event_ids.len() > 1000 {
+		if event_ids.len() > 1_000 {
 			return Err(StoreError::InvalidInput("too many Agent dispatch events"));
 		}
 
@@ -654,7 +654,7 @@ impl SqliteStore {
 				let source=serde_json::json!(["work_instruction",id,previous]).to_string();
 				let payload=serde_json::json!({"text":text,"source":"manager"}).to_string();
 
-				if payload.len()>65536 {return Err(StoreError::InvalidInput("instruction exceeds saved event bound"));}
+				if payload.len()>65_536 {return Err(StoreError::InvalidInput("instruction exceeds saved event bound"));}
 
 				transaction.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'work_instruction',?3,?4,?2,'')",rusqlite::params![source,id,payload,now]).map_err(error::sqlite_error)?;
 			}
@@ -675,7 +675,7 @@ impl SqliteStore {
 		key: String,
 		payload: String,
 	) -> Result<i64, StoreError> {
-		bounded(&payload, 65536)?;
+		bounded(&payload, 65_536)?;
 		bounded(&key, 512)?;
 
 		self.run(move |connection| {
@@ -696,7 +696,7 @@ impl SqliteStore {
 
 			let payload = value.to_string();
 
-			bounded(&payload, 65536)?;
+			bounded(&payload, 65_536)?;
 
 			let source = serde_json::json!(["user_steer", id, key]).to_string();
 
@@ -803,10 +803,10 @@ impl SqliteStore {
 		turn_id: String,
 		input: EnqueueAgentEvent,
 	) -> Result<AgentInboxEvent, StoreError> {
-		bounded(&input.source_event_id, 2048)?;
+		bounded(&input.source_event_id, 2_048)?;
 		bounded(&input.event_kind, 128)?;
 
-		if input.payload.len() > 65536 || input.work_item_id != id {
+		if input.payload.len() > 65_536 || input.work_item_id != id {
 			return Err(StoreError::InvalidInput("invalid Agent terminal event"));
 		}
 
@@ -839,7 +839,7 @@ impl SqliteStore {
 
                 let encoded=payload.to_string();
 
-                if encoded.len()<=65536 {input.payload=encoded;}
+                if encoded.len()<=65_536 {input.payload=encoded;}
             }
 
             if let Some((attempt,due))=retry {
@@ -847,7 +847,7 @@ impl SqliteStore {
 
                 let encoded=payload.to_string();
 
-                if encoded.len()<=65536 {
+                if encoded.len()<=65_536 {
                     input.event_kind="capacity_retry".into();
 
                     input.payload=encoded;
@@ -994,7 +994,7 @@ impl SqliteStore {
 		input: EnqueueAgentEvent,
 		observation: bool,
 	) -> Result<AgentInboxEvent, StoreError> {
-		bounded(&input.source_event_id, 2048)?;
+		bounded(&input.source_event_id, 2_048)?;
 		bounded(&input.event_kind, 128)?;
 
 		let compact = agent_request_payload::compact(&input)?;
@@ -1048,7 +1048,7 @@ impl SqliteStore {
 		detail: String,
 	) -> Result<(), StoreError> {
 		bounded(&root, 512)?;
-		bounded(&detail, 65536)?;
+		bounded(&detail, 65_536)?;
 
 		self.run(move |connection| {
 			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
@@ -1106,7 +1106,7 @@ impl SqliteStore {
 		kind: &'static str,
 	) -> Result<(), StoreError> {
 		bounded(&root, 512)?;
-		bounded(&detail, 2048)?;
+		bounded(&detail, 2_048)?;
 
 		self.run(move |connection| {
 			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
@@ -1286,7 +1286,7 @@ impl SqliteStore {
 		user_event_id: i64,
 		note: String,
 	) -> Result<(), StoreError> {
-		bounded(&note, 65536)?;
+		bounded(&note, 65_536)?;
 
 		self.run(move |connection| {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
@@ -1322,7 +1322,7 @@ impl SqliteStore {
 		evidence_event_id: i64,
 		note: String,
 	) -> Result<(), StoreError> {
-		bounded(&note, 65536)?;
+		bounded(&note, 65_536)?;
 
 		self.run(move |connection| {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
@@ -1357,7 +1357,7 @@ impl SqliteStore {
 		note: String,
 		next_check_at_micros: Option<i64>,
 	) -> Result<AgentInboxEvent, StoreError> {
-		bounded(&note, 65536)?;
+		bounded(&note, 65_536)?;
 
 		if next_check_at_micros.is_some_and(|time| time < 0)
 			|| (disposition == AgentDisposition::Resolved && next_check_at_micros.is_some())
@@ -1432,7 +1432,7 @@ fn bounded(value: &str, max: usize) -> Result<(), StoreError> {
 }
 
 fn page_limit(limit: usize) -> Result<i64, StoreError> {
-	if (1..=1000).contains(&limit) {
+	if (1..=1_000).contains(&limit) {
 		Ok(limit as i64)
 	} else {
 		Err(StoreError::InvalidInput("Agent page size must be between 1 and 1000"))
@@ -1557,17 +1557,58 @@ mod tests {
 	mod steer_receipts;
 	mod task_references;
 	mod turn_execution;
-	use super::*;
-	use tempfile::tempdir;
+	use std::sync::atomic::{AtomicUsize, Ordering};
+
+	use serde_json::Value;
+
+	use crate::{
+		SqliteStore, StoreError,
+		agent::{
+			AgentDispatchState, AgentDisposition, AgentStoreSnapshot, AgentWorkItem, AgentWorkKind,
+			AgentWorkStatus, EnqueueAgentEvent,
+		},
+	};
 
 	fn capacity_failure(work: &str, turn: &str) -> EnqueueAgentEvent {
 		EnqueueAgentEvent { source_event_id:format!("failure:{work}:{turn}"),work_item_id:work.into(),event_kind:"agent_turn_completed".into(),
             payload:serde_json::json!({"terminal":{"turn":{"status":"failed","error":{"codexErrorInfo":"serverOverloaded"}}},"threadReadback":{"capacityRetryEligible":true}}).to_string() }
 	}
 
+	fn item(id: &str, parent: Option<&str>) -> AgentWorkItem {
+		AgentWorkItem {
+			id: id.to_owned(),
+			parent_goal_id: parent.map(str::to_owned),
+			kind: AgentWorkKind::Goal,
+			title: id.to_owned(),
+			instructions: "Complete the requested work".to_owned(),
+			codex_thread_id: None,
+			dispatch_state: AgentDispatchState::Idle,
+			active_turn_id: None,
+			status: AgentWorkStatus::Open,
+			next_check_at_micros: None,
+			created_at_micros: 1,
+			updated_at_micros: 1,
+		}
+	}
+
+	async fn record_question(store: &SqliteStore, turn: &str, item_id: &str, id: &str) {
+		store
+			.record_agent_async_questions(
+				"thread".into(),
+				turn.into(),
+				item_id.into(),
+				vec![(
+					id.to_owned(),
+					serde_json::json!({"id":id,"title":"Question","options":[]}).to_string(),
+				)],
+			)
+			.await
+			.unwrap();
+	}
+
 	#[tokio::test]
 	async fn capacity_retries_are_bounded_durable_and_claimed_once() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("retry.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 
@@ -1642,7 +1683,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn cancellation_new_dispatch_and_unknown_claim_do_not_replay_capacity_retries() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("retry.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 
@@ -1704,7 +1745,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn saved_turn_metrics_require_exact_work_thread_and_turn_after_reopen() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("metrics.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 
@@ -1779,7 +1820,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn observations_are_durable_deduplicated_and_never_pending_work() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("agent.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 
@@ -1840,28 +1881,9 @@ mod tests {
 		);
 	}
 
-	fn item(id: &str, parent: Option<&str>) -> AgentWorkItem {
-		AgentWorkItem {
-			id: id.to_owned(),
-			parent_goal_id: parent.map(str::to_owned),
-			kind: AgentWorkKind::Goal,
-			title: id.to_owned(),
-			instructions: "Complete the requested work".to_owned(),
-			codex_thread_id: None,
-			dispatch_state: AgentDispatchState::Idle,
-			active_turn_id: None,
-			status: AgentWorkStatus::Open,
-			next_check_at_micros: None,
-			created_at_micros: 1,
-			updated_at_micros: 1,
-		}
-	}
-
 	#[tokio::test]
 	async fn misalignment_reconciliation_preserves_changed_or_invalidated_evidence() {
-		use std::sync::atomic::{AtomicUsize, Ordering};
-
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
 
 		store.create_agent_work_item(item("agent", None)).await.unwrap();
@@ -1902,7 +1924,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn misalignment_continuation_requires_exact_review_and_positive_acknowledgment() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("agent.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 
@@ -2017,7 +2039,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn live_question_provenance_survives_restart_without_promoting_replay() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("agent.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 
@@ -2098,6 +2120,7 @@ mod tests {
 
 		assert!(!questions[0].arrived_live);
 		assert!(questions[1].arrived_live);
+
 		// Input provenance is not authority: a changed native question is history.
 		questions[1].question_json =
 			serde_json::json!({"id":"new","title":"Changed","options":[]}).to_string();
@@ -2136,28 +2159,13 @@ mod tests {
 
 	#[tokio::test]
 	async fn new_prompt_retires_questions_without_replay_or_answer_side_effects() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
 
 		store.create_agent_work_item(item("agent", None)).await.unwrap();
 		store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 
-		let record = |id: &str| {
-			vec![(
-				id.to_owned(),
-				serde_json::json!({"id":id,"title":"Question","options":[]}).to_string(),
-			)]
-		};
-
-		store
-			.record_agent_async_questions(
-				"thread".into(),
-				"turn".into(),
-				"item".into(),
-				record("q1"),
-			)
-			.await
-			.unwrap();
+		record_question(&store, "turn", "item", "q1").await;
 
 		let answer = EnqueueAgentEvent {
 			source_event_id: "reply".into(),
@@ -2178,30 +2186,17 @@ mod tests {
 		};
 
 		store.enqueue_agent_event(prompt.clone()).await.unwrap();
-		store
-			.record_agent_async_questions(
-				"thread".into(),
-				"turn".into(),
-				"item".into(),
-				record("q1"),
-			)
-			.await
-			.unwrap();
+
+		record_question(&store, "turn", "item", "q1").await;
 
 		assert!(store.read_agent_async_questions("agent".into()).await.unwrap().is_empty());
 
-		store
-			.record_agent_async_questions(
-				"thread".into(),
-				"turn".into(),
-				"item2".into(),
-				record("q2"),
-			)
-			.await
-			.unwrap();
+		record_question(&store, "turn", "item2", "q2").await;
+
 		store.enqueue_agent_event(prompt).await.unwrap();
 
 		assert_eq!(store.read_agent_async_questions("agent".into()).await.unwrap().len(), 1);
+
 		// Queued prompt delivery retires questions that arrived while waiting.
 		let event = store
 			.read_agent_work_events("agent".into(), 10)
@@ -2216,15 +2211,8 @@ mod tests {
 		assert!(store.read_agent_async_questions("agent".into()).await.unwrap().is_empty());
 
 		store.acknowledge_agent_dispatch("agent".into(), "active".into()).await.unwrap();
-		store
-			.record_agent_async_questions(
-				"thread".into(),
-				"active".into(),
-				"item3".into(),
-				record("q3"),
-			)
-			.await
-			.unwrap();
+
+		record_question(&store, "active", "item3", "q3").await;
 
 		let rejected = store
 			.begin_agent_steer(
@@ -2270,7 +2258,7 @@ mod tests {
 	}
 	#[tokio::test]
 	async fn async_answers_only_dispatch_once_to_the_exact_owner_and_never_wake() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
 
 		store.create_agent_work_item(item("agent", None)).await.unwrap();
@@ -2320,7 +2308,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn occupied_input_admission_preserves_replay_and_other_conversations() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
 
 		for id in ["agent", "other"] {
@@ -2363,7 +2351,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn delivery_attention_recovers_without_consuming_saved_user_input() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
 
 		store.create_agent_work_item(item("agent", None)).await.unwrap();
@@ -2405,7 +2393,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn redispatch_invalidates_manager_acceptance_and_records_instruction_atomically() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
 
 		store.create_agent_work_item(item("agent", None)).await.unwrap();
@@ -2462,7 +2450,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn connection_attention_closes_and_rearms_without_resolving_work() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
 
 		store.create_agent_work_item(item("agent", None)).await.unwrap();
@@ -2501,7 +2489,7 @@ mod tests {
 	#[tokio::test]
 	async fn agent_request_receipts_and_handled_inputs_leave_work_judgment_and_newer_events_intact()
 	{
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
 
 		store.create_agent_work_item(item("agent", None)).await.unwrap();
@@ -2596,7 +2584,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn agent_due_notifications_filter_before_limit_and_user_messages_can_wake() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
 
 		for id in ["first", "second"] {
@@ -2641,7 +2629,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn agent_reads_filter_before_limits_and_terminal_receipts_do_not_change_judgment() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
 
 		store.create_agent_work_item(item("agent", None)).await.unwrap();
@@ -2715,7 +2703,7 @@ mod tests {
 	#[tokio::test]
 	async fn agent_thread_creation_unknown_survives_reopen_and_new_task_turn_revokes_old_acceptance()
 	 {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("agent.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 
@@ -2745,7 +2733,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn agent_transport_close_preserves_running_turn_as_unknown_across_reopen() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("agent.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 
@@ -2785,7 +2773,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn agent_dispatch_delivery_and_unknown_state_survive_restart_without_replay() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("agent.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 
@@ -2866,7 +2854,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn agent_graph_rejects_cycles_and_preserves_opaque_binding() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("agent.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 
@@ -2929,7 +2917,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn agent_inbox_survives_restart_deduplicates_and_disposes_exactly_once() {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("agent.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 

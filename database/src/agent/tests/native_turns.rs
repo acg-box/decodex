@@ -1,17 +1,22 @@
-use super::*;
+use serde_json::Value;
+
+use crate::{
+	SqliteStore,
+	agent::{AgentDispatchState, AgentDisposition, EnqueueAgentEvent, tests},
+};
 
 #[tokio::test]
 async fn newer_native_turn_cancels_pending_capacity_retry_without_claiming_input() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&directory.path().join("retry.sqlite3")).unwrap();
 
-	store.create_agent_work_item(item("agent", None)).await.unwrap();
+	store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
 	store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 	store.begin_agent_dispatch("agent".into()).await.unwrap();
 	store.acknowledge_agent_dispatch("agent".into(), "old".into()).await.unwrap();
 
-	let mut failure = capacity_failure("agent", "old");
-	let mut payload: serde_json::Value = serde_json::from_str(&failure.payload).unwrap();
+	let mut failure = tests::capacity_failure("agent", "old");
+	let mut payload: Value = serde_json::from_str(&failure.payload).unwrap();
 
 	payload["terminal"]["threadId"] = "thread".into();
 	payload["terminal"]["turn"]["id"] = "old".into();
@@ -59,7 +64,7 @@ async fn newer_native_turn_cancels_pending_capacity_retry_without_claiming_input
 		.complete_agent_turn_with_event(
 			"agent".into(),
 			"new".into(),
-			capacity_failure("agent", "new"),
+			tests::capacity_failure("agent", "new"),
 		)
 		.await
 		.unwrap();
@@ -74,11 +79,11 @@ async fn newer_native_turn_cancels_pending_capacity_retry_without_claiming_input
 
 #[tokio::test]
 async fn native_turn_receipts_preserve_pending_input_and_reject_replay_after_restart() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("native-turn.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 
-	store.create_agent_work_item(item("agent", None)).await.unwrap();
+	store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
 	store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 
 	let pending = store
