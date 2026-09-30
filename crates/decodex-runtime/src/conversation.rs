@@ -643,6 +643,29 @@ struct RetainedAgentProcess {
 	client: Option<decodex_codex::app_server_client::AppServerClient>,
 }
 
+// The caller holds agent_launch across this operation.
+async fn retire_agent_process_slot<F: std::future::Future<Output = bool>>(
+	slot: &Mutex<Option<RetainedAgentProcess>>,
+	retire: impl FnOnce(ProcessGenerationId) -> F,
+) -> bool {
+	let generation = {
+		let mut slot = slot.lock().unwrap_or_else(PoisonError::into_inner);
+		let Some(retained) = slot.as_mut() else {
+			return true;
+		};
+		if let Some(client) = retained.client.take() {
+			client.close();
+		}
+		retained.generation_id.clone()
+	};
+	// Keep revoked ownership visible if the asynchronous retirement is cancelled.
+	let retired = retire(generation).await;
+	if retired {
+		slot.lock().unwrap_or_else(PoisonError::into_inner).take();
+	}
+	retired
+}
+
 fn agent_retirement_retry(
 	slot: Option<&RetainedAgentProcess>,
 	root_id: &str,
@@ -1246,22 +1269,15 @@ impl ConversationRuntime {
 	}
 
 	async fn retire_agent_slot(&self) -> bool {
-		let slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner).take();
-		let Some(mut slot) = slot else {
-			return true;
-		};
-		if let Some(client) = slot.client.take() {
-			client.close();
-		}
-		let retired =
-			match self.inner.process_generations.diagnostic_exact(&slot.generation_id).await {
+		retire_agent_process_slot(&self.inner.agent_process, |generation_id| async move {
+			match self.inner.process_generations.diagnostic_exact(&generation_id).await {
 				Ok(Some(diagnostic)) => matches!(
 					self.inner
 						.process_generations
 						.terminate_exact(
-							&slot.generation_id,
+							&generation_id,
 							diagnostic.generation.revision,
-							Duration::from_secs(5)
+							Duration::from_secs(5),
 						)
 						.await,
 					Ok(ProcessGenerationTermination::PositiveDeathRecorded
@@ -1269,11 +1285,9 @@ impl ConversationRuntime {
 				),
 				Ok(None) => true,
 				Err(_) => false,
-			};
-		if !retired {
-			*self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner) = Some(slot);
-		}
-		retired
+			}
+		})
+		.await
 	}
 
 	pub(crate) async fn create(&self, command: CreateConversation) -> ConversationOutcome {
@@ -6376,6 +6390,50 @@ mod tests {
 			assert!(child.next_ordinary_turn_event(std::time::Duration::ZERO).unwrap().is_none());
 			child.shutdown().unwrap();
 		}
+	}
+
+	#[tokio::test]
+	async fn cancelled_agent_retirement_keeps_the_revoked_slot_for_exact_retry() {
+		let generation = decodex_core::ProcessGenerationId::new(derived_uuid(
+			"generation",
+			&["cancelled-retirement"],
+		))
+		.unwrap();
+		let (io, _server) = tokio::io::duplex(4096);
+		let (reader, writer) = tokio::io::split(io);
+		let (client, _) =
+			decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
+		let slot = std::sync::Mutex::new(Some(super::RetainedAgentProcess {
+			working_directory: "/fixture".into(),
+			root_id: "agent".into(),
+			generation_id: generation.clone(),
+			client: Some(client),
+		}));
+		let mut retirement = Box::pin(super::retire_agent_process_slot(&slot, |id| {
+			assert_eq!(id, generation);
+			std::future::pending::<bool>()
+		}));
+		assert!(futures_util::poll!(retirement.as_mut()).is_pending());
+		drop(retirement);
+		{
+			let retained = slot.lock().unwrap();
+			let retained =
+				retained.as_ref().expect("cancelled retirement must retain its exact owner");
+			assert_eq!(retained.generation_id, generation);
+			assert!(retained.client.is_none());
+			assert!(super::agent_retirement_retry(Some(retained), "agent").unwrap());
+			assert!(super::agent_retirement_retry(Some(retained), "other").is_err());
+		}
+		assert!(!super::retire_agent_process_slot(&slot, |_| async { false }).await);
+		assert!(slot.lock().unwrap().is_some());
+		assert!(
+			super::retire_agent_process_slot(&slot, |id| {
+				assert_eq!(id, generation);
+				std::future::ready(true)
+			})
+			.await
+		);
+		assert!(slot.lock().unwrap().is_none());
 	}
 
 	#[tokio::test]
