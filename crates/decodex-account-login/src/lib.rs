@@ -18,12 +18,14 @@ mod system_proxy;
 
 use std::{
 	collections::HashMap,
-	fs::{self, OpenOptions},
+	env,
+	fs::{self, Metadata, OpenOptions, Permissions},
 	future::Future,
-	io::{ErrorKind, Read as _, Write as _},
-	net::{Shutdown, TcpListener, TcpStream},
-	os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _},
+	io::{ErrorKind, Read, Write},
+	net::{IpAddr, Ipv4Addr, Shutdown, TcpListener, TcpStream},
+	os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
 	path::{Path, PathBuf},
+	str,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -33,13 +35,14 @@ use std::{
 };
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use httparse::{EMPTY_HEADER, Request, Status};
 #[cfg(test)] use reqwest::redirect::Policy;
-use reqwest::{Client, Response as HttpResponse};
+use reqwest::{Client, Response};
 use serde::{Deserialize, Deserializer, Serialize, de};
 use sha2::{Digest as _, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio::{runtime::Handle, sync::Notify};
-use url::Url;
+use url::{Url, form_urlencoded::Serializer};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 const DEFAULT_ISSUER: &str = "https://auth.openai.com";
@@ -241,7 +244,7 @@ impl LoginHome {
 
 		fs::create_dir(&path).map_err(|_| Error::Persistence)?;
 
-		if fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).is_err() {
+		if fs::set_permissions(&path, Permissions::from_mode(0o700)).is_err() {
 			let _ = fs::remove_dir(&path);
 
 			return Err(Error::Persistence);
@@ -358,7 +361,7 @@ impl ExchangeContext<'_> {
 			("client_id", self.config.client_id.as_str()),
 			("code_verifier", pkce.code_verifier.as_str()),
 		];
-		let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+		let mut serializer = Serializer::new(String::new());
 
 		for (key, value) in form {
 			serializer.append_pair(key, value);
@@ -627,12 +630,12 @@ fn cleanup_stale_login_homes_in(root: &Path) -> Result<(), Error> {
 }
 
 fn login_root_path() -> Result<PathBuf, Error> {
-	let base = fs::canonicalize(std::env::temp_dir()).map_err(|_| Error::Persistence)?;
+	let base = fs::canonicalize(env::temp_dir()).map_err(|_| Error::Persistence)?;
 	let root = base.join(format!("{LOGIN_ROOT_PREFIX}{}", effective_uid()));
 
 	match fs::create_dir(&root) {
 		Ok(()) =>
-			if fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).is_err() {
+			if fs::set_permissions(&root, Permissions::from_mode(0o700)).is_err() {
 				let _ = fs::remove_dir(&root);
 
 				return Err(Error::Persistence);
@@ -650,7 +653,7 @@ fn login_root_path() -> Result<PathBuf, Error> {
 	Ok(root)
 }
 
-fn private_directory_metadata(path: &Path) -> Result<fs::Metadata, Error> {
+fn private_directory_metadata(path: &Path) -> Result<Metadata, Error> {
 	let metadata = fs::symlink_metadata(path).map_err(|_| Error::Persistence)?;
 
 	if !metadata.file_type().is_dir()
@@ -869,7 +872,7 @@ fn generate_state() -> Result<String, Error> {
 
 fn bind_callback_server(ports: &[u16]) -> Result<TcpListener, Error> {
 	for port in ports {
-		if let Ok(server) = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, *port)) {
+		if let Ok(server) = TcpListener::bind((Ipv4Addr::LOCALHOST, *port)) {
 			server.set_nonblocking(true).map_err(|_| Error::Unavailable)?;
 
 			return Ok(server);
@@ -894,11 +897,11 @@ fn parse_callback_head(bytes: &[u8]) -> Result<ParsedCallbackHead<'_>, CallbackP
 		});
 	}
 
-	let mut headers = [httparse::EMPTY_HEADER; MAX_CALLBACK_HEADERS];
-	let mut request = httparse::Request::new(&mut headers);
+	let mut headers = [EMPTY_HEADER; MAX_CALLBACK_HEADERS];
+	let mut request = Request::new(&mut headers);
 	let consumed = match request.parse(bytes) {
-		Ok(httparse::Status::Complete(consumed)) => consumed,
-		Ok(httparse::Status::Partial) => return Err(CallbackParseFailure::Incomplete),
+		Ok(Status::Complete(consumed)) => consumed,
+		Ok(Status::Partial) => return Err(CallbackParseFailure::Incomplete),
 		Err(httparse::Error::TooManyHeaders) => return Err(CallbackParseFailure::TooManyHeaders),
 		Err(_) => return Err(CallbackParseFailure::Invalid),
 	};
@@ -928,8 +931,7 @@ fn parse_callback_head(bytes: &[u8]) -> Result<ParsedCallbackHead<'_>, CallbackP
 			return Err(CallbackParseFailure::TooLarge);
 		}
 		if header.name.eq_ignore_ascii_case("content-length") {
-			let value =
-				std::str::from_utf8(header.value).map_err(|_| CallbackParseFailure::Invalid)?;
+			let value = str::from_utf8(header.value).map_err(|_| CallbackParseFailure::Invalid)?;
 
 			if value.trim() != "0" {
 				return Err(CallbackParseFailure::Invalid);
@@ -1041,7 +1043,7 @@ fn remaining(deadline: Instant) -> Result<Duration, Error> {
 
 fn is_loopback_host(host: &str) -> bool {
 	host.eq_ignore_ascii_case("localhost")
-		|| host.parse::<std::net::IpAddr>().is_ok_and(|address| address.is_loopback())
+		|| host.parse::<IpAddr>().is_ok_and(|address| address.is_loopback())
 }
 
 fn valid_secret_scalar(value: &str) -> bool {
@@ -1268,11 +1270,14 @@ async fn cancellable<T>(
 	}
 }
 
-async fn read_bounded_json<T: for<'de> Deserialize<'de>>(
-	mut response: HttpResponse,
+async fn read_bounded_json<T>(
+	mut response: Response,
 	cancellation: &Cancellation,
 	deadline: Instant,
-) -> Result<T, Error> {
+) -> Result<T, Error>
+where
+	T: for<'de> Deserialize<'de>,
+{
 	if response.content_length().is_some_and(|length| length > MAX_RESPONSE_BYTES as u64) {
 		return Err(Error::InvalidResponse);
 	}
