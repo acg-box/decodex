@@ -434,6 +434,7 @@ command = "python3"
 args = [
 	"-m",
 	"unittest",
+	"tests/scripts/test_account_login_architecture.py",
 	"tests/scripts/test_vnext_architecture.py",
 ]
 
