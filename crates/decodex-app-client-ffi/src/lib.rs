@@ -1251,13 +1251,13 @@ mod tests {
 
 	use serde_json::Value;
 
-	use decodex_protocol::{
-		AccountLoginMethod, ClientFailure, CommandError, EntityId, EntityRevision, FastModeFailure,
-		ResetCardConsumeResponse, ResetCardDescriptorDto, ResetCardOperationResult,
-	};
 	use crate::{
 		AuthorityResponse, BridgeFailure, FailureResponse, FastModeData, RESPONSE_SCHEMA, Request,
 		RequestFailure, ResponseFailure, SuccessResponse,
+	};
+	use decodex_protocol::{
+		AccountLoginMethod, ClientFailure, CommandError, EntityId, EntityRevision, FastModeFailure,
+		ResetCardConsumeResponse, ResetCardDescriptorDto, ResetCardOperationResult,
 	};
 
 	const ACCOUNT_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
