@@ -39,6 +39,8 @@ use crate::{
 	},
 };
 
+type ReaderResult = io::Result<Vec<u8>>;
+
 const XURL_HOME_RELATIVE_ENTRYPOINT: &str = ".local/bin/xurl";
 const PRIVATE_RUNTIME_DIR: &str = ".agent/automations/decodex/cache/social/x/xurl-runtime";
 const MAX_XURL_OUTPUT_BYTES: usize = 1_024 * 1_024;
@@ -54,19 +56,6 @@ pub(super) struct TrustedXurlBinary {
 	digest: String,
 	deadline: Instant,
 }
-
-pub(super) struct AuthenticatedOutput {
-	output: Output,
-}
-
-impl Deref for AuthenticatedOutput {
-	type Target = Output;
-
-	fn deref(&self) -> &Self::Target {
-		&self.output
-	}
-}
-
 impl TrustedXurlBinary {
 	#[cfg(test)]
 	pub(super) fn open_for_test(path: &Path) -> prelude::Result<Self> {
@@ -118,6 +107,17 @@ impl TrustedXurlBinary {
 	}
 }
 
+pub(super) struct AuthenticatedOutput {
+	output: Output,
+}
+impl Deref for AuthenticatedOutput {
+	type Target = Output;
+
+	fn deref(&self) -> &Self::Target {
+		&self.output
+	}
+}
+
 pub(super) fn trusted_xurl_binary() -> prelude::Result<TrustedXurlBinary> {
 	let deadline = Instant::now() + XURL_DEADLINE;
 	let home = trusted_home_directory()?;
@@ -133,6 +133,134 @@ pub(super) fn trusted_xurl_binary() -> prelude::Result<TrustedXurlBinary> {
 	require_time_remaining(deadline)?;
 
 	install_private_copy(&bytes, &digest, &home, deadline)
+}
+
+pub(super) fn verify_runtime(binary: &TrustedXurlBinary) -> prelude::Result<String> {
+	binary.require_approved_release()?;
+
+	let output = run(binary, ["--version"])?;
+
+	if !output.status.success() {
+		return Err(failure("version probe", &output));
+	}
+
+	let stdout = output_text(&output.stdout, "xurl version output")?;
+	let version = stdout
+		.split_whitespace()
+		.last()
+		.ok_or_else(|| eyre::eyre!("xurl version output is empty"))?;
+
+	if version != APPROVED_XURL_VERSION {
+		return Err(eyre::eyre!(
+			"xurl {version} is unsupported; require the approved official {APPROVED_XURL_VERSION} release"
+		));
+	}
+
+	Ok(version.into())
+}
+
+pub(super) fn verify_auth_status(binary: &TrustedXurlBinary) -> prelude::Result<()> {
+	let output = run(binary, ["--app", XURL_APP, "auth", "status"])?;
+
+	if !output.status.success() {
+		return Err(failure("authentication probe", &output));
+	}
+
+	let stdout = output_text(&output.stdout, "xurl authentication output")?;
+
+	validate_auth_status_output(stdout)
+}
+
+pub(super) fn verify_ready(
+	binary: &TrustedXurlBinary,
+	contract: &VerifiedAuthorizationContract,
+) -> prelude::Result<String> {
+	contract.require_runtime(binary)?;
+
+	let version = verify_runtime(binary)?;
+
+	verify_auth_status(binary)?;
+
+	contract.require_runtime(binary)?;
+
+	Ok(version)
+}
+
+pub(super) fn whoami(
+	binary: &TrustedXurlBinary,
+	contract: &VerifiedAuthorizationContract,
+) -> prelude::Result<AuthenticatedOutput> {
+	authenticated_run(
+		binary,
+		contract,
+		["--app", XURL_APP, "/2/users/me", "--auth", "oauth2", "--username", TARGET_ACCOUNT],
+	)
+}
+
+pub(super) fn create(
+	binary: &TrustedXurlBinary,
+	contract: &VerifiedAuthorizationContract,
+	text: &str,
+) -> prelude::Result<AuthenticatedOutput> {
+	authenticated_run(
+		binary,
+		contract,
+		["--app", XURL_APP, "post", text, "--auth", "oauth2", "--username", TARGET_ACCOUNT],
+	)
+}
+
+pub(super) fn read(
+	binary: &TrustedXurlBinary,
+	contract: &VerifiedAuthorizationContract,
+	post_id: &str,
+	_operation: &str,
+) -> prelude::Result<AuthenticatedOutput> {
+	authenticated_run(
+		binary,
+		contract,
+		["--app", XURL_APP, "read", post_id, "--auth", "oauth2", "--username", TARGET_ACCOUNT],
+	)
+}
+
+pub(super) fn parse_identity(
+	output: &mut AuthenticatedOutput,
+	_contract: &VerifiedAuthorizationContract,
+) -> prelude::Result<VerifiedIdentity> {
+	parse_identity_output(&output.output)
+}
+
+pub(super) fn parse_create(
+	output: &mut AuthenticatedOutput,
+	_contract: &VerifiedAuthorizationContract,
+	text: &str,
+) -> prelude::Result<(String, String)> {
+	parse_create_output(&output.output, text)
+}
+
+pub(super) fn parse_read(
+	output: &mut AuthenticatedOutput,
+	_contract: &VerifiedAuthorizationContract,
+	post_id: &str,
+	text: &str,
+	verified_user_id: &str,
+) -> prelude::Result<(Value, String)> {
+	parse_read_output(&output.output, post_id, text, verified_user_id)
+}
+
+pub(super) fn failure(operation: &str, output: &Output) -> color_eyre::Report {
+	eyre::eyre!(
+		"xurl {operation} failed with status {}; stderr_sha256={}",
+		output.status,
+		sha256(&output.stderr)
+	)
+}
+
+pub(super) fn canonical_status_url(post_id: &str) -> String {
+	format!("https://x.com/{TARGET_ACCOUNT}/status/{post_id}")
+}
+
+pub(super) fn sha256(bytes: &[u8]) -> String {
+	Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn resolve_trusted_xurl_entrypoint(home: &Path) -> prelude::Result<PathBuf> {
@@ -681,57 +809,6 @@ fn current_uid() -> u32 {
 	unsafe { libc::geteuid() }
 }
 
-pub(super) fn verify_runtime(binary: &TrustedXurlBinary) -> prelude::Result<String> {
-	binary.require_approved_release()?;
-
-	let output = run(binary, ["--version"])?;
-
-	if !output.status.success() {
-		return Err(failure("version probe", &output));
-	}
-
-	let stdout = output_text(&output.stdout, "xurl version output")?;
-	let version = stdout
-		.split_whitespace()
-		.last()
-		.ok_or_else(|| eyre::eyre!("xurl version output is empty"))?;
-
-	if version != APPROVED_XURL_VERSION {
-		return Err(eyre::eyre!(
-			"xurl {version} is unsupported; require the approved official {APPROVED_XURL_VERSION} release"
-		));
-	}
-
-	Ok(version.into())
-}
-
-pub(super) fn verify_auth_status(binary: &TrustedXurlBinary) -> prelude::Result<()> {
-	let output = run(binary, ["--app", XURL_APP, "auth", "status"])?;
-
-	if !output.status.success() {
-		return Err(failure("authentication probe", &output));
-	}
-
-	let stdout = output_text(&output.stdout, "xurl authentication output")?;
-
-	validate_auth_status_output(stdout)
-}
-
-pub(super) fn verify_ready(
-	binary: &TrustedXurlBinary,
-	contract: &VerifiedAuthorizationContract,
-) -> prelude::Result<String> {
-	contract.require_runtime(binary)?;
-
-	let version = verify_runtime(binary)?;
-
-	verify_auth_status(binary)?;
-
-	contract.require_runtime(binary)?;
-
-	Ok(version)
-}
-
 fn validate_auth_status_output(stdout: &str) -> prelude::Result<()> {
 	let clean = strip_ansi(stdout);
 	let mut default_sections = 0_usize;
@@ -795,49 +872,6 @@ fn auth_app_header(line: &str) -> Option<&str> {
 	Some(app)
 }
 
-pub(super) fn whoami(
-	binary: &TrustedXurlBinary,
-	contract: &VerifiedAuthorizationContract,
-) -> prelude::Result<AuthenticatedOutput> {
-	authenticated_run(
-		binary,
-		contract,
-		["--app", XURL_APP, "/2/users/me", "--auth", "oauth2", "--username", TARGET_ACCOUNT],
-	)
-}
-
-pub(super) fn create(
-	binary: &TrustedXurlBinary,
-	contract: &VerifiedAuthorizationContract,
-	text: &str,
-) -> prelude::Result<AuthenticatedOutput> {
-	authenticated_run(
-		binary,
-		contract,
-		["--app", XURL_APP, "post", text, "--auth", "oauth2", "--username", TARGET_ACCOUNT],
-	)
-}
-
-pub(super) fn read(
-	binary: &TrustedXurlBinary,
-	contract: &VerifiedAuthorizationContract,
-	post_id: &str,
-	_operation: &str,
-) -> prelude::Result<AuthenticatedOutput> {
-	authenticated_run(
-		binary,
-		contract,
-		["--app", XURL_APP, "read", post_id, "--auth", "oauth2", "--username", TARGET_ACCOUNT],
-	)
-}
-
-pub(super) fn parse_identity(
-	output: &mut AuthenticatedOutput,
-	_contract: &VerifiedAuthorizationContract,
-) -> prelude::Result<VerifiedIdentity> {
-	parse_identity_output(&output.output)
-}
-
 fn parse_identity_output(output: &Output) -> prelude::Result<VerifiedIdentity> {
 	if !output.status.success() {
 		return Err(failure("identity read", output));
@@ -858,14 +892,6 @@ fn parse_identity_output(output: &Output) -> prelude::Result<VerifiedIdentity> {
 	Ok(VerifiedIdentity { user_id, response_sha256: sha256(&output.stdout) })
 }
 
-pub(super) fn parse_create(
-	output: &mut AuthenticatedOutput,
-	_contract: &VerifiedAuthorizationContract,
-	text: &str,
-) -> prelude::Result<(String, String)> {
-	parse_create_output(&output.output, text)
-}
-
 fn parse_create_output(output: &Output, text: &str) -> prelude::Result<(String, String)> {
 	if !output.status.success() {
 		return Err(failure("post creation", output));
@@ -883,16 +909,6 @@ fn parse_create_output(output: &Output, text: &str) -> prelude::Result<(String, 
 	}
 
 	Ok((post_id, sha256(&output.stdout)))
-}
-
-pub(super) fn parse_read(
-	output: &mut AuthenticatedOutput,
-	_contract: &VerifiedAuthorizationContract,
-	post_id: &str,
-	text: &str,
-	verified_user_id: &str,
-) -> prelude::Result<(Value, String)> {
-	parse_read_output(&output.output, post_id, text, verified_user_id)
 }
 
 fn parse_read_output(
@@ -1071,8 +1087,6 @@ where
 	Ok(Output { status, stdout, stderr })
 }
 
-type ReaderResult = io::Result<Vec<u8>>;
-
 fn spawn_bounded_reader(
 	reader: impl Read + Send + 'static,
 ) -> (mpsc::Receiver<ReaderResult>, JoinHandle<()>) {
@@ -1240,22 +1254,6 @@ fn strip_ansi(value: &str) -> String {
 	}
 
 	output
-}
-
-pub(super) fn failure(operation: &str, output: &Output) -> color_eyre::Report {
-	eyre::eyre!(
-		"xurl {operation} failed with status {}; stderr_sha256={}",
-		output.status,
-		sha256(&output.stderr)
-	)
-}
-
-pub(super) fn canonical_status_url(post_id: &str) -> String {
-	format!("https://x.com/{TARGET_ACCOUNT}/status/{post_id}")
-}
-
-pub(super) fn sha256(bytes: &[u8]) -> String {
-	Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[cfg(test)]
