@@ -125,25 +125,24 @@ pub enum AgentSavedAppSettingsResult {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+	use crate::AgentAppSettingEdit;
 	#[test]
 	fn setting_edits_preserve_inheritance_and_reject_unoffered_fields_and_values() {
 		for wire in [
-			json!({"field":"approval_mode","value":"prompt"}),
-			json!({"field":"approval_mode","value":null}),
-			json!({"field":"reviewer","value":"auto_review"}),
-			json!({"field":"reviewer","value":null}),
+			serde_json::json!({"field":"approval_mode","value":"prompt"}),
+			serde_json::json!({"field":"approval_mode","value":null}),
+			serde_json::json!({"field":"reviewer","value":"auto_review"}),
+			serde_json::json!({"field":"reviewer","value":null}),
 		] {
 			let edit: AgentAppSettingEdit = serde_json::from_value(wire.clone()).unwrap();
 
 			assert_eq!(serde_json::to_value(edit).unwrap(), wire);
 		}
 		for wire in [
-			json!({"field":"model","value":"other"}),
-			json!({"field":"reviewer","value":"future"}),
-			json!({"field":"approval_mode","value":true}),
-			json!({"field":"reviewer","value":"user","extra":"unreviewed"}),
+			serde_json::json!({"field":"model","value":"other"}),
+			serde_json::json!({"field":"reviewer","value":"future"}),
+			serde_json::json!({"field":"approval_mode","value":true}),
+			serde_json::json!({"field":"reviewer","value":"user","extra":"unreviewed"}),
 		] {
 			assert!(serde_json::from_value::<AgentAppSettingEdit>(wire).is_err());
 		}

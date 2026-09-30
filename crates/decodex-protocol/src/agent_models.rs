@@ -1,6 +1,7 @@
 //! Native model settings and durable manual selection receipts.
-use crate::{AgentModelDto, ConversationModel, ConversationReasoningEffort, EntityId, WireText};
 use serde::{Deserialize, Serialize};
+
+use crate::{AgentModelDto, ConversationModel, ConversationReasoningEffort, EntityId, WireText};
 
 /// Durable request outcome, not proof that an active turn changed its model.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -96,19 +97,20 @@ pub enum AgentModelSelectionState {
 
 #[cfg(test)]
 mod tests {
+	use serde_json::Value;
+
 	use crate::AgentActionDto;
-	use serde_json::{Value, json};
 
 	#[test]
 	fn model_action_distinguishes_preserved_effort_from_native_none() {
-		let preserved = json!({"action":"set_task_model","data":{"work_id":"work","thread_id":"thread","review_token":"review","model":"future-model","effort":null}});
+		let preserved = serde_json::json!({"action":"set_task_model","data":{"work_id":"work","thread_id":"thread","review_token":"review","model":"future-model","effort":null}});
 		let action: AgentActionDto = serde_json::from_value(preserved.clone()).unwrap();
 
 		assert!(matches!(action, AgentActionDto::SetTaskModel { effort: None, .. }));
 
 		let mut explicit = preserved.clone();
 
-		explicit["data"]["effort"] = json!("none");
+		explicit["data"]["effort"] = serde_json::json!("none");
 
 		let action: AgentActionDto = serde_json::from_value(explicit).unwrap();
 
