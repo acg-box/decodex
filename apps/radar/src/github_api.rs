@@ -4,6 +4,7 @@ use reqwest::{
 	Error, StatusCode, Url,
 	blocking::{Client, ClientBuilder},
 	header::{ACCEPT, AUTHORIZATION, HeaderMap, LINK, RETRY_AFTER, USER_AGENT},
+	redirect::Policy,
 };
 use serde_json::{self, Value};
 
@@ -33,9 +34,7 @@ impl GitHubApi {
 	}
 
 	fn client_builder() -> ClientBuilder {
-		Client::builder()
-			.timeout(GITHUB_REQUEST_TIMEOUT)
-			.redirect(reqwest::redirect::Policy::none())
+		Client::builder().timeout(GITHUB_REQUEST_TIMEOUT).redirect(Policy::none())
 	}
 
 	#[cfg(test)]

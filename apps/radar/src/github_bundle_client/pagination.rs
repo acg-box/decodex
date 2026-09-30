@@ -13,15 +13,12 @@ impl GithubClient {
 
 #[cfg(test)]
 mod tests {
-	use crate::{
-		github_bundle_client::GithubClient,
-		tests::automation::github_api::{response, spawn_server_with},
-	};
+	use crate::{github_bundle_client::GithubClient, tests::automation::github_api};
 
 	#[test]
 	fn bundle_pagination_rejects_cycles_before_repeating_requests() {
-		let server = spawn_server_with(1, |url, _| {
-			response("200 OK", &[("Link", &format!("<{url}>; rel=\"next\""))], "[]")
+		let server = github_api::spawn_server_with(1, |url, _| {
+			github_api::response("200 OK", &[("Link", &format!("<{url}>; rel=\"next\""))], "[]")
 		});
 		let client = GithubClient { api: server.api(None) };
 		let result = client.github_paginated(server.url());
@@ -33,11 +30,15 @@ mod tests {
 
 	#[test]
 	fn bundle_pagination_preserves_order_and_rejects_oversized_collections() {
-		let server = spawn_server_with(2, |url, index| {
+		let server = github_api::spawn_server_with(2, |url, index| {
 			if index == 0 {
-				response("200 OK", &[("Link", &format!("<{url}?page=2>; rel=\"next\""))], "[1,2]")
+				github_api::response(
+					"200 OK",
+					&[("Link", &format!("<{url}?page=2>; rel=\"next\""))],
+					"[1,2]",
+				)
 			} else {
-				response("200 OK", &[], "[3]")
+				github_api::response("200 OK", &[], "[3]")
 			}
 		});
 		let client = GithubClient { api: server.api(None) };
@@ -50,7 +51,8 @@ mod tests {
 		);
 
 		let body = serde_json::to_string(&vec![0; 10_001]).unwrap();
-		let server = spawn_server_with(1, |_, _| response("200 OK", &[], &body));
+		let server =
+			github_api::spawn_server_with(1, |_, _| github_api::response("200 OK", &[], &body));
 		let client = GithubClient { api: server.api(None) };
 		let result = client.github_paginated(server.url());
 		let _requests = server.finish_with_requests();

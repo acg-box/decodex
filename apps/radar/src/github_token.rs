@@ -40,13 +40,13 @@ fn token_env_for_identity(identity: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-	use super::token_env_for_identity;
+	use crate::github_token;
 
 	#[test]
 	fn maps_known_repository_identities_without_overriding_default_fallbacks() {
-		assert_eq!(token_env_for_identity("x"), Some("GITHUB_PAT_X"));
-		assert_eq!(token_env_for_identity("y"), Some("GITHUB_PAT_Y"));
-		assert_eq!(token_env_for_identity("default"), None);
-		assert_eq!(token_env_for_identity(""), None);
+		assert_eq!(github_token::token_env_for_identity("x"), Some("GITHUB_PAT_X"));
+		assert_eq!(github_token::token_env_for_identity("y"), Some("GITHUB_PAT_Y"));
+		assert_eq!(github_token::token_env_for_identity("default"), None);
+		assert_eq!(github_token::token_env_for_identity(""), None);
 	}
 }
