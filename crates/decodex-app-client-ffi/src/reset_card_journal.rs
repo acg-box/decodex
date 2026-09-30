@@ -139,15 +139,15 @@ impl Lock {
 
 		ensure_dir(directory)?;
 
-		let key = fs::canonicalize(directory)?.join(path.file_name().ok_or_else(denied)?);
+		let name = path.file_name().ok_or_else(denied)?;
+		let key = fs::canonicalize(directory)?.join(name);
+		let lock_path = directory.join(format!(".{}.lock", name.to_string_lossy()));
 
 		if !KEYS.get_or_init(Mutex::default).lock().map_err(|_| denied())?.insert(key.clone()) {
 			return Err(denied());
 		}
 
-		let mut lock = Self { file: None, key };
-		let name = path.file_name().ok_or_else(denied)?.to_string_lossy();
-		let lock_path = directory.join(format!(".{name}.lock"));
+		let lock = Self { file: None, key };
 		let (file, created) = match OpenOptions::new()
 			.read(true)
 			.write(true)
@@ -180,6 +180,8 @@ impl Lock {
 		}
 
 		set_lock(&file, F_WRLCK, if wait { F_SETLKW } else { F_SETLK })?;
+
+		let mut lock = lock;
 
 		lock.file = Some(file);
 
