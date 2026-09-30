@@ -5,34 +5,56 @@
 use std::{
 	fmt::{Debug, Display, Formatter},
 	io::ErrorKind,
-	path::Path,
 	sync::atomic::{AtomicBool, Ordering},
 	time::Duration,
 };
 
-use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
+use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::time;
+use serde_json::Value;
+use tokio::{sync::watch::Sender, time};
 use tokio_tungstenite::{
 	self, WebSocketStream,
 	tungstenite::{Message, protocol::WebSocketConfig},
 };
 
 use crate::{
+	AGENT_APP_UI_CHUNK_BYTES, AGENT_APP_UI_RECEIPT_CHUNK_BYTES, AGENT_MEDIA_CHUNK_BYTES,
 	AccountInitialSelectionResult, AccountInspectResult, AccountLoginRequest,
 	AccountLoginRequestEnvelope, AccountLoginStart, AccountLoginStatus, AccountObservationSignal,
-	AccountProfileEmailDto, AccountProfileResult, AccountSelectionModeDto, AccountsResult,
-	CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult,
-	CommandEnvelope, CommandError, CommandOutcome, CommandPayload, CorrelationId, DoctorReport,
-	EntityId, EntityRevision, IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId,
-	QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope,
-	ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult, ResultPayload,
-	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage,
+	AccountProfileEmailDto, AccountProfileResult, AccountRecoveryAction,
+	AccountRecoveryNudgeResult, AccountRecoveryPreparation, AccountRecoveryResult,
+	AccountResetCardOperationResult, AccountSelectionModeDto, AccountsResult, AgentActionDto,
+	AgentActivityDetailCursor, AgentActivityDetailResult, AgentAppExposureResult, AgentAppUiCall,
+	AgentAppUiCallReview, AgentAppUiReceiptRequest, AgentAppUiReceiptResult, AgentAppUiRequest,
+	AgentAppUiResult, AgentArchiveResult, AgentCapabilitiesResult, AgentExecutionOverrides,
+	AgentGuardianDetailResult, AgentGuardianReviewsResult, AgentHistoryResult,
+	AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult,
+	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentModelSelectionState,
+	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
+	AgentPermissionState, AgentPluginSelectionState, AgentRequestResult, AgentResourcesResult,
+	AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget, AgentSnapshotResult,
+	AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult, AgentTranscriptRequest,
+	AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
+	AgentVoiceStatus, CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage,
+	CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandOutcome, CommandPayload,
+	CorrelationId, DictationRequest, DictationStatus, DoctorReport, EntityId, EntityRevision,
+	IdempotencyKey, InitialModelCatalogRequest, InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES,
+	MAX_AGENT_APP_UI_RECEIPT_BYTES, MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest,
+	McpLoginStatus, NativeAgentsResult, PromptDraft, PromptEditStatus, PromptForkResult,
+	PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus,
+	ProtocolVersion, QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition,
+	Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult,
+	ResetCardOperationResult, ResultPayload, RetainedSessionConfig, RetainedSessionFailure,
+	ServerId, ServerMessage, TRANSCRIPT_CHUNK_BYTES, TaskRecapStatus, WireText,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 };
 use decodex_core::{
-	ConfigError, DecodexClientConfig, DecodexRoot, PathError, ServerIdentity, ServerProfile,
+	BlobHash, ConfigError, DecodexClientConfig, DecodexRoot, MAX_NATIVE_MESSAGE_BYTES, PathError,
+	ServerIdentity, ServerProfile,
 };
+
+type OneShotSocket = WebSocketStream<LocalTransportStream>;
 
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
 // Native file-detail reads have an eight-second budget.
@@ -47,42 +69,6 @@ const MAX_INTERLEAVED_MESSAGES: usize = 64;
 // This URI is WebSocket handshake metadata only. The client passes an already
 // admitted Unix stream, so this value cannot resolve or dial a TCP endpoint.
 const LOCAL_WEBSOCKET_URI: &str = "ws://localhost/v1/ws";
-
-type OneShotSocket = WebSocketStream<LocalTransportStream>;
-
-struct CompletedOneShot<T> {
-	value: T,
-	socket: OneShotSocket,
-}
-
-impl<T> CompletedOneShot<T> {
-	const fn new(value: T, socket: OneShotSocket) -> Self {
-		Self { value, socket }
-	}
-}
-
-async fn close_one_shot_socket(mut socket: OneShotSocket) {
-	let close = async {
-		if socket.send(Message::Close(None)).await.is_err() {
-			return;
-		}
-
-		while let Some(message) = socket.next().await {
-			match message {
-				Ok(Message::Close(_)) | Err(_) => return,
-				Ok(Message::Ping(payload)) => {
-					if socket.send(Message::Pong(payload)).await.is_err() {
-						return;
-					}
-				},
-				Ok(Message::Pong(_)) => {},
-				Ok(Message::Text(_) | Message::Binary(_) | Message::Frame(_)) => return,
-			}
-		}
-	};
-	// A completed application response remains authoritative if bounded cleanup fails.
-	let _ = time::timeout(ONE_SHOT_CLOSE_TIMEOUT, close).await;
-}
 
 /// Whether one selected client profile targets the same host or a different host.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -126,7 +112,7 @@ impl ClientProfile {
 	}
 
 	/// Load the active or explicitly named profile from one typed Decodex root.
-	pub fn load(root: &Path, selected: Option<&str>) -> Result<Self, ClientFailure> {
+	pub fn load(root: &std::path::Path, selected: Option<&str>) -> Result<Self, ClientFailure> {
 		let root = DecodexRoot::new(root).map_err(map_root_error)?;
 		let paths = root.paths();
 		let config = DecodexClientConfig::load(&paths).map_err(map_config_error)?;
@@ -198,7 +184,7 @@ impl ClientProfile {
 			server.len()
 		);
 
-		decodex_core::BlobHash::digest(identity.as_bytes()).to_hex()
+		BlobHash::digest(identity.as_bytes()).to_hex()
 	}
 
 	/// Apply a stricter caller-retained server-identity pin.
@@ -270,8 +256,8 @@ impl AgentClient {
 	/// Reconcile an exact send by reading its queue receipt. Never submit or retry it.
 	pub async fn prompt_input_send_status(
 		&self,
-		identity: crate::PromptInputSendIdentity,
-	) -> Result<crate::PromptInputSendStatus, ClientFailure> {
+		identity: PromptInputSendIdentity,
+	) -> Result<PromptInputSendStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		if identity.send.input_id <= 0
@@ -307,9 +293,9 @@ impl AgentClient {
 	pub async fn resolve_prompt_media(
 		&self,
 		work: EntityId,
-		thread: crate::WireText,
-		input: &crate::PromptDraft,
-	) -> Result<crate::PromptDraft, ClientFailure> {
+		thread: WireText,
+		input: &PromptDraft,
+	) -> Result<PromptDraft, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let relative: Vec<_> = input
@@ -382,19 +368,15 @@ impl AgentClient {
 	pub async fn preflight_prompt_input(
 		&self,
 		work: EntityId,
-		thread: crate::WireText,
-		input: &crate::PromptDraft,
-		execution: &crate::AgentExecutionOverrides,
+		thread: WireText,
+		input: &PromptDraft,
+		execution: &AgentExecutionOverrides,
 	) -> Result<(), ClientFailure> {
 		self.transport.require_local_profile()?;
 		input.validate_native_input().map_err(|_| ClientFailure::ProtocolViolation)?;
 
-		let crate::AgentModelSettingsResult::Available {
-			work_id,
-			thread_id,
-			model,
-			reasoning_effort,
-			..
+		let AgentModelSettingsResult::Available {
+			work_id, thread_id, model, reasoning_effort, ..
 		} = self.model_settings(work.clone()).await?
 		else {
 			return Err(ClientFailure::ProtocolViolation);
@@ -425,7 +407,7 @@ impl AgentClient {
 		let envelope = serde_json::json!({"id":i64::MAX,"method":"turn/start","params":params});
 
 		if serde_json::to_vec(&envelope).map_err(|_| ClientFailure::ProtocolMalformed)?.len()
-			> decodex_core::MAX_NATIVE_MESSAGE_BYTES
+			> MAX_NATIVE_MESSAGE_BYTES
 		{
 			return Err(ClientFailure::ProtocolViolation);
 		}
@@ -437,8 +419,8 @@ impl AgentClient {
 	/// Reuse the same upload identity to resume after interruption.
 	pub async fn stage_prompt_input(
 		&self,
-		upload: crate::PromptInputUpload,
-		input: &crate::PromptDraft,
+		upload: PromptInputUpload,
+		input: &PromptDraft,
 	) -> Result<i64, ClientFailure> {
 		self.transport.require_local_profile()?;
 		input.validate().map_err(|_| ClientFailure::ProtocolMalformed)?;
@@ -459,7 +441,7 @@ impl AgentClient {
 
 	async fn transfer_prompt_input(
 		&self,
-		upload: crate::PromptInputUpload,
+		upload: PromptInputUpload,
 		encoded: String,
 	) -> Result<i64, ClientFailure> {
 		let mut status = self.prompt_input_upload_status(upload.clone()).await?;
@@ -467,10 +449,10 @@ impl AgentClient {
 		// At most 129 UTF-8 chunks for an 8 MiB input, plus finalization/readback.
 		for _ in 0..131 {
 			let offset = match status {
-				crate::PromptInputUploadStatus::Ready { input_id, .. } => return Ok(input_id),
-				crate::PromptInputUploadStatus::Receiving { received_bytes, .. } =>
+				PromptInputUploadStatus::Ready { input_id, .. } => return Ok(input_id),
+				PromptInputUploadStatus::Receiving { received_bytes, .. } =>
 					received_bytes as usize,
-				crate::PromptInputUploadStatus::Unavailable { .. } =>
+				PromptInputUploadStatus::Unavailable { .. } =>
 					return Err(ClientFailure::ProtocolViolation),
 			};
 
@@ -480,7 +462,7 @@ impl AgentClient {
 
 			let complete = offset == encoded.len();
 			let action = if complete {
-				crate::AgentActionDto::CompletePromptInputUpload { upload: upload.clone() }
+				AgentActionDto::CompletePromptInputUpload { upload: upload.clone() }
 			} else {
 				let mut end = (offset + 65536).min(encoded.len());
 
@@ -488,7 +470,7 @@ impl AgentClient {
 					end -= 1;
 				}
 
-				crate::AgentActionDto::UploadPromptInput {
+				AgentActionDto::UploadPromptInput {
 					upload: upload.clone(),
 					offset: offset as u64,
 					fragment: encoded[offset..end].into(),
@@ -497,7 +479,7 @@ impl AgentClient {
 			// Hash the full action so chunk and finalization keys cannot collide or truncate.
 			let bytes =
 				serde_json::to_vec(&action).map_err(|_| ClientFailure::ProtocolMalformed)?;
-			let key = IdempotencyKey::new(decodex_core::BlobHash::digest(&bytes).to_hex())
+			let key = IdempotencyKey::new(BlobHash::digest(&bytes).to_hex())
 				.map_err(|_| ClientFailure::ProtocolMalformed)?;
 
 			match self.execute(action, key).await? {
@@ -509,7 +491,7 @@ impl AgentClient {
 
 			status = self.prompt_input_upload_status(upload.clone()).await?;
 
-			if let crate::PromptInputUploadStatus::Receiving { received_bytes, .. } = &status
+			if let PromptInputUploadStatus::Receiving { received_bytes, .. } = &status
 				&& (complete || *received_bytes <= offset as u64)
 			{
 				// Do not spin or infer acceptance from an inconclusive command reply.
@@ -524,8 +506,8 @@ impl AgentClient {
 	pub async fn prompt_edit(
 		&self,
 		work_id: EntityId,
-		thread_id: crate::WireText,
-	) -> Result<(crate::PromptEditStatus, Option<Vec<serde_json::Value>>), ClientFailure> {
+		thread_id: WireText,
+	) -> Result<(PromptEditStatus, Option<Vec<Value>>), ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		time::timeout(Duration::from_secs(60), self.read_prompt_edit(work_id, thread_id))
@@ -536,8 +518,8 @@ impl AgentClient {
 	async fn read_prompt_edit(
 		&self,
 		work: EntityId,
-		thread: crate::WireText,
-	) -> Result<(crate::PromptEditStatus, Option<Vec<serde_json::Value>>), ClientFailure> {
+		thread: WireText,
+	) -> Result<(PromptEditStatus, Option<Vec<Value>>), ClientFailure> {
 		let first = self.prompt_edit_page(work.clone(), thread.clone(), None, 0).await?;
 		let Some(expected) = first.evidence.clone() else {
 			return Ok((first, None));
@@ -563,7 +545,7 @@ impl AgentClient {
 			content.push_str(&evidence.fragment);
 
 			if content.len() as u64 == expected.content_bytes {
-				let values: Vec<serde_json::Value> =
+				let values: Vec<Value> =
 					serde_json::from_str(&content).map_err(|_| ClientFailure::ProtocolMalformed)?;
 
 				if values.is_empty() || values.iter().any(|v| !v.is_object()) {
@@ -589,8 +571,8 @@ impl AgentClient {
 	/// Read durable staging progress without finalizing or submitting input.
 	pub async fn prompt_input_upload_status(
 		&self,
-		upload: crate::PromptInputUpload,
-	) -> Result<crate::PromptInputUploadStatus, ClientFailure> {
+		upload: PromptInputUpload,
+	) -> Result<PromptInputUploadStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		if !upload.is_valid() {
@@ -620,10 +602,10 @@ impl AgentClient {
 	async fn prompt_edit_page(
 		&self,
 		work: EntityId,
-		thread: crate::WireText,
-		review: Option<crate::WireText>,
+		thread: WireText,
+		review: Option<WireText>,
 		offset: u64,
-	) -> Result<crate::PromptEditStatus, ClientFailure> {
+	) -> Result<PromptEditStatus, ClientFailure> {
 		let completed = self
 			.transport
 			.query_inner(
@@ -651,8 +633,8 @@ impl AgentClient {
 	pub async fn prompt_fork(
 		&self,
 		work: EntityId,
-		review: crate::WireText,
-	) -> Result<crate::PromptForkResult, ClientFailure> {
+		review: WireText,
+	) -> Result<PromptForkResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -672,7 +654,7 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentPromptFork(result) => {
-				if let crate::PromptForkResult::Available(Some(status)) = &result
+				if let PromptForkResult::Available(Some(status)) = &result
 					&& (status.work_id != work || status.review_token != review)
 				{
 					return Err(ClientFailure::ProtocolMalformed);
@@ -685,7 +667,7 @@ impl AgentClient {
 	}
 
 	/// Read the existing recap; this method never starts a model request.
-	pub async fn recap(&self, work_id: EntityId) -> Result<crate::TaskRecapStatus, ClientFailure> {
+	pub async fn recap(&self, work_id: EntityId) -> Result<TaskRecapStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -712,7 +694,7 @@ impl AgentClient {
 	pub async fn voice_settings(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::AgentVoiceSettingsResult, ClientFailure> {
+	) -> Result<AgentVoiceSettingsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -733,7 +715,7 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentVoiceSettings(result) => {
-				if let crate::AgentVoiceSettingsResult::Available { work_id: actual, .. } = &result
+				if let AgentVoiceSettingsResult::Available { work_id: actual, .. } = &result
 					&& actual != &work_id
 				{
 					return Err(ClientFailure::ProtocolMalformed);
@@ -748,9 +730,9 @@ impl AgentClient {
 	/// Read enabled skills from the requested native source without starting work.
 	pub async fn skills(
 		&self,
-		target: crate::AgentSkillsTarget,
-		filter: crate::WireText,
-	) -> Result<crate::AgentSkillsResult, ClientFailure> {
+		target: AgentSkillsTarget,
+		filter: WireText,
+	) -> Result<AgentSkillsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -771,7 +753,7 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentSkills(result) => {
-				if let crate::AgentSkillsResult::Available { target: actual, .. } = &result
+				if let AgentSkillsResult::Available { target: actual, .. } = &result
 					&& actual != &target
 				{
 					return Err(ClientFailure::ProtocolMalformed);
@@ -787,7 +769,7 @@ impl AgentClient {
 	pub async fn search_settings(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::AgentSearchSettingsResult, ClientFailure> {
+	) -> Result<AgentSearchSettingsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -808,7 +790,7 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentSearchSettings(result) => {
-				if let crate::AgentSearchSettingsResult::Available { work_id: actual, .. } = &result
+				if let AgentSearchSettingsResult::Available { work_id: actual, .. } = &result
 					&& actual != &work_id
 				{
 					return Err(ClientFailure::ProtocolMalformed);
@@ -824,8 +806,8 @@ impl AgentClient {
 	pub async fn app_tool_exposure(
 		&self,
 		work_id: EntityId,
-		connector_id: crate::WireText,
-	) -> Result<crate::AgentAppExposureResult, ClientFailure> {
+		connector_id: WireText,
+	) -> Result<AgentAppExposureResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -849,7 +831,7 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentAppExposure(result) => {
-				if matches!(&result,crate::AgentAppExposureResult::Available {work_id: actual,connector_id: connector,..} if actual != &work_id || connector != &connector_id)
+				if matches!(&result,AgentAppExposureResult::Available {work_id: actual,connector_id: connector,..} if actual != &work_id || connector != &connector_id)
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -865,7 +847,7 @@ impl AgentClient {
 		&self,
 		work_id: EntityId,
 		thread_id: EntityId,
-	) -> Result<crate::AgentNativeGoalResult, ClientFailure> {
+	) -> Result<AgentNativeGoalResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let expected = (work_id.clone(), thread_id.clone());
@@ -887,7 +869,7 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentNativeGoal(result) => {
-				if matches!(&result,crate::AgentNativeGoalResult::Available{work_id,thread_id,goal,..} if (work_id,thread_id)!=(&expected.0,&expected.1) || goal.as_ref().is_some_and(|g|g.thread_id!=expected.1.as_str()))
+				if matches!(&result,AgentNativeGoalResult::Available{work_id,thread_id,goal,..} if (work_id,thread_id)!=(&expected.0,&expected.1) || goal.as_ref().is_some_and(|g|g.thread_id!=expected.1.as_str()))
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -903,7 +885,7 @@ impl AgentClient {
 		&self,
 		work_id: EntityId,
 		include_models: bool,
-	) -> Result<crate::AgentLiveReviewerState, ClientFailure> {
+	) -> Result<AgentLiveReviewerState, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -932,7 +914,7 @@ impl AgentClient {
 	pub async fn hook_settings(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::AgentHookSettingsState, ClientFailure> {
+	) -> Result<AgentHookSettingsState, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -959,7 +941,7 @@ impl AgentClient {
 	pub async fn plugin_selection(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::AgentPluginSelectionState, ClientFailure> {
+	) -> Result<AgentPluginSelectionState, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -988,7 +970,7 @@ impl AgentClient {
 	pub async fn model_selection(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::AgentModelSelectionState, ClientFailure> {
+	) -> Result<AgentModelSelectionState, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -1017,7 +999,7 @@ impl AgentClient {
 	pub async fn permission_profiles(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::AgentPermissionState, ClientFailure> {
+	) -> Result<AgentPermissionState, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -1047,7 +1029,7 @@ impl AgentClient {
 	pub async fn observe_output(
 		&self,
 		work_id: EntityId,
-		updates: tokio::sync::watch::Sender<Option<crate::AgentOutputResult>>,
+		updates: Sender<Option<AgentOutputResult>>,
 	) -> Result<(), ClientFailure> {
 		self.transport.require_local_profile()?;
 
@@ -1064,7 +1046,7 @@ impl AgentClient {
 				let mut after_revision = None;
 
 				loop {
-					transport.send(&mut socket, ClientMessage::Query(crate::QueryEnvelope {
+					transport.send(&mut socket, ClientMessage::Query(QueryEnvelope {
 						version: CURRENT_VERSION, query_id: query_id.clone(),
 						payload: QueryPayload::WaitForAgentOutput { work_id: work_id.clone(), after_revision },
 					})).await?;
@@ -1081,7 +1063,7 @@ impl AgentClient {
 								let QueryResultPayload::AgentOutput(value) = result.payload else { return Err(ClientFailure::ProtocolMalformed); };
 
 								match &value {
-									crate::AgentOutputResult::Available { revision, work_id: owner, .. } if owner == &work_id => after_revision = Some(*revision),
+									AgentOutputResult::Available { revision, work_id: owner, .. } if owner == &work_id => after_revision = Some(*revision),
 									_ => return Err(ClientFailure::ProtocolMalformed),
 								}
 
@@ -1103,8 +1085,8 @@ impl AgentClient {
 	/// Read positive acceptance evidence for one exact steering submission.
 	pub async fn steer_receipt(
 		&self,
-		identity: crate::AgentSteerIdentity,
-	) -> Result<crate::AgentSteerReceiptResult, ClientFailure> {
+		identity: AgentSteerIdentity,
+	) -> Result<AgentSteerReceiptResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -1123,7 +1105,7 @@ impl AgentClient {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
 
-		if let crate::AgentSteerReceiptResult::Confirmed { identity: actual } = &result
+		if let AgentSteerReceiptResult::Confirmed { identity: actual } = &result
 			&& actual != &identity
 		{
 			return Err(ClientFailure::ProtocolMalformed);
@@ -1135,8 +1117,8 @@ impl AgentClient {
 	/// Exchange one explicit voice operation. The caller must poll after a lost start response.
 	pub async fn voice(
 		&self,
-		request: crate::AgentVoiceRequest,
-	) -> Result<crate::AgentVoiceStatus, ClientFailure> {
+		request: AgentVoiceRequest,
+	) -> Result<AgentVoiceStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let session = request.session_id().clone();
@@ -1158,8 +1140,8 @@ impl AgentClient {
 	/// Stream dictation without submitting agent work.
 	pub async fn dictation(
 		&self,
-		request: crate::DictationRequest,
-	) -> Result<crate::DictationStatus, ClientFailure> {
+		request: DictationRequest,
+	) -> Result<DictationStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let session = request.session_id().clone();
@@ -1179,7 +1161,7 @@ impl AgentClient {
 	}
 
 	/// Read the selected fields of one exact unresolved request.
-	pub async fn request(&self, event_id: i64) -> Result<crate::AgentRequestResult, ClientFailure> {
+	pub async fn request(&self, event_id: i64) -> Result<AgentRequestResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -1206,9 +1188,9 @@ impl AgentClient {
 	pub async fn native_agents(
 		&self,
 		work_id: EntityId,
-		thread_id: Option<crate::WireText>,
-		cursor: Option<crate::WireText>,
-	) -> Result<crate::NativeAgentsResult, ClientFailure> {
+		thread_id: Option<WireText>,
+		cursor: Option<WireText>,
+	) -> Result<NativeAgentsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -1230,10 +1212,7 @@ impl AgentClient {
 	}
 
 	/// Read the latest bounded visible history for the selected work.
-	pub async fn history(
-		&self,
-		work_id: EntityId,
-	) -> Result<crate::AgentHistoryResult, ClientFailure> {
+	pub async fn history(&self, work_id: EntityId) -> Result<AgentHistoryResult, ClientFailure> {
 		self.history_page(work_id, None).await
 	}
 
@@ -1242,7 +1221,7 @@ impl AgentClient {
 		&self,
 		work_id: EntityId,
 		before: Option<i64>,
-	) -> Result<crate::AgentHistoryResult, ClientFailure> {
+	) -> Result<AgentHistoryResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -1270,10 +1249,10 @@ impl AgentClient {
 	pub async fn activity_detail(
 		&self,
 		work_id: EntityId,
-		turn_id: crate::WireText,
-		item_id: crate::WireText,
-		cursor: Option<crate::AgentActivityDetailCursor>,
-	) -> Result<crate::AgentActivityDetailResult, ClientFailure> {
+		turn_id: WireText,
+		item_id: WireText,
+		cursor: Option<AgentActivityDetailCursor>,
+	) -> Result<AgentActivityDetailResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -1306,7 +1285,7 @@ impl AgentClient {
 		&self,
 		work_id: EntityId,
 		event_id: i64,
-	) -> Result<crate::AgentInstallState, ClientFailure> {
+	) -> Result<AgentInstallState, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -1335,7 +1314,7 @@ impl AgentClient {
 	pub async fn archive_state(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::AgentArchiveResult, ClientFailure> {
+	) -> Result<AgentArchiveResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -1362,7 +1341,7 @@ impl AgentClient {
 		&self,
 		work_id: EntityId,
 		before: Option<i64>,
-	) -> Result<crate::AgentGuardianReviewsResult, ClientFailure> {
+	) -> Result<AgentGuardianReviewsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -1388,9 +1367,9 @@ impl AgentClient {
 		&self,
 		work_id: EntityId,
 		review_row: i64,
-		review_digest: crate::WireText,
+		review_digest: WireText,
 		offset: usize,
-	) -> Result<crate::AgentGuardianDetailResult, ClientFailure> {
+	) -> Result<AgentGuardianDetailResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let expected_digest = review_digest.as_str().to_owned();
@@ -1418,7 +1397,7 @@ impl AgentClient {
 	pub async fn resources(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::AgentResourcesResult, ClientFailure> {
+	) -> Result<AgentResourcesResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -1440,8 +1419,8 @@ impl AgentClient {
 	/// Start or poll one ephemeral native sign-in without retained command receipts.
 	pub async fn mcp_login(
 		&self,
-		request: crate::McpLoginRequest,
-	) -> Result<crate::McpLoginStatus, ClientFailure> {
+		request: McpLoginRequest,
+	) -> Result<McpLoginStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let session = request.session_id().clone();
@@ -1468,7 +1447,7 @@ impl AgentClient {
 	pub async fn usage_estimate(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::AgentUsageEstimateResult, ClientFailure> {
+	) -> Result<AgentUsageEstimateResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let expected = work_id.clone();
@@ -1490,7 +1469,7 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentUsageEstimate(result) => {
-				if matches!(&result,crate::AgentUsageEstimateResult::Available {work_id,..} if work_id!=&expected)
+				if matches!(&result,AgentUsageEstimateResult::Available {work_id,..} if work_id!=&expected)
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -1505,7 +1484,7 @@ impl AgentClient {
 	pub async fn model_settings(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::AgentModelSettingsResult, ClientFailure> {
+	) -> Result<AgentModelSettingsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -1526,7 +1505,7 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentModelSettings(result) => {
-				if matches!(&result, crate::AgentModelSettingsResult::Available {work_id: owner,..} if owner != &work_id)
+				if matches!(&result, AgentModelSettingsResult::Available {work_id: owner,..} if owner != &work_id)
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -1542,7 +1521,7 @@ impl AgentClient {
 		&self,
 		work_id: EntityId,
 		after: Option<i64>,
-	) -> Result<crate::AgentInputReceiptsResult, ClientFailure> {
+	) -> Result<AgentInputReceiptsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		if after.is_some_and(|id| id < 1) {
@@ -1565,12 +1544,8 @@ impl AgentClient {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
 
-		if let crate::AgentInputReceiptsResult::Available {
-			work_id: actual,
-			entries,
-			next_after,
-			..
-		} = &result
+		if let AgentInputReceiptsResult::Available { work_id: actual, entries, next_after, .. } =
+			&result
 			&& (actual != &work_id
 				|| entries.len() > 32
 				|| entries.iter().any(|entry| {
@@ -1607,8 +1582,7 @@ impl AgentClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(70),
 		};
-		let mut request =
-			crate::AgentTranscriptRequest { work_id, thread_id, offset: 0, token: None };
+		let mut request = AgentTranscriptRequest { work_id, thread_id, offset: 0, token: None };
 		let mut output = Vec::new();
 		let mut expected = None;
 
@@ -1625,7 +1599,7 @@ impl AgentClient {
 
 			close_one_shot_socket(completed.socket).await;
 
-			let QueryResultPayload::AgentTranscript(crate::AgentTranscriptResult::Available {
+			let QueryResultPayload::AgentTranscript(AgentTranscriptResult::Available {
 				request: actual,
 				account_id,
 				token,
@@ -1638,8 +1612,8 @@ impl AgentClient {
 
 			if actual != request
 				|| bytes.is_empty()
-				|| bytes.len() > crate::TRANSCRIPT_CHUNK_BYTES
-				|| total_bytes as usize > crate::MAX_TRANSCRIPT_BYTES
+				|| bytes.len() > TRANSCRIPT_CHUNK_BYTES
+				|| total_bytes as usize > MAX_TRANSCRIPT_BYTES
 				|| output.len() + bytes.len() > total_bytes as usize
 				|| expected
 					.as_ref()
@@ -1664,8 +1638,8 @@ impl AgentClient {
 	/// Read a bounded native attachment chunk without executing the thread.
 	pub async fn media(
 		&self,
-		request: crate::AgentMediaRequest,
-	) -> Result<crate::AgentMediaResult, ClientFailure> {
+		request: AgentMediaRequest,
+	) -> Result<AgentMediaResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -1686,7 +1660,7 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentMedia(result) => {
-				if let crate::AgentMediaResult::Available {
+				if let AgentMediaResult::Available {
 					request: actual,
 					fingerprint,
 					mime_type,
@@ -1696,8 +1670,8 @@ impl AgentClient {
 				} = &result
 					&& (actual.as_ref() != &request
 						|| bytes.is_empty()
-						|| bytes.len() > crate::AGENT_MEDIA_CHUNK_BYTES
-						|| *total_bytes as usize > crate::MAX_AGENT_MEDIA_BYTES
+						|| bytes.len() > AGENT_MEDIA_CHUNK_BYTES
+						|| *total_bytes as usize > MAX_AGENT_MEDIA_BYTES
 						|| u64::from(request.offset) + bytes.len() as u64 > u64::from(*total_bytes)
 						|| fingerprint.as_str().len() != 64
 						|| !fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
@@ -1720,7 +1694,7 @@ impl AgentClient {
 	pub async fn pending_app_ui_call(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::AgentPendingAppUiCall, ClientFailure> {
+	) -> Result<AgentPendingAppUiCall, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -1739,7 +1713,7 @@ impl AgentClient {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
 
-		if let crate::AgentPendingAppUiCall::Available { work_id: actual, .. } = &result
+		if let AgentPendingAppUiCall::Available { work_id: actual, .. } = &result
 			&& actual != &work_id
 		{
 			return Err(ClientFailure::ProtocolMalformed);
@@ -1751,8 +1725,8 @@ impl AgentClient {
 	/// Read exact native callback evidence for a later user confirmation.
 	pub async fn review_app_ui_call(
 		&self,
-		request: crate::AgentAppUiCall,
-	) -> Result<crate::AgentAppUiCallReview, ClientFailure> {
+		request: AgentAppUiCall,
+	) -> Result<AgentAppUiCallReview, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -1775,8 +1749,7 @@ impl AgentClient {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
 
-		if let crate::AgentAppUiCallReview::Available { request: actual, review_token, .. } =
-			&result
+		if let AgentAppUiCallReview::Available { request: actual, review_token, .. } = &result
 			&& (actual.as_ref() != &request
 				|| review_token.as_str().len() != 64
 				|| !review_token.as_str().bytes().all(|b| b.is_ascii_hexdigit()))
@@ -1821,8 +1794,8 @@ impl AgentClient {
 	/// Read a bounded native App UI document chunk without executing the thread.
 	pub async fn app_ui(
 		&self,
-		request: crate::AgentAppUiRequest,
-	) -> Result<crate::AgentAppUiResult, ClientFailure> {
+		request: AgentAppUiRequest,
+	) -> Result<AgentAppUiResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -1843,7 +1816,7 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentAppUi(result) => {
-				if let crate::AgentAppUiResult::Available {
+				if let AgentAppUiResult::Available {
 					request: actual,
 					source_fingerprint,
 					fingerprint,
@@ -1855,8 +1828,8 @@ impl AgentClient {
 						|| source_fingerprint.as_str().len() != 64
 						|| !source_fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
 						|| bytes.is_empty()
-						|| bytes.len() > crate::AGENT_APP_UI_CHUNK_BYTES
-						|| *total_bytes as usize > crate::MAX_AGENT_APP_UI_BYTES
+						|| bytes.len() > AGENT_APP_UI_CHUNK_BYTES
+						|| *total_bytes as usize > MAX_AGENT_APP_UI_BYTES
 						|| u64::from(request.offset) + bytes.len() as u64 > u64::from(*total_bytes)
 						|| fingerprint.as_str().len() != 64
 						|| !fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
@@ -1877,8 +1850,8 @@ impl AgentClient {
 	/// Read a bounded durable App UI call receipt chunk without executing the thread.
 	pub async fn app_ui_receipt(
 		&self,
-		request: crate::AgentAppUiReceiptRequest,
-	) -> Result<crate::AgentAppUiReceiptResult, ClientFailure> {
+		request: AgentAppUiReceiptRequest,
+	) -> Result<AgentAppUiReceiptResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -1899,7 +1872,7 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentAppUiReceipt(result) => {
-				if let crate::AgentAppUiReceiptResult::Available {
+				if let AgentAppUiReceiptResult::Available {
 					request: actual,
 					fingerprint,
 					total_bytes,
@@ -1908,8 +1881,8 @@ impl AgentClient {
 				} = &result
 					&& (actual.as_ref() != &request
 						|| bytes.is_empty()
-						|| bytes.len() > crate::AGENT_APP_UI_RECEIPT_CHUNK_BYTES
-						|| *total_bytes as usize > crate::MAX_AGENT_APP_UI_RECEIPT_BYTES
+						|| bytes.len() > AGENT_APP_UI_RECEIPT_CHUNK_BYTES
+						|| *total_bytes as usize > MAX_AGENT_APP_UI_RECEIPT_BYTES
 						|| u64::from(request.offset) + bytes.len() as u64 > u64::from(*total_bytes)
 						|| fingerprint.as_str().len() != 64
 						|| !fingerprint.as_str().bytes().all(|b| b.is_ascii_hexdigit())
@@ -1932,8 +1905,8 @@ impl AgentClient {
 		&self,
 		work_id: EntityId,
 		thread_id: EntityId,
-		cursor: Option<crate::WireText>,
-	) -> Result<crate::AgentTimelineResult, ClientFailure> {
+		cursor: Option<WireText>,
+	) -> Result<AgentTimelineResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -1958,12 +1931,12 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentTimeline(result) => {
-				if let crate::AgentTimelineResult::Available { work_id: actual, page, .. } = &result
+				if let AgentTimelineResult::Available { work_id: actual, page, .. } = &result
 					&& (actual != &work_id || page.thread_id != thread_id.as_str())
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
-				if let crate::AgentTimelineResult::Summary {
+				if let AgentTimelineResult::Summary {
 					work_id: actual,
 					thread_id: actual_thread,
 					..
@@ -1983,7 +1956,7 @@ impl AgentClient {
 	pub async fn integrations(
 		&self,
 		work_id: EntityId,
-	) -> Result<crate::AgentIntegrationsResult, ClientFailure> {
+	) -> Result<AgentIntegrationsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -2009,8 +1982,8 @@ impl AgentClient {
 	/// Read native capabilities without starting a model turn.
 	pub async fn initial_model_catalog(
 		&self,
-		request: crate::InitialModelCatalogRequest,
-	) -> Result<crate::InitialModelCatalogResult, ClientFailure> {
+		request: InitialModelCatalogRequest,
+	) -> Result<InitialModelCatalogResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let transport = ResetCardClient {
@@ -2036,7 +2009,7 @@ impl AgentClient {
 	}
 
 	/// Read native capabilities on the retained Agent process.
-	pub async fn capabilities(&self) -> Result<crate::AgentCapabilitiesResult, ClientFailure> {
+	pub async fn capabilities(&self) -> Result<AgentCapabilitiesResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -2055,7 +2028,7 @@ impl AgentClient {
 	}
 
 	/// Read one complete bounded Agent projection without changing work or runtime state.
-	pub async fn query(&self) -> Result<crate::AgentSnapshotResult, ClientFailure> {
+	pub async fn query(&self) -> Result<AgentSnapshotResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -2069,7 +2042,7 @@ impl AgentClient {
 
 		match completed.value {
 			QueryResultPayload::AgentSnapshot(result) => {
-				if matches!(&result, crate::AgentSnapshotResult::Available(snapshot) if !snapshot.is_valid())
+				if matches!(&result, AgentSnapshotResult::Available(snapshot) if !snapshot.is_valid())
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -2083,22 +2056,22 @@ impl AgentClient {
 	/// Submit once. A timeout after the send boundary never authorizes an automatic retry.
 	pub async fn execute(
 		&self,
-		action: crate::AgentActionDto,
+		action: AgentActionDto,
 		idempotency_key: IdempotencyKey,
 	) -> Result<AgentCommandResponse, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let attempted = AtomicBool::new(false);
 		let extended_timeout = match &action {
-			crate::AgentActionDto::ConfirmAppUiTool { .. } => Some(Duration::from_secs(100)),
-			crate::AgentActionDto::RefreshIntegrations { .. }
-			| crate::AgentActionDto::InstallSuggestedPlugin { .. }
-			| crate::AgentActionDto::SetAppToolExposure { .. }
-			| crate::AgentActionDto::EditNativeGoal { .. }
-			| crate::AgentActionDto::SetVoicePreference { .. }
-			| crate::AgentActionDto::SetSearchPreference { .. }
-			| crate::AgentActionDto::SetTaskPlugin { .. } => Some(Duration::from_secs(65)),
-			crate::AgentActionDto::RestoreArchivedThread { .. } => Some(RESET_CARD_CLIENT_TIMEOUT),
+			AgentActionDto::ConfirmAppUiTool { .. } => Some(Duration::from_secs(100)),
+			AgentActionDto::RefreshIntegrations { .. }
+			| AgentActionDto::InstallSuggestedPlugin { .. }
+			| AgentActionDto::SetAppToolExposure { .. }
+			| AgentActionDto::EditNativeGoal { .. }
+			| AgentActionDto::SetVoicePreference { .. }
+			| AgentActionDto::SetSearchPreference { .. }
+			| AgentActionDto::SetTaskPlugin { .. } => Some(Duration::from_secs(65)),
+			AgentActionDto::RestoreArchivedThread { .. } => Some(RESET_CARD_CLIENT_TIMEOUT),
 			_ => None,
 		};
 		let timeout = extended_timeout.unwrap_or(RESET_CARD_CLIENT_TIMEOUT);
@@ -2130,7 +2103,7 @@ impl AgentClient {
 
 	async fn execute_inner(
 		&self,
-		action: crate::AgentActionDto,
+		action: AgentActionDto,
 		idempotency_key: IdempotencyKey,
 		attempted: &AtomicBool,
 	) -> Result<CompletedOneShot<AgentCommandResponse>, ClientFailure> {
@@ -2223,56 +2196,6 @@ impl AgentClient {
 		}
 
 		Err(ClientFailure::ProtocolBackpressure)
-	}
-}
-
-fn agent_action_work_id(action: &crate::AgentActionDto) -> &EntityId {
-	match action {
-		crate::AgentActionDto::AcknowledgeAppUiCall { work_id, .. } => work_id,
-		crate::AgentActionDto::ForkPromptEdit { target_work_id, .. } => target_work_id,
-		crate::AgentActionDto::ConfirmAppUiTool { request, .. } => &request.work_id,
-		crate::AgentActionDto::UploadPromptInput { upload, .. }
-		| crate::AgentActionDto::CompletePromptInputUpload { upload } => &upload.work_id,
-		crate::AgentActionDto::SendPromptInput { work_id, .. }
-		| crate::AgentActionDto::SetLiveReviewer { work_id, .. }
-		| crate::AgentActionDto::SetLiveModel { work_id, .. } => work_id,
-		crate::AgentActionDto::SelectPermissions { work_id, .. } => work_id,
-		crate::AgentActionDto::SetTaskPlugin { work_id, .. } => work_id,
-		crate::AgentActionDto::SetTaskModel { work_id, .. } => work_id,
-		crate::AgentActionDto::SetHookSetting { work_id, .. }
-		| crate::AgentActionDto::SetAppToolExposure { work_id, .. }
-		| crate::AgentActionDto::AcknowledgePromptEditDraft { work_id, .. }
-		| crate::AgentActionDto::PreparePromptEdit { work_id, .. }
-		| crate::AgentActionDto::ConfirmPromptEdit { work_id, .. }
-		| crate::AgentActionDto::RecoverPromptFork { work_id, .. }
-		| crate::AgentActionDto::RecoverPromptEdit { work_id, .. }
-		| crate::AgentActionDto::GenerateRecap { work_id, .. }
-		| crate::AgentActionDto::CancelRecap { work_id, .. }
-		| crate::AgentActionDto::EditNativeGoal { work_id, .. }
-		| crate::AgentActionDto::SetVoicePreference { work_id, .. }
-		| crate::AgentActionDto::SetSearchPreference { work_id, .. }
-		| crate::AgentActionDto::SetAppSetting { work_id, .. }
-		| crate::AgentActionDto::SetSavedAppSetting { work_id, .. } => work_id,
-		crate::AgentActionDto::Start(start)
-		| crate::AgentActionDto::StartConfigured { start, .. } => &start.root_id,
-		crate::AgentActionDto::Send { root_id, .. }
-		| crate::AgentActionDto::SendConfigured { root_id, .. } => root_id,
-		crate::AgentActionDto::CancelCapacityRetry { work_id, .. }
-		| crate::AgentActionDto::NativeAgentInput { work_id, .. }
-		| crate::AgentActionDto::Interrupt { work_id, .. }
-		| crate::AgentActionDto::Respond { work_id, .. }
-		| crate::AgentActionDto::RespondWithRequestedDecision { work_id, .. }
-		| crate::AgentActionDto::AutomationResult { work_id, .. }
-		| crate::AgentActionDto::Steer { work_id, .. }
-		| crate::AgentActionDto::AnswerQuestion { work_id, .. }
-		| crate::AgentActionDto::SkipQuestion { work_id, .. }
-		| crate::AgentActionDto::ContinueMisalignment { work_id, .. }
-		| crate::AgentActionDto::ApproveGuardianDenial { work_id, .. }
-		| crate::AgentActionDto::RestoreArchivedThread { work_id, .. }
-		| crate::AgentActionDto::InstallSuggestedPlugin { work_id, .. }
-		| crate::AgentActionDto::AddResourceLink { work_id, .. }
-		| crate::AgentActionDto::RemoveResource { work_id, .. }
-		| crate::AgentActionDto::RefreshIntegrations { work_id } => work_id,
 	}
 }
 
@@ -2514,7 +2437,7 @@ impl ResetCardClient {
 	pub async fn latest_operation(
 		&self,
 		account_id: EntityId,
-	) -> Result<crate::AccountResetCardOperationResult, ClientFailure> {
+	) -> Result<AccountResetCardOperationResult, ClientFailure> {
 		self.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -2531,7 +2454,7 @@ impl ResetCardClient {
 
 		match completed.value {
 			QueryResultPayload::AccountResetCardOperation(result) => {
-				if matches!(&result, crate::AccountResetCardOperationResult::Found(operation) if operation.account_id != account_id)
+				if matches!(&result, AccountResetCardOperationResult::Found(operation) if operation.account_id != account_id)
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
@@ -2683,7 +2606,7 @@ impl ResetCardClient {
 			expected_revision: Some(expected_revision),
 			correlation_id,
 			causation_id: None,
-			payload: crate::CommandPayload::ConsumeResetCard {
+			payload: CommandPayload::ConsumeResetCard {
 				account_id: account_id.clone(),
 				descriptor,
 			},
@@ -2915,7 +2838,6 @@ impl ResetCardClient {
 pub struct AccountLoginClient {
 	transport: ResetCardClient,
 }
-
 impl AccountLoginClient {
 	/// Build a client that never uses the retained-session or client-cache path.
 	pub const fn new(profile: ClientProfile) -> Self {
@@ -3110,7 +3032,7 @@ impl AccountClient {
 		&self,
 		account_id: EntityId,
 		account_revision: EntityRevision,
-	) -> Result<crate::AccountRecoveryResult, ClientFailure> {
+	) -> Result<AccountRecoveryResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let expected = account_id.clone();
@@ -3138,9 +3060,9 @@ impl AccountClient {
 	pub async fn recovery_nudge_status(
 		&self,
 		account_id: EntityId,
-		action: crate::AccountRecoveryAction,
+		action: AccountRecoveryAction,
 		operation_key: Option<IdempotencyKey>,
-	) -> Result<crate::AccountRecoveryNudgeResult, ClientFailure> {
+	) -> Result<AccountRecoveryNudgeResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -3163,7 +3085,7 @@ impl AccountClient {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
 
-		if let crate::AccountRecoveryNudgeResult::Found(operation) = &result
+		if let AccountRecoveryNudgeResult::Found(operation) = &result
 			&& (operation.account_id != account_id
 				|| operation.action != action
 				|| operation.account_revision.0 == 0
@@ -3182,8 +3104,8 @@ impl AccountClient {
 	/// automatically.
 	pub async fn send_recovery_nudge(
 		&self,
-		source: crate::AccountRecoveryResult,
-		action: crate::AccountRecoveryAction,
+		source: AccountRecoveryResult,
+		action: AccountRecoveryAction,
 		operation_key: IdempotencyKey,
 	) -> Result<AccountCommandResponse, ClientFailure> {
 		if !source.allows_nudge(action) {
@@ -3203,9 +3125,9 @@ impl AccountClient {
 	/// Prepare one explicitly selected recovery action without sending its effect.
 	pub async fn prepare_recovery(
 		&self,
-		source: crate::AccountRecoveryResult,
-		action: crate::AccountRecoveryAction,
-	) -> Result<crate::AccountRecoveryPreparation, ClientFailure> {
+		source: AccountRecoveryResult,
+		action: AccountRecoveryAction,
+	) -> Result<AccountRecoveryPreparation, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
@@ -3549,74 +3471,6 @@ impl AccountClient {
 	}
 }
 
-fn account_result_matches(
-	command: &CommandPayload,
-	entity_revision: EntityRevision,
-	result: &ResultPayload,
-) -> bool {
-	if entity_revision.0 == 0 {
-		return false;
-	}
-
-	match (command, result) {
-		(
-			CommandPayload::SendAccountRecoveryNudge { source, .. },
-			ResultPayload::AccountRecoveryNudge { account_id, .. },
-		) => account_id == &source.account_id && entity_revision == source.account_revision,
-
-		(
-			CommandPayload::EnrollAccountFromSharedCodex { account_id, .. },
-			ResultPayload::AccountChanged { account },
-		)
-		| (
-			CommandPayload::ImportAccountCredentialFile { account_id, .. },
-			ResultPayload::AccountChanged { account },
-		)
-		| (
-			CommandPayload::SetAccountEnabled { account_id, .. },
-			ResultPayload::AccountChanged { account },
-		)
-		| (
-			CommandPayload::RefreshAccount { account_id, .. },
-			ResultPayload::AccountChanged { account },
-		) => account_id == &account.account_id && entity_revision == account.account_revision,
-		(
-			CommandPayload::EnrollAccountFromSharedCodex { account_id, .. }
-			| CommandPayload::ImportAccountCredentialFile { account_id, .. },
-			ResultPayload::AccountRestored { requested_account_id, account },
-		) =>
-			account_id == requested_account_id
-				&& account.account_id != *requested_account_id
-				&& entity_revision == account.account_revision,
-		(
-			CommandPayload::LogoutAccount { account_id, .. },
-			ResultPayload::AccountLoggedOut { account_id: result_id, tombstone_revision },
-		) => account_id == result_id && *tombstone_revision == entity_revision,
-		(
-			CommandPayload::RouteAccount { account_id, .. },
-			ResultPayload::AccountRouted { account, routing, projection_digest: _ },
-		) =>
-			account.account_id == *account_id
-				&& account.account_revision.0 > 0
-				&& routing.revision == entity_revision
-				&& routing.mode == AccountSelectionModeDto::Fixed(account_id.clone()),
-		(
-			CommandPayload::SetBalancedAccountSelection,
-			ResultPayload::AccountRoutingChanged { routing },
-		) =>
-			routing.revision == entity_revision && routing.mode == AccountSelectionModeDto::Balanced,
-		(
-			CommandPayload::SetAccountOrder { order },
-			ResultPayload::AccountRoutingChanged { routing },
-		) => routing.revision == entity_revision && routing.order.as_slice() == order.as_slice(),
-		(
-			CommandPayload::RecoverAccountOperation { operation_id, .. },
-			ResultPayload::AccountOperationRecovered { operation_id: result_id, .. },
-		) => operation_id == result_id,
-		_ => false,
-	}
-}
-
 /// Closed client-side failures. External parser, socket, host, database, user,
 /// and server-provided text cannot inhabit this type.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -3696,6 +3550,134 @@ impl Display for ClientFailure {
 	}
 }
 impl std::error::Error for ClientFailure {}
+
+struct CompletedOneShot<T> {
+	value: T,
+	socket: OneShotSocket,
+}
+impl<T> CompletedOneShot<T> {
+	const fn new(value: T, socket: OneShotSocket) -> Self {
+		Self { value, socket }
+	}
+}
+
+fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
+	match action {
+		AgentActionDto::AcknowledgeAppUiCall { work_id, .. } => work_id,
+		AgentActionDto::ForkPromptEdit { target_work_id, .. } => target_work_id,
+		AgentActionDto::ConfirmAppUiTool { request, .. } => &request.work_id,
+		AgentActionDto::UploadPromptInput { upload, .. }
+		| AgentActionDto::CompletePromptInputUpload { upload } => &upload.work_id,
+		AgentActionDto::SendPromptInput { work_id, .. }
+		| AgentActionDto::SetLiveReviewer { work_id, .. }
+		| AgentActionDto::SetLiveModel { work_id, .. } => work_id,
+		AgentActionDto::SelectPermissions { work_id, .. } => work_id,
+		AgentActionDto::SetTaskPlugin { work_id, .. } => work_id,
+		AgentActionDto::SetTaskModel { work_id, .. } => work_id,
+		AgentActionDto::SetHookSetting { work_id, .. }
+		| AgentActionDto::SetAppToolExposure { work_id, .. }
+		| AgentActionDto::AcknowledgePromptEditDraft { work_id, .. }
+		| AgentActionDto::PreparePromptEdit { work_id, .. }
+		| AgentActionDto::ConfirmPromptEdit { work_id, .. }
+		| AgentActionDto::RecoverPromptFork { work_id, .. }
+		| AgentActionDto::RecoverPromptEdit { work_id, .. }
+		| AgentActionDto::GenerateRecap { work_id, .. }
+		| AgentActionDto::CancelRecap { work_id, .. }
+		| AgentActionDto::EditNativeGoal { work_id, .. }
+		| AgentActionDto::SetVoicePreference { work_id, .. }
+		| AgentActionDto::SetSearchPreference { work_id, .. }
+		| AgentActionDto::SetAppSetting { work_id, .. }
+		| AgentActionDto::SetSavedAppSetting { work_id, .. } => work_id,
+		AgentActionDto::Start(start) | AgentActionDto::StartConfigured { start, .. } =>
+			&start.root_id,
+		AgentActionDto::Send { root_id, .. } | AgentActionDto::SendConfigured { root_id, .. } =>
+			root_id,
+		AgentActionDto::CancelCapacityRetry { work_id, .. }
+		| AgentActionDto::NativeAgentInput { work_id, .. }
+		| AgentActionDto::Interrupt { work_id, .. }
+		| AgentActionDto::Respond { work_id, .. }
+		| AgentActionDto::RespondWithRequestedDecision { work_id, .. }
+		| AgentActionDto::AutomationResult { work_id, .. }
+		| AgentActionDto::Steer { work_id, .. }
+		| AgentActionDto::AnswerQuestion { work_id, .. }
+		| AgentActionDto::SkipQuestion { work_id, .. }
+		| AgentActionDto::ContinueMisalignment { work_id, .. }
+		| AgentActionDto::ApproveGuardianDenial { work_id, .. }
+		| AgentActionDto::RestoreArchivedThread { work_id, .. }
+		| AgentActionDto::InstallSuggestedPlugin { work_id, .. }
+		| AgentActionDto::AddResourceLink { work_id, .. }
+		| AgentActionDto::RemoveResource { work_id, .. }
+		| AgentActionDto::RefreshIntegrations { work_id } => work_id,
+	}
+}
+
+fn account_result_matches(
+	command: &CommandPayload,
+	entity_revision: EntityRevision,
+	result: &ResultPayload,
+) -> bool {
+	if entity_revision.0 == 0 {
+		return false;
+	}
+
+	match (command, result) {
+		(
+			CommandPayload::SendAccountRecoveryNudge { source, .. },
+			ResultPayload::AccountRecoveryNudge { account_id, .. },
+		) => account_id == &source.account_id && entity_revision == source.account_revision,
+
+		(
+			CommandPayload::EnrollAccountFromSharedCodex { account_id, .. },
+			ResultPayload::AccountChanged { account },
+		)
+		| (
+			CommandPayload::ImportAccountCredentialFile { account_id, .. },
+			ResultPayload::AccountChanged { account },
+		)
+		| (
+			CommandPayload::SetAccountEnabled { account_id, .. },
+			ResultPayload::AccountChanged { account },
+		)
+		| (
+			CommandPayload::RefreshAccount { account_id, .. },
+			ResultPayload::AccountChanged { account },
+		) => account_id == &account.account_id && entity_revision == account.account_revision,
+		(
+			CommandPayload::EnrollAccountFromSharedCodex { account_id, .. }
+			| CommandPayload::ImportAccountCredentialFile { account_id, .. },
+			ResultPayload::AccountRestored { requested_account_id, account },
+		) =>
+			account_id == requested_account_id
+				&& account.account_id != *requested_account_id
+				&& entity_revision == account.account_revision,
+		(
+			CommandPayload::LogoutAccount { account_id, .. },
+			ResultPayload::AccountLoggedOut { account_id: result_id, tombstone_revision },
+		) => account_id == result_id && *tombstone_revision == entity_revision,
+		(
+			CommandPayload::RouteAccount { account_id, .. },
+			ResultPayload::AccountRouted { account, routing, projection_digest: _ },
+		) =>
+			account.account_id == *account_id
+				&& account.account_revision.0 > 0
+				&& routing.revision == entity_revision
+				&& routing.mode == AccountSelectionModeDto::Fixed(account_id.clone()),
+		(
+			CommandPayload::SetBalancedAccountSelection,
+			ResultPayload::AccountRoutingChanged { routing },
+		) =>
+			routing.revision == entity_revision && routing.mode == AccountSelectionModeDto::Balanced,
+		(
+			CommandPayload::SetAccountOrder { order },
+			ResultPayload::AccountRoutingChanged { routing },
+		) => routing.revision == entity_revision && routing.order.as_slice() == order.as_slice(),
+		(
+			CommandPayload::RecoverAccountOperation { operation_id, .. },
+			ResultPayload::AccountOperationRecovered { operation_id: result_id, .. },
+		) => operation_id == result_id,
+		_ => false,
+	}
+}
 
 fn server_id(identity: &ServerIdentity) -> Result<ServerId, ClientFailure> {
 	ServerId::new(identity.as_str()).map_err(|_| ClientFailure::ServerIdentityUnavailable)
@@ -3778,552 +3760,75 @@ fn version_failure(_version: ProtocolVersion) -> ClientFailure {
 	ClientFailure::ServiceVersionMismatch
 }
 
-#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+async fn close_one_shot_socket(mut socket: OneShotSocket) {
+	let close = async {
+		if socket.send(Message::Close(None)).await.is_err() {
+			return;
+		}
+
+		while let Some(message) = socket.next().await {
+			match message {
+				Ok(Message::Close(_)) | Err(_) => return,
+				Ok(Message::Ping(payload)) => {
+					if socket.send(Message::Pong(payload)).await.is_err() {
+						return;
+					}
+				},
+				Ok(Message::Pong(_)) => {},
+				Ok(Message::Text(_) | Message::Binary(_) | Message::Frame(_)) => return,
+			}
+		}
+	};
+	// A completed application response remains authoritative if bounded cleanup fails.
+	let _ = time::timeout(ONE_SHOT_CLOSE_TIMEOUT, close).await;
+}
+
+#[cfg(test)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 mod tests {
 	mod account_login;
 	mod native_goal;
 	mod plugin_selection;
 	mod prompt_edit;
 	mod timeline;
-	#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
+	#[cfg(unix)] use std::os::unix::fs::PermissionsExt;
 	use std::{fs, time::Duration};
 
-	use futures_util::{SinkExt as _, StreamExt as _};
+	use futures_util::{SinkExt, StreamExt};
 	use tempfile::TempDir;
 	use tokio::{task::JoinHandle, time};
 	use tokio_tungstenite::{self, tungstenite::Message};
 
 	use crate::{
-		AccountClient, AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto,
-		AccountProfileResult, CURRENT_VERSION, Channel, ClientCommandId, ClientFailure,
-		ClientMessage, ClientProfile, CommandError, CommandOutcome, CommandReceipt,
-		CommandResultEnvelope, CorrelationId, Cursor, DoctorCheck, DoctorClient, DoctorComponent,
-		DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision, EventEnvelope,
-		EventPayload, IdempotencyKey, LocalTransportAuthority, ProfileKind, ProtocolVersion,
-		QueryId, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ReconnectMode,
-		Refusal, RefusalEnvelope, ResetCardClient, ResetCardConsumeResponse,
-		ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, RetainedSessionFailure,
-		ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope, WireText,
+		AGENT_APP_UI_CHUNK_BYTES, AGENT_APP_UI_RECEIPT_CHUNK_BYTES, AGENT_MEDIA_CHUNK_BYTES,
+		AccountClient, AccountCommandResponse, AccountProfileDto, AccountProfileEmailDto,
+		AccountProfileErrorDto, AccountProfileResult, AccountRecoveryAction, AccountRecoveryBanner,
+		AccountRecoveryCta, AccountRecoveryNudgeStatus, AccountRecoveryResult,
+		AccountRecoveryState, AgentActionDto, AgentAppUiReceiptRequest, AgentAppUiReceiptResult,
+		AgentAppUiRequest, AgentAppUiResult, AgentArchiveResult, AgentClient, AgentCommandResponse,
+		AgentGuardianDetailResult, AgentGuardianReviewDto, AgentGuardianReviewsResult,
+		AgentGuardianStatus, AgentGuardianSubmission, AgentHistoryEntryDto, AgentHistoryReceiptDto,
+		AgentInputReceiptsResult, AgentLiveMessageDto, AgentMediaRequest, AgentMediaResult,
+		AgentOutputResult, AgentRequestResult, AgentRequestText, AgentSteerIdentity,
+		AgentSteerReceiptResult, AgentUsageEstimateResult, CURRENT_VERSION, Channel,
+		ClientCommandId, ClientFailure, ClientMessage, ClientProfile, CommandError, CommandOutcome,
+		CommandPayload, CommandReceipt, CommandResultEnvelope, ConversationWorkingDirectory,
+		CorrelationId, Cursor, DoctorCheck, DoctorClient, DoctorComponent, DoctorIssue,
+		DoctorReport, DoctorStatus, EntityId, EntityRevision, EventEnvelope, EventPayload,
+		GUARDIAN_DETAIL_PAGE_BYTES, HistoryText, IdempotencyKey, InitialModelCatalogRequest,
+		InitialModelCatalogResult, LocalTransportAuthority, MAX_AGENT_APP_UI_BYTES,
+		MAX_AGENT_APP_UI_RECEIPT_BYTES, MAX_AGENT_MEDIA_BYTES, McpAuthorizationUrl, McpLoginPhase,
+		McpLoginRequest, McpLoginStatus, ModelCatalogPurpose, ProfileKind, ProtocolVersion,
+		QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload,
+		ReceiptDisposition, ReconnectMode, Refusal, RefusalEnvelope, ResetCardClient,
+		ResetCardConsumeResponse, ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload,
+		RetainedSession, RetainedSessionFailure, ServerId, ServerInstanceId, ServerMessage,
+		ServerWelcome, SessionCancellation, SessionDelivery, SnapshotEnvelope, ThreadUsageEstimate,
+		WireText,
 	};
 	use decodex_core::{DecodexRoot, LocalTrustPolicy, ServerIdentity};
 
 	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
-
-	#[tokio::test]
-	async fn initial_model_catalog_waits_beyond_the_ordinary_query_deadline() {
-		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.unwrap();
-		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-		let request = crate::InitialModelCatalogRequest {
-			working_directory: crate::ConversationWorkingDirectory::new("/tmp").unwrap(),
-			purpose: crate::ModelCatalogPurpose::Conversation,
-			account_id: None,
-		};
-		let expected = request.clone();
-		let server = tokio::spawn(async move {
-			let _temp = temp;
-			let mut socket =
-				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
-			let _ = socket.next().await;
-
-			for message in initial(SERVER_ID) {
-				socket.send(message).await.unwrap();
-			}
-
-			let Message::Text(wire) = socket.next().await.unwrap().unwrap() else {
-				panic!("query");
-			};
-			let ClientMessage::Query(query) = serde_json::from_str(&wire).unwrap() else {
-				panic!("query");
-			};
-
-			assert!(
-				matches!(query.payload, crate::QueryPayload::GetInitialModelCatalog { request } if request == expected)
-			);
-
-			time::sleep(super::CLIENT_TIMEOUT + Duration::from_millis(100)).await;
-
-			// A broken client may already have closed at the ordinary query deadline.
-			let _ = socket
-				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
-					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).unwrap(),
-					query_id: query.query_id,
-					payload: QueryResultPayload::InitialModelCatalog(
-						crate::InitialModelCatalogResult::Unavailable,
-					),
-				})))
-				.await;
-
-			drop(socket);
-
-			listener.cleanup().unwrap();
-		});
-		let result = crate::AgentClient::new(profile).initial_model_catalog(request).await;
-
-		server.await.unwrap();
-
-		assert_eq!(result, Ok(crate::InitialModelCatalogResult::Unavailable));
-	}
-
-	#[tokio::test]
-	async fn agent_output_stream_reuses_connection_and_cancels_without_replay() {
-		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.unwrap();
-		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-		let server = tokio::spawn(async move {
-			let _temp = temp;
-			let stream = listener.accept().await.unwrap();
-			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
-			let _ = socket.next().await;
-
-			for response in initial(SERVER_ID) {
-				socket.send(response).await.unwrap();
-			}
-			for revision in 1..=3 {
-				let Message::Text(frame) = socket.next().await.unwrap().unwrap() else {
-					panic!("query")
-				};
-				let ClientMessage::Query(query) = serde_json::from_str(&frame).unwrap() else {
-					panic!("read-only observation")
-				};
-
-				assert!(
-					matches!(query.payload, crate::QueryPayload::WaitForAgentOutput { work_id, after_revision }
-					if work_id.as_str() == "root" && after_revision == (revision > 1).then_some(revision - 1))
-				);
-
-				socket
-					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
-						version: CURRENT_VERSION,
-						server_id: ServerId::new(SERVER_ID).unwrap(),
-						query_id: query.query_id,
-						payload: QueryResultPayload::AgentOutput(
-							crate::AgentOutputResult::Available {
-								revision,
-								work_id: EntityId::new("root").unwrap(),
-								messages: vec![crate::AgentLiveMessageDto {
-									kind: Default::default(),
-									turn_id: "turn".into(),
-									item_id: "item".into(),
-									text: "你好世界".chars().take(revision as usize).collect(),
-									truncated: false,
-								}],
-							},
-						),
-					})))
-					.await
-					.unwrap();
-			}
-
-			// Dropping the observer closes this same connection, even during a wait.
-			time::timeout(Duration::from_secs(2), async {
-				while let Some(Ok(message)) = socket.next().await {
-					if matches!(message, Message::Close(_)) {
-						break;
-					}
-				}
-			})
-			.await
-			.unwrap();
-
-			listener.cleanup().unwrap();
-		});
-		let (sender, mut receiver) = tokio::sync::watch::channel(None);
-		let observer = tokio::spawn(async move {
-			crate::AgentClient::new(profile)
-				.observe_output(EntityId::new("root").unwrap(), sender)
-				.await
-		});
-
-		time::timeout(Duration::from_secs(2), async {
-			loop {
-				receiver.changed().await.unwrap();
-
-				if let Some(crate::AgentOutputResult::Available { revision: 3, messages, .. }) =
-					receiver.borrow_and_update().as_ref()
-				{
-					assert_eq!(messages[0].text, "你好世");
-
-					break;
-				}
-			}
-		})
-		.await
-		.unwrap();
-
-		drop(receiver);
-
-		time::timeout(Duration::from_secs(2), observer).await.unwrap().unwrap().unwrap();
-
-		server.await.unwrap();
-	}
-
-	#[tokio::test]
-	async fn archive_state_is_bound_to_work_and_preserves_native_identity() {
-		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.unwrap();
-		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-		let expected = crate::AgentArchiveResult::Archived { thread_id: "native-exact".into() };
-		let reply = expected.clone();
-		let server = tokio::spawn(async move {
-			let _temp = temp;
-			let stream = listener.accept().await.unwrap();
-			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
-			let _ = socket.next().await;
-
-			for response in initial(SERVER_ID) {
-				socket.send(response).await.unwrap();
-			}
-
-			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
-				panic!("query frame")
-			};
-			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
-				panic!("query")
-			};
-
-			assert!(
-				matches!(query.payload,crate::QueryPayload::GetAgentArchiveState {work_id} if work_id.as_str()=="root")
-			);
-
-			time::sleep(Duration::from_millis(5100)).await;
-
-			socket
-				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
-					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).unwrap(),
-					query_id: query.query_id,
-					payload: QueryResultPayload::AgentArchiveState(reply),
-				})))
-				.await
-				.unwrap();
-
-			drop(socket);
-
-			listener.cleanup().unwrap();
-		});
-		let result = crate::AgentClient::new(profile)
-			.archive_state(EntityId::new("root").unwrap())
-			.await
-			.unwrap();
-
-		server.await.unwrap();
-
-		assert_eq!(result, expected);
-	}
-
-	#[tokio::test]
-	async fn guardian_review_query_preserves_cursor_and_separate_submission_receipt() {
-		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.unwrap();
-		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-		let expected = crate::AgentGuardianReviewsResult::Available {
-			reviews: vec![crate::AgentGuardianReviewDto {
-				row_id: 42,
-				digest: "digest".into(),
-				action_label: "Network access".into(),
-				status: crate::AgentGuardianStatus::Denied,
-				risk_level: Some("high".into()),
-				user_authorization: Some("low".into()),
-				rationale: Some("Not requested".into()),
-				action_json: Some("{}".into()),
-				details_unavailable: None,
-				details_paged: false,
-				current_process: false,
-				submission: Some(crate::AgentGuardianSubmission::Pending),
-				submission_key: Some("exact-command".into()),
-				can_approve: false,
-				approval_unavailable: Some("Unconfirmed".into()),
-			}],
-			next_before: Some(42),
-		};
-		let reply = expected.clone();
-		let server = tokio::spawn(async move {
-			let _temp = temp;
-			let stream = listener.accept().await.unwrap();
-			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
-			let _ = socket.next().await;
-
-			for response in initial(SERVER_ID) {
-				socket.send(response).await.unwrap();
-			}
-
-			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
-				panic!("query frame")
-			};
-			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
-				panic!("query")
-			};
-
-			assert!(
-				matches!(query.payload,crate::QueryPayload::GetAgentGuardianReviews {work_id,before:Some(64)} if work_id.as_str()=="root")
-			);
-
-			socket
-				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
-					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).unwrap(),
-					query_id: query.query_id,
-					payload: QueryResultPayload::AgentGuardianReviews(reply),
-				})))
-				.await
-				.unwrap();
-
-			drop(socket);
-
-			listener.cleanup().unwrap();
-		});
-		let result = crate::AgentClient::new(profile)
-			.guardian_reviews(EntityId::new("root").unwrap(), Some(64))
-			.await
-			.unwrap();
-
-		server.await.unwrap();
-
-		assert_eq!(result, expected);
-	}
-
-	#[tokio::test]
-	async fn guardian_detail_query_rejects_mismatched_native_evidence_pages() {
-		for case in 0..6 {
-			let (temp, authority) = local_transport();
-			let mut listener = authority.bind().await.unwrap();
-			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let offset = if case == 3 { 0 } else { 3 };
-			let text = if case == 5 {
-				"x".repeat(crate::GUARDIAN_DETAIL_PAGE_BYTES + 1)
-			} else {
-				"中文".into()
-			};
-			let reply = crate::AgentGuardianDetailResult::Available {
-				row_id: if case == 1 { 43 } else { 42 },
-				digest: if case == 2 { "stale" } else { "exact" }.into(),
-				offset,
-				total_bytes: offset + text.len(),
-				text,
-				next_offset: (case == 4).then_some(9),
-			};
-			let server = tokio::spawn(async move {
-				let _temp = temp;
-				let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap())
-					.await
-					.unwrap();
-				let _ = socket.next().await;
-
-				for response in initial(SERVER_ID) {
-					socket.send(response).await.unwrap();
-				}
-
-				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
-					panic!("query frame");
-				};
-				let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
-					panic!("query");
-				};
-
-				assert!(
-					matches!(query.payload, crate::QueryPayload::GetAgentGuardianDetail { work_id, review_row: 42, review_digest, offset: 3 }
-					if work_id.as_str() == "root" && review_digest.as_str() == "exact")
-				);
-
-				socket
-					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
-						version: CURRENT_VERSION,
-						server_id: ServerId::new(SERVER_ID).unwrap(),
-						query_id: query.query_id,
-						payload: QueryResultPayload::AgentGuardianDetail(reply),
-					})))
-					.await
-					.unwrap();
-
-				drop(socket);
-
-				listener.cleanup().unwrap();
-			});
-			let result = crate::AgentClient::new(profile)
-				.guardian_detail(
-					EntityId::new("root").unwrap(),
-					42,
-					crate::WireText::new("exact").unwrap(),
-					3,
-				)
-				.await;
-
-			server.await.unwrap();
-
-			assert_eq!(result.is_ok(), case == 0);
-
-			if case != 0 {
-				assert!(matches!(result, Err(ClientFailure::ProtocolMalformed)));
-			}
-		}
-	}
-
-	async fn agent_command_exchange(mode: &'static str) -> crate::AgentCommandResponse {
-		let revision = (!matches!(mode, "rejected" | "unknown" | "missing-revision"))
-			.then_some(EntityRevision(if mode == "accepted-revision" { 42 } else { 0 }));
-		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.expect("Agent protocol fixture succeeds");
-		let profile = ClientProfile::fixture(
-			authority,
-			ServerId::new(SERVER_ID).expect("Agent protocol fixture succeeds"),
-		);
-		let task = tokio::spawn(async move {
-			let _temp = temp;
-			let stream = listener.accept().await.expect("Agent protocol fixture succeeds");
-			let mut socket = tokio_tungstenite::accept_async(stream)
-				.await
-				.expect("Agent protocol fixture succeeds");
-			let _ = socket.next().await;
-
-			for response in initial(SERVER_ID) {
-				socket.send(response).await.expect("Agent protocol fixture succeeds");
-			}
-
-			let Message::Text(request) = socket
-				.next()
-				.await
-				.expect("Agent protocol fixture succeeds")
-				.expect("Agent protocol fixture succeeds")
-			else {
-				panic!("command text");
-			};
-			let ClientMessage::Command(command) =
-				serde_json::from_str(&request).expect("Agent protocol fixture succeeds")
-			else {
-				panic!("command envelope");
-			};
-
-			assert!(matches!(command.payload, crate::CommandPayload::Agent { .. }));
-			assert_eq!(command.idempotency_key.as_str(), "agent-once");
-
-			if mode != "dropped" {
-				if mode != "missing-receipt" {
-					socket
-						.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
-							version: CURRENT_VERSION,
-							server_id: ServerId::new(SERVER_ID)
-								.expect("Agent protocol fixture succeeds"),
-							client_command_id: command.client_command_id.clone(),
-							idempotency_key: command.idempotency_key.clone(),
-							disposition: ReceiptDisposition::Executed,
-							original_client_command_id: command.client_command_id.clone(),
-						})))
-						.await
-						.expect("Agent protocol fixture succeeds");
-				}
-
-				socket
-					.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
-						version: CURRENT_VERSION,
-						server_id: ServerId::new(if mode == "wrong-server" {
-							"018f0f9e-7b6e-4a31-8f4c-1d2e3f405163"
-						} else {
-							SERVER_ID
-						})
-						.expect("Agent protocol fixture succeeds"),
-						client_command_id: command.client_command_id,
-						idempotency_key: if mode == "wrong-key" {
-							IdempotencyKey::new("other").expect("Agent protocol fixture succeeds")
-						} else {
-							command.idempotency_key
-						},
-						outcome: if mode == "rejected" {
-							CommandOutcome::Rejected
-						} else if mode == "unknown" {
-							CommandOutcome::AcceptanceUnknown
-						} else {
-							CommandOutcome::Succeeded
-						},
-						entity_revision: revision,
-						payload: if matches!(mode, "rejected" | "unknown") {
-							None
-						} else {
-							Some(ResultPayload::AgentAccepted {
-								work_id: EntityId::new(if mode == "wrong-work" {
-									"another-root"
-								} else {
-									"personal"
-								})
-								.expect("Agent protocol fixture succeeds"),
-							})
-						},
-						error: if mode == "rejected" {
-							Some(CommandError::IdempotencyConflict)
-						} else if mode == "unknown" {
-							Some(CommandError::AcceptanceUnknown)
-						} else {
-							None
-						},
-					})))
-					.await
-					.expect("Agent protocol fixture succeeds");
-			}
-
-			drop(socket);
-
-			assert!(
-				time::timeout(Duration::from_millis(30), listener.accept()).await.is_err(),
-				"client must not reconnect and retry"
-			);
-
-			listener.cleanup().expect("Agent protocol fixture succeeds");
-		});
-		let result = crate::AgentClient::new(profile)
-			.execute(
-				crate::AgentActionDto::Send {
-					root_id: EntityId::new("personal").expect("Agent protocol fixture succeeds"),
-					text: crate::HistoryText::new("Hello")
-						.expect("Agent protocol fixture succeeds"),
-				},
-				IdempotencyKey::new("agent-once").expect("Agent protocol fixture succeeds"),
-			)
-			.await
-			.expect("Agent protocol fixture succeeds");
-
-		task.await.expect("Agent protocol fixture succeeds");
-
-		result
-	}
-
-	#[tokio::test]
-	async fn agent_command_requires_exact_receipt_server_and_work_identity_without_retry() {
-		assert!(matches!(
-			agent_command_exchange("rejected").await,
-			crate::AgentCommandResponse::Rejected { error: CommandError::IdempotencyConflict }
-		));
-		assert!(matches!(
-			agent_command_exchange("unknown").await,
-			crate::AgentCommandResponse::PotentiallyDispatched {
-				failure: ClientFailure::ApplicationAcceptanceUnknown
-			}
-		));
-		assert!(
-			matches!(agent_command_exchange("accepted").await, crate::AgentCommandResponse::Accepted { work_id } if work_id.as_str() == "personal")
-		);
-		assert!(matches!(
-			agent_command_exchange("accepted-revision").await,
-			crate::AgentCommandResponse::Accepted { .. }
-		));
-
-		for mode in [
-			"wrong-work",
-			"wrong-key",
-			"wrong-server",
-			"missing-receipt",
-			"missing-revision",
-			"dropped",
-		] {
-			assert!(
-				matches!(
-					agent_command_exchange(mode).await,
-					crate::AgentCommandResponse::PotentiallyDispatched { .. }
-				),
-				"{mode}"
-			);
-		}
-	}
 
 	fn typed(message: ServerMessage) -> Message {
 		Message::Text(serde_json::to_string(&message).expect("test operation must succeed").into())
@@ -4381,70 +3886,13 @@ mod tests {
 		}))
 	}
 
-	async fn account_profile_query(
-		result: AccountProfileResult,
-		include_email: bool,
-	) -> Result<AccountProfileResult, ClientFailure> {
-		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.expect("test listener must bind");
-		let task = tokio::spawn(async move {
-			let _temp = temp;
-			let stream = listener.accept().await.expect("test connection must arrive");
-			let mut socket =
-				tokio_tungstenite::accept_async(stream).await.expect("test socket must upgrade");
-			let _ = socket.next().await;
-
-			for response in initial(SERVER_ID) {
-				socket.send(response).await.expect("initial response must send");
-			}
-
-			let request =
-				socket.next().await.expect("query must arrive").expect("query must decode");
-			let Message::Text(request) = request else { panic!("expected text query") };
-			let ClientMessage::Query(query) =
-				serde_json::from_str::<ClientMessage>(&request).expect("typed query must decode")
-			else {
-				panic!("expected typed query")
-			};
-
-			socket
-				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
-					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).expect("fixture server ID is bounded"),
-					query_id: query.query_id,
-					payload: QueryResultPayload::AccountProfile(result),
-				})))
-				.await
-				.expect("profile result must send");
-
-			drop(socket);
-
-			listener.cleanup().expect("test listener must clean up");
-		});
-		let profile = ClientProfile::fixture(
-			authority,
-			ServerId::new(SERVER_ID).expect("fixture server ID is bounded"),
-		);
-		let response = AccountClient::new(profile)
-			.profile(
-				EntityId::new("40000000-0000-4000-8000-000000000001")
-					.expect("fixture account ID is bounded"),
-				include_email,
-			)
-			.await;
-
-		task.await.expect("test server must settle");
-
-		response
-	}
-
-	fn notification_source() -> crate::AccountRecoveryResult {
-		crate::AccountRecoveryResult {
+	fn notification_source() -> AccountRecoveryResult {
+		AccountRecoveryResult {
 			account_id: EntityId::new("40000000-0000-4000-8000-000000000001")
 				.expect("notification fixture must be valid"),
 			account_revision: EntityRevision(1),
 			observed_at_unix_micros: Some(100),
-			state: crate::AccountRecoveryState::Current(Box::new(crate::AccountRecoveryBanner {
+			state: AccountRecoveryState::Current(Box::new(AccountRecoveryBanner {
 				banner_type: WireText::new("limit").expect("notification fixture must be valid"),
 				title: WireText::new("Limit").expect("notification fixture must be valid"),
 				description: WireText::new("Description")
@@ -4454,8 +3902,8 @@ mod tests {
 				blocked_model_slug: None,
 				fallback_model_slugs: Vec::new(),
 				dismissible: false,
-				actions: vec![crate::AccountRecoveryCta {
-					action: crate::AccountRecoveryAction::NotifyOwner,
+				actions: vec![AccountRecoveryCta {
+					action: AccountRecoveryAction::NotifyOwner,
 					label: WireText::new("Notify").expect("notification fixture must be valid"),
 				}],
 				request_url: None,
@@ -4463,779 +3911,11 @@ mod tests {
 		}
 	}
 
-	async fn notification_command_exchange(mode: &'static str) -> crate::AccountCommandResponse {
-		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.expect("notification fixture must be valid");
-		let profile = ClientProfile::fixture(
-			authority,
-			ServerId::new(SERVER_ID).expect("notification fixture must be valid"),
-		);
-		let task = tokio::spawn(async move {
-			let _temp = temp;
-			let mut socket = tokio_tungstenite::accept_async(
-				listener.accept().await.expect("notification fixture must be valid"),
-			)
-			.await
-			.expect("notification fixture must be valid");
-			let _ = socket.next().await;
-
-			for message in initial(SERVER_ID) {
-				socket.send(message).await.expect("notification fixture must be valid");
-			}
-
-			let Message::Text(raw) = socket
-				.next()
-				.await
-				.expect("notification fixture must be valid")
-				.expect("notification fixture must be valid")
-			else {
-				panic!("command")
-			};
-			let ClientMessage::Command(command) =
-				serde_json::from_str(&raw).expect("notification fixture must be valid")
-			else {
-				panic!("command")
-			};
-
-			assert_eq!(command.idempotency_key.as_str(), "notification-once");
-			assert_eq!(command.expected_revision, Some(EntityRevision(1)));
-			assert!(
-				matches!(&command.payload, crate::CommandPayload::SendAccountRecoveryNudge { source, action: crate::AccountRecoveryAction::NotifyOwner } if **source == notification_source())
-			);
-
-			if mode != "drop-before-receipt" {
-				if mode != "missing-receipt" {
-					socket
-						.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
-							version: CURRENT_VERSION,
-							server_id: ServerId::new(SERVER_ID)
-								.expect("notification fixture must be valid"),
-							client_command_id: command.client_command_id.clone(),
-							idempotency_key: command.idempotency_key.clone(),
-							disposition: ReceiptDisposition::Executed,
-							original_client_command_id: command.client_command_id.clone(),
-						})))
-						.await
-						.expect("notification fixture must be valid");
-				}
-				if mode != "drop-after-receipt" {
-					socket
-						.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
-							version: CURRENT_VERSION,
-							server_id: ServerId::new(SERVER_ID)
-								.expect("notification fixture must be valid"),
-							client_command_id: command.client_command_id,
-							idempotency_key: command.idempotency_key,
-							outcome: crate::CommandOutcome::Succeeded,
-							entity_revision: Some(EntityRevision(if mode == "wrong-revision" {
-								2
-							} else {
-								1
-							})),
-							payload: Some(ResultPayload::AccountRecoveryNudge {
-								account_id: EntityId::new(if mode == "wrong-account" {
-									"40000000-0000-4000-8000-000000000002"
-								} else {
-									"40000000-0000-4000-8000-000000000001"
-								})
-								.expect("notification fixture must be valid"),
-								operation_key: IdempotencyKey::new(if mode == "wrong-key" {
-									"other-notification"
-								} else {
-									"notification-once"
-								})
-								.expect("notification fixture must be valid"),
-								status: crate::AccountRecoveryNudgeStatus::Sent,
-							}),
-							error: None,
-						})))
-						.await
-						.expect("notification fixture must be valid");
-				}
-			}
-
-			drop(socket);
-
-			assert!(
-				tokio::time::timeout(Duration::from_millis(30), listener.accept()).await.is_err(),
-				"notification transport must not reconnect to retry"
-			);
-
-			listener.cleanup().expect("notification fixture must be valid");
-		});
-		let result = AccountClient::new(profile)
-			.send_recovery_nudge(
-				notification_source(),
-				crate::AccountRecoveryAction::NotifyOwner,
-				IdempotencyKey::new("notification-once")
-					.expect("notification fixture must be valid"),
-			)
-			.await
-			.expect("notification fixture must be valid");
-
-		task.await.expect("notification fixture must be valid");
-
-		result
-	}
-
-	#[tokio::test]
-	async fn notification_command_requires_bound_receipt_and_never_retries_uncertainty() {
-		for mode in [
-			"good",
-			"wrong-key",
-			"wrong-account",
-			"wrong-revision",
-			"missing-receipt",
-			"drop-before-receipt",
-			"drop-after-receipt",
-		] {
-			let response = notification_command_exchange(mode).await;
-
-			if mode == "good" {
-				assert!(
-					matches!(response, crate::AccountCommandResponse::Applied { result, .. } if matches!(*result, ResultPayload::AccountRecoveryNudge { status: crate::AccountRecoveryNudgeStatus::Sent, .. }))
-				);
-			} else {
-				assert!(
-					matches!(response, crate::AccountCommandResponse::PotentiallyDispatched { .. }),
-					"{mode}"
-				);
-			}
-		}
-	}
-
-	#[tokio::test]
-	async fn notification_status_transport_rejects_other_account_purpose_or_key() {
-		use crate::{
-			AccountRecoveryAction as A, AccountRecoveryNudgeOperation, AccountRecoveryNudgeResult,
-			AccountRecoveryNudgeStatus,
-		};
-
-		let expected_account = "40000000-0000-4000-8000-000000000001";
-
-		for (account, action, key, accepted) in [
-			(expected_account, A::NotifyOwner, "requested-key", true),
-			("40000000-0000-4000-8000-000000000002", A::NotifyOwner, "requested-key", false),
-			(expected_account, A::RequestIncrease, "requested-key", false),
-			(expected_account, A::NotifyOwner, "foreign-key", false),
-		] {
-			let (temp, authority) = local_transport();
-			let mut listener = authority.bind().await.unwrap();
-			let server = tokio::spawn(async move {
-				let _temp = temp;
-				let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap())
-					.await
-					.unwrap();
-				let _ = socket.next().await;
-
-				for frame in initial(SERVER_ID) {
-					socket.send(frame).await.unwrap();
-				}
-
-				let Message::Text(raw) = socket.next().await.unwrap().unwrap() else {
-					panic!("query")
-				};
-				let ClientMessage::Query(query) = serde_json::from_str(&raw).unwrap() else {
-					panic!("query")
-				};
-
-				assert!(matches!(
-					query.payload,
-					crate::QueryPayload::GetAccountRecoveryNudge {
-						action: A::NotifyOwner,
-						operation_key: Some(_),
-						..
-					}
-				));
-
-				socket
-					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
-						version: CURRENT_VERSION,
-						server_id: ServerId::new(SERVER_ID).unwrap(),
-						query_id: query.query_id,
-						payload: QueryResultPayload::AccountRecoveryNudge(
-							AccountRecoveryNudgeResult::Found(AccountRecoveryNudgeOperation {
-								account_id: EntityId::new(account).unwrap(),
-								account_revision: EntityRevision(1),
-								action,
-								operation_key: IdempotencyKey::new(key).unwrap(),
-								reserved_at_unix_micros: 100,
-								outcome: AccountRecoveryNudgeStatus::Uncertain,
-							}),
-						),
-					})))
-					.await
-					.unwrap();
-
-				drop(socket);
-
-				listener.cleanup().unwrap();
-			});
-			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = AccountClient::new(profile)
-				.recovery_nudge_status(
-					EntityId::new(expected_account).unwrap(),
-					A::NotifyOwner,
-					Some(IdempotencyKey::new("requested-key").unwrap()),
-				)
-				.await;
-
-			assert_eq!(result.is_ok(), accepted);
-
-			server.await.unwrap();
-		}
-	}
-
-	#[tokio::test]
-	async fn independent_observation_wait_does_not_block_retained_queries() {
-		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.unwrap();
-		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-		let config = profile.retained_session_config().unwrap();
-		let (started, ready) = tokio::sync::oneshot::channel();
-		let server = tokio::spawn(async move {
-			let _temp = temp;
-			let mut main =
-				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
-			let _ = main.next().await;
-
-			for response in initial(SERVER_ID) {
-				let Message::Text(raw) = response else { unreachable!() };
-				let mut message: ServerMessage = serde_json::from_str(&raw).unwrap();
-
-				if let ServerMessage::Welcome(welcome) = &mut message {
-					welcome.instance_id = Some(
-						crate::ServerInstanceId::new("50000000-0000-4000-8000-000000000001")
-							.unwrap(),
-					);
-				}
-
-				main.send(typed(message)).await.unwrap();
-			}
-
-			let mut wait =
-				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
-			let _ = wait.next().await;
-
-			for response in initial(SERVER_ID) {
-				wait.send(response).await.unwrap();
-			}
-
-			let Message::Text(request) = wait.next().await.unwrap().unwrap() else {
-				panic!("wait query")
-			};
-			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
-				panic!("wait query")
-			};
-
-			assert!(matches!(
-				query.payload,
-				crate::QueryPayload::WaitForAccountObservation { after_generation: 9, .. }
-			));
-
-			started.send(()).unwrap();
-
-			// Deliberately leave this socket unanswered while serving the retained connection.
-			let Message::Text(request) = main.next().await.unwrap().unwrap() else {
-				panic!("main query")
-			};
-			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
-				panic!("main query")
-			};
-
-			assert!(matches!(query.payload, crate::QueryPayload::GetAccountRecovery { .. }));
-
-			main.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
-				version: CURRENT_VERSION,
-				server_id: ServerId::new(SERVER_ID).unwrap(),
-				query_id: query.query_id,
-				payload: QueryResultPayload::AccountRecovery(crate::AccountRecoveryResult {
-					account_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
-					account_revision: EntityRevision(1),
-					observed_at_unix_micros: None,
-					state: crate::AccountRecoveryState::Unavailable,
-				}),
-			})))
-			.await
-			.unwrap();
-
-			let closed = tokio::time::timeout(Duration::from_secs(2), wait.next()).await.unwrap();
-
-			assert!(matches!(closed, None | Some(Err(_)) | Some(Ok(Message::Close(_)))));
-
-			drop(main);
-
-			listener.cleanup().unwrap();
-		});
-		let mut main = crate::RetainedSession::connect(
-			config.clone(),
-			None,
-			crate::SessionCancellation::new(),
-		)
-		.await
-		.unwrap();
-		let crate::SessionDelivery::Snapshot { confirmation, .. } = main.next().await.unwrap()
-		else {
-			panic!("snapshot")
-		};
-
-		main.confirm_applied(confirmation).unwrap();
-
-		let wait =
-			tokio::spawn(async move { config.account_client().wait_for_observation(9).await });
-
-		tokio::time::timeout(Duration::from_secs(2), ready).await.unwrap().unwrap();
-
-		let query_id = QueryId::new("main-remains-responsive").unwrap();
-
-		main.send_query(crate::QueryEnvelope {
-			version: CURRENT_VERSION,
-			query_id: query_id.clone(),
-			payload: crate::QueryPayload::GetAccountRecovery {
-				account_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
-				account_revision: EntityRevision(1),
-			},
-		})
-		.await
-		.unwrap();
-
-		let result =
-			tokio::time::timeout(Duration::from_secs(2), main.next()).await.unwrap().unwrap();
-
-		assert!(
-			matches!(result, crate::SessionDelivery::QueryResult(result) if result.query_id == query_id)
-		);
-		assert!(!wait.is_finished());
-
-		wait.abort();
-
-		assert!(wait.await.unwrap_err().is_cancelled());
-
-		server.await.unwrap();
-	}
-
-	#[tokio::test]
-	async fn account_recovery_transport_rejects_wrong_account_and_revision() {
-		for (account, revision, accepted) in [
-			("40000000-0000-4000-8000-000000000001", 1, true),
-			("40000000-0000-4000-8000-000000000002", 1, false),
-			("40000000-0000-4000-8000-000000000001", 2, false),
-		] {
-			let (temp, authority) = local_transport();
-			let mut listener = authority.bind().await.unwrap();
-			let task = tokio::spawn(async move {
-				let _temp = temp;
-				let stream = listener.accept().await.unwrap();
-				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
-				let _ = socket.next().await;
-
-				for response in initial(SERVER_ID) {
-					socket.send(response).await.unwrap();
-				}
-
-				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
-					panic!("query")
-				};
-				let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
-					panic!("query")
-				};
-
-				assert!(matches!(
-					query.payload,
-					crate::QueryPayload::GetAccountRecovery {
-						account_revision: crate::EntityRevision(1),
-						..
-					}
-				));
-
-				socket
-					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
-						version: CURRENT_VERSION,
-						server_id: ServerId::new(SERVER_ID).unwrap(),
-						query_id: query.query_id,
-						payload: QueryResultPayload::AccountRecovery(
-							crate::AccountRecoveryResult {
-								account_id: EntityId::new(account).unwrap(),
-								account_revision: crate::EntityRevision(revision),
-								observed_at_unix_micros: Some(100),
-								state: crate::AccountRecoveryState::Absent,
-							},
-						),
-					})))
-					.await
-					.unwrap();
-
-				drop(socket);
-
-				listener.cleanup().unwrap();
-			});
-			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = AccountClient::new(profile)
-				.recovery(
-					EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
-					crate::EntityRevision(1),
-				)
-				.await;
-
-			assert_eq!(result.is_ok(), accepted);
-
-			task.await.unwrap();
-		}
-	}
-
-	#[tokio::test]
-	async fn agent_request_pages_preserve_complete_content_and_reject_changed_identity() {
-		use crate::QueryPayload;
-
-		for failure in ["none", "digest", "offset", "expired", "content"] {
-			let (temp, authority) = local_transport();
-			let mut listener = authority.bind().await.unwrap();
-			let text = serde_json::json!({"command":"界🙂\\\"".repeat(4000)}).to_string();
-			let expected = text.clone();
-			let digest = decodex_core::BlobHash::digest(
-				&serde_json::to_vec(&(7, "agent", "item/commandExecution/requestApproval", &text))
-					.unwrap(),
-			)
-			.to_hex();
-			let task = tokio::spawn(async move {
-				let _temp = temp;
-				let mut offset = 0;
-
-				loop {
-					let mut socket =
-						tokio_tungstenite::accept_async(listener.accept().await.unwrap())
-							.await
-							.unwrap();
-					let _ = socket.next().await;
-
-					for response in initial(SERVER_ID) {
-						socket.send(response).await.unwrap();
-					}
-
-					let Message::Text(wire) = socket.next().await.unwrap().unwrap() else {
-						panic!("query")
-					};
-					let ClientMessage::Query(query) =
-						serde_json::from_str::<ClientMessage>(&wire).unwrap()
-					else {
-						panic!("query")
-					};
-
-					if offset == 0 {
-						assert!(matches!(
-							query.payload,
-							QueryPayload::GetAgentRequest { event_id: 7 }
-						));
-					} else {
-						assert!(
-							matches!(query.payload, QueryPayload::GetAgentRequestPage { event_id:7, digest: returned, offset: requested } if requested==offset && returned.as_str()==digest)
-						);
-					}
-
-					let mut end = (offset + 8192).min(text.len());
-
-					while !text.is_char_boundary(end) {
-						end -= 1;
-					}
-
-					let fail = if failure == "content" {
-						end == text.len()
-					} else {
-						offset > 0 && failure != "none"
-					};
-					let result = if fail && failure == "expired" {
-						crate::AgentRequestResult::Unavailable
-					} else {
-						crate::AgentRequestResult::Page {
-							event_id: 7,
-							work_id: "agent".into(),
-							method: "item/commandExecution/requestApproval".into(),
-							digest: if fail && failure == "digest" {
-								"b".repeat(64)
-							} else {
-								digest.clone()
-							},
-							offset: if fail && failure == "offset" { 0 } else { offset },
-							total_bytes: text.len(),
-							text: crate::HistoryText::new(if fail && failure == "content" {
-								let mut changed = text[offset..end].to_owned();
-
-								changed.pop();
-								changed.push(']');
-
-								changed
-							} else {
-								text[offset..end].to_owned()
-							})
-							.unwrap(),
-							next_offset: (end < text.len()).then_some(end),
-						}
-					};
-
-					socket
-						.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
-							version: CURRENT_VERSION,
-							server_id: ServerId::new(SERVER_ID).unwrap(),
-							query_id: query.query_id,
-							payload: QueryResultPayload::AgentRequest(result),
-						})))
-						.await
-						.unwrap();
-
-					drop(socket);
-
-					if end == text.len() || fail {
-						break;
-					}
-
-					offset = end;
-				}
-
-				listener.cleanup().unwrap();
-			});
-			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::AgentClient::new(profile).request(7).await;
-
-			task.await.unwrap();
-
-			match failure {
-				"none" => assert!(
-					matches!(result, Ok(crate::AgentRequestResult::Available { request_json, .. }) if request_json.as_str()==expected)
-				),
-				"expired" => assert_eq!(result.unwrap(), crate::AgentRequestResult::Unavailable),
-				_ => assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed),
-			}
-		}
-	}
-
-	#[tokio::test]
-	async fn agent_request_transport_admits_mcp_forms_but_rejects_wrong_event_and_unknown_method() {
-		for (method, returned, accepted) in [
-			("mcpServer/elicitation/request", 7, true),
-			("mcpServer/elicitation/request", 8, false),
-			("unknown/request", 7, false),
-		] {
-			let (temp, authority) = local_transport();
-			let mut listener = authority.bind().await.unwrap();
-			let task = tokio::spawn(async move {
-				let _temp = temp;
-				let stream = listener.accept().await.unwrap();
-				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
-				let _ = socket.next().await;
-
-				for response in initial(SERVER_ID) {
-					socket.send(response).await.unwrap();
-				}
-
-				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
-					panic!("text request");
-				};
-				let ClientMessage::Query(query) =
-					serde_json::from_str::<ClientMessage>(&request).unwrap()
-				else {
-					panic!("query");
-				};
-
-				assert!(matches!(
-					query.payload,
-					crate::QueryPayload::GetAgentRequest { event_id: 7 }
-				));
-
-				socket
-					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
-						version: CURRENT_VERSION,
-						server_id: ServerId::new(SERVER_ID).unwrap(),
-						query_id: query.query_id,
-						payload: QueryResultPayload::AgentRequest(
-							crate::AgentRequestResult::Available {
-								event_id: returned,
-								work_id: "agent".into(),
-								method: method.into(),
-								request_json: crate::AgentRequestText::new(
-									r#"{"mode":"form","requestedSchema":null,"message":"Allow this request?"}"#,
-								)
-								.unwrap(),
-							},
-						),
-					})))
-					.await
-					.unwrap();
-
-				drop(socket);
-
-				listener.cleanup().unwrap();
-			});
-			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::AgentClient::new(profile).request(7).await;
-
-			task.await.unwrap();
-
-			if accepted {
-				assert!(
-					matches!(result,Ok(crate::AgentRequestResult::Available {method,..}) if method=="mcpServer/elicitation/request")
-				);
-			} else {
-				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed);
-			}
-		}
-	}
-
-	#[tokio::test]
-	async fn mcp_login_transport_preserves_intent_and_rejects_another_session() {
-		for returned_session in ["intent", "another-intent"] {
-			let (temp, authority) = local_transport();
-			let mut listener = authority.bind().await.unwrap();
-			let task = tokio::spawn(async move {
-				let _temp = temp;
-				let stream = listener.accept().await.unwrap();
-				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
-				let _ = socket.next().await;
-
-				for response in initial(SERVER_ID) {
-					socket.send(response).await.unwrap();
-				}
-
-				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
-					panic!("text query");
-				};
-				let ClientMessage::Query(query) =
-					serde_json::from_str::<ClientMessage>(&request).unwrap()
-				else {
-					panic!("query");
-				};
-
-				assert!(
-					matches!(query.payload, crate::QueryPayload::ExchangeMcpLogin { request: crate::McpLoginRequest::Start { session_id, work_id, server_name } } if session_id.as_str() == "intent" && work_id.as_str() == "work" && server_name.as_str() == "server")
-				);
-
-				socket
-					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
-						version: CURRENT_VERSION,
-						server_id: ServerId::new(SERVER_ID).unwrap(),
-						query_id: query.query_id,
-						payload: QueryResultPayload::McpLogin(crate::McpLoginStatus {
-							session_id: EntityId::new(returned_session).unwrap(),
-							phase: crate::McpLoginPhase::AwaitingUser,
-							authorization_url: Some(
-								crate::McpAuthorizationUrl::new(
-									"https://example.test/authorize?state=private-fixture".into(),
-								)
-								.unwrap(),
-							),
-							message: crate::WireText::new("Continue in your browser").unwrap(),
-						}),
-					})))
-					.await
-					.unwrap();
-
-				drop(socket);
-
-				listener.cleanup().unwrap();
-			});
-			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::AgentClient::new(profile)
-				.mcp_login(crate::McpLoginRequest::Start {
-					session_id: EntityId::new("intent").unwrap(),
-					work_id: EntityId::new("work").unwrap(),
-					server_name: crate::WireText::new("server").unwrap(),
-				})
-				.await;
-
-			task.await.unwrap();
-
-			if returned_session == "intent" {
-				let status = result.unwrap();
-
-				assert_eq!(status.phase, crate::McpLoginPhase::AwaitingUser);
-				assert!(status.authorization_url.is_some());
-				assert!(!format!("{status:?}").contains("private-fixture"));
-			} else {
-				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed);
-			}
-		}
-	}
-
-	#[tokio::test]
-	async fn usage_estimate_transport_rejects_another_work_and_keeps_unknown_values() {
-		for returned_work in ["work", "another-work"] {
-			let (temp, authority) = local_transport();
-			let mut listener = authority.bind().await.unwrap();
-			let task = tokio::spawn(async move {
-				let _temp = temp;
-				let stream = listener.accept().await.unwrap();
-				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
-				let _ = socket.next().await;
-
-				for response in initial(SERVER_ID) {
-					socket.send(response).await.unwrap();
-				}
-
-				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
-					panic!("text query");
-				};
-				let ClientMessage::Query(query) =
-					serde_json::from_str::<ClientMessage>(&request).unwrap()
-				else {
-					panic!("query");
-				};
-
-				assert!(
-					matches!(query.payload,crate::QueryPayload::GetAgentUsageEstimate {work_id} if work_id.as_str()=="work")
-				);
-
-				let value = crate::AgentUsageEstimateResult::Available {
-					work_id: EntityId::new(returned_work).unwrap(),
-					account_id: EntityId::new("account").unwrap(),
-					observed_at_micros: 1,
-					estimate: crate::ThreadUsageEstimate {
-						thread_id: "thread".into(),
-						estimated_usage_credits_micros: 9007199254740993,
-						estimated_usage_usd_micros: None,
-						groups: vec![],
-					},
-				};
-
-				socket
-					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
-						version: CURRENT_VERSION,
-						server_id: ServerId::new(SERVER_ID).unwrap(),
-						query_id: query.query_id,
-						payload: QueryResultPayload::AgentUsageEstimate(value),
-					})))
-					.await
-					.unwrap();
-
-				drop(socket);
-
-				listener.cleanup().unwrap();
-			});
-			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let response = crate::AgentClient::new(profile)
-				.usage_estimate(EntityId::new("work").unwrap())
-				.await;
-
-			task.await.unwrap();
-
-			if returned_work == "work" {
-				let crate::AgentUsageEstimateResult::Available { estimate, .. } = response.unwrap()
-				else {
-					panic!("estimate");
-				};
-
-				assert_eq!(estimate.estimated_usage_credits_micros, 9007199254740993);
-				assert_eq!(estimate.estimated_usage_usd_micros, None);
-			} else {
-				assert_eq!(response.unwrap_err(), ClientFailure::ProtocolMalformed);
-			}
-		}
-	}
-
 	fn result(report: DoctorReport) -> Message {
 		typed(ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
 			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
-			query_id: crate::QueryId::new("decodex-cli-doctor")
-				.expect("test operation must succeed"),
+			query_id: QueryId::new("decodex-cli-doctor").expect("test operation must succeed"),
 			payload: QueryResultPayload::DoctorStatus(report),
 		}))
 	}
@@ -5399,6 +4079,1321 @@ max_entry_bytes = 0
 	}
 
 	#[tokio::test]
+	async fn initial_model_catalog_waits_beyond_the_ordinary_query_deadline() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let request = InitialModelCatalogRequest {
+			working_directory: ConversationWorkingDirectory::new("/tmp").unwrap(),
+			purpose: ModelCatalogPurpose::Conversation,
+			account_id: None,
+		};
+		let expected = request.clone();
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let mut socket =
+				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
+			let _ = socket.next().await;
+
+			for message in initial(SERVER_ID) {
+				socket.send(message).await.unwrap();
+			}
+
+			let Message::Text(wire) = socket.next().await.unwrap().unwrap() else {
+				panic!("query");
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&wire).unwrap() else {
+				panic!("query");
+			};
+
+			assert!(
+				matches!(query.payload, QueryPayload::GetInitialModelCatalog { request } if request == expected)
+			);
+
+			time::sleep(super::CLIENT_TIMEOUT + Duration::from_millis(100)).await;
+
+			// A broken client may already have closed at the ordinary query deadline.
+			let _ = socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::InitialModelCatalog(
+						InitialModelCatalogResult::Unavailable,
+					),
+				})))
+				.await;
+
+			drop(socket);
+
+			listener.cleanup().unwrap();
+		});
+		let result = AgentClient::new(profile).initial_model_catalog(request).await;
+
+		server.await.unwrap();
+
+		assert_eq!(result, Ok(InitialModelCatalogResult::Unavailable));
+	}
+
+	#[tokio::test]
+	async fn agent_output_stream_reuses_connection_and_cancels_without_replay() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let _ = socket.next().await;
+
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+			for revision in 1..=3 {
+				let Message::Text(frame) = socket.next().await.unwrap().unwrap() else {
+					panic!("query")
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&frame).unwrap() else {
+					panic!("read-only observation")
+				};
+
+				assert!(
+					matches!(query.payload, QueryPayload::WaitForAgentOutput { work_id, after_revision }
+					if work_id.as_str() == "root" && after_revision == (revision > 1).then_some(revision - 1))
+				);
+
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::AgentOutput(AgentOutputResult::Available {
+							revision,
+							work_id: EntityId::new("root").unwrap(),
+							messages: vec![AgentLiveMessageDto {
+								kind: Default::default(),
+								turn_id: "turn".into(),
+								item_id: "item".into(),
+								text: "你好世界".chars().take(revision as usize).collect(),
+								truncated: false,
+							}],
+						}),
+					})))
+					.await
+					.unwrap();
+			}
+
+			// Dropping the observer closes this same connection, even during a wait.
+			time::timeout(Duration::from_secs(2), async {
+				while let Some(Ok(message)) = socket.next().await {
+					if matches!(message, Message::Close(_)) {
+						break;
+					}
+				}
+			})
+			.await
+			.unwrap();
+
+			listener.cleanup().unwrap();
+		});
+		let (sender, mut receiver) = tokio::sync::watch::channel(None);
+		let observer = tokio::spawn(async move {
+			AgentClient::new(profile).observe_output(EntityId::new("root").unwrap(), sender).await
+		});
+
+		time::timeout(Duration::from_secs(2), async {
+			loop {
+				receiver.changed().await.unwrap();
+
+				if let Some(AgentOutputResult::Available { revision: 3, messages, .. }) =
+					receiver.borrow_and_update().as_ref()
+				{
+					assert_eq!(messages[0].text, "你好世");
+
+					break;
+				}
+			}
+		})
+		.await
+		.unwrap();
+
+		drop(receiver);
+
+		time::timeout(Duration::from_secs(2), observer).await.unwrap().unwrap().unwrap();
+
+		server.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn archive_state_is_bound_to_work_and_preserves_native_identity() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let expected = AgentArchiveResult::Archived { thread_id: "native-exact".into() };
+		let reply = expected.clone();
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let _ = socket.next().await;
+
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query frame")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("query")
+			};
+
+			assert!(
+				matches!(query.payload,QueryPayload::GetAgentArchiveState {work_id} if work_id.as_str()=="root")
+			);
+
+			time::sleep(Duration::from_millis(5100)).await;
+
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::AgentArchiveState(reply),
+				})))
+				.await
+				.unwrap();
+
+			drop(socket);
+
+			listener.cleanup().unwrap();
+		});
+		let result =
+			AgentClient::new(profile).archive_state(EntityId::new("root").unwrap()).await.unwrap();
+
+		server.await.unwrap();
+
+		assert_eq!(result, expected);
+	}
+
+	#[tokio::test]
+	async fn guardian_review_query_preserves_cursor_and_separate_submission_receipt() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let expected = AgentGuardianReviewsResult::Available {
+			reviews: vec![AgentGuardianReviewDto {
+				row_id: 42,
+				digest: "digest".into(),
+				action_label: "Network access".into(),
+				status: AgentGuardianStatus::Denied,
+				risk_level: Some("high".into()),
+				user_authorization: Some("low".into()),
+				rationale: Some("Not requested".into()),
+				action_json: Some("{}".into()),
+				details_unavailable: None,
+				details_paged: false,
+				current_process: false,
+				submission: Some(AgentGuardianSubmission::Pending),
+				submission_key: Some("exact-command".into()),
+				can_approve: false,
+				approval_unavailable: Some("Unconfirmed".into()),
+			}],
+			next_before: Some(42),
+		};
+		let reply = expected.clone();
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
+			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let _ = socket.next().await;
+
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.unwrap();
+			}
+
+			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+				panic!("query frame")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("query")
+			};
+
+			assert!(
+				matches!(query.payload,QueryPayload::GetAgentGuardianReviews {work_id,before:Some(64)} if work_id.as_str()=="root")
+			);
+
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::AgentGuardianReviews(reply),
+				})))
+				.await
+				.unwrap();
+
+			drop(socket);
+
+			listener.cleanup().unwrap();
+		});
+		let result = AgentClient::new(profile)
+			.guardian_reviews(EntityId::new("root").unwrap(), Some(64))
+			.await
+			.unwrap();
+
+		server.await.unwrap();
+
+		assert_eq!(result, expected);
+	}
+
+	#[tokio::test]
+	async fn guardian_detail_query_rejects_mismatched_native_evidence_pages() {
+		for case in 0..6 {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let offset = if case == 3 { 0 } else { 3 };
+			let text = if case == 5 {
+				"x".repeat(GUARDIAN_DETAIL_PAGE_BYTES + 1)
+			} else {
+				"中文".into()
+			};
+			let reply = AgentGuardianDetailResult::Available {
+				row_id: if case == 1 { 43 } else { 42 },
+				digest: if case == 2 { "stale" } else { "exact" }.into(),
+				offset,
+				total_bytes: offset + text.len(),
+				text,
+				next_offset: (case == 4).then_some(9),
+			};
+			let server = tokio::spawn(async move {
+				let _temp = temp;
+				let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap())
+					.await
+					.unwrap();
+				let _ = socket.next().await;
+
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+
+				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+					panic!("query frame");
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+					panic!("query");
+				};
+
+				assert!(
+					matches!(query.payload, QueryPayload::GetAgentGuardianDetail { work_id, review_row: 42, review_digest, offset: 3 }
+					if work_id.as_str() == "root" && review_digest.as_str() == "exact")
+				);
+
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::AgentGuardianDetail(reply),
+					})))
+					.await
+					.unwrap();
+
+				drop(socket);
+
+				listener.cleanup().unwrap();
+			});
+			let result = AgentClient::new(profile)
+				.guardian_detail(
+					EntityId::new("root").unwrap(),
+					42,
+					WireText::new("exact").unwrap(),
+					3,
+				)
+				.await;
+
+			server.await.unwrap();
+
+			assert_eq!(result.is_ok(), case == 0);
+
+			if case != 0 {
+				assert!(matches!(result, Err(ClientFailure::ProtocolMalformed)));
+			}
+		}
+	}
+
+	async fn agent_command_exchange(mode: &'static str) -> AgentCommandResponse {
+		let revision = (!matches!(mode, "rejected" | "unknown" | "missing-revision"))
+			.then_some(EntityRevision(if mode == "accepted-revision" { 42 } else { 0 }));
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.expect("Agent protocol fixture succeeds");
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("Agent protocol fixture succeeds"),
+		);
+		let task = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.expect("Agent protocol fixture succeeds");
+			let mut socket = tokio_tungstenite::accept_async(stream)
+				.await
+				.expect("Agent protocol fixture succeeds");
+			let _ = socket.next().await;
+
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.expect("Agent protocol fixture succeeds");
+			}
+
+			let Message::Text(request) = socket
+				.next()
+				.await
+				.expect("Agent protocol fixture succeeds")
+				.expect("Agent protocol fixture succeeds")
+			else {
+				panic!("command text");
+			};
+			let ClientMessage::Command(command) =
+				serde_json::from_str(&request).expect("Agent protocol fixture succeeds")
+			else {
+				panic!("command envelope");
+			};
+
+			assert!(matches!(command.payload, CommandPayload::Agent { .. }));
+			assert_eq!(command.idempotency_key.as_str(), "agent-once");
+
+			if mode != "dropped" {
+				if mode != "missing-receipt" {
+					socket
+						.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
+							version: CURRENT_VERSION,
+							server_id: ServerId::new(SERVER_ID)
+								.expect("Agent protocol fixture succeeds"),
+							client_command_id: command.client_command_id.clone(),
+							idempotency_key: command.idempotency_key.clone(),
+							disposition: ReceiptDisposition::Executed,
+							original_client_command_id: command.client_command_id.clone(),
+						})))
+						.await
+						.expect("Agent protocol fixture succeeds");
+				}
+
+				socket
+					.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(if mode == "wrong-server" {
+							"018f0f9e-7b6e-4a31-8f4c-1d2e3f405163"
+						} else {
+							SERVER_ID
+						})
+						.expect("Agent protocol fixture succeeds"),
+						client_command_id: command.client_command_id,
+						idempotency_key: if mode == "wrong-key" {
+							IdempotencyKey::new("other").expect("Agent protocol fixture succeeds")
+						} else {
+							command.idempotency_key
+						},
+						outcome: if mode == "rejected" {
+							CommandOutcome::Rejected
+						} else if mode == "unknown" {
+							CommandOutcome::AcceptanceUnknown
+						} else {
+							CommandOutcome::Succeeded
+						},
+						entity_revision: revision,
+						payload: if matches!(mode, "rejected" | "unknown") {
+							None
+						} else {
+							Some(ResultPayload::AgentAccepted {
+								work_id: EntityId::new(if mode == "wrong-work" {
+									"another-root"
+								} else {
+									"personal"
+								})
+								.expect("Agent protocol fixture succeeds"),
+							})
+						},
+						error: if mode == "rejected" {
+							Some(CommandError::IdempotencyConflict)
+						} else if mode == "unknown" {
+							Some(CommandError::AcceptanceUnknown)
+						} else {
+							None
+						},
+					})))
+					.await
+					.expect("Agent protocol fixture succeeds");
+			}
+
+			drop(socket);
+
+			assert!(
+				time::timeout(Duration::from_millis(30), listener.accept()).await.is_err(),
+				"client must not reconnect and retry"
+			);
+
+			listener.cleanup().expect("Agent protocol fixture succeeds");
+		});
+		let result = AgentClient::new(profile)
+			.execute(
+				AgentActionDto::Send {
+					root_id: EntityId::new("personal").expect("Agent protocol fixture succeeds"),
+					text: HistoryText::new("Hello").expect("Agent protocol fixture succeeds"),
+				},
+				IdempotencyKey::new("agent-once").expect("Agent protocol fixture succeeds"),
+			)
+			.await
+			.expect("Agent protocol fixture succeeds");
+
+		task.await.expect("Agent protocol fixture succeeds");
+
+		result
+	}
+
+	#[tokio::test]
+	async fn agent_command_requires_exact_receipt_server_and_work_identity_without_retry() {
+		assert!(matches!(
+			agent_command_exchange("rejected").await,
+			AgentCommandResponse::Rejected { error: CommandError::IdempotencyConflict }
+		));
+		assert!(matches!(
+			agent_command_exchange("unknown").await,
+			AgentCommandResponse::PotentiallyDispatched {
+				failure: ClientFailure::ApplicationAcceptanceUnknown
+			}
+		));
+		assert!(
+			matches!(agent_command_exchange("accepted").await, AgentCommandResponse::Accepted { work_id } if work_id.as_str() == "personal")
+		);
+		assert!(matches!(
+			agent_command_exchange("accepted-revision").await,
+			AgentCommandResponse::Accepted { .. }
+		));
+
+		for mode in [
+			"wrong-work",
+			"wrong-key",
+			"wrong-server",
+			"missing-receipt",
+			"missing-revision",
+			"dropped",
+		] {
+			assert!(
+				matches!(
+					agent_command_exchange(mode).await,
+					AgentCommandResponse::PotentiallyDispatched { .. }
+				),
+				"{mode}"
+			);
+		}
+	}
+
+	async fn account_profile_query(
+		result: AccountProfileResult,
+		include_email: bool,
+	) -> Result<AccountProfileResult, ClientFailure> {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.expect("test listener must bind");
+		let task = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.expect("test connection must arrive");
+			let mut socket =
+				tokio_tungstenite::accept_async(stream).await.expect("test socket must upgrade");
+			let _ = socket.next().await;
+
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.expect("initial response must send");
+			}
+
+			let request =
+				socket.next().await.expect("query must arrive").expect("query must decode");
+			let Message::Text(request) = request else { panic!("expected text query") };
+			let ClientMessage::Query(query) =
+				serde_json::from_str::<ClientMessage>(&request).expect("typed query must decode")
+			else {
+				panic!("expected typed query")
+			};
+
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).expect("fixture server ID is bounded"),
+					query_id: query.query_id,
+					payload: QueryResultPayload::AccountProfile(result),
+				})))
+				.await
+				.expect("profile result must send");
+
+			drop(socket);
+
+			listener.cleanup().expect("test listener must clean up");
+		});
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("fixture server ID is bounded"),
+		);
+		let response = AccountClient::new(profile)
+			.profile(
+				EntityId::new("40000000-0000-4000-8000-000000000001")
+					.expect("fixture account ID is bounded"),
+				include_email,
+			)
+			.await;
+
+		task.await.expect("test server must settle");
+
+		response
+	}
+
+	async fn notification_command_exchange(mode: &'static str) -> AccountCommandResponse {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.expect("notification fixture must be valid");
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("notification fixture must be valid"),
+		);
+		let task = tokio::spawn(async move {
+			let _temp = temp;
+			let mut socket = tokio_tungstenite::accept_async(
+				listener.accept().await.expect("notification fixture must be valid"),
+			)
+			.await
+			.expect("notification fixture must be valid");
+			let _ = socket.next().await;
+
+			for message in initial(SERVER_ID) {
+				socket.send(message).await.expect("notification fixture must be valid");
+			}
+
+			let Message::Text(raw) = socket
+				.next()
+				.await
+				.expect("notification fixture must be valid")
+				.expect("notification fixture must be valid")
+			else {
+				panic!("command")
+			};
+			let ClientMessage::Command(command) =
+				serde_json::from_str(&raw).expect("notification fixture must be valid")
+			else {
+				panic!("command")
+			};
+
+			assert_eq!(command.idempotency_key.as_str(), "notification-once");
+			assert_eq!(command.expected_revision, Some(EntityRevision(1)));
+			assert!(
+				matches!(&command.payload, CommandPayload::SendAccountRecoveryNudge { source, action: AccountRecoveryAction::NotifyOwner } if **source == notification_source())
+			);
+
+			if mode != "drop-before-receipt" {
+				if mode != "missing-receipt" {
+					socket
+						.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
+							version: CURRENT_VERSION,
+							server_id: ServerId::new(SERVER_ID)
+								.expect("notification fixture must be valid"),
+							client_command_id: command.client_command_id.clone(),
+							idempotency_key: command.idempotency_key.clone(),
+							disposition: ReceiptDisposition::Executed,
+							original_client_command_id: command.client_command_id.clone(),
+						})))
+						.await
+						.expect("notification fixture must be valid");
+				}
+				if mode != "drop-after-receipt" {
+					socket
+						.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
+							version: CURRENT_VERSION,
+							server_id: ServerId::new(SERVER_ID)
+								.expect("notification fixture must be valid"),
+							client_command_id: command.client_command_id,
+							idempotency_key: command.idempotency_key,
+							outcome: CommandOutcome::Succeeded,
+							entity_revision: Some(EntityRevision(if mode == "wrong-revision" {
+								2
+							} else {
+								1
+							})),
+							payload: Some(ResultPayload::AccountRecoveryNudge {
+								account_id: EntityId::new(if mode == "wrong-account" {
+									"40000000-0000-4000-8000-000000000002"
+								} else {
+									"40000000-0000-4000-8000-000000000001"
+								})
+								.expect("notification fixture must be valid"),
+								operation_key: IdempotencyKey::new(if mode == "wrong-key" {
+									"other-notification"
+								} else {
+									"notification-once"
+								})
+								.expect("notification fixture must be valid"),
+								status: AccountRecoveryNudgeStatus::Sent,
+							}),
+							error: None,
+						})))
+						.await
+						.expect("notification fixture must be valid");
+				}
+			}
+
+			drop(socket);
+
+			assert!(
+				tokio::time::timeout(Duration::from_millis(30), listener.accept()).await.is_err(),
+				"notification transport must not reconnect to retry"
+			);
+
+			listener.cleanup().expect("notification fixture must be valid");
+		});
+		let result = AccountClient::new(profile)
+			.send_recovery_nudge(
+				notification_source(),
+				AccountRecoveryAction::NotifyOwner,
+				IdempotencyKey::new("notification-once")
+					.expect("notification fixture must be valid"),
+			)
+			.await
+			.expect("notification fixture must be valid");
+
+		task.await.expect("notification fixture must be valid");
+
+		result
+	}
+
+	#[tokio::test]
+	async fn notification_command_requires_bound_receipt_and_never_retries_uncertainty() {
+		for mode in [
+			"good",
+			"wrong-key",
+			"wrong-account",
+			"wrong-revision",
+			"missing-receipt",
+			"drop-before-receipt",
+			"drop-after-receipt",
+		] {
+			let response = notification_command_exchange(mode).await;
+
+			if mode == "good" {
+				assert!(
+					matches!(response, AccountCommandResponse::Applied { result, .. } if matches!(*result, ResultPayload::AccountRecoveryNudge { status: AccountRecoveryNudgeStatus::Sent, .. }))
+				);
+			} else {
+				assert!(
+					matches!(response, AccountCommandResponse::PotentiallyDispatched { .. }),
+					"{mode}"
+				);
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn notification_status_transport_rejects_other_account_purpose_or_key() {
+		use crate::{
+			AccountRecoveryAction as A, AccountRecoveryNudgeOperation, AccountRecoveryNudgeResult,
+			AccountRecoveryNudgeStatus,
+		};
+
+		let expected_account = "40000000-0000-4000-8000-000000000001";
+
+		for (account, action, key, accepted) in [
+			(expected_account, A::NotifyOwner, "requested-key", true),
+			("40000000-0000-4000-8000-000000000002", A::NotifyOwner, "requested-key", false),
+			(expected_account, A::RequestIncrease, "requested-key", false),
+			(expected_account, A::NotifyOwner, "foreign-key", false),
+		] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let server = tokio::spawn(async move {
+				let _temp = temp;
+				let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap())
+					.await
+					.unwrap();
+				let _ = socket.next().await;
+
+				for frame in initial(SERVER_ID) {
+					socket.send(frame).await.unwrap();
+				}
+
+				let Message::Text(raw) = socket.next().await.unwrap().unwrap() else {
+					panic!("query")
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&raw).unwrap() else {
+					panic!("query")
+				};
+
+				assert!(matches!(
+					query.payload,
+					QueryPayload::GetAccountRecoveryNudge {
+						action: A::NotifyOwner,
+						operation_key: Some(_),
+						..
+					}
+				));
+
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::AccountRecoveryNudge(
+							AccountRecoveryNudgeResult::Found(AccountRecoveryNudgeOperation {
+								account_id: EntityId::new(account).unwrap(),
+								account_revision: EntityRevision(1),
+								action,
+								operation_key: IdempotencyKey::new(key).unwrap(),
+								reserved_at_unix_micros: 100,
+								outcome: AccountRecoveryNudgeStatus::Uncertain,
+							}),
+						),
+					})))
+					.await
+					.unwrap();
+
+				drop(socket);
+
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = AccountClient::new(profile)
+				.recovery_nudge_status(
+					EntityId::new(expected_account).unwrap(),
+					A::NotifyOwner,
+					Some(IdempotencyKey::new("requested-key").unwrap()),
+				)
+				.await;
+
+			assert_eq!(result.is_ok(), accepted);
+
+			server.await.unwrap();
+		}
+	}
+
+	#[tokio::test]
+	async fn independent_observation_wait_does_not_block_retained_queries() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let config = profile.retained_session_config().unwrap();
+		let (started, ready) = tokio::sync::oneshot::channel();
+		let server = tokio::spawn(async move {
+			let _temp = temp;
+			let mut main =
+				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
+			let _ = main.next().await;
+
+			for response in initial(SERVER_ID) {
+				let Message::Text(raw) = response else { unreachable!() };
+				let mut message: ServerMessage = serde_json::from_str(&raw).unwrap();
+
+				if let ServerMessage::Welcome(welcome) = &mut message {
+					welcome.instance_id = Some(
+						ServerInstanceId::new("50000000-0000-4000-8000-000000000001").unwrap(),
+					);
+				}
+
+				main.send(typed(message)).await.unwrap();
+			}
+
+			let mut wait =
+				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
+			let _ = wait.next().await;
+
+			for response in initial(SERVER_ID) {
+				wait.send(response).await.unwrap();
+			}
+
+			let Message::Text(request) = wait.next().await.unwrap().unwrap() else {
+				panic!("wait query")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("wait query")
+			};
+
+			assert!(matches!(
+				query.payload,
+				QueryPayload::WaitForAccountObservation { after_generation: 9, .. }
+			));
+
+			started.send(()).unwrap();
+
+			// Deliberately leave this socket unanswered while serving the retained connection.
+			let Message::Text(request) = main.next().await.unwrap().unwrap() else {
+				panic!("main query")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+				panic!("main query")
+			};
+
+			assert!(matches!(query.payload, QueryPayload::GetAccountRecovery { .. }));
+
+			main.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: ServerId::new(SERVER_ID).unwrap(),
+				query_id: query.query_id,
+				payload: QueryResultPayload::AccountRecovery(AccountRecoveryResult {
+					account_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+					account_revision: EntityRevision(1),
+					observed_at_unix_micros: None,
+					state: AccountRecoveryState::Unavailable,
+				}),
+			})))
+			.await
+			.unwrap();
+
+			let closed = tokio::time::timeout(Duration::from_secs(2), wait.next()).await.unwrap();
+
+			assert!(matches!(closed, None | Some(Err(_)) | Some(Ok(Message::Close(_)))));
+
+			drop(main);
+
+			listener.cleanup().unwrap();
+		});
+		let mut main = RetainedSession::connect(config.clone(), None, SessionCancellation::new())
+			.await
+			.unwrap();
+		let SessionDelivery::Snapshot { confirmation, .. } = main.next().await.unwrap() else {
+			panic!("snapshot")
+		};
+
+		main.confirm_applied(confirmation).unwrap();
+
+		let wait =
+			tokio::spawn(async move { config.account_client().wait_for_observation(9).await });
+
+		tokio::time::timeout(Duration::from_secs(2), ready).await.unwrap().unwrap();
+
+		let query_id = QueryId::new("main-remains-responsive").unwrap();
+
+		main.send_query(QueryEnvelope {
+			version: CURRENT_VERSION,
+			query_id: query_id.clone(),
+			payload: QueryPayload::GetAccountRecovery {
+				account_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+				account_revision: EntityRevision(1),
+			},
+		})
+		.await
+		.unwrap();
+
+		let result =
+			tokio::time::timeout(Duration::from_secs(2), main.next()).await.unwrap().unwrap();
+
+		assert!(
+			matches!(result, SessionDelivery::QueryResult(result) if result.query_id == query_id)
+		);
+		assert!(!wait.is_finished());
+
+		wait.abort();
+
+		assert!(wait.await.unwrap_err().is_cancelled());
+
+		server.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn account_recovery_transport_rejects_wrong_account_and_revision() {
+		for (account, revision, accepted) in [
+			("40000000-0000-4000-8000-000000000001", 1, true),
+			("40000000-0000-4000-8000-000000000002", 1, false),
+			("40000000-0000-4000-8000-000000000001", 2, false),
+		] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let stream = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let _ = socket.next().await;
+
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+
+				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+					panic!("query")
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
+					panic!("query")
+				};
+
+				assert!(matches!(
+					query.payload,
+					QueryPayload::GetAccountRecovery { account_revision: EntityRevision(1), .. }
+				));
+
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::AccountRecovery(AccountRecoveryResult {
+							account_id: EntityId::new(account).unwrap(),
+							account_revision: EntityRevision(revision),
+							observed_at_unix_micros: Some(100),
+							state: AccountRecoveryState::Absent,
+						}),
+					})))
+					.await
+					.unwrap();
+
+				drop(socket);
+
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = AccountClient::new(profile)
+				.recovery(
+					EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+					EntityRevision(1),
+				)
+				.await;
+
+			assert_eq!(result.is_ok(), accepted);
+
+			task.await.unwrap();
+		}
+	}
+
+	#[tokio::test]
+	async fn agent_request_pages_preserve_complete_content_and_reject_changed_identity() {
+		use QueryPayload;
+
+		for failure in ["none", "digest", "offset", "expired", "content"] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let text = serde_json::json!({"command":"界🙂\\\"".repeat(4000)}).to_string();
+			let expected = text.clone();
+			let digest = decodex_core::BlobHash::digest(
+				&serde_json::to_vec(&(7, "agent", "item/commandExecution/requestApproval", &text))
+					.unwrap(),
+			)
+			.to_hex();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let mut offset = 0;
+
+				loop {
+					let mut socket =
+						tokio_tungstenite::accept_async(listener.accept().await.unwrap())
+							.await
+							.unwrap();
+					let _ = socket.next().await;
+
+					for response in initial(SERVER_ID) {
+						socket.send(response).await.unwrap();
+					}
+
+					let Message::Text(wire) = socket.next().await.unwrap().unwrap() else {
+						panic!("query")
+					};
+					let ClientMessage::Query(query) =
+						serde_json::from_str::<ClientMessage>(&wire).unwrap()
+					else {
+						panic!("query")
+					};
+
+					if offset == 0 {
+						assert!(matches!(
+							query.payload,
+							QueryPayload::GetAgentRequest { event_id: 7 }
+						));
+					} else {
+						assert!(
+							matches!(query.payload, QueryPayload::GetAgentRequestPage { event_id:7, digest: returned, offset: requested } if requested==offset && returned.as_str()==digest)
+						);
+					}
+
+					let mut end = (offset + 8192).min(text.len());
+
+					while !text.is_char_boundary(end) {
+						end -= 1;
+					}
+
+					let fail = if failure == "content" {
+						end == text.len()
+					} else {
+						offset > 0 && failure != "none"
+					};
+					let result = if fail && failure == "expired" {
+						AgentRequestResult::Unavailable
+					} else {
+						AgentRequestResult::Page {
+							event_id: 7,
+							work_id: "agent".into(),
+							method: "item/commandExecution/requestApproval".into(),
+							digest: if fail && failure == "digest" {
+								"b".repeat(64)
+							} else {
+								digest.clone()
+							},
+							offset: if fail && failure == "offset" { 0 } else { offset },
+							total_bytes: text.len(),
+							text: HistoryText::new(if fail && failure == "content" {
+								let mut changed = text[offset..end].to_owned();
+
+								changed.pop();
+								changed.push(']');
+
+								changed
+							} else {
+								text[offset..end].to_owned()
+							})
+							.unwrap(),
+							next_offset: (end < text.len()).then_some(end),
+						}
+					};
+
+					socket
+						.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+							version: CURRENT_VERSION,
+							server_id: ServerId::new(SERVER_ID).unwrap(),
+							query_id: query.query_id,
+							payload: QueryResultPayload::AgentRequest(result),
+						})))
+						.await
+						.unwrap();
+
+					drop(socket);
+
+					if end == text.len() || fail {
+						break;
+					}
+
+					offset = end;
+				}
+
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = AgentClient::new(profile).request(7).await;
+
+			task.await.unwrap();
+
+			match failure {
+				"none" => assert!(
+					matches!(result, Ok(AgentRequestResult::Available { request_json, .. }) if request_json.as_str()==expected)
+				),
+				"expired" => assert_eq!(result.unwrap(), AgentRequestResult::Unavailable),
+				_ => assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed),
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn agent_request_transport_admits_mcp_forms_but_rejects_wrong_event_and_unknown_method() {
+		for (method, returned, accepted) in [
+			("mcpServer/elicitation/request", 7, true),
+			("mcpServer/elicitation/request", 8, false),
+			("unknown/request", 7, false),
+		] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let stream = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let _ = socket.next().await;
+
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+
+				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+					panic!("text request");
+				};
+				let ClientMessage::Query(query) =
+					serde_json::from_str::<ClientMessage>(&request).unwrap()
+				else {
+					panic!("query");
+				};
+
+				assert!(matches!(query.payload, QueryPayload::GetAgentRequest { event_id: 7 }));
+
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::AgentRequest(AgentRequestResult::Available {
+							event_id: returned,
+							work_id: "agent".into(),
+							method: method.into(),
+							request_json: AgentRequestText::new(
+								r#"{"mode":"form","requestedSchema":null,"message":"Allow this request?"}"#,
+							)
+							.unwrap(),
+						}),
+					})))
+					.await
+					.unwrap();
+
+				drop(socket);
+
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = AgentClient::new(profile).request(7).await;
+
+			task.await.unwrap();
+
+			if accepted {
+				assert!(
+					matches!(result,Ok(AgentRequestResult::Available {method,..}) if method=="mcpServer/elicitation/request")
+				);
+			} else {
+				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed);
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn mcp_login_transport_preserves_intent_and_rejects_another_session() {
+		for returned_session in ["intent", "another-intent"] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let stream = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let _ = socket.next().await;
+
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+
+				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+					panic!("text query");
+				};
+				let ClientMessage::Query(query) =
+					serde_json::from_str::<ClientMessage>(&request).unwrap()
+				else {
+					panic!("query");
+				};
+
+				assert!(
+					matches!(query.payload, QueryPayload::ExchangeMcpLogin { request: McpLoginRequest::Start { session_id, work_id, server_name } } if session_id.as_str() == "intent" && work_id.as_str() == "work" && server_name.as_str() == "server")
+				);
+
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::McpLogin(McpLoginStatus {
+							session_id: EntityId::new(returned_session).unwrap(),
+							phase: McpLoginPhase::AwaitingUser,
+							authorization_url: Some(
+								McpAuthorizationUrl::new(
+									"https://example.test/authorize?state=private-fixture".into(),
+								)
+								.unwrap(),
+							),
+							message: WireText::new("Continue in your browser").unwrap(),
+						}),
+					})))
+					.await
+					.unwrap();
+
+				drop(socket);
+
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let result = AgentClient::new(profile)
+				.mcp_login(McpLoginRequest::Start {
+					session_id: EntityId::new("intent").unwrap(),
+					work_id: EntityId::new("work").unwrap(),
+					server_name: WireText::new("server").unwrap(),
+				})
+				.await;
+
+			task.await.unwrap();
+
+			if returned_session == "intent" {
+				let status = result.unwrap();
+
+				assert_eq!(status.phase, McpLoginPhase::AwaitingUser);
+				assert!(status.authorization_url.is_some());
+				assert!(!format!("{status:?}").contains("private-fixture"));
+			} else {
+				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed);
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn usage_estimate_transport_rejects_another_work_and_keeps_unknown_values() {
+		for returned_work in ["work", "another-work"] {
+			let (temp, authority) = local_transport();
+			let mut listener = authority.bind().await.unwrap();
+			let task = tokio::spawn(async move {
+				let _temp = temp;
+				let stream = listener.accept().await.unwrap();
+				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+				let _ = socket.next().await;
+
+				for response in initial(SERVER_ID) {
+					socket.send(response).await.unwrap();
+				}
+
+				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+					panic!("text query");
+				};
+				let ClientMessage::Query(query) =
+					serde_json::from_str::<ClientMessage>(&request).unwrap()
+				else {
+					panic!("query");
+				};
+
+				assert!(
+					matches!(query.payload,QueryPayload::GetAgentUsageEstimate {work_id} if work_id.as_str()=="work")
+				);
+
+				let value = AgentUsageEstimateResult::Available {
+					work_id: EntityId::new(returned_work).unwrap(),
+					account_id: EntityId::new("account").unwrap(),
+					observed_at_micros: 1,
+					estimate: ThreadUsageEstimate {
+						thread_id: "thread".into(),
+						estimated_usage_credits_micros: 9007199254740993,
+						estimated_usage_usd_micros: None,
+						groups: vec![],
+					},
+				};
+
+				socket
+					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER_ID).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::AgentUsageEstimate(value),
+					})))
+					.await
+					.unwrap();
+
+				drop(socket);
+
+				listener.cleanup().unwrap();
+			});
+			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+			let response =
+				AgentClient::new(profile).usage_estimate(EntityId::new("work").unwrap()).await;
+
+			task.await.unwrap();
+
+			if returned_work == "work" {
+				let AgentUsageEstimateResult::Available { estimate, .. } = response.unwrap() else {
+					panic!("estimate");
+				};
+
+				assert_eq!(estimate.estimated_usage_credits_micros, 9007199254740993);
+				assert_eq!(estimate.estimated_usage_usd_micros, None);
+			} else {
+				assert_eq!(response.unwrap_err(), ClientFailure::ProtocolMalformed);
+			}
+		}
+	}
+
+	#[tokio::test]
 	async fn account_profile_client_rejects_identity_mismatch_and_default_email_leakage() {
 		let mismatch = account_profile_query(
 			profile_result(
@@ -5516,9 +5511,9 @@ max_entry_bytes = 0
 				assert!(matches!(
 					serde_json::from_str::<ClientMessage>(&request)
 						.expect("test operation must succeed"),
-					ClientMessage::Query(crate::QueryEnvelope {
+					ClientMessage::Query(QueryEnvelope {
 						version: CURRENT_VERSION,
-						payload: crate::QueryPayload::GetDoctorStatus,
+						payload: QueryPayload::GetDoctorStatus,
 						..
 					})
 				));
@@ -6407,7 +6402,7 @@ max_entry_bytes = 0
 		{
 			let (temp, authority) = local_transport();
 			let mut listener = authority.bind().await.unwrap();
-			let request = crate::AgentMediaRequest {
+			let request = AgentMediaRequest {
 				work_id: EntityId::new("work").unwrap(),
 				thread_id: EntityId::new("thread").unwrap(),
 				turn_id: EntityId::new("turn").unwrap(),
@@ -6436,7 +6431,7 @@ max_entry_bytes = 0
 				else {
 					panic!("query")
 				};
-				let crate::QueryPayload::GetAgentMedia { request: actual } = query.payload else {
+				let QueryPayload::GetAgentMedia { request: actual } = query.payload else {
 					panic!("media request")
 				};
 
@@ -6453,15 +6448,15 @@ max_entry_bytes = 0
 
 				let bytes = match change {
 					"empty" => vec![],
-					"chunk" => vec![255; crate::AGENT_MEDIA_CHUNK_BYTES + 1],
-					_ => vec![255; crate::AGENT_MEDIA_CHUNK_BYTES],
+					"chunk" => vec![255; AGENT_MEDIA_CHUNK_BYTES + 1],
+					_ => vec![255; AGENT_MEDIA_CHUNK_BYTES],
 				};
 				let total_bytes = match change {
 					"total" => 4,
-					"capacity" => crate::MAX_AGENT_MEDIA_BYTES as u32 + 1,
+					"capacity" => MAX_AGENT_MEDIA_BYTES as u32 + 1,
 					_ => 5 + bytes.len() as u32,
 				};
-				let result = crate::AgentMediaResult::Available {
+				let result = AgentMediaResult::Available {
 					request: Box::new(returned),
 					account_id: EntityId::new("account").unwrap(),
 					fingerprint: EntityId::new(
@@ -6488,12 +6483,12 @@ max_entry_bytes = 0
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::AgentClient::new(profile).media(request).await;
+			let result = AgentClient::new(profile).media(request).await;
 
 			task.await.unwrap();
 
 			if change == "none" {
-				assert!(matches!(result, Ok(crate::AgentMediaResult::Available { .. })));
+				assert!(matches!(result, Ok(AgentMediaResult::Available { .. })));
 			} else {
 				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
 			}
@@ -6506,7 +6501,7 @@ max_entry_bytes = 0
 		{
 			let (temp, authority) = local_transport();
 			let mut listener = authority.bind().await.unwrap();
-			let request = crate::AgentAppUiRequest {
+			let request = AgentAppUiRequest {
 				work_id: EntityId::new("work").unwrap(),
 				thread_id: EntityId::new("thread").unwrap(),
 				turn_id: EntityId::new("turn").unwrap(),
@@ -6534,7 +6529,7 @@ max_entry_bytes = 0
 				else {
 					panic!("query")
 				};
-				let crate::QueryPayload::GetAgentAppUi { request: actual } = query.payload else {
+				let QueryPayload::GetAgentAppUi { request: actual } = query.payload else {
 					panic!("media request")
 				};
 
@@ -6551,15 +6546,15 @@ max_entry_bytes = 0
 
 				let bytes = match change {
 					"empty" => vec![],
-					"chunk" => vec![255; crate::AGENT_APP_UI_CHUNK_BYTES + 1],
-					_ => vec![255; crate::AGENT_APP_UI_CHUNK_BYTES],
+					"chunk" => vec![255; AGENT_APP_UI_CHUNK_BYTES + 1],
+					_ => vec![255; AGENT_APP_UI_CHUNK_BYTES],
 				};
 				let total_bytes = match change {
 					"total" => 4,
-					"capacity" => crate::MAX_AGENT_APP_UI_BYTES as u32 + 1,
+					"capacity" => MAX_AGENT_APP_UI_BYTES as u32 + 1,
 					_ => 5 + bytes.len() as u32,
 				};
-				let result = crate::AgentAppUiResult::Available {
+				let result = AgentAppUiResult::Available {
 					request: Box::new(returned),
 					account_id: EntityId::new("account").unwrap(),
 					source_fingerprint: EntityId::new("c".repeat(64)).unwrap(),
@@ -6586,12 +6581,12 @@ max_entry_bytes = 0
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::AgentClient::new(profile).app_ui(request).await;
+			let result = AgentClient::new(profile).app_ui(request).await;
 
 			task.await.unwrap();
 
 			if change == "none" {
-				assert!(matches!(result, Ok(crate::AgentAppUiResult::Available { .. })));
+				assert!(matches!(result, Ok(AgentAppUiResult::Available { .. })));
 			} else {
 				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
 			}
@@ -6604,7 +6599,7 @@ max_entry_bytes = 0
 		{
 			let (temp, authority) = local_transport();
 			let mut listener = authority.bind().await.unwrap();
-			let request = crate::AgentAppUiReceiptRequest {
+			let request = AgentAppUiReceiptRequest {
 				work_id: EntityId::new("work").unwrap(),
 				operation_id: EntityId::new("item").unwrap(),
 				offset: 5,
@@ -6630,8 +6625,7 @@ max_entry_bytes = 0
 				else {
 					panic!("query")
 				};
-				let crate::QueryPayload::GetAgentAppUiReceipt { request: actual } = query.payload
-				else {
+				let QueryPayload::GetAgentAppUiReceipt { request: actual } = query.payload else {
 					panic!("media request")
 				};
 
@@ -6648,15 +6642,15 @@ max_entry_bytes = 0
 
 				let bytes = match change {
 					"empty" => vec![],
-					"chunk" => vec![255; crate::AGENT_APP_UI_RECEIPT_CHUNK_BYTES + 1],
-					_ => vec![255; crate::AGENT_APP_UI_RECEIPT_CHUNK_BYTES],
+					"chunk" => vec![255; AGENT_APP_UI_RECEIPT_CHUNK_BYTES + 1],
+					_ => vec![255; AGENT_APP_UI_RECEIPT_CHUNK_BYTES],
 				};
 				let total_bytes = match change {
 					"total" => 4,
-					"capacity" => crate::MAX_AGENT_APP_UI_RECEIPT_BYTES as u32 + 1,
+					"capacity" => MAX_AGENT_APP_UI_RECEIPT_BYTES as u32 + 1,
 					_ => 5 + bytes.len() as u32,
 				};
-				let result = crate::AgentAppUiReceiptResult::Available {
+				let result = AgentAppUiReceiptResult::Available {
 					request: Box::new(returned),
 					fingerprint: EntityId::new(
 						if change == "fingerprint" { "b" } else { "a" }.repeat(64),
@@ -6681,12 +6675,12 @@ max_entry_bytes = 0
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::AgentClient::new(profile).app_ui_receipt(request).await;
+			let result = AgentClient::new(profile).app_ui_receipt(request).await;
 
 			task.await.unwrap();
 
 			if change == "none" {
-				assert!(matches!(result, Ok(crate::AgentAppUiReceiptResult::Available { .. })));
+				assert!(matches!(result, Ok(AgentAppUiReceiptResult::Available { .. })));
 			} else {
 				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
 			}
@@ -6718,14 +6712,14 @@ max_entry_bytes = 0
 				};
 
 				assert!(
-					matches!(&query.payload,crate::QueryPayload::GetAgentInputReceipts {work_id,after:Some(40)} if work_id.as_str()=="work")
+					matches!(&query.payload,QueryPayload::GetAgentInputReceipts {work_id,after:Some(40)} if work_id.as_str()=="work")
 				);
 
-				let entry = crate::AgentHistoryEntryDto {
+				let entry = AgentHistoryEntryDto {
 					native_source: None,
 					turn_id: None,
 					weather: Vec::new(),
-					receipt: Some(crate::AgentHistoryReceiptDto {
+					receipt: Some(AgentHistoryReceiptDto {
 						voice_session_id: None,
 						event_kind: "user_message".into(),
 						delivered_turn_id: (change == "delivered").then(|| "turn".into()),
@@ -6739,7 +6733,7 @@ max_entry_bytes = 0
 					text: "Pending input".into(),
 					created_at_micros: 1,
 				};
-				let result = crate::AgentInputReceiptsResult::Available {
+				let result = AgentInputReceiptsResult::Available {
 					work_id: EntityId::new(if change == "work" { "other" } else { "work" })
 						.unwrap(),
 					next_after: Some(if change == "cursor" { 42 } else { entry.id }),
@@ -6762,14 +6756,14 @@ max_entry_bytes = 0
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::AgentClient::new(profile)
+			let result = AgentClient::new(profile)
 				.input_receipts(EntityId::new("work").unwrap(), Some(40))
 				.await;
 
 			task.await.unwrap();
 
 			if change == "none" {
-				assert!(matches!(result, Ok(crate::AgentInputReceiptsResult::Available { .. })));
+				assert!(matches!(result, Ok(AgentInputReceiptsResult::Available { .. })));
 			} else {
 				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
 			}
@@ -6780,10 +6774,10 @@ max_entry_bytes = 0
 		for change in ["none", "work", "thread", "turn", "submission"] {
 			let (temp, authority) = local_transport();
 			let mut listener = authority.bind().await.unwrap();
-			let identity = crate::AgentSteerIdentity {
+			let identity = AgentSteerIdentity {
 				work_id: EntityId::new("work").unwrap(),
-				thread_id: crate::WireText::new("thread").unwrap(),
-				turn_id: crate::WireText::new("turn").unwrap(),
+				thread_id: WireText::new("thread").unwrap(),
+				turn_id: WireText::new("turn").unwrap(),
 				submission_id: IdempotencyKey::new("submission").unwrap(),
 			};
 			let expected = identity.clone();
@@ -6808,15 +6802,15 @@ max_entry_bytes = 0
 				};
 
 				assert!(
-					matches!(&query.payload, crate::QueryPayload::GetAgentSteerReceipt { identity } if identity == &expected)
+					matches!(&query.payload, QueryPayload::GetAgentSteerReceipt { identity } if identity == &expected)
 				);
 
 				let mut actual = expected;
 
 				match change {
 					"work" => actual.work_id = EntityId::new("other").unwrap(),
-					"thread" => actual.thread_id = crate::WireText::new("other").unwrap(),
-					"turn" => actual.turn_id = crate::WireText::new("other").unwrap(),
+					"thread" => actual.thread_id = WireText::new("other").unwrap(),
+					"turn" => actual.turn_id = WireText::new("other").unwrap(),
 					"submission" => actual.submission_id = IdempotencyKey::new("other").unwrap(),
 					_ => {},
 				}
@@ -6827,7 +6821,7 @@ max_entry_bytes = 0
 						server_id: ServerId::new(SERVER_ID).unwrap(),
 						query_id: query.query_id,
 						payload: QueryResultPayload::AgentSteerReceipt(
-							crate::AgentSteerReceiptResult::Confirmed { identity: actual },
+							AgentSteerReceiptResult::Confirmed { identity: actual },
 						),
 					})))
 					.await
@@ -6838,12 +6832,12 @@ max_entry_bytes = 0
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
-			let result = crate::AgentClient::new(profile).steer_receipt(identity.clone()).await;
+			let result = AgentClient::new(profile).steer_receipt(identity.clone()).await;
 
 			task.await.unwrap();
 
 			if change == "none" {
-				assert_eq!(result.unwrap(), crate::AgentSteerReceiptResult::Confirmed { identity });
+				assert_eq!(result.unwrap(), AgentSteerReceiptResult::Confirmed { identity });
 			} else {
 				assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed, "{change}");
 			}
