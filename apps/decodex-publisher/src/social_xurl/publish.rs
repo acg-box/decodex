@@ -1,29 +1,37 @@
+#[cfg(test)] use std::cell::Cell;
 use std::{
 	fs,
 	io::ErrorKind,
 	path::{Path, PathBuf},
 };
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use super::{
-	auth_contract::APPROVED_XURL_VERSION,
-	ledger,
-	model::{
-		ATTEMPT_SCHEMA, AUTOMATION_ID, CREATE_COST_MICROUSD, IDENTITY_READ_COST_MICROUSD,
-		IDENTITY_RECOVERY_EXHAUSTED_STATUS, MAX_IDENTITY_RECOVERY_CALLS, NO_CREATE_RELEASED_STATUS,
-		NORMAL_PUBLICATION_COST_MICROUSD, PUBLICATION_LINEAGE_BUDGET_MICROUSD, READ_COST_MICROUSD,
-		READ_RECOVERY_EXHAUSTED_STATUS, TARGET_ACCOUNT, VerifiedXurlPost, XURL_APP, XurlAttempt,
-		XurlCall,
-	},
-	pricing, runtime,
-};
 use crate::{
-	SOCIAL_CANDIDATE_SCHEMA, SOCIAL_MONTHLY_BUDGET_MICROUSD, SOCIAL_POST_SCHEMA,
-	SOCIAL_PUBLISH_RESERVATION_SCHEMA, SocialPublishXurlReport, SocialPublishXurlRequest,
-	SocialReconcileXurlReport, SocialReconcileXurlRequest,
+	DEFAULT_XURL_AUTH_CONTRACT_PATH, SOCIAL_CANDIDATE_SCHEMA, SOCIAL_MONTHLY_BUDGET_MICROUSD,
+	SOCIAL_POST_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA, SocialPublishXurlReport,
+	SocialPublishXurlRequest, SocialReconcileXurlReport, SocialReconcileXurlRequest,
 	prelude::{Result, eyre},
+	social_clock, social_evidence,
+	social_publish::{self, scan},
+	social_record, social_validation,
+	social_xurl::{
+		self,
+		auth_contract::{self, APPROVED_XURL_VERSION, VerifiedAuthorizationContract},
+		ledger::{self, CallCompletion},
+		model::{
+			ATTEMPT_SCHEMA, AUTOMATION_ID, CREATE_COST_MICROUSD, IDENTITY_READ_COST_MICROUSD,
+			IDENTITY_RECOVERY_EXHAUSTED_STATUS, MAX_IDENTITY_RECOVERY_CALLS,
+			NO_CREATE_RELEASED_STATUS, NORMAL_PUBLICATION_COST_MICROUSD, PRICING_POLICY_ID,
+			PUBLICATION_LINEAGE_BUDGET_MICROUSD, READ_COST_MICROUSD,
+			READ_RECOVERY_EXHAUSTED_STATUS, TARGET_ACCOUNT, VerifiedXurlPost, XURL_APP,
+			XurlAttempt, XurlCall,
+		},
+		pricing,
+		reconcile::{self, BinarySource, ReportInput},
+		runtime::{self, TrustedXurlBinary},
+	},
 };
 
 struct PublishContext {
@@ -45,7 +53,7 @@ struct PublishContext {
 }
 
 struct ReadbackExecution<'a> {
-	binary: &'a runtime::TrustedXurlBinary,
+	binary: &'a TrustedXurlBinary,
 	text: &'a str,
 	posted_at: &'a str,
 	context: &'a PublishContext,
@@ -96,13 +104,13 @@ const READ_EXHAUSTED_RELEASE_REASON: &str =
 
 #[cfg(test)]
 std::thread_local! {
-	static INTERRUPT_IDENTITY_READ: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-	static INTERRUPT_RESERVED_ATTEMPT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+	static INTERRUPT_IDENTITY_READ: Cell<bool> = const { Cell::new(false) };
+	static INTERRUPT_RESERVED_ATTEMPT: Cell<bool> = const { Cell::new(false) };
 }
 
 pub(super) fn run(
 	request: &SocialPublishXurlRequest,
-	xurl_binary: &runtime::TrustedXurlBinary,
+	xurl_binary: &TrustedXurlBinary,
 ) -> Result<SocialPublishXurlReport> {
 	run_with_pricing_check(request, xurl_binary, pricing::require_current_at)
 }
@@ -110,12 +118,12 @@ pub(super) fn run(
 #[cfg(test)]
 pub(super) fn run_without_pricing_for_test(
 	request: &SocialPublishXurlRequest,
-	xurl_binary: &runtime::TrustedXurlBinary,
+	xurl_binary: &TrustedXurlBinary,
 ) -> Result<SocialPublishXurlReport> {
 	let posted_at = OffsetDateTime::parse(&request.posted_at, &Rfc3339)
 		.map_err(|_| eyre::eyre!("posted_at must be an RFC3339 timestamp"))?;
 
-	crate::social_clock::with_default_content_create_now_for_test(posted_at, || {
+	social_clock::with_default_content_create_now_for_test(posted_at, || {
 		run_with_pricing_check(request, xurl_binary, |_| Ok(()))
 	})
 }
@@ -123,7 +131,7 @@ pub(super) fn run_without_pricing_for_test(
 #[cfg(test)]
 pub(super) fn run_with_identity_interruption_for_test(
 	request: &SocialPublishXurlRequest,
-	xurl_binary: &runtime::TrustedXurlBinary,
+	xurl_binary: &TrustedXurlBinary,
 ) -> Result<SocialPublishXurlReport> {
 	INTERRUPT_IDENTITY_READ.with(|interrupt| interrupt.set(true));
 
@@ -137,7 +145,7 @@ pub(super) fn run_with_identity_interruption_for_test(
 #[cfg(test)]
 pub(super) fn run_with_reserved_attempt_interruption_for_test(
 	request: &SocialPublishXurlRequest,
-	xurl_binary: &runtime::TrustedXurlBinary,
+	xurl_binary: &TrustedXurlBinary,
 ) -> Result<SocialPublishXurlReport> {
 	INTERRUPT_RESERVED_ATTEMPT.with(|interrupt| interrupt.set(true));
 
@@ -150,7 +158,7 @@ pub(super) fn run_with_reserved_attempt_interruption_for_test(
 
 fn run_with_pricing_check(
 	request: &SocialPublishXurlRequest,
-	xurl_binary: &runtime::TrustedXurlBinary,
+	xurl_binary: &TrustedXurlBinary,
 	require_current_pricing: impl FnOnce(OffsetDateTime) -> Result<()>,
 ) -> Result<SocialPublishXurlReport> {
 	let posted_at = validate_request(request)?;
@@ -164,7 +172,7 @@ fn run_with_pricing_check(
 	crate::require_contained_regular_file(&reservation_path, &reservations_dir)
 		.map_err(|error| eyre::eyre!("reservation is invalid: {error}"))?;
 
-	let _state_lock = crate::social_publish::scan::acquire_social_state_lock(&request.locks_dir)?;
+	let _state_lock = scan::acquire_social_state_lock(&request.locks_dir)?;
 	let reservation = load_reservation(&reservation_path)?;
 	let billing_month = reservation_billing_month(&reservation)?.to_owned();
 	let attempt_path = attempts_dir.join(&billing_month).join(format!("{}.json", request.run_id));
@@ -187,7 +195,7 @@ fn run_with_pricing_check(
 
 	crate::validate_generated_social_artifact(&candidate)
 		.map_err(|error| eyre::eyre!("candidate failed validation: {error}"))?;
-	crate::social_evidence::validate_source_evidence(&candidate)
+	social_evidence::validate_source_evidence(&candidate)
 		.map_err(|error| eyre::eyre!("candidate evidence failed validation: {error}"))?;
 
 	let publication_time =
@@ -203,7 +211,7 @@ fn run_with_pricing_check(
 	let publication_lineage_sha256 =
 		required_string(&reservation, "publication_lineage_sha256")?.to_owned();
 
-	if let Some(conflict) = super::publication_effect_conflict(
+	if let Some(conflict) = social_xurl::publication_effect_conflict(
 		&attempts_dir,
 		&publication_lineage_sha256,
 		Some(&attempt_path),
@@ -224,7 +232,7 @@ fn run_with_pricing_check(
 	} else {
 		require_current_pricing(posted_at)?;
 
-		let contract = super::auth_contract::load_current_at(
+		let contract = auth_contract::load_current_at(
 			&request.authorization_contract_path,
 			posted_at,
 			xurl_binary,
@@ -258,7 +266,7 @@ fn run_with_pricing_check(
 		return finish_existing(request, &context, &reservation, &candidate, &post);
 	}
 
-	crate::social_publish::scan::expire_active_reservations(&context.reservations_dir, posted_at)?;
+	scan::expire_active_reservations(&context.reservations_dir, posted_at)?;
 
 	let reservation = load_reservation(&context.reservation_path)?;
 
@@ -331,7 +339,7 @@ pub(super) fn reconcile_local(
 
 	crate::validate_generated_social_artifact(&candidate)
 		.map_err(|error| eyre::eyre!("candidate failed validation: {error}"))?;
-	crate::social_evidence::validate_source_evidence(&candidate)
+	social_evidence::validate_source_evidence(&candidate)
 		.map_err(|error| eyre::eyre!("candidate evidence failed validation: {error}"))?;
 
 	let billing_month = reservation_billing_month(&reservation)?.to_owned();
@@ -352,7 +360,7 @@ pub(super) fn reconcile_local(
 		));
 	}
 	if attempt.candidate_sha256.as_deref() != Some(&candidate_sha256)
-		|| attempt.pricing_policy_id.as_deref() != Some(super::model::PRICING_POLICY_ID)
+		|| attempt.pricing_policy_id.as_deref() != Some(PRICING_POLICY_ID)
 	{
 		return Err(eyre::eyre!(
 			"xurl publication attempt lacks the current candidate and pricing policy bindings"
@@ -378,7 +386,7 @@ pub(super) fn reconcile_local(
 		.unwrap_or(attempt_created_at);
 	let synthetic_request = SocialPublishXurlRequest {
 		reservation_path: reservation_path.to_path_buf(),
-		authorization_contract_path: PathBuf::from(crate::DEFAULT_XURL_AUTH_CONTRACT_PATH),
+		authorization_contract_path: PathBuf::from(DEFAULT_XURL_AUTH_CONTRACT_PATH),
 		reservations_dir: reservations_dir.clone(),
 		candidates_dir,
 		posts_dir: posts_dir.clone(),
@@ -432,7 +440,7 @@ pub(super) fn reconcile_local(
 		&mut attempt,
 	)?;
 
-	Ok(super::reconcile::report(super::reconcile::ReportInput {
+	Ok(reconcile::report(ReportInput {
 		status: if changed { "reconciled" } else { "already_terminal" },
 		kind: "publication",
 		request,
@@ -448,7 +456,7 @@ pub(super) fn reconcile_safe_read(
 	request: &SocialReconcileXurlRequest,
 	attempt_path: &Path,
 	reconciled_at: OffsetDateTime,
-	binary_source: &super::reconcile::BinarySource,
+	binary_source: &BinarySource,
 	require_pricing: bool,
 ) -> Result<SocialReconcileXurlReport> {
 	let mut recovery = prepare_publication_recovery(request, attempt_path, reconciled_at)?;
@@ -515,7 +523,7 @@ fn prepare_publication_recovery(
 
 	crate::validate_generated_social_artifact(&candidate)
 		.map_err(|error| eyre::eyre!("recovery candidate failed validation: {error}"))?;
-	crate::social_evidence::validate_source_evidence(&candidate)
+	social_evidence::validate_source_evidence(&candidate)
 		.map_err(|error| eyre::eyre!("recovery candidate evidence failed validation: {error}"))?;
 
 	let post_path = posts_dir.join(format!("{original_run_id}.json"));
@@ -621,7 +629,7 @@ fn finalize_existing_recovery_state(
 fn reconcile_interrupted_identity(
 	request: &SocialReconcileXurlRequest,
 	reconciled_at: OffsetDateTime,
-	binary_source: &super::reconcile::BinarySource,
+	binary_source: &BinarySource,
 	require_pricing: bool,
 	recovery: &mut PreparedPublicationRecovery,
 ) -> Result<SocialReconcileXurlReport> {
@@ -672,7 +680,7 @@ fn reconcile_interrupted_identity(
 fn reconcile_interrupted_post_read(
 	request: &SocialReconcileXurlRequest,
 	reconciled_at: OffsetDateTime,
-	binary_source: &super::reconcile::BinarySource,
+	binary_source: &BinarySource,
 	require_pricing: bool,
 	recovery: &mut PreparedPublicationRecovery,
 ) -> Result<SocialReconcileXurlReport> {
@@ -841,7 +849,7 @@ fn terminal_recovery_record(
 
 	let reservation_ref = crate::path_arg(&root, &reservation_path);
 
-	super::reconcile::validate_stamp(
+	reconcile::validate_stamp(
 		reconciliation,
 		&attempt.run_id,
 		&reservation_ref,
@@ -859,7 +867,7 @@ fn load_recovery_attempt(
 	let attempt = ledger::load_attempt(attempt_path)?;
 
 	if attempt.schema != ATTEMPT_SCHEMA
-		|| !crate::social_publish::valid_run_id(&attempt.run_id)
+		|| !social_publish::valid_run_id(&attempt.run_id)
 		|| attempt.xurl_version != APPROVED_XURL_VERSION
 		|| operation_id == attempt.run_id
 		|| attempt_path
@@ -978,10 +986,10 @@ fn require_recovery_budget(
 fn verified_recovery_provenance(
 	request: &SocialReconcileXurlRequest,
 	reconciled_at: OffsetDateTime,
-	binary: &runtime::TrustedXurlBinary,
+	binary: &TrustedXurlBinary,
 	expected_contract_sha256: &str,
-) -> Result<super::auth_contract::VerifiedAuthorizationContract> {
-	let provenance = super::auth_contract::load_current_at(
+) -> Result<VerifiedAuthorizationContract> {
+	let provenance = auth_contract::load_current_at(
 		&request.authorization_contract_path,
 		reconciled_at,
 		binary,
@@ -1003,8 +1011,8 @@ fn reconcile_identity_read(
 	context: &PublishContext,
 	reservation: &Value,
 	attempt: &mut XurlAttempt,
-	binary: &runtime::TrustedXurlBinary,
-	provenance: &mut super::auth_contract::VerifiedAuthorizationContract,
+	binary: &TrustedXurlBinary,
+	provenance: &mut VerifiedAuthorizationContract,
 	billing_month: &str,
 ) -> Result<SocialReconcileXurlReport> {
 	ledger::reserve_publication_reconcile_call(
@@ -1028,7 +1036,7 @@ fn reconcile_identity_read(
 			ledger::finish_last_call(
 				&context.attempt_path,
 				attempt,
-				ledger::CallCompletion {
+				CallCompletion {
 					call_status: "failed",
 					response_sha256: None,
 					status: "identity_reconcile_halted",
@@ -1060,7 +1068,7 @@ fn reconcile_identity_read(
 			ledger::finish_last_call(
 				&context.attempt_path,
 				attempt,
-				ledger::CallCompletion {
+				CallCompletion {
 					call_status,
 					response_sha256: Some(runtime::sha256(&output.stdout)),
 					status: "identity_reconcile_halted",
@@ -1088,7 +1096,7 @@ fn reconcile_identity_read(
 	ledger::finish_last_call(
 		&context.attempt_path,
 		attempt,
-		ledger::CallCompletion {
+		CallCompletion {
 			call_status: "succeeded",
 			response_sha256: Some(identity.response_sha256),
 			status: "identity_reconciled",
@@ -1129,16 +1137,11 @@ fn finalize_terminal_recovery(
 	let (_, reservation_sha256) = crate::load_json_with_sha256(&context.reservation_path)?;
 	let reservation_ref = crate::path_arg(&context.root, &context.reservation_path);
 	let attempt_changed = if let Some(stamp) = &attempt.reconciliation {
-		super::reconcile::validate_stamp(
-			stamp,
-			&attempt.run_id,
-			&reservation_ref,
-			&reservation_sha256,
-		)?;
+		reconcile::validate_stamp(stamp, &attempt.run_id, &reservation_ref, &reservation_sha256)?;
 
 		false
 	} else {
-		let stamp = super::reconcile::stamp(
+		let stamp = reconcile::stamp(
 			&request.operation_id,
 			&request.reconciled_at,
 			reservation_ref,
@@ -1156,7 +1159,7 @@ fn finalize_terminal_recovery(
 		true
 	};
 
-	Ok(super::reconcile::report(super::reconcile::ReportInput {
+	Ok(reconcile::report(ReportInput {
 		status: if reservation_changed || attempt_changed {
 			report_status
 		} else {
@@ -1317,8 +1320,8 @@ fn execute_known_post_read(
 	recovery: &PublicationRecovery<'_>,
 	prepared: PreparedPostRead<'_>,
 	attempt: &mut XurlAttempt,
-	binary: &runtime::TrustedXurlBinary,
-	provenance: &mut super::auth_contract::VerifiedAuthorizationContract,
+	binary: &TrustedXurlBinary,
+	provenance: &mut VerifiedAuthorizationContract,
 ) -> Result<SocialReconcileXurlReport> {
 	let mut output = match runtime::read(binary, provenance, &prepared.post_id, "post_read") {
 		Ok(output) => output,
@@ -1326,7 +1329,7 @@ fn execute_known_post_read(
 			ledger::finish_last_call(
 				&recovery.context.attempt_path,
 				attempt,
-				ledger::CallCompletion {
+				CallCompletion {
 					call_status: "failed",
 					response_sha256: None,
 					status: "read_reconcile_halted",
@@ -1354,7 +1357,7 @@ fn execute_known_post_read(
 			ledger::finish_last_call(
 				&recovery.context.attempt_path,
 				attempt,
-				ledger::CallCompletion {
+				CallCompletion {
 					call_status,
 					response_sha256: Some(runtime::sha256(&output.stdout)),
 					status: "read_reconcile_halted",
@@ -1373,7 +1376,7 @@ fn execute_known_post_read(
 	ledger::finish_last_call(
 		&recovery.context.attempt_path,
 		attempt,
-		ledger::CallCompletion {
+		CallCompletion {
 			call_status: "succeeded",
 			response_sha256: Some(digest),
 			status: "verified",
@@ -1394,7 +1397,7 @@ fn execute_known_post_read(
 		attempt,
 	)?;
 
-	Ok(super::reconcile::report(super::reconcile::ReportInput {
+	Ok(reconcile::report(ReportInput {
 		status: "reconciled",
 		kind: "publication_read",
 		request: recovery.request,
@@ -1438,7 +1441,7 @@ fn finalize_publication_reconciliation(
 			return Err(eyre::eyre!("publication lineage has no locally recoverable state"));
 		}
 
-		let published_count = crate::social_publish::scan::scan_social_publish_state(
+		let published_count = scan::scan_social_publish_state(
 			&context.reservations_dir,
 			&context.posts_dir,
 			required_string(reservation, "idempotency_key")?,
@@ -1469,23 +1472,14 @@ fn finalize_publication_reconciliation(
 	let (_, post_sha256) = crate::load_json_with_sha256(&context.post_path)?;
 
 	if let Some(stamp) = &attempt.reconciliation {
-		super::reconcile::validate_stamp(
-			stamp,
-			&synthetic_request.run_id,
-			&post_ref,
-			&post_sha256,
-		)?;
+		reconcile::validate_stamp(stamp, &synthetic_request.run_id, &post_ref, &post_sha256)?;
 	}
 
 	let changed = recovered || !reservation_was_terminal;
 
 	if changed {
-		let stamp = super::reconcile::stamp(
-			&request.operation_id,
-			&request.reconciled_at,
-			post_ref,
-			post_sha256,
-		);
+		let stamp =
+			reconcile::stamp(&request.operation_id, &request.reconciled_at, post_ref, post_sha256);
 
 		ledger::reconcile_attempt(
 			&context.attempt_path,
@@ -1510,7 +1504,7 @@ fn finalize_publication_reconciliation(
 }
 
 fn validate_request(request: &SocialPublishXurlRequest) -> Result<OffsetDateTime> {
-	if !crate::social_publish::valid_run_id(&request.run_id) {
+	if !social_publish::valid_run_id(&request.run_id) {
 		return Err(eyre::eyre!("run_id must be a lowercase UUID"));
 	}
 	if request.monthly_budget_microusd != SOCIAL_MONTHLY_BUDGET_MICROUSD {
@@ -1535,7 +1529,7 @@ fn reservation_owner_run_id(reservation: &Value) -> Result<&str> {
 
 	let run_id = required_object_string(owner, "run_id")?;
 
-	if !crate::social_publish::valid_run_id(run_id) {
+	if !social_publish::valid_run_id(run_id) {
 		return Err(eyre::eyre!("reservation owner run_id is invalid"));
 	}
 
@@ -1666,7 +1660,7 @@ fn validate_lineage(
 
 	let slug = required_string(candidate, "slug")?;
 	let idempotency_key = required_object_string(decision, "idempotency_key")?;
-	let publication_lineage_sha256 = crate::social_record::publication_lineage_sha256(candidate)?;
+	let publication_lineage_sha256 = social_record::publication_lineage_sha256(candidate)?;
 
 	if reservation.get("publication_lineage_sha256")
 		!= Some(&Value::String(publication_lineage_sha256))
@@ -1675,13 +1669,13 @@ fn validate_lineage(
 			"reservation publication lineage does not match the immutable Radar subject"
 		));
 	}
-	if reservation.get("duplicate_keys") != Some(&json!([slug, idempotency_key])) {
+	if reservation.get("duplicate_keys") != Some(&serde_json::json!([slug, idempotency_key])) {
 		return Err(eyre::eyre!("reservation duplicate_keys do not match the candidate"));
 	}
 
 	let day = required_string(reservation, "day")?;
 	let owner_run_id = reservation_owner_run_id(reservation)?;
-	let idempotency_digest = crate::social_publish::idempotency_digest(idempotency_key);
+	let idempotency_digest = social_publish::idempotency_digest(idempotency_key);
 	let expected_name = format!("{idempotency_digest}.json");
 	let recovery_name = format!("{idempotency_digest}-{owner_run_id}.json");
 	let actual_name = reservation_path.file_name().and_then(|value| value.to_str());
@@ -1742,7 +1736,7 @@ fn candidate_text(candidate: &Value) -> Result<&str> {
 }
 
 fn reject_link_like_text(text: &str) -> Result<()> {
-	if crate::social_validation::contains_link_like_text(text) {
+	if social_validation::contains_link_like_text(text) {
 		return Err(eyre::eyre!(
 			"candidate text must not contain URL, domain, email, or other link-like text"
 		));
@@ -1822,7 +1816,7 @@ fn create_attempt(
 		updated_at: request.posted_at.clone(),
 		reserved_cost_ceiling_microusd: NORMAL_PUBLICATION_COST_MICROUSD,
 		xurl_version: context.xurl_version.clone(),
-		pricing_policy_id: Some(super::model::PRICING_POLICY_ID.into()),
+		pricing_policy_id: Some(PRICING_POLICY_ID.into()),
 		authorization_contract_sha256: Some(context.authorization_contract_sha256.clone()),
 		calls: Vec::new(),
 		verified_user_id: None,
@@ -1865,7 +1859,7 @@ fn validate_attempt(
 		|| attempt.reserved_cost_ceiling_microusd > PUBLICATION_LINEAGE_BUDGET_MICROUSD
 		|| attempt.xurl_version != APPROVED_XURL_VERSION
 		|| attempt.xurl_version != context.xurl_version
-		|| attempt.pricing_policy_id.as_deref() != Some(super::model::PRICING_POLICY_ID)
+		|| attempt.pricing_policy_id.as_deref() != Some(PRICING_POLICY_ID)
 		|| attempt.authorization_contract_sha256.as_deref()
 			!= Some(&context.authorization_contract_sha256)
 		|| attempt.calls.len() > 5
@@ -1889,7 +1883,7 @@ fn validate_attempt(
 
 		if recovery
 			!= call.operation_id.as_deref().is_some_and(|operation_id| {
-				crate::social_publish::valid_run_id(operation_id) && operation_id != attempt.run_id
+				social_publish::valid_run_id(operation_id) && operation_id != attempt.run_id
 			}) {
 			return Err(eyre::eyre!("xurl attempt contains an invalid recovery owner"));
 		}
@@ -1924,8 +1918,8 @@ fn validate_attempt(
 }
 
 fn continue_publication(
-	binary: &runtime::TrustedXurlBinary,
-	provenance: &mut super::auth_contract::VerifiedAuthorizationContract,
+	binary: &TrustedXurlBinary,
+	provenance: &mut VerifiedAuthorizationContract,
 	text: &str,
 	request: &SocialPublishXurlRequest,
 	context: &PublishContext,
@@ -1939,8 +1933,8 @@ fn continue_publication(
 }
 
 fn ensure_identity(
-	binary: &runtime::TrustedXurlBinary,
-	provenance: &mut super::auth_contract::VerifiedAuthorizationContract,
+	binary: &TrustedXurlBinary,
+	provenance: &mut VerifiedAuthorizationContract,
 	request: &SocialPublishXurlRequest,
 	context: &PublishContext,
 	attempt: &mut XurlAttempt,
@@ -1991,7 +1985,7 @@ fn ensure_identity(
 			ledger::finish_last_call(
 				&context.attempt_path,
 				attempt,
-				ledger::CallCompletion {
+				CallCompletion {
 					call_status: "failed",
 					response_sha256: None,
 					status: "halted",
@@ -2010,7 +2004,7 @@ fn ensure_identity(
 		Ok(identity) => ledger::finish_last_call(
 			&context.attempt_path,
 			attempt,
-			ledger::CallCompletion {
+			CallCompletion {
 				call_status: "succeeded",
 				response_sha256: Some(identity.response_sha256),
 				status: "identity_verified",
@@ -2026,7 +2020,7 @@ fn ensure_identity(
 			ledger::finish_last_call(
 				&context.attempt_path,
 				attempt,
-				ledger::CallCompletion {
+				CallCompletion {
 					call_status,
 					response_sha256: Some(runtime::sha256(&output.stdout)),
 					status: "halted",
@@ -2043,8 +2037,8 @@ fn ensure_identity(
 }
 
 fn ensure_created(
-	binary: &runtime::TrustedXurlBinary,
-	provenance: &mut super::auth_contract::VerifiedAuthorizationContract,
+	binary: &TrustedXurlBinary,
+	provenance: &mut VerifiedAuthorizationContract,
 	text: &str,
 	request: &SocialPublishXurlRequest,
 	context: &PublishContext,
@@ -2066,7 +2060,7 @@ fn ensure_created(
 		status => return Err(eyre::eyre!("xurl attempt is not ready to create from {status}")),
 	}
 
-	crate::social_clock::require_current_content_create_window(&context.reservation_day)?;
+	social_clock::require_current_content_create_window(&context.reservation_day)?;
 	ledger::append_call(
 		&context.attempt_path,
 		attempt,
@@ -2081,7 +2075,7 @@ fn ensure_created(
 			ledger::finish_last_call(
 				&context.attempt_path,
 				attempt,
-				ledger::CallCompletion {
+				CallCompletion {
 					call_status: "uncertain",
 					response_sha256: None,
 					status: "create_uncertain",
@@ -2100,7 +2094,7 @@ fn ensure_created(
 		Ok((post_id, digest)) => ledger::finish_last_call(
 			&context.attempt_path,
 			attempt,
-			ledger::CallCompletion {
+			CallCompletion {
 				call_status: "succeeded",
 				response_sha256: Some(digest),
 				status: "created",
@@ -2114,7 +2108,7 @@ fn ensure_created(
 			ledger::finish_last_call(
 				&context.attempt_path,
 				attempt,
-				ledger::CallCompletion {
+				CallCompletion {
 					call_status: "uncertain",
 					response_sha256: Some(runtime::sha256(&output.stdout)),
 					status: "create_uncertain",
@@ -2131,8 +2125,8 @@ fn ensure_created(
 }
 
 fn ensure_readback(
-	binary: &runtime::TrustedXurlBinary,
-	provenance: &mut super::auth_contract::VerifiedAuthorizationContract,
+	binary: &TrustedXurlBinary,
+	provenance: &mut VerifiedAuthorizationContract,
 	text: &str,
 	request: &SocialPublishXurlRequest,
 	context: &PublishContext,
@@ -2154,7 +2148,7 @@ fn ensure_readback(
 		ledger::finish_last_call(
 			&context.attempt_path,
 			attempt,
-			ledger::CallCompletion {
+			CallCompletion {
 				call_status: "uncertain",
 				response_sha256: None,
 				status: "read_retry_pending",
@@ -2193,7 +2187,7 @@ fn ensure_readback(
 
 fn run_read(
 	execution: &ReadbackExecution<'_>,
-	provenance: &mut super::auth_contract::VerifiedAuthorizationContract,
+	provenance: &mut VerifiedAuthorizationContract,
 	attempt: &mut XurlAttempt,
 	operation: &str,
 	already_inflight: bool,
@@ -2223,7 +2217,7 @@ fn run_read(
 			ledger::finish_last_call(
 				&execution.context.attempt_path,
 				attempt,
-				ledger::CallCompletion {
+				CallCompletion {
 					call_status: "failed",
 					response_sha256: None,
 					status: next_status,
@@ -2249,7 +2243,7 @@ fn run_read(
 			ledger::finish_last_call(
 				&execution.context.attempt_path,
 				attempt,
-				ledger::CallCompletion {
+				CallCompletion {
 					call_status: "succeeded",
 					response_sha256: Some(digest),
 					status: "verified",
@@ -2270,7 +2264,7 @@ fn run_read(
 			ledger::finish_last_call(
 				&execution.context.attempt_path,
 				attempt,
-				ledger::CallCompletion {
+				CallCompletion {
 					call_status,
 					response_sha256: Some(runtime::sha256(&output.stdout)),
 					status: next_status,
@@ -2475,7 +2469,7 @@ fn finish_new(
 	attempt: &mut XurlAttempt,
 	verified: &VerifiedXurlPost,
 ) -> Result<SocialPublishXurlReport> {
-	let published_count = crate::social_publish::scan::scan_social_publish_state(
+	let published_count = scan::scan_social_publish_state(
 		&context.reservations_dir,
 		&context.posts_dir,
 		required_string(reservation, "idempotency_key")?,
@@ -2553,7 +2547,7 @@ fn published_post_payload(
 	let decision = candidate["decision"]
 		.as_object()
 		.ok_or_else(|| eyre::eyre!("candidate decision is required"))?;
-	let mut payload = json!({
+	let mut payload = serde_json::json!({
 		"schema": SOCIAL_POST_SCHEMA,
 		"slug": required_string(candidate, "slug")?,
 		"channel": "x",
@@ -2566,12 +2560,12 @@ fn published_post_payload(
 		"status": "published",
 		"audience": required_string(candidate, "audience")?,
 		"text": candidate.get("candidate_text").cloned().ok_or_else(|| eyre::eyre!("candidate_text is required"))?,
-		"source_refs": crate::social_evidence::source_refs_with_lineage(
+		"source_refs": social_evidence::source_refs_with_lineage(
 			candidate,
 			crate::path_arg(&context.root, &context.candidate_path),
 			Some(crate::path_arg(&context.root, &context.reservation_path)),
 		)?,
-		"evidence_digests": crate::social_evidence::evidence_digests_value(candidate),
+		"evidence_digests": social_evidence::evidence_digests_value(candidate),
 		"evidence_notes": candidate.get("evidence_notes").cloned().ok_or_else(|| eyre::eyre!("evidence_notes are required"))?,
 		"claims": candidate.get("claims").cloned().ok_or_else(|| eyre::eyre!("claims are required"))?,
 		"decision": {
