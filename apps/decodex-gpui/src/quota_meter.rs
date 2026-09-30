@@ -87,15 +87,9 @@ impl RenderOnce for QuotaMeter {
 			.text_size(px(10.))
 			.text_color(rgb(super::WB_TEXT_FAINT))
 			.child(self.label)
-			.child(
-				div()
-					.h(px(3.))
-					.w(px(44.))
-					.flex_none()
-					.rounded_full()
-					.bg(rgba(0xffffff0c))
-					.child(div().h_full().w(px(value * 0.44)).rounded_full().bg(rgb(color))),
-			)
+			.child(div().h(px(3.)).flex_1().min_w_0().rounded_full().bg(rgba(0xffffff0c)).child(
+				div().h_full().w(gpui::relative(value / 100.)).rounded_full().bg(rgb(color)),
+			))
 			.child(
 				div().w(px(28.)).flex_none().text_color(rgb(color)).child(format!("{value:.0}%")),
 			)
@@ -105,7 +99,7 @@ impl RenderOnce for QuotaMeter {
 						reset_time(resets_at_unix_micros),
 					_ => None,
 				}
-				.map(|time| div().whitespace_nowrap().child(time)),
+				.map(|time| div().flex_none().whitespace_nowrap().child(time)),
 			)
 	}
 }

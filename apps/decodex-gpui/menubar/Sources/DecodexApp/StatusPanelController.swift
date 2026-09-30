@@ -395,6 +395,8 @@ private struct StatusPanelRootView: View {
 			fastModeStore: fastModeStore,
 			onContentSizeChange: onContentSizeChange
 		)
-		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+		// Accept the intermediate window height even when content has already expanded.
+		// An implicit minimum lets NSHostingView center the oversized root during resize.
+		.frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
 	}
 }

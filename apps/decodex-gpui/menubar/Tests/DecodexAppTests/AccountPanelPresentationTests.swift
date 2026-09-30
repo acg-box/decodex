@@ -570,6 +570,56 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 	}
 
+	func testDisclosureKeepsMenuAndAccountTopStable() async throws {
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let store = ResetCardStore(client: FullAccountPanelClient(), pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: directory.appendingPathComponent("pending.json")), startupRetryDelays: [])
+		await store.refresh()
+		let controller = StatusPanelController(store: store, fastModeStore: FastModeStore(client: StaticFastModeClient()))
+		defer { controller.invalidate() }
+		controller.togglePanel()
+		controller.panel.makeKey()
+		try await Task.sleep(for: .milliseconds(500))
+		let host = try XCTUnwrap(controller.panel.contentView)
+		let scroll = try XCTUnwrap(descendants(of: NSScrollView.self, in: host).first)
+		let document = try XCTUnwrap(scroll.documentView)
+		func screenTop(_ view: NSView) -> CGFloat {
+			controller.panel.convertToScreen(view.convert(view.bounds, to: nil)).maxY
+		}
+		let panelTop = controller.panel.frame.maxY
+		let contentTop = screenTop(scroll)
+		let collapsedHeight = controller.panel.frame.height
+		var expandedHeight = collapsedHeight
+		for expanding in [true, false] {
+			let location = document.convert(CGPoint(x: 40, y: 18), to: nil)
+			for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+				controller.panel.sendEvent(try XCTUnwrap(NSEvent.mouseEvent(
+					with: type, location: location, modifierFlags: [],
+					timestamp: ProcessInfo.processInfo.systemUptime + (type == .leftMouseUp ? 0.02 : 0),
+					windowNumber: controller.panel.windowNumber, context: nil,
+					eventNumber: type == .leftMouseUp ? 2 : 1, clickCount: 1,
+					pressure: type == .leftMouseDown ? 1 : 0
+				)))
+			}
+			var heights: [CGFloat] = []
+			for _ in 0..<35 {
+				try await Task.sleep(for: .milliseconds(12))
+				heights.append(controller.panel.frame.height)
+				XCTAssertEqual(controller.panel.frame.maxY, panelTop, accuracy: 0.5)
+				XCTAssertEqual(screenTop(scroll), contentTop, accuracy: 0.5,
+					"Content must not center itself while the window catches up with its new height")
+			}
+			if expanding {
+				expandedHeight = controller.panel.frame.height
+				XCTAssertGreaterThan(expandedHeight, collapsedHeight + 20, "The real account click must expand content")
+			} else {
+				XCTAssertEqual(controller.panel.frame.height, collapsedHeight, accuracy: 1)
+			}
+			XCTAssertTrue(heights.contains { $0 > collapsedHeight + 1 && $0 < expandedHeight - 1 }, "Resize must pass through intermediate heights")
+		}
+
+	}
+
 	func testFullAccountPanelShowsSixCompactRowsWithoutOverflowOnCurrentDisplay() async throws {
 		let directory = FileManager.default.temporaryDirectory
 			.appendingPathComponent(UUID().uuidString, isDirectory: true)
