@@ -688,10 +688,27 @@ fn publish_document(
 	let bytes = document.encode().map_err(SaveFailure::Invalid)?;
 	match store.save(revision, &bytes) {
 		Ok(revision) => Ok(revision),
-		Err(decodex_protocol::ClientDraftError::WriteUnconfirmed(_)) => {
-			let actual = store.load().map_err(|_| SaveFailure::Failed)?;
-			if actual.payload == bytes { Ok(actual.revision) } else { Err(SaveFailure::Failed) }
-		},
+		Err(decodex_protocol::ClientDraftError::WriteUnconfirmed(_)) =>
+			confirm_unconfirmed_publication(store, &bytes),
+		Err(decodex_protocol::ClientDraftError::Busy) => Err(SaveFailure::Busy),
+		Err(decodex_protocol::ClientDraftError::Conflict) => Err(SaveFailure::Conflict),
+		Err(_) => Err(SaveFailure::Failed),
+	}
+}
+
+fn confirm_unconfirmed_publication(
+	store: &ClientDraftStore,
+	bytes: &[u8],
+) -> Result<u64, SaveFailure> {
+	let actual = store.load().map_err(|_| SaveFailure::Failed)?;
+	if actual.payload != bytes {
+		return Err(SaveFailure::Failed);
+	}
+	// A visible rename can precede a failed directory sync. Require one successful
+	// atomic publication, using the observed revision so a competing writer wins.
+	// Do not recurse if this publication is also unconfirmed.
+	match store.save(actual.revision, bytes) {
+		Ok(revision) => Ok(revision),
 		Err(decodex_protocol::ClientDraftError::Busy) => Err(SaveFailure::Busy),
 		Err(decodex_protocol::ClientDraftError::Conflict) => Err(SaveFailure::Conflict),
 		Err(_) => Err(SaveFailure::Failed),
@@ -774,6 +791,58 @@ mod prompt_send_tests;
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn unconfirmed_publication_requires_a_successful_save_before_acknowledgement() {
+		let directory = tempfile::tempdir().unwrap();
+		let store =
+			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
+				.unwrap();
+		let bytes = DesktopDraftDocument::default().encode().unwrap();
+		let observed_revision = store.save(0, &bytes).unwrap();
+		// Model a completed rename followed by a failed parent-directory sync.
+		let acknowledged = confirm_unconfirmed_publication(&store, &bytes)
+			.unwrap_or_else(|_| panic!("confirm through a fresh durable publication"));
+		assert!(
+			acknowledged > observed_revision,
+			"matching readback alone does not confirm a failed sync"
+		);
+		assert_eq!(store.load().unwrap().revision, acknowledged);
+		assert_eq!(store.load().unwrap().payload, bytes);
+	}
+
+	#[test]
+	fn unconfirmed_publication_retains_busy_and_different_snapshots() {
+		use std::os::unix::fs::OpenOptionsExt;
+		let directory = tempfile::tempdir().unwrap();
+		let root = directory.path().canonicalize().unwrap().join("desktop");
+		let store = ClientDraftStore::open_at(&root).unwrap();
+		let bytes = DesktopDraftDocument::default().encode().unwrap();
+		let revision = store.save(0, &bytes).unwrap();
+		let lock = std::fs::OpenOptions::new()
+			.create(true)
+			.truncate(false)
+			.read(true)
+			.write(true)
+			.mode(0o600)
+			.open(root.join("client-drafts/writer.lock"))
+			.unwrap();
+		lock.try_lock().unwrap();
+		assert!(
+			matches!(confirm_unconfirmed_publication(&store, &bytes), Err(SaveFailure::Busy)),
+			"matching bytes do not bypass a competing writer"
+		);
+		assert_eq!(store.load().unwrap().revision, revision);
+		drop(lock);
+		let other = b"another window's newer draft";
+		let newer = store.save(revision, other).unwrap();
+		assert!(matches!(
+			confirm_unconfirmed_publication(&store, &bytes),
+			Err(SaveFailure::Failed)
+		));
+		assert_eq!(store.load().unwrap().revision, newer);
+		assert_eq!(store.load().unwrap().payload, other);
+	}
+
 	#[gpui::test]
 	fn prompt_send_acceptance_retains_full_copy_and_clears_only_exact_editor(
 		cx: &mut gpui::TestAppContext,
