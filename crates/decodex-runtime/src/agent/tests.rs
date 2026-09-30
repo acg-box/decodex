@@ -1705,6 +1705,18 @@ async fn external_writer_release_requires_a_new_send() {
 	let pending = coordinator.store.list_agent_wake_events("agent".into(), 10).await.unwrap();
 	assert_eq!(pending.len(), 1);
 	assert!(pending[0].delivered_turn_id.is_none());
+	for index in 0..1000 {
+		coordinator
+			.store
+			.enqueue_agent_event(EnqueueAgentEvent {
+				source_event_id: format!("older-diagnostic-{index}"),
+				work_item_id: "agent".into(),
+				event_kind: "diagnostic".into(),
+				payload: "{}".into(),
+			})
+			.await
+			.unwrap();
+	}
 	coordinator
 		.store
 		.record_agent_thread_in_use("agent".into(), "Open elsewhere".into())

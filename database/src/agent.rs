@@ -855,6 +855,9 @@ impl SqliteStore {
 				} else { Err(StoreError::IdempotencyConflict) };
 			}
 			if !work_exists(&transaction, &input.work_item_id)? { return Err(DatabaseError::NotFound.into()); }
+			if input.event_kind == "user_message" && transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='thread_in_use_needs_attention' AND disposition IS NULL)", [&input.work_item_id], |row| row.get::<_, bool>(0)).map_err(sqlite_error)? {
+				return Err(StoreError::AgentThreadInUse);
+			}
 			if matches!(input.event_kind.as_str(), "user_message" | "async_question_answer" | "steer_pending") && crate::agent_prompt_edit::pending(&transaction, &input.work_item_id)? { return Err(DatabaseError::Conflict.into()); }
 			if input.event_kind == "user_message" { crate::agent_task_references::validate_references(&transaction, &input.payload)?; crate::agent_prompt_inputs::validate_queued_input(&transaction, &input.work_item_id, &input.payload)?; }
             if input.event_kind == "user_message" && transaction.query_row("SELECT EXISTS(SELECT 1 FROM agent_misalignment m JOIN agent_work_items w ON w.id=m.work_id AND w.codex_thread_id=m.thread_id WHERE m.work_id=?1)",[&input.work_item_id],|row|row.get::<_,bool>(0)).map_err(sqlite_error)? { return Err(StoreError::InvalidInput("conversation paused for provider findings")); }
@@ -1007,6 +1010,17 @@ impl SqliteStore {
 		let limit = page_limit(limit)?;
 		self.run(move |connection| {
 			connection.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL AND delivered_turn_id = ?1 ORDER BY id LIMIT ?2").map_err(sqlite_error)?.query_map(params![turn_id, limit], event_row).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
+		}).await
+	}
+
+	/// Read every unresolved external-writer notice, independent of unrelated inbox pages.
+	pub async fn list_agent_thread_in_use_events(
+		&self,
+	) -> Result<Vec<AgentInboxEvent>, StoreError> {
+		self.run(|connection| {
+			connection.prepare("SELECT * FROM agent_inbox_events WHERE event_kind='thread_in_use_needs_attention' AND disposition IS NULL ORDER BY id").map_err(sqlite_error)?
+				.query_map([], event_row).map_err(sqlite_error)?
+				.collect::<Result<Vec<_>, _>>().map_err(|error| sqlite_error(error).into())
 		}).await
 	}
 
@@ -1953,6 +1967,37 @@ mod tests {
 			AgentDispatchState::Idle
 		);
 		assert!(store.list_agent_wake_events("agent".into(), 10).await.unwrap().is_empty());
+	}
+
+	#[tokio::test]
+	async fn occupied_input_admission_preserves_replay_and_other_conversations() {
+		let directory = tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
+		for id in ["agent", "other"] {
+			store.create_agent_work_item(item(id, None)).await.unwrap();
+		}
+		let input = |work: &str, key: &str| EnqueueAgentEvent {
+			source_event_id: key.into(),
+			work_item_id: work.into(),
+			event_kind: "user_message".into(),
+			payload: r#"{"text":"continue"}"#.into(),
+		};
+		let accepted = store.enqueue_agent_event(input("agent", "accepted")).await.unwrap();
+		store.record_agent_thread_in_use("agent".into(), "Open elsewhere".into()).await.unwrap();
+		assert_eq!(store.enqueue_agent_event(input("agent", "accepted")).await.unwrap(), accepted);
+		assert!(matches!(
+			store.enqueue_agent_event(input("agent", "new")).await,
+			Err(StoreError::AgentThreadInUse)
+		));
+		store.enqueue_agent_event(input("other", "unrelated")).await.unwrap();
+		assert_eq!(store.list_undelivered_agent_events(10).await.unwrap().len(), 2);
+		let blocked = store.list_agent_thread_in_use_events().await.unwrap();
+		assert_eq!(blocked.len(), 1);
+		assert_eq!(blocked[0].work_item_id, "agent");
+		store.resolve_agent_delivery_failure("agent".into()).await.unwrap();
+		assert!(store.list_agent_thread_in_use_events().await.unwrap().is_empty());
+		store.enqueue_agent_event(input("agent", "new")).await.unwrap();
+		assert_eq!(store.list_undelivered_agent_events(10).await.unwrap().len(), 3);
 	}
 
 	#[tokio::test]

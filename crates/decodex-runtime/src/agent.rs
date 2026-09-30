@@ -2050,8 +2050,8 @@ impl AgentCoordinator {
 		if self.dispatch_paused {
 			return Ok(());
 		}
-		let blocked = self.store.list_pending_agent_events(1000).await?;
-		for notice in blocked.iter().filter(|e| e.event_kind == "thread_in_use_needs_attention") {
+		let blocked = self.store.list_agent_thread_in_use_events().await?;
+		for notice in blocked {
 			self.store.hold_agent_unsent_input(notice.work_item_id.clone()).await?;
 			let item = self.store.get_agent_work_item(notice.work_item_id.clone()).await?;
 			if let Some(thread) = &item.codex_thread_id {

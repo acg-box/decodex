@@ -58,6 +58,7 @@ pub enum StoreError {
 	RevisionConflict { entity: String, expected: Option<i64>, actual: Option<i64> },
 	OwnershipLost(&'static str),
 	CredentialRejected,
+	AgentThreadInUse,
 	InvalidInput(&'static str),
 	CapacityExhausted(&'static str),
 	Blob(StorageError),
@@ -80,6 +81,7 @@ impl Display for StoreError {
 			Self::OwnershipLost(owner) => write!(formatter, "{owner} ownership was lost"),
 			Self::CredentialRejected =>
 				formatter.write_str("credential material is forbidden in ordinary database rows"),
+			Self::AgentThreadInUse => formatter.write_str("Agent conversation is in use elsewhere"),
 			Self::InvalidInput(reason) => write!(formatter, "invalid store input: {reason}"),
 			Self::CapacityExhausted(resource) => {
 				write!(formatter, "{resource} capacity is exhausted")
