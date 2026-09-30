@@ -1,7 +1,10 @@
 //! Small agent-facing workflows over the X safety primitives.
 
+#[cfg(test)] use std::cell::Cell;
 use std::{
 	collections::BTreeSet,
+	fs,
+	io::ErrorKind,
 	path::{Path, PathBuf},
 };
 
@@ -12,17 +15,27 @@ use crate::{
 	DEFAULT_SOCIAL_ATTEMPTS_DIR, DEFAULT_SOCIAL_CANDIDATES_DIR, DEFAULT_SOCIAL_LOCKS_DIR,
 	DEFAULT_SOCIAL_OUTCOMES_DIR, DEFAULT_SOCIAL_POSTS_DIR, DEFAULT_SOCIAL_RESERVATIONS_DIR,
 	DEFAULT_XURL_AUTH_CONTRACT_PATH, SOCIAL_DAILY_LIMIT, SOCIAL_MONTHLY_BUDGET_MICROUSD,
-	SOCIAL_POST_SCHEMA, SOCIAL_TIMEZONE, SocialObserveDueReport, SocialObserveDueRequest,
-	SocialObserveXurlReport, SocialObserveXurlRequest, SocialPublishNextReport,
-	SocialPublishNextRequest, SocialPublishXurlReport, SocialPublishXurlRequest,
-	SocialReconcileXurlReport, SocialReconcileXurlRequest, SocialReservePublishRequest,
-	SocialTerminalizeSkipRequest,
+	SOCIAL_POST_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA, SOCIAL_TIMEZONE, SocialObserveDueReport,
+	SocialObserveDueRequest, SocialObserveXurlReport, SocialObserveXurlRequest,
+	SocialPublishNextReport, SocialPublishNextRequest, SocialPublishXurlReport,
+	SocialPublishXurlRequest, SocialReconcileXurlReport, SocialReconcileXurlRequest,
+	SocialReservePublishRequest, SocialTerminalizeSkipRequest,
 	prelude::{Result, eyre},
+	social_evidence, social_outcome_store,
+	social_publish::{self, scan},
+	social_record,
+	social_xurl::{
+		self, ledger,
+		model::{
+			ATTEMPT_SCHEMA, OBSERVATION_ATTEMPT_SCHEMA, READ_RECOVERY_EXHAUSTED_STATUS,
+			XurlAttempt, XurlObservationAttempt,
+		},
+	},
 };
 
 #[cfg(test)]
 std::thread_local! {
-	static INTERRUPT_AFTER_RESERVATION: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+	static INTERRUPT_AFTER_RESERVATION: Cell<bool> = const { Cell::new(false) };
 }
 
 struct WorkflowPaths {
@@ -34,21 +47,6 @@ struct WorkflowPaths {
 	locks: PathBuf,
 	authorization_contract: PathBuf,
 }
-
-impl Default for WorkflowPaths {
-	fn default() -> Self {
-		Self {
-			candidates: PathBuf::from(DEFAULT_SOCIAL_CANDIDATES_DIR),
-			reservations: PathBuf::from(DEFAULT_SOCIAL_RESERVATIONS_DIR),
-			posts: PathBuf::from(DEFAULT_SOCIAL_POSTS_DIR),
-			outcomes: PathBuf::from(DEFAULT_SOCIAL_OUTCOMES_DIR),
-			attempts: PathBuf::from(DEFAULT_SOCIAL_ATTEMPTS_DIR),
-			locks: PathBuf::from(DEFAULT_SOCIAL_LOCKS_DIR),
-			authorization_contract: PathBuf::from(DEFAULT_XURL_AUTH_CONTRACT_PATH),
-		}
-	}
-}
-
 #[cfg(test)]
 impl WorkflowPaths {
 	fn under(root: &Path) -> Self {
@@ -60,6 +58,19 @@ impl WorkflowPaths {
 			attempts: root.join("attempts"),
 			locks: root.join("locks"),
 			authorization_contract: root.join("xurl-authorization-contract.json"),
+		}
+	}
+}
+impl Default for WorkflowPaths {
+	fn default() -> Self {
+		Self {
+			candidates: PathBuf::from(DEFAULT_SOCIAL_CANDIDATES_DIR),
+			reservations: PathBuf::from(DEFAULT_SOCIAL_RESERVATIONS_DIR),
+			posts: PathBuf::from(DEFAULT_SOCIAL_POSTS_DIR),
+			outcomes: PathBuf::from(DEFAULT_SOCIAL_OUTCOMES_DIR),
+			attempts: PathBuf::from(DEFAULT_SOCIAL_ATTEMPTS_DIR),
+			locks: PathBuf::from(DEFAULT_SOCIAL_LOCKS_DIR),
+			authorization_contract: PathBuf::from(DEFAULT_XURL_AUTH_CONTRACT_PATH),
 		}
 	}
 }
@@ -82,8 +93,8 @@ pub(crate) fn publish_next_with_test_binary(
 	publish_next_with(
 		request,
 		&WorkflowPaths::under(state_root),
-		|effect| crate::social_xurl::publish_with_test_binary(effect, xurl_binary),
-		|effect| crate::social_xurl::reconcile_with_test_binary(effect, xurl_binary),
+		|effect| social_xurl::publish_with_test_binary(effect, xurl_binary),
+		|effect| social_xurl::reconcile_with_test_binary(effect, xurl_binary),
 	)
 }
 
@@ -96,10 +107,8 @@ pub(crate) fn publish_next_with_identity_interruption_for_test(
 	publish_next_with(
 		request,
 		&WorkflowPaths::under(state_root),
-		|effect| {
-			crate::social_xurl::publish_with_identity_interruption_for_test(effect, xurl_binary)
-		},
-		|effect| crate::social_xurl::reconcile_with_test_binary(effect, xurl_binary),
+		|effect| social_xurl::publish_with_identity_interruption_for_test(effect, xurl_binary),
+		|effect| social_xurl::reconcile_with_test_binary(effect, xurl_binary),
 	)
 }
 
@@ -128,12 +137,32 @@ pub(crate) fn publish_next_with_reserved_attempt_interruption_for_test(
 		request,
 		&WorkflowPaths::under(state_root),
 		|effect| {
-			crate::social_xurl::publish_with_reserved_attempt_interruption_for_test(
-				effect,
-				xurl_binary,
-			)
+			social_xurl::publish_with_reserved_attempt_interruption_for_test(effect, xurl_binary)
 		},
-		|effect| crate::social_xurl::reconcile_with_test_binary(effect, xurl_binary),
+		|effect| social_xurl::reconcile_with_test_binary(effect, xurl_binary),
+	)
+}
+
+pub(crate) fn observe_due(request: &SocialObserveDueRequest) -> Result<SocialObserveDueReport> {
+	observe_due_with(
+		request,
+		&WorkflowPaths::default(),
+		crate::observe_social_xurl,
+		crate::reconcile_social_xurl,
+	)
+}
+
+#[cfg(test)]
+pub(crate) fn observe_due_with_test_binary(
+	request: &SocialObserveDueRequest,
+	state_root: &Path,
+	xurl_binary: &Path,
+) -> Result<SocialObserveDueReport> {
+	observe_due_with(
+		request,
+		&WorkflowPaths::under(state_root),
+		|effect| social_xurl::observe_with_test_binary(effect, xurl_binary),
+		|effect| social_xurl::reconcile_with_test_binary(effect, xurl_binary),
 	)
 }
 
@@ -189,7 +218,7 @@ fn publish_next_with(
 		active_reservation_for_candidate(&root, &paths.reservations, &candidate_ref)?;
 	let active_reservation = match active_reservation {
 		Some(path)
-			if crate::social_publish::release_orphaned_active_reservation(
+			if social_publish::release_orphaned_active_reservation(
 				&path,
 				&paths.reservations,
 				&paths.attempts,
@@ -301,29 +330,6 @@ fn terminalize_selected_candidate(
 	}))
 }
 
-pub(crate) fn observe_due(request: &SocialObserveDueRequest) -> Result<SocialObserveDueReport> {
-	observe_due_with(
-		request,
-		&WorkflowPaths::default(),
-		crate::observe_social_xurl,
-		crate::reconcile_social_xurl,
-	)
-}
-
-#[cfg(test)]
-pub(crate) fn observe_due_with_test_binary(
-	request: &SocialObserveDueRequest,
-	state_root: &Path,
-	xurl_binary: &Path,
-) -> Result<SocialObserveDueReport> {
-	observe_due_with(
-		request,
-		&WorkflowPaths::under(state_root),
-		|effect| crate::social_xurl::observe_with_test_binary(effect, xurl_binary),
-		|effect| crate::social_xurl::reconcile_with_test_binary(effect, xurl_binary),
-	)
-}
-
 fn observe_due_with(
 	request: &SocialObserveDueRequest,
 	paths: &WorkflowPaths,
@@ -338,7 +344,7 @@ fn observe_due_with(
 	let posts_dir = crate::resolve_against(&root, &paths.posts);
 	let outcomes_dir = crate::resolve_against(&root, &paths.outcomes);
 	let mut observed =
-		crate::social_outcome_store::validated_observed_windows(&root, &outcomes_dir, &posts_dir)?;
+		social_outcome_store::validated_observed_windows(&root, &outcomes_dir, &posts_dir)?;
 
 	if let Some(recovered) = recover_one_interrupted_effect(
 		&request.run_id,
@@ -359,7 +365,7 @@ fn observe_due_with(
 	let mut due = Vec::new();
 
 	for path in existing_json_files(&posts_dir)? {
-		let post = crate::social_publish::scan::load_state_record(&path, SOCIAL_POST_SCHEMA)?;
+		let post = scan::load_state_record(&path, SOCIAL_POST_SCHEMA)?;
 
 		if post.get("status").and_then(Value::as_str) != Some("published") {
 			continue;
@@ -421,7 +427,7 @@ fn pending_candidate(
 ) -> Result<Option<(PathBuf, Value)>> {
 	let consumed = existing_json_files(posts_dir)?
 		.into_iter()
-		.map(|path| crate::social_publish::scan::load_state_record(&path, SOCIAL_POST_SCHEMA))
+		.map(|path| scan::load_state_record(&path, SOCIAL_POST_SCHEMA))
 		.collect::<Result<Vec<_>>>()?
 		.into_iter()
 		.filter_map(|post| post.pointer("/source_refs/social_candidates").cloned())
@@ -435,11 +441,10 @@ fn pending_candidate(
 		let candidate = crate::load_json(&path)?;
 
 		crate::validate_generated_social_artifact(&candidate)?;
-		crate::social_evidence::validate_source_evidence(&candidate)?;
+		social_evidence::validate_source_evidence(&candidate)?;
 
-		let publication_lineage_sha256 =
-			crate::social_record::publication_lineage_sha256(&candidate)?;
-		let effect_started = crate::social_xurl::publication_effect_conflict(
+		let publication_lineage_sha256 = social_record::publication_lineage_sha256(&candidate)?;
+		let effect_started = social_xurl::publication_effect_conflict(
 			attempts_dir,
 			&publication_lineage_sha256,
 			None,
@@ -465,10 +470,7 @@ fn active_reservation_for_candidate(
 	let mut matches = Vec::new();
 
 	for path in existing_json_files(&directory)? {
-		let reservation = crate::social_publish::scan::load_state_record(
-			&path,
-			crate::SOCIAL_PUBLISH_RESERVATION_SCHEMA,
-		)?;
+		let reservation = scan::load_state_record(&path, SOCIAL_PUBLISH_RESERVATION_SCHEMA)?;
 
 		if reservation.get("status").and_then(Value::as_str) == Some("active")
 			&& reservation.pointer("/candidate_refs/social_candidates/0").and_then(Value::as_str)
@@ -496,20 +498,17 @@ fn terminal_observation_windows(
 	for path in existing_json_files(&attempts_dir)? {
 		let payload = crate::load_json(&path)?;
 
-		if payload.get("schema").and_then(Value::as_str)
-			!= Some(crate::social_xurl::model::OBSERVATION_ATTEMPT_SCHEMA)
-			|| payload.get("status").and_then(Value::as_str)
-				!= Some(crate::social_xurl::model::READ_RECOVERY_EXHAUSTED_STATUS)
+		if payload.get("schema").and_then(Value::as_str) != Some(OBSERVATION_ATTEMPT_SCHEMA)
+			|| payload.get("status").and_then(Value::as_str) != Some(READ_RECOVERY_EXHAUSTED_STATUS)
 		{
 			continue;
 		}
-		if !crate::social_xurl::terminal_observation_recovery(&path, &attempts_dir, posts_dir)? {
+		if !social_xurl::terminal_observation_recovery(&path, &attempts_dir, posts_dir)? {
 			return Err(eyre::eyre!("terminal observation attempt is not terminal"));
 		}
 
-		let attempt: crate::social_xurl::model::XurlObservationAttempt =
-			serde_json::from_value(payload)
-				.map_err(|_| eyre::eyre!("terminal observation attempt is invalid"))?;
+		let attempt: XurlObservationAttempt = serde_json::from_value(payload)
+			.map_err(|_| eyre::eyre!("terminal observation attempt is invalid"))?;
 
 		terminal.insert((attempt.post_ref, attempt.window));
 	}
@@ -531,12 +530,11 @@ fn recover_one_interrupted_effect(
 		let schema = attempt.get("schema").and_then(Value::as_str);
 		let status = attempt.get("status").and_then(Value::as_str);
 		let skip_recovery = match schema {
-			Some(crate::social_xurl::model::ATTEMPT_SCHEMA) => {
-				let typed: crate::social_xurl::model::XurlAttempt =
-					serde_json::from_value(attempt.clone())
-						.map_err(|_| eyre::eyre!("xurl publication attempt is invalid"))?;
+			Some(ATTEMPT_SCHEMA) => {
+				let typed: XurlAttempt = serde_json::from_value(attempt.clone())
+					.map_err(|_| eyre::eyre!("xurl publication attempt is invalid"))?;
 
-				crate::social_xurl::ledger::validate_publication_cost_record(&typed)?;
+				ledger::validate_publication_cost_record(&typed)?;
 
 				if (status == Some("reserved")
 					&& !configured_reservation_exists(
@@ -548,22 +546,21 @@ fn recover_one_interrupted_effect(
 				{
 					true
 				} else {
-					crate::social_xurl::terminal_publication_recovery(
+					social_xurl::terminal_publication_recovery(
 						&path,
 						&paths.attempts,
 						&paths.reservations,
 					)?
 				}
 			},
-			Some(crate::social_xurl::model::OBSERVATION_ATTEMPT_SCHEMA) => {
-				let typed: crate::social_xurl::model::XurlObservationAttempt =
-					serde_json::from_value(attempt.clone())
-						.map_err(|_| eyre::eyre!("xurl observation attempt is invalid"))?;
+			Some(OBSERVATION_ATTEMPT_SCHEMA) => {
+				let typed: XurlObservationAttempt = serde_json::from_value(attempt.clone())
+					.map_err(|_| eyre::eyre!("xurl observation attempt is invalid"))?;
 
-				crate::social_xurl::ledger::validate_observation_cost_record(&typed)?;
+				ledger::validate_observation_cost_record(&typed)?;
 
 				status == Some("observed")
-					|| crate::social_xurl::terminal_observation_recovery(
+					|| social_xurl::terminal_observation_recovery(
 						&path,
 						&paths.attempts,
 						&paths.posts,
@@ -608,9 +605,9 @@ fn configured_reservation_exists(
 		return Ok(false);
 	}
 
-	match std::fs::symlink_metadata(&reservation_path) {
+	match fs::symlink_metadata(&reservation_path) {
 		Ok(_) => Ok(true),
-		Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+		Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
 		Err(error) => Err(error.into()),
 	}
 }
@@ -624,7 +621,7 @@ fn existing_json_files(path: &Path) -> Result<Vec<PathBuf>> {
 }
 
 fn validate_run_id(run_id: &str) -> Result<()> {
-	if !crate::social_publish::valid_run_id(run_id) {
+	if !social_publish::valid_run_id(run_id) {
 		eyre::bail!("run_id must be a lowercase UUID");
 	}
 
