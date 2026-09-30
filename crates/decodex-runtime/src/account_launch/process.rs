@@ -850,7 +850,8 @@ impl AttestedAppServerLaunch {
 
 	/// Spawn the canonical macOS image under snapshot-rooted dynamic attestation.
 	///
-	/// This method returns an error only before a child exists.
+	/// After a child resumes, channel readiness is reported by the returned child.
+	/// A failed channel setup must not become evidence that no child was created.
 	pub(crate) fn spawn(self) -> Result<AttestedProcessChild, SupervisionError> {
 		let Self {
 			command,
@@ -1010,7 +1011,7 @@ impl AttestedProcessChild {
 		vault: &dyn CredentialVault,
 		capabilities: InitializeCapabilities,
 	) -> Result<(), ConversationProcessError> {
-		if self.initialized {
+		if self.initialized || !self.has_private_lifetime_channels() {
 			return Err(ConversationProcessError::Unavailable);
 		}
 		self.generated
@@ -2954,6 +2955,24 @@ fn spawn_protocol_process(
 	Ok((owner, Box::new(stdin)))
 }
 
+fn finish_attested_protocol_spawn<R>(
+	mut owner: ProcessGroupOwner,
+	stdin: Box<dyn Write + Send>,
+	stdout: R,
+	sender: SyncSender<InboundFrame>,
+	protocol_limit_exceeded: Arc<AtomicBool>,
+) -> (ProcessGroupOwner, Box<dyn Write + Send>)
+where
+	R: Read + std::os::fd::AsRawFd + Send + 'static,
+{
+	// Creation has already occurred. A missing pump is a channel-readiness failure;
+	// return the child so its supervisor can retain it until positive exit evidence.
+	if let Ok(pump) = StdoutPump::start(stdout, sender, protocol_limit_exceeded) {
+		owner.attach_pump(pump);
+	}
+	(owner, stdin)
+}
+
 fn spawn_attested_protocol_process(
 	command: &AppServerCommand,
 	binding: &AccountBinding,
@@ -3003,11 +3022,14 @@ fn spawn_attested_protocol_process(
 
 		let spawned =
 			suspended.attest_and_resume(identity).map_err(|_| SupervisionError::SpawnFailed)?;
-		let mut owner = ProcessGroupOwner::new(ManagedChild::Attested(spawned.child), Some(guard));
-		let pump = StdoutPump::start(spawned.stdout, sender, protocol_limit_exceeded)?;
-		owner.attach_pump(pump);
-
-		Ok((owner, Box::new(spawned.stdin)))
+		let owner = ProcessGroupOwner::new(ManagedChild::Attested(spawned.child), Some(guard));
+		Ok(finish_attested_protocol_spawn(
+			owner,
+			Box::new(spawned.stdin),
+			spawned.stdout,
+			sender,
+			protocol_limit_exceeded,
+		))
 	}
 
 	#[cfg(not(target_os = "macos"))]
@@ -3028,10 +3050,13 @@ fn spawn_attested_protocol_process(
 			#[cfg(target_os = "macos")]
 			ManagedChild::Attested(_) => unreachable!("configured spawn created a standard child"),
 		};
-		let pump = StdoutPump::start(stdout, sender, protocol_limit_exceeded)?;
-		owner.attach_pump(pump);
-
-		Ok((owner, Box::new(stdin)))
+		Ok(finish_attested_protocol_spawn(
+			owner,
+			Box::new(stdin),
+			stdout,
+			sender,
+			protocol_limit_exceeded,
+		))
 	}
 }
 
@@ -6635,6 +6660,68 @@ pub(crate) mod tests {
 		.unwrap_err();
 
 		assert_eq!(error, ProbeError::Supervision(SupervisionError::PreflightFailed));
+	}
+
+	#[test]
+	fn attested_pump_failure_preserves_created_child_state() {
+		struct UnavailableDescriptor;
+		impl io::Read for UnavailableDescriptor {
+			fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+				panic!("invalid descriptor must be rejected before a reader starts")
+			}
+		}
+		impl std::os::fd::AsRawFd for UnavailableDescriptor {
+			fn as_raw_fd(&self) -> std::os::fd::RawFd {
+				-1
+			}
+		}
+		let directory = TempDir::new().unwrap();
+		let capacity = TestCapacity::new(1);
+		let mut command = Command::new("/bin/sleep");
+		command
+			.arg("30")
+			.env_clear()
+			.env("HOME", directory.path())
+			.stdin(Stdio::piped())
+			.stdout(Stdio::piped())
+			.stderr(Stdio::null());
+		process::configure_process_session(&mut command, None);
+		let mut child = command.spawn().unwrap();
+		let pid = child.id();
+		let stdin = child.stdin.take().unwrap();
+		let owner = process::ProcessGroupOwner::new(child, Some(capacity.reserve().unwrap()));
+		let (sender, receiver) = mpsc::sync_channel(1);
+		let (mut owner, stdin) = process::finish_attested_protocol_spawn(
+			owner,
+			Box::new(stdin),
+			UnavailableDescriptor,
+			sender,
+			Arc::new(AtomicBool::new(false)),
+		);
+		assert_eq!(owner.process_id(), pid);
+		assert!(owner.try_wait().unwrap().is_none(), "created child must remain owned");
+		assert!(owner.pump.is_none());
+		assert_eq!(capacity.active(), 1);
+		assert!(matches!(receiver.try_recv(), Err(mpsc::TryRecvError::Disconnected)));
+		drop(stdin);
+		owner.shutdown(Duration::from_secs(1)).unwrap();
+		assert_eq!(capacity.active(), 0);
+	}
+
+	#[test]
+	fn missing_attested_pump_refuses_initialization_before_any_request() {
+		let (directory, mut child) = ordinary_catalog_child("ordinary-capabilities");
+		child.initialized = false;
+		let mut pump = child.process.owner.pump.take().unwrap();
+		assert!(pump.stop(Duration::from_secs(1)));
+		let request_id = child.process.next_request_id;
+		assert!(matches!(
+			child.initialize_ordinary_turns(&FixtureVault::matching()),
+			Err(super::ConversationProcessError::Unavailable)
+		));
+		assert_eq!(child.process.next_request_id, request_id);
+		child.shutdown().unwrap();
+		drop(directory);
 	}
 
 	#[test]
