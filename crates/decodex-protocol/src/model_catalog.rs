@@ -2,8 +2,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	AgentModelDto, ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory,
-	EntityId, ServiceTier,
+	AgentModelDto, ConversationExecutionSettings, ConversationModel, ConversationReasoningEffort,
+	ConversationWorkingDirectory, EntityId, EntityRevision, HistoryText, ServiceTier,
 };
 
 /// Select the same account policy that the intended conversation will use.
@@ -91,11 +91,11 @@ pub struct ConversationModelReview {
 	/// Conversation whose request supplied the directory and original input.
 	pub conversation_id: EntityId,
 	/// Exact revision checked before and after discovery.
-	pub conversation_revision: crate::EntityRevision,
+	pub conversation_revision: EntityRevision,
 	/// Original user input; review must not replace it with a later composer draft.
-	pub message: crate::HistoryText,
+	pub message: HistoryText,
 	/// Saved choices to present for review rather than silently replace.
-	pub execution: crate::ConversationExecutionSettings,
+	pub execution: ConversationExecutionSettings,
 	/// Fresh native catalog observed at the saved working directory.
 	pub catalog: InitialModelCatalogResult,
 }
@@ -112,23 +112,22 @@ pub enum ConversationModelReviewResult {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+	use crate::InitialModelCatalogResult;
 	#[test]
 	fn old_catalogs_remain_readable_and_default_sources_round_trip() {
-		let mut wire = json!({"outcome":"available","account_id":"account","account_revision":1,"working_directory":"/tmp","models":[]});
+		let mut wire = serde_json::json!({"outcome":"available","account_id":"account","account_revision":1,"working_directory":"/tmp","models":[]});
 		let old: InitialModelCatalogResult = serde_json::from_value(wire.clone()).unwrap();
 
 		assert!(matches!(old, InitialModelCatalogResult::Available { defaults: None, .. }));
 		assert_eq!(serde_json::to_value(old).unwrap(), wire);
 
-		wire["defaults"] = json!({"configured":{"model":"project-model","reasoning_effort":"future-effort","service_tier":"flex"},"managed":{"model":"managed-model","reasoning_effort":null,"service_tier":null},"catalog_model":"catalog-model"});
+		wire["defaults"] = serde_json::json!({"configured":{"model":"project-model","reasoning_effort":"future-effort","service_tier":"flex"},"managed":{"model":"managed-model","reasoning_effort":null,"service_tier":null},"catalog_model":"catalog-model"});
 
 		let projected: InitialModelCatalogResult = serde_json::from_value(wire.clone()).unwrap();
 
 		assert_eq!(serde_json::to_value(projected).unwrap(), wire);
 
-		wire["defaults"]["configured"]["reasoning_effort"] = json!(42);
+		wire["defaults"]["configured"]["reasoning_effort"] = serde_json::json!(42);
 
 		assert!(serde_json::from_value::<InitialModelCatalogResult>(wire).is_err());
 	}
