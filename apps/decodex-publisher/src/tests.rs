@@ -1010,6 +1010,24 @@ fn high_level_uncertain_create_is_never_retried_after_restart() {
 }
 
 #[test]
+fn explicit_social_validation_paths_must_exist() {
+	let temp = tempfile::tempdir().expect("temporary directory");
+	let root = temp.path();
+	assert_eq!(crate::validate_social_at(root, &[]).expect("empty default scope").checked_files, 0);
+	let candidate = write_candidate(root, "present.json", valid_social_candidate());
+	assert_eq!(
+		crate::validate_social_at(root, std::slice::from_ref(&candidate))
+			.expect("existing explicit artifact")
+			.checked_files,
+		1
+	);
+	let missing = root.join("missing.json");
+	for paths in [vec![missing.clone()], vec![candidate, missing]] {
+		assert!(crate::validate_social_at(root, &paths).is_err(), "missing explicit path");
+	}
+}
+
+#[test]
 fn cli_exposes_only_high_level_social_workflows() {
 	for command in [
 		"record-candidate",
