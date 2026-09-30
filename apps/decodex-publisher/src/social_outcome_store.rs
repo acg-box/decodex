@@ -266,6 +266,17 @@ mod tests {
 	}
 
 	#[test]
+	fn artifact_validation_rejects_malformed_outcome_status_urls() {
+		let valid = valid_outcome("post-a", "posts/a.json", "1001", &"a".repeat(64));
+		crate::validate_generated_social_artifact(&valid).expect("valid outcome artifact");
+		for suffix in ["", "not-a-post", "1001?extra=1", "1001/more", "１００１"] {
+			let mut invalid = valid.clone();
+			invalid["published_url"] = json!(format!("https://x.com/decodexspace/status/{suffix}"));
+			assert!(crate::validate_generated_social_artifact(&invalid).is_err(), "{suffix:?}");
+		}
+	}
+
+	#[test]
 	fn valid_outcome_is_accepted_by_default_store_validation() {
 		let temp = repo_local_test_directory("publisher-outcome-valid-");
 		let store = Store::default(temp.path());

@@ -37,8 +37,10 @@ pub(super) fn validate_social_outcome(entry: &Map<String, Value>, errors: &mut V
 	if !entry
 		.get("published_url")
 		.and_then(Value::as_str)
-		.is_some_and(|url| url.starts_with("https://x.com/decodexspace/status/"))
-	{
+		.and_then(|url| url.strip_prefix("https://x.com/decodexspace/status/"))
+		.is_some_and(|post_id| {
+			!post_id.is_empty() && post_id.bytes().all(|byte| byte.is_ascii_digit())
+		}) {
 		errors.push("published_url must be a decodexspace X status URL".into());
 	}
 
