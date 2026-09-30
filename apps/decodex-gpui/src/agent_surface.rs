@@ -78,7 +78,7 @@ enum LoadState {
 	Capacity { work: u64, edges: u64, events: u64 },
 }
 
-fn should_poll_snapshot(has_profile: bool, state: &LoadState, _active: bool) -> bool {
+fn should_poll_snapshot(has_profile: bool, state: &LoadState) -> bool {
 	has_profile && *state != LoadState::Loading
 }
 
@@ -957,8 +957,7 @@ impl AgentSurface {
 			self.request_interrupt(work_id, turn_id, cx);
 			return;
 		}
-		if self.sending || (self.uncertain && !matches!(&action, AgentActionDto::Interrupt { .. }))
-		{
+		if self.sending || self.uncertain {
 			return;
 		}
 		let Some(profile) = self.profile.clone() else {
@@ -1249,7 +1248,7 @@ impl AgentSurface {
 				if surface
 					.update(cx, |surface, cx| {
 						surface.save_draft_document(cx);
-						if should_poll_snapshot(surface.profile.is_some(), &surface.state, false) {
+						if should_poll_snapshot(surface.profile.is_some(), &surface.state) {
 							surface.refresh(cx);
 						}
 						surface.load_archive_state(false, cx);
@@ -1510,13 +1509,7 @@ impl AgentSurface {
 			&& self.feedback != "Message saved · Waiting for agent…"
 		{
 			return Some((
-				if self.sending {
-					"Sending"
-				} else if self.uncertain {
-					"Check delivery"
-				} else {
-					"Message status"
-				},
+				if self.uncertain { "Check delivery" } else { "Message status" },
 				self.feedback.clone(),
 				false,
 			));
@@ -2228,8 +2221,6 @@ fn reply_metrics(entry: &decodex_protocol::AgentHistoryEntryDto) -> impl IntoEle
 	}
 }
 
-impl AgentSurface {}
-
 impl Render for AgentSurface {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.observe_recap_focus(window, cx);
@@ -2511,14 +2502,13 @@ mod tests {
 	use decodex_protocol::AgentWorkKindDto;
 	use gpui::Focusable;
 	#[test]
-	fn snapshot_poll_recovers_initial_failure_without_repeating_ready_idle_reads() {
-		assert!(should_poll_snapshot(true, &LoadState::Unavailable, false));
-		assert!(should_poll_snapshot(true, &LoadState::Stale, false));
-		assert!(should_poll_snapshot(true, &LoadState::Idle, false));
-		assert!(!should_poll_snapshot(false, &LoadState::Unavailable, false));
-		assert!(!should_poll_snapshot(true, &LoadState::Loading, true));
-		assert!(should_poll_snapshot(true, &LoadState::Ready, false));
-		assert!(should_poll_snapshot(true, &LoadState::Ready, true));
+	fn snapshot_poll_requires_a_profile_and_no_in_flight_read() {
+		assert!(should_poll_snapshot(true, &LoadState::Unavailable));
+		assert!(should_poll_snapshot(true, &LoadState::Stale));
+		assert!(should_poll_snapshot(true, &LoadState::Idle));
+		assert!(!should_poll_snapshot(false, &LoadState::Unavailable));
+		assert!(!should_poll_snapshot(true, &LoadState::Loading));
+		assert!(should_poll_snapshot(true, &LoadState::Ready));
 	}
 
 	#[gpui::test]
