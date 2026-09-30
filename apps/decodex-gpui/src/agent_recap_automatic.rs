@@ -12,6 +12,32 @@ struct Source {
 	runtime: String,
 	updated: i64,
 	pending: i64,
+	idle: bool,
+}
+
+impl Source {
+	fn from_snapshot(snapshot: Option<&AgentSnapshotDto>, selected: Option<&str>) -> Option<Self> {
+		let snapshot = snapshot?;
+		let work = snapshot.work_items.iter().find(|work| Some(work.id.as_str()) == selected)?;
+		Some(Self {
+			work: work.id.clone(),
+			thread: work.codex_thread_id.clone()?,
+			runtime: snapshot.runtime_source.as_ref()?.as_str().into(),
+			updated: work.updated_at_micros,
+			pending: snapshot
+				.pending_events
+				.iter()
+				.filter(|event| event.work_item_id == work.id)
+				.map(|event| event.id)
+				.max()
+				.unwrap_or(0),
+			idle: work.dispatch_state == AgentDispatchStateDto::Idle,
+		})
+	}
+
+	fn same_owner(&self, other: &Self) -> bool {
+		self.work == other.work && self.thread == other.thread && self.runtime == other.runtime
+	}
 }
 
 pub(crate) struct Automatic {
@@ -80,6 +106,31 @@ impl Automatic {
 	}
 }
 impl AgentSurface {
+	pub(in super::super) fn interrupt_automatic_recap(&mut self) {
+		self.automatic_recap.changed(Instant::now());
+		self.cancel_automatic_recap();
+	}
+
+	pub(in super::super) fn reset_automatic_recap(&mut self) {
+		self.interrupt_automatic_recap();
+		self.automatic_recap.source = None;
+		self.automatic_recap.last_recapped.clear();
+		self.automatic_recap.result = None;
+		self.automatic_recap.baseline = None;
+	}
+
+	pub(super) fn invalidate_automatic_recap(&mut self, next: &AgentSnapshotDto) {
+		let before = Source::from_snapshot(self.snapshot.as_ref(), self.selected.as_deref());
+		let after = Source::from_snapshot(Some(next), self.selected.as_deref());
+		if before != after {
+			if matches!((&before, &after), (Some(a), Some(b)) if a.same_owner(b)) {
+				self.interrupt_automatic_recap();
+			} else {
+				self.reset_automatic_recap();
+			}
+		}
+	}
+
 	pub(crate) fn observe_recap_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		if self.automatic_recap.subscription.is_none() {
 			self.recap_focus(window.is_window_active());
@@ -130,26 +181,14 @@ impl AgentSurface {
 	}
 
 	fn automatic_source(&mut self, now: Instant) -> Option<Source> {
-		let source = self.snapshot.as_ref().and_then(|snapshot| {
-			let work =
-				snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())?;
-			Some(Source {
-				work: work.id.clone(),
-				thread: work.codex_thread_id.clone()?,
-				runtime: snapshot.runtime_source.as_ref()?.as_str().into(),
-				updated: work.updated_at_micros,
-				pending: snapshot
-					.pending_events
-					.iter()
-					.filter(|e| e.work_item_id == work.id)
-					.map(|e| e.id)
-					.max()
-					.unwrap_or(0),
-			})
-		});
+		let source = Source::from_snapshot(self.snapshot.as_ref(), self.selected.as_deref());
 		if source != self.automatic_recap.source {
-			let same_owner = matches!((&source,&self.automatic_recap.source), (Some(a),Some(b)) if a.work==b.work && a.thread==b.thread && a.runtime==b.runtime);
+			let same_owner = matches!((&source,&self.automatic_recap.source), (Some(a),Some(b)) if a.same_owner(b));
 			if !same_owner {
+				// A newly recorded manual baseline can precede the first automatic poll.
+				if self.automatic_recap.source.is_some() {
+					self.automatic_recap.baseline = None;
+				}
 				self.automatic_recap.last_recapped.clear();
 				self.automatic_recap.result = None;
 			}
@@ -158,12 +197,7 @@ impl AgentSurface {
 			self.cancel_automatic_recap();
 		}
 		let source = source?;
-		let running = self
-			.snapshot
-			.as_ref()
-			.and_then(|v| v.work_items.iter().find(|w| w.id == source.work))
-			.is_none_or(|w| w.dispatch_state != AgentDispatchStateDto::Idle);
-		if running
+		if !source.idle
 			|| source.pending != 0
 			|| self.native_agents.selected.is_some()
 			|| self.voice.is_some()
@@ -186,7 +220,7 @@ impl AgentSurface {
 				self.cancel_automatic_recap();
 			}
 		}
-		if !enabled {
+		if !enabled || !self.command_connection_ready() {
 			return;
 		}
 		let Some(source) = self.automatic_source(now) else {
@@ -249,6 +283,12 @@ impl AgentSurface {
 					return;
 				}
 				s.automatic_recap.task = None;
+				if !s.command_connection_ready()
+					|| s.automatic_source(Instant::now()).as_ref() != Some(&source)
+					|| s.automatic_recap.epoch != epoch
+				{
+					return;
+				}
 				let Some(progress) = progress else {
 					s.automatic_recap.failed(Instant::now());
 					return;
@@ -437,6 +477,131 @@ mod tests {
 				.dispatch_state = AgentDispatchStateDto::Running;
 			s.poll_automatic_recap(true, cx);
 			assert_eq!(s.automatic_recap.last_recapped, vec!["a", "b", "c"]);
+		});
+	}
+	#[gpui::test]
+	fn lifecycle_changes_cancel_automatic_progress_before_its_completion(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		for change in [
+			"disconnect",
+			"failed",
+			"profile",
+			"source",
+			"thread",
+			"activity",
+			"pending",
+			"removed",
+			"navigation",
+		] {
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				let work = s.selected.clone().unwrap();
+				let snapshot = s.snapshot.as_mut().unwrap();
+				snapshot.runtime_source = Some(EntityId::new("runtime").unwrap());
+				snapshot.pending_events.clear();
+				let item = snapshot.work_items.iter_mut().find(|w| w.id == work).unwrap();
+				item.codex_thread_id = Some("thread".into());
+				item.dispatch_state = AgentDispatchStateDto::Idle;
+				s.automatic_source(Instant::now()).unwrap();
+				s.automatic_recap.last_recapped = vec!["old-completed-turn".into()];
+				let epoch = s.automatic_recap.epoch;
+				s.automatic_recap.task =
+					Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+				let mut next = s.snapshot.clone().unwrap();
+				match change {
+					"disconnect" => s.mark_stale(cx),
+					"failed" => s.apply_result(Err(())),
+					"profile" => s.bind_profile(None, cx),
+					"source" => next.runtime_source = Some(EntityId::new("replacement").unwrap()),
+					"thread" =>
+						next.work_items.iter_mut().find(|w| w.id == work).unwrap().codex_thread_id =
+							Some("replacement".into()),
+					"activity" =>
+						next.work_items
+							.iter_mut()
+							.find(|w| w.id == work)
+							.unwrap()
+							.updated_at_micros += 1,
+					"pending" =>
+						next.work_items.iter_mut().find(|w| w.id == work).unwrap().dispatch_state =
+							AgentDispatchStateDto::Running,
+					"removed" => next.work_items.retain(|w| w.id != work),
+					"navigation" => s.open_page("verify", cx),
+					_ => unreachable!(),
+				}
+				if matches!(change, "source" | "thread" | "activity" | "pending" | "removed") {
+					s.apply_result(Ok(AgentSnapshotResult::Available(next)));
+				}
+				assert!(s.automatic_recap.task.is_none(), "old progress read after {change}");
+				assert_ne!(
+					s.automatic_recap.epoch, epoch,
+					"old completion authority after {change}"
+				);
+				if matches!(change, "disconnect" | "failed" | "activity" | "pending") {
+					assert_eq!(s.automatic_recap.last_recapped, vec!["old-completed-turn"]);
+				}
+			});
+		}
+	}
+	#[gpui::test]
+	fn unchanged_snapshot_preserves_automatic_progress_and_manual_baseline(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let work = s.selected.clone().unwrap();
+			let snapshot = s.snapshot.as_mut().unwrap();
+			snapshot.runtime_source = Some(EntityId::new("runtime").unwrap());
+			snapshot.pending_events.clear();
+			let item = snapshot.work_items.iter_mut().find(|w| w.id == work).unwrap();
+			item.codex_thread_id = Some("thread".into());
+			item.dispatch_state = AgentDispatchStateDto::Idle;
+			s.automatic_source(Instant::now()).unwrap();
+			s.automatic_recap.baseline = Some((work, "thread".into(), "manual".into()));
+			let epoch = s.automatic_recap.epoch;
+			s.automatic_recap.task =
+				Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+			s.generation += 1;
+			s.apply_result(Ok(AgentSnapshotResult::Available(s.snapshot.clone().unwrap())));
+			assert!(s.automatic_recap.task.is_some());
+			assert_eq!(s.automatic_recap.epoch, epoch);
+			assert!(s.automatic_recap.baseline.is_some());
+			let mut next = s.snapshot.clone().unwrap();
+			next.runtime_source = Some(EntityId::new("other-runtime").unwrap());
+			s.apply_result(Ok(AgentSnapshotResult::Available(next)));
+			assert!(s.automatic_recap.baseline.is_none());
+		});
+	}
+
+	#[gpui::test]
+	fn stale_connection_cannot_read_progress_or_generate_recap(cx: &mut gpui::TestAppContext) {
+		let (_root, profile, _) = super::super::super::drafts::tests::profiles();
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.profile = Some(profile);
+			let work = s.selected.clone().unwrap();
+			let snapshot = s.snapshot.as_mut().unwrap();
+			snapshot.runtime_source = Some(EntityId::new("runtime").unwrap());
+			snapshot.pending_events.clear();
+			let item = snapshot.work_items.iter_mut().find(|w| w.id == work).unwrap();
+			item.codex_thread_id = Some("thread".into());
+			item.dispatch_state = AgentDispatchStateDto::Idle;
+			s.automatic_source(Instant::now()).unwrap();
+			s.automatic_recap.enabled = true;
+			s.automatic_recap.focused = false;
+			s.automatic_recap.away = Some(Instant::now() - DELAY);
+			s.automatic_recap.quiet = s.automatic_recap.away;
+			s.state = LoadState::Stale;
+			s.poll_automatic_recap(true, cx);
+			assert!(s.automatic_recap.task.is_none());
+			s.request_recap(&work, true, true, cx);
+			assert!(s.recap.task.is_none());
+			assert!(s.recap.cancel.is_none());
+			assert!(s.recap.feedback.contains("Wait for the service connection"));
 		});
 	}
 }

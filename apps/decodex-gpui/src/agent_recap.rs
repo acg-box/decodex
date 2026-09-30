@@ -34,6 +34,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn invalidate_recap(&mut self, next: &AgentSnapshotDto) {
+		self.invalidate_automatic_recap(next);
 		let Some(work) = &self.recap.work else { return };
 		let before =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
@@ -78,6 +79,13 @@ impl AgentSurface {
 			cx.notify();
 			return;
 		};
+		if !self.command_connection_ready() {
+			self.recap.work = Some(work.into());
+			self.recap.feedback =
+				"Wait for the service connection before loading or generating a recap.".into();
+			cx.notify();
+			return;
+		}
 		let Some(item) =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == work))
 		else {

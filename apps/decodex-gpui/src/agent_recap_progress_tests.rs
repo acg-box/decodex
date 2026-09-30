@@ -245,6 +245,7 @@ fn automatic_driver_generates_once_after_progress_and_cancels_exact_request_on_f
 	let surface = view.read_with(visual, |v, _| v.0.clone());
 	surface.update(visual, |s, cx| {
 		s.profile = Some(profile);
+		s.state = LoadState::Ready;
 		s.selected = Some("work".into());
 		s.snapshot = Some(AgentSnapshotDto {
 			runtime_source: Some(EntityId::new("runtime").unwrap()),

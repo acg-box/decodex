@@ -99,6 +99,7 @@ impl AgentSurface {
 			return;
 		}
 		if self.selected.as_deref() != Some(id) {
+			self.reset_automatic_recap();
 			self.reset_voice_settings();
 			self.reset_resources();
 			self.clear_usage_estimate();
