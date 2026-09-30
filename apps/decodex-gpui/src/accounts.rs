@@ -403,7 +403,6 @@ impl AccountsController {
 				state.upsert_account((**account).clone());
 				state.routing = Some(routing.clone());
 				state.route_reopen_notice = true;
-				state.command = AccountCommandState::Accepted;
 				state.sort_accounts();
 			},
 			_ => {},
@@ -872,6 +871,54 @@ mod tests {
 			unsettled_operation: None,
 			five_hour_quota: quota(300),
 			seven_day_quota: quota(10_080),
+		}
+	}
+
+	#[test]
+	fn routing_events_do_not_resolve_unrelated_account_commands() {
+		for send_failed in [false, true] {
+			let controller = AccountsController::production();
+			let server = server();
+			let first = account("10000000-0000-4000-8000-000000000001", "Primary", true, 3);
+			controller.bind_session(2, server.clone());
+			{
+				let mut state = controller.lock();
+				state.accounts = vec![first.clone()];
+				state.load = AccountsLoadState::Ready;
+			}
+			controller.set_enabled(&first.account_id, false).unwrap();
+			let dispatch = controller.try_take_dispatch(2, &server).unwrap();
+			controller.command_sent(&dispatch);
+			if send_failed {
+				controller.command_send_failed(&dispatch);
+			}
+			let before = controller.snapshot().command;
+			let routing = AccountRoutingControlDto {
+				revision: EntityRevision(5),
+				mode: AccountSelectionModeDto::Fixed(first.account_id.clone()),
+				order: vec![first.account_id.clone()],
+			};
+			controller.apply_event(&EventEnvelope {
+				version: CURRENT_VERSION,
+				server_id: server,
+				cursor: decodex_protocol::Cursor(1),
+				channel: decodex_protocol::Channel::AccountsHealth,
+				entity_id: EntityId::new("account-routing").unwrap(),
+				entity_revision: routing.revision,
+				correlation_id: CorrelationId::new("another-client-route").unwrap(),
+				causation_id: None,
+				payload: EventPayload::AccountRouted {
+					account: Box::new(first.clone()),
+					routing: routing.clone(),
+					projection_digest: Sha256Digest::new("a".repeat(64)).unwrap(),
+				},
+			});
+			let snapshot = controller.snapshot();
+			assert_eq!(snapshot.routing, Some(routing));
+			assert!(snapshot.route_reopen_notice);
+			assert_eq!(snapshot.command, before, "broadcast is not a matching command result");
+			assert!(!snapshot.can_manage);
+			assert_eq!(controller.select_balanced(), Err(AccountInputError::Busy));
 		}
 	}
 
