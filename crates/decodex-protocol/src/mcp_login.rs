@@ -1,6 +1,9 @@
 //! Ephemeral native MCP sign-in. Authorization URLs never enter command receipts.
-use crate::{EntityId, WireScalarTooLong, WireText};
+use std::fmt::{self, Debug, Formatter};
+
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+
+use crate::{EntityId, WireScalarTooLong, WireText};
 
 /// Bounded private authorization URL, omitted from diagnostics.
 #[derive(Clone, Eq, PartialEq, Serialize)]
@@ -9,8 +12,8 @@ pub struct McpAuthorizationUrl(String);
 impl McpAuthorizationUrl {
 	/// Bound the private link before it enters local transport.
 	pub fn new(value: String) -> Result<Self, WireScalarTooLong> {
-		if value.len() > 16384 {
-			return Err(WireScalarTooLong::new(value.len(), 16384));
+		if value.len() > 16_384 {
+			return Err(WireScalarTooLong::new(value.len(), 16_384));
 		}
 
 		Ok(Self(value))
@@ -21,8 +24,8 @@ impl McpAuthorizationUrl {
 		&self.0
 	}
 }
-impl std::fmt::Debug for McpAuthorizationUrl {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for McpAuthorizationUrl {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.write_str("McpAuthorizationUrl([redacted])")
 	}
 }

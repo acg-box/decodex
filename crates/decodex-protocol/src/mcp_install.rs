@@ -1,6 +1,11 @@
 //! Native installation suggestions are distinct from ordinary MCP approval forms.
+use std::fmt::{self, Debug, Formatter};
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use url::Url;
+
+use crate::McpAuthorizationUrl;
 
 /// One connector's fresh native access state and optional authorization page.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -15,7 +20,7 @@ pub struct AgentInstallApp {
 	/// Whether repository configuration enables the connector.
 	pub enabled: bool,
 	/// Native link, validated before it enters this projection.
-	pub install_url: Option<crate::McpAuthorizationUrl>,
+	pub install_url: Option<McpAuthorizationUrl>,
 }
 
 /// Inspection is read-only. Only explicit commands may install or answer a suggestion.
@@ -78,7 +83,6 @@ pub struct McpInstallSuggestion {
 	pub target: McpInstallTarget,
 	install_url: Option<String>,
 }
-
 impl McpInstallSuggestion {
 	/// Return None for ordinary forms; reject malformed or unsupported suggestions.
 	pub fn from_request(request: &Value) -> Result<Option<Self>, &'static str> {
@@ -97,12 +101,12 @@ impl McpInstallSuggestion {
 			return Err("Unsupported installation suggestion");
 		}
 
-		let tool_id = text(&meta["tool_id"], 1024)?;
-		let tool_name = text(&meta["tool_name"], 2048)?;
+		let tool_id = text(&meta["tool_id"], 1_024)?;
+		let tool_name = text(&meta["tool_name"], 2_048)?;
 		let target = match meta["tool_type"].as_str() {
 			Some("plugin") => {
-				let suggestion_id = optional_text(&meta["suggestion_id"], 1024)?;
-				let remote_plugin_id = optional_text(&meta["remote_plugin_id"], 1024)?;
+				let suggestion_id = optional_text(&meta["suggestion_id"], 1_024)?;
+				let remote_plugin_id = optional_text(&meta["remote_plugin_id"], 1_024)?;
 				let mut app_connector_ids = Vec::new();
 
 				if !meta["app_connector_ids"].is_null() {
@@ -112,7 +116,7 @@ impl McpInstallSuggestion {
 						.ok_or("Invalid suggested connector identities")?;
 
 					for value in values {
-						let id = text(value, 1024)?;
+						let id = text(value, 1_024)?;
 
 						if app_connector_ids.contains(&id) {
 							return Err("Duplicate suggested connector identity");
@@ -136,10 +140,10 @@ impl McpInstallSuggestion {
 			},
 			_ => return Err("Unsupported suggested integration type"),
 		};
-		let install_url = optional_text(&meta["install_url"], 16384)?;
+		let install_url = optional_text(&meta["install_url"], 16_384)?;
 
 		if let Some(raw) = &install_url {
-			let url = url::Url::parse(raw).map_err(|_| "Invalid installation link")?;
+			let url = Url::parse(raw).map_err(|_| "Invalid installation link")?;
 
 			if url.scheme() != "https"
 				|| url.host_str().is_none()
@@ -163,8 +167,8 @@ impl McpInstallSuggestion {
 	}
 }
 
-impl std::fmt::Debug for McpInstallSuggestion {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for McpInstallSuggestion {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.write_str("McpInstallSuggestion([private request facts])")
 	}
 }
@@ -184,10 +188,11 @@ fn optional_text(value: &Value, maximum: usize) -> Result<Option<String>, &'stat
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+	use serde_json::Value;
+
+	use crate::{McpInstallSuggestion, McpInstallTarget};
 	fn plugin() -> Value {
-		json!({"serverName":"codex_apps","mode":"form","requestedSchema":{"type":"object","properties":{}},"_meta":{"codex_approval_kind":"tool_suggestion","suggest_type":"install","tool_type":"plugin","tool_id":"sample@market","tool_name":"Sample","suggestion_id":"suggestion-1","remote_plugin_id":"plugins~sample","app_connector_ids":["connector-1"]}})
+		serde_json::json!({"serverName":"codex_apps","mode":"form","requestedSchema":{"type":"object","properties":{}},"_meta":{"codex_approval_kind":"tool_suggestion","suggest_type":"install","tool_type":"plugin","tool_id":"sample@market","tool_name":"Sample","suggestion_id":"suggestion-1","remote_plugin_id":"plugins~sample","app_connector_ids":["connector-1"]}})
 	}
 	#[test]
 	fn plugin_identity_survives_without_becoming_an_install_attempt() {
@@ -212,14 +217,14 @@ mod tests {
 	#[test]
 	fn malformed_suggestions_never_become_ordinary_approval_forms() {
 		for (pointer, value) in [
-			("/serverName", json!("other")),
-			("/_meta/tool_type", json!("future")),
-			("/_meta/suggest_type", json!("uninstall")),
-			("/_meta/tool_id", json!("")),
-			("/_meta/suggestion_id", json!({"id":1})),
-			("/_meta/app_connector_ids", json!(["same", "same"])),
-			("/_meta/install_url", json!("javascript:alert(1)")),
-			("/_meta/tool_id", json!("x".repeat(1025))),
+			("/serverName", serde_json::json!("other")),
+			("/_meta/tool_type", serde_json::json!("future")),
+			("/_meta/suggest_type", serde_json::json!("uninstall")),
+			("/_meta/tool_id", serde_json::json!("")),
+			("/_meta/suggestion_id", serde_json::json!({"id":1})),
+			("/_meta/app_connector_ids", serde_json::json!(["same", "same"])),
+			("/_meta/install_url", serde_json::json!("javascript:alert(1)")),
+			("/_meta/tool_id", serde_json::json!("x".repeat(1_025))),
 		] {
 			let mut request = plugin();
 
@@ -232,13 +237,16 @@ mod tests {
 			assert!(McpInstallSuggestion::from_request(&request).is_err(), "{pointer}");
 		}
 
-		assert_eq!(McpInstallSuggestion::from_request(&json!({"mode":"form"})).unwrap(), None);
+		assert_eq!(
+			McpInstallSuggestion::from_request(&serde_json::json!({"mode":"form"})).unwrap(),
+			None
+		);
 	}
 	#[test]
 	fn connector_requires_its_own_link_and_never_inherits_plugin_identity() {
 		let mut request = plugin();
 
-		request["_meta"] = json!({"codex_approval_kind":"tool_suggestion","suggest_type":"install","tool_type":"connector","tool_id":"connector-1","tool_name":"Calendar","install_url":"https://chatgpt.com/apps/calendar/connector-1"});
+		request["_meta"] = serde_json::json!({"codex_approval_kind":"tool_suggestion","suggest_type":"install","tool_type":"connector","tool_id":"connector-1","tool_name":"Calendar","install_url":"https://chatgpt.com/apps/calendar/connector-1"});
 
 		let parsed = McpInstallSuggestion::from_request(&request).unwrap().unwrap();
 
@@ -249,7 +257,7 @@ mod tests {
 		for url in
 			["file:///tmp/plugin", "https://user:password@example.com", "http://example.com", ""]
 		{
-			request["_meta"]["install_url"] = json!(url);
+			request["_meta"]["install_url"] = serde_json::json!(url);
 
 			assert!(McpInstallSuggestion::from_request(&request).is_err());
 		}
