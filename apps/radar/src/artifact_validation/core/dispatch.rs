@@ -15,10 +15,6 @@ pub(crate) fn validate_artifact_errors(payload: &Value) -> Vec<String> {
 	validate_artifact(payload).errors
 }
 
-pub(crate) fn validate_artifact(payload: &Value) -> ArtifactValidation {
-	validate_artifact_payload(payload)
-}
-
 pub(crate) fn validate_artifact_for_path(path: &Path, payload: &Value) -> ArtifactValidation {
 	if paths::is_analysis_draft_path(path) && payload.get("schema").is_none() {
 		return match analysis::validate_analysis_draft(payload) {
@@ -31,10 +27,10 @@ pub(crate) fn validate_artifact_for_path(path: &Path, payload: &Value) -> Artifa
 		};
 	}
 
-	validate_artifact_payload(payload)
+	validate_artifact(payload)
 }
 
-fn validate_artifact_payload(payload: &Value) -> ArtifactValidation {
+pub(crate) fn validate_artifact(payload: &Value) -> ArtifactValidation {
 	let Some(entry) = payload.as_object() else {
 		return ArtifactValidation {
 			schema: None,
