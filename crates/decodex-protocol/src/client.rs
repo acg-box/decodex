@@ -38,15 +38,16 @@ use crate::{
 	AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
 	AgentVoiceStatus, CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage,
 	CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandOutcome, CommandPayload,
-	CorrelationId, DictationRequest, DictationStatus, DoctorReport, EntityId, EntityRevision,
-	IdempotencyKey, InitialModelCatalogRequest, InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES,
-	MAX_AGENT_APP_UI_RECEIPT_BYTES, MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest,
-	McpLoginStatus, NativeAgentsResult, PromptDraft, PromptEditStatus, PromptForkResult,
-	PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus,
-	ProtocolVersion, QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition,
-	Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult,
-	ResetCardOperationResult, ResultPayload, RetainedSessionConfig, RetainedSessionFailure,
-	ServerId, ServerMessage, TRANSCRIPT_CHUNK_BYTES, TaskRecapStatus, WireText,
+	CommandResultEnvelope, CorrelationId, DictationRequest, DictationStatus, DoctorReport,
+	EntityId, EntityRevision, IdempotencyKey, InitialModelCatalogRequest,
+	InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES, MAX_AGENT_APP_UI_RECEIPT_BYTES,
+	MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest, McpLoginStatus,
+	NativeAgentsResult, PromptDraft, PromptEditStatus, PromptForkResult, PromptInputSendIdentity,
+	PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus, ProtocolVersion,
+	QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal,
+	RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult,
+	ResultPayload, RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage,
+	TRANSCRIPT_CHUNK_BYTES, TaskRecapStatus, WireText,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 };
 use decodex_core::{
@@ -464,7 +465,7 @@ impl AgentClient {
 			let action = if complete {
 				AgentActionDto::CompletePromptInputUpload { upload: upload.clone() }
 			} else {
-				let mut end = (offset + 65536).min(encoded.len());
+				let mut end = (offset + 65_536).min(encoded.len());
 
 				while !encoded.is_char_boundary(end) {
 					end -= 1;
@@ -1562,7 +1563,7 @@ impl AgentClient {
 				|| entries.windows(2).any(|pair| pair[0].id >= pair[1].id)
 				|| next_after
 					.is_some_and(|next| entries.last().is_none_or(|entry| entry.id != next))
-				|| serde_json::to_vec(&result).map_or(true, |encoded| encoded.len() > 64 * 1024))
+				|| serde_json::to_vec(&result).map_or(true, |encoded| encoded.len() > 64 * 1_024))
 		{
 			return Err(ClientFailure::ProtocolMalformed);
 		}
@@ -2107,7 +2108,7 @@ impl AgentClient {
 		idempotency_key: IdempotencyKey,
 		attempted: &AtomicBool,
 	) -> Result<CompletedOneShot<AgentCommandResponse>, ClientFailure> {
-		let mut socket = self.transport.connect().await?;
+		let socket = self.transport.connect().await?;
 		let client_command_id = ClientCommandId::new(idempotency_key.as_str())
 			.map_err(|_| ClientFailure::ProtocolMalformed)?;
 		let correlation_id = CorrelationId::new(idempotency_key.as_str())
@@ -2121,6 +2122,7 @@ impl AgentClient {
 			causation_id: None,
 			payload: CommandPayload::Agent { action: Box::new(action.clone()) },
 		});
+		let mut socket = socket;
 
 		attempted.store(true, Ordering::Release);
 		self.transport.send(&mut socket, command).await?;
@@ -2550,9 +2552,10 @@ impl ResetCardClient {
 		query_identity: &'static str,
 		payload: QueryPayload,
 	) -> Result<CompletedOneShot<QueryResultPayload>, ClientFailure> {
-		let mut socket = self.connect().await?;
+		let socket = self.connect().await?;
 		let query_id =
 			QueryId::new(query_identity).expect("fixed query identity is bounded and nonempty");
+		let mut socket = socket;
 
 		self.send(
 			&mut socket,
@@ -2593,7 +2596,7 @@ impl ResetCardClient {
 		idempotency_key: IdempotencyKey,
 		dispatch_attempted: &AtomicBool,
 	) -> Result<CompletedOneShot<ResetCardConsumeResponse>, ClientFailure> {
-		let mut socket = self.connect().await?;
+		let socket = self.connect().await?;
 		let command_identity = format!("reset-card-use:{}", idempotency_key.as_str());
 		let client_command_id = ClientCommandId::new(command_identity.clone())
 			.map_err(|_| ClientFailure::ProtocolMalformed)?;
@@ -2611,6 +2614,7 @@ impl ResetCardClient {
 				descriptor,
 			},
 		});
+		let mut socket = socket;
 
 		dispatch_attempted.store(true, Ordering::Release);
 		self.send(&mut socket, command).await?;
@@ -2648,61 +2652,12 @@ impl ResetCardClient {
 						return Err(ClientFailure::ProtocolMalformed);
 					}
 
-					let response = match (
-						result.outcome,
-						result.entity_revision,
-						result.payload,
-						result.error,
-					) {
-						(
-							CommandOutcome::Succeeded,
-							Some(entity_revision),
-							Some(ResultPayload::ResetCardOperationAccepted {
-								account_id: result_account_id,
-								descriptor: result_descriptor,
-								state,
-							}),
-							None,
-						) if result_account_id == account_id
-							&& result_descriptor == descriptor
-							&& entity_revision == expected_revision =>
-							Ok(ResetCardConsumeResponse::Accepted {
-								account_id,
-								descriptor,
-								state,
-								entity_revision,
-							}),
-						(
-							CommandOutcome::Succeeded,
-							Some(entity_revision),
-							Some(ResultPayload::ResetCardConsumed {
-								account_id: result_account_id,
-								descriptor: result_descriptor,
-								outcome,
-							}),
-							None,
-						) if result_account_id == account_id
-							&& result_descriptor == descriptor
-							&& entity_revision == expected_revision =>
-							Ok(ResetCardConsumeResponse::Accepted {
-								account_id,
-								descriptor,
-								state: ResetCardOperationResult::Completed { outcome },
-								entity_revision,
-							}),
-						(CommandOutcome::Rejected, None, None, Some(error))
-							if !matches!(&error, CommandError::AcceptanceUnknown) =>
-							Ok(ResetCardConsumeResponse::Rejected { error }),
-						(
-							CommandOutcome::AcceptanceUnknown,
-							None,
-							None,
-							Some(CommandError::AcceptanceUnknown),
-						) => Ok(ResetCardConsumeResponse::PotentiallyDispatched {
-							failure: ClientFailure::ApplicationAcceptanceUnknown,
-						}),
-						_ => Err(ClientFailure::ProtocolMalformed),
-					};
+					let response = reset_card_consume_response(
+						result,
+						account_id,
+						descriptor,
+						expected_revision,
+					);
 
 					return response.map(|value| CompletedOneShot::new(value, socket));
 				},
@@ -2895,9 +2850,10 @@ impl AccountLoginClient {
 		request: AccountLoginRequest,
 	) -> Result<CompletedOneShot<AccountLoginStatus>, ClientFailure> {
 		let expected_session_id = request.session_id().clone();
-		let mut socket = self.transport.connect().await?;
+		let socket = self.transport.connect().await?;
 		let request_id = QueryId::new(request_identity)
 			.expect("fixed account-login request identity is bounded and nonempty");
+		let mut socket = socket;
 
 		self.transport
 			.send(
@@ -3377,7 +3333,7 @@ impl AccountClient {
 		idempotency_key: IdempotencyKey,
 		dispatch_attempted: &AtomicBool,
 	) -> Result<CompletedOneShot<AccountCommandResponse>, ClientFailure> {
-		let mut socket = self.transport.connect().await?;
+		let socket = self.transport.connect().await?;
 		let client_command_id = ClientCommandId::new(idempotency_key.as_str().to_owned())
 			.map_err(|_| ClientFailure::ProtocolMalformed)?;
 		let correlation_id = CorrelationId::new(idempotency_key.as_str().to_owned())
@@ -3391,6 +3347,7 @@ impl AccountClient {
 			causation_id: None,
 			payload: payload.clone(),
 		});
+		let mut socket = socket;
 
 		dispatch_attempted.store(true, Ordering::Release);
 		self.transport.send(&mut socket, command).await?;
@@ -3760,6 +3717,60 @@ fn version_failure(_version: ProtocolVersion) -> ClientFailure {
 	ClientFailure::ServiceVersionMismatch
 }
 
+fn reset_card_consume_response(
+	result: CommandResultEnvelope,
+	account_id: EntityId,
+	descriptor: ResetCardDescriptorDto,
+	expected_revision: EntityRevision,
+) -> Result<ResetCardConsumeResponse, ClientFailure> {
+	match (result.outcome, result.entity_revision, result.payload, result.error) {
+		(
+			CommandOutcome::Succeeded,
+			Some(entity_revision),
+			Some(ResultPayload::ResetCardOperationAccepted {
+				account_id: result_account_id,
+				descriptor: result_descriptor,
+				state,
+			}),
+			None,
+		) if result_account_id == account_id
+			&& result_descriptor == descriptor
+			&& entity_revision == expected_revision =>
+			Ok(ResetCardConsumeResponse::Accepted {
+				account_id,
+				descriptor,
+				state,
+				entity_revision,
+			}),
+		(
+			CommandOutcome::Succeeded,
+			Some(entity_revision),
+			Some(ResultPayload::ResetCardConsumed {
+				account_id: result_account_id,
+				descriptor: result_descriptor,
+				outcome,
+			}),
+			None,
+		) if result_account_id == account_id
+			&& result_descriptor == descriptor
+			&& entity_revision == expected_revision =>
+			Ok(ResetCardConsumeResponse::Accepted {
+				account_id,
+				descriptor,
+				state: ResetCardOperationResult::Completed { outcome },
+				entity_revision,
+			}),
+		(CommandOutcome::Rejected, None, None, Some(error))
+			if !matches!(&error, CommandError::AcceptanceUnknown) =>
+			Ok(ResetCardConsumeResponse::Rejected { error }),
+		(CommandOutcome::AcceptanceUnknown, None, None, Some(CommandError::AcceptanceUnknown)) =>
+			Ok(ResetCardConsumeResponse::PotentiallyDispatched {
+				failure: ClientFailure::ApplicationAcceptanceUnknown,
+			}),
+		_ => Err(ClientFailure::ProtocolMalformed),
+	}
+}
+
 async fn close_one_shot_socket(mut socket: OneShotSocket) {
 	let close = async {
 		if socket.send(Message::Close(None)).await.is_err() {
@@ -3796,18 +3807,23 @@ mod tests {
 
 	use futures_util::{SinkExt, StreamExt};
 	use tempfile::TempDir;
-	use tokio::{task::JoinHandle, time};
-	use tokio_tungstenite::{self, tungstenite::Message};
+	use tokio::{
+		sync::{oneshot, watch},
+		task::JoinHandle,
+		time,
+	};
+	use tokio_tungstenite::{self, WebSocketStream, tungstenite::Message};
 
 	use crate::{
 		AGENT_APP_UI_CHUNK_BYTES, AGENT_APP_UI_RECEIPT_CHUNK_BYTES, AGENT_MEDIA_CHUNK_BYTES,
 		AccountClient, AccountCommandResponse, AccountProfileDto, AccountProfileEmailDto,
 		AccountProfileErrorDto, AccountProfileResult, AccountRecoveryAction, AccountRecoveryBanner,
-		AccountRecoveryCta, AccountRecoveryNudgeStatus, AccountRecoveryResult,
-		AccountRecoveryState, AgentActionDto, AgentAppUiReceiptRequest, AgentAppUiReceiptResult,
-		AgentAppUiRequest, AgentAppUiResult, AgentArchiveResult, AgentClient, AgentCommandResponse,
-		AgentGuardianDetailResult, AgentGuardianReviewDto, AgentGuardianReviewsResult,
-		AgentGuardianStatus, AgentGuardianSubmission, AgentHistoryEntryDto, AgentHistoryReceiptDto,
+		AccountRecoveryCta, AccountRecoveryNudgeOperation, AccountRecoveryNudgeResult,
+		AccountRecoveryNudgeStatus, AccountRecoveryResult, AccountRecoveryState, AgentActionDto,
+		AgentAppUiReceiptRequest, AgentAppUiReceiptResult, AgentAppUiRequest, AgentAppUiResult,
+		AgentArchiveResult, AgentClient, AgentCommandResponse, AgentGuardianDetailResult,
+		AgentGuardianReviewDto, AgentGuardianReviewsResult, AgentGuardianStatus,
+		AgentGuardianSubmission, AgentHistoryEntryDto, AgentHistoryReceiptDto,
 		AgentInputReceiptsResult, AgentLiveMessageDto, AgentMediaRequest, AgentMediaResult,
 		AgentOutputResult, AgentRequestResult, AgentRequestText, AgentSteerIdentity,
 		AgentSteerReceiptResult, AgentUsageEstimateResult, CURRENT_VERSION, Channel,
@@ -3816,15 +3832,15 @@ mod tests {
 		CorrelationId, Cursor, DoctorCheck, DoctorClient, DoctorComponent, DoctorIssue,
 		DoctorReport, DoctorStatus, EntityId, EntityRevision, EventEnvelope, EventPayload,
 		GUARDIAN_DETAIL_PAGE_BYTES, HistoryText, IdempotencyKey, InitialModelCatalogRequest,
-		InitialModelCatalogResult, LocalTransportAuthority, MAX_AGENT_APP_UI_BYTES,
-		MAX_AGENT_APP_UI_RECEIPT_BYTES, MAX_AGENT_MEDIA_BYTES, McpAuthorizationUrl, McpLoginPhase,
-		McpLoginRequest, McpLoginStatus, ModelCatalogPurpose, ProfileKind, ProtocolVersion,
-		QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload,
-		ReceiptDisposition, ReconnectMode, Refusal, RefusalEnvelope, ResetCardClient,
-		ResetCardConsumeResponse, ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload,
-		RetainedSession, RetainedSessionFailure, ServerId, ServerInstanceId, ServerMessage,
-		ServerWelcome, SessionCancellation, SessionDelivery, SnapshotEnvelope, ThreadUsageEstimate,
-		WireText,
+		InitialModelCatalogResult, LocalTransportAuthority, LocalTransportStream,
+		MAX_AGENT_APP_UI_BYTES, MAX_AGENT_APP_UI_RECEIPT_BYTES, MAX_AGENT_MEDIA_BYTES,
+		McpAuthorizationUrl, McpLoginPhase, McpLoginRequest, McpLoginStatus, ModelCatalogPurpose,
+		ProfileKind, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope,
+		QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal, RefusalEnvelope,
+		ResetCardClient, ResetCardConsumeResponse, ResetCardDescriptorDto,
+		ResetCardOperationResult, ResultPayload, RetainedSession, RetainedSessionFailure, ServerId,
+		ServerInstanceId, ServerMessage, ServerWelcome, SessionCancellation, SessionDelivery,
+		SnapshotEnvelope, ThreadUsageEstimate, WireText,
 	};
 	use decodex_core::{DecodexRoot, LocalTrustPolicy, ServerIdentity};
 
@@ -4078,6 +4094,15 @@ max_entry_bytes = 0
 		assert!(!format!("{remote:?}").contains("server.example.test"));
 	}
 
+	async fn next_client_message(
+		socket: &mut WebSocketStream<LocalTransportStream>,
+	) -> ClientMessage {
+		let frame = socket.next().await.expect("client frame").expect("valid client frame");
+		let Message::Text(text) = frame else { panic!("expected text client message") };
+
+		serde_json::from_str(&text).expect("typed client message")
+	}
+
 	#[tokio::test]
 	async fn initial_model_catalog_waits_beyond_the_ordinary_query_deadline() {
 		let (temp, authority) = local_transport();
@@ -4196,7 +4221,7 @@ max_entry_bytes = 0
 
 			listener.cleanup().unwrap();
 		});
-		let (sender, mut receiver) = tokio::sync::watch::channel(None);
+		let (sender, mut receiver) = watch::channel(None);
 		let observer = tokio::spawn(async move {
 			AgentClient::new(profile).observe_output(EntityId::new("root").unwrap(), sender).await
 		});
@@ -4252,7 +4277,7 @@ max_entry_bytes = 0
 				matches!(query.payload,QueryPayload::GetAgentArchiveState {work_id} if work_id.as_str()=="root")
 			);
 
-			time::sleep(Duration::from_millis(5100)).await;
+			time::sleep(Duration::from_millis(5_100)).await;
 
 			socket
 				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
@@ -4444,17 +4469,7 @@ max_entry_bytes = 0
 				socket.send(response).await.expect("Agent protocol fixture succeeds");
 			}
 
-			let Message::Text(request) = socket
-				.next()
-				.await
-				.expect("Agent protocol fixture succeeds")
-				.expect("Agent protocol fixture succeeds")
-			else {
-				panic!("command text");
-			};
-			let ClientMessage::Command(command) =
-				serde_json::from_str(&request).expect("Agent protocol fixture succeeds")
-			else {
+			let ClientMessage::Command(command) = next_client_message(&mut socket).await else {
 				panic!("command envelope");
 			};
 
@@ -4738,7 +4753,7 @@ max_entry_bytes = 0
 			drop(socket);
 
 			assert!(
-				tokio::time::timeout(Duration::from_millis(30), listener.accept()).await.is_err(),
+				time::timeout(Duration::from_millis(30), listener.accept()).await.is_err(),
 				"notification transport must not reconnect to retry"
 			);
 
@@ -4787,18 +4802,18 @@ max_entry_bytes = 0
 
 	#[tokio::test]
 	async fn notification_status_transport_rejects_other_account_purpose_or_key() {
-		use crate::{
-			AccountRecoveryAction as A, AccountRecoveryNudgeOperation, AccountRecoveryNudgeResult,
-			AccountRecoveryNudgeStatus,
-		};
-
 		let expected_account = "40000000-0000-4000-8000-000000000001";
 
 		for (account, action, key, accepted) in [
-			(expected_account, A::NotifyOwner, "requested-key", true),
-			("40000000-0000-4000-8000-000000000002", A::NotifyOwner, "requested-key", false),
-			(expected_account, A::RequestIncrease, "requested-key", false),
-			(expected_account, A::NotifyOwner, "foreign-key", false),
+			(expected_account, AccountRecoveryAction::NotifyOwner, "requested-key", true),
+			(
+				"40000000-0000-4000-8000-000000000002",
+				AccountRecoveryAction::NotifyOwner,
+				"requested-key",
+				false,
+			),
+			(expected_account, AccountRecoveryAction::RequestIncrease, "requested-key", false),
+			(expected_account, AccountRecoveryAction::NotifyOwner, "foreign-key", false),
 		] {
 			let (temp, authority) = local_transport();
 			let mut listener = authority.bind().await.unwrap();
@@ -4823,7 +4838,7 @@ max_entry_bytes = 0
 				assert!(matches!(
 					query.payload,
 					QueryPayload::GetAccountRecoveryNudge {
-						action: A::NotifyOwner,
+						action: AccountRecoveryAction::NotifyOwner,
 						operation_key: Some(_),
 						..
 					}
@@ -4856,7 +4871,7 @@ max_entry_bytes = 0
 			let result = AccountClient::new(profile)
 				.recovery_nudge_status(
 					EntityId::new(expected_account).unwrap(),
-					A::NotifyOwner,
+					AccountRecoveryAction::NotifyOwner,
 					Some(IdempotencyKey::new("requested-key").unwrap()),
 				)
 				.await;
@@ -4873,7 +4888,7 @@ max_entry_bytes = 0
 		let mut listener = authority.bind().await.unwrap();
 		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let config = profile.retained_session_config().unwrap();
-		let (started, ready) = tokio::sync::oneshot::channel();
+		let (started, ready) = oneshot::channel();
 		let server = tokio::spawn(async move {
 			let _temp = temp;
 			let mut main =
@@ -4939,7 +4954,7 @@ max_entry_bytes = 0
 			.await
 			.unwrap();
 
-			let closed = tokio::time::timeout(Duration::from_secs(2), wait.next()).await.unwrap();
+			let closed = time::timeout(Duration::from_secs(2), wait.next()).await.unwrap();
 
 			assert!(matches!(closed, None | Some(Err(_)) | Some(Ok(Message::Close(_)))));
 
@@ -4959,7 +4974,7 @@ max_entry_bytes = 0
 		let wait =
 			tokio::spawn(async move { config.account_client().wait_for_observation(9).await });
 
-		tokio::time::timeout(Duration::from_secs(2), ready).await.unwrap().unwrap();
+		time::timeout(Duration::from_secs(2), ready).await.unwrap().unwrap();
 
 		let query_id = QueryId::new("main-remains-responsive").unwrap();
 
@@ -4974,8 +4989,7 @@ max_entry_bytes = 0
 		.await
 		.unwrap();
 
-		let result =
-			tokio::time::timeout(Duration::from_secs(2), main.next()).await.unwrap().unwrap();
+		let result = time::timeout(Duration::from_secs(2), main.next()).await.unwrap().unwrap();
 
 		assert!(
 			matches!(result, SessionDelivery::QueryResult(result) if result.query_id == query_id)
@@ -5055,12 +5069,10 @@ max_entry_bytes = 0
 
 	#[tokio::test]
 	async fn agent_request_pages_preserve_complete_content_and_reject_changed_identity() {
-		use QueryPayload;
-
 		for failure in ["none", "digest", "offset", "expired", "content"] {
 			let (temp, authority) = local_transport();
 			let mut listener = authority.bind().await.unwrap();
-			let text = serde_json::json!({"command":"界🙂\\\"".repeat(4000)}).to_string();
+			let text = serde_json::json!({"command":"界🙂\\\"".repeat(4_000)}).to_string();
 			let expected = text.clone();
 			let digest = decodex_core::BlobHash::digest(
 				&serde_json::to_vec(&(7, "agent", "item/commandExecution/requestApproval", &text))
@@ -5082,12 +5094,7 @@ max_entry_bytes = 0
 						socket.send(response).await.unwrap();
 					}
 
-					let Message::Text(wire) = socket.next().await.unwrap().unwrap() else {
-						panic!("query")
-					};
-					let ClientMessage::Query(query) =
-						serde_json::from_str::<ClientMessage>(&wire).unwrap()
-					else {
+					let ClientMessage::Query(query) = next_client_message(&mut socket).await else {
 						panic!("query")
 					};
 
@@ -5102,7 +5109,7 @@ max_entry_bytes = 0
 						);
 					}
 
-					let mut end = (offset + 8192).min(text.len());
+					let mut end = (offset + 8_192).min(text.len());
 
 					while !text.is_char_boundary(end) {
 						end -= 1;
@@ -5354,7 +5361,7 @@ max_entry_bytes = 0
 					observed_at_micros: 1,
 					estimate: ThreadUsageEstimate {
 						thread_id: "thread".into(),
-						estimated_usage_credits_micros: 9007199254740993,
+						estimated_usage_credits_micros: 9_007_199_254_740_993,
 						estimated_usage_usd_micros: None,
 						groups: vec![],
 					},
@@ -5385,7 +5392,7 @@ max_entry_bytes = 0
 					panic!("estimate");
 				};
 
-				assert_eq!(estimate.estimated_usage_credits_micros, 9007199254740993);
+				assert_eq!(estimate.estimated_usage_credits_micros, 9_007_199_254_740_993);
 				assert_eq!(estimate.estimated_usage_usd_micros, None);
 			} else {
 				assert_eq!(response.unwrap_err(), ClientFailure::ProtocolMalformed);
@@ -5883,31 +5890,14 @@ max_entry_bytes = 0
 			let stream = listener.accept().await.expect("test operation must succeed");
 			let mut socket =
 				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
-			let hello = socket
-				.next()
-				.await
-				.expect("test operation must succeed")
-				.expect("test operation must succeed");
-			let Message::Text(hello) = hello else { panic!("expected text hello") };
 
-			assert!(matches!(
-				serde_json::from_str::<ClientMessage>(&hello).expect("test operation must succeed"),
-				ClientMessage::Hello(_)
-			));
+			assert!(matches!(next_client_message(&mut socket).await, ClientMessage::Hello(_)));
 
 			for response in initial(SERVER_ID) {
 				socket.send(response).await.expect("test operation must succeed");
 			}
 
-			let request = socket
-				.next()
-				.await
-				.expect("test operation must succeed")
-				.expect("test operation must succeed");
-			let Message::Text(request) = request else { panic!("expected text command") };
-			let ClientMessage::Command(command) = serde_json::from_str::<ClientMessage>(&request)
-				.expect("test operation must succeed")
-			else {
+			let ClientMessage::Command(command) = next_client_message(&mut socket).await else {
 				panic!("expected typed command")
 			};
 			let client_command_id = ClientCommandId::new("reset-card-use:operator-key")
