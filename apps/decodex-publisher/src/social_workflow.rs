@@ -343,11 +343,8 @@ fn observe_due_with(
 	observed.extend(terminal_observation_windows(&root, &paths.attempts, &paths.posts)?);
 	let mut due = Vec::new();
 	for path in existing_json_files(&posts_dir)? {
-		let post = crate::load_json(&path)?;
-		crate::validate_generated_social_artifact(&post)?;
-		if post.get("schema").and_then(Value::as_str) != Some(SOCIAL_POST_SCHEMA)
-			|| post.get("status").and_then(Value::as_str) != Some("published")
-		{
+		let post = crate::social_publish::scan::load_state_record(&path, SOCIAL_POST_SCHEMA)?;
+		if post.get("status").and_then(Value::as_str) != Some("published") {
 			continue;
 		}
 		let post_ref = crate::path_arg(&root, &path);
@@ -401,7 +398,7 @@ fn pending_candidate(
 ) -> Result<Option<(PathBuf, Value)>> {
 	let consumed = existing_json_files(posts_dir)?
 		.into_iter()
-		.map(|path| crate::load_json(&path))
+		.map(|path| crate::social_publish::scan::load_state_record(&path, SOCIAL_POST_SCHEMA))
 		.collect::<Result<Vec<_>>>()?
 		.into_iter()
 		.filter_map(|post| post.pointer("/source_refs/social_candidates").cloned())
@@ -438,7 +435,10 @@ fn active_reservation_for_candidate(
 	let directory = crate::resolve_against(root, reservations_dir);
 	let mut matches = Vec::new();
 	for path in existing_json_files(&directory)? {
-		let reservation = crate::load_json(&path)?;
+		let reservation = crate::social_publish::scan::load_state_record(
+			&path,
+			crate::SOCIAL_PUBLISH_RESERVATION_SCHEMA,
+		)?;
 		if reservation.get("status").and_then(Value::as_str) == Some("active")
 			&& reservation.pointer("/candidate_refs/social_candidates/0").and_then(Value::as_str)
 				== Some(candidate_ref)

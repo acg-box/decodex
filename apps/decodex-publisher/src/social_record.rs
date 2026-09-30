@@ -110,15 +110,9 @@ fn require_no_candidate_backpressure(
 	validate_attempt_records(attempts_dir)?;
 	let terminal_refs = existing_json_files(posts_dir)?
 		.into_iter()
-		.map(|path| {
-			let post = crate::load_json(&path)?;
-			crate::validate_generated_social_artifact(&post)
-				.map_err(|error| eyre::eyre!("existing post failed validation: {error}"))?;
-			Ok(post)
-		})
+		.map(|path| crate::social_publish::scan::load_state_record(&path, SOCIAL_POST_SCHEMA))
 		.collect::<Result<Vec<_>>>()?
 		.into_iter()
-		.filter(|post| post.get("schema").and_then(Value::as_str) == Some(SOCIAL_POST_SCHEMA))
 		.filter_map(|post| post.pointer("/source_refs/social_candidates").cloned())
 		.filter_map(|refs| refs.as_array().cloned())
 		.flatten()
