@@ -8,7 +8,7 @@ use crate::{RadarRefreshQueueRequest, prelude::Result};
 pub(in crate::cli) struct RadarRefreshUpstreamQueueCommand {
 	#[arg(long, default_value = "openai/codex")]
 	repo: String,
-	#[arg(long, default_value_t = 40)]
+	#[arg(long, default_value_t = crate::DEFAULT_SEARCH_LIMIT)]
 	search_limit: usize,
 	#[arg(
 		long,
