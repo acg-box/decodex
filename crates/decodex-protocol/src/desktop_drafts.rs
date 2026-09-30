@@ -1,16 +1,22 @@
 //! Local desktop editor snapshots. These records never authorize execution.
-use crate::{
-	AgentAttachmentDto, AgentExecutionOverrides, AgentSteerIdentity, AgentTaskReferenceDto,
-	EntityId, WireText,
-};
-use serde::{Deserialize, Serialize};
+#[path = "desktop_draft_recovery.rs"] mod recovery;
+
+pub use self::recovery::DesktopRecoveredDraft;
+
 use std::{
 	collections::{BTreeMap, BTreeSet},
-	io::{self, Write},
+	io::{self, Error, Write},
+	iter,
 };
 
-#[path = "desktop_draft_recovery.rs"] mod recovery;
-pub use recovery::DesktopRecoveredDraft;
+use serde::{Deserialize, Serialize};
+
+use crate::{
+	AgentAttachmentDto, AgentExecutionOverrides, AgentSandboxDto, AgentSteerIdentity,
+	AgentTaskReferenceDto, ConversationReasoningEffort, DesktopOrdinaryDraft,
+	DesktopPromptEditDraft, EntityId, IdempotencyKey, MAX_CLIENT_DRAFT_BYTES, ServiceTier,
+	WireText, desktop_ordinary_drafts,
+};
 
 /// Versioned local file payload, keyed by the exact client profile's opaque scope.
 #[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
@@ -24,144 +30,16 @@ pub struct DesktopDraftDocument {
 	pub unbound: DesktopComposerDraft,
 	/// Ordinary input by exact directory before a service is selected. No service authority.
 	#[serde(default)]
-	pub unbound_ordinary: BTreeMap<String, crate::DesktopOrdinaryDraft>,
+	pub unbound_ordinary: BTreeMap<String, DesktopOrdinaryDraft>,
 	/// Local storage schema version, independent of the service wire version.
 	pub version: u32,
 	/// Saved service-scoped drafts; a missing profile does not authorize migration.
 	pub profiles: BTreeMap<String, DesktopProfileDraft>,
 }
-
-/// One service's unsent inputs and unresolved delivery identity.
-#[derive(Clone, Default, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct DesktopProfileDraft {
-	/// Canonical history editors, retained separately from an occupied main composer.
-	/// Keyed by service review identity so competing edits remain distinct.
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub prompt_edits: BTreeMap<String, crate::DesktopPromptEditDraft>,
-	/// Ordinary editors by exact directory within this service profile.
-	#[serde(default)]
-	pub ordinary: BTreeMap<String, crate::DesktopOrdinaryDraft>,
-	/// Original command IDs whose delivery is not yet confirmed. Never replay these.
-	#[serde(default)]
-	pub unconfirmed_commands: Vec<crate::IdempotencyKey>,
-	/// Currently displayed primary editor.
-	pub composer: DesktopComposerDraft,
-	/// Primary editors parked while another work item is selected.
-	pub parked: BTreeMap<String, DesktopComposerDraft>,
-	/// Explicit next-message settings and their local comparison revision.
-	pub execution: BTreeMap<String, (u64, AgentExecutionOverrides)>,
-	/// Monotonic comparison revision used by the explicit settings owner.
-	pub execution_revision: u64,
-	/// Source-bound question editors, including the retained custom alternative.
-	pub questions: Vec<DesktopQuestionDraft>,
-	/// An unresolved previous command blocks automatic retry after restoration.
-	pub uncertain: bool,
-	/// Exact pending command input for receipt reconciliation, never resubmission.
-	pub pending: Option<DesktopPendingDraft>,
-}
-
-/// Main composer state without runtime defaults or inferred authorization.
-#[derive(Clone, Default, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct DesktopComposerDraft {
-	/// Pre-creation editor choices, absent for existing work or older saved drafts.
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub creation: Option<DesktopCreationSetup>,
-	/// Original work owner; absent only before a task exists.
-	pub work_id: Option<EntityId>,
-	/// Original native thread, if bound when the draft was saved.
-	pub thread_id: Option<WireText>,
-	/// Complete editor text. An empty string is an explicit empty edit.
-	pub text: String,
-	/// Original selected files, not newly discovered attachments.
-	pub attachments: Vec<AgentAttachmentDto>,
-	/// Original selected tasks and their native thread identity.
-	pub references: Vec<AgentTaskReferenceDto>,
-}
-
-/// User choices that opt out of native new-task defaults.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct DesktopCreationIntent {
-	/// The user chose a model.
-	pub model: bool,
-	/// The user chose explicit or inherited reasoning.
-	pub reasoning: bool,
-	/// The user chose a service tier.
-	pub service_tier: bool,
-}
-
-/// Editable setup before a Agent exists; values are drafts, never launch authority.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct DesktopCreationSetup {
-	/// Re-read defaults before sending a restored draft that used a native observation.
-	#[serde(default)]
-	pub defaults_applied: bool,
-	/// Absent in older drafts, whose saved values remain explicit.
-	pub intent: Option<DesktopCreationIntent>,
-	/// Use native reasoning and retain the explicit value only as an editable alternative.
-	#[serde(default)]
-	pub inherit_effort: bool,
-	/// Exact model editor text, including incomplete edits.
-	pub model: String,
-	/// Exact directory editor text, validated only when sending.
-	pub working_directory: String,
-	/// Exact account editor text; empty means automatic routing.
-	pub account: String,
-	/// Displayed reasoning selection.
-	pub reasoning_effort: crate::ConversationReasoningEffort,
-	/// Displayed legacy fast-mode selection.
-	pub fast: bool,
-	/// Displayed service tier, without inferring consent from discovery.
-	pub service_tier: Option<crate::ServiceTier>,
-	/// Displayed sandbox choice; runtime policy still controls admission.
-	pub sandbox: crate::AgentSandboxDto,
-}
-
-/// A retained asynchronous question editor, bound to its original source.
-#[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct DesktopQuestionDraft {
-	/// Local work that owns the native question.
-	pub work_id: EntityId,
-	/// Native thread used for fresh-history reconciliation.
-	pub thread_id: WireText,
-	/// Stable native question identity.
-	pub question_id: WireText,
-	/// Current editable text, including an empty user edit.
-	pub text: String,
-	/// Last selected named option, without implying that it was submitted.
-	pub selected: Option<String>,
-	/// Custom alternative retained while a named option is selected.
-	pub custom: Option<String>,
-	/// Whether the question group was collapsed by the user.
-	pub collapsed: bool,
-}
-
-/// Captured input that may already have been accepted by the service.
-#[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct DesktopPendingDraft {
-	/// Exact native steering receipt identity, when this was a steering command.
-	pub steer: Option<AgentSteerIdentity>,
-	/// Original source editor's work owner.
-	pub owner: Option<EntityId>,
-	/// Text at dispatch time; later edits must not be cleared by its receipt.
-	pub text: Option<String>,
-	/// Files at dispatch time.
-	pub attachments: Option<Vec<AgentAttachmentDto>>,
-	/// Task references at dispatch time.
-	pub references: Option<Vec<AgentTaskReferenceDto>>,
-	/// Exact explicit-setting revision captured by the submitted message.
-	pub execution: Option<(EntityId, u64)>,
-}
-
 impl DesktopDraftDocument {
 	/// Decode bounded local data and reject unsupported or incomplete state.
 	pub fn decode(bytes: &[u8]) -> Result<Self, &'static str> {
-		if bytes.len() > crate::MAX_CLIENT_DRAFT_BYTES {
+		if bytes.len() > MAX_CLIENT_DRAFT_BYTES {
 			return Err("Draft snapshot is too large");
 		}
 
@@ -175,12 +53,12 @@ impl DesktopDraftDocument {
 				.chain(value.recovered.iter_mut().map(|copy| &mut copy.draft))
 			{
 				for ordinary in profile.ordinary.values_mut() {
-					for editor in std::iter::once(&mut ordinary.composer)
+					for editor in iter::once(&mut ordinary.composer)
 						.chain(ordinary.new_conversation.iter_mut())
 						.chain(ordinary.parked.values_mut())
 					{
 						if editor.conversation_id.is_some() {
-							editor.creation_intent = crate::DesktopCreationIntent {
+							editor.creation_intent = DesktopCreationIntent {
 								model: true,
 								reasoning: true,
 								service_tier: true,
@@ -226,7 +104,7 @@ impl DesktopDraftDocument {
 
 		self.unbound.validate()?;
 
-		super::desktop_ordinary_drafts::validate_unbound(&self.unbound_ordinary)?;
+		desktop_ordinary_drafts::validate_unbound(&self.unbound_ordinary)?;
 
 		if self.unbound.work_id.is_some() || self.unbound.thread_id.is_some() {
 			return Err("Unbound draft cannot own a work or native thread");
@@ -245,7 +123,6 @@ impl DesktopDraftDocument {
 		Ok(())
 	}
 }
-
 impl Default for DesktopDraftDocument {
 	fn default() -> Self {
 		Self {
@@ -256,6 +133,36 @@ impl Default for DesktopDraftDocument {
 			recovered: vec![],
 		}
 	}
+}
+
+/// One service's unsent inputs and unresolved delivery identity.
+#[derive(Clone, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopProfileDraft {
+	/// Canonical history editors, retained separately from an occupied main composer.
+	/// Keyed by service review identity so competing edits remain distinct.
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub prompt_edits: BTreeMap<String, DesktopPromptEditDraft>,
+	/// Ordinary editors by exact directory within this service profile.
+	#[serde(default)]
+	pub ordinary: BTreeMap<String, DesktopOrdinaryDraft>,
+	/// Original command IDs whose delivery is not yet confirmed. Never replay these.
+	#[serde(default)]
+	pub unconfirmed_commands: Vec<IdempotencyKey>,
+	/// Currently displayed primary editor.
+	pub composer: DesktopComposerDraft,
+	/// Primary editors parked while another work item is selected.
+	pub parked: BTreeMap<String, DesktopComposerDraft>,
+	/// Explicit next-message settings and their local comparison revision.
+	pub execution: BTreeMap<String, (u64, AgentExecutionOverrides)>,
+	/// Monotonic comparison revision used by the explicit settings owner.
+	pub execution_revision: u64,
+	/// Source-bound question editors, including the retained custom alternative.
+	pub questions: Vec<DesktopQuestionDraft>,
+	/// An unresolved previous command blocks automatic retry after restoration.
+	pub uncertain: bool,
+	/// Exact pending command input for receipt reconciliation, never resubmission.
+	pub pending: Option<DesktopPendingDraft>,
 }
 impl DesktopProfileDraft {
 	/// Whether any retained command still needs delivery reconciliation.
@@ -300,7 +207,7 @@ impl DesktopProfileDraft {
 		{
 			return Err("Unconfirmed commands require a bounded delivery fence");
 		}
-		if self.parked.len() > 256 || self.execution.len() > 256 || self.questions.len() > 1024 {
+		if self.parked.len() > 256 || self.execution.len() > 256 || self.questions.len() > 1_024 {
 			return Err("Too many draft editors");
 		}
 
@@ -378,6 +285,25 @@ impl DesktopProfileDraft {
 		Ok(())
 	}
 }
+
+/// Main composer state without runtime defaults or inferred authorization.
+#[derive(Clone, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopComposerDraft {
+	/// Pre-creation editor choices, absent for existing work or older saved drafts.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub creation: Option<DesktopCreationSetup>,
+	/// Original work owner; absent only before a task exists.
+	pub work_id: Option<EntityId>,
+	/// Original native thread, if bound when the draft was saved.
+	pub thread_id: Option<WireText>,
+	/// Complete editor text. An empty string is an explicit empty edit.
+	pub text: String,
+	/// Original selected files, not newly discovered attachments.
+	pub attachments: Vec<AgentAttachmentDto>,
+	/// Original selected tasks and their native thread identity.
+	pub references: Vec<AgentTaskReferenceDto>,
+}
 impl DesktopComposerDraft {
 	fn validate(&self) -> Result<(), &'static str> {
 		if let Some(setup) = &self.creation {
@@ -407,14 +333,90 @@ impl DesktopComposerDraft {
 		Ok(())
 	}
 }
-pub(super) fn validate_text(text: &str) -> Result<(), &'static str> {
-	if text.len() > 16 * 1024 { Err("Draft editor text is too large") } else { Ok(()) }
+
+/// User choices that opt out of native new-task defaults.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopCreationIntent {
+	/// The user chose a model.
+	pub model: bool,
+	/// The user chose explicit or inherited reasoning.
+	pub reasoning: bool,
+	/// The user chose a service tier.
+	pub service_tier: bool,
 }
+
+/// Editable setup before a Agent exists; values are drafts, never launch authority.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopCreationSetup {
+	/// Re-read defaults before sending a restored draft that used a native observation.
+	#[serde(default)]
+	pub defaults_applied: bool,
+	/// Absent in older drafts, whose saved values remain explicit.
+	pub intent: Option<DesktopCreationIntent>,
+	/// Use native reasoning and retain the explicit value only as an editable alternative.
+	#[serde(default)]
+	pub inherit_effort: bool,
+	/// Exact model editor text, including incomplete edits.
+	pub model: String,
+	/// Exact directory editor text, validated only when sending.
+	pub working_directory: String,
+	/// Exact account editor text; empty means automatic routing.
+	pub account: String,
+	/// Displayed reasoning selection.
+	pub reasoning_effort: ConversationReasoningEffort,
+	/// Displayed legacy fast-mode selection.
+	pub fast: bool,
+	/// Displayed service tier, without inferring consent from discovery.
+	pub service_tier: Option<ServiceTier>,
+	/// Displayed sandbox choice; runtime policy still controls admission.
+	pub sandbox: AgentSandboxDto,
+}
+
+/// A retained asynchronous question editor, bound to its original source.
+#[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopQuestionDraft {
+	/// Local work that owns the native question.
+	pub work_id: EntityId,
+	/// Native thread used for fresh-history reconciliation.
+	pub thread_id: WireText,
+	/// Stable native question identity.
+	pub question_id: WireText,
+	/// Current editable text, including an empty user edit.
+	pub text: String,
+	/// Last selected named option, without implying that it was submitted.
+	pub selected: Option<String>,
+	/// Custom alternative retained while a named option is selected.
+	pub custom: Option<String>,
+	/// Whether the question group was collapsed by the user.
+	pub collapsed: bool,
+}
+
+/// Captured input that may already have been accepted by the service.
+#[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopPendingDraft {
+	/// Exact native steering receipt identity, when this was a steering command.
+	pub steer: Option<AgentSteerIdentity>,
+	/// Original source editor's work owner.
+	pub owner: Option<EntityId>,
+	/// Text at dispatch time; later edits must not be cleared by its receipt.
+	pub text: Option<String>,
+	/// Files at dispatch time.
+	pub attachments: Option<Vec<AgentAttachmentDto>>,
+	/// Task references at dispatch time.
+	pub references: Option<Vec<AgentTaskReferenceDto>>,
+	/// Exact explicit-setting revision captured by the submitted message.
+	pub execution: Option<(EntityId, u64)>,
+}
+
 struct BoundedOutput(Vec<u8>);
 impl Write for BoundedOutput {
 	fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-		if self.0.len().saturating_add(bytes.len()) > crate::MAX_CLIENT_DRAFT_BYTES {
-			return Err(io::Error::other("draft snapshot limit"));
+		if self.0.len().saturating_add(bytes.len()) > MAX_CLIENT_DRAFT_BYTES {
+			return Err(Error::other("draft snapshot limit"));
 		}
 
 		self.0.extend_from_slice(bytes);
@@ -427,9 +429,19 @@ impl Write for BoundedOutput {
 	}
 }
 
+pub(super) fn validate_text(text: &str) -> Result<(), &'static str> {
+	if text.len() > 16 * 1_024 { Err("Draft editor text is too large") } else { Ok(()) }
+}
+
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::collections::BTreeMap;
+
+	use crate::{
+		AgentAttachmentDto, AgentExecutionOverrides, AgentSteerIdentity, AgentTaskReferenceDto,
+		DesktopComposerDraft, DesktopCreationSetup, DesktopDraftDocument, DesktopPendingDraft,
+		DesktopProfileDraft, DesktopQuestionDraft, EntityId, WireText,
+	};
 
 	fn document() -> DesktopDraftDocument {
 		let mut profile = DesktopProfileDraft {
@@ -658,7 +670,7 @@ mod tests {
 	fn draft_document_enforces_editor_and_encoded_aggregate_limits() {
 		let mut original = document();
 
-		original.profiles.values_mut().next().unwrap().composer.text = "x".repeat(16 * 1024 + 1);
+		original.profiles.values_mut().next().unwrap().composer.text = "x".repeat(16 * 1_024 + 1);
 
 		assert!(original.encode().is_err());
 
@@ -670,7 +682,7 @@ mod tests {
 				format!("work-{index}"),
 				DesktopComposerDraft {
 					work_id: Some(EntityId::new(format!("work-{index}")).unwrap()),
-					text: "\0".repeat(16 * 1024),
+					text: "\0".repeat(16 * 1_024),
 					..Default::default()
 				},
 			);
