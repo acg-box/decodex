@@ -30,6 +30,7 @@ final class VoiceMediaHost: NSObject {
             let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified)
             emit(["type":"devices", "inputs":discovery.devices.map { $0.localizedName }])
         case "dictate", "start":
+            events.removeAll()
             captureCancelled = false
             let identity = UUID()
             captureIdentity = identity
@@ -59,6 +60,7 @@ final class VoiceMediaHost: NSObject {
             if let nativeDictation { nativeDictation.finish() }
             else { captureIdentity = nil; emit(["type":"ended"]) }
         case "stop":
+            events.removeAll()
             captureCancelled = true
             captureIdentity = nil
             nativeDictation?.stop()
