@@ -2,8 +2,9 @@
 
 use crate::{
 	ledger::{
-		self, ARTIFACT_KINDS, Connection, LedgerArtifactReader, Path, REVIEW_STATUSES,
-		SIGNAL_CONFIDENCE, UPSTREAM_SUBJECT_KINDS, rusqlite,
+		self, ARTIFACT_KINDS, Connection, LedgerArtifactReader, MAX_ARTIFACT_PATH_BYTES,
+		MAX_EVIDENCE_TEXT_BYTES, MAX_IDENTIFIER_BYTES, MAX_TITLE_BYTES, MAX_URL_BYTES, Path,
+		REVIEW_STATUSES, SIGNAL_CONFIDENCE, UPSTREAM_SUBJECT_KINDS, rusqlite,
 	},
 	prelude::{Result, eyre},
 };
@@ -34,10 +35,10 @@ pub(super) struct ArtifactLinkInput<'a> {
 	pub(super) path: &'a Path,
 }
 pub(super) fn record_commit(connection: &Connection, input: CommitInput<'_>) -> Result<()> {
-	ledger::validate_text(input.repo, "repo", ledger::MAX_IDENTIFIER_BYTES)?;
-	ledger::validate_text(input.sha, "sha", ledger::MAX_IDENTIFIER_BYTES)?;
-	ledger::validate_text(input.title, "title", ledger::MAX_TITLE_BYTES)?;
-	ledger::validate_text(input.url, "url", ledger::MAX_URL_BYTES)?;
+	ledger::validate_text(input.repo, "repo", MAX_IDENTIFIER_BYTES)?;
+	ledger::validate_text(input.sha, "sha", MAX_IDENTIFIER_BYTES)?;
+	ledger::validate_text(input.title, "title", MAX_TITLE_BYTES)?;
+	ledger::validate_text(input.url, "url", MAX_URL_BYTES)?;
 
 	if let Some(committed_at) = input.committed_at {
 		ledger::validate_text(committed_at, "committed_at", 64)?;
@@ -84,11 +85,11 @@ pub(super) fn record_commit(connection: &Connection, input: CommitInput<'_>) -> 
 pub(super) fn record_review(connection: &Connection, input: ReviewInput<'_>) -> Result<()> {
 	ledger::require_member(input.subject_kind, UPSTREAM_SUBJECT_KINDS, "subject_kind")?;
 	ledger::require_member(input.status, REVIEW_STATUSES, "status")?;
-	ledger::validate_text(input.repo, "repo", ledger::MAX_IDENTIFIER_BYTES)?;
-	ledger::validate_text(input.subject_id, "subject_id", ledger::MAX_IDENTIFIER_BYTES)?;
+	ledger::validate_text(input.repo, "repo", MAX_IDENTIFIER_BYTES)?;
+	ledger::validate_text(input.subject_id, "subject_id", MAX_IDENTIFIER_BYTES)?;
 
-	if input.reason.len() > ledger::MAX_EVIDENCE_TEXT_BYTES {
-		eyre::bail!("reason must not exceed {} bytes", ledger::MAX_EVIDENCE_TEXT_BYTES);
+	if input.reason.len() > MAX_EVIDENCE_TEXT_BYTES {
+		eyre::bail!("reason must not exceed {} bytes", MAX_EVIDENCE_TEXT_BYTES);
 	}
 
 	if let Some(confidence) = input.confidence {
@@ -145,9 +146,9 @@ pub(super) fn record_artifact(
 	let created_at = ledger::utc_now_iso()?;
 	let storage_path = ledger::path_for_storage(input.path)?;
 
-	ledger::validate_text(input.repo, "repo", ledger::MAX_IDENTIFIER_BYTES)?;
-	ledger::validate_text(input.subject_id, "subject_id", ledger::MAX_IDENTIFIER_BYTES)?;
-	ledger::validate_text(&storage_path, "artifact path", ledger::MAX_ARTIFACT_PATH_BYTES)?;
+	ledger::validate_text(input.repo, "repo", MAX_IDENTIFIER_BYTES)?;
+	ledger::validate_text(input.subject_id, "subject_id", MAX_IDENTIFIER_BYTES)?;
+	ledger::validate_text(&storage_path, "artifact path", MAX_ARTIFACT_PATH_BYTES)?;
 
 	ledger::bounded_write(connection, "artifact_link", "created_at", || {
 		connection.execute(
