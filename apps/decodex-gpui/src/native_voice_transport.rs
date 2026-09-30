@@ -276,6 +276,26 @@ mod tests {
 		call_lifecycle(true).await;
 	}
 
+	#[tokio::test]
+	async fn cancellation_releases_audio_before_and_after_the_offer_without_an_answer() {
+		for wait_for_offer in [false, true] {
+			let (input, captured) = rtrb::RingBuffer::new(4_800);
+			let (playback, output) = rtrb::RingBuffer::new(4_800);
+			let transport = Transport::start(Pcm { captured, playback }).unwrap();
+			if wait_for_offer {
+				event(&transport, "offer").await;
+			}
+			drop(transport);
+			tokio::time::timeout(Duration::from_secs(3), async {
+				while !input.is_abandoned() || !output.is_abandoned() {
+					tokio::time::sleep(Duration::from_millis(10)).await;
+				}
+			})
+			.await
+			.expect("cancellation releases both audio endpoints without an answer");
+		}
+	}
+
 	async fn call_lifecycle(close_remote_channel: bool) {
 		tokio::time::timeout(Duration::from_secs(45), async {
 			let (mut input, captured) = rtrb::RingBuffer::new(4_800);
