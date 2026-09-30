@@ -40,6 +40,14 @@ Produce the `analysis_draft` fields required by Radar:
 - optional `expected_effect`
 - optional `config_flags`
 
+For `kind=try_now` or non-empty `config_flags`, include concrete `how_to_try`
+instructions. When `how_to_try` is present, include `expected_effect`. Keep flag
+names and availability tied to the verified source evidence.
+
+The optional Python analysis runner uses `analysis_draft.schema.json`, which
+requires all schema fields. Use `null` for unused optional strings and `[]` for
+unused config flags, as its prompt directs.
+
 Render and validate with:
 
 ```sh

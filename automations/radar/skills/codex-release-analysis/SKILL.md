@@ -17,8 +17,8 @@ source-backed release checkpoint.
 ## Hard Boundaries
 
 - Do not perform fresh upstream source analysis here.
-- Do not refresh the upstream review queue here. Treat Radar Review as the shared
-  upstream evidence producer.
+- Do not refresh the upstream review queue here. Route missing source review to
+  the owning agent; Radar has no scheduled review role.
 - Do not write Decodex content candidates, social posts, or
   `social_publish_reservation/v1`. Decodex Publisher owns social artifacts.
 - Treat `upstream_impact/v1`, release deltas, reviews, and signals as optional Radar
@@ -30,10 +30,13 @@ source-backed release checkpoint.
 
 1. Identify the channel: stable release, prerelease, app/mobile changelog, or no new
    checkpoint.
-2. Select the correct comparison:
-   - stable: current stable -> previous stable
-   - prerelease: current prerelease -> previous prerelease in the same train
+2. Select the correct comparison, with the older base before the newer head:
+   - stable: previous stable -> current stable
+   - prerelease: previous prerelease -> current prerelease in the same train
    - first prerelease after stable: stable -> first prerelease
+   The Radar release-delta command compares a stable base with a prerelease head.
+   Use official compare metadata for same-channel comparisons; do not assume that
+   a stored stable-to-prerelease pair represents one.
 3. Read existing `upstream_impact/v1` artifacts that match the channel first, then use
    `release_delta/v1`, `signal_entry/v1`, and `upstream_review/v1` artifacts to check
    lineage, evidence, and gaps.
