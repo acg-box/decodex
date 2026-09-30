@@ -39,18 +39,7 @@ impl CredentialSecretBundle {
 		token_type: String,
 		access_token_expires_at_unix_micros: i64,
 	) -> Result<Self, CredentialStoreError> {
-		if access_token.is_empty()
-			|| refresh_token.is_empty()
-			|| provider_email.as_ref().is_some_and(|email| {
-				email.is_empty() || email.len() > 320 || email.chars().any(char::is_control)
-			})
-			|| !token_type.eq_ignore_ascii_case("bearer")
-			|| access_token_expires_at_unix_micros <= 0
-		{
-			return Err(CredentialStoreError::InvalidBundle);
-		}
-
-		Ok(Self {
+		let bundle = Self {
 			access_token,
 			refresh_token: Some(refresh_token),
 			id_token,
@@ -59,7 +48,18 @@ impl CredentialSecretBundle {
 			token_type: "bearer".to_owned(),
 			access_token_expires_at_unix_micros: Some(access_token_expires_at_unix_micros),
 			personal_access_token_user_id: None,
-		})
+		};
+		if bundle.access_token.is_empty()
+			|| bundle.refresh_token.as_deref().is_none_or(str::is_empty)
+			|| bundle.provider_email.as_ref().is_some_and(|email| {
+				email.is_empty() || email.len() > 320 || email.chars().any(char::is_control)
+			})
+			|| !token_type.eq_ignore_ascii_case("bearer")
+			|| access_token_expires_at_unix_micros <= 0
+		{
+			return Err(CredentialStoreError::InvalidBundle);
+		}
+		Ok(bundle)
 	}
 
 	/// Construct a PAT bundle after the native whoami endpoint verifies its account and user.

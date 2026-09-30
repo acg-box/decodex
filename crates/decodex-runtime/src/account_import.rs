@@ -382,16 +382,17 @@ fn decode_claims<T: for<'de> Deserialize<'de>>(token: &str) -> Result<T, Credent
 		return Err(CredentialImportError::InvalidCredential);
 	}
 	let payload = payload.expect("JWT payload was checked");
-	let decoded = if payload.ends_with('=') {
-		URL_SAFE.decode(payload)
-	} else {
-		URL_SAFE_NO_PAD.decode(payload)
-	}
-	.map_err(|_| CredentialImportError::InvalidCredential)?;
+	let decoded = Zeroizing::new(
+		if payload.ends_with('=') {
+			URL_SAFE.decode(payload)
+		} else {
+			URL_SAFE_NO_PAD.decode(payload)
+		}
+		.map_err(|_| CredentialImportError::InvalidCredential)?,
+	);
 	if decoded.len() > 64 * 1024 {
 		return Err(CredentialImportError::InvalidCredential);
 	}
-	let decoded = Zeroizing::new(decoded);
 	serde_json::from_slice(&decoded).map_err(|_| CredentialImportError::InvalidCredential)
 }
 

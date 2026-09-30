@@ -407,20 +407,23 @@ fn credential_refresh_result(
 	mut refreshed: RefreshResponse,
 	observed_at_micros: i64,
 ) -> Result<CredentialRefreshResult, CredentialRefreshError> {
-	let access_token = refreshed
+	let mut access_token = refreshed
 		.access_token
 		.take()
 		.filter(|value| !value.is_empty())
+		.map(Zeroizing::new)
 		.ok_or(CredentialRefreshError::Ambiguous)?;
-	let refresh_token = refreshed
+	let mut refresh_token = refreshed
 		.refresh_token
 		.take()
 		.or_else(|| current.refresh_token().map(str::to_owned))
+		.map(Zeroizing::new)
 		.ok_or(CredentialRefreshError::Rejected)?;
-	let id_token = refreshed
+	let mut id_token = refreshed
 		.id_token
 		.take()
 		.filter(|value| !value.is_empty())
+		.map(Zeroizing::new)
 		.ok_or(CredentialRefreshError::Ambiguous)?;
 	let identity =
 		decode_chatgpt_identity(&id_token).map_err(|_| CredentialRefreshError::Ambiguous)?;
@@ -434,9 +437,9 @@ fn credential_refresh_result(
 		return Err(CredentialRefreshError::Ambiguous);
 	}
 	let bundle = CredentialSecretBundle::chatgpt(
-		access_token,
-		refresh_token,
-		Some(id_token),
+		std::mem::take(&mut *access_token),
+		std::mem::take(&mut *refresh_token),
+		Some(std::mem::take(&mut *id_token)),
 		identity.plan_type,
 		identity.provider_email,
 		token_type,
