@@ -460,24 +460,6 @@
     {
       "if": {
         "properties": {
-          "source_refs": {
-            "anyOf": [
-              {"required": ["upstream_reviews"]},
-              {"required": ["upstream_impacts"]},
-              {"required": ["signals"]},
-              {"required": ["release_deltas"]}
-            ]
-          }
-        },
-        "required": ["source_refs"]
-      },
-      "then": {
-        "required": ["evidence_digests"]
-      }
-    },
-    {
-      "if": {
-        "properties": {
           "status": {
             "const": "blocked"
           }
