@@ -4,7 +4,7 @@ use crate::{
 	source_bundle::{extraction, fields, items, refs, validation},
 };
 
-pub(super) fn build_pr_bundle_from_sources(
+pub(crate) fn build_pr_bundle_from_sources(
 	repo: &str,
 	pr: &Value,
 	commits: &[Value],
@@ -80,7 +80,7 @@ pub(super) fn build_pr_bundle_from_sources(
 	Ok(bundle)
 }
 
-pub(super) fn build_commit_bundle_from_sources(
+pub(crate) fn build_commit_bundle_from_sources(
 	repo: &str,
 	commit: &Value,
 	default_branch: &str,
