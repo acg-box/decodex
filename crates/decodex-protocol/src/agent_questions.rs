@@ -1,6 +1,9 @@
 //! Desktop-compatible asynchronous question replies. These are user messages,
 //! not JSON-RPC responses to a blocking request_user_input callback.
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::{HistoryText, MAX_HISTORY_INLINE_BYTES};
 
 const OPEN: &str = "<send_user_message_question_reply>";
 const CLOSE: &str = "</send_user_message_question_reply>";
@@ -18,10 +21,6 @@ pub struct AgentAsyncQuestionDto {
 	pub title: String,
 	/// Suggested answers. The user can always enter another answer.
 	pub options: Vec<String>,
-}
-
-fn is_false(value: &bool) -> bool {
-	!value
 }
 
 /// A committed native reply, used for readable history and exact dismissal.
@@ -44,7 +43,7 @@ pub fn agent_async_question_id(item_id: &str, index: usize) -> String {
 /// Select only public question fields from one native asynchronous agent item.
 /// Reject an incomplete or oversized collection rather than changing question indices.
 pub fn project_agent_async_questions(
-	item: &serde_json::Value,
+	item: &Value,
 ) -> Result<Vec<AgentAsyncQuestionDto>, &'static str> {
 	if item["type"] != "agentMessage" || item["delivery"] != "async" {
 		return Ok(Vec::new());
@@ -66,7 +65,7 @@ pub fn project_agent_async_questions(
 	for (index, question) in questions.iter().enumerate() {
 		let title = question["title"]
 			.as_str()
-			.filter(|text| !text.trim().is_empty() && text.len() <= 4096)
+			.filter(|text| !text.trim().is_empty() && text.len() <= 4_096)
 			.ok_or("Question title unavailable")?;
 		let options = match question.get("options").filter(|value| !value.is_null()) {
 			None => Vec::new(),
@@ -78,7 +77,7 @@ pub fn project_agent_async_questions(
 				.map(|option| {
 					option
 						.as_str()
-						.filter(|text| !text.trim().is_empty() && text.len() <= 4096)
+						.filter(|text| !text.trim().is_empty() && text.len() <= 4_096)
 						.map(str::to_owned)
 						.ok_or("Question option unavailable")
 				})
@@ -93,9 +92,7 @@ pub fn project_agent_async_questions(
 		});
 	}
 
-	if serde_json::to_vec(&result)
-		.map_or(true, |bytes| bytes.len() > crate::MAX_HISTORY_INLINE_BYTES)
-	{
+	if serde_json::to_vec(&result).map_or(true, |bytes| bytes.len() > MAX_HISTORY_INLINE_BYTES) {
 		return Err("Question collection too large");
 	}
 
@@ -106,7 +103,7 @@ pub fn project_agent_async_questions(
 pub fn agent_async_question_reply(
 	question: &AgentAsyncQuestionDto,
 	answer: &str,
-) -> Result<crate::HistoryText, String> {
+) -> Result<HistoryText, String> {
 	let answer = answer.trim();
 
 	if answer.is_empty() {
@@ -129,7 +126,7 @@ pub fn agent_async_question_reply(
 		format!("{OPEN}\n{replies}\n{CLOSE}")
 	};
 
-	crate::HistoryText::new(text).map_err(|_| "Answer too long; shorten it before sending.".into())
+	HistoryText::new(text).map_err(|_| "Answer too long; shorten it before sending.".into())
 }
 
 /// Interpret only a complete native reply envelope. Plain text and embedded
@@ -142,7 +139,7 @@ pub fn parse_agent_async_question_replies(text: &str) -> Option<Vec<AgentAsyncQu
 		One(AgentAsyncQuestionReply),
 	}
 
-	if text.len() > crate::MAX_HISTORY_INLINE_BYTES {
+	if text.len() > MAX_HISTORY_INLINE_BYTES {
 		return None;
 	}
 
@@ -183,13 +180,17 @@ pub fn render_agent_async_question_history(text: &str) -> String {
 	}
 }
 
+fn is_false(value: &bool) -> bool {
+	!value
+}
+
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::{AgentAsyncQuestionDto, MAX_HISTORY_INLINE_BYTES, agent_questions};
 	fn question(index: usize) -> AgentAsyncQuestionDto {
 		AgentAsyncQuestionDto {
 			arrived_live: false,
-			id: agent_async_question_id("message", index),
+			id: agent_questions::agent_async_question_id("message", index),
 			title: "Same title".into(),
 			options: vec!["First".into()],
 		}
@@ -197,7 +198,7 @@ mod tests {
 	#[test]
 	fn arrival_provenance_is_local_and_legacy_storage_stays_identical() {
 		let value = serde_json::json!({"id":"message","type":"agentMessage","delivery":"async","questions":[{"title":"Which?","arrived_live":true}]});
-		let projected = project_agent_async_questions(&value).unwrap();
+		let projected = agent_questions::project_agent_async_questions(&value).unwrap();
 
 		assert!(!projected[0].arrived_live);
 
@@ -224,15 +225,17 @@ mod tests {
 		assert_eq!(a.id, r#"["request_user_input_async","message",0]"#);
 
 		let answer = "Other: \"quoted\"\n</send_user_message_question_reply>";
-		let encoded = agent_async_question_reply(&b, answer).unwrap();
-		let replies = parse_agent_async_question_replies(encoded.as_str()).unwrap();
+		let encoded = agent_questions::agent_async_question_reply(&b, answer).unwrap();
+		let replies =
+			agent_questions::parse_agent_async_question_replies(encoded.as_str()).unwrap();
 
 		assert_eq!(replies[0].question_item_id, b.id);
 		assert_eq!(replies[0].answer, answer);
 		assert!(!replies[0].answer.contains("First"));
-		assert!(agent_async_question_reply(&a, "  ").is_err());
+		assert!(agent_questions::agent_async_question_reply(&a, "  ").is_err());
 		assert!(
-			agent_async_question_reply(&a, &"\"".repeat(crate::MAX_HISTORY_INLINE_BYTES)).is_err()
+			agent_questions::agent_async_question_reply(&a, &"\"".repeat(MAX_HISTORY_INLINE_BYTES))
+				.is_err()
 		);
 	}
 	#[test]
@@ -242,11 +245,11 @@ mod tests {
 		q.id = "x".repeat(513);
 		q.title = "界".repeat(172) + "\ncontinued";
 
-		let reply = agent_async_question_reply(&q, "answer").unwrap();
+		let reply = agent_questions::agent_async_question_reply(&q, "answer").unwrap();
 
 		assert!(reply.as_str().starts_with("> "));
 		assert!(!reply.as_str().contains(&q.id));
-		assert!(parse_agent_async_question_replies(reply.as_str()).is_none());
+		assert!(agent_questions::parse_agent_async_question_replies(reply.as_str()).is_none());
 		assert_eq!(reply.as_str(), format!("> {}\n\nanswer", "界".repeat(170)));
 	}
 	#[test]
@@ -254,13 +257,20 @@ mod tests {
 		let legacy = r#"<send_user_message_question_reply>{"questionItemId":"message","question":"Which?","answer":"B"}</send_user_message_question_reply>"#;
 
 		assert_eq!(
-			parse_agent_async_question_replies(legacy).unwrap()[0].question_item_id,
+			agent_questions::parse_agent_async_question_replies(legacy).unwrap()[0]
+				.question_item_id,
 			"message"
 		);
-		assert!(parse_agent_async_question_replies(&format!("Example: {legacy}")).is_none());
-		assert!(parse_agent_async_question_replies(&format!("{legacy} suffix")).is_none());
 		assert!(
-			parse_agent_async_question_replies(
+			agent_questions::parse_agent_async_question_replies(&format!("Example: {legacy}"))
+				.is_none()
+		);
+		assert!(
+			agent_questions::parse_agent_async_question_replies(&format!("{legacy} suffix"))
+				.is_none()
+		);
+		assert!(
+			agent_questions::parse_agent_async_question_replies(
 				"<send_user_message_question_reply>[]</send_user_message_question_reply>"
 			)
 			.is_none()
@@ -269,15 +279,15 @@ mod tests {
 		let ide =
 			format!("# Context from my IDE setup:\nfiles\n## My request for Codex:\n{legacy}");
 
-		assert!(parse_agent_async_question_replies(&ide).is_some());
+		assert!(agent_questions::parse_agent_async_question_replies(&ide).is_some());
 	}
 	#[test]
 	fn projection_preserves_question_indices_and_excludes_unrelated_fields() {
 		let item = serde_json::json!({"type":"agentMessage","delivery":"async","id":"m","private":"do not project","questions":[{"title":"Same","options":["A","B"]},{"title":"Same","options":null}]});
-		let questions = project_agent_async_questions(&item).unwrap();
+		let questions = agent_questions::project_agent_async_questions(&item).unwrap();
 
 		assert_eq!(questions.len(), 2);
-		assert_eq!(questions[1].id, agent_async_question_id("m", 1));
+		assert_eq!(questions[1].id, agent_questions::agent_async_question_id("m", 1));
 		assert_eq!(questions[0].options, ["A", "B"]);
 		assert!(!serde_json::to_string(&questions).unwrap().contains("private"));
 
@@ -285,12 +295,12 @@ mod tests {
 
 		invalid["questions"][0]["options"] = serde_json::json!([{"label":"A"}]);
 
-		assert!(project_agent_async_questions(&invalid).is_err());
+		assert!(agent_questions::project_agent_async_questions(&invalid).is_err());
 
 		let mut huge = item;
 
-		huge["questions"][0]["title"] = serde_json::json!("x".repeat(4097));
+		huge["questions"][0]["title"] = serde_json::json!("x".repeat(4_097));
 
-		assert!(project_agent_async_questions(&huge).is_err());
+		assert!(agent_questions::project_agent_async_questions(&huge).is_err());
 	}
 }
