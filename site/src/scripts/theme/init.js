@@ -13,6 +13,8 @@
     }
   }
 
+  var selectedTheme = readStoredTheme();
+
   function resolvedTheme(theme) {
     return theme === "system" ? (query.matches ? "dark" : "light") : theme;
   }
@@ -27,8 +29,11 @@
   }
 
   window.__decodexTheme = {
-    get: readStoredTheme,
+    get: function () {
+      return selectedTheme;
+    },
     set: function (theme) {
+      selectedTheme = theme;
       try {
         if (theme === "system") localStorage.removeItem(storageKey);
         else localStorage.setItem(storageKey, theme);
@@ -39,11 +44,11 @@
   };
 
   query.addEventListener("change", function () {
-    if (readStoredTheme() === "system") {
+    if (selectedTheme === "system") {
       applyTheme("system");
       window.dispatchEvent(new CustomEvent("decodex-theme-change", { detail: { theme: "system" } }));
     }
   });
 
-  applyTheme(readStoredTheme());
+  applyTheme(selectedTheme);
 })();

@@ -1,6 +1,6 @@
 function bindHeroPointer() {
   var hero = document.querySelector(".official-hero");
-  if (!(hero instanceof HTMLElement) || hero.dataset.pointerBound === "true" || reduceMotion.matches) return;
+  if (!(hero instanceof HTMLElement) || hero.dataset.pointerBound === "true") return;
   hero.dataset.pointerBound = "true";
   var frame = 0;
   var nextX = 0;
@@ -11,15 +11,20 @@ function bindHeroPointer() {
     frame = 0;
   }
   hero.addEventListener("pointermove", function (event) {
+    if (reduceMotion.matches) return;
     var rect = hero.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
     nextX = ((event.clientX - rect.left) / rect.width - 0.5) * -10;
     nextY = ((event.clientY - rect.top) / rect.height - 0.5) * -8;
     if (!frame) frame = window.requestAnimationFrame(applyShift);
   });
-  hero.addEventListener("pointerleave", function () {
+  function resetShift() {
     nextX = 0;
     nextY = 0;
     if (!frame) frame = window.requestAnimationFrame(applyShift);
+  }
+  hero.addEventListener("pointerleave", resetShift);
+  reduceMotion.addEventListener("change", function () {
+    if (reduceMotion.matches) resetShift();
   });
 }
