@@ -1,6 +1,11 @@
 use std::{path::Path, process::Command};
 
-use crate::{RUN_CODEX_ANALYSIS_SCRIPT, tests::env::TestEnvVars};
+use serde_json::Value;
+
+use crate::{
+	RUN_CODEX_ANALYSIS_SCRIPT,
+	tests::{env::TestEnvVars, fixtures},
+};
 
 #[test]
 fn analysis_helper_fails_closed_without_explicit_boundary_opt_in() {
@@ -31,106 +36,7 @@ fn analysis_helper_fails_closed_without_explicit_boundary_opt_in() {
 
 #[test]
 fn python_analysis_contracts_match_rust_for_invalid_json_fields() {
-	use serde_json::{Value, json};
-
-	let mut cases = Vec::new();
-	let bundle = crate::tests::fixtures::valid_bundle();
-	let draft = crate::tests::fixtures::valid_signal();
-
-	cases.push(("bundle", bundle.clone(), true));
-	cases.push(("draft", draft.clone(), true));
-
-	let mut commit_only = bundle.clone();
-
-	commit_only["analysis_mode"] = json!("commit_only");
-
-	commit_only.as_object_mut().unwrap().remove("primary_pr");
-	cases.push(("bundle", commit_only, true));
-
-	for (kind, original, paths) in [
-		(
-			"bundle",
-			&bundle,
-			vec![
-				"/files/0/path",
-				"/files/0/status",
-				"/files/0/additions",
-				"/files/0/deletions",
-				"/primary_pr/number",
-				"/primary_pr/title",
-				"/primary_pr/body",
-				"/primary_pr/state",
-				"/primary_pr/labels",
-				"/primary_pr/url",
-			],
-		),
-		("draft", &draft, vec!["/title", "/summary", "/why_it_matters"]),
-	] {
-		for path in paths {
-			let mut value = original.clone();
-
-			*value.pointer_mut(path).unwrap() = Value::Null;
-
-			cases.push((kind, value, false));
-		}
-	}
-	for path in ["/files/0/additions", "/files/0/deletions", "/primary_pr/number"] {
-		for invalid in [json!(true), json!(-1), json!(1.5), json!(9_223_372_036_854_775_808_u64)] {
-			let mut value = bundle.clone();
-
-			*value.pointer_mut(path).unwrap() = invalid;
-
-			cases.push(("bundle", value, false));
-		}
-	}
-	for (kind, original, field) in [
-		("bundle", &bundle, "analysis_mode"),
-		("draft", &draft, "kind"),
-		("draft", &draft, "confidence"),
-		("draft", &draft, "impact"),
-	] {
-		for invalid in [json!([]), json!({})] {
-			let mut value = original.clone();
-
-			value[field] = invalid;
-
-			cases.push((kind, value, false));
-		}
-	}
-	for kind in ["bundle", "draft"] {
-		for invalid in [Value::Null, json!([]), json!(false), json!("invalid")] {
-			cases.push((kind, invalid, false));
-		}
-	}
-
-	let mut boundaries = bundle.clone();
-
-	boundaries["files"][0]["additions"] = json!(0);
-	boundaries["files"][0]["deletions"] = json!(i64::MAX);
-	boundaries["primary_pr"]["number"] = json!(i64::MAX);
-
-	cases.push(("bundle", boundaries, true));
-
-	for field in ["title", "summary", "why_it_matters"] {
-		let mut value = draft.clone();
-
-		value[field] = json!("");
-
-		cases.push(("draft", value, false));
-	}
-	for invalid in [json!(0), json!("")] {
-		let mut value = bundle.clone();
-
-		value["primary_pr"]["number"] = invalid;
-
-		cases.push(("bundle", value, false));
-	}
-
-	let mut invalid_labels = bundle.clone();
-
-	invalid_labels["primary_pr"]["labels"] = json!([""]);
-
-	cases.push(("bundle", invalid_labels, false));
+	let cases = analysis_contract_cases();
 
 	for (kind, value, expected) in &cases {
 		let actual = if *kind == "bundle" {
@@ -297,4 +203,117 @@ with tempfile.TemporaryDirectory() as tmp:
 "#).arg(root.join("automations/radar/scripts/github")).output().expect("Python command fixture should execute");
 
 	assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+}
+
+fn analysis_contract_cases() -> Vec<(&'static str, Value, bool)> {
+	let bundle = fixtures::valid_bundle();
+	let draft = fixtures::valid_signal();
+	let mut cases = Vec::new();
+
+	cases.push(("bundle", bundle.clone(), true));
+	cases.push(("draft", draft.clone(), true));
+
+	let mut commit_only = bundle.clone();
+
+	commit_only["analysis_mode"] = serde_json::json!("commit_only");
+
+	commit_only.as_object_mut().unwrap().remove("primary_pr");
+	cases.push(("bundle", commit_only, true));
+
+	for (kind, original, paths) in [
+		(
+			"bundle",
+			&bundle,
+			vec![
+				"/files/0/path",
+				"/files/0/status",
+				"/files/0/additions",
+				"/files/0/deletions",
+				"/primary_pr/number",
+				"/primary_pr/title",
+				"/primary_pr/body",
+				"/primary_pr/state",
+				"/primary_pr/labels",
+				"/primary_pr/url",
+			],
+		),
+		("draft", &draft, vec!["/title", "/summary", "/why_it_matters"]),
+	] {
+		for path in paths {
+			let mut value = original.clone();
+
+			*value.pointer_mut(path).unwrap() = Value::Null;
+
+			cases.push((kind, value, false));
+		}
+	}
+	for path in ["/files/0/additions", "/files/0/deletions", "/primary_pr/number"] {
+		for invalid in [
+			serde_json::json!(true),
+			serde_json::json!(-1),
+			serde_json::json!(1.5),
+			serde_json::json!(9_223_372_036_854_775_808_u64),
+		] {
+			let mut value = bundle.clone();
+
+			*value.pointer_mut(path).unwrap() = invalid;
+
+			cases.push(("bundle", value, false));
+		}
+	}
+	for (kind, original, field) in [
+		("bundle", &bundle, "analysis_mode"),
+		("draft", &draft, "kind"),
+		("draft", &draft, "confidence"),
+		("draft", &draft, "impact"),
+	] {
+		for invalid in [serde_json::json!([]), serde_json::json!({})] {
+			let mut value = original.clone();
+
+			value[field] = invalid;
+
+			cases.push((kind, value, false));
+		}
+	}
+	for kind in ["bundle", "draft"] {
+		for invalid in [
+			Value::Null,
+			serde_json::json!([]),
+			serde_json::json!(false),
+			serde_json::json!("invalid"),
+		] {
+			cases.push((kind, invalid, false));
+		}
+	}
+
+	let mut boundaries = bundle.clone();
+
+	boundaries["files"][0]["additions"] = serde_json::json!(0);
+	boundaries["files"][0]["deletions"] = serde_json::json!(i64::MAX);
+	boundaries["primary_pr"]["number"] = serde_json::json!(i64::MAX);
+
+	cases.push(("bundle", boundaries, true));
+
+	for field in ["title", "summary", "why_it_matters"] {
+		let mut value = draft.clone();
+
+		value[field] = serde_json::json!("");
+
+		cases.push(("draft", value, false));
+	}
+	for invalid in [serde_json::json!(0), serde_json::json!("")] {
+		let mut value = bundle.clone();
+
+		value["primary_pr"]["number"] = invalid;
+
+		cases.push(("bundle", value, false));
+	}
+
+	let mut invalid_labels = bundle.clone();
+
+	invalid_labels["primary_pr"]["labels"] = serde_json::json!([""]);
+
+	cases.push(("bundle", invalid_labels, false));
+
+	cases
 }
