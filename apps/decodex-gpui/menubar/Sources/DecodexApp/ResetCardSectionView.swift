@@ -95,7 +95,7 @@ struct ResetCardAccountRow: View {
 							InlineAccountFeedback(text: message.text, isDestructive: message.tone == .error) { store.dismissMessage() }
 						}
 						if state.requiresLoginRefresh {
-							InlineAccountFeedback(text: "Login refresh required. Sign in again to use this account.", isDestructive: true)
+							InlineAccountFeedback(text: "Sign in again to use this account.", isDestructive: true)
 							AccountRefreshLoginButton(state: state, store: store)
 						} else {
 							AccountPrimaryActionsView(state: state, store: store)
@@ -344,7 +344,7 @@ struct ResetCardAccountRow: View {
 		case .available:
 			return nil
 		case .authFailed:
-			return "Login refresh required"
+			return "Sign in again"
 		case .depleted:
 			return nil
 		case .pluginUnready:

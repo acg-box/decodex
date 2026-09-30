@@ -289,9 +289,9 @@ impl Shell {
 			notices.push(Notice::new(
 				"Account profile",
 				if self.account_profile.load == AccountProfileLoadState::Offline {
-					"Saved activity is offline."
+					"Connect to the service to update your activity."
 				} else {
-					"Saved activity could not be loaded."
+					"Your activity couldn’t be loaded. Try again later."
 				},
 				Recovery::Accounts,
 			));
@@ -300,11 +300,18 @@ impl Shell {
 
 	fn profile_notifications(&self, notices: &mut Vec<Notice>) {
 		let detail = match self.account_profile.result.as_ref() {
-			Some(AccountProfileResult::Cached { refresh_error, .. }) => Some(format!(
-				"Refresh failed: {refresh_error:?}. Cached profile remains available."
-			)),
+			Some(AccountProfileResult::Cached { refresh_error, .. }) =>
+				Some(if crate::account_profile::requires_login(*refresh_error) {
+					"Sign in again to update your activity."
+				} else {
+					"Your activity couldn’t be updated. Try again later."
+				}),
 			Some(AccountProfileResult::Unavailable { error, .. }) =>
-				Some(format!("Profile unavailable: {error:?}.")),
+				Some(if crate::account_profile::requires_login(*error) {
+					"Sign in again to view your activity."
+				} else {
+					"Your activity couldn’t be loaded. Try again later."
+				}),
 			_ => None,
 		};
 		if let Some(detail) = detail {

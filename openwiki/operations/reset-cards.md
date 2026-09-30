@@ -4,9 +4,6 @@ title: "Reset Card operation"
 description: "Account details disclosure, explicit card confirmation, and durable service-owned redemption and recovery."
 tags: [decodex, accounts, operations, reset-cards]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T17:38:04.493Z
 sources:
   - id: openwiki-source-a21355e56f76651beb4dffc4
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardCLIClient.swift
@@ -37,6 +34,9 @@ sources:
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
 generated: { by: "codex", at: "2026-09-30T17:38:04.493Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-30T18:08:44.220Z
 ---
 
 > Current scope: Reset Card redemption is available in Accounts and the explicit CLI, with durable account-scoped recovery. The embedded schema owns the redemption ledger and separate weekly activation records. The source/release comparison below is a version-bound implementation receipt, not a statement of the currently installed Codex version. Quota refill animation displays confirmed results; it does not redeem a card. See [Weekly activation](quota-activation.md).

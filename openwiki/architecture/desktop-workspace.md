@@ -5,8 +5,12 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-30T17:38:04.493Z
+    at: 2026-09-30T18:08:44.220Z
 sources:
+  - id: openwiki-source-67aca4a47095def808df265a
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountProfileCLIClient.swift
+  - id: openwiki-source-75aea95b5b7fd328b3b6a396
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountProfileViews.swift
   - id: openwiki-source-b469e348e65d4cdbb569fb27
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountRows.swift
   - id: openwiki-source-51c6a903a86b67bbf46fe288
@@ -29,9 +33,11 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
   - id: openwiki-source-a1a71f71175b6cac3a5f1346
     resource: repo://apps/decodex-gpui/src/native_glass_panel.rs
+  - id: openwiki-source-2dfc8cb7dbdb75c07469c4c3
+    resource: repo://apps/decodex-gpui/src/shell_account_activity.rs
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
-generated: { by: "codex", at: "2026-09-30T17:38:04.493Z" }
+generated: { by: "codex", at: "2026-09-30T18:08:44.220Z" }
 ---
 
 # Desktop workspace and native glass
@@ -75,6 +81,12 @@ Ordinary operation feedback goes to the notification center. A conversation that
 Use the same severity color for a status icon and its message. Account login failures use red; recoverable warnings use amber/orange. GPUI informational notices use blue. `PanelPalette` owns the native semantic colors; GPUI uses `ui_theme::ERROR`, `AMBER`, and `BLUE`. Regenerate the corresponding SF Symbol assets with `scripts/macos/generate_workspace_symbols.swift` when those tints change. Status tooltips and native account feedback popovers retain the message color. Ordinary action labels and contrast text inside a colored badge keep their control colors.
 
 The GPUI notification center gives red errors priority over amber warnings and blue information when it selects the bell and badge color. A notice title and its detail use the same notice color. Keep full diagnostics in their contextual detail surface; the inline cached-activity status occupies at most one line.
+
+## UI wording and punctuation
+
+Use short, direct action or status labels. Keep account status text left-aligned with the account content, on one line, without a terminal period. Use an ellipsis only for an ongoing operation such as `Loading activity…`. Use complete sentences and normal punctuation for explanations in notifications, popovers and hover text.
+
+Keep each label about one user need. `Sign in again` states the required action; `Couldn’t update activity` states an update failure. Do not append storage labels to an error or join unrelated messages with a bullet. Describe what happened and the next useful action in plain language. Keep internal error variant names and credential-refresh mechanics out of user-facing account explanations.
 
 ## Verification
 

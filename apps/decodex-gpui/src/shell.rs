@@ -3555,7 +3555,7 @@ fn account_management_actions(
 				account_icon_action(
 					"account-login-warning",
 					index,
-					"Login refresh required. Sign in again or log out.",
+					"Sign in again to use this account, or log out.",
 					workspace_symbols::Symbol::AccountWarning,
 					true,
 				)

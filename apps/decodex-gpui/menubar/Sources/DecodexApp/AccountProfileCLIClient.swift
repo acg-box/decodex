@@ -17,29 +17,29 @@ enum AccountProfileObservationError: String, Decodable, Equatable, Sendable {
 	var presentation: String {
 		switch self {
 		case .invalidRequest:
-			return "The profile request was invalid."
+			return "We couldn’t load this account."
 		case .accountUnavailable:
-			return "The account is unavailable."
+			return "This account is unavailable."
 		case .productStateUnavailable:
-			return "Account profile state is unavailable."
+			return "Account information is temporarily unavailable."
 		case .credentialUnavailable:
-			return "The account login is unavailable."
+			return "We couldn’t access your sign-in information. Try again."
 		case .credentialBusy:
-			return "Account credentials are busy with another active owner."
+			return "This account is being updated. Try again shortly."
 		case .refreshRejected:
-			return "Credential refresh was rejected. Re-login is required."
+			return "Sign in again to update this account."
 		case .refreshAmbiguous:
-			return "Credential refresh was uncertain. Re-login is required."
+			return "Sign in again to update this account."
 		case .accessRejectedAfterRefresh:
-			return "Refreshed credentials are still unauthorized. Re-login is required."
+			return "Sign in again to update this account."
 		case .unauthorized:
-			return "The account login needs to be refreshed."
+			return "Sign in again to update this account."
 		case .providerUnavailable:
-			return "The account profile provider is unavailable."
+			return "The service is unavailable. Try again later."
 		case .protocolUnavailable:
-			return "The provider returned an unsupported profile."
+			return "We couldn’t read the account information. Try again later."
 		case .accountChanged:
-			return "The account changed while its profile was loading."
+			return "The account changed while loading. Try again."
 		}
 	}
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c018c4830d551887b47c0d81c30122f3502ea49c9e097c3983bcc6bfed943a37",
+  "pageVersion": "sha256:42f79125590bd6aec2c6d1bddbef5d7ef5951209bc9451da9ee1fea7f6cf9b62",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -98,7 +98,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L81-L204",
-          "version": "repo-lines-v1:sha256:26939d732bf2fc85e1e9cfd8006ed71630b595069069f8927f3378becd7ec4e0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxMTAxYTM1Mzc1MmUyNmViYWZiMzQ2ZGFmNzYzZjZmOTgzMGFiZDQ1ZGExN2M2ZGNkNTc4MDhhMTJhMDA2M2Q2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjM2IxOWY4NzkwNDdmNjRjZWExN2NlNWVkODIzZDljNDE2ODI5YzRlYjE2YTc2MzE2MTJlOWMxZGMxOGQ5NzBmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyYjA2ZTFhYzZhMGMwNDZjZDFiZDYyNmNjMjU3NWUxZGFjYmM2MjYwZjgyN2E5MTFmMjA4YzhkZWRhNTE3NzhlIn0"
+          "version": "repo-lines-v1:sha256:4210dd9f07be1fb8d723cc15a514a68d1a057053c54a379e43805e302f55b7ae:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxMTAxYTM1Mzc1MmUyNmViYWZiMzQ2ZGFmNzYzZjZmOTgzMGFiZDQ1ZGExN2M2ZGNkNTc4MDhhMTJhMDA2M2Q2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjM2IxOWY4NzkwNDdmNjRjZWExN2NlNWVkODIzZDljNDE2ODI5YzRlYjE2YTc2MzE2MTJlOWMxZGMxOGQ5NzBmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyYjA2ZTFhYzZhMGMwNDZjZDFiZDYyNmNjMjU3NWUxZGFjYmM2MjYwZjgyN2E5MTFmMjA4YzhkZWRhNTE3NzhlIn0"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs#L1401-L1407",
@@ -139,6 +139,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T17:38:04.493Z"
+    "at": "2026-09-30T18:08:44.220Z"
   }
 }
