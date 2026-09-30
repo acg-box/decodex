@@ -10,7 +10,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[4]
 MANIFEST_PATH = REPO_ROOT / "automations/portfolio.toml"
 MANAGED_PREFIXES = ("codex-upstream-", "decodex-")
-MANIFEST_STATUSES = frozenset({"PAUSED", "ACTIVE"})
+MANIFEST_STATUSES = ("PAUSED", "ACTIVE")
 ROOT_KEYS = {
     "automations",
     "execution_environment",
@@ -51,7 +51,7 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if set(manifest) != ROOT_KEYS:
         errors.append("portfolio root keys must match the compact contract")
-    if manifest.get("version") != 1:
+    if type(manifest.get("version")) is not int or manifest["version"] != 1:
         errors.append("portfolio version must be 1")
     for field, expected in (
         ("primary_cwd", "{primary_worktree}"),
@@ -78,12 +78,17 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
             errors.append(f"automation {entry.get('id')!r} keys must match the compact contract")
             continue
         automation_id = entry["id"]
-        for field in ("model", "reasoning_effort"):
-            if not isinstance(entry[field], str) or not entry[field].strip():
-                errors.append(f"automation {automation_id!r} {field} must be nonempty")
+        invalid_fields = [
+            field for field in sorted(AUTOMATION_KEYS)
+            if not isinstance(entry[field], str) or not entry[field].strip()
+        ]
+        for field in invalid_fields:
+            errors.append(f"automation {automation_id!r} {field} must be a nonempty string")
+        if invalid_fields:
+            continue
         if entry.get("status", manifest.get("status")) not in MANIFEST_STATUSES:
             errors.append(f"automation {automation_id!r} has an invalid status")
-        if entry.get("execution_environment", manifest.get("execution_environment")) not in {"local", "worktree"}:
+        if entry.get("execution_environment", manifest.get("execution_environment")) not in ("local", "worktree"):
             errors.append(f"automation {automation_id!r} has an invalid execution environment")
         prompt_path = REPO_ROOT / entry["prompt_file"]
         if not prompt_path.is_file():
@@ -174,7 +179,7 @@ def evaluate_runtime(codex_home: Path) -> dict[str, Any]:
             if actual.get(field) != wanted[field]:
                 errors.append(f"native {field} differs from portfolio")
         for field in ("created_at", "updated_at"):
-            if not isinstance(actual.get(field), int) or actual[field] <= 0:
+            if type(actual.get(field)) is not int or actual[field] <= 0:
                 errors.append(f"native {field} metadata is missing")
         results.append({"id": automation_id, "status": "pass" if not errors else "fail", "errors": errors})
 

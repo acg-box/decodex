@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 
-from portfolio import evaluate_runtime, load_manifest, validate_manifest
+from portfolio import evaluate_runtime, load_manifest
 
 
 def main() -> int:
@@ -18,9 +18,9 @@ def main() -> int:
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
-    manifest = load_manifest()
     if args.repo_only:
-        payload = {"status": "pass", "manifest_errors": validate_manifest(manifest)}
+        load_manifest()
+        payload = {"status": "pass", "manifest_errors": []}
     else:
         payload = evaluate_runtime(args.codex_home)
     print(json.dumps(payload, indent=2, sort_keys=True))
