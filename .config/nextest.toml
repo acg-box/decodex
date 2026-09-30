@@ -1,7 +1,7 @@
-# These diagnostic binaries import application modules and define no own tests.
-# Keep compiling all targets, but execute their shared tests in the app binary only.
+# Diagnostic binaries import application modules. Run those shared tests in the app
+# binary only, while retaining the visual capture binary's own send-result tests.
 [profile.default]
-default-filter = 'not (binary_id(decodex-gpui::bin/decodex-gpui-workbench-visual-capture) or binary_id(decodex-gpui::bin/decodex-native-glass-probe))'
+default-filter = 'not (binary_id(decodex-gpui::bin/decodex-native-glass-probe) or (binary_id(decodex-gpui::bin/decodex-gpui-workbench-visual-capture) and not test(capture_send_tests::)))'
 
 # App-server process tests exercise shared host process limits and timing-sensitive
 # cleanup. Serialize this group so validation results do not depend on host load.
