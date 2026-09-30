@@ -210,7 +210,12 @@ async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_state
 			status(&document, "blob_integrity"),
 			&serde_json::json!({"state": "unknown", "issue": "not_probed"}),
 		);
-		assert_eq!(status(&document, "credential_vault"), &serde_json::json!({"state": "ready"}),);
+		let expected_vault = if cfg!(target_os = "macos") {
+			serde_json::json!({"state": "ready"})
+		} else {
+			serde_json::json!({"state": "unavailable", "issue": "authentication"})
+		};
+		assert_eq!(status(&document, "credential_vault"), &expected_vault);
 		assert_eq!(
 			status(&document, "plugin_readiness"),
 			&serde_json::json!({"state": "unknown", "issue": "plugin"}),
