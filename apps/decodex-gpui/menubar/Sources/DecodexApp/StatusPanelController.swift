@@ -76,7 +76,10 @@ final class StatusPanelController: NSObject {
 		}
 		positionPanel()
 
+		// Give only the nonactivating panel keyboard focus. Activating NSApp
+		// here would also bring the workspace windows forward.
 		panel.orderFrontRegardless()
+		panel.makeKey()
 		observeOutsideClicks()
 		scheduleAnchorRetry()
 		store.ensureFresh()
