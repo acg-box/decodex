@@ -1,6 +1,7 @@
 //! Exact canonical send identity. Missing readback never authorizes replay.
-use crate::{AgentExecutionOverrides, EntityId, IdempotencyKey, Sha256Digest, WireText};
 use serde::{Deserialize, Serialize};
+
+use crate::{AgentExecutionOverrides, EntityId, IdempotencyKey, Sha256Digest, WireText};
 
 /// Retain with the unchanged canonical draft before submitting it once.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

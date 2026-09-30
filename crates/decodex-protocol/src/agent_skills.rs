@@ -1,6 +1,7 @@
 //! Native skill discovery for an existing Agent or a new conversation's selected account.
-use crate::{ConversationWorkingDirectory, EntityId, InitialModelCatalogRequest, WireText};
 use serde::{Deserialize, Serialize};
+
+use crate::{ConversationWorkingDirectory, EntityId, InitialModelCatalogRequest, WireText};
 
 /// One enabled native skill; this is a usage reference, not a plugin management entry.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

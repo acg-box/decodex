@@ -6,7 +6,6 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, AtomicU64, Ordering},
 	},
-	time::Duration,
 };
 
 use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
@@ -18,16 +17,16 @@ use tokio_tungstenite::{
 };
 
 use crate::{
-	CURRENT_VERSION, ClientHello, ClientMessage, CommandEnvelope, CommandReceipt,
-	CommandResultEnvelope, Cursor, EventEnvelope, LocalTransportAuthority, LocalTransportRefusal,
-	LocalTransportStream, ProtocolVersion, QueryEnvelope, QueryResultEnvelope, ReconnectMode,
-	Refusal, RefusalEnvelope, ResumeCursor, ServerId, ServerInstanceId, ServerMessage,
-	ServerWelcome, SnapshotEnvelope,
+	AccountClient, CURRENT_VERSION, ClientHello, ClientMessage, ClientProfile, CommandEnvelope,
+	CommandReceipt, CommandResultEnvelope, Cursor, EventEnvelope, LocalTransportAuthority,
+	LocalTransportRefusal, LocalTransportStream, ProtocolVersion, QueryEnvelope,
+	QueryResultEnvelope, ReconnectMode, Refusal, RefusalEnvelope, ResumeCursor, ServerId,
+	ServerInstanceId, ServerMessage, ServerWelcome, SnapshotEnvelope,
 };
 
 type Socket = WebSocketStream<LocalTransportStream>;
 
-const OPERATION_TIMEOUT: Duration = Duration::from_secs(5);
+const OPERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 const MAX_MESSAGE_BYTES: usize = 256 * 1_024;
 const MAX_SNAPSHOT_ITEMS: usize = 1_024;
 // This URI is WebSocket handshake metadata only. The client passes an already
@@ -43,12 +42,12 @@ static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 pub struct RetainedSessionConfig {
 	local_transport: LocalTransportAuthority,
 	expected_server_id: ServerId,
-	operation_timeout: Duration,
+	operation_timeout: std::time::Duration,
 }
 impl RetainedSessionConfig {
 	/// Open independent account queries with this session's exact admitted local authority.
-	pub fn account_client(&self) -> crate::AccountClient {
-		crate::AccountClient::new(crate::ClientProfile::from_local_authority(
+	pub fn account_client(&self) -> AccountClient {
+		AccountClient::new(ClientProfile::from_local_authority(
 			self.local_transport.clone(),
 			self.expected_server_id.clone(),
 		))
@@ -173,7 +172,7 @@ pub struct RetainedSession {
 	pending_confirmation: Option<ApplicationConfirmation>,
 	initial_snapshot: Option<SnapshotEnvelope>,
 	cancellation: SessionCancellation,
-	operation_timeout: Duration,
+	operation_timeout: std::time::Duration,
 	session_id: u64,
 }
 impl RetainedSession {
@@ -298,7 +297,7 @@ impl RetainedSession {
 	}
 
 	#[cfg(test)]
-	fn set_operation_timeout(&mut self, operation_timeout: Duration) {
+	fn set_operation_timeout(&mut self, operation_timeout: std::time::Duration) {
 		self.operation_timeout = operation_timeout;
 	}
 
@@ -732,7 +731,7 @@ fn next(cursor: Cursor) -> Option<Cursor> {
 
 async fn bounded<F, T>(
 	cancellation: &SessionCancellation,
-	timeout: Duration,
+	timeout: std::time::Duration,
 	operation: F,
 ) -> Result<T, RetainedSessionFailure>
 where
@@ -754,7 +753,7 @@ async fn send_message(
 	socket: &mut Socket,
 	message: ClientMessage,
 	cancellation: &SessionCancellation,
-	timeout: Duration,
+	timeout: std::time::Duration,
 ) -> Result<(), RetainedSessionFailure> {
 	let encoded = serde_json::to_string(&message)
 		.expect("typed bounded client message serialization cannot fail");
@@ -771,7 +770,7 @@ async fn send_message(
 async fn receive_message(
 	socket: &mut Socket,
 	cancellation: &SessionCancellation,
-	timeout: Duration,
+	timeout: std::time::Duration,
 ) -> Result<ServerMessage, RetainedSessionFailure> {
 	bounded(cancellation, timeout, receive_frame(socket, cancellation, timeout)).await?
 }
@@ -779,7 +778,7 @@ async fn receive_message(
 async fn receive_owned<S>(
 	socket: &mut Option<S>,
 	cancellation: &SessionCancellation,
-	timeout: Duration,
+	timeout: std::time::Duration,
 ) -> Result<ServerMessage, RetainedSessionFailure>
 where
 	S: Sink<Message, Error = tokio_tungstenite::tungstenite::Error>
@@ -801,7 +800,7 @@ where
 async fn receive_frame<S>(
 	socket: &mut S,
 	cancellation: &SessionCancellation,
-	timeout: Duration,
+	timeout: std::time::Duration,
 ) -> Result<ServerMessage, RetainedSessionFailure>
 where
 	S: Sink<Message, Error = tokio_tungstenite::tungstenite::Error>
@@ -851,7 +850,8 @@ where
 	}
 }
 
-#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+#[cfg(test)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 mod tests {
 	use std::{
 		future::Future,
@@ -861,7 +861,6 @@ mod tests {
 			atomic::{AtomicBool, Ordering},
 		},
 		task::{Context, Poll},
-		time::Duration,
 	};
 
 	use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
@@ -1133,7 +1132,9 @@ mod tests {
 		});
 
 		assert_eq!(
-			super::receive_owned(&mut socket, &cancellation, Duration::ZERO).await.unwrap_err(),
+			super::receive_owned(&mut socket, &cancellation, std::time::Duration::ZERO)
+				.await
+				.unwrap_err(),
 			RetainedSessionFailure::OperationTimeout
 		);
 		assert!(pong_write_polled.load(Ordering::Acquire));

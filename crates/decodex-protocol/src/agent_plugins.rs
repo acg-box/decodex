@@ -1,6 +1,7 @@
 //! Native task exclusions, separate from shared plugin installation and configuration.
-use crate::{AgentPluginInventory, EntityId, WireText};
 use serde::{Deserialize, Serialize};
+
+use crate::{AgentPluginInventory, EntityId, WireText};
 
 /// Durable request outcome, not proof that an active turn changed its capabilities.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]

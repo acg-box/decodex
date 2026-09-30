@@ -1,10 +1,11 @@
 //! Bounded read-only projections for retained Program history.
 
-use std::collections::HashSet;
-
 pub use decodex_core::{
 	MAX_PROGRAM_PROJECTION_NODES as MAX_PROGRAM_NODES, ProgramReviewClassification, ProgramState,
 };
+
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -155,7 +156,6 @@ pub struct ProgramCycleDto {
 	/// Causal relations between projected nodes.
 	pub edges: Vec<ProgramEdgeDto>,
 }
-
 impl ProgramCycleDto {
 	/// Construct and validate the historical projection.
 	pub fn new(

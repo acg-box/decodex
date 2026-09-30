@@ -1,4 +1,6 @@
 //! Independent native catalog and runtime observations for one task.
+use serde::{Deserialize, Serialize};
+
 /// One installed connector in the native committed runtime snapshot.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -12,25 +14,6 @@ pub struct AgentAppStatusDto {
 	/// The snapshot has a model-visible tool permitted by effective policy.
 	pub callable: bool,
 }
-
-/// Installed connector discovery, independent of MCP and plugin discovery.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "outcome", rename_all = "snake_case")]
-pub enum AgentAppInventory {
-	/// Complete bounded runtime snapshot; not a successful tool execution receipt.
-	Available {
-		/// Installed connector observations.
-		apps: Vec<AgentAppStatusDto>,
-	},
-	/// This provider has no supported endpoint.
-	Unsupported,
-	/// Complete inventory exceeds the public bound.
-	CapacityExceeded,
-	/// Current status cannot be read.
-	Unavailable,
-}
-
-use serde::{Deserialize, Serialize};
 
 /// Selected MCP status fields; tool inventory does not prove runtime readiness.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -75,6 +58,23 @@ pub struct AgentPluginStatusDto {
 	pub availability: String,
 	/// Native reason for policy unavailability.
 	pub disabled_reason: Option<String>,
+}
+
+/// Installed connector discovery, independent of MCP and plugin discovery.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum AgentAppInventory {
+	/// Complete bounded runtime snapshot; not a successful tool execution receipt.
+	Available {
+		/// Installed connector observations.
+		apps: Vec<AgentAppStatusDto>,
+	},
+	/// This provider has no supported endpoint.
+	Unsupported,
+	/// Complete inventory exceeds the public bound.
+	CapacityExceeded,
+	/// Current status cannot be read.
+	Unavailable,
 }
 
 /// MCP discovery result, independent of plugin discovery success.
