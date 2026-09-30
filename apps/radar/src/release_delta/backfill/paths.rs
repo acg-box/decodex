@@ -20,20 +20,24 @@ fn repo_path_stem(repo: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::repo_path_stem;
+	use crate::release_delta::backfill::paths;
 
 	#[test]
 	fn backfill_repository_stems_do_not_collapse_distinct_names() {
 		for (first, second) in
 			[("a-b/c", "a/b-c"), ("a/b.c", "a/b-c"), ("a/b_c", "a/b-c"), ("a/b", "a%2Fb")]
 		{
-			assert_ne!(repo_path_stem(first), repo_path_stem(second), "{first} and {second}");
+			assert_ne!(
+				paths::repo_path_stem(first),
+				paths::repo_path_stem(second),
+				"{first} and {second}"
+			);
 		}
 
-		assert_eq!(repo_path_stem("OpenAI/Codex"), repo_path_stem("openai/codex"));
+		assert_eq!(paths::repo_path_stem("OpenAI/Codex"), paths::repo_path_stem("openai/codex"));
 
 		for repo in ["a-b/c", "a/b.c", "a/b_c", "a%2Fb", "../example"] {
-			let name = format!("{}-pr-42.json", repo_path_stem(repo));
+			let name = format!("{}-pr-42.json", paths::repo_path_stem(repo));
 
 			assert_eq!(std::path::Path::new(&name).components().count(), 1);
 		}

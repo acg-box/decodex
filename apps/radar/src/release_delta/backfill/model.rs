@@ -1,9 +1,11 @@
 use std::path::PathBuf;
 
+use tempfile::TempDir;
+
 #[derive(Debug)]
 pub(in crate::release_delta::backfill) struct PreparedReleaseDelta {
 	pub(in crate::release_delta::backfill) path: PathBuf,
-	pub(in crate::release_delta::backfill) _cleanup_dir: Option<tempfile::TempDir>,
+	pub(in crate::release_delta::backfill) _cleanup_dir: Option<TempDir>,
 }
 
 #[derive(Debug, Eq, PartialEq)]

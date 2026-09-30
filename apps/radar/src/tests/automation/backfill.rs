@@ -1,5 +1,7 @@
 use std::fs;
 
+use serde_json::Value;
+
 use crate::{RadarBackfillReleaseRangeRequest, tests::fixtures};
 
 #[test]
@@ -69,7 +71,7 @@ fn dry_run_backfill_selects_unpublished_release_window_prs() {
 
 	for (repo, expected_error) in [
 		(serde_json::json!("other/project"), "Release-delta repository must match openai/codex"),
-		(serde_json::Value::Null, "repo must be owner/name"),
+		(Value::Null, "repo must be owner/name"),
 	] {
 		release_delta["repo"] = repo;
 
