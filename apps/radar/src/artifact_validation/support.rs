@@ -3,6 +3,8 @@
 use serde_json::{Map, Value};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+pub(super) use crate::is_truthy_json_value;
+
 use crate::artifact_validation::{
 	BUNDLE_SCHEMA, CONFIG_FEATURE_CATALOG_SCHEMA, RELEASE_DELTA_SCHEMA, SIGNAL_SCHEMA,
 	UPSTREAM_IMPACT_SCHEMA, UPSTREAM_REVIEW_QUEUE_SCHEMA, UPSTREAM_REVIEW_SCHEMA,
@@ -160,14 +162,6 @@ pub(super) fn string_field<'a>(object: &'a Map<String, Value>, field: &str) -> O
 
 pub(super) fn is_non_empty_string(value: Option<&Value>) -> bool {
 	value.and_then(Value::as_str).is_some_and(|value| !value.is_empty())
-}
-
-pub(super) fn is_truthy_json_value(value: Option<&Value>) -> bool {
-	match value {
-		Some(Value::Null) | None => false,
-		Some(Value::String(value)) => !value.is_empty(),
-		Some(_) => true,
-	}
 }
 
 pub(super) fn matches_one_of(value: Option<&Value>, choices: &[&str]) -> bool {
