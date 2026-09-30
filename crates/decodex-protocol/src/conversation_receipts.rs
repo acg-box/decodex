@@ -1,9 +1,10 @@
 //! Exact local creation receipt readback, without command replay.
+use serde::{Deserialize, Serialize};
+
 use crate::{
 	CommandEnvelope, CommandPayload, ConversationExecutionSettings, ConversationWorkingDirectory,
-	EntityId, EntityRevision, HistoryText, IdempotencyKey,
+	EntityId, EntityRevision, HistoryText, IdempotencyKey, InitialModelSource,
 };
-use serde::{Deserialize, Serialize};
 
 /// Original creation coordinates used by the durable request fingerprint.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -21,9 +22,8 @@ pub struct ConversationCreationReceiptRequest {
 	pub execution: ConversationExecutionSettings,
 	/// Original account observation, when creation used native model discovery.
 	#[serde(skip_serializing_if = "Option::is_none")]
-	pub initial_model_source: Option<Box<crate::InitialModelSource>>,
+	pub initial_model_source: Option<Box<InitialModelSource>>,
 }
-
 impl ConversationCreationReceiptRequest {
 	/// Extract a creation request without admitting or replaying its command.
 	pub fn from_command(command: &CommandEnvelope) -> Option<Self> {
@@ -74,9 +74,11 @@ pub enum ConversationCreationReceiptResult {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use crate::{
-		CURRENT_VERSION, ClientMessage, QueryEnvelope, QueryId, QueryPayload, decode_client_message,
+		CURRENT_VERSION, ClientMessage, ConversationCreationReceiptRequest,
+		ConversationCreationReceiptResult, ConversationExecutionSettings, ConversationModel,
+		ConversationWorkingDirectory, EntityId, EntityRevision, HistoryText, IdempotencyKey,
+		QueryEnvelope, QueryId, QueryPayload,
 	};
 
 	#[test]
@@ -88,7 +90,7 @@ mod tests {
 			message: HistoryText::new("Original message").unwrap(),
 			working_directory: ConversationWorkingDirectory::new("/tmp").unwrap(),
 			execution: ConversationExecutionSettings {
-				model: crate::ConversationModel::new("native-model").unwrap(),
+				model: ConversationModel::new("native-model").unwrap(),
 				reasoning_effort: None,
 				fast: false,
 				service_tier: None,
@@ -100,19 +102,22 @@ mod tests {
 			payload: QueryPayload::GetConversationCreationReceipt { request: request.clone() },
 		});
 
-		assert_eq!(decode_client_message(&serde_json::to_string(&query).unwrap()).unwrap(), query);
+		assert_eq!(
+			crate::decode_client_message(&serde_json::to_string(&query).unwrap()).unwrap(),
+			query
+		);
 
 		let mut invalid = serde_json::to_value(&query).unwrap();
 
 		invalid["body"]["payload"]["arguments"]["request"]["conversation_id"] = "wrong".into();
 
-		assert!(decode_client_message(&invalid.to_string()).is_err());
+		assert!(crate::decode_client_message(&invalid.to_string()).is_err());
 
 		let mut invalid = serde_json::to_value(&query).unwrap();
 
 		invalid["body"]["payload"]["arguments"]["request"]["message"] = "  ".into();
 
-		assert!(decode_client_message(&invalid.to_string()).is_err());
+		assert!(crate::decode_client_message(&invalid.to_string()).is_err());
 
 		for result in [
 			ConversationCreationReceiptResult::NotRecorded,

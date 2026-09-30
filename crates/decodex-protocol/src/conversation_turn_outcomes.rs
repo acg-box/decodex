@@ -1,6 +1,7 @@
 //! Read one ordinary provider attempt without replaying its input.
-use crate::{CommandEnvelope, CommandPayload, EntityId, IdempotencyKey};
 use serde::{Deserialize, Serialize};
+
+use crate::{CommandEnvelope, CommandPayload, EntityId, IdempotencyKey};
 
 /// Stable original coordinates of a later ordinary message.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -69,9 +70,10 @@ pub enum ConversationTurnOutcomeResult {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use crate::{
-		CURRENT_VERSION, ClientMessage, QueryEnvelope, QueryId, QueryPayload, decode_client_message,
+		CURRENT_VERSION, ClientMessage, ConversationTurnOutcomeRequest,
+		ConversationTurnOutcomeResult, ConversationTurnOutcomeState, EntityId, IdempotencyKey,
+		QueryEnvelope, QueryId, QueryPayload,
 	};
 	#[test]
 	fn turn_outcome_queries_require_original_canonical_coordinates() {
@@ -86,14 +88,17 @@ mod tests {
 			payload: QueryPayload::GetConversationTurnOutcome { request: request.clone() },
 		});
 
-		assert_eq!(decode_client_message(&serde_json::to_string(&query).unwrap()).unwrap(), query);
+		assert_eq!(
+			crate::decode_client_message(&serde_json::to_string(&query).unwrap()).unwrap(),
+			query
+		);
 
 		for field in ["conversation_id", "turn_id"] {
 			let mut invalid = serde_json::to_value(&query).unwrap();
 
 			invalid["body"]["payload"]["arguments"]["request"][field] = "invalid".into();
 
-			assert!(decode_client_message(&invalid.to_string()).is_err());
+			assert!(crate::decode_client_message(&invalid.to_string()).is_err());
 		}
 
 		let result = ConversationTurnOutcomeResult::Observed {
