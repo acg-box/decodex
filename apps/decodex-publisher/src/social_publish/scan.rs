@@ -6,7 +6,10 @@ use std::{
 use serde_json::Value;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::{SOCIAL_POST_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA, prelude::Result};
+use crate::{
+	SOCIAL_POST_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA,
+	prelude::{Result, eyre},
+};
 
 const STATE_MUTATION_LOCK: &str = ".social-state-mutation.lock";
 
@@ -26,12 +29,7 @@ pub(crate) fn scan_social_publish_state(
 	let mut scan = SocialPublishStateScan::default();
 
 	for payload_path in existing_json_files(reservations_dir)? {
-		let payload = crate::load_json(&payload_path)?;
-
-		if payload.get("schema").and_then(Value::as_str) != Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA)
-		{
-			continue;
-		}
+		let payload = load_state_record(&payload_path, SOCIAL_PUBLISH_RESERVATION_SCHEMA)?;
 		if payload.get("status").and_then(Value::as_str) == Some("active") {
 			if payload.get("day").and_then(Value::as_str) == Some(day) {
 				scan.active_reservation_count += 1;
@@ -42,11 +40,7 @@ pub(crate) fn scan_social_publish_state(
 		}
 	}
 	for payload_path in existing_json_files(posts_dir)? {
-		let payload = crate::load_json(&payload_path)?;
-
-		if payload.get("schema").and_then(Value::as_str) != Some(SOCIAL_POST_SCHEMA) {
-			continue;
-		}
+		let payload = load_state_record(&payload_path, SOCIAL_POST_SCHEMA)?;
 
 		let status = payload.get("status").and_then(Value::as_str);
 
@@ -81,10 +75,8 @@ pub(crate) fn expire_active_reservations(
 ) -> Result<usize> {
 	let mut expired_count = 0;
 	for payload_path in existing_json_files(reservations_dir)? {
-		let payload = crate::load_json(&payload_path)?;
-		if payload.get("schema").and_then(Value::as_str) != Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA)
-			|| payload.get("status").and_then(Value::as_str) != Some("active")
-		{
+		let payload = load_state_record(&payload_path, SOCIAL_PUBLISH_RESERVATION_SCHEMA)?;
+		if payload.get("status").and_then(Value::as_str) != Some("active") {
 			continue;
 		}
 		let expires_at = payload
@@ -125,6 +117,16 @@ pub(crate) fn acquire_social_state_lock(locks_dir: &Path) -> Result<File> {
 	file.lock()?;
 
 	Ok(file)
+}
+
+fn load_state_record(path: &Path, schema: &str) -> Result<Value> {
+	let payload = crate::load_json(path)?;
+	if payload.get("schema").and_then(Value::as_str) != Some(schema) {
+		return Err(eyre::eyre!("{} must contain {schema}", path.display()));
+	}
+	crate::validate_generated_social_artifact(&payload)
+		.map_err(|error| eyre::eyre!("{} failed validation: {error}", path.display()))?;
+	Ok(payload)
 }
 
 fn existing_json_files(path: &Path) -> Result<Vec<PathBuf>> {
