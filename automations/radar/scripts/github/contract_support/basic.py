@@ -8,8 +8,6 @@ from contract_support.constants import (
     SIGNAL_CONFIDENCE,
     SIGNAL_IMPACT,
     SIGNAL_KINDS,
-    SIGNAL_SCHEMA,
-    SOURCE_ITEM_KINDS,
 )
 from contract_support.core import ValidationResult
 
@@ -87,90 +85,5 @@ def validate_analysis_draft(draft: dict[str, Any]) -> ValidationResult:
         errors.append("how_to_try is required when kind is try_now")
     if how_to_try and not draft.get("expected_effect"):
         errors.append("expected_effect is required when how_to_try is present")
-
-    return ValidationResult(ok=not errors, errors=errors)
-
-
-def validate_signal(entry: dict[str, Any]) -> ValidationResult:
-    errors: list[str] = []
-    if entry.get("schema") != SIGNAL_SCHEMA:
-        errors.append(f"schema must be {SIGNAL_SCHEMA}")
-
-    if entry.get("lane") != "github":
-        errors.append("lane must be github for the MVP")
-
-    if entry.get("kind") not in SIGNAL_KINDS:
-        errors.append(f"kind must be one of {sorted(SIGNAL_KINDS)}")
-
-    if entry.get("confidence") not in SIGNAL_CONFIDENCE:
-        errors.append(f"confidence must be one of {sorted(SIGNAL_CONFIDENCE)}")
-
-    if entry.get("impact") not in SIGNAL_IMPACT:
-        errors.append(f"impact must be one of {sorted(SIGNAL_IMPACT)}")
-
-    for field in ("slug", "title", "published_at", "summary", "why_it_matters"):
-        if not isinstance(entry.get(field), str) or not entry[field]:
-            errors.append(f"{field} must be a non-empty string")
-
-    proof_points = entry.get("proof_points")
-    if not isinstance(proof_points, list) or not proof_points:
-        errors.append("proof_points must be a non-empty list")
-
-    config_flags = entry.get("config_flags", [])
-    if config_flags is None:
-        config_flags = []
-    if not isinstance(config_flags, list):
-        errors.append("config_flags must be a list when present")
-        config_flags = []
-
-    if (entry.get("kind") == "try_now" or config_flags) and not entry.get("how_to_try"):
-        errors.append("how_to_try is required for try_now or flag-backed entries")
-
-    if entry.get("how_to_try") and not entry.get("expected_effect"):
-        errors.append("expected_effect is required when how_to_try is present")
-
-    caveats = entry.get("caveats", [])
-    if caveats is None:
-        caveats = []
-    if not isinstance(caveats, list) or not all(isinstance(item, str) and item for item in caveats):
-        errors.append("caveats must be a list of non-empty strings when present")
-
-    watch_state = entry.get("watch_state")
-    if watch_state is not None and (not isinstance(watch_state, str) or not watch_state):
-        errors.append("watch_state must be a non-empty string when present")
-
-    refs = entry.get("source_refs")
-    if not isinstance(refs, dict):
-        errors.append("source_refs must be an object")
-    else:
-        repo = refs.get("repo")
-        if not isinstance(repo, str) or "/" not in repo:
-            errors.append("source_refs.repo must be owner/name")
-        items = refs.get("items", [])
-        if items and (
-            not isinstance(items, list)
-            or not all(
-                isinstance(item, dict)
-                and item.get("kind") in SOURCE_ITEM_KINDS
-                and isinstance(item.get("title"), str)
-                and item["title"]
-                and isinstance(item.get("url"), str)
-                and item["url"].startswith("https://")
-                and ("meta" not in item or isinstance(item.get("meta"), str))
-                for item in items
-            )
-        ):
-            errors.append("source_refs.items must be a list of titled source entries")
-        pr_url = refs.get("pr_url")
-        commit_urls = refs.get("commit_urls", [])
-        if pr_url is None and not commit_urls and not items:
-            errors.append("source_refs must include pr_url, commit URLs, or source_refs.items")
-        if pr_url is not None and (not isinstance(pr_url, str) or not pr_url.startswith("https://")):
-            errors.append("source_refs.pr_url must be an https URL when present")
-        if commit_urls and (
-            not isinstance(commit_urls, list)
-            or not all(isinstance(url, str) and url.startswith("https://") for url in commit_urls)
-        ):
-            errors.append("source_refs.commit_urls must be a list of https URLs")
 
     return ValidationResult(ok=not errors, errors=errors)
