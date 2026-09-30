@@ -1,18 +1,19 @@
 use std::{
 	env,
 	ffi::{OsStr, OsString},
-	fs::{self, File},
-	io::{Read as _, Write as _},
+	fs::{self, File, Metadata, Permissions},
+	io::{ErrorKind, Read, Write as _},
 	os::unix::{
 		ffi::OsStringExt as _,
 		fs::{MetadataExt as _, PermissionsExt as _},
 	},
 	path::{Component, Path, PathBuf},
+	str,
 	sync::OnceLock,
 };
 
 use rustix::{
-	fs::{self as unix_fs, AtFlags, Dir, Mode, OFlags},
+	fs::{AtFlags, Dir, Mode, OFlags},
 	io::Errno,
 };
 use serde_json::Value;
@@ -20,10 +21,10 @@ use sha2::{Digest as _, Sha256};
 
 use crate::prelude::{Result, eyre};
 
-const MAX_PRIVATE_JSON_BYTES: u64 = 1024 * 1024;
-const MAX_PRIVATE_JSON_FILES: usize = 4096;
-const MAX_PRIVATE_TRAVERSAL_BYTES: u64 = 64 * 1024 * 1024;
-const MAX_PRIVATE_TRAVERSAL_ENTRIES: usize = 8192;
+const MAX_PRIVATE_JSON_BYTES: u64 = 1_024 * 1_024;
+const MAX_PRIVATE_JSON_FILES: usize = 4_096;
+const MAX_PRIVATE_TRAVERSAL_BYTES: u64 = 64 * 1_024 * 1_024;
+const MAX_PRIVATE_TRAVERSAL_ENTRIES: usize = 8_192;
 const PRIVATE_DIRECTORY_MODE: u16 = 0o700;
 const PRIVATE_FILE_MODE: u16 = 0o600;
 
@@ -203,9 +204,14 @@ fn write_new_json_in_parent(
 	validate_private_json_metadata(path, &file.metadata()?)?;
 	drop(file);
 
-	let linked =
-		unix_fs::linkat(&parent.file, &temporary_name, &parent.file, file_name, AtFlags::empty());
-	let cleanup = unix_fs::unlinkat(&parent.file, &temporary_name, AtFlags::empty());
+	let linked = rustix::fs::linkat(
+		&parent.file,
+		&temporary_name,
+		&parent.file,
+		file_name,
+		AtFlags::empty(),
+	);
+	let cleanup = rustix::fs::unlinkat(&parent.file, &temporary_name, AtFlags::empty());
 
 	if let Err(error) = linked {
 		if cleanup.is_err() {
@@ -253,20 +259,22 @@ pub(crate) fn replace_existing_json(path: &Path, expected: &Value, payload: &Val
 	let current = match open_named_private_file(&parent, &file_name, path) {
 		Ok(file) => file,
 		Err(error) => {
-			let _ = unix_fs::unlinkat(&parent.file, &temporary_name, AtFlags::empty());
+			let _ = rustix::fs::unlinkat(&parent.file, &temporary_name, AtFlags::empty());
 
 			return Err(error);
 		},
 	};
 
 	if !same_file(&existing_metadata, &current.metadata()?) {
-		let _ = unix_fs::unlinkat(&parent.file, &temporary_name, AtFlags::empty());
+		let _ = rustix::fs::unlinkat(&parent.file, &temporary_name, AtFlags::empty());
 
 		return Err(eyre::eyre!("existing JSON changed during replacement"));
 	}
 
-	if let Err(error) = unix_fs::renameat(&parent.file, &temporary_name, &parent.file, &file_name) {
-		let _ = unix_fs::unlinkat(&parent.file, &temporary_name, AtFlags::empty());
+	if let Err(error) =
+		rustix::fs::renameat(&parent.file, &temporary_name, &parent.file, &file_name)
+	{
+		let _ = rustix::fs::unlinkat(&parent.file, &temporary_name, AtFlags::empty());
 
 		return Err(eyre::eyre!("failed to replace {}: {error}", path.display()));
 	}
@@ -351,7 +359,7 @@ pub(crate) fn open_private_directory_descriptor(path: &Path, create: bool) -> Re
 pub(crate) fn open_or_create_private_lock(path: &Path) -> Result<File> {
 	let (parent_path, file_name) = parent_and_name(path)?;
 	let parent = open_private_directory(&parent_path, true)?;
-	let fd = unix_fs::openat(
+	let fd = rustix::fs::openat(
 		&parent.file,
 		&file_name,
 		OFlags::RDWR | OFlags::CREATE | OFlags::CLOEXEC | OFlags::NOFOLLOW,
@@ -360,7 +368,7 @@ pub(crate) fn open_or_create_private_lock(path: &Path) -> Result<File> {
 	.map_err(|error| eyre::eyre!("private lock path is not safe: {error}"))?;
 	let file = File::from(fd);
 
-	file.set_permissions(fs::Permissions::from_mode(PRIVATE_FILE_MODE.into()))?;
+	file.set_permissions(Permissions::from_mode(PRIVATE_FILE_MODE.into()))?;
 
 	let metadata = file.metadata()?;
 
@@ -376,7 +384,7 @@ pub(crate) fn open_or_create_private_lock(path: &Path) -> Result<File> {
 }
 
 impl PrivateFileIdentity {
-	pub(crate) fn from_metadata(metadata: &fs::Metadata) -> Self {
+	pub(crate) fn from_metadata(metadata: &Metadata) -> Self {
 		Self {
 			dev: metadata.dev(),
 			ino: metadata.ino(),
@@ -397,7 +405,7 @@ enum OpenedPath {
 fn open_path(path: &Path) -> Result<OpenedPath> {
 	let (parent_path, name) = parent_and_name(path)?;
 	let parent = open_private_directory(&parent_path, false)?;
-	let fd = unix_fs::openat(
+	let fd = rustix::fs::openat(
 		&parent.file,
 		&name,
 		OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
@@ -473,7 +481,7 @@ fn collect_directory_json_files(
 	for name in entries {
 		let child_display = display_path.join(&name);
 		let child_path = directory.path.join(&name);
-		let fd = unix_fs::openat(
+		let fd = rustix::fs::openat(
 			&directory.file,
 			&name,
 			OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
@@ -563,7 +571,7 @@ fn open_named_private_file_optional(
 	file_name: &OsStr,
 	path: &Path,
 ) -> Result<Option<File>> {
-	let fd = match unix_fs::openat(
+	let fd = match rustix::fs::openat(
 		&parent.file,
 		file_name,
 		OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
@@ -586,7 +594,7 @@ fn open_named_private_file_optional(
 }
 
 fn create_private_file(parent: &PrivateDirectory, file_name: &OsStr) -> Result<File> {
-	let fd = unix_fs::openat(
+	let fd = rustix::fs::openat(
 		&parent.file,
 		file_name,
 		OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::CLOEXEC | OFlags::NOFOLLOW,
@@ -594,7 +602,7 @@ fn create_private_file(parent: &PrivateDirectory, file_name: &OsStr) -> Result<F
 	)?;
 	let file = File::from(fd);
 
-	file.set_permissions(fs::Permissions::from_mode(PRIVATE_FILE_MODE.into()))?;
+	file.set_permissions(Permissions::from_mode(PRIVATE_FILE_MODE.into()))?;
 
 	Ok(file)
 }
@@ -640,7 +648,7 @@ fn read_json_bytes_bounded(
 	}
 
 	let payload =
-		std::str::from_utf8(&bytes).map_err(|_| eyre::eyre!("{} is not UTF-8", path.display()))?;
+		str::from_utf8(&bytes).map_err(|_| eyre::eyre!("{} is not UTF-8", path.display()))?;
 	let value = serde_json::from_str(payload)
 		.map_err(|error| eyre::eyre!("failed to parse {} as JSON: {error}", path.display()))?;
 
@@ -681,7 +689,7 @@ fn read_named_private_json_file(
 		.ok_or_else(|| eyre::eyre!("private JSON bounded read limit is too large"))?;
 	let mut bytes = Vec::with_capacity(usize::try_from(initial.len).unwrap_or(0));
 
-	std::io::Read::by_ref(&mut file).take(read_limit).read_to_end(&mut bytes)?;
+	Read::by_ref(&mut file).take(read_limit).read_to_end(&mut bytes)?;
 
 	if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > max_bytes {
 		return Err(eyre::eyre!("private JSON exceeds its bounded read limit"));
@@ -701,7 +709,7 @@ fn read_named_private_json_file(
 	verify_private_directory_current_path(parent)?;
 
 	let payload =
-		std::str::from_utf8(&bytes).map_err(|_| eyre::eyre!("{} is not UTF-8", path.display()))?;
+		str::from_utf8(&bytes).map_err(|_| eyre::eyre!("{} is not UTF-8", path.display()))?;
 	let value = serde_json::from_str(payload)
 		.map_err(|error| eyre::eyre!("failed to parse {} as JSON: {error}", path.display()))?;
 
@@ -736,7 +744,7 @@ impl PinnedPrivateJsonFile {
 
 		verify_private_directory_current_path(&self.parent)?;
 
-		unix_fs::unlinkat(&self.parent.file, &self.name, AtFlags::empty())?;
+		rustix::fs::unlinkat(&self.parent.file, &self.name, AtFlags::empty())?;
 
 		self.parent.file.sync_all()?;
 
@@ -758,7 +766,7 @@ fn open_private_directory(path: &Path, create: bool) -> Result<PrivateDirectory>
 		return descend_private_directory(current, relative.components(), create);
 	}
 
-	let root_fd = unix_fs::open(
+	let root_fd = rustix::fs::open(
 		"/",
 		OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
 		Mode::empty(),
@@ -850,7 +858,7 @@ fn open_pinned_sandbox_root(root: PathBuf, exact_private: bool) -> Result<Privat
 	} else {
 		validate_directory_metadata(&root, &before, false)?
 	};
-	let fd = unix_fs::open(
+	let fd = rustix::fs::open(
 		&root,
 		OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
 		Mode::empty(),
@@ -871,7 +879,7 @@ fn open_pinned_sandbox_root(root: PathBuf, exact_private: bool) -> Result<Privat
 }
 
 #[cfg(test)]
-fn validate_exact_sandbox_private_directory_metadata(metadata: &fs::Metadata) -> Result<()> {
+fn validate_exact_sandbox_private_directory_metadata(metadata: &Metadata) -> Result<()> {
 	if !metadata.is_dir()
 		|| metadata.uid() != current_uid()
 		|| metadata.permissions().mode() & 0o7777 != u32::from(PRIVATE_DIRECTORY_MODE)
@@ -894,7 +902,7 @@ fn descend_private_directory<'a>(
 			continue;
 		};
 		let child_path = current.path.join(name);
-		let (fd, created) = match unix_fs::openat(
+		let (fd, created) = match rustix::fs::openat(
 			&current.file,
 			name,
 			OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
@@ -908,7 +916,7 @@ fn descend_private_directory<'a>(
 					));
 				}
 
-				let created = match unix_fs::mkdirat(
+				let created = match rustix::fs::mkdirat(
 					&current.file,
 					name,
 					Mode::from_bits_retain(PRIVATE_DIRECTORY_MODE),
@@ -921,7 +929,7 @@ fn descend_private_directory<'a>(
 				};
 
 				(
-					unix_fs::openat(
+					rustix::fs::openat(
 						&current.file,
 						name,
 						OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
@@ -941,7 +949,7 @@ fn descend_private_directory<'a>(
 		let file = File::from(fd);
 
 		if created {
-			file.set_permissions(fs::Permissions::from_mode(PRIVATE_DIRECTORY_MODE.into()))?;
+			file.set_permissions(Permissions::from_mode(PRIVATE_DIRECTORY_MODE.into()))?;
 		}
 
 		let metadata = file.metadata()?;
@@ -956,7 +964,7 @@ fn descend_private_directory<'a>(
 
 fn validate_directory_metadata(
 	path: &Path,
-	metadata: &fs::Metadata,
+	metadata: &Metadata,
 	private_anchor_found: bool,
 ) -> Result<bool> {
 	let mode = metadata.permissions().mode();
@@ -985,7 +993,7 @@ fn validate_directory_metadata(
 	Ok(private_anchor_found || uid == current_uid)
 }
 
-fn validate_private_json_metadata(path: &Path, metadata: &fs::Metadata) -> Result<()> {
+fn validate_private_json_metadata(path: &Path, metadata: &Metadata) -> Result<()> {
 	if !metadata.is_file()
 		|| metadata.len() == 0
 		|| metadata.len() > MAX_PRIVATE_JSON_BYTES
@@ -1059,7 +1067,7 @@ fn clean_absolute_path_inner(source: &Path, depth: usize) -> Result<PathBuf> {
 								&& metadata.is_dir()
 								&& metadata.permissions().mode() & 0o022 == 0;
 						},
-						Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+						Err(error) if error.kind() == ErrorKind::NotFound => {
 							root_owned_prefix = false;
 						},
 						Err(error) => return Err(error.into()),
@@ -1089,7 +1097,7 @@ fn temporary_name(file_name: &OsStr) -> Result<OsString> {
 	Ok(OsString::from(format!(".{file_name}.{suffix}.tmp")))
 }
 
-fn same_file(left: &fs::Metadata, right: &fs::Metadata) -> bool {
+fn same_file(left: &Metadata, right: &Metadata) -> bool {
 	left.dev() == right.dev()
 		&& left.ino() == right.ino()
 		&& left.len() == right.len()
