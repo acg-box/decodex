@@ -1,9 +1,10 @@
 //! Last observed native session configuration; never a next-turn command.
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+
 use crate::{
 	ConversationContractError, ConversationModel, ConversationReasoningEffort, EntityId,
-	EntityRevision,
+	EntityRevision, conversation,
 };
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
 /// Source-bound historical response facts. Presence does not mean the process is live.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -33,15 +34,14 @@ impl ConversationNativeSettings {
 			|| self.model_provider.len() > 512
 			|| self.model_provider.chars().any(char::is_control)
 			|| self.cwd.is_empty()
-			|| self.cwd.len() > 4096
+			|| self.cwd.len() > 4_096
 			|| self.cwd.chars().any(char::is_control)
 			|| !self.cwd.starts_with('/')
 			|| self.observed_at_micros <= 0
 			|| self.source_account_revision.0 == 0
-			|| !crate::conversation::is_canonical_uuid_v4(self.source_account_id.as_str())
-			|| !crate::conversation::is_canonical_uuid_v4(
-				self.source_process_generation_id.as_str(),
-			) {
+			|| !conversation::is_canonical_uuid_v4(self.source_account_id.as_str())
+			|| !conversation::is_canonical_uuid_v4(self.source_process_generation_id.as_str())
+		{
 			return Err(ConversationContractError::InvalidProjection);
 		}
 
@@ -85,27 +85,28 @@ impl<'de> Deserialize<'de> for ConversationNativeSettings {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+	use serde_json::Value;
+
+	use crate::{ConversationNativeSettings, ConversationSummary};
 
 	#[test]
 	fn observations_round_trip_but_do_not_attach_to_unbound_conversations() {
-		let settings = json!({"model":"native-model","model_provider":"native-provider","cwd":"/native/project","reasoning_effort":"ultra","observed_at_micros":42,"source_account_id":"10000000-0000-4000-8000-000000000001","source_account_revision":3,"source_process_generation_id":"20000000-0000-4000-8000-000000000001"});
-		let mut summary = json!({"conversation_id":"30000000-0000-4000-8000-000000000001","title":"Task","codex_thread_id":"native-thread","conversation_revision":1,"projection_updated_at_micros":43,"runtime_session_id":"40000000-0000-4000-8000-000000000001","runtime_session_revision":3,"state":"ready","native_settings":settings});
-		let decoded: crate::ConversationSummary = serde_json::from_value(summary.clone()).unwrap();
+		let settings = serde_json::json!({"model":"native-model","model_provider":"native-provider","cwd":"/native/project","reasoning_effort":"ultra","observed_at_micros":42,"source_account_id":"10000000-0000-4000-8000-000000000001","source_account_revision":3,"source_process_generation_id":"20000000-0000-4000-8000-000000000001"});
+		let mut summary = serde_json::json!({"conversation_id":"30000000-0000-4000-8000-000000000001","title":"Task","codex_thread_id":"native-thread","conversation_revision":1,"projection_updated_at_micros":43,"runtime_session_id":"40000000-0000-4000-8000-000000000001","runtime_session_revision":3,"state":"ready","native_settings":settings});
+		let decoded: ConversationSummary = serde_json::from_value(summary.clone()).unwrap();
 
 		assert_eq!(serde_json::to_value(decoded).unwrap()["native_settings"], settings);
 
-		summary["codex_thread_id"] = serde_json::Value::Null;
+		summary["codex_thread_id"] = Value::Null;
 
-		assert!(serde_json::from_value::<crate::ConversationSummary>(summary).is_err());
+		assert!(serde_json::from_value::<ConversationSummary>(summary).is_err());
 
 		for (field, value) in [
-			("model_provider", json!(" ")),
-			("cwd", json!("relative")),
-			("observed_at_micros", json!(0)),
-			("source_account_revision", json!(0)),
-			("source_process_generation_id", json!("foreign")),
+			("model_provider", serde_json::json!(" ")),
+			("cwd", serde_json::json!("relative")),
+			("observed_at_micros", serde_json::json!(0)),
+			("source_account_revision", serde_json::json!(0)),
+			("source_process_generation_id", serde_json::json!("foreign")),
 		] {
 			let mut invalid = settings.clone();
 

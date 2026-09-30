@@ -1,5 +1,8 @@
 //! Exact native task estimates; missing data is distinct from zero.
 use serde::{Deserialize, Serialize};
+
+use crate::EntityId;
+
 /// Provider estimates for one exact thread; integer micros preserve precision.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,9 +48,9 @@ pub enum AgentUsageEstimateResult {
 	/// Native returned an estimate for the exact requested thread and source account.
 	Available {
 		/// Exact requested work.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Local account that authenticated the request.
-		account_id: crate::EntityId,
+		account_id: EntityId,
 		/// Time of observation, in Unix microseconds.
 		observed_at_micros: i64,
 		/// Reported integer estimates and optional token groups.

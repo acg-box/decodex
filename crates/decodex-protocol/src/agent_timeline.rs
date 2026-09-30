@@ -1,5 +1,9 @@
 //! Public native timeline projection. History does not authorize new agent work.
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
+
+use crate::{AgentActivityDto, AgentTurnUsageDto, EntityId, WeatherForecast};
 
 /// One exact native page, oldest entry first. The continuation reads older entries.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -16,7 +20,7 @@ pub struct AgentTimelinePage {
 	pub next_cursor: Option<String>,
 	/// Weather cards keyed by the exact native turn.
 	#[serde(default)]
-	pub weather: std::collections::BTreeMap<String, Vec<crate::WeatherForecast>>,
+	pub weather: BTreeMap<String, Vec<WeatherForecast>>,
 	/// Voice session active immediately before the first entry, if any.
 	pub active_realtime_session_at_page_start: Option<String>,
 }
@@ -38,7 +42,7 @@ pub struct AgentTimelinePromotedContent {
 	/// Some content was omitted by the display bound.
 	pub truncated: bool,
 	/// Selected public activity facts, if applicable.
-	pub activity: Option<crate::AgentActivityDto>,
+	pub activity: Option<AgentActivityDto>,
 	/// Original attachment indices for exact native preview requests.
 	pub attachments: Vec<AgentTimelineAttachment>,
 }
@@ -103,7 +107,7 @@ pub enum AgentTimelineContent {
 		/// Some message content was omitted by the display bound.
 		truncated: bool,
 		/// Existing public activity projection, if applicable.
-		activity: Option<crate::AgentActivityDto>,
+		activity: Option<AgentActivityDto>,
 		/// Native tool metadata declares an interactive App UI resource.
 		#[serde(default)]
 		app_ui: bool,
@@ -164,7 +168,7 @@ pub enum AgentTimelineContent {
 		/// Saved provider usage for this exact completed turn. Native timeline has no usage field.
 		usage_summary: Option<String>,
 		/// Compact token counts for this exact turn.
-		usage: Option<crate::AgentTurnUsageDto>,
+		usage: Option<AgentTurnUsageDto>,
 		/// Public provider failure message, when present.
 		error: Option<AgentTimelineError>,
 	},
@@ -177,18 +181,18 @@ pub enum AgentTimelineResult {
 	/// Complete bounded page from the current account and task binding.
 	Available {
 		/// Exact requested local task.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Account that authenticated this read.
-		account_id: crate::EntityId,
+		account_id: EntityId,
 		/// Native timeline page.
 		page: AgentTimelinePage,
 	},
 	/// Incomplete recent display content; never execution or pagination evidence.
 	Summary {
 		/// Exact requested local task.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Account that authenticated the read.
-		account_id: crate::EntityId,
+		account_id: EntityId,
 		/// Exact native conversation.
 		thread_id: String,
 		/// Recent prompts and final replies without canonical timeline positions.
