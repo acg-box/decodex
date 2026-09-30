@@ -268,16 +268,14 @@ private enum ResetCardDispatchOutcome {
 	case state(ResetCardOperationState)
 	case error(ResetCardClientError)
 
-	var removesPendingAttempt: Bool {
+	var journalObservation: ResetCardJournalObservation {
 		switch self {
-		case .state(.completed), .state(.failedBeforeEffect),
-			.error(.commandRejected):
-			return true
-		case .state(.prepared), .state(.effectAmbiguous), .state(.notFound),
-			.state(.unavailable), .error:
-			return false
+		case .state(let state): return ResetCardJournalObservation(state)
+		case .error(.commandRejected): return .rejected
+		case .error: return .unconfirmed
 		}
 	}
+
 }
 
 private enum ResetCardRefreshResult: Equatable {
@@ -1262,7 +1260,7 @@ final class ResetCardStore {
 					return ResetCardDispatchOutcome.error(Self.clientError(error))
 				}
 			},
-			shouldRemove: \.removesPendingAttempt
+			observation: \.journalObservation
 		) else {
 			reloadPendingJournal()
 			if isPendingRecoveryBlocked {
@@ -1819,7 +1817,7 @@ final class ResetCardStore {
 					return ResetCardDispatchOutcome.error(Self.clientError(error))
 				}
 			},
-			shouldRemove: \.removesPendingAttempt
+			observation: \.journalObservation
 		) else {
 			await inventoryReads.endEffect(attempt.target.accountID)
 			reloadPendingJournal()
@@ -1879,7 +1877,7 @@ final class ResetCardStore {
 				text: error.localizedDescription
 			)
 			if removeTerminalAttempt {
-				forget(attempt)
+				forget(attempt, observation: .rejected)
 			}
 			await beginPostUseReconciliation(attempt.target.accountID)
 			return ResetCardUseCompletion(resolved: true)
@@ -1916,7 +1914,7 @@ final class ResetCardStore {
 				text: state.presentation
 			)
 			if removeTerminalAttempt {
-				forget(attempt)
+				forget(attempt, observation: ResetCardJournalObservation(state))
 			}
 			await beginPostUseReconciliation(attempt.target.accountID)
 			return ResetCardUseCompletion(resolved: true)
@@ -1985,12 +1983,12 @@ final class ResetCardStore {
 		return true
 	}
 
-	private func forget(_ attempt: ResetCardUseAttempt) {
+	private func forget(_ attempt: ResetCardUseAttempt, observation: ResetCardJournalObservation) {
 		quotaFillOrigins.removeValue(forKey: attempt.idempotencyKey)
 		guard isPendingRecoveryBlocked == false else {
 			return
 		}
-		if let updated = pendingStore.remove(attempt) {
+		if let updated = pendingStore.resolve(attempt, observation: observation) {
 			Logger(subsystem: "box.acg.decodex", category: "reset-recovery").notice("Retired completed request; remaining=\(updated.count)")
 			pendingAttempts = updated
 			reconcilePendingStatuses()

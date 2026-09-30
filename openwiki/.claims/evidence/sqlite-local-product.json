@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bafd1a296405a55e4a28fefad80939d275bb27d2f4dfb205388b9136190ac903",
+  "pageVersion": "sha256:3c3ed3d9585dd020a1b61d31f921d065399201610ad24bcb470fcbfb0fbea2c6",
   "claims": [
     {
       "id": "claim_57467868d3114a4f8efa994a912c927d",
@@ -36,13 +36,13 @@
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
-          "version": "repo-file-v1:sha256:d84b05ed65274e424eaba04fc1b6f40960c558f3586360fd9b40ad61fa31f8ed"
+          "version": "repo-file-v1:sha256:cccfa29e3ce619ec63d4333ec307cffcb1985c02ea7455b877117ed5f9087742"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T09:24:46.437Z"
+    "at": "2026-09-30T09:30:20.448Z"
   }
 }

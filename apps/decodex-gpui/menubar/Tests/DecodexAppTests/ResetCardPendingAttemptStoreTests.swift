@@ -145,7 +145,7 @@ final class ResetCardPendingAttemptStoreTests: XCTestCase {
 
 		XCTAssertEqual(fixture.store.load(), .recoveryBlocked([]))
 		XCTAssertNil(fixture.store.insert(try makeAttempt(2)))
-		XCTAssertNil(fixture.store.remove(attempt))
+		XCTAssertNil(fixture.store.resolve(attempt, observation: .completed))
 		XCTAssertEqual(try Data(contentsOf: fixture.journalURL), original)
 		let attributes = try FileManager.default.attributesOfItem(
 			atPath: fixture.journalURL.path
@@ -182,7 +182,7 @@ final class ResetCardPendingAttemptStoreTests: XCTestCase {
 				operationRan = true
 				return true
 			},
-			shouldRemove: { $0 }
+			observation: { $0 ? .completed : .unconfirmed }
 		)
 
 		XCTAssertNil(dispatch)
@@ -250,7 +250,7 @@ final class ResetCardPendingAttemptStoreTests: XCTestCase {
 			fixture.store.load(),
 			.recoveryBlocked([attempt])
 		)
-		XCTAssertNil(fixture.store.remove(attempt))
+		XCTAssertNil(fixture.store.resolve(attempt, observation: .completed))
 		XCTAssertEqual(try Data(contentsOf: fixture.journalURL), changed)
 	}
 
@@ -274,7 +274,7 @@ final class ResetCardPendingAttemptStoreTests: XCTestCase {
 
 		XCTAssertEqual(fixture.store.insert(first), [first])
 		XCTAssertEqual(other.insert(second), [first, second])
-		XCTAssertEqual(fixture.store.remove(first), [second])
+		XCTAssertEqual(fixture.store.resolve(first, observation: .completed), [second])
 		XCTAssertEqual(other.load(), .available([second]))
 	}
 

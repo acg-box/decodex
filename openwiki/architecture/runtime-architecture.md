@@ -5,7 +5,7 @@ description: "Service, native execution, desktop bundle and persistent state own
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-30T09:24:46.437Z
+    at: 2026-09-30T09:30:20.448Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs

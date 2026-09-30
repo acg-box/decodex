@@ -401,7 +401,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			pendingStore: fixture.pendingStore
 		)
 		await staleStore.refresh()
-		XCTAssertEqual(fixture.pendingStore.remove(fixture.attempt), [])
+		XCTAssertEqual(fixture.pendingStore.resolve(fixture.attempt, observation: .completed), [])
 
 		await staleStore.checkPendingStatus(fixture.attempt)
 

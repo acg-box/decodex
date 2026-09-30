@@ -20,10 +20,28 @@ enum ResetCardPendingAttemptLoad: Equatable {
 	}
 }
 
-enum ResetCardPendingDispatchJournalUpdate: Equatable {
+enum ResetCardPendingDispatchJournalUpdate: String, Decodable, Equatable {
 	case retained
 	case removed
-	case removalFailed
+	case removalFailed = "removal_failed"
+}
+
+enum ResetCardJournalObservation: String, Encodable {
+	case completed, rejected, prepared, unavailable, unconfirmed
+	case failedBeforeEffect = "failed_before_effect"
+	case effectAmbiguous = "effect_ambiguous"
+	case notFound = "not_found"
+
+	init(_ state: ResetCardOperationState) {
+		switch state {
+		case .completed: self = .completed
+		case .failedBeforeEffect: self = .failedBeforeEffect
+		case .prepared: self = .prepared
+		case .effectAmbiguous: self = .effectAmbiguous
+		case .notFound: self = .notFound
+		case .unavailable: self = .unavailable
+		}
+	}
 }
 
 struct ResetCardPendingDispatchResult<Value> {
@@ -57,15 +75,15 @@ struct ResetCardPendingAttemptStore {
 		return result?.attempts
 	}
 
-	func remove(_ attempt: ResetCardUseAttempt) -> [ResetCardUseAttempt]? {
-		let result: Attempts? = perform(Request(operation: "remove", path: journalURL.path, attempt: attempt))
+	func resolve(_ attempt: ResetCardUseAttempt, observation: ResetCardJournalObservation) -> [ResetCardUseAttempt]? {
+		let result: Attempts? = perform(Request(operation: "resolve", path: journalURL.path, attempt: attempt, observation: observation))
 		return result?.attempts
 	}
 
 	func withDispatchLock<Value>(
 		for attempt: ResetCardUseAttempt,
 		operation: () async -> Value,
-		shouldRemove: (Value) -> Bool
+		observation: (Value) -> ResetCardJournalObservation
 	) async -> ResetCardPendingDispatchResult<Value>? {
 		guard let lease: Lease = perform(Request(operation: "begin_dispatch", path: journalURL.path, attempt: attempt)) else {
 			return nil
@@ -73,11 +91,10 @@ struct ResetCardPendingAttemptStore {
 		// Rust retains the journal lock across the async request. Completion only
 		// retires this exact saved identity; cancellation never starts another send.
 		let value = await operation()
-		let remove = shouldRemove(value)
-		let result: Finished? = perform(Request(operation: "finish_dispatch", lease: lease.lease, remove: remove))
+		let result: Finished? = perform(Request(operation: "finish_dispatch", lease: lease.lease, observation: observation(value)))
 		return ResetCardPendingDispatchResult(
 			value: value,
-			journalUpdate: remove ? (result?.removed == true ? .removed : .removalFailed) : .retained
+			journalUpdate: result?.update ?? .removalFailed
 		)
 	}
 
@@ -92,7 +109,7 @@ struct ResetCardPendingAttemptStore {
 		var path: String? = nil
 		var attempt: ResetCardUseAttempt? = nil
 		var lease: UInt64? = nil
-		var remove: Bool? = nil
+		var observation: ResetCardJournalObservation? = nil
 	}
 	private struct Loaded: Decodable {
 		let blocked: Bool
@@ -100,7 +117,7 @@ struct ResetCardPendingAttemptStore {
 	}
 	private struct Attempts: Decodable { let attempts: [ResetCardUseAttempt] }
 	private struct Lease: Decodable { let lease: UInt64 }
-	private struct Finished: Decodable { let removed: Bool }
+	private struct Finished: Decodable { let update: ResetCardPendingDispatchJournalUpdate }
 
 	private static func defaultJournalURL() -> URL {
 		let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first

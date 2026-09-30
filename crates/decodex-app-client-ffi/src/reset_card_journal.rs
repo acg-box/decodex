@@ -91,13 +91,30 @@ impl Loaded {
 	}
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Observation {
+	Completed,
+	FailedBeforeEffect,
+	Rejected,
+	Prepared,
+	EffectAmbiguous,
+	NotFound,
+	Unavailable,
+	Unconfirmed,
+}
+impl Observation {
+	fn retires(&self) -> bool {
+		matches!(self, Self::Completed | Self::FailedBeforeEffect | Self::Rejected)
+	}
+}
+#[derive(Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
 	Load { path: PathBuf },
 	Insert { path: PathBuf, attempt: Attempt },
-	Remove { path: PathBuf, attempt: Attempt },
+	Resolve { path: PathBuf, attempt: Attempt, observation: Observation },
 	BeginDispatch { path: PathBuf, attempt: Attempt },
-	FinishDispatch { lease: u64, remove: bool },
+	FinishDispatch { lease: u64, observation: Observation },
 }
 struct Dispatch {
 	_lock: Lock,
@@ -126,10 +143,12 @@ pub(super) fn request(bytes: &[u8]) -> Option<Value> {
 			persist(&path, &current).ok()?;
 			Some(json!({"attempts":current}))
 		},
-		Request::Remove { path, attempt } => {
+		Request::Resolve { path, attempt, observation } => {
 			let _lock = Lock::acquire(&path, true).ok()?;
 			let current = writable(&path)?;
-			Some(json!({"attempts": remove(&path, current, &attempt)?}))
+			let attempts =
+				if observation.retires() { remove(&path, current, &attempt)? } else { current };
+			Some(json!({"attempts": attempts}))
 		},
 		Request::BeginDispatch { path, attempt } => {
 			let lock = Lock::acquire(&path, false).ok()?;
@@ -144,11 +163,17 @@ pub(super) fn request(bytes: &[u8]) -> Option<Value> {
 				.insert(lease, Dispatch { _lock: lock, path, current, attempt });
 			Some(json!({"lease":lease}))
 		},
-		Request::FinishDispatch { lease, remove: should_remove } => {
+		Request::FinishDispatch { lease, observation } => {
 			let dispatch = dispatches().lock().ok()?.remove(&lease)?;
-			let removed = should_remove
-				&& remove(&dispatch.path, dispatch.current.clone(), &dispatch.attempt).is_some();
-			Some(json!({"removed":removed}))
+			let update = if !observation.retires() {
+				"retained"
+			} else if remove(&dispatch.path, dispatch.current.clone(), &dispatch.attempt).is_some()
+			{
+				"removed"
+			} else {
+				"removal_failed"
+			};
+			Some(json!({"update":update}))
 		},
 	}
 }
@@ -442,7 +467,12 @@ mod tests {
 			call(json!({"operation":"load","path":path})),
 			Some(json!({"blocked":true,"attempts":[]}))
 		);
-		assert!(call(json!({"operation":"remove","path":path,"attempt":attempt()})).is_none());
+		assert!(
+			call(
+				json!({"operation":"resolve","path":path,"attempt":attempt(),"observation":"completed"})
+			)
+			.is_none()
+		);
 		assert_eq!(fs::read(&path).unwrap(), bytes);
 		// This is the old Swift format, including a missing optional expiry field.
 		fs::write(
@@ -465,7 +495,12 @@ mod tests {
 			call(json!({"operation":"begin_dispatch","path":path,"attempt":attempt()})).unwrap()["lease"].as_u64().unwrap()
 		};
 		let lease = begin();
-		assert!(call(json!({"operation":"remove","path":path,"attempt":attempt()})).is_none());
+		assert!(
+			call(
+				json!({"operation":"resolve","path":path,"attempt":attempt(),"observation":"completed"})
+			)
+			.is_none()
+		);
 		let child = std::process::Command::new(std::env::current_exe().unwrap())
 			.args([
 				"--exact",
@@ -477,23 +512,56 @@ mod tests {
 			.unwrap();
 		assert!(child.success());
 		assert_eq!(
-			call(json!({"operation":"finish_dispatch","lease":lease,"remove":false})),
-			Some(json!({"removed":false}))
+			call(json!({"operation":"finish_dispatch","lease":lease,"observation":"unconfirmed"})),
+			Some(json!({"update":"retained"}))
 		);
 		assert_eq!(
 			call(json!({"operation":"load","path":path})),
 			Some(json!({"blocked":false,"attempts":[attempt()]}))
 		);
-		assert!(call(json!({"operation":"finish_dispatch","lease":lease,"remove":true})).is_none());
+		assert!(
+			call(json!({"operation":"finish_dispatch","lease":lease,"observation":"completed"}))
+				.is_none()
+		);
 		let next = begin();
 		assert_eq!(
-			call(json!({"operation":"finish_dispatch","lease":next,"remove":true})),
-			Some(json!({"removed":true}))
+			call(json!({"operation":"finish_dispatch","lease":next,"observation":"completed"})),
+			Some(json!({"update":"removed"}))
 		);
 		assert_eq!(
 			call(json!({"operation":"load","path":path})),
 			Some(json!({"blocked":false,"attempts":[]}))
 		);
+	}
+
+	#[test]
+	fn only_terminal_observations_retire_a_saved_request() {
+		for observation in [
+			"prepared",
+			"effect_ambiguous",
+			"not_found",
+			"unavailable",
+			"unconfirmed",
+			"completed",
+			"failed_before_effect",
+			"rejected",
+		] {
+			let fixture = Fixture::new();
+			let path = fixture.path();
+			call(json!({"operation":"insert","path":path,"attempt":attempt()})).unwrap();
+			let expected =
+				if matches!(observation, "completed" | "failed_before_effect" | "rejected") {
+					json!([])
+				} else {
+					json!([attempt()])
+				};
+			assert_eq!(
+				call(
+					json!({"operation":"resolve","path":path,"attempt":attempt(),"observation":observation})
+				),
+				Some(json!({"attempts":expected}))
+			);
+		}
 	}
 
 	#[test]
