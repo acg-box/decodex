@@ -7,12 +7,13 @@ use crate::{
 	prelude::{Result, eyre},
 };
 
-pub(super) const MAX_ARTIFACT_PATH_BYTES: usize = 4096;
-pub(super) const MAX_EVIDENCE_TEXT_BYTES: usize = 2048;
+pub(super) const MAX_ARTIFACT_PATH_BYTES: usize = 4_096;
+pub(super) const MAX_EVIDENCE_TEXT_BYTES: usize = 2_048;
 pub(super) const MAX_IDENTIFIER_BYTES: usize = 256;
-pub(super) const MAX_TITLE_BYTES: usize = 1024;
-pub(super) const MAX_URL_BYTES: usize = 2048;
+pub(super) const MAX_TITLE_BYTES: usize = 1_024;
+pub(super) const MAX_URL_BYTES: usize = 2_048;
 pub(super) const OVERSIZE_INCIDENT: &str = "RADAR_LEDGER_OVERSIZE";
+
 const ROW_LIMIT_INCIDENT: &str = "RADAR_LEDGER_ROW_LIMIT";
 const TABLES: &[(&str, &str)] = &[
 	("upstream_commit", "last_seen_at"),
@@ -127,7 +128,9 @@ fn validate_storage_bytes(connection: &Connection, limit: u64) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use rusqlite::Connection;
+
+	use crate::ledger::bounds;
 
 	#[test]
 	fn nested_bounded_write_rolls_back_partial_operation_on_retention_failure() {
@@ -145,7 +148,7 @@ mod tests {
 			)
 			.expect("outer ledger transaction should start");
 
-		let error = bounded_write(&connection, "unknown_table", "fetched_at", || {
+		let error = bounds::bounded_write(&connection, "unknown_table", "fetched_at", || {
 			connection.execute(
 				"
 				INSERT INTO source_cache (url, fetched_at)
