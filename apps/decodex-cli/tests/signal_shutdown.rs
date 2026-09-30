@@ -4,9 +4,16 @@
 #![allow(unused_crate_dependencies)]
 
 use std::{
-	fs,
-	io::{BufRead as _, BufReader},
-	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+	fs::{self, Permissions},
+	io::{BufRead as _, BufReader, Error, Write as _},
+	os::{
+		fd::{AsRawFd as _, RawFd},
+		unix::{
+			fs::{MetadataExt as _, PermissionsExt as _},
+			net::UnixStream,
+			process::CommandExt as _,
+		},
+	},
 	path::{Path, PathBuf},
 	process::{Child, Command, ExitStatus, Stdio},
 	sync::mpsc,
@@ -14,29 +21,120 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use libc::{F_SETFD, SIGINT, SIGKILL, SIGTERM, c_int, pid_t};
 use tempfile::TempDir;
 
 const READY_LINE: &str = "decodex serving WebSocket /v1/ws over same-UID local transport";
 
+struct RunningDaemon {
+	child: Child,
+	reader: JoinHandle<()>,
+}
+impl RunningDaemon {
+	fn start(home: &Path) -> Self {
+		Self::start_with_parent(home, None)
+	}
+
+	fn start_with_parent(home: &Path, parent_fd: Option<RawFd>) -> Self {
+		let mut command = Command::new(env!("CARGO_BIN_EXE_decodex"));
+
+		command.arg("serve").env("HOME", home).env("PATH", home.join("bin")).stdout(Stdio::piped());
+
+		if let Some(fd) = parent_fd {
+			command.args(["--parent-fd", &fd.to_string()]);
+			// SAFETY: only async-signal-safe fcntl runs before exec; the caller retains fd until
+			// spawn.
+			unsafe {
+				command.pre_exec(move || {
+					if libc::fcntl(fd, F_SETFD, 0) < 0 {
+						return Err(Error::last_os_error());
+					}
+
+					Ok(())
+				});
+			}
+		}
+
+		let mut child = command.spawn().expect("start daemon test process");
+		let stdout = child.stdout.take().expect("capture daemon stdout");
+		let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
+		let reader = thread::spawn(move || {
+			for line in BufReader::new(stdout).lines() {
+				let line = line.expect("read daemon stdout");
+
+				if line == READY_LINE {
+					let _ = ready_sender.send(());
+				}
+			}
+		});
+
+		if ready_receiver.recv_timeout(Duration::from_secs(20)).is_err() {
+			let _ = child.kill();
+			let status = child.wait().expect("reap unready daemon");
+
+			reader.join().expect("join daemon output reader");
+
+			panic!("daemon did not become ready before timeout: {status}");
+		}
+
+		Self { child, reader }
+	}
+
+	fn signal(self, signal: c_int) -> ExitStatus {
+		assert_eq!(
+			// SAFETY: the child PID came from `Child`; tests pass only defined Unix signals.
+			unsafe { libc::kill(self.child.id() as pid_t, signal) },
+			0,
+			"send Unix process signal",
+		);
+
+		self.wait()
+	}
+
+	fn wait(mut self) -> ExitStatus {
+		let deadline = Instant::now() + Duration::from_secs(20);
+		let status = loop {
+			if let Some(status) = self.child.try_wait().expect("poll daemon exit") {
+				break status;
+			}
+
+			if Instant::now() >= deadline {
+				let _ = self.child.kill();
+				let status = self.child.wait().expect("reap daemon after shutdown timeout");
+
+				self.reader.join().expect("join daemon output reader");
+
+				panic!("daemon did not exit after shutdown request: {status}");
+			}
+
+			thread::sleep(Duration::from_millis(20));
+		};
+
+		self.reader.join().expect("join daemon output reader");
+
+		status
+	}
+}
+
 #[test]
 fn sigint_performs_exact_local_transport_cleanup() {
-	assert_signal_cleanup(libc::SIGINT);
+	assert_signal_cleanup(SIGINT);
 }
 
 #[test]
 fn sigterm_performs_exact_local_transport_cleanup() {
-	assert_signal_cleanup(libc::SIGTERM);
+	assert_signal_cleanup(SIGTERM);
 }
 
 #[test]
 fn sigkill_stale_socket_is_recovered_by_the_next_daemon() {
 	let (_home, canonical_home, socket) = fixture();
-	let crashed = RunningDaemon::start(&canonical_home).signal(libc::SIGKILL);
+	let crashed = RunningDaemon::start(&canonical_home).signal(SIGKILL);
 
 	assert!(!crashed.success(), "SIGKILL must not masquerade as graceful exit");
 	assert!(socket.exists(), "SIGKILL leaves the published pathname stale");
 
-	let recovered = RunningDaemon::start(&canonical_home).signal(libc::SIGTERM);
+	let recovered = RunningDaemon::start(&canonical_home).signal(SIGTERM);
 
 	assert!(recovered.success(), "replacement daemon must shut down cleanly: {recovered}");
 	assert!(!socket.exists(), "replacement daemon must clean its exact publication");
@@ -53,11 +151,6 @@ fn parent_channel_data_reports_failure_after_transport_cleanup() {
 }
 
 fn assert_parent_cleanup(send_data: bool) {
-	use std::{
-		io::Write as _,
-		os::{fd::AsRawFd as _, unix::net::UnixStream},
-	};
-
 	let (_home, canonical_home, socket) = fixture();
 	let (mut parent, child) = UnixStream::pair().expect("create parent channel");
 	let daemon = RunningDaemon::start_with_parent(&canonical_home, Some(child.as_raw_fd()));
@@ -91,10 +184,10 @@ fn fixture() -> (TempDir, PathBuf, PathBuf) {
 	fs::create_dir(&root).expect("create daemon test root");
 	fs::create_dir(&bin).expect("create isolated daemon test PATH");
 	fs::create_dir(&server).expect("create daemon server directory");
-	fs::set_permissions(&bin, fs::Permissions::from_mode(0o700))
+	fs::set_permissions(&bin, Permissions::from_mode(0o700))
 		.expect("scope isolated daemon test PATH");
-	fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).expect("scope daemon test root");
-	fs::set_permissions(&server, fs::Permissions::from_mode(0o700))
+	fs::set_permissions(&root, Permissions::from_mode(0o700)).expect("scope daemon test root");
+	fs::set_permissions(&server, Permissions::from_mode(0o700))
 		.expect("scope daemon server directory");
 	fs::write(
 		&config_file,
@@ -116,13 +209,13 @@ max_entry_bytes = 65536
 		),
 	)
 	.expect("write daemon test config");
-	fs::set_permissions(config_file, fs::Permissions::from_mode(0o600))
+	fs::set_permissions(config_file, Permissions::from_mode(0o600))
 		.expect("scope daemon test config");
 
 	(home, canonical_home, socket)
 }
 
-fn assert_signal_cleanup(signal: libc::c_int) {
+fn assert_signal_cleanup(signal: c_int) {
 	let (_home, canonical_home, socket) = fixture();
 	let daemon = RunningDaemon::start(&canonical_home);
 
@@ -139,97 +232,4 @@ fn assert_signal_cleanup(signal: libc::c_int) {
 	assert!(metadata.is_file());
 	assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
 	assert_eq!(metadata.nlink(), 1);
-}
-
-struct RunningDaemon {
-	child: Child,
-	reader: JoinHandle<()>,
-}
-
-impl RunningDaemon {
-	fn start(home: &Path) -> Self {
-		Self::start_with_parent(home, None)
-	}
-
-	fn start_with_parent(home: &Path, parent_fd: Option<std::os::fd::RawFd>) -> Self {
-		use std::os::unix::process::CommandExt as _;
-
-		let mut command = Command::new(env!("CARGO_BIN_EXE_decodex"));
-
-		command.arg("serve").env("HOME", home).env("PATH", home.join("bin")).stdout(Stdio::piped());
-
-		if let Some(fd) = parent_fd {
-			command.args(["--parent-fd", &fd.to_string()]);
-			// SAFETY: only async-signal-safe fcntl runs before exec; the caller retains fd until
-			// spawn.
-			unsafe {
-				command.pre_exec(move || {
-					if libc::fcntl(fd, libc::F_SETFD, 0) < 0 {
-						return Err(std::io::Error::last_os_error());
-					}
-
-					Ok(())
-				});
-			}
-		}
-
-		let mut child = command.spawn().expect("start daemon test process");
-		let stdout = child.stdout.take().expect("capture daemon stdout");
-		let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
-		let reader = thread::spawn(move || {
-			for line in BufReader::new(stdout).lines() {
-				let line = line.expect("read daemon stdout");
-
-				if line == READY_LINE {
-					let _ = ready_sender.send(());
-				}
-			}
-		});
-
-		if ready_receiver.recv_timeout(Duration::from_secs(20)).is_err() {
-			let _ = child.kill();
-			let status = child.wait().expect("reap unready daemon");
-
-			reader.join().expect("join daemon output reader");
-
-			panic!("daemon did not become ready before timeout: {status}");
-		}
-
-		Self { child, reader }
-	}
-
-	fn signal(self, signal: libc::c_int) -> ExitStatus {
-		assert_eq!(
-			// SAFETY: the child PID came from `Child`; tests pass only defined Unix signals.
-			unsafe { libc::kill(self.child.id() as libc::pid_t, signal) },
-			0,
-			"send Unix process signal",
-		);
-
-		self.wait()
-	}
-
-	fn wait(mut self) -> ExitStatus {
-		let deadline = Instant::now() + Duration::from_secs(20);
-		let status = loop {
-			if let Some(status) = self.child.try_wait().expect("poll daemon exit") {
-				break status;
-			}
-
-			if Instant::now() >= deadline {
-				let _ = self.child.kill();
-				let status = self.child.wait().expect("reap daemon after shutdown timeout");
-
-				self.reader.join().expect("join daemon output reader");
-
-				panic!("daemon did not exit after shutdown request: {status}");
-			}
-
-			thread::sleep(Duration::from_millis(20));
-		};
-
-		self.reader.join().expect("join daemon output reader");
-
-		status
-	}
 }
