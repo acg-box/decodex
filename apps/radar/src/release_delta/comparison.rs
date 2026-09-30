@@ -1,5 +1,7 @@
 //! Release comparison payloads and tracked-signal matching.
 
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+
 use crate::{
 	prelude::Result,
 	release_delta::{
@@ -33,7 +35,7 @@ pub(super) fn build_release_comparison(
 		.filter_map(|commit| commit.get("sha").and_then(Value::as_str).map(str::to_owned))
 		.collect::<Vec<_>>();
 	let pr_numbers = compare_pr_numbers(commits);
-	let tracked_signal_slugs = tracked_signal_slugs(signals, &commit_shas, &pr_numbers);
+	let tracked_signal_slugs = tracked_signal_slugs(signals, &commit_shas, &pr_numbers)?;
 
 	Ok(serde_json::json!({
 		"stable_tag_name": stable_tag,
@@ -70,21 +72,24 @@ fn tracked_signal_slugs(
 	signals: &[Value],
 	commit_shas: &[String],
 	pr_numbers: &[u64],
-) -> Vec<String> {
+) -> Result<Vec<String>> {
 	let commit_set = commit_shas.iter().map(String::as_str).collect::<HashSet<_>>();
 	let pr_set = pr_numbers.iter().copied().collect::<HashSet<_>>();
-	let mut sorted_signals = signals.iter().collect::<Vec<_>>();
+	let mut sorted_signals = signals
+		.iter()
+		.map(|signal| {
+			let value = required_value_string(signal, "published_at")?;
+			let instant = OffsetDateTime::parse(&value, &Rfc3339).map_err(|error| {
+				eyre::eyre!("Signal published_at must be an RFC3339 timestamp: {error}")
+			})?;
+			Ok((instant, signal))
+		})
+		.collect::<Result<Vec<_>>>()?;
+	sorted_signals.sort_by_key(|(instant, _)| std::cmp::Reverse(*instant));
 
-	sorted_signals.sort_by(|left, right| {
-		right
-			.get("published_at")
-			.and_then(Value::as_str)
-			.unwrap_or_default()
-			.cmp(left.get("published_at").and_then(Value::as_str).unwrap_or_default())
-	});
-
-	sorted_signals
+	Ok(sorted_signals
 		.into_iter()
+		.map(|(_, signal)| signal)
 		.filter(|signal| {
 			let signal_shas = signal_commit_shas(signal);
 			let signal_pr = signal_pr_number(signal);
@@ -93,7 +98,7 @@ fn tracked_signal_slugs(
 				|| signal_pr.is_some_and(|number| pr_set.contains(&number))
 		})
 		.filter_map(|signal| signal.get("slug").and_then(Value::as_str).map(str::to_owned))
-		.collect()
+		.collect())
 }
 
 fn signal_commit_shas(signal: &Value) -> Vec<String> {
@@ -184,8 +189,37 @@ mod tests {
 			})
 		});
 		assert_eq!(
-			tracked_signal_slugs(&signals, &["abcdef1".into()], &[22414]),
+			tracked_signal_slugs(&signals, &["abcdef1".into()], &[22414]).unwrap(),
 			vec!["matching-pr", "matching-commit"]
 		);
+	}
+	#[test]
+	fn tracked_signals_sort_by_instant_across_offsets_and_fractional_seconds() {
+		let signals = [
+			("older", "2026-06-01T08:00:00+09:00"),
+			("utc", "2026-06-01T00:00:00Z"),
+			("equivalent", "2026-05-31T20:00:00-04:00"),
+			("fractional", "2026-06-01T00:00:00.1Z"),
+		]
+		.map(|(slug, timestamp)| {
+			let mut signal = crate::tests::fixtures::valid_signal();
+			signal["slug"] = serde_json::json!(slug);
+			signal["published_at"] = serde_json::json!(timestamp);
+			signal
+		});
+		assert_eq!(
+			tracked_signal_slugs(&signals, &[], &[22414]).unwrap(),
+			vec!["fractional", "utc", "equivalent", "older"]
+		);
+	}
+
+	#[test]
+	fn tracked_signals_reject_unparseable_publication_times() {
+		for timestamp in [serde_json::json!("not-a-time"), serde_json::Value::Null] {
+			let mut signal = crate::tests::fixtures::valid_signal();
+			signal["published_at"] = timestamp;
+			let error = tracked_signal_slugs(&[signal], &[], &[22414]).unwrap_err();
+			assert!(error.to_string().contains("published_at"), "{error}");
+		}
 	}
 }
