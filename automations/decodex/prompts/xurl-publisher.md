@@ -54,9 +54,11 @@ Success and stop conditions:
 - A completed observation, a publish with exact readback, a durable quality skip, or a validated
   no-candidate no-op reached only after `publish-next` completes its candidate path is a successful
   terminal outcome. `no_due_outcome` alone is continuation-only and not terminal.
-- Report post/outcome ID, canonical URL when published, exact author/text readback status, pricing
-  refresh status, `ordinary_https_get_count` as free, zero X API calls and cost, current-run ceiling,
-  monthly reserved and remaining ceilings, and blocker.
+- Report post/outcome ID, canonical URL when published, exact author/text readback status, and blocker.
+  Report the pricing refresh's free `ordinary_https_get_count` and its zero X API calls and cost
+  separately from paid operations. Use the operation receipts and `social cost-report` for paid call
+  counts and recorded cost ceilings. Distinguish the current run from billing-month totals; report
+  the monthly used, reserved, and remaining ceilings. Cost ceilings are not settled charges.
 - Only after all required validation, readback, and report evidence is complete, call native
   `set_thread_archived` with `archived = true` for the current Codex task. Omit the task/thread ID so
   the native current-task contract cannot archive another task. Never archive before evidence is complete.

@@ -31,8 +31,9 @@ Workflow:
    for allowlisted OpenAI Codex source, documentation, or release paths; use `landed_decodex` only for
    `github.com/acg-box/decodex/commit/<40-lowercase-hex>`; and mark Radar sources as secondary. At
    least one source must be primary.
-6. For `decision = "publish"`, provide exactly one original text item with 80 to 260 weighted
-   characters, no URL, one concrete change, and why it matters. Use `decision = "no_op"` when evidence
+6. For `decision.worthiness = "publish"`, provide exactly one original text item with at least
+   80 Unicode characters and at most 260 conservatively weighted characters, no URL, one concrete
+   change, and why it matters. Use `decision.worthiness = "no_op"` when evidence
    or usefulness is insufficient. Never lower the threshold to meet cadence.
 7. Run `<publisher> social record-candidate --staging <staging-file> --run-id "$CODEX_THREAD_ID"` once.
    Require an atomic create or exact idempotent readback and staging cleanup. Run full social validation.
