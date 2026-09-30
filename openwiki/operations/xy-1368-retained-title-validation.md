@@ -10,7 +10,7 @@ sources:
 generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-30T09:17:35.615Z
+    at: 2026-09-30T14:27:56.062Z
 ---
 
 > Current validation is owned by Makefile.toml and the [current command guide](commands-and-validation.md). The retained-title server-store commands below remain non-executable provenance; this refresh does not restore them. Current thread history and naming use native conversation adapters.

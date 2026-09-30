@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b89329ed13649c88e83070564bbe56726b4bea24434bb9e0ad1f323e963d1865",
+  "pageVersion": "sha256:42789c74541482ba409e2b35ed177dd1148e2822b57d765a08354ce292a66629",
   "claims": [
     {
       "id": "claim_b9d9d60a2b70439da2780d92ae95c878",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://automations/decodex/prompts/content-manager.md",
-          "version": "repo-file-v1:sha256:d67f2186ad3263065f1161f513f8e5395ae312609f60eec5426357fba6ca88be"
+          "version": "repo-file-v1:sha256:598edd743d78cae726ec950526e9988e7e658ae84ae3b8fe65e29a3c292b89ed"
         },
         {
           "resource": "repo://automations/decodex/prompts/xurl-publisher.md",
-          "version": "repo-file-v1:sha256:c20f597a74f8cf40d91eeffd5e8b19e904f1a180e34497d77e1fcdfb5d776ee2"
+          "version": "repo-file-v1:sha256:e52832f8c3a6e901870a897ffa9815f0b5ac2b70d290ecc40dbf591b93c9b58e"
         },
         {
           "resource": "repo://automations/portfolio.toml",
@@ -22,7 +22,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.0",
-    "at": "2026-09-28T06:22:45.949Z"
+    "by": "openwiki/0.6.1",
+    "at": "2026-09-30T14:27:56.062Z"
   }
 }

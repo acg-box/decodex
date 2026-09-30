@@ -11,7 +11,7 @@ sources:
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-30T09:17:35.615Z
+    at: 2026-09-30T14:27:56.062Z
 ---
 
 > This record remains historical. Its old milestone gates, no-migration/disposable-data assumptions, executable paths and external issue status are not current instructions. Current SQLite migrations preserve product state; active checks are in Makefile.toml. Use [Current product contract](local-product-v1.md) and [Commands and validation](../operations/commands-and-validation.md). This refresh preserves original evidence and does not claim a new live acceptance result.

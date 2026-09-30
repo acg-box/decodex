@@ -3,9 +3,6 @@ type: Guide
 title: Test quality and coverage
 description: Behavior-first test ownership, useful architecture checks, and the limits of cleanup and visual evidence.
 tags: [testing, maintenance]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T06:54:38.514Z
 sources:
   - id: openwiki-source-95772fa38252ded838ec3a2f
     resource: repo://.config/nextest.toml
@@ -14,6 +11,9 @@ sources:
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
 generated: { by: "codex", at: "2026-09-29T06:54:38.514Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-30T14:27:56.062Z
 ---
 
 # Test quality and coverage
