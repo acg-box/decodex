@@ -22,7 +22,7 @@ const interactionRuntimeScript = [
 
 <BaseLayout
   title="Decodex"
-  description="Repo-native control plane for Codex work, retained lanes, and local operator delivery."
+  description="A local agent workspace for Codex conversations, account routing, and durable work coordination."
 >
   <main class="official-site">
     <section class="official-hero" aria-label="Decodex homepage">
@@ -48,8 +48,8 @@ const interactionRuntimeScript = [
         <div class="hero-copy" data-reveal>
           <h1>Decodex</h1>
           <p>
-            Repo-native control software for Codex lanes: project registration, retained
-            execution, operator status, account pools, review handoff, and delivery policy.
+            A local agent workspace for Codex. Coordinate goals across conversations,
+            manage account routing, and keep work, dependencies, and decisions together.
           </p>
           <div class="hero-actions" aria-label="Primary actions">
             <a href={decodexGitHubUrl} target="_blank" rel="noreferrer">GitHub</a>
@@ -58,13 +58,10 @@ const interactionRuntimeScript = [
           </div>
         </div>
 
-        <aside class="hero-panel" aria-label="Decodex application" data-reveal>
-          <div class="hero-panel__logo">
-            <img src="/assets/icon.png" alt="" width="256" height="256" />
-          </div>
+        <aside class="hero-panel" aria-label="OpenAI Codex download" data-reveal>
           <div class="hero-panel__copy">
-            <span>Native companion</span>
-            <strong>Local account-pool management for Codex runs.</strong>
+            <span>Related software from OpenAI</span>
+            <strong>Codex beta for macOS.</strong>
           </div>
           <AppcastDownloadWidget />
         </aside>
@@ -72,20 +69,20 @@ const interactionRuntimeScript = [
 
       <div class="hero-bottom" aria-label="Decodex product surfaces">
         <div>
-          <strong>Rust CLI</strong>
-          <span>Runtime</span>
+          <strong>Agent</strong>
+          <span>Coordination</span>
+        </div>
+        <div>
+          <strong>Conversations</strong>
+          <span>Codex threads</span>
+        </div>
+        <div>
+          <strong>Accounts</strong>
+          <span>Routing</span>
         </div>
         <div>
           <strong>macOS App</strong>
-          <span>Accounts</span>
-        </div>
-        <div>
-          <strong>Local HTTP</strong>
-          <span>Operator</span>
-        </div>
-        <div>
-          <strong>Programs</strong>
-          <span>Domain Packs</span>
+          <span>Workspace</span>
         </div>
       </div>
     </section>
@@ -94,14 +91,14 @@ const interactionRuntimeScript = [
       <div class="section-heading">
         <h2>Runtime Map</h2>
         <p>
-          Decodex keeps repository authority explicit while the local control plane
-          coordinates long-running coding work.
+          Agent coordinates your goals through independent Codex threads. The local service
+          preserves work relationships and decisions across restarts.
         </p>
       </div>
       <div class="system-panel">
         <div class="system-panel__lead">
           <span>Core loop</span>
-          <strong>One local runtime owns scheduling, evidence, recovery, and delivery state.</strong>
+          <strong>Agent coordinates work. Codex runs the conversations.</strong>
         </div>
         <ol class="system-loop">
           {productLoops.map((item, index) => (
@@ -119,16 +116,16 @@ const interactionRuntimeScript = [
 
     <section class="site-section app-section" id="app" data-reveal>
       <div class="section-heading">
-        <h2>Operator Tools</h2>
+        <h2>Desktop and CLI</h2>
         <p>
-          The CLI, local operator listener, and native app all talk to local Decodex state instead
-          of a hosted backend.
+          The Decodex desktop app and CLI use the same local service. Open the source repository
+          for build instructions and the current macOS requirements.
         </p>
       </div>
       <div class="command-panel">
         <div class="command-panel__copy">
           <span>Common commands</span>
-          <p>Start the local control plane, inspect live state, and hand evidence to repair agents.</p>
+          <p>Inspect service readiness, Agent work, and accounts, or launch the desktop app from source.</p>
         </div>
         <ul class="command-list" aria-label="Common Decodex commands">
           {commands.map((command) => (
@@ -142,8 +139,7 @@ const interactionRuntimeScript = [
       <div class="section-heading">
         <h2>Documentation</h2>
         <p>
-          Runtime truth lives in checked-in specs, project contracts, and source-owned
-          validation.
+          Read the current product workflow, service architecture, and validation commands.
         </p>
       </div>
       <div class="docs-grid">

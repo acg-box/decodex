@@ -25,7 +25,7 @@ No-op runs stay quiet; report useful merged changes or actionable blockers.
 
 The portfolio also retains the independent content manager and publisher
 configuration. This upstream task does not manage those roles, OpenWiki, or the
-retired website. Rendering the portfolio is read-only; it does not register or
+website. Rendering the portfolio is read-only; it does not register or
 activate tasks. Use native automation tools for an explicitly selected definition
 and preserve the user's current pause and notification settings.
 
