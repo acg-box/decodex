@@ -175,14 +175,14 @@ fn count_priority(subjects: &[Value], priority: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::{RadarLedger, ledger, review_queue, test_support, tests::fixtures};
 
 	#[test]
 	fn queue_validation_failure_does_not_commit_ledger_reviews() {
-		let temp = crate::test_support::private_tempdir();
+		let temp = test_support::private_tempdir();
 		let path = temp.path().join("radar.sqlite3");
 
-		crate::ledger::open_ledger(&path).unwrap().close().unwrap();
+		ledger::open_ledger(&path).unwrap().close().unwrap();
 
 		for valid in [false, true] {
 			let mut ledger = RadarLedger::open(&path).unwrap();
@@ -198,13 +198,13 @@ mod tests {
 				)
 				.unwrap();
 
-			let mut queue = crate::tests::fixtures::valid_review_queue();
+			let mut queue = fixtures::valid_review_queue();
 
 			if !valid {
 				queue["source"]["upstream_head"] = serde_json::json!("invalid");
 			}
 
-			let result = finish_review_queue(queue, Some(ledger));
+			let result = review_queue::finish_review_queue(queue, Some(ledger));
 
 			if valid {
 				assert!(result.unwrap().ledger_enabled);
@@ -212,7 +212,7 @@ mod tests {
 				assert!(result.unwrap_err().to_string().contains("queue validation failed"));
 			}
 
-			let connection = crate::ledger::open_ledger(&path).unwrap();
+			let connection = ledger::open_ledger(&path).unwrap();
 			let rows: i64 = connection
 				.query_row("SELECT COUNT(*) FROM radar_review", [], |row| row.get(0))
 				.unwrap();
@@ -223,7 +223,7 @@ mod tests {
 		}
 
 		assert!(
-			!finish_review_queue(crate::tests::fixtures::valid_review_queue(), None)
+			!review_queue::finish_review_queue(fixtures::valid_review_queue(), None)
 				.unwrap()
 				.ledger_enabled
 		);
