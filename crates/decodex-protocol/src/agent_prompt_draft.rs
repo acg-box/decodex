@@ -1,7 +1,17 @@
 //! Lossless local editing of canonical app-server user input.
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	ops::Range,
+};
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::ops::Range;
+
+use crate::{
+	AgentExecutionOverrides, EntityId, IdempotencyKey, PromptEditPhase, PromptEditStatus,
+	PromptForkIntent, PromptInputSend, PromptInputSendIdentity, Sha256Digest, WireText,
+};
+use decodex_core::BlobHash;
 
 /// Canonical input parts retained together through editing, undo and persistence.
 ///
@@ -11,214 +21,13 @@ use std::ops::Range;
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct PromptDraft(Vec<Value>);
-
-/// A canonical editor retained in its exact service profile before draft handback.
-/// The native receipt remains the authority for mutation and acknowledgement.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct DesktopPromptEditDraft {
-	/// Local task whose native history was reviewed.
-	pub work_id: crate::EntityId,
-	/// Exact native thread; a new thread cannot inherit this editor.
-	pub thread_id: crate::WireText,
-	/// First native turn excluded if the reviewed edit is confirmed.
-	pub before_turn_id: crate::WireText,
-	/// Original user item used to reopen an expired review.
-	pub item_id: crate::WireText,
-	/// Digest of the unedited native input used to detect a changed history source.
-	pub original_hash: crate::Sha256Digest,
-	/// Service-held review identity, also retained after native confirmation.
-	pub review_token: crate::WireText,
-	/// Durable native edit receipt, absent while the user is still reviewing.
-	pub receipt_id: Option<i64>,
-	/// Exact confirmation command retained before dispatch until a native receipt is read.
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub confirmation_key: Option<crate::IdempotencyKey>,
-	/// Explicit branch destination saved before native creation, absent for same-thread edits.
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub fork: Option<crate::PromptForkIntent>,
-	/// A single pending send; input must remain unchanged until acceptance is resolved.
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub pending_send: Option<crate::PromptInputSend>,
-	/// Confirmation may be in flight, or draft handback is not yet confirmed by the service.
-	pub handback_pending: bool,
-	/// Complete editable input, never a flattened history preview.
-	pub input: PromptDraft,
-}
-
-impl DesktopPromptEditDraft {
-	/// Bind a single send to the complete saved input before any submission.
-	pub fn begin_send(
-		&self,
-		input_id: i64,
-		command_key: crate::IdempotencyKey,
-		execution: crate::AgentExecutionOverrides,
-	) -> Result<Self, &'static str> {
-		self.validate()?;
-
-		if self.pending_send.is_some() || self.receipt_id.is_none() || self.handback_pending {
-			return Err("Resolve the existing edit or send before submitting input");
-		}
-
-		self.input.validate_native_input()?;
-
-		let mut pending = self.clone();
-
-		pending.pending_send = Some(crate::PromptInputSend {
-			input_id,
-			sha256: self.input.fingerprint()?,
-			command_key,
-			execution,
-		});
-
-		pending.validate()?;
-
-		Ok(pending)
-	}
-
-	/// Read the unchanged owner and send identity for acceptance reconciliation.
-	pub fn send_identity(&self) -> Result<crate::PromptInputSendIdentity, &'static str> {
-		self.validate()?;
-
-		Ok(crate::PromptInputSendIdentity {
-			work_id: self.work_id.clone(),
-			thread_id: self.thread_id.clone(),
-			edit_receipt_id: self.receipt_id.ok_or("Edit receipt is missing")?,
-			send: self.pending_send.clone().ok_or("No retained send identity")?,
-		})
-	}
-
-	/// Retain confirmation intent before any native history mutation can be sent.
-	pub fn begin_confirmation(&self, key: crate::IdempotencyKey) -> Result<Self, &'static str> {
-		self.validate()?;
-
-		if self.receipt_id.is_some() || self.handback_pending || self.confirmation_key.is_some() {
-			return Err("Recover the existing history edit first");
-		}
-
-		let mut pending = self.clone();
-
-		pending.confirmation_key = Some(key);
-		pending.handback_pending = true;
-
-		Ok(pending)
-	}
-
-	/// Bind a recovered native receipt without replacing the user's edited input.
-	pub fn recover_receipt(
-		&self,
-		status: &crate::PromptEditStatus,
-		original: &PromptDraft,
-	) -> Result<Self, &'static str> {
-		self.validate()?;
-
-		let evidence = status.evidence.as_ref().ok_or("History edit receipt is unavailable")?;
-
-		if !status.is_valid()
-			|| status.work_id != self.work_id
-			|| status.thread_id != self.thread_id
-			|| evidence.review_token != self.review_token
-			|| evidence.before_turn_id != self.before_turn_id
-			|| evidence.item_id != self.item_id
-			|| original.fingerprint()? != self.original_hash
-			|| self.receipt_id.is_some_and(|id| Some(id) != evidence.receipt_id)
-			|| !matches!(
-				status.phase,
-				crate::PromptEditPhase::Uncertain
-					| crate::PromptEditPhase::Applied
-					| crate::PromptEditPhase::Restored
-					| crate::PromptEditPhase::Unchanged
-			) {
-			return Err("History edit source changed; retain this draft separately");
-		}
-
-		let mut recovered = self.clone();
-
-		recovered.confirmation_key = None;
-		recovered.receipt_id = if status.phase == crate::PromptEditPhase::Unchanged {
-			None
-		} else {
-			evidence.receipt_id
-		};
-		recovered.handback_pending = matches!(
-			status.phase,
-			crate::PromptEditPhase::Uncertain | crate::PromptEditPhase::Applied
-		);
-
-		Ok(recovered)
-	}
-
-	/// Use a fresh review only when its original input still matches this edited draft.
-	pub fn refresh_review(&self, fresh: &Self) -> Result<Self, &'static str> {
-		self.validate()?;
-		fresh.validate()?;
-
-		if self.receipt_id.is_some()
-			|| fresh.receipt_id.is_some()
-			|| self.handback_pending
-			|| fresh.handback_pending
-		{
-			return Err("Recover the existing history edit first");
-		}
-		if self.work_id != fresh.work_id
-			|| self.thread_id != fresh.thread_id
-			|| self.before_turn_id != fresh.before_turn_id
-			|| self.item_id != fresh.item_id
-			|| self.original_hash != fresh.original_hash
-			|| fresh.input.fingerprint()? != fresh.original_hash
-		{
-			return Err(
-				"Original input changed; keep this draft and review the current history separately",
-			);
-		}
-
-		let mut result = fresh.clone();
-
-		result.input = self.input.clone();
-
-		Ok(result)
-	}
-
-	pub(crate) fn validate(&self) -> Result<(), &'static str> {
-		if self.thread_id.as_str().is_empty()
-			|| self.before_turn_id.as_str().is_empty()
-			|| self.item_id.as_str().is_empty()
-			|| self.review_token.as_str().len() != 64
-			|| !self.review_token.as_str().bytes().all(|b| b.is_ascii_hexdigit())
-			|| self.fork.as_ref().is_some_and(|fork| {
-				fork.target_work_id == self.work_id
-					|| self.confirmation_key.is_none()
-					|| self.receipt_id.is_some()
-			})
-			|| self.receipt_id.is_some_and(|id| id <= 0)
-			|| self.handback_pending && self.receipt_id.is_none() && self.confirmation_key.is_none()
-			|| self.confirmation_key.is_some()
-				&& (!self.handback_pending || self.receipt_id.is_some())
-		{
-			return Err("Prompt draft source is invalid");
-		}
-
-		if let Some(send) = &self.pending_send
-			&& (send.input_id <= 0
-				|| self.receipt_id.is_none()
-				|| self.handback_pending
-				|| self.confirmation_key.is_some()
-				|| send.sha256 != self.input.fingerprint()?)
-		{
-			return Err("Pending prompt send does not match the retained draft");
-		}
-
-		self.input.validate()
-	}
-}
-
 impl PromptDraft {
 	/// Check the seven public input variants at the fixed Codex cutoff.
 	/// Local file readability and the complete native request envelope are separate checks.
 	pub fn validate_native_input(&self) -> Result<(), &'static str> {
 		self.validate()?;
 
-		let mut text_chars = 0usize;
+		let mut text_chars = 0_usize;
 
 		for part in &self.0 {
 			let string = |key: &str| part.get(key).and_then(Value::as_str).is_some();
@@ -275,11 +84,10 @@ impl PromptDraft {
 	}
 
 	/// Hash complete canonical parts without flattening native input or ignoring fields.
-	pub fn fingerprint(&self) -> Result<crate::Sha256Digest, &'static str> {
+	pub fn fingerprint(&self) -> Result<Sha256Digest, &'static str> {
 		let bytes = serde_json::to_vec(&self.0).map_err(|_| "Prompt encoding failed")?;
 
-		crate::Sha256Digest::new(decodex_core::BlobHash::digest(&bytes).to_hex())
-			.map_err(|_| "Prompt digest is invalid")
+		Sha256Digest::new(BlobHash::digest(&bytes).to_hex()).map_err(|_| "Prompt digest is invalid")
 	}
 
 	/// Retain complete native parts after checking editable UTF-8 text markers.
@@ -335,8 +143,8 @@ impl PromptDraft {
 			return Err("Select a non-text input to remove");
 		}
 
-		let mut selected = std::collections::BTreeMap::<usize, Vec<(usize, Range<usize>)>>::new();
-		let mut identities = std::collections::BTreeSet::new();
+		let mut selected = BTreeMap::<usize, Vec<(usize, Range<usize>)>>::new();
+		let mut identities = BTreeSet::new();
 
 		for &(text_index, element_index) in markers {
 			if !identities.insert((text_index, element_index)) {
@@ -468,6 +276,200 @@ impl PromptDraft {
 	}
 }
 
+/// A canonical editor retained in its exact service profile before draft handback.
+/// The native receipt remains the authority for mutation and acknowledgement.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopPromptEditDraft {
+	/// Local task whose native history was reviewed.
+	pub work_id: EntityId,
+	/// Exact native thread; a new thread cannot inherit this editor.
+	pub thread_id: WireText,
+	/// First native turn excluded if the reviewed edit is confirmed.
+	pub before_turn_id: WireText,
+	/// Original user item used to reopen an expired review.
+	pub item_id: WireText,
+	/// Digest of the unedited native input used to detect a changed history source.
+	pub original_hash: Sha256Digest,
+	/// Service-held review identity, also retained after native confirmation.
+	pub review_token: WireText,
+	/// Durable native edit receipt, absent while the user is still reviewing.
+	pub receipt_id: Option<i64>,
+	/// Exact confirmation command retained before dispatch until a native receipt is read.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub confirmation_key: Option<IdempotencyKey>,
+	/// Explicit branch destination saved before native creation, absent for same-thread edits.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub fork: Option<PromptForkIntent>,
+	/// A single pending send; input must remain unchanged until acceptance is resolved.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub pending_send: Option<PromptInputSend>,
+	/// Confirmation may be in flight, or draft handback is not yet confirmed by the service.
+	pub handback_pending: bool,
+	/// Complete editable input, never a flattened history preview.
+	pub input: PromptDraft,
+}
+impl DesktopPromptEditDraft {
+	/// Bind a single send to the complete saved input before any submission.
+	pub fn begin_send(
+		&self,
+		input_id: i64,
+		command_key: IdempotencyKey,
+		execution: AgentExecutionOverrides,
+	) -> Result<Self, &'static str> {
+		self.validate()?;
+
+		if self.pending_send.is_some() || self.receipt_id.is_none() || self.handback_pending {
+			return Err("Resolve the existing edit or send before submitting input");
+		}
+
+		self.input.validate_native_input()?;
+
+		let mut pending = self.clone();
+
+		pending.pending_send = Some(PromptInputSend {
+			input_id,
+			sha256: self.input.fingerprint()?,
+			command_key,
+			execution,
+		});
+
+		pending.validate()?;
+
+		Ok(pending)
+	}
+
+	/// Read the unchanged owner and send identity for acceptance reconciliation.
+	pub fn send_identity(&self) -> Result<PromptInputSendIdentity, &'static str> {
+		self.validate()?;
+
+		Ok(PromptInputSendIdentity {
+			work_id: self.work_id.clone(),
+			thread_id: self.thread_id.clone(),
+			edit_receipt_id: self.receipt_id.ok_or("Edit receipt is missing")?,
+			send: self.pending_send.clone().ok_or("No retained send identity")?,
+		})
+	}
+
+	/// Retain confirmation intent before any native history mutation can be sent.
+	pub fn begin_confirmation(&self, key: IdempotencyKey) -> Result<Self, &'static str> {
+		self.validate()?;
+
+		if self.receipt_id.is_some() || self.handback_pending || self.confirmation_key.is_some() {
+			return Err("Recover the existing history edit first");
+		}
+
+		let mut pending = self.clone();
+
+		pending.confirmation_key = Some(key);
+		pending.handback_pending = true;
+
+		Ok(pending)
+	}
+
+	/// Bind a recovered native receipt without replacing the user's edited input.
+	pub fn recover_receipt(
+		&self,
+		status: &PromptEditStatus,
+		original: &PromptDraft,
+	) -> Result<Self, &'static str> {
+		self.validate()?;
+
+		let evidence = status.evidence.as_ref().ok_or("History edit receipt is unavailable")?;
+
+		if !status.is_valid()
+			|| status.work_id != self.work_id
+			|| status.thread_id != self.thread_id
+			|| evidence.review_token != self.review_token
+			|| evidence.before_turn_id != self.before_turn_id
+			|| evidence.item_id != self.item_id
+			|| original.fingerprint()? != self.original_hash
+			|| self.receipt_id.is_some_and(|id| Some(id) != evidence.receipt_id)
+			|| !matches!(
+				status.phase,
+				PromptEditPhase::Uncertain
+					| PromptEditPhase::Applied
+					| PromptEditPhase::Restored
+					| PromptEditPhase::Unchanged
+			) {
+			return Err("History edit source changed; retain this draft separately");
+		}
+
+		let mut recovered = self.clone();
+
+		recovered.confirmation_key = None;
+		recovered.receipt_id =
+			if status.phase == PromptEditPhase::Unchanged { None } else { evidence.receipt_id };
+		recovered.handback_pending =
+			matches!(status.phase, PromptEditPhase::Uncertain | PromptEditPhase::Applied);
+
+		Ok(recovered)
+	}
+
+	/// Use a fresh review only when its original input still matches this edited draft.
+	pub fn refresh_review(&self, fresh: &Self) -> Result<Self, &'static str> {
+		self.validate()?;
+		fresh.validate()?;
+
+		if self.receipt_id.is_some()
+			|| fresh.receipt_id.is_some()
+			|| self.handback_pending
+			|| fresh.handback_pending
+		{
+			return Err("Recover the existing history edit first");
+		}
+		if self.work_id != fresh.work_id
+			|| self.thread_id != fresh.thread_id
+			|| self.before_turn_id != fresh.before_turn_id
+			|| self.item_id != fresh.item_id
+			|| self.original_hash != fresh.original_hash
+			|| fresh.input.fingerprint()? != fresh.original_hash
+		{
+			return Err(
+				"Original input changed; keep this draft and review the current history separately",
+			);
+		}
+
+		let mut result = fresh.clone();
+
+		result.input = self.input.clone();
+
+		Ok(result)
+	}
+
+	pub(crate) fn validate(&self) -> Result<(), &'static str> {
+		if self.thread_id.as_str().is_empty()
+			|| self.before_turn_id.as_str().is_empty()
+			|| self.item_id.as_str().is_empty()
+			|| self.review_token.as_str().len() != 64
+			|| !self.review_token.as_str().bytes().all(|b| b.is_ascii_hexdigit())
+			|| self.fork.as_ref().is_some_and(|fork| {
+				fork.target_work_id == self.work_id
+					|| self.confirmation_key.is_none()
+					|| self.receipt_id.is_some()
+			})
+			|| self.receipt_id.is_some_and(|id| id <= 0)
+			|| self.handback_pending && self.receipt_id.is_none() && self.confirmation_key.is_none()
+			|| self.confirmation_key.is_some()
+				&& (!self.handback_pending || self.receipt_id.is_some())
+		{
+			return Err("Prompt draft source is invalid");
+		}
+
+		if let Some(send) = &self.pending_send
+			&& (send.input_id <= 0
+				|| self.receipt_id.is_none()
+				|| self.handback_pending
+				|| self.confirmation_key.is_some()
+				|| send.sha256 != self.input.fingerprint()?)
+		{
+			return Err("Pending prompt send does not match the retained draft");
+		}
+
+		self.input.validate()
+	}
+}
+
 fn elements(part: &Value) -> Result<&[Value], &'static str> {
 	match part.get("text_elements") {
 		None => Ok(&[]),
@@ -497,31 +499,36 @@ fn element_range(element: &Value) -> Result<Range<usize>, &'static str> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+	use std::ops::Range;
+
+	use crate::{
+		AgentExecutionOverrides, ClientDraftStore, DesktopDraftDocument, DesktopProfileDraft,
+		DesktopPromptEditDraft, EntityId, IdempotencyKey, PromptDraft, PromptEditEvidence,
+		PromptEditPhase, PromptEditStatus, WireText, agent_prompt_draft,
+	};
 
 	fn sample() -> PromptDraft {
 		PromptDraft::new(vec![
-			json!({"type":"text","text":"你 $skill end","text_elements":[{"byteRange":{"start":4,"end":10},"placeholder":"$skill","extension":true}],"extension":"retain"}),
-			json!({"type":"skill","name":"skill","path":"/tmp/SKILL.md"}),
-			json!({"type":"mention","name":"app","path":"app://exact-id"}),
-			json!({"type":"image","fileId":"native-file","detail":"original"}),
-			json!({"type":"audio","url":"data:audio/wav;base64,example"}),
-			json!({"type":"future-input","evidence":{"keep":true}}),
+			serde_json::json!({"type":"text","text":"你 $skill end","text_elements":[{"byteRange":{"start":4,"end":10},"placeholder":"$skill","extension":true}],"extension":"retain"}),
+			serde_json::json!({"type":"skill","name":"skill","path":"/tmp/SKILL.md"}),
+			serde_json::json!({"type":"mention","name":"app","path":"app://exact-id"}),
+			serde_json::json!({"type":"image","fileId":"native-file","detail":"original"}),
+			serde_json::json!({"type":"audio","url":"data:audio/wav;base64,example"}),
+			serde_json::json!({"type":"future-input","evidence":{"keep":true}}),
 		]).unwrap()
 	}
 
 	#[test]
 	fn native_input_qualification_counts_unicode_across_parts_and_preserves_all_variants() {
 		let mut draft = PromptDraft::new(vec![
-			json!({"type":"text","text":"界".repeat(1 << 19),"text_elements":[]}),
-			json!({"type":"text","text":"a".repeat(1 << 19)}),
-			json!({"type":"image","fileId":"file","detail":"original","extension":true}),
-			json!({"type":"localImage","path":"/fixture/image.png"}),
-			json!({"type":"audio","url":"data:audio/wav;base64,AA=="}),
-			json!({"type":"localAudio","path":"/fixture/audio.wav"}),
-			json!({"type":"skill","name":"skill","path":"/fixture/SKILL.md"}),
-			json!({"type":"mention","name":"App","path":"app://fixture"}),
+			serde_json::json!({"type":"text","text":"界".repeat(1 << 19),"text_elements":[]}),
+			serde_json::json!({"type":"text","text":"a".repeat(1 << 19)}),
+			serde_json::json!({"type":"image","fileId":"file","detail":"original","extension":true}),
+			serde_json::json!({"type":"localImage","path":"/fixture/image.png"}),
+			serde_json::json!({"type":"audio","url":"data:audio/wav;base64,AA=="}),
+			serde_json::json!({"type":"localAudio","path":"/fixture/audio.wav"}),
+			serde_json::json!({"type":"skill","name":"skill","path":"/fixture/SKILL.md"}),
+			serde_json::json!({"type":"mention","name":"App","path":"app://fixture"}),
 		])
 		.unwrap();
 		let unchanged = draft.clone();
@@ -535,12 +542,12 @@ mod tests {
 		assert!(draft.validate_native_input().is_err());
 
 		for part in [
-			json!({"type":"image"}),
-			json!({"type":"audio","audio_url":"old-internal-field"}),
-			json!({"type":"localAudio"}),
-			json!({"type":"skill","path":"/skill"}),
-			json!({"type":"futureInput"}),
-			json!({"type":"image","url":"data:image/png;base64,AA==","detail":"unsupported"}),
+			serde_json::json!({"type":"image"}),
+			serde_json::json!({"type":"audio","audio_url":"old-internal-field"}),
+			serde_json::json!({"type":"localAudio"}),
+			serde_json::json!({"type":"skill","path":"/skill"}),
+			serde_json::json!({"type":"futureInput"}),
+			serde_json::json!({"type":"image","url":"data:image/png;base64,AA==","detail":"unsupported"}),
 		] {
 			let retained = PromptDraft::new(vec![part.clone()]).unwrap();
 
@@ -554,16 +561,17 @@ mod tests {
 		for url in
 			["http://example.test/image.png", "HTTPS://example.test/image.png", "hTtP:relative"]
 		{
-			let part = json!({"type":"image","url":url,"fileId":"file","detail":"original"});
+			let part =
+				serde_json::json!({"type":"image","url":url,"fileId":"file","detail":"original"});
 			let draft = PromptDraft::new(vec![part.clone()]).unwrap();
 
 			assert!(draft.validate_native_input().unwrap_err().contains("Remote image URLs"));
 			assert_eq!(draft.parts(), &[part]);
 		}
 		for part in [
-			json!({"type":"image","url":"data:image/png;base64,AA=="}),
-			json!({"type":"localImage","path":"/fixture/image.png"}),
-			json!({"type":"image","fileId":"native-file"}),
+			serde_json::json!({"type":"image","url":"data:image/png;base64,AA=="}),
+			serde_json::json!({"type":"localImage","path":"/fixture/image.png"}),
+			serde_json::json!({"type":"image","fileId":"native-file"}),
 		] {
 			PromptDraft::new(vec![part]).unwrap().validate_native_input().unwrap();
 		}
@@ -572,12 +580,12 @@ mod tests {
 	#[test]
 	fn renewed_review_preserves_edits_only_for_the_same_original_input() {
 		let mut saved = DesktopPromptEditDraft {
-			work_id: crate::EntityId::new("work").unwrap(),
-			thread_id: crate::WireText::new("thread").unwrap(),
-			before_turn_id: crate::WireText::new("turn").unwrap(),
-			item_id: crate::WireText::new("item").unwrap(),
+			work_id: EntityId::new("work").unwrap(),
+			thread_id: WireText::new("thread").unwrap(),
+			before_turn_id: WireText::new("turn").unwrap(),
+			item_id: WireText::new("item").unwrap(),
 			original_hash: sample().fingerprint().unwrap(),
-			review_token: crate::WireText::new("a".repeat(64)).unwrap(),
+			review_token: WireText::new("a".repeat(64)).unwrap(),
 			receipt_id: None,
 			handback_pending: false,
 			confirmation_key: None,
@@ -587,7 +595,7 @@ mod tests {
 		};
 		let mut fresh = saved.clone();
 
-		fresh.review_token = crate::WireText::new("b".repeat(64)).unwrap();
+		fresh.review_token = WireText::new("b".repeat(64)).unwrap();
 
 		saved.input.replace_text(0, 0..3, "Edited").unwrap();
 
@@ -596,7 +604,10 @@ mod tests {
 		assert_eq!(renewed.input, saved.input);
 		assert_eq!(renewed.review_token, fresh.review_token);
 
-		fresh.input.replace_part(3, json!({"type":"image","fileId":"different"})).unwrap();
+		fresh
+			.input
+			.replace_part(3, serde_json::json!({"type":"image","fileId":"different"}))
+			.unwrap();
 
 		assert!(saved.refresh_review(&fresh).is_err());
 
@@ -606,7 +617,7 @@ mod tests {
 
 		fresh.input = sample();
 		fresh.original_hash = fresh.input.fingerprint().unwrap();
-		fresh.thread_id = crate::WireText::new("another-thread").unwrap();
+		fresh.thread_id = WireText::new("another-thread").unwrap();
 
 		assert!(saved.refresh_review(&fresh).is_err());
 
@@ -620,12 +631,12 @@ mod tests {
 	fn recovered_receipt_preserves_edits_and_rejects_crossed_history() {
 		let original = sample();
 		let mut draft = DesktopPromptEditDraft {
-			work_id: crate::EntityId::new("work").unwrap(),
-			thread_id: crate::WireText::new("thread").unwrap(),
-			before_turn_id: crate::WireText::new("turn").unwrap(),
-			item_id: crate::WireText::new("item").unwrap(),
+			work_id: EntityId::new("work").unwrap(),
+			thread_id: WireText::new("thread").unwrap(),
+			before_turn_id: WireText::new("turn").unwrap(),
+			item_id: WireText::new("item").unwrap(),
 			original_hash: original.fingerprint().unwrap(),
-			review_token: crate::WireText::new("a".repeat(64)).unwrap(),
+			review_token: WireText::new("a".repeat(64)).unwrap(),
 			receipt_id: None,
 			handback_pending: false,
 			confirmation_key: None,
@@ -636,15 +647,12 @@ mod tests {
 
 		draft.input.replace_text(0, 0..3, "Edited").unwrap();
 
-		draft =
-			draft.begin_confirmation(crate::IdempotencyKey::new("confirm-once").unwrap()).unwrap();
+		draft = draft.begin_confirmation(IdempotencyKey::new("confirm-once").unwrap()).unwrap();
 
 		assert!(draft.receipt_id.is_none() && draft.handback_pending);
-		assert!(
-			draft.begin_confirmation(crate::IdempotencyKey::new("do-not-repeat").unwrap()).is_err()
-		);
+		assert!(draft.begin_confirmation(IdempotencyKey::new("do-not-repeat").unwrap()).is_err());
 
-		let mut document = crate::DesktopDraftDocument::default();
+		let mut document = DesktopDraftDocument::default();
 
 		document
 			.profiles
@@ -655,15 +663,14 @@ mod tests {
 
 		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().canonicalize().unwrap().join("desktop");
-		let store = crate::ClientDraftStore::open_at(&path).unwrap();
+		let store = ClientDraftStore::open_at(&path).unwrap();
 
 		store.save(0, &document.encode().unwrap()).unwrap();
 
 		drop(store);
 
-		let reopened = crate::ClientDraftStore::open_at(&path).unwrap();
-		let restored =
-			crate::DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
+		let reopened = ClientDraftStore::open_at(&path).unwrap();
+		let restored = DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
 		let profile = &restored.profiles[&"a".repeat(64)];
 
 		assert!(profile.has_unconfirmed_delivery());
@@ -673,11 +680,11 @@ mod tests {
 		assert_eq!(profile.prompt_edits[draft.review_token.as_str()], draft);
 
 		let fragment = serde_json::to_string(&original).unwrap();
-		let mut status = crate::PromptEditStatus {
+		let mut status = PromptEditStatus {
 			work_id: draft.work_id.clone(),
 			thread_id: draft.thread_id.clone(),
-			phase: crate::PromptEditPhase::Applied,
-			evidence: Some(crate::PromptEditEvidence {
+			phase: PromptEditPhase::Applied,
+			evidence: Some(PromptEditEvidence {
 				review_token: draft.review_token.clone(),
 				receipt_id: Some(42),
 				before_turn_id: draft.before_turn_id.clone(),
@@ -689,11 +696,9 @@ mod tests {
 			}),
 		};
 
-		for phase in [
-			crate::PromptEditPhase::Uncertain,
-			crate::PromptEditPhase::Applied,
-			crate::PromptEditPhase::Restored,
-		] {
+		for phase in
+			[PromptEditPhase::Uncertain, PromptEditPhase::Applied, PromptEditPhase::Restored]
+		{
 			status.phase = phase;
 
 			let recovered = draft.recover_receipt(&status, &original).unwrap();
@@ -701,10 +706,10 @@ mod tests {
 			assert_eq!(recovered.input, draft.input);
 			assert_eq!(recovered.receipt_id, Some(42));
 			assert!(recovered.confirmation_key.is_none());
-			assert_eq!(recovered.handback_pending, phase != crate::PromptEditPhase::Restored);
+			assert_eq!(recovered.handback_pending, phase != PromptEditPhase::Restored);
 		}
 
-		status.phase = crate::PromptEditPhase::Unchanged;
+		status.phase = PromptEditPhase::Unchanged;
 
 		let unchanged = draft.recover_receipt(&status, &original).unwrap();
 
@@ -726,15 +731,12 @@ mod tests {
 
 		draft.validate().unwrap();
 
-		status.thread_id = crate::WireText::new("other").unwrap();
+		status.thread_id = WireText::new("other").unwrap();
 
 		assert!(draft.recover_receipt(&status, &original).is_err());
 	}
 
-	fn assert_pending_send_retained(
-		draft: &DesktopPromptEditDraft,
-		reopened: &crate::ClientDraftStore,
-	) {
+	fn assert_pending_send_retained(draft: &DesktopPromptEditDraft, reopened: &ClientDraftStore) {
 		let mut restored_edit = draft.clone();
 
 		restored_edit.confirmation_key = None;
@@ -743,11 +745,7 @@ mod tests {
 
 		assert!(
 			restored_edit
-				.begin_send(
-					7,
-					crate::IdempotencyKey::new("unsupported").unwrap(),
-					Default::default()
-				)
+				.begin_send(7, IdempotencyKey::new("unsupported").unwrap(), Default::default())
 				.is_err()
 		);
 
@@ -756,19 +754,15 @@ mod tests {
 		let sending = restored_edit
 			.begin_send(
 				7,
-				crate::IdempotencyKey::new("send-once").unwrap(),
-				crate::AgentExecutionOverrides::default(),
+				IdempotencyKey::new("send-once").unwrap(),
+				AgentExecutionOverrides::default(),
 			)
 			.unwrap();
 
 		assert_eq!(sending.send_identity().unwrap().send.command_key.as_str(), "send-once");
 		assert!(
 			sending
-				.begin_send(
-					7,
-					crate::IdempotencyKey::new("do-not-replay").unwrap(),
-					Default::default()
-				)
+				.begin_send(7, IdempotencyKey::new("do-not-replay").unwrap(), Default::default())
 				.is_err()
 		);
 
@@ -778,7 +772,7 @@ mod tests {
 
 		assert!(changed.validate().is_err());
 
-		let mut sending_document = crate::DesktopDraftDocument::default();
+		let mut sending_document = DesktopDraftDocument::default();
 
 		sending_document
 			.profiles
@@ -792,7 +786,7 @@ mod tests {
 		reopened.save(next_revision, &sending_document.encode().unwrap()).unwrap();
 
 		let reopened_send =
-			crate::DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
+			DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
 
 		assert!(reopened_send.profiles[&"a".repeat(64)].has_unconfirmed_delivery());
 		assert_eq!(
@@ -809,7 +803,10 @@ mod tests {
 		draft.replace_text(0, 0..3, "hello").unwrap();
 
 		assert_eq!(draft.parts()[0]["text"], "hello $skill end");
-		assert_eq!(draft.parts()[0]["text_elements"][0]["byteRange"], json!({"start":6,"end":12}));
+		assert_eq!(
+			draft.parts()[0]["text_elements"][0]["byteRange"],
+			serde_json::json!({"start":6,"end":12})
+		);
 		assert_eq!(draft.parts()[0]["text_elements"][0]["extension"], true);
 		assert_eq!(draft.parts()[0]["extension"], "retain");
 		assert_eq!(&draft.parts()[1..], &before.parts()[1..]);
@@ -842,7 +839,7 @@ mod tests {
 			draft.replace_text(0, position..position, "你好").unwrap();
 
 			let part = &draft.parts()[0];
-			let range = element_range(&part["text_elements"][0]).unwrap();
+			let range = agent_prompt_draft::element_range(&part["text_elements"][0]).unwrap();
 
 			assert_eq!(&part["text"].as_str().unwrap()[range], "$skill");
 		}
@@ -851,7 +848,8 @@ mod tests {
 	#[test]
 	fn large_text_is_never_silently_shortened() {
 		let text = "界".repeat(20_000);
-		let mut draft = PromptDraft::new(vec![json!({"type":"text","text":text})]).unwrap();
+		let mut draft =
+			PromptDraft::new(vec![serde_json::json!({"type":"text","text":text})]).unwrap();
 
 		draft.replace_text(0, 0..3, "hello").unwrap();
 
@@ -889,7 +887,7 @@ mod tests {
 		draft.remove_bound_part(1, &[(0, 0)]).unwrap();
 
 		assert_eq!(draft.parts()[0]["text"], "你  end");
-		assert_eq!(draft.parts()[0]["text_elements"], json!([]));
+		assert_eq!(draft.parts()[0]["text_elements"], serde_json::json!([]));
 		assert_eq!(draft.parts()[2], image);
 		assert_eq!(draft.parts()[0]["extension"], "retain");
 
@@ -909,7 +907,7 @@ mod tests {
 		overlapping.0[0]["text_elements"]
 			.as_array_mut()
 			.unwrap()
-			.push(json!({"byteRange":{"start":7,"end":10},"placeholder":"overlap"}));
+			.push(serde_json::json!({"byteRange":{"start":7,"end":10},"placeholder":"overlap"}));
 
 		let before = overlapping.clone();
 
@@ -922,30 +920,29 @@ mod tests {
 	#[test]
 	fn removing_multiple_markers_remaps_retained_unicode_ranges() {
 		let mut draft = PromptDraft::new(vec![
-			json!({"type":"text","text":"a界b好c","text_elements":[
+			serde_json::json!({"type":"text","text":"a界b好c","text_elements":[
 				{"byteRange":{"start":1,"end":4},"placeholder":"first"},
 				{"byteRange":{"start":5,"end":8},"placeholder":"keep"},
 				{"byteRange":{"start":8,"end":9},"placeholder":"last"}]}),
-			json!({"type":"image","fileId":"remove"}),
+			serde_json::json!({"type":"image","fileId":"remove"}),
 		])
 		.unwrap();
 
 		draft.remove_bound_part(1, &[(0, 2), (0, 0)]).unwrap();
 
 		assert_eq!(draft.parts()[0]["text"], "ab好");
-		assert_eq!(draft.parts()[0]["text_elements"][0]["byteRange"], json!({"start":2,"end":5}));
+		assert_eq!(
+			draft.parts()[0]["text_elements"][0]["byteRange"],
+			serde_json::json!({"start":2,"end":5})
+		);
 		assert_eq!(draft.parts()[0]["text_elements"][0]["placeholder"], "keep");
 	}
 
 	#[test]
 	fn large_native_input_and_conflicting_copy_survive_the_existing_draft_store() {
-		use crate::{
-			ClientDraftStore, DesktopDraftDocument, DesktopProfileDraft, EntityId, WireText,
-		};
-
 		let input = PromptDraft::new(vec![
-			json!({"type":"text","text":"Original"}),
-			json!({"type":"image","url":format!("data:image/png;base64,{}", "A".repeat(6 * 1024 * 1024))}),
+			serde_json::json!({"type":"text","text":"Original"}),
+			serde_json::json!({"type":"image","url":format!("data:image/png;base64,{}", "A".repeat(6 * 1_024 * 1_024))}),
 		])
 		.unwrap();
 		let review = "b".repeat(64);
@@ -1005,7 +1002,7 @@ mod tests {
 		let merged = local.reconcile_keep_both(&baseline, &remote).unwrap();
 		let encoded = merged.encode().unwrap();
 
-		assert!(encoded.len() > 12 * 1024 * 1024);
+		assert!(encoded.len() > 12 * 1_024 * 1_024);
 
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
@@ -1025,13 +1022,9 @@ mod tests {
 
 	#[test]
 	fn saved_canonical_editor_survives_reopen_and_keeps_an_occupied_composer() {
-		use crate::{
-			ClientDraftStore, DesktopDraftDocument, DesktopProfileDraft, EntityId, WireText,
-		};
-
-		let mut document = DesktopDraftDocument::default();
 		let scope = "a".repeat(64);
 		let review = "b".repeat(64);
+		let mut document = DesktopDraftDocument::default();
 		let mut profile = DesktopProfileDraft::default();
 
 		profile.composer.text = "Existing unsent input".into();
