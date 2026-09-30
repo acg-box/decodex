@@ -1,15 +1,20 @@
 //! Operator account client over the same-UID Decodex protocol.
 
-use std::path::{Path, PathBuf};
+use std::{
+	collections::HashSet,
+	path::{Path, PathBuf},
+};
 
 use clap::{Args, Subcommand, ValueEnum};
-use decodex_protocol::{
-	AccountClient, AccountCommandResponse, AccountManualRecoveryActionDto, CommandPayload,
-	EntityId, EntityRevision, IdempotencyKey, WireText,
-};
 use serde::Serialize;
 
-use crate::{CommandOutput, OutputFormat, load_client_profile};
+use crate::{CommandOutput, OutputFormat};
+use decodex_protocol::{
+	AccountClient, AccountCommandResponse, AccountManualRecoveryActionDto, ClientFailure,
+	CommandPayload, EntityId, EntityRevision, IdempotencyKey, WireText,
+};
+
+type PreparedCommand = (CommandPayload, Option<EntityRevision>, IdempotencyKey);
 
 const ACCOUNT_OUTPUT_SCHEMA: &str = "decodex/cli-account/1";
 
@@ -160,6 +165,23 @@ struct OutputDocument<T> {
 	result: T,
 }
 
+struct InvalidInput;
+impl InvalidInput {
+	fn render(self, format: OutputFormat) -> CommandOutput {
+		let text = match format {
+			OutputFormat::Human => "decodex account: invalid bounded account input".to_owned(),
+			OutputFormat::Json => serde_json::to_string(&serde_json::json!({
+				"schema": ACCOUNT_OUTPUT_SCHEMA,
+				"outcome": "failure",
+				"failure": "invalid_input",
+			}))
+			.expect("closed input failure serialization cannot fail"),
+		};
+
+		CommandOutput { text, exit_code: 2, error_stream: format == OutputFormat::Human }
+	}
+}
+
 pub async fn execute(
 	command: AccountCommand,
 	format: OutputFormat,
@@ -167,7 +189,7 @@ pub async fn execute(
 	selected_profile: Option<&str>,
 	expected_server_id: Option<&str>,
 ) -> CommandOutput {
-	let profile = match load_client_profile(root, selected_profile, expected_server_id) {
+	let profile = match crate::load_client_profile(root, selected_profile, expected_server_id) {
 		Ok(profile) => profile,
 		Err(failure) => return failure_output(format, failure),
 	};
@@ -238,8 +260,6 @@ pub async fn execute(
 		},
 	}
 }
-
-type PreparedCommand = (CommandPayload, Option<EntityRevision>, IdempotencyKey);
 
 fn prepare_command(command: AccountCommand) -> Result<PreparedCommand, InvalidInput> {
 	match command {
@@ -349,7 +369,7 @@ fn account_order(values: &[String]) -> Result<Vec<EntityId>, InvalidInput> {
 	}
 
 	let order = values.iter().map(|value| entity(value)).collect::<Result<Vec<_>, _>>()?;
-	let unique = order.iter().map(EntityId::as_str).collect::<std::collections::HashSet<_>>();
+	let unique = order.iter().map(EntityId::as_str).collect::<HashSet<_>>();
 
 	if unique.len() != order.len() {
 		return Err(InvalidInput);
@@ -362,11 +382,14 @@ fn text(value: String) -> Result<WireText, InvalidInput> {
 	WireText::new(value).map_err(|_| InvalidInput)
 }
 
-fn render<T: Serialize>(
+fn render<T>(
 	command: &'static str,
 	format: OutputFormat,
-	result: Result<T, decodex_protocol::ClientFailure>,
-) -> CommandOutput {
+	result: Result<T, ClientFailure>,
+) -> CommandOutput
+where
+	T: Serialize,
+{
 	match result {
 		Ok(result) => {
 			let document = OutputDocument {
@@ -389,7 +412,7 @@ fn render<T: Serialize>(
 
 fn render_command(
 	format: OutputFormat,
-	result: Result<AccountCommandResponse, decodex_protocol::ClientFailure>,
+	result: Result<AccountCommandResponse, ClientFailure>,
 ) -> CommandOutput {
 	let result = match result {
 		Ok(result) => result,
@@ -411,7 +434,7 @@ fn render_command(
 	CommandOutput { text, exit_code, error_stream: false }
 }
 
-fn failure_output(format: OutputFormat, failure: decodex_protocol::ClientFailure) -> CommandOutput {
+fn failure_output(format: OutputFormat, failure: ClientFailure) -> CommandOutput {
 	let text = serde_json::to_string(&serde_json::json!({
 		"schema": ACCOUNT_OUTPUT_SCHEMA,
 		"outcome": "failure",
@@ -422,43 +445,28 @@ fn failure_output(format: OutputFormat, failure: decodex_protocol::ClientFailure
 	CommandOutput { text, exit_code: 2, error_stream: matches!(format, OutputFormat::Human) }
 }
 
-struct InvalidInput;
-
-impl InvalidInput {
-	fn render(self, format: OutputFormat) -> CommandOutput {
-		let text = match format {
-			OutputFormat::Human => "decodex account: invalid bounded account input".to_owned(),
-			OutputFormat::Json => serde_json::to_string(&serde_json::json!({
-				"schema": ACCOUNT_OUTPUT_SCHEMA,
-				"outcome": "failure",
-				"failure": "invalid_input",
-			}))
-			.expect("closed input failure serialization cannot fail"),
-		};
-
-		CommandOutput { text, exit_code: 2, error_stream: format == OutputFormat::Human }
-	}
-}
-
 #[cfg(test)]
 mod tests {
+	#[cfg(unix)] use std::{ffi::OsString, os::unix::ffi::OsStringExt as _};
+
 	use clap::Parser as _;
+
+	use crate::{
+		Cli, Command, OutputFormat,
+		account::{self, AccountCommand},
+	};
 	use decodex_protocol::{
 		AccountCommandRejectionDto, AccountCommandResponse, AccountProfileDailyUsageDto,
 		AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult,
 		CommandError, EntityId, EntityRevision, WireText,
 	};
 
-	use crate::{Cli, Command, OutputFormat};
-
-	use super::{AccountCommand, render_command};
-
 	const OPERATION_ID: &str = "40000000-0000-4000-8000-000000000001";
 	const ACCOUNT_ID: &str = "40000000-0000-4000-8000-000000000002";
 
 	#[test]
 	fn duplicate_provider_rejection_keeps_its_typed_cli_result() {
-		let output = render_command(
+		let output = account::render_command(
 			OutputFormat::Json,
 			Ok(AccountCommandResponse::Rejected {
 				error: CommandError::AccountCommandRejected {
@@ -476,7 +484,7 @@ mod tests {
 
 	#[test]
 	fn running_codex_rejection_keeps_its_stable_public_code() {
-		let output = render_command(
+		let output = account::render_command(
 			OutputFormat::Json,
 			Ok(AccountCommandResponse::Rejected {
 				error: CommandError::AccountCommandRejected {
@@ -535,8 +543,6 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn import_preserves_exact_unicode_paths_and_rejects_non_utf8_paths() {
-		use std::{ffi::OsString, os::unix::ffi::OsStringExt as _};
-
 		for (source, expected) in [
 			(
 				OsString::from("/private/账户/credentials.json"),
@@ -566,7 +572,7 @@ mod tests {
 			let cli = Cli::try_parse_from(args).expect("OS path argument must parse");
 			let Command::Account(command) = cli.command else { panic!("account command") };
 
-			match (super::prepare_command(command), expected) {
+			match (account::prepare_command(command), expected) {
 				(
 					Ok((
 						decodex_protocol::CommandPayload::ImportAccountCredentialFile {
@@ -676,7 +682,7 @@ mod tests {
 	}
 
 	#[test]
-	fn profile_json_has_stable_current_cached_and_unavailable_document_shapes() {
+	fn profile_json_has_stable_current_and_cached_document_shapes() {
 		let profile = AccountProfileDto {
 			account_id: EntityId::new(ACCOUNT_ID).unwrap(),
 			account_revision: EntityRevision(7),
@@ -695,7 +701,7 @@ mod tests {
 				tokens: 900,
 			}],
 		};
-		let document = super::render(
+		let document = account::render(
 			"profile",
 			OutputFormat::Json,
 			Ok(AccountProfileResult::Current(Box::new(profile.clone()))),
@@ -730,7 +736,7 @@ mod tests {
 			}),
 		);
 
-		let cached = super::render(
+		let cached = account::render(
 			"profile",
 			OutputFormat::Json,
 			Ok(AccountProfileResult::Cached {
@@ -770,8 +776,11 @@ mod tests {
 				},
 			}),
 		);
+	}
 
-		let unavailable = super::render(
+	#[test]
+	fn profile_json_has_stable_unavailable_document_shape() {
+		let unavailable = account::render(
 			"profile",
 			OutputFormat::Json,
 			Ok(AccountProfileResult::Unavailable {
