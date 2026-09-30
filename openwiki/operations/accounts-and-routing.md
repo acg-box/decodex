@@ -3,9 +3,6 @@ type: Reference
 title: "Account routing and recovery"
 description: "Service-owned account routing and recovery, compact account rows, quota alignment, and cached activity status."
 tags: [decodex, accounts, operations, presentation]
-verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T17:38:04.493Z
 sources:
   - id: openwiki-source-75aea95b5b7fd328b3b6a396
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountProfileViews.swift
@@ -35,7 +32,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests/auth_recovery.rs
   - id: openwiki-source-9b561c5dd3054cdff0599fb9
     resource: repo://database/src/quota_activation.rs
-generated: { by: "codex", at: "2026-09-30T17:38:04.493Z" }
+generated: { by: "codex", at: "2026-09-30T18:08:44.220Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-30T18:08:44.220Z
 ---
 
 # Account routing and recovery
@@ -72,7 +72,7 @@ GPUI keeps `5h` and `7d` quota slots in one row. Labels, percentages and local r
 
 ## Saved activity status
 
-Cached activity remains readable after refresh fails. Show at most one inline status line: `Sign in again · Saved data` for a required login, or `Saved data` for other cached observations. Use red for the login message and amber/orange for the recoverable warning. Keep detailed native diagnostic text and contextual GPUI explanations in hover surfaces. Loading and empty states use `Loading activity…` and `No activity`.
+Cached activity remains readable after refresh fails. Show at most one inline status line: `Sign in again` for a required login, or `Couldn’t update activity` for other failed updates. Use red for the login message and amber/orange for the recoverable warning. Keep detailed native diagnostic text and contextual GPUI explanations in hover surfaces. Loading and unavailable states use `Loading activity…` and `Activity unavailable`. Keep these labels left-aligned and omit terminal periods. Use natural complete sentences in hover explanations; do not present storage labels as errors.
 
 The short message does not change authentication authority. A rejected or ambiguous refresh, unauthorized access, or rejection after refresh requires another login. A busy or temporarily unavailable credential does not by itself establish that the user must log in again. The native row's existing login-recovery state also controls its warning and action group.
 
