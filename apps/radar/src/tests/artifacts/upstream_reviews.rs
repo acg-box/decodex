@@ -38,3 +38,27 @@ fn accepts_valid_upstream_impact_and_rejects_bad_angle() {
 
 	assertions::assert_errors(&impact, ["publisher_angle must be one of"]);
 }
+
+#[test]
+fn queue_priority_counts_match_subjects_not_only_the_total() {
+	let mut queue = fixtures::valid_review_queue();
+	queue["counts"]["high"] = serde_json::json!(0);
+	queue["counts"]["low"] = serde_json::json!(1);
+	assertions::assert_errors(
+		&queue,
+		[
+			"counts.high must equal the number of high subjects",
+			"counts.low must equal the number of low subjects",
+		],
+	);
+
+	queue["subjects"] = serde_json::json!([]);
+	queue["counts"]["subjects_queued"] = serde_json::json!(0);
+	queue["counts"]["low"] = serde_json::json!(0);
+	assertions::assert_errors(&queue, []);
+	queue["counts"]["critical"] = serde_json::json!(1);
+	assertions::assert_errors(
+		&queue,
+		["counts.critical must equal the number of critical subjects"],
+	);
+}

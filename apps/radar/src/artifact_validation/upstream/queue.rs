@@ -47,11 +47,14 @@ fn validate_upstream_review_queue_source(source: Option<&Value>, errors: &mut Ve
 	}
 }
 
-fn validate_upstream_review_subjects(subjects: Option<&Value>, errors: &mut Vec<String>) -> usize {
+fn validate_upstream_review_subjects<'a>(
+	subjects: Option<&'a Value>,
+	errors: &mut Vec<String>,
+) -> &'a [Value] {
 	let Some(subjects) = subjects.and_then(Value::as_array) else {
 		errors.push("subjects must be a list".into());
 
-		return 0;
+		return &[];
 	};
 	let mut seen = BTreeSet::new();
 
@@ -65,7 +68,7 @@ fn validate_upstream_review_subjects(subjects: Option<&Value>, errors: &mut Vec<
 		validate_upstream_review_subject(subject, index, &mut seen, errors);
 	}
 
-	subjects.len()
+	subjects
 }
 
 fn validate_upstream_review_subject(
@@ -152,7 +155,7 @@ fn validate_upstream_review_subject_fields(
 
 fn validate_upstream_review_counts(
 	counts: Option<&Value>,
-	subjects: usize,
+	subjects: &[Value],
 	errors: &mut Vec<String>,
 ) {
 	let Some(counts) = counts.and_then(Value::as_object) else {
@@ -161,7 +164,7 @@ fn validate_upstream_review_counts(
 		return;
 	};
 
-	if counts.get("subjects_queued").and_then(Value::as_u64) != Some(subjects as u64) {
+	if counts.get("subjects_queued").and_then(Value::as_u64) != Some(subjects.len() as u64) {
 		errors.push("counts.subjects_queued must equal len(subjects)".into());
 	}
 
@@ -170,6 +173,18 @@ fn validate_upstream_review_counts(
 	{
 		if counts.get(field).and_then(Value::as_i64).is_none_or(|value| value < 0) {
 			errors.push(format!("counts.{field} must be a non-negative integer"));
+			continue;
+		}
+		if UPSTREAM_REVIEW_PRIORITIES.contains(&field) {
+			let actual = subjects
+				.iter()
+				.filter(|subject| {
+					subject.get("review_priority").and_then(Value::as_str) == Some(field)
+				})
+				.count();
+			if counts.get(field).and_then(Value::as_u64) != Some(actual as u64) {
+				errors.push(format!("counts.{field} must equal the number of {field} subjects"));
+			}
 		}
 	}
 }
