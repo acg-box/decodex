@@ -9,9 +9,19 @@
 //! Product runner capacity and durable-store authorization are deliberately absent:
 //!
 //! ```compile_fail
-//! use decodex_codex::{AppServerCommand, CredentialVault, ReadOnlyProbe, RunnerCapacity};
+//! use decodex_codex::AppServerCommand;
+//! ```
 //!
-//! let _ = RunnerCapacity::daemon();
+//! ```compile_fail
+//! use decodex_codex::CredentialVault;
+//! ```
+//!
+//! ```compile_fail
+//! use decodex_codex::ReadOnlyProbe;
+//! ```
+//!
+//! ```compile_fail
+//! use decodex_codex::RunnerCapacity;
 //! ```
 
 #[doc(hidden)] pub mod protocol;
