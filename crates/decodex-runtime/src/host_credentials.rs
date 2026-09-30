@@ -415,21 +415,23 @@ impl PersistedCredential {
 }
 
 fn encode(persisted: &PersistedCredential) -> Result<Zeroizing<Vec<u8>>, CredentialStoreError> {
-	let bytes = serde_json::to_vec(persisted).map_err(|_| CredentialStoreError::InvalidBundle)?;
+	let bytes = Zeroizing::new(
+		serde_json::to_vec(persisted).map_err(|_| CredentialStoreError::InvalidBundle)?,
+	);
 	if bytes.len() > MAX_CREDENTIAL_RECORD_BYTES {
 		return Err(CredentialStoreError::InvalidBundle);
 	}
 
-	Ok(Zeroizing::new(bytes))
+	Ok(bytes)
 }
 
 fn decode(
 	bytes: Vec<u8>,
 ) -> Result<(PersistedCredential, CredentialFingerprint), CredentialStoreError> {
+	let bytes = Zeroizing::new(bytes);
 	if bytes.len() > MAX_CREDENTIAL_RECORD_BYTES {
 		return Err(CredentialStoreError::CorruptBundle);
 	}
-	let bytes = Zeroizing::new(bytes);
 	let fingerprint = fingerprint(&bytes)?;
 	let persisted =
 		serde_json::from_slice(&bytes).map_err(|_| CredentialStoreError::CorruptBundle)?;
