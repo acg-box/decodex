@@ -748,6 +748,7 @@ impl PinnedPrivateJsonFile {
 
 fn open_private_directory(path: &Path, create: bool) -> Result<PrivateDirectory> {
 	let path = clean_absolute_path(path)?;
+
 	#[cfg(test)]
 	if let Some(current) = open_sandbox_private_root(&path, create)? {
 		let relative = path

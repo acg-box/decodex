@@ -282,10 +282,12 @@ fn run_with_pricing_check(
 	};
 
 	validate_attempt(&attempt, request, &context)?;
+
 	#[cfg(test)]
 	if created_attempt && INTERRUPT_RESERVED_ATTEMPT.with(|interrupt| interrupt.replace(false)) {
 		return Err(eyre::eyre!("simulated interruption after the durable reserved attempt"));
 	}
+
 	#[cfg(not(test))]
 	let _ = created_attempt;
 	let verified = continue_publication(
@@ -1977,6 +1979,7 @@ fn ensure_identity(
 		"identity_inflight",
 		&request.posted_at,
 	)?;
+
 	#[cfg(test)]
 	if INTERRUPT_IDENTITY_READ.with(|interrupt| interrupt.replace(false)) {
 		return Err(eyre::eyre!("simulated interruption during the reserved identity read"));
@@ -2491,6 +2494,7 @@ fn finish_new(
 	crate::validate_generated_social_artifact(&post)
 		.map_err(|error| eyre::eyre!("generated published post failed validation: {error}"))?;
 	crate::write_new_json(&context.post_path, &post)?;
+
 	#[cfg(test)]
 	interrupt_after_post_write(context)?;
 

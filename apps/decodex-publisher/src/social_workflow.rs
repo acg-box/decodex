@@ -221,11 +221,13 @@ fn publish_next_with(
 			(PathBuf::from(report.path), true)
 		},
 	};
+
 	#[cfg(test)]
 	if created_reservation && INTERRUPT_AFTER_RESERVATION.with(|interrupt| interrupt.replace(false))
 	{
 		return Err(eyre::eyre!("simulated interruption after the durable reservation"));
 	}
+
 	#[cfg(not(test))]
 	let _ = created_reservation;
 	let report = publish_effect(&SocialPublishXurlRequest {
