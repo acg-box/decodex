@@ -11,6 +11,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 import unittest
 from pathlib import Path
@@ -164,6 +165,60 @@ class LocalServiceInstallerTests(unittest.TestCase):
                     paths = self.module.install_paths(args)
                     self.module.require_regular_executable(getattr(paths, field), field)
                     self.assertEqual(target.read_bytes(), b"app-owned executable")
+
+    def test_child_input_uses_the_timeout_while_reader_is_stalled(self) -> None:
+        started = time.monotonic()
+        cleanup_started = []
+
+        def reap_finite_child(process):
+            cleanup_started.append(time.monotonic() - started)
+            process.wait(timeout=3)
+
+        # Use a finite child so deadline assertions do not depend on signal permissions.
+        with mock.patch.object(self.module, "terminate_bounded_process", reap_finite_child):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                self.module.run(
+                    [sys.executable, "-c", "import time; time.sleep(1)"],
+                    input_bytes=b"x" * (1024 * 1024), capture=True, timeout=0.05,
+                )
+        self.assertEqual(len(cleanup_started), 1)
+        self.assertLess(cleanup_started[0], 0.5)
+
+    def test_child_output_is_drained_while_input_is_written(self) -> None:
+        program = (
+            "import signal, sys; signal.alarm(3); "
+            "sys.stdout.buffer.write(b'o' * 131072); sys.stdout.flush(); "
+            "data = sys.stdin.buffer.read(); "
+            "sys.stderr.write(str(len(data)))"
+        )
+        with mock.patch.object(
+            self.module, "terminate_bounded_process", lambda process: process.wait(timeout=5)
+        ):
+            result = self.module.run(
+                [sys.executable, "-c", program],
+                input_bytes=b"x" * (1024 * 1024), capture=True, timeout=2,
+            )
+        self.assertEqual(result.stdout, "o" * 131072)
+        self.assertEqual(result.stderr, str(1024 * 1024))
+
+    def test_child_input_eof_and_output_bound_are_retained(self) -> None:
+        for body in (None, b"", b"small input"):
+            with self.subTest(body=body):
+                result = self.module.run(
+                    [sys.executable, "-c", "import sys; print(len(sys.stdin.buffer.read()))"],
+                    input_bytes=body, capture=True, timeout=2,
+                )
+                self.assertEqual(result.stdout.strip(), str(len(body or b"")))
+        with (
+            mock.patch.object(self.module, "MAX_INSTALLER_CHILD_OUTPUT_BYTES", 1024),
+            mock.patch.object(
+                self.module, "terminate_bounded_process", lambda process: process.wait(timeout=3)
+            ),
+            self.assertRaisesRegex(self.module.InstallError, "output exceeded its bound"),
+        ):
+            self.module.run(
+                [sys.executable, "-c", "print('x' * 4096)"], capture=True, timeout=2,
+            )
 
     def test_config_and_launch_agent_have_no_database_endpoint_or_secret(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
