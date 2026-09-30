@@ -96,17 +96,21 @@ fn tracked_signal_slugs(
 }
 
 fn signal_commit_shas(signal: &Value) -> Vec<String> {
+	let Some(repo) = signal.pointer("/source_refs/repo").and_then(Value::as_str) else {
+		return Vec::new();
+	};
 	release_delta::string_array(signal.pointer("/source_refs/commit_urls"))
 		.into_iter()
-		.filter_map(|url| release_delta::extract_commit_sha_from_url(&url))
+		.filter_map(|url| release_delta::extract_commit_sha_from_url(&url, repo))
 		.collect()
 }
 
 fn signal_pr_number(signal: &Value) -> Option<u64> {
+	let repo = signal.pointer("/source_refs/repo").and_then(Value::as_str)?;
 	signal
 		.pointer("/source_refs/pr_url")
 		.and_then(Value::as_str)
-		.and_then(extract_pr_number_from_url)
+		.and_then(|url| extract_pr_number_from_url(url, repo))
 }
 
 fn compare_pr_numbers(commits: &[Value]) -> Vec<u64> {
@@ -150,4 +154,37 @@ fn pr_numbers_from_message(message: &str) -> Vec<u64> {
 	}
 
 	numbers
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn tracked_signals_require_references_to_the_declared_repository() {
+		let signals = [
+			("foreign-pr", "https://github.com/other/project/pull/22414", ""),
+			("foreign-commit", "", "https://github.com/other/project/commit/abcdef1"),
+			(
+				"foreign-host",
+				"https://example.com/openai/codex/pull/22414",
+				"https://example.com/openai/codex/commit/abcdef1",
+			),
+			("matching-pr", "https://github.com/openai/codex/pull/22414", ""),
+			("matching-commit", "", "https://github.com/openai/codex/commit/abcdef1"),
+		]
+		.map(|(slug, pr_url, commit_url)| {
+			serde_json::json!({
+				"slug": slug,
+				"published_at": "2026-06-01T00:00:00Z",
+				"source_refs": {
+					"repo": "openai/codex", "pr_url": pr_url, "commit_urls": [commit_url]
+				}
+			})
+		});
+		assert_eq!(
+			tracked_signal_slugs(&signals, &["abcdef1".into()], &[22414]),
+			vec!["matching-pr", "matching-commit"]
+		);
+	}
 }
