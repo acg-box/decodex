@@ -74,14 +74,12 @@ pub(crate) fn collect_bundle_json_files(paths: &[PathBuf]) -> crate::prelude::Re
 
 	for path in paths {
 		if crate::is_radar_cache_path(path) {
-			if path.extension().is_some_and(|extension| extension == "json") {
-				if crate::private_file_exists(path)? {
-					files.push(path.clone());
-				} else {
-					eyre::bail!("Bundle validation path does not exist");
-				}
-			} else {
-				files.extend(crate::collect_private_json_files(path)?);
+			match crate::private_fs::private_entry_kind(path)? {
+				Some(crate::private_fs::PrivateEntryKind::File) => files.push(path.clone()),
+				Some(crate::private_fs::PrivateEntryKind::Directory) => {
+					files.extend(crate::collect_private_json_files(path)?);
+				},
+				None => eyre::bail!("Bundle validation path does not exist"),
 			}
 
 			continue;
