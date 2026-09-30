@@ -90,7 +90,10 @@ def decode_json_frame(raw: bytes) -> dict[str, Any]:
 def exact_integer(value: Any, code: str) -> int:
     if not isinstance(value, JsonNumberToken) or not re.fullmatch(r"-?(?:0|[1-9][0-9]*)", value):
         raise CaptureError(code)
-    return int(value)
+    try:
+        return int(value)
+    except ValueError as error:
+        raise CaptureError(code) from error
 
 
 def utc_text(timestamp_micros: int) -> str:
@@ -116,8 +119,11 @@ def convert_timestamp_token(token: JsonNumberToken) -> dict[str, Any]:
     integer = match.group("integer")
     fraction = match.group("fraction") or ""
     exponent_text = match.group("exponent")
-    exponent = int(exponent_text or "0")
-    if len(integer) + len(fraction) > 40 or abs(exponent) > 30:
+    exponent_digits = (exponent_text or "0").lstrip("+-").lstrip("0") or "0"
+    if len(integer) + len(fraction) > 40 or len(exponent_digits) > 2:
+        return {"status": "precision_incompatible", "reason": "unsupported_magnitude"}
+    exponent = int(exponent_digits) * (-1 if (exponent_text or "").startswith("-") else 1)
+    if abs(exponent) > 30:
         return {"status": "precision_incompatible", "reason": "unsupported_magnitude"}
 
     numerator = int(integer + fraction)
@@ -434,11 +440,15 @@ class AppServerSession:
         self.timeout = timeout
         self.next_id = 1
         self.rate_limit_read_count = 0
+        self.pending_frame = bytearray()
+        self.request_sequence: list[str] = []
 
     def send(self, message: dict[str, Any]) -> None:
         if self.process.stdin is None:
             raise CaptureError("app_server_stdin_unavailable")
         encoded = json.dumps(message, separators=(",", ":")).encode("utf-8") + b"\n"
+        if "method" in message:
+            self.request_sequence.append(message["method"])
         try:
             self.process.stdin.write(encoded)
             self.process.stdin.flush()
@@ -448,18 +458,28 @@ class AppServerSession:
     def receive(self, deadline: float) -> dict[str, Any]:
         if self.process.stdout is None:
             raise CaptureError("app_server_stdout_unavailable")
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise CaptureError("app_server_response_timeout")
-        ready, _, _ = select.select([self.process.stdout], [], [], remaining)
-        if not ready:
-            raise CaptureError("app_server_response_timeout")
-        raw = self.process.stdout.readline(MAX_FRAME_BYTES + 2)
-        if not raw:
-            raise CaptureError("app_server_exited")
-        if len(raw) > MAX_FRAME_BYTES or not raw.endswith(b"\n"):
-            raise CaptureError("app_server_frame_limit")
-        return decode_json_frame(raw[:-1])
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise CaptureError("app_server_response_timeout")
+            newline = self.pending_frame.find(b"\n")
+            if newline >= 0:
+                raw = bytes(self.pending_frame[:newline])
+                del self.pending_frame[:newline + 1]
+                return decode_json_frame(raw)
+            if len(self.pending_frame) >= MAX_FRAME_BYTES:
+                raise CaptureError("app_server_frame_limit")
+            ready, _, _ = select.select([self.process.stdout], [], [], remaining)
+            if not ready:
+                raise CaptureError("app_server_response_timeout")
+            chunk = os.read(
+                self.process.stdout.fileno(), min(65_536, MAX_FRAME_BYTES - len(self.pending_frame))
+            )
+            if not chunk:
+                raise CaptureError(
+                    "app_server_frame_limit" if self.pending_frame else "app_server_exited"
+                )
+            self.pending_frame.extend(chunk)
 
     def request(self, method: str, params: dict[str, Any] | None = None) -> Any:
         request_id = self.next_id
@@ -584,7 +604,10 @@ def capture(codex_command: str, timeout: float) -> dict[str, Any]:
     except CaptureError as error:
         failure_code = error.code
     finally:
-        shutdown_process(process)
+        try:
+            shutdown_process(process)
+        except CaptureError as error:
+            failure_code = error.code
     completed_ns = time.time_ns()
 
     if sha256_file(executable) != executable_digest:
@@ -612,7 +635,7 @@ def capture(codex_command: str, timeout: float) -> dict[str, Any]:
             "transport": "JSON-RPC 2.0 newline frames over app-server stdio",
             "method": RATE_LIMIT_METHOD,
             "rate_limit_read_count": session.rate_limit_read_count,
-            "request_sequence": list(REQUEST_SEQUENCE),
+            "request_sequence": session.request_sequence,
             "turn_start_count": 0,
             "tool_invocation_count": 0,
             "account_login_or_configuration_call_count": 0,
