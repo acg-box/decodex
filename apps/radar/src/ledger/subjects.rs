@@ -61,7 +61,7 @@ fn parse_commit_url_subject(url: &str, repo: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::ledger::subjects::{self, RadarSubject};
 
 	#[test]
 	fn signal_subjects_belong_to_the_declared_github_repository() {
@@ -78,7 +78,7 @@ mod tests {
 		});
 
 		assert_eq!(
-			subject_refs_for_signal(signal.as_object().unwrap()),
+			subjects::subject_refs_for_signal(signal.as_object().unwrap()),
 			vec![RadarSubject {
 				repo: "openai/codex".into(),
 				subject_kind: "commit".into(),
@@ -95,7 +95,11 @@ mod tests {
 			let signal =
 				serde_json::json!({"source_refs": {"repo": "openai/codex", "pr_url": url}});
 
-			assert_eq!(subject_refs_for_signal(signal.as_object().unwrap()).len(), count, "{url}");
+			assert_eq!(
+				subjects::subject_refs_for_signal(signal.as_object().unwrap()).len(),
+				count,
+				"{url}"
+			);
 		}
 	}
 }

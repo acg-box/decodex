@@ -167,8 +167,11 @@ fn review_reason(surface_hints: &[String], attention_flags: &[String]) -> String
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::review_queue::bundles::{BundleCommit, BundlePr};
+	use crate::review_queue::{
+		RecentCommit,
+		bundles::{BundleCommit, BundlePr, SourceBundle},
+		subjects,
+	};
 
 	#[test]
 	fn pr_subject_retains_seed_commit_once_alongside_pr_commits() {
@@ -190,23 +193,23 @@ mod tests {
 			commits: vec![BundleCommit { sha: pr_commit.clone(), message: "PR commit".into() }],
 			files: vec![],
 		};
-		let mut subject = subject_from_bundle(&bundle, "pr", "1", &seed);
+		let mut subject = subjects::subject_from_bundle(&bundle, "pr", "1", &seed);
 
 		assert_eq!(subject["commit_shas"], serde_json::json!([pr_commit, seed.sha]));
 
-		append_commit_sha(&mut subject, &seed.sha);
+		subjects::append_commit_sha(&mut subject, &seed.sha);
 
 		assert_eq!(subject["commit_shas"].as_array().unwrap().len(), 2);
 
 		bundle.commits.push(BundleCommit { sha: seed.sha.clone(), message: seed.title.clone() });
 
-		let subject = subject_from_bundle(&bundle, "pr", "1", &seed);
+		let subject = subjects::subject_from_bundle(&bundle, "pr", "1", &seed);
 
 		assert_eq!(subject["commit_shas"], serde_json::json!([pr_commit, seed.sha]));
 
 		bundle.commits.clear();
 
-		let subject = subject_from_bundle(&bundle, "pr", "1", &seed);
+		let subject = subjects::subject_from_bundle(&bundle, "pr", "1", &seed);
 
 		assert_eq!(subject["commit_shas"], serde_json::json!([seed.sha]));
 	}

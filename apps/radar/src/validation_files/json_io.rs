@@ -54,7 +54,9 @@ pub(crate) fn write_json(path: &Path, payload: &Value) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::{fs, process};
+
+	use crate::validation_files::json_io;
 
 	#[test]
 	fn temporary_name_collision_preserves_both_existing_files() {
@@ -65,14 +67,14 @@ mod tests {
 		fs::write(&path, b"original artifact").unwrap();
 		fs::write(&staging, b"another writer's data").unwrap();
 
-		assert!(write_json(&path, &serde_json::json!({"updated": true})).is_err());
+		assert!(json_io::write_json(&path, &serde_json::json!({"updated": true})).is_err());
 		assert_eq!(fs::read(&path).unwrap(), b"original artifact");
 		assert_eq!(fs::read(&staging).unwrap(), b"another writer's data");
 
 		fs::remove_file(staging).unwrap();
+		json_io::write_json(&path, &serde_json::json!({"updated": true}))
+			.expect("write after collision");
 
-		write_json(&path, &serde_json::json!({"updated": true})).expect("write after collision");
-
-		assert_eq!(load_json(&path).unwrap(), serde_json::json!({"updated": true}));
+		assert_eq!(json_io::load_json(&path).unwrap(), serde_json::json!({"updated": true}));
 	}
 }
