@@ -4,13 +4,13 @@ title: "Historical account and runner evidence"
 description: "Historical account and runner evidence"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-96d8b5b0b0f9c7e15da20cda
     resource: repo://crates/decodex-runtime/src/process_supervisor.rs
 generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-30T08:07:44.872Z
 ---
 
 

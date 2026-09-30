@@ -3,13 +3,13 @@ type: Reference
 title: "Historical built-in Domain Pack pressure test"
 description: "Historical built-in Domain Pack pressure test"
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-22T05:36:11.119Z
 sources:
   - id: openwiki-source-cf0b0e7ae1282e29ac1dd184
     resource: repo://crates/decodex-runtime/src/domain_packs.rs
 generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-30T08:07:44.872Z
 ---
 
 # Current status

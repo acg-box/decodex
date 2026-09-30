@@ -4,9 +4,6 @@ title: "ProcessGeneration authority"
 description: "ProcessGeneration authority"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T02:19:36.307Z
 sources:
   - id: openwiki-source-96d8b5b0b0f9c7e15da20cda
     resource: repo://crates/decodex-runtime/src/process_supervisor.rs
@@ -15,6 +12,9 @@ sources:
   - id: openwiki-source-f2137915c6cf8c70697a023f
     resource: repo://database/src/process_generations.rs
 generated: { by: "codex", at: "2026-09-28T02:19:36.307Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-30T08:07:44.872Z
 ---
 
 

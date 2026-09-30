@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fc2d644861b420842e35c6e1d1fffea2ebe7f188f3e175cc89249cba55e41fc3",
+  "pageVersion": "sha256:f875d9545a8c0cb64382a77d385a48294f021b2dc8cf5ff51afed41b4376fef0",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
       "statement": "The embedded migration ledger defines the ordered SQLite migration boundary; historical Pending Route receipts do not define the current synchronous Route API.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/application.rs#L1090-L1098",
+          "resource": "repo://crates/decodex-runtime/src/application.rs#L1095-L1103",
           "version": "repo-lines-v1:sha256:9f50ad9a2e502282c81ef3efa20bd61544b86fbf8a144294f4920412a5e2309e:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDBhZTJjYWQ3MDY4YjdlMTllODhhZGU4YjEwNTI5MjIzNzc4OGJjMzdhMGZiNTRhNTYxNjRmOTAwNjQxMGEyYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWI0ZTViNGYyZjg4NWQxOTIzNTk5ZjNkMGNjZmExZDM4ZTQ1NDNkNmUwNjMxNTAyZjE4OTZlYzRlZTcxOTUyOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2E4NmRjMjVjNDE1OGU3YjZmNzY1N2NjYzllZDZmZTMzYzVhZjM0ZjZjYmI1NDcxZGU2MzIwMTczMDU4NmVhZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjI4MDFiN2MwNGRmNTM5ZmIwYWJiMGEzNDhlNDQ5ZTc1ZmRhZTM5NjU4NDE4NzNmMjVmMWE1YWFjZmRkY2RjZiJ9"
         },
         {
@@ -21,7 +21,7 @@
       "statement": "Current Route is a synchronous service-owned operation with routing/account locks, refreshed revisions, liveness gates, exact shared-auth projection and authoritative completion rather than a Pending queue.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L913-L1310",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L914-L1311",
           "version": "repo-lines-v1:sha256:c50e54a80f8f027a64edd4e195fa62a5ed046cf20cbc10d1caa71d50c1d148f2:eyJzZWxlY3RlZExpbmVDb3VudCI6Mzk4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhN2QwMTcxOWVkNDg0OThhY2JhZjBhYzA1MWVlZjQyZmU5YjU5ZjEyMDEwN2I3NTNjYTM0ZGRkYzUwNjdmNDJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMjFkMmJlNmI3YzRhNGUzNmZlOTg0ZTY3MjliNmQ3ZjBhMDA5MDA2ZGY3MzA5NzQ2YzkxZDNjZDU3NWMxYmVmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiYjhkNmU5MDM5OWVmMzI4MWRiNWQ4NmZlYzBmMWYxMzM3ODIyN2FiNjAzZDJhMWY1NTkxMmFkYjNjZjcyOTVlIn0"
         }
       ]
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:5de2c2fe763cdf1b7a14293e65b4ef6733568d339c94b9cc8d6efbbbffd03b2a"
+          "version": "repo-file-v1:sha256:1af0ddc31e17a3b940879213c55b88c61f0c00ee169b52215aa34ee6eebbabcd"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -85,6 +85,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-29T20:08:07.145Z"
+    "at": "2026-09-30T08:07:44.872Z"
   }
 }

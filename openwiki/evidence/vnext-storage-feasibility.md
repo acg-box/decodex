@@ -3,9 +3,6 @@ type: Reference
 title: "Historical server-store feasibility"
 description: "Retired storage prototype evidence and the current SQLite and blob boundary."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-9cb0f6612fed4591dd1bd8d3
     resource: repo://crates/decodex-core/src/blob.rs
@@ -14,6 +11,9 @@ sources:
   - id: openwiki-source-0184655e2e99000280ce7bbe
     resource: repo://database/src/lib.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-30T08:07:44.872Z
 ---
 
 # Current scope

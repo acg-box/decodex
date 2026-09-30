@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2b595d3b0a7a7e2f7bc037dcf2a93a7ff494734da09a02e06e7ef53a74f21d3a",
+  "pageVersion": "sha256:e513ddd60b9e52f3dbbb8717c64e25af9a84a86893495b1030e6ae743303cc7f",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/dictation.rs",
-          "version": "repo-file-v1:sha256:54cea9bc3ef72ba20b3935c3d0bb4b028138a8ccc0b1b0f5c79a957794cae029"
+          "version": "repo-file-v1:sha256:6adc80be4146b1131e7c36c5ca6da531bb4f73c2810ed43d144958c734d700cb"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/dictation_native.rs",
@@ -18,11 +18,19 @@
     },
     {
       "id": "claim_74856debb3a749dead1a1de66cd316be",
-      "statement": "The dictation transport reconciles segment revisions and final markers before emitting transcript text.",
+      "statement": "The Rust dictation session reconciles segment ordering, revisions and final markers. Swift forwards incremental segments and terminates with an error when its event queue fills rather than discarding accepted segments.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexTransport/DictationStream.swift",
-          "version": "repo-file-v1:sha256:cbb81c1ad455a4b7738a86d60f5368967d5dc4253075a25c8c64922bb07a4ebf"
+          "version": "repo-file-v1:sha256:a56c482e744cc261fbad49bd0dd32da7f538d1c5a1cb384c21059e4e76df7cb1"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/dictation.rs",
+          "version": "repo-file-v1:sha256:6adc80be4146b1131e7c36c5ca6da531bb4f73c2810ed43d144958c734d700cb"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/dictation_transcript.rs",
+          "version": "repo-file-v1:sha256:d3f6aeb544715e1a38b157f7a6aa0b8c1827de882946dddc72d98a4563ca6798"
         }
       ]
     },
@@ -93,6 +101,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-29T20:08:07.145Z"
+    "at": "2026-09-30T08:07:44.872Z"
   }
 }

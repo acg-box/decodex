@@ -3,15 +3,15 @@ type: Reference
 title: "Historical exact-command authority proof"
 description: "Retired command prototype results and current SQLite receipt ownership."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T13:52:19.644Z
 sources:
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-0184655e2e99000280ce7bbe
     resource: repo://database/src/lib.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-30T08:07:44.872Z
 ---
 
 # Current scope

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b0b3c31cf42a80f09c394a7cf38a5fed6074ac33af1323ce62cc1d4cc9ab6d9a",
+  "pageVersion": "sha256:f98fe8e318e51ec64bc9845d62cab9a44860ddd6959516a8fda5216374704b03",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -17,12 +17,12 @@
       "statement": "Known external ownership causes the Agent host to reject user input before enqueueing it; availability recovery does not automatically resend previously unsent user input.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L2048-L2075",
-          "version": "repo-lines-v1:sha256:6a15b8a2ff0bb7b19410046c50b09940c116eaba973b04fe7cb318f565eeb749:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiOWU1NzE2MzVlNzgyMjliZjY1YWMyMTRjMjM5Y2NiYzc2NTY3MjI1MTk2ZGE1ZGJmODE2N2Q2MTEwNTQzMTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1ZGVhZDdmMjI4NzQ5NDIxMWNiODA3MzdjYTc4YzU3ODI3NzRhOWMzNTdkMmFjMWYwMTEyMzg1MzQ1NmI0NTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJlMDkzMTM5MDgzOGJhYjhmNzgxNjJkMmE5N2FiY2U5N2Y5YzA0ZDRkOWZiY2M0M2Q5NTk2YzgwMmM4MDJhMzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1ZWE5NTAxMmMwN2ZkMzBkODYyYWVkODAxZDZkZDk3M2UwMzMyODdkZTMyNTM4Yjg1NTlhODJlNDJlMzE1MzAifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:b86bbb12d61cc7fecfb3358ff3f2a03c1df6c0e10f19062e2b22f0e66663fe12"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1840-L1867",
-          "version": "repo-lines-v1:sha256:3788c0a8d2097aba42dbd8ffab3b4350659dd4644db611f1899e0f9424873d8e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2NzIxNDdjZDA0MDllMzVmZmQzYzYwNmFiYmZjN2NmYTA3M2VhMzIzYzQxMGM0ZTJlNjU5ODU3YjM5YzA5NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxYmUzNWQzZWU5ZGFiM2Y3ZGFhOTkxY2RkN2ViYzNjYmJjYjQzYzIxYTFiNTE0ZmM3MDQ5NDNiZTFjOTY3ZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlNjIxYTFhZTVmMmEyZDYyMWRjYWU2MWE2ZWI1MDc0YjRjN2RkOGYwYzc5N2JkNjRjOTk1NDU4OTNjZmUxMDYifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
+          "version": "repo-file-v1:sha256:b647ebdc3b58dd9bcb128899e495f9df69152cc79c5d67ef6ba5ace1cef18ae4"
         }
       ]
     },
@@ -51,12 +51,8 @@
       "statement": "Decodex checks work dependencies and dispatch state before recording dispatch intent and submitting a native turn; inbox inputs include user messages, async question answers, and application evidence with different roles.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1087-L1140",
-          "version": "repo-lines-v1:sha256:e7cc1898b62ac0a08ea0b565437df494766576681e2dfe6236b04512110281bf:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxZTBhNDI1ZmI5NmZiNTliZmZmMDg5MmFkYjE5YTQ5NTlhYWQyNzM2MjU3NDhlNGNlYjY0NmU5ZWE4ZDhmY2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmNTM1ODNkYWE2MGViYzJjMTBlNDhjOWI3NmQ0ZDg4YzNiM2VkYTFhNTU0YjFmYjY1NGE3NmE0NWEyODhlZWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkzNmI2NDRhYzIwOWMyZWNiYjQzOGQ4MmI4OGRhODEyODdkMmM5OGExMzBhZDk5OWEzOTE4YTE3ODY2NjM5MDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxNjcxZWY5MjFjYTBkMTUxMjRhOGFlYmU2ODFhOGZmNTg0MDM4YjExMjM5YTZiMDFhZDMxMGIzMzEzZTlhMTIifQ"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L890-L1015",
-          "version": "repo-lines-v1:sha256:f1a61bad9ac0db028649f8af2668de679d5caae3b446c2c46908a5d18ff68c0c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MzNhMWI4NDVjYWUyY2IzOWM1YjNhMzgzZjUxMjQyZTljOWNmOWQwMzA1YjFiZTgwNzJkOTlmZGRhMmEyYTE5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1MjYyOTMxZjQ3MGZjNDhjYzgwNGIxNTkzMTU1OWU5MjAyMmY4ZWY3OTMwNTdkMTIzNWRjMDZiMzQxZmQ1ZjAwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyMmJkZTVkY2Q2NTZhN2QzMzNkYTIzMGY4ZTMxYzRjNDhkNWI0MWIzYmI5NGJkNmRiZWYxY2E0OGM1MDhiMWRhIn0"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:b86bbb12d61cc7fecfb3358ff3f2a03c1df6c0e10f19062e2b22f0e66663fe12"
         }
       ]
     },
@@ -90,7 +86,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.0",
-    "at": "2026-09-29T13:52:19.644Z"
+    "by": "openwiki/0.6.1",
+    "at": "2026-09-30T08:07:44.872Z"
   }
 }

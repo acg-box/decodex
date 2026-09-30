@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b397a2e0321148a6d5aa397782c9e990e7692d54e522ea71eb147ef000c68978",
+  "pageVersion": "sha256:f90649b8f3ce14b84680541613d7fe2d306481b6d3bc340a01c728afcc635593",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -17,8 +17,8 @@
       "statement": "Manual and automatic recap are separate capabilities; the automatic recap controller starts disabled.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_recap_automatic.rs#L1-L45",
-          "version": "repo-lines-v1:sha256:65f27f212836a06c4ed0c527fbb3e3c50dbada508dd5a241f02ab4a699f88c31:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1MWU2MmY0N2U2MjBlYTY2MTIwN2QzMWUyZWI2Y2JiZmM4ODI4YTBjNjljYjhlZDg0OTYxMzM0NDMwMDA3ZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2NjI0ODlkMjkwMzU4NDgyODVhYWIxZTVjYTQ4NDNmMWQ1MWM4ODE0YTYxODJhZWNhZTUzZjNjZGZkMTM3YmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkM2JjZjg0ZjE1MTRlNGYyMWU1ZmZhOWIxNTM5NWEzYmZkYzAyNDY4ZjI4M2NkYWQ1NTY5YmExNDM3Yjk5ZjMifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_recap_automatic.rs",
+          "version": "repo-file-v1:sha256:cfcd609d708110888026d2d6c916d5392863bc75f96c50d4a4ae4dcf328434fa"
         }
       ]
     },
@@ -67,6 +67,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-29T20:08:07.145Z"
+    "at": "2026-09-30T08:07:44.872Z"
   }
 }
