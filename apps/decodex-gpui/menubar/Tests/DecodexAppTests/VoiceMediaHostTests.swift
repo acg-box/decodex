@@ -1,5 +1,4 @@
 import AppKit
-import Darwin
 import XCTest
 
 @testable import DecodexApp
@@ -7,14 +6,9 @@ import XCTest
 @MainActor
 final class VoiceMediaHostTests: XCTestCase {
     func testNativeDictationFinishFlushesButSupersededCallbacksAreIgnored() async throws {
-        _ = NSApplication.shared
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
-        window.makeKeyAndOrderFront(nil)
-        defer { window.orderOut(nil) }
         var captures: [DictationProbe] = []
         var authorizations: [@MainActor (Bool) -> Void] = []
-        let host = VoiceMediaHost(hostWindow: window,
-                                  authorizationRequestForTesting: { authorizations.append($0) },
+        let host = VoiceMediaHost(authorizationRequestForTesting: { authorizations.append($0) },
                                   dictationFactoryForTesting: { emit in
             let capture = DictationProbe(emit: emit)
             captures.append(capture)
@@ -57,13 +51,8 @@ final class VoiceMediaHostTests: XCTestCase {
     }
 
     func testDelayedAuthorizationCannotRestartAnOldCapture() async throws {
-        _ = NSApplication.shared
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
-        window.makeKeyAndOrderFront(nil)
-        defer { window.orderOut(nil) }
         var authorizations: [@MainActor (Bool) -> Void] = []
-        let host = VoiceMediaHost(hostWindow: window,
-                                  authorizationRequestForTesting: { authorizations.append($0) })
+        let host = VoiceMediaHost(authorizationRequestForTesting: { authorizations.append($0) })
         defer { host.close() }
         XCTAssertTrue(host.command(#"{"operation":"start"}"#))
         XCTAssertEqual(authorizations.count, 1)
@@ -142,7 +131,7 @@ final class VoiceMediaHostTests: XCTestCase {
             }
             try await Task.sleep(for: .milliseconds(20))
         }
-        XCTFail("No native media event: \(type); \("native permission adapter")")
+        XCTFail("No native permission adapter event: \(type)")
         throw NSError(domain: "VoiceMediaHostTests", code: 2)
     }
 }
@@ -156,11 +145,4 @@ private final class DictationProbe: DictationCapturing {
     func start(input: String) throws {}
     func finish() { finishes += 1 }
     func stop() { stops += 1 }
-}
-
-@MainActor
-private final class HoverProbeView: NSView {
-    var moves = 0
-    override var acceptsFirstResponder: Bool { true }
-    override func mouseMoved(with event: NSEvent) { moves += 1 }
 }
