@@ -133,7 +133,7 @@ for kind, value, expected in cases:
     result = (validate_bundle if kind == 'bundle' else validate_analysis_draft)(value)
     assert result.ok == expected, (kind, value, result)
     if kind == 'bundle' and not expected:
-        args = Namespace(allow_ai_analysis_boundary=True, bundle='fixture.json')
+        args = Namespace(allow_ai_analysis_boundary=True, bundle='fixture.json', repo_root=sys.argv[3])
         with patch.object(cli, 'parse_args', return_value=args), patch.object(cli, 'load_json', return_value=value), patch.object(cli, 'run_codex_analysis') as analysis:
             try:
                 cli.main()
@@ -146,7 +146,62 @@ for kind, value, expected in cases:
 		)
 		.arg(root.join("automations/radar/scripts/github"))
 		.arg(serde_json::to_string(&cases).unwrap())
+        .arg(root)
 		.output()
 		.expect("Python contracts should execute");
+	assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+}
+
+#[test]
+fn analysis_helper_checks_resolved_paths_before_reading_bundle() {
+	let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
+	let output = Command::new("python3").arg("-c").arg(r#"
+import contextlib, io, sys, tempfile
+from pathlib import Path
+from argparse import Namespace
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+from analysis_runner import cli
+with tempfile.TemporaryDirectory() as tmp:
+    parent = Path(tmp).resolve()
+    root = parent / 'repo'
+    cache = root / '.agent/automations/radar/cache'
+    cache.mkdir(parents=True)
+    (cache / 'bundle.json').write_text('{}')
+    exported = root / 'target/radar-analysis/run/bundle.json'
+    exported.parent.mkdir(parents=True)
+    exported.write_text('{}')
+    alias = root / 'alias.json'
+    alias.symlink_to(cache / 'bundle.json')
+    outside = parent / 'outside.json'
+    outside.write_text('{}')
+    outside_alias = root / 'outside-alias.json'
+    outside_alias.symlink_to(outside)
+    prefix = root / '.agent/automations/radar/cache-example/bundle.json'
+    prefix.parent.mkdir()
+    prefix.write_text('{}')
+    marker = root / 'automations/radar/skills/github-signal/SKILL.md'
+    marker.parent.mkdir(parents=True)
+    marker.touch()
+    cases = [(alias, 'private Radar cache'), (cache / '../cache/bundle.json', 'private Radar cache'), (outside, 'inside repo root'), (outside_alias, 'inside repo root'), (exported, None), (prefix, None)]
+    for bundle, error in cases:
+        args = Namespace(allow_ai_analysis_boundary=True, bundle=str(bundle), repo_root=str(root))
+        with patch.object(cli, 'parse_args', return_value=args), patch.object(cli, 'load_json', return_value={}) as load, patch.object(cli, 'validate_bundle') as validate, patch.object(cli, 'validate_analysis_draft') as draft, patch.object(cli, 'run_codex_analysis', return_value={}) as analysis:
+            validate.return_value.ok = draft.return_value.ok = True
+            try:
+                with contextlib.redirect_stdout(io.StringIO()): cli.main()
+            except SystemExit as exc:
+                assert error and error in str(exc), (bundle, str(exc))
+            else:
+                assert error is None, (bundle, 'accepted prohibited path')
+            if error:
+                load.assert_not_called()
+                analysis.assert_not_called()
+            else:
+                load.assert_called_once_with(bundle.resolve())
+                analysis.assert_called_once_with(args, bundle.resolve(), root)
+    from analysis_runner.paths import repo_root_from
+    assert repo_root_from(exported) == root
+"#).arg(root.join("automations/radar/scripts/github")).output().expect("Python path fixture should execute");
 	assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
 }
