@@ -1,3 +1,7 @@
+use std::collections::BTreeSet;
+
+use serde_json::Value;
+
 use crate::tests::{assertions, fixtures};
 
 #[test]
@@ -60,7 +64,7 @@ fn path_validation_accepts_generated_analysis_drafts_without_schema() {
 #[test]
 fn empty_json_values_do_not_satisfy_try_instructions_or_effects() {
 	for empty in [
-		serde_json::Value::Null,
+		Value::Null,
 		serde_json::json!(""),
 		serde_json::json!(false),
 		serde_json::json!(0),
@@ -118,7 +122,7 @@ fn bundle_validation_checks_required_field_types_without_rejecting_empty_content
 	assertions::assert_errors(&valid, []);
 
 	for (pointer, value, error) in [
-		("/files/0/path", serde_json::Value::Null, "files[0].path must be a non-empty string"),
+		("/files/0/path", Value::Null, "files[0].path must be a non-empty string"),
 		("/files/0/status", serde_json::json!(42), "files[0].status must be a non-empty string"),
 		(
 			"/files/0/additions",
@@ -130,11 +134,7 @@ fn bundle_validation_checks_required_field_types_without_rejecting_empty_content
 			serde_json::json!(-1),
 			"files[0].deletions must be a non-negative integer",
 		),
-		(
-			"/primary_pr/number",
-			serde_json::Value::Null,
-			"primary_pr.number must be a positive integer",
-		),
+		("/primary_pr/number", Value::Null, "primary_pr.number must be a positive integer"),
 		(
 			"/primary_pr/number",
 			serde_json::json!(0),
@@ -146,14 +146,14 @@ fn bundle_validation_checks_required_field_types_without_rejecting_empty_content
 			"primary_pr.number must be a positive integer",
 		),
 		("/primary_pr/title", serde_json::json!(""), "primary_pr.title must be a non-empty string"),
-		("/primary_pr/body", serde_json::Value::Null, "primary_pr.body must be a string"),
+		("/primary_pr/body", Value::Null, "primary_pr.body must be a string"),
 		(
 			"/primary_pr/state",
 			serde_json::json!(false),
 			"primary_pr.state must be a non-empty string",
 		),
 		("/primary_pr/labels", serde_json::json!([42]), "primary_pr.labels must be a list"),
-		("/primary_pr/url", serde_json::Value::Null, "primary_pr.url must be a non-empty string"),
+		("/primary_pr/url", Value::Null, "primary_pr.url must be a non-empty string"),
 	] {
 		let mut bundle = valid.clone();
 
@@ -163,14 +163,14 @@ fn bundle_validation_checks_required_field_types_without_rejecting_empty_content
 	}
 
 	valid["analysis_mode"] = serde_json::json!("commit_only");
-	valid["primary_pr"] = serde_json::Value::Null;
+	valid["primary_pr"] = Value::Null;
 
 	assertions::assert_errors(&valid, []);
 }
 
 #[test]
 fn rendered_config_flags_deduplicate_after_normalizing_aliases() {
-	let known = std::collections::BTreeSet::from(["feature_alpha".to_owned()]);
+	let known = BTreeSet::from(["feature_alpha".to_owned()]);
 	let flags = serde_json::json!([
 		" feature_alpha ",
 		"--enable feature_alpha",
@@ -226,7 +226,7 @@ fn required_positive_integer_rejects_zero_and_wrong_json_types() {
 		serde_json::json!(1.5),
 		serde_json::json!(true),
 		serde_json::json!("1"),
-		serde_json::Value::Null,
+		Value::Null,
 	] {
 		let error = crate::required_value_u64(&serde_json::json!({"number": value}), "number")
 			.expect_err("PR identity must be a positive integer");
