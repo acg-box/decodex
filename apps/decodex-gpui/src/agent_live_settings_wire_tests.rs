@@ -310,3 +310,82 @@ fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut gpui
 	});
 	assert!(visual.debug_bounds("live-reviewer-read").is_none());
 }
+
+fn running_snapshot() -> AgentSnapshotDto {
+	AgentSnapshotDto {
+		runtime_source: Some(EntityId::new("source").unwrap()),
+		workspaces: vec![],
+		work_items: vec![work()],
+		dependencies: vec![],
+		pending_events: vec![],
+	}
+}
+
+#[gpui::test]
+fn ordinary_refresh_keeps_live_settings_read_and_publication_receipt(
+	cx: &mut gpui::TestAppContext,
+) {
+	for model in [false, true] {
+		let (_dir, profile, server) = fixture(model);
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, _| {
+			s.apply_result(Ok(AgentSnapshotResult::Available(running_snapshot())));
+			s.profile = Some(profile);
+		});
+		let edit = if model {
+			Edit::Model(decodex_protocol::AgentLiveModelSelection {
+				model: decodex_protocol::ConversationModel::new("selected").unwrap(),
+				effort: decodex_protocol::ConversationReasoningEffort::High,
+			})
+		} else {
+			Edit::Reviewer(Reviewer::User)
+		};
+		for selection in [None, Some(edit)] {
+			let saving = selection.is_some();
+			surface.update(cx, |s, cx| {
+				s.update_live_settings("root".into(), "turn".into(), selection, cx);
+				assert!(s.live_reviewer.task.is_some());
+				// Advance the snapshot generation before this operation can complete.
+				s.generation += 1;
+				s.apply_result(Ok(AgentSnapshotResult::Available(running_snapshot())));
+			});
+			cx.run_until_parked();
+			surface.read_with(cx, |s, _| {
+				assert!(
+					s.live_reviewer.task.is_none(),
+					"refresh must not strand a completed operation"
+				);
+				assert!(matches!(s.live_reviewer.state, Some(State::Available { .. })));
+				assert_eq!(s.live_reviewer.reviewed, !saving);
+				if saving {
+					assert!(s.live_reviewer.feedback.contains("could not be confirmed"));
+					assert!(matches!(
+						s.live_reviewer.state,
+						Some(State::Available {
+							last_outcome: Some(decodex_protocol::AgentLiveReviewerOutcome::Unknown),
+							..
+						})
+					));
+				}
+			});
+		}
+		assert_eq!(server.join().unwrap().len(), 1, "an uncertain publication must not be retried");
+	}
+}
+
+#[gpui::test]
+fn disconnect_invalidates_live_review_before_same_turn_reconnect(cx: &mut gpui::TestAppContext) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(running_snapshot())));
+		s.live_reviewer.work = Some("root".into());
+		s.live_reviewer.state = Some(live_state(0, true));
+		s.live_reviewer.reviewed = true;
+		let epoch = s.live_reviewer.epoch;
+		s.mark_stale(cx);
+		assert_ne!(s.live_reviewer.epoch, epoch);
+		s.apply_result(Ok(AgentSnapshotResult::Available(running_snapshot())));
+		assert!(s.live_reviewer.state.is_none());
+		assert!(!s.live_reviewer.reviewed);
+	});
+}

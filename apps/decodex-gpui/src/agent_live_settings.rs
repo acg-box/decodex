@@ -142,7 +142,6 @@ impl AgentSurface {
 			None
 		};
 		let saving = action.is_some();
-		let generation = self.generation;
 		self.live_reviewer.epoch = self.live_reviewer.epoch.wrapping_add(1);
 		let epoch = self.live_reviewer.epoch;
 		self.live_reviewer.work = Some(work.clone());
@@ -167,7 +166,7 @@ impl AgentSurface {
 		self.live_reviewer.task=Some(cx.spawn(async move |surface,cx| {
 			let result=future.await;
 			let _=surface.update(cx,|s,cx| {
-				if s.generation!=generation||s.live_reviewer.epoch!=epoch {return;}
+				if s.live_reviewer.epoch!=epoch {return;}
 				s.live_reviewer.task=None;
 				let current=s.snapshot.as_ref().is_some_and(|snapshot| snapshot.runtime_source.as_ref()==Some(&source)
 					&& snapshot.work_items.iter().any(|w| w.id==work && w.codex_thread_id.as_deref()==Some(&thread) && w.active_turn_id.as_deref()==Some(&turn) && w.dispatch_state==AgentDispatchStateDto::Running));
