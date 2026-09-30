@@ -486,11 +486,22 @@ fn set_lock(file: &File, kind: i16, command: i32) -> Result<(), Error> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::{
+		env,
+		fs::{self, DirBuilder, Permissions},
+		os::unix::fs::{DirBuilderExt as _, MetadataExt as _, PermissionsExt as _},
+		path::{Path, PathBuf},
+		process::{self, Command},
+		sync::atomic::Ordering,
+	};
+
+	use serde_json::Value;
+
+	use crate::reset_card_journal::{self, Lock, NEXT, SCHEMA};
 	struct Fixture(PathBuf);
 	impl Fixture {
 		fn new() -> Self {
-			let path = std::env::temp_dir().join(format!(
+			let path = env::temp_dir().join(format!(
 				"decodex-journal-test-{}-{}",
 				process::id(),
 				NEXT.fetch_add(1, Ordering::Relaxed)
@@ -517,7 +528,7 @@ mod tests {
             "descriptor":{"grantedAtUnixSeconds":100}},"idempotencyKey":"22222222-2222-4222-8222-222222222222"})
 	}
 	fn call(value: Value) -> Option<Value> {
-		request(&serde_json::to_vec(&value).unwrap())
+		reset_card_journal::request(&serde_json::to_vec(&value).unwrap())
 	}
 
 	#[test]
@@ -588,7 +599,7 @@ mod tests {
 			.is_none()
 		);
 
-		let child = std::process::Command::new(std::env::current_exe().unwrap())
+		let child = Command::new(env::current_exe().unwrap())
 			.args([
 				"--exact",
 				"reset_card_journal::tests::other_process_cannot_acquire_dispatch_lock",
@@ -703,7 +714,7 @@ mod tests {
 
 	#[test]
 	fn other_process_cannot_acquire_dispatch_lock() {
-		let Some(path) = std::env::var_os("DECODEX_JOURNAL_LOCK_TEST") else {
+		let Some(path) = env::var_os("DECODEX_JOURNAL_LOCK_TEST") else {
 			return;
 		};
 

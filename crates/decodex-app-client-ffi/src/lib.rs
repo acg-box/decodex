@@ -1247,16 +1247,26 @@ async fn execute_account_command(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use decodex_protocol::ResetCardOperationResult;
+	use std::{ptr, slice};
+
+	use serde_json::Value;
+
+	use decodex_protocol::{
+		AccountLoginMethod, ClientFailure, CommandError, EntityId, EntityRevision, FastModeFailure,
+		ResetCardConsumeResponse, ResetCardDescriptorDto, ResetCardOperationResult,
+	};
+	use crate::{
+		AuthorityResponse, BridgeFailure, FailureResponse, FastModeData, RESPONSE_SCHEMA, Request,
+		RequestFailure, ResponseFailure, SuccessResponse,
+	};
 
 	const ACCOUNT_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 	const SECOND_ACCOUNT_ID: &str = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405163";
 
 	#[test]
 	fn reset_card_outcomes_keep_uncertain_dispatch_distinct_from_rejection() {
-		let rejected = reset_card_consume_result(ResetCardConsumeResponse::Rejected {
-			error: decodex_protocol::CommandError::IdempotencyConflict,
+		let rejected = crate::reset_card_consume_result(ResetCardConsumeResponse::Rejected {
+			error: CommandError::IdempotencyConflict,
 		});
 
 		assert!(matches!(rejected, Err(RequestFailure::Bridge(BridgeFailure::ResetCardRejected))));
@@ -1267,14 +1277,14 @@ mod tests {
 			ClientFailure::ApplicationAcceptanceUnknown,
 		] {
 			assert!(matches!(
-				reset_card_consume_result(ResetCardConsumeResponse::PotentiallyDispatched {
+				crate::reset_card_consume_result(ResetCardConsumeResponse::PotentiallyDispatched {
 					failure
 				}),
 				Err(RequestFailure::Bridge(BridgeFailure::ResetCardPossiblyDispatched))
 			));
 		}
 
-		let accepted = reset_card_consume_result(ResetCardConsumeResponse::Accepted {
+		let accepted = crate::reset_card_consume_result(ResetCardConsumeResponse::Accepted {
 			account_id: EntityId::new(ACCOUNT_ID).unwrap(),
 			descriptor: ResetCardDescriptorDto::new(100, None).unwrap(),
 			state: ResetCardOperationResult::Prepared,
@@ -1305,7 +1315,7 @@ mod tests {
 
 	#[test]
 	fn exported_abi_is_exact() {
-		assert_eq!(decodex_app_native_client_abi_version(), 1);
+		assert_eq!(crate::decodex_app_native_client_abi_version(), 1);
 	}
 
 	#[test]
@@ -1583,12 +1593,12 @@ mod tests {
 
 	#[test]
 	fn public_request_returns_an_owned_failure_buffer() {
+		let input = br#"{"schema":"decodex/app-native-client/1","operation":"list_accounts"}"#;
 		let mut pointer = ptr::null_mut();
 		let mut len = 0;
-		let input = br#"{"schema":"decodex/app-native-client/1","operation":"list_accounts"}"#;
 		// SAFETY: Input and output buffers remain valid for the complete call.
 		let status = unsafe {
-			decodex_app_native_client_request(
+			crate::decodex_app_native_client_request(
 				ptr::null_mut(),
 				input.as_ptr(),
 				input.len(),
@@ -1602,7 +1612,7 @@ mod tests {
 		assert!(len > 0);
 
 		// SAFETY: The public call returned this exact live pointer/length pair.
-		let response: serde_json::Value =
+		let response: Value =
 			unsafe { serde_json::from_slice(slice::from_raw_parts(pointer, len)).unwrap() };
 
 		assert_eq!(
@@ -1616,13 +1626,13 @@ mod tests {
 		);
 
 		// SAFETY: Release the exact allocation once after inspecting its contents.
-		unsafe { decodex_app_native_client_free(pointer, len) };
+		unsafe { crate::decodex_app_native_client_free(pointer, len) };
 	}
 
 	#[test]
 	fn account_ids_are_canonical_lowercase_uuids() {
-		assert!(is_canonical_uuid(ACCOUNT_ID));
-		assert!(!is_canonical_uuid("018F0F9E-7B6E-4A31-8F4C-1D2E3F405162"));
-		assert!(!is_canonical_uuid("not-an-account"));
+		assert!(crate::is_canonical_uuid(ACCOUNT_ID));
+		assert!(!crate::is_canonical_uuid("018F0F9E-7B6E-4A31-8F4C-1D2E3F405162"));
+		assert!(!crate::is_canonical_uuid("not-an-account"));
 	}
 }
