@@ -1,11 +1,13 @@
 //! Authoritative identity for one scheduled Codex automation run.
 
+use std::env;
+
 use crate::prelude::{Result, eyre};
 
 const CODEX_THREAD_ID: &str = "CODEX_THREAD_ID";
 
 pub(crate) fn current_run_id() -> Result<String> {
-	let run_id = std::env::var(CODEX_THREAD_ID)
+	let run_id = env::var(CODEX_THREAD_ID)
 		.map_err(|_| eyre::eyre!("CODEX_THREAD_ID must be set to a lowercase UUID"))?;
 
 	validate_run_id(&run_id)?;
