@@ -25,6 +25,9 @@ use tokio::{
 	time::{Duration, Instant},
 };
 
+#[cfg(test)]
+type OfferPause = (oneshot::Sender<()>, oneshot::Receiver<()>);
+
 pub(super) enum Command {
 	Answer(String),
 	Mute(bool),
@@ -50,6 +53,14 @@ impl Events {
 }
 impl Transport {
 	pub(super) fn start(pcm: Pcm) -> Result<Self, ()> {
+		Self::start_inner(
+			pcm,
+			#[cfg(test)]
+			None,
+		)
+	}
+
+	fn start_inner(pcm: Pcm, #[cfg(test)] offer_pause: Option<OfferPause>) -> Result<Self, ()> {
 		let (commands, requests) = channel::channel(8);
 		let (sender, events) = mpsc::sync_channel(128);
 		let overflow = Arc::new(AtomicBool::new(false));
@@ -69,7 +80,7 @@ impl Transport {
 				runtime.block_on(async {
 					tokio::select! {
 						_ = cancelled => {},
-						_ = run(pcm, requests, output.clone()) => {},
+						_ = run(pcm, requests, output.clone(), #[cfg(test)] offer_pause) => {},
 					}
 				});
 			})
@@ -103,7 +114,12 @@ impl Drop for Peer {
 	}
 }
 
-async fn run(pcm: Pcm, commands: channel::Receiver<Command>, events: Events) {
+async fn run(
+	pcm: Pcm,
+	commands: channel::Receiver<Command>,
+	events: Events,
+	#[cfg(test)] offer_pause: Option<OfferPause>,
+) {
 	let factory = PeerConnectionFactory::default();
 	// Apple owns capture, playback and DSP. No second audio device or processing chain.
 	factory.set_adm_recording_enabled(false);
@@ -119,7 +135,16 @@ async fn run(pcm: Pcm, commands: channel::Receiver<Command>, events: Events) {
 	};
 	// Drop PCM before synchronous peer teardown, including when this future is cancelled.
 	let mut pcm = pcm;
-	let result = run_media(&factory, &peer, &mut pcm, commands, events.clone()).await;
+	let result = run_media(
+		&factory,
+		&peer,
+		&mut pcm,
+		commands,
+		events.clone(),
+		#[cfg(test)]
+		offer_pause,
+	)
+	.await;
 	// Let the UI stop its audio device without waiting for native network teardown.
 	if let Err(message) = result {
 		events.send(json!({"type":"error","message":message}));
@@ -132,6 +157,7 @@ async fn run_media(
 	pcm: &mut Pcm,
 	mut commands: channel::Receiver<Command>,
 	events: Events,
+	#[cfg(test)] offer_pause: Option<OfferPause>,
 ) -> Result<(), &'static str> {
 	let source = NativeAudioSource::new(AudioSourceOptions::default(), 48_000, 1, 40);
 	let track = factory.create_audio_track("microphone", source.clone());
@@ -169,7 +195,15 @@ async fn run_media(
 	})));
 	let offer = tokio::time::timeout(Duration::from_secs(10), async {
 		let options = || OfferOptions { offer_to_receive_audio: true, ..Default::default() };
-		peer.0.set_local_description(peer.0.create_offer(options()).await?).await?;
+		let offer = peer.0.create_offer(options()).await?;
+		#[cfg(test)]
+		if let Some((entered, resume)) = offer_pause {
+			// Hold the native offer before applying it; cancellation must discard this
+			// continuation.
+			let _ = entered.send(());
+			let _ = resume.await;
+		}
+		peer.0.set_local_description(offer).await?;
 		let until = Instant::now() + Duration::from_secs(3);
 		while peer.0.ice_gathering_state() != IceGatheringState::Complete && Instant::now() < until
 		{
@@ -294,6 +328,42 @@ mod tests {
 			.await
 			.expect("cancellation releases both audio endpoints without an answer");
 		}
+	}
+
+	#[tokio::test]
+	async fn cancelled_offer_continuation_cannot_resume_or_block_the_next_call() {
+		let (input, captured) = rtrb::RingBuffer::new(4_800);
+		let (playback, output) = rtrb::RingBuffer::new(4_800);
+		let (entered, paused) = oneshot::channel();
+		let (resume, continued) = oneshot::channel();
+		let transport =
+			Transport::start_inner(Pcm { captured, playback }, Some((entered, continued))).unwrap();
+		tokio::time::timeout(Duration::from_secs(15), paused).await.unwrap().unwrap();
+		assert!(transport.poll().is_none(), "paused offer must not reach signaling");
+		drop(transport);
+		tokio::time::timeout(Duration::from_secs(3), async {
+			while !input.is_abandoned() || !output.is_abandoned() {
+				tokio::time::sleep(Duration::from_millis(10)).await;
+			}
+		})
+		.await
+		.expect("cancelling an unapplied offer releases both audio endpoints");
+		assert!(resume.send(()).is_err(), "cancelled offer continuation must be dropped");
+
+		let (input, captured) = rtrb::RingBuffer::new(4_800);
+		let (playback, output) = rtrb::RingBuffer::new(4_800);
+		let next = Transport::start(Pcm { captured, playback }).unwrap();
+		let offer = event(&next, "offer").await;
+		assert!(offer["sdp"].as_str().is_some_and(|sdp| !sdp.is_empty()));
+		assert!(!input.is_abandoned() && !output.is_abandoned());
+		drop(next);
+		tokio::time::timeout(Duration::from_secs(3), async {
+			while !input.is_abandoned() || !output.is_abandoned() {
+				tokio::time::sleep(Duration::from_millis(10)).await;
+			}
+		})
+		.await
+		.expect("the replacement call also releases both audio endpoints");
 	}
 
 	async fn call_lifecycle(close_remote_channel: bool) {
