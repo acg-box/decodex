@@ -59,7 +59,8 @@ def main():
         # a distinct trial build without changing the core app version.
         metadata["CFBundleVersion"] = f"5.{VARIANTS.index(slug) + 1}.{1000 + int(revision[:8], 16) % 9000}"
         info.write_bytes(plistlib.dumps(metadata))
-        run("codesign", "--force", "--options", "runtime", "--timestamp=none", "--sign", IDENTITY, app)
+        run("codesign", "--force", "--options", "runtime", "--timestamp=none",
+            "--preserve-metadata=entitlements", "--sign", IDENTITY, app)
         run("codesign", "--verify", "--deep", "--strict", app)
         manifest[slug] = str(app)
         launcher = output / f"{label}.command"
