@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 use clap::{Args, Subcommand, ValueEnum};
 
@@ -6,7 +6,8 @@ use crate::{
 	DEFAULT_SOCIAL_ATTEMPTS_DIR, DEFAULT_SOCIAL_CANDIDATES_DIR, DEFAULT_SOCIAL_LOCKS_DIR,
 	DEFAULT_SOCIAL_POSTS_DIR, DEFAULT_SOCIAL_STAGING_DIR, DEFAULT_XURL_AUTH_CONTRACT_PATH,
 	SocialClock, SocialObserveDueRequest, SocialPublishNextRequest, SocialRecordCandidateRequest,
-	SocialSealXurlAuthRequest, prelude::Result,
+	SocialSealXurlAuthRequest,
+	prelude::{Result, eyre},
 };
 
 #[derive(Debug, Args)]
@@ -14,7 +15,6 @@ pub(super) struct SocialCommand {
 	#[command(subcommand)]
 	command: SocialSubcommand,
 }
-
 impl SocialCommand {
 	pub(super) fn run(&self) -> Result<()> {
 		match &self.command {
@@ -42,7 +42,6 @@ struct SocialRecordCandidateCommand {
 	#[arg(long)]
 	run_id: String,
 }
-
 impl SocialRecordCandidateCommand {
 	fn run(&self) -> Result<()> {
 		require_current_thread_id(&self.run_id)?;
@@ -72,7 +71,6 @@ struct SocialPublishNextCommand {
 	#[arg(long)]
 	reason: Option<String>,
 }
-
 impl SocialPublishNextCommand {
 	fn run(&self) -> Result<()> {
 		require_current_thread_id(&self.run_id)?;
@@ -99,7 +97,6 @@ struct SocialObserveDueCommand {
 	#[arg(long)]
 	run_id: String,
 }
-
 impl SocialObserveDueCommand {
 	fn run(&self) -> Result<()> {
 		require_current_thread_id(&self.run_id)?;
@@ -117,7 +114,6 @@ impl SocialObserveDueCommand {
 
 #[derive(Debug, Args)]
 struct SocialProbeXurlCommand {}
-
 impl SocialProbeXurlCommand {
 	fn run(&self) -> Result<()> {
 		let report = crate::probe_social_xurl(&SocialClock::current()?.now)?;
@@ -130,7 +126,6 @@ impl SocialProbeXurlCommand {
 
 #[derive(Debug, Args)]
 struct SocialRefreshPricingCommand {}
-
 impl SocialRefreshPricingCommand {
 	fn run(&self) -> Result<()> {
 		let report = crate::refresh_social_x_pricing(&SocialClock::current()?.now)?;
@@ -146,7 +141,6 @@ struct SocialCostReportCommand {
 	#[arg(long, value_name = "YYYY-MM")]
 	month: Option<String>,
 }
-
 impl SocialCostReportCommand {
 	fn run(&self) -> Result<()> {
 		let clock = SocialClock::current()?;
@@ -161,7 +155,6 @@ impl SocialCostReportCommand {
 
 #[derive(Debug, Args)]
 struct SocialSealXurlAuthCommand {}
-
 impl SocialSealXurlAuthCommand {
 	fn run(&self) -> Result<()> {
 		let report = crate::seal_social_xurl_auth(&SocialSealXurlAuthRequest {
@@ -194,11 +187,11 @@ enum SocialSubcommand {
 }
 
 fn require_current_thread_id(run_id: &str) -> Result<()> {
-	let current = std::env::var("CODEX_THREAD_ID")
-		.map_err(|_| crate::prelude::eyre::eyre!("CODEX_THREAD_ID is required"))?;
+	let current =
+		env::var("CODEX_THREAD_ID").map_err(|_| eyre::eyre!("CODEX_THREAD_ID is required"))?;
 
 	if run_id != current {
-		return Err(crate::prelude::eyre::eyre!("run_id must exactly match CODEX_THREAD_ID"));
+		return Err(eyre::eyre!("run_id must exactly match CODEX_THREAD_ID"));
 	}
 
 	Ok(())
