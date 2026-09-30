@@ -1164,6 +1164,8 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn bind_profile(&mut self, profile: Option<ClientProfile>, cx: &mut Context<Self>) {
+		self.close_native_agent(cx);
+		self.reset_native_agents();
 		self.cancel_queued_command(cx);
 		self.command_epoch += 1;
 		self.submission.command = None;
@@ -1264,6 +1266,7 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
+		self.reset_native_agents();
 		self.reset_resources();
 		self.reset_integrations();
 		self.reset_capabilities();
@@ -1346,6 +1349,7 @@ impl AgentSurface {
 
 	fn apply_result(&mut self, result: Result<AgentSnapshotResult, ()>) {
 		if !matches!(&result, Ok(AgentSnapshotResult::Available(_))) {
+			self.reset_native_agents();
 			self.guardian_disconnected();
 			self.reset_resources();
 			self.reset_integrations();
@@ -1367,6 +1371,7 @@ impl AgentSurface {
 		}
 		match result {
 			Ok(AgentSnapshotResult::Available(snapshot)) => {
+				self.invalidate_native_agents(&snapshot);
 				self.invalidate_guardian(&snapshot);
 				self.invalidate_resources(&snapshot);
 				self.invalidate_integrations(&snapshot);
