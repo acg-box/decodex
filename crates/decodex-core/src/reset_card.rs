@@ -41,6 +41,7 @@ impl ResetCardDescriptor {
 		expires_at: impl Into<Option<ResetCardTimestamp>>,
 	) -> Result<Self, ResetCardError> {
 		let expires_at = expires_at.into();
+
 		if expires_at.is_some_and(|expiry| expiry.0 <= granted_at.0) {
 			Err(ResetCardError::ExpirationNotAfterGrant)
 		} else {
@@ -136,7 +137,7 @@ pub const fn admit_manual_reset_card_use(
 mod tests {
 	use crate::{
 		AccountState, ManualResetCardAdmissionError, ResetCardDescriptor, ResetCardError,
-		ResetCardTimestamp, admit_manual_reset_card_use,
+		ResetCardTimestamp,
 	};
 
 	fn timestamp(value: i64) -> ResetCardTimestamp {
@@ -171,22 +172,22 @@ mod tests {
 
 	#[test]
 	fn manual_admission_includes_depleted_but_rejects_each_unsafe_state_precisely() {
-		assert_eq!(admit_manual_reset_card_use(AccountState::Available), Ok(()));
-		assert_eq!(admit_manual_reset_card_use(AccountState::Depleted), Ok(()));
+		assert_eq!(crate::admit_manual_reset_card_use(AccountState::Available), Ok(()));
+		assert_eq!(crate::admit_manual_reset_card_use(AccountState::Depleted), Ok(()));
 		assert_eq!(
-			admit_manual_reset_card_use(AccountState::Unavailable),
+			crate::admit_manual_reset_card_use(AccountState::Unavailable),
 			Err(ManualResetCardAdmissionError::AccountUnavailable)
 		);
 		assert_eq!(
-			admit_manual_reset_card_use(AccountState::Unknown),
+			crate::admit_manual_reset_card_use(AccountState::Unknown),
 			Err(ManualResetCardAdmissionError::AccountStateUnknown)
 		);
 		assert_eq!(
-			admit_manual_reset_card_use(AccountState::AuthFailed),
+			crate::admit_manual_reset_card_use(AccountState::AuthFailed),
 			Err(ManualResetCardAdmissionError::AuthenticationFailed)
 		);
 		assert_eq!(
-			admit_manual_reset_card_use(AccountState::PluginUnready),
+			crate::admit_manual_reset_card_use(AccountState::PluginUnready),
 			Err(ManualResetCardAdmissionError::PluginUnready)
 		);
 	}

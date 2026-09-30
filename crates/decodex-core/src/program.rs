@@ -141,6 +141,18 @@ pub enum ObjectiveState {
 	/// Outcome ended intentionally without achievement.
 	Abandoned,
 }
+impl ObjectiveState {
+	/// Canonical persistence spelling.
+	pub const fn as_str(self) -> &'static str {
+		match self {
+			Self::Proposed => "proposed",
+			Self::Active => "active",
+			Self::Blocked => "blocked",
+			Self::Achieved => "achieved",
+			Self::Abandoned => "abandoned",
+		}
+	}
+}
 
 /// Closed evidence kinds required by the first Program review loop.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -191,19 +203,6 @@ impl ProgramReviewClassification {
 		}
 	}
 }
-impl ObjectiveState {
-	/// Canonical persistence spelling.
-	pub const fn as_str(self) -> &'static str {
-		match self {
-			Self::Proposed => "proposed",
-			Self::Active => "active",
-			Self::Blocked => "blocked",
-			Self::Achieved => "achieved",
-			Self::Abandoned => "abandoned",
-		}
-	}
-}
-
 fn is_canonical_uuid_v4(value: &str) -> bool {
 	let bytes = value.as_bytes();
 

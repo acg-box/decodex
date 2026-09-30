@@ -1,6 +1,7 @@
 use std::{
 	collections::BTreeMap,
 	fmt::{Display, Formatter},
+	str,
 	sync::OnceLock,
 };
 
@@ -754,12 +755,15 @@ impl ContextPack {
 	/// binary header and framing only after full verification; it never reconstructs omitted data.
 	pub fn render_model_input(&self) -> Result<String, ConversationError> {
 		self.verify()?;
+
 		let mut cursor = encoded_header_length();
 		let mut output = String::new();
+
 		for (position, source) in self.source_manifest.iter().enumerate() {
 			if source.included_byte_length == 0 {
 				continue;
 			}
+
 			let encoded_position = read_u16(&self.bytes, &mut cursor)?;
 			let length = usize::try_from(read_u32(&self.bytes, &mut cursor)?)
 				.map_err(|_| ConversationError::InvalidContextPolicy)?;
@@ -767,31 +771,38 @@ impl ContextPack {
 				.checked_add(length)
 				.filter(|end| *end <= self.bytes.len())
 				.ok_or(ConversationError::InvalidContextPolicy)?;
+
 			if usize::from(encoded_position) != position
 				|| u64::try_from(length).ok() != Some(source.included_byte_length)
 			{
 				return Err(ConversationError::InvalidContextPolicy);
 			}
+
 			let represented = &self.bytes[cursor..end];
-			let text = match std::str::from_utf8(represented) {
+			let text = match str::from_utf8(represented) {
 				Ok(text) => text,
 				Err(error) if error.error_len().is_none() =>
-					std::str::from_utf8(&represented[..error.valid_up_to()])
+					str::from_utf8(&represented[..error.valid_up_to()])
 						.map_err(|_| ConversationError::InvalidContextPolicy)?,
 				Err(_) => return Err(ConversationError::InvalidContextPolicy),
 			};
+
 			if text.contains('\0') {
 				return Err(ConversationError::InvalidContextPolicy);
 			}
 			if !output.is_empty() && !text.is_empty() {
 				output.push_str("\n\n");
 			}
+
 			output.push_str(text);
+
 			cursor = end;
 		}
+
 		if cursor != self.bytes.len() || output.is_empty() || output.len() > self.policy.max_bytes {
 			return Err(ConversationError::InvalidContextPolicy);
 		}
+
 		Ok(output)
 	}
 
@@ -1383,10 +1394,15 @@ mod tests {
 
 	#[test]
 	fn domain_ids_preserve_constructor_invariants_when_decoded() {
-		fn check<T: serde::de::DeserializeOwned + serde::Serialize>() {
+		fn check<T>()
+		where
+			T: serde::de::DeserializeOwned + serde::Serialize,
+		{
 			let valid = "00000000-0000-7000-9000-000000000001";
 			let decoded: T = serde_json::from_value(serde_json::json!(valid)).unwrap();
+
 			assert_eq!(serde_json::to_value(decoded).unwrap(), serde_json::json!(valid));
+
 			for invalid in [
 				"",
 				"not-an-id",
@@ -1396,6 +1412,7 @@ mod tests {
 				assert!(serde_json::from_value::<T>(serde_json::json!(invalid)).is_err());
 			}
 		}
+
 		check::<crate::ConversationId>();
 		check::<crate::RuntimeSessionId>();
 		check::<crate::TurnId>();
@@ -1608,6 +1625,7 @@ mod tests {
 		assert_eq!(pack, conversation::compile_context_pack(input).unwrap());
 
 		pack.verify().unwrap();
+
 		assert_eq!(pack.render_model_input(), Err(ConversationError::InvalidContextPolicy));
 
 		let mut forged = pack.bytes().to_vec();

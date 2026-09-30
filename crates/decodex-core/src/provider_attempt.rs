@@ -14,11 +14,6 @@ use crate::{
 	RuntimeSessionId, TurnId,
 };
 
-/// Maximum UTF-8 bytes in one opaque provider idempotency or correlation key.
-pub const MAX_PROVIDER_REQUEST_KEY_BYTES: usize = 512;
-/// Maximum UTF-8 bytes in one positive provider receipt, thread, or turn identity.
-pub const MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES: usize = 512;
-
 macro_rules! provider_uuid_v4 {
 	($name:ident, $label:literal, $error:ident) => {
 		#[doc = concat!("Canonical ", $label, " identity.")]
@@ -50,9 +45,17 @@ macro_rules! provider_uuid_v4 {
 }
 
 provider_uuid_v4!(ProviderAttemptId, "ProviderAttempt", InvalidAttemptId);
+
 provider_uuid_v4!(ProviderEvidenceId, "provider evidence", InvalidEvidenceId);
+
 provider_uuid_v4!(ProviderRequestId, "provider request", InvalidRequestId);
+
 provider_uuid_v4!(ManagedExecutionId, "ManagedRun execution", InvalidManagedExecutionId);
+
+/// Maximum UTF-8 bytes in one opaque provider idempotency or correlation key.
+pub const MAX_PROVIDER_REQUEST_KEY_BYTES: usize = 512;
+/// Maximum UTF-8 bytes in one positive provider receipt, thread, or turn identity.
+pub const MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES: usize = 512;
 
 /// Exact opaque provider key. Debug output is intentionally redacted.
 #[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -61,9 +64,11 @@ impl ProviderRequestKey {
 	/// Validate one bounded printable provider request key.
 	pub fn new(value: impl Into<String>) -> Result<Self, ProviderAttemptError> {
 		let value = value.into();
+
 		if !is_bounded_provider_identity(&value, MAX_PROVIDER_REQUEST_KEY_BYTES) {
 			return Err(ProviderAttemptError::InvalidProviderKey);
 		}
+
 		Ok(Self(value))
 	}
 
@@ -72,6 +77,7 @@ impl ProviderRequestKey {
 		&self.0
 	}
 }
+
 impl Debug for ProviderRequestKey {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str("ProviderRequestKey([REDACTED])")
@@ -93,6 +99,7 @@ impl ProviderRequestKeys {
 		if idempotency.is_none() && correlation.is_none() {
 			return Err(ProviderAttemptError::MissingProviderKey);
 		}
+
 		Ok(Self { idempotency, correlation })
 	}
 
@@ -111,6 +118,7 @@ impl ProviderRequestKeys {
 		self.idempotency.as_ref() == Some(key) || self.correlation.as_ref() == Some(key)
 	}
 }
+
 impl Debug for ProviderRequestKeys {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter
@@ -119,6 +127,225 @@ impl Debug for ProviderRequestKeys {
 			.field("has_correlation", &self.correlation.is_some())
 			.finish()
 	}
+}
+
+/// Complete caller-supplied input for the atomic preparation transaction.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderAttemptPreparation {
+	/// New attempt identity.
+	pub attempt_id: ProviderAttemptId,
+	/// Exactly one domain consumer.
+	pub consumer: ProviderAttemptConsumer,
+	/// Exact immutable V17 plan consumed by this attempt.
+	pub continuation_plan_id: String,
+	/// Exact logical provider request identity.
+	pub request_id: ProviderRequestId,
+	/// Lowercase SHA-256 of canonical request bytes.
+	pub request_digest: String,
+	/// Exact provider idempotency or correlation keys.
+	pub provider_keys: ProviderRequestKeys,
+	/// Explicit original or acknowledged-successor disposition.
+	pub duplicate_risk: ProviderDuplicateRisk,
+}
+impl ProviderAttemptPreparation {
+	/// Validate one complete preparation without granting persistence or dispatch authority.
+	#[allow(clippy::too_many_arguments)]
+	pub fn new(
+		attempt_id: ProviderAttemptId,
+		consumer: ProviderAttemptConsumer,
+		continuation_plan_id: impl Into<String>,
+		request_id: ProviderRequestId,
+		request_digest: impl Into<String>,
+		provider_keys: ProviderRequestKeys,
+		duplicate_risk: ProviderDuplicateRisk,
+	) -> Result<Self, ProviderAttemptError> {
+		let preparation = Self {
+			attempt_id,
+			consumer,
+			continuation_plan_id: continuation_plan_id.into(),
+			request_id,
+			request_digest: request_digest.into(),
+			provider_keys,
+			duplicate_risk,
+		};
+
+		preparation.validate()?;
+
+		Ok(preparation)
+	}
+
+	/// Recheck public preparation fields before accepting them for persistence.
+	pub fn validate(&self) -> Result<(), ProviderAttemptError> {
+		if !is_canonical_uuid(&self.continuation_plan_id) {
+			return Err(ProviderAttemptError::InvalidContinuationPlanId);
+		}
+		if !is_sha256(&self.request_digest) {
+			return Err(ProviderAttemptError::InvalidRequestDigest);
+		}
+		if matches!(
+			&self.consumer,
+			ProviderAttemptConsumer::ManagedRunExecution {
+				managed_run_revision,
+				..
+			} if *managed_run_revision <= 0
+		) {
+			return Err(ProviderAttemptError::InvalidManagedRunRevision);
+		}
+		if matches!(
+			&self.duplicate_risk,
+			ProviderDuplicateRisk::AcknowledgedSuccessor {
+				acknowledgement_digest,
+				..
+			} if !is_sha256(acknowledgement_digest)
+		) {
+			return Err(ProviderAttemptError::InvalidAcknowledgement);
+		}
+
+		Ok(())
+	}
+}
+
+/// One exact positive evidence receipt for an original attempt.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderPositiveEvidence {
+	/// Unique append-only evidence identity.
+	pub evidence_id: ProviderEvidenceId,
+	/// Original attempt that owns this result, even after process replacement.
+	pub attempt_id: ProviderAttemptId,
+	/// Exact request identity retained by the attempt.
+	pub request_id: ProviderRequestId,
+	/// Positive evidence mechanism.
+	pub source: ProviderEvidenceSource,
+	/// Positively established terminal outcome.
+	pub outcome: ProviderTerminalOutcome,
+	/// Exact provider key used to correlate the proof.
+	pub provider_key: ProviderRequestKey,
+	/// Positive provider receipt identity, when the evidence shape requires it.
+	pub provider_receipt_id: Option<String>,
+	/// Exact provider thread identity, when positively observed.
+	pub provider_thread_id: Option<String>,
+	/// Exact provider turn identity, when positively observed.
+	pub provider_turn_id: Option<String>,
+	/// Lowercase SHA-256 of the positive provider witness.
+	pub witness_digest: String,
+}
+impl ProviderPositiveEvidence {
+	/// Validate a closed positive shape. There is no timeout, absence, or negative-search shape.
+	#[allow(clippy::too_many_arguments)]
+	pub fn new(
+		evidence_id: ProviderEvidenceId,
+		attempt_id: ProviderAttemptId,
+		request_id: ProviderRequestId,
+		source: ProviderEvidenceSource,
+		outcome: ProviderTerminalOutcome,
+		provider_key: ProviderRequestKey,
+		provider_receipt_id: Option<String>,
+		provider_thread_id: Option<String>,
+		provider_turn_id: Option<String>,
+		witness_digest: impl Into<String>,
+	) -> Result<Self, ProviderAttemptError> {
+		let evidence = Self {
+			evidence_id,
+			attempt_id,
+			request_id,
+			source,
+			outcome,
+			provider_key,
+			provider_receipt_id,
+			provider_thread_id,
+			provider_turn_id,
+			witness_digest: witness_digest.into(),
+		};
+
+		evidence.validate()?;
+
+		Ok(evidence)
+	}
+
+	/// Recheck the evidence shape before persistence because its fields are public.
+	pub fn validate(&self) -> Result<(), ProviderAttemptError> {
+		if !is_sha256(&self.witness_digest)
+			|| [&self.provider_receipt_id, &self.provider_thread_id, &self.provider_turn_id]
+				.into_iter()
+				.flatten()
+				.any(|value| {
+					!is_bounded_provider_identity(value, MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES)
+				}) {
+			return Err(ProviderAttemptError::InvalidPositiveEvidence);
+		}
+
+		let valid_shape = match self.source {
+			ProviderEvidenceSource::ProviderReceipt =>
+				self.outcome != ProviderTerminalOutcome::NotSubmitted
+					&& self.provider_receipt_id.is_some(),
+			ProviderEvidenceSource::PositiveIdempotencyLookup => true,
+			ProviderEvidenceSource::ExactTurnReadback =>
+				self.outcome != ProviderTerminalOutcome::NotSubmitted
+					&& self.provider_receipt_id.is_none()
+					&& self.provider_thread_id.is_none()
+					&& self.provider_turn_id.is_some(),
+			ProviderEvidenceSource::ExactThreadReadback =>
+				self.outcome != ProviderTerminalOutcome::NotSubmitted
+					&& self.provider_receipt_id.is_none()
+					&& self.provider_thread_id.is_some()
+					&& self.provider_turn_id.is_some(),
+			ProviderEvidenceSource::PositiveNonSubmissionReceipt =>
+				self.outcome == ProviderTerminalOutcome::NotSubmitted
+					&& self.provider_receipt_id.is_some()
+					&& self.provider_turn_id.is_none(),
+		};
+
+		if !valid_shape {
+			return Err(ProviderAttemptError::InvalidPositiveEvidence);
+		}
+
+		Ok(())
+	}
+}
+
+/// Complete durable attempt projection used inside the sole writer and reconciler.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderAttempt {
+	/// Stable attempt identity.
+	pub attempt_id: ProviderAttemptId,
+	/// Exact immutable consumer.
+	pub consumer: ProviderAttemptConsumer,
+	/// V17 continuation plan.
+	pub continuation_plan_id: String,
+	/// Consumed V16 routing decision.
+	pub routing_decision_id: String,
+	/// Accepted RuntimeSession supplied by V17.
+	pub runtime_session_id: RuntimeSessionId,
+	/// Exact accepted RuntimeSession revision.
+	pub runtime_session_revision: i64,
+	/// Account selected by V16.
+	pub account_id: AccountId,
+	/// Live fenced generation accepted before dispatch authorization.
+	pub process_generation_id: ProcessGenerationId,
+	/// Exact ready generation revision retained at preparation.
+	pub process_generation_revision: i64,
+	/// External execution epoch of the bound generation.
+	pub process_execution_epoch_id: ProcessExecutionEpochId,
+	/// Exact logical request identity.
+	pub request_id: ProviderRequestId,
+	/// Lowercase SHA-256 of canonical request bytes.
+	pub request_digest: String,
+	/// Exact keys retained for positive reconciliation. Debug output is redacted.
+	pub provider_keys: ProviderRequestKeys,
+	/// Original or explicitly acknowledged successor disposition.
+	pub duplicate_risk: ProviderDuplicateRisk,
+	/// Current durable state.
+	pub state: ProviderAttemptState,
+	/// Closed reason only while `state` is `unknown`.
+	pub unknown_reason: Option<ProviderAttemptUnknownReason>,
+	/// Positive terminal evidence identity, when terminal evidence exists.
+	pub terminal_evidence_id: Option<ProviderEvidenceId>,
+	/// Positive optimistic revision.
+	pub revision: i64,
+	/// durable-store-authored creation instant in Unix microseconds.
+	pub created_at_micros: i64,
+	/// durable-store-authored last-transition instant in Unix microseconds.
+	pub updated_at_micros: i64,
 }
 
 /// Exactly one consumer intent bound before dispatch authorization.
@@ -163,80 +390,6 @@ pub enum ProviderDuplicateRisk {
 		/// Lowercase SHA-256 of the durable acknowledgement receipt.
 		acknowledgement_digest: String,
 	},
-}
-
-/// Complete caller-supplied input for the atomic preparation transaction.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProviderAttemptPreparation {
-	/// New attempt identity.
-	pub attempt_id: ProviderAttemptId,
-	/// Exactly one domain consumer.
-	pub consumer: ProviderAttemptConsumer,
-	/// Exact immutable V17 plan consumed by this attempt.
-	pub continuation_plan_id: String,
-	/// Exact logical provider request identity.
-	pub request_id: ProviderRequestId,
-	/// Lowercase SHA-256 of canonical request bytes.
-	pub request_digest: String,
-	/// Exact provider idempotency or correlation keys.
-	pub provider_keys: ProviderRequestKeys,
-	/// Explicit original or acknowledged-successor disposition.
-	pub duplicate_risk: ProviderDuplicateRisk,
-}
-impl ProviderAttemptPreparation {
-	/// Validate one complete preparation without granting persistence or dispatch authority.
-	#[allow(clippy::too_many_arguments)]
-	pub fn new(
-		attempt_id: ProviderAttemptId,
-		consumer: ProviderAttemptConsumer,
-		continuation_plan_id: impl Into<String>,
-		request_id: ProviderRequestId,
-		request_digest: impl Into<String>,
-		provider_keys: ProviderRequestKeys,
-		duplicate_risk: ProviderDuplicateRisk,
-	) -> Result<Self, ProviderAttemptError> {
-		let preparation = Self {
-			attempt_id,
-			consumer,
-			continuation_plan_id: continuation_plan_id.into(),
-			request_id,
-			request_digest: request_digest.into(),
-			provider_keys,
-			duplicate_risk,
-		};
-		preparation.validate()?;
-		Ok(preparation)
-	}
-
-	/// Recheck public preparation fields before accepting them for persistence.
-	pub fn validate(&self) -> Result<(), ProviderAttemptError> {
-		if !is_canonical_uuid(&self.continuation_plan_id) {
-			return Err(ProviderAttemptError::InvalidContinuationPlanId);
-		}
-		if !is_sha256(&self.request_digest) {
-			return Err(ProviderAttemptError::InvalidRequestDigest);
-		}
-		if matches!(
-			&self.consumer,
-			ProviderAttemptConsumer::ManagedRunExecution {
-				managed_run_revision,
-				..
-			} if *managed_run_revision <= 0
-		) {
-			return Err(ProviderAttemptError::InvalidManagedRunRevision);
-		}
-		if matches!(
-			&self.duplicate_risk,
-			ProviderDuplicateRisk::AcknowledgedSuccessor {
-				acknowledgement_digest,
-				..
-			} if !is_sha256(acknowledgement_digest)
-		) {
-			return Err(ProviderAttemptError::InvalidAcknowledgement);
-		}
-
-		Ok(())
-	}
 }
 
 /// Durable ProviderAttempt state.
@@ -358,146 +511,6 @@ impl ProviderTerminalOutcome {
 	}
 }
 
-/// One exact positive evidence receipt for an original attempt.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProviderPositiveEvidence {
-	/// Unique append-only evidence identity.
-	pub evidence_id: ProviderEvidenceId,
-	/// Original attempt that owns this result, even after process replacement.
-	pub attempt_id: ProviderAttemptId,
-	/// Exact request identity retained by the attempt.
-	pub request_id: ProviderRequestId,
-	/// Positive evidence mechanism.
-	pub source: ProviderEvidenceSource,
-	/// Positively established terminal outcome.
-	pub outcome: ProviderTerminalOutcome,
-	/// Exact provider key used to correlate the proof.
-	pub provider_key: ProviderRequestKey,
-	/// Positive provider receipt identity, when the evidence shape requires it.
-	pub provider_receipt_id: Option<String>,
-	/// Exact provider thread identity, when positively observed.
-	pub provider_thread_id: Option<String>,
-	/// Exact provider turn identity, when positively observed.
-	pub provider_turn_id: Option<String>,
-	/// Lowercase SHA-256 of the positive provider witness.
-	pub witness_digest: String,
-}
-impl ProviderPositiveEvidence {
-	/// Validate a closed positive shape. There is no timeout, absence, or negative-search shape.
-	#[allow(clippy::too_many_arguments)]
-	pub fn new(
-		evidence_id: ProviderEvidenceId,
-		attempt_id: ProviderAttemptId,
-		request_id: ProviderRequestId,
-		source: ProviderEvidenceSource,
-		outcome: ProviderTerminalOutcome,
-		provider_key: ProviderRequestKey,
-		provider_receipt_id: Option<String>,
-		provider_thread_id: Option<String>,
-		provider_turn_id: Option<String>,
-		witness_digest: impl Into<String>,
-	) -> Result<Self, ProviderAttemptError> {
-		let evidence = Self {
-			evidence_id,
-			attempt_id,
-			request_id,
-			source,
-			outcome,
-			provider_key,
-			provider_receipt_id,
-			provider_thread_id,
-			provider_turn_id,
-			witness_digest: witness_digest.into(),
-		};
-		evidence.validate()?;
-		Ok(evidence)
-	}
-
-	/// Recheck the evidence shape before persistence because its fields are public.
-	pub fn validate(&self) -> Result<(), ProviderAttemptError> {
-		if !is_sha256(&self.witness_digest)
-			|| [&self.provider_receipt_id, &self.provider_thread_id, &self.provider_turn_id]
-				.into_iter()
-				.flatten()
-				.any(|value| {
-					!is_bounded_provider_identity(value, MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES)
-				}) {
-			return Err(ProviderAttemptError::InvalidPositiveEvidence);
-		}
-
-		let valid_shape = match self.source {
-			ProviderEvidenceSource::ProviderReceipt =>
-				self.outcome != ProviderTerminalOutcome::NotSubmitted
-					&& self.provider_receipt_id.is_some(),
-			ProviderEvidenceSource::PositiveIdempotencyLookup => true,
-			ProviderEvidenceSource::ExactTurnReadback =>
-				self.outcome != ProviderTerminalOutcome::NotSubmitted
-					&& self.provider_receipt_id.is_none()
-					&& self.provider_thread_id.is_none()
-					&& self.provider_turn_id.is_some(),
-			ProviderEvidenceSource::ExactThreadReadback =>
-				self.outcome != ProviderTerminalOutcome::NotSubmitted
-					&& self.provider_receipt_id.is_none()
-					&& self.provider_thread_id.is_some()
-					&& self.provider_turn_id.is_some(),
-			ProviderEvidenceSource::PositiveNonSubmissionReceipt =>
-				self.outcome == ProviderTerminalOutcome::NotSubmitted
-					&& self.provider_receipt_id.is_some()
-					&& self.provider_turn_id.is_none(),
-		};
-		if !valid_shape {
-			return Err(ProviderAttemptError::InvalidPositiveEvidence);
-		}
-
-		Ok(())
-	}
-}
-
-/// Complete durable attempt projection used inside the sole writer and reconciler.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProviderAttempt {
-	/// Stable attempt identity.
-	pub attempt_id: ProviderAttemptId,
-	/// Exact immutable consumer.
-	pub consumer: ProviderAttemptConsumer,
-	/// V17 continuation plan.
-	pub continuation_plan_id: String,
-	/// Consumed V16 routing decision.
-	pub routing_decision_id: String,
-	/// Accepted RuntimeSession supplied by V17.
-	pub runtime_session_id: RuntimeSessionId,
-	/// Exact accepted RuntimeSession revision.
-	pub runtime_session_revision: i64,
-	/// Account selected by V16.
-	pub account_id: AccountId,
-	/// Live fenced generation accepted before dispatch authorization.
-	pub process_generation_id: ProcessGenerationId,
-	/// Exact ready generation revision retained at preparation.
-	pub process_generation_revision: i64,
-	/// External execution epoch of the bound generation.
-	pub process_execution_epoch_id: ProcessExecutionEpochId,
-	/// Exact logical request identity.
-	pub request_id: ProviderRequestId,
-	/// Lowercase SHA-256 of canonical request bytes.
-	pub request_digest: String,
-	/// Exact keys retained for positive reconciliation. Debug output is redacted.
-	pub provider_keys: ProviderRequestKeys,
-	/// Original or explicitly acknowledged successor disposition.
-	pub duplicate_risk: ProviderDuplicateRisk,
-	/// Current durable state.
-	pub state: ProviderAttemptState,
-	/// Closed reason only while `state` is `unknown`.
-	pub unknown_reason: Option<ProviderAttemptUnknownReason>,
-	/// Positive terminal evidence identity, when terminal evidence exists.
-	pub terminal_evidence_id: Option<ProviderEvidenceId>,
-	/// Positive optimistic revision.
-	pub revision: i64,
-	/// durable-store-authored creation instant in Unix microseconds.
-	pub created_at_micros: i64,
-	/// durable-store-authored last-transition instant in Unix microseconds.
-	pub updated_at_micros: i64,
-}
-
 /// Closed ProviderAttempt validation failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderAttemptError {
@@ -525,6 +538,7 @@ pub enum ProviderAttemptError {
 	InvalidPositiveEvidence,
 }
 impl Error for ProviderAttemptError {}
+
 impl Display for ProviderAttemptError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		write!(formatter, "{self:?}")
@@ -541,6 +555,7 @@ fn is_canonical_uuid(value: &str) -> bool {
 
 fn is_canonical_uuid_v4(value: &str) -> bool {
 	let bytes = value.as_bytes();
+
 	is_canonical_uuid(value) && bytes[14] == b'4' && matches!(bytes[19], b'8' | b'9' | b'a' | b'b')
 }
 

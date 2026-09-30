@@ -5,6 +5,11 @@
 
 use crate::{AccountId, AccountQuotaObservationError, AccountSelectionMode, QuotaWindowClass};
 
+/// Maximum age of an Account Registry quota observation at the routing decision instant.
+pub const ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS: i64 = 300_000_000;
+
+const MAX_ACCOUNT_REGISTRY_TIMESTAMP_MICROS: i64 = 253_402_300_799_999_999;
+
 /// The complete closed ordinary XY-1270 Codex capability projection.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum CodexCapability {
@@ -146,101 +151,99 @@ pub enum RoutingBlocker {
 impl RoutingBlocker {
 	/// Return the exact stable durable-store and protocol spelling.
 	pub const fn as_sql(self) -> &'static str {
-		use RoutingBlocker::*;
 		match self {
-			ExcludedByPolicy => "excluded_by_policy",
-			AccountFromFuture => "account_from_future",
-			AccountStale => "account_stale",
-			AccountUnavailable => "account_unavailable",
-			AccountUnknown => "account_unknown",
-			AccountDepleted => "account_depleted",
-			AccountAuthFailed => "account_auth_failed",
-			AccountPluginUnready => "account_plugin_unready",
-			AccountDisabled => "account_disabled",
-			EvidenceMissing => "evidence_missing",
-			EvidenceFromFuture => "evidence_from_future",
-			EvidenceStale => "evidence_stale",
-			EvidenceAccountMismatch => "evidence_account_mismatch",
-			EvidenceProfileMismatch => "evidence_profile_mismatch",
-			EvidenceBuildMismatch => "evidence_build_mismatch",
-			QuotaFiveHourMissing => "quota_five_hour_missing",
-			QuotaFiveHourFromFuture => "quota_five_hour_from_future",
-			QuotaFiveHourStale => "quota_five_hour_stale",
-			QuotaFiveHourUnknown => "quota_five_hour_unknown",
-			QuotaFiveHourResetElapsed => "quota_five_hour_reset_elapsed",
-			QuotaFiveHourDepleted => "quota_five_hour_depleted",
-			QuotaSevenDayMissing => "quota_seven_day_missing",
-			QuotaSevenDayFromFuture => "quota_seven_day_from_future",
-			QuotaSevenDayStale => "quota_seven_day_stale",
-			QuotaSevenDayUnknown => "quota_seven_day_unknown",
-			QuotaSevenDayResetElapsed => "quota_seven_day_reset_elapsed",
-			QuotaSevenDayDepleted => "quota_seven_day_depleted",
-			RequiredCapabilityUnsatisfied => "required_capability_unsatisfied",
-			AuthenticationRequired => "authentication_required",
-			PluginUnready => "plugin_unready",
-			DependencyBlocked => "dependency_blocked",
-			ApprovalRequired => "approval_required",
-			UserRequired => "user_required",
-			ExternalBlocked => "external_blocked",
-			UsageUnproven => "usage_unproven",
-			ReconciliationUnproven => "reconciliation_unproven",
-			ReviewerUnavailable => "reviewer_unavailable",
-			ReviewerFailed => "reviewer_failed",
-			ReviewerAmbiguous => "reviewer_ambiguous",
-			ProcessGenerationUnresolved => "process_generation_unresolved",
-			ProcessGenerationUnavailable => "process_generation_unavailable",
-			ProviderAttemptUnresolved => "provider_attempt_unresolved",
-			ProviderAttemptCompleted => "provider_attempt_completed",
+			Self::ExcludedByPolicy => "excluded_by_policy",
+			Self::AccountFromFuture => "account_from_future",
+			Self::AccountStale => "account_stale",
+			Self::AccountUnavailable => "account_unavailable",
+			Self::AccountUnknown => "account_unknown",
+			Self::AccountDepleted => "account_depleted",
+			Self::AccountAuthFailed => "account_auth_failed",
+			Self::AccountPluginUnready => "account_plugin_unready",
+			Self::AccountDisabled => "account_disabled",
+			Self::EvidenceMissing => "evidence_missing",
+			Self::EvidenceFromFuture => "evidence_from_future",
+			Self::EvidenceStale => "evidence_stale",
+			Self::EvidenceAccountMismatch => "evidence_account_mismatch",
+			Self::EvidenceProfileMismatch => "evidence_profile_mismatch",
+			Self::EvidenceBuildMismatch => "evidence_build_mismatch",
+			Self::QuotaFiveHourMissing => "quota_five_hour_missing",
+			Self::QuotaFiveHourFromFuture => "quota_five_hour_from_future",
+			Self::QuotaFiveHourStale => "quota_five_hour_stale",
+			Self::QuotaFiveHourUnknown => "quota_five_hour_unknown",
+			Self::QuotaFiveHourResetElapsed => "quota_five_hour_reset_elapsed",
+			Self::QuotaFiveHourDepleted => "quota_five_hour_depleted",
+			Self::QuotaSevenDayMissing => "quota_seven_day_missing",
+			Self::QuotaSevenDayFromFuture => "quota_seven_day_from_future",
+			Self::QuotaSevenDayStale => "quota_seven_day_stale",
+			Self::QuotaSevenDayUnknown => "quota_seven_day_unknown",
+			Self::QuotaSevenDayResetElapsed => "quota_seven_day_reset_elapsed",
+			Self::QuotaSevenDayDepleted => "quota_seven_day_depleted",
+			Self::RequiredCapabilityUnsatisfied => "required_capability_unsatisfied",
+			Self::AuthenticationRequired => "authentication_required",
+			Self::PluginUnready => "plugin_unready",
+			Self::DependencyBlocked => "dependency_blocked",
+			Self::ApprovalRequired => "approval_required",
+			Self::UserRequired => "user_required",
+			Self::ExternalBlocked => "external_blocked",
+			Self::UsageUnproven => "usage_unproven",
+			Self::ReconciliationUnproven => "reconciliation_unproven",
+			Self::ReviewerUnavailable => "reviewer_unavailable",
+			Self::ReviewerFailed => "reviewer_failed",
+			Self::ReviewerAmbiguous => "reviewer_ambiguous",
+			Self::ProcessGenerationUnresolved => "process_generation_unresolved",
+			Self::ProcessGenerationUnavailable => "process_generation_unavailable",
+			Self::ProviderAttemptUnresolved => "provider_attempt_unresolved",
+			Self::ProviderAttemptCompleted => "provider_attempt_completed",
 		}
 	}
 
 	/// Parse one exact stable durable-store spelling.
 	pub fn from_sql(value: &str) -> Option<Self> {
-		use RoutingBlocker::*;
 		Some(match value {
-			"excluded_by_policy" => ExcludedByPolicy,
-			"account_from_future" => AccountFromFuture,
-			"account_stale" => AccountStale,
-			"account_unavailable" => AccountUnavailable,
-			"account_unknown" => AccountUnknown,
-			"account_depleted" => AccountDepleted,
-			"account_auth_failed" => AccountAuthFailed,
-			"account_plugin_unready" => AccountPluginUnready,
-			"account_disabled" => AccountDisabled,
-			"evidence_missing" => EvidenceMissing,
-			"evidence_from_future" => EvidenceFromFuture,
-			"evidence_stale" => EvidenceStale,
-			"evidence_account_mismatch" => EvidenceAccountMismatch,
-			"evidence_profile_mismatch" => EvidenceProfileMismatch,
-			"evidence_build_mismatch" => EvidenceBuildMismatch,
-			"quota_five_hour_missing" => QuotaFiveHourMissing,
-			"quota_five_hour_from_future" => QuotaFiveHourFromFuture,
-			"quota_five_hour_stale" => QuotaFiveHourStale,
-			"quota_five_hour_unknown" => QuotaFiveHourUnknown,
-			"quota_five_hour_reset_elapsed" => QuotaFiveHourResetElapsed,
-			"quota_five_hour_depleted" => QuotaFiveHourDepleted,
-			"quota_seven_day_missing" => QuotaSevenDayMissing,
-			"quota_seven_day_from_future" => QuotaSevenDayFromFuture,
-			"quota_seven_day_stale" => QuotaSevenDayStale,
-			"quota_seven_day_unknown" => QuotaSevenDayUnknown,
-			"quota_seven_day_reset_elapsed" => QuotaSevenDayResetElapsed,
-			"quota_seven_day_depleted" => QuotaSevenDayDepleted,
-			"required_capability_unsatisfied" => RequiredCapabilityUnsatisfied,
-			"authentication_required" => AuthenticationRequired,
-			"plugin_unready" => PluginUnready,
-			"dependency_blocked" => DependencyBlocked,
-			"approval_required" => ApprovalRequired,
-			"user_required" => UserRequired,
-			"external_blocked" => ExternalBlocked,
-			"usage_unproven" => UsageUnproven,
-			"reconciliation_unproven" => ReconciliationUnproven,
-			"reviewer_unavailable" => ReviewerUnavailable,
-			"reviewer_failed" => ReviewerFailed,
-			"reviewer_ambiguous" => ReviewerAmbiguous,
-			"process_generation_unresolved" => ProcessGenerationUnresolved,
-			"process_generation_unavailable" => ProcessGenerationUnavailable,
-			"provider_attempt_unresolved" => ProviderAttemptUnresolved,
-			"provider_attempt_completed" => ProviderAttemptCompleted,
+			"excluded_by_policy" => Self::ExcludedByPolicy,
+			"account_from_future" => Self::AccountFromFuture,
+			"account_stale" => Self::AccountStale,
+			"account_unavailable" => Self::AccountUnavailable,
+			"account_unknown" => Self::AccountUnknown,
+			"account_depleted" => Self::AccountDepleted,
+			"account_auth_failed" => Self::AccountAuthFailed,
+			"account_plugin_unready" => Self::AccountPluginUnready,
+			"account_disabled" => Self::AccountDisabled,
+			"evidence_missing" => Self::EvidenceMissing,
+			"evidence_from_future" => Self::EvidenceFromFuture,
+			"evidence_stale" => Self::EvidenceStale,
+			"evidence_account_mismatch" => Self::EvidenceAccountMismatch,
+			"evidence_profile_mismatch" => Self::EvidenceProfileMismatch,
+			"evidence_build_mismatch" => Self::EvidenceBuildMismatch,
+			"quota_five_hour_missing" => Self::QuotaFiveHourMissing,
+			"quota_five_hour_from_future" => Self::QuotaFiveHourFromFuture,
+			"quota_five_hour_stale" => Self::QuotaFiveHourStale,
+			"quota_five_hour_unknown" => Self::QuotaFiveHourUnknown,
+			"quota_five_hour_reset_elapsed" => Self::QuotaFiveHourResetElapsed,
+			"quota_five_hour_depleted" => Self::QuotaFiveHourDepleted,
+			"quota_seven_day_missing" => Self::QuotaSevenDayMissing,
+			"quota_seven_day_from_future" => Self::QuotaSevenDayFromFuture,
+			"quota_seven_day_stale" => Self::QuotaSevenDayStale,
+			"quota_seven_day_unknown" => Self::QuotaSevenDayUnknown,
+			"quota_seven_day_reset_elapsed" => Self::QuotaSevenDayResetElapsed,
+			"quota_seven_day_depleted" => Self::QuotaSevenDayDepleted,
+			"required_capability_unsatisfied" => Self::RequiredCapabilityUnsatisfied,
+			"authentication_required" => Self::AuthenticationRequired,
+			"plugin_unready" => Self::PluginUnready,
+			"dependency_blocked" => Self::DependencyBlocked,
+			"approval_required" => Self::ApprovalRequired,
+			"user_required" => Self::UserRequired,
+			"external_blocked" => Self::ExternalBlocked,
+			"usage_unproven" => Self::UsageUnproven,
+			"reconciliation_unproven" => Self::ReconciliationUnproven,
+			"reviewer_unavailable" => Self::ReviewerUnavailable,
+			"reviewer_failed" => Self::ReviewerFailed,
+			"reviewer_ambiguous" => Self::ReviewerAmbiguous,
+			"process_generation_unresolved" => Self::ProcessGenerationUnresolved,
+			"process_generation_unavailable" => Self::ProcessGenerationUnavailable,
+			"provider_attempt_unresolved" => Self::ProviderAttemptUnresolved,
+			"provider_attempt_completed" => Self::ProviderAttemptCompleted,
 			_ => return None,
 		})
 	}
@@ -274,63 +277,6 @@ pub enum AccountRegistryQuotaObservation {
 	},
 }
 
-/// One Account Registry quota fact.
-///
-/// At the persistence adapter boundary, only 300 and 10,080 are valid
-/// `duration_minutes` values, and each value must agree with `window`.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AccountRegistryQuotaFact {
-	/// Account identity to which this duration-typed fact belongs.
-	pub account_id: AccountId,
-	/// Closed quota-window class.
-	pub window: QuotaWindowClass,
-	/// Exact quota-window duration in minutes.
-	pub duration_minutes: u16,
-	/// Closed observation for this account and quota window.
-	pub observation: AccountRegistryQuotaObservation,
-}
-
-/// One Account Registry routing candidate in canonical position order.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AccountRegistryRoutingMember {
-	/// One-based canonical position used for deterministic selection.
-	pub position: usize,
-	/// Canonical account identity represented by this member.
-	pub account_id: AccountId,
-	/// Positive Account Registry revision observed for the account.
-	pub account_revision: i64,
-	/// Canonical unique Account Registry account blockers in strict enum order.
-	pub blockers: Vec<RoutingBlocker>,
-}
-
-/// Immutable Account Registry routing snapshot for an initial Conversation selection.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AccountRegistryRoutingSnapshot {
-	/// Immutable snapshot identity.
-	pub snapshot_id: String,
-	/// Positive Account Registry routing revision resolved by the snapshot.
-	pub routing_revision: i64,
-	/// Account-selection mode applied to the complete member inventory.
-	pub mode: AccountSelectionMode,
-	/// Positive task RoleProfile revision used for classification.
-	pub task_role_profile_revision: i64,
-	/// Resolution instant in the closed UTC Unix microsecond product range.
-	pub resolved_at_micros: i64,
-	/// Complete account inventory in canonical position order.
-	pub members: Vec<AccountRegistryRoutingMember>,
-	/// Complete two-window Account Registry quota matrix for every member.
-	pub quota_facts: Vec<AccountRegistryQuotaFact>,
-}
-
-/// Stable exact-command domain rejection.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RoutingRejection {
-	/// Stable exact-command operation name that produced the rejection.
-	pub operation: String,
-	/// Stable typed domain-rejection code; it carries no routing choice.
-	pub code: String,
-}
-
 /// Closed exact-command result. No variant carries routing selection authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RoutingCommandOutcome<T> {
@@ -338,15 +284,6 @@ pub enum RoutingCommandOutcome<T> {
 	Success(T),
 	/// Stable domain rejection with no persisted routing selection authority.
 	Rejected(RoutingRejection),
-}
-
-/// One exact account-scoped cause retained by a non-selected route projection.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RoutingDecisionCause {
-	/// Account path to which the cause applies.
-	pub account_id: AccountId,
-	/// Exact persisted blocker without lossy category collapse.
-	pub blocker: RoutingBlocker,
 }
 
 /// Closed outcome kind for Account Registry routing.
@@ -358,47 +295,6 @@ pub enum AccountRegistryRoutingDecisionKind {
 	Waiting,
 	/// At least one evaluated account had a retained routing cause.
 	NoRoute,
-}
-
-/// One exact current-depletion exclusion produced by Account Registry routing.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AccountRegistryRoutingExclusion {
-	/// Account identity excluded by this quota fact.
-	pub account_id: AccountId,
-	/// One-based canonical position of the excluded member.
-	pub member_position: usize,
-	/// Quota window that caused the exclusion.
-	pub window: QuotaWindowClass,
-	/// Exact duration in minutes for `window`.
-	pub duration_minutes: u16,
-	/// Validated used percentage; depletion exclusions contain 100.
-	pub used_percent: u8,
-	/// Validated quota observation instant in UTC Unix microseconds.
-	pub observed_at_micros: i64,
-	/// Validated future quota reset instant in UTC Unix microseconds.
-	pub resets_at_micros: i64,
-}
-
-/// The deterministic result of applying Account Registry routing to one snapshot.
-///
-/// Field rules by `kind`:
-/// - `Selected`: `selected_account_id` is `Some`; causes and exclusions contain complete
-///   classifications for evaluated preceding members and may be empty.
-/// - `Waiting`: `selected_account_id` is `None`, `exclusions` is non-empty, and `causes` is empty.
-/// - `NoRoute`: `selected_account_id` is `None`, `causes` is non-empty, and `exclusions` contains
-///   every positive current depletion found during evaluation.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AccountRegistryRoutingDecision {
-	/// Exact identity copied from the validated source snapshot.
-	pub snapshot_id: String,
-	/// Mutually exclusive semantic decision kind.
-	pub kind: AccountRegistryRoutingDecisionKind,
-	/// Selected account exactly for `Selected`; otherwise `None`.
-	pub selected_account_id: Option<AccountId>,
-	/// Complete evaluated positive current depletions in member and window order.
-	pub exclusions: Vec<AccountRegistryRoutingExclusion>,
-	/// Complete evaluated member and quota causes in deterministic order.
-	pub causes: Vec<RoutingDecisionCause>,
 }
 
 /// Structural failure of an Account Registry routing snapshot or decision instant.
@@ -569,9 +465,118 @@ pub enum AccountRegistryRoutingKernelError {
 	},
 }
 
-const MAX_ACCOUNT_REGISTRY_TIMESTAMP_MICROS: i64 = 253_402_300_799_999_999;
-/// Maximum age of an Account Registry quota observation at the routing decision instant.
-pub const ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS: i64 = 300_000_000;
+enum AccountRegistryMemberCapacity {
+	KnownAvailable,
+	Unknown { causes: Vec<RoutingDecisionCause> },
+	Blocked { causes: Vec<RoutingDecisionCause>, exclusions: Vec<AccountRegistryRoutingExclusion> },
+}
+
+/// One Account Registry quota fact.
+///
+/// At the persistence adapter boundary, only 300 and 10,080 are valid
+/// `duration_minutes` values, and each value must agree with `window`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountRegistryQuotaFact {
+	/// Account identity to which this duration-typed fact belongs.
+	pub account_id: AccountId,
+	/// Closed quota-window class.
+	pub window: QuotaWindowClass,
+	/// Exact quota-window duration in minutes.
+	pub duration_minutes: u16,
+	/// Closed observation for this account and quota window.
+	pub observation: AccountRegistryQuotaObservation,
+}
+
+/// One Account Registry routing candidate in canonical position order.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountRegistryRoutingMember {
+	/// One-based canonical position used for deterministic selection.
+	pub position: usize,
+	/// Canonical account identity represented by this member.
+	pub account_id: AccountId,
+	/// Positive Account Registry revision observed for the account.
+	pub account_revision: i64,
+	/// Canonical unique Account Registry account blockers in strict enum order.
+	pub blockers: Vec<RoutingBlocker>,
+}
+
+/// Immutable Account Registry routing snapshot for an initial Conversation selection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountRegistryRoutingSnapshot {
+	/// Immutable snapshot identity.
+	pub snapshot_id: String,
+	/// Positive Account Registry routing revision resolved by the snapshot.
+	pub routing_revision: i64,
+	/// Account-selection mode applied to the complete member inventory.
+	pub mode: AccountSelectionMode,
+	/// Positive task RoleProfile revision used for classification.
+	pub task_role_profile_revision: i64,
+	/// Resolution instant in the closed UTC Unix microsecond product range.
+	pub resolved_at_micros: i64,
+	/// Complete account inventory in canonical position order.
+	pub members: Vec<AccountRegistryRoutingMember>,
+	/// Complete two-window Account Registry quota matrix for every member.
+	pub quota_facts: Vec<AccountRegistryQuotaFact>,
+}
+
+/// Stable exact-command domain rejection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RoutingRejection {
+	/// Stable exact-command operation name that produced the rejection.
+	pub operation: String,
+	/// Stable typed domain-rejection code; it carries no routing choice.
+	pub code: String,
+}
+
+/// One exact account-scoped cause retained by a non-selected route projection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RoutingDecisionCause {
+	/// Account path to which the cause applies.
+	pub account_id: AccountId,
+	/// Exact persisted blocker without lossy category collapse.
+	pub blocker: RoutingBlocker,
+}
+
+/// One exact current-depletion exclusion produced by Account Registry routing.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountRegistryRoutingExclusion {
+	/// Account identity excluded by this quota fact.
+	pub account_id: AccountId,
+	/// One-based canonical position of the excluded member.
+	pub member_position: usize,
+	/// Quota window that caused the exclusion.
+	pub window: QuotaWindowClass,
+	/// Exact duration in minutes for `window`.
+	pub duration_minutes: u16,
+	/// Validated used percentage; depletion exclusions contain 100.
+	pub used_percent: u8,
+	/// Validated quota observation instant in UTC Unix microseconds.
+	pub observed_at_micros: i64,
+	/// Validated future quota reset instant in UTC Unix microseconds.
+	pub resets_at_micros: i64,
+}
+
+/// The deterministic result of applying Account Registry routing to one snapshot.
+///
+/// Field rules by `kind`:
+/// - `Selected`: `selected_account_id` is `Some`; causes and exclusions contain complete
+///   classifications for evaluated preceding members and may be empty.
+/// - `Waiting`: `selected_account_id` is `None`, `exclusions` is non-empty, and `causes` is empty.
+/// - `NoRoute`: `selected_account_id` is `None`, `causes` is non-empty, and `exclusions` contains
+///   every positive current depletion found during evaluation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountRegistryRoutingDecision {
+	/// Exact identity copied from the validated source snapshot.
+	pub snapshot_id: String,
+	/// Mutually exclusive semantic decision kind.
+	pub kind: AccountRegistryRoutingDecisionKind,
+	/// Selected account exactly for `Selected`; otherwise `None`.
+	pub selected_account_id: Option<AccountId>,
+	/// Complete evaluated positive current depletions in member and window order.
+	pub exclusions: Vec<AccountRegistryRoutingExclusion>,
+	/// Complete evaluated member and quota causes in deterministic order.
+	pub causes: Vec<RoutingDecisionCause>,
+}
 
 /// Select an account at one closed-range UTC Unix microsecond instant without I/O or clocks.
 pub fn decide_account_registry_routing(
@@ -590,11 +595,12 @@ pub fn decide_account_registry_routing(
 			)
 		})
 		.collect::<Vec<_>>();
-
 	let mut exclusions = Vec::new();
 	let mut causes = Vec::new();
+
 	for (member_index, evaluation) in evaluated_member_indexes.iter().zip(&evaluations) {
 		let member = &snapshot.members[*member_index];
+
 		match evaluation {
 			AccountRegistryMemberCapacity::KnownAvailable => {
 				return Ok(account_registry_selected_decision(
@@ -620,8 +626,10 @@ pub fn decide_account_registry_routing(
 	// current positive depletion was observed.
 	exclusions.clear();
 	causes.clear();
+
 	for (member_index, evaluation) in evaluated_member_indexes.iter().zip(&evaluations) {
 		let member = &snapshot.members[*member_index];
+
 		match evaluation {
 			AccountRegistryMemberCapacity::Unknown { .. } => {
 				return Ok(account_registry_selected_decision(
@@ -644,6 +652,7 @@ pub fn decide_account_registry_routing(
 	} else {
 		AccountRegistryRoutingDecisionKind::NoRoute
 	};
+
 	Ok(AccountRegistryRoutingDecision {
 		snapshot_id: snapshot.snapshot_id.clone(),
 		kind,
@@ -672,6 +681,93 @@ fn validated_account_registry_quota_facts(
 	snapshot: &AccountRegistryRoutingSnapshot,
 	decided_at_micros: i64,
 ) -> Result<Vec<[&AccountRegistryQuotaFact; 2]>, AccountRegistryRoutingKernelError> {
+	validate_account_registry_snapshot_members(snapshot, decided_at_micros)?;
+
+	for (index, fact) in snapshot.quota_facts.iter().enumerate() {
+		if !snapshot.members.iter().any(|member| member.account_id == fact.account_id) {
+			return Err(AccountRegistryRoutingKernelError::ExtraQuotaFact {
+				account_id: fact.account_id.clone(),
+				window: fact.window,
+			});
+		}
+
+		let expected_duration_minutes = account_registry_window_duration(fact.window);
+
+		if fact.duration_minutes != expected_duration_minutes {
+			return Err(AccountRegistryRoutingKernelError::QuotaFactWindowDurationMismatch {
+				account_id: fact.account_id.clone(),
+				window: fact.window,
+				expected_duration_minutes,
+				duration_minutes: fact.duration_minutes,
+			});
+		}
+		if snapshot.quota_facts[..index]
+			.iter()
+			.any(|prior| prior.account_id == fact.account_id && prior.window == fact.window)
+		{
+			return Err(AccountRegistryRoutingKernelError::DuplicateQuotaFact {
+				account_id: fact.account_id.clone(),
+				window: fact.window,
+			});
+		}
+
+		validate_account_registry_quota_observation(fact)?;
+	}
+
+	let mut facts_by_member = Vec::with_capacity(snapshot.members.len());
+
+	for member in &snapshot.members {
+		let five_hour = snapshot
+			.quota_facts
+			.iter()
+			.find(|fact| {
+				fact.account_id == member.account_id && fact.window == QuotaWindowClass::FiveHour
+			})
+			.ok_or_else(|| AccountRegistryRoutingKernelError::MissingQuotaFact {
+				account_id: member.account_id.clone(),
+				window: QuotaWindowClass::FiveHour,
+			})?;
+		let seven_day = snapshot
+			.quota_facts
+			.iter()
+			.find(|fact| {
+				fact.account_id == member.account_id && fact.window == QuotaWindowClass::SevenDay
+			})
+			.ok_or_else(|| AccountRegistryRoutingKernelError::MissingQuotaFact {
+				account_id: member.account_id.clone(),
+				window: QuotaWindowClass::SevenDay,
+			})?;
+
+		facts_by_member.push([five_hour, seven_day]);
+	}
+
+	let mut fact_index = 0;
+
+	for member in &snapshot.members {
+		for expected_window in [QuotaWindowClass::FiveHour, QuotaWindowClass::SevenDay] {
+			let fact = &snapshot.quota_facts[fact_index];
+
+			if fact.account_id != member.account_id || fact.window != expected_window {
+				return Err(AccountRegistryRoutingKernelError::NonCanonicalQuotaFact {
+					fact_position: fact_index + 1,
+					account_id: fact.account_id.clone(),
+					window: fact.window,
+					expected_account_id: member.account_id.clone(),
+					expected_window,
+				});
+			}
+
+			fact_index += 1;
+		}
+	}
+
+	Ok(facts_by_member)
+}
+
+fn validate_account_registry_snapshot_members(
+	snapshot: &AccountRegistryRoutingSnapshot,
+	decided_at_micros: i64,
+) -> Result<(), AccountRegistryRoutingKernelError> {
 	if !account_registry_timestamp_is_valid(decided_at_micros) {
 		return Err(AccountRegistryRoutingKernelError::InvalidDecidedAtMicros {
 			decided_at_micros,
@@ -697,8 +793,10 @@ fn validated_account_registry_quota_facts(
 	if snapshot.members.is_empty() {
 		return Err(AccountRegistryRoutingKernelError::EmptyMembers);
 	}
+
 	for (index, member) in snapshot.members.iter().enumerate() {
 		let expected_member_position = index + 1;
+
 		if member.position != expected_member_position {
 			return Err(AccountRegistryRoutingKernelError::NonCanonicalMember {
 				account_id: member.account_id.clone(),
@@ -712,6 +810,7 @@ fn validated_account_registry_quota_facts(
 				account_revision: member.account_revision,
 			});
 		}
+
 		if let Some(first) =
 			snapshot.members[..index].iter().find(|prior| prior.account_id == member.account_id)
 		{
@@ -721,80 +820,11 @@ fn validated_account_registry_quota_facts(
 				duplicate_position: member.position,
 			});
 		}
+
 		validate_account_registry_member_blockers(member)?;
 	}
 
-	for (index, fact) in snapshot.quota_facts.iter().enumerate() {
-		if !snapshot.members.iter().any(|member| member.account_id == fact.account_id) {
-			return Err(AccountRegistryRoutingKernelError::ExtraQuotaFact {
-				account_id: fact.account_id.clone(),
-				window: fact.window,
-			});
-		}
-		let expected_duration_minutes = account_registry_window_duration(fact.window);
-		if fact.duration_minutes != expected_duration_minutes {
-			return Err(AccountRegistryRoutingKernelError::QuotaFactWindowDurationMismatch {
-				account_id: fact.account_id.clone(),
-				window: fact.window,
-				expected_duration_minutes,
-				duration_minutes: fact.duration_minutes,
-			});
-		}
-		if snapshot.quota_facts[..index]
-			.iter()
-			.any(|prior| prior.account_id == fact.account_id && prior.window == fact.window)
-		{
-			return Err(AccountRegistryRoutingKernelError::DuplicateQuotaFact {
-				account_id: fact.account_id.clone(),
-				window: fact.window,
-			});
-		}
-		validate_account_registry_quota_observation(fact)?;
-	}
-
-	let mut facts_by_member = Vec::with_capacity(snapshot.members.len());
-	for member in &snapshot.members {
-		let five_hour = snapshot
-			.quota_facts
-			.iter()
-			.find(|fact| {
-				fact.account_id == member.account_id && fact.window == QuotaWindowClass::FiveHour
-			})
-			.ok_or_else(|| AccountRegistryRoutingKernelError::MissingQuotaFact {
-				account_id: member.account_id.clone(),
-				window: QuotaWindowClass::FiveHour,
-			})?;
-		let seven_day = snapshot
-			.quota_facts
-			.iter()
-			.find(|fact| {
-				fact.account_id == member.account_id && fact.window == QuotaWindowClass::SevenDay
-			})
-			.ok_or_else(|| AccountRegistryRoutingKernelError::MissingQuotaFact {
-				account_id: member.account_id.clone(),
-				window: QuotaWindowClass::SevenDay,
-			})?;
-		facts_by_member.push([five_hour, seven_day]);
-	}
-
-	let mut fact_index = 0;
-	for member in &snapshot.members {
-		for expected_window in [QuotaWindowClass::FiveHour, QuotaWindowClass::SevenDay] {
-			let fact = &snapshot.quota_facts[fact_index];
-			if fact.account_id != member.account_id || fact.window != expected_window {
-				return Err(AccountRegistryRoutingKernelError::NonCanonicalQuotaFact {
-					fact_position: fact_index + 1,
-					account_id: fact.account_id.clone(),
-					window: fact.window,
-					expected_account_id: member.account_id.clone(),
-					expected_window,
-				});
-			}
-			fact_index += 1;
-		}
-	}
-
-	Ok(facts_by_member)
+	Ok(())
 }
 
 fn validate_account_registry_quota_observation(
@@ -859,6 +889,7 @@ fn validate_account_registry_quota_observation(
 				});
 			},
 	}
+
 	Ok(())
 }
 
@@ -866,6 +897,7 @@ fn validate_account_registry_member_blockers(
 	member: &AccountRegistryRoutingMember,
 ) -> Result<(), AccountRegistryRoutingKernelError> {
 	let mut previous = None;
+
 	for (index, blocker) in member.blockers.iter().copied().enumerate() {
 		let Some(rank) = account_registry_member_blocker_rank(blocker) else {
 			return Err(AccountRegistryRoutingKernelError::ForbiddenMemberBlocker {
@@ -875,6 +907,7 @@ fn validate_account_registry_member_blockers(
 				blocker,
 			});
 		};
+
 		if let Some(first_index) =
 			member.blockers[..index].iter().position(|prior| *prior == blocker)
 		{
@@ -897,8 +930,10 @@ fn validate_account_registry_member_blockers(
 				blocker,
 			});
 		}
+
 		previous = Some((blocker, rank));
 	}
+
 	Ok(())
 }
 
@@ -916,12 +951,6 @@ fn account_registry_evaluated_member_indexes(
 				account_id: account_id.clone(),
 			}),
 	}
-}
-
-enum AccountRegistryMemberCapacity {
-	KnownAvailable,
-	Unknown { causes: Vec<RoutingDecisionCause> },
-	Blocked { causes: Vec<RoutingDecisionCause>, exclusions: Vec<AccountRegistryRoutingExclusion> },
 }
 
 fn classify_account_registry_member(
@@ -1007,6 +1036,7 @@ fn classify_account_registry_member(
 
 	if !hard_causes.is_empty() {
 		hard_causes.extend(unknown_causes);
+
 		AccountRegistryMemberCapacity::Blocked { causes: hard_causes, exclusions }
 	} else if !exclusions.is_empty() {
 		AccountRegistryMemberCapacity::Blocked { causes: Vec::new(), exclusions }
@@ -1079,11 +1109,10 @@ const fn account_registry_timestamp_is_valid(timestamp_micros: i64) -> bool {
 
 #[cfg(test)]
 mod optional_quota_tests {
-	use super::{
-		ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS, AccountId, AccountRegistryMemberCapacity,
+	use crate::routing::{
+		self, ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS, AccountId, AccountRegistryMemberCapacity,
 		AccountRegistryQuotaFact, AccountRegistryQuotaObservation, AccountRegistryRoutingMember,
-		QuotaWindowClass, classify_account_registry_member,
-		validate_account_registry_quota_observation,
+		QuotaWindowClass,
 	};
 
 	#[test]
@@ -1105,28 +1134,34 @@ mod optional_quota_tests {
 		let mut weekly = AccountRegistryQuotaFact {
 			account_id: id,
 			window: QuotaWindowClass::SevenDay,
-			duration_minutes: 10080,
+			duration_minutes: 10_080,
 			observation: AccountRegistryQuotaObservation::Current {
 				used_percent: 8,
 				observed_at_micros: now,
 				resets_at_micros: now + 60_000_000,
 			},
 		};
-		assert!(validate_account_registry_quota_observation(&five).is_ok());
+
+		assert!(routing::validate_account_registry_quota_observation(&five).is_ok());
 		assert!(matches!(
-			classify_account_registry_member(&member, &[&five, &weekly], now),
+			routing::classify_account_registry_member(&member, &[&five, &weekly], now),
 			AccountRegistryMemberCapacity::KnownAvailable
 		));
+
 		five.observation = AccountRegistryQuotaObservation::NotApplicable { observed_at_micros: 1 };
+
 		assert!(matches!(
-			classify_account_registry_member(&member, &[&five, &weekly], now),
+			routing::classify_account_registry_member(&member, &[&five, &weekly], now),
 			AccountRegistryMemberCapacity::Unknown { .. }
 		));
+
 		five.observation =
 			AccountRegistryQuotaObservation::NotApplicable { observed_at_micros: now + 1 };
+
 		assert!(
-			matches!(classify_account_registry_member(&member,&[&five,&weekly],now),AccountRegistryMemberCapacity::Blocked { exclusions,.. } if exclusions.is_empty())
+			matches!(routing::classify_account_registry_member(&member,&[&five,&weekly],now),AccountRegistryMemberCapacity::Blocked { exclusions,.. } if exclusions.is_empty())
 		);
+
 		five.observation =
 			AccountRegistryQuotaObservation::NotApplicable { observed_at_micros: now };
 		weekly.observation = AccountRegistryQuotaObservation::Current {
@@ -1134,11 +1169,14 @@ mod optional_quota_tests {
 			observed_at_micros: now,
 			resets_at_micros: now + 60_000_000,
 		};
+
 		assert!(
-			matches!(classify_account_registry_member(&member,&[&five,&weekly],now),AccountRegistryMemberCapacity::Blocked { exclusions,.. } if exclusions.len()==1)
+			matches!(routing::classify_account_registry_member(&member,&[&five,&weekly],now),AccountRegistryMemberCapacity::Blocked { exclusions,.. } if exclusions.len()==1)
 		);
+
 		weekly.observation =
 			AccountRegistryQuotaObservation::NotApplicable { observed_at_micros: now };
-		assert!(validate_account_registry_quota_observation(&weekly).is_err());
+
+		assert!(routing::validate_account_registry_quota_observation(&weekly).is_err());
 	}
 }

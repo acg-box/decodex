@@ -1,9 +1,10 @@
 //! WorkItem identity and state vocabulary retained for historical readback.
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 use std::{
 	error::Error,
 	fmt::{Display, Formatter},
 };
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 
 macro_rules! stable_id {
 	($name:ident, $error:ident, $label:literal) => {
@@ -126,8 +127,10 @@ mod tests {
 	fn canonical_ids_remain_validated_on_decode() {
 		let id = "10000000-0000-4000-8000-000000000001";
 		let value = WorkItemId::new(id).unwrap();
+
 		assert_eq!(serde_json::to_value(&value).unwrap(), id);
 		assert_eq!(serde_json::from_value::<WorkItemId>(serde_json::json!(id)).unwrap(), value);
+
 		for invalid in
 			["10000000-0000-5000-8000-000000000001", "10000000-0000-4000-7000-000000000001"]
 		{

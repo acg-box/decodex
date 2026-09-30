@@ -23,6 +23,11 @@ impl AccountId {
 		&self.0
 	}
 }
+impl Display for AccountId {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str(&self.0)
+	}
+}
 
 /// Stable non-secret provider kind supported by the Slice 1 account authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -194,9 +199,12 @@ impl AccountOperationId {
 	/// Generate one random version-4 operation UUID from the host randomness source.
 	pub fn generate() -> Result<Self, AccountError> {
 		let mut bytes = [0_u8; 16];
+
 		getrandom::fill(&mut bytes).map_err(|_| AccountError::RandomnessUnavailable)?;
+
 		bytes[6] = (bytes[6] & 0x0f) | 0x40;
 		bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
 		Self::new(format!(
 			"{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
 			bytes[0],
@@ -398,6 +406,7 @@ impl AccountQuotaWindowObservation {
 		) {
 			return Err(AccountError::InvalidQuotaWindow);
 		}
+
 		Ok(Self {
 			duration_minutes,
 			observed_at_unix_micros: None,
@@ -427,7 +436,6 @@ pub struct AccountUsageConditions {
 	/// Whether the provider reports an account-wide usage limit.
 	pub rate_limit_reached: Option<bool>,
 }
-
 impl AccountUsageConditions {
 	/// Combine included usage and existing credits without overriding account-wide limits.
 	/// Credit flags alone cannot authorize recovery when included permission is unavailable.
@@ -435,6 +443,7 @@ impl AccountUsageConditions {
 		if self.spend_control_reached == Some(true) || self.rate_limit_reached == Some(true) {
 			return Some(false);
 		}
+
 		included.map(|allowed| {
 			allowed || self.has_credits == Some(true) || self.unlimited_credits == Some(true)
 		})
@@ -502,12 +511,6 @@ pub enum AccountSelectionRecovery {
 	RefreshQuota,
 	/// Install a Codex build with the required callback capability.
 	UpgradeCodex,
-}
-
-impl Display for AccountId {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str(&self.0)
-	}
 }
 
 /// Persistable non-secret account health observation.

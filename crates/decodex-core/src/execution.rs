@@ -33,7 +33,6 @@ pub enum ExecutionConsumer {
 		execution_id: ManagedExecutionId,
 	},
 }
-
 impl ExecutionConsumer {
 	/// Return the canonical durable-store consumer label.
 	pub const fn as_sql(&self) -> &'static str {

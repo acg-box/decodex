@@ -52,6 +52,7 @@ impl Display for ManagedRunError {
 
 fn is_canonical_uuid_v4(value: &str) -> bool {
 	let bytes = value.as_bytes();
+
 	if bytes.len() != 36
 		|| bytes[8] != b'-'
 		|| bytes[13] != b'-'
@@ -62,6 +63,7 @@ fn is_canonical_uuid_v4(value: &str) -> bool {
 	{
 		return false;
 	}
+
 	bytes.iter().enumerate().all(|(index, byte)| {
 		matches!(index, 8 | 13 | 18 | 23) || byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')
 	})

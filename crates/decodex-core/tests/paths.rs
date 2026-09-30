@@ -159,8 +159,11 @@ fn symlinked_root_ancestor_cannot_redirect_writes_into_codex_home() {
 
 	fs::create_dir(&codex_home).expect("Codex home fixture");
 	fs::create_dir(&alias).expect("ordinary ancestor fixture");
+
 	let root = DecodexRoot::new(alias.join("decodex-state")).expect("lexically separate root");
+
 	root.paths().ensure_layout().expect("ordinary ancestor permits layout creation");
+
 	fs::rename(&alias, canonical_home.join("original-ancestor")).expect("retain ordinary ancestor");
 	std::os::unix::fs::symlink(&codex_home, &alias).expect("ancestor symlink fixture");
 

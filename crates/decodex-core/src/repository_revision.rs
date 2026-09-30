@@ -11,6 +11,7 @@ impl RepositoryContentRevision {
 	/// Parse one nonempty canonical revision of at most 256 UTF-8 bytes.
 	pub fn new(value: impl Into<String>) -> Result<Self, RepositoryRevisionError> {
 		let value = value.into();
+
 		if value.is_empty()
 			|| value.len() > 256
 			|| value.trim() != value
@@ -18,6 +19,7 @@ impl RepositoryContentRevision {
 		{
 			return Err(RepositoryRevisionError);
 		}
+
 		Ok(Self(value))
 	}
 
@@ -43,16 +45,19 @@ impl Error for RepositoryRevisionError {}
 
 #[cfg(test)]
 mod tests {
-	use super::RepositoryContentRevision;
+	use crate::repository_revision::RepositoryContentRevision;
 	#[test]
 	fn revision_preserves_exact_bytes_and_rejects_ambiguous_or_unbounded_values() {
 		for value in ["", " leading", "trailing ", "line\nbreak", "nul\0byte"] {
 			assert!(RepositoryContentRevision::new(value).is_err());
 		}
+
 		assert!(RepositoryContentRevision::new("x".repeat(257)).is_err());
 		assert!(RepositoryContentRevision::new("é".repeat(129)).is_err());
+
 		for value in ["repository-v1".to_owned(), "x".repeat(256)] {
 			let revision = RepositoryContentRevision::new(value.clone()).expect("valid revision");
+
 			assert_eq!(revision.as_str(), value);
 			assert_eq!(revision.to_string(), value);
 		}

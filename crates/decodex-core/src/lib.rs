@@ -1,20 +1,15 @@
 //! Domain, application, configuration, and owned local-storage foundations for Decodex vNext.
 
-/// Maximum complete native Agent message and persisted approval envelope, in bytes.
-pub const MAX_NATIVE_MESSAGE_BYTES: usize = 8 * 1024 * 1024;
-
-/// Two native messages plus bounded local routing metadata for a file approval.
-pub const MAX_APPROVAL_ENVELOPE_BYTES: usize = 2 * MAX_NATIVE_MESSAGE_BYTES + 65536;
-
 mod account;
 mod account_alias;
-pub use account_alias::account_alias_candidate;
 mod blob;
 mod cache;
+mod client_drafts;
 mod config;
 mod continuation;
 mod conversation;
 mod execution;
+mod fast_mode;
 mod identity;
 mod managed_run;
 #[cfg(unix)] mod path_unix;
@@ -29,8 +24,6 @@ mod routing;
 mod service_tier;
 mod storage;
 mod work_item;
-
-pub use service_tier::{InvalidServiceTier, ServiceTier};
 
 pub use self::{
 	account::{
@@ -108,8 +101,19 @@ pub use self::{
 	storage::StorageError,
 	work_item::{WorkItemError, WorkItemId, WorkItemState},
 };
+pub use account_alias::account_alias_candidate;
+pub use client_drafts::{
+	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES,
+};
+pub use fast_mode::{FastModeFailure, global_fast_mode_enabled, set_global_fast_mode_enabled};
+pub use service_tier::{InvalidServiceTier, ServiceTier};
 
 #[cfg(test)] use tempfile as _;
+
+/// Maximum complete native Agent message and persisted approval envelope, in bytes.
+pub const MAX_NATIVE_MESSAGE_BYTES: usize = 8 * 1_024 * 1_024;
+/// Two native messages plus bounded local routing metadata for a file approval.
+pub const MAX_APPROVAL_ENVELOPE_BYTES: usize = 2 * MAX_NATIVE_MESSAGE_BYTES + 65_536;
 
 /// Application-facing product-state port.
 pub trait ProductState {
@@ -128,11 +132,3 @@ pub enum Availability {
 		reason: &'static str,
 	},
 }
-
-mod client_drafts;
-pub use client_drafts::{
-	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES,
-};
-
-mod fast_mode;
-pub use fast_mode::{FastModeFailure, global_fast_mode_enabled, set_global_fast_mode_enabled};

@@ -1,6 +1,7 @@
 //! Stable, single-word account name candidates. Persistence owns collision resolution.
-use crate::ProviderIdentity;
 use sha2::{Digest as _, Sha256};
+
+use crate::ProviderIdentity;
 
 const ACCOUNT_ALIAS_WORDS: [&str; 44] = [
 	"Alex", "Avery", "Bailey", "Blake", "Casey", "Charlie", "Clara", "Dana", "Drew", "Eden",
@@ -9,7 +10,6 @@ const ACCOUNT_ALIAS_WORDS: [&str; 44] = [
 	"Paige", "Parker", "Quinn", "Reese", "Remy", "Riley", "Rowan", "Sage", "Sasha", "Sidney",
 	"Taylor", "Theo", "Val",
 ];
-
 // Keep these tables ordered: the provider account ID deterministically selects a name.
 const ACCOUNT_ALIAS_SURNAMES: &[&str] = &[
 	"Abbott",
@@ -151,8 +151,10 @@ pub fn account_alias_candidate(provider: &ProviderIdentity, attempt: u64) -> Str
 		.finalize();
 	let selector = u64::from_be_bytes(digest[..8].try_into().expect("digest segment"));
 	let count = ACCOUNT_ALIAS_WORDS.len() + ACCOUNT_ALIAS_SURNAMES.len();
+
 	if attempt < count as u64 {
 		let index = ((selector % count as u64 + attempt) % count as u64) as usize;
+
 		return ACCOUNT_ALIAS_WORDS
 			.iter()
 			.chain(ACCOUNT_ALIAS_SURNAMES)
@@ -160,15 +162,19 @@ pub fn account_alias_candidate(provider: &ProviderIdentity, attempt: u64) -> Str
 			.expect("alias index is below the combined dictionary length")
 			.to_string();
 	}
+
 	// A readable single word also works when the short-name dictionary is exhausted.
 	let digest = Sha256::new().chain_update(digest).chain_update(attempt.to_be_bytes()).finalize();
 	let starts = ["b", "d", "f", "g", "h", "k", "l", "m", "n", "p", "r", "s", "t", "v", "w", "z"];
 	let vowels = ["a", "e", "i", "o", "u"];
 	let mut name = String::with_capacity(10);
+
 	for pair in digest[..10].as_chunks::<2>().0 {
 		name.push_str(starts[pair[0] as usize % starts.len()]);
 		name.push_str(vowels[pair[1] as usize % vowels.len()]);
 	}
+
 	name[..1].make_ascii_uppercase();
+
 	name
 }
