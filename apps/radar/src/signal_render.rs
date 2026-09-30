@@ -51,7 +51,7 @@ pub(super) fn rendered_signal(
 			.cloned()
 			.ok_or_else(|| eyre::eyre!("analysis draft proof_points is required"))?,
 	);
-	signal.insert("source_refs".into(), rendered_source_refs(bundle)?);
+	signal.insert("source_refs".into(), source_refs::rendered_source_refs(bundle)?);
 
 	for field in ["how_to_try", "expected_effect", "caveats", "watch_state"] {
 		if crate::is_truthy_json_value(analysis.get(field)) {
@@ -79,8 +79,4 @@ pub(super) fn rendered_config_flags(
 		.or_else(|| bundle.get("extracted_flags"));
 
 	config_flags::normalized_config_flags(raw_flags, known_features)
-}
-
-fn rendered_source_refs(bundle: &Map<String, Value>) -> Result<Value> {
-	source_refs::rendered_source_refs(bundle)
 }
