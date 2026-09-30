@@ -98,7 +98,7 @@ enum Request {
 		schema: String,
 		idempotency_key: String,
 	},
-	UseResetCard {
+	ConsumeResetCard {
 		schema: String,
 		account_id: String,
 		granted_at_unix_seconds: i64,
@@ -193,7 +193,7 @@ impl Request {
 			Self::GetCodexAuthProjection { .. } => "get_codex_auth_projection",
 			Self::WaitForAccountObservation { .. } => "wait_for_account_observation",
 			Self::ResetCardStatus { .. } => "reset_card_status",
-			Self::UseResetCard { .. } => "use_reset_card",
+			Self::ConsumeResetCard { .. } => "consume_reset_card",
 			Self::EnrollAccount { .. } => "enroll_account",
 			Self::EnableAccount { .. } => "enable_account",
 			Self::DisableAccount { .. } => "disable_account",
@@ -218,7 +218,7 @@ impl Request {
 			| Self::GetCodexAuthProjection { schema }
 			| Self::WaitForAccountObservation { schema, .. }
 			| Self::ResetCardStatus { schema, .. }
-			| Self::UseResetCard { schema, .. }
+			| Self::ConsumeResetCard { schema, .. }
 			| Self::EnrollAccount { schema, .. }
 			| Self::EnableAccount { schema, .. }
 			| Self::DisableAccount { schema, .. }
@@ -245,6 +245,8 @@ enum BridgeFailure {
 	InvalidHandle,
 	RuntimeUnavailable,
 	InternalFailure,
+	ResetCardRejected,
+	ResetCardPossiblyDispatched,
 }
 
 #[derive(Serialize)]
@@ -276,39 +278,6 @@ struct FailureResponse {
 	outcome: &'static str,
 	operation: &'static str,
 	failure: ResponseFailure,
-}
-
-#[derive(Serialize)]
-#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
-enum ResetCardConsumeDto {
-	Accepted {
-		account_id: EntityId,
-		descriptor: ResetCardDescriptorDto,
-		state: ResetCardOperationResult,
-		entity_revision: EntityRevision,
-	},
-	Rejected {
-		error: decodex_protocol::CommandError,
-	},
-	PotentiallyDispatched {
-		failure: ClientFailure,
-	},
-}
-
-impl From<ResetCardConsumeResponse> for ResetCardConsumeDto {
-	fn from(response: ResetCardConsumeResponse) -> Self {
-		match response {
-			ResetCardConsumeResponse::Accepted {
-				account_id,
-				descriptor,
-				state,
-				entity_revision,
-			} => Self::Accepted { account_id, descriptor, state, entity_revision },
-			ResetCardConsumeResponse::Rejected { error } => Self::Rejected { error },
-			ResetCardConsumeResponse::PotentiallyDispatched { failure } =>
-				Self::PotentiallyDispatched { failure },
-		}
-	}
 }
 
 enum RequestFailure {
@@ -670,7 +639,7 @@ async fn execute_request(
 			wait_for_account_observation(profile, after_generation, request_refresh).await,
 		Request::ResetCardStatus { idempotency_key, .. } =>
 			get_reset_card_status(profile, idempotency_key).await,
-		Request::UseResetCard {
+		Request::ConsumeResetCard {
 			account_id,
 			granted_at_unix_seconds,
 			expires_at_unix_seconds,
@@ -989,7 +958,20 @@ async fn consume_reset_card(
 		)
 		.await
 		.map_err(RequestFailure::Client)?;
-	to_value(ResetCardConsumeDto::from(response))
+	reset_card_consume_result(response)
+}
+
+// The typed protocol client has already checked the exact target, revision and receipt.
+// Keep the dispatch distinction at this boundary so native UI cannot mistake an
+// uncertain send for a rejection and discard its saved request identity.
+fn reset_card_consume_result(response: ResetCardConsumeResponse) -> Result<Value, RequestFailure> {
+	match response {
+		ResetCardConsumeResponse::Accepted { state, .. } => to_value(state),
+		ResetCardConsumeResponse::Rejected { .. } =>
+			Err(RequestFailure::Bridge(BridgeFailure::ResetCardRejected)),
+		ResetCardConsumeResponse::PotentiallyDispatched { .. } =>
+			Err(RequestFailure::Bridge(BridgeFailure::ResetCardPossiblyDispatched)),
+	}
 }
 
 async fn route_account(
@@ -1173,6 +1155,48 @@ mod tests {
 
 	const ACCOUNT_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 	const SECOND_ACCOUNT_ID: &str = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405163";
+
+	#[test]
+	fn reset_card_outcomes_keep_uncertain_dispatch_distinct_from_rejection() {
+		let rejected = reset_card_consume_result(ResetCardConsumeResponse::Rejected {
+			error: decodex_protocol::CommandError::IdempotencyConflict,
+		});
+		assert!(matches!(rejected, Err(RequestFailure::Bridge(BridgeFailure::ResetCardRejected))));
+		for failure in [
+			ClientFailure::ProtocolTimeout,
+			ClientFailure::ProtocolMalformed,
+			ClientFailure::ApplicationAcceptanceUnknown,
+		] {
+			assert!(matches!(
+				reset_card_consume_result(ResetCardConsumeResponse::PotentiallyDispatched {
+					failure
+				}),
+				Err(RequestFailure::Bridge(BridgeFailure::ResetCardPossiblyDispatched))
+			));
+		}
+		let accepted = reset_card_consume_result(ResetCardConsumeResponse::Accepted {
+			account_id: EntityId::new(ACCOUNT_ID).unwrap(),
+			descriptor: ResetCardDescriptorDto::new(100, None).unwrap(),
+			state: ResetCardOperationResult::Prepared,
+			entity_revision: EntityRevision(7),
+		});
+		assert!(matches!(accepted, Ok(value) if value == serde_json::json!({"state":"prepared"})));
+	}
+
+	#[test]
+	fn reset_card_consumption_uses_a_distinct_native_operation_contract() {
+		let request = serde_json::json!({
+			"schema": RESPONSE_SCHEMA, "operation": "consume_reset_card",
+			"account_id": ACCOUNT_ID, "granted_at_unix_seconds":100,
+			"expires_at_unix_seconds": null, "expected_revision": 7,
+			"idempotency_key": SECOND_ACCOUNT_ID,
+		});
+		let parsed: Request = serde_json::from_value(request.clone()).unwrap();
+		assert_eq!(parsed.operation(), "consume_reset_card");
+		let mut retired = request;
+		retired["operation"] = "use_reset_card".into();
+		assert!(serde_json::from_value::<Request>(retired).is_err());
+	}
 
 	#[test]
 	fn exported_abi_is_exact() {

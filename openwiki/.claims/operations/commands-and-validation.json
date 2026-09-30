@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:13d86ca2cde358b0aa40f1cc9fc33f1af7402c0d225530e5b0e882618cf356f6",
+  "pageVersion": "sha256:fdf67537b6e0b9921443ac3bb24e086c48e20d31eea118c2466a366ecf0d3ac9",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://Makefile.toml",
-          "version": "repo-file-v1:sha256:a8e168c7aa6154d49b1deeb6ab92ba6b924e16f3fecc1adbcfd8c89d8d65e583"
+          "version": "repo-file-v1:sha256:5f9983b7cfb24e72548d0e468470751b03105125fb3b41176bc3818b159f1fd5"
         },
         {
           "resource": "repo://rust-toolchain.toml",
@@ -37,6 +37,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T09:06:10.197Z"
+    "at": "2026-09-30T09:17:35.615Z"
   }
 }

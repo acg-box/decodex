@@ -403,7 +403,7 @@ final class ResetCardNativeClientTests: XCTestCase {
 		XCTAssertEqual(value.sevenDayQuota.state, .error(.providerUnavailable))
 	}
 
-	func testUseAcceptedValidatesExactTargetAndReturnsState() async throws {
+	func testUsePreservesExactTargetAndReturnsNativeState() async throws {
 		let accountID = accountID
 		let authority = authority
 		let idempotencyKey = idempotencyKey
@@ -411,16 +411,9 @@ final class ResetCardNativeClientTests: XCTestCase {
 		let client = DecodexNativeClient { request, requestedAuthority in
 			recorder.append(request, authority: requestedAuthority)
 			return nativeSuccess(
-				operation: "use_reset_card",
+				operation: "consume_reset_card",
 				authority: authority,
-				data: """
-				{"outcome":"accepted","data":{
-				  "account_id":"\(accountID)",
-				  "descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200},
-				  "state":{"state":"completed","data":{"outcome":"reset"}},
-				  "entity_revision":7
-				}}
-				"""
+				data: #"{"state":"completed","data":{"outcome":"reset"}}"#
 			)
 		}
 		let attempt = try nativeAttempt(
@@ -433,7 +426,7 @@ final class ResetCardNativeClientTests: XCTestCase {
 		let state = try await client.use(attempt)
 		XCTAssertEqual(state, .completed(.reset))
 		let request = try nativeJSONObject(XCTUnwrap(recorder.requests.first).data)
-		XCTAssertEqual(request["operation"] as? String, "use_reset_card")
+		XCTAssertEqual(request["operation"] as? String, "consume_reset_card")
 		XCTAssertEqual(request["account_id"] as? String, accountID)
 		XCTAssertEqual(request["expected_revision"] as? NSNumber, 7)
 		XCTAssertEqual(request["idempotency_key"] as? String, idempotencyKey)
@@ -443,45 +436,20 @@ final class ResetCardNativeClientTests: XCTestCase {
 		])
 	}
 
-	func testUseRejectsRevisionDriftAndTypedNonacceptance() async throws {
-		let accountID = accountID
-		let authority = authority
-		let attempt = try nativeAttempt(
-			authority: authority,
-			accountID: accountID,
-			revision: 7,
-			idempotencyKey: idempotencyKey
-		)
-		let responses = [
-			"""
-			{"outcome":"accepted","data":{
-			  "account_id":"\(accountID)",
-			  "descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200},
-			  "state":{"state":"prepared"},
-			  "entity_revision":8
-			}}
-			""",
-			#"{"outcome":"rejected","data":{"error":{"reason":"idempotency_conflict"}}}"#,
-			#"{"outcome":"potentially_dispatched","data":{"failure":"protocol_timeout"}}"#,
-		]
-		let expected: [ResetCardClientError] = [
-			.invalidResponse,
-			.commandRejected,
-			.usePotentiallyDispatched,
-		]
-		for (data, expectedError) in zip(responses, expected) {
+	func testUsePreservesNativeRejectionAndUnknownDispatch() async throws {
+		let attempt = try nativeAttempt(authority: authority, accountID: accountID, revision: 7, idempotencyKey: idempotencyKey)
+		for (failure, expected) in [
+			("reset_card_rejected", ResetCardClientError.commandRejected),
+			("reset_card_possibly_dispatched", ResetCardClientError.usePotentiallyDispatched),
+		] {
 			let client = DecodexNativeClient { _, _ in
-				nativeSuccess(
-					operation: "use_reset_card",
-					authority: authority,
-					data: data
-				)
+				nativeFailure(operation: "consume_reset_card", failure: failure)
 			}
 			do {
 				_ = try await client.use(attempt)
 				XCTFail("Expected typed failure")
 			} catch let error as ResetCardClientError {
-				XCTAssertEqual(error, expectedError)
+				XCTAssertEqual(error, expected)
 			}
 		}
 	}
