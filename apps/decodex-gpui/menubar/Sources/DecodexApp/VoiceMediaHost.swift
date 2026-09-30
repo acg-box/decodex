@@ -13,8 +13,7 @@ final class VoiceMediaHost: NSObject {
     private let authorizationRequestForTesting: ((@escaping @MainActor (Bool) -> Void) -> Void)?
     private let dictationFactoryForTesting: ((@escaping @MainActor @Sendable ([String: Any]) -> Void) -> any DictationCapturing)?
 
-    init(hostWindow: NSWindow? = nil,
-         authorizationRequestForTesting: ((@escaping @MainActor (Bool) -> Void) -> Void)? = nil,
+    init(authorizationRequestForTesting: ((@escaping @MainActor (Bool) -> Void) -> Void)? = nil,
          dictationFactoryForTesting: ((@escaping @MainActor @Sendable ([String: Any]) -> Void) -> any DictationCapturing)? = nil) {
         self.authorizationRequestForTesting = authorizationRequestForTesting
         self.dictationFactoryForTesting = dictationFactoryForTesting
@@ -130,8 +129,8 @@ public func decodexVoiceMediaCreate(_ nativeView: UnsafeMutableRawPointer?) -> U
     let viewAddress = UInt(bitPattern: nativeView)
     let address = MainActor.assumeIsolated {
         let view = Unmanaged<NSView>.fromOpaque(UnsafeMutableRawPointer(bitPattern: viewAddress)!).takeUnretainedValue()
-        guard let window = view.window else { return UInt(0) }
-        return UInt(bitPattern: Unmanaged.passRetained(VoiceMediaHost(hostWindow: window)).toOpaque())
+        guard view.window != nil else { return UInt(0) }
+        return UInt(bitPattern: Unmanaged.passRetained(VoiceMediaHost()).toOpaque())
     }
     return UnsafeMutableRawPointer(bitPattern: address)
 }
