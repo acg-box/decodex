@@ -81,6 +81,7 @@ struct ResetCardAccountRow: View {
 					.accessibilityLabel(identityAccessibilityLabel)
 					.accessibilityValue(detailsBinding.wrappedValue ? "Expanded" : "Collapsed")
 				HStack(spacing: PanelSpacing.micro) {
+					if store.canReorderAccounts { reorderHandle }
 					if let message = store.message, message.accountID == state.account.accountID,
 						message.tone != .success {
 						InlineAccountFeedback(text: message.text) { store.dismissMessage() }
@@ -92,23 +93,21 @@ struct ResetCardAccountRow: View {
 				.fixedSize(horizontal: true, vertical: false)
 			}
             .frame(maxWidth: .infinity, alignment: .leading)
-			Button { detailsBinding.wrappedValue.toggle() } label: {
-				quotaWindows.contentShape(Rectangle())
-			}
-			.buttonStyle(.plain)
-			.accessibilityLabel("Account usage details")
-			.opacity(state.account.enabled ? 1 : 0.45)
 			if exceptionalStatusText != nil { exceptionalStatus.transition(.panelInline) }
+			if !state.requiresLoginRefresh && hasVisibleQuota {
+				Button { detailsBinding.wrappedValue.toggle() } label: {
+					quotaWindows.contentShape(Rectangle())
+				}
+				.buttonStyle(.plain)
+				.accessibilityLabel("Account usage details")
+				.opacity(state.account.enabled ? 1 : 0.45)
+			}
 			if detailsBinding.wrappedValue {
 				AccountProfileDetailView(state: state)
 					.padding(.top, PanelSpacing.related)
 					.transition(.panelInline)
 			}
-			HStack(alignment: .bottom, spacing: PanelSpacing.compact) {
-				cardInventory
-				Spacer(minLength: 0)
-				reorderHandle
-			}
+			cardInventory
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.padding(.horizontal, PanelSpacing.cardHorizontal)
@@ -360,6 +359,13 @@ struct ResetCardAccountRow: View {
 				detailedAccountID = isPresented ? state.account.accountID : nil
 			}
 		)
+	}
+
+	private var hasVisibleQuota: Bool {
+		[state.fiveHourQuota, state.sevenDayQuota].contains { window in
+			ResetCardQuotaPresentation(window: window).isVisible
+				|| store.quotaFill(for: state.account)?.remaining(for: window, at: Date()) != nil
+		}
 	}
 
 	@ViewBuilder
