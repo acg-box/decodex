@@ -119,8 +119,9 @@ fn signal_pr_number(signal: &Value) -> Option<u64> {
 		.and_then(|url| extract_pr_number_from_url(url, repo))
 }
 
+// These numbers are hints from commit text, not canonical commit-to-PR associations.
 fn compare_pr_numbers(commits: &[Value]) -> Vec<u64> {
-	let mut numbers = commits
+	commits
 		.iter()
 		.flat_map(|commit| {
 			commit
@@ -131,11 +132,7 @@ fn compare_pr_numbers(commits: &[Value]) -> Vec<u64> {
 		})
 		.collect::<BTreeSet<_>>()
 		.into_iter()
-		.collect::<Vec<_>>();
-
-	numbers.sort();
-
-	numbers
+		.collect()
 }
 
 fn pr_numbers_from_message(message: &str) -> Vec<u64> {
@@ -152,6 +149,8 @@ fn pr_numbers_from_message(message: &str) -> Vec<u64> {
 		if !digits.is_empty()
 			&& digits.chars().all(|ch| ch.is_ascii_digit())
 			&& let Ok(number) = digits.parse::<u64>()
+			&& number > 0
+			&& i64::try_from(number).is_ok()
 		{
 			numbers.push(number);
 		}
@@ -221,5 +220,19 @@ mod tests {
 			let error = tracked_signal_slugs(&[signal], &[], &[22414]).unwrap_err();
 			assert!(error.to_string().contains("published_at"), "{error}");
 		}
+	}
+	#[test]
+	fn compare_message_numbers_satisfy_the_artifact_integer_contract() {
+		let commits = serde_json::json!([
+			{"commit": {"message": "Change (#0) (#22416) (#22414)"}},
+			{"commit": {"message": "Duplicate (#22414), malformed (#-1) (#1.2) (#abc), signed overflow (#9223372036854775808), unsigned overflow (#18446744073709551616), boundary (#9223372036854775807), incomplete (#"}},
+			{}
+		]);
+		let numbers = compare_pr_numbers(commits.as_array().unwrap());
+		assert_eq!(numbers, vec![22414, 22416, i64::MAX as u64]);
+		let mut release = crate::tests::fixtures::valid_release_delta();
+		release["compare"]["pr_numbers"] = serde_json::json!(numbers);
+		release["comparisons"][0]["compare"]["pr_numbers"] = serde_json::json!(numbers);
+		assert!(crate::validate_artifact_errors(&release).is_empty());
 	}
 }
