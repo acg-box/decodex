@@ -41,7 +41,8 @@ pub(crate) fn build_release_delta(
 	root: &Path,
 	api: &GitHubApi,
 ) -> Result<Value> {
-	let releases = github_releases(api, &request.repo)?;
+	let releases =
+		github_releases(api, &format!("https://api.github.com/repos/{}/releases", request.repo))?;
 	let stable_release = release_delta::select_release(&releases, &request.tag_prefix, false)?;
 	let prerelease = release_delta::select_release(&releases, &request.tag_prefix, true)?;
 	let (stable_releases, preview_releases) =
@@ -112,24 +113,54 @@ pub(crate) fn build_release_delta(
 	}))
 }
 
-fn github_releases(api: &GitHubApi, repo: &str) -> Result<Vec<Value>> {
-	let mut releases = Vec::new();
+fn github_releases(api: &GitHubApi, url: &str) -> Result<Vec<Value>> {
+	api.get_paginated(&format!("{url}?per_page=100"))
+}
 
-	for page in 1..=5 {
-		let payload = api
-			.get(&format!("https://api.github.com/repos/{repo}/releases?per_page=100&page={page}"))?
-			.payload;
-		let Some(items) = payload.as_array() else {
-			eyre::bail!("Expected releases list payload from GitHub API");
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::tests::automation::github_api::{response, spawn_server_with};
+
+	#[test]
+	fn release_catalog_keeps_stable_releases_beyond_the_fifth_page() {
+		let server = spawn_server_with(6, |url, page| {
+			let start = page * 100;
+			let releases = (start..(start + 100).min(501))
+				.map(|index| {
+					let tag = if index == 500 {
+						"rust-v0.116.0".to_owned()
+					} else {
+						format!("rust-v0.117.0-alpha.{index}")
+					};
+					crate::tests::fixtures::release(&tag, index != 500)
+				})
+				.collect::<Vec<_>>();
+			let body = serde_json::to_string(&releases).unwrap();
+			if page < 5 {
+				response(
+					"200 OK",
+					&[("Link", &format!("<{url}?per_page=100&page={}>; rel=\"next\"", page + 2))],
+					&body,
+				)
+			} else {
+				response("200 OK", &[], &body)
+			}
+		});
+		let releases = github_releases(&server.api(None), server.url()).unwrap();
+		assert_eq!(releases.len(), 501);
+		let stable = release_delta::select_release(&releases, "rust-v", false).unwrap();
+		assert_eq!(stable["tag_name"], "rust-v0.116.0");
+		let mut request = RadarRefreshReleaseDeltaRequest {
+			stable_limit: 0,
+			preview_limit: 0,
+			..Default::default()
 		};
-		let count = items.len();
-
-		releases.extend(items.iter().cloned());
-
-		if count < 100 {
-			break;
-		}
+		let (stable, preview) = release_delta::select_release_options(&request, &releases).unwrap();
+		assert_eq!((stable.len(), preview.len()), (1, 500));
+		request.preview_limit = 2;
+		let (stable, preview) = release_delta::select_release_options(&request, &releases).unwrap();
+		assert_eq!((stable.len(), preview.len()), (1, 2));
+		assert_eq!(server.finish_with_requests().len(), 6);
 	}
-
-	Ok(releases)
 }

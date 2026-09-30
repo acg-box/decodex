@@ -251,7 +251,7 @@ fn object_pagination_keeps_bounds_and_rejects_bad_pages() {
 	}
 }
 
-struct TestServer {
+pub(crate) struct TestServer {
 	_directory: crate::private_fs::PrivateTestDirectory,
 	socket: PathBuf,
 	thread: thread::JoinHandle<()>,
@@ -260,7 +260,7 @@ struct TestServer {
 	url: String,
 }
 impl TestServer {
-	fn api(&self, token: Option<String>) -> GitHubApi {
+	pub(crate) fn api(&self, token: Option<String>) -> GitHubApi {
 		GitHubApi::new_for_test(token, &self.url, &self.socket)
 			.expect("GitHub API client should build")
 	}
@@ -269,13 +269,13 @@ impl TestServer {
 		drop(self.finish_with_requests());
 	}
 
-	fn finish_with_requests(self) -> Vec<String> {
+	pub(crate) fn finish_with_requests(self) -> Vec<String> {
 		self.stop.store(true, Ordering::Release);
 		self.thread.join().expect("test server should finish");
 		self.requests.lock().expect("request log should not be poisoned").clone()
 	}
 
-	fn url(&self) -> &str {
+	pub(crate) fn url(&self) -> &str {
 		&self.url
 	}
 }
@@ -334,14 +334,17 @@ fn spawn_server_responses(responses: Vec<String>) -> TestServer {
 	TestServer { _directory: directory, socket, thread: server, requests, stop, url }
 }
 
-fn spawn_server_with(response_count: usize, builder: impl Fn(&str, usize) -> String) -> TestServer {
+pub(crate) fn spawn_server_with(
+	response_count: usize,
+	builder: impl Fn(&str, usize) -> String,
+) -> TestServer {
 	let url = "http://github.test/test";
 	let responses = (0..response_count).map(|index| builder(url, index)).collect::<Vec<_>>();
 
 	spawn_server_responses(responses)
 }
 
-fn response(status: &str, headers: &[(&str, &str)], body: &str) -> String {
+pub(crate) fn response(status: &str, headers: &[(&str, &str)], body: &str) -> String {
 	let extra_headers =
 		headers.iter().map(|(name, value)| format!("{name}: {value}\r\n")).collect::<String>();
 
