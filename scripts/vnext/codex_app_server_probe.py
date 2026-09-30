@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import select
@@ -31,10 +32,11 @@ class ProtocolError(RuntimeError):
 
 
 class AppServer:
-    def __init__(self, codex: str, cwd: Path) -> None:
+    def __init__(self, codex: str, cwd: Path, codex_home: Path) -> None:
         self.process = subprocess.Popen(
             [codex, "app-server", "--stdio"],
             cwd=cwd,
+            env={**os.environ, "CODEX_HOME": str(codex_home)},
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -463,7 +465,7 @@ def inventory_probe(args: argparse.Namespace) -> dict[str, Any]:
             item["authentication"] = "skipped_no_process_scoped_tokens"
             receipt["accounts"].append(item)
             continue
-        server = AppServer(args.codex, args.cwd)
+        server = AppServer(args.codex, args.cwd, codex_home)
         try:
             try:
                 server.login(
@@ -574,14 +576,14 @@ def live_probe(args: argparse.Namespace) -> dict[str, Any]:
         "repository_head": subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=args.cwd, text=True
         ).strip(),
-        "shared_home": "~/.codex",
+        "shared_home": "selected_codex_home",
         "per_run_codex_home": False,
         "account_aliases": ["A", "B"],
         "experiments": {},
     }
 
     name = f"Decodex XY-1262 shared-home proof {int(time.time())}"
-    server_a = AppServer(args.codex, args.cwd)
+    server_a = AppServer(args.codex, args.cwd, codex_home)
     try:
         server_a.login(account_a)
         identifier = start_named_thread(server_a, args.cwd, name)
@@ -593,7 +595,7 @@ def live_probe(args: argparse.Namespace) -> dict[str, Any]:
     finally:
         server_a.close(crash=True)
 
-    server_b = AppServer(args.codex, args.cwd)
+    server_b = AppServer(args.codex, args.cwd, codex_home)
     try:
         server_b.login(account_b)
         listed = server_b.request(
@@ -646,7 +648,7 @@ def live_probe(args: argparse.Namespace) -> dict[str, Any]:
     # A process-scoped bad token proves the auth-failed boundary without changing the
     # account pool or normal auth.json. Resume may load local history; a real turn must
     # fail authentication before any fallback session is created.
-    auth_failed = AppServer(args.codex, args.cwd)
+    auth_failed = AppServer(args.codex, args.cwd, codex_home)
     try:
         try:
             auth_failed.login(
@@ -665,7 +667,7 @@ def live_probe(args: argparse.Namespace) -> dict[str, Any]:
     finally:
         auth_failed.close(crash=True)
 
-    fallback = AppServer(args.codex, args.cwd)
+    fallback = AppServer(args.codex, args.cwd, codex_home)
     try:
         fallback.login(account_a)
         fallback_name = f"{name} context-pack fallback"

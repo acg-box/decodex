@@ -52,6 +52,20 @@ class CodexAppServerProbeTests(unittest.TestCase):
         digest.assert_called_once_with(Path("/synthetic-codex-home/auth.json"))
         self.assertEqual(args.auth_sha256_before, "fixture-digest")
 
+    def test_app_server_uses_selected_home_instead_of_ambient_home(self):
+        probe = load_probe()
+        for selected in (Path("/synthetic-default"), Path("/synthetic-other")):
+            with (
+                self.subTest(selected=selected),
+                mock.patch.dict("os.environ", {"CODEX_HOME": "/ambient-home", "PATH": "/fixture-bin"}),
+                mock.patch.object(probe.subprocess, "Popen") as spawn,
+                mock.patch.object(probe.AppServer, "initialize"),
+            ):
+                probe.AppServer("fixture-codex", Path("/fixture-project"), selected)
+                self.assertEqual(spawn.call_args.kwargs["env"]["CODEX_HOME"], str(selected))
+                self.assertEqual(spawn.call_args.kwargs["env"]["PATH"], "/fixture-bin")
+                self.assertEqual(spawn.call_args.kwargs["cwd"], Path("/fixture-project"))
+
     def test_account_selection_does_not_emit_credentials(self):
         probe = load_probe()
         secret = "header.payload.signature"
