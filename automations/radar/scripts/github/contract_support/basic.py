@@ -12,7 +12,9 @@ from contract_support.constants import (
 from contract_support.core import ValidationResult
 
 
-def validate_bundle(bundle: dict[str, Any]) -> ValidationResult:
+def validate_bundle(bundle: Any) -> ValidationResult:
+    if not isinstance(bundle, dict):
+        return ValidationResult(ok=False, errors=["artifact must be an object"])
     errors: list[str] = []
 
     if bundle.get("schema") != BUNDLE_SCHEMA:
@@ -21,7 +23,7 @@ def validate_bundle(bundle: dict[str, Any]) -> ValidationResult:
     if not isinstance(bundle.get("repo"), str) or "/" not in bundle["repo"]:
         errors.append("repo must be owner/name")
 
-    if bundle.get("analysis_mode") not in ANALYSIS_MODES:
+    if not isinstance(bundle.get("analysis_mode"), str) or bundle["analysis_mode"] not in ANALYSIS_MODES:
         errors.append(f"analysis_mode must be one of {sorted(ANALYSIS_MODES)}")
 
     if not isinstance(bundle.get("default_branch"), str) or not bundle["default_branch"]:
@@ -50,6 +52,16 @@ def validate_bundle(bundle: dict[str, Any]) -> ValidationResult:
             for field in ("path", "status", "additions", "deletions"):
                 if field not in item:
                     errors.append(f"files[{index}].{field} is required")
+                    continue
+                value = item[field]
+                if field in ("path", "status"):
+                    valid = isinstance(value, str) and bool(value)
+                    expected = "a non-empty string"
+                else:
+                    valid = type(value) is int and 0 <= value <= 2**63 - 1
+                    expected = "a non-negative integer"
+                if not valid:
+                    errors.append(f"files[{index}].{field} must be {expected}")
 
     if bundle.get("analysis_mode") == "pr_first":
         pr = bundle.get("primary_pr")
@@ -59,21 +71,39 @@ def validate_bundle(bundle: dict[str, Any]) -> ValidationResult:
             for field in ("number", "title", "body", "state", "labels", "url"):
                 if field not in pr:
                     errors.append(f"primary_pr.{field} is required")
+                    continue
+                value = pr[field]
+                if field == "number":
+                    valid = type(value) is int and 0 < value <= 2**63 - 1
+                    expected = "a positive integer"
+                elif field == "body":
+                    valid = isinstance(value, str)
+                    expected = "a string"
+                elif field == "labels":
+                    valid = isinstance(value, list) and all(isinstance(label, str) and label for label in value)
+                    expected = "a list of non-empty strings"
+                else:
+                    valid = isinstance(value, str) and bool(value)
+                    expected = "a non-empty string"
+                if not valid:
+                    errors.append(f"primary_pr.{field} must be {expected}")
 
     return ValidationResult(ok=not errors, errors=errors)
 
 
-def validate_analysis_draft(draft: dict[str, Any]) -> ValidationResult:
+def validate_analysis_draft(draft: Any) -> ValidationResult:
+    if not isinstance(draft, dict):
+        return ValidationResult(ok=False, errors=["Analysis draft must be an object"])
     errors: list[str] = []
-    for field in ("kind", "title", "summary", "why_it_matters", "confidence", "impact", "proof_points"):
-        if field not in draft:
+    for field in ("kind", "title", "summary", "why_it_matters", "confidence", "impact"):
+        if not isinstance(draft.get(field), str) or not draft[field]:
             errors.append(f"{field} is required in analysis draft")
 
-    if draft.get("kind") not in SIGNAL_KINDS:
+    if not isinstance(draft.get("kind"), str) or draft["kind"] not in SIGNAL_KINDS:
         errors.append(f"kind must be one of {sorted(SIGNAL_KINDS)}")
-    if draft.get("confidence") not in SIGNAL_CONFIDENCE:
+    if not isinstance(draft.get("confidence"), str) or draft["confidence"] not in SIGNAL_CONFIDENCE:
         errors.append(f"confidence must be one of {sorted(SIGNAL_CONFIDENCE)}")
-    if draft.get("impact") not in SIGNAL_IMPACT:
+    if not isinstance(draft.get("impact"), str) or draft["impact"] not in SIGNAL_IMPACT:
         errors.append(f"impact must be one of {sorted(SIGNAL_IMPACT)}")
 
     proof_points = draft.get("proof_points")
