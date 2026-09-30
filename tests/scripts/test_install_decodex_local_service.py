@@ -7,6 +7,7 @@ import io
 import json
 import os
 import plistlib
+import socket
 import stat
 import subprocess
 import sys
@@ -359,92 +360,68 @@ class LocalServiceInstallerTests(unittest.TestCase):
         }
         self.assertIsNone(self.module.account_ids_from_result(document))
 
-    @unittest.skipUnless(
-        (REPO_ROOT / "target/debug/decodex").is_file(),
-        "build the unified debug CLI before the real-output installer check",
-    )
     def test_current_real_cli_account_list_output_is_accepted(self) -> None:
-        executable = REPO_ROOT / "target/debug/decodex"
+        metadata = subprocess.run(
+            ["cargo", "+stable", "metadata", "--locked", "--no-deps", "--format-version", "1"],
+            cwd=REPO_ROOT, capture_output=True, text=True, check=True, timeout=30,
+        )
+        executable = Path(json.loads(metadata.stdout)["target_directory"]) / "debug/decodex"
+        if not executable.is_file():
+            self.skipTest("build the unified debug CLI before the real-output installer check")
         with tempfile.TemporaryDirectory(dir=Path.home()) as temporary:
             home = Path(temporary).resolve()
             home.chmod(0o700)
             root = home / ".decodex"
+            # Discovery selects the user-local app first. Invalid native bytes prevent
+            # fallback to an installed Codex app without launching any provider process.
+            unavailable_codex = home / "Applications/Codex.app/Contents/Resources/codex"
+            unavailable_codex.parent.mkdir(parents=True)
+            unavailable_codex.write_bytes(b"isolated fixture: native Codex unavailable")
+            unavailable_codex.chmod(0o700)
+            environment = {"HOME": str(home), "PATH": "/usr/bin:/bin", "TMPDIR": str(home)}
             subprocess.run(
-                [
-                    str(executable),
-                    "initialize-local-database",
-                    "--root",
-                    str(root),
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
+                [str(executable), "initialize-local-database", "--root", str(root)],
+                env=environment, check=True, capture_output=True, text=True, timeout=30,
             )
             config = root / "config.toml"
-            config.write_text(
-                "\n".join(
-                    [
-                        "version = 1",
-                        'active_profile = "local"',
-                        "",
-                        "[profiles.local]",
-                        'kind = "local"',
-                        'policy = "same_uid"',
-                        f"service_owner_uid = {os.geteuid()}",
-                        "",
-                        "[cache]",
-                        "max_entries = 16",
-                        "max_bytes = 1048576",
-                        "max_entry_bytes = 65536",
-                        "",
-                    ]
-                ),
-                encoding="utf-8",
-            )
+            config.write_bytes(self.module.render_config(self.paths(root), os.geteuid()))
             config.chmod(0o600)
-            environment = os.environ.copy()
-            environment["HOME"] = str(home)
-            service = subprocess.Popen(
-                [str(executable), "serve"],
-                cwd=root,
-                env=environment,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            try:
-                self.assertEqual(
-                    service.stdout.readline().strip(),
-                    "decodex serving WebSocket /v1/ws over same-UID local transport",
+            parent, child = socket.socketpair()
+            with parent, child, tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+                service = subprocess.Popen(
+                    [str(executable), "serve", "--parent-fd", str(child.fileno())],
+                    pass_fds=(child.fileno(),), cwd=root, env=environment,
+                    stdout=stdout, stderr=stderr,
                 )
-                completed = subprocess.run(
-                    [
-                        str(executable),
-                        "--root",
-                        str(root),
-                        "--output",
-                        "json",
-                        "account",
-                        "list",
-                    ],
-                    cwd=root,
-                    env=environment,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                )
-                if completed.returncode != 0:
-                    self.fail(completed.stderr or completed.stdout)
-                document = json.loads(completed.stdout)
-                self.assertEqual(self.module.account_ids_from_result(document), [])
-                self.assertEqual(
-                    set(document["result"]["data"]),
-                    {"accounts", "routing"},
-                )
-            finally:
-                if service.poll() is None:
-                    service.terminate()
-                service.communicate(timeout=10)
+                child.close()
+                try:
+                    deadline = time.monotonic() + 15
+                    while True:
+                        startup = os.pread(stdout.fileno(), 65536, 0)
+                        if b"decodex serving WebSocket /v1/ws over same-UID local transport\n" in startup:
+                            break
+                        if service.poll() is not None or time.monotonic() >= deadline:
+                            stderr.seek(0)
+                            self.fail("service did not become ready: " + stderr.read(65536).decode(errors="replace"))
+                        time.sleep(0.05)
+                    completed = subprocess.run(
+                        [str(executable), "--root", str(root), "--output", "json", "account", "list"],
+                        cwd=root, env=environment, check=False,
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+                    document = json.loads(completed.stdout)
+                    self.assertEqual(self.module.account_ids_from_result(document), [])
+                    self.assertEqual(set(document["result"]["data"]), {"accounts", "routing"})
+                finally:
+                    parent.close()
+                    try:
+                        service.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        service.kill()
+                        service.wait(timeout=10)
+                        raise
+                self.assertEqual(service.returncode, 0)
 
     def test_retired_snapshot_is_captured_only_before_sqlite_exists(self) -> None:
         account_id = "10000000-0000-4000-8000-000000000001"
