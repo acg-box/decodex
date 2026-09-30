@@ -354,7 +354,7 @@ fn is_table_line(line: &str) -> bool {
 
 fn table_cells(line: &str) -> Vec<&str> {
 	let line = line.trim();
-	if !is_table_line(line) {
+	if line.len() < 2 || !is_table_line(line) {
 		return Vec::new();
 	}
 	line[1..line.len() - 1].split('|').map(str::trim).collect()
