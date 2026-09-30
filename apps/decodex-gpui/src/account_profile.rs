@@ -411,6 +411,46 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn revision_change_and_refresh_discard_delayed_profile_results() {
+		let controller = AccountProfileController::production();
+		let server = ServerId::new("10000000-0000-4000-8000-000000000001").unwrap();
+		let account = EntityId::new("20000000-0000-4000-8000-000000000001").unwrap();
+		controller.bind_session(3, server.clone());
+		controller.select_at_revision(account.clone(), super::EntityRevision(1));
+		let old = controller.next_dispatch(3, &server).await;
+		controller.select_at_revision(account, super::EntityRevision(2));
+		let newer = controller.next_dispatch(3, &server).await;
+		let reply = |query: super::QueryEnvelope| QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server.clone(),
+			query_id: query.query_id,
+			payload: QueryResultPayload::AccountProfile(AccountProfileResult::Unavailable {
+				error: AccountProfileErrorDto::ProviderUnavailable,
+				email: AccountProfileEmailDto::Redacted,
+				plan_type: None,
+			}),
+		};
+		assert_eq!(
+			controller.route_result(3, &server, &reply(old)),
+			AccountProfileRouteOutcome::Unmatched
+		);
+		assert!(controller.refresh());
+		assert_eq!(
+			controller.route_result(3, &server, &reply(newer)),
+			AccountProfileRouteOutcome::Unmatched
+		);
+		assert!(controller.snapshot().result.is_none());
+		assert_eq!(controller.snapshot().load, AccountProfileLoadState::Loading);
+		let current = controller.next_dispatch(3, &server).await;
+		assert_eq!(
+			controller.route_result(3, &server, &reply(current)),
+			AccountProfileRouteOutcome::Fresh
+		);
+		assert_eq!(controller.snapshot().selected_revision, Some(super::EntityRevision(2)));
+		assert_eq!(controller.snapshot().load, AccountProfileLoadState::Ready);
+	}
+
+	#[tokio::test]
 	async fn selected_profile_is_one_exact_retained_session_query() {
 		let controller = AccountProfileController::production();
 		let server =
