@@ -1,7 +1,9 @@
 //! Account-bound backend recovery copy, independent of profile and reset-card availability.
 
-use crate::{EntityId, EntityRevision, WireText};
 use serde::{Deserialize, Serialize};
+use url::Url;
+
+use crate::{AgentModelDto, EntityId, EntityRevision, IdempotencyKey, WireText};
 
 /// One account's daemon-owned recovery observation.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -15,6 +17,104 @@ pub struct AccountRecoveryResult {
 	pub observed_at_unix_micros: Option<i64>,
 	/// Freshness and supported content are separate from account permission.
 	pub state: AccountRecoveryState,
+}
+impl AccountRecoveryResult {
+	/// Select the first different ordinary model in backend order for this exact account revision.
+	/// `models` must be the complete visible native catalog for the same account/process.
+	/// This does not authorize an effect: the owner must also check freshness, task ownership,
+	/// native authentication, pending recovery, and concurrent manual settings before dispatch.
+	pub fn ordinary_fallback_model<'a>(
+		&self,
+		account: &EntityId,
+		revision: EntityRevision,
+		current_model: &str,
+		models: &'a [AgentModelDto],
+	) -> Option<&'a AgentModelDto> {
+		let AccountRecoveryState::Current(banner) = &self.state else {
+			return None;
+		};
+
+		if !self.valid_for(account, revision)
+			|| banner.banner_type.as_str() == "luna_reserve"
+			|| current_model == "gpt-reserve"
+			|| banner.blocked_model_slug.as_ref().map(WireText::as_str) != Some(current_model)
+		{
+			return None;
+		}
+
+		banner.fallback_model_slugs.iter().find_map(|candidate| {
+			let candidate = candidate.as_str();
+
+			if candidate == current_model || candidate == "gpt-reserve" {
+				return None;
+			}
+
+			models.iter().find(|model| model.model.as_str() == candidate)
+		})
+	}
+
+	/// Whether this bounded current source explicitly offers this native notification.
+	pub fn allows_nudge(&self, action: AccountRecoveryAction) -> bool {
+		let AccountRecoveryState::Current(banner) = &self.state else {
+			return false;
+		};
+
+		self.valid_for(&self.account_id, self.account_revision)
+			&& banner.actions.iter().any(|cta| cta.action == action)
+			&& (action == AccountRecoveryAction::NotifyOwner
+				|| (action == AccountRecoveryAction::RequestIncrease
+					&& banner.request_url.is_none()))
+	}
+
+	/// Validate the exact requested source and bounded display content.
+	/// Freshness and effect-time authorization require separate checks.
+	pub fn valid_for(&self, account: &EntityId, revision: EntityRevision) -> bool {
+		if &self.account_id != account
+			|| self.account_revision != revision
+			|| revision.0 == 0
+			|| self.observed_at_unix_micros.is_some_and(|at| at <= 0)
+		{
+			return false;
+		}
+
+		match &self.state {
+			AccountRecoveryState::Unavailable => true,
+			AccountRecoveryState::Absent | AccountRecoveryState::Unsupported =>
+				self.observed_at_unix_micros.is_some(),
+			AccountRecoveryState::Current(banner) | AccountRecoveryState::Stale(banner) => {
+				let scalar = |v: &WireText, max| {
+					!v.as_str().trim().is_empty()
+						&& v.as_str().len() <= max
+						&& !v.as_str().chars().any(char::is_control)
+				};
+
+				self.observed_at_unix_micros.is_some()
+					&& scalar(&banner.banner_type, 256)
+					&& !banner.title.as_str().trim().is_empty()
+					&& banner.title.as_str().len() <= 1_024
+					&& banner.title.as_str().lines().count() <= 3
+					&& banner.title.as_str().chars().all(|c| !c.is_control() || c == '\n')
+					&& banner.description.as_str().len() <= 4_096
+					&& banner.description.as_str().lines().count() <= 12
+					&& banner.description.as_str().chars().all(|c| !c.is_control() || c == '\n')
+					&& banner.actions.len() <= 8
+					&& banner.actions.iter().all(|a| scalar(&a.label, 256))
+					&& banner.fallback_model_slugs.len() <= 16
+					&& banner.fallback_model_slugs.iter().all(|s| scalar(s, 256))
+					&& banner.model_slug.as_ref().is_none_or(|s| scalar(s, 256))
+					&& banner.blocked_model_slug.as_ref().is_none_or(|s| scalar(s, 256))
+					&& banner.request_url.as_ref().is_none_or(|value| {
+						scalar(value, 4_096)
+							&& Url::parse(value.as_str()).is_ok_and(|url| {
+								matches!(url.scheme(), "https" | "http")
+									&& url.host_str().is_some()
+									&& url.username().is_empty()
+									&& url.password().is_none()
+							})
+					})
+			},
+		}
+	}
 }
 
 /// Banner availability; only Current carries actionable fresh copy.
@@ -95,105 +195,6 @@ pub enum AccountRecoveryAction {
 	Pricing,
 }
 
-impl AccountRecoveryResult {
-	/// Select the first different ordinary model in backend order for this exact account revision.
-	/// `models` must be the complete visible native catalog for the same account/process.
-	/// This does not authorize an effect: the owner must also check freshness, task ownership,
-	/// native authentication, pending recovery, and concurrent manual settings before dispatch.
-	pub fn ordinary_fallback_model<'a>(
-		&self,
-		account: &EntityId,
-		revision: EntityRevision,
-		current_model: &str,
-		models: &'a [crate::AgentModelDto],
-	) -> Option<&'a crate::AgentModelDto> {
-		let AccountRecoveryState::Current(banner) = &self.state else {
-			return None;
-		};
-
-		if !self.valid_for(account, revision)
-			|| banner.banner_type.as_str() == "luna_reserve"
-			|| current_model == "gpt-reserve"
-			|| banner.blocked_model_slug.as_ref().map(WireText::as_str) != Some(current_model)
-		{
-			return None;
-		}
-
-		banner.fallback_model_slugs.iter().find_map(|candidate| {
-			let candidate = candidate.as_str();
-
-			if candidate == current_model || candidate == "gpt-reserve" {
-				return None;
-			}
-
-			models.iter().find(|model| model.model.as_str() == candidate)
-		})
-	}
-
-	/// Whether this bounded current source explicitly offers this native notification.
-	pub fn allows_nudge(&self, action: AccountRecoveryAction) -> bool {
-		let AccountRecoveryState::Current(banner) = &self.state else {
-			return false;
-		};
-
-		self.valid_for(&self.account_id, self.account_revision)
-			&& banner.actions.iter().any(|cta| cta.action == action)
-			&& (action == AccountRecoveryAction::NotifyOwner
-				|| (action == AccountRecoveryAction::RequestIncrease
-					&& banner.request_url.is_none()))
-	}
-
-	/// Validate the exact requested source and bounded display content.
-	/// Freshness and effect-time authorization require separate checks.
-	pub fn valid_for(&self, account: &EntityId, revision: EntityRevision) -> bool {
-		if &self.account_id != account
-			|| self.account_revision != revision
-			|| revision.0 == 0
-			|| self.observed_at_unix_micros.is_some_and(|at| at <= 0)
-		{
-			return false;
-		}
-
-		match &self.state {
-			AccountRecoveryState::Unavailable => true,
-			AccountRecoveryState::Absent | AccountRecoveryState::Unsupported =>
-				self.observed_at_unix_micros.is_some(),
-			AccountRecoveryState::Current(banner) | AccountRecoveryState::Stale(banner) => {
-				let scalar = |v: &WireText, max| {
-					!v.as_str().trim().is_empty()
-						&& v.as_str().len() <= max
-						&& !v.as_str().chars().any(char::is_control)
-				};
-
-				self.observed_at_unix_micros.is_some()
-					&& scalar(&banner.banner_type, 256)
-					&& !banner.title.as_str().trim().is_empty()
-					&& banner.title.as_str().len() <= 1024
-					&& banner.title.as_str().lines().count() <= 3
-					&& banner.title.as_str().chars().all(|c| !c.is_control() || c == '\n')
-					&& banner.description.as_str().len() <= 4096
-					&& banner.description.as_str().lines().count() <= 12
-					&& banner.description.as_str().chars().all(|c| !c.is_control() || c == '\n')
-					&& banner.actions.len() <= 8
-					&& banner.actions.iter().all(|a| scalar(&a.label, 256))
-					&& banner.fallback_model_slugs.len() <= 16
-					&& banner.fallback_model_slugs.iter().all(|s| scalar(s, 256))
-					&& banner.model_slug.as_ref().is_none_or(|s| scalar(s, 256))
-					&& banner.blocked_model_slug.as_ref().is_none_or(|s| scalar(s, 256))
-					&& banner.request_url.as_ref().is_none_or(|value| {
-						scalar(value, 4096)
-							&& url::Url::parse(value.as_str()).is_ok_and(|url| {
-								matches!(url.scheme(), "https" | "http")
-									&& url.host_str().is_some()
-									&& url.username().is_empty()
-									&& url.password().is_none()
-							})
-					})
-			},
-		}
-	}
-}
-
 /// Prepared destination after the daemon revalidates a displayed recovery action.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
@@ -210,21 +211,6 @@ pub enum AccountRecoveryPreparation {
 		destination: AccountRecoveryDestination,
 	},
 }
-
-/// Finite account recovery destinations; none execute during a read.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "kind", content = "value", rename_all = "snake_case", deny_unknown_fields)]
-pub enum AccountRecoveryDestination {
-	/// Open a validated HTTP(S) address after the user's action.
-	OpenUrl(WireText),
-	/// Open the existing inventory picker and explicit reset confirmation.
-	ResetPicker,
-	/// Explicitly request credits from the workspace owner through the account effect owner.
-	RequestCredits,
-	/// Explicitly request a workspace usage-limit increase through the account effect owner.
-	RequestUsageIncrease,
-}
-
 impl AccountRecoveryPreparation {
 	/// Validate the prepared source, action and destination against the explicit selection.
 	pub fn valid_for(
@@ -266,9 +252,9 @@ impl AccountRecoveryPreparation {
 					AccountRecoveryAction::ResetUsage | AccountRecoveryAction::NotifyOwner
 				) && (requested != AccountRecoveryAction::RequestIncrease
 					|| after.request_url.is_some())
-					&& value.as_str().len() <= 4096
+					&& value.as_str().len() <= 4_096
 					&& !value.as_str().chars().any(char::is_control)
-					&& url::Url::parse(value.as_str()).is_ok_and(|url| {
+					&& Url::parse(value.as_str()).is_ok_and(|url| {
 						matches!(url.scheme(), "https" | "http")
 							&& url.host_str().is_some()
 							&& url.username().is_empty()
@@ -276,6 +262,20 @@ impl AccountRecoveryPreparation {
 					}),
 		}
 	}
+}
+
+/// Finite account recovery destinations; none execute during a read.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AccountRecoveryDestination {
+	/// Open a validated HTTP(S) address after the user's action.
+	OpenUrl(WireText),
+	/// Open the existing inventory picker and explicit reset confirmation.
+	ResetPicker,
+	/// Explicitly request credits from the workspace owner through the account effect owner.
+	RequestCredits,
+	/// Explicitly request a workspace usage-limit increase through the account effect owner.
+	RequestUsageIncrease,
 }
 
 /// Durable outcome of one explicit workspace-owner notification attempt.
@@ -317,7 +317,7 @@ pub struct AccountRecoveryNudgeOperation {
 	/// Exact notification purpose.
 	pub action: AccountRecoveryAction,
 	/// Stable original operation identity.
-	pub operation_key: crate::IdempotencyKey,
+	pub operation_key: IdempotencyKey,
 	/// Durable reservation time in Unix microseconds.
 	pub reserved_at_unix_micros: i64,
 	/// Last known delivery outcome, including unfinished uncertain claims.
@@ -326,11 +326,14 @@ pub struct AccountRecoveryNudgeOperation {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::{
+		AccountRecoveryBanner, AccountRecoveryResult, AccountRecoveryState, AgentModelDto,
+		EntityId, EntityRevision, WireText,
+	};
 	#[test]
 	fn ordinary_fallback_uses_backend_order_and_exact_current_source() {
 		let account = EntityId::new("10000000-0000-4000-8000-000000000001").unwrap();
-		let model = |name: &str| crate::AgentModelDto {
+		let model = |name: &str| AgentModelDto {
 			model: crate::ConversationModel::new(name).unwrap(),
 			name: name.into(),
 			efforts: vec![crate::ConversationReasoningEffort::Medium],
@@ -463,10 +466,13 @@ mod tests {
 		assert!(!result.valid_for(&account, EntityRevision(1)));
 	}
 }
-
 #[cfg(test)]
 mod preparation_tests {
-	use super::*;
+	use crate::{
+		AccountRecoveryAction, AccountRecoveryBanner, AccountRecoveryCta,
+		AccountRecoveryDestination, AccountRecoveryPreparation, AccountRecoveryResult,
+		AccountRecoveryState, EntityId, EntityRevision, WireText,
+	};
 	#[test]
 	fn preparation_rejects_changed_source_action_and_effect_kind() {
 		let source = AccountRecoveryResult {
