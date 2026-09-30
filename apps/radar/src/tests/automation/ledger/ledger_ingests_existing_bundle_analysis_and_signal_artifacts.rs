@@ -1,14 +1,20 @@
-use std::{fs, os::unix::fs::PermissionsExt as _, sync::mpsc, thread, time::Duration};
+use std::{
+	fs::{self, Permissions},
+	os::unix::fs::PermissionsExt as _,
+	sync::mpsc,
+	thread,
+	time::Duration,
+};
 
 use rusqlite::Connection;
 
-use crate::{RadarLedgerIngestExistingRequest, tests::fixtures};
+use crate::{DEFAULT_CACHE_ROOT, RadarLedgerIngestExistingRequest, test_support, tests::fixtures};
 
 #[test]
 fn ledger_ingests_existing_bundle_analysis_and_signal_artifacts() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 
-	fs::set_permissions(temp_dir.path(), fs::Permissions::from_mode(0o700))
+	fs::set_permissions(temp_dir.path(), Permissions::from_mode(0o700))
 		.expect("ledger directory should be private");
 
 	let bundles_dir = temp_dir.path().join("bundles");
@@ -53,8 +59,8 @@ fn ledger_ingests_existing_bundle_analysis_and_signal_artifacts() {
 
 #[test]
 fn ledger_ingest_existing_completes_with_the_canonical_cache_layout() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let cache = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
+	let temp_dir = test_support::private_tempdir();
+	let cache = temp_dir.path().join(DEFAULT_CACHE_ROOT);
 	let bundles_dir = cache.join("github/bundles");
 	let analysis_dir = cache.join("generated/analysis");
 	let signals_dir = cache.join("site-content/signals");
