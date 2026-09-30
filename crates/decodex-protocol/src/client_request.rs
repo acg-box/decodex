@@ -1,23 +1,12 @@
 //! Assemble selected request content without exposing incomplete actions to callers.
-use super::{AgentClient, ClientFailure, REQUEST_CLIENT_TIMEOUT, close_one_shot_socket};
-use crate::{
-	AgentRequestResult, AgentRequestText, EntityId, QueryPayload, QueryResultPayload, WireText,
-};
 use tokio::time;
 
-fn valid_owner(event_id: i64, expected: i64, work: &str, method: &str) -> bool {
-	event_id == expected
-		&& event_id > 0
-		&& EntityId::new(work).is_ok()
-		&& matches!(
-			method,
-			"item/commandExecution/requestApproval"
-				| "item/fileChange/requestApproval"
-				| "item/permissions/requestApproval"
-				| "item/tool/requestUserInput"
-				| "mcpServer/elicitation/request"
-		)
-}
+use crate::{
+	AgentClient, AgentRequestResult, AgentRequestText, ClientFailure, EntityId,
+	MAX_HISTORY_INLINE_BYTES, QueryPayload, QueryResultPayload, WireText,
+	client::{self, REQUEST_CLIENT_TIMEOUT},
+};
+use decodex_core::{BlobHash, MAX_APPROVAL_ENVELOPE_BYTES};
 
 pub(super) async fn collect(
 	client: &AgentClient,
@@ -28,7 +17,7 @@ pub(super) async fn collect(
 		AgentRequestResult::Unavailable => return Ok(first),
 		AgentRequestResult::Available { event_id, work_id, method, request_json } => {
 			return if valid_owner(*event_id, expected, work_id, method)
-				&& request_json.as_str().len() <= crate::MAX_HISTORY_INLINE_BYTES
+				&& request_json.as_str().len() <= MAX_HISTORY_INLINE_BYTES
 			{
 				Ok(first)
 			} else {
@@ -39,8 +28,8 @@ pub(super) async fn collect(
 			if !valid_owner(*event_id, expected, work_id, method)
 				|| digest.len() != 64
 				|| !digest.bytes().all(|b| b.is_ascii_hexdigit())
-				|| *total_bytes <= crate::MAX_HISTORY_INLINE_BYTES
-				|| *total_bytes > decodex_core::MAX_APPROVAL_ENVELOPE_BYTES
+				|| *total_bytes <= MAX_HISTORY_INLINE_BYTES
+				|| *total_bytes > MAX_APPROVAL_ENVELOPE_BYTES
 			{
 				return Err(ClientFailure::ProtocolMalformed);
 			}
@@ -79,7 +68,7 @@ pub(super) async fn collect(
 			|| total_bytes != total
 			|| offset != content.len()
 			|| text.as_str().is_empty()
-			|| text.as_str().len() > 8192
+			|| text.as_str().len() > 8_192
 			|| end > total
 			|| next_offset != (end < total).then_some(end)
 		{
@@ -92,7 +81,7 @@ pub(super) async fn collect(
 			let bytes = serde_json::to_vec(&(expected, &owner, &method, &content))
 				.map_err(|_| ClientFailure::ProtocolMalformed)?;
 
-			if decodex_core::BlobHash::digest(&bytes).to_hex() != digest {
+			if BlobHash::digest(&bytes).to_hex() != digest {
 				return Err(ClientFailure::ProtocolMalformed);
 			}
 
@@ -120,7 +109,7 @@ pub(super) async fn collect(
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 
-		close_one_shot_socket(completed.socket).await;
+		client::close_one_shot_socket(completed.socket).await;
 
 		let QueryResultPayload::AgentRequest(next) = completed.value else {
 			return Err(ClientFailure::ProtocolMalformed);
@@ -128,4 +117,18 @@ pub(super) async fn collect(
 
 		page = next;
 	}
+}
+
+fn valid_owner(event_id: i64, expected: i64, work: &str, method: &str) -> bool {
+	event_id == expected
+		&& event_id > 0
+		&& EntityId::new(work).is_ok()
+		&& matches!(
+			method,
+			"item/commandExecution/requestApproval"
+				| "item/fileChange/requestApproval"
+				| "item/permissions/requestApproval"
+				| "item/tool/requestUserInput"
+				| "mcpServer/elicitation/request"
+		)
 }

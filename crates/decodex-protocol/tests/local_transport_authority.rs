@@ -4,18 +4,19 @@
 #![allow(unused_crate_dependencies)]
 
 use std::{
-	fs,
+	fs::{self, Permissions},
 	os::unix::{
-		fs::{MetadataExt as _, PermissionsExt as _, symlink},
+		fs::{MetadataExt as _, PermissionsExt as _},
 		net::UnixListener,
 	},
 	path::PathBuf,
 };
 
-use decodex_core::{DecodexRoot, LocalTrustPolicy};
-use decodex_protocol::{LocalTransportAuthority, LocalTransportRefusal};
 use tempfile::TempDir;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+use decodex_core::{DecodexRoot, LocalTrustPolicy};
+use decodex_protocol::{LocalTransportAuthority, LocalTransportRefusal};
 
 fn fixture() -> (TempDir, LocalTransportAuthority, PathBuf) {
 	let temporary = TempDir::new().expect("create local transport fixture");
@@ -76,7 +77,7 @@ async fn first_publication_creates_only_its_private_namespace_parent() {
 #[tokio::test]
 async fn publication_is_private_exclusive_and_reusable_after_exact_cleanup() {
 	let (_temporary, authority, socket_path) = fixture();
-	let mut listener = authority.bind().await.expect("publish local endpoint");
+	let listener = authority.bind().await.expect("publish local endpoint");
 	let server_dir = socket_path.parent().expect("socket has server directory");
 	let lock_path = server_dir.join("decodex.lock");
 	let directory = fs::metadata(server_dir).expect("read server directory metadata");
@@ -84,6 +85,7 @@ async fn publication_is_private_exclusive_and_reusable_after_exact_cleanup() {
 	let lock = fs::metadata(&lock_path).expect("read namespace lock metadata");
 	// SAFETY: `geteuid` has no arguments or failure return.
 	let effective_uid = unsafe { libc::geteuid() };
+	let mut listener = listener;
 
 	assert_eq!(directory.permissions().mode() & 0o777, 0o700);
 	assert_eq!(socket.permissions().mode() & 0o777, 0o600);
@@ -132,7 +134,7 @@ async fn executable_stale_stage_and_canonical_sockets_are_recovered() {
 		let stale_path = socket_path.parent().expect("socket has parent").join(name);
 		let stale = UnixListener::bind(&stale_path).expect("bind stale fixture socket");
 
-		fs::set_permissions(&stale_path, fs::Permissions::from_mode(0o600))
+		fs::set_permissions(&stale_path, Permissions::from_mode(0o600))
 			.expect("scope stale fixture socket");
 
 		drop(stale);
@@ -158,7 +160,7 @@ async fn endpoint_replacement_is_reported_and_never_unlinked_by_cleanup() {
 
 	let replacement = UnixListener::bind(&socket_path).expect("publish replacement endpoint");
 
-	fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600))
+	fs::set_permissions(&socket_path, Permissions::from_mode(0o600))
 		.expect("scope replacement endpoint");
 
 	assert_eq!(listener.revalidate(), Err(LocalTransportRefusal::EndpointReplaced));
@@ -177,8 +179,7 @@ async fn unsafe_namespace_entries_fail_closed() {
 	let target = socket_path.with_file_name("not-a-socket");
 
 	fs::write(&target, b"fixture").expect("write symlink target");
-
-	symlink(&target, &socket_path).expect("create unsafe endpoint link");
+	std::os::unix::fs::symlink(&target, &socket_path).expect("create unsafe endpoint link");
 
 	assert_eq!(
 		authority.bind().await.expect_err("linked endpoint must be refused"),
