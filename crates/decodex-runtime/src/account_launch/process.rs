@@ -168,6 +168,7 @@ impl ChatgptRefreshProjection {
 		provider_account_id: String,
 		plan_type: Option<String>,
 	) -> Result<Self, CredentialVaultError> {
+		let access_token = Zeroizing::new(access_token);
 		if access_token.is_empty()
 			|| provider_account_id.is_empty()
 			|| provider_account_id.len() > 512
@@ -175,7 +176,7 @@ impl ChatgptRefreshProjection {
 		{
 			return Err(CredentialVaultError::ProjectionRejected);
 		}
-		Ok(Self { access_token: Zeroizing::new(access_token), provider_account_id, plan_type })
+		Ok(Self { access_token, provider_account_id, plan_type })
 	}
 }
 impl Debug for ChatgptRefreshProjection {
