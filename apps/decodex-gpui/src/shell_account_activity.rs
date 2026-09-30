@@ -1,8 +1,5 @@
 //! Compact saved-activity metrics and daily usage, matching the menu-bar disclosure.
-use super::{
-	AccountProfileResult, ControlTooltip, Shell, StatusTooltip, WB_BLUE, WB_TEXT_FAINT,
-	WB_TEXT_MUTED,
-};
+use super::{AccountProfileResult, ControlTooltip, Shell, WB_BLUE, WB_TEXT_FAINT, WB_TEXT_MUTED};
 use gpui::{AnyElement, div, prelude::*, px, rgb, rgba};
 pub(super) fn panel(shell: &Shell, account: &decodex_protocol::EntityId) -> AnyElement {
 	let snapshot = shell.account_activity.get(account).map(|(snapshot, _)| snapshot);
@@ -24,14 +21,13 @@ pub(super) fn panel(shell: &Shell, account: &decodex_protocol::EntityId) -> AnyE
 		Some(
 			AccountProfileResult::Current(profile) | AccountProfileResult::Cached { profile, .. },
 		) => profile,
-		_ =>
-			return content
-				.child(if snapshot.is_none() {
-					"Loading activity…"
-				} else {
-					"Activity unavailable"
-				})
-				.into_any_element(),
+		_ => {
+			return if snapshot.is_none() {
+				content.child("Loading activity…").into_any_element()
+			} else {
+				div().into_any_element()
+			};
+		},
 	};
 	content = content.child(
 		div()
@@ -67,32 +63,6 @@ pub(super) fn panel(shell: &Shell, account: &decodex_protocol::EntityId) -> AnyE
 						.bg(rgb(if day.tokens == 0 { WB_TEXT_FAINT } else { WB_BLUE }))
 						.tooltip(move |_, cx| cx.new(|_| ControlTooltip(tip.clone())).into())
 				})),
-		);
-	}
-	if let Some(AccountProfileResult::Cached { refresh_error, .. }) =
-		snapshot.and_then(|s| s.result.as_ref())
-	{
-		let requires_login = crate::account_profile::requires_login(*refresh_error);
-		let color = if requires_login { crate::ui_theme::ERROR } else { crate::ui_theme::AMBER };
-		let message = if requires_login { "Sign in again" } else { "Couldn’t update activity" };
-		content = content.child(
-			div()
-				.id("account-activity-status")
-				.text_color(rgb(color))
-				.truncate()
-				.child(message)
-				.tooltip(move |_, cx| {
-					cx.new(|_| StatusTooltip {
-						text: if requires_login {
-							"Sign in again to update your activity."
-						} else {
-							"Your activity couldn’t be updated. Try again later."
-						}
-						.into(),
-						color,
-					})
-					.into()
-				}),
 		);
 	}
 	content.into_any_element()

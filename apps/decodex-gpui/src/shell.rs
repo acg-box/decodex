@@ -1,5 +1,6 @@
 //! Production GPUI window, navigation, focus, and lifecycle rendering boundary.
 #[path = "shell_account_activity.rs"] mod account_activity;
+#[path = "account_feedback.rs"] mod account_feedback;
 #[path = "account_identity.rs"] mod account_identity;
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "shell_native_status.rs"]
@@ -2826,6 +2827,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				account,
 				AccountRowPresentation {
 					reset_fill: shell.reset_fill_for(account),
+					feedback: account_feedback::for_account(shell, account),
 					email: shell.account_emails.get(account),
 					controls_busy: snapshot.controls_busy(),
 					index,
@@ -2917,14 +2919,33 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.flex()
 				.flex_col()
 				.gap_3()
-				.child(account_pool_header(
-					count,
-					available,
-					balanced,
-					can_manage,
-					shell.account_emails.visible,
-					cx,
-				))
+				.child(
+					div()
+						.flex()
+						.items_center()
+						.justify_between()
+						.child(account_pool_header(
+							count,
+							available,
+							balanced,
+							can_manage,
+							shell.account_emails.visible,
+							cx,
+						))
+						.children(
+							snapshot
+								.rejection
+								.map(account_rejection_label)
+								.map(str::to_owned)
+								.or_else(|| shell.account_status.as_ref().map(ToString::to_string))
+								.map(|text| account_feedback::AccountFeedback {
+									id: "account-global-warning".into(),
+									selector: "account-global-warning".into(),
+									text,
+									color: ui_theme::AMBER,
+								}),
+						),
+				)
 				.child(account_login_controls(shell, cx))
 				.child(shell.settings.update(cx, |settings, cx| settings.quota_control(cx)))
 				.child(
@@ -3275,6 +3296,7 @@ impl Shell {
 
 #[derive(Clone)]
 struct AccountRowPresentation {
+	feedback: Option<(String, u32)>,
 	controls_busy: bool,
 	email: Option<String>,
 	reset_fill: Option<quota_meter::ResetFill>,
@@ -3550,18 +3572,17 @@ fn account_management_actions(
 		.justify_start()
 		.items_center()
 		.gap(px(2.))
-		.when(needs_login, |row| {
-			row.child(
-				account_icon_action(
-					"account-login-warning",
-					index,
-					"Sign in again to use this account, or log out.",
-					workspace_symbols::Symbol::AccountWarning,
-					true,
-				)
-				.on_click(|_, _, cx| cx.stop_propagation()),
-			)
-		})
+		.children(presentation.feedback.as_ref().map(|(text, color)| {
+			account_feedback::AccountFeedback {
+				id: format!("account-feedback-{}", account.account_id.as_str()).into(),
+				selector: format!(
+					"{}-{index}",
+					if needs_login { "account-login-warning" } else { "account-warning" }
+				),
+				text: text.clone(),
+				color: *color,
+			}
+		}))
 		.child(
 			div()
 				.flex()
@@ -5765,6 +5786,7 @@ fn account_pool_header(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	div()
+		.flex_1()
 		.px(px(14.0))
 		.py(px(6.0))
 		.flex()

@@ -167,10 +167,7 @@ struct AccountPanelView: View {
 
 			Spacer(minLength: 4)
 			if let feedback = globalFeedback {
-				InlineAccountFeedback(text: feedback) {
-					fastMode.dismissError()
-					store.dismissMessage()
-				}
+				InlineAccountFeedback(text: feedback)
 			}
 
 			PanelIconButtonView(

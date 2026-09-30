@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:97d2a85dd2f829ff12128e3156bde4b831524d23432ed51945ef800f8884c0ea",
+  "pageVersion": "sha256:786dfd76c6dff9651dcf99c3fff88a088e63c172eff995e28b4c55e295de5e6c",
   "claims": [
     {
       "id": "claim_738021d152cc4128af3d3b4b217fe92c",
@@ -91,12 +91,12 @@
       "statement": "Native account rows show sign-in and logout controls instead of route and power controls when login refresh is required, and account-body disclosure is separate from the drag handle and action buttons.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L166-L204",
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L158-L196",
           "version": "repo-lines-v1:sha256:a8ed9917d352a79fda7314fd701c887f0391ec00deca94952850c2433ab073cc:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3NjQxNzU3MTQ4YmMyM2VkODQyNzFiZjU4MzM1MzlkYTAzNWU1OTAzOGNjZDljYzA2MDk5YjYxODg1YTk3MjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExMDFhMzUzNzUyZTI2ZWJhZmIzNDZkYWY3NjNmNmY5ODMwYWJkNDVkYTE3YzZkY2Q1NzgwOGExMmEwMDYzZDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4NWM4Mzk3Y2YxYmU1ZDQ2NGQzODAyYjFjODQ2MzI4MTc5Mzc0NDI0OTU5Yzg3YjQ0YjYzYTk2ODI5MjE2ODUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiMDZlMWFjNmEwYzA0NmNkMWJkNjI2Y2MyNTc1ZTFkYWNiYzYyNjBmODI3YTkxMWYyMDhjOGRlZGE1MTc3OGUifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L81-L137",
-          "version": "repo-lines-v1:sha256:cb0b60e6d51ed85fc585da6465e9bff67f87dece2661c2e6207eaa38e9541b36:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhMjg3OWYwMzU5YTVjY2RjZDk3NmMzMTQ2YzRiYmE2ZjVhODY1ZWI3M2UzZTY0ZTI3MzJhMGZjMTFjOWQ2ZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzYjE5Zjg3OTA0N2Y2NGNlYTE3Y2U1ZWQ4MjNkOWM0MTY4MjljNGViMTZhNzYzMTYxMmU5YzFkYzE4ZDk3MGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5Y2MwMjIxZjM5YjNjMzc0YzYwOTY1YWY0NmE4YTg2NDIwYzFlZjdjZDYwMzMxZjE3ZGIwZjEzNjU1NzI0MTQifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L77-L130",
+          "version": "repo-lines-v1:sha256:209fc5efbbc0f2e557ee0f9fa94c1ff67eb759af4991423d47a47ef5ca021241:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhMjg3OWYwMzU5YTVjY2RjZDk3NmMzMTQ2YzRiYmE2ZjVhODY1ZWI3M2UzZTY0ZTI3MzJhMGZjMTFjOWQ2ZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzYjE5Zjg3OTA0N2Y2NGNlYTE3Y2U1ZWQ4MjNkOWM0MTY4MjljNGViMTZhNzYzMTYxMmU5YzFkYzE4ZDk3MGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5Y2MwMjIxZjM5YjNjMzc0YzYwOTY1YWY0NmE4YTg2NDIwYzFlZjdjZDYwMzMxZjE3ZGIwZjEzNjU1NzI0MTQifQ"
         }
       ]
     },
@@ -109,32 +109,36 @@
           "version": "repo-lines-v1:sha256:35b2c3c95d0aec73c142c8bb1f067c7cceb6f00c8b2d03bd8b07dab2ec47d513:eyJzZWxlY3RlZExpbmVDb3VudCI6ODIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwNGQ0OTJkZGQ4M2UwMGQwOWQ3MGI4NjRiMGU3NTM0NzdkY2NiMWJhZDIxNDNmYTYzZTNmZjk2NWYyYWMyNmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNiOGZjMDY2Yjg2MzQ3NWFmOGRmN2E0NTU0NTg2ZmJjMmY2NmM3MTlkNjU4MWYxZmVlZmJlMTY0NjZkYzgxN2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4N2I1MWQxZDYzMzM4YTFlOGY4N2NiNTQwNzNkMTFmMzI4NWVkNjIyM2M1MjVlNWQ0MTU2NWZjMThkZWU4MzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmZDQzZGU2OWZlMDUyOGY5N2Q4Mzg3YTJmY2VmODE4NzEwMmY0Nzc4ZTQwMjJlNjViNDI0YThhMWM2MTk1OGIifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3350-L3391",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3372-L3413",
           "version": "repo-lines-v1:sha256:caf1ef7b994abab51438d858aeab9c6c075fae3f9bfcba4d5607867a3d96cabb:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmNzUxZjhjM2U5NWJkMjg4ZjY5MjFhNDYyZjhiNWU4MmFmMjY0MDViMTE2OWRmOGFlODIyMmM0N2Q3MTUzMTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0OGYyYzQzMWYyZWE4OWNkMTRiNGQ3N2QwMGE5OThlZGY1ODRjMTkxOTk4ZmE0MDRiYzY3YWViYzgyNDgxNmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNDUzNGVjMmNlZGI4MTk5OWVkYmRlOWQxZWZiYzc5OGE5NzdhZTc2M2ZhZWYxZDRmNDZiMmYzNGE2ODFiODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYxOTNiMTEwNzBiOTdjOTRmMjQ1ZDlkNWE2ZWQ0OWMwZjU5ZWRmZjlmMmQ4MmIxZjc2ZjNjYmUzNzViZDU4ZGMifQ"
         }
       ]
     },
     {
       "id": "claim_559db2ef2de6489c93aaf058e48fb634",
-      "statement": "Swift and GPUI display cached activity feedback in at most one line, using red Sign in again for login-required states and amber/orange Couldn’t update activity for other failed updates, with natural explanations in hover surfaces.",
+      "statement": "Swift and GPUI account warnings use red or amber exclamation icons with click-open explanations and outside-click closure without a Dismiss button; activity warnings no longer occupy a footer row, and account-switch rejection explanations retain their underlying source state.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountProfileViews.swift#L32-L67",
-          "version": "repo-lines-v1:sha256:7efb171181abc740bbc16083da9236cc12f4d89f99f6398ebd9020b2edeface3:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyNzM4MzExZDljZDBmYjM0N2I5YWI0NGExMDk2ZTc4MGY1MzIyZjE3MTEwZTRjODQ0ZjkxOGM1ODk5NDcyZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5ZTA5MjljNDUyNGUwYzNkZDA5N2U4ZGVmMDNhYmJiZjY2MGYwYTlmOGRlNmIwOTBlMDYyOTg3YWNjNGUxNzQifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountProfileViews.swift#L32-L62",
+          "version": "repo-lines-v1:sha256:dafafc701b468f41564bb2593b99f83942f9637ae63e6986d94e4cc7089f848e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyNzM4MzExZDljZDBmYjM0N2I5YWI0NGExMDk2ZTc4MGY1MzIyZjE3MTEwZTRjODQ0ZjkxOGM1ODk5NDcyZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjYmQxOWE3NTU1NjI5NWZhMjIyYjE1MGFmMGJjMTVjMzY3YWU2ZWIzMDcxNjAwYTk5ZDIwYzM3NGRmZmFkZGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2YTI5YTllZTg4NDBmMDMzOGIxZWE2OTYxYWUzYTYxOGNjMjJlMGI2ZWNmYjMzY2Q2MzAxZTM2MzBlYWY2ZDMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/account_profile.rs#L15-L22",
-          "version": "repo-lines-v1:sha256:3902a97c4b03526ab84c75c9ddd9140a2c646cd05872efba8aec2d234e70408a:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWE5ZjFiMzEwZjVlMDNmNWYwOThhMWZlMzUwNTY5MGIwNWYwOTk2NGFhYzQzYzgwOWE2YzFiODZiZDY5MDBkMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzMzNTI5ODgyNjMxMzY0NDU3YTQ2MGMzNzIzNzVhZWU3YTI2NGQ3ZTZkNzEwNmE2Y2NlOTU4NzVlZjI0MWYxMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2U3MWFhMjFjZTJkMjIyZDBlYmZhYjU4YTU1ZjQ5MjY2ZGNkNmVmZjI4NmRmYWMwOWJiYWM0ZTkzNTA4ZDhjYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTAzYTMyOGFlMmNkZmVkNmViZTFjMTZmYTBjZDc0ZDI4ZTVjMmI3NDhlODIwNmQzNTY5ZWI4NTQ0YTNkMWZkOCJ9"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L3-L34",
+          "version": "repo-lines-v1:sha256:7adf4cf5a37a5cf98aa1edc83975910661797b0b009455947435b521ffc4f03c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YmZiY2I2OWM3MTIxZmE4Y2UxOTI1ZjM1YzU0ZTc2ODkxNGZkYTY0NDI0YzdmODQxNzE4N2MxZGM4YmY3MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1OTY1ZmU4Zjg5ZDU0OWU2YTkxY2Y5YjIxMGRjNTcwOGEwZDg1OTE5MWI5OTQyNmY5YTBjMzBkYzVkNmU5ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkZjQ2Yjk5OGQzYWY0ZmZkOWEzMmY4MTA5YjI5Njk1NDM2Nzg1MDczMDYxMDE0ZmI0ZmU1ZjlkOTkwNjcxNGIifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell_account_activity.rs#L68-L98",
-          "version": "repo-lines-v1:sha256:2fc25131a893343d49d3b51e37900c41c2de42b000e0b758c00255ca9a8553ee:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5ZThiNzg4N2EyM2U2MWFhMGFmODQ1YmY3NzNlOWQ3MDMxYjY5N2E1YzEzN2EzMDY4ZGIzYjM0NDk5ZWZiNDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxM2RjYjgwMTMzNTRiMGUyYzg2ZjcxOWJmYmRhNTM4MGRiMDY0MGFhZTA0ZGUzZmUyZTFmNWYzY2E1NmQ2NzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVkNzRhZTVhZmYyMTI2Y2NhY2ZkZDk3NjdiZjk4YWQzNDZmYzhkMTg4NWE4MWY3M2UwYTcxOTE0NmVmZTY0NWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiYzI5ZDc1Y2MzMjc5M2E2OTQ3MTg3YjA1Yzc0NzNmZWRmOWY2MDMxNTA1ZjgyNzk1NWU1NjYzZTllM2IxMjQifQ"
+          "resource": "repo://apps/decodex-gpui/src/account_feedback.rs",
+          "version": "repo-file-v1:sha256:5e8dc2a2e9effbc0604a244279de316aebe2d4e5faffacfc97ad99661a118b9f"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L2919-L2949",
+          "version": "repo-lines-v1:sha256:998d6b84754129905f8c00010b8676425c91b33ca5ca6de2bd75c71ca170bd6a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3NTVhNmRmOTVlMzUwNTM1YzM5MzlhZTQ4NGVjZDg4ZTcyMzg1OWQxOTAwZWEwZTMyZThkMTMxMWY5YjEzYWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzODc0OWMyYTYwZWY5YjQwYmM2Y2NlZDNkYjg0MjMwMDkzNmE5ZTNkOThiNGZhNDI0MDU0NjBjNDBjYzljN2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlmMWYzYjI0OWZkMDVmMWRmOGM5YTU1MDZkYzg4MzI2YjI4NDE3NWExYWI0Zjg4ZGUxMGE4OTQyYTAzYWQwYzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkMzRmNTQwZTI4MDNjODFiNjljMDRhZWM1Yjg5MGFlODY4OTRhN2RlZTJiMDU4OGFiY2Q5ZTMxZTY5NmI4MTgifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T18:08:44.220Z"
+    "at": "2026-09-30T18:35:20.136Z"
   }
 }

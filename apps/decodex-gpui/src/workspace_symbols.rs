@@ -37,10 +37,11 @@ pub(super) enum Symbol {
 	AccountWarning,
 	ResetCards,
 	AccountReorder,
+	AccountWarningAmber,
 }
 
-static IMAGES: LazyLock<[Arc<Image>; 32]> = LazyLock::new(|| {
-	let sources: [&[u8]; 32] = [
+static IMAGES: LazyLock<[Arc<Image>; 33]> = LazyLock::new(|| {
+	let sources: [&[u8]; 33] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
 		include_bytes!("../../../assets/workspace-symbols/graph.png"),
 		include_bytes!("../../../assets/workspace-symbols/timeline.png"),
@@ -73,6 +74,7 @@ static IMAGES: LazyLock<[Arc<Image>; 32]> = LazyLock::new(|| {
 		include_bytes!("../../../assets/workspace-symbols/account-warning.png"),
 		include_bytes!("../../../assets/workspace-symbols/reset-cards.png"),
 		include_bytes!("../../../assets/workspace-symbols/account-reorder.png"),
+		include_bytes!("../../../assets/workspace-symbols/account-warning-amber.png"),
 	];
 	sources.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
 });

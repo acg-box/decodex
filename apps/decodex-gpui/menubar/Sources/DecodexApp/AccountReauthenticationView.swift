@@ -35,13 +35,6 @@ struct AccountReauthenticationView: View {
 						.transition(.panelInline)
 				}
 
-				if let failure = presentation.failureText {
-					Text(failure)
-						.font(PanelFont.transientBody)
-						.foregroundStyle(PanelPalette.destructive(colorScheme))
-						.fixedSize(horizontal: false, vertical: true)
-						.transition(.panelInline)
-				}
 			}
 		}
 		.frame(width: 220)
@@ -101,6 +94,9 @@ struct AccountReauthenticationView: View {
 
 				Spacer(minLength: 6)
 
+				if let failure = presentation.failureText {
+					InlineAccountFeedback(text: failure, isDestructive: true)
+				}
 				headerAction(presentation)
 			}
 

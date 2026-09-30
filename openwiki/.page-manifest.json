@@ -16,11 +16,11 @@
       "completedRunId": "d800ce09-9c10-4d77-a953-efec6d9bcd0d"
     },
     "/openwiki/architecture/desktop-workspace.md": {
-      "pageVersion": "sha256:93fd531c1b39e912196babd2e96bd4c672c90e7b0b84fcb03ec088006a506977",
+      "pageVersion": "sha256:a6fd45a2aecfea4dd259878c560f6380ef705345ce2f6bf3151ab3915ccc1861",
       "completedBy": "codex",
-      "completedRunId": "80cdcd83-3c04-4786-bbde-c02142752fb1",
-      "gitHead": "9ec7b6f872dc59795aecb6782454f64105c335d0",
-      "sourceFingerprint": "sha256:df4d0568e0f08eb66ec729fabc23630b547e96e155fdf4eaa6e99680667e97aa"
+      "completedRunId": "af148e55-3f42-421a-be24-c429d6e71117",
+      "gitHead": "1255047f507d6c4007c89e4e47f76422390c64af",
+      "sourceFingerprint": "sha256:8cb54c6398b2b31025e084289b396f22a7e1d2e38347a615fa4ae0655f19ec5d"
     },
     "/openwiki/architecture/runtime-architecture.md": {
       "gitHead": "24d0a9c36d2f51fda9357990fa9b0c4afde26c59",
@@ -181,11 +181,11 @@
       "completedRunId": "bca050c9-2a25-49d2-bda2-1233704b9a8e"
     },
     "/openwiki/operations/accounts-and-routing.md": {
-      "pageVersion": "sha256:97d2a85dd2f829ff12128e3156bde4b831524d23432ed51945ef800f8884c0ea",
+      "pageVersion": "sha256:786dfd76c6dff9651dcf99c3fff88a088e63c172eff995e28b4c55e295de5e6c",
       "completedBy": "codex",
-      "completedRunId": "80cdcd83-3c04-4786-bbde-c02142752fb1",
-      "gitHead": "9ec7b6f872dc59795aecb6782454f64105c335d0",
-      "sourceFingerprint": "sha256:df4d0568e0f08eb66ec729fabc23630b547e96e155fdf4eaa6e99680667e97aa"
+      "completedRunId": "af148e55-3f42-421a-be24-c429d6e71117",
+      "gitHead": "1255047f507d6c4007c89e4e47f76422390c64af",
+      "sourceFingerprint": "sha256:8cb54c6398b2b31025e084289b396f22a7e1d2e38347a615fa4ae0655f19ec5d"
     },
     "/openwiki/operations/codex-upstream-autopilot.md": {
       "gitHead": "445736bcaea0a208a91522c8aedfc7ab4b6ec729",
@@ -223,11 +223,11 @@
       "completedRunId": "48eacad1-55d2-451c-9f6c-e2f0d16d3e21"
     },
     "/openwiki/operations/reset-cards.md": {
-      "pageVersion": "sha256:42f79125590bd6aec2c6d1bddbef5d7ef5951209bc9451da9ee1fea7f6cf9b62",
+      "pageVersion": "sha256:f32224aacbdcb5da0374ac839b229f815f0e10991edb4e5b44dbea4d434bd3c6",
       "completedBy": "codex",
-      "completedRunId": "80cdcd83-3c04-4786-bbde-c02142752fb1",
-      "gitHead": "9ec7b6f872dc59795aecb6782454f64105c335d0",
-      "sourceFingerprint": "sha256:df4d0568e0f08eb66ec729fabc23630b547e96e155fdf4eaa6e99680667e97aa"
+      "completedRunId": "af148e55-3f42-421a-be24-c429d6e71117",
+      "gitHead": "1255047f507d6c4007c89e4e47f76422390c64af",
+      "sourceFingerprint": "sha256:8cb54c6398b2b31025e084289b396f22a7e1d2e38347a615fa4ae0655f19ec5d"
     },
     "/openwiki/operations/wiki-maintenance.md": {
       "gitHead": "5fb37fbd628af7a23f13c9391dcd4201caa7e6ad",

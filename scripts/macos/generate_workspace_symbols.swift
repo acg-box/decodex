@@ -15,6 +15,7 @@ let symbols = [
     "account-sign-in": "person.crop.circle.badge.plus",
     "reset-cards": "arrow.clockwise",
     "account-warning": "exclamationmark.circle",
+    "account-warning-amber": "exclamationmark.circle",
     "account-reorder": "line.3.horizontal",
     "account-logout": "rectangle.portrait.and.arrow.right",
     "confirm": "checkmark",
@@ -59,7 +60,7 @@ for (name, symbolName) in symbols {
     // Keep status tints equal to ui_theme::{ERROR, AMBER, BLUE}.
     (name == "send" ? NSColor(srgbRed: 0.04, green: 0.04, blue: 0.06, alpha: 1)
         : name == "account-warning" || name == "bell-error" ? NSColor(srgbRed: 239.0/255, green: 68.0/255, blue: 68.0/255, alpha: 1)
-        : name == "bell-attention" ? NSColor(srgbRed: 224.0/255, green: 181.0/255, blue: 111.0/255, alpha: 1)
+        : name == "bell-attention" || name == "account-warning-amber" ? NSColor(srgbRed: 224.0/255, green: 181.0/255, blue: 111.0/255, alpha: 1)
         : name == "bell-info" || name == "account-route-active" || name == "power-on" ? NSColor(srgbRed: 139.0/255, green: 170.0/255, blue: 247.0/255, alpha: 1)
         : NSColor(srgbRed: 0.88, green: 0.86, blue: 0.90, alpha: 1)).setFill()
     NSRect(x: 0, y: 0, width: 16, height: 16).fill(using: .sourceAtop)
