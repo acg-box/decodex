@@ -1187,11 +1187,9 @@ impl AgentSurface {
 		self.interrupt_task = None;
 		self.history_read_at = None;
 		self.clear_activity_detail();
-		self.resources = None;
-		self.resources_task = None;
+		self.reset_resources();
 		self.clear_usage_estimate();
 		self.reset_integrations();
-		self.resource_mutation_task = None;
 		self.resource_feedback.clear();
 		self.resource_title.update(cx, |input, cx| input.clear(cx));
 		self.resource_url.update(cx, |input, cx| input.clear(cx));
@@ -1266,6 +1264,7 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
+		self.reset_resources();
 		self.reset_integrations();
 		self.reset_capabilities();
 		self.reset_task_models();
@@ -1347,6 +1346,7 @@ impl AgentSurface {
 
 	fn apply_result(&mut self, result: Result<AgentSnapshotResult, ()>) {
 		if !matches!(&result, Ok(AgentSnapshotResult::Available(_))) {
+			self.reset_resources();
 			self.reset_integrations();
 			self.reset_model_settings();
 			self.reset_live_reviewer();
@@ -1366,6 +1366,7 @@ impl AgentSurface {
 		}
 		match result {
 			Ok(AgentSnapshotResult::Available(snapshot)) => {
+				self.invalidate_resources(&snapshot);
 				self.invalidate_integrations(&snapshot);
 				self.invalidate_usage_estimate(&snapshot);
 				self.invalidate_model_settings(&snapshot);
