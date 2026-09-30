@@ -33,10 +33,10 @@ sources:
     resource: repo://database/src/reset_cards.rs
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-09-30T17:38:04.493Z" }
+generated: { by: "codex", at: "2026-09-30T18:35:20.136Z" }
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-30T18:08:44.220Z
+    at: 2026-09-30T18:35:20.136Z
 ---
 
 > Current scope: Reset Card redemption is available in Accounts and the explicit CLI, with durable account-scoped recovery. The embedded schema owns the redemption ledger and separate weekly activation records. The source/release comparison below is a version-bound implementation receipt, not a statement of the currently installed Codex version. Quota refill animation displays confirmed results; it does not redeem a card. See [Weekly activation](quota-activation.md).
@@ -54,7 +54,7 @@ Each card shows its expiry. Click the selected card once to arm `Confirm · 5s`,
 
 There is no separate Reset Cards expand button or manual refresh button in the compact account details. Inventory and operation-state reads remain service-backed. The CLI offers `reset-card list`, `use`, and `status`; `use` requires an explicit account revision, descriptor, and request key.
 
-Account status uses one inline message and a matching severity color. Detailed feedback stays near its account. See [account presentation](accounts-and-routing.md#account-rows-and-details) and [menu focus and motion](../architecture/desktop-workspace.md#menu-focus-and-account-motion).
+Account warnings use a severity-colored exclamation icon. Click it to read the explanation; click outside to close it. The popover has no Dismiss button, and closing it does not clear an unresolved operation. Detailed feedback stays near its account. See [account presentation](accounts-and-routing.md#account-rows-and-details) and [menu focus and motion](../architecture/desktop-workspace.md#menu-focus-and-account-motion).
 
 ## Ownership and safety
 

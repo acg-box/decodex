@@ -5,10 +5,8 @@ description: "Workspace ownership, native menu focus, compositor motion, and con
 tags: [decodex, architecture, desktop, presentation]
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-30T18:08:44.220Z
+    at: 2026-09-30T18:35:20.136Z
 sources:
-  - id: openwiki-source-67aca4a47095def808df265a
-    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountProfileCLIClient.swift
   - id: openwiki-source-75aea95b5b7fd328b3b6a396
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountProfileViews.swift
   - id: openwiki-source-b469e348e65d4cdbb569fb27
@@ -19,6 +17,8 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/StatusPanelController.swift
   - id: openwiki-source-643d559a01e8c78573bfc835
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/StatusPanelLifecycleTests.swift
+  - id: openwiki-source-fecafeb22abda7dad3877372
+    resource: repo://apps/decodex-gpui/src/account_feedback.rs
   - id: openwiki-source-6512b631b67649d924c16ba3
     resource: repo://apps/decodex-gpui/src/agent_archive.rs
   - id: openwiki-source-ec2c431b14759817413ba09e
@@ -33,11 +33,9 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
   - id: openwiki-source-a1a71f71175b6cac3a5f1346
     resource: repo://apps/decodex-gpui/src/native_glass_panel.rs
-  - id: openwiki-source-2dfc8cb7dbdb75c07469c4c3
-    resource: repo://apps/decodex-gpui/src/shell_account_activity.rs
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
-generated: { by: "codex", at: "2026-09-30T18:08:44.220Z" }
+generated: { by: "codex", at: "2026-09-30T18:35:20.136Z" }
 ---
 
 # Desktop workspace and native glass
@@ -80,19 +78,19 @@ Ordinary operation feedback goes to the notification center. A conversation that
 
 Use the same severity color for a status icon and its message. Account login failures use red; recoverable warnings use amber/orange. GPUI informational notices use blue. `PanelPalette` owns the native semantic colors; GPUI uses `ui_theme::ERROR`, `AMBER`, and `BLUE`. Regenerate the corresponding SF Symbol assets with `scripts/macos/generate_workspace_symbols.swift` when those tints change. Status tooltips and native account feedback popovers retain the message color. Ordinary action labels and contrast text inside a colored badge keep their control colors.
 
-The GPUI notification center gives red errors priority over amber warnings and blue information when it selects the bell and badge color. A notice title and its detail use the same notice color. Keep full diagnostics in their contextual detail surface; the inline cached-activity status occupies at most one line.
+The GPUI notification center gives red errors priority over amber warnings and blue information when it selects the bell and badge color. A notice title and its detail use the same notice color. Account warnings use an exclamation icon. Clicking the icon opens the explanation; clicking outside closes it. There is no Dismiss button, and closing the explanation does not clear the warning source. Both native and GPUI account details omit repeated warning text below the activity graph.
 
 ## UI wording and punctuation
 
-Use short, direct action or status labels. Keep account status text left-aligned with the account content, on one line, without a terminal period. Use an ellipsis only for an ongoing operation such as `Loading activity…`. Use complete sentences and normal punctuation for explanations in notifications, popovers and hover text.
+Use short, direct action or status labels. Do not add a status sentence below an account to repeat its warning icon. Use an ellipsis only for an ongoing operation such as `Loading activity…`. Use complete sentences and normal punctuation for explanations in notifications, popovers and hover text.
 
-Keep each label about one user need. `Sign in again` states the required action; `Couldn’t update activity` states an update failure. Do not append storage labels to an error or join unrelated messages with a bullet. Describe what happened and the next useful action in plain language. Keep internal error variant names and credential-refresh mechanics out of user-facing account explanations.
+Keep each label about one user need. Account warning popovers state what happened and the useful next action. Do not append storage labels to an error or join unrelated messages with a bullet. Describe what happened and the next useful action in plain language. Keep internal error variant names and credential-refresh mechanics out of user-facing account explanations.
 
 ## Verification
 
 Use GPUI tests in `shell.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
 
-`StatusPanelLifecycleTests` checks first-open and repeated menu focus, foreground application identity, hidden workspace visibility, and fixed-top resizing. `AccountPanelPresentationTests` checks synchronized row movement, clipping, interruption and reduced motion. Its opt-in `DECODEX_MEASURE_ACCOUNT_MOTION=1` presentation sampling separates initial response delay from animation cadence; it does not prove sustained display FPS. `DECODEX_CAPTURE_ACCOUNT_MOTION` selects a screenshot directory for visual review.
+`StatusPanelLifecycleTests` checks first-open and repeated menu focus, foreground application identity, hidden workspace visibility, and fixed-top resizing. `AccountPanelPresentationTests` checks synchronized row movement, clipping, interruption and reduced motion. The GPUI `account_feedback` test checks first-click opening, outside-click closing, unchanged row height, and retention of the warning source. Its opt-in `DECODEX_MEASURE_ACCOUNT_MOTION=1` presentation sampling separates initial response delay from animation cadence; it does not prove sustained display FPS. `DECODEX_CAPTURE_ACCOUNT_MOTION` selects a screenshot directory for visual review.
 
 See [Conversation presentation and motion](conversation-presentation.md), [Agent coordination](chief-coordination.md) and [Commands and validation](../operations/commands-and-validation.md).
 

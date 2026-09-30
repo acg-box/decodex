@@ -8,12 +8,10 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountProfileViews.swift
   - id: openwiki-source-51c6a903a86b67bbf46fe288
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift
-  - id: openwiki-source-3731a3f9aaef59e0a19b9956
-    resource: repo://apps/decodex-gpui/src/account_profile.rs
+  - id: openwiki-source-fecafeb22abda7dad3877372
+    resource: repo://apps/decodex-gpui/src/account_feedback.rs
   - id: openwiki-source-9d711254570d577c97c88bbf
     resource: repo://apps/decodex-gpui/src/quota_meter.rs
-  - id: openwiki-source-2dfc8cb7dbdb75c07469c4c3
-    resource: repo://apps/decodex-gpui/src/shell_account_activity.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
     resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-b52eea0658a5f27f944ae338
@@ -32,10 +30,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests/auth_recovery.rs
   - id: openwiki-source-9b561c5dd3054cdff0599fb9
     resource: repo://database/src/quota_activation.rs
-generated: { by: "codex", at: "2026-09-30T18:08:44.220Z" }
+generated: { by: "codex", at: "2026-09-30T18:35:20.136Z" }
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-30T18:08:44.220Z
+    at: 2026-09-30T18:35:20.136Z
 ---
 
 # Account routing and recovery
@@ -72,11 +70,13 @@ GPUI keeps `5h` and `7d` quota slots in one row. Labels, percentages and local r
 
 ## Saved activity status
 
-Cached activity remains readable after refresh fails. Show at most one inline status line: `Sign in again` for a required login, or `Couldn’t update activity` for other failed updates. Use red for the login message and amber/orange for the recoverable warning. Keep detailed native diagnostic text and contextual GPUI explanations in hover surfaces. Loading and unavailable states use `Loading activity…` and `Activity unavailable`. Keep these labels left-aligned and omit terminal periods. Use natural complete sentences in hover explanations; do not present storage labels as errors.
+Cached activity remains readable after refresh fails. Account warnings occupy an exclamation icon, with red for login failures and amber/orange for recoverable warnings. Click the icon to read a natural explanation in the same color. Click outside to close the popover; there is no Dismiss button. Closing the explanation does not clear the underlying warning.
 
-The short message does not change authentication authority. A rejected or ambiguous refresh, unauthorized access, or rejection after refresh requires another login. A busy or temporarily unavailable credential does not by itself establish that the user must log in again. The native row's existing login-recovery state also controls its warning and action group.
+This pattern also covers account availability and lifecycle warnings, plus the orange warning to quit ChatGPT or Codex before switching accounts. These explanations do not add a status row below account details. Native usage diagnostics appear in the account explanation. A loading indicator can remain while activity is being fetched. Actual login, logout and route actions retain their own controls.
 
-For presentation validation, run the native account presentation and lifecycle tests and the GPUI account disclosure render tests. Check a normal account, an unavailable quota window, a cached provider failure, and a rejected refresh. Inspect the signed app to verify one-line height, matching icon/message severity colors, first-click focus and independent expanded accounts.
+The explanation does not change authentication authority. A rejected or ambiguous refresh, unauthorized access, or rejection after refresh requires another login. A busy or temporarily unavailable credential does not by itself establish that the user must log in again. The native row's existing login-recovery state also controls its warning and action group.
+
+For presentation validation, run the native account presentation and lifecycle tests and the GPUI account disclosure render tests. Check a normal account, an unavailable quota window, a cached provider failure, and a rejected refresh. Inspect the signed app to verify compact account height, click-to-open and outside-click dismissal, matching icon/message severity colors, first-click focus and independent expanded accounts.
 
 ## Retired provider recovery recording
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:42f79125590bd6aec2c6d1bddbef5d7ef5951209bc9451da9ee1fea7f6cf9b62",
+  "pageVersion": "sha256:f32224aacbdcb5da0374ac839b229f815f0e10991edb4e5b44dbea4d434bd3c6",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -97,15 +97,15 @@
       "statement": "Reset Cards and saved activity share each account's independently expanded details, while separate drag handles and action handlers prevent reorder or card actions from toggling disclosure.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L81-L204",
-          "version": "repo-lines-v1:sha256:4210dd9f07be1fb8d723cc15a514a68d1a057053c54a379e43805e302f55b7ae:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxMTAxYTM1Mzc1MmUyNmViYWZiMzQ2ZGFmNzYzZjZmOTgzMGFiZDQ1ZGExN2M2ZGNkNTc4MDhhMTJhMDA2M2Q2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjM2IxOWY4NzkwNDdmNjRjZWExN2NlNWVkODIzZDljNDE2ODI5YzRlYjE2YTc2MzE2MTJlOWMxZGMxOGQ5NzBmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyYjA2ZTFhYzZhMGMwNDZjZDFiZDYyNmNjMjU3NWUxZGFjYmM2MjYwZjgyN2E5MTFmMjA4YzhkZWRhNTE3NzhlIn0"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L77-L196",
+          "version": "repo-lines-v1:sha256:0a63e99c841979ef8b81041c1b02bafe35e3e04eb619f5b2af992a356440123a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxMTAxYTM1Mzc1MmUyNmViYWZiMzQ2ZGFmNzYzZjZmOTgzMGFiZDQ1ZGExN2M2ZGNkNTc4MDhhMTJhMDA2M2Q2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjM2IxOWY4NzkwNDdmNjRjZWExN2NlNWVkODIzZDljNDE2ODI5YzRlYjE2YTc2MzE2MTJlOWMxZGMxOGQ5NzBmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyYjA2ZTFhYzZhMGMwNDZjZDFiZDYyNmNjMjU3NWUxZGFjYmM2MjYwZjgyN2E5MTFmMjA4YzhkZWRhNTE3NzhlIn0"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L1401-L1407",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L1402-L1408",
           "version": "repo-lines-v1:sha256:88d8cdea43b1832a4987a27d1c70a8d8214f8ee8aaa25a0b2bd9104c6f5fce4a:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGFkMGI1ZGEwMDc0ZmVjNjRjNzljNzZlOTEzYjc0NTY3OGZiMmQ0MjNhNmFiMDJkMzI3MjkzY2U4MWQ5Yzc1ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdjZGE4MmRhNjA2MjM4ZTA1ZTYyMzk5NTY5YzVlZTAzOTkzNDE5NjQ4YWU1ZDQzYTJiZjhjZDYzNDdmODI2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTRlMTk1ZWZmZDQ5ODI2YWMwNzI0NjQwNTcyMGVlOWNhY2EwYTQyN2RiMWU5NjNkM2Y3NjU0YzRlMjdlNjkwNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTdiMzE3NjAzOTRjZmM0ZmRmNzE3MDQ4NjJjZGViMzYzNzM0MGIzNjAxODVlZTFkZmY1OTZmN2FhNmRlMGY4YSJ9"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L2850-L2895",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L2852-L2897",
           "version": "repo-lines-v1:sha256:204517daf2cd3e933c1374e3b08887fa4bdca09c7c53f1b0fe4c9ed76fe703fb:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhNTg5YWIwYjFlNzk3NTJjZmU4ZDdmMGRjMjBlY2VmZWZhZWZlNGNiZmZmMzU1NWM1MjZmODA4Y2Q3OWU1YjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmM2JiMzc0NGZkMzU4NDQzMmI0NDhmMzFhNThmN2FmMjI1MDZiMmQ5YzQ2MTEwOGYyOTBlNjU5N2Q0NTE0YzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImExNGQ0MGFhZWNkZDVmMGU1MDc1MDhlZGY2MWQxZmViZDJiMjUzYTVmZDA1MWRmZWQzMzI3ODRjM2U0ZTIwMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiOGU0ZDk5ZDFlMjkzNjVmZDMzOWQ3Zjk2YTc2MTY4YmNlZDliNzIzZDk0NzQwNWE2MTFkYTVjYzZlNjQ4MDIifQ"
         },
         {
@@ -119,11 +119,11 @@
       "statement": "The compact Reset Card controls require a second activation of the same selected card within a five-second confirmation window and recheck eligibility before dispatch.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L476-L558",
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L462-L544",
           "version": "repo-lines-v1:sha256:41376bc497e4beff9c096d2f5ce046757f4bd0299dbf8b1317cbf719e6907c25:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5NTRkZmIxNGY0ODIxYTQyOTkxZTRmNDRjZDk1ZDdlNzZkNmM3YjQ1ZWRiMGQ0MWUwMzAyOThiNTg3MTc2NmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjMmNhMTJhYzljYTY2YjVmMmJkMWQzMmEzODk2MDAxOTNhYjRjMTk1MmExM2FkZjNkYTk1NGQwOTI5NGY1NDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhYjk2ZjIxNzVkNWFiNjYzMTU3MTU5MjgxNTkwNWM0MWMyZTgxNDRkMWZiMDZjMmUyZThiYzUyNDAxMWUzOGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2NDVhNGMyNTkzMTExZTdiZTcwYmRlMTU3NTFhNWM4MmJhNzEwNzEzMzUwNGJiYWNkMzY5N2U0NDc5NjQ1YTcifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L598-L634",
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L584-L620",
           "version": "repo-lines-v1:sha256:2beff31213edc5967d7c5de9638eacf1b28e58a55f0bb3980ea3846f86b46825:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4Zjk4ODcyM2NhYWM5YzgxYTViZGY4NzIwMTFjMjk2OGI0ZDBjYWIwZTY5MzQxMjNmZjkyZGNkMmU0MmVmZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVkYTgzMjc1MGFhYjE4YmMzYTZhMTIxNTY0ZDY1ZDFiNTg5YTQ0ODkzNTY2YTg2Nzc5MTFhOWI0YTJhNTQ2NDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0OGMzYWExNDFiYjYwMjllMzI4ZGNmNmIyMmVlYjZjNmUzMmJjODhmMDljZmU3N2QxM2Y0NjRmMjQ3NTEyMTUifQ"
         },
         {
@@ -139,6 +139,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T18:08:44.220Z"
+    "at": "2026-09-30T18:35:20.136Z"
   }
 }
