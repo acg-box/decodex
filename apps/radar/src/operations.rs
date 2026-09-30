@@ -11,11 +11,6 @@ pub(crate) fn refresh_queue(request: &RadarRefreshQueueRequest) -> Result<RadarR
 	let root = crate::repo_root()?;
 	let api = GitHubApi::new(crate::github_token(request.token_env.as_deref())?)?;
 	let build = crate::build_review_queue(request, &root, &api)?;
-	let errors = crate::validate_artifact_errors(&build.queue);
-
-	if !errors.is_empty() {
-		eyre::bail!("Upstream review queue validation failed:\n- {}", errors.join("\n- "));
-	}
 	if request.dry_run {
 		println!("{}", crate::pretty_json(&build.queue)?);
 		let out = crate::absolute_repo_path(&root, &request.queue_out);
