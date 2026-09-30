@@ -168,22 +168,17 @@ impl AgentSurface {
 			.retain(|key, _| self.selected.as_ref() == Some(key) || composer.as_ref() == Some(key));
 		self.model_settings.work = Some(work.into());
 		cx.notify();
-		let Some(profile) = self.profile.clone() else {
-			self.model_settings.observations.insert(work.into(), State::Unavailable);
-			cx.notify();
-			return;
-		};
-		let Some(snapshot) = self.snapshot.as_ref() else { return };
-		let source = snapshot.runtime_source.clone();
-		let Some(thread) = snapshot
-			.work_items
-			.iter()
-			.find(|w| w.id == work)
-			.and_then(|w| w.codex_thread_id.clone())
+		let binding = self.snapshot.as_ref().and_then(|snapshot| {
+			let thread =
+				snapshot.work_items.iter().find(|w| w.id == work)?.codex_thread_id.clone()?;
+			Some((snapshot.runtime_source.clone(), thread))
+		});
+		let (Some(profile), Some((source, thread)), Ok(work_id)) =
+			(self.profile.clone(), binding, EntityId::new(work.to_owned()))
 		else {
+			self.model_settings.observations.insert(work.into(), State::Unavailable);
 			return;
 		};
-		let Ok(work_id) = EntityId::new(work.to_owned()) else { return };
 		let selection = self.selected.clone();
 		let intent_revision = self.draft_profiles.execution.revision();
 		let input_at_read = self.model.read(cx).content().to_owned();

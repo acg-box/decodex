@@ -323,3 +323,33 @@ fn ordinary_snapshot_refresh_keeps_model_settings_read(cx: &mut gpui::TestAppCon
 	}
 	server.join().unwrap();
 }
+
+#[gpui::test]
+fn missing_native_binding_reports_unavailable_without_starting_a_read(
+	cx: &mut gpui::TestAppContext,
+) {
+	let (_dir, profile, server) = super::super::wire_test_support::fixture(|_| async {});
+	server.join().unwrap();
+	let surface = cx.new(AgentSurface::new);
+	for missing in ["snapshot", "work", "thread"] {
+		surface.update(cx, |s, cx| {
+			s.reset_model_settings();
+			let mut value = snapshot();
+			match missing {
+				"work" => value.work_items.clear(),
+				"thread" => value.work_items[0].codex_thread_id = None,
+				_ => {},
+			}
+			s.snapshot = (missing != "snapshot").then_some(value);
+			s.selected = Some("root".into());
+			s.profile = Some(profile.clone());
+			s.read_model_settings("root", cx);
+			assert!(s.model_settings.task.is_none(), "{missing}");
+			assert_eq!(
+				s.model_settings.observations.get("root"),
+				Some(&State::Unavailable),
+				"missing {missing} must not leave the panel reading indefinitely"
+			);
+		});
+	}
+}
