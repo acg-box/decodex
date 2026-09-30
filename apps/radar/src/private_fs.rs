@@ -1,6 +1,7 @@
 //! Descriptor-rooted owner-only filesystem access for disposable Radar cache state.
 
 use std::{
+	env,
 	ffi::{CStr, CString, OsStr, OsString},
 	fmt::Write as _,
 	fs::{File, Metadata},
@@ -17,6 +18,7 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use color_eyre::eyre::Report;
 use libc::{
 	AT_REMOVEDIR, AT_SYMLINK_NOFOLLOW, DIR, F_DUPFD_CLOEXEC, LOCK_EX, LOCK_NB, LOCK_UN, O_CLOEXEC,
 	O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_NONBLOCK, O_RDONLY, O_RDWR, S_IFDIR, S_IFMT,
@@ -155,10 +157,10 @@ impl PrivateCache {
 
 		after_metadata();
 
-		let mut payload = Vec::with_capacity(initial.size as usize);
 		let read_limit = max_bytes
 			.checked_add(1)
 			.ok_or_else(|| eyre::eyre!("Radar cache read limit is too large"))?;
+		let mut payload = Vec::with_capacity(initial.size as usize);
 
 		Read::by_ref(&mut file).take(read_limit).read_to_end(&mut payload)?;
 
@@ -588,12 +590,6 @@ impl Drop for RadarCacheLock {
 	}
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct DirectoryIdentity {
-	dev: u64,
-	ino: u64,
-}
-
 #[cfg(test)]
 #[derive(Debug)]
 pub(crate) struct PrivateTestDirectory {
@@ -659,12 +655,317 @@ impl Drop for PrivateTestDirectory {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+struct DirectoryIdentity {
+	dev: u64,
+	ino: u64,
+}
+
+struct DirectoryStream(*mut DIR);
+impl Drop for DirectoryStream {
+	fn drop(&mut self) {
+		unsafe {
+			libc::closedir(self.0);
+		}
+	}
+}
+
+#[derive(Debug)]
+struct PrivatePath {
+	root: PathBuf,
+	relative: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct FileSnapshot {
 	identity: PrivateFileIdentity,
 	mode: u32,
 	uid: u32,
 	nlink: u64,
 	file_type: u32,
+}
+
+pub(crate) fn private_cache_file(path: &Path) -> prelude::Result<(PrivateCache, PathBuf)> {
+	let location = private_file_path(path)?;
+	let cache = PrivateCache::open_or_create(&location.root)?;
+
+	Ok((cache, location.relative))
+}
+
+pub(crate) fn private_cache_relative_path(path: &Path) -> prelude::Result<PathBuf> {
+	if !is_radar_cache_path(path) {
+		eyre::bail!("path must be below the private Radar cache root");
+	}
+
+	Ok(private_file_path(path)?.relative)
+}
+
+pub(crate) fn read_private_file(path: &Path) -> prelude::Result<Vec<u8>> {
+	let location = private_file_path(path)?;
+	let cache = PrivateCache::open_existing(&location.root)?;
+
+	cache.read(&location.relative)
+}
+
+pub(crate) fn read_private_file_under_lock(
+	lock: &RadarCacheLock,
+	path: &Path,
+) -> prelude::Result<Vec<u8>> {
+	let relative = lock.relative_path(path)?;
+
+	lock.read(&relative)
+}
+
+pub(crate) fn write_private_file_atomic(path: &Path, payload: &[u8]) -> prelude::Result<()> {
+	let location = private_file_path(path)?;
+	let cache = PrivateCache::open_or_create(&location.root)?;
+	let lock = cache.lock()?;
+
+	lock.write_atomic(&location.relative, payload)
+}
+
+pub(crate) fn collect_private_json_files(directory: &Path) -> prelude::Result<Vec<PathBuf>> {
+	let location = private_file_path(directory)?;
+	let cache = PrivateCache::open_existing(&location.root)?;
+	let lock = cache.lock()?;
+	let mut files = Vec::new();
+
+	collect_json_files_from_cache(lock.cache(), &location.relative, directory, &mut files)?;
+
+	files.sort();
+
+	Ok(files)
+}
+
+pub(crate) fn collect_private_json_files_if_present(
+	directory: &Path,
+) -> prelude::Result<Vec<PathBuf>> {
+	match collect_private_json_files(directory) {
+		Ok(files) => Ok(files),
+		Err(error) if is_not_found(&error) => Ok(Vec::new()),
+		Err(error) => Err(error),
+	}
+}
+
+pub(crate) fn collect_private_json_files_under_lock(
+	lock: &RadarCacheLock,
+	directory: &Path,
+) -> prelude::Result<Vec<PathBuf>> {
+	let relative = lock.relative_path(directory)?;
+	let mut files = Vec::new();
+
+	collect_json_files_from_cache(lock.cache(), &relative, directory, &mut files)?;
+
+	files.sort();
+
+	Ok(files)
+}
+
+pub(crate) fn collect_private_json_files_under_lock_if_present(
+	lock: &RadarCacheLock,
+	directory: &Path,
+) -> prelude::Result<Vec<PathBuf>> {
+	match collect_private_json_files_under_lock(lock, directory) {
+		Ok(files) => Ok(files),
+		Err(error) if is_not_found(&error) => Ok(Vec::new()),
+		Err(error) => Err(error),
+	}
+}
+
+pub(crate) fn private_file_exists(path: &Path) -> prelude::Result<bool> {
+	let location = private_file_path(path)?;
+	let cache = match PrivateCache::open_existing(&location.root) {
+		Ok(cache) => cache,
+		Err(error) if is_not_found(&error) => return Ok(false),
+		Err(error) => return Err(error),
+	};
+
+	Ok(cache.metadata(&location.relative)?.is_some())
+}
+
+pub(crate) fn private_entry_kind(path: &Path) -> prelude::Result<Option<PrivateEntryKind>> {
+	let location = private_file_path(path)?;
+	let cache = match PrivateCache::open_existing(&location.root) {
+		Ok(cache) => cache,
+		Err(error) if is_not_found(&error) => return Ok(None),
+		Err(error) => return Err(error),
+	};
+
+	cache.entry_kind(&location.relative)
+}
+
+#[cfg(test)]
+pub(crate) fn private_entry_kind_after_snapshot(
+	path: &Path,
+	after_snapshot: impl FnOnce(),
+) -> prelude::Result<Option<PrivateEntryKind>> {
+	let location = private_file_path(path)?;
+	let cache = PrivateCache::open_existing(&location.root)?;
+
+	cache.entry_kind_with(&location.relative, after_snapshot)
+}
+
+pub(crate) fn private_file_exists_under_lock(
+	lock: &RadarCacheLock,
+	path: &Path,
+) -> prelude::Result<bool> {
+	let relative = lock.relative_path(path)?;
+
+	Ok(lock.cache().metadata(&relative)?.is_some())
+}
+
+#[cfg(test)]
+pub(crate) fn read_private_file_bounded_after_metadata(
+	path: &Path,
+	max_bytes: u64,
+	after_metadata: impl FnOnce(),
+) -> prelude::Result<Vec<u8>> {
+	let location = private_file_path(path)?;
+	let cache = PrivateCache::open_existing(&location.root)?;
+
+	cache.read_bounded_with(&location.relative, max_bytes, after_metadata)
+}
+
+#[cfg(test)]
+pub(crate) fn ensure_private_directory(path: &Path) -> prelude::Result<()> {
+	reject_unsafe_components(path)?;
+
+	let components = path.components().collect::<Vec<_>>();
+
+	if let Some(index) = components.windows(CACHE_MARKER.len()).position(|window| {
+		window.iter().zip(CACHE_MARKER).all(|(actual, expected)| {
+			matches!(actual, Component::Normal(value) if *value == OsStr::new(expected))
+		})
+	}) {
+		let marker_end = index + CACHE_MARKER.len();
+		let root = components[..marker_end].iter().fold(PathBuf::new(), |mut path, component| {
+			path.push(component.as_os_str());
+
+			path
+		});
+		let relative =
+			components[marker_end..].iter().fold(PathBuf::new(), |mut path, component| {
+				path.push(component.as_os_str());
+
+				path
+			});
+		let cache = PrivateCache::open_or_create(&root)?;
+
+		cache.create_directory_all(&relative)?;
+
+		return Ok(());
+	}
+
+	drop(PrivateCache::open_or_create(path)?);
+
+	Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn create_private_test_directory(
+	parent_path: &Path,
+) -> prelude::Result<PrivateTestDirectory> {
+	create_private_test_directory_with(parent_path, || {})
+}
+
+#[cfg(test)]
+pub(crate) fn create_private_test_directory_with(
+	parent_path: &Path,
+	after_parent_open: impl FnOnce(),
+) -> prelude::Result<PrivateTestDirectory> {
+	let resolved_parent = parent_path.canonicalize()?;
+	let parent = open_test_parent_path(&resolved_parent)?;
+	let parent_identity = validate_test_parent_directory(&parent)?;
+
+	verify_test_parent_binding(&resolved_parent, &parent, &parent_identity)?;
+	after_parent_open();
+	verify_test_parent_binding(&resolved_parent, &parent, &parent_identity)?;
+
+	let name = test_temporary_name()?;
+
+	if unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), PRIVATE_DIR_MODE as mode_t) } == -1
+	{
+		return Err(Error::last_os_error().into());
+	}
+
+	let result = (|| -> prelude::Result<(PathBuf, File, DirectoryIdentity)> {
+		let directory = open_directory_at(parent.as_raw_fd(), &name)?;
+		let identity = validate_private_directory(&directory, "test directory")?;
+
+		parent.sync_all()?;
+
+		verify_test_parent_binding(&resolved_parent, &parent, &parent_identity)?;
+
+		let name = OsStr::from_bytes(name.to_bytes());
+
+		Ok((resolved_parent.join(name), directory, identity))
+	})();
+
+	match result {
+		Ok((path, directory, identity)) => Ok(PrivateTestDirectory {
+			parent_path: resolved_parent,
+			parent,
+			parent_identity,
+			name,
+			path,
+			directory,
+			identity,
+		}),
+		Err(error) => {
+			if let Ok(directory) = open_directory_at(parent.as_raw_fd(), &name)
+				&& let Ok(identity) = directory_identity(&directory, "partial test directory")
+			{
+				let _ = remove_test_directory_contents(&directory);
+
+				if verify_directory_binding_at(
+					parent.as_raw_fd(),
+					&name,
+					&identity,
+					"partial test directory",
+				)
+				.is_ok()
+				{
+					unsafe {
+						libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), AT_REMOVEDIR);
+					}
+				}
+			}
+
+			Err(error)
+		},
+	}
+}
+
+#[cfg(test)]
+pub(crate) fn create_private_file(path: &Path) -> prelude::Result<File> {
+	let location = private_file_path(path)?;
+
+	ensure_private_directory(&location.root)?;
+
+	let cache = PrivateCache::open_existing(&location.root)?;
+
+	cache.create_new_file(&location.relative)
+}
+
+pub(crate) fn is_radar_cache_path(path: &Path) -> bool {
+	path.components().collect::<Vec<_>>().windows(CACHE_MARKER.len()).any(|window| {
+		window.iter().zip(CACHE_MARKER).all(|(actual, expected)| {
+			matches!(actual, Component::Normal(value) if *value == OsStr::new(expected))
+		})
+	})
+}
+
+#[cfg(test)]
+pub(crate) fn simulate_wrong_owner_error(_path: &Path) -> prelude::Result<()> {
+	let expected_uid = unsafe { libc::geteuid() };
+
+	validate_owner_mode_link(
+		expected_uid.saturating_add(1),
+		PRIVATE_FILE_MODE,
+		1,
+		PRIVATE_FILE_MODE,
+		"file",
+		true,
+	)
 }
 
 fn open_cache_root(path: &Path, create: bool) -> prelude::Result<PrivateCache> {
@@ -845,7 +1146,7 @@ fn absolute_components(path: &Path) -> prelude::Result<(PathBuf, Vec<OsString>)>
 	reject_unsafe_components(path)?;
 
 	let absolute =
-		if path.is_absolute() { path.to_path_buf() } else { std::env::current_dir()?.join(path) };
+		if path.is_absolute() { path.to_path_buf() } else { env::current_dir()?.join(path) };
 	let mut components = Vec::new();
 
 	for component in absolute.components() {
@@ -1329,15 +1630,6 @@ fn directory_entries_bounded(fd: RawFd, max_entries: usize) -> prelude::Result<V
 	Ok(entries)
 }
 
-struct DirectoryStream(*mut DIR);
-impl Drop for DirectoryStream {
-	fn drop(&mut self) {
-		unsafe {
-			libc::closedir(self.0);
-		}
-	}
-}
-
 fn duplicate_file(file: &File) -> prelude::Result<File> {
 	let fd = duplicate_fd(file.as_raw_fd())?;
 
@@ -1538,17 +1830,11 @@ fn c_string(value: &OsStr) -> prelude::Result<CString> {
 		.map_err(|_| eyre::eyre!("Radar cache path component contains NUL"))
 }
 
-fn is_not_found(error: &eyre::Report) -> bool {
+fn is_not_found(error: &Report) -> bool {
 	error
 		.chain()
 		.find_map(|cause| cause.downcast_ref::<Error>())
 		.is_some_and(|error| error.kind() == ErrorKind::NotFound)
-}
-
-#[derive(Debug)]
-struct PrivatePath {
-	root: PathBuf,
-	relative: PathBuf,
 }
 
 fn private_file_path(path: &Path) -> prelude::Result<PrivatePath> {
@@ -1594,147 +1880,6 @@ fn private_file_path(path: &Path) -> prelude::Result<PrivatePath> {
 	Ok(PrivatePath { root, relative })
 }
 
-pub(crate) fn private_cache_file(path: &Path) -> prelude::Result<(PrivateCache, PathBuf)> {
-	let location = private_file_path(path)?;
-	let cache = PrivateCache::open_or_create(&location.root)?;
-
-	Ok((cache, location.relative))
-}
-
-pub(crate) fn private_cache_relative_path(path: &Path) -> prelude::Result<PathBuf> {
-	if !is_radar_cache_path(path) {
-		eyre::bail!("path must be below the private Radar cache root");
-	}
-
-	Ok(private_file_path(path)?.relative)
-}
-
-pub(crate) fn read_private_file(path: &Path) -> prelude::Result<Vec<u8>> {
-	let location = private_file_path(path)?;
-	let cache = PrivateCache::open_existing(&location.root)?;
-
-	cache.read(&location.relative)
-}
-
-pub(crate) fn read_private_file_under_lock(
-	lock: &RadarCacheLock,
-	path: &Path,
-) -> prelude::Result<Vec<u8>> {
-	let relative = lock.relative_path(path)?;
-
-	lock.read(&relative)
-}
-
-pub(crate) fn write_private_file_atomic(path: &Path, payload: &[u8]) -> prelude::Result<()> {
-	let location = private_file_path(path)?;
-	let cache = PrivateCache::open_or_create(&location.root)?;
-	let lock = cache.lock()?;
-
-	lock.write_atomic(&location.relative, payload)
-}
-
-pub(crate) fn collect_private_json_files(directory: &Path) -> prelude::Result<Vec<PathBuf>> {
-	let location = private_file_path(directory)?;
-	let cache = PrivateCache::open_existing(&location.root)?;
-	let lock = cache.lock()?;
-	let mut files = Vec::new();
-
-	collect_json_files_from_cache(lock.cache(), &location.relative, directory, &mut files)?;
-
-	files.sort();
-
-	Ok(files)
-}
-
-pub(crate) fn collect_private_json_files_if_present(
-	directory: &Path,
-) -> prelude::Result<Vec<PathBuf>> {
-	match collect_private_json_files(directory) {
-		Ok(files) => Ok(files),
-		Err(error) if is_not_found(&error) => Ok(Vec::new()),
-		Err(error) => Err(error),
-	}
-}
-
-pub(crate) fn collect_private_json_files_under_lock(
-	lock: &RadarCacheLock,
-	directory: &Path,
-) -> prelude::Result<Vec<PathBuf>> {
-	let relative = lock.relative_path(directory)?;
-	let mut files = Vec::new();
-
-	collect_json_files_from_cache(lock.cache(), &relative, directory, &mut files)?;
-
-	files.sort();
-
-	Ok(files)
-}
-
-pub(crate) fn collect_private_json_files_under_lock_if_present(
-	lock: &RadarCacheLock,
-	directory: &Path,
-) -> prelude::Result<Vec<PathBuf>> {
-	match collect_private_json_files_under_lock(lock, directory) {
-		Ok(files) => Ok(files),
-		Err(error) if is_not_found(&error) => Ok(Vec::new()),
-		Err(error) => Err(error),
-	}
-}
-
-pub(crate) fn private_file_exists(path: &Path) -> prelude::Result<bool> {
-	let location = private_file_path(path)?;
-	let cache = match PrivateCache::open_existing(&location.root) {
-		Ok(cache) => cache,
-		Err(error) if is_not_found(&error) => return Ok(false),
-		Err(error) => return Err(error),
-	};
-
-	Ok(cache.metadata(&location.relative)?.is_some())
-}
-
-pub(crate) fn private_entry_kind(path: &Path) -> prelude::Result<Option<PrivateEntryKind>> {
-	let location = private_file_path(path)?;
-	let cache = match PrivateCache::open_existing(&location.root) {
-		Ok(cache) => cache,
-		Err(error) if is_not_found(&error) => return Ok(None),
-		Err(error) => return Err(error),
-	};
-
-	cache.entry_kind(&location.relative)
-}
-
-#[cfg(test)]
-pub(crate) fn private_entry_kind_after_snapshot(
-	path: &Path,
-	after_snapshot: impl FnOnce(),
-) -> prelude::Result<Option<PrivateEntryKind>> {
-	let location = private_file_path(path)?;
-	let cache = PrivateCache::open_existing(&location.root)?;
-
-	cache.entry_kind_with(&location.relative, after_snapshot)
-}
-
-pub(crate) fn private_file_exists_under_lock(
-	lock: &RadarCacheLock,
-	path: &Path,
-) -> prelude::Result<bool> {
-	let relative = lock.relative_path(path)?;
-
-	Ok(lock.cache().metadata(&relative)?.is_some())
-}
-
-#[cfg(test)]
-pub(crate) fn read_private_file_bounded_after_metadata(
-	path: &Path,
-	max_bytes: u64,
-	after_metadata: impl FnOnce(),
-) -> prelude::Result<Vec<u8>> {
-	let location = private_file_path(path)?;
-	let cache = PrivateCache::open_existing(&location.root)?;
-
-	cache.read_bounded_with(&location.relative, max_bytes, after_metadata)
-}
-
 fn collect_json_files_from_cache(
 	cache: &PrivateCache,
 	relative: &Path,
@@ -1759,149 +1904,6 @@ fn collect_json_files_from_cache(
 	}
 
 	Ok(())
-}
-
-#[cfg(test)]
-pub(crate) fn ensure_private_directory(path: &Path) -> prelude::Result<()> {
-	reject_unsafe_components(path)?;
-
-	let components = path.components().collect::<Vec<_>>();
-
-	if let Some(index) = components.windows(CACHE_MARKER.len()).position(|window| {
-		window.iter().zip(CACHE_MARKER).all(|(actual, expected)| {
-			matches!(actual, Component::Normal(value) if *value == OsStr::new(expected))
-		})
-	}) {
-		let marker_end = index + CACHE_MARKER.len();
-		let root = components[..marker_end].iter().fold(PathBuf::new(), |mut path, component| {
-			path.push(component.as_os_str());
-
-			path
-		});
-		let relative =
-			components[marker_end..].iter().fold(PathBuf::new(), |mut path, component| {
-				path.push(component.as_os_str());
-
-				path
-			});
-		let cache = PrivateCache::open_or_create(&root)?;
-
-		cache.create_directory_all(&relative)?;
-
-		return Ok(());
-	}
-
-	drop(PrivateCache::open_or_create(path)?);
-
-	Ok(())
-}
-
-#[cfg(test)]
-pub(crate) fn create_private_test_directory(
-	parent_path: &Path,
-) -> prelude::Result<PrivateTestDirectory> {
-	create_private_test_directory_with(parent_path, || {})
-}
-
-#[cfg(test)]
-pub(crate) fn create_private_test_directory_with(
-	parent_path: &Path,
-	after_parent_open: impl FnOnce(),
-) -> prelude::Result<PrivateTestDirectory> {
-	let resolved_parent = parent_path.canonicalize()?;
-	let parent = open_test_parent_path(&resolved_parent)?;
-	let parent_identity = validate_test_parent_directory(&parent)?;
-
-	verify_test_parent_binding(&resolved_parent, &parent, &parent_identity)?;
-	after_parent_open();
-	verify_test_parent_binding(&resolved_parent, &parent, &parent_identity)?;
-
-	let name = test_temporary_name()?;
-
-	if unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), PRIVATE_DIR_MODE as mode_t) } == -1
-	{
-		return Err(Error::last_os_error().into());
-	}
-
-	let result = (|| -> prelude::Result<(PathBuf, File, DirectoryIdentity)> {
-		let directory = open_directory_at(parent.as_raw_fd(), &name)?;
-		let identity = validate_private_directory(&directory, "test directory")?;
-
-		parent.sync_all()?;
-
-		verify_test_parent_binding(&resolved_parent, &parent, &parent_identity)?;
-
-		let name = OsStr::from_bytes(name.to_bytes());
-
-		Ok((resolved_parent.join(name), directory, identity))
-	})();
-
-	match result {
-		Ok((path, directory, identity)) => Ok(PrivateTestDirectory {
-			parent_path: resolved_parent,
-			parent,
-			parent_identity,
-			name,
-			path,
-			directory,
-			identity,
-		}),
-		Err(error) => {
-			if let Ok(directory) = open_directory_at(parent.as_raw_fd(), &name)
-				&& let Ok(identity) = directory_identity(&directory, "partial test directory")
-			{
-				let _ = remove_test_directory_contents(&directory);
-
-				if verify_directory_binding_at(
-					parent.as_raw_fd(),
-					&name,
-					&identity,
-					"partial test directory",
-				)
-				.is_ok()
-				{
-					unsafe {
-						libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), AT_REMOVEDIR);
-					}
-				}
-			}
-
-			Err(error)
-		},
-	}
-}
-
-#[cfg(test)]
-pub(crate) fn create_private_file(path: &Path) -> prelude::Result<File> {
-	let location = private_file_path(path)?;
-
-	ensure_private_directory(&location.root)?;
-
-	let cache = PrivateCache::open_existing(&location.root)?;
-
-	cache.create_new_file(&location.relative)
-}
-
-pub(crate) fn is_radar_cache_path(path: &Path) -> bool {
-	path.components().collect::<Vec<_>>().windows(CACHE_MARKER.len()).any(|window| {
-		window.iter().zip(CACHE_MARKER).all(|(actual, expected)| {
-			matches!(actual, Component::Normal(value) if *value == OsStr::new(expected))
-		})
-	})
-}
-
-#[cfg(test)]
-pub(crate) fn simulate_wrong_owner_error(_path: &Path) -> prelude::Result<()> {
-	let expected_uid = unsafe { libc::geteuid() };
-
-	validate_owner_mode_link(
-		expected_uid.saturating_add(1),
-		PRIVATE_FILE_MODE,
-		1,
-		PRIVATE_FILE_MODE,
-		"file",
-		true,
-	)
 }
 
 #[cfg(test)]
