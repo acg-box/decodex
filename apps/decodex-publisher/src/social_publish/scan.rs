@@ -119,7 +119,7 @@ pub(crate) fn acquire_social_state_lock(locks_dir: &Path) -> Result<File> {
 	Ok(file)
 }
 
-fn load_state_record(path: &Path, schema: &str) -> Result<Value> {
+pub(crate) fn load_state_record(path: &Path, schema: &str) -> Result<Value> {
 	let payload = crate::load_json(path)?;
 	if payload.get("schema").and_then(Value::as_str) != Some(schema) {
 		return Err(eyre::eyre!("{} must contain {schema}", path.display()));

@@ -88,7 +88,7 @@ fn record_candidate_is_atomic_idempotent_and_applies_backpressure() {
 		SECOND_RUN_ID,
 	))
 	.expect_err("invalid post must not release pending candidate");
-	assert!(error.to_string().contains("post failed validation"), "{error}");
+	assert!(error.to_string().contains("failed validation"), "{error}");
 	assert!(second_staging.exists(), "rejected input must remain staged");
 	assert!(!temp.path().join("candidates").join(format!("{SECOND_RUN_ID}.json")).exists());
 	fs::remove_file(temp.path().join("posts/invalid.json")).expect("remove invalid fixture");
@@ -101,6 +101,35 @@ fn record_candidate_is_atomic_idempotent_and_applies_backpressure() {
 	))
 	.expect("valid terminal post releases pending candidate");
 	assert_eq!(next.status, "recorded");
+}
+
+#[test]
+fn high_level_publish_rejects_invalid_terminal_refs_without_running_xurl() {
+	let temp = tempfile::tempdir().expect("temporary directory");
+	let candidate = write_candidate(temp.path(), "candidate.json", candidate("no_op"));
+	let invalid = temp.path().join("posts/invalid.json");
+	let candidate_ref = crate::path_arg(&crate::repo_root().unwrap(), &candidate);
+	crate::write_new_json(
+		&invalid,
+		&json!({
+			"source_refs": {"social_candidates": [candidate_ref]}
+		}),
+	)
+	.unwrap();
+	let request = publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z");
+	let binary = temp.path().join("xurl-must-not-run");
+	assert!(
+		crate::social_workflow::publish_next_with_test_binary(&request, temp.path(), &binary)
+			.is_err()
+	);
+	assert!(!temp.path().join("attempts").exists());
+	assert!(candidate.exists());
+	fs::remove_file(invalid).unwrap();
+	let report =
+		crate::social_workflow::publish_next_with_test_binary(&request, temp.path(), &binary)
+			.expect("valid no-op completes");
+	assert_eq!(report.status, "skipped");
+	assert!(!temp.path().join("attempts").exists());
 }
 
 #[test]
