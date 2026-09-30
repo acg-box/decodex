@@ -5,6 +5,8 @@
 //! is a short-lived protocol exchange; Swift never receives credential bytes
 //! or a credential-file path.
 
+#[cfg(target_os = "macos")] mod reset_card_journal;
+
 use std::{
 	collections::HashMap,
 	ffi::c_void,
@@ -26,8 +28,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::runtime::{Builder, Runtime};
 
-#[cfg(target_os = "macos")] mod reset_card_journal;
-
 const ABI_VERSION: u32 = 1;
 const CONFIG_SCHEMA: &str = "decodex/app-native-client-config/1";
 const RESPONSE_SCHEMA: &str = "decodex/app-native-client/1";
@@ -40,7 +40,6 @@ struct NativeClient {
 	profile: ClientProfile,
 	active_login_session: Mutex<Option<EntityId>>,
 }
-
 impl NativeClient {
 	fn record_login_status(&self, status: &AccountLoginStatus) {
 		let mut active =
@@ -186,7 +185,6 @@ enum Request {
 		enabled: bool,
 	},
 }
-
 impl Request {
 	fn operation(&self) -> &'static str {
 		match self {
@@ -288,11 +286,34 @@ enum RequestFailure {
 	Bridge(BridgeFailure),
 	FastMode(decodex_protocol::FastModeFailure),
 }
-
 impl From<ClientFailure> for RequestFailure {
 	fn from(failure: ClientFailure) -> Self {
 		Self::Client(failure)
 	}
+}
+
+#[derive(Serialize)]
+struct FastModeData {
+	enabled: bool,
+}
+
+struct AccountReauthenticationInput {
+	session_id: String,
+	operation_id: String,
+	account_id: String,
+	expected_revision: u64,
+	recovery_operation_id: Option<String>,
+	idempotency_key: String,
+	login_method: AccountLoginMethod,
+}
+
+struct AccountEnrollmentInput {
+	session_id: String,
+	operation_id: String,
+	account_id: String,
+	enabled: bool,
+	idempotency_key: String,
+	login_method: AccountLoginMethod,
 }
 
 /// Return the C ABI generation implemented by this library.
@@ -686,6 +707,140 @@ fn request(
 	}
 }
 
+fn fast_mode_status() -> Result<Value, RequestFailure> {
+	let enabled = decodex_protocol::global_fast_mode_enabled().map_err(RequestFailure::FastMode)?;
+
+	to_value(FastModeData { enabled })
+}
+
+fn set_fast_mode(enabled: bool) -> Result<Value, RequestFailure> {
+	let enabled = decodex_protocol::set_global_fast_mode_enabled(enabled)
+		.map_err(RequestFailure::FastMode)?;
+
+	to_value(FastModeData { enabled })
+}
+
+// The typed protocol client has already checked the exact target, revision and receipt.
+// Keep the dispatch distinction at this boundary so native UI cannot mistake an
+// uncertain send for a rejection and discard its saved request identity.
+fn reset_card_consume_result(response: ResetCardConsumeResponse) -> Result<Value, RequestFailure> {
+	match response {
+		ResetCardConsumeResponse::Accepted { state, .. } => to_value(state),
+		ResetCardConsumeResponse::Rejected { .. } =>
+			Err(RequestFailure::Bridge(BridgeFailure::ResetCardRejected)),
+		ResetCardConsumeResponse::PotentiallyDispatched { .. } =>
+			Err(RequestFailure::Bridge(BridgeFailure::ResetCardPossiblyDispatched)),
+	}
+}
+
+fn entity_id(value: &str) -> Result<EntityId, RequestFailure> {
+	if !is_canonical_uuid(value) {
+		return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
+	}
+
+	EntityId::new(value.to_owned()).map_err(|_| RequestFailure::Bridge(BridgeFailure::InvalidInput))
+}
+
+fn revision(value: u64) -> Result<EntityRevision, RequestFailure> {
+	if value == 0 {
+		Err(RequestFailure::Bridge(BridgeFailure::InvalidInput))
+	} else {
+		Ok(EntityRevision(value))
+	}
+}
+
+fn parse_idempotency_key(value: String) -> Result<IdempotencyKey, RequestFailure> {
+	IdempotencyKey::new(value).map_err(|_| RequestFailure::Bridge(BridgeFailure::InvalidInput))
+}
+
+fn to_value<T: Serialize>(value: T) -> Result<Value, RequestFailure> {
+	serde_json::to_value(value).map_err(|_| RequestFailure::Bridge(BridgeFailure::InternalFailure))
+}
+
+fn runtime() -> Result<&'static Runtime, ()> {
+	RUNTIME
+		.get_or_init(|| {
+			Builder::new_multi_thread()
+				.enable_all()
+				.thread_name("decodex-app-client")
+				.build()
+				.map_err(|_| ())
+		})
+		.as_ref()
+		.map_err(|_| ())
+}
+
+fn clients() -> &'static Mutex<HashMap<usize, Arc<NativeClient>>> {
+	CLIENTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn next_client_id() -> usize {
+	loop {
+		let id = NEXT_CLIENT_ID.fetch_add(1, Ordering::Relaxed);
+
+		if id != 0 {
+			return id;
+		}
+	}
+}
+
+fn input_bytes<'a>(input: *const u8, len: usize) -> Option<&'a [u8]> {
+	if input.is_null() || len == 0 {
+		return None;
+	}
+
+	// SAFETY: Callers of the public ABI functions promise that `input` points
+	// to `len` readable bytes for the duration of the call.
+	Some(unsafe { slice::from_raw_parts(input, len) })
+}
+
+fn write_failure(
+	out_json: *mut *mut u8,
+	out_len: *mut usize,
+	operation: &'static str,
+	failure: ResponseFailure,
+) -> i32 {
+	write_serialized(
+		out_json,
+		out_len,
+		&FailureResponse { schema: RESPONSE_SCHEMA, outcome: "failure", operation, failure },
+	)
+}
+
+fn write_serialized<T: Serialize>(out_json: *mut *mut u8, out_len: *mut usize, value: &T) -> i32 {
+	let bytes = match serde_json::to_vec(value) {
+		Ok(bytes) => bytes,
+		Err(_) => return 2,
+	};
+
+	write_bytes(out_json, out_len, bytes)
+}
+
+fn write_bytes(out_json: *mut *mut u8, out_len: *mut usize, bytes: Vec<u8>) -> i32 {
+	let mut bytes = bytes.into_boxed_slice();
+	let len = bytes.len();
+	let buffer = bytes.as_mut_ptr();
+
+	std::mem::forget(bytes);
+
+	// SAFETY: Public entry points checked the output pointers before calling
+	// this helper. `buffer` remains owned by the caller until `free`.
+	unsafe {
+		*out_json = buffer;
+		*out_len = len;
+	}
+
+	0
+}
+
+fn is_canonical_uuid(value: &str) -> bool {
+	value.len() == 36
+		&& value.bytes().enumerate().all(|(index, byte)| match index {
+			8 | 13 | 18 | 23 => byte == b'-',
+			_ => byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'),
+		})
+}
+
 async fn execute_request(
 	native_client: Arc<NativeClient>,
 	request: Request,
@@ -794,30 +949,6 @@ async fn execute_request(
 		Request::FastModeStatus { .. } => fast_mode_status(),
 		Request::SetFastMode { enabled, .. } => set_fast_mode(enabled),
 	}
-}
-
-#[derive(Serialize)]
-struct FastModeData {
-	enabled: bool,
-}
-
-struct AccountReauthenticationInput {
-	session_id: String,
-	operation_id: String,
-	account_id: String,
-	expected_revision: u64,
-	recovery_operation_id: Option<String>,
-	idempotency_key: String,
-	login_method: AccountLoginMethod,
-}
-
-struct AccountEnrollmentInput {
-	session_id: String,
-	operation_id: String,
-	account_id: String,
-	enabled: bool,
-	idempotency_key: String,
-	login_method: AccountLoginMethod,
 }
 
 async fn list_accounts(profile: ClientProfile) -> Result<Value, RequestFailure> {
@@ -980,19 +1111,6 @@ async fn cancel_account_reauthentication(
 	to_value(status)
 }
 
-fn fast_mode_status() -> Result<Value, RequestFailure> {
-	let enabled = decodex_protocol::global_fast_mode_enabled().map_err(RequestFailure::FastMode)?;
-
-	to_value(FastModeData { enabled })
-}
-
-fn set_fast_mode(enabled: bool) -> Result<Value, RequestFailure> {
-	let enabled = decodex_protocol::set_global_fast_mode_enabled(enabled)
-		.map_err(RequestFailure::FastMode)?;
-
-	to_value(FastModeData { enabled })
-}
-
 async fn get_reset_cards(
 	profile: ClientProfile,
 	account_id: String,
@@ -1039,19 +1157,6 @@ async fn consume_reset_card(
 		.map_err(RequestFailure::Client)?;
 
 	reset_card_consume_result(response)
-}
-
-// The typed protocol client has already checked the exact target, revision and receipt.
-// Keep the dispatch distinction at this boundary so native UI cannot mistake an
-// uncertain send for a rejection and discard its saved request identity.
-fn reset_card_consume_result(response: ResetCardConsumeResponse) -> Result<Value, RequestFailure> {
-	match response {
-		ResetCardConsumeResponse::Accepted { state, .. } => to_value(state),
-		ResetCardConsumeResponse::Rejected { .. } =>
-			Err(RequestFailure::Bridge(BridgeFailure::ResetCardRejected)),
-		ResetCardConsumeResponse::PotentiallyDispatched { .. } =>
-			Err(RequestFailure::Bridge(BridgeFailure::ResetCardPossiblyDispatched)),
-	}
 }
 
 async fn route_account(
@@ -1131,114 +1236,6 @@ async fn execute_account_command(
 		.map_err(RequestFailure::Client)?;
 
 	to_value(response)
-}
-
-fn entity_id(value: &str) -> Result<EntityId, RequestFailure> {
-	if !is_canonical_uuid(value) {
-		return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
-	}
-
-	EntityId::new(value.to_owned()).map_err(|_| RequestFailure::Bridge(BridgeFailure::InvalidInput))
-}
-
-fn revision(value: u64) -> Result<EntityRevision, RequestFailure> {
-	if value == 0 {
-		Err(RequestFailure::Bridge(BridgeFailure::InvalidInput))
-	} else {
-		Ok(EntityRevision(value))
-	}
-}
-
-fn parse_idempotency_key(value: String) -> Result<IdempotencyKey, RequestFailure> {
-	IdempotencyKey::new(value).map_err(|_| RequestFailure::Bridge(BridgeFailure::InvalidInput))
-}
-
-fn to_value<T: Serialize>(value: T) -> Result<Value, RequestFailure> {
-	serde_json::to_value(value).map_err(|_| RequestFailure::Bridge(BridgeFailure::InternalFailure))
-}
-
-fn runtime() -> Result<&'static Runtime, ()> {
-	RUNTIME
-		.get_or_init(|| {
-			Builder::new_multi_thread()
-				.enable_all()
-				.thread_name("decodex-app-client")
-				.build()
-				.map_err(|_| ())
-		})
-		.as_ref()
-		.map_err(|_| ())
-}
-
-fn clients() -> &'static Mutex<HashMap<usize, Arc<NativeClient>>> {
-	CLIENTS.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn next_client_id() -> usize {
-	loop {
-		let id = NEXT_CLIENT_ID.fetch_add(1, Ordering::Relaxed);
-
-		if id != 0 {
-			return id;
-		}
-	}
-}
-
-fn input_bytes<'a>(input: *const u8, len: usize) -> Option<&'a [u8]> {
-	if input.is_null() || len == 0 {
-		return None;
-	}
-
-	// SAFETY: Callers of the public ABI functions promise that `input` points
-	// to `len` readable bytes for the duration of the call.
-	Some(unsafe { slice::from_raw_parts(input, len) })
-}
-
-fn write_failure(
-	out_json: *mut *mut u8,
-	out_len: *mut usize,
-	operation: &'static str,
-	failure: ResponseFailure,
-) -> i32 {
-	write_serialized(
-		out_json,
-		out_len,
-		&FailureResponse { schema: RESPONSE_SCHEMA, outcome: "failure", operation, failure },
-	)
-}
-
-fn write_serialized<T: Serialize>(out_json: *mut *mut u8, out_len: *mut usize, value: &T) -> i32 {
-	let bytes = match serde_json::to_vec(value) {
-		Ok(bytes) => bytes,
-		Err(_) => return 2,
-	};
-
-	write_bytes(out_json, out_len, bytes)
-}
-
-fn write_bytes(out_json: *mut *mut u8, out_len: *mut usize, bytes: Vec<u8>) -> i32 {
-	let mut bytes = bytes.into_boxed_slice();
-	let len = bytes.len();
-	let buffer = bytes.as_mut_ptr();
-
-	std::mem::forget(bytes);
-
-	// SAFETY: Public entry points checked the output pointers before calling
-	// this helper. `buffer` remains owned by the caller until `free`.
-	unsafe {
-		*out_json = buffer;
-		*out_len = len;
-	}
-
-	0
-}
-
-fn is_canonical_uuid(value: &str) -> bool {
-	value.len() == 36
-		&& value.bytes().enumerate().all(|(index, byte)| match index {
-			8 | 13 | 18 | 23 => byte == b'-',
-			_ => byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'),
-		})
 }
 
 #[cfg(test)]
