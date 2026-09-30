@@ -2,6 +2,8 @@
 
 from pathlib import Path
 import importlib.util
+import subprocess
+import tempfile
 import tomllib
 import unittest
 
@@ -34,6 +36,34 @@ class GateContractTests(unittest.TestCase):
             ["run", FORMATTER_TOOLCHAIN, "cargo", "fmt", "--all"],
         )
         self.assertEqual(self.tasks["fmt-rust-check"]["extend"], "fmt-rust")
+
+    def test_toml_formatter_preserves_private_runtime_files(self) -> None:
+        private_paths = [
+            ".agent/automations/radar/cache/evidence.toml",
+            ".decodex/config.toml",
+            ".decodex-run-activity/state.toml",
+            ".decodex-run-control/state.toml",
+            ".codex/automations/task/automation.toml",
+            "target/metadata.toml",
+        ]
+        original = "z=1\na=2\n"
+        with tempfile.TemporaryDirectory(prefix="decodex-format-scope-") as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
+            (root / ".gitignore").write_text((REPO_ROOT / ".gitignore").read_text())
+            for name in ["public.toml", *private_paths]:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(original)
+            result = subprocess.run(
+                ["taplo", "fmt", "--config", str(REPO_ROOT / ".taplo.toml")],
+                cwd=root, capture_output=True, text=True, timeout=10,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertNotEqual((root / "public.toml").read_text(), original)
+            for name in private_paths:
+                with self.subTest(path=name):
+                    self.assertEqual((root / name).read_text(), original)
 
     def test_active_rust_toolchain_remains_stable(self) -> None:
         with (REPO_ROOT / "rust-toolchain.toml").open("rb") as source:
