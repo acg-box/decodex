@@ -208,13 +208,17 @@ fn hook_review_is_invalidated_on_task_or_source_transition(cx: &mut gpui::TestAp
 
 #[gpui::test]
 fn child_navigation_and_disconnect_cannot_edit_parent_hooks(cx: &mut gpui::TestAppContext) {
+	let (_root, profile, server) = super::super::wire_test_support::fixture(|_| async {});
+	server.join().unwrap();
 	let surface = cx.new(AgentSurface::new);
 	surface.update(cx, |s, cx| {
 		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
 		s.hook_settings.work = Some("root".into());
 		s.hook_settings.state = Some(available());
 		s.hook_settings.reviewed = true;
+		s.profile = Some(profile);
 		s.open_native_agent("root", "child", cx);
+		assert_eq!(s.native_agents.selected, Some(("root".into(), "child".into())));
 		assert!(!s.hook_settings.reviewed);
 		assert!(s.hook_settings.state.is_none());
 		s.update_hook_settings(
