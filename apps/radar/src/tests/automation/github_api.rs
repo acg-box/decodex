@@ -1,17 +1,67 @@
 use std::{
 	collections::VecDeque,
-	io::{Read as _, Write as _},
+	io::{ErrorKind, Read as _, Write as _},
 	os::unix::net::UnixListener,
 	path::PathBuf,
 	sync::{
 		Arc, Mutex,
 		atomic::{AtomicBool, Ordering},
 	},
-	thread,
+	thread::{self, JoinHandle},
 	time::Duration,
 };
 
-use crate::GitHubApi;
+use crate::{GitHubApi, private_fs::PrivateTestDirectory, test_support};
+
+pub(crate) struct TestServer {
+	_directory: PrivateTestDirectory,
+	socket: PathBuf,
+	thread: JoinHandle<()>,
+	requests: Arc<Mutex<Vec<String>>>,
+	stop: Arc<AtomicBool>,
+	url: String,
+}
+impl TestServer {
+	pub(crate) fn api(&self, token: Option<String>) -> GitHubApi {
+		GitHubApi::new_for_test(token, &self.url, &self.socket)
+			.expect("GitHub API client should build")
+	}
+
+	fn finish(self) {
+		drop(self.finish_with_requests());
+	}
+
+	pub(crate) fn finish_with_requests(self) -> Vec<String> {
+		self.stop.store(true, Ordering::Release);
+		self.thread.join().expect("test server should finish");
+
+		self.requests.lock().expect("request log should not be poisoned").clone()
+	}
+
+	pub(crate) fn url(&self) -> &str {
+		&self.url
+	}
+}
+
+pub(crate) fn spawn_server_with(
+	response_count: usize,
+	builder: impl Fn(&str, usize) -> String,
+) -> TestServer {
+	let url = "http://github.test/test";
+	let responses = (0..response_count).map(|index| builder(url, index)).collect::<Vec<_>>();
+
+	spawn_server_responses(responses)
+}
+
+pub(crate) fn response(status: &str, headers: &[(&str, &str)], body: &str) -> String {
+	let extra_headers =
+		headers.iter().map(|(name, value)| format!("{name}: {value}\r\n")).collect::<String>();
+
+	format!(
+		"HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{extra_headers}\r\n{body}",
+		body.len()
+	)
+}
 
 #[test]
 fn retries_truncated_success_body_for_idempotent_get() {
@@ -263,42 +313,12 @@ fn object_pagination_keeps_bounds_and_rejects_bad_pages() {
 	}
 }
 
-pub(crate) struct TestServer {
-	_directory: crate::private_fs::PrivateTestDirectory,
-	socket: PathBuf,
-	thread: thread::JoinHandle<()>,
-	requests: Arc<Mutex<Vec<String>>>,
-	stop: Arc<AtomicBool>,
-	url: String,
-}
-impl TestServer {
-	pub(crate) fn api(&self, token: Option<String>) -> GitHubApi {
-		GitHubApi::new_for_test(token, &self.url, &self.socket)
-			.expect("GitHub API client should build")
-	}
-
-	fn finish(self) {
-		drop(self.finish_with_requests());
-	}
-
-	pub(crate) fn finish_with_requests(self) -> Vec<String> {
-		self.stop.store(true, Ordering::Release);
-		self.thread.join().expect("test server should finish");
-
-		self.requests.lock().expect("request log should not be poisoned").clone()
-	}
-
-	pub(crate) fn url(&self) -> &str {
-		&self.url
-	}
-}
-
 fn spawn_server(responses: Vec<String>) -> TestServer {
 	spawn_server_responses(responses)
 }
 
 fn spawn_server_responses(responses: Vec<String>) -> TestServer {
-	let directory = crate::test_support::private_tempdir();
+	let directory = test_support::private_tempdir();
 	let socket = directory.path().join("g.sock");
 	let listener = UnixListener::bind(&socket).expect("test listener should bind");
 
@@ -319,7 +339,7 @@ fn spawn_server_responses(responses: Vec<String>) -> TestServer {
 						.set_nonblocking(false)
 						.expect("accepted test stream should become blocking");
 
-					let mut request = [0_u8; 4096];
+					let mut request = [0_u8; 4_096];
 					let read = stream.read(&mut request).expect("test request should be readable");
 
 					server_requests
@@ -334,7 +354,7 @@ fn spawn_server_responses(responses: Vec<String>) -> TestServer {
 					stream.write_all(response.as_bytes()).expect("test response should write");
 					stream.flush().expect("test response should flush");
 				},
-				Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+				Err(error) if error.kind() == ErrorKind::WouldBlock => {
 					if server_stop.load(Ordering::Acquire) {
 						break;
 					}
@@ -349,26 +369,6 @@ fn spawn_server_responses(responses: Vec<String>) -> TestServer {
 	});
 
 	TestServer { _directory: directory, socket, thread: server, requests, stop, url }
-}
-
-pub(crate) fn spawn_server_with(
-	response_count: usize,
-	builder: impl Fn(&str, usize) -> String,
-) -> TestServer {
-	let url = "http://github.test/test";
-	let responses = (0..response_count).map(|index| builder(url, index)).collect::<Vec<_>>();
-
-	spawn_server_responses(responses)
-}
-
-pub(crate) fn response(status: &str, headers: &[(&str, &str)], body: &str) -> String {
-	let extra_headers =
-		headers.iter().map(|(name, value)| format!("{name}: {value}\r\n")).collect::<String>();
-
-	format!(
-		"HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{extra_headers}\r\n{body}",
-		body.len()
-	)
 }
 
 #[test]
