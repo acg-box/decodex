@@ -153,3 +153,51 @@ fn bundle_validation_checks_required_field_types_without_rejecting_empty_content
 	valid["primary_pr"] = serde_json::Value::Null;
 	assertions::assert_errors(&valid, []);
 }
+
+#[test]
+fn rendered_config_flags_deduplicate_after_normalizing_aliases() {
+	let known = std::collections::BTreeSet::from(["feature_alpha".to_owned()]);
+	let flags = serde_json::json!([
+		" feature_alpha ",
+		"--enable feature_alpha",
+		"FEATURES.FEATURE_ALPHA = TRUE",
+		"features.feature_alpha=true",
+		"--sandbox",
+		"--sandbox",
+		"features.feature_alpha = false",
+		"settings.json",
+		"settings.json",
+		"--enable unknown_feature",
+		"unknown_feature",
+		"",
+		null,
+		7
+	]);
+	let expected = vec![
+		"features.feature_alpha = true",
+		"--sandbox",
+		"features.feature_alpha = false",
+		"settings.json",
+		"--enable unknown_feature",
+	];
+	let bundle = serde_json::json!({"extracted_flags": flags});
+	for analysis in [
+		serde_json::json!({}),
+		serde_json::json!({"config_flags": null}),
+		serde_json::json!({"config_flags": flags}),
+	] {
+		assert_eq!(crate::rendered_config_flags(&bundle, &analysis, &known), expected);
+	}
+	assert!(
+		crate::rendered_config_flags(&bundle, &serde_json::json!({"config_flags": []}), &known)
+			.is_empty()
+	);
+	assert!(
+		crate::rendered_config_flags(
+			&bundle,
+			&serde_json::json!({"config_flags": "invalid"}),
+			&known
+		)
+		.is_empty()
+	);
+}
