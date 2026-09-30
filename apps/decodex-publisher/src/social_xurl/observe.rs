@@ -1,20 +1,27 @@
 use std::path::{Path, PathBuf};
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use super::{
-	ledger,
-	model::{
-		MAX_OBSERVATION_RECOVERY_CALLS, OBSERVATION_ATTEMPT_SCHEMA, READ_COST_MICROUSD,
-		READ_RECOVERY_EXHAUSTED_STATUS, TARGET_ACCOUNT, XURL_APP, XurlCall, XurlObservationAttempt,
-	},
-	pricing, runtime,
-};
 use crate::{
-	SOCIAL_MONTHLY_BUDGET_MICROUSD, SOCIAL_POST_SCHEMA, SocialObserveXurlReport,
-	SocialObserveXurlRequest, SocialReconcileXurlReport, SocialReconcileXurlRequest,
+	DEFAULT_XURL_AUTH_CONTRACT_PATH, SOCIAL_MONTHLY_BUDGET_MICROUSD, SOCIAL_POST_SCHEMA,
+	SocialObserveXurlReport, SocialObserveXurlRequest, SocialReconcileXurlReport,
+	SocialReconcileXurlRequest,
 	prelude::{Result, eyre},
+	social_evidence,
+	social_publish::{self, scan},
+	social_xurl::{
+		auth_contract::{self, VerifiedAuthorizationContract},
+		ledger,
+		model::{
+			MAX_OBSERVATION_RECOVERY_CALLS, OBSERVATION_ATTEMPT_SCHEMA, PRICING_POLICY_ID,
+			READ_COST_MICROUSD, READ_RECOVERY_EXHAUSTED_STATUS, TARGET_ACCOUNT, XURL_APP, XurlCall,
+			XurlObservationAttempt,
+		},
+		pricing,
+		reconcile::{self, BinarySource, ReportInput},
+		runtime::{self, TrustedXurlBinary},
+	},
 };
 
 struct ObserveContext {
@@ -38,7 +45,7 @@ struct PreparedObservation {
 	post: Value,
 	existing_outcome: Option<Value>,
 	outcomes_dir: PathBuf,
-	provenance: Option<super::auth_contract::VerifiedAuthorizationContract>,
+	provenance: Option<VerifiedAuthorizationContract>,
 }
 
 struct OutcomeRecovery {
@@ -66,7 +73,7 @@ enum OutcomeRecoveryEligibility {
 
 pub(super) fn run(
 	request: &SocialObserveXurlRequest,
-	xurl_binary: &runtime::TrustedXurlBinary,
+	xurl_binary: &TrustedXurlBinary,
 ) -> Result<SocialObserveXurlReport> {
 	run_with_pricing_check(request, xurl_binary, pricing::require_current_at)
 }
@@ -74,38 +81,9 @@ pub(super) fn run(
 #[cfg(test)]
 pub(super) fn run_without_pricing_for_test(
 	request: &SocialObserveXurlRequest,
-	xurl_binary: &runtime::TrustedXurlBinary,
+	xurl_binary: &TrustedXurlBinary,
 ) -> Result<SocialObserveXurlReport> {
 	run_with_pricing_check(request, xurl_binary, |_| Ok(()))
-}
-
-fn run_with_pricing_check(
-	request: &SocialObserveXurlRequest,
-	xurl_binary: &runtime::TrustedXurlBinary,
-	require_current_pricing: impl FnOnce(OffsetDateTime) -> Result<()>,
-) -> Result<SocialObserveXurlReport> {
-	let requested_observed_at = validate_request(request)?;
-	let _state_lock = crate::social_publish::scan::acquire_social_state_lock(&request.locks_dir)?;
-	let mut prepared =
-		prepare_observation(request, xurl_binary, requested_observed_at, require_current_pricing)?;
-
-	if let Some(outcome) = prepared.existing_outcome {
-		return finish_existing(request, &prepared.context, &outcome);
-	}
-
-	let mut provenance = prepared
-		.provenance
-		.take()
-		.ok_or_else(|| eyre::eyre!("xurl authorization contract is unavailable"))?;
-
-	execute_observation(
-		request,
-		xurl_binary,
-		&mut provenance,
-		&prepared.context,
-		&prepared.post,
-		&prepared.outcomes_dir,
-	)
 }
 
 pub(super) fn reconcile_local(
@@ -159,18 +137,14 @@ pub(super) fn reconcile_local(
 	let verified_user_id = required_object_string(publication, "verified_user_id")?.to_owned();
 	let published_url = required_string(&outcome, "published_url")?.to_owned();
 
-	if published_url != runtime::canonical_status_url(&post_id)
-		|| outcome.get("social_post_ref").and_then(Value::as_str)
-			!= Some(crate::path_arg(&root, &post_path).as_str())
-		|| publication
-			.get("published_urls")
-			.and_then(Value::as_array)
-			.and_then(|urls| urls.first())
-			.and_then(Value::as_str)
-			!= Some(&published_url)
-	{
-		return Err(eyre::eyre!("outcome does not match its durable social post"));
-	}
+	validate_outcome_post_binding(
+		&root,
+		&post_path,
+		&post_id,
+		&published_url,
+		&outcome,
+		publication,
+	)?;
 
 	let text = post
 		.get("text")
@@ -202,7 +176,7 @@ pub(super) fn reconcile_local(
 	let synthetic_request = SocialObserveXurlRequest {
 		run_id: original_run_id.into(),
 		post_path,
-		authorization_contract_path: PathBuf::from(crate::DEFAULT_XURL_AUTH_CONTRACT_PATH),
+		authorization_contract_path: PathBuf::from(DEFAULT_XURL_AUTH_CONTRACT_PATH),
 		posts_dir,
 		outcomes_dir,
 		attempts_dir: context.attempts_dir.clone(),
@@ -222,7 +196,7 @@ pub(super) fn reconcile_local(
 		reconciled_at,
 	)?;
 
-	Ok(super::reconcile::report(super::reconcile::ReportInput {
+	Ok(reconcile::report(ReportInput {
 		status: if changed { "reconciled" } else { "already_terminal" },
 		kind: "outcome",
 		request,
@@ -238,7 +212,7 @@ pub(super) fn reconcile_safe_read(
 	request: &SocialReconcileXurlRequest,
 	attempt_path: &Path,
 	reconciled_at: OffsetDateTime,
-	binary_source: &super::reconcile::BinarySource,
+	binary_source: &BinarySource,
 	require_pricing: bool,
 ) -> Result<SocialReconcileXurlReport> {
 	let mut recovery = prepare_outcome_recovery(request, attempt_path, reconciled_at)?;
@@ -271,7 +245,7 @@ pub(super) fn reconcile_safe_read(
 	}
 
 	let binary = binary_source.load()?;
-	let mut provenance = super::auth_contract::load_current_at(
+	let mut provenance = auth_contract::load_current_at(
 		&request.authorization_contract_path,
 		reconciled_at,
 		&binary,
@@ -355,14 +329,62 @@ pub(super) fn terminal_recovery(
 		return Err(eyre::eyre!("terminal observation recovery timestamp does not match"));
 	}
 
-	super::reconcile::validate_stamp(
-		reconciliation,
-		&attempt.run_id,
-		&attempt.post_ref,
-		&post_sha256,
-	)?;
+	reconcile::validate_stamp(reconciliation, &attempt.run_id, &attempt.post_ref, &post_sha256)?;
 
 	Ok(true)
+}
+
+fn validate_outcome_post_binding(
+	root: &Path,
+	post_path: &Path,
+	post_id: &str,
+	published_url: &str,
+	outcome: &Value,
+	publication: &Map<String, Value>,
+) -> Result<()> {
+	if published_url != runtime::canonical_status_url(post_id)
+		|| outcome.get("social_post_ref").and_then(Value::as_str)
+			!= Some(crate::path_arg(root, post_path).as_str())
+		|| publication
+			.get("published_urls")
+			.and_then(Value::as_array)
+			.and_then(|urls| urls.first())
+			.and_then(Value::as_str)
+			!= Some(published_url)
+	{
+		return Err(eyre::eyre!("outcome does not match its durable social post"));
+	}
+
+	Ok(())
+}
+
+fn run_with_pricing_check(
+	request: &SocialObserveXurlRequest,
+	xurl_binary: &TrustedXurlBinary,
+	require_current_pricing: impl FnOnce(OffsetDateTime) -> Result<()>,
+) -> Result<SocialObserveXurlReport> {
+	let requested_observed_at = validate_request(request)?;
+	let _state_lock = scan::acquire_social_state_lock(&request.locks_dir)?;
+	let mut prepared =
+		prepare_observation(request, xurl_binary, requested_observed_at, require_current_pricing)?;
+
+	if let Some(outcome) = prepared.existing_outcome {
+		return finish_existing(request, &prepared.context, &outcome);
+	}
+
+	let mut provenance = prepared
+		.provenance
+		.take()
+		.ok_or_else(|| eyre::eyre!("xurl authorization contract is unavailable"))?;
+
+	execute_observation(
+		request,
+		xurl_binary,
+		&mut provenance,
+		&prepared.context,
+		&prepared.post,
+		&prepared.outcomes_dir,
+	)
 }
 
 fn prepare_outcome_recovery(
@@ -377,7 +399,7 @@ fn prepare_outcome_recovery(
 	let attempt = ledger::load_observation_attempt(attempt_path)?;
 
 	if attempt.schema != OBSERVATION_ATTEMPT_SCHEMA
-		|| !crate::social_publish::valid_run_id(&attempt.run_id)
+		|| !social_publish::valid_run_id(&attempt.run_id)
 		|| request.operation_id == attempt.run_id
 	{
 		return Err(eyre::eyre!("xurl outcome recovery owner is invalid"));
@@ -586,8 +608,8 @@ fn reserve_outcome_recovery(
 fn execute_outcome_recovery(
 	request: &SocialReconcileXurlRequest,
 	attempt_path: &Path,
-	binary: &runtime::TrustedXurlBinary,
-	provenance: &mut super::auth_contract::VerifiedAuthorizationContract,
+	binary: &TrustedXurlBinary,
+	provenance: &mut VerifiedAuthorizationContract,
 	recovery: &mut OutcomeRecovery,
 ) -> Result<SocialReconcileXurlReport> {
 	let mut output =
@@ -650,7 +672,7 @@ fn execute_outcome_recovery(
 	crate::write_new_json(&recovery.context.outcome_path, &outcome)?;
 
 	let (_, outcome_sha256) = crate::load_json_with_sha256(&recovery.context.outcome_path)?;
-	let stamp = super::reconcile::stamp(
+	let stamp = reconcile::stamp(
 		&request.operation_id,
 		&request.reconciled_at,
 		crate::path_arg(&recovery.context.root, &recovery.context.outcome_path),
@@ -665,7 +687,7 @@ fn execute_outcome_recovery(
 		stamp,
 	)?;
 
-	Ok(super::reconcile::report(super::reconcile::ReportInput {
+	Ok(reconcile::report(ReportInput {
 		status: "reconciled",
 		kind: "outcome_read",
 		request,
@@ -695,16 +717,12 @@ fn finalize_outcome_recovery_exhaustion(
 
 	let post_ref = crate::path_arg(&recovery.context.root, &recovery.context.post_path);
 	let changed = if let Some(stamp) = &recovery.attempt.reconciliation {
-		super::reconcile::validate_stamp(stamp, &recovery.attempt.run_id, &post_ref, &post_sha256)?;
+		reconcile::validate_stamp(stamp, &recovery.attempt.run_id, &post_ref, &post_sha256)?;
 
 		false
 	} else {
-		let stamp = super::reconcile::stamp(
-			&request.operation_id,
-			&request.reconciled_at,
-			post_ref,
-			post_sha256,
-		);
+		let stamp =
+			reconcile::stamp(&request.operation_id, &request.reconciled_at, post_ref, post_sha256);
 
 		ledger::terminalize_observation(
 			&recovery.context.attempt_path,
@@ -716,7 +734,7 @@ fn finalize_outcome_recovery_exhaustion(
 		true
 	};
 
-	Ok(super::reconcile::report(super::reconcile::ReportInput {
+	Ok(reconcile::report(ReportInput {
 		status: if changed { "outcome_read_recovery_exhausted" } else { "already_terminal" },
 		kind: "outcome_read",
 		request,
@@ -728,7 +746,7 @@ fn finalize_outcome_recovery_exhaustion(
 	}))
 }
 
-fn required_observation(outcome: &Value) -> Result<&serde_json::Map<String, Value>> {
+fn required_observation(outcome: &Value) -> Result<&Map<String, Value>> {
 	outcome
 		.get("observation")
 		.and_then(Value::as_object)
@@ -748,7 +766,7 @@ fn finalize_outcome_reconciliation(
 
 	validate_attempt(&attempt, synthetic_request, context)?;
 
-	if attempt.pricing_policy_id.as_deref() != Some(super::model::PRICING_POLICY_ID) {
+	if attempt.pricing_policy_id.as_deref() != Some(PRICING_POLICY_ID) {
 		return Err(eyre::eyre!(
 			"xurl observation attempt lacks the current pricing policy binding"
 		));
@@ -765,12 +783,7 @@ fn finalize_outcome_reconciliation(
 	match (attempt.status.as_str(), last.status.as_str()) {
 		("observed", "succeeded") if last.response_sha256.as_deref() == Some(response_sha256) => {
 			if let Some(stamp) = &attempt.reconciliation {
-				super::reconcile::validate_stamp(
-					stamp,
-					original_run_id,
-					&outcome_ref,
-					outcome_sha256,
-				)?;
+				reconcile::validate_stamp(stamp, original_run_id, &outcome_ref, outcome_sha256)?;
 			}
 
 			Ok(false)
@@ -778,7 +791,7 @@ fn finalize_outcome_reconciliation(
 		("read_inflight" | "read_reconcile_inflight", "inflight")
 			if last.response_sha256.is_none() =>
 		{
-			let stamp = super::reconcile::stamp(
+			let stamp = reconcile::stamp(
 				&request.operation_id,
 				&request.reconciled_at,
 				outcome_ref,
@@ -811,7 +824,7 @@ fn outcome_owner_run_id(outcome: &Value) -> Result<&str> {
 
 	let run_id = required_object_string(owner, "run_id")?;
 
-	if !crate::social_publish::valid_run_id(run_id) {
+	if !social_publish::valid_run_id(run_id) {
 		return Err(eyre::eyre!("outcome owner run_id is invalid"));
 	}
 
@@ -820,7 +833,7 @@ fn outcome_owner_run_id(outcome: &Value) -> Result<&str> {
 
 fn prepare_observation(
 	request: &SocialObserveXurlRequest,
-	xurl_binary: &runtime::TrustedXurlBinary,
+	xurl_binary: &TrustedXurlBinary,
 	requested_observed_at: OffsetDateTime,
 	require_current_pricing: impl FnOnce(OffsetDateTime) -> Result<()>,
 ) -> Result<PreparedObservation> {
@@ -911,7 +924,7 @@ fn prepare_observation(
 		} else {
 			require_current_pricing(requested_observed_at)?;
 
-			let provenance = super::auth_contract::load_current_at(
+			let provenance = auth_contract::load_current_at(
 				&request.authorization_contract_path,
 				requested_observed_at,
 				xurl_binary,
@@ -978,8 +991,8 @@ fn find_outcome_attempt(
 
 fn execute_observation(
 	request: &SocialObserveXurlRequest,
-	xurl_binary: &runtime::TrustedXurlBinary,
-	provenance: &mut super::auth_contract::VerifiedAuthorizationContract,
+	xurl_binary: &TrustedXurlBinary,
+	provenance: &mut VerifiedAuthorizationContract,
 	context: &ObserveContext,
 	post: &Value,
 	outcomes_dir: &Path,
@@ -1063,7 +1076,7 @@ fn execute_observation(
 }
 
 fn validate_request(request: &SocialObserveXurlRequest) -> Result<OffsetDateTime> {
-	if !crate::social_publish::valid_run_id(&request.run_id) {
+	if !social_publish::valid_run_id(&request.run_id) {
 		return Err(eyre::eyre!("run_id must be a lowercase UUID"));
 	}
 	if request.monthly_budget_microusd != SOCIAL_MONTHLY_BUDGET_MICROUSD {
@@ -1091,7 +1104,7 @@ fn load_post(path: &Path) -> Result<Value> {
 		return Err(eyre::eyre!("outcome observation requires a published social post"));
 	}
 
-	crate::social_evidence::validate_source_evidence(&post)
+	social_evidence::validate_source_evidence(&post)
 		.map_err(|error| eyre::eyre!("social post evidence failed validation: {error}"))?;
 
 	Ok(post)
@@ -1167,7 +1180,7 @@ fn load_or_create_attempt(
 		window: request.window.clone(),
 		created_at: request.observed_at.clone(),
 		updated_at: request.observed_at.clone(),
-		pricing_policy_id: Some(super::model::PRICING_POLICY_ID.into()),
+		pricing_policy_id: Some(PRICING_POLICY_ID.into()),
 		authorization_contract_sha256: Some(context.authorization_contract_sha256.clone()),
 		call: initial_call.clone(),
 		calls: vec![initial_call],
@@ -1193,8 +1206,7 @@ fn validate_attempt(
 				&& (call.operation == "outcome_read") == call.billing_month.is_none()
 				&& (call.operation == "outcome_read") == call.operation_id.is_none()
 				&& call.operation_id.as_deref().is_none_or(|operation_id| {
-					crate::social_publish::valid_run_id(operation_id)
-						&& operation_id != attempt.run_id
+					social_publish::valid_run_id(operation_id) && operation_id != attempt.run_id
 				})
 				&& matches!(
 					call.status.as_str(),
@@ -1229,7 +1241,7 @@ fn validate_attempt(
 		|| attempt.post_id != context.post_id
 		|| attempt.publication_lineage_sha256 != context.publication_lineage_sha256
 		|| attempt.window != request.window
-		|| attempt.pricing_policy_id.as_deref() != Some(super::model::PRICING_POLICY_ID)
+		|| attempt.pricing_policy_id.as_deref() != Some(PRICING_POLICY_ID)
 		|| attempt.authorization_contract_sha256.as_deref()
 			!= Some(&context.authorization_contract_sha256)
 		|| attempt.calls.last() != Some(&attempt.call)
@@ -1251,7 +1263,7 @@ fn outcome_payload(
 	response: &Value,
 	response_sha256: &str,
 ) -> Result<Value> {
-	Ok(json!({
+	Ok(serde_json::json!({
 		"schema": "social_outcome/v1",
 		"slug": format!("{}-{}", required_string(post, "slug")?, request.window),
 		"target_account": TARGET_ACCOUNT,
@@ -1310,7 +1322,7 @@ fn outcome_metrics(response: &Value) -> Result<Value> {
 		.and_then(|data| data.get("public_metrics"))
 		.and_then(Value::as_object)
 		.ok_or_else(|| eyre::eyre!("xurl outcome response is missing public_metrics"))?;
-	let mut metrics = serde_json::Map::new();
+	let mut metrics = Map::new();
 
 	for (source, target) in [
 		("impression_count", "views"),
@@ -1416,10 +1428,7 @@ fn required_string<'a>(entry: &'a Value, field: &str) -> Result<&'a str> {
 		.ok_or_else(|| eyre::eyre!("{field} is required"))
 }
 
-fn required_object_string<'a>(
-	entry: &'a serde_json::Map<String, Value>,
-	field: &str,
-) -> Result<&'a str> {
+fn required_object_string<'a>(entry: &'a Map<String, Value>, field: &str) -> Result<&'a str> {
 	entry
 		.get(field)
 		.and_then(Value::as_str)
