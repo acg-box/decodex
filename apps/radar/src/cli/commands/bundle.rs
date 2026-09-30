@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{Args, Subcommand};
+use clap::{ArgGroup, Args, Subcommand};
 
 use crate::{RadarBundleBuildRequest, RadarBundleValidateRequest, prelude::Result};
 
@@ -19,6 +19,7 @@ impl RadarBundleCommand {
 }
 
 #[derive(Debug, Args)]
+#[command(group(ArgGroup::new("subject").required(true).args(["pr", "commit"])))]
 struct RadarBundleBuildCommand {
 	#[arg(long, default_value = "openai/codex")]
 	repo: String,
@@ -26,7 +27,7 @@ struct RadarBundleBuildCommand {
 	pr: Option<u64>,
 	#[arg(long)]
 	commit: Option<String>,
-	#[arg(long)]
+	#[arg(long, requires = "commit", conflicts_with = "pr")]
 	force_commit_only: bool,
 	#[arg(long)]
 	token_env: Option<String>,
@@ -75,4 +76,34 @@ enum RadarBundleSubcommand {
 	Build(RadarBundleBuildCommand),
 	/// Validate GitHub change bundle artifacts.
 	Validate(RadarBundleValidateCommand),
+}
+
+#[cfg(test)]
+mod tests {
+	use clap::Parser as _;
+
+	use crate::cli::Cli;
+
+	#[test]
+	fn build_requires_one_subject_and_commit_only_requires_a_commit() {
+		let base = ["radar", "bundle", "build", "--out", "bundle.json"];
+		for subject in [
+			vec!["--pr", "22414"],
+			vec!["--commit", "abc123"],
+			vec!["--commit", "abc123", "--force-commit-only"],
+		] {
+			assert!(Cli::try_parse_from(base.into_iter().chain(subject)).is_ok());
+		}
+		for subject in [
+			vec![],
+			vec!["--pr", "22414", "--commit", "abc123"],
+			vec!["--pr", "22414", "--force-commit-only"],
+			vec!["--force-commit-only"],
+		] {
+			assert!(
+				Cli::try_parse_from(base.into_iter().chain(subject.clone())).is_err(),
+				"{subject:?}"
+			);
+		}
+	}
 }
