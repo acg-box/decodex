@@ -11,6 +11,23 @@ import subprocess
 import tempfile
 
 
+async def shutdown_executor(process) -> None:
+    """Reap the owned executor even if EOF or SIGTERM does not stop it."""
+    process.stdin.close()
+    for stop in (None, process.terminate, process.kill):
+        if stop is not None and process.returncode is None:
+            try:
+                stop()
+            except ProcessLookupError:
+                pass
+        try:
+            await asyncio.wait_for(process.wait(), 5)
+            return
+        except TimeoutError:
+            if stop == process.kill:
+                raise RuntimeError("executor cleanup timed out") from None
+
+
 async def qualify_read_write(call, sandbox: dict, source: Path, root: Path) -> int:
     """Verify full-disk reads do not grant mutation rights on the installed executor."""
     policy = json.loads(json.dumps(sandbox))
@@ -107,15 +124,12 @@ async def qualify(binary: Path) -> None:
                 assert denied.read_text() == "denied fixture"
                 version = initialized["result"].get("environmentInfo", {}).get("executorVersion", "unknown")
                 cli_version = subprocess.check_output([str(binary), "--version"], text=True, timeout=5).strip()
-                print(json.dumps({"cliVersion": cli_version, "executorVersion": version, "checks": 5 + read_write_checks, "result": "passed",
-                                  "missingCwdCode": result["error"]["code"]}))
+                receipt = {"cliVersion": cli_version, "executorVersion": version,
+                           "checks": 5 + read_write_checks, "result": "passed",
+                           "missingCwdCode": result["error"]["code"]}
             finally:
-                process.stdin.close()
-                try:
-                    await asyncio.wait_for(process.wait(), 5)
-                except TimeoutError:
-                    process.terminate()
-                    await process.wait()
+                await shutdown_executor(process)
+            print(json.dumps(receipt))
 
 
 def main() -> None:
