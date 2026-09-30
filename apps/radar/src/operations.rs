@@ -1,10 +1,16 @@
 //! Top-level Radar command operations.
 
+use std::io::{Error, ErrorKind};
+
 use crate::{
-	BUNDLE_SCHEMA, GitHubApi, GithubClient, Path, RadarBundleBuildReceipt, RadarBundleBuildRequest,
-	RadarBundleValidateRequest, RadarRefreshQueueReport, RadarRefreshQueueRequest,
+	BUNDLE_SCHEMA, DEFAULT_CACHE_ROOT, DEFAULT_QUEUE_OUT, DEFAULT_RELEASE_DELTA_OUT,
+	DEFAULT_SOURCE_MAX_AGE_HOURS, GitHubApi, GithubClient, OffsetDateTime, Path,
+	RadarBundleBuildReceipt, RadarBundleBuildRequest, RadarBundleValidateRequest,
+	RadarCacheGcRequest, RadarRefreshQueueReport, RadarRefreshQueueRequest,
 	RadarRenderSignalReport, RadarRenderSignalRequest, RadarValidateRequest, RadarValidationReport,
-	RefreshKind, SIGNAL_SCHEMA, ValidationState, Value, eyre, prelude::Result,
+	RefreshKind, SIGNAL_SCHEMA, ValidationState, Value, eyre,
+	prelude::Result,
+	private_fs::{self, PrivateCache},
 };
 
 pub(crate) fn refresh_queue(request: &RadarRefreshQueueRequest) -> Result<RadarRefreshQueueReport> {
@@ -44,22 +50,22 @@ pub(crate) fn validate(request: &RadarValidateRequest) -> Result<RadarValidation
 	}
 
 	let cache_gc = if uses_default_paths && !request.bootstrap {
-		Some(crate::cache_gc(&crate::RadarCacheGcRequest::default())?)
+		Some(crate::cache_gc(&RadarCacheGcRequest::default())?)
 	} else {
 		None
 	};
 	let files = crate::collect_json_files(&paths, uses_default_paths)?;
 	let max_age_hours = request
 		.max_age_hours
-		.or_else(|| uses_default_paths.then_some(crate::DEFAULT_SOURCE_MAX_AGE_HOURS));
+		.or_else(|| uses_default_paths.then_some(DEFAULT_SOURCE_MAX_AGE_HOURS));
 
 	if max_age_hours == Some(0) {
 		eyre::bail!("source freshness limit must be at least one hour");
 	}
 
+	let now = OffsetDateTime::now_utc();
 	let mut state = ValidationState::new();
 	let mut errors = Vec::new();
-	let now = crate::OffsetDateTime::now_utc();
 
 	for path in &files {
 		let payload = crate::load_json(path)?;
@@ -89,8 +95,8 @@ pub(crate) fn validate(request: &RadarValidateRequest) -> Result<RadarValidation
 
 pub(crate) fn validate_default_cache_presence(root: &Path, bootstrap: bool) -> Result<()> {
 	if bootstrap {
-		let cache_root = root.join(crate::DEFAULT_CACHE_ROOT);
-		let cache = crate::private_fs::PrivateCache::open_or_create(&cache_root)?;
+		let cache_root = root.join(DEFAULT_CACHE_ROOT);
+		let cache = PrivateCache::open_or_create(&cache_root)?;
 		let lock = cache.lock()?;
 
 		if lock.bootstrap_cache_is_empty()? {
@@ -102,14 +108,14 @@ pub(crate) fn validate_default_cache_presence(root: &Path, bootstrap: bool) -> R
 		);
 	}
 
-	let cache_root = root.join(crate::DEFAULT_CACHE_ROOT);
-	let cache = match crate::private_fs::PrivateCache::open_existing(&cache_root) {
+	let cache_root = root.join(DEFAULT_CACHE_ROOT);
+	let cache = match PrivateCache::open_existing(&cache_root) {
 		Ok(cache) => cache,
 		Err(error)
 			if error
 				.chain()
-				.find_map(|cause| cause.downcast_ref::<std::io::Error>())
-				.is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound) =>
+				.find_map(|cause| cause.downcast_ref::<Error>())
+				.is_some_and(|error| error.kind() == ErrorKind::NotFound) =>
 		{
 			eyre::bail!(
 				"Radar daily validation requires current source snapshots; generated cache is \
@@ -119,24 +125,22 @@ pub(crate) fn validate_default_cache_presence(root: &Path, bootstrap: bool) -> R
 		Err(error) => return Err(error),
 	};
 	let lock = cache.lock()?;
-	let missing = [
-		("review_queue", crate::DEFAULT_QUEUE_OUT),
-		("release_delta", crate::DEFAULT_RELEASE_DELTA_OUT),
-	]
-	.into_iter()
-	.filter_map(|(label, path)| {
-		Path::new(path)
-			.strip_prefix(crate::DEFAULT_CACHE_ROOT)
-			.ok()
-			.map(|relative| (label, relative))
-	})
-	.map(|(label, relative)| {
-		lock.cache().metadata(relative).map(|identity| identity.is_none().then_some(label))
-	})
-	.collect::<Result<Vec<_>>>()?
-	.into_iter()
-	.flatten()
-	.collect::<Vec<_>>();
+	let missing =
+		[("review_queue", DEFAULT_QUEUE_OUT), ("release_delta", DEFAULT_RELEASE_DELTA_OUT)]
+			.into_iter()
+			.filter_map(|(label, path)| {
+				Path::new(path)
+					.strip_prefix(DEFAULT_CACHE_ROOT)
+					.ok()
+					.map(|relative| (label, relative))
+			})
+			.map(|(label, relative)| {
+				lock.cache().metadata(relative).map(|identity| identity.is_none().then_some(label))
+			})
+			.collect::<Result<Vec<_>>>()?
+			.into_iter()
+			.flatten()
+			.collect::<Vec<_>>();
 
 	if missing.is_empty() {
 		Ok(())
@@ -185,7 +189,7 @@ pub(crate) fn build_bundle_payload(request: &RadarBundleBuildRequest) -> Result<
 
 pub(crate) fn validate_current_bundle_output_path(path: &Path) -> Result<()> {
 	let run_id = crate::current_run_id()?;
-	let relative = crate::private_fs::private_cache_relative_path(path)?;
+	let relative = private_fs::private_cache_relative_path(path)?;
 	let expected = Path::new("github/bundles").join(format!("{run_id}.json"));
 
 	if relative != expected {
