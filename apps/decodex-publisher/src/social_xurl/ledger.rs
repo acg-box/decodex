@@ -806,31 +806,8 @@ fn scan_costs(attempts_dir: &Path, billing_month: &str, strict: bool) -> Result<
 					.ok_or_else(|| eyre::eyre!("monthly X budget arithmetic overflowed"))?;
 			}
 		}
-		for call in calls {
-			let call_month = call.billing_month.as_deref().unwrap_or_else(|| {
-				charges.first().map(|(month, _)| month.as_str()).unwrap_or_default()
-			});
 
-			if call_month != billing_month {
-				continue;
-			}
-
-			totals.used = totals
-				.used
-				.checked_add(call.recorded_cost_ceiling_microusd)
-				.ok_or_else(|| eyre::eyre!("monthly X budget arithmetic overflowed"))?;
-			totals.total_calls = checked_increment(totals.total_calls)?;
-
-			match call.operation.as_str() {
-				"identity_read" | "identity_read_reconcile" => {
-					totals.identity_reads = checked_increment(totals.identity_reads)?;
-				},
-				"content_create" => {
-					totals.content_creates = checked_increment(totals.content_creates)?;
-				},
-				_ => totals.post_reads = checked_increment(totals.post_reads)?,
-			}
-		}
+		accumulate_monthly_calls(&mut totals, calls, &charges, billing_month)?;
 	}
 
 	if totals.reserved > SOCIAL_MONTHLY_BUDGET_MICROUSD || totals.used > totals.reserved {
@@ -838,6 +815,41 @@ fn scan_costs(attempts_dir: &Path, billing_month: &str, strict: bool) -> Result<
 	}
 
 	Ok(totals)
+}
+
+fn accumulate_monthly_calls(
+	totals: &mut CostTotals,
+	calls: Vec<XurlCall>,
+	charges: &[(String, u64)],
+	billing_month: &str,
+) -> Result<()> {
+	for call in calls {
+		let call_month = call.billing_month.as_deref().unwrap_or_else(|| {
+			charges.first().map(|(month, _)| month.as_str()).unwrap_or_default()
+		});
+
+		if call_month != billing_month {
+			continue;
+		}
+
+		totals.used = totals
+			.used
+			.checked_add(call.recorded_cost_ceiling_microusd)
+			.ok_or_else(|| eyre::eyre!("monthly X budget arithmetic overflowed"))?;
+		totals.total_calls = checked_increment(totals.total_calls)?;
+
+		match call.operation.as_str() {
+			"identity_read" | "identity_read_reconcile" => {
+				totals.identity_reads = checked_increment(totals.identity_reads)?;
+			},
+			"content_create" => {
+				totals.content_creates = checked_increment(totals.content_creates)?;
+			},
+			_ => totals.post_reads = checked_increment(totals.post_reads)?,
+		}
+	}
+
+	Ok(())
 }
 
 fn validate_cost_call(call: &XurlCall) -> Result<()> {
@@ -1289,7 +1301,15 @@ fn replace(path: &Path, previous: &Value, attempt: &XurlAttempt) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::social_xurl::{
+		ledger,
+		model::{
+			ATTEMPT_SCHEMA, CREATE_COST_MICROUSD, IDENTITY_READ_COST_MICROUSD,
+			NORMAL_PUBLICATION_COST_MICROUSD, OBSERVATION_ATTEMPT_SCHEMA, PRICING_POLICY_ID,
+			READ_COST_MICROUSD, XurlAttempt, XurlCall, XurlObservationAttempt,
+		},
+		runtime,
+	};
 
 	#[test]
 	fn recovery_charges_are_attributed_to_the_call_month() {
@@ -1321,7 +1341,7 @@ mod tests {
 			window: "24h".into(),
 			created_at: "2026-07-28T00:00:00Z".into(),
 			updated_at: "2026-08-01T00:00:00Z".into(),
-			pricing_policy_id: Some(crate::social_xurl::model::PRICING_POLICY_ID.into()),
+			pricing_policy_id: Some(PRICING_POLICY_ID.into()),
 			authorization_contract_sha256: Some(
 				"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
 			),
@@ -1336,8 +1356,8 @@ mod tests {
 		)
 		.expect("observation usage");
 
-		assert_eq!(monthly_reserved_cost(&attempts, "2026-07").expect("July"), 35_000);
-		assert_eq!(monthly_reserved_cost(&attempts, "2026-08").expect("August"), 15_000);
+		assert_eq!(ledger::monthly_reserved_cost(&attempts, "2026-07").expect("July"), 35_000);
+		assert_eq!(ledger::monthly_reserved_cost(&attempts, "2026-08").expect("August"), 15_000);
 	}
 
 	#[test]
@@ -1372,7 +1392,7 @@ mod tests {
 			window: "24h".into(),
 			created_at: "2026-07-28T00:00:00Z".into(),
 			updated_at: "2026-07-28T00:00:01Z".into(),
-			pricing_policy_id: Some(crate::social_xurl::model::PRICING_POLICY_ID.into()),
+			pricing_policy_id: Some(PRICING_POLICY_ID.into()),
 			authorization_contract_sha256: Some(
 				"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
 			),
@@ -1387,7 +1407,7 @@ mod tests {
 		)
 		.expect("observation usage");
 
-		let report = cost_report(&attempts, "2026-07").expect("bounded cost report");
+		let report = ledger::cost_report(&attempts, "2026-07").expect("bounded cost report");
 
 		assert_eq!(report.used_cost_ceiling_microusd, 30_000);
 		assert_eq!(report.reserved_cost_ceiling_microusd, 35_000);
@@ -1420,7 +1440,7 @@ mod tests {
 		)
 		.expect("invalid publication usage");
 
-		let error = cost_report(&attempts, "2026-07")
+		let error = ledger::cost_report(&attempts, "2026-07")
 			.expect_err("wrong runtime authority must stop cost reporting")
 			.to_string();
 
@@ -1443,7 +1463,7 @@ mod tests {
 			.expect("usage record");
 		}
 
-		let error = ensure_budget(&attempts, "2026-07", NORMAL_PUBLICATION_COST_MICROUSD)
+		let error = ledger::ensure_budget(&attempts, "2026-07", NORMAL_PUBLICATION_COST_MICROUSD)
 			.expect_err("the next reservation must exceed the cap")
 			.to_string();
 
@@ -1468,15 +1488,15 @@ mod tests {
 		crate::write_new_json(&path, &serde_json::to_value(&attempt).expect("initial attempt"))
 			.expect("attempt");
 
-		let mut first = load_attempt(&path).expect("first reader");
-		let mut stale = load_attempt(&path).expect("stale reader");
+		let mut first = ledger::load_attempt(&path).expect("first reader");
+		let mut stale = ledger::load_attempt(&path).expect("stale reader");
 		let mut first_call =
 			call("identity_read_reconcile", IDENTITY_READ_COST_MICROUSD, Some("2026-07"));
 
 		first_call.status = "inflight".into();
 		first_call.response_sha256 = None;
 
-		reserve_publication_reconcile_call(
+		ledger::reserve_publication_reconcile_call(
 			&path,
 			&mut first,
 			&attempts,
@@ -1494,7 +1514,7 @@ mod tests {
 		stale_call.status = "inflight".into();
 		stale_call.response_sha256 = None;
 
-		let _ = reserve_publication_reconcile_call(
+		let _ = ledger::reserve_publication_reconcile_call(
 			&path,
 			&mut stale,
 			&attempts,
@@ -1504,7 +1524,7 @@ mod tests {
 			true,
 		)
 		.expect_err("stale writer must lose the compare-and-swap race");
-		let durable = load_attempt(&path).expect("durable winner");
+		let durable = ledger::load_attempt(&path).expect("durable winner");
 
 		assert_eq!(durable.calls.len(), 2);
 		assert_eq!(
@@ -1539,13 +1559,13 @@ mod tests {
 		}
 
 		let before = crate::load_json(&path).expect("durable attempt");
-		let mut attempt = load_attempt(&path).expect("recovery attempt");
+		let mut attempt = ledger::load_attempt(&path).expect("recovery attempt");
 		let mut recovery_call = call("post_read_initial_reconcile", READ_COST_MICROUSD, None);
 
 		recovery_call.status = "inflight".into();
 		recovery_call.response_sha256 = None;
 
-		let error = reserve_publication_reconcile_call(
+		let error = ledger::reserve_publication_reconcile_call(
 			&path,
 			&mut attempt,
 			&attempts,
@@ -1567,7 +1587,7 @@ mod tests {
 			.filter(|call| call.billing_month.is_some())
 			.map(|call| call.recorded_cost_ceiling_microusd)
 			.sum::<u64>();
-		let publication_lineage_sha256 = crate::social_xurl::runtime::sha256(run_id.as_bytes());
+		let publication_lineage_sha256 = runtime::sha256(run_id.as_bytes());
 		let status = match calls.last().map(|call| call.operation.as_str()) {
 			Some("identity_read_reconcile") => "identity_reconciled",
 			Some("content_create") => "created",
@@ -1589,7 +1609,7 @@ mod tests {
 			updated_at: "2026-07-01T00:00:00Z".into(),
 			reserved_cost_ceiling_microusd: NORMAL_PUBLICATION_COST_MICROUSD + additional,
 			xurl_version: "1.3.1".into(),
-			pricing_policy_id: Some(crate::social_xurl::model::PRICING_POLICY_ID.into()),
+			pricing_policy_id: Some(PRICING_POLICY_ID.into()),
 			authorization_contract_sha256: Some(
 				"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
 			),
