@@ -2,7 +2,7 @@
 // Copyright OpenAI. Licensed under Apache-2.0; see LICENSE-APACHE.
 //! Strict parser for a small flowchart grammar; every non-comment byte must be consumed.
 
-use super::{Direction, Edge, Graph, MAX_EDGES, MAX_LABEL, RenderError};
+use super::{Direction, Edge, Graph, MAX_EDGES, MAX_LABEL, RenderError, Shape};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub(super) fn parse(header: &str, body: &[&str]) -> Result<Graph, RenderError> {
@@ -49,23 +49,23 @@ fn node(rest: &mut &str, graph: &mut Graph) -> Result<usize, RenderError> {
 		return Err(RenderError::Unsupported);
 	}
 	let declaration = match rest.chars().next() {
-		Some(open @ ('[' | '{')) => {
-			let close = if open == '[' { ']' } else { '}' };
-			let (label, remaining) = rest[1..].split_once(close).ok_or(RenderError::Unsupported)?;
-			check_label(label)?;
-			*rest = remaining;
-			Some((label, open == '{'))
-		},
+		Some('[') => Some(("[", "]", Shape::Rectangle)),
+		Some('{') => Some(("{", "}", Shape::Decision)),
+		Some('(') if rest.starts_with("([") => Some(("([", "])", Shape::Stadium)),
 		_ => None,
 	};
 	let index = graph.node(id)?;
-	if let Some((label, decision)) = declaration {
+	if let Some((open, close, shape)) = declaration {
+		let (label, remaining) =
+			rest[open.len()..].split_once(close).ok_or(RenderError::Unsupported)?;
+		check_label(label)?;
+		*rest = remaining;
 		let node = &mut graph.nodes[index];
-		if node.declared && (node.label != label || node.decision != decision) {
+		if node.declared && (node.label != label || node.shape != shape) {
 			return Err(RenderError::Unsupported);
 		}
 		node.label = label.to_owned();
-		node.decision = decision;
+		node.shape = shape;
 		node.declared = true;
 	}
 	Ok(index)

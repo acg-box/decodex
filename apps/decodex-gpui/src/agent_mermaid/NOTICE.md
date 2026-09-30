@@ -16,3 +16,6 @@ Copyright 2025 OpenAI
 This project includes code derived from [Ratatui](https://github.com/ratatui/ratatui), licensed under the MIT license.
 Copyright (c) 2016-2022 Florian Dehau
 Copyright (c) 2023-2025 The Ratatui Developers
+
+Stadium node parsing and rounded-corner rendering follow upstream commit
+`2426ed7684c87f9a627c60b54271cfed77c979df`.
