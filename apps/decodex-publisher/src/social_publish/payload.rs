@@ -1,10 +1,11 @@
 use std::path::Path;
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::{
 	SOCIAL_PUBLISH_RESERVATION_SCHEMA, SocialReservePublishRequest,
 	prelude::{Result, eyre},
+	social_record,
 };
 
 pub(super) fn social_publish_reservation_payload(
@@ -21,9 +22,9 @@ pub(super) fn social_publish_reservation_payload(
 	let mode = required_string(candidate.get("mode"), "candidate mode")?;
 	let idempotency_key =
 		required_string(decision.get("idempotency_key"), "candidate idempotency_key")?;
-	let publication_lineage_sha256 = crate::social_record::publication_lineage_sha256(candidate)?;
+	let publication_lineage_sha256 = social_record::publication_lineage_sha256(candidate)?;
 
-	Ok(json!({
+	Ok(serde_json::json!({
 		"schema": SOCIAL_PUBLISH_RESERVATION_SCHEMA,
 		"slug": slug,
 		"channel": "x",
