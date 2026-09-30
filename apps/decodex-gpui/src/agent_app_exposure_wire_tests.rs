@@ -64,7 +64,6 @@ async fn serve(listener: tokio::net::UnixListener) -> Vec<AgentActionDto> {
 
 #[gpui::test]
 fn app_exposure_click_sends_once_and_reads_after_lost_reply(cx: &mut gpui::TestAppContext) {
-	use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
 	let (_directory, profile, server) = fixture();
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
@@ -73,32 +72,7 @@ fn app_exposure_click_sends_once_and_reads_after_lost_reply(cx: &mut gpui::TestA
 	});
 	let surface = view.read_with(visual, |v, _| v.surface.clone());
 	surface.update(visual, |s, cx| {
-		s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
-			runtime_source: Some(EntityId::new("native-source").unwrap()),
-			workspaces: vec![],
-			dependencies: vec![],
-			work_items: vec![AgentWorkItemDto {
-				id: "root".into(),
-				parent_goal_id: None,
-				kind: AgentWorkKindDto::Goal,
-				title: "Agent".into(),
-				codex_thread_id: Some("thread".into()),
-				active_turn_id: None,
-				dispatch_state: AgentDispatchStateDto::Idle,
-				status: AgentWorkStatusDto::Open,
-				next_check_at_micros: None,
-				created_at_micros: 1,
-				updated_at_micros: 1,
-			}],
-			pending_events: vec![AgentPendingEventDto {
-				id: 7,
-				source_event_id: "approval".into(),
-				work_item_id: "root".into(),
-				event_kind: "server_request_pending".into(),
-				created_at_micros: 1,
-				delivery_claimed: false,
-			}],
-		})));
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
 		s.integrations = Some(("root".into(), None));
 		s.profile = Some(profile);
 		s.update_app_exposure("root", "calendar", false, cx);
@@ -131,4 +105,74 @@ impl Render for ExposureView {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.surface.update(cx, |s, cx| s.integrations_panel("root", cx))
 	}
+}
+
+fn snapshot() -> AgentSnapshotDto {
+	use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
+	AgentSnapshotDto {
+		runtime_source: Some(EntityId::new("native-source").unwrap()),
+		workspaces: vec![],
+		dependencies: vec![],
+		work_items: vec![AgentWorkItemDto {
+			id: "root".into(),
+			parent_goal_id: None,
+			kind: AgentWorkKindDto::Goal,
+			title: "Agent".into(),
+			codex_thread_id: Some("thread".into()),
+			active_turn_id: None,
+			dispatch_state: AgentDispatchStateDto::Idle,
+			status: AgentWorkStatusDto::Open,
+			next_check_at_micros: None,
+			created_at_micros: 1,
+			updated_at_micros: 1,
+		}],
+		pending_events: vec![AgentPendingEventDto {
+			id: 7,
+			source_event_id: "approval".into(),
+			work_item_id: "root".into(),
+			event_kind: "server_request_pending".into(),
+			created_at_micros: 1,
+			delivery_claimed: false,
+		}],
+	}
+}
+
+#[gpui::test]
+fn ordinary_refresh_keeps_app_exposure_read_and_write_readback(cx: &mut gpui::TestAppContext) {
+	let (_dir, profile, server) = fixture();
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, _| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.profile = Some(profile);
+	});
+	for save in [false, true] {
+		surface.update(cx, |s, cx| {
+			if save {
+				s.app_exposure.draft = Some(vec![Surface::Direct]);
+			}
+			s.update_app_exposure("root", "calendar", save, cx);
+			assert!(s.app_exposure.task.is_some());
+			// Advance the snapshot generation before this operation can complete.
+			s.generation += 1;
+			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		});
+		cx.run_until_parked();
+		surface.read_with(cx, |s, _| {
+			assert!(s.app_exposure.task.is_none(), "refresh must not strand a completed operation");
+			assert!(matches!(s.app_exposure.state, Some(State::Available { .. })));
+			if save {
+				assert!(s.app_exposure.feedback.contains("not retried"));
+				assert_eq!(s.app_exposure.draft, Some(vec![Surface::Direct]));
+				assert!(matches!(&s.app_exposure.state, Some(State::Available {
+					last_outcome: Some(outcome), ..
+				}) if outcome == "unknown"));
+			} else {
+				assert_eq!(
+					s.app_exposure.draft, None,
+					"keep inherited preference distinct from empty omissions"
+				);
+			}
+		});
+	}
+	assert_eq!(server.join().unwrap().len(), 1, "an uncertain write must not be retried");
 }
