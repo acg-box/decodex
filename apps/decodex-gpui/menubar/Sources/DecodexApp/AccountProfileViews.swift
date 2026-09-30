@@ -37,43 +37,38 @@ struct AccountProfileDetailView: View {
 		VStack(alignment: .leading, spacing: PanelSpacing.section) {
 			if let profile = state.profile {
 				AccountProfileSummaryView(profile: profile.snapshot)
-
-				if profile.isCached {
-					Label("Saved activity", systemImage: "clock.arrow.circlepath")
-						.font(PanelFont.tertiary)
-						.foregroundStyle(PanelPalette.warning(colorScheme))
-				}
-
-				if let degradationText = state.profileDegradationText {
-					Text(degradationText)
-						.font(PanelFont.tertiary)
-						.foregroundStyle(PanelPalette.warning(colorScheme))
-						.fixedSize(horizontal: false, vertical: true)
-				}
-			} else if state.isProfileRefreshing {
-				HStack(spacing: PanelSpacing.related) {
-					ProgressView()
-						.controlSize(.mini)
-					Text("Loading saved activity")
-						.font(PanelFont.accountDetail)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				}
-			} else {
-				Text("No saved activity is available for this account.")
-					.font(PanelFont.accountDetail)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.fixedSize(horizontal: false, vertical: true)
 			}
-
-			if let quotaDiagnostic {
-				Label("Some usage data is unavailable", systemImage: "info.circle")
-					.font(PanelFont.tertiary)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.help(quotaDiagnostic)
+			if let statusText {
+				HStack(spacing: PanelSpacing.related) {
+					if state.profile == nil && state.isProfileRefreshing {
+						ProgressView().controlSize(.mini)
+					}
+					Text(statusText)
+						.lineLimit(1)
+						.truncationMode(.tail)
+				}
+				.font(PanelFont.tertiary)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.help([state.profileDegradationText, quotaDiagnostic].compactMap { $0 }.joined(separator: "\n"))
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.accessibilityElement(children: .contain)
+	}
+
+	private var statusText: String? {
+		guard let profile = state.profile else {
+			return state.isProfileRefreshing ? "Loading activity…" : "No activity"
+		}
+		if profile.isCached || state.profileDegradationText != nil {
+			switch state.profileUnavailable?.error ?? profile.refreshError {
+			case .refreshRejected, .refreshAmbiguous, .accessRejectedAfterRefresh, .unauthorized, .credentialUnavailable:
+				return "Sign in again · Saved data"
+			default:
+				return "Saved data"
+			}
+		}
+		return quotaDiagnostic == nil ? nil : "Usage unavailable"
 	}
 
 	private var quotaDiagnostic: String? {

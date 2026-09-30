@@ -23,11 +23,7 @@ pub(super) fn panel(shell: &Shell, account: &decodex_protocol::EntityId) -> AnyE
 		) => profile,
 		_ =>
 			return content
-				.child(if snapshot.is_none() {
-					"Loading saved activity…"
-				} else {
-					"No saved activity is available for this account."
-				})
+				.child(if snapshot.is_none() { "Loading activity…" } else { "No activity" })
 				.into_any_element(),
 	};
 	content = content.child(
@@ -66,9 +62,39 @@ pub(super) fn panel(shell: &Shell, account: &decodex_protocol::EntityId) -> AnyE
 				})),
 		);
 	}
-	if matches!(snapshot.and_then(|s| s.result.as_ref()), Some(AccountProfileResult::Cached { .. }))
+	if let Some(AccountProfileResult::Cached { refresh_error, .. }) =
+		snapshot.and_then(|s| s.result.as_ref())
 	{
-		content = content.child(div().text_color(rgb(WB_TEXT_FAINT)).child("Saved activity"));
+		use decodex_protocol::AccountProfileErrorDto::*;
+		let requires_login = matches!(
+			refresh_error,
+			RefreshRejected
+				| RefreshAmbiguous
+				| AccessRejectedAfterRefresh
+				| Unauthorized
+				| CredentialUnavailable
+		);
+		let message = if requires_login { "Sign in again · Saved data" } else { "Saved data" };
+		content = content.child(
+			div()
+				.id("account-activity-status")
+				.text_color(rgb(WB_TEXT_FAINT))
+				.truncate()
+				.child(message)
+				.tooltip(move |_, cx| {
+					cx.new(|_| {
+						ControlTooltip(
+							if requires_login {
+								"Showing saved activity. Sign in again to refresh it."
+							} else {
+								"Showing saved activity because refresh is unavailable."
+							}
+							.to_owned(),
+						)
+					})
+					.into()
+				}),
+		);
 	}
 	content.into_any_element()
 }
