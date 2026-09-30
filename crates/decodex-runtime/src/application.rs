@@ -4390,10 +4390,12 @@ impl ServiceApplication {
 		let saved = self.saved_model_review_request(&id, revision).await?;
 		let execution = ConversationExecutionSettingsDto {
 			model: decodex_protocol::ConversationModel::new(saved.model.clone()).ok()?,
-			reasoning_effort: serde_json::from_value(
-				serde_json::to_value(&saved.reasoning_effort).ok()?,
-			)
-			.ok()?,
+			reasoning_effort: saved
+				.reasoning_effort
+				.clone()
+				.map(decodex_protocol::ConversationReasoningEffort::new)
+				.transpose()
+				.ok()?,
 			fast: saved.fast,
 			service_tier: saved.service_tier.clone(),
 		};
@@ -7556,7 +7558,6 @@ mod tests {
 				},
 			}),
 		);
-		assert_eq!(decode_account_command_receipt(encoded.clone()), Ok(Err(error.clone())));
 		assert_eq!(decode_account_command_receipt(encoded), Ok(Err(error)));
 	}
 
@@ -7583,7 +7584,6 @@ mod tests {
 				},
 			}),
 		);
-		assert_eq!(decode_account_command_receipt(encoded.clone()), Ok(Err(error.clone())));
 		assert_eq!(decode_account_command_receipt(encoded), Ok(Err(error)));
 	}
 }
