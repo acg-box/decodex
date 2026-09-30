@@ -46,12 +46,10 @@ fn receipt_from_installed_bytes(
 	if installed != expected {
 		eyre::bail!("installed bundle bytes do not match the deterministic build output");
 	}
-	let (_, receipt) = bundle_evidence_from_bytes(installed)?;
-
-	Ok(receipt)
+	bundle_evidence_from_bytes(installed)
 }
 
-fn bundle_evidence_from_bytes(bytes: &[u8]) -> Result<(Value, RadarBundleBuildReceipt)> {
+fn bundle_evidence_from_bytes(bytes: &[u8]) -> Result<RadarBundleBuildReceipt> {
 	validate_bundle_size(bytes.len())?;
 	let bundle: Value = serde_json::from_slice(bytes)
 		.map_err(|error| eyre::eyre!("bundle JSON is invalid: {error}"))?;
@@ -101,7 +99,7 @@ fn bundle_evidence_from_bytes(bytes: &[u8]) -> Result<(Value, RadarBundleBuildRe
 		examples_ref_count,
 	};
 
-	Ok((bundle, receipt))
+	Ok(receipt)
 }
 
 fn required_array<'a>(value: Option<&'a Value>, label: &str) -> Result<&'a Vec<Value>> {
