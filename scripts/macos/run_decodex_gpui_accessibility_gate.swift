@@ -202,11 +202,13 @@ func matchingApplications(appURL: URL, executableURL: URL) -> [NSRunningApplicat
 	}
 }
 
-func launch(_ appURL: URL) throws -> NSRunningApplication {
+func launch(_ appURL: URL, homeURL: URL) throws -> NSRunningApplication {
 	let result = LaunchResult()
 	let options = NSWorkspace.OpenConfiguration()
 	options.activates = true
 	options.createsNewApplicationInstance = true
+	// The app resolves its account root from HOME. A new empty home has no client profile.
+	options.environment = ["HOME": homeURL.path]
 	NSWorkspace.shared.openApplication(at: appURL, configuration: options) { app, error in
 		if let app { result.set(.success(app)) }
 		else { result.set(.failure(error ?? GateError.message("launcher returned no app"))) }
@@ -296,6 +298,8 @@ func main() throws -> Bool {
 	}
 	try FileManager.default.createDirectory(at: configuration.outputURL, withIntermediateDirectories: true)
 
+	let homeURL = configuration.outputURL.appendingPathComponent("application-home", isDirectory: true)
+	try FileManager.default.createDirectory(at: homeURL, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
 	let summaryURL = configuration.outputURL.appendingPathComponent("summary.json")
 	let compileReceiptURL = configuration.outputURL.appendingPathComponent("compile-receipt.json")
 	let executableURL = configuration.appURL.appendingPathComponent("Contents/MacOS/\(executableName)")
@@ -415,7 +419,7 @@ func main() throws -> Bool {
 		]
 		try writeJSON(compileReceipt, to: compileReceiptURL)
 
-		app = try launch(configuration.appURL)
+		app = try launch(configuration.appURL, homeURL: homeURL)
 		guard let app else { throw GateError.message("launcher returned no application") }
 		let launchedPID = app.processIdentifier
 		launchIdentityValid = waitUntil(timeout: launchTimeout, interrupted: interruptState) {
@@ -428,7 +432,7 @@ func main() throws -> Bool {
 				&& app.executableURL.map(normalized) == executableURL
 		}
 		guard launchIdentityValid else { throw GateError.message("exact app launch identity failed") }
-		_ = app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+		_ = app.activate(options: [.activateAllWindows])
 
 		FileManager.default.createFile(atPath: inspectorStdoutURL.path, contents: nil)
 		FileManager.default.createFile(atPath: inspectorStderrURL.path, contents: nil)
@@ -517,6 +521,7 @@ func main() throws -> Bool {
 		"failure": failure ?? NSNull(),
 		"bundle_identifier": bundleIdentifier,
 		"bundle_url": configuration.appURL.path,
+		"application_home": homeURL.path,
 		"bundle_fingerprint_before": bundleHashBefore,
 		"bundle_fingerprint_after": bundleHashAfter,
 		"executable_path": executableURL.path,
