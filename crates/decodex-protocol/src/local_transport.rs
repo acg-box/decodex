@@ -11,356 +11,6 @@
 //! The lock serializes cooperating Decodex daemons. This boundary does not claim
 //! confinement against hostile code that already runs with the service-owner UID.
 
-use std::{
-	fmt::{Debug, Display, Formatter},
-	path::{Path, PathBuf},
-};
-#[cfg(target_os = "macos")] use std::{fs::File, os::fd::RawFd};
-
-use decodex_core::{DecodexPaths, LocalTrustPolicy};
-
-/// One kernel-authenticated local byte stream on a supported Unix host.
-#[cfg(unix)]
-pub type LocalTransportStream = tokio::net::UnixStream;
-
-/// Uninhabited local stream facade for unsupported build targets.
-#[cfg(not(unix))]
-pub struct LocalTransportStream {
-	_private: (),
-}
-
-#[cfg(not(unix))]
-impl tokio::io::AsyncRead for LocalTransportStream {
-	fn poll_read(
-		self: std::pin::Pin<&mut Self>,
-		_context: &mut std::task::Context<'_>,
-		_buffer: &mut tokio::io::ReadBuf<'_>,
-	) -> std::task::Poll<std::io::Result<()>> {
-		std::task::Poll::Ready(Err(std::io::Error::new(
-			std::io::ErrorKind::Unsupported,
-			"local transport is unsupported on this platform",
-		)))
-	}
-}
-
-#[cfg(not(unix))]
-impl tokio::io::AsyncWrite for LocalTransportStream {
-	fn poll_write(
-		self: std::pin::Pin<&mut Self>,
-		_context: &mut std::task::Context<'_>,
-		_buffer: &[u8],
-	) -> std::task::Poll<std::io::Result<usize>> {
-		std::task::Poll::Ready(Err(std::io::Error::new(
-			std::io::ErrorKind::Unsupported,
-			"local transport is unsupported on this platform",
-		)))
-	}
-
-	fn poll_flush(
-		self: std::pin::Pin<&mut Self>,
-		_context: &mut std::task::Context<'_>,
-	) -> std::task::Poll<std::io::Result<()>> {
-		std::task::Poll::Ready(Err(std::io::Error::new(
-			std::io::ErrorKind::Unsupported,
-			"local transport is unsupported on this platform",
-		)))
-	}
-
-	fn poll_shutdown(
-		self: std::pin::Pin<&mut Self>,
-		_context: &mut std::task::Context<'_>,
-	) -> std::task::Poll<std::io::Result<()>> {
-		std::task::Poll::Ready(Err(std::io::Error::new(
-			std::io::ErrorKind::Unsupported,
-			"local transport is unsupported on this platform",
-		)))
-	}
-}
-
-/// The complete V2.17 local endpoint authority.
-#[derive(Clone, Eq, PartialEq)]
-pub struct LocalTransportAuthority {
-	paths: DecodexPaths,
-	endpoint_path: PathBuf,
-	policy: LocalTrustPolicy,
-	service_owner_uid: u32,
-}
-
-impl LocalTransportAuthority {
-	/// Resolve one enabled same-UID authority from the durable host policy.
-	pub fn new(
-		paths: DecodexPaths,
-		policy: LocalTrustPolicy,
-		service_owner_uid: Option<u32>,
-	) -> Result<Self, LocalTransportRefusal> {
-		let service_owner_uid = match (policy, service_owner_uid) {
-			(LocalTrustPolicy::Disabled, None) => return Err(LocalTransportRefusal::Disabled),
-			(LocalTrustPolicy::SameUid, Some(uid)) => uid,
-			_ => return Err(LocalTransportRefusal::InvalidPolicy),
-		};
-
-		if !cfg!(any(target_os = "linux", target_os = "macos")) {
-			return Err(LocalTransportRefusal::UnsupportedPlatform);
-		}
-
-		let authority = Self {
-			endpoint_path: paths.local_transport_socket(),
-			paths,
-			policy,
-			service_owner_uid,
-		};
-
-		#[cfg(any(target_os = "linux", target_os = "macos"))]
-		authority.verify_process_owner()?;
-
-		Ok(authority)
-	}
-
-	pub(crate) fn draft_scope_key(&self) -> String {
-		let mut identity = self.endpoint_path.as_os_str().as_encoded_bytes().to_vec();
-
-		identity.extend_from_slice(&self.service_owner_uid.to_le_bytes());
-		identity.push(match self.policy {
-			LocalTrustPolicy::Disabled => 0,
-			LocalTrustPolicy::SameUid => 1,
-		});
-
-		decodex_core::BlobHash::digest(&identity).to_hex()
-	}
-
-	/// Bind and atomically publish the fixed owner-only endpoint.
-	pub async fn bind(&self) -> Result<LocalTransportListener, LocalTransportRefusal> {
-		#[cfg(any(target_os = "linux", target_os = "macos"))]
-		{
-			platform::bind(self).await
-		}
-		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-		{
-			Err(LocalTransportRefusal::UnsupportedPlatform)
-		}
-	}
-
-	/// Connect after current endpoint identity and kernel server-peer validation.
-	///
-	/// Each call captures and validates the current publication. No endpoint or
-	/// peer observation is reused across reconnects.
-	pub async fn connect(&self) -> Result<LocalTransportStream, LocalTransportRefusal> {
-		#[cfg(any(target_os = "linux", target_os = "macos"))]
-		{
-			platform::connect(self).await
-		}
-		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-		{
-			Err(LocalTransportRefusal::UnsupportedPlatform)
-		}
-	}
-
-	/// Validate and retain one installer-shaped inherited descriptor without acquiring a lock.
-	#[cfg(target_os = "macos")]
-	#[doc(hidden)]
-	pub fn validate_installer_namespace_lock_fd(
-		&self,
-		raw_fd: RawFd,
-	) -> Result<File, LocalTransportRefusal> {
-		self.verify_process_owner()?;
-
-		platform::validate_installer_namespace_lock_fd(self, raw_fd)
-	}
-
-	fn endpoint_path(&self) -> &Path {
-		&self.endpoint_path
-	}
-
-	#[cfg(any(target_os = "linux", target_os = "macos"))]
-	fn verify_process_owner(&self) -> Result<(), LocalTransportRefusal> {
-		if platform::effective_user_id() == self.service_owner_uid {
-			Ok(())
-		} else {
-			Err(LocalTransportRefusal::EffectiveUidMismatch)
-		}
-	}
-}
-
-impl Debug for LocalTransportAuthority {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter
-			.debug_struct("LocalTransportAuthority")
-			.field("policy", &self.policy)
-			.field("endpoint", &"<redacted>")
-			.field("service_owner_uid", &"<configured>")
-			.finish()
-	}
-}
-
-/// The non-cloneable singleton daemon capability.
-///
-/// It owns the published listener, retained directory identity, and one lifetime
-/// namespace lock from acquisition through release-last cleanup.
-pub struct LocalTransportListener {
-	authority: LocalTransportAuthority,
-	#[cfg(any(target_os = "linux", target_os = "macos"))]
-	listener: Option<tokio::net::UnixListener>,
-	#[cfg(any(target_os = "linux", target_os = "macos"))]
-	binding: Option<platform::EndpointBinding>,
-	#[cfg(any(target_os = "linux", target_os = "macos"))]
-	namespace_lock: Option<platform::NamespaceLock>,
-}
-
-impl LocalTransportListener {
-	/// Accept one stream after point-in-time namespace and peer validation.
-	///
-	/// A peer-credential refusal applies only to this connection. A namespace or
-	/// listener refusal invalidates the published listener.
-	pub async fn accept(&mut self) -> Result<LocalTransportStream, LocalTransportRefusal> {
-		#[cfg(any(target_os = "linux", target_os = "macos"))]
-		{
-			let listener =
-				self.listener.as_mut().ok_or(LocalTransportRefusal::EndpointUnavailable)?;
-			let (stream, _) =
-				listener.accept().await.map_err(|_| LocalTransportRefusal::EndpointUnavailable)?;
-			let peer = stream
-				.peer_cred()
-				.map_err(|_| LocalTransportRefusal::PeerCredentialsUnavailable)?;
-
-			if peer.uid() != self.authority.service_owner_uid {
-				return Err(LocalTransportRefusal::PeerUidMismatch);
-			}
-
-			self.revalidate()?;
-
-			Ok(stream)
-		}
-
-		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-		{
-			Err(LocalTransportRefusal::UnsupportedPlatform)
-		}
-	}
-
-	/// Validate the current published path, retained directory, and namespace lock.
-	pub fn revalidate(&self) -> Result<(), LocalTransportRefusal> {
-		#[cfg(any(target_os = "linux", target_os = "macos"))]
-		{
-			let listener =
-				self.listener.as_ref().ok_or(LocalTransportRefusal::EndpointUnavailable)?;
-			let binding =
-				self.binding.as_ref().ok_or(LocalTransportRefusal::EndpointUnavailable)?;
-			let namespace_lock =
-				self.namespace_lock.as_ref().ok_or(LocalTransportRefusal::EndpointUnavailable)?;
-
-			platform::revalidate_listener(&self.authority, listener, binding, namespace_lock)
-		}
-
-		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-		{
-			Err(LocalTransportRefusal::UnsupportedPlatform)
-		}
-	}
-
-	/// Remove only the retained publication, close the listener, and release the
-	/// namespace lock last.
-	///
-	/// The runtime calls this only after it has harvested every owned task.
-	pub fn cleanup(mut self) -> Result<(), LocalTransportRefusal> {
-		self.release(true)
-	}
-
-	#[cfg(any(target_os = "linux", target_os = "macos"))]
-	fn release(&mut self, report: bool) -> Result<(), LocalTransportRefusal> {
-		let result =
-			match (self.listener.as_ref(), self.binding.as_ref(), self.namespace_lock.as_ref()) {
-				(Some(listener), Some(binding), Some(namespace_lock)) =>
-					platform::remove_publication(&self.authority, listener, binding, namespace_lock),
-				_ => Err(LocalTransportRefusal::EndpointUnavailable),
-			};
-
-		drop(self.listener.take());
-		drop(self.binding.take());
-		drop(self.namespace_lock.take());
-
-		if report { result } else { Ok(()) }
-	}
-
-	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-	fn release(&mut self, _report: bool) -> Result<(), LocalTransportRefusal> {
-		Err(LocalTransportRefusal::UnsupportedPlatform)
-	}
-}
-
-impl Debug for LocalTransportListener {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter
-			.debug_struct("LocalTransportListener")
-			.field("endpoint", &"<redacted>")
-			.field("same_uid", &true)
-			.finish()
-	}
-}
-
-impl Drop for LocalTransportListener {
-	fn drop(&mut self) {
-		let _ = self.release(false);
-	}
-}
-
-/// Closed local admission and endpoint-integrity refusal classes.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LocalTransportRefusal {
-	/// Durable host policy disables local admission.
-	Disabled,
-	/// Policy and configured service-owner UID do not form one valid state.
-	InvalidPolicy,
-	/// No validated host configuration supplied local transport authority.
-	ConfigurationUnavailable,
-	/// The build target has no accepted local peer-credential implementation.
-	UnsupportedPlatform,
-	/// The process effective UID differs from the configured service owner.
-	EffectiveUidMismatch,
-	/// The endpoint directory is missing, linked, replaced, wrongly owned, or wrongly scoped.
-	UnsafeDirectory,
-	/// A socket or namespace-lock entry has an unsafe type, owner, mode, or link count.
-	UnsafeEndpoint,
-	/// No current endpoint can be reached or created.
-	EndpointUnavailable,
-	/// Another daemon holds the namespace or one observed endpoint may still be live.
-	EndpointInUse,
-	/// A retained directory, lock, or socket identity changed or became ambiguous.
-	EndpointReplaced,
-	/// The kernel did not provide an unambiguous peer credential.
-	PeerCredentialsUnavailable,
-	/// The kernel-authenticated peer UID differs from the service owner.
-	PeerUidMismatch,
-}
-
-impl LocalTransportRefusal {
-	/// Whether a bound service must stop accepting later connections.
-	pub const fn invalidates_listener(self) -> bool {
-		!matches!(self, Self::PeerCredentialsUnavailable | Self::PeerUidMismatch)
-	}
-}
-
-impl Display for LocalTransportRefusal {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str(match self {
-			Self::Disabled => "local transport is disabled",
-			Self::InvalidPolicy => "local transport policy is invalid",
-			Self::ConfigurationUnavailable => "local transport configuration is unavailable",
-			Self::UnsupportedPlatform => "local peer identity is unsupported on this platform",
-			Self::EffectiveUidMismatch =>
-				"process effective UID does not match the local service owner",
-			Self::UnsafeDirectory => "local endpoint directory is unsafe",
-			Self::UnsafeEndpoint => "local endpoint or namespace lock is unsafe",
-			Self::EndpointUnavailable => "local endpoint is unavailable",
-			Self::EndpointInUse => "local endpoint namespace may have a live daemon",
-			Self::EndpointReplaced => "local endpoint identity was replaced or became ambiguous",
-			Self::PeerCredentialsUnavailable => "kernel peer identity is unavailable",
-			Self::PeerUidMismatch => "kernel peer UID does not match the local service owner",
-		})
-	}
-}
-
-impl std::error::Error for LocalTransportRefusal {}
-
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod platform {
 	use std::{
@@ -385,7 +35,7 @@ mod platform {
 		time,
 	};
 
-	use super::{
+	use crate::local_transport::{
 		LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal,
 		LocalTransportStream,
 	};
@@ -401,139 +51,53 @@ mod platform {
 	#[cfg(not(target_vendor = "apple"))]
 	const DIRECTORY_ACCESS: libc::c_int = libc::O_RDONLY;
 
-	pub(super) async fn bind(
-		authority: &LocalTransportAuthority,
-	) -> Result<LocalTransportListener, LocalTransportRefusal> {
-		authority.verify_process_owner()?;
-
-		let stage_path = stage_path(authority.endpoint_path())?;
-
-		if !endpoint_path_fits(authority.endpoint_path()) || !endpoint_path_fits(&stage_path) {
-			return Err(LocalTransportRefusal::UnsafeEndpoint);
-		}
-
-		authority
-			.paths
-			.ensure_local_transport_layout()
-			.map_err(|_| LocalTransportRefusal::UnsafeDirectory)?;
-
-		let directory =
-			DirectoryBinding::open(authority.endpoint_path(), authority.service_owner_uid)?;
-		let namespace_lock = NamespaceLock::acquire(&directory)?;
-
-		recover_name(authority, &directory, &namespace_lock, STAGE_NAME, &stage_path).await?;
-		recover_name(
-			authority,
-			&directory,
-			&namespace_lock,
-			CANONICAL_NAME,
-			authority.endpoint_path(),
-		)
-		.await?;
-
-		authority.verify_process_owner()?;
-		directory.verify_namespace_lock(&namespace_lock)?;
-		directory.verify_absent(STAGE_NAME)?;
-		directory.verify_absent(CANONICAL_NAME)?;
-
-		let listener = UnixListener::bind(&stage_path)
-			.map_err(|_| LocalTransportRefusal::EndpointUnavailable)?;
-		let initial = directory
-			.socket_identity(STAGE_NAME)
-			.map_err(|_| LocalTransportRefusal::EndpointReplaced)?;
-
-		if initial.uid != authority.service_owner_uid || initial.links != 1 {
-			drop(listener);
-
-			return Err(LocalTransportRefusal::UnsafeEndpoint);
-		}
-		if chmod_socket(&directory, STAGE_NAME, PRIVATE_FILE_MODE).is_err() {
-			directory.remove_if_file_identity(&namespace_lock, STAGE_NAME, initial);
-
-			drop(listener);
-
-			return Err(LocalTransportRefusal::UnsafeEndpoint);
-		}
-
-		let identity = match directory.socket_identity(STAGE_NAME) {
-			Ok(identity)
-				if identity.file == initial.file
-					&& identity.links == initial.links
-					&& secure_socket(identity, authority.service_owner_uid) =>
-				identity,
-			_ => {
-				directory.remove_if_file_identity(&namespace_lock, STAGE_NAME, initial);
-
-				drop(listener);
-
-				return Err(LocalTransportRefusal::EndpointReplaced);
-			},
-		};
-		let local_path = match listener.local_addr() {
-			Ok(address) => address.as_pathname().map(Path::to_owned),
-			Err(_) => {
-				directory.remove_if_identity(&namespace_lock, STAGE_NAME, identity);
-
-				drop(listener);
-
-				return Err(LocalTransportRefusal::EndpointUnavailable);
-			},
-		};
-
-		if local_path.as_deref() != Some(stage_path.as_path()) {
-			directory.remove_if_file_identity(&namespace_lock, STAGE_NAME, identity);
-
-			drop(listener);
-
-			return Err(LocalTransportRefusal::EndpointReplaced);
-		}
-
-		PendingPublication {
-			authority,
-			directory: Some(directory),
-			namespace_lock: Some(namespace_lock),
-			listener: Some(listener),
-			identity,
-			stage_path,
-			published: false,
-		}
-		.publish()
+	pub(super) struct EndpointBinding {
+		directory: DirectoryBinding,
+		identity: SocketIdentity,
+		stage_path: PathBuf,
 	}
 
-	async fn recover_name(
-		authority: &LocalTransportAuthority,
-		directory: &DirectoryBinding,
-		namespace_lock: &NamespaceLock,
-		name: &CStr,
-		path: &Path,
-	) -> Result<(), LocalTransportRefusal> {
-		let identity = match directory.socket_identity(name) {
-			Ok(identity) => identity,
-			Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
-			Err(_) => return Err(LocalTransportRefusal::UnsafeEndpoint),
-		};
+	pub(super) struct NamespaceLock {
+		file: File,
+		identity: LockIdentity,
+	}
 
-		if !secure_socket(identity, authority.service_owner_uid) {
-			return Err(LocalTransportRefusal::UnsafeEndpoint);
-		}
+	impl NamespaceLock {
+		fn acquire(directory: &DirectoryBinding) -> Result<Self, LocalTransportRefusal> {
+			directory.verify()?;
 
-		directory.verify_socket_while_locked(namespace_lock, name, identity)?;
+			let (file, created) =
+				open_namespace_lock(&directory.directory).map_err(map_lock_open)?;
 
-		match time::timeout(STALE_PROBE_TIMEOUT, UnixStream::connect(path)).await {
-			Ok(Ok(_)) | Err(_) => Err(LocalTransportRefusal::EndpointInUse),
-			Ok(Err(error)) if error.kind() == ErrorKind::ConnectionRefused => {
-				authority.verify_process_owner()?;
-				directory.verify_socket_while_locked(namespace_lock, name, identity)?;
+			if created {
+				// SAFETY: `file` owns this descriptor and `fchmod` retains no pointer.
+				if unsafe { libc::fchmod(file.as_raw_fd(), PRIVATE_FILE_MODE as mode_t) } == -1 {
+					return Err(LocalTransportRefusal::UnsafeEndpoint);
+				}
+			}
 
-				directory.unlink_socket_while_locked(namespace_lock, name, identity)
-			},
-			Ok(Err(_)) => {
-				if directory.verify_socket_while_locked(namespace_lock, name, identity).is_err() {
-					Err(LocalTransportRefusal::EndpointReplaced)
+			let metadata = file.metadata().map_err(|_| LocalTransportRefusal::UnsafeEndpoint)?;
+
+			if !secure_namespace_lock_metadata(&metadata, directory.expected_uid) {
+				return Err(LocalTransportRefusal::UnsafeEndpoint);
+			}
+
+			// SAFETY: the descriptor stays open for the listener lifetime.
+			let lock_result = unsafe { libc::flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) };
+
+			if lock_result == -1 {
+				return if io::Error::last_os_error().kind() == ErrorKind::WouldBlock {
+					Err(LocalTransportRefusal::EndpointInUse)
 				} else {
 					Err(LocalTransportRefusal::EndpointUnavailable)
-				}
-			},
+				};
+			}
+
+			let namespace_lock = Self { identity: LockIdentity::from_metadata(&metadata), file };
+
+			directory.verify_namespace_lock(&namespace_lock)?;
+
+			Ok(namespace_lock)
 		}
 	}
 
@@ -612,196 +176,6 @@ mod platform {
 			drop(self.listener.take());
 			drop(self.directory.take());
 			drop(self.namespace_lock.take());
-		}
-	}
-
-	pub(super) async fn connect(
-		authority: &LocalTransportAuthority,
-	) -> Result<LocalTransportStream, LocalTransportRefusal> {
-		authority.verify_process_owner()?;
-
-		if !endpoint_path_fits(authority.endpoint_path()) {
-			return Err(LocalTransportRefusal::UnsafeEndpoint);
-		}
-
-		let directory =
-			DirectoryBinding::open(authority.endpoint_path(), authority.service_owner_uid)?;
-		let identity = directory.socket_identity(CANONICAL_NAME).map_err(map_initial_endpoint)?;
-
-		if !secure_socket(identity, authority.service_owner_uid) {
-			return Err(LocalTransportRefusal::UnsafeEndpoint);
-		}
-
-		directory.verify_socket(CANONICAL_NAME, identity)?;
-
-		let stream = match UnixStream::connect(authority.endpoint_path()).await {
-			Ok(stream) => stream,
-			Err(_) if directory.verify_socket(CANONICAL_NAME, identity).is_err() => {
-				return Err(LocalTransportRefusal::EndpointReplaced);
-			},
-			Err(_) => return Err(LocalTransportRefusal::EndpointUnavailable),
-		};
-		let peer =
-			stream.peer_cred().map_err(|_| LocalTransportRefusal::PeerCredentialsUnavailable)?;
-
-		if peer.uid() != authority.service_owner_uid {
-			return Err(LocalTransportRefusal::PeerUidMismatch);
-		}
-
-		directory.verify_socket(CANONICAL_NAME, identity)?;
-		authority.verify_process_owner()?;
-
-		Ok(stream)
-	}
-
-	pub(super) fn revalidate_listener(
-		authority: &LocalTransportAuthority,
-		listener: &UnixListener,
-		binding: &EndpointBinding,
-		namespace_lock: &NamespaceLock,
-	) -> Result<(), LocalTransportRefusal> {
-		authority.verify_process_owner()?;
-		binding.directory.verify_socket_while_locked(
-			namespace_lock,
-			CANONICAL_NAME,
-			binding.identity,
-		)?;
-
-		let local_path = listener
-			.local_addr()
-			.map_err(|_| LocalTransportRefusal::EndpointUnavailable)?
-			.as_pathname()
-			.map(Path::to_owned);
-
-		if local_path.as_deref() != Some(binding.stage_path.as_path()) {
-			return Err(LocalTransportRefusal::EndpointReplaced);
-		}
-		if listener.take_error().map_err(|_| LocalTransportRefusal::EndpointUnavailable)?.is_some()
-		{
-			return Err(LocalTransportRefusal::EndpointUnavailable);
-		}
-
-		Ok(())
-	}
-
-	#[cfg(target_os = "macos")]
-	pub(super) fn validate_installer_namespace_lock_fd(
-		authority: &LocalTransportAuthority,
-		raw_fd: RawFd,
-	) -> Result<File, LocalTransportRefusal> {
-		if raw_fd < 3 {
-			return Err(LocalTransportRefusal::UnsafeEndpoint);
-		}
-
-		// SAFETY: `F_GETFD` reads descriptor flags and retains no process memory pointer.
-		let inherited_flags = unsafe { libc::fcntl(raw_fd, libc::F_GETFD) };
-
-		if inherited_flags == -1 {
-			return Err(LocalTransportRefusal::UnsafeEndpoint);
-		}
-
-		// SAFETY: `F_GETFD` proved that this process owns an open descriptor. Ownership
-		// transfers to the returned file and the installer retains its original duplicate.
-		let file = unsafe { File::from_raw_fd(raw_fd) };
-		let directory =
-			DirectoryBinding::open(authority.endpoint_path(), authority.service_owner_uid)?;
-		let metadata = file.metadata().map_err(|_| LocalTransportRefusal::UnsafeEndpoint)?;
-		let identity = LockIdentity::from_metadata(&metadata);
-
-		if !secure_namespace_lock_metadata(&metadata, authority.service_owner_uid) {
-			return Err(LocalTransportRefusal::UnsafeEndpoint);
-		}
-
-		directory.verify_namespace_lock_file(&file, identity)?;
-
-		// SAFETY: the owned descriptor remains open and `F_GETFD` retains no pointer.
-		let descriptor_flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFD) };
-
-		if descriptor_flags == -1 {
-			return Err(LocalTransportRefusal::EndpointUnavailable);
-		}
-
-		// SAFETY: the owned descriptor remains open and the integer flags are valid.
-		let close_on_exec = unsafe {
-			libc::fcntl(file.as_raw_fd(), libc::F_SETFD, descriptor_flags | libc::FD_CLOEXEC)
-		};
-
-		if close_on_exec == -1 {
-			return Err(LocalTransportRefusal::EndpointUnavailable);
-		}
-
-		// SAFETY: `F_GETFD` reads back the flags of the still-owned descriptor.
-		let applied_flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFD) };
-
-		if applied_flags == -1 || applied_flags & libc::FD_CLOEXEC == 0 {
-			return Err(LocalTransportRefusal::EndpointUnavailable);
-		}
-
-		Ok(file)
-	}
-
-	pub(super) fn remove_publication(
-		authority: &LocalTransportAuthority,
-		listener: &UnixListener,
-		binding: &EndpointBinding,
-		namespace_lock: &NamespaceLock,
-	) -> Result<(), LocalTransportRefusal> {
-		revalidate_listener(authority, listener, binding, namespace_lock)?;
-
-		binding.directory.unlink_socket_while_locked(
-			namespace_lock,
-			CANONICAL_NAME,
-			binding.identity,
-		)
-	}
-
-	pub(super) struct EndpointBinding {
-		directory: DirectoryBinding,
-		identity: SocketIdentity,
-		stage_path: PathBuf,
-	}
-
-	pub(super) struct NamespaceLock {
-		file: File,
-		identity: LockIdentity,
-	}
-
-	impl NamespaceLock {
-		fn acquire(directory: &DirectoryBinding) -> Result<Self, LocalTransportRefusal> {
-			directory.verify()?;
-
-			let (file, created) =
-				open_namespace_lock(&directory.directory).map_err(map_lock_open)?;
-
-			if created {
-				// SAFETY: `file` owns this descriptor and `fchmod` retains no pointer.
-				if unsafe { libc::fchmod(file.as_raw_fd(), PRIVATE_FILE_MODE as mode_t) } == -1 {
-					return Err(LocalTransportRefusal::UnsafeEndpoint);
-				}
-			}
-
-			let metadata = file.metadata().map_err(|_| LocalTransportRefusal::UnsafeEndpoint)?;
-
-			if !secure_namespace_lock_metadata(&metadata, directory.expected_uid) {
-				return Err(LocalTransportRefusal::UnsafeEndpoint);
-			}
-
-			// SAFETY: the descriptor stays open for the listener lifetime.
-			let lock_result = unsafe { libc::flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) };
-
-			if lock_result == -1 {
-				return if io::Error::last_os_error().kind() == ErrorKind::WouldBlock {
-					Err(LocalTransportRefusal::EndpointInUse)
-				} else {
-					Err(LocalTransportRefusal::EndpointUnavailable)
-				};
-			}
-
-			let namespace_lock = Self { identity: LockIdentity::from_metadata(&metadata), file };
-
-			directory.verify_namespace_lock(&namespace_lock)?;
-
-			Ok(namespace_lock)
 		}
 	}
 
@@ -1048,6 +422,250 @@ mod platform {
 		}
 	}
 
+	pub(super) fn revalidate_listener(
+		authority: &LocalTransportAuthority,
+		listener: &UnixListener,
+		binding: &EndpointBinding,
+		namespace_lock: &NamespaceLock,
+	) -> Result<(), LocalTransportRefusal> {
+		authority.verify_process_owner()?;
+		binding.directory.verify_socket_while_locked(
+			namespace_lock,
+			CANONICAL_NAME,
+			binding.identity,
+		)?;
+
+		let local_path = listener
+			.local_addr()
+			.map_err(|_| LocalTransportRefusal::EndpointUnavailable)?
+			.as_pathname()
+			.map(Path::to_owned);
+
+		if local_path.as_deref() != Some(binding.stage_path.as_path()) {
+			return Err(LocalTransportRefusal::EndpointReplaced);
+		}
+		if listener.take_error().map_err(|_| LocalTransportRefusal::EndpointUnavailable)?.is_some()
+		{
+			return Err(LocalTransportRefusal::EndpointUnavailable);
+		}
+
+		Ok(())
+	}
+
+	#[cfg(target_os = "macos")]
+	pub(super) fn validate_installer_namespace_lock_fd(
+		authority: &LocalTransportAuthority,
+		raw_fd: RawFd,
+	) -> Result<File, LocalTransportRefusal> {
+		if raw_fd < 3 {
+			return Err(LocalTransportRefusal::UnsafeEndpoint);
+		}
+
+		// SAFETY: `F_GETFD` reads descriptor flags and retains no process memory pointer.
+		let inherited_flags = unsafe { libc::fcntl(raw_fd, libc::F_GETFD) };
+
+		if inherited_flags == -1 {
+			return Err(LocalTransportRefusal::UnsafeEndpoint);
+		}
+
+		// SAFETY: `F_GETFD` proved that this process owns an open descriptor. Ownership
+		// transfers to the returned file and the installer retains its original duplicate.
+		let file = unsafe { File::from_raw_fd(raw_fd) };
+		let directory =
+			DirectoryBinding::open(authority.endpoint_path(), authority.service_owner_uid)?;
+		let metadata = file.metadata().map_err(|_| LocalTransportRefusal::UnsafeEndpoint)?;
+		let identity = LockIdentity::from_metadata(&metadata);
+
+		if !secure_namespace_lock_metadata(&metadata, authority.service_owner_uid) {
+			return Err(LocalTransportRefusal::UnsafeEndpoint);
+		}
+
+		directory.verify_namespace_lock_file(&file, identity)?;
+
+		// SAFETY: the owned descriptor remains open and `F_GETFD` retains no pointer.
+		let descriptor_flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFD) };
+
+		if descriptor_flags == -1 {
+			return Err(LocalTransportRefusal::EndpointUnavailable);
+		}
+
+		// SAFETY: the owned descriptor remains open and the integer flags are valid.
+		let close_on_exec = unsafe {
+			libc::fcntl(file.as_raw_fd(), libc::F_SETFD, descriptor_flags | libc::FD_CLOEXEC)
+		};
+
+		if close_on_exec == -1 {
+			return Err(LocalTransportRefusal::EndpointUnavailable);
+		}
+
+		// SAFETY: `F_GETFD` reads back the flags of the still-owned descriptor.
+		let applied_flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFD) };
+
+		if applied_flags == -1 || applied_flags & libc::FD_CLOEXEC == 0 {
+			return Err(LocalTransportRefusal::EndpointUnavailable);
+		}
+
+		Ok(file)
+	}
+
+	pub(super) fn remove_publication(
+		authority: &LocalTransportAuthority,
+		listener: &UnixListener,
+		binding: &EndpointBinding,
+		namespace_lock: &NamespaceLock,
+	) -> Result<(), LocalTransportRefusal> {
+		revalidate_listener(authority, listener, binding, namespace_lock)?;
+
+		binding.directory.unlink_socket_while_locked(
+			namespace_lock,
+			CANONICAL_NAME,
+			binding.identity,
+		)
+	}
+
+	pub(super) fn effective_user_id() -> u32 {
+		// SAFETY: `geteuid` has no arguments or failure return.
+		unsafe { libc::geteuid() }
+	}
+
+	pub(super) async fn bind(
+		authority: &LocalTransportAuthority,
+	) -> Result<LocalTransportListener, LocalTransportRefusal> {
+		authority.verify_process_owner()?;
+
+		let stage_path = stage_path(authority.endpoint_path())?;
+
+		if !endpoint_path_fits(authority.endpoint_path()) || !endpoint_path_fits(&stage_path) {
+			return Err(LocalTransportRefusal::UnsafeEndpoint);
+		}
+
+		authority
+			.paths
+			.ensure_local_transport_layout()
+			.map_err(|_| LocalTransportRefusal::UnsafeDirectory)?;
+
+		let directory =
+			DirectoryBinding::open(authority.endpoint_path(), authority.service_owner_uid)?;
+		let namespace_lock = NamespaceLock::acquire(&directory)?;
+
+		recover_name(authority, &directory, &namespace_lock, STAGE_NAME, &stage_path).await?;
+		recover_name(
+			authority,
+			&directory,
+			&namespace_lock,
+			CANONICAL_NAME,
+			authority.endpoint_path(),
+		)
+		.await?;
+
+		authority.verify_process_owner()?;
+		directory.verify_namespace_lock(&namespace_lock)?;
+		directory.verify_absent(STAGE_NAME)?;
+		directory.verify_absent(CANONICAL_NAME)?;
+
+		let listener = UnixListener::bind(&stage_path)
+			.map_err(|_| LocalTransportRefusal::EndpointUnavailable)?;
+		let initial = directory
+			.socket_identity(STAGE_NAME)
+			.map_err(|_| LocalTransportRefusal::EndpointReplaced)?;
+
+		if initial.uid != authority.service_owner_uid || initial.links != 1 {
+			drop(listener);
+
+			return Err(LocalTransportRefusal::UnsafeEndpoint);
+		}
+		if chmod_socket(&directory, STAGE_NAME, PRIVATE_FILE_MODE).is_err() {
+			directory.remove_if_file_identity(&namespace_lock, STAGE_NAME, initial);
+
+			drop(listener);
+
+			return Err(LocalTransportRefusal::UnsafeEndpoint);
+		}
+
+		let identity = match directory.socket_identity(STAGE_NAME) {
+			Ok(identity)
+				if identity.file == initial.file
+					&& identity.links == initial.links
+					&& secure_socket(identity, authority.service_owner_uid) =>
+				identity,
+			_ => {
+				directory.remove_if_file_identity(&namespace_lock, STAGE_NAME, initial);
+
+				drop(listener);
+
+				return Err(LocalTransportRefusal::EndpointReplaced);
+			},
+		};
+		let local_path = match listener.local_addr() {
+			Ok(address) => address.as_pathname().map(Path::to_owned),
+			Err(_) => {
+				directory.remove_if_identity(&namespace_lock, STAGE_NAME, identity);
+
+				drop(listener);
+
+				return Err(LocalTransportRefusal::EndpointUnavailable);
+			},
+		};
+
+		if local_path.as_deref() != Some(stage_path.as_path()) {
+			directory.remove_if_file_identity(&namespace_lock, STAGE_NAME, identity);
+
+			drop(listener);
+
+			return Err(LocalTransportRefusal::EndpointReplaced);
+		}
+
+		PendingPublication {
+			authority,
+			directory: Some(directory),
+			namespace_lock: Some(namespace_lock),
+			listener: Some(listener),
+			identity,
+			stage_path,
+			published: false,
+		}
+		.publish()
+	}
+
+	pub(super) async fn connect(
+		authority: &LocalTransportAuthority,
+	) -> Result<LocalTransportStream, LocalTransportRefusal> {
+		authority.verify_process_owner()?;
+
+		if !endpoint_path_fits(authority.endpoint_path()) {
+			return Err(LocalTransportRefusal::UnsafeEndpoint);
+		}
+
+		let directory =
+			DirectoryBinding::open(authority.endpoint_path(), authority.service_owner_uid)?;
+		let identity = directory.socket_identity(CANONICAL_NAME).map_err(map_initial_endpoint)?;
+
+		if !secure_socket(identity, authority.service_owner_uid) {
+			return Err(LocalTransportRefusal::UnsafeEndpoint);
+		}
+
+		directory.verify_socket(CANONICAL_NAME, identity)?;
+
+		let stream = match UnixStream::connect(authority.endpoint_path()).await {
+			Ok(stream) => stream,
+			Err(_) if directory.verify_socket(CANONICAL_NAME, identity).is_err() => {
+				return Err(LocalTransportRefusal::EndpointReplaced);
+			},
+			Err(_) => return Err(LocalTransportRefusal::EndpointUnavailable),
+		};
+		let peer =
+			stream.peer_cred().map_err(|_| LocalTransportRefusal::PeerCredentialsUnavailable)?;
+
+		if peer.uid() != authority.service_owner_uid {
+			return Err(LocalTransportRefusal::PeerUidMismatch);
+		}
+
+		directory.verify_socket(CANONICAL_NAME, identity)?;
+		authority.verify_process_owner()?;
+
+		Ok(stream)
+	}
+
 	fn stage_path(canonical: &Path) -> Result<PathBuf, LocalTransportRefusal> {
 		let parent = canonical.parent().ok_or(LocalTransportRefusal::UnsafeDirectory)?;
 
@@ -1267,8 +885,386 @@ mod platform {
 		}
 	}
 
-	pub(super) fn effective_user_id() -> u32 {
-		// SAFETY: `geteuid` has no arguments or failure return.
-		unsafe { libc::geteuid() }
+	async fn recover_name(
+		authority: &LocalTransportAuthority,
+		directory: &DirectoryBinding,
+		namespace_lock: &NamespaceLock,
+		name: &CStr,
+		path: &Path,
+	) -> Result<(), LocalTransportRefusal> {
+		let identity = match directory.socket_identity(name) {
+			Ok(identity) => identity,
+			Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+			Err(_) => return Err(LocalTransportRefusal::UnsafeEndpoint),
+		};
+
+		if !secure_socket(identity, authority.service_owner_uid) {
+			return Err(LocalTransportRefusal::UnsafeEndpoint);
+		}
+
+		directory.verify_socket_while_locked(namespace_lock, name, identity)?;
+
+		match time::timeout(STALE_PROBE_TIMEOUT, UnixStream::connect(path)).await {
+			Ok(Ok(_)) | Err(_) => Err(LocalTransportRefusal::EndpointInUse),
+			Ok(Err(error)) if error.kind() == ErrorKind::ConnectionRefused => {
+				authority.verify_process_owner()?;
+				directory.verify_socket_while_locked(namespace_lock, name, identity)?;
+
+				directory.unlink_socket_while_locked(namespace_lock, name, identity)
+			},
+			Ok(Err(_)) => {
+				if directory.verify_socket_while_locked(namespace_lock, name, identity).is_err() {
+					Err(LocalTransportRefusal::EndpointReplaced)
+				} else {
+					Err(LocalTransportRefusal::EndpointUnavailable)
+				}
+			},
+		}
 	}
 }
+
+/// One kernel-authenticated local byte stream on a supported Unix host.
+#[cfg(unix)]
+pub use tokio::net::UnixStream as LocalTransportStream;
+
+use std::{
+	fmt::{Debug, Display, Formatter},
+	path::{Path, PathBuf},
+};
+#[cfg(target_os = "macos")] use std::{fs::File, os::fd::RawFd};
+
+use decodex_core::{BlobHash, DecodexPaths, LocalTrustPolicy};
+
+/// Uninhabited local stream facade for unsupported build targets.
+#[cfg(not(unix))]
+pub struct LocalTransportStream {
+	_private: (),
+}
+#[cfg(not(unix))]
+impl tokio::io::AsyncRead for LocalTransportStream {
+	fn poll_read(
+		self: std::pin::Pin<&mut Self>,
+		_context: &mut std::task::Context<'_>,
+		_buffer: &mut tokio::io::ReadBuf<'_>,
+	) -> std::task::Poll<std::io::Result<()>> {
+		std::task::Poll::Ready(Err(std::io::Error::new(
+			std::io::ErrorKind::Unsupported,
+			"local transport is unsupported on this platform",
+		)))
+	}
+}
+
+#[cfg(not(unix))]
+impl tokio::io::AsyncWrite for LocalTransportStream {
+	fn poll_write(
+		self: std::pin::Pin<&mut Self>,
+		_context: &mut std::task::Context<'_>,
+		_buffer: &[u8],
+	) -> std::task::Poll<std::io::Result<usize>> {
+		std::task::Poll::Ready(Err(std::io::Error::new(
+			std::io::ErrorKind::Unsupported,
+			"local transport is unsupported on this platform",
+		)))
+	}
+
+	fn poll_flush(
+		self: std::pin::Pin<&mut Self>,
+		_context: &mut std::task::Context<'_>,
+	) -> std::task::Poll<std::io::Result<()>> {
+		std::task::Poll::Ready(Err(std::io::Error::new(
+			std::io::ErrorKind::Unsupported,
+			"local transport is unsupported on this platform",
+		)))
+	}
+
+	fn poll_shutdown(
+		self: std::pin::Pin<&mut Self>,
+		_context: &mut std::task::Context<'_>,
+	) -> std::task::Poll<std::io::Result<()>> {
+		std::task::Poll::Ready(Err(std::io::Error::new(
+			std::io::ErrorKind::Unsupported,
+			"local transport is unsupported on this platform",
+		)))
+	}
+}
+
+/// The complete V2.17 local endpoint authority.
+#[derive(Clone, Eq, PartialEq)]
+pub struct LocalTransportAuthority {
+	paths: DecodexPaths,
+	endpoint_path: PathBuf,
+	policy: LocalTrustPolicy,
+	service_owner_uid: u32,
+}
+impl LocalTransportAuthority {
+	/// Resolve one enabled same-UID authority from the durable host policy.
+	pub fn new(
+		paths: DecodexPaths,
+		policy: LocalTrustPolicy,
+		service_owner_uid: Option<u32>,
+	) -> Result<Self, LocalTransportRefusal> {
+		let service_owner_uid = match (policy, service_owner_uid) {
+			(LocalTrustPolicy::Disabled, None) => return Err(LocalTransportRefusal::Disabled),
+			(LocalTrustPolicy::SameUid, Some(uid)) => uid,
+			_ => return Err(LocalTransportRefusal::InvalidPolicy),
+		};
+
+		if !cfg!(any(target_os = "linux", target_os = "macos")) {
+			return Err(LocalTransportRefusal::UnsupportedPlatform);
+		}
+
+		let authority = Self {
+			endpoint_path: paths.local_transport_socket(),
+			paths,
+			policy,
+			service_owner_uid,
+		};
+
+		#[cfg(any(target_os = "linux", target_os = "macos"))]
+		authority.verify_process_owner()?;
+
+		Ok(authority)
+	}
+
+	pub(crate) fn draft_scope_key(&self) -> String {
+		let mut identity = self.endpoint_path.as_os_str().as_encoded_bytes().to_vec();
+
+		identity.extend_from_slice(&self.service_owner_uid.to_le_bytes());
+		identity.push(match self.policy {
+			LocalTrustPolicy::Disabled => 0,
+			LocalTrustPolicy::SameUid => 1,
+		});
+
+		BlobHash::digest(&identity).to_hex()
+	}
+
+	/// Bind and atomically publish the fixed owner-only endpoint.
+	pub async fn bind(&self) -> Result<LocalTransportListener, LocalTransportRefusal> {
+		#[cfg(any(target_os = "linux", target_os = "macos"))]
+		{
+			platform::bind(self).await
+		}
+		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+		{
+			Err(LocalTransportRefusal::UnsupportedPlatform)
+		}
+	}
+
+	/// Connect after current endpoint identity and kernel server-peer validation.
+	///
+	/// Each call captures and validates the current publication. No endpoint or
+	/// peer observation is reused across reconnects.
+	pub async fn connect(&self) -> Result<LocalTransportStream, LocalTransportRefusal> {
+		#[cfg(any(target_os = "linux", target_os = "macos"))]
+		{
+			platform::connect(self).await
+		}
+		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+		{
+			Err(LocalTransportRefusal::UnsupportedPlatform)
+		}
+	}
+
+	/// Validate and retain one installer-shaped inherited descriptor without acquiring a lock.
+	#[cfg(target_os = "macos")]
+	#[doc(hidden)]
+	pub fn validate_installer_namespace_lock_fd(
+		&self,
+		raw_fd: RawFd,
+	) -> Result<File, LocalTransportRefusal> {
+		self.verify_process_owner()?;
+
+		platform::validate_installer_namespace_lock_fd(self, raw_fd)
+	}
+
+	fn endpoint_path(&self) -> &Path {
+		&self.endpoint_path
+	}
+
+	#[cfg(any(target_os = "linux", target_os = "macos"))]
+	fn verify_process_owner(&self) -> Result<(), LocalTransportRefusal> {
+		if platform::effective_user_id() == self.service_owner_uid {
+			Ok(())
+		} else {
+			Err(LocalTransportRefusal::EffectiveUidMismatch)
+		}
+	}
+}
+
+impl Debug for LocalTransportAuthority {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("LocalTransportAuthority")
+			.field("policy", &self.policy)
+			.field("endpoint", &"<redacted>")
+			.field("service_owner_uid", &"<configured>")
+			.finish()
+	}
+}
+
+/// The non-cloneable singleton daemon capability.
+///
+/// It owns the published listener, retained directory identity, and one lifetime
+/// namespace lock from acquisition through release-last cleanup.
+pub struct LocalTransportListener {
+	authority: LocalTransportAuthority,
+	#[cfg(any(target_os = "linux", target_os = "macos"))]
+	listener: Option<tokio::net::UnixListener>,
+	#[cfg(any(target_os = "linux", target_os = "macos"))]
+	binding: Option<platform::EndpointBinding>,
+	#[cfg(any(target_os = "linux", target_os = "macos"))]
+	namespace_lock: Option<platform::NamespaceLock>,
+}
+impl LocalTransportListener {
+	/// Accept one stream after point-in-time namespace and peer validation.
+	///
+	/// A peer-credential refusal applies only to this connection. A namespace or
+	/// listener refusal invalidates the published listener.
+	pub async fn accept(&mut self) -> Result<LocalTransportStream, LocalTransportRefusal> {
+		#[cfg(any(target_os = "linux", target_os = "macos"))]
+		{
+			let listener =
+				self.listener.as_mut().ok_or(LocalTransportRefusal::EndpointUnavailable)?;
+			let (stream, _) =
+				listener.accept().await.map_err(|_| LocalTransportRefusal::EndpointUnavailable)?;
+			let peer = stream
+				.peer_cred()
+				.map_err(|_| LocalTransportRefusal::PeerCredentialsUnavailable)?;
+
+			if peer.uid() != self.authority.service_owner_uid {
+				return Err(LocalTransportRefusal::PeerUidMismatch);
+			}
+
+			self.revalidate()?;
+
+			Ok(stream)
+		}
+
+		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+		{
+			Err(LocalTransportRefusal::UnsupportedPlatform)
+		}
+	}
+
+	/// Validate the current published path, retained directory, and namespace lock.
+	pub fn revalidate(&self) -> Result<(), LocalTransportRefusal> {
+		#[cfg(any(target_os = "linux", target_os = "macos"))]
+		{
+			let listener =
+				self.listener.as_ref().ok_or(LocalTransportRefusal::EndpointUnavailable)?;
+			let binding =
+				self.binding.as_ref().ok_or(LocalTransportRefusal::EndpointUnavailable)?;
+			let namespace_lock =
+				self.namespace_lock.as_ref().ok_or(LocalTransportRefusal::EndpointUnavailable)?;
+
+			platform::revalidate_listener(&self.authority, listener, binding, namespace_lock)
+		}
+
+		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+		{
+			Err(LocalTransportRefusal::UnsupportedPlatform)
+		}
+	}
+
+	/// Remove only the retained publication, close the listener, and release the
+	/// namespace lock last.
+	///
+	/// The runtime calls this only after it has harvested every owned task.
+	pub fn cleanup(mut self) -> Result<(), LocalTransportRefusal> {
+		self.release(true)
+	}
+
+	#[cfg(any(target_os = "linux", target_os = "macos"))]
+	fn release(&mut self, report: bool) -> Result<(), LocalTransportRefusal> {
+		let result =
+			match (self.listener.as_ref(), self.binding.as_ref(), self.namespace_lock.as_ref()) {
+				(Some(listener), Some(binding), Some(namespace_lock)) =>
+					platform::remove_publication(&self.authority, listener, binding, namespace_lock),
+				_ => Err(LocalTransportRefusal::EndpointUnavailable),
+			};
+
+		drop(self.listener.take());
+		drop(self.binding.take());
+		drop(self.namespace_lock.take());
+
+		if report { result } else { Ok(()) }
+	}
+
+	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+	fn release(&mut self, _report: bool) -> Result<(), LocalTransportRefusal> {
+		Err(LocalTransportRefusal::UnsupportedPlatform)
+	}
+}
+
+impl Debug for LocalTransportListener {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("LocalTransportListener")
+			.field("endpoint", &"<redacted>")
+			.field("same_uid", &true)
+			.finish()
+	}
+}
+
+impl Drop for LocalTransportListener {
+	fn drop(&mut self) {
+		let _ = self.release(false);
+	}
+}
+
+/// Closed local admission and endpoint-integrity refusal classes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocalTransportRefusal {
+	/// Durable host policy disables local admission.
+	Disabled,
+	/// Policy and configured service-owner UID do not form one valid state.
+	InvalidPolicy,
+	/// No validated host configuration supplied local transport authority.
+	ConfigurationUnavailable,
+	/// The build target has no accepted local peer-credential implementation.
+	UnsupportedPlatform,
+	/// The process effective UID differs from the configured service owner.
+	EffectiveUidMismatch,
+	/// The endpoint directory is missing, linked, replaced, wrongly owned, or wrongly scoped.
+	UnsafeDirectory,
+	/// A socket or namespace-lock entry has an unsafe type, owner, mode, or link count.
+	UnsafeEndpoint,
+	/// No current endpoint can be reached or created.
+	EndpointUnavailable,
+	/// Another daemon holds the namespace or one observed endpoint may still be live.
+	EndpointInUse,
+	/// A retained directory, lock, or socket identity changed or became ambiguous.
+	EndpointReplaced,
+	/// The kernel did not provide an unambiguous peer credential.
+	PeerCredentialsUnavailable,
+	/// The kernel-authenticated peer UID differs from the service owner.
+	PeerUidMismatch,
+}
+impl LocalTransportRefusal {
+	/// Whether a bound service must stop accepting later connections.
+	pub const fn invalidates_listener(self) -> bool {
+		!matches!(self, Self::PeerCredentialsUnavailable | Self::PeerUidMismatch)
+	}
+}
+
+impl Display for LocalTransportRefusal {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str(match self {
+			Self::Disabled => "local transport is disabled",
+			Self::InvalidPolicy => "local transport policy is invalid",
+			Self::ConfigurationUnavailable => "local transport configuration is unavailable",
+			Self::UnsupportedPlatform => "local peer identity is unsupported on this platform",
+			Self::EffectiveUidMismatch =>
+				"process effective UID does not match the local service owner",
+			Self::UnsafeDirectory => "local endpoint directory is unsafe",
+			Self::UnsafeEndpoint => "local endpoint or namespace lock is unsafe",
+			Self::EndpointUnavailable => "local endpoint is unavailable",
+			Self::EndpointInUse => "local endpoint namespace may have a live daemon",
+			Self::EndpointReplaced => "local endpoint identity was replaced or became ambiguous",
+			Self::PeerCredentialsUnavailable => "kernel peer identity is unavailable",
+			Self::PeerUidMismatch => "kernel peer UID does not match the local service owner",
+		})
+	}
+}
+
+impl std::error::Error for LocalTransportRefusal {}
