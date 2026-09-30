@@ -5,6 +5,23 @@ use decodex_protocol::{
 };
 
 impl AgentSurface {
+	pub(super) fn reset_integrations(&mut self) {
+		self.integrations_task = None;
+		self.integrations = None;
+	}
+
+	pub(super) fn invalidate_integrations(&mut self, next: &AgentSnapshotDto) {
+		let Some((work, _)) = &self.integrations else { return };
+		let before =
+			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
+		let after = next.work_items.iter().find(|w| &w.id == work);
+		if !matches!((before, after), (Some(a), Some(b)) if a.codex_thread_id == b.codex_thread_id)
+			|| self.snapshot.as_ref().is_none_or(|s| s.runtime_source != next.runtime_source)
+		{
+			self.reset_integrations();
+		}
+	}
+
 	#[cfg(feature = "visual-capture")]
 	#[allow(
 		dead_code,
@@ -74,8 +91,7 @@ impl AgentSurface {
 			move |s, cx| {
 				if s.integrations.as_ref().is_some_and(|(owner, _)| owner == &work_id) {
 					s.reset_app_exposure();
-					s.integrations = None;
-					s.integrations_task = None;
+					s.reset_integrations();
 					cx.notify();
 				} else {
 					s.load_integrations(&work_id, cx);
@@ -129,6 +145,7 @@ impl AgentSurface {
 	}
 
 	fn load_integrations(&mut self, work: &str, cx: &mut Context<Self>) {
+		// Dropping the previous GPUI task cancels its completion before replacement.
 		self.integrations_task = None;
 		if !self.integrations.as_ref().is_some_and(|(owner, _)| owner == work) {
 			self.integrations = Some((work.into(), None));
@@ -140,7 +157,6 @@ impl AgentSurface {
 		};
 		let work = work.to_owned();
 		let requested = work.clone();
-		let generation = self.generation;
 		let query = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
@@ -151,8 +167,7 @@ impl AgentSurface {
 		self.integrations_task = Some(cx.spawn(async move |surface, cx| {
 			let result = query.await.unwrap_or(AgentIntegrationsResult::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
-				if s.generation == generation
-					&& s.selected.as_deref() == Some(work.as_str())
+				if s.selected.as_deref() == Some(work.as_str())
 					&& s.integrations.as_ref().is_some_and(|(owner, _)| owner == &work)
 				{
 					s.integrations = Some((work, Some(result)));
@@ -386,6 +401,94 @@ mod tests {
 			AgentAppInventory::CapacityExceeded,
 		] {
 			assert!(!app_inventory_text(&state).contains("No installed Apps"));
+		}
+	}
+	#[gpui::test]
+	fn ordinary_refresh_keeps_integration_status_read(cx: &mut gpui::TestAppContext) {
+		use decodex_protocol::{
+			CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
+			ServerId, ServerMessage,
+		};
+		use futures_util::{SinkExt, StreamExt};
+		use tokio_tungstenite::tungstenite::Message;
+		let (_dir, profile, server) = super::super::wire_test_support::fixture(
+			|listener| async move {
+				let mut socket = super::super::wire_test_support::accept(&listener).await;
+				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+					panic!("text query")
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
+					panic!("read only")
+				};
+				assert!(
+					matches!(query.payload, QueryPayload::GetAgentIntegrations { ref work_id } if work_id.as_str() == "agent")
+				);
+				let response = ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::AgentIntegrations(
+						AgentIntegrationsResult::CapacityExceeded,
+					),
+				});
+				socket
+					.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
+					.await
+					.unwrap();
+			},
+		);
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.profile = Some(profile);
+			s.load_integrations("agent", cx);
+			assert!(s.integrations_task.is_some());
+			s.generation += 1;
+			s.apply_result(Ok(AgentSnapshotResult::Available(s.snapshot.clone().unwrap())));
+		});
+		cx.run_until_parked();
+		server.join().unwrap();
+		surface.read_with(cx, |s, _| {
+			assert!(s.integrations_task.is_none(), "refresh must not strand a completed read");
+			assert!(matches!(
+				s.integrations,
+				Some((_, Some(AgentIntegrationsResult::CapacityExceeded)))
+			));
+		});
+	}
+
+	#[gpui::test]
+	fn integration_status_does_not_survive_a_changed_or_disconnected_source(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		for change in ["thread", "source", "removed", "disconnect", "failed"] {
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				let original = s.snapshot.clone().unwrap();
+				s.integrations =
+					Some(("agent".into(), Some(AgentIntegrationsResult::CapacityExceeded)));
+				let mut next = original.clone();
+				match change {
+					"thread" =>
+						next.work_items
+							.iter_mut()
+							.find(|w| w.id == "agent")
+							.unwrap()
+							.codex_thread_id = Some("replacement-thread".into()),
+					"source" =>
+						next.runtime_source = Some(EntityId::new("replacement-source").unwrap()),
+					"removed" => next.work_items.retain(|w| w.id != "agent"),
+					"disconnect" => s.mark_stale(cx),
+					"failed" => s.apply_result(Err(())),
+					_ => unreachable!(),
+				}
+				if !matches!(change, "disconnect" | "failed") {
+					s.apply_result(Ok(AgentSnapshotResult::Available(next)));
+				}
+				s.apply_result(Ok(AgentSnapshotResult::Available(original)));
+				assert!(s.integrations.is_none(), "stale inventory returned after {change}");
+			});
 		}
 	}
 }
