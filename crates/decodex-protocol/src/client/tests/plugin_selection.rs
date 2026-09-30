@@ -1,8 +1,20 @@
-use super::*;
+use std::time::Duration;
+
+use futures_util::{SinkExt as _, StreamExt as _};
+use tokio::time;
+use tokio_tungstenite::tungstenite::Message;
+
+use crate::{
+	AgentActionDto, AgentClient, AgentCommandResponse, CURRENT_VERSION, ClientMessage,
+	ClientProfile, CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope, EntityId,
+	EntityRevision, IdempotencyKey, ReceiptDisposition, ResultPayload, ServerId, ServerMessage,
+	WireText,
+	client::tests::{self, SERVER_ID},
+};
 
 #[tokio::test]
 async fn plugin_selection_waits_for_its_original_reply_without_retry() {
-	let (temp, authority) = local_transport();
+	let (temp, authority) = tests::local_transport();
 	let mut listener = authority.bind().await.unwrap();
 	let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 	let server = tokio::spawn(async move {
@@ -11,7 +23,7 @@ async fn plugin_selection_waits_for_its_original_reply_without_retry() {
 			tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
 		let _ = socket.next().await;
 
-		for message in initial(SERVER_ID) {
+		for message in tests::initial(SERVER_ID) {
 			socket.send(message).await.unwrap();
 		}
 
@@ -23,11 +35,11 @@ async fn plugin_selection_waits_for_its_original_reply_without_retry() {
 		};
 
 		assert!(
-			matches!(&command.payload, crate::CommandPayload::Agent { action } if matches!(action.as_ref(), crate::AgentActionDto::SetTaskPlugin { work_id, thread_id, plugin_id, enabled: false, .. } if work_id.as_str()=="work" && thread_id.as_str()=="thread" && plugin_id.as_str()=="plugin"))
+			matches!(&command.payload, CommandPayload::Agent { action } if matches!(action.as_ref(), AgentActionDto::SetTaskPlugin { work_id, thread_id, plugin_id, enabled: false, .. } if work_id.as_str()=="work" && thread_id.as_str()=="thread" && plugin_id.as_str()=="plugin"))
 		);
 
 		socket
-			.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
+			.send(tests::typed(ServerMessage::CommandReceipt(CommandReceipt {
 				version: CURRENT_VERSION,
 				server_id: ServerId::new(SERVER_ID).unwrap(),
 				client_command_id: command.client_command_id.clone(),
@@ -42,7 +54,7 @@ async fn plugin_selection_waits_for_its_original_reply_without_retry() {
 		time::sleep(Duration::from_secs(6)).await;
 
 		let _ = socket
-			.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
+			.send(tests::typed(ServerMessage::CommandResult(CommandResultEnvelope {
 				version: CURRENT_VERSION,
 				server_id: ServerId::new(SERVER_ID).unwrap(),
 				client_command_id: command.client_command_id,
@@ -65,9 +77,9 @@ async fn plugin_selection_waits_for_its_original_reply_without_retry() {
 
 		listener.cleanup().unwrap();
 	});
-	let response = crate::AgentClient::new(profile)
+	let response = AgentClient::new(profile)
 		.execute(
-			crate::AgentActionDto::SetTaskPlugin {
+			AgentActionDto::SetTaskPlugin {
 				work_id: EntityId::new("work").unwrap(),
 				thread_id: EntityId::new("thread").unwrap(),
 				review_token: WireText::new("a".repeat(64)).unwrap(),
@@ -82,7 +94,7 @@ async fn plugin_selection_waits_for_its_original_reply_without_retry() {
 	server.await.unwrap();
 
 	assert!(
-		matches!(response, crate::AgentCommandResponse::Accepted { work_id } if work_id.as_str()=="work"),
+		matches!(response, AgentCommandResponse::Accepted { work_id } if work_id.as_str()=="work"),
 		"The original reply must retain its native settings budget"
 	);
 }

@@ -1,11 +1,22 @@
-use super::*;
+use futures_util::{SinkExt as _, StreamExt as _};
+use tokio_tungstenite::tungstenite::Message;
+
+use crate::{
+	AgentActionDto, AgentClient, AgentExecutionOverrides, AgentModelSettingsResult,
+	CURRENT_VERSION, ClientFailure, ClientMessage, ClientProfile, CommandPayload, EntityId,
+	IdempotencyKey, PromptDraft, PromptEditEvidence, PromptEditPhase, PromptEditStatus,
+	PromptInputSend, PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload,
+	PromptInputUploadStatus, QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId,
+	ServerMessage, Sha256Digest, WireText,
+	client::tests::{self, SERVER_ID},
+};
 
 #[tokio::test]
 async fn prompt_edit_pages_preserve_canonical_content_and_reject_changed_evidence() {
 	for mode in ["complete", "changed-token", "wrong-offset"] {
-		let content = serde_json::json!([{"type":"text","text":"界".repeat(26000),"text_elements":[]},{"type":"image","fileId":"native-file","detail":"original"}]);
+		let content = serde_json::json!([{"type":"text","text":"界".repeat(26_000),"text_elements":[]},{"type":"image","fileId":"native-file","detail":"original"}]);
 		let encoded = serde_json::to_string(&content).unwrap();
-		let (temp, authority) = local_transport();
+		let (temp, authority) = tests::local_transport();
 		let mut listener = authority.bind().await.unwrap();
 		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let server = tokio::spawn(async move {
@@ -17,7 +28,7 @@ async fn prompt_edit_pages_preserve_canonical_content_and_reject_changed_evidenc
 				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 				let _ = socket.next().await;
 
-				for response in initial(SERVER_ID) {
+				for response in tests::initial(SERVER_ID) {
 					socket.send(response).await.unwrap();
 				}
 
@@ -29,20 +40,20 @@ async fn prompt_edit_pages_preserve_canonical_content_and_reject_changed_evidenc
 				};
 
 				assert!(
-					matches!(&query.payload,crate::QueryPayload::GetAgentPromptEdit {work_id,thread_id,review_token,offset} if work_id.as_str()=="root" && thread_id.as_str()=="native" && *offset==cursor as u64 && review_token.as_ref().map(|v|v.as_str())==if page==0 {None} else {Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")})
+					matches!(&query.payload,QueryPayload::GetAgentPromptEdit {work_id,thread_id,review_token,offset} if work_id.as_str()=="root" && thread_id.as_str()=="native" && *offset==cursor as u64 && review_token.as_ref().map(|v|v.as_str())==if page==0 {None} else {Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")})
 				);
 
-				let mut end = (cursor + 64 * 1024).min(encoded.len());
+				let mut end = (cursor + 64 * 1_024).min(encoded.len());
 
 				while !encoded.is_char_boundary(end) {
 					end -= 1;
 				}
 
-				let result = crate::PromptEditStatus {
+				let result = PromptEditStatus {
 					work_id: EntityId::new("root").unwrap(),
 					thread_id: WireText::new("native").unwrap(),
-					phase: crate::PromptEditPhase::Review,
-					evidence: Some(crate::PromptEditEvidence {
+					phase: PromptEditPhase::Review,
+					evidence: Some(PromptEditEvidence {
 						review_token: WireText::new(if page == 1 && mode == "changed-token" {
 							"b".repeat(64)
 						} else {
@@ -64,7 +75,7 @@ async fn prompt_edit_pages_preserve_canonical_content_and_reject_changed_evidenc
 				cursor = end;
 
 				socket
-					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					.send(tests::typed(ServerMessage::QueryResult(QueryResultEnvelope {
 						version: CURRENT_VERSION,
 						server_id: ServerId::new(SERVER_ID).unwrap(),
 						query_id: query.query_id,
@@ -78,7 +89,7 @@ async fn prompt_edit_pages_preserve_canonical_content_and_reject_changed_evidenc
 
 			listener.cleanup().unwrap();
 		});
-		let result = crate::AgentClient::new(profile)
+		let result = AgentClient::new(profile)
 			.prompt_edit(EntityId::new("root").unwrap(), WireText::new("native").unwrap())
 			.await;
 
@@ -95,16 +106,16 @@ async fn prompt_edit_pages_preserve_canonical_content_and_reject_changed_evidenc
 #[tokio::test]
 async fn prompt_upload_query_rejects_crossed_sources_and_impossible_progress() {
 	for mode in ["valid", "crossed", "overflow"] {
-		let upload = crate::PromptInputUpload {
+		let upload = PromptInputUpload {
 			work_id: EntityId::new("root").unwrap(),
 			thread_id: WireText::new("native").unwrap(),
 			edit_receipt_id: 1,
-			upload_id: crate::IdempotencyKey::new("upload").unwrap(),
-			sha256: crate::Sha256Digest::new("a".repeat(64)).unwrap(),
+			upload_id: IdempotencyKey::new("upload").unwrap(),
+			sha256: Sha256Digest::new("a".repeat(64)).unwrap(),
 			total_bytes: 128,
 		};
 		let expected = upload.clone();
-		let (temp, authority) = local_transport();
+		let (temp, authority) = tests::local_transport();
 		let mut listener = authority.bind().await.unwrap();
 		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let server = tokio::spawn(async move {
@@ -113,7 +124,7 @@ async fn prompt_upload_query_rejects_crossed_sources_and_impossible_progress() {
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 			let _ = socket.next().await;
 
-			for response in initial(SERVER_ID) {
+			for response in tests::initial(SERVER_ID) {
 				socket.send(response).await.unwrap();
 			}
 
@@ -125,7 +136,7 @@ async fn prompt_upload_query_rejects_crossed_sources_and_impossible_progress() {
 			};
 
 			assert!(
-				matches!(&query.payload, crate::QueryPayload::GetAgentPromptInputUpload { upload } if upload == &expected)
+				matches!(&query.payload, QueryPayload::GetAgentPromptInputUpload { upload } if upload == &expected)
 			);
 
 			let mut echoed = expected;
@@ -134,13 +145,13 @@ async fn prompt_upload_query_rejects_crossed_sources_and_impossible_progress() {
 				echoed.edit_receipt_id += 1;
 			}
 
-			let status = crate::PromptInputUploadStatus::Receiving {
+			let status = PromptInputUploadStatus::Receiving {
 				upload: echoed,
 				received_bytes: if mode == "overflow" { 129 } else { 64 },
 			};
 
 			socket
-				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+				.send(tests::typed(ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(SERVER_ID).unwrap(),
 					query_id: query.query_id,
@@ -153,7 +164,7 @@ async fn prompt_upload_query_rejects_crossed_sources_and_impossible_progress() {
 
 			listener.cleanup().unwrap();
 		});
-		let result = crate::AgentClient::new(profile).prompt_input_upload_status(upload).await;
+		let result = AgentClient::new(profile).prompt_input_upload_status(upload).await;
 
 		server.await.unwrap();
 
@@ -168,21 +179,21 @@ async fn prompt_upload_query_rejects_crossed_sources_and_impossible_progress() {
 #[tokio::test]
 async fn prompt_upload_resumes_durable_bytes_after_lost_replies_without_submitting() {
 	for mode in ["fresh", "resume", "no-progress"] {
-		let input = crate::PromptDraft::new(vec![
-			serde_json::json!({"type":"text","text":"界\\\"".repeat(18000),"text_elements":[]}),
+		let input = PromptDraft::new(vec![
+			serde_json::json!({"type":"text","text":"界\\\"".repeat(18_000),"text_elements":[]}),
 		])
 		.unwrap();
 		let encoded = serde_json::to_string(&input).unwrap();
-		let upload = crate::PromptInputUpload {
+		let upload = PromptInputUpload {
 			work_id: EntityId::new("root").unwrap(),
 			thread_id: WireText::new("native").unwrap(),
 			edit_receipt_id: 1,
-			upload_id: crate::IdempotencyKey::new("upload").unwrap(),
+			upload_id: IdempotencyKey::new("upload").unwrap(),
 			sha256: input.fingerprint().unwrap(),
 			total_bytes: encoded.len() as u64,
 		};
 		let expected = upload.clone();
-		let (temp, authority) = local_transport();
+		let (temp, authority) = tests::local_transport();
 		let mut listener = authority.bind().await.unwrap();
 		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let server = tokio::spawn(async move {
@@ -196,7 +207,7 @@ async fn prompt_upload_resumes_durable_bytes_after_lost_replies_without_submitti
 				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 				let _ = socket.next().await;
 
-				for response in initial(SERVER_ID) {
+				for response in tests::initial(SERVER_ID) {
 					socket.send(response).await.unwrap();
 				}
 
@@ -204,28 +215,25 @@ async fn prompt_upload_resumes_durable_bytes_after_lost_replies_without_submitti
 					panic!("text frame")
 				};
 
-				assert!(request.len() < 256 * 1024);
+				assert!(request.len() < 256 * 1_024);
 
 				match serde_json::from_str::<ClientMessage>(&request).unwrap() {
 					ClientMessage::Query(query) => {
 						assert!(
-							matches!(&query.payload, crate::QueryPayload::GetAgentPromptInputUpload { upload } if upload == &expected)
+							matches!(&query.payload, QueryPayload::GetAgentPromptInputUpload { upload } if upload == &expected)
 						);
 
 						let status = if complete {
-							crate::PromptInputUploadStatus::Ready {
-								upload: expected.clone(),
-								input_id: 7,
-							}
+							PromptInputUploadStatus::Ready { upload: expected.clone(), input_id: 7 }
 						} else {
-							crate::PromptInputUploadStatus::Receiving {
+							PromptInputUploadStatus::Receiving {
 								upload: expected.clone(),
 								received_bytes: saved.len() as u64,
 							}
 						};
 
 						socket
-							.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+							.send(tests::typed(ServerMessage::QueryResult(QueryResultEnvelope {
 								version: CURRENT_VERSION,
 								server_id: ServerId::new(SERVER_ID).unwrap(),
 								query_id: query.query_id,
@@ -239,27 +247,23 @@ async fn prompt_upload_resumes_durable_bytes_after_lost_replies_without_submitti
 						}
 					},
 					ClientMessage::Command(command) => {
-						let crate::CommandPayload::Agent { action } = command.payload else {
+						let CommandPayload::Agent { action } = command.payload else {
 							panic!("only staging commands")
 						};
 
 						commands += 1;
 
 						match *action {
-							crate::AgentActionDto::UploadPromptInput {
-								upload,
-								offset,
-								fragment,
-							} => {
+							AgentActionDto::UploadPromptInput { upload, offset, fragment } => {
 								assert_eq!(upload, expected);
 								assert_eq!(offset as usize, saved.len());
-								assert!(fragment.len() <= 65536);
+								assert!(fragment.len() <= 65_536);
 
 								if mode != "no-progress" {
 									saved.push_str(&fragment);
 								}
 							},
-							crate::AgentActionDto::CompletePromptInputUpload { upload } => {
+							AgentActionDto::CompletePromptInputUpload { upload } => {
 								assert_eq!(upload, expected);
 								assert_eq!(saved, encoded);
 
@@ -275,7 +279,7 @@ async fn prompt_upload_resumes_durable_bytes_after_lost_replies_without_submitti
 
 			listener.cleanup().unwrap();
 		});
-		let result = crate::AgentClient::new(profile).stage_prompt_input(upload, &input).await;
+		let result = AgentClient::new(profile).stage_prompt_input(upload, &input).await;
 
 		server.await.unwrap();
 
@@ -290,8 +294,8 @@ async fn prompt_upload_resumes_durable_bytes_after_lost_replies_without_submitti
 #[tokio::test]
 async fn prompt_preflight_reads_current_settings_without_mutating_history() {
 	for mode in ["valid", "crossed", "oversized", "missing-model"] {
-		let input = crate::PromptDraft::new(vec![serde_json::json!({"type":"image","url":if mode == "oversized" { "x".repeat(decodex_core::MAX_NATIVE_MESSAGE_BYTES) } else { "data:image/png;base64,AA==".into() }})]).unwrap();
-		let (temp, authority) = local_transport();
+		let input = PromptDraft::new(vec![serde_json::json!({"type":"image","url":if mode == "oversized" { "x".repeat(decodex_core::MAX_NATIVE_MESSAGE_BYTES) } else { "data:image/png;base64,AA==".into() }})]).unwrap();
+		let (temp, authority) = tests::local_transport();
 		let mut listener = authority.bind().await.unwrap();
 		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let server = tokio::spawn(async move {
@@ -300,7 +304,7 @@ async fn prompt_preflight_reads_current_settings_without_mutating_history() {
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 			let _ = socket.next().await;
 
-			for response in initial(SERVER_ID) {
+			for response in tests::initial(SERVER_ID) {
 				socket.send(response).await.unwrap();
 			}
 
@@ -312,10 +316,10 @@ async fn prompt_preflight_reads_current_settings_without_mutating_history() {
 			};
 
 			assert!(
-				matches!(&query.payload, crate::QueryPayload::GetAgentModelSettings { work_id } if work_id.as_str()=="root")
+				matches!(&query.payload, QueryPayload::GetAgentModelSettings { work_id } if work_id.as_str()=="root")
 			);
 
-			let state = crate::AgentModelSettingsResult::Available {
+			let state = AgentModelSettingsResult::Available {
 				work_id: EntityId::new("root").unwrap(),
 				thread_id: EntityId::new(if mode == "crossed" { "other" } else { "native" })
 					.unwrap(),
@@ -330,7 +334,7 @@ async fn prompt_preflight_reads_current_settings_without_mutating_history() {
 			};
 
 			socket
-				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+				.send(tests::typed(ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(SERVER_ID).unwrap(),
 					query_id: query.query_id,
@@ -343,12 +347,12 @@ async fn prompt_preflight_reads_current_settings_without_mutating_history() {
 
 			listener.cleanup().unwrap();
 		});
-		let result = crate::AgentClient::new(profile)
+		let result = AgentClient::new(profile)
 			.preflight_prompt_input(
 				EntityId::new("root").unwrap(),
 				WireText::new("native").unwrap(),
 				&input,
-				&crate::AgentExecutionOverrides::default(),
+				&AgentExecutionOverrides::default(),
 			)
 			.await;
 
@@ -361,19 +365,19 @@ async fn prompt_preflight_reads_current_settings_without_mutating_history() {
 #[tokio::test]
 async fn prompt_send_readback_is_read_only_and_rejects_crossed_identity() {
 	for mode in ["accepted", "unknown", "crossed"] {
-		let identity = crate::PromptInputSendIdentity {
+		let identity = PromptInputSendIdentity {
 			work_id: EntityId::new("root").unwrap(),
 			thread_id: WireText::new("native").unwrap(),
 			edit_receipt_id: 1,
-			send: crate::PromptInputSend {
+			send: PromptInputSend {
 				input_id: 2,
-				sha256: crate::Sha256Digest::new("a".repeat(64)).unwrap(),
+				sha256: Sha256Digest::new("a".repeat(64)).unwrap(),
 				command_key: IdempotencyKey::new("send-once").unwrap(),
 				execution: Default::default(),
 			},
 		};
 		let expected = identity.clone();
-		let (temp, authority) = local_transport();
+		let (temp, authority) = tests::local_transport();
 		let mut listener = authority.bind().await.unwrap();
 		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let server = tokio::spawn(async move {
@@ -382,7 +386,7 @@ async fn prompt_send_readback_is_read_only_and_rejects_crossed_identity() {
 				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
 			let _ = socket.next().await;
 
-			for message in initial(SERVER_ID) {
+			for message in tests::initial(SERVER_ID) {
 				socket.send(message).await.unwrap();
 			}
 
@@ -394,7 +398,7 @@ async fn prompt_send_readback_is_read_only_and_rejects_crossed_identity() {
 			};
 
 			assert!(
-				matches!(&query.payload, crate::QueryPayload::GetAgentPromptInputSend { identity } if identity == &expected)
+				matches!(&query.payload, QueryPayload::GetAgentPromptInputSend { identity } if identity == &expected)
 			);
 
 			let mut echoed = expected;
@@ -403,13 +407,13 @@ async fn prompt_send_readback_is_read_only_and_rejects_crossed_identity() {
 				echoed.send.command_key = IdempotencyKey::new("other").unwrap();
 			}
 
-			let payload = QueryResultPayload::AgentPromptInputSend(crate::PromptInputSendStatus {
+			let payload = QueryResultPayload::AgentPromptInputSend(PromptInputSendStatus {
 				identity: echoed,
 				accepted_event_id: (mode != "unknown").then_some(42),
 			});
 
 			socket
-				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+				.send(tests::typed(ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(SERVER_ID).unwrap(),
 					query_id: query.query_id,
@@ -422,7 +426,7 @@ async fn prompt_send_readback_is_read_only_and_rejects_crossed_identity() {
 
 			listener.cleanup().unwrap();
 		});
-		let result = crate::AgentClient::new(profile).prompt_input_send_status(identity).await;
+		let result = AgentClient::new(profile).prompt_input_send_status(identity).await;
 
 		server.await.unwrap();
 
@@ -437,14 +441,14 @@ async fn prompt_send_readback_is_read_only_and_rejects_crossed_identity() {
 #[tokio::test]
 async fn prompt_media_resolution_preserves_parts_and_rejects_crossed_or_relative_bases() {
 	for mode in ["valid", "crossed", "relative", "missing"] {
-		let input = crate::PromptDraft::new(vec![
+		let input = PromptDraft::new(vec![
 			serde_json::json!({"type":"text","text":"Keep ../photo.png as literal prose"}),
 			serde_json::json!({"type":"localImage","path":"../photo.png","detail":"original","extension":{"keep":true}}),
 			serde_json::json!({"type":"localAudio","path":"recording.wav"}),
 			serde_json::json!({"type":"localImage","path":"/already/absolute.png"}),
 		]).unwrap();
 		let original = input.clone();
-		let (temp, authority) = local_transport();
+		let (temp, authority) = tests::local_transport();
 		let mut listener = authority.bind().await.unwrap();
 		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let server = tokio::spawn(async move {
@@ -453,7 +457,7 @@ async fn prompt_media_resolution_preserves_parts_and_rejects_crossed_or_relative
 				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
 			let _ = socket.next().await;
 
-			for response in initial(SERVER_ID) {
+			for response in tests::initial(SERVER_ID) {
 				socket.send(response).await.unwrap();
 			}
 
@@ -465,11 +469,11 @@ async fn prompt_media_resolution_preserves_parts_and_rejects_crossed_or_relative
 			};
 
 			assert!(
-				matches!(&query.payload, crate::QueryPayload::GetAgentPromptInputDirectory {work_id,thread_id} if work_id.as_str()=="root" && thread_id.as_str()=="native")
+				matches!(&query.payload, QueryPayload::GetAgentPromptInputDirectory {work_id,thread_id} if work_id.as_str()=="root" && thread_id.as_str()=="native")
 			);
 
 			socket
-				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+				.send(tests::typed(ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(SERVER_ID).unwrap(),
 					query_id: query.query_id,
@@ -502,7 +506,7 @@ async fn prompt_media_resolution_preserves_parts_and_rejects_crossed_or_relative
 
 			listener.cleanup().unwrap();
 		});
-		let result = crate::AgentClient::new(profile)
+		let result = AgentClient::new(profile)
 			.resolve_prompt_media(
 				EntityId::new("root").unwrap(),
 				WireText::new("native").unwrap(),

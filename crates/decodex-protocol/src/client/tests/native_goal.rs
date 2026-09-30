@@ -1,5 +1,15 @@
-use super::*;
-use crate::{AgentNativeGoal, AgentNativeGoalResult, AgentNativeGoalStatus};
+use std::time::Duration;
+
+use futures_util::{SinkExt as _, StreamExt as _};
+use tokio::time;
+use tokio_tungstenite::tungstenite::Message;
+
+use crate::{
+	AgentClient, AgentNativeGoal, AgentNativeGoalResult, AgentNativeGoalStatus, CURRENT_VERSION,
+	ClientFailure, ClientMessage, ClientProfile, EntityId, QueryPayload, QueryResultEnvelope,
+	QueryResultPayload, ServerId, ServerMessage,
+	client::tests::{self, SERVER_ID},
+};
 
 fn observed(change: &str) -> AgentNativeGoalResult {
 	match change {
@@ -42,7 +52,7 @@ async fn native_goal_preserves_authoritative_empty_and_rejects_crossed_sources()
 		"unsupported",
 		"disabled",
 	] {
-		let (temp, authority) = local_transport();
+		let (temp, authority) = tests::local_transport();
 		let mut listener = authority.bind().await.unwrap();
 		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let expected = observed(change);
@@ -53,7 +63,7 @@ async fn native_goal_preserves_authoritative_empty_and_rejects_crossed_sources()
 				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
 			let _ = socket.next().await;
 
-			for message in initial(SERVER_ID) {
+			for message in tests::initial(SERVER_ID) {
 				socket.send(message).await.unwrap();
 			}
 
@@ -65,11 +75,11 @@ async fn native_goal_preserves_authoritative_empty_and_rejects_crossed_sources()
 			};
 
 			assert!(
-				matches!(query.payload, crate::QueryPayload::GetAgentNativeGoal { work_id, thread_id } if work_id.as_str()=="work" && thread_id.as_str()=="native-exact")
+				matches!(query.payload, QueryPayload::GetAgentNativeGoal { work_id, thread_id } if work_id.as_str()=="work" && thread_id.as_str()=="native-exact")
 			);
 
 			socket
-				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+				.send(tests::typed(ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(SERVER_ID).unwrap(),
 					query_id: query.query_id,
@@ -87,7 +97,7 @@ async fn native_goal_preserves_authoritative_empty_and_rejects_crossed_sources()
 
 			listener.cleanup().unwrap();
 		});
-		let result = crate::AgentClient::new(profile)
+		let result = AgentClient::new(profile)
 			.native_goal(EntityId::new("work").unwrap(), EntityId::new("native-exact").unwrap())
 			.await;
 

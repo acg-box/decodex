@@ -1,11 +1,19 @@
-use super::*;
+use futures_util::{SinkExt as _, StreamExt as _};
+use tokio_tungstenite::tungstenite::Message;
+
+use crate::{
+	AccountLoginClient, AccountLoginRequest, AccountLoginResponseEnvelope, AccountLoginState,
+	AccountLoginStatus, CURRENT_VERSION, ClientFailure, ClientMessage, ClientProfile, EntityId,
+	QueryId, ServerId, ServerMessage,
+	client::tests::{self, SERVER_ID},
+};
 
 #[tokio::test]
 async fn login_status_requires_matching_request_session_and_valid_state() {
 	let requested = EntityId::new("40000000-0000-4000-8000-000000000001").unwrap();
 
 	for case in ["valid", "request", "session", "state"] {
-		let (temp, authority) = local_transport();
+		let (temp, authority) = tests::local_transport();
 		let mut listener = authority.bind().await.unwrap();
 		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let expected = requested.clone();
@@ -15,7 +23,7 @@ async fn login_status_requires_matching_request_session_and_valid_state() {
 				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
 			let _ = socket.next().await;
 
-			for message in initial(SERVER_ID) {
+			for message in tests::initial(SERVER_ID) {
 				socket.send(message).await.unwrap();
 			}
 
@@ -27,19 +35,19 @@ async fn login_status_requires_matching_request_session_and_valid_state() {
 			};
 
 			assert!(
-				matches!(request.request, crate::AccountLoginRequest::Status { session_id } if session_id == expected)
+				matches!(request.request, AccountLoginRequest::Status { session_id } if session_id == expected)
 			);
 
-			let status = crate::AccountLoginStatus {
+			let status = AccountLoginStatus {
 				session_id: if case == "session" {
 					EntityId::new("40000000-0000-4000-8000-000000000002").unwrap()
 				} else {
 					expected
 				},
 				state: if case == "state" {
-					crate::AccountLoginState::Completed
+					AccountLoginState::Completed
 				} else {
-					crate::AccountLoginState::Cancelled
+					AccountLoginState::Cancelled
 				},
 				prompt: None,
 				authorization_url: None,
@@ -48,7 +56,7 @@ async fn login_status_requires_matching_request_session_and_valid_state() {
 			};
 
 			socket
-				.send(typed(ServerMessage::AccountLogin(crate::AccountLoginResponseEnvelope {
+				.send(tests::typed(ServerMessage::AccountLogin(AccountLoginResponseEnvelope {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(SERVER_ID).unwrap(),
 					request_id: if case == "request" {
@@ -65,7 +73,7 @@ async fn login_status_requires_matching_request_session_and_valid_state() {
 
 			listener.cleanup().unwrap();
 		});
-		let result = crate::AccountLoginClient::new(profile).status(requested.clone()).await;
+		let result = AccountLoginClient::new(profile).status(requested.clone()).await;
 
 		server.await.unwrap();
 
@@ -73,7 +81,7 @@ async fn login_status_requires_matching_request_session_and_valid_state() {
 			let status = result.unwrap();
 
 			assert_eq!(status.session_id, requested);
-			assert_eq!(status.state, crate::AccountLoginState::Cancelled);
+			assert_eq!(status.state, AccountLoginState::Cancelled);
 		} else {
 			assert_eq!(result, Err(ClientFailure::ProtocolMalformed), "{case}");
 		}
