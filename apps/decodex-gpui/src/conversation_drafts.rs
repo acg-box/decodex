@@ -291,17 +291,22 @@ impl State {
 		&mut self,
 		in_flight: &InFlightCommand,
 		result: &CommandResultEnvelope,
-	) {
+	) -> bool {
 		let terminal = match result.outcome {
 			CommandOutcome::Succeeded =>
-				accepted_archive_result(in_flight, result).is_some()
-					|| accepted_result_task(in_flight, result).is_some(),
-			CommandOutcome::Rejected => result.error.is_some() && result.payload.is_none(),
+				result.error.is_none()
+					&& (accepted_archive_result(in_flight, result).is_some()
+						|| accepted_result_task(in_flight, result).is_some()),
+			CommandOutcome::Rejected =>
+				result.error.is_some()
+					&& result.error != Some(decodex_protocol::CommandError::AcceptanceUnknown)
+					&& result.payload.is_none(),
 			CommandOutcome::AcceptanceUnknown => false,
 		};
 		if terminal {
 			self.confirm_delivery(&in_flight.envelope);
 		}
+		terminal
 	}
 
 	pub(super) fn confirm_delivery(&mut self, command: &CommandEnvelope) {
