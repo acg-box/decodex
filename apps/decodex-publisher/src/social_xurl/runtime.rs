@@ -1261,23 +1261,22 @@ pub(super) fn sha256(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
 	use std::{
-		ffi::OsString,
-		fs::{self, File},
-		io,
+		env,
+		ffi::{CString, OsString},
+		fs::{self, File, OpenOptions, Permissions},
+		io, iter,
 		os::unix::{
+			self,
 			ffi::OsStrExt as _,
-			fs::{PermissionsExt as _, symlink},
+			fs::{OpenOptionsExt as _, PermissionsExt as _},
 		},
+		path::{Path, PathBuf},
+		sync::mpsc,
 		thread,
 		time::{Duration, Instant},
 	};
 
-	use super::{
-		MAX_XURL_OUTPUT_BYTES, TrustedXurlBinary, install_private_copy_in, read_verified_binary,
-		receive_bounded_reader, resolve_trusted_xurl_entrypoint, run_with_deadline,
-		run_with_deadline_inner, sha256, spawn_bounded_reader, strip_ansi, trusted_home_directory,
-		validate_auth_status_output,
-	};
+	use crate::social_xurl::runtime::{self, MAX_XURL_OUTPUT_BYTES, TrustedXurlBinary};
 
 	struct SlowReader;
 
@@ -1291,7 +1290,7 @@ mod tests {
 
 	#[test]
 	fn auth_status_uses_only_the_literal_default_app_section() {
-		validate_auth_status_output(concat!(
+		runtime::validate_auth_status_output(concat!(
 			"▸ personal  [client_id: first…]\n",
 			"      oauth2: decodexspace\n",
 			"  default  [client_id: second…]\n",
@@ -1303,7 +1302,7 @@ mod tests {
 		.expect("one target label in the literal default section");
 
 		assert!(
-			validate_auth_status_output(concat!(
+			runtime::validate_auth_status_output(concat!(
 				"▸ personal  [client_id: first…]\n",
 				"      oauth2: decodexspace\n",
 				"  default  [client_id: second…]\n",
@@ -1312,7 +1311,7 @@ mod tests {
 			.is_err()
 		);
 		assert!(
-			validate_auth_status_output(concat!(
+			runtime::validate_auth_status_output(concat!(
 				"▸ default  [client_id: first…]\n",
 				"      oauth2: decodexspace\n",
 				"    ▸ oauth2: decodexspace\n",
@@ -1325,7 +1324,7 @@ mod tests {
 
 	#[test]
 	fn ansi_stripping_preserves_unicode() {
-		assert_eq!(strip_ansi("中文 \u{1b}[31mverified\u{1b}[0m"), "中文 verified");
+		assert_eq!(runtime::strip_ansi("中文 \u{1b}[31mverified\u{1b}[0m"), "中文 verified");
 	}
 
 	#[test]
@@ -1336,20 +1335,21 @@ mod tests {
 			"clean-environment",
 			"#!/bin/sh\n[ -z \"${API_BASE_URL+x}\" ] || exit 1\nprintf '%s' \"$HOME\"\n",
 		);
-		let previous = std::env::var_os("API_BASE_URL");
+		let previous = env::var_os("API_BASE_URL");
 
 		unsafe {
-			std::env::set_var("API_BASE_URL", "https://attacker.invalid");
+			env::set_var("API_BASE_URL", "https://attacker.invalid");
 		}
 
 		let binary = TrustedXurlBinary::open_for_test(&script).expect("trusted test binary");
-		let result = run_with_deadline(&binary, std::iter::empty::<&str>(), Duration::from_secs(3));
+		let result =
+			runtime::run_with_deadline(&binary, iter::empty::<&str>(), Duration::from_secs(3));
 
 		unsafe {
 			if let Some(value) = previous {
-				std::env::set_var("API_BASE_URL", value);
+				env::set_var("API_BASE_URL", value);
 			} else {
-				std::env::remove_var("API_BASE_URL");
+				env::remove_var("API_BASE_URL");
 			}
 		}
 
@@ -1366,7 +1366,7 @@ mod tests {
 		let binary = TrustedXurlBinary::open_for_test(&script).expect("trusted test binary");
 		let started = Instant::now();
 		let error =
-			run_with_deadline(&binary, std::iter::empty::<&str>(), Duration::from_millis(100))
+			runtime::run_with_deadline(&binary, iter::empty::<&str>(), Duration::from_millis(100))
 				.expect_err("hung process must time out")
 				.to_string();
 
@@ -1376,9 +1376,9 @@ mod tests {
 
 	#[test]
 	fn bounded_runner_deadline_includes_output_drain_and_join() {
-		let (receiver, handle) = spawn_bounded_reader(SlowReader);
+		let (receiver, handle) = runtime::spawn_bounded_reader(SlowReader);
 		let started = Instant::now();
-		let error = receive_bounded_reader(
+		let error = runtime::receive_bounded_reader(
 			receiver,
 			handle,
 			Instant::now() + Duration::from_millis(50),
@@ -1400,8 +1400,9 @@ mod tests {
 			"#!/bin/sh\nexec /bin/dd if=/dev/zero bs=2097152 count=1 2>/dev/null\n",
 		);
 		let binary = TrustedXurlBinary::open_for_test(&script).expect("trusted test binary");
-		let output = run_with_deadline(&binary, std::iter::empty::<&str>(), Duration::from_secs(3))
-			.expect("large output process must finish");
+		let output =
+			runtime::run_with_deadline(&binary, iter::empty::<&str>(), Duration::from_secs(3))
+				.expect("large output process must finish");
 
 		assert!(output.status.success());
 		assert_eq!(output.stdout.len(), MAX_XURL_OUTPUT_BYTES + 1);
@@ -1428,10 +1429,11 @@ mod tests {
 
 		fs::rename(&runtime, &retained).expect("move validated runtime directory");
 
-		symlink(&attacker, &runtime).expect("replace runtime path");
+		unix::fs::symlink(&attacker, &runtime).expect("replace runtime path");
 
-		let output = run_with_deadline(&binary, std::iter::empty::<&str>(), Duration::from_secs(3))
-			.expect("pinned executable must run");
+		let output =
+			runtime::run_with_deadline(&binary, iter::empty::<&str>(), Duration::from_secs(3))
+				.expect("pinned executable must run");
 
 		assert!(output.status.success());
 		assert_eq!(output.stdout, b"trusted\n");
@@ -1447,9 +1449,9 @@ mod tests {
 		);
 		let binary = TrustedXurlBinary::open_for_test(&trusted_path).expect("pinned test binary");
 		let started = Instant::now();
-		let error = run_with_deadline_inner(
+		let error = runtime::run_with_deadline_inner(
 			&binary,
-			std::iter::empty::<&str>(),
+			iter::empty::<&str>(),
 			Duration::from_millis(50),
 			|| {
 				thread::sleep(Duration::from_millis(100));
@@ -1469,20 +1471,20 @@ mod tests {
 		let runtime_path = temp.path().join("runtime");
 
 		fs::create_dir(&runtime_path).expect("runtime directory");
-		fs::set_permissions(&runtime_path, fs::Permissions::from_mode(0o700))
+		fs::set_permissions(&runtime_path, Permissions::from_mode(0o700))
 			.expect("runtime permissions");
 
 		let runtime = File::open(&runtime_path).expect("runtime descriptor");
 		let stale = b"#!/bin/sh\nprintf 'stale\\n'\n";
-		let stale_digest = sha256(stale);
+		let stale_digest = runtime::sha256(stale);
 
 		write_runtime_entry(&runtime_path, &format!("xurl-{stale_digest}"), stale);
 		write_runtime_entry(&runtime_path, ".stage-0123456789abcdef0123456789abcdef", b"partial");
 
 		let current = b"#!/bin/sh\nprintf 'current\\n'\n";
-		let current_digest = sha256(current);
-		let home = trusted_home_directory().expect("trusted home");
-		let binary = install_private_copy_in(
+		let current_digest = runtime::sha256(current);
+		let home = runtime::trusted_home_directory().expect("trusted home");
+		let binary = runtime::install_private_copy_in(
 			&runtime,
 			current,
 			&current_digest,
@@ -1497,8 +1499,9 @@ mod tests {
 
 		assert_eq!(retained, [OsString::from(format!("xurl-{current_digest}"))]);
 
-		let output = run_with_deadline(&binary, std::iter::empty::<&str>(), Duration::from_secs(3))
-			.expect("current copy executes");
+		let output =
+			runtime::run_with_deadline(&binary, iter::empty::<&str>(), Duration::from_secs(3))
+				.expect("current copy executes");
 
 		assert_eq!(output.stdout, b"current\n");
 	}
@@ -1509,22 +1512,22 @@ mod tests {
 		let runtime_path = temp.path().join("runtime");
 
 		fs::create_dir(&runtime_path).expect("runtime directory");
-		fs::set_permissions(&runtime_path, fs::Permissions::from_mode(0o700))
+		fs::set_permissions(&runtime_path, Permissions::from_mode(0o700))
 			.expect("runtime permissions");
 
 		let runtime = File::open(&runtime_path).expect("runtime descriptor");
 		let current = b"#!/bin/sh\nprintf 'current\\n'\n";
-		let current_digest = sha256(current);
-		let home = trusted_home_directory().expect("trusted home");
+		let current_digest = runtime::sha256(current);
+		let home = runtime::trusted_home_directory().expect("trusted home");
 
-		symlink(
+		unix::fs::symlink(
 			"/bin/sh",
 			runtime_path
 				.join("xurl-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
 		)
 		.expect("malicious symlink");
 
-		let error = install_private_copy_in(
+		let error = runtime::install_private_copy_in(
 			&runtime,
 			current,
 			&current_digest,
@@ -1545,8 +1548,8 @@ mod tests {
 		fs::create_dir_all(&bin).expect("private bin");
 
 		let script = executable_script(&bin, "xurl", "#!/bin/sh\nexit 0\n");
-		let resolved =
-			resolve_trusted_xurl_entrypoint(temp.path()).expect("secure private entrypoint");
+		let resolved = runtime::resolve_trusted_xurl_entrypoint(temp.path())
+			.expect("secure private entrypoint");
 
 		assert_eq!(resolved, script);
 	}
@@ -1564,10 +1567,10 @@ mod tests {
 
 				let insecure = temp.path().join(relative);
 
-				fs::set_permissions(&insecure, fs::Permissions::from_mode(mode))
+				fs::set_permissions(&insecure, Permissions::from_mode(mode))
 					.expect("unsafe permissions");
 
-				let error = resolve_trusted_xurl_entrypoint(temp.path())
+				let error = runtime::resolve_trusted_xurl_entrypoint(temp.path())
 					.expect_err("writable entrypoint chain must fail")
 					.to_string();
 
@@ -1588,9 +1591,9 @@ mod tests {
 
 		let target = executable_script(&bin, "xurl-real", "#!/bin/sh\nexit 0\n");
 
-		symlink(target, bin.join("xurl")).expect("xurl symlink");
+		unix::fs::symlink(target, bin.join("xurl")).expect("xurl symlink");
 
-		let error = resolve_trusted_xurl_entrypoint(temp.path())
+		let error = runtime::resolve_trusted_xurl_entrypoint(temp.path())
 			.expect_err("xurl symlink must fail")
 			.to_string();
 
@@ -1599,25 +1602,23 @@ mod tests {
 
 	#[test]
 	fn binary_and_runtime_readers_reject_fifos_without_waiting_for_a_writer() {
-		use std::os::unix::fs::OpenOptionsExt as _;
-
 		for kind in ["source", "copy", "stage"] {
 			let temp = tempfile::tempdir().expect("tempdir");
 			let path = temp.path().join("fifo");
-			let name = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+			let name = CString::new(path.as_os_str().as_bytes()).unwrap();
 
 			assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
 
 			let runtime = File::open(temp.path()).unwrap();
 			let input = path.clone();
-			let (sender, receiver) = std::sync::mpsc::channel();
+			let (sender, receiver) = mpsc::channel();
 			let reader = thread::spawn(move || {
 				let result = match kind {
-					"source" => read_verified_binary(&input).map(|_| ()),
+					"source" => runtime::read_verified_binary(&input).map(|_| ()),
 					"copy" =>
-						super::open_runtime_file(&runtime, &OsString::from("fifo")).map(|_| ()),
-					_ => super::open_runtime_gc_entry(&runtime, &OsString::from("fifo"))
-						.and_then(|file| super::validate_runtime_gc_metadata(&file.metadata()?)),
+						runtime::open_runtime_file(&runtime, &OsString::from("fifo")).map(|_| ()),
+					_ => runtime::open_runtime_gc_entry(&runtime, &OsString::from("fifo"))
+						.and_then(|file| runtime::validate_runtime_gc_metadata(&file.metadata()?)),
 				};
 
 				sender.send(result).unwrap();
@@ -1625,7 +1626,7 @@ mod tests {
 			let result = receiver.recv_timeout(Duration::from_secs(2));
 			// Unblock the old implementation before asserting, so failure leaves no reader behind.
 			let release = result.is_err().then(|| {
-				fs::OpenOptions::new()
+				OpenOptions::new()
 					.read(true)
 					.write(true)
 					.custom_flags(libc::O_NONBLOCK)
@@ -1646,7 +1647,7 @@ mod tests {
 		let temp = tempfile::tempdir().expect("tempdir");
 		let binary =
 			executable_script(temp.path(), "xurl", "#!/bin/sh\nprintf 'xurl version 1.3.1\\n'\n");
-		let error = read_verified_binary(&binary)
+		let error = runtime::read_verified_binary(&binary)
 			.expect_err("an arbitrary self-reporting binary must fail")
 			.to_string();
 
@@ -1704,15 +1705,15 @@ mod tests {
 		}
 	}
 
-	fn write_runtime_entry(root: &std::path::Path, name: &str, bytes: &[u8]) {
+	fn write_runtime_entry(root: &Path, name: &str, bytes: &[u8]) {
 		let path = root.join(name);
 
 		fs::write(&path, bytes).expect("runtime entry");
-		fs::set_permissions(&path, fs::Permissions::from_mode(0o500))
+		fs::set_permissions(&path, Permissions::from_mode(0o500))
 			.expect("runtime entry permissions");
 	}
 
-	fn executable_script(root: &std::path::Path, name: &str, body: &str) -> std::path::PathBuf {
+	fn executable_script(root: &Path, name: &str, body: &str) -> PathBuf {
 		let path = root.join(name);
 
 		fs::write(&path, body).expect("script");
@@ -1726,7 +1727,7 @@ mod tests {
 		path
 	}
 
-	fn collect_source_files(root: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+	fn collect_source_files(root: &Path, files: &mut Vec<PathBuf>) {
 		for entry in fs::read_dir(root).expect("source directory") {
 			let entry = entry.expect("source entry");
 			let path = entry.path();
