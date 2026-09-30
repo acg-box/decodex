@@ -10,10 +10,10 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		let authority = ResetCardAuthority(profileName: "local", serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 		let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		defer { try? FileManager.default.removeItem(at: root) }
-		let store = ResetCardStore(client: EmptyWidgetClient(), pendingStore: ResetCardPendingAttemptStore(journalURL: root.appendingPathComponent("pending.json")))
+		let store = ResetCardStore(client: EmptyWidgetClient(), pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: root.appendingPathComponent("pending.json")))
 		func render(loginRequired: Bool, hasQuota: Bool) throws -> NSImage {
 			let quota = ResetCardQuotaWindow(durationMinutes: 300, observedAtUnixMicros: nil, state: hasQuota ? .current(usedPercent: 42, resetsAtUnixMicros: 2_000_000_000_000_000) : .unknown)
-			let account = ResetCardAccountRecord(authority: authority, accountID: "11111111-1111-4111-8111-111111111111", alias: "Account TEST0-00000", accountRevision: 1, enabled: true, observedState: loginRequired ? .authFailed : .available, lifecycleReadiness: .ready, fiveHourQuota: quota, sevenDayQuota: .unknown(durationMinutes: 10_080))
+			let account = ResetCardAccountRecord(authority: authority, accountID: "11111111-1111-4111-8111-111111111111", alias: "Account TEST0-00000", accountRevision: 1, enabled: true, observedState: loginRequired ? .authFailed : .available, lifecycleReadiness: .ready, credentialBinding: AccountCredentialBinding(schemaVersion: 1, version: 1, fingerprintSHA256: String(repeating: "a", count: 64), provider: .chatGPT, providerAccountID: "fixture-account"), fiveHourQuota: quota, sevenDayQuota: .unknown(durationMinutes: 10_080))
 			let state = ResetCardAccountState(account: account, inventory: nil, error: nil, isRefreshing: false)
 			let renderer = ImageRenderer(content: ResetCardAccountRow(state: state, store: store).frame(width: 320).background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, .dark))
 			return try XCTUnwrap(renderer.nsImage)
@@ -24,7 +24,7 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		let available = try render(loginRequired: false, hasQuota: true)
 		XCTAssertEqual(login.size.height, loginWithQuota.size.height, "Cached usage must not add rows during login recovery")
 		XCTAssertEqual(empty.size.height, 20 + 2 * PanelSpacing.cardVertical, accuracy: 1, "An empty quota container and invisible reorder handle must not reserve rows")
-		XCTAssertLessThan(login.size.height, empty.size.height + 28, "Login recovery must add only one compact status row")
+		XCTAssertEqual(login.size.height, empty.size.height, "Login recovery must stay in the header without a status row")
 		XCTAssertGreaterThan(available.size.height, empty.size.height, "Healthy accounts must retain their usage rows")
 	}
 

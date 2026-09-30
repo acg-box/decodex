@@ -163,7 +163,7 @@ struct AccountRefreshLoginButton: View {
 
 	var body: some View {
 		CompactAccountActionButton(
-			title: "Refresh login",
+			title: "Sign in",
 			symbol: "person.crop.circle.badge.plus",
 			isActive: false,
 			isDisabled: isDisabled,

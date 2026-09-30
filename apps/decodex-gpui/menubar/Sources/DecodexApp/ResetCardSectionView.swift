@@ -4,6 +4,7 @@ import SwiftUI
 struct InlineAccountFeedback: View {
 	let text: String
 	var isPending = false
+	var isDestructive = false
 	var dismiss: () -> Void = {}
 	@State private var expanded = false
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -13,7 +14,7 @@ struct InlineAccountFeedback: View {
 		Button { expanded.toggle() } label: {
 			Image(systemName: isPending ? "arrow.triangle.2.circlepath" : "exclamationmark.circle")
 				.font(.system(size: 11, weight: .medium))
-				.foregroundStyle(isPending ? PanelPalette.secondaryText(colorScheme) : PanelPalette.warning(colorScheme))
+				.foregroundStyle(isPending ? PanelPalette.secondaryText(colorScheme) : (isDestructive ? PanelPalette.destructive(colorScheme) : PanelPalette.warning(colorScheme)))
 				.symbolEffect(.pulse, options: .repeating, isActive: isPending && !reduceMotion)
 				.frame(width: 20, height: 20)
 				.contentShape(Rectangle())
@@ -86,9 +87,14 @@ struct ResetCardAccountRow: View {
 						message.tone != .success {
 						InlineAccountFeedback(text: message.text) { store.dismissMessage() }
 					}
-					AccountPrimaryActionsView(state: state, store: store)
-					AccountPowerButton(state: state, store: store)
-					AccountUtilityActionsView(state: state, store: store)
+					if state.requiresLoginRefresh {
+						InlineAccountFeedback(text: "Login refresh required. Sign in again to use this account.", isDestructive: true)
+						AccountRefreshLoginButton(state: state, store: store)
+					} else {
+						AccountPrimaryActionsView(state: state, store: store)
+						AccountPowerButton(state: state, store: store)
+						AccountUtilityActionsView(state: state, store: store)
+					}
 				}
 				.fixedSize(horizontal: true, vertical: false)
 			}
@@ -262,12 +268,6 @@ struct ResetCardAccountRow: View {
 				.truncationMode(.tail)
 
 			Spacer(minLength: 2)
-
-			if state.requiresLoginRefresh,
-				state.account.credentialBinding != nil
-			{
-				AccountRefreshLoginButton(state: state, store: store)
-			}
 		}
 		.accessibilityElement(children: .contain)
 	}
@@ -301,7 +301,7 @@ struct ResetCardAccountRow: View {
 
 	private var exceptionalStatusText: String? {
 		if state.requiresLoginRefresh {
-			return "Login refresh required"
+			return nil
 		}
 		switch state.account.lifecycleReadiness {
 		case .credentialAbsent:
