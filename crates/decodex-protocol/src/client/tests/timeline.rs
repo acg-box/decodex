@@ -1,9 +1,16 @@
-use super::*;
+use futures_util::{SinkExt as _, StreamExt as _};
+use tokio_tungstenite::tungstenite::Message;
+
+use crate::{
+	AgentClient, AgentTimelineResult, CURRENT_VERSION, ClientFailure, ClientMessage, ClientProfile,
+	EntityId, QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId, ServerMessage,
+	client::tests::{self, SERVER_ID},
+};
 
 #[tokio::test]
 async fn summary_history_rejects_crossed_work_and_thread() {
 	for mode in ["valid", "work", "thread"] {
-		let (temp, authority) = local_transport();
+		let (temp, authority) = tests::local_transport();
 		let mut listener = authority.bind().await.expect("listener");
 		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).expect("server"));
 		let server = tokio::spawn(async move {
@@ -12,7 +19,7 @@ async fn summary_history_rejects_crossed_work_and_thread() {
 			let mut socket = tokio_tungstenite::accept_async(stream).await.expect("socket");
 			let _ = socket.next().await;
 
-			for response in initial(SERVER_ID) {
+			for response in tests::initial(SERVER_ID) {
 				socket.send(response).await.expect("initial");
 			}
 
@@ -25,11 +32,11 @@ async fn summary_history_rejects_crossed_work_and_thread() {
 			};
 
 			assert!(
-				matches!(&query.payload, crate::QueryPayload::GetAgentTimeline {work_id, thread_id, cursor}
+				matches!(&query.payload, QueryPayload::GetAgentTimeline {work_id, thread_id, cursor}
                 if work_id.as_str() == "root" && thread_id.as_str() == "native" && cursor.is_none())
 			);
 
-			let result = crate::AgentTimelineResult::Summary {
+			let result = AgentTimelineResult::Summary {
 				work_id: EntityId::new(if mode == "work" { "other" } else { "root" })
 					.expect("work"),
 				account_id: EntityId::new("account").expect("account"),
@@ -38,7 +45,7 @@ async fn summary_history_rejects_crossed_work_and_thread() {
 			};
 
 			socket
-				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+				.send(tests::typed(ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(SERVER_ID).expect("server"),
 					query_id: query.query_id,
@@ -51,7 +58,7 @@ async fn summary_history_rejects_crossed_work_and_thread() {
 
 			listener.cleanup().expect("cleanup");
 		});
-		let result = crate::AgentClient::new(profile)
+		let result = AgentClient::new(profile)
 			.timeline(
 				EntityId::new("root").expect("work"),
 				EntityId::new("native").expect("thread"),
@@ -62,7 +69,7 @@ async fn summary_history_rejects_crossed_work_and_thread() {
 		server.await.expect("server task");
 
 		if mode == "valid" {
-			assert!(matches!(result, Ok(crate::AgentTimelineResult::Summary { .. })));
+			assert!(matches!(result, Ok(AgentTimelineResult::Summary { .. })));
 		} else {
 			assert!(matches!(result, Err(ClientFailure::ProtocolMalformed)));
 		}
