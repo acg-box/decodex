@@ -85,7 +85,7 @@ fn pagination_rejects_cross_origin_links_before_forwarding_credentials() {
 	)]);
 	let api = server.api(Some("test-secret".into()));
 	let error = api
-		.get_paginated_for_test(server.url(), 10, 100)
+		.get_paginated_for_test(server.url(), None, 10, 100)
 		.expect_err("cross-origin pagination must fail");
 
 	assert!(error.to_string().contains("pinned origin"));
@@ -105,8 +105,9 @@ fn pagination_detects_cycles_without_repeating_a_request() {
 		response("200 OK", &[("Link", &format!("<{url}>; rel=\"next\""))], "[]")
 	});
 	let api = server.api(None);
-	let error =
-		api.get_paginated_for_test(server.url(), 10, 100).expect_err("cyclic pagination must fail");
+	let error = api
+		.get_paginated_for_test(server.url(), None, 10, 100)
+		.expect_err("cyclic pagination must fail");
 
 	assert!(error.to_string().contains("cycle detected"));
 	server.finish();
@@ -125,7 +126,7 @@ fn pagination_enforces_page_and_item_limits() {
 	});
 	let page_api = page_server.api(None);
 	let page_error = page_api
-		.get_paginated_for_test(page_server.url(), 2, 100)
+		.get_paginated_for_test(page_server.url(), None, 2, 100)
 		.expect_err("third page must exceed the bound");
 
 	assert!(page_error.to_string().contains("2-page limit"));
@@ -134,11 +135,120 @@ fn pagination_enforces_page_and_item_limits() {
 	let item_server = spawn_server(vec![response("200 OK", &[], "[1,2,3]")]);
 	let item_api = item_server.api(None);
 	let item_error = item_api
-		.get_paginated_for_test(item_server.url(), 2, 2)
+		.get_paginated_for_test(item_server.url(), None, 2, 2)
 		.expect_err("oversized item page must exceed the bound");
 
 	assert!(item_error.to_string().contains("2-item limit"));
 	item_server.finish();
+}
+
+#[test]
+fn object_pagination_collects_all_commits_and_preserves_first_page_metadata() {
+	let server = spawn_server_with(3, |url, index| {
+		let start = index * 100;
+		let end = (start + 100).min(251);
+		let commits = (start..end)
+			.map(|i| {
+				serde_json::json!({
+					"sha": format!("{i:040x}"), "commit": {"message": format!("Change (#{})", i + 1)}
+				})
+			})
+			.collect::<Vec<_>>();
+		let body = if index == 0 {
+			serde_json::json!({"status": "ahead", "total_commits": 251, "commits": commits})
+		} else {
+			serde_json::json!({"commits": commits})
+		}
+		.to_string();
+		if index < 2 {
+			response(
+				"200 OK",
+				&[("Link", &format!("<{url}?page={}>; rel=\"next\"", index + 2))],
+				&body,
+			)
+		} else {
+			response("200 OK", &[], &body)
+		}
+	});
+	let payload = server.api(None).get_paginated_field(server.url(), "commits").unwrap();
+	assert_eq!(payload["status"], "ahead");
+	assert_eq!(payload["total_commits"], 251);
+	assert_eq!(payload["commits"].as_array().unwrap().len(), 251);
+	assert_eq!(payload["commits"][250]["commit"]["message"], "Change (#251)");
+	assert_eq!(server.finish_with_requests().len(), 3);
+}
+
+#[test]
+fn object_pagination_keeps_bounds_and_rejects_bad_pages() {
+	let cases = [
+		(
+			vec![response(
+				"200 OK",
+				&[("Link", "<http://adversary.test/next>; rel=\"next\"")],
+				r#"{"commits":[]}"#,
+			)],
+			10,
+			100,
+			"pinned origin",
+		),
+		(
+			vec![response(
+				"200 OK",
+				&[("Link", "<http://github.test/test>; rel=\"next\"")],
+				r#"{"commits":[]}"#,
+			)],
+			10,
+			100,
+			"cycle detected",
+		),
+		(
+			vec![response(
+				"200 OK",
+				&[("Link", "<http://github.test/page-2>; rel=\"next\"")],
+				r#"{"commits":[]}"#,
+			)],
+			1,
+			100,
+			"1-page limit",
+		),
+		(vec![response("200 OK", &[], r#"{"commits":[1,2,3]}"#)], 10, 2, "2-item limit"),
+		(
+			vec![
+				response(
+					"200 OK",
+					&[("Link", "<http://github.test/page-2>; rel=\"next\"")],
+					r#"{"commits":[1,2]}"#,
+				),
+				response("200 OK", &[], r#"{"commits":[3]}"#),
+			],
+			10,
+			2,
+			"2-item limit",
+		),
+		(
+			vec![
+				response(
+					"200 OK",
+					&[("Link", "<http://github.test/page-2>; rel=\"next\"")],
+					r#"{"commits":[]}"#,
+				),
+				response("200 OK", &[], r#"{"commits":null}"#),
+			],
+			10,
+			100,
+			"Expected list field commits",
+		),
+	];
+	for (responses, max_pages, max_items, expected) in cases {
+		let expected_requests = responses.len();
+		let server = spawn_server(responses);
+		let error = server
+			.api(Some("test-secret".into()))
+			.get_paginated_for_test(server.url(), Some("commits"), max_pages, max_items)
+			.expect_err("invalid object pagination must fail");
+		assert!(error.to_string().contains(expected), "{error}");
+		assert_eq!(server.finish_with_requests().len(), expected_requests);
+	}
 }
 
 struct TestServer {

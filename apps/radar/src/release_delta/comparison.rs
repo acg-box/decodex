@@ -17,12 +17,13 @@ pub(super) fn build_release_comparison(
 ) -> Result<Value> {
 	let stable_tag = release_delta::required_release_tag(&pair.stable)?;
 	let preview_tag = release_delta::required_release_tag(&pair.preview)?;
-	let compare = api
-		.get(&format!(
-			"https://api.github.com/repos/{}/compare/{stable_tag}...{preview_tag}",
+	let compare = api.get_paginated_field(
+		&format!(
+			"https://api.github.com/repos/{}/compare/{stable_tag}...{preview_tag}?per_page=100",
 			request.repo
-		))?
-		.payload;
+		),
+		"commits",
+	)?;
 	let commits = compare
 		.get("commits")
 		.and_then(Value::as_array)
