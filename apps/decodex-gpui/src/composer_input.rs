@@ -392,7 +392,7 @@ impl ComposerInput {
 
 	fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
 		self.scroll_manually = false;
-		let offset = offset.min(self.content.len());
+		let offset = self.content.floor_char_boundary(offset.min(self.content.len()));
 		self.selected_range = offset..offset;
 		self.selection_reversed = false;
 		self.marked_range = None;
@@ -401,7 +401,7 @@ impl ComposerInput {
 
 	fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
 		self.scroll_manually = false;
-		let offset = offset.min(self.content.len());
+		let offset = self.content.floor_char_boundary(offset.min(self.content.len()));
 		let anchor = if self.selection_reversed {
 			self.selected_range.end
 		} else {
@@ -859,6 +859,37 @@ mod multiline_tests {
 			let caret = text::position_at(lines, input.content.len());
 			assert_eq!(text::index_at(lines, caret), input.content.len());
 			assert!(input.last_bounds.unwrap().size.height <= px(ui_theme::BODY_LINE_HEIGHT * 7.0));
+		});
+	}
+	#[gpui::test]
+	fn obscured_unicode_mouse_selection_keeps_valid_text_boundaries(cx: &mut gpui::TestAppContext) {
+		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+		input.update(visual, |input, cx| {
+			input.set_content("你abc", cx);
+			input.obscure();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let position = input.read_with(visual, |input, _| {
+			input.last_bounds.unwrap().origin
+				+ text::position_at(input.last_layout.as_ref().unwrap(), 1)
+		});
+		input.update(visual, |input, cx| {
+			input.move_to(input.index_for_mouse_position(position), cx);
+		});
+		input.read_with(visual, |input, _| {
+			assert!(input.content.is_char_boundary(input.selected_range.start));
+			assert!(input.content.is_char_boundary(input.selected_range.end));
+		});
+		input.update(visual, |input, cx| {
+			input.select_to(input.index_for_mouse_position(position), cx);
+			assert!(input.content.is_char_boundary(input.selected_range.start));
+			assert!(input.content.is_char_boundary(input.selected_range.end));
+			assert_eq!(input.content(), "你abc");
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
 		});
 	}
 }
