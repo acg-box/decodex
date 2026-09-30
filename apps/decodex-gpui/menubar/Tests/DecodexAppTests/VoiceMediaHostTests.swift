@@ -71,6 +71,24 @@ final class VoiceMediaHostTests: XCTestCase {
         XCTAssertNil(host.poll())
     }
 
+    func testQueuedAuthorizationCannotStartASupersedingCapture() throws {
+        var authorizations: [@MainActor (Bool) -> Void] = []
+        let host = VoiceMediaHost(authorizationRequestForTesting: { authorizations.append($0) })
+        defer { host.close() }
+        for operation in ["start", "dictate", "stop"] {
+            XCTAssertTrue(host.command(#"{"operation":"start"}"#))
+            authorizations.last?(true)
+            XCTAssertTrue(host.command("{\"operation\":\"\(operation)\"}"))
+            if operation == "stop" {
+                let pointer = try XCTUnwrap(host.poll())
+                let value = try XCTUnwrap(JSONSerialization.jsonObject(
+                    with: Data(String(cString: pointer).utf8)) as? [String: Any])
+                XCTAssertEqual(value["type"] as? String, "ended")
+            }
+            XCTAssertNil(host.poll(), "Queued authorization belongs to the superseded capture")
+        }
+    }
+
     func testClosedHostKeepsTerminalEventUntilPolled() throws {
         _ = NSApplication.shared
         var capture: DictationProbe?
