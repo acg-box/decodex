@@ -2,13 +2,35 @@
 
 use std::{
 	fs::{File, OpenOptions},
+	io::{Error, ErrorKind},
 	os::{fd::AsRawFd as _, unix::fs::OpenOptionsExt as _},
 };
+
+use color_eyre::eyre::Report;
+use libc::{LOCK_EX, LOCK_UN, O_CLOEXEC, O_DIRECTORY, O_NOFOLLOW};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
 	BTreeSet, CONFIG_FEATURE_CATALOG_PATH, GitHubApi, Path, PathBuf, RadarRefreshQueueRequest,
 	RefreshKind, Value, eyre, fs,
+	private_fs::{self, PrivateEntryKind},
 };
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RefreshWriteReport {
+	pub(crate) material_changed: bool,
+	pub(crate) written: bool,
+	pub(crate) refreshed_at: String,
+}
+
+struct ExternalRefreshLock(File);
+impl Drop for ExternalRefreshLock {
+	fn drop(&mut self) {
+		unsafe {
+			libc::flock(self.0.as_raw_fd(), LOCK_UN);
+		}
+	}
+}
 
 pub(crate) fn validate_expected_schema(
 	value: &Value,
@@ -74,9 +96,9 @@ pub(crate) fn collect_bundle_json_files(paths: &[PathBuf]) -> crate::prelude::Re
 
 	for path in paths {
 		if crate::is_radar_cache_path(path) {
-			match crate::private_fs::private_entry_kind(path)? {
-				Some(crate::private_fs::PrivateEntryKind::File) => files.push(path.clone()),
-				Some(crate::private_fs::PrivateEntryKind::Directory) => {
+			match private_fs::private_entry_kind(path)? {
+				Some(PrivateEntryKind::File) => files.push(path.clone()),
+				Some(PrivateEntryKind::Directory) => {
 					files.extend(crate::collect_private_json_files(path)?);
 				},
 				None => eyre::bail!("Bundle validation path does not exist"),
@@ -98,13 +120,6 @@ pub(crate) fn collect_bundle_json_files(paths: &[PathBuf]) -> crate::prelude::Re
 	Ok(files)
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct RefreshWriteReport {
-	pub(crate) material_changed: bool,
-	pub(crate) written: bool,
-	pub(crate) refreshed_at: String,
-}
-
 pub(crate) fn refresh_json(
 	path: &Path,
 	payload: &Value,
@@ -119,6 +134,51 @@ pub(crate) fn inspect_json_refresh(
 	kind: RefreshKind,
 ) -> crate::prelude::Result<RefreshWriteReport> {
 	refresh_json_with_write(path, payload, kind, false)
+}
+
+#[cfg(test)]
+pub(crate) fn refresh_json_after_comparison(
+	path: &Path,
+	payload: &Value,
+	kind: RefreshKind,
+	after_comparison: impl FnOnce(),
+) -> crate::prelude::Result<RefreshWriteReport> {
+	refresh_json_with_write_and_hook(path, payload, kind, true, after_comparison)
+}
+
+pub(crate) fn material_json(payload: &Value, kind: &RefreshKind) -> Value {
+	let mut normalized = payload.clone();
+
+	match kind {
+		RefreshKind::Queue | RefreshKind::ReleaseDelta => {
+			if let Some(object) = normalized.as_object_mut() {
+				object.insert("generated_at".to_owned(), Value::String(String::new()));
+			}
+		},
+	}
+
+	normalized
+}
+
+pub(crate) fn load_known_feature_names(root: &Path) -> crate::prelude::Result<BTreeSet<String>> {
+	let path = root.join(CONFIG_FEATURE_CATALOG_PATH);
+
+	if !crate::private_file_exists(&path)? {
+		return Ok(BTreeSet::new());
+	}
+
+	let payload = crate::load_json(&path)?;
+	let names = payload
+		.get("features")
+		.and_then(Value::as_array)
+		.into_iter()
+		.flatten()
+		.filter_map(|item| item.get("name").and_then(Value::as_str))
+		.filter(|name| !name.is_empty())
+		.map(str::to_owned)
+		.collect();
+
+	Ok(names)
 }
 
 fn refresh_json_with_write(
@@ -180,23 +240,14 @@ fn acquire_external_refresh_lock(
 
 	let directory = OpenOptions::new()
 		.read(true)
-		.custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+		.custom_flags(O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
 		.open(parent)?;
 
-	if unsafe { libc::flock(directory.as_raw_fd(), libc::LOCK_EX) } == -1 {
-		return Err(std::io::Error::last_os_error().into());
+	if unsafe { libc::flock(directory.as_raw_fd(), LOCK_EX) } == -1 {
+		return Err(Error::last_os_error().into());
 	}
 
 	Ok(Some(ExternalRefreshLock(directory)))
-}
-
-struct ExternalRefreshLock(File);
-impl Drop for ExternalRefreshLock {
-	fn drop(&mut self) {
-		unsafe {
-			libc::flock(self.0.as_raw_fd(), libc::LOCK_UN);
-		}
-	}
 }
 
 fn refresh_private_json(
@@ -207,7 +258,7 @@ fn refresh_private_json(
 	refreshed_at: String,
 	after_comparison: impl FnOnce(),
 ) -> crate::prelude::Result<RefreshWriteReport> {
-	let (cache, relative) = crate::private_fs::private_cache_file(path)?;
+	let (cache, relative) = private_fs::private_cache_file(path)?;
 	let lock = cache.lock()?;
 	let original_identity = lock.cache().metadata(&relative)?;
 	let existing = match original_identity.as_ref() {
@@ -253,65 +304,20 @@ fn compare_refresh(
 	Ok(material_json(existing, kind) != material_json(payload, kind))
 }
 
-fn generated_at(payload: &Value, label: &str) -> crate::prelude::Result<time::OffsetDateTime> {
+fn generated_at(payload: &Value, label: &str) -> crate::prelude::Result<OffsetDateTime> {
 	let value = payload
 		.get("generated_at")
 		.and_then(Value::as_str)
 		.filter(|value| !value.is_empty())
 		.ok_or_else(|| eyre::eyre!("{label} refreshed artifact must contain generated_at"))?;
 
-	time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339)
+	OffsetDateTime::parse(value, &Rfc3339)
 		.map_err(|error| eyre::eyre!("{label} refreshed artifact generated_at is invalid: {error}"))
 }
 
-fn is_not_found(error: &eyre::Report) -> bool {
+fn is_not_found(error: &Report) -> bool {
 	error
 		.chain()
-		.find_map(|cause| cause.downcast_ref::<std::io::Error>())
-		.is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
-}
-
-#[cfg(test)]
-pub(crate) fn refresh_json_after_comparison(
-	path: &Path,
-	payload: &Value,
-	kind: RefreshKind,
-	after_comparison: impl FnOnce(),
-) -> crate::prelude::Result<RefreshWriteReport> {
-	refresh_json_with_write_and_hook(path, payload, kind, true, after_comparison)
-}
-
-pub(crate) fn material_json(payload: &Value, kind: &RefreshKind) -> Value {
-	let mut normalized = payload.clone();
-
-	match kind {
-		RefreshKind::Queue | RefreshKind::ReleaseDelta => {
-			if let Some(object) = normalized.as_object_mut() {
-				object.insert("generated_at".to_owned(), Value::String(String::new()));
-			}
-		},
-	}
-
-	normalized
-}
-
-pub(crate) fn load_known_feature_names(root: &Path) -> crate::prelude::Result<BTreeSet<String>> {
-	let path = root.join(CONFIG_FEATURE_CATALOG_PATH);
-
-	if !crate::private_file_exists(&path)? {
-		return Ok(BTreeSet::new());
-	}
-
-	let payload = crate::load_json(&path)?;
-	let names = payload
-		.get("features")
-		.and_then(Value::as_array)
-		.into_iter()
-		.flatten()
-		.filter_map(|item| item.get("name").and_then(Value::as_str))
-		.filter(|name| !name.is_empty())
-		.map(str::to_owned)
-		.collect();
-
-	Ok(names)
+		.find_map(|cause| cause.downcast_ref::<Error>())
+		.is_some_and(|error| error.kind() == ErrorKind::NotFound)
 }
