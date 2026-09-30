@@ -43,7 +43,7 @@ fn remaining(quota: AccountQuotaWindowDto) -> Option<f32> {
 // Keep the framework-specific colors here; the shared fixture checks the quota bands.
 fn quota_color(remaining: f32) -> u32 {
 	match quota_tone(remaining) {
-		"critical" => 0xef4444,
+		"critical" => crate::ui_theme::ERROR,
 		"warning" => super::WB_AMBER,
 		_ => super::WB_BLUE,
 	}

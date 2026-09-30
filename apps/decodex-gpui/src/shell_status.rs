@@ -25,6 +25,11 @@ impl Notice {
 		Self { title, detail: detail.into(), recovery, color: ui_theme::AMBER, identity: None }
 	}
 
+	fn error(mut self) -> Self {
+		self.color = ui_theme::ERROR;
+		self
+	}
+
 	fn info(mut self) -> Self {
 		self.color = ui_theme::BLUE;
 		self
@@ -39,7 +44,8 @@ impl Shell {
 		let notices = self.notifications(connection, cx);
 		let color = notices
 			.iter()
-			.find(|n| n.color == ui_theme::AMBER)
+			.find(|n| n.color == ui_theme::ERROR)
+			.or_else(|| notices.iter().find(|n| n.color == ui_theme::AMBER))
 			.or(notices.first())
 			.map_or(WB_TEXT_MUTED, |n| n.color);
 		let label = if notices.is_empty() {
@@ -116,6 +122,8 @@ impl Shell {
 						}))
 						.child(workspace_symbols::icon(if notices.is_empty() {
 							workspace_symbols::Symbol::Bell
+						} else if color == ui_theme::ERROR {
+							workspace_symbols::Symbol::BellError
 						} else if color == ui_theme::AMBER {
 							workspace_symbols::Symbol::BellAttention
 						} else {
@@ -255,11 +263,14 @@ impl Shell {
 			}
 		} else if let Some(status) = &self.account_login_status {
 			match status.state {
-				AccountLoginState::Failed => notices.push(Notice::new(
-					"Account login",
-					account_login_status_label(status),
-					Recovery::Accounts,
-				)),
+				AccountLoginState::Failed => notices.push(
+					Notice::new(
+						"Account login",
+						account_login_status_label(status),
+						Recovery::Accounts,
+					)
+					.error(),
+				),
 				AccountLoginState::Completed | AccountLoginState::Cancelled => notices.push(
 					Notice::new(
 						"Account login",
@@ -297,7 +308,15 @@ impl Shell {
 			_ => None,
 		};
 		if let Some(detail) = detail {
-			notices.push(Notice::new("Account profile", detail, Recovery::Accounts));
+			let notice = Notice::new("Account profile", detail, Recovery::Accounts);
+			let requires_login = match self.account_profile.result.as_ref() {
+				Some(AccountProfileResult::Cached { refresh_error, .. }) =>
+					crate::account_profile::requires_login(*refresh_error),
+				Some(AccountProfileResult::Unavailable { error, .. }) =>
+					crate::account_profile::requires_login(*error),
+				_ => false,
+			};
+			notices.push(if requires_login { notice.error() } else { notice });
 		}
 	}
 
@@ -395,7 +414,7 @@ impl Shell {
 								div()
 									.text_size(px(11.))
 									.line_height(px(17.))
-									.text_color(rgb(WB_TEXT_MUTED))
+									.text_color(rgb(notice.color))
 									.child(notice.detail),
 							)
 							.when(!matches!(notice.recovery, Recovery::None), |d| {

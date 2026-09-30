@@ -418,7 +418,7 @@ fn connection_presentation(view: ConnectionView) -> ConnectionPresentation {
 		ConnectionView::Incompatible(_) => ConnectionPresentation {
 			label: "Restart Decodex",
 			detail: "Restart Decodex to restore the connection.".into(),
-			color: 0xef4444,
+			color: crate::ui_theme::ERROR,
 		},
 		ConnectionView::Quarantined { .. } => ConnectionPresentation {
 			label: "Restart Decodex",
@@ -2221,17 +2221,30 @@ struct ControlTooltip<T>(T);
 
 impl<T: Clone + Into<SharedString> + 'static> Render for ControlTooltip<T> {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		div()
-			.px_2()
-			.py_1()
-			.rounded(px(6.0))
-			.border_1()
-			.border_color(rgba(0xffffff14))
-			.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
-			.text_size(px(11.0))
-			.text_color(rgb(WB_TEXT))
-			.child(self.0.clone().into())
+		tooltip_surface(self.0.clone().into(), WB_TEXT)
 	}
+}
+
+struct StatusTooltip {
+	text: SharedString,
+	color: u32,
+}
+impl Render for StatusTooltip {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		tooltip_surface(self.text.clone(), self.color)
+	}
+}
+fn tooltip_surface(text: SharedString, color: u32) -> gpui::Div {
+	div()
+		.px_2()
+		.py_1()
+		.rounded(px(6.0))
+		.border_1()
+		.border_color(rgba(0xffffff14))
+		.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
+		.text_size(px(11.0))
+		.text_color(rgb(color))
+		.child(text)
 }
 
 #[derive(Clone, Copy)]
@@ -2435,7 +2448,7 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 				HealthPresentation {
 					label: "Core unavailable",
 					detail: "At least one required Decodex service is unavailable.",
-					color: 0xef4444,
+					color: crate::ui_theme::ERROR,
 				}
 			} else {
 				HealthPresentation {
@@ -2458,7 +2471,7 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 		HealthLoadState::Refused => HealthPresentation {
 			label: "Response refused",
 			detail: "The retained report was not replaced.",
-			color: 0xef4444,
+			color: crate::ui_theme::ERROR,
 		},
 	}
 }
@@ -2512,7 +2525,7 @@ fn component_presentation(status: Option<DoctorStatus>) -> HealthPresentation {
 		Some(DoctorStatus::Unavailable(issue)) => HealthPresentation {
 			label: "Unavailable",
 			detail: doctor_issue_detail(issue),
-			color: 0xef4444,
+			color: crate::ui_theme::ERROR,
 		},
 		Some(DoctorStatus::Unknown(issue)) => HealthPresentation {
 			label: "Not verified",
@@ -3619,7 +3632,17 @@ fn account_icon_action(
 		.h(px(24.))
 		.px_0()
 		.tab_index(0)
-		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
+		.tooltip(move |_, cx| {
+			cx.new(|_| StatusTooltip {
+				text: label.into(),
+				color: if matches!(symbol, workspace_symbols::Symbol::AccountWarning) {
+					ui_theme::ERROR
+				} else {
+					WB_TEXT
+				},
+			})
+			.into()
+		})
 		.child(workspace_symbols::icon(symbol))
 }
 
@@ -3754,7 +3777,7 @@ fn conversation_state_color(state: ConversationState) -> u32 {
 		| ConversationState::EstablishmentPending
 		| ConversationState::QuotaExhausted
 		| ConversationState::NoRoute => 0xf59e0b,
-		ConversationState::ManualRecovery => 0xef4444,
+		ConversationState::ManualRecovery => crate::ui_theme::ERROR,
 		ConversationState::OutcomeUnknown => 0xf59e0b,
 	}
 }

@@ -571,8 +571,14 @@ mod render_tests {
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
 			});
-			assert_eq!(visual.debug_bounds("quota-reset-5h").unwrap(), five);
-			assert_eq!(visual.debug_bounds("quota-reset-7d").unwrap(), seven);
+			let next_five = visual.debug_bounds("quota-reset-5h").unwrap();
+			let next_seven = visual.debug_bounds("quota-reset-7d").unwrap();
+			// The page arrival can move both columns vertically between frames.
+			assert_eq!(next_five.origin.x, five.origin.x);
+			assert_eq!(next_seven.origin.x, seven.origin.x);
+			assert_eq!(next_five.size, five.size);
+			assert_eq!(next_seven.size, seven.size);
+			assert_eq!(next_five.top(), next_seven.top());
 		}
 	}
 

@@ -12,6 +12,13 @@ use decodex_protocol::{
 	QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId,
 };
 
+/// Only definitive authentication failures require another login; a busy or
+/// temporarily unavailable credential remains a recoverable warning.
+pub(crate) fn requires_login(error: decodex_protocol::AccountProfileErrorDto) -> bool {
+	use decodex_protocol::AccountProfileErrorDto::*;
+	matches!(error, RefreshRejected | RefreshAmbiguous | AccessRejectedAfterRefresh | Unauthorized)
+}
+
 /// Bounded selected-profile state rendered by Accounts.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AccountProfileSnapshot {

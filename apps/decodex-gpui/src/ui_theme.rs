@@ -98,6 +98,7 @@ pub(crate) const ACCENT: u32 = 0xe49a70;
 pub(crate) const BLUE: u32 = 0x8baaf7;
 pub(crate) const GREEN: u32 = 0x77c99a;
 pub(crate) const AMBER: u32 = 0xe0b56f;
+pub(crate) const ERROR: u32 = 0xef4444;
 
 pub(crate) const MOTION_PANEL: Duration = Duration::from_millis(240);
 

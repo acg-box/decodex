@@ -22,6 +22,7 @@ pub(super) enum Symbol {
 	Bell,
 	BellAttention,
 	BellInfo,
+	BellError,
 	ArrowDown,
 	AccountRoute,
 	AccountLogout,
@@ -38,8 +39,8 @@ pub(super) enum Symbol {
 	AccountReorder,
 }
 
-static IMAGES: LazyLock<[Arc<Image>; 31]> = LazyLock::new(|| {
-	let sources: [&[u8]; 31] = [
+static IMAGES: LazyLock<[Arc<Image>; 32]> = LazyLock::new(|| {
+	let sources: [&[u8]; 32] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
 		include_bytes!("../../../assets/workspace-symbols/graph.png"),
 		include_bytes!("../../../assets/workspace-symbols/timeline.png"),
@@ -57,6 +58,7 @@ static IMAGES: LazyLock<[Arc<Image>; 31]> = LazyLock::new(|| {
 		include_bytes!("../../../assets/workspace-symbols/bell.png"),
 		include_bytes!("../../../assets/workspace-symbols/bell-attention.png"),
 		include_bytes!("../../../assets/workspace-symbols/bell-info.png"),
+		include_bytes!("../../../assets/workspace-symbols/bell-error.png"),
 		include_bytes!("../../../assets/workspace-symbols/arrow-down.png"),
 		include_bytes!("../../../assets/workspace-symbols/account-route.png"),
 		include_bytes!("../../../assets/workspace-symbols/account-logout.png"),
