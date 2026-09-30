@@ -686,9 +686,7 @@ impl AccountService {
 		Ok(ready)
 	}
 
-	/// Permit only the bootstrap-owned live proof to project the exact attested profile while the
-	/// durable capability remains closed. No transport or background worker is live at this point.
-	/// List account registry state with current exact host-store readiness.
+	/// List account registry state with its recorded lifecycle readiness.
 	pub async fn list(&self) -> Result<Vec<AccountInspection>, AccountLifecycleError> {
 		let accounts = self.store.read_account_registry(None, MAX_ACCOUNT_READ).await?;
 		Ok(accounts
@@ -3252,7 +3250,7 @@ impl AccountService {
 		.await
 	}
 
-	/// Apply one enablement command and its durable public result in one PG transaction.
+	/// Apply one enablement command and its durable public result in one SQLite transaction.
 	pub async fn set_account_enabled_command<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
@@ -3283,7 +3281,7 @@ impl AccountService {
 			.await?)
 	}
 
-	/// Apply one balanced-selection command and its durable result in one PG transaction.
+	/// Apply one balanced-selection command and its durable result in one SQLite transaction.
 	pub async fn set_balanced_selection_command<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
@@ -3304,7 +3302,7 @@ impl AccountService {
 			.await?)
 	}
 
-	/// Apply one account-order command and its durable result in one PG transaction.
+	/// Apply one account-order command and its durable result in one SQLite transaction.
 	pub async fn set_account_order_command<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
@@ -4311,31 +4309,7 @@ impl AccountService {
 			.credential
 			.as_ref()
 			.ok_or(AccountLifecycleError::NotReady(AccountLifecycleReadiness::CredentialAbsent))?;
-		match self.credentials.read_exact(&account.account_id, binding) {
-			Ok(stored) => {
-				self.store
-					.observe_account_store(
-						&account.account_id,
-						account.revision,
-						binding,
-						AccountStoreObservation::Exact,
-					)
-					.await?;
-				Ok(stored)
-			},
-			Err(error) => {
-				let (observation, readiness) = store_error_observation(error);
-				self.store
-					.observe_account_store(
-						&account.account_id,
-						account.revision,
-						binding,
-						observation,
-					)
-					.await?;
-				Err(AccountLifecycleError::NotReady(readiness))
-			},
-		}
+		self.read_and_observe_exact_credential(account, binding).await
 	}
 
 	async fn read_exact_for_bound_callback(
@@ -4346,31 +4320,7 @@ impl AccountService {
 			return Err(AccountLifecycleError::NotReady(AccountLifecycleReadiness::Tombstoned));
 		}
 		let binding = account.credential.as_ref().ok_or(AccountLifecycleError::CredentialAbsent)?;
-		match self.credentials.read_exact(&account.account_id, binding) {
-			Ok(stored) => {
-				self.store
-					.observe_account_store(
-						&account.account_id,
-						account.revision,
-						binding,
-						AccountStoreObservation::Exact,
-					)
-					.await?;
-				Ok(stored)
-			},
-			Err(error) => {
-				let (observation, readiness) = store_error_observation(error);
-				self.store
-					.observe_account_store(
-						&account.account_id,
-						account.revision,
-						binding,
-						observation,
-					)
-					.await?;
-				Err(AccountLifecycleError::NotReady(readiness))
-			},
-		}
+		self.read_and_observe_exact_credential(account, binding).await
 	}
 
 	async fn read_exact_with_gate(
@@ -4398,6 +4348,14 @@ impl AccountService {
 			.credential
 			.as_ref()
 			.ok_or(AccountLifecycleError::NotReady(AccountLifecycleReadiness::CredentialAbsent))?;
+		self.read_and_observe_exact_credential(account, binding).await
+	}
+
+	async fn read_and_observe_exact_credential(
+		&self,
+		account: &AccountRecord,
+		binding: &CredentialBinding,
+	) -> Result<StoredCredential, AccountLifecycleError> {
 		match self.credentials.read_exact(&account.account_id, binding) {
 			Ok(stored) => {
 				self.store
@@ -4882,9 +4840,7 @@ fn quota_selection_score(
 			None,
 		_ => return Err(AccountSelectionRecovery::RefreshQuota),
 	};
-	if allowed != Some(true)
-		&& (seven.used_percent >= 100 || five.is_some_and(|fact| fact.used_percent >= 100))
-	{
+	if seven.used_percent >= 100 || five.is_some_and(|fact| fact.used_percent >= 100) {
 		return Err(AccountSelectionRecovery::RefreshQuota);
 	}
 	// An absent limit has no utilization to rank; weekly utilization still counts.
