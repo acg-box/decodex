@@ -8,13 +8,13 @@ use std::ops::Range;
 /// This is local draft data, not permission to revert history or submit a turn.
 /// Non-text parts and unknown fields remain unchanged. Callers must qualify the
 /// installed native input contract before confirmation or submission.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct PromptDraft(Vec<Value>);
 
 /// A canonical editor retained in its exact service profile before draft handback.
 /// The native receipt remains the authority for mutation and acknowledgement.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopPromptEditDraft {
 	/// Local task whose native history was reviewed.

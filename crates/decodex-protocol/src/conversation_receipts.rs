@@ -6,7 +6,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 /// Original creation coordinates used by the durable request fingerprint.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationCreationReceiptRequest {
 	/// Original logical command key.
@@ -54,7 +54,7 @@ impl ConversationCreationReceiptRequest {
 }
 
 /// Local persistence evidence. None of these states asserts provider completion.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ConversationCreationReceiptResult {
 	/// The exact request created its local conversation.

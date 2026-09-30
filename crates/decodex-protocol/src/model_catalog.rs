@@ -7,7 +7,7 @@ use crate::{
 };
 
 /// Select the same account policy that the intended conversation will use.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelCatalogPurpose {
 	/// Ordinary conversation routing settings.
@@ -17,7 +17,7 @@ pub enum ModelCatalogPurpose {
 }
 
 /// Metadata inspection without creating a thread or sending a turn.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct InitialModelCatalogRequest {
 	/// Directory whose native provider configuration applies.
@@ -29,7 +29,7 @@ pub struct InitialModelCatalogRequest {
 }
 
 /// A complete native catalog with its observed account and directory.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
 pub enum InitialModelCatalogResult {
 	/// The native query and process cleanup completed with unchanged account identity.
@@ -51,7 +51,7 @@ pub enum InitialModelCatalogResult {
 }
 
 /// Native defaults observed without creating a conversation or overriding user choices.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct InitialExecutionDefaults {
 	/// Model from the corresponding native configuration layer.
@@ -63,7 +63,7 @@ pub struct InitialExecutionDefaults {
 }
 
 /// Separate sources of defaults; managed defaults do not enforce user selection.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct InitialModelDefaults {
 	/// Effective account and directory configuration.
@@ -75,7 +75,7 @@ pub struct InitialModelDefaults {
 }
 
 /// Account observation used to choose a new conversation's execution settings.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct InitialModelSource {
 	/// Exact local account observed by model discovery.
@@ -85,7 +85,7 @@ pub struct InitialModelSource {
 }
 
 /// Saved request and fresh capabilities for explicit model review before first launch.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationModelReview {
 	/// Conversation whose request supplied the directory and original input.
@@ -101,7 +101,7 @@ pub struct ConversationModelReview {
 }
 
 /// Review discovery never starts a conversation or clears its review requirement.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ConversationModelReviewResult {
 	/// Complete observation of the same unchanged blocked request.

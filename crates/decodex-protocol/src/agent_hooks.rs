@@ -2,7 +2,7 @@
 use crate::{EntityId, WireText};
 use serde::{Deserialize, Serialize};
 /// Explicit change to one reviewed hook.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", content = "enabled", rename_all = "snake_case")]
 pub enum AgentHookChange {
 	/// Trust the exact reviewed content hash.
@@ -11,7 +11,7 @@ pub enum AgentHookChange {
 	Enabled(bool),
 }
 /// Complete display facts for one native hook.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentHookDto {
 	/// Native hook identity.
 	pub key: WireText,
@@ -31,7 +31,7 @@ pub struct AgentHookDto {
 	pub details: String,
 }
 /// Last write to this shared config, possibly initiated from another task.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentHookEditReceipt {
 	/// Reserved, saved, overridden, rejected, unknown, target_observed or superseded.
 	pub outcome: String,
@@ -43,7 +43,7 @@ pub struct AgentHookEditReceipt {
 	pub account_id: EntityId,
 }
 /// Current owner-bound hook review.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentHookSettingsState {
 	/// Effective hooks, raw overrides and independent durable request result.

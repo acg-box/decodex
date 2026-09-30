@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 /// One ordinary editor, without a claim that native defaults are still current.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopOrdinaryComposerDraft {
 	/// Logical conversation owner, absent only before creation.
@@ -21,7 +21,7 @@ pub struct DesktopOrdinaryComposerDraft {
 }
 
 /// Ordinary state for one directory within an exact service profile.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopOrdinaryDraft {
 	/// Directory used by this controller, not a new launch authorization.

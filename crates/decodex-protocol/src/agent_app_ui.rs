@@ -7,7 +7,7 @@ pub const MAX_AGENT_APP_UI_BYTES: usize = 6 * 1024 * 1024;
 pub const AGENT_APP_UI_CHUNK_BYTES: usize = 32 * 1024;
 
 /// One exact native widget document and continuation offset.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentAppUiRequest {
 	/// Current task identity.
@@ -25,7 +25,7 @@ pub struct AgentAppUiRequest {
 }
 
 /// Widget document bytes or an explicit unavailable/unsupported result.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentAppUiResult {
 	/// A bounded byte chunk from the exact source.

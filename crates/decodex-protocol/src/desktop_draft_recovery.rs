@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 /// A complete alternative editor state. Selecting it never authorizes submission.
-#[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopRecoveredDraft {
 	/// Exact opaque profile namespace; absent only for input before profile selection.

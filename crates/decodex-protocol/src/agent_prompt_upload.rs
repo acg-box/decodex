@@ -3,7 +3,7 @@ use crate::{EntityId, IdempotencyKey, Sha256Digest, WireText};
 use serde::{Deserialize, Serialize};
 
 /// Exact source and content identity shared by every chunk and status read.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PromptInputUpload {
 	/// Local task owner.
@@ -30,7 +30,7 @@ impl PromptInputUpload {
 }
 
 /// Read-only transfer status. Complete bytes are not a submitted model turn.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PromptInputUploadStatus {
 	/// Durable chunks exist or a new transfer can start at zero.

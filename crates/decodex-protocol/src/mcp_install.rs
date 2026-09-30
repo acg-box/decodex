@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// One connector's fresh native access state and optional authorization page.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentInstallApp {
 	/// Exact native connector identity.
@@ -19,7 +19,7 @@ pub struct AgentInstallApp {
 }
 
 /// Inspection is read-only. Only explicit commands may install or answer a suggestion.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentInstallState {
 	/// Fresh, exact-target catalog and connector evidence.
@@ -77,12 +77,6 @@ pub struct McpInstallSuggestion {
 	/// Type-specific native identities.
 	pub target: McpInstallTarget,
 	install_url: Option<String>,
-}
-
-impl std::fmt::Debug for McpInstallSuggestion {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_str("McpInstallSuggestion([private request facts])")
-	}
 }
 
 impl McpInstallSuggestion {
@@ -166,6 +160,12 @@ impl McpInstallSuggestion {
 	/// Exact validated native URL; open only after an explicit user action.
 	pub fn install_url(&self) -> Option<&str> {
 		self.install_url.as_deref()
+	}
+}
+
+impl std::fmt::Debug for McpInstallSuggestion {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str("McpInstallSuggestion([private request facts])")
 	}
 }
 

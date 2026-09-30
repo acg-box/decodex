@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub const MAX_AGENT_APP_UI_CALL_BYTES: usize = 64 * 1024;
 
 /// One browser callback identified by a fresh host-generated operation identity.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentAppUiCall {
 	/// Owning task.
@@ -27,7 +27,7 @@ pub struct AgentAppUiCall {
 }
 
 /// Native evidence for an explicit user confirmation.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentAppUiCallReview {
 	/// Current source and tool evidence. This is not permission to execute.
@@ -56,7 +56,7 @@ pub const MAX_AGENT_APP_UI_RECEIPT_BYTES: usize =
 pub const AGENT_APP_UI_RECEIPT_CHUNK_BYTES: usize = 32 * 1024;
 
 /// Exact durable operation readback, independent of a live native process.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentAppUiReceiptRequest {
 	/// Owning task.
@@ -70,7 +70,7 @@ pub struct AgentAppUiReceiptRequest {
 }
 
 /// Durable evidence; unavailable never authorizes retry of a mutation.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentAppUiReceiptResult {
 	/// A bounded part of the saved invocation, status and native result.
@@ -91,7 +91,7 @@ pub enum AgentAppUiReceiptResult {
 }
 
 /// Cold discovery from the saved work journal; no native connection is required.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentPendingAppUiCall {
 	/// The work journal was read successfully.

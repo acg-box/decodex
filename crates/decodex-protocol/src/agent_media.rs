@@ -7,7 +7,7 @@ pub const MAX_AGENT_MEDIA_BYTES: usize = 6 * 1024 * 1024;
 pub const AGENT_MEDIA_CHUNK_BYTES: usize = 32 * 1024;
 
 /// One exact native attachment and continuation offset.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentMediaRequest {
 	/// Current task identity.
@@ -27,7 +27,7 @@ pub struct AgentMediaRequest {
 }
 
 /// Attachment bytes or an explicit unavailable/unsupported result.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentMediaResult {
 	/// A bounded byte chunk from the exact source.

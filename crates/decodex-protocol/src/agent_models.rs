@@ -3,7 +3,7 @@ use crate::{AgentModelDto, ConversationModel, ConversationReasoningEffort, Entit
 use serde::{Deserialize, Serialize};
 
 /// Durable request outcome, not proof that an active turn changed its model.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentModelOutcome {
 	/// Reserved before the native write.
@@ -21,7 +21,7 @@ pub enum AgentModelOutcome {
 }
 
 /// Original response to one model settings request, independent of later observations.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentModelResponse {
 	/// Reserved before a response was recorded.
@@ -35,7 +35,7 @@ pub enum AgentModelResponse {
 }
 
 /// Historical model request evidence; it does not describe the current inference.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentModelSelectionReceipt {
 	/// Requested model.
@@ -53,7 +53,7 @@ pub struct AgentModelSelectionReceipt {
 }
 
 /// Review facts for a task-local model selection.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentModelSelectionState {
 	/// Configured selection and the current native model catalog.

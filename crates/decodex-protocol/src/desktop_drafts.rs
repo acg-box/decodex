@@ -13,7 +13,7 @@ use std::{
 pub use recovery::DesktopRecoveredDraft;
 
 /// Versioned local file payload, keyed by the exact client profile's opaque scope.
-#[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopDraftDocument {
 	/// Source-bound alternatives retained by an explicit keep-both conflict action.
@@ -30,20 +30,9 @@ pub struct DesktopDraftDocument {
 	/// Saved service-scoped drafts; a missing profile does not authorize migration.
 	pub profiles: BTreeMap<String, DesktopProfileDraft>,
 }
-impl Default for DesktopDraftDocument {
-	fn default() -> Self {
-		Self {
-			version: 10,
-			profiles: BTreeMap::new(),
-			unbound: Default::default(),
-			unbound_ordinary: Default::default(),
-			recovered: vec![],
-		}
-	}
-}
 
 /// One service's unsent inputs and unresolved delivery identity.
-#[derive(Clone, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopProfileDraft {
 	/// Canonical history editors, retained separately from an occupied main composer.
@@ -73,7 +62,7 @@ pub struct DesktopProfileDraft {
 }
 
 /// Main composer state without runtime defaults or inferred authorization.
-#[derive(Clone, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopComposerDraft {
 	/// Pre-creation editor choices, absent for existing work or older saved drafts.
@@ -92,7 +81,7 @@ pub struct DesktopComposerDraft {
 }
 
 /// User choices that opt out of native new-task defaults.
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopCreationIntent {
 	/// The user chose a model.
@@ -104,7 +93,7 @@ pub struct DesktopCreationIntent {
 }
 
 /// Editable setup before a Agent exists; values are drafts, never launch authority.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopCreationSetup {
 	/// Re-read defaults before sending a restored draft that used a native observation.
@@ -133,7 +122,7 @@ pub struct DesktopCreationSetup {
 }
 
 /// A retained asynchronous question editor, bound to its original source.
-#[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopQuestionDraft {
 	/// Local work that owns the native question.
@@ -153,7 +142,7 @@ pub struct DesktopQuestionDraft {
 }
 
 /// Captured input that may already have been accepted by the service.
-#[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopPendingDraft {
 	/// Exact native steering receipt identity, when this was a steering command.
@@ -255,6 +244,18 @@ impl DesktopDraftDocument {
 		}
 
 		Ok(())
+	}
+}
+
+impl Default for DesktopDraftDocument {
+	fn default() -> Self {
+		Self {
+			version: 10,
+			profiles: BTreeMap::new(),
+			unbound: Default::default(),
+			unbound_ordinary: Default::default(),
+			recovered: vec![],
+		}
 	}
 }
 impl DesktopProfileDraft {

@@ -1,8 +1,7 @@
 //! Assemble selected request content without exposing incomplete actions to callers.
 use super::{AgentClient, ClientFailure, REQUEST_CLIENT_TIMEOUT, close_one_shot_socket};
 use crate::{
-	AgentRequestResult as Request, AgentRequestText, EntityId, QueryPayload, QueryResultPayload,
-	WireText,
+	AgentRequestResult, AgentRequestText, EntityId, QueryPayload, QueryResultPayload, WireText,
 };
 use tokio::time;
 
@@ -23,11 +22,11 @@ fn valid_owner(event_id: i64, expected: i64, work: &str, method: &str) -> bool {
 pub(super) async fn collect(
 	client: &AgentClient,
 	expected: i64,
-	first: Request,
-) -> Result<Request, ClientFailure> {
+	first: AgentRequestResult,
+) -> Result<AgentRequestResult, ClientFailure> {
 	let (owner, method, digest, total) = match &first {
-		Request::Unavailable => return Ok(first),
-		Request::Available { event_id, work_id, method, request_json } => {
+		AgentRequestResult::Unavailable => return Ok(first),
+		AgentRequestResult::Available { event_id, work_id, method, request_json } => {
 			return if valid_owner(*event_id, expected, work_id, method)
 				&& request_json.as_str().len() <= crate::MAX_HISTORY_INLINE_BYTES
 			{
@@ -36,7 +35,7 @@ pub(super) async fn collect(
 				Err(ClientFailure::ProtocolMalformed)
 			};
 		},
-		Request::Page { event_id, work_id, method, digest, total_bytes, .. } => {
+		AgentRequestResult::Page { event_id, work_id, method, digest, total_bytes, .. } => {
 			if !valid_owner(*event_id, expected, work_id, method)
 				|| digest.len() != 64
 				|| !digest.bytes().all(|b| b.is_ascii_hexdigit())
@@ -53,7 +52,7 @@ pub(super) async fn collect(
 	let mut page = first;
 
 	loop {
-		let Request::Page {
+		let AgentRequestResult::Page {
 			event_id,
 			work_id,
 			method: returned_method,
@@ -64,7 +63,7 @@ pub(super) async fn collect(
 			next_offset,
 		} = page
 		else {
-			return if page == Request::Unavailable {
+			return if page == AgentRequestResult::Unavailable {
 				Ok(page)
 			} else {
 				Err(ClientFailure::ProtocolMalformed)
@@ -97,7 +96,7 @@ pub(super) async fn collect(
 				return Err(ClientFailure::ProtocolMalformed);
 			}
 
-			return Ok(Request::Available {
+			return Ok(AgentRequestResult::Available {
 				event_id: expected,
 				work_id: owner,
 				method,

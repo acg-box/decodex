@@ -3,7 +3,7 @@ use crate::{AgentPluginInventory, EntityId, WireText};
 use serde::{Deserialize, Serialize};
 
 /// Durable request outcome, not proof that an active turn changed its capabilities.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentPluginOutcome {
 	/// Reserved before the native write.
@@ -21,7 +21,7 @@ pub enum AgentPluginOutcome {
 }
 
 /// Review facts for a task-local plugin selection.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentPluginSelectionState {
 	/// Saved selection and independent shared installation metadata.

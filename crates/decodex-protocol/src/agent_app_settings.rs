@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 /// An explicit edit to one account override. None restores inheritance.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "field", content = "value", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentAppSettingEdit {
 	/// Native account approval mode override.
@@ -12,7 +12,7 @@ pub enum AgentAppSettingEdit {
 }
 
 /// Native account-level tool approval modes.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentAppApprovalMode {
 	/// Native automatic approval policy.
@@ -26,7 +26,7 @@ pub enum AgentAppApprovalMode {
 }
 
 /// Native approval reviewer selection.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentAppReviewer {
 	/// Send approval requests to the user.
@@ -36,7 +36,7 @@ pub enum AgentAppReviewer {
 }
 
 /// Configuration readback, distinct from effective tool policy or live approval readiness.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentAppSettingsResult {
 	/// Native account identity and configuration remain bound to the same task and source.
@@ -68,7 +68,7 @@ pub enum AgentAppSettingsResult {
 }
 
 /// Durable shared config result; it does not assert effective tool policy.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentConfigEditReceipt {
 	/// Reserved, saved, overridden, rejected, unknown, target_observed or superseded.
 	pub outcome: String,
@@ -83,7 +83,7 @@ pub struct AgentConfigEditReceipt {
 }
 
 /// One native connection with an explicit saved override.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentSavedAppConnection {
 	/// Exact native app key.
 	pub connector_id: String,
@@ -101,7 +101,7 @@ pub struct AgentSavedAppConnection {
 	pub effective_reviewer: Option<String>,
 }
 /// Native saved overrides, independently of pending tool requests.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentSavedAppSettingsResult {
 	/// Complete saved configuration for the current task's native source.

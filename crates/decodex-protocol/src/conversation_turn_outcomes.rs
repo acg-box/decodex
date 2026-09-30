@@ -3,7 +3,7 @@ use crate::{CommandEnvelope, CommandPayload, EntityId, IdempotencyKey};
 use serde::{Deserialize, Serialize};
 
 /// Stable original coordinates of a later ordinary message.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationTurnOutcomeRequest {
 	/// Original logical submission key.
@@ -31,7 +31,7 @@ impl ConversationTurnOutcomeRequest {
 }
 
 /// Durable provider outcome, separate from the local turn's display status.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConversationTurnOutcomeState {
 	/// Preparation or authorized dispatch is not terminal.
@@ -47,7 +47,7 @@ pub enum ConversationTurnOutcomeState {
 }
 
 /// Result of a read-only provider-attempt observation.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ConversationTurnOutcomeResult {
 	/// State of the exact original conversation turn.

@@ -1,7 +1,7 @@
 //! Native goal snapshots, separate from Agent coordination state.
 use serde::{Deserialize, Serialize};
 /// Native scheduler state; a token limit is distinct from account usage limits.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AgentNativeGoalStatus {
 	/// The native goal can continue work.
@@ -19,7 +19,7 @@ pub enum AgentNativeGoalStatus {
 }
 
 /// One native goal snapshot; counters belong to this goal, not all thread history.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentNativeGoal {
 	/// Exact native thread identity.
@@ -43,7 +43,7 @@ pub struct AgentNativeGoal {
 }
 
 /// One source-bound native goal read. Failure never means no goal exists.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentNativeGoalResult {
 	/// The native read completed for the exact requested task and thread.
@@ -69,7 +69,7 @@ pub enum AgentNativeGoalResult {
 }
 
 /// Explicit change to the native token budget.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "tokens", rename_all = "snake_case")]
 pub enum AgentGoalBudgetEdit {
 	/// Keep the current goal budget.
@@ -80,7 +80,7 @@ pub enum AgentGoalBudgetEdit {
 	Set(i64),
 }
 /// Edits to one reviewed native goal. Text can be materialized as a native attachment.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentGoalEdit {
 	/// New objective; absent means preserve it.

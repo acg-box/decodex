@@ -3,7 +3,7 @@ use crate::{EntityId, WireText};
 use serde::{Deserialize, Serialize};
 
 /// Native profile eligibility in the task's current directory.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentPermissionProfile {
 	/// Native profile identifier.
 	pub id: WireText,
@@ -15,7 +15,7 @@ pub struct AgentPermissionProfile {
 	pub description: Option<WireText>,
 }
 /// Durable outcome, separate from the effective native policy.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentPermissionOutcome {
 	/// Reserved before the native write.
@@ -32,7 +32,7 @@ pub enum AgentPermissionOutcome {
 	Superseded,
 }
 /// Read-only review or pending operation for a saved task.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentPermissionState {
 	/// Current native facts and the complete bounded profile catalog.

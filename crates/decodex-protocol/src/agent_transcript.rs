@@ -5,7 +5,7 @@ pub const MAX_TRANSCRIPT_BYTES: usize = decodex_core::MAX_NATIVE_MESSAGE_BYTES;
 /// Binary chunks fit the local JSON frame even with escaped bytes.
 pub const TRANSCRIPT_CHUNK_BYTES: usize = 32 * 1024;
 /// Exact conversation and export continuation.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentTranscriptRequest {
 	/// Local task owner.
@@ -18,7 +18,7 @@ pub struct AgentTranscriptRequest {
 	pub token: Option<crate::EntityId>,
 }
 /// Complete-document chunks or an explicit read failure.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentTranscriptResult {
 	/// One chunk of a fully hydrated document.

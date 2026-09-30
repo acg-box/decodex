@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Identity captured before one steering command is sent.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSteerIdentity {
 	/// Local task that owns the submission.
@@ -16,7 +16,7 @@ pub struct AgentSteerIdentity {
 }
 
 /// Read-only evidence; an absent receipt never authorizes a retry.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentSteerReceiptResult {
 	/// The saved receipt confirms this exact submission.

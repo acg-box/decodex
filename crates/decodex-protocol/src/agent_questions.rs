@@ -6,7 +6,7 @@ const OPEN: &str = "<send_user_message_question_reply>";
 const CLOSE: &str = "</send_user_message_question_reply>";
 
 /// One provider question with a stable identity independent of its title.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentAsyncQuestionDto {
 	/// First observed in a live native event, rather than reconstructed from history.
@@ -25,7 +25,7 @@ fn is_false(value: &bool) -> bool {
 }
 
 /// A committed native reply, used for readable history and exact dismissal.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentAsyncQuestionReply {
 	/// Exact question ID, or a legacy source message ID.

@@ -7,7 +7,7 @@ use std::{
 	fs,
 	os::unix::{
 		fs::{MetadataExt as _, PermissionsExt as _, symlink},
-		net::UnixListener as StandardUnixListener,
+		net::UnixListener,
 	},
 	path::PathBuf,
 };
@@ -130,7 +130,7 @@ async fn executable_stale_stage_and_canonical_sockets_are_recovered() {
 	for name in ["decodex.sock.stage", "decodex.sock"] {
 		let (_temporary, authority, socket_path) = fixture();
 		let stale_path = socket_path.parent().expect("socket has parent").join(name);
-		let stale = StandardUnixListener::bind(&stale_path).expect("bind stale fixture socket");
+		let stale = UnixListener::bind(&stale_path).expect("bind stale fixture socket");
 
 		fs::set_permissions(&stale_path, fs::Permissions::from_mode(0o600))
 			.expect("scope stale fixture socket");
@@ -156,8 +156,7 @@ async fn endpoint_replacement_is_reported_and_never_unlinked_by_cleanup() {
 
 	fs::rename(&socket_path, &retained_copy).expect("move retained endpoint aside");
 
-	let replacement =
-		StandardUnixListener::bind(&socket_path).expect("publish replacement endpoint");
+	let replacement = UnixListener::bind(&socket_path).expect("publish replacement endpoint");
 
 	fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600))
 		.expect("scope replacement endpoint");

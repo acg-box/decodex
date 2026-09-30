@@ -6,7 +6,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 /// Latest reset-card operation for one account, including terminal results.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "status", content = "operation", rename_all = "snake_case")]
 pub enum AccountResetCardOperationResult {
 	/// This account has no durable reset-card intent.
@@ -20,7 +20,7 @@ pub enum AccountResetCardOperationResult {
 	},
 }
 /// Credential-free projection of one explicitly confirmed selection.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ResetCardOperationView {
 	/// Selected account.
 	pub account_id: EntityId,

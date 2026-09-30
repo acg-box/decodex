@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Complete selected request content assembled from bounded local protocol pages.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct AgentRequestText(String);
 
@@ -40,7 +40,7 @@ impl From<AgentRequestText> for String {
 }
 
 /// A bounded, selected view of one unresolved provider request.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentRequestResult {
 	/// The exact unresolved source request.
@@ -78,7 +78,7 @@ pub enum AgentRequestResult {
 }
 
 /// A bounded public execution update. Never contains raw provider frames or tool arguments.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentActivityDto {
 	/// Exact provider turn.
@@ -107,7 +107,7 @@ pub struct AgentActivityDto {
 }
 
 /// A source-bound readable entry. Raw tool or credential frames are never projected.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentHistoryEntryDto {
 	/// Exact native identity of a retained display fallback, when present.
@@ -140,7 +140,7 @@ pub struct AgentHistoryEntryDto {
 }
 
 /// Exact native identity; text equality does not establish replacement.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentHistorySourceDto {
 	/// Native thread that produced the item.
@@ -152,7 +152,7 @@ pub struct AgentHistorySourceDto {
 }
 
 /// Local delivery evidence retained beside canonical native history.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentHistoryReceiptDto {
 	/// Durable voice call identity; absent for non-voice and older receipts.
@@ -167,7 +167,7 @@ pub struct AgentHistoryReceiptDto {
 }
 
 /// Public streamed text category; this does not change execution authority.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentLiveMessageKind {
 	/// Assistant response text.
@@ -180,7 +180,7 @@ pub enum AgentLiveMessageKind {
 }
 
 /// Current-turn text observed before final history is available.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentLiveMessageDto {
 	/// Exact public native item category.
@@ -197,7 +197,7 @@ pub struct AgentLiveMessageDto {
 }
 
 /// Provider counter delta across all model calls in one completed turn.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentTurnUsageDto {
 	/// Optional structured observations for the response details popover.
@@ -210,7 +210,7 @@ pub struct AgentTurnUsageDto {
 }
 
 /// Observed last-response counters, distinct from whole-turn and thread totals.
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentUsageDetailsDto {
 	/// Last response input, including cached input.
 	pub last_input: Option<u64>,
@@ -229,7 +229,7 @@ pub struct AgentUsageDetailsDto {
 }
 
 /// Latest provider-observed conversation usage. Counts are cumulative, not per message.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentUsageDto {
 	/// Cumulative input tokens, including cached input.
@@ -243,7 +243,7 @@ pub struct AgentUsageDto {
 }
 
 /// Latest bounded readable history for one work identity.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentHistoryResult {
 	/// Verified visible entries; older history or shortened content is explicitly indicated.
@@ -273,7 +273,7 @@ pub enum AgentHistoryResult {
 }
 
 /// Current unconfirmed local input, independent of the conversation history window.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentInputReceiptsResult {
 	/// A bounded page in persistent event order. Reads never authorize another delivery.
@@ -292,7 +292,7 @@ pub enum AgentInputReceiptsResult {
 }
 
 /// Findings for one provider precaution. The digest binds an explicit acknowledgment.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentMisalignmentDto {
 	/// Exact findings digest; a live continuation also binds its source connection.
@@ -304,7 +304,7 @@ pub struct AgentMisalignmentDto {
 }
 
 /// Explicit host-selected Agent execution policy.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentStartDto {
 	/// Personal Agent work identity.
@@ -324,7 +324,7 @@ pub struct AgentStartDto {
 }
 
 /// Sandbox modes supported by the initial Agent product.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentSandboxDto {
 	/// Permit observation only.
@@ -337,7 +337,7 @@ pub enum AgentSandboxDto {
 
 /// A user-selected local file, directory, or skill. Images use native vision input;
 /// skills use exact native skill input; other paths are references.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentAttachmentDto {
 	/// Absolute local path selected by the user.
@@ -350,7 +350,7 @@ pub struct AgentAttachmentDto {
 }
 
 /// A task explicitly selected by the user as readable evidence.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AgentTaskReferenceDto {
 	/// Exact local work identity.
@@ -362,7 +362,7 @@ pub struct AgentTaskReferenceDto {
 }
 
 /// Explicit Agent operations. Graph judgments remain model-owned.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentActionDto {
 	/// Send retained canonical input through the existing user-message queue.
@@ -819,7 +819,7 @@ pub const MAX_AGENT_PENDING_EVENTS: usize = 100;
 pub const MAX_AGENT_SNAPSHOT_BYTES: usize = 128 * 1024;
 
 /// Durable work category, independent of a host project.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentWorkKindDto {
 	/// An executable subordinate Agent.
@@ -831,7 +831,7 @@ pub enum AgentWorkKindDto {
 }
 
 /// Explicit work judgment, separate from execution facts.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentWorkStatusDto {
 	/// No disposition yet.
@@ -847,7 +847,7 @@ pub enum AgentWorkStatusDto {
 }
 
 /// Durable execution evidence. Idle does not mean the provider is ready.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentDispatchStateDto {
 	/// No dispatch is claimed.
@@ -861,7 +861,7 @@ pub enum AgentDispatchStateDto {
 }
 
 /// Safe work metadata without task instructions or provider output.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentWorkItemDto {
 	/// Opaque work identity.
@@ -889,7 +889,7 @@ pub struct AgentWorkItemDto {
 }
 
 /// One explicit dependency edge.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentDependencyDto {
 	/// Work that is blocked by the dependency.
@@ -899,7 +899,7 @@ pub struct AgentDependencyDto {
 }
 
 /// Pending event metadata. Raw event payload and provider output are excluded.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentPendingEventDto {
 	/// Durable inbox sequence.
@@ -917,7 +917,7 @@ pub struct AgentPendingEventDto {
 }
 
 /// A project directory owned by one executable Agent.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentWorkspaceDto {
 	/// Manager identity, also the workspace identity.
@@ -929,7 +929,7 @@ pub struct AgentWorkspaceDto {
 }
 
 /// One bounded work snapshot plus observed runtime identity, including a valid empty state.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSnapshotDto {
 	/// Opaque current account revision and process identity; absent while unavailable.
@@ -992,7 +992,7 @@ impl AgentSnapshotDto {
 }
 
 /// A complete snapshot or explicit failure; partial graphs are never presented as complete.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentSnapshotResult {
 	/// Complete data, including an empty work store.
@@ -1008,6 +1008,177 @@ pub enum AgentSnapshotResult {
 		/// Total undisposed inbox events in the store.
 		pending_events: u64,
 	},
+}
+
+/// Native model choices from the currently connected Codex process.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentModelDto {
+	/// Exact model identifier used in turn requests.
+	pub model: crate::ConversationModel,
+	/// Provider display name.
+	pub name: String,
+	/// Reasoning levels understood by this client and advertised by Codex.
+	pub efforts: Vec<crate::ConversationReasoningEffort>,
+	/// Provider default, when understood by this client.
+	pub default_effort: Option<crate::ConversationReasoningEffort>,
+	/// The provider offers the priority service tier for this model.
+	pub supports_fast: bool,
+	/// Service tiers advertised for this model and current account.
+	pub service_tiers: Vec<AgentServiceTierDto>,
+	/// Informational catalog default. Never changes an explicit user selection.
+	pub default_service_tier: Option<decodex_core::ServiceTier>,
+	/// Known caller-specific catalog programs; None means metadata was not supplied.
+	/// This observation never grants access or selects a program for inference.
+	pub available_cyber_programs: Option<Vec<String>>,
+	/// Provider-defined model specialty. Informational; does not change task permissions.
+	#[serde(default)]
+	pub specialty: Option<String>,
+	/// The provider accepts image input for this model.
+	pub supports_images: bool,
+	/// Provider availability information for the current account, when supplied.
+	pub availability: Option<String>,
+	/// Informational upgrade or retirement notice; selection stays explicit.
+	pub upgrade: Option<AgentModelUpgradeDto>,
+}
+
+/// Provider-authored service-tier choice, distinct from model or account quota.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentServiceTierDto {
+	/// Exact native request value.
+	pub id: decodex_core::ServiceTier,
+	/// Provider display name.
+	pub name: String,
+	/// Provider description, including usage implications when supplied.
+	pub description: String,
+}
+
+/// Provider-advertised model replacement information.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentModelUpgradeDto {
+	/// Suggested replacement, never selected automatically.
+	pub model: crate::ConversationModel,
+	/// Provider-authored explanation.
+	pub notice: Option<String>,
+	/// Informational retirement time as Unix seconds, when supplied.
+	pub retirement_at: Option<i64>,
+}
+
+/// Read-only capability evidence. Absence never means a disabled feature.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AgentCapabilitiesResult {
+	/// Observed on the currently owned connection; no model turn was started.
+	Available {
+		/// Complete bounded visible model catalog.
+		models: Vec<AgentModelDto>,
+		/// Effective Memory feature flag from experimentalFeature/list, when available.
+		memory_enabled: Option<bool>,
+	},
+	/// The connection or complete catalog could not be read.
+	Unavailable,
+}
+
+/// Continuation bound to one unchanged source and projected tool detail.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentActivityDetailCursor {
+	/// UTF-8 byte offset in the complete filtered text.
+	pub offset: u32,
+	/// Opaque digest of source identity and complete filtered text.
+	pub fingerprint: crate::WireText,
+}
+
+/// Selected readable tool evidence for one exact native item.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AgentActivityDetailResult {
+	/// Public tool output or file changes, bounded and credential-filtered.
+	Available {
+		/// Plain text evidence; never executable markup.
+		text: String,
+		/// Some output was omitted by the byte bound.
+		truncated: bool,
+		/// UTF-8 byte offset of this portion.
+		offset: u32,
+		/// Next portion, only valid while the complete source remains unchanged.
+		next: Option<AgentActivityDetailCursor>,
+	},
+	/// The source cannot be confirmed or this item has no supported public detail.
+	Unavailable,
+}
+
+impl AgentActivityDetailResult {
+	pub(crate) fn matches_cursor(&self, cursor: Option<&AgentActivityDetailCursor>) -> bool {
+		let Self::Available { text, truncated, offset, next } = self else {
+			return true;
+		};
+
+		!text.is_empty()
+			&& text.len() <= 8 * 1024
+			&& *offset == cursor.map_or(0, |value| value.offset)
+			&& *truncated == next.is_some()
+			&& next.as_ref().is_none_or(|next| {
+				next.offset as usize == *offset as usize + text.len()
+					&& next.fingerprint.as_str().len() == 64
+					&& next.fingerprint.as_str().bytes().all(|byte| byte.is_ascii_hexdigit())
+					&& cursor.is_none_or(|prior| prior.fingerprint == next.fingerprint)
+			})
+	}
+}
+
+/// One native resource association; its payload is display data, not executable input.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentResourceDto {
+	/// Stable native association identity.
+	pub id: String,
+	/// Application-defined resource category.
+	pub attachment_type: String,
+	/// Exact identity within that category.
+	pub identity_key: String,
+	/// Bounded JSON metadata for inspection.
+	pub payload_json: String,
+	/// Payload text exceeded the display bound or contained private credential material.
+	pub payload_omitted: bool,
+	/// Native creation timestamp in seconds.
+	pub created_at: i64,
+}
+
+/// Native association reads distinguish a confirmed empty list from unavailable storage.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum AgentResourcesResult {
+	/// Complete native list under the public response bound.
+	Available {
+		/// Resource associations for the exact requested work.
+		resources: Vec<AgentResourceDto>,
+	},
+	/// This native provider does not implement resource associations.
+	Unsupported,
+	/// The complete list exceeds the display bound.
+	CapacityExceeded,
+	/// No authoritative result is available for the current thread and connection.
+	Unavailable,
+}
+
+/// Coalescible current-turn output, observed without replay or execution authority.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum AgentOutputResult {
+	/// Bounded output for the exact requested work item.
+	Available {
+		/// Service-lifetime wakeup revision. Reset on reconnect.
+		revision: u64,
+		/// Exact query owner.
+		work_id: crate::EntityId,
+		/// Current source-bound message snapshots; never unfinished deltas.
+		messages: Vec<AgentLiveMessageDto>,
+	},
+	/// Observation cannot be served; use saved history for recovery.
+	Unavailable,
 }
 
 #[cfg(test)]
@@ -1081,175 +1252,4 @@ mod tests {
 			.is_valid()
 		);
 	}
-}
-
-/// Native model choices from the currently connected Codex process.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct AgentModelDto {
-	/// Exact model identifier used in turn requests.
-	pub model: crate::ConversationModel,
-	/// Provider display name.
-	pub name: String,
-	/// Reasoning levels understood by this client and advertised by Codex.
-	pub efforts: Vec<crate::ConversationReasoningEffort>,
-	/// Provider default, when understood by this client.
-	pub default_effort: Option<crate::ConversationReasoningEffort>,
-	/// The provider offers the priority service tier for this model.
-	pub supports_fast: bool,
-	/// Service tiers advertised for this model and current account.
-	pub service_tiers: Vec<AgentServiceTierDto>,
-	/// Informational catalog default. Never changes an explicit user selection.
-	pub default_service_tier: Option<decodex_core::ServiceTier>,
-	/// Known caller-specific catalog programs; None means metadata was not supplied.
-	/// This observation never grants access or selects a program for inference.
-	pub available_cyber_programs: Option<Vec<String>>,
-	/// Provider-defined model specialty. Informational; does not change task permissions.
-	#[serde(default)]
-	pub specialty: Option<String>,
-	/// The provider accepts image input for this model.
-	pub supports_images: bool,
-	/// Provider availability information for the current account, when supplied.
-	pub availability: Option<String>,
-	/// Informational upgrade or retirement notice; selection stays explicit.
-	pub upgrade: Option<AgentModelUpgradeDto>,
-}
-
-/// Provider-authored service-tier choice, distinct from model or account quota.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct AgentServiceTierDto {
-	/// Exact native request value.
-	pub id: decodex_core::ServiceTier,
-	/// Provider display name.
-	pub name: String,
-	/// Provider description, including usage implications when supplied.
-	pub description: String,
-}
-
-/// Provider-advertised model replacement information.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct AgentModelUpgradeDto {
-	/// Suggested replacement, never selected automatically.
-	pub model: crate::ConversationModel,
-	/// Provider-authored explanation.
-	pub notice: Option<String>,
-	/// Informational retirement time as Unix seconds, when supplied.
-	pub retirement_at: Option<i64>,
-}
-
-/// Read-only capability evidence. Absence never means a disabled feature.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
-pub enum AgentCapabilitiesResult {
-	/// Observed on the currently owned connection; no model turn was started.
-	Available {
-		/// Complete bounded visible model catalog.
-		models: Vec<AgentModelDto>,
-		/// Effective Memory feature flag from experimentalFeature/list, when available.
-		memory_enabled: Option<bool>,
-	},
-	/// The connection or complete catalog could not be read.
-	Unavailable,
-}
-
-/// Continuation bound to one unchanged source and projected tool detail.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct AgentActivityDetailCursor {
-	/// UTF-8 byte offset in the complete filtered text.
-	pub offset: u32,
-	/// Opaque digest of source identity and complete filtered text.
-	pub fingerprint: crate::WireText,
-}
-
-/// Selected readable tool evidence for one exact native item.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
-pub enum AgentActivityDetailResult {
-	/// Public tool output or file changes, bounded and credential-filtered.
-	Available {
-		/// Plain text evidence; never executable markup.
-		text: String,
-		/// Some output was omitted by the byte bound.
-		truncated: bool,
-		/// UTF-8 byte offset of this portion.
-		offset: u32,
-		/// Next portion, only valid while the complete source remains unchanged.
-		next: Option<AgentActivityDetailCursor>,
-	},
-	/// The source cannot be confirmed or this item has no supported public detail.
-	Unavailable,
-}
-
-impl AgentActivityDetailResult {
-	pub(crate) fn matches_cursor(&self, cursor: Option<&AgentActivityDetailCursor>) -> bool {
-		let Self::Available { text, truncated, offset, next } = self else {
-			return true;
-		};
-
-		!text.is_empty()
-			&& text.len() <= 8 * 1024
-			&& *offset == cursor.map_or(0, |value| value.offset)
-			&& *truncated == next.is_some()
-			&& next.as_ref().is_none_or(|next| {
-				next.offset as usize == *offset as usize + text.len()
-					&& next.fingerprint.as_str().len() == 64
-					&& next.fingerprint.as_str().bytes().all(|byte| byte.is_ascii_hexdigit())
-					&& cursor.is_none_or(|prior| prior.fingerprint == next.fingerprint)
-			})
-	}
-}
-
-/// One native resource association; its payload is display data, not executable input.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct AgentResourceDto {
-	/// Stable native association identity.
-	pub id: String,
-	/// Application-defined resource category.
-	pub attachment_type: String,
-	/// Exact identity within that category.
-	pub identity_key: String,
-	/// Bounded JSON metadata for inspection.
-	pub payload_json: String,
-	/// Payload text exceeded the display bound or contained private credential material.
-	pub payload_omitted: bool,
-	/// Native creation timestamp in seconds.
-	pub created_at: i64,
-}
-
-/// Native association reads distinguish a confirmed empty list from unavailable storage.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "outcome", rename_all = "snake_case")]
-pub enum AgentResourcesResult {
-	/// Complete native list under the public response bound.
-	Available {
-		/// Resource associations for the exact requested work.
-		resources: Vec<AgentResourceDto>,
-	},
-	/// This native provider does not implement resource associations.
-	Unsupported,
-	/// The complete list exceeds the display bound.
-	CapacityExceeded,
-	/// No authoritative result is available for the current thread and connection.
-	Unavailable,
-}
-
-/// Coalescible current-turn output, observed without replay or execution authority.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "outcome", rename_all = "snake_case")]
-pub enum AgentOutputResult {
-	/// Bounded output for the exact requested work item.
-	Available {
-		/// Service-lifetime wakeup revision. Reset on reconnect.
-		revision: u64,
-		/// Exact query owner.
-		work_id: crate::EntityId,
-		/// Current source-bound message snapshots; never unfinished deltas.
-		messages: Vec<AgentLiveMessageDto>,
-	},
-	/// Observation cannot be served; use saved history for recovery.
-	Unavailable,
 }
