@@ -68,15 +68,7 @@ impl AgentSurface {
 		let result = (|| -> Result<Value, String> {
 			let fields = decodex_protocol::mcp_request_fields(&value)?;
 			if fields.is_empty() {
-				return Ok(
-					if value.pointer("/_meta/codex_approval_kind").and_then(Value::as_str)
-						== Some("tool_suggestion")
-					{
-						json!({})
-					} else {
-						Value::Null
-					},
-				);
+				return Ok(Value::Null);
 			}
 			let mut answers = self.mcp_answers.clone();
 			for field in &fields {
