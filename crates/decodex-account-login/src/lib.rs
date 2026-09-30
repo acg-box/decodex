@@ -131,6 +131,7 @@ impl Cancellation {
 			if self.is_cancelled() {
 				return;
 			}
+
 			self.notify.notified().await;
 		}
 	}
@@ -163,13 +164,16 @@ impl Config {
 			#[cfg(test)]
 			fallback_proxy_fixture: None,
 		};
+
 		config.validate(false)?;
+
 		Ok(config)
 	}
 
 	/// Apply the daemon owner's login routing policy before a login starts.
 	pub fn with_system_proxy_fallback(mut self, enabled: bool) -> Self {
 		self.system_proxy_fallback = enabled;
+
 		self
 	}
 
@@ -178,6 +182,7 @@ impl Config {
 			|| (allow_insecure_loopback
 				&& self.issuer.scheme() == "http"
 				&& self.issuer.host_str().is_some_and(is_loopback_host));
+
 		if !scheme_allowed
 			|| self.issuer.cannot_be_a_base()
 			|| !self.issuer.username().is_empty()
@@ -192,6 +197,7 @@ impl Config {
 		{
 			return Err(Error::Unavailable);
 		}
+
 		Ok(())
 	}
 
@@ -206,7 +212,9 @@ impl Config {
 			system_proxy_fallback: false,
 			fallback_proxy_fixture: None,
 		};
+
 		config.validate(true)?;
+
 		Ok(config)
 	}
 }
@@ -223,6 +231,7 @@ impl LoginHome {
 	/// Create one fresh private home below the daemon-specific temporary root.
 	pub fn create(session_id: &str) -> Result<Self, Error> {
 		let root = login_root_path()?;
+
 		Self::create_under(&root, session_id)
 	}
 
@@ -230,19 +239,26 @@ impl LoginHome {
 		if !is_canonical_uuid(session_id) {
 			return Err(Error::Persistence);
 		}
+
 		let path = root.join(format!("{LOGIN_HOME_PREFIX}{session_id}"));
+
 		fs::create_dir(&path).map_err(|_| Error::Persistence)?;
+
 		if fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).is_err() {
 			let _ = fs::remove_dir(&path);
+
 			return Err(Error::Persistence);
 		}
+
 		let metadata = match private_directory_metadata(&path) {
 			Ok(metadata) => metadata,
 			Err(error) => {
 				let _ = fs::remove_dir(&path);
+
 				return Err(error);
 			},
 		};
+
 		Ok(Self { path, device: metadata.dev(), inode: metadata.ino(), cleaned: false })
 	}
 
@@ -255,16 +271,20 @@ impl LoginHome {
 	pub fn credential_path(&self) -> Result<PathBuf, Error> {
 		let expected = self.path.join("auth.json");
 		let canonical = fs::canonicalize(&expected).map_err(|_| Error::Persistence)?;
+
 		if canonical != expected {
 			return Err(Error::Persistence);
 		}
+
 		let metadata = fs::symlink_metadata(&expected).map_err(|_| Error::Persistence)?;
+
 		if !metadata.file_type().is_file()
 			|| metadata.uid() != effective_uid()
 			|| metadata.permissions().mode() & 0o077 != 0
 		{
 			return Err(Error::Persistence);
 		}
+
 		Ok(canonical)
 	}
 
@@ -273,14 +293,17 @@ impl LoginHome {
 		if self.cleaned {
 			return Ok(());
 		}
+
 		let metadata = match fs::symlink_metadata(&self.path) {
 			Ok(metadata) => metadata,
 			Err(error) if error.kind() == ErrorKind::NotFound => {
 				self.cleaned = true;
+
 				return Ok(());
 			},
 			Err(_) => return Err(Error::Persistence),
 		};
+
 		if !metadata.file_type().is_dir()
 			|| metadata.uid() != effective_uid()
 			|| metadata.dev() != self.device
@@ -288,10 +311,13 @@ impl LoginHome {
 		{
 			return Err(Error::Persistence);
 		}
+
 		fs::remove_dir_all(&self.path).map_err(|_| Error::Persistence)?;
+
 		match fs::symlink_metadata(&self.path) {
 			Err(error) if error.kind() == ErrorKind::NotFound => {
 				self.cleaned = true;
+
 				Ok(())
 			},
 			Ok(_) | Err(_) => Err(Error::Persistence),
@@ -308,61 +334,77 @@ impl Drop for LoginHome {
 /// Remove only bounded, exact daemon-owned stale login homes after singleton acquisition.
 pub fn cleanup_stale_login_homes() -> Result<(), Error> {
 	let root = login_root_path()?;
+
 	cleanup_stale_login_homes_in(&root)
 }
 
 fn cleanup_stale_login_homes_in(root: &Path) -> Result<(), Error> {
 	let entries = fs::read_dir(root).map_err(|_| Error::Persistence)?;
+
 	for (index, entry) in entries.enumerate() {
 		if index >= MAX_STALE_LOGIN_HOMES {
 			return Err(Error::Persistence);
 		}
+
 		let entry = entry.map_err(|_| Error::Persistence)?;
 		let name = entry.file_name();
 		let name = name.to_str().ok_or(Error::Persistence)?;
 		let session_id = name.strip_prefix(LOGIN_HOME_PREFIX).ok_or(Error::Persistence)?;
+
 		if !is_canonical_uuid(session_id) || entry.path() != root.join(name) {
 			return Err(Error::Persistence);
 		}
+
 		let metadata = private_directory_metadata(&entry.path())?;
+
 		if metadata.permissions().mode() & 0o777 != 0o700 {
 			return Err(Error::Persistence);
 		}
+
 		fs::remove_dir_all(entry.path()).map_err(|_| Error::Persistence)?;
+
 		if fs::symlink_metadata(root.join(name)).is_ok() {
 			return Err(Error::Persistence);
 		}
 	}
+
 	Ok(())
 }
 
 fn login_root_path() -> Result<PathBuf, Error> {
 	let base = fs::canonicalize(std::env::temp_dir()).map_err(|_| Error::Persistence)?;
 	let root = base.join(format!("{LOGIN_ROOT_PREFIX}{}", effective_uid()));
+
 	match fs::create_dir(&root) {
 		Ok(()) =>
 			if fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).is_err() {
 				let _ = fs::remove_dir(&root);
+
 				return Err(Error::Persistence);
 			},
 		Err(error) if error.kind() == ErrorKind::AlreadyExists => {},
 		Err(_) => return Err(Error::Persistence),
 	}
+
 	let metadata = private_directory_metadata(&root)?;
+
 	if metadata.permissions().mode() & 0o777 != 0o700 {
 		return Err(Error::Persistence);
 	}
+
 	Ok(root)
 }
 
 fn private_directory_metadata(path: &Path) -> Result<fs::Metadata, Error> {
 	let metadata = fs::symlink_metadata(path).map_err(|_| Error::Persistence)?;
+
 	if !metadata.file_type().is_dir()
 		|| metadata.uid() != effective_uid()
 		|| metadata.permissions().mode() & 0o077 != 0
 	{
 		return Err(Error::Persistence);
 	}
+
 	Ok(metadata)
 }
 
@@ -390,6 +432,7 @@ pub fn run(
 ) -> Result<(), Error> {
 	let client = system_proxy::client(config, None)?;
 	let deadline = Instant::now() + config.login_timeout;
+
 	match method {
 		LoginMethod::BrowserRedirect =>
 			run_browser(config, &client, login_home, runtime, cancellation, deadline, publish),
@@ -419,25 +462,31 @@ fn run_browser(
 	let pkce = generate_pkce()?;
 	let state = generate_state()?;
 	let authorization_url = build_authorize_url(config, &redirect_uri, &pkce, &state)?.into();
+
 	publish(LoginEvent::BrowserAuthorization { authorization_url });
 
 	loop {
 		check_cancel_or_timeout(cancellation, deadline)?;
+
 		let wait = remaining(deadline)?.min(CALLBACK_POLL_INTERVAL);
 		let (stream, peer) = match server.accept() {
 			Ok(accepted) => accepted,
 			Err(error) if error.kind() == ErrorKind::WouldBlock => {
 				thread::sleep(wait);
+
 				continue;
 			},
 			Err(_) => return Err(Error::Unavailable),
 		};
+
 		if !peer.ip().is_loopback() {
 			continue;
 		}
+
 		let Some(request) = read_callback_request(stream, cancellation, deadline)? else {
 			continue;
 		};
+
 		match handle_callback_request(
 			request,
 			config,
@@ -469,20 +518,25 @@ async fn run_device(
 	let response =
 		cancellable(cancellation, deadline, client.post(user_code_url).json(&request).send())
 			.await?;
+
 	if !response.status().is_success() {
 		return Err(Error::Rejected);
 	}
+
 	let response: DeviceCodeResponse = read_bounded_json(response, cancellation, deadline).await?;
 	let grant = DeviceGrant::new(response)?;
 	let verification_url = endpoint(config, "codex/device")?.to_string();
+
 	publish(LoginEvent::DeviceAuthorization {
 		verification_url,
 		user_code: grant.user_code.clone(),
 	});
 
 	let poll_url = endpoint(config, "api/accounts/deviceauth/token")?;
+
 	loop {
 		check_cancel_or_timeout(cancellation, deadline)?;
+
 		let request = DevicePollRequest {
 			device_auth_id: &grant.device_auth_id,
 			user_code: &grant.user_code,
@@ -493,16 +547,20 @@ async fn run_device(
 			client.post(poll_url.clone()).json(&request).send(),
 		)
 		.await?;
+
 		match response.status().as_u16() {
 			200..=299 => {
 				let code: DeviceCodeSuccess =
 					read_bounded_json(response, cancellation, deadline).await?;
+
 				code.validate()?;
+
 				let redirect_uri = endpoint(config, "deviceauth/callback")?.to_string();
 				let pkce = PkceCodes {
 					code_verifier: code.code_verifier.clone(),
 					code_challenge: code.code_challenge.clone(),
 				};
+
 				return ExchangeContext { config, client, login_home, cancellation, deadline }
 					.run(&redirect_uri, &pkce, &code.authorization_code)
 					.await;
@@ -510,9 +568,11 @@ async fn run_device(
 			403 | 404 => {
 				let failure: DevicePollFailure =
 					read_bounded_json(response, cancellation, deadline).await?;
+
 				if !failure.is_pending() {
 					return Err(Error::DeviceAuthorizationRejected);
 				}
+
 				sleep_cancellable(cancellation, deadline, grant.interval).await?;
 			},
 			_ => return Err(Error::Rejected),
@@ -542,29 +602,41 @@ fn handle_callback_request(
 	let parsed = Url::parse(&format!("http://localhost{target}"));
 	let Ok(parsed) = parsed else {
 		respond_text(&mut stream, 400, "Invalid sign-in callback")?;
+
 		return Ok(CallbackOutcome::Continue);
 	};
+
 	if parsed.path() != "/auth/callback" {
 		respond_text(&mut stream, 404, "Not found")?;
+
 		return Ok(CallbackOutcome::Continue);
 	}
+
 	let parameters = unique_query(&parsed)?;
+
 	if parameters.get("state").map(String::as_str) != Some(expected_state) {
 		respond_text(&mut stream, 400, "Sign-in state mismatch")?;
+
 		return Ok(CallbackOutcome::Continue);
 	}
 	if parameters.contains_key("error") {
 		respond_text(&mut stream, 400, "Sign-in was not completed")?;
+
 		return Err(Error::Rejected);
 	}
+
 	let Some(code) = parameters.get("code") else {
 		respond_text(&mut stream, 400, "Sign-in code is missing")?;
+
 		return Err(Error::InvalidResponse);
 	};
+
 	if !valid_secret_scalar(code) {
 		respond_text(&mut stream, 400, "Sign-in code is invalid")?;
+
 		return Err(Error::InvalidResponse);
 	}
+
 	let result = runtime.block_on(
 		ExchangeContext { config, client, login_home, cancellation, deadline }.run(
 			redirect_uri,
@@ -572,6 +644,7 @@ fn handle_callback_request(
 			code,
 		),
 	);
+
 	match result {
 		Ok(()) => {
 			respond_text(
@@ -579,10 +652,12 @@ fn handle_callback_request(
 				200,
 				"Browser sign-in completed. Return to Decodex to finish.",
 			)?;
+
 			Ok(CallbackOutcome::Completed)
 		},
 		Err(error) => {
 			respond_text(&mut stream, 400, "Sign-in could not be completed")?;
+
 			Err(error)
 		},
 	}
@@ -606,6 +681,7 @@ impl ExchangeContext<'_> {
 		if !valid_secret_scalar(authorization_code) || !pkce.valid() {
 			return Err(Error::InvalidResponse);
 		}
+
 		let form = [
 			("grant_type", "authorization_code"),
 			("code", authorization_code),
@@ -614,9 +690,11 @@ impl ExchangeContext<'_> {
 			("code_verifier", pkce.code_verifier.as_str()),
 		];
 		let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+
 		for (key, value) in form {
 			serializer.append_pair(key, value);
 		}
+
 		let body = Zeroizing::new(serializer.finish());
 		let response = system_proxy::exchange(
 			self.config,
@@ -626,12 +704,16 @@ impl ExchangeContext<'_> {
 			self.deadline,
 		)
 		.await?;
+
 		if !response.status().is_success() {
 			return Err(Error::Rejected);
 		}
+
 		let tokens: ExchangedTokens =
 			read_bounded_json(response, self.cancellation, self.deadline).await?;
+
 		tokens.validate()?;
+
 		persist_auth(self.login_home, &tokens)
 	}
 }
@@ -642,8 +724,10 @@ async fn cancellable<T>(
 	future: impl Future<Output = Result<T, reqwest::Error>>,
 ) -> Result<T, Error> {
 	let wait = remaining(deadline)?;
+
 	tokio::select! {
 		biased;
+
 		_ = cancellation.cancelled() => Err(Error::Cancelled),
 		result = tokio::time::timeout(wait, future) => match result {
 			Ok(Ok(value)) => Ok(value),
@@ -661,17 +745,22 @@ async fn read_bounded_json<T: for<'de> Deserialize<'de>>(
 	if response.content_length().is_some_and(|length| length > MAX_RESPONSE_BYTES as u64) {
 		return Err(Error::InvalidResponse);
 	}
+
 	let mut body = Zeroizing::new(Vec::new());
+
 	loop {
 		let chunk = cancellable(cancellation, deadline, response.chunk()).await?;
 		let Some(chunk) = chunk else {
 			break;
 		};
+
 		if body.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
 			return Err(Error::InvalidResponse);
 		}
+
 		body.extend_from_slice(&chunk);
 	}
+
 	serde_json::from_slice(&body).map_err(|_| Error::InvalidResponse)
 }
 
@@ -681,8 +770,10 @@ async fn sleep_cancellable(
 	duration: Duration,
 ) -> Result<(), Error> {
 	let wait = duration.min(remaining(deadline)?);
+
 	tokio::select! {
 		biased;
+
 		_ = cancellation.cancelled() => Err(Error::Cancelled),
 		_ = tokio::time::sleep(wait) => check_cancel_or_timeout(cancellation, deadline),
 	}
@@ -701,7 +792,9 @@ fn build_authorize_url(
 	if !pkce.valid() || !valid_secret_scalar(state) {
 		return Err(Error::Unavailable);
 	}
+
 	let mut url = endpoint(config, "oauth/authorize")?;
+
 	url.query_pairs_mut()
 		.append_pair("response_type", "code")
 		.append_pair("client_id", &config.client_id)
@@ -713,6 +806,7 @@ fn build_authorize_url(
 		.append_pair("codex_cli_simplified_flow", "true")
 		.append_pair("state", state)
 		.append_pair("originator", OAUTH_ORIGINATOR);
+
 	Ok(url)
 }
 
@@ -732,14 +826,18 @@ impl PkceCodes {
 			}) {
 			return false;
 		}
+
 		let digest = Sha256::digest(self.code_verifier.as_bytes());
+
 		URL_SAFE_NO_PAD.encode(digest) == self.code_challenge
 	}
 }
 
 fn generate_pkce() -> Result<PkceCodes, Error> {
 	let mut bytes = Zeroizing::new([0_u8; 64]);
+
 	getrandom::fill(bytes.as_mut()).map_err(|_| Error::Unavailable)?;
+
 	Ok(pkce_from_bytes(bytes.as_ref()))
 }
 
@@ -747,12 +845,15 @@ fn pkce_from_bytes(bytes: &[u8]) -> PkceCodes {
 	let code_verifier = URL_SAFE_NO_PAD.encode(bytes);
 	let digest = Sha256::digest(code_verifier.as_bytes());
 	let code_challenge = URL_SAFE_NO_PAD.encode(digest);
+
 	PkceCodes { code_verifier, code_challenge }
 }
 
 fn generate_state() -> Result<String, Error> {
 	let mut bytes = Zeroizing::new([0_u8; 32]);
+
 	getrandom::fill(bytes.as_mut()).map_err(|_| Error::Unavailable)?;
+
 	Ok(URL_SAFE_NO_PAD.encode(bytes.as_ref()))
 }
 
@@ -760,9 +861,11 @@ fn bind_callback_server(ports: &[u16]) -> Result<TcpListener, Error> {
 	for port in ports {
 		if let Ok(server) = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, *port)) {
 			server.set_nonblocking(true).map_err(|_| Error::Unavailable)?;
+
 			return Ok(server);
 		}
 	}
+
 	Err(Error::Unavailable)
 }
 
@@ -787,7 +890,9 @@ fn parse_callback_head(bytes: &[u8]) -> Result<ParsedCallbackHead<'_>, CallbackP
 	if bytes.len() > MAX_CALLBACK_REQUEST_BYTES {
 		return Err(CallbackParseFailure::TooLarge);
 	}
+
 	let header_complete = bytes.windows(4).any(|window| window == b"\r\n\r\n");
+
 	if !header_complete {
 		return Err(if bytes.len() == MAX_CALLBACK_REQUEST_BYTES {
 			CallbackParseFailure::TooLarge
@@ -795,6 +900,7 @@ fn parse_callback_head(bytes: &[u8]) -> Result<ParsedCallbackHead<'_>, CallbackP
 			CallbackParseFailure::Incomplete
 		});
 	}
+
 	let mut headers = [httparse::EMPTY_HEADER; MAX_CALLBACK_HEADERS];
 	let mut request = httparse::Request::new(&mut headers);
 	let consumed = match request.parse(bytes) {
@@ -803,20 +909,26 @@ fn parse_callback_head(bytes: &[u8]) -> Result<ParsedCallbackHead<'_>, CallbackP
 		Err(httparse::Error::TooManyHeaders) => return Err(CallbackParseFailure::TooManyHeaders),
 		Err(_) => return Err(CallbackParseFailure::Invalid),
 	};
+
 	if consumed != bytes.len()
 		|| request.method != Some("GET")
 		|| !matches!(request.version, Some(0 | 1))
 	{
 		return Err(CallbackParseFailure::Invalid);
 	}
+
 	let target = request.path.ok_or(CallbackParseFailure::Invalid)?;
+
 	if target.len() > MAX_CALLBACK_TARGET_BYTES {
 		return Err(CallbackParseFailure::TooLarge);
 	}
+
 	let mut header_bytes = 0_usize;
+
 	for header in request.headers.iter() {
 		header_bytes =
 			header_bytes.saturating_add(header.name.len()).saturating_add(header.value.len());
+
 		if header_bytes > MAX_CALLBACK_HEADER_BYTES
 			|| header.name.eq_ignore_ascii_case("transfer-encoding")
 		{
@@ -825,11 +937,13 @@ fn parse_callback_head(bytes: &[u8]) -> Result<ParsedCallbackHead<'_>, CallbackP
 		if header.name.eq_ignore_ascii_case("content-length") {
 			let value =
 				std::str::from_utf8(header.value).map_err(|_| CallbackParseFailure::Invalid)?;
+
 			if value.trim() != "0" {
 				return Err(CallbackParseFailure::Invalid);
 			}
 		}
 	}
+
 	Ok(ParsedCallbackHead { target })
 }
 
@@ -841,14 +955,19 @@ fn read_callback_request(
 	stream.set_nonblocking(false).map_err(|_| Error::Unavailable)?;
 	stream.set_read_timeout(Some(CALLBACK_POLL_INTERVAL)).map_err(|_| Error::Unavailable)?;
 	stream.set_write_timeout(Some(CALLBACK_POLL_INTERVAL)).map_err(|_| Error::Unavailable)?;
+
 	let mut bytes = [0_u8; MAX_CALLBACK_REQUEST_BYTES];
 	let mut length = 0_usize;
+
 	loop {
 		check_cancel_or_timeout(cancellation, deadline)?;
+
 		if length == bytes.len() {
 			let _ = respond_text(&mut stream, 400, "Invalid sign-in callback");
+
 			return Ok(None);
 		}
+
 		match stream.read(&mut bytes[length..]) {
 			Ok(0) => return Ok(None),
 			Ok(read) => length += read,
@@ -868,6 +987,7 @@ fn read_callback_request(
 				| CallbackParseFailure::Invalid,
 			) => {
 				let _ = respond_text(&mut stream, 400, "Invalid sign-in callback");
+
 				return Ok(None);
 			},
 		}
@@ -876,6 +996,7 @@ fn read_callback_request(
 
 fn unique_query(url: &Url) -> Result<HashMap<String, String>, Error> {
 	let mut parameters = HashMap::new();
+
 	for (key, value) in url.query_pairs() {
 		if key.len() > MAX_DEVICE_VALUE_BYTES
 			|| value.len() > MAX_DEVICE_VALUE_BYTES
@@ -885,6 +1006,7 @@ fn unique_query(url: &Url) -> Result<HashMap<String, String>, Error> {
 			return Err(Error::InvalidResponse);
 		}
 	}
+
 	Ok(parameters)
 }
 
@@ -899,8 +1021,10 @@ fn respond_text(stream: &mut TcpStream, status: u16, message: &'static str) -> R
 		"HTTP/1.1 {status} {reason}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{message}",
 		message.len(),
 	);
+
 	stream.write_all(response.as_bytes()).map_err(|_| Error::Unavailable)?;
 	stream.flush().map_err(|_| Error::Unavailable)?;
+
 	stream.shutdown(Shutdown::Write).map_err(|_| Error::Unavailable)
 }
 
@@ -911,6 +1035,7 @@ fn check_cancel_or_timeout(cancellation: &Cancellation, deadline: Instant) -> Re
 	if Instant::now() >= deadline {
 		return Err(Error::TimedOut);
 	}
+
 	Ok(())
 }
 
@@ -952,6 +1077,7 @@ where
 	D: Deserializer<'de>,
 {
 	let interval = String::deserialize(deserializer)?;
+
 	interval.trim().parse::<u64>().map_err(de::Error::custom)
 }
 
@@ -972,6 +1098,7 @@ impl DeviceGrant {
 		{
 			return Err(Error::InvalidResponse);
 		}
+
 		Ok(Self {
 			device_auth_id: response.device_auth_id.clone(),
 			user_code: response.user_code.clone(),
@@ -989,6 +1116,7 @@ fn valid_device_value(value: &str) -> bool {
 
 fn valid_user_code(value: &str) -> bool {
 	let bytes = value.as_bytes();
+
 	(9..=10).contains(&bytes.len())
 		&& bytes.get(4) == Some(&b'-')
 		&& bytes
@@ -1042,6 +1170,7 @@ impl DeviceCodeSuccess {
 		{
 			return Err(Error::InvalidResponse);
 		}
+
 		Ok(())
 	}
 }
@@ -1084,14 +1213,18 @@ fn provider_account_id(id_token: &str) -> Result<Zeroizing<String>, Error> {
 	else {
 		return Err(Error::InvalidResponse);
 	};
+
 	if header.is_empty() || payload.is_empty() || signature.is_empty() {
 		return Err(Error::InvalidResponse);
 	}
+
 	let decoded =
 		Zeroizing::new(URL_SAFE_NO_PAD.decode(payload).map_err(|_| Error::InvalidResponse)?);
+
 	if decoded.len() > MAX_RESPONSE_BYTES {
 		return Err(Error::InvalidResponse);
 	}
+
 	let claims: IdTokenClaims =
 		serde_json::from_slice(&decoded).map_err(|_| Error::InvalidResponse)?;
 	let account_id = claims
@@ -1099,6 +1232,7 @@ fn provider_account_id(id_token: &str) -> Result<Zeroizing<String>, Error> {
 		.and_then(|authority| authority.chatgpt_account_id)
 		.filter(|value| valid_device_value(value))
 		.ok_or(Error::InvalidResponse)?;
+
 	Ok(Zeroizing::new(account_id))
 }
 
@@ -1138,9 +1272,11 @@ fn persist_auth(login_home: &Path, tokens: &ExchangedTokens) -> Result<(), Error
 		Zeroizing::new(serde_json::to_vec_pretty(&document).map_err(|_| Error::Persistence)?);
 	let auth_path = login_home.join("auth.json");
 	let temporary_path = login_home.join(".decodex-auth.json.tmp");
+
 	if fs::symlink_metadata(&auth_path).is_ok() || fs::symlink_metadata(&temporary_path).is_ok() {
 		return Err(Error::Persistence);
 	}
+
 	let result = (|| {
 		let mut file = OpenOptions::new()
 			.create_new(true)
@@ -1148,22 +1284,29 @@ fn persist_auth(login_home: &Path, tokens: &ExchangedTokens) -> Result<(), Error
 			.mode(0o600)
 			.open(&temporary_path)
 			.map_err(|_| Error::Persistence)?;
+
 		file.write_all(&bytes).map_err(|_| Error::Persistence)?;
 		file.sync_all().map_err(|_| Error::Persistence)?;
+
 		drop(file);
 		verify_private_regular_file(&temporary_path)?;
+
 		fs::rename(&temporary_path, &auth_path).map_err(|_| Error::Persistence)?;
+
 		verify_private_regular_file(&auth_path)
 	})();
+
 	if result.is_err() {
 		let _ = fs::remove_file(&temporary_path);
 	}
+
 	result
 }
 
 fn verify_private_regular_file(path: &Path) -> Result<(), Error> {
 	let metadata = fs::symlink_metadata(path).map_err(|_| Error::Persistence)?;
 	let canonical = fs::canonicalize(path).map_err(|_| Error::Persistence)?;
+
 	if canonical != path
 		|| !metadata.file_type().is_file()
 		|| metadata.uid() != unsafe { libc::geteuid() }
@@ -1172,6 +1315,7 @@ fn verify_private_regular_file(path: &Path) -> Result<(), Error> {
 	{
 		return Err(Error::Persistence);
 	}
+
 	Ok(())
 }
 
@@ -1201,7 +1345,9 @@ mod tests {
 		) -> Self {
 			let server =
 				TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).expect("mock issuer");
+
 			server.set_nonblocking(true).expect("nonblocking mock issuer");
+
 			let port = server.local_addr().expect("mock issuer address").port();
 			let issuer = Url::parse(&format!("http://127.0.0.1:{port}/")).expect("mock issuer URL");
 			let stopped = Arc::new(AtomicBool::new(false));
@@ -1212,8 +1358,10 @@ mod tests {
 					match server.accept() {
 						Ok((mut stream, peer)) => {
 							assert!(peer.ip().is_loopback());
+
 							let request = read_mock_request(&mut stream);
 							let (status, body) = handler(request);
+
 							write_mock_json(&mut stream, status, &body);
 						},
 						Err(error) if error.kind() == ErrorKind::WouldBlock => {
@@ -1223,6 +1371,7 @@ mod tests {
 					}
 				}
 			});
+
 			Self { issuer, stopped, worker: Some(worker) }
 		}
 	}
@@ -1230,6 +1379,7 @@ mod tests {
 	impl Drop for MockIssuer {
 		fn drop(&mut self) {
 			self.stopped.store(true, Ordering::Release);
+
 			if let Some(worker) = self.worker.take()
 				&& let Err(payload) = worker.join()
 				&& !thread::panicking()
@@ -1241,12 +1391,17 @@ mod tests {
 
 	fn read_mock_request(stream: &mut TcpStream) -> MockHttpRequest {
 		stream.set_read_timeout(Some(Duration::from_secs(2))).expect("mock issuer read timeout");
+
 		let mut bytes = [0_u8; MAX_CALLBACK_REQUEST_BYTES];
 		let mut length = 0_usize;
+
 		loop {
 			assert!(length < bytes.len(), "mock request exceeded fixed buffer");
+
 			let read = stream.read(&mut bytes[length..]).expect("mock issuer request");
+
 			assert!(read > 0, "mock issuer request ended before completion");
+
 			length += read;
 
 			let parsed = {
@@ -1260,27 +1415,36 @@ mod tests {
 				let method = request.method.expect("mock request method").to_owned();
 				let target = request.path.expect("mock request target").to_owned();
 				let mut content_length = None;
+
 				for header in request.headers.iter() {
 					assert!(!header.name.eq_ignore_ascii_case("transfer-encoding"));
+
 					if header.name.eq_ignore_ascii_case("content-length") {
 						assert!(content_length.is_none(), "duplicate content length");
+
 						let value = std::str::from_utf8(header.value)
 							.expect("ASCII mock content length")
 							.parse::<usize>()
 							.expect("numeric mock content length");
+
 						content_length = Some(value);
 					}
 				}
+
 				(method, target, head_length, content_length.unwrap_or(0))
 			};
 			let (method, target, head_length, body_length) = parsed;
 			let total_length =
 				head_length.checked_add(body_length).expect("bounded mock request length");
+
 			assert!(total_length <= bytes.len(), "mock request exceeded fixed buffer");
+
 			if length < total_length {
 				continue;
 			}
+
 			assert_eq!(length, total_length, "mock request contained trailing bytes");
+
 			return MockHttpRequest {
 				method,
 				target,
@@ -1301,6 +1465,7 @@ mod tests {
 			"HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
 			body.len(),
 		);
+
 		stream.write_all(head.as_bytes()).expect("mock response head");
 		stream.write_all(body.as_bytes()).expect("mock response body");
 		stream.flush().expect("mock response flush");
@@ -1310,6 +1475,7 @@ mod tests {
 		let payload = URL_SAFE_NO_PAD.encode(
 			br#"{"email":"fixture@example.test","https://api.openai.com/auth":{"chatgpt_account_id":"fixture-account","chatgpt_plan_type":"plus"}}"#,
 		);
+
 		format!("header.{payload}.signature")
 	}
 
@@ -1324,6 +1490,7 @@ mod tests {
 
 	fn fixture_device_success() -> String {
 		let pkce = pkce_from_bytes(&[9_u8; 64]);
+
 		serde_json::json!({
 			"authorization_code": "fixture-authorization",
 			"code_challenge": pkce.code_challenge,
@@ -1343,6 +1510,7 @@ mod tests {
 	fn canonical_temp_home() -> (tempfile::TempDir, std::path::PathBuf) {
 		let home = tempfile::tempdir().expect("temporary login home");
 		let path = fs::canonicalize(home.path()).expect("canonical temporary login home");
+
 		(home, path)
 	}
 
@@ -1353,13 +1521,16 @@ mod tests {
 				request.target.as_str(),
 				"/oauth/token" | "http://127.0.0.1:0/oauth/token"
 			));
+
 			let fields = url::form_urlencoded::parse(&request.body).collect::<HashMap<_, _>>();
+
 			assert_eq!(fields.len(), 5);
 			assert!(fields.contains_key("grant_type"));
 			assert!(fields.contains_key("code"));
 			assert!(fields.contains_key("redirect_uri"));
 			assert!(fields.contains_key("client_id"));
 			assert!(fields.contains_key("code_verifier"));
+
 			(200, fixture_token_response())
 		})
 	}
@@ -1367,11 +1538,14 @@ mod tests {
 	fn device_issuer(pending: bool) -> MockIssuer {
 		MockIssuer::start(move |request| {
 			assert_eq!(request.method, "POST");
+
 			match request.target.as_str() {
 				"/api/accounts/deviceauth/usercode" => {
 					let value: serde_json::Value =
 						serde_json::from_slice(&request.body).expect("device request JSON");
+
 					assert!(value.get("client_id").and_then(serde_json::Value::as_str).is_some());
+
 					(
 						200,
 						serde_json::json!({
@@ -1385,10 +1559,12 @@ mod tests {
 				"/api/accounts/deviceauth/token" => {
 					let value: serde_json::Value =
 						serde_json::from_slice(&request.body).expect("device poll JSON");
+
 					assert!(
 						value.get("device_auth_id").and_then(serde_json::Value::as_str).is_some()
 					);
 					assert!(value.get("user_code").and_then(serde_json::Value::as_str).is_some());
+
 					if pending {
 						(
 							403,
@@ -1409,7 +1585,9 @@ mod tests {
 				"/oauth/token" => {
 					let fields =
 						url::form_urlencoded::parse(&request.body).collect::<HashMap<_, _>>();
+
 					assert_eq!(fields.len(), 5);
+
 					(200, fixture_token_response())
 				},
 				_ => (404, "{}".to_owned()),
@@ -1420,6 +1598,7 @@ mod tests {
 	fn terminal_device_rejection_issuer() -> MockIssuer {
 		MockIssuer::start(|request| {
 			assert_eq!(request.method, "POST");
+
 			match request.target.as_str() {
 				"/api/accounts/deviceauth/usercode" => (
 					200,
@@ -1489,7 +1668,9 @@ mod tests {
 			serde_json::from_slice(&fs::read(path).expect("auth bytes")).expect("auth JSON");
 		let mut keys =
 			value.as_object().expect("auth object").keys().map(String::as_str).collect::<Vec<_>>();
+
 		keys.sort_unstable();
+
 		assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
 		assert_eq!(keys, ["OPENAI_API_KEY", "auth_mode", "last_refresh", "tokens"]);
 		assert!(value["OPENAI_API_KEY"].is_null());
@@ -1499,8 +1680,11 @@ mod tests {
 	#[test]
 	fn cancellation_is_typed_and_sticky() {
 		let cancellation = Cancellation::default();
+
 		assert!(!cancellation.is_cancelled());
+
 		cancellation.cancel();
+
 		assert!(cancellation.is_cancelled());
 	}
 
@@ -1510,11 +1694,13 @@ mod tests {
 			let issuer = token_only_issuer();
 			let mut config = Config::test(issuer.issuer.clone(), 0, Duration::from_secs(5))
 				.expect("browser config");
+
 			if fallback {
 				config.issuer = Url::parse("http://127.0.0.1:0").expect("unreachable issuer");
 				config.system_proxy_fallback = true;
 				config.fallback_proxy_fixture = Some(issuer.issuer.to_string());
 			}
+
 			let (_home, home_path) = canonical_temp_home();
 			let runtime = runtime();
 			let handle = runtime.handle().clone();
@@ -1548,10 +1734,12 @@ mod tests {
 			let redirect_uri = parameters.get("redirect_uri").expect("redirect URI");
 			let state = parameters.get("state").expect("state");
 			let mut callback = Url::parse(redirect_uri).expect("callback URL");
+
 			callback
 				.query_pairs_mut()
 				.append_pair("code", "fixture-browser-authorization")
 				.append_pair("state", state);
+
 			let response = reqwest::blocking::Client::builder()
 				.redirect(Policy::none())
 				.build()
@@ -1559,11 +1747,13 @@ mod tests {
 				.get(callback)
 				.send()
 				.expect("callback response");
+
 			assert_eq!(response.status().as_u16(), 200);
 			assert_eq!(
 				response.text().expect("callback response body"),
 				"Browser sign-in completed. Return to Decodex to finish."
 			);
+
 			let result = worker.join().expect("browser adapter worker");
 
 			assert!(result.is_ok());
@@ -1590,7 +1780,9 @@ mod tests {
 		);
 
 		assert!(result.is_ok());
+
 		let events = events.into_inner().expect("events");
+
 		assert_eq!(events.len(), 1);
 		assert!(matches!(events.first(), Some(LoginEvent::DeviceAuthorization { .. })));
 		assert!(home_path.join("auth.json").is_file());
@@ -1655,14 +1847,19 @@ mod tests {
 		let parameters = authorization_url.query_pairs().into_owned().collect::<HashMap<_, _>>();
 		let mut callback =
 			Url::parse(parameters.get("redirect_uri").expect("redirect URI")).expect("callback");
+
 		callback
 			.query_pairs_mut()
 			.append_pair("code", "fixture-browser-authorization")
 			.append_pair("state", "wrong-state");
+
 		let response =
 			reqwest::blocking::Client::new().get(callback).send().expect("mismatch response");
+
 		assert_eq!(response.status().as_u16(), 400);
+
 		cancellation.cancel();
+
 		let result = worker.join().expect("browser adapter worker");
 
 		assert!(matches!(result, Err(Error::Cancelled)));
@@ -1687,6 +1884,7 @@ mod tests {
 			&Cancellation::default(),
 			|_| {},
 		);
+
 		assert!(matches!(timeout, Err(Error::TimedOut)));
 		assert!(!timeout_home_path.join("auth.json").exists());
 
@@ -1711,12 +1909,16 @@ mod tests {
 				},
 			)
 		});
+
 		assert!(matches!(
 			event_rx.recv_timeout(Duration::from_secs(2)),
 			Ok(LoginEvent::DeviceAuthorization { .. })
 		));
+
 		cancellation.cancel();
+
 		let cancelled = worker.join().expect("device adapter worker");
+
 		assert!(matches!(cancelled, Err(Error::Cancelled)));
 		assert!(!cancel_home_path.join("auth.json").exists());
 	}
@@ -1725,6 +1927,7 @@ mod tests {
 	fn oversized_provider_response_is_rejected_before_deserialization() {
 		let issuer = MockIssuer::start(|request| {
 			assert_eq!(request.target, "/api/accounts/deviceauth/usercode");
+
 			(200, "x".repeat(MAX_RESPONSE_BYTES + 1))
 		});
 		let config =
@@ -1754,9 +1957,11 @@ mod tests {
 	#[test]
 	fn callback_parser_rejects_more_than_the_fixed_header_array() {
 		let mut bytes = b"GET /auth/callback?code=x&state=y HTTP/1.1\r\n".to_vec();
+
 		for _ in 0..=MAX_CALLBACK_HEADERS {
 			bytes.extend_from_slice(b"X-Fixture: value\r\n");
 		}
+
 		bytes.extend_from_slice(b"\r\n");
 
 		assert!(matches!(parse_callback_head(&bytes), Err(CallbackParseFailure::TooManyHeaders)));
@@ -1771,7 +1976,9 @@ mod tests {
 		let metadata = fs::metadata(&path).expect("login home metadata");
 
 		assert_eq!(metadata.permissions().mode() & 0o777, 0o700);
+
 		drop(home);
+
 		assert!(!path.exists());
 	}
 
@@ -1783,6 +1990,7 @@ mod tests {
 			LoginHome::create_under(root.path(), session_id).expect("private login home");
 		let path = home.path().to_owned();
 		let moved = path.with_extension("moved");
+
 		fs::rename(&path, &moved).expect("move original home");
 		fs::create_dir(&path).expect("replacement home");
 
@@ -1791,6 +1999,7 @@ mod tests {
 
 		fs::remove_dir(&path).expect("remove replacement");
 		fs::rename(&moved, &path).expect("restore original");
+
 		home.cleanup().expect("cleanup restored home");
 	}
 
@@ -1800,6 +2009,7 @@ mod tests {
 		let session_id = "038f0f9e-7b6e-4a31-8f4c-1d2e3f405164";
 		let home = LoginHome::create_under(root.path(), session_id).expect("private login home");
 		let path = home.path().to_owned();
+
 		std::mem::forget(home);
 
 		cleanup_stale_login_homes_in(root.path()).expect("bounded startup cleanup");
@@ -1811,6 +2021,7 @@ mod tests {
 	fn startup_cleanup_refuses_unknown_entries() {
 		let root = tempfile::tempdir().expect("temporary owner root");
 		let unknown = root.path().join("unowned-entry");
+
 		fs::create_dir(&unknown).expect("unknown entry");
 
 		assert!(matches!(cleanup_stale_login_homes_in(root.path()), Err(Error::Persistence)));

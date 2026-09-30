@@ -73,13 +73,11 @@ pub(super) fn resolve(request_url: &str) -> SystemProxyDecision {
 	let Some(target_url) = cf_url(request_url) else {
 		return SystemProxyDecision::Unavailable { failure: RouteFailureClass::InvalidProxyConfig };
 	};
-
 	let Some(settings) = system_proxy_settings() else {
 		return SystemProxyDecision::Unavailable {
 			failure: RouteFailureClass::ProxyResolutionUnavailable,
 		};
 	};
-
 	let Some(proxies) = copy_proxies_for_url(&target_url, &settings) else {
 		return SystemProxyDecision::Unavailable {
 			failure: RouteFailureClass::ProxyResolutionUnavailable,
@@ -92,6 +90,7 @@ pub(super) fn resolve(request_url: &str) -> SystemProxyDecision {
 fn system_proxy_settings() -> Option<CFDictionary<CFString, CFType>> {
 	// SAFETY: CFNetwork returns an owned immutable system settings snapshot.
 	let settings = unsafe { CFNetworkCopySystemProxySettings() };
+
 	if settings.is_null() {
 		None
 	} else {
@@ -106,6 +105,7 @@ fn copy_proxies_for_url(
 	let proxies = unsafe {
 		CFNetworkCopyProxiesForURL(target_url.as_concrete_TypeRef(), settings.as_concrete_TypeRef())
 	};
+
 	if proxies.is_null() {
 		None
 	} else {
@@ -146,34 +146,31 @@ fn proxy_entry_decision(proxy: &ProxyDictionary, target_url: &CFURL) -> ProxyEnt
 	if cf_string_equals(&proxy_type, unsafe { kCFProxyTypeNone }) {
 		return ProxyEntryDecision::Direct;
 	}
-
 	if cf_string_equals(&proxy_type, unsafe { kCFProxyTypeHTTP }) {
 		return concrete_proxy_entry(proxy, "http");
 	}
-
 	if cf_string_equals(&proxy_type, unsafe { kCFProxyTypeHTTPS }) {
 		// CFNetwork's HTTPS proxy type is a tunneling proxy for HTTPS destinations; it does not
 		// preserve an explicit TLS-to-proxy transport. See https://developer.apple.com/documentation/cfnetwork/kcfproxytypehttps.
 		return concrete_proxy_entry(proxy, "http");
 	}
-
 	if cf_string_equals(&proxy_type, unsafe { kCFProxyTypeSOCKS }) {
 		return ProxyEntryDecision::UnsupportedScheme;
 	}
-
 	if cf_string_equals(&proxy_type, unsafe { kCFProxyTypeAutoConfigurationURL }) {
 		let Some(pac_url) = cf_url_value(proxy, unsafe { kCFProxyAutoConfigurationURLKey }) else {
 			return ProxyEntryDecision::Unavailable;
 		};
+
 		return pac_decision(execute_pac_url(&pac_url, target_url), target_url);
 	}
-
 	if cf_string_equals(&proxy_type, unsafe { kCFProxyTypeAutoConfigurationJavaScript }) {
 		let Some(script) =
 			cf_string_value(proxy, unsafe { kCFProxyAutoConfigurationJavaScriptKey })
 		else {
 			return ProxyEntryDecision::Unavailable;
 		};
+
 		return pac_decision(
 			execute_pac(|callback, context| unsafe {
 				CFNetworkExecuteProxyAutoConfigurationScript(
@@ -236,8 +233,8 @@ fn execute_pac(
 		release: None,
 		copy_description: None,
 	};
-
 	let source = create_source(pac_result_callback, &mut context);
+
 	if source.is_null() {
 		return Err(RouteFailureClass::ProxyResolutionUnavailable);
 	}
@@ -245,9 +242,11 @@ fn execute_pac(
 	let source = unsafe { CFRunLoopSource::wrap_under_create_rule(source) };
 	let run_loop = CFRunLoop::get_current();
 	let mode = unsafe { kCFRunLoopDefaultMode };
+
 	run_loop.add_source(&source, mode);
 
 	let started_at = Instant::now();
+
 	while state.result.is_none() && started_at.elapsed() < PAC_EXECUTION_TIMEOUT {
 		CFRunLoop::run_in_mode(mode, Duration::from_millis(50), true);
 	}
@@ -255,7 +254,9 @@ fn execute_pac(
 	if state.result.is_none() {
 		unsafe { CFRunLoopSourceInvalidate(source.as_concrete_TypeRef()) };
 	}
+
 	run_loop.remove_source(&source, mode);
+
 	state.result.unwrap_or(Err(RouteFailureClass::ConnectTimeout))
 }
 
@@ -265,11 +266,13 @@ unsafe extern "C" fn pac_result_callback(
 	error: CFErrorRef,
 ) {
 	let state = unsafe { &mut *client.cast::<PacRunLoopState>() };
+
 	state.result = if !error.is_null() || proxies.is_null() {
 		Some(Err(RouteFailureClass::ProxyResolutionUnavailable))
 	} else {
 		Some(Ok(unsafe { ProxyArray::wrap_under_get_rule(proxies) }))
 	};
+
 	CFRunLoop::get_current().stop();
 }
 
@@ -284,12 +287,12 @@ fn concrete_proxy_entry(proxy: &ProxyDictionary, proxy_scheme: &str) -> ProxyEnt
 	else {
 		return ProxyEntryDecision::Unavailable;
 	};
-
 	let host = bracket_ipv6_host(&host);
 	let url = match cf_i32_value(proxy, unsafe { kCFProxyPortNumberKey }) {
 		Some(port) if port > 0 => format!("{proxy_scheme}://{host}:{port}"),
 		_ => format!("{proxy_scheme}://{host}"),
 	};
+
 	ProxyEntryDecision::Proxy { url }
 }
 
@@ -328,6 +331,7 @@ fn cf_url(value: &str) -> Option<CFURL> {
 	let url = unsafe {
 		CFURLCreateWithString(kCFAllocatorDefault, value.as_concrete_TypeRef(), ptr::null())
 	};
+
 	if url.is_null() { None } else { Some(unsafe { CFURL::wrap_under_create_rule(url) }) }
 }
 
@@ -351,6 +355,7 @@ mod tests {
 		let script = CFString::new(
 			"function FindProxyForURL(url, host) { if (host === 'auth.example.com') return 'PROXY 127.0.0.1:8123'; return 'DIRECT; PROXY 127.0.0.1:8124'; }",
 		);
+
 		for (url, expected_proxy) in [
 			("https://auth.example.com/oauth/token", true),
 			("https://other.example.com/oauth/token", false),
@@ -367,6 +372,7 @@ mod tests {
 				)
 			})
 			.unwrap_or_else(|_| panic!("CFNetwork PAC evaluation failed"));
+
 			match proxy_array_decision(&result, &target) {
 				SystemProxyDecision::Proxy { url } if expected_proxy =>
 					assert_eq!(url, "http://127.0.0.1:8123"),
