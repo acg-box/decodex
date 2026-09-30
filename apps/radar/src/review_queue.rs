@@ -96,10 +96,6 @@ pub(super) fn build_review_queue(
 		}
 	}
 
-	if let Some(ledger) = ledger {
-		ledger.commit()?;
-	}
-
 	let ordered_subjects = subjects::sort_queue_subjects(subjects.into_values().collect());
 	let queue = review_queue_payload(
 		request,
@@ -110,7 +106,19 @@ pub(super) fn build_review_queue(
 		ordered_subjects,
 	)?;
 
-	Ok(QueueBuild { queue, ledger_enabled: !request.no_ledger })
+	finish_review_queue(queue, ledger)
+}
+
+fn finish_review_queue(queue: Value, ledger: Option<RadarLedger>) -> Result<QueueBuild> {
+	let errors = crate::validate_artifact_errors(&queue);
+	if !errors.is_empty() {
+		crate::eyre::bail!("Upstream review queue validation failed:\n- {}", errors.join("\n- "));
+	}
+	let ledger_enabled = ledger.is_some();
+	if let Some(ledger) = ledger {
+		ledger.commit()?;
+	}
+	Ok(QueueBuild { queue, ledger_enabled })
 }
 
 fn review_queue_payload(
@@ -159,4 +167,50 @@ fn count_priority(subjects: &[Value], priority: &str) -> usize {
 				.is_some_and(|value| value == priority)
 		})
 		.count()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn queue_validation_failure_does_not_commit_ledger_reviews() {
+		let temp = crate::test_support::private_tempdir();
+		let path = temp.path().join("radar.sqlite3");
+		crate::ledger::open_ledger(&path).unwrap().close().unwrap();
+		for valid in [false, true] {
+			let mut ledger = RadarLedger::open(&path).unwrap();
+			ledger
+				.record_review(
+					"openai/codex",
+					"pr",
+					"1",
+					"watch",
+					"Queued for review",
+					Some("likely"),
+				)
+				.unwrap();
+			let mut queue = crate::tests::fixtures::valid_review_queue();
+			if !valid {
+				queue["source"]["upstream_head"] = serde_json::json!("invalid");
+			}
+			let result = finish_review_queue(queue, Some(ledger));
+			if valid {
+				assert!(result.unwrap().ledger_enabled);
+			} else {
+				assert!(result.unwrap_err().to_string().contains("queue validation failed"));
+			}
+			let connection = crate::ledger::open_ledger(&path).unwrap();
+			let rows: i64 = connection
+				.query_row("SELECT COUNT(*) FROM radar_review", [], |row| row.get(0))
+				.unwrap();
+			connection.close().unwrap();
+			assert_eq!(rows, i64::from(valid));
+		}
+		assert!(
+			!finish_review_queue(crate::tests::fixtures::valid_review_queue(), None)
+				.unwrap()
+				.ledger_enabled
+		);
+	}
 }
