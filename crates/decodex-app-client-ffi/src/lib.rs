@@ -45,6 +45,7 @@ impl NativeClient {
 	fn record_login_status(&self, status: &AccountLoginStatus) {
 		let mut active =
 			self.active_login_session.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+
 		if matches!(
 			status.state,
 			AccountLoginState::Completed | AccountLoginState::Failed | AccountLoginState::Cancelled
@@ -321,6 +322,7 @@ pub unsafe extern "C" fn decodex_app_native_client_create(
 	if out_error_json.is_null() || out_error_len.is_null() {
 		return ptr::null_mut();
 	}
+
 	// SAFETY: Both output pointers were checked above and the caller contract
 	// requires them to be writable.
 	unsafe {
@@ -331,6 +333,7 @@ pub unsafe extern "C" fn decodex_app_native_client_create(
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		create_client(config_json, config_len, out_error_json, out_error_len)
 	}));
+
 	match result {
 		Ok(handle) => handle,
 		Err(_) => {
@@ -340,6 +343,7 @@ pub unsafe extern "C" fn decodex_app_native_client_create(
 				"create",
 				ResponseFailure::Bridge(BridgeFailure::InternalFailure),
 			);
+
 			ptr::null_mut()
 		},
 	}
@@ -354,17 +358,20 @@ pub extern "C" fn decodex_app_native_client_destroy(client: *mut c_void) {
 	if client.is_null() {
 		return;
 	}
+
 	let client_id = client as usize;
 	let clients = clients();
 	let client = match clients.lock() {
 		Ok(mut clients) => clients.remove(&client_id),
 		Err(poisoned) => poisoned.into_inner().remove(&client_id),
 	};
+
 	if let Some(client) = client
 		&& let Some(session_id) = client.take_active_login_session()
 		&& let Ok(runtime) = runtime()
 	{
 		let profile = client.profile.clone();
+
 		runtime.spawn(async move {
 			let _ = AccountLoginClient::new(profile).cancel(session_id).await;
 		});
@@ -391,6 +398,7 @@ pub unsafe extern "C" fn decodex_app_native_client_request(
 	if out_response_json.is_null() || out_response_len.is_null() {
 		return 1;
 	}
+
 	// SAFETY: Both output pointers were checked above and the caller contract
 	// requires them to be writable.
 	unsafe {
@@ -401,6 +409,7 @@ pub unsafe extern "C" fn decodex_app_native_client_request(
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		request(client, request_json, request_len, out_response_json, out_response_len)
 	}));
+
 	match result {
 		Ok(status) => status,
 		Err(_) => write_failure(
@@ -428,15 +437,19 @@ pub unsafe extern "C" fn decodex_reset_card_journal_v2(
 	if output.is_null() || output_len.is_null() {
 		return 1;
 	}
+
 	unsafe {
 		*output = ptr::null_mut();
 		*output_len = 0;
 	}
+
 	if input.is_null() || len == 0 || len > 65536 {
 		return 2;
 	}
+
 	catch_unwind(AssertUnwindSafe(|| {
 		let input = unsafe { slice::from_raw_parts(input, len) };
+
 		match reset_card_journal::request(input) {
 			Some(value) => write_serialized(output, output_len, &value),
 			None => 2,
@@ -456,6 +469,7 @@ pub unsafe extern "C" fn decodex_app_native_client_free(buffer: *mut u8, len: us
 	if buffer.is_null() || len == 0 {
 		return;
 	}
+
 	// SAFETY: The caller contract requires the exact pointer/length pair from
 	// `write_bytes`, which leaked one boxed slice with this layout.
 	unsafe {
@@ -476,6 +490,7 @@ fn create_client(
 			"create",
 			ResponseFailure::Bridge(BridgeFailure::InvalidConfiguration),
 		);
+
 		return ptr::null_mut();
 	};
 	let Ok(config) = serde_json::from_slice::<ClientConfig>(config_bytes) else {
@@ -485,8 +500,10 @@ fn create_client(
 			"create",
 			ResponseFailure::Bridge(BridgeFailure::InvalidConfiguration),
 		);
+
 		return ptr::null_mut();
 	};
+
 	if config.schema != CONFIG_SCHEMA
 		|| config.profile_name.as_ref().is_some_and(|value| value.is_empty())
 	{
@@ -496,6 +513,7 @@ fn create_client(
 			"create",
 			ResponseFailure::Bridge(BridgeFailure::InvalidConfiguration),
 		);
+
 		return ptr::null_mut();
 	}
 	if runtime().is_err() {
@@ -505,6 +523,7 @@ fn create_client(
 			"create",
 			ResponseFailure::Bridge(BridgeFailure::RuntimeUnavailable),
 		);
+
 		return ptr::null_mut();
 	}
 
@@ -517,6 +536,7 @@ fn create_client(
 				"create",
 				ResponseFailure::Client(failure),
 			);
+
 			return ptr::null_mut();
 		},
 	};
@@ -529,8 +549,10 @@ fn create_client(
 					"create",
 					ResponseFailure::Bridge(BridgeFailure::InvalidConfiguration),
 				);
+
 				return ptr::null_mut();
 			}
+
 			let Ok(server_id) = ServerId::new(expected_server_id) else {
 				let _ = write_failure(
 					out_error_json,
@@ -538,15 +560,17 @@ fn create_client(
 					"create",
 					ResponseFailure::Bridge(BridgeFailure::InvalidConfiguration),
 				);
+
 				return ptr::null_mut();
 			};
+
 			profile.with_expected_server_id(server_id)
 		},
 		None => profile,
 	};
-
 	let client_id = next_client_id();
 	let client = Arc::new(NativeClient { profile, active_login_session: Mutex::new(None) });
+
 	match clients().lock() {
 		Ok(mut clients) => {
 			clients.insert(client_id, client);
@@ -558,6 +582,7 @@ fn create_client(
 				"create",
 				ResponseFailure::Bridge(BridgeFailure::InternalFailure),
 			);
+
 			return ptr::null_mut();
 		},
 	}
@@ -592,6 +617,7 @@ fn request(
 		},
 	};
 	let operation = request.operation();
+
 	if request.schema() != RESPONSE_SCHEMA {
 		return write_failure(
 			out_response_json,
@@ -600,6 +626,7 @@ fn request(
 			ResponseFailure::Bridge(BridgeFailure::InvalidRequest),
 		);
 	}
+
 	let client_id = client as usize;
 	let native_client = match clients().lock() {
 		Ok(clients) => clients.get(&client_id).cloned(),
@@ -664,6 +691,7 @@ async fn execute_request(
 	request: Request,
 ) -> Result<Value, RequestFailure> {
 	let profile = native_client.profile.clone();
+
 	match request {
 		Request::ListAccounts { .. } => list_accounts(profile).await,
 		Request::GetResetCards { account_id, .. } => get_reset_cards(profile, account_id).await,
@@ -817,6 +845,7 @@ async fn wait_for_account_observation(
 		client.wait_for_observation(after_generation).await
 	}
 	.map_err(RequestFailure::Client)?;
+
 	to_value(signal)
 }
 
@@ -825,6 +854,7 @@ async fn get_reset_card_status(
 	idempotency_key: String,
 ) -> Result<Value, RequestFailure> {
 	let idempotency_key = parse_idempotency_key(idempotency_key)?;
+
 	to_value(
 		ResetCardClient::new(profile)
 			.status(idempotency_key)
@@ -845,6 +875,7 @@ async fn enroll_account(
 		account_id: entity_id(&account_id)?,
 		enabled,
 	};
+
 	execute_account_command(profile, payload, None, idempotency_key).await
 }
 
@@ -859,6 +890,7 @@ async fn logout_account(
 		operation_id: entity_id(&operation_id)?,
 		account_id: entity_id(&account_id)?,
 	};
+
 	execute_account_command(profile, payload, Some(revision(expected_revision)?), idempotency_key)
 		.await
 }
@@ -871,9 +903,11 @@ async fn start_account_reauthentication(
 	let operation_id = entity_id(&input.operation_id)?;
 	let recovery_operation_id =
 		input.recovery_operation_id.map(|operation_id| entity_id(&operation_id)).transpose()?;
+
 	if recovery_operation_id.as_ref() == Some(&operation_id) {
 		return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
 	}
+
 	let start = AccountLoginStart {
 		session_id: entity_id(&input.session_id)?,
 		method: input.login_method,
@@ -887,7 +921,9 @@ async fn start_account_reauthentication(
 	};
 	let status =
 		AccountLoginClient::new(profile).start(start).await.map_err(RequestFailure::Client)?;
+
 	native_client.record_login_status(&status);
+
 	to_value(status)
 }
 
@@ -908,7 +944,9 @@ async fn start_account_enrollment(
 	};
 	let status =
 		AccountLoginClient::new(profile).start(start).await.map_err(RequestFailure::Client)?;
+
 	native_client.record_login_status(&status);
+
 	to_value(status)
 }
 
@@ -921,7 +959,9 @@ async fn poll_account_reauthentication(
 		.status(entity_id(&session_id)?)
 		.await
 		.map_err(RequestFailure::Client)?;
+
 	native_client.record_login_status(&status);
+
 	to_value(status)
 }
 
@@ -934,18 +974,22 @@ async fn cancel_account_reauthentication(
 		.cancel(entity_id(&session_id)?)
 		.await
 		.map_err(RequestFailure::Client)?;
+
 	native_client.record_login_status(&status);
+
 	to_value(status)
 }
 
 fn fast_mode_status() -> Result<Value, RequestFailure> {
 	let enabled = decodex_protocol::global_fast_mode_enabled().map_err(RequestFailure::FastMode)?;
+
 	to_value(FastModeData { enabled })
 }
 
 fn set_fast_mode(enabled: bool) -> Result<Value, RequestFailure> {
 	let enabled = decodex_protocol::set_global_fast_mode_enabled(enabled)
 		.map_err(RequestFailure::FastMode)?;
+
 	to_value(FastModeData { enabled })
 }
 
@@ -993,6 +1037,7 @@ async fn consume_reset_card(
 		)
 		.await
 		.map_err(RequestFailure::Client)?;
+
 	reset_card_consume_result(response)
 }
 
@@ -1018,6 +1063,7 @@ async fn route_account(
 		.route_account(entity_id(&account_id)?, parse_idempotency_key(idempotency_key)?)
 		.await
 		.map_err(RequestFailure::Client)?;
+
 	to_value(response)
 }
 
@@ -1033,6 +1079,7 @@ async fn set_balanced_selection(
 		)
 		.await
 		.map_err(RequestFailure::Client)?;
+
 	to_value(response)
 }
 
@@ -1054,6 +1101,7 @@ async fn set_account_order(
 		)
 		.await
 		.map_err(RequestFailure::Client)?;
+
 	to_value(response)
 }
 
@@ -1066,6 +1114,7 @@ async fn set_account_enabled(
 ) -> Result<Value, RequestFailure> {
 	let payload =
 		CommandPayload::SetAccountEnabled { account_id: entity_id(&account_id)?, enabled };
+
 	execute_account_command(profile, payload, Some(revision(expected_revision)?), idempotency_key)
 		.await
 }
@@ -1080,6 +1129,7 @@ async fn execute_account_command(
 		.execute(payload, expected_revision, parse_idempotency_key(idempotency_key)?)
 		.await
 		.map_err(RequestFailure::Client)?;
+
 	to_value(response)
 }
 
@@ -1087,6 +1137,7 @@ fn entity_id(value: &str) -> Result<EntityId, RequestFailure> {
 	if !is_canonical_uuid(value) {
 		return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
 	}
+
 	EntityId::new(value.to_owned()).map_err(|_| RequestFailure::Bridge(BridgeFailure::InvalidInput))
 }
 
@@ -1126,6 +1177,7 @@ fn clients() -> &'static Mutex<HashMap<usize, Arc<NativeClient>>> {
 fn next_client_id() -> usize {
 	loop {
 		let id = NEXT_CLIENT_ID.fetch_add(1, Ordering::Relaxed);
+
 		if id != 0 {
 			return id;
 		}
@@ -1136,6 +1188,7 @@ fn input_bytes<'a>(input: *const u8, len: usize) -> Option<&'a [u8]> {
 	if input.is_null() || len == 0 {
 		return None;
 	}
+
 	// SAFETY: Callers of the public ABI functions promise that `input` points
 	// to `len` readable bytes for the duration of the call.
 	Some(unsafe { slice::from_raw_parts(input, len) })
@@ -1159,6 +1212,7 @@ fn write_serialized<T: Serialize>(out_json: *mut *mut u8, out_len: *mut usize, v
 		Ok(bytes) => bytes,
 		Err(_) => return 2,
 	};
+
 	write_bytes(out_json, out_len, bytes)
 }
 
@@ -1166,13 +1220,16 @@ fn write_bytes(out_json: *mut *mut u8, out_len: *mut usize, bytes: Vec<u8>) -> i
 	let mut bytes = bytes.into_boxed_slice();
 	let len = bytes.len();
 	let buffer = bytes.as_mut_ptr();
+
 	std::mem::forget(bytes);
+
 	// SAFETY: Public entry points checked the output pointers before calling
 	// this helper. `buffer` remains owned by the caller until `free`.
 	unsafe {
 		*out_json = buffer;
 		*out_len = len;
 	}
+
 	0
 }
 
@@ -1197,7 +1254,9 @@ mod tests {
 		let rejected = reset_card_consume_result(ResetCardConsumeResponse::Rejected {
 			error: decodex_protocol::CommandError::IdempotencyConflict,
 		});
+
 		assert!(matches!(rejected, Err(RequestFailure::Bridge(BridgeFailure::ResetCardRejected))));
+
 		for failure in [
 			ClientFailure::ProtocolTimeout,
 			ClientFailure::ProtocolMalformed,
@@ -1210,12 +1269,14 @@ mod tests {
 				Err(RequestFailure::Bridge(BridgeFailure::ResetCardPossiblyDispatched))
 			));
 		}
+
 		let accepted = reset_card_consume_result(ResetCardConsumeResponse::Accepted {
 			account_id: EntityId::new(ACCOUNT_ID).unwrap(),
 			descriptor: ResetCardDescriptorDto::new(100, None).unwrap(),
 			state: ResetCardOperationResult::Prepared,
 			entity_revision: EntityRevision(7),
 		});
+
 		assert!(matches!(accepted, Ok(value) if value == serde_json::json!({"state":"prepared"})));
 	}
 
@@ -1228,9 +1289,13 @@ mod tests {
 			"idempotency_key": SECOND_ACCOUNT_ID,
 		});
 		let parsed: Request = serde_json::from_value(request.clone()).unwrap();
+
 		assert_eq!(parsed.operation(), "consume_reset_card");
+
 		let mut retired = request;
+
 		retired["operation"] = "use_reset_card".into();
+
 		assert!(serde_json::from_value::<Request>(retired).is_err());
 	}
 
@@ -1256,15 +1321,18 @@ mod tests {
 			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"wait_for_account_observation","after_generation":17}}"#
 		))
 		.expect("observation wait must decode");
+
 		assert_eq!(request.operation(), "wait_for_account_observation");
 		assert!(matches!(
 			request,
 			Request::WaitForAccountObservation { request_refresh: false, .. }
 		));
+
 		let priority_request = serde_json::from_str::<Request>(&format!(
 			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"wait_for_account_observation","after_generation":17,"request_refresh":true}}"#
 		))
 		.expect("priority observation wait must decode");
+
 		assert!(matches!(
 			priority_request,
 			Request::WaitForAccountObservation { request_refresh: true, .. }
@@ -1461,6 +1529,7 @@ mod tests {
 		.expect("Fast mode request must decode");
 
 		assert_eq!(request.operation(), "set_fast_mode");
+
 		let response = SuccessResponse {
 			schema: RESPONSE_SCHEMA,
 			outcome: "success",
@@ -1527,9 +1596,11 @@ mod tests {
 		assert_eq!(status, 0);
 		assert!(!pointer.is_null());
 		assert!(len > 0);
+
 		// SAFETY: The public call returned this exact live pointer/length pair.
 		let response: serde_json::Value =
 			unsafe { serde_json::from_slice(slice::from_raw_parts(pointer, len)).unwrap() };
+
 		assert_eq!(
 			response,
 			serde_json::json!({
@@ -1539,6 +1610,7 @@ mod tests {
 				"failure": "invalid_handle"
 			})
 		);
+
 		// SAFETY: Release the exact allocation once after inspecting its contents.
 		unsafe { decodex_app_native_client_free(pointer, len) };
 	}
