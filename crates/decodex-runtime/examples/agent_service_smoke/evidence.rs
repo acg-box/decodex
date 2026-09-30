@@ -26,7 +26,8 @@ pub(super) async fn qualify(client: &AgentClient) -> SmokeResult<()> {
 		"# Live Agent acceptance\n\nActual read-only provider tasks. No simulated tool results.\n",
 	);
 	let mut inspected_tool = false;
-	for (id, source) in [("engineering", "agent_capabilities"), ("research", "voice-input")] {
+	for (id, source) in [("engineering", "agent_capabilities"), ("research", "subscription-voice")]
+	{
 		let entries = history(client, id).await?;
 		let answer = entries
 			.iter()
