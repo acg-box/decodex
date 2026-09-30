@@ -1,13 +1,12 @@
-use super::*;
-use crate::AgentReasoningSummaryChange as Change;
+use crate::{AgentReasoningSummaryChange as Change, SqliteStore, agent::tests};
 
 #[tokio::test]
 async fn reasoning_parts_survive_reopen_and_completion_replaces_missing_or_late_deltas() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("summary.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 
-	store.create_agent_work_item(item("agent", None)).await.unwrap();
+	store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
 	store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 	store.begin_agent_dispatch("agent".into()).await.unwrap();
 	store.acknowledge_agent_dispatch("agent".into(), "turn".into()).await.unwrap();

@@ -1,12 +1,17 @@
-use super::*;
+use serde_json::Value;
+
+use crate::{
+	SqliteStore,
+	agent::{AgentDisposition, EnqueueAgentEvent, tests},
+};
 
 #[tokio::test]
 async fn terminal_partial_output_survives_restart_and_next_turn_without_waking() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("partial.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 
-	store.create_agent_work_item(item("agent", None)).await.unwrap();
+	store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
 	store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 	store.begin_agent_dispatch("agent".into()).await.unwrap();
 	store.acknowledge_agent_dispatch("agent".into(), "turn".into()).await.unwrap();
@@ -60,7 +65,7 @@ async fn terminal_partial_output_survives_restart_and_next_turn_without_waking()
 	assert_eq!(retained.len(), 2);
 
 	for event in retained {
-		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap();
+		let value: Value = serde_json::from_str(&event.payload).unwrap();
 
 		assert_eq!(value["text"], source);
 		assert_ne!(value["itemId"], "final");
@@ -114,10 +119,10 @@ async fn terminal_partial_output_survives_restart_and_next_turn_without_waking()
 #[tokio::test]
 async fn partial_output_bounds_escaped_text_for_each_terminal_status() {
 	for status in ["completed", "failed", "interrupted"] {
-		let directory = tempdir().unwrap();
+		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("bounded.sqlite3")).unwrap();
 
-		store.create_agent_work_item(item("agent", None)).await.unwrap();
+		store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
 		store.bind_agent_thread("agent".into(), "thread".into()).await.unwrap();
 		store.begin_agent_dispatch("agent".into()).await.unwrap();
 		store.acknowledge_agent_dispatch("agent".into(), "turn".into()).await.unwrap();
@@ -153,7 +158,7 @@ async fn partial_output_bounds_escaped_text_for_each_terminal_status() {
 
 		assert!(event.payload.len() <= 65536);
 
-		let value: serde_json::Value = serde_json::from_str(&event.payload).unwrap();
+		let value: Value = serde_json::from_str(&event.payload).unwrap();
 
 		assert_eq!(value["truncated"], true);
 

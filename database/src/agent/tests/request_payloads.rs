@@ -1,5 +1,10 @@
-use super::*;
-use crate::error;
+use serde_json::Value;
+
+use crate::{
+	SqliteStore, StoreError,
+	agent::{EnqueueAgentEvent, tests},
+	error,
+};
 
 fn request(source: &str, method: &str, kind: &str) -> EnqueueAgentEvent {
 	EnqueueAgentEvent {
@@ -17,11 +22,11 @@ fn request(source: &str, method: &str, kind: &str) -> EnqueueAgentEvent {
 
 #[tokio::test]
 async fn large_approval_details_are_atomic_exact_and_compact_in_scans() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("requests.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 
-	store.create_agent_work_item(item("agent", None)).await.unwrap();
+	store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
 
 	let input =
 		request("native-request", "item/commandExecution/requestApproval", "permission_pending");
@@ -49,7 +54,7 @@ async fn large_approval_details_are_atomic_exact_and_compact_in_scans() {
 	assert_eq!(events.len(), 1);
 	assert!(events[0].payload.len() < 1024);
 
-	let compact: serde_json::Value = serde_json::from_str(&events[0].payload).unwrap();
+	let compact: Value = serde_json::from_str(&events[0].payload).unwrap();
 
 	assert_eq!(compact["params"]["itemId"], "item");
 	assert_eq!(compact["detailsStored"], true);
@@ -78,10 +83,10 @@ async fn large_approval_details_are_atomic_exact_and_compact_in_scans() {
 
 #[tokio::test]
 async fn large_approval_bounds_do_not_expand_other_inbox_events() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&directory.path().join("requests.sqlite3")).unwrap();
 
-	store.create_agent_work_item(item("agent", None)).await.unwrap();
+	store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
 
 	for (method, kind) in [
 		("item/commandExecution/requestApproval", "permission_pending"),
@@ -112,16 +117,16 @@ async fn large_approval_bounds_do_not_expand_other_inbox_events() {
 
 #[tokio::test]
 async fn combined_file_evidence_preserves_two_native_sized_parts() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("combined.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 
-	store.create_agent_work_item(item("agent", None)).await.unwrap();
+	store.create_agent_work_item(tests::item("agent", None)).await.unwrap();
 
 	let mut input = request("combined", "item/fileChange/requestApproval", "permission_pending");
-	let mut value: serde_json::Value = serde_json::from_str(&input.payload).unwrap();
+	let mut value: Value = serde_json::from_str(&input.payload).unwrap();
 
-	value["params"]["command"] = serde_json::Value::Null;
+	value["params"]["command"] = Value::Null;
 	value["params"]["reason"] = serde_json::json!("r".repeat(4 * 1024 * 1024));
 	value["fileChange"] = serde_json::json!({"id":"item","type":"fileChange","changes":[{"path":"fixture","kind":{"type":"add"},"diff":"+".repeat(5 * 1024 * 1024)}]});
 	input.payload = value.to_string();

@@ -1,12 +1,12 @@
-use super::*;
+use crate::{SqliteStore, agent::tests};
 
 #[tokio::test]
 async fn native_steer_receipts_require_exact_identity_and_survive_reopen() {
-	let directory = tempdir().unwrap();
+	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("steer.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 
-	store.create_agent_work_item(item("work", None)).await.unwrap();
+	store.create_agent_work_item(tests::item("work", None)).await.unwrap();
 	store.bind_agent_thread("work".into(), "thread".into()).await.unwrap();
 	store.begin_agent_dispatch("work".into()).await.unwrap();
 	store.acknowledge_agent_dispatch("work".into(), "turn".into()).await.unwrap();
