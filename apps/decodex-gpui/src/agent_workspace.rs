@@ -99,6 +99,8 @@ impl AgentSurface {
 			return;
 		}
 		if self.selected.as_deref() != Some(id) {
+			// Cancel against the outgoing editor before parking or replacing its draft.
+			self.stop_voice(cx);
 			self.reset_automatic_recap();
 			self.reset_voice_settings();
 			self.reset_resources();
@@ -146,7 +148,6 @@ impl AgentSurface {
 			self.pages.push(id.to_owned());
 		}
 		if self.selected.as_deref() != Some(id) {
-			self.stop_voice(cx);
 			if let Some(old) = &self.selected {
 				self.page_views.insert(
 					old.clone(),

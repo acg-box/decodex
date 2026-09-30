@@ -342,6 +342,44 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn switching_manager_cancels_dictation_before_rebinding_the_editor(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| work.id == "release")
+				.unwrap()
+				.kind = decodex_protocol::AgentWorkKindDto::Manager;
+			s.composer.update(cx, |input, cx| input.set_content("Main draft", cx));
+			s.dictation = Some(recording("Main draft"));
+			s.apply_dictation(
+				DictationStatus {
+					session_id: EntityId::new("dictation-test").unwrap(),
+					phase: DictationPhase::Listening,
+					text: DictationBuffer::new("partial").unwrap(),
+					message: None,
+				},
+				cx,
+			);
+			// Identical text does not make this other recipient's draft the recording owner.
+			s.draft_profiles.texts.insert("release".into(), "Main draft partial".into());
+			s.open_page("release", cx);
+			assert!(s.dictation.is_none());
+			assert_eq!(s.composer.read(cx).content(), "Main draft partial");
+			s.open_page("agent", cx);
+			assert_eq!(s.composer.read(cx).content(), "Main draft");
+			assert!(!s.sending);
+			assert!(s.submission.command.is_none());
+		});
+	}
+
+	#[gpui::test]
 	fn pending_subscription_request_keeps_processing_capture_state(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		let waiting = surface.update(visual, |s, cx| {
