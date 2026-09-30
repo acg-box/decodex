@@ -697,17 +697,7 @@ def run(
         stderr=subprocess.PIPE,
         start_new_session=True,
     )
-    if input_bytes is not None:
-        if process.stdin is None:
-            terminate_bounded_process(process)
-            raise InstallError("installer child input pipe is unavailable")
-        try:
-            process.stdin.write(input_bytes)
-            process.stdin.close()
-        except (BrokenPipeError, OSError) as error:
-            terminate_bounded_process(process)
-            raise InstallError("installer child input was refused") from error
-    stdout_bytes, stderr_bytes = communicate_bounded(process, command, timeout)
+    stdout_bytes, stderr_bytes = communicate_bounded(process, command, timeout, input_bytes)
     try:
         stdout = stdout_bytes.decode("utf-8", errors="strict")
         stderr = stderr_bytes.decode("utf-8", errors="strict")
@@ -753,6 +743,7 @@ def communicate_bounded(
     process: subprocess.Popen[Any],
     command: list[str],
     timeout: float,
+    input_bytes: Optional[bytes] = None,
 ) -> tuple[bytes, bytes]:
     if process.stdout is None or process.stderr is None:
         terminate_bounded_process(process)
@@ -765,7 +756,18 @@ def communicate_bounded(
     output_bytes = 0
     deadline = time.monotonic() + timeout
     selector = selectors.DefaultSelector()
+    input_descriptor = None
+    remaining_input = memoryview(input_bytes or b"")
     try:
+        if input_bytes is not None:
+            if process.stdin is None:
+                raise InstallError("installer child input pipe is unavailable")
+            if remaining_input:
+                input_descriptor = process.stdin.fileno()
+                os.set_blocking(input_descriptor, False)
+                selector.register(input_descriptor, selectors.EVENT_WRITE)
+            else:
+                process.stdin.close()
         for descriptor in streams:
             os.set_blocking(descriptor, False)
             selector.register(descriptor, selectors.EVENT_READ)
@@ -776,6 +778,19 @@ def communicate_bounded(
             events = selector.select(min(0.25, remaining))
             for key, _ in events:
                 descriptor = key.fd
+                if descriptor == input_descriptor:
+                    try:
+                        written = os.write(descriptor, remaining_input[:4096])
+                    except BlockingIOError:
+                        continue
+                    except OSError as error:
+                        raise InstallError("installer child input was refused") from error
+                    remaining_input = remaining_input[written:]
+                    if not remaining_input:
+                        selector.unregister(descriptor)
+                        process.stdin.close()
+                        input_descriptor = None
+                    continue
                 name, stream = streams[descriptor]
                 try:
                     chunk = os.read(descriptor, 64 * 1024)
@@ -801,6 +816,8 @@ def communicate_bounded(
         raise
     finally:
         selector.close()
+        if process.stdin is not None and not process.stdin.closed:
+            process.stdin.close()
         for _, stream in streams.values():
             if not stream.closed:
                 stream.close()
