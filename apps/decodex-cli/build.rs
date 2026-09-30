@@ -1,13 +1,14 @@
 //! Embed the exact source checkout identity in the unified Decodex executable.
 
-use std::{io, process::Command};
+use std::{env, io, process::Command};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let commit = git(["rev-parse", "HEAD"])?;
 	let dirty = !git(["status", "--porcelain"])?.is_empty();
+
 	// A Git ref does not change when source files are edited or restored. This deliberately
 	// absent path refreshes identity on each build, including changes outside this package.
-	println!("cargo:rerun-if-changed={}/refresh-build-identity", std::env::var("OUT_DIR")?);
+	println!("cargo:rerun-if-changed={}/refresh-build-identity", env::var("OUT_DIR")?);
 	println!("cargo:rustc-env=DECODEX_BUILD_COMMIT={commit}");
 	println!("cargo:rustc-env=DECODEX_BUILD_DIRTY={dirty}");
 

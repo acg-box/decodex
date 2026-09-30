@@ -1,9 +1,10 @@
 //! Local Codex Fast mode commands with bounded typed output.
 
-use crate::{CommandOutput, OutputFormat};
 use clap::{Args, Subcommand};
-use decodex_protocol::{FastModeFailure, global_fast_mode_enabled, set_global_fast_mode_enabled};
 use serde::Serialize;
+
+use crate::{CommandOutput, OutputFormat};
+use decodex_protocol::FastModeFailure;
 
 const FAST_MODE_OUTPUT_SCHEMA: &str = "decodex/fast-mode-cli/1";
 
@@ -14,6 +15,14 @@ pub enum FastModeCommand {
 	Status,
 	/// Set `[features].fast_mode` without changing unrelated Codex configuration.
 	Set(SetArgs),
+}
+impl FastModeCommand {
+	const fn name(&self) -> &'static str {
+		match self {
+			Self::Status => "status",
+			Self::Set(_) => "set",
+		}
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Args)]
@@ -42,21 +51,13 @@ struct FailureDocument {
 pub(crate) fn execute(command: FastModeCommand, format: OutputFormat) -> CommandOutput {
 	let command_name = command.name();
 	let result = match command {
-		FastModeCommand::Status => global_fast_mode_enabled(),
-		FastModeCommand::Set(args) => set_global_fast_mode_enabled(args.enabled),
+		FastModeCommand::Status => decodex_protocol::global_fast_mode_enabled(),
+		FastModeCommand::Set(args) => decodex_protocol::set_global_fast_mode_enabled(args.enabled),
 	};
 
 	match result {
 		Ok(enabled) => render_success(command_name, format, enabled),
 		Err(error) => render_failure(command_name, format, error),
-	}
-}
-impl FastModeCommand {
-	const fn name(&self) -> &'static str {
-		match self {
-			Self::Status => "status",
-			Self::Set(_) => "set",
-		}
 	}
 }
 
@@ -100,35 +101,34 @@ fn render_failure(
 
 #[cfg(test)]
 mod tests {
-	use crate::OutputFormat;
+	use clap::Parser as _;
+
+	use crate::{
+		Cli, Command, OutputFormat,
+		fast_mode::{self, FastModeCommand, SetArgs},
+	};
+	use decodex_protocol::FastModeFailure;
 	#[test]
 	fn command_surface_requires_an_explicit_set_boolean() {
-		use clap::Parser as _;
+		let status = Cli::try_parse_from(["decodex", "fast-mode", "status", "--output", "json"])
+			.expect("status command must parse");
+		let enabled = Cli::try_parse_from(["decodex", "fast-mode", "set", "--enabled", "true"])
+			.expect("set command must parse");
 
-		let status =
-			crate::Cli::try_parse_from(["decodex", "fast-mode", "status", "--output", "json"])
-				.expect("status command must parse");
-		let enabled =
-			crate::Cli::try_parse_from(["decodex", "fast-mode", "set", "--enabled", "true"])
-				.expect("set command must parse");
-
-		assert!(matches!(status.command, crate::Command::FastMode(super::FastModeCommand::Status)));
+		assert!(matches!(status.command, Command::FastMode(FastModeCommand::Status)));
 		assert_eq!(status.output, OutputFormat::Json);
 		assert!(matches!(
 			enabled.command,
-			crate::Command::FastMode(super::FastModeCommand::Set(super::SetArgs { enabled: true }))
+			Command::FastMode(FastModeCommand::Set(SetArgs { enabled: true }))
 		));
-		assert!(crate::Cli::try_parse_from(["decodex", "fast-mode", "set"]).is_err());
-		assert!(crate::Cli::try_parse_from(["decodex", "fast-mode", "set", "--enabled"]).is_err());
+		assert!(Cli::try_parse_from(["decodex", "fast-mode", "set"]).is_err());
+		assert!(Cli::try_parse_from(["decodex", "fast-mode", "set", "--enabled"]).is_err());
 	}
 	#[test]
 	fn output_is_stable_bounded_and_path_free() {
-		let enabled = super::render_success("set", OutputFormat::Json, true);
-		let failure = super::render_failure(
-			"status",
-			OutputFormat::Json,
-			super::FastModeFailure::ConfigInvalid,
-		);
+		let enabled = fast_mode::render_success("set", OutputFormat::Json, true);
+		let failure =
+			fast_mode::render_failure("status", OutputFormat::Json, FastModeFailure::ConfigInvalid);
 
 		assert_eq!(
 			enabled.text(),
