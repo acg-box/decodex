@@ -60,9 +60,12 @@ pub(crate) fn sort_queue_subjects(mut subjects: Vec<Value>) -> Vec<Value> {
 }
 
 fn commit_shas(bundle: &SourceBundle, seed_commit: &RecentCommit) -> Vec<String> {
-	let shas = bundle.commits.iter().map(|commit| commit.sha.clone()).collect::<Vec<_>>();
+	let mut shas = bundle.commits.iter().map(|commit| commit.sha.clone()).collect::<Vec<_>>();
 
-	if shas.is_empty() { vec![seed_commit.sha.clone()] } else { shas }
+	if !shas.contains(&seed_commit.sha) {
+		shas.push(seed_commit.sha.clone());
+	}
+	shas
 }
 
 fn queue_sort_key(subject: &Value) -> (u8, String, String, String) {
@@ -159,4 +162,42 @@ fn review_reason(surface_hints: &[String], attention_flags: &[String]) -> String
 	}
 
 	format!("Needs AI review for surface hints: {}.", surface_hints.join(", "))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::review_queue::bundles::{BundleCommit, BundlePr};
+
+	#[test]
+	fn pr_subject_retains_seed_commit_once_alongside_pr_commits() {
+		let seed = RecentCommit {
+			sha: "a".repeat(40),
+			title: "Scanned commit".into(),
+			url: format!("https://github.com/openai/codex/commit/{}", "a".repeat(40)),
+			committed_at: Some("2026-06-01T00:00:00Z".into()),
+		};
+		let pr_commit = "b".repeat(40);
+		let mut bundle = SourceBundle {
+			primary_pr: Some(BundlePr {
+				number: 1,
+				title: "PR title".into(),
+				body: String::new(),
+				state: "merged".into(),
+				url: "https://github.com/openai/codex/pull/1".into(),
+			}),
+			commits: vec![BundleCommit { sha: pr_commit.clone(), message: "PR commit".into() }],
+			files: vec![],
+		};
+		let mut subject = subject_from_bundle(&bundle, "pr", "1", &seed);
+		assert_eq!(subject["commit_shas"], serde_json::json!([pr_commit, seed.sha]));
+		append_commit_sha(&mut subject, &seed.sha);
+		assert_eq!(subject["commit_shas"].as_array().unwrap().len(), 2);
+		bundle.commits.push(BundleCommit { sha: seed.sha.clone(), message: seed.title.clone() });
+		let subject = subject_from_bundle(&bundle, "pr", "1", &seed);
+		assert_eq!(subject["commit_shas"], serde_json::json!([pr_commit, seed.sha]));
+		bundle.commits.clear();
+		let subject = subject_from_bundle(&bundle, "pr", "1", &seed);
+		assert_eq!(subject["commit_shas"], serde_json::json!([seed.sha]));
+	}
 }
