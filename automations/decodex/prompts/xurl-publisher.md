@@ -55,7 +55,7 @@ Success and stop conditions:
   no-candidate no-op reached only after `publish-next` completes its candidate path is a successful
   terminal outcome. `no_due_outcome` alone is continuation-only and not terminal.
 - Report post/outcome ID, canonical URL when published, exact author/text readback status, and blocker.
-  Report the pricing refresh's free `ordinary_https_get_count` and its zero X API calls and cost
+  Report pricing refresh status, its free `ordinary_https_get_count`, and its zero X API calls and cost
   separately from paid operations. Use the operation receipts and `social cost-report` for paid call
   counts and recorded cost ceilings. Distinguish the current run from billing-month totals; report
   the monthly used, reserved, and remaining ceilings. Cost ceilings are not settled charges.
