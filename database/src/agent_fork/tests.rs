@@ -56,12 +56,18 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("fork.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
+
 		seed(&store).await;
+
 		let original = store.get_agent_work_item("main".into()).await.unwrap();
 		let mut a = attempt(boundary);
+
 		a.source.before_turn_id = before.into();
+
 		assert_eq!(a.expected_turns(), Some(expected.as_slice()));
+
 		let saved = store.reserve_agent_fork(a.clone()).await.unwrap().unwrap();
+
 		assert_eq!(saved.state, "reserved");
 		assert!(
 			store
@@ -70,8 +76,11 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 				.unwrap()
 				.is_none()
 		);
+
 		drop(store);
+
 		let store = SqliteStore::open_test(&path).unwrap();
+
 		assert_eq!(
 			store.agent_fork_receipt("main".into(), "a".repeat(64)).await.unwrap().unwrap(),
 			saved
@@ -87,14 +96,19 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 				.await
 				.is_err()
 		);
+
 		let acknowledged = store
 			.record_agent_fork_identity(a.clone(), "fork-native".into())
 			.await
 			.unwrap()
 			.unwrap();
+
 		assert_eq!(acknowledged.state, "acknowledged");
+
 		drop(store);
+
 		let store = SqliteStore::open_test(&path).unwrap();
+
 		assert_eq!(
 			store
 				.agent_fork_receipt("main".into(), a.source.review_token.clone())
@@ -116,14 +130,18 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 				.await
 				.is_err()
 		);
+
 		let result = store
 			.acknowledge_agent_fork(a.clone(), "fork-native".into(), expected.clone())
 			.await
 			.unwrap()
 			.unwrap();
+
 		assert_eq!(result.state, "forked");
 		assert_eq!(store.get_agent_work_item("main".into()).await.unwrap(), original);
+
 		let branch = store.get_agent_work_item("branch".into()).await.unwrap();
+
 		assert_eq!(branch.parent_goal_id.as_deref(), Some("main"));
 		assert_eq!(branch.codex_thread_id.as_deref(), Some("fork-native"));
 		assert_eq!(branch.dispatch_state, AgentDispatchState::Idle);
@@ -136,12 +154,14 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 				.unwrap(),
 			result
 		);
+
 		if boundary == AgentForkBoundary::BeforeInput {
 			let edit = store
 				.agent_prompt_edit_receipt("branch".into(), "fork-native".into())
 				.await
 				.unwrap()
 				.unwrap();
+
 			assert_eq!(edit.id, result.edit_receipt_id.unwrap());
 			assert_eq!(edit.state, "applied");
 			assert_eq!(edit.attempt.content, a.source.content);
@@ -156,10 +176,14 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 async fn definite_fork_refusal_resolves_only_the_new_unbound_work() {
 	let directory = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&directory.path().join("fork.sqlite3")).unwrap();
+
 	seed(&store).await;
+
 	let original = store.get_agent_work_item("main".into()).await.unwrap();
 	let a = attempt(AgentForkBoundary::BeforeInput);
+
 	store.reserve_agent_fork(a.clone()).await.unwrap().unwrap();
+
 	assert!(store.reject_agent_fork(a.clone()).await.unwrap());
 	assert!(!store.reject_agent_fork(a.clone()).await.unwrap());
 	assert_eq!(
@@ -172,7 +196,9 @@ async fn definite_fork_refusal_resolves_only_the_new_unbound_work() {
 		"rejected"
 	);
 	assert_eq!(store.get_agent_work_item("main".into()).await.unwrap(), original);
+
 	let branch = store.get_agent_work_item("branch".into()).await.unwrap();
+
 	assert_eq!(branch.status, AgentWorkStatus::Resolved);
 	assert!(branch.codex_thread_id.is_none());
 	assert!(store.acknowledge_agent_fork(a, "late-native".into(), vec![]).await.unwrap().is_none());

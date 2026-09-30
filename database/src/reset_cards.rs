@@ -35,6 +35,7 @@ impl SqliteStore {
                 "SELECT idempotency_key FROM reset_card_operations WHERE account_id=?1 ORDER BY rowid DESC LIMIT 1",
                 [account], |row| row.get(0),
             ).optional().map_err(sqlite_error)?;
+
             key.map(|key| read(db, &key)).transpose().map(Option::flatten)
         }).await
 	}
@@ -60,21 +61,27 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("reset-card intent"));
 		}
+
 		self.run(move |db| {
             let tx = db.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+
             if let Some(old) = read(&tx, &operation.key)? {
                 if old.account_id != operation.account_id || old.account_revision != operation.account_revision
                     || old.granted_at != operation.granted_at || old.expires_at != operation.expires_at {
                     return Err(StoreError::IdempotencyConflict);
                 }
+
                 return Ok(old);
             }
+
             let active: bool = tx.query_row(
                 "SELECT EXISTS(SELECT 1 FROM reset_card_operations
                  WHERE account_id=?1 AND state IN ('prepared','sending'))",
                 [&operation.account_id], |row| row.get(0),
             ).map_err(sqlite_error)?;
+
             if active { return Err(StoreError::CapacityExhausted("account reset pending")); }
+
             tx.execute(
                 "INSERT INTO reset_card_operations
                  (idempotency_key,account_id,account_revision,granted_at,expires_at,exact_credit_id,state)
@@ -83,6 +90,7 @@ impl SqliteStore {
                     operation.granted_at,operation.expires_at,operation.exact_credit_id],
             ).map_err(sqlite_error)?;
             tx.commit().map_err(sqlite_error)?;
+
             Ok(operation)
         }).await
 	}
@@ -101,6 +109,7 @@ impl SqliteStore {
 				.map_err(sqlite_error)?
 				.collect::<Result<Vec<_>, _>>()
 				.map_err(sqlite_error)?;
+
 			keys.into_iter()
 				.map(|key| {
 					read(db, &key)?.ok_or(StoreError::InvalidInput("reset-card intent missing"))
@@ -138,9 +147,11 @@ impl SqliteStore {
 					params![key, outcome],
 				)
 				.map_err(sqlite_error)?;
+
 			if changed != 1 {
 				return Err(StoreError::OwnershipLost("reset-card receipt"));
 			}
+
 			Ok(())
 		})
 		.await
@@ -155,9 +166,11 @@ impl SqliteStore {
 					[key],
 				)
 				.map_err(sqlite_error)?;
+
 			if changed != 1 {
 				return Err(StoreError::OwnershipLost("reset-card completion"));
 			}
+
 			Ok(())
 		})
 		.await
@@ -173,9 +186,11 @@ impl SqliteStore {
                 "UPDATE reset_card_operations SET state='failed',failure=?2,exact_credit_id=NULL
                  WHERE idempotency_key=?1 AND state='prepared'", params![key,failure],
             ).map_err(sqlite_error)?;
+
 			if changed != 1 {
 				return Err(StoreError::OwnershipLost("reset-card rejection"));
 			}
+
 			Ok(())
 		})
 		.await

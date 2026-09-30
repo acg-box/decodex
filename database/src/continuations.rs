@@ -113,16 +113,20 @@ impl SqliteStore {
 		request: &PlanInitialThreadContinuation,
 	) -> Result<ContinuationCommandOutcome<ContinuationPlanEffect>, StoreError> {
 		validate_key(idempotency_key)?;
+
 		if request.expected_conversation_revision <= 0 {
 			return Err(StoreError::InvalidInput("Conversation revision must be positive"));
 		}
+
 		let key = idempotency_key.to_owned();
 		let request = request.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let request_sha = initial_request_sha(&request);
+
 			if let Some((stored_sha, plan_id)) = transaction
 				.query_row(
 					"SELECT request_sha256, continuation_plan_id FROM continuation_plans
@@ -136,8 +140,11 @@ impl SqliteStore {
 				if stored_sha != request_sha {
 					return Err(StoreError::IdempotencyConflict);
 				}
+
 				let effect = read_plan_effect(&transaction, &plan_id, None)?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(ContinuationCommandOutcome::Success(effect));
 			}
 
@@ -199,6 +206,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			let now = unix_micros().map_err(StoreError::from)?;
+
 			transaction
 				.execute(
 					"INSERT INTO runtime_sessions (
@@ -253,8 +261,11 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			let effect = read_plan_effect(&transaction, &request.plan_id, None)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(ContinuationCommandOutcome::Success(effect))
 		})
 		.await
@@ -270,16 +281,21 @@ impl SqliteStore {
 		fallback_pack: &ContextPack,
 	) -> Result<ContinuationCommandOutcome<ContinuationPlanEffect>, StoreError> {
 		validate_key(idempotency_key)?;
+
 		if request.expected_consumer_revision <= 0 {
 			return Err(StoreError::InvalidInput("execution consumer revision must be positive"));
 		}
+
 		fallback_pack
 			.verify()
 			.map_err(|_| StoreError::InvalidInput("fallback Context Pack is invalid"))?;
+
 		let compiled_digest = blob_store.put(fallback_pack.bytes())?;
+
 		if compiled_digest != fallback_pack.digest() {
 			return Err(StoreError::Incompatible("Context Pack blob digest differs".to_owned()));
 		}
+
 		let manifest_json = serialize_context_manifest(fallback_pack)?;
 		let manifest_digest = fallback_pack.manifest_digest().to_hex();
 		let byte_length = i64::try_from(fallback_pack.bytes().len())
@@ -290,17 +306,21 @@ impl SqliteStore {
 		let fallback_pack = fallback_pack.clone();
 		let key = idempotency_key.to_owned();
 		let request = request.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let request_sha = continuation_request_sha(&request);
+
 			if let Some(effect) =
 				read_plan_replay(&transaction, &key, &request_sha, &blob_store, &fallback_pack)?
 			{
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(ContinuationCommandOutcome::Success(effect));
 			}
+
 			let authority = read_continuation_authority(&transaction, &request)?;
 			let Some(authority) = authority else {
 				return Ok(ContinuationCommandOutcome::Rejected(
@@ -309,6 +329,7 @@ impl SqliteStore {
 			};
 			let same_thread = has_same_thread_evidence(&authority);
 			let now = unix_micros().map_err(StoreError::from)?;
+
 			if same_thread {
 				insert_same_thread_plan(
 					&transaction,
@@ -325,6 +346,7 @@ impl SqliteStore {
 						Some("not_submitted" | "canceled") => true,
 						_ => false,
 					};
+
 				if !fallback_allowed
 					|| fallback_pack.conversation_id().as_str()
 						!= authority.conversation_id.as_str()
@@ -335,6 +357,7 @@ impl SqliteStore {
 						ContinuationRejection::SameThreadUnavailable,
 					));
 				}
+
 				persist_context_pack(
 					&transaction,
 					&request.fallback_context_pack_id,
@@ -347,13 +370,17 @@ impl SqliteStore {
 					omitted_source_count,
 					now,
 				)?;
+
 				let source_changed = end_fallback_source(&transaction, &authority, now)?;
+
 				if source_changed != 1 {
 					return Ok(ContinuationCommandOutcome::Rejected(
 						ContinuationRejection::StaleConsumerRevision,
 					));
 				}
+
 				insert_fallback_session(&transaction, &request, &authority, now)?;
+
 				let turn_changed = transaction
 					.execute(
 						"UPDATE turns SET runtime_session_id = ?1, updated_at_micros = ?5
@@ -368,15 +395,20 @@ impl SqliteStore {
 						],
 					)
 					.map_err(sql_error)?;
+
 				if turn_changed != 1 {
 					return Ok(ContinuationCommandOutcome::Rejected(
 						ContinuationRejection::StaleConsumerRevision,
 					));
 				}
+
 				insert_fallback_plan(&transaction, &key, &request_sha, &request, &authority, now)?;
 			}
+
 			let effect = read_plan_effect(&transaction, &request.plan_id, Some(&blob_store))?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(ContinuationCommandOutcome::Success(effect))
 		})
 		.await
@@ -430,7 +462,9 @@ fn read_plan_replay(
 		if stored_sha != request_sha {
 			return Err(StoreError::IdempotencyConflict);
 		}
+
 		let effect = read_plan_effect(transaction, &plan_id, Some(blob_store))?;
+
 		if effect.plan.kind == ContinuationPlanKind::ContextPackFallback
 			&& effect
 				.fallback_context_pack
@@ -439,8 +473,10 @@ fn read_plan_replay(
 		{
 			return Err(StoreError::IdempotencyConflict);
 		}
+
 		return Ok(Some(effect));
 	}
+
 	Ok(None)
 }
 
@@ -566,6 +602,7 @@ fn insert_same_thread_plan(
 			],
 		)
 		.map_err(sql_error)?;
+
 	Ok(())
 }
 
@@ -577,6 +614,7 @@ fn insert_fallback_session(
 ) -> Result<(), StoreError> {
 	let account_snapshot_id = random_uuid_v4()?;
 	let profile_snapshot_id = random_uuid_v4()?;
+
 	transaction
 		.execute(
 			"INSERT INTO runtime_sessions (
@@ -609,6 +647,7 @@ fn insert_fallback_session(
 			],
 		)
 		.map_err(sql_error)?;
+
 	Ok(())
 }
 
@@ -647,6 +686,7 @@ fn insert_fallback_plan(
 			],
 		)
 		.map_err(sql_error)?;
+
 	Ok(())
 }
 
@@ -673,6 +713,7 @@ fn read_plan_kind(
 					|row| row.get(0),
 				)
 				.map_err(sql_error)?;
+
 			(
 				ContinuationPlanKind::SameThread,
 				Some(SameThreadContinuationEvidence::ProviderAttempt {
@@ -746,6 +787,7 @@ fn read_plan_effect(
 	let fallback_context_pack = if kind == ContinuationPlanKind::ContextPackFallback {
 		let context_pack_id =
 			row.10.as_deref().ok_or_else(|| incompatible("fallback Context Pack identity"))?;
+
 		Some(read_context_pack(
 			connection,
 			blob_store.ok_or_else(|| incompatible("fallback Context Pack blob owner"))?,
@@ -775,6 +817,7 @@ fn read_plan_effect(
 	} else {
 		None
 	};
+
 	Ok(ContinuationPlanEffect {
 		plan: ContinuationPlan {
 			plan_id: plan_id.to_owned(),
@@ -818,6 +861,7 @@ fn persist_context_pack(
 	created_at_micros: i64,
 ) -> Result<(), StoreError> {
 	let policy = pack.policy();
+
 	transaction
 		.execute(
 			"INSERT INTO context_packs (
@@ -843,6 +887,7 @@ fn persist_context_pack(
 			],
 		)
 		.map_err(sql_error)?;
+
 	Ok(())
 }
 
@@ -878,9 +923,11 @@ fn read_context_pack(
 		.map_err(sql_error)?;
 	let conversation_id =
 		ConversationId::new(row.0).map_err(|_| incompatible("Context Pack Conversation"))?;
+
 	if &conversation_id != expected_conversation_id || row.1 != 1 {
 		return Err(incompatible("Context Pack lineage"));
 	}
+
 	let possible_side_effects = parse_side_effects(&row.2)?;
 	let max_bytes = usize::try_from(row.3).map_err(|_| incompatible("Context Pack policy"))?;
 	let recent_item_limit =
@@ -903,6 +950,7 @@ fn read_context_pack(
 	let byte_length = u64::try_from(row.8).map_err(|_| incompatible("Context Pack length"))?;
 	let omitted_source_count =
 		usize::try_from(row.10).map_err(|_| incompatible("Context Pack omission count"))?;
+
 	if pack.manifest_digest().to_hex() != row.6
 		|| pack.bytes().len() as u64 != byte_length
 		|| pack.truncated() != row.9
@@ -910,6 +958,7 @@ fn read_context_pack(
 	{
 		return Err(incompatible("Context Pack metadata"));
 	}
+
 	Ok(ContextPackRecord {
 		context_pack_id: context_pack_id.to_owned(),
 		conversation_id,
@@ -939,6 +988,7 @@ fn serialize_context_manifest(pack: &ContextPack) -> Result<String, StoreError> 
 			artifact_revision: source.artifact_reference().map(|(_, revision)| revision),
 		})
 		.collect::<Vec<_>>();
+
 	serde_json::to_string(&rows)
 		.map_err(|_| StoreError::InvalidInput("Context Pack manifest is invalid"))
 }
@@ -946,6 +996,7 @@ fn serialize_context_manifest(pack: &ContextPack) -> Result<String, StoreError> 
 fn parse_context_manifest(value: &str) -> Result<Vec<ContextSourceManifest>, StoreError> {
 	let rows: Vec<PersistedContextSourceManifest> =
 		serde_json::from_str(value).map_err(|_| incompatible("Context Pack manifest"))?;
+
 	rows.into_iter()
 		.map(|row| {
 			let artifact = match (row.artifact_id, row.artifact_revision) {
@@ -956,6 +1007,7 @@ fn parse_context_manifest(value: &str) -> Result<Vec<ContextSourceManifest>, Sto
 				(None, None) => None,
 				_ => return Err(incompatible("Context Pack Artifact")),
 			};
+
 			ContextSourceManifest::from_persisted(
 				row.kind,
 				row.source_id,
@@ -1033,6 +1085,7 @@ fn validate_key(key: &str) -> Result<(), StoreError> {
 	if key.is_empty() || key.len() > 256 || decodex_core::contains_credential_material(key) {
 		return Err(StoreError::InvalidInput("idempotency key is invalid"));
 	}
+
 	Ok(())
 }
 

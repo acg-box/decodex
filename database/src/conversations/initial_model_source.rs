@@ -23,6 +23,7 @@ pub(super) fn from_row(
 ) -> rusqlite::Result<Option<InitialModelSource>> {
 	let account_id: Option<String> = row.get(offset)?;
 	let revision: Option<i64> = row.get(offset + 1)?;
+
 	match (account_id, revision) {
 		(None, None) => Ok(None),
 		(Some(id), Some(revision)) if revision > 0 => {
@@ -33,6 +34,7 @@ pub(super) fn from_row(
 					Box::new(error),
 				)
 			})?;
+
 			Ok(Some(InitialModelSource { account_id, account_revision: revision }))
 		},
 		_ => Err(rusqlite::Error::InvalidQuery),
@@ -76,11 +78,14 @@ impl SqliteStore {
 	) -> Result<InitialModelReviewOutcome, StoreError> {
 		validate_key(idempotency_key)?;
 		validate_initial_execution(&request.model, request.reasoning_effort.as_deref())?;
+
 		if request.expected_revision <= 0 || request.source.account_revision <= 0 {
 			return Err(StoreError::InvalidInput("model review revisions must be positive"));
 		}
+
 		let key = idempotency_key.to_owned();
 		let request = request.clone();
+
 		self.run(move |connection| {
             let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(sql_error)?;
@@ -90,12 +95,16 @@ impl SqliteStore {
                 request.service_tier.as_ref().map_or("", ServiceTier::as_str), request.source.account_id.as_str(),
                 &request.source.account_revision.to_string(),
             ]);
+
             if let Some(receipt) = read_runtime_receipt(&transaction, &key, &identity,
                 "review_initial_model_settings", request.conversation_id.as_str())? {
                 let revision = receipt.parse::<i64>().map_err(|_| StoreError::Incompatible("model review receipt".to_owned()))?;
+
                 transaction.commit().map_err(sql_error)?;
+
                 return Ok(InitialModelReviewOutcome::Applied { revision, replayed: true });
             }
+
             let eligible: bool = transaction.query_row(
                 "SELECT EXISTS (
                    SELECT 1 FROM conversations c JOIN quick_task_requests q USING (conversation_id)
@@ -107,10 +116,13 @@ impl SqliteStore {
                  )",
                 params![request.conversation_id.as_str(), request.expected_revision], |row| row.get(0),
             ).map_err(sql_error)?;
+
             if !eligible { return Ok(InitialModelReviewOutcome::Rejected); }
+
             let revision = request.expected_revision.checked_add(1)
                 .ok_or(StoreError::InvalidInput("model review revision overflow"))?;
             let now = unix_micros().map_err(StoreError::from)?;
+
             transaction.execute(
                 "UPDATE quick_task_requests SET model = ?2, reasoning_effort = ?3, fast = ?4,
                    service_tier = ?5, model_source_account_id = ?6, model_source_account_revision = ?7,
@@ -123,9 +135,12 @@ impl SqliteStore {
                 "UPDATE conversations SET revision = ?2, updated_at_micros = MAX(updated_at_micros + 1, ?3) WHERE conversation_id = ?1",
                 params![request.conversation_id.as_str(), revision, now],
             ).map_err(sql_error)?;
+
             write_runtime_receipt(&transaction, &key, &identity, "review_initial_model_settings",
                 request.conversation_id.as_str(), &revision.to_string(), now)?;
+
             transaction.commit().map_err(sql_error)?;
+
             Ok(InitialModelReviewOutcome::Applied { revision, replayed: false })
         }).await
 	}

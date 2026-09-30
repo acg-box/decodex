@@ -54,6 +54,7 @@ pub(crate) fn latest(
 	scope: &str,
 ) -> Result<Option<AgentHookReceipt>, StoreError> {
 	let row:Option<(i64,String,String)>=c.query_row("SELECT a.id,a.payload,COALESCE(o.disposition_note,r.disposition_note,'reserved') FROM agent_inbox_events a LEFT JOIN agent_inbox_events r ON r.source_event_id='hook-result:'||a.id AND r.event_kind='hook_setting_result' LEFT JOIN agent_inbox_events o ON o.source_event_id='hook-observation:'||a.id AND o.event_kind='hook_setting_observation' WHERE a.event_kind='hook_setting_attempt' AND json_extract(a.payload,'$.scope')=?1 ORDER BY a.id DESC LIMIT 1",[scope],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(sqlite_error)?;
+
 	row.map(|(id, payload, state)| {
 		Ok(AgentHookReceipt {
 			id,
@@ -101,15 +102,21 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid hook attempt"));
 		}
+
 		self.run(move|c|{
    let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+
    if !owned(&tx,&a.owner)? {return Err(StoreError::OwnershipLost("hook configuration owner"));}
+
    let prior=latest(&tx,&a.scope)?;
+
    if prior.as_ref().map(|r|r.id)!=a.previous_id || !available(&tx,&a.scope,&a.review_token)? {return Ok(None);}
+
    let hash:String=Sha256::digest(json!([a.scope,a.review_token]).to_string().as_bytes()).iter().map(|b|format!("{b:02x}")).collect();
    let source=format!("hook-attempt:{hash}");
    let now=unix_micros()?;
    let inserted=tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'hook_setting_attempt',?3,?4,'resolved','reserved',?4)",params![source,a.owner.work,serde_json::to_string(&a).expect("hook attempt"),now]).map_err(sqlite_error)?;
+
    let id=(inserted==1).then(||tx.last_insert_rowid());tx.commit().map_err(sqlite_error)?;Ok(id)
   }).await
 	}
@@ -124,6 +131,7 @@ impl SqliteStore {
 		if !matches!(state.as_str(), "saved" | "overridden" | "rejected" | "unknown") {
 			return Err(StoreError::InvalidInput("invalid hook result"));
 		}
+
 		self.run(move|c|Ok(c.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) SELECT 'hook-result:'||id,work_item_id,'hook_setting_result',json_object('reservation',id),?4,'resolved',?3,?4 FROM agent_inbox_events WHERE id=?1 AND event_kind='hook_setting_attempt' AND json_extract(payload,'$.attempt_id')=?2 AND NOT EXISTS(SELECT 1 FROM agent_inbox_events o WHERE o.source_event_id='hook-observation:'||?1)",params![id,attempt,state,unix_micros()?]).map_err(sqlite_error)?==1)).await
 	}
 
@@ -142,19 +150,27 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid hook observation"));
 		}
+
 		self.run(move|c|{
    let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+
    if !owned(&tx,&o.owner)? {return Ok(false);}
+
    let Some(prior)=latest(&tx,&o.scope)? else {return Ok(false)};
    let a=&prior.attempt;
+
    if prior.id!=id || !unresolved(&prior.state) || a.hook!=o.hook || a.field!=o.field {return Ok(false);}
+
    let same=a.owner.generation==o.owner.generation;
    let matches=o.value.as_ref()==Some(&a.value);
+
    if same && (!matches || a.config_version==o.config_version) {return Ok(false);}
    if !same && !dead(&tx,&a.owner.generation)? {return Ok(false);}
+
    let state=if matches {"target_observed"} else {"superseded"};
    let payload=json!({"reservation":id,"observer":o.owner,"configVersion":o.config_version,"value":o.value});let now=unix_micros()?;
    let changed=tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'hook_setting_observation',?3,?4,'resolved',?5,?4)",params![format!("hook-observation:{id}"),a.owner.work,payload.to_string(),now,state]).map_err(sqlite_error)?;
+
    tx.commit().map_err(sqlite_error)?;Ok(changed==1)
   }).await
 	}

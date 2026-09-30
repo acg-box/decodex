@@ -5,7 +5,9 @@ use serde_json::json;
 async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_managers() {
 	let dir = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&dir.path().join("fork.sqlite3")).unwrap();
+
 	seed(&store).await;
+
 	store.bind_agent_thread("root".into(), "native-source".into()).await.unwrap();
 	store
 		.prepare_agent_bound_process_generation(&intent(1, 1), &binding(1), "root", "first")
@@ -13,6 +15,7 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 		.unwrap();
 	store.bind_process_generation_identity(&generation_id(1), 1, &identity(123)).await.unwrap();
 	store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+
 	let generation = Some(generation_id(1).as_str().to_owned());
 	let attempt = crate::AgentForkAttempt {
 		source: crate::AgentPromptEditAttempt {
@@ -29,16 +32,21 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 		target_work: "branch".into(),
 		boundary: crate::AgentForkBoundary::BeforeInput,
 	};
+
 	store.reserve_agent_fork(attempt.clone()).await.unwrap().unwrap();
+
 	assert!(
 		!store
 			.agent_thread_is_owned("branch".into(), "native-fork".into(), generation.clone())
 			.await
 			.unwrap()
 	);
+
 	store.record_agent_fork_identity(attempt.clone(), "native-fork".into()).await.unwrap().unwrap();
+
 	let fork =
 		store.acknowledge_agent_fork(attempt, "native-fork".into(), vec![]).await.unwrap().unwrap();
+
 	assert!(
 		store
 			.agent_thread_is_owned("branch".into(), "native-fork".into(), generation.clone())
@@ -54,11 +62,15 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 			.await
 			.unwrap()
 	);
+
 	let mut other = store.get_agent_work_item("branch".into()).await.unwrap();
+
 	other.id = "unrelated-manager".into();
 	other.codex_thread_id = None;
+
 	store.create_agent_manager(other, None).await.unwrap();
 	store.bind_agent_thread("unrelated-manager".into(), "unrelated-native".into()).await.unwrap();
+
 	assert!(
 		!store
 			.agent_thread_is_owned(
@@ -69,6 +81,7 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 			.await
 			.unwrap()
 	);
+
 	for (work, thread, allowed) in [
 		("unrelated-manager", "unrelated-native", false),
 		("root", "native-source", true),
@@ -83,11 +96,14 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 				baseline_turn_id: None,
 			})
 			.await;
+
 		assert_eq!(result.is_ok(), allowed, "voice admission for {work}");
+
 		if allowed {
 			store.close_agent_voice_call(format!("voice-{work}")).await.unwrap();
 		}
 	}
+
 	assert!(
 		store
 			.agent_thread_is_owned("root".into(), "native-source".into(), generation)

@@ -17,10 +17,12 @@ async fn grant_requires_delivery_and_survives_reopen_without_following_new_threa
 	let directory = tempdir().unwrap();
 	let path = directory.path().join("references.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
+
 	for id in ["recipient", "target"] {
 		store.create_agent_work_item(item(id, None)).await.unwrap();
 		store.bind_agent_thread(id.into(), format!("{id}-thread")).await.unwrap();
 	}
+
 	let event = store
 		.enqueue_agent_event(EnqueueAgentEvent {
 			source_event_id: "selected-task".into(),
@@ -30,10 +32,15 @@ async fn grant_requires_delivery_and_survives_reopen_without_following_new_threa
 		})
 		.await
 		.unwrap();
+
 	assert!(!allowed(&store, "recipient", "target-thread").await);
+
 	store.begin_agent_dispatch_with_events("recipient".into(), vec![event.id]).await.unwrap();
+
 	assert!(!allowed(&store, "recipient", "target-thread").await);
+
 	store.acknowledge_agent_dispatch("recipient".into(), "turn".into()).await.unwrap();
+
 	assert!(allowed(&store, "recipient", "target-thread").await);
 	assert!(!allowed(&store, "target", "target-thread").await);
 	assert!(!allowed(&store, "recipient", "new-thread").await);
@@ -47,13 +54,16 @@ async fn grant_requires_delivery_and_survives_reopen_without_following_new_threa
 				 VALUES('target','target-thread','new-thread',1);",
 				)
 				.map_err(crate::error::sqlite_error)?;
+
 			Ok(())
 		})
 		.await
 		.unwrap();
 
 	drop(store);
+
 	let reopened = SqliteStore::open_test(&path).unwrap();
+
 	assert!(allowed(&reopened, "recipient", "target-thread").await);
 	assert!(!allowed(&reopened, "recipient", "new-thread").await);
 }
@@ -62,12 +72,15 @@ async fn grant_requires_delivery_and_survives_reopen_without_following_new_threa
 async fn rejected_unknown_and_stale_steering_never_grant_access() {
 	let directory = tempdir().unwrap();
 	let store = SqliteStore::open_test(&directory.path().join("references.sqlite3")).unwrap();
+
 	for id in ["recipient", "target"] {
 		store.create_agent_work_item(item(id, None)).await.unwrap();
 		store.bind_agent_thread(id.into(), format!("{id}-thread")).await.unwrap();
 	}
+
 	store.begin_agent_dispatch("recipient".into()).await.unwrap();
 	store.acknowledge_agent_dispatch("recipient".into(), "turn".into()).await.unwrap();
+
 	assert!(
 		store
 			.begin_agent_steer(
@@ -79,6 +92,7 @@ async fn rejected_unknown_and_stale_steering_never_grant_access() {
 			.await
 			.is_err()
 	);
+
 	let pending = store
 		.begin_agent_steer(
 			"recipient".into(),
@@ -88,9 +102,13 @@ async fn rejected_unknown_and_stale_steering_never_grant_access() {
 		)
 		.await
 		.unwrap();
+
 	assert!(!allowed(&store, "recipient", "target-thread").await);
+
 	store.finish_agent_steer(pending, false).await.unwrap();
+
 	assert!(!allowed(&store, "recipient", "target-thread").await);
+
 	let accepted = store
 		.begin_agent_steer(
 			"recipient".into(),
@@ -100,7 +118,9 @@ async fn rejected_unknown_and_stale_steering_never_grant_access() {
 		)
 		.await
 		.unwrap();
+
 	store.finish_agent_steer(accepted, true).await.unwrap();
+
 	assert!(allowed(&store, "recipient", "target-thread").await);
 }
 
@@ -108,15 +128,19 @@ async fn rejected_unknown_and_stale_steering_never_grant_access() {
 async fn invalid_reference_input_is_atomic_and_legacy_text_does_not_grant() {
 	let directory = tempdir().unwrap();
 	let store = SqliteStore::open_test(&directory.path().join("references.sqlite3")).unwrap();
+
 	for id in ["recipient", "target"] {
 		store.create_agent_work_item(item(id, None)).await.unwrap();
 		store.bind_agent_thread(id.into(), format!("{id}-thread")).await.unwrap();
 	}
+
 	let valid: serde_json::Value =
 		serde_json::from_str(&reference_payload("target-thread")).unwrap();
 	let mut invalid = valid.clone();
+
 	invalid["options"]["taskReferences"] =
 		json!([valid["options"]["taskReferences"][0], valid["options"]["taskReferences"][0]]);
+
 	for (i, payload) in [
 		invalid,
 		json!({"source":"assistant","options":valid["options"]}),
@@ -137,7 +161,9 @@ async fn invalid_reference_input_is_atomic_and_legacy_text_does_not_grant() {
 				.is_err()
 		);
 	}
+
 	assert!(store.read_agent_work_events("recipient".into(), 100).await.unwrap().is_empty());
+
 	let legacy = store
 		.enqueue_agent_event(EnqueueAgentEvent {
 			source_event_id: "legacy".into(),
@@ -147,7 +173,9 @@ async fn invalid_reference_input_is_atomic_and_legacy_text_does_not_grant() {
 		})
 		.await
 		.unwrap();
+
 	store.begin_agent_dispatch_with_events("recipient".into(), vec![legacy.id]).await.unwrap();
 	store.acknowledge_agent_dispatch("recipient".into(), "turn".into()).await.unwrap();
+
 	assert!(!allowed(&store, "recipient", "target-thread").await);
 }

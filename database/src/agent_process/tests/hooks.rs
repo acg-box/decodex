@@ -46,9 +46,12 @@ fn observation(n: u8, value: Option<bool>) -> AgentHookObservation {
 }
 pub(super) async fn setup(path: &std::path::Path) -> SqliteStore {
 	let store = SqliteStore::open_test(path).unwrap();
+
 	seed(&store).await;
+
 	for n in [1, 2] {
 		let owner = owner(n);
+
 		store.bind_agent_thread(owner.work.clone(), owner.thread).await.unwrap();
 		store
 			.prepare_agent_bound_process_generation(
@@ -65,6 +68,7 @@ pub(super) async fn setup(path: &std::path::Path) -> SqliteStore {
 			.unwrap();
 		store.mark_process_generation_ready(&generation_id(n), 2).await.unwrap();
 	}
+
 	store
 }
 #[tokio::test]
@@ -82,21 +86,31 @@ async fn hook_receipts_serialize_shared_config_and_survive_restart_without_repla
 		.await
 		.unwrap();
 	let mut noop = attempt(1, 'f', None);
+
 	noop.previous_value = Some(json!(false));
+
 	assert!(store.reserve_agent_hook_setting(noop).await.is_err());
+
 	let (a, b) = tokio::join!(
 		store.reserve_agent_hook_setting(attempt(1, 'a', None)),
 		store.reserve_agent_hook_setting(attempt(1, 'b', None))
 	);
+
 	assert_ne!(a.as_ref().unwrap().is_some(), b.as_ref().unwrap().is_some());
+
 	let id = a.unwrap().or(b.unwrap()).unwrap();
 	let mut independent = attempt(2, 'e', None);
+
 	independent.scope = OTHER_DIGEST.into();
+
 	let other = store.reserve_agent_hook_setting(independent).await.unwrap().unwrap();
+
 	assert!(
 		store.finish_agent_hook_setting(other, "attempt-e".into(), "saved".into()).await.unwrap()
 	);
+
 	let receipt = store.agent_hook_receipt(DIGEST.into()).await.unwrap().unwrap();
+
 	assert!(
 		store.reserve_agent_hook_setting(attempt(2, 'c', Some(id))).await.unwrap().is_none(),
 		"other account shares config reservation"
@@ -114,15 +128,21 @@ async fn hook_receipts_serialize_shared_config_and_survive_restart_without_repla
 			.await
 			.unwrap()
 	);
+
 	drop(store);
+
 	let store = SqliteStore::open_test(&path).unwrap();
+
 	assert_eq!(store.agent_hook_receipt(DIGEST.into()).await.unwrap().unwrap().state, "unknown");
 	assert!(
 		!store.observe_agent_hook_setting(id, observation(2, Some(false))).await.unwrap(),
 		"another live owner cannot settle the first owner's uncertain write"
 	);
+
 	let mut unchanged = observation(1, Some(false));
+
 	unchanged.config_version = "before".into();
+
 	assert!(!store.observe_agent_hook_setting(id, unchanged).await.unwrap());
 	assert!(!store.observe_agent_hook_setting(id, observation(1, None)).await.unwrap());
 	assert!(store.observe_agent_hook_setting(id, observation(1, Some(false))).await.unwrap());
@@ -130,18 +150,26 @@ async fn hook_receipts_serialize_shared_config_and_survive_restart_without_repla
 		store.agent_hook_receipt(DIGEST.into()).await.unwrap().unwrap().state,
 		"target_observed"
 	);
+
 	let mut replay = receipt.attempt.clone();
+
 	replay.owner = owner(2);
 	replay.previous_id = Some(id);
 	replay.attempt_id = "another-client".into();
+
 	assert!(
 		store.reserve_agent_hook_setting(replay).await.unwrap().is_none(),
 		"same review cannot be replayed through another task"
 	);
+
 	let mut wrong = attempt(2, 'd', Some(id));
+
 	wrong.owner.account = owner(1).account;
+
 	assert!(store.reserve_agent_hook_setting(wrong).await.is_err());
+
 	let next = store.reserve_agent_hook_setting(attempt(2, 'd', Some(id))).await.unwrap().unwrap();
+
 	assert!(
 		store
 			.finish_agent_hook_setting(next, "attempt-d".into(), "overridden".into())
@@ -149,7 +177,9 @@ async fn hook_receipts_serialize_shared_config_and_survive_restart_without_repla
 			.unwrap()
 	);
 	assert_eq!(store.agent_hook_receipt(DIGEST.into()).await.unwrap().unwrap().state, "overridden");
+
 	let (rows, _) = store.read_agent_transcript("root".into(), None, 1).await.unwrap();
+
 	assert_eq!(rows.len(), 1);
 	assert_eq!(rows[0].id, visible.id);
 	assert!(store.list_pending_agent_events(100).await.unwrap().is_empty());
@@ -160,6 +190,7 @@ async fn hook_recovery_requires_dead_writer_and_exact_config_scope() {
 	let dir = tempfile::tempdir().unwrap();
 	let store = setup(&dir.path().join("hooks.sqlite3")).await;
 	let id = store.reserve_agent_hook_setting(attempt(1, 'a', None)).await.unwrap().unwrap();
+
 	store
 		.mark_process_generation_death_unknown(
 			&generation_id(1),
@@ -168,7 +199,9 @@ async fn hook_recovery_requires_dead_writer_and_exact_config_scope() {
 		)
 		.await
 		.unwrap();
+
 	assert!(!store.observe_agent_hook_setting(id, observation(2, None)).await.unwrap());
+
 	let evidence = ProcessDeathEvidence::new(
 		ProcessDeathEvidenceId::new("50000000-0000-4000-8000-000000000001").unwrap(),
 		generation_id(1),
@@ -178,9 +211,13 @@ async fn hook_recovery_requires_dead_writer_and_exact_config_scope() {
 		DIGEST,
 	)
 	.unwrap();
+
 	store.record_process_generation_death(4, &evidence).await.unwrap();
+
 	let mut other = observation(2, None);
+
 	other.scope = OTHER_DIGEST.into();
+
 	assert!(!store.observe_agent_hook_setting(id, other).await.unwrap());
 	assert!(store.observe_agent_hook_setting(id, observation(2, None)).await.unwrap());
 	assert_eq!(store.agent_hook_receipt(DIGEST.into()).await.unwrap().unwrap().state, "superseded");

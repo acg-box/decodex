@@ -29,6 +29,7 @@ impl SqliteStore {
 	pub async fn queue_agent_async_reconnection(&self) -> Result<(), StoreError> {
 		self.run(|connection| {
             connection.execute("INSERT OR IGNORE INTO agent_async_recovery(work_id,thread_id) SELECT id,codex_thread_id FROM agent_work_items WHERE codex_thread_id IS NOT NULL AND status<>'resolved'",[]).map_err(sqlite_error)?;
+
             Ok(())
         }).await
 	}
@@ -42,8 +43,10 @@ impl SqliteStore {
 		if thread.is_empty() || thread.len() > 512 || item.is_empty() || item.len() > 512 {
 			return Err(StoreError::InvalidInput("invalid native prompt identity"));
 		}
+
 		self.run(move |connection| {
             connection.execute("INSERT INTO agent_async_recovery(work_id,thread_id,required_item_id) SELECT id,codex_thread_id,?2 FROM agent_work_items WHERE codex_thread_id=?1 ON CONFLICT(work_id,thread_id) DO UPDATE SET required_item_id=excluded.required_item_id",params![thread,item]).map_err(sqlite_error)?;
+
             Ok(())
         }).await
 	}
@@ -60,6 +63,7 @@ impl SqliteStore {
 		self.run(|connection| {
             let mut statement=connection.prepare("SELECT r.work_id,r.thread_id,r.required_item_id FROM agent_async_recovery r JOIN agent_work_items w ON w.id=r.work_id AND w.codex_thread_id=r.thread_id ORDER BY r.work_id").map_err(sqlite_error)?;
             let rows=statement.query_map([],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(sqlite_error)?;
+
             Ok(rows)
         }).await
 	}
@@ -76,6 +80,7 @@ impl SqliteStore {
 					params![work, thread],
 				)
 				.map_err(sqlite_error)?;
+
 			Ok(())
 		})
 		.await
@@ -122,6 +127,7 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid async question collection"));
 		}
+
 		for (id, json) in &questions {
 			if id.is_empty()
 				|| id.len() > 4096
@@ -131,19 +137,23 @@ impl SqliteStore {
 				return Err(StoreError::InvalidInput("invalid async question"));
 			}
 		}
+
 		self.run(move |connection| {
             let tx=connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sqlite_error)?;
             let work:Option<String>=tx.query_row("SELECT id FROM agent_work_items WHERE codex_thread_id=?1",[&thread],|row|row.get(0)).optional().map_err(sqlite_error)?;
             let Some(work)=work else{return Ok(());};
             let now=unix_micros()?;
+
             for (id,json) in questions {
                 let prior:Option<(String,String,String)>=tx.query_row("SELECT turn_id,item_id,question_json FROM agent_async_questions WHERE work_id=?1 AND thread_id=?2 AND question_id=?3",params![work,thread,id],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).optional().map_err(sqlite_error)?;
+
                 if let Some(prior)=prior {
                     if prior!=(turn.clone(),item.clone(),json.clone()) {return Err(StoreError::IdempotencyConflict);}
                 } else {
                     tx.execute("INSERT INTO agent_async_questions VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![work,thread,turn,item,id,json,now,arrived_live]).map_err(sqlite_error)?;
                 }
             }
+
             tx.commit().map_err(sqlite_error)?; Ok(())
         }).await
 	}
@@ -160,6 +170,7 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid async reply identities"));
 		}
+
 		self.run(move |connection| {
 			let tx = connection
 				.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -176,6 +187,7 @@ impl SqliteStore {
 				return Ok(());
 			};
 			let now = unix_micros()?;
+
 			for id in ids {
 				tx.execute(
 					"INSERT OR IGNORE INTO agent_async_answers VALUES(?1,?2,?3,?4)",
@@ -183,7 +195,9 @@ impl SqliteStore {
 				)
 				.map_err(sqlite_error)?;
 			}
+
 			tx.commit().map_err(sqlite_error)?;
+
 			Ok(())
 		})
 		.await
@@ -204,9 +218,12 @@ impl SqliteStore {
 				AND NOT EXISTS(SELECT 1 FROM agent_async_answers a WHERE a.work_id=q.work_id AND a.thread_id=q.thread_id AND a.question_id IN(q.question_id,q.item_id))
 				AND NOT EXISTS(SELECT 1 FROM agent_inbox_events e WHERE e.work_item_id=q.work_id AND e.disposition IS NULL AND json_extract(e.payload,'$.asyncQuestionId')=q.question_id AND (e.event_kind IN('steer_pending','async_question_answer'))))",
 				params![work,thread,question], |row| row.get(0)).map_err(sqlite_error)?;
+
 			if !eligible { return Ok(false); }
+
 			tx.execute("INSERT OR IGNORE INTO agent_async_skips VALUES(?1,?2,?3,?4)", params![work,thread,question,unix_micros()?]).map_err(sqlite_error)?;
 			tx.commit().map_err(sqlite_error)?;
+
 			Ok(true)
 		}).await
 	}
@@ -219,6 +236,7 @@ impl SqliteStore {
 		self.run(move |connection| {
             let mut statement=connection.prepare("SELECT q.thread_id,q.turn_id,q.item_id,q.question_id,q.question_json,q.arrived_live FROM agent_async_questions q JOIN agent_work_items w ON w.id=q.work_id AND w.codex_thread_id=q.thread_id WHERE q.work_id=?1 AND NOT EXISTS(SELECT 1 FROM agent_async_recovery r WHERE r.work_id=q.work_id AND r.thread_id=q.thread_id) AND NOT EXISTS(SELECT 1 FROM agent_async_answers a WHERE a.work_id=q.work_id AND a.thread_id=q.thread_id AND a.question_id IN(q.question_id,q.item_id)) AND NOT EXISTS(SELECT 1 FROM agent_async_skips s WHERE s.work_id=q.work_id AND s.thread_id=q.thread_id AND s.question_id=q.question_id) ORDER BY q.created_at_micros,q.rowid LIMIT 33").map_err(sqlite_error)?;
             let result=statement.query_map([work],|row|Ok(AgentAsyncQuestion {arrived_live:row.get(5)?,thread_id:row.get(0)?,turn_id:row.get(1)?,item_id:row.get(2)?,question_id:row.get(3)?,question_json:row.get(4)?})).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(sqlite_error)?;
+
             Ok(result)
         }).await
 	}
@@ -235,6 +253,8 @@ pub(crate) fn retire_for_prompt(
 	{
 		return Ok(());
 	}
+
 	tx.execute("INSERT OR IGNORE INTO agent_async_answers(work_id,thread_id,question_id,created_at_micros) SELECT q.work_id,q.thread_id,q.question_id,?2 FROM agent_async_questions q JOIN agent_work_items w ON w.id=q.work_id AND w.codex_thread_id=q.thread_id WHERE q.work_id=?1", params![work,unix_micros()?]).map_err(sqlite_error)?;
+
 	Ok(())
 }

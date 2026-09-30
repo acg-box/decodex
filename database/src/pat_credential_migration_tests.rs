@@ -4,7 +4,9 @@ use rusqlite::{Connection, params};
 fn version_51_fixture() -> (tempfile::TempDir, Connection) {
 	let directory = tempfile::tempdir().unwrap();
 	let connection = Connection::open(directory.path().join("upgrade.sqlite3")).unwrap();
+
 	configure(&connection).unwrap();
+
 	for migration in MIGRATIONS.iter().filter(|migration| migration.version < 52) {
 		connection.execute_batch(migration.sql).unwrap();
 		connection
@@ -14,6 +16,7 @@ fn version_51_fixture() -> (tempfile::TempDir, Connection) {
 			)
 			.unwrap();
 	}
+
 	connection.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
 	connection.pragma_update(None, "user_version", 51).unwrap();
 	connection.execute_batch(" 
@@ -28,18 +31,22 @@ INSERT INTO process_generations(generation_id,account_id,execution_epoch_id,runn
 VALUES('50000000-0000-4000-8000-000000000039','20000000-0000-4000-8000-000000000039','40000000-0000-4000-8000-000000000039','runner','boot','stdio_only_best_effort_eof','session',1,1,1,printf('%064d',0),'30000000-0000-4000-8000-000000000039','chatgpt','provider',printf('%064d',0),'starting',1,1,1);
 INSERT INTO agent_voice_observed_turns VALUES('50000000-0000-4000-8000-000000000039','thread','turn');
 ").unwrap();
+
 	(directory, connection)
 }
 
 #[test]
 fn pat_migration_preserves_payloads_and_dependent_process_rows() {
 	let (_directory, mut connection) = version_51_fixture();
+
 	migrate(&mut connection).unwrap();
+
 	let old: (i64, Vec<u8>) = connection
 		.query_row("SELECT schema_version,payload FROM account_credentials", [], |row| {
 			Ok((row.get(0)?, row.get(1)?))
 		})
 		.unwrap();
+
 	assert_eq!(old, (1, vec![1, 2, 3]));
 	assert_eq!(
 		connection
@@ -51,15 +58,19 @@ fn pat_migration_preserves_payloads_and_dependent_process_rows() {
 			.unwrap(),
 		"turn"
 	);
+
 	connection.execute("UPDATE account_credentials SET schema_version=2", []).unwrap();
 	connection.execute("UPDATE process_generations SET credential_schema_version=2", []).unwrap();
+
 	assert!(connection.execute("UPDATE account_credentials SET schema_version=3", []).is_err());
 	assert!(
 		connection
 			.execute("UPDATE process_generations SET credential_schema_version=3", [])
 			.is_err()
 	);
+
 	migrate(&mut connection).unwrap();
+
 	assert!(connection.execute("DELETE FROM process_generations", []).is_err());
 	assert_eq!(
 		connection.query_row("PRAGMA foreign_keys", [], |row| row.get::<_, i64>(0)).unwrap(),
@@ -70,9 +81,11 @@ fn pat_migration_preserves_payloads_and_dependent_process_rows() {
 #[test]
 fn pat_migration_rolls_back_and_restores_foreign_keys_on_invalid_source() {
 	let (_directory, mut connection) = version_51_fixture();
+
 	connection.pragma_update(None, "foreign_keys", false).unwrap();
 	connection.execute("DELETE FROM process_execution_epochs", []).unwrap();
 	connection.pragma_update(None, "foreign_keys", true).unwrap();
+
 	assert!(migrate(&mut connection).is_err());
 	assert_eq!(
 		connection.query_row("PRAGMA foreign_keys", [], |row| row.get::<_, i64>(0)).unwrap(),

@@ -7,7 +7,9 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 		let dir = tempfile::tempdir().unwrap();
 		let path = dir.path().join("prompt.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
+
 		seed(&store).await;
+
 		store.bind_agent_thread("root".into(), "task".into()).await.unwrap();
 		store
 			.prepare_agent_bound_process_generation(&intent(1, 1), &binding(1), "root", "first")
@@ -15,6 +17,7 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 			.unwrap();
 		store.bind_process_generation_identity(&generation_id(1), 1, &identity(123)).await.unwrap();
 		store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+
 		let a = crate::AgentPromptEditAttempt {
 			work: "root".into(),
 			thread: "task".into(),
@@ -34,7 +37,9 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 			generation_id: generation_id(1).as_str().into(),
 			baseline_turn_id: None,
 		};
+
 		assert!(store.begin_agent_voice_call(voice).await.is_err());
+
 		store
 			.mark_process_generation_death_unknown(
 				&generation_id(1),
@@ -43,6 +48,7 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 			)
 			.await
 			.unwrap();
+
 		assert!(
 			!store
 				.observe_agent_prompt_edit(
@@ -63,7 +69,9 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 				.await
 				.unwrap()
 		);
+
 		confirm_original_process_death(&store).await;
+
 		assert!(matches!(
 			store
 				.prepare_agent_bound_process_generation(
@@ -88,12 +96,18 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 				.unwrap(),
 			PrepareProcessGenerationOutcome::Fresh(_)
 		));
+
 		store.bind_process_generation_identity(&generation_id(2), 1, &identity(124)).await.unwrap();
 		store.mark_process_generation_ready(&generation_id(2), 2).await.unwrap();
+
 		drop(store);
+
 		let store = SqliteStore::open_test(&path).unwrap();
+
 		assert!(!store.reject_agent_prompt_edit_without_mutation(id, a.clone()).await.unwrap());
+
 		let turns = if applied { vec!["prefix".into()] } else { a.turn_ids };
+
 		assert!(
 			store
 				.observe_agent_prompt_edit(id, Some(generation_id(2).as_str().into()), turns)
@@ -109,6 +123,7 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 				.state,
 			if applied { "applied" } else { "unchanged" }
 		);
+
 		if applied {
 			assert!(store.begin_agent_dispatch("root".into()).await.is_err());
 			assert!(
@@ -118,6 +133,7 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 					.unwrap()
 			);
 		}
+
 		assert!(store.begin_agent_dispatch("root".into()).await.is_ok());
 	}
 }

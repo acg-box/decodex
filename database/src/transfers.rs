@@ -91,6 +91,7 @@ impl SqliteStore {
 		batch: LocalAccountTransferBatch,
 	) -> Result<LocalAccountTransferOutcome, LocalAccountTransferError> {
 		validate_batch(&batch)?;
+
 		self.with_connection(|connection| {
 			import_sync(connection, batch).map_err(map_transfer_error)
 		})
@@ -125,31 +126,39 @@ fn import_sync(
 		)
 		.optional()
 		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+
 	if let Some((source_sha256, account_count)) = prior {
 		let expected_count = i64::try_from(batch.accounts.len())
 			.map_err(|_| LocalAccountTransferError::InvalidInput)?;
+
 		if source_sha256 != batch.source_sha256 || account_count != expected_count {
 			return Err(LocalAccountTransferError::TargetNotFresh);
 		}
+
 		let actual_count: i64 = transaction
 			.query_row("SELECT COUNT(*) FROM accounts", [], |row| row.get(0))
 			.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+
 		if actual_count != expected_count {
 			return Err(LocalAccountTransferError::TargetNotFresh);
 		}
+
 		transaction
 			.commit()
 			.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+
 		return Ok(LocalAccountTransferOutcome::Replayed {
 			account_count: u16::try_from(expected_count)
 				.map_err(|_| LocalAccountTransferError::InvalidInput)?,
 		});
 	}
+
 	if mutable_target_rows(&transaction)? != 0 {
 		return Err(LocalAccountTransferError::TargetNotFresh);
 	}
 
 	let now = unix_micros().map_err(LocalAccountTransferError::Database)?;
+
 	for transferred in &batch.accounts {
 		insert_account(&transaction, transferred, now)?;
 	}
@@ -166,10 +175,12 @@ fn import_sync(
 			)
 			.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
 	}
+
 	let (mode, fixed_account_id) = match &batch.routing.mode {
 		AccountSelectionMode::Balanced => ("balanced", None),
 		AccountSelectionMode::Fixed(account_id) => ("fixed", Some(account_id.as_str())),
 	};
+
 	transaction
 		.execute(
 			"UPDATE account_routing_control
@@ -300,7 +311,9 @@ fn insert_account(
 			],
 		)
 		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+
 	insert_quota(connection, account.account_id.as_str(), account.five_hour_quota)?;
+
 	insert_quota(connection, account.account_id.as_str(), account.seven_day_quota)
 }
 
@@ -322,16 +335,19 @@ fn insert_quota(
 			if observation.duration_minutes != 300 || observed_at <= 0 {
 				return Err(LocalAccountTransferError::InvalidInput);
 			}
+
 			(None, None, None)
 		},
 		AccountQuotaDisposition::Current(window) | AccountQuotaDisposition::Stale(window) => {
 			if window.duration_minutes != observation.duration_minutes {
 				return Err(LocalAccountTransferError::InvalidInput);
 			}
+
 			(Some(i64::from(window.used_percent)), Some(window.resets_at_unix_micros), None)
 		},
 		AccountQuotaDisposition::Error(error) => (None, None, Some(quota_error_text(error))),
 	};
+
 	connection
 		.execute(
 			"INSERT INTO account_quota_facts (
@@ -349,6 +365,7 @@ fn insert_quota(
 			],
 		)
 		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+
 	Ok(())
 }
 
@@ -361,14 +378,17 @@ fn validate_batch(batch: &LocalAccountTransferBatch) -> Result<(), LocalAccountT
 	{
 		return Err(LocalAccountTransferError::InvalidInput);
 	}
+
 	let mut account_ids = BTreeSet::new();
 	let mut providers = BTreeSet::new();
 	let mut writers = BTreeSet::new();
+
 	for transferred in &batch.accounts {
 		let account = &transferred.account;
 		let Some(binding) = account.credential.as_ref() else {
 			return Err(LocalAccountTransferError::InvalidInput);
 		};
+
 		if account.label.is_empty()
 			|| account.label.len() > 128
 			|| account.label.chars().any(char::is_control)
@@ -385,16 +405,20 @@ fn validate_batch(batch: &LocalAccountTransferBatch) -> Result<(), LocalAccountT
 			return Err(LocalAccountTransferError::InvalidInput);
 		}
 	}
+
 	let routing_ids =
 		batch.routing.order.iter().map(|value| value.as_str()).collect::<BTreeSet<_>>();
+
 	if routing_ids != account_ids {
 		return Err(LocalAccountTransferError::InvalidInput);
 	}
+
 	if let AccountSelectionMode::Fixed(account_id) = &batch.routing.mode
 		&& !account_ids.contains(account_id.as_str())
 	{
 		return Err(LocalAccountTransferError::InvalidInput);
 	}
+
 	Ok(())
 }
 
@@ -451,17 +475,24 @@ mod optional_quota_tests {
 		let directory = tempfile::tempdir().expect("temporary database");
 		let mut connection =
 			rusqlite::Connection::open(directory.path().join("transfer.sqlite3")).expect("open");
+
 		crate::migrations::configure(&connection).expect("configure");
 		crate::migrations::migrate(&mut connection).expect("migrate");
+
 		let id = "10000000-0000-4000-8000-000000000001";
+
 		connection.execute("INSERT INTO account_identities VALUES (?1,1)", [id]).expect("identity");
+
 		let observation = AccountQuotaWindowObservation {
 			duration_minutes: 300,
 			observed_at_unix_micros: Some(12),
 			disposition: AccountQuotaDisposition::NotApplicable,
 		};
+
 		insert_quota(&connection, id, observation).expect("transfer absence");
+
 		let result:(Option<i64>,Option<i64>,Option<String>,i64,i64)=connection.query_row("SELECT used_percent,resets_at_micros,error_code,observed_at_micros,not_applicable FROM account_quota_facts",[],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?))).expect("readback");
+
 		assert_eq!(result, (None, None, None, 12, 1));
 		assert!(
 			insert_quota(

@@ -83,18 +83,24 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid resume rejection coordinates"));
 		}
+
 		let command = command.clone();
 		let request = request.clone();
+
 		self.run(move |connection| {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
+
 			if let Some(receipt) = read_receipt(&transaction, &command, "reject_conversation_resume", request.turn_id.as_str())? {
 				if receipt != request.history_item_id.as_str() {
 					return Err(incompatible("resume rejection receipt"));
 				}
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(());
 			}
+
 			let now = unix_micros().map_err(StoreError::from)?;
 			let changed = transaction.execute(
 				"UPDATE turns SET status = 'failed', revision = 2, updated_at_micros = ?6, completed_at_micros = ?6
@@ -107,10 +113,13 @@ impl SqliteStore {
 				 AND NOT EXISTS (SELECT 1 FROM history_items WHERE turn_id = ?1 AND status = 'streaming')",
 				params![request.turn_id.as_str(), request.conversation_id.as_str(), request.runtime_session_id.as_str(), request.expected_session_revision, request.thread_id, now],
 			).map_err(sql_error)?;
+
 			if changed != 1 {
 				return Err(incompatible("resume rejection no longer owns an unsent turn"));
 			}
+
 			let metadata = serde_json::json!({"type":"native_resume_rejection", "reason":request.reason, "response_sha256":request.witness_digest}).to_string();
+
 			transaction.execute(
 				"INSERT INTO history_items (history_item_id, conversation_id, turn_id, sequence, kind, role, status,
 				 media_type, inline_text, metadata_json, revision, created_at_micros, updated_at_micros)
@@ -118,9 +127,12 @@ impl SqliteStore {
 				 'status', 'user', 'failed', 'text/plain', ?4, ?5, 1, ?6, ?6)",
 				params![request.history_item_id.as_str(), request.conversation_id.as_str(), request.turn_id.as_str(), request.reason.diagnostic(), metadata, now],
 			).map_err(sql_error)?;
+
 			touch_conversation(&transaction, &request.conversation_id, now)?;
 			write_receipt(&transaction, &command, "reject_conversation_resume", request.turn_id.as_str(), request.history_item_id.as_str(), now)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(())
 		}).await
 	}

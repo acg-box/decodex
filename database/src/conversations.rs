@@ -465,6 +465,7 @@ impl HistoryCursor {
 			.and_then(|value| value.parse::<i64>().ok())
 			.filter(|value| *value > 0)
 			.ok_or(StoreError::InvalidInput("history cursor is malformed"))?;
+
 		Ok(Self { sequence })
 	}
 }
@@ -513,6 +514,7 @@ impl SqliteStore {
 	) -> Result<Option<StoredConversation>, StoreError> {
 		let command = command.clone();
 		let conversation_id = conversation_id.clone();
+
 		self.run(move |connection| {
 			let transaction = connection.transaction().map_err(sql_error)?;
 			let receipt = read_receipt(
@@ -525,7 +527,9 @@ impl SqliteStore {
 				serde_json::from_str(&response).map_err(|_| incompatible("Conversation receipt"))
 			})
 			.transpose()?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(receipt)
 		})
 		.await
@@ -537,12 +541,15 @@ impl SqliteStore {
 		create: &CreateConversationRecord,
 	) -> Result<StoredConversation, StoreError> {
 		validate_conversation_conversation(create)?;
+
 		let command = command.clone();
 		let create = create.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
+
 			if let Some(response) = read_receipt(
 				&transaction,
 				&command,
@@ -554,14 +561,19 @@ impl SqliteStore {
                     params![create.conversation_id.as_str()],
                     |row| initial_model_source::from_row(row, 0),
                 ).map_err(sql_error)?;
+
                 if source != create.initial_model_source {
                     return Err(StoreError::IdempotencyConflict);
                 }
+
 				let stored: StoredConversation = serde_json::from_str(&response)
 					.map_err(|_| incompatible("Conversation receipt"))?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(stored);
 			}
+
 			let exists: bool = transaction
 				.query_row(
 					"SELECT EXISTS (SELECT 1 FROM conversations WHERE conversation_id = ?1)",
@@ -569,6 +581,7 @@ impl SqliteStore {
 					|row| row.get(0),
 				)
 				.map_err(sql_error)?;
+
 			if exists {
 				return Err(StoreError::RevisionConflict {
 					entity: format!("conversation/{}", create.conversation_id),
@@ -576,8 +589,10 @@ impl SqliteStore {
 					actual: Some(1),
 				});
 			}
+
 			let now = unix_micros().map_err(StoreError::from)?;
 			let initial_turn_id = random_uuid_v4()?;
+
 			transaction
 				.execute(
 					"INSERT INTO conversations (
@@ -609,11 +624,13 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			let stored = StoredConversation {
 				conversation_id: create.conversation_id,
 				title: create.title,
 				revision: 1,
 			};
+
 			write_receipt(
 				&transaction,
 				&command,
@@ -623,7 +640,9 @@ impl SqliteStore {
 					.map_err(|_| incompatible("Conversation receipt"))?,
 				now,
 			)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(stored)
 		})
 		.await
@@ -634,6 +653,7 @@ impl SqliteStore {
 		conversation_id: &ConversationId,
 	) -> Result<Option<ConversationRequest>, StoreError> {
 		let conversation_id = conversation_id.clone();
+
 		self.run(move |connection| {
 			connection
 				.query_row(
@@ -666,6 +686,7 @@ impl SqliteStore {
 		conversation_id: &ConversationId,
 	) -> Result<Option<UnknownConversationAttemptReadback>, StoreError> {
 		let conversation_id = conversation_id.clone();
+
 		self.run(move |connection| {
 			let mut statement = connection
 				.prepare(
@@ -713,15 +734,19 @@ impl SqliteStore {
 				})
 				.map_err(sql_error)?;
 			let mut rows = selected.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
+
 			if rows.len() > 1 {
 				return Err(incompatible("unknown Conversation attempt authority"));
 			}
+
 			let Some(row) = rows.pop() else {
 				return Ok(None);
 			};
+
 			if row.0 <= 0 || row.2 <= 0 || row.5 <= 0 || row.7 <= 0 || row.8 <= 0 || row.10 <= 0 {
 				return Err(incompatible("unknown Conversation attempt coordinates"));
 			}
+
 			Ok(Some(UnknownConversationAttemptReadback {
 				conversation_id,
 				conversation_revision: row.0,
@@ -757,6 +782,7 @@ impl SqliteStore {
 		conversation_id: &ConversationId,
 	) -> Result<Option<PendingConversationTerminalizationReadback>, StoreError> {
 		let conversation_id = conversation_id.clone();
+
 		self.run(move |connection| {
 			let mut statement = connection
 				.prepare(
@@ -797,15 +823,19 @@ impl SqliteStore {
 				})
 				.map_err(sql_error)?;
 			let mut rows = selected.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
+
 			if rows.len() > 1 {
 				return Err(incompatible("pending Conversation terminalization authority"));
 			}
+
 			let Some(row) = rows.pop() else {
 				return Ok(None);
 			};
+
 			if row.0 <= 0 || row.2 <= 0 || row.5 <= 0 || row.6 <= 0 || row.8 <= 0 {
 				return Err(incompatible("pending Conversation terminalization coordinates"));
 			}
+
 			Ok(Some(PendingConversationTerminalizationReadback {
 				conversation_id,
 				conversation_revision: row.0,
@@ -840,6 +870,7 @@ impl SqliteStore {
 		if user_turn_sequence <= 0 {
 			return Err(StoreError::InvalidInput("assistant prefix sequence is invalid"));
 		}
+
 		let assistant_sequence = user_turn_sequence
 			.checked_add(1)
 			.ok_or(StoreError::InvalidInput("assistant prefix sequence is invalid"))?;
@@ -888,6 +919,7 @@ impl SqliteStore {
 					)
 					.map_err(sql_error)?;
 				let items = selected.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
+
 				if items.is_empty()
 					|| items.len() > MAX_CONTEXT_RECENT_ITEMS
 					|| items.iter().any(|(kind, status, payload)| {
@@ -897,6 +929,7 @@ impl SqliteStore {
 					}) {
 					return Err(incompatible("assistant recovery prefix"));
 				}
+
 				Ok(Some((turn_id, turn_revision, items)))
 			})
 			.await?;
@@ -904,25 +937,30 @@ impl SqliteStore {
 			return Ok(None);
 		};
 		let mut text = String::new();
+
 		for (_, _, payload) in &items {
 			let chunk = match (&payload.inline_text, &payload.blob_hash) {
 				(Some(inline), None) => inline.clone(),
 				(None, Some(hash)) => {
 					let hash = BlobHash::parse(hash)
 						.map_err(|_| incompatible("assistant recovery blob identity"))?;
+
 					String::from_utf8(blob_store.read(hash)?)
 						.map_err(|_| incompatible("assistant recovery blob encoding"))?
 				},
 				_ => return Err(incompatible("assistant recovery payload")),
 			};
+
 			text.len()
 				.checked_add(chunk.len())
 				.filter(|length| *length <= MAX_RECOVERED_ASSISTANT_BYTES)
 				.ok_or_else(|| incompatible("assistant recovery prefix bound"))?;
 			text.push_str(&chunk);
 		}
+
 		let next_ordinal =
 			i32::try_from(items.len()).map_err(|_| incompatible("assistant recovery ordinal"))?;
+
 		Ok(Some(ConversationAssistantPrefixReadback {
 			turn_id: TurnId::new(turn_id).map_err(|_| incompatible("assistant Turn identity"))?,
 			turn_revision,
@@ -943,12 +981,15 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("Conversation archive coordinates are invalid"));
 		}
+
 		let command = command.clone();
 		let request = request.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
+
 			if let Some(response) = read_receipt(
 				&transaction,
 				&command,
@@ -957,9 +998,12 @@ impl SqliteStore {
 			)? {
 				let archived = serde_json::from_str(&response)
 					.map_err(|_| incompatible("Conversation archive receipt"))?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(ArchiveConversationOutcome::Replayed(archived));
 			}
+
 			let authority = transaction
 				.query_row(
 					"SELECT c.revision, s.revision,
@@ -991,6 +1035,7 @@ impl SqliteStore {
 			else {
 				return Ok(ArchiveConversationOutcome::Rejected);
 			};
+
 			if conversation_revision != request.expected_conversation_revision
 				|| session_revision != request.expected_runtime_session_revision
 				|| active_turn
@@ -998,6 +1043,7 @@ impl SqliteStore {
 			{
 				return Ok(ArchiveConversationOutcome::Rejected);
 			}
+
 			let now = unix_micros().map_err(StoreError::from)?;
 			let session_changed = transaction
 				.execute(
@@ -1023,13 +1069,16 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			if session_changed != 1 || conversation_changed != 1 {
 				return Ok(ArchiveConversationOutcome::Rejected);
 			}
+
 			let archived = ArchivedConversationRecord {
 				conversation_id: request.conversation_id,
 				conversation_revision: request.expected_conversation_revision + 1,
 			};
+
 			write_receipt(
 				&transaction,
 				&command,
@@ -1039,7 +1088,9 @@ impl SqliteStore {
 					.map_err(|_| incompatible("Conversation archive receipt"))?,
 				now,
 			)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(ArchiveConversationOutcome::Applied(archived))
 		})
 		.await
@@ -1060,12 +1111,15 @@ impl SqliteStore {
 				"stranded Conversation Turn coordinates are invalid",
 			));
 		}
+
 		let command = command.clone();
 		let request = request.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
+
 			if let Some(response) = read_receipt(
 				&transaction,
 				&command,
@@ -1075,9 +1129,12 @@ impl SqliteStore {
 				let turn_revision = response
 					.parse::<i64>()
 					.map_err(|_| incompatible("stranded Conversation Turn receipt"))?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(ReconcileStrandedConversationTurnOutcome::Replayed { turn_revision });
 			}
+
 			let now = unix_micros().map_err(StoreError::from)?;
 			let changed = transaction
 				.execute(
@@ -1115,9 +1172,11 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			if changed != 1 {
 				return Ok(ReconcileStrandedConversationTurnOutcome::Rejected);
 			}
+
 			transaction
 				.execute(
 					"UPDATE conversations SET updated_at_micros = ?2
@@ -1125,7 +1184,9 @@ impl SqliteStore {
 					params![request.conversation_id.as_str(), now],
 				)
 				.map_err(sql_error)?;
+
 			let turn_revision = request.expected_turn_revision + 1;
+
 			write_receipt(
 				&transaction,
 				&command,
@@ -1134,7 +1195,9 @@ impl SqliteStore {
 				&turn_revision.to_string(),
 				now,
 			)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(ReconcileStrandedConversationTurnOutcome::Applied { turn_revision })
 		})
 		.await
@@ -1158,12 +1221,15 @@ impl SqliteStore {
 				"unknown Conversation recovery coordinates are invalid",
 			));
 		}
+
 		let command = command.clone();
 		let request = request.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
+
 			if let Some(response) = read_receipt(
 				&transaction,
 				&command,
@@ -1172,13 +1238,18 @@ impl SqliteStore {
 			)? {
 				let recovered = serde_json::from_str(&response)
 					.map_err(|_| incompatible("unknown Conversation recovery receipt"))?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(RecoverUnknownConversationTurnOutcome::Replayed(recovered));
 			}
+
 			let authority = unknown_recovery_authority(&transaction, &request)?;
+
 			if !authority || history_exists(&transaction, &request.history_item_id)? {
 				return Ok(RecoverUnknownConversationTurnOutcome::Rejected);
 			}
+
 			let now = unix_micros().map_err(StoreError::from)?;
 			let changed = transaction
 				.execute(
@@ -1194,9 +1265,11 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			if changed != 1 {
 				return Ok(RecoverUnknownConversationTurnOutcome::Rejected);
 			}
+
 			let history_sequence: i64 = transaction
 				.query_row(
 					"SELECT COALESCE(MAX(sequence), 0) + 1 FROM history_items
@@ -1205,6 +1278,7 @@ impl SqliteStore {
 					|row| row.get(0),
 				)
 				.map_err(sql_error)?;
+
 			transaction
 				.execute(
 					"INSERT INTO history_items (
@@ -1224,10 +1298,13 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			touch_conversation(&transaction, &request.conversation_id, now)?;
+
 			let recovered = RecoveredUnknownConversationTurn {
 				turn_revision: request.expected_user_turn_revision + 1,
 			};
+
 			write_receipt(
 				&transaction,
 				&command,
@@ -1237,7 +1314,9 @@ impl SqliteStore {
 					.map_err(|_| incompatible("unknown Conversation recovery receipt"))?,
 				now,
 			)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(RecoverUnknownConversationTurnOutcome::Applied(recovered))
 		})
 		.await
@@ -1256,12 +1335,15 @@ impl SqliteStore {
 				"local Conversation archive coordinates are invalid",
 			));
 		}
+
 		let command = command.clone();
 		let request = request.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
+
 			if let Some(response) = read_receipt(
 				&transaction,
 				&command,
@@ -1270,9 +1352,12 @@ impl SqliteStore {
 			)? {
 				let archived = serde_json::from_str(&response)
 					.map_err(|_| incompatible("local Conversation archive receipt"))?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(ArchiveLocalConversationOutcome::Replayed(archived));
 			}
+
 			let now = unix_micros().map_err(StoreError::from)?;
 			let session_changed = transaction
 				.execute(
@@ -1317,13 +1402,16 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			if session_changed != 1 || conversation_changed != 1 {
 				return Ok(ArchiveLocalConversationOutcome::Rejected);
 			}
+
 			let archived = ArchivedConversationRecord {
 				conversation_id: request.conversation_id,
 				conversation_revision: request.expected_conversation_revision + 1,
 			};
+
 			write_receipt(
 				&transaction,
 				&command,
@@ -1333,7 +1421,9 @@ impl SqliteStore {
 					.map_err(|_| incompatible("local Conversation archive receipt"))?,
 				now,
 			)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(ArchiveLocalConversationOutcome::Applied(archived))
 		})
 		.await
@@ -1345,13 +1435,16 @@ impl SqliteStore {
 		request: &CreateConversationRoutingSuccessor,
 	) -> Result<ConversationRoutingSuccessorOutcome, StoreError> {
 		validate_key(idempotency_key)?;
+
 		if request.expected_source_revision <= 0 {
 			return Err(StoreError::InvalidInput(
 				"routing successor source revision must be positive",
 			));
 		}
+
 		let key = idempotency_key.to_owned();
 		let request = request.clone();
+
 		self.run(move |connection| {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
@@ -1359,16 +1452,21 @@ impl SqliteStore {
 				request.source_conversation_id.as_str(),
 				&request.expected_source_revision.to_string(),
 			]);
+
 			if let Some((stored_sha, successor_id)) = transaction.query_row(
 				"SELECT request_sha256, successor_conversation_id
 				 FROM conversation_routing_successors WHERE idempotency_key = ?1",
 				params![key], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
 			).optional().map_err(sql_error)? {
 				if stored_sha != request_sha { return Err(StoreError::IdempotencyConflict); }
+
 				let successor = read_routing_successor(&transaction, &request.source_conversation_id, &successor_id)?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(ConversationRoutingSuccessorOutcome::Replayed(successor));
 			}
+
 			let source = transaction.query_row(
 				"SELECT c.title, q.message, q.working_directory, q.model, q.reasoning_effort,
 				        q.fast, d.routing_decision_id,
@@ -1390,14 +1488,17 @@ impl SqliteStore {
 					code: "source_authority_unavailable".to_owned(), replayed: false,
 				});
 			};
+
 			if revision != request.expected_source_revision || !matches!(decision_kind.as_str(), "waiting" | "no_route") {
 				return Ok(ConversationRoutingSuccessorOutcome::Rejected {
 					code: "source_authority_mismatch".to_owned(), replayed: false,
 				});
 			}
+
 			let successor_id = random_uuid_v4()?;
 			let initial_turn_id = random_uuid_v4()?;
 			let now = unix_micros().map_err(StoreError::from)?;
+
 			transaction.execute(
 				"UPDATE conversations SET state = 'archived', revision = revision + 1,
 				 updated_at_micros = ?2 WHERE conversation_id = ?1 AND revision = ?3",
@@ -1430,6 +1531,7 @@ impl SqliteStore {
 				 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
 				params![request.source_conversation_id.as_str(), successor_id, routing_decision_id, key, request_sha, now],
 			).map_err(sql_error)?;
+
 			let successor = ConversationRoutingSuccessor {
 				source_conversation_id: request.source_conversation_id,
 				source_revision: revision + 1,
@@ -1438,7 +1540,9 @@ impl SqliteStore {
 				successor_revision: 1,
 				source_routing_decision_id: routing_decision_id,
 			};
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(ConversationRoutingSuccessorOutcome::Fresh(successor))
 		}).await
 	}
@@ -1451,14 +1555,17 @@ impl SqliteStore {
 	) -> Result<InitialConversationTurnAdmissionOutcome, StoreError> {
 		validate_key(idempotency_key)?;
 		validate_initial_admission(request)?;
+
 		let payload = publish_payload(blob_store, &request.message.text)?;
 		let key = idempotency_key.to_owned();
 		let request = request.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let request_sha = initial_admission_digest(&request, &payload);
+
 			if let Some(response) = read_runtime_receipt(
 				&transaction,
 				&key,
@@ -1469,9 +1576,12 @@ impl SqliteStore {
 				let admission: InitialConversationTurnAdmissionReadback =
 					serde_json::from_str(&response)
 						.map_err(|_| incompatible("initial admission receipt"))?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(InitialConversationTurnAdmissionOutcome::Replayed(admission));
 			}
+
 			let authority = transaction
 				.query_row(
 					"SELECT p.routing_decision_id
@@ -1503,6 +1613,7 @@ impl SqliteStore {
 					replayed: false,
 				});
 			};
+
 			if read_turn(&transaction, &request.message.turn_id)?.is_some()
 				|| history_exists(&transaction, &request.message.history_item_id)?
 			{
@@ -1511,10 +1622,13 @@ impl SqliteStore {
 					replayed: false,
 				});
 			}
+
 			let now = unix_micros().map_err(StoreError::from)?;
+
 			insert_turn(&transaction, &request.message, now)?;
 			insert_history(&transaction, &request.message, &payload, now)?;
 			touch_conversation(&transaction, &request.message.conversation_id, now)?;
+
 			let admission = InitialConversationTurnAdmissionReadback {
 				routing_decision_id,
 				continuation_plan_id: request.continuation_plan_id,
@@ -1526,6 +1640,7 @@ impl SqliteStore {
 				},
 				history_item_id: request.message.history_item_id,
 			};
+
 			write_runtime_receipt(
 				&transaction,
 				&key,
@@ -1536,7 +1651,9 @@ impl SqliteStore {
 					.map_err(|_| incompatible("initial admission receipt"))?,
 				now,
 			)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(InitialConversationTurnAdmissionOutcome::Fresh(admission))
 		})
 		.await
@@ -1558,8 +1675,10 @@ fn validate_conversation_conversation(create: &CreateConversationRecord) -> Resu
 			"initial Conversation Conversation request is invalid",
 		));
 	}
+
 	validate_initial_execution(&create.model, create.reasoning_effort.as_deref())?;
 	credential_negative(&create.title)?;
+
 	credential_negative(&create.message)
 }
 
@@ -1575,11 +1694,13 @@ fn validate_initial_execution(
 		}) {
 		return Err(StoreError::InvalidInput("initial model settings are invalid"));
 	}
+
 	Ok(())
 }
 
 fn validate_initial_admission(request: &AdmitInitialConversationTurn) -> Result<(), StoreError> {
 	let message = &request.message;
+
 	if request.expected_conversation_revision <= 0
 		|| request.expected_runtime_session_revision != 1
 		|| message.turn_sequence != 1
@@ -1593,6 +1714,7 @@ fn validate_initial_admission(request: &AdmitInitialConversationTurn) -> Result<
 	{
 		return Err(StoreError::InvalidInput("initial Conversation admission shape is invalid"));
 	}
+
 	validate_history_item(message)
 }
 
@@ -1611,6 +1733,7 @@ fn validate_terminalization(request: &TerminalizeConversationTurn) -> Result<(),
 			"Conversation terminalization coordinates are invalid",
 		));
 	}
+
 	Ok(())
 }
 
@@ -1626,9 +1749,12 @@ fn validate_history_item(mutation: &RecordHistoryItem) -> Result<(), StoreError>
 			"history item is invalid for the local Conversation slice",
 		));
 	}
+
 	credential_negative(&mutation.text)?;
+
 	serde_json::to_string(&mutation.metadata)
 		.map_err(|_| StoreError::InvalidInput("history metadata is invalid"))?;
+
 	Ok(())
 }
 
@@ -1636,7 +1762,9 @@ fn publish_payload(blob_store: &BlobStore, text: &str) -> Result<Payload, StoreE
 	if text.len() <= MAX_INLINE_HISTORY_BYTES {
 		return Ok(Payload { inline_text: Some(text.to_owned()), blob_hash: None });
 	}
+
 	let hash = blob_store.put(text.as_bytes())?;
+
 	Ok(Payload { inline_text: None, blob_hash: Some(hash.to_hex()) })
 }
 
@@ -1662,6 +1790,7 @@ fn insert_turn(
 			],
 		)
 		.map_err(sql_error)?;
+
 	Ok(())
 }
 
@@ -1678,6 +1807,7 @@ fn insert_history(
 			|row| row.get(0),
 		)
 		.map_err(sql_error)?;
+
 	transaction
 		.execute(
 			"INSERT INTO history_items (
@@ -1701,6 +1831,7 @@ fn insert_history(
 			],
 		)
 		.map_err(sql_error)?;
+
 	Ok(())
 }
 
@@ -1743,6 +1874,7 @@ fn validate_existing_turn(
 	{
 		return Err(incompatible("history Turn authority"));
 	}
+
 	Ok(())
 }
 
@@ -1786,6 +1918,7 @@ fn read_history_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<HistoryEntry> {
 		.map_err(|_| rusqlite::Error::InvalidQuery)?;
 	let metadata = serde_json::from_str::<HistoryMetadata>(&row.get::<_, String>(10)?)
 		.map_err(|_| rusqlite::Error::InvalidQuery)?;
+
 	Ok(HistoryEntry {
 		history_item_id: row.get(0)?,
 		turn_id: row.get(1)?,
@@ -1814,21 +1947,25 @@ fn hydrate_history_blob(
 ) -> Result<(), StoreError> {
 	if let Some(hash) = entry.blob_hash {
 		let bytes = blob_store.read(hash)?;
+
 		entry.blob_byte_length =
 			Some(u64::try_from(bytes.len()).map_err(|_| incompatible("history blob length"))?);
 	}
+
 	Ok(())
 }
 
 fn verify_history_blob(blob_store: &BlobStore, entry: &HistoryEntry) -> Result<(), StoreError> {
 	if let Some(hash) = entry.blob_hash {
 		let bytes = blob_store.read(hash)?;
+
 		if entry.inline_text.is_some() || bytes.len() > MAX_BLOB_BYTES {
 			return Err(incompatible("history blob"));
 		}
 	} else if entry.inline_text.is_none() {
 		return Err(incompatible("history payload"));
 	}
+
 	Ok(())
 }
 
@@ -1846,9 +1983,11 @@ fn touch_conversation(
 		"UPDATE conversations SET updated_at_micros = ?2 WHERE conversation_id = ?1 AND state = 'active'",
 		params![id.as_str(), now],
 	).map_err(sql_error)?;
+
 	if changed != 1 {
 		return Err(incompatible("Conversation activity owner"));
 	}
+
 	Ok(())
 }
 
@@ -1887,9 +2026,11 @@ fn read_runtime_receipt(
 	let Some((stored_sha, stored_operation, stored_entity, response)) = row else {
 		return Ok(None);
 	};
+
 	if stored_sha != request_sha || stored_operation != operation || stored_entity != entity_id {
 		return Err(StoreError::IdempotencyConflict);
 	}
+
 	Ok(Some(response))
 }
 
@@ -1929,6 +2070,7 @@ fn write_runtime_receipt(
 			params![key, request_sha, operation, entity_id, response_json, completed_at_micros],
 		)
 		.map_err(sql_error)?;
+
 	Ok(())
 }
 
@@ -1948,6 +2090,7 @@ fn read_routing_successor(
 			|row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)),
 		)
 		.map_err(sql_error)?;
+
 	Ok(ConversationRoutingSuccessor {
 		source_conversation_id: source_id.clone(),
 		source_revision: row.0,
@@ -1965,6 +2108,7 @@ fn conversation_projection(
 ) -> Result<OrdinaryTaskConversationProjection, StoreError> {
 	let conversation_id = ConversationId::new(row.0)
 		.map_err(|_| incompatible("ordinary Task Conversation identity"))?;
+
 	if row.1 == "archived" {
 		let successor = connection
 			.query_row(
@@ -1977,6 +2121,7 @@ fn conversation_projection(
 			)
 			.optional()
 			.map_err(sql_error)?;
+
 		return match successor {
 			Some(successor) => Ok(OrdinaryTaskConversationProjection::RoutingSuccessorRedirect {
 				source_conversation_id: conversation_id,
@@ -1994,6 +2139,7 @@ fn conversation_projection(
 	if row.1 != "active" || row.2 <= 0 || row.3 <= 0 {
 		return Err(incompatible("ordinary Task Conversation lifecycle"));
 	}
+
 	let presentation = connection
 		.query_row(
 			"SELECT c.title, q.message, item.program_id, item.work_item_id, item.title,
@@ -2159,6 +2305,7 @@ fn conversation_projection(
 			native_settings::read(connection, session.as_str(), thread)?.map(Box::new),
 		_ => None,
 	};
+
 	Ok(OrdinaryTaskConversationProjection::Current(OrdinaryTaskConversationReadback {
 		original_working_directory: presentation.8,
 		native_settings,
@@ -2189,6 +2336,7 @@ fn conversation_projection(
 /// Derive one normalized, bounded, credential-negative title from the first user request.
 pub fn bounded_conversation_title(message: &str) -> String {
 	let normalized = message.split_whitespace().collect::<Vec<_>>().join(" ");
+
 	safe_display_title(&normalized, "Private conversation")
 }
 
@@ -2197,6 +2345,7 @@ fn conversation_display_title(persisted: &str, first_request: &str) -> String {
 	let generic = persisted.eq_ignore_ascii_case("quick task")
 		|| persisted.eq_ignore_ascii_case("program work")
 		|| persisted.eq_ignore_ascii_case("conversation");
+
 	if generic || persisted.is_empty() {
 		bounded_conversation_title(first_request)
 	} else {
@@ -2206,12 +2355,14 @@ fn conversation_display_title(persisted: &str, first_request: &str) -> String {
 
 fn safe_display_title(value: &str, fallback: &str) -> String {
 	let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
+
 	if value.is_empty()
 		|| value.chars().any(char::is_control)
 		|| contains_credential_material(&value)
 	{
 		return fallback.to_owned();
 	}
+
 	truncate_utf8(&value, MAX_CONVERSATION_TITLE_BYTES).to_owned()
 }
 
@@ -2219,10 +2370,13 @@ fn truncate_utf8(value: &str, max_bytes: usize) -> &str {
 	if value.len() <= max_bytes {
 		return value;
 	}
+
 	let mut end = max_bytes;
+
 	while !value.is_char_boundary(end) {
 		end -= 1;
 	}
+
 	value[..end].trim_end()
 }
 
@@ -2271,6 +2425,7 @@ fn terminalization_digest(request: &TerminalizeConversationTurn) -> String {
 		request.assistant_turn.as_ref().map(|value| value.0.as_str()).unwrap_or_default();
 	let assistant_revision =
 		request.assistant_turn.as_ref().map(|value| value.1.to_string()).unwrap_or_default();
+
 	digest(&[
 		request.conversation_id.as_str(),
 		&request.expected_conversation_revision.to_string(),
@@ -2291,10 +2446,12 @@ fn terminalization_digest(request: &TerminalizeConversationTurn) -> String {
 
 fn digest(parts: &[&str]) -> String {
 	let mut hasher = Sha256::new();
+
 	for part in parts {
 		hasher.update((part.len() as u64).to_be_bytes());
 		hasher.update(part.as_bytes());
 	}
+
 	hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -2302,6 +2459,7 @@ fn validate_key(value: &str) -> Result<(), StoreError> {
 	if value.is_empty() || value.len() > 256 || decodex_core::contains_credential_material(value) {
 		return Err(StoreError::InvalidInput("idempotency key is invalid"));
 	}
+
 	Ok(())
 }
 
@@ -2444,13 +2602,16 @@ impl SqliteStore {
 	) -> Result<ConversationTerminalizationOutcome, StoreError> {
 		validate_key(idempotency_key)?;
 		validate_terminalization(request)?;
+
 		let key = idempotency_key.to_owned();
 		let request = request.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let request_sha = terminalization_digest(&request);
+
 			if let Some(response) = read_runtime_receipt(
 				&transaction,
 				&key,
@@ -2460,9 +2621,12 @@ impl SqliteStore {
 			)? {
 				let readback: ConversationTerminalizationReadback = serde_json::from_str(&response)
 					.map_err(|_| incompatible("terminalization receipt"))?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(ConversationTerminalizationOutcome::Replayed(readback));
 			}
+
 			let expected_state = match request.provider_outcome {
 				ProviderTerminalOutcome::Succeeded => "succeeded",
 				ProviderTerminalOutcome::FailedDefinitive => "failed_definitive",
@@ -2529,15 +2693,18 @@ impl SqliteStore {
 						TurnRole::Assistant,
 					)
 				})?;
+
 			if !attempt_matches || !session_matches || !user_matches || !assistant_matches {
 				return Ok(ConversationTerminalizationOutcome::Rejected);
 			}
+
 			let now = unix_micros().map_err(StoreError::from)?;
 			let turn_state = match request.provider_outcome {
 				ProviderTerminalOutcome::Succeeded => "completed",
 				ProviderTerminalOutcome::FailedDefinitive
 				| ProviderTerminalOutcome::NotSubmitted => "failed",
 			};
+
 			transaction
 				.execute(
 					"UPDATE turns SET status = ?2, revision = revision + 1,
@@ -2545,6 +2712,7 @@ impl SqliteStore {
 					params![request.user_turn_id.as_str(), turn_state, now],
 				)
 				.map_err(sql_error)?;
+
 			if let Some((assistant_turn_id, _)) = request.assistant_turn.as_ref() {
 				transaction
 					.execute(
@@ -2554,12 +2722,15 @@ impl SqliteStore {
 					)
 					.map_err(sql_error)?;
 			}
+
 			transaction.execute(
 				"UPDATE runtime_sessions SET has_acknowledged_turn = 1, last_known_turn_id = ?2,
 				 revision = revision + 1, updated_at_micros = ?3 WHERE runtime_session_id = ?1",
 				params![request.runtime_session_id.as_str(), request.provider_turn_id, now],
 			).map_err(sql_error)?;
+
 			touch_conversation(&transaction, &request.conversation_id, now)?;
+
 			let readback = ConversationTerminalizationReadback {
 				runtime_session_revision: request.expected_runtime_session_revision + 1,
 				user_turn_revision: request.expected_user_turn_revision + 1,
@@ -2569,6 +2740,7 @@ impl SqliteStore {
 					.map(|(_, revision)| revision + 1),
 				provider_attempt_revision: request.expected_provider_attempt_revision,
 			};
+
 			write_runtime_receipt(
 				&transaction,
 				&key,
@@ -2579,7 +2751,9 @@ impl SqliteStore {
 					.map_err(|_| incompatible("terminalization receipt"))?,
 				now,
 			)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(ConversationTerminalizationOutcome::Applied(readback))
 		})
 		.await
@@ -2599,13 +2773,16 @@ impl SqliteStore {
 		if after.is_some_and(|cursor| cursor.updated_at_micros <= 0) {
 			return Err(StoreError::InvalidInput("ordinary Task Conversation cursor is invalid"));
 		}
+
 		let conversation_id = conversation_id.cloned();
 		let after = after.cloned();
+
 		self.run(move |connection| {
 			// Keep lifecycle, source binding and native observation on one WAL snapshot.
 			let transaction = connection.transaction().map_err(sql_error)?;
 			let connection = &transaction;
 			let mut rows = Vec::new();
+
 			if let Some(id) = conversation_id.as_ref() {
 				let row = connection
 					.query_row(
@@ -2623,6 +2800,7 @@ impl SqliteStore {
 					)
 					.optional()
 					.map_err(sql_error)?;
+
 				if let Some(row) = row {
 					rows.push(row);
 				}
@@ -2653,15 +2831,19 @@ impl SqliteStore {
 						},
 					)
 					.map_err(sql_error)?;
+
 				for row in selected {
 					rows.push(row.map_err(sql_error)?);
 				}
 			}
+
 			let projections = rows
 				.into_iter()
 				.map(|row| conversation_projection(connection, row))
 				.collect::<Result<Vec<_>, _>>()?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(projections)
 		})
 		.await
@@ -2677,6 +2859,7 @@ impl SqliteStore {
 		if page_size == 0 || page_size > MAX_PAGE_SIZE {
 			return Err(StoreError::InvalidInput("history page size must be within 1..=100"));
 		}
+
 		let conversation_id = conversation_id.clone();
 		let after_sequence = after.map_or(0, |cursor| cursor.sequence);
 		let entries = self
@@ -2688,9 +2871,11 @@ impl SqliteStore {
 						|row| row.get(0),
 					)
 					.map_err(sql_error)?;
+
 				if !exists {
 					return Err(StoreError::InvalidInput("Conversation does not exist"));
 				}
+
 				let mut statement = connection
 					.prepare(
 						"SELECT h.history_item_id, h.turn_id, t.runtime_session_id, t.role,
@@ -2708,20 +2893,25 @@ impl SqliteStore {
 					)
 					.map_err(sql_error)?;
 				let mut entries = Vec::new();
+
 				for row in rows {
 					entries.push(row.map_err(sql_error)?);
 				}
+
 				Ok(entries)
 			})
 			.await?;
 		let has_more = entries.len() > usize::from(page_size);
 		let mut entries = entries.into_iter().take(usize::from(page_size)).collect::<Vec<_>>();
+
 		for entry in &mut entries {
 			hydrate_history_blob(blob_store, entry)?;
 		}
+
 		let next_cursor = has_more.then(|| HistoryCursor {
 			sequence: after_sequence + i64::try_from(entries.len()).unwrap_or(i64::MAX),
 		});
+
 		Ok(HistoryPage { entries, next_cursor })
 	}
 
@@ -2765,6 +2955,7 @@ impl SqliteStore {
 		if limit == 0 || usize::from(limit) > MAX_CONTEXT_RECENT_ITEMS {
 			return Err(StoreError::InvalidInput("recent history bound is invalid"));
 		}
+
 		let conversation_id = conversation_id.clone();
 		let excluded_turn_id = excluded_turn_id.map(|turn_id| turn_id.as_str().to_owned());
 		let mut entries = self
@@ -2790,15 +2981,19 @@ impl SqliteStore {
 					)
 					.map_err(sql_error)?;
 				let mut entries = Vec::new();
+
 				for row in rows {
 					entries.push(row.map_err(sql_error)?);
 				}
+
 				Ok(entries)
 			})
 			.await?;
+
 		for entry in &mut entries {
 			hydrate_history_blob(blob_store, entry)?;
 		}
+
 		Ok(entries)
 	}
 }
@@ -2828,16 +3023,20 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("user Turn reservation history item is invalid"));
 		}
+
 		let existing = self.read_turn_reservation(mutation).await?;
 		let mut exact = mutation.clone();
+
 		if let Some(readback) = existing.as_ref() {
 			exact.turn_sequence = readback.sequence;
 		}
+
 		let (_, fresh) = self.record_history_item_command(blob_store, command, &exact).await?;
 		let readback = self
 			.read_turn_reservation(&exact)
 			.await?
 			.ok_or_else(|| incompatible("reserved user Turn readback"))?;
+
 		if fresh {
 			if existing.is_some()
 				|| readback.sequence != mutation.turn_sequence
@@ -2846,6 +3045,7 @@ impl SqliteStore {
 			{
 				return Err(incompatible("fresh user Turn reservation"));
 			}
+
 			Ok(TurnReservationOutcome::Fresh(readback))
 		} else {
 			Ok(TurnReservationOutcome::Replayed(readback))
@@ -2859,6 +3059,7 @@ impl SqliteStore {
 		let conversation_id = mutation.conversation_id.clone();
 		let runtime_session_id = mutation.runtime_session_id.clone();
 		let turn_id = mutation.turn_id.clone();
+
 		self.run(move |connection| {
 			let row = connection
 				.query_row(
@@ -2884,9 +3085,11 @@ impl SqliteStore {
 			let Some((sequence, status, revision, role, side_effects)) = row else {
 				return Ok(None);
 			};
+
 			if role != "user" || side_effects != "unknown" || sequence <= 0 || revision <= 0 {
 				return Err(incompatible("Turn reservation"));
 			}
+
 			Ok(Some(TurnReservationReadback {
 				turn_id,
 				sequence,
@@ -2904,6 +3107,7 @@ impl SqliteStore {
 		mutation: &RecordHistoryItem,
 	) -> Result<(HistoryEntry, bool), StoreError> {
 		validate_history_item(mutation)?;
+
 		let payload = publish_payload(blob_store, &mutation.text)?;
 		let command = command.clone();
 		let mutation = mutation.clone();
@@ -2912,6 +3116,7 @@ impl SqliteStore {
 				let transaction = connection
 					.transaction_with_behavior(TransactionBehavior::Immediate)
 					.map_err(sql_error)?;
+
 				if let Some(response) = read_receipt(
 					&transaction,
 					&command,
@@ -2920,16 +3125,22 @@ impl SqliteStore {
 				)? {
 					let receipt: HistoryReceipt = serde_json::from_str(&response)
 						.map_err(|_| incompatible("history receipt"))?;
+
 					if receipt.history_item_id != mutation.history_item_id.as_str() {
 						return Err(incompatible("history receipt identity"));
 					}
+
 					let entry =
 						read_history_entry(&transaction, mutation.history_item_id.as_str())?
 							.ok_or_else(|| incompatible("history receipt row"))?;
+
 					transaction.commit().map_err(sql_error)?;
+
 					return Ok((entry, false));
 				}
+
 				let now = unix_micros().map_err(StoreError::from)?;
+
 				match mutation.expected_revision {
 					None => {
 						if history_exists(&transaction, &mutation.history_item_id)? {
@@ -2939,11 +3150,13 @@ impl SqliteStore {
 								actual: Some(1),
 							});
 						}
+
 						if let Some(turn) = read_turn(&transaction, &mutation.turn_id)? {
 							validate_existing_turn(&turn, &mutation)?;
 						} else {
 							insert_turn(&transaction, &mutation, now)?;
 						}
+
 						insert_history(&transaction, &mutation, &payload, now)?;
 					},
 					Some(expected) if expected > 0 => {
@@ -2968,6 +3181,7 @@ impl SqliteStore {
 								],
 							)
 							.map_err(sql_error)?;
+
 						if changed != 1 {
 							return Err(StoreError::RevisionConflict {
 								entity: format!("history_item/{}", mutation.history_item_id),
@@ -2980,9 +3194,12 @@ impl SqliteStore {
 						return Err(StoreError::InvalidInput("history revision must be positive"));
 					},
 				}
+
 				touch_conversation(&transaction, &mutation.conversation_id, now)?;
+
 				let entry = read_history_entry(&transaction, mutation.history_item_id.as_str())?
 					.ok_or_else(|| incompatible("recorded history row"))?;
+
 				write_receipt(
 					&transaction,
 					&command,
@@ -2994,11 +3211,15 @@ impl SqliteStore {
 					.map_err(|_| incompatible("history receipt"))?,
 					now,
 				)?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				Ok((entry, true))
 			})
 			.await?;
+
 		verify_history_blob(blob_store, &entry)?;
+
 		Ok((entry, fresh))
 	}
 
@@ -3012,19 +3233,25 @@ impl SqliteStore {
 		if expected_revision <= 0 || status == TurnStatus::Active {
 			return Err(StoreError::InvalidInput("Turn transition is invalid"));
 		}
+
 		let command = command.clone();
 		let turn_id = turn_id.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
+
 			if let Some(response) =
 				read_receipt(&transaction, &command, "transition_turn", turn_id.as_str())?
 			{
 				let revision = response.parse::<i64>().map_err(|_| incompatible("Turn receipt"))?;
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(revision);
 			}
+
 			let now = unix_micros().map_err(StoreError::from)?;
 			let changed = transaction
 				.execute(
@@ -3037,6 +3264,7 @@ impl SqliteStore {
 					params![turn_id.as_str(), turn_status_text(status), now, expected_revision],
 				)
 				.map_err(sql_error)?;
+
 			if changed != 1 {
 				return Err(StoreError::RevisionConflict {
 					entity: format!("turn/{turn_id}"),
@@ -3044,7 +3272,9 @@ impl SqliteStore {
 					actual: None,
 				});
 			}
+
 			let revision = expected_revision + 1;
+
 			write_receipt(
 				&transaction,
 				&command,
@@ -3053,7 +3283,9 @@ impl SqliteStore {
 				&revision.to_string(),
 				now,
 			)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(revision)
 		})
 		.await
@@ -3100,6 +3332,7 @@ mod archive_tests {
 
 	async fn seed_provider_less_starting_task(store: &SqliteStore) {
 		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
+
 		store
 			.create_conversation(
 				&CommandIdentity::new("create-local-fixture", b"create local fixture")
@@ -3157,6 +3390,7 @@ mod archive_tests {
 						params![RUNTIME_SESSION_ID, CONVERSATION_ID, ACCOUNT_ID],
 					)
 					.map_err(sqlite_error)?;
+
 				Ok(())
 			})
 			.expect("seed provider-less starting RuntimeSession");
@@ -3175,15 +3409,19 @@ mod archive_tests {
 	#[tokio::test]
 	async fn ordinary_warning_history_survives_reopen_without_terminalizing_user_turn() {
 		use crate::RecordHistoryItem;
+
 		use decodex_core::{
 			HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus, TurnRole,
 		};
+
 		let directory = tempdir().unwrap();
 		let paths = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap().paths();
 		let blobs = BlobStore::open(paths.clone()).unwrap();
 		let store = SqliteStore::open(&paths).unwrap();
+
 		seed_provider_less_starting_task(&store).await;
 		seed_active_user_turn(&store);
+
 		let command = CommandIdentity::new("ordinary-warning", b"warning fixture").unwrap();
 		let item = RecordHistoryItem {
 			conversation_id: ConversationId::new(CONVERSATION_ID).unwrap(),
@@ -3202,34 +3440,47 @@ mod archive_tests {
 			expected_revision: None,
 			artifact: None,
 		};
+
 		for _ in 0..2 {
 			store.record_history_item(&blobs, &command, &item).await.unwrap();
 		}
+
 		drop(store);
+
 		let store = SqliteStore::open(&paths).unwrap();
+
 		store.with_connection(|connection| {
 			let turn:(String,i64)=connection.query_row("SELECT status,revision FROM turns WHERE turn_id=?1",[TURN_ID],|row|Ok((row.get(0)?,row.get(1)?))).map_err(sqlite_error)?;
+
 			assert_eq!(turn,("active".into(),1));
+
 			let count:i64=connection.query_row("SELECT count(*) FROM history_items WHERE history_item_id=?1 AND kind='status' AND inline_text LIKE 'Codex warning:%'",[INTERRUPTION_HISTORY_ID],|row|row.get(0)).map_err(sqlite_error)?;
+
 			assert_eq!(count,1);
+
 			Ok(())
 		}).unwrap();
 	}
 
 	async fn exercise_resume_rejection(reason: super::ConversationResumeRejection) {
 		use super::RecordConversationResumeRejection;
+
 		let directory = tempdir().expect("temporary database directory");
 		let paths = DecodexRoot::new(directory.path().canonicalize().expect("canonical root"))
 			.expect("root")
 			.paths();
 		let blobs = BlobStore::open(paths.clone()).expect("blobs");
 		let store = SqliteStore::open(&paths).expect("database");
+
 		seed_provider_less_starting_task(&store).await;
 		seed_active_user_turn(&store);
+
 		store.with_connection(|connection| {
 			connection.execute("UPDATE runtime_sessions SET state='active', codex_thread_id='native-thread', thread_start_request_id=1, thread_start_response_id=1, has_acknowledged_turn=1 WHERE runtime_session_id=?1", params![RUNTIME_SESSION_ID]).map_err(sqlite_error)?;
+
 			connection.execute_batch("CREATE TRIGGER fail_diagnostic BEFORE INSERT ON history_items BEGIN SELECT RAISE(ABORT, 'injected history failure'); END;").map_err(sqlite_error)
 		}).expect("prepare bound session and failure injection");
+
 		let request = RecordConversationResumeRejection {
 			conversation_id: ConversationId::new(CONVERSATION_ID).expect("conversation"),
 			runtime_session_id: RuntimeSessionId::new(RUNTIME_SESSION_ID).expect("session"),
@@ -3245,7 +3496,9 @@ mod archive_tests {
 			&serde_json::to_vec(&request).expect("descriptor"),
 		)
 		.expect("command");
+
 		assert!(store.record_conversation_resume_rejection(&command, &request).await.is_err());
+
 		store
 			.with_connection(|connection| {
 				let state: (String, i64) = connection
@@ -3255,35 +3508,49 @@ mod archive_tests {
 						|row| Ok((row.get(0)?, row.get(1)?)),
 					)
 					.map_err(sqlite_error)?;
+
 				assert_eq!(
 					state,
 					("active".into(), 1),
 					"history failure rolls back turn finalization"
 				);
+
 				connection.execute_batch("DROP TRIGGER fail_diagnostic").map_err(sqlite_error)
 			})
 			.expect("rollback inspection");
+
 		let mut stale = request.clone();
+
 		stale.expected_session_revision = 2;
+
 		assert!(store.record_conversation_resume_rejection(&command, &stale).await.is_err());
+
 		store
 			.record_conversation_resume_rejection(&command, &request)
 			.await
 			.expect("record refusal");
+
 		drop(store);
+
 		let reopened = SqliteStore::open(&paths).expect("restart database");
+
 		reopened.record_conversation_resume_rejection(&command, &request).await.expect("replay");
+
 		let second_reader = SqliteStore::open(&paths).expect("independent reader");
 		let page = second_reader
 			.conversation_history(&blobs, &request.conversation_id, None, 10)
 			.await
 			.expect("durable history");
+
 		assert_eq!(page.entries.len(), 1, "one diagnostic after replay and restart");
+
 		let item = &page.entries[0];
+
 		assert_eq!(item.kind, decodex_core::HistoryItemKind::Status);
 		assert_eq!(item.status, decodex_core::ItemStatus::Failed);
 		assert_eq!(item.inline_text.as_deref(), Some(request.reason.diagnostic()));
 		assert_eq!(item.runtime_session_id, RUNTIME_SESSION_ID);
+
 		second_reader
 			.with_connection(|connection| {
 				let state: (String, i64) = connection
@@ -3293,11 +3560,15 @@ mod archive_tests {
 						|row| Ok((row.get(0)?, row.get(1)?)),
 					)
 					.map_err(sqlite_error)?;
+
 				assert_eq!(state, ("failed".into(), 2));
+
 				let count: i64 = connection
 					.query_row("SELECT COUNT(*) FROM runtime_sessions", [], |row| row.get(0))
 					.map_err(sqlite_error)?;
+
 				assert_eq!(count, 1, "no replacement session");
+
 				Ok(())
 			})
 			.expect("restart state");
@@ -3309,6 +3580,7 @@ mod archive_tests {
 			"  Verify\n\t{}  ",
 			"the persisted provider conversation ".repeat(10)
 		));
+
 		assert!(!title.contains('\n'));
 		assert!(!title.contains('\t'));
 		assert!(title.len() <= super::MAX_CONVERSATION_TITLE_BYTES);
@@ -3320,7 +3592,9 @@ mod archive_tests {
 		let directory = tempdir().expect("temporary database directory");
 		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
 			.expect("initialize database");
+
 		seed_provider_less_starting_task(&store).await;
+
 		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
 
 		for unsafe_title in
@@ -3334,13 +3608,16 @@ mod archive_tests {
 							params![CONVERSATION_ID, unsafe_title],
 						)
 						.map_err(sqlite_error)?;
+
 					Ok(())
 				})
 				.expect("seed unsafe legacy title");
+
 			let projection = store
 				.read_ordinary_task_conversations(Some(&conversation_id), None, 1)
 				.await
 				.expect("unsafe title must not fail projection");
+
 			assert!(matches!(
 				projection.as_slice(),
 				[OrdinaryTaskConversationProjection::Current(row)]
@@ -3362,6 +3639,7 @@ mod archive_tests {
 						params![TURN_ID, CONVERSATION_ID, RUNTIME_SESSION_ID],
 					)
 					.map_err(sqlite_error)?;
+
 				Ok(())
 			})
 			.expect("seed active user Turn");
@@ -3479,6 +3757,7 @@ mod archive_tests {
 						],
 					)
 					.map_err(sqlite_error)?;
+
 				Ok(())
 			})
 			.expect("seed unknown provider attempt");
@@ -3505,6 +3784,7 @@ mod archive_tests {
 						params![GENERATION_ID],
 					)
 					.map_err(sqlite_error)?;
+
 				Ok(())
 			})
 			.expect("record exact process death");
@@ -3518,6 +3798,7 @@ mod archive_tests {
 		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
 		let runtime_session_id =
 			RuntimeSessionId::new(RUNTIME_SESSION_ID).expect("RuntimeSession ID");
+
 		store
 			.create_conversation(
 				&CommandIdentity::new("create-archive-fixture", b"create archive fixture")
@@ -3536,6 +3817,7 @@ mod archive_tests {
 			)
 			.await
 			.expect("create conversation");
+
 		seed_archive_session(&store);
 
 		let archive = ArchiveConversationRecord {
@@ -3554,6 +3836,7 @@ mod archive_tests {
 			ArchiveConversationOutcome::Applied(archived) => archived,
 			other => panic!("archive was not applied: {other:?}"),
 		};
+
 		assert_eq!(archived.conversation_revision, 2);
 		assert!(matches!(
 			store
@@ -3568,6 +3851,7 @@ mod archive_tests {
 			.read_ordinary_task_conversations(Some(&conversation_id), None, 1)
 			.await
 			.expect("read exact archived projection");
+
 		assert!(matches!(
 			exact.as_slice(),
 			[OrdinaryTaskConversationProjection::Archived {
@@ -3586,6 +3870,7 @@ mod archive_tests {
 			store.read_conversation_request(&conversation_id).await.expect("read archived request"),
 			None
 		);
+
 		let session: (String, i64, Option<i64>) = store
 			.with_connection(|connection| {
 				connection
@@ -3598,6 +3883,7 @@ mod archive_tests {
 					.map_err(sqlite_error)
 			})
 			.expect("read ended RuntimeSession");
+
 		assert_eq!(session.0, "ended");
 		assert_eq!(session.1, 8);
 		assert!(session.2.is_some());
@@ -3608,8 +3894,10 @@ mod archive_tests {
 		let directory = tempdir().expect("temporary database directory");
 		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
 			.expect("initialize database");
+
 		seed_provider_less_starting_task(&store).await;
 		seed_active_user_turn(&store);
+
 		let request = ReconcileStrandedConversationTurn {
 			conversation_id: ConversationId::new(CONVERSATION_ID).expect("conversation ID"),
 			expected_conversation_revision: 1,
@@ -3623,6 +3911,7 @@ mod archive_tests {
 			expected_runtime_session_revision: 2,
 			..request.clone()
 		};
+
 		assert_eq!(
 			store
 				.reconcile_stranded_conversation_turn(
@@ -3637,6 +3926,7 @@ mod archive_tests {
 
 		let command = CommandIdentity::new("exact-turn-reconcile", b"exact coordinates")
 			.expect("exact command");
+
 		assert_eq!(
 			store
 				.reconcile_stranded_conversation_turn(&command, &request)
@@ -3651,6 +3941,7 @@ mod archive_tests {
 				.expect("replay reconciliation"),
 			ReconcileStrandedConversationTurnOutcome::Replayed { turn_revision: 2 }
 		);
+
 		let turn: (String, i64, Option<i64>) = store
 			.with_connection(|connection| {
 				connection
@@ -3662,6 +3953,7 @@ mod archive_tests {
 					.map_err(sqlite_error)
 			})
 			.expect("read reconciled Turn");
+
 		assert_eq!(turn.0, "failed");
 		assert_eq!(turn.1, 2);
 		assert!(turn.2.is_some());
@@ -3672,16 +3964,20 @@ mod archive_tests {
 		let directory = tempdir().expect("temporary database directory");
 		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
 			.expect("initialize database");
+
 		seed_provider_less_starting_task(&store).await;
 		seed_active_user_turn(&store);
 		seed_unknown_provider_attempt(&store);
+
 		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
 		let before = store
 			.read_unknown_conversation_attempt_for_recovery(&conversation_id)
 			.await
 			.expect("read active unknown attempt")
 			.expect("unknown attempt exists");
+
 		assert!(!before.process_generation_is_dead);
+
 		let request = RecoverUnknownConversationTurn {
 			conversation_id: conversation_id.clone(),
 			expected_conversation_revision: 1,
@@ -3698,6 +3994,7 @@ mod archive_tests {
 		};
 		let command = CommandIdentity::new("recover-unknown-fixture", b"exact unknown fixture")
 			.expect("recovery command");
+
 		assert_eq!(
 			store
 				.recover_unknown_conversation_turn(&command, &request)
@@ -3707,6 +4004,7 @@ mod archive_tests {
 		);
 
 		record_exact_process_death(&store);
+
 		assert!(
 			store
 				.read_unknown_conversation_attempt_for_recovery(&conversation_id)
@@ -3715,10 +4013,12 @@ mod archive_tests {
 				.expect("unknown attempt remains active")
 				.process_generation_is_dead
 		);
+
 		let recovered = store
 			.recover_unknown_conversation_turn(&command, &request)
 			.await
 			.expect("recover exact dead unknown Turn");
+
 		assert!(matches!(
 			recovered,
 			RecoverUnknownConversationTurnOutcome::Applied(ref readback)
@@ -3739,6 +4039,7 @@ mod archive_tests {
 				.expect("read recovered projection"),
 			None
 		);
+
 		let persisted: (String, i64, String, String, i64) = store
 			.with_connection(|connection| {
 				connection
@@ -3754,15 +4055,18 @@ mod archive_tests {
 					.map_err(sqlite_error)
 			})
 			.expect("read recovered evidence");
+
 		assert_eq!(persisted.0, "failed");
 		assert_eq!(persisted.1, 2);
 		assert_eq!(persisted.2, "unknown");
 		assert_eq!(persisted.3, "Previous turn was interrupted. You can continue.");
 		assert_eq!(persisted.4, 1);
+
 		let projection = store
 			.read_ordinary_task_conversations(Some(&conversation_id), None, 1)
 			.await
 			.expect("read recovered conversation projection");
+
 		assert!(matches!(
 			projection.as_slice(),
 			[OrdinaryTaskConversationProjection::Current(row)]
@@ -3775,9 +4079,11 @@ mod archive_tests {
 		let directory = tempdir().expect("temporary database directory");
 		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
 			.expect("initialize database");
+
 		seed_provider_less_starting_task(&store).await;
 		seed_active_user_turn(&store);
 		seed_unknown_provider_attempt(&store);
+
 		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
 		let evidence_id = ProviderEvidenceId::new("64000000-0000-4000-8000-000000000001")
 			.expect("provider evidence ID");
@@ -3795,6 +4101,7 @@ mod archive_tests {
 			"9".repeat(64),
 		)
 		.expect("exact thread readback evidence");
+
 		assert!(matches!(
 			store
 				.record_provider_attempt_positive_evidence(1, &evidence)
@@ -3809,9 +4116,11 @@ mod archive_tests {
 			.await
 			.expect("read pending terminalization")
 			.expect("positive evidence remains terminalizable");
+
 		assert_eq!(pending.attempt_revision, 2);
 		assert_eq!(pending.provider_outcome, ProviderTerminalOutcome::Succeeded);
 		assert_eq!(pending.provider_turn_id, "provider-turn-recovered");
+
 		let terminalization = TerminalizeConversationTurn {
 			conversation_id: pending.conversation_id.clone(),
 			expected_conversation_revision: pending.conversation_revision,
@@ -3827,6 +4136,7 @@ mod archive_tests {
 			provider_thread_id: pending.codex_thread_id.clone(),
 			provider_turn_id: pending.provider_turn_id.clone(),
 		};
+
 		assert!(matches!(
 			store
 				.terminalize_conversation_turn("pending-terminalization", &terminalization)
@@ -3849,9 +4159,11 @@ mod archive_tests {
 			let directory = tempdir().unwrap();
 			let path = directory.path().join("non-submission.sqlite3");
 			let store = SqliteStore::open_test(&path).unwrap();
+
 			seed_provider_less_starting_task(&store).await;
 			seed_active_user_turn(&store);
 			seed_unknown_provider_attempt(&store);
+
 			store
 				.with_connection(|connection| {
 					connection
@@ -3877,7 +4189,9 @@ mod archive_tests {
 			)
 			.unwrap();
 			let mut wrong_thread = evidence.clone();
+
 			wrong_thread.provider_thread_id = Some("another-thread".into());
+
 			assert!(
 				store.record_provider_attempt_positive_evidence(1, &wrong_thread).await.is_err()
 			);
@@ -3887,11 +4201,13 @@ mod archive_tests {
 			);
 
 			store.with_connection(|connection|connection.execute_batch("CREATE TRIGGER refuse_non_submission_history BEFORE INSERT ON history_items WHEN json_extract(NEW.metadata_json,'$.type')='native_turn_not_submitted' BEGIN SELECT RAISE(ABORT,'fixture history failure'); END;").map_err(sqlite_error)).unwrap();
+
 			assert!(store.record_provider_attempt_positive_evidence(1, &evidence).await.is_err());
 			assert_eq!(
 				store.read_provider_attempt(&evidence.attempt_id).await.unwrap().unwrap().state,
 				ProviderAttemptState::Unknown
 			);
+
 			store
 				.with_connection(|connection| {
 					connection
@@ -3899,24 +4215,33 @@ mod archive_tests {
 						.map_err(sqlite_error)
 				})
 				.unwrap();
+
 			assert!(matches!(
 				store.record_provider_attempt_positive_evidence(1, &evidence).await.unwrap(),
 				ProviderAttemptMutationOutcome::Applied(_)
 			));
+
 			drop(store);
+
 			let store = SqliteStore::open_test(&path).unwrap();
+
 			assert!(matches!(
 				store.record_provider_attempt_positive_evidence(1, &evidence).await.unwrap(),
 				ProviderAttemptMutationOutcome::Replayed(_)
 			));
+
 			let session: (bool, Option<String>, i64) = store.with_connection(|connection| connection.query_row("SELECT has_acknowledged_turn,last_known_turn_id,revision FROM runtime_sessions WHERE runtime_session_id=?1",[RUNTIME_SESSION_ID],|row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(sqlite_error)).unwrap();
+
 			assert_eq!(
 				session,
 				(acknowledged, None, 7),
 				"Refusal must not invent a native turn or revise native session evidence"
 			);
+
 			let saved: (String,String,i64) = store.with_connection(|connection|connection.query_row("SELECT t.status,p.state,(SELECT count(*) FROM history_items h WHERE h.turn_id=t.turn_id AND json_extract(h.metadata_json,'$.type')='native_turn_not_submitted') FROM turns t JOIN provider_attempts p ON p.turn_id=t.turn_id WHERE p.attempt_id=?1",[ATTEMPT_ID],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(sqlite_error)).unwrap();
+
 			assert_eq!(saved, ("failed".into(), "not_submitted".into(), 1));
+
 			let projection = store
 				.read_ordinary_task_conversations(
 					Some(&ConversationId::new(CONVERSATION_ID).unwrap()),
@@ -3925,6 +4250,7 @@ mod archive_tests {
 				)
 				.await
 				.unwrap();
+
 			assert!(
 				matches!(projection.as_slice(),[OrdinaryTaskConversationProjection::Current(row)] if !row.has_unknown_provider_attempt && row.active_turn_id.is_none())
 			);
@@ -3939,10 +4265,12 @@ mod archive_tests {
 		let paths = root.paths();
 		let blob_store = BlobStore::open(paths.clone()).expect("open blob store");
 		let store = SqliteStore::open(&paths).expect("initialize product database");
+
 		seed_provider_less_starting_task(&store).await;
 		seed_active_user_turn(&store);
 		seed_unknown_provider_attempt(&store);
 		record_exact_process_death(&store);
+
 		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
 		let recovery = RecoverUnknownConversationTurn {
 			conversation_id: conversation_id.clone(),
@@ -3958,6 +4286,7 @@ mod archive_tests {
 				.expect("ProcessGeneration ID"),
 			history_item_id: HistoryItemId::new(INTERRUPTION_HISTORY_ID).expect("HistoryItem ID"),
 		};
+
 		assert!(matches!(
 			store
 				.recover_unknown_conversation_turn(
@@ -3969,7 +4298,9 @@ mod archive_tests {
 				.expect("recover unknown predecessor"),
 			RecoverUnknownConversationTurnOutcome::Applied(_)
 		));
+
 		seed_successor_continuation(&store);
+
 		let fallback_history = store
 			.recent_conversation_history_excluding_turn(
 				&blob_store,
@@ -3979,6 +4310,7 @@ mod archive_tests {
 			)
 			.await
 			.expect("read fallback history before the successor intent");
+
 		assert!(
 			fallback_history
 				.iter()
@@ -3989,6 +4321,7 @@ mod archive_tests {
 				.iter()
 				.all(|entry| entry.history_item_id.as_str() != SUCCESSOR_HISTORY_ID)
 		);
+
 		let context_pack = recovery_context_pack(&conversation_id);
 		let request = PlanContinuation {
 			operation_id: "a5000000-0000-4000-8000-000000000002".to_owned(),
@@ -4009,6 +4342,7 @@ mod archive_tests {
 				panic!("recovered continuation was rejected: {rejection:?}")
 			},
 		};
+
 		assert_eq!(planned.plan.kind, ContinuationPlanKind::ContextPackFallback);
 		assert_eq!(
 			planned.uncertain_predecessor_attempt_id.as_ref().map(ProviderAttemptId::as_str),
@@ -4025,11 +4359,12 @@ mod archive_tests {
 			planned.fallback_context_pack.as_ref().map(|record| record.pack.digest()),
 			Some(context_pack.digest())
 		);
+
 		verify_fallback_ownership(&store, &request);
 		activate_fallback_authority(&store, &request);
 		verify_fallback_attempt_authority(&store, &request, &conversation_id).await;
-
 		drop(store);
+
 		let reopened = SqliteStore::open(&paths).expect("reopen product database");
 		let replayed = match reopened
 			.plan_continuation(&blob_store, "fallback-plan", &request, &context_pack)
@@ -4041,6 +4376,7 @@ mod archive_tests {
 				panic!("persisted fallback replay was rejected: {rejection:?}")
 			},
 		};
+
 		assert_eq!(replayed.plan.kind, ContinuationPlanKind::ContextPackFallback);
 		assert_eq!(
 			replayed.fallback_context_pack.expect("replayed Context Pack").pack.digest(),
@@ -4085,6 +4421,7 @@ mod archive_tests {
 					.map_err(sqlite_error)
 			})
 			.expect("read fallback ownership");
+
 		assert_eq!(ownership.0, "ended");
 		assert_eq!(ownership.1, 8);
 		assert_eq!(ownership.2, "starting");
@@ -4141,6 +4478,7 @@ mod archive_tests {
 						],
 					)
 					.map_err(sqlite_error)?;
+
 				Ok(())
 			})
 			.expect("seed successor continuation authority");
@@ -4187,6 +4525,7 @@ mod archive_tests {
 						params![ACCOUNT_ID, request.fallback_runtime_session_id, "6".repeat(64),],
 					)
 					.map_err(sqlite_error)?;
+
 				Ok(())
 			})
 			.expect("activate fallback execution authority");
@@ -4227,6 +4566,7 @@ mod archive_tests {
 		let fallback_epoch_id =
 			ProcessExecutionEpochId::new("73000000-0000-4000-8000-000000000002")
 				.expect("fallback execution epoch ID");
+
 		assert!(matches!(
 			store
 				.prepare_provider_attempt(
@@ -4241,8 +4581,10 @@ mod archive_tests {
 				.expect("reject unacknowledged fallback attempt"),
 			PrepareProviderAttemptOutcome::Rejected { .. }
 		));
+
 		let predecessor_attempt_id =
 			ProviderAttemptId::new(ATTEMPT_ID).expect("predecessor attempt ID");
+
 		assert!(matches!(
 			store
 				.prepare_provider_attempt(
@@ -4260,6 +4602,7 @@ mod archive_tests {
 				.expect("reject forged fallback acknowledgement"),
 			PrepareProviderAttemptOutcome::Rejected { .. }
 		));
+
 		let acknowledgement_digest = crate::runtime_sessions::digest(&[
 			"silent-recovery-successor",
 			predecessor_attempt_id.as_str(),
@@ -4280,12 +4623,15 @@ mod archive_tests {
 			)
 			.await
 			.expect("prepare acknowledged fallback attempt");
+
 		assert!(matches!(prepared, PrepareProviderAttemptOutcome::Fresh(_)));
+
 		let stored_successor = store
 			.read_provider_attempt(&successor_attempt_id)
 			.await
 			.expect("read successor attempt")
 			.expect("successor attempt exists");
+
 		assert_eq!(stored_successor.state, ProviderAttemptState::Prepared);
 		assert_eq!(
 			stored_successor.duplicate_risk,
@@ -4346,6 +4692,7 @@ mod archive_tests {
 						params![RUNTIME_SESSION_ID, CONVERSATION_ID, ACCOUNT_ID],
 					)
 					.map_err(sqlite_error)?;
+
 				Ok(())
 			})
 			.expect("seed active RuntimeSession");
@@ -4356,8 +4703,10 @@ mod archive_tests {
 		let directory = tempdir().expect("temporary database directory");
 		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
 			.expect("initialize database");
+
 		seed_provider_less_starting_task(&store).await;
 		seed_active_user_turn(&store);
+
 		let archive = ArchiveLocalConversationRecord {
 			conversation_id: ConversationId::new(CONVERSATION_ID).expect("conversation ID"),
 			expected_conversation_revision: 1,
@@ -4365,6 +4714,7 @@ mod archive_tests {
 				.expect("RuntimeSession ID"),
 			expected_runtime_session_revision: 3,
 		};
+
 		assert_eq!(
 			store
 				.archive_local_conversation(
@@ -4376,6 +4726,7 @@ mod archive_tests {
 				.expect("reject unsafe local archive"),
 			ArchiveLocalConversationOutcome::Rejected
 		);
+
 		store
 			.with_connection(|connection| {
 				connection
@@ -4385,9 +4736,11 @@ mod archive_tests {
 						params![TURN_ID],
 					)
 					.map_err(sqlite_error)?;
+
 				Ok(())
 			})
 			.expect("make the local projection safe");
+
 		let command = CommandIdentity::new("safe-local-archive", b"no active owner")
 			.expect("safe archive command");
 		let archived = match store
@@ -4398,6 +4751,7 @@ mod archive_tests {
 			ArchiveLocalConversationOutcome::Applied(archived) => archived,
 			other => panic!("local archive was not applied: {other:?}"),
 		};
+
 		assert_eq!(archived.conversation_revision, 2);
 		assert!(matches!(
 			store
@@ -4407,6 +4761,7 @@ mod archive_tests {
 			ArchiveLocalConversationOutcome::Replayed(ref replayed)
 				if replayed == &archived
 		));
+
 		let states: (String, String) = store
 			.with_connection(|connection| {
 				connection
@@ -4420,6 +4775,7 @@ mod archive_tests {
 					.map_err(sqlite_error)
 			})
 			.expect("read archived local projection");
+
 		assert_eq!(states, ("archived".to_owned(), "ended".to_owned()));
 	}
 }

@@ -12,14 +12,17 @@ pub struct CommandIdentity {
 impl CommandIdentity {
 	pub fn new(key: impl Into<String>, request: &[u8]) -> Result<Self, StoreError> {
 		let key = key.into();
+
 		if key.is_empty() || key.len() > 256 {
 			return Err(StoreError::InvalidInput("idempotency key must contain 1..=256 bytes"));
 		}
 		if decodex_core::contains_credential_material(&key) {
 			return Err(StoreError::CredentialRejected);
 		}
+
 		let request_hash =
 			Sha256::digest(request).iter().map(|byte| format!("{byte:02x}")).collect();
+
 		Ok(Self { key, request_hash })
 	}
 }

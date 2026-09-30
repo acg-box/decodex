@@ -30,8 +30,10 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("invalid response usage query"));
 		}
+
 		let turns =
 			serde_json::to_string(&turns).map_err(|_| StoreError::InvalidInput("invalid turns"))?;
+
 		self.run(move |connection| {
 			let mut query = connection.prepare("WITH observations AS (
 			SELECT id,json_extract(payload,'$.turnId') turn_id,json_extract(payload,'$.responseId') response_id,
@@ -46,6 +48,7 @@ impl SqliteStore {
 			ranked AS (SELECT *,row_number() OVER(PARTITION BY turn_id ORDER BY id DESC) rank,count(*) OVER(PARTITION BY turn_id) count FROM observations)
 			SELECT turn_id,response_id,amount,omitted,count FROM ranked WHERE rank<=8 ORDER BY id")
 			.map_err(sqlite_error)?;
+
 			query.query_map(params![work,thread,turns],|row|Ok(AgentResponseUsageSummary {
 				turn_id:row.get(0)?,response_id:row.get(1)?,amount:row.get(2)?,metadata_omitted:row.get(3)?,observed_count:row.get(4)?,
 			})).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|sqlite_error(error).into())
@@ -61,6 +64,7 @@ impl SqliteStore {
 		if payload.len() > 48 * 1024 {
 			return Err(StoreError::InvalidInput("response usage exceeds storage budget"));
 		}
+
 		let value: Value = serde_json::from_str(&payload)
 			.map_err(|_| StoreError::InvalidInput("invalid response usage"))?;
 		let identity = |key| {
@@ -74,22 +78,29 @@ impl SqliteStore {
 		let thread = identity("threadId")?;
 		let turn = identity("turnId")?;
 		let response = identity("responseId")?;
+
 		self.run(move |connection| {
 			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			let work: Option<String> = tx.query_row("SELECT id FROM agent_work_items WHERE codex_thread_id=?1",[&thread],|row|row.get(0)).optional().map_err(sqlite_error)?;
 			let Some(work) = work else { return Ok(false); };
+
 			if !crate::agent_process::owns_work(&tx,&work,generation.as_deref())? { return Ok(false); }
+
 			let account: Option<String> = if let Some(generation) = generation.as_ref() {
 				tx.query_row("SELECT account_id FROM agent_process_bindings WHERE generation_id=?1",[generation],|row|row.get(0)).optional().map_err(sqlite_error)?
 			} else { None };
 			let identity = serde_json::json!(["response_usage",work,account,thread,turn,response]).to_string();
 			let previous: Option<String> = tx.query_row("SELECT payload FROM agent_inbox_events WHERE source_event_id=?1",[&identity],|row|row.get(0)).optional().map_err(sqlite_error)?;
+
 			if let Some(previous) = previous {
 				return if previous == payload { Ok(false) } else { Err(StoreError::IdempotencyConflict) };
 			}
+
 			let now = unix_micros()?;
+
 			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'response_usage',?3,?4,'resolved','Provider response usage observed.',?4)",params![identity,work,payload,now]).map_err(sqlite_error)?;
 			tx.commit().map_err(sqlite_error)?;
+
 			Ok(true)
 		}).await
 	}
@@ -105,6 +116,7 @@ mod tests {
 		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("usage.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
+
 		store
 			.create_agent_work_item(AgentWorkItem {
 				id: "root".into(),
@@ -124,7 +136,9 @@ mod tests {
 			.unwrap();
 		store.begin_agent_thread_creation("root".into()).await.unwrap();
 		store.acknowledge_agent_thread_creation("root".into(), "thread".into()).await.unwrap();
+
 		let payload = serde_json::json!({"threadId":"thread","turnId":"past-turn","responseId":"response","usageMetadata":{"amount":"0.12345678901234567890","metadata":{"private":"retained"}}}).to_string();
+
 		assert!(store.record_agent_response_usage(None, payload.clone()).await.unwrap());
 		assert!(!store.record_agent_response_usage(None, payload.clone()).await.unwrap());
 		assert!(
@@ -136,9 +150,13 @@ mod tests {
 		assert!(store.read_agent_work_events("root".into(), 10).await.unwrap().is_empty());
 		assert!(store.list_pending_agent_events(10).await.unwrap().is_empty());
 		assert!(store.list_agent_wake_events("root".into(), 10).await.unwrap().is_empty());
+
 		drop(store);
+
 		let store = SqliteStore::open_test(&path).unwrap();
+
 		assert!(!store.record_agent_response_usage(None, payload.clone()).await.unwrap());
+
 		let expected = payload.clone();
 		let saved: String = store
 			.run(move |connection| {
@@ -152,11 +170,14 @@ mod tests {
 			})
 			.await
 			.unwrap();
+
 		assert_eq!(saved, expected);
+
 		let rows = store
 			.read_agent_response_usage("root".into(), "thread".into(), vec!["past-turn".into()])
 			.await
 			.unwrap();
+
 		assert_eq!(rows.len(), 1);
 		assert_eq!(rows[0].amount.as_deref(), Some("0.12345678901234567890"));
 		assert_eq!(rows[0].response_id, "response");
@@ -171,24 +192,34 @@ mod tests {
 				.unwrap()
 				.is_empty()
 		);
+
 		for index in 0..10 {
 			let mut event: Value = serde_json::from_str(&payload).unwrap();
+
 			event["responseId"] = serde_json::json!(format!("response-{index}"));
+
 			store.record_agent_response_usage(None, event.to_string()).await.unwrap();
 		}
+
 		let rows = store
 			.read_agent_response_usage("root".into(), "thread".into(), vec!["past-turn".into()])
 			.await
 			.unwrap();
+
 		assert_eq!(rows.len(), 8);
 		assert!(rows.iter().all(|row| row.observed_count == 11));
+
 		let mut changed: Value = serde_json::from_str(&payload).unwrap();
+
 		changed["usageMetadata"]["amount"] = serde_json::json!("1");
+
 		assert!(matches!(
 			store.record_agent_response_usage(None, changed.to_string()).await,
 			Err(StoreError::IdempotencyConflict)
 		));
+
 		changed["threadId"] = serde_json::json!("foreign");
+
 		assert!(!store.record_agent_response_usage(None, changed.to_string()).await.unwrap());
 	}
 }

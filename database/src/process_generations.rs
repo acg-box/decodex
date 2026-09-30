@@ -92,8 +92,10 @@ impl SqliteStore {
 				"Conversation admission and ProcessGeneration identity differ",
 			));
 		}
+
 		let intent = intent.clone();
 		let binding = binding.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
@@ -114,12 +116,14 @@ impl SqliteStore {
 					|row| row.get(0),
 				)
 				.map_err(sql_error)?;
+
 			if !receipt_matches {
 				return Ok(PrepareProcessGenerationOutcome::Rejected {
 					rejection: ProcessGenerationRejection::ConversationAuthorityUnavailable,
 					actual: empty_mutation(),
 				});
 			}
+
 			let outcome = prepare_bound_generation(
 				&transaction,
 				&intent,
@@ -127,7 +131,9 @@ impl SqliteStore {
 				Some(admission.readback().request.runtime_session_id.as_str()),
 				Some(admission.idempotency_key()),
 			)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(outcome)
 		})
 		.await
@@ -150,8 +156,10 @@ impl SqliteStore {
 		limit: u16,
 	) -> Result<Vec<BoundProcessGeneration>, StoreError> {
 		validate_limit(limit)?;
+
 		let account_id = account_id.map(|value| value.as_str().to_owned());
 		let after = after_generation_id.map(|value| value.as_str().to_owned());
+
 		self.run(move |connection| {
 			read_bound_page(
 				connection,
@@ -196,18 +204,23 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("ProcessGeneration identity is invalid"));
 		}
+
 		let generation_id = generation_id.clone();
 		let identity = identity.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let current = read_required_generation(&transaction, &generation_id)?;
+
 			if current.revision == expected_revision.saturating_add(1)
 				&& current.process_identity.as_ref() == Some(&identity)
 			{
 				let result = ProcessGenerationMutationOutcome::Replayed(mutation(&current));
+
 				transaction.commit().map_err(sql_error)?;
+
 				return Ok(result);
 			}
 			if current.revision != expected_revision
@@ -217,8 +230,10 @@ impl SqliteStore {
 			{
 				return Ok(rejected(ProcessGenerationRejection::StaleGeneration, &current));
 			}
+
 			let now = unix_micros().map_err(StoreError::from)?;
 			let revision = expected_revision + 1;
+
 			transaction
 				.execute(
 					"UPDATE process_generations SET bound_boot_id = ?1, process_id = ?2,
@@ -237,6 +252,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(ProcessGenerationMutationOutcome::Applied(ProcessGenerationMutation {
 				revision,
 				state: ProcessGenerationState::Starting,
@@ -281,6 +297,7 @@ impl SqliteStore {
 		reason: ProcessAuthorityLossReason,
 	) -> Result<ProcessGenerationMutationOutcome, StoreError> {
 		let generation_id = generation_id.clone();
+
 		self.mutate_generation(generation_id, move |connection, current, now| {
 			if current.state == ProcessGenerationState::DeathUnknown
 				&& current.authority_loss_reason == Some(reason)
@@ -293,12 +310,15 @@ impl SqliteStore {
 			{
 				return Ok(rejected(ProcessGenerationRejection::StaleGeneration, current));
 			}
+
 			let revision = expected_revision + 1;
+
 			connection.execute(
 				"UPDATE process_generations SET state = 'death_unknown', authority_loss_reason = ?1,
 				 revision = ?2, updated_at_micros = ?3 WHERE generation_id = ?4",
 				params![reason.as_sql(), revision, now, current.generation_id.as_str()],
 			).map_err(sql_error)?;
+
 			Ok(ProcessGenerationMutationOutcome::Applied(ProcessGenerationMutation {
 				revision,
 				state: ProcessGenerationState::DeathUnknown,
@@ -315,6 +335,7 @@ impl SqliteStore {
 	) -> Result<ProcessGenerationMutationOutcome, StoreError> {
 		let evidence = evidence.clone();
 		let generation_id = evidence.generation_id.clone();
+
 		self.mutate_generation(generation_id, move |connection, current, now| {
 			if current.state == ProcessGenerationState::Dead {
 				return if current.death_evidence_id.as_ref() == Some(&evidence.evidence_id) {
@@ -331,9 +352,11 @@ impl SqliteStore {
 			} else {
 				evidence.process_identity.as_ref() == current.process_identity.as_ref()
 			};
+
 			if current.revision != expected_revision || !identity_matches {
 				return Ok(rejected(ProcessGenerationRejection::EvidenceMismatch, current));
 			}
+
 			let (bound_boot, process_id, start_id, group_id, session_id) = evidence
 				.process_identity
 				.as_ref()
@@ -346,6 +369,7 @@ impl SqliteStore {
 						Some(i64::from(identity.session_id)),
 					)
 				});
+
 			connection
 				.execute(
 					"INSERT INTO process_generation_death_evidence (
@@ -367,7 +391,9 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			let revision = expected_revision + 1;
+
 			connection
 				.execute(
 					"UPDATE process_generations SET state = 'dead', authority_loss_reason = NULL,
@@ -381,6 +407,7 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			Ok(ProcessGenerationMutationOutcome::Applied(ProcessGenerationMutation {
 				revision,
 				state: ProcessGenerationState::Dead,
@@ -403,6 +430,7 @@ impl SqliteStore {
 					params![now],
 				)
 				.map_err(sql_error)?;
+
 			u64::try_from(changed).map_err(|_| incompatible("generation projection count"))
 		})
 		.await
@@ -418,7 +446,9 @@ impl SqliteStore {
 		if expected_revision <= 0 {
 			return Err(StoreError::InvalidInput("ProcessGeneration revision must be positive"));
 		}
+
 		let generation_id = generation_id.clone();
+
 		self.mutate_generation(generation_id, move |connection, current, now| {
 			if current.state == target_state
 				&& current.revision == expected_revision.saturating_add(1)
@@ -432,12 +462,15 @@ impl SqliteStore {
 			{
 				return Ok(rejected(ProcessGenerationRejection::StaleGeneration, current));
 			}
+
 			let revision = expected_revision + 1;
+
 			connection.execute(
 				"UPDATE process_generations SET state = ?1, revision = ?2, updated_at_micros = ?3
 				 WHERE generation_id = ?4",
 				params![target_state.as_sql(), revision, now, current.generation_id.as_str()],
 			).map_err(sql_error)?;
+
 			Ok(ProcessGenerationMutationOutcome::Applied(ProcessGenerationMutation {
 				revision,
 				state: target_state,
@@ -473,7 +506,9 @@ impl SqliteStore {
 			};
 			let now = unix_micros().map_err(StoreError::from)?;
 			let outcome = operation(&transaction, &current, now)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(outcome)
 		})
 		.await
@@ -496,6 +531,7 @@ pub(crate) fn prepare_bound_generation(
 			&& existing.control_kind == intent.control_kind
 			&& existing.isolation_kind == intent.isolation_kind;
 		let mutation = mutation(&existing);
+
 		return if same {
 			Ok(PrepareProcessGenerationOutcome::Replayed(mutation))
 		} else {
@@ -505,13 +541,16 @@ pub(crate) fn prepare_bound_generation(
 			})
 		};
 	}
+
 	let authority = account_authority(connection, &intent.account_id, binding)?;
+
 	if let Some(rejection) = authority {
 		return Ok(PrepareProcessGenerationOutcome::Rejected {
 			rejection,
 			actual: empty_mutation(),
 		});
 	}
+
 	let quarantined: bool = connection
 		.query_row(
 			"SELECT EXISTS (SELECT 1 FROM process_generations
@@ -520,12 +559,14 @@ pub(crate) fn prepare_bound_generation(
 			|row| row.get(0),
 		)
 		.map_err(sql_error)?;
+
 	if quarantined {
 		return Ok(PrepareProcessGenerationOutcome::Rejected {
 			rejection: ProcessGenerationRejection::AccountQuarantined,
 			actual: empty_mutation(),
 		});
 	}
+
 	connection
 		.execute(
 			"INSERT OR IGNORE INTO process_execution_epochs (
@@ -538,6 +579,7 @@ pub(crate) fn prepare_bound_generation(
 			],
 		)
 		.map_err(sql_error)?;
+
 	let epoch_digest: String = connection
 		.query_row(
 			"SELECT authorization_sha256 FROM process_execution_epochs
@@ -546,15 +588,18 @@ pub(crate) fn prepare_bound_generation(
 			|row| row.get(0),
 		)
 		.map_err(sql_error)?;
+
 	if epoch_digest != intent.execution_authorization.authorization_digest {
 		return Ok(PrepareProcessGenerationOutcome::Rejected {
 			rejection: ProcessGenerationRejection::RestoreAuthorityUnavailable,
 			actual: empty_mutation(),
 		});
 	}
+
 	let now = unix_micros().map_err(StoreError::from)?;
 	let credential_version = i64::try_from(binding.credential.version.get())
 		.map_err(|_| StoreError::InvalidInput("credential version overflows SQLite integer"))?;
+
 	connection
 		.execute(
 			"INSERT INTO process_generations (
@@ -590,6 +635,7 @@ pub(crate) fn prepare_bound_generation(
 			],
 		)
 		.map_err(sql_error)?;
+
 	Ok(PrepareProcessGenerationOutcome::Fresh(FreshProcessGenerationFence {
 		generation_id: intent.generation_id.clone(),
 		revision: 1,
@@ -638,12 +684,14 @@ fn account_authority(
 	let Some(row) = row else {
 		return Ok(Some(ProcessGenerationRejection::AccountMissing));
 	};
+
 	if row.0 != binding.account_revision || !row.1 || !row.2 || row.3 != "exact" || row.10 {
 		return Ok(Some(ProcessGenerationRejection::AccountLifecycleUnready));
 	}
 	if !row.11 {
 		return Ok(Some(ProcessGenerationRejection::CallbackCapabilityUnready));
 	}
+
 	let credential_version = i64::try_from(binding.credential.version.get())
 		.map_err(|_| StoreError::InvalidInput("credential version overflows SQLite integer"))?;
 	let exact = row.4 == Some(i64::from(binding.credential.schema_version.get()))
@@ -652,6 +700,7 @@ fn account_authority(
 		&& row.7.as_deref() == Some(binding.credential.writer_operation_id.as_str())
 		&& row.8.as_deref() == Some(provider_text(binding.credential.provider.provider()))
 		&& row.9.as_deref() == Some(binding.credential.provider.account_id());
+
 	Ok((!exact).then_some(ProcessGenerationRejection::AccountLifecycleUnready))
 }
 
@@ -677,11 +726,13 @@ fn read_bound_page(
 		.map_err(sql_error)?
 		.collect::<Result<Vec<_>, _>>()
 		.map_err(sql_error)?;
+
 	ids.into_iter()
 		.map(|id| {
 			let generation =
 				read_generation(connection, &id)?.ok_or_else(|| incompatible("generation"))?;
 			let binding = read_generation_binding(connection, &id)?;
+
 			Ok(BoundProcessGeneration { generation, account_binding: Some(binding) })
 		})
 		.collect()
@@ -766,6 +817,7 @@ fn parse_generation_row(row: GenerationRow) -> Result<ProcessGeneration, StoreEr
 		),
 		_ => return Err(incompatible("partial process identity")),
 	};
+
 	Ok(ProcessGeneration {
 		generation_id: ProcessGenerationId::new(row.0)
 			.map_err(|_| incompatible("generation id"))?,
@@ -822,9 +874,11 @@ fn read_generation_binding(
 			},
 		)
 		.map_err(sql_error)?;
+
 	if row.5 != "chatgpt" {
 		return Err(incompatible("credential provider"));
 	}
+
 	let credential = CredentialBinding {
 		schema_version: CredentialStoreSchemaVersion::new(
 			u16::try_from(row.1).map_err(|_| incompatible("credential schema"))?,
@@ -841,6 +895,7 @@ fn read_generation_binding(
 		provider: ProviderIdentity::new(AccountProvider::Chatgpt, row.6)
 			.map_err(|_| incompatible("provider identity"))?,
 	};
+
 	ProcessGenerationAccountBinding::new(row.0, credential, row.7)
 		.map_err(|_| incompatible("generation account binding"))
 }
@@ -904,6 +959,7 @@ fn validate_limit(limit: u16) -> Result<(), StoreError> {
 			"ProcessGeneration diagnostic limit must be between 1 and 256",
 		));
 	}
+
 	Ok(())
 }
 

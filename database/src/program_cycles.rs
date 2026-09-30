@@ -174,6 +174,7 @@ impl SqliteStore {
 		program_id: &ProgramId,
 	) -> Result<Option<ProgramCycleRecord>, StoreError> {
 		let program_id = program_id.clone();
+
 		self.run(move |connection| read_program_cycle(connection, &program_id)).await
 	}
 
@@ -185,6 +186,7 @@ impl SqliteStore {
 		if limit == 0 || limit > 64 {
 			return Err(StoreError::InvalidInput("Program list bound must be within 1..=64"));
 		}
+
 		self.run(move |connection| {
 			let mut statement = connection
 				.prepare(
@@ -204,8 +206,10 @@ impl SqliteStore {
 					))
 				})
 				.map_err(sql_error)?;
+
 			rows.map(|row| {
 				let (id, name, purpose, state, revision, updated) = row.map_err(sql_error)?;
+
 				Ok(ProgramSummaryRecord {
 					program_id: ProgramId::new(id).map_err(|_| incompatible("Program identity"))?,
 					name,
@@ -245,9 +249,11 @@ fn validate_pack_identity(identity: &DomainPackIdentity) -> Result<(), StoreErro
 			.pack_digest
 			.bytes()
 			.all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'));
+
 	if !valid_symbol(&identity.pack_id) || !valid_version || !valid_digest {
 		return Err(StoreError::InvalidInput("Domain Pack identity is invalid"));
 	}
+
 	Ok(())
 }
 
@@ -263,6 +269,7 @@ fn validate_text(value: &str, limit: usize) -> Result<(), StoreError> {
 			StoreError::InvalidInput("Program text is invalid")
 		});
 	}
+
 	Ok(())
 }
 
@@ -270,13 +277,17 @@ fn validate_list(values: &[String]) -> Result<(), StoreError> {
 	if values.is_empty() || values.len() > MAX_LIST_ITEMS {
 		return Err(StoreError::InvalidInput("Program list is invalid"));
 	}
+
 	let mut unique = HashSet::with_capacity(values.len());
+
 	for value in values {
 		validate_text(value, MAX_TEXT_BYTES)?;
+
 		if !unique.insert(value) {
 			return Err(StoreError::InvalidInput("Program list contains duplicates"));
 		}
 	}
+
 	Ok(())
 }
 
@@ -336,9 +347,11 @@ fn read_program_cycle(
 		)
 		.optional()
 		.map_err(sql_error)?;
+
 	if let Some(binding) = &domain_pack {
 		validate_persisted_pack_binding(binding)?;
 	}
+
 	let signals = read_signals(connection, program_id)?;
 	let claims = read_claims(connection, program_id)?;
 	let proposals = read_proposals(connection, program_id)?;
@@ -346,6 +359,7 @@ fn read_program_cycle(
 	let work_items = read_work_items(connection, program_id)?;
 	let evidence = read_evidence(connection, program_id)?;
 	let reviews = read_reviews(connection, program_id)?;
+
 	Ok(Some(ProgramCycleRecord {
 		program,
 		domain_pack,
@@ -454,6 +468,7 @@ fn read_objectives(
 		program_id.as_str(),
 		|row| {
 			let state = row.get::<_, String>(5)?;
+
 			Ok(ProgramObjectiveRecord {
 				objective_id: ObjectiveId::new(row.get::<_, String>(0)?)
 					.map_err(|_| rusqlite::Error::InvalidQuery)?,
@@ -486,6 +501,7 @@ fn read_work_items(
 		program_id.as_str(),
 		|row| {
 			let state = row.get::<_, String>(5)?;
+
 			Ok(ProgramWorkItemRecord {
 				work_item_id: WorkItemId::new(row.get::<_, String>(0)?)
 					.map_err(|_| rusqlite::Error::InvalidQuery)?,
@@ -521,6 +537,7 @@ fn read_evidence(
 		program_id.as_str(),
 		|row| {
 			let kind = row.get::<_, String>(2)?;
+
 			Ok(ProgramEvidenceRecord {
 				evidence_id: ProgramEvidenceId::new(row.get::<_, String>(0)?)
 					.map_err(|_| rusqlite::Error::InvalidQuery)?,
@@ -549,6 +566,7 @@ fn read_reviews(
 		program_id.as_str(),
 		|row| {
 			let classification = row.get::<_, String>(4)?;
+
 			Ok(ProgramReviewRecord {
 				review_id: ProgramReviewId::new(row.get::<_, String>(0)?)
 					.map_err(|_| rusqlite::Error::InvalidQuery)?,
@@ -575,6 +593,7 @@ fn validate_persisted_pack_binding(binding: &ProgramDomainPackBinding) -> Result
 	})
 	.map_err(|_| incompatible("Program Domain Pack identity"))?;
 	positive_time(binding.bound_at_micros)?;
+
 	Ok(())
 }
 
@@ -586,13 +605,16 @@ fn query_rows<T>(
 ) -> Result<Vec<T>, StoreError> {
 	let mut statement = connection.prepare(sql).map_err(sql_error)?;
 	let rows = statement.query_map(params![program_id], |row| map(row)).map_err(sql_error)?;
+
 	rows.collect::<Result<Vec<_>, _>>().map_err(sql_error)
 }
 
 fn decode_list(value: &str) -> Result<Vec<String>, StoreError> {
 	let values: Vec<String> =
 		serde_json::from_str(value).map_err(|_| incompatible("Program list"))?;
+
 	validate_list(&values).map_err(|_| incompatible("Program list"))?;
+
 	Ok(values)
 }
 
@@ -686,18 +708,22 @@ mod historical_tests {
 		let root = DecodexRoot::new(directory.path().canonicalize().expect("absolute path"))
 			.expect("root");
 		let store = SqliteStore::open(&root.paths()).expect("store");
+
 		store
 			.run(|connection| {
 				connection
 					.execute_batch(include_str!("../tests/fixtures/historical_program.sql"))
 					.expect("released schema fixture");
+
 				Ok(())
 			})
 			.await
 			.expect("fixture installed");
+
 		let id = ProgramId::new("10000000-0000-4000-8000-000000000001").expect("program");
 		let record =
 			store.program_cycle(&id).await.expect("historical query").expect("retained program");
+
 		assert_eq!(record.program.state, ProgramState::Retired);
 		assert_eq!(record.signals.len(), 2);
 		assert_eq!(
@@ -708,9 +734,12 @@ mod historical_tests {
 		assert_eq!(record.evidence.len(), 2);
 		assert_eq!(record.work_items[0].state, WorkItemState::Done);
 		assert_eq!(record.domain_pack.as_ref().expect("pack binding").pack_digest, "a".repeat(64));
+
 		let conversation =
 			ConversationId::new("10000000-0000-4000-8000-000000000010").expect("conversation");
+
 		assert_eq!(record.work_items[0].conversation_id.as_ref(), Some(&conversation));
+
 		let projections = store
 			.read_ordinary_task_conversations(Some(&conversation), None, 1)
 			.await
@@ -718,18 +747,28 @@ mod historical_tests {
 		let OrdinaryTaskConversationProjection::Current(projection) = &projections[0] else {
 			panic!("readable historical conversation");
 		};
+
 		assert_eq!(projection.title, "Historical work title");
+
 		let context = projection.program_work_item.as_ref().expect("historical lineage");
+
 		assert_eq!(context.program_id, id);
 		assert_eq!(context.instructions, "Historical instructions");
+
 		let listing = store.list_programs(64).await.expect("historical list");
+
 		assert_eq!(listing.len(), 1);
 		assert!(store.list_programs(0).await.is_err());
+
 		let missing =
 			ProgramId::new("10000000-0000-4000-8000-000000000099").expect("absent program");
+
 		assert_eq!(store.program_cycle(&missing).await.expect("absent read"), None);
+
 		store.close();
+
 		let reopened = SqliteStore::open(&root.paths()).expect("reopened schema");
+
 		assert_eq!(
 			reopened.program_cycle(&id).await.expect("reopened historical read"),
 			Some(record)

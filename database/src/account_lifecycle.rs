@@ -169,10 +169,13 @@ impl SqliteStore {
 		limit: u16,
 	) -> Result<(Vec<AccountRecord>, AccountRoutingControl), StoreError> {
 		validate_limit(limit, "account registry limit must be between 1 and 512")?;
+
 		self.run(move |connection| {
 			let accounts = read_account_registry_sync(connection, None, limit)?;
 			let routing = read_routing_control_sync(connection)?;
+
 			validate_registry_snapshot(&accounts, &routing)?;
+
 			Ok((accounts, routing))
 		})
 		.await
@@ -185,6 +188,7 @@ impl SqliteStore {
 	) -> Result<AccountEnrollmentResolution, StoreError> {
 		let requested_account_id = requested_account_id.clone();
 		let provider = provider.clone();
+
 		self.run(move |connection| {
 			resolve_account_enrollment_sync(connection, &requested_account_id, &provider)
 		})
@@ -213,8 +217,10 @@ impl SqliteStore {
 		if expected_revision.is_some_and(|revision| revision < 1) {
 			return Err(StoreError::InvalidInput("account command revision must be positive"));
 		}
+
 		let command = command.clone();
 		let entity_id = entity_id.to_owned();
+
 		self.run(move |connection| {
 			reserve_command_sync(connection, command, kind, entity_id, expected_revision)
 		})
@@ -237,19 +243,25 @@ impl SqliteStore {
 		diagnostic: Option<(&'static str, String)>,
 	) -> Result<(), StoreError> {
 		validate_account_command_response(result)?;
+
 		let result = result.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
+
 			finish_command_sync(&transaction, &lease.0, &result)?;
+
 			if let Some((stage, cause)) = diagnostic {
 				let diagnostic = serde_json::json!({"stage":stage,"cause":cause}).to_string();
+
 				transaction.execute(
 					"UPDATE command_receipts SET progress_json=?1 WHERE protocol=?2 AND idempotency_key=?3 AND request_sha256=?4",
 					params![diagnostic, lease.0.protocol, lease.0.key, lease.0.request_hash],
 				).map_err(sql_error)?;
 			}
+
 			transaction.commit().map_err(sql_error)
 		})
 		.await
@@ -261,7 +273,9 @@ impl SqliteStore {
 		limit: u16,
 	) -> Result<Vec<AccountRecord>, StoreError> {
 		validate_limit(limit, "account registry limit must be between 1 and 512")?;
+
 		let account_id = account_id.map(|value| value.as_str().to_owned());
+
 		self.run(move |connection| {
 			read_account_registry_sync(connection, account_id.as_deref(), limit)
 		})
@@ -273,13 +287,17 @@ impl SqliteStore {
 		preparation: &AccountOperationPreparation,
 	) -> Result<AccountLifecycleMutationOutcome, StoreError> {
 		validate_preparation(preparation)?;
+
 		let preparation = preparation.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let outcome = prepare_operation_sync(&transaction, &preparation, None)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(outcome)
 		})
 		.await
@@ -292,20 +310,25 @@ impl SqliteStore {
 		recovery_operation_id: &AccountOperationId,
 	) -> Result<AccountLifecycleMutationOutcome, StoreError> {
 		validate_preparation(preparation)?;
+
 		if preparation.operation_id == *recovery_operation_id {
 			return Err(StoreError::InvalidInput(
 				"account reauthentication recovery identity is invalid",
 			));
 		}
+
 		let preparation = preparation.clone();
 		let recovery_operation_id = recovery_operation_id.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let outcome =
 				prepare_operation_sync(&transaction, &preparation, Some(&recovery_operation_id))?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(outcome)
 		})
 		.await
@@ -319,8 +342,10 @@ impl SqliteStore {
 		recovery_code: Option<&str>,
 	) -> Result<AccountLifecycleMutationOutcome, StoreError> {
 		validate_recovery_code(recovery_code)?;
+
 		let operation_id = operation_id.clone();
 		let recovery_code = recovery_code.map(str::to_owned);
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
@@ -332,7 +357,9 @@ impl SqliteStore {
 				target,
 				recovery_code.as_deref(),
 			)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(outcome)
 		})
 		.await
@@ -357,8 +384,10 @@ impl SqliteStore {
 			+ 'static,
 	{
 		validate_recovery_code(recovery_code)?;
+
 		let operation_id = operation_id.clone();
 		let recovery_code = recovery_code.map(str::to_owned);
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
@@ -382,9 +411,12 @@ impl SqliteStore {
 				None => None,
 			};
 			let response = build_response(&outcome, operation.as_ref(), account.as_ref())?;
+
 			validate_account_command_response(&response)?;
 			finish_command_sync(&transaction, &lease.0, &response)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(response)
 		})
 		.await
@@ -397,12 +429,15 @@ impl SqliteStore {
 	) -> Result<AccountLifecycleMutationOutcome, StoreError> {
 		let operation_id = operation_id.clone();
 		let target = target.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let outcome = set_operation_target_sync(&transaction, &operation_id, &target)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(outcome)
 		})
 		.await
@@ -417,6 +452,7 @@ impl SqliteStore {
 			MAX_UNSETTLED_ACCOUNT_OPERATION_COUNT,
 			"account operation limit must be between 1 and 1024",
 		)?;
+
 		self.run(move |connection| {
 			let mut statement = connection
 				.prepare(
@@ -431,10 +467,12 @@ impl SqliteStore {
 				.query_map(params![i64::from(limit)], |row| row.get::<_, String>(0))
 				.map_err(sql_error)?;
 			let ids = rows.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
+
 			ids.into_iter()
 				.map(|id| {
 					let id = AccountOperationId::new(id)
 						.map_err(|_| incompatible("account operation identity"))?;
+
 					read_operation_sync(connection, &id)?
 						.ok_or_else(|| incompatible("account operation readback"))
 				})
@@ -448,6 +486,7 @@ impl SqliteStore {
 		operation_id: &AccountOperationId,
 	) -> Result<Option<AccountOperation>, StoreError> {
 		let operation_id = operation_id.clone();
+
 		self.run(move |connection| read_operation_sync(connection, &operation_id)).await
 	}
 
@@ -456,6 +495,7 @@ impl SqliteStore {
 		operation: &AccountOperation,
 	) -> Result<bool, StoreError> {
 		let operation = operation.clone();
+
 		self.run(move |connection| {
 			is_legacy_tombstone_enrollment_collision_sync(connection, &operation)
 		})
@@ -469,14 +509,18 @@ impl SqliteStore {
 		enabled: bool,
 	) -> Result<AccountAdministrationOutcome, StoreError> {
 		validate_account_revision(expected_revision)?;
+
 		let account_id = account_id.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let outcome =
 				set_account_enabled_sync(&transaction, &account_id, expected_revision, enabled)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(outcome)
 		})
 		.await
@@ -499,7 +543,9 @@ impl SqliteStore {
 			+ 'static,
 	{
 		validate_account_revision(expected_revision)?;
+
 		let account_id = account_id.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
@@ -514,9 +560,12 @@ impl SqliteStore {
 				None
 			};
 			let response = build_response(&outcome, account.as_ref())?;
+
 			validate_account_command_response(&response)?;
 			finish_command_sync(&transaction, &lease.0, &response)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(response)
 		})
 		.await
@@ -534,7 +583,9 @@ impl SqliteStore {
 	) -> Result<RoutingControlOutcome, StoreError> {
 		validate_routing_revision(expected_routing_revision)?;
 		validate_account_revision(expected_account_revision)?;
+
 		let account_id = account_id.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
@@ -545,7 +596,9 @@ impl SqliteStore {
 				&account_id,
 				expected_account_revision,
 			)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(outcome)
 		})
 		.await
@@ -567,7 +620,9 @@ impl SqliteStore {
 	{
 		validate_routing_revision(expected_routing_revision)?;
 		validate_account_revision(expected_account_revision)?;
+
 		let account_id = account_id.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
@@ -586,9 +641,12 @@ impl SqliteStore {
 				None
 			};
 			let response = build_response(&outcome, account.as_ref())?;
+
 			validate_account_command_response(&response)?;
 			finish_command_sync(&transaction, &lease.0, &response)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(response)
 		})
 		.await
@@ -599,12 +657,15 @@ impl SqliteStore {
 		expected_routing_revision: i64,
 	) -> Result<RoutingControlOutcome, StoreError> {
 		validate_routing_revision(expected_routing_revision)?;
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let outcome = set_balanced_routing_sync(&transaction, expected_routing_revision)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(outcome)
 		})
 		.await
@@ -620,15 +681,19 @@ impl SqliteStore {
 		F: FnOnce(&RoutingControlOutcome) -> Result<Value, StoreError> + Send + 'static,
 	{
 		validate_routing_revision(expected_routing_revision)?;
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let outcome = set_balanced_routing_sync(&transaction, expected_routing_revision)?;
 			let response = build_response(&outcome)?;
+
 			validate_account_command_response(&response)?;
 			finish_command_sync(&transaction, &lease.0, &response)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(response)
 		})
 		.await
@@ -641,13 +706,17 @@ impl SqliteStore {
 	) -> Result<RoutingControlOutcome, StoreError> {
 		validate_routing_revision(expected_routing_revision)?;
 		validate_order(order)?;
+
 		let order = order.to_vec();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let outcome = set_account_order_sync(&transaction, expected_routing_revision, &order)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(outcome)
 		})
 		.await
@@ -665,16 +734,21 @@ impl SqliteStore {
 	{
 		validate_routing_revision(expected_routing_revision)?;
 		validate_order(order)?;
+
 		let order = order.to_vec();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
 			let outcome = set_account_order_sync(&transaction, expected_routing_revision, &order)?;
 			let response = build_response(&outcome)?;
+
 			validate_account_command_response(&response)?;
 			finish_command_sync(&transaction, &lease.0, &response)?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			Ok(response)
 		})
 		.await
@@ -689,7 +763,9 @@ impl SqliteStore {
 		if observed_at_unix_micros < 0 || fact.resets_at_unix_micros <= observed_at_unix_micros {
 			return Err(StoreError::InvalidInput("quota fact rejected"));
 		}
+
 		let account_id = account_id.clone();
+
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
@@ -716,9 +792,11 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			if changed == 0 {
 				return Err(StoreError::InvalidInput("quota fact rejected"));
 			}
+
 			let account_changed = transaction
 				.execute(
 					"UPDATE accounts SET state = CASE WHEN EXISTS (
@@ -730,9 +808,11 @@ impl SqliteStore {
 					params![account_id.as_str(), unix_micros().map_err(StoreError::from)?],
 				)
 				.map_err(sql_error)?;
+
 			if account_changed != 1 {
 				return Err(StoreError::InvalidInput("quota fact rejected"));
 			}
+
 			transaction.commit().map_err(sql_error)
 		})
 		.await
@@ -748,7 +828,9 @@ impl SqliteStore {
 		if !matches!(duration_minutes, 300 | 10_080) || observed_at_unix_micros < 0 {
 			return Err(StoreError::InvalidInput("quota error rejected"));
 		}
+
 		let account_id = account_id.clone();
+
 		self.run(move |connection| {
 			let changed = connection
 				.execute(
@@ -771,6 +853,7 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			if changed > 0 { Ok(()) } else { Err(StoreError::InvalidInput("quota error rejected")) }
 		})
 		.await
@@ -788,7 +871,9 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("quota absence rejected"));
 		}
+
 		let account_id = account_id.clone();
+
 		self.run(move |connection| {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
 			let changed = transaction.execute(
@@ -798,14 +883,18 @@ impl SqliteStore {
 				 resets_at_micros = NULL, error_code = NULL, observed_at_micros = excluded.observed_at_micros, not_applicable = 1
 				 WHERE excluded.observed_at_micros >= account_quota_facts.observed_at_micros",
 				params![account_id.as_str(), observed_at_unix_micros]).map_err(sql_error)?;
+
 			if changed != 1 { return Err(StoreError::InvalidInput("quota absence rejected")); }
+
 			let account_changed = transaction.execute(
 				"UPDATE accounts SET state = CASE WHEN EXISTS (
 				 SELECT 1 FROM account_quota_facts WHERE account_id = ?1 AND error_code IS NULL AND used_percent >= 100
 				 ) THEN 'depleted' ELSE 'available' END, updated_at_micros = ?2
 				 WHERE account_id = ?1 AND tombstoned_at_micros IS NULL",
 				params![account_id.as_str(), unix_micros().map_err(StoreError::from)?]).map_err(sql_error)?;
+
 			if account_changed != 1 { return Err(StoreError::InvalidInput("quota absence rejected")); }
+
 			transaction.commit().map_err(sql_error)
 		}).await
 	}
@@ -818,15 +907,19 @@ impl SqliteStore {
 		observation: AccountStoreObservation,
 	) -> Result<bool, StoreError> {
 		validate_account_revision(expected_revision)?;
+
 		let account_id = account_id.clone();
 		let expected = expected.clone();
+
 		self.run(move |connection| {
 			let revision = account_revision_sync(connection, &account_id)?;
+
 			if revision != expected_revision
 				|| credential_binding_sync(connection, &account_id)?.as_ref() != Some(&expected)
 			{
 				return Ok(false);
 			}
+
 			let changed = connection
 				.execute(
 					"UPDATE accounts SET credential_store_observation = ?1,
@@ -839,6 +932,7 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			Ok(changed == 1)
 		})
 		.await
@@ -860,7 +954,9 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("Codex account capability is invalid"));
 		}
+
 		let attestation = attestation.clone();
+
 		self.run(move |connection| {
 			connection
 				.execute(
@@ -887,6 +983,7 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+
 			Ok(attestation.login_chatgpt_auth_tokens && attestation.refresh_callback)
 		})
 		.await
@@ -903,6 +1000,7 @@ fn reserve_command_sync(
 	let transaction =
 		connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
 	let now = unix_micros().map_err(StoreError::from)?;
+
 	if kind == AccountCommandKind::Route
 		&& transaction
 			.query_row(
@@ -916,6 +1014,7 @@ fn reserve_command_sync(
 	{
 		return Err(StoreError::IdempotencyConflict);
 	}
+
 	let existing = transaction
 		.query_row(
 			"SELECT request_sha256, operation, entity_id, expected_revision, state,
@@ -937,6 +1036,7 @@ fn reserve_command_sync(
 		.optional()
 		.map_err(sql_error)?;
 	let receipt_exists = existing.is_some();
+
 	if let Some((request, operation, stored_entity, revision, state, response, expires)) = existing
 	{
 		if request != command.request_hash
@@ -950,7 +1050,9 @@ fn reserve_command_sync(
 			let response = response.ok_or_else(|| incompatible("command response"))?;
 			let response =
 				serde_json::from_str(&response).map_err(|_| incompatible("command response"))?;
+
 			transaction.commit().map_err(sql_error)?;
+
 			return Ok(AccountCommandReceiptClaim::Replayed(response));
 		}
 		if matches!(
@@ -961,6 +1063,7 @@ fn reserve_command_sync(
 			// Native notification has no idempotency parameter. A crashed or timed-out
 			// attempt may already have sent, including after this lease expired.
 			transaction.commit().map_err(sql_error)?;
+
 			return Ok(AccountCommandReceiptClaim::Pending(
 				serde_json::json!({"status":"uncertain"}),
 			));
@@ -969,10 +1072,12 @@ fn reserve_command_sync(
 			return Err(StoreError::OwnershipLost("command receipt claim is active"));
 		}
 	}
+
 	let claim_token = random_uuid_v4()?;
 	let expires = now
 		.checked_add(CLAIM_LIFETIME_MICROS)
 		.ok_or(StoreError::InvalidInput("command claim timestamp is invalid"))?;
+
 	if receipt_exists {
 		transaction
 			.execute(
@@ -1004,7 +1109,9 @@ fn reserve_command_sync(
 			)
 			.map_err(sql_error)?;
 	}
+
 	transaction.commit().map_err(sql_error)?;
+
 	Ok(AccountCommandReceiptClaim::Owned(AccountCommandReceiptLease(CommandReservation {
 		protocol: ACCOUNT_COMMAND_PROTOCOL,
 		key: command.key,
@@ -1038,6 +1145,7 @@ fn finish_command_sync(
 			],
 		)
 		.map_err(sql_error)?;
+
 	if changed == 1 { Ok(()) } else { Err(StoreError::OwnershipLost("command receipt claim")) }
 }
 
@@ -1056,6 +1164,7 @@ fn prepare_operation_sync(
 			&& existing.target == preparation.target
 			&& existing.recovery_operation_id.as_ref() == recovery_operation_id;
 		let actual = mutation_for(connection, &existing.account_id, existing.phase)?;
+
 		return if descriptor_matches {
 			Ok(AccountLifecycleMutationOutcome::Replayed(actual))
 		} else {
@@ -1065,7 +1174,6 @@ fn prepare_operation_sync(
 			})
 		};
 	}
-
 	if let Some(recovery_operation_id) = recovery_operation_id {
 		if let Some(rejection) =
 			validate_reauthentication_takeover_sync(connection, preparation, recovery_operation_id)?
@@ -1085,6 +1193,7 @@ fn prepare_operation_sync(
 	{
 		let account_id =
 			AccountId::new(account_id).map_err(|_| incompatible("account identity"))?;
+
 		return Ok(AccountLifecycleMutationOutcome::Rejected {
 			rejection: AccountLifecycleRejection::OperationUnsettled,
 			actual: mutation_for(connection, &account_id, parse_operation_phase(&phase)?)?,
@@ -1109,6 +1218,7 @@ fn prepare_operation_sync(
 			Some(_) => None,
 		},
 	};
+
 	if let Some(rejection) = rejection {
 		return Ok(AccountLifecycleMutationOutcome::Rejected {
 			rejection,
@@ -1120,6 +1230,7 @@ fn prepare_operation_sync(
 	}
 
 	let now = unix_micros().map_err(StoreError::from)?;
+
 	connection
 		.execute(
 			"INSERT OR IGNORE INTO account_identities (account_id, created_at_micros)
@@ -1155,6 +1266,7 @@ fn prepare_operation_sync(
 			],
 		)
 		.map_err(sql_error)?;
+
 	Ok(AccountLifecycleMutationOutcome::Applied(AccountLifecycleMutation {
 		account_revision: account.map_or(0, |value| value.revision),
 		phase: AccountOperationPhase::Prepared,
@@ -1172,6 +1284,7 @@ fn enrollment_rejection_sync(
 			.is_some()
 			.then_some(AccountLifecycleRejection::StaleAccount));
 	};
+
 	if !account.tombstoned {
 		return Ok(Some(AccountLifecycleRejection::IdentityConflict));
 	}
@@ -1182,6 +1295,7 @@ fn enrollment_rejection_sync(
 	{
 		return Ok(Some(AccountLifecycleRejection::StaleAccount));
 	}
+
 	let previous = tombstone_predecessor_credential_sync(
 		connection,
 		&preparation.account_id,
@@ -1196,6 +1310,7 @@ fn enrollment_rejection_sync(
 		.target
 		.as_ref()
 		.ok_or(StoreError::InvalidInput("account operation target is absent"))?;
+
 	Ok((target.version != successor || target.provider != previous.provider)
 		.then_some(AccountLifecycleRejection::StaleAccount))
 }
@@ -1226,12 +1341,14 @@ fn validate_reauthentication_takeover_sync(
 		&& recovery.superseded_by_operation_id.is_none()
 		&& recovery.expected_account_revision == preparation.expected_account_revision
 		&& recovery.expected == preparation.expected;
+
 	if !exact_ambiguity {
 		return Ok(Some(AccountLifecycleMutationOutcome::Rejected {
 			rejection: AccountLifecycleRejection::StaleOperation,
 			actual,
 		}));
 	}
+
 	let active_takeover = connection
 		.query_row(
 			"SELECT phase FROM account_operations
@@ -1242,6 +1359,7 @@ fn validate_reauthentication_takeover_sync(
 		)
 		.optional()
 		.map_err(sql_error)?;
+
 	if let Some(phase) = active_takeover {
 		return Ok(Some(AccountLifecycleMutationOutcome::Rejected {
 			rejection: AccountLifecycleRejection::OperationUnsettled,
@@ -1251,6 +1369,7 @@ fn validate_reauthentication_takeover_sync(
 			},
 		}));
 	}
+
 	Ok(None)
 }
 
@@ -1262,6 +1381,7 @@ fn advance_operation_sync(
 	recovery_code: Option<&str>,
 ) -> Result<AccountLifecycleMutationOutcome, StoreError> {
 	validate_transition_recovery_shape(target, recovery_code)?;
+
 	let Some(operation) = read_operation_sync(connection, operation_id)? else {
 		return Ok(AccountLifecycleMutationOutcome::Rejected {
 			rejection: AccountLifecycleRejection::OperationMissing,
@@ -1269,6 +1389,7 @@ fn advance_operation_sync(
 		});
 	};
 	let actual = mutation_for(connection, &operation.account_id, operation.phase)?;
+
 	if operation.phase == target {
 		return Ok(AccountLifecycleMutationOutcome::Replayed(actual));
 	}
@@ -1286,6 +1407,7 @@ fn advance_operation_sync(
 	{
 		return Ok(AccountLifecycleMutationOutcome::Rejected { rejection, actual });
 	}
+
 	let now = unix_micros().map_err(StoreError::from)?;
 	let completed =
 		matches!(target, AccountOperationPhase::Committed | AccountOperationPhase::Cancelled)
@@ -1305,9 +1427,11 @@ fn advance_operation_sync(
 			],
 		)
 		.map_err(sql_error)?;
+
 	if changed != 1 {
 		return Err(incompatible("account operation transition"));
 	}
+
 	Ok(AccountLifecycleMutationOutcome::Applied(mutation_for(
 		connection,
 		&operation.account_id,
@@ -1321,28 +1445,34 @@ fn commit_account_operation(
 	operation: &AccountOperation,
 ) -> Result<Option<AccountLifecycleRejection>, StoreError> {
 	let now = unix_micros().map_err(StoreError::from)?;
+
 	if let Some(rejection) = validate_reauthentication_takeover_commit(connection, operation)? {
 		return Ok(Some(rejection));
 	}
+
 	match operation.kind {
 		AccountOperationKind::Enroll | AccountOperationKind::Import => {
 			let Some(target) = operation.target.as_ref() else {
 				return Ok(Some(AccountLifecycleRejection::InvalidRequest));
 			};
+
 			if credential_binding_sync(connection, &operation.account_id)?.as_ref() != Some(target)
 			{
 				return Ok(Some(AccountLifecycleRejection::StaleAccount));
 			}
+
 			let label = crate::account_alias::for_enrollment(connection, &target.provider)
 				.map_err(StoreError::from)?;
 			let enabled = operation
 				.requested_enabled
 				.ok_or(StoreError::InvalidInput("account enablement is absent"))?;
+
 			match account_base_sync(connection, &operation.account_id)? {
 				None => {
 					if operation.expected_account_revision.is_some() || target.version.get() != 1 {
 						return Ok(Some(AccountLifecycleRejection::StaleAccount));
 					}
+
 					connection
 						.execute(
 							"INSERT INTO accounts (
@@ -1368,15 +1498,18 @@ fn commit_account_operation(
 					{
 						return Ok(Some(AccountLifecycleRejection::StaleAccount));
 					}
+
 					let previous = tombstone_predecessor_credential_sync(
 						connection,
 						&operation.account_id,
 						account.revision,
 						&target.provider,
 					)?;
+
 					if previous.version.successor().ok() != Some(target.version) {
 						return Ok(Some(AccountLifecycleRejection::StaleAccount));
 					}
+
 					let changed = connection
 						.execute(
 							"UPDATE accounts
@@ -1397,15 +1530,18 @@ fn commit_account_operation(
 							],
 						)
 						.map_err(sql_error)?;
+
 					if changed != 1 {
 						return Ok(Some(AccountLifecycleRejection::StaleAccount));
 					}
 				},
 				Some(_) => return Ok(Some(AccountLifecycleRejection::IdentityConflict)),
 			}
+
 			let position: i64 = connection
 				.query_row("SELECT COUNT(*) FROM account_routing_order", [], |row| row.get(0))
 				.map_err(sql_error)?;
+
 			connection
 				.execute(
 					"INSERT INTO account_routing_order (account_id, position, updated_at_micros)
@@ -1413,16 +1549,19 @@ fn commit_account_operation(
 					params![operation.account_id.as_str(), position, now],
 				)
 				.map_err(sql_error)?;
+
 			bump_routing_revision(connection, now)?;
 		},
 		AccountOperationKind::Refresh => {
 			let Some(target) = operation.target.as_ref() else {
 				return Ok(Some(AccountLifecycleRejection::InvalidRequest));
 			};
+
 			if credential_binding_sync(connection, &operation.account_id)?.as_ref() != Some(target)
 			{
 				return Ok(Some(AccountLifecycleRejection::StaleAccount));
 			}
+
 			let changed = connection
 				.execute(
 					"UPDATE accounts SET revision = revision + 1, provider = ?1,
@@ -1437,6 +1576,7 @@ fn commit_account_operation(
 					],
 				)
 				.map_err(sql_error)?;
+
 			if changed != 1 {
 				return Ok(Some(AccountLifecycleRejection::AccountMissing));
 			}
@@ -1451,12 +1591,14 @@ fn commit_account_operation(
 					|row| row.get(0),
 				)
 				.map_err(sql_error)?;
+
 			if in_use {
 				return Ok(Some(AccountLifecycleRejection::AccountInUse));
 			}
 			if credential_binding_sync(connection, &operation.account_id)?.is_some() {
 				return Ok(Some(AccountLifecycleRejection::StaleAccount));
 			}
+
 			let changed = connection
 				.execute(
 					"UPDATE accounts SET enabled = 0, revision = revision + 1,
@@ -1466,16 +1608,20 @@ fn commit_account_operation(
 					params![now, operation.account_id.as_str()],
 				)
 				.map_err(sql_error)?;
+
 			if changed != 1 {
 				return Ok(Some(AccountLifecycleRejection::AccountMissing));
 			}
+
 			connection
 				.execute(
 					"DELETE FROM account_routing_order WHERE account_id = ?1",
 					params![operation.account_id.as_str()],
 				)
 				.map_err(sql_error)?;
+
 			compact_routing_order(connection, now)?;
+
 			connection
 				.execute(
 					"UPDATE account_routing_control
@@ -1485,10 +1631,13 @@ fn commit_account_operation(
 					params![operation.account_id.as_str()],
 				)
 				.map_err(sql_error)?;
+
 			bump_routing_revision(connection, now)?;
 		},
 	}
+
 	record_reauthentication_supersession(connection, operation, now)?;
+
 	Ok(None)
 }
 
@@ -1512,6 +1661,7 @@ fn validate_reauthentication_takeover_commit(
 		&& recovery.superseded_by_operation_id.is_none()
 		&& recovery.expected_account_revision == operation.expected_account_revision
 		&& recovery.expected == operation.expected;
+
 	Ok((!exact_ambiguity).then_some(AccountLifecycleRejection::StaleOperation))
 }
 
@@ -1534,6 +1684,7 @@ fn record_reauthentication_supersession(
 			params![operation.operation_id.as_str(), now, recovery_operation_id.as_str()],
 		)
 		.map_err(sql_error)?;
+
 	if changed == 1 { Ok(()) } else { Err(incompatible("account reauthentication supersession")) }
 }
 
@@ -1552,6 +1703,7 @@ fn set_operation_target_sync(
 		});
 	};
 	let actual = mutation_for(connection, &operation.account_id, operation.phase)?;
+
 	if operation.target.as_ref() == Some(target) {
 		return Ok(AccountLifecycleMutationOutcome::Replayed(actual));
 	}
@@ -1565,6 +1717,7 @@ fn set_operation_target_sync(
 			actual,
 		});
 	}
+
 	connection
 		.execute(
 			"UPDATE account_operations SET target_credential_json = ?1, updated_at_micros = ?2
@@ -1577,6 +1730,7 @@ fn set_operation_target_sync(
 			],
 		)
 		.map_err(sql_error)?;
+
 	Ok(AccountLifecycleMutationOutcome::Applied(actual))
 }
 
@@ -1663,10 +1817,12 @@ pub(crate) fn read_account_registry_sync(
 				|row| row.get(0),
 			)
 			.map_err(sql_error)?;
+
 		if count > i64::from(limit) {
 			return Err(StoreError::CapacityExhausted("account registry"));
 		}
 	}
+
 	let capability_ready: bool = connection
 		.query_row(
 			"SELECT EXISTS (
@@ -1704,6 +1860,7 @@ pub(crate) fn read_account_registry_sync(
 		})
 		.map_err(sql_error)?;
 	let bases = rows.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
+
 	bases.into_iter().map(|base| account_from_base(connection, base, capability_ready)).collect()
 }
 
@@ -1739,6 +1896,7 @@ fn account_from_base(
 			_ => return Err(incompatible("account store observation")),
 		}
 	};
+
 	Ok(AccountRecord {
 		account_id: account_id.clone(),
 		label: base.label,
@@ -1812,17 +1970,20 @@ fn resolve_account_enrollment_sync(
 	let account_id = AccountId::new(existing).map_err(|_| incompatible("account identity"))?;
 	let account = account_base_sync(connection, &account_id)?
 		.ok_or_else(|| incompatible("account enrollment resolution"))?;
+
 	if !account.tombstoned {
 		return Ok(AccountEnrollmentResolution::AlreadyEnrolled {
 			account_id,
 			account_revision: account.revision,
 		});
 	}
+
 	if let Some(current) = credential_binding_sync(connection, &account_id)? {
 		let unsettled = unsettled_operation_sync(connection, &account_id)?
 			.ok_or_else(|| incompatible("tombstoned account credential state"))?;
 		let operation = read_operation_sync(connection, &unsettled.operation_id)?
 			.ok_or_else(|| incompatible("tombstoned account operation state"))?;
+
 		if !matches!(operation.kind, AccountOperationKind::Enroll | AccountOperationKind::Import)
 			|| operation.target.as_ref() != Some(&current)
 			|| operation.expected_account_revision != Some(account.revision)
@@ -1830,8 +1991,10 @@ fn resolve_account_enrollment_sync(
 			return Err(incompatible("tombstoned account enrollment state"));
 		}
 	}
+
 	let previous_credential =
 		tombstone_predecessor_credential_sync(connection, &account_id, account.revision, provider)?;
+
 	Ok(AccountEnrollmentResolution::Restore {
 		account_id,
 		account_revision: account.revision,
@@ -1844,6 +2007,7 @@ fn is_legacy_tombstone_enrollment_collision_sync(
 	operation: &AccountOperation,
 ) -> Result<bool, StoreError> {
 	const RECOVERY_CODE: &str = "tombstone_enrollment_collision";
+
 	if !matches!(operation.kind, AccountOperationKind::Enroll | AccountOperationKind::Import)
 		|| !matches!(
 			operation.phase,
@@ -1858,7 +2022,9 @@ fn is_legacy_tombstone_enrollment_collision_sync(
 	{
 		return Ok(false);
 	}
+
 	let Some(target) = operation.target.as_ref() else { return Ok(false) };
+
 	if target.version.get() != 1 || account_base_sync(connection, &operation.account_id)?.is_some()
 	{
 		return Ok(false);
@@ -1869,6 +2035,7 @@ fn is_legacy_tombstone_enrollment_collision_sync(
 	{
 		return Ok(false);
 	}
+
 	let tombstone = connection
 		.query_row(
 			"SELECT account_id, revision FROM accounts
@@ -1900,6 +2067,7 @@ fn is_legacy_tombstone_enrollment_collision_sync(
 			|row| row.get(0),
 		)
 		.map_err(sql_error)?;
+
 	Ok(!referenced)
 }
 
@@ -1927,11 +2095,13 @@ fn tombstone_predecessor_credential_sync(
 		.ok_or_else(|| incompatible("tombstoned account credential history"))?;
 	let predecessor_revision =
 		predecessor_revision.ok_or_else(|| incompatible("tombstoned account revision history"))?;
+
 	if predecessor_revision.checked_add(1) != Some(account_revision)
 		|| binding.provider != *provider
 	{
 		return Err(incompatible("tombstoned account binding history"));
 	}
+
 	Ok(binding)
 }
 
@@ -2025,6 +2195,7 @@ fn quota_observation_sync(
 		return AccountQuotaWindowObservation::unknown(duration)
 			.map_err(|_| incompatible("quota duration"));
 	};
+
 	if not_applicable {
 		if duration != AccountQuotaWindow::FIVE_HOURS_MINUTES
 			|| used.is_some()
@@ -2034,11 +2205,14 @@ fn quota_observation_sync(
 		{
 			return Err(incompatible("quota absence shape"));
 		}
+
 		let now = unix_micros().map_err(StoreError::from)?;
+
 		if observed > now || observed.saturating_add(QUOTA_FRESHNESS_MICROS) < now {
 			return AccountQuotaWindowObservation::unknown(duration)
 				.map_err(|_| incompatible("quota duration"));
 		}
+
 		return Ok(AccountQuotaWindowObservation {
 			duration_minutes: duration,
 			observed_at_unix_micros: Some(observed),
@@ -2049,6 +2223,7 @@ fn quota_observation_sync(
 		return AccountQuotaWindowObservation::unknown(duration)
 			.map_err(|_| incompatible("quota duration"));
 	}
+
 	let disposition = match (used, resets, error.as_deref()) {
 		(None, None, Some(error)) => AccountQuotaDisposition::Error(parse_quota_error(error)?),
 		(Some(used), Some(resets), None) => {
@@ -2059,6 +2234,7 @@ fn quota_observation_sync(
 			)
 			.map_err(|_| incompatible("quota window"))?;
 			let now = unix_micros().map_err(StoreError::from)?;
+
 			if resets <= now || observed.saturating_add(QUOTA_FRESHNESS_MICROS) < now {
 				AccountQuotaDisposition::Stale(fact)
 			} else {
@@ -2067,6 +2243,7 @@ fn quota_observation_sync(
 		},
 		_ => return Err(incompatible("quota observation shape")),
 	};
+
 	Ok(AccountQuotaWindowObservation {
 		duration_minutes: duration,
 		observed_at_unix_micros: Some(observed),
@@ -2105,6 +2282,7 @@ fn read_routing_control_sync(connection: &Connection) -> Result<AccountRoutingCo
 		),
 		_ => return Err(incompatible("account selection mode")),
 	};
+
 	Ok(AccountRoutingControl { revision, mode, order })
 }
 
@@ -2120,6 +2298,7 @@ fn set_account_enabled_sync(
 			revision: 0,
 		});
 	};
+
 	if account.tombstoned {
 		return Ok(AccountAdministrationOutcome::Rejected {
 			rejection: AccountLifecycleRejection::AccountMissing,
@@ -2132,9 +2311,11 @@ fn set_account_enabled_sync(
 			revision: account.revision,
 		});
 	}
+
 	let revision = expected_revision
 		.checked_add(1)
 		.ok_or(StoreError::CapacityExhausted("account revision"))?;
+
 	connection
 		.execute(
 			"UPDATE accounts SET enabled = ?1, revision = ?2, updated_at_micros = ?3
@@ -2148,6 +2329,7 @@ fn set_account_enabled_sync(
 			],
 		)
 		.map_err(sql_error)?;
+
 	Ok(AccountAdministrationOutcome::Updated { revision })
 }
 
@@ -2158,20 +2340,25 @@ fn set_fixed_routing_sync(
 	expected_account_revision: i64,
 ) -> Result<RoutingControlOutcome, StoreError> {
 	let routing = read_routing_control_sync(connection)?;
+
 	if routing.revision != expected_routing_revision {
 		return Ok(RoutingControlOutcome::StaleRoutingControl { revision: routing.revision });
 	}
+
 	let Some(account) = account_base_sync(connection, account_id)? else {
 		return Ok(RoutingControlOutcome::AccountMissing);
 	};
+
 	if account.tombstoned {
 		return Ok(RoutingControlOutcome::AccountMissing);
 	}
 	if account.revision != expected_account_revision {
 		return Ok(RoutingControlOutcome::StaleAccount { revision: account.revision });
 	}
+
 	let revision =
 		routing.revision.checked_add(1).ok_or(StoreError::CapacityExhausted("routing revision"))?;
+
 	connection
 		.execute(
 			"UPDATE account_routing_control SET mode = 'fixed', fixed_account_id = ?1,
@@ -2184,6 +2371,7 @@ fn set_fixed_routing_sync(
 			],
 		)
 		.map_err(sql_error)?;
+
 	Ok(RoutingControlOutcome::Updated { routing: read_routing_control_sync(connection)? })
 }
 
@@ -2194,12 +2382,15 @@ fn route_fixed_routing_sync(
 	expected_account_revision: i64,
 ) -> Result<RoutingControlOutcome, StoreError> {
 	let routing = read_routing_control_sync(connection)?;
+
 	if routing.revision != expected_routing_revision {
 		return Ok(RoutingControlOutcome::StaleRoutingControl { revision: routing.revision });
 	}
+
 	let Some(account) = account_base_sync(connection, account_id)? else {
 		return Ok(RoutingControlOutcome::AccountMissing);
 	};
+
 	if account.tombstoned {
 		return Ok(RoutingControlOutcome::AccountMissing);
 	}
@@ -2209,6 +2400,7 @@ fn route_fixed_routing_sync(
 	if routing.mode == AccountSelectionMode::Fixed(account_id.clone()) {
 		return Ok(RoutingControlOutcome::Updated { routing });
 	}
+
 	set_fixed_routing_sync(
 		connection,
 		expected_routing_revision,
@@ -2222,11 +2414,14 @@ fn set_balanced_routing_sync(
 	expected_routing_revision: i64,
 ) -> Result<RoutingControlOutcome, StoreError> {
 	let routing = read_routing_control_sync(connection)?;
+
 	if routing.revision != expected_routing_revision {
 		return Ok(RoutingControlOutcome::StaleRoutingControl { revision: routing.revision });
 	}
+
 	let revision =
 		routing.revision.checked_add(1).ok_or(StoreError::CapacityExhausted("routing revision"))?;
+
 	connection
 		.execute(
 			"UPDATE account_routing_control SET mode = 'balanced', fixed_account_id = NULL,
@@ -2234,6 +2429,7 @@ fn set_balanced_routing_sync(
 			params![revision, unix_micros().map_err(StoreError::from)?, expected_routing_revision,],
 		)
 		.map_err(sql_error)?;
+
 	Ok(RoutingControlOutcome::Updated { routing: read_routing_control_sync(connection)? })
 }
 
@@ -2243,16 +2439,22 @@ fn set_account_order_sync(
 	order: &[AccountId],
 ) -> Result<RoutingControlOutcome, StoreError> {
 	let routing = read_routing_control_sync(connection)?;
+
 	if routing.revision != expected_routing_revision {
 		return Ok(RoutingControlOutcome::StaleRoutingControl { revision: routing.revision });
 	}
+
 	let visible = routing.order.iter().cloned().collect::<BTreeSet<_>>();
 	let proposed = order.iter().cloned().collect::<BTreeSet<_>>();
+
 	if visible != proposed || proposed.len() != order.len() {
 		return Ok(RoutingControlOutcome::InvalidOrder { revision: routing.revision });
 	}
+
 	let now = unix_micros().map_err(StoreError::from)?;
+
 	connection.execute("DELETE FROM account_routing_order", []).map_err(sql_error)?;
+
 	for (position, account_id) in order.iter().enumerate() {
 		connection
 			.execute(
@@ -2267,7 +2469,9 @@ fn set_account_order_sync(
 			)
 			.map_err(sql_error)?;
 	}
+
 	bump_routing_revision(connection, now)?;
+
 	Ok(RoutingControlOutcome::Updated { routing: read_routing_control_sync(connection)? })
 }
 
@@ -2277,7 +2481,9 @@ fn compact_routing_order(connection: &Connection, now: i64) -> Result<(), StoreE
 		.map_err(sql_error)?;
 	let rows = statement.query_map([], |row| row.get::<_, String>(0)).map_err(sql_error)?;
 	let ids = rows.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
+
 	drop(statement);
+
 	connection
 		.execute(
 			"UPDATE account_routing_order SET position = position + ?1, updated_at_micros = ?2",
@@ -2288,6 +2494,7 @@ fn compact_routing_order(connection: &Connection, now: i64) -> Result<(), StoreE
 			],
 		)
 		.map_err(sql_error)?;
+
 	for (position, account_id) in ids.iter().enumerate() {
 		connection
 			.execute(
@@ -2302,6 +2509,7 @@ fn compact_routing_order(connection: &Connection, now: i64) -> Result<(), StoreE
 			)
 			.map_err(sql_error)?;
 	}
+
 	Ok(())
 }
 
@@ -2313,6 +2521,7 @@ fn bump_routing_revision(connection: &Connection, now: i64) -> Result<(), StoreE
 			params![now],
 		)
 		.map_err(sql_error)?;
+
 	Ok(())
 }
 
@@ -2367,6 +2576,7 @@ fn parse_binding_json(value: Option<&str>) -> Result<Option<CredentialBinding>, 
 		.and_then(Value::as_u64)
 		.and_then(|value| i64::try_from(value).ok())
 		.ok_or_else(|| incompatible("credential binding version"))?;
+
 	binding_from_parts(
 		schema,
 		version,
@@ -2398,6 +2608,7 @@ fn binding_from_parts(
 		"chatgpt" => AccountProvider::Chatgpt,
 		_ => return Err(incompatible("credential provider")),
 	};
+
 	Ok(CredentialBinding {
 		schema_version: CredentialStoreSchemaVersion::new(
 			u16::try_from(schema).map_err(|_| incompatible("credential schema"))?,
@@ -2420,8 +2631,10 @@ fn validate_preparation(preparation: &AccountOperationPreparation) -> Result<(),
 	if preparation.expected_account_revision.is_some_and(|revision| revision < 1) {
 		return Err(StoreError::InvalidInput("expected account revision must be positive"));
 	}
+
 	let new =
 		matches!(preparation.kind, AccountOperationKind::Enroll | AccountOperationKind::Import);
+
 	if new
 		&& (preparation.display_label.is_none()
 			|| preparation.enabled.is_none()
@@ -2433,6 +2646,7 @@ fn validate_preparation(preparation: &AccountOperationPreparation) -> Result<(),
 	if new {
 		let target = preparation.target.as_ref().expect("new operation target is present");
 		let fresh = preparation.expected_account_revision.is_none();
+
 		if fresh != (target.version.get() == 1) {
 			return Err(StoreError::InvalidInput("account operation version is invalid"));
 		}
@@ -2460,6 +2674,7 @@ fn validate_preparation(preparation: &AccountOperationPreparation) -> Result<(),
 		}) {
 		return Err(StoreError::InvalidInput("credential binding is invalid"));
 	}
+
 	Ok(())
 }
 
@@ -2541,6 +2756,7 @@ fn validate_registry_snapshot(
 	let universe =
 		accounts.iter().map(|account| account.account_id.clone()).collect::<BTreeSet<_>>();
 	let ordered = routing.order.iter().cloned().collect::<BTreeSet<_>>();
+
 	if universe.len() != accounts.len()
 		|| ordered.len() != routing.order.len()
 		|| universe != ordered
@@ -2548,11 +2764,13 @@ fn validate_registry_snapshot(
 	{
 		return Err(incompatible("account registry routing universe"));
 	}
+
 	if let AccountSelectionMode::Fixed(account_id) = &routing.mode
 		&& !universe.contains(account_id)
 	{
 		return Err(incompatible("fixed account routing target"));
 	}
+
 	Ok(())
 }
 
@@ -2581,9 +2799,12 @@ fn allowed_operation_transition(
 
 pub(crate) fn random_uuid_v4() -> Result<String, StoreError> {
 	let mut bytes = [0_u8; 16];
+
 	getrandom::fill(&mut bytes).map_err(|_| StoreError::Database(DatabaseError::Unavailable))?;
+
 	bytes[6] = (bytes[6] & 0x0f) | 0x40;
 	bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
 	Ok(format!(
 		"{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
 		bytes[0],
@@ -2608,9 +2829,11 @@ pub(crate) fn random_uuid_v4() -> Result<String, StoreError> {
 fn validate_account_command_response(value: &Value) -> Result<(), StoreError> {
 	let bytes = serde_json::to_vec(value)
 		.map_err(|_| StoreError::InvalidInput("account command result is invalid"))?;
+
 	if bytes.len() > 256 * 1024 {
 		return Err(StoreError::InvalidInput("account command result is invalid"));
 	}
+
 	ensure_credential_negative_json(value)
 }
 
@@ -2621,6 +2844,7 @@ fn ensure_credential_negative_json(value: &Value) -> Result<(), StoreError> {
 				if decodex_core::is_credential_metadata_key(key) {
 					return Err(StoreError::CredentialRejected);
 				}
+
 				ensure_credential_negative_json(value)?;
 			},
 		Value::Array(entries) =>
@@ -2632,6 +2856,7 @@ fn ensure_credential_negative_json(value: &Value) -> Result<(), StoreError> {
 		},
 		_ => {},
 	}
+
 	Ok(())
 }
 
@@ -2753,12 +2978,16 @@ mod optional_quota_tests {
 		let store = SqliteStore::open(&root.paths()).expect("store");
 		let account = AccountId::new("10000000-0000-4000-8000-000000000001").expect("account");
 		let id = account.clone();
+
 		store.run(move |connection| {
 			connection.execute("INSERT INTO account_identities VALUES (?1,1)",[id.as_str()]).expect("identity");
 			connection.execute("INSERT INTO accounts (account_id,display_label,enabled,state,revision,provider,provider_account_id,created_at_micros,updated_at_micros) VALUES (?1,'test',1,'available',1,'chatgpt','test-provider',1,1)",[id.as_str()]).expect("account row");
+
 			Ok(())
 		}).await.expect("fixture");
+
 		let now = unix_micros().expect("clock");
+
 		store
 			.observe_account_quota(
 				&account,
@@ -2768,6 +2997,7 @@ mod optional_quota_tests {
 			.await
 			.expect("depleted observation");
 		store.observe_account_quota_absence(&account, 300, now).await.expect("absence observation");
+
 		assert!(store.observe_account_quota_absence(&account, 10080, now).await.is_err());
 		assert!(store.observe_account_quota_absence(&account, 300, now - 1).await.is_err());
 		assert!(
@@ -2791,26 +3021,40 @@ mod optional_quota_tests {
 				.await
 				.is_err()
 		);
+
 		let reopened = SqliteStore::open(&root.paths()).expect("reopen");
 		let id = account.clone();
+
 		reopened.run(move |connection| {
 			let observation = quota_observation_sync(connection,&id,300)?;
+
 			assert_eq!(observation.disposition,AccountQuotaDisposition::NotApplicable);
 			assert_eq!(observation.observed_at_unix_micros,Some(now));
 			assert_eq!(observation.current(),None);
 			assert_eq!(quota_observation_sync(connection,&id,10080)?.disposition,AccountQuotaDisposition::Unknown);
+
 			let stored: (Option<i64>,Option<i64>,Option<String>,i64) = connection.query_row("SELECT used_percent,resets_at_micros,error_code,not_applicable FROM account_quota_facts WHERE duration_minutes=300",[],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).expect("stored marker");
+
 			assert_eq!(stored,(None,None,None,1));
+
 			let state:String=connection.query_row("SELECT state FROM accounts",[],|row|row.get(0)).expect("account state");
+
 			assert_eq!(state,"available");
+
 			connection.execute("UPDATE account_quota_facts SET observed_at_micros=?1",[now+QUOTA_FRESHNESS_MICROS]).expect("future observation");
+
 			assert_eq!(quota_observation_sync(connection,&id,300)?.disposition,AccountQuotaDisposition::Unknown);
+
 			connection.execute("UPDATE account_quota_facts SET observed_at_micros=?1",[now-QUOTA_FRESHNESS_MICROS-1]).expect("expire observation");
+
 			let stale=quota_observation_sync(connection,&id,300)?;
+
 			assert_eq!(stale.disposition,AccountQuotaDisposition::Unknown);
 			assert_eq!(stale.observed_at_unix_micros,None);
+
 			Ok(())
 		}).await.expect("absence readback");
+
 		store
 			.observe_account_quota_error(
 				&account,
@@ -2820,7 +3064,9 @@ mod optional_quota_tests {
 			)
 			.await
 			.expect("newer error replaces absence");
+
 		let id = account.clone();
+
 		store
 			.run(move |connection| {
 				assert_eq!(
@@ -2829,6 +3075,7 @@ mod optional_quota_tests {
 						AccountQuotaObservationError::ProviderUnavailable
 					)
 				);
+
 				Ok(())
 			})
 			.await
@@ -2844,6 +3091,7 @@ mod optional_quota_tests {
 			.expect("newer current replaces absence");
 		store.run(move |connection| {
 			assert!(matches!(quota_observation_sync(connection,&account,300)?.disposition,AccountQuotaDisposition::Current(fact) if fact.used_percent==7));
+
 			Ok(())
 		}).await.expect("current readback");
 	}
@@ -2874,10 +3122,13 @@ impl SqliteStore {
 		) {
 			return Err(StoreError::InvalidInput("invalid account notification kind"));
 		}
+
 		let account_id = account_id.as_str().to_owned();
 		let operation_key = operation_key.map(str::to_owned);
+
 		self.run(move |connection| {
 			let row = connection.query_row("SELECT idempotency_key,expected_revision,reserved_at_micros,response_json FROM command_receipts WHERE protocol=?1 AND operation=?2 AND entity_id=?3 AND (?4 IS NULL OR idempotency_key=?4) ORDER BY reserved_at_micros DESC,idempotency_key DESC LIMIT 1", params![ACCOUNT_COMMAND_PROTOCOL,kind.as_str(),account_id,operation_key], |row| Ok((row.get::<_,String>(0)?,row.get::<_,i64>(1)?,row.get::<_,i64>(2)?,row.get::<_,Option<String>>(3)?))).optional().map_err(sql_error)?;
+
 			row.map(|(operation_key,account_revision,reserved_at_unix_micros,response)| Ok(AccountNudgeReceipt { operation_key, account_revision, reserved_at_unix_micros, response: response.map(|s| serde_json::from_str(&s).map_err(|_| incompatible("account notification receipt"))).transpose()? })).transpose()
 		}).await
 	}
@@ -2902,20 +3153,28 @@ mod nudge_receipt_tests {
 			)
 			.await
 			.unwrap();
+
 		assert!(matches!(claim, AccountCommandReceiptClaim::Owned(_)));
 		assert!(
 			matches!(store.reserve_account_command(&request, AccountCommandKind::NotifyWorkspaceOwner, account, Some(1)).await.unwrap(), AccountCommandReceiptClaim::Pending(value) if value == serde_json::json!({"status":"uncertain"}))
 		);
+
 		store.run(|connection| {
 			connection.execute("UPDATE command_receipts SET reserved_at_micros=1,claim_expires_at_micros=2 WHERE idempotency_key='nudge-once'", []).map_err(sql_error)?;
+
 			Ok(())
 		}).await.unwrap();
+
 		drop(store);
+
 		let store = SqliteStore::open_test(&path).unwrap();
+
 		assert!(
 			matches!(store.reserve_account_command(&request, AccountCommandKind::NotifyWorkspaceOwner, account, Some(1)).await.unwrap(), AccountCommandReceiptClaim::Pending(value) if value == serde_json::json!({"status":"uncertain"}))
 		);
+
 		let different = CommandIdentity::new("nudge-once", b"different-credit-type").unwrap();
+
 		assert!(matches!(
 			store
 				.reserve_account_command(
@@ -2951,6 +3210,7 @@ mod nudge_receipt_tests {
 			),
 		);
 		let claims = [a.unwrap(), b.unwrap()];
+
 		assert_eq!(
 			claims
 				.iter()
@@ -2982,6 +3242,7 @@ mod nudge_receipt_tests {
 		};
 		let pending =
 			store.read_account_nudge_receipt(&account, kind, None).await.unwrap().unwrap();
+
 		assert_eq!(pending.operation_key, "usage-increase");
 		assert_eq!(pending.account_revision, 2);
 		assert!(pending.response.is_none());
@@ -3008,15 +3269,18 @@ mod nudge_receipt_tests {
 			store.reserve_account_command(&request, kind, account.as_str(), Some(2)).await.unwrap(),
 			AccountCommandReceiptClaim::Pending(_)
 		));
+
 		store
 			.complete_account_command(lease, &serde_json::json!({"status":"cooldown_active"}))
 			.await
 			.unwrap();
+
 		let completed = store
 			.read_account_nudge_receipt(&account, kind, Some("usage-increase"))
 			.await
 			.unwrap()
 			.unwrap();
+
 		assert_eq!(completed.response, Some(serde_json::json!({"status":"cooldown_active"})));
 	}
 
@@ -3040,7 +3304,9 @@ mod nudge_receipt_tests {
 			panic!("owned")
 		};
 		let response = serde_json::json!({"status":"sent"});
+
 		store.complete_account_command(lease, &response).await.unwrap();
+
 		assert!(
 			matches!(store.reserve_account_command(&request, AccountCommandKind::NotifyWorkspaceOwner, account, Some(1)).await.unwrap(), AccountCommandReceiptClaim::Replayed(value) if value == response)
 		);

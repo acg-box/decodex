@@ -54,9 +54,11 @@ pub(crate) fn configure(connection: &Connection) -> Result<(), DatabaseError> {
 			 PRAGMA wal_autocheckpoint = 1000;",
 		)
 		.map_err(sqlite_error)?;
+
 	let journal_mode: String = connection
 		.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))
 		.map_err(sqlite_error)?;
+
 	if !journal_mode.eq_ignore_ascii_case("wal") {
 		return Err(DatabaseError::Incompatible);
 	}
@@ -69,6 +71,7 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> 
 	let application_id: i64 = connection
 		.query_row("PRAGMA application_id", [], |row| row.get(0))
 		.map_err(sqlite_error)?;
+
 	if user_tables == 0 {
 		if application_id != 0 && application_id != APPLICATION_ID {
 			return Err(DatabaseError::Incompatible);
@@ -78,6 +81,7 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> 
 	}
 
 	verify_applied_migrations(connection)?;
+
 	for migration in MIGRATIONS {
 		if migration.version <= applied_version(connection)? {
 			continue;
@@ -86,16 +90,20 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> 
 		if migration.version == 52 {
 			connection.pragma_update(None, "foreign_keys", false).map_err(sqlite_error)?;
 		}
+
 		let applied = (|| -> Result<(), DatabaseError> {
 			let digest = migration_digest(migration.sql);
 			let now = now_micros()?;
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sqlite_error)?;
+
 			transaction.execute_batch(migration.sql).map_err(sqlite_error)?;
+
 			if migration.version == 50 {
 				crate::account_alias::migrate_names(&transaction)?;
 			}
+
 			transaction
 				.execute(
 					"INSERT INTO schema_migrations (version, name, sha256, applied_at_micros)
@@ -109,6 +117,7 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> 
 			transaction
 				.pragma_update(None, "user_version", migration.version)
 				.map_err(sqlite_error)?;
+
 			if migration.version == 52
 				&& transaction
 					.query_row("PRAGMA foreign_key_check", [], |_| Ok(()))
@@ -118,12 +127,16 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> 
 			{
 				return Err(DatabaseError::Incompatible);
 			}
+
 			transaction.commit().map_err(sqlite_error)?;
+
 			Ok(())
 		})();
+
 		if migration.version == 52 {
 			connection.pragma_update(None, "foreign_keys", true).map_err(sqlite_error)?;
 		}
+
 		applied?;
 	}
 
@@ -139,29 +152,37 @@ pub(crate) fn verify(connection: &Connection) -> Result<(), DatabaseError> {
 	{
 		return Err(DatabaseError::Incompatible);
 	}
+
 	verify_applied_migrations(connection)?;
+
 	if applied_version(connection)? != CURRENT_SCHEMA_VERSION {
 		return Err(DatabaseError::Incompatible);
 	}
+
 	let foreign_keys: i64 =
 		connection.query_row("PRAGMA foreign_keys", [], |row| row.get(0)).map_err(sqlite_error)?;
 	let journal_mode: String =
 		connection.query_row("PRAGMA journal_mode", [], |row| row.get(0)).map_err(sqlite_error)?;
 	let synchronous: i64 =
 		connection.query_row("PRAGMA synchronous", [], |row| row.get(0)).map_err(sqlite_error)?;
+
 	if foreign_keys != 1 || !journal_mode.eq_ignore_ascii_case("wal") || synchronous != 2 {
 		return Err(DatabaseError::Incompatible);
 	}
+
 	let quick_check: String = connection
 		.query_row("PRAGMA quick_check(1)", [], |row| row.get(0))
 		.map_err(sqlite_error)?;
+
 	if quick_check != "ok" {
 		return Err(DatabaseError::Corrupt);
 	}
+
 	let foreign_key_violation = connection
 		.query_row("PRAGMA foreign_key_check", [], |_| Ok(()))
 		.optional()
 		.map_err(sqlite_error)?;
+
 	if foreign_key_violation.is_some() || schema_inventory(connection)? != expected_inventory()? {
 		return Err(DatabaseError::Incompatible);
 	}
@@ -177,6 +198,7 @@ fn verify_applied_migrations(connection: &Connection) -> Result<(), DatabaseErro
 			Err(DatabaseError::Incompatible)
 		};
 	}
+
 	let mut statement = connection
 		.prepare("SELECT version, name, sha256 FROM schema_migrations ORDER BY version")
 		.map_err(sqlite_error)?;
@@ -186,11 +208,14 @@ fn verify_applied_migrations(connection: &Connection) -> Result<(), DatabaseErro
 		})
 		.map_err(sqlite_error)?;
 	let applied = rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
+
 	if applied.len() > MIGRATIONS.len() {
 		return Err(DatabaseError::Incompatible);
 	}
+
 	for (index, (version, name, digest)) in applied.iter().enumerate() {
 		let expected = MIGRATIONS.get(index).ok_or(DatabaseError::Incompatible)?;
+
 		if *version != expected.version
 			|| name != expected.name
 			|| digest != &migration_digest(expected.sql)
@@ -206,6 +231,7 @@ fn applied_version(connection: &Connection) -> Result<i64, DatabaseError> {
 	if !migration_table_exists(connection)? {
 		return Ok(0);
 	}
+
 	connection
 		.query_row("SELECT COALESCE(MAX(version), 0) FROM schema_migrations", [], |row| row.get(0))
 		.map_err(sqlite_error)
@@ -236,8 +262,10 @@ fn user_table_count(connection: &Connection) -> Result<i64, DatabaseError> {
 
 fn migration_digest(sql: &str) -> String {
 	let mut digest = Sha256::new();
+
 	digest.update(b"decodex-sqlite-migration-v1\0");
 	digest.update(sql.as_bytes());
+
 	digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -252,9 +280,11 @@ fn now_micros() -> Result<i64, DatabaseError> {
 
 fn expected_inventory() -> Result<Vec<(String, String, String, String)>, DatabaseError> {
 	let connection = Connection::open_in_memory().map_err(sqlite_error)?;
+
 	for migration in MIGRATIONS {
 		connection.execute_batch(migration.sql).map_err(sqlite_error)?;
 	}
+
 	schema_inventory(&connection)
 }
 
@@ -279,6 +309,7 @@ fn schema_inventory(
 			))
 		})
 		.map_err(sqlite_error)?;
+
 	rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
 }
 
