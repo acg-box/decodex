@@ -197,8 +197,6 @@ enum AccountPrivacy {
 }
 
 enum AccountCardReorderLayout {
-	static let coordinateSpaceName = "decodex.account-reorder-list"
-
 	static func constrainedTranslationY(
 		for accountID: String,
 		baseOrder: [String],
@@ -315,27 +313,5 @@ struct AccountIdentityPresentation: Equatable, Sendable {
 			text = alias
 			showsEmail = false
 		}
-	}
-}
-
-struct AccountRowsHeightPreferenceKey: PreferenceKey {
-	static let defaultValue: CGFloat = 0
-
-	static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-		let next = nextValue()
-		if next > 0 {
-			value = next
-		}
-	}
-}
-
-struct AccountCardFramesPreferenceKey: PreferenceKey {
-	static let defaultValue = [String: CGRect]()
-
-	static func reduce(
-		value: inout [String: CGRect],
-		nextValue: () -> [String: CGRect]
-	) {
-		value.merge(nextValue()) { _, newFrame in newFrame }
 	}
 }

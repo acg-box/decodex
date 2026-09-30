@@ -39,6 +39,7 @@ struct ResetCardAccountRow: View {
 	let state: ResetCardAccountState
 	let store: ResetCardStore
 	let showsEmail: Bool
+	let detailsExpanded: Bool?
 	let isAccountCardHovered: Bool
 	let isReorderGestureEnabled: Bool
 	let onReorderDragChanged: (CGFloat) -> Void
@@ -51,12 +52,14 @@ struct ResetCardAccountRow: View {
 	@State private var dismissedResetKey: String?
 	@State private var isReorderHandleHovered = false
 	@State private var isReorderHandleDragging = false
+	@State private var reorderStartScreenY: CGFloat?
 
 	init(
 		state: ResetCardAccountState,
 		store: ResetCardStore,
 		showsEmail: Bool = false,
 		detailedAccountIDs: Binding<Set<String>> = .constant([]),
+		detailsExpanded: Bool? = nil,
 		isAccountCardHovered: Bool = false,
 		isReorderGestureEnabled: Bool = true,
 		onReorderDragChanged: @escaping (CGFloat) -> Void = { _ in },
@@ -65,6 +68,7 @@ struct ResetCardAccountRow: View {
 		self.state = state
 		self.store = store
 		self.showsEmail = showsEmail
+		self.detailsExpanded = detailsExpanded
 		self.isAccountCardHovered = isAccountCardHovered
 		self.isReorderGestureEnabled = isReorderGestureEnabled
 		self.onReorderDragChanged = onReorderDragChanged
@@ -73,45 +77,46 @@ struct ResetCardAccountRow: View {
 	}
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: PanelSpacing.compact) {
-			HStack(alignment: .center, spacing: PanelSpacing.section) {
-				identityHeader
-					.frame(maxWidth: .infinity, alignment: .leading)
-					.frame(height: 20, alignment: .center)
-					.accessibilityLabel(identityAccessibilityLabel)
-					.accessibilityValue(detailsBinding.wrappedValue ? "Expanded" : "Collapsed")
-				HStack(spacing: PanelSpacing.micro) {
-					if store.canReorderAccounts { reorderHandle }
-					if let message = store.message, message.accountID == state.account.accountID,
-						message.tone != .success {
-						InlineAccountFeedback(text: message.text) { store.dismissMessage() }
+		VStack(alignment: .leading, spacing: 0) {
+			VStack(alignment: .leading, spacing: PanelSpacing.compact) {
+				HStack(alignment: .center, spacing: PanelSpacing.section) {
+					identityHeader
+						.frame(maxWidth: .infinity, alignment: .leading)
+						.frame(height: 20, alignment: .center)
+						.accessibilityLabel(identityAccessibilityLabel)
+						.accessibilityValue((detailsExpanded ?? detailsBinding.wrappedValue) ? "Expanded" : "Collapsed")
+					HStack(spacing: PanelSpacing.micro) {
+						if store.canReorderAccounts { reorderHandle }
+						if let message = store.message, message.accountID == state.account.accountID,
+							message.tone != .success {
+							InlineAccountFeedback(text: message.text) { store.dismissMessage() }
+						}
+						if state.requiresLoginRefresh {
+							InlineAccountFeedback(text: "Login refresh required. Sign in again to use this account.", isDestructive: true)
+							AccountRefreshLoginButton(state: state, store: store)
+						} else {
+							AccountPrimaryActionsView(state: state, store: store)
+							AccountPowerButton(state: state, store: store)
+						}
+						AccountUtilityActionsView(state: state, store: store)
 					}
-					if state.requiresLoginRefresh {
-						InlineAccountFeedback(text: "Login refresh required. Sign in again to use this account.", isDestructive: true)
-						AccountRefreshLoginButton(state: state, store: store)
-					} else {
-						AccountPrimaryActionsView(state: state, store: store)
-						AccountPowerButton(state: state, store: store)
-					}
-					AccountUtilityActionsView(state: state, store: store)
+					.fixedSize(horizontal: true, vertical: false)
+					.onTapGesture { } // Disabled controls and the reorder handle do not toggle details.
 				}
-				.fixedSize(horizontal: true, vertical: false)
-				.onTapGesture { } // Disabled controls and the reorder handle do not toggle details.
+				.frame(maxWidth: .infinity, alignment: .leading)
+				if exceptionalStatusText != nil { exceptionalStatus.transition(.panelInline) }
+				if !state.requiresLoginRefresh && hasVisibleQuota {
+					quotaWindows
+					.accessibilityLabel("Account usage details")
+					.opacity(state.account.enabled ? 1 : 0.45)
+				}
 			}
-            .frame(maxWidth: .infinity, alignment: .leading)
-			if exceptionalStatusText != nil { exceptionalStatus.transition(.panelInline) }
-			if !state.requiresLoginRefresh && hasVisibleQuota {
-				quotaWindows
-				.accessibilityLabel("Account usage details")
-				.opacity(state.account.enabled ? 1 : 0.45)
-			}
-			if detailsBinding.wrappedValue {
+			if detailsExpanded ?? detailsBinding.wrappedValue {
 				VStack(alignment: .leading, spacing: PanelSpacing.related) {
 					AccountProfileDetailView(state: state)
 					cardInventory
 				}
-				.padding(.top, PanelSpacing.related)
-				.transition(.panelInline)
+				.padding(.top, PanelSpacing.compact + PanelSpacing.related)
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
@@ -132,6 +137,7 @@ struct ResetCardAccountRow: View {
 			confirmation.retainOnly(Set(targets))
 		}
 		.onDisappear {
+			reorderStartScreenY = nil
 			if isReorderHandleHovered || isReorderHandleDragging { NSCursor.arrow.set() }
 			confirmation.cancelPendingConfirmation()
 			confirmationSecondsRemaining = 0
@@ -147,7 +153,6 @@ struct ResetCardAccountRow: View {
 		.task(id: countdownAttempt) {
 			await runConfirmationCountdown(for: countdownAttempt)
 		}
-		.animation(rowStateAnimation, value: detailedAccountIDs)
 		.animation(rowStateAnimation, value: state.account.enabled)
 		.animation(rowStateAnimation, value: exceptionalStatusText)
 		.animation(rowStateAnimation, value: presentedTargets)
@@ -167,17 +172,20 @@ struct ResetCardAccountRow: View {
 			.highPriorityGesture(
 				DragGesture(
 					minimumDistance: 8,
-					coordinateSpace: .named(
-						AccountCardReorderLayout.coordinateSpaceName
-					)
+					coordinateSpace: .global
 				)
 					.onChanged { value in
 						isReorderHandleDragging = true
                         NSCursor.closedHand.set()
-						onReorderDragChanged(value.translation.height)
+						// Each account has its own hosting view; screen coordinates stay
+						// stable while that view follows the pointer.
+						let pointerY = NSEvent.mouseLocation.y
+						if reorderStartScreenY == nil { reorderStartScreenY = pointerY + value.translation.height }
+						onReorderDragChanged((reorderStartScreenY ?? pointerY) - pointerY)
 					}
 					.onEnded { _ in
 						isReorderHandleDragging = false
+						reorderStartScreenY = nil
                         (isReorderHandleHovered ? NSCursor.openHand : NSCursor.arrow).set()
 						onReorderDragEnded()
 					}

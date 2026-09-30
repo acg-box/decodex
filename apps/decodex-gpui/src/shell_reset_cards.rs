@@ -543,6 +543,40 @@ mod render_tests {
 	use crate::client_lifecycle::ConnectionView;
 	use gpui::{Modifiers, TestAppContext, size};
 	#[gpui::test]
+	fn quota_columns_remain_aligned_when_one_window_is_unavailable(cx: &mut TestAppContext) {
+		let (shell, visual) =
+			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+		shell.update(visual, |shell, cx| {
+			shell.visual_accounts_and_health();
+			shell.accounts.accounts.truncate(1);
+			shell.selected = Destination::Accounts;
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.resize(size(px(1248.), px(840.)));
+			window.draw(cx).clear();
+		});
+		let five = visual.debug_bounds("quota-reset-5h").unwrap();
+		let seven = visual.debug_bounds("quota-reset-7d").unwrap();
+		assert_eq!(five.size.width, seven.size.width);
+		assert_eq!(five.top(), seven.top());
+		for unavailable in [
+			decodex_protocol::AccountQuotaStateDto::NotApplicable,
+			decodex_protocol::AccountQuotaStateDto::Unknown,
+		] {
+			shell.update(visual, |shell, cx| {
+				shell.accounts.accounts[0].five_hour_quota.result = unavailable;
+				cx.notify();
+			});
+			visual.update(|window, cx| {
+				window.draw(cx).clear();
+			});
+			assert_eq!(visual.debug_bounds("quota-reset-5h").unwrap(), five);
+			assert_eq!(visual.debug_bounds("quota-reset-7d").unwrap(), seven);
+		}
+	}
+
+	#[gpui::test]
 	fn account_card_padding_last_row_and_drag_handle_have_distinct_targets(
 		cx: &mut TestAppContext,
 	) {

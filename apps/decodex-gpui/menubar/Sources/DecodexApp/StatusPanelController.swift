@@ -13,7 +13,6 @@ final class StatusPanelController: NSObject {
 	private let fastModeStore: FastModeStore
 	private var isPositioningPanel = false
 	private var isInvalidated = false
-	private var resizeTask: Task<Void, Never>?
 	private var targetContentSize = CGSize.zero
 	private var anchorRetryTask: Task<Void, Never>?
 	private var outsideClickMonitor: Any?
@@ -51,7 +50,6 @@ final class StatusPanelController: NSObject {
 			return
 		}
 		isInvalidated = true
-		resizeTask?.cancel()
 		stopObservingOutsideClicks()
 		anchorRetryTask?.cancel()
 		anchorRetryTask = nil
@@ -88,8 +86,6 @@ final class StatusPanelController: NSObject {
 	}
 
 	private func orderPanelOut() {
-		resizeTask?.cancel()
-		resizeTask = nil
 		targetContentSize = .zero
 		stopObservingOutsideClicks()
 		anchorRetryTask?.cancel()
@@ -202,36 +198,21 @@ final class StatusPanelController: NSObject {
 		let roundedSize = PanelWindowSizingLayout.roundedContentSize(for: size)
 		guard roundedSize != targetContentSize else { return }
 		targetContentSize = roundedSize
-		resizeTask?.cancel()
-		resizeTask = nil
-		guard panel.isVisible, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
-			panel.setContentSize(roundedSize)
-			positionPanel()
-			return
-		}
+		// Commit the compositor canvas before rows move. Drawing the new backing
+		// area immediately prevents the bottom rows from being clipped.
 		let initial = panel.frame
-		let started = ProcessInfo.processInfo.systemUptime
-		resizeTask = Task { @MainActor [weak self] in
-			while !Task.isCancelled {
-				guard let self else { return }
-				let progress = min(1, (ProcessInfo.processInfo.systemUptime - started) / 0.3)
-				let eased = 1 - pow(1 - progress, 3)
-				let width = initial.width + (roundedSize.width - initial.width) * eased
-				let height = initial.height + (roundedSize.height - initial.height) * eased
-				// Commit size and origin together; changing size first exposes an intermediate frame.
-				self.panel.setFrame(NSRect(
-					x: initial.maxX - width, y: initial.maxY - height,
-					width: width, height: height
-				), display: true)
-				if progress >= 1 { self.resizeTask = nil; return }
-				do { try await Task.sleep(for: .milliseconds(8)) } catch { return }
-			}
-		}
+		isPositioningPanel = true
+		panel.setFrame(NSRect(
+			x: initial.maxX - roundedSize.width, y: initial.maxY - roundedSize.height,
+			width: roundedSize.width, height: roundedSize.height
+		), display: true)
+		isPositioningPanel = false
+		if !panel.isVisible { positionPanel() }
 	}
 
 	@discardableResult
 	private func positionPanel() -> Bool {
-		guard isPositioningPanel == false, resizeTask == nil,
+		guard isPositioningPanel == false,
 			let anchorRect = statusItemScreenRect(),
 			let statusWindow = statusItem.button?.window,
 			panel.frame.size != .zero
@@ -395,8 +376,7 @@ private struct StatusPanelRootView: View {
 			fastModeStore: fastModeStore,
 			onContentSizeChange: onContentSizeChange
 		)
-		// Accept the intermediate window height even when content has already expanded.
-		// An implicit minimum lets NSHostingView center the oversized root during resize.
+		// Keep content at the top even when the proposed height is below its ideal size.
 		.frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
 	}
 }

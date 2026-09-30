@@ -851,8 +851,9 @@ impl Shell {
 				}
 			};
 		let primary = visual_account("70000000-0000-4000-8000-000000000001", "Primary", 64, 28, 12);
-		let reserve =
+		let mut reserve =
 			visual_account("70000000-0000-4000-8000-000000000002", "Build reserve", 18, 9, 7);
+		reserve.five_hour_quota.result = AccountQuotaStateDto::NotApplicable;
 		let mut research =
 			visual_account("70000000-0000-4000-8000-000000000003", "Research reserve", 91, 55, 4);
 		research.observed_state = AccountObservedStateDto::AuthFailed;
@@ -3360,22 +3361,17 @@ fn account_pool_summary(
 					.flex()
 					.items_center()
 					.gap(px(8.0))
-					.children(
-						[
-							quota_meter::meter(
-								"5h",
-								account.five_hour_quota,
-								presentation.reset_fill.clone(),
-							),
-							quota_meter::meter(
-								"7d",
-								account.seven_day_quota,
-								presentation.reset_fill.clone(),
-							),
-						]
-						.into_iter()
-						.flatten(),
-					),
+					.child(quota_meter::meter(
+						"5h",
+						account.five_hour_quota,
+						presentation.reset_fill.clone(),
+					))
+					.child(div().w(px(1.)).h(px(14.)).flex_none().mx(px(2.)).bg(rgba(0xffffff26)))
+					.child(quota_meter::meter(
+						"7d",
+						account.seven_day_quota,
+						presentation.reset_fill.clone(),
+					)),
 			)
 		})
 		.when(needs_login, |row| row.child(div().flex_1()))
@@ -3657,11 +3653,6 @@ fn account_row_action(
 				.active(|element| element.opacity(0.9))
 		})
 		.child(label)
-}
-
-#[cfg(test)]
-fn account_quota(label: &'static str, quota: AccountQuotaWindowDto) -> Option<AnyElement> {
-	quota_meter::meter(label, quota, None)
 }
 
 fn account_readiness_label(readiness: AccountLifecycleReadinessDto) -> &'static str {
@@ -6626,54 +6617,6 @@ mod tests {
 			assert_eq!(startup_failure(failure), detail);
 		}
 		assert_eq!(startup_failure(ClientFailure::ServiceVersionMismatch), "Restart Decodex.");
-	}
-
-	#[test]
-	fn account_quota_hides_unavailable_windows() {
-		let quota = |result| AccountQuotaWindowDto {
-			duration_minutes: 300,
-			observed_at_unix_micros: None,
-			result,
-		};
-
-		assert!(account_quota("5 HOUR", quota(AccountQuotaStateDto::Unknown)).is_none());
-		assert!(
-			account_quota(
-				"5 HOUR",
-				AccountQuotaWindowDto {
-					observed_at_unix_micros: Some(1),
-					..quota(AccountQuotaStateDto::NotApplicable)
-				}
-			)
-			.is_none()
-		);
-		assert!(
-			account_quota(
-				"5 HOUR",
-				AccountQuotaWindowDto {
-					observed_at_unix_micros: Some(1),
-					result: AccountQuotaStateDto::Error {
-						error: decodex_protocol::AccountQuotaErrorDto::UnsupportedWindow,
-					},
-					..quota(AccountQuotaStateDto::Unknown)
-				},
-			)
-			.is_none()
-		);
-		assert!(
-			account_quota(
-				"5 HOUR",
-				AccountQuotaWindowDto {
-					observed_at_unix_micros: Some(1),
-					result: AccountQuotaStateDto::Current {
-						used_percent: 42,
-						resets_at_unix_micros: 2,
-					},
-					..quota(AccountQuotaStateDto::Unknown)
-				},
-			)
-			.is_some()
-		);
 	}
 
 	#[test]

@@ -14,6 +14,9 @@ pub(super) struct ResetFill {
 }
 impl ResetFill {
 	fn remaining(&self, quota: AccountQuotaWindowDto, now: Instant, reduced: bool) -> Option<f32> {
+		if quota.result == AccountQuotaStateDto::NotApplicable {
+			return None;
+		}
 		let initial =
 			self.initial.iter().find(|window| window.duration_minutes == quota.duration_minutes)?;
 		let from = remaining(*initial)?;
@@ -66,7 +69,8 @@ impl RenderOnce for QuotaMeter {
 		let now = Instant::now();
 		let reduced = crate::ui_motion::reduced();
 		let animated = self.fill.as_ref().and_then(|fill| fill.remaining(self.quota, now, reduced));
-		let value = animated.or_else(|| remaining(self.quota)).unwrap_or(0.0).clamp(0.0, 100.0);
+		let observed = animated.or_else(|| remaining(self.quota));
+		let value = observed.unwrap_or(0.0).clamp(0.0, 100.0);
 		if !reduced
 			&& animated.is_some()
 			&& self
@@ -76,7 +80,7 @@ impl RenderOnce for QuotaMeter {
 		{
 			window.request_animation_frame();
 		}
-		let color = quota_color(value);
+		let color = if observed.is_some() { quota_color(value) } else { super::WB_TEXT_FAINT };
 		div()
 			.flex_1()
 			.min_w_0()
@@ -86,20 +90,48 @@ impl RenderOnce for QuotaMeter {
 			.font_family(crate::ui_theme::FONT_FAMILY)
 			.text_size(px(10.))
 			.text_color(rgb(super::WB_TEXT_FAINT))
-			.child(self.label)
-			.child(div().h(px(3.)).flex_1().min_w_0().rounded_full().bg(rgba(0xffffff0c)).child(
-				div().h_full().w(gpui::relative(value / 100.)).rounded_full().bg(rgb(color)),
-			))
+			.child(div().w(px(15.)).flex_none().child(self.label))
 			.child(
-				div().w(px(28.)).flex_none().text_color(rgb(color)).child(format!("{value:.0}%")),
+				div()
+					.h(px(3.))
+					.flex_1()
+					.min_w_0()
+					.rounded_full()
+					.bg(rgba(0xffffff0c))
+					.opacity(if observed.is_some() { 1. } else { 0. })
+					.child(
+						div()
+							.h_full()
+							.w(gpui::relative(value / 100.))
+							.rounded_full()
+							.bg(rgb(color)),
+					),
 			)
-			.children(
-				match self.quota.result {
-					AccountQuotaStateDto::Current { resets_at_unix_micros, .. } =>
-						reset_time(resets_at_unix_micros),
-					_ => None,
-				}
-				.map(|time| div().flex_none().whitespace_nowrap().child(time)),
+			.child(
+				div()
+					.w(px(28.))
+					.flex_none()
+					.text_right()
+					.text_color(rgb(color))
+					.child(observed.map(|_| format!("{value:.0}%")).unwrap_or_else(|| "—".into())),
+			)
+			.child(
+				div()
+					.w(px(80.))
+					.flex_none()
+					.text_right()
+					.whitespace_nowrap()
+					.debug_selector(move || format!("quota-reset-{}", self.label))
+					.font_features(gpui::FontFeatures(std::sync::Arc::new(vec![(
+						"tnum".into(),
+						1,
+					)])))
+					.child(match self.quota.result {
+						AccountQuotaStateDto::Current { resets_at_unix_micros, .. } =>
+							reset_time(resets_at_unix_micros).unwrap_or_else(|| "—".into()),
+						AccountQuotaStateDto::NotApplicable => "N/A".into(),
+						_ => "—".into(),
+					}),
 			)
 	}
 }
@@ -107,18 +139,10 @@ pub(super) fn meter(
 	label: &'static str,
 	quota: AccountQuotaWindowDto,
 	fill: Option<ResetFill>,
-) -> Option<gpui::AnyElement> {
-	let has_fill = fill
-		.as_ref()
-		.and_then(|fill| fill.remaining(quota, Instant::now(), crate::ui_motion::reduced()))
-		.is_some();
-	if quota.result == AccountQuotaStateDto::NotApplicable
-		|| (remaining(quota).is_none() && !has_fill)
-	{
-		return None;
-	}
-	Some(QuotaMeter { label, quota, fill }.into_any_element())
+) -> gpui::AnyElement {
+	QuotaMeter { label, quota, fill }.into_any_element()
 }
+
 /// Match the native menu's local calendar date and 24-hour reset time.
 fn reset_time(micros: i64) -> Option<String> {
 	local_date_time(micros / 1_000_000)
@@ -199,5 +223,8 @@ mod tests {
 		assert_eq!(remaining(quota(1, 11)), Some(99.));
 		assert_eq!(fill.remaining(quota(64, 1), started, true), Some(100.));
 		assert_eq!(fill.remaining(quota(1, 11), started, true), None);
+		let not_applicable =
+			AccountQuotaWindowDto { result: AccountQuotaStateDto::NotApplicable, ..quota(64, 1) };
+		assert_eq!(fill.remaining(not_applicable, started, false), None);
 	}
 }
