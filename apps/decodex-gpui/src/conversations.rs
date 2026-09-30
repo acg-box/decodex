@@ -1133,27 +1133,36 @@ impl Conversations {
 			|| result.server_id != *server_id
 			|| result.idempotency_key != in_flight.envelope.idempotency_key
 		{
-			state.in_flight_command = None;
-			let successor_commit_is_ambiguous = state.routing_successor_reconciliation.is_some();
-			state.command = if successor_commit_is_ambiguous || state.refresh_batch.is_some() {
-				ConversationCommandState::OutcomeUnknown
-			} else {
-				ConversationCommandState::Refused
-			};
-			state.cancel_refresh_batch();
-			let query_queued = successor_commit_is_ambiguous && state.queue_command_readback();
-			drop(state);
-			if query_queued {
-				self.inner.notify.notify_one();
-			}
-			return ConversationRouteOutcome::Refused;
+			return self.refuse_unconfirmed_result(state);
 		}
 		let in_flight = state
 			.in_flight_command
 			.take()
 			.expect("matching Conversation command remains in flight");
-		state.confirm_terminal_delivery(&in_flight, result);
+		let confirmed = state.confirm_terminal_delivery(&in_flight, result);
+		let explicit_unknown = result.outcome == CommandOutcome::AcceptanceUnknown
+			|| (result.outcome == CommandOutcome::Rejected
+				&& result.error == Some(CommandError::AcceptanceUnknown));
+		if !confirmed && !explicit_unknown {
+			return self.refuse_unconfirmed_result(state);
+		}
 		self.apply_command_outcome(state, in_flight, result)
+	}
+
+	fn refuse_unconfirmed_result(
+		&self,
+		mut state: MutexGuard<'_, State>,
+	) -> ConversationRouteOutcome {
+		// An invalid result cannot prove that a dispatched command was rejected.
+		state.latch_in_flight_outcome_unknown();
+		state.command = ConversationCommandState::OutcomeUnknown;
+		state.cancel_refresh_batch();
+		let query_queued = state.queue_command_readback();
+		drop(state);
+		if query_queued {
+			self.inner.notify.notify_one();
+		}
+		ConversationRouteOutcome::Refused
 	}
 
 	fn apply_command_outcome(
@@ -3938,6 +3947,74 @@ pub(crate) mod tests {
 			ConversationRefreshState::Complete { checked: 4, archived: 2, failed: 1 }
 		);
 		assert!(snapshot.can_submit);
+	}
+
+	#[test]
+	fn ambiguous_submission_results_keep_the_original_and_block_resubmission() {
+		for case in ["server", "key", "payload", "target", "rejection", "legacy-unknown"] {
+			let (conversations, server, task) = connected_conversations();
+			conversations.submit("Possibly delivered").unwrap();
+			let original = dispatched_command(&conversations, &server);
+			let mut result = CommandResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: server.clone(),
+				client_command_id: original.client_command_id.clone(),
+				idempotency_key: original.idempotency_key.clone(),
+				outcome: CommandOutcome::Succeeded,
+				entity_revision: Some(task.conversation_revision),
+				payload: Some(ResultPayload::ConversationAccepted { conversation: task.clone() }),
+				error: None,
+			};
+			match case {
+				"server" => result.server_id = ServerId::new("other-server").unwrap(),
+				"key" => result.idempotency_key = IdempotencyKey::new("other-command").unwrap(),
+				"payload" => result.payload = None,
+				"target" => {
+					let mut other = task.clone();
+					other.conversation_id = EntityId::new("different-conversation").unwrap();
+					result.payload =
+						Some(ResultPayload::ConversationAccepted { conversation: other });
+				},
+				_ => {
+					result.outcome = CommandOutcome::Rejected;
+					result.payload = None;
+					result.error =
+						(case == "legacy-unknown").then_some(CommandError::AcceptanceUnknown);
+				},
+			}
+			conversations.route_command_result(1, &server, &result);
+			assert_eq!(
+				conversations.snapshot().command,
+				ConversationCommandState::OutcomeUnknown,
+				"{case}"
+			);
+			assert!(!conversations.snapshot().can_submit, "{case}");
+			assert_eq!(
+				conversations.ordinary_draft("Possibly delivered").unwrap().unconfirmed,
+				vec![original],
+				"{case}"
+			);
+			assert!(conversations.confirmed_ordinary_commands().is_empty(), "{case}");
+			let query =
+				conversations.try_take_dispatch(1, &server).unwrap().query().unwrap().clone();
+			conversations.route_query_result(
+				1,
+				&server,
+				&QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: server.clone(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::Conversations(ConversationListResult::Available(
+						ConversationListPage::new(vec![task], None).unwrap(),
+					)),
+				},
+			);
+			assert_eq!(
+				conversations.submit("Possibly delivered"),
+				Err(ConversationInputError::Busy),
+				"{case}"
+			);
+		}
 	}
 
 	#[test]
