@@ -277,7 +277,10 @@ final class StatusPanelLifecycleTests: XCTestCase {
 
 	func testWidgetOpensWithoutActivationAndSurvivesFocusChanges() async throws {
 		let application = NSApplication.shared
-		let wasActive = application.isActive
+		let foregroundPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+		let workspace = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 300, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+		workspace.isReleasedWhenClosed = false
+		defer { workspace.close() }
 		let policy = application.activationPolicy()
 		let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		defer { try? FileManager.default.removeItem(at: root) }
@@ -293,7 +296,12 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		XCTAssertGreaterThan(controller.panel.frame.width, 0)
 		XCTAssertGreaterThan(controller.panel.frame.height, 0)
 		XCTAssertTrue(controller.panel.styleMask.contains(.nonactivatingPanel))
-		XCTAssertEqual(application.isActive, wasActive)
+		XCTAssertTrue(controller.panel.isKeyWindow, "The initial status-item click must focus the menu")
+		XCTAssertFalse(controller.panel.isMainWindow)
+		XCTAssertFalse(workspace.isVisible, "Opening the menu must not reveal the main workspace")
+		// AppKit may report local activation while a nonactivating panel owns
+		// key focus. The foreground application and workspace visibility must stay unchanged.
+		XCTAssertEqual(NSWorkspace.shared.frontmostApplication?.processIdentifier, foregroundPID)
 		XCTAssertEqual(application.activationPolicy(), policy)
 		NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: controller.panel)
 		XCTAssertTrue(controller.panel.isVisible, "Opening a child control must not dismiss the widget")
@@ -301,6 +309,7 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		XCTAssertFalse(controller.panel.isVisible)
 		controller.togglePanel()
 		XCTAssertTrue(controller.panel.isVisible)
+		XCTAssertTrue(controller.panel.isKeyWindow, "Reopening must also focus the menu")
 		controller.invalidate()
 		XCTAssertFalse(controller.panel.isVisible)
 	}

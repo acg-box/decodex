@@ -579,7 +579,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		let controller = StatusPanelController(store: store, fastModeStore: FastModeStore(client: StaticFastModeClient()))
 		defer { controller.invalidate() }
 		controller.togglePanel()
-		controller.panel.makeKey()
+		XCTAssertTrue(controller.panel.isKeyWindow, "Opening must make the first account click actionable")
 		try await Task.sleep(for: .milliseconds(500))
 		let host = try XCTUnwrap(controller.panel.contentView)
 		let rows = try XCTUnwrap(descendants(of: AccountRowsView.self, in: host).first)
