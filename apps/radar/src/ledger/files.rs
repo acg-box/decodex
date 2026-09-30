@@ -8,11 +8,11 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-	prelude::{Result, eyre},
-	private_fs::RadarCacheLock,
+	prelude::{self, eyre},
+	private_fs::{self, RadarCacheLock},
 };
 
-const MAX_ARTIFACT_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_ARTIFACT_BYTES: u64 = 64 * 1_024 * 1_024;
 
 pub(super) struct LedgerArtifactReader<'a> {
 	lock: &'a RadarCacheLock,
@@ -22,14 +22,14 @@ impl<'a> LedgerArtifactReader<'a> {
 		Self { lock }
 	}
 
-	pub(super) fn load_json(&self, path: &Path) -> Result<Value> {
+	pub(super) fn load_json(&self, path: &Path) -> prelude::Result<Value> {
 		let payload = self.read(path)?;
 
 		serde_json::from_slice(&payload)
 			.map_err(|error| eyre::eyre!("Failed to parse JSON from {}: {error}", path.display()))
 	}
 
-	pub(super) fn file_digest(&self, path: &Path) -> Result<(String, i64)> {
+	pub(super) fn file_digest(&self, path: &Path) -> prelude::Result<(String, i64)> {
 		let payload = self.read(path)?;
 		let size_bytes = i64::try_from(payload.len())
 			.map_err(|error| eyre::eyre!("File is too large to record in ledger: {error}"))?;
@@ -45,9 +45,12 @@ impl<'a> LedgerArtifactReader<'a> {
 		Ok((sha256, size_bytes))
 	}
 
-	pub(super) fn json_files_in_directory(&self, directory: &Path) -> Result<Vec<PathBuf>> {
+	pub(super) fn json_files_in_directory(
+		&self,
+		directory: &Path,
+	) -> prelude::Result<Vec<PathBuf>> {
 		if crate::is_radar_cache_path(directory) {
-			return crate::private_fs::collect_private_json_files_under_lock_if_present(
+			return private_fs::collect_private_json_files_under_lock_if_present(
 				self.lock, directory,
 			);
 		}
@@ -70,32 +73,28 @@ impl<'a> LedgerArtifactReader<'a> {
 		Ok(files)
 	}
 
-	pub(super) fn existing_path<'b>(&self, path: &'b Path) -> Result<Option<&'b Path>> {
+	pub(super) fn existing_path<'b>(&self, path: &'b Path) -> prelude::Result<Option<&'b Path>> {
 		self.exists(path).map(|exists| exists.then_some(path))
 	}
 
-	fn exists(&self, path: &Path) -> Result<bool> {
+	fn exists(&self, path: &Path) -> prelude::Result<bool> {
 		if crate::is_radar_cache_path(path) {
-			crate::private_fs::private_file_exists_under_lock(self.lock, path)
+			private_fs::private_file_exists_under_lock(self.lock, path)
 		} else {
 			Ok(path.exists())
 		}
 	}
 
-	fn read(&self, path: &Path) -> Result<Vec<u8>> {
+	fn read(&self, path: &Path) -> prelude::Result<Vec<u8>> {
 		if crate::is_radar_cache_path(path) {
-			crate::private_fs::read_private_file_under_lock(self.lock, path)
+			private_fs::read_private_file_under_lock(self.lock, path)
 		} else {
 			read_regular_artifact(path)
 		}
 	}
 }
 
-fn read_regular_artifact(path: &Path) -> Result<Vec<u8>> {
-	crate::read_regular_file_bounded(path, MAX_ARTIFACT_BYTES, "Radar artifact")
-}
-
-pub(super) fn path_for_storage(path: &Path) -> crate::prelude::Result<String> {
+pub(super) fn path_for_storage(path: &Path) -> prelude::Result<String> {
 	if crate::is_radar_cache_path(path) {
 		if path.components().any(|component| matches!(component, std::path::Component::ParentDir)) {
 			eyre::bail!("Radar cache artifact path must not contain '..'");
@@ -118,7 +117,7 @@ pub(super) fn linked_signal_paths(
 	reader: &LedgerArtifactReader<'_>,
 	bundles_dir: &Path,
 	signals_dir: &Path,
-) -> crate::prelude::Result<BTreeSet<PathBuf>> {
+) -> prelude::Result<BTreeSet<PathBuf>> {
 	let mut paths = BTreeSet::new();
 
 	for bundle_path in reader.json_files_in_directory(bundles_dir)? {
@@ -130,8 +129,12 @@ pub(super) fn linked_signal_paths(
 	Ok(paths)
 }
 
-pub(super) fn file_stem(path: &Path) -> crate::prelude::Result<String> {
+pub(super) fn file_stem(path: &Path) -> prelude::Result<String> {
 	path.file_stem()
 		.map(|stem| stem.to_string_lossy().into_owned())
 		.ok_or_else(|| eyre::eyre!("Path has no file stem: {}", path.display()))
+}
+
+fn read_regular_artifact(path: &Path) -> prelude::Result<Vec<u8>> {
+	crate::read_regular_file_bounded(path, MAX_ARTIFACT_BYTES, "Radar artifact")
 }
