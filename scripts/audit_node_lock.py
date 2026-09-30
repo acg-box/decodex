@@ -110,7 +110,7 @@ def load_json(
         value = json.loads(path.read_text(encoding="utf-8"))
     except AuditError:
         raise
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise AuditError(unavailable_code) from error
     if not isinstance(value, dict):
         raise AuditError(invalid_code)
@@ -393,7 +393,7 @@ def audit_site(
         if nvmrc_path.is_symlink():
             raise OSError
         nvmrc = nvmrc_path.read_text(encoding="utf-8")
-    except OSError as error:
+    except (OSError, UnicodeError) as error:
         raise AuditError("node_toolchain_contract_invalid") from error
     packages = lock.get("packages")
     if lock.get("lockfileVersion") != 3 or not isinstance(packages, dict):
@@ -434,7 +434,7 @@ def main(argv: list[str] | None = None) -> int:
             {}
             if args.runtime_only
             else audit_site(
-                args.site.resolve(),
+                args.site,
                 inspect_installed=not args.lock_only,
             )
         )
