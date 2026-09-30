@@ -1,18 +1,37 @@
 //! Read-only Agent work projection. This does not report runtime readiness.
 
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
+
+use crate::{
+	AgentAppSettingEdit, AgentAppUiCall, AgentAsyncQuestionDto, AgentExecutionOverrides,
+	AgentGoalEdit, AgentHookChange, AgentRequestedDecision, AgentReviewer,
+	AgentToolExposureSurface, ConversationModel, ConversationReasoningEffort,
+	ConversationWorkingDirectory, EntityId, HistoryText, PromptForkBoundary, PromptInputUpload,
+	Sha256Digest, WeatherForecast, WireText,
+};
+use decodex_core::{MAX_APPROVAL_ENVELOPE_BYTES, ServiceTier};
+
+/// Maximum work records in one complete snapshot.
+pub const MAX_AGENT_WORK_ITEMS: usize = 100;
+/// Maximum dependency records in one complete snapshot.
+pub const MAX_AGENT_DEPENDENCIES: usize = 500;
+/// Maximum undisposed inbox records in one complete snapshot.
+pub const MAX_AGENT_PENDING_EVENTS: usize = 100;
+/// Maximum encoded snapshot size, below the transport frame bound.
+pub const MAX_AGENT_SNAPSHOT_BYTES: usize = 128 * 1_024;
 
 /// Complete selected request content assembled from bounded local protocol pages.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct AgentRequestText(String);
-
 impl AgentRequestText {
 	/// Accept complete content within the approval envelope bound.
 	pub fn new(value: impl Into<String>) -> Result<Self, &'static str> {
 		let value = value.into();
 
-		if value.len() > decodex_core::MAX_APPROVAL_ENVELOPE_BYTES {
+		if value.len() > MAX_APPROVAL_ENVELOPE_BYTES {
 			return Err("request content exceeds the approval envelope bound");
 		}
 
@@ -69,7 +88,7 @@ pub enum AgentRequestResult {
 		/// Total UTF-8 byte length of the selected content.
 		total_bytes: usize,
 		/// Exact source text at this offset.
-		text: crate::HistoryText,
+		text: HistoryText,
 		/// Next byte offset, absent at the end.
 		next_offset: Option<usize>,
 	},
@@ -116,7 +135,7 @@ pub struct AgentHistoryEntryDto {
 	pub turn_id: Option<String>,
 	/// Saved weather results associated with this entry.
 	#[serde(default)]
-	pub weather: Vec<crate::WeatherForecast>,
+	pub weather: Vec<WeatherForecast>,
 	/// Local receipt facts, independent of native conversation ordering.
 	pub receipt: Option<AgentHistoryReceiptDto>,
 	/// Native execution activity; absent for conversation messages.
@@ -246,7 +265,7 @@ pub enum AgentHistoryResult {
 	Available {
 		/// Unanswered asynchronous questions for the current native thread, independent of history
 		/// paging.
-		questions: Vec<crate::AgentAsyncQuestionDto>,
+		questions: Vec<AgentAsyncQuestionDto>,
 		/// Additional questions exist beyond this bounded page.
 		questions_truncated: bool,
 		/// Native history recovery is incomplete; historical question cards are withheld.
@@ -275,7 +294,7 @@ pub enum AgentInputReceiptsResult {
 	/// A bounded page in persistent event order. Reads never authorize another delivery.
 	Available {
 		/// Exact local task identity.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Current inputs with no acknowledged native turn or disposition.
 		entries: Vec<AgentHistoryEntryDto>,
 		/// Read entries strictly after this identity, when more unconfirmed inputs exist.
@@ -304,17 +323,17 @@ pub struct AgentMisalignmentDto {
 #[serde(deny_unknown_fields)]
 pub struct AgentStartDto {
 	/// Personal Agent work identity.
-	pub root_id: crate::EntityId,
+	pub root_id: EntityId,
 	/// Initial user request.
-	pub prompt: crate::HistoryText,
+	pub prompt: HistoryText,
 	/// Exact selected provider model.
-	pub model: crate::ConversationModel,
+	pub model: ConversationModel,
 	/// Explicit reasoning override; absent or null inherits native configuration.
-	pub effort: Option<crate::ConversationReasoningEffort>,
+	pub effort: Option<ConversationReasoningEffort>,
 	/// Absolute execution directory.
-	pub cwd: crate::ConversationWorkingDirectory,
+	pub cwd: ConversationWorkingDirectory,
 	/// Optional explicit account; otherwise the service selects it.
-	pub account_id: Option<crate::EntityId>,
+	pub account_id: Option<EntityId>,
 	/// Runtime sandbox selected by the user.
 	pub sandbox: AgentSandboxDto,
 }
@@ -337,12 +356,12 @@ pub enum AgentSandboxDto {
 #[serde(deny_unknown_fields)]
 pub struct AgentAttachmentDto {
 	/// Absolute local path selected by the user.
-	pub path: crate::ConversationWorkingDirectory,
+	pub path: ConversationWorkingDirectory,
 	/// Send this file as a native image input.
 	pub image: bool,
 	/// Exact native skill name when this path is an explicit skill reference.
 	#[serde(skip_serializing_if = "Option::is_none")]
-	pub skill_name: Option<crate::WireText>,
+	pub skill_name: Option<WireText>,
 }
 
 /// A task explicitly selected by the user as readable evidence.
@@ -350,11 +369,11 @@ pub struct AgentAttachmentDto {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AgentTaskReferenceDto {
 	/// Exact local work identity.
-	pub work_id: crate::EntityId,
+	pub work_id: EntityId,
 	/// Native thread selected at composition time; never follows replacements.
-	pub thread_id: crate::WireText,
+	pub thread_id: WireText,
 	/// Display label, treated as untrusted metadata.
-	pub title: crate::WireText,
+	pub title: WireText,
 }
 
 /// Explicit Agent operations. Graph judgments remain model-owned.
@@ -364,22 +383,22 @@ pub enum AgentActionDto {
 	/// Send retained canonical input through the existing user-message queue.
 	SendPromptInput {
 		/// Exact task owner.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Native thread retained by the history edit.
-		thread_id: crate::WireText,
+		thread_id: WireText,
 		/// Immutable staged input record.
 		input_id: i64,
 		/// Applied history edit with acknowledged draft handback.
 		edit_receipt_id: i64,
 		/// Complete input digest.
-		sha256: crate::Sha256Digest,
+		sha256: Sha256Digest,
 		/// Settings captured at explicit send time.
-		execution: crate::AgentExecutionOverrides,
+		execution: AgentExecutionOverrides,
 	},
 	/// Store one bounded input fragment without queuing or sending it.
 	UploadPromptInput {
 		/// Exact transfer identity.
-		upload: crate::PromptInputUpload,
+		upload: PromptInputUpload,
 		/// UTF-8 byte offset into the compact canonical array.
 		offset: u64,
 		/// At most 64KiB of complete UTF-8 bytes; may split a JSON escape.
@@ -388,203 +407,203 @@ pub enum AgentActionDto {
 	/// Materialize a complete immutable input without authorizing a model turn.
 	CompletePromptInputUpload {
 		/// Exact transfer identity.
-		upload: crate::PromptInputUpload,
+		upload: PromptInputUpload,
 	},
 	/// Prepare a read-only review for one exact visible input.
 	PreparePromptEdit {
 		/// Local owner.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact native thread.
-		thread_id: crate::WireText,
+		thread_id: WireText,
 		/// Selected native turn.
-		turn_id: crate::WireText,
+		turn_id: WireText,
 		/// Selected first user item.
-		item_id: crate::WireText,
+		item_id: WireText,
 	},
 	/// Confirm a service-held review once. A lost reply never permits another native write.
 	ConfirmPromptEdit {
 		/// Local owner.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact native thread.
-		thread_id: crate::WireText,
+		thread_id: WireText,
 		/// Token returned by the complete review query.
-		review_token: crate::WireText,
+		review_token: WireText,
 	},
 	/// Create a source-preserving branch from one retained review. Never replay native creation.
 	ForkPromptEdit {
 		/// Source local owner.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Source native conversation.
-		thread_id: crate::WireText,
+		thread_id: WireText,
 		/// Exact service-held review.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// New local owner, saved with the desktop intent before dispatch.
-		target_work_id: crate::EntityId,
+		target_work_id: EntityId,
 		/// Explicit prefix choice.
-		boundary: crate::PromptForkBoundary,
+		boundary: PromptForkBoundary,
 	},
 	/// Recover a saved fork identity by reading only.
 	RecoverPromptFork {
 		/// Original local owner.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact original review.
-		review_token: crate::WireText,
+		review_token: WireText,
 	},
 	/// Recover native history by reading only; do not release the desktop draft fence.
 	RecoverPromptEdit {
 		/// Local owner.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact native thread.
-		thread_id: crate::WireText,
+		thread_id: WireText,
 	},
 	/// Acknowledge that the exact canonical draft is durably saved and presentation is refreshed.
 	/// This releases input only after the service rechecks native history and its projections.
 	AcknowledgePromptEditDraft {
 		/// Local owner.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact native thread.
-		thread_id: crate::WireText,
+		thread_id: WireText,
 		/// Durable edit receipt returned with the saved canonical input.
 		receipt_id: i64,
 		/// Exact review token saved with that draft.
-		review_token: crate::WireText,
+		review_token: WireText,
 	},
 	/// Start an optional recap for the exact displayed native thread.
 	GenerateRecap {
 		/// Owning local task.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Native thread reviewed by the caller.
-		thread_id: crate::WireText,
+		thread_id: WireText,
 	},
 	/// Cancel one exact request, without cancelling a newer recap.
 	CancelRecap {
 		/// Owning local task.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Original recap command key.
-		request_id: crate::WireText,
+		request_id: WireText,
 	},
 
 	/// Edit one exact, reviewed native goal.
 	EditNativeGoal {
 		/// Owning local task.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact native conversation.
-		thread_id: crate::EntityId,
+		thread_id: EntityId,
 		/// Source-bound goal review.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// Explicit goal fields to change.
-		edit: crate::AgentGoalEdit,
+		edit: AgentGoalEdit,
 	},
 
 	/// Save a reviewed voice preference for subsequent calls.
 	SetVoicePreference {
 		/// Owning task.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Current source and configuration identity.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// Explicit supported voice selection.
-		voice: crate::WireText,
+		voice: WireText,
 	},
 
 	/// Save a reviewed search preference for new conversations.
 	SetSearchPreference {
 		/// Owning task.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Current source and configuration identity.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// Explicit supported search selection.
-		mode: crate::WireText,
+		mode: WireText,
 	},
 
 	/// Acknowledge an unknown outcome without replaying or changing that outcome.
 	AcknowledgeAppUiCall {
 		/// Exact owning task.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Host operation identity from the saved receipt.
-		operation_id: crate::EntityId,
+		operation_id: EntityId,
 		/// Exact saved reservation, shown to the user with its unknown outcome.
 		reservation_id: i64,
 	},
 	/// Execute exactly one widget callback after explicit user confirmation.
 	ConfirmAppUiTool {
 		/// Complete source-bound invocation.
-		request: crate::AgentAppUiCall,
+		request: AgentAppUiCall,
 		/// Token obtained from a fresh native tool review.
-		review_token: crate::EntityId,
+		review_token: EntityId,
 	},
 	/// Save a reviewed connector exposure preference in native user configuration.
 	SetAppToolExposure {
 		/// Owning task.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Connector selected from current native inventory.
-		connector_id: crate::WireText,
+		connector_id: WireText,
 		/// Reviewed source and configuration identity.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// None restores inheritance; an empty list clears connector omissions.
-		omit: Option<Vec<crate::AgentToolExposureSurface>>,
+		omit: Option<Vec<AgentToolExposureSurface>>,
 	},
 	/// Change an existing saved app connection override from current native configuration.
 	SetSavedAppSetting {
 		/// Originating task.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Current native thread.
-		thread_id: crate::EntityId,
+		thread_id: EntityId,
 		/// Exact native app key.
-		connector_id: crate::WireText,
+		connector_id: WireText,
 		/// Exact native connection key.
-		link_id: crate::WireText,
+		link_id: WireText,
 		/// Consumed once for this reviewed configuration.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// Explicit change to the saved override.
-		edit: crate::AgentAppSettingEdit,
+		edit: AgentAppSettingEdit,
 	},
 	/// Change one connection override without answering its pending native request.
 	SetAppSetting {
 		/// Originating task.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact native request event.
 		event_id: i64,
 		/// Consumed native config review.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// Explicit connection override.
-		edit: crate::AgentAppSettingEdit,
+		edit: AgentAppSettingEdit,
 	},
 	/// Apply one explicitly reviewed shared hook change.
 	SetHookSetting {
 		/// Exact originating work.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact native thread.
-		thread_id: crate::EntityId,
+		thread_id: EntityId,
 		/// Reviewed source and hook metadata identity.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// Exact reviewed hook.
-		hook_key: crate::WireText,
+		hook_key: WireText,
 		/// Explicit shared configuration change.
-		change: crate::AgentHookChange,
+		change: AgentHookChange,
 	},
 	/// Select a model for subsequent turns without starting inference.
 	SetTaskModel {
 		/// Exact local work.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact native thread.
-		thread_id: crate::EntityId,
+		thread_id: EntityId,
 		/// Reviewed source, settings and catalog identity.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// Explicit native model.
-		model: crate::ConversationModel,
+		model: ConversationModel,
 		/// Explicit advertised effort; omission preserves configured effort.
-		effort: Option<crate::ConversationReasoningEffort>,
+		effort: Option<ConversationReasoningEffort>,
 	},
 	/// Change one task plugin exclusion.
 	SetTaskPlugin {
 		/// Exact local work.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact native thread.
-		thread_id: crate::EntityId,
+		thread_id: EntityId,
 		/// Reviewed source and selection identity.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// Canonical plugin identity.
-		plugin_id: crate::WireText,
+		plugin_id: WireText,
 		/// Remove the exclusion when true; shared enablement still applies.
 		enabled: bool,
 	},
@@ -592,96 +611,96 @@ pub enum AgentActionDto {
 	/// Select a reviewed native permission profile for the exact task.
 	SelectPermissions {
 		/// Owning task.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact native thread.
-		thread_id: crate::EntityId,
+		thread_id: EntityId,
 		/// Current source and catalog identity.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// Explicit native profile ID.
-		profile_id: crate::WireText,
+		profile_id: WireText,
 	},
 	/// Publish a reviewer for subsequent steps of one reviewed live turn.
 	SetLiveReviewer {
 		/// Exact owning task.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact active turn from the review query.
-		turn_id: crate::EntityId,
+		turn_id: EntityId,
 		/// Source and receipt identity from the review query.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// Explicit reviewer; does not approve existing requests or change future defaults.
-		reviewer: crate::AgentReviewer,
+		reviewer: AgentReviewer,
 	},
 
 	/// Publish a model and effort for subsequent captures in one reviewed running turn.
 	SetLiveModel {
 		/// Exact owning task.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact active turn, never a successor.
-		turn_id: crate::EntityId,
+		turn_id: EntityId,
 		/// Source and shared settings receipt identity.
-		review_token: crate::WireText,
+		review_token: WireText,
 		/// Model from the current account-bound catalog.
-		model: crate::ConversationModel,
+		model: ConversationModel,
 		/// Advertised effort for the selected model.
-		effort: crate::ConversationReasoningEffort,
+		effort: ConversationReasoningEffort,
 	},
 
 	/// Send explicit user input to a verified native descendant that accepts direct input.
 	NativeAgentInput {
 		/// Exact local owner whose native descendants may be addressed.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact observed native descendant identity.
-		thread_id: crate::WireText,
+		thread_id: WireText,
 		/// User-authored message; never generated from a status event.
-		text: crate::HistoryText,
+		text: HistoryText,
 		/// Expected running turn; None requires an idle native agent.
-		expected_turn: Option<crate::WireText>,
+		expected_turn: Option<WireText>,
 	},
 	/// Install the exact plugin whose current catalog details the user reviewed.
 	InstallSuggestedPlugin {
 		/// Owning task identity.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact live native suggestion event.
 		event_id: i64,
 		/// Review identity returned by installation inspection.
-		review_token: crate::WireText,
+		review_token: WireText,
 	},
 	/// Explicitly restore the exact archived native thread selected by the user.
 	RestoreArchivedThread {
 		/// Current local work identity.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Native thread identity shown by archive inspection.
-		thread_id: crate::WireText,
+		thread_id: WireText,
 	},
 	/// Explicitly synchronize shared installed plugins and reload loaded native MCP runtimes.
 	RefreshIntegrations {
 		/// Task from which the user requested the shared refresh.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 	},
 	/// Associate a user-selected HTTP(S) link with the current native task thread.
 	AddResourceLink {
 		/// Exact local task identity.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// User-visible link title.
-		title: crate::WireText,
+		title: WireText,
 		/// HTTP(S) resource address; this does not fetch its contents.
-		url: crate::WireText,
+		url: WireText,
 	},
 	/// Remove the current native association; never delete the referenced resource.
 	RemoveResource {
 		/// Exact local task identity.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Application-defined native attachment category.
-		attachment_type: crate::WireText,
+		attachment_type: WireText,
 		/// Native identity within the category.
-		identity_key: crate::WireText,
+		identity_key: WireText,
 	},
 	/// Start with explicit per-message execution settings and attachments.
 	StartConfigured {
 		/// Initial Agent context.
 		start: AgentStartDto,
 		/// Settings captured when the user sends.
-		execution: crate::AgentExecutionOverrides,
+		execution: AgentExecutionOverrides,
 		/// User-selected files, bounded by the service.
 		attachments: Vec<AgentAttachmentDto>,
 		/// Tasks explicitly selected as readable evidence.
@@ -691,12 +710,12 @@ pub enum AgentActionDto {
 	/// Continue the same Agent with settings and attachments captured at send time.
 	SendConfigured {
 		/// Existing manager identity.
-		root_id: crate::EntityId,
+		root_id: EntityId,
 		/// User-authored message.
-		text: crate::HistoryText,
+		text: HistoryText,
 		/// Explicit next-message changes; omitted fields inherit native task settings.
 		#[serde(default)]
-		execution: crate::AgentExecutionOverrides,
+		execution: AgentExecutionOverrides,
 		/// User-selected files, bounded by the service.
 		attachments: Vec<AgentAttachmentDto>,
 		/// Tasks explicitly selected as readable evidence.
@@ -706,11 +725,11 @@ pub enum AgentActionDto {
 	/// Supplement one exact running turn through native Codex steering.
 	Steer {
 		/// Target manager identity.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Running turn observed at send time.
-		turn_id: crate::WireText,
+		turn_id: WireText,
 		/// User-authored supplementary input.
-		text: crate::HistoryText,
+		text: HistoryText,
 		/// Files captured at send time.
 		attachments: Vec<AgentAttachmentDto>,
 		/// Tasks explicitly selected as readable evidence.
@@ -720,99 +739,90 @@ pub enum AgentActionDto {
 	/// Acknowledge the exact findings displayed by the client and request continuation.
 	ContinueMisalignment {
 		/// Work owning the paused thread.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Digest of the displayed thread, turn and findings.
-		review_id: crate::WireText,
+		review_id: WireText,
 	},
 	/// Submit explicit user approval context for an exact observed Guardian denial.
 	/// This does not execute the action or start another turn.
 	ApproveGuardianDenial {
 		/// Work that owns the reviewed thread.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Durable review row shown to the user.
 		review_row: i64,
 		/// Digest of the displayed observation, including the exact action.
-		review_digest: crate::WireText,
+		review_digest: WireText,
 	},
 
 	/// Answer one source-bound asynchronous question with an explicit user message.
 	AnswerQuestion {
 		/// Work that owns the original question.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Stable native question identity.
-		question_id: crate::WireText,
+		question_id: WireText,
 		/// Explicit free text or user-selected option.
-		answer: crate::HistoryText,
+		answer: HistoryText,
 	},
 	/// Dismiss a local question without submitting an answer or starting a turn.
 	SkipQuestion {
 		/// Work that owns the displayed question.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact native thread displayed with the question.
-		thread_id: crate::WireText,
+		thread_id: WireText,
 		/// Stable native question identity.
-		question_id: crate::WireText,
+		question_id: WireText,
 	},
 	/// Cancel one exact pending model-capacity retry.
 	CancelCapacityRetry {
 		/// Work that owns the pending retry.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Persistent capacity failure event identity.
 		event_id: i64,
 	},
 	/// Respond to one exact pending request after an explicit user decision.
 	Respond {
 		/// Related work identity.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact inbox event identity.
 		event_id: i64,
 		/// Explicit provider response object.
-		response_json: crate::HistoryText,
+		response_json: HistoryText,
 	},
 	/// Select an exact provider-proposed decision without copying its large payload.
 	RespondWithRequestedDecision {
 		/// Related work identity.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Immutable pending inbox event identity.
 		event_id: i64,
 		/// Explicit decision selected from the displayed request.
-		decision: crate::AgentRequestedDecision,
+		decision: AgentRequestedDecision,
 	},
 	/// Start or reconnect the personal Agent and enqueue user input.
 	Start(AgentStartDto),
 	/// Enqueue subsequent input to the existing Agent.
 	Send {
 		/// Personal Agent work identity.
-		root_id: crate::EntityId,
+		root_id: EntityId,
 		/// User input, preserved until processed.
-		text: crate::HistoryText,
+		text: HistoryText,
 	},
 	/// Stop the exact currently acknowledged work turn.
 	Interrupt {
 		/// Work identity, not a process ID.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Exact turn observed by the caller; never interrupt a later turn silently.
-		turn_id: crate::WireText,
+		turn_id: WireText,
 	},
 	/// Receive an explicitly submitted automation result.
 	AutomationResult {
 		/// Goal or work the source monitors.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Source-owned event identity for deduplication.
-		source_event_id: crate::WireText,
+		source_event_id: WireText,
 		/// Result content, treated as untrusted source data.
-		payload: crate::HistoryText,
+		payload: HistoryText,
 	},
 }
-
-/// Maximum work records in one complete snapshot.
-pub const MAX_AGENT_WORK_ITEMS: usize = 100;
-/// Maximum dependency records in one complete snapshot.
-pub const MAX_AGENT_DEPENDENCIES: usize = 500;
-/// Maximum undisposed inbox records in one complete snapshot.
-pub const MAX_AGENT_PENDING_EVENTS: usize = 100;
-/// Maximum encoded snapshot size, below the transport frame bound.
-pub const MAX_AGENT_SNAPSHOT_BYTES: usize = 128 * 1024;
 
 /// Durable work category, independent of a host project.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -929,7 +939,7 @@ pub struct AgentWorkspaceDto {
 #[serde(deny_unknown_fields)]
 pub struct AgentSnapshotDto {
 	/// Opaque current account revision and process identity; absent while unavailable.
-	pub runtime_source: Option<crate::EntityId>,
+	pub runtime_source: Option<EntityId>,
 	/// Persisted project scopes.
 	pub workspaces: Vec<AgentWorkspaceDto>,
 	/// All work records.
@@ -939,20 +949,18 @@ pub struct AgentSnapshotDto {
 	/// All undisposed result/event receipts.
 	pub pending_events: Vec<AgentPendingEventDto>,
 }
-
 impl AgentSnapshotDto {
 	/// Check count, text, relation, timestamp, and encoded-size bounds.
 	pub fn is_valid(&self) -> bool {
 		let text = |value: &str, limit| !value.is_empty() && value.len() <= limit;
 		let optional =
 			|value: &Option<String>| value.as_deref().is_none_or(|value| text(value, 512));
-		let ids: std::collections::HashSet<_> =
-			self.work_items.iter().map(|item| item.id.as_str()).collect();
+		let ids: HashSet<_> = self.work_items.iter().map(|item| item.id.as_str()).collect();
 
 		self.workspaces.len() <= MAX_AGENT_WORK_ITEMS
 			&& self.workspaces.iter().all(|workspace| {
 				text(&workspace.name, 256)
-					&& text(&workspace.directory, 4096)
+					&& text(&workspace.directory, 4_096)
 					&& self.work_items.iter().any(|work| {
 						work.id == workspace.agent_id && work.kind == AgentWorkKindDto::Manager
 					})
@@ -963,7 +971,7 @@ impl AgentSnapshotDto {
 			&& ids.len() == self.work_items.len()
 			&& self.work_items.iter().all(|item| {
 				text(&item.id, 512)
-					&& text(&item.title, 1024)
+					&& text(&item.title, 1_024)
 					&& optional(&item.codex_thread_id)
 					&& optional(&item.active_turn_id)
 					&& item.parent_goal_id.as_deref().is_none_or(|parent| ids.contains(parent))
@@ -977,7 +985,7 @@ impl AgentSnapshotDto {
 			})
 			&& self.pending_events.iter().all(|event| {
 				event.id > 0
-					&& text(&event.source_event_id, 2048)
+					&& text(&event.source_event_id, 2_048)
 					&& ids.contains(event.work_item_id.as_str())
 					&& text(&event.event_kind, 128)
 					&& event.created_at_micros >= 0
@@ -1010,19 +1018,19 @@ pub enum AgentSnapshotResult {
 #[serde(deny_unknown_fields)]
 pub struct AgentModelDto {
 	/// Exact model identifier used in turn requests.
-	pub model: crate::ConversationModel,
+	pub model: ConversationModel,
 	/// Provider display name.
 	pub name: String,
 	/// Reasoning levels understood by this client and advertised by Codex.
-	pub efforts: Vec<crate::ConversationReasoningEffort>,
+	pub efforts: Vec<ConversationReasoningEffort>,
 	/// Provider default, when understood by this client.
-	pub default_effort: Option<crate::ConversationReasoningEffort>,
+	pub default_effort: Option<ConversationReasoningEffort>,
 	/// The provider offers the priority service tier for this model.
 	pub supports_fast: bool,
 	/// Service tiers advertised for this model and current account.
 	pub service_tiers: Vec<AgentServiceTierDto>,
 	/// Informational catalog default. Never changes an explicit user selection.
-	pub default_service_tier: Option<decodex_core::ServiceTier>,
+	pub default_service_tier: Option<ServiceTier>,
 	/// Known caller-specific catalog programs; None means metadata was not supplied.
 	/// This observation never grants access or selects a program for inference.
 	pub available_cyber_programs: Option<Vec<String>>,
@@ -1041,7 +1049,7 @@ pub struct AgentModelDto {
 #[serde(deny_unknown_fields)]
 pub struct AgentServiceTierDto {
 	/// Exact native request value.
-	pub id: decodex_core::ServiceTier,
+	pub id: ServiceTier,
 	/// Provider display name.
 	pub name: String,
 	/// Provider description, including usage implications when supplied.
@@ -1053,7 +1061,7 @@ pub struct AgentServiceTierDto {
 #[serde(deny_unknown_fields)]
 pub struct AgentModelUpgradeDto {
 	/// Suggested replacement, never selected automatically.
-	pub model: crate::ConversationModel,
+	pub model: ConversationModel,
 	/// Provider-authored explanation.
 	pub notice: Option<String>,
 	/// Informational retirement time as Unix seconds, when supplied.
@@ -1082,7 +1090,7 @@ pub struct AgentActivityDetailCursor {
 	/// UTF-8 byte offset in the complete filtered text.
 	pub offset: u32,
 	/// Opaque digest of source identity and complete filtered text.
-	pub fingerprint: crate::WireText,
+	pub fingerprint: WireText,
 }
 
 /// Selected readable tool evidence for one exact native item.
@@ -1103,7 +1111,6 @@ pub enum AgentActivityDetailResult {
 	/// The source cannot be confirmed or this item has no supported public detail.
 	Unavailable,
 }
-
 impl AgentActivityDetailResult {
 	pub(crate) fn matches_cursor(&self, cursor: Option<&AgentActivityDetailCursor>) -> bool {
 		let Self::Available { text, truncated, offset, next } = self else {
@@ -1111,7 +1118,7 @@ impl AgentActivityDetailResult {
 		};
 
 		!text.is_empty()
-			&& text.len() <= 8 * 1024
+			&& text.len() <= 8 * 1_024
 			&& *offset == cursor.map_or(0, |value| value.offset)
 			&& *truncated == next.is_some()
 			&& next.as_ref().is_none_or(|next| {
@@ -1167,7 +1174,7 @@ pub enum AgentOutputResult {
 		/// Service-lifetime wakeup revision. Reset on reconnect.
 		revision: u64,
 		/// Exact query owner.
-		work_id: crate::EntityId,
+		work_id: EntityId,
 		/// Current source-bound message snapshots; never unfinished deltas.
 		messages: Vec<AgentLiveMessageDto>,
 	},
@@ -1177,12 +1184,13 @@ pub enum AgentOutputResult {
 
 #[cfg(test)]
 mod tests {
+	use crate::{AgentActionDto, AgentHistoryReceiptDto, AgentSnapshotDto, AgentSnapshotResult};
+
 	#[test]
 	fn voice_receipt_identity_preserves_legacy_wire_and_roundtrips() {
 		let legacy =
 			serde_json::json!({"event_kind":"voice_user","delivered_turn_id":null,"disposed":true});
-		let mut receipt: super::AgentHistoryReceiptDto =
-			serde_json::from_value(legacy.clone()).unwrap();
+		let mut receipt: AgentHistoryReceiptDto = serde_json::from_value(legacy.clone()).unwrap();
 
 		assert!(receipt.voice_session_id.is_none());
 		assert_eq!(serde_json::to_value(&receipt).unwrap(), legacy);
@@ -1192,26 +1200,22 @@ mod tests {
 		let encoded = serde_json::to_value(&receipt).unwrap();
 
 		assert_eq!(encoded["voice_session_id"], "opaque call/1");
-		assert_eq!(
-			serde_json::from_value::<super::AgentHistoryReceiptDto>(encoded).unwrap(),
-			receipt
-		);
+		assert_eq!(serde_json::from_value::<AgentHistoryReceiptDto>(encoded).unwrap(), receipt);
 	}
 
 	#[test]
 	fn guardian_approval_command_carries_only_saved_review_identity() {
 		let mut value = serde_json::json!({"action":"approve_guardian_denial","data":{
 			"work_id":"agent","review_row":7,"review_digest":"a".repeat(64)}});
-		let command: super::AgentActionDto = serde_json::from_value(value.clone()).unwrap();
+		let command: AgentActionDto = serde_json::from_value(value.clone()).unwrap();
 
 		assert_eq!(serde_json::to_value(command).unwrap(), value);
 
 		value["data"]["event"] =
 			serde_json::json!({"action":{"type":"command","command":"injected"}});
 
-		assert!(serde_json::from_value::<super::AgentActionDto>(value).is_err());
+		assert!(serde_json::from_value::<AgentActionDto>(value).is_err());
 	}
-	use super::*;
 
 	#[test]
 	fn agent_snapshot_roundtrip_retains_empty_available_and_explicit_capacity_failure() {
