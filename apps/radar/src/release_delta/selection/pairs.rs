@@ -34,21 +34,16 @@ pub(crate) fn select_release_pairs(
 	})
 	.collect::<Vec<_>>();
 
-	if previous_pairs.is_empty() {
-		let mut pairs = vec![default_pair];
-
-		pairs.extend(compare_candidates(stable_releases, preview_releases));
-
-		let mut pairs = unique_release_pairs(pairs);
-
-		if request.pair_limit > 0 {
-			pairs.truncate(request.pair_limit);
-		}
-
-		Ok(pairs)
+	let candidates = if previous_pairs.is_empty() {
+		compare_candidates(stable_releases, preview_releases)
 	} else {
-		Ok(unique_release_pairs(iter::once(default_pair).chain(previous_pairs).collect()))
+		previous_pairs
+	};
+	let mut pairs = unique_release_pairs(iter::once(default_pair).chain(candidates).collect());
+	if request.pair_limit > 0 {
+		pairs.truncate(request.pair_limit);
 	}
+	Ok(pairs)
 }
 
 fn compare_candidates(stable_releases: &[Value], preview_releases: &[Value]) -> Vec<ReleasePair> {
@@ -150,11 +145,6 @@ mod tests {
 	fn release_pairs_reuse_only_history_for_the_requested_repository() {
 		let temp = tempfile::tempdir().unwrap();
 		let out = temp.path().join("release-delta.json");
-		let request = RadarRefreshReleaseDeltaRequest {
-			out: out.clone(),
-			pair_limit: 0,
-			..Default::default()
-		};
 		let release = |tag: &str, preview: bool, published_at: &str| {
 			let mut payload = crate::tests::fixtures::release(tag, preview);
 			payload["published_at"] = serde_json::json!(published_at);
@@ -168,7 +158,12 @@ mod tests {
 			release("rust-v0.4.0-alpha.1", true, "2026-03-01T00:00:00Z"),
 			release("rust-v0.3.0-alpha.1", true, "2026-02-01T00:00:00Z"),
 		];
-		let select = || {
+		let select = |pair_limit| {
+			let request = RadarRefreshReleaseDeltaRequest {
+				out: out.clone(),
+				pair_limit,
+				..Default::default()
+			};
 			select_release_pairs(&request, temp.path(), &stable[0], &preview[0], &stable, &preview)
 				.unwrap()
 				.into_iter()
@@ -180,8 +175,11 @@ mod tests {
 				})
 				.collect::<Vec<_>>()
 		};
-		let fresh = select();
+		let fresh = select(0);
 		assert_eq!(fresh.len(), 4);
+		assert_eq!(select(1), fresh[..1]);
+		assert_eq!(select(2), fresh[..2]);
+		assert_eq!(select(10), fresh);
 		for repo in [
 			serde_json::json!("other/project"),
 			serde_json::Value::Null,
@@ -196,7 +194,7 @@ mod tests {
 				}]
 			});
 			crate::write_json(&out, &previous).unwrap();
-			let pairs = select();
+			let pairs = select(0);
 			if repo == "openai/codex" {
 				assert_eq!(
 					pairs,
@@ -208,8 +206,11 @@ mod tests {
 					"foreign or unidentified history must not restrict candidates"
 				);
 			}
+			assert_eq!(select(1), pairs[..1]);
+			assert_eq!(select(2), pairs[..pairs.len().min(2)]);
+			assert_eq!(select(10), pairs);
 		}
 		std::fs::write(&out, "{broken").unwrap();
-		assert_eq!(select(), fresh);
+		assert_eq!(select(0), fresh);
 	}
 }

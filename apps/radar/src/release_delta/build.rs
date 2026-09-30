@@ -78,13 +78,6 @@ pub(crate) fn build_release_delta(
 		}
 
 		comparison_entries.push(comparison);
-
-		if request.pair_limit > 0
-			&& comparison_entries.len() >= request.pair_limit
-			&& default_compare_payload.is_some()
-		{
-			break;
-		}
 	}
 
 	let Some(default_compare_payload) = default_compare_payload else {
