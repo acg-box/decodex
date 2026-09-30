@@ -2,4 +2,4 @@ mod artifacts;
 mod assertions;
 mod automation;
 mod env;
-mod fixtures;
+pub(crate) mod fixtures;

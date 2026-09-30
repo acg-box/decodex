@@ -29,8 +29,10 @@ pub(super) fn build_review_queue(
 	let (default_branch, upstream_head, commits) =
 		commits::recent_commits(api, &request.repo, request.search_limit)?;
 	let recent_commits_scanned = commits.len();
-	let (published_prs, published_shas) =
-		published::published_subjects(&crate::absolute_repo_path(root, &request.signals_dir))?;
+	let (published_prs, published_shas) = published::published_subjects(
+		&crate::absolute_repo_path(root, &request.signals_dir),
+		&request.repo,
+	)?;
 	let ledger_path = crate::ledger_path(root, request);
 	let mut ledger = ledger_path.as_deref().map(RadarLedger::open).transpose()?;
 	let mut subjects = BTreeMap::<(String, String), Value>::new();
