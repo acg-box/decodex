@@ -289,3 +289,53 @@ fn managed_and_unknown_hooks_cannot_offer_consent_actions(cx: &mut gpui::TestApp
 		}
 	});
 }
+
+#[gpui::test]
+fn ordinary_refresh_keeps_hook_read_and_write_readback(cx: &mut gpui::TestAppContext) {
+	let (_dir, profile, server) = fixture(false);
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, _| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.profile = Some(profile);
+	});
+	for selection in [None, Some((WireText::new("fixture-hook").unwrap(), Change::Trust))] {
+		let saving = selection.is_some();
+		surface.update(cx, |s, cx| {
+			s.update_hook_settings("root".into(), selection, cx);
+			assert!(s.hook_settings.task.is_some());
+			// Advance the snapshot generation before the operation can complete.
+			s.generation += 1;
+			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		});
+		cx.run_until_parked();
+		surface.read_with(cx, |s, _| {
+			assert!(
+				s.hook_settings.task.is_none(),
+				"refresh must not strand a completed operation"
+			);
+			assert!(matches!(s.hook_settings.state, Some(State::Available { .. })));
+			assert_eq!(s.hook_settings.reviewed, !saving);
+			if saving {
+				assert!(s.hook_settings.feedback.contains("could not be confirmed"));
+			}
+		});
+	}
+	assert_eq!(server.join().unwrap().len(), 1, "an uncertain write must not be retried");
+}
+
+#[gpui::test]
+fn disconnect_invalidates_hook_review_before_same_source_reconnect(cx: &mut gpui::TestAppContext) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.hook_settings.work = Some("root".into());
+		s.hook_settings.state = Some(available());
+		s.hook_settings.reviewed = true;
+		let epoch = s.hook_settings.epoch;
+		s.mark_stale(cx);
+		assert_ne!(s.hook_settings.epoch, epoch);
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		assert!(s.hook_settings.state.is_none());
+		assert!(!s.hook_settings.reviewed);
+	});
+}

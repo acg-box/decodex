@@ -1268,6 +1268,7 @@ impl AgentSurface {
 
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
 		self.reset_capabilities();
+		self.reset_hook_settings();
 		self.reset_model_settings();
 		self.reset_app_exposure();
 		self.reset_voice_settings();
