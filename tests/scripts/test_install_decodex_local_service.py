@@ -137,6 +137,34 @@ class LocalServiceInstallerTests(unittest.TestCase):
         for retired_field in ("data_directory", "socket_directory", "postgres_log"):
             self.assertFalse(hasattr(paths, retired_field))
 
+    def test_install_paths_do_not_hide_executable_symlinks(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            target = root / "Decodex.app/Contents/Helpers/decodex"
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"app-owned executable")
+            target.chmod(0o755)
+            args = argparse.Namespace(
+                repository=REPO_ROOT, root=root,
+                launch_agent=root / "agent.plist",
+                decodex=root / "decodex",
+                database_transfer=root / "decodex-database-transfer",
+                codex=root / "codex",
+            )
+            for field in ("decodex", "database_transfer"):
+                with self.subTest(executable=field):
+                    link = getattr(args, field)
+                    link.symlink_to(target)
+                    paths = self.module.install_paths(args)
+                    with self.assertRaisesRegex(self.module.InstallError, "executable is unavailable"):
+                        self.module.require_regular_executable(getattr(paths, field), field)
+                    link.unlink()
+                    link.write_bytes(b"standalone executable")
+                    link.chmod(0o755)
+                    paths = self.module.install_paths(args)
+                    self.module.require_regular_executable(getattr(paths, field), field)
+                    self.assertEqual(target.read_bytes(), b"app-owned executable")
+
     def test_config_and_launch_agent_have_no_database_endpoint_or_secret(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths = self.paths(Path(temp))
