@@ -1,6 +1,9 @@
 //! Transient, same-user voice signaling. SDP is never a command receipt or log field.
-use crate::{EntityId, WireScalarTooLong, WireText};
+use std::fmt::{self, Debug, Formatter};
+
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+
+use crate::{EntityId, HistoryText, WireScalarTooLong, WireText};
 
 /// Bounded private WebRTC session description, redacted from diagnostics.
 #[derive(Clone, Eq, PartialEq, Serialize)]
@@ -21,8 +24,8 @@ impl VoiceSdp {
 		&self.0
 	}
 }
-impl std::fmt::Debug for VoiceSdp {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for VoiceSdp {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.write_str("VoiceSdp([redacted])")
 	}
 }
@@ -44,13 +47,13 @@ pub struct AgentVoiceOptions {
 	pub model: Option<WireText>,
 	/// Instructions for the backing Agent when voice starts; distinct from the voice prompt.
 	#[serde(skip_serializing_if = "Option::is_none")]
-	pub start_instructions: Option<crate::HistoryText>,
+	pub start_instructions: Option<HistoryText>,
 	/// Instructions for the backing Agent when voice ends.
 	#[serde(skip_serializing_if = "Option::is_none")]
-	pub end_instructions: Option<crate::HistoryText>,
+	pub end_instructions: Option<HistoryText>,
 }
-impl std::fmt::Debug for AgentVoiceOptions {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for AgentVoiceOptions {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("AgentVoiceOptions").finish_non_exhaustive()
 	}
 }
@@ -76,7 +79,7 @@ pub enum AgentVoiceRequest {
 		/// Exact call identity.
 		session_id: EntityId,
 		/// Displayed assistant text chosen by the user, bounded to one history frame.
-		text: crate::HistoryText,
+		text: HistoryText,
 	},
 	/// Observe the exact call and renew its UI-presence lease.
 	Poll {
@@ -131,7 +134,7 @@ pub struct AgentVoiceStatus {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::VoiceSdp;
 	#[test]
 	fn signaling_is_bounded_and_redacted() {
 		let sdp = VoiceSdp::new("private-ice-password".into()).unwrap();

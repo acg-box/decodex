@@ -1,24 +1,29 @@
 //! Opt-in subscription dictation qualification. PCM frames enter through stdin.
-use decodex_core as _;
-use decodex_protocol::{
-	AgentClient, ClientProfile, DictationBuffer, DictationPhase, DictationRequest, EntityId,
+use std::{
+	env,
+	error::Error,
+	io::{self, BufRead as _},
+	path::Path,
+	time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+use decodex_core as _;
 use futures_util as _;
 #[cfg(unix)] use libc as _;
 use percent_encoding as _;
 use serde as _;
-use std::{
-	io::BufRead as _,
-	path::Path,
-	time::{Duration, SystemTime, UNIX_EPOCH},
-};
 use tempfile as _;
+use tokio::time::{self, Instant};
 use tokio_tungstenite as _;
 use url as _;
 
+use decodex_protocol::{
+	AgentClient, ClientProfile, DictationBuffer, DictationPhase, DictationRequest, EntityId,
+};
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let root = std::env::args().nth(1).ok_or("explicit service root required")?;
+async fn main() -> Result<(), Box<dyn Error>> {
+	let root = env::args().nth(1).ok_or("explicit service root required")?;
 	let client = AgentClient::new(ClientProfile::load(Path::new(&root), None)?);
 	let id = EntityId::new(format!(
 		"dictation-check-{}",
@@ -26,22 +31,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	))
 	.map_err(|_| "invalid identity")?;
 	let result=async {
-        let mut status=client.dictation(DictationRequest::Start{session_id:id.clone()}).await?;
-        let deadline=tokio::time::Instant::now()+Duration::from_secs(20);
+        let status=client.dictation(DictationRequest::Start{session_id:id.clone()}).await?;
+        let deadline=Instant::now()+Duration::from_secs(20);
+        let mut status=status;
 
-        while status.phase==DictationPhase::Connecting && tokio::time::Instant::now()<deadline {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        while status.phase==DictationPhase::Connecting && Instant::now()<deadline {
+            time::sleep(Duration::from_millis(100)).await;
 
             status=client.dictation(DictationRequest::Poll{session_id:id.clone()}).await?;
         }
 
         if status.phase!=DictationPhase::Listening {
-            return Err::<(),Box<dyn std::error::Error>>(status.message.map_or_else(||"Dictation did not become ready".into(),|m|m.as_str().to_owned()).into());
+            return Err::<(),Box<dyn Error>>(status.message.map_or_else(||"Dictation did not become ready".into(),|m|m.as_str().to_owned()).into());
         }
 
         let mut partials=0;
 
-        for line in std::io::stdin().lock().lines() {
+        for line in io::stdin().lock().lines() {
             let audio=DictationBuffer::new(line?).map_err(|_|"audio frame too large")?;
 
             status=client.dictation(DictationRequest::Audio{session_id:id.clone(),audio}).await?;
@@ -49,15 +55,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if status.phase==DictationPhase::Failed {return Err("dictation audio failed".into())}
             if !status.text.as_str().is_empty(){partials+=1;}
 
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            time::sleep(Duration::from_millis(100)).await;
         }
 
         status=client.dictation(DictationRequest::Finish{session_id:id.clone()}).await?;
 
-        let deadline=tokio::time::Instant::now()+Duration::from_secs(20);
+        let deadline=Instant::now()+Duration::from_secs(20);
 
-        while !matches!(status.phase,DictationPhase::Complete|DictationPhase::Failed) && tokio::time::Instant::now()<deadline {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        while !matches!(status.phase,DictationPhase::Complete|DictationPhase::Failed) && Instant::now()<deadline {
+            time::sleep(Duration::from_millis(100)).await;
 
             status=client.dictation(DictationRequest::Poll{session_id:id.clone()}).await?;
         }

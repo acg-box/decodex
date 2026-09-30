@@ -1,6 +1,9 @@
 //! Transient subscription dictation. Audio and drafts never become command receipts.
-use crate::{EntityId, WireScalarTooLong, WireText};
+use std::fmt::{self, Debug, Formatter};
+
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+
+use crate::{EntityId, WireScalarTooLong, WireText};
 
 /// Bounded private audio or transcript payload, omitted from diagnostics.
 #[derive(Clone, Eq, PartialEq, Serialize)]
@@ -23,8 +26,8 @@ impl DictationBuffer {
 		&self.0
 	}
 }
-impl std::fmt::Debug for DictationBuffer {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for DictationBuffer {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.write_str("DictationBuffer([redacted])")
 	}
 }
@@ -111,7 +114,7 @@ pub struct DictationStatus {
 
 #[cfg(test)]
 mod tests {
-	use super::DictationBuffer;
+	use crate::DictationBuffer;
 
 	#[test]
 	fn payload_is_bounded_on_decode_and_redacted_from_debug() {
