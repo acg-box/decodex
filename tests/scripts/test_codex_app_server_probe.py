@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 from contextlib import redirect_stderr, redirect_stdout
 
 
@@ -21,6 +22,36 @@ def load_probe():
 
 
 class CodexAppServerProbeTests(unittest.TestCase):
+    def test_non_live_modes_do_not_read_auth_during_argument_parsing(self):
+        for mode in ("schema", "validate", "inventory"):
+            with self.subTest(mode=mode):
+                probe = load_probe()
+                with (
+                    mock.patch("sys.argv", ["probe", mode]),
+                    mock.patch.object(probe, "sha256_file") as digest,
+                ):
+                    probe.parse_args()
+                digest.assert_not_called()
+
+    def test_live_mode_requires_selectors_before_reading_auth(self):
+        probe = load_probe()
+        with (
+            mock.patch("sys.argv", ["probe", "live"]),
+            mock.patch.object(probe, "sha256_file") as digest,
+            redirect_stderr(io.StringIO()),
+            self.assertRaises(SystemExit),
+        ):
+            probe.parse_args()
+        digest.assert_not_called()
+        with (
+            mock.patch("sys.argv", ["probe", "live", "--account-a", "A", "--account-b", "B",
+                                    "--codex-home", "/synthetic-codex-home"]),
+            mock.patch.object(probe, "sha256_file", return_value="fixture-digest") as digest,
+        ):
+            args = probe.parse_args()
+        digest.assert_called_once_with(Path("/synthetic-codex-home/auth.json"))
+        self.assertEqual(args.auth_sha256_before, "fixture-digest")
+
     def test_account_selection_does_not_emit_credentials(self):
         probe = load_probe()
         secret = "header.payload.signature"
