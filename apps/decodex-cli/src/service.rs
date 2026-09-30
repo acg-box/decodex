@@ -2,11 +2,52 @@
 
 #[cfg(unix)] mod parent_lifetime;
 
-use std::{error::Error, path::Path};
+use std::{error::Error, io, path::Path};
 
-use decodex_runtime::{DecodexRoot, ServerConfig, ServiceComposition};
+#[cfg(unix)] use tokio::signal::unix::{self, Signal, SignalKind};
 
 use crate::CommandOutput;
+use decodex_runtime::{
+	BoundServer, DecodexRoot, LocalDatabaseError, ServerConfig, ServiceComposition,
+};
+
+#[cfg(unix)]
+struct ShutdownSignals {
+	interrupt: Signal,
+	terminate: Signal,
+}
+
+#[cfg(not(unix))]
+struct ShutdownSignals;
+#[cfg(unix)]
+impl ShutdownSignals {
+	fn new() -> io::Result<Self> {
+		Ok(Self {
+			interrupt: unix::signal(SignalKind::interrupt())?,
+			terminate: unix::signal(SignalKind::terminate())?,
+		})
+	}
+
+	async fn recv(&mut self) -> io::Result<()> {
+		tokio::select! {
+			_ = self.interrupt.recv() => {},
+			_ = self.terminate.recv() => {},
+		}
+
+		Ok(())
+	}
+}
+
+#[cfg(not(unix))]
+impl ShutdownSignals {
+	fn new() -> io::Result<Self> {
+		Ok(Self)
+	}
+
+	async fn recv(&mut self) -> io::Result<()> {
+		tokio::signal::ctrl_c().await
+	}
+}
 
 pub(crate) async fn initialize_local_database(root: Option<&Path>) -> CommandOutput {
 	run_database_command(root, ServiceComposition::initialize_local_database).await
@@ -16,10 +57,25 @@ pub(crate) async fn validate_local_database(root: Option<&Path>) -> CommandOutpu
 	run_database_command(root, ServiceComposition::validate_local_database).await
 }
 
+pub(crate) async fn serve(parent_fd: Option<i32>, root: Option<&Path>) -> CommandOutput {
+	command_result(serve_inner(parent_fd, root).await)
+}
+
+fn command_result(result: Result<(), Box<dyn Error>>) -> CommandOutput {
+	match result {
+		Ok(()) => CommandOutput { text: String::new(), exit_code: 0, error_stream: false },
+		Err(error) => CommandOutput {
+			text: format!("decodex failed: {error}"),
+			exit_code: 2,
+			error_stream: true,
+		},
+	}
+}
+
 async fn run_database_command<F, Fut>(root: Option<&Path>, command: F) -> CommandOutput
 where
 	F: FnOnce(DecodexRoot) -> Fut,
-	Fut: Future<Output = Result<(), decodex_runtime::LocalDatabaseError>>,
+	Fut: Future<Output = Result<(), LocalDatabaseError>>,
 {
 	let result = async {
 		let root = root.ok_or("--root is required for this command")?;
@@ -34,14 +90,11 @@ where
 	command_result(result)
 }
 
-pub(crate) async fn serve(parent_fd: Option<i32>, root: Option<&Path>) -> CommandOutput {
-	command_result(serve_inner(parent_fd, root).await)
-}
-
 async fn serve_inner(parent_fd: Option<i32>, root: Option<&Path>) -> Result<(), Box<dyn Error>> {
 	#[cfg(unix)]
 	let mut parent_lifetime =
 		parent_fd.map(parent_lifetime::ParentLifetime::from_inherited_fd).transpose()?;
+
 	#[cfg(not(unix))]
 	if parent_fd.is_some() {
 		return Err("parent lifetime channel is unsupported on this platform".into());
@@ -76,6 +129,7 @@ async fn serve_inner(parent_fd: Option<i32>, root: Option<&Path>) -> Result<(), 
 	} else {
 		wait_for_shutdown(&mut bound, &mut signals).await?;
 	}
+
 	#[cfg(not(unix))]
 	wait_for_shutdown(&mut bound, &mut signals).await?;
 
@@ -83,7 +137,7 @@ async fn serve_inner(parent_fd: Option<i32>, root: Option<&Path>) -> Result<(), 
 }
 
 async fn wait_for_shutdown(
-	bound: &mut decodex_runtime::BoundServer,
+	bound: &mut BoundServer,
 	signals: &mut ShutdownSignals,
 ) -> Result<(), Box<dyn Error>> {
 	tokio::select! {
@@ -98,58 +152,6 @@ async fn wait_for_shutdown(
 	}
 
 	Ok(())
-}
-
-fn command_result(result: Result<(), Box<dyn Error>>) -> CommandOutput {
-	match result {
-		Ok(()) => CommandOutput { text: String::new(), exit_code: 0, error_stream: false },
-		Err(error) => CommandOutput {
-			text: format!("decodex failed: {error}"),
-			exit_code: 2,
-			error_stream: true,
-		},
-	}
-}
-
-#[cfg(unix)]
-struct ShutdownSignals {
-	interrupt: tokio::signal::unix::Signal,
-	terminate: tokio::signal::unix::Signal,
-}
-
-#[cfg(unix)]
-impl ShutdownSignals {
-	fn new() -> std::io::Result<Self> {
-		use tokio::signal::unix::{SignalKind, signal};
-
-		Ok(Self {
-			interrupt: signal(SignalKind::interrupt())?,
-			terminate: signal(SignalKind::terminate())?,
-		})
-	}
-
-	async fn recv(&mut self) -> std::io::Result<()> {
-		tokio::select! {
-			_ = self.interrupt.recv() => {},
-			_ = self.terminate.recv() => {},
-		}
-
-		Ok(())
-	}
-}
-
-#[cfg(not(unix))]
-struct ShutdownSignals;
-
-#[cfg(not(unix))]
-impl ShutdownSignals {
-	fn new() -> std::io::Result<Self> {
-		Ok(Self)
-	}
-
-	async fn recv(&mut self) -> std::io::Result<()> {
-		tokio::signal::ctrl_c().await
-	}
 }
 
 #[cfg(test)]
