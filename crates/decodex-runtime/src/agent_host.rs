@@ -1856,15 +1856,6 @@ async fn persist_input(
 	text: &str,
 	options: Option<&serde_json::Value>,
 ) -> Result<(), &'static str> {
-	let pending = store
-		.list_pending_agent_events(1000)
-		.await
-		.map_err(|_| "Conversation state is unavailable")?;
-	if pending.iter().any(|event| {
-		event.work_item_id == root && event.event_kind == "thread_in_use_needs_attention"
-	}) {
-		return Err("This conversation is in use in another app. No message was queued.");
-	}
 	store
   .enqueue_agent_event(EnqueueAgentEvent {
 			source_event_id: json!(["user_message", root, key]).to_string(),
@@ -1873,7 +1864,11 @@ async fn persist_input(
 			payload: json!({"text":text,"source":"user","asyncQuestionReply":decodex_protocol::parse_agent_async_question_replies(text).is_some(),"options":options}).to_string(),
 		})
 		.await
-		.map_err(|_| "Agent input could not be accepted")?;
+		.map_err(|error| match error {
+			decodex_database::StoreError::AgentThreadInUse =>
+				"This conversation is in use in another app. No message was queued.",
+			_ => "Agent input could not be accepted",
+		})?;
 	Ok(())
 }
 
@@ -2209,11 +2204,22 @@ mod tests {
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		AgentCoordinator::reserve_root(&store, "agent", "Coordinate").await.unwrap();
+		for index in 0..1000 {
+			store
+				.enqueue_agent_event(EnqueueAgentEvent {
+					source_event_id: format!("older-diagnostic-{index}"),
+					work_item_id: "agent".into(),
+					event_kind: "diagnostic".into(),
+					payload: "{}".into(),
+				})
+				.await
+				.unwrap();
+		}
 		store.record_agent_thread_in_use("agent".into(), "Open elsewhere".into()).await.unwrap();
 		assert!(persist_input(&store, "agent", "blocked", "Do this", None).await.is_err());
 		assert!(
 			!store
-				.list_pending_agent_events(100)
+				.list_agent_wake_events("agent".into(), 100)
 				.await
 				.unwrap()
 				.iter()
@@ -2223,7 +2229,7 @@ mod tests {
 		persist_input(&store, "agent", "new-send", "Do this", None).await.unwrap();
 		assert_eq!(
 			store
-				.list_pending_agent_events(100)
+				.list_agent_wake_events("agent".into(), 100)
 				.await
 				.unwrap()
 				.iter()
