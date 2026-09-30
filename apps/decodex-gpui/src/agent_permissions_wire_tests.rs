@@ -245,3 +245,60 @@ fn child_navigation_and_disconnect_cannot_edit_parent_permissions(cx: &mut gpui:
 		assert!(s.permission_profiles.task.is_none());
 	});
 }
+
+#[gpui::test]
+fn ordinary_refresh_keeps_permission_read_and_unknown_selection(cx: &mut gpui::TestAppContext) {
+	let (_dir, profile, server) = fixture();
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, _| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.profile = Some(profile);
+	});
+	for selection in [None, Some(WireText::new("scoped").unwrap())] {
+		let saving = selection.is_some();
+		surface.update(cx, |s, cx| {
+			s.update_permission_profiles("root".into(), selection, cx);
+			assert!(s.permission_profiles.task.is_some());
+			// Advance the snapshot generation before this operation can complete.
+			s.generation += 1;
+			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		});
+		cx.run_until_parked();
+		surface.read_with(cx, |s, _| {
+			assert!(
+				s.permission_profiles.task.is_none(),
+				"refresh must not strand a completed operation"
+			);
+			assert_eq!(s.permission_profiles.reviewed, !saving);
+			if saving {
+				assert!(s.permission_profiles.feedback.contains("could not be confirmed"));
+				assert!(matches!(
+					s.permission_profiles.state,
+					Some(State::Pending { state: Outcome::Unknown, .. })
+				));
+			} else {
+				assert!(matches!(s.permission_profiles.state, Some(State::Available { .. })));
+			}
+		});
+	}
+	assert_eq!(server.join().unwrap().len(), 1, "an uncertain selection must not be retried");
+}
+
+#[gpui::test]
+fn disconnect_invalidates_permission_review_before_same_source_reconnect(
+	cx: &mut gpui::TestAppContext,
+) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.permission_profiles.work = Some("root".into());
+		s.permission_profiles.state = Some(available());
+		s.permission_profiles.reviewed = true;
+		let epoch = s.permission_profiles.epoch;
+		s.mark_stale(cx);
+		assert_ne!(s.permission_profiles.epoch, epoch);
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		assert!(s.permission_profiles.state.is_none());
+		assert!(!s.permission_profiles.reviewed);
+	});
+}

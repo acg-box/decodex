@@ -106,7 +106,6 @@ impl AgentSurface {
 			None
 		};
 		let saving = action.is_some();
-		let generation = self.generation;
 		self.permission_profiles.epoch = self.permission_profiles.epoch.wrapping_add(1);
 		let epoch = self.permission_profiles.epoch;
 		self.permission_profiles.work = Some(work.clone());
@@ -131,7 +130,7 @@ impl AgentSurface {
 		self.permission_profiles.task = Some(cx.spawn(async move |surface, cx| {
 			let result = future.await;
 			let _ = surface.update(cx, |s, cx| {
-				if s.generation != generation || s.permission_profiles.epoch != epoch {
+				if s.permission_profiles.epoch != epoch {
 					return;
 				}
 				s.permission_profiles.task = None;
