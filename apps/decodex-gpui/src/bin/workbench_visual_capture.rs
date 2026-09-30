@@ -417,11 +417,17 @@ fn prove_composer_send(
 	message: &str,
 	output: &std::path::Path,
 ) -> gpui::Result<()> {
-	cx.update_window(handle.into(), |view, window, cx| {
-		view.downcast::<AgentSurface>()
-			.expect("Agent capture root")
-			.update(cx, |surface, cx| surface.visual_prepare_send(profile, message, window, cx));
+	cx.background_executor.allow_parking();
+	let before = cx.update_window(handle.into(), |view, window, cx| {
+		let evidence = view.downcast::<AgentSurface>().expect("Agent capture root").update(
+			cx,
+			|surface, cx| {
+				surface.visual_prepare_send(profile, message, window, cx);
+				surface.visual_send_evidence(cx)
+			},
+		);
 		window.draw(cx).clear();
+		evidence
 	})?;
 	cx.simulate_keystrokes(handle.into(), "enter");
 	for _ in 0..40 {
@@ -441,26 +447,17 @@ fn prove_composer_send(
 		std::fs::write(
 			output.with_extension("send.json"),
 			serde_json::to_vec_pretty(
-				&serde_json::json!({"submitted_message":message,"interaction":"ComposerInput Enter","result":evidence}),
+				&serde_json::json!({"submitted_message":message,"interaction":"ComposerInput Enter","before":before,"result":evidence}),
 			)?,
 		)?;
 		if evidence["uncertain"] == true {
-			break;
+			return Err(std::io::Error::other("Composer send acceptance is unknown").into());
 		}
-		let answered = evidence["history"][1]["entries"].as_array().is_some_and(|entries| {
-			entries.iter().any(|entry| {
-				entry["kind"] == "assistant"
-					&& entry["text"].as_str().is_some_and(|text| text.contains("UI_READY"))
-			})
-		});
-		if evidence["feedback"].as_str().is_some_and(|text| text.starts_with("Accepted by service"))
-			&& evidence["draft"] == ""
-			&& answered
-		{
-			break;
+		if composer_send_answered(&before, &evidence, message) {
+			return Ok(());
 		}
 	}
-	Ok(())
+	Err(std::io::Error::other("Composer send did not receive its UI_READY reply").into())
 }
 
 fn prove_automatic_recap(
@@ -594,4 +591,102 @@ fn prove_steer_receipt(
 		}
 	}
 	Err(std::io::Error::other("exact receipt did not settle UI uncertainty").into())
+}
+
+fn composer_send_answered(
+	before: &serde_json::Value,
+	evidence: &serde_json::Value,
+	message: &str,
+) -> bool {
+	if evidence["uncertain"] != false || evidence["sending"] != false || evidence["draft"] != "" {
+		return false;
+	}
+	let (Some(owner), Some(previous), Some(entries)) = (
+		before["history"][0].as_str(),
+		before["history"][1]["entries"].as_array(),
+		evidence["history"][1]["entries"].as_array(),
+	) else {
+		return false;
+	};
+	if evidence["history"][0] != owner {
+		return false;
+	}
+	entries
+		.iter()
+		.filter(|entry| {
+			entry["kind"] == "user"
+				&& entry["text"] == message
+				&& entry["id"].as_i64().is_some()
+				&& !previous.iter().any(|old| old["id"] == entry["id"])
+		})
+		.any(|prompt| {
+			let turn = prompt["turn_id"]
+				.as_str()
+				.or_else(|| prompt["receipt"]["delivered_turn_id"].as_str());
+			turn.filter(|turn| !turn.is_empty()).is_some_and(|turn| {
+				entries.iter().any(|entry| {
+					entry["kind"] == "assistant"
+						&& entry["id"].as_i64().is_some()
+						&& !previous.iter().any(|old| old["id"] == entry["id"])
+						&& entry["turn_id"] == turn
+						&& entry["text"].as_str().is_some_and(|text| text.contains("UI_READY"))
+				})
+			})
+		})
+}
+
+#[cfg(test)]
+mod capture_send_tests {
+	use super::composer_send_answered;
+	use serde_json::{Value, json};
+
+	fn evidence() -> Value {
+		json!({"draft":"", "sending":false, "uncertain":false, "feedback":"",
+		"history":["manager", {"outcome":"available", "entries":[
+			{"id":1,"kind":"user","text":"Reply UI_READY", "turn_id":"turn"},
+			{"id":2,"kind":"assistant","text":"UI_READY", "turn_id":"turn"}
+		]}]})
+	}
+
+	#[test]
+	fn capture_send_accepts_current_history_without_obsolete_feedback() {
+		let before = json!({"history":["manager", {"outcome":"available", "entries":[]}]});
+		assert!(composer_send_answered(&before, &evidence(), "Reply UI_READY"));
+		let mut after = evidence();
+		after["history"][1]["entries"][0]["turn_id"] = Value::Null;
+		after["history"][1]["entries"][0]["receipt"] = json!({"delivered_turn_id":"turn"});
+		assert!(composer_send_answered(&before, &after, "Reply UI_READY"));
+	}
+
+	#[test]
+	fn capture_send_rejects_old_or_unrelated_answers() {
+		let mut after = evidence();
+		after["feedback"] = json!("Accepted by service");
+		assert!(!composer_send_answered(&after, &after, "Reply UI_READY"));
+		let mut before = evidence();
+		before["history"][1]["entries"].as_array_mut().unwrap().remove(0);
+		assert!(!composer_send_answered(&before, &after, "Reply UI_READY"));
+		let before = json!({"history":["manager", {"outcome":"available", "entries":[]}]});
+		after["history"][1]["entries"][1]["turn_id"] = json!("other-turn");
+		assert!(!composer_send_answered(&before, &after, "Reply UI_READY"));
+	}
+
+	#[test]
+	fn capture_send_requires_settled_delivery_and_same_owner() {
+		let before = json!({"history":["manager", {"outcome":"available", "entries":[]}]});
+		for (field, value) in
+			[("uncertain", json!(true)), ("sending", json!(true)), ("draft", json!("retained"))]
+		{
+			let mut after = evidence();
+			after[field] = value;
+			assert!(!composer_send_answered(&before, &after, "Reply UI_READY"));
+		}
+		assert!(!composer_send_answered(&Value::Null, &evidence(), "Reply UI_READY"));
+		let mut after = evidence();
+		after["history"][1]["entries"][0]["turn_id"] = Value::Null;
+		assert!(!composer_send_answered(&before, &after, "Reply UI_READY"));
+		after = evidence();
+		after["history"][0] = json!("other-manager");
+		assert!(!composer_send_answered(&before, &after, "Reply UI_READY"));
+	}
 }
