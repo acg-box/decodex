@@ -300,7 +300,16 @@ impl SqliteStore {
 		&self,
 		item: AgentWorkItem,
 	) -> Result<AgentWorkItem, StoreError> {
-		self.create_agent_work_record(item, false, None).await
+		self.create_agent_work_record(item, false, None, Vec::new()).await
+	}
+
+	/// Publish new work and all its dispatch prerequisites in one transaction.
+	pub async fn create_agent_work_item_with_dependencies(
+		&self,
+		item: AgentWorkItem,
+		depends_on: Vec<String>,
+	) -> Result<AgentWorkItem, StoreError> {
+		self.create_agent_work_record(item, false, None, depends_on).await
 	}
 
 	/// Atomically create an executable manager and its optional workspace scope.
@@ -312,7 +321,7 @@ impl SqliteStore {
 		if item.kind != AgentWorkKind::Goal {
 			return Err(StoreError::InvalidInput("manager must be a goal"));
 		}
-		self.create_agent_work_record(item, true, workspace).await
+		self.create_agent_work_record(item, true, workspace, Vec::new()).await
 	}
 
 	async fn create_agent_work_record(
@@ -320,6 +329,7 @@ impl SqliteStore {
 		item: AgentWorkItem,
 		manager: bool,
 		workspace: Option<(String, String)>,
+		depends_on: Vec<String>,
 	) -> Result<AgentWorkItem, StoreError> {
 		bounded(&item.id, 512)?;
 		bounded(&item.title, 1024)?;
@@ -393,6 +403,9 @@ impl SqliteStore {
 				}
 			}
 
+			for dependency in depends_on {
+				insert_dependency(&transaction, &item.id, &dependency)?;
+			}
 			transaction.commit().map_err(sqlite_error)?;
 			Ok(item)
 		})
@@ -467,16 +480,14 @@ impl SqliteStore {
 		depends_on: String,
 	) -> Result<(), StoreError> {
 		self.run(move |connection| {
-			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
-			if !work_exists(&transaction, &id)? || !work_exists(&transaction, &depends_on)? { return Err(DatabaseError::NotFound.into()); }
-			let cycle: bool = transaction.query_row("WITH RECURSIVE ancestors(id) AS (
-				SELECT ?1 UNION SELECT depends_on_id FROM agent_dependencies JOIN ancestors ON work_item_id = ancestors.id)
-				SELECT EXISTS(SELECT 1 FROM ancestors WHERE id = ?2)", params![depends_on, id], |row| row.get(0)).map_err(sqlite_error)?;
-			if cycle { return Err(StoreError::InvalidInput("Agent dependency would create a cycle")); }
-			transaction.execute("INSERT INTO agent_dependencies (work_item_id, depends_on_id) VALUES (?1, ?2) ON CONFLICT DO NOTHING", params![id, depends_on]).map_err(sqlite_error)?;
+			let transaction = connection
+				.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(sqlite_error)?;
+			insert_dependency(&transaction, &id, &depends_on)?;
 			transaction.commit().map_err(sqlite_error)?;
 			Ok(())
-		}).await
+		})
+		.await
 	}
 
 	pub async fn begin_agent_dispatch(&self, id: String) -> Result<AgentWorkItem, StoreError> {
@@ -1214,6 +1225,24 @@ fn page_limit(limit: usize) -> Result<i64, StoreError> {
 	} else {
 		Err(StoreError::InvalidInput("Agent page size must be between 1 and 1000"))
 	}
+}
+
+fn insert_dependency(
+	connection: &Connection,
+	id: &str,
+	depends_on: &str,
+) -> Result<(), StoreError> {
+	if !work_exists(connection, id)? || !work_exists(connection, depends_on)? {
+		return Err(DatabaseError::NotFound.into());
+	}
+	let cycle: bool = connection.query_row("WITH RECURSIVE ancestors(id) AS (
+		SELECT ?1 UNION SELECT depends_on_id FROM agent_dependencies JOIN ancestors ON work_item_id = ancestors.id)
+		SELECT EXISTS(SELECT 1 FROM ancestors WHERE id = ?2)", params![depends_on, id], |row| row.get(0)).map_err(sqlite_error)?;
+	if cycle {
+		return Err(StoreError::InvalidInput("Agent dependency would create a cycle"));
+	}
+	connection.execute("INSERT INTO agent_dependencies (work_item_id, depends_on_id) VALUES (?1, ?2) ON CONFLICT DO NOTHING", params![id, depends_on]).map_err(sqlite_error)?;
+	Ok(())
 }
 
 fn work_exists(connection: &Connection, id: &str) -> Result<bool, StoreError> {

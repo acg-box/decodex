@@ -811,6 +811,61 @@ async fn automation_delivery_is_deduplicated_across_later_agent_turns() {
 }
 
 #[tokio::test]
+async fn failed_dependency_write_cannot_leave_dispatchable_work() {
+	let (mut coordinator, mut sent, directory) = fixture().await;
+	coordinator.start_agent("agent", "Coordinate").await.unwrap();
+	complete(&mut coordinator, "agent").await;
+	coordinator.create_goal("agent", "ready", "Accepted result").await.unwrap();
+	coordinator.create_goal("agent", "waiting", "Unresolved result").await.unwrap();
+	coordinator
+		.store
+		.set_agent_work_status("ready".into(), AgentWorkStatus::Resolved, None)
+		.await
+		.unwrap();
+	let root =
+		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
+			.unwrap();
+	let db = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+	db.execute_batch("CREATE TRIGGER fail_second_dependency BEFORE INSERT ON agent_dependencies WHEN NEW.work_item_id='dependent' AND NEW.depends_on_id='waiting' BEGIN SELECT RAISE(ABORT, 'fixture dependency write failure'); END;").unwrap();
+	while sent.try_recv().is_ok() {}
+	assert!(
+		coordinator
+			.create_worker_with_dependencies(
+				"agent",
+				"dependent",
+				"Use both results",
+				vec!["ready".into(), "waiting".into()]
+			)
+			.await
+			.is_err()
+	);
+	coordinator.wake_pending().await.unwrap();
+	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	assert!(
+		!requests.iter().any(|request| matches!(
+			request["method"].as_str(),
+			Some("thread/start" | "turn/start")
+		)),
+		"failed work creation dispatched native requests: {requests:?}"
+	);
+	assert!(coordinator.store.get_agent_work_item("dependent".into()).await.is_err());
+	assert!(coordinator.store.list_agent_dependencies().await.unwrap().is_empty());
+	db.execute_batch("DROP TRIGGER fail_second_dependency;").unwrap();
+	let work = coordinator
+		.create_worker_with_dependencies(
+			"agent",
+			"dependent",
+			"Use both results",
+			vec!["ready".into(), "waiting".into()],
+		)
+		.await
+		.unwrap();
+	assert!(work.codex_thread_id.is_none());
+	assert_eq!(coordinator.store.list_agent_dependencies().await.unwrap().len(), 2);
+	assert!(sent.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn dependencies_block_turns_until_explicit_resolution() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
