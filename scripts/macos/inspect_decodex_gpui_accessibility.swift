@@ -8,9 +8,8 @@ import Foundation
 
 let expectedBundleIdentifier = "box.acg.decodex"
 let expectedWindowTitle = "Decodex"
-let expectedShellLabel = "Decodex operational shell"
-let destinations = ["Agent", "Workbench", "Accounts", "Health"]
-let focusOrder = destinations + ["Open settings"]
+let expectedSettingsTitle = "Decodex Settings"
+let settingsSections = ["General", "Appearance", "Accounts", "Diagnostics"]
 let axMessagingTimeout: Float = 1.0
 let phasePollInterval = 0.05
 let maximumTreeNodes = 256
@@ -287,12 +286,26 @@ func labelMatches(_ actual: String?, _ expected: String) -> Bool {
 	return actual == expected || actual.hasPrefix("\(expected):")
 }
 
-func fact(_ expectedLabel: String, in tree: TreeSnapshot) throws -> ElementFact {
-	let matches = tree.facts.filter { labelMatches($0.label, expectedLabel) }
+func fact(_ expectedLabel: String, in tree: TreeSnapshot, role: String? = nil) throws -> ElementFact {
+	let matches = tree.facts.filter {
+		labelMatches($0.label, expectedLabel) && (role == nil || $0.role == role)
+	}
 	guard matches.count == 1, let match = matches.first else {
 		throw DiagnosticFailure.message("expected one \(expectedLabel) element, found \(matches.count)")
 	}
 	return match
+}
+
+func waitForTree(_ window: AXUIElement, labels: [String], role: String, recorder: AXRecorder) throws -> TreeSnapshot {
+	let deadline = Date().addingTimeInterval(4.0)
+	var tree = try snapshot(window, recorder: recorder)
+	while !labels.allSatisfy({ label in
+		tree.facts.filter { labelMatches($0.label, label) && $0.role == role }.count == 1
+	}), Date() < deadline {
+		Thread.sleep(forTimeInterval: phasePollInterval)
+		tree = try snapshot(window, recorder: recorder)
+	}
+	return tree
 }
 
 func focusedFact(root: AXUIElement, recorder: AXRecorder, operation: String) throws -> ElementFact {
@@ -338,25 +351,44 @@ func waitForFocused(
 	)
 }
 
-func waitForKeyboardBaseline(
-	root: AXUIElement,
-	recorder: AXRecorder
-) throws -> ElementFact {
-	let deadline = Date().addingTimeInterval(2.0)
+func settingsWindow(root: AXUIElement, recorder: AXRecorder, present: Bool) throws -> AXUIElement? {
+	let deadline = Date().addingTimeInterval(4.0)
 	repeat {
-		if let current = try? focusedFact(
-			root: root, recorder: recorder, operation: "keyboard_baseline.readback"
-		), current.label == expectedShellLabel || labelMatches(current.label, destinations[0]) {
-			return current
+		let (error, value) = try recorder.copy(root, kAXWindowsAttribute, operation: "settings.windows")
+		let windows = value as? [AXUIElement] ?? []
+		var main: [AXUIElement] = []
+		var settings: [AXUIElement] = []
+		for window in windows {
+			let (_, title) = try recorder.copy(window, kAXTitleAttribute, operation: "settings.window_title")
+			if title as? String == expectedWindowTitle { main.append(window) }
+			if title as? String == expectedSettingsTitle { settings.append(window) }
+		}
+		if error == .success && main.count == 1 && settings.count == (present ? 1 : 0)
+			&& windows.count == (present ? 2 : 1) {
+			return settings.first
 		}
 		Thread.sleep(forTimeInterval: phasePollInterval)
 	} while Date() < deadline
-	let current = try focusedFact(
-		root: root, recorder: recorder, operation: "keyboard_baseline.final"
-	)
-	throw DiagnosticFailure.message(
-		"keyboard baseline is \(current.label ?? "missing"), expected shell or Agent"
-	)
+	throw DiagnosticFailure.message("expected one main window and \(present ? 1 : 0) settings windows")
+}
+
+func selectedSection(_ expected: String, window: AXUIElement, recorder: AXRecorder) throws -> [String: Any] {
+	let tree = try waitForTree(window, labels: settingsSections, role: kAXRadioButtonRole, recorder: recorder)
+	var values: [String: Any] = [:]
+	for section in settingsSections {
+		let element = try fact(section, in: tree, role: kAXRadioButtonRole)
+		values[section] = try waitForNativeBool(section == expected, element: element.element,
+			recorder: recorder, operation: "settings.selection.\(section)")
+	}
+	return values
+}
+
+func recordedKey(_ keyCode: CGKeyCode, flags: CGEventFlags = [], operation: String,
+				 pid: pid_t, journal: Journal) throws {
+	let elapsed = try postKey(keyCode, flags: flags, to: pid, interval: 0.04)
+	try journal.append(["event": "input_operation", "operation": operation,
+		"key_code": keyCode, "flags_raw_value": flags.rawValue,
+		"down_up_interval_ms": 40, "elapsed_ms": elapsed])
 }
 
 func waitForNativeBool(
@@ -415,9 +447,23 @@ func keyboardStep(
 		"down_up_interval_ms": interval * 1_000,
 		"elapsed_ms": dispatchElapsed,
 	])
-	let focused = try waitForFocused(
-		expectedLabel, root: root, recorder: recorder, operation: "\(operation).readback"
-	)
+	let focused: ElementFact
+	do {
+		focused = try waitForFocused(expectedLabel, root: root, recorder: recorder, operation: "\(operation).readback")
+	} catch {
+		let (_, value) = try recorder.copy(root, kAXWindowsAttribute, operation: "focus_diagnostic.windows")
+		for window in value as? [AXUIElement] ?? [] {
+			let (_, title) = try recorder.copy(window, kAXTitleAttribute, operation: "focus_diagnostic.title")
+			let (_, focusedWindow) = try recorder.copy(window, kAXFocusedAttribute, operation: "focus_diagnostic.window_focused")
+			let (focusError, _) = try recorder.copy(window, kAXFocusedUIElementAttribute, operation: "focus_diagnostic.window_element")
+			let tree = try snapshot(window, recorder: recorder)
+			try journal.append(["event": "focus_diagnostic", "window": jsonValue(title),
+				"application_active": NSRunningApplication(processIdentifier: pid)?.isActive == true,
+				"window_focused": jsonValue(focusedWindow), "window_element_error": focusError.rawValue,
+				"focused_nodes": tree.facts.filter { $0.focused }.map { ["label": $0.label ?? "missing", "role": $0.role] }])
+		}
+		throw error
+	}
 	return [
 		"expected_label": expectedLabel,
 		"focused_label": focused.label ?? "missing",
@@ -573,7 +619,7 @@ do {
 		var activationAttempts = 0
 		repeat {
 			activationAttempts += 1
-			_ = app?.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+			_ = app?.activate(options: [.activateAllWindows])
 			if app?.isActive == true { break }
 			if Date() < activationDeadline {
 				Thread.sleep(forTimeInterval: phasePollInterval)
@@ -641,162 +687,72 @@ do {
 		])
 	}
 
-	let tree = try phase("readonly_tree", journal: journal, results: &phaseResults) {
-		let deadline = Date().addingTimeInterval(4.0)
-		var tree = try snapshot(window, recorder: ax)
-		while !(destinations + ["Open settings"]).allSatisfy({ destination in
-			tree.facts.filter { labelMatches($0.label, destination) }.count == 1
-		}), Date() < deadline {
-			Thread.sleep(forTimeInterval: phasePollInterval)
-			tree = try snapshot(window, recorder: ax)
-		}
-		let destinationFacts = try destinations.map { try fact($0, in: tree) }
-		let settingsFact = try fact("Open settings", in: tree)
-		let roles = destinationFacts.map(\.role)
-		let values = Dictionary(uniqueKeysWithValues: zip(
-			destinations,
-			destinationFacts.map { jsonValue($0.nativeValue) }
-		))
-		guard roles.allSatisfy({ $0 == kAXRadioButtonRole }) else {
-			throw DiagnosticFailure.message("destination native roles are not AXRadioButton")
-		}
-		guard destinationFacts.allSatisfy({ $0.nativeValue is Bool }) else {
-			throw DiagnosticFailure.message("destination native AXValue is not boolean")
-		}
-		guard settingsFact.role == kAXButtonRole else {
-			throw DiagnosticFailure.message("Settings native role is not AXButton")
-		}
-		return (tree, [
-			"visited_nodes": tree.visited,
-			"maximum_nodes": maximumTreeNodes,
-			"destination_labels": destinations,
-			"destination_roles": roles,
-			"destination_native_values": values,
-			"settings_label": settingsFact.label ?? "missing",
-			"settings_role": settingsFact.role,
-			"roles": tree.roles.sorted(),
-		])
+	_ = try phase("readonly_tree", journal: journal, results: &phaseResults) {
+		let tree = try waitForTree(window, labels: ["Open settings"], role: kAXButtonRole, recorder: ax)
+		let settings = try fact("Open settings", in: tree, role: kAXButtonRole)
+		return ((), ["visited_nodes": tree.visited, "maximum_nodes": maximumTreeNodes,
+			"settings_label": settings.label ?? "missing", "settings_role": settings.role])
 	}
 
 	_ = try phase("screenshot_pixels", journal: journal, results: &phaseResults) {
-		let receipt = try captureWindow(pid: parsed.pid, screenshotURL: parsed.screenshotURL)
-		return ((), receipt)
+		return ((), try captureWindow(pid: parsed.pid, screenshotURL: parsed.screenshotURL))
 	}
 
-	let baseline = try phase("keyboard_baseline", journal: journal, results: &phaseResults) {
-		let focused = try waitForKeyboardBaseline(root: root, recorder: ax)
-		let expectedRole = labelMatches(focused.label, destinations[0])
-			? kAXRadioButtonRole
-			: kAXGroupRole
-		guard focused.role == expectedRole else {
-			throw DiagnosticFailure.message(
-				"keyboard baseline role is \(focused.role), expected \(expectedRole)"
-			)
+	let settings = try phase("open_settings", journal: journal, results: &phaseResults) {
+		try recordedKey(43, flags: .maskCommand, operation: "settings.command_comma", pid: parsed.pid, journal: journal)
+		guard let settings = try settingsWindow(root: root, recorder: ax, present: true) else {
+			throw DiagnosticFailure.message("settings window missing")
 		}
-		return (focused, [
-			"focused_label": focused.label ?? "missing",
-			"focused_role": focused.role,
-			"focused_native_value": jsonValue(focused.nativeValue),
-		])
+		let values = try selectedSection("General", window: settings, recorder: ax)
+		return (settings, ["window_title": expectedSettingsTitle, "window_count": 2,
+			"section_native_values": values])
+	}
+
+	_ = try phase("settings_window_reuse", journal: journal, results: &phaseResults) {
+		try recordedKey(43, flags: .maskCommand, operation: "settings.reopen", pid: parsed.pid, journal: journal)
+		guard let reopened = try settingsWindow(root: root, recorder: ax, present: true),
+			  CFEqual(settings, reopened) else {
+			throw DiagnosticFailure.message("settings shortcut replaced the existing window")
+		}
+		return ((), ["same_window": true, "window_count": 2])
 	}
 
 	_ = try phase("keyboard_forward", journal: journal, results: &phaseResults) {
-		let eventDestinations = baseline.label == expectedShellLabel
-			? focusOrder
-			: Array(focusOrder.dropFirst())
 		var readbacks: [[String: Any]] = []
-		for (index, destination) in eventDestinations.enumerated() {
-			readbacks.append(try keyboardStep(
-				operation: "forward_tab.\(index)",
-				expectedLabel: destination,
-				keyCode: 48,
-				pid: parsed.pid,
-				root: root,
-				recorder: ax,
-				journal: journal
-			))
+		for section in settingsSections {
+			var readback = try keyboardStep(operation: "settings.tab.\(section)", expectedLabel: section,
+				keyCode: 48, pid: parsed.pid, root: root, recorder: ax, journal: journal)
+			guard readback["focused_role"] as? String == kAXRadioButtonRole else {
+				throw DiagnosticFailure.message("focused settings section is not AXRadioButton")
+			}
+			try recordedKey(36, operation: "settings.enter.\(section)", pid: parsed.pid, journal: journal)
+			_ = try waitForFocused(section, root: root, recorder: ax, operation: "settings.enter.focus")
+			readback["section_native_values"] = try selectedSection(section, window: settings, recorder: ax)
+			readbacks.append(readback)
 		}
-		let observed = (labelMatches(baseline.label, destinations[0]) ? [baseline.label ?? "missing"] : [])
-			+ readbacks.compactMap { $0["focused_label"] as? String }
-		return ((), [
-			"baseline_label": baseline.label ?? "missing",
-			"expected_order": focusOrder,
-			"observed_order": observed,
-			"event_readbacks": readbacks,
-		])
+		return ((), ["expected_order": settingsSections, "event_readbacks": readbacks])
 	}
 
 	_ = try phase("keyboard_reverse", journal: journal, results: &phaseResults) {
-		let settings = try waitForFocused(
-			"Open settings", root: root, recorder: ax, operation: "reverse_start.readback"
-		)
 		var readbacks: [[String: Any]] = []
-		for (index, destination) in focusOrder.dropLast().reversed().enumerated() {
-			readbacks.append(try keyboardStep(
-				operation: "reverse_shift_tab.\(index)",
-				expectedLabel: destination,
-				keyCode: 48,
-				flags: .maskShift,
-				pid: parsed.pid,
-				root: root,
-				recorder: ax,
-				journal: journal
-			))
+		for section in settingsSections.dropLast().reversed() {
+			var readback = try keyboardStep(operation: "settings.shift_tab.\(section)", expectedLabel: section,
+				keyCode: 48, flags: .maskShift, pid: parsed.pid, root: root, recorder: ax, journal: journal)
+			try recordedKey(36, operation: "settings.reverse_enter.\(section)", pid: parsed.pid, journal: journal)
+			readback["section_native_values"] = try selectedSection(section, window: settings, recorder: ax)
+			readbacks.append(readback)
 		}
-		let observed = [settings.label ?? "missing"]
-			+ readbacks.compactMap { $0["focused_label"] as? String }
-		let expectedOrder = Array(focusOrder.reversed())
-		return ((), [
-			"expected_order": expectedOrder,
-			"observed_order": observed,
-			"event_readbacks": readbacks,
-		])
+		return ((), ["expected_order": Array(settingsSections.dropLast().reversed()), "event_readbacks": readbacks])
 	}
 
-	_ = try phase("keyboard_enter_selection", journal: journal, results: &phaseResults) {
-		let agent = try fact("Agent", in: tree)
-		let quickTasks = try fact("Workbench", in: tree)
-		_ = try waitForNativeBool(
-			false, element: agent.element, recorder: ax, operation: "enter.agent_before"
-		)
-		_ = try waitForNativeBool(
-			true, element: quickTasks.element, recorder: ax, operation: "enter.conversations_before"
-		)
-		let interval = 0.04
-		let dispatchElapsed = try postKey(36, to: parsed.pid, interval: interval)
-		try journal.append([
-			"event": "input_operation",
-			"operation": "enter_path.enter_agent",
-			"key_code": 36,
-			"flags_raw_value": 0,
-			"down_up_interval_ms": interval * 1_000,
-			"elapsed_ms": dispatchElapsed,
-		])
-		let focusedAfter = try waitForFocused(
-			"Agent", root: root, recorder: ax, operation: "enter_path.focus_after"
-		)
-		let quickTasksSelected = try waitForNativeBool(
-			false,
-			element: quickTasks.element,
-			recorder: ax,
-			operation: "enter.conversations_after"
-		)
-		let agentSelected = try waitForNativeBool(
-			true,
-			element: agent.element,
-			recorder: ax,
-			operation: "enter.agent_after"
-		)
-		return ((), [
-			"tab_readbacks": [],
-			"focused_label_after_enter": focusedAfter.label ?? "missing",
-			"focused_role_after_enter": focusedAfter.role,
-			"focused_native_value_after_enter": jsonValue(focusedAfter.nativeValue),
-			"conversations_selected_after": quickTasksSelected,
-			"agent_selected_after": agentSelected,
-			"enter_dispatch_elapsed_ms": dispatchElapsed,
-		])
+	_ = try phase("close_settings", journal: journal, results: &phaseResults) {
+		try recordedKey(53, operation: "settings.escape", pid: parsed.pid, journal: journal)
+		_ = try settingsWindow(root: root, recorder: ax, present: false)
+		let tree = try snapshot(window, recorder: ax)
+		_ = try fact("Open settings", in: tree, role: kAXButtonRole)
+		return ((), ["window_count": 1, "main_window_retained": true])
 	}
+
 } catch {
 	failure = String(describing: error)
 }
