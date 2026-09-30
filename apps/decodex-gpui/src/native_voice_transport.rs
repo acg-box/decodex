@@ -106,7 +106,7 @@ impl Drop for Peer {
 }
 
 async fn run(
-	mut pcm: Pcm,
+	pcm: Pcm,
 	mut commands: channel::Receiver<Command>,
 	events: Events,
 ) -> Result<(), &'static str> {
@@ -121,6 +121,8 @@ async fn run(
 			.create_peer_connection(config)
 			.map_err(|_| "The audio connection could not start.")?,
 	);
+	// Drop the PCM endpoints before Peer::drop waits for native network teardown.
+	let mut pcm = pcm;
 	let source = NativeAudioSource::new(AudioSourceOptions::default(), 48_000, 1, 40);
 	let track = factory.create_audio_track("microphone", source.clone());
 	peer.0
@@ -139,21 +141,20 @@ async fn run(
 		.map_err(|_| "The audio event channel could not start.")?;
 	let captions = events.clone();
 	data.on_message(Some(Box::new(move |buffer| {
-		if !buffer.binary && buffer.data.len() <= 65_536 {
-			if let Ok(value) = serde_json::from_slice::<Value>(buffer.data) {
-				if matches!(
-					value["type"].as_str(),
-					Some(
-						"input_transcript.added"
-							| "output_transcript.added"
-							| "turn.created"
-							| "turn.done"
-							| "turn.delta"
-					)
-				) {
-					captions.send(json!({"type":"caption","event":value}));
-				}
-			}
+		if !buffer.binary
+			&& buffer.data.len() <= 65_536
+			&& let Ok(value) = serde_json::from_slice::<Value>(buffer.data)
+			&& matches!(
+				value["type"].as_str(),
+				Some(
+					"input_transcript.added"
+						| "output_transcript.added"
+						| "turn.created"
+						| "turn.done"
+						| "turn.delta"
+				)
+			) {
+			captions.send(json!({"type":"caption","event":value}));
 		}
 	})));
 	let offer = tokio::time::timeout(Duration::from_secs(10), async {
