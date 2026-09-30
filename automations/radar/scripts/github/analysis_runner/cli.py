@@ -50,15 +50,18 @@ def main() -> None:
             "deterministic Radar workflows; GitHub Actions must not run this helper."
         )
 
-    bundle_path = Path(args.bundle)
-    if ".agent/automations/radar/cache" in bundle_path.as_posix():
+    bundle_path = Path(args.bundle).resolve()
+    repo_root = Path(args.repo_root).resolve() if args.repo_root else repo_root_from(bundle_path)
+    if not bundle_path.is_relative_to(repo_root):
+        raise SystemExit("Analysis bundle must be inside repo root")
+    private_cache = (repo_root / ".agent/automations/radar/cache").resolve()
+    if bundle_path.is_relative_to(private_cache):
         raise SystemExit("Python analysis helper must not read the private Radar cache directly")
     bundle = load_json(bundle_path)
     bundle_validation = validate_bundle(bundle)
     if not bundle_validation.ok:
         raise SystemExit("Bundle validation failed:\n- " + "\n- ".join(bundle_validation.errors))
 
-    repo_root = Path(args.repo_root).resolve() if args.repo_root else repo_root_from(bundle_path)
     payload = run_codex_analysis(args, bundle_path, repo_root)
     validation = validate_analysis_draft(payload)
     if not validation.ok:
