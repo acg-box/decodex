@@ -1,17 +1,26 @@
 use std::{
 	ffi::CString,
-	fs::{self, FileTimes},
-	io::Write as _,
+	fs::{self, FileTimes, OpenOptions, Permissions},
+	io::{Error, ErrorKind, Write as _},
 	os::unix::{
+		self,
 		ffi::OsStrExt as _,
-		fs::{MetadataExt as _, PermissionsExt as _},
+		fs::{MetadataExt, PermissionsExt as _},
 	},
+	path::{Path, PathBuf},
 	sync::mpsc,
 	thread,
 	time::{Duration, SystemTime},
 };
 
-use crate::{RadarCacheGcRequest, requests::CacheRetentionPolicy};
+use rusqlite::Connection;
+
+use crate::{
+	DEFAULT_CACHE_ROOT, RadarCacheGcRequest, ledger,
+	private_fs::{self, PrivateCache},
+	requests::CacheRetentionPolicy,
+	test_support,
+};
 
 fn policy() -> CacheRetentionPolicy {
 	CacheRetentionPolicy {
@@ -19,11 +28,11 @@ fn policy() -> CacheRetentionPolicy {
 		max_files_per_collection: 2,
 		max_bytes_per_collection: 8,
 		ledger_max_rows_per_table: 2,
-		ledger_max_bytes: 128 * 1024,
+		ledger_max_bytes: 128 * 1_024,
 	}
 }
 
-fn private_file(path: &std::path::Path, bytes: &[u8], modified: SystemTime) {
+fn private_file(path: &Path, bytes: &[u8], modified: SystemTime) {
 	if let Some(parent) = path.parent() {
 		crate::ensure_private_directory(parent).expect("private parent should be created");
 	}
@@ -36,8 +45,8 @@ fn private_file(path: &std::path::Path, bytes: &[u8], modified: SystemTime) {
 
 #[test]
 fn cache_gc_enforces_age_count_and_byte_limits_across_all_collections() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
+	let temp_dir = test_support::private_tempdir();
+	let root = temp_dir.path().join(DEFAULT_CACHE_ROOT);
 	let now = SystemTime::now();
 	let recent = now - Duration::from_secs(60);
 	let older = now - Duration::from_secs(120);
@@ -68,8 +77,8 @@ fn cache_gc_enforces_age_count_and_byte_limits_across_all_collections() {
 
 #[test]
 fn cache_gc_covers_every_writer_collection_and_recovers_crash_temporary_files() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
+	let temp_dir = test_support::private_tempdir();
+	let root = temp_dir.path().join(DEFAULT_CACHE_ROOT);
 	let now = SystemTime::now();
 	let recent = now - Duration::from_secs(60);
 	let older = now - Duration::from_secs(120);
@@ -112,14 +121,14 @@ fn cache_gc_covers_every_writer_collection_and_recovers_crash_temporary_files() 
 
 #[test]
 fn cache_gc_prunes_ledger_rows_with_atomic_persistence() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
+	let temp_dir = test_support::private_tempdir();
+	let root = temp_dir.path().join(DEFAULT_CACHE_ROOT);
 	let ledger = root.join("github/radar.sqlite3");
-	let connection = crate::ledger::open_ledger(&ledger).expect("ledger should open");
+	let connection = ledger::open_ledger(&ledger).expect("ledger should open");
 
 	connection.close().expect("ledger fixture should persist");
 
-	let raw = rusqlite::Connection::open(&ledger).expect("raw oversized fixture should open");
+	let raw = Connection::open(&ledger).expect("raw oversized fixture should open");
 
 	raw.execute(
 		"
@@ -176,7 +185,7 @@ fn cache_gc_prunes_ledger_rows_with_atomic_persistence() {
 		);
 	}
 
-	let connection = crate::ledger::open_ledger(&ledger).expect("retained ledger should reopen");
+	let connection = ledger::open_ledger(&ledger).expect("retained ledger should reopen");
 	let source_rows: i64 = connection
 		.query_row("SELECT COUNT(*) FROM source_cache", [], |row| row.get(0))
 		.expect("source row count should be read");
@@ -188,10 +197,10 @@ fn cache_gc_prunes_ledger_rows_with_atomic_persistence() {
 
 #[test]
 fn cache_gc_fails_closed_without_resetting_an_oversized_ledger() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
+	let temp_dir = test_support::private_tempdir();
+	let root = temp_dir.path().join(DEFAULT_CACHE_ROOT);
 	let ledger = root.join("github/radar.sqlite3");
-	let connection = crate::ledger::open_ledger(&ledger).expect("ledger should open");
+	let connection = ledger::open_ledger(&ledger).expect("ledger should open");
 
 	connection
 		.execute(
@@ -218,12 +227,9 @@ fn cache_gc_fails_closed_without_resetting_an_oversized_ledger() {
 	let after = fs::metadata(&ledger).expect("ledger must not be deleted");
 
 	assert!(error.to_string().contains("RADAR_LEDGER_OVERSIZE"));
-	assert_eq!(
-		std::os::unix::fs::MetadataExt::ino(&before),
-		std::os::unix::fs::MetadataExt::ino(&after)
-	);
+	assert_eq!(MetadataExt::ino(&before), MetadataExt::ino(&after));
 
-	let reopened = crate::ledger::open_ledger(&ledger).expect("ledger must remain valid");
+	let reopened = ledger::open_ledger(&ledger).expect("ledger must remain valid");
 	let rows: i64 = reopened
 		.query_row("SELECT COUNT(*) FROM source_cache", [], |row| row.get(0))
 		.expect("source cache rows should remain readable");
@@ -235,7 +241,7 @@ fn cache_gc_fails_closed_without_resetting_an_oversized_ledger() {
 
 #[test]
 fn cache_io_is_owner_only_and_rejects_symlinks_and_wrong_modes() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 	let root = temp_dir.path().join(".agent/automations/radar/cache");
 	let path = root.join("github/test-files/review.json");
 
@@ -250,7 +256,7 @@ fn cache_io_is_owner_only_and_rejects_symlinks_and_wrong_modes() {
 	assert_eq!(directory_mode, 0o700);
 	assert_eq!(file_mode, 0o600);
 
-	fs::set_permissions(&path, fs::Permissions::from_mode(0o644))
+	fs::set_permissions(&path, Permissions::from_mode(0o644))
 		.expect("fixture mode should be weakened");
 
 	let mode_error = crate::load_json(&path).expect_err("wrong file mode must fail");
@@ -266,8 +272,7 @@ fn cache_io_is_owner_only_and_rejects_symlinks_and_wrong_modes() {
 
 	crate::ensure_private_directory(root.join("github").as_path())
 		.expect("GitHub cache root should exist");
-	std::os::unix::fs::symlink(temp_dir.path(), &symlink_parent)
-		.expect("symlink fixture should be created");
+	unix::fs::symlink(temp_dir.path(), &symlink_parent).expect("symlink fixture should be created");
 
 	let symlink_error = crate::write_json(
 		&symlink_parent.join("impact.json"),
@@ -280,7 +285,7 @@ fn cache_io_is_owner_only_and_rejects_symlinks_and_wrong_modes() {
 	let bad_root = temp_dir.path().join("bad-cache");
 
 	crate::ensure_private_directory(&bad_root).expect("private cache root should be created");
-	fs::set_permissions(&bad_root, fs::Permissions::from_mode(0o755))
+	fs::set_permissions(&bad_root, Permissions::from_mode(0o755))
 		.expect("fixture directory mode should be weakened");
 
 	let directory_error = crate::cache_gc(&RadarCacheGcRequest {
@@ -295,12 +300,12 @@ fn cache_io_is_owner_only_and_rejects_symlinks_and_wrong_modes() {
 
 #[test]
 fn cache_io_rejects_a_symlink_before_the_fixed_cache_root() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 	let actual_agent = temp_dir.path().join("actual-agent");
 	let linked_agent = temp_dir.path().join(".agent");
 
 	crate::ensure_private_directory(&actual_agent).expect("private target should be created");
-	std::os::unix::fs::symlink(&actual_agent, &linked_agent)
+	unix::fs::symlink(&actual_agent, &linked_agent)
 		.expect("cache ancestor symlink should be created");
 
 	let path = linked_agent.join("automations/radar/cache/github/test-files/review.json");
@@ -313,8 +318,8 @@ fn cache_io_rejects_a_symlink_before_the_fixed_cache_root() {
 
 #[test]
 fn cache_io_rejects_parent_traversal_hard_links_and_root_replacement() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
+	let temp_dir = test_support::private_tempdir();
+	let root = temp_dir.path().join(DEFAULT_CACHE_ROOT);
 	let path = root.join("github/test-files/review.json");
 
 	crate::write_json(&path, &serde_json::json!({"schema": "test"}))
@@ -336,15 +341,14 @@ fn cache_io_rejects_parent_traversal_hard_links_and_root_replacement() {
 
 	fs::remove_file(hard_link).expect("hard-link fixture should be removed");
 
-	let cache =
-		crate::private_fs::PrivateCache::open_existing(&root).expect("cache root should open");
+	let cache = PrivateCache::open_existing(&root).expect("cache root should open");
 	let displaced = temp_dir.path().join("displaced-cache");
 
 	fs::rename(&root, &displaced).expect("cache root should be displaced");
 	crate::ensure_private_directory(&root).expect("replacement root should be created");
 
 	let replacement_error = cache
-		.read(std::path::Path::new("github/test-files/review.json"))
+		.read(Path::new("github/test-files/review.json"))
 		.expect_err("open descriptor must reject root path replacement");
 
 	assert!(replacement_error.to_string().contains("root identity changed"));
@@ -352,8 +356,8 @@ fn cache_io_rejects_parent_traversal_hard_links_and_root_replacement() {
 
 #[test]
 fn cache_io_rejects_reserved_lock_and_temporary_destinations_before_replacement() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
+	let temp_dir = test_support::private_tempdir();
+	let root = temp_dir.path().join(DEFAULT_CACHE_ROOT);
 	let ordinary = root.join("github/test-files/review.json");
 
 	crate::write_json(&ordinary, &serde_json::json!({"schema": "test"}))
@@ -374,8 +378,7 @@ fn cache_io_rejects_reserved_lock_and_temporary_destinations_before_replacement(
 	assert!(temp_error.to_string().contains("reserved internal file name"));
 	assert_eq!(lock_before.ino(), lock_after.ino());
 
-	let cache =
-		crate::private_fs::PrivateCache::open_existing(&root).expect("cache root should reopen");
+	let cache = PrivateCache::open_existing(&root).expect("cache root should reopen");
 
 	drop(cache.try_lock().expect("the original lock must remain authoritative"));
 
@@ -384,16 +387,15 @@ fn cache_io_rejects_reserved_lock_and_temporary_destinations_before_replacement(
 
 #[test]
 fn private_cache_read_stops_at_the_bound_when_a_file_grows_after_metadata() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let path =
-		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
+	let temp_dir = test_support::private_tempdir();
+	let path = temp_dir.path().join(DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
 	let now = SystemTime::now();
 
 	private_file(&path, b"1234", now);
 
 	let append_path = path.clone();
-	let error = crate::private_fs::read_private_file_bounded_after_metadata(&path, 4, move || {
-		let mut file = fs::OpenOptions::new()
+	let error = private_fs::read_private_file_bounded_after_metadata(&path, 4, move || {
+		let mut file = OpenOptions::new()
 			.append(true)
 			.open(append_path)
 			.expect("fixture should reopen for append");
@@ -408,9 +410,9 @@ fn private_cache_read_stops_at_the_bound_when_a_file_grows_after_metadata() {
 
 #[test]
 fn private_cache_bounded_read_rejects_a_fifo_without_blocking() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
-	let relative = std::path::PathBuf::from("github/test-files/review.json");
+	let temp_dir = test_support::private_tempdir();
+	let root = temp_dir.path().join(DEFAULT_CACHE_ROOT);
+	let relative = PathBuf::from("github/test-files/review.json");
 	let path = root.join(&relative);
 
 	crate::ensure_private_directory(path.parent().expect("FIFO parent should exist"))
@@ -422,9 +424,9 @@ fn private_cache_bounded_read_rejects_a_fifo_without_blocking() {
 
 	let (sender, receiver) = mpsc::channel();
 	let reader = thread::spawn(move || {
-		let result = crate::private_fs::PrivateCache::open_existing(&root)
-			.and_then(crate::private_fs::PrivateCache::lock)
-			.and_then(|lock| lock.read_bounded(&relative, 1024));
+		let result = PrivateCache::open_existing(&root)
+			.and_then(PrivateCache::lock)
+			.and_then(|lock| lock.read_bounded(&relative, 1_024));
 
 		sender.send(result).expect("FIFO read result should be observed");
 	});
@@ -441,9 +443,8 @@ fn private_cache_bounded_read_rejects_a_fifo_without_blocking() {
 
 #[test]
 fn private_cache_read_detects_an_mtime_preserving_in_place_rewrite() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let path =
-		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
+	let temp_dir = test_support::private_tempdir();
+	let path = temp_dir.path().join(DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
 	let modified = SystemTime::now() - Duration::from_secs(60);
 
 	private_file(&path, b"1234", modified);
@@ -451,10 +452,10 @@ fn private_cache_read_detects_an_mtime_preserving_in_place_rewrite() {
 	let initial = fs::metadata(&path).expect("initial metadata should be readable");
 	let initial_ctime = (initial.ctime(), initial.ctime_nsec());
 	let rewrite_path = path.clone();
-	let error = crate::private_fs::read_private_file_bounded_after_metadata(&path, 4, move || {
+	let error = private_fs::read_private_file_bounded_after_metadata(&path, 4, move || {
 		thread::sleep(Duration::from_millis(10));
 
-		let mut file = fs::OpenOptions::new()
+		let mut file = OpenOptions::new()
 			.write(true)
 			.truncate(true)
 			.open(&rewrite_path)
@@ -476,15 +477,14 @@ fn private_cache_read_detects_an_mtime_preserving_in_place_rewrite() {
 
 #[test]
 fn private_entry_kind_rejects_replacement_between_snapshots() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let path =
-		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
+	let temp_dir = test_support::private_tempdir();
+	let path = temp_dir.path().join(DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
 	let displaced = path.with_file_name("original-review.json");
 
 	private_file(&path, b"old", SystemTime::now());
 
 	let replacement = path.clone();
-	let error = crate::private_fs::private_entry_kind_after_snapshot(&path, move || {
+	let error = private_fs::private_entry_kind_after_snapshot(&path, move || {
 		fs::rename(&replacement, displaced).expect("original entry should be displaced");
 
 		private_file(&replacement, b"new", SystemTime::now());
@@ -500,14 +500,13 @@ fn private_entry_kind_rejects_replacement_between_snapshots() {
 
 #[test]
 fn private_entry_kind_rejects_disappearance_between_snapshots() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let path =
-		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
+	let temp_dir = test_support::private_tempdir();
+	let path = temp_dir.path().join(DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
 
 	private_file(&path, b"old", SystemTime::now());
 
 	let removed = path.clone();
-	let error = crate::private_fs::private_entry_kind_after_snapshot(&path, move || {
+	let error = private_fs::private_entry_kind_after_snapshot(&path, move || {
 		fs::remove_file(removed).expect("entry should be removed after its first snapshot");
 	})
 	.expect_err("entry disappearance between snapshots must fail closed");
@@ -521,19 +520,17 @@ fn private_entry_kind_rejects_disappearance_between_snapshots() {
 
 #[test]
 fn private_entry_kind_rejects_symlink_substitution_between_snapshots() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let path =
-		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
+	let temp_dir = test_support::private_tempdir();
+	let path = temp_dir.path().join(DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
 	let displaced = path.with_file_name("original-review.json");
 
 	private_file(&path, b"old", SystemTime::now());
 
 	let substitute = path.clone();
 	let target = displaced.clone();
-	let error = crate::private_fs::private_entry_kind_after_snapshot(&path, move || {
+	let error = private_fs::private_entry_kind_after_snapshot(&path, move || {
 		fs::rename(&substitute, &target).expect("original entry should be displaced");
-		std::os::unix::fs::symlink(&target, &substitute)
-			.expect("symlink substitute should be installed");
+		unix::fs::symlink(&target, &substitute).expect("symlink substitute should be installed");
 	})
 	.expect_err("symlink substitution between snapshots must fail closed");
 
@@ -551,30 +548,28 @@ fn private_entry_kind_rejects_symlink_substitution_between_snapshots() {
 
 #[test]
 fn cache_lock_serializes_writers_and_gc_deletion_revalidates_identity() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
-	let relative = std::path::Path::new("github/test-files/review.json");
+	let temp_dir = test_support::private_tempdir();
+	let root = temp_dir.path().join(DEFAULT_CACHE_ROOT);
+	let relative = Path::new("github/test-files/review.json");
 	let path = root.join(relative);
 	let now = SystemTime::now();
 
 	private_file(&path, b"old", now);
 
-	let cache =
-		crate::private_fs::PrivateCache::open_existing(&root).expect("cache root should open");
+	let cache = PrivateCache::open_existing(&root).expect("cache root should open");
 	let expected = cache
 		.metadata(relative)
 		.expect("cache metadata should be readable")
 		.expect("cache file should exist");
 	let lock = cache.lock().expect("first writer should hold the cache lock");
-	let second = crate::private_fs::PrivateCache::open_existing(&root)
-		.expect("second cache root should open");
+	let second = PrivateCache::open_existing(&root).expect("second cache root should open");
 	let lock_error = second.try_lock().expect_err("second writer must not acquire the lock");
 
 	assert!(
 		lock_error
 			.chain()
-			.find_map(|cause| cause.downcast_ref::<std::io::Error>())
-			.is_some_and(|error| error.kind() == std::io::ErrorKind::WouldBlock)
+			.find_map(|cause| cause.downcast_ref::<Error>())
+			.is_some_and(|error| error.kind() == ErrorKind::WouldBlock)
 	);
 
 	let displaced = root.join("github/test-files/original.json");
