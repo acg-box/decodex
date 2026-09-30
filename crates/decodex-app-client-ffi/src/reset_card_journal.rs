@@ -119,7 +119,6 @@ enum Request {
 struct Dispatch {
 	_lock: Lock,
 	path: PathBuf,
-	current: Vec<Attempt>,
 	attempt: Attempt,
 }
 
@@ -157,17 +156,16 @@ pub(super) fn request(bytes: &[u8]) -> Option<Value> {
 				return None;
 			}
 			let lease = NEXT.fetch_add(1, Ordering::Relaxed);
-			dispatches()
-				.lock()
-				.ok()?
-				.insert(lease, Dispatch { _lock: lock, path, current, attempt });
+			dispatches().lock().ok()?.insert(lease, Dispatch { _lock: lock, path, attempt });
 			Some(json!({"lease":lease}))
 		},
 		Request::FinishDispatch { lease, observation } => {
 			let dispatch = dispatches().lock().ok()?.remove(&lease)?;
 			let update = if !observation.retires() {
 				"retained"
-			} else if remove(&dispatch.path, dispatch.current.clone(), &dispatch.attempt).is_some()
+			} else if writable(&dispatch.path)
+				.and_then(|current| remove(&dispatch.path, current, &dispatch.attempt))
+				.is_some()
 			{
 				"removed"
 			} else {
@@ -532,6 +530,35 @@ mod tests {
 			call(json!({"operation":"load","path":path})),
 			Some(json!({"blocked":false,"attempts":[]}))
 		);
+	}
+
+	#[test]
+	fn dispatch_completion_preserves_a_journal_that_becomes_unwritable() {
+		for corrupt in [false, true] {
+			let fixture = Fixture::new();
+			let path = fixture.path();
+			call(json!({"operation":"insert","path":path,"attempt":attempt()})).unwrap();
+			let lease = call(json!({"operation":"begin_dispatch","path":path,"attempt":attempt()}))
+				.unwrap()["lease"]
+				.as_u64()
+				.unwrap();
+			if corrupt {
+				fs::write(&path, b"damaged journal").unwrap();
+			} else {
+				fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+			}
+			let before = fs::read(&path).unwrap();
+			let mode = fs::metadata(&path).unwrap().mode();
+			assert_eq!(
+				call(
+					json!({"operation":"finish_dispatch","lease":lease,"observation":"completed"})
+				),
+				Some(json!({"update":"removal_failed"}))
+			);
+			assert_eq!(fs::read(&path).unwrap(), before);
+			assert_eq!(fs::metadata(&path).unwrap().mode(), mode);
+			assert!(Lock::acquire(&path, false).is_ok(), "completion must release its lease");
+		}
 	}
 
 	#[test]
