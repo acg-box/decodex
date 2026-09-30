@@ -18,13 +18,13 @@ pub(crate) const NO_CREATE_RELEASED_STATUS: &str = "no_create_released";
 pub(crate) const IDENTITY_RECOVERY_EXHAUSTED_STATUS: &str = "identity_recovery_exhausted";
 pub(crate) const READ_RECOVERY_EXHAUSTED_STATUS: &str = "read_recovery_exhausted";
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct XurlCall {
 	pub(crate) operation: String,
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub(crate) operation_id: Option<String>,
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub(crate) billing_month: Option<String>,
 	pub(crate) status: String,
 	pub(crate) recorded_cost_ceiling_microusd: u64,
@@ -38,7 +38,7 @@ pub(crate) struct XurlAttempt {
 	pub(crate) run_id: String,
 	pub(crate) reservation_ref: String,
 	pub(crate) candidate_ref: String,
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub(crate) candidate_sha256: Option<String>,
 	pub(crate) idempotency_key: String,
 	pub(crate) publication_lineage_sha256: String,
@@ -49,9 +49,9 @@ pub(crate) struct XurlAttempt {
 	pub(crate) updated_at: String,
 	pub(crate) reserved_cost_ceiling_microusd: u64,
 	pub(crate) xurl_version: String,
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub(crate) pricing_policy_id: Option<String>,
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub(crate) authorization_contract_sha256: Option<String>,
 	pub(crate) calls: Vec<XurlCall>,
 	pub(crate) verified_user_id: Option<String>,
@@ -75,9 +75,9 @@ pub(crate) struct XurlObservationAttempt {
 	pub(crate) window: String,
 	pub(crate) created_at: String,
 	pub(crate) updated_at: String,
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub(crate) pricing_policy_id: Option<String>,
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub(crate) authorization_contract_sha256: Option<String>,
 	pub(crate) call: XurlCall,
 	pub(crate) calls: Vec<XurlCall>,
