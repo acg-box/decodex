@@ -27,10 +27,10 @@ sources:
     resource: repo://database/src/reset_cards.rs
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-09-30T09:24:46.437Z" }
+generated: { by: "codex", at: "2026-09-30T09:30:20.448Z" }
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-30T09:24:46.437Z
+    at: 2026-09-30T09:30:20.448Z
 ---
 
 
@@ -76,7 +76,7 @@ The UI restores account-scoped operation status through the service. The Rust na
 
 The Rust protocol client validates the selected account, descriptor, revision, request key and receipt before it reports consumption. The native `consume_reset_card` operation returns the validated operation state or an explicit rejection/possible-dispatch failure. Swift presents that result; it does not decode service command receipts a second time. A possible dispatch preserves the original pending request for status reads. The old `use_reset_card` native operation is not accepted, so a mixed native library cannot interpret the changed response contract.
 
-The journal preserves `reset-card-pending-v1.json` and schema `decodex/reset-card-pending/2`. Rust owns validation, duplicate detection, recovery of valid entries, the 64-attempt limit, process and file locks, and synchronized atomic replacement. Unknown schemas or conflicting records block mutation without deleting the file. A native dispatch lease holds the same file lock across the async request and removes only the exact saved attempt after a definite result. A retained or failed result does not create a new key or send another request. Service recovery cannot replace this journal because a request can lose acknowledgment before the service has a readable operation.
+The journal preserves `reset-card-pending-v1.json` and schema `decodex/reset-card-pending/2`. Rust owns validation, duplicate detection, recovery of valid entries, the 64-attempt limit, process and file locks, and synchronized atomic replacement. Unknown schemas or conflicting records block mutation without deleting the file. A native dispatch lease holds the same file lock across the async request. The `decodex_reset_card_journal_v2` API accepts an observed state, not a removal flag. Rust permits retirement only for completed, failed-before-effect or rejected observations; prepared, ambiguous, missing, unavailable and unconfirmed results retain the exact saved attempt. Swift receives the native retained, removed or removal-failed result. A retained or failed result does not create a new key or send another request. Service recovery cannot replace this journal because a request can lose acknowledgment before the service has a readable operation.
 
 Run `scripts/macos/test_native_app.sh --filter 'ResetCardPendingAttemptStoreTests|ResetCardStoreRecoveryTests'` to exercise the actual Rust journal through Swift. Rust tests also check the legacy document and exclusion of another process while a dispatch lease is held.
 

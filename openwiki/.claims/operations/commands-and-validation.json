@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f79fa1f8a23c8975f31f87d93d5d37a8b1b2e4728280ea9ecfa9303e17951332",
+  "pageVersion": "sha256:fb820a1faf04f3cd1241506e13e5790003b0e2f35228af9bc2330ee08b98007e",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -30,7 +30,7 @@
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
-          "version": "repo-file-v1:sha256:d84b05ed65274e424eaba04fc1b6f40960c558f3586360fd9b40ad61fa31f8ed"
+          "version": "repo-file-v1:sha256:cccfa29e3ce619ec63d4333ec307cffcb1985c02ea7455b877117ed5f9087742"
         }
       ]
     },
@@ -40,11 +40,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DecodexNativeClient.swift",
-          "version": "repo-file-v1:sha256:3419bb76756185332e607c4c6ba3f02df0637f9903126f77e1547369ccfc4fa5"
+          "version": "repo-file-v1:sha256:3a63da2df83790b71d7a60aeb3f0feb113ffa27b8095b08be2662ce80ae7af0b"
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/NativeJournalFixture.swift",
-          "version": "repo-file-v1:sha256:51b80a9274ee30a4a43649ed7166cbe72ac142441058f745e6da4f3cbfbcc128"
+          "version": "repo-file-v1:sha256:48064a42138397f9feb5f750711785d5fb1959555a98cb99462c7c69e7f206a6"
         },
         {
           "resource": "repo://scripts/macos/test_native_app.sh",
@@ -55,6 +55,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T09:24:46.437Z"
+    "at": "2026-09-30T09:30:20.448Z"
   }
 }

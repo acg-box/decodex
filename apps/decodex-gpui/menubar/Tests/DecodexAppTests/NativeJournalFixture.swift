@@ -14,7 +14,7 @@ private final class JournalLibrary: @unchecked Sendable {
 			throw NSError(domain: "Run scripts/macos/test_native_app.sh to build the native test dependency", code: 1)
 		}
 		image = try DecodexNativeCompatibility.openLibrary(at: URL(fileURLWithPath: path))
-		guard let requestSymbol = dlsym(image, "decodex_reset_card_journal_v1"),
+		guard let requestSymbol = dlsym(image, "decodex_reset_card_journal_v2"),
 			let freeSymbol = dlsym(image, "decodex_app_native_client_free") else {
 			dlclose(image)
 			throw NSError(domain: "Native journal symbols missing", code: 2)

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0f788adc6dbbc0fec545d914699bbd71eb8f2e6ddb794564b46d8abdea549799",
+  "pageVersion": "sha256:d85d5d771b0f64a4fb920114dce8f2ef16f48d6e63b66e2ad0616106877ec337",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -22,11 +22,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardPendingAttemptStore.swift",
-          "version": "repo-file-v1:sha256:bfdd6180891e9a75980b077fb0e9b3cace0faeb3683a072f800183318d370d75"
+          "version": "repo-file-v1:sha256:ff95252664547b22c01b703fdf54c8cc4f998452ce0a5327d5f3cf95fef36e84"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
-          "version": "repo-file-v1:sha256:07fac8f4b51552ed241c5481343e01bce769f8158cc9d4be96c8cbeadb589f1e"
+          "version": "repo-file-v1:sha256:fd1dced60759faa11c0000d0351d983f55fd95418f16cf427ffe849bfe8d2b4d"
         }
       ]
     },
@@ -40,11 +40,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift",
-          "version": "repo-file-v1:sha256:36ef2ddb0ae7b4d3f935b946f9a6c1474a57d8866e85d4ad3901eb0984ba11b7"
+          "version": "repo-file-v1:sha256:b755e85c485713903b330a270fec1ff993a48e61c6eac96cc447ff75c33128d9"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/lib.rs",
-          "version": "repo-file-v1:sha256:1975b6248164ad4cd5663719adcb750abe91b0a45c07f0ca6df374705d1a2a11"
+          "version": "repo-file-v1:sha256:9f041bad111ff17603334761f4da1c0c38b282c5842c807d9aa18d5d1d9d67d0"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/client.rs",
@@ -58,25 +58,43 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ResetCardPendingAttemptStoreTests.swift",
-          "version": "repo-file-v1:sha256:b285eb95ea8bcbc376fb975c16b2087a4a78d144ab28bab38501b31e48075104"
+          "version": "repo-file-v1:sha256:ce2d860e68bbaf6f6098f578162bfefe8b4132c3ae8d0971ce6535e64f842695"
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ResetCardStoreRecoveryTests.swift",
-          "version": "repo-file-v1:sha256:0b04756628bd5f13c0e89db3fdd4d53ec92faf0b68514d13bdfb793c77cf9389"
+          "version": "repo-file-v1:sha256:a5070fd8c07cd06ce2dd2ce5d681353894a9110660bc90d4b93962b9f159a042"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
-          "version": "repo-file-v1:sha256:07fac8f4b51552ed241c5481343e01bce769f8158cc9d4be96c8cbeadb589f1e"
+          "version": "repo-file-v1:sha256:fd1dced60759faa11c0000d0351d983f55fd95418f16cf427ffe849bfe8d2b4d"
         },
         {
           "resource": "repo://scripts/macos/test_native_app.sh",
           "version": "repo-file-v1:sha256:abac020709eaf6841f79b701bdbd20a0024680b59aebb301a24cf0f395f86f5f"
         }
       ]
+    },
+    {
+      "id": "claim_ab3d16f1907445aa938a222530c3f662",
+      "statement": "The versioned native journal v2 accepts observations rather than removal flags. Rust allows retirement only for completed, failed-before-effect or rejected observations; all uncertain states retain the saved attempt, and Swift receives the resulting journal status.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardPendingAttemptStore.swift",
+          "version": "repo-file-v1:sha256:ff95252664547b22c01b703fdf54c8cc4f998452ce0a5327d5f3cf95fef36e84"
+        },
+        {
+          "resource": "repo://crates/decodex-app-client-ffi/src/lib.rs",
+          "version": "repo-file-v1:sha256:9f041bad111ff17603334761f4da1c0c38b282c5842c807d9aa18d5d1d9d67d0"
+        },
+        {
+          "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
+          "version": "repo-file-v1:sha256:fd1dced60759faa11c0000d0351d983f55fd95418f16cf427ffe849bfe8d2b4d"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T09:24:46.437Z"
+    "at": "2026-09-30T09:30:20.448Z"
   }
 }

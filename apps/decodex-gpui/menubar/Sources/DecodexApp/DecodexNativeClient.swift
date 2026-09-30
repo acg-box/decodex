@@ -517,7 +517,7 @@ private final class DecodexNativeLibrary: @unchecked Sendable {
 		self.image = image
 
 		do {
-			journal = try Self.symbol(image, named: "decodex_reset_card_journal_v1")
+			journal = try Self.symbol(image, named: "decodex_reset_card_journal_v2")
 			create = try Self.symbol(
 				image,
 				named: "decodex_app_native_client_create"

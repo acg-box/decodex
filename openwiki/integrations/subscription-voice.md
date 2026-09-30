@@ -33,7 +33,7 @@ sources:
 generated: { by: "codex", at: "2026-09-30T09:06:10.197Z" }
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-30T09:06:10.197Z
+    at: 2026-09-30T09:30:20.448Z
 ---
 
 # Subscription dictation and live voice

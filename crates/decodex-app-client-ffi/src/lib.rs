@@ -419,7 +419,7 @@ pub unsafe extern "C" fn decodex_app_native_client_request(
 /// The input must contain `len` readable bytes; output pointers must be writable.
 #[cfg(target_os = "macos")]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn decodex_reset_card_journal_v1(
+pub unsafe extern "C" fn decodex_reset_card_journal_v2(
 	input: *const u8,
 	len: usize,
 	output: *mut *mut u8,
