@@ -16,6 +16,12 @@ thread_local! {
 	static ATTACHED_WINDOWS: std::cell::RefCell<std::collections::HashMap<usize, gpui::AnyWindowHandle>> = Default::default();
 }
 
+/// Attached panels own their material independently of window backdrops.
+pub(crate) fn owns_material(window: &Window) -> bool {
+	ATTACHED_WINDOWS
+		.with(|windows| windows.borrow().values().any(|handle| *handle == window.window_handle()))
+}
+
 pub(crate) fn available() -> bool {
 	AnyClass::get(c"NSGlassEffectView").is_some()
 		&& std::env::var_os("DECODEX_DISABLE_LIQUID_GLASS").is_none()
