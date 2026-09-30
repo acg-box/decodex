@@ -187,7 +187,6 @@ enum OverallStatus {
 /// Execute one Decodex client command.
 pub async fn execute(cli: Cli) -> CommandOutput {
 	let Cli { profile, root, expected_server_id, output, command } = cli;
-
 	let command = match command {
 		Command::Agent(command) =>
 			return agent::execute(
@@ -257,6 +256,7 @@ fn render_build_info(format: OutputFormat) -> CommandOutput {
 		OutputFormat::Human => serde_json::to_string_pretty(&document),
 	}
 	.expect("build identity serialization cannot fail");
+
 	CommandOutput { text, exit_code: 0, error_stream: false }
 }
 
@@ -272,9 +272,11 @@ fn load_client_profile(
 	let Some(expected_server_id) = expected_server_id else {
 		return Ok(profile);
 	};
+
 	if !is_canonical_uuid(expected_server_id) {
 		return Err(ClientFailure::ConfigurationMalformed);
 	}
+
 	let expected_server_id =
 		ServerId::new(expected_server_id).map_err(|_| ClientFailure::ConfigurationMalformed)?;
 
@@ -526,9 +528,12 @@ mod tests {
 	#[test]
 	fn command_surface_is_exact_without_aliases() {
 		let command = Cli::command();
+
 		command.clone().debug_assert();
+
 		let commands =
 			command.get_subcommands().map(|command| command.get_name()).collect::<Vec<_>>();
+
 		assert_eq!(
 			commands,
 			[
@@ -628,6 +633,7 @@ mod tests {
 					ProfileKind::Remote,
 					&report,
 				);
+
 				for component in DoctorComponent::ALL {
 					assert!(human.text().lines().any(|line| line
 						== format!(
@@ -636,9 +642,11 @@ mod tests {
 							crate::status_name(status)
 						)));
 				}
+
 				let value: serde_json::Value = serde_json::from_str(json.text()).unwrap();
 				let decoded: DoctorReport =
 					serde_json::from_value(value["report"].clone()).unwrap();
+
 				assert_eq!(decoded, report);
 				assert_eq!(human.exit_code(), 1);
 				assert_eq!(json.exit_code(), 1);
@@ -654,7 +662,6 @@ mod tests {
 			DoctorComponent::Conversation => DoctorStatus::Unknown(DoctorIssue::NotProbed),
 			_ => DoctorStatus::Ready,
 		});
-
 		let report = report(statuses);
 		let output = crate::render_report(
 			DiagnosticCommand::Status,

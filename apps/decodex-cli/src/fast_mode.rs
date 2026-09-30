@@ -45,6 +45,7 @@ pub(crate) fn execute(command: FastModeCommand, format: OutputFormat) -> Command
 		FastModeCommand::Status => global_fast_mode_enabled(),
 		FastModeCommand::Set(args) => set_global_fast_mode_enabled(args.enabled),
 	};
+
 	match result {
 		Ok(enabled) => render_success(command_name, format, enabled),
 		Err(error) => render_failure(command_name, format, error),
