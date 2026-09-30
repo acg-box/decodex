@@ -1,9 +1,11 @@
 //! Shared JSON field and scalar validation helpers.
 
+pub(super) use crate::is_truthy_json_value;
+
+use std::collections::BTreeSet;
+
 use serde_json::{Map, Value};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
-
-pub(super) use crate::is_truthy_json_value;
 
 use crate::artifact_validation::{
 	BUNDLE_SCHEMA, CONFIG_FEATURE_CATALOG_SCHEMA, RELEASE_DELTA_SCHEMA, SIGNAL_SCHEMA,
@@ -42,7 +44,7 @@ pub(super) fn validate_git_object_id_list(
 
 		return;
 	};
-	let mut seen = std::collections::BTreeSet::new();
+	let mut seen = BTreeSet::new();
 
 	for item in values {
 		let Some(item) = item.as_str().filter(|item| is_git_object_id(item)) else {
@@ -70,11 +72,6 @@ pub(super) fn validate_sha256(value: Option<&Value>, label: &str, errors: &mut V
 	if !valid {
 		errors.push(format!("{label} must be a lowercase SHA-256 digest"));
 	}
-}
-
-fn is_git_object_id(value: &str) -> bool {
-	matches!(value.len(), 40 | 64)
-		&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 pub(super) fn validate_string_list(value: Option<&Value>, label: &str, errors: &mut Vec<String>) {
@@ -201,4 +198,9 @@ pub(super) fn known_schemas() -> String {
 		UPSTREAM_REVIEW_QUEUE_SCHEMA,
 		UPSTREAM_REVIEW_SCHEMA,
 	])
+}
+
+fn is_git_object_id(value: &str) -> bool {
+	matches!(value.len(), 40 | 64)
+		&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
