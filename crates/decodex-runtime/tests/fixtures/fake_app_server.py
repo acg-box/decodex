@@ -52,8 +52,6 @@ if sys.argv[1] == "generate-json-schema":
         index = sys.argv.index("--orphan-pid")
         child = spawn_ready_descendant(Path(sys.argv[index + 1]), "0.25")
     requests = ["initialize", "account/read", "account/login/start", "thread/start", "thread/list", "thread/search", "thread/read", "thread/resume", "thread/name/set", "turn/start", "account/rateLimits/read", "collaborationMode/list", "thread/archive"]
-    if "--reset-card" in sys.argv:
-        requests.append("account/rateLimitResetCredit/consume")
     server_requests = ["account/chatgptAuthTokens/refresh"]
     notifications = ["thread/started", "turn/started", "item/started", "item/completed", "turn/completed"]
     if "--conversation-contract" in sys.argv:
@@ -240,8 +238,6 @@ if mode == "crash":
     raise SystemExit(17)
 
 account_reads = 0
-login_count = 0
-callback_serviced = False
 exact_thread_id = "thread:XY-1317/non-uuid_Case-Sensitive._~:@+$,;=[]{}()!%&'*? #"
 exact_thread = {
     "id": exact_thread_id,
@@ -255,8 +251,6 @@ exact_thread = {
 if mode == "exact-escaped-title":
     exact_thread["name"] = 'A "quoted" title'
 exact_thread_reads = 0
-reset_card_consumed = False
-rate_limit_reads = 0
 resume_attempts = 0
 for line in sys.stdin:
     message = json.loads(line)
@@ -304,9 +298,6 @@ for line in sys.stdin:
             sys.stdout.write("{" + ("x" * (8 * 1024 * 1024 + 1)))
             sys.stdout.flush()
             time.sleep(60)
-        if mode == "queue-overflow":
-            for index in range(100):
-                print(json.dumps({"method": "unrelated", "params": {"index": index}}), flush=True)
         # Apple's /usr/bin/python3 launcher adds only these toolchain/runtime
         # variables after exec; the parent projection itself is HOME/PATH-only.
         assert set(os.environ).issubset({
@@ -333,45 +324,14 @@ for line in sys.stdin:
         email = (
             "changed@example.test"
             if mode == "account-switch" and account_reads > 1
-            else "decodex-callback-capability-probe.invalid"
-            if mode == "callback-probe" and not callback_serviced
             else "private@example.test"
         )
         account = None if mode == "account-none" else {"type": "chatgpt", "email": email}
         result = {"account": account, "requiresOpenaiAuth": True}
     elif method == "account/login/start":
-        login_count += 1
         assert message["params"]["type"] == "chatgptAuthTokens"
-        if mode == "callback-probe":
-            assert login_count == 1
-            assert message["params"]["accessToken"] != "synthetic-successor-token"
-            assert message["params"]["accessToken"].count(".") == 2
-            assert message["params"]["chatgptAccountId"] == "callback-provider-account"
-            assert message["params"]["chatgptPlanType"] == "business"
-            assert not callback_serviced
-            print(json.dumps({
-                "id": message["id"],
-                "method": "account/chatgptAuthTokens/refresh",
-                "params": {
-                    "reason": "unauthorized",
-                    "previousAccountId": "callback-provider-account",
-                },
-            }), flush=True)
-            reply_line = sys.stdin.readline()
-            assert reply_line
-            reply = json.loads(reply_line)
-            assert reply == {
-                "id": message["id"],
-                "result": {
-                    "accessToken": "synthetic-successor-token",
-                    "chatgptAccountId": "callback-provider-account",
-                    "chatgptPlanType": "business",
-                },
-            }
-            callback_serviced = True
-        else:
-            assert message["params"]["accessToken"] == "synthetic-nonsecret-sentinel"
-            assert message["params"]["chatgptAccountId"] == "synthetic-provider-sentinel"
+        assert message["params"]["accessToken"] == "synthetic-nonsecret-sentinel"
+        assert message["params"]["chatgptAccountId"] == "synthetic-provider-sentinel"
         result = (
             {"type": "chatgptAuthTokens", "unexpected": "synthetic-nonsecret-sentinel"}
             if mode == "login-extra"
@@ -381,48 +341,6 @@ for line in sys.stdin:
             if mode == "login-missing-type"
             else {"type": "chatgptAuthTokens"}
         )
-    elif method == "account/rateLimits/read" and mode in (
-        "reset-card",
-        "reset-card-partial-first",
-        "reset-card-missing-first",
-        "callback-probe",
-    ):
-        rate_limit_reads += 1
-        assert "params" in message
-        assert message["params"] is None
-        if mode == "callback-probe":
-            assert callback_serviced
-        credits = [] if reset_card_consumed else [{
-            "id": "fixture-reset-credit",
-            "grantedAt": 1700000000,
-            "expiresAt": 1700003600,
-            "resetType": "codexRateLimits",
-            "status": "available",
-            "title": "fixture reset card",
-            "description": None,
-        }]
-        result = {
-            "rateLimits": {},
-            "rateLimitResetCredits": (
-                None
-                if mode == "reset-card-missing-first" and rate_limit_reads == 1
-                else {
-                    "availableCount": len(credits),
-                    "credits": (
-                        None
-                        if mode == "reset-card-partial-first" and rate_limit_reads == 1
-                        else credits
-                    ),
-                }
-            ),
-        }
-    elif method == "account/rateLimitResetCredit/consume" and mode == "reset-card":
-        assert message["params"] == {
-            "creditId": "fixture-reset-credit",
-            "idempotencyKey": "fixture-reset-operation",
-        }
-        reset_card_consumed = True
-        result = {"outcome": "reset"}
     elif method == "thread/list":
         if message["params"].get("searchTerm", "").startswith(
             "decodex-capability-probe-no-match-"
@@ -652,7 +570,3 @@ for line in sys.stdin:
         elif mode == "null-jsonrpc":
             response["jsonrpc"] = None
         print(json.dumps(response), flush=True)
-
-if mode == "callback-probe":
-    assert login_count == 1
-    assert callback_serviced
