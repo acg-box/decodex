@@ -937,11 +937,10 @@ impl AgentCoordinator {
 				&& serde_json::from_str::<Value>(&event.payload)
 					.ok()
 					.is_some_and(|payload| payload.pointer("/options/canonicalInput").is_some());
-			exact_question_target |= self.store.get_agent_inbox_event(*event_id).await?.event_kind
-				== "async_question_answer";
+			exact_question_target |= event.event_kind == "async_question_answer";
 		}
-		// An answer belongs to the question's original thread. Tool upgrades can
-		// fork managers, so leave upgrades to ordinary future dispatches.
+		// Question answers and edited input belong to an existing native thread.
+		// Do not create a new thread for these events.
 		let item = if exact_question_target || exact_prompt_target {
 			item.clone()
 		} else {
