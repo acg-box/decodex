@@ -18,7 +18,7 @@ pub(super) fn normalized_config_flags(
 		};
 		let mut value = raw_value.trim().to_owned();
 
-		if value.is_empty() || seen.contains(&value) {
+		if value.is_empty() {
 			continue;
 		}
 
@@ -34,8 +34,9 @@ pub(super) fn normalized_config_flags(
 			continue;
 		}
 
-		seen.insert(value.clone());
-		normalized.push(value);
+		if seen.insert(value.clone()) {
+			normalized.push(value);
+		}
 	}
 
 	normalized
