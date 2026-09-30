@@ -85,7 +85,7 @@ impl Shell {
 				account_revision: account.account_revision,
 				observed_at_unix_micros: 0,
 				email: AccountProfileEmailDto::Redacted,
-				plan_type: Some(WireText::new("pro").unwrap()),
+				plan_type: Some(WireText::new("pro").expect("fixture plan")),
 				display_name: None,
 				username: None,
 				lifetime_tokens: Some(1_240_000),
@@ -95,7 +95,8 @@ impl Shell {
 				longest_streak_days: Some(12),
 				daily_usage: (1..=28)
 					.map(|day| AccountProfileDailyUsageDto {
-						start_date: WireText::new(format!("2026-09-{day:02}")).unwrap(),
+						start_date: WireText::new(format!("2026-09-{day:02}"))
+							.expect("fixture date"),
 						tokens: ((day * 137) % 83) * 1000,
 					})
 					.collect(),

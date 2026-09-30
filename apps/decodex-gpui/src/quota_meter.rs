@@ -129,6 +129,33 @@ pub(super) fn meter(
 	}
 	Some(QuotaMeter { label, quota, fill }.into_any_element())
 }
+/// Match the native menu's local calendar date and 24-hour reset time.
+fn reset_time(micros: i64) -> Option<String> {
+	local_date_time(micros / 1_000_000)
+}
+
+pub(super) fn local_date_time(seconds: i64) -> Option<String> {
+	let seconds: libc::time_t = seconds;
+	let mut local = std::mem::MaybeUninit::<libc::tm>::uninit();
+	let mut output = [0 as libc::c_char; 64];
+	// libc applies the host time zone, including the offset at the reset date.
+	unsafe {
+		if libc::localtime_r(&seconds, local.as_mut_ptr()).is_null() {
+			return None;
+		}
+		if libc::strftime(
+			output.as_mut_ptr(),
+			output.len(),
+			c"%b %d %H:%M".as_ptr(),
+			local.as_ptr(),
+		) == 0
+		{
+			return None;
+		}
+		Some(std::ffi::CStr::from_ptr(output.as_ptr()).to_string_lossy().into_owned())
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -182,32 +209,5 @@ mod tests {
 		assert_eq!(remaining(quota(1, 11)), Some(99.));
 		assert_eq!(fill.remaining(quota(64, 1), started, true), Some(100.));
 		assert_eq!(fill.remaining(quota(1, 11), started, true), None);
-	}
-}
-
-/// Match the native menu's local calendar date and 24-hour reset time.
-fn reset_time(micros: i64) -> Option<String> {
-	local_date_time(micros / 1_000_000)
-}
-
-pub(super) fn local_date_time(seconds: i64) -> Option<String> {
-	let seconds: libc::time_t = seconds.try_into().ok()?;
-	let mut local = std::mem::MaybeUninit::<libc::tm>::uninit();
-	let mut output = [0 as libc::c_char; 64];
-	// libc applies the host time zone, including the offset at the reset date.
-	unsafe {
-		if libc::localtime_r(&seconds, local.as_mut_ptr()).is_null() {
-			return None;
-		}
-		if libc::strftime(
-			output.as_mut_ptr(),
-			output.len(),
-			c"%b %d %H:%M".as_ptr(),
-			local.as_ptr(),
-		) == 0
-		{
-			return None;
-		}
-		Some(std::ffi::CStr::from_ptr(output.as_ptr()).to_string_lossy().into_owned())
 	}
 }
