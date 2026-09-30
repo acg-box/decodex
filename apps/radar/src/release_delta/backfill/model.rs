@@ -1,16 +1,9 @@
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub(in crate::release_delta::backfill) struct PreparedReleaseDelta {
 	pub(in crate::release_delta::backfill) path: PathBuf,
-	pub(in crate::release_delta::backfill) cleanup_dir: Option<PathBuf>,
-}
-impl Drop for PreparedReleaseDelta {
-	fn drop(&mut self) {
-		if let Some(path) = &self.cleanup_dir {
-			let _ = fs::remove_dir_all(path);
-		}
-	}
+	pub(in crate::release_delta::backfill) _cleanup_dir: Option<tempfile::TempDir>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
