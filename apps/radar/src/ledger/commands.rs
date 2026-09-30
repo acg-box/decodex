@@ -2,7 +2,7 @@
 
 use crate::{
 	ledger::{
-		self, ArtifactLinkInput, BTreeMap, DEFAULT_LEDGER_PATH, PathBuf,
+		self, ArtifactLinkInput, BTreeMap, DEFAULT_LEDGER_PATH, LedgerArtifactReader, PathBuf,
 		RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
 		RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
 	},
@@ -26,7 +26,7 @@ pub(crate) fn ledger_bootstrap(request: &RadarLedgerBootstrapRequest) -> Result<
 /// Ingest one bundle and optional derived artifacts into the local Radar ledger.
 pub(crate) fn ledger_ingest(request: &RadarLedgerIngestRequest) -> Result<BTreeMap<String, i64>> {
 	let connection = ledger::open_ledger(&request.db_path)?;
-	let reader = ledger::LedgerArtifactReader::new(connection.cache_lock());
+	let reader = LedgerArtifactReader::new(connection.cache_lock());
 
 	ledger::ingest_artifact_set(
 		&connection,
@@ -48,7 +48,7 @@ pub(crate) fn ledger_ingest_existing(
 	request: &RadarLedgerIngestExistingRequest,
 ) -> Result<BTreeMap<String, i64>> {
 	let connection = ledger::open_ledger(&request.db_path)?;
-	let reader = ledger::LedgerArtifactReader::new(connection.cache_lock());
+	let reader = LedgerArtifactReader::new(connection.cache_lock());
 	let mut ingested = 0_i64;
 
 	for bundle_path in reader.json_files_in_directory(&request.bundles_dir)? {
@@ -91,7 +91,7 @@ pub(crate) fn ledger_artifact_link(
 	request: &RadarLedgerArtifactLinkRequest,
 ) -> Result<BTreeMap<String, i64>> {
 	let connection = ledger::open_ledger(&request.db_path)?;
-	let reader = ledger::LedgerArtifactReader::new(connection.cache_lock());
+	let reader = LedgerArtifactReader::new(connection.cache_lock());
 
 	ledger::record_artifact(
 		&connection,
