@@ -56,22 +56,27 @@ pub(in crate::release_delta::backfill) fn selected_release_comparison(
 
 pub(in crate::release_delta::backfill) fn published_pr_numbers(
 	signals_dir: &Path,
+	repo: &str,
 ) -> Result<BTreeSet<u64>> {
 	let mut published = BTreeSet::new();
-	let mut files = Vec::new();
+	let pr_prefix = format!("https://github.com/{repo}/pull/");
 
-	files.extend(crate::sorted_json_files(signals_dir)?);
-
-	for path in files {
+	for path in crate::sorted_json_files(signals_dir)? {
 		let payload = crate::load_json(&path)?;
 
 		crate::validate_expected_schema(&payload, SIGNAL_SCHEMA, "Signal")?;
+
+		if payload.pointer("/source_refs/repo").and_then(Value::as_str) != Some(repo) {
+			continue;
+		}
 
 		if let Some(pr_number) = payload
 			.get("source_refs")
 			.and_then(Value::as_object)
 			.and_then(|refs| crate::string_field(refs, "pr_url"))
-			.and_then(pr_number_from_url)
+			.and_then(|url| url.strip_prefix(&pr_prefix))
+			.filter(|number| !number.is_empty() && number.bytes().all(|ch| ch.is_ascii_digit()))
+			.and_then(|number| number.parse::<u64>().ok())
 		{
 			published.insert(pr_number);
 		}
@@ -124,14 +129,4 @@ fn comparison_pr_numbers(comparison: &Map<String, Value>) -> Vec<u64> {
 		.flatten()
 		.filter_map(Value::as_u64)
 		.collect()
-}
-
-fn pr_number_from_url(value: &str) -> Option<u64> {
-	let marker = "/pull/";
-	let index = value.rfind(marker)?;
-	let number = &value[index + marker.len()..];
-
-	(!number.is_empty() && number.chars().all(|character| character.is_ascii_digit()))
-		.then(|| number.parse().ok())
-		.flatten()
 }
