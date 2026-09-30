@@ -19,13 +19,8 @@ pub(super) fn build_release_comparison(
 ) -> Result<Value> {
 	let stable_tag = release_delta::required_release_tag(&pair.stable)?;
 	let preview_tag = release_delta::required_release_tag(&pair.preview)?;
-	let compare = api.get_paginated_field(
-		&format!(
-			"https://api.github.com/repos/{}/compare/{stable_tag}...{preview_tag}?per_page=100",
-			request.repo
-		),
-		"commits",
-	)?;
+	let compare = api
+		.get_paginated_field(&comparison_url(&request.repo, stable_tag, preview_tag), "commits")?;
 	let commits = compare
 		.get("commits")
 		.and_then(Value::as_array)
@@ -50,6 +45,12 @@ pub(super) fn build_release_comparison(
 		},
 		"tracked_signal_slugs": tracked_signal_slugs,
 	}))
+}
+
+fn comparison_url(repo: &str, stable_tag: &str, preview_tag: &str) -> String {
+	let stable_tag = crate::percent_encode(stable_tag);
+	let preview_tag = crate::percent_encode(preview_tag);
+	format!("https://api.github.com/repos/{repo}/compare/{stable_tag}...{preview_tag}?per_page=100")
 }
 
 pub(super) fn load_signal_entries(signals_dir: &Path, repo: &str) -> Result<Vec<Value>> {
@@ -234,5 +235,23 @@ mod tests {
 		release["compare"]["pr_numbers"] = serde_json::json!(numbers);
 		release["comparisons"][0]["compare"]["pr_numbers"] = serde_json::json!(numbers);
 		assert!(crate::validate_artifact_errors(&release).is_empty());
+	}
+	#[test]
+	fn comparison_url_preserves_tag_components_and_pagination_query() {
+		for (stable, preview, expected_path) in [
+			("rust-v1.2.3", "rust-v1.3.0", "/repos/openai/codex/compare/rust-v1.2.3...rust-v1.3.0"),
+			(
+				"rust-v1.2.3#note",
+				"preview/é%2F",
+				"/repos/openai/codex/compare/rust-v1.2.3%23note...preview%2F%C3%A9%252F",
+			),
+		] {
+			let url =
+				reqwest::Url::parse(&comparison_url("openai/codex", stable, preview)).unwrap();
+			assert_eq!(url.fragment(), None);
+			assert_eq!(url.path(), expected_path);
+			assert_eq!(url.query(), Some("per_page=100"));
+			assert_eq!(url.path_segments().unwrap().count(), 5);
+		}
 	}
 }
