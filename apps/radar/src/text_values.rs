@@ -132,15 +132,15 @@ pub(crate) fn string_array_from_value(value: &Value) -> Vec<String> {
 	string_array(Some(value))
 }
 
-pub(crate) fn extract_commit_sha_from_url(url: &str) -> Option<String> {
-	let sha = url.rsplit_once("/commit/")?.1;
+pub(crate) fn extract_commit_sha_from_url(url: &str, repo: &str) -> Option<String> {
+	let sha = url.strip_prefix(&format!("https://github.com/{repo}/commit/"))?;
 
 	(sha.len() >= 7 && sha.len() <= 40 && sha.chars().all(|ch| ch.is_ascii_hexdigit()))
 		.then(|| sha.to_owned())
 }
 
-pub(crate) fn extract_pr_number_from_url(url: &str) -> Option<u64> {
-	let number = url.rsplit_once("/pull/")?.1;
+pub(crate) fn extract_pr_number_from_url(url: &str, repo: &str) -> Option<u64> {
+	let number = url.strip_prefix(&format!("https://github.com/{repo}/pull/"))?;
 
 	(!number.is_empty() && number.chars().all(|ch| ch.is_ascii_digit()))
 		.then(|| number.parse::<u64>().ok())
