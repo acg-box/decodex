@@ -1,6 +1,7 @@
 //! Source-bound history-edit evidence. Applied history is not desktop draft acknowledgement.
-use crate::{EntityId, WireText};
 use serde::{Deserialize, Serialize};
+
+use crate::{EntityId, WireText};
 
 /// Native edit lifecycle, separate from ordinary turn delivery.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -75,9 +76,9 @@ impl PromptEditStatus {
 			&& !e.item_id.as_str().is_empty()
 			&& e.removed_turns > 0
 			&& e.content_bytes > 0
-			&& e.content_bytes <= 8 * 1024 * 1024
+			&& e.content_bytes <= 8 * 1_024 * 1_024
 			&& !e.fragment.is_empty()
-			&& e.fragment.len() <= 64 * 1024
+			&& e.fragment.len() <= 64 * 1_024
 			&& e.offset
 				.checked_add(e.fragment.len() as u64)
 				.is_some_and(|end| end <= e.content_bytes)

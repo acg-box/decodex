@@ -1,6 +1,11 @@
 //! Saved native review evidence and separate user-approval submission receipts.
 use serde::{Deserialize, Serialize};
 
+use decodex_core::MAX_NATIVE_MESSAGE_BYTES;
+
+/// Maximum UTF-8 text bytes in one detail page, before JSON escaping.
+pub const GUARDIAN_DETAIL_PAGE_BYTES: usize = 8 * 1_024;
+
 /// Last observed native assessment, not execution status.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -81,9 +86,6 @@ pub enum AgentGuardianReviewsResult {
 	Unavailable,
 }
 
-/// Maximum UTF-8 text bytes in one detail page, before JSON escaping.
-pub const GUARDIAN_DETAIL_PAGE_BYTES: usize = 8 * 1024;
-
 /// A page of complete saved action and rationale text. No action is truncated.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
@@ -106,7 +108,6 @@ pub enum AgentGuardianDetailResult {
 	/// Missing, changed, or undisplayable evidence. Refresh the review list.
 	Unavailable,
 }
-
 impl AgentGuardianDetailResult {
 	/// Verify response identity and contiguous bounds before showing a page.
 	pub fn matches_request(&self, row: i64, expected_digest: &str, start: usize) -> bool {
@@ -123,7 +124,7 @@ impl AgentGuardianDetailResult {
 					&& !text.is_empty()
 					&& text.len() <= GUARDIAN_DETAIL_PAGE_BYTES
 					&& end <= *total_bytes
-					&& *total_bytes <= decodex_core::MAX_NATIVE_MESSAGE_BYTES
+					&& *total_bytes <= MAX_NATIVE_MESSAGE_BYTES
 					&& *next_offset == (end < *total_bytes).then_some(end)
 			},
 		}
@@ -132,7 +133,7 @@ impl AgentGuardianDetailResult {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::AgentGuardianDetailResult;
 	#[test]
 	fn detail_pages_bind_identity_and_exact_continuation() {
 		let page = AgentGuardianDetailResult::Available {
