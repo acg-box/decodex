@@ -4530,15 +4530,24 @@ fn capture_platform_executable_snapshot(
 	fs::set_permissions(&snapshot_path, Permissions::from_mode(0o500))
 		.map_err(|_| SupervisionError::ExecutableUnavailable)?;
 
-	set_snapshot_immutable(&snapshot_path, true)?;
+	finalize_executable_snapshot(directory, snapshot_path, metadata)
+}
 
-	let digest = executable_digest(&snapshot_path)?;
+#[cfg(target_os = "macos")]
+fn finalize_executable_snapshot(
+	directory: TempDir,
+	snapshot_path: PathBuf,
+	metadata: &Metadata,
+) -> Result<(ExecutableSnapshot, [u8; 32]), SupervisionError> {
 	let snapshot = ExecutableSnapshot {
 		_directory: directory,
 		path: snapshot_path,
 		source_device: metadata.dev(),
 		source_inode: metadata.ino(),
 	};
+
+	set_snapshot_immutable(&snapshot.path, true)?;
+	let digest = snapshot.digest()?;
 
 	Ok((snapshot, digest))
 }
@@ -7187,6 +7196,32 @@ pub(crate) mod tests {
 			assert_eq!(spawn_count.load(Ordering::Acquire), trigger_spawn);
 			assert!(!attacker_marker.exists());
 		}
+	}
+
+	#[cfg(target_os = "macos")]
+	#[test]
+	fn failed_snapshot_digest_removes_the_immutable_image_and_directory() {
+		let parent = TempDir::new().unwrap();
+		let directory = TempDir::new_in(parent.path()).unwrap();
+		let directory_path = directory.path().to_owned();
+		let image = directory_path.join("verified-codex-image");
+		// Model a source whose copied bytes no longer pass native format validation.
+		fs::write(&image, b"invalid copied image").unwrap();
+		fs::set_permissions(&image, fs::Permissions::from_mode(0o500)).unwrap();
+		let metadata = image.metadata().unwrap();
+		let result = process::finalize_executable_snapshot(directory, image.clone(), &metadata);
+		let left_image = image.exists();
+		let left_directory = directory_path.exists();
+		// Clean the known test artifact even when the pre-fix regression fails.
+		if left_image {
+			process::set_snapshot_immutable(&image, false).unwrap();
+		}
+		if left_directory {
+			fs::remove_dir_all(&directory_path).unwrap();
+		}
+		assert!(matches!(result, Err(SupervisionError::ExecutableUnavailable)));
+		assert!(!left_image, "digest failure left an immutable executable image");
+		assert!(!left_directory, "digest failure left its snapshot directory");
 	}
 
 	#[cfg(target_os = "macos")]
