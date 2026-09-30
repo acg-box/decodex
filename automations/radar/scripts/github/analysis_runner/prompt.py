@@ -19,10 +19,12 @@ def build_prompt(bundle_path: Path, repo_root: Path) -> str:
             "Return exactly one JSON object matching the provided output schema.",
             "Use the code-analysis skill as the in-session behavior-reading pass.",
             "Do not invent a separate checked-in code-analysis artifact.",
-            "Treat the pull request as the main narrative container and the commits/files as evidence.",
+            "For pr_first bundles, center the narrative on the primary pull request and use commits/files as evidence.",
+            "For commit_only bundles, center the narrative on the commit change; do not invent a pull request.",
             "Do not summarize every commit independently.",
             "Keep the output publishable for Decodex: concise, user-facing, and evidence-backed.",
             "Include every schema field. Use null when an optional string field does not apply, and use [] when no config flags apply.",
+            "For kind=try_now or non-empty config_flags, provide concrete how_to_try instructions.",
             "If `how_to_try` is not null, `expected_effect` must also be non-null.",
             "Use `impact=low` rather than overstating significance when the change is mostly incremental.",
         ]
