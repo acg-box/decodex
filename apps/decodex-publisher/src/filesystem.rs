@@ -1110,53 +1110,47 @@ fn current_uid() -> u32 {
 mod tests {
 	use std::{
 		ffi::CString,
-		fs,
-		fs::FileTimes,
+		fs::{self, FileTimes, OpenOptions, Permissions},
 		io::Write as _,
 		os::unix::{
+			self,
 			ffi::OsStrExt as _,
-			fs::{MetadataExt as _, PermissionsExt as _, symlink},
+			fs::{MetadataExt as _, PermissionsExt as _},
 		},
-		sync::mpsc,
+		sync::{Barrier, mpsc},
 		thread,
 		time::{Duration, SystemTime},
 	};
 
-	use serde_json::json;
-
-	use super::{
-		PinnedPrivateJsonFile, load_json, load_json_bytes_with_sha256_after_metadata,
-		open_pinned_sandbox_private_root, open_pinned_sandbox_read_root, open_private_directory,
-		repo_local_test_directory, validate_sandbox_test_output, write_new_json_in_parent,
-	};
+	use crate::filesystem::{self, MAX_PRIVATE_JSON_BYTES, PinnedPrivateJsonFile};
 
 	#[test]
 	fn oversized_writes_leave_no_temporary_files_or_changed_records() {
 		let temp = tempfile::tempdir().expect("temporary directory");
 		let path = temp.path().join("record.json");
-		let oversized = json!({"text": "x".repeat(super::MAX_PRIVATE_JSON_BYTES as usize)});
+		let oversized = serde_json::json!({"text": "x".repeat(MAX_PRIVATE_JSON_BYTES as usize)});
 
-		assert!(super::write_new_json(&path, &oversized).is_err());
+		assert!(filesystem::write_new_json(&path, &oversized).is_err());
 		assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 0);
 
-		let original = json!({"value": 1});
+		let original = serde_json::json!({"value": 1});
 
-		super::write_new_json(&path, &original).unwrap();
+		filesystem::write_new_json(&path, &original).unwrap();
 
 		let bytes = fs::read(&path).unwrap();
 
-		assert!(super::replace_existing_json(&path, &original, &oversized).is_err());
+		assert!(filesystem::replace_existing_json(&path, &original, &oversized).is_err());
 		assert_eq!(fs::read(&path).unwrap(), bytes);
 		assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
 	}
 
 	#[test]
 	fn concurrent_private_directory_creation_accepts_the_same_owned_directory() {
-		let temp = repo_local_test_directory("publisher-concurrent-directory-");
+		let temp = filesystem::repo_local_test_directory("publisher-concurrent-directory-");
 		let target = temp.path().join("shared/a/b/c/d/e/f/g/h");
-		let barrier = std::sync::Barrier::new(16);
+		let barrier = Barrier::new(16);
 
-		std::thread::scope(|scope| {
+		thread::scope(|scope| {
 			let handles: Vec<_> = (0..16)
 				.map(|_| {
 					let target = &target;
@@ -1165,7 +1159,7 @@ mod tests {
 					scope.spawn(move || {
 						barrier.wait();
 
-						open_private_directory(target, true)
+						filesystem::open_private_directory(target, true)
 					})
 				})
 				.collect();
@@ -1186,11 +1180,12 @@ mod tests {
 
 	#[test]
 	fn private_json_reads_reject_fifos_without_blocking_for_lineage_and_staging() {
-		let temp = repo_local_test_directory("publisher-private-fifo-");
+		let temp = filesystem::repo_local_test_directory("publisher-private-fifo-");
 		let parent = temp.path().join(".agent/automations/decodex/cache/manager/staging");
 		let placeholder = parent.join("placeholder.json");
 
-		super::write_new_json(&placeholder, &json!({"ok": true})).expect("private parent fixture");
+		filesystem::write_new_json(&placeholder, &serde_json::json!({"ok": true}))
+			.expect("private parent fixture");
 		fs::remove_file(placeholder).expect("placeholder removal");
 
 		for (name, staging) in [("lineage.fifo", false), ("staging.fifo", true)] {
@@ -1202,9 +1197,9 @@ mod tests {
 			let (sender, receiver) = mpsc::channel();
 			let reader = thread::spawn(move || {
 				let result = if staging {
-					PinnedPrivateJsonFile::open(&path, 1024).map(|_| ())
+					PinnedPrivateJsonFile::open(&path, 1_024).map(|_| ())
 				} else {
-					load_json(&path).map(|_| ())
+					filesystem::load_json(&path).map(|_| ())
 				};
 
 				sender.send(result).expect("FIFO result delivery");
@@ -1222,107 +1217,116 @@ mod tests {
 
 	#[test]
 	fn private_json_reads_reject_symlinks_oversize_and_growth_past_max_plus_one() {
-		let temp = repo_local_test_directory("publisher-private-bounds-");
+		let temp = filesystem::repo_local_test_directory("publisher-private-bounds-");
 		let parent = temp.path().join(".agent/automations/decodex/cache/social/x/candidates");
 		let target = parent.join("target.json");
 		let linked = parent.join("linked.json");
 
-		super::write_new_json(&target, &json!({"value": 1})).expect("target fixture");
+		filesystem::write_new_json(&target, &serde_json::json!({"value": 1}))
+			.expect("target fixture");
+		unix::fs::symlink(&target, &linked).expect("symlink fixture");
 
-		symlink(&target, &linked).expect("symlink fixture");
-
-		assert!(load_json(&linked).is_err());
-		assert!(super::load_json_with_sha256_bounded(&target, 4).is_err());
+		assert!(filesystem::load_json(&linked).is_err());
+		assert!(filesystem::load_json_with_sha256_bounded(&target, 4).is_err());
 
 		let growing = parent.join("growing.json");
 
 		fs::write(&growing, b"{}\n").expect("growing fixture");
-		fs::set_permissions(&growing, fs::Permissions::from_mode(0o600))
-			.expect("growing fixture mode");
+		fs::set_permissions(&growing, Permissions::from_mode(0o600)).expect("growing fixture mode");
 
 		let append = growing.clone();
-		let error = load_json_bytes_with_sha256_after_metadata(&growing, 3, move || {
-			let mut file =
-				fs::OpenOptions::new().append(true).open(append).expect("append fixture");
+		let error =
+			filesystem::load_json_bytes_with_sha256_after_metadata(&growing, 3, move || {
+				let mut file =
+					OpenOptions::new().append(true).open(append).expect("append fixture");
 
-			file.write_all(b" ").expect("grow fixture");
-			file.sync_all().expect("sync growth");
-		})
-		.expect_err("max-plus-one read must reject growth");
+				file.write_all(b" ").expect("grow fixture");
+				file.sync_all().expect("sync growth");
+			})
+			.expect_err("max-plus-one read must reject growth");
 
 		assert!(error.to_string().contains("bounded read limit"));
 	}
 
 	#[test]
 	fn private_json_reads_reject_path_replacement_and_mtime_restored_rewrite() {
-		let temp = repo_local_test_directory("publisher-private-identity-");
+		let temp = filesystem::repo_local_test_directory("publisher-private-identity-");
 		let parent = temp.path().join(".agent/automations/decodex/cache/social/x/candidates");
 		let path = parent.join("candidate.json");
 		let displaced = parent.join("displaced.json");
 
-		super::write_new_json(&path, &json!({"value": 1})).expect("candidate fixture");
+		filesystem::write_new_json(&path, &serde_json::json!({"value": 1}))
+			.expect("candidate fixture");
 
 		let replacement = path.clone();
-		let error = load_json_bytes_with_sha256_after_metadata(&path, 1024, move || {
-			fs::rename(&replacement, &displaced).expect("displace candidate");
-			super::write_new_json(&replacement, &json!({"value": 1}))
-				.expect("replacement candidate");
-		})
-		.expect_err("path replacement must fail identity revalidation");
+		let error =
+			filesystem::load_json_bytes_with_sha256_after_metadata(&path, 1_024, move || {
+				fs::rename(&replacement, &displaced).expect("displace candidate");
+				filesystem::write_new_json(&replacement, &serde_json::json!({"value": 1}))
+					.expect("replacement candidate");
+			})
+			.expect_err("path replacement must fail identity revalidation");
 
 		assert!(error.to_string().contains("identity changed during read"));
 
 		let rewrite = parent.join("rewrite.json");
 
-		super::write_new_json(&rewrite, &json!({"value": 1})).expect("rewrite fixture");
+		filesystem::write_new_json(&rewrite, &serde_json::json!({"value": 1}))
+			.expect("rewrite fixture");
 
 		let modified = SystemTime::now() - Duration::from_secs(60);
-		let file = fs::OpenOptions::new().write(true).open(&rewrite).expect("rewrite descriptor");
+		let file = OpenOptions::new().write(true).open(&rewrite).expect("rewrite descriptor");
 
 		file.set_times(FileTimes::new().set_modified(modified)).expect("fixed mtime");
 
 		let initial = file.metadata().expect("initial rewrite metadata");
 		let initial_ctime = (initial.ctime(), initial.ctime_nsec());
 		let rewrite_path = rewrite.clone();
-		let error = load_json_bytes_with_sha256_after_metadata(&rewrite, 1024, move || {
-			thread::sleep(Duration::from_millis(10));
+		let error =
+			filesystem::load_json_bytes_with_sha256_after_metadata(&rewrite, 1_024, move || {
+				thread::sleep(Duration::from_millis(10));
 
-			let mut file = fs::OpenOptions::new()
-				.write(true)
-				.truncate(true)
-				.open(rewrite_path)
-				.expect("rewrite file");
+				let mut file = OpenOptions::new()
+					.write(true)
+					.truncate(true)
+					.open(rewrite_path)
+					.expect("rewrite file");
 
-			file.write_all(b"{\n  \"value\": 2\n}\n").expect("same-size replacement");
-			file.sync_all().expect("sync replacement");
-			file.set_times(FileTimes::new().set_modified(modified)).expect("restore mtime");
+				file.write_all(b"{\n  \"value\": 2\n}\n").expect("same-size replacement");
+				file.sync_all().expect("sync replacement");
+				file.set_times(FileTimes::new().set_modified(modified)).expect("restore mtime");
 
-			let changed = file.metadata().expect("changed metadata");
+				let changed = file.metadata().expect("changed metadata");
 
-			assert_ne!((changed.ctime(), changed.ctime_nsec()), initial_ctime);
-		})
-		.expect_err("ctime must detect an mtime-restored rewrite");
+				assert_ne!((changed.ctime(), changed.ctime_nsec()), initial_ctime);
+			})
+			.expect_err("ctime must detect an mtime-restored rewrite");
 
 		assert!(error.to_string().contains("identity changed during read"));
 	}
 
 	#[test]
 	fn private_json_reads_reject_parent_rename_and_replacement() {
-		let temp = repo_local_test_directory("publisher-private-parent-identity-");
+		let temp = filesystem::repo_local_test_directory("publisher-private-parent-identity-");
 		let parent = temp.path().join(".agent/automations/decodex/cache/social/x/candidates");
 		let displaced = parent.with_file_name("displaced-candidates");
 		let path = parent.join("candidate.json");
 
-		super::write_new_json(&path, &json!({"value": 1})).expect("candidate fixture");
+		filesystem::write_new_json(&path, &serde_json::json!({"value": 1}))
+			.expect("candidate fixture");
 
 		let parent_for_hook = parent.clone();
 		let displaced_for_hook = displaced.clone();
-		let error = load_json_bytes_with_sha256_after_metadata(&path, 1024, move || {
-			fs::rename(&parent_for_hook, &displaced_for_hook).expect("parent displacement");
-			super::write_new_json(&parent_for_hook.join("candidate.json"), &json!({"value": 1}))
+		let error =
+			filesystem::load_json_bytes_with_sha256_after_metadata(&path, 1_024, move || {
+				fs::rename(&parent_for_hook, &displaced_for_hook).expect("parent displacement");
+				filesystem::write_new_json(
+					&parent_for_hook.join("candidate.json"),
+					&serde_json::json!({"value": 1}),
+				)
 				.expect("parent replacement");
-		})
-		.expect_err("read must reject a displaced parent tree");
+			})
+			.expect_err("read must reject a displaced parent tree");
 
 		assert!(error.to_string().contains("directory path changed"));
 		assert!(displaced.join("candidate.json").exists());
@@ -1331,17 +1335,19 @@ mod tests {
 
 	#[test]
 	fn staging_unlink_rejects_parent_rename_and_replacement() {
-		let temp = repo_local_test_directory("publisher-staging-parent-identity-");
+		let temp = filesystem::repo_local_test_directory("publisher-staging-parent-identity-");
 		let parent = temp.path().join(".agent/automations/decodex/cache/manager/staging");
 		let displaced = parent.with_file_name("displaced-staging");
 		let path = parent.join("staged.json");
 
-		super::write_new_json(&path, &json!({"value": 1})).expect("staging fixture");
+		filesystem::write_new_json(&path, &serde_json::json!({"value": 1}))
+			.expect("staging fixture");
 
-		let staged = PinnedPrivateJsonFile::open(&path, 1024).expect("pinned staging fixture");
+		let staged = PinnedPrivateJsonFile::open(&path, 1_024).expect("pinned staging fixture");
 
 		fs::rename(&parent, &displaced).expect("staging parent displacement");
-		super::write_new_json(&path, &json!({"value": 1})).expect("staging parent replacement");
+		filesystem::write_new_json(&path, &serde_json::json!({"value": 1}))
+			.expect("staging parent replacement");
 
 		let error = staged.unlink().expect_err("unlink must reject a displaced parent tree");
 
@@ -1358,34 +1364,29 @@ mod tests {
 
 		fs::create_dir(&target).expect("target directory");
 		fs::create_dir(&output).expect("output directory");
-		fs::set_permissions(&output, fs::Permissions::from_mode(0o700))
-			.expect("private output mode");
+		fs::set_permissions(&output, Permissions::from_mode(0o700)).expect("private output mode");
+		filesystem::validate_sandbox_test_output(&target, &output).expect("valid direct child");
 
-		validate_sandbox_test_output(&target, &output).expect("valid direct child");
-
-		assert!(validate_sandbox_test_output(&target, &target).is_err());
+		assert!(filesystem::validate_sandbox_test_output(&target, &target).is_err());
 
 		let outside = temp.path().join("outside");
 
 		fs::create_dir(&outside).expect("outside directory");
 
-		assert!(validate_sandbox_test_output(&target, &outside).is_err());
+		assert!(filesystem::validate_sandbox_test_output(&target, &outside).is_err());
 
-		fs::set_permissions(&output, fs::Permissions::from_mode(0o755))
-			.expect("unsafe output mode");
+		fs::set_permissions(&output, Permissions::from_mode(0o755)).expect("unsafe output mode");
 
-		assert!(validate_sandbox_test_output(&target, &output).is_err());
+		assert!(filesystem::validate_sandbox_test_output(&target, &output).is_err());
 
-		fs::set_permissions(&output, fs::Permissions::from_mode(0o1700))
-			.expect("sticky output mode");
+		fs::set_permissions(&output, Permissions::from_mode(0o1700)).expect("sticky output mode");
 
-		assert!(validate_sandbox_test_output(&target, &output).is_err());
+		assert!(filesystem::validate_sandbox_test_output(&target, &output).is_err());
 
 		fs::remove_dir(&output).expect("remove output");
+		unix::fs::symlink(&outside, &output).expect("symlink output");
 
-		symlink(&outside, &output).expect("symlink output");
-
-		assert!(validate_sandbox_test_output(&target, &output).is_err());
+		assert!(filesystem::validate_sandbox_test_output(&target, &output).is_err());
 	}
 
 	#[test]
@@ -1396,24 +1397,25 @@ mod tests {
 
 		fs::create_dir(&root).expect("private root");
 		fs::create_dir(&outside).expect("outside directory");
-		fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).expect("private root mode");
+		fs::set_permissions(&root, Permissions::from_mode(0o700)).expect("private root mode");
 
 		let path = root.join("child");
-		let pinned = open_pinned_sandbox_private_root(&path, vec![root.clone()])
+		let pinned = filesystem::open_pinned_sandbox_private_root(&path, vec![root.clone()])
 			.expect("pinned sandbox root");
 
 		assert_eq!(pinned.path, root);
-		assert!(open_pinned_sandbox_private_root(&outside, vec![root.clone()]).is_err());
+		assert!(
+			filesystem::open_pinned_sandbox_private_root(&outside, vec![root.clone()]).is_err()
+		);
 
-		fs::set_permissions(&root, fs::Permissions::from_mode(0o1700)).expect("sticky root mode");
+		fs::set_permissions(&root, Permissions::from_mode(0o1700)).expect("sticky root mode");
 
-		assert!(open_pinned_sandbox_private_root(&path, vec![root.clone()]).is_err());
+		assert!(filesystem::open_pinned_sandbox_private_root(&path, vec![root.clone()]).is_err());
 
 		fs::remove_dir(&root).expect("remove unsafe root");
+		unix::fs::symlink(&outside, &root).expect("replace root with symlink");
 
-		symlink(&outside, &root).expect("replace root with symlink");
-
-		assert!(open_pinned_sandbox_private_root(&path, vec![root]).is_err());
+		assert!(filesystem::open_pinned_sandbox_private_root(&path, vec![root]).is_err());
 	}
 
 	#[test]
@@ -1422,16 +1424,16 @@ mod tests {
 		let root = temp.path().join("candidate");
 
 		fs::create_dir(&root).expect("candidate root");
-		fs::set_permissions(&root, fs::Permissions::from_mode(0o755)).expect("candidate mode");
+		fs::set_permissions(&root, Permissions::from_mode(0o755)).expect("candidate mode");
 
-		let pinned = open_pinned_sandbox_read_root(root.clone()).expect("pinned read root");
+		let pinned =
+			filesystem::open_pinned_sandbox_read_root(root.clone()).expect("pinned read root");
 
 		assert_eq!(pinned.path, root);
 
-		fs::set_permissions(&root, fs::Permissions::from_mode(0o775))
-			.expect("unsafe candidate mode");
+		fs::set_permissions(&root, Permissions::from_mode(0o775)).expect("unsafe candidate mode");
 
-		assert!(open_pinned_sandbox_read_root(root).is_err());
+		assert!(filesystem::open_pinned_sandbox_read_root(root).is_err());
 	}
 
 	#[test]
@@ -1444,19 +1446,19 @@ mod tests {
 		fs::create_dir(&original).expect("original directory");
 		fs::create_dir(&outside).expect("outside directory");
 
-		let parent = open_private_directory(&original, false).expect("pinned directory");
+		let parent =
+			filesystem::open_private_directory(&original, false).expect("pinned directory");
 
 		fs::rename(&original, &retained).expect("move pinned directory");
-
-		symlink(&outside, &original).expect("replace pathname with symlink");
+		unix::fs::symlink(&outside, &original).expect("replace pathname with symlink");
 
 		let logical_path = original.join("record.json");
 
-		write_new_json_in_parent(
+		filesystem::write_new_json_in_parent(
 			&parent,
 			"record.json".as_ref(),
 			&logical_path,
-			&json!({"ok": true}),
+			&serde_json::json!({"ok": true}),
 		)
 		.expect("descriptor-relative write");
 
