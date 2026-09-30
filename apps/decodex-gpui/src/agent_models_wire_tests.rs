@@ -392,7 +392,7 @@ fn late_model_read_cannot_attach_to_a_changed_task(cx: &mut gpui::TestAppContext
 			let original = snapshot();
 			s.apply_result(Ok(AgentSnapshotResult::Available(original.clone())));
 			s.task_models.work = Some("root".into());
-			let versions = (s.generation, s.task_models.epoch);
+			let epoch = s.task_models.epoch;
 			let mut next = original.clone();
 			if changed_source {
 				next.runtime_source = Some(EntityId::new("changed").unwrap());
@@ -401,7 +401,7 @@ fn late_model_read_cannot_attach_to_a_changed_task(cx: &mut gpui::TestAppContext
 			}
 			s.apply_result(Ok(AgentSnapshotResult::Available(next)));
 			s.finish_task_models(
-				versions,
+				epoch,
 				("root", "thread", original.runtime_source.as_ref().unwrap()),
 				false,
 				Some((None, available())),
@@ -447,5 +447,91 @@ fn model_history_renders_automatic_reconciliation_without_claiming_delivery(
 	surface.read_with(visual, |surface, _| {
 		assert!(surface.task_models.task.is_none());
 		assert!(!surface.task_models.reviewed);
+	});
+}
+
+#[gpui::test]
+fn ordinary_refresh_keeps_task_model_read_and_selection_receipt(cx: &mut gpui::TestAppContext) {
+	for (preserve, confirmed) in [(false, false), (true, false), (false, true), (true, true)] {
+		let (_dir, profile, server) = fixture(preserve, confirmed);
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+			s.profile = Some(profile);
+			s.refresh_composer_model_settings(cx);
+		});
+		cx.run_until_parked();
+		let selection = (
+			ConversationModel::new(if preserve { "plain-model" } else { "future-model" }).unwrap(),
+			if preserve { None } else { Some(ConversationReasoningEffort::new(EFFORT).unwrap()) },
+		);
+		for selection in [None, Some(selection)] {
+			let saving = selection.is_some();
+			surface.update(cx, |s, cx| {
+				s.update_task_models("root".into(), selection, cx);
+				assert!(s.task_models.task.is_some());
+				// Advance the snapshot generation before this operation can complete.
+				s.generation += 1;
+				s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+			});
+			cx.run_until_parked();
+			surface.update(cx, |s, cx| {
+				assert!(
+					s.task_models.task.is_none(),
+					"refresh must not strand a completed operation"
+				);
+				assert_eq!(s.task_models.reviewed, !saving);
+				if saving {
+					assert!(s.task_models.feedback.contains("Response was not confirmed"));
+					assert_eq!(
+						s.composer_model_value(cx),
+						None,
+						"invalidate the pre-edit model observation"
+					);
+					if confirmed {
+						assert!(matches!(
+							s.task_models.state,
+							Some(State::Available {
+								last_outcome: Some(Outcome::TargetObserved),
+								..
+							})
+						));
+					} else {
+						assert!(matches!(
+							s.task_models.state,
+							Some(State::Pending { state: Outcome::Unknown, .. })
+						));
+					}
+				} else {
+					assert!(matches!(s.task_models.state, Some(State::Available { .. })));
+				}
+			});
+		}
+		assert_eq!(
+			server.join().unwrap().len(),
+			1,
+			"an uncertain model selection must not be retried"
+		);
+	}
+}
+
+#[gpui::test]
+fn disconnect_invalidates_task_model_review_before_same_source_reconnect(
+	cx: &mut gpui::TestAppContext,
+) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.task_models.work = Some("root".into());
+		s.task_models.state = Some(available());
+		s.task_models.reviewed = true;
+		s.task_models.selected_model = Some(ConversationModel::new("future-model").unwrap());
+		let epoch = s.task_models.epoch;
+		s.mark_stale(cx);
+		assert_ne!(s.task_models.epoch, epoch);
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		assert!(s.task_models.state.is_none());
+		assert!(!s.task_models.reviewed);
+		assert!(s.task_models.selected_model.is_none());
 	});
 }

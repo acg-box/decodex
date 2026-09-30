@@ -129,7 +129,6 @@ impl AgentSurface {
 			None
 		};
 		let saving = action.is_some();
-		let generation = self.generation;
 		self.task_models.epoch = self.task_models.epoch.wrapping_add(1);
 		let epoch = self.task_models.epoch;
 		self.task_models.work = Some(work.clone());
@@ -151,13 +150,7 @@ impl AgentSurface {
 		self.task_models.task = Some(cx.spawn(async move |surface, cx| {
 			let result = future.await;
 			let _ = surface.update(cx, |s, cx| {
-				s.finish_task_models(
-					(generation, epoch),
-					(&work, &thread, &source),
-					saving,
-					result,
-					cx,
-				);
+				s.finish_task_models(epoch, (&work, &thread, &source), saving, result, cx);
 			});
 		}));
 		cx.notify();
@@ -165,7 +158,7 @@ impl AgentSurface {
 
 	fn finish_task_models(
 		&mut self,
-		versions: (u64, u64),
+		epoch: u64,
 		binding: (&str, &str, &EntityId),
 		saving: bool,
 		result: Option<(
@@ -174,9 +167,8 @@ impl AgentSurface {
 		)>,
 		cx: &mut Context<Self>,
 	) {
-		let (generation, epoch) = versions;
 		let (work, thread, source) = binding;
-		if self.generation != generation || self.task_models.epoch != epoch {
+		if self.task_models.epoch != epoch {
 			return;
 		}
 		self.task_models.task = None;
