@@ -28,8 +28,12 @@ DEFAULT_TIMEOUT = 90.0
 
 
 class ProtocolError(RuntimeError):
-    def __init__(self, message: str, *, paginated_unsupported: bool = False) -> None:
+    def __init__(
+        self, message: str, *, rpc_code: int | None = None,
+        paginated_unsupported: bool = False,
+    ) -> None:
         super().__init__(message)
+        self.rpc_code = rpc_code
         self.paginated_unsupported = paginated_unsupported
 
 
@@ -106,10 +110,11 @@ class AppServer:
                 if "error" in incoming:
                     error = incoming["error"]
                     code = error.get("code") if isinstance(error, dict) else None
-                    code = code if type(code) is int else "unknown"
+                    code = code if type(code) is int else None
                     message = error.get("message") if isinstance(error, dict) else None
                     raise ProtocolError(
-                        f"{method} failed: code={code}",
+                        f"{method} failed: code={code if code is not None else 'unknown'}",
+                        rpc_code=code,
                         paginated_unsupported=(
                             method == "thread/start" and code == -32601
                             and isinstance(message, str)
@@ -288,7 +293,7 @@ def start_named_thread(server: AppServer, cwd: Path, name: str) -> str:
             {
                 "capability": "paginated_threads",
                 "result": "schema_advertised_live_rejected",
-                "error_code": -32601,
+                "error_code": error.rpc_code,
             }
         )
         params["historyMode"] = "legacy"
@@ -498,8 +503,9 @@ def inventory_probe(args: argparse.Namespace) -> dict[str, Any]:
                         "plan_type": tokens.get("plan_type"),
                     }
                 )
-            except ProtocolError:
-                item["authentication"] = "rejected"
+            except ProtocolError as error:
+                item["authentication"] = "probe_error"
+                item["login_error_code"] = error.rpc_code
                 receipt["accounts"].append(item)
                 continue
             item["authentication"] = "authenticated"
@@ -668,9 +674,8 @@ def live_probe(args: argparse.Namespace) -> dict[str, Any]:
     finally:
         server_b.close(crash=True)
 
-    # A process-scoped bad token proves the auth-failed boundary without changing the
-    # account pool or normal auth.json. Resume may load local history; a real turn must
-    # fail authentication before any fallback session is created.
+    # Record the bad-token login result without inferring provider authentication
+    # from a generic RPC error or transport failure. Do not resume or start a turn.
     auth_failed = AppServer(args.codex, args.cwd, codex_home)
     try:
         try:
@@ -683,9 +688,9 @@ def live_probe(args: argparse.Namespace) -> dict[str, Any]:
             receipt["experiments"]["auth_failed_boundary"] = "unexpected_login_success"
         except ProtocolError as error:
             receipt["experiments"]["auth_failed_boundary"] = {
-                "result": "login_rejected_before_resume_or_turn",
+                "result": "login_request_failed" if error.rpc_code is not None else "probe_error",
                 "error_class": type(error).__name__,
-                "error_code": -32603,
+                "error_code": error.rpc_code,
             }
     finally:
         auth_failed.close(crash=True)

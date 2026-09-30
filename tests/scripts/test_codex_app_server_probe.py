@@ -135,6 +135,7 @@ class CodexAppServerProbeTests(unittest.TestCase):
             server.request("account/login/start")
         self.assertNotIn(marker, str(raised.exception))
         self.assertIn("-32603", str(raised.exception))
+        self.assertEqual(raised.exception.rpc_code, -32603)
 
     def test_paginated_fallback_preserves_capability_without_error_details(self):
         probe = load_probe()
@@ -184,6 +185,62 @@ class CodexAppServerProbeTests(unittest.TestCase):
                 self.assertEqual(receipt["status"], "failed")
                 self.assertEqual(receipt["error"], type(error).__name__)
                 self.assertNotIn(marker, output.getvalue())
+
+    def test_inventory_does_not_treat_transport_failure_as_auth_rejection(self):
+        probe = load_probe()
+        server = SimpleNamespace(
+            login=mock.Mock(side_effect=probe.ProtocolError("timed out waiting for app-server response")),
+            close=mock.Mock(),
+        )
+        args = SimpleNamespace(codex="fixture-codex", cwd=ROOT,
+                               codex_home="/fixture-home", accounts_file="/fixture-accounts")
+        with (
+            mock.patch.object(probe, "read_accounts", return_value=[{"tokens": {
+                "access_token": "fixture-token", "account_id": "fixture-account",
+            }}]),
+            mock.patch.object(probe, "sha256_file", return_value="fixture-digest"),
+            mock.patch.object(probe, "sha256_tree", return_value="fixture-digest"),
+            mock.patch.object(probe.subprocess, "check_output", return_value="fixture-version"),
+            mock.patch.object(probe, "AppServer", return_value=server),
+        ):
+            receipt = probe.inventory_probe(args)
+        self.assertEqual(receipt["accounts"][0]["authentication"], "probe_error")
+        self.assertIsNone(receipt["accounts"][0]["login_error_code"])
+        self.assertEqual(receipt["turns_started"], 0)
+        server.close.assert_called_once_with(crash=False)
+
+    def test_bad_token_experiment_records_actual_failure_without_auth_claim(self):
+        probe = load_probe()
+        for code in (None, -32602, -32603):
+            with self.subTest(code=code):
+                servers = [mock.Mock() for _ in range(4)]
+                for server in servers:
+                    server.initialize_result = {}
+                    server.capability_observations = []
+                    server.request.return_value = {"thread": {"id": "fixture-thread"}, "data": []}
+                servers[2].login.side_effect = probe.ProtocolError("fixture failure", rpc_code=code)
+                args = SimpleNamespace(codex="fixture-codex", cwd=ROOT,
+                    codex_home="/fixture-home", accounts_file="/fixture-accounts",
+                    account_a="A", account_b="B", auth_sha256_before="fixture-digest")
+                with (
+                    mock.patch.object(probe, "read_accounts", return_value=[]),
+                    mock.patch.object(probe, "account_login", side_effect=[
+                        {"account_id": "fixture-A"}, {"account_id": "fixture-B"},
+                    ]),
+                    mock.patch.object(probe, "sha256_file", return_value="fixture-digest"),
+                    mock.patch.object(probe.subprocess, "check_output", return_value="fixture-version"),
+                    mock.patch.object(probe, "AppServer", side_effect=servers),
+                    mock.patch.object(probe, "start_named_thread", return_value="fixture-thread"),
+                    mock.patch.object(probe, "run_turn"),
+                    mock.patch.object(probe, "rate_limit_windows", return_value=[]),
+                ):
+                    receipt = probe.live_probe(args)
+                failure = receipt["experiments"]["auth_failed_boundary"]
+                self.assertEqual(failure["result"], "probe_error" if code is None else "login_request_failed")
+                self.assertEqual(failure["error_code"], code)
+                servers[2].request.assert_not_called()
+                for server in servers:
+                    server.close.assert_called_once()
 
     def test_account_selection_does_not_emit_credentials(self):
         probe = load_probe()
