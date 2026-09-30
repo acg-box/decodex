@@ -172,7 +172,7 @@ fn validate_owner_mode(metadata: &fs::Metadata, current_uid: u32, executable: bo
 fn read_verified_binary(path: &Path) -> Result<(Vec<u8>, String)> {
 	let mut file = OpenOptions::new()
 		.read(true)
-		.custom_flags(libc::O_NOFOLLOW)
+		.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
 		.open(path)
 		.map_err(|_| eyre::eyre!("resolved xurl target cannot be opened safely"))?;
 	let before = file.metadata()?;
@@ -289,7 +289,7 @@ fn open_runtime_file(runtime: &File, name: &OsString) -> Result<File> {
 	let fd = unix_fs::openat(
 		runtime,
 		name,
-		OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+		OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
 		Mode::empty(),
 	)?;
 	let file = File::from(fd);
@@ -505,7 +505,7 @@ fn open_runtime_gc_entry(runtime: &File, name: &OsString) -> Result<File> {
 	let fd = unix_fs::openat(
 		runtime,
 		name,
-		OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+		OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
 		Mode::empty(),
 	)?;
 
@@ -1396,6 +1396,43 @@ mod tests {
 			.to_string();
 
 		assert!(error.contains("unexpected symlink"));
+	}
+
+	#[test]
+	fn binary_and_runtime_readers_reject_fifos_without_waiting_for_a_writer() {
+		use std::os::unix::fs::OpenOptionsExt as _;
+		for kind in ["source", "copy", "stage"] {
+			let temp = tempfile::tempdir().expect("tempdir");
+			let path = temp.path().join("fifo");
+			let name = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+			assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+			let runtime = File::open(temp.path()).unwrap();
+			let input = path.clone();
+			let (sender, receiver) = std::sync::mpsc::channel();
+			let reader = thread::spawn(move || {
+				let result = match kind {
+					"source" => read_verified_binary(&input).map(|_| ()),
+					"copy" =>
+						super::open_runtime_file(&runtime, &OsString::from("fifo")).map(|_| ()),
+					_ => super::open_runtime_gc_entry(&runtime, &OsString::from("fifo"))
+						.and_then(|file| super::validate_runtime_gc_metadata(&file.metadata()?)),
+				};
+				sender.send(result).unwrap();
+			});
+			let result = receiver.recv_timeout(Duration::from_secs(2));
+			// Unblock the old implementation before asserting, so failure leaves no reader behind.
+			let release = result.is_err().then(|| {
+				fs::OpenOptions::new()
+					.read(true)
+					.write(true)
+					.custom_flags(libc::O_NONBLOCK)
+					.open(&path)
+					.unwrap()
+			});
+			reader.join().unwrap();
+			drop(release);
+			assert!(result.expect("FIFO open must not wait for a writer").is_err(), "{kind}");
+		}
 	}
 
 	#[test]
