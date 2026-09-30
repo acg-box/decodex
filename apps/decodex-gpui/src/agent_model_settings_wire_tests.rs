@@ -295,3 +295,31 @@ fn unavailable_service_clears_model_observations_but_detail_close_keeps_them(
 		assert_ne!(s.model_settings.epoch, before);
 	});
 }
+
+#[gpui::test]
+fn ordinary_snapshot_refresh_keeps_model_settings_read(cx: &mut gpui::TestAppContext) {
+	let (_dir, profile, server) = fixture();
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, _| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.profile = Some(profile);
+	});
+	for _ in 0..4 {
+		surface.update(cx, |s, cx| {
+			s.read_model_settings("root", cx);
+			assert!(s.model_settings.task.is_some());
+			// A normal refresh advances its request generation without changing the binding.
+			s.generation += 1;
+			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		});
+		cx.run_until_parked();
+		surface.read_with(cx, |s, _| {
+			assert!(s.model_settings.task.is_none());
+			assert!(
+				s.model_settings.observations.contains_key("root"),
+				"an unchanged binding must retain the completed observation"
+			);
+		});
+	}
+	server.join().unwrap();
+}
