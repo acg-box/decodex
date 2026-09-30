@@ -1,3 +1,6 @@
+mod fetch;
+mod parser;
+
 use std::{
 	io::ErrorKind,
 	path::{Path, PathBuf},
@@ -8,16 +11,18 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
-mod fetch;
-mod parser;
-
-use super::model::{
-	CREATE_COST_MICROUSD, IDENTITY_READ_COST_MICROUSD, PRICING_POLICY_ID, READ_COST_MICROUSD,
-};
 use crate::{
 	SOCIAL_MONTHLY_BUDGET_MICROUSD, SocialRefreshPricingReport, XPricingPolicyReport,
 	XPricingRatesReport,
-	prelude::{Result, eyre},
+	filesystem::PinnedPrivateJsonFile,
+	prelude::{self, eyre},
+	social_xurl::{
+		model::{
+			CREATE_COST_MICROUSD, IDENTITY_READ_COST_MICROUSD, PRICING_POLICY_ID,
+			READ_COST_MICROUSD,
+		},
+		pricing::fetch::PricingFetchFailure,
+	},
 };
 
 const RECEIPT_SCHEMA: &str = "decodex/x-pricing-audit-receipt/1";
@@ -30,12 +35,12 @@ const DEFAULT_RECEIPT_PATH: &str =
 	".agent/automations/decodex/cache/social/x/x-pricing-receipt.json";
 const FAILURE_RECEIPT_NAME: &str = "x-pricing-failure.json";
 const PRICING_LOCK_NAME: &str = ".x-pricing-refresh.lock";
-const MAX_RECEIPT_BYTES: u64 = 16 * 1024;
-const MAX_SOURCE_BYTES: u64 = 1024 * 1024;
+const MAX_RECEIPT_BYTES: u64 = 16 * 1_024;
+const MAX_SOURCE_BYTES: u64 = 1_024 * 1_024;
 const MAX_RECEIPT_AGE: Duration = Duration::hours(36);
 const URL_CREATE_COST_MICROUSD: u64 = 200_000;
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct XPricingRates {
 	post_create: u64,
@@ -44,7 +49,7 @@ struct XPricingRates {
 	user_read: u64,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct XPricingReceipt {
 	schema: String,
@@ -56,7 +61,7 @@ struct XPricingReceipt {
 	integrity_sha256: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct XPricingFailureReceipt {
 	schema: String,
@@ -70,7 +75,7 @@ struct XPricingFailureReceipt {
 	integrity_sha256: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct XPricingDiagnostic {
 	schema: String,
@@ -86,7 +91,7 @@ struct XPricingDiagnostic {
 	tables: Vec<XPricingDiagnosticTable>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct XPricingDiagnosticTable {
 	nearest_h2: String,
@@ -99,7 +104,7 @@ struct XPricingDiagnosticTable {
 	truncated: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct XPricingDiagnosticRow {
 	cells: Vec<String>,
@@ -126,19 +131,19 @@ struct StoredPricingFailure {
 	verified: VerifiedPricingFailure,
 }
 
-pub(super) fn require_current_at(now: OffsetDateTime) -> Result<()> {
+pub(super) fn require_current_at(now: OffsetDateTime) -> prelude::Result<()> {
 	let path = default_receipt_path()?;
 
 	require_current_at_path(&path, now)
 }
 
-pub(super) fn report_at(now: OffsetDateTime) -> Result<XPricingPolicyReport> {
+pub(super) fn report_at(now: OffsetDateTime) -> prelude::Result<XPricingPolicyReport> {
 	let path = default_receipt_path()?;
 
 	report_at_path(&path, now)
 }
 
-pub(super) fn refresh_at(now: OffsetDateTime) -> Result<SocialRefreshPricingReport> {
+pub(super) fn refresh_at(now: OffsetDateTime) -> prelude::Result<SocialRefreshPricingReport> {
 	let path = default_receipt_path()?;
 
 	refresh_at_path_with(&path, now, fetch::fetch_official)
@@ -148,9 +153,9 @@ fn refresh_at_path_with<F>(
 	path: &Path,
 	now: OffsetDateTime,
 	fetcher: F,
-) -> Result<SocialRefreshPricingReport>
+) -> prelude::Result<SocialRefreshPricingReport>
 where
-	F: FnOnce() -> std::result::Result<Vec<u8>, fetch::PricingFetchFailure>,
+	F: FnOnce() -> std::result::Result<Vec<u8>, PricingFetchFailure>,
 {
 	let parent =
 		path.parent().ok_or_else(|| eyre::eyre!("X pricing audit receipt path is invalid"))?;
@@ -265,7 +270,7 @@ where
 	Ok(refresh_report(receipt_status, receipt_status, Some(&stored.verified), None, 1))
 }
 
-fn default_receipt_path() -> Result<PathBuf> {
+fn default_receipt_path() -> prelude::Result<PathBuf> {
 	Ok(crate::repo_root()?.join(DEFAULT_RECEIPT_PATH))
 }
 
@@ -285,7 +290,7 @@ fn require_refresh_time(
 	now: OffsetDateTime,
 	previous: Option<&StoredPricingReceipt>,
 	previous_failure: Option<&StoredPricingFailure>,
-) -> Result<()> {
+) -> prelude::Result<()> {
 	if previous.is_some_and(|stored| stored.verified.fetched_at >= now)
 		|| previous_failure.is_some_and(|stored| stored.verified.fetched_at >= now)
 	{
@@ -337,7 +342,11 @@ fn stored_status(
 	}
 }
 
-fn write_private_json(path: &Path, previous: Option<&Value>, payload: &Value) -> Result<()> {
+fn write_private_json(
+	path: &Path,
+	previous: Option<&Value>,
+	payload: &Value,
+) -> prelude::Result<()> {
 	let encoded = serde_json::to_vec_pretty(payload)?;
 
 	if encoded.len().saturating_add(1) > MAX_RECEIPT_BYTES as usize {
@@ -351,9 +360,12 @@ fn write_private_json(path: &Path, previous: Option<&Value>, payload: &Value) ->
 	}
 }
 
-fn remove_failure_receipt(path: &Path, previous: Option<&StoredPricingFailure>) -> Result<()> {
+fn remove_failure_receipt(
+	path: &Path,
+	previous: Option<&StoredPricingFailure>,
+) -> prelude::Result<()> {
 	let Some(previous) = previous else { return Ok(()) };
-	let pinned = crate::filesystem::PinnedPrivateJsonFile::open(path, MAX_RECEIPT_BYTES)?;
+	let pinned = PinnedPrivateJsonFile::open(path, MAX_RECEIPT_BYTES)?;
 
 	if pinned.payload != previous.payload {
 		return Err(eyre::eyre!("X pricing failure receipt changed before cleanup"));
@@ -367,7 +379,7 @@ fn remove_failure_receipt(path: &Path, previous: Option<&StoredPricingFailure>) 
 	pinned.unlink()
 }
 
-fn require_current_at_path(path: &Path, now: OffsetDateTime) -> Result<()> {
+fn require_current_at_path(path: &Path, now: OffsetDateTime) -> prelude::Result<()> {
 	let failure = load_failure_receipt(&failure_receipt_path(path)?)?;
 	let verified = match load_receipt(path) {
 		Ok(receipt) => receipt,
@@ -385,7 +397,7 @@ fn require_current_at_path(path: &Path, now: OffsetDateTime) -> Result<()> {
 	Ok(())
 }
 
-fn report_at_path(path: &Path, now: OffsetDateTime) -> Result<XPricingPolicyReport> {
+fn report_at_path(path: &Path, now: OffsetDateTime) -> prelude::Result<XPricingPolicyReport> {
 	let failure = load_failure_receipt(&failure_receipt_path(path)?)?;
 	let verified = match load_receipt(path) {
 		Ok(receipt) => receipt,
@@ -413,7 +425,7 @@ fn report_at_path(path: &Path, now: OffsetDateTime) -> Result<XPricingPolicyRepo
 	})
 }
 
-fn failure_receipt_path(success_path: &Path) -> Result<PathBuf> {
+fn failure_receipt_path(success_path: &Path) -> prelude::Result<PathBuf> {
 	let parent = success_path
 		.parent()
 		.ok_or_else(|| eyre::eyre!("X pricing audit receipt path is invalid"))?;
@@ -421,11 +433,11 @@ fn failure_receipt_path(success_path: &Path) -> Result<PathBuf> {
 	Ok(parent.join(FAILURE_RECEIPT_NAME))
 }
 
-fn load_receipt(path: &Path) -> Result<VerifiedPricingReceipt> {
+fn load_receipt(path: &Path) -> prelude::Result<VerifiedPricingReceipt> {
 	Ok(load_stored_receipt(path)?.verified)
 }
 
-fn load_optional_receipt(path: &Path) -> Result<Option<StoredPricingReceipt>> {
+fn load_optional_receipt(path: &Path) -> prelude::Result<Option<StoredPricingReceipt>> {
 	match path.symlink_metadata() {
 		Ok(_) => load_stored_receipt(path).map(Some),
 		Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
@@ -433,7 +445,7 @@ fn load_optional_receipt(path: &Path) -> Result<Option<StoredPricingReceipt>> {
 	}
 }
 
-fn load_stored_receipt(path: &Path) -> Result<StoredPricingReceipt> {
+fn load_stored_receipt(path: &Path) -> prelude::Result<StoredPricingReceipt> {
 	let (payload, _receipt_sha256) = crate::load_json_with_sha256_bounded(path, MAX_RECEIPT_BYTES)
 		.map_err(|error| eyre::eyre!("X pricing audit receipt is unavailable: {error}"))?;
 	let receipt: XPricingReceipt = serde_json::from_value(payload)
@@ -453,11 +465,11 @@ fn load_stored_receipt(path: &Path) -> Result<StoredPricingReceipt> {
 	})
 }
 
-fn load_failure_receipt(path: &Path) -> Result<Option<VerifiedPricingFailure>> {
+fn load_failure_receipt(path: &Path) -> prelude::Result<Option<VerifiedPricingFailure>> {
 	Ok(load_optional_failure_receipt(path)?.map(|stored| stored.verified))
 }
 
-fn load_optional_failure_receipt(path: &Path) -> Result<Option<StoredPricingFailure>> {
+fn load_optional_failure_receipt(path: &Path) -> prelude::Result<Option<StoredPricingFailure>> {
 	match path.symlink_metadata() {
 		Ok(_) => {},
 		Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
@@ -469,7 +481,7 @@ fn load_optional_failure_receipt(path: &Path) -> Result<Option<StoredPricingFail
 	load_stored_failure_receipt(path).map(Some)
 }
 
-fn load_stored_failure_receipt(path: &Path) -> Result<StoredPricingFailure> {
+fn load_stored_failure_receipt(path: &Path) -> prelude::Result<StoredPricingFailure> {
 	let (payload, _receipt_sha256) = crate::load_json_with_sha256_bounded(path, MAX_RECEIPT_BYTES)
 		.map_err(|error| eyre::eyre!("X pricing failure receipt is unavailable: {error}"))?;
 	let receipt: XPricingFailureReceipt = serde_json::from_value(payload)
@@ -483,7 +495,7 @@ fn load_stored_failure_receipt(path: &Path) -> Result<StoredPricingFailure> {
 	Ok(StoredPricingFailure { payload, verified: VerifiedPricingFailure { fetched_at } })
 }
 
-fn validate_receipt(receipt: &XPricingReceipt) -> Result<()> {
+fn validate_receipt(receipt: &XPricingReceipt) -> prelude::Result<()> {
 	if receipt.schema != RECEIPT_SCHEMA
 		|| receipt.parser_version != PARSER_VERSION
 		|| receipt.source_url != OFFICIAL_PRICING_SOURCE
@@ -507,7 +519,7 @@ fn validate_receipt(receipt: &XPricingReceipt) -> Result<()> {
 	Ok(())
 }
 
-fn validate_failure_receipt(receipt: &XPricingFailureReceipt) -> Result<()> {
+fn validate_failure_receipt(receipt: &XPricingFailureReceipt) -> prelude::Result<()> {
 	let diagnostic: XPricingDiagnostic = serde_json::from_value(receipt.diagnostic.clone())
 		.map_err(|_| eyre::eyre!("X pricing failure receipt contract is invalid"))?;
 
@@ -646,7 +658,7 @@ fn failure_integrity_sha256(receipt: &XPricingFailureReceipt) -> String {
 	Sha256::digest(material.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn canonical_json_sha256(value: &Value) -> Result<String> {
+fn canonical_json_sha256(value: &Value) -> prelude::Result<String> {
 	let mut canonical = String::new();
 
 	write_canonical_json(value, &mut canonical)?;
@@ -654,7 +666,7 @@ fn canonical_json_sha256(value: &Value) -> Result<String> {
 	Ok(Sha256::digest(canonical.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
-fn write_canonical_json(value: &Value, output: &mut String) -> Result<()> {
+fn write_canonical_json(value: &Value, output: &mut String) -> prelude::Result<()> {
 	match value {
 		Value::Null => output.push_str("null"),
 		Value::Bool(value) => output.push_str(if *value { "true" } else { "false" }),
@@ -704,7 +716,7 @@ fn write_canonical_json(value: &Value, output: &mut String) -> Result<()> {
 	Ok(())
 }
 
-fn parse_time(value: &str) -> Result<OffsetDateTime> {
+fn parse_time(value: &str) -> prelude::Result<OffsetDateTime> {
 	if value.len() != 20 || !value.ends_with('Z') {
 		return Err(eyre::eyre!("X pricing receipt fetched_at is invalid"));
 	}
