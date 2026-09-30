@@ -8,13 +8,11 @@ from typing import Any
 
 def extract_json_payload(raw: str) -> dict[str, Any]:
     candidate = raw.strip()
-    if candidate.startswith("```"):
-        parts = candidate.split("```")
-        if len(parts) >= 3:
-            candidate = parts[1]
-            if candidate.startswith("json"):
-                candidate = candidate[4:]
-            candidate = candidate.strip()
+    if candidate.startswith("```") and candidate.endswith("```"):
+        candidate = candidate[3:-3]
+        if candidate.startswith("json"):
+            candidate = candidate[4:]
+        candidate = candidate.strip()
     try:
         payload = json.loads(candidate)
     except json.JSONDecodeError as exc:
