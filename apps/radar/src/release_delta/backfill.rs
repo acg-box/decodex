@@ -23,7 +23,7 @@ pub(crate) fn backfill_release_range(
 		request.preview_tag.as_deref(),
 	)?;
 	let signals_dir = crate::resolve_against(&root, &request.signals_dir);
-	let published = selection::published_pr_numbers(&signals_dir)?;
+	let published = selection::published_pr_numbers(&signals_dir, &request.repo)?;
 	let mut target_prs = selection
 		.pr_numbers
 		.into_iter()

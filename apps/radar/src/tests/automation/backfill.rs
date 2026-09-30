@@ -19,6 +19,17 @@ fn dry_run_backfill_selects_unpublished_release_window_prs() {
 	fs::write(signals_dir.join("published.json"), fixtures::valid_signal().to_string())
 		.expect("signal should be written");
 
+	for (name, repo, url) in [
+		("foreign", "other/project", "https://github.com/other/project/pull/22415"),
+		("foreign-reference", "openai/codex", "https://github.com/other/project/pull/22415"),
+		("foreign-host", "openai/codex", "https://example.com/openai/codex/pull/22415"),
+	] {
+		let mut signal = fixtures::valid_signal();
+		signal["source_refs"]["repo"] = serde_json::json!(repo);
+		signal["source_refs"]["pr_url"] = serde_json::json!(url);
+		fs::write(signals_dir.join(format!("{name}.json")), signal.to_string()).unwrap();
+	}
+
 	let report = crate::backfill_release_range(&RadarBackfillReleaseRangeRequest {
 		repo: "openai/codex".into(),
 		release_delta: release_delta_path,
