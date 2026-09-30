@@ -6,8 +6,9 @@ use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt 
 use std::{
 	env,
 	ffi::OsString,
+	fmt::{Display, Formatter},
 	fs::{self, DirBuilder, File, OpenOptions},
-	io::{Error, ErrorKind, Read as _, Write as _},
+	io::{Error, ErrorKind, Read, Write as _},
 	path::{Path, PathBuf},
 	process,
 };
@@ -39,9 +40,8 @@ pub enum FastModeFailure {
 	/// The configuration update did not complete.
 	WriteFailed,
 }
-
-impl std::fmt::Display for FastModeFailure {
-	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for FastModeFailure {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(match self {
 			Self::HomeUnavailable => "the current user home is unavailable",
 			Self::UnsafeConfigPath => "the Codex config path is unsafe",
@@ -89,6 +89,7 @@ fn set_at_path(path: &Path, enabled: bool) -> Result<bool, FastModeFailure> {
 		.get_mut("features")
 		.and_then(Item::as_table_like_mut)
 		.ok_or(FastModeFailure::FeaturesNotTable)?;
+
 	if let Some(value) = features.get("fast_mode")
 		&& !value.is_none()
 		&& value.as_bool().is_none()
@@ -97,6 +98,7 @@ fn set_at_path(path: &Path, enabled: bool) -> Result<bool, FastModeFailure> {
 	}
 
 	features.insert("fast_mode", toml_edit::value(enabled));
+
 	write_document(path, &document)?;
 
 	Ok(enabled)
@@ -118,21 +120,27 @@ fn read_document(path: &Path) -> Result<DocumentMut, FastModeFailure> {
 
 	let mut file = open_config_no_follow(path).map_err(map_config_open_error)?;
 	let metadata = file.metadata().map_err(|_| FastModeFailure::ConfigUnavailable)?;
+
 	if !metadata.is_file() {
 		return Err(FastModeFailure::UnsafeConfigPath);
 	}
 	if metadata.len() > MAX_CONFIG_BYTES {
 		return Err(FastModeFailure::ConfigTooLarge);
 	}
+
 	let mut bytes = Vec::new();
-	std::io::Read::by_ref(&mut file)
+
+	Read::by_ref(&mut file)
 		.take(MAX_CONFIG_BYTES + 1)
 		.read_to_end(&mut bytes)
 		.map_err(|_| FastModeFailure::ConfigUnavailable)?;
+
 	if bytes.len() as u64 > MAX_CONFIG_BYTES {
 		return Err(FastModeFailure::ConfigTooLarge);
 	}
+
 	let input = String::from_utf8(bytes).map_err(|_| FastModeFailure::ConfigUnavailable)?;
+
 	if input.trim().is_empty() {
 		return Ok(DocumentMut::new());
 	}
@@ -165,9 +173,11 @@ fn is_symlink_open_error(error: &Error) -> bool {
 	{
 		error.raw_os_error() == Some(libc::ELOOP)
 	}
+
 	#[cfg(not(unix))]
 	{
 		let _ = error;
+
 		false
 	}
 }
@@ -192,6 +202,7 @@ fn write_document(path: &Path, document: &DocumentMut) -> Result<(), FastModeFai
 	let file_name =
 		path.file_name().and_then(|name| name.to_str()).ok_or(FastModeFailure::UnsafeConfigPath)?;
 	let mut output = document.to_string();
+
 	if !output.ends_with('\n') {
 		output.push('\n');
 	}
@@ -207,8 +218,11 @@ fn write_document(path: &Path, document: &DocumentMut) -> Result<(), FastModeFai
 		let write_result = (|| {
 			file.write_all(output.as_bytes()).map_err(|_| FastModeFailure::WriteFailed)?;
 			file.sync_all().map_err(|_| FastModeFailure::WriteFailed)?;
+
 			drop(file);
+
 			fs::rename(&temporary, path).map_err(|_| FastModeFailure::WriteFailed)?;
+
 			sync_directory(parent)
 		})();
 
@@ -233,7 +247,6 @@ fn prepare_parent(parent: &Path) -> Result<(), FastModeFailure> {
 
 			#[cfg(unix)]
 			builder.mode(0o700);
-
 			builder.create(parent).map_err(|_| FastModeFailure::WriteFailed)?;
 		},
 		Err(_) => return Err(FastModeFailure::ConfigUnavailable),
@@ -243,6 +256,7 @@ fn prepare_parent(parent: &Path) -> Result<(), FastModeFailure> {
 	{
 		let metadata =
 			fs::symlink_metadata(parent).map_err(|_| FastModeFailure::ConfigUnavailable)?;
+
 		if metadata.file_type().is_symlink()
 			|| !metadata.is_dir()
 			|| metadata.permissions().mode() & 0o022 != 0
@@ -283,7 +297,7 @@ fn sync_directory(path: &Path) -> Result<(), FastModeFailure> {
 
 #[cfg(test)]
 mod tests {
-	#[cfg(unix)] use std::os::unix::fs::{PermissionsExt as _, symlink};
+	#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
 	use std::{
 		ffi::OsString,
 		fs,
@@ -301,10 +315,12 @@ mod tests {
 		{
 			let temp = tempfile::tempdir().expect("temporary directory");
 			let path = config_path(&temp);
+
 			if let Some(input) = input {
 				fs::create_dir(path.parent().unwrap()).unwrap();
 				fs::write(&path, input).unwrap();
 			}
+
 			assert!(super::status_at_path(&path).expect("native default is enabled"));
 			assert_eq!(fs::read_to_string(&path).ok().as_deref(), input);
 		}
@@ -340,10 +356,10 @@ mod tests {
 		let path = config_path(&temp);
 
 		super::set_at_path(&path, false).expect("Fast mode must be disabled");
+
 		assert!(
 			!super::status_at_path(&path).expect("explicit false overrides the native default")
 		);
-
 		assert_eq!(
 			fs::read_to_string(&path).expect("config must be readable"),
 			"[features]\nfast_mode = false\n"
@@ -410,15 +426,18 @@ mod tests {
 			.expect("Codex directory must be created");
 		fs::write(&target, "[features]\nfast_mode = false\n")
 			.expect("target config must be written");
-		symlink(&target, &path).expect("config symlink must be created");
+		std::os::unix::fs::symlink(&target, &path).expect("config symlink must be created");
 
 		assert_eq!(super::status_at_path(&path), Err(super::FastModeFailure::UnsafeConfigPath));
+
 		fs::remove_file(&path).expect("config symlink must be removed");
 
 		let mut permissions = fs::metadata(path.parent().expect("config must have a parent"))
 			.expect("Codex directory metadata must be readable")
 			.permissions();
+
 		permissions.set_mode(0o777);
+
 		fs::set_permissions(path.parent().expect("config must have a parent"), permissions)
 			.expect("Codex directory permissions must change");
 

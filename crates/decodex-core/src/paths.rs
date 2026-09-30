@@ -149,6 +149,7 @@ impl DecodexPaths {
 	#[cfg(unix)]
 	pub fn open_product_database_file(&self) -> Result<File, PathError> {
 		self.ensure_owned_directory(Path::new("server"))?;
+
 		path_unix::open_private_database_file(self, &self.product_database_file())
 	}
 
@@ -176,6 +177,7 @@ impl DecodexPaths {
 		#[cfg(not(unix))]
 		{
 			ensure_private_directory(self.root.as_path())?;
+
 			ensure_private_directory(&self.server_dir())
 		}
 	}

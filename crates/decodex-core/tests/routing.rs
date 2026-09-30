@@ -11,12 +11,12 @@ use toml as _;
 use toml_edit as _;
 
 use decodex_core::{
-	AccountId, AccountQuotaObservationError, AccountRegistryQuotaFact,
+	self, AccountId, AccountQuotaObservationError, AccountRegistryQuotaFact,
 	AccountRegistryQuotaObservation, AccountRegistryRoutingDecision,
 	AccountRegistryRoutingDecisionKind, AccountRegistryRoutingExclusion,
 	AccountRegistryRoutingKernelError, AccountRegistryRoutingMember,
 	AccountRegistryRoutingSnapshot, AccountSelectionMode, QuotaWindowClass, RoutingBlocker,
-	RoutingDecisionCause, decide_account_registry_routing,
+	RoutingDecisionCause,
 };
 
 const SNAPSHOT_ID: &str = "routing-snapshot-acceptance";
@@ -102,6 +102,7 @@ fn account_registry_snapshot(
 			)
 		})
 		.collect();
+
 	AccountRegistryRoutingSnapshot {
 		snapshot_id: SNAPSHOT_ID.to_owned(),
 		routing_revision: 1,
@@ -184,6 +185,7 @@ fn account_registry_balanced_selects_later_member_with_exact_prior_exclusions() 
 			account_registry_member(2, second.clone(), vec![]),
 		],
 	);
+
 	input.quota_facts = [
 		account_registry_quota_pair(&first, 100, DECIDED_AT + 500, 100, DECIDED_AT + 10_000),
 		account_registry_quota_pair(&second, 50, DECIDED_AT + 600, 50, DECIDED_AT + 20_000),
@@ -191,7 +193,7 @@ fn account_registry_balanced_selects_later_member_with_exact_prior_exclusions() 
 	.concat();
 
 	assert_eq!(
-		decide_account_registry_routing(&input, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&input, DECIDED_AT),
 		Ok(account_registry_selected(
 			second,
 			vec![
@@ -225,11 +227,12 @@ fn account_registry_balanced_prefers_known_capacity_then_falls_back_to_unknown_o
 			account_registry_member(2, known.clone(), vec![]),
 		],
 	);
+
 	input.quota_facts[0].observation = AccountRegistryQuotaObservation::Missing;
 	input.quota_facts[1].observation = AccountRegistryQuotaObservation::Missing;
 
 	assert_eq!(
-		decide_account_registry_routing(&input, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&input, DECIDED_AT),
 		Ok(AccountRegistryRoutingDecision {
 			snapshot_id: SNAPSHOT_ID.to_owned(),
 			kind: AccountRegistryRoutingDecisionKind::Selected,
@@ -245,8 +248,9 @@ fn account_registry_balanced_prefers_known_capacity_then_falls_back_to_unknown_o
 	for fact in &mut input.quota_facts[2..] {
 		fact.observation = AccountRegistryQuotaObservation::Missing;
 	}
+
 	assert_eq!(
-		decide_account_registry_routing(&input, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&input, DECIDED_AT),
 		Ok(account_registry_selected(account(40), vec![])),
 	);
 }
@@ -264,7 +268,7 @@ fn account_registry_fixed_blocked_target_never_falls_back_to_eligible_non_target
 	);
 
 	assert_eq!(
-		decide_account_registry_routing(&input, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&input, DECIDED_AT),
 		Ok(account_registry_no_route(
 			vec![],
 			vec![account_registry_cause(target, RoutingBlocker::AccountDisabled)],
@@ -272,9 +276,11 @@ fn account_registry_fixed_blocked_target_never_falls_back_to_eligible_non_target
 	);
 
 	let absent = account(24);
+
 	input.mode = AccountSelectionMode::Fixed(absent.clone());
+
 	assert_eq!(
-		decide_account_registry_routing(&input, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&input, DECIDED_AT),
 		Err(AccountRegistryRoutingKernelError::FixedTargetAbsent { account_id: absent }),
 	);
 }
@@ -290,15 +296,18 @@ fn account_registry_canonical_member_and_window_causes_retain_order() {
 			vec![RoutingBlocker::AccountFromFuture, RoutingBlocker::AccountDisabled],
 		)],
 	);
+
 	input.quota_facts[0].observation = AccountRegistryQuotaObservation::Missing;
+
 	let observation_error = AccountRegistryQuotaObservation::ObservationError {
 		error: AccountQuotaObservationError::AccountMismatch,
 		observed_at_micros: OBSERVED_AT,
 	};
+
 	input.quota_facts[1].observation = observation_error.clone();
 
 	assert_eq!(
-		decide_account_registry_routing(&input, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&input, DECIDED_AT),
 		Ok(account_registry_no_route(
 			vec![],
 			vec![
@@ -323,10 +332,6 @@ fn account_registry_closed_observation_errors_are_unknown_capacity_not_depletion
 
 	for (index, (error, window)) in cases.into_iter().enumerate() {
 		let account_id = account(34 + index as u8);
-		let mut input = account_registry_snapshot(
-			AccountSelectionMode::Balanced,
-			vec![account_registry_member(1, account_id.clone(), vec![])],
-		);
 		let observation = AccountRegistryQuotaObservation::ObservationError {
 			error,
 			observed_at_micros: OBSERVED_AT,
@@ -335,9 +340,15 @@ fn account_registry_closed_observation_errors_are_unknown_capacity_not_depletion
 			QuotaWindowClass::FiveHour => 0,
 			QuotaWindowClass::SevenDay => 1,
 		};
+		let mut input = account_registry_snapshot(
+			AccountSelectionMode::Balanced,
+			vec![account_registry_member(1, account_id.clone(), vec![])],
+		);
+
 		input.quota_facts[fact_index].observation = observation.clone();
+
 		assert_eq!(
-			decide_account_registry_routing(&input, DECIDED_AT),
+			decodex_core::decide_account_registry_routing(&input, DECIDED_AT),
 			Ok(account_registry_selected(account_id, vec![])),
 			"{error:?}",
 		);
@@ -356,6 +367,7 @@ fn account_registry_split_depletion_waiting_never_pools_accounts_or_windows() {
 			account_registry_member(2, second.clone(), vec![]),
 		],
 	);
+
 	input.quota_facts = [
 		account_registry_quota_pair(&first, 100, DECIDED_AT + 500, 50, DECIDED_AT + 2_000),
 		account_registry_quota_pair(&second, 50, DECIDED_AT + 1_700, 100, DECIDED_AT + 1_800),
@@ -363,7 +375,7 @@ fn account_registry_split_depletion_waiting_never_pools_accounts_or_windows() {
 	.concat();
 
 	assert_eq!(
-		decide_account_registry_routing(&input, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&input, DECIDED_AT),
 		Ok(account_registry_waiting(vec![
 			account_registry_exclusion(
 				first.clone(),
@@ -390,6 +402,7 @@ fn account_registry_freshness_boundary_is_inclusive_and_future_is_typed() {
 		AccountSelectionMode::Balanced,
 		vec![account_registry_member(1, account_id.clone(), vec![])],
 	);
+
 	exact.quota_facts[0] = account_registry_current_fact(
 		account_id.clone(),
 		QuotaWindowClass::FiveHour,
@@ -397,12 +410,14 @@ fn account_registry_freshness_boundary_is_inclusive_and_future_is_typed() {
 		DECIDED_AT - 300_000_000,
 		DECIDED_AT + 500,
 	);
+
 	assert_eq!(
-		decide_account_registry_routing(&exact, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&exact, DECIDED_AT),
 		Ok(account_registry_selected(account_id.clone(), vec![])),
 	);
 
 	let mut stale = exact.clone();
+
 	stale.quota_facts[0] = account_registry_current_fact(
 		account_id.clone(),
 		QuotaWindowClass::FiveHour,
@@ -410,12 +425,14 @@ fn account_registry_freshness_boundary_is_inclusive_and_future_is_typed() {
 		DECIDED_AT - 300_000_001,
 		DECIDED_AT + 500,
 	);
+
 	assert_eq!(
-		decide_account_registry_routing(&stale, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&stale, DECIDED_AT),
 		Ok(account_registry_selected(account_id.clone(), vec![])),
 	);
 
 	let mut elapsed = exact.clone();
+
 	elapsed.quota_facts[0] = account_registry_current_fact(
 		account_id.clone(),
 		QuotaWindowClass::FiveHour,
@@ -423,12 +440,14 @@ fn account_registry_freshness_boundary_is_inclusive_and_future_is_typed() {
 		OBSERVED_AT,
 		DECIDED_AT,
 	);
+
 	assert_eq!(
-		decide_account_registry_routing(&elapsed, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&elapsed, DECIDED_AT),
 		Ok(account_registry_selected(account_id.clone(), vec![])),
 	);
 
 	let mut future = exact;
+
 	future.quota_facts[0] = account_registry_current_fact(
 		account_id.clone(),
 		QuotaWindowClass::FiveHour,
@@ -436,8 +455,9 @@ fn account_registry_freshness_boundary_is_inclusive_and_future_is_typed() {
 		DECIDED_AT + 1,
 		DECIDED_AT + 500,
 	);
+
 	assert_eq!(
-		decide_account_registry_routing(&future, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&future, DECIDED_AT),
 		Ok(account_registry_no_route(
 			vec![],
 			vec![account_registry_cause(account_id, RoutingBlocker::QuotaFiveHourFromFuture,)],
@@ -452,13 +472,15 @@ fn account_registry_timestamp_product_bound_is_closed() {
 		AccountSelectionMode::Balanced,
 		vec![account_registry_member(1, account_id.clone(), vec![])],
 	);
+
 	epoch.resolved_at_micros = 0;
 	epoch.quota_facts = vec![
 		account_registry_current_fact(account_id.clone(), QuotaWindowClass::FiveHour, 50, 0, 1),
 		account_registry_current_fact(account_id.clone(), QuotaWindowClass::SevenDay, 50, 0, 2),
 	];
+
 	assert_eq!(
-		decide_account_registry_routing(&epoch, 0),
+		decodex_core::decide_account_registry_routing(&epoch, 0),
 		Ok(account_registry_selected(account_id.clone(), vec![])),
 	);
 
@@ -466,6 +488,7 @@ fn account_registry_timestamp_product_bound_is_closed() {
 		AccountSelectionMode::Balanced,
 		vec![account_registry_member(1, account_id.clone(), vec![])],
 	);
+
 	near_maximum.resolved_at_micros = MAX_TIMESTAMP_MICROS - 1;
 	near_maximum.quota_facts = vec![
 		account_registry_current_fact(
@@ -483,23 +506,28 @@ fn account_registry_timestamp_product_bound_is_closed() {
 			MAX_TIMESTAMP_MICROS,
 		),
 	];
+
 	assert_eq!(
-		decide_account_registry_routing(&near_maximum, MAX_TIMESTAMP_MICROS - 1),
+		decodex_core::decide_account_registry_routing(&near_maximum, MAX_TIMESTAMP_MICROS - 1),
 		Ok(account_registry_selected(account_id.clone(), vec![])),
 	);
 
 	let mut maximum = near_maximum;
+
 	maximum.resolved_at_micros = MAX_TIMESTAMP_MICROS;
+
 	for fact in &mut maximum.quota_facts {
 		fact.observation = AccountRegistryQuotaObservation::ObservationError {
 			error: AccountQuotaObservationError::ProviderUnavailable,
 			observed_at_micros: MAX_TIMESTAMP_MICROS,
 		};
 	}
+
 	assert_eq!(
-		decide_account_registry_routing(&maximum, MAX_TIMESTAMP_MICROS),
+		decodex_core::decide_account_registry_routing(&maximum, MAX_TIMESTAMP_MICROS),
 		Ok(account_registry_selected(account_id.clone(), vec![])),
 	);
+
 	assert_account_registry_timestamp_product_bound_rejections(account_id, epoch, maximum);
 }
 
@@ -509,11 +537,11 @@ fn assert_account_registry_timestamp_product_bound_rejections(
 	maximum: AccountRegistryRoutingSnapshot,
 ) {
 	assert_eq!(
-		decide_account_registry_routing(&maximum, -1),
+		decodex_core::decide_account_registry_routing(&maximum, -1),
 		Err(AccountRegistryRoutingKernelError::InvalidDecidedAtMicros { decided_at_micros: -1 }),
 	);
 	assert_eq!(
-		decide_account_registry_routing(&maximum, MAX_TIMESTAMP_MICROS + 1),
+		decodex_core::decide_account_registry_routing(&maximum, MAX_TIMESTAMP_MICROS + 1),
 		Err(AccountRegistryRoutingKernelError::InvalidDecidedAtMicros {
 			decided_at_micros: MAX_TIMESTAMP_MICROS + 1,
 		}),
@@ -523,27 +551,32 @@ fn assert_account_registry_timestamp_product_bound_rejections(
 		AccountSelectionMode::Balanced,
 		vec![account_registry_member(1, account_id.clone(), vec![])],
 	);
+
 	resolved_after_decision.resolved_at_micros = DECIDED_AT + 1;
+
 	assert_eq!(
-		decide_account_registry_routing(&resolved_after_decision, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&resolved_after_decision, DECIDED_AT),
 		Err(AccountRegistryRoutingKernelError::InvalidResolvedAtMicros {
 			resolved_at_micros: DECIDED_AT + 1,
 		}),
 	);
+
 	for resolved_at_micros in [-1, MAX_TIMESTAMP_MICROS + 1] {
 		let mut invalid = maximum.clone();
+
 		invalid.resolved_at_micros = resolved_at_micros;
+
 		assert_eq!(
-			decide_account_registry_routing(&invalid, MAX_TIMESTAMP_MICROS),
+			decodex_core::decide_account_registry_routing(&invalid, MAX_TIMESTAMP_MICROS),
 			Err(AccountRegistryRoutingKernelError::InvalidResolvedAtMicros { resolved_at_micros }),
 		);
 	}
-
 	for observed_at_micros in [-1, MAX_TIMESTAMP_MICROS + 1] {
 		let mut invalid = account_registry_snapshot(
 			AccountSelectionMode::Balanced,
 			vec![account_registry_member(1, account_id.clone(), vec![])],
 		);
+
 		invalid.quota_facts[0] = account_registry_current_fact(
 			account_id.clone(),
 			QuotaWindowClass::FiveHour,
@@ -551,8 +584,9 @@ fn assert_account_registry_timestamp_product_bound_rejections(
 			observed_at_micros,
 			MAX_TIMESTAMP_MICROS,
 		);
+
 		assert_eq!(
-			decide_account_registry_routing(&invalid, DECIDED_AT),
+			decodex_core::decide_account_registry_routing(&invalid, DECIDED_AT),
 			Err(AccountRegistryRoutingKernelError::InvalidQuotaFactObservedAtMicros {
 				account_id: account_id.clone(),
 				window: QuotaWindowClass::FiveHour,
@@ -560,12 +594,12 @@ fn assert_account_registry_timestamp_product_bound_rejections(
 			}),
 		);
 	}
-
 	for resets_at_micros in [-1, MAX_TIMESTAMP_MICROS + 1] {
 		let mut invalid = account_registry_snapshot(
 			AccountSelectionMode::Balanced,
 			vec![account_registry_member(1, account_id.clone(), vec![])],
 		);
+
 		invalid.quota_facts[0] = account_registry_current_fact(
 			account_id.clone(),
 			QuotaWindowClass::FiveHour,
@@ -573,8 +607,9 @@ fn assert_account_registry_timestamp_product_bound_rejections(
 			OBSERVED_AT,
 			resets_at_micros,
 		);
+
 		assert_eq!(
-			decide_account_registry_routing(&invalid, DECIDED_AT),
+			decodex_core::decide_account_registry_routing(&invalid, DECIDED_AT),
 			Err(AccountRegistryRoutingKernelError::InvalidQuotaFactResetsAtMicros {
 				account_id: account_id.clone(),
 				window: QuotaWindowClass::FiveHour,
@@ -585,10 +620,12 @@ fn assert_account_registry_timestamp_product_bound_rejections(
 	}
 
 	let mut nonincreasing_reset = epoch;
+
 	nonincreasing_reset.quota_facts[0] =
 		account_registry_current_fact(account_id.clone(), QuotaWindowClass::FiveHour, 50, 0, 0);
+
 	assert_eq!(
-		decide_account_registry_routing(&nonincreasing_reset, 0),
+		decodex_core::decide_account_registry_routing(&nonincreasing_reset, 0),
 		Err(AccountRegistryRoutingKernelError::InvalidQuotaFactResetsAtMicros {
 			account_id,
 			window: QuotaWindowClass::FiveHour,
@@ -605,17 +642,25 @@ fn account_registry_rejects_noncanonical_duplicate_missing_extra_and_mismatched_
 		AccountSelectionMode::Balanced,
 		vec![account_registry_member(1, account_id.clone(), vec![])],
 	);
-
 	let mut reordered = base.clone();
+
 	reordered.quota_facts.swap(0, 1);
+
 	let mut duplicate = base.clone();
+
 	duplicate.quota_facts.push(duplicate.quota_facts[0].clone());
+
 	let mut missing = base.clone();
+
 	missing.quota_facts.pop();
+
 	let extra_account = account(31);
 	let mut extra = base.clone();
+
 	extra.quota_facts[0].account_id = extra_account.clone();
+
 	let mut mismatched = base;
+
 	mismatched.quota_facts[0].duration_minutes = 301;
 
 	let cases = vec![
@@ -667,7 +712,11 @@ fn account_registry_rejects_noncanonical_duplicate_missing_extra_and_mismatched_
 	];
 
 	for (case, input, expected) in cases {
-		assert_eq!(decide_account_registry_routing(&input, DECIDED_AT), Err(expected), "{case}");
+		assert_eq!(
+			decodex_core::decide_account_registry_routing(&input, DECIDED_AT),
+			Err(expected),
+			"{case}"
+		);
 	}
 }
 
@@ -678,33 +727,39 @@ fn account_registry_rejects_invalid_revisions_and_member_inventory() {
 		AccountSelectionMode::Balanced,
 		vec![account_registry_member(1, account_id.clone(), vec![])],
 	);
-
 	let mut routing_revision = base.clone();
+
 	routing_revision.routing_revision = 0;
+
 	assert_eq!(
-		decide_account_registry_routing(&routing_revision, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&routing_revision, DECIDED_AT),
 		Err(AccountRegistryRoutingKernelError::InvalidRoutingRevision { routing_revision: 0 }),
 	);
 
 	let mut profile_revision = base.clone();
+
 	profile_revision.task_role_profile_revision = 0;
+
 	assert_eq!(
-		decide_account_registry_routing(&profile_revision, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&profile_revision, DECIDED_AT),
 		Err(AccountRegistryRoutingKernelError::InvalidTaskRoleProfileRevision {
 			task_role_profile_revision: 0,
 		}),
 	);
 
 	let empty = account_registry_snapshot(AccountSelectionMode::Balanced, vec![]);
+
 	assert_eq!(
-		decide_account_registry_routing(&empty, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&empty, DECIDED_AT),
 		Err(AccountRegistryRoutingKernelError::EmptyMembers),
 	);
 
 	let mut noncanonical = base.clone();
+
 	noncanonical.members[0].position = 2;
+
 	assert_eq!(
-		decide_account_registry_routing(&noncanonical, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&noncanonical, DECIDED_AT),
 		Err(AccountRegistryRoutingKernelError::NonCanonicalMember {
 			account_id: account_id.clone(),
 			member_position: 2,
@@ -713,9 +768,11 @@ fn account_registry_rejects_invalid_revisions_and_member_inventory() {
 	);
 
 	let mut invalid_account_revision = base.clone();
+
 	invalid_account_revision.members[0].account_revision = 0;
+
 	assert_eq!(
-		decide_account_registry_routing(&invalid_account_revision, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&invalid_account_revision, DECIDED_AT),
 		Err(AccountRegistryRoutingKernelError::InvalidMemberAccountRevision {
 			account_id: account_id.clone(),
 			account_revision: 0,
@@ -729,8 +786,9 @@ fn account_registry_rejects_invalid_revisions_and_member_inventory() {
 			account_registry_member(2, account_id.clone(), vec![]),
 		],
 	);
+
 	assert_eq!(
-		decide_account_registry_routing(&duplicate, DECIDED_AT),
+		decodex_core::decide_account_registry_routing(&duplicate, DECIDED_AT),
 		Err(AccountRegistryRoutingKernelError::DuplicateMember {
 			account_id,
 			first_position: 1,
@@ -784,6 +842,10 @@ fn account_registry_rejects_forbidden_duplicate_and_reordered_member_blockers() 
 	];
 
 	for (case, input, expected) in cases {
-		assert_eq!(decide_account_registry_routing(&input, DECIDED_AT), Err(expected), "{case}");
+		assert_eq!(
+			decodex_core::decide_account_registry_routing(&input, DECIDED_AT),
+			Err(expected),
+			"{case}"
+		);
 	}
 }

@@ -35,7 +35,8 @@ pub struct UnknownWindowDuration;
 
 #[cfg(test)]
 mod tests {
-	use super::{QuotaWindowClass, UnknownWindowDuration};
+	use crate::quota::{QuotaWindowClass, UnknownWindowDuration};
+
 	#[test]
 	fn duration_is_the_only_window_identity() {
 		assert_eq!(QuotaWindowClass::from_duration_minutes(300), Ok(QuotaWindowClass::FiveHour));

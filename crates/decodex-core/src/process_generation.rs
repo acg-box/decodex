@@ -20,6 +20,7 @@ use crate::{
 pub const MAX_PROCESS_IDENTITY_BYTES: usize = 128;
 /// Maximum bytes in one immutable attested launch-manifest identity.
 pub const MAX_PROCESS_RUNNER_IDENTITY_BYTES: usize = 128;
+
 const EXECUTION_AUTHORIZATION_SCHEMA: &str = "decodex/process-execution-authorization/1";
 const MAX_EXECUTION_AUTHORIZATION_BYTES: usize = 192;
 
@@ -136,14 +137,18 @@ impl ProcessExecutionAuthorization {
 		)?;
 		let text = str::from_utf8(&bytes).map_err(|_| ConfigError::Malformed)?;
 		let mut lines = text.lines();
+
 		if lines.next() != Some(EXECUTION_AUTHORIZATION_SCHEMA) {
 			return Err(ConfigError::Malformed);
 		}
+
 		let epoch_id = lines.next().ok_or(ConfigError::Malformed)?;
 		let digest = lines.next().ok_or(ConfigError::Malformed)?;
+
 		if lines.next().is_some() {
 			return Err(ConfigError::Malformed);
 		}
+
 		Self::new(
 			ProcessExecutionEpochId::new(epoch_id.to_owned())
 				.map_err(|_| ConfigError::Malformed)?,
@@ -155,19 +160,23 @@ impl ProcessExecutionAuthorization {
 	/// Load an existing capability or atomically create one for an offline installer cutover.
 	pub fn load_or_create(paths: &DecodexPaths) -> Result<Self, ConfigError> {
 		paths.ensure_layout()?;
+
 		match Self::load(paths) {
 			Ok(value) => return Ok(value),
 			Err(ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. })) => {},
 			Err(error) => return Err(error),
 		}
+
 		let epoch = ServerIdentity::generate()?;
 		let nonce = ServerIdentity::generate()?;
 		let mut hasher = Sha256::new();
+
 		hasher.update(EXECUTION_AUTHORIZATION_SCHEMA.as_bytes());
 		hasher.update([0]);
 		hasher.update(epoch.as_str().as_bytes());
 		hasher.update([0]);
 		hasher.update(nonce.as_str().as_bytes());
+
 		let authorization_digest =
 			hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect::<String>();
 		let authorization = Self::new(
@@ -181,6 +190,7 @@ impl ProcessExecutionAuthorization {
 			authorization.epoch_id.as_str(),
 			authorization.authorization_digest,
 		);
+
 		match paths::atomic_write_new(
 			paths,
 			&paths.process_execution_authorization_file(),
@@ -454,12 +464,14 @@ impl ProcessGenerationAccountBinding {
 		refresh_callback_profile_sha256: impl Into<String>,
 	) -> Result<Self, ProcessGenerationError> {
 		let refresh_callback_profile_sha256 = refresh_callback_profile_sha256.into();
+
 		if account_revision < 1 {
 			return Err(ProcessGenerationError::InvalidAccountRevision);
 		}
 		if !is_sha256(&refresh_callback_profile_sha256) {
 			return Err(ProcessGenerationError::InvalidCallbackProfile);
 		}
+
 		Ok(Self { account_revision, credential, refresh_callback_profile_sha256 })
 	}
 }

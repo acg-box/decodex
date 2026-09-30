@@ -230,7 +230,7 @@ impl TryFrom<String> for ProfileName {
 }
 
 /// Closed local transport policy.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LocalTrustPolicy {
 	/// Do not create or connect to a local product endpoint.

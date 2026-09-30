@@ -37,6 +37,7 @@ fn valid_configuration_keeps_profiles_and_cache_explicit() {
 
 	assert_eq!(config.version(), 1);
 	assert_eq!(config.active_profile_name().as_str(), "local");
+
 	let ServerProfile::Local(local) = config.active_profile() else {
 		panic!("active profile is local")
 	};
@@ -294,13 +295,16 @@ fn identity_file_accepts_only_canonical_text_and_one_optional_newline() {
 #[test]
 fn login_proxy_policy_defaults_on_and_remains_server_owned() {
 	let input = support::valid_config();
+
 	assert!(
 		DecodexConfig::parse(input.as_bytes())
 			.expect("legacy config")
 			.login_system_proxy_fallback()
 	);
+
 	for enabled in [false, true] {
 		let input = format!("{input}\n[login]\nsystem_proxy_fallback = {enabled}\n");
+
 		assert_eq!(
 			DecodexConfig::parse(input.as_bytes())
 				.expect("server policy")
@@ -311,6 +315,7 @@ fn login_proxy_policy_defaults_on_and_remains_server_owned() {
 	}
 	for field in ["system_proxy_fallback = 'false'", "unknown = true"] {
 		let input = format!("{input}\n[login]\n{field}\n");
+
 		assert!(DecodexConfig::parse(input.as_bytes()).is_err());
 		assert!(
 			DecodexClientConfig::parse(input.as_bytes()).is_ok(),

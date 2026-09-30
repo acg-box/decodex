@@ -27,7 +27,6 @@ use crate::{
 };
 
 const ROOT_PATH: &[u8] = b"/\0";
-
 #[cfg(target_vendor = "apple")]
 const TRAVERSAL_DIRECTORY_ACCESS: c_int = libc::O_SEARCH;
 #[cfg(not(target_vendor = "apple"))]
@@ -108,13 +107,13 @@ pub(crate) fn open_private_database_file(
 	let (parent, name) = open_file_parent(paths, path)?;
 	let name = c_name(&name)?;
 	let mut created = false;
-
 	let descriptor = match open_private_database_file_at(&parent, &name, false) {
 		Ok(descriptor) => descriptor,
 		Err(PathError::Io { kind: ErrorKind::NotFound, .. }) =>
 			match open_private_database_file_at(&parent, &name, true) {
 				Ok(descriptor) => {
 					created = true;
+
 					descriptor
 				},
 				Err(PathError::Io { kind: ErrorKind::AlreadyExists, .. }) =>
@@ -128,6 +127,7 @@ pub(crate) fn open_private_database_file(
 	verify_private_database_file_metadata(
 		&file.metadata().map_err(|error| paths::io_error(IoOperation::Inspect, error))?,
 	)?;
+
 	if created {
 		parent.sync_all().map_err(|error| paths::io_error(IoOperation::Sync, error))?;
 	}
@@ -529,7 +529,6 @@ fn verify_private_database_file_metadata(metadata: &Metadata) -> Result<(), Path
 	if !metadata.is_file() {
 		return Err(PathError::UnexpectedFileKind);
 	}
-
 	if metadata.uid() != effective_user_id()
 		|| metadata.mode() & 0o777 != PRIVATE_FILE_MODE
 		|| metadata.nlink() != 1
