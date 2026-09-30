@@ -2,14 +2,15 @@
 
 use std::{
 	cmp::Reverse,
+	ffi::OsString,
 	path::{Path, PathBuf},
-	time::Duration,
 };
 
+use rusqlite::Connection;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
-	RETAINED_CACHE_COLLECTIONS, RadarCacheGcReport, RadarCacheGcRequest,
+	RETAINED_CACHE_COLLECTIONS, RadarCacheGcReport, RadarCacheGcRequest, ledger,
 	prelude::{Result, eyre},
 	private_fs::{
 		PrivateCache, PrivateEntryKind, PrivateFileIdentity, RadarCacheLock, TEMP_FILE_PREFIX,
@@ -27,7 +28,7 @@ const LEDGER_TABLES: &[(&str, &str)] = &[
 #[derive(Debug)]
 struct CacheFile {
 	relative: PathBuf,
-	name: std::ffi::OsString,
+	name: OsString,
 	identity: PrivateFileIdentity,
 }
 
@@ -81,7 +82,8 @@ fn prune_collection(
 
 	files.sort_by_key(|file| (Reverse(file.identity.modified()), Reverse(file.name.clone())));
 
-	let max_age = Duration::from_secs(request.policy.max_age_days.saturating_mul(24 * 60 * 60));
+	let max_age =
+		std::time::Duration::from_secs(request.policy.max_age_days.saturating_mul(24 * 60 * 60));
 	let mut retained_files = 0_usize;
 	let mut retained_bytes = 0_u64;
 	let mut pruned = false;
@@ -196,7 +198,7 @@ fn prune_ledger(
 	report: &mut RadarCacheGcReport,
 ) -> Result<()> {
 	let relative = Path::new(LEDGER_RELATIVE_PATH);
-	let connection = crate::ledger::open_ledger_under_cache_lock(relative, lock)?;
+	let connection = ledger::open_ledger_under_cache_lock(relative, lock)?;
 	let cutoff = retention_cutoff(request)?;
 	let row_limit = i64::try_from(request.policy.ledger_max_rows_per_table)
 		.map_err(|_| eyre::eyre!("Radar ledger row limit is too large"))?;
@@ -224,11 +226,7 @@ fn prune_ledger(
 	Ok(())
 }
 
-fn prune_ledger_rows(
-	connection: &rusqlite::Connection,
-	cutoff: &str,
-	row_limit: i64,
-) -> Result<usize> {
+fn prune_ledger_rows(connection: &Connection, cutoff: &str, row_limit: i64) -> Result<usize> {
 	let mut removed = 0;
 
 	for (table, timestamp) in LEDGER_TABLES {

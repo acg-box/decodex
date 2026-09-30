@@ -7,6 +7,8 @@ use std::{
 	path::Path,
 };
 
+use libc::{O_CLOEXEC, O_NOFOLLOW, O_NONBLOCK};
+
 use crate::prelude::{Result, eyre};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -33,9 +35,9 @@ pub(crate) fn read_regular_file_bounded(
 
 	let capacity = usize::try_from(initial.size)
 		.map_err(|_| eyre::eyre!("{label} size cannot fit in memory"))?;
-	let mut payload = Vec::with_capacity(capacity);
 	let read_limit =
 		max_bytes.checked_add(1).ok_or_else(|| eyre::eyre!("{label} read limit is too large"))?;
+	let mut payload = Vec::with_capacity(capacity);
 
 	file.by_ref().take(read_limit).read_to_end(&mut payload)?;
 
@@ -56,7 +58,7 @@ pub(crate) fn read_regular_file_bounded(
 fn open_regular_file(path: &Path, label: &str) -> Result<(File, RegularFileIdentity)> {
 	let file = OpenOptions::new()
 		.read(true)
-		.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
+		.custom_flags(O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
 		.open(path)
 		.map_err(|error| {
 			eyre::eyre!("{label} must be an accessible regular non-symlink file: {error}")
