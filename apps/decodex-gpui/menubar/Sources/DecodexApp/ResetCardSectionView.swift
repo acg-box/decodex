@@ -5,7 +5,6 @@ struct InlineAccountFeedback: View {
 	let text: String
 	var isPending = false
 	var isDestructive = false
-	var dismiss: () -> Void = {}
 	@State private var expanded = false
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
@@ -25,9 +24,6 @@ struct InlineAccountFeedback: View {
 		.popover(isPresented: $expanded, arrowEdge: .bottom) {
 			VStack(alignment: .leading, spacing: 10) {
 				Text(text).font(.system(size: 12)).foregroundStyle(feedbackColor).fixedSize(horizontal: false, vertical: true)
-				if !isPending {
-					Button("Dismiss") { expanded = false; dismiss() }.buttonStyle(.plain)
-				}
 			}.padding(12).frame(width: 240, alignment: .leading)
 		}
 	}
@@ -90,12 +86,10 @@ struct ResetCardAccountRow: View {
 						.accessibilityValue((detailsExpanded ?? detailsBinding.wrappedValue) ? "Expanded" : "Collapsed")
 					HStack(spacing: PanelSpacing.micro) {
 						if store.canReorderAccounts { reorderHandle }
-						if let message = store.message, message.accountID == state.account.accountID,
-							message.tone != .success {
-							InlineAccountFeedback(text: message.text, isDestructive: message.tone == .error) { store.dismissMessage() }
+						if let feedback = accountFeedback {
+							InlineAccountFeedback(text: feedback.text, isDestructive: feedback.isDestructive)
 						}
 						if state.requiresLoginRefresh {
-							InlineAccountFeedback(text: "Sign in again to use this account.", isDestructive: true)
 							AccountRefreshLoginButton(state: state, store: store)
 						} else {
 							AccountPrimaryActionsView(state: state, store: store)
@@ -107,7 +101,6 @@ struct ResetCardAccountRow: View {
 					.onTapGesture { } // Disabled controls and the reorder handle do not toggle details.
 				}
 				.frame(maxWidth: .infinity, alignment: .leading)
-				if exceptionalStatusText != nil { exceptionalStatus.transition(.panelInline) }
 				if !state.requiresLoginRefresh && hasVisibleQuota {
 					quotaWindows
 					.accessibilityLabel("Account usage details")
@@ -157,7 +150,6 @@ struct ResetCardAccountRow: View {
 			await runConfirmationCountdown(for: countdownAttempt)
 		}
 		.animation(rowStateAnimation, value: state.account.enabled)
-		.animation(rowStateAnimation, value: exceptionalStatusText)
 		.animation(rowStateAnimation, value: presentedTargets)
 		.animation(rowStateAnimation, value: showsReorderHandle)
 		.animation(rowStateAnimation, value: isReorderHandleHovered)
@@ -275,17 +267,21 @@ struct ResetCardAccountRow: View {
 		.opacity(state.account.enabled ? 1 : 0.45)
 	}
 
-	private var exceptionalStatus: some View {
-		HStack(spacing: PanelSpacing.related) {
-			Text(exceptionalStatusText ?? "")
-				.font(PanelFont.accountDetail)
-				.foregroundStyle(exceptionalStatusColor)
-				.lineLimit(1)
-				.truncationMode(.tail)
-
-			Spacer(minLength: 2)
+	private var accountFeedback: (text: String, isDestructive: Bool)? {
+		var messages: [String] = []
+		var destructive = state.requiresLoginRefresh
+		if state.requiresLoginRefresh { messages.append("Sign in again to use this account.") }
+		if let message = store.message, message.accountID == state.id, message.tone != .success {
+			messages.append(message.text)
+			destructive = destructive || message.tone == .error
 		}
-		.accessibilityElement(children: .contain)
+		if let exceptionalStatusText {
+			messages.append(exceptionalStatusText)
+			destructive = destructive || (state.account.enabled && state.account.observedState != .unknown && state.account.observedState != .pluginUnready)
+		}
+		if !state.requiresLoginRefresh, let activity = state.activityFeedback { messages.append(activity) }
+		if let quota = state.quotaFeedback { messages.append(quota) }
+		return messages.isEmpty ? nil : (messages.joined(separator: "\n\n"), destructive)
 	}
 
 	private var identity: AccountIdentityPresentation {
@@ -321,22 +317,22 @@ struct ResetCardAccountRow: View {
 		}
 		switch state.account.lifecycleReadiness {
 		case .credentialAbsent:
-			return "Login unavailable"
+			return "Sign in to use this account."
 		case .storeUnavailable:
-			return "Credential store unavailable"
+			return "Your sign-in information is temporarily unavailable."
 		case .storeMismatch:
-			return "Credential binding changed"
+			return "Your sign-in information has changed. Sign in again."
 		case .providerMismatch:
-			return "Login belongs to another account"
+			return "This sign-in belongs to another account."
 		case .operationUnsettled:
-			return "Account update pending"
+			return "An account update is still in progress."
 		case .callbackCapabilityUnready:
 			// Account health and usage come from the direct provider API. The callback
 			// capability only gates Conversation routing, so it is not an account-data
 			// error here.
 			break
 		case .tombstoned:
-			return "Logged out"
+			return "This account is logged out."
 		case .ready:
 			break
 		}
@@ -348,22 +344,12 @@ struct ResetCardAccountRow: View {
 		case .depleted:
 			return nil
 		case .pluginUnready:
-			return "Provider update required"
+			return "Update the provider to use this account."
 		case .unknown:
-			return "Account status unavailable"
+			return "The account status is temporarily unavailable."
 		case .unavailable:
-			return "Account unavailable"
+			return "This account is unavailable."
 		}
-	}
-
-	private var exceptionalStatusColor: Color {
-		if state.account.enabled == false
-			|| state.account.observedState == .unknown
-			|| state.account.observedState == .pluginUnready
-		{
-			return PanelPalette.warning(colorScheme)
-		}
-		return PanelPalette.destructive(colorScheme)
 	}
 
 	var detailsBinding: Binding<Bool> {

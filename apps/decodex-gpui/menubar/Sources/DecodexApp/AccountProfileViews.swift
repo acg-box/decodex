@@ -31,45 +31,34 @@ struct AccountProfileSummaryView: View {
 
 struct AccountProfileDetailView: View {
 	let state: ResetCardAccountState
-	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.section) {
 			if let profile = state.profile {
 				AccountProfileSummaryView(profile: profile.snapshot)
 			}
-			if let statusText {
-				HStack(spacing: PanelSpacing.related) {
-					if state.profile == nil && state.isProfileRefreshing {
-						ProgressView().controlSize(.mini)
-					}
-					Text(statusText)
-						.lineLimit(1)
-						.truncationMode(.tail)
-				}
-				.font(PanelFont.tertiary)
-				.foregroundStyle(state.profile == nil ? PanelPalette.secondaryText(colorScheme) : (state.requiresLoginRefresh ? PanelPalette.destructive(colorScheme) : PanelPalette.warning(colorScheme)))
-				.help([state.profileDegradationText, quotaDiagnostic].compactMap { $0 }.joined(separator: "\n"))
+			if state.profile == nil && state.isProfileRefreshing {
+				ProgressView().controlSize(.mini).accessibilityLabel("Loading activity")
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.accessibilityElement(children: .contain)
 	}
 
-	private var statusText: String? {
-		guard let profile = state.profile else {
-			return state.isProfileRefreshing ? "Loading activity…" : "Activity unavailable"
-		}
-		if profile.isCached || state.profileDegradationText != nil {
-			return state.requiresLoginRefresh ? "Sign in again" : "Couldn’t update activity"
-		}
-		return quotaDiagnostic == nil ? nil : "Usage unavailable"
+}
+
+extension ResetCardAccountState {
+	var activityFeedback: String? {
+		if let message = profileDegradationText { return message }
+		if let unavailable = profileUnavailable { return unavailable.error.presentation }
+		if let profileError { return profileError.localizedDescription }
+		return nil
 	}
 
-	private var quotaDiagnostic: String? {
+	var quotaFeedback: String? {
 		let diagnostics = [
-			quotaDiagnostic(title: "5-hour", window: state.fiveHourQuota),
-			quotaDiagnostic(title: "7-day", window: state.sevenDayQuota),
+			quotaDiagnostic(title: "5-hour", window: fiveHourQuota),
+			quotaDiagnostic(title: "7-day", window: sevenDayQuota),
 		]
 		.compactMap { $0 }
 
