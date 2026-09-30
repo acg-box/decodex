@@ -2,19 +2,22 @@
 
 use std::{
 	fmt::Write as _,
+	fs::{self, File},
 	io::Read as _,
 	path::{Path, PathBuf},
 };
 
 use clap::Subcommand;
-use decodex_protocol::{
-	AgentActionDto, AgentClient, AgentCommandResponse, AgentSandboxDto, AgentSnapshotResult,
-	AgentStartDto, ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory,
-	EntityId, HistoryText, IdempotencyKey, MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS,
-	MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS, MAX_HISTORY_INLINE_BYTES, WireText,
-};
+use serde_json::Value;
 
-use crate::{CommandOutput, OutputFormat, load_client_profile};
+use crate::{CommandOutput, OutputFormat};
+use decodex_protocol::{
+	AgentActionDto, AgentClient, AgentCommandResponse, AgentRequestResult, AgentSandboxDto,
+	AgentSnapshotResult, AgentStartDto, ConversationModel, ConversationReasoningEffort,
+	ConversationWorkingDirectory, EntityId, HistoryText, IdempotencyKey, MAX_AGENT_DEPENDENCIES,
+	MAX_AGENT_PENDING_EVENTS, MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS,
+	MAX_HISTORY_INLINE_BYTES, WireText,
+};
 
 /// Explicit Agent operations. Execution stays inside the service.
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
@@ -114,7 +117,7 @@ pub async fn execute(
 		return execute_mutation(command, output, root, profile, expected_server_id).await;
 	}
 
-	let result = match load_client_profile(root, profile, expected_server_id) {
+	let result = match crate::load_client_profile(root, profile, expected_server_id) {
 		Ok(profile) => AgentClient::new(profile).query().await,
 		Err(error) => Err(error),
 	};
@@ -228,60 +231,6 @@ fn safe(value: &str) -> String {
 	value.chars().flat_map(char::escape_default).collect()
 }
 
-async fn execute_request(
-	event_id: i64,
-	output: OutputFormat,
-	root: Option<&Path>,
-	profile: Option<&str>,
-	expected_server_id: Option<&str>,
-) -> CommandOutput {
-	let result = match load_client_profile(root, profile, expected_server_id) {
-		Ok(profile) => AgentClient::new(profile).request(event_id).await,
-		Err(error) => Err(error),
-	};
-	let (document, text, exit_code) = match result {
-		Ok(result) => match &result {
-			decodex_protocol::AgentRequestResult::Available {
-				event_id,
-				work_id,
-				method,
-				request_json,
-			} => (
-				serde_json::json!(result),
-				format!(
-					"Request {event_id} | {} | {}\n{}\n",
-					safe(work_id),
-					safe(method),
-					safe(request_json.as_str())
-				),
-				0,
-			),
-			decodex_protocol::AgentRequestResult::Unavailable =>
-				(serde_json::json!(result), "Request unavailable or no longer pending.\n".into(), 1),
-			// The high-level client assembles transport pages before returning.
-			decodex_protocol::AgentRequestResult::Page { .. } => (
-				serde_json::json!({"error": "Incomplete request response"}),
-				"Request unavailable: incomplete request response.\n".into(),
-				1,
-			),
-		},
-		Err(error) => (
-			serde_json::json!({"error":format!("{error:?}")}),
-			format!("Request unavailable: {error:?}\n"),
-			1,
-		),
-	};
-
-	CommandOutput {
-		text: match output {
-			OutputFormat::Json => format!("{document}\n"),
-			OutputFormat::Human => text,
-		},
-		error_stream: false,
-		exit_code,
-	}
-}
-
 fn wire_identity(value: String) -> Result<WireText, &'static str> {
 	if value.is_empty() || value.len() > 512 || value.chars().any(char::is_control) {
 		return Err("invalid turn or source event identity");
@@ -313,7 +262,7 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 		},
 		AgentCommand::Answer { work_id, event_id, idempotency_key, response_json } => {
 			if event_id <= 0
-				|| !serde_json::from_str::<serde_json::Value>(&response_json)
+				|| !serde_json::from_str::<Value>(&response_json)
 					.is_ok_and(|value| value.is_object())
 			{
 				return Err("answer requires a positive event identity and a JSON response object");
@@ -378,28 +327,7 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 		AgentCommand::Ingest { work_id, source_event_id, idempotency_key, payload, file } => {
 			let payload = match (payload, file) {
 				(Some(payload), None) => payload,
-				(None, Some(path)) => {
-					if !std::fs::metadata(&path)
-						.map_err(|_| "cannot inspect result file")?
-						.is_file()
-					{
-						return Err("result source must be a regular file");
-					}
-
-					let file = std::fs::File::open(path).map_err(|_| "cannot read result file")?;
-
-					if !file.metadata().map_err(|_| "cannot inspect result file")?.is_file() {
-						return Err("result source must be a regular file");
-					}
-
-					let mut payload = String::new();
-
-					file.take((MAX_HISTORY_INLINE_BYTES + 1) as u64)
-						.read_to_string(&mut payload)
-						.map_err(|_| "result file must contain UTF-8 text")?;
-
-					payload
-				},
+				(None, Some(path)) => read_result_file(path)?,
 				_ => return Err("supply result text or one result file"),
 			};
 
@@ -420,13 +348,33 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 	Ok((action, command_key(key)?))
 }
 
+fn read_result_file(path: PathBuf) -> Result<String, &'static str> {
+	if !fs::metadata(&path).map_err(|_| "cannot inspect result file")?.is_file() {
+		return Err("result source must be a regular file");
+	}
+
+	let file = File::open(path).map_err(|_| "cannot read result file")?;
+
+	if !file.metadata().map_err(|_| "cannot inspect result file")?.is_file() {
+		return Err("result source must be a regular file");
+	}
+
+	let mut payload = String::new();
+
+	file.take((MAX_HISTORY_INLINE_BYTES + 1) as u64)
+		.read_to_string(&mut payload)
+		.map_err(|_| "result file must contain UTF-8 text")?;
+
+	Ok(payload)
+}
+
 fn command_key(key: Option<String>) -> Result<IdempotencyKey, &'static str> {
 	let key = match key {
 		Some(key) => key,
 		None => {
 			let mut bytes = [0_u8; 16];
 
-			std::fs::File::open("/dev/urandom")
+			File::open("/dev/urandom")
 				.and_then(|mut source| source.read_exact(&mut bytes))
 				.map_err(|_| "cannot generate command identity")?;
 
@@ -441,6 +389,55 @@ fn command_key(key: Option<String>) -> Result<IdempotencyKey, &'static str> {
 	};
 
 	IdempotencyKey::new(key).map_err(|_| "invalid idempotency key")
+}
+
+async fn execute_request(
+	event_id: i64,
+	output: OutputFormat,
+	root: Option<&Path>,
+	profile: Option<&str>,
+	expected_server_id: Option<&str>,
+) -> CommandOutput {
+	let result = match crate::load_client_profile(root, profile, expected_server_id) {
+		Ok(profile) => AgentClient::new(profile).request(event_id).await,
+		Err(error) => Err(error),
+	};
+	let (document, text, exit_code) = match result {
+		Ok(result) => match &result {
+			AgentRequestResult::Available { event_id, work_id, method, request_json } => (
+				serde_json::json!(result),
+				format!(
+					"Request {event_id} | {} | {}\n{}\n",
+					safe(work_id),
+					safe(method),
+					safe(request_json.as_str())
+				),
+				0,
+			),
+			AgentRequestResult::Unavailable =>
+				(serde_json::json!(result), "Request unavailable or no longer pending.\n".into(), 1),
+			// The high-level client assembles transport pages before returning.
+			AgentRequestResult::Page { .. } => (
+				serde_json::json!({"error": "Incomplete request response"}),
+				"Request unavailable: incomplete request response.\n".into(),
+				1,
+			),
+		},
+		Err(error) => (
+			serde_json::json!({"error":format!("{error:?}")}),
+			format!("Request unavailable: {error:?}\n"),
+			1,
+		),
+	};
+
+	CommandOutput {
+		text: match output {
+			OutputFormat::Json => format!("{document}\n"),
+			OutputFormat::Human => text,
+		},
+		error_stream: false,
+		exit_code,
+	}
 }
 
 async fn execute_mutation(
@@ -458,7 +455,7 @@ async fn execute_mutation(
 			2,
 		),
 		Ok((action, key)) => {
-			let result = match load_client_profile(root, profile, expected_server_id) {
+			let result = match crate::load_client_profile(root, profile, expected_server_id) {
 				Ok(profile) => AgentClient::new(profile).execute(action, key.clone()).await,
 				Err(error) => Err(error),
 			};
@@ -501,8 +498,11 @@ async fn execute_mutation(
 
 #[cfg(test)]
 mod tests {
-	use crate::{Cli, Command, OutputFormat};
+	use std::io::Write as _;
+
 	use clap::Parser as _;
+
+	use crate::{Cli, Command, OutputFormat};
 
 	#[test]
 	fn cancel_retry_command_binds_exact_work_and_event() {
@@ -738,8 +738,6 @@ mod tests {
 
 	#[test]
 	fn automation_result_file_is_bounded_before_connection() {
-		use std::io::Write as _;
-
 		let mut file = tempfile::NamedTempFile::new().unwrap();
 
 		file.write_all(&vec![b'x'; decodex_protocol::MAX_HISTORY_INLINE_BYTES + 1]).unwrap();
