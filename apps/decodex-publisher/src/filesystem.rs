@@ -28,12 +28,6 @@ const MAX_PRIVATE_TRAVERSAL_ENTRIES: usize = 8_192;
 const PRIVATE_DIRECTORY_MODE: u16 = 0o700;
 const PRIVATE_FILE_MODE: u16 = 0o600;
 
-struct PrivateDirectory {
-	file: File,
-	path: PathBuf,
-	private_anchor_found: bool,
-}
-
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) struct PrivateFileIdentity {
 	dev: u64,
@@ -44,6 +38,19 @@ pub(crate) struct PrivateFileIdentity {
 	ctime: i64,
 	ctime_nsec: i64,
 }
+impl PrivateFileIdentity {
+	pub(crate) fn from_metadata(metadata: &Metadata) -> Self {
+		Self {
+			dev: metadata.dev(),
+			ino: metadata.ino(),
+			len: metadata.len(),
+			mtime: metadata.mtime(),
+			mtime_nsec: metadata.mtime_nsec(),
+			ctime: metadata.ctime(),
+			ctime_nsec: metadata.ctime_nsec(),
+		}
+	}
+}
 
 pub(crate) struct PinnedPrivateJsonFile {
 	file: File,
@@ -53,11 +60,57 @@ pub(crate) struct PinnedPrivateJsonFile {
 	path: PathBuf,
 	pub(crate) payload: Value,
 }
+impl PinnedPrivateJsonFile {
+	pub(crate) fn open(path: &Path, max_bytes: u64) -> Result<Self> {
+		let (parent_path, name) = parent_and_name(path)?;
+		let parent = open_private_directory(&parent_path, false)?;
+		let (payload, _, identity, file) =
+			read_named_private_json_file(&parent, &name, path, max_bytes, || {})?;
+
+		Ok(Self { file, identity, name, parent, path: path.to_path_buf(), payload })
+	}
+
+	pub(crate) fn unlink(self) -> Result<()> {
+		verify_private_directory_current_path(&self.parent)?;
+
+		let current = open_named_private_file(&self.parent, &self.name, &self.path)?;
+
+		if PrivateFileIdentity::from_metadata(&current.metadata()?) != self.identity
+			|| PrivateFileIdentity::from_metadata(&self.file.metadata()?) != self.identity
+		{
+			return Err(eyre::eyre!(
+				"private JSON changed before cleanup: {}",
+				self.path.display()
+			));
+		}
+
+		verify_private_directory_current_path(&self.parent)?;
+
+		rustix::fs::unlinkat(&self.parent.file, &self.name, AtFlags::empty())?;
+
+		self.parent.file.sync_all()?;
+
+		verify_private_directory_current_path(&self.parent)?;
+
+		Ok(())
+	}
+}
+
+struct PrivateDirectory {
+	file: File,
+	path: PathBuf,
+	private_anchor_found: bool,
+}
 
 #[derive(Default)]
 struct TraversalLimits {
 	entry_count: usize,
 	json_bytes: u64,
+}
+
+enum OpenedPath {
+	Directory(PrivateDirectory),
+	File(File),
 }
 
 pub(crate) fn repo_root() -> Result<PathBuf> {
@@ -109,28 +162,6 @@ pub(crate) fn repo_local_test_directory(prefix: &str) -> tempfile::TempDir {
 		.expect("repo-local temporary directory")
 }
 
-#[cfg(test)]
-fn validate_sandbox_test_output(target: &Path, configured: &Path) -> Result<()> {
-	if configured == target || configured.parent() != Some(target) {
-		return Err(eyre::eyre!(
-			"sandboxed repo-local test output must be one direct child of target"
-		));
-	}
-
-	let metadata = fs::symlink_metadata(configured)?;
-
-	if !metadata.is_dir()
-		|| metadata.uid() != current_uid()
-		|| metadata.permissions().mode() & 0o7777 != u32::from(PRIVATE_DIRECTORY_MODE)
-	{
-		return Err(eyre::eyre!(
-			"sandboxed repo-local test output must be an owned mode-0700 directory"
-		));
-	}
-
-	Ok(())
-}
-
 pub(crate) fn resolve_against(root: &Path, path: &Path) -> PathBuf {
 	if path.is_absolute() { path.to_path_buf() } else { root.join(path) }
 }
@@ -174,66 +205,6 @@ pub(crate) fn write_new_json(path: &Path, payload: &Value) -> Result<()> {
 	let parent = open_private_directory(&parent_path, true)?;
 
 	write_new_json_in_parent(&parent, &file_name, path, payload)
-}
-
-fn serialize_private_json(payload: &Value) -> Result<Vec<u8>> {
-	let mut bytes = serde_json::to_vec_pretty(payload)?;
-
-	bytes.push(b'\n');
-
-	if bytes.len() as u64 > MAX_PRIVATE_JSON_BYTES {
-		return Err(eyre::eyre!("private JSON exceeds its bounded write limit"));
-	}
-
-	Ok(bytes)
-}
-
-fn write_new_json_in_parent(
-	parent: &PrivateDirectory,
-	file_name: &OsStr,
-	path: &Path,
-	payload: &Value,
-) -> Result<()> {
-	let bytes = serialize_private_json(payload)?;
-	let temporary_name = temporary_name(file_name)?;
-	let mut file = create_private_file(parent, &temporary_name)?;
-
-	file.write_all(&bytes)?;
-	file.sync_all()?;
-
-	validate_private_json_metadata(path, &file.metadata()?)?;
-	drop(file);
-
-	let linked = rustix::fs::linkat(
-		&parent.file,
-		&temporary_name,
-		&parent.file,
-		file_name,
-		AtFlags::empty(),
-	);
-	let cleanup = rustix::fs::unlinkat(&parent.file, &temporary_name, AtFlags::empty());
-
-	if let Err(error) = linked {
-		if cleanup.is_err() {
-			return Err(eyre::eyre!(
-				"failed to publish and clean temporary JSON file {}: {error}",
-				path.display()
-			));
-		}
-		if error == Errno::EXIST {
-			return Err(eyre::eyre!("refusing to overwrite existing file: {}", path.display()));
-		}
-
-		return Err(eyre::eyre!("failed to publish {}: {error}", path.display()));
-	}
-
-	cleanup?;
-
-	parent.file.sync_all()?;
-
-	validate_named_private_file(parent, file_name, path)?;
-
-	Ok(())
 }
 
 pub(crate) fn replace_existing_json(path: &Path, expected: &Value, payload: &Value) -> Result<()> {
@@ -316,28 +287,6 @@ pub(crate) fn collect_required_json_files(paths: &[PathBuf]) -> Result<Vec<PathB
 	collect_json_files_inner(paths, false)
 }
 
-fn collect_json_files_inner(paths: &[PathBuf], allow_missing: bool) -> Result<Vec<PathBuf>> {
-	let mut files = Vec::new();
-	let mut limits = TraversalLimits::default();
-
-	for path in paths {
-		let display_path = path.clone();
-		let absolute = clean_absolute_path(path)?;
-		let opened = match open_path(&absolute) {
-			Ok(opened) => opened,
-			Err(error) if allow_missing && error.downcast_ref::<Errno>() == Some(&Errno::NOENT) =>
-				continue,
-			Err(error) => return Err(error),
-		};
-
-		collect_opened_path(opened, display_path, &mut files, &mut limits)?;
-	}
-
-	files.sort();
-
-	Ok(files)
-}
-
 pub(crate) fn ensure_private_directory(path: &Path) -> Result<()> {
 	let root = repo_root()?;
 	let path = clean_absolute_path(path)?;
@@ -383,23 +332,108 @@ pub(crate) fn open_or_create_private_lock(path: &Path) -> Result<File> {
 	Ok(file)
 }
 
-impl PrivateFileIdentity {
-	pub(crate) fn from_metadata(metadata: &Metadata) -> Self {
-		Self {
-			dev: metadata.dev(),
-			ino: metadata.ino(),
-			len: metadata.len(),
-			mtime: metadata.mtime(),
-			mtime_nsec: metadata.mtime_nsec(),
-			ctime: metadata.ctime(),
-			ctime_nsec: metadata.ctime_nsec(),
-		}
+#[cfg(test)]
+fn validate_sandbox_test_output(target: &Path, configured: &Path) -> Result<()> {
+	if configured == target || configured.parent() != Some(target) {
+		return Err(eyre::eyre!(
+			"sandboxed repo-local test output must be one direct child of target"
+		));
 	}
+
+	let metadata = fs::symlink_metadata(configured)?;
+
+	if !metadata.is_dir()
+		|| metadata.uid() != current_uid()
+		|| metadata.permissions().mode() & 0o7777 != u32::from(PRIVATE_DIRECTORY_MODE)
+	{
+		return Err(eyre::eyre!(
+			"sandboxed repo-local test output must be an owned mode-0700 directory"
+		));
+	}
+
+	Ok(())
 }
 
-enum OpenedPath {
-	Directory(PrivateDirectory),
-	File(File),
+fn serialize_private_json(payload: &Value) -> Result<Vec<u8>> {
+	let mut bytes = serde_json::to_vec_pretty(payload)?;
+
+	bytes.push(b'\n');
+
+	if bytes.len() as u64 > MAX_PRIVATE_JSON_BYTES {
+		return Err(eyre::eyre!("private JSON exceeds its bounded write limit"));
+	}
+
+	Ok(bytes)
+}
+
+fn write_new_json_in_parent(
+	parent: &PrivateDirectory,
+	file_name: &OsStr,
+	path: &Path,
+	payload: &Value,
+) -> Result<()> {
+	let bytes = serialize_private_json(payload)?;
+	let temporary_name = temporary_name(file_name)?;
+	let mut file = create_private_file(parent, &temporary_name)?;
+
+	file.write_all(&bytes)?;
+	file.sync_all()?;
+
+	validate_private_json_metadata(path, &file.metadata()?)?;
+	drop(file);
+
+	let linked = rustix::fs::linkat(
+		&parent.file,
+		&temporary_name,
+		&parent.file,
+		file_name,
+		AtFlags::empty(),
+	);
+	let cleanup = rustix::fs::unlinkat(&parent.file, &temporary_name, AtFlags::empty());
+
+	if let Err(error) = linked {
+		if cleanup.is_err() {
+			return Err(eyre::eyre!(
+				"failed to publish and clean temporary JSON file {}: {error}",
+				path.display()
+			));
+		}
+		if error == Errno::EXIST {
+			return Err(eyre::eyre!("refusing to overwrite existing file: {}", path.display()));
+		}
+
+		return Err(eyre::eyre!("failed to publish {}: {error}", path.display()));
+	}
+
+	cleanup?;
+
+	parent.file.sync_all()?;
+
+	validate_named_private_file(parent, file_name, path)?;
+
+	Ok(())
+}
+
+fn collect_json_files_inner(paths: &[PathBuf], allow_missing: bool) -> Result<Vec<PathBuf>> {
+	let mut files = Vec::new();
+	let mut limits = TraversalLimits::default();
+
+	for path in paths {
+		let display_path = path.clone();
+		let absolute = clean_absolute_path(path)?;
+		let opened = match open_path(&absolute) {
+			Ok(opened) => opened,
+			Err(error) if allow_missing && error.downcast_ref::<Errno>() == Some(&Errno::NOENT) =>
+				continue,
+			Err(error) => return Err(error),
+		};
+
+		collect_opened_path(opened, display_path, &mut files, &mut limits)?;
+	}
+
+	files.sort();
+
+	Ok(files)
 }
 
 fn open_path(path: &Path) -> Result<OpenedPath> {
@@ -716,42 +750,6 @@ fn read_named_private_json_file(
 	verify_private_directory_current_path(parent)?;
 
 	Ok((value, bytes, initial, file))
-}
-
-impl PinnedPrivateJsonFile {
-	pub(crate) fn open(path: &Path, max_bytes: u64) -> Result<Self> {
-		let (parent_path, name) = parent_and_name(path)?;
-		let parent = open_private_directory(&parent_path, false)?;
-		let (payload, _, identity, file) =
-			read_named_private_json_file(&parent, &name, path, max_bytes, || {})?;
-
-		Ok(Self { file, identity, name, parent, path: path.to_path_buf(), payload })
-	}
-
-	pub(crate) fn unlink(self) -> Result<()> {
-		verify_private_directory_current_path(&self.parent)?;
-
-		let current = open_named_private_file(&self.parent, &self.name, &self.path)?;
-
-		if PrivateFileIdentity::from_metadata(&current.metadata()?) != self.identity
-			|| PrivateFileIdentity::from_metadata(&self.file.metadata()?) != self.identity
-		{
-			return Err(eyre::eyre!(
-				"private JSON changed before cleanup: {}",
-				self.path.display()
-			));
-		}
-
-		verify_private_directory_current_path(&self.parent)?;
-
-		rustix::fs::unlinkat(&self.parent.file, &self.name, AtFlags::empty())?;
-
-		self.parent.file.sync_all()?;
-
-		verify_private_directory_current_path(&self.parent)?;
-
-		Ok(())
-	}
 }
 
 fn open_private_directory(path: &Path, create: bool) -> Result<PrivateDirectory> {
