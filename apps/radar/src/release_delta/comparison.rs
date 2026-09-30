@@ -1,13 +1,14 @@
 //! Release comparison payloads and tracked-signal matching.
 
+use std::cmp::Reverse;
+
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
 	prelude::Result,
 	release_delta::{
 		self, BTreeSet, GitHubApi, HashSet, Path, RadarRefreshReleaseDeltaRequest, ReleasePair,
-		Value, extract_pr_number_from_url, eyre, required_value_i64, required_value_string,
-		serde_json,
+		Value, eyre, serde_json,
 	},
 };
 
@@ -36,22 +37,15 @@ pub(super) fn build_release_comparison(
 		"stable_tag_name": stable_tag,
 		"prerelease_tag_name": preview_tag,
 		"compare": {
-			"status": required_value_string(&compare, "status")?,
-			"ahead_by": required_value_i64(&compare, "ahead_by")?,
-			"total_commits": required_value_i64(&compare, "total_commits")?,
-			"url": required_value_string(&compare, "html_url")?,
+			"status": release_delta::required_value_string(&compare, "status")?,
+			"ahead_by": release_delta::required_value_i64(&compare, "ahead_by")?,
+			"total_commits": release_delta::required_value_i64(&compare, "total_commits")?,
+			"url": release_delta::required_value_string(&compare, "html_url")?,
 			"commit_shas": commit_shas,
 			"pr_numbers": pr_numbers,
 		},
 		"tracked_signal_slugs": tracked_signal_slugs,
 	}))
-}
-
-fn comparison_url(repo: &str, stable_tag: &str, preview_tag: &str) -> String {
-	let stable_tag = crate::percent_encode(stable_tag);
-	let preview_tag = crate::percent_encode(preview_tag);
-
-	format!("https://api.github.com/repos/{repo}/compare/{stable_tag}...{preview_tag}?per_page=100")
 }
 
 pub(super) fn load_signal_entries(signals_dir: &Path, repo: &str) -> Result<Vec<Value>> {
@@ -70,6 +64,13 @@ pub(super) fn load_signal_entries(signals_dir: &Path, repo: &str) -> Result<Vec<
 	Ok(entries)
 }
 
+fn comparison_url(repo: &str, stable_tag: &str, preview_tag: &str) -> String {
+	let stable_tag = crate::percent_encode(stable_tag);
+	let preview_tag = crate::percent_encode(preview_tag);
+
+	format!("https://api.github.com/repos/{repo}/compare/{stable_tag}...{preview_tag}?per_page=100")
+}
+
 fn tracked_signal_slugs(
 	signals: &[Value],
 	commit_shas: &[String],
@@ -80,7 +81,7 @@ fn tracked_signal_slugs(
 	let mut sorted_signals = signals
 		.iter()
 		.map(|signal| {
-			let value = required_value_string(signal, "published_at")?;
+			let value = release_delta::required_value_string(signal, "published_at")?;
 			let instant = OffsetDateTime::parse(&value, &Rfc3339).map_err(|error| {
 				eyre::eyre!("Signal published_at must be an RFC3339 timestamp: {error}")
 			})?;
@@ -89,7 +90,7 @@ fn tracked_signal_slugs(
 		})
 		.collect::<Result<Vec<_>>>()?;
 
-	sorted_signals.sort_by_key(|(instant, _)| std::cmp::Reverse(*instant));
+	sorted_signals.sort_by_key(|(instant, _)| Reverse(*instant));
 
 	Ok(sorted_signals
 		.into_iter()
@@ -122,7 +123,7 @@ fn signal_pr_number(signal: &Value) -> Option<u64> {
 	signal
 		.pointer("/source_refs/pr_url")
 		.and_then(Value::as_str)
-		.and_then(|url| extract_pr_number_from_url(url, repo))
+		.and_then(|url| release_delta::extract_pr_number_from_url(url, repo))
 }
 
 // These numbers are hints from commit text, not canonical commit-to-PR associations.
@@ -169,7 +170,9 @@ fn pr_numbers_from_message(message: &str) -> Vec<u64> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use serde_json::Value;
+
+	use crate::{release_delta::comparison, tests::fixtures};
 
 	#[test]
 	fn tracked_signals_require_references_to_the_declared_repository() {
@@ -195,7 +198,7 @@ mod tests {
 		});
 
 		assert_eq!(
-			tracked_signal_slugs(&signals, &["abcdef1".into()], &[22414]).unwrap(),
+			comparison::tracked_signal_slugs(&signals, &["abcdef1".into()], &[22_414]).unwrap(),
 			vec!["matching-pr", "matching-commit"]
 		);
 	}
@@ -208,7 +211,7 @@ mod tests {
 			("fractional", "2026-06-01T00:00:00.1Z"),
 		]
 		.map(|(slug, timestamp)| {
-			let mut signal = crate::tests::fixtures::valid_signal();
+			let mut signal = fixtures::valid_signal();
 
 			signal["slug"] = serde_json::json!(slug);
 			signal["published_at"] = serde_json::json!(timestamp);
@@ -217,19 +220,19 @@ mod tests {
 		});
 
 		assert_eq!(
-			tracked_signal_slugs(&signals, &[], &[22414]).unwrap(),
+			comparison::tracked_signal_slugs(&signals, &[], &[22_414]).unwrap(),
 			vec!["fractional", "utc", "equivalent", "older"]
 		);
 	}
 
 	#[test]
 	fn tracked_signals_reject_unparseable_publication_times() {
-		for timestamp in [serde_json::json!("not-a-time"), serde_json::Value::Null] {
-			let mut signal = crate::tests::fixtures::valid_signal();
+		for timestamp in [serde_json::json!("not-a-time"), Value::Null] {
+			let mut signal = fixtures::valid_signal();
 
 			signal["published_at"] = timestamp;
 
-			let error = tracked_signal_slugs(&[signal], &[], &[22414]).unwrap_err();
+			let error = comparison::tracked_signal_slugs(&[signal], &[], &[22_414]).unwrap_err();
 
 			assert!(error.to_string().contains("published_at"), "{error}");
 		}
@@ -241,11 +244,11 @@ mod tests {
 			{"commit": {"message": "Duplicate (#22414), malformed (#-1) (#1.2) (#abc), signed overflow (#9223372036854775808), unsigned overflow (#18446744073709551616), boundary (#9223372036854775807), incomplete (#"}},
 			{}
 		]);
-		let numbers = compare_pr_numbers(commits.as_array().unwrap());
+		let numbers = comparison::compare_pr_numbers(commits.as_array().unwrap());
 
-		assert_eq!(numbers, vec![22414, 22416, i64::MAX as u64]);
+		assert_eq!(numbers, vec![22_414, 22_416, i64::MAX as u64]);
 
-		let mut release = crate::tests::fixtures::valid_release_delta();
+		let mut release = fixtures::valid_release_delta();
 
 		release["compare"]["pr_numbers"] = serde_json::json!(numbers);
 		release["comparisons"][0]["compare"]["pr_numbers"] = serde_json::json!(numbers);
@@ -263,7 +266,8 @@ mod tests {
 			),
 		] {
 			let url =
-				reqwest::Url::parse(&comparison_url("openai/codex", stable, preview)).unwrap();
+				reqwest::Url::parse(&comparison::comparison_url("openai/codex", stable, preview))
+					.unwrap();
 
 			assert_eq!(url.fragment(), None);
 			assert_eq!(url.path(), expected_path);
