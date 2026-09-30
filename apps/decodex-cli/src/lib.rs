@@ -1,29 +1,32 @@
 //! Unified Decodex service and bounded local product command clients.
 
-use std::{
-	fmt::{Debug, Formatter},
-	path::PathBuf,
-};
-
-use clap::{Parser, Subcommand, ValueEnum};
-use serde::Serialize;
-use tokio as _;
-
-#[cfg(test)] use base64 as _;
-#[cfg(test)] use decodex_core as _;
-#[cfg(test)] use decodex_database as _;
-#[cfg(test)] use rusqlite as _;
-
-use decodex_protocol::{
-	AppServerCapability, ClientFailure, ClientProfile, DoctorClient, DoctorComponent, DoctorIssue,
-	DoctorReport, DoctorStatus, ProfileKind, ServerId,
-};
-
 mod account;
 mod agent;
 mod fast_mode;
 mod reset_card;
 mod service;
+
+use std::{
+	fmt::{Debug, Formatter},
+	path::{Path, PathBuf},
+};
+
+#[cfg(test)] use base64 as _;
+use clap::{Parser, Subcommand, ValueEnum};
+#[cfg(test)] use decodex_core as _;
+#[cfg(test)] use decodex_database as _;
+#[cfg(test)] use rusqlite as _;
+use serde::Serialize;
+use tokio as _;
+
+use crate::{
+	account::AccountCommand, agent::AgentCommand, fast_mode::FastModeCommand,
+	reset_card::ResetCardCommand,
+};
+use decodex_protocol::{
+	AppServerCapability, ClientFailure, ClientProfile, DoctorClient, DoctorComponent, DoctorIssue,
+	DoctorReport, DoctorStatus, ProfileKind, ServerId,
+};
 
 const OUTPUT_SCHEMA: &str = "decodex/cli-diagnostics/1";
 
@@ -83,6 +86,58 @@ impl CommandOutput {
 	}
 }
 
+/// Supported Decodex operations.
+#[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
+pub enum Command {
+	/// Read Agent work through the daemon-owned protocol.
+	#[command(subcommand)]
+	Agent(AgentCommand),
+	/// Print diagnostic version and source-build identity without contacting the service.
+	#[command(hide = true)]
+	BuildInfo,
+	/// Serve the same-UID Decodex protocol and own local product state.
+	///
+	/// DECODEX_SKILL_ROOTS optionally supplies absolute host skill directories as a
+	/// platform path list (colon-separated on macOS). The service reads it at startup
+	/// and applies the same host roots to each fresh Agent process and selected account.
+	/// Unset it to use native discovery
+	/// only. Restart the service after changes. It does not install plugins or alter
+	/// per-account plugin configuration.
+	Serve {
+		/// Inherited Unix socket whose EOF binds this service to one desktop-app lifetime.
+		#[arg(long, hide = true)]
+		parent_fd: Option<i32>,
+	},
+	/// Initialize or upgrade the bundled SQLite product database.
+	#[command(hide = true)]
+	InitializeLocalDatabase,
+	/// Verify the bundled SQLite database and migration ledger.
+	#[command(hide = true)]
+	ValidateLocalDatabase,
+	/// Summarize service readiness while retaining every typed check.
+	Status,
+	/// Render the complete authoritative diagnostic report.
+	Doctor,
+	/// Observe and consume reset cards through the common service authority.
+	#[command(subcommand)]
+	ResetCard(ResetCardCommand),
+	/// Manage service-owned accounts through the same-UID protocol.
+	#[command(subcommand)]
+	Account(AccountCommand),
+	/// Read or update the current user's local Codex Fast mode setting.
+	#[command(subcommand)]
+	FastMode(FastModeCommand),
+}
+
+/// CLI output encoding.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum OutputFormat {
+	/// Stable operator-readable text.
+	Human,
+	/// Versioned JSON for structured consumers.
+	Json,
+}
+
 #[derive(Serialize)]
 struct ProfileDocument {
 	kind: ProfileKind,
@@ -117,63 +172,11 @@ struct BuildInfoDocument {
 	dirty: bool,
 }
 
-/// Supported Decodex operations.
-#[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
-pub enum Command {
-	/// Read Agent work through the daemon-owned protocol.
-	#[command(subcommand)]
-	Agent(agent::AgentCommand),
-	/// Print diagnostic version and source-build identity without contacting the service.
-	#[command(hide = true)]
-	BuildInfo,
-	/// Serve the same-UID Decodex protocol and own local product state.
-	///
-	/// DECODEX_SKILL_ROOTS optionally supplies absolute host skill directories as a
-	/// platform path list (colon-separated on macOS). The service reads it at startup
-	/// and applies the same host roots to each fresh Agent process and selected account.
-	/// Unset it to use native discovery
-	/// only. Restart the service after changes. It does not install plugins or alter
-	/// per-account plugin configuration.
-	Serve {
-		/// Inherited Unix socket whose EOF binds this service to one desktop-app lifetime.
-		#[arg(long, hide = true)]
-		parent_fd: Option<i32>,
-	},
-	/// Initialize or upgrade the bundled SQLite product database.
-	#[command(hide = true)]
-	InitializeLocalDatabase,
-	/// Verify the bundled SQLite database and migration ledger.
-	#[command(hide = true)]
-	ValidateLocalDatabase,
-	/// Summarize service readiness while retaining every typed check.
-	Status,
-	/// Render the complete authoritative diagnostic report.
-	Doctor,
-	/// Observe and consume reset cards through the common service authority.
-	#[command(subcommand)]
-	ResetCard(reset_card::ResetCardCommand),
-	/// Manage service-owned accounts through the same-UID protocol.
-	#[command(subcommand)]
-	Account(account::AccountCommand),
-	/// Read or update the current user's local Codex Fast mode setting.
-	#[command(subcommand)]
-	FastMode(fast_mode::FastModeCommand),
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum DiagnosticCommand {
 	Status,
 	Doctor,
-}
-
-/// CLI output encoding.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-pub enum OutputFormat {
-	/// Stable operator-readable text.
-	Human,
-	/// Versioned JSON for structured consumers.
-	Json,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -261,7 +264,7 @@ fn render_build_info(format: OutputFormat) -> CommandOutput {
 }
 
 fn load_client_profile(
-	root: Option<&std::path::Path>,
+	root: Option<&Path>,
 	selected_profile: Option<&str>,
 	expected_server_id: Option<&str>,
 ) -> Result<ClientProfile, ClientFailure> {
@@ -500,7 +503,7 @@ const fn issue_name(issue: DoctorIssue) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeSet;
+	use std::{collections::BTreeSet, iter};
 
 	use clap::{CommandFactory as _, Parser as _};
 
@@ -620,7 +623,7 @@ mod tests {
 	fn doctor_human_and_json_preserve_every_component_status_and_issue() {
 		for issue in DoctorIssue::ALL {
 			for status in [DoctorStatus::Unavailable(issue), DoctorStatus::Unknown(issue)] {
-				let report = report(std::iter::repeat(status));
+				let report = report(iter::repeat(status));
 				let human = crate::render_report(
 					DiagnosticCommand::Doctor,
 					OutputFormat::Human,
