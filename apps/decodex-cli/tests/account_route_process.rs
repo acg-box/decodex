@@ -295,7 +295,7 @@ max_entry_bytes = 65536
 			"SQLite access credential must match the scripted successor"
 		);
 		assert!(
-			stored.bundle().refresh_token() == tokens.refresh_token,
+			stored.bundle().refresh_token() == Some(tokens.refresh_token.as_str()),
 			"SQLite refresh credential must match the scripted successor"
 		);
 		assert!(
