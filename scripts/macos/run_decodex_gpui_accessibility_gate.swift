@@ -159,8 +159,19 @@ func waitUntil(timeout: Double, interrupted: InterruptState? = nil, _ predicate:
 }
 
 func runCommand(_ executable: URL, _ arguments: [String], timeout: Double) throws -> CommandResult {
-	let output = Pipe()
-	let error = Pipe()
+	let directory = FileManager.default.temporaryDirectory
+		.appendingPathComponent("decodex-ax-command-\(UUID().uuidString)")
+	try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+	defer { try? FileManager.default.removeItem(at: directory) }
+	let outputURL = directory.appendingPathComponent("stdout")
+	let errorURL = directory.appendingPathComponent("stderr")
+	guard FileManager.default.createFile(atPath: outputURL.path, contents: nil),
+		FileManager.default.createFile(atPath: errorURL.path, contents: nil)
+	else { throw GateError.message("cannot create command output files") }
+	let output = try FileHandle(forWritingTo: outputURL)
+	defer { try? output.close() }
+	let error = try FileHandle(forWritingTo: errorURL)
+	defer { try? error.close() }
 	let process = Process()
 	process.executableURL = executable
 	process.arguments = arguments
@@ -173,8 +184,8 @@ func runCommand(_ executable: URL, _ arguments: [String], timeout: Double) throw
 		_ = waitUntil(timeout: 2.0) { !process.isRunning }
 		if process.isRunning { _ = Darwin.kill(process.processIdentifier, SIGKILL) }
 	}
-	let stdout = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-	let stderr = String(decoding: error.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+	let stdout = String(decoding: try Data(contentsOf: outputURL), as: UTF8.self)
+	let stderr = String(decoding: try Data(contentsOf: errorURL), as: UTF8.self)
 	return CommandResult(
 		status: completed ? process.terminationStatus : 124,
 		stdout: stdout,
