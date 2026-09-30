@@ -1542,8 +1542,7 @@ impl ConversationRuntime {
 		let Some(session) = plan.runtime_session.clone() else {
 			return ConversationOutcome::Conflict;
 		};
-		if decision.consumer != consumer
-			|| plan.plan.consumer != consumer
+		if plan.plan.consumer != consumer
 			|| plan.plan.kind != decodex_core::ContinuationPlanKind::InitialThread
 			|| plan.plan.source_runtime_session_id != session.runtime_session_id
 			|| plan.plan.source_runtime_session_revision != session.revision
@@ -1569,7 +1568,7 @@ impl ConversationRuntime {
 			Ok(value) => value,
 			Err(_) => return ConversationOutcome::Conflict,
 		};
-		let turn_admission = match self
+		match self
 			.inner
 			.store
 			.admit_initial_conversation_turn(
@@ -1609,8 +1608,7 @@ impl ConversationRuntime {
 				&& admission.turn.turn_id == command.turn_id
 				&& admission.turn.sequence == 1
 				&& admission.turn.status == decodex_core::TurnStatus::Active
-				&& admission.turn.revision == 1 =>
-				admission,
+				&& admission.turn.revision == 1 => {},
 			Ok(_) => return ConversationOutcome::Conflict,
 			Err(error)
 				if turn_reservation_is_definite(&error)
@@ -1639,11 +1637,6 @@ impl ConversationRuntime {
 					.await;
 			},
 		};
-		if turn_admission.turn.status != decodex_core::TurnStatus::Active
-			|| turn_admission.turn.revision != 1
-		{
-			return ConversationOutcome::Conflict;
-		}
 		let created = ConversationReadback {
 			operation_key: Some(command.operation_key.clone()),
 			correlation_id: Some(command.correlation_id.clone()),
