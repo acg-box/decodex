@@ -10,10 +10,9 @@ version.workspace    = true
 
 [features]
 native-glass-probe = []
-visual-capture = ["gpui/test-support", "gpui_platform/test-support"]
+visual-capture     = ["gpui/test-support", "gpui_platform/test-support"]
 
 [dependencies]
-unicode-width       = { workspace = true }
 decodex-protocol     = { workspace = true }
 gpui                 = { workspace = true }
 gpui_platform        = { workspace = true }
@@ -27,18 +26,19 @@ sha2                 = { workspace = true }
 time                 = { workspace = true }
 tokio                = { workspace = true }
 unicode-segmentation = "1.13.3"
+unicode-width        = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-block2 = { workspace = true }
-libwebrtc = { workspace = true }
-rtrb = { workspace = true }
-futures-util = { workspace = true }
-objc2-avf-audio = { workspace = true }
+block2                 = { workspace = true }
+futures-util           = { workspace = true }
+libwebrtc              = { workspace = true }
+objc2                  = { version = "~0.6" }
+objc2-app-kit          = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSButton", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSPanel", "NSResponder", "NSRunningApplication", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSTrackingArea", "NSView", "NSVisualEffectView", "NSWindow", "block2", "objc2-core-foundation"] }
+objc2-audio-toolbox    = { workspace = true }
+objc2-avf-audio        = { workspace = true }
 objc2-core-audio-types = { workspace = true }
-objc2-audio-toolbox = { workspace = true }
-objc2            = { version = "~0.6" }
-objc2-app-kit    = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSButton", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSPanel", "NSResponder", "NSRunningApplication", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSTrackingArea", "NSView", "NSVisualEffectView", "NSWindow", "block2", "objc2-core-foundation"] }
-objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSString", "NSDate", "NSRunLoop"] }
+objc2-foundation       = { version = "=0.3.2", default-features = false, features = ["NSDate", "NSRunLoop", "NSString"] }
+rtrb                   = { workspace = true }
 
 [dev-dependencies]
 futures-util      = { workspace = true }
@@ -52,6 +52,6 @@ path              = "src/bin/workbench_visual_capture.rs"
 required-features = ["visual-capture"]
 
 [[bin]]
-name = "decodex-native-glass-probe"
-path = "src/bin/native_glass_probe.rs"
+name              = "decodex-native-glass-probe"
+path              = "src/bin/native_glass_probe.rs"
 required-features = ["native-glass-probe"]
