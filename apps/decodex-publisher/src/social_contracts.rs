@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
+use crate::SocialClock;
+
 #[derive(Debug)]
 pub(crate) struct SocialReservePublishRequest {
 	pub(crate) candidate_path: PathBuf,
@@ -88,7 +90,7 @@ pub(crate) struct SocialPublishNextRequest {
 	pub(crate) run_id: String,
 	pub(crate) decision: String,
 	pub(crate) reason: Option<String>,
-	pub(crate) clock: crate::SocialClock,
+	pub(crate) clock: SocialClock,
 }
 
 #[derive(Debug)]

@@ -85,11 +85,10 @@ pub(crate) fn expire_active_reservations(
 		let expires_at = payload
 			.get("expires_at")
 			.and_then(Value::as_str)
-			.ok_or_else(|| crate::prelude::eyre::eyre!("active reservation has no expires_at"))
+			.ok_or_else(|| eyre::eyre!("active reservation has no expires_at"))
 			.and_then(|value| {
-				OffsetDateTime::parse(value, &Rfc3339).map_err(|_| {
-					crate::prelude::eyre::eyre!("active reservation expires_at is invalid")
-				})
+				OffsetDateTime::parse(value, &Rfc3339)
+					.map_err(|_| eyre::eyre!("active reservation expires_at is invalid"))
 			})?;
 
 		if expires_at > now {
@@ -97,9 +96,9 @@ pub(crate) fn expire_active_reservations(
 		}
 
 		let mut expired = payload.clone();
-		let object = expired.as_object_mut().ok_or_else(|| {
-			crate::prelude::eyre::eyre!("social publish reservation must be an object")
-		})?;
+		let object = expired
+			.as_object_mut()
+			.ok_or_else(|| eyre::eyre!("social publish reservation must be an object"))?;
 
 		object.insert("status".into(), Value::String("expired".into()));
 		object.insert(
