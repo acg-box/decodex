@@ -12,6 +12,7 @@ impl McpAuthorizationUrl {
 		if value.len() > 16384 {
 			return Err(WireScalarTooLong::new(value.len(), 16384));
 		}
+
 		Ok(Self(value))
 	}
 

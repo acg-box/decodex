@@ -10,7 +10,6 @@ use crate::{EntityId, Sha256Digest, WireText};
 pub const DEVELOPMENT_DOMAIN_PACK_ID: &str = "decodex.dev";
 /// Stable identifier of the built-in paper-investment research Pack.
 pub const PAPER_INVESTMENT_DOMAIN_PACK_ID: &str = "decodex.paper-investment";
-
 /// Maximum domain entities in one built-in Pack projection.
 pub const MAX_DOMAIN_PACK_ENTITIES: usize = 16;
 /// Maximum domain relations in one built-in Pack projection.
@@ -143,6 +142,7 @@ impl DomainPackProjectionDto {
 	) -> Result<Self, DomainPackContractError> {
 		let namespace = descriptor.namespace.as_str();
 		let prefix = format!("{namespace}.");
+
 		if !is_namespaced_symbol(descriptor.id.as_str())
 			|| !is_symbol_segment(namespace)
 			|| !is_semver_triplet(descriptor.version.as_str())
@@ -184,7 +184,9 @@ impl DomainPackProjectionDto {
 		{
 			return Err(DomainPackContractError::InvalidProjection);
 		}
+
 		let entity_ids = entities.iter().map(|entity| entity.id.as_str()).collect::<HashSet<_>>();
+
 		if entity_ids.len() != entities.len()
 			|| entities.iter().any(|entity| {
 				!entity.kind.as_str().starts_with(&prefix)
@@ -209,6 +211,7 @@ impl DomainPackProjectionDto {
 			}) {
 			return Err(DomainPackContractError::InvalidProjection);
 		}
+
 		Ok(Self { descriptor, entities, relations })
 	}
 }
@@ -218,10 +221,13 @@ pub(crate) fn is_namespaced_symbol(value: &str) -> bool {
 	let Some(first) = segments.next() else {
 		return false;
 	};
+
 	if !is_symbol_segment(first) {
 		return false;
 	}
+
 	let rest = segments.collect::<Vec<_>>();
+
 	!rest.is_empty() && rest.iter().all(|segment| is_symbol_segment(segment))
 }
 
@@ -237,6 +243,7 @@ fn is_symbol_segment(value: &str) -> bool {
 
 fn is_semver_triplet(value: &str) -> bool {
 	let parts = value.split('.').collect::<Vec<_>>();
+
 	parts.len() == 3
 		&& parts.iter().all(|part| {
 			!part.is_empty()
@@ -290,6 +297,7 @@ mod tests {
 			to: entity_id,
 			kind: text("dev.contains"),
 		};
+
 		assert!(
 			DomainPackProjectionDto::new(
 				descriptor.clone(),
@@ -299,8 +307,11 @@ mod tests {
 			)
 			.is_ok()
 		);
+
 		let mut invalid_namespace = descriptor.clone();
+
 		invalid_namespace.namespace = text("Finance");
+
 		assert_eq!(
 			DomainPackProjectionDto::new(
 				invalid_namespace,
@@ -310,8 +321,11 @@ mod tests {
 			),
 			Err(DomainPackContractError::InvalidDescriptor),
 		);
+
 		let mut undeclared_capabilities = descriptor;
+
 		undeclared_capabilities.capabilities.clear();
+
 		assert_eq!(
 			DomainPackProjectionDto::new(
 				undeclared_capabilities,

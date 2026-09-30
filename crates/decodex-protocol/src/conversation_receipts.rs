@@ -30,6 +30,7 @@ impl ConversationCreationReceiptRequest {
 		if command.expected_revision.is_some() {
 			return None;
 		}
+
 		let CommandPayload::CreateConversation {
 			conversation_id,
 			message,
@@ -40,6 +41,7 @@ impl ConversationCreationReceiptRequest {
 		else {
 			return None;
 		};
+
 		Some(Self {
 			idempotency_key: command.idempotency_key.clone(),
 			conversation_id: conversation_id.clone(),
@@ -97,13 +99,21 @@ mod tests {
 			query_id: QueryId::new("read-original").unwrap(),
 			payload: QueryPayload::GetConversationCreationReceipt { request: request.clone() },
 		});
+
 		assert_eq!(decode_client_message(&serde_json::to_string(&query).unwrap()).unwrap(), query);
+
 		let mut invalid = serde_json::to_value(&query).unwrap();
+
 		invalid["body"]["payload"]["arguments"]["request"]["conversation_id"] = "wrong".into();
+
 		assert!(decode_client_message(&invalid.to_string()).is_err());
+
 		let mut invalid = serde_json::to_value(&query).unwrap();
+
 		invalid["body"]["payload"]["arguments"]["request"]["message"] = "  ".into();
+
 		assert!(decode_client_message(&invalid.to_string()).is_err());
+
 		for result in [
 			ConversationCreationReceiptResult::NotRecorded,
 			ConversationCreationReceiptResult::Conflict,
@@ -114,6 +124,7 @@ mod tests {
 			},
 		] {
 			let encoded = serde_json::to_string(&result).unwrap();
+
 			assert_eq!(
 				serde_json::from_str::<ConversationCreationReceiptResult>(&encoded).unwrap(),
 				result

@@ -8,6 +8,7 @@ fn observed(change: &str) -> AgentNativeGoalResult {
 		"disabled" => return AgentNativeGoalResult::Disabled,
 		_ => {},
 	}
+
 	AgentNativeGoalResult::Available {
 		work_id: EntityId::new(if change == "work" { "other" } else { "work" })
 			.expect("valid fixture identity"),
@@ -51,18 +52,22 @@ async fn native_goal_preserves_authoritative_empty_and_rejects_crossed_sources()
 			let mut socket =
 				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
 			let _ = socket.next().await;
+
 			for message in initial(SERVER_ID) {
 				socket.send(message).await.unwrap();
 			}
+
 			let Message::Text(frame) = socket.next().await.unwrap().unwrap() else {
 				panic!("query frame")
 			};
 			let ClientMessage::Query(query) = serde_json::from_str(&frame).unwrap() else {
 				panic!("read-only goal query")
 			};
+
 			assert!(
 				matches!(query.payload, crate::QueryPayload::GetAgentNativeGoal { work_id, thread_id } if work_id.as_str()=="work" && thread_id.as_str()=="native-exact")
 			);
+
 			socket
 				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
@@ -72,17 +77,22 @@ async fn native_goal_preserves_authoritative_empty_and_rejects_crossed_sources()
 				})))
 				.await
 				.unwrap();
+
 			drop(socket);
+
 			assert!(
 				time::timeout(Duration::from_millis(30), listener.accept()).await.is_err(),
 				"Goal reads do not reconnect or execute work"
 			);
+
 			listener.cleanup().unwrap();
 		});
 		let result = crate::AgentClient::new(profile)
 			.native_goal(EntityId::new("work").unwrap(), EntityId::new("native-exact").unwrap())
 			.await;
+
 		server.await.unwrap();
+
 		if matches!(change, "work" | "thread" | "goal_thread") {
 			assert_eq!(result.unwrap_err(), ClientFailure::ProtocolMalformed);
 		} else {

@@ -44,6 +44,7 @@ impl ConversationNativeSettings {
 			) {
 			return Err(ConversationContractError::InvalidProjection);
 		}
+
 		Ok(self)
 	}
 }
@@ -61,7 +62,9 @@ impl<'de> Deserialize<'de> for ConversationNativeSettings {
 			source_account_revision: EntityRevision,
 			source_process_generation_id: EntityId,
 		}
+
 		let raw = Raw::deserialize(deserializer)?;
+
 		Self {
 			model: raw.model,
 			model_provider: raw.model_provider,
@@ -87,9 +90,13 @@ mod tests {
 		let settings = json!({"model":"native-model","model_provider":"native-provider","cwd":"/native/project","reasoning_effort":"ultra","observed_at_micros":42,"source_account_id":"10000000-0000-4000-8000-000000000001","source_account_revision":3,"source_process_generation_id":"20000000-0000-4000-8000-000000000001"});
 		let mut summary = json!({"conversation_id":"30000000-0000-4000-8000-000000000001","title":"Task","codex_thread_id":"native-thread","conversation_revision":1,"projection_updated_at_micros":43,"runtime_session_id":"40000000-0000-4000-8000-000000000001","runtime_session_revision":3,"state":"ready","native_settings":settings});
 		let decoded: crate::ConversationSummary = serde_json::from_value(summary.clone()).unwrap();
+
 		assert_eq!(serde_json::to_value(decoded).unwrap()["native_settings"], settings);
+
 		summary["codex_thread_id"] = serde_json::Value::Null;
+
 		assert!(serde_json::from_value::<crate::ConversationSummary>(summary).is_err());
+
 		for (field, value) in [
 			("model_provider", json!(" ")),
 			("cwd", json!("relative")),
@@ -98,7 +105,9 @@ mod tests {
 			("source_process_generation_id", json!("foreign")),
 		] {
 			let mut invalid = settings.clone();
+
 			invalid[field] = value;
+
 			assert!(serde_json::from_value::<ConversationNativeSettings>(invalid).is_err());
 		}
 	}

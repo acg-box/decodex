@@ -118,11 +118,13 @@ impl LocalTransportAuthority {
 
 	pub(crate) fn draft_scope_key(&self) -> String {
 		let mut identity = self.endpoint_path.as_os_str().as_encoded_bytes().to_vec();
+
 		identity.extend_from_slice(&self.service_owner_uid.to_le_bytes());
 		identity.push(match self.policy {
 			LocalTrustPolicy::Disabled => 0,
 			LocalTrustPolicy::SameUid => 1,
 		});
+
 		decodex_core::BlobHash::digest(&identity).to_hex()
 	}
 
@@ -132,7 +134,6 @@ impl LocalTransportAuthority {
 		{
 			platform::bind(self).await
 		}
-
 		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 		{
 			Err(LocalTransportRefusal::UnsupportedPlatform)
@@ -148,7 +149,6 @@ impl LocalTransportAuthority {
 		{
 			platform::connect(self).await
 		}
-
 		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 		{
 			Err(LocalTransportRefusal::UnsupportedPlatform)
@@ -163,6 +163,7 @@ impl LocalTransportAuthority {
 		raw_fd: RawFd,
 	) -> Result<File, LocalTransportRefusal> {
 		self.verify_process_owner()?;
+
 		platform::validate_installer_namespace_lock_fd(self, raw_fd)
 	}
 
@@ -415,6 +416,7 @@ mod platform {
 			.paths
 			.ensure_local_transport_layout()
 			.map_err(|_| LocalTransportRefusal::UnsafeDirectory)?;
+
 		let directory =
 			DirectoryBinding::open(authority.endpoint_path(), authority.service_owner_uid)?;
 		let namespace_lock = NamespaceLock::acquire(&directory)?;
@@ -445,9 +447,9 @@ mod platform {
 
 			return Err(LocalTransportRefusal::UnsafeEndpoint);
 		}
-
 		if chmod_socket(&directory, STAGE_NAME, PRIVATE_FILE_MODE).is_err() {
 			directory.remove_if_file_identity(&namespace_lock, STAGE_NAME, initial);
+
 			drop(listener);
 
 			return Err(LocalTransportRefusal::UnsafeEndpoint);
@@ -461,6 +463,7 @@ mod platform {
 				identity,
 			_ => {
 				directory.remove_if_file_identity(&namespace_lock, STAGE_NAME, initial);
+
 				drop(listener);
 
 				return Err(LocalTransportRefusal::EndpointReplaced);
@@ -470,6 +473,7 @@ mod platform {
 			Ok(address) => address.as_pathname().map(Path::to_owned),
 			Err(_) => {
 				directory.remove_if_identity(&namespace_lock, STAGE_NAME, identity);
+
 				drop(listener);
 
 				return Err(LocalTransportRefusal::EndpointUnavailable);
@@ -478,6 +482,7 @@ mod platform {
 
 		if local_path.as_deref() != Some(stage_path.as_path()) {
 			directory.remove_if_file_identity(&namespace_lock, STAGE_NAME, identity);
+
 			drop(listener);
 
 			return Err(LocalTransportRefusal::EndpointReplaced);
@@ -519,6 +524,7 @@ mod platform {
 			Ok(Err(error)) if error.kind() == ErrorKind::ConnectionRefused => {
 				authority.verify_process_owner()?;
 				directory.verify_socket_while_locked(namespace_lock, name, identity)?;
+
 				directory.unlink_socket_while_locked(namespace_lock, name, identity)
 			},
 			Ok(Err(_)) => {
@@ -686,11 +692,14 @@ mod platform {
 		if raw_fd < 3 {
 			return Err(LocalTransportRefusal::UnsafeEndpoint);
 		}
+
 		// SAFETY: `F_GETFD` reads descriptor flags and retains no process memory pointer.
 		let inherited_flags = unsafe { libc::fcntl(raw_fd, libc::F_GETFD) };
+
 		if inherited_flags == -1 {
 			return Err(LocalTransportRefusal::UnsafeEndpoint);
 		}
+
 		// SAFETY: `F_GETFD` proved that this process owns an open descriptor. Ownership
 		// transfers to the returned file and the installer retains its original duplicate.
 		let file = unsafe { File::from_raw_fd(raw_fd) };
@@ -698,27 +707,36 @@ mod platform {
 			DirectoryBinding::open(authority.endpoint_path(), authority.service_owner_uid)?;
 		let metadata = file.metadata().map_err(|_| LocalTransportRefusal::UnsafeEndpoint)?;
 		let identity = LockIdentity::from_metadata(&metadata);
+
 		if !secure_namespace_lock_metadata(&metadata, authority.service_owner_uid) {
 			return Err(LocalTransportRefusal::UnsafeEndpoint);
 		}
+
 		directory.verify_namespace_lock_file(&file, identity)?;
+
 		// SAFETY: the owned descriptor remains open and `F_GETFD` retains no pointer.
 		let descriptor_flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFD) };
+
 		if descriptor_flags == -1 {
 			return Err(LocalTransportRefusal::EndpointUnavailable);
 		}
+
 		// SAFETY: the owned descriptor remains open and the integer flags are valid.
 		let close_on_exec = unsafe {
 			libc::fcntl(file.as_raw_fd(), libc::F_SETFD, descriptor_flags | libc::FD_CLOEXEC)
 		};
+
 		if close_on_exec == -1 {
 			return Err(LocalTransportRefusal::EndpointUnavailable);
 		}
+
 		// SAFETY: `F_GETFD` reads back the flags of the still-owned descriptor.
 		let applied_flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFD) };
+
 		if applied_flags == -1 || applied_flags & libc::FD_CLOEXEC == 0 {
 			return Err(LocalTransportRefusal::EndpointUnavailable);
 		}
+
 		Ok(file)
 	}
 
@@ -729,6 +747,7 @@ mod platform {
 		namespace_lock: &NamespaceLock,
 	) -> Result<(), LocalTransportRefusal> {
 		revalidate_listener(authority, listener, binding, namespace_lock)?;
+
 		binding.directory.unlink_socket_while_locked(
 			namespace_lock,
 			CANONICAL_NAME,
@@ -906,6 +925,7 @@ mod platform {
 			expected: SocketIdentity,
 		) -> Result<(), LocalTransportRefusal> {
 			self.verify_namespace_lock(namespace_lock)?;
+
 			self.verify_socket(name, expected)
 		}
 
@@ -954,7 +974,9 @@ mod platform {
 			}
 
 			*published = true;
+
 			self.verify_absent(STAGE_NAME)?;
+
 			self.verify_socket_while_locked(namespace_lock, CANONICAL_NAME, expected)
 		}
 

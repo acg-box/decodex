@@ -166,6 +166,7 @@ impl ProgramCycleDto {
 		edges: Vec<ProgramEdgeDto>,
 	) -> Result<Self, ProgramCycleContractError> {
 		validate_list(&non_goals)?;
+
 		if review_policy.as_str().is_empty()
 			|| nodes.is_empty()
 			|| nodes.len() > MAX_PROGRAM_NODES
@@ -173,7 +174,9 @@ impl ProgramCycleDto {
 		{
 			return Err(ProgramCycleContractError::InvalidProjection);
 		}
+
 		let node_ids = nodes.iter().map(|node| node.id.as_str()).collect::<HashSet<_>>();
+
 		if node_ids.len() != nodes.len()
 			|| nodes.iter().any(|node| {
 				node.title.as_str().is_empty()
@@ -187,6 +190,7 @@ impl ProgramCycleDto {
 			}) {
 			return Err(ProgramCycleContractError::InvalidProjection);
 		}
+
 		Ok(Self { program, non_goals, review_policy, domain_pack: None, nodes, edges })
 	}
 
@@ -202,7 +206,9 @@ impl ProgramCycleDto {
 			&self.program.program_id,
 		)
 		.map_err(|_| ProgramCycleContractError::InvalidProjection)?;
+
 		self.domain_pack = Some(domain_pack);
+
 		Ok(self)
 	}
 }
@@ -239,5 +245,6 @@ fn validate_list(values: &[WireText]) -> Result<(), ProgramCycleContractError> {
 	{
 		return Err(ProgramCycleContractError::InvalidCollection);
 	}
+
 	Ok(())
 }

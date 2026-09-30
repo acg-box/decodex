@@ -274,6 +274,7 @@ mod tests {
 	#[test]
 	fn negotiation_accepts_only_the_current_major_and_minor() {
 		assert_eq!(CURRENT_VERSION.negotiate(), Ok(CURRENT_VERSION));
+
 		for requested in [
 			ProtocolVersion { major: CURRENT_VERSION.major ^ 1, ..CURRENT_VERSION },
 			ProtocolVersion { minor: CURRENT_VERSION.minor ^ 1, ..CURRENT_VERSION },
@@ -286,6 +287,7 @@ mod tests {
 	#[test]
 	fn local_transport_authority_accepts_only_the_process_effective_uid() {
 		use crate::{LocalTransportAuthority, LocalTransportRefusal};
+
 		use decodex_core::{DecodexRoot, LocalTrustPolicy};
 
 		let temp = tempfile::tempdir().expect("test operation must succeed");
@@ -316,7 +318,6 @@ mod tests {
 		);
 	}
 }
-
 mod mcp_elicitation;
 pub use mcp_elicitation::{
 	McpFormChoice, McpFormField, mcp_form_content, mcp_form_fields, mcp_request_fields,

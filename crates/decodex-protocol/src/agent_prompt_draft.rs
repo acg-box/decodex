@@ -55,24 +55,31 @@ impl DesktopPromptEditDraft {
 		execution: crate::AgentExecutionOverrides,
 	) -> Result<Self, &'static str> {
 		self.validate()?;
+
 		if self.pending_send.is_some() || self.receipt_id.is_none() || self.handback_pending {
 			return Err("Resolve the existing edit or send before submitting input");
 		}
+
 		self.input.validate_native_input()?;
+
 		let mut pending = self.clone();
+
 		pending.pending_send = Some(crate::PromptInputSend {
 			input_id,
 			sha256: self.input.fingerprint()?,
 			command_key,
 			execution,
 		});
+
 		pending.validate()?;
+
 		Ok(pending)
 	}
 
 	/// Read the unchanged owner and send identity for acceptance reconciliation.
 	pub fn send_identity(&self) -> Result<crate::PromptInputSendIdentity, &'static str> {
 		self.validate()?;
+
 		Ok(crate::PromptInputSendIdentity {
 			work_id: self.work_id.clone(),
 			thread_id: self.thread_id.clone(),
@@ -84,12 +91,16 @@ impl DesktopPromptEditDraft {
 	/// Retain confirmation intent before any native history mutation can be sent.
 	pub fn begin_confirmation(&self, key: crate::IdempotencyKey) -> Result<Self, &'static str> {
 		self.validate()?;
+
 		if self.receipt_id.is_some() || self.handback_pending || self.confirmation_key.is_some() {
 			return Err("Recover the existing history edit first");
 		}
+
 		let mut pending = self.clone();
+
 		pending.confirmation_key = Some(key);
 		pending.handback_pending = true;
+
 		Ok(pending)
 	}
 
@@ -100,7 +111,9 @@ impl DesktopPromptEditDraft {
 		original: &PromptDraft,
 	) -> Result<Self, &'static str> {
 		self.validate()?;
+
 		let evidence = status.evidence.as_ref().ok_or("History edit receipt is unavailable")?;
+
 		if !status.is_valid()
 			|| status.work_id != self.work_id
 			|| status.thread_id != self.thread_id
@@ -118,7 +131,9 @@ impl DesktopPromptEditDraft {
 			) {
 			return Err("History edit source changed; retain this draft separately");
 		}
+
 		let mut recovered = self.clone();
+
 		recovered.confirmation_key = None;
 		recovered.receipt_id = if status.phase == crate::PromptEditPhase::Unchanged {
 			None
@@ -129,6 +144,7 @@ impl DesktopPromptEditDraft {
 			status.phase,
 			crate::PromptEditPhase::Uncertain | crate::PromptEditPhase::Applied
 		);
+
 		Ok(recovered)
 	}
 
@@ -136,6 +152,7 @@ impl DesktopPromptEditDraft {
 	pub fn refresh_review(&self, fresh: &Self) -> Result<Self, &'static str> {
 		self.validate()?;
 		fresh.validate()?;
+
 		if self.receipt_id.is_some()
 			|| fresh.receipt_id.is_some()
 			|| self.handback_pending
@@ -154,8 +171,11 @@ impl DesktopPromptEditDraft {
 				"Original input changed; keep this draft and review the current history separately",
 			);
 		}
+
 		let mut result = fresh.clone();
+
 		result.input = self.input.clone();
+
 		Ok(result)
 	}
 
@@ -177,6 +197,7 @@ impl DesktopPromptEditDraft {
 		{
 			return Err("Prompt draft source is invalid");
 		}
+
 		if let Some(send) = &self.pending_send
 			&& (send.input_id <= 0
 				|| self.receipt_id.is_none()
@@ -196,7 +217,9 @@ impl PromptDraft {
 	/// Local file readability and the complete native request envelope are separate checks.
 	pub fn validate_native_input(&self) -> Result<(), &'static str> {
 		self.validate()?;
+
 		let mut text_chars = 0usize;
+
 		for part in &self.0 {
 			let string = |key: &str| part.get(key).and_then(Value::as_str).is_some();
 			let valid = match part["type"].as_str() {
@@ -204,6 +227,7 @@ impl PromptDraft {
 					text_chars = text_chars.saturating_add(
 						part["text"].as_str().ok_or("Input text is missing")?.chars().count(),
 					);
+
 					true
 				},
 				Some("image") => {
@@ -219,6 +243,7 @@ impl PromptDraft {
 							"Remote image URLs cannot be sent; use an inline image or a local image file",
 						);
 					}
+
 					string("url") || string("fileId")
 				},
 				Some("localImage" | "localAudio") => string("path"),
@@ -229,6 +254,7 @@ impl PromptDraft {
 						"This native input type is not supported by the qualified Codex contract",
 					),
 			};
+
 			if !valid {
 				return Err("A native input part is incomplete");
 			}
@@ -239,16 +265,19 @@ impl PromptDraft {
 				return Err("Image detail is not supported by the qualified Codex contract");
 			}
 		}
+
 		// Upstream protocol::user_input and TurnProcessor::validate_v2_input_limit.
 		if text_chars > 1 << 20 {
 			return Err("Input exceeds the native limit of 1048576 text characters");
 		}
+
 		Ok(())
 	}
 
 	/// Hash complete canonical parts without flattening native input or ignoring fields.
 	pub fn fingerprint(&self) -> Result<crate::Sha256Digest, &'static str> {
 		let bytes = serde_json::to_vec(&self.0).map_err(|_| "Prompt encoding failed")?;
+
 		crate::Sha256Digest::new(decodex_core::BlobHash::digest(&bytes).to_hex())
 			.map_err(|_| "Prompt digest is invalid")
 	}
@@ -256,7 +285,9 @@ impl PromptDraft {
 	/// Retain complete native parts after checking editable UTF-8 text markers.
 	pub fn new(parts: Vec<Value>) -> Result<Self, &'static str> {
 		let draft = Self(parts);
+
 		draft.validate()?;
+
 		Ok(draft)
 	}
 
@@ -268,7 +299,9 @@ impl PromptDraft {
 	/// Capture one edited part without replacing the surrounding attachments and bindings.
 	pub fn replace_part(&mut self, index: usize, part: Value) -> Result<(), &'static str> {
 		Self::new(vec![part.clone()])?;
+
 		*self.0.get_mut(index).ok_or("Input part is missing")? = part;
+
 		Ok(())
 	}
 
@@ -280,7 +313,9 @@ impl PromptDraft {
 		if self.0.len() == 1 {
 			return Err("Keep at least one input part");
 		}
+
 		self.0.remove(index);
+
 		Ok(())
 	}
 
@@ -295,23 +330,32 @@ impl PromptDraft {
 		markers: &[(usize, usize)],
 	) -> Result<(), &'static str> {
 		self.validate()?;
+
 		if self.0.get(part_index).is_none_or(|part| part["type"] == "text") {
 			return Err("Select a non-text input to remove");
 		}
+
 		let mut selected = std::collections::BTreeMap::<usize, Vec<(usize, Range<usize>)>>::new();
 		let mut identities = std::collections::BTreeSet::new();
+
 		for &(text_index, element_index) in markers {
 			if !identities.insert((text_index, element_index)) {
 				return Err("Text marker was selected twice");
 			}
+
 			let part = self.0.get(text_index).ok_or("Input part is missing")?;
+
 			if part["type"] != "text" {
 				return Err("Selected marker does not belong to text");
 			}
+
 			let element = elements(part)?.get(element_index).ok_or("Text marker is missing")?;
+
 			selected.entry(text_index).or_default().push((element_index, element_range(element)?));
 		}
+
 		let mut updated = self.clone();
+
 		for (text_index, mut targets) in selected {
 			let original = elements(&self.0[text_index])?;
 			let retained: Vec<_> = original
@@ -320,17 +364,24 @@ impl PromptDraft {
 				.filter(|(index, _)| !identities.contains(&(text_index, *index)))
 				.map(|(_, element)| element.clone())
 				.collect();
+
 			updated.0[text_index]["text_elements"] = Value::Array(retained);
+
 			targets.sort_by_key(|(_, range)| (range.start, range.end));
+
 			if targets.windows(2).any(|pair| pair[0].1.end > pair[1].1.start) {
 				return Err("Selected text markers overlap");
 			}
+
 			for (_, range) in targets.into_iter().rev() {
 				updated.replace_text(text_index, range, "")?;
 			}
 		}
+
 		updated.remove_part(part_index)?;
+
 		*self = updated;
+
 		Ok(())
 	}
 
@@ -339,19 +390,24 @@ impl PromptDraft {
 		if self.0.is_empty() {
 			return Err("Prompt has no input parts");
 		}
+
 		for part in &self.0 {
 			let kind = part.get("type").and_then(Value::as_str).ok_or("Input type is missing")?;
+
 			if kind == "text" {
 				let text =
 					part.get("text").and_then(Value::as_str).ok_or("Input text is missing")?;
+
 				for element in elements(part)? {
 					let range = element_range(element)?;
+
 					if text.get(range).is_none() {
 						return Err("Text marker is outside a UTF-8 boundary");
 					}
 				}
 			}
 		}
+
 		Ok(())
 	}
 
@@ -367,18 +423,25 @@ impl PromptDraft {
 		replacement: &str,
 	) -> Result<(), &'static str> {
 		self.validate()?;
+
 		let part = self.0.get(part_index).ok_or("Input part is missing")?;
+
 		if part.get("type").and_then(Value::as_str) != Some("text") {
 			return Err("Input part is not text");
 		}
+
 		let text = part["text"].as_str().ok_or("Input text is missing")?;
+
 		if text.get(range.clone()).is_none() {
 			return Err("Edit is outside a UTF-8 boundary");
 		}
+
 		let mut updated = part.clone();
+
 		if let Some(markers) = updated.get_mut("text_elements").and_then(Value::as_array_mut) {
 			for marker in markers {
 				let old = element_range(marker)?;
+
 				if range.start < old.end && range.end > old.start
 					|| range.is_empty() && old.start < range.start && range.start < old.end
 				{
@@ -387,15 +450,20 @@ impl PromptDraft {
 				if range.end <= old.start {
 					let start = old.start - range.len() + replacement.len();
 					let end = old.end - range.len() + replacement.len();
+
 					marker["byteRange"]["start"] = Value::from(start);
 					marker["byteRange"]["end"] = Value::from(end);
 				}
 			}
 		}
+
 		let mut text = text.to_owned();
+
 		text.replace_range(range, replacement);
+
 		updated["text"] = Value::String(text);
 		self.0[part_index] = updated;
+
 		Ok(())
 	}
 }
@@ -419,9 +487,11 @@ fn element_range(element: &Value) -> Result<Range<usize>, &'static str> {
 	};
 	let start = offset("start")?;
 	let end = offset("end")?;
+
 	if start > end {
 		return Err("Text marker range is reversed");
 	}
+
 	Ok(start..end)
 }
 
@@ -455,10 +525,15 @@ mod tests {
 		])
 		.unwrap();
 		let unchanged = draft.clone();
+
 		draft.validate_native_input().unwrap();
+
 		assert_eq!(draft, unchanged);
+
 		draft.replace_text(1, 0..0, "x").unwrap();
+
 		assert!(draft.validate_native_input().is_err());
+
 		for part in [
 			json!({"type":"image"}),
 			json!({"type":"audio","audio_url":"old-internal-field"}),
@@ -468,6 +543,7 @@ mod tests {
 			json!({"type":"image","url":"data:image/png;base64,AA==","detail":"unsupported"}),
 		] {
 			let retained = PromptDraft::new(vec![part.clone()]).unwrap();
+
 			assert!(retained.validate_native_input().is_err());
 			assert_eq!(retained.parts(), &[part]);
 		}
@@ -480,6 +556,7 @@ mod tests {
 		{
 			let part = json!({"type":"image","url":url,"fileId":"file","detail":"original"});
 			let draft = PromptDraft::new(vec![part.clone()]).unwrap();
+
 			assert!(draft.validate_native_input().unwrap_err().contains("Remote image URLs"));
 			assert_eq!(draft.parts(), &[part]);
 		}
@@ -509,21 +586,33 @@ mod tests {
 			input: sample(),
 		};
 		let mut fresh = saved.clone();
+
 		fresh.review_token = crate::WireText::new("b".repeat(64)).unwrap();
+
 		saved.input.replace_text(0, 0..3, "Edited").unwrap();
+
 		let renewed = saved.refresh_review(&fresh).unwrap();
+
 		assert_eq!(renewed.input, saved.input);
 		assert_eq!(renewed.review_token, fresh.review_token);
+
 		fresh.input.replace_part(3, json!({"type":"image","fileId":"different"})).unwrap();
+
 		assert!(saved.refresh_review(&fresh).is_err());
+
 		fresh.original_hash = fresh.input.fingerprint().unwrap();
+
 		assert!(saved.refresh_review(&fresh).is_err());
+
 		fresh.input = sample();
 		fresh.original_hash = fresh.input.fingerprint().unwrap();
 		fresh.thread_id = crate::WireText::new("another-thread").unwrap();
+
 		assert!(saved.refresh_review(&fresh).is_err());
+
 		fresh.thread_id = saved.thread_id.clone();
 		saved.receipt_id = Some(42);
+
 		assert!(saved.refresh_review(&fresh).is_err());
 	}
 
@@ -544,33 +633,45 @@ mod tests {
 			pending_send: None,
 			input: original.clone(),
 		};
+
 		draft.input.replace_text(0, 0..3, "Edited").unwrap();
+
 		draft =
 			draft.begin_confirmation(crate::IdempotencyKey::new("confirm-once").unwrap()).unwrap();
+
 		assert!(draft.receipt_id.is_none() && draft.handback_pending);
 		assert!(
 			draft.begin_confirmation(crate::IdempotencyKey::new("do-not-repeat").unwrap()).is_err()
 		);
+
 		let mut document = crate::DesktopDraftDocument::default();
+
 		document
 			.profiles
 			.entry("a".repeat(64))
 			.or_default()
 			.prompt_edits
 			.insert(draft.review_token.as_str().into(), draft.clone());
+
 		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().canonicalize().unwrap().join("desktop");
 		let store = crate::ClientDraftStore::open_at(&path).unwrap();
+
 		store.save(0, &document.encode().unwrap()).unwrap();
+
 		drop(store);
+
 		let reopened = crate::ClientDraftStore::open_at(&path).unwrap();
 		let restored =
 			crate::DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
 		let profile = &restored.profiles[&"a".repeat(64)];
+
 		assert!(profile.has_unconfirmed_delivery());
+
 		assert_pending_send_retained(&draft, &reopened);
 
 		assert_eq!(profile.prompt_edits[draft.review_token.as_str()], draft);
+
 		let fragment = serde_json::to_string(&original).unwrap();
 		let mut status = crate::PromptEditStatus {
 			work_id: draft.work_id.clone(),
@@ -587,20 +688,26 @@ mod tests {
 				fragment,
 			}),
 		};
+
 		for phase in [
 			crate::PromptEditPhase::Uncertain,
 			crate::PromptEditPhase::Applied,
 			crate::PromptEditPhase::Restored,
 		] {
 			status.phase = phase;
+
 			let recovered = draft.recover_receipt(&status, &original).unwrap();
+
 			assert_eq!(recovered.input, draft.input);
 			assert_eq!(recovered.receipt_id, Some(42));
 			assert!(recovered.confirmation_key.is_none());
 			assert_eq!(recovered.handback_pending, phase != crate::PromptEditPhase::Restored);
 		}
+
 		status.phase = crate::PromptEditPhase::Unchanged;
+
 		let unchanged = draft.recover_receipt(&status, &original).unwrap();
+
 		assert!(
 			unchanged.receipt_id.is_none()
 				&& unchanged.confirmation_key.is_none()
@@ -608,13 +715,19 @@ mod tests {
 		);
 		assert_eq!(unchanged.input, draft.input);
 		assert!(draft.recover_receipt(&status, &draft.input).is_err());
+
 		draft.confirmation_key = None;
 		draft.receipt_id = Some(43);
+
 		assert!(draft.recover_receipt(&status, &original).is_err());
+
 		draft.receipt_id = None;
 		draft.handback_pending = false;
+
 		draft.validate().unwrap();
+
 		status.thread_id = crate::WireText::new("other").unwrap();
+
 		assert!(draft.recover_receipt(&status, &original).is_err());
 	}
 
@@ -623,9 +736,11 @@ mod tests {
 		reopened: &crate::ClientDraftStore,
 	) {
 		let mut restored_edit = draft.clone();
+
 		restored_edit.confirmation_key = None;
 		restored_edit.handback_pending = false;
 		restored_edit.receipt_id = Some(42);
+
 		assert!(
 			restored_edit
 				.begin_send(
@@ -635,7 +750,9 @@ mod tests {
 				)
 				.is_err()
 		);
+
 		restored_edit.input.remove_part(5).unwrap();
+
 		let sending = restored_edit
 			.begin_send(
 				7,
@@ -643,6 +760,7 @@ mod tests {
 				crate::AgentExecutionOverrides::default(),
 			)
 			.unwrap();
+
 		assert_eq!(sending.send_identity().unwrap().send.command_key.as_str(), "send-once");
 		assert!(
 			sending
@@ -653,20 +771,29 @@ mod tests {
 				)
 				.is_err()
 		);
+
 		let mut changed = sending.clone();
+
 		changed.input.replace_text(0, 0..0, "changed").unwrap();
+
 		assert!(changed.validate().is_err());
+
 		let mut sending_document = crate::DesktopDraftDocument::default();
+
 		sending_document
 			.profiles
 			.entry("a".repeat(64))
 			.or_default()
 			.prompt_edits
 			.insert(sending.review_token.as_str().into(), sending.clone());
+
 		let next_revision = reopened.load().unwrap().revision;
+
 		reopened.save(next_revision, &sending_document.encode().unwrap()).unwrap();
+
 		let reopened_send =
 			crate::DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
+
 		assert!(reopened_send.profiles[&"a".repeat(64)].has_unconfirmed_delivery());
 		assert_eq!(
 			reopened_send.profiles[&"a".repeat(64)].prompt_edits[sending.review_token.as_str()],
@@ -678,15 +805,20 @@ mod tests {
 	fn unicode_edit_remaps_spans_without_losing_native_parts_or_extensions() {
 		let mut draft = sample();
 		let before = draft.clone();
+
 		draft.replace_text(0, 0..3, "hello").unwrap();
+
 		assert_eq!(draft.parts()[0]["text"], "hello $skill end");
 		assert_eq!(draft.parts()[0]["text_elements"][0]["byteRange"], json!({"start":6,"end":12}));
 		assert_eq!(draft.parts()[0]["text_elements"][0]["extension"], true);
 		assert_eq!(draft.parts()[0]["extension"], "retain");
 		assert_eq!(&draft.parts()[1..], &before.parts()[1..]);
+
 		let saved = serde_json::to_vec(&draft).unwrap();
 		let restored: PromptDraft = serde_json::from_slice(&saved).unwrap();
+
 		restored.validate().unwrap();
+
 		assert_eq!(restored, draft);
 	}
 
@@ -694,9 +826,11 @@ mod tests {
 	fn invalid_or_bound_edits_leave_the_entire_draft_unchanged() {
 		for range in [1..2, Range { start: 8, end: 7 }, 0..100, 5..6, 5..5, 4..10] {
 			let mut draft = sample();
+
 			assert!(draft.replace_text(0, range, "x").is_err());
 			assert_eq!(draft, sample());
 		}
+
 		assert!(sample().replace_text(3, 0..0, "x").is_err());
 	}
 
@@ -704,9 +838,12 @@ mod tests {
 	fn insertions_at_marker_edges_preserve_its_exact_text() {
 		for position in [4, 10] {
 			let mut draft = sample();
+
 			draft.replace_text(0, position..position, "你好").unwrap();
+
 			let part = &draft.parts()[0];
 			let range = element_range(&part["text_elements"][0]).unwrap();
+
 			assert_eq!(&part["text"].as_str().unwrap()[range], "$skill");
 		}
 	}
@@ -715,7 +852,9 @@ mod tests {
 	fn large_text_is_never_silently_shortened() {
 		let text = "界".repeat(20_000);
 		let mut draft = PromptDraft::new(vec![json!({"type":"text","text":text})]).unwrap();
+
 		draft.replace_text(0, 0..3, "hello").unwrap();
+
 		assert_eq!(draft.parts()[0]["text"].as_str().unwrap().len(), text.len() + 2);
 		assert!(draft.parts()[0].get("text_elements").is_none());
 	}
@@ -724,13 +863,19 @@ mod tests {
 	fn capturing_an_editor_part_preserves_attachments_and_rejects_invalid_replacements() {
 		let mut draft = sample();
 		let mut editor = PromptDraft::new(vec![draft.parts()[0].clone()]).unwrap();
+
 		editor.replace_text(0, 0..3, "hello").unwrap();
 		draft.replace_part(0, editor.parts()[0].clone()).unwrap();
+
 		assert_eq!(&draft.parts()[1..], &sample().parts()[1..]);
+
 		let before = draft.clone();
+
 		assert!(draft.replace_part(0, serde_json::json!({"type":"text"})).is_err());
 		assert_eq!(draft, before);
+
 		draft.remove_part(3).unwrap();
+
 		assert!(!draft.parts().iter().any(|part| part.get("fileId").is_some()));
 		assert_eq!(draft.parts()[3]["type"], "audio");
 		assert!(editor.remove_part(0).is_err());
@@ -740,24 +885,34 @@ mod tests {
 	fn removing_bound_input_is_atomic_and_does_not_search_plain_text() {
 		let mut draft = sample();
 		let image = draft.parts()[3].clone();
+
 		draft.remove_bound_part(1, &[(0, 0)]).unwrap();
+
 		assert_eq!(draft.parts()[0]["text"], "你  end");
 		assert_eq!(draft.parts()[0]["text_elements"], json!([]));
 		assert_eq!(draft.parts()[2], image);
 		assert_eq!(draft.parts()[0]["extension"], "retain");
+
 		let mut original = sample();
+
 		assert!(original.remove_bound_part(1, &[(0, 0), (0, 0)]).is_err());
 		assert_eq!(original, sample());
 		assert!(original.remove_bound_part(1, &[(0, 99)]).is_err());
 		assert_eq!(original, sample());
+
 		original.remove_bound_part(1, &[]).unwrap();
+
 		assert_eq!(original.parts()[0], sample().parts()[0]);
+
 		let mut overlapping = sample();
+
 		overlapping.0[0]["text_elements"]
 			.as_array_mut()
 			.unwrap()
 			.push(json!({"byteRange":{"start":7,"end":10},"placeholder":"overlap"}));
+
 		let before = overlapping.clone();
+
 		assert!(overlapping.remove_bound_part(1, &[(0, 0)]).is_err());
 		assert_eq!(overlapping, before);
 		assert!(overlapping.remove_bound_part(1, &[(0, 0), (0, 1)]).is_err());
@@ -774,7 +929,9 @@ mod tests {
 			json!({"type":"image","fileId":"remove"}),
 		])
 		.unwrap();
+
 		draft.remove_bound_part(1, &[(0, 2), (0, 0)]).unwrap();
+
 		assert_eq!(draft.parts()[0]["text"], "ab好");
 		assert_eq!(draft.parts()[0]["text_elements"][0]["byteRange"], json!({"start":2,"end":5}));
 		assert_eq!(draft.parts()[0]["text_elements"][0]["placeholder"], "keep");
@@ -785,6 +942,7 @@ mod tests {
 		use crate::{
 			ClientDraftStore, DesktopDraftDocument, DesktopProfileDraft, EntityId, WireText,
 		};
+
 		let input = PromptDraft::new(vec![
 			json!({"type":"text","text":"Original"}),
 			json!({"type":"image","url":format!("data:image/png;base64,{}", "A".repeat(6 * 1024 * 1024))}),
@@ -793,7 +951,9 @@ mod tests {
 		let review = "b".repeat(64);
 		let scope = "a".repeat(64);
 		let mut profile = DesktopProfileDraft::default();
+
 		profile.composer.text = "Other unsent input".into();
+
 		profile.prompt_edits.insert(
 			review.clone(),
 			DesktopPromptEditDraft {
@@ -811,9 +971,13 @@ mod tests {
 				input,
 			},
 		);
+
 		let mut baseline = DesktopDraftDocument::default();
+
 		baseline.profiles.insert(scope.clone(), profile);
+
 		let mut local = baseline.clone();
+
 		local
 			.profiles
 			.get_mut(&scope)
@@ -824,7 +988,9 @@ mod tests {
 			.input
 			.replace_text(0, 0..8, "Local")
 			.unwrap();
+
 		let mut remote = baseline.clone();
+
 		remote
 			.profiles
 			.get_mut(&scope)
@@ -835,16 +1001,23 @@ mod tests {
 			.input
 			.replace_text(0, 0..8, "Remote")
 			.unwrap();
+
 		let merged = local.reconcile_keep_both(&baseline, &remote).unwrap();
 		let encoded = merged.encode().unwrap();
+
 		assert!(encoded.len() > 12 * 1024 * 1024);
+
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
 		let store = ClientDraftStore::open_at(&root).unwrap();
+
 		store.save(0, &encoded).unwrap();
+
 		drop(store);
+
 		let reopened = ClientDraftStore::open_at(&root).unwrap();
 		let restored = DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
+
 		assert!(restored == merged);
 		assert_eq!(restored.profiles[&scope].composer.text, "Other unsent input");
 		assert_eq!(restored.recovered.len(), 1);
@@ -855,11 +1028,14 @@ mod tests {
 		use crate::{
 			ClientDraftStore, DesktopDraftDocument, DesktopProfileDraft, EntityId, WireText,
 		};
+
 		let mut document = DesktopDraftDocument::default();
 		let scope = "a".repeat(64);
 		let review = "b".repeat(64);
 		let mut profile = DesktopProfileDraft::default();
+
 		profile.composer.text = "Existing unsent input".into();
+
 		profile.prompt_edits.insert(
 			review.clone(),
 			DesktopPromptEditDraft {
@@ -878,15 +1054,22 @@ mod tests {
 			},
 		);
 		document.profiles.insert(scope.clone(), profile);
+
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
 		let store = ClientDraftStore::open_at(&root).unwrap();
+
 		store.save(0, &document.encode().unwrap()).unwrap();
+
 		drop(store);
+
 		let store = ClientDraftStore::open_at(&root).unwrap();
 		let restored = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+
 		assert!(restored == document);
+
 		let mut local = restored.clone();
+
 		local
 			.profiles
 			.get_mut(&scope)
@@ -897,7 +1080,9 @@ mod tests {
 			.input
 			.replace_text(0, 0..3, "local")
 			.unwrap();
+
 		let mut remote = restored.clone();
+
 		remote
 			.profiles
 			.get_mut(&scope)
@@ -908,18 +1093,28 @@ mod tests {
 			.input
 			.replace_text(0, 0..3, "remote")
 			.unwrap();
+
 		let merged = local.reconcile_keep_both(&restored, &remote).unwrap();
+
 		assert_eq!(merged.profiles[&scope].composer.text, "Existing unsent input");
 		assert_eq!(merged.profiles[&scope].prompt_edits, local.profiles[&scope].prompt_edits);
 		assert_eq!(merged.recovered[0].draft.prompt_edits, remote.profiles[&scope].prompt_edits);
 		assert!(merged.remove_recovered_copy(&merged.recovered[0]).is_err());
+
 		let selected = merged.restore_recovered_copy(&merged.recovered[0]).unwrap();
+
 		assert_eq!(selected.profiles[&scope].prompt_edits, remote.profiles[&scope].prompt_edits);
+
 		let mut removed = restored.clone();
+
 		removed.profiles.get_mut(&scope).unwrap().prompt_edits.clear();
+
 		let reconciled = removed.reconcile_keep_both(&restored, &remote).unwrap();
+
 		assert_eq!(reconciled.profiles[&scope].prompt_edits, remote.profiles[&scope].prompt_edits);
+
 		let old = DesktopDraftDocument::decode(br#"{"version":7,"profiles":{}}"#).unwrap();
+
 		assert_eq!(old.version, 10);
 		assert!(old.profiles.is_empty());
 	}

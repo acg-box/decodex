@@ -66,6 +66,7 @@ impl DoctorReport {
 	/// Attach an optional process observation without changing component readiness.
 	pub fn with_native_process(mut self, observation: NativeProcessDiagnostics) -> Self {
 		self.native_process = Some(observation);
+
 		self
 	}
 
@@ -118,10 +119,11 @@ impl<'de> Deserialize<'de> for DoctorReport {
 		}
 
 		let raw = RawDoctorReport::deserialize(deserializer)?;
-
 		let mut report =
 			Self::new(raw.server_id, raw.version, raw.checks).map_err(D::Error::custom)?;
+
 		report.native_process = raw.native_process;
+
 		Ok(report)
 	}
 }
@@ -348,6 +350,7 @@ mod tests {
 
 		assert!(encoded.contains("unsafe_host_path"));
 		assert_eq!(serde_json::from_str::<DoctorReport>(&encoded).unwrap(), report);
+
 		let observed =
 			report.clone().with_native_process(super::NativeProcessDiagnostics::Available {
 				process_id: 42,
@@ -355,6 +358,7 @@ mod tests {
 				physical_footprint_bytes: None,
 			});
 		let encoded = serde_json::to_string(&observed).unwrap();
+
 		assert_eq!(serde_json::from_str::<DoctorReport>(&encoded).unwrap(), observed);
 
 		let duplicate = DoctorReport::new(
@@ -370,7 +374,9 @@ mod tests {
 
 		let mut raw = serde_json::to_value(&report).unwrap();
 		let checks = raw["checks"].as_array_mut().unwrap();
+
 		checks.push(checks[0].clone());
+
 		assert!(serde_json::from_value::<DoctorReport>(raw).is_err());
 	}
 

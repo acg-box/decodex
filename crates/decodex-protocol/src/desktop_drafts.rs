@@ -176,8 +176,10 @@ impl DesktopDraftDocument {
 		if bytes.len() > crate::MAX_CLIENT_DRAFT_BYTES {
 			return Err("Draft snapshot is too large");
 		}
+
 		let mut value: Self =
 			serde_json::from_slice(bytes).map_err(|_| "Draft snapshot is invalid")?;
+
 		if value.version <= 5 {
 			for profile in value
 				.profiles
@@ -200,16 +202,22 @@ impl DesktopDraftDocument {
 				}
 			}
 		}
+
 		value.validate()?;
+
 		value.version = 10;
+
 		Ok(value)
 	}
 
 	/// Encode without permitting serialization to allocate an unbounded payload.
 	pub fn encode(&self) -> Result<Vec<u8>, &'static str> {
 		self.validate()?;
+
 		let mut output = BoundedOutput(Vec::new());
+
 		serde_json::to_writer(&mut output, self).map_err(|_| "Draft snapshot is too large")?;
+
 		Ok(output.0)
 	}
 
@@ -223,23 +231,29 @@ impl DesktopDraftDocument {
 		if self.recovered.len() > 32 {
 			return Err("Too many recovered draft copies");
 		}
+
 		for saved in &self.recovered {
 			saved.validate()?;
 		}
+
 		self.unbound.validate()?;
+
 		super::desktop_ordinary_drafts::validate_unbound(&self.unbound_ordinary)?;
 
 		if self.unbound.work_id.is_some() || self.unbound.thread_id.is_some() {
 			return Err("Unbound draft cannot own a work or native thread");
 		}
+
 		for (scope, profile) in &self.profiles {
 			if scope.len() != 64
 				|| !scope.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 			{
 				return Err("Draft profile identity is invalid");
 			}
+
 			profile.validate()?;
 		}
+
 		Ok(())
 	}
 }
@@ -256,24 +270,31 @@ impl DesktopProfileDraft {
 
 	fn validate(&self) -> Result<(), &'static str> {
 		self.composer.validate()?;
+
 		if self.prompt_edits.len() > 64 {
 			return Err("Too many prompt editors");
 		}
+
 		for (review, draft) in &self.prompt_edits {
 			if review != draft.review_token.as_str() {
 				return Err("Prompt draft review does not match");
 			}
+
 			draft.validate()?;
 		}
+
 		if self.ordinary.len() > 64 {
 			return Err("Too many ordinary directory drafts");
 		}
+
 		for (directory, draft) in &self.ordinary {
 			if directory != draft.working_directory.as_str() {
 				return Err("Ordinary draft directory does not match");
 			}
+
 			draft.validate()?;
 		}
+
 		if self.unconfirmed_commands.len() > 64
 			|| (!self.unconfirmed_commands.is_empty() && !self.uncertain)
 		{
@@ -282,19 +303,24 @@ impl DesktopProfileDraft {
 		if self.parked.len() > 256 || self.execution.len() > 256 || self.questions.len() > 1024 {
 			return Err("Too many draft editors");
 		}
+
 		for (work, draft) in &self.parked {
 			if draft.work_id.as_ref().map(EntityId::as_str) != Some(work.as_str()) {
 				return Err("Draft owner does not match");
 			}
+
 			draft.validate()?;
 		}
 		for (work, (revision, _)) in &self.execution {
 			EntityId::new(work).map_err(|_| "Draft execution owner is invalid")?;
+
 			if *revision > self.execution_revision {
 				return Err("Draft execution revision is invalid");
 			}
 		}
+
 		let mut identities = BTreeSet::new();
+
 		for question in &self.questions {
 			if !identities.insert((
 				question.work_id.as_str(),
@@ -306,15 +332,19 @@ impl DesktopProfileDraft {
 			if question.thread_id.as_str().is_empty() || question.question_id.as_str().is_empty() {
 				return Err("Question draft source is empty");
 			}
+
 			validate_text(&question.text)?;
+
 			for value in [&question.selected, &question.custom].into_iter().flatten() {
 				validate_text(value)?;
 			}
 		}
+
 		if let Some(pending) = &self.pending {
 			if !self.uncertain {
 				return Err("Unconfirmed input requires a delivery fence");
 			}
+
 			if let Some(text) = &pending.text {
 				validate_text(text)?;
 			}
@@ -344,6 +374,7 @@ impl DesktopProfileDraft {
 				return Err("Pending steering owner does not match");
 			}
 		}
+
 		Ok(())
 	}
 }
@@ -353,10 +384,12 @@ impl DesktopComposerDraft {
 			if self.work_id.is_some() || self.thread_id.is_some() {
 				return Err("Creation setup cannot belong to existing work");
 			}
+
 			for value in [&setup.model, &setup.working_directory, &setup.account] {
 				validate_text(value)?;
 			}
 		}
+
 		if self
 			.thread_id
 			.as_ref()
@@ -364,10 +397,13 @@ impl DesktopComposerDraft {
 		{
 			return Err("Draft thread has no work owner");
 		}
+
 		validate_text(&self.text)?;
+
 		if self.attachments.len() > 64 || self.references.len() > 64 {
 			return Err("Too many draft attachments or references");
 		}
+
 		Ok(())
 	}
 }
@@ -380,7 +416,9 @@ impl Write for BoundedOutput {
 		if self.0.len().saturating_add(bytes.len()) > crate::MAX_CLIENT_DRAFT_BYTES {
 			return Err(io::Error::other("draft snapshot limit"));
 		}
+
 		self.0.extend_from_slice(bytes);
+
 		Ok(bytes.len())
 	}
 
@@ -416,6 +454,7 @@ mod tests {
 			uncertain: true,
 			..Default::default()
 		};
+
 		profile.execution.insert(
 			"work".into(),
 			(
@@ -435,6 +474,7 @@ mod tests {
 			custom: Some("Custom alternative".into()),
 			collapsed: true,
 		});
+
 		profile.pending = Some(DesktopPendingDraft {
 			steer: Some(AgentSteerIdentity {
 				work_id: EntityId::new("work").unwrap(),
@@ -448,6 +488,7 @@ mod tests {
 			references: None,
 			execution: Some((EntityId::new("work").unwrap(), 4)),
 		});
+
 		DesktopDraftDocument {
 			version: 10,
 			profiles: BTreeMap::from([("a".repeat(64), profile)]),
@@ -472,21 +513,34 @@ mod tests {
 			sandbox: crate::AgentSandboxDto::ReadOnly,
 		};
 		let mut document = DesktopDraftDocument::default();
+
 		document.unbound.creation = Some(setup.clone());
+
 		let bytes = document.encode().unwrap();
+
 		assert_eq!(DesktopDraftDocument::decode(&bytes).unwrap().unbound.creation, Some(setup));
+
 		let old = DesktopDraftDocument::decode(br#"{"version":1,"profiles":{}}"#).unwrap();
+
 		assert_eq!(old.version, 10);
 		assert!(old.unbound.creation.is_none());
+
 		let mut remote = document.clone();
+
 		remote.unbound.creation.as_mut().unwrap().model = "other model".into();
+
 		let merged =
 			document.reconcile_keep_both(&DesktopDraftDocument::default(), &remote).unwrap();
+
 		assert_eq!(merged.unbound.creation, document.unbound.creation);
 		assert_eq!(merged.recovered[0].draft.composer.creation, remote.unbound.creation);
+
 		let restored = merged.restore_recovered_copy(&merged.recovered[0]).unwrap();
+
 		assert_eq!(restored.unbound.creation, remote.unbound.creation);
+
 		document.unbound.work_id = Some(EntityId::new("existing").unwrap());
+
 		assert!(document.encode().is_err());
 	}
 
@@ -496,6 +550,7 @@ mod tests {
 		let root = directory.path().canonicalize().unwrap().join("desktop");
 		let store = crate::ClientDraftStore::open_at(&root).unwrap();
 		let mut original = document();
+
 		original.profiles.get_mut(&"a".repeat(64)).unwrap().composer.attachments.push(
 			AgentAttachmentDto {
 				path: crate::ConversationWorkingDirectory::new("/tmp/skills (exact)/SKILL.md")
@@ -505,11 +560,16 @@ mod tests {
 			},
 		);
 		store.save(0, &original.encode().unwrap()).unwrap();
+
 		drop(store);
+
 		let reopened = crate::ClientDraftStore::open_at(&root).unwrap();
 		let decoded = DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
+
 		assert!(decoded == original);
+
 		let profile = &decoded.profiles[&"a".repeat(64)];
+
 		assert!(profile.questions[0].text.is_empty());
 		assert_eq!(
 			profile.pending.as_ref().unwrap().steer.as_ref().unwrap().submission_id.as_str(),
@@ -521,21 +581,35 @@ mod tests {
 	#[test]
 	fn draft_document_rejects_changed_contract_and_ambiguous_ownership() {
 		let mut original = document();
+
 		original.version = 11;
+
 		assert!(original.encode().is_err());
+
 		let mut json = serde_json::to_value(document()).unwrap();
+
 		json["unexpected"] = serde_json::json!(true);
+
 		assert!(DesktopDraftDocument::decode(&serde_json::to_vec(&json).unwrap()).is_err());
+
 		let mut original = document();
 		let profile = original.profiles.values_mut().next().unwrap();
+
 		profile.questions.push(profile.questions[0].clone());
+
 		assert!(original.encode().is_err());
+
 		let mut original = document();
+
 		original.profiles.values_mut().next().unwrap().uncertain = false;
+
 		assert!(original.encode().is_err());
+
 		let mut original = document();
 		let profile = original.profiles.values_mut().next().unwrap();
+
 		profile.parked.insert("different-work".into(), profile.composer.clone());
+
 		assert!(original.encode().is_err());
 	}
 
@@ -543,39 +617,54 @@ mod tests {
 	fn draft_document_preserves_nonsteer_identity_and_requires_its_fence() {
 		let mut doc = document();
 		let profile = doc.profiles.values_mut().next().unwrap();
+
 		profile.pending = None;
 		profile.unconfirmed_commands =
 			vec![crate::IdempotencyKey::new("original-command").unwrap()];
+
 		let restored = DesktopDraftDocument::decode(&doc.encode().unwrap()).unwrap();
+
 		assert_eq!(
 			restored.profiles.values().next().unwrap().unconfirmed_commands[0].as_str(),
 			"original-command"
 		);
+
 		doc.profiles.values_mut().next().unwrap().uncertain = false;
+
 		assert!(doc.encode().is_err());
 	}
 
 	#[test]
 	fn unbound_draft_requires_no_work_identity_and_preserves_old_documents() {
 		let mut doc = DesktopDraftDocument::default();
+
 		doc.unbound.text = "Unassigned input".into();
+
 		assert_eq!(
 			DesktopDraftDocument::decode(&doc.encode().unwrap()).unwrap().unbound.text,
 			"Unassigned input"
 		);
+
 		doc.unbound.work_id = Some(EntityId::new("work").unwrap());
+
 		assert!(doc.encode().is_err());
+
 		let old = br#"{"version":1,"profiles":{}}"#;
+
 		assert!(DesktopDraftDocument::decode(old).unwrap().unbound.text.is_empty());
 	}
 
 	#[test]
 	fn draft_document_enforces_editor_and_encoded_aggregate_limits() {
 		let mut original = document();
+
 		original.profiles.values_mut().next().unwrap().composer.text = "x".repeat(16 * 1024 + 1);
+
 		assert!(original.encode().is_err());
+
 		let mut original = document();
 		let profile = original.profiles.values_mut().next().unwrap();
+
 		for index in 0..256 {
 			profile.parked.insert(
 				format!("work-{index}"),
@@ -586,8 +675,11 @@ mod tests {
 				},
 			);
 		}
+
 		let other = profile.clone();
+
 		original.profiles.insert("b".repeat(64), other);
+
 		assert_eq!(original.encode().unwrap_err(), "Draft snapshot is too large");
 	}
 }

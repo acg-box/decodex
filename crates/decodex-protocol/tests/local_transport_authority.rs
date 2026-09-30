@@ -93,7 +93,6 @@ async fn publication_is_private_exclusive_and_reusable_after_exact_cleanup() {
 	assert_eq!(lock.uid(), effective_uid);
 	assert_eq!(socket.nlink(), 1);
 	assert_eq!(lock.nlink(), 1);
-
 	assert_eq!(
 		authority.bind().await.expect_err("second daemon must not acquire namespace"),
 		LocalTransportRefusal::EndpointInUse
@@ -106,18 +105,23 @@ async fn publication_is_private_exclusive_and_reusable_after_exact_cleanup() {
 	let mut server = server.expect("admit kernel-authenticated client peer");
 
 	client.write_all(b"same-uid").await.expect("write through local stream");
+
 	let mut message = [0_u8; 8];
+
 	server.read_exact(&mut message).await.expect("read through local stream");
+
 	assert_eq!(&message, b"same-uid");
 
 	drop(client);
 	drop(server);
+
 	listener.cleanup().expect("clean exact publication");
 
 	assert!(!socket_path.exists());
 	assert!(lock_path.is_file(), "persistent namespace lock must remain");
 
 	let replacement = authority.bind().await.expect("reuse namespace after cleanup");
+
 	replacement.cleanup().expect("clean replacement publication");
 }
 
@@ -130,6 +134,7 @@ async fn executable_stale_stage_and_canonical_sockets_are_recovered() {
 
 		fs::set_permissions(&stale_path, fs::Permissions::from_mode(0o600))
 			.expect("scope stale fixture socket");
+
 		drop(stale);
 
 		assert!(stale_path.exists());
@@ -162,6 +167,7 @@ async fn endpoint_replacement_is_reported_and_never_unlinked_by_cleanup() {
 	assert!(socket_path.exists(), "cleanup must preserve an unowned replacement");
 
 	drop(replacement);
+
 	fs::remove_file(&socket_path).expect("remove temporary replacement");
 	fs::remove_file(&retained_copy).expect("remove moved retained endpoint");
 }
@@ -172,6 +178,7 @@ async fn unsafe_namespace_entries_fail_closed() {
 	let target = socket_path.with_file_name("not-a-socket");
 
 	fs::write(&target, b"fixture").expect("write symlink target");
+
 	symlink(&target, &socket_path).expect("create unsafe endpoint link");
 
 	assert_eq!(

@@ -103,10 +103,15 @@ mod tests {
 	fn model_action_distinguishes_preserved_effort_from_native_none() {
 		let preserved = json!({"action":"set_task_model","data":{"work_id":"work","thread_id":"thread","review_token":"review","model":"future-model","effort":null}});
 		let action: AgentActionDto = serde_json::from_value(preserved.clone()).unwrap();
+
 		assert!(matches!(action, AgentActionDto::SetTaskModel { effort: None, .. }));
+
 		let mut explicit = preserved.clone();
+
 		explicit["data"]["effort"] = json!("none");
+
 		let action: AgentActionDto = serde_json::from_value(explicit).unwrap();
+
 		assert!(matches!(
 			action,
 			AgentActionDto::SetTaskModel {
@@ -114,9 +119,12 @@ mod tests {
 				..
 			}
 		));
+
 		for field in ["serviceTier", "modelProvider", "collaborationMode"] {
 			let mut widened = preserved.clone();
+
 			widened["data"][field] = Value::Null;
+
 			assert!(serde_json::from_value::<AgentActionDto>(widened).is_err());
 		}
 	}

@@ -21,9 +21,11 @@ impl AccountLoginUrl {
 	/// Validate and construct one bounded provider URL.
 	pub fn new(value: impl Into<String>) -> Result<Self, WireScalarTooLong> {
 		let value = value.into();
+
 		if value.len() > MAX_ACCOUNT_LOGIN_URL_BYTES {
 			return Err(WireScalarTooLong::new(value.len(), MAX_ACCOUNT_LOGIN_URL_BYTES));
 		}
+
 		Ok(Self(value))
 	}
 
@@ -100,6 +102,7 @@ impl AccountLoginStart {
 		if !is_canonical_uuid(self.session_id.as_str()) {
 			return Err(AccountLoginContractError::InvalidIdentity);
 		}
+
 		let (operation_id, account_id) = match &self.install_mode {
 			AccountLoginInstallMode::Enroll { operation_id, account_id, .. } =>
 				(operation_id, account_id),
@@ -118,12 +121,15 @@ impl AccountLoginStart {
 				{
 					return Err(AccountLoginContractError::InvalidFence);
 				}
+
 				(operation_id, account_id)
 			},
 		};
+
 		if !is_canonical_uuid(operation_id.as_str()) || !is_canonical_uuid(account_id.as_str()) {
 			return Err(AccountLoginContractError::InvalidIdentity);
 		}
+
 		Ok(())
 	}
 }
@@ -278,6 +284,7 @@ impl AccountLoginStatus {
 		{
 			return Err(AccountLoginContractError::InvalidIdentity);
 		}
+
 		let waiting_payloads =
 			usize::from(self.prompt.is_some()) + usize::from(self.authorization_url.is_some());
 		let valid = match self.state {
@@ -304,6 +311,7 @@ impl AccountLoginStatus {
 					&& self.failure.is_none()
 					&& self.resolved_account_id.is_none(),
 		};
+
 		if !valid
 			|| self.prompt.as_ref().is_some_and(|prompt| {
 				prompt.verification_url.as_str().is_empty() || prompt.user_code.as_str().is_empty()
@@ -312,6 +320,7 @@ impl AccountLoginStatus {
 		{
 			return Err(AccountLoginContractError::InvalidStatus);
 		}
+
 		Ok(())
 	}
 }
@@ -375,6 +384,7 @@ mod tests {
 	fn both_login_methods_are_valid_start_contracts() {
 		for method in [AccountLoginMethod::BrowserRedirect, AccountLoginMethod::DeviceCode] {
 			let request = AccountLoginRequest::Start { start: Box::new(start(method)) };
+
 			assert_eq!(request.validate(), Ok(()));
 		}
 	}
@@ -390,16 +400,23 @@ mod tests {
 			failure: None,
 			resolved_account_id: None,
 		};
+
 		assert_eq!(status.validate(), Err(AccountLoginContractError::InvalidStatus));
+
 		status.authorization_url =
 			Some(AccountLoginUrl::new("https://auth.openai.com/fixture").unwrap());
+
 		assert_eq!(status.validate(), Ok(()));
+
 		status.prompt = Some(AccountLoginPrompt {
 			verification_url: AccountLoginUrl::new("https://auth.openai.com/device").unwrap(),
 			user_code: WireText::new("ABCD-EFGH").unwrap(),
 		});
+
 		assert_eq!(status.validate(), Err(AccountLoginContractError::InvalidStatus));
+
 		status.authorization_url = None;
+
 		assert_eq!(status.validate(), Ok(()));
 	}
 
@@ -418,15 +435,20 @@ mod tests {
 				resolved_account_id: (state == AccountLoginState::Completed)
 					.then(|| entity("038f0f9e-7b6e-4a31-8f4c-1d2e3f405164")),
 			};
+
 			assert_eq!(status.validate(), Ok(()));
+
 			status.authorization_url =
 				Some(AccountLoginUrl::new("https://auth.openai.com/fixture").unwrap());
+
 			assert_eq!(status.validate(), Err(AccountLoginContractError::InvalidStatus));
+
 			status.authorization_url = None;
 			status.prompt = Some(AccountLoginPrompt {
 				verification_url: AccountLoginUrl::new("https://auth.openai.com/device").unwrap(),
 				user_code: WireText::new("ABCD-EFGH").unwrap(),
 			});
+
 			assert_eq!(status.validate(), Err(AccountLoginContractError::InvalidStatus));
 		}
 	}
@@ -440,9 +462,12 @@ mod tests {
 			&AccountLoginUrl::new("x".repeat(MAX_ACCOUNT_LOGIN_URL_BYTES)).expect("boundary URL"),
 		)
 		.expect("encode boundary URL");
+
 		assert!(serde_json::from_str::<AccountLoginUrl>(&encoded).is_ok());
+
 		let oversized =
 			serde_json::to_string(&"x".repeat(MAX_ACCOUNT_LOGIN_URL_BYTES + 1)).unwrap();
+
 		assert!(serde_json::from_str::<AccountLoginUrl>(&oversized).is_err());
 	}
 }

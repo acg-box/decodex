@@ -65,14 +65,20 @@ mod tests {
 				omit: omit.clone(),
 			};
 			let mut value = serde_json::to_value(&action).unwrap();
+
 			assert_eq!(value["data"]["omit"], json!(omit));
+
 			let decoded: AgentActionDto = serde_json::from_value(value.clone()).unwrap();
+
 			assert!(
 				matches!(decoded, AgentActionDto::SetAppToolExposure { omit: actual, .. } if actual == omit)
 			);
+
 			value["data"]["omit"] = json!(["future-surface"]);
+
 			assert!(serde_json::from_value::<AgentActionDto>(value).is_err());
 		}
+
 		let state = AgentAppExposureResult::Available {
 			work_id: EntityId::new("root").unwrap(),
 			connector_id: WireText::new("calendar").unwrap(),
@@ -82,6 +88,7 @@ mod tests {
 			can_update: false,
 			last_outcome: Some("unknown".into()),
 		};
+
 		assert_eq!(serde_json::from_value::<AgentAppExposureResult>(json!(state)).unwrap(), state);
 	}
 }

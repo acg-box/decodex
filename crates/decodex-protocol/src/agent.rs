@@ -11,9 +11,11 @@ impl AgentRequestText {
 	/// Accept complete content within the approval envelope bound.
 	pub fn new(value: impl Into<String>) -> Result<Self, &'static str> {
 		let value = value.into();
+
 		if value.len() > decodex_core::MAX_APPROVAL_ENVELOPE_BYTES {
 			return Err("request content exceeds the approval envelope bound");
 		}
+
 		Ok(Self(value))
 	}
 
@@ -951,6 +953,7 @@ impl AgentSnapshotDto {
 			|value: &Option<String>| value.as_deref().is_none_or(|value| text(value, 512));
 		let ids: std::collections::HashSet<_> =
 			self.work_items.iter().map(|item| item.id.as_str()).collect();
+
 		self.workspaces.len() <= MAX_AGENT_WORK_ITEMS
 			&& self.workspaces.iter().all(|workspace| {
 				text(&workspace.name, 256)
@@ -1015,10 +1018,14 @@ mod tests {
 			serde_json::json!({"event_kind":"voice_user","delivered_turn_id":null,"disposed":true});
 		let mut receipt: super::AgentHistoryReceiptDto =
 			serde_json::from_value(legacy.clone()).unwrap();
+
 		assert!(receipt.voice_session_id.is_none());
 		assert_eq!(serde_json::to_value(&receipt).unwrap(), legacy);
+
 		receipt.voice_session_id = Some("opaque call/1".into());
+
 		let encoded = serde_json::to_value(&receipt).unwrap();
+
 		assert_eq!(encoded["voice_session_id"], "opaque call/1");
 		assert_eq!(
 			serde_json::from_value::<super::AgentHistoryReceiptDto>(encoded).unwrap(),
@@ -1031,9 +1038,12 @@ mod tests {
 		let mut value = serde_json::json!({"action":"approve_guardian_denial","data":{
 			"work_id":"agent","review_row":7,"review_digest":"a".repeat(64)}});
 		let command: super::AgentActionDto = serde_json::from_value(value.clone()).unwrap();
+
 		assert_eq!(serde_json::to_value(command).unwrap(), value);
+
 		value["data"]["event"] =
 			serde_json::json!({"action":{"type":"command","command":"injected"}});
+
 		assert!(serde_json::from_value::<super::AgentActionDto>(value).is_err());
 	}
 	use super::*;
@@ -1056,8 +1066,10 @@ mod tests {
 			},
 		] {
 			let encoded = serde_json::to_string(&value).unwrap();
+
 			assert_eq!(serde_json::from_str::<AgentSnapshotResult>(&encoded).unwrap(), value);
 		}
+
 		assert!(
 			AgentSnapshotDto {
 				runtime_source: None,
@@ -1176,6 +1188,7 @@ impl AgentActivityDetailResult {
 		let Self::Available { text, truncated, offset, next } = self else {
 			return true;
 		};
+
 		!text.is_empty()
 			&& text.len() <= 8 * 1024
 			&& *offset == cursor.map_or(0, |value| value.offset)

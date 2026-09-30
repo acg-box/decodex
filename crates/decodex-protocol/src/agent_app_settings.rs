@@ -136,6 +136,7 @@ mod tests {
 			json!({"field":"reviewer","value":null}),
 		] {
 			let edit: AgentAppSettingEdit = serde_json::from_value(wire.clone()).unwrap();
+
 			assert_eq!(serde_json::to_value(edit).unwrap(), wire);
 		}
 		for wire in [

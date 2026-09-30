@@ -21,6 +21,7 @@ impl ConversationTurnOutcomeRequest {
 		else {
 			return None;
 		};
+
 		Some(Self {
 			idempotency_key: command.idempotency_key.clone(),
 			conversation_id: conversation_id.clone(),
@@ -84,17 +85,23 @@ mod tests {
 			query_id: QueryId::new("outcome").unwrap(),
 			payload: QueryPayload::GetConversationTurnOutcome { request: request.clone() },
 		});
+
 		assert_eq!(decode_client_message(&serde_json::to_string(&query).unwrap()).unwrap(), query);
+
 		for field in ["conversation_id", "turn_id"] {
 			let mut invalid = serde_json::to_value(&query).unwrap();
+
 			invalid["body"]["payload"]["arguments"]["request"][field] = "invalid".into();
+
 			assert!(decode_client_message(&invalid.to_string()).is_err());
 		}
+
 		let result = ConversationTurnOutcomeResult::Observed {
 			conversation_id: request.conversation_id,
 			turn_id: request.turn_id,
 			outcome: ConversationTurnOutcomeState::Unknown,
 		};
+
 		assert_eq!(
 			serde_json::from_str::<ConversationTurnOutcomeResult>(
 				&serde_json::to_string(&result).unwrap()

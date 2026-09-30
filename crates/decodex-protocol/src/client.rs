@@ -80,7 +80,6 @@ async fn close_one_shot_socket(mut socket: OneShotSocket) {
 			}
 		}
 	};
-
 	// A completed application response remains authoritative if bounded cleanup fails.
 	let _ = time::timeout(ONE_SHOT_CLOSE_TIMEOUT, close).await;
 }
@@ -198,6 +197,7 @@ impl ClientProfile {
 			self.profile_name,
 			server.len()
 		);
+
 		decodex_core::BlobHash::digest(identity.as_bytes()).to_hex()
 	}
 
@@ -273,12 +273,14 @@ impl AgentClient {
 		identity: crate::PromptInputSendIdentity,
 	) -> Result<crate::PromptInputSendStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		if identity.send.input_id <= 0
 			|| identity.edit_receipt_id <= 0
 			|| identity.thread_id.as_str().is_empty()
 		{
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -288,7 +290,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentPromptInputSend(status)
 				if status.identity == identity
@@ -307,6 +311,7 @@ impl AgentClient {
 		input: &crate::PromptDraft,
 	) -> Result<crate::PromptDraft, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let relative: Vec<_> = input
 			.parts()
 			.iter()
@@ -319,9 +324,11 @@ impl AgentClient {
 					.map(|path| (index, path))
 			})
 			.collect();
+
 		if relative.is_empty() {
 			return Ok(input.clone());
 		}
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -334,7 +341,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let QueryResultPayload::AgentPromptInputDirectory {
 			work_id,
 			thread_id,
@@ -343,23 +352,29 @@ impl AgentClient {
 		else {
 			return Err(ClientFailure::ProtocolViolation);
 		};
+
 		if work_id != work
 			|| thread_id != thread
 			|| !std::path::Path::new(directory.as_str()).is_absolute()
 		{
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		let mut resolved = input.clone();
+
 		for (index, path) in relative {
 			let mut part = input.parts()[index].clone();
+
 			part["path"] = serde_json::json!(
 				std::path::Path::new(directory.as_str())
 					.join(path)
 					.to_str()
 					.ok_or(ClientFailure::ProtocolMalformed)?
 			);
+
 			resolved.replace_part(index, part).map_err(|_| ClientFailure::ProtocolMalformed)?;
 		}
+
 		Ok(resolved)
 	}
 
@@ -373,6 +388,7 @@ impl AgentClient {
 	) -> Result<(), ClientFailure> {
 		self.transport.require_local_profile()?;
 		input.validate_native_input().map_err(|_| ClientFailure::ProtocolViolation)?;
+
 		let crate::AgentModelSettingsResult::Available {
 			work_id,
 			thread_id,
@@ -383,15 +399,20 @@ impl AgentClient {
 		else {
 			return Err(ClientFailure::ProtocolViolation);
 		};
+
 		if work_id != work || thread_id.as_str() != thread.as_str() {
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		let mut params = serde_json::json!({"threadId":thread,"input":input,"turnTrigger":"user"});
+
 		execution.apply_to_native_turn(&mut params);
+
 		if params.get("model").is_none() {
 			let Some(model) = model else {
 				return Err(ClientFailure::ProtocolViolation);
 			};
+
 			params["model"] = serde_json::json!(model.as_str());
 		}
 		if params.get("effort").is_none()
@@ -399,13 +420,16 @@ impl AgentClient {
 		{
 			params["effort"] = serde_json::json!(effort.as_str());
 		}
+
 		// Match the native transport envelope, including its longest positive request ID.
 		let envelope = serde_json::json!({"id":i64::MAX,"method":"turn/start","params":params});
+
 		if serde_json::to_vec(&envelope).map_err(|_| ClientFailure::ProtocolMalformed)?.len()
 			> decodex_core::MAX_NATIVE_MESSAGE_BYTES
 		{
 			return Err(ClientFailure::ProtocolViolation);
 		}
+
 		Ok(())
 	}
 
@@ -418,13 +442,16 @@ impl AgentClient {
 	) -> Result<i64, ClientFailure> {
 		self.transport.require_local_profile()?;
 		input.validate().map_err(|_| ClientFailure::ProtocolMalformed)?;
+
 		let encoded = serde_json::to_string(input).map_err(|_| ClientFailure::ProtocolMalformed)?;
+
 		if !upload.is_valid()
 			|| encoded.len() as u64 != upload.total_bytes
 			|| input.fingerprint().map_err(|_| ClientFailure::ProtocolMalformed)? != upload.sha256
 		{
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		time::timeout(Duration::from_secs(120), self.transfer_prompt_input(upload, encoded))
 			.await
 			.map_err(|_| ClientFailure::ProtocolTimeout)?
@@ -436,6 +463,7 @@ impl AgentClient {
 		encoded: String,
 	) -> Result<i64, ClientFailure> {
 		let mut status = self.prompt_input_upload_status(upload.clone()).await?;
+
 		// At most 129 UTF-8 chunks for an 8 MiB input, plus finalization/readback.
 		for _ in 0..131 {
 			let offset = match status {
@@ -445,17 +473,21 @@ impl AgentClient {
 				crate::PromptInputUploadStatus::Unavailable { .. } =>
 					return Err(ClientFailure::ProtocolViolation),
 			};
+
 			if !encoded.is_char_boundary(offset) {
 				return Err(ClientFailure::ProtocolMalformed);
 			}
+
 			let complete = offset == encoded.len();
 			let action = if complete {
 				crate::AgentActionDto::CompletePromptInputUpload { upload: upload.clone() }
 			} else {
 				let mut end = (offset + 65536).min(encoded.len());
+
 				while !encoded.is_char_boundary(end) {
 					end -= 1;
 				}
+
 				crate::AgentActionDto::UploadPromptInput {
 					upload: upload.clone(),
 					offset: offset as u64,
@@ -467,13 +499,16 @@ impl AgentClient {
 				serde_json::to_vec(&action).map_err(|_| ClientFailure::ProtocolMalformed)?;
 			let key = IdempotencyKey::new(decodex_core::BlobHash::digest(&bytes).to_hex())
 				.map_err(|_| ClientFailure::ProtocolMalformed)?;
+
 			match self.execute(action, key).await? {
 				AgentCommandResponse::Rejected { .. } =>
 					return Err(ClientFailure::ProtocolViolation),
 				AgentCommandResponse::Accepted { .. }
 				| AgentCommandResponse::PotentiallyDispatched { .. } => {},
 			}
+
 			status = self.prompt_input_upload_status(upload.clone()).await?;
+
 			if let crate::PromptInputUploadStatus::Receiving { received_bytes, .. } = &status
 				&& (complete || *received_bytes <= offset as u64)
 			{
@@ -481,6 +516,7 @@ impl AgentClient {
 				return Err(ClientFailure::ApplicationAcceptanceUnknown);
 			}
 		}
+
 		Err(ClientFailure::ProtocolMalformed)
 	}
 
@@ -491,6 +527,7 @@ impl AgentClient {
 		thread_id: crate::WireText,
 	) -> Result<(crate::PromptEditStatus, Option<Vec<serde_json::Value>>), ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		time::timeout(Duration::from_secs(60), self.read_prompt_edit(work_id, thread_id))
 			.await
 			.map_err(|_| ClientFailure::ProtocolTimeout)?
@@ -507,8 +544,10 @@ impl AgentClient {
 		};
 		let mut page = first.clone();
 		let mut content = String::new();
+
 		for _ in 0..129 {
 			let evidence = page.evidence.as_ref().ok_or(ClientFailure::ProtocolMalformed)?;
+
 			if page.phase != first.phase
 				|| evidence.review_token != expected.review_token
 				|| evidence.receipt_id != expected.receipt_id
@@ -520,15 +559,20 @@ impl AgentClient {
 			{
 				return Err(ClientFailure::ProtocolMalformed);
 			}
+
 			content.push_str(&evidence.fragment);
+
 			if content.len() as u64 == expected.content_bytes {
 				let values: Vec<serde_json::Value> =
 					serde_json::from_str(&content).map_err(|_| ClientFailure::ProtocolMalformed)?;
+
 				if values.is_empty() || values.iter().any(|v| !v.is_object()) {
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				return Ok((first, Some(values)));
 			}
+
 			page = self
 				.prompt_edit_page(
 					work.clone(),
@@ -538,6 +582,7 @@ impl AgentClient {
 				)
 				.await?;
 		}
+
 		Err(ClientFailure::ProtocolMalformed)
 	}
 
@@ -547,9 +592,11 @@ impl AgentClient {
 		upload: crate::PromptInputUpload,
 	) -> Result<crate::PromptInputUploadStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		if !upload.is_valid() {
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -559,7 +606,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentPromptInputUpload(status)
 				if status.upload() == &upload && status.is_valid() =>
@@ -587,7 +636,9 @@ impl AgentClient {
 				},
 			)
 			.await?;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentPromptEdit(status)
 				if status.work_id == work && status.thread_id == thread && status.is_valid() =>
@@ -603,6 +654,7 @@ impl AgentClient {
 		review: crate::WireText,
 	) -> Result<crate::PromptForkResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -615,7 +667,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentPromptFork(result) => {
 				if let crate::PromptForkResult::Available(Some(status)) = &result
@@ -623,6 +677,7 @@ impl AgentClient {
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				Ok(result)
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -632,6 +687,7 @@ impl AgentClient {
 	/// Read the existing recap; this method never starts a model request.
 	pub async fn recap(&self, work_id: EntityId) -> Result<crate::TaskRecapStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -641,7 +697,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentRecap(status)
 				if status.work_id == work_id && status.is_valid() =>
@@ -656,6 +714,7 @@ impl AgentClient {
 		work_id: EntityId,
 	) -> Result<crate::AgentVoiceSettingsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(35),
@@ -669,7 +728,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentVoiceSettings(result) => {
 				if let crate::AgentVoiceSettingsResult::Available { work_id: actual, .. } = &result
@@ -677,6 +738,7 @@ impl AgentClient {
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				Ok(result)
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -690,6 +752,7 @@ impl AgentClient {
 		filter: crate::WireText,
 	) -> Result<crate::AgentSkillsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(40),
@@ -703,7 +766,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentSkills(result) => {
 				if let crate::AgentSkillsResult::Available { target: actual, .. } = &result
@@ -711,6 +776,7 @@ impl AgentClient {
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				Ok(result)
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -723,6 +789,7 @@ impl AgentClient {
 		work_id: EntityId,
 	) -> Result<crate::AgentSearchSettingsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(35),
@@ -736,7 +803,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentSearchSettings(result) => {
 				if let crate::AgentSearchSettingsResult::Available { work_id: actual, .. } = &result
@@ -744,6 +813,7 @@ impl AgentClient {
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				Ok(result)
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -757,6 +827,7 @@ impl AgentClient {
 		connector_id: crate::WireText,
 	) -> Result<crate::AgentAppExposureResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(45),
@@ -773,13 +844,16 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentAppExposure(result) => {
 				if matches!(&result,crate::AgentAppExposureResult::Available {work_id: actual,connector_id: connector,..} if actual != &work_id || connector != &connector_id)
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				Ok(result)
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -793,6 +867,7 @@ impl AgentClient {
 		thread_id: EntityId,
 	) -> Result<crate::AgentNativeGoalResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let expected = (work_id.clone(), thread_id.clone());
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -807,13 +882,16 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentNativeGoal(result) => {
 				if matches!(&result,crate::AgentNativeGoalResult::Available{work_id,thread_id,goal,..} if (work_id,thread_id)!=(&expected.0,&expected.1) || goal.as_ref().is_some_and(|g|g.thread_id!=expected.1.as_str()))
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				Ok(result)
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -827,6 +905,7 @@ impl AgentClient {
 		include_models: bool,
 	) -> Result<crate::AgentLiveReviewerState, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(45),
@@ -840,7 +919,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentLiveReviewer(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -853,6 +934,7 @@ impl AgentClient {
 		work_id: EntityId,
 	) -> Result<crate::AgentHookSettingsState, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(45),
@@ -864,7 +946,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentHookSettings(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -877,6 +961,7 @@ impl AgentClient {
 		work_id: EntityId,
 	) -> Result<crate::AgentPluginSelectionState, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(45),
@@ -890,7 +975,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentPluginSelection(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -903,6 +990,7 @@ impl AgentClient {
 		work_id: EntityId,
 	) -> Result<crate::AgentModelSelectionState, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(45),
@@ -916,7 +1004,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentModelSelection(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -929,6 +1019,7 @@ impl AgentClient {
 		work_id: EntityId,
 	) -> Result<crate::AgentPermissionState, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(45),
@@ -942,7 +1033,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentPermissionProfiles(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -957,32 +1050,41 @@ impl AgentClient {
 		updates: tokio::sync::watch::Sender<Option<crate::AgentOutputResult>>,
 	) -> Result<(), ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(25),
 		};
+
 		tokio::select! {
 			_ = updates.closed() => Ok(()),
 			result = async {
 				let mut socket = transport.connect().await?;
 				let query_id = QueryId::new("agent-output-stream").expect("fixed query id");
 				let mut after_revision = None;
+
 				loop {
 					transport.send(&mut socket, ClientMessage::Query(crate::QueryEnvelope {
 						version: CURRENT_VERSION, query_id: query_id.clone(),
 						payload: QueryPayload::WaitForAgentOutput { work_id: work_id.clone(), after_revision },
 					})).await?;
+
 					let mut received = false;
+
 					for _ in 0..MAX_INTERLEAVED_MESSAGES {
 						match transport.receive(&mut socket).await? {
 							ServerMessage::QueryResult(result) => {
 								transport.verify_version_and_server(result.version, &result.server_id)?;
+
 								if result.query_id != query_id { return Err(ClientFailure::ProtocolMalformed); }
+
 								let QueryResultPayload::AgentOutput(value) = result.payload else { return Err(ClientFailure::ProtocolMalformed); };
+
 								match &value {
 									crate::AgentOutputResult::Available { revision, work_id: owner, .. } if owner == &work_id => after_revision = Some(*revision),
 									_ => return Err(ClientFailure::ProtocolMalformed),
 								}
+
 								updates.send_if_modified(|saved| { if saved.as_ref() == Some(&value) { false } else { *saved = Some(value); true } });
 								received = true; break;
 							},
@@ -991,6 +1093,7 @@ impl AgentClient {
 							_ => return Err(ClientFailure::ProtocolMalformed),
 						}
 					}
+
 					if !received { return Err(ClientFailure::ProtocolBackpressure); }
 				}
 			} => result,
@@ -1003,6 +1106,7 @@ impl AgentClient {
 		identity: crate::AgentSteerIdentity,
 	) -> Result<crate::AgentSteerReceiptResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -1012,15 +1116,19 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let QueryResultPayload::AgentSteerReceipt(result) = completed.value else {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
+
 		if let crate::AgentSteerReceiptResult::Confirmed { identity: actual } = &result
 			&& actual != &identity
 		{
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		Ok(result)
 	}
 
@@ -1030,6 +1138,7 @@ impl AgentClient {
 		request: crate::AgentVoiceRequest,
 	) -> Result<crate::AgentVoiceStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let session = request.session_id().clone();
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
@@ -1037,7 +1146,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentVoice(result) if result.session_id == session => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1050,6 +1161,7 @@ impl AgentClient {
 		request: crate::DictationRequest,
 	) -> Result<crate::DictationStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let session = request.session_id().clone();
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
@@ -1057,7 +1169,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::Dictation(result) if result.session_id == session => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1067,13 +1181,16 @@ impl AgentClient {
 	/// Read the selected fields of one exact unresolved request.
 	pub async fn request(&self, event_id: i64) -> Result<crate::AgentRequestResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			REQUEST_CLIENT_TIMEOUT,
 			self.transport.query_inner("agent-request", QueryPayload::GetAgentRequest { event_id }),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentRequest(result) => time::timeout(
 				Duration::from_secs(60),
@@ -1093,6 +1210,7 @@ impl AgentClient {
 		cursor: Option<crate::WireText>,
 	) -> Result<crate::NativeAgentsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -1102,7 +1220,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::NativeAgents(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1124,6 +1244,7 @@ impl AgentClient {
 		before: Option<i64>,
 	) -> Result<crate::AgentHistoryResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport
@@ -1131,7 +1252,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentHistory(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1152,6 +1275,7 @@ impl AgentClient {
 		cursor: Option<crate::AgentActivityDetailCursor>,
 	) -> Result<crate::AgentActivityDetailResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -1166,7 +1290,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentActivityDetail(result)
 				if result.matches_cursor(cursor.as_ref()) =>
@@ -1182,6 +1308,7 @@ impl AgentClient {
 		event_id: i64,
 	) -> Result<crate::AgentInstallState, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(45),
@@ -1195,7 +1322,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentInstallState(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1208,6 +1337,7 @@ impl AgentClient {
 		work_id: EntityId,
 	) -> Result<crate::AgentArchiveResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(12),
@@ -1218,7 +1348,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentArchiveState(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1232,6 +1364,7 @@ impl AgentClient {
 		before: Option<i64>,
 	) -> Result<crate::AgentGuardianReviewsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -1241,7 +1374,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentGuardianReviews(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1257,6 +1392,7 @@ impl AgentClient {
 		offset: usize,
 	) -> Result<crate::AgentGuardianDetailResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let expected_digest = review_digest.as_str().to_owned();
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
@@ -1267,7 +1403,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentGuardianDetail(result)
 				if result.matches_request(review_row, &expected_digest, offset) =>
@@ -1282,6 +1420,7 @@ impl AgentClient {
 		work_id: EntityId,
 	) -> Result<crate::AgentResourcesResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport
@@ -1289,7 +1428,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentResources(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1302,6 +1443,7 @@ impl AgentClient {
 		request: crate::McpLoginRequest,
 	) -> Result<crate::McpLoginStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let session = request.session_id().clone();
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -1313,7 +1455,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::McpLogin(status) if status.session_id == session => Ok(status),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1326,6 +1470,7 @@ impl AgentClient {
 		work_id: EntityId,
 	) -> Result<crate::AgentUsageEstimateResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let expected = work_id.clone();
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
@@ -1340,13 +1485,16 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentUsageEstimate(result) => {
 				if matches!(&result,crate::AgentUsageEstimateResult::Available {work_id,..} if work_id!=&expected)
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				Ok(result)
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1359,6 +1507,7 @@ impl AgentClient {
 		work_id: EntityId,
 	) -> Result<crate::AgentModelSettingsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(45),
@@ -1372,13 +1521,16 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentModelSettings(result) => {
 				if matches!(&result, crate::AgentModelSettingsResult::Available {work_id: owner,..} if owner != &work_id)
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				Ok(result)
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1392,9 +1544,11 @@ impl AgentClient {
 		after: Option<i64>,
 	) -> Result<crate::AgentInputReceiptsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		if after.is_some_and(|id| id < 1) {
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -1404,10 +1558,13 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let QueryResultPayload::AgentInputReceipts(result) = completed.value else {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
+
 		if let crate::AgentInputReceiptsResult::Available {
 			work_id: actual,
 			entries,
@@ -1434,6 +1591,7 @@ impl AgentClient {
 		{
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		Ok(result)
 	}
 
@@ -1444,6 +1602,7 @@ impl AgentClient {
 		thread_id: EntityId,
 	) -> Result<String, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(70),
@@ -1452,6 +1611,7 @@ impl AgentClient {
 			crate::AgentTranscriptRequest { work_id, thread_id, offset: 0, token: None };
 		let mut output = Vec::new();
 		let mut expected = None;
+
 		loop {
 			let completed = time::timeout(
 				transport.timeout,
@@ -1462,7 +1622,9 @@ impl AgentClient {
 			)
 			.await
 			.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 			close_one_shot_socket(completed.socket).await;
+
 			let QueryResultPayload::AgentTranscript(crate::AgentTranscriptResult::Available {
 				request: actual,
 				account_id,
@@ -1473,6 +1635,7 @@ impl AgentClient {
 			else {
 				return Err(ClientFailure::ProtocolMalformed);
 			};
+
 			if actual != request
 				|| bytes.is_empty()
 				|| bytes.len() > crate::TRANSCRIPT_CHUNK_BYTES
@@ -1484,11 +1647,15 @@ impl AgentClient {
 			{
 				return Err(ClientFailure::ProtocolMalformed);
 			}
+
 			expected = Some((account_id, token.clone(), total_bytes));
+
 			output.extend_from_slice(&bytes);
+
 			if output.len() == total_bytes as usize {
 				return String::from_utf8(output).map_err(|_| ClientFailure::ProtocolMalformed);
 			}
+
 			request.offset = output.len() as u32;
 			request.token = Some(token);
 		}
@@ -1500,6 +1667,7 @@ impl AgentClient {
 		request: crate::AgentMediaRequest,
 	) -> Result<crate::AgentMediaResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(30),
@@ -1513,7 +1681,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentMedia(result) => {
 				if let crate::AgentMediaResult::Available {
@@ -1539,6 +1709,7 @@ impl AgentClient {
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				Ok(result)
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1551,6 +1722,7 @@ impl AgentClient {
 		work_id: EntityId,
 	) -> Result<crate::AgentPendingAppUiCall, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -1560,15 +1732,19 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let QueryResultPayload::AgentPendingAppUiCall(result) = completed.value else {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
+
 		if let crate::AgentPendingAppUiCall::Available { work_id: actual, .. } = &result
 			&& actual != &work_id
 		{
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		Ok(result)
 	}
 
@@ -1578,6 +1754,7 @@ impl AgentClient {
 		request: crate::AgentAppUiCall,
 	) -> Result<crate::AgentAppUiCallReview, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(40),
@@ -1591,10 +1768,13 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let QueryResultPayload::AgentAppUiCallReview(result) = completed.value else {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
+
 		if let crate::AgentAppUiCallReview::Available { request: actual, review_token, .. } =
 			&result
 			&& (actual.as_ref() != &request
@@ -1603,6 +1783,7 @@ impl AgentClient {
 		{
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		Ok(result)
 	}
 
@@ -1614,6 +1795,7 @@ impl AgentClient {
 		fingerprint: EntityId,
 	) -> Result<bool, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(3),
@@ -1627,7 +1809,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentAppUiSource(current) => Ok(current),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1640,6 +1824,7 @@ impl AgentClient {
 		request: crate::AgentAppUiRequest,
 	) -> Result<crate::AgentAppUiResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(30),
@@ -1653,7 +1838,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentAppUi(result) => {
 				if let crate::AgentAppUiResult::Available {
@@ -1680,6 +1867,7 @@ impl AgentClient {
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				Ok(result)
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1692,6 +1880,7 @@ impl AgentClient {
 		request: crate::AgentAppUiReceiptRequest,
 	) -> Result<crate::AgentAppUiReceiptResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(30),
@@ -1705,7 +1894,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentAppUiReceipt(result) => {
 				if let crate::AgentAppUiReceiptResult::Available {
@@ -1729,6 +1920,7 @@ impl AgentClient {
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				Ok(result)
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1743,6 +1935,7 @@ impl AgentClient {
 		cursor: Option<crate::WireText>,
 	) -> Result<crate::AgentTimelineResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(45),
@@ -1760,7 +1953,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentTimeline(result) => {
 				if let crate::AgentTimelineResult::Available { work_id: actual, page, .. } = &result
@@ -1777,6 +1972,7 @@ impl AgentClient {
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				Ok(result)
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1789,6 +1985,7 @@ impl AgentClient {
 		work_id: EntityId,
 	) -> Result<crate::AgentIntegrationsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(40),
@@ -1800,7 +1997,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentIntegrations(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1813,6 +2012,7 @@ impl AgentClient {
 		request: crate::InitialModelCatalogRequest,
 	) -> Result<crate::InitialModelCatalogResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(40),
@@ -1826,7 +2026,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::InitialModelCatalog(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1836,13 +2038,16 @@ impl AgentClient {
 	/// Read native capabilities on the retained Agent process.
 	pub async fn capabilities(&self) -> Result<crate::AgentCapabilitiesResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner("agent-capabilities", QueryPayload::GetAgentCapabilities),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentCapabilities(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1852,19 +2057,23 @@ impl AgentClient {
 	/// Read one complete bounded Agent projection without changing work or runtime state.
 	pub async fn query(&self) -> Result<crate::AgentSnapshotResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner("decodex-agent-snapshot", QueryPayload::GetAgentSnapshot),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentSnapshot(result) => {
 				if matches!(&result, crate::AgentSnapshotResult::Available(snapshot) if !snapshot.is_valid())
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				Ok(result)
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1878,6 +2087,7 @@ impl AgentClient {
 		idempotency_key: IdempotencyKey,
 	) -> Result<AgentCommandResponse, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let attempted = AtomicBool::new(false);
 		let extended_timeout = match &action {
 			crate::AgentActionDto::ConfirmAppUiTool { .. } => Some(Duration::from_secs(100)),
@@ -1904,11 +2114,13 @@ impl AgentClient {
 		let failure = match result {
 			Ok(Ok(completed)) => {
 				close_one_shot_socket(completed.socket).await;
+
 				return Ok(completed.value);
 			},
 			Ok(Err(failure)) => failure,
 			Err(_) => ClientFailure::ProtocolTimeout,
 		};
+
 		if attempted.load(Ordering::Acquire) {
 			Ok(AgentCommandResponse::PotentiallyDispatched { failure })
 		} else {
@@ -1936,14 +2148,18 @@ impl AgentClient {
 			causation_id: None,
 			payload: CommandPayload::Agent { action: Box::new(action.clone()) },
 		});
+
 		attempted.store(true, Ordering::Release);
 		self.transport.send(&mut socket, command).await?;
+
 		let mut receipt_disposition = None;
+
 		for _ in 0..MAX_INTERLEAVED_MESSAGES {
 			match self.transport.receive(&mut socket).await? {
 				ServerMessage::CommandReceipt(receipt) => {
 					self.transport
 						.verify_version_and_server(receipt.version, &receipt.server_id)?;
+
 					if receipt_disposition.is_some()
 						|| receipt.client_command_id != client_command_id
 						|| receipt.idempotency_key != idempotency_key
@@ -1952,13 +2168,16 @@ impl AgentClient {
 					{
 						return Err(ClientFailure::ProtocolMalformed);
 					}
+
 					receipt_disposition = Some(receipt.disposition);
 				},
 				ServerMessage::CommandResult(result) => {
 					self.transport.verify_version_and_server(result.version, &result.server_id)?;
+
 					let Some(disposition) = receipt_disposition else {
 						return Err(ClientFailure::ProtocolMalformed);
 					};
+
 					if result.client_command_id != client_command_id
 						|| result.idempotency_key != idempotency_key
 						|| (disposition == ReceiptDisposition::Refused
@@ -1966,6 +2185,7 @@ impl AgentClient {
 					{
 						return Err(ClientFailure::ProtocolMalformed);
 					}
+
 					let response = match (
 						result.outcome,
 						result.entity_revision,
@@ -1991,6 +2211,7 @@ impl AgentClient {
 						},
 						_ => return Err(ClientFailure::ProtocolMalformed),
 					};
+
 					return Ok(CompletedOneShot::new(response, socket));
 				},
 				ServerMessage::Event(event) =>
@@ -2000,6 +2221,7 @@ impl AgentClient {
 				_ => return Err(ClientFailure::ProtocolMalformed),
 			}
 		}
+
 		Err(ClientFailure::ProtocolBackpressure)
 	}
 }
@@ -2075,7 +2297,9 @@ impl DoctorClient {
 		let completed = time::timeout(self.transport.timeout, self.query_inner())
 			.await
 			.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		Ok(completed.value)
 	}
 
@@ -2256,6 +2480,7 @@ impl ResetCardClient {
 		account_id: EntityId,
 	) -> Result<ResetCardInventoryResult, ClientFailure> {
 		self.require_local_profile()?;
+
 		let expected_account_id = account_id.clone();
 		let completed = time::timeout(
 			// This query reads the daemon-owned observation cache. It must not inherit
@@ -2265,7 +2490,9 @@ impl ResetCardClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let payload = completed.value;
 
 		match payload {
@@ -2276,6 +2503,7 @@ impl ResetCardClient {
 						account_id != &expected_account_id,
 					ResetCardInventoryResult::Unavailable { .. } => false,
 				};
+
 				if mismatched { Err(ClientFailure::ProtocolMalformed) } else { Ok(result) }
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -2288,6 +2516,7 @@ impl ResetCardClient {
 		account_id: EntityId,
 	) -> Result<crate::AccountResetCardOperationResult, ClientFailure> {
 		self.require_local_profile()?;
+
 		let completed = time::timeout(
 			self.timeout,
 			self.query_inner(
@@ -2297,13 +2526,16 @@ impl ResetCardClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AccountResetCardOperation(result) => {
 				if matches!(&result, crate::AccountResetCardOperationResult::Found(operation) if operation.account_id != account_id)
 				{
 					return Err(ClientFailure::ProtocolMalformed);
 				}
+
 				Ok(result)
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -2316,6 +2548,7 @@ impl ResetCardClient {
 		idempotency_key: IdempotencyKey,
 	) -> Result<ResetCardOperationResult, ClientFailure> {
 		self.require_local_profile()?;
+
 		let completed = time::timeout(
 			self.timeout,
 			self.query_inner(
@@ -2325,7 +2558,9 @@ impl ResetCardClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let payload = completed.value;
 
 		match payload {
@@ -2348,6 +2583,7 @@ impl ResetCardClient {
 		idempotency_key: IdempotencyKey,
 	) -> Result<ResetCardConsumeResponse, ClientFailure> {
 		self.require_local_profile()?;
+
 		let dispatch_attempted = AtomicBool::new(false);
 		let result = time::timeout(
 			self.timeout,
@@ -2363,6 +2599,7 @@ impl ResetCardClient {
 		let result = match result {
 			Ok(Ok(completed)) => {
 				close_one_shot_socket(completed.socket).await;
+
 				Ok(completed.value)
 			},
 			Ok(Err(failure)) => Err(failure),
@@ -2412,6 +2649,7 @@ impl ResetCardClient {
 					if result.query_id != query_id {
 						return Err(ClientFailure::ProtocolMalformed);
 					}
+
 					return Ok(CompletedOneShot::new(result.payload, socket));
 				},
 				ServerMessage::Event(event) =>
@@ -2478,6 +2716,7 @@ impl ResetCardClient {
 					let Some(receipt_disposition) = receipt_disposition else {
 						return Err(ClientFailure::ProtocolMalformed);
 					};
+
 					if result.client_command_id != client_command_id
 						|| result.idempotency_key != idempotency_key
 						|| (receipt_disposition == ReceiptDisposition::Refused
@@ -2713,14 +2952,18 @@ impl AccountLoginClient {
 		request: AccountLoginRequest,
 	) -> Result<AccountLoginStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		if request.validate().is_err() {
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		let completed =
 			time::timeout(self.transport.timeout, self.exchange_inner(request_identity, request))
 				.await
 				.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		Ok(completed.value)
 	}
 
@@ -2733,6 +2976,7 @@ impl AccountLoginClient {
 		let mut socket = self.transport.connect().await?;
 		let request_id = QueryId::new(request_identity)
 			.expect("fixed account-login request identity is bounded and nonempty");
+
 		self.transport
 			.send(
 				&mut socket,
@@ -2749,12 +2993,14 @@ impl AccountLoginClient {
 				ServerMessage::AccountLogin(response) => {
 					self.transport
 						.verify_version_and_server(response.version, &response.server_id)?;
+
 					if response.request_id != request_id
 						|| response.status.session_id != expected_session_id
 						|| response.status.validate().is_err()
 					{
 						return Err(ClientFailure::ProtocolMalformed);
 					}
+
 					return Ok(CompletedOneShot::new(response.status, socket));
 				},
 				ServerMessage::Event(event) =>
@@ -2765,6 +3011,7 @@ impl AccountLoginClient {
 				_ => return Err(ClientFailure::ProtocolMalformed),
 			}
 		}
+
 		Err(ClientFailure::ProtocolBackpressure)
 	}
 }
@@ -2805,14 +3052,18 @@ impl AccountClient {
 	/// Read the canonical account skeleton and routing controls.
 	pub async fn list(&self) -> Result<AccountsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner("decodex-accounts-list", QueryPayload::ListAccounts),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let payload = completed.value;
+
 		match payload {
 			QueryResultPayload::Accounts(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -2825,6 +3076,7 @@ impl AccountClient {
 		account_id: EntityId,
 	) -> Result<AccountInspectResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let expected = account_id.clone();
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
@@ -2835,8 +3087,11 @@ impl AccountClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let payload = completed.value;
+
 		match payload {
 			QueryResultPayload::Account(result) => {
 				if matches!(&result, AccountInspectResult::Available(account) if account.account_id != expected)
@@ -2857,6 +3112,7 @@ impl AccountClient {
 		account_revision: EntityRevision,
 	) -> Result<crate::AccountRecoveryResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let expected = account_id.clone();
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
@@ -2867,7 +3123,9 @@ impl AccountClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AccountRecovery(result)
 				if result.valid_for(&expected, account_revision) =>
@@ -2884,6 +3142,7 @@ impl AccountClient {
 		operation_key: Option<IdempotencyKey>,
 	) -> Result<crate::AccountRecoveryNudgeResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -2897,10 +3156,13 @@ impl AccountClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let QueryResultPayload::AccountRecoveryNudge(result) = completed.value else {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
+
 		if let crate::AccountRecoveryNudgeResult::Found(operation) = &result
 			&& (operation.account_id != account_id
 				|| operation.action != action
@@ -2911,6 +3173,7 @@ impl AccountClient {
 		{
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		Ok(result)
 	}
 
@@ -2926,7 +3189,9 @@ impl AccountClient {
 		if !source.allows_nudge(action) {
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		let revision = source.account_revision;
+
 		self.execute(
 			CommandPayload::SendAccountRecoveryNudge { source: Box::new(source), action },
 			Some(revision),
@@ -2942,6 +3207,7 @@ impl AccountClient {
 		action: crate::AccountRecoveryAction,
 	) -> Result<crate::AccountRecoveryPreparation, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -2951,7 +3217,9 @@ impl AccountClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AccountRecoveryPreparation(result)
 				if result.valid_for(&source, action) =>
@@ -2967,6 +3235,7 @@ impl AccountClient {
 		include_email: bool,
 	) -> Result<AccountProfileResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let expected = account_id.clone();
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
@@ -2977,8 +3246,11 @@ impl AccountClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let payload = completed.value;
+
 		match payload {
 			QueryResultPayload::AccountProfile(result) => {
 				let matches = match &result {
@@ -2990,6 +3262,7 @@ impl AccountClient {
 					AccountProfileResult::Unavailable { email, .. } =>
 						include_email || matches!(email, AccountProfileEmailDto::Redacted),
 				};
+
 				if matches { Ok(result) } else { Err(ClientFailure::ProtocolMalformed) }
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -2999,6 +3272,7 @@ impl AccountClient {
 	/// Evaluate fixed or balanced initial selection without creating work.
 	pub async fn initial_selection(&self) -> Result<AccountInitialSelectionResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			self.transport.timeout,
 			self.transport.query_inner(
@@ -3008,8 +3282,11 @@ impl AccountClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let payload = completed.value;
+
 		match payload {
 			QueryResultPayload::InitialAccountSelection(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -3019,6 +3296,7 @@ impl AccountClient {
 	/// Read the normal shared Codex auth projection without exposing credentials.
 	pub async fn codex_auth_projection(&self) -> Result<CodexAuthProjectionResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport
@@ -3026,8 +3304,11 @@ impl AccountClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let payload = completed.value;
+
 		match payload {
 			QueryResultPayload::CodexAuthProjection(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -3056,6 +3337,7 @@ impl AccountClient {
 		request_refresh: bool,
 	) -> Result<AccountObservationSignal, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			self.transport.timeout,
 			self.transport.query_inner(
@@ -3068,8 +3350,11 @@ impl AccountClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let payload = completed.value;
+
 		match payload {
 			QueryResultPayload::AccountObservation(signal) => Ok(signal),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -3122,6 +3407,7 @@ impl AccountClient {
 		idempotency_key: IdempotencyKey,
 	) -> Result<AccountCommandResponse, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		if !matches!(
 			&payload,
 			CommandPayload::SendAccountRecoveryNudge { .. }
@@ -3137,6 +3423,7 @@ impl AccountClient {
 		) {
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		let dispatch_attempted = AtomicBool::new(false);
 		let result = time::timeout(
 			self.transport.timeout,
@@ -3146,11 +3433,13 @@ impl AccountClient {
 		let result = match result {
 			Ok(Ok(completed)) => {
 				close_one_shot_socket(completed.socket).await;
+
 				Ok(completed.value)
 			},
 			Ok(Err(failure)) => Err(failure),
 			Err(_) => Err(ClientFailure::ProtocolTimeout),
 		};
+
 		match result {
 			Ok(response) => Ok(response),
 			Err(failure) if dispatch_attempted.load(Ordering::Acquire) =>
@@ -3180,14 +3469,18 @@ impl AccountClient {
 			causation_id: None,
 			payload: payload.clone(),
 		});
+
 		dispatch_attempted.store(true, Ordering::Release);
 		self.transport.send(&mut socket, command).await?;
+
 		let mut receipt_disposition = None;
+
 		for _ in 0..MAX_INTERLEAVED_MESSAGES {
 			match self.transport.receive(&mut socket).await? {
 				ServerMessage::CommandReceipt(receipt) => {
 					self.transport
 						.verify_version_and_server(receipt.version, &receipt.server_id)?;
+
 					if receipt_disposition.is_some()
 						|| receipt.client_command_id != client_command_id
 						|| receipt.idempotency_key != idempotency_key
@@ -3196,13 +3489,16 @@ impl AccountClient {
 					{
 						return Err(ClientFailure::ProtocolMalformed);
 					}
+
 					receipt_disposition = Some(receipt.disposition);
 				},
 				ServerMessage::CommandResult(result) => {
 					self.transport.verify_version_and_server(result.version, &result.server_id)?;
+
 					let Some(disposition) = receipt_disposition else {
 						return Err(ClientFailure::ProtocolMalformed);
 					};
+
 					if result.client_command_id != client_command_id
 						|| result.idempotency_key != idempotency_key
 						|| (disposition == ReceiptDisposition::Refused
@@ -3210,6 +3506,7 @@ impl AccountClient {
 					{
 						return Err(ClientFailure::ProtocolMalformed);
 					}
+
 					let response = match (
 						result.outcome,
 						result.entity_revision,
@@ -3247,6 +3544,7 @@ impl AccountClient {
 				_ => return Err(ClientFailure::ProtocolMalformed),
 			}
 		}
+
 		Err(ClientFailure::ProtocolBackpressure)
 	}
 }
@@ -3259,6 +3557,7 @@ fn account_result_matches(
 	if entity_revision.0 == 0 {
 		return false;
 	}
+
 	match (command, result) {
 		(
 			CommandPayload::SendAccountRecoveryNudge { source, .. },
@@ -3526,19 +3825,24 @@ mod tests {
 			let mut socket =
 				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
 			let _ = socket.next().await;
+
 			for message in initial(SERVER_ID) {
 				socket.send(message).await.unwrap();
 			}
+
 			let Message::Text(wire) = socket.next().await.unwrap().unwrap() else {
 				panic!("query");
 			};
 			let ClientMessage::Query(query) = serde_json::from_str(&wire).unwrap() else {
 				panic!("query");
 			};
+
 			assert!(
 				matches!(query.payload, crate::QueryPayload::GetInitialModelCatalog { request } if request == expected)
 			);
+
 			time::sleep(super::CLIENT_TIMEOUT + Duration::from_millis(100)).await;
+
 			// A broken client may already have closed at the ordinary query deadline.
 			let _ = socket
 				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
@@ -3550,11 +3854,15 @@ mod tests {
 					),
 				})))
 				.await;
+
 			drop(socket);
+
 			listener.cleanup().unwrap();
 		});
 		let result = crate::AgentClient::new(profile).initial_model_catalog(request).await;
+
 		server.await.unwrap();
+
 		assert_eq!(result, Ok(crate::InitialModelCatalogResult::Unavailable));
 	}
 
@@ -3568,6 +3876,7 @@ mod tests {
 			let stream = listener.accept().await.unwrap();
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 			let _ = socket.next().await;
+
 			for response in initial(SERVER_ID) {
 				socket.send(response).await.unwrap();
 			}
@@ -3578,10 +3887,12 @@ mod tests {
 				let ClientMessage::Query(query) = serde_json::from_str(&frame).unwrap() else {
 					panic!("read-only observation")
 				};
+
 				assert!(
 					matches!(query.payload, crate::QueryPayload::WaitForAgentOutput { work_id, after_revision }
 					if work_id.as_str() == "root" && after_revision == (revision > 1).then_some(revision - 1))
 				);
+
 				socket
 					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 						version: CURRENT_VERSION,
@@ -3604,6 +3915,7 @@ mod tests {
 					.await
 					.unwrap();
 			}
+
 			// Dropping the observer closes this same connection, even during a wait.
 			time::timeout(Duration::from_secs(2), async {
 				while let Some(Ok(message)) = socket.next().await {
@@ -3614,6 +3926,7 @@ mod tests {
 			})
 			.await
 			.unwrap();
+
 			listener.cleanup().unwrap();
 		});
 		let (sender, mut receiver) = tokio::sync::watch::channel(None);
@@ -3622,21 +3935,27 @@ mod tests {
 				.observe_output(EntityId::new("root").unwrap(), sender)
 				.await
 		});
+
 		time::timeout(Duration::from_secs(2), async {
 			loop {
 				receiver.changed().await.unwrap();
+
 				if let Some(crate::AgentOutputResult::Available { revision: 3, messages, .. }) =
 					receiver.borrow_and_update().as_ref()
 				{
 					assert_eq!(messages[0].text, "你好世");
+
 					break;
 				}
 			}
 		})
 		.await
 		.unwrap();
+
 		drop(receiver);
+
 		time::timeout(Duration::from_secs(2), observer).await.unwrap().unwrap().unwrap();
+
 		server.await.unwrap();
 	}
 
@@ -3652,19 +3971,24 @@ mod tests {
 			let stream = listener.accept().await.unwrap();
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 			let _ = socket.next().await;
+
 			for response in initial(SERVER_ID) {
 				socket.send(response).await.unwrap();
 			}
+
 			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
 				panic!("query frame")
 			};
 			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
 				panic!("query")
 			};
+
 			assert!(
 				matches!(query.payload,crate::QueryPayload::GetAgentArchiveState {work_id} if work_id.as_str()=="root")
 			);
+
 			time::sleep(Duration::from_millis(5100)).await;
+
 			socket
 				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
@@ -3674,14 +3998,18 @@ mod tests {
 				})))
 				.await
 				.unwrap();
+
 			drop(socket);
+
 			listener.cleanup().unwrap();
 		});
 		let result = crate::AgentClient::new(profile)
 			.archive_state(EntityId::new("root").unwrap())
 			.await
 			.unwrap();
+
 		server.await.unwrap();
+
 		assert_eq!(result, expected);
 	}
 
@@ -3716,18 +4044,22 @@ mod tests {
 			let stream = listener.accept().await.unwrap();
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 			let _ = socket.next().await;
+
 			for response in initial(SERVER_ID) {
 				socket.send(response).await.unwrap();
 			}
+
 			let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
 				panic!("query frame")
 			};
 			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
 				panic!("query")
 			};
+
 			assert!(
 				matches!(query.payload,crate::QueryPayload::GetAgentGuardianReviews {work_id,before:Some(64)} if work_id.as_str()=="root")
 			);
+
 			socket
 				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
@@ -3737,14 +4069,18 @@ mod tests {
 				})))
 				.await
 				.unwrap();
+
 			drop(socket);
+
 			listener.cleanup().unwrap();
 		});
 		let result = crate::AgentClient::new(profile)
 			.guardian_reviews(EntityId::new("root").unwrap(), Some(64))
 			.await
 			.unwrap();
+
 		server.await.unwrap();
+
 		assert_eq!(result, expected);
 	}
 
@@ -3774,19 +4110,23 @@ mod tests {
 					.await
 					.unwrap();
 				let _ = socket.next().await;
+
 				for response in initial(SERVER_ID) {
 					socket.send(response).await.unwrap();
 				}
+
 				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
 					panic!("query frame");
 				};
 				let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
 					panic!("query");
 				};
+
 				assert!(
 					matches!(query.payload, crate::QueryPayload::GetAgentGuardianDetail { work_id, review_row: 42, review_digest, offset: 3 }
 					if work_id.as_str() == "root" && review_digest.as_str() == "exact")
 				);
+
 				socket
 					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 						version: CURRENT_VERSION,
@@ -3796,7 +4136,9 @@ mod tests {
 					})))
 					.await
 					.unwrap();
+
 				drop(socket);
+
 				listener.cleanup().unwrap();
 			});
 			let result = crate::AgentClient::new(profile)
@@ -3807,8 +4149,11 @@ mod tests {
 					3,
 				)
 				.await;
+
 			server.await.unwrap();
+
 			assert_eq!(result.is_ok(), case == 0);
+
 			if case != 0 {
 				assert!(matches!(result, Err(ClientFailure::ProtocolMalformed)));
 			}
@@ -3831,9 +4176,11 @@ mod tests {
 				.await
 				.expect("Agent protocol fixture succeeds");
 			let _ = socket.next().await;
+
 			for response in initial(SERVER_ID) {
 				socket.send(response).await.expect("Agent protocol fixture succeeds");
 			}
+
 			let Message::Text(request) = socket
 				.next()
 				.await
@@ -3847,8 +4194,10 @@ mod tests {
 			else {
 				panic!("command envelope");
 			};
+
 			assert!(matches!(command.payload, crate::CommandPayload::Agent { .. }));
 			assert_eq!(command.idempotency_key.as_str(), "agent-once");
+
 			if mode != "dropped" {
 				if mode != "missing-receipt" {
 					socket
@@ -3864,6 +4213,7 @@ mod tests {
 						.await
 						.expect("Agent protocol fixture succeeds");
 				}
+
 				socket
 					.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
 						version: CURRENT_VERSION,
@@ -3910,11 +4260,14 @@ mod tests {
 					.await
 					.expect("Agent protocol fixture succeeds");
 			}
+
 			drop(socket);
+
 			assert!(
 				time::timeout(Duration::from_millis(30), listener.accept()).await.is_err(),
 				"client must not reconnect and retry"
 			);
+
 			listener.cleanup().expect("Agent protocol fixture succeeds");
 		});
 		let result = crate::AgentClient::new(profile)
@@ -3928,7 +4281,9 @@ mod tests {
 			)
 			.await
 			.expect("Agent protocol fixture succeeds");
+
 		task.await.expect("Agent protocol fixture succeeds");
+
 		result
 	}
 
@@ -3951,6 +4306,7 @@ mod tests {
 			agent_command_exchange("accepted-revision").await,
 			crate::AgentCommandResponse::Accepted { .. }
 		));
+
 		for mode in [
 			"wrong-work",
 			"wrong-key",
@@ -4037,9 +4393,11 @@ mod tests {
 			let mut socket =
 				tokio_tungstenite::accept_async(stream).await.expect("test socket must upgrade");
 			let _ = socket.next().await;
+
 			for response in initial(SERVER_ID) {
 				socket.send(response).await.expect("initial response must send");
 			}
+
 			let request =
 				socket.next().await.expect("query must arrive").expect("query must decode");
 			let Message::Text(request) = request else { panic!("expected text query") };
@@ -4048,6 +4406,7 @@ mod tests {
 			else {
 				panic!("expected typed query")
 			};
+
 			socket
 				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
@@ -4057,7 +4416,9 @@ mod tests {
 				})))
 				.await
 				.expect("profile result must send");
+
 			drop(socket);
+
 			listener.cleanup().expect("test listener must clean up");
 		});
 		let profile = ClientProfile::fixture(
@@ -4071,7 +4432,9 @@ mod tests {
 				include_email,
 			)
 			.await;
+
 		task.await.expect("test server must settle");
+
 		response
 	}
 
@@ -4115,9 +4478,11 @@ mod tests {
 			.await
 			.expect("notification fixture must be valid");
 			let _ = socket.next().await;
+
 			for message in initial(SERVER_ID) {
 				socket.send(message).await.expect("notification fixture must be valid");
 			}
+
 			let Message::Text(raw) = socket
 				.next()
 				.await
@@ -4131,11 +4496,13 @@ mod tests {
 			else {
 				panic!("command")
 			};
+
 			assert_eq!(command.idempotency_key.as_str(), "notification-once");
 			assert_eq!(command.expected_revision, Some(EntityRevision(1)));
 			assert!(
 				matches!(&command.payload, crate::CommandPayload::SendAccountRecoveryNudge { source, action: crate::AccountRecoveryAction::NotifyOwner } if **source == notification_source())
 			);
+
 			if mode != "drop-before-receipt" {
 				if mode != "missing-receipt" {
 					socket
@@ -4186,11 +4553,14 @@ mod tests {
 						.expect("notification fixture must be valid");
 				}
 			}
+
 			drop(socket);
+
 			assert!(
 				tokio::time::timeout(Duration::from_millis(30), listener.accept()).await.is_err(),
 				"notification transport must not reconnect to retry"
 			);
+
 			listener.cleanup().expect("notification fixture must be valid");
 		});
 		let result = AccountClient::new(profile)
@@ -4202,7 +4572,9 @@ mod tests {
 			)
 			.await
 			.expect("notification fixture must be valid");
+
 		task.await.expect("notification fixture must be valid");
+
 		result
 	}
 
@@ -4218,6 +4590,7 @@ mod tests {
 			"drop-after-receipt",
 		] {
 			let response = notification_command_exchange(mode).await;
+
 			if mode == "good" {
 				assert!(
 					matches!(response, crate::AccountCommandResponse::Applied { result, .. } if matches!(*result, ResultPayload::AccountRecoveryNudge { status: crate::AccountRecoveryNudgeStatus::Sent, .. }))
@@ -4237,7 +4610,9 @@ mod tests {
 			AccountRecoveryAction as A, AccountRecoveryNudgeOperation, AccountRecoveryNudgeResult,
 			AccountRecoveryNudgeStatus,
 		};
+
 		let expected_account = "40000000-0000-4000-8000-000000000001";
+
 		for (account, action, key, accepted) in [
 			(expected_account, A::NotifyOwner, "requested-key", true),
 			("40000000-0000-4000-8000-000000000002", A::NotifyOwner, "requested-key", false),
@@ -4252,15 +4627,18 @@ mod tests {
 					.await
 					.unwrap();
 				let _ = socket.next().await;
+
 				for frame in initial(SERVER_ID) {
 					socket.send(frame).await.unwrap();
 				}
+
 				let Message::Text(raw) = socket.next().await.unwrap().unwrap() else {
 					panic!("query")
 				};
 				let ClientMessage::Query(query) = serde_json::from_str(&raw).unwrap() else {
 					panic!("query")
 				};
+
 				assert!(matches!(
 					query.payload,
 					crate::QueryPayload::GetAccountRecoveryNudge {
@@ -4269,6 +4647,7 @@ mod tests {
 						..
 					}
 				));
+
 				socket
 					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 						version: CURRENT_VERSION,
@@ -4287,7 +4666,9 @@ mod tests {
 					})))
 					.await
 					.unwrap();
+
 				drop(socket);
+
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
@@ -4298,7 +4679,9 @@ mod tests {
 					Some(IdempotencyKey::new("requested-key").unwrap()),
 				)
 				.await;
+
 			assert_eq!(result.is_ok(), accepted);
+
 			server.await.unwrap();
 		}
 	}
@@ -4315,34 +4698,43 @@ mod tests {
 			let mut main =
 				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
 			let _ = main.next().await;
+
 			for response in initial(SERVER_ID) {
 				let Message::Text(raw) = response else { unreachable!() };
 				let mut message: ServerMessage = serde_json::from_str(&raw).unwrap();
+
 				if let ServerMessage::Welcome(welcome) = &mut message {
 					welcome.instance_id = Some(
 						crate::ServerInstanceId::new("50000000-0000-4000-8000-000000000001")
 							.unwrap(),
 					);
 				}
+
 				main.send(typed(message)).await.unwrap();
 			}
+
 			let mut wait =
 				tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
 			let _ = wait.next().await;
+
 			for response in initial(SERVER_ID) {
 				wait.send(response).await.unwrap();
 			}
+
 			let Message::Text(request) = wait.next().await.unwrap().unwrap() else {
 				panic!("wait query")
 			};
 			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
 				panic!("wait query")
 			};
+
 			assert!(matches!(
 				query.payload,
 				crate::QueryPayload::WaitForAccountObservation { after_generation: 9, .. }
 			));
+
 			started.send(()).unwrap();
+
 			// Deliberately leave this socket unanswered while serving the retained connection.
 			let Message::Text(request) = main.next().await.unwrap().unwrap() else {
 				panic!("main query")
@@ -4350,7 +4742,9 @@ mod tests {
 			let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
 				panic!("main query")
 			};
+
 			assert!(matches!(query.payload, crate::QueryPayload::GetAccountRecovery { .. }));
+
 			main.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 				version: CURRENT_VERSION,
 				server_id: ServerId::new(SERVER_ID).unwrap(),
@@ -4364,9 +4758,13 @@ mod tests {
 			})))
 			.await
 			.unwrap();
+
 			let closed = tokio::time::timeout(Duration::from_secs(2), wait.next()).await.unwrap();
+
 			assert!(matches!(closed, None | Some(Err(_)) | Some(Ok(Message::Close(_)))));
+
 			drop(main);
+
 			listener.cleanup().unwrap();
 		});
 		let mut main = crate::RetainedSession::connect(
@@ -4380,11 +4778,16 @@ mod tests {
 		else {
 			panic!("snapshot")
 		};
+
 		main.confirm_applied(confirmation).unwrap();
+
 		let wait =
 			tokio::spawn(async move { config.account_client().wait_for_observation(9).await });
+
 		tokio::time::timeout(Duration::from_secs(2), ready).await.unwrap().unwrap();
+
 		let query_id = QueryId::new("main-remains-responsive").unwrap();
+
 		main.send_query(crate::QueryEnvelope {
 			version: CURRENT_VERSION,
 			query_id: query_id.clone(),
@@ -4395,14 +4798,19 @@ mod tests {
 		})
 		.await
 		.unwrap();
+
 		let result =
 			tokio::time::timeout(Duration::from_secs(2), main.next()).await.unwrap().unwrap();
+
 		assert!(
 			matches!(result, crate::SessionDelivery::QueryResult(result) if result.query_id == query_id)
 		);
 		assert!(!wait.is_finished());
+
 		wait.abort();
+
 		assert!(wait.await.unwrap_err().is_cancelled());
+
 		server.await.unwrap();
 	}
 
@@ -4420,15 +4828,18 @@ mod tests {
 				let stream = listener.accept().await.unwrap();
 				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 				let _ = socket.next().await;
+
 				for response in initial(SERVER_ID) {
 					socket.send(response).await.unwrap();
 				}
+
 				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
 					panic!("query")
 				};
 				let ClientMessage::Query(query) = serde_json::from_str(&request).unwrap() else {
 					panic!("query")
 				};
+
 				assert!(matches!(
 					query.payload,
 					crate::QueryPayload::GetAccountRecovery {
@@ -4436,6 +4847,7 @@ mod tests {
 						..
 					}
 				));
+
 				socket
 					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 						version: CURRENT_VERSION,
@@ -4452,7 +4864,9 @@ mod tests {
 					})))
 					.await
 					.unwrap();
+
 				drop(socket);
+
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
@@ -4462,7 +4876,9 @@ mod tests {
 					crate::EntityRevision(1),
 				)
 				.await;
+
 			assert_eq!(result.is_ok(), accepted);
+
 			task.await.unwrap();
 		}
 	}
@@ -4470,6 +4886,7 @@ mod tests {
 	#[tokio::test]
 	async fn agent_request_pages_preserve_complete_content_and_reject_changed_identity() {
 		use crate::QueryPayload;
+
 		for failure in ["none", "digest", "offset", "expired", "content"] {
 			let (temp, authority) = local_transport();
 			let mut listener = authority.bind().await.unwrap();
@@ -4483,15 +4900,18 @@ mod tests {
 			let task = tokio::spawn(async move {
 				let _temp = temp;
 				let mut offset = 0;
+
 				loop {
 					let mut socket =
 						tokio_tungstenite::accept_async(listener.accept().await.unwrap())
 							.await
 							.unwrap();
 					let _ = socket.next().await;
+
 					for response in initial(SERVER_ID) {
 						socket.send(response).await.unwrap();
 					}
+
 					let Message::Text(wire) = socket.next().await.unwrap().unwrap() else {
 						panic!("query")
 					};
@@ -4500,6 +4920,7 @@ mod tests {
 					else {
 						panic!("query")
 					};
+
 					if offset == 0 {
 						assert!(matches!(
 							query.payload,
@@ -4510,10 +4931,13 @@ mod tests {
 							matches!(query.payload, QueryPayload::GetAgentRequestPage { event_id:7, digest: returned, offset: requested } if requested==offset && returned.as_str()==digest)
 						);
 					}
+
 					let mut end = (offset + 8192).min(text.len());
+
 					while !text.is_char_boundary(end) {
 						end -= 1;
 					}
+
 					let fail = if failure == "content" {
 						end == text.len()
 					} else {
@@ -4535,8 +4959,10 @@ mod tests {
 							total_bytes: text.len(),
 							text: crate::HistoryText::new(if fail && failure == "content" {
 								let mut changed = text[offset..end].to_owned();
+
 								changed.pop();
 								changed.push(']');
+
 								changed
 							} else {
 								text[offset..end].to_owned()
@@ -4545,6 +4971,7 @@ mod tests {
 							next_offset: (end < text.len()).then_some(end),
 						}
 					};
+
 					socket
 						.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 							version: CURRENT_VERSION,
@@ -4554,17 +4981,23 @@ mod tests {
 						})))
 						.await
 						.unwrap();
+
 					drop(socket);
+
 					if end == text.len() || fail {
 						break;
 					}
+
 					offset = end;
 				}
+
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 			let result = crate::AgentClient::new(profile).request(7).await;
+
 			task.await.unwrap();
+
 			match failure {
 				"none" => assert!(
 					matches!(result, Ok(crate::AgentRequestResult::Available { request_json, .. }) if request_json.as_str()==expected)
@@ -4589,9 +5022,11 @@ mod tests {
 				let stream = listener.accept().await.unwrap();
 				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 				let _ = socket.next().await;
+
 				for response in initial(SERVER_ID) {
 					socket.send(response).await.unwrap();
 				}
+
 				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
 					panic!("text request");
 				};
@@ -4600,10 +5035,12 @@ mod tests {
 				else {
 					panic!("query");
 				};
+
 				assert!(matches!(
 					query.payload,
 					crate::QueryPayload::GetAgentRequest { event_id: 7 }
 				));
+
 				socket
 					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 						version: CURRENT_VERSION,
@@ -4623,12 +5060,16 @@ mod tests {
 					})))
 					.await
 					.unwrap();
+
 				drop(socket);
+
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 			let result = crate::AgentClient::new(profile).request(7).await;
+
 			task.await.unwrap();
+
 			if accepted {
 				assert!(
 					matches!(result,Ok(crate::AgentRequestResult::Available {method,..}) if method=="mcpServer/elicitation/request")
@@ -4649,9 +5090,11 @@ mod tests {
 				let stream = listener.accept().await.unwrap();
 				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 				let _ = socket.next().await;
+
 				for response in initial(SERVER_ID) {
 					socket.send(response).await.unwrap();
 				}
+
 				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
 					panic!("text query");
 				};
@@ -4660,9 +5103,11 @@ mod tests {
 				else {
 					panic!("query");
 				};
+
 				assert!(
 					matches!(query.payload, crate::QueryPayload::ExchangeMcpLogin { request: crate::McpLoginRequest::Start { session_id, work_id, server_name } } if session_id.as_str() == "intent" && work_id.as_str() == "work" && server_name.as_str() == "server")
 				);
+
 				socket
 					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 						version: CURRENT_VERSION,
@@ -4682,7 +5127,9 @@ mod tests {
 					})))
 					.await
 					.unwrap();
+
 				drop(socket);
+
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
@@ -4693,9 +5140,12 @@ mod tests {
 					server_name: crate::WireText::new("server").unwrap(),
 				})
 				.await;
+
 			task.await.unwrap();
+
 			if returned_session == "intent" {
 				let status = result.unwrap();
+
 				assert_eq!(status.phase, crate::McpLoginPhase::AwaitingUser);
 				assert!(status.authorization_url.is_some());
 				assert!(!format!("{status:?}").contains("private-fixture"));
@@ -4715,9 +5165,11 @@ mod tests {
 				let stream = listener.accept().await.unwrap();
 				let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 				let _ = socket.next().await;
+
 				for response in initial(SERVER_ID) {
 					socket.send(response).await.unwrap();
 				}
+
 				let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
 					panic!("text query");
 				};
@@ -4726,9 +5178,11 @@ mod tests {
 				else {
 					panic!("query");
 				};
+
 				assert!(
 					matches!(query.payload,crate::QueryPayload::GetAgentUsageEstimate {work_id} if work_id.as_str()=="work")
 				);
+
 				let value = crate::AgentUsageEstimateResult::Available {
 					work_id: EntityId::new(returned_work).unwrap(),
 					account_id: EntityId::new("account").unwrap(),
@@ -4740,6 +5194,7 @@ mod tests {
 						groups: vec![],
 					},
 				};
+
 				socket
 					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 						version: CURRENT_VERSION,
@@ -4749,19 +5204,24 @@ mod tests {
 					})))
 					.await
 					.unwrap();
+
 				drop(socket);
+
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 			let response = crate::AgentClient::new(profile)
 				.usage_estimate(EntityId::new("work").unwrap())
 				.await;
+
 			task.await.unwrap();
+
 			if returned_work == "work" {
 				let crate::AgentUsageEstimateResult::Available { estimate, .. } = response.unwrap()
 				else {
 					panic!("estimate");
 				};
+
 				assert_eq!(estimate.estimated_usage_credits_micros, 9007199254740993);
 				assert_eq!(estimate.estimated_usage_usd_micros, None);
 			} else {
@@ -4829,11 +5289,14 @@ mod tests {
 		let (_second_root, second_transport) = local_transport();
 		let first = ClientProfile::fixture(first_transport, ServerId::new(SERVER_ID).unwrap());
 		let key = first.draft_scope_key();
+
 		assert_eq!(key.len(), 64);
 		assert!(key.bytes().all(|byte| byte.is_ascii_hexdigit()));
 		assert_eq!(first.clone().draft_scope_key(), key);
+
 		let other_endpoint =
 			ClientProfile::fixture(second_transport, ServerId::new(SERVER_ID).unwrap());
+
 		assert_ne!(other_endpoint.draft_scope_key(), key);
 		assert_ne!(
 			first
@@ -4842,15 +5305,20 @@ mod tests {
 				.draft_scope_key(),
 			key
 		);
+
 		let mut renamed = first.clone();
+
 		renamed.profile_name = "another profile".into();
+
 		assert_ne!(renamed.draft_scope_key(), key);
+
 		let remote = ClientProfile {
 			profile_name: first.profile_name.clone(),
 			kind: ProfileKind::Remote,
 			local_transport: None,
 			expected_server_id: first.expected_server_id.clone(),
 		};
+
 		assert_ne!(remote.draft_scope_key(), key);
 	}
 
@@ -4916,9 +5384,11 @@ max_entry_bytes = 0
 		assert_eq!(remote.name(), "remote");
 		assert_eq!(remote.kind(), ProfileKind::Remote);
 		assert_eq!(remote.expected_server_id().as_str(), SERVER_ID);
+
 		let stricter = remote.clone().with_expected_server_id(
 			ServerId::new("retained-authority").expect("test operation must succeed"),
 		);
+
 		assert_eq!(stricter.name(), "remote");
 		assert_eq!(stricter.expected_server_id().as_str(), "retained-authority");
 		assert_eq!(
@@ -4938,6 +5408,7 @@ max_entry_bytes = 0
 			false,
 		)
 		.await;
+
 		assert_eq!(mismatch, Err(ClientFailure::ProtocolMalformed));
 
 		let leaked = account_profile_query(
@@ -4950,6 +5421,7 @@ max_entry_bytes = 0
 			false,
 		)
 		.await;
+
 		assert_eq!(leaked, Err(ClientFailure::ProtocolMalformed));
 
 		let unavailable_leak = account_profile_query(
@@ -4963,6 +5435,7 @@ max_entry_bytes = 0
 			false,
 		)
 		.await;
+
 		assert_eq!(unavailable_leak, Err(ClientFailure::ProtocolMalformed));
 	}
 
@@ -5056,6 +5529,7 @@ max_entry_bytes = 0
 			}
 
 			drop(socket);
+
 			listener.cleanup().expect("test operation must succeed");
 		});
 		let profile = ClientProfile::fixture(
@@ -5079,9 +5553,11 @@ max_entry_bytes = 0
 				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
 
 			socket.next().await.expect("hello must arrive").expect("hello must decode");
+
 			for message in initial(SERVER_ID) {
 				socket.send(message).await.expect("initial response must send");
 			}
+
 			socket.next().await.expect("query must arrive").expect("query must decode");
 			socket.send(result(response)).await.expect("query response must send");
 
@@ -5125,9 +5601,11 @@ max_entry_bytes = 0
 				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
 
 			socket.next().await.expect("hello must arrive").expect("hello must decode");
+
 			for message in initial(SERVER_ID) {
 				socket.send(message).await.expect("initial response must send");
 			}
+
 			let request =
 				socket.next().await.expect("command must arrive").expect("command must decode");
 			let Message::Text(request) = request else { panic!("expected text command") };
@@ -5167,8 +5645,11 @@ max_entry_bytes = 0
 				.expect("command result must send");
 
 			let close = socket.next().await.expect("close must arrive").expect("close must decode");
+
 			assert!(matches!(close, Message::Close(_)));
+
 			time::sleep(Duration::from_millis(300)).await;
+
 			socket.flush().await.expect("delayed close acknowledgement must flush");
 			listener.cleanup().expect("test operation must succeed");
 		});
@@ -5490,6 +5971,7 @@ max_entry_bytes = 0
 			}
 
 			drop(socket);
+
 			listener.cleanup().expect("test operation must succeed");
 		});
 		let profile = ClientProfile::fixture(
@@ -5530,11 +6012,12 @@ max_entry_bytes = 0
 			let stream = listener.accept().await.expect("test operation must succeed");
 			let mut socket =
 				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
-
 			let _ = socket.next().await;
+
 			for response in initial(SERVER_ID) {
 				socket.send(response).await.expect("test operation must succeed");
 			}
+
 			let request = socket
 				.next()
 				.await
@@ -5573,6 +6056,7 @@ max_entry_bytes = 0
 				.expect("test operation must succeed");
 
 			drop(socket);
+
 			listener.cleanup().expect("test operation must succeed");
 		});
 		let profile = ClientProfile::fixture(
@@ -5609,13 +6093,13 @@ max_entry_bytes = 0
 			let stream = listener.accept().await.expect("test operation must succeed");
 			let mut socket =
 				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
-
 			let _ = socket.next().await;
+
 			for response in initial(SERVER_ID) {
 				socket.send(response).await.expect("test operation must succeed");
 			}
-			let _ = socket.next().await;
 
+			let _ = socket.next().await;
 			let client_command_id = ClientCommandId::new("reset-card-use:operator-key")
 				.expect("test operation must succeed");
 
@@ -5633,6 +6117,7 @@ max_entry_bytes = 0
 				.expect("test operation must succeed");
 
 			drop(socket);
+
 			listener.cleanup().expect("test operation must succeed");
 		});
 		let profile = ClientProfile::fixture(
@@ -5671,11 +6156,12 @@ max_entry_bytes = 0
 			let stream = listener.accept().await.expect("test operation must succeed");
 			let mut socket =
 				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
-
 			let _ = socket.next().await;
+
 			for response in initial(SERVER_ID) {
 				socket.send(response).await.expect("test operation must succeed");
 			}
+
 			let request = socket
 				.next()
 				.await
@@ -5719,6 +6205,7 @@ max_entry_bytes = 0
 				.expect("test operation must succeed");
 
 			drop(socket);
+
 			listener.cleanup().expect("test operation must succeed");
 		});
 		let profile = ClientProfile::fixture(
@@ -5757,11 +6244,12 @@ max_entry_bytes = 0
 			let stream = listener.accept().await.expect("test operation must succeed");
 			let mut socket =
 				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
-
 			let _ = socket.next().await;
+
 			for response in initial(SERVER_ID) {
 				socket.send(response).await.expect("test operation must succeed");
 			}
+
 			let request = socket
 				.next()
 				.await
@@ -5805,6 +6293,7 @@ max_entry_bytes = 0
 				.expect("test operation must succeed");
 
 			drop(socket);
+
 			listener.cleanup().expect("test operation must succeed");
 		});
 		let profile = ClientProfile::fixture(
@@ -5906,7 +6395,9 @@ max_entry_bytes = 0
 		assert_eq!(client.query().await.unwrap_err(), ClientFailure::ProtocolTimeout);
 
 		task.abort();
+
 		let _ = task.await;
+
 		drop(temp);
 	}
 	#[tokio::test]
@@ -5932,9 +6423,11 @@ max_entry_bytes = 0
 					.await
 					.unwrap();
 				let _ = socket.next().await;
+
 				for response in initial(SERVER_ID) {
 					socket.send(response).await.unwrap();
 				}
+
 				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 					panic!("text query")
 				};
@@ -5946,14 +6439,18 @@ max_entry_bytes = 0
 				let crate::QueryPayload::GetAgentMedia { request: actual } = query.payload else {
 					panic!("media request")
 				};
+
 				assert_eq!(actual, expected);
+
 				let mut returned = actual;
+
 				if change == "item" {
 					returned.item_id = EntityId::new("another-item").unwrap();
 				}
 				if change == "offset" {
 					returned.offset += 1;
 				}
+
 				let bytes = match change {
 					"empty" => vec![],
 					"chunk" => vec![255; crate::AGENT_MEDIA_CHUNK_BYTES + 1],
@@ -5975,6 +6472,7 @@ max_entry_bytes = 0
 					total_bytes,
 					bytes,
 				};
+
 				socket
 					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 						version: CURRENT_VERSION,
@@ -5984,12 +6482,16 @@ max_entry_bytes = 0
 					})))
 					.await
 					.unwrap();
+
 				drop(socket);
+
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 			let result = crate::AgentClient::new(profile).media(request).await;
+
 			task.await.unwrap();
+
 			if change == "none" {
 				assert!(matches!(result, Ok(crate::AgentMediaResult::Available { .. })));
 			} else {
@@ -6019,9 +6521,11 @@ max_entry_bytes = 0
 					.await
 					.unwrap();
 				let _ = socket.next().await;
+
 				for response in initial(SERVER_ID) {
 					socket.send(response).await.unwrap();
 				}
+
 				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 					panic!("text query")
 				};
@@ -6033,14 +6537,18 @@ max_entry_bytes = 0
 				let crate::QueryPayload::GetAgentAppUi { request: actual } = query.payload else {
 					panic!("media request")
 				};
+
 				assert_eq!(actual, expected);
+
 				let mut returned = actual;
+
 				if change == "item" {
 					returned.item_id = EntityId::new("another-item").unwrap();
 				}
 				if change == "offset" {
 					returned.offset += 1;
 				}
+
 				let bytes = match change {
 					"empty" => vec![],
 					"chunk" => vec![255; crate::AGENT_APP_UI_CHUNK_BYTES + 1],
@@ -6062,6 +6570,7 @@ max_entry_bytes = 0
 					total_bytes,
 					bytes,
 				};
+
 				socket
 					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 						version: CURRENT_VERSION,
@@ -6071,12 +6580,16 @@ max_entry_bytes = 0
 					})))
 					.await
 					.unwrap();
+
 				drop(socket);
+
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 			let result = crate::AgentClient::new(profile).app_ui(request).await;
+
 			task.await.unwrap();
+
 			if change == "none" {
 				assert!(matches!(result, Ok(crate::AgentAppUiResult::Available { .. })));
 			} else {
@@ -6104,9 +6617,11 @@ max_entry_bytes = 0
 					.await
 					.unwrap();
 				let _ = socket.next().await;
+
 				for response in initial(SERVER_ID) {
 					socket.send(response).await.unwrap();
 				}
+
 				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 					panic!("text query")
 				};
@@ -6119,14 +6634,18 @@ max_entry_bytes = 0
 				else {
 					panic!("media request")
 				};
+
 				assert_eq!(actual, expected);
+
 				let mut returned = actual;
+
 				if change == "item" {
 					returned.operation_id = EntityId::new("another-item").unwrap();
 				}
 				if change == "offset" {
 					returned.offset += 1;
 				}
+
 				let bytes = match change {
 					"empty" => vec![],
 					"chunk" => vec![255; crate::AGENT_APP_UI_RECEIPT_CHUNK_BYTES + 1],
@@ -6146,6 +6665,7 @@ max_entry_bytes = 0
 					total_bytes,
 					bytes,
 				};
+
 				socket
 					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 						version: CURRENT_VERSION,
@@ -6155,12 +6675,16 @@ max_entry_bytes = 0
 					})))
 					.await
 					.unwrap();
+
 				drop(socket);
+
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 			let result = crate::AgentClient::new(profile).app_ui_receipt(request).await;
+
 			task.await.unwrap();
+
 			if change == "none" {
 				assert!(matches!(result, Ok(crate::AgentAppUiReceiptResult::Available { .. })));
 			} else {
@@ -6179,9 +6703,11 @@ max_entry_bytes = 0
 					.await
 					.unwrap();
 				let _ = socket.next().await;
+
 				for response in initial(SERVER_ID) {
 					socket.send(response).await.unwrap();
 				}
+
 				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 					panic!("query")
 				};
@@ -6190,9 +6716,11 @@ max_entry_bytes = 0
 				else {
 					panic!("query")
 				};
+
 				assert!(
 					matches!(&query.payload,crate::QueryPayload::GetAgentInputReceipts {work_id,after:Some(40)} if work_id.as_str()=="work")
 				);
+
 				let entry = crate::AgentHistoryEntryDto {
 					native_source: None,
 					turn_id: None,
@@ -6218,6 +6746,7 @@ max_entry_bytes = 0
 					entries: vec![entry],
 					shortened: false,
 				};
+
 				socket
 					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 						version: CURRENT_VERSION,
@@ -6227,14 +6756,18 @@ max_entry_bytes = 0
 					})))
 					.await
 					.unwrap();
+
 				drop(socket);
+
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 			let result = crate::AgentClient::new(profile)
 				.input_receipts(EntityId::new("work").unwrap(), Some(40))
 				.await;
+
 			task.await.unwrap();
+
 			if change == "none" {
 				assert!(matches!(result, Ok(crate::AgentInputReceiptsResult::Available { .. })));
 			} else {
@@ -6260,9 +6793,11 @@ max_entry_bytes = 0
 					.await
 					.unwrap();
 				let _ = socket.next().await;
+
 				for response in initial(SERVER_ID) {
 					socket.send(response).await.unwrap();
 				}
+
 				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 					panic!("query")
 				};
@@ -6271,10 +6806,13 @@ max_entry_bytes = 0
 				else {
 					panic!("query")
 				};
+
 				assert!(
 					matches!(&query.payload, crate::QueryPayload::GetAgentSteerReceipt { identity } if identity == &expected)
 				);
+
 				let mut actual = expected;
+
 				match change {
 					"work" => actual.work_id = EntityId::new("other").unwrap(),
 					"thread" => actual.thread_id = crate::WireText::new("other").unwrap(),
@@ -6282,6 +6820,7 @@ max_entry_bytes = 0
 					"submission" => actual.submission_id = IdempotencyKey::new("other").unwrap(),
 					_ => {},
 				}
+
 				socket
 					.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 						version: CURRENT_VERSION,
@@ -6293,12 +6832,16 @@ max_entry_bytes = 0
 					})))
 					.await
 					.unwrap();
+
 				drop(socket);
+
 				listener.cleanup().unwrap();
 			});
 			let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 			let result = crate::AgentClient::new(profile).steer_receipt(identity.clone()).await;
+
 			task.await.unwrap();
+
 			if change == "none" {
 				assert_eq!(result.unwrap(), crate::AgentSteerReceiptResult::Confirmed { identity });
 			} else {
