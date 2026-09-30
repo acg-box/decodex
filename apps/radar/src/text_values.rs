@@ -146,6 +146,7 @@ pub(crate) fn extract_pr_number_from_url(url: &str, repo: &str) -> Option<u64> {
 	(!number.is_empty() && number.chars().all(|ch| ch.is_ascii_digit()))
 		.then(|| number.parse::<u64>().ok())
 		.flatten()
+		.filter(|number| *number > 0)
 }
 
 pub(crate) fn percent_encode(value: &str) -> String {

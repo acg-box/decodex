@@ -10,8 +10,6 @@ pub(super) fn published_subjects(
 ) -> Result<(HashSet<u64>, HashSet<String>)> {
 	let mut published_prs = HashSet::new();
 	let mut published_shas = HashSet::new();
-	let pr_prefix = format!("https://github.com/{repo}/pull/");
-	let commit_prefix = format!("https://github.com/{repo}/commit/");
 
 	for path in crate::sorted_json_files(signals_dir)? {
 		let payload = crate::load_json(&path)?;
@@ -26,19 +24,14 @@ pub(super) fn published_subjects(
 			.get("source_refs")
 			.and_then(|refs| refs.get("pr_url"))
 			.and_then(Value::as_str)
-			.and_then(|url| url.strip_prefix(&pr_prefix))
-			.filter(|number| !number.is_empty() && number.bytes().all(|ch| ch.is_ascii_digit()))
-			.and_then(|number| number.parse::<u64>().ok())
+			.and_then(|url| crate::extract_pr_number_from_url(url, repo))
 		{
 			published_prs.insert(pr_number);
 		}
 
 		for url in crate::string_array(payload.pointer("/source_refs/commit_urls")) {
-			if let Some(sha) = url.strip_prefix(&commit_prefix)
-				&& (7..=40).contains(&sha.len())
-				&& sha.bytes().all(|ch| ch.is_ascii_hexdigit())
-			{
-				published_shas.insert(sha.to_owned());
+			if let Some(sha) = crate::extract_commit_sha_from_url(&url, repo) {
+				published_shas.insert(sha);
 			}
 		}
 	}
@@ -49,6 +42,19 @@ pub(super) fn published_subjects(
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn published_pr_references_require_positive_decimal_numbers() {
+		let temp = tempfile::tempdir().unwrap();
+		let mut signal = crate::tests::fixtures::valid_signal();
+		for suffix in ["0", "00", "+1", "-1", "1?query", "18446744073709551616"] {
+			signal["source_refs"]["pr_url"] =
+				serde_json::json!(format!("https://github.com/openai/codex/pull/{suffix}"));
+			crate::write_json(&temp.path().join("signal.json"), &signal).unwrap();
+			let (prs, _) = published_subjects(temp.path(), "openai/codex").unwrap();
+			assert!(prs.is_empty(), "invalid PR reference: {suffix}");
+		}
+	}
 
 	#[test]
 	fn foreign_signals_do_not_suppress_the_requested_repository() {

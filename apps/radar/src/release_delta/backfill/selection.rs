@@ -62,7 +62,6 @@ pub(in crate::release_delta::backfill) fn published_pr_numbers(
 	repo: &str,
 ) -> Result<BTreeSet<u64>> {
 	let mut published = BTreeSet::new();
-	let pr_prefix = format!("https://github.com/{repo}/pull/");
 
 	for path in crate::sorted_json_files(signals_dir)? {
 		let payload = crate::load_json(&path)?;
@@ -77,9 +76,7 @@ pub(in crate::release_delta::backfill) fn published_pr_numbers(
 			.get("source_refs")
 			.and_then(Value::as_object)
 			.and_then(|refs| crate::string_field(refs, "pr_url"))
-			.and_then(|url| url.strip_prefix(&pr_prefix))
-			.filter(|number| !number.is_empty() && number.bytes().all(|ch| ch.is_ascii_digit()))
-			.and_then(|number| number.parse::<u64>().ok())
+			.and_then(|url| crate::extract_pr_number_from_url(url, repo))
 		{
 			published.insert(pr_number);
 		}
