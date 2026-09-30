@@ -81,7 +81,17 @@ fn reserve_enforces_duplicate_and_one_post_per_day() {
 	let temp = tempfile::tempdir().expect("temporary directory");
 	let candidate = write_candidate(temp.path(), "candidate.json", valid_social_candidate());
 	let request = reserve_request(temp.path(), &candidate, RUN_ID);
-	crate::reserve_social_publish(&request).expect("first reservation");
+	let report = crate::reserve_social_publish(&request).expect("first reservation");
+	let reservation = crate::load_json(Path::new(&report.path)).expect("reservation artifact");
+	for (field, value) in [
+		("duplicate_keys", json!(["unrelated", "keys"])),
+		("expires_at", reservation["reserved_at"].clone()),
+		("expires_at", json!("2026-07-27T11:59:59Z")),
+	] {
+		let mut inconsistent = reservation.clone();
+		inconsistent[field] = value;
+		assert!(crate::validate_generated_social_artifact(&inconsistent).is_err(), "{field}");
+	}
 	let duplicate =
 		crate::reserve_social_publish(&request).expect_err("duplicate reservation").to_string();
 	assert!(duplicate.contains("idempotency_key already has"), "{duplicate}");

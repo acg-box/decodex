@@ -1,5 +1,7 @@
 //! social_publish_reservation/v1 schema validation.
 
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+
 use crate::social_validation::{
 	self, Map, SOCIAL_POST_MODES, SOCIAL_PUBLISH_RESERVATION_STATUSES, Value,
 };
@@ -51,7 +53,9 @@ pub(super) fn validate_social_publish_reservation(
 		"duplicate_keys",
 		errors,
 	);
-	if entry.get("duplicate_keys").and_then(Value::as_array).map(Vec::len) != Some(2) {
+	if entry.get("duplicate_keys")
+		!= Some(&serde_json::json!([entry.get("slug"), entry.get("idempotency_key")]))
+	{
 		errors.push(
 			"duplicate_keys must contain exactly the candidate slug and idempotency_key".into(),
 		);
@@ -66,6 +70,13 @@ pub(super) fn validate_social_publish_reservation(
 
 	social_validation::validate_rfc3339_field(entry, "reserved_at", errors);
 	social_validation::validate_rfc3339_field(entry, "expires_at", errors);
+	let reserved_at = social_validation::string_field(entry, "reserved_at")
+		.and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok());
+	let expires_at = social_validation::string_field(entry, "expires_at")
+		.and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok());
+	if reserved_at.zip(expires_at).is_some_and(|(reserved, expires)| expires <= reserved) {
+		errors.push("expires_at must be later than reserved_at".into());
+	}
 
 	validate_social_publish_reservation_status_payload(entry, errors);
 }
