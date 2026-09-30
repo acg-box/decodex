@@ -79,12 +79,11 @@ fn validate_social_post_decision_counts(
 
 #[cfg(test)]
 mod tests {
-	use serde_json::{Value, json};
+	use serde_json::Value;
 
 	fn errors(status: &str, before: Value, after: Value) -> Vec<String> {
-		let entry = json!({"status": status});
-		let decision =
-			json!({"daily_limit": 1, "daily_count_before": before, "daily_count_after": after});
+		let entry = serde_json::json!({"status": status});
+		let decision = serde_json::json!({"daily_limit": 1, "daily_count_before": before, "daily_count_after": after});
 		let mut errors = Vec::new();
 
 		super::validate_social_post_decision_counts(
@@ -98,24 +97,24 @@ mod tests {
 
 	#[test]
 	fn decision_counts_reject_negative_and_overflowing_values() {
-		assert!(!errors("published", json!(i64::MAX), json!(0)).is_empty());
-		assert!(!errors("published", json!(u64::MAX), json!(0)).is_empty());
-		assert!(!errors("published", json!(-1), json!(0)).is_empty());
+		assert!(!errors("published", serde_json::json!(i64::MAX), serde_json::json!(0)).is_empty());
+		assert!(!errors("published", serde_json::json!(u64::MAX), serde_json::json!(0)).is_empty());
+		assert!(!errors("published", serde_json::json!(-1), serde_json::json!(0)).is_empty());
 
 		for status in ["blocked", "failed", "skipped"] {
-			assert!(!errors(status, json!(-1), json!(-1)).is_empty());
+			assert!(!errors(status, serde_json::json!(-1), serde_json::json!(-1)).is_empty());
 		}
 	}
 
 	#[test]
 	fn decision_counts_preserve_valid_state_transitions() {
-		assert!(errors("published", json!(0), json!(1)).is_empty());
-		assert!(!errors("published", json!(0), json!(0)).is_empty());
+		assert!(errors("published", serde_json::json!(0), serde_json::json!(1)).is_empty());
+		assert!(!errors("published", serde_json::json!(0), serde_json::json!(0)).is_empty());
 
 		for status in ["blocked", "failed", "skipped"] {
-			assert!(errors(status, json!(0), json!(0)).is_empty());
-			assert!(errors(status, json!(1), json!(1)).is_empty());
-			assert!(!errors(status, json!(0), json!(1)).is_empty());
+			assert!(errors(status, serde_json::json!(0), serde_json::json!(0)).is_empty());
+			assert!(errors(status, serde_json::json!(1), serde_json::json!(1)).is_empty());
+			assert!(!errors(status, serde_json::json!(0), serde_json::json!(1)).is_empty());
 		}
 	}
 }

@@ -9,7 +9,10 @@ mod text;
 
 pub(crate) use text::contains_link_like_text;
 
-use crate::social_validation::{self, Map, SOCIAL_POST_MODES, SOCIAL_POST_STATUSES, Value};
+use crate::{
+	social_publish,
+	social_validation::{self, Map, SOCIAL_POST_MODES, SOCIAL_POST_STATUSES, Value},
+};
 
 pub(super) fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<String>) {
 	social_validation::validate_exact_keys(
@@ -97,25 +100,6 @@ pub(super) fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<
 	social_validation::validate_optional_string_list(entry.get("caveats"), "caveats", errors);
 }
 
-fn validate_social_post_owner(owner: Option<&Value>, errors: &mut Vec<String>) {
-	let Some(owner) = owner.and_then(Value::as_object) else {
-		errors.push("owner must be an object".into());
-
-		return;
-	};
-
-	social_validation::validate_exact_keys(owner, "owner", &["automation_id", "run_id"], errors);
-
-	if social_validation::string_field(owner, "automation_id") != Some("decodex-xurl-publisher") {
-		errors.push("owner.automation_id must be decodex-xurl-publisher".into());
-	}
-	if social_validation::string_field(owner, "run_id")
-		.is_none_or(|value| !crate::social_publish::valid_run_id(value))
-	{
-		errors.push("owner.run_id must be a lowercase UUID".into());
-	}
-}
-
 pub(super) fn validate_social_post_text(text: Option<&Value>, errors: &mut Vec<String>) {
 	text::validate_social_post_text(text, errors);
 }
@@ -134,6 +118,25 @@ pub(super) fn validate_social_post_claims(
 		allow_candidate_lineage,
 		errors,
 	);
+}
+
+fn validate_social_post_owner(owner: Option<&Value>, errors: &mut Vec<String>) {
+	let Some(owner) = owner.and_then(Value::as_object) else {
+		errors.push("owner must be an object".into());
+
+		return;
+	};
+
+	social_validation::validate_exact_keys(owner, "owner", &["automation_id", "run_id"], errors);
+
+	if social_validation::string_field(owner, "automation_id") != Some("decodex-xurl-publisher") {
+		errors.push("owner.automation_id must be decodex-xurl-publisher".into());
+	}
+	if social_validation::string_field(owner, "run_id")
+		.is_none_or(|value| !social_publish::valid_run_id(value))
+	{
+		errors.push("owner.run_id must be a lowercase UUID".into());
+	}
 }
 
 fn validate_social_post_source_refs(refs: Option<&Value>, errors: &mut Vec<String>) {

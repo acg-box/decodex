@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 
+use serde_json::Map;
+
 use crate::social_validation::{self, SIGNAL_CONFIDENCE, Value};
 
 pub(in crate::social_validation) fn validate_social_post_claims(
@@ -91,7 +93,7 @@ fn validate_empty_evidence_digests(evidence_digests: Option<&Value>, errors: &mu
 		return;
 	};
 
-	if !digests.as_object().is_some_and(serde_json::Map::is_empty) {
+	if !digests.as_object().is_some_and(Map::is_empty) {
 		errors.push("evidence_digests must be an empty object".into());
 	}
 }

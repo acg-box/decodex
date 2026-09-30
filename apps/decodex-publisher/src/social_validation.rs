@@ -13,7 +13,7 @@ use serde_json::{Map, Value};
 
 use crate::{
 	SOCIAL_CANDIDATE_SCHEMA, SOCIAL_OUTCOME_SCHEMA, SOCIAL_POST_SCHEMA,
-	SOCIAL_PUBLISH_RESERVATION_SCHEMA,
+	SOCIAL_PUBLISH_RESERVATION_SCHEMA, social_record,
 };
 
 const SIGNAL_CONFIDENCE: &[&str] = &["confirmed", "likely", "weak"];
@@ -44,7 +44,7 @@ pub(crate) fn validate_social_artifact_for_path(
 	let mut validation = validate_social_artifact(payload);
 
 	if validation.errors.is_empty()
-		&& let Err(error) = crate::social_record::validate_publication_identity(payload)
+		&& let Err(error) = social_record::validate_publication_identity(payload)
 	{
 		validation
 			.errors

@@ -1,5 +1,15 @@
 use crate::social_validation::{self, Value};
 
+pub(crate) fn contains_link_like_text(text: &str) -> bool {
+	let normalized = text.replace(['。', '．', '｡'], ".").to_lowercase();
+
+	if normalized.contains("://") || normalized.contains("www.") || normalized.contains("mailto:") {
+		return true;
+	}
+
+	normalized.split_whitespace().any(token_is_link_like)
+}
+
 pub(in crate::social_validation) fn validate_social_post_text(
 	text: Option<&Value>,
 	errors: &mut Vec<String>,
@@ -72,16 +82,6 @@ fn exceeds_conservative_x_weighted_length(text: &str, maximum: usize) -> bool {
 	false
 }
 
-pub(crate) fn contains_link_like_text(text: &str) -> bool {
-	let normalized = text.replace(['。', '．', '｡'], ".").to_lowercase();
-
-	if normalized.contains("://") || normalized.contains("www.") || normalized.contains("mailto:") {
-		return true;
-	}
-
-	normalized.split_whitespace().any(token_is_link_like)
-}
-
 fn token_is_link_like(token: &str) -> bool {
 	let token = token.trim_matches(|character: char| {
 		matches!(
@@ -133,21 +133,21 @@ fn valid_domain_label(label: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::{contains_link_like_text, validate_social_post_text_item};
+	use crate::social_validation::post::text;
 
 	#[test]
 	fn enforces_a_conservative_x_v3_weighted_length() {
 		for text in ["a".repeat(260), "界".repeat(130)] {
 			let mut errors = Vec::new();
 
-			validate_social_post_text_item(&text, 0, &mut errors);
+			text::validate_social_post_text_item(&text, 0, &mut errors);
 
 			assert!(errors.is_empty(), "{errors:?}");
 		}
 
 		let mut errors = Vec::new();
 
-		validate_social_post_text_item(&"界".repeat(131), 0, &mut errors);
+		text::validate_social_post_text_item(&"界".repeat(131), 0, &mut errors);
 
 		assert_eq!(errors, ["text[0] must be a non-empty X-sized string"]);
 	}
@@ -162,14 +162,14 @@ mod tests {
 			"Use https://example.com",
 			"See 192.0.2.1/status",
 		] {
-			assert!(contains_link_like_text(text), "{text}");
+			assert!(text::contains_link_like_text(text), "{text}");
 		}
 	}
 
 	#[test]
 	fn permits_versions_and_repository_names() {
 		for text in ["Codex v1.3.1 is ready", "Use openai/codex", "Fix app-server v2"] {
-			assert!(!contains_link_like_text(text), "{text}");
+			assert!(!text::contains_link_like_text(text), "{text}");
 		}
 	}
 }
