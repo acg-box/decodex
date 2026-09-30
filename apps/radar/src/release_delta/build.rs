@@ -113,12 +113,15 @@ fn github_releases(api: &GitHubApi, url: &str) -> Result<Vec<Value>> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::tests::automation::github_api::{response, spawn_server_with};
+	use crate::{
+		RadarRefreshReleaseDeltaRequest,
+		release_delta::{self, build},
+		tests::{automation::github_api, fixtures},
+	};
 
 	#[test]
 	fn release_catalog_keeps_stable_releases_beyond_the_fifth_page() {
-		let server = spawn_server_with(6, |url, page| {
+		let server = github_api::spawn_server_with(6, |url, page| {
 			let start = page * 100;
 			let releases = (start..(start + 100).min(501))
 				.map(|index| {
@@ -128,22 +131,22 @@ mod tests {
 						format!("rust-v0.117.0-alpha.{index}")
 					};
 
-					crate::tests::fixtures::release(&tag, index != 500)
+					fixtures::release(&tag, index != 500)
 				})
 				.collect::<Vec<_>>();
 			let body = serde_json::to_string(&releases).unwrap();
 
 			if page < 5 {
-				response(
+				github_api::response(
 					"200 OK",
 					&[("Link", &format!("<{url}?per_page=100&page={}>; rel=\"next\"", page + 2))],
 					&body,
 				)
 			} else {
-				response("200 OK", &[], &body)
+				github_api::response("200 OK", &[], &body)
 			}
 		});
-		let releases = github_releases(&server.api(None), server.url()).unwrap();
+		let releases = build::github_releases(&server.api(None), server.url()).unwrap();
 
 		assert_eq!(releases.len(), 501);
 
