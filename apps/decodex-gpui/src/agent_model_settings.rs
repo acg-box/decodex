@@ -184,7 +184,6 @@ impl AgentSurface {
 			return;
 		};
 		let Ok(work_id) = EntityId::new(work.to_owned()) else { return };
-		let generation = self.generation;
 		let selection = self.selected.clone();
 		let intent_revision = self.draft_profiles.execution.revision();
 		let input_at_read = self.model.read(cx).content().to_owned();
@@ -201,7 +200,7 @@ impl AgentSurface {
 			let state = future.await.unwrap_or(State::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
 				if s.model_settings.epoch != epoch { return; }
-				if s.generation != generation || s.selected != selection
+				if s.selected != selection
 					|| s.snapshot.as_ref().and_then(|v| v.runtime_source.clone()) != source {
 					s.reset_model_settings();
 					cx.notify();
