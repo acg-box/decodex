@@ -1876,8 +1876,9 @@ final class ResetCardStore {
 				accountID: attempt.target.accountID,
 				text: error.localizedDescription
 			)
-			if removeTerminalAttempt {
-				forget(attempt, observation: .rejected)
+			if removeTerminalAttempt && !forget(attempt, observation: .rejected) {
+				message = Self.pendingTerminalRemovalFailedMessage
+				return ResetCardUseCompletion(resolved: false)
 			}
 			await beginPostUseReconciliation(attempt.target.accountID)
 			return ResetCardUseCompletion(resolved: true)
@@ -1913,8 +1914,9 @@ final class ResetCardStore {
 				accountID: attempt.target.accountID,
 				text: state.presentation
 			)
-			if removeTerminalAttempt {
-				forget(attempt, observation: ResetCardJournalObservation(state))
+			if removeTerminalAttempt && !forget(attempt, observation: ResetCardJournalObservation(state)) {
+				message = Self.pendingTerminalRemovalFailedMessage
+				return ResetCardUseCompletion(resolved: false)
 			}
 			await beginPostUseReconciliation(attempt.target.accountID)
 			return ResetCardUseCompletion(resolved: true)
@@ -1942,7 +1944,8 @@ final class ResetCardStore {
 				Logger(subsystem: "box.acg.decodex", category: "reset-recovery").notice("Reset result returned: \(String(describing: state), privacy: .public)")
 				switch state {
 				case .completed, .failedBeforeEffect:
-					_ = await apply(state, to: attempt)
+					let completion = await apply(state, to: attempt)
+					shouldRetry = shouldRetry || !completion.resolved
 				case .prepared, .effectAmbiguous:
 					shouldRetry = true
 					_ = await apply(state, to: attempt)
@@ -1983,16 +1986,19 @@ final class ResetCardStore {
 		return true
 	}
 
-	private func forget(_ attempt: ResetCardUseAttempt, observation: ResetCardJournalObservation) {
+	private func forget(_ attempt: ResetCardUseAttempt, observation: ResetCardJournalObservation) -> Bool {
 		quotaFillOrigins.removeValue(forKey: attempt.idempotencyKey)
 		guard isPendingRecoveryBlocked == false else {
-			return
+			return false
 		}
-		if let updated = pendingStore.resolve(attempt, observation: observation) {
-			Logger(subsystem: "box.acg.decodex", category: "reset-recovery").notice("Retired completed request; remaining=\(updated.count)")
-			pendingAttempts = updated
-			reconcilePendingStatuses()
+		guard let updated = pendingStore.resolve(attempt, observation: observation) else {
+			reloadPendingJournal()
+			return false
 		}
+		Logger(subsystem: "box.acg.decodex", category: "reset-recovery").notice("Retired completed request; remaining=\(updated.count)")
+		pendingAttempts = updated
+		reconcilePendingStatuses()
+		return true
 	}
 
 	private func reloadPendingJournal() {
