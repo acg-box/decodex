@@ -2,28 +2,19 @@
 
 use std::path::Path;
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::{
 	SOCIAL_CANDIDATE_SCHEMA, SocialTerminalizeSkipReport, SocialTerminalizeSkipRequest,
 	prelude::{Result, eyre},
+	social_evidence,
+	social_publish::{self, scan},
 };
 
 pub(crate) fn terminalize_social_skip(
 	request: &SocialTerminalizeSkipRequest,
 ) -> Result<SocialTerminalizeSkipReport> {
-	if request.daily_limit != 1 {
-		return Err(eyre::eyre!("daily_limit must be 1"));
-	}
-	if !crate::social_publish::valid_run_id(&request.run_id) {
-		return Err(eyre::eyre!("run_id must be a lowercase UUID"));
-	}
-	if request.timezone.trim().is_empty() {
-		return Err(eyre::eyre!("timezone is required"));
-	}
-	if !valid_day(&request.day) {
-		return Err(eyre::eyre!("day must use YYYY-MM-DD"));
-	}
+	validate_skip_request(request)?;
 
 	let root = crate::repo_root()?;
 	let candidates_dir = crate::resolve_against(&root, &request.candidates_dir);
@@ -59,10 +50,10 @@ pub(crate) fn terminalize_social_skip(
 		.ok_or_else(|| eyre::eyre!("reason is required"))?;
 	let posts_dir = crate::resolve_against(&root, &request.posts_dir);
 	let reservations_dir = crate::resolve_against(&root, &request.reservations_dir);
-	let output_path = posts_dir
-		.join(format!("{}.json", crate::social_publish::idempotency_digest(idempotency_key)));
-	let _state_lock = crate::social_publish::scan::acquire_social_state_lock(&request.locks_dir)?;
-	let scan = crate::social_publish::scan::scan_social_publish_state(
+	let output_path =
+		posts_dir.join(format!("{}.json", social_publish::idempotency_digest(idempotency_key)));
+	let _state_lock = scan::acquire_social_state_lock(&request.locks_dir)?;
+	let scan = scan::scan_social_publish_state(
 		&reservations_dir,
 		&posts_dir,
 		idempotency_key,
@@ -133,6 +124,23 @@ pub(crate) fn terminalize_social_skip(
 	})
 }
 
+fn validate_skip_request(request: &SocialTerminalizeSkipRequest) -> Result<()> {
+	if request.daily_limit != 1 {
+		return Err(eyre::eyre!("daily_limit must be 1"));
+	}
+	if !social_publish::valid_run_id(&request.run_id) {
+		return Err(eyre::eyre!("run_id must be a lowercase UUID"));
+	}
+	if request.timezone.trim().is_empty() {
+		return Err(eyre::eyre!("timezone is required"));
+	}
+	if !valid_day(&request.day) {
+		return Err(eyre::eyre!("day must use YYYY-MM-DD"));
+	}
+
+	Ok(())
+}
+
 fn skipped_post_payload(
 	candidate: &Value,
 	candidate_ref: String,
@@ -147,7 +155,7 @@ fn skipped_post_payload(
 		.and_then(Value::as_object)
 		.ok_or_else(|| eyre::eyre!("candidate decision is required"))?;
 
-	Ok(json!({
+	Ok(serde_json::json!({
 		"schema": "social_post/v1",
 		"slug": required_string(candidate.get("slug"), "slug")?,
 		"channel": "x",
@@ -160,12 +168,12 @@ fn skipped_post_payload(
 		"status": "skipped",
 		"audience": required_string(candidate.get("audience"), "audience")?,
 		"text": candidate.get("candidate_text").cloned().ok_or_else(|| eyre::eyre!("candidate_text is required"))?,
-		"source_refs": crate::social_evidence::source_refs_with_lineage(
+		"source_refs": social_evidence::source_refs_with_lineage(
 			candidate,
 			candidate_ref,
 			None,
 		)?,
-		"evidence_digests": crate::social_evidence::evidence_digests_value(candidate),
+		"evidence_digests": social_evidence::evidence_digests_value(candidate),
 		"evidence_notes": candidate.get("evidence_notes").cloned().ok_or_else(|| eyre::eyre!("evidence_notes are required"))?,
 		"claims": candidate.get("claims").cloned().ok_or_else(|| eyre::eyre!("claims are required"))?,
 		"decision": {
