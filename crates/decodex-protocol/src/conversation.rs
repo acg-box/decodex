@@ -1,17 +1,17 @@
 //! Bounded presentation facts for ordinary Task-role conversations.
 
+pub use decodex_core::MAX_PROVIDER_THREAD_ID_BYTES;
+
 use std::{
 	collections::HashSet,
 	fmt::{Debug, Display, Formatter},
 };
 
-pub use decodex_core::MAX_PROVIDER_THREAD_ID_BYTES;
-use decodex_core::{WorkItemState, contains_credential_material};
-use percent_encoding::percent_decode_str;
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 use url::Url;
 
 use crate::{EntityId, EntityRevision, WireText};
+use decodex_core::WorkItemState;
 
 /// Maximum ordinary Task conversations returned by one list observation.
 pub const MAX_CONVERSATION_LIST_SIZE: u16 = 64;
@@ -62,6 +62,18 @@ pub enum ConversationContractError {
 	/// An ordinary Conversation or RuntimeSession projection was internally inconsistent.
 	InvalidProjection,
 }
+impl Display for ConversationContractError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str(match self {
+			Self::InvalidWorkingDirectory => "invalid Conversation working directory",
+			Self::InvalidListSize => "invalid Conversation list size",
+			Self::InvalidCursor => "invalid Conversation list cursor",
+			Self::InvalidReasoningEffort => "invalid reasoning effort",
+			Self::InvalidModel => "invalid Conversation model",
+			Self::InvalidProjection => "invalid Conversation conversation projection",
+		})
+	}
+}
 
 /// Bounded credential-negative title persisted by Conversation authority.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -75,7 +87,7 @@ impl ConversationTitle {
 		if value.is_empty()
 			|| value.len() > MAX_CONVERSATION_TITLE_BYTES
 			|| value.chars().any(char::is_control)
-			|| contains_credential_material(&value)
+			|| decodex_core::contains_credential_material(&value)
 		{
 			return Err(ConversationContractError::InvalidProjection);
 		}
@@ -154,7 +166,7 @@ impl ProviderThreadId {
 		let [segment] = segments.as_slice() else {
 			return Err(ConversationContractError::InvalidProjection);
 		};
-		let decoded = percent_decode_str(segment)
+		let decoded = percent_encoding::percent_decode_str(segment)
 			.decode_utf8()
 			.map_err(|_| ConversationContractError::InvalidProjection)?;
 
@@ -238,18 +250,6 @@ impl<'de> Deserialize<'de> for ConversationProgramContext {
 		.map_err(D::Error::custom)
 	}
 }
-impl Display for ConversationContractError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str(match self {
-			Self::InvalidWorkingDirectory => "invalid Conversation working directory",
-			Self::InvalidListSize => "invalid Conversation list size",
-			Self::InvalidCursor => "invalid Conversation list cursor",
-			Self::InvalidReasoningEffort => "invalid reasoning effort",
-			Self::InvalidModel => "invalid Conversation model",
-			Self::InvalidProjection => "invalid Conversation conversation projection",
-		})
-	}
-}
 
 /// Bounded explicit Codex model used for the next Conversation send.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -310,11 +310,6 @@ pub enum ConversationReasoningEffort {
 	/// Exact model-defined effort advertised by native capabilities.
 	Custom(CustomReasoningEffort),
 }
-
-/// Validated custom effort payload, constructed through ConversationReasoningEffort::new.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CustomReasoningEffort(String);
-
 impl ConversationReasoningEffort {
 	/// Retain a bounded native value; normalize the legacy Decodex x_high alias.
 	pub fn new(value: impl Into<String>) -> Result<Self, ConversationContractError> {
@@ -354,17 +349,15 @@ impl ConversationReasoningEffort {
 		}
 	}
 }
-
 impl Serialize for ConversationReasoningEffort {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
-		S: serde::Serializer,
+		S: Serializer,
 	{
 		// Preserve Decodex's historical wire spelling; native dispatch uses as_str().
 		serializer.serialize_str(if *self == Self::XHigh { "x_high" } else { self.as_str() })
 	}
 }
-
 impl<'de> Deserialize<'de> for ConversationReasoningEffort {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
@@ -373,6 +366,10 @@ impl<'de> Deserialize<'de> for ConversationReasoningEffort {
 		Self::new(String::deserialize(deserializer)?).map_err(D::Error::custom)
 	}
 }
+
+/// Validated custom effort payload, constructed through ConversationReasoningEffort::new.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CustomReasoningEffort(String);
 
 /// Execution settings carried on every user send, with native reasoning inheritance.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -419,7 +416,6 @@ impl ConversationExecutionSettings {
 #[derive(Clone, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct ConversationWorkingDirectory(String);
-
 impl ConversationWorkingDirectory {
 	/// Validate one absolute lexical path without consulting client filesystem state.
 	pub fn new(value: impl Into<String>) -> Result<Self, ConversationContractError> {
@@ -920,20 +916,6 @@ pub enum ConversationResult {
 	},
 }
 
-pub(crate) fn is_canonical_uuid_v4(value: &str) -> bool {
-	let bytes = value.as_bytes();
-
-	bytes.len() == 36
-		&& [8, 13, 18, 23].into_iter().all(|index| bytes[index] == b'-')
-		&& bytes[14] == b'4'
-		&& matches!(bytes[19], b'8' | b'9' | b'a' | b'b')
-		&& bytes.iter().enumerate().all(|(index, byte)| {
-			[8, 13, 18, 23].contains(&index)
-				|| byte.is_ascii_digit()
-				|| (b'a'..=b'f').contains(byte)
-		})
-}
-
 /// Configured native model facts, not per-turn execution telemetry or a model catalog.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
@@ -965,10 +947,23 @@ pub struct ConversationExecutionOverrides {
 	/// Override the native service tier, including an explicit Standard choice.
 	pub service_tier: bool,
 }
+pub(crate) fn is_canonical_uuid_v4(value: &str) -> bool {
+	let bytes = value.as_bytes();
+
+	bytes.len() == 36
+		&& [8, 13, 18, 23].into_iter().all(|index| bytes[index] == b'-')
+		&& bytes[14] == b'4'
+		&& matches!(bytes[19], b'8' | b'9' | b'a' | b'b')
+		&& bytes.iter().enumerate().all(|(index, byte)| {
+			[8, 13, 18, 23].contains(&index)
+				|| byte.is_ascii_digit()
+				|| (b'a'..=b'f').contains(byte)
+		})
+}
 
 #[cfg(test)]
 mod provider_thread_tests {
-	use super::{MAX_PROVIDER_THREAD_ID_BYTES, ProviderThreadId};
+	use crate::{MAX_PROVIDER_THREAD_ID_BYTES, ProviderThreadId};
 
 	#[test]
 	fn exact_persistence_boundary_is_512_utf8_bytes() {
@@ -1000,10 +995,9 @@ mod provider_thread_tests {
 		}
 	}
 }
-
 #[cfg(test)]
 mod native_effort_tests {
-	use super::ConversationReasoningEffort;
+	use crate::ConversationReasoningEffort;
 
 	#[test]
 	fn native_effort_preserves_custom_values_and_known_wire_compatibility() {
@@ -1045,10 +1039,9 @@ mod native_effort_tests {
 		}
 	}
 }
-
 #[cfg(test)]
 mod inherited_execution_tests {
-	use super::*;
+	use crate::ConversationExecutionSettings;
 	#[test]
 	fn execution_accepts_absent_effort_without_changing_literal_none() {
 		for effort in [
@@ -1072,15 +1065,13 @@ mod inherited_execution_tests {
 		}
 	}
 }
-
 #[cfg(test)]
 mod override_wire_tests {
 	use crate::CommandPayload;
-	use serde_json::json;
 
 	#[test]
 	fn legacy_turn_bytes_and_new_override_intent_roundtrip_separately() {
-		let legacy = json!({"name":"submit_conversation_turn","arguments":{
+		let legacy = serde_json::json!({"name":"submit_conversation_turn","arguments":{
 			"conversation_id":"44000000-0000-4000-8000-000000000001",
 			"turn_id":"45000000-0000-4000-8000-000000000001",
 			"message":"Continue","working_directory":"/tmp",
@@ -1094,7 +1085,7 @@ mod override_wire_tests {
 		let mut modern = legacy.clone();
 
 		modern["arguments"]["overrides"] =
-			json!({"model":false,"reasoning":true,"service_tier":false});
+			serde_json::json!({"model":false,"reasoning":true,"service_tier":false});
 
 		let payload: CommandPayload = serde_json::from_value(modern.clone()).expect("modern turn");
 
