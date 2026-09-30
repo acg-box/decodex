@@ -1,44 +1,50 @@
 //! Durable native-client intent before the service acknowledges a Reset Card request.
 //! The legacy path, JSON schema and fcntl lock are retained for existing installations.
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use std::{
 	collections::{HashMap, HashSet},
-	fs::{self, File, OpenOptions},
-	io::{self, Read, Write},
+	fs::{self, DirBuilder, File, Metadata, OpenOptions, Permissions},
+	io::{Error, ErrorKind, Read, Write as _},
+	mem,
 	os::{
 		fd::AsRawFd,
 		unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
 	},
 	path::{Path, PathBuf},
+	process,
 	sync::{
 		Mutex, OnceLock,
 		atomic::{AtomicU64, Ordering},
 	},
 };
 
+use libc::{
+	F_FULLFSYNC, F_SETLK, F_SETLKW, F_UNLCK, F_WRLCK, O_DIRECTORY, O_NOFOLLOW, SEEK_SET, flock,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
 const SCHEMA: &str = "decodex/reset-card-pending/2";
 const LIMIT: usize = 64;
-const BYTES: u64 = 64 * 1024;
+const BYTES: u64 = 64 * 1_024;
 static KEYS: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
 static DISPATCHES: OnceLock<Mutex<HashMap<u64, Dispatch>>> = OnceLock::new();
 static NEXT: AtomicU64 = AtomicU64::new(1);
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Deserialize, Serialize)]
 struct Descriptor {
 	#[serde(rename = "grantedAtUnixSeconds")]
 	granted: i64,
 	#[serde(rename = "expiresAtUnixSeconds", skip_serializing_if = "Option::is_none")]
 	expires: Option<i64>,
 }
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 struct Authority {
 	#[serde(rename = "profileName")]
 	profile: String,
 	#[serde(rename = "serverID")]
 	server: String,
 }
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 struct Target {
 	authority: Authority,
 	#[serde(rename = "accountID")]
@@ -47,7 +53,7 @@ struct Target {
 	revision: u64,
 	descriptor: Descriptor,
 }
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 struct Attempt {
 	target: Target,
 	#[serde(rename = "idempotencyKey")]
@@ -63,9 +69,9 @@ impl Attempt {
 				.profile
 				.bytes()
 				.all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-			&& super::is_canonical_uuid(&t.authority.server)
-			&& super::is_canonical_uuid(&t.account)
-			&& super::is_canonical_uuid(&self.key)
+			&& crate::is_canonical_uuid(&t.authority.server)
+			&& crate::is_canonical_uuid(&t.account)
+			&& crate::is_canonical_uuid(&self.key)
 			&& t.revision > 0
 			&& t.descriptor.granted >= 0
 			&& t.descriptor.expires.is_none_or(|expiry| expiry > t.descriptor.granted)
@@ -76,7 +82,7 @@ impl Attempt {
 			&& self.target.descriptor == other.target.descriptor
 	}
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct Document {
 	schema: String,
 	attempts: Vec<Attempt>,
@@ -128,7 +134,7 @@ struct Lock {
 	key: PathBuf,
 }
 impl Lock {
-	fn acquire(path: &Path, wait: bool) -> io::Result<Self> {
+	fn acquire(path: &Path, wait: bool) -> Result<Self, Error> {
 		let directory = parent(path)?;
 
 		ensure_dir(directory)?;
@@ -147,15 +153,15 @@ impl Lock {
 			.write(true)
 			.create_new(true)
 			.mode(0o600)
-			.custom_flags(libc::O_NOFOLLOW)
+			.custom_flags(O_NOFOLLOW)
 			.open(&lock_path)
 		{
 			Ok(file) => (file, true),
-			Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (
+			Err(e) if e.kind() == ErrorKind::AlreadyExists => (
 				OpenOptions::new()
 					.read(true)
 					.write(true)
-					.custom_flags(libc::O_NOFOLLOW)
+					.custom_flags(O_NOFOLLOW)
 					.open(&lock_path)?,
 				false,
 			),
@@ -163,7 +169,7 @@ impl Lock {
 		};
 
 		if created {
-			file.set_permissions(fs::Permissions::from_mode(0o600))?;
+			file.set_permissions(Permissions::from_mode(0o600))?;
 		}
 
 		let opened = file.metadata()?;
@@ -173,7 +179,7 @@ impl Lock {
 			return Err(denied());
 		}
 
-		set_lock(&file, libc::F_WRLCK, if wait { libc::F_SETLKW } else { libc::F_SETLK })?;
+		set_lock(&file, F_WRLCK, if wait { F_SETLKW } else { F_SETLK })?;
 
 		lock.file = Some(file);
 
@@ -183,7 +189,7 @@ impl Lock {
 impl Drop for Lock {
 	fn drop(&mut self) {
 		if let Some(file) = self.file.take() {
-			let _ = set_lock(&file, libc::F_UNLCK, libc::F_SETLK);
+			let _ = set_lock(&file, F_UNLCK, F_SETLK);
 		}
 		if let Ok(mut keys) = KEYS.get_or_init(Mutex::default).lock() {
 			keys.remove(&self.key);
@@ -205,7 +211,7 @@ pub(super) fn request(bytes: &[u8]) -> Option<Value> {
 			}
 
 			if let Some(existing) = current.iter().find(|item| item.key == attempt.key) {
-				return (existing == &attempt).then(|| json!({"attempts": current}));
+				return (existing == &attempt).then(|| serde_json::json!({"attempts": current}));
 			}
 
 			if current.len() >= LIMIT || current.iter().any(|item| item.same_target(&attempt)) {
@@ -216,7 +222,7 @@ pub(super) fn request(bytes: &[u8]) -> Option<Value> {
 
 			persist(&path, &current).ok()?;
 
-			Some(json!({"attempts":current}))
+			Some(serde_json::json!({"attempts":current}))
 		},
 		Request::Resolve { path, attempt, observation } => {
 			let _lock = Lock::acquire(&path, true).ok()?;
@@ -224,7 +230,7 @@ pub(super) fn request(bytes: &[u8]) -> Option<Value> {
 			let attempts =
 				if observation.retires() { remove(&path, current, &attempt)? } else { current };
 
-			Some(json!({"attempts": attempts}))
+			Some(serde_json::json!({"attempts": attempts}))
 		},
 		Request::BeginDispatch { path, attempt } => {
 			let lock = Lock::acquire(&path, false).ok()?;
@@ -238,7 +244,7 @@ pub(super) fn request(bytes: &[u8]) -> Option<Value> {
 
 			dispatches().lock().ok()?.insert(lease, Dispatch { _lock: lock, path, attempt });
 
-			Some(json!({"lease":lease}))
+			Some(serde_json::json!({"lease":lease}))
 		},
 		Request::FinishDispatch { lease, observation } => {
 			let dispatch = dispatches().lock().ok()?.remove(&lease)?;
@@ -253,7 +259,7 @@ pub(super) fn request(bytes: &[u8]) -> Option<Value> {
 				"removal_failed"
 			};
 
-			Some(json!({"update":update}))
+			Some(serde_json::json!({"update":update}))
 		},
 	}
 }
@@ -311,35 +317,32 @@ fn load(path: &Path) -> Loaded {
 		attempts: recovered,
 	}
 }
-fn denied() -> io::Error {
-	io::Error::from(io::ErrorKind::PermissionDenied)
+fn denied() -> Error {
+	Error::from(ErrorKind::PermissionDenied)
 }
-fn parent(path: &Path) -> io::Result<&Path> {
+fn parent(path: &Path) -> Result<&Path, Error> {
 	path.parent().filter(|p| !p.as_os_str().is_empty()).ok_or_else(denied)
 }
-fn private_file(m: &fs::Metadata) -> bool {
+fn private_file(m: &Metadata) -> bool {
 	m.is_file()
 		&& m.mode() & 0o7777 == 0o600
 		&& m.uid() == unsafe { libc::geteuid() }
 		&& m.nlink() == 1
 }
-fn private_dir(m: &fs::Metadata) -> bool {
+fn private_dir(m: &Metadata) -> bool {
 	m.is_dir() && m.mode() & 0o7777 == 0o700 && m.uid() == unsafe { libc::geteuid() }
 }
-fn same(a: &fs::Metadata, b: &fs::Metadata) -> bool {
+fn same(a: &Metadata, b: &Metadata) -> bool {
 	a.dev() == b.dev() && a.ino() == b.ino()
 }
-fn open_dir(path: &Path) -> io::Result<File> {
+fn open_dir(path: &Path) -> Result<File, Error> {
 	let before = fs::symlink_metadata(path)?;
 
 	if !private_dir(&before) {
 		return Err(denied());
 	}
 
-	let file = OpenOptions::new()
-		.read(true)
-		.custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
-		.open(path)?;
+	let file = OpenOptions::new().read(true).custom_flags(O_DIRECTORY | O_NOFOLLOW).open(path)?;
 	let after = file.metadata()?;
 
 	if !private_dir(&after) || !same(&before, &after) {
@@ -348,18 +351,16 @@ fn open_dir(path: &Path) -> io::Result<File> {
 
 	Ok(file)
 }
-fn ensure_dir(path: &Path) -> io::Result<()> {
+fn ensure_dir(path: &Path) -> Result<(), Error> {
 	match fs::symlink_metadata(path) {
-		Err(e) if e.kind() == io::ErrorKind::NotFound => {
-			fs::DirBuilder::new().recursive(true).mode(0o700).create(path)?;
+		Err(e) if e.kind() == ErrorKind::NotFound => {
+			DirBuilder::new().recursive(true).mode(0o700).create(path)?;
 
 			// Creation mode can be restricted by umask; never change an existing directory.
-			let directory = OpenOptions::new()
-				.read(true)
-				.custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
-				.open(path)?;
+			let directory =
+				OpenOptions::new().read(true).custom_flags(O_DIRECTORY | O_NOFOLLOW).open(path)?;
 
-			directory.set_permissions(fs::Permissions::from_mode(0o700))?;
+			directory.set_permissions(Permissions::from_mode(0o700))?;
 		},
 		Err(e) => return Err(e),
 		Ok(_) => {},
@@ -367,15 +368,15 @@ fn ensure_dir(path: &Path) -> io::Result<()> {
 
 	open_dir(path).map(|_| ())
 }
-fn read(path: &Path) -> io::Result<Option<Vec<u8>>> {
+fn read(path: &Path) -> Result<Option<Vec<u8>>, Error> {
 	match open_dir(parent(path)?) {
-		Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+		Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
 		Err(e) => return Err(e),
 		Ok(_) => {},
 	}
 
 	let before = match fs::symlink_metadata(path) {
-		Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+		Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
 		other => other?,
 	};
 
@@ -383,7 +384,7 @@ fn read(path: &Path) -> io::Result<Option<Vec<u8>>> {
 		return Err(denied());
 	}
 
-	let mut file = OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW).open(path)?;
+	let mut file = OpenOptions::new().read(true).custom_flags(O_NOFOLLOW).open(path)?;
 	let opened = file.metadata()?;
 
 	if !private_file(&opened) || opened.len() > BYTES || !same(&before, &opened) {
@@ -406,7 +407,7 @@ fn read(path: &Path) -> io::Result<Option<Vec<u8>>> {
 
 	Ok(Some(bytes))
 }
-fn persist(path: &Path, attempts: &[Attempt]) -> io::Result<()> {
+fn persist(path: &Path, attempts: &[Attempt]) -> Result<(), Error> {
 	let bytes =
 		serde_json::to_vec(&Document { schema: SCHEMA.into(), attempts: attempts.to_vec() })?;
 
@@ -421,17 +422,17 @@ fn persist(path: &Path, attempts: &[Attempt]) -> io::Result<()> {
 	let name = path.file_name().ok_or_else(denied)?.to_string_lossy();
 	let temporary = directory.join(format!(
 		".{name}.{}-{}.tmp",
-		std::process::id(),
+		process::id(),
 		NEXT.fetch_add(1, Ordering::Relaxed)
 	));
 	let mut file = OpenOptions::new()
 		.write(true)
 		.create_new(true)
 		.mode(0o600)
-		.custom_flags(libc::O_NOFOLLOW)
+		.custom_flags(O_NOFOLLOW)
 		.open(&temporary)?;
 	let result = (|| {
-		file.set_permissions(fs::Permissions::from_mode(0o600))?;
+		file.set_permissions(Permissions::from_mode(0o600))?;
 
 		if !private_file(&file.metadata()?) {
 			return Err(denied());
@@ -440,7 +441,7 @@ fn persist(path: &Path, attempts: &[Attempt]) -> io::Result<()> {
 		file.write_all(&bytes)?;
 
 		// macOS full synchronization retains the previous native journal durability.
-		if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_FULLFSYNC) } != 0 {
+		if unsafe { libc::fcntl(file.as_raw_fd(), F_FULLFSYNC) } != 0 {
 			file.sync_all()?;
 		}
 
@@ -464,20 +465,20 @@ fn persist(path: &Path, attempts: &[Attempt]) -> io::Result<()> {
 	result
 }
 
-fn set_lock(file: &File, kind: i16, command: i32) -> io::Result<()> {
-	let mut lock: libc::flock = unsafe { std::mem::zeroed() };
+fn set_lock(file: &File, kind: i16, command: i32) -> Result<(), Error> {
+	let mut lock: flock = unsafe { mem::zeroed() };
 
 	lock.l_type = kind;
-	lock.l_whence = libc::SEEK_SET as _;
+	lock.l_whence = SEEK_SET as _;
 
 	loop {
 		if unsafe { libc::fcntl(file.as_raw_fd(), command, &lock) } == 0 {
 			return Ok(());
 		}
 
-		let error = io::Error::last_os_error();
+		let error = Error::last_os_error();
 
-		if error.kind() != io::ErrorKind::Interrupted {
+		if error.kind() != ErrorKind::Interrupted {
 			return Err(error);
 		}
 	}
@@ -491,11 +492,11 @@ mod tests {
 		fn new() -> Self {
 			let path = std::env::temp_dir().join(format!(
 				"decodex-journal-test-{}-{}",
-				std::process::id(),
+				process::id(),
 				NEXT.fetch_add(1, Ordering::Relaxed)
 			));
 
-			fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
+			DirBuilder::new().mode(0o700).create(&path).unwrap();
 
 			Self(path)
 		}
@@ -511,7 +512,7 @@ mod tests {
 	}
 
 	fn attempt() -> Value {
-		json!({"target":{"authority":{"profileName":"local","serverID":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
+		serde_json::json!({"target":{"authority":{"profileName":"local","serverID":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
             "accountID":"11111111-1111-4111-8111-111111111111","expectedRevision":7,
             "descriptor":{"grantedAtUnixSeconds":100}},"idempotencyKey":"22222222-2222-4222-8222-222222222222"})
 	}
@@ -528,19 +529,21 @@ mod tests {
 
 		conflict["target"]["expectedRevision"] = 8.into();
 
-		let bytes =
-			serde_json::to_vec(&json!({"schema":SCHEMA,"attempts":[original,conflict]})).unwrap();
+		let bytes = serde_json::to_vec(
+			&serde_json::json!({"schema":SCHEMA,"attempts":[original,conflict]}),
+		)
+		.unwrap();
 
 		fs::write(&path, &bytes).unwrap();
-		fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+		fs::set_permissions(&path, Permissions::from_mode(0o600)).unwrap();
 
 		assert_eq!(
-			call(json!({"operation":"load","path":path})),
-			Some(json!({"blocked":true,"attempts":[]}))
+			call(serde_json::json!({"operation":"load","path":path})),
+			Some(serde_json::json!({"blocked":true,"attempts":[]}))
 		);
 		assert!(
 			call(
-				json!({"operation":"resolve","path":path,"attempt":attempt(),"observation":"completed"})
+				serde_json::json!({"operation":"resolve","path":path,"attempt":attempt(),"observation":"completed"})
 			)
 			.is_none()
 		);
@@ -549,13 +552,14 @@ mod tests {
 		// This is the old Swift format, including a missing optional expiry field.
 		fs::write(
 			&path,
-			serde_json::to_vec(&json!({"schema":SCHEMA,"attempts":[attempt()]})).unwrap(),
+			serde_json::to_vec(&serde_json::json!({"schema":SCHEMA,"attempts":[attempt()]}))
+				.unwrap(),
 		)
 		.unwrap();
 
 		assert_eq!(
-			call(json!({"operation":"load","path":path})),
-			Some(json!({"blocked":false,"attempts":[attempt()]}))
+			call(serde_json::json!({"operation":"load","path":path})),
+			Some(serde_json::json!({"blocked":false,"attempts":[attempt()]}))
 		);
 	}
 
@@ -564,16 +568,22 @@ mod tests {
 		let fixture = Fixture::new();
 		let path = fixture.path();
 
-		assert!(call(json!({"operation":"insert","path":path,"attempt":attempt()})).is_some());
+		assert!(
+			call(serde_json::json!({"operation":"insert","path":path,"attempt":attempt()}))
+				.is_some()
+		);
 
 		let begin = || {
-			call(json!({"operation":"begin_dispatch","path":path,"attempt":attempt()})).unwrap()["lease"].as_u64().unwrap()
+			call(serde_json::json!({"operation":"begin_dispatch","path":path,"attempt":attempt()}))
+				.unwrap()["lease"]
+				.as_u64()
+				.unwrap()
 		};
 		let lease = begin();
 
 		assert!(
 			call(
-				json!({"operation":"resolve","path":path,"attempt":attempt(),"observation":"completed"})
+				serde_json::json!({"operation":"resolve","path":path,"attempt":attempt(),"observation":"completed"})
 			)
 			.is_none()
 		);
@@ -590,27 +600,33 @@ mod tests {
 
 		assert!(child.success());
 		assert_eq!(
-			call(json!({"operation":"finish_dispatch","lease":lease,"observation":"unconfirmed"})),
-			Some(json!({"update":"retained"}))
+			call(
+				serde_json::json!({"operation":"finish_dispatch","lease":lease,"observation":"unconfirmed"})
+			),
+			Some(serde_json::json!({"update":"retained"}))
 		);
 		assert_eq!(
-			call(json!({"operation":"load","path":path})),
-			Some(json!({"blocked":false,"attempts":[attempt()]}))
+			call(serde_json::json!({"operation":"load","path":path})),
+			Some(serde_json::json!({"blocked":false,"attempts":[attempt()]}))
 		);
 		assert!(
-			call(json!({"operation":"finish_dispatch","lease":lease,"observation":"completed"}))
-				.is_none()
+			call(
+				serde_json::json!({"operation":"finish_dispatch","lease":lease,"observation":"completed"})
+			)
+			.is_none()
 		);
 
 		let next = begin();
 
 		assert_eq!(
-			call(json!({"operation":"finish_dispatch","lease":next,"observation":"completed"})),
-			Some(json!({"update":"removed"}))
+			call(
+				serde_json::json!({"operation":"finish_dispatch","lease":next,"observation":"completed"})
+			),
+			Some(serde_json::json!({"update":"removed"}))
 		);
 		assert_eq!(
-			call(json!({"operation":"load","path":path})),
-			Some(json!({"blocked":false,"attempts":[]}))
+			call(serde_json::json!({"operation":"load","path":path})),
+			Some(serde_json::json!({"blocked":false,"attempts":[]}))
 		);
 	}
 
@@ -620,17 +636,20 @@ mod tests {
 			let fixture = Fixture::new();
 			let path = fixture.path();
 
-			call(json!({"operation":"insert","path":path,"attempt":attempt()})).unwrap();
+			call(serde_json::json!({"operation":"insert","path":path,"attempt":attempt()}))
+				.unwrap();
 
-			let lease = call(json!({"operation":"begin_dispatch","path":path,"attempt":attempt()}))
-				.unwrap()["lease"]
+			let lease = call(
+				serde_json::json!({"operation":"begin_dispatch","path":path,"attempt":attempt()}),
+			)
+			.unwrap()["lease"]
 				.as_u64()
 				.unwrap();
 
 			if corrupt {
 				fs::write(&path, b"damaged journal").unwrap();
 			} else {
-				fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+				fs::set_permissions(&path, Permissions::from_mode(0o644)).unwrap();
 			}
 
 			let before = fs::read(&path).unwrap();
@@ -638,9 +657,9 @@ mod tests {
 
 			assert_eq!(
 				call(
-					json!({"operation":"finish_dispatch","lease":lease,"observation":"completed"})
+					serde_json::json!({"operation":"finish_dispatch","lease":lease,"observation":"completed"})
 				),
-				Some(json!({"update":"removal_failed"}))
+				Some(serde_json::json!({"update":"removal_failed"}))
 			);
 			assert_eq!(fs::read(&path).unwrap(), before);
 			assert_eq!(fs::metadata(&path).unwrap().mode(), mode);
@@ -663,20 +682,21 @@ mod tests {
 			let fixture = Fixture::new();
 			let path = fixture.path();
 
-			call(json!({"operation":"insert","path":path,"attempt":attempt()})).unwrap();
+			call(serde_json::json!({"operation":"insert","path":path,"attempt":attempt()}))
+				.unwrap();
 
 			let expected =
 				if matches!(observation, "completed" | "failed_before_effect" | "rejected") {
-					json!([])
+					serde_json::json!([])
 				} else {
-					json!([attempt()])
+					serde_json::json!([attempt()])
 				};
 
 			assert_eq!(
 				call(
-					json!({"operation":"resolve","path":path,"attempt":attempt(),"observation":observation})
+					serde_json::json!({"operation":"resolve","path":path,"attempt":attempt(),"observation":observation})
 				),
-				Some(json!({"attempts":expected}))
+				Some(serde_json::json!({"attempts":expected}))
 			);
 		}
 	}
