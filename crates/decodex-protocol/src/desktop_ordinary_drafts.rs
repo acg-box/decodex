@@ -1,10 +1,12 @@
 //! Ordinary editors and unresolved commands retained by the shared desktop draft owner.
+use std::collections::{BTreeMap, BTreeSet, HashSet};
+
+use serde::{Deserialize, Serialize};
+
 use crate::{
 	CommandEnvelope, CommandPayload, ConversationExecutionSettings, ConversationWorkingDirectory,
-	DesktopCreationIntent, EntityId,
+	DesktopCreationIntent, EntityId, desktop_drafts,
 };
-use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 /// One ordinary editor, without a claim that native defaults are still current.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -18,6 +20,11 @@ pub struct DesktopOrdinaryComposerDraft {
 	pub execution: ConversationExecutionSettings,
 	/// Explicit choices for this editor, kept separately from displayed defaults.
 	pub creation_intent: DesktopCreationIntent,
+}
+impl DesktopOrdinaryComposerDraft {
+	pub(super) fn validate(&self) -> Result<(), &'static str> {
+		desktop_drafts::validate_text(&self.text)
+	}
 }
 
 /// Ordinary state for one directory within an exact service profile.
@@ -35,13 +42,6 @@ pub struct DesktopOrdinaryDraft {
 	/// Original commands whose delivery is unresolved. Never replay these automatically.
 	pub unconfirmed: Vec<CommandEnvelope>,
 }
-
-impl DesktopOrdinaryComposerDraft {
-	pub(super) fn validate(&self) -> Result<(), &'static str> {
-		super::desktop_drafts::validate_text(&self.text)
-	}
-}
-
 impl DesktopOrdinaryDraft {
 	pub(super) fn validate(&self) -> Result<(), &'static str> {
 		self.composer.validate()?;
@@ -123,10 +123,13 @@ pub(super) fn validate_unbound(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::collections::BTreeMap;
+
 	use crate::{
-		CURRENT_VERSION, ClientCommandId, ClientDraftStore, ConversationModel, CorrelationId,
-		DesktopDraftDocument, DesktopProfileDraft, HistoryText, IdempotencyKey,
+		CURRENT_VERSION, ClientCommandId, ClientDraftStore, CommandEnvelope, CommandPayload,
+		ConversationExecutionSettings, ConversationModel, ConversationWorkingDirectory,
+		CorrelationId, DesktopCreationIntent, DesktopDraftDocument, DesktopOrdinaryComposerDraft,
+		DesktopOrdinaryDraft, DesktopProfileDraft, EntityId, HistoryText, IdempotencyKey,
 	};
 
 	fn draft(text: &str, key: &str) -> DesktopOrdinaryDraft {
@@ -263,8 +266,8 @@ mod tests {
 
 	#[test]
 	fn legacy_selected_preferences_migrate_to_explicit_choices() {
-		let mut value = serde_json::to_value(document("Editor", "command")).unwrap();
 		let owner = "30000000-0000-4000-8000-000000000001";
+		let mut value = serde_json::to_value(document("Editor", "command")).unwrap();
 
 		value["profiles"]["a".repeat(64)]["ordinary"]["/tmp/work"]["composer"]["conversation_id"] =
 			owner.into();
