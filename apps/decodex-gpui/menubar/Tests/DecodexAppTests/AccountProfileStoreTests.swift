@@ -1316,7 +1316,7 @@ private struct PendingFixture {
 			at: directory,
 			withIntermediateDirectories: true
 		)
-		store = ResetCardPendingAttemptStore(
+		store = ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request,
 			journalURL: directory.appendingPathComponent("pending.json")
 		)
 	}

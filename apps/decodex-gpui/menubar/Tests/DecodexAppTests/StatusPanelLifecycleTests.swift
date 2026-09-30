@@ -13,7 +13,7 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		let inventory = ResetCardInventory(authority: authority, accountID: account.accountID, accountRevision: 1, cards: cards, fiveHourQuota: .unknown(durationMinutes: 300), sevenDayQuota: .unknown(durationMinutes: 10_080), observationError: nil)
 		let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		defer { try? FileManager.default.removeItem(at: root) }
-		let store = ResetCardStore(client: EmptyWidgetClient(), pendingStore: ResetCardPendingAttemptStore(journalURL: root.appendingPathComponent("pending.json")))
+		let store = ResetCardStore(client: EmptyWidgetClient(), pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: root.appendingPathComponent("pending.json")))
 		let state = ResetCardAccountState(account: account, inventory: inventory, error: nil, isRefreshing: false)
 		let host = NSHostingView(rootView: ResetCardAccountRow(state: state, store: store))
 		let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 120), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -154,7 +154,7 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		defer { try? FileManager.default.removeItem(at: root) }
 		let store = ResetCardStore(
 			client: EmptyWidgetClient(),
-			pendingStore: ResetCardPendingAttemptStore(journalURL: root.appendingPathComponent("pending.json"))
+			pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: root.appendingPathComponent("pending.json"))
 		)
 		let controller = StatusPanelController(store: store, fastModeStore: fastMode)
 		defer { controller.invalidate() }
@@ -184,7 +184,7 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		defer { try? FileManager.default.removeItem(at: root) }
 		let store = ResetCardStore(
 			client: EmptyWidgetClient(),
-			pendingStore: ResetCardPendingAttemptStore(journalURL: root.appendingPathComponent("pending.json"))
+			pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: root.appendingPathComponent("pending.json"))
 		)
 		let controller = StatusPanelController(store: store)
 		defer { controller.invalidate() }

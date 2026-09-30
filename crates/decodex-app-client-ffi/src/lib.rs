@@ -20,11 +20,13 @@ use decodex_protocol::{
 	AccountClient, AccountCommandResponse, AccountLoginClient, AccountLoginInstallMode,
 	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus, ClientFailure,
 	ClientProfile, CommandPayload, EntityId, EntityRevision, IdempotencyKey, ResetCardClient,
-	ResetCardConsumeResponse, ResetCardDescriptorDto, ResetCardOperationResult, ServerId,
+	ResetCardConsumeResponse, ResetCardDescriptorDto, ServerId,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::runtime::{Builder, Runtime};
+
+#[cfg(target_os = "macos")] mod reset_card_journal;
 
 const ABI_VERSION: u32 = 1;
 const CONFIG_SCHEMA: &str = "decodex/app-native-client-config/1";
@@ -408,6 +410,39 @@ pub unsafe extern "C" fn decodex_app_native_client_request(
 			ResponseFailure::Bridge(BridgeFailure::InternalFailure),
 		),
 	}
+}
+
+/// Execute one local journal operation without a service connection or credentials.
+/// Response buffers use `decodex_app_native_client_free`.
+///
+/// # Safety
+/// The input must contain `len` readable bytes; output pointers must be writable.
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn decodex_reset_card_journal_v1(
+	input: *const u8,
+	len: usize,
+	output: *mut *mut u8,
+	output_len: *mut usize,
+) -> i32 {
+	if output.is_null() || output_len.is_null() {
+		return 1;
+	}
+	unsafe {
+		*output = ptr::null_mut();
+		*output_len = 0;
+	}
+	if input.is_null() || len == 0 || len > 65536 {
+		return 2;
+	}
+	catch_unwind(AssertUnwindSafe(|| {
+		let input = unsafe { slice::from_raw_parts(input, len) };
+		match reset_card_journal::request(input) {
+			Some(value) => write_serialized(output, output_len, &value),
+			None => 2,
+		}
+	}))
+	.unwrap_or(2)
 }
 
 /// Release one exact response buffer allocated by this library.
@@ -1152,6 +1187,7 @@ fn is_canonical_uuid(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use decodex_protocol::ResetCardOperationResult;
 
 	const ACCOUNT_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 	const SECOND_ACCOUNT_ID: &str = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405163";

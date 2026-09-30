@@ -432,7 +432,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		)
 		let checkingStore = ResetCardStore(
 			client: fixture.client,
-			pendingStore: ResetCardPendingAttemptStore(
+			pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request,
 				journalURL: fixture.journalURL
 			)
 		)
@@ -485,7 +485,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 	private func makeFixture(state: ResetCardOperationState) throws -> StoreRecoveryFixture {
 		let directory = try makePrivateRecoveryDirectory()
 		let journalURL = directory.appendingPathComponent("pending.json")
-		let pendingStore = ResetCardPendingAttemptStore(journalURL: journalURL)
+		let pendingStore = ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: journalURL)
 		let attempt = try recoveryAttempt()
 		let recorder = RecoveryInvocationRecorder()
 		let client = RecoveryClient(
@@ -513,7 +513,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 	) throws -> StoreRecoveryFixture {
 		let directory = try makePrivateRecoveryDirectory()
 		let journalURL = directory.appendingPathComponent("pending.json")
-		let pendingStore = ResetCardPendingAttemptStore(journalURL: journalURL)
+		let pendingStore = ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: journalURL)
 		let attempt = try recoveryAttempt()
 		let recorder = RecoveryInvocationRecorder()
 		let discoveredAuthority = ResetCardAuthority(
@@ -555,7 +555,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		let journalURL = directory.appendingPathComponent("pending.json")
 		let statusEnteredURL = directory.appendingPathComponent("status-entered")
 		let statusReleaseURL = directory.appendingPathComponent("status-release")
-		let pendingStore = ResetCardPendingAttemptStore(journalURL: journalURL)
+		let pendingStore = ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: journalURL)
 		let attempt = try recoveryAttempt()
 		let recorder = RecoveryInvocationRecorder()
 		let client = RecoveryClient(

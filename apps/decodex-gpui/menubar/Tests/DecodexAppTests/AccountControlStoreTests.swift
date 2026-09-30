@@ -1844,7 +1844,7 @@ final class AccountControlStoreTests: XCTestCase {
 			.appendingPathComponent(UUID().uuidString, isDirectory: true)
 		return AccountControlPendingFixture(
 			directory: directory,
-			store: ResetCardPendingAttemptStore(
+			store: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request,
 				journalURL: directory.appendingPathComponent("pending.json")
 			)
 		)

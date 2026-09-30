@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:eb430aeac01e4d7826083407ea4d8cbfb1de835104ad1b2c2e616f16882eeab3",
+  "pageVersion": "sha256:018da7290a7de9c39d5b7cec1c78f5c23d1d72584538305d388238980c172e17",
   "claims": [
     {
       "id": "claim_014ef96de4224b9e979fa1c64e77f2d8",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
-          "version": "repo-file-v1:sha256:ffbd9dd595d24178c67079b9a34b7b8cc6409e90b8e6222e9c931bd31edbcf09"
+          "version": "repo-file-v1:sha256:d84b05ed65274e424eaba04fc1b6f40960c558f3586360fd9b40ad61fa31f8ed"
         },
         {
           "resource": "repo://scripts/macos/verify_decodex_bundle_contracts.py",
@@ -19,6 +19,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T09:06:10.197Z"
+    "at": "2026-09-30T09:24:46.437Z"
   }
 }

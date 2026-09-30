@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:eff6e7b9d644c55bf82d2cf64a9f6b85ab35a2a7e03909d1bbcdcf270ae73d3e",
+  "pageVersion": "sha256:058e5017f93f18ef783fcc86042c12ce001412902490fefda804982e4bf6a52f",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
       "statement": "Repository Rust validation is defined by Makefile.toml; signed application staging has a separate executable bundle contract check.",
       "evidence": [
         {
-          "resource": "repo://Makefile.toml#L407-L417",
+          "resource": "repo://Makefile.toml#L408-L418",
           "version": "repo-lines-v1:sha256:b8ea2dc41b2a4aada9e3e093725bc8519e1d31c90a9fad3f8379adb28d57d782:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkMWRmNWFmYjM4MmRkY2MwNzI3N2VlNDE0ZjM4NDMxZjFkYjcxN2ZiYmQyZGE2ZGMyNjJjMDY2NzYwNTI1MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdjMjI1ZjEzMzI3OWVkMWE4ZDlhODg4OGU2OWNhM2ZhYzMzYTUwNWFkMzY5OTczNGRjNmUxMTU0OTc4NzM1ZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3NmQ2ZTY1OTlmOWU5MTVmNzY4OGFiMmM3OGFjMmNkZDk3YjBjZjM0MzM3NjVjZTk2NjQyNjBkYTg4ZmU0MTAifQ"
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
-          "version": "repo-file-v1:sha256:ffbd9dd595d24178c67079b9a34b7b8cc6409e90b8e6222e9c931bd31edbcf09"
+          "version": "repo-file-v1:sha256:d84b05ed65274e424eaba04fc1b6f40960c558f3586360fd9b40ad61fa31f8ed"
         }
       ]
     },
@@ -51,6 +51,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T09:06:10.197Z"
+    "at": "2026-09-30T09:24:46.437Z"
   }
 }

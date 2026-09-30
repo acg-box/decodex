@@ -4,6 +4,10 @@ title: "Commands and validation"
 description: "Commands and validation"
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-2e9ba9281afc8bacff8a0775
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DecodexNativeClient.swift
+  - id: openwiki-source-90188458ff8e2e5499bd7ca8
+    resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/NativeJournalFixture.swift
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
   - id: openwiki-source-b7793decf9d7c9ba48e57e0f
@@ -14,10 +18,12 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+  - id: openwiki-source-e0e48fb115095577a43dbc91
+    resource: repo://scripts/macos/test_native_app.sh
+generated: { by: "codex", at: "2026-09-30T09:24:46.437Z" }
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-30T09:17:35.615Z
+    at: 2026-09-30T09:24:46.437Z
 ---
 
 
@@ -72,6 +78,10 @@ scripts/macos/test_decodex_app_stage.sh
 A full Xcode installation and its Metal toolchain are required for GPUI. The scripts use the selected developer directory unless `DEVELOPER_DIR` is set. No Beta-specific path is required. The canonical stage script requires valid configured signing authority and rejects ad-hoc signing. It builds one app with the unified helper, native-client FFI and Swift menu-bar library.
 
 The staging test verifies payload counts, Info.plist, signatures, team identity, native ABI and a deliberately mismatched ABI fixture. Python reads piped entitlement bytes explicitly for compatibility. A passing package test is not live UI, speech, release notarization or installation acceptance.
+
+## Native macOS tests
+
+Run `scripts/macos/test_native_app.sh` for Swift tests that use the Rust native library. The script builds `decodex-app-client-ffi` with stable Rust and the lockfile, then gives the test fixture its exact debug-library path. It accepts normal `swift test` arguments, including `--filter`. The product continues to load only its bundled library; the test path is not a product override. Journal tests use temporary files and do not spend Reset Cards.
 
 ## Repository and auxiliary checks
 
