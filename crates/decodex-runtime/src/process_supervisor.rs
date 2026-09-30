@@ -676,6 +676,36 @@ impl ProcessGenerationControl {
 		.await
 	}
 
+	async fn prepare_generation_admission(
+		&self,
+		intent: &ProcessGenerationIntent,
+		account_binding: &ProcessGenerationAccountBinding,
+		admission: GenerationAdmission,
+	) -> Result<PrepareProcessGenerationOutcome, ProcessSupervisorError> {
+		match admission {
+			GenerationAdmission::Conversation(admission) =>
+				self.inner
+					.store
+					.prepare_conversation_bound_process_generation(
+						intent,
+						account_binding,
+						*admission,
+					)
+					.await,
+			GenerationAdmission::Agent { root_id, operation_key } =>
+				self.inner
+					.store
+					.prepare_agent_bound_process_generation(
+						intent,
+						account_binding,
+						&root_id,
+						&operation_key,
+					)
+					.await,
+		}
+		.map_err(|_| ProcessSupervisorError::ProductState)
+	}
+
 	async fn spawn_fenced_inner(
 		&self,
 		generation_id: ProcessGenerationId,
@@ -690,28 +720,8 @@ impl ProcessGenerationControl {
 		);
 		let account_binding = launch.account_binding().clone();
 		let mut supervision = self.reserve_supervision(&intent.generation_id)?;
-		let preparation = match admission {
-			GenerationAdmission::Conversation(admission) =>
-				self.inner
-					.store
-					.prepare_conversation_bound_process_generation(
-						&intent,
-						&account_binding,
-						*admission,
-					)
-					.await,
-			GenerationAdmission::Agent { root_id, operation_key } =>
-				self.inner
-					.store
-					.prepare_agent_bound_process_generation(
-						&intent,
-						&account_binding,
-						&root_id,
-						&operation_key,
-					)
-					.await,
-		}
-		.map_err(|_| ProcessSupervisorError::ProductState)?;
+		let preparation =
+			self.prepare_generation_admission(&intent, &account_binding, admission).await?;
 		let fence = match preparation {
 			PrepareProcessGenerationOutcome::Fresh(fence) => fence,
 			PrepareProcessGenerationOutcome::Replayed(_)
@@ -720,11 +730,12 @@ impl ProcessGenerationControl {
 			},
 		};
 
+		let revision = fence.revision();
 		let child = match launch.spawn() {
 			Ok(child) => child,
 			Err(_) => {
 				let generation =
-					generation_from_intent(&intent, fence.revision(), fence.fenced_at_micros());
+					generation_from_intent(&intent, revision, fence.fenced_at_micros());
 				if let Err(error) = self
 					.record_positive_death(
 						&generation,
@@ -746,32 +757,48 @@ impl ProcessGenerationControl {
 			match process_platform::inspect_process_identity(process_id, &self.inner.boot_id) {
 				Ok(Some(identity)) => identity,
 				Ok(None) | Err(_) => {
-					supervision.retain();
-					self.quarantine_failed_identity(&intent, fence.revision(), child, process_id)
-						.await?;
+					self.quarantine_failed_identity(
+						&intent,
+						revision,
+						child,
+						process_id,
+						&mut supervision,
+					)
+					.await?;
 					return Err(ProcessSupervisorError::IdentityBindingFailed);
 				},
 			};
 		let bound = self
 			.inner
 			.store
-			.bind_process_generation_identity(fence.generation_id(), fence.revision(), &identity)
+			.bind_process_generation_identity(fence.generation_id(), revision, &identity)
 			.await
 			.map_err(|_| ProcessSupervisorError::ProductState)
 			.and_then(accepted_mutation);
 		let bound = match bound {
 			Ok(bound) => bound,
 			Err(error) => {
-				supervision.retain();
-				self.quarantine_failed_bound_identity(&intent, fence.revision(), child, identity)
-					.await?;
+				self.quarantine_failed_bound_identity(
+					&intent,
+					revision,
+					child,
+					identity,
+					&mut supervision,
+				)
+				.await?;
 				return Err(error);
 			},
 		};
 
 		if !child.has_private_lifetime_channels() {
-			supervision.retain();
-			self.quarantine_failed_bound_identity(&intent, bound.revision, child, identity).await?;
+			self.quarantine_failed_bound_identity(
+				&intent,
+				bound.revision,
+				child,
+				identity,
+				&mut supervision,
+			)
+			.await?;
 			return Err(ProcessSupervisorError::ControlChannelUnavailable);
 		}
 		let key = intent.generation_id.as_str().to_owned();
@@ -1413,6 +1440,7 @@ impl ProcessGenerationControl {
 		revision: i64,
 		mut child: AttestedProcessChild,
 		process_group_id: u32,
+		supervision: &mut SupervisionReservation,
 	) -> Result<(), ProcessSupervisorError> {
 		child.close_private_lifetime_channels();
 		let _ = process_platform::signal_owned_process_group_id(process_group_id, libc::SIGKILL);
@@ -1438,10 +1466,10 @@ impl ProcessGenerationControl {
 		match mutation {
 			Ok(mutation) => {
 				owned.revision = mutation.revision;
-				self.replace_owned(intent.generation_id.as_str().to_owned(), owned)
+				self.restore_owned(intent.generation_id.as_str().to_owned(), owned, supervision)
 			},
 			Err(error) => {
-				self.replace_owned(intent.generation_id.as_str().to_owned(), owned)?;
+				self.restore_owned(intent.generation_id.as_str().to_owned(), owned, supervision)?;
 				Err(error)
 			},
 		}
@@ -1453,6 +1481,7 @@ impl ProcessGenerationControl {
 		revision: i64,
 		mut child: AttestedProcessChild,
 		identity: ProcessIdentity,
+		supervision: &mut SupervisionReservation,
 	) -> Result<(), ProcessSupervisorError> {
 		child.close_private_lifetime_channels();
 		let _ = process_platform::signal_owned_process_group(&identity, libc::SIGKILL);
@@ -1466,7 +1495,7 @@ impl ProcessGenerationControl {
 					revision,
 					leader_exited: false,
 				};
-				self.replace_owned(intent.generation_id.as_str().to_owned(), owned)?;
+				self.restore_owned(intent.generation_id.as_str().to_owned(), owned, supervision)?;
 				return Err(error);
 			},
 		};
@@ -1493,10 +1522,10 @@ impl ProcessGenerationControl {
 		match mutation {
 			Ok(mutation) => {
 				owned.revision = mutation.revision;
-				self.replace_owned(intent.generation_id.as_str().to_owned(), owned)
+				self.restore_owned(intent.generation_id.as_str().to_owned(), owned, supervision)
 			},
 			Err(error) => {
-				self.replace_owned(intent.generation_id.as_str().to_owned(), owned)?;
+				self.restore_owned(intent.generation_id.as_str().to_owned(), owned, supervision)?;
 				Err(error)
 			},
 		}
@@ -1646,6 +1675,151 @@ mod tests {
 
 	const CONCURRENCY_TIMEOUT: Duration = Duration::from_secs(2);
 	const EXCLUSION_WINDOW: Duration = Duration::from_millis(200);
+
+	fn failed_identity_intent(
+		control: &super::ProcessGenerationControl,
+	) -> super::ProcessGenerationIntent {
+		use decodex_core::{
+			AccountId, ProcessControlKind, ProcessExecutionAuthorization, ProcessExecutionEpochId,
+			ProcessGenerationId, ProcessGenerationIntent, ProcessIsolationKind,
+			ProcessRunnerIdentity,
+		};
+
+		ProcessGenerationIntent {
+			generation_id: ProcessGenerationId::new("30000000-0000-4000-8000-000000000001")
+				.unwrap(),
+			account_id: AccountId::new("10000000-0000-4000-8000-000000000001").unwrap(),
+			runner_identity: ProcessRunnerIdentity::new(format!("sha256:{}", "a".repeat(64)))
+				.unwrap(),
+			intended_boot_id: control.inner.boot_id.clone(),
+			control_kind: ProcessControlKind::StdioOnlyBestEffortEof,
+			isolation_kind: ProcessIsolationKind::Session,
+			execution_authorization: ProcessExecutionAuthorization::new(
+				ProcessExecutionEpochId::new("20000000-0000-4000-8000-000000000001").unwrap(),
+				"b".repeat(64),
+			)
+			.unwrap(),
+		}
+	}
+
+	#[tokio::test]
+	async fn failed_identity_cleanup_keeps_returned_child_supervised_on_store_rejection() {
+		let directory = tempfile::tempdir().unwrap();
+		let root =
+			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+		let control = super::ProcessGenerationControl::start(store).await.unwrap();
+		for bound in [false, true] {
+			let intent = failed_identity_intent(&control);
+			let mut supervision = control.reserve_supervision(&intent.generation_id).unwrap();
+			let child =
+				crate::account_launch::process::tests::supervisor_child_fixture(directory.path());
+			let process_id = child.process_id();
+			let identity = super::process_platform::inspect_process_identity(
+				process_id,
+				&control.inner.boot_id,
+			)
+			.unwrap()
+			.unwrap();
+			// No generation was inserted: both database mutations must reject the request.
+			let result = if bound {
+				control
+					.quarantine_failed_bound_identity(&intent, 1, child, identity, &mut supervision)
+					.await
+			} else {
+				control
+					.quarantine_failed_identity(&intent, 1, child, process_id, &mut supervision)
+					.await
+			};
+			drop(supervision);
+			assert!(result.is_err());
+			assert!(control.owns(&intent.generation_id).unwrap());
+			assert!(control.supervises(&intent.generation_id).unwrap());
+			control.clear_local_generation(&intent.generation_id).unwrap();
+		}
+	}
+
+	#[test]
+	fn cancelled_failed_identity_cleanup_releases_supervision() {
+		use super::ProcessGenerationControl;
+		use decodex_core::DecodexRoot;
+		use std::{
+			future::Future as _,
+			task::{Context, Poll, Waker},
+		};
+
+		let runtime = tokio::runtime::Builder::new_current_thread()
+			.enable_all()
+			.max_blocking_threads(1)
+			.build()
+			.unwrap();
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+		let control = runtime.block_on(ProcessGenerationControl::start(store)).unwrap();
+		for bound in [false, true] {
+			let child =
+				crate::account_launch::process::tests::supervisor_child_fixture(directory.path());
+			let process_id = child.process_id();
+			let identity = super::process_platform::inspect_process_identity(
+				process_id,
+				&control.inner.boot_id,
+			)
+			.unwrap()
+			.unwrap();
+			let intent = failed_identity_intent(&control);
+			let generation_id = intent.generation_id.clone();
+			let mut supervision = control.reserve_supervision(&generation_id).unwrap();
+			// Hold the only blocking worker so the cleanup cannot finish its database await.
+			let (release, blocked) = mpsc::channel::<()>();
+			let (entered, started) = mpsc::sync_channel(1);
+			let blocker = runtime.spawn_blocking(move || {
+				entered.send(()).unwrap();
+				let _ = blocked.recv();
+			});
+			started.recv_timeout(CONCURRENCY_TIMEOUT).unwrap();
+			let suspended = runtime.block_on(async {
+				let mut cleanup = Box::pin(async {
+					if bound {
+						control
+							.quarantine_failed_bound_identity(
+								&intent,
+								1,
+								child,
+								identity,
+								&mut supervision,
+							)
+							.await
+					} else {
+						control
+							.quarantine_failed_identity(
+								&intent,
+								1,
+								child,
+								process_id,
+								&mut supervision,
+							)
+							.await
+					}
+				});
+				let suspended = matches!(
+					cleanup.as_mut().poll(&mut Context::from_waker(Waker::noop())),
+					Poll::Pending
+				);
+				drop(cleanup);
+				suspended
+			});
+			drop(supervision);
+			drop(release);
+			runtime.block_on(blocker).unwrap();
+			assert!(suspended, "cleanup must reach its database await");
+			assert!(!control.owns(&generation_id).unwrap());
+			assert!(
+				!control.supervises(&generation_id).unwrap(),
+				"cancelled cleanup must not retain in-flight supervision (bound={bound})"
+			);
+		}
+	}
 
 	#[test]
 	fn distinct_generation_operations_do_not_head_of_line_block() {
