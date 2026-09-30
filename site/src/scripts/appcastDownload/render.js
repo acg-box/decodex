@@ -22,20 +22,32 @@ function appcastRenderList(root, items, appName) {
   }
 
   hoverzone.dataset.appcastDisabled = "false";
-  list.innerHTML = items
-    .map((item) => {
-      const dateLabel = appcastFormatDate(item.pubDate);
-      const meta = dateLabel.length > 0 ? dateLabel : "Date unavailable";
-      return `
-          <li class="appcast-download__item" role="none">
-            <a class="appcast-download__version" role="menuitem" href="${item.url}" target="_blank" rel="noreferrer" aria-label="Download ${appName} ${item.shortVersion}">
-              <span class="appcast-download__version-title">${item.shortVersion}</span>
-              <span class="appcast-download__version-meta">${meta}</span>
-            </a>
-          </li>
-        `;
-    })
-    .join("");
+  const entries = document.createDocumentFragment();
+  for (const item of items) {
+    const dateLabel = appcastFormatDate(item.pubDate);
+    const entry = document.createElement("li");
+    entry.className = "appcast-download__item";
+    entry.setAttribute("role", "none");
+
+    const link = document.createElement("a");
+    link.className = "appcast-download__version";
+    link.setAttribute("role", "menuitem");
+    link.href = item.url;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.setAttribute("aria-label", `Download ${appName} ${item.shortVersion}`);
+
+    const title = document.createElement("span");
+    title.className = "appcast-download__version-title";
+    title.textContent = item.shortVersion;
+    const meta = document.createElement("span");
+    meta.className = "appcast-download__version-meta";
+    meta.textContent = dateLabel || "Date unavailable";
+    link.append(title, meta);
+    entry.append(link);
+    entries.append(entry);
+  }
+  list.replaceChildren(entries);
 }
 
 function appcastRenderFailure(root) {

@@ -30,9 +30,14 @@
 }
 
 .appcast-download__version-title {
+  min-width: 0;
   font-size: 0.9rem;
   font-weight: 780;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.appcast-download__version-meta {
+  flex-shrink: 0;
 }
 
 .appcast-download__version-meta,
