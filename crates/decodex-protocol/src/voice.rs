@@ -40,13 +40,13 @@ impl<'de> Deserialize<'de> for VoiceSdp {
 #[serde(deny_unknown_fields)]
 pub struct AgentVoiceOptions {
 	/// Native realtime model name for this call only.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub model: Option<WireText>,
 	/// Instructions for the backing Agent when voice starts; distinct from the voice prompt.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub start_instructions: Option<crate::HistoryText>,
 	/// Instructions for the backing Agent when voice ends.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub end_instructions: Option<crate::HistoryText>,
 }
 impl std::fmt::Debug for AgentVoiceOptions {

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct AgentTimelinePage {
 	/// Live turn whose provider explicitly requests a safety buffering indicator.
 	/// This is connection state, not saved history or an approval request.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub safety_buffering_turn_id: Option<String>,
 	/// Thread whose native cursor and entries this page contains.
 	pub thread_id: String,
@@ -97,7 +97,6 @@ pub enum AgentTimelineContent {
 		/// Native item kind; unknown kinds remain visible as unsupported items.
 		kind: String,
 		/// Native assistant message phase. Missing phases remain unknown.
-		#[serde(default)]
 		phase: Option<String>,
 		/// Public message text, if present.
 		text: String,
@@ -165,7 +164,6 @@ pub enum AgentTimelineContent {
 		/// Saved provider usage for this exact completed turn. Native timeline has no usage field.
 		usage_summary: Option<String>,
 		/// Compact token counts for this exact turn.
-		#[serde(default)]
 		usage: Option<crate::AgentTurnUsageDto>,
 		/// Public provider failure message, when present.
 		error: Option<AgentTimelineError>,

@@ -66,7 +66,7 @@ pub struct DesktopProfileDraft {
 #[serde(deny_unknown_fields)]
 pub struct DesktopComposerDraft {
 	/// Pre-creation editor choices, absent for existing work or older saved drafts.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub creation: Option<DesktopCreationSetup>,
 	/// Original work owner; absent only before a task exists.
 	pub work_id: Option<EntityId>,
@@ -100,7 +100,6 @@ pub struct DesktopCreationSetup {
 	#[serde(default)]
 	pub defaults_applied: bool,
 	/// Absent in older drafts, whose saved values remain explicit.
-	#[serde(default)]
 	pub intent: Option<DesktopCreationIntent>,
 	/// Use native reasoning and retain the explicit value only as an editable alternative.
 	#[serde(default)]

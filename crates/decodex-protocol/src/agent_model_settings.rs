@@ -13,7 +13,6 @@ pub enum AgentModelSettingsResult {
 		/// Account that owns the native process.
 		account_id: crate::EntityId,
 		/// Provider ID reported by this native thread; no local default is substituted.
-		#[serde(default)]
 		model_provider: Option<crate::WireText>,
 		/// Configured model. Null means unavailable.
 		model: Option<crate::WireText>,

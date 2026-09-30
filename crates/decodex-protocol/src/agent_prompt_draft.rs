@@ -32,13 +32,13 @@ pub struct DesktopPromptEditDraft {
 	/// Durable native edit receipt, absent while the user is still reviewing.
 	pub receipt_id: Option<i64>,
 	/// Exact confirmation command retained before dispatch until a native receipt is read.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub confirmation_key: Option<crate::IdempotencyKey>,
 	/// Explicit branch destination saved before native creation, absent for same-thread edits.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub fork: Option<crate::PromptForkIntent>,
 	/// A single pending send; input must remain unchanged until acceptance is resolved.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub pending_send: Option<crate::PromptInputSend>,
 	/// Confirmation may be in flight, or draft handback is not yet confirmed by the service.
 	pub handback_pending: bool,

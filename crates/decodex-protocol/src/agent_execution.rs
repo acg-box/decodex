@@ -7,16 +7,16 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct AgentExecutionOverrides {
 	/// A newly selected model, if changed.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub model: Option<crate::ConversationModel>,
 	/// A newly selected reasoning effort, if changed.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub reasoning_effort: Option<crate::ConversationReasoningEffort>,
 	/// Legacy explicit Fast selection. Omitted means inherit; false means standard.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub fast: Option<bool>,
 	/// Explicit service tier, including standard. This takes precedence over legacy Fast.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub service_tier: Option<crate::ServiceTier>,
 }
 

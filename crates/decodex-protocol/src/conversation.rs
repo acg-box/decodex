@@ -385,7 +385,7 @@ pub struct ConversationExecutionSettings {
 	/// `true` maps to Codex's request-scoped `priority` service tier.
 	pub fast: bool,
 	/// Explicit tier chosen from native capabilities. Absent in older saved messages.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub service_tier: Option<decodex_core::ServiceTier>,
 }
 impl ConversationExecutionSettings {

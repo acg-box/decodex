@@ -20,7 +20,7 @@ pub struct ConversationCreationReceiptRequest {
 	/// Original execution choices, including inherited reasoning effort.
 	pub execution: ConversationExecutionSettings,
 	/// Original account observation, when creation used native model discovery.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub initial_model_source: Option<Box<crate::InitialModelSource>>,
 }
 

@@ -29,7 +29,6 @@ pub struct DesktopOrdinaryDraft {
 	/// Currently displayed editor.
 	pub composer: DesktopOrdinaryComposerDraft,
 	/// Unsent new-conversation editor parked while an existing conversation is selected.
-	#[serde(default)]
 	pub new_conversation: Option<DesktopOrdinaryComposerDraft>,
 	/// Editors parked under their exact conversation identity.
 	pub parked: BTreeMap<String, DesktopOrdinaryComposerDraft>,

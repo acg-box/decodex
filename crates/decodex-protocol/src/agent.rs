@@ -94,13 +94,13 @@ pub struct AgentActivityDto {
 	/// Selected public facts such as file paths and exit codes.
 	pub detail: String,
 	/// Native plugin attribution; this does not grant tool permissions.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub plugin_id: Option<String>,
 	/// Advisory MCP annotation, not an enforced sandbox or permission guarantee.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub read_only_hint: Option<bool>,
 	/// Native Unix timestamp of this lifecycle event, in milliseconds.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub native_timestamp_ms: Option<u64>,
 	/// Provider-reported duration or elapsed native lifecycle time, when available.
 	pub duration_ms: Option<u64>,
@@ -111,19 +111,15 @@ pub struct AgentActivityDto {
 #[serde(deny_unknown_fields)]
 pub struct AgentHistoryEntryDto {
 	/// Exact native identity of a retained display fallback, when present.
-	#[serde(default)]
 	pub native_source: Option<AgentHistorySourceDto>,
 	/// Native turn identity that binds the entry to its saved source.
-	#[serde(default)]
 	pub turn_id: Option<String>,
 	/// Saved weather results associated with this entry.
 	#[serde(default)]
 	pub weather: Vec<crate::WeatherForecast>,
 	/// Local receipt facts, independent of native conversation ordering.
-	#[serde(default)]
 	pub receipt: Option<AgentHistoryReceiptDto>,
 	/// Native execution activity; absent for conversation messages.
-	#[serde(default)]
 	pub activity: Option<AgentActivityDto>,
 	/// Total model input and output consumed by this exact turn, when recorded.
 	pub usage: Option<AgentTurnUsageDto>,
@@ -156,7 +152,7 @@ pub struct AgentHistorySourceDto {
 #[serde(deny_unknown_fields)]
 pub struct AgentHistoryReceiptDto {
 	/// Durable voice call identity; absent for non-voice and older receipts.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub voice_session_id: Option<String>,
 	/// Original local event category, not the displayed user/assistant role.
 	pub event_kind: String,
@@ -201,7 +197,7 @@ pub struct AgentLiveMessageDto {
 #[serde(deny_unknown_fields)]
 pub struct AgentTurnUsageDto {
 	/// Optional structured observations for the response details popover.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub details: Option<AgentUsageDetailsDto>,
 	/// Input tokens, including cached input.
 	pub input_tokens: u64,
@@ -345,7 +341,7 @@ pub struct AgentAttachmentDto {
 	/// Send this file as a native image input.
 	pub image: bool,
 	/// Exact native skill name when this path is an explicit skill reference.
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub skill_name: Option<crate::WireText>,
 }
 
@@ -933,7 +929,6 @@ pub struct AgentWorkspaceDto {
 #[serde(deny_unknown_fields)]
 pub struct AgentSnapshotDto {
 	/// Opaque current account revision and process identity; absent while unavailable.
-	#[serde(default)]
 	pub runtime_source: Option<crate::EntityId>,
 	/// Persisted project scopes.
 	pub workspaces: Vec<AgentWorkspaceDto>,
@@ -1032,7 +1027,6 @@ pub struct AgentModelDto {
 	/// This observation never grants access or selects a program for inference.
 	pub available_cyber_programs: Option<Vec<String>>,
 	/// Provider-defined model specialty. Informational; does not change task permissions.
-	#[serde(default)]
 	pub specialty: Option<String>,
 	/// The provider accepts image input for this model.
 	pub supports_images: bool,
