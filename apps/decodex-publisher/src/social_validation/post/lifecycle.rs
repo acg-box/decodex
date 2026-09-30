@@ -40,10 +40,36 @@ pub(super) fn validate_social_post_lifecycle(entry: &Map<String, Value>, errors:
 	{
 		errors.push("post_lifecycle.superseded_by_candidate must be non-empty when present".into());
 	}
-	if lifecycle.get("current_state").and_then(Value::as_str) != Some("live")
+	if (lifecycle.get("current_state").and_then(Value::as_str) != Some("live")
+		|| social_validation::string_field(entry, "status") != Some("published"))
 		&& lifecycle.get("quote_eligible").and_then(Value::as_bool) == Some(true)
 	{
 		errors
 			.push("post_lifecycle.quote_eligible can be true only for live published posts".into());
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use serde_json::json;
+
+	#[test]
+	fn quote_eligibility_requires_a_live_published_post() {
+		for (status, state, eligible, valid) in [
+			("published", "live", true, true),
+			("published", "deleted_by_operator", true, false),
+			("published", "deleted_by_operator", false, true),
+			("failed", "live", true, false),
+			("skipped", "live", true, false),
+			("blocked", "live", true, false),
+			("failed", "live", false, true),
+		] {
+			let entry = json!({"status": status, "post_lifecycle": {
+				"current_state": state, "quote_eligible": eligible
+			}});
+			let mut errors = Vec::new();
+			super::validate_social_post_lifecycle(entry.as_object().unwrap(), &mut errors);
+			assert_eq!(errors.is_empty(), valid, "{entry}: {errors:?}");
+		}
 	}
 }
