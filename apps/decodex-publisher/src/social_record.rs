@@ -1,6 +1,9 @@
 //! Atomic Content Manager recording and immutable publication identity.
 
-use std::path::{Path, PathBuf};
+use std::{
+	collections::BTreeSet,
+	path::{Path, PathBuf},
+};
 
 use serde::Serialize;
 use serde_json::Value;
@@ -10,9 +13,15 @@ use crate::{
 	SOCIAL_CANDIDATE_SCHEMA, SOCIAL_POST_SCHEMA,
 	filesystem::PinnedPrivateJsonFile,
 	prelude::{Result, eyre},
+	social_evidence,
+	social_publish::{self, scan},
+	social_xurl::{
+		self, ledger,
+		model::{ATTEMPT_SCHEMA, OBSERVATION_ATTEMPT_SCHEMA, XurlAttempt, XurlObservationAttempt},
+	},
 };
 
-const MAX_STAGING_BYTES: u64 = 1024 * 1024;
+const MAX_STAGING_BYTES: u64 = 1_024 * 1_024;
 
 #[derive(Debug)]
 pub(crate) struct SocialRecordCandidateRequest {
@@ -37,7 +46,7 @@ pub(crate) struct SocialRecordCandidateReport {
 pub(crate) fn record_social_candidate(
 	request: &SocialRecordCandidateRequest,
 ) -> Result<SocialRecordCandidateReport> {
-	if !crate::social_publish::valid_run_id(&request.run_id) {
+	if !social_publish::valid_run_id(&request.run_id) {
 		eyre::bail!("run_id must be a lowercase UUID");
 	}
 
@@ -52,7 +61,7 @@ pub(crate) fn record_social_candidate(
 	let candidates_dir = crate::resolve_against(&root, &request.candidates_dir);
 	let posts_dir = crate::resolve_against(&root, &request.posts_dir);
 	let attempts_dir = crate::resolve_against(&root, &request.attempts_dir);
-	let _state_lock = crate::social_publish::scan::acquire_social_state_lock(&request.locks_dir)?;
+	let _state_lock = scan::acquire_social_state_lock(&request.locks_dir)?;
 	let staging = PinnedPrivateJsonFile::open(&staging_path, MAX_STAGING_BYTES)?;
 	let mut candidate = staging.payload.clone();
 
@@ -64,7 +73,7 @@ pub(crate) fn record_social_candidate(
 
 	crate::validate_generated_social_artifact(&candidate)
 		.map_err(|error| eyre::eyre!("staging artifact failed validation: {error}"))?;
-	crate::social_evidence::validate_source_evidence(&candidate)
+	social_evidence::validate_source_evidence(&candidate)
 		.map_err(|error| eyre::eyre!("candidate evidence failed validation: {error}"))?;
 
 	let destination = candidates_dir.join(format!("{}.json", request.run_id));
@@ -92,121 +101,6 @@ pub(crate) fn record_social_candidate(
 	staging.unlink()?;
 
 	report("recorded", request, &root, &destination, &candidate)
-}
-
-fn report(
-	status: &str,
-	request: &SocialRecordCandidateRequest,
-	root: &Path,
-	destination: &Path,
-	candidate: &Value,
-) -> Result<SocialRecordCandidateReport> {
-	let decision = candidate
-		.pointer("/decision/worthiness")
-		.and_then(Value::as_str)
-		.ok_or_else(|| eyre::eyre!("candidate decision is missing"))?;
-
-	Ok(SocialRecordCandidateReport {
-		status: status.into(),
-		decision: decision.into(),
-		run_id: request.run_id.clone(),
-		path: crate::path_arg(root, destination),
-		staging_cleaned: true,
-	})
-}
-
-fn require_no_candidate_backpressure(
-	candidates_dir: &Path,
-	posts_dir: &Path,
-	attempts_dir: &Path,
-) -> Result<()> {
-	validate_attempt_records(attempts_dir)?;
-
-	let terminal_refs = existing_json_files(posts_dir)?
-		.into_iter()
-		.map(|path| crate::social_publish::scan::load_state_record(&path, SOCIAL_POST_SCHEMA))
-		.collect::<Result<Vec<_>>>()?
-		.into_iter()
-		.filter_map(|post| post.pointer("/source_refs/social_candidates").cloned())
-		.filter_map(|refs| refs.as_array().cloned())
-		.flatten()
-		.filter_map(|value| value.as_str().map(str::to_owned))
-		.collect::<std::collections::BTreeSet<_>>();
-	let root = crate::repo_root()?;
-
-	for path in existing_json_files(candidates_dir)? {
-		let candidate = crate::load_json(&path)?;
-
-		crate::validate_generated_social_artifact(&candidate)
-			.map_err(|error| eyre::eyre!("existing candidate failed validation: {error}"))?;
-		crate::social_evidence::validate_source_evidence(&candidate).map_err(|error| {
-			eyre::eyre!("existing candidate evidence failed validation: {error}")
-		})?;
-
-		let candidate_ref = crate::path_arg(&root, &path);
-
-		if terminal_refs.contains(&candidate_ref) {
-			continue;
-		}
-
-		let publication_lineage_sha256 = publication_lineage_sha256(&candidate)?;
-
-		if crate::social_xurl::publication_effect_conflict(
-			attempts_dir,
-			&publication_lineage_sha256,
-			None,
-		)?
-		.is_none()
-		{
-			eyre::bail!("one Content Manager candidate is still pending: {candidate_ref}");
-		}
-	}
-
-	Ok(())
-}
-
-fn validate_attempt_records(attempts_dir: &Path) -> Result<()> {
-	for path in existing_json_files(attempts_dir)? {
-		let payload = crate::load_json(&path)?;
-
-		match payload.get("schema").and_then(Value::as_str) {
-			Some(crate::social_xurl::model::ATTEMPT_SCHEMA) => {
-				let attempt: crate::social_xurl::model::XurlAttempt =
-					serde_json::from_value(payload).map_err(|_| {
-						eyre::eyre!("{} is not a valid xurl publication attempt", path.display())
-					})?;
-
-				crate::social_xurl::ledger::validate_publication_cost_record(&attempt)?;
-			},
-			Some(crate::social_xurl::model::OBSERVATION_ATTEMPT_SCHEMA) => {
-				let attempt: crate::social_xurl::model::XurlObservationAttempt =
-					serde_json::from_value(payload).map_err(|_| {
-						eyre::eyre!("{} is not a valid xurl observation attempt", path.display())
-					})?;
-
-				crate::social_xurl::ledger::validate_observation_cost_record(&attempt)?;
-			},
-			_ => eyre::bail!("{} has invalid xurl attempt state", path.display()),
-		}
-	}
-
-	Ok(())
-}
-
-fn existing_json_files(path: &Path) -> Result<Vec<PathBuf>> {
-	if !path.exists() {
-		return Ok(Vec::new());
-	}
-
-	crate::collect_json_files(&[path.to_path_buf()])
-}
-
-fn load_optional_json(path: &Path) -> Result<Option<Value>> {
-	if !path.exists() {
-		return Ok(None);
-	}
-
-	Ok(Some(crate::load_json(path)?))
 }
 
 pub(crate) fn apply_publication_identity(candidate: &mut Value) -> Result<()> {
@@ -270,4 +164,118 @@ pub(crate) fn validate_publication_identity(candidate: &Value) -> Result<()> {
 	}
 
 	Ok(())
+}
+
+fn report(
+	status: &str,
+	request: &SocialRecordCandidateRequest,
+	root: &Path,
+	destination: &Path,
+	candidate: &Value,
+) -> Result<SocialRecordCandidateReport> {
+	let decision = candidate
+		.pointer("/decision/worthiness")
+		.and_then(Value::as_str)
+		.ok_or_else(|| eyre::eyre!("candidate decision is missing"))?;
+
+	Ok(SocialRecordCandidateReport {
+		status: status.into(),
+		decision: decision.into(),
+		run_id: request.run_id.clone(),
+		path: crate::path_arg(root, destination),
+		staging_cleaned: true,
+	})
+}
+
+fn require_no_candidate_backpressure(
+	candidates_dir: &Path,
+	posts_dir: &Path,
+	attempts_dir: &Path,
+) -> Result<()> {
+	validate_attempt_records(attempts_dir)?;
+
+	let terminal_refs = existing_json_files(posts_dir)?
+		.into_iter()
+		.map(|path| scan::load_state_record(&path, SOCIAL_POST_SCHEMA))
+		.collect::<Result<Vec<_>>>()?
+		.into_iter()
+		.filter_map(|post| post.pointer("/source_refs/social_candidates").cloned())
+		.filter_map(|refs| refs.as_array().cloned())
+		.flatten()
+		.filter_map(|value| value.as_str().map(str::to_owned))
+		.collect::<BTreeSet<_>>();
+	let root = crate::repo_root()?;
+
+	for path in existing_json_files(candidates_dir)? {
+		let candidate = crate::load_json(&path)?;
+
+		crate::validate_generated_social_artifact(&candidate)
+			.map_err(|error| eyre::eyre!("existing candidate failed validation: {error}"))?;
+		social_evidence::validate_source_evidence(&candidate).map_err(|error| {
+			eyre::eyre!("existing candidate evidence failed validation: {error}")
+		})?;
+
+		let candidate_ref = crate::path_arg(&root, &path);
+
+		if terminal_refs.contains(&candidate_ref) {
+			continue;
+		}
+
+		let publication_lineage_sha256 = publication_lineage_sha256(&candidate)?;
+
+		if social_xurl::publication_effect_conflict(
+			attempts_dir,
+			&publication_lineage_sha256,
+			None,
+		)?
+		.is_none()
+		{
+			eyre::bail!("one Content Manager candidate is still pending: {candidate_ref}");
+		}
+	}
+
+	Ok(())
+}
+
+fn validate_attempt_records(attempts_dir: &Path) -> Result<()> {
+	for path in existing_json_files(attempts_dir)? {
+		let payload = crate::load_json(&path)?;
+
+		match payload.get("schema").and_then(Value::as_str) {
+			Some(ATTEMPT_SCHEMA) => {
+				let attempt: XurlAttempt = serde_json::from_value(payload).map_err(|_| {
+					eyre::eyre!("{} is not a valid xurl publication attempt", path.display())
+				})?;
+
+				ledger::validate_publication_cost_record(&attempt)?;
+			},
+			Some(OBSERVATION_ATTEMPT_SCHEMA) => {
+				let attempt: XurlObservationAttempt =
+					serde_json::from_value(payload).map_err(|_| {
+						eyre::eyre!("{} is not a valid xurl observation attempt", path.display())
+					})?;
+
+				ledger::validate_observation_cost_record(&attempt)?;
+			},
+			_ => eyre::bail!("{} has invalid xurl attempt state", path.display()),
+		}
+	}
+
+	Ok(())
+}
+
+fn existing_json_files(path: &Path) -> Result<Vec<PathBuf>> {
+	if !path.exists() {
+		return Ok(Vec::new());
+	}
+
+	crate::collect_json_files(&[path.to_path_buf()])
+}
+
+fn load_optional_json(path: &Path) -> Result<Option<Value>> {
+	if !path.exists() {
+		return Ok(None);
+	}
+
+	Ok(Some(crate::load_json(path)?))
 }
