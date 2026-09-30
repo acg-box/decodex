@@ -1,8 +1,8 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, mem};
 
 use sha2::{Digest as _, Sha256};
 
-use super::{
+use crate::social_xurl::pricing::{
 	DIAGNOSTIC_SCHEMA, MAX_SOURCE_BYTES, PARSER_CONTRACT, XPricingDiagnostic, XPricingRates,
 };
 
@@ -20,7 +20,6 @@ const WRITE_LABELS: [(&str, &str); 2] =
 pub(super) struct PricingParseFailure {
 	code: &'static str,
 }
-
 impl PricingParseFailure {
 	fn new(code: &'static str) -> Self {
 		Self { code }
@@ -384,7 +383,7 @@ fn table_blocks<'a>(lines: &'a [&'a str]) -> Vec<Vec<&'a str>> {
 		if is_table_line(line) {
 			current.push(*line);
 		} else if !current.is_empty() {
-			blocks.push(std::mem::take(&mut current));
+			blocks.push(mem::take(&mut current));
 		}
 	}
 
