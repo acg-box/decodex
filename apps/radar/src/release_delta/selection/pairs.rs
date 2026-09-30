@@ -143,14 +143,20 @@ fn previous_signal_pairs(path: &Path, repo: &str) -> Result<Vec<(String, String)
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::fs;
+
+	use crate::{
+		RadarRefreshReleaseDeltaRequest,
+		release_delta::{self, selection::pairs},
+		tests::fixtures,
+	};
 
 	#[test]
 	fn release_pairs_reuse_only_history_for_the_requested_repository() {
 		let temp = tempfile::tempdir().unwrap();
 		let out = temp.path().join("release-delta.json");
 		let release = |tag: &str, preview: bool, published_at: &str| {
-			let mut payload = crate::tests::fixtures::release(tag, preview);
+			let mut payload = fixtures::release(tag, preview);
 
 			payload["published_at"] = serde_json::json!(published_at);
 
@@ -171,16 +177,23 @@ mod tests {
 				..Default::default()
 			};
 
-			select_release_pairs(&request, temp.path(), &stable[0], &preview[0], &stable, &preview)
-				.unwrap()
-				.into_iter()
-				.map(|pair| {
-					(
-						release_delta::required_release_tag(&pair.stable).unwrap().to_owned(),
-						release_delta::required_release_tag(&pair.preview).unwrap().to_owned(),
-					)
-				})
-				.collect::<Vec<_>>()
+			pairs::select_release_pairs(
+				&request,
+				temp.path(),
+				&stable[0],
+				&preview[0],
+				&stable,
+				&preview,
+			)
+			.unwrap()
+			.into_iter()
+			.map(|pair| {
+				(
+					release_delta::required_release_tag(&pair.stable).unwrap().to_owned(),
+					release_delta::required_release_tag(&pair.preview).unwrap().to_owned(),
+				)
+			})
+			.collect::<Vec<_>>()
 		};
 		let fresh = select(0);
 
@@ -224,7 +237,7 @@ mod tests {
 			assert_eq!(select(10), pairs);
 		}
 
-		std::fs::write(&out, "{broken").unwrap();
+		fs::write(&out, "{broken").unwrap();
 
 		assert_eq!(select(0), fresh);
 	}
