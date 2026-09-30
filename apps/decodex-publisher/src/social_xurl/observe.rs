@@ -164,13 +164,8 @@ pub(super) fn reconcile_local(
 		.and_then(Value::as_str)
 		.ok_or_else(|| eyre::eyre!("published social post text is missing"))?
 		.to_owned();
-	let billing_month = format!("{:04}-{:02}", observed_at.year(), u8::from(observed_at.month()));
-	let attempt_key = runtime::sha256(format!("{post_ref}\0{window}").as_bytes());
-	let attempt_path =
-		attempts_dir.join(&billing_month).join(format!("observe-{attempt_key}.json"));
-	crate::require_contained_regular_file(&attempt_path, &attempts_dir)
-		.map_err(|error| eyre::eyre!("reconciliation observation attempt is invalid: {error}"))?;
-	let durable_attempt = ledger::load_observation_attempt(&attempt_path)?;
+	let (attempt_path, durable_attempt) = find_outcome_attempt(&attempts_dir, post_ref, window)?;
+	let billing_month = durable_attempt.billing_month.clone();
 	let authorization_contract_sha256 = required_authorization_contract_digest(&durable_attempt)?;
 	let observation = required_observation(&outcome)?;
 	let xurl_version = required_object_string(observation, "xurl_version")?.to_owned();
@@ -794,14 +789,14 @@ fn prepare_observation(
 		.transpose()?
 		.unwrap_or(requested_observed_at);
 	validate_outcome_window(posted_at, effective_observed_at, &request.window)?;
-	let billing_month = format!(
+	let mut billing_month = format!(
 		"{:04}-{:02}",
 		effective_observed_at.year(),
 		u8::from(effective_observed_at.month())
 	);
 	let post_ref = crate::path_arg(&root, &post_path);
 	let attempt_key = runtime::sha256(format!("{post_ref}\0{}", request.window).as_bytes());
-	let attempt_path =
+	let mut attempt_path =
 		attempts_dir.join(&billing_month).join(format!("observe-{attempt_key}.json"));
 	let (xurl_version, authorization_contract_sha256, provenance) =
 		if let Some(outcome) = &existing_outcome {
@@ -813,7 +808,10 @@ fn prepare_observation(
 				"xurl_version",
 			)?
 			.to_owned();
-			let attempt = ledger::load_observation_attempt(&attempt_path)?;
+			let (stored_path, attempt) =
+				find_outcome_attempt(&attempts_dir, &post_ref, &request.window)?;
+			attempt_path = stored_path;
+			billing_month = attempt.billing_month.clone();
 			(version, required_authorization_contract_digest(&attempt)?, None)
 		} else {
 			require_current_pricing(requested_observed_at)?;
@@ -843,6 +841,36 @@ fn prepare_observation(
 	};
 
 	Ok(PreparedObservation { context, post, existing_outcome, outcomes_dir, provenance })
+}
+
+fn find_outcome_attempt(
+	attempts_dir: &Path,
+	post_ref: &str,
+	window: &str,
+) -> Result<(PathBuf, XurlObservationAttempt)> {
+	let key = runtime::sha256(format!("{post_ref}\0{window}").as_bytes());
+	let name = format!("observe-{key}.json");
+	let mut found = None;
+	for path in crate::collect_json_files(&[attempts_dir.to_path_buf()])? {
+		if path.file_name().and_then(|value| value.to_str()) != Some(&name) {
+			continue;
+		}
+		let attempt = ledger::load_observation_attempt(&path)?;
+		ledger::validate_observation_cost_record(&attempt)?;
+		if path != attempts_dir.join(&attempt.billing_month).join(&name)
+			|| attempt.post_ref != post_ref
+			|| attempt.window != window
+		{
+			return Err(eyre::eyre!(
+				"outcome attempt does not match its canonical post and window"
+			));
+		}
+		if found.is_some() {
+			return Err(eyre::eyre!("multiple observation attempts match this post and window"));
+		}
+		found = Some((path, attempt));
+	}
+	found.ok_or_else(|| eyre::eyre!("outcome has no durable observation attempt"))
 }
 
 fn execute_observation(
