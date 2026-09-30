@@ -25,7 +25,7 @@ pub(crate) fn validate_source_freshness(
 		return;
 	};
 	let Some(max_age_seconds) =
-		i64::try_from(max_age_hours).ok().and_then(|hours| hours.checked_mul(3600))
+		i64::try_from(max_age_hours).ok().and_then(|hours| hours.checked_mul(3_600))
 	else {
 		errors.push(format!("{}: source freshness limit is too large", path.display()));
 
@@ -62,7 +62,11 @@ fn source_timestamp(payload: &Value) -> Option<(&'static str, &str)> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::path::Path;
+
+	use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+
+	use crate::{UPSTREAM_REVIEW_QUEUE_SCHEMA, validation_files::freshness};
 
 	#[test]
 	fn excessive_hour_limits_report_validation_errors_without_panicking() {
@@ -72,20 +76,26 @@ mod tests {
 			"generated_at": "2026-09-30T11:00:00Z"
 		});
 
-		for limit in [i64::MAX as u64 / 3600 + 1, i64::MAX as u64, u64::MAX] {
+		for limit in [i64::MAX as u64 / 3_600 + 1, i64::MAX as u64, u64::MAX] {
 			let mut errors = Vec::new();
 
-			validate_source_freshness(Path::new("queue.json"), &payload, limit, now, &mut errors);
+			freshness::validate_source_freshness(
+				Path::new("queue.json"),
+				&payload,
+				limit,
+				now,
+				&mut errors,
+			);
 
 			assert_eq!(errors, ["queue.json: source freshness limit is too large"]);
 		}
 
 		let mut errors = Vec::new();
 
-		validate_source_freshness(
+		freshness::validate_source_freshness(
 			Path::new("queue.json"),
 			&payload,
-			i64::MAX as u64 / 3600,
+			i64::MAX as u64 / 3_600,
 			now,
 			&mut errors,
 		);

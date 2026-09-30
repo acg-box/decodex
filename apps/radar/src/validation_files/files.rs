@@ -1,4 +1,7 @@
-use crate::{DEFAULT_VALIDATION_PATHS, Path, PathBuf, eyre, fs};
+use crate::{
+	DEFAULT_VALIDATION_PATHS, Path, PathBuf, eyre, fs,
+	private_fs::{self, PrivateEntryKind},
+};
 
 pub(crate) fn validation_paths(paths: &[PathBuf]) -> Vec<PathBuf> {
 	if paths.is_empty() {
@@ -34,13 +37,13 @@ pub(crate) fn collect_json_files(
 
 fn collect_json_path(path: &Path, files: &mut Vec<PathBuf>) -> crate::prelude::Result<()> {
 	if crate::is_radar_cache_path(path) {
-		match crate::private_fs::private_entry_kind(path)? {
-			Some(crate::private_fs::PrivateEntryKind::File) => {
+		match private_fs::private_entry_kind(path)? {
+			Some(PrivateEntryKind::File) => {
 				if path.extension().is_some_and(|extension| extension == "json") {
 					files.push(path.to_path_buf());
 				}
 			},
-			Some(crate::private_fs::PrivateEntryKind::Directory) => {
+			Some(PrivateEntryKind::Directory) => {
 				files.extend(crate::collect_private_json_files(path)?);
 			},
 			None => {
