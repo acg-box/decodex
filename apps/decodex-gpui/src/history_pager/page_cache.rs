@@ -1758,21 +1758,6 @@ fn io_failure() -> CacheFailure {
 	CacheFailure::new(CacheDiagnostic::Filesystem)
 }
 
-#[allow(dead_code)]
-fn closed_limits() -> (usize, usize, usize, usize, usize, usize, usize, usize, usize) {
-	(
-		MAX_CONVERSATION_PAGES,
-		MAX_CONVERSATION_ITEMS,
-		MAX_CONVERSATION_BYTES,
-		MAX_CACHE_CONVERSATIONS,
-		MAX_CACHE_PAGES,
-		MAX_CACHE_ITEMS,
-		MAX_CACHE_BYTES,
-		MAX_INDEX_BYTES,
-		MAX_PHYSICAL_BYTES,
-	)
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
