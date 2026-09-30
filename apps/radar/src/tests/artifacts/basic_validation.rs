@@ -201,3 +201,25 @@ fn rendered_config_flags_deduplicate_after_normalizing_aliases() {
 		.is_empty()
 	);
 }
+
+#[test]
+fn required_positive_integer_rejects_zero_and_wrong_json_types() {
+	for value in [
+		serde_json::json!(0),
+		serde_json::json!(-1),
+		serde_json::json!(1.5),
+		serde_json::json!(true),
+		serde_json::json!("1"),
+		serde_json::Value::Null,
+	] {
+		let error = crate::required_value_u64(&serde_json::json!({"number": value}), "number")
+			.expect_err("PR identity must be a positive integer");
+		assert!(error.to_string().contains("number must be a positive integer"));
+	}
+	for number in [1, u64::MAX] {
+		assert_eq!(
+			crate::required_value_u64(&serde_json::json!({"number": number}), "number").unwrap(),
+			number
+		);
+	}
+}
