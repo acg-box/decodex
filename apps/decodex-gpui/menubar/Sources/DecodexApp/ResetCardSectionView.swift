@@ -93,8 +93,8 @@ struct ResetCardAccountRow: View {
 					} else {
 						AccountPrimaryActionsView(state: state, store: store)
 						AccountPowerButton(state: state, store: store)
-						AccountUtilityActionsView(state: state, store: store)
 					}
+					AccountUtilityActionsView(state: state, store: store)
 				}
 				.fixedSize(horizontal: true, vertical: false)
 			}
