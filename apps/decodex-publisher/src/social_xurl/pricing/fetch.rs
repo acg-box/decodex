@@ -1,39 +1,34 @@
 use std::{
 	fs,
+	io::{self, Error, Read},
 	os::unix::{
 		fs::{MetadataExt as _, PermissionsExt as _},
 		process::CommandExt as _,
 	},
 	path::Path,
 	process::{Child, Command, Stdio},
-	sync::mpsc,
-	thread,
+	sync::mpsc::{self, Receiver},
+	thread::{self, JoinHandle},
 	time::{Duration, Instant},
 };
 
+use libc::SIGKILL;
 use wait_timeout::ChildExt as _;
 
-use super::{MAX_SOURCE_BYTES, OFFICIAL_PRICING_SOURCE};
+use crate::social_xurl::pricing::{MAX_SOURCE_BYTES, OFFICIAL_PRICING_SOURCE};
+
+type ReaderResult = io::Result<Vec<u8>>;
 
 const CURL_PATH: &str = "/usr/bin/curl";
 const FETCH_DEADLINE: Duration = Duration::from_secs(10);
-const MAX_STDERR_BYTES: usize = 16 * 1024;
+const MAX_STDERR_BYTES: usize = 16 * 1_024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct PricingFetchFailure {
 	code: &'static str,
 	ordinary_https_get_count: u64,
 }
-
 impl PricingFetchFailure {
-	fn before_get(code: &'static str) -> Self {
-		Self { code, ordinary_https_get_count: 0 }
-	}
-
-	fn after_get(code: &'static str) -> Self {
-		Self { code, ordinary_https_get_count: 1 }
-	}
-
 	pub(super) fn code(self) -> &'static str {
 		self.code
 	}
@@ -45,6 +40,14 @@ impl PricingFetchFailure {
 	#[cfg(test)]
 	pub(super) fn network_for_test() -> Self {
 		Self::after_get("x_pricing_network_unavailable")
+	}
+
+	fn before_get(code: &'static str) -> Self {
+		Self { code, ordinary_https_get_count: 0 }
+	}
+
+	fn after_get(code: &'static str) -> Self {
+		Self { code, ordinary_https_get_count: 1 }
 	}
 }
 
@@ -160,7 +163,7 @@ pub(super) fn curl_arguments() -> Vec<&'static str> {
 	]
 }
 
-fn validate_curl() -> std::io::Result<()> {
+fn validate_curl() -> io::Result<()> {
 	let metadata = fs::symlink_metadata(Path::new(CURL_PATH))?;
 
 	if metadata.file_type().is_symlink()
@@ -170,18 +173,16 @@ fn validate_curl() -> std::io::Result<()> {
 		|| metadata.permissions().mode() & 0o022 != 0
 		|| metadata.permissions().mode() & 0o100 == 0
 	{
-		return Err(std::io::Error::other("system curl metadata is not trusted"));
+		return Err(Error::other("system curl metadata is not trusted"));
 	}
 
 	Ok(())
 }
 
-type ReaderResult = std::io::Result<Vec<u8>>;
-
 fn spawn_bounded_reader(
-	reader: impl std::io::Read + Send + 'static,
+	reader: impl Read + Send + 'static,
 	max_bytes: usize,
-) -> (mpsc::Receiver<ReaderResult>, thread::JoinHandle<()>) {
+) -> (Receiver<ReaderResult>, JoinHandle<()>) {
 	let (sender, receiver) = mpsc::sync_channel(1);
 	let handle = thread::spawn(move || {
 		let _ = sender.send(drain_bounded(reader, max_bytes));
@@ -191,8 +192,8 @@ fn spawn_bounded_reader(
 }
 
 fn receive_bounded_reader(
-	receiver: mpsc::Receiver<ReaderResult>,
-	handle: thread::JoinHandle<()>,
+	receiver: Receiver<ReaderResult>,
+	handle: JoinHandle<()>,
 	deadline: Instant,
 ) -> Result<Vec<u8>, PricingFetchFailure> {
 	let output = receiver
@@ -205,9 +206,9 @@ fn receive_bounded_reader(
 	Ok(output)
 }
 
-fn drain_bounded(mut reader: impl std::io::Read, max_bytes: usize) -> std::io::Result<Vec<u8>> {
+fn drain_bounded(mut reader: impl Read, max_bytes: usize) -> io::Result<Vec<u8>> {
 	let mut retained = Vec::new();
-	let mut buffer = [0_u8; 8192];
+	let mut buffer = [0_u8; 8_192];
 
 	loop {
 		let read = reader.read(&mut buffer)?;
@@ -247,18 +248,18 @@ fn terminate(child: &mut Child) {
 fn kill_process_group(child_id: u32) {
 	if let Ok(process_group) = i32::try_from(child_id) {
 		unsafe {
-			libc::kill(-process_group, libc::SIGKILL);
+			libc::kill(-process_group, SIGKILL);
 		}
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::{MAX_SOURCE_BYTES, OFFICIAL_PRICING_SOURCE, curl_arguments, drain_bounded};
+	use crate::social_xurl::pricing::{MAX_SOURCE_BYTES, OFFICIAL_PRICING_SOURCE, fetch};
 
 	#[test]
 	fn curl_contract_is_one_credential_free_official_https_get() {
-		let arguments = curl_arguments();
+		let arguments = fetch::curl_arguments();
 
 		assert_eq!(arguments.iter().filter(|argument| **argument == "GET").count(), 1);
 		assert_eq!(
@@ -279,9 +280,9 @@ mod tests {
 
 	#[test]
 	fn reader_retains_only_the_bounded_overflow_sentinel() {
-		let source = vec![b'x'; MAX_SOURCE_BYTES as usize + 8192];
-		let retained =
-			drain_bounded(source.as_slice(), MAX_SOURCE_BYTES as usize).expect("bounded read");
+		let source = vec![b'x'; MAX_SOURCE_BYTES as usize + 8_192];
+		let retained = fetch::drain_bounded(source.as_slice(), MAX_SOURCE_BYTES as usize)
+			.expect("bounded read");
 
 		assert_eq!(retained.len(), MAX_SOURCE_BYTES as usize + 1);
 	}
