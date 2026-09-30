@@ -1,11 +1,22 @@
 //! Retry a one-time code only after a connection failure, before any HTTP response.
-use super::{Cancellation, Config, Error, HttpResponse, cancellable, endpoint};
-use reqwest::{Client, Proxy, redirect::Policy};
-use std::time::{Duration, Instant};
-
 #[cfg(target_os = "macos")]
 #[path = "system_proxy_macos.rs"]
 mod macos;
+
+use std::{
+	future::Future,
+	time::{Duration, Instant},
+};
+
+use reqwest::{Client, Proxy, redirect::Policy};
+use tokio::time;
+
+use crate::{Cancellation, Config, Error, HttpResponse};
+
+pub(super) enum Route {
+	Direct,
+	Proxy(Box<Proxy>),
+}
 
 #[cfg(target_os = "macos")]
 enum RouteFailureClass {
@@ -22,11 +33,6 @@ enum SystemProxyDecision {
 	Unavailable { failure: RouteFailureClass },
 }
 
-pub(super) enum Route {
-	Direct,
-	Proxy(Box<Proxy>),
-}
-
 pub(super) fn client(config: &Config, route: Option<Route>) -> Result<Client, Error> {
 	let mut builder = Client::builder()
 		.redirect(Policy::none())
@@ -37,6 +43,7 @@ pub(super) fn client(config: &Config, route: Option<Route>) -> Result<Client, Er
 			"decodex/{} codex-login-source/rust-v0.148.0-alpha.9",
 			env!("CARGO_PKG_VERSION")
 		));
+
 	#[cfg(test)]
 	if config.fallback_proxy_fixture.is_some() {
 		builder = builder.no_proxy();
@@ -81,12 +88,12 @@ async fn exchange_with_route<F, R>(
 ) -> Result<HttpResponse, Error>
 where
 	F: FnOnce(String) -> R,
-	R: std::future::Future<Output = Result<Route, Error>>,
+	R: Future<Output = Result<Route, Error>>,
 {
-	let url = endpoint(config, "oauth/token")?;
+	let url = crate::endpoint(config, "oauth/token")?;
 	// Preserve the transport classification until the replay decision. Redirects are
 	// disabled on both clients; a timeout after sending a POST never enters this branch.
-	let response = cancellable(cancellation, deadline, async {
+	let response = crate::cancellable(cancellation, deadline, async {
 		Ok(initial
 			.post(url.clone())
 			.header("Content-Type", "application/x-www-form-urlencoded")
@@ -103,12 +110,12 @@ where
 				biased;
 
 				_ = cancellation.cancelled() => return Err(Error::Cancelled),
-				route = tokio::time::timeout(super::remaining(deadline)?, resolve_route(url.to_string())) =>
+				route = time::timeout(crate::remaining(deadline)?, resolve_route(url.to_string())) =>
 					route.map_err(|_| Error::TimedOut)??,
 			};
 			let fallback = client(config, Some(route))?;
 
-			cancellable(
+			crate::cancellable(
 				cancellation,
 				deadline,
 				fallback
