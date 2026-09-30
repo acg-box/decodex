@@ -280,7 +280,9 @@ fn development_projection(
 		fields: vec![field("Work item", work_item.work_item_id.as_str())?],
 	};
 	let (validation_title, validation_summary, validation_state, validation_source, fields) =
-		if let Some(review) = record.reviews.last() {
+		if let Some(review) =
+			record.reviews.iter().rev().find(|review| review.work_item_id == work_item.work_item_id)
+		{
 			let evidence = record
 				.evidence
 				.iter()
@@ -291,7 +293,7 @@ fn development_projection(
 				.find(|item| item.evidence_id == review.external_evidence_id)
 				.map(|item| item.source.clone());
 			(
-				"Latest Program review".to_owned(),
+				"Latest work item review".to_owned(),
 				review.rationale.clone(),
 				review.classification.as_str().to_owned(),
 				source,
@@ -720,6 +722,34 @@ mod tests {
 			change.source.as_ref().map(WireText::as_str),
 			Some("codex://threads/provider-thread:opaque-1")
 		);
+	}
+
+	#[test]
+	fn development_validation_belongs_to_the_displayed_work_item() {
+		let mut record: ProgramCycleRecord =
+			serde_json::from_str(include_str!("../tests/fixtures/historical_program_cycle.json"))
+				.expect("two-cycle history");
+		record.domain_pack = program(DEVELOPMENT_DOMAIN_PACK_ID).domain_pack;
+		let validation = |record: &ProgramCycleRecord| {
+			projection(record, &HashMap::new())
+				.unwrap()
+				.unwrap()
+				.entities
+				.into_iter()
+				.find(|entity| entity.kind.as_str() == "dev.validation")
+				.unwrap()
+		};
+		let pending = validation(&record);
+		assert_eq!(pending.state.as_str(), "pending");
+		assert!(pending.source.is_none());
+		assert_eq!(pending.summary.as_str(), record.program.review_policy);
+
+		// The first cycle still renders its own recorded review and evidence.
+		record.work_items.pop();
+		let reviewed = validation(&record);
+		assert_eq!(reviewed.state.as_str(), "knowledge_progress");
+		assert_eq!(reviewed.summary.as_str(), record.reviews[0].rationale);
+		assert_eq!(reviewed.source.as_ref().map(WireText::as_str), Some("provider"));
 	}
 
 	#[test]
