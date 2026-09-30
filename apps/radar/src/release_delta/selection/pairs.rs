@@ -21,16 +21,18 @@ pub(crate) fn select_release_pairs(
 			release_delta::release_tag(release).map(|tag| (tag.to_owned(), release.clone()))
 		})
 		.collect::<BTreeMap<_, _>>();
-	let previous_pairs =
-		previous_signal_pairs(&release_delta::absolute_repo_path(root, &request.out))?
-			.into_iter()
-			.filter_map(|(stable_tag, preview_tag)| {
-				Some(ReleasePair {
-					stable: releases_by_tag.get(&stable_tag)?.clone(),
-					preview: releases_by_tag.get(&preview_tag)?.clone(),
-				})
-			})
-			.collect::<Vec<_>>();
+	let previous_pairs = previous_signal_pairs(
+		&release_delta::absolute_repo_path(root, &request.out),
+		&request.repo,
+	)?
+	.into_iter()
+	.filter_map(|(stable_tag, preview_tag)| {
+		Some(ReleasePair {
+			stable: releases_by_tag.get(&stable_tag)?.clone(),
+			preview: releases_by_tag.get(&preview_tag)?.clone(),
+		})
+	})
+	.collect::<Vec<_>>();
 
 	if previous_pairs.is_empty() {
 		let mut pairs = vec![default_pair];
@@ -101,7 +103,7 @@ fn unique_release_pairs(pairs: Vec<ReleasePair>) -> Vec<ReleasePair> {
 	unique
 }
 
-fn previous_signal_pairs(path: &Path) -> Result<Vec<(String, String)>> {
+fn previous_signal_pairs(path: &Path, repo: &str) -> Result<Vec<(String, String)>> {
 	let exists = if crate::is_radar_cache_path(path) {
 		crate::private_file_exists(path)?
 	} else {
@@ -114,6 +116,9 @@ fn previous_signal_pairs(path: &Path) -> Result<Vec<(String, String)>> {
 	let Ok(previous) = release_delta::load_json(path) else {
 		return Ok(Vec::new());
 	};
+	if previous.get("repo").and_then(Value::as_str) != Some(repo) {
+		return Ok(Vec::new());
+	}
 	let mut keys = Vec::new();
 	let mut seen = BTreeSet::new();
 
@@ -135,4 +140,76 @@ fn previous_signal_pairs(path: &Path) -> Result<Vec<(String, String)>> {
 	}
 
 	Ok(keys)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn release_pairs_reuse_only_history_for_the_requested_repository() {
+		let temp = tempfile::tempdir().unwrap();
+		let out = temp.path().join("release-delta.json");
+		let request = RadarRefreshReleaseDeltaRequest {
+			out: out.clone(),
+			pair_limit: 0,
+			..Default::default()
+		};
+		let release = |tag: &str, preview: bool, published_at: &str| {
+			let mut payload = crate::tests::fixtures::release(tag, preview);
+			payload["published_at"] = serde_json::json!(published_at);
+			payload
+		};
+		let stable = [
+			release("rust-v0.2.0", false, "2026-01-02T00:00:00Z"),
+			release("rust-v0.1.0", false, "2026-01-01T00:00:00Z"),
+		];
+		let preview = [
+			release("rust-v0.4.0-alpha.1", true, "2026-03-01T00:00:00Z"),
+			release("rust-v0.3.0-alpha.1", true, "2026-02-01T00:00:00Z"),
+		];
+		let select = || {
+			select_release_pairs(&request, temp.path(), &stable[0], &preview[0], &stable, &preview)
+				.unwrap()
+				.into_iter()
+				.map(|pair| {
+					(
+						release_delta::required_release_tag(&pair.stable).unwrap().to_owned(),
+						release_delta::required_release_tag(&pair.preview).unwrap().to_owned(),
+					)
+				})
+				.collect::<Vec<_>>()
+		};
+		let fresh = select();
+		assert_eq!(fresh.len(), 4);
+		for repo in [
+			serde_json::json!("other/project"),
+			serde_json::Value::Null,
+			serde_json::json!("openai/codex"),
+		] {
+			let previous = serde_json::json!({
+				"repo": repo,
+				"comparisons": [{
+					"stable_tag_name": "rust-v0.1.0",
+					"prerelease_tag_name": "rust-v0.3.0-alpha.1",
+					"tracked_signal_slugs": ["signal"]
+				}]
+			});
+			crate::write_json(&out, &previous).unwrap();
+			let pairs = select();
+			if repo == "openai/codex" {
+				assert_eq!(
+					pairs,
+					vec![fresh[0].clone(), ("rust-v0.1.0".into(), "rust-v0.3.0-alpha.1".into())]
+				);
+			} else {
+				assert_eq!(
+					pairs, fresh,
+					"foreign or unidentified history must not restrict candidates"
+				);
+			}
+		}
+		std::fs::write(&out, "{broken").unwrap();
+		assert_eq!(select(), fresh);
+	}
 }
