@@ -109,9 +109,11 @@ pub async fn execute(
 	if let AgentCommand::Request { event_id } = command {
 		return execute_request(event_id, output, root, profile, expected_server_id).await;
 	}
+
 	if !matches!(command, AgentCommand::Status) {
 		return execute_mutation(command, output, root, profile, expected_server_id).await;
 	}
+
 	let result = match load_client_profile(root, profile, expected_server_id) {
 		Ok(profile) => AgentClient::new(profile).query().await,
 		Err(error) => Err(error),
@@ -128,9 +130,11 @@ pub async fn execute(
 						snapshot.dependencies.len(),
 						snapshot.pending_events.len()
 					);
+
 					if snapshot.work_items.is_empty() {
 						text.push_str("No Agent work has been recorded.\n");
 					}
+
 					for item in &snapshot.work_items {
 						let _ = writeln!(
 							text,
@@ -141,6 +145,7 @@ pub async fn execute(
 							item.dispatch_state,
 							safe(&item.title)
 						);
+
 						if let Some(parent) = &item.parent_goal_id {
 							let _ = writeln!(text, "  parent: {}", safe(parent));
 						}
@@ -173,10 +178,12 @@ pub async fn execute(
 							event.delivery_claimed
 						);
 					}
+
 					0
 				},
 				AgentSnapshotResult::Unavailable => {
 					text.push_str("Agent work store is unavailable.");
+
 					1
 				},
 				AgentSnapshotResult::CapacityExceeded {
@@ -188,9 +195,11 @@ pub async fn execute(
 						text,
 						"Agent snapshot exceeds the complete-response bounds: {work_items} work items, {dependencies} dependencies, {pending_events} pending events. Limits: {MAX_AGENT_WORK_ITEMS} items, {MAX_AGENT_DEPENDENCIES} dependencies, {MAX_AGENT_PENDING_EVENTS} events, {MAX_AGENT_SNAPSHOT_BYTES} encoded bytes. No partial graph was returned."
 					);
+
 					1
 				},
 			};
+
 			(
 				serde_json::json!({"schema":"decodex/agent-cli/1","command":"agent status","result":result}),
 				text,
@@ -203,6 +212,7 @@ pub async fn execute(
 			1,
 		),
 	};
+
 	CommandOutput {
 		text: if output == OutputFormat::Json {
 			serde_json::to_string_pretty(&document).expect("typed Agent output")
@@ -261,6 +271,7 @@ async fn execute_request(
 			1,
 		),
 	};
+
 	CommandOutput {
 		text: match output {
 			OutputFormat::Json => format!("{document}\n"),
@@ -275,6 +286,7 @@ fn wire_identity(value: String) -> Result<WireText, &'static str> {
 	if value.is_empty() || value.len() > 512 || value.chars().any(char::is_control) {
 		return Err("invalid turn or source event identity");
 	}
+
 	WireText::new(value).map_err(|_| "invalid turn or source event identity")
 }
 
@@ -283,16 +295,17 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 		if value.trim().is_empty() {
 			return Err("input text must not be empty");
 		}
+
 		HistoryText::new(value).map_err(|_| "input text exceeds the protocol limit")
 	};
 	let identity =
 		|value: String| EntityId::new(value).map_err(|_| "invalid work or account identity");
-
 	let (action, key) = match command {
 		AgentCommand::CancelRetry { work_id, event_id, idempotency_key } => {
 			if event_id <= 0 {
 				return Err("retry cancellation requires a positive event identity");
 			}
+
 			(
 				AgentActionDto::CancelCapacityRetry { work_id: identity(work_id)?, event_id },
 				idempotency_key,
@@ -305,6 +318,7 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 			{
 				return Err("answer requires a positive event identity and a JSON response object");
 			}
+
 			(
 				AgentActionDto::Respond {
 					work_id: identity(work_id)?,
@@ -371,18 +385,24 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 					{
 						return Err("result source must be a regular file");
 					}
+
 					let file = std::fs::File::open(path).map_err(|_| "cannot read result file")?;
+
 					if !file.metadata().map_err(|_| "cannot inspect result file")?.is_file() {
 						return Err("result source must be a regular file");
 					}
+
 					let mut payload = String::new();
+
 					file.take((MAX_HISTORY_INLINE_BYTES + 1) as u64)
 						.read_to_string(&mut payload)
 						.map_err(|_| "result file must contain UTF-8 text")?;
+
 					payload
 				},
 				_ => return Err("supply result text or one result file"),
 			};
+
 			(
 				AgentActionDto::AutomationResult {
 					work_id: identity(work_id)?,
@@ -396,6 +416,7 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 			return Err("query is not a mutation");
 		},
 	};
+
 	Ok((action, command_key(key)?))
 }
 
@@ -404,16 +425,21 @@ fn command_key(key: Option<String>) -> Result<IdempotencyKey, &'static str> {
 		Some(key) => key,
 		None => {
 			let mut bytes = [0_u8; 16];
+
 			std::fs::File::open("/dev/urandom")
 				.and_then(|mut source| source.read_exact(&mut bytes))
 				.map_err(|_| "cannot generate command identity")?;
+
 			let mut key = String::from("agent-");
+
 			for byte in bytes {
 				let _ = write!(key, "{byte:02x}");
 			}
+
 			key
 		},
 	};
+
 	IdempotencyKey::new(key).map_err(|_| "invalid idempotency key")
 }
 
@@ -457,9 +483,11 @@ async fn execute_mutation(
 					serde_json::json!({"schema":"decodex/agent-cli/1","idempotency_key":key,"failure":failure})
 				},
 			};
+
 			(document, format!("{text}\nCommand identity: {}", safe(key.as_str())), exit_code)
 		},
 	};
+
 	CommandOutput {
 		text: if output == OutputFormat::Json {
 			serde_json::to_string_pretty(&document).expect("typed Agent output")
@@ -491,6 +519,7 @@ mod tests {
 		let Command::Agent(command) = cli.command else {
 			panic!("Agent command");
 		};
+
 		assert!(
 			matches!(super::prepare(command).unwrap().0,decodex_protocol::AgentActionDto::CancelCapacityRetry {work_id,event_id:7} if work_id.as_str()=="worker")
 		);
@@ -507,10 +536,12 @@ mod tests {
 	#[test]
 	fn agent_answer_binds_event_and_rejects_non_object_responses() {
 		let cli = Cli::try_parse_from(["decodex", "agent", "request", "--event-id", "7"]).unwrap();
+
 		assert!(matches!(
 			cli.command,
 			Command::Agent(super::AgentCommand::Request { event_id: 7 })
 		));
+
 		for (event_id, response, valid) in [
 			(7, "{\"decision\":\"decline\"}", true),
 			(0, "{}", false),
@@ -523,7 +554,9 @@ mod tests {
 				idempotency_key: Some("answer-7".into()),
 				response_json: response.into(),
 			});
+
 			assert_eq!(result.is_ok(), valid);
+
 			if let Ok((action, _)) = result {
 				assert!(
 					matches!(action, decodex_protocol::AgentActionDto::Respond { event_id: 7, work_id, .. } if work_id.as_str() == "worker")
@@ -535,6 +568,7 @@ mod tests {
 	#[test]
 	fn agent_status_is_a_read_only_cli_command_with_structured_output() {
 		let cli = Cli::try_parse_from(["decodex", "--output", "json", "agent", "status"]).unwrap();
+
 		assert_eq!(cli.output, OutputFormat::Json);
 		assert!(matches!(cli.command, Command::Agent(super::AgentCommand::Status)));
 		assert!(Cli::try_parse_from(["decodex", "agent", "run"]).is_err());
@@ -558,6 +592,7 @@ mod tests {
 		.unwrap();
 		let Command::Agent(command) = cli.command else { panic!("Agent command") };
 		let (action, _) = super::prepare(command).unwrap();
+
 		assert!(
 			matches!(action,decodex_protocol::AgentActionDto::Start(start) if start.effort.is_none())
 		);
@@ -585,10 +620,12 @@ mod tests {
 			panic!("Agent command");
 		};
 		let (action, key) = super::prepare(command).unwrap();
+
 		assert!(key.as_str().starts_with("agent-"));
 		assert!(
 			matches!(action, decodex_protocol::AgentActionDto::Start(start) if start.model.as_str() == "gpt-6-astra" && start.effort == Some(decodex_protocol::ConversationReasoningEffort::Medium) && start.sandbox == decodex_protocol::AgentSandboxDto::ReadOnly)
 		);
+
 		for args in [
 			vec!["decodex", "agent", "send", "--root-id", "personal", "Next task"],
 			vec!["decodex", "agent", "interrupt", "--work-id", "worker", "--turn-id", "turn-one"],
@@ -607,8 +644,10 @@ mod tests {
 			let Command::Agent(command) = cli.command else {
 				panic!("Agent command");
 			};
+
 			assert!(super::prepare(command).is_ok());
 		}
+
 		assert!(
 			Cli::try_parse_from(["decodex", "agent", "interrupt", "--work-id", "worker"]).is_err()
 		);
@@ -634,6 +673,7 @@ mod tests {
 		let Command::Agent(command) = cli.command else {
 			panic!("Agent command");
 		};
+
 		assert_eq!(super::prepare(command).unwrap().1.as_str(), "exact-once");
 		assert!(
 			super::prepare(super::AgentCommand::Send {
@@ -673,27 +713,37 @@ mod tests {
 		let Command::Agent(command) = default.command else {
 			panic!("Agent command");
 		};
+
 		assert!(
 			matches!(super::prepare(command).unwrap().0, decodex_protocol::AgentActionDto::Start(start) if start.sandbox == decodex_protocol::AgentSandboxDto::WorkspaceWrite)
 		);
+
 		let mut args = base.to_vec();
+
 		args.push("--full-access");
+
 		let full = Cli::try_parse_from(args.clone()).unwrap();
 		let Command::Agent(command) = full.command else {
 			panic!("Agent command");
 		};
+
 		assert!(
 			matches!(super::prepare(command).unwrap().0, decodex_protocol::AgentActionDto::Start(start) if start.sandbox == decodex_protocol::AgentSandboxDto::FullAccess)
 		);
+
 		args.push("--read-only");
+
 		assert!(Cli::try_parse_from(args).is_err());
 	}
 
 	#[test]
 	fn automation_result_file_is_bounded_before_connection() {
 		use std::io::Write as _;
+
 		let mut file = tempfile::NamedTempFile::new().unwrap();
+
 		file.write_all(&vec![b'x'; decodex_protocol::MAX_HISTORY_INLINE_BYTES + 1]).unwrap();
+
 		let command = super::AgentCommand::Ingest {
 			work_id: "goal".into(),
 			source_event_id: "source-event".into(),
@@ -701,6 +751,7 @@ mod tests {
 			payload: None,
 			file: Some(file.path().to_owned()),
 		};
+
 		assert!(super::prepare(command).is_err());
 	}
 }

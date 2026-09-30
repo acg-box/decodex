@@ -172,6 +172,7 @@ pub async fn execute(
 		Err(failure) => return failure_output(format, failure),
 	};
 	let client = AccountClient::new(profile);
+
 	match command {
 		AccountCommand::List => return render("list", format, client.list().await),
 		AccountCommand::Inspect(args) => {
@@ -179,6 +180,7 @@ pub async fn execute(
 				Ok(value) => value,
 				Err(error) => return error.render(format),
 			};
+
 			return render("inspect", format, client.inspect(account_id).await);
 		},
 		AccountCommand::Profile(args) => {
@@ -186,6 +188,7 @@ pub async fn execute(
 				Ok(value) => value,
 				Err(error) => return error.render(format),
 			};
+
 			return render("profile", format, client.profile(account_id, args.include_email).await);
 		},
 		AccountCommand::CodexProjection => {
@@ -196,6 +199,7 @@ pub async fn execute(
 			let (Ok(account_id), Ok(key)) = input else {
 				return InvalidInput.render(format);
 			};
+
 			return render_command(format, client.route_account(account_id, key).await);
 		},
 		AccountCommand::SetBalancedSelection(args) => {
@@ -203,6 +207,7 @@ pub async fn execute(
 			let (Ok(routing_revision), Ok(key)) = input else {
 				return InvalidInput.render(format);
 			};
+
 			return render_command(
 				format,
 				client.set_balanced_account_selection(routing_revision, key).await,
@@ -217,6 +222,7 @@ pub async fn execute(
 			let (Ok(order), Ok(routing_revision), Ok(key)) = input else {
 				return InvalidInput.render(format);
 			};
+
 			return render_command(
 				format,
 				client.set_account_order(order, routing_revision, key).await,
@@ -227,6 +233,7 @@ pub async fn execute(
 				Ok(value) => value,
 				Err(error) => return error.render(format),
 			};
+
 			return render_command(format, client.execute(payload, expected_revision, key).await);
 		},
 	}
@@ -316,6 +323,7 @@ fn command_input(
 	idempotency_key: String,
 ) -> Result<(CommandPayload, Option<EntityRevision>, IdempotencyKey), InvalidInput> {
 	let key = self::idempotency_key(idempotency_key)?;
+
 	Ok((payload, expected_revision, key))
 }
 
@@ -323,6 +331,7 @@ fn entity(value: &str) -> Result<EntityId, InvalidInput> {
 	if !crate::is_canonical_uuid(value) {
 		return Err(InvalidInput);
 	}
+
 	EntityId::new(value.to_owned()).map_err(|_| InvalidInput)
 }
 
@@ -338,11 +347,14 @@ fn account_order(values: &[String]) -> Result<Vec<EntityId>, InvalidInput> {
 	if values.len() > 512 {
 		return Err(InvalidInput);
 	}
+
 	let order = values.iter().map(|value| entity(value)).collect::<Result<Vec<_>, _>>()?;
 	let unique = order.iter().map(EntityId::as_str).collect::<std::collections::HashSet<_>>();
+
 	if unique.len() != order.len() {
 		return Err(InvalidInput);
 	}
+
 	Ok(order)
 }
 
@@ -368,6 +380,7 @@ fn render<T: Serialize>(
 				OutputFormat::Human => serde_json::to_string_pretty(&document),
 			}
 			.expect("typed account output serialization cannot fail");
+
 			CommandOutput { text, exit_code: 0, error_stream: false }
 		},
 		Err(failure) => failure_output(format, failure),
@@ -394,6 +407,7 @@ fn render_command(
 		OutputFormat::Human => serde_json::to_string_pretty(&document),
 	}
 	.expect("typed account command output serialization cannot fail");
+
 	CommandOutput { text, exit_code, error_stream: false }
 }
 
@@ -404,6 +418,7 @@ fn failure_output(format: OutputFormat, failure: decodex_protocol::ClientFailure
 		"failure": failure,
 	}))
 	.expect("closed account client failure serialization cannot fail");
+
 	CommandOutput { text, exit_code: 2, error_stream: matches!(format, OutputFormat::Human) }
 }
 
@@ -420,6 +435,7 @@ impl InvalidInput {
 			}))
 			.expect("closed input failure serialization cannot fail"),
 		};
+
 		CommandOutput { text, exit_code: 2, error_stream: format == OutputFormat::Human }
 	}
 }
@@ -520,6 +536,7 @@ mod tests {
 	#[test]
 	fn import_preserves_exact_unicode_paths_and_rejects_non_utf8_paths() {
 		use std::{ffi::OsString, os::unix::ffi::OsStringExt as _};
+
 		for (source, expected) in [
 			(
 				OsString::from("/private/账户/credentials.json"),
@@ -543,9 +560,12 @@ mod tests {
 			.into_iter()
 			.map(OsString::from)
 			.collect();
+
 			args.push(source);
+
 			let cli = Cli::try_parse_from(args).expect("OS path argument must parse");
 			let Command::Account(command) = cli.command else { panic!("account command") };
+
 			match (super::prepare_command(command), expected) {
 				(
 					Ok((
@@ -680,9 +700,9 @@ mod tests {
 			OutputFormat::Json,
 			Ok(AccountProfileResult::Current(Box::new(profile.clone()))),
 		);
+
 		assert_eq!(document.exit_code(), 0);
 		assert!(!document.is_error_stream());
-
 		assert_eq!(
 			serde_json::from_str::<serde_json::Value>(document.text()).unwrap(),
 			serde_json::json!({
@@ -718,6 +738,7 @@ mod tests {
 				refresh_error: AccountProfileErrorDto::CredentialBusy,
 			}),
 		);
+
 		assert_eq!(cached.exit_code(), 0);
 		assert!(!cached.is_error_stream());
 		assert_eq!(
@@ -759,6 +780,7 @@ mod tests {
 				plan_type: Some(WireText::new("pro").unwrap()),
 			}),
 		);
+
 		assert_eq!(unavailable.exit_code(), 0);
 		assert!(!unavailable.is_error_stream());
 		assert_eq!(

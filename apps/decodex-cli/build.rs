@@ -10,14 +10,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("cargo:rerun-if-changed={}/refresh-build-identity", std::env::var("OUT_DIR")?);
 	println!("cargo:rustc-env=DECODEX_BUILD_COMMIT={commit}");
 	println!("cargo:rustc-env=DECODEX_BUILD_DIRTY={dirty}");
+
 	Ok(())
 }
 
 fn git<const N: usize>(args: [&str; N]) -> Result<String, io::Error> {
 	let output = Command::new("git").args(args).output()?;
+
 	if !output.status.success() {
 		return Err(io::Error::other("git build identity command failed"));
 	}
+
 	String::from_utf8(output.stdout)
 		.map(|value| value.trim().to_owned())
 		.map_err(|_| io::Error::other("git build identity was not UTF-8"))

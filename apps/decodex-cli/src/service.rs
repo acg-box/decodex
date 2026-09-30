@@ -24,10 +24,13 @@ where
 	let result = async {
 		let root = root.ok_or("--root is required for this command")?;
 		let root = DecodexRoot::new(root.to_path_buf())?;
+
 		command(root).await?;
+
 		Ok::<(), Box<dyn Error>>(())
 	}
 	.await;
+
 	command_result(result)
 }
 
@@ -43,6 +46,7 @@ async fn serve_inner(parent_fd: Option<i32>, root: Option<&Path>) -> Result<(), 
 	if parent_fd.is_some() {
 		return Err("parent lifetime channel is unsupported on this platform".into());
 	}
+
 	let bootstrap = match root {
 		Some(root) => ServiceComposition::bootstrap(DecodexRoot::new(root.to_path_buf())?).await,
 		None => ServiceComposition::bootstrap_default().await,
@@ -60,10 +64,12 @@ async fn serve_inner(parent_fd: Option<i32>, root: Option<&Path>) -> Result<(), 
 			},
 			signal = signals.recv() => {
 				bound.shutdown().await?;
+
 				signal?;
 			},
 			parent = parent_lifetime.wait_for_parent_exit() => {
 				bound.shutdown().await?;
+
 				parent?;
 			},
 		}
@@ -86,9 +92,11 @@ async fn wait_for_shutdown(
 		},
 		signal = signals.recv() => {
 			bound.shutdown().await?;
+
 			signal?;
 		},
 	}
+
 	Ok(())
 }
 
@@ -155,9 +163,12 @@ mod tests {
 		assert!(Cli::try_parse_from(["decodex"]).is_err());
 
 		let explicit = Cli::try_parse_from(["decodex", "serve"]).expect("parse explicit serve");
+
 		assert!(matches!(explicit.command, Command::Serve { parent_fd: None }));
+
 		let parent = Cli::try_parse_from(["decodex", "serve", "--parent-fd", "9"])
 			.expect("parse bundled parent lifetime");
+
 		assert!(matches!(parent.command, Command::Serve { parent_fd: Some(9) }));
 
 		let initialize = Cli::try_parse_from([
@@ -167,6 +178,7 @@ mod tests {
 			"/private/tmp/decodex-root",
 		])
 		.expect("parse local database initialization");
+
 		assert!(matches!(initialize.command, Command::InitializeLocalDatabase));
 		assert_eq!(
 			initialize.root.as_deref(),
@@ -180,6 +192,7 @@ mod tests {
 			"/private/tmp/decodex-root",
 		])
 		.expect("parse current-authority validation");
+
 		assert!(matches!(validate.command, Command::ValidateLocalDatabase));
 
 		Cli::command().debug_assert();

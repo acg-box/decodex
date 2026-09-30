@@ -189,6 +189,7 @@ pub(crate) async fn execute(
 	if matches!(&command, ResetCardCommand::Use { .. }) {
 		return execute_use(command, format, root, selected_profile, expected_server_id).await;
 	}
+
 	let command_name = command.name();
 	let profile = load_client_profile(root, selected_profile, expected_server_id);
 	let profile = match profile {
@@ -254,6 +255,7 @@ async fn execute_use(
 		Ok(key) => key,
 		Err(_) => return render_input_failure("use", format, InputFailure::InvalidIdempotencyKey),
 	};
+
 	if !yes {
 		return render_use_input_failure(
 			format,
@@ -261,6 +263,7 @@ async fn execute_use(
 			InputFailure::ConfirmationRequired,
 		);
 	}
+
 	let account = match parse_account_id(account) {
 		Ok(account) => account,
 		Err(failure) => return render_use_input_failure(format, &idempotency_key, failure),
@@ -482,6 +485,7 @@ fn quota_summary(quota: &AccountQuotaWindowDto) -> String {
 			format!("current:{used_percent}:{resets_at_unix_micros}"),
 		AccountQuotaStateDto::Error { error } => format!("error:{error:?}"),
 	};
+
 	format!("{}:{observed}:{result}", quota.duration_minutes)
 }
 
@@ -812,6 +816,7 @@ mod tests {
 			observed_at_unix_micros: Some(1_000_000),
 			result: decodex_protocol::AccountQuotaStateDto::NotApplicable,
 		};
+
 		assert!(super::quota_summary(&quota).contains("not applicable"));
 		assert!(!super::quota_summary(&quota).contains('%'));
 	}
@@ -977,6 +982,7 @@ cache = {{}}
 	#[test]
 	fn cli_debug_redacts_reset_card_idempotency_keys() {
 		let marker = "reset-card-idempotency-secret-marker";
+
 		for args in [
 			vec!["decodex", "reset-card", "status", "--idempotency-key", marker],
 			vec![
@@ -1031,6 +1037,7 @@ cache = {{}}
 
 		standard::fs::create_dir(&target).expect("test operation must succeed");
 		standard::os::unix::fs::symlink(&target, &root).expect("test operation must succeed");
+
 		let cases = [
 			(
 				super::ResetCardCommand::Use {
@@ -1154,7 +1161,6 @@ cache = {{}}
 	async fn invalid_server_pin_preserves_a_valid_use_key_before_dispatch() {
 		let temp = tempfile::TempDir::new().expect("test operation must succeed");
 		let root = prepare_client_root(&temp, "local");
-
 		let output = super::execute(
 			super::ResetCardCommand::Use {
 				account: "40000000-0000-4000-8000-000000000001".into(),
@@ -1182,7 +1188,6 @@ cache = {{}}
 	async fn remote_profile_is_rejected_before_reset_card_transport() {
 		let temp = tempfile::TempDir::new().expect("test operation must succeed");
 		let root = prepare_client_root(&temp, "remote");
-
 		let output = super::execute(
 			super::ResetCardCommand::List {
 				account: "40000000-0000-4000-8000-000000000001".to_owned(),
@@ -1210,7 +1215,6 @@ cache = {{}}
 				error: ResetCardError::ProductStateUnavailable,
 			},
 		);
-
 		let value: serde_json::Value =
 			serde_json::from_str(inventory.text()).expect("test operation must succeed");
 
@@ -1328,6 +1332,7 @@ cache = {{}}
 			.exit_code(),
 			1,
 		);
+
 		let unavailable = super::render_operation(
 			OutputFormat::Json,
 			"status",

@@ -57,15 +57,21 @@ fn assert_parent_cleanup(send_data: bool) {
 		io::Write as _,
 		os::{fd::AsRawFd as _, unix::net::UnixStream},
 	};
+
 	let (_home, canonical_home, socket) = fixture();
 	let (mut parent, child) = UnixStream::pair().expect("create parent channel");
 	let daemon = RunningDaemon::start_with_parent(&canonical_home, Some(child.as_raw_fd()));
+
 	drop(child);
+
 	if send_data {
 		parent.write_all(&[1]).expect("send invalid parent-channel data");
 	}
+
 	drop(parent);
+
 	let status = daemon.wait();
+
 	assert_eq!(status.code(), Some(if send_data { 2 } else { 0 }));
 	assert!(!socket.exists(), "parent-channel termination must await socket cleanup");
 }
@@ -147,8 +153,11 @@ impl RunningDaemon {
 
 	fn start_with_parent(home: &Path, parent_fd: Option<std::os::fd::RawFd>) -> Self {
 		use std::os::unix::process::CommandExt as _;
+
 		let mut command = Command::new(env!("CARGO_BIN_EXE_decodex"));
+
 		command.arg("serve").env("HOME", home).env("PATH", home.join("bin")).stdout(Stdio::piped());
+
 		if let Some(fd) = parent_fd {
 			command.args(["--parent-fd", &fd.to_string()]);
 			// SAFETY: only async-signal-safe fcntl runs before exec; the caller retains fd until
@@ -158,10 +167,12 @@ impl RunningDaemon {
 					if libc::fcntl(fd, libc::F_SETFD, 0) < 0 {
 						return Err(std::io::Error::last_os_error());
 					}
+
 					Ok(())
 				});
 			}
 		}
+
 		let mut child = command.spawn().expect("start daemon test process");
 		let stdout = child.stdout.take().expect("capture daemon stdout");
 		let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
@@ -178,7 +189,9 @@ impl RunningDaemon {
 		if ready_receiver.recv_timeout(Duration::from_secs(20)).is_err() {
 			let _ = child.kill();
 			let status = child.wait().expect("reap unready daemon");
+
 			reader.join().expect("join daemon output reader");
+
 			panic!("daemon did not become ready before timeout: {status}");
 		}
 
@@ -202,12 +215,16 @@ impl RunningDaemon {
 			if let Some(status) = self.child.try_wait().expect("poll daemon exit") {
 				break status;
 			}
+
 			if Instant::now() >= deadline {
 				let _ = self.child.kill();
 				let status = self.child.wait().expect("reap daemon after shutdown timeout");
+
 				self.reader.join().expect("join daemon output reader");
+
 				panic!("daemon did not exit after shutdown request: {status}");
 			}
+
 			thread::sleep(Duration::from_millis(20));
 		};
 

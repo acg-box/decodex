@@ -17,17 +17,21 @@ impl ParentLifetime {
 		if raw_fd <= libc::STDERR_FILENO {
 			return Err(io::Error::new(ErrorKind::InvalidInput, "parent channel fd is reserved"));
 		}
+
 		validate_socket(raw_fd)?;
 
 		// SAFETY: validation proves that this live descriptor is an owned Unix stream socket, and
 		// the hidden CLI contract transfers its sole child-process ownership to this function.
 		let channel = unsafe { std::os::unix::net::UnixStream::from_raw_fd(raw_fd) };
+
 		channel.set_nonblocking(true)?;
+
 		Ok(Self { channel: tokio::net::UnixStream::from_std(channel)? })
 	}
 
 	pub(crate) async fn wait_for_parent_exit(&mut self) -> io::Result<()> {
 		let mut unexpected = [0_u8; 1];
+
 		match self.channel.read(&mut unexpected).await? {
 			0 => Ok(()),
 			_ => Err(io::Error::new(
@@ -69,6 +73,7 @@ fn validate_socket(raw_fd: RawFd) -> io::Result<()> {
 	}
 	// SAFETY: successful `fstat` initialized the complete value.
 	let status = unsafe { status.assume_init() };
+
 	if status.st_mode & libc::S_IFMT != libc::S_IFSOCK || status.st_uid != effective_user_id() {
 		return Err(io::Error::new(
 			ErrorKind::PermissionDenied,
@@ -95,7 +100,9 @@ mod tests {
 		let (parent, child) = std::os::unix::net::UnixStream::pair().expect("create socket pair");
 		let mut lifetime = ParentLifetime::from_inherited_fd(child.into_raw_fd())
 			.expect("accept inherited child endpoint");
+
 		drop(parent);
+
 		lifetime.wait_for_parent_exit().await.expect("observe parent EOF");
 	}
 
@@ -107,7 +114,9 @@ mod tests {
 			std::os::unix::net::UnixStream::pair().expect("create socket pair");
 		let mut lifetime = ParentLifetime::from_inherited_fd(child.into_raw_fd())
 			.expect("accept inherited child endpoint");
+
 		parent.write_all(&[1]).expect("write unexpected byte");
+
 		assert_eq!(
 			lifetime.wait_for_parent_exit().await.expect_err("reject channel data").kind(),
 			ErrorKind::InvalidData,

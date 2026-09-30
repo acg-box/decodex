@@ -84,12 +84,12 @@ fn database_initialize_and_validate_are_owned_by_the_unified_binary() {
 	let temporary = TempDir::new().expect("create isolated database root parent");
 	let root =
 		temporary.path().canonicalize().expect("canonicalize database root parent").join("root");
-
 	let initialize = Command::new(env!("CARGO_BIN_EXE_decodex"))
 		.args(["initialize-local-database", "--root"])
 		.arg(&root)
 		.output()
 		.expect("initialize local database");
+
 	assert!(
 		initialize.status.success(),
 		"initialization failed: {}",
@@ -103,6 +103,7 @@ fn database_initialize_and_validate_are_owned_by_the_unified_binary() {
 		.arg(&root)
 		.output()
 		.expect("validate local database");
+
 	assert!(
 		validate.status.success(),
 		"validation failed: {}",
@@ -118,12 +119,16 @@ fn account_validation_respects_json_and_human_output_before_transport() {
 		fs,
 		os::unix::fs::{MetadataExt as _, PermissionsExt as _},
 	};
+
 	let temporary = TempDir::new().unwrap();
 	let root = temporary.path().canonicalize().unwrap().join("root");
+
 	fs::create_dir(&root).unwrap();
 	fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+
 	let uid = fs::metadata(&root).unwrap().uid();
 	let config = root.join("config.toml");
+
 	fs::write(
 		&config,
 		format!(
@@ -140,6 +145,7 @@ expected_server_identity = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162"
 	)
 	.unwrap();
 	fs::set_permissions(config, fs::Permissions::from_mode(0o600)).unwrap();
+
 	let id = "40000000-0000-4000-8000-000000000001";
 	let duplicate_order = format!("{id},{id}");
 	let oversized_source = "x".repeat(decodex_protocol::MAX_WIRE_TEXT_BYTES + 1);
@@ -178,6 +184,7 @@ expected_server_identity = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162"
 			"valid",
 		],
 	];
+
 	for args in cases {
 		for format in ["json", "human"] {
 			let output = Command::new(env!("CARGO_BIN_EXE_decodex"))
@@ -187,7 +194,9 @@ expected_server_identity = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162"
 				.args(&args)
 				.output()
 				.unwrap();
+
 			assert_eq!(output.status.code(), Some(2), "{args:?}");
+
 			if format == "json" {
 				assert!(
 					output.stderr.is_empty(),
