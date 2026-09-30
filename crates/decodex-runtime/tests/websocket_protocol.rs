@@ -46,6 +46,7 @@ const LOCAL_WEBSOCKET_URI: &str = "ws://localhost/v1/ws";
 
 #[derive(Clone, Default)]
 struct FixtureApplication {
+	conversation_result: Option<(decodex_protocol::ConversationSummary, bool)>,
 	state: Arc<Mutex<FixtureState>>,
 	execution_delay: Duration,
 	static_snapshot: bool,
@@ -177,6 +178,22 @@ impl Application for FixtureApplication {
 		state.executions += 1;
 		state.status = WireText::new(format!("observation-{}", state.executions))
 			.expect("fixture status is bounded");
+
+		if let Some((conversation, interrupt)) = &self.conversation_result {
+			return Ok(ApplicationPublication {
+				channel: Channel::ConversationStream,
+				entity_id: conversation.conversation_id.clone(),
+				entity_revision: conversation.conversation_revision,
+				result: if *interrupt {
+					ResultPayload::ConversationInterruptAccepted {
+						conversation: conversation.clone(),
+					}
+				} else {
+					ResultPayload::ConversationAccepted { conversation: conversation.clone() }
+				},
+				event: EventPayload::ConversationChanged { conversation: conversation.clone() },
+			});
+		}
 
 		match &command.payload {
 			CommandPayload::RefreshSystemObservation { entity_id } => Ok(ApplicationPublication {
@@ -677,6 +694,134 @@ async fn v2_reset_card_events_reach_each_exact_current_subscriber() {
 
 	drop(current);
 	bound.shutdown().await.expect("shutdown reset-card event feature-gate server");
+}
+
+fn conversation_fixture(
+	state: decodex_protocol::ConversationState,
+	recovery: Option<decodex_protocol::ConversationRecoveryAction>,
+) -> decodex_protocol::ConversationSummary {
+	use decodex_protocol::{ConversationState as State, ConversationSummary, ConversationTitle};
+	let has_session = matches!(state, State::Ready | State::Running | State::Establishing);
+	ConversationSummary::new(
+		EntityId::new("40000000-0000-4000-8000-000000000001")
+			.expect("conversation observer fixture"),
+		ConversationTitle::new("Observer fixture").expect("conversation observer fixture"),
+		None,
+		None,
+		EntityRevision(1),
+		1,
+		has_session.then(|| {
+			EntityId::new("41000000-0000-4000-8000-000000000001")
+				.expect("conversation observer fixture")
+		}),
+		has_session.then_some(EntityRevision(1)),
+		state,
+		(state == State::Running).then(|| {
+			EntityId::new("42000000-0000-4000-8000-000000000001")
+				.expect("conversation observer fixture")
+		}),
+		recovery,
+	)
+	.expect("conversation observer fixture")
+}
+
+fn conversation_fixture_command(
+	conversation: &decodex_protocol::ConversationSummary,
+	interrupt: bool,
+) -> ClientMessage {
+	let ClientMessage::Command(mut command) = command(CURRENT_VERSION, 1, "conversation") else {
+		unreachable!()
+	};
+	let conversation_id = conversation.conversation_id.clone();
+	command.payload = if interrupt {
+		CommandPayload::InterruptConversation {
+			conversation_id,
+			turn_id: conversation.active_turn_id.clone().expect("conversation observer fixture"),
+		}
+	} else if conversation.runtime_session_id.is_some() {
+		CommandPayload::RefreshConversation { conversation_id }
+	} else {
+		CommandPayload::CreateConversation {
+			conversation_id,
+			message: decodex_protocol::HistoryText::new("Observe this conversation")
+				.expect("conversation observer fixture"),
+			working_directory: decodex_protocol::ConversationWorkingDirectory::new("/tmp")
+				.expect("conversation observer fixture"),
+			execution: decodex_protocol::ConversationExecutionSettings::new(
+				decodex_protocol::ConversationModel::new("fixture-model")
+					.expect("conversation observer fixture"),
+				decodex_protocol::ConversationReasoningEffort::Low,
+				false,
+			),
+			initial_model_source: None,
+		}
+	};
+	command.expected_revision = conversation.runtime_session_id.as_ref().map(|_| EntityRevision(1));
+	ClientMessage::Command(command)
+}
+
+#[tokio::test]
+async fn settled_conversation_results_reach_observers_without_runtime_events() {
+	use decodex_protocol::{ConversationRecoveryAction as Recovery, ConversationState as State};
+	for (state, recovery, interrupt, publishes) in [
+		(State::ModelSettingsReviewRequired, Some(Recovery::ReviewModelSettings), false, true),
+		(State::RoutingPending, Some(Recovery::ResumeRouting), false, true),
+		(State::EstablishmentPending, Some(Recovery::ResumeEstablishment), false, true),
+		(State::QuotaExhausted, Some(Recovery::CreateRoutingSuccessor), false, true),
+		(State::NoRoute, Some(Recovery::CreateRoutingSuccessor), false, true),
+		(State::Ready, None, false, true),
+		(State::Running, None, false, false),
+		(State::Establishing, None, false, false),
+		(State::Running, None, true, false),
+	] {
+		let conversation = conversation_fixture(state, recovery);
+		let application = FixtureApplication {
+			conversation_result: Some((conversation.clone(), interrupt)),
+			..FixtureApplication::with_revision(1)
+		};
+		let (_temp, transport) = local_transport();
+		let mut bound =
+			server("conversation-observer", application.clone(), ServerConfig::default())
+				.bind(transport.clone())
+				.await
+				.expect("conversation observer fixture");
+		let mut observer = connect(&transport, CURRENT_VERSION).await;
+		let mut current = connect(&transport, CURRENT_VERSION).await;
+		let (_, _, before, _) = receive_initial(&mut observer).await;
+		receive_initial(&mut current).await;
+		send(&mut current, conversation_fixture_command(&conversation, interrupt)).await;
+		assert!(matches!(receive(&mut current).await, ServerMessage::CommandReceipt(_)));
+		let ServerMessage::CommandResult(result) = receive(&mut current).await else {
+			panic!("initiator must receive its result");
+		};
+		assert!(matches!(
+			&result.payload,
+			Some(
+				ResultPayload::ConversationAccepted { .. }
+					| ResultPayload::ConversationInterruptAccepted { .. }
+			)
+		));
+		if publishes {
+			let ServerMessage::Event(event) = receive(&mut observer).await else {
+				panic!("observer must receive settled conversation {state:?}");
+			};
+			assert_eq!(event.payload, EventPayload::ConversationChanged { conversation });
+			assert_eq!(event.channel, Channel::ConversationStream);
+			assert!(
+				matches!(receive(&mut current).await, ServerMessage::Event(own) if own == event)
+			);
+		} else {
+			// The new handshake is ordered after command settlement by the publication actor.
+			let mut barrier = connect(&transport, CURRENT_VERSION).await;
+			let (_, _, after, _) = receive_initial(&mut barrier).await;
+			assert_eq!(after, before, "active receipts must not add a command event");
+			drop(barrier);
+		}
+		assert_eq!(application.executions(), 1);
+		drop(current);
+		drop(observer);
+		bound.shutdown().await.expect("conversation observer fixture");
+	}
 }
 
 #[tokio::test]

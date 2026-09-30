@@ -179,11 +179,16 @@ pub struct ApplicationPublication {
 impl ApplicationPublication {
 	/// Whether this successful command also produces an asynchronous publication.
 	pub(crate) fn publishes_event(&self) -> bool {
-		!matches!(
-			&self.result,
-			ResultPayload::ConversationAccepted { .. }
-				| ResultPayload::ConversationInterruptAccepted { .. }
-		)
+		match &self.result {
+			// Active execution publishes its progress separately. Settled command results
+			// must also notify observers when no later runtime event is expected.
+			ResultPayload::ConversationAccepted { conversation } => !matches!(
+				conversation.state,
+				ConversationState::Establishing | ConversationState::Running
+			),
+			ResultPayload::ConversationInterruptAccepted { .. } => false,
+			_ => true,
+		}
 	}
 }
 
