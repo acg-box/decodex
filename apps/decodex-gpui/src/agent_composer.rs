@@ -634,6 +634,7 @@ impl AgentSurface {
 		let tooltip = if id == "model" { "Model and reasoning".to_owned() } else { tip.to_owned() };
 		div()
 			.id(SharedString::from(format!("composer-{id}")))
+			.debug_selector(move || format!("composer-{id}"))
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(tooltip.clone())
