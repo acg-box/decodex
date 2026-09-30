@@ -1,36 +1,34 @@
 //! Social publishing reservation generation and conflict checks.
 
-mod payload;
 pub(crate) mod scan;
+
+mod payload;
+
+use std::{
+	fs,
+	io::ErrorKind,
+	path::{Path, PathBuf},
+};
 
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
-	SocialReservePublishReport, SocialReservePublishRequest,
+	SOCIAL_CANDIDATE_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA, SocialReservePublishReport,
+	SocialReservePublishRequest,
 	prelude::{Result, eyre},
+	social_evidence, social_record,
+	social_xurl::{
+		self, ledger,
+		model::{ATTEMPT_SCHEMA, OBSERVATION_ATTEMPT_SCHEMA, XurlAttempt, XurlObservationAttempt},
+	},
 };
 
 pub(crate) fn reserve_social_publish(
 	request: &SocialReservePublishRequest,
 ) -> Result<SocialReservePublishReport> {
-	if request.daily_limit != 1 {
-		return Err(eyre::eyre!("daily_limit must be 1"));
-	}
-	if !valid_run_id(&request.run_id) {
-		return Err(eyre::eyre!("run_id must be a lowercase UUID"));
-	}
-
-	let reserved_at = OffsetDateTime::parse(&request.reserved_at, &Rfc3339)
-		.map_err(|_| eyre::eyre!("reserved_at must be an RFC3339 timestamp"))?;
-	let expires_at = OffsetDateTime::parse(&request.expires_at, &Rfc3339)
-		.map_err(|_| eyre::eyre!("expires_at must be an RFC3339 timestamp"))?;
-
-	if expires_at <= reserved_at {
-		return Err(eyre::eyre!("expires_at must be later than reserved_at"));
-	}
-
+	let reserved_at = validate_reservation_request(request)?;
 	let root = crate::repo_root()?;
 	let candidates_dir = crate::resolve_against(&root, &request.candidates_dir);
 	let candidate_path = crate::resolve_against(&root, &request.candidate_path);
@@ -42,29 +40,27 @@ pub(crate) fn reserve_social_publish(
 
 	crate::validate_generated_social_artifact(&candidate)
 		.map_err(|error| eyre::eyre!("candidate failed validation: {error}"))?;
-	crate::social_evidence::validate_source_evidence(&candidate)
+	social_evidence::validate_source_evidence(&candidate)
 		.map_err(|error| eyre::eyre!("candidate evidence failed validation: {error}"))?;
 
-	if candidate.get("schema").and_then(serde_json::Value::as_str)
-		!= Some(crate::SOCIAL_CANDIDATE_SCHEMA)
-	{
-		return Err(eyre::eyre!("candidate must use {}", crate::SOCIAL_CANDIDATE_SCHEMA));
+	if candidate.get("schema").and_then(Value::as_str) != Some(SOCIAL_CANDIDATE_SCHEMA) {
+		return Err(eyre::eyre!("candidate must use {}", SOCIAL_CANDIDATE_SCHEMA));
 	}
 
 	let decision = candidate
 		.get("decision")
-		.and_then(serde_json::Value::as_object)
+		.and_then(Value::as_object)
 		.ok_or_else(|| eyre::eyre!("candidate decision is required"))?;
 
-	if decision.get("worthiness").and_then(serde_json::Value::as_str) != Some("publish") {
+	if decision.get("worthiness").and_then(Value::as_str) != Some("publish") {
 		return Err(eyre::eyre!("candidate decision.worthiness must be publish"));
 	}
 
 	let idempotency_key = decision
 		.get("idempotency_key")
-		.and_then(serde_json::Value::as_str)
+		.and_then(Value::as_str)
 		.ok_or_else(|| eyre::eyre!("candidate idempotency_key is required"))?;
-	let publication_lineage_sha256 = crate::social_record::publication_lineage_sha256(&candidate)?;
+	let publication_lineage_sha256 = social_record::publication_lineage_sha256(&candidate)?;
 	let out_dir = crate::resolve_against(&root, &request.out_dir);
 	let posts_dir = crate::resolve_against(&root, &request.posts_dir);
 	let attempts_dir = crate::resolve_against(&root, &request.attempts_dir);
@@ -72,18 +68,16 @@ pub(crate) fn reserve_social_publish(
 
 	scan::expire_active_reservations(&out_dir, reserved_at)?;
 
-	if let Some(conflict) = crate::social_xurl::publication_effect_conflict(
-		&attempts_dir,
-		&publication_lineage_sha256,
-		None,
-	)? {
+	if let Some(conflict) =
+		social_xurl::publication_effect_conflict(&attempts_dir, &publication_lineage_sha256, None)?
+	{
 		return Err(eyre::eyre!(
 			"candidate has a prior uncertain or verified public-write attempt: {}",
 			crate::path_arg(&root, &conflict)
 		));
 	}
 	if let Some(conflict) =
-		crate::social_xurl::daily_publication_effect_conflict(&attempts_dir, &request.day)?
+		social_xurl::daily_publication_effect_conflict(&attempts_dir, &request.day)?
 	{
 		return Err(eyre::eyre!(
 			"daily public-write cap is already consumed for {}: {}",
@@ -144,10 +138,10 @@ pub(crate) fn reserve_social_publish(
 }
 
 pub(crate) fn release_orphaned_active_reservation(
-	reservation_path: &std::path::Path,
-	reservations_dir: &std::path::Path,
-	attempts_dir: &std::path::Path,
-	locks_dir: &std::path::Path,
+	reservation_path: &Path,
+	reservations_dir: &Path,
+	attempts_dir: &Path,
+	locks_dir: &Path,
 	replacement_run_id: &str,
 ) -> Result<bool> {
 	if !valid_run_id(replacement_run_id) {
@@ -168,8 +162,7 @@ pub(crate) fn release_orphaned_active_reservation(
 	crate::validate_generated_social_artifact(&reservation)
 		.map_err(|error| eyre::eyre!("orphaned reservation failed validation: {error}"))?;
 
-	if reservation.get("schema").and_then(Value::as_str)
-		!= Some(crate::SOCIAL_PUBLISH_RESERVATION_SCHEMA)
+	if reservation.get("schema").and_then(Value::as_str) != Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA)
 	{
 		return Err(eyre::eyre!("orphaned reservation uses an unsupported schema"));
 	}
@@ -195,13 +188,12 @@ pub(crate) fn release_orphaned_active_reservation(
 		let payload = crate::load_json(&path)?;
 
 		match payload.get("schema").and_then(Value::as_str) {
-			Some(crate::social_xurl::model::ATTEMPT_SCHEMA) => {
-				let attempt: crate::social_xurl::model::XurlAttempt =
-					serde_json::from_value(payload).map_err(|_| {
-						eyre::eyre!("{} is not a valid xurl publication attempt", path.display())
-					})?;
+			Some(ATTEMPT_SCHEMA) => {
+				let attempt: XurlAttempt = serde_json::from_value(payload).map_err(|_| {
+					eyre::eyre!("{} is not a valid xurl publication attempt", path.display())
+				})?;
 
-				crate::social_xurl::ledger::validate_publication_cost_record(&attempt)?;
+				ledger::validate_publication_cost_record(&attempt)?;
 
 				if attempt.reservation_ref == reservation_ref {
 					return Err(eyre::eyre!(
@@ -209,13 +201,13 @@ pub(crate) fn release_orphaned_active_reservation(
 					));
 				}
 			},
-			Some(crate::social_xurl::model::OBSERVATION_ATTEMPT_SCHEMA) => {
-				let attempt: crate::social_xurl::model::XurlObservationAttempt =
+			Some(OBSERVATION_ATTEMPT_SCHEMA) => {
+				let attempt: XurlObservationAttempt =
 					serde_json::from_value(payload).map_err(|_| {
 						eyre::eyre!("{} is not a valid xurl observation attempt", path.display())
 					})?;
 
-				crate::social_xurl::ledger::validate_observation_cost_record(&attempt)?;
+				ledger::validate_observation_cost_record(&attempt)?;
 			},
 			_ => return Err(eyre::eyre!("{} has invalid xurl attempt state", path.display())),
 		}
@@ -238,19 +230,58 @@ pub(crate) fn release_orphaned_active_reservation(
 	Ok(true)
 }
 
+pub(crate) fn idempotency_digest(idempotency_key: &str) -> String {
+	Sha256::digest(idempotency_key.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+pub(crate) fn valid_run_id(value: &str) -> bool {
+	let bytes = value.as_bytes();
+
+	bytes.len() == 36
+		&& matches!(bytes.get(8), Some(b'-'))
+		&& matches!(bytes.get(13), Some(b'-'))
+		&& matches!(bytes.get(18), Some(b'-'))
+		&& matches!(bytes.get(23), Some(b'-'))
+		&& bytes.iter().enumerate().all(|(index, byte)| {
+			matches!(index, 8 | 13 | 18 | 23)
+				|| byte.is_ascii_digit()
+				|| matches!(byte, b'a'..=b'f')
+		})
+}
+
+fn validate_reservation_request(request: &SocialReservePublishRequest) -> Result<OffsetDateTime> {
+	if request.daily_limit != 1 {
+		return Err(eyre::eyre!("daily_limit must be 1"));
+	}
+	if !valid_run_id(&request.run_id) {
+		return Err(eyre::eyre!("run_id must be a lowercase UUID"));
+	}
+
+	let reserved_at = OffsetDateTime::parse(&request.reserved_at, &Rfc3339)
+		.map_err(|_| eyre::eyre!("reserved_at must be an RFC3339 timestamp"))?;
+	let expires_at = OffsetDateTime::parse(&request.expires_at, &Rfc3339)
+		.map_err(|_| eyre::eyre!("expires_at must be an RFC3339 timestamp"))?;
+
+	if expires_at <= reserved_at {
+		return Err(eyre::eyre!("expires_at must be later than reserved_at"));
+	}
+
+	Ok(reserved_at)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn reservation_path_for_write(
-	root: &std::path::Path,
-	reservations_dir: &std::path::Path,
-	attempts_dir: &std::path::Path,
-	default_path: &std::path::Path,
-	candidate_path: &std::path::Path,
+	root: &Path,
+	reservations_dir: &Path,
+	attempts_dir: &Path,
+	default_path: &Path,
+	candidate_path: &Path,
 	idempotency_key: &str,
 	publication_lineage_sha256: &str,
 	request: &SocialReservePublishRequest,
-) -> Result<std::path::PathBuf> {
-	match std::fs::symlink_metadata(default_path) {
-		Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+) -> Result<PathBuf> {
+	match fs::symlink_metadata(default_path) {
+		Err(error) if error.kind() == ErrorKind::NotFound => {
 			return Ok(default_path.to_path_buf());
 		},
 		Err(error) => return Err(error.into()),
@@ -270,7 +301,7 @@ fn reservation_path_for_write(
 		.and_then(Value::as_str)
 		.ok_or_else(|| eyre::eyre!("prior reservation owner is missing"))?;
 
-	if prior.get("schema").and_then(Value::as_str) != Some(crate::SOCIAL_PUBLISH_RESERVATION_SCHEMA)
+	if prior.get("schema").and_then(Value::as_str) != Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA)
 		|| prior.get("idempotency_key").and_then(Value::as_str) != Some(idempotency_key)
 		|| prior.get("publication_lineage_sha256").and_then(Value::as_str)
 			!= Some(publication_lineage_sha256)
@@ -290,8 +321,7 @@ fn reservation_path_for_write(
 	for path in crate::collect_json_files(&[attempts_dir.to_path_buf()])? {
 		let attempt = crate::load_json(&path)?;
 
-		if attempt.get("schema").and_then(Value::as_str)
-			== Some(crate::social_xurl::model::ATTEMPT_SCHEMA)
+		if attempt.get("schema").and_then(Value::as_str) == Some(ATTEMPT_SCHEMA)
 			&& attempt.get("run_id").and_then(Value::as_str) == Some(prior_run_id)
 			&& attempt.get("reservation_ref").and_then(Value::as_str)
 				== Some(prior_reservation_ref.as_str())
@@ -303,11 +333,7 @@ fn reservation_path_for_write(
 	let released_without_attempt = attempts.is_empty()
 		&& matches!(prior.get("status").and_then(Value::as_str), Some("expired" | "canceled"));
 	let terminal_no_create_attempt = attempts.len() == 1
-		&& crate::social_xurl::terminal_no_create_recovery(
-			&attempts[0],
-			attempts_dir,
-			reservations_dir,
-		)?;
+		&& social_xurl::terminal_no_create_recovery(&attempts[0], attempts_dir, reservations_dir)?;
 
 	if !released_without_attempt && !terminal_no_create_attempt {
 		return Err(eyre::eyre!(
@@ -321,28 +347,9 @@ fn reservation_path_for_write(
 		request.run_id
 	));
 
-	match std::fs::symlink_metadata(&retry_path) {
-		Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(retry_path),
+	match fs::symlink_metadata(&retry_path) {
+		Err(error) if error.kind() == ErrorKind::NotFound => Ok(retry_path),
 		Err(error) => Err(error.into()),
 		Ok(_) => Err(eyre::eyre!("fresh identity-recovery reservation already exists")),
 	}
-}
-
-pub(crate) fn idempotency_digest(idempotency_key: &str) -> String {
-	Sha256::digest(idempotency_key.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-pub(crate) fn valid_run_id(value: &str) -> bool {
-	let bytes = value.as_bytes();
-
-	bytes.len() == 36
-		&& matches!(bytes.get(8), Some(b'-'))
-		&& matches!(bytes.get(13), Some(b'-'))
-		&& matches!(bytes.get(18), Some(b'-'))
-		&& matches!(bytes.get(23), Some(b'-'))
-		&& bytes.iter().enumerate().all(|(index, byte)| {
-			matches!(index, 8 | 13 | 18 | 23)
-				|| byte.is_ascii_digit()
-				|| matches!(byte, b'a'..=b'f')
-		})
 }
