@@ -54,11 +54,7 @@ impl GithubClient {
 		let pulls = self.github_paginated(&format!(
 			"https://api.github.com/repos/{repo}/commits/{commit_sha}/pulls"
 		))?;
-		let Some(first) = pulls.first().and_then(Value::as_object) else {
-			return Ok(None);
-		};
-
-		Ok(first.get("number").and_then(Value::as_u64))
+		Ok(pulls.first().and_then(|first| crate::required_value_u64(first, "number").ok()))
 	}
 
 	fn repo_default_branch(&self, repo: &str) -> Result<String> {

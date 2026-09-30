@@ -99,6 +99,7 @@ pub(crate) fn required_value_u64(payload: &Value, field: &str) -> Result<u64> {
 	payload
 		.get(field)
 		.and_then(Value::as_u64)
+		.filter(|value| *value > 0)
 		.ok_or_else(|| eyre::eyre!("{field} must be a positive integer"))
 }
 

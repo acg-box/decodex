@@ -43,7 +43,7 @@ pub(super) fn maybe_promote_commit_to_pr(
 	let url = format!("https://api.github.com/repos/{repo}/commits/{commit_sha}/pulls");
 	let pulls = api.get_paginated(&url)?;
 
-	Ok(pulls.first().and_then(|first| first.get("number")).and_then(Value::as_u64))
+	Ok(pulls.first().and_then(|first| crate::required_value_u64(first, "number").ok()))
 }
 
 fn recent_commit_from_value(item: &Value) -> Option<RecentCommit> {
