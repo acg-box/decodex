@@ -49,6 +49,36 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		XCTAssertTrue(second.detailsBinding.wrappedValue)
 	}
 
+	func testAccountPaddingClicksToggleButActionClicksDoNot() async throws {
+		let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: root) }
+		let store = ResetCardStore(client: EmptyWidgetClient(), pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: root.appendingPathComponent("pending.json")))
+		let account = ResetCardAccountRecord(authority: ResetCardAuthority(profileName: "local", serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), accountID: "11111111-1111-4111-8111-111111111111", alias: "Test account", accountRevision: 1, enabled: true, observedState: .available, lifecycleReadiness: .ready, fiveHourQuota: .unknown(durationMinutes: 300), sevenDayQuota: .unknown(durationMinutes: 10_080))
+		var expanded: Set<String> = []
+		let host = NSHostingView(rootView: ResetCardAccountRow(state: ResetCardAccountState(account: account, inventory: nil, error: nil, isRefreshing: false), store: store, detailedAccountIDs: Binding(get: { expanded }, set: { expanded = $0 })).frame(width: 320))
+		let window = NSPanel(contentRect: NSRect(x: 100, y: 100, width: 320, height: 36), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+		window.contentView = host
+		window.orderFrontRegardless()
+		defer { window.orderOut(nil) }
+		try await Task.sleep(for: .milliseconds(100))
+		func click(_ point: CGPoint) throws {
+			let location = host.convert(point, to: nil)
+			let down = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+			let up = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime + 0.02, windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: 1, pressure: 0))
+			window.sendEvent(down)
+			window.sendEvent(up)
+		}
+		try click(CGPoint(x: 3, y: 3))
+		try await Task.sleep(for: .milliseconds(50))
+		XCTAssertTrue(expanded.contains(account.accountID), "Card padding must toggle details")
+		try click(CGPoint(x: 100, y: 18))
+		try await Task.sleep(for: .milliseconds(50))
+		XCTAssertTrue(expanded.isEmpty, "Identity click must toggle exactly once")
+		try click(CGPoint(x: 300, y: 18))
+		try await Task.sleep(for: .milliseconds(50))
+		XCTAssertTrue(expanded.isEmpty, "An account action must not toggle details")
+	}
+
 	func testVisiblePanelHeightTransitionsAndCanReverse() async throws {
 		let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		defer { try? FileManager.default.removeItem(at: root) }
@@ -58,6 +88,14 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		controller.togglePanel()
 		try await Task.sleep(for: .milliseconds(350))
 		let initial = controller.panel.frame.size
+		let top = controller.panel.frame.maxY
+		let onFrameChange = controller.panel.onFrameChange
+		var frames: [CGRect] = []
+		controller.panel.onFrameChange = {
+			frames.append(controller.panel.frame)
+			onFrameChange?()
+		}
+		defer { controller.panel.onFrameChange = onFrameChange }
 		controller.updatePanelContentSize(CGSize(width: initial.width, height: initial.height + 100))
 		try await Task.sleep(for: .milliseconds(80))
 		let middle = controller.panel.frame.height
@@ -66,6 +104,8 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		controller.updatePanelContentSize(initial)
 		try await Task.sleep(for: .milliseconds(360))
 		XCTAssertEqual(controller.panel.frame.height, initial.height, accuracy: 1)
+		XCTAssertGreaterThan(frames.count, 5)
+		for frame in frames { XCTAssertEqual(frame.maxY, top, accuracy: 0.5, "Every committed frame must preserve the top edge") }
 	}
 
 	func testMultipleCardsHaveScrollableOverflowWithoutScrollbars() async throws {

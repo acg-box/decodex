@@ -15,6 +15,7 @@ let symbols = [
     "account-sign-in": "person.crop.circle.badge.plus",
     "reset-cards": "arrow.clockwise",
     "account-warning": "exclamationmark.circle",
+    "account-reorder": "line.3.horizontal",
     "account-logout": "rectangle.portrait.and.arrow.right",
     "confirm": "checkmark",
     "sidebar": "sidebar.left",

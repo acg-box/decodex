@@ -450,12 +450,12 @@ pub(super) fn row(
 				}))
 				.tooltip(move |_, cx| cx.new(|_| ControlTooltip(tip.clone())).into())
 				.child(title)
-				.when(enabled, |button| {
-					button.on_click(cx.listener(move |shell, _, _, cx| {
-						cx.stop_propagation();
+				.on_click(cx.listener(move |shell, _, _, cx| {
+					cx.stop_propagation();
+					if enabled {
 						shell.tap_reset_card(account_id.clone(), descriptor, revision, cx);
-					}))
-				}),
+					}
+				})),
 		);
 	}
 	Some(strip.into_any_element())
@@ -543,6 +543,65 @@ mod render_tests {
 	use crate::client_lifecycle::ConnectionView;
 	use gpui::{Modifiers, TestAppContext, size};
 	#[gpui::test]
+	fn account_card_padding_last_row_and_drag_handle_have_distinct_targets(
+		cx: &mut TestAppContext,
+	) {
+		let (shell, visual) =
+			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+		let last = shell.update(visual, |shell, cx| {
+			shell.visual_accounts_and_health();
+			shell.selected = Destination::Accounts;
+			cx.notify();
+			shell.accounts.accounts.last().unwrap().account_id.clone()
+		});
+		visual.update(|window, cx| {
+			window.resize(size(px(1248.), px(840.)));
+			window.draw(cx).clear();
+		});
+		let first = visual.debug_bounds("account-card-0").unwrap();
+		assert!(
+			first.size.height <= px(38.),
+			"Healthy accounts must fit in one line: {:?}",
+			first.size
+		);
+		// Click the outside padding of the last row repeatedly, including after its height changes.
+		for expanded in [true, false, true, false] {
+			let bounds = visual.debug_bounds("account-card-2").unwrap();
+			visual.simulate_click(
+				gpui::point(bounds.left() + px(3.), bounds.top() + px(3.)),
+				Modifiers::default(),
+			);
+			shell.read_with(visual, |s, _| {
+				assert_eq!(s.expanded_accounts.contains(&last), expanded)
+			});
+			visual.update(|window, cx| {
+				window.draw(cx).clear();
+			});
+			std::thread::sleep(Duration::from_millis(250));
+			visual.update(|window, cx| {
+				window.draw(cx).clear();
+			});
+		}
+		let handle = visual.debug_bounds("account-reorder-2").unwrap().center();
+		visual.simulate_click(handle, Modifiers::default());
+		shell.read_with(visual, |s, _| assert!(!s.expanded_accounts.contains(&last)));
+		visual.simulate_mouse_down(handle, gpui::MouseButton::Left, Modifiers::default());
+		visual.simulate_mouse_move(
+			handle + gpui::point(px(0.), px(-20.)),
+			gpui::MouseButton::Left,
+			Modifiers::default(),
+		);
+		visual.update(|_, cx| assert!(cx.has_active_drag()));
+		visual.simulate_mouse_up(handle, gpui::MouseButton::Left, Modifiers::default());
+		shell.read_with(visual, |s, _| {
+			assert!(
+				!s.expanded_accounts.contains(&last),
+				"A completed drag must not toggle disclosure"
+			)
+		});
+	}
+
+	#[gpui::test]
 	fn multiple_account_disclosures_keep_cards_and_activity_independent(cx: &mut TestAppContext) {
 		let (shell, visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
@@ -577,6 +636,10 @@ mod render_tests {
 		shell.read_with(visual, |s, _| {
 			assert_eq!(s.reset_cards.confirmation.as_ref().map(|c| &c.account), Some(&first));
 			assert!(s.reset_cards.updates.is_none(), "First click must not send a request");
+			assert!(
+				s.expanded_accounts.contains(&first),
+				"Card clicks must not collapse the account"
+			);
 		});
 		shell.update(visual, |s, cx| s.toggle_account_activity(first.clone(), cx));
 		visual.update(|window, cx| {
