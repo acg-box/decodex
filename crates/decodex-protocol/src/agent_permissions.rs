@@ -1,6 +1,7 @@
 //! Named native permission profiles for an exact saved task.
-use crate::{EntityId, WireText};
 use serde::{Deserialize, Serialize};
+
+use crate::{EntityId, WireText};
 
 /// Native profile eligibility in the task's current directory.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

@@ -1,9 +1,10 @@
 //! Public daemon-owned reset-card recovery. Provider credit IDs never cross this boundary.
+use serde::{Deserialize, Serialize};
+
 use crate::{
 	EntityId, EntityRevision, IdempotencyKey, ResetCardDescriptorDto, ResetCardError,
 	ResetCardOperationResult,
 };
-use serde::{Deserialize, Serialize};
 
 /// Latest reset-card operation for one account, including terminal results.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

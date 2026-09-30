@@ -354,7 +354,7 @@ mod tests {
 		let observed =
 			report.clone().with_native_process(super::NativeProcessDiagnostics::Available {
 				process_id: 42,
-				resident_memory_bytes: Some(1024),
+				resident_memory_bytes: Some(1_024),
 				physical_footprint_bytes: None,
 			});
 		let encoded = serde_json::to_string(&observed).unwrap();

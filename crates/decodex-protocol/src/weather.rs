@@ -1,6 +1,8 @@
 //! Bounded weather projection from a native tool result.
+use serde::{Deserialize, Serialize};
+
 /// Saved native weather conditions and at most 24 hourly forecast entries.
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct WeatherForecast {
 	/// Native citation reference that identifies this forecast.
 	pub reference: String,
@@ -12,9 +14,6 @@ pub struct WeatherForecast {
 	pub celsius: i32,
 	/// Hourly entries as provider time label, weather description, and Celsius temperature.
 	pub hours: Vec<(String, String, i32)>,
-}
-fn temperature(value: &str) -> Option<i32> {
-	value.rsplit_once('(')?.1.strip_suffix("°C)")?.parse().ok()
 }
 impl WeatherForecast {
 	/// Parse the supported native weather text and its citation reference.
@@ -66,4 +65,8 @@ impl WeatherForecast {
 
 		result
 	}
+}
+
+fn temperature(value: &str) -> Option<i32> {
+	value.rsplit_once('(')?.1.strip_suffix("°C)")?.parse().ok()
 }

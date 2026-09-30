@@ -1,6 +1,7 @@
 //! Optional task recap state. Querying never starts inference.
-use crate::{EntityId, WireText};
 use serde::{Deserialize, Serialize};
+
+use crate::{EntityId, WireText};
 
 /// A validated plain-text recap from the isolated native request.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

@@ -1,6 +1,7 @@
 //! Explicit review of shared native hook configuration.
-use crate::{EntityId, WireText};
 use serde::{Deserialize, Serialize};
+
+use crate::{EntityId, WireText};
 /// Explicit change to one reviewed hook.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", content = "enabled", rename_all = "snake_case")]

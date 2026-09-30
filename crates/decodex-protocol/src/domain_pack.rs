@@ -131,7 +131,6 @@ pub struct DomainPackProjectionDto {
 	/// Bounded relations between domain entities.
 	pub relations: Vec<DomainRelationDto>,
 }
-
 impl DomainPackProjectionDto {
 	/// Construct and validate the historical projection.
 	pub fn new(
@@ -254,7 +253,11 @@ fn is_semver_triplet(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::{
+		DomainEntityDto, DomainPackCapabilityDto, DomainPackCapabilityStatus,
+		DomainPackContractError, DomainPackDescriptorDto, DomainPackProjectionDto,
+		DomainPackViewKind, DomainRelationDto, EntityId, Sha256Digest, WireText,
+	};
 
 	fn text(value: &str) -> WireText {
 		WireText::new(value).expect("bounded text")

@@ -1,6 +1,8 @@
 //! Complete native input transfer. Uploading data never authorizes inference.
-use crate::{EntityId, IdempotencyKey, Sha256Digest, WireText};
 use serde::{Deserialize, Serialize};
+
+use crate::{EntityId, IdempotencyKey, Sha256Digest, WireText};
+use decodex_core::MAX_NATIVE_MESSAGE_BYTES;
 
 /// Exact source and content identity shared by every chunk and status read.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -25,7 +27,7 @@ impl PromptInputUpload {
 		!self.thread_id.as_str().is_empty()
 			&& self.edit_receipt_id > 0
 			&& self.total_bytes > 0
-			&& self.total_bytes <= decodex_core::MAX_NATIVE_MESSAGE_BYTES as u64
+			&& self.total_bytes <= MAX_NATIVE_MESSAGE_BYTES as u64
 	}
 }
 
