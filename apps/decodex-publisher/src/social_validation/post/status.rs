@@ -14,6 +14,7 @@ pub(super) fn validate_social_post_status_payload(
 		Some("skipped") => validate_reason_object(entry.get("skip"), "skip", &["reason"], errors),
 		_ => {},
 	}
+
 	validate_exclusive_status_payload(entry, status, errors);
 }
 
@@ -46,6 +47,7 @@ fn validate_social_post_publication(publication: Option<&Value>, errors: &mut Ve
 
 		return;
 	};
+
 	social_validation::validate_exact_keys(
 		publication,
 		"publication",
@@ -116,6 +118,7 @@ fn validate_social_post_publication(publication: Option<&Value>, errors: &mut Ve
 			"publication.recorded_cost_ceiling_microusd must be 30000, 35000, or 40000".into(),
 		);
 	}
+
 	for field in [
 		"identity_response_sha256",
 		"create_response_sha256",
@@ -126,8 +129,10 @@ fn validate_social_post_publication(publication: Option<&Value>, errors: &mut Ve
 			errors.push(format!("publication.{field} must be a lowercase SHA-256 digest"));
 		}
 	}
+
 	let expected_url = social_validation::string_field(publication, "post_id")
 		.map(|post_id| format!("https://x.com/decodexspace/status/{post_id}"));
+
 	if !publication.get("published_urls").and_then(Value::as_array).is_some_and(|urls| {
 		expected_url
 			.as_deref()
@@ -150,6 +155,7 @@ fn validate_social_post_block(entry: &Map<String, Value>, errors: &mut Vec<Strin
 
 		return;
 	};
+
 	social_validation::validate_exact_keys(block, "block", &["operator_notice", "reason"], errors);
 
 	if !social_validation::matches_one_of(block.get("reason"), SOCIAL_BLOCK_REASONS) {
@@ -174,6 +180,7 @@ fn validate_reason_object(
 
 		return;
 	};
+
 	social_validation::validate_exact_keys(object, label, required_fields, errors);
 
 	for field in required_fields {

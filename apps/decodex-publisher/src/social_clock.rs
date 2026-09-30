@@ -41,18 +41,22 @@ pub(crate) fn require_current_content_create_window(reservation_day: &str) -> Re
 fn require_content_create_window(reservation_day: &str, now: OffsetDateTime) -> Result<()> {
 	let now = now.to_offset(time::UtcOffset::UTC);
 	let current_day = format!("{:04}-{:02}-{:02}", now.year(), u8::from(now.month()), now.day());
+
 	if reservation_day != current_day {
 		eyre::bail!(
 			"content create is closed because reservation day {reservation_day} is not current UTC day {current_day}"
 		);
 	}
+
 	let next_midnight = now
 		.replace_time(time::Time::MIDNIGHT)
 		.checked_add(Duration::days(1))
 		.ok_or_else(|| eyre::eyre!("content-create UTC boundary overflowed"))?;
+
 	if next_midnight - now <= CONTENT_CREATE_MINIMUM_UTC_WINDOW {
 		eyre::bail!("content create is closed during the final two minutes of the UTC day");
 	}
+
 	Ok(())
 }
 
@@ -61,6 +65,7 @@ fn content_create_now() -> OffsetDateTime {
 	if let Some(now) = CONTENT_CREATE_NOW.with(std::cell::Cell::get) {
 		return now;
 	}
+
 	OffsetDateTime::now_utc()
 }
 
@@ -71,6 +76,7 @@ pub(crate) fn with_content_create_now_for_test<T>(
 ) -> T {
 	CONTENT_CREATE_NOW.with(|clock| {
 		let _reset = TestNowReset { clock, previous: clock.replace(Some(now)) };
+
 		action()
 	})
 }
@@ -140,6 +146,7 @@ mod tests {
 		let after = OffsetDateTime::parse("2026-07-28T00:00:01Z", &Rfc3339).expect("after");
 
 		super::require_content_create_window("2026-07-27", before).expect("safe window");
+
 		assert!(super::require_content_create_window("2026-07-27", inside).is_err());
 		assert!(super::require_content_create_window("2026-07-27", after).is_err());
 	}

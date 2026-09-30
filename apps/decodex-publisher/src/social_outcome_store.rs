@@ -43,6 +43,7 @@ pub(crate) fn validated_observed_windows(
 			validate_outcome(root, &posts_dir, &available_posts, &mut post_bindings, &outcome_path);
 		let key = result
 			.map_err(|error| eyre::eyre!("{}: {error}", crate::path_arg(root, &outcome_path)))?;
+
 		if !observed.insert(key.clone()) {
 			return Err(eyre::eyre!(
 				"{}: duplicate social outcome for post {:?} and window {:?}",
@@ -64,20 +65,25 @@ fn validate_outcome(
 	outcome_path: &Path,
 ) -> Result<(String, String)> {
 	let outcome = crate::load_json(outcome_path)?;
+
 	crate::validate_generated_social_artifact(&outcome)
 		.map_err(|error| eyre::eyre!("social outcome failed validation: {error}"))?;
+
 	if outcome.get("schema").and_then(Value::as_str) != Some(SOCIAL_OUTCOME_SCHEMA) {
 		return Err(eyre::eyre!("outcomes directory contains a non-outcome artifact"));
 	}
 
 	let post_ref = required_string(&outcome, "/social_post_ref", "social_post_ref")?;
 	let requested_post_path = crate::resolve_against(root, Path::new(post_ref));
+
 	crate::require_contained_regular_file(&requested_post_path, posts_dir)
 		.map_err(|error| eyre::eyre!("social_post_ref is invalid: {error}"))?;
+
 	let post_path = available_posts
 		.get(&requested_post_path)
 		.ok_or_else(|| eyre::eyre!("social_post_ref is not a configured JSON post"))?;
 	let canonical_ref = crate::path_arg(root, post_path);
+
 	if post_ref != canonical_ref {
 		return Err(eyre::eyre!("social_post_ref must equal canonical post ref {canonical_ref:?}"));
 	}
@@ -93,13 +99,16 @@ fn validate_outcome(
 
 fn load_published_post(path: &Path) -> Result<PublishedPostBinding> {
 	let post = crate::load_json(path)?;
+
 	crate::validate_generated_social_artifact(&post)
 		.map_err(|error| eyre::eyre!("referenced social post failed validation: {error}"))?;
+
 	if post.get("schema").and_then(Value::as_str) != Some(SOCIAL_POST_SCHEMA)
 		|| post.get("status").and_then(Value::as_str) != Some("published")
 	{
 		return Err(eyre::eyre!("social outcome must reference a published social_post"));
 	}
+
 	crate::social_evidence::validate_source_evidence(&post).map_err(|error| {
 		eyre::eyre!("referenced social post evidence failed validation: {error}")
 	})?;
@@ -110,9 +119,11 @@ fn load_published_post(path: &Path) -> Result<PublishedPostBinding> {
 	let published_url =
 		required_string(&post, "/publication/published_urls/0", "publication.published_urls[0]")?;
 	let canonical_url = format!("https://x.com/{target_account}/status/{post_id}");
+
 	if published_url != canonical_url {
 		return Err(eyre::eyre!("published social post URL does not match its post ID"));
 	}
+
 	let publication_lineage_sha256 = required_string(
 		&post,
 		"/publication/publication_lineage_sha256",
@@ -120,18 +131,22 @@ fn load_published_post(path: &Path) -> Result<PublishedPostBinding> {
 	)?;
 	let idempotency_key =
 		required_string(&post, "/decision/idempotency_key", "decision.idempotency_key")?;
+
 	if idempotency_key != format!("content-publication:{publication_lineage_sha256}") {
 		return Err(eyre::eyre!(
 			"published social post idempotency key does not match its publication lineage"
 		));
 	}
+
 	let verified_account =
 		required_string(&post, "/publication/verified_account", "publication.verified_account")?;
+
 	if verified_account != target_account {
 		return Err(eyre::eyre!(
 			"published social post verified account does not match its target account"
 		));
 	}
+
 	let posted_at = parse_timestamp(
 		required_string(&post, "/publication/posted_at", "publication.posted_at")?,
 		"publication.posted_at",
@@ -162,6 +177,7 @@ fn validate_outcome_binding<'a>(
 ) -> Result<&'a str> {
 	let window = required_string(outcome, "/window", "window")?;
 	let expected_slug = format!("{}-{window}", post.slug);
+
 	if required_string(outcome, "/slug", "slug")? != expected_slug {
 		return Err(eyre::eyre!("social outcome slug does not match its post and window"));
 	}
@@ -202,6 +218,7 @@ fn validate_outcome_binding<'a>(
 		_ => return Err(eyre::eyre!("social outcome window must be 24h or 7d")),
 	};
 	let elapsed_hours = (observed_at - post.posted_at).whole_hours();
+
 	if elapsed_hours < minimum_hours {
 		return Err(eyre::eyre!(
 			"{window} social outcome is before its earliest window: elapsed_hours={elapsed_hours}"
@@ -268,10 +285,14 @@ mod tests {
 	#[test]
 	fn artifact_validation_rejects_malformed_outcome_status_urls() {
 		let valid = valid_outcome("post-a", "posts/a.json", "1001", &"a".repeat(64));
+
 		crate::validate_generated_social_artifact(&valid).expect("valid outcome artifact");
+
 		for suffix in ["", "not-a-post", "1001?extra=1", "1001/more", "１００１"] {
 			let mut invalid = valid.clone();
+
 			invalid["published_url"] = json!(format!("https://x.com/decodexspace/status/{suffix}"));
+
 			assert!(crate::validate_generated_social_artifact(&invalid).is_err(), "{suffix:?}");
 		}
 	}
@@ -282,12 +303,16 @@ mod tests {
 		let store = Store::default(temp.path());
 		let post = write_post(&store, RUN_ID, "post-a", "1001", &"a".repeat(64));
 		let post_ref = crate::path_arg(&store.root, &post);
+
 		write_outcome(&store, RUN_ID, &valid_outcome("post-a", &post_ref, "1001", &"a".repeat(64)));
 
 		let report = crate::validate_social_at(&store.root, &[]).expect("valid social store");
+
 		assert_eq!(report.checked_files, 2);
+
 		let observed = validated_observed_windows(&store.root, &store.outcomes, &store.posts)
 			.expect("validated observed windows");
+
 		assert!(observed.contains(&(post_ref, "24h".into())));
 	}
 
@@ -303,16 +328,21 @@ mod tests {
 			"2002",
 			&"b".repeat(64),
 		);
+
 		copied["social_post_ref"] = json!(crate::path_arg(&store.root, &post_a));
+
 		write_outcome(&store, RUN_ID, &copied);
 
 		let validation_error = crate::validate_social_at(&store.root, &[])
 			.expect_err("copied outcome must fail default validation")
 			.to_string();
+
 		assert!(validation_error.contains("does not match"), "{validation_error}");
+
 		let observed_error = validated_observed_windows(&store.root, &store.outcomes, &store.posts)
 			.expect_err("copied outcome must not produce an observed window")
 			.to_string();
+
 		assert!(observed_error.contains("does not match"), "{observed_error}");
 	}
 
@@ -328,8 +358,10 @@ mod tests {
 			"2002",
 			&"b".repeat(64),
 		);
+
 		copied["social_post_ref"] =
 			json!(crate::path_arg(&crate::repo_root().expect("repo root"), &post_a));
+
 		write_outcome(&store, RUN_ID, &copied);
 
 		let error = crate::social_workflow::observe_due_with_test_binary(
@@ -342,6 +374,7 @@ mod tests {
 		)
 		.expect_err("tampered outcome must stop observe-due")
 		.to_string();
+
 		assert!(error.contains("does not match"), "{error}");
 		assert!(!temp.path().join("attempts").exists());
 	}
@@ -355,6 +388,7 @@ mod tests {
 			let post = write_post(&store, RUN_ID, "post-a", "1001", &lineage);
 			let post_ref = crate::path_arg(&store.root, &post);
 			let mut outcome = valid_outcome("post-a", &post_ref, "1001", &lineage);
+
 			match case {
 				"url" => outcome["published_url"] = json!("https://x.com/decodexspace/status/9999"),
 				"lineage" =>
@@ -362,11 +396,13 @@ mod tests {
 				"timing" => outcome["observed_at"] = json!("2026-07-28T10:01:00Z"),
 				_ => unreachable!(),
 			}
+
 			write_outcome(&store, RUN_ID, &outcome);
 
 			let error = validated_observed_windows(&store.root, &store.outcomes, &store.posts)
 				.expect_err("mismatched outcome must fail")
 				.to_string();
+
 			assert!(
 				error.contains("does not match") || error.contains("earliest window"),
 				"{case}: {error}"
@@ -379,13 +415,17 @@ mod tests {
 		let traversal = repo_local_test_directory("publisher-outcome-traversal-");
 		let traversal_store = Store::direct(traversal.path());
 		let lineage = "a".repeat(64);
+
 		write_post(&traversal_store, RUN_ID, "post-a", "1001", &lineage);
+
 		let traversal_ref = "posts/../posts/019fa400-0000-7000-8000-000000000001.json";
+
 		write_outcome(
 			&traversal_store,
 			RUN_ID,
 			&valid_outcome("post-a", traversal_ref, "1001", &lineage),
 		);
+
 		assert!(
 			validated_observed_windows(
 				&traversal_store.root,
@@ -399,12 +439,14 @@ mod tests {
 		let linked_store = Store::direct(linked.path());
 		let target = write_post(&linked_store, RUN_ID, "post-a", "1001", &lineage);
 		let link = linked_store.posts.join("linked.json");
+
 		symlink(&target, &link).expect("post symlink fixture");
 		write_outcome(
 			&linked_store,
 			RUN_ID,
 			&valid_outcome("post-a", &crate::path_arg(&linked_store.root, &link), "1001", &lineage),
 		);
+
 		assert!(
 			validated_observed_windows(
 				&linked_store.root,
@@ -413,6 +455,7 @@ mod tests {
 			)
 			.is_err()
 		);
+
 		fs::remove_file(link).expect("remove post symlink fixture");
 	}
 
@@ -424,8 +467,10 @@ mod tests {
 		lineage: &str,
 	) -> PathBuf {
 		let path = store.posts.join(format!("{run_id}.json"));
+
 		crate::write_new_json(&path, &valid_post(run_id, slug, post_id, lineage))
 			.expect("published post fixture");
+
 		path
 	}
 

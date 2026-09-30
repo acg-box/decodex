@@ -45,8 +45,11 @@ pub(super) fn seal(
 	binary: &TrustedXurlBinary,
 ) -> Result<SocialSealXurlAuthReport> {
 	let sealed_at = parse_time(&request.sealed_at, "sealed_at")?;
+
 	binary.require_approved_release()?;
+
 	let xurl_version = super::runtime::verify_runtime(binary)?;
+
 	super::runtime::verify_auth_status(binary)?;
 
 	let root = crate::repo_root()?;
@@ -61,7 +64,9 @@ pub(super) fn seal(
 		xurl_binary_sha256: APPROVED_XURL_SHA256.into(),
 		sealed_at: request.sealed_at.clone(),
 	};
+
 	validate_contract(&contract, sealed_at, binary)?;
+
 	crate::write_new_json(&contract_path, &serde_json::to_value(&contract)?)?;
 
 	Ok(SocialSealXurlAuthReport {
@@ -82,6 +87,7 @@ pub(super) fn load_current_at(
 	binary: &TrustedXurlBinary,
 ) -> Result<VerifiedAuthorizationContract> {
 	binary.require_approved_release()?;
+
 	let root = crate::repo_root()?;
 	let contract_path = crate::resolve_against(&root, path);
 	let (payload, contract_sha256) =
@@ -89,6 +95,7 @@ pub(super) fn load_current_at(
 			.map_err(|error| eyre::eyre!("xurl authorization contract is unavailable: {error}"))?;
 	let contract: XurlAuthorizationContract = serde_json::from_value(payload)
 		.map_err(|_| eyre::eyre!("xurl authorization contract is invalid"))?;
+
 	validate_contract(&contract, now, binary)?;
 
 	Ok(VerifiedAuthorizationContract {
@@ -126,6 +133,7 @@ fn validate_contract(
 	binary: &TrustedXurlBinary,
 ) -> Result<()> {
 	let sealed_at = parse_time(&contract.sealed_at, "sealed_at")?;
+
 	if contract.schema != CONTRACT_SCHEMA
 		|| contract.policy_id != POLICY_ID
 		|| contract.target_account != TARGET_ACCOUNT
@@ -139,6 +147,7 @@ fn validate_contract(
 			"xurl authorization contract does not match the approved fixed authority"
 		));
 	}
+
 	binary.require_approved_release()
 }
 

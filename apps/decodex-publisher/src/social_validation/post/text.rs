@@ -61,7 +61,9 @@ fn exceeds_conservative_x_weighted_length(text: &str, maximum: usize) -> bool {
 		} else {
 			2
 		};
+
 		weighted_length = weighted_length.saturating_add(weight);
+
 		if weighted_length > maximum {
 			return true;
 		}
@@ -72,6 +74,7 @@ fn exceeds_conservative_x_weighted_length(text: &str, maximum: usize) -> bool {
 
 pub(crate) fn contains_link_like_text(text: &str) -> bool {
 	let normalized = text.replace(['。', '．', '｡'], ".").to_lowercase();
+
 	if normalized.contains("://") || normalized.contains("www.") || normalized.contains("mailto:") {
 		return true;
 	}
@@ -93,9 +96,11 @@ fn token_is_link_like(token: &str) -> bool {
 		.next()
 		.unwrap_or_default()
 		.trim_end_matches('.');
+
 	if host.is_empty() || !host.contains('.') {
 		return false;
 	}
+
 	let host = host
 		.rsplit_once(':')
 		.filter(|(_, port)| {
@@ -103,6 +108,7 @@ fn token_is_link_like(token: &str) -> bool {
 		})
 		.map_or(host, |(host, _)| host);
 	let labels = host.split('.').collect::<Vec<_>>();
+
 	if labels.len() < 2 || labels.iter().any(|label| !valid_domain_label(label)) {
 		return false;
 	}
@@ -112,7 +118,9 @@ fn token_is_link_like(token: &str) -> bool {
 		}) {
 		return true;
 	}
+
 	let top_level = labels.last().copied().unwrap_or_default();
+
 	top_level.len() >= 2 && top_level.chars().all(char::is_alphabetic)
 }
 
@@ -138,6 +146,7 @@ mod tests {
 		}
 
 		let mut errors = Vec::new();
+
 		validate_social_post_text_item(&"界".repeat(131), 0, &mut errors);
 
 		assert_eq!(errors, ["text[0] must be a non-empty X-sized string"]);

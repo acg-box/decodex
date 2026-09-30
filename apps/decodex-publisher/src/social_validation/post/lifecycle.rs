@@ -9,6 +9,7 @@ pub(super) fn validate_social_post_lifecycle(entry: &Map<String, Value>, errors:
 
 		return;
 	};
+
 	social_validation::validate_exact_keys(
 		lifecycle,
 		"post_lifecycle",
@@ -68,7 +69,9 @@ mod tests {
 				"current_state": state, "quote_eligible": eligible
 			}});
 			let mut errors = Vec::new();
+
 			super::validate_social_post_lifecycle(entry.as_object().unwrap(), &mut errors);
+
 			assert_eq!(errors.is_empty(), valid, "{entry}: {errors:?}");
 		}
 	}

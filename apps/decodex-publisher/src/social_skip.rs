@@ -28,11 +28,15 @@ pub(crate) fn terminalize_social_skip(
 	let root = crate::repo_root()?;
 	let candidates_dir = crate::resolve_against(&root, &request.candidates_dir);
 	let candidate_path = crate::resolve_against(&root, &request.candidate_path);
+
 	crate::require_contained_regular_file(&candidate_path, &candidates_dir)
 		.map_err(|error| eyre::eyre!("candidate is invalid: {error}"))?;
+
 	let candidate = crate::load_json(&candidate_path)?;
+
 	crate::validate_generated_social_artifact(&candidate)
 		.map_err(|error| eyre::eyre!("candidate failed validation: {error}"))?;
+
 	if candidate.get("schema").and_then(Value::as_str) != Some(SOCIAL_CANDIDATE_SCHEMA) {
 		return Err(eyre::eyre!("candidate must use {SOCIAL_CANDIDATE_SCHEMA}"));
 	}
@@ -41,9 +45,11 @@ pub(crate) fn terminalize_social_skip(
 		.get("decision")
 		.and_then(Value::as_object)
 		.ok_or_else(|| eyre::eyre!("candidate decision is required"))?;
+
 	if !matches!(decision.get("worthiness").and_then(Value::as_str), Some("no_op" | "publish")) {
 		return Err(eyre::eyre!("candidate decision.worthiness must be no_op or publish"));
 	}
+
 	let idempotency_key = required_string(decision.get("idempotency_key"), "idempotency_key")?;
 	let reason = request
 		.reason
@@ -71,6 +77,7 @@ pub(crate) fn terminalize_social_skip(
 		&request.timezone,
 		scan.published_count,
 	)?;
+
 	crate::validate_generated_social_artifact(&payload)
 		.map_err(|error| eyre::eyre!("generated skipped post failed validation: {error}"))?;
 
@@ -81,6 +88,7 @@ pub(crate) fn terminalize_social_skip(
 				idempotency_key
 			));
 		}
+
 		return existing_result(
 			&root,
 			&candidate_path,
@@ -90,6 +98,7 @@ pub(crate) fn terminalize_social_skip(
 			scan.published_count,
 		);
 	}
+
 	if let Some(conflict) = scan.idempotency_conflict {
 		return Err(eyre::eyre!(
 			"idempotency_key already has an active reservation or terminal post: {} ({})",
@@ -97,6 +106,7 @@ pub(crate) fn terminalize_social_skip(
 			crate::path_arg(&root, &conflict)
 		));
 	}
+
 	if !request.dry_run
 		&& let Err(error) = crate::write_new_json(&output_path, &payload)
 	{
@@ -184,6 +194,7 @@ fn existing_result(
 	published_count: usize,
 ) -> Result<SocialTerminalizeSkipReport> {
 	let existing = crate::load_json(output_path)?;
+
 	if existing != *expected {
 		return Err(eyre::eyre!(
 			"existing terminal post conflicts with the quality-skip payload: {}",
@@ -209,6 +220,7 @@ fn required_string<'a>(value: Option<&'a Value>, field: &str) -> Result<&'a str>
 
 fn valid_day(day: &str) -> bool {
 	let bytes = day.as_bytes();
+
 	bytes.len() == 10
 		&& bytes[4] == b'-'
 		&& bytes[7] == b'-'

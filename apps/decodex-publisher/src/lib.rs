@@ -125,6 +125,7 @@ pub(crate) fn terminalize_social_skip(
 
 pub(crate) fn validate_social(paths: &[PathBuf]) -> Result<SocialValidationReport> {
 	let root = repo_root()?;
+
 	validate_social_at(&root, paths)
 }
 
@@ -156,6 +157,7 @@ fn validate_social_at(root: &std::path::Path, paths: &[PathBuf]) -> Result<Socia
 			errors.push(format!("{}: {error}", path_arg(root, path)));
 		}
 	}
+
 	if default_scope
 		&& errors.is_empty()
 		&& let Err(error) = social_outcome_store::validated_observed_windows(
@@ -165,10 +167,10 @@ fn validate_social_at(root: &std::path::Path, paths: &[PathBuf]) -> Result<Socia
 		) {
 		errors.push(error.to_string());
 	}
-
 	if !errors.is_empty() {
 		return Err(eyre::eyre!("Social artifact validation failed:\n- {}", errors.join("\n- ")));
 	}
+
 	Ok(SocialValidationReport { checked_files: files.len(), errors })
 }
 
@@ -178,6 +180,7 @@ pub(crate) fn validate_generated_social_artifact(payload: &Value) -> Result<()> 
 	if !validation.errors.is_empty() {
 		eyre::bail!("Social artifact validation failed:\n- {}", validation.errors.join("\n- "));
 	}
+
 	social_record::validate_publication_identity(payload)?;
 
 	Ok(())

@@ -59,16 +59,21 @@ pub(super) fn publication_effect_conflict(
 	if !attempts_dir.exists() {
 		return Ok(None);
 	}
+
 	for path in crate::collect_json_files(&[attempts_dir.to_path_buf()])? {
 		if excluded_attempt_path == Some(path.as_path()) {
 			continue;
 		}
+
 		let payload = crate::load_json(&path)?;
+
 		if payload.get("schema").and_then(Value::as_str) != Some(ATTEMPT_SCHEMA) {
 			continue;
 		}
+
 		let attempt: XurlAttempt = serde_json::from_value(payload)
 			.map_err(|_| eyre::eyre!("{} is not a valid xurl attempt", path.display()))?;
+
 		if attempt.publication_lineage_sha256 != publication_lineage_sha256 {
 			continue;
 		}
@@ -87,21 +92,28 @@ pub(super) fn daily_publication_effect_conflict(
 	let day = OffsetDateTime::parse(&format!("{day}T00:00:00Z"), &Rfc3339)
 		.map_err(|_| eyre::eyre!("publication day is invalid"))?
 		.date();
+
 	if !attempts_dir.exists() {
 		return Ok(None);
 	}
+
 	for path in crate::collect_json_files(&[attempts_dir.to_path_buf()])? {
 		let payload = crate::load_json(&path)?;
+
 		match payload.get("schema").and_then(Value::as_str) {
 			Some(OBSERVATION_ATTEMPT_SCHEMA) => continue,
 			Some(ATTEMPT_SCHEMA) => {},
 			_ => return Err(eyre::eyre!("{} has invalid xurl billing lineage", path.display())),
 		}
+
 		let attempt: XurlAttempt = serde_json::from_value(payload)
 			.map_err(|_| eyre::eyre!("{} is not a valid xurl attempt", path.display()))?;
+
 		validate_publication_cost_record(&attempt)?;
+
 		let created_at = OffsetDateTime::parse(&attempt.created_at, &Rfc3339)
 			.map_err(|_| eyre::eyre!("xurl publication attempt timestamp is invalid"))?;
+
 		if created_at.to_offset(time::UtcOffset::UTC).date() == day
 			&& publication_effect_started(&attempt)
 		{
@@ -128,14 +140,18 @@ pub(super) fn observation_attempt_exists(
 	if !attempts_dir.exists() {
 		return Ok(false);
 	}
+
 	for path in crate::collect_json_files(&[attempts_dir.to_path_buf()])? {
 		let payload = crate::load_json(&path)?;
+
 		if payload.get("schema").and_then(Value::as_str) != Some(OBSERVATION_ATTEMPT_SCHEMA) {
 			continue;
 		}
+
 		let attempt: XurlObservationAttempt = serde_json::from_value(payload).map_err(|_| {
 			eyre::eyre!("{} is not a valid xurl observation attempt", path.display())
 		})?;
+
 		if attempt.post_ref == post_ref && attempt.window == window {
 			return Ok(true);
 		}
@@ -180,12 +196,16 @@ fn scan_costs(attempts_dir: &Path, billing_month: &str, strict: bool) -> Result<
 	if !attempts_dir.exists() {
 		return Ok(CostTotals::default());
 	}
+
 	let metadata = fs::symlink_metadata(attempts_dir)?;
+
 	if metadata.file_type().is_symlink() || !metadata.is_dir() {
 		return Err(eyre::eyre!("xurl attempts path must be a directory"));
 	}
+
 	let mut totals = CostTotals::default();
 	let mut lineage_reserved = BTreeMap::<String, u64>::new();
+
 	for path in crate::collect_json_files(&[attempts_dir.to_path_buf()])? {
 		let payload = crate::load_json(&path)?;
 		let schema = payload.get("schema").and_then(Value::as_str);
@@ -194,11 +214,15 @@ fn scan_costs(attempts_dir: &Path, billing_month: &str, strict: bool) -> Result<
 				let attempt: XurlAttempt = serde_json::from_value(payload).map_err(|_| {
 					eyre::eyre!("{} is not a valid xurl publication usage record", path.display())
 				})?;
+
 				validate_usage_path(&path, &attempt.billing_month)?;
+
 				if strict {
 					validate_publication_cost_record(&attempt)?;
 				}
+
 				let charges = publication_charges(&attempt)?;
+
 				(
 					charges,
 					attempt.calls,
@@ -215,11 +239,15 @@ fn scan_costs(attempts_dir: &Path, billing_month: &str, strict: bool) -> Result<
 							path.display()
 						)
 					})?;
+
 				validate_usage_path(&path, &attempt.billing_month)?;
+
 				if strict {
 					validate_observation_cost_record(&attempt)?;
 				}
+
 				let charges = observation_charges(&attempt)?;
+
 				(
 					charges,
 					attempt.calls,
@@ -231,13 +259,17 @@ fn scan_costs(attempts_dir: &Path, billing_month: &str, strict: bool) -> Result<
 			_ => return Err(eyre::eyre!("{} has invalid xurl billing lineage", path.display())),
 		};
 		let lineage_total = lineage_reserved.entry(publication_lineage_sha256).or_default();
+
 		*lineage_total = lineage_total
 			.checked_add(lineage_cost)
 			.ok_or_else(|| eyre::eyre!("publication lineage budget arithmetic overflowed"))?;
+
 		if *lineage_total > PUBLICATION_LINEAGE_BUDGET_MICROUSD {
 			return Err(eyre::eyre!("publication lineage budget ledger exceeds its hard cap"));
 		}
+
 		let charged_this_month = charges.iter().any(|(month, _)| month == billing_month);
+
 		if charged_this_month {
 			if publication {
 				totals.publication_attempts = checked_increment(totals.publication_attempts)?;
@@ -245,6 +277,7 @@ fn scan_costs(attempts_dir: &Path, billing_month: &str, strict: bool) -> Result<
 				totals.observation_attempts = checked_increment(totals.observation_attempts)?;
 			}
 		}
+
 		for (charge_month, cost) in &charges {
 			if charge_month == billing_month {
 				totals.reserved = totals
@@ -257,14 +290,17 @@ fn scan_costs(attempts_dir: &Path, billing_month: &str, strict: bool) -> Result<
 			let call_month = call.billing_month.as_deref().unwrap_or_else(|| {
 				charges.first().map(|(month, _)| month.as_str()).unwrap_or_default()
 			});
+
 			if call_month != billing_month {
 				continue;
 			}
+
 			totals.used = totals
 				.used
 				.checked_add(call.recorded_cost_ceiling_microusd)
 				.ok_or_else(|| eyre::eyre!("monthly X budget arithmetic overflowed"))?;
 			totals.total_calls = checked_increment(totals.total_calls)?;
+
 			match call.operation.as_str() {
 				"identity_read" | "identity_read_reconcile" => {
 					totals.identity_reads = checked_increment(totals.identity_reads)?;
@@ -276,6 +312,7 @@ fn scan_costs(attempts_dir: &Path, billing_month: &str, strict: bool) -> Result<
 			}
 		}
 	}
+
 	if totals.reserved > SOCIAL_MONTHLY_BUDGET_MICROUSD || totals.used > totals.reserved {
 		return Err(eyre::eyre!("monthly X budget ledger exceeds its hard cap"));
 	}
@@ -332,12 +369,15 @@ pub(crate) fn validate_publication_cost_record(attempt: &XurlAttempt) -> Result<
 	{
 		return Err(eyre::eyre!("xurl publication usage authority is invalid"));
 	}
+
 	for call in &attempt.calls {
 		validate_cost_call(call)?;
 	}
+
 	publication_charges(attempt)?;
 	validate_publication_call_sequence(attempt)?;
 	validate_publication_state(attempt)?;
+
 	Ok(())
 }
 
@@ -369,12 +409,15 @@ pub(crate) fn validate_observation_cost_record(attempt: &XurlObservationAttempt)
 	{
 		return Err(eyre::eyre!("xurl observation usage authority is invalid"));
 	}
+
 	for call in &attempt.calls {
 		validate_cost_call(call)?;
 	}
+
 	observation_charges(attempt)?;
 	validate_observation_call_sequence(attempt)?;
 	validate_observation_state(attempt)?;
+
 	Ok(())
 }
 
@@ -392,11 +435,13 @@ fn validate_cost_call(call: &XurlCall) -> Result<()> {
 	{
 		return Err(eyre::eyre!("xurl usage call is invalid"));
 	}
+
 	Ok(())
 }
 
 fn validate_publication_call_sequence(attempt: &XurlAttempt) -> Result<()> {
 	let calls = &attempt.calls;
+
 	if calls.is_empty() {
 		return Ok(());
 	}
@@ -412,6 +457,7 @@ fn validate_publication_call_sequence(attempt: &XurlAttempt) -> Result<()> {
 		"content_create" => validate_create_and_read_sequence(attempt, calls)?,
 		_ => return Err(eyre::eyre!("xurl publication usage call sequence is invalid")),
 	}
+
 	validate_unique_recovery_owners(&attempt.run_id, calls)
 }
 
@@ -419,6 +465,7 @@ fn validate_identity_recovery_sequence(attempt: &XurlAttempt, calls: &[XurlCall]
 	if calls.len() > 3 || !interrupted_call(&calls[0]) {
 		return Err(eyre::eyre!("xurl identity recovery sequence is invalid"));
 	}
+
 	for (index, call) in calls[1..].iter().enumerate() {
 		if call.operation != "identity_read_reconcile"
 			|| !recovery_call_metadata(call, false)
@@ -427,6 +474,7 @@ fn validate_identity_recovery_sequence(attempt: &XurlAttempt, calls: &[XurlCall]
 			return Err(eyre::eyre!("xurl identity recovery sequence is invalid"));
 		}
 	}
+
 	if attempt.post_id.is_some() || attempt.published_url.is_some() {
 		return Err(eyre::eyre!("xurl identity recovery state has a public post identity"));
 	}
@@ -449,9 +497,11 @@ fn validate_create_and_read_sequence(attempt: &XurlAttempt, calls: &[XurlCall]) 
 	}
 
 	let reads = &calls[2..];
+
 	if reads.len() > 3 {
 		return Err(eyre::eyre!("xurl publication read sequence is invalid"));
 	}
+
 	for (index, call) in reads.iter().enumerate() {
 		let valid_operation = match index {
 			0 => matches!(
@@ -469,6 +519,7 @@ fn validate_create_and_read_sequence(attempt: &XurlAttempt, calls: &[XurlCall]) 
 			"post_read_reconcile" => recovery_call_metadata(call, false),
 			_ => false,
 		};
+
 		if !valid_operation
 			|| !valid_metadata
 			|| index > 0 && !interrupted_call(&reads[index - 1])
@@ -477,6 +528,7 @@ fn validate_create_and_read_sequence(attempt: &XurlAttempt, calls: &[XurlCall]) 
 			return Err(eyre::eyre!("xurl publication read sequence is invalid"));
 		}
 	}
+
 	if attempt.verified_user_id.is_none() || attempt.post_id.is_none() {
 		return Err(eyre::eyre!("xurl publication read state lacks its public post identity"));
 	}
@@ -486,9 +538,11 @@ fn validate_create_and_read_sequence(attempt: &XurlAttempt, calls: &[XurlCall]) 
 
 fn validate_observation_call_sequence(attempt: &XurlObservationAttempt) -> Result<()> {
 	let calls = &attempt.calls;
+
 	if calls[0].operation != "outcome_read" || !initial_call_metadata(&calls[0]) {
 		return Err(eyre::eyre!("xurl observation usage call sequence is invalid"));
 	}
+
 	for (index, call) in calls[1..].iter().enumerate() {
 		if call.operation != "outcome_read_reconcile"
 			|| !recovery_call_metadata(call, false)
@@ -497,15 +551,18 @@ fn validate_observation_call_sequence(attempt: &XurlObservationAttempt) -> Resul
 			return Err(eyre::eyre!("xurl observation recovery sequence is invalid"));
 		}
 	}
+
 	validate_unique_recovery_owners(&attempt.run_id, calls)
 }
 
 fn validate_unique_recovery_owners(run_id: &str, calls: &[XurlCall]) -> Result<()> {
 	let mut owners = BTreeSet::new();
+
 	for call in calls {
 		let Some(owner) = call.operation_id.as_deref() else {
 			continue;
 		};
+
 		if owner == run_id || !owners.insert(owner) {
 			return Err(eyre::eyre!("xurl usage recovery owner is invalid"));
 		}
@@ -596,6 +653,7 @@ fn validate_publication_state(attempt: &XurlAttempt) -> Result<()> {
 		),
 		_ => false,
 	};
+
 	if !valid {
 		return Err(eyre::eyre!("xurl publication usage state is invalid"));
 	}
@@ -620,6 +678,7 @@ fn validate_observation_state(attempt: &XurlObservationAttempt) -> Result<()> {
 		"observed" => call_state(last, &["outcome_read", "outcome_read_reconcile"], &["succeeded"]),
 		_ => false,
 	};
+
 	if !valid {
 		return Err(eyre::eyre!("xurl observation usage state is invalid"));
 	}
@@ -662,6 +721,7 @@ fn publication_charges(attempt: &XurlAttempt) -> Result<Vec<(String, u64)>> {
 	};
 	let mut charges = vec![(attempt.billing_month.clone(), base_reservation)];
 	let mut reserved = base_reservation;
+
 	for call in &attempt.calls {
 		let expected_cost = match call.operation.as_str() {
 			"identity_read" | "identity_read_reconcile" => IDENTITY_READ_COST_MICROUSD,
@@ -672,6 +732,7 @@ fn publication_charges(attempt: &XurlAttempt) -> Result<Vec<(String, u64)>> {
 			| "post_read_reconcile" => READ_COST_MICROUSD,
 			_ => return Err(eyre::eyre!("xurl publication usage operation is invalid")),
 		};
+
 		if call.recorded_cost_ceiling_microusd != expected_cost
 			|| matches!(
 				call.operation.as_str(),
@@ -684,16 +745,20 @@ fn publication_charges(attempt: &XurlAttempt) -> Result<Vec<(String, u64)>> {
 		{
 			return Err(eyre::eyre!("xurl publication usage charge is invalid"));
 		}
+
 		if let Some(month) = &call.billing_month {
 			if !valid_billing_month(month) {
 				return Err(eyre::eyre!("xurl publication call billing month is invalid"));
 			}
+
 			reserved = reserved
 				.checked_add(call.recorded_cost_ceiling_microusd)
 				.ok_or_else(|| eyre::eyre!("xurl publication usage arithmetic overflowed"))?;
+
 			charges.push((month.clone(), call.recorded_cost_ceiling_microusd));
 		}
 	}
+
 	if attempt.reserved_cost_ceiling_microusd != reserved {
 		return Err(eyre::eyre!("xurl publication usage reservation is inconsistent"));
 	}
@@ -707,6 +772,7 @@ fn publication_charges(attempt: &XurlAttempt) -> Result<Vec<(String, u64)>> {
 fn observation_charges(attempt: &XurlObservationAttempt) -> Result<Vec<(String, u64)>> {
 	let mut charges = vec![(attempt.billing_month.clone(), READ_COST_MICROUSD)];
 	let mut reserved = READ_COST_MICROUSD;
+
 	for call in &attempt.calls {
 		if call.recorded_cost_ceiling_microusd != READ_COST_MICROUSD
 			|| (call.operation == "outcome_read") != call.billing_month.is_none()
@@ -714,16 +780,20 @@ fn observation_charges(attempt: &XurlObservationAttempt) -> Result<Vec<(String, 
 		{
 			return Err(eyre::eyre!("xurl observation usage charge is invalid"));
 		}
+
 		if let Some(month) = &call.billing_month {
 			if !valid_billing_month(month) {
 				return Err(eyre::eyre!("xurl observation call billing month is invalid"));
 			}
+
 			reserved = reserved
 				.checked_add(call.recorded_cost_ceiling_microusd)
 				.ok_or_else(|| eyre::eyre!("xurl observation usage arithmetic overflowed"))?;
+
 			charges.push((month.clone(), call.recorded_cost_ceiling_microusd));
 		}
 	}
+
 	if attempt.reserved_cost_ceiling_microusd != reserved {
 		return Err(eyre::eyre!("xurl observation usage reservation is inconsistent"));
 	}
@@ -747,6 +817,7 @@ fn validate_usage_path(path: &Path, billing_month: &str) -> Result<()> {
 
 pub(super) fn valid_billing_month(value: &str) -> bool {
 	let bytes = value.as_bytes();
+
 	bytes.len() == 7
 		&& bytes[4] == b'-'
 		&& bytes[..4].iter().all(u8::is_ascii_digit)
@@ -777,6 +848,7 @@ pub(super) fn ensure_budget(
 	let next = reserved
 		.checked_add(additional_microusd)
 		.ok_or_else(|| eyre::eyre!("monthly X budget arithmetic overflowed"))?;
+
 	if next > SOCIAL_MONTHLY_BUDGET_MICROUSD {
 		return Err(eyre::eyre!(
 			"monthly X budget exhausted for {billing_month}: reserved={reserved}, next={additional_microusd}, limit={SOCIAL_MONTHLY_BUDGET_MICROUSD}"
@@ -794,10 +866,12 @@ pub(super) fn ensure_lineage_budget(
 	if !lowercase_digest(publication_lineage_sha256) {
 		return Err(eyre::eyre!("publication lineage digest is invalid"));
 	}
+
 	let reserved = lineage_reserved_cost(attempts_dir, publication_lineage_sha256)?;
 	let next = reserved
 		.checked_add(additional_microusd)
 		.ok_or_else(|| eyre::eyre!("publication lineage budget arithmetic overflowed"))?;
+
 	if next > PUBLICATION_LINEAGE_BUDGET_MICROUSD {
 		return Err(eyre::eyre!(
 			"publication lineage budget exhausted: reserved={reserved}, next={additional_microusd}, limit={PUBLICATION_LINEAGE_BUDGET_MICROUSD}"
@@ -811,7 +885,9 @@ fn lineage_reserved_cost(attempts_dir: &Path, publication_lineage_sha256: &str) 
 	if !attempts_dir.exists() {
 		return Ok(0);
 	}
+
 	let mut reserved = 0_u64;
+
 	for path in crate::collect_json_files(&[attempts_dir.to_path_buf()])? {
 		let payload = crate::load_json(&path)?;
 		let (lineage, cost) = match payload.get("schema").and_then(Value::as_str) {
@@ -819,7 +895,9 @@ fn lineage_reserved_cost(attempts_dir: &Path, publication_lineage_sha256: &str) 
 				let attempt: XurlAttempt = serde_json::from_value(payload).map_err(|_| {
 					eyre::eyre!("{} is not a valid xurl publication usage record", path.display())
 				})?;
+
 				validate_publication_cost_record(&attempt)?;
+
 				(attempt.publication_lineage_sha256, attempt.reserved_cost_ceiling_microusd)
 			},
 			Some(OBSERVATION_ATTEMPT_SCHEMA) => {
@@ -830,17 +908,21 @@ fn lineage_reserved_cost(attempts_dir: &Path, publication_lineage_sha256: &str) 
 							path.display()
 						)
 					})?;
+
 				validate_observation_cost_record(&attempt)?;
+
 				(attempt.publication_lineage_sha256, attempt.reserved_cost_ceiling_microusd)
 			},
 			_ => return Err(eyre::eyre!("{} has invalid xurl billing lineage", path.display())),
 		};
+
 		if lineage == publication_lineage_sha256 {
 			reserved = reserved
 				.checked_add(cost)
 				.ok_or_else(|| eyre::eyre!("publication lineage budget arithmetic overflowed"))?;
 		}
 	}
+
 	if reserved > PUBLICATION_LINEAGE_BUDGET_MICROUSD {
 		return Err(eyre::eyre!("publication lineage budget ledger exceeds its hard cap"));
 	}
@@ -865,9 +947,12 @@ pub(super) fn append_call(
 	updated_at: &str,
 ) -> Result<()> {
 	let previous = serde_json::to_value(&*attempt)?;
+
 	attempt.calls.push(call);
+
 	attempt.status = status.into();
 	attempt.updated_at = updated_at.into();
+
 	replace(path, &previous, attempt)
 }
 
@@ -879,13 +964,16 @@ pub(super) fn finish_last_call(
 	let previous = serde_json::to_value(&*attempt)?;
 	let call =
 		attempt.calls.last_mut().ok_or_else(|| eyre::eyre!("xurl attempt has no active call"))?;
+
 	if call.status != "inflight" {
 		return Err(eyre::eyre!("xurl attempt call is not inflight"));
 	}
+
 	call.status = completion.call_status.into();
 	call.response_sha256 = completion.response_sha256;
 	attempt.status = completion.status.into();
 	attempt.updated_at = completion.updated_at.into();
+
 	if let Some(value) = completion.verified_user_id {
 		attempt.verified_user_id = Some(value.into());
 	}
@@ -895,6 +983,7 @@ pub(super) fn finish_last_call(
 	if let Some(value) = completion.published_url {
 		attempt.published_url = Some(value.into());
 	}
+
 	replace(path, &previous, attempt)
 }
 
@@ -905,8 +994,10 @@ pub(super) fn update_attempt(
 	updated_at: &str,
 ) -> Result<()> {
 	let previous = serde_json::to_value(&*attempt)?;
+
 	attempt.status = status.into();
 	attempt.updated_at = updated_at.into();
+
 	replace(path, &previous, attempt)
 }
 
@@ -918,6 +1009,7 @@ pub(super) fn reconcile_attempt(
 	reconciliation: XurlReconciliation,
 ) -> Result<()> {
 	let previous = serde_json::to_value(&*attempt)?;
+
 	if matches!(
 		status,
 		"identity_reconciled" | NO_CREATE_RELEASED_STATUS | IDENTITY_RECOVERY_EXHAUSTED_STATUS
@@ -929,6 +1021,7 @@ pub(super) fn reconcile_attempt(
 						"identity-only recovery contains a non-identity reservation"
 					));
 				}
+
 				total
 					.checked_add(call.recorded_cost_ceiling_microusd)
 					.ok_or_else(|| eyre::eyre!("identity-only recovery budget overflowed"))
@@ -944,10 +1037,13 @@ pub(super) fn reconcile_attempt(
 	{
 		call.status = "uncertain".into();
 	}
+
 	attempt.status = status.into();
 	attempt.updated_at = updated_at.into();
 	attempt.reconciliation = Some(reconciliation);
+
 	validate_publication_cost_record(attempt)?;
+
 	replace(path, &previous, attempt)
 }
 
@@ -962,20 +1058,26 @@ pub(super) fn reserve_retry(
 		.billing_month
 		.as_deref()
 		.ok_or_else(|| eyre::eyre!("publication retry lacks a billing month"))?;
+
 	ensure_budget(attempts_dir, billing_month, call.recorded_cost_ceiling_microusd)?;
 	ensure_lineage_budget(
 		attempts_dir,
 		&attempt.publication_lineage_sha256,
 		call.recorded_cost_ceiling_microusd,
 	)?;
+
 	let previous = serde_json::to_value(&*attempt)?;
+
 	attempt.reserved_cost_ceiling_microusd = attempt
 		.reserved_cost_ceiling_microusd
 		.checked_add(call.recorded_cost_ceiling_microusd)
 		.ok_or_else(|| eyre::eyre!("publication retry budget overflowed"))?;
+
 	attempt.calls.push(call);
+
 	attempt.status = "read_retry_inflight".into();
 	attempt.updated_at = updated_at.into();
+
 	replace(path, &previous, attempt)
 }
 
@@ -996,6 +1098,7 @@ pub(super) fn reserve_publication_reconcile_call(
 			.billing_month
 			.as_deref()
 			.ok_or_else(|| eyre::eyre!("publication reconciliation call lacks a billing month"))?;
+
 		ensure_budget(attempts_dir, billing_month, call.recorded_cost_ceiling_microusd)?;
 		ensure_lineage_budget(
 			attempts_dir,
@@ -1010,11 +1113,13 @@ pub(super) fn reserve_publication_reconcile_call(
 		ensure_budget(attempts_dir, &attempt.billing_month, 0)?;
 		ensure_lineage_budget(attempts_dir, &attempt.publication_lineage_sha256, 0)?;
 	}
+
 	let previous = serde_json::to_value(&*attempt)?;
 	let prior = attempt
 		.calls
 		.last_mut()
 		.ok_or_else(|| eyre::eyre!("xurl publication attempt has no prior call"))?;
+
 	if prior.status == "inflight" {
 		prior.status = "uncertain".into();
 	}
@@ -1024,9 +1129,12 @@ pub(super) fn reserve_publication_reconcile_call(
 			.checked_add(call.recorded_cost_ceiling_microusd)
 			.ok_or_else(|| eyre::eyre!("publication reconciliation budget overflowed"))?;
 	}
+
 	attempt.calls.push(call);
+
 	attempt.status = status.into();
 	attempt.updated_at = updated_at.into();
+
 	replace(path, &previous, attempt)
 }
 
@@ -1052,35 +1160,43 @@ pub(super) fn reserve_observation_reconcile_call(
 	if attempt.calls.len() >= 3 {
 		return Err(eyre::eyre!("observation reconciliation paid-call sequence is exhausted"));
 	}
+
 	let billing_month = call
 		.billing_month
 		.as_deref()
 		.ok_or_else(|| eyre::eyre!("observation reconciliation call lacks a billing month"))?;
+
 	ensure_budget(attempts_dir, billing_month, call.recorded_cost_ceiling_microusd)?;
 	ensure_lineage_budget(
 		attempts_dir,
 		&attempt.publication_lineage_sha256,
 		call.recorded_cost_ceiling_microusd,
 	)?;
+
 	let previous = attempt.clone();
 	let prior = attempt
 		.calls
 		.last_mut()
 		.ok_or_else(|| eyre::eyre!("xurl observation attempt has no interrupted call"))?;
+
 	if !matches!(prior.status.as_str(), "inflight" | "failed" | "invalid" | "uncertain") {
 		return Err(eyre::eyre!("xurl observation attempt has no recoverable read"));
 	}
 	if prior.status == "inflight" {
 		prior.status = "uncertain".into();
 	}
+
 	attempt.reserved_cost_ceiling_microusd = attempt
 		.reserved_cost_ceiling_microusd
 		.checked_add(call.recorded_cost_ceiling_microusd)
 		.ok_or_else(|| eyre::eyre!("observation reconciliation budget overflowed"))?;
 	attempt.call = call.clone();
+
 	attempt.calls.push(call);
+
 	attempt.status = "read_reconcile_inflight".into();
 	attempt.updated_at = updated_at.into();
+
 	replace_observation(path, &previous, attempt)
 }
 
@@ -1097,14 +1213,17 @@ pub(super) fn finish_observation_call(
 		.calls
 		.last_mut()
 		.ok_or_else(|| eyre::eyre!("xurl observation attempt has no active call"))?;
+
 	if call.status != "inflight" {
 		return Err(eyre::eyre!("xurl observation attempt call is not inflight"));
 	}
+
 	call.status = call_status.into();
 	call.response_sha256 = response_sha256;
 	attempt.call = call.clone();
 	attempt.status = status.into();
 	attempt.updated_at = updated_at.into();
+
 	replace_observation(path, &previous, attempt)
 }
 
@@ -1116,16 +1235,20 @@ pub(super) fn reconcile_observation(
 	reconciliation: XurlReconciliation,
 ) -> Result<()> {
 	let previous = attempt.clone();
+
 	attempt.status = "observed".into();
 	attempt.updated_at = updated_at.into();
+
 	let call = attempt
 		.calls
 		.last_mut()
 		.ok_or_else(|| eyre::eyre!("xurl observation attempt has no active call"))?;
+
 	call.status = "succeeded".into();
 	call.response_sha256 = Some(response_sha256.into());
 	attempt.call = call.clone();
 	attempt.reconciliation = Some(reconciliation);
+
 	replace_observation(path, &previous, attempt)
 }
 
@@ -1140,14 +1263,18 @@ pub(super) fn terminalize_observation(
 		.calls
 		.last_mut()
 		.ok_or_else(|| eyre::eyre!("xurl observation attempt has no paid call"))?;
+
 	if call.status == "inflight" {
 		call.status = "uncertain".into();
 	}
+
 	attempt.call = call.clone();
 	attempt.status = READ_RECOVERY_EXHAUSTED_STATUS.into();
 	attempt.updated_at = updated_at.into();
 	attempt.reconciliation = Some(reconciliation);
+
 	validate_observation_cost_record(attempt)?;
+
 	replace_observation(path, &previous, attempt)
 }
 
@@ -1167,6 +1294,7 @@ mod tests {
 			"019fa400-0000-7000-8000-000000000001",
 			vec![call("identity_read_reconcile", IDENTITY_READ_COST_MICROUSD, Some("2026-08"))],
 		);
+
 		crate::write_new_json(
 			&attempts.join("2026-07/publication.json"),
 			&serde_json::to_value(publication).expect("publication"),
@@ -1196,6 +1324,7 @@ mod tests {
 			calls: vec![initial, recovery],
 			reconciliation: None,
 		};
+
 		crate::write_new_json(
 			&attempts.join("2026-07/observation.json"),
 			&serde_json::to_value(observation).expect("observation"),
@@ -1217,11 +1346,13 @@ mod tests {
 				call("content_create", CREATE_COST_MICROUSD, None),
 			],
 		);
+
 		crate::write_new_json(
 			&attempts.join("2026-07/publication.json"),
 			&serde_json::to_value(publication).expect("publication"),
 		)
 		.expect("publication usage");
+
 		let outcome_call = call("outcome_read", READ_COST_MICROUSD, None);
 		let observation = XurlObservationAttempt {
 			schema: OBSERVATION_ATTEMPT_SCHEMA.into(),
@@ -1244,6 +1375,7 @@ mod tests {
 			calls: vec![outcome_call],
 			reconciliation: None,
 		};
+
 		crate::write_new_json(
 			&attempts.join("2026-07/observation.json"),
 			&serde_json::to_value(observation).expect("observation"),
@@ -1251,6 +1383,7 @@ mod tests {
 		.expect("observation usage");
 
 		let report = cost_report(&attempts, "2026-07").expect("bounded cost report");
+
 		assert_eq!(report.used_cost_ceiling_microusd, 30_000);
 		assert_eq!(report.reserved_cost_ceiling_microusd, 35_000);
 		assert_eq!(report.remaining_cost_ceiling_microusd, 1_215_000);
@@ -1260,7 +1393,9 @@ mod tests {
 		assert_eq!(report.content_create_call_count, 1);
 		assert_eq!(report.post_read_call_count, 1);
 		assert_eq!(report.total_call_count, 3);
+
 		let serialized = serde_json::to_string(&report).expect("cost report JSON");
+
 		assert!(!serialized.contains("post.json"));
 		assert!(!serialized.contains("response_sha256"));
 	}
@@ -1271,7 +1406,9 @@ mod tests {
 		let attempts = temp.path().join("attempts");
 		let mut publication =
 			publication_attempt("019fa400-0000-7000-8000-000000000001", Vec::new());
+
 		publication.xurl_version = "1.3.2".into();
+
 		crate::write_new_json(
 			&attempts.join("2026-07/publication.json"),
 			&serde_json::to_value(publication).expect("publication"),
@@ -1281,6 +1418,7 @@ mod tests {
 		let error = cost_report(&attempts, "2026-07")
 			.expect_err("wrong runtime authority must stop cost reporting")
 			.to_string();
+
 		assert!(error.contains("usage authority is invalid"), "{error}");
 	}
 
@@ -1288,9 +1426,11 @@ mod tests {
 	fn monthly_cap_counts_every_base_reservation_before_an_added_read() {
 		let temp = tempfile::tempdir().expect("tempdir");
 		let attempts = temp.path().join("attempts");
+
 		for index in 0..41 {
 			let attempt =
 				publication_attempt(&format!("019fa400-0000-7000-8000-{index:012}"), Vec::new());
+
 			crate::write_new_json(
 				&attempts.join("2026-07").join(format!("{index}.json")),
 				&serde_json::to_value(attempt).expect("attempt"),
@@ -1311,19 +1451,26 @@ mod tests {
 		let attempts = temp.path().join("attempts");
 		let path = attempts.join("2026-07/publication.json");
 		let mut initial = call("identity_read", IDENTITY_READ_COST_MICROUSD, None);
+
 		initial.status = "inflight".into();
 		initial.response_sha256 = None;
+
 		let mut attempt =
 			publication_attempt("019fa400-0000-7000-8000-000000000001", vec![initial]);
+
 		attempt.status = "identity_inflight".into();
+
 		crate::write_new_json(&path, &serde_json::to_value(&attempt).expect("initial attempt"))
 			.expect("attempt");
+
 		let mut first = load_attempt(&path).expect("first reader");
 		let mut stale = load_attempt(&path).expect("stale reader");
 		let mut first_call =
 			call("identity_read_reconcile", IDENTITY_READ_COST_MICROUSD, Some("2026-07"));
+
 		first_call.status = "inflight".into();
 		first_call.response_sha256 = None;
+
 		reserve_publication_reconcile_call(
 			&path,
 			&mut first,
@@ -1334,8 +1481,10 @@ mod tests {
 			true,
 		)
 		.expect("first reservation");
+
 		let mut stale_call =
 			call("identity_read_reconcile", IDENTITY_READ_COST_MICROUSD, Some("2026-07"));
+
 		stale_call.operation_id = Some("019fa400-0000-7000-8000-000000000098".into());
 		stale_call.status = "inflight".into();
 		stale_call.response_sha256 = None;
@@ -1351,6 +1500,7 @@ mod tests {
 		)
 		.expect_err("stale writer must lose the compare-and-swap race");
 		let durable = load_attempt(&path).expect("durable winner");
+
 		assert_eq!(durable.calls.len(), 2);
 		assert_eq!(
 			durable.calls[1].operation_id.as_deref(),
@@ -1363,6 +1513,7 @@ mod tests {
 		let temp = tempfile::tempdir().expect("tempdir");
 		let attempts = temp.path().join("attempts");
 		let path = attempts.join("2026-07/0.json");
+
 		for index in 0..42 {
 			let run_id = format!("019fa400-0000-7000-8000-{index:012}");
 			let calls = if index == 0 {
@@ -1374,15 +1525,18 @@ mod tests {
 				Vec::new()
 			};
 			let attempt = publication_attempt(&run_id, calls);
+
 			crate::write_new_json(
 				&attempts.join("2026-07").join(format!("{index}.json")),
 				&serde_json::to_value(attempt).expect("attempt"),
 			)
 			.expect("usage record");
 		}
+
 		let before = crate::load_json(&path).expect("durable attempt");
 		let mut attempt = load_attempt(&path).expect("recovery attempt");
 		let mut recovery_call = call("post_read_initial_reconcile", READ_COST_MICROUSD, None);
+
 		recovery_call.status = "inflight".into();
 		recovery_call.response_sha256 = None;
 
@@ -1414,6 +1568,7 @@ mod tests {
 			Some("content_create") => "created",
 			_ => "reserved",
 		};
+
 		XurlAttempt {
 			schema: ATTEMPT_SCHEMA.into(),
 			run_id: run_id.into(),

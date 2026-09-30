@@ -41,6 +41,7 @@ pub(super) fn validate_social_publish_reservation(
 			errors.push(format!("{field} must be a non-empty string"));
 		}
 	}
+
 	if !entry.get("publication_lineage_sha256").and_then(Value::as_str).is_some_and(valid_sha256) {
 		errors.push("publication_lineage_sha256 must be a lowercase SHA-256 digest".into());
 	}
@@ -53,6 +54,7 @@ pub(super) fn validate_social_publish_reservation(
 		"duplicate_keys",
 		errors,
 	);
+
 	if entry.get("duplicate_keys")
 		!= Some(&serde_json::json!([entry.get("slug"), entry.get("idempotency_key")]))
 	{
@@ -60,6 +62,7 @@ pub(super) fn validate_social_publish_reservation(
 			"duplicate_keys must contain exactly the candidate slug and idempotency_key".into(),
 		);
 	}
+
 	social_validation::validate_optional_string_list(
 		entry.get("evidence_notes"),
 		"evidence_notes",
@@ -70,10 +73,12 @@ pub(super) fn validate_social_publish_reservation(
 
 	social_validation::validate_rfc3339_field(entry, "reserved_at", errors);
 	social_validation::validate_rfc3339_field(entry, "expires_at", errors);
+
 	let reserved_at = social_validation::string_field(entry, "reserved_at")
 		.and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok());
 	let expires_at = social_validation::string_field(entry, "expires_at")
 		.and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok());
+
 	if reserved_at.zip(expires_at).is_some_and(|(reserved, expires)| expires <= reserved) {
 		errors.push("expires_at must be later than reserved_at".into());
 	}
@@ -115,12 +120,14 @@ fn validate_social_publish_reservation_refs(refs: Option<&Value>, errors: &mut V
 
 		return;
 	};
+
 	social_validation::validate_exact_keys(refs, "candidate_refs", &["social_candidates"], errors);
 	social_validation::validate_optional_string_list(
 		refs.get("social_candidates"),
 		"candidate_refs.social_candidates",
 		errors,
 	);
+
 	if refs.get("social_candidates").and_then(Value::as_array).map(Vec::len) != Some(1) {
 		errors.push("candidate_refs.social_candidates must contain exactly one item".into());
 	}
@@ -129,6 +136,7 @@ fn validate_social_publish_reservation_refs(refs: Option<&Value>, errors: &mut V
 fn validate_social_publish_reservation_owner(owner: Option<&Value>, errors: &mut Vec<String>) {
 	let Some(owner) = owner else {
 		errors.push("owner is required".into());
+
 		return;
 	};
 	let Some(owner) = owner.as_object() else {
@@ -136,12 +144,15 @@ fn validate_social_publish_reservation_owner(owner: Option<&Value>, errors: &mut
 
 		return;
 	};
+
 	social_validation::validate_exact_keys(owner, "owner", &["automation_id", "run_id"], errors);
 
 	if social_validation::string_field(owner, "automation_id") != Some("decodex-xurl-publisher") {
 		errors.push("owner.automation_id must be decodex-xurl-publisher".into());
 	}
+
 	let run_id = social_validation::string_field(owner, "run_id");
+
 	if run_id.is_none_or(|value| !crate::social_publish::valid_run_id(value)) {
 		errors.push("owner.run_id must be a lowercase UUID".into());
 	}

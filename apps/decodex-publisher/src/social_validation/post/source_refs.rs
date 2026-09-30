@@ -6,12 +6,14 @@ pub(super) fn validate_social_post_source_refs(refs: Option<&Value>, errors: &mu
 
 		return;
 	};
+
 	social_validation::validate_exact_keys(
 		refs,
 		"source_refs",
 		&["reservations", "social_candidates", "urls"],
 		errors,
 	);
+
 	let has_refs = ["reservations", "social_candidates", "urls"].iter().any(|field| {
 		refs.get(*field)
 			.is_some_and(|value| !social_validation::is_empty_or_missing_array(Some(value)))

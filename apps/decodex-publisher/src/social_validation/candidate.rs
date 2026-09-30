@@ -61,6 +61,7 @@ pub(super) fn validate_social_candidate(entry: &Map<String, Value>, errors: &mut
 			errors.push(format!("{field} must be a non-empty string"));
 		}
 	}
+
 	if social_validation::string_field(entry, "repo").is_some_and(|repo| !repo.contains('/')) {
 		errors.push("repo must be owner/name".into());
 	}
@@ -83,6 +84,7 @@ pub(super) fn validate_social_candidate(entry: &Map<String, Value>, errors: &mut
 
 	validate_candidate_text(entry.get("candidate_text"), errors);
 	validate_sources(entry.get("source_refs"), entry.get("source_kinds"), errors);
+
 	social_validation::validate_non_empty_string_list(
 		entry.get("evidence_notes"),
 		"evidence_notes",
@@ -95,15 +97,19 @@ pub(super) fn validate_social_candidate(entry: &Map<String, Value>, errors: &mut
 		false,
 		errors,
 	);
+
 	validate_decision(entry.get("decision"), errors);
+
 	social_validation::validate_optional_string_list(entry.get("caveats"), "caveats", errors);
 }
 
 fn validate_candidate_text(value: Option<&Value>, errors: &mut Vec<String>) {
 	social_validation::validate_social_post_text(value, errors);
+
 	let Some(items) = value.and_then(Value::as_array) else {
 		return;
 	};
+
 	if items.len() != 1 {
 		errors.push("candidate_text must contain exactly one item".into());
 	}
@@ -115,29 +121,39 @@ fn validate_candidate_text(value: Option<&Value>, errors: &mut Vec<String>) {
 fn validate_sources(refs: Option<&Value>, kinds: Option<&Value>, errors: &mut Vec<String>) {
 	let Some(refs) = refs.and_then(Value::as_object) else {
 		errors.push("source_refs must be an object".into());
+
 		return;
 	};
+
 	social_validation::validate_exact_keys(refs, "source_refs", &["urls"], errors);
+
 	let Some(urls) = refs.get("urls").and_then(Value::as_array).filter(|urls| !urls.is_empty())
 	else {
 		errors.push("source_refs.urls must be a non-empty list of https URLs".into());
+
 		return;
 	};
+
 	if urls.len() > 8 || !urls.iter().all(|url| social_validation::is_https_string(Some(url))) {
 		errors.push("source_refs.urls must contain at most 8 canonical HTTPS URLs".into());
 	}
+
 	let url_values = urls.iter().filter_map(Value::as_str).collect::<BTreeSet<_>>();
+
 	if url_values.len() != urls.len() {
 		errors.push("source_refs.urls must be unique".into());
 	}
 
 	let Some(kinds) = kinds.and_then(Value::as_object) else {
 		errors.push("source_kinds must map every source URL to its evidence class".into());
+
 		return;
 	};
+
 	if kinds.keys().map(String::as_str).collect::<BTreeSet<_>>() != url_values {
 		errors.push("source_kinds keys must exactly match source_refs.urls".into());
 	}
+
 	for (url, kind) in kinds {
 		if !SOURCE_KINDS.contains(&kind.as_str().unwrap_or_default()) {
 			errors.push(format!(
@@ -148,16 +164,19 @@ fn validate_sources(refs: Option<&Value>, kinds: Option<&Value>, errors: &mut Ve
 	}
 
 	let mut has_primary = false;
+
 	for url in url_values {
 		let Some(classified) = classify_source_url(url) else {
 			errors.push(format!(
 				"source_refs.urls entry {url:?} must be a canonical HTTPS URL without userinfo, a port, query, fragment, percent escape, or non-normal path"
 			));
+
 			continue;
 		};
 		let Some(declared) = kinds.get(url).and_then(Value::as_str) else {
 			continue;
 		};
+
 		if !SOURCE_KINDS.contains(&declared) {
 			continue;
 		}
@@ -166,12 +185,14 @@ fn validate_sources(refs: Option<&Value>, kinds: Option<&Value>, errors: &mut Ve
 				"source_kinds[{url:?}] must be {:?} for that URL",
 				classified.label()
 			));
+
 			continue;
 		}
 		if classified.is_primary() {
 			has_primary = true;
 		}
 	}
+
 	if !has_primary {
 		errors.push("at least one official_codex or landed_decodex source is required".into());
 	}
@@ -179,6 +200,7 @@ fn validate_sources(refs: Option<&Value>, kinds: Option<&Value>, errors: &mut Ve
 
 fn classify_source_url(value: &str) -> Option<SourceKind> {
 	let url = parse_exact_https_url(value)?;
+
 	if url.host == "github.com" && path_at_or_below(url.path, "openai/codex") {
 		return Some(SourceKind::OfficialCodex);
 	}
@@ -204,7 +226,9 @@ fn parse_exact_https_url(value: &str) -> Option<ExactHttpsUrl<'_>> {
 	if !value.is_ascii() {
 		return None;
 	}
+
 	let remainder = value.strip_prefix("https://")?;
+
 	if remainder.is_empty()
 		|| remainder
 			.bytes()
@@ -212,7 +236,9 @@ fn parse_exact_https_url(value: &str) -> Option<ExactHttpsUrl<'_>> {
 	{
 		return None;
 	}
+
 	let (host, path) = remainder.split_once('/').unwrap_or((remainder, ""));
+
 	if !valid_dns_host(host) || !valid_url_path(path) {
 		return None;
 	}
@@ -245,7 +271,9 @@ fn valid_url_path(path: &str) -> bool {
 	if path.is_empty() {
 		return true;
 	}
+
 	let path = path.strip_suffix('/').unwrap_or(path);
+
 	!path.is_empty()
 		&& path.split('/').all(|segment| {
 			!segment.is_empty()
@@ -265,6 +293,7 @@ fn is_openai_codex_release_path(path: &str) -> bool {
 	let Some(slug) = path.strip_prefix("index/") else {
 		return false;
 	};
+
 	!slug.is_empty()
 		&& !slug.contains('/')
 		&& slug.contains("codex")
@@ -277,20 +306,24 @@ fn is_decodex_commit_path(path: &str) -> bool {
 	let Some(oid) = path.strip_prefix("acg-box/decodex/commit/") else {
 		return false;
 	};
+
 	oid.len() == 40 && oid.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
 }
 
 fn validate_decision(value: Option<&Value>, errors: &mut Vec<String>) {
 	let Some(decision) = value.and_then(Value::as_object) else {
 		errors.push("decision must be an object".into());
+
 		return;
 	};
+
 	social_validation::validate_exact_keys(
 		decision,
 		"decision",
 		&["idempotency_key", "reason", "worthiness"],
 		errors,
 	);
+
 	if !social_validation::matches_one_of(decision.get("worthiness"), &["no_op", "publish"]) {
 		errors.push("decision.worthiness must be one of ['no_op', 'publish']".into());
 	}
@@ -327,6 +360,7 @@ mod tests {
 			(DECODEX_COMMIT_URL, "landed_decodex"),
 		] {
 			let errors = source_errors(url, kind);
+
 			assert!(errors.is_empty(), "{url}: {errors:?}");
 		}
 	}
@@ -385,6 +419,7 @@ mod tests {
 			),
 		] {
 			let errors = source_errors(url, kind);
+
 			assert!(
 				errors.iter().any(|error| error.contains("must be \"radar_secondary\"")),
 				"{url}: {errors:?}"
@@ -400,7 +435,9 @@ mod tests {
 			(DECODEX_COMMIT_URL, "official_codex", SourceKind::LandedDecodex),
 		] {
 			assert_eq!(classify_source_url(url), Some(expected));
+
 			let errors = source_errors(url, kind);
+
 			assert!(errors.iter().any(|error| error.contains("for that URL")));
 			assert!(errors.iter().any(|error| error.contains("at least one official_codex")));
 		}
@@ -409,6 +446,7 @@ mod tests {
 	#[test]
 	fn radar_secondary_cannot_satisfy_the_primary_requirement() {
 		let errors = source_errors("https://codexradar.example/reports/22414", "radar_secondary");
+
 		assert_eq!(errors, ["at least one official_codex or landed_decodex source is required"]);
 	}
 
@@ -416,10 +454,13 @@ mod tests {
 	fn candidate_claims_stay_bound_to_declared_sources() {
 		let mut candidate = candidate_with_source(OFFICIAL_CODEX_URL, "official_codex");
 		let validation = crate::social_validation::validate_social_artifact(&candidate);
+
 		assert!(validation.errors.is_empty(), "{:?}", validation.errors);
 
 		candidate["claims"][0]["evidence"] = json!("https://example.com/not-declared");
+
 		let validation = crate::social_validation::validate_social_artifact(&candidate);
+
 		assert!(validation.errors.iter().any(|error| {
 			error.contains("claims[0].evidence must exactly match one declared source reference")
 		}));
@@ -429,7 +470,9 @@ mod tests {
 		let refs = json!({"urls": [url]});
 		let kinds = json!({(url): kind});
 		let mut errors = Vec::new();
+
 		validate_sources(Some(&refs), Some(&kinds), &mut errors);
+
 		errors
 	}
 

@@ -6,6 +6,7 @@ pub(super) fn validate_social_post_decision(entry: &Map<String, Value>, errors: 
 
 		return;
 	};
+
 	social_validation::validate_exact_keys(
 		decision,
 		"decision",
@@ -85,11 +86,13 @@ mod tests {
 		let decision =
 			json!({"daily_limit": 1, "daily_count_before": before, "daily_count_after": after});
 		let mut errors = Vec::new();
+
 		super::validate_social_post_decision_counts(
 			entry.as_object().unwrap(),
 			decision.as_object().unwrap(),
 			&mut errors,
 		);
+
 		errors
 	}
 
@@ -98,6 +101,7 @@ mod tests {
 		assert!(!errors("published", json!(i64::MAX), json!(0)).is_empty());
 		assert!(!errors("published", json!(u64::MAX), json!(0)).is_empty());
 		assert!(!errors("published", json!(-1), json!(0)).is_empty());
+
 		for status in ["blocked", "failed", "skipped"] {
 			assert!(!errors(status, json!(-1), json!(-1)).is_empty());
 		}
@@ -107,6 +111,7 @@ mod tests {
 	fn decision_counts_preserve_valid_state_transitions() {
 		assert!(errors("published", json!(0), json!(1)).is_empty());
 		assert!(!errors("published", json!(0), json!(0)).is_empty());
+
 		for status in ["blocked", "failed", "skipped"] {
 			assert!(errors(status, json!(0), json!(0)).is_empty());
 			assert!(errors(status, json!(1), json!(1)).is_empty());

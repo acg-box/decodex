@@ -21,21 +21,27 @@ use crate::{
 pub(crate) fn seal_auth(request: &SocialSealXurlAuthRequest) -> Result<SocialSealXurlAuthReport> {
 	let binary = runtime::trusted_xurl_binary()?;
 	let report = auth_contract::seal(request, &binary)?;
+
 	binary.require_command_time_remaining()?;
+
 	Ok(report)
 }
 
 pub(crate) fn publish(request: &SocialPublishXurlRequest) -> Result<SocialPublishXurlReport> {
 	let binary = runtime::trusted_xurl_binary()?;
 	let report = publish::run(request, &binary)?;
+
 	binary.require_command_time_remaining()?;
+
 	Ok(report)
 }
 
 pub(crate) fn observe(request: &SocialObserveXurlRequest) -> Result<SocialObserveXurlReport> {
 	let binary = runtime::trusted_xurl_binary()?;
 	let report = observe::run(request, &binary)?;
+
 	binary.require_command_time_remaining()?;
+
 	Ok(report)
 }
 
@@ -48,7 +54,9 @@ pub(crate) fn probe(now: &str) -> Result<SocialProbeXurlReport> {
 		&binary,
 	)?;
 	let report = probe_with_verified(now, &binary, &contract)?;
+
 	binary.require_command_time_remaining()?;
+
 	Ok(report)
 }
 
@@ -58,6 +66,7 @@ pub(crate) fn refresh_pricing(now: &str) -> Result<SocialRefreshPricingReport> {
 
 pub(crate) fn cost_report(billing_month: &str) -> Result<SocialXurlCostReport> {
 	let root = crate::repo_root()?;
+
 	ledger::cost_report(
 		&crate::resolve_against(&root, Path::new(crate::DEFAULT_SOCIAL_ATTEMPTS_DIR)),
 		billing_month,
@@ -117,6 +126,7 @@ pub(crate) fn publish_with_test_binary(
 	xurl_binary: &Path,
 ) -> Result<SocialPublishXurlReport> {
 	let binary = runtime::TrustedXurlBinary::open_for_test(xurl_binary)?;
+
 	publish::run_without_pricing_for_test(request, &binary)
 }
 
@@ -126,6 +136,7 @@ pub(crate) fn publish_with_identity_interruption_for_test(
 	xurl_binary: &Path,
 ) -> Result<SocialPublishXurlReport> {
 	let binary = runtime::TrustedXurlBinary::open_for_test(xurl_binary)?;
+
 	publish::run_with_identity_interruption_for_test(request, &binary)
 }
 
@@ -135,6 +146,7 @@ pub(crate) fn publish_with_reserved_attempt_interruption_for_test(
 	xurl_binary: &Path,
 ) -> Result<SocialPublishXurlReport> {
 	let binary = runtime::TrustedXurlBinary::open_for_test(xurl_binary)?;
+
 	publish::run_with_reserved_attempt_interruption_for_test(request, &binary)
 }
 
@@ -144,6 +156,7 @@ pub(crate) fn observe_with_test_binary(
 	xurl_binary: &Path,
 ) -> Result<SocialObserveXurlReport> {
 	let binary = runtime::TrustedXurlBinary::open_for_test(xurl_binary)?;
+
 	observe::run_without_pricing_for_test(request, &binary)
 }
 

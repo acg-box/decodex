@@ -46,6 +46,7 @@ struct SocialRecordCandidateCommand {
 impl SocialRecordCandidateCommand {
 	fn run(&self) -> Result<()> {
 		require_current_thread_id(&self.run_id)?;
+
 		let report = crate::record_social_candidate(&SocialRecordCandidateRequest {
 			staging_path: self.staging_path.clone(),
 			staging_dir: PathBuf::from(DEFAULT_SOCIAL_STAGING_DIR),
@@ -55,7 +56,9 @@ impl SocialRecordCandidateCommand {
 			locks_dir: PathBuf::from(DEFAULT_SOCIAL_LOCKS_DIR),
 			run_id: self.run_id.clone(),
 		})?;
+
 		println!("{}", serde_json::to_string_pretty(&report)?);
+
 		Ok(())
 	}
 }
@@ -73,6 +76,7 @@ struct SocialPublishNextCommand {
 impl SocialPublishNextCommand {
 	fn run(&self) -> Result<()> {
 		require_current_thread_id(&self.run_id)?;
+
 		let decision = match self.decision {
 			PublishDecision::Publish => "publish",
 			PublishDecision::Skip => "skip",
@@ -83,7 +87,9 @@ impl SocialPublishNextCommand {
 			reason: self.reason.clone(),
 			clock: SocialClock::current()?,
 		})?;
+
 		println!("{}", serde_json::to_string_pretty(&report)?);
+
 		Ok(())
 	}
 }
@@ -97,11 +103,14 @@ struct SocialObserveDueCommand {
 impl SocialObserveDueCommand {
 	fn run(&self) -> Result<()> {
 		require_current_thread_id(&self.run_id)?;
+
 		let report = crate::observe_due(&SocialObserveDueRequest {
 			run_id: self.run_id.clone(),
 			observed_at: SocialClock::current()?.now,
 		})?;
+
 		println!("{}", serde_json::to_string_pretty(&report)?);
+
 		Ok(())
 	}
 }
@@ -112,7 +121,9 @@ struct SocialProbeXurlCommand {}
 impl SocialProbeXurlCommand {
 	fn run(&self) -> Result<()> {
 		let report = crate::probe_social_xurl(&SocialClock::current()?.now)?;
+
 		println!("{}", serde_json::to_string_pretty(&report)?);
+
 		Ok(())
 	}
 }
@@ -123,7 +134,9 @@ struct SocialRefreshPricingCommand {}
 impl SocialRefreshPricingCommand {
 	fn run(&self) -> Result<()> {
 		let report = crate::refresh_social_x_pricing(&SocialClock::current()?.now)?;
+
 		println!("{}", serde_json::to_string_pretty(&report)?);
+
 		Ok(())
 	}
 }
@@ -139,7 +152,9 @@ impl SocialCostReportCommand {
 		let clock = SocialClock::current()?;
 		let month = self.month.as_deref().unwrap_or(&clock.day[..7]);
 		let report = crate::report_social_xurl_cost(month)?;
+
 		println!("{}", serde_json::to_string_pretty(&report)?);
+
 		Ok(())
 	}
 }
@@ -153,7 +168,9 @@ impl SocialSealXurlAuthCommand {
 			receipt_path: PathBuf::from(DEFAULT_XURL_AUTH_CONTRACT_PATH),
 			sealed_at: SocialClock::current()?.now,
 		})?;
+
 		println!("{}", serde_json::to_string_pretty(&report)?);
+
 		Ok(())
 	}
 }
@@ -179,8 +196,10 @@ enum SocialSubcommand {
 fn require_current_thread_id(run_id: &str) -> Result<()> {
 	let current = std::env::var("CODEX_THREAD_ID")
 		.map_err(|_| crate::prelude::eyre::eyre!("CODEX_THREAD_ID is required"))?;
+
 	if run_id != current {
 		return Err(crate::prelude::eyre::eyre!("run_id must exactly match CODEX_THREAD_ID"));
 	}
+
 	Ok(())
 }

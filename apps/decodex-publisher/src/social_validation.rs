@@ -42,6 +42,7 @@ pub(crate) fn validate_social_artifact_for_path(
 	payload: &Value,
 ) -> SocialArtifactValidation {
 	let mut validation = validate_social_artifact(payload);
+
 	if validation.errors.is_empty()
 		&& let Err(error) = crate::social_record::validate_publication_identity(payload)
 	{
