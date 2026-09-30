@@ -4,12 +4,13 @@ use std::{
 	path::{Path, PathBuf},
 };
 
+use color_eyre::eyre::Report;
 use rusqlite::{Connection, MAIN_DB, OptionalExtension as _};
 
 use crate::{
-	LEDGER_MAX_BYTES, SCHEMA_VERSION,
-	prelude::{Result, eyre},
-	private_fs::{PrivateFileIdentity, RadarCacheLock},
+	LEDGER_MAX_BYTES, SCHEMA_VERSION, ledger,
+	prelude::{self, eyre},
+	private_fs::{self, PrivateFileIdentity, RadarCacheLock},
 };
 
 const MAX_LEDGER_RECOVERY_BYTES: u64 = LEDGER_MAX_BYTES * 2;
@@ -117,13 +118,13 @@ impl RadarLedgerImage {
 		mut self,
 		lock: &RadarCacheLock,
 		max_bytes: u64,
-	) -> Result<PrivateFileIdentity> {
+	) -> prelude::Result<PrivateFileIdentity> {
 		let connection = self
 			.connection
 			.take()
 			.ok_or_else(|| eyre::eyre!("Radar ledger connection is already closed"))?;
 
-		crate::ledger::validate_ledger_bounds(&connection)?;
+		ledger::validate_ledger_bounds(&connection)?;
 
 		let payload = {
 			let serialized = connection.serialize(MAIN_DB)?;
@@ -136,7 +137,7 @@ impl RadarLedgerImage {
 		if payload_bytes > max_bytes {
 			eyre::bail!(
 				"{}: Radar ledger remains above the byte limit after oldest-first retention",
-				crate::ledger::bounds::OVERSIZE_INCIDENT
+				ledger::bounds::OVERSIZE_INCIDENT
 			);
 		}
 
@@ -173,7 +174,7 @@ impl RadarLedgerConnection {
 		&self.lock
 	}
 
-	pub(crate) fn close(self) -> Result<()> {
+	pub(crate) fn close(self) -> prelude::Result<()> {
 		self.image.persist(&self.lock, LEDGER_MAX_BYTES)?;
 
 		Ok(())
@@ -187,8 +188,17 @@ impl Deref for RadarLedgerConnection {
 	}
 }
 
-pub(crate) fn open_ledger(path: &Path) -> Result<RadarLedgerConnection> {
-	let (cache, relative) = crate::private_fs::private_cache_file(path)?;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum InitFailureBoundary {
+	AfterInventory,
+	AfterObjects,
+	AfterVersion,
+	BeforeCommit,
+	None,
+}
+
+pub(crate) fn open_ledger(path: &Path) -> prelude::Result<RadarLedgerConnection> {
+	let (cache, relative) = private_fs::private_cache_file(path)?;
 	let lock = cache.lock()?;
 	let image = open_connection_under_lock(&relative, &lock, true)?;
 
@@ -198,15 +208,57 @@ pub(crate) fn open_ledger(path: &Path) -> Result<RadarLedgerConnection> {
 pub(crate) fn open_ledger_under_cache_lock(
 	relative: &Path,
 	lock: &RadarCacheLock,
-) -> Result<RadarLedgerImage> {
+) -> prelude::Result<RadarLedgerImage> {
 	open_connection_under_lock(relative, lock, false)
+}
+
+pub(crate) fn initialize_ledger(connection: &Connection) -> prelude::Result<()> {
+	configure_ledger_storage(connection)?;
+
+	connection.execute_batch("BEGIN IMMEDIATE")?;
+
+	let result = initialize_ledger_transaction(connection, InitFailureBoundary::None);
+
+	match result {
+		Ok(()) => connection.execute_batch("COMMIT")?,
+		Err(error) => {
+			let _ = connection.execute_batch("ROLLBACK");
+
+			return Err(error);
+		},
+	}
+
+	Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn initialize_ledger_with_failure(
+	connection: &Connection,
+	boundary: &str,
+) -> prelude::Result<()> {
+	let boundary = match boundary {
+		"after_inventory" => InitFailureBoundary::AfterInventory,
+		"after_objects" => InitFailureBoundary::AfterObjects,
+		"after_version" => InitFailureBoundary::AfterVersion,
+		"before_commit" => InitFailureBoundary::BeforeCommit,
+		_ => eyre::bail!("unknown Radar ledger initialization failure boundary"),
+	};
+
+	configure_ledger_storage(connection)?;
+
+	connection.execute_batch("BEGIN IMMEDIATE")?;
+
+	let result = initialize_ledger_transaction(connection, boundary);
+	let _ = connection.execute_batch("ROLLBACK");
+
+	result
 }
 
 fn open_connection_under_lock(
 	relative: &Path,
 	lock: &RadarCacheLock,
 	validate_bounds: bool,
-) -> Result<RadarLedgerImage> {
+) -> prelude::Result<RadarLedgerImage> {
 	let original_identity = lock.cache().metadata(relative)?;
 
 	if original_identity
@@ -215,7 +267,7 @@ fn open_connection_under_lock(
 	{
 		eyre::bail!(
 			"{}: Radar ledger exceeds the bounded recovery read limit",
-			crate::ledger::bounds::OVERSIZE_INCIDENT
+			ledger::bounds::OVERSIZE_INCIDENT
 		);
 	}
 
@@ -243,7 +295,7 @@ fn open_connection_under_lock(
 	initialize_ledger(&connection)?;
 
 	if validate_bounds {
-		crate::ledger::validate_ledger_bounds(&connection)?;
+		ledger::validate_ledger_bounds(&connection)?;
 	}
 
 	Ok(RadarLedgerImage {
@@ -254,29 +306,10 @@ fn open_connection_under_lock(
 	})
 }
 
-pub(crate) fn initialize_ledger(connection: &Connection) -> Result<()> {
-	configure_ledger_storage(connection)?;
-
-	connection.execute_batch("BEGIN IMMEDIATE")?;
-
-	let result = initialize_ledger_transaction(connection, InitFailureBoundary::None);
-
-	match result {
-		Ok(()) => connection.execute_batch("COMMIT")?,
-		Err(error) => {
-			let _ = connection.execute_batch("ROLLBACK");
-
-			return Err(error);
-		},
-	}
-
-	Ok(())
-}
-
 fn initialize_ledger_transaction(
 	connection: &Connection,
 	failure: InitFailureBoundary,
-) -> Result<()> {
+) -> prelude::Result<()> {
 	let empty = require_current_schema_or_empty(connection)?;
 
 	fail_initialization(failure, InitFailureBoundary::AfterInventory)?;
@@ -304,16 +337,10 @@ fn initialize_ledger_transaction(
 	fail_initialization(failure, InitFailureBoundary::BeforeCommit)
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum InitFailureBoundary {
-	AfterInventory,
-	AfterObjects,
-	AfterVersion,
-	BeforeCommit,
-	None,
-}
-
-fn fail_initialization(actual: InitFailureBoundary, expected: InitFailureBoundary) -> Result<()> {
+fn fail_initialization(
+	actual: InitFailureBoundary,
+	expected: InitFailureBoundary,
+) -> prelude::Result<()> {
 	if actual == expected {
 		eyre::bail!("injected Radar ledger initialization failure");
 	}
@@ -321,7 +348,7 @@ fn fail_initialization(actual: InitFailureBoundary, expected: InitFailureBoundar
 	Ok(())
 }
 
-fn configure_ledger_storage(connection: &Connection) -> Result<()> {
+fn configure_ledger_storage(connection: &Connection) -> prelude::Result<()> {
 	connection.execute_batch(
 		"
 		PRAGMA foreign_keys = ON;
@@ -332,30 +359,7 @@ fn configure_ledger_storage(connection: &Connection) -> Result<()> {
 	Ok(())
 }
 
-#[cfg(test)]
-pub(crate) fn initialize_ledger_with_failure(
-	connection: &Connection,
-	boundary: &str,
-) -> Result<()> {
-	let boundary = match boundary {
-		"after_inventory" => InitFailureBoundary::AfterInventory,
-		"after_objects" => InitFailureBoundary::AfterObjects,
-		"after_version" => InitFailureBoundary::AfterVersion,
-		"before_commit" => InitFailureBoundary::BeforeCommit,
-		_ => eyre::bail!("unknown Radar ledger initialization failure boundary"),
-	};
-
-	configure_ledger_storage(connection)?;
-
-	connection.execute_batch("BEGIN IMMEDIATE")?;
-
-	let result = initialize_ledger_transaction(connection, boundary);
-	let _ = connection.execute_batch("ROLLBACK");
-
-	result
-}
-
-fn require_current_schema_or_empty(connection: &Connection) -> Result<bool> {
+fn require_current_schema_or_empty(connection: &Connection) -> prelude::Result<bool> {
 	let user_table_count: i64 = connection.query_row(
 		"
 		SELECT COUNT(*)
@@ -387,7 +391,7 @@ fn require_current_schema_or_empty(connection: &Connection) -> Result<bool> {
 	Ok(false)
 }
 
-fn verify_current_schema(connection: &Connection) -> Result<()> {
+fn verify_current_schema(connection: &Connection) -> prelude::Result<()> {
 	let expected_connection = Connection::open_in_memory()?;
 
 	expected_connection.execute_batch(SCHEMA_OBJECTS_SQL)?;
@@ -414,7 +418,9 @@ fn verify_current_schema(connection: &Connection) -> Result<()> {
 	Ok(())
 }
 
-fn schema_inventory(connection: &Connection) -> Result<Vec<(String, String, String, String)>> {
+fn schema_inventory(
+	connection: &Connection,
+) -> prelude::Result<Vec<(String, String, String, String)>> {
 	let mut statement = connection.prepare(
 		"
 		SELECT type, name, tbl_name, sql
@@ -498,7 +504,7 @@ fn normalize_sql(sql: &str) -> String {
 	normalized
 }
 
-fn unsupported_schema_error() -> eyre::Report {
+fn unsupported_schema_error() -> Report {
 	eyre::eyre!(
 		"unsupported Radar ledger schema; remove the obsolete local cache and bootstrap schema \
 		 version {SCHEMA_VERSION}"
