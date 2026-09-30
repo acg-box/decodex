@@ -2323,7 +2323,10 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 			}
 		}))
 		.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
-			if enabled && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+			if enabled
+				&& !event.is_held
+				&& ["enter", "space"].contains(&event.keystroke.key.as_str())
+			{
 				if index == 0 && s.selected != Destination::Agent {
 					s.set_left_sidebar_visible(!s.left_sidebar_visible, cx);
 					cx.stop_propagation();
@@ -7172,6 +7175,42 @@ mod tests {
 		assert_eq!(panels(visual), [(false, true), (false, true), (true, true), (false, true)]);
 		visual.simulate_keystrokes("cmd-e cmd-j cmd-b");
 		assert_eq!(panels(visual), [(true, true), (true, true), (true, true), (true, true)]);
+	}
+
+	struct PanelControlView(Entity<Shell>);
+	impl Render for PanelControlView {
+		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+			self.0.update(cx, |shell, cx| agent_panel_control(shell, 0, cx))
+		}
+	}
+
+	#[gpui::test]
+	fn held_panel_activation_does_not_toggle_again(cx: &mut TestAppContext) {
+		let (view, visual) = cx.add_window_view(|window, cx| {
+			PanelControlView(cx.new(|cx| Shell::new(window, cx, ConnectionView::Stopped)))
+		});
+		let shell = view.read_with(visual, |view, _| view.0.clone());
+		shell.update(visual, |s, cx| s.select_destination(Destination::Conversations, cx));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+			window.focus_next(cx);
+		});
+		for key in ["enter", "space"] {
+			visual.simulate_keystrokes(key);
+			let visible = shell.read_with(visual, |s, _| s.left_sidebar_visible);
+			assert!(!visible, "fresh key closes sidebar");
+			visual.simulate_event(gpui::KeyDownEvent {
+				keystroke: gpui::Keystroke::parse(key).unwrap(),
+				is_held: true,
+				prefer_character_input: false,
+			});
+			assert_eq!(shell.read_with(visual, |s, _| s.left_sidebar_visible), visible);
+			visual.simulate_keystrokes(key);
+			assert!(
+				shell.read_with(visual, |s, _| s.left_sidebar_visible),
+				"fresh key reopens sidebar"
+			);
+		}
 	}
 
 	#[gpui::test]
