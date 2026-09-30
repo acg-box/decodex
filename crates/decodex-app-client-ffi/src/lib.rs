@@ -10,23 +10,25 @@
 use std::{
 	collections::HashMap,
 	ffi::c_void,
-	panic::{AssertUnwindSafe, catch_unwind},
+	mem,
+	panic::{self, AssertUnwindSafe},
 	ptr, slice,
 	sync::{
-		Arc, Mutex, OnceLock,
+		Arc, Mutex, OnceLock, PoisonError,
 		atomic::{AtomicUsize, Ordering},
 	},
 };
 
-use decodex_protocol::{
-	AccountClient, AccountCommandResponse, AccountLoginClient, AccountLoginInstallMode,
-	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus, ClientFailure,
-	ClientProfile, CommandPayload, EntityId, EntityRevision, IdempotencyKey, ResetCardClient,
-	ResetCardConsumeResponse, ResetCardDescriptorDto, ServerId,
-};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::runtime::{Builder, Runtime};
+
+use decodex_protocol::{
+	AccountClient, AccountCommandResponse, AccountLoginClient, AccountLoginInstallMode,
+	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus, ClientFailure,
+	ClientProfile, CommandPayload, EntityId, EntityRevision, FastModeFailure, IdempotencyKey,
+	ResetCardClient, ResetCardConsumeResponse, ResetCardDescriptorDto, ServerId,
+};
 
 const ABI_VERSION: u32 = 1;
 const CONFIG_SCHEMA: &str = "decodex/app-native-client-config/1";
@@ -42,8 +44,7 @@ struct NativeClient {
 }
 impl NativeClient {
 	fn record_login_status(&self, status: &AccountLoginStatus) {
-		let mut active =
-			self.active_login_session.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+		let mut active = self.active_login_session.lock().unwrap_or_else(PoisonError::into_inner);
 
 		if matches!(
 			status.state,
@@ -58,7 +59,7 @@ impl NativeClient {
 	}
 
 	fn take_active_login_session(&self) -> Option<EntityId> {
-		self.active_login_session.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take()
+		self.active_login_session.lock().unwrap_or_else(PoisonError::into_inner).take()
 	}
 }
 
@@ -255,7 +256,7 @@ enum BridgeFailure {
 enum ResponseFailure {
 	Client(ClientFailure),
 	Bridge(BridgeFailure),
-	FastMode(decodex_protocol::FastModeFailure),
+	FastMode(FastModeFailure),
 }
 
 #[derive(Serialize)]
@@ -284,7 +285,7 @@ struct FailureResponse {
 enum RequestFailure {
 	Client(ClientFailure),
 	Bridge(BridgeFailure),
-	FastMode(decodex_protocol::FastModeFailure),
+	FastMode(FastModeFailure),
 }
 impl From<ClientFailure> for RequestFailure {
 	fn from(failure: ClientFailure) -> Self {
@@ -351,7 +352,7 @@ pub unsafe extern "C" fn decodex_app_native_client_create(
 		*out_error_len = 0;
 	}
 
-	let result = catch_unwind(AssertUnwindSafe(|| {
+	let result = panic::catch_unwind(AssertUnwindSafe(|| {
 		create_client(config_json, config_len, out_error_json, out_error_len)
 	}));
 
@@ -427,7 +428,7 @@ pub unsafe extern "C" fn decodex_app_native_client_request(
 		*out_response_len = 0;
 	}
 
-	let result = catch_unwind(AssertUnwindSafe(|| {
+	let result = panic::catch_unwind(AssertUnwindSafe(|| {
 		request(client, request_json, request_len, out_response_json, out_response_len)
 	}));
 
@@ -464,11 +465,11 @@ pub unsafe extern "C" fn decodex_reset_card_journal_v2(
 		*output_len = 0;
 	}
 
-	if input.is_null() || len == 0 || len > 65536 {
+	if input.is_null() || len == 0 || len > 65_536 {
 		return 2;
 	}
 
-	catch_unwind(AssertUnwindSafe(|| {
+	panic::catch_unwind(AssertUnwindSafe(|| {
 		let input = unsafe { slice::from_raw_parts(input, len) };
 
 		match reset_card_journal::request(input) {
@@ -753,7 +754,10 @@ fn parse_idempotency_key(value: String) -> Result<IdempotencyKey, RequestFailure
 	IdempotencyKey::new(value).map_err(|_| RequestFailure::Bridge(BridgeFailure::InvalidInput))
 }
 
-fn to_value<T: Serialize>(value: T) -> Result<Value, RequestFailure> {
+fn to_value<T>(value: T) -> Result<Value, RequestFailure>
+where
+	T: Serialize,
+{
 	serde_json::to_value(value).map_err(|_| RequestFailure::Bridge(BridgeFailure::InternalFailure))
 }
 
@@ -807,7 +811,10 @@ fn write_failure(
 	)
 }
 
-fn write_serialized<T: Serialize>(out_json: *mut *mut u8, out_len: *mut usize, value: &T) -> i32 {
+fn write_serialized<T>(out_json: *mut *mut u8, out_len: *mut usize, value: &T) -> i32
+where
+	T: Serialize,
+{
 	let bytes = match serde_json::to_vec(value) {
 		Ok(bytes) => bytes,
 		Err(_) => return 2,
@@ -821,7 +828,7 @@ fn write_bytes(out_json: *mut *mut u8, out_len: *mut usize, bytes: Vec<u8>) -> i
 	let len = bytes.len();
 	let buffer = bytes.as_mut_ptr();
 
-	std::mem::forget(bytes);
+	mem::forget(bytes);
 
 	// SAFETY: Public entry points checked the output pointers before calling
 	// this helper. `buffer` remains owned by the caller until `free`.
@@ -1566,7 +1573,7 @@ mod tests {
 			schema: RESPONSE_SCHEMA,
 			outcome: "failure",
 			operation: "fast_mode_status",
-			failure: ResponseFailure::FastMode(decodex_protocol::FastModeFailure::ConfigInvalid),
+			failure: ResponseFailure::FastMode(FastModeFailure::ConfigInvalid),
 		};
 		let value = serde_json::to_value(response).expect("response must serialize");
 
