@@ -304,6 +304,34 @@ fn malformed_and_duplicate_pricing_tables_fail_closed_with_a_newer_marker() {
 }
 
 #[test]
+fn single_pipe_rows_record_a_failure_and_block_cached_pricing() {
+	for row in [
+		"| **List: Read** | \\$0.005 per resource |",
+		"| **Content: Delete** | \\$0.010 per request |",
+	] {
+		let temp = tempfile::tempdir().expect("temporary directory");
+		let path = temp.path().join("private/x-pricing-receipt.json");
+		refresh_at_path_with(&path, at("2026-08-02T12:00:00Z"), || {
+			Ok(CURRENT_FIXTURE.as_bytes().to_vec())
+		})
+		.expect("initial success");
+		let before = fs::read(&path).expect("cached receipt");
+		let malformed = CURRENT_FIXTURE.replace(row, "  |  ");
+		assert_ne!(malformed, CURRENT_FIXTURE);
+		let report =
+			refresh_at_path_with(&path, at("2026-08-02T12:01:00Z"), || Ok(malformed.into_bytes()))
+				.expect("malformed table produces a failure receipt");
+		assert_eq!(report.status, "parse_failed");
+		assert_eq!(report.error_code.as_deref(), Some("x_pricing_operation_row_invalid"));
+		assert_eq!(fs::read(&path).expect("preserved receipt"), before);
+		let error = require_current_at_path(&path, at("2026-08-02T12:01:01Z"))
+			.expect_err("new failure blocks the cached success")
+			.to_string();
+		assert!(error.contains("not current: parse_failed"), "{error}");
+	}
+}
+
+#[test]
 fn successful_renewal_replaces_the_receipt_and_removes_an_older_failure() {
 	let temp = tempfile::tempdir().expect("temporary directory");
 	let path = temp.path().join("private/x-pricing-receipt.json");
