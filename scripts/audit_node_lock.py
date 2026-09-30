@@ -16,7 +16,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"
 REQUIRED_NODE = (22, 12, 0)
-EXPECTED_PACKAGE_MANAGER = "npm@11.17.0"
+EXPECTED_PACKAGE_MANAGER = "npm@12.1.0"
 EXPECTED_INSTALL_SCRIPT_PACKAGES = {
     "node_modules/esbuild": {
         "name": "esbuild",
@@ -44,7 +44,7 @@ EXPECTED_INSTALL_METADATA_SHA256 = {
     ),
 }
 EXPECTED_NATIVE_PACKAGE_SET_SHA256 = (
-    "ccb68edecddfb92b32be2e1a8cdf848f7200fcaf7598de7837bc8f3cc2caf951"
+    "059c918a6e03aa43ad78f86c23d367bdde55ceaa8912db46c603265cb04de2e2"
 )
 REGISTRY_PREFIX = "https://registry.npmjs.org/"
 INTEGRITY_PATTERN = re.compile(r"sha512-[A-Za-z0-9+/]+={0,2}")
@@ -236,7 +236,7 @@ def validate_root_contract(
         or lock_root.get("name") != package["name"]
         or lock_root.get("version") != package["version"]
         or lock_root.get("engines") != package["engines"]
-        or nvmrc != "22.12.0\n"
+        or nvmrc != "26.10.0\n"
     ):
         raise AuditError("node_toolchain_contract_invalid")
     if package_scripts(
