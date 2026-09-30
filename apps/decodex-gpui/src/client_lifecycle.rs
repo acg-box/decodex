@@ -446,13 +446,6 @@ impl ClientLifecycle {
 	}
 
 	/// Clone the presentation-neutral history controller before moving the lifecycle task.
-	#[cfg_attr(
-		not(test),
-		allow(
-			dead_code,
-			reason = "XY-1429 exposes this handle for the later Conversation destination"
-		)
-	)]
 	pub(crate) fn history_pager(&self) -> HistoryPager {
 		self.history_pager.clone()
 	}
