@@ -205,3 +205,68 @@ with tempfile.TemporaryDirectory() as tmp:
 "#).arg(root.join("automations/radar/scripts/github")).output().expect("Python path fixture should execute");
 	assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
 }
+
+#[test]
+fn analysis_runner_preserves_json_fences_and_cleans_temporary_output() {
+	let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
+	let output = Command::new("python3").arg("-c").arg(r#"
+import json, subprocess, sys, tempfile
+from pathlib import Path
+from argparse import Namespace
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+from analysis_runner import command
+from analysis_runner.payload import extract_json_payload
+payload = {'summary': 'Example ```rust code``` stays intact.'}
+for text in [json.dumps(payload), '```json\n' + json.dumps(payload) + '\n```', '```\n' + json.dumps(payload) + '\n```']:
+    assert extract_json_payload(text) == payload
+for text in ['[]', 'null', '{} {}', '```json\n{}\n``` extra', '```json\n{}', '```json\n{}\n```\n```json\n{}\n```']:
+    try:
+        extract_json_payload(text)
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError(('accepted invalid output', text))
+with tempfile.TemporaryDirectory() as tmp:
+    root = Path(tmp).resolve()
+    bundle = root / 'bundle.json'
+    bundle.write_text('{}')
+    args = Namespace(codex_bin='unused-codex', model='fixture-model')
+    outputs = []
+    def run(cmd, **kwargs):
+        assert cmd[:4] == ['unused-codex', 'exec', '--model', 'fixture-model']
+        assert cmd[cmd.index('--sandbox') + 1] == 'read-only'
+        assert '--ephemeral' in cmd
+        assert Path(cmd[cmd.index('-C') + 1]) == root
+        assert Path(cmd[cmd.index('--output-schema') + 1]).is_file()
+        assert 'Analyze the bundle at `bundle.json`.' in cmd[-1]
+        assert kwargs == dict(check=False, capture_output=True, text=True)
+        path = Path(cmd[cmd.index('-o') + 1])
+        outputs.append(path)
+        assert path.exists()
+        path.write_text('```json\n' + json.dumps(payload) + '\n```')
+        return subprocess.CompletedProcess(cmd, 0, '', '')
+    with patch.object(command.subprocess, 'run', side_effect=run):
+        assert command.run_codex_analysis(args, bundle, root) == payload
+    assert all(not p.exists() for p in outputs)
+    for stderr, stdout, expected in [('error', 'fallback', 'error'), ('', 'fallback', 'fallback'), ('', '', 'unknown error')]:
+        def fail(cmd, **kwargs):
+            outputs.append(Path(cmd[cmd.index('-o') + 1]))
+            return subprocess.CompletedProcess(cmd, 1, stdout, stderr)
+        with patch.object(command.subprocess, 'run', side_effect=fail):
+            try: command.run_codex_analysis(args, bundle, root)
+            except SystemExit as exc: assert str(exc) == 'codex exec failed: ' + expected
+            else: raise AssertionError('failed subprocess accepted')
+        assert all(not p.exists() for p in outputs)
+    def invalid(cmd, **kwargs):
+        path = Path(cmd[cmd.index('-o') + 1]); outputs.append(path)
+        path.write_text('not json')
+        return subprocess.CompletedProcess(cmd, 0, '', '')
+    with patch.object(command.subprocess, 'run', side_effect=invalid):
+        try: command.run_codex_analysis(args, bundle, root)
+        except SystemExit as exc: assert 'not valid JSON' in str(exc)
+        else: raise AssertionError('invalid output accepted')
+    assert all(not p.exists() for p in outputs)
+"#).arg(root.join("automations/radar/scripts/github")).output().expect("Python command fixture should execute");
+	assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+}

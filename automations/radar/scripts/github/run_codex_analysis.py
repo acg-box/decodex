@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run Codex against a GitHub bundle and persist a validated analysis draft."""
+"""Run Codex against a GitHub bundle and print a validated analysis draft."""
 
 from __future__ import annotations
 
