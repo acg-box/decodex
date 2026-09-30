@@ -1164,6 +1164,7 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn bind_profile(&mut self, profile: Option<ClientProfile>, cx: &mut Context<Self>) {
+		self.reset_automatic_recap();
 		self.close_native_agent(cx);
 		self.reset_native_agents();
 		self.cancel_queued_command(cx);
@@ -1265,30 +1266,35 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
+	fn disconnect_panels(&mut self) {
+		self.interrupt_automatic_recap();
 		self.reset_native_agents();
+		self.guardian_disconnected();
 		self.reset_resources();
 		self.reset_integrations();
-		self.reset_capabilities();
-		self.reset_task_models();
-		self.reset_permission_profiles();
-		self.reset_live_reviewer();
-		self.reset_hook_settings();
 		self.reset_model_settings();
+		self.reset_live_reviewer();
+		self.reset_permission_profiles();
+		self.reset_task_models();
+		self.reset_hook_settings();
 		self.reset_app_exposure();
 		self.reset_voice_settings();
 		self.reset_search_settings();
 		self.reset_skill_picker();
 		self.reset_recap();
 		self.reset_prompt_edit();
+		self.reset_native_goal();
 		self.question_notices = Default::default();
 		self.clear_activity_detail();
 		self.clear_usage_estimate();
+	}
+
+	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
+		self.disconnect_panels();
+		self.reset_capabilities();
 		self.output_stream = Default::default();
 		self.generation += 1;
-		self.guardian_disconnected();
 		self.archive_disconnected();
-		self.reset_native_goal();
 		self.task = None;
 		self.state =
 			if self.snapshot.is_some() { LoadState::Stale } else { LoadState::Unavailable };
@@ -1349,25 +1355,7 @@ impl AgentSurface {
 
 	fn apply_result(&mut self, result: Result<AgentSnapshotResult, ()>) {
 		if !matches!(&result, Ok(AgentSnapshotResult::Available(_))) {
-			self.reset_native_agents();
-			self.guardian_disconnected();
-			self.reset_resources();
-			self.reset_integrations();
-			self.reset_model_settings();
-			self.reset_live_reviewer();
-			self.reset_permission_profiles();
-			self.reset_task_models();
-			self.reset_hook_settings();
-			self.reset_app_exposure();
-			self.reset_voice_settings();
-			self.reset_search_settings();
-			self.reset_skill_picker();
-			self.reset_recap();
-			self.reset_prompt_edit();
-			self.reset_native_goal();
-			self.question_notices = Default::default();
-			self.clear_activity_detail();
-			self.clear_usage_estimate();
+			self.disconnect_panels();
 		}
 		match result {
 			Ok(AgentSnapshotResult::Available(snapshot)) => {
