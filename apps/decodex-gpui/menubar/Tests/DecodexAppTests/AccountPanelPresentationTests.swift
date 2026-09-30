@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import SwiftUI
 import XCTest
 
@@ -570,7 +571,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 	}
 
-	func testDisclosureKeepsMenuAndAccountTopStable() async throws {
+	func testDisclosureMovesRowsTogetherOnCompositorWithoutClipping() async throws {
 		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		defer { try? FileManager.default.removeItem(at: directory) }
 		let store = ResetCardStore(client: FullAccountPanelClient(), pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: directory.appendingPathComponent("pending.json")), startupRetryDelays: [])
@@ -581,43 +582,116 @@ final class AccountPanelPresentationTests: XCTestCase {
 		controller.panel.makeKey()
 		try await Task.sleep(for: .milliseconds(500))
 		let host = try XCTUnwrap(controller.panel.contentView)
-		let scroll = try XCTUnwrap(descendants(of: NSScrollView.self, in: host).first)
-		let document = try XCTUnwrap(scroll.documentView)
-		func screenTop(_ view: NSView) -> CGFloat {
-			controller.panel.convertToScreen(view.convert(view.bounds, to: nil)).maxY
-		}
+		let rows = try XCTUnwrap(descendants(of: AccountRowsView.self, in: host).first)
+		let first = try XCTUnwrap(rows.subviews.first)
+		let second = rows.subviews[1]
+		let last = try XCTUnwrap(rows.subviews.last)
+		let initialHeight = first.bounds.height
+		let firstTop = first.frame.minY
+		let secondTop = second.frame.minY
 		let panelTop = controller.panel.frame.maxY
-		let contentTop = screenTop(scroll)
-		let collapsedHeight = controller.panel.frame.height
-		var expandedHeight = collapsedHeight
-		for expanding in [true, false] {
-			let location = document.convert(CGPoint(x: 40, y: 18), to: nil)
-			for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-				controller.panel.sendEvent(try XCTUnwrap(NSEvent.mouseEvent(
-					with: type, location: location, modifierFlags: [],
-					timestamp: ProcessInfo.processInfo.systemUptime + (type == .leftMouseUp ? 0.02 : 0),
-					windowNumber: controller.panel.windowNumber, context: nil,
-					eventNumber: type == .leftMouseUp ? 2 : 1, clickCount: 1,
-					pressure: type == .leftMouseDown ? 1 : 0
-				)))
-			}
-			var heights: [CGFloat] = []
-			for _ in 0..<35 {
-				try await Task.sleep(for: .milliseconds(12))
-				heights.append(controller.panel.frame.height)
-				XCTAssertEqual(controller.panel.frame.maxY, panelTop, accuracy: 0.5)
-				XCTAssertEqual(screenTop(scroll), contentTop, accuracy: 0.5,
-					"Content must not center itself while the window catches up with its new height")
-			}
-			if expanding {
-				expandedHeight = controller.panel.frame.height
-				XCTAssertGreaterThan(expandedHeight, collapsedHeight + 20, "The real account click must expand content")
-			} else {
-				XCTAssertEqual(controller.panel.frame.height, collapsedHeight, accuracy: 1)
-			}
-			XCTAssertTrue(heights.contains { $0 > collapsedHeight + 1 && $0 < expandedHeight - 1 }, "Resize must pass through intermediate heights")
+		let contentTop = controller.panel.convertToScreen(rows.convert(rows.bounds, to: nil)).maxY
+		let collapsedWindowHeight = controller.panel.frame.height
+		var expandedHeight = initialHeight
+		var frameCommits = 0
+		let frameCallback = controller.panel.onFrameChange
+		controller.panel.onFrameChange = { frameCommits += 1; frameCallback?() }
+		defer { controller.panel.onFrameChange = frameCallback }
+		func presentation(_ view: NSView) throws -> CALayer {
+			let layer = try XCTUnwrap(view.layer)
+			return layer.presentation() ?? layer
 		}
+		func blockMainThread() { Thread.sleep(forTimeInterval: 0.08) }
+		func capture(_ label: String) throws {
+			guard let directory = ProcessInfo.processInfo.environment["DECODEX_CAPTURE_ACCOUNT_MOTION"] else { return }
+			let process = Process()
+			process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+			process.arguments = ["-x", "-o", "-l", String(controller.panel.windowNumber), "\(directory)/\(label).png"]
+			try process.run()
+			process.waitUntilExit()
+			XCTAssertEqual(process.terminationStatus, 0)
+			let bitmap = try XCTUnwrap(NSImage(contentsOfFile: "\(directory)/\(label).png")?.representations.first)
+			XCTAssertEqual(bitmap.pixelsHigh, Int(controller.panel.frame.height * controller.panel.backingScaleFactor), "The WindowServer drawing area must grow before the rows move")
+		}
+		try capture("collapsed")
 
+		for expanding in [true, false] {
+			let sampler = ProcessInfo.processInfo.environment["DECODEX_MEASURE_ACCOUNT_MOTION"] == "1" ? AccountMotionSampler(window: controller.panel, layer: try XCTUnwrap(first.layer)) : nil
+			defer { sampler?.finish() }
+			frameCommits = 0
+			let location = rows.convert(CGPoint(x: 40, y: 18), to: nil)
+			for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+				controller.panel.sendEvent(try XCTUnwrap(NSEvent.mouseEvent(with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime + (type == .leftMouseUp ? 0.02 : 0), windowNumber: controller.panel.windowNumber, context: nil, eventNumber: type == .leftMouseUp ? 2 : 1, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0)))
+			}
+			try await Task.sleep(for: .milliseconds(30))
+			let animation = try XCTUnwrap(first.layer?.animation(forKey: AccountRowsView.animationKey))
+			XCTAssertEqual(animation.preferredFrameRateRange.preferred, Float(controller.panel.screen?.maximumFramesPerSecond ?? 60))
+			if expanding { expandedHeight = first.bounds.height }
+			let before = try presentation(first).bounds.height
+			if sampler == nil { blockMainThread() }
+			else { try await Task.sleep(for: .milliseconds(80)) }
+			CATransaction.flush()
+			let after = try presentation(first).bounds.height
+			XCTAssertGreaterThan(abs(after - before), 3, "The compositor must advance while the main thread is blocked")
+			try capture(expanding ? "expand-midpoint" : "collapse-midpoint")
+			var heights: [CGFloat] = [before, after]
+			if sampler != nil { try await Task.sleep(for: .milliseconds(320)) }
+			for _ in 0..<(sampler == nil ? 25 : 1) {
+				try await Task.sleep(for: .milliseconds(12))
+				let row = try presentation(first)
+				let next = try presentation(second)
+				let contentLayer = try presentation(XCTUnwrap(first.subviews.first))
+				let contentFrame = row.convert(contentLayer.bounds, from: contentLayer)
+				let headerOffset = contentFrame.minY // The row is a flipped NSView.
+				XCTAssertEqual(headerOffset, 0, accuracy: 1, "Revealing the row must not cut off its header")
+				heights.append(row.bounds.height)
+				XCTAssertEqual(row.frame.minY, firstTop, accuracy: 1)
+				XCTAssertEqual(next.frame.minY - secondTop, row.bounds.height - initialHeight, accuracy: 1.5, "All following rows must move with the revealed height")
+				XCTAssertEqual(controller.panel.frame.maxY, panelTop, accuracy: 0.5)
+				XCTAssertEqual(controller.panel.convertToScreen(rows.convert(rows.bounds, to: nil)).maxY, contentTop, accuracy: 0.5)
+				let lastFrame = try presentation(last).frame
+				let bottom = controller.panel.convertToScreen(rows.convert(lastFrame, to: nil)).minY
+				XCTAssertGreaterThanOrEqual(bottom, controller.panel.frame.minY, "The moving bottom row must remain inside the drawing area")
+			}
+			XCTAssertTrue(heights.contains { $0 > initialHeight + 1 && $0 < expandedHeight - 1 })
+			XCTAssertLessThanOrEqual(frameCommits, 4, "Do not resize the native window every animation frame")
+			if expanding { XCTAssertGreaterThan(controller.panel.frame.height, collapsedWindowHeight + 20) }
+			else { XCTAssertEqual(controller.panel.frame.height, collapsedWindowHeight, accuracy: 1) }
+			if sampler != nil {
+				print("ACCOUNT_COMPOSITOR", expanding ? "expand" : "collapse", "requested_hz", animation.preferredFrameRateRange.preferred ?? 0, "window_commits", frameCommits)
+			}
+		}
+	}
+
+	func testNativeRowsRetargetFromPresentationAndRespectReducedMotion() async throws {
+		let rows = AccountRowsView()
+		let window = NSPanel(contentRect: CGRect(x: 100, y: 100, width: 276, height: 500), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+		window.contentView = rows
+		window.orderFrontRegardless()
+		defer { window.orderOut(nil) }
+		func content(_ heights: [CGFloat], dragged: Bool = false) -> [AccountRowContent] {
+			heights.enumerated().map { index, height in
+				AccountRowContent(id: "row-\(index)", content: AnyView(Color.blue.frame(height: height)), offset: dragged && index == 0 ? 12 : 0, isDragging: dragged && index == 0)
+			}
+		}
+		rows.update(rows: content([40, 40]), reduced: true)
+		rows.update(rows: content([120, 100]), reduced: false)
+		try await Task.sleep(for: .milliseconds(60))
+		let first = rows.subviews[0]
+		let before = try XCTUnwrap(first.layer?.presentation()).bounds
+		rows.update(rows: content([40, 100]), reduced: false)
+		let group = try XCTUnwrap(first.layer?.animation(forKey: AccountRowsView.animationKey) as? CAAnimationGroup)
+		let bounds = try XCTUnwrap(group.animations?.first { ($0 as? CABasicAnimation)?.keyPath == "bounds" } as? CABasicAnimation)
+		XCTAssertEqual(try XCTUnwrap(bounds.fromValue as? CGRect).height, before.height, accuracy: 4)
+		try await Task.sleep(for: .milliseconds(300))
+		XCTAssertEqual(rows.subviews[1].bounds.height, 100, "Collapsing one row must keep another expanded")
+		XCTAssertEqual(rows.canvasHeight, 150)
+		rows.update(rows: content([80, 100], dragged: true), reduced: false)
+		XCTAssertNil(first.layer?.animation(forKey: AccountRowsView.animationKey), "The dragged row must track the pointer without lag")
+		XCTAssertEqual(first.frame.minY, 13)
+		rows.update(rows: content([40, 40]), reduced: true)
+		XCTAssertEqual(rows.canvasHeight, 90)
+		XCTAssertTrue(rows.subviews.allSatisfy { $0.layer?.animation(forKey: AccountRowsView.animationKey) == nil })
 	}
 
 	func testFullAccountPanelShowsSixCompactRowsWithoutOverflowOnCurrentDisplay() async throws {
@@ -754,6 +828,46 @@ final class AccountPanelPresentationTests: XCTestCase {
 		}
 		XCTAssertEqual(overflowingScrollViews.count, 1, "Only the account list scrolls; pending feedback stays inline.")
 		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 300)
+	}
+}
+
+/// Opt-in presentation sampling keeps profiling overhead out of ordinary checks.
+@MainActor
+private final class AccountMotionSampler: NSObject {
+	private var link: CADisplayLink?
+	private weak var layer: CALayer?
+	private var samples: [(TimeInterval, CGFloat)] = []
+	private let began = CACurrentMediaTime()
+
+	init(window: NSWindow, layer: CALayer) {
+		self.layer = layer
+		super.init()
+		let link = window.displayLink(target: self, selector: #selector(tick))
+		let rate = Float(window.screen?.maximumFramesPerSecond ?? 60)
+		link.preferredFrameRateRange = CAFrameRateRange(minimum: rate, maximum: rate, preferred: rate)
+		link.add(to: .main, forMode: .common)
+		self.link = link
+	}
+
+	@objc private func tick() {
+		guard let height = layer?.presentation()?.bounds.height else { return }
+		samples.append((CACurrentMediaTime(), height))
+	}
+
+	func finish() {
+		link?.invalidate()
+		link = nil
+		// Separate input/layout preparation from the cadence after the first moving frame.
+		var intervals: [Double] = []
+		var firstMovement: TimeInterval?
+		for (later, earlier) in zip(samples.dropFirst(), samples) where abs(later.1 - earlier.1) > 0.001 {
+			if firstMovement == nil { firstMovement = later.0 }
+			else { intervals.append((later.0 - earlier.0) * 1000) }
+		}
+		guard !intervals.isEmpty else { return }
+		let average = intervals.reduce(0, +) / Double(intervals.count)
+		let sorted = intervals.sorted()
+		print("ACCOUNT_PRESENTATION", "startup_ms", ((firstMovement ?? began) - began) * 1000, "updates", intervals.count, "mean_hz", 1000 / average, "p95_ms", sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))], "max_ms", sorted.last!)
 	}
 }
 

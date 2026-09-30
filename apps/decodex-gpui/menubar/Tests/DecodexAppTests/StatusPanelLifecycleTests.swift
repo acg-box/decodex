@@ -79,7 +79,7 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		XCTAssertTrue(expanded.isEmpty, "An account action must not toggle details")
 	}
 
-	func testVisiblePanelHeightTransitionsAndCanReverse() async throws {
+	func testPanelSizeTracksLayoutWithoutASecondAnimation() async throws {
 		let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		defer { try? FileManager.default.removeItem(at: root) }
 		let store = ResetCardStore(client: EmptyWidgetClient(), pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: root.appendingPathComponent("pending.json")))
@@ -97,14 +97,11 @@ final class StatusPanelLifecycleTests: XCTestCase {
 		}
 		defer { controller.panel.onFrameChange = onFrameChange }
 		controller.updatePanelContentSize(CGSize(width: initial.width, height: initial.height + 100))
-		try await Task.sleep(for: .milliseconds(80))
-		let middle = controller.panel.frame.height
-		XCTAssertGreaterThan(middle, initial.height)
-		XCTAssertLessThan(middle, initial.height + 100)
+		XCTAssertEqual(controller.panel.frame.height, initial.height + 100, accuracy: 1, "The window must match the current animated layout immediately")
 		controller.updatePanelContentSize(initial)
 		try await Task.sleep(for: .milliseconds(360))
 		XCTAssertEqual(controller.panel.frame.height, initial.height, accuracy: 1)
-		XCTAssertGreaterThan(frames.count, 5)
+		XCTAssertGreaterThanOrEqual(frames.count, 2)
 		for frame in frames { XCTAssertEqual(frame.maxY, top, accuracy: 0.5, "Every committed frame must preserve the top edge") }
 	}
 

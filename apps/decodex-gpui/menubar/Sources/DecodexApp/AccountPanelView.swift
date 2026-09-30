@@ -277,75 +277,55 @@ struct AccountPanelView: View {
 			emptyOrLoadingState
 		} else {
 			ScrollView(.vertical, showsIndicators: false) {
-				VStack(alignment: .leading, spacing: PanelSpacing.section) {
-					ForEach(presentedAccountStates) { state in
-						ResetCardAccountRow(
-							state: state,
-							store: store,
-							showsEmail: accountPrivacy == AccountPrivacy.visible,
-							detailedAccountIDs: $detailedAccountIDs,
-							isAccountCardHovered: hoveredAccountID == state.id,
-							isReorderGestureEnabled: canDragAccount(state.id),
-							onReorderDragChanged: { translationY in
-								updateAccountReorder(
-									accountID: state.id,
-									translationY: translationY
+				AccountRows(
+					rows: presentedAccountStates.map { state in
+						AccountRowContent(
+							id: state.id,
+							content: AnyView(
+								ResetCardAccountRow(
+									state: state, store: store,
+									showsEmail: accountPrivacy == AccountPrivacy.visible,
+									detailedAccountIDs: $detailedAccountIDs,
+									detailsExpanded: detailedAccountIDs.contains(state.id),
+									isAccountCardHovered: hoveredAccountID == state.id,
+									isReorderGestureEnabled: canDragAccount(state.id),
+									onReorderDragChanged: { updateAccountReorder(accountID: state.id, translationY: $0) },
+									onReorderDragEnded: { finishAccountReorder(accountID: state.id) }
 								)
-							},
-							onReorderDragEnded: {
-								finishAccountReorder(accountID: state.id)
-							}
+								.panelCardSurface(cornerRadius: 16)
+								.scaleEffect(isDraggedAccount(state.id) && !reduceMotion ? 1.012 : 1)
+								.shadow(color: .black.opacity(isDraggedAccount(state.id) ? 0.16 : 0), radius: 8, y: 3)
+								.animation(reduceMotion ? nil : PanelMotion.controlState, value: isDraggedAccount(state.id))
+								.environment(\.colorScheme, colorScheme)
+								.environment(\.panelCardMaterial, panelCardMaterial)
+								.controlSize(.small)
+								.symbolRenderingMode(.hierarchical)
+							),
+							offset: accountReorderOffset(for: state.id),
+							isDragging: isDraggedAccount(state.id),
+							renderState: AccountRowRenderState(
+								account: state, store: ObjectIdentifier(store),
+								expanded: detailedAccountIDs.contains(state.id),
+								showsEmail: accountPrivacy == AccountPrivacy.visible,
+								hovered: hoveredAccountID == state.id,
+								canDrag: canDragAccount(state.id), dragging: isDraggedAccount(state.id),
+								colorScheme: colorScheme, material: panelCardMaterial
+							)
 						)
-						.panelCardSurface(cornerRadius: 16)
-						.background {
-							GeometryReader { proxy in
-								Color.clear.preference(
-									key: AccountCardFramesPreferenceKey.self,
-									value: [
-										state.id: proxy.frame(
-											in: .named(
-												AccountCardReorderLayout.coordinateSpaceName
-											)
-										)
-									]
-								)
-							}
-						}
-                        .scaleEffect(isDraggedAccount(state.id) && !reduceMotion ? 1.012 : 1)
-                        .shadow(color: .black.opacity(isDraggedAccount(state.id) ? 0.16 : 0), radius: 8, y: 3)
-                        .animation(reduceMotion ? nil : PanelMotion.controlState, value: isDraggedAccount(state.id))
-						.offset(y: accountReorderOffset(for: state.id))
-						.zIndex(isDraggedAccount(state.id) ? 1 : 0)
-						.animation(
-							accountReorderAnimation(for: state.id),
-							value: accountReorderOffset(for: state.id)
-						)
-						.transition(.panelSection)
-					}
-				}
-				.coordinateSpace(name: AccountCardReorderLayout.coordinateSpaceName)
+					},
+					reduceMotion: reduceMotion,
+					onHeightChange: { measuredAccountListContentHeight = $0 },
+					onFramesChange: updateAccountCardFrames
+				)
+				.frame(height: measuredAccountListContentHeight > 0 ? measuredAccountListContentHeight : nil, alignment: .top)
 				.overlay {
-					AccountCardHoverTrackingView(
-						cardFrames: accountCardFrames,
-						onHoveredAccountChanged: updateHoveredAccount
-					)
-					.accessibilityHidden(true)
+					AccountCardHoverTrackingView(cardFrames: accountCardFrames, onHoveredAccountChanged: updateHoveredAccount)
+						.accessibilityHidden(true)
 				}
-				.padding(1)
-				.background(accountRowsHeightProbe)
 			}
 			.frame(
 				height: accountListViewportHeight
 			)
-			.onPreferenceChange(AccountRowsHeightPreferenceKey.self) { height in
-				let measuredHeight = ceil(height)
-				if abs(measuredAccountListContentHeight - measuredHeight) > 0.5 {
-					measuredAccountListContentHeight = measuredHeight
-				}
-			}
-			.onPreferenceChange(AccountCardFramesPreferenceKey.self) { frames in
-				updateAccountCardFrames(frames)
-			}
 			.accessibilityLabel("Decodex accounts")
 		}
 	}
@@ -527,34 +507,12 @@ struct AccountPanelView: View {
 		accountReorderInteraction?.accountID == accountID
 	}
 
-	private func accountReorderAnimation(for accountID: String) -> Animation? {
-		guard reduceMotion == false else {
-			return nil
-		}
-		if let interaction = accountReorderInteraction,
-			interaction.accountID == accountID,
-			interaction.isSettling == false
-		{
-			return nil
-		}
-		return PanelMotion.accountReorder
-	}
-
 	private var accountListViewportHeight: CGFloat {
 		AccountPanelLayout.accountListHeight(
 			accountCount: store.accounts.count,
 			measuredContentHeight: measuredAccountListContentHeight,
 			windowVisibleFrame: layoutVisibleFrameOverride ?? panelScreenVisibleFrame
 		)
-	}
-
-	private var accountRowsHeightProbe: some View {
-		GeometryReader { proxy in
-			Color.clear.preference(
-				key: AccountRowsHeightPreferenceKey.self,
-				value: proxy.size.height
-			)
-		}
 	}
 
 	private var panelLayoutAnimation: Animation? {
