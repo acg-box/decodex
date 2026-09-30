@@ -4,6 +4,12 @@ title: Conversation presentation and motion
 description: How Decodex keeps final answers readable, retains work details, and renders loading and floating controls without disturbing the transcript.
 tags: [desktop, conversation, motion]
 sources:
+  - id: openwiki-source-4dfe438694434f1f2e34b2f9
+    resource: repo://apps/decodex-gpui/src/agent_mermaid_view.rs
+  - id: openwiki-source-d626966ee70bffd764516a59
+    resource: repo://apps/decodex-gpui/src/agent_mermaid/draw.rs
+  - id: openwiki-source-63e4988aff5dd37bc614412f
+    resource: repo://apps/decodex-gpui/src/agent_mermaid/parse.rs
   - id: openwiki-source-15d320ea458ddf705d950ba9
     resource: repo://apps/decodex-gpui/src/agent_response_metrics.rs
   - id: openwiki-source-b76859cf2790cc53340f082d
@@ -12,10 +18,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_loading.rs
   - id: openwiki-source-afbf2d30c0979a844373d8e5
     resource: repo://apps/decodex-gpui/src/ui_motion.rs
-generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+generated: { by: "codex", at: "2026-09-30T14:27:56.062Z" }
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-29T20:08:07.145Z
+    at: 2026-09-30T14:27:56.062Z
 ---
 
 # Conversation presentation and motion
@@ -39,6 +45,10 @@ A first conversation read reserves a centered reading surface. Its shape is deli
 The shared GPUI popover is currently a fixed-anchor opaque surface. Its background, shadow and content are shown together. It does not apply separate primitive fades or slide an already opaque card; those effects previously produced a visible dark surface before or after the content. This is a deliberate fallback, not a claim that fully composited transitions are implemented.
 
 Animation requests use the workspace frame owner on macOS and the normal GPUI animation-frame path elsewhere. Native glass surfaces have their own host integration. Keep these ownership boundaries intact when changing a disclosure: transcript expansion must not recreate or change the composer's material.
+
+## Mermaid flowcharts
+
+The bounded Mermaid renderer supports stadium start/end nodes such as `A([Start])` alongside rectangular and decision nodes. It draws stadium nodes with rounded corners in all four flowchart directions. Repeated declarations must agree on label and shape. Malformed or unsupported diagrams retain the complete source fallback. Wide supported diagrams scroll horizontally, and the copy action retains the original Mermaid source.
 
 ## Change and verify
 

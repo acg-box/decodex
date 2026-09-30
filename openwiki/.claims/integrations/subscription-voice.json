@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:dccac6f2ae4491b5a9e2603cc1703062b78b77d6a4ff1d6a1ba4f1fe85fa118d",
+  "pageVersion": "sha256:262e1bd94cbaa0715ab5ea9eb305278c68f8e562a44627f0a226e718034ff566",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -60,7 +60,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:ae33add92603698e44557985a4b3b1efd55a5d670f7ad4cf5f10857909a67f9e"
+          "version": "repo-file-v1:sha256:45e50822ccbe060f3137d699160a5e7fab468e35b51f9159ddea676ce3e4384f"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
@@ -68,7 +68,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:159ac6c803b10bbb1357d4eb3493303dc8e671cb9b917d1e60572b8d72e5856c"
+          "version": "repo-file-v1:sha256:1d48bc22e90048a1f47956c7b780bc5a927c5a578285c601a332d38a4ac9a08a"
         }
       ]
     },
@@ -88,7 +88,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:ae33add92603698e44557985a4b3b1efd55a5d670f7ad4cf5f10857909a67f9e"
+          "version": "repo-file-v1:sha256:45e50822ccbe060f3137d699160a5e7fab468e35b51f9159ddea676ce3e4384f"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_audio.rs",
@@ -96,7 +96,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:159ac6c803b10bbb1357d4eb3493303dc8e671cb9b917d1e60572b8d72e5856c"
+          "version": "repo-file-v1:sha256:1d48bc22e90048a1f47956c7b780bc5a927c5a578285c601a332d38a4ac9a08a"
         }
       ]
     },
@@ -144,7 +144,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:159ac6c803b10bbb1357d4eb3493303dc8e671cb9b917d1e60572b8d72e5856c"
+          "version": "repo-file-v1:sha256:1d48bc22e90048a1f47956c7b780bc5a927c5a578285c601a332d38a4ac9a08a"
         }
       ]
     },
@@ -158,7 +158,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:ae33add92603698e44557985a4b3b1efd55a5d670f7ad4cf5f10857909a67f9e"
+          "version": "repo-file-v1:sha256:45e50822ccbe060f3137d699160a5e7fab468e35b51f9159ddea676ce3e4384f"
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
@@ -176,13 +176,13 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:159ac6c803b10bbb1357d4eb3493303dc8e671cb9b917d1e60572b8d72e5856c"
+          "version": "repo-file-v1:sha256:1d48bc22e90048a1f47956c7b780bc5a927c5a578285c601a332d38a4ac9a08a"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T09:30:20.448Z"
+    "at": "2026-09-30T14:27:56.062Z"
   }
 }

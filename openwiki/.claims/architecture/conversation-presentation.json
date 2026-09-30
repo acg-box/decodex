@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:abfbe998d6aa6e8036d4a90c04be0bfbf4f593ce423fdc099fe4bececb784e27",
+  "pageVersion": "sha256:b17f731f038c46e59655135242e4e4b9b04b4d9d26002c022b4c8670e156b68f",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -45,10 +45,28 @@
           "version": "repo-lines-v1:sha256:313013e4000b071df5400aa86b9ac1b77465ac39130a45cc2ce508caa3623bbf:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1MzlkZGFkNDJjNDhiMDY2Mjk0MGJiN2Y5MGFkOWQ1YzBjZGNkODlkMmIyMWZiMWYyMzViM2ZhZDcyNTY3NTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZkNTk0MGM0YzQwNmE3ZjY4ZTY2ZTVjM2Q0NWNmZDEzNzBkYjJhMDY4N2Y0YmM4M2Q3NDdkZWNlZGQ1YTRhZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_14bb7eeb167f4fc1a4849002833d30e2",
+      "statement": "The bounded Mermaid renderer supports stadium nodes with rounded corners in all four flowchart directions, rejects conflicting shape declarations, and retains source fallback and original-source copy.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_mermaid/draw.rs",
+          "version": "repo-file-v1:sha256:0fe80b2c3016eb21d3538891b56521994594f3efe1b06f976b40f46a2e14f898"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_mermaid/parse.rs",
+          "version": "repo-file-v1:sha256:807d2ddfc4406a6d77bb4a69289ccd242055b88b042357eef0918f98a3c2e91d"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_mermaid_view.rs",
+          "version": "repo-file-v1:sha256:80c88185e2f43917b4d8d418ea5f6532c988a14b57211246e09be3b93f3a2b8e"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-29T20:08:07.145Z"
+    "at": "2026-09-30T14:27:56.062Z"
   }
 }

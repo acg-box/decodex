@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d85d5d771b0f64a4fb920114dce8f2ef16f48d6e63b66e2ad0616106877ec337",
+  "pageVersion": "sha256:4d63b1db7538be0b69d6928167bf2f6bdfbe632cc2db962088ce5478cbf0d1ba",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -26,7 +26,7 @@
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
-          "version": "repo-file-v1:sha256:fd1dced60759faa11c0000d0351d983f55fd95418f16cf427ffe849bfe8d2b4d"
+          "version": "repo-file-v1:sha256:b84b710ad09ff3f0e2da607bf0e84da48caed7e13c3dcba65e5908fbae3deab2"
         }
       ]
     },
@@ -40,7 +40,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift",
-          "version": "repo-file-v1:sha256:b755e85c485713903b330a270fec1ff993a48e61c6eac96cc447ff75c33128d9"
+          "version": "repo-file-v1:sha256:c880be25b9a5c52e96086d8315b0032555cdd54c3ae34718e7605ca041f36398"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/lib.rs",
@@ -62,11 +62,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ResetCardStoreRecoveryTests.swift",
-          "version": "repo-file-v1:sha256:a5070fd8c07cd06ce2dd2ce5d681353894a9110660bc90d4b93962b9f159a042"
+          "version": "repo-file-v1:sha256:ec43a0f416cd4db2fc97e6c927a711acfc9e57c2f0b4a0fb1c74d64da0756166"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
-          "version": "repo-file-v1:sha256:fd1dced60759faa11c0000d0351d983f55fd95418f16cf427ffe849bfe8d2b4d"
+          "version": "repo-file-v1:sha256:b84b710ad09ff3f0e2da607bf0e84da48caed7e13c3dcba65e5908fbae3deab2"
         },
         {
           "resource": "repo://scripts/macos/test_native_app.sh",
@@ -88,13 +88,13 @@
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
-          "version": "repo-file-v1:sha256:fd1dced60759faa11c0000d0351d983f55fd95418f16cf427ffe849bfe8d2b4d"
+          "version": "repo-file-v1:sha256:b84b710ad09ff3f0e2da607bf0e84da48caed7e13c3dcba65e5908fbae3deab2"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T09:30:20.448Z"
+    "at": "2026-09-30T14:27:56.062Z"
   }
 }

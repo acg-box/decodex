@@ -106,10 +106,17 @@ impl Direction {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+enum Shape {
+	Rectangle,
+	Decision,
+	Stadium,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct Node {
 	id: String,
 	label: String,
-	decision: bool,
+	shape: Shape,
 	declared: bool,
 	members: Vec<String>,
 }
@@ -157,7 +164,7 @@ impl Graph {
 		self.nodes.push(Node {
 			id: id.to_owned(),
 			label: id.to_owned(),
-			decision: false,
+			shape: Shape::Rectangle,
 			declared: false,
 			members: Vec::new(),
 		});

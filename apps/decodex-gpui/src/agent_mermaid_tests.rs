@@ -17,6 +17,7 @@ fn sources(nodes: &[Node]) -> Vec<(bool, String)> {
 fn closed_mermaid_fences_render_all_families_and_preserve_source() {
 	for source in [
 		"flowchart TD; A[请求] --> B[Reply]",
+		"flowchart LR; A([开始]) --> B[Work] --> C([结束])",
 		"sequenceDiagram; A->>B: request; B-->>A: response",
 		"stateDiagram-v2; [*] --> Active; Active --> [*]",
 		"classDiagram; Order \"1\" *-- \"many\" Item : contains",
@@ -75,7 +76,7 @@ impl gpui::Render for Preview {
 #[gpui::test]
 fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut gpui::TestAppContext) {
 	let source =
-		"flowchart LR; A[Request with a longer label] --> B[Reply with a longer label]  \r\n";
+		"flowchart LR; A([Request with a longer label]) --> B[Reply with a longer label]  \r\n";
 	let (preview, visual) =
 		cx.add_window_view(|_, _| Preview { text: format!("```mermaid\r\n{source}```") });
 	let mut previous_size = None;

@@ -192,3 +192,35 @@ fn semantic_spans_distinguish_labels_from_matching_endpoint_glyphs() {
 		assert_eq!(ports, vec![Role::Node, Role::Node]);
 	}
 }
+
+#[test]
+fn stadium_shapes_references_and_widths() {
+	for direction in ["TD", "BT", "LR", "RL"] {
+		let source = format!(
+			"flowchart {direction}; A; A([开始]); A([开始]) --> B[Work] --> C{{Done?}}; C --> A"
+		);
+		let output = render(&source, 100).expect("mixed stadium flowchart");
+		assert!(output.contains('╭') && output.contains('╯'));
+		assert!(output.contains('┌') && output.contains('◇'));
+		let width = output.lines().map(UnicodeWidthStr::width).max().expect("rendered lines");
+		assert_eq!(render(&source, width), Ok(output));
+		assert_eq!(render(&source, width - 1), Err(RenderError::TooWide));
+	}
+	for source in [
+		"A([unclosed]",
+		"A([unclosed)",
+		"A([])",
+		"A([nested[label]])",
+		"A([one]); A([two])",
+		"A([same]); A[same]",
+		"A{same}; A([same])",
+		"A([label]) trailing",
+	] {
+		assert_eq!(
+			render(&format!("flowchart TD; {source}"), 100),
+			Err(RenderError::Unsupported),
+			"{source}"
+		);
+	}
+	assert_eq!(render(&format!("graph TD; A([{}])", "x".repeat(41)), 100), Err(RenderError::Limit));
+}

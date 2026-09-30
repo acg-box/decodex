@@ -4,9 +4,6 @@ title: "Decodex content automation"
 description: "Decodex content automation"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-28T06:22:45.949Z
 sources:
   - id: openwiki-source-100fa03c93c368ebc1fbbd5a
     resource: repo://automations/decodex/prompts/content-manager.md
@@ -15,6 +12,9 @@ sources:
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
 generated: { by: "codex", at: "2026-09-28T06:22:45.949Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-30T14:27:56.062Z
 ---
 
 
