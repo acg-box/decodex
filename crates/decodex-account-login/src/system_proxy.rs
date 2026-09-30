@@ -41,12 +41,15 @@ pub(super) fn client(config: &Config, route: Option<Route>) -> Result<Client, Er
 	if config.fallback_proxy_fixture.is_some() {
 		builder = builder.no_proxy();
 	}
+
 	if let Some(route) = route {
 		builder = builder.no_proxy();
+
 		if let Route::Proxy(proxy) = route {
 			builder = builder.proxy(*proxy);
 		}
 	}
+
 	builder.build().map_err(|_| Error::Unavailable)
 }
 
@@ -64,6 +67,7 @@ pub(super) async fn exchange(
 		})
 		.await;
 	}
+
 	exchange_with_route(config, client, body, cancellation, deadline, resolve).await
 }
 
@@ -91,16 +95,19 @@ where
 			.await)
 	})
 	.await?;
+
 	match response {
 		Ok(response) => Ok(response),
 		Err(error) if error.is_connect() && config.system_proxy_fallback => {
 			let route = tokio::select! {
 				biased;
+
 				_ = cancellation.cancelled() => return Err(Error::Cancelled),
 				route = tokio::time::timeout(super::remaining(deadline)?, resolve_route(url.to_string())) =>
 					route.map_err(|_| Error::TimedOut)??,
 			};
 			let fallback = client(config, Some(route))?;
+
 			cancellable(
 				cancellation,
 				deadline,
@@ -122,12 +129,14 @@ async fn resolve(url: String) -> Result<Route, Error> {
 		let route = tokio::task::spawn_blocking(move || macos::resolve(&url))
 			.await
 			.map_err(|_| Error::Unavailable)?;
+
 		match route {
 			SystemProxyDecision::Proxy { url } =>
 				Proxy::all(url).map(Box::new).map(Route::Proxy).map_err(|_| Error::Unavailable),
 			SystemProxyDecision::Direct => Ok(Route::Direct),
 			SystemProxyDecision::Unavailable { failure } => {
 				let _ = failure;
+
 				Err(Error::Unavailable)
 			},
 		}
@@ -135,6 +144,7 @@ async fn resolve(url: String) -> Result<Route, Error> {
 	#[cfg(not(target_os = "macos"))]
 	{
 		let _ = url;
+
 		Err(Error::Unavailable)
 	}
 }
