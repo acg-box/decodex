@@ -19,13 +19,11 @@ pub(super) fn recent_commits(
 ) -> Result<(String, String, Vec<RecentCommit>)> {
 	let default_branch = crate::repo_default_branch(api, repo)?;
 	let url = format!(
-		"https://api.github.com/repos/{repo}/commits?sha={}&per_page={search_limit}",
-		crate::percent_encode(&default_branch)
+		"https://api.github.com/repos/{repo}/commits?sha={}&per_page={}",
+		crate::percent_encode(&default_branch),
+		search_limit.min(100)
 	);
-	let payload = api.get(&url)?.payload;
-	let Some(items) = payload.as_array() else {
-		eyre::bail!("Expected commits list payload from GitHub API");
-	};
+	let items = api.get_paginated_up_to(&url, search_limit)?;
 	let commits = items.iter().filter_map(recent_commit_from_value).collect::<Vec<_>>();
 	let upstream_head = commits
 		.first()

@@ -20,7 +20,7 @@ pub(crate) struct RadarValidateRequest {
 pub(crate) struct RadarRefreshQueueRequest {
 	/// GitHub repository in owner/name form.
 	pub(crate) repo: String,
-	/// How many recent upstream commits to inspect.
+	/// How many recent upstream commits to inspect, from 1 through 10,000.
 	pub(crate) search_limit: usize,
 	/// Published signal directory used to suppress already-published subjects.
 	pub(crate) signals_dir: PathBuf,

@@ -353,3 +353,29 @@ pub(crate) fn response(status: &str, headers: &[(&str, &str)], body: &str) -> St
 		body.len()
 	)
 }
+
+#[test]
+fn bounded_window_pagination_stops_at_requested_count() {
+	let server = spawn_server_with(2, |url, page| {
+		let body =
+			serde_json::to_string(&(page * 100..(page + 1) * 100).collect::<Vec<_>>()).unwrap();
+		response("200 OK", &[("Link", &format!("<{url}?page={}>; rel=\"next\"", page + 2))], &body)
+	});
+	let items = server.api(None).get_paginated_up_to(server.url(), 150);
+	let requests = server.finish_with_requests();
+	assert_eq!(items.unwrap(), (0..150).map(serde_json::Value::from).collect::<Vec<_>>());
+	assert_eq!(requests.len(), 2);
+}
+
+#[test]
+fn bounded_window_pagination_handles_short_history_and_invalid_limits() {
+	let server = spawn_server_with(1, |_, _| response("200 OK", &[], "[1,2]"));
+	let items = server.api(None).get_paginated_up_to(server.url(), 150);
+	server.finish();
+	assert_eq!(items.unwrap().len(), 2);
+	let server = spawn_server_with(0, |_, _| unreachable!());
+	for limit in [0, 10_001] {
+		assert!(server.api(None).get_paginated_up_to(server.url(), limit).is_err());
+	}
+	assert!(server.finish_with_requests().is_empty());
+}

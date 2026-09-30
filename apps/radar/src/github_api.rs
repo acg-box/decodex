@@ -68,8 +68,26 @@ impl GitHubApi {
 	}
 
 	pub(super) fn get_paginated(&self, url: &str) -> crate::prelude::Result<Vec<Value>> {
-		self.get_paginated_bounded(url, None, MAX_GITHUB_PAGES, MAX_GITHUB_PAGINATED_ITEMS)
+		self.get_paginated_bounded(url, None, MAX_GITHUB_PAGES, MAX_GITHUB_PAGINATED_ITEMS, None)
 			.map(|(_, items)| items)
+	}
+
+	pub(super) fn get_paginated_up_to(
+		&self,
+		url: &str,
+		limit: usize,
+	) -> crate::prelude::Result<Vec<Value>> {
+		if !(1..=MAX_GITHUB_PAGINATED_ITEMS).contains(&limit) {
+			eyre::bail!("GitHub API window must contain 1..={MAX_GITHUB_PAGINATED_ITEMS} items");
+		}
+		self.get_paginated_bounded(
+			url,
+			None,
+			MAX_GITHUB_PAGES,
+			MAX_GITHUB_PAGINATED_ITEMS,
+			Some(limit),
+		)
+		.map(|(_, items)| items)
 	}
 
 	pub(super) fn get_paginated_field(
@@ -82,6 +100,7 @@ impl GitHubApi {
 			Some(field),
 			MAX_GITHUB_PAGES,
 			MAX_GITHUB_PAGINATED_ITEMS,
+			None,
 		)?;
 		payload[field] = Value::Array(items);
 		Ok(payload)
@@ -93,6 +112,7 @@ impl GitHubApi {
 		field: Option<&str>,
 		max_pages: usize,
 		max_items: usize,
+		stop_after: Option<usize>,
 	) -> crate::prelude::Result<(Value, Vec<Value>)> {
 		let mut first_payload = Value::Null;
 		let mut items = Vec::new();
@@ -128,11 +148,16 @@ impl GitHubApi {
 				eyre::bail!("GitHub API pagination exceeds the {max_items}-item limit");
 			}
 
-			items.extend(page_items.iter().cloned());
+			let remaining =
+				stop_after.map_or(page_items.len(), |limit| limit.saturating_sub(items.len()));
+			items.extend(page_items.iter().take(remaining).cloned());
 			if field.is_some() && pages == 1 {
 				first_payload = response.payload;
 			}
 
+			if stop_after.is_some_and(|limit| items.len() >= limit) {
+				break;
+			}
 			next_url = response.next_url;
 		}
 
@@ -147,7 +172,7 @@ impl GitHubApi {
 		max_pages: usize,
 		max_items: usize,
 	) -> crate::prelude::Result<Vec<Value>> {
-		self.get_paginated_bounded(url, field, max_pages, max_items).map(|(_, items)| items)
+		self.get_paginated_bounded(url, field, max_pages, max_items, None).map(|(_, items)| items)
 	}
 
 	fn validated_url(&self, url: &str) -> crate::prelude::Result<Url> {
