@@ -29,12 +29,15 @@ impl std::fmt::Debug for DictationBuffer {
 	}
 }
 impl<'de> Deserialize<'de> for DictationBuffer {
-	fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+	fn deserialize<D>(d: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
 		Self::new(String::deserialize(d)?).map_err(D::Error::custom)
 	}
 }
 /// Explicit dictation operations. No operation sends a message to an agent.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DictationRequest {
 	/// Start one subscription session.
@@ -78,7 +81,7 @@ impl DictationRequest {
 	}
 }
 /// Dictation lifecycle independent of agent execution.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DictationPhase {
 	/// Subscription handshake in progress.
@@ -93,7 +96,7 @@ pub enum DictationPhase {
 	Failed,
 }
 /// Latest in-memory draft, never persisted as agent input by the service.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DictationStatus {
 	/// Exact session.

@@ -3,7 +3,7 @@ use crate::{AgentExecutionOverrides, EntityId, IdempotencyKey, Sha256Digest, Wir
 use serde::{Deserialize, Serialize};
 
 /// Retain with the unchanged canonical draft before submitting it once.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PromptInputSend {
 	/// Immutable staged content record.
@@ -17,7 +17,7 @@ pub struct PromptInputSend {
 }
 
 /// Full owner binding for read-only acceptance reconciliation.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PromptInputSendIdentity {
 	/// Original local owner.
@@ -31,7 +31,7 @@ pub struct PromptInputSendIdentity {
 }
 
 /// Queue acceptance is distinct from native execution or completion.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PromptInputSendStatus {
 	/// Exact requested binding, echoed without modification.

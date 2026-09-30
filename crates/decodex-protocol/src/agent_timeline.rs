@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 /// One exact native page, oldest entry first. The continuation reads older entries.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentTimelinePage {
 	/// Live turn whose provider explicitly requests a safety buffering indicator.
 	/// This is connection state, not saved history or an approval request.
@@ -22,7 +22,7 @@ pub struct AgentTimelinePage {
 }
 
 /// A canonical position with its own typed identity; position alone is not unique.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentTimelineEntry {
 	/// Native rollout position, never a local receipt timestamp.
 	pub position: u64,
@@ -31,7 +31,7 @@ pub struct AgentTimelineEntry {
 }
 
 /// Public content of the exact item referenced by a native voice promotion.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentTimelinePromotedContent {
 	/// Bounded message text; raw tool output is not included.
 	pub text: String,
@@ -44,7 +44,7 @@ pub struct AgentTimelinePromotedContent {
 }
 
 /// Bounded public failure message from a native terminal boundary.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentTimelineError {
 	/// Readable message; credential material is omitted by the service.
 	pub message: String,
@@ -53,7 +53,7 @@ pub struct AgentTimelineError {
 }
 
 /// A bounded description of non-text content, without embedded bytes or signed URLs.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentTimelineAttachment {
 	/// Index in native user content, dynamic contentItems, or MCP result.content.
 	/// Zero for a standalone image result/view item.
@@ -67,7 +67,7 @@ pub struct AgentTimelineAttachment {
 }
 
 /// Native attachment storage categories. These do not authorize a content read.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentTimelineAttachmentSource {
 	/// A path on the app-server host, which may differ from the UI host.
@@ -85,7 +85,7 @@ pub enum AgentTimelineAttachmentSource {
 }
 
 /// Timeline content safe for presentation without raw tool arguments or credentials.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentTimelineContent {
 	/// An ordinary conversation or tool item.
@@ -173,7 +173,7 @@ pub enum AgentTimelineContent {
 }
 
 /// Account-bound native timeline observation; failures never imply empty history.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentTimelineResult {
 	/// Complete bounded page from the current account and task binding.

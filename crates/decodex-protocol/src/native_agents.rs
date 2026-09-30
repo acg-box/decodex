@@ -1,6 +1,6 @@
 //! Read-only native agent observations and source-bound conversation previews.
 use serde::{Deserialize, Serialize};
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 /// One provider-observed spawned agent. No local execution authority is implied.
 pub struct NativeAgentDto {
@@ -13,7 +13,7 @@ pub struct NativeAgentDto {
 	/// Provider-reported thread state.
 	pub status: String,
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 /// One bounded public message from the exact native conversation.
 pub struct NativeAgentMessage {
@@ -24,7 +24,7 @@ pub struct NativeAgentMessage {
 	/// Credential-filtered readable content.
 	pub text: String,
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
 /// Native inspection result; missing observations are not an empty list.
 pub enum NativeAgentsResult {

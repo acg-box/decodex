@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Native approval reviewer selection shared by reviewer controls.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentReviewer {
 	/// Send approval requests to the user.
@@ -12,7 +12,7 @@ pub enum AgentReviewer {
 }
 
 /// A local attempt result, never a claim about effective tool policy.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentLiveReviewerOutcome {
 	/// Reserved before dispatch; delivery may be unresolved.
@@ -28,7 +28,7 @@ pub enum AgentLiveReviewerOutcome {
 }
 
 /// Exact task inspected for an explicit edit, with the last local attempt if present.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentLiveReviewerState {
 	/// The task remains bound to the same process and account source.
@@ -55,7 +55,7 @@ pub enum AgentLiveReviewerState {
 }
 
 /// One explicit model/effort selection recorded for a running turn.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentLiveModelSelection {
 	/// Requested model identifier.

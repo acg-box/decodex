@@ -49,7 +49,10 @@ impl ConversationNativeSettings {
 	}
 }
 impl<'de> Deserialize<'de> for ConversationNativeSettings {
-	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
 		#[derive(Deserialize)]
 		#[serde(deny_unknown_fields)]
 		struct Raw {

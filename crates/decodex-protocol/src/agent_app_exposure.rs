@@ -3,7 +3,7 @@ use crate::{EntityId, WireText};
 use serde::{Deserialize, Serialize};
 
 /// A native model-facing tool surface that a connector preference can omit.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentToolExposureSurface {
 	/// Tools callable from Code Mode scripts.
@@ -25,7 +25,7 @@ impl AgentToolExposureSurface {
 }
 
 /// Configuration facts for one connector, not a claim about a live model step.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentAppExposureResult {
 	/// Current source, native inventory and configuration were verified.

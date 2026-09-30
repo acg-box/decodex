@@ -1,7 +1,7 @@
 //! Read-only native configured model observations.
 use serde::{Deserialize, Serialize};
 /// A configured model observation, never per-turn execution telemetry.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentModelSettingsResult {
 	/// Native read completed under the same source ownership.

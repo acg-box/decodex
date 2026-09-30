@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Last observed native assessment, not execution status.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentGuardianStatus {
 	/// No final result has been observed.
@@ -18,7 +18,7 @@ pub enum AgentGuardianStatus {
 }
 
 /// Receipt for explicit user approval, independent of the native assessment.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentGuardianSubmission {
 	/// Submission was reserved, but no definitive response is saved. Never auto-resend.
@@ -30,7 +30,7 @@ pub enum AgentGuardianSubmission {
 }
 
 /// One bounded, displayable review bound to immutable saved evidence.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentGuardianReviewDto {
 	/// Exact durable record identity.
@@ -67,7 +67,7 @@ pub struct AgentGuardianReviewDto {
 }
 
 /// Bounded durable reviews, with a cursor that never skips an omitted record.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentGuardianReviewsResult {
 	/// Complete current page, newest first.
@@ -85,7 +85,7 @@ pub enum AgentGuardianReviewsResult {
 pub const GUARDIAN_DETAIL_PAGE_BYTES: usize = 8 * 1024;
 
 /// A page of complete saved action and rationale text. No action is truncated.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentGuardianDetailResult {
 	/// One contiguous UTF-8 slice of the requested immutable observation.

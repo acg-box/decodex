@@ -1,6 +1,6 @@
 //! Bounded weather projection from a native tool result.
 /// Saved native weather conditions and at most 24 hourly forecast entries.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct WeatherForecast {
 	/// Native citation reference that identifies this forecast.
 	pub reference: String,

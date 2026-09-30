@@ -27,13 +27,16 @@ impl std::fmt::Debug for McpAuthorizationUrl {
 	}
 }
 impl<'de> Deserialize<'de> for McpAuthorizationUrl {
-	fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+	fn deserialize<D>(d: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
 		Self::new(String::deserialize(d)?).map_err(D::Error::custom)
 	}
 }
 
 /// Explicit same-user sign-in operations. Poll never initiates authentication.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum McpLoginRequest {
 	/// Start once or recover the same in-memory request.
@@ -70,7 +73,7 @@ impl McpLoginRequest {
 }
 
 /// Native observations are not proof that a tool runtime is connected.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum McpLoginPhase {
 	/// Native discovery or registration is in progress.
@@ -90,7 +93,7 @@ pub enum McpLoginPhase {
 }
 
 /// Same-user transient status; no token or PKCE secret is exposed.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct McpLoginStatus {
 	/// Exact caller intent identity.

@@ -27,7 +27,10 @@ impl std::fmt::Debug for VoiceSdp {
 	}
 }
 impl<'de> Deserialize<'de> for VoiceSdp {
-	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
 		Self::new(String::deserialize(deserializer)?).map_err(D::Error::custom)
 	}
 }

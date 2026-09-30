@@ -3,7 +3,7 @@ use crate::{ConversationWorkingDirectory, EntityId, InitialModelCatalogRequest, 
 use serde::{Deserialize, Serialize};
 
 /// One enabled native skill; this is a usage reference, not a plugin management entry.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSkillDto {
 	/// Exact native skill name, including its namespace when supplied.
@@ -15,7 +15,7 @@ pub struct AgentSkillDto {
 }
 
 /// Bind discovery to the same account policy and project as the intended input.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentSkillsTarget {
 	/// Read through the current owner of an existing native conversation.
@@ -31,7 +31,7 @@ pub enum AgentSkillsTarget {
 }
 
 /// Bounded searchable projection of the native skills inventory.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSkillsPage {
 	/// Matching enabled candidates, ordered by name and path.
@@ -43,7 +43,7 @@ pub struct AgentSkillsPage {
 }
 
 /// A source-checked skill inventory. Reading it never installs or enables a skill.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentSkillsResult {
 	/// Current source could not be read completely.

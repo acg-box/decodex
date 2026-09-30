@@ -4,7 +4,7 @@ use crate::{EntityId, EntityRevision, WireText};
 use serde::{Deserialize, Serialize};
 
 /// One account's daemon-owned recovery observation.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AccountRecoveryResult {
 	/// Requested account; never the backend's nested untrusted identity.
@@ -18,7 +18,7 @@ pub struct AccountRecoveryResult {
 }
 
 /// Banner availability; only Current carries actionable fresh copy.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "status", content = "banner", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AccountRecoveryState {
 	/// No matching observation is available.
@@ -34,7 +34,7 @@ pub enum AccountRecoveryState {
 }
 
 /// Bounded backend copy and model scope. Suggestions never change models by themselves.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AccountRecoveryBanner {
 	/// Backend occurrence category.
@@ -60,7 +60,7 @@ pub struct AccountRecoveryBanner {
 }
 
 /// One explicitly named backend action; effects are owned by the account service.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AccountRecoveryCta {
 	/// Known action category.
@@ -70,7 +70,7 @@ pub struct AccountRecoveryCta {
 }
 
 /// Closed action vocabulary; receiving a result executes none of these actions.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AccountRecoveryAction {
 	/// Open credits settings.
@@ -192,6 +192,136 @@ impl AccountRecoveryResult {
 			},
 		}
 	}
+}
+
+/// Prepared destination after the daemon revalidates a displayed recovery action.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AccountRecoveryPreparation {
+	/// Source is unavailable, stale, changed, or no longer offers this action.
+	Unavailable,
+	/// No side effect has occurred; the client may continue the explicit interaction.
+	Ready {
+		/// Fresh account-bound source used for preparation.
+		source: Box<AccountRecoveryResult>,
+		/// Exact requested action.
+		action: AccountRecoveryAction,
+		/// Native-equivalent destination, not a completed effect.
+		destination: AccountRecoveryDestination,
+	},
+}
+
+/// Finite account recovery destinations; none execute during a read.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AccountRecoveryDestination {
+	/// Open a validated HTTP(S) address after the user's action.
+	OpenUrl(WireText),
+	/// Open the existing inventory picker and explicit reset confirmation.
+	ResetPicker,
+	/// Explicitly request credits from the workspace owner through the account effect owner.
+	RequestCredits,
+	/// Explicitly request a workspace usage-limit increase through the account effect owner.
+	RequestUsageIncrease,
+}
+
+impl AccountRecoveryPreparation {
+	/// Validate the prepared source, action and destination against the explicit selection.
+	pub fn valid_for(
+		&self,
+		expected: &AccountRecoveryResult,
+		requested: AccountRecoveryAction,
+	) -> bool {
+		let Self::Ready { source, action, destination } = self else {
+			return true;
+		};
+
+		if *action != requested
+			|| !source.valid_for(&expected.account_id, expected.account_revision)
+			|| source.observed_at_unix_micros < expected.observed_at_unix_micros
+		{
+			return false;
+		}
+
+		let (AccountRecoveryState::Current(before), AccountRecoveryState::Current(after)) =
+			(&expected.state, &source.state)
+		else {
+			return false;
+		};
+
+		if before != after || !after.actions.iter().any(|cta| cta.action == requested) {
+			return false;
+		}
+
+		match destination {
+			AccountRecoveryDestination::ResetPicker =>
+				requested == AccountRecoveryAction::ResetUsage,
+			AccountRecoveryDestination::RequestCredits =>
+				requested == AccountRecoveryAction::NotifyOwner,
+			AccountRecoveryDestination::RequestUsageIncrease =>
+				requested == AccountRecoveryAction::RequestIncrease && after.request_url.is_none(),
+			AccountRecoveryDestination::OpenUrl(value) =>
+				!matches!(
+					requested,
+					AccountRecoveryAction::ResetUsage | AccountRecoveryAction::NotifyOwner
+				) && (requested != AccountRecoveryAction::RequestIncrease
+					|| after.request_url.is_some())
+					&& value.as_str().len() <= 4096
+					&& !value.as_str().chars().any(char::is_control)
+					&& url::Url::parse(value.as_str()).is_ok_and(|url| {
+						matches!(url.scheme(), "https" | "http")
+							&& url.host_str().is_some()
+							&& url.username().is_empty()
+							&& url.password().is_none()
+					}),
+		}
+	}
+}
+
+/// Durable outcome of one explicit workspace-owner notification attempt.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountRecoveryNudgeStatus {
+	/// The native backend confirmed the notification.
+	Sent,
+	/// The native backend reports an existing cooldown.
+	CooldownActive,
+	/// The source or native account process was unavailable before submission.
+	Unavailable,
+	/// Native does not implement the operation; no alternate effect was sent.
+	Unsupported,
+	/// Delivery is uncertain. This operation must not be automatically resent.
+	Uncertain,
+}
+
+/// Durable readback for the selected account and notification purpose.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "status", content = "operation", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AccountRecoveryNudgeResult {
+	/// Product state could not be read. This is not permission to resend.
+	Unavailable,
+	/// No matching receipt is known.
+	NotFound,
+	/// Exact matching latest or requested operation.
+	Found(AccountRecoveryNudgeOperation),
+}
+
+/// Bounded credential-negative notification receipt.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AccountRecoveryNudgeOperation {
+	/// Affected local account.
+	pub account_id: EntityId,
+	/// Account revision at the original attempt.
+	pub account_revision: EntityRevision,
+	/// Exact notification purpose.
+	pub action: AccountRecoveryAction,
+	/// Stable original operation identity.
+	pub operation_key: crate::IdempotencyKey,
+	/// Durable reservation time in Unix microseconds.
+	pub reserved_at_unix_micros: i64,
+	/// Last known delivery outcome, including unfinished uncertain claims.
+	pub outcome: AccountRecoveryNudgeStatus,
 }
 
 #[cfg(test)]
@@ -334,90 +464,6 @@ mod tests {
 	}
 }
 
-/// Prepared destination after the daemon revalidates a displayed recovery action.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
-pub enum AccountRecoveryPreparation {
-	/// Source is unavailable, stale, changed, or no longer offers this action.
-	Unavailable,
-	/// No side effect has occurred; the client may continue the explicit interaction.
-	Ready {
-		/// Fresh account-bound source used for preparation.
-		source: Box<AccountRecoveryResult>,
-		/// Exact requested action.
-		action: AccountRecoveryAction,
-		/// Native-equivalent destination, not a completed effect.
-		destination: AccountRecoveryDestination,
-	},
-}
-
-/// Finite account recovery destinations; none execute during a read.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "value", rename_all = "snake_case", deny_unknown_fields)]
-pub enum AccountRecoveryDestination {
-	/// Open a validated HTTP(S) address after the user's action.
-	OpenUrl(WireText),
-	/// Open the existing inventory picker and explicit reset confirmation.
-	ResetPicker,
-	/// Explicitly request credits from the workspace owner through the account effect owner.
-	RequestCredits,
-	/// Explicitly request a workspace usage-limit increase through the account effect owner.
-	RequestUsageIncrease,
-}
-
-impl AccountRecoveryPreparation {
-	/// Validate the prepared source, action and destination against the explicit selection.
-	pub fn valid_for(
-		&self,
-		expected: &AccountRecoveryResult,
-		requested: AccountRecoveryAction,
-	) -> bool {
-		let Self::Ready { source, action, destination } = self else {
-			return true;
-		};
-
-		if *action != requested
-			|| !source.valid_for(&expected.account_id, expected.account_revision)
-			|| source.observed_at_unix_micros < expected.observed_at_unix_micros
-		{
-			return false;
-		}
-
-		let (AccountRecoveryState::Current(before), AccountRecoveryState::Current(after)) =
-			(&expected.state, &source.state)
-		else {
-			return false;
-		};
-
-		if before != after || !after.actions.iter().any(|cta| cta.action == requested) {
-			return false;
-		}
-
-		match destination {
-			AccountRecoveryDestination::ResetPicker =>
-				requested == AccountRecoveryAction::ResetUsage,
-			AccountRecoveryDestination::RequestCredits =>
-				requested == AccountRecoveryAction::NotifyOwner,
-			AccountRecoveryDestination::RequestUsageIncrease =>
-				requested == AccountRecoveryAction::RequestIncrease && after.request_url.is_none(),
-			AccountRecoveryDestination::OpenUrl(value) =>
-				!matches!(
-					requested,
-					AccountRecoveryAction::ResetUsage | AccountRecoveryAction::NotifyOwner
-				) && (requested != AccountRecoveryAction::RequestIncrease
-					|| after.request_url.is_some())
-					&& value.as_str().len() <= 4096
-					&& !value.as_str().chars().any(char::is_control)
-					&& url::Url::parse(value.as_str()).is_ok_and(|url| {
-						matches!(url.scheme(), "https" | "http")
-							&& url.host_str().is_some()
-							&& url.username().is_empty()
-							&& url.password().is_none()
-					}),
-		}
-	}
-}
-
 #[cfg(test)]
 mod preparation_tests {
 	use super::*;
@@ -475,50 +521,4 @@ mod preparation_tests {
 
 		assert!(!prepared.valid_for(&source, AccountRecoveryAction::ResetUsage));
 	}
-}
-
-/// Durable outcome of one explicit workspace-owner notification attempt.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AccountRecoveryNudgeStatus {
-	/// The native backend confirmed the notification.
-	Sent,
-	/// The native backend reports an existing cooldown.
-	CooldownActive,
-	/// The source or native account process was unavailable before submission.
-	Unavailable,
-	/// Native does not implement the operation; no alternate effect was sent.
-	Unsupported,
-	/// Delivery is uncertain. This operation must not be automatically resent.
-	Uncertain,
-}
-
-/// Durable readback for the selected account and notification purpose.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "status", content = "operation", rename_all = "snake_case", deny_unknown_fields)]
-pub enum AccountRecoveryNudgeResult {
-	/// Product state could not be read. This is not permission to resend.
-	Unavailable,
-	/// No matching receipt is known.
-	NotFound,
-	/// Exact matching latest or requested operation.
-	Found(AccountRecoveryNudgeOperation),
-}
-
-/// Bounded credential-negative notification receipt.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AccountRecoveryNudgeOperation {
-	/// Affected local account.
-	pub account_id: EntityId,
-	/// Account revision at the original attempt.
-	pub account_revision: EntityRevision,
-	/// Exact notification purpose.
-	pub action: AccountRecoveryAction,
-	/// Stable original operation identity.
-	pub operation_key: crate::IdempotencyKey,
-	/// Durable reservation time in Unix microseconds.
-	pub reserved_at_unix_micros: i64,
-	/// Last known delivery outcome, including unfinished uncertain claims.
-	pub outcome: AccountRecoveryNudgeStatus,
 }

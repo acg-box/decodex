@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Current task-scoped voice selection and configuration identity.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentVoiceSettingsResult {
 	/// The owning native source could not be read.

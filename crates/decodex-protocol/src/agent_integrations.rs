@@ -1,6 +1,6 @@
 //! Independent native catalog and runtime observations for one task.
 /// One installed connector in the native committed runtime snapshot.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentAppStatusDto {
 	/// Exact native connector identity.
@@ -14,7 +14,7 @@ pub struct AgentAppStatusDto {
 }
 
 /// Installed connector discovery, independent of MCP and plugin discovery.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentAppInventory {
 	/// Complete bounded runtime snapshot; not a successful tool execution receipt.
@@ -33,7 +33,7 @@ pub enum AgentAppInventory {
 use serde::{Deserialize, Serialize};
 
 /// Selected MCP status fields; tool inventory does not prove runtime readiness.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentMcpStatusDto {
 	/// Exact configured server name.
@@ -60,7 +60,7 @@ pub struct AgentMcpStatusDto {
 }
 
 /// Repository-scoped plugin configuration, not a runtime availability claim.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentPluginStatusDto {
 	/// Exact native plugin identity.
@@ -78,7 +78,7 @@ pub struct AgentPluginStatusDto {
 }
 
 /// MCP discovery result, independent of plugin discovery success.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentMcpInventory {
 	/// Complete bounded inventory.
@@ -95,7 +95,7 @@ pub enum AgentMcpInventory {
 }
 
 /// Plugin discovery preserves repository load errors alongside returned entries.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentPluginInventory {
 	/// Native catalog was read; errors identify incomplete repository discovery.
@@ -114,7 +114,7 @@ pub enum AgentPluginInventory {
 }
 
 /// Source-bound native integrations for the selected task.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentIntegrationsResult {
 	/// The exact thread and repository remained current throughout the read.

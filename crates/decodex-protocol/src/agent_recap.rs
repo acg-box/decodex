@@ -3,7 +3,7 @@ use crate::{EntityId, WireText};
 use serde::{Deserialize, Serialize};
 
 /// A validated plain-text recap from the isolated native request.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaskRecap {
 	/// Broader goal, meaningful progress, and remaining caveats.
@@ -24,7 +24,7 @@ impl TaskRecap {
 }
 
 /// Lifecycle phase of a service-owned optional recap request.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskRecapPhase {
 	/// No retained request exists for this task.
@@ -42,7 +42,7 @@ pub enum TaskRecapPhase {
 }
 
 /// State for one exact task; explicit generation commands alone start inference.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaskRecapStatus {
 	/// Local owning task.

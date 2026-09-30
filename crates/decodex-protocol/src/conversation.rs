@@ -356,14 +356,20 @@ impl ConversationReasoningEffort {
 }
 
 impl Serialize for ConversationReasoningEffort {
-	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
 		// Preserve Decodex's historical wire spelling; native dispatch uses as_str().
 		serializer.serialize_str(if *self == Self::XHigh { "x_high" } else { self.as_str() })
 	}
 }
 
 impl<'de> Deserialize<'de> for ConversationReasoningEffort {
-	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
 		Self::new(String::deserialize(deserializer)?).map_err(D::Error::custom)
 	}
 }
@@ -928,6 +934,38 @@ pub(crate) fn is_canonical_uuid_v4(value: &str) -> bool {
 		})
 }
 
+/// Configured native model facts, not per-turn execution telemetry or a model catalog.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ConversationModelSettingsResult {
+	/// Native model facts and the same session's saved tier choice.
+	Available {
+		/// Last requested tier of a live session, not native readback. Unavailable after a cold
+		/// read.
+		requested_service_tier: Option<decodex_core::ServiceTier>,
+		/// Native provider name, if exposed.
+		model_provider: Option<String>,
+		/// Native model; null is unavailable and never a local default.
+		model: Option<ConversationModel>,
+		/// Null means unset or unavailable. Native thread/read cannot distinguish them.
+		reasoning_effort: Option<ConversationReasoningEffort>,
+	},
+	/// No current owned process or supported native settings read was available.
+	Unavailable,
+}
+
+/// Fields explicitly selected for one later turn. Omitted command intent preserves legacy behavior.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationExecutionOverrides {
+	/// Override the native model.
+	pub model: bool,
+	/// Send the chosen effort; an absent effort still inherits natively.
+	pub reasoning: bool,
+	/// Override the native service tier, including an explicit Standard choice.
+	pub service_tier: bool,
+}
+
 #[cfg(test)]
 mod provider_thread_tests {
 	use super::{MAX_PROVIDER_THREAD_ID_BYTES, ProviderThreadId};
@@ -962,26 +1000,35 @@ mod provider_thread_tests {
 		}
 	}
 }
+
 #[cfg(test)]
 mod native_effort_tests {
-	use super::ConversationReasoningEffort as Effort;
+	use super::ConversationReasoningEffort;
 
 	#[test]
 	fn native_effort_preserves_custom_values_and_known_wire_compatibility() {
 		for value in ["none", "minimal", "persistent", "provider-defined-effort", "custom effort"] {
-			let effort = Effort::new(value).expect("bounded effort");
+			let effort = ConversationReasoningEffort::new(value).expect("bounded effort");
 			let encoded = serde_json::to_string(&effort).expect("serialize effort");
 
-			assert_eq!(serde_json::from_str::<Effort>(&encoded).expect("decode effort"), effort);
+			assert_eq!(
+				serde_json::from_str::<ConversationReasoningEffort>(&encoded)
+					.expect("decode effort"),
+				effort
+			);
 			assert_eq!(effort.as_str(), value);
 		}
 
-		assert_eq!(serde_json::to_value(Effort::XHigh).expect("legacy wire"), "x_high");
+		assert_eq!(
+			serde_json::to_value(ConversationReasoningEffort::XHigh).expect("legacy wire"),
+			"x_high"
+		);
 
 		for alias in ["xhigh", "x_high"] {
 			assert_eq!(
-				serde_json::from_value::<Effort>(serde_json::json!(alias)).expect("known alias"),
-				Effort::XHigh
+				serde_json::from_value::<ConversationReasoningEffort>(serde_json::json!(alias))
+					.expect("known alias"),
+				ConversationReasoningEffort::XHigh
 			);
 		}
 		for invalid in [
@@ -991,10 +1038,14 @@ mod native_effort_tests {
 			"bad\0value".to_owned(),
 			"bad\u{85}value".to_owned(),
 		] {
-			assert!(serde_json::from_value::<Effort>(serde_json::json!(invalid)).is_err());
+			assert!(
+				serde_json::from_value::<ConversationReasoningEffort>(serde_json::json!(invalid))
+					.is_err()
+			);
 		}
 	}
 }
+
 #[cfg(test)]
 mod inherited_execution_tests {
 	use super::*;
@@ -1020,38 +1071,6 @@ mod inherited_execution_tests {
 			);
 		}
 	}
-}
-
-/// Configured native model facts, not per-turn execution telemetry or a model catalog.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
-pub enum ConversationModelSettingsResult {
-	/// Native model facts and the same session's saved tier choice.
-	Available {
-		/// Last requested tier of a live session, not native readback. Unavailable after a cold
-		/// read.
-		requested_service_tier: Option<decodex_core::ServiceTier>,
-		/// Native provider name, if exposed.
-		model_provider: Option<String>,
-		/// Native model; null is unavailable and never a local default.
-		model: Option<ConversationModel>,
-		/// Null means unset or unavailable. Native thread/read cannot distinguish them.
-		reasoning_effort: Option<ConversationReasoningEffort>,
-	},
-	/// No current owned process or supported native settings read was available.
-	Unavailable,
-}
-
-/// Fields explicitly selected for one later turn. Omitted command intent preserves legacy behavior.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ConversationExecutionOverrides {
-	/// Override the native model.
-	pub model: bool,
-	/// Send the chosen effort; an absent effort still inherits natively.
-	pub reasoning: bool,
-	/// Override the native service tier, including an explicit Standard choice.
-	pub service_tier: bool,
 }
 
 #[cfg(test)]

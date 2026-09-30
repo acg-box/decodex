@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Only settings deliberately changed for this message. An empty value inherits all settings.
 /// Full legacy execution objects remain valid and retain their original meaning.
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentExecutionOverrides {
 	/// A newly selected model, if changed.
@@ -18,17 +18,6 @@ pub struct AgentExecutionOverrides {
 	/// Explicit service tier, including standard. This takes precedence over legacy Fast.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub service_tier: Option<crate::ServiceTier>,
-}
-
-impl From<crate::ConversationExecutionSettings> for AgentExecutionOverrides {
-	fn from(value: crate::ConversationExecutionSettings) -> Self {
-		Self {
-			model: Some(value.model),
-			reasoning_effort: value.reasoning_effort,
-			fast: Some(value.fast),
-			service_tier: value.service_tier,
-		}
-	}
 }
 
 impl AgentExecutionOverrides {
@@ -57,6 +46,17 @@ impl AgentExecutionOverrides {
 	/// A deliberate tier change, absent when the message inherits the current task tier.
 	pub fn selected_service_tier(&self) -> Option<crate::ServiceTier> {
 		self.service_tier.clone().or_else(|| self.fast.map(crate::ServiceTier::from_fast))
+	}
+}
+
+impl From<crate::ConversationExecutionSettings> for AgentExecutionOverrides {
+	fn from(value: crate::ConversationExecutionSettings) -> Self {
+		Self {
+			model: Some(value.model),
+			reasoning_effort: value.reasoning_effort,
+			fast: Some(value.fast),
+			service_tier: value.service_tier,
+		}
 	}
 }
 

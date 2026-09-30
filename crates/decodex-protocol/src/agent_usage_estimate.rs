@@ -1,7 +1,7 @@
 //! Exact native task estimates; missing data is distinct from zero.
 use serde::{Deserialize, Serialize};
 /// Provider estimates for one exact thread; integer micros preserve precision.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadUsageEstimate {
 	/// Exact native thread identity.
@@ -15,7 +15,7 @@ pub struct ThreadUsageEstimate {
 }
 
 /// A model, effort and speed group, retaining missing counts as unknown.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadUsageEstimateGroup {
 	/// Provider model identifier, when reported.
@@ -39,7 +39,7 @@ pub struct ThreadUsageEstimateGroup {
 }
 
 /// Source-bound observation; estimates are not account quota or a final bill.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentUsageEstimateResult {
 	/// Native returned an estimate for the exact requested thread and source account.

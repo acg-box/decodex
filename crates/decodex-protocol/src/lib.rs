@@ -267,6 +267,34 @@ impl ProtocolVersion {
 	}
 }
 
+mod mcp_elicitation;
+pub use mcp_elicitation::{
+	McpFormChoice, McpFormField, mcp_form_content, mcp_form_fields, mcp_request_fields,
+	validate_mcp_response,
+};
+
+mod weather;
+pub use weather::WeatherForecast;
+mod agent_execution;
+pub use agent_execution::AgentExecutionOverrides;
+mod agent_steer;
+pub use agent_steer::{AgentSteerIdentity, AgentSteerReceiptResult};
+mod desktop_drafts;
+mod desktop_ordinary_drafts;
+pub use decodex_core::{
+	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES,
+};
+pub use desktop_drafts::{
+	DesktopComposerDraft, DesktopCreationIntent, DesktopCreationSetup, DesktopDraftDocument,
+	DesktopPendingDraft, DesktopProfileDraft, DesktopQuestionDraft, DesktopRecoveredDraft,
+};
+pub use desktop_ordinary_drafts::{DesktopOrdinaryComposerDraft, DesktopOrdinaryDraft};
+
+pub use conversation::{ConversationExecutionOverrides, ConversationModelSettingsResult};
+
+/// Shared global client settings; these do not change thread execution settings.
+pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fast_mode_enabled};
+
 #[cfg(test)]
 mod tests {
 	use crate::{CURRENT_VERSION, ProtocolVersion};
@@ -318,30 +346,3 @@ mod tests {
 		);
 	}
 }
-mod mcp_elicitation;
-pub use mcp_elicitation::{
-	McpFormChoice, McpFormField, mcp_form_content, mcp_form_fields, mcp_request_fields,
-	validate_mcp_response,
-};
-
-mod weather;
-pub use weather::WeatherForecast;
-mod agent_execution;
-pub use agent_execution::AgentExecutionOverrides;
-mod agent_steer;
-pub use agent_steer::{AgentSteerIdentity, AgentSteerReceiptResult};
-mod desktop_drafts;
-mod desktop_ordinary_drafts;
-pub use decodex_core::{
-	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES,
-};
-pub use desktop_drafts::{
-	DesktopComposerDraft, DesktopCreationIntent, DesktopCreationSetup, DesktopDraftDocument,
-	DesktopPendingDraft, DesktopProfileDraft, DesktopQuestionDraft, DesktopRecoveredDraft,
-};
-pub use desktop_ordinary_drafts::{DesktopOrdinaryComposerDraft, DesktopOrdinaryDraft};
-
-pub use conversation::{ConversationExecutionOverrides, ConversationModelSettingsResult};
-
-/// Shared global client settings; these do not change thread execution settings.
-pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fast_mode_enabled};
