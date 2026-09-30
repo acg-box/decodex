@@ -181,13 +181,7 @@ pub(super) fn reconcile_local(
 
 	let candidate_path =
 		reservation_candidate_path(&root, &reservation, &candidates_dir, original_run_id)?;
-	let (candidate, candidate_sha256) = crate::load_json_with_sha256(&candidate_path)?;
-
-	crate::validate_generated_social_artifact(&candidate)
-		.map_err(|error| eyre::eyre!("candidate failed validation: {error}"))?;
-	social_evidence::validate_source_evidence(&candidate)
-		.map_err(|error| eyre::eyre!("candidate evidence failed validation: {error}"))?;
-
+	let (candidate, candidate_sha256) = load_publication_candidate(&candidate_path)?;
 	let billing_month = reservation_billing_month(&reservation)?.to_owned();
 	let attempt_path = attempts_dir.join(&billing_month).join(format!("{original_run_id}.json"));
 
@@ -196,22 +190,7 @@ pub(super) fn reconcile_local(
 
 	let mut attempt = ledger::load_attempt(&attempt_path)?;
 
-	ledger::validate_publication_cost_record(&attempt)?;
-
-	if attempt.status == "published"
-		&& reservation.get("status").and_then(Value::as_str) != Some("consumed")
-	{
-		return Err(eyre::eyre!(
-			"published xurl attempt has an unconsumed reservation and cannot be reconciled"
-		));
-	}
-	if attempt.candidate_sha256.as_deref() != Some(&candidate_sha256)
-		|| attempt.pricing_policy_id.as_deref() != Some(PRICING_POLICY_ID)
-	{
-		return Err(eyre::eyre!(
-			"xurl publication attempt lacks the current candidate and pricing policy bindings"
-		));
-	}
+	validate_local_recovery_bindings(&attempt, &reservation, &candidate_sha256)?;
 
 	let authorization_contract_sha256 = required_authorization_contract_digest(&attempt)?;
 	let attempt_created_at = require_monotonic_recovery_time(&attempt, reconciled_at)?;
@@ -379,25 +358,10 @@ fn run_with_pricing_check(
 	let existing_attempt =
 		load_existing_attempt(&attempt_path, &attempts_dir, &root, &reservation_path, request)?;
 	let post_path = posts_dir.join(format!("{}.json", request.run_id));
-	let existing_post = if post_path.exists() {
-		let post = crate::load_json(&post_path)?;
-
-		crate::validate_generated_social_artifact(&post)
-			.map_err(|error| eyre::eyre!("existing social post failed validation: {error}"))?;
-
-		Some(post)
-	} else {
-		None
-	};
+	let existing_post = load_existing_social_post(&post_path)?;
 	let candidate_path =
 		reservation_candidate_path(&root, &reservation, &candidates_dir, &request.run_id)?;
-	let (candidate, candidate_sha256) = crate::load_json_with_sha256(&candidate_path)?;
-
-	crate::validate_generated_social_artifact(&candidate)
-		.map_err(|error| eyre::eyre!("candidate failed validation: {error}"))?;
-	social_evidence::validate_source_evidence(&candidate)
-		.map_err(|error| eyre::eyre!("candidate evidence failed validation: {error}"))?;
-
+	let (candidate, candidate_sha256) = load_publication_candidate(&candidate_path)?;
 	let publication_time =
 		existing_post.as_ref().map(existing_posted_at).transpose()?.unwrap_or(posted_at);
 
@@ -411,36 +375,22 @@ fn run_with_pricing_check(
 	let publication_lineage_sha256 =
 		required_string(&reservation, "publication_lineage_sha256")?.to_owned();
 
-	if let Some(conflict) = social_xurl::publication_effect_conflict(
+	require_no_publication_conflict(
+		&root,
 		&attempts_dir,
 		&publication_lineage_sha256,
-		Some(&attempt_path),
-	)? {
-		return Err(eyre::eyre!(
-			"candidate has a prior uncertain or verified public-write attempt: {}",
-			crate::path_arg(&root, &conflict)
-		));
-	}
+		&attempt_path,
+	)?;
 
-	let (authorization_contract_sha256, authorization_contract) = if existing_post.is_some() {
-		let attempt = existing_attempt
-			.as_ref()
-			.ok_or_else(|| eyre::eyre!("existing social post has no publication attempt"))?;
-		let digest = required_authorization_contract_digest(attempt)?;
-
-		(digest, None)
-	} else {
-		require_current_pricing(posted_at)?;
-
-		let contract = auth_contract::load_current_at(
-			&request.authorization_contract_path,
-			posted_at,
+	let (authorization_contract_sha256, authorization_contract) =
+		resolve_publication_authorization(
+			request,
 			xurl_binary,
+			posted_at,
+			existing_post.is_some(),
+			existing_attempt.as_ref(),
+			require_current_pricing,
 		)?;
-		let digest = contract.contract_sha256().into();
-
-		(digest, Some(contract))
-	};
 	let context = PublishContext {
 		root,
 		reservations_dir,
@@ -508,6 +458,103 @@ fn run_with_pricing_check(
 	)?;
 
 	finish_new(request, &context, &reservation, &candidate, &mut attempt, &verified)
+}
+
+fn load_publication_candidate(candidate_path: &Path) -> Result<(Value, String)> {
+	let (candidate, candidate_sha256) = crate::load_json_with_sha256(candidate_path)?;
+
+	crate::validate_generated_social_artifact(&candidate)
+		.map_err(|error| eyre::eyre!("candidate failed validation: {error}"))?;
+	social_evidence::validate_source_evidence(&candidate)
+		.map_err(|error| eyre::eyre!("candidate evidence failed validation: {error}"))?;
+
+	Ok((candidate, candidate_sha256))
+}
+
+fn load_existing_social_post(post_path: &Path) -> Result<Option<Value>> {
+	if post_path.exists() {
+		let post = crate::load_json(post_path)?;
+
+		crate::validate_generated_social_artifact(&post)
+			.map_err(|error| eyre::eyre!("existing social post failed validation: {error}"))?;
+
+		Ok(Some(post))
+	} else {
+		Ok(None)
+	}
+}
+
+fn require_no_publication_conflict(
+	root: &Path,
+	attempts_dir: &Path,
+	publication_lineage_sha256: &str,
+	attempt_path: &Path,
+) -> Result<()> {
+	if let Some(conflict) = social_xurl::publication_effect_conflict(
+		attempts_dir,
+		publication_lineage_sha256,
+		Some(attempt_path),
+	)? {
+		return Err(eyre::eyre!(
+			"candidate has a prior uncertain or verified public-write attempt: {}",
+			crate::path_arg(root, &conflict)
+		));
+	}
+
+	Ok(())
+}
+
+fn resolve_publication_authorization(
+	request: &SocialPublishXurlRequest,
+	xurl_binary: &TrustedXurlBinary,
+	posted_at: OffsetDateTime,
+	has_existing_post: bool,
+	existing_attempt: Option<&XurlAttempt>,
+	require_current_pricing: impl FnOnce(OffsetDateTime) -> Result<()>,
+) -> Result<(String, Option<VerifiedAuthorizationContract>)> {
+	if has_existing_post {
+		let attempt = existing_attempt
+			.ok_or_else(|| eyre::eyre!("existing social post has no publication attempt"))?;
+		let digest = required_authorization_contract_digest(attempt)?;
+
+		Ok((digest, None))
+	} else {
+		require_current_pricing(posted_at)?;
+
+		let contract = auth_contract::load_current_at(
+			&request.authorization_contract_path,
+			posted_at,
+			xurl_binary,
+		)?;
+		let digest = contract.contract_sha256().into();
+
+		Ok((digest, Some(contract)))
+	}
+}
+
+fn validate_local_recovery_bindings(
+	attempt: &XurlAttempt,
+	reservation: &Value,
+	candidate_sha256: &str,
+) -> Result<()> {
+	ledger::validate_publication_cost_record(attempt)?;
+
+	if attempt.status == "published"
+		&& reservation.get("status").and_then(Value::as_str) != Some("consumed")
+	{
+		return Err(eyre::eyre!(
+			"published xurl attempt has an unconsumed reservation and cannot be reconciled"
+		));
+	}
+	if attempt.candidate_sha256.as_deref() != Some(candidate_sha256)
+		|| attempt.pricing_policy_id.as_deref() != Some(PRICING_POLICY_ID)
+	{
+		return Err(eyre::eyre!(
+			"xurl publication attempt lacks the current candidate and pricing policy bindings"
+		));
+	}
+
+	Ok(())
 }
 
 fn prepare_publication_recovery(
