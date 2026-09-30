@@ -67,20 +67,27 @@ mod tests {
 	#[test]
 	fn partial_changes_and_legacy_full_selections_have_distinct_inheritance() {
 		let inherited: AgentExecutionOverrides = serde_json::from_value(json!({})).unwrap();
+
 		assert!(inherited.is_empty());
 		assert_eq!(serde_json::to_value(&inherited).unwrap(), json!({}));
 		assert!(inherited.selected_service_tier().is_none());
+
 		let effort: AgentExecutionOverrides =
 			serde_json::from_value(json!({"reasoning_effort":"high"})).unwrap();
+
 		assert!(effort.model.is_none() && effort.selected_service_tier().is_none());
+
 		let legacy: AgentExecutionOverrides = serde_json::from_value(
 			json!({"model":"chosen","reasoning_effort":"medium","fast":false,"service_tier":null}),
 		)
 		.unwrap();
+
 		assert_eq!(legacy.model.unwrap().as_str(), "chosen");
 		assert_eq!(legacy.fast, Some(false));
+
 		let standard: AgentExecutionOverrides =
 			serde_json::from_value(json!({"service_tier":"default"})).unwrap();
+
 		assert_eq!(standard.selected_service_tier().unwrap().as_str(), "default");
 		assert!(
 			serde_json::from_value::<AgentExecutionOverrides>(json!({"approvalPolicy":"never"}))
@@ -104,12 +111,14 @@ mod tests {
 			}],
 		};
 		let wire = serde_json::to_value(&action).unwrap();
+
 		assert_eq!(wire["data"]["execution"], json!({"reasoning_effort":"medium"}));
+
 		let decoded: crate::AgentActionDto = serde_json::from_value(wire).unwrap();
+
 		assert_eq!(decoded, action);
 	}
 }
-
 #[cfg(test)]
 mod creation_tests {
 	use crate::AgentActionDto;
@@ -122,6 +131,7 @@ mod creation_tests {
 			let AgentActionDto::StartConfigured { start, execution, .. } = action else {
 				panic!("start")
 			};
+
 			assert_eq!(start.effort.as_ref().map(|v| v.as_str()), effort.as_str());
 			assert_eq!(execution.reasoning_effort.as_ref().map(|v| v.as_str()), effort.as_str());
 		}

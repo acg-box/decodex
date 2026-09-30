@@ -10,9 +10,11 @@ impl DictationBuffer {
 	/// Bound one transient frame.
 	pub fn new(value: impl Into<String>) -> Result<Self, WireScalarTooLong> {
 		let value = value.into();
+
 		if value.len() > 65_536 {
 			return Err(WireScalarTooLong::new(value.len(), 65_536));
 		}
+
 		Ok(Self(value))
 	}
 
@@ -111,10 +113,15 @@ mod tests {
 	#[test]
 	fn payload_is_bounded_on_decode_and_redacted_from_debug() {
 		let private = DictationBuffer::new("private audio or draft").expect("bounded");
+
 		assert_eq!(format!("{private:?}"), "DictationBuffer([redacted])");
+
 		let oversized = serde_json::to_string(&"x".repeat(65_537)).expect("encode");
+
 		assert!(serde_json::from_str::<DictationBuffer>(&oversized).is_err());
+
 		let boundary = DictationBuffer::new("x".repeat(65_536)).expect("boundary");
+
 		assert_eq!(boundary.as_str().len(), 65_536);
 	}
 }

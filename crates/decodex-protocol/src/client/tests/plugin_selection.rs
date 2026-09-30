@@ -10,18 +10,22 @@ async fn plugin_selection_waits_for_its_original_reply_without_retry() {
 		let mut socket =
 			tokio_tungstenite::accept_async(listener.accept().await.unwrap()).await.unwrap();
 		let _ = socket.next().await;
+
 		for message in initial(SERVER_ID) {
 			socket.send(message).await.unwrap();
 		}
+
 		let Message::Text(frame) = socket.next().await.unwrap().unwrap() else {
 			panic!("command frame")
 		};
 		let ClientMessage::Command(command) = serde_json::from_str(&frame).unwrap() else {
 			panic!("command")
 		};
+
 		assert!(
 			matches!(&command.payload, crate::CommandPayload::Agent { action } if matches!(action.as_ref(), crate::AgentActionDto::SetTaskPlugin { work_id, thread_id, plugin_id, enabled: false, .. } if work_id.as_str()=="work" && thread_id.as_str()=="thread" && plugin_id.as_str()=="plugin"))
 		);
+
 		socket
 			.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
 				version: CURRENT_VERSION,
@@ -33,8 +37,10 @@ async fn plugin_selection_waits_for_its_original_reply_without_retry() {
 			})))
 			.await
 			.unwrap();
+
 		// Native catalog inspection can exceed the ordinary five-second transport budget.
 		time::sleep(Duration::from_secs(6)).await;
+
 		let _ = socket
 			.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
 				version: CURRENT_VERSION,
@@ -49,11 +55,14 @@ async fn plugin_selection_waits_for_its_original_reply_without_retry() {
 				error: None,
 			})))
 			.await;
+
 		drop(socket);
+
 		assert!(
 			time::timeout(Duration::from_millis(30), listener.accept()).await.is_err(),
 			"No reconnect or retry"
 		);
+
 		listener.cleanup().unwrap();
 	});
 	let response = crate::AgentClient::new(profile)
@@ -69,7 +78,9 @@ async fn plugin_selection_waits_for_its_original_reply_without_retry() {
 		)
 		.await
 		.unwrap();
+
 	server.await.unwrap();
+
 	assert!(
 		matches!(response, crate::AgentCommandResponse::Accepted { work_id } if work_id.as_str()=="work"),
 		"The original reply must retain its native settings budget"

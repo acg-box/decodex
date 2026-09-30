@@ -27,14 +27,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	))
 	.map_err(|_| "invalid call identity")?;
 	let (send, mut lines) = tokio::sync::mpsc::channel(4);
+
 	std::thread::spawn(move || {
 		for line in std::io::stdin().lock().lines() {
 			let Ok(line) = line else { break };
+
 			if line.len() > 70_000 || send.blocking_send(line).is_err() {
 				break;
 			}
 		}
 	});
+
 	let offer = lines.recv().await.ok_or("missing offer")?;
 	let offer: VoiceSdp = serde_json::from_str(&offer)?;
 	let start = AgentVoiceRequest::Start {
@@ -47,33 +50,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let mut status = client.voice(start).await?;
 		let mut answered = false;
 		let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
+
 		loop {
 			if status.phase == AgentVoicePhase::Failed {
 				if let Some(message) = &status.message {
 					eprintln!("{}", message.as_str());
 				}
+
 				return Err::<(), Box<dyn std::error::Error>>("service voice failed".into());
 			}
 			if !answered && let Some(answer) = status.answer.take() {
 				println!("{}", serde_json::to_string(&answer)?);
+
 				std::io::stdout().flush()?;
+
 				answered = true;
 			}
 			if status.phase == AgentVoicePhase::Ended {
 				return Ok(());
 			}
+
 			tokio::select! {
 				_=tokio::time::sleep_until(deadline)=>return Err("voice qualification deadline".into()),
 				line=lines.recv()=>{if line.as_deref()==Some("stop") || line.is_none() {return Ok(())}},
 				_=tokio::time::sleep(Duration::from_millis(200))=>{},
 			}
+
 			status = client.voice(AgentVoiceRequest::Poll { session_id: session.clone() }).await?;
 		}
 	}
 	.await;
 	let _ = client.voice(AgentVoiceRequest::Stop { session_id: session }).await;
+
 	if result.is_err() {
 		println!("null");
 	}
+
 	result
 }

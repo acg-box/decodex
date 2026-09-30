@@ -12,6 +12,7 @@ impl VoiceSdp {
 		if value.len() > 65_536 {
 			return Err(WireScalarTooLong::new(value.len(), 65_536));
 		}
+
 		Ok(Self(value))
 	}
 
@@ -131,6 +132,7 @@ mod tests {
 	#[test]
 	fn signaling_is_bounded_and_redacted() {
 		let sdp = VoiceSdp::new("private-ice-password".into()).unwrap();
+
 		assert!(!format!("{sdp:?}").contains("private-ice"));
 		assert!(VoiceSdp::new("x".repeat(65_537)).is_err());
 		assert!(serde_json::from_value::<VoiceSdp>(serde_json::json!("x".repeat(65_537))).is_err());

@@ -45,11 +45,13 @@ pub(super) async fn collect(
 			{
 				return Err(ClientFailure::ProtocolMalformed);
 			}
+
 			(work_id.clone(), method.clone(), digest.clone(), *total_bytes)
 		},
 	};
 	let mut content = String::new();
 	let mut page = first;
+
 	loop {
 		let Request::Page {
 			event_id,
@@ -70,6 +72,7 @@ pub(super) async fn collect(
 		};
 		let end =
 			offset.checked_add(text.as_str().len()).ok_or(ClientFailure::ProtocolMalformed)?;
+
 		if event_id != expected
 			|| work_id != owner
 			|| returned_method != method
@@ -83,13 +86,17 @@ pub(super) async fn collect(
 		{
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		content.push_str(text.as_str());
+
 		if next_offset.is_none() {
 			let bytes = serde_json::to_vec(&(expected, &owner, &method, &content))
 				.map_err(|_| ClientFailure::ProtocolMalformed)?;
+
 			if decodex_core::BlobHash::digest(&bytes).to_hex() != digest {
 				return Err(ClientFailure::ProtocolMalformed);
 			}
+
 			return Ok(Request::Available {
 				event_id: expected,
 				work_id: owner,
@@ -98,6 +105,7 @@ pub(super) async fn collect(
 					.map_err(|_| ClientFailure::ProtocolMalformed)?,
 			});
 		}
+
 		let completed = time::timeout(
 			REQUEST_CLIENT_TIMEOUT,
 			client.transport.query_inner(
@@ -112,10 +120,13 @@ pub(super) async fn collect(
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		let QueryResultPayload::AgentRequest(next) = completed.value else {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
+
 		page = next;
 	}
 }

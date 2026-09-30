@@ -35,6 +35,7 @@ fn choices(schema: &Value) -> Result<Vec<McpFormChoice>, String> {
 			.enumerate()
 			.map(|(index, value)| {
 				let text = value.as_str().ok_or("Unsupported enum value")?;
+
 				Ok(McpFormChoice {
 					label: schema["enumNames"][index].as_str().unwrap_or(text).into(),
 					value: value.clone(),
@@ -51,7 +52,9 @@ fn choices(schema: &Value) -> Result<Vec<McpFormChoice>, String> {
 				}) {
 					return Err("Unsupported choice constraints".into());
 				}
+
 				let text = value["const"].as_str().ok_or("Unsupported choice")?;
+
 				Ok(McpFormChoice {
 					label: value["title"].as_str().unwrap_or(text).into(),
 					value: json!(text),
@@ -59,6 +62,7 @@ fn choices(schema: &Value) -> Result<Vec<McpFormChoice>, String> {
 			})
 			.collect();
 	}
+
 	Ok(Vec::new())
 }
 
@@ -66,6 +70,7 @@ fn choices(schema: &Value) -> Result<Vec<McpFormChoice>, String> {
 /// Only standard MCP retains the legacy null-schema confirmation convention.
 pub fn mcp_request_fields(request: &Value) -> Result<Vec<McpFormField>, String> {
 	let schema = request.get("requestedSchema").ok_or("Missing form schema")?;
+
 	match request["mode"].as_str() {
 		Some("form") => mcp_form_fields(schema),
 		Some("openai/form" | "openaiForm") if !schema.is_null() => mcp_form_fields(schema),
@@ -97,10 +102,13 @@ pub fn mcp_form_fields(schema: &Value) -> Result<Vec<McpFormField>, String> {
 	}) {
 		return Err("This form uses unsupported schema constraints.".into());
 	}
+
 	let properties = schema["properties"].as_object().ok_or("Missing form fields")?;
+
 	if properties.len() > 32 {
 		return Err("This form has too many fields.".into());
 	}
+
 	let required = match schema.get("required") {
 		None => Vec::new(),
 		Some(value) => value
@@ -115,6 +123,7 @@ pub fn mcp_form_fields(schema: &Value) -> Result<Vec<McpFormField>, String> {
 			})
 			.collect::<Result<Vec<_>, _>>()?,
 	};
+
 	properties
 		.iter()
 		.map(|(id, property)| {
@@ -143,7 +152,9 @@ pub fn mcp_form_fields(schema: &Value) -> Result<Vec<McpFormField>, String> {
 			}) {
 				return Err("This field uses unsupported schema constraints.".into());
 			}
+
 			let kind = property["type"].as_str().ok_or("Missing field type")?;
+
 			if !["string", "boolean", "number", "integer", "array"].contains(&kind)
 				|| id.is_empty()
 				|| id.len() > 512
@@ -164,6 +175,7 @@ pub fn mcp_form_fields(schema: &Value) -> Result<Vec<McpFormField>, String> {
 				}) {
 				return Err("Unsupported item constraints".into());
 			}
+
 			let options = if kind == "boolean" {
 				vec![
 					McpFormChoice { label: "True".into(), value: json!(true) },
@@ -172,6 +184,7 @@ pub fn mcp_form_fields(schema: &Value) -> Result<Vec<McpFormField>, String> {
 			} else {
 				choices(if kind == "array" { &property["items"] } else { property })?
 			};
+
 			if (kind == "string"
 				&& (property.get("enum").is_some()
 					|| property.get("oneOf").is_some()
@@ -183,6 +196,7 @@ pub fn mcp_form_fields(schema: &Value) -> Result<Vec<McpFormField>, String> {
 			{
 				return Err("Unsupported selection field".into());
 			}
+
 			Ok(McpFormField {
 				id: id.clone(),
 				title: property["title"].as_str().unwrap_or(id).into(),
@@ -202,11 +216,13 @@ pub fn mcp_form_content(
 	answers: &BTreeMap<String, Value>,
 ) -> Result<Value, String> {
 	let mut content = serde_json::Map::new();
+
 	for field in fields {
 		let Some(value) = answers.get(&field.id) else {
 			if field.required {
 				return Err(format!("{} is required.", field.title));
 			}
+
 			continue;
 		};
 		let valid = match field.kind.as_str() {
@@ -217,6 +233,7 @@ pub fn mcp_form_content(
 			"array" => value.is_array(),
 			_ => false,
 		};
+
 		if !valid {
 			return Err(format!("{} has an invalid value.", field.title));
 		}
@@ -226,6 +243,7 @@ pub fn mcp_form_content(
 			} else {
 				vec![value]
 			};
+
 			if selected
 				.iter()
 				.any(|value| !field.choices.iter().any(|choice| &choice.value == *value))
@@ -241,42 +259,52 @@ pub fn mcp_form_content(
 				return Err(format!("Remove duplicate choices for {}.", field.title));
 			}
 		}
+
 		let count = value
 			.as_str()
 			.map(|text| text.chars().count() as u64)
 			.or_else(|| value.as_array().map(|items| items.len() as u64));
+
 		if let Some(count) = count {
 			let (min, max) = if field.kind == "array" {
 				("minItems", "maxItems")
 			} else {
 				("minLength", "maxLength")
 			};
+
 			if field.schema[min].as_u64().is_some_and(|min| count < min)
 				|| field.schema[max].as_u64().is_some_and(|max| count > max)
 			{
 				return Err(format!("{} does not meet the required length.", field.title));
 			}
 		}
+
 		if compare_numbers(value, &field.schema["minimum"]) == Some(std::cmp::Ordering::Less)
 			|| compare_numbers(value, &field.schema["maximum"]) == Some(std::cmp::Ordering::Greater)
 		{
 			return Err(format!("{} is outside the allowed range.", field.title));
 		}
+
 		content.insert(field.id.clone(), value.clone());
 	}
+
 	if answers.keys().any(|id| !fields.iter().any(|field| &field.id == id)) {
 		return Err("Unexpected form field".into());
 	}
+
 	let content = Value::Object(content);
+
 	if content.to_string().len() > crate::MAX_HISTORY_INLINE_BYTES.saturating_sub(128) {
 		return Err("Response is too large; shorten the answers.".into());
 	}
+
 	Ok(content)
 }
 
 fn compare_numbers(left: &Value, right: &Value) -> Option<std::cmp::Ordering> {
 	let integer =
 		|value: &Value| value.as_i64().map(i128::from).or_else(|| value.as_u64().map(i128::from));
+
 	if let (Some(left), Some(right)) = (integer(left), integer(right)) {
 		Some(left.cmp(&right))
 	} else {
@@ -287,22 +315,28 @@ fn compare_numbers(left: &Value, right: &Value) -> Option<std::cmp::Ordering> {
 /// Validate an MCP reply against its original request before consuming live response authority.
 pub fn validate_mcp_response(request: &Value, response: &Value) -> Result<(), String> {
 	let object = response.as_object().ok_or("Response must be an object")?;
+
 	if object.keys().any(|key| !["action", "content", "_meta"].contains(&key.as_str())) {
 		return Err("Unexpected response field".into());
 	}
+
 	let action = response["action"].as_str().ok_or("Missing elicitation action")?;
+
 	if matches!(action, "decline" | "cancel") {
 		if !response["content"].is_null() || !response["_meta"].is_null() {
 			return Err("Decline and cancel cannot submit content or persistent permission".into());
 		}
+
 		return Ok(());
 	}
 	if action != "accept" {
 		return Err("Unknown elicitation action".into());
 	}
+
 	match request["mode"].as_str() {
 		Some("form" | "openai/form" | "openaiForm") => {
 			let fields = mcp_request_fields(request)?;
+
 			if fields.is_empty() {
 				if !response["content"].is_null() && response["content"] != json!({}) {
 					return Err("This approval has no input fields".into());
@@ -314,6 +348,7 @@ pub fn validate_mcp_response(request: &Value, response: &Value) -> Result<(), St
 					.iter()
 					.map(|(key, value)| (key.clone(), value.clone()))
 					.collect();
+
 				mcp_form_content(&fields, &answers)?;
 			}
 			if !response["_meta"].is_null() {
@@ -323,6 +358,7 @@ pub fn validate_mcp_response(request: &Value, response: &Value) -> Result<(), St
 					.and_then(Value::as_str)
 					.ok_or("Missing persistence choice")?;
 				let offered = &request["_meta"]["persist"];
+
 				if !fields.is_empty()
 					|| request["_meta"]["codex_approval_kind"] == "tool_suggestion"
 					|| meta.len() != 1
@@ -341,6 +377,7 @@ pub fn validate_mcp_response(request: &Value, response: &Value) -> Result<(), St
 			},
 		_ => return Err("This verification method cannot be accepted by this client".into()),
 	}
+
 	Ok(())
 }
 
@@ -355,11 +392,13 @@ mod tests {
 		for mode in ["openai/form", "openaiForm"] {
 			for schema in [Value::Null, json!(true), json!("unknown"), json!([]), json!({})] {
 				let request = json!({"mode":mode,"requestedSchema":schema});
+
 				assert!(mcp_request_fields(&request).is_err());
 				assert!(
 					validate_mcp_response(&request, &json!({"action":"accept","content":null}))
 						.is_err()
 				);
+
 				for action in ["decline", "cancel"] {
 					assert!(
 						validate_mcp_response(&request, &json!({"action":action,"content":null}))
@@ -368,6 +407,7 @@ mod tests {
 				}
 			}
 		}
+
 		assert!(
 			mcp_request_fields(&json!({"mode":"form","requestedSchema":null})).unwrap().is_empty()
 		);
@@ -380,6 +420,7 @@ mod tests {
 				"const":"wire-value","title":"Display label","x-openai-preview":{"src":"data:image/png;base64,fixture"}
 			}]}},"required":["template"]
 		}});
+
 		assert!(mcp_form_fields(&request["requestedSchema"]).is_err());
 		assert!(
 			validate_mcp_response(
@@ -388,6 +429,7 @@ mod tests {
 			)
 			.is_err()
 		);
+
 		for action in ["decline", "cancel"] {
 			assert!(
 				validate_mcp_response(&request, &json!({"action":action,"content":null})).is_ok()
@@ -398,6 +440,7 @@ mod tests {
 	#[test]
 	fn response_permissions_are_limited_to_advertised_scope() {
 		let request = json!({"mode":"form","requestedSchema":null,"_meta":{"persist":["session"]}});
+
 		assert!(
 			validate_mcp_response(
 				&request,
@@ -449,8 +492,11 @@ mod tests {
 			("maximum", json!(u64::MAX - 1), json!(u64::MAX - 1), json!(u64::MAX)),
 		] {
 			let mut schema = json!({"type":"object","properties":{"count":{"type":"integer"}}});
+
 			schema["properties"]["count"][bound] = limit;
+
 			let fields = mcp_form_fields(&schema).unwrap();
+
 			assert!(mcp_form_content(&fields, &BTreeMap::from([("count".into(), valid)])).is_ok());
 			assert!(
 				mcp_form_content(&fields, &BTreeMap::from([("count".into(), invalid)])).is_err(),
@@ -462,17 +508,24 @@ mod tests {
 	#[test]
 	fn explicit_choices_keep_types_and_never_submit_defaults() {
 		let fields=mcp_form_fields(&json!({"type":"object","properties":{"agree":{"type":"boolean","default":true},"count":{"type":"integer","minimum":1},"tags":{"type":"array","items":{"type":"string","enum":["a","b"]},"minItems":1}},"required":["agree"]})).unwrap();
+
 		assert!(mcp_form_content(&fields, &BTreeMap::new()).is_err());
+
 		let mut answers = BTreeMap::from([
 			("agree".into(), json!(false)),
 			("count".into(), json!(2)),
 			("tags".into(), json!(["b"])),
 		]);
+
 		assert_eq!(mcp_form_content(&fields, &answers).unwrap()["agree"], false);
+
 		answers.insert("count".into(), json!(1.5));
+
 		assert!(mcp_form_content(&fields, &answers).is_err());
+
 		answers.insert("count".into(), json!(2));
 		answers.insert("tags".into(), json!(["unoffered"]));
+
 		assert!(mcp_form_content(&fields, &answers).is_err());
 	}
 }

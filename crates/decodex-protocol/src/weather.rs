@@ -25,20 +25,25 @@ impl WeatherForecast {
 		let location = lines.next()?.strip_prefix("Weather for ")?.strip_suffix(':')?;
 		let current = lines.next()?.strip_prefix("Current Conditions: ")?;
 		let (condition, _) = current.rsplit_once(", ")?;
+
 		if lines.next()? != "Hourly Forecast:" {
 			return None;
 		}
+
 		let hours = lines
 			.take(24)
 			.map(|line| {
 				let (hour, value) = line.split_once(": ")?;
 				let (condition, _) = value.rsplit_once(", ")?;
+
 				Some((hour.to_owned(), condition.to_owned(), temperature(value)?))
 			})
 			.collect::<Option<Vec<_>>>()?;
+
 		if hours.is_empty() {
 			return None;
 		}
+
 		Some(Self {
 			reference: reference.into(),
 			location: location.into(),
@@ -54,9 +59,11 @@ impl WeatherForecast {
 			"## {}\n\n{}°C · {}\n\n| Time | Weather | °C |\n| --- | --- | --- |\n",
 			self.location, self.celsius, self.condition
 		);
+
 		for (hour, condition, temperature) in &self.hours {
 			result.push_str(&format!("| {hour} | {condition} | {temperature} |\n"));
 		}
+
 		result
 	}
 }

@@ -11,9 +11,11 @@ async fn summary_history_rejects_crossed_work_and_thread() {
 			let stream = listener.accept().await.expect("accept");
 			let mut socket = tokio_tungstenite::accept_async(stream).await.expect("socket");
 			let _ = socket.next().await;
+
 			for response in initial(SERVER_ID) {
 				socket.send(response).await.expect("initial");
 			}
+
 			let Message::Text(request) = socket.next().await.expect("request").expect("frame")
 			else {
 				panic!("query frame")
@@ -21,10 +23,12 @@ async fn summary_history_rejects_crossed_work_and_thread() {
 			let ClientMessage::Query(query) = serde_json::from_str(&request).expect("query") else {
 				panic!("read-only query")
 			};
+
 			assert!(
 				matches!(&query.payload, crate::QueryPayload::GetAgentTimeline {work_id, thread_id, cursor}
                 if work_id.as_str() == "root" && thread_id.as_str() == "native" && cursor.is_none())
 			);
+
 			let result = crate::AgentTimelineResult::Summary {
 				work_id: EntityId::new(if mode == "work" { "other" } else { "root" })
 					.expect("work"),
@@ -32,6 +36,7 @@ async fn summary_history_rejects_crossed_work_and_thread() {
 				thread_id: if mode == "thread" { "other" } else { "native" }.into(),
 				items: vec![],
 			};
+
 			socket
 				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
@@ -41,7 +46,9 @@ async fn summary_history_rejects_crossed_work_and_thread() {
 				})))
 				.await
 				.expect("reply");
+
 			drop(socket);
+
 			listener.cleanup().expect("cleanup");
 		});
 		let result = crate::AgentClient::new(profile)
@@ -51,7 +58,9 @@ async fn summary_history_rejects_crossed_work_and_thread() {
 				None,
 			)
 			.await;
+
 		server.await.expect("server task");
+
 		if mode == "valid" {
 			assert!(matches!(result, Ok(crate::AgentTimelineResult::Summary { .. })));
 		} else {

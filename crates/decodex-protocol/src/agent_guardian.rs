@@ -116,6 +116,7 @@ impl AgentGuardianDetailResult {
 				let Some(end) = offset.checked_add(text.len()) else {
 					return false;
 				};
+
 				*row_id == row
 					&& digest == expected_digest
 					&& *offset == start
@@ -142,15 +143,19 @@ mod tests {
 			text: "中文".into(),
 			next_offset: None,
 		};
+
 		assert!(page.matches_request(4, "exact", 3));
+
 		for (row, digest, offset) in [(5, "exact", 3), (4, "stale", 3), (4, "exact", 0)] {
 			assert!(!page.matches_request(row, digest, offset));
 		}
 		for next_offset in [Some(3), Some(8), Some(9), Some(10)] {
 			let mut bad = page.clone();
+
 			if let AgentGuardianDetailResult::Available { next_offset: next, .. } = &mut bad {
 				*next = next_offset;
 			}
+
 			assert!(!bad.matches_request(4, "exact", 3));
 		}
 	}

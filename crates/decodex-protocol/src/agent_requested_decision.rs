@@ -25,10 +25,12 @@ impl AgentRequestedDecision {
 				.as_array()?
 				.iter()
 				.position(|offered| offered == &response["decision"])?;
+
 			Self::CommandPolicy { index }
 		} else {
 			return None;
 		};
+
 		(requested_decision_response(method, params, &decision).as_ref() == Some(response))
 			.then_some(decision)
 	}
@@ -51,12 +53,14 @@ pub fn requested_decision_response(
 		{
 			let proposed = params["availableDecisions"].as_array()?.get(*index)?;
 			let object = proposed.as_object()?;
+
 			if object.len() != 1
 				|| !(object.get("acceptWithExecpolicyAmendment").is_some_and(Value::is_object)
 					|| object.get("applyNetworkPolicyAmendment").is_some_and(Value::is_object))
 			{
 				return None;
 			}
+
 			Some(json!({"decision": proposed}))
 		},
 		_ => None,
@@ -77,6 +81,7 @@ mod tests {
 			&AgentRequestedDecision::PermissionsForTurn,
 		)
 		.unwrap();
+
 		assert!(result.to_string().len() > crate::MAX_HISTORY_INLINE_BYTES);
 		assert_eq!(result, json!({"permissions":permissions,"scope":"turn"}));
 		assert_eq!(
@@ -87,8 +92,11 @@ mod tests {
 			),
 			Some(AgentRequestedDecision::PermissionsForTurn)
 		);
+
 		let mut changed = result;
+
 		changed["scope"] = json!("session");
+
 		assert!(
 			AgentRequestedDecision::matching_response(
 				"item/permissions/requestApproval",
@@ -105,9 +113,11 @@ mod tests {
 			)
 			.is_none()
 		);
+
 		let policy = json!({"acceptWithExecpolicyAmendment":{"execpolicy_amendment":["command".repeat(6000)]}});
 		let params = json!({"availableDecisions":["decline", policy]});
 		let selected = AgentRequestedDecision::CommandPolicy { index: 1 };
+
 		assert_eq!(
 			AgentRequestedDecision::matching_response(
 				"item/commandExecution/requestApproval",
@@ -116,11 +126,13 @@ mod tests {
 			),
 			Some(selected.clone())
 		);
+
 		let action = crate::AgentActionDto::RespondWithRequestedDecision {
 			work_id: crate::EntityId::new("work").unwrap(),
 			event_id: 42,
 			decision: selected.clone(),
 		};
+
 		assert!(serde_json::to_string(&action).unwrap().len() < 512);
 		assert_eq!(
 			requested_decision_response(
@@ -130,6 +142,7 @@ mod tests {
 			),
 			Some(json!({"decision":policy}))
 		);
+
 		for index in [0, 2, usize::MAX] {
 			assert!(
 				requested_decision_response(
@@ -140,6 +153,7 @@ mod tests {
 				.is_none()
 			);
 		}
+
 		assert!(
 			requested_decision_response("item/fileChange/requestApproval", &params, &selected)
 				.is_none()

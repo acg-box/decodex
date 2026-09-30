@@ -71,6 +71,7 @@ impl ConversationTitle {
 	/// Validate and retain one authoritative display title.
 	pub fn new(value: impl Into<String>) -> Result<Self, ConversationContractError> {
 		let value = value.into();
+
 		if value.is_empty()
 			|| value.len() > MAX_CONVERSATION_TITLE_BYTES
 			|| value.chars().any(char::is_control)
@@ -78,6 +79,7 @@ impl ConversationTitle {
 		{
 			return Err(ConversationContractError::InvalidProjection);
 		}
+
 		Ok(Self(value))
 	}
 
@@ -103,6 +105,7 @@ impl ProviderThreadId {
 	/// Validate and retain one exact opaque app-server thread identity.
 	pub fn new(value: impl Into<String>) -> Result<Self, ConversationContractError> {
 		let value = value.into();
+
 		if value.is_empty()
 			|| value.len() > MAX_PROVIDER_THREAD_ID_BYTES
 			|| value.chars().any(char::is_control)
@@ -110,6 +113,7 @@ impl ProviderThreadId {
 		{
 			return Err(ConversationContractError::InvalidProjection);
 		}
+
 		Ok(Self(value))
 	}
 
@@ -122,9 +126,11 @@ impl ProviderThreadId {
 	pub fn codex_url(&self) -> Result<Url, ConversationContractError> {
 		let mut url = Url::parse("codex://threads")
 			.map_err(|_| ConversationContractError::InvalidProjection)?;
+
 		url.path_segments_mut()
 			.map_err(|()| ConversationContractError::InvalidProjection)?
 			.push(&self.0);
+
 		Ok(url)
 	}
 
@@ -140,6 +146,7 @@ impl ProviderThreadId {
 		{
 			return Err(ConversationContractError::InvalidProjection);
 		}
+
 		let segments = url
 			.path_segments()
 			.ok_or(ConversationContractError::InvalidProjection)?
@@ -150,6 +157,7 @@ impl ProviderThreadId {
 		let decoded = percent_decode_str(segment)
 			.decode_utf8()
 			.map_err(|_| ConversationContractError::InvalidProjection)?;
+
 		Self::new(decoded.into_owned())
 	}
 }
@@ -197,6 +205,7 @@ impl ConversationProgramContext {
 		{
 			return Err(ConversationContractError::InvalidProjection);
 		}
+
 		Ok(Self { program_id, work_item_id, title, instructions, state, revision })
 	}
 }
@@ -215,7 +224,9 @@ impl<'de> Deserialize<'de> for ConversationProgramContext {
 			state: WorkItemState,
 			revision: EntityRevision,
 		}
+
 		let raw = Raw::deserialize(deserializer)?;
+
 		Self::new(
 			raw.program_id,
 			raw.work_item_id,
@@ -248,6 +259,7 @@ impl ConversationModel {
 	/// Validate one model identifier without selecting a default.
 	pub fn new(value: impl Into<String>) -> Result<Self, ConversationContractError> {
 		let value = value.into();
+
 		if value.is_empty()
 			|| value.len() > MAX_CONVERSATION_MODEL_BYTES
 			|| value.chars().any(|character| {
@@ -256,6 +268,7 @@ impl ConversationModel {
 			}) {
 			return Err(ConversationContractError::InvalidModel);
 		}
+
 		Ok(Self(value))
 	}
 
@@ -306,9 +319,11 @@ impl ConversationReasoningEffort {
 	/// Retain a bounded native value; normalize the legacy Decodex x_high alias.
 	pub fn new(value: impl Into<String>) -> Result<Self, ConversationContractError> {
 		let value = value.into();
+
 		if value.is_empty() || value.len() > 128 || value.chars().any(char::is_control) {
 			return Err(ConversationContractError::InvalidReasoningEffort);
 		}
+
 		Ok(match value.as_str() {
 			"none" => Self::None,
 			"minimal" => Self::Minimal,
@@ -386,6 +401,7 @@ impl ConversationExecutionSettings {
 	pub fn with_service_tier(mut self, tier: decodex_core::ServiceTier) -> Self {
 		self.fast = tier.as_str() == "priority";
 		self.service_tier = Some(tier);
+
 		self
 	}
 }
@@ -404,6 +420,7 @@ impl ConversationWorkingDirectory {
 		let value = value.into();
 		let components =
 			value.strip_prefix('/').ok_or(ConversationContractError::InvalidWorkingDirectory)?;
+
 		if components.is_empty()
 			|| value.len() > MAX_CONVERSATION_WORKING_DIRECTORY_BYTES
 			|| value.chars().any(char::is_control)
@@ -536,6 +553,7 @@ impl ConversationListSize {
 		if value == 0 || value > MAX_CONVERSATION_LIST_SIZE {
 			return Err(ConversationContractError::InvalidListSize);
 		}
+
 		Ok(Self(value))
 	}
 
@@ -569,6 +587,7 @@ impl ConversationListCursor {
 		if updated_at_micros <= 0 || !is_canonical_uuid_v4(conversation_id.as_str()) {
 			return Err(ConversationContractError::InvalidCursor);
 		}
+
 		Ok(Self { updated_at_micros, conversation_id })
 	}
 
@@ -595,6 +614,7 @@ impl<'de> Deserialize<'de> for ConversationListCursor {
 		}
 
 		let raw = Raw::deserialize(deserializer)?;
+
 		Self::new(raw.updated_at_micros, raw.conversation_id).map_err(D::Error::custom)
 	}
 }
@@ -691,6 +711,7 @@ impl ConversationSummary {
 			ConversationState::ManualRecovery => recovery_action.is_some(),
 			ConversationState::OutcomeUnknown => recovery_action.is_none(),
 		};
+
 		if !canonical
 			|| conversation_revision.0 == 0
 			|| projection_updated_at_micros <= 0
@@ -703,6 +724,7 @@ impl ConversationSummary {
 		{
 			return Err(ConversationContractError::InvalidProjection);
 		}
+
 		Ok(Self {
 			original_working_directory: None,
 			native_settings: None,
@@ -730,8 +752,10 @@ impl ConversationSummary {
 		{
 			return Err(ConversationContractError::InvalidProjection);
 		}
+
 		self.native_settings =
 			settings.map(crate::ConversationNativeSettings::validate).transpose()?.map(Box::new);
+
 		Ok(self)
 	}
 }
@@ -759,6 +783,7 @@ impl<'de> Deserialize<'de> for ConversationSummary {
 		}
 
 		let raw = Raw::deserialize(deserializer)?;
+
 		Self::new(
 			raw.conversation_id,
 			raw.title,
@@ -774,6 +799,7 @@ impl<'de> Deserialize<'de> for ConversationSummary {
 		)
 		.and_then(|mut summary| {
 			summary.original_working_directory = raw.original_working_directory;
+
 			summary.with_native_settings(raw.native_settings)
 		})
 		.map_err(D::Error::custom)
@@ -797,6 +823,7 @@ impl ConversationListPage {
 		next_cursor: Option<ConversationListCursor>,
 	) -> Result<Self, ConversationContractError> {
 		let mut identities = HashSet::with_capacity(conversations.len());
+
 		if conversations.len() > usize::from(MAX_CONVERSATION_LIST_SIZE)
 			|| conversations
 				.iter()
@@ -804,6 +831,7 @@ impl ConversationListPage {
 		{
 			return Err(ConversationContractError::InvalidProjection);
 		}
+
 		Ok(Self { conversations, next_cursor })
 	}
 }
@@ -820,6 +848,7 @@ impl<'de> Deserialize<'de> for ConversationListPage {
 		}
 
 		let raw = Raw::deserialize(deserializer)?;
+
 		Self::new(raw.conversations, raw.next_cursor).map_err(D::Error::custom)
 	}
 }
@@ -887,6 +916,7 @@ pub enum ConversationResult {
 
 pub(crate) fn is_canonical_uuid_v4(value: &str) -> bool {
 	let bytes = value.as_bytes();
+
 	bytes.len() == 36
 		&& [8, 13, 18, 23].into_iter().all(|index| bytes[index] == b'-')
 		&& bytes[14] == b'4'
@@ -921,6 +951,7 @@ mod provider_thread_tests {
 		] {
 			let identity = ProviderThreadId::new(identity).expect("provider thread identity");
 			let url = identity.codex_url().expect("canonical Codex URL");
+
 			assert!(url.query().is_none());
 			assert!(url.fragment().is_none());
 			assert_eq!(url.path_segments().expect("hierarchical URL").count(), 1);
@@ -931,7 +962,6 @@ mod provider_thread_tests {
 		}
 	}
 }
-
 #[cfg(test)]
 mod native_effort_tests {
 	use super::ConversationReasoningEffort as Effort;
@@ -941,10 +971,13 @@ mod native_effort_tests {
 		for value in ["none", "minimal", "persistent", "provider-defined-effort", "custom effort"] {
 			let effort = Effort::new(value).expect("bounded effort");
 			let encoded = serde_json::to_string(&effort).expect("serialize effort");
+
 			assert_eq!(serde_json::from_str::<Effort>(&encoded).expect("decode effort"), effort);
 			assert_eq!(effort.as_str(), value);
 		}
+
 		assert_eq!(serde_json::to_value(Effort::XHigh).expect("legacy wire"), "x_high");
+
 		for alias in ["xhigh", "x_high"] {
 			assert_eq!(
 				serde_json::from_value::<Effort>(serde_json::json!(alias)).expect("known alias"),
@@ -962,7 +995,6 @@ mod native_effort_tests {
 		}
 	}
 }
-
 #[cfg(test)]
 mod inherited_execution_tests {
 	use super::*;
@@ -975,10 +1007,13 @@ mod inherited_execution_tests {
 			Some(serde_json::json!("provider-effort")),
 		] {
 			let mut wire = serde_json::json!({"model":"model","fast":false});
+
 			if let Some(effort) = effort.clone() {
 				wire["reasoning_effort"] = effort;
 			}
+
 			let execution: ConversationExecutionSettings = serde_json::from_value(wire).unwrap();
+
 			assert_eq!(
 				execution.reasoning_effort.as_ref().map(|value| value.as_str()),
 				effort.as_ref().and_then(|value| value.as_str())
@@ -1033,12 +1068,17 @@ mod override_wire_tests {
 			"execution":{"model":"saved-model","reasoning_effort":"high","fast":false}
 		}});
 		let payload: CommandPayload = serde_json::from_value(legacy.clone()).expect("legacy turn");
+
 		assert!(matches!(payload, CommandPayload::SubmitConversationTurn { overrides: None, .. }));
 		assert_eq!(serde_json::to_value(payload).expect("legacy wire"), legacy);
+
 		let mut modern = legacy.clone();
+
 		modern["arguments"]["overrides"] =
 			json!({"model":false,"reasoning":true,"service_tier":false});
+
 		let payload: CommandPayload = serde_json::from_value(modern.clone()).expect("modern turn");
+
 		assert_eq!(serde_json::to_value(payload).expect("modern wire"), modern);
 		assert_ne!(
 			serde_json::to_vec(&legacy).expect("legacy identity"),

@@ -422,6 +422,7 @@ impl DesktopSettingsDto {
 		if revision.0 == 0 {
 			return Err("desktop settings revision must be positive");
 		}
+
 		Ok(Self { show_in_menu_bar, auto_activate_quota: true, auto_recap: false, revision })
 	}
 
@@ -863,6 +864,7 @@ impl ResetCardDescriptorDto {
 		expires_at_unix_seconds: impl Into<Option<i64>>,
 	) -> Result<Self, ResetCardDescriptorError> {
 		let expires_at_unix_seconds = expires_at_unix_seconds.into();
+
 		if granted_at_unix_seconds < 0 {
 			return Err(ResetCardDescriptorError::NegativeGrantedAt);
 		}
@@ -1021,6 +1023,7 @@ impl Serialize for ResetCardInventoryResult {
 					*seven_day_quota,
 				)
 				.map_err(S::Error::custom)?;
+
 				RawResult::Available {
 					account_id,
 					account_revision: *account_revision,
@@ -1045,6 +1048,7 @@ impl Serialize for ResetCardInventoryResult {
 					*seven_day_quota,
 				)
 				.map_err(S::Error::custom)?;
+
 				RawResult::ObservationFailed {
 					account_id,
 					account_revision: *account_revision,
@@ -1133,6 +1137,7 @@ impl<'de> Deserialize<'de> for ResetCardInventoryResult {
 					seven_day_quota,
 				)
 				.map_err(D::Error::custom)?;
+
 				Ok(Self::ObservationFailed {
 					account_id,
 					account_revision,
@@ -1508,6 +1513,7 @@ impl Serialize for AccountProfileDto {
 		S: serde::Serializer,
 	{
 		validate_account_profile(self).map_err(S::Error::custom)?;
+
 		RawAccountProfileDto::from(self).serialize(serializer)
 	}
 }
@@ -1517,7 +1523,9 @@ impl<'de> Deserialize<'de> for AccountProfileDto {
 		D: Deserializer<'de>,
 	{
 		let profile = Self::from(RawAccountProfileDto::deserialize(deserializer)?);
+
 		validate_account_profile(&profile).map_err(D::Error::custom)?;
+
 		Ok(profile)
 	}
 }
@@ -1594,6 +1602,7 @@ impl Serialize for AccountProfileResult {
 				plan_type: Option<&'a WireText>,
 			},
 		}
+
 		let raw = match self {
 			Self::Current(profile) => Raw::Current(profile),
 			Self::Cached { profile, refresh_error } =>
@@ -1601,9 +1610,11 @@ impl Serialize for AccountProfileResult {
 			Self::Unavailable { error, email, plan_type } => {
 				validate_account_profile_claims(email, plan_type.as_ref())
 					.map_err(S::Error::custom)?;
+
 				Raw::Unavailable { error: *error, email, plan_type: plan_type.as_ref() }
 			},
 		};
+
 		raw.serialize(serializer)
 	}
 }
@@ -1626,12 +1637,14 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 				plan_type: Option<WireText>,
 			},
 		}
+
 		match Raw::deserialize(deserializer)? {
 			Raw::Current(profile) => Ok(Self::Current(profile)),
 			Raw::Cached { profile, refresh_error } => Ok(Self::Cached { profile, refresh_error }),
 			Raw::Unavailable { error, email, plan_type } => {
 				validate_account_profile_claims(&email, plan_type.as_ref())
 					.map_err(D::Error::custom)?;
+
 				Ok(Self::Unavailable { error, email, plan_type })
 			},
 		}
@@ -1683,6 +1696,7 @@ impl Serialize for AccountQuotaWindowDto {
 		S: serde::Serializer,
 	{
 		validate_public_quota_window(*self).map_err(S::Error::custom)?;
+
 		RawAccountQuotaWindowDto::from(*self).serialize(serializer)
 	}
 }
@@ -1692,7 +1706,9 @@ impl<'de> Deserialize<'de> for AccountQuotaWindowDto {
 		D: Deserializer<'de>,
 	{
 		let quota = Self::from(RawAccountQuotaWindowDto::deserialize(deserializer)?);
+
 		validate_public_quota_window(quota).map_err(D::Error::custom)?;
+
 		Ok(quota)
 	}
 }
@@ -1776,6 +1792,7 @@ impl Serialize for AccountDto {
 		S: serde::Serializer,
 	{
 		validate_account_dto(self).map_err(S::Error::custom)?;
+
 		RawAccountDto::from(self).serialize(serializer)
 	}
 }
@@ -1785,7 +1802,9 @@ impl<'de> Deserialize<'de> for AccountDto {
 		D: Deserializer<'de>,
 	{
 		let account = Self::from(RawAccountDto::deserialize(deserializer)?);
+
 		validate_account_dto(&account).map_err(D::Error::custom)?;
+
 		Ok(account)
 	}
 }
@@ -1824,6 +1843,7 @@ impl Serialize for AccountRoutingControlDto {
 		}
 
 		validate_routing_control(self).map_err(S::Error::custom)?;
+
 		RawRoutingControl { revision: self.revision, mode: &self.mode, order: &self.order }
 			.serialize(serializer)
 	}
@@ -1843,7 +1863,9 @@ impl<'de> Deserialize<'de> for AccountRoutingControlDto {
 
 		let raw = RawRoutingControl::deserialize(deserializer)?;
 		let routing = Self { revision: raw.revision, mode: raw.mode, order: raw.order };
+
 		validate_routing_control(&routing).map_err(D::Error::custom)?;
+
 		Ok(routing)
 	}
 }
@@ -1911,6 +1933,7 @@ impl Serialize for AccountInitialSelectionResult {
 		}
 
 		validate_initial_selection_result(self).map_err(S::Error::custom)?;
+
 		let raw = match self {
 			Self::Selected { account_id, account_revision } =>
 				RawResult::Selected { account_id, account_revision: *account_revision },
@@ -1918,6 +1941,7 @@ impl Serialize for AccountInitialSelectionResult {
 				RawResult::RecoveryRequired { account_id, action: *action },
 			Self::Unavailable => RawResult::Unavailable,
 		};
+
 		raw.serialize(serializer)
 	}
 }
@@ -1941,7 +1965,9 @@ impl<'de> Deserialize<'de> for AccountInitialSelectionResult {
 				Self::RecoveryRequired { account_id, action },
 			RawResult::Unavailable => Self::Unavailable,
 		};
+
 		validate_initial_selection_result(&result).map_err(D::Error::custom)?;
+
 		Ok(result)
 	}
 }
@@ -2016,16 +2042,19 @@ impl Serialize for CodexAuthProjectionResult {
 			Unmanaged,
 			Unavailable,
 		}
+
 		let raw = match self {
 			Self::Current { account_id, account_revision, projection_digest } => {
 				if !is_canonical_uuid(account_id.as_str()) || account_revision.0 == 0 {
 					return Err(S::Error::custom("Codex auth projection is invalid"));
 				}
+
 				Raw::Current { account_id, account_revision: *account_revision, projection_digest }
 			},
 			Self::Unmanaged => Raw::Unmanaged,
 			Self::Unavailable => Raw::Unavailable,
 		};
+
 		raw.serialize(serializer)
 	}
 }
@@ -2046,11 +2075,13 @@ impl<'de> Deserialize<'de> for CodexAuthProjectionResult {
 			Unmanaged,
 			Unavailable,
 		}
+
 		match Raw::deserialize(deserializer)? {
 			Raw::Current { account_id, account_revision, projection_digest } => {
 				if !is_canonical_uuid(account_id.as_str()) || account_revision.0 == 0 {
 					return Err(D::Error::custom("Codex auth projection is invalid"));
 				}
+
 				Ok(Self::Current { account_id, account_revision, projection_digest })
 			},
 			Raw::Unmanaged => Ok(Self::Unmanaged),
@@ -2070,13 +2101,16 @@ impl Serialize for AccountsResult {
 			Available { accounts: &'a [AccountDto], routing: Option<&'a AccountRoutingControlDto> },
 			Unavailable,
 		}
+
 		let raw = match self {
 			Self::Available { accounts, routing } => {
 				validate_accounts_result(accounts, routing.as_ref()).map_err(S::Error::custom)?;
+
 				Raw::Available { accounts, routing: routing.as_ref() }
 			},
 			Self::Unavailable => Raw::Unavailable,
 		};
+
 		raw.serialize(serializer)
 	}
 }
@@ -2091,9 +2125,11 @@ impl<'de> Deserialize<'de> for AccountsResult {
 			Available { accounts: Vec<AccountDto>, routing: Option<AccountRoutingControlDto> },
 			Unavailable,
 		}
+
 		match Raw::deserialize(deserializer)? {
 			Raw::Available { accounts, routing } => {
 				validate_accounts_result(&accounts, routing.as_ref()).map_err(D::Error::custom)?;
+
 				Ok(Self::Available { accounts, routing })
 			},
 			Raw::Unavailable => Ok(Self::Unavailable),
@@ -2113,11 +2149,13 @@ impl Serialize for AccountInspectResult {
 			NotFound,
 			Unavailable,
 		}
+
 		let raw = match self {
 			Self::Available(account) => Raw::Available(account),
 			Self::NotFound => Raw::NotFound,
 			Self::Unavailable => Raw::Unavailable,
 		};
+
 		raw.serialize(serializer)
 	}
 }
@@ -2133,6 +2171,7 @@ impl<'de> Deserialize<'de> for AccountInspectResult {
 			NotFound,
 			Unavailable,
 		}
+
 		match Raw::deserialize(deserializer)? {
 			Raw::Available(account) => Ok(Self::Available(account)),
 			Raw::NotFound => Ok(Self::NotFound),
@@ -2598,6 +2637,7 @@ impl QueryPayload {
 	/// Whether this query is available in the exact-current protocol revision.
 	pub const fn is_supported_in(&self, version: ProtocolVersion) -> bool {
 		let _ = self;
+
 		version_supports_current(version)
 	}
 }
@@ -2777,6 +2817,7 @@ impl CommandPayload {
 	/// Whether this command is available in the exact-current protocol revision.
 	pub const fn is_supported_in(&self, version: ProtocolVersion) -> bool {
 		let _ = self;
+
 		version_supports_current(version)
 	}
 }
@@ -2971,6 +3012,7 @@ impl EventPayload {
 	/// Whether this event is available in the exact-current protocol revision.
 	pub const fn is_supported_in(&self, version: ProtocolVersion) -> bool {
 		let _ = self;
+
 		version_supports_current(version)
 	}
 }
@@ -3521,9 +3563,11 @@ pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 /// Parse a client message using the JSON wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
+
 	validate_client_message(&decoded).map_err(|reason| {
 		serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidData, reason))
 	})?;
+
 	Ok(decoded)
 }
 
@@ -3621,6 +3665,7 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 
 fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static str> {
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
+
 	match &command.payload {
 		CommandPayload::SendAccountRecoveryNudge { source, action } => (source
 			.allows_nudge(*action)
@@ -3666,7 +3711,9 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 				account_id,
 				command.expected_revision.is_none(),
 			)?;
+
 			let source = source_descriptor.as_str();
+
 			if source.is_empty() || source.len() > 4096 || source.chars().any(char::is_control) {
 				Err("account credential source descriptor is invalid")
 			} else {
@@ -3675,16 +3722,19 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 		},
 		CommandPayload::SetAccountEnabled { account_id, .. } => {
 			validate_canonical_account(account_id)?;
+
 			positive_expected.then_some(()).ok_or("account revision is required")
 		},
 		CommandPayload::LogoutAccount { operation_id, account_id }
 		| CommandPayload::RefreshAccount { operation_id, account_id } => {
 			validate_canonical_operation(operation_id)?;
 			validate_canonical_account(account_id)?;
+
 			positive_expected.then_some(()).ok_or("account revision is required")
 		},
 		CommandPayload::RouteAccount { account_id } => {
 			validate_canonical_account(account_id)?;
+
 			command
 				.expected_revision
 				.is_none()
@@ -3697,6 +3747,7 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 			validate_account_order_command(order, positive_expected),
 		CommandPayload::RecoverAccountOperation { operation_id, .. } => {
 			validate_canonical_operation(operation_id)?;
+
 			positive_expected.then_some(()).ok_or("account revision is required")
 		},
 	}
@@ -3712,15 +3763,19 @@ fn validate_account_order_command(
 	{
 		return Err("account routing revision or order is invalid");
 	}
+
 	let unique = order.iter().map(EntityId::as_str).collect::<HashSet<_>>();
+
 	if unique.len() != order.len() {
 		return Err("account routing order contains duplicates");
 	}
+
 	Ok(())
 }
 
 fn validate_conversation_command(command: &CommandEnvelope) -> Result<(), &'static str> {
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
+
 	match &command.payload {
 		CommandPayload::ReviewConversationModelSettings { conversation_id, source, .. } =>
 			(positive_expected
@@ -3795,6 +3850,7 @@ fn validate_account_install_command(
 ) -> Result<(), &'static str> {
 	validate_canonical_operation(operation_id)?;
 	validate_canonical_account(account_id)?;
+
 	expected_revision_absent.then_some(()).ok_or("new account command cannot carry a revision")
 }
 
@@ -3826,15 +3882,19 @@ fn validate_routing_control(routing: &AccountRoutingControlDto) -> Result<(), &'
 	if routing.order.iter().any(|account_id| !is_canonical_uuid(account_id.as_str())) {
 		return Err("account routing identity is not canonical");
 	}
+
 	let order = routing.order.iter().map(EntityId::as_str).collect::<HashSet<_>>();
+
 	if order.len() != routing.order.len() {
 		return Err("account routing order contains duplicates");
 	}
+
 	if let AccountSelectionModeDto::Fixed(account_id) = &routing.mode
 		&& (!is_canonical_uuid(account_id.as_str()) || !order.contains(account_id.as_str()))
 	{
 		return Err("fixed account target is outside the routing universe");
 	}
+
 	Ok(())
 }
 
@@ -3844,6 +3904,7 @@ fn validate_initial_selection_result(
 	match result {
 		AccountInitialSelectionResult::Selected { account_id, account_revision } => {
 			validate_canonical_account(account_id)?;
+
 			(account_revision.0 > 0)
 				.then_some(())
 				.ok_or("selected account revision is not positive")
@@ -3861,28 +3922,35 @@ fn validate_accounts_result(
 	if accounts.len() > 512 {
 		return Err("account result exceeds cardinality bound");
 	}
+
 	let universe =
 		accounts.iter().map(|account| account.account_id.as_str()).collect::<HashSet<_>>();
+
 	if universe.len() != accounts.len() {
 		return Err("account result contains duplicate identities");
 	}
+
 	if let Some(routing) = routing {
 		if routing.order.len() != accounts.len() {
 			return Err("account routing control is incomplete");
 		}
+
 		let order = routing.order.iter().map(EntityId::as_str).collect::<HashSet<_>>();
+
 		if order.len() != routing.order.len()
 			|| order != universe
 			|| routing.order.iter().any(|account_id| !is_canonical_uuid(account_id.as_str()))
 		{
 			return Err("account routing order is not an exact permutation");
 		}
+
 		if let AccountSelectionModeDto::Fixed(account_id) = &routing.mode
 			&& !universe.contains(account_id.as_str())
 		{
 			return Err("fixed account target is outside the account universe");
 		}
 	}
+
 	Ok(())
 }
 
@@ -3896,6 +3964,7 @@ fn validate_account_dto(account: &AccountDto) -> Result<(), &'static str> {
 	if matches!(account.lifecycle_readiness, AccountLifecycleReadinessDto::Tombstoned) {
 		return Err("tombstoned account is not public");
 	}
+
 	if let Some(binding) = &account.credential_binding
 		&& (binding.schema_version != 1
 			|| binding.version == 0
@@ -3905,6 +3974,7 @@ fn validate_account_dto(account: &AccountDto) -> Result<(), &'static str> {
 	{
 		return Err("account credential binding is invalid");
 	}
+
 	if matches!(account.lifecycle_readiness, AccountLifecycleReadinessDto::Ready)
 		&& (account.credential_binding.is_none() || account.unsettled_operation.is_some())
 	{
@@ -3915,6 +3985,7 @@ fn validate_account_dto(account: &AccountDto) -> Result<(), &'static str> {
 	{
 		return Err("credential-absent account carries a binding");
 	}
+
 	if let Some(operation) = &account.unsettled_operation {
 		if !is_canonical_uuid(operation.operation_id.as_str())
 			|| operation.recovery_code.as_ref().is_some_and(|code| {
@@ -3930,21 +4001,26 @@ fn validate_account_dto(account: &AccountDto) -> Result<(), &'static str> {
 			return Err("account recovery code does not match operation phase");
 		}
 	}
+
 	if matches!(account.lifecycle_readiness, AccountLifecycleReadinessDto::OperationUnsettled)
 		!= account.unsettled_operation.is_some()
 	{
 		return Err("account unsettled operation does not match lifecycle readiness");
 	}
+
 	validate_quota_window(account.five_hour_quota, 300)?;
 	validate_quota_window(account.seven_day_quota, 10_080)?;
+
 	Ok(())
 }
 
 fn is_canonical_account_alias(value: &str) -> bool {
 	let words: Vec<_> = value.split(' ').collect();
+
 	(1..=2).contains(&words.len())
 		&& words.iter().all(|word| {
 			let bytes = word.as_bytes();
+
 			(2..=16).contains(&bytes.len())
 				&& bytes[0].is_ascii_uppercase()
 				&& bytes[1..].iter().all(u8::is_ascii_lowercase)
@@ -3960,7 +4036,9 @@ fn validate_account_profile(profile: &AccountProfileDto) -> Result<(), &'static 
 	{
 		return Err("account profile identity, revision, or observation time is invalid");
 	}
+
 	validate_account_profile_claims(&profile.email, profile.plan_type.as_ref())?;
+
 	if profile.display_name.as_ref().is_some_and(|value| !bounded_profile_text(value, 256))
 		|| profile.username.as_ref().is_some_and(|value| !bounded_profile_text(value, 256))
 	{
@@ -3977,7 +4055,9 @@ fn validate_account_profile(profile: &AccountProfileDto) -> Result<(), &'static 
 	if profile.daily_usage.len() > MAX_ACCOUNT_PROFILE_DAILY_USAGE {
 		return Err("account profile daily usage exceeds the cardinality bound");
 	}
+
 	let mut previous = None;
+
 	for daily in &profile.daily_usage {
 		if daily.tokens > i64::MAX as u64 || !canonical_calendar_date(daily.start_date.as_str()) {
 			return Err("account profile daily usage is invalid");
@@ -3985,8 +4065,10 @@ fn validate_account_profile(profile: &AccountProfileDto) -> Result<(), &'static 
 		if previous.is_some_and(|value| value >= daily.start_date.as_str()) {
 			return Err("account profile daily usage is not unique and ascending");
 		}
+
 		previous = Some(daily.start_date.as_str());
 	}
+
 	if profile.display_name.is_none()
 		&& profile.username.is_none()
 		&& profile.lifetime_tokens.is_none()
@@ -3998,6 +4080,7 @@ fn validate_account_profile(profile: &AccountProfileDto) -> Result<(), &'static 
 	{
 		return Err("account profile snapshot is empty");
 	}
+
 	Ok(())
 }
 
@@ -4010,19 +4093,23 @@ fn validate_account_profile_claims(
 	{
 		return Err("account profile email is invalid");
 	}
+
 	if plan_type.is_some_and(|value| !bounded_profile_text(value, 128)) {
 		return Err("account profile plan type is invalid");
 	}
+
 	Ok(())
 }
 
 fn bounded_profile_text(value: &WireText, maximum: usize) -> bool {
 	let value = value.as_str();
+
 	!value.is_empty() && value.len() <= maximum && !value.chars().any(char::is_control)
 }
 
 fn canonical_calendar_date(value: &str) -> bool {
 	let bytes = value.as_bytes();
+
 	if bytes.len() != 10
 		|| bytes[4] != b'-'
 		|| bytes[7] != b'-'
@@ -4033,6 +4120,7 @@ fn canonical_calendar_date(value: &str) -> bool {
 	{
 		return false;
 	}
+
 	let number = |start: usize, end: usize| {
 		value[start..end].parse::<u32>().expect("validated date bytes are decimal")
 	};
@@ -4047,6 +4135,7 @@ fn canonical_calendar_date(value: &str) -> bool {
 		2 => 28,
 		_ => return false,
 	};
+
 	year > 0 && (1..=maximum_day).contains(&day)
 }
 
@@ -4086,6 +4175,7 @@ fn validate_reset_card_inventory(
 	if unique.len() != cards.len() {
 		return Err("reset-card inventory contains duplicates");
 	}
+
 	validate_quota_window(five_hour_quota, 300)?;
 	validate_quota_window(seven_day_quota, 10_080)?;
 
@@ -4104,6 +4194,7 @@ fn validate_reset_card_observation_failure(
 	if account_revision.0 == 0 {
 		return Err("reset-card account revision is not positive");
 	}
+
 	validate_quota_window(five_hour_quota, 300)?;
 	validate_quota_window(seven_day_quota, 10_080)?;
 
@@ -4117,6 +4208,7 @@ fn validate_quota_window(
 	if quota.duration_minutes != expected_duration {
 		return Err("account quota duration is invalid");
 	}
+
 	match (quota.observed_at_unix_micros, quota.result) {
 		(None, AccountQuotaStateDto::Unknown) => Ok(()),
 		(Some(observed), AccountQuotaStateDto::NotApplicable)
@@ -4134,6 +4226,7 @@ fn validate_public_quota_window(quota: AccountQuotaWindowDto) -> Result<(), &'st
 	if !matches!(quota.duration_minutes, 300 | 10_080) {
 		return Err("account quota duration is invalid");
 	}
+
 	validate_quota_window(quota, quota.duration_minutes)
 }
 
@@ -4144,8 +4237,10 @@ mod tests {
 		let value = serde_json::json!({"duration_minutes":300,"observed_at_unix_micros":12,"result":{"state":"not_applicable"}});
 		let quota: super::AccountQuotaWindowDto =
 			serde_json::from_value(value.clone()).expect("positive absence");
+
 		assert_eq!(quota.result, super::AccountQuotaStateDto::NotApplicable);
 		assert_eq!(serde_json::to_value(quota).expect("serialize absence"), value);
+
 		for (duration, time) in [(10080, Some(12)), (300, None), (300, Some(0)), (300, Some(-1))] {
 			assert!(serde_json::from_value::<super::AccountQuotaWindowDto>(serde_json::json!({"duration_minutes":duration,"observed_at_unix_micros":time,"result":{"state":"not_applicable"}})).is_err());
 		}
@@ -4190,6 +4285,7 @@ mod tests {
 		assert!(super::is_canonical_account_alias("Val Abbott"));
 		assert!(!super::is_canonical_account_alias("Val-ab"));
 		assert!(!super::is_canonical_account_alias("Val-xyzz"));
+
 		for invalid in [
 			"",
 			"A",
@@ -4229,8 +4325,8 @@ mod tests {
 			}],
 			routing: None,
 		};
-
 		let encoded = serde_json::to_value(&result).expect("account rows should serialize");
+
 		assert!(encoded["data"]["routing"].is_null());
 		assert_eq!(serde_json::from_value::<AccountsResult>(encoded).unwrap(), result);
 
@@ -4238,14 +4334,20 @@ mod tests {
 		let account = accounts[0].clone();
 		let inspect = super::AccountInspectResult::Available(Box::new(account.clone()));
 		let mut encoded = serde_json::to_value(&inspect).unwrap();
+
 		assert_eq!(
 			serde_json::from_value::<super::AccountInspectResult>(encoded.clone()).unwrap(),
 			inspect
 		);
+
 		encoded["data"]["account_revision"] = 0.into();
+
 		assert!(serde_json::from_value::<super::AccountInspectResult>(encoded).is_err());
+
 		let mut invalid = account.clone();
+
 		invalid.account_revision = EntityRevision(0);
+
 		assert!(
 			serde_json::to_value(super::AccountInspectResult::Available(Box::new(invalid.clone())))
 				.is_err()
@@ -4260,13 +4362,16 @@ mod tests {
 			}),
 		};
 		let encoded = serde_json::to_value(&valid).unwrap();
+
 		assert_eq!(serde_json::from_value::<AccountsResult>(encoded.clone()).unwrap(), valid);
+
 		for path in ["account", "routing", "duplicate", "permutation"] {
 			let mut value = encoded.clone();
 			let mut outbound = valid.clone();
 			let AccountsResult::Available { accounts, routing } = &mut outbound else {
 				unreachable!()
 			};
+
 			match path {
 				"account" => {
 					value["data"]["accounts"][0]["account_revision"] = 0.into();
@@ -4282,15 +4387,18 @@ mod tests {
 						.unwrap()
 						.push(serde_json::to_value(&account).unwrap());
 					accounts.push(account.clone());
+
 					value["data"]["routing"] = serde_json::Value::Null;
 					*routing = None;
 				},
 				_ => {
 					let other = "11234567-89ab-4def-8123-456789abcdef";
+
 					value["data"]["routing"]["order"][0] = other.into();
 					routing.as_mut().unwrap().order[0] = EntityId::new(other).unwrap();
 				},
 			}
+
 			assert!(serde_json::from_value::<AccountsResult>(value).is_err(), "{path}");
 			assert!(serde_json::to_value(outbound).is_err(), "{path}");
 		}
@@ -4386,13 +4494,15 @@ mod tests {
 				}
 			});
 			let error = decode_client_message(&message.to_string()).unwrap_err();
+
 			assert!(error.to_string().contains(&format!("unknown variant `{name}`")), "{error}");
+
 			message["body"]["payload"] = serde_json::json!({
 				"name": "refresh_system_observation", "arguments": {"entity_id": "system"}
 			});
+
 			assert!(decode_client_message(&message.to_string()).is_ok());
 		}
-
 		for payload in [
 			serde_json::json!({"name": "list_projects"}),
 			serde_json::json!({
@@ -4415,8 +4525,11 @@ mod tests {
 			});
 			let name = payload["name"].as_str().unwrap();
 			let error = decode_client_message(&message.to_string()).unwrap_err();
+
 			assert!(error.to_string().contains(&format!("unknown variant `{name}`")), "{error}");
+
 			message["body"]["payload"] = serde_json::json!({"name": "get_doctor_status"});
+
 			assert!(decode_client_message(&message.to_string()).is_ok());
 		}
 	}
@@ -4436,6 +4549,7 @@ mod tests {
 				.is_err()
 			);
 		}
+
 		assert!(
 			serde_json::from_value::<EventPayload>(
 				serde_json::json!({"name":"program_cycle_changed","data":{}})
@@ -4448,6 +4562,7 @@ mod tests {
 			)
 			.is_err()
 		);
+
 		for payload in [
 			QueryPayload::ListPrograms,
 			QueryPayload::GetProgramCycle {
@@ -4459,6 +4574,7 @@ mod tests {
 				query_id: QueryId::new("historical-program-query").unwrap(),
 				payload,
 			});
+
 			assert_eq!(
 				decode_client_message(&serde_json::to_string(&query).unwrap()).unwrap(),
 				query
@@ -4474,6 +4590,7 @@ mod tests {
 			payload: QueryPayload::GetDoctorStatus,
 		});
 		let encoded = serde_json::to_string(&remaining).expect("query serializes");
+
 		assert_eq!(decode_client_message(&encoded).unwrap(), remaining);
 
 		let removed = serde_json::json!({
@@ -4489,6 +4606,7 @@ mod tests {
 				}
 			}
 		});
+
 		assert!(decode_client_message(&removed.to_string()).is_err());
 	}
 
@@ -4514,6 +4632,7 @@ mod tests {
 				initial_model_source: None,
 			},
 		};
+
 		for (account, revision, accepted) in [
 			("11234567-89ab-4def-8123-456789abcdef", 1, true),
 			("11234567-89ab-4def-8123-456789abcdef", 0, false),
@@ -4525,14 +4644,18 @@ mod tests {
 			else {
 				panic!("creation fixture");
 			};
+
 			*initial_model_source = Some(Box::new(crate::InitialModelSource {
 				account_id: EntityId::new(account).expect("bounded account"),
 				account_revision: revision,
 			}));
+
 			let message = ClientMessage::Command(command.clone());
 			let encoded = serde_json::to_string(&message).expect("serialize source");
 			let decoded = decode_client_message(&encoded);
+
 			assert_eq!(decoded.is_ok(), accepted);
+
 			if accepted {
 				assert_eq!(decoded.expect("valid source"), message);
 			}
@@ -4558,10 +4681,14 @@ mod tests {
 			),
 		};
 		let current = serde_json::to_value(&create).unwrap();
+
 		assert_eq!(serde_json::from_value::<CommandPayload>(current.clone()).unwrap(), create);
+
 		let mut retired_bridge = current;
+
 		retired_bridge["arguments"]["work_item_id"] =
 			serde_json::json!("21234567-89ab-4def-8123-456789abcdef");
+
 		assert!(serde_json::from_value::<CommandPayload>(retired_bridge).is_err());
 		assert_eq!(
 			serde_json::to_value(&create).unwrap(),
@@ -4579,6 +4706,7 @@ mod tests {
 				},
 			}),
 		);
+
 		for (payload, name) in [
 			(
 				CommandPayload::ResumeConversationRouting { conversation_id: source.clone() },
@@ -4603,6 +4731,7 @@ mod tests {
 				}),
 			);
 		}
+
 		assert!(
 			serde_json::from_value::<CommandPayload>(serde_json::json!({
 				"name": "retry_conversation_routing",
@@ -4630,6 +4759,7 @@ mod tests {
 			source_conversation_revision: EntityRevision(2),
 			successor: successor_summary,
 		};
+
 		assert_eq!(
 			serde_json::to_value(result).unwrap(),
 			serde_json::json!({
@@ -4706,8 +4836,10 @@ mod tests {
 		};
 		let is_rejected = |payload, expected_revision| {
 			let encoded = serde_json::to_string(&command(payload, expected_revision)).unwrap();
+
 			decode_client_message(&encoded).is_err()
 		};
+
 		assert!(is_rejected(
 			CommandPayload::RouteAccount { account_id: account_id.clone() },
 			Some(EntityRevision(1)),
@@ -4726,6 +4858,7 @@ mod tests {
 			rejection: AccountCommandRejectionDto::StaleRoutingControl,
 			actual_revision: Some(EntityRevision(3)),
 		};
+
 		assert_ne!(
 			serde_json::to_value(stale_account).unwrap(),
 			serde_json::to_value(stale_routing).unwrap(),
@@ -4736,6 +4869,7 @@ mod tests {
 			actual_revision: None,
 		};
 		let encoded = serde_json::to_value(&duplicate_provider).unwrap();
+
 		assert_eq!(
 			encoded,
 			serde_json::json!({
@@ -5017,9 +5151,13 @@ mod tests {
 			auto_recap: None,
 		})
 		.unwrap();
+
 		assert!(!legacy.to_string().contains("auto_recap"));
+
 		let decoded: CommandPayload = serde_json::from_value(legacy).unwrap();
+
 		assert!(matches!(decoded, CommandPayload::SetDesktopSettings { auto_recap: None, .. }));
+
 		for enabled in [false, true] {
 			let command = CommandPayload::SetDesktopSettings {
 				show_in_menu_bar: true,
@@ -5028,6 +5166,7 @@ mod tests {
 			};
 			let decoded: CommandPayload =
 				serde_json::from_value(serde_json::to_value(command).unwrap()).unwrap();
+
 			assert!(
 				matches!(decoded, CommandPayload::SetDesktopSettings { auto_recap: Some(value), .. } if value == enabled)
 			);
@@ -5135,6 +5274,7 @@ mod tests {
 		assert!(ResetCardDescriptorDto::new(-1, 1).is_err());
 		assert!(ResetCardDescriptorDto::new(1, 1).is_err());
 		assert!(ResetCardDescriptorDto::new(2, 1).is_err());
+
 		for invalid in [
 			serde_json::json!({"granted_at_unix_seconds":-1,"expires_at_unix_seconds":1}),
 			serde_json::json!({"granted_at_unix_seconds":1,"expires_at_unix_seconds":1}),
@@ -5222,9 +5362,10 @@ mod tests {
 				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
-
 		let mut oversized = bounded.clone();
+
 		oversized["data"]["reported_available_count"] = (MAX_RESET_CARD_ITEMS + 1).into();
+
 		oversized["data"]["cards"].as_array_mut().unwrap().push(serde_json::json!({
 			"descriptor":{"granted_at_unix_seconds":1000,"expires_at_unix_seconds":1001}
 		}));
@@ -5235,6 +5376,7 @@ mod tests {
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(incomplete).is_err());
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(zero_revision).is_err());
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(oversized).is_err());
+
 		let partial = serde_json::json!({
 			"outcome":"available",
 			"data":{
@@ -5247,7 +5389,9 @@ mod tests {
 				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
+
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(partial).is_ok());
+
 		let contradictory_empty = serde_json::json!({
 			"outcome":"available",
 			"data":{
@@ -5260,16 +5404,20 @@ mod tests {
 				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
+
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(contradictory_empty).is_err());
+
 		let timed_out =
 			ResetCardInventoryResult::Unavailable { error: super::ResetCardError::RequestTimedOut };
 		let encoded_timeout = serde_json::to_value(&timed_out).unwrap();
+
 		assert_eq!(encoded_timeout["outcome"], "unavailable");
 		assert_eq!(encoded_timeout["data"]["error"], "request_timed_out");
 		assert_eq!(
 			serde_json::from_value::<ResetCardInventoryResult>(encoded_timeout).unwrap(),
 			timed_out,
 		);
+
 		assert_reset_card_outbound_bounds(account_id);
 	}
 
@@ -5369,6 +5517,7 @@ mod tests {
 			assert!(!command.is_supported_in(version));
 			assert!(!event.is_supported_in(version));
 		}
+
 		assert!(query.is_supported_in(CURRENT_VERSION));
 		assert!(command.is_supported_in(CURRENT_VERSION));
 		assert!(event.is_supported_in(CURRENT_VERSION));
@@ -5394,6 +5543,7 @@ mod tests {
 				tokens: 900,
 			}],
 		};
+
 		for mut result in [
 			AccountProfileResult::Current(Box::new(profile.clone())),
 			AccountProfileResult::Cached {
@@ -5402,21 +5552,26 @@ mod tests {
 			},
 		] {
 			let mut wire = serde_json::to_value(&result).unwrap();
+
 			assert_eq!(
 				serde_json::from_value::<AccountProfileResult>(wire.clone()).unwrap(),
 				result
 			);
+
 			let (profile, wire_profile) = match &mut result {
 				AccountProfileResult::Current(profile) => (profile, &mut wire["data"]),
 				AccountProfileResult::Cached { profile, .. } =>
 					(profile, &mut wire["data"]["profile"]),
 				AccountProfileResult::Unavailable { .. } => unreachable!(),
 			};
+
 			profile.account_revision = EntityRevision(0);
 			wire_profile["account_revision"] = serde_json::json!(0);
+
 			assert!(serde_json::to_value(&result).is_err());
 			assert!(serde_json::from_value::<AccountProfileResult>(wire).is_err());
 		}
+
 		let encoded =
 			serde_json::to_value(AccountProfileResult::Current(Box::new(profile))).unwrap();
 
@@ -5430,10 +5585,12 @@ mod tests {
 			plan_type: Some(WireText::new("pro").unwrap()),
 		})
 		.unwrap();
+
 		assert_eq!(unavailable["outcome"], "unavailable");
 		assert_eq!(unavailable["data"]["error"], "provider_unavailable");
 		assert_eq!(unavailable["data"]["email"]["visibility"], "redacted");
 		assert_eq!(unavailable["data"]["plan_type"], "pro");
+
 		for (error, encoded) in [
 			(AccountProfileErrorDto::CredentialBusy, "credential_busy"),
 			(AccountProfileErrorDto::RefreshRejected, "refresh_rejected"),
@@ -5442,23 +5599,32 @@ mod tests {
 		] {
 			assert_eq!(serde_json::to_value(error).unwrap(), encoded);
 		}
+
 		let mut missing_email = unavailable.clone();
+
 		missing_email["data"].as_object_mut().unwrap().remove("email");
+
 		assert!(serde_json::from_value::<AccountProfileResult>(missing_email).is_err());
 
 		let mut unknown = encoded.clone();
+
 		unknown["data"]["unexpected"] = serde_json::json!(true);
+
 		assert!(serde_json::from_value::<AccountProfileResult>(unknown).is_err());
 
 		let mut overflow = encoded.clone();
+
 		overflow["data"]["account_revision"] = serde_json::json!(i64::MAX as u64 + 1);
+
 		assert!(serde_json::from_value::<AccountProfileResult>(overflow).is_err());
 
 		let mut too_many = encoded.clone();
+
 		too_many["data"]["daily_usage"] = serde_json::Value::Array(
 			(1..=37)
 				.map(|day| {
 					let (month, day) = if day <= 31 { (7, day) } else { (8, day - 31) };
+
 					serde_json::json!({
 						"start_date": format!("2026-{month:02}-{day:02}"),
 						"tokens": day,
@@ -5466,10 +5632,13 @@ mod tests {
 				})
 				.collect(),
 		);
+
 		assert!(serde_json::from_value::<AccountProfileResult>(too_many).is_err());
 
 		let mut malformed_date = encoded;
+
 		malformed_date["data"]["daily_usage"][0]["start_date"] = serde_json::json!("2026-02-30");
+
 		assert!(serde_json::from_value::<AccountProfileResult>(malformed_date).is_err());
 	}
 
@@ -5538,7 +5707,9 @@ mod tests {
 			});
 			let encoded = serde_json::to_string(&query).expect("encode review query");
 			let decoded = decode_client_message(&encoded);
+
 			assert_eq!(decoded.is_ok(), accepted);
+
 			if accepted {
 				assert_eq!(decoded.expect("valid query"), query);
 			}
@@ -5573,6 +5744,7 @@ mod tests {
 				},
 			});
 			let encoded = serde_json::to_string(&message).expect("encode review");
+
 			assert_eq!(decode_client_message(&encoded).is_ok(), accepted);
 		}
 	}

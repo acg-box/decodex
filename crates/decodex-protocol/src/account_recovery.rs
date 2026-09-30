@@ -110,6 +110,7 @@ impl AccountRecoveryResult {
 		let AccountRecoveryState::Current(banner) = &self.state else {
 			return None;
 		};
+
 		if !self.valid_for(account, revision)
 			|| banner.banner_type.as_str() == "luna_reserve"
 			|| current_model == "gpt-reserve"
@@ -117,11 +118,14 @@ impl AccountRecoveryResult {
 		{
 			return None;
 		}
+
 		banner.fallback_model_slugs.iter().find_map(|candidate| {
 			let candidate = candidate.as_str();
+
 			if candidate == current_model || candidate == "gpt-reserve" {
 				return None;
 			}
+
 			models.iter().find(|model| model.model.as_str() == candidate)
 		})
 	}
@@ -131,6 +135,7 @@ impl AccountRecoveryResult {
 		let AccountRecoveryState::Current(banner) = &self.state else {
 			return false;
 		};
+
 		self.valid_for(&self.account_id, self.account_revision)
 			&& banner.actions.iter().any(|cta| cta.action == action)
 			&& (action == AccountRecoveryAction::NotifyOwner
@@ -148,6 +153,7 @@ impl AccountRecoveryResult {
 		{
 			return false;
 		}
+
 		match &self.state {
 			AccountRecoveryState::Unavailable => true,
 			AccountRecoveryState::Absent | AccountRecoveryState::Unsupported =>
@@ -158,6 +164,7 @@ impl AccountRecoveryResult {
 						&& v.as_str().len() <= max
 						&& !v.as_str().chars().any(char::is_control)
 				};
+
 				self.observed_at_unix_micros.is_some()
 					&& scalar(&banner.banner_type, 256)
 					&& !banner.title.as_str().trim().is_empty()
@@ -235,6 +242,7 @@ mod tests {
 				.ordinary_fallback_model(&account, EntityRevision(7), current, &catalog)
 				.map(|m| m.model.as_str())
 		};
+
 		assert_eq!(choose(&original, "old"), Some("first"));
 		assert_eq!(
 			choose(&original, "first"),
@@ -248,10 +256,13 @@ mod tests {
 				.ordinary_fallback_model(&account, EntityRevision(8), "old", &catalog)
 				.is_none()
 		);
+
 		let other = EntityId::new("10000000-0000-4000-8000-000000000002").unwrap();
+
 		assert!(
 			original.ordinary_fallback_model(&other, EntityRevision(7), "old", &catalog).is_none()
 		);
+
 		for state in [
 			AccountRecoveryState::Stale(Box::new(banner.clone())),
 			AccountRecoveryState::Absent,
@@ -259,11 +270,14 @@ mod tests {
 			AccountRecoveryState::Unsupported,
 		] {
 			let mut result = original.clone();
+
 			result.state = state;
+
 			assert_eq!(choose(&result, "old"), None);
 		}
 		for change in ["reserve", "no_blocked", "no_candidates", "only_ineligible"] {
 			let mut next = banner.clone();
+
 			match change {
 				"reserve" => next.banner_type = WireText::new("luna_reserve").unwrap(),
 				"no_blocked" => next.blocked_model_slug = None,
@@ -275,8 +289,11 @@ mod tests {
 						WireText::new("gpt-reserve").unwrap(),
 					],
 			}
+
 			let mut result = original.clone();
+
 			result.state = AccountRecoveryState::Current(Box::new(next));
+
 			assert_eq!(choose(&result, "old"), None, "{change}");
 		}
 	}
@@ -301,14 +318,18 @@ mod tests {
 			observed_at_unix_micros: Some(100),
 			state: AccountRecoveryState::Current(Box::new(banner)),
 		};
+
 		assert!(result.valid_for(&account, EntityRevision(1)));
 		assert!(!result.valid_for(&account, EntityRevision(2)));
 		assert!(!result.valid_for(
 			&EntityId::new("10000000-0000-4000-8000-000000000002").unwrap(),
 			EntityRevision(1)
 		));
+
 		let AccountRecoveryState::Current(banner) = &mut result.state else { panic!("current") };
+
 		banner.request_url = Some(WireText::new("javascript:alert(1)").unwrap());
+
 		assert!(!result.valid_for(&account, EntityRevision(1)));
 	}
 }
@@ -354,20 +375,24 @@ impl AccountRecoveryPreparation {
 		let Self::Ready { source, action, destination } = self else {
 			return true;
 		};
+
 		if *action != requested
 			|| !source.valid_for(&expected.account_id, expected.account_revision)
 			|| source.observed_at_unix_micros < expected.observed_at_unix_micros
 		{
 			return false;
 		}
+
 		let (AccountRecoveryState::Current(before), AccountRecoveryState::Current(after)) =
 			(&expected.state, &source.state)
 		else {
 			return false;
 		};
+
 		if before != after || !after.actions.iter().any(|cta| cta.action == requested) {
 			return false;
 		}
+
 		match destination {
 			AccountRecoveryDestination::ResetPicker =>
 				requested == AccountRecoveryAction::ResetUsage,
@@ -423,21 +448,31 @@ mod preparation_tests {
 			action: AccountRecoveryAction::ResetUsage,
 			destination: AccountRecoveryDestination::ResetPicker,
 		};
+
 		assert!(prepared.valid_for(&source, AccountRecoveryAction::ResetUsage));
 		assert!(!prepared.valid_for(&source, AccountRecoveryAction::NotifyOwner));
+
 		let mut changed = source.clone();
+
 		changed.account_revision = EntityRevision(2);
+
 		assert!(!prepared.valid_for(&changed, AccountRecoveryAction::ResetUsage));
+
 		let AccountRecoveryPreparation::Ready { destination, .. } = &mut prepared else {
 			unreachable!()
 		};
+
 		*destination = AccountRecoveryDestination::RequestCredits;
+
 		assert!(!prepared.valid_for(&source, AccountRecoveryAction::ResetUsage));
+
 		let AccountRecoveryPreparation::Ready { destination, .. } = &mut prepared else {
 			unreachable!()
 		};
+
 		*destination =
 			AccountRecoveryDestination::OpenUrl(WireText::new("https://chatgpt.com/").unwrap());
+
 		assert!(!prepared.valid_for(&source, AccountRecoveryAction::ResetUsage));
 	}
 }

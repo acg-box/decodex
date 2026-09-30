@@ -89,6 +89,7 @@ impl McpInstallSuggestion {
 	/// Return None for ordinary forms; reject malformed or unsupported suggestions.
 	pub fn from_request(request: &Value) -> Result<Option<Self>, &'static str> {
 		let meta = &request["_meta"];
+
 		if meta["codex_approval_kind"] != "tool_suggestion" {
 			return Ok(None);
 		}
@@ -101,6 +102,7 @@ impl McpInstallSuggestion {
 		{
 			return Err("Unsupported installation suggestion");
 		}
+
 		let tool_id = text(&meta["tool_id"], 1024)?;
 		let tool_name = text(&meta["tool_name"], 2048)?;
 		let target = match meta["tool_type"].as_str() {
@@ -108,19 +110,24 @@ impl McpInstallSuggestion {
 				let suggestion_id = optional_text(&meta["suggestion_id"], 1024)?;
 				let remote_plugin_id = optional_text(&meta["remote_plugin_id"], 1024)?;
 				let mut app_connector_ids = Vec::new();
+
 				if !meta["app_connector_ids"].is_null() {
 					let values = meta["app_connector_ids"]
 						.as_array()
 						.filter(|values| values.len() <= 128)
 						.ok_or("Invalid suggested connector identities")?;
+
 					for value in values {
 						let id = text(value, 1024)?;
+
 						if app_connector_ids.contains(&id) {
 							return Err("Duplicate suggested connector identity");
 						}
+
 						app_connector_ids.push(id);
 					}
 				}
+
 				McpInstallTarget::Plugin { suggestion_id, remote_plugin_id, app_connector_ids }
 			},
 			Some("connector") => {
@@ -130,13 +137,16 @@ impl McpInstallSuggestion {
 				{
 					return Err("Unexpected plugin identity on connector suggestion");
 				}
+
 				McpInstallTarget::Connector
 			},
 			_ => return Err("Unsupported suggested integration type"),
 		};
 		let install_url = optional_text(&meta["install_url"], 16384)?;
+
 		if let Some(raw) = &install_url {
 			let url = url::Url::parse(raw).map_err(|_| "Invalid installation link")?;
+
 			if url.scheme() != "https"
 				|| url.host_str().is_none()
 				|| !url.username().is_empty()
@@ -145,9 +155,11 @@ impl McpInstallSuggestion {
 				return Err("Invalid installation link");
 			}
 		}
+
 		if matches!(target, McpInstallTarget::Connector) && install_url.is_none() {
 			return Err("Connector installation link is unavailable");
 		}
+
 		Ok(Some(Self { tool_id, tool_name, target, install_url }))
 	}
 
@@ -180,6 +192,7 @@ mod tests {
 	#[test]
 	fn plugin_identity_survives_without_becoming_an_install_attempt() {
 		let parsed = McpInstallSuggestion::from_request(&plugin()).unwrap().unwrap();
+
 		assert_eq!(parsed.tool_id, "sample@market");
 		assert_eq!(
 			parsed.target,
@@ -189,8 +202,11 @@ mod tests {
 				app_connector_ids: vec!["connector-1".into()]
 			}
 		);
+
 		let mut legacy = plugin();
+
 		legacy["_meta"].as_object_mut().unwrap().remove("suggestion_id");
+
 		assert!(McpInstallSuggestion::from_request(&legacy).unwrap().is_some());
 	}
 	#[test]
@@ -206,27 +222,35 @@ mod tests {
 			("/_meta/tool_id", json!("x".repeat(1025))),
 		] {
 			let mut request = plugin();
+
 			if pointer == "/_meta/install_url" {
 				request["_meta"]["install_url"] = value;
 			} else {
 				*request.pointer_mut(pointer).unwrap() = value;
 			}
+
 			assert!(McpInstallSuggestion::from_request(&request).is_err(), "{pointer}");
 		}
+
 		assert_eq!(McpInstallSuggestion::from_request(&json!({"mode":"form"})).unwrap(), None);
 	}
 	#[test]
 	fn connector_requires_its_own_link_and_never_inherits_plugin_identity() {
 		let mut request = plugin();
+
 		request["_meta"] = json!({"codex_approval_kind":"tool_suggestion","suggest_type":"install","tool_type":"connector","tool_id":"connector-1","tool_name":"Calendar","install_url":"https://chatgpt.com/apps/calendar/connector-1"});
+
 		let parsed = McpInstallSuggestion::from_request(&request).unwrap().unwrap();
+
 		assert_eq!(parsed.target, McpInstallTarget::Connector);
 		assert_eq!(parsed.install_url(), Some("https://chatgpt.com/apps/calendar/connector-1"));
 		assert!(!format!("{parsed:?}").contains("https"));
+
 		for url in
 			["file:///tmp/plugin", "https://user:password@example.com", "http://example.com", ""]
 		{
 			request["_meta"]["install_url"] = json!(url);
+
 			assert!(McpInstallSuggestion::from_request(&request).is_err());
 		}
 	}
