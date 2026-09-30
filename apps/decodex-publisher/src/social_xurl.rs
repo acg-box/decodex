@@ -3,6 +3,7 @@
 pub(crate) mod auth_contract;
 pub(crate) mod ledger;
 pub(crate) mod model;
+
 mod observe;
 mod pricing;
 mod publish;
@@ -11,11 +12,20 @@ mod runtime;
 
 use std::path::{Path, PathBuf};
 
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+
 use crate::{
-	SocialObserveXurlReport, SocialObserveXurlRequest, SocialProbeXurlReport,
-	SocialPublishXurlReport, SocialPublishXurlRequest, SocialReconcileXurlReport,
-	SocialReconcileXurlRequest, SocialRefreshPricingReport, SocialSealXurlAuthReport,
-	SocialSealXurlAuthRequest, SocialXurlCostReport, prelude::Result,
+	DEFAULT_SOCIAL_ATTEMPTS_DIR, DEFAULT_XURL_AUTH_CONTRACT_PATH, SocialObserveXurlReport,
+	SocialObserveXurlRequest, SocialProbeXurlReport, SocialPublishXurlReport,
+	SocialPublishXurlRequest, SocialReconcileXurlReport, SocialReconcileXurlRequest,
+	SocialRefreshPricingReport, SocialSealXurlAuthReport, SocialSealXurlAuthRequest,
+	SocialXurlCostReport, XPricingPolicyReport,
+	prelude::{Result, eyre},
+	social_xurl::{
+		auth_contract::VerifiedAuthorizationContract,
+		model::{TARGET_ACCOUNT, XURL_APP},
+		runtime::TrustedXurlBinary,
+	},
 };
 
 pub(crate) fn seal_auth(request: &SocialSealXurlAuthRequest) -> Result<SocialSealXurlAuthReport> {
@@ -48,11 +58,8 @@ pub(crate) fn observe(request: &SocialObserveXurlRequest) -> Result<SocialObserv
 pub(crate) fn probe(now: &str) -> Result<SocialProbeXurlReport> {
 	let now = parse_probe_time(now)?;
 	let binary = runtime::trusted_xurl_binary()?;
-	let contract = auth_contract::load_current_at(
-		Path::new(crate::DEFAULT_XURL_AUTH_CONTRACT_PATH),
-		now,
-		&binary,
-	)?;
+	let contract =
+		auth_contract::load_current_at(Path::new(DEFAULT_XURL_AUTH_CONTRACT_PATH), now, &binary)?;
 	let report = probe_with_verified(now, &binary, &contract)?;
 
 	binary.require_command_time_remaining()?;
@@ -68,7 +75,7 @@ pub(crate) fn cost_report(billing_month: &str) -> Result<SocialXurlCostReport> {
 	let root = crate::repo_root()?;
 
 	ledger::cost_report(
-		&crate::resolve_against(&root, Path::new(crate::DEFAULT_SOCIAL_ATTEMPTS_DIR)),
+		&crate::resolve_against(&root, Path::new(DEFAULT_SOCIAL_ATTEMPTS_DIR)),
 		billing_month,
 	)
 }
@@ -125,7 +132,7 @@ pub(crate) fn publish_with_test_binary(
 	request: &SocialPublishXurlRequest,
 	xurl_binary: &Path,
 ) -> Result<SocialPublishXurlReport> {
-	let binary = runtime::TrustedXurlBinary::open_for_test(xurl_binary)?;
+	let binary = TrustedXurlBinary::open_for_test(xurl_binary)?;
 
 	publish::run_without_pricing_for_test(request, &binary)
 }
@@ -135,7 +142,7 @@ pub(crate) fn publish_with_identity_interruption_for_test(
 	request: &SocialPublishXurlRequest,
 	xurl_binary: &Path,
 ) -> Result<SocialPublishXurlReport> {
-	let binary = runtime::TrustedXurlBinary::open_for_test(xurl_binary)?;
+	let binary = TrustedXurlBinary::open_for_test(xurl_binary)?;
 
 	publish::run_with_identity_interruption_for_test(request, &binary)
 }
@@ -145,7 +152,7 @@ pub(crate) fn publish_with_reserved_attempt_interruption_for_test(
 	request: &SocialPublishXurlRequest,
 	xurl_binary: &Path,
 ) -> Result<SocialPublishXurlReport> {
-	let binary = runtime::TrustedXurlBinary::open_for_test(xurl_binary)?;
+	let binary = TrustedXurlBinary::open_for_test(xurl_binary)?;
 
 	publish::run_with_reserved_attempt_interruption_for_test(request, &binary)
 }
@@ -155,7 +162,7 @@ pub(crate) fn observe_with_test_binary(
 	request: &SocialObserveXurlRequest,
 	xurl_binary: &Path,
 ) -> Result<SocialObserveXurlReport> {
-	let binary = runtime::TrustedXurlBinary::open_for_test(xurl_binary)?;
+	let binary = TrustedXurlBinary::open_for_test(xurl_binary)?;
 
 	observe::run_without_pricing_for_test(request, &binary)
 }
@@ -169,18 +176,18 @@ pub(crate) fn reconcile_with_test_binary(
 }
 
 fn probe_with_verified(
-	now: time::OffsetDateTime,
-	binary: &runtime::TrustedXurlBinary,
-	contract: &auth_contract::VerifiedAuthorizationContract,
+	now: OffsetDateTime,
+	binary: &TrustedXurlBinary,
+	contract: &VerifiedAuthorizationContract,
 ) -> Result<SocialProbeXurlReport> {
 	probe_with_verified_and_pricing(now, binary, contract, pricing::report_at)
 }
 
 fn probe_with_verified_and_pricing(
-	now: time::OffsetDateTime,
-	binary: &runtime::TrustedXurlBinary,
-	contract: &auth_contract::VerifiedAuthorizationContract,
-	pricing_policy_at: impl FnOnce(time::OffsetDateTime) -> Result<crate::XPricingPolicyReport>,
+	now: OffsetDateTime,
+	binary: &TrustedXurlBinary,
+	contract: &VerifiedAuthorizationContract,
+	pricing_policy_at: impl FnOnce(OffsetDateTime) -> Result<XPricingPolicyReport>,
 ) -> Result<SocialProbeXurlReport> {
 	let xurl_version = runtime::verify_ready(binary, contract)?;
 	let pricing_policy = pricing_policy_at(now)?;
@@ -190,14 +197,14 @@ fn probe_with_verified_and_pricing(
 		status: if ready { "ready".into() } else { "blocked".into() },
 		ready,
 		xurl_version,
-		xurl_app: model::XURL_APP.into(),
-		account_label: model::TARGET_ACCOUNT.into(),
+		xurl_app: XURL_APP.into(),
+		account_label: TARGET_ACCOUNT.into(),
 		authorization_contract: contract.report(),
 		pricing_policy,
 	})
 }
 
-fn parse_probe_time(now: &str) -> Result<time::OffsetDateTime> {
-	time::OffsetDateTime::parse(now, &time::format_description::well_known::Rfc3339)
-		.map_err(|_| crate::prelude::eyre::eyre!("probe time must be an RFC3339 timestamp"))
+fn parse_probe_time(now: &str) -> Result<OffsetDateTime> {
+	OffsetDateTime::parse(now, &Rfc3339)
+		.map_err(|_| eyre::eyre!("probe time must be an RFC3339 timestamp"))
 }
