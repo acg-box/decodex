@@ -12,8 +12,8 @@ version        = 1
 #   decodex account list
 #   decodex account profile --account-id 10000000-0000-4000-8000-000000000001
 #   decodex reset-card list --account 10000000-0000-4000-8000-000000000001
-# It verifies the negotiated V1.5 contract and stable server identity before it accepts
-# service results. `--root PATH` selects another typed Decodex root for isolated
+# It requires an exact match with the current protocol version and verifies the
+# stable server identity before it accepts service results. `--root PATH` selects another typed Decodex root for isolated
 # operation or tests. Use `--profile NAME --expected-server-id UUID` to retain an
 # explicitly pinned authority. Reset-card operations currently reject remote profiles
 # until authenticated remote transport exists.
