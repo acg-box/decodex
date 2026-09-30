@@ -19,6 +19,7 @@ pub(crate) fn backfill_release_range(
 	let release_delta = crate::load_json(&prepared_release_delta.path)?;
 	let selection = selection::selected_release_comparison(
 		&release_delta,
+		&request.repo,
 		request.stable_tag.as_deref(),
 		request.preview_tag.as_deref(),
 	)?;

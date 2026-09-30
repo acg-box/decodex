@@ -30,7 +30,7 @@ fn dry_run_backfill_selects_unpublished_release_window_prs() {
 		fs::write(signals_dir.join(format!("{name}.json")), signal.to_string()).unwrap();
 	}
 
-	let report = crate::backfill_release_range(&RadarBackfillReleaseRangeRequest {
+	let mut request = RadarBackfillReleaseRangeRequest {
 		repo: "openai/codex".into(),
 		release_delta: release_delta_path,
 		stable_tag: None,
@@ -48,8 +48,9 @@ fn dry_run_backfill_selects_unpublished_release_window_prs() {
 		refresh_preview_limit: None,
 		refresh_pair_limit: None,
 		python_bin: "python3".into(),
-	})
-	.expect("dry-run backfill should select unpublished PRs");
+	};
+	let report = crate::backfill_release_range(&request)
+		.expect("dry-run backfill should select unpublished PRs");
 
 	assert_eq!(report.stable_tag, "rust-v0.1.0");
 	assert_eq!(report.preview_tag, "rust-v0.2.0-alpha.1");
@@ -60,4 +61,16 @@ fn dry_run_backfill_selects_unpublished_release_window_prs() {
 		fs::read_to_string(temp_dir.path().join("release-delta.json")).unwrap(),
 		release_delta.to_string()
 	);
+	request.stable_tag = Some("rust-v0.1.0".into());
+	request.preview_tag = Some("rust-v0.2.0-alpha.1".into());
+	for (repo, expected_error) in [
+		(serde_json::json!("other/project"), "Release-delta repository must match openai/codex"),
+		(serde_json::Value::Null, "repo must be owner/name"),
+	] {
+		release_delta["repo"] = repo;
+		fs::write(&request.release_delta, release_delta.to_string()).unwrap();
+		let error =
+			crate::backfill_release_range(&request).expect_err("reject unrelated release artifact");
+		assert!(error.to_string().contains(expected_error), "{error}");
+	}
 }
