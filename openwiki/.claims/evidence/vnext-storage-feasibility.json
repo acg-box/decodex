@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ee80dc566a13142cdd61d13ce0d0ce19f7b1c81fd09969b5fd2272a412735ebb",
+  "pageVersion": "sha256:c7e7dc8ef24ad8b335b440cb0067c744ac3b76777ccc905f13ebc20bb1dd25ce",
   "claims": [
     {
       "id": "claim_d4de35fa50cd406cb07a9de8f8d2f369",
@@ -16,13 +16,13 @@
         },
         {
           "resource": "repo://database/src/lib.rs",
-          "version": "repo-file-v1:sha256:e49aedc5f8f73c3b7b1028c4a5b61ebd7880a91654e153a9530095f379e8fddf"
+          "version": "repo-file-v1:sha256:7de12b3b3fcaa26419ffc3cb4218e97cd99ce241f20acdc9c41589cb9aae55e7"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.0",
-    "at": "2026-09-29T13:52:19.644Z"
+    "by": "openwiki/0.6.1",
+    "at": "2026-09-30T08:07:44.872Z"
   }
 }

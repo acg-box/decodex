@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0cd08efefab8b9138bd1f5dd9f56f904dfb98da1c01e24a92a221a26a4897fb2",
+  "pageVersion": "sha256:896140d8c7d20dfadfd3cd4ae324ed3115ce2ce69aaa6d3f5827dc8f0bdfc30f",
   "claims": [
     {
       "id": "claim_2be91f3b07f54663a6f4b76c366b7238",
@@ -17,18 +17,18 @@
       "statement": "SQLite process transitions and Agent affinity release require valid positive death evidence, including correctly identified prior-boot termination.",
       "evidence": [
         {
-          "resource": "repo://database/src/agent_process.rs#L313-L377",
-          "version": "repo-lines-v1:sha256:fbb39e4deb2476092dc5317a96126f75981bb7d81efddbbbaea1481cec7c7182:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzNzRkNWE5ZWQzYjM4ZjQyYzliMzliMWZhYWMwOTA1MjM0YjZjNWYxMDFjN2RlNTQ5YWI0NzQyMDVjZWIzZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhZGEyMDY4ZTQ0ZWY2OTVlZjkzYTI3Yzc2ZGM3MTE5Yjk1ZTlhN2U2ZjE3YjRlMjM1YWIzMDkwMzgyOGFkOWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ0OTdmMTI2YjA2YTMxZTI5YWQzNmIzNmJhZDZmNjdhMTg0ZGNlYmE5Mjc2NGEzMDkwYWIwNDEyYWIwYzY3ZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5ZGEzMGZmOWQ1NmI5Y2JlM2FlZTBjNmQ3NGVhODg1ODE2MzU3YmU4MDc5NWU0NzVlY2M1NmZlMzNiMWI2MTEifQ"
+          "resource": "repo://database/src/agent_process.rs",
+          "version": "repo-file-v1:sha256:a8aa4cc6ad17946e49845db787cc8f6dee6d155067e55c8c04d9df466a660e57"
         },
         {
           "resource": "repo://database/src/process_generations.rs",
-          "version": "repo-file-v1:sha256:6c4ec2d3f7b0092ff96d1dc587694a5b55e546a9b65eba76b8bdf907a785a83f"
+          "version": "repo-file-v1:sha256:4a9e447220d30637e333b230f949aeaabb71fe59ac234c61d890a4475925624b"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.0",
-    "at": "2026-09-28T02:19:36.307Z"
+    "by": "openwiki/0.6.1",
+    "at": "2026-09-30T08:07:44.872Z"
   }
 }

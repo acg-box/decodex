@@ -4,6 +4,8 @@ title: "Subscription dictation and live voice"
 description: "Native subscription audio ownership, per-call voice settings and on-demand WebRTC media hosting."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-3e2768126a812e862f175d21
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DictationCapture.swift
   - id: openwiki-source-ff4424492ebd38e298a4b243
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/VoiceMediaHost.swift
   - id: openwiki-source-2e244c19d3ad0a0d54117218
@@ -16,12 +18,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/voice.rs
   - id: openwiki-source-2465dd41e7771bea4f7b9c61
     resource: repo://crates/decodex-runtime/src/dictation_native.rs
+  - id: openwiki-source-58b9baa7130e82ec8b830513
+    resource: repo://crates/decodex-runtime/src/dictation_transcript.rs
   - id: openwiki-source-7b941e7c2c91cb7415f05243
     resource: repo://crates/decodex-runtime/src/dictation.rs
-generated: { by: "codex", at: "2026-09-29T20:08:07.145Z" }
+generated: { by: "codex", at: "2026-09-30T08:20:44.128Z" }
 verified:
   - by: openwiki/0.6.1
-    at: 2026-09-29T20:08:07.145Z
+    at: 2026-09-30T08:20:44.128Z
 ---
 
 # Subscription dictation and live voice
@@ -37,9 +41,13 @@ Two flows share microphone presentation but have different semantics.
 
 `DictationGateway` owns one ephemeral session. It obtains subscription authentication from the retained native connection through `getAuthStatus`. The token stays in the service and signed native URLSession adapter. It is not a second API-key configuration or a system speech-recognition fallback.
 
-The Swift transport connects to the subscription dictation stream and sends PCM16, 24 kHz, mono audio. It handles segment revision numbers and final markers; an older revision cannot replace newer text, and finalized segments remain stable. The final transcript corrects the same composer draft rather than opening a second editor.
+The Swift URLSession adapter connects to the subscription dictation stream and transports bounded messages. Rust constructs the session configuration and audio messages, validates PCM16, 24 kHz, mono input, and interprets server events. The Rust session also owns segment order, revision numbers and final markers. An older revision cannot replace newer text, and finalized segments remain stable. The Swift adapter forwards raw server messages; if its event queue fills, it reports a terminal error instead of discarding accepted segments. The final transcript corrects the same composer draft rather than opening a second editor.
 
 Audio, authentication and the draft are not stored in SQLite by this gateway. Starting without a ready account fails clearly. Audio arriving before readiness is rejected. Disconnect before final correction preserves received text and does not replay audio. The endpoint is a subscription transport dependency, not a promise that every account or future server version supports it.
+
+Native dictation capture uses AVAudioEngine voice processing. The capture enables it while the engine is stopped, selects the requested input device, then reads the processed format for PCM conversion. Other-audio ducking uses the minimum level. Actual microphone quality, device switching and playback effects require installed acceptance; the conversion test does not measure them.
+
+The versioned `decodex_dictation_create_v2` symbol binds the Rust session to the matching native message contract. This adapter remains in the existing signed application library.
 
 ## Live voice
 
@@ -55,7 +63,7 @@ The Swift media host owns capture/playback and device selection. The service own
 
 The normal composer receives dictation text. Live voice uses its own waveform/voice state in that area. The selected input device applies to capture, not to a model-selector control.
 
-Focused tests live in the Rust dictation/voice modules and Swift `DictationCaptureTests`, `DictationTranscriptTests`, and `VoiceMediaHostTests`. Live acceptance separately requires microphone permission, selected-device capture, partial text, final correction, and both live transcript roles. Unit tests do not establish provider entitlement or network latency.
+Focused tests live in the Rust dictation/voice modules and Swift `DictationCaptureTests` and `VoiceMediaHostTests`. Rust `dictation_transcript.rs` tests cover segment order, stale revisions, final corrections and transcript limits. Live acceptance separately requires microphone permission, selected-device capture, partial text, final correction, and both live transcript roles. Unit tests do not establish provider entitlement or network latency.
 
 See [Agent coordination](../architecture/chief-coordination.md) and [Desktop workspace](../architecture/desktop-workspace.md).
 

@@ -9,8 +9,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/provider_attempt_service.rs
 generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
 verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T06:24:17.023Z
+  - by: openwiki/0.6.1
+    at: 2026-09-30T08:07:44.872Z
 ---
 
 # ProviderAttempt authority
