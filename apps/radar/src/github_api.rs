@@ -201,14 +201,13 @@ impl GitHubApi {
 			body: crate::body_excerpt(&body),
 		})?;
 
-		Ok(GitHubResponse { payload, headers, next_url })
+		Ok(GitHubResponse { payload, next_url })
 	}
 }
 
 #[derive(Debug)]
 pub(crate) struct GitHubResponse {
 	pub(crate) payload: Value,
-	pub(crate) headers: HeaderMap,
 	next_url: Option<String>,
 }
 

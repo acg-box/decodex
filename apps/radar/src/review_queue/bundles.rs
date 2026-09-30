@@ -61,8 +61,10 @@ pub(super) fn build_commit_bundle(
 	repo: &str,
 	commit_sha: &str,
 ) -> Result<SourceBundle> {
-	let commit =
-		api.get(&format!("https://api.github.com/repos/{repo}/commits/{commit_sha}"))?.payload;
+	let commit = api.get_paginated_field(
+		&format!("https://api.github.com/repos/{repo}/commits/{commit_sha}?per_page=100"),
+		"files",
+	)?;
 	let files = commit.get("files").and_then(Value::as_array).cloned().unwrap_or_default();
 	let message = commit.pointer("/commit/message").and_then(Value::as_str).unwrap_or_default();
 
