@@ -303,10 +303,6 @@ pub(crate) fn sensitive_string_drops() -> usize {
 	sensitive_string_test_counter::count()
 }
 
-fn hex_digest(bytes: &[u8]) -> String {
-	bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
 #[cfg(test)]
 mod sensitive_string_test_counter {
 	use std::cell::Cell;
