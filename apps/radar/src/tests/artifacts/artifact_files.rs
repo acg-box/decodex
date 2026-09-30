@@ -130,6 +130,36 @@ fn validates_json_files_from_explicit_private_cache_directory() {
 }
 
 #[test]
+fn bundle_validation_classifies_private_directories_before_file_extensions() {
+	let temp_dir = crate::test_support::private_tempdir();
+	let directory = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/bundles.json");
+	crate::write_json(&directory.join("bundle.json"), &fixtures::valid_bundle()).unwrap();
+	let report = crate::validate_bundles(&crate::RadarBundleValidateRequest {
+		paths: vec![directory.clone()],
+	})
+	.expect("a private directory ending in .json must be traversed");
+	assert_eq!(report.checked_files, 1);
+	let explicit_file = directory.join("bundle.txt");
+	crate::write_json(&explicit_file, &fixtures::valid_bundle()).unwrap();
+	assert_eq!(
+		crate::validate_bundles(&crate::RadarBundleValidateRequest {
+			paths: vec![explicit_file.clone()],
+		})
+		.expect("an explicit bundle file is validated by content")
+		.checked_files,
+		1
+	);
+	let linked = directory.join("linked.json");
+	std::os::unix::fs::symlink(explicit_file, &linked).unwrap();
+	for invalid in [linked, directory.join("missing.json")] {
+		assert!(
+			crate::validate_bundles(&crate::RadarBundleValidateRequest { paths: vec![invalid] })
+				.is_err()
+		);
+	}
+}
+
+#[test]
 fn explicit_private_cache_regular_file_applies_json_extension_filter_after_classification() {
 	let temp_dir = crate::test_support::private_tempdir();
 	let non_json =
