@@ -3,8 +3,9 @@
 This directory contains reusable assets for the standalone Radar auxiliary tool.
 Radar has no native schedule in the Decodex automation portfolio.
 
-- `radar.toml` declares only Radar-owned private cache paths.
-- `scripts/github/` contains bounded GitHub collection and analysis helpers.
+- `radar.toml` lists Radar-owned private cache paths and marks the repository root.
+  Runtime defaults are defined in `apps/radar/src/paths.rs`.
+- `scripts/github/` contains GitHub collection and optional AI analysis helpers.
 - `skills/` contains optional research skills for upstream triage, code analysis,
   release analysis, and static signal drafting.
 
