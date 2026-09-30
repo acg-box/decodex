@@ -13,6 +13,7 @@ use crate::{
 
 pub(in crate::release_delta::backfill) fn selected_release_comparison(
 	payload: &Value,
+	repo: &str,
 	stable_tag: Option<&str>,
 	preview_tag: Option<&str>,
 ) -> Result<ReleaseSelection> {
@@ -20,6 +21,9 @@ pub(in crate::release_delta::backfill) fn selected_release_comparison(
 
 	let entry =
 		payload.as_object().ok_or_else(|| eyre::eyre!("Release-delta must be an object"))?;
+	if crate::string_field(entry, "repo") != Some(repo) {
+		eyre::bail!("Release-delta repository must match {repo}");
+	}
 	let target_stable = stable_tag
 		.map(str::to_owned)
 		.or_else(|| release_delta_release_tag(entry.get("stable_release")))
