@@ -425,8 +425,13 @@ impl AgentSurface {
 					"Toggle microphone",
 					|s, cx| {
 						if let Some(voice) = &mut s.voice {
-							voice.muted = !voice.muted;
-							voice.media.command(json!({"operation":"mute","muted":voice.muted}));
+							let muted = !voice.muted;
+							if voice.media.command(json!({"operation":"mute","muted":muted})) {
+								voice.muted = muted;
+							} else {
+								s.retire_voice_media();
+								s.feedback = "Voice stopped because the microphone control could not be updated.".into();
+							}
 						}
 						cx.notify();
 					},
@@ -641,10 +646,15 @@ impl Media {
 					})
 				}),
 			Some("mute") => {
-				self.muted = value["muted"].as_bool().unwrap_or(false);
-				return self.transport.as_ref().is_none_or(|transport| {
-					transport.command(transport::Command::Mute(self.muted))
-				});
+				let muted = value["muted"].as_bool().unwrap_or(false);
+				let accepted = self
+					.transport
+					.as_ref()
+					.is_none_or(|transport| transport.command(transport::Command::Mute(muted)));
+				if accepted {
+					self.muted = muted;
+				}
+				return accepted;
 			},
 			Some("start" | "dictate" | "stop") => {
 				self.audio = None;
@@ -1036,6 +1046,62 @@ mod tests {
 	impl Render for VoiceComposerView {
 		fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 			self.0.update(cx, |s, cx| s.render_composer_capsule(false, window, cx))
+		}
+	}
+
+	struct VoiceToolbarView(Entity<AgentSurface>);
+	impl Render for VoiceToolbarView {
+		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+			self.0.update(cx, |s, cx| div().children(s.voice_toolbar(cx)))
+		}
+	}
+
+	#[gpui::test]
+	fn rejected_microphone_control_stops_voice_and_retains_text(cx: &mut gpui::TestAppContext) {
+		for muted in [false, true] {
+			let (view, visual) = cx.add_window_view(|_, cx| {
+				let surface = cx.new(AgentSurface::new);
+				surface.update(cx, |s, cx| {
+					s.composer.update(cx, |input, cx| input.set_content("Draft remains", cx));
+					s.voice = Some(VoiceUi {
+						options: Default::default(),
+						media: Media,
+						session: EntityId::new("call").unwrap(),
+						work: EntityId::new("agent").unwrap(),
+						request: None,
+						answered: true,
+						signaling: true,
+						connected: true,
+						connection_status: "Live".into(),
+						muted,
+						captions: vec![Caption {
+							complete: false,
+							turn: "turn".into(),
+							role: "user",
+							text: "Keep this caption".into(),
+						}],
+						matched_receipts: Default::default(),
+						levels: Default::default(),
+						follow: true,
+					});
+				});
+				VoiceToolbarView(surface)
+			});
+			visual.update(|window, cx| {
+				window.draw(cx).clear();
+			});
+			let button = visual.debug_bounds("composer-voice-mute").expect("microphone control");
+			visual.simulate_click(button.center(), Default::default());
+			view.read_with(visual, |view, cx| {
+				let s = view.0.read(cx);
+				assert!(s.voice.is_none(), "A rejected microphone command must stop local media");
+				assert!(s.feedback.contains("microphone"));
+				assert_eq!(s.composer.read(cx).content(), "Draft remains");
+				assert_eq!(s.retired_voice_captions.len(), 1);
+				let caption = &s.retired_voice_captions[0].captions[0];
+				assert_eq!(caption.text, "Keep this caption");
+				assert!(caption.complete);
+			});
 		}
 	}
 
