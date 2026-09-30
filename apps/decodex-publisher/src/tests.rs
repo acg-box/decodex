@@ -970,6 +970,86 @@ fn outcome_failures_recover_or_terminalize_without_blocking_other_windows() {
 
 #[cfg(unix)]
 #[test]
+fn cross_month_outcome_recovery_keeps_the_original_attempt_for_local_retries() {
+	let temp = tempfile::tempdir().expect("temporary directory");
+	write_auth_contract(temp.path());
+	write_candidate(temp.path(), "candidate.json", valid_social_candidate());
+	let log = temp.path().join("xurl.log");
+	let xurl = faultable_fake_xurl(temp.path(), &log);
+	let published = crate::social_workflow::publish_next_with_test_binary(
+		&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
+		temp.path(),
+		&xurl,
+	)
+	.expect("publication");
+	let marker = temp.path().join("read-failure");
+	fs::write(&marker, b"1").expect("read fault");
+	let mut observe = observe_request(
+		temp.path(),
+		Path::new(published.effect_path.as_deref().expect("published path")),
+		SECOND_RUN_ID,
+		"24h",
+		"2026-07-31T12:20:00Z",
+	);
+	let _ = crate::social_xurl::observe_with_test_binary(&observe, &xurl)
+		.expect_err("initial read fails");
+	fs::remove_file(marker).expect("remove fault");
+	let recovered = crate::social_workflow::observe_due_with_test_binary(
+		&SocialObserveDueRequest {
+			run_id: THIRD_RUN_ID.into(),
+			observed_at: "2026-08-01T12:20:00Z".into(),
+		},
+		temp.path(),
+		&xurl,
+	)
+	.expect("cross-month recovery");
+	assert_eq!(recovered.status, "recovered_interrupted_effect");
+	let calls = fs::read(&log).expect("calls after recovery");
+	observe.observed_at = "2026-08-01T12:30:00Z".into();
+	let retry = crate::social_xurl::observe_with_test_binary(&observe, &xurl)
+		.expect("local retry resolves the original-month attempt");
+	assert_eq!(retry.status, "already_observed");
+	assert_eq!(fs::read(&log).expect("calls after local retry"), calls);
+	let attempt_path = crate::collect_json_files(&[temp.path().join("attempts/2026-07")])
+		.expect("original month attempts")
+		.into_iter()
+		.find(|path| path.file_name().unwrap().to_string_lossy().starts_with("observe-"))
+		.expect("original observation attempt");
+	let completed = crate::load_json(&attempt_path).expect("completed recovery attempt");
+	assert_eq!(completed["calls"][1]["billing_month"], "2026-08");
+	let mut interrupted = completed.clone();
+	interrupted["status"] = json!("read_reconcile_inflight");
+	interrupted["calls"][1]["status"] = json!("inflight");
+	interrupted["calls"][1]["response_sha256"] = Value::Null;
+	interrupted["call"] = interrupted["calls"][1].clone();
+	interrupted.as_object_mut().unwrap().remove("reconciliation");
+	crate::replace_existing_json(&attempt_path, &completed, &interrupted)
+		.expect("simulate interruption after durable outcome write");
+	let reconciled = crate::social_xurl::reconcile_with_test_binary(
+		&crate::SocialReconcileXurlRequest {
+			evidence_path: temp.path().join("outcomes").join(format!("{SECOND_RUN_ID}.json")),
+			attempt_path: None,
+			authorization_contract_path: temp.path().join("xurl-authorization-contract.json"),
+			reservations_dir: temp.path().join("reservations"),
+			candidates_dir: temp.path().join("candidates"),
+			posts_dir: temp.path().join("posts"),
+			outcomes_dir: temp.path().join("outcomes"),
+			attempts_dir: temp.path().join("attempts"),
+			locks_dir: temp.path().join("locks"),
+			operation_id: FOURTH_RUN_ID.into(),
+			reconciled_at: "2026-08-01T12:40:00Z".into(),
+		},
+		&temp.path().join("binary-must-not-run"),
+	)
+	.expect("local cross-month outcome reconciliation");
+	assert_eq!(reconciled.status, "reconciled");
+	assert_eq!(reconciled.paid_call_count, 0);
+	assert_eq!(fs::read(&log).expect("calls after reconciliation"), calls);
+	assert_eq!(crate::load_json(&attempt_path).unwrap()["status"], "observed");
+}
+
+#[cfg(unix)]
+#[test]
 fn high_level_publish_enforces_account_and_monthly_budget_before_create() {
 	let wrong_account = tempfile::tempdir().expect("temporary directory");
 	write_auth_contract(wrong_account.path());
