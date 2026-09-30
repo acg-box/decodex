@@ -325,8 +325,11 @@ def install_paths(args: argparse.Namespace) -> InstallPaths:
         log_directory=root / "logs",
         service_log=root / "logs" / "local-service.log",
         launch_agent=args.launch_agent.expanduser().resolve(),
-        decodex=args.decodex.expanduser().resolve(),
-        database_transfer=args.database_transfer.expanduser().resolve(),
+        # Keep the final component intact for the executable symlink checks.
+        decodex=args.decodex.expanduser().parent.resolve() / args.decodex.name,
+        database_transfer=(
+            args.database_transfer.expanduser().parent.resolve() / args.database_transfer.name
+        ),
         codex=args.codex.expanduser().resolve(),
     )
 
