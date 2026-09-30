@@ -3,23 +3,43 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use super::{
-	model::{TARGET_ACCOUNT, XURL_APP},
-	runtime::TrustedXurlBinary,
-};
 use crate::{
 	SocialSealXurlAuthReport, SocialSealXurlAuthRequest, XurlAuthorizationContractReport,
 	prelude::{Result, eyre},
+	social_xurl::{
+		model::{TARGET_ACCOUNT, XURL_APP},
+		runtime::{self, TrustedXurlBinary},
+	},
 };
 
 pub(crate) const APPROVED_XURL_VERSION: &str = "1.3.1";
+
 pub(super) const APPROVED_XURL_SHA256: &str =
 	"7b85a210009db7a3f2d6183684674441fbf81276f1101f73d36d0266ec9aa01e";
 
 const CONTRACT_SCHEMA: &str = "decodex/xurl-authorization-contract/1";
 const POLICY_ID: &str = "xurl-oauth-least-privilege/3";
-const MAX_CONTRACT_BYTES: u64 = 16 * 1024;
+const MAX_CONTRACT_BYTES: u64 = 16 * 1_024;
 const REQUIRED_SCOPES: [&str; 4] = ["tweet.read", "users.read", "tweet.write", "offline.access"];
+
+#[derive(Debug)]
+pub(super) struct VerifiedAuthorizationContract {
+	contract_sha256: String,
+	report: XurlAuthorizationContractReport,
+}
+impl VerifiedAuthorizationContract {
+	pub(super) fn require_runtime(&self, binary: &TrustedXurlBinary) -> Result<()> {
+		binary.require_approved_release()
+	}
+
+	pub(super) fn contract_sha256(&self) -> &str {
+		&self.contract_sha256
+	}
+
+	pub(super) fn report(&self) -> XurlAuthorizationContractReport {
+		self.report.clone()
+	}
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -34,12 +54,6 @@ struct XurlAuthorizationContract {
 	sealed_at: String,
 }
 
-#[derive(Debug)]
-pub(super) struct VerifiedAuthorizationContract {
-	contract_sha256: String,
-	report: XurlAuthorizationContractReport,
-}
-
 pub(super) fn seal(
 	request: &SocialSealXurlAuthRequest,
 	binary: &TrustedXurlBinary,
@@ -48,9 +62,9 @@ pub(super) fn seal(
 
 	binary.require_approved_release()?;
 
-	let xurl_version = super::runtime::verify_runtime(binary)?;
+	let xurl_version = runtime::verify_runtime(binary)?;
 
-	super::runtime::verify_auth_status(binary)?;
+	runtime::verify_auth_status(binary)?;
 
 	let root = crate::repo_root()?;
 	let contract_path = crate::resolve_against(&root, &request.receipt_path);
@@ -111,20 +125,6 @@ pub(super) fn load_current_at(
 			sealed_at: contract.sealed_at,
 		},
 	})
-}
-
-impl VerifiedAuthorizationContract {
-	pub(super) fn require_runtime(&self, binary: &TrustedXurlBinary) -> Result<()> {
-		binary.require_approved_release()
-	}
-
-	pub(super) fn contract_sha256(&self) -> &str {
-		&self.contract_sha256
-	}
-
-	pub(super) fn report(&self) -> XurlAuthorizationContractReport {
-		self.report.clone()
-	}
 }
 
 fn validate_contract(
