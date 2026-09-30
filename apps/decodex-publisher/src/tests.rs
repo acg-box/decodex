@@ -1,15 +1,26 @@
+#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
 use std::{
 	fs,
 	path::{Path, PathBuf},
+	slice,
 };
 
 use clap::Parser as _;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::{
 	SocialClock, SocialObserveDueRequest, SocialObserveXurlRequest, SocialPublishNextRequest,
 	SocialPublishXurlRequest, SocialRecordCandidateRequest, SocialReservePublishRequest,
 	SocialTerminalizeSkipRequest,
+	cli::Cli,
+	social_clock, social_evidence, social_record, social_validation, social_workflow,
+	social_xurl::{
+		self, ledger,
+		model::{
+			ATTEMPT_SCHEMA, IDENTITY_RECOVERY_EXHAUSTED_STATUS, NO_CREATE_RELEASED_STATUS,
+			PUBLICATION_LINEAGE_BUDGET_MICROUSD, READ_RECOVERY_EXHAUSTED_STATUS, XurlAttempt,
+		},
+	},
 };
 
 const RUN_ID: &str = "019fa400-0000-7000-8000-000000000001";
@@ -20,28 +31,32 @@ const FIFTH_RUN_ID: &str = "019fa400-0000-7000-8000-000000000005";
 const POST_TEXT: &str = "Codex app-server now exposes a typed capability check before experimental calls, so operators can detect unsupported protocol surfaces before a workflow starts.";
 const SOURCE_URL: &str = "https://github.com/openai/codex/pull/22414";
 
+pub(crate) fn valid_social_candidate() -> Value {
+	candidate("publish")
+}
+
 #[test]
 fn content_evidence_requires_primary_sources_and_immutable_identity() {
 	let candidate = valid_social_candidate();
 
 	crate::validate_generated_social_artifact(&candidate).expect("valid source-backed candidate");
-	crate::social_evidence::validate_source_evidence(&candidate).expect("resolved claims");
+	social_evidence::validate_source_evidence(&candidate).expect("resolved claims");
 
 	let mut radar_only = candidate.clone();
 
-	radar_only["source_kinds"][SOURCE_URL] = json!("radar_secondary");
+	radar_only["source_kinds"][SOURCE_URL] = serde_json::json!("radar_secondary");
 
 	assert_social_error(&radar_only, "at least one official_codex or landed_decodex source");
 
 	let mut unresolved = candidate.clone();
 
-	unresolved["claims"][0]["evidence"] = json!("https://example.com/unbound");
+	unresolved["claims"][0]["evidence"] = serde_json::json!("https://example.com/unbound");
 
 	assert_social_error(&unresolved, "must exactly match one declared source reference");
 
 	let mut tampered = candidate;
 
-	tampered["candidate_text"][0] = json!(format!("{POST_TEXT} Verified."));
+	tampered["candidate_text"][0] = serde_json::json!(format!("{POST_TEXT} Verified."));
 
 	let error = crate::validate_generated_social_artifact(&tampered)
 		.expect_err("content changes must invalidate publication identity")
@@ -90,7 +105,7 @@ fn record_candidate_is_atomic_idempotent_and_applies_backpressure() {
 
 	crate::write_new_json(
 		&temp.path().join("posts/invalid.json"),
-		&json!({
+		&serde_json::json!({
 			"schema": crate::SOCIAL_POST_SCHEMA,
 			"source_refs": {"social_candidates": [report.path]}
 		}),
@@ -131,7 +146,7 @@ fn high_level_publish_rejects_invalid_terminal_refs_without_running_xurl() {
 
 	crate::write_new_json(
 		&invalid,
-		&json!({
+		&serde_json::json!({
 			"source_refs": {"social_candidates": [candidate_ref]}
 		}),
 	)
@@ -141,17 +156,15 @@ fn high_level_publish_rejects_invalid_terminal_refs_without_running_xurl() {
 	let binary = temp.path().join("xurl-must-not-run");
 
 	assert!(
-		crate::social_workflow::publish_next_with_test_binary(&request, temp.path(), &binary)
-			.is_err()
+		social_workflow::publish_next_with_test_binary(&request, temp.path(), &binary).is_err()
 	);
 	assert!(!temp.path().join("attempts").exists());
 	assert!(candidate.exists());
 
 	fs::remove_file(invalid).unwrap();
 
-	let report =
-		crate::social_workflow::publish_next_with_test_binary(&request, temp.path(), &binary)
-			.expect("valid no-op completes");
+	let report = social_workflow::publish_next_with_test_binary(&request, temp.path(), &binary)
+		.expect("valid no-op completes");
 
 	assert_eq!(report.status, "skipped");
 	assert!(!temp.path().join("attempts").exists());
@@ -162,9 +175,9 @@ fn malformed_state_blocks_reservation_and_skip_without_rewriting_evidence() {
 	for (directory, invalid) in [
 		(
 			"reservations",
-			json!({"schema": crate::SOCIAL_PUBLISH_RESERVATION_SCHEMA, "status": "unknown"}),
+			serde_json::json!({"schema": crate::SOCIAL_PUBLISH_RESERVATION_SCHEMA, "status": "unknown"}),
 		),
-		("posts", json!({"schema": crate::SOCIAL_POST_SCHEMA, "status": "unknown"})),
+		("posts", serde_json::json!({"schema": crate::SOCIAL_POST_SCHEMA, "status": "unknown"})),
 		("posts", valid_social_candidate()),
 	] {
 		let temp = tempfile::tempdir().expect("temporary directory");
@@ -202,9 +215,9 @@ fn reserve_enforces_duplicate_and_one_post_per_day() {
 	let reservation = crate::load_json(Path::new(&report.path)).expect("reservation artifact");
 
 	for (field, value) in [
-		("duplicate_keys", json!(["unrelated", "keys"])),
+		("duplicate_keys", serde_json::json!(["unrelated", "keys"])),
 		("expires_at", reservation["reserved_at"].clone()),
-		("expires_at", json!("2026-07-27T11:59:59Z")),
+		("expires_at", serde_json::json!("2026-07-27T11:59:59Z")),
 	] {
 		let mut inconsistent = reservation.clone();
 
@@ -220,7 +233,7 @@ fn reserve_enforces_duplicate_and_one_post_per_day() {
 
 	let mut other = valid_social_candidate();
 
-	other["slug"] = json!("another-change");
+	other["slug"] = serde_json::json!("another-change");
 
 	rebind_identity(&mut other);
 
@@ -260,8 +273,7 @@ fn xurl_publish_and_outcomes_verify_account_text_and_exact_effects() {
 	let log = temp.path().join("xurl.log");
 	let xurl = fake_xurl(temp.path(), &log, "decodexspace", "decodexspace", true);
 	let publish = publish_request(temp.path(), Path::new(&reservation.path), RUN_ID);
-	let report =
-		crate::social_xurl::publish_with_test_binary(&publish, &xurl).expect("verified publish");
+	let report = social_xurl::publish_with_test_binary(&publish, &xurl).expect("verified publish");
 
 	assert_eq!(report.verified_account, "decodexspace");
 	assert_eq!(report.publication_recorded_cost_ceiling_microusd, 30_000);
@@ -281,17 +293,17 @@ fn xurl_publish_and_outcomes_verify_account_text_and_exact_effects() {
 	] {
 		let mut inconsistent = post.clone();
 
-		inconsistent["publication"]["published_urls"] = json!([url]);
+		inconsistent["publication"]["published_urls"] = serde_json::json!([url]);
 
 		assert!(crate::validate_generated_social_artifact(&inconsistent).is_err(), "{url}");
 	}
 
-	let retry = crate::social_xurl::publish_with_test_binary(&publish, &xurl)
-		.expect("local idempotent retry");
+	let retry =
+		social_xurl::publish_with_test_binary(&publish, &xurl).expect("local idempotent retry");
 
 	assert_eq!(retry.status, "already_published");
 
-	let outcome_24h = crate::social_xurl::observe_with_test_binary(
+	let outcome_24h = social_xurl::observe_with_test_binary(
 		&observe_request(
 			temp.path(),
 			Path::new(&report.post_path),
@@ -305,7 +317,7 @@ fn xurl_publish_and_outcomes_verify_account_text_and_exact_effects() {
 
 	assert_eq!(outcome_24h.window, "24h");
 
-	let outcome_7d = crate::social_xurl::observe_with_test_binary(
+	let outcome_7d = social_xurl::observe_with_test_binary(
 		&observe_request(
 			temp.path(),
 			Path::new(&report.post_path),
@@ -349,7 +361,7 @@ fn existing_post_recovery_requires_exact_attempt_bound_bytes() {
 
 	fs::write(&marker, b"interrupt").expect("fault marker");
 
-	let error = crate::social_xurl::publish_with_test_binary(&publish, &xurl)
+	let error = social_xurl::publish_with_test_binary(&publish, &xurl)
 		.expect_err("post-write interruption")
 		.to_string();
 
@@ -373,13 +385,13 @@ fn existing_post_recovery_requires_exact_attempt_bound_bytes() {
 
 	let mut tampered_post = original_post.clone();
 
-	tampered_post["publication"]["verified_user_id"] = json!("43");
+	tampered_post["publication"]["verified_user_id"] = serde_json::json!("43");
 
 	crate::validate_generated_social_artifact(&tampered_post).expect("schema-valid damaged post");
 	crate::replace_existing_json(&post_path, &original_post, &tampered_post)
 		.expect("install damaged post");
 
-	let error = crate::social_xurl::publish_with_test_binary(&publish, &xurl)
+	let error = social_xurl::publish_with_test_binary(&publish, &xurl)
 		.expect_err("damaged post must fail closed")
 		.to_string();
 
@@ -394,7 +406,7 @@ fn existing_post_recovery_requires_exact_attempt_bound_bytes() {
 	assert_eq!(fs::read(&post_path).expect("restored post bytes"), original_post_bytes);
 
 	let recovered =
-		crate::social_xurl::publish_with_test_binary(&publish, &xurl).expect("exact post recovery");
+		social_xurl::publish_with_test_binary(&publish, &xurl).expect("exact post recovery");
 
 	assert_eq!(recovered.status, "already_published");
 	assert_eq!(
@@ -422,7 +434,7 @@ fn xurl_rejects_wrong_account_before_create() {
 			.expect("reservation");
 	let log = temp.path().join("xurl.log");
 	let xurl = fake_xurl(temp.path(), &log, "decodexspace", "hackink", true);
-	let error = crate::social_xurl::publish_with_test_binary(
+	let error = social_xurl::publish_with_test_binary(
 		&publish_request(temp.path(), Path::new(&reservation.path), RUN_ID),
 		&xurl,
 	)
@@ -447,9 +459,9 @@ fn uncertain_create_is_never_retried_and_blocks_the_lineage() {
 	let log = temp.path().join("xurl.log");
 	let xurl = fake_xurl(temp.path(), &log, "decodexspace", "decodexspace", false);
 	let publish = publish_request(temp.path(), Path::new(&reservation.path), RUN_ID);
-	let _ = crate::social_xurl::publish_with_test_binary(&publish, &xurl)
+	let _ = social_xurl::publish_with_test_binary(&publish, &xurl)
 		.expect_err("invalid create response is uncertain");
-	let retry = crate::social_xurl::publish_with_test_binary(&publish, &xurl)
+	let retry = social_xurl::publish_with_test_binary(&publish, &xurl)
 		.expect_err("unknown create cannot retry")
 		.to_string();
 
@@ -486,7 +498,7 @@ fn monthly_budget_stops_before_public_write() {
 
 	let log = temp.path().join("xurl.log");
 	let xurl = fake_xurl(temp.path(), &log, "decodexspace", "decodexspace", true);
-	let error = crate::social_xurl::publish_with_test_binary(
+	let error = social_xurl::publish_with_test_binary(
 		&publish_request(temp.path(), Path::new(&reservation.path), RUN_ID),
 		&xurl,
 	)
@@ -514,14 +526,14 @@ fn high_level_publish_is_oldest_first_and_overdue_outcomes_remain_observable() {
 	);
 	let mut newer = valid_social_candidate();
 
-	newer["slug"] = json!("newer-upstream-change");
+	newer["slug"] = serde_json::json!("newer-upstream-change");
 
 	rebind_identity(&mut newer);
 
 	let newer = write_candidate(temp.path(), "019fa400-0000-7000-8000-000000000020.json", newer);
 	let log = temp.path().join("xurl.log");
 	let xurl = fake_xurl(temp.path(), &log, "decodexspace", "decodexspace", true);
-	let published = crate::social_workflow::publish_next_with_test_binary(
+	let published = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
 		temp.path(),
 		&xurl,
@@ -535,7 +547,7 @@ fn high_level_publish_is_oldest_first_and_overdue_outcomes_remain_observable() {
 	assert_eq!(published.candidate_path.as_deref(), Some(oldest_ref.as_str()));
 	assert!(newer.exists(), "newer candidate must remain pending");
 
-	let overdue_24h = crate::social_workflow::observe_due_with_test_binary(
+	let overdue_24h = social_workflow::observe_due_with_test_binary(
 		&SocialObserveDueRequest {
 			run_id: SECOND_RUN_ID.into(),
 			observed_at: "2026-08-20T12:02:00Z".into(),
@@ -548,7 +560,7 @@ fn high_level_publish_is_oldest_first_and_overdue_outcomes_remain_observable() {
 	assert_eq!(overdue_24h.status, "observed");
 	assert_eq!(overdue_24h.window.as_deref(), Some("24h"));
 
-	let overdue_7d = crate::social_workflow::observe_due_with_test_binary(
+	let overdue_7d = social_workflow::observe_due_with_test_binary(
 		&SocialObserveDueRequest {
 			run_id: THIRD_RUN_ID.into(),
 			observed_at: "2026-08-20T12:03:00Z".into(),
@@ -573,7 +585,7 @@ fn high_level_no_op_and_quality_skip_are_terminal_without_x_calls() {
 		let candidate = write_candidate(temp.path(), "candidate.json", candidate(worth));
 		let log = temp.path().join("xurl.log");
 		let xurl = fake_xurl(temp.path(), &log, "decodexspace", "decodexspace", true);
-		let report = crate::social_workflow::publish_next_with_test_binary(
+		let report = social_workflow::publish_next_with_test_binary(
 			&publish_next_request(RUN_ID, decision, reason, "2026-07-27T12:02:00Z"),
 			temp.path(),
 			&xurl,
@@ -596,7 +608,7 @@ fn high_level_restart_recovers_readback_without_a_second_create() {
 
 	let log = temp.path().join("xurl.log");
 	let xurl = fake_xurl_with_initial_read_failures(temp.path(), &log);
-	let first = crate::social_workflow::publish_next_with_test_binary(
+	let first = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
 		temp.path(),
 		&xurl,
@@ -606,7 +618,7 @@ fn high_level_restart_recovers_readback_without_a_second_create() {
 
 	assert!(first.contains("xurl"), "{first}");
 
-	let recovered = crate::social_workflow::publish_next_with_test_binary(
+	let recovered = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(SECOND_RUN_ID, "publish", None, "2026-07-27T12:10:00Z"),
 		temp.path(),
 		&xurl,
@@ -631,7 +643,7 @@ fn high_level_terminal_identity_recovery_reaches_a_fresh_publish_path() {
 
 	let log = temp.path().join("xurl.log");
 	let xurl = fake_xurl(temp.path(), &log, "decodexspace", "decodexspace", true);
-	let interrupted = crate::social_workflow::publish_next_with_identity_interruption_for_test(
+	let interrupted = social_workflow::publish_next_with_identity_interruption_for_test(
 		&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
 		temp.path(),
 		&xurl,
@@ -647,7 +659,7 @@ fn high_level_terminal_identity_recovery_reaches_a_fresh_publish_path() {
 	assert_eq!(attempt["status"], "identity_inflight");
 	assert!(attempt.get("reconciliation").is_none());
 
-	let recovered = crate::social_workflow::publish_next_with_test_binary(
+	let recovered = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(SECOND_RUN_ID, "publish", None, "2026-07-27T12:10:00Z"),
 		temp.path(),
 		&xurl,
@@ -662,7 +674,7 @@ fn high_level_terminal_identity_recovery_reaches_a_fresh_publish_path() {
 	assert_eq!(attempt["reconciliation"]["operation_id"], SECOND_RUN_ID);
 
 	let terminal_attempt = fs::read(&attempt_path).expect("terminal attempt bytes");
-	let published = crate::social_workflow::publish_next_with_test_binary(
+	let published = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(THIRD_RUN_ID, "publish", None, "2026-07-27T12:20:00Z"),
 		temp.path(),
 		&xurl,
@@ -676,7 +688,7 @@ fn high_level_terminal_identity_recovery_reaches_a_fresh_publish_path() {
 		"the old identity attempt must not be reconciled again"
 	);
 
-	let observed_24h = crate::social_workflow::observe_due_with_test_binary(
+	let observed_24h = social_workflow::observe_due_with_test_binary(
 		&SocialObserveDueRequest {
 			run_id: FOURTH_RUN_ID.into(),
 			observed_at: "2026-07-28T12:20:00Z".into(),
@@ -688,7 +700,7 @@ fn high_level_terminal_identity_recovery_reaches_a_fresh_publish_path() {
 
 	assert_eq!(observed_24h.status, "observed");
 
-	let observed_7d = crate::social_workflow::observe_due_with_test_binary(
+	let observed_7d = social_workflow::observe_due_with_test_binary(
 		&SocialObserveDueRequest {
 			run_id: FIFTH_RUN_ID.into(),
 			observed_at: "2026-08-03T12:20:00Z".into(),
@@ -746,7 +758,7 @@ fn reservation_only_restart_releases_old_owner_before_and_after_expiry() {
 
 		let log = temp.path().join("xurl.log");
 		let xurl = fake_xurl(temp.path(), &log, "decodexspace", "decodexspace", true);
-		let error = crate::social_workflow::publish_next_with_reservation_interruption_for_test(
+		let error = social_workflow::publish_next_with_reservation_interruption_for_test(
 			&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
 			temp.path(),
 			&xurl,
@@ -763,7 +775,7 @@ fn reservation_only_restart_releases_old_owner_before_and_after_expiry() {
 
 		assert_no_paid_xurl_calls(&log);
 
-		let published = crate::social_workflow::publish_next_with_test_binary(
+		let published = social_workflow::publish_next_with_test_binary(
 			&publish_next_request(SECOND_RUN_ID, "publish", None, restart_at),
 			temp.path(),
 			&xurl,
@@ -772,7 +784,7 @@ fn reservation_only_restart_releases_old_owner_before_and_after_expiry() {
 
 		assert_eq!(published.status, "published");
 
-		let repeated = crate::social_workflow::publish_next_with_test_binary(
+		let repeated = social_workflow::publish_next_with_test_binary(
 			&publish_next_request(THIRD_RUN_ID, "publish", None, restart_at),
 			temp.path(),
 			&xurl,
@@ -817,14 +829,13 @@ fn reserved_attempt_restart_terminalizes_no_call_before_and_after_expiry() {
 
 		let log = temp.path().join("xurl.log");
 		let xurl = fake_xurl(temp.path(), &log, "decodexspace", "decodexspace", true);
-		let error =
-			crate::social_workflow::publish_next_with_reserved_attempt_interruption_for_test(
-				&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
-				temp.path(),
-				&xurl,
-			)
-			.expect_err("reserved attempt boundary interruption")
-			.to_string();
+		let error = social_workflow::publish_next_with_reserved_attempt_interruption_for_test(
+			&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
+			temp.path(),
+			&xurl,
+		)
+		.expect_err("reserved attempt boundary interruption")
+		.to_string();
 
 		assert!(error.contains("durable reserved attempt"), "{error}");
 
@@ -832,11 +843,11 @@ fn reserved_attempt_restart_terminalizes_no_call_before_and_after_expiry() {
 		let reserved = crate::load_json(&attempt_path).expect("reserved attempt");
 
 		assert_eq!(reserved["status"], "reserved");
-		assert_eq!(reserved["calls"], json!([]));
+		assert_eq!(reserved["calls"], serde_json::json!([]));
 
 		assert_no_paid_xurl_calls(&log);
 
-		let recovered = crate::social_workflow::publish_next_with_test_binary(
+		let recovered = social_workflow::publish_next_with_test_binary(
 			&publish_next_request(SECOND_RUN_ID, "publish", None, recovery_at),
 			temp.path(),
 			&xurl,
@@ -846,18 +857,17 @@ fn reserved_attempt_restart_terminalizes_no_call_before_and_after_expiry() {
 		assert_eq!(recovered.status, "recovered_interrupted_effect");
 
 		let terminal_bytes = fs::read(&attempt_path).expect("terminal attempt bytes");
-		let terminal: crate::social_xurl::model::XurlAttempt =
+		let terminal: XurlAttempt =
 			serde_json::from_slice(&terminal_bytes).expect("terminal attempt");
 
-		assert_eq!(terminal.status, crate::social_xurl::model::NO_CREATE_RELEASED_STATUS);
+		assert_eq!(terminal.status, NO_CREATE_RELEASED_STATUS);
 		assert_eq!(terminal.reserved_cost_ceiling_microusd, 0);
 
-		crate::social_xurl::ledger::validate_publication_cost_record(&terminal)
-			.expect("valid terminal attempt");
+		ledger::validate_publication_cost_record(&terminal).expect("valid terminal attempt");
 
 		assert_no_paid_xurl_calls(&log);
 
-		let published = crate::social_workflow::publish_next_with_test_binary(
+		let published = social_workflow::publish_next_with_test_binary(
 			&publish_next_request(THIRD_RUN_ID, "publish", None, publish_at),
 			temp.path(),
 			&xurl,
@@ -866,7 +876,7 @@ fn reserved_attempt_restart_terminalizes_no_call_before_and_after_expiry() {
 
 		assert_eq!(published.status, "published");
 
-		let repeated = crate::social_workflow::publish_next_with_test_binary(
+		let repeated = social_workflow::publish_next_with_test_binary(
 			&publish_next_request(FOURTH_RUN_ID, "publish", None, publish_at),
 			temp.path(),
 			&xurl,
@@ -896,7 +906,7 @@ fn halted_identity_failures_recover_without_repeating_create() {
 
 		fs::write(temp.path().join(marker), b"1").expect("fault marker");
 
-		let _ = crate::social_workflow::publish_next_with_test_binary(
+		let _ = social_workflow::publish_next_with_test_binary(
 			&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
 			temp.path(),
 			&xurl,
@@ -905,7 +915,7 @@ fn halted_identity_failures_recover_without_repeating_create() {
 
 		fs::remove_file(temp.path().join(marker)).expect("remove identity fault");
 
-		let recovered = crate::social_workflow::publish_next_with_test_binary(
+		let recovered = social_workflow::publish_next_with_test_binary(
 			&publish_next_request(SECOND_RUN_ID, "publish", None, "2026-07-27T12:10:00Z"),
 			temp.path(),
 			&xurl,
@@ -914,7 +924,7 @@ fn halted_identity_failures_recover_without_repeating_create() {
 
 		assert_eq!(recovered.status, "recovered_interrupted_effect");
 
-		let published = crate::social_workflow::publish_next_with_test_binary(
+		let published = social_workflow::publish_next_with_test_binary(
 			&publish_next_request(THIRD_RUN_ID, "publish", None, "2026-07-27T12:20:00Z"),
 			temp.path(),
 			&xurl,
@@ -949,13 +959,13 @@ fn exhausted_identity_recovery_terminalizes_and_allows_a_fresh_run() {
 
 	fs::write(&marker, b"1").expect("identity fault marker");
 
-	let _ = crate::social_workflow::publish_next_with_test_binary(
+	let _ = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
 		temp.path(),
 		&xurl,
 	)
 	.expect_err("initial identity failure");
-	let exhausted = crate::social_workflow::publish_next_with_test_binary(
+	let exhausted = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(SECOND_RUN_ID, "publish", None, "2026-07-27T12:10:00Z"),
 		temp.path(),
 		&xurl,
@@ -965,17 +975,17 @@ fn exhausted_identity_recovery_terminalizes_and_allows_a_fresh_run() {
 	assert_eq!(exhausted.status, "recovered_interrupted_effect");
 
 	let old_attempt_path = temp.path().join("attempts/2026-07").join(format!("{RUN_ID}.json"));
-	let old_attempt: crate::social_xurl::model::XurlAttempt =
+	let old_attempt: XurlAttempt =
 		serde_json::from_value(crate::load_json(&old_attempt_path).expect("old attempt"))
 			.expect("typed old attempt");
 
-	assert_eq!(old_attempt.status, crate::social_xurl::model::IDENTITY_RECOVERY_EXHAUSTED_STATUS);
+	assert_eq!(old_attempt.status, IDENTITY_RECOVERY_EXHAUSTED_STATUS);
 
-	crate::social_xurl::ledger::validate_publication_cost_record(&old_attempt)
+	ledger::validate_publication_cost_record(&old_attempt)
 		.expect("valid exhausted identity attempt");
 	fs::remove_file(marker).expect("remove identity fault");
 
-	let published = crate::social_workflow::publish_next_with_test_binary(
+	let published = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(THIRD_RUN_ID, "publish", None, "2026-07-27T12:20:00Z"),
 		temp.path(),
 		&xurl,
@@ -999,19 +1009,19 @@ fn publication_recovery_stops_before_a_sixth_paid_call() {
 
 	let log = temp.path().join("xurl.log");
 	let xurl = fake_xurl_with_read_failure_count(temp.path(), &log, 3);
-	let _ = crate::social_workflow::publish_next_with_test_binary(
+	let _ = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
 		temp.path(),
 		&xurl,
 	)
 	.expect_err("initial and automatic read failures");
-	let _ = crate::social_workflow::publish_next_with_test_binary(
+	let _ = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(SECOND_RUN_ID, "publish", None, "2026-07-27T12:10:00Z"),
 		temp.path(),
 		&xurl,
 	)
 	.expect_err("first reconciliation read failure");
-	let terminal = crate::social_workflow::publish_next_with_test_binary(
+	let terminal = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(THIRD_RUN_ID, "publish", None, "2026-07-27T12:20:00Z"),
 		temp.path(),
 		&xurl,
@@ -1022,17 +1032,15 @@ fn publication_recovery_stops_before_a_sixth_paid_call() {
 
 	let attempt_path = temp.path().join("attempts/2026-07").join(format!("{RUN_ID}.json"));
 	let terminal_bytes = fs::read(&attempt_path).expect("terminal attempt bytes");
-	let attempt: crate::social_xurl::model::XurlAttempt =
-		serde_json::from_slice(&terminal_bytes).expect("terminal attempt");
+	let attempt: XurlAttempt = serde_json::from_slice(&terminal_bytes).expect("terminal attempt");
 
-	assert_eq!(attempt.status, crate::social_xurl::model::READ_RECOVERY_EXHAUSTED_STATUS);
+	assert_eq!(attempt.status, READ_RECOVERY_EXHAUSTED_STATUS);
 	assert_eq!(attempt.calls.len(), 5);
 	assert_eq!(attempt.reserved_cost_ceiling_microusd, 40_000);
 
-	crate::social_xurl::ledger::validate_publication_cost_record(&attempt)
-		.expect("valid five-call terminal attempt");
+	ledger::validate_publication_cost_record(&attempt).expect("valid five-call terminal attempt");
 
-	let repeated = crate::social_workflow::publish_next_with_test_binary(
+	let repeated = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(FOURTH_RUN_ID, "publish", None, "2026-07-28T12:20:00Z"),
 		temp.path(),
 		&xurl,
@@ -1059,7 +1067,7 @@ fn outcome_failures_recover_or_terminalize_without_blocking_other_windows() {
 	let recovered_log = recovered.path().join("xurl.log");
 	let recovered_xurl = faultable_fake_xurl(recovered.path(), &recovered_log);
 
-	crate::social_workflow::publish_next_with_test_binary(
+	social_workflow::publish_next_with_test_binary(
 		&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
 		recovered.path(),
 		&recovered_xurl,
@@ -1070,7 +1078,7 @@ fn outcome_failures_recover_or_terminalize_without_blocking_other_windows() {
 
 	fs::write(&recovered_marker, b"1").expect("read fault marker");
 
-	let _ = crate::social_workflow::observe_due_with_test_binary(
+	let _ = social_workflow::observe_due_with_test_binary(
 		&SocialObserveDueRequest {
 			run_id: SECOND_RUN_ID.into(),
 			observed_at: "2026-07-28T12:20:00Z".into(),
@@ -1082,7 +1090,7 @@ fn outcome_failures_recover_or_terminalize_without_blocking_other_windows() {
 
 	fs::remove_file(recovered_marker).expect("remove read fault");
 
-	let report = crate::social_workflow::observe_due_with_test_binary(
+	let report = social_workflow::observe_due_with_test_binary(
 		&SocialObserveDueRequest {
 			run_id: THIRD_RUN_ID.into(),
 			observed_at: "2026-07-28T12:30:00Z".into(),
@@ -1102,7 +1110,7 @@ fn outcome_failures_recover_or_terminalize_without_blocking_other_windows() {
 	let exhausted_log = exhausted.path().join("xurl.log");
 	let exhausted_xurl = faultable_fake_xurl(exhausted.path(), &exhausted_log);
 
-	crate::social_workflow::publish_next_with_test_binary(
+	social_workflow::publish_next_with_test_binary(
 		&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
 		exhausted.path(),
 		&exhausted_xurl,
@@ -1116,7 +1124,7 @@ fn outcome_failures_recover_or_terminalize_without_blocking_other_windows() {
 	for (run_id, observed_at) in
 		[(SECOND_RUN_ID, "2026-07-28T12:20:00Z"), (THIRD_RUN_ID, "2026-07-28T12:30:00Z")]
 	{
-		let _ = crate::social_workflow::observe_due_with_test_binary(
+		let _ = social_workflow::observe_due_with_test_binary(
 			&SocialObserveDueRequest { run_id: run_id.into(), observed_at: observed_at.into() },
 			exhausted.path(),
 			&exhausted_xurl,
@@ -1124,7 +1132,7 @@ fn outcome_failures_recover_or_terminalize_without_blocking_other_windows() {
 		.expect_err("bounded outcome recovery failure");
 	}
 
-	let terminal = crate::social_workflow::observe_due_with_test_binary(
+	let terminal = social_workflow::observe_due_with_test_binary(
 		&SocialObserveDueRequest {
 			run_id: FOURTH_RUN_ID.into(),
 			observed_at: "2026-07-28T12:40:00Z".into(),
@@ -1138,7 +1146,7 @@ fn outcome_failures_recover_or_terminalize_without_blocking_other_windows() {
 
 	fs::remove_file(exhausted_marker).expect("remove read fault");
 
-	let next_window = crate::social_workflow::observe_due_with_test_binary(
+	let next_window = social_workflow::observe_due_with_test_binary(
 		&SocialObserveDueRequest {
 			run_id: FIFTH_RUN_ID.into(),
 			observed_at: "2026-08-03T12:20:00Z".into(),
@@ -1167,7 +1175,7 @@ fn cross_month_outcome_recovery_keeps_the_original_attempt_for_local_retries() {
 
 	let log = temp.path().join("xurl.log");
 	let xurl = faultable_fake_xurl(temp.path(), &log);
-	let published = crate::social_workflow::publish_next_with_test_binary(
+	let published = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
 		temp.path(),
 		&xurl,
@@ -1184,12 +1192,11 @@ fn cross_month_outcome_recovery_keeps_the_original_attempt_for_local_retries() {
 		"24h",
 		"2026-07-31T12:20:00Z",
 	);
-	let _ = crate::social_xurl::observe_with_test_binary(&observe, &xurl)
-		.expect_err("initial read fails");
+	let _ = social_xurl::observe_with_test_binary(&observe, &xurl).expect_err("initial read fails");
 
 	fs::remove_file(marker).expect("remove fault");
 
-	let recovered = crate::social_workflow::observe_due_with_test_binary(
+	let recovered = social_workflow::observe_due_with_test_binary(
 		&SocialObserveDueRequest {
 			run_id: THIRD_RUN_ID.into(),
 			observed_at: "2026-08-01T12:20:00Z".into(),
@@ -1205,7 +1212,7 @@ fn cross_month_outcome_recovery_keeps_the_original_attempt_for_local_retries() {
 
 	observe.observed_at = "2026-08-01T12:30:00Z".into();
 
-	let retry = crate::social_xurl::observe_with_test_binary(&observe, &xurl)
+	let retry = social_xurl::observe_with_test_binary(&observe, &xurl)
 		.expect("local retry resolves the original-month attempt");
 
 	assert_eq!(retry.status, "already_observed");
@@ -1222,8 +1229,8 @@ fn cross_month_outcome_recovery_keeps_the_original_attempt_for_local_retries() {
 
 	let mut interrupted = completed.clone();
 
-	interrupted["status"] = json!("read_reconcile_inflight");
-	interrupted["calls"][1]["status"] = json!("inflight");
+	interrupted["status"] = serde_json::json!("read_reconcile_inflight");
+	interrupted["calls"][1]["status"] = serde_json::json!("inflight");
 	interrupted["calls"][1]["response_sha256"] = Value::Null;
 	interrupted["call"] = interrupted["calls"][1].clone();
 
@@ -1232,7 +1239,7 @@ fn cross_month_outcome_recovery_keeps_the_original_attempt_for_local_retries() {
 	crate::replace_existing_json(&attempt_path, &completed, &interrupted)
 		.expect("simulate interruption after durable outcome write");
 
-	let reconciled = crate::social_xurl::reconcile_with_test_binary(
+	let reconciled = social_xurl::reconcile_with_test_binary(
 		&crate::SocialReconcileXurlRequest {
 			evidence_path: temp.path().join("outcomes").join(format!("{SECOND_RUN_ID}.json")),
 			attempt_path: None,
@@ -1266,7 +1273,7 @@ fn high_level_publish_enforces_account_and_monthly_budget_before_create() {
 
 	let account_log = wrong_account.path().join("xurl.log");
 	let wrong_xurl = fake_xurl(wrong_account.path(), &account_log, "decodexspace", "hackink", true);
-	let account_error = crate::social_workflow::publish_next_with_test_binary(
+	let account_error = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
 		wrong_account.path(),
 		&wrong_xurl,
@@ -1291,7 +1298,7 @@ fn high_level_publish_enforces_account_and_monthly_budget_before_create() {
 	let budget_log = exhausted.path().join("xurl.log");
 	let budget_xurl =
 		fake_xurl(exhausted.path(), &budget_log, "decodexspace", "decodexspace", true);
-	let budget_error = crate::social_workflow::publish_next_with_test_binary(
+	let budget_error = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
 		exhausted.path(),
 		&budget_xurl,
@@ -1319,13 +1326,13 @@ fn high_level_uncertain_create_is_never_retried_after_restart() {
 
 	let log = temp.path().join("xurl.log");
 	let xurl = fake_xurl(temp.path(), &log, "decodexspace", "decodexspace", false);
-	let _ = crate::social_workflow::publish_next_with_test_binary(
+	let _ = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(RUN_ID, "publish", None, "2026-07-27T12:02:00Z"),
 		temp.path(),
 		&xurl,
 	)
 	.expect_err("unknown create result");
-	let restart = crate::social_workflow::publish_next_with_test_binary(
+	let restart = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(SECOND_RUN_ID, "publish", None, "2026-07-27T12:10:00Z"),
 		temp.path(),
 		&xurl,
@@ -1336,7 +1343,7 @@ fn high_level_uncertain_create_is_never_retried_after_restart() {
 
 	let mut unrelated = candidate_draft("publish");
 
-	unrelated["slug"] = json!("unrelated-upstream-change");
+	unrelated["slug"] = serde_json::json!("unrelated-upstream-change");
 
 	let unrelated_staging = write_staging(temp.path(), "unrelated.json", &unrelated);
 	let unrelated = crate::record_social_candidate(&record_request(
@@ -1351,7 +1358,7 @@ fn high_level_uncertain_create_is_never_retried_after_restart() {
 	let unrelated_path = PathBuf::from(&unrelated.path);
 	let mut further = candidate_draft("publish");
 
-	further["slug"] = json!("third-upstream-change");
+	further["slug"] = serde_json::json!("third-upstream-change");
 
 	let further_staging = write_staging(temp.path(), "further.json", &further);
 	let backpressure = crate::record_social_candidate(&record_request(
@@ -1374,7 +1381,7 @@ fn high_level_uncertain_create_is_never_retried_after_restart() {
 	);
 
 	let valid_xurl = fake_xurl(temp.path(), &log, "decodexspace", "decodexspace", true);
-	let published = crate::social_workflow::publish_next_with_test_binary(
+	let published = social_workflow::publish_next_with_test_binary(
 		&publish_next_request(FIFTH_RUN_ID, "publish", None, "2026-07-28T12:10:00Z"),
 		temp.path(),
 		&valid_xurl,
@@ -1408,21 +1415,16 @@ fn high_level_uncertain_create_is_never_retried_after_restart() {
 		.expect("publication attempts")
 		.into_iter()
 		.map(|path| crate::load_json(&path).expect("attempt"))
-		.filter(|attempt| {
-			attempt.get("schema").and_then(Value::as_str)
-				== Some(crate::social_xurl::model::ATTEMPT_SCHEMA)
-		})
+		.filter(|attempt| attempt.get("schema").and_then(Value::as_str) == Some(ATTEMPT_SCHEMA))
 		.map(|attempt| {
-			serde_json::from_value::<crate::social_xurl::model::XurlAttempt>(attempt)
-				.expect("typed publication attempt")
+			serde_json::from_value::<XurlAttempt>(attempt).expect("typed publication attempt")
 		})
 		.collect::<Vec<_>>();
 
 	assert_eq!(attempts.len(), 2);
 	assert_ne!(attempts[0].publication_lineage_sha256, attempts[1].publication_lineage_sha256);
 	assert!(attempts.iter().all(|attempt| {
-		attempt.reserved_cost_ceiling_microusd
-			<= crate::social_xurl::model::PUBLICATION_LINEAGE_BUDGET_MICROUSD
+		attempt.reserved_cost_ceiling_microusd <= PUBLICATION_LINEAGE_BUDGET_MICROUSD
 	}));
 
 	let reserved = total_reserved_cost(temp.path());
@@ -1441,7 +1443,7 @@ fn explicit_social_validation_paths_must_exist() {
 	let candidate = write_candidate(root, "present.json", valid_social_candidate());
 
 	assert_eq!(
-		crate::validate_social_at(root, std::slice::from_ref(&candidate))
+		crate::validate_social_at(root, slice::from_ref(&candidate))
 			.expect("existing explicit artifact")
 			.checked_files,
 		1
@@ -1474,14 +1476,14 @@ fn cli_exposes_only_high_level_social_workflows() {
 			_ => {},
 		}
 
-		assert!(crate::cli::Cli::try_parse_from(args).is_ok(), "{command}");
+		assert!(Cli::try_parse_from(args).is_ok(), "{command}");
 	}
 
-	assert!(crate::cli::Cli::try_parse_from(["decodex-publisher", "social", "unknown"]).is_err());
+	assert!(Cli::try_parse_from(["decodex-publisher", "social", "unknown"]).is_err());
 }
 
 fn candidate_draft(worthiness: &str) -> Value {
-	json!({
+	serde_json::json!({
 		"schema": "decodex/content-evidence/1",
 		"slug": "openai-codex-pr-22414",
 		"repo": "openai/codex",
@@ -1513,23 +1515,19 @@ fn candidate_draft(worthiness: &str) -> Value {
 fn candidate(worthiness: &str) -> Value {
 	let mut candidate = candidate_draft(worthiness);
 
-	crate::social_record::apply_publication_identity(&mut candidate).expect("publication identity");
+	social_record::apply_publication_identity(&mut candidate).expect("publication identity");
 
 	candidate
-}
-
-pub(crate) fn valid_social_candidate() -> Value {
-	candidate("publish")
 }
 
 fn rebind_identity(candidate: &mut Value) {
 	candidate["decision"].as_object_mut().expect("decision").remove("idempotency_key");
 
-	crate::social_record::apply_publication_identity(candidate).expect("publication identity");
+	social_record::apply_publication_identity(candidate).expect("publication identity");
 }
 
 fn assert_social_error(candidate: &Value, expected: &str) {
-	let errors = crate::social_validation::validate_social_artifact(candidate).errors;
+	let errors = social_validation::validate_social_artifact(candidate).errors;
 
 	assert!(errors.iter().any(|error| error.contains(expected)), "{errors:?}");
 }
@@ -1658,7 +1656,7 @@ fn write_auth_contract(root: &Path) -> PathBuf {
 	let path = root.join("xurl-authorization-contract.json");
 
 	if !path.exists() {
-		crate::write_new_json(&path, &json!({
+		crate::write_new_json(&path, &serde_json::json!({
 			"schema": "decodex/xurl-authorization-contract/1",
 			"policy_id": "xurl-oauth-least-privilege/3",
 			"target_account": "decodexspace",
@@ -1678,7 +1676,7 @@ fn write_budget_attempt(root: &Path, index: u64) {
 
 	crate::write_new_json(
 		&root.join("attempts/2026-07").join(format!("budget-{index}.json")),
-		&json!({
+		&serde_json::json!({
 			"schema": "decodex/xurl-publish-attempt/4",
 			"run_id": format!("019fa400-1000-7000-8000-{index:012}"),
 			"reservation_ref": format!("budget-reservation-{index}.json"),
@@ -1740,8 +1738,8 @@ fn assert_content_create_boundary(actual_now: &str, should_publish: bool) {
 	let actual_now =
 		time::OffsetDateTime::parse(actual_now, &time::format_description::well_known::Rfc3339)
 			.expect("actual UTC timestamp");
-	let result = crate::social_clock::with_content_create_now_for_test(actual_now, || {
-		crate::social_xurl::publish_with_test_binary(&publish, &xurl)
+	let result = social_clock::with_content_create_now_for_test(actual_now, || {
+		social_xurl::publish_with_test_binary(&publish, &xurl)
 	});
 	let calls = fs::read_to_string(&log).expect("xurl log");
 	let attempt =
@@ -1778,8 +1776,6 @@ fn fake_xurl(
 	identity: &str,
 	valid_create: bool,
 ) -> PathBuf {
-	use std::os::unix::fs::PermissionsExt as _;
-
 	let path = root.join("xurl");
 	let create = if valid_create {
 		format!(r#"printf '%s\n' '{{"data":{{"id":"2000000000000000001","text":"{POST_TEXT}"}}}}'"#)
@@ -1824,8 +1820,6 @@ fi
 
 #[cfg(unix)]
 fn faultable_fake_xurl(root: &Path, log: &Path) -> PathBuf {
-	use std::os::unix::fs::PermissionsExt as _;
-
 	let path = root.join("xurl");
 	let identity_failure = root.join("identity-command-failure");
 	let wrong_account = root.join("wrong-account");
@@ -1886,8 +1880,6 @@ fn fake_xurl_with_initial_read_failures(root: &Path, log: &Path) -> PathBuf {
 
 #[cfg(unix)]
 fn fake_xurl_with_read_failure_count(root: &Path, log: &Path, failure_count: u64) -> PathBuf {
-	use std::os::unix::fs::PermissionsExt as _;
-
 	let path = root.join("xurl");
 	let counter = root.join("failed-read-count");
 	let script = format!(
