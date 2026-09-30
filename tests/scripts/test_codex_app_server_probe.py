@@ -122,6 +122,69 @@ class CodexAppServerProbeTests(unittest.TestCase):
                     finally:
                         timer.join()
 
+    def test_rpc_errors_do_not_retain_upstream_text_or_data(self):
+        probe = load_probe()
+        marker = "private-account@example.invalid secret-fixture-value"
+        server = probe.AppServer.__new__(probe.AppServer)
+        server.next_id = 1
+        server.send = mock.Mock()
+        server.receive = mock.Mock(return_value={"id": 1, "error": {
+            "code": -32603, "message": marker, "data": {"accessToken": marker},
+        }})
+        with self.assertRaises(probe.ProtocolError) as raised:
+            server.request("account/login/start")
+        self.assertNotIn(marker, str(raised.exception))
+        self.assertIn("-32603", str(raised.exception))
+
+    def test_paginated_fallback_preserves_capability_without_error_details(self):
+        probe = load_probe()
+        server = probe.AppServer.__new__(probe.AppServer)
+        server.next_id = 1
+        server.send = mock.Mock()
+        server.capability_observations = []
+        server.receive = mock.Mock(side_effect=[
+            {"id": 1, "error": {"code": -32601, "message":
+                "paginated_threads is not supported yet; private-marker"}},
+            {"id": 2, "result": {"thread": {"id": "fixture-thread"}}},
+            {"id": 3, "result": {}},
+        ])
+        self.assertEqual(probe.start_named_thread(server, Path("/fixture"), "fixture"), "fixture-thread")
+        self.assertEqual(server.send.call_args_list[1].args[0]["params"]["historyMode"], "legacy")
+        self.assertNotIn("private-marker", json.dumps(server.capability_observations))
+
+    def test_turn_failure_does_not_emit_arbitrary_error_metadata(self):
+        probe = load_probe()
+        marker = "private-account@example.invalid secret-fixture-value"
+        for info in (marker, {"type": marker}):
+            with self.subTest(info=info):
+                server = SimpleNamespace(
+                    request=mock.Mock(return_value={"turn": {"id": "fixture-turn"}}),
+                    notifications=[{"method": "error", "params": {
+                        "threadId": "fixture-thread", "turnId": "fixture-turn",
+                        "error": {"message": marker, "codexErrorInfo": info},
+                    }}],
+                )
+                with self.assertRaises(probe.ProtocolError) as raised:
+                    probe.run_turn(server, "fixture-thread", "fixture prompt")
+                self.assertEqual(str(raised.exception), "turn failed")
+
+    def test_failed_receipt_omits_external_exception_details(self):
+        probe = load_probe()
+        marker = "private-account@example.invalid secret-fixture-value"
+        for error in (OSError(marker), KeyError(marker)):
+            with self.subTest(error=type(error).__name__):
+                output = io.StringIO()
+                with (
+                    mock.patch("sys.argv", ["probe", "schema"]),
+                    mock.patch.object(probe, "schema_receipt", side_effect=error),
+                    redirect_stdout(output),
+                ):
+                    self.assertEqual(probe.main(), 1)
+                receipt = json.loads(output.getvalue())
+                self.assertEqual(receipt["status"], "failed")
+                self.assertEqual(receipt["error"], type(error).__name__)
+                self.assertNotIn(marker, output.getvalue())
+
     def test_account_selection_does_not_emit_credentials(self):
         probe = load_probe()
         secret = "header.payload.signature"

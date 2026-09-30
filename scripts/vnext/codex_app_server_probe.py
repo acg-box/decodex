@@ -28,7 +28,9 @@ DEFAULT_TIMEOUT = 90.0
 
 
 class ProtocolError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, paginated_unsupported: bool = False) -> None:
+        super().__init__(message)
+        self.paginated_unsupported = paginated_unsupported
 
 
 class AppServer:
@@ -103,8 +105,16 @@ class AppServer:
             if incoming.get("id") == request_id:
                 if "error" in incoming:
                     error = incoming["error"]
+                    code = error.get("code") if isinstance(error, dict) else None
+                    code = code if type(code) is int else "unknown"
+                    message = error.get("message") if isinstance(error, dict) else None
                     raise ProtocolError(
-                        f"{method} failed: code={error.get('code')} message={error.get('message')}"
+                        f"{method} failed: code={code}",
+                        paginated_unsupported=(
+                            method == "thread/start" and code == -32601
+                            and isinstance(message, str)
+                            and "paginated_threads is not supported yet" in message
+                        ),
                     )
                 return incoming.get("result")
             if "method" in incoming and "id" not in incoming:
@@ -272,7 +282,7 @@ def start_named_thread(server: AppServer, cwd: Path, name: str) -> str:
             {"capability": "paginated_threads", "result": "supported"}
         )
     except ProtocolError as error:
-        if "paginated_threads is not supported yet" not in str(error):
+        if not error.paginated_unsupported:
             raise
         server.capability_observations.append(
             {
@@ -309,11 +319,7 @@ def run_turn(server: AppServer, identifier: str, prompt: str) -> dict[str, Any]:
                 return params["turn"]
             if method == "error" and params.get("turnId") in (None, turn_identifier):
                 server.notifications.pop(index)
-                error = params.get("error", {})
-                info = error.get("codexErrorInfo")
-                if isinstance(info, dict):
-                    info = info.get("type")
-                raise ProtocolError(f"turn failed: codex_error_info={info or 'unknown'}")
+                raise ProtocolError("turn failed")
         incoming = server.receive(max(0.0, deadline - time.monotonic()))
         if "method" in incoming and "id" not in incoming:
             server.notifications.append(incoming)
@@ -1076,7 +1082,8 @@ def main() -> int:
             error = ProtocolError(
                 "normal Codex auth state changed during a failed process-scoped probe"
             )
-        print(json.dumps({"schema": PROBE_SCHEMA, "status": "failed", "error": str(error)}))
+        diagnostic = str(error) if isinstance(error, ProtocolError) else type(error).__name__
+        print(json.dumps({"schema": PROBE_SCHEMA, "status": "failed", "error": diagnostic}))
         return 1
     print(json.dumps(receipt, indent=2, sort_keys=True))
     return 0
