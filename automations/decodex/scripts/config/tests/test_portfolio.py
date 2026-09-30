@@ -29,6 +29,26 @@ class PortfolioTests(unittest.TestCase):
                     self.assertEqual(item[key], entry.get(key, manifest[key]))
                 self.assertEqual(item["cwds"], [str(portfolio.primary_worktree())])
 
+    def test_manifest_rejects_invalid_required_string_fields(self) -> None:
+        for field in sorted(portfolio.AUTOMATION_KEYS):
+            for value in ("", "   ", 7, ["invalid"]):
+                with self.subTest(field=field, value=value):
+                    manifest = portfolio.load_manifest()
+                    manifest["automations"][0][field] = value
+                    self.assertTrue(portfolio.validate_manifest(manifest))
+
+    def test_manifest_rejects_wrong_scalar_types(self) -> None:
+        for field, value in (("version", True), ("status", ["ACTIVE"])):
+            with self.subTest(field=field):
+                manifest = portfolio.load_manifest()
+                manifest[field] = value
+                self.assertTrue(portfolio.validate_manifest(manifest))
+        for field, value in (("status", ["ACTIVE"]), ("execution_environment", ["local"])):
+            with self.subTest(override=field):
+                manifest = portfolio.load_manifest()
+                manifest["automations"][0][field] = value
+                self.assertTrue(portfolio.validate_manifest(manifest))
+
     def test_primary_project_is_independent_of_branch_and_caller(self) -> None:
         listing = (
             "worktree /project/decodex\nHEAD abc\nbranch refs/heads/xv/prototype\n\n"
@@ -69,6 +89,14 @@ class PortfolioTests(unittest.TestCase):
                     encoding="utf-8",
                 )
             self.assertEqual(portfolio.evaluate_runtime(codex_home)["status"], "pass")
+
+            first = codex_home / "automations/codex-upstream-maintainer/automation.toml"
+            original = first.read_text(encoding="utf-8")
+            first.write_text(original.replace("created_at = 1\n", "created_at = true\n"), encoding="utf-8")
+            report = portfolio.evaluate_runtime(codex_home)
+            errors = next(item["errors"] for item in report["results"] if item["id"] == "codex-upstream-maintainer")
+            self.assertIn("native created_at metadata is missing", errors)
+            first.write_text(original, encoding="utf-8")
 
             extra = codex_home / "automations/codex-upstream-reviewer/automation.toml"
             extra.parent.mkdir(parents=True)
