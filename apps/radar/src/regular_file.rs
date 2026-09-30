@@ -25,21 +25,11 @@ pub(crate) fn read_regular_file_bounded(
 	max_bytes: u64,
 	label: &str,
 ) -> Result<Vec<u8>> {
-	read_regular_file_bounded_with(path, max_bytes, label, || {})
-}
-
-pub(crate) fn read_regular_file_bounded_with(
-	path: &Path,
-	max_bytes: u64,
-	label: &str,
-	after_metadata: impl FnOnce(),
-) -> Result<Vec<u8>> {
 	let (mut file, initial) = open_regular_file(path, label)?;
 
 	if initial.size > max_bytes {
 		eyre::bail!("{label} exceeds the bounded read limit");
 	}
-	after_metadata();
 
 	let capacity = usize::try_from(initial.size)
 		.map_err(|_| eyre::eyre!("{label} size cannot fit in memory"))?;
