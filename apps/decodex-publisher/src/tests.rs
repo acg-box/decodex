@@ -74,6 +74,33 @@ fn record_candidate_is_atomic_idempotent_and_applies_backpressure() {
 	.expect_err("one unresolved candidate must block another")
 	.to_string();
 	assert!(error.contains("still pending"), "{error}");
+	crate::write_new_json(
+		&temp.path().join("posts/invalid.json"),
+		&json!({
+			"schema": crate::SOCIAL_POST_SCHEMA,
+			"source_refs": {"social_candidates": [report.path]}
+		}),
+	)
+	.expect("malformed terminal evidence");
+	let error = crate::record_social_candidate(&record_request(
+		temp.path(),
+		&second_staging,
+		SECOND_RUN_ID,
+	))
+	.expect_err("invalid post must not release pending candidate");
+	assert!(error.to_string().contains("post failed validation"), "{error}");
+	assert!(second_staging.exists(), "rejected input must remain staged");
+	assert!(!temp.path().join("candidates").join(format!("{SECOND_RUN_ID}.json")).exists());
+	fs::remove_file(temp.path().join("posts/invalid.json")).expect("remove invalid fixture");
+	crate::terminalize_social_skip(&skip_request(temp.path(), Path::new(&report.path)))
+		.expect("valid terminal evidence");
+	let next = crate::record_social_candidate(&record_request(
+		temp.path(),
+		&second_staging,
+		SECOND_RUN_ID,
+	))
+	.expect("valid terminal post releases pending candidate");
+	assert_eq!(next.status, "recorded");
 }
 
 #[test]
