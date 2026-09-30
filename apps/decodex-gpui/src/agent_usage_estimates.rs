@@ -94,7 +94,6 @@ impl AgentSurface {
 		let epoch = self.usage_estimate_epoch;
 		self.usage_estimate = Some((work.into(), None));
 		let work = work.to_owned();
-		let generation = self.generation;
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
@@ -103,9 +102,6 @@ impl AgentSurface {
 		self.usage_estimate_task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await.unwrap_or(AgentUsageEstimateResult::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
-				if s.generation != generation || s.selected.as_deref() != Some(&work) {
-					return;
-				}
 				s.finish_usage_estimate(work, epoch, binding, result);
 				cx.notify();
 			});
@@ -303,5 +299,69 @@ mod tests {
 		assert!(
 			estimate_text(&AgentUsageEstimateResult::Unavailable).contains("could not be read")
 		);
+	}
+	#[gpui::test]
+	fn unrelated_refresh_does_not_strand_an_estimate_read(cx: &mut gpui::TestAppContext) {
+		use decodex_protocol::{
+			CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
+			ServerId, ServerMessage,
+		};
+		use futures_util::{SinkExt, StreamExt};
+		use tokio_tungstenite::tungstenite::Message;
+		let (_directory, profile, server) = super::super::wire_test_support::fixture(
+			|listener| async move {
+				let mut socket = super::super::wire_test_support::accept(&listener).await;
+				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+					panic!("query")
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
+					panic!("read only")
+				};
+				assert!(
+					matches!(query.payload, QueryPayload::GetAgentUsageEstimate { work_id } if work_id.as_str() == "agent")
+				);
+				let reply = ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::AgentUsageEstimate(
+						AgentUsageEstimateResult::NotReported,
+					),
+				});
+				socket
+					.send(Message::Text(serde_json::to_string(&reply).unwrap().into()))
+					.await
+					.unwrap();
+			},
+		);
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.profile = Some(profile);
+			let snapshot = s.snapshot.as_mut().unwrap();
+			snapshot.runtime_source = Some(EntityId::new("source").unwrap());
+			snapshot.work_items.iter_mut().find(|w| w.id == "agent").unwrap().codex_thread_id =
+				Some("thread".into());
+			s.load_usage_estimate("agent", cx);
+			assert!(s.usage_estimate_task.is_some());
+			s.generation += 1;
+		});
+		cx.run_until_parked();
+		server.join().unwrap();
+		surface.read_with(cx, |s, _| {
+			assert!(
+				s.usage_estimate_task.is_none(),
+				"completed read must release the refresh guard"
+			);
+			assert!(matches!(
+				s.usage_estimate,
+				Some((_, Some(AgentUsageEstimateResult::NotReported)))
+			));
+		});
+		surface.update(cx, |s, cx| {
+			s.mark_stale(cx);
+			assert!(s.usage_estimate.is_none());
+			assert!(s.usage_estimate_task.is_none());
+		});
 	}
 }

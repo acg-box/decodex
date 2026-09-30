@@ -1277,6 +1277,7 @@ impl AgentSurface {
 		self.reset_prompt_edit();
 		self.question_notices = Default::default();
 		self.clear_activity_detail();
+		self.clear_usage_estimate();
 		self.output_stream = Default::default();
 		self.generation += 1;
 		self.guardian_disconnected();
