@@ -521,11 +521,6 @@ impl ProviderAttemptControl {
 				}
 			}
 		}
-		self.inner
-			.store
-			.reconcile_conversation_terminalizations(RECONCILIATION_PAGE_SIZE)
-			.await
-			.map_err(|_| ProviderAttemptServiceError::ProductState)?;
 		Ok(())
 	}
 }
