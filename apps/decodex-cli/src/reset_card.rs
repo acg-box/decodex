@@ -60,6 +60,15 @@ pub enum ResetCardCommand {
 		idempotency_key: String,
 	},
 }
+impl ResetCardCommand {
+	const fn name(&self) -> &'static str {
+		match self {
+			Self::List { .. } => "list",
+			Self::Use { .. } => "use",
+			Self::Status { .. } => "status",
+		}
+	}
+}
 impl Debug for ResetCardCommand {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
@@ -233,144 +242,10 @@ pub(crate) async fn execute(
 	}
 }
 
-async fn execute_use(
-	command: ResetCardCommand,
-	format: OutputFormat,
-	root: Option<&Path>,
-	selected_profile: Option<&str>,
-	expected_server_id: Option<&str>,
-) -> CommandOutput {
-	let ResetCardCommand::Use {
-		account,
-		granted_at,
-		expires_at,
-		expected_revision,
-		idempotency_key,
-		yes,
-	} = command
-	else {
-		unreachable!("execute_use accepts only reset-card use");
-	};
-	let idempotency_key = match IdempotencyKey::new(idempotency_key) {
-		Ok(key) => key,
-		Err(_) => return render_input_failure("use", format, InputFailure::InvalidIdempotencyKey),
-	};
-
-	if !yes {
-		return render_use_input_failure(
-			format,
-			&idempotency_key,
-			InputFailure::ConfirmationRequired,
-		);
-	}
-
-	let account = match parse_account_id(account) {
-		Ok(account) => account,
-		Err(failure) => return render_use_input_failure(format, &idempotency_key, failure),
-	};
-	let descriptor = match ResetCardDescriptorDto::new(granted_at, expires_at) {
-		Ok(descriptor) => descriptor,
-		Err(_) => {
-			return render_use_input_failure(
-				format,
-				&idempotency_key,
-				InputFailure::InvalidDescriptor,
-			);
-		},
-	};
-	let profile = load_client_profile(root, selected_profile, expected_server_id);
-	let profile = match profile {
-		Ok(profile) => profile,
-		Err(failure) => {
-			return render_use_client_failure(
-				format,
-				&idempotency_key,
-				UseDispatchState::DefinitelyNotDispatched,
-				failure,
-			);
-		},
-	};
-	let client = ResetCardClient::new(profile);
-
-	match client
-		.consume(account, descriptor, EntityRevision(expected_revision), idempotency_key.clone())
-		.await
-	{
-		Ok(ResetCardConsumeResponse::Accepted {
-			account_id,
-			descriptor,
-			state,
-			entity_revision,
-		}) => {
-			let state = match state {
-				ResetCardOperationResult::Prepared =>
-					accepted_state_after_poll(poll_operation(&client, &idempotency_key).await),
-				state => state,
-			};
-
-			render_use(format, &idempotency_key, &account_id, descriptor, entity_revision, state)
-		},
-		Ok(ResetCardConsumeResponse::Rejected { error }) =>
-			render_rejected(format, &idempotency_key, &error),
-		Ok(ResetCardConsumeResponse::PotentiallyDispatched { failure }) =>
-			render_use_client_failure(
-				format,
-				&idempotency_key,
-				UseDispatchState::PotentiallyDispatched,
-				failure,
-			),
-		Err(failure) => render_use_client_failure(
-			format,
-			&idempotency_key,
-			UseDispatchState::DefinitelyNotDispatched,
-			failure,
-		),
-	}
-}
-
 fn accepted_state_after_poll(
 	result: Result<ResetCardOperationResult, ClientFailure>,
 ) -> ResetCardOperationResult {
 	result.unwrap_or(ResetCardOperationResult::Prepared)
-}
-
-impl ResetCardCommand {
-	const fn name(&self) -> &'static str {
-		match self {
-			Self::List { .. } => "list",
-			Self::Use { .. } => "use",
-			Self::Status { .. } => "status",
-		}
-	}
-}
-
-async fn poll_operation(
-	client: &ResetCardClient,
-	idempotency_key: &IdempotencyKey,
-) -> Result<ResetCardOperationResult, ClientFailure> {
-	let deadline = Instant::now() + OPERATION_POLL_DEADLINE;
-
-	loop {
-		let remaining = deadline.saturating_duration_since(Instant::now());
-
-		if remaining.is_zero() {
-			return Ok(ResetCardOperationResult::Prepared);
-		}
-
-		let state = match time::timeout(remaining, client.status(idempotency_key.clone())).await {
-			Ok(result) => result?,
-			Err(_) => return Ok(ResetCardOperationResult::Prepared),
-		};
-
-		if state != ResetCardOperationResult::Prepared || Instant::now() >= deadline {
-			return Ok(state);
-		}
-
-		time::sleep(
-			OPERATION_POLL_INTERVAL.min(deadline.saturating_duration_since(Instant::now())),
-		)
-		.await;
-	}
 }
 
 fn parse_account_id(value: String) -> Result<EntityId, InputFailure> {
@@ -807,19 +682,132 @@ const fn client_failure_code(failure: ClientFailure) -> &'static str {
 	}
 }
 
-#[cfg(test)]
-mod tests {
-	#[test]
-	fn optional_window_text_has_no_invented_usage() {
-		let quota = decodex_protocol::AccountQuotaWindowDto {
-			duration_minutes: 300,
-			observed_at_unix_micros: Some(1_000_000),
-			result: decodex_protocol::AccountQuotaStateDto::NotApplicable,
+async fn execute_use(
+	command: ResetCardCommand,
+	format: OutputFormat,
+	root: Option<&Path>,
+	selected_profile: Option<&str>,
+	expected_server_id: Option<&str>,
+) -> CommandOutput {
+	let ResetCardCommand::Use {
+		account,
+		granted_at,
+		expires_at,
+		expected_revision,
+		idempotency_key,
+		yes,
+	} = command
+	else {
+		unreachable!("execute_use accepts only reset-card use");
+	};
+	let idempotency_key = match IdempotencyKey::new(idempotency_key) {
+		Ok(key) => key,
+		Err(_) => return render_input_failure("use", format, InputFailure::InvalidIdempotencyKey),
+	};
+
+	if !yes {
+		return render_use_input_failure(
+			format,
+			&idempotency_key,
+			InputFailure::ConfirmationRequired,
+		);
+	}
+
+	let account = match parse_account_id(account) {
+		Ok(account) => account,
+		Err(failure) => return render_use_input_failure(format, &idempotency_key, failure),
+	};
+	let descriptor = match ResetCardDescriptorDto::new(granted_at, expires_at) {
+		Ok(descriptor) => descriptor,
+		Err(_) => {
+			return render_use_input_failure(
+				format,
+				&idempotency_key,
+				InputFailure::InvalidDescriptor,
+			);
+		},
+	};
+	let profile = load_client_profile(root, selected_profile, expected_server_id);
+	let profile = match profile {
+		Ok(profile) => profile,
+		Err(failure) => {
+			return render_use_client_failure(
+				format,
+				&idempotency_key,
+				UseDispatchState::DefinitelyNotDispatched,
+				failure,
+			);
+		},
+	};
+	let client = ResetCardClient::new(profile);
+
+	match client
+		.consume(account, descriptor, EntityRevision(expected_revision), idempotency_key.clone())
+		.await
+	{
+		Ok(ResetCardConsumeResponse::Accepted {
+			account_id,
+			descriptor,
+			state,
+			entity_revision,
+		}) => {
+			let state = match state {
+				ResetCardOperationResult::Prepared =>
+					accepted_state_after_poll(poll_operation(&client, &idempotency_key).await),
+				state => state,
+			};
+
+			render_use(format, &idempotency_key, &account_id, descriptor, entity_revision, state)
+		},
+		Ok(ResetCardConsumeResponse::Rejected { error }) =>
+			render_rejected(format, &idempotency_key, &error),
+		Ok(ResetCardConsumeResponse::PotentiallyDispatched { failure }) =>
+			render_use_client_failure(
+				format,
+				&idempotency_key,
+				UseDispatchState::PotentiallyDispatched,
+				failure,
+			),
+		Err(failure) => render_use_client_failure(
+			format,
+			&idempotency_key,
+			UseDispatchState::DefinitelyNotDispatched,
+			failure,
+		),
+	}
+}
+
+async fn poll_operation(
+	client: &ResetCardClient,
+	idempotency_key: &IdempotencyKey,
+) -> Result<ResetCardOperationResult, ClientFailure> {
+	let deadline = Instant::now() + OPERATION_POLL_DEADLINE;
+
+	loop {
+		let remaining = deadline.saturating_duration_since(Instant::now());
+
+		if remaining.is_zero() {
+			return Ok(ResetCardOperationResult::Prepared);
+		}
+
+		let state = match time::timeout(remaining, client.status(idempotency_key.clone())).await {
+			Ok(result) => result?,
+			Err(_) => return Ok(ResetCardOperationResult::Prepared),
 		};
 
-		assert!(super::quota_summary(&quota).contains("not applicable"));
-		assert!(!super::quota_summary(&quota).contains('%'));
+		if state != ResetCardOperationResult::Prepared || Instant::now() >= deadline {
+			return Ok(state);
+		}
+
+		time::sleep(
+			OPERATION_POLL_INTERVAL.min(deadline.saturating_duration_since(Instant::now())),
+		)
+		.await;
 	}
+}
+
+#[cfg(test)]
+mod tests {
 
 	use std as standard;
 
@@ -904,6 +892,18 @@ cache = {{}}
 		let root = prepare_client_root(&temp, "local");
 
 		ClientProfile::load(&root, None).expect("test operation must succeed")
+	}
+
+	#[test]
+	fn optional_window_text_has_no_invented_usage() {
+		let quota = decodex_protocol::AccountQuotaWindowDto {
+			duration_minutes: 300,
+			observed_at_unix_micros: Some(1_000_000),
+			result: decodex_protocol::AccountQuotaStateDto::NotApplicable,
+		};
+
+		assert!(super::quota_summary(&quota).contains("not applicable"));
+		assert!(!super::quota_summary(&quota).contains('%'));
 	}
 
 	#[test]
@@ -1025,6 +1025,173 @@ cache = {{}}
 		assert_eq!(cli.expected_server_id.as_deref(), Some(SERVER_ID));
 		assert!(!debug.contains(SERVER_ID));
 		assert!(debug.contains("server_identity_selected: true"));
+	}
+
+	#[test]
+	fn inventory_json_binds_the_selected_profile_and_server() {
+		let profile = local_profile();
+		let inventory = super::render_inventory(
+			OutputFormat::Json,
+			&profile,
+			&ResetCardInventoryResult::Unavailable {
+				error: ResetCardError::ProductStateUnavailable,
+			},
+		);
+		let value: serde_json::Value =
+			serde_json::from_str(inventory.text()).expect("test operation must succeed");
+
+		assert_eq!(value["authority"]["profile_name"], "selected");
+		assert_eq!(value["authority"]["server_id"], SERVER_ID);
+	}
+
+	#[test]
+	fn stable_json_use_result_has_no_provider_identifier() {
+		let key = IdempotencyKey::new("operator-key").expect("test operation must succeed");
+		let account = EntityId::new("40000000-0000-4000-8000-000000000001")
+			.expect("test operation must succeed");
+		let output = super::render_use(
+			OutputFormat::Json,
+			&key,
+			&account,
+			ResetCardDescriptorDto::new(1, 2).expect("test operation must succeed"),
+			EntityRevision(8),
+			ResetCardOperationResult::Completed { outcome: ResetCardOutcome::Reset },
+		);
+		let value: serde_json::Value =
+			serde_json::from_str(output.text()).expect("test operation must succeed");
+
+		assert_eq!(value["schema"], "decodex/reset-card-cli/1");
+		assert_eq!(value["command"], "use");
+		assert_eq!(value["outcome"], "completed");
+		assert_eq!(value["idempotency_key"], "operator-key");
+		assert_eq!(value["dispatch_state"], "durably_accepted");
+		assert_eq!(value["account_id"], account.as_str());
+		assert_eq!(value["state"]["state"], "completed");
+		assert!(value.get("credit_id").is_none());
+		assert_eq!(output.exit_code(), 0);
+	}
+
+	#[test]
+	fn use_outputs_retain_the_key_and_typed_dispatch_state_after_key_creation() {
+		let key = IdempotencyKey::new("operator-key").expect("test operation must succeed");
+
+		for (dispatch_state, expected) in [
+			(super::UseDispatchState::DefinitelyNotDispatched, "definitely_not_dispatched"),
+			(super::UseDispatchState::PotentiallyDispatched, "potentially_dispatched"),
+		] {
+			let output = super::render_use_client_failure(
+				OutputFormat::Json,
+				&key,
+				dispatch_state,
+				ClientFailure::ProtocolDisconnected,
+			);
+			let value: serde_json::Value =
+				serde_json::from_str(output.text()).expect("test operation must succeed");
+
+			assert_eq!(value["schema"], "decodex/reset-card-cli/1");
+			assert_eq!(value["command"], "use");
+			assert_eq!(value["outcome"], "failure");
+			assert_eq!(value["idempotency_key"], "operator-key");
+			assert_eq!(value["dispatch_state"], expected);
+			assert_eq!(value["failure"], "protocol_disconnected");
+			assert_eq!(output.exit_code(), 2);
+			assert!(!output.is_error_stream());
+		}
+
+		let rejected =
+			super::render_rejected(OutputFormat::Json, &key, &CommandError::IdempotencyConflict);
+		let value: serde_json::Value =
+			serde_json::from_str(rejected.text()).expect("test operation must succeed");
+
+		assert_eq!(value["idempotency_key"], "operator-key");
+		assert_eq!(value["dispatch_state"], "rejected_before_acceptance");
+
+		let unknown = super::render_use_client_failure(
+			OutputFormat::Json,
+			&key,
+			super::UseDispatchState::PotentiallyDispatched,
+			ClientFailure::ApplicationAcceptanceUnknown,
+		);
+		let value: serde_json::Value =
+			serde_json::from_str(unknown.text()).expect("test operation must succeed");
+
+		assert_eq!(value["failure"], "application_acceptance_unknown");
+		assert_eq!(value["dispatch_state"], "potentially_dispatched");
+
+		let human = super::render_use_client_failure(
+			OutputFormat::Human,
+			&key,
+			super::UseDispatchState::PotentiallyDispatched,
+			ClientFailure::ProtocolTimeout,
+		);
+
+		assert!(human.text().contains("idempotency_key: operator-key"));
+		assert!(human.text().contains("dispatch_state: potentially_dispatched"));
+		assert!(human.is_error_stream());
+	}
+
+	#[test]
+	fn operation_exit_codes_distinguish_terminal_success_from_uncertainty() {
+		let key = IdempotencyKey::new("operator-key").expect("test operation must succeed");
+
+		assert_eq!(
+			super::render_operation(
+				OutputFormat::Json,
+				"status",
+				&key,
+				ResetCardOperationResult::Completed { outcome: ResetCardOutcome::AlreadyRedeemed },
+			)
+			.exit_code(),
+			0,
+		);
+		assert_eq!(
+			super::render_operation(
+				OutputFormat::Json,
+				"status",
+				&key,
+				ResetCardOperationResult::EffectAmbiguous,
+			)
+			.exit_code(),
+			1,
+		);
+
+		let unavailable = super::render_operation(
+			OutputFormat::Json,
+			"status",
+			&key,
+			ResetCardOperationResult::Unavailable {
+				error: decodex_protocol::ResetCardError::ProductStateUnavailable,
+			},
+		);
+		let value: serde_json::Value =
+			serde_json::from_str(unavailable.text()).expect("test operation must succeed");
+
+		assert_eq!(unavailable.exit_code(), 2);
+		assert_eq!(value["outcome"], "unavailable");
+		assert_eq!(value["state"]["state"], "unavailable");
+	}
+
+	#[test]
+	fn status_poll_failure_cannot_downgrade_proved_durable_acceptance() {
+		let state = super::accepted_state_after_poll(Err(ClientFailure::ProtocolDisconnected));
+		let key = IdempotencyKey::new("operator-key").expect("test operation must succeed");
+		let account = EntityId::new("40000000-0000-4000-8000-000000000001")
+			.expect("test operation must succeed");
+		let output = super::render_use(
+			OutputFormat::Json,
+			&key,
+			&account,
+			ResetCardDescriptorDto::new(1, 2).expect("test operation must succeed"),
+			EntityRevision(7),
+			state,
+		);
+		let value: serde_json::Value =
+			serde_json::from_str(output.text()).expect("test operation must succeed");
+
+		assert_eq!(state, ResetCardOperationResult::Prepared);
+		assert_eq!(value["dispatch_state"], "durably_accepted");
+		assert_eq!(value["state"]["state"], "prepared");
+		assert_eq!(output.exit_code(), 1);
 	}
 
 	#[cfg(unix)]
@@ -1203,172 +1370,5 @@ cache = {{}}
 
 		assert_eq!(value["failure"], "remote_mutation_unsupported");
 		assert_eq!(output.exit_code(), 2);
-	}
-
-	#[test]
-	fn inventory_json_binds_the_selected_profile_and_server() {
-		let profile = local_profile();
-		let inventory = super::render_inventory(
-			OutputFormat::Json,
-			&profile,
-			&ResetCardInventoryResult::Unavailable {
-				error: ResetCardError::ProductStateUnavailable,
-			},
-		);
-		let value: serde_json::Value =
-			serde_json::from_str(inventory.text()).expect("test operation must succeed");
-
-		assert_eq!(value["authority"]["profile_name"], "selected");
-		assert_eq!(value["authority"]["server_id"], SERVER_ID);
-	}
-
-	#[test]
-	fn stable_json_use_result_has_no_provider_identifier() {
-		let key = IdempotencyKey::new("operator-key").expect("test operation must succeed");
-		let account = EntityId::new("40000000-0000-4000-8000-000000000001")
-			.expect("test operation must succeed");
-		let output = super::render_use(
-			OutputFormat::Json,
-			&key,
-			&account,
-			ResetCardDescriptorDto::new(1, 2).expect("test operation must succeed"),
-			EntityRevision(8),
-			ResetCardOperationResult::Completed { outcome: ResetCardOutcome::Reset },
-		);
-		let value: serde_json::Value =
-			serde_json::from_str(output.text()).expect("test operation must succeed");
-
-		assert_eq!(value["schema"], "decodex/reset-card-cli/1");
-		assert_eq!(value["command"], "use");
-		assert_eq!(value["outcome"], "completed");
-		assert_eq!(value["idempotency_key"], "operator-key");
-		assert_eq!(value["dispatch_state"], "durably_accepted");
-		assert_eq!(value["account_id"], account.as_str());
-		assert_eq!(value["state"]["state"], "completed");
-		assert!(value.get("credit_id").is_none());
-		assert_eq!(output.exit_code(), 0);
-	}
-
-	#[test]
-	fn use_outputs_retain_the_key_and_typed_dispatch_state_after_key_creation() {
-		let key = IdempotencyKey::new("operator-key").expect("test operation must succeed");
-
-		for (dispatch_state, expected) in [
-			(super::UseDispatchState::DefinitelyNotDispatched, "definitely_not_dispatched"),
-			(super::UseDispatchState::PotentiallyDispatched, "potentially_dispatched"),
-		] {
-			let output = super::render_use_client_failure(
-				OutputFormat::Json,
-				&key,
-				dispatch_state,
-				ClientFailure::ProtocolDisconnected,
-			);
-			let value: serde_json::Value =
-				serde_json::from_str(output.text()).expect("test operation must succeed");
-
-			assert_eq!(value["schema"], "decodex/reset-card-cli/1");
-			assert_eq!(value["command"], "use");
-			assert_eq!(value["outcome"], "failure");
-			assert_eq!(value["idempotency_key"], "operator-key");
-			assert_eq!(value["dispatch_state"], expected);
-			assert_eq!(value["failure"], "protocol_disconnected");
-			assert_eq!(output.exit_code(), 2);
-			assert!(!output.is_error_stream());
-		}
-
-		let rejected =
-			super::render_rejected(OutputFormat::Json, &key, &CommandError::IdempotencyConflict);
-		let value: serde_json::Value =
-			serde_json::from_str(rejected.text()).expect("test operation must succeed");
-
-		assert_eq!(value["idempotency_key"], "operator-key");
-		assert_eq!(value["dispatch_state"], "rejected_before_acceptance");
-
-		let unknown = super::render_use_client_failure(
-			OutputFormat::Json,
-			&key,
-			super::UseDispatchState::PotentiallyDispatched,
-			ClientFailure::ApplicationAcceptanceUnknown,
-		);
-		let value: serde_json::Value =
-			serde_json::from_str(unknown.text()).expect("test operation must succeed");
-
-		assert_eq!(value["failure"], "application_acceptance_unknown");
-		assert_eq!(value["dispatch_state"], "potentially_dispatched");
-
-		let human = super::render_use_client_failure(
-			OutputFormat::Human,
-			&key,
-			super::UseDispatchState::PotentiallyDispatched,
-			ClientFailure::ProtocolTimeout,
-		);
-
-		assert!(human.text().contains("idempotency_key: operator-key"));
-		assert!(human.text().contains("dispatch_state: potentially_dispatched"));
-		assert!(human.is_error_stream());
-	}
-
-	#[test]
-	fn operation_exit_codes_distinguish_terminal_success_from_uncertainty() {
-		let key = IdempotencyKey::new("operator-key").expect("test operation must succeed");
-
-		assert_eq!(
-			super::render_operation(
-				OutputFormat::Json,
-				"status",
-				&key,
-				ResetCardOperationResult::Completed { outcome: ResetCardOutcome::AlreadyRedeemed },
-			)
-			.exit_code(),
-			0,
-		);
-		assert_eq!(
-			super::render_operation(
-				OutputFormat::Json,
-				"status",
-				&key,
-				ResetCardOperationResult::EffectAmbiguous,
-			)
-			.exit_code(),
-			1,
-		);
-
-		let unavailable = super::render_operation(
-			OutputFormat::Json,
-			"status",
-			&key,
-			ResetCardOperationResult::Unavailable {
-				error: decodex_protocol::ResetCardError::ProductStateUnavailable,
-			},
-		);
-		let value: serde_json::Value =
-			serde_json::from_str(unavailable.text()).expect("test operation must succeed");
-
-		assert_eq!(unavailable.exit_code(), 2);
-		assert_eq!(value["outcome"], "unavailable");
-		assert_eq!(value["state"]["state"], "unavailable");
-	}
-
-	#[test]
-	fn status_poll_failure_cannot_downgrade_proved_durable_acceptance() {
-		let state = super::accepted_state_after_poll(Err(ClientFailure::ProtocolDisconnected));
-		let key = IdempotencyKey::new("operator-key").expect("test operation must succeed");
-		let account = EntityId::new("40000000-0000-4000-8000-000000000001")
-			.expect("test operation must succeed");
-		let output = super::render_use(
-			OutputFormat::Json,
-			&key,
-			&account,
-			ResetCardDescriptorDto::new(1, 2).expect("test operation must succeed"),
-			EntityRevision(7),
-			state,
-		);
-		let value: serde_json::Value =
-			serde_json::from_str(output.text()).expect("test operation must succeed");
-
-		assert_eq!(state, ResetCardOperationResult::Prepared);
-		assert_eq!(value["dispatch_state"], "durably_accepted");
-		assert_eq!(value["state"]["state"], "prepared");
-		assert_eq!(output.exit_code(), 1);
 	}
 }
