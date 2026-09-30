@@ -144,7 +144,7 @@ final class DictationCapture: DictationCapturing {
         encoder = nil
     }
 
-    private static func device(named name: String) throws -> AudioDeviceID {
+    static func device(named name: String) throws -> AudioDeviceID {
         var property = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
         guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &property, 0, nil, &size) == noErr else { throw CaptureError.device }

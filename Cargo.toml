@@ -34,6 +34,12 @@ decodex-runtime       = { path = "crates/decodex-runtime" }
 pulldown-cmark        = { version = "~0.10", default-features = false }
 unicode-width         = { version = "~0.2" }
 
+block2             = { version = "~0.6" }
+libwebrtc          = { version = "~0.3" }
+rtrb               = { version = "~0.3" }
+objc2-avf-audio    = { version = "~0.3", default-features = false, features = ["std", "AVAudioEngine", "AVAudioFormat", "AVAudioNode", "AVAudioIONode", "AVAudioMixerNode", "AVAudioMixing", "AVAudioSinkNode", "AVAudioSourceNode", "AVAudioTypes", "block2", "objc2-audio-toolbox", "objc2-core-audio-types"] }
+objc2-core-audio-types = { version = "~0.3", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
+objc2-audio-toolbox = { version = "~0.3", default-features = false, features = ["std", "AUComponent", "AudioComponent", "AudioUnitProperties", "objc2-core-audio-types"] }
 base64             = { version = "0.22" }
 clap               = { version = "4.6", features = ["derive"] }
 color-eyre         = { version = "0.6" }

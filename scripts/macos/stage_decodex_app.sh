@@ -54,6 +54,8 @@ cp "$BUILD_ROOT/release/decodex-gpui" "$MACOS/decodex-gpui"
 cp "$BUILD_ROOT/release/decodex" "$HELPERS/decodex"
 cp "$BUILD_ROOT/release/$NATIVE_CLIENT_LIBRARY" "$FRAMEWORKS/$NATIVE_CLIENT_LIBRARY"
 cp "$SWIFT_BIN/$MENU_BAR_LIBRARY" "$FRAMEWORKS/$MENU_BAR_LIBRARY"
+mkdir -p "$RESOURCES/ThirdPartyNotices"
+cp "$ROOT/assets/licenses/libwebrtc.txt" "$RESOURCES/ThirdPartyNotices/libwebrtc.txt"
 "$ROOT/scripts/macos/compile_decodex_app_icon.sh" "$RESOURCES"
 ICON_VARIANT=$(cat "$ROOT/assets/app-icon/default-variant")
 cp "$ROOT/assets/app-icon/liquid-glass/$ICON_VARIANT/StatusBarIcon.png" "$RESOURCES/StatusBarIcon.png"
