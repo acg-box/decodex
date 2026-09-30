@@ -5,19 +5,34 @@ use std::{
 };
 
 use serde_json::Value;
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{OffsetDateTime, UtcOffset, format_description::well_known::Rfc3339};
 
-use super::model::{
-	ATTEMPT_SCHEMA, CREATE_COST_MICROUSD, IDENTITY_READ_COST_MICROUSD,
-	IDENTITY_RECOVERY_EXHAUSTED_STATUS, NO_CREATE_RELEASED_STATUS,
-	NORMAL_PUBLICATION_COST_MICROUSD, OBSERVATION_ATTEMPT_SCHEMA,
-	PUBLICATION_LINEAGE_BUDGET_MICROUSD, READ_COST_MICROUSD, READ_RECOVERY_EXHAUSTED_STATUS,
-	XurlAttempt, XurlCall, XurlObservationAttempt, XurlReconciliation,
-};
 use crate::{
 	SOCIAL_MONTHLY_BUDGET_MICROUSD, SocialXurlCostReport,
 	prelude::{Result, eyre},
+	social_publish,
+	social_xurl::{
+		auth_contract::APPROVED_XURL_VERSION,
+		model::{
+			ATTEMPT_SCHEMA, CREATE_COST_MICROUSD, IDENTITY_READ_COST_MICROUSD,
+			IDENTITY_RECOVERY_EXHAUSTED_STATUS, NO_CREATE_RELEASED_STATUS,
+			NORMAL_PUBLICATION_COST_MICROUSD, OBSERVATION_ATTEMPT_SCHEMA, PRICING_POLICY_ID,
+			PUBLICATION_LINEAGE_BUDGET_MICROUSD, READ_COST_MICROUSD,
+			READ_RECOVERY_EXHAUSTED_STATUS, TARGET_ACCOUNT, XurlAttempt, XurlCall,
+			XurlObservationAttempt, XurlReconciliation,
+		},
+	},
 };
+
+pub(super) struct CallCompletion<'a> {
+	pub(super) call_status: &'a str,
+	pub(super) response_sha256: Option<String>,
+	pub(super) status: &'a str,
+	pub(super) updated_at: &'a str,
+	pub(super) verified_user_id: Option<&'a str>,
+	pub(super) post_id: Option<&'a str>,
+	pub(super) published_url: Option<&'a str>,
+}
 
 #[derive(Default)]
 struct CostTotals {
@@ -31,14 +46,105 @@ struct CostTotals {
 	total_calls: u64,
 }
 
-pub(super) struct CallCompletion<'a> {
-	pub(super) call_status: &'a str,
-	pub(super) response_sha256: Option<String>,
-	pub(super) status: &'a str,
-	pub(super) updated_at: &'a str,
-	pub(super) verified_user_id: Option<&'a str>,
-	pub(super) post_id: Option<&'a str>,
-	pub(super) published_url: Option<&'a str>,
+pub(crate) fn validate_publication_cost_record(attempt: &XurlAttempt) -> Result<()> {
+	if attempt.xurl_version != APPROVED_XURL_VERSION
+		|| attempt.schema != ATTEMPT_SCHEMA
+		|| !social_publish::valid_run_id(&attempt.run_id)
+		|| !valid_billing_month(&attempt.billing_month)
+		|| attempt.target_account != TARGET_ACCOUNT
+		|| !lowercase_digest(&attempt.publication_lineage_sha256)
+		|| attempt.idempotency_key
+			!= format!("content-publication:{}", attempt.publication_lineage_sha256)
+		|| attempt.pricing_policy_id.as_deref() != Some(PRICING_POLICY_ID)
+		|| attempt
+			.authorization_contract_sha256
+			.as_deref()
+			.is_none_or(|digest| !lowercase_digest(digest))
+		|| attempt.calls.len() > 5
+		|| !matches!(
+			attempt.status.as_str(),
+			"reserved"
+				| "identity_inflight"
+				| "identity_reconcile_inflight"
+				| "identity_reconcile_halted"
+				| "identity_reconciled"
+				| NO_CREATE_RELEASED_STATUS
+				| IDENTITY_RECOVERY_EXHAUSTED_STATUS
+				| "identity_verified"
+				| "create_inflight"
+				| "create_uncertain"
+				| "created"
+				| "read_inflight"
+				| "read_retry_inflight"
+				| "read_retry_pending"
+				| "read_reconcile_inflight"
+				| "read_reconcile_halted"
+				| READ_RECOVERY_EXHAUSTED_STATUS
+				| "halted"
+				| "verified"
+				| "published"
+		)
+		|| OffsetDateTime::parse(&attempt.created_at, &Rfc3339).is_err()
+		|| OffsetDateTime::parse(&attempt.updated_at, &Rfc3339).is_err()
+		|| matches!(
+			attempt.status.as_str(),
+			NO_CREATE_RELEASED_STATUS
+				| IDENTITY_RECOVERY_EXHAUSTED_STATUS
+				| READ_RECOVERY_EXHAUSTED_STATUS
+		) && attempt.reconciliation.is_none()
+	{
+		return Err(eyre::eyre!("xurl publication usage authority is invalid"));
+	}
+
+	for call in &attempt.calls {
+		validate_cost_call(call)?;
+	}
+
+	publication_charges(attempt)?;
+	validate_publication_call_sequence(attempt)?;
+	validate_publication_state(attempt)?;
+
+	Ok(())
+}
+
+pub(crate) fn validate_observation_cost_record(attempt: &XurlObservationAttempt) -> Result<()> {
+	if attempt.schema != OBSERVATION_ATTEMPT_SCHEMA
+		|| !social_publish::valid_run_id(&attempt.run_id)
+		|| !valid_billing_month(&attempt.billing_month)
+		|| !matches!(attempt.window.as_str(), "24h" | "7d")
+		|| !lowercase_digest(&attempt.publication_lineage_sha256)
+		|| attempt.pricing_policy_id.as_deref() != Some(PRICING_POLICY_ID)
+		|| attempt
+			.authorization_contract_sha256
+			.as_deref()
+			.is_none_or(|digest| !lowercase_digest(digest))
+		|| !(1..=3).contains(&attempt.calls.len())
+		|| attempt.calls.last() != Some(&attempt.call)
+		|| !matches!(
+			attempt.status.as_str(),
+			"read_inflight"
+				| "read_reconcile_inflight"
+				| "read_reconcile_halted"
+				| READ_RECOVERY_EXHAUSTED_STATUS
+				| "halted"
+				| "observed"
+		)
+		|| OffsetDateTime::parse(&attempt.created_at, &Rfc3339).is_err()
+		|| OffsetDateTime::parse(&attempt.updated_at, &Rfc3339).is_err()
+		|| attempt.status == READ_RECOVERY_EXHAUSTED_STATUS && attempt.reconciliation.is_none()
+	{
+		return Err(eyre::eyre!("xurl observation usage authority is invalid"));
+	}
+
+	for call in &attempt.calls {
+		validate_cost_call(call)?;
+	}
+
+	observation_charges(attempt)?;
+	validate_observation_call_sequence(attempt)?;
+	validate_observation_state(attempt)?;
+
+	Ok(())
 }
 
 pub(super) fn load_attempt(path: &Path) -> Result<XurlAttempt> {
@@ -114,7 +220,7 @@ pub(super) fn daily_publication_effect_conflict(
 		let created_at = OffsetDateTime::parse(&attempt.created_at, &Rfc3339)
 			.map_err(|_| eyre::eyre!("xurl publication attempt timestamp is invalid"))?;
 
-		if created_at.to_offset(time::UtcOffset::UTC).date() == day
+		if created_at.to_offset(UtcOffset::UTC).date() == day
 			&& publication_effect_started(&attempt)
 		{
 			return Ok(Some(path));
@@ -122,14 +228,6 @@ pub(super) fn daily_publication_effect_conflict(
 	}
 
 	Ok(None)
-}
-
-fn publication_effect_started(attempt: &XurlAttempt) -> bool {
-	attempt.post_id.is_some()
-		|| attempt.calls.iter().any(|call| {
-			call.operation == "content_create"
-				&& matches!(call.status.as_str(), "inflight" | "succeeded" | "uncertain")
-		})
 }
 
 pub(super) fn observation_attempt_exists(
@@ -187,632 +285,6 @@ pub(super) fn cost_report(
 		post_read_call_count: totals.post_reads,
 		total_call_count: totals.total_calls,
 	})
-}
-
-fn scan_costs(attempts_dir: &Path, billing_month: &str, strict: bool) -> Result<CostTotals> {
-	if !valid_billing_month(billing_month) {
-		return Err(eyre::eyre!("xurl billing month is invalid"));
-	}
-	if !attempts_dir.exists() {
-		return Ok(CostTotals::default());
-	}
-
-	let metadata = fs::symlink_metadata(attempts_dir)?;
-
-	if metadata.file_type().is_symlink() || !metadata.is_dir() {
-		return Err(eyre::eyre!("xurl attempts path must be a directory"));
-	}
-
-	let mut totals = CostTotals::default();
-	let mut lineage_reserved = BTreeMap::<String, u64>::new();
-
-	for path in crate::collect_json_files(&[attempts_dir.to_path_buf()])? {
-		let payload = crate::load_json(&path)?;
-		let schema = payload.get("schema").and_then(Value::as_str);
-		let (charges, calls, publication, publication_lineage_sha256, lineage_cost) = match schema {
-			Some(ATTEMPT_SCHEMA) => {
-				let attempt: XurlAttempt = serde_json::from_value(payload).map_err(|_| {
-					eyre::eyre!("{} is not a valid xurl publication usage record", path.display())
-				})?;
-
-				validate_usage_path(&path, &attempt.billing_month)?;
-
-				if strict {
-					validate_publication_cost_record(&attempt)?;
-				}
-
-				let charges = publication_charges(&attempt)?;
-
-				(
-					charges,
-					attempt.calls,
-					true,
-					attempt.publication_lineage_sha256,
-					attempt.reserved_cost_ceiling_microusd,
-				)
-			},
-			Some(OBSERVATION_ATTEMPT_SCHEMA) => {
-				let attempt: XurlObservationAttempt =
-					serde_json::from_value(payload).map_err(|_| {
-						eyre::eyre!(
-							"{} is not a valid xurl observation usage record",
-							path.display()
-						)
-					})?;
-
-				validate_usage_path(&path, &attempt.billing_month)?;
-
-				if strict {
-					validate_observation_cost_record(&attempt)?;
-				}
-
-				let charges = observation_charges(&attempt)?;
-
-				(
-					charges,
-					attempt.calls,
-					false,
-					attempt.publication_lineage_sha256,
-					attempt.reserved_cost_ceiling_microusd,
-				)
-			},
-			_ => return Err(eyre::eyre!("{} has invalid xurl billing lineage", path.display())),
-		};
-		let lineage_total = lineage_reserved.entry(publication_lineage_sha256).or_default();
-
-		*lineage_total = lineage_total
-			.checked_add(lineage_cost)
-			.ok_or_else(|| eyre::eyre!("publication lineage budget arithmetic overflowed"))?;
-
-		if *lineage_total > PUBLICATION_LINEAGE_BUDGET_MICROUSD {
-			return Err(eyre::eyre!("publication lineage budget ledger exceeds its hard cap"));
-		}
-
-		let charged_this_month = charges.iter().any(|(month, _)| month == billing_month);
-
-		if charged_this_month {
-			if publication {
-				totals.publication_attempts = checked_increment(totals.publication_attempts)?;
-			} else {
-				totals.observation_attempts = checked_increment(totals.observation_attempts)?;
-			}
-		}
-
-		for (charge_month, cost) in &charges {
-			if charge_month == billing_month {
-				totals.reserved = totals
-					.reserved
-					.checked_add(*cost)
-					.ok_or_else(|| eyre::eyre!("monthly X budget arithmetic overflowed"))?;
-			}
-		}
-		for call in calls {
-			let call_month = call.billing_month.as_deref().unwrap_or_else(|| {
-				charges.first().map(|(month, _)| month.as_str()).unwrap_or_default()
-			});
-
-			if call_month != billing_month {
-				continue;
-			}
-
-			totals.used = totals
-				.used
-				.checked_add(call.recorded_cost_ceiling_microusd)
-				.ok_or_else(|| eyre::eyre!("monthly X budget arithmetic overflowed"))?;
-			totals.total_calls = checked_increment(totals.total_calls)?;
-
-			match call.operation.as_str() {
-				"identity_read" | "identity_read_reconcile" => {
-					totals.identity_reads = checked_increment(totals.identity_reads)?;
-				},
-				"content_create" => {
-					totals.content_creates = checked_increment(totals.content_creates)?;
-				},
-				_ => totals.post_reads = checked_increment(totals.post_reads)?,
-			}
-		}
-	}
-
-	if totals.reserved > SOCIAL_MONTHLY_BUDGET_MICROUSD || totals.used > totals.reserved {
-		return Err(eyre::eyre!("monthly X budget ledger exceeds its hard cap"));
-	}
-
-	Ok(totals)
-}
-
-pub(crate) fn validate_publication_cost_record(attempt: &XurlAttempt) -> Result<()> {
-	if attempt.xurl_version != super::auth_contract::APPROVED_XURL_VERSION
-		|| attempt.schema != ATTEMPT_SCHEMA
-		|| !crate::social_publish::valid_run_id(&attempt.run_id)
-		|| !valid_billing_month(&attempt.billing_month)
-		|| attempt.target_account != super::model::TARGET_ACCOUNT
-		|| !lowercase_digest(&attempt.publication_lineage_sha256)
-		|| attempt.idempotency_key
-			!= format!("content-publication:{}", attempt.publication_lineage_sha256)
-		|| attempt.pricing_policy_id.as_deref() != Some(super::model::PRICING_POLICY_ID)
-		|| attempt
-			.authorization_contract_sha256
-			.as_deref()
-			.is_none_or(|digest| !lowercase_digest(digest))
-		|| attempt.calls.len() > 5
-		|| !matches!(
-			attempt.status.as_str(),
-			"reserved"
-				| "identity_inflight"
-				| "identity_reconcile_inflight"
-				| "identity_reconcile_halted"
-				| "identity_reconciled"
-				| NO_CREATE_RELEASED_STATUS
-				| IDENTITY_RECOVERY_EXHAUSTED_STATUS
-				| "identity_verified"
-				| "create_inflight"
-				| "create_uncertain"
-				| "created"
-				| "read_inflight"
-				| "read_retry_inflight"
-				| "read_retry_pending"
-				| "read_reconcile_inflight"
-				| "read_reconcile_halted"
-				| READ_RECOVERY_EXHAUSTED_STATUS
-				| "halted"
-				| "verified"
-				| "published"
-		)
-		|| OffsetDateTime::parse(&attempt.created_at, &Rfc3339).is_err()
-		|| OffsetDateTime::parse(&attempt.updated_at, &Rfc3339).is_err()
-		|| matches!(
-			attempt.status.as_str(),
-			NO_CREATE_RELEASED_STATUS
-				| IDENTITY_RECOVERY_EXHAUSTED_STATUS
-				| READ_RECOVERY_EXHAUSTED_STATUS
-		) && attempt.reconciliation.is_none()
-	{
-		return Err(eyre::eyre!("xurl publication usage authority is invalid"));
-	}
-
-	for call in &attempt.calls {
-		validate_cost_call(call)?;
-	}
-
-	publication_charges(attempt)?;
-	validate_publication_call_sequence(attempt)?;
-	validate_publication_state(attempt)?;
-
-	Ok(())
-}
-
-pub(crate) fn validate_observation_cost_record(attempt: &XurlObservationAttempt) -> Result<()> {
-	if attempt.schema != OBSERVATION_ATTEMPT_SCHEMA
-		|| !crate::social_publish::valid_run_id(&attempt.run_id)
-		|| !valid_billing_month(&attempt.billing_month)
-		|| !matches!(attempt.window.as_str(), "24h" | "7d")
-		|| !lowercase_digest(&attempt.publication_lineage_sha256)
-		|| attempt.pricing_policy_id.as_deref() != Some(super::model::PRICING_POLICY_ID)
-		|| attempt
-			.authorization_contract_sha256
-			.as_deref()
-			.is_none_or(|digest| !lowercase_digest(digest))
-		|| !(1..=3).contains(&attempt.calls.len())
-		|| attempt.calls.last() != Some(&attempt.call)
-		|| !matches!(
-			attempt.status.as_str(),
-			"read_inflight"
-				| "read_reconcile_inflight"
-				| "read_reconcile_halted"
-				| READ_RECOVERY_EXHAUSTED_STATUS
-				| "halted"
-				| "observed"
-		)
-		|| OffsetDateTime::parse(&attempt.created_at, &Rfc3339).is_err()
-		|| OffsetDateTime::parse(&attempt.updated_at, &Rfc3339).is_err()
-		|| attempt.status == READ_RECOVERY_EXHAUSTED_STATUS && attempt.reconciliation.is_none()
-	{
-		return Err(eyre::eyre!("xurl observation usage authority is invalid"));
-	}
-
-	for call in &attempt.calls {
-		validate_cost_call(call)?;
-	}
-
-	observation_charges(attempt)?;
-	validate_observation_call_sequence(attempt)?;
-	validate_observation_state(attempt)?;
-
-	Ok(())
-}
-
-fn validate_cost_call(call: &XurlCall) -> Result<()> {
-	if !matches!(
-		call.status.as_str(),
-		"inflight" | "succeeded" | "failed" | "invalid" | "uncertain"
-	) || call.response_sha256.as_deref().is_some_and(|digest| !lowercase_digest(digest))
-		|| matches!(call.status.as_str(), "succeeded" | "invalid") && call.response_sha256.is_none()
-		|| call.status == "inflight" && call.response_sha256.is_some()
-		|| call
-			.operation_id
-			.as_deref()
-			.is_some_and(|operation_id| !crate::social_publish::valid_run_id(operation_id))
-	{
-		return Err(eyre::eyre!("xurl usage call is invalid"));
-	}
-
-	Ok(())
-}
-
-fn validate_publication_call_sequence(attempt: &XurlAttempt) -> Result<()> {
-	let calls = &attempt.calls;
-
-	if calls.is_empty() {
-		return Ok(());
-	}
-	if calls[0].operation != "identity_read" || !initial_call_metadata(&calls[0]) {
-		return Err(eyre::eyre!("xurl publication usage call sequence is invalid"));
-	}
-	if calls.len() == 1 {
-		return Ok(());
-	}
-
-	match calls[1].operation.as_str() {
-		"identity_read_reconcile" => validate_identity_recovery_sequence(attempt, calls)?,
-		"content_create" => validate_create_and_read_sequence(attempt, calls)?,
-		_ => return Err(eyre::eyre!("xurl publication usage call sequence is invalid")),
-	}
-
-	validate_unique_recovery_owners(&attempt.run_id, calls)
-}
-
-fn validate_identity_recovery_sequence(attempt: &XurlAttempt, calls: &[XurlCall]) -> Result<()> {
-	if calls.len() > 3 || !interrupted_call(&calls[0]) {
-		return Err(eyre::eyre!("xurl identity recovery sequence is invalid"));
-	}
-
-	for (index, call) in calls[1..].iter().enumerate() {
-		if call.operation != "identity_read_reconcile"
-			|| !recovery_call_metadata(call, false)
-			|| index + 2 < calls.len() && !interrupted_call(call)
-		{
-			return Err(eyre::eyre!("xurl identity recovery sequence is invalid"));
-		}
-	}
-
-	if attempt.post_id.is_some() || attempt.published_url.is_some() {
-		return Err(eyre::eyre!("xurl identity recovery state has a public post identity"));
-	}
-
-	Ok(())
-}
-
-fn validate_create_and_read_sequence(attempt: &XurlAttempt, calls: &[XurlCall]) -> Result<()> {
-	if calls[0].status != "succeeded"
-		|| calls[1].operation != "content_create"
-		|| !initial_call_metadata(&calls[1])
-	{
-		return Err(eyre::eyre!("xurl publication create sequence is invalid"));
-	}
-	if calls.len() == 2 {
-		return Ok(());
-	}
-	if calls[1].status != "succeeded" {
-		return Err(eyre::eyre!("xurl publication read sequence is invalid"));
-	}
-
-	let reads = &calls[2..];
-
-	if reads.len() > 3 {
-		return Err(eyre::eyre!("xurl publication read sequence is invalid"));
-	}
-
-	for (index, call) in reads.iter().enumerate() {
-		let valid_operation = match index {
-			0 => matches!(
-				call.operation.as_str(),
-				"post_read_initial" | "post_read_initial_reconcile"
-			),
-			1 => matches!(call.operation.as_str(), "post_read_retry" | "post_read_reconcile"),
-			2 => call.operation == "post_read_reconcile",
-			_ => false,
-		};
-		let valid_metadata = match call.operation.as_str() {
-			"post_read_initial" => initial_call_metadata(call),
-			"post_read_initial_reconcile" => recovery_call_metadata(call, true),
-			"post_read_retry" => retry_call_metadata(call),
-			"post_read_reconcile" => recovery_call_metadata(call, false),
-			_ => false,
-		};
-
-		if !valid_operation
-			|| !valid_metadata
-			|| index > 0 && !interrupted_call(&reads[index - 1])
-			|| index + 1 < reads.len() && !interrupted_call(call)
-		{
-			return Err(eyre::eyre!("xurl publication read sequence is invalid"));
-		}
-	}
-
-	if attempt.verified_user_id.is_none() || attempt.post_id.is_none() {
-		return Err(eyre::eyre!("xurl publication read state lacks its public post identity"));
-	}
-
-	Ok(())
-}
-
-fn validate_observation_call_sequence(attempt: &XurlObservationAttempt) -> Result<()> {
-	let calls = &attempt.calls;
-
-	if calls[0].operation != "outcome_read" || !initial_call_metadata(&calls[0]) {
-		return Err(eyre::eyre!("xurl observation usage call sequence is invalid"));
-	}
-
-	for (index, call) in calls[1..].iter().enumerate() {
-		if call.operation != "outcome_read_reconcile"
-			|| !recovery_call_metadata(call, false)
-			|| !interrupted_call(&calls[index])
-		{
-			return Err(eyre::eyre!("xurl observation recovery sequence is invalid"));
-		}
-	}
-
-	validate_unique_recovery_owners(&attempt.run_id, calls)
-}
-
-fn validate_unique_recovery_owners(run_id: &str, calls: &[XurlCall]) -> Result<()> {
-	let mut owners = BTreeSet::new();
-
-	for call in calls {
-		let Some(owner) = call.operation_id.as_deref() else {
-			continue;
-		};
-
-		if owner == run_id || !owners.insert(owner) {
-			return Err(eyre::eyre!("xurl usage recovery owner is invalid"));
-		}
-	}
-
-	Ok(())
-}
-
-fn initial_call_metadata(call: &XurlCall) -> bool {
-	call.operation_id.is_none() && call.billing_month.is_none()
-}
-
-fn recovery_call_metadata(call: &XurlCall, billing_month_optional: bool) -> bool {
-	call.operation_id.as_deref().is_some_and(crate::social_publish::valid_run_id)
-		&& (billing_month_optional || call.billing_month.is_some())
-}
-
-fn retry_call_metadata(call: &XurlCall) -> bool {
-	call.operation_id.is_none() && call.billing_month.is_some()
-}
-
-fn interrupted_call(call: &XurlCall) -> bool {
-	matches!(call.status.as_str(), "failed" | "invalid" | "uncertain")
-}
-
-fn validate_publication_state(attempt: &XurlAttempt) -> Result<()> {
-	let last = attempt.calls.last();
-	let valid = match attempt.status.as_str() {
-		"reserved" => attempt.calls.is_empty(),
-		"identity_inflight" => call_state(last, &["identity_read"], &["inflight"]),
-		"identity_reconcile_inflight" =>
-			call_state(last, &["identity_read_reconcile"], &["inflight"]),
-		"identity_reconcile_halted" =>
-			call_state(last, &["identity_read_reconcile"], &["failed", "invalid"]),
-		"identity_reconciled" => call_state(last, &["identity_read_reconcile"], &["succeeded"]),
-		NO_CREATE_RELEASED_STATUS =>
-			(attempt.calls.is_empty()
-				|| call_state(
-					last,
-					&["identity_read", "identity_read_reconcile"],
-					&["succeeded", "failed", "invalid", "uncertain"],
-				))
-				&& attempt.calls.iter().all(|call| {
-					matches!(call.operation.as_str(), "identity_read" | "identity_read_reconcile")
-				})
-				&& attempt.post_id.is_none()
-				&& attempt.published_url.is_none(),
-		IDENTITY_RECOVERY_EXHAUSTED_STATUS =>
-			call_state(last, &["identity_read_reconcile"], &["failed", "invalid", "uncertain"])
-				&& attempt.post_id.is_none()
-				&& attempt.published_url.is_none(),
-		"identity_verified" =>
-			call_state(last, &["identity_read", "identity_read_reconcile"], &["succeeded"]),
-		"create_inflight" => call_state(last, &["content_create"], &["inflight"]),
-		"create_uncertain" => call_state(last, &["content_create"], &["uncertain"]),
-		"created" => call_state(last, &["content_create"], &["succeeded"]),
-		"read_inflight" => call_state(last, &["post_read_initial"], &["inflight"]),
-		"read_retry_pending" =>
-			call_state(last, &["post_read_initial"], &["failed", "invalid", "uncertain"]),
-		"read_retry_inflight" => call_state(last, &["post_read_retry"], &["inflight"]),
-		"read_reconcile_inflight" =>
-			call_state(last, &["post_read_initial_reconcile", "post_read_reconcile"], &["inflight"]),
-		"read_reconcile_halted" => call_state(
-			last,
-			&["post_read_initial_reconcile", "post_read_reconcile"],
-			&["failed", "invalid"],
-		),
-		READ_RECOVERY_EXHAUSTED_STATUS => call_state(
-			last,
-			&[
-				"post_read_initial",
-				"post_read_initial_reconcile",
-				"post_read_retry",
-				"post_read_reconcile",
-			],
-			&["failed", "invalid", "uncertain"],
-		),
-		"halted" => last.is_some_and(|call| matches!(call.status.as_str(), "failed" | "invalid")),
-		"verified" | "published" => call_state(
-			last,
-			&[
-				"post_read_initial",
-				"post_read_initial_reconcile",
-				"post_read_reconcile",
-				"post_read_retry",
-			],
-			&["succeeded"],
-		),
-		_ => false,
-	};
-
-	if !valid {
-		return Err(eyre::eyre!("xurl publication usage state is invalid"));
-	}
-
-	Ok(())
-}
-
-fn validate_observation_state(attempt: &XurlObservationAttempt) -> Result<()> {
-	let last = attempt.calls.last();
-	let valid = match attempt.status.as_str() {
-		"read_inflight" => call_state(last, &["outcome_read"], &["inflight"]),
-		"read_reconcile_inflight" => call_state(last, &["outcome_read_reconcile"], &["inflight"]),
-		"read_reconcile_halted" =>
-			call_state(last, &["outcome_read_reconcile"], &["failed", "invalid"]),
-		READ_RECOVERY_EXHAUSTED_STATUS => call_state(
-			last,
-			&["outcome_read", "outcome_read_reconcile"],
-			&["failed", "invalid", "uncertain"],
-		),
-		"halted" =>
-			call_state(last, &["outcome_read", "outcome_read_reconcile"], &["failed", "invalid"]),
-		"observed" => call_state(last, &["outcome_read", "outcome_read_reconcile"], &["succeeded"]),
-		_ => false,
-	};
-
-	if !valid {
-		return Err(eyre::eyre!("xurl observation usage state is invalid"));
-	}
-
-	Ok(())
-}
-
-fn call_state(call: Option<&XurlCall>, operations: &[&str], statuses: &[&str]) -> bool {
-	call.is_some_and(|call| {
-		operations.contains(&call.operation.as_str()) && statuses.contains(&call.status.as_str())
-	})
-}
-
-fn lowercase_digest(value: &str) -> bool {
-	value.len() == 64
-		&& value.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
-}
-
-fn checked_increment(value: u64) -> Result<u64> {
-	value.checked_add(1).ok_or_else(|| eyre::eyre!("xurl cost count overflowed"))
-}
-
-fn publication_charges(attempt: &XurlAttempt) -> Result<Vec<(String, u64)>> {
-	let no_create_terminal = attempt.reconciliation.is_some()
-		&& matches!(
-			attempt.status.as_str(),
-			"identity_reconciled" | NO_CREATE_RELEASED_STATUS | IDENTITY_RECOVERY_EXHAUSTED_STATUS
-		);
-	let base_reservation = if no_create_terminal {
-		attempt.calls.iter().filter(|call| call.billing_month.is_none()).try_fold(
-			0_u64,
-			|total, call| {
-				total
-					.checked_add(call.recorded_cost_ceiling_microusd)
-					.ok_or_else(|| eyre::eyre!("xurl publication usage arithmetic overflowed"))
-			},
-		)?
-	} else {
-		NORMAL_PUBLICATION_COST_MICROUSD
-	};
-	let mut charges = vec![(attempt.billing_month.clone(), base_reservation)];
-	let mut reserved = base_reservation;
-
-	for call in &attempt.calls {
-		let expected_cost = match call.operation.as_str() {
-			"identity_read" | "identity_read_reconcile" => IDENTITY_READ_COST_MICROUSD,
-			"content_create" => CREATE_COST_MICROUSD,
-			"post_read_initial"
-			| "post_read_initial_reconcile"
-			| "post_read_retry"
-			| "post_read_reconcile" => READ_COST_MICROUSD,
-			_ => return Err(eyre::eyre!("xurl publication usage operation is invalid")),
-		};
-
-		if call.recorded_cost_ceiling_microusd != expected_cost
-			|| matches!(
-				call.operation.as_str(),
-				"identity_read" | "content_create" | "post_read_initial"
-			) && call.billing_month.is_some()
-			|| matches!(
-				call.operation.as_str(),
-				"identity_read_reconcile" | "post_read_retry" | "post_read_reconcile"
-			) && call.billing_month.is_none()
-		{
-			return Err(eyre::eyre!("xurl publication usage charge is invalid"));
-		}
-
-		if let Some(month) = &call.billing_month {
-			if !valid_billing_month(month) {
-				return Err(eyre::eyre!("xurl publication call billing month is invalid"));
-			}
-
-			reserved = reserved
-				.checked_add(call.recorded_cost_ceiling_microusd)
-				.ok_or_else(|| eyre::eyre!("xurl publication usage arithmetic overflowed"))?;
-
-			charges.push((month.clone(), call.recorded_cost_ceiling_microusd));
-		}
-	}
-
-	if attempt.reserved_cost_ceiling_microusd != reserved {
-		return Err(eyre::eyre!("xurl publication usage reservation is inconsistent"));
-	}
-	if reserved > PUBLICATION_LINEAGE_BUDGET_MICROUSD {
-		return Err(eyre::eyre!("xurl publication lineage reservation exceeds its hard cap"));
-	}
-
-	Ok(charges)
-}
-
-fn observation_charges(attempt: &XurlObservationAttempt) -> Result<Vec<(String, u64)>> {
-	let mut charges = vec![(attempt.billing_month.clone(), READ_COST_MICROUSD)];
-	let mut reserved = READ_COST_MICROUSD;
-
-	for call in &attempt.calls {
-		if call.recorded_cost_ceiling_microusd != READ_COST_MICROUSD
-			|| (call.operation == "outcome_read") != call.billing_month.is_none()
-			|| !matches!(call.operation.as_str(), "outcome_read" | "outcome_read_reconcile")
-		{
-			return Err(eyre::eyre!("xurl observation usage charge is invalid"));
-		}
-
-		if let Some(month) = &call.billing_month {
-			if !valid_billing_month(month) {
-				return Err(eyre::eyre!("xurl observation call billing month is invalid"));
-			}
-
-			reserved = reserved
-				.checked_add(call.recorded_cost_ceiling_microusd)
-				.ok_or_else(|| eyre::eyre!("xurl observation usage arithmetic overflowed"))?;
-
-			charges.push((month.clone(), call.recorded_cost_ceiling_microusd));
-		}
-	}
-
-	if attempt.reserved_cost_ceiling_microusd != reserved {
-		return Err(eyre::eyre!("xurl observation usage reservation is inconsistent"));
-	}
-	if reserved > PUBLICATION_LINEAGE_BUDGET_MICROUSD {
-		return Err(eyre::eyre!("xurl observation lineage reservation exceeds its hard cap"));
-	}
-
-	Ok(charges)
-}
-
-fn validate_usage_path(path: &Path, billing_month: &str) -> Result<()> {
-	if !valid_billing_month(billing_month)
-		|| path.parent().and_then(Path::file_name).and_then(|value| value.to_str())
-			!= Some(billing_month)
-	{
-		return Err(eyre::eyre!("{} has invalid xurl billing lineage", path.display()));
-	}
-
-	Ok(())
 }
 
 pub(super) fn valid_billing_month(value: &str) -> bool {
@@ -879,55 +351,6 @@ pub(super) fn ensure_lineage_budget(
 	}
 
 	Ok(next)
-}
-
-fn lineage_reserved_cost(attempts_dir: &Path, publication_lineage_sha256: &str) -> Result<u64> {
-	if !attempts_dir.exists() {
-		return Ok(0);
-	}
-
-	let mut reserved = 0_u64;
-
-	for path in crate::collect_json_files(&[attempts_dir.to_path_buf()])? {
-		let payload = crate::load_json(&path)?;
-		let (lineage, cost) = match payload.get("schema").and_then(Value::as_str) {
-			Some(ATTEMPT_SCHEMA) => {
-				let attempt: XurlAttempt = serde_json::from_value(payload).map_err(|_| {
-					eyre::eyre!("{} is not a valid xurl publication usage record", path.display())
-				})?;
-
-				validate_publication_cost_record(&attempt)?;
-
-				(attempt.publication_lineage_sha256, attempt.reserved_cost_ceiling_microusd)
-			},
-			Some(OBSERVATION_ATTEMPT_SCHEMA) => {
-				let attempt: XurlObservationAttempt =
-					serde_json::from_value(payload).map_err(|_| {
-						eyre::eyre!(
-							"{} is not a valid xurl observation usage record",
-							path.display()
-						)
-					})?;
-
-				validate_observation_cost_record(&attempt)?;
-
-				(attempt.publication_lineage_sha256, attempt.reserved_cost_ceiling_microusd)
-			},
-			_ => return Err(eyre::eyre!("{} has invalid xurl billing lineage", path.display())),
-		};
-
-		if lineage == publication_lineage_sha256 {
-			reserved = reserved
-				.checked_add(cost)
-				.ok_or_else(|| eyre::eyre!("publication lineage budget arithmetic overflowed"))?;
-		}
-	}
-
-	if reserved > PUBLICATION_LINEAGE_BUDGET_MICROUSD {
-		return Err(eyre::eyre!("publication lineage budget ledger exceeds its hard cap"));
-	}
-
-	Ok(reserved)
 }
 
 pub(super) fn remaining_lineage_budget(
@@ -1276,6 +699,588 @@ pub(super) fn terminalize_observation(
 	validate_observation_cost_record(attempt)?;
 
 	replace_observation(path, &previous, attempt)
+}
+
+fn publication_effect_started(attempt: &XurlAttempt) -> bool {
+	attempt.post_id.is_some()
+		|| attempt.calls.iter().any(|call| {
+			call.operation == "content_create"
+				&& matches!(call.status.as_str(), "inflight" | "succeeded" | "uncertain")
+		})
+}
+
+fn scan_costs(attempts_dir: &Path, billing_month: &str, strict: bool) -> Result<CostTotals> {
+	if !valid_billing_month(billing_month) {
+		return Err(eyre::eyre!("xurl billing month is invalid"));
+	}
+	if !attempts_dir.exists() {
+		return Ok(CostTotals::default());
+	}
+
+	let metadata = fs::symlink_metadata(attempts_dir)?;
+
+	if metadata.file_type().is_symlink() || !metadata.is_dir() {
+		return Err(eyre::eyre!("xurl attempts path must be a directory"));
+	}
+
+	let mut totals = CostTotals::default();
+	let mut lineage_reserved = BTreeMap::<String, u64>::new();
+
+	for path in crate::collect_json_files(&[attempts_dir.to_path_buf()])? {
+		let payload = crate::load_json(&path)?;
+		let schema = payload.get("schema").and_then(Value::as_str);
+		let (charges, calls, publication, publication_lineage_sha256, lineage_cost) = match schema {
+			Some(ATTEMPT_SCHEMA) => {
+				let attempt: XurlAttempt = serde_json::from_value(payload).map_err(|_| {
+					eyre::eyre!("{} is not a valid xurl publication usage record", path.display())
+				})?;
+
+				validate_usage_path(&path, &attempt.billing_month)?;
+
+				if strict {
+					validate_publication_cost_record(&attempt)?;
+				}
+
+				let charges = publication_charges(&attempt)?;
+
+				(
+					charges,
+					attempt.calls,
+					true,
+					attempt.publication_lineage_sha256,
+					attempt.reserved_cost_ceiling_microusd,
+				)
+			},
+			Some(OBSERVATION_ATTEMPT_SCHEMA) => {
+				let attempt: XurlObservationAttempt =
+					serde_json::from_value(payload).map_err(|_| {
+						eyre::eyre!(
+							"{} is not a valid xurl observation usage record",
+							path.display()
+						)
+					})?;
+
+				validate_usage_path(&path, &attempt.billing_month)?;
+
+				if strict {
+					validate_observation_cost_record(&attempt)?;
+				}
+
+				let charges = observation_charges(&attempt)?;
+
+				(
+					charges,
+					attempt.calls,
+					false,
+					attempt.publication_lineage_sha256,
+					attempt.reserved_cost_ceiling_microusd,
+				)
+			},
+			_ => return Err(eyre::eyre!("{} has invalid xurl billing lineage", path.display())),
+		};
+		let lineage_total = lineage_reserved.entry(publication_lineage_sha256).or_default();
+
+		*lineage_total = lineage_total
+			.checked_add(lineage_cost)
+			.ok_or_else(|| eyre::eyre!("publication lineage budget arithmetic overflowed"))?;
+
+		if *lineage_total > PUBLICATION_LINEAGE_BUDGET_MICROUSD {
+			return Err(eyre::eyre!("publication lineage budget ledger exceeds its hard cap"));
+		}
+
+		let charged_this_month = charges.iter().any(|(month, _)| month == billing_month);
+
+		if charged_this_month {
+			if publication {
+				totals.publication_attempts = checked_increment(totals.publication_attempts)?;
+			} else {
+				totals.observation_attempts = checked_increment(totals.observation_attempts)?;
+			}
+		}
+
+		for (charge_month, cost) in &charges {
+			if charge_month == billing_month {
+				totals.reserved = totals
+					.reserved
+					.checked_add(*cost)
+					.ok_or_else(|| eyre::eyre!("monthly X budget arithmetic overflowed"))?;
+			}
+		}
+		for call in calls {
+			let call_month = call.billing_month.as_deref().unwrap_or_else(|| {
+				charges.first().map(|(month, _)| month.as_str()).unwrap_or_default()
+			});
+
+			if call_month != billing_month {
+				continue;
+			}
+
+			totals.used = totals
+				.used
+				.checked_add(call.recorded_cost_ceiling_microusd)
+				.ok_or_else(|| eyre::eyre!("monthly X budget arithmetic overflowed"))?;
+			totals.total_calls = checked_increment(totals.total_calls)?;
+
+			match call.operation.as_str() {
+				"identity_read" | "identity_read_reconcile" => {
+					totals.identity_reads = checked_increment(totals.identity_reads)?;
+				},
+				"content_create" => {
+					totals.content_creates = checked_increment(totals.content_creates)?;
+				},
+				_ => totals.post_reads = checked_increment(totals.post_reads)?,
+			}
+		}
+	}
+
+	if totals.reserved > SOCIAL_MONTHLY_BUDGET_MICROUSD || totals.used > totals.reserved {
+		return Err(eyre::eyre!("monthly X budget ledger exceeds its hard cap"));
+	}
+
+	Ok(totals)
+}
+
+fn validate_cost_call(call: &XurlCall) -> Result<()> {
+	if !matches!(
+		call.status.as_str(),
+		"inflight" | "succeeded" | "failed" | "invalid" | "uncertain"
+	) || call.response_sha256.as_deref().is_some_and(|digest| !lowercase_digest(digest))
+		|| matches!(call.status.as_str(), "succeeded" | "invalid") && call.response_sha256.is_none()
+		|| call.status == "inflight" && call.response_sha256.is_some()
+		|| call
+			.operation_id
+			.as_deref()
+			.is_some_and(|operation_id| !social_publish::valid_run_id(operation_id))
+	{
+		return Err(eyre::eyre!("xurl usage call is invalid"));
+	}
+
+	Ok(())
+}
+
+fn validate_publication_call_sequence(attempt: &XurlAttempt) -> Result<()> {
+	let calls = &attempt.calls;
+
+	if calls.is_empty() {
+		return Ok(());
+	}
+	if calls[0].operation != "identity_read" || !initial_call_metadata(&calls[0]) {
+		return Err(eyre::eyre!("xurl publication usage call sequence is invalid"));
+	}
+	if calls.len() == 1 {
+		return Ok(());
+	}
+
+	match calls[1].operation.as_str() {
+		"identity_read_reconcile" => validate_identity_recovery_sequence(attempt, calls)?,
+		"content_create" => validate_create_and_read_sequence(attempt, calls)?,
+		_ => return Err(eyre::eyre!("xurl publication usage call sequence is invalid")),
+	}
+
+	validate_unique_recovery_owners(&attempt.run_id, calls)
+}
+
+fn validate_identity_recovery_sequence(attempt: &XurlAttempt, calls: &[XurlCall]) -> Result<()> {
+	if calls.len() > 3 || !interrupted_call(&calls[0]) {
+		return Err(eyre::eyre!("xurl identity recovery sequence is invalid"));
+	}
+
+	for (index, call) in calls[1..].iter().enumerate() {
+		if call.operation != "identity_read_reconcile"
+			|| !recovery_call_metadata(call, false)
+			|| index + 2 < calls.len() && !interrupted_call(call)
+		{
+			return Err(eyre::eyre!("xurl identity recovery sequence is invalid"));
+		}
+	}
+
+	if attempt.post_id.is_some() || attempt.published_url.is_some() {
+		return Err(eyre::eyre!("xurl identity recovery state has a public post identity"));
+	}
+
+	Ok(())
+}
+
+fn validate_create_and_read_sequence(attempt: &XurlAttempt, calls: &[XurlCall]) -> Result<()> {
+	if calls[0].status != "succeeded"
+		|| calls[1].operation != "content_create"
+		|| !initial_call_metadata(&calls[1])
+	{
+		return Err(eyre::eyre!("xurl publication create sequence is invalid"));
+	}
+	if calls.len() == 2 {
+		return Ok(());
+	}
+	if calls[1].status != "succeeded" {
+		return Err(eyre::eyre!("xurl publication read sequence is invalid"));
+	}
+
+	let reads = &calls[2..];
+
+	if reads.len() > 3 {
+		return Err(eyre::eyre!("xurl publication read sequence is invalid"));
+	}
+
+	for (index, call) in reads.iter().enumerate() {
+		let valid_operation = match index {
+			0 => matches!(
+				call.operation.as_str(),
+				"post_read_initial" | "post_read_initial_reconcile"
+			),
+			1 => matches!(call.operation.as_str(), "post_read_retry" | "post_read_reconcile"),
+			2 => call.operation == "post_read_reconcile",
+			_ => false,
+		};
+		let valid_metadata = match call.operation.as_str() {
+			"post_read_initial" => initial_call_metadata(call),
+			"post_read_initial_reconcile" => recovery_call_metadata(call, true),
+			"post_read_retry" => retry_call_metadata(call),
+			"post_read_reconcile" => recovery_call_metadata(call, false),
+			_ => false,
+		};
+
+		if !valid_operation
+			|| !valid_metadata
+			|| index > 0 && !interrupted_call(&reads[index - 1])
+			|| index + 1 < reads.len() && !interrupted_call(call)
+		{
+			return Err(eyre::eyre!("xurl publication read sequence is invalid"));
+		}
+	}
+
+	if attempt.verified_user_id.is_none() || attempt.post_id.is_none() {
+		return Err(eyre::eyre!("xurl publication read state lacks its public post identity"));
+	}
+
+	Ok(())
+}
+
+fn validate_observation_call_sequence(attempt: &XurlObservationAttempt) -> Result<()> {
+	let calls = &attempt.calls;
+
+	if calls[0].operation != "outcome_read" || !initial_call_metadata(&calls[0]) {
+		return Err(eyre::eyre!("xurl observation usage call sequence is invalid"));
+	}
+
+	for (index, call) in calls[1..].iter().enumerate() {
+		if call.operation != "outcome_read_reconcile"
+			|| !recovery_call_metadata(call, false)
+			|| !interrupted_call(&calls[index])
+		{
+			return Err(eyre::eyre!("xurl observation recovery sequence is invalid"));
+		}
+	}
+
+	validate_unique_recovery_owners(&attempt.run_id, calls)
+}
+
+fn validate_unique_recovery_owners(run_id: &str, calls: &[XurlCall]) -> Result<()> {
+	let mut owners = BTreeSet::new();
+
+	for call in calls {
+		let Some(owner) = call.operation_id.as_deref() else {
+			continue;
+		};
+
+		if owner == run_id || !owners.insert(owner) {
+			return Err(eyre::eyre!("xurl usage recovery owner is invalid"));
+		}
+	}
+
+	Ok(())
+}
+
+fn initial_call_metadata(call: &XurlCall) -> bool {
+	call.operation_id.is_none() && call.billing_month.is_none()
+}
+
+fn recovery_call_metadata(call: &XurlCall, billing_month_optional: bool) -> bool {
+	call.operation_id.as_deref().is_some_and(social_publish::valid_run_id)
+		&& (billing_month_optional || call.billing_month.is_some())
+}
+
+fn retry_call_metadata(call: &XurlCall) -> bool {
+	call.operation_id.is_none() && call.billing_month.is_some()
+}
+
+fn interrupted_call(call: &XurlCall) -> bool {
+	matches!(call.status.as_str(), "failed" | "invalid" | "uncertain")
+}
+
+fn validate_publication_state(attempt: &XurlAttempt) -> Result<()> {
+	let last = attempt.calls.last();
+	let valid = match attempt.status.as_str() {
+		"reserved" => attempt.calls.is_empty(),
+		"identity_inflight" => call_state(last, &["identity_read"], &["inflight"]),
+		"identity_reconcile_inflight" =>
+			call_state(last, &["identity_read_reconcile"], &["inflight"]),
+		"identity_reconcile_halted" =>
+			call_state(last, &["identity_read_reconcile"], &["failed", "invalid"]),
+		"identity_reconciled" => call_state(last, &["identity_read_reconcile"], &["succeeded"]),
+		NO_CREATE_RELEASED_STATUS =>
+			(attempt.calls.is_empty()
+				|| call_state(
+					last,
+					&["identity_read", "identity_read_reconcile"],
+					&["succeeded", "failed", "invalid", "uncertain"],
+				))
+				&& attempt.calls.iter().all(|call| {
+					matches!(call.operation.as_str(), "identity_read" | "identity_read_reconcile")
+				})
+				&& attempt.post_id.is_none()
+				&& attempt.published_url.is_none(),
+		IDENTITY_RECOVERY_EXHAUSTED_STATUS =>
+			call_state(last, &["identity_read_reconcile"], &["failed", "invalid", "uncertain"])
+				&& attempt.post_id.is_none()
+				&& attempt.published_url.is_none(),
+		"identity_verified" =>
+			call_state(last, &["identity_read", "identity_read_reconcile"], &["succeeded"]),
+		"create_inflight" => call_state(last, &["content_create"], &["inflight"]),
+		"create_uncertain" => call_state(last, &["content_create"], &["uncertain"]),
+		"created" => call_state(last, &["content_create"], &["succeeded"]),
+		"read_inflight" => call_state(last, &["post_read_initial"], &["inflight"]),
+		"read_retry_pending" =>
+			call_state(last, &["post_read_initial"], &["failed", "invalid", "uncertain"]),
+		"read_retry_inflight" => call_state(last, &["post_read_retry"], &["inflight"]),
+		"read_reconcile_inflight" =>
+			call_state(last, &["post_read_initial_reconcile", "post_read_reconcile"], &["inflight"]),
+		"read_reconcile_halted" => call_state(
+			last,
+			&["post_read_initial_reconcile", "post_read_reconcile"],
+			&["failed", "invalid"],
+		),
+		READ_RECOVERY_EXHAUSTED_STATUS => call_state(
+			last,
+			&[
+				"post_read_initial",
+				"post_read_initial_reconcile",
+				"post_read_retry",
+				"post_read_reconcile",
+			],
+			&["failed", "invalid", "uncertain"],
+		),
+		"halted" => last.is_some_and(|call| matches!(call.status.as_str(), "failed" | "invalid")),
+		"verified" | "published" => call_state(
+			last,
+			&[
+				"post_read_initial",
+				"post_read_initial_reconcile",
+				"post_read_reconcile",
+				"post_read_retry",
+			],
+			&["succeeded"],
+		),
+		_ => false,
+	};
+
+	if !valid {
+		return Err(eyre::eyre!("xurl publication usage state is invalid"));
+	}
+
+	Ok(())
+}
+
+fn validate_observation_state(attempt: &XurlObservationAttempt) -> Result<()> {
+	let last = attempt.calls.last();
+	let valid = match attempt.status.as_str() {
+		"read_inflight" => call_state(last, &["outcome_read"], &["inflight"]),
+		"read_reconcile_inflight" => call_state(last, &["outcome_read_reconcile"], &["inflight"]),
+		"read_reconcile_halted" =>
+			call_state(last, &["outcome_read_reconcile"], &["failed", "invalid"]),
+		READ_RECOVERY_EXHAUSTED_STATUS => call_state(
+			last,
+			&["outcome_read", "outcome_read_reconcile"],
+			&["failed", "invalid", "uncertain"],
+		),
+		"halted" =>
+			call_state(last, &["outcome_read", "outcome_read_reconcile"], &["failed", "invalid"]),
+		"observed" => call_state(last, &["outcome_read", "outcome_read_reconcile"], &["succeeded"]),
+		_ => false,
+	};
+
+	if !valid {
+		return Err(eyre::eyre!("xurl observation usage state is invalid"));
+	}
+
+	Ok(())
+}
+
+fn call_state(call: Option<&XurlCall>, operations: &[&str], statuses: &[&str]) -> bool {
+	call.is_some_and(|call| {
+		operations.contains(&call.operation.as_str()) && statuses.contains(&call.status.as_str())
+	})
+}
+
+fn lowercase_digest(value: &str) -> bool {
+	value.len() == 64
+		&& value.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+}
+
+fn checked_increment(value: u64) -> Result<u64> {
+	value.checked_add(1).ok_or_else(|| eyre::eyre!("xurl cost count overflowed"))
+}
+
+fn publication_charges(attempt: &XurlAttempt) -> Result<Vec<(String, u64)>> {
+	let no_create_terminal = attempt.reconciliation.is_some()
+		&& matches!(
+			attempt.status.as_str(),
+			"identity_reconciled" | NO_CREATE_RELEASED_STATUS | IDENTITY_RECOVERY_EXHAUSTED_STATUS
+		);
+	let base_reservation = if no_create_terminal {
+		attempt.calls.iter().filter(|call| call.billing_month.is_none()).try_fold(
+			0_u64,
+			|total, call| {
+				total
+					.checked_add(call.recorded_cost_ceiling_microusd)
+					.ok_or_else(|| eyre::eyre!("xurl publication usage arithmetic overflowed"))
+			},
+		)?
+	} else {
+		NORMAL_PUBLICATION_COST_MICROUSD
+	};
+	let mut charges = vec![(attempt.billing_month.clone(), base_reservation)];
+	let mut reserved = base_reservation;
+
+	for call in &attempt.calls {
+		let expected_cost = match call.operation.as_str() {
+			"identity_read" | "identity_read_reconcile" => IDENTITY_READ_COST_MICROUSD,
+			"content_create" => CREATE_COST_MICROUSD,
+			"post_read_initial"
+			| "post_read_initial_reconcile"
+			| "post_read_retry"
+			| "post_read_reconcile" => READ_COST_MICROUSD,
+			_ => return Err(eyre::eyre!("xurl publication usage operation is invalid")),
+		};
+
+		if call.recorded_cost_ceiling_microusd != expected_cost
+			|| matches!(
+				call.operation.as_str(),
+				"identity_read" | "content_create" | "post_read_initial"
+			) && call.billing_month.is_some()
+			|| matches!(
+				call.operation.as_str(),
+				"identity_read_reconcile" | "post_read_retry" | "post_read_reconcile"
+			) && call.billing_month.is_none()
+		{
+			return Err(eyre::eyre!("xurl publication usage charge is invalid"));
+		}
+
+		if let Some(month) = &call.billing_month {
+			if !valid_billing_month(month) {
+				return Err(eyre::eyre!("xurl publication call billing month is invalid"));
+			}
+
+			reserved = reserved
+				.checked_add(call.recorded_cost_ceiling_microusd)
+				.ok_or_else(|| eyre::eyre!("xurl publication usage arithmetic overflowed"))?;
+
+			charges.push((month.clone(), call.recorded_cost_ceiling_microusd));
+		}
+	}
+
+	if attempt.reserved_cost_ceiling_microusd != reserved {
+		return Err(eyre::eyre!("xurl publication usage reservation is inconsistent"));
+	}
+	if reserved > PUBLICATION_LINEAGE_BUDGET_MICROUSD {
+		return Err(eyre::eyre!("xurl publication lineage reservation exceeds its hard cap"));
+	}
+
+	Ok(charges)
+}
+
+fn observation_charges(attempt: &XurlObservationAttempt) -> Result<Vec<(String, u64)>> {
+	let mut charges = vec![(attempt.billing_month.clone(), READ_COST_MICROUSD)];
+	let mut reserved = READ_COST_MICROUSD;
+
+	for call in &attempt.calls {
+		if call.recorded_cost_ceiling_microusd != READ_COST_MICROUSD
+			|| (call.operation == "outcome_read") != call.billing_month.is_none()
+			|| !matches!(call.operation.as_str(), "outcome_read" | "outcome_read_reconcile")
+		{
+			return Err(eyre::eyre!("xurl observation usage charge is invalid"));
+		}
+
+		if let Some(month) = &call.billing_month {
+			if !valid_billing_month(month) {
+				return Err(eyre::eyre!("xurl observation call billing month is invalid"));
+			}
+
+			reserved = reserved
+				.checked_add(call.recorded_cost_ceiling_microusd)
+				.ok_or_else(|| eyre::eyre!("xurl observation usage arithmetic overflowed"))?;
+
+			charges.push((month.clone(), call.recorded_cost_ceiling_microusd));
+		}
+	}
+
+	if attempt.reserved_cost_ceiling_microusd != reserved {
+		return Err(eyre::eyre!("xurl observation usage reservation is inconsistent"));
+	}
+	if reserved > PUBLICATION_LINEAGE_BUDGET_MICROUSD {
+		return Err(eyre::eyre!("xurl observation lineage reservation exceeds its hard cap"));
+	}
+
+	Ok(charges)
+}
+
+fn validate_usage_path(path: &Path, billing_month: &str) -> Result<()> {
+	if !valid_billing_month(billing_month)
+		|| path.parent().and_then(Path::file_name).and_then(|value| value.to_str())
+			!= Some(billing_month)
+	{
+		return Err(eyre::eyre!("{} has invalid xurl billing lineage", path.display()));
+	}
+
+	Ok(())
+}
+
+fn lineage_reserved_cost(attempts_dir: &Path, publication_lineage_sha256: &str) -> Result<u64> {
+	if !attempts_dir.exists() {
+		return Ok(0);
+	}
+
+	let mut reserved = 0_u64;
+
+	for path in crate::collect_json_files(&[attempts_dir.to_path_buf()])? {
+		let payload = crate::load_json(&path)?;
+		let (lineage, cost) = match payload.get("schema").and_then(Value::as_str) {
+			Some(ATTEMPT_SCHEMA) => {
+				let attempt: XurlAttempt = serde_json::from_value(payload).map_err(|_| {
+					eyre::eyre!("{} is not a valid xurl publication usage record", path.display())
+				})?;
+
+				validate_publication_cost_record(&attempt)?;
+
+				(attempt.publication_lineage_sha256, attempt.reserved_cost_ceiling_microusd)
+			},
+			Some(OBSERVATION_ATTEMPT_SCHEMA) => {
+				let attempt: XurlObservationAttempt =
+					serde_json::from_value(payload).map_err(|_| {
+						eyre::eyre!(
+							"{} is not a valid xurl observation usage record",
+							path.display()
+						)
+					})?;
+
+				validate_observation_cost_record(&attempt)?;
+
+				(attempt.publication_lineage_sha256, attempt.reserved_cost_ceiling_microusd)
+			},
+			_ => return Err(eyre::eyre!("{} has invalid xurl billing lineage", path.display())),
+		};
+
+		if lineage == publication_lineage_sha256 {
+			reserved = reserved
+				.checked_add(cost)
+				.ok_or_else(|| eyre::eyre!("publication lineage budget arithmetic overflowed"))?;
+		}
+	}
+
+	if reserved > PUBLICATION_LINEAGE_BUDGET_MICROUSD {
+		return Err(eyre::eyre!("publication lineage budget ledger exceeds its hard cap"));
+	}
+
+	Ok(reserved)
 }
 
 fn replace(path: &Path, previous: &Value, attempt: &XurlAttempt) -> Result<()> {
