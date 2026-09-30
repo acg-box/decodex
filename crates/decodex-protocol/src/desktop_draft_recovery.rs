@@ -1,7 +1,9 @@
 //! Preserve source-bound alternatives when the user elects to keep both drafts.
-use super::{DesktopDraftDocument, DesktopProfileDraft};
+use std::{collections::BTreeSet, mem};
+
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+
+use crate::{DesktopDraftDocument, DesktopProfileDraft, desktop_ordinary_drafts};
 
 /// A complete alternative editor state. Selecting it never authorizes submission.
 #[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
@@ -36,7 +38,7 @@ impl DesktopRecoveredDraft {
 		}
 
 		if self.scope.is_none() {
-			crate::desktop_ordinary_drafts::validate_unbound(&self.draft.ordinary)?;
+			desktop_ordinary_drafts::validate_unbound(&self.draft.ordinary)?;
 		}
 
 		Ok(())
@@ -256,7 +258,7 @@ impl DesktopDraftDocument {
 
 			let selected = result.profiles.entry(scope.into()).or_default();
 
-			selected.ordinary.extend(std::mem::take(&mut result.unbound_ordinary));
+			selected.ordinary.extend(mem::take(&mut result.unbound_ordinary));
 
 			if let Some(saved) = self.profiles.get(scope) {
 				retain_fences(selected, saved);
@@ -341,8 +343,10 @@ fn retain_fences(selected: &mut DesktopProfileDraft, other: &DesktopProfileDraft
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::{DesktopComposerDraft, EntityId};
+	use crate::{
+		DesktopComposerDraft, DesktopDraftDocument, DesktopProfileDraft, DesktopRecoveredDraft,
+		EntityId,
+	};
 
 	fn profile(text: &str) -> DesktopProfileDraft {
 		DesktopProfileDraft {
@@ -474,9 +478,9 @@ mod tests {
 
 	#[test]
 	fn removal_requires_exact_copy_and_preserves_unknown_delivery() {
-		let mut doc = DesktopDraftDocument::default();
 		let copy =
 			DesktopRecoveredDraft { scope: Some("a".repeat(64)), draft: profile("removable") };
+		let mut doc = DesktopDraftDocument::default();
 
 		doc.recovered.push(copy.clone());
 
