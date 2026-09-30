@@ -100,11 +100,9 @@ impl AgentSurface {
 		}
 		if self.selected.as_deref() != Some(id) {
 			self.reset_voice_settings();
-			self.resources = None;
-			self.resources_task = None;
+			self.reset_resources();
 			self.clear_usage_estimate();
 			self.reset_integrations();
-			self.resource_mutation_task = None;
 			self.resource_feedback.clear();
 		}
 		let is_manager = self.snapshot.as_ref().is_some_and(|snapshot| {
