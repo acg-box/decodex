@@ -56,4 +56,8 @@ fn dry_run_backfill_selects_unpublished_release_window_prs() {
 	assert_eq!(report.target_prs, vec![22_415]);
 	assert_eq!(report.created, 0);
 	assert!(report.dry_run);
+	assert_eq!(
+		fs::read_to_string(temp_dir.path().join("release-delta.json")).unwrap(),
+		release_delta.to_string()
+	);
 }

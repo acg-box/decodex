@@ -1,7 +1,6 @@
-use std::{collections::BTreeSet, env, fs, path::Path, process};
+use std::{collections::BTreeSet, path::Path};
 
 use serde_json::{Map, Value};
-use time::OffsetDateTime;
 
 use crate::{
 	RELEASE_DELTA_SCHEMA, RadarBackfillReleaseRangeRequest, SIGNAL_SCHEMA,
@@ -92,23 +91,16 @@ pub(in crate::release_delta::backfill) fn prepare_release_delta_path(
 	if !request.refresh_release_delta_first {
 		return Ok(PreparedReleaseDelta {
 			path: crate::resolve_against(root, &request.release_delta),
-			cleanup_dir: None,
+			_cleanup_dir: None,
 		});
 	}
 
-	let temp_root = env::temp_dir().join(format!(
-		"decodex-prerelease-delta-{}-{}",
-		process::id(),
-		OffsetDateTime::now_utc().unix_timestamp_nanos()
-	));
-
-	fs::create_dir_all(&temp_root)?;
-
-	let release_delta = temp_root.join("release-delta.json");
+	let temp_root = tempfile::Builder::new().prefix("decodex-prerelease-delta-").tempdir()?;
+	let release_delta = temp_root.path().join("release-delta.json");
 
 	execution::run_refresh_release_delta(request, &release_delta, true)?;
 
-	Ok(PreparedReleaseDelta { path: release_delta, cleanup_dir: Some(temp_root) })
+	Ok(PreparedReleaseDelta { path: release_delta, _cleanup_dir: Some(temp_root) })
 }
 
 fn release_delta_release_tag(value: Option<&Value>) -> Option<String> {
