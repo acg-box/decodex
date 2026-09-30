@@ -792,33 +792,30 @@ impl AgentCoordinator {
 		prompt: &str,
 		depends_on: Vec<String>,
 	) -> Result<AgentWorkItem, AgentError> {
-		for dependency in &depends_on {
-			self.store.get_agent_work_item(dependency.clone()).await?;
-		}
 		let now = std::time::SystemTime::now()
 			.duration_since(std::time::UNIX_EPOCH)
 			.map_err(|_| AgentError::Invalid("clock before epoch".into()))?
 			.as_micros() as i64;
 		let agent = parent.is_none();
 		self.store
-			.create_agent_work_item(AgentWorkItem {
-				id: id.into(),
-				parent_goal_id: parent.map(str::to_owned),
-				kind: if agent { AgentWorkKind::Goal } else { AgentWorkKind::Task },
-				title: id.into(),
-				instructions: prompt.into(),
-				codex_thread_id: None,
-				status: AgentWorkStatus::Open,
-				next_check_at_micros: None,
-				created_at_micros: now,
-				updated_at_micros: now,
-				active_turn_id: None,
-				dispatch_state: decodex_database::AgentDispatchState::Idle,
-			})
+			.create_agent_work_item_with_dependencies(
+				AgentWorkItem {
+					id: id.into(),
+					parent_goal_id: parent.map(str::to_owned),
+					kind: if agent { AgentWorkKind::Goal } else { AgentWorkKind::Task },
+					title: id.into(),
+					instructions: prompt.into(),
+					codex_thread_id: None,
+					status: AgentWorkStatus::Open,
+					next_check_at_micros: None,
+					created_at_micros: now,
+					updated_at_micros: now,
+					active_turn_id: None,
+					dispatch_state: decodex_database::AgentDispatchState::Idle,
+				},
+				depends_on,
+			)
 			.await?;
-		for dependency in depends_on {
-			self.store.add_agent_dependency(id.into(), dependency).await?;
-		}
 		let item = self.store.get_agent_work_item(id.into()).await?;
 		match self.dispatch(&item, prompt).await {
 			Ok(_) | Err(AgentError::DependenciesPending(_)) => {},
