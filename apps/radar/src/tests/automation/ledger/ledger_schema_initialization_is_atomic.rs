@@ -1,13 +1,18 @@
-use std::os::unix::fs::PermissionsExt as _;
+use std::{
+	fs::{self, Permissions},
+	os::unix::fs::PermissionsExt as _,
+};
 
 use rusqlite::Connection;
+
+use crate::{ledger, test_support};
 
 #[test]
 fn first_initialization_rolls_back_at_every_precommit_boundary_and_restarts_cleanly() {
 	for boundary in ["after_inventory", "after_objects", "after_version", "before_commit"] {
-		let temp_dir = crate::test_support::private_tempdir();
+		let temp_dir = test_support::private_tempdir();
 
-		std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o700))
+		fs::set_permissions(temp_dir.path(), Permissions::from_mode(0o700))
 			.expect("ledger parent should be private");
 
 		let path = temp_dir.path().join(format!("{boundary}.sqlite3"));
@@ -15,7 +20,7 @@ fn first_initialization_rolls_back_at_every_precommit_boundary_and_restarts_clea
 		drop(crate::create_private_file(&path).expect("ledger file should be created"));
 
 		let connection = Connection::open(&path).expect("empty ledger should open");
-		let error = crate::ledger::initialize_ledger_with_failure(&connection, boundary)
+		let error = ledger::initialize_ledger_with_failure(&connection, boundary)
 			.expect_err("injected initialization must fail");
 
 		assert!(error.to_string().contains("injected Radar ledger initialization failure"));
@@ -37,7 +42,7 @@ fn first_initialization_rolls_back_at_every_precommit_boundary_and_restarts_clea
 		drop(connection);
 
 		let restarted =
-			crate::ledger::open_ledger(&path).expect("restart should initialize schema 6 cleanly");
+			ledger::open_ledger(&path).expect("restart should initialize schema 6 cleanly");
 		let version: String = restarted
 			.query_row("SELECT value FROM metadata WHERE key = 'schema_version'", [], |row| {
 				row.get(0)
