@@ -24,7 +24,9 @@ pub(crate) fn validate_source_freshness(
 	let Ok(timestamp) = OffsetDateTime::parse(value, &Rfc3339) else {
 		return;
 	};
-	let Ok(max_age_hours) = i64::try_from(max_age_hours) else {
+	let Some(max_age_seconds) =
+		i64::try_from(max_age_hours).ok().and_then(|hours| hours.checked_mul(3600))
+	else {
 		errors.push(format!("{}: source freshness limit is too large", path.display()));
 
 		return;
@@ -39,7 +41,7 @@ pub(crate) fn validate_source_freshness(
 
 		return;
 	}
-	if now - timestamp > Duration::hours(max_age_hours) {
+	if now - timestamp > Duration::seconds(max_age_seconds) {
 		errors.push(format!(
 			"{}: {field} is older than the {max_age_hours}-hour source freshness limit",
 			path.display()
@@ -56,4 +58,32 @@ fn source_timestamp(payload: &Value) -> Option<(&'static str, &str)> {
 	};
 
 	payload.get(field).and_then(Value::as_str).map(|value| (field, value))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn excessive_hour_limits_report_validation_errors_without_panicking() {
+		let now = OffsetDateTime::parse("2026-09-30T12:00:00Z", &Rfc3339).unwrap();
+		let payload = serde_json::json!({
+			"schema": UPSTREAM_REVIEW_QUEUE_SCHEMA,
+			"generated_at": "2026-09-30T11:00:00Z"
+		});
+		for limit in [i64::MAX as u64 / 3600 + 1, i64::MAX as u64, u64::MAX] {
+			let mut errors = Vec::new();
+			validate_source_freshness(Path::new("queue.json"), &payload, limit, now, &mut errors);
+			assert_eq!(errors, ["queue.json: source freshness limit is too large"]);
+		}
+		let mut errors = Vec::new();
+		validate_source_freshness(
+			Path::new("queue.json"),
+			&payload,
+			i64::MAX as u64 / 3600,
+			now,
+			&mut errors,
+		);
+		assert!(errors.is_empty(), "largest representable hour limit remains valid");
+	}
 }
