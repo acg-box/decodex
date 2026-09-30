@@ -37,26 +37,33 @@ fn run_inner(
 	let reconciled_at = validate_request(request)?;
 	let root = crate::repo_root()?;
 	let _state_lock = crate::social_publish::scan::acquire_social_state_lock(&request.locks_dir)?;
+
 	if let Some(attempt_path) = &request.attempt_path {
 		let attempt_path = crate::resolve_against(&root, attempt_path);
 		let attempts_dir = crate::resolve_against(&root, &request.attempts_dir);
+
 		crate::require_contained_regular_file(&attempt_path, &attempts_dir)
 			.map_err(|error| eyre::eyre!("reconciliation attempt is invalid: {error}"))?;
+
 		let payload = crate::load_json(&attempt_path)?;
 		let schema = payload.get("schema").and_then(serde_json::Value::as_str);
+
 		match schema {
 			Some(ATTEMPT_SCHEMA) => {
 				let attempt: XurlAttempt = serde_json::from_value(payload.clone())
 					.map_err(|_| eyre::eyre!("xurl publication recovery attempt is invalid"))?;
+
 				ledger::validate_publication_cost_record(&attempt)?;
 			},
 			Some(OBSERVATION_ATTEMPT_SCHEMA) => {
 				let attempt: XurlObservationAttempt = serde_json::from_value(payload.clone())
 					.map_err(|_| eyre::eyre!("xurl observation recovery attempt is invalid"))?;
+
 				ledger::validate_observation_cost_record(&attempt)?;
 			},
 			_ => return Err(eyre::eyre!("reconciliation attempt uses an unsupported schema")),
 		}
+
 		return match schema {
 			Some(ATTEMPT_SCHEMA) => publish::reconcile_safe_read(
 				request,
@@ -165,12 +172,15 @@ fn validate_request(request: &SocialReconcileXurlRequest) -> Result<OffsetDateTi
 	if !crate::social_publish::valid_run_id(&request.operation_id) {
 		return Err(eyre::eyre!("operation_id must be a lowercase UUID"));
 	}
+
 	let has_evidence = !request.evidence_path.as_os_str().is_empty();
+
 	if has_evidence == request.attempt_path.is_some() {
 		return Err(eyre::eyre!(
 			"reconciliation requires exactly one local evidence path or interrupted attempt path"
 		));
 	}
+
 	OffsetDateTime::parse(&request.reconciled_at, &Rfc3339)
 		.map_err(|_| eyre::eyre!("reconciled_at must be an RFC3339 timestamp"))
 }

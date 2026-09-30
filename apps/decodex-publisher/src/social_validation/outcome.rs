@@ -45,6 +45,7 @@ pub(super) fn validate_social_outcome(entry: &Map<String, Value>, errors: &mut V
 	}
 
 	social_validation::validate_rfc3339_field(entry, "observed_at", errors);
+
 	if !social_validation::is_non_empty_string(entry.get("observed_at")) {
 		errors.push("observed_at must be a non-empty RFC3339 timestamp".into());
 	}
@@ -56,15 +57,19 @@ pub(super) fn validate_social_outcome(entry: &Map<String, Value>, errors: &mut V
 	validate_metrics(entry.get("metrics"), errors);
 	validate_observation(entry.get("observation"), errors);
 	validate_owner(entry.get("owner"), errors);
+
 	social_validation::validate_optional_string_list(entry.get("notes"), "notes", errors);
 }
 
 fn validate_owner(value: Option<&Value>, errors: &mut Vec<String>) {
 	let Some(owner) = value.and_then(Value::as_object) else {
 		errors.push("owner must be an object".into());
+
 		return;
 	};
+
 	social_validation::validate_exact_keys(owner, "owner", &["automation_id", "run_id"], errors);
+
 	if social_validation::string_field(owner, "automation_id") != Some("decodex-xurl-publisher") {
 		errors.push("owner.automation_id must be decodex-xurl-publisher".into());
 	}
@@ -78,8 +83,10 @@ fn validate_owner(value: Option<&Value>, errors: &mut Vec<String>) {
 fn validate_observation(value: Option<&Value>, errors: &mut Vec<String>) {
 	let Some(observation) = value.and_then(Value::as_object) else {
 		errors.push("observation must be an object".into());
+
 		return;
 	};
+
 	social_validation::validate_exact_keys(
 		observation,
 		"observation",
@@ -94,6 +101,7 @@ fn validate_observation(value: Option<&Value>, errors: &mut Vec<String>) {
 		],
 		errors,
 	);
+
 	if social_validation::string_field(observation, "reader") != Some("xurl") {
 		errors.push("observation.reader must be xurl".into());
 	}
@@ -131,6 +139,7 @@ fn validate_metrics(metrics: Option<&Value>, errors: &mut Vec<String>) {
 
 		return;
 	};
+
 	social_validation::validate_exact_keys(metrics, "metrics", METRIC_FIELDS, errors);
 
 	if metrics.is_empty() {

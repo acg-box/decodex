@@ -72,13 +72,19 @@ impl TrustedXurlBinary {
 			.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
 			.open(path)?;
 		let metadata = reader.metadata()?;
+
 		validate_executable_metadata(&metadata, false)?;
+
 		let file = open_executable_path(path)?;
+
 		require_same_executable(&metadata, &file.metadata()?)?;
+
 		let parent = path.parent().ok_or_else(|| eyre::eyre!("test executable has no parent"))?;
 		let directory = File::open(parent)?;
+
 		validate_execution_directory(&directory.metadata()?)?;
 		lock_execution_directory(&directory)?;
+
 		let home = parent
 			.ancestors()
 			.find(|candidate| candidate.join("xurl-authorization-contract.json").is_file())
@@ -100,6 +106,7 @@ impl TrustedXurlBinary {
 				"xurl executable does not match the approved official 1.3.1 release digest"
 			));
 		}
+
 		Ok(())
 	}
 
@@ -111,11 +118,17 @@ impl TrustedXurlBinary {
 pub(super) fn trusted_xurl_binary() -> Result<TrustedXurlBinary> {
 	let deadline = Instant::now() + XURL_DEADLINE;
 	let home = trusted_home_directory()?;
+
 	require_time_remaining(deadline)?;
+
 	let entrypoint = resolve_trusted_xurl_entrypoint(&home)?;
+
 	require_time_remaining(deadline)?;
+
 	let (bytes, digest) = read_verified_binary(&entrypoint)?;
+
 	require_time_remaining(deadline)?;
+
 	install_private_copy(&bytes, &digest, &home, deadline)
 }
 
@@ -123,7 +136,9 @@ fn resolve_trusted_xurl_entrypoint(home: &Path) -> Result<PathBuf> {
 	if !home.is_absolute() {
 		return Err(eyre::eyre!("operating-system home directory is not absolute"));
 	}
+
 	let entrypoint = home.join(XURL_HOME_RELATIVE_ENTRYPOINT);
+
 	validate_path_chain(&entrypoint)?;
 
 	Ok(entrypoint)
@@ -132,13 +147,16 @@ fn resolve_trusted_xurl_entrypoint(home: &Path) -> Result<PathBuf> {
 fn validate_path_chain(path: &Path) -> Result<()> {
 	let current_uid = current_uid();
 	let components = path.ancestors().collect::<Vec<_>>();
+
 	for (index, component) in components.iter().rev().enumerate() {
 		if component.as_os_str().is_empty() {
 			continue;
 		}
+
 		let metadata = fs::symlink_metadata(component)
 			.map_err(|_| eyre::eyre!("xurl path component is unavailable"))?;
 		let is_final = index + 1 == components.len();
+
 		if metadata.file_type().is_symlink() {
 			return Err(eyre::eyre!("xurl path contains an unexpected symlink"));
 		} else if is_final {
@@ -148,6 +166,7 @@ fn validate_path_chain(path: &Path) -> Result<()> {
 		} else if !metadata.is_dir() {
 			return Err(eyre::eyre!("xurl parent path is not a directory"));
 		}
+
 		validate_owner_mode(&metadata, current_uid, is_final)?;
 	}
 
@@ -158,7 +177,9 @@ fn validate_owner_mode(metadata: &fs::Metadata, current_uid: u32, executable: bo
 	if !matches!(metadata.uid(), 0) && metadata.uid() != current_uid {
 		return Err(eyre::eyre!("xurl path owner is not trusted"));
 	}
+
 	let mode = metadata.permissions().mode();
+
 	if metadata.uid() == 0 && mode & 0o022 != 0
 		|| metadata.uid() == current_uid && mode & 0o022 != 0
 		|| executable && (mode & 0o022 != 0 || mode & 0o111 == 0)
@@ -176,16 +197,23 @@ fn read_verified_binary(path: &Path) -> Result<(Vec<u8>, String)> {
 		.open(path)
 		.map_err(|_| eyre::eyre!("resolved xurl target cannot be opened safely"))?;
 	let before = file.metadata()?;
+
 	if !before.is_file() || before.len() == 0 || before.len() > MAX_XURL_BINARY_BYTES {
 		return Err(eyre::eyre!("resolved xurl target size is invalid"));
 	}
+
 	let path_metadata = fs::symlink_metadata(path)?;
+
 	if before.dev() != path_metadata.dev() || before.ino() != path_metadata.ino() {
 		return Err(eyre::eyre!("resolved xurl target changed during open"));
 	}
+
 	let mut bytes = Vec::with_capacity(before.len() as usize);
+
 	(&mut file).take(MAX_XURL_BINARY_BYTES + 1).read_to_end(&mut bytes)?;
+
 	let after = file.metadata()?;
+
 	if bytes.len() as u64 != before.len()
 		|| before.dev() != after.dev()
 		|| before.ino() != after.ino()
@@ -194,7 +222,9 @@ fn read_verified_binary(path: &Path) -> Result<(Vec<u8>, String)> {
 	{
 		return Err(eyre::eyre!("resolved xurl target changed during copy"));
 	}
+
 	let digest = sha256(&bytes);
+
 	if digest != APPROVED_XURL_SHA256 {
 		return Err(eyre::eyre!(
 			"xurl executable does not match the approved official 1.3.1 release digest"
@@ -213,7 +243,9 @@ fn install_private_copy(
 	let repo_root = crate::repo_root()?;
 	let runtime_dir = repo_root.join(PRIVATE_RUNTIME_DIR);
 	let runtime = crate::filesystem::open_private_directory_descriptor(&runtime_dir, true)?;
+
 	require_time_remaining(deadline)?;
+
 	install_private_copy_in(&runtime, bytes, digest, home, deadline)
 }
 
@@ -225,23 +257,32 @@ fn install_private_copy_in(
 	deadline: Instant,
 ) -> Result<TrustedXurlBinary> {
 	lock_execution_directory(runtime)?;
+
 	runtime.set_permissions(fs::Permissions::from_mode(0o700))?;
+
 	validate_runtime_directory(runtime)?;
 	require_time_remaining(deadline)?;
+
 	let destination = OsString::from(format!("xurl-{digest}"));
 	let mut executable = match open_runtime_file(runtime, &destination) {
 		Ok(file) => file,
 		Err(error) if error.downcast_ref::<Errno>() == Some(&Errno::NOENT) => {
 			create_private_copy(runtime, &destination, bytes)?;
+
 			open_runtime_file(runtime, &destination)?
 		},
 		Err(error) => return Err(error),
 	};
+
 	validate_private_copy(&mut executable, bytes, digest)?;
+
 	let metadata = executable.metadata()?;
+
 	prune_runtime_copies(runtime, &destination, &metadata)?;
 	require_time_remaining(deadline)?;
+
 	let file = open_runtime_executable(runtime, &destination)?;
+
 	require_same_executable(&metadata, &file.metadata()?)?;
 
 	Ok(TrustedXurlBinary {
@@ -262,14 +303,17 @@ fn create_private_copy(runtime: &File, destination: &OsString, bytes: &[u8]) -> 
 		Mode::from_bits_retain(0o500),
 	)?;
 	let mut file = File::from(fd);
+
 	file.set_permissions(fs::Permissions::from_mode(0o500))?;
 	file.write_all(bytes)?;
 	file.sync_all()?;
+
 	validate_runtime_file_metadata(&file.metadata()?)?;
 	drop(file);
 
 	let linked = unix_fs::linkat(runtime, &stage, runtime, destination, AtFlags::empty());
 	let cleanup = unix_fs::unlinkat(runtime, &stage, AtFlags::empty());
+
 	if let Err(error) = linked {
 		if cleanup.is_err() {
 			return Err(eyre::eyre!("failed to install and clean the private xurl copy"));
@@ -280,6 +324,7 @@ fn create_private_copy(runtime: &File, destination: &OsString, bytes: &[u8]) -> 
 	} else {
 		cleanup?;
 	}
+
 	runtime.sync_all()?;
 
 	Ok(())
@@ -293,6 +338,7 @@ fn open_runtime_file(runtime: &File, name: &OsString) -> Result<File> {
 		Mode::empty(),
 	)?;
 	let file = File::from(fd);
+
 	validate_runtime_file_metadata(&file.metadata()?)?;
 
 	Ok(file)
@@ -308,10 +354,13 @@ fn open_runtime_executable(runtime: &File, name: &OsString) -> Result<File> {
 			libc::O_EXEC | libc::O_CLOEXEC | libc::O_NOFOLLOW,
 		)
 	};
+
 	if fd == -1 {
 		return Err(std::io::Error::last_os_error().into());
 	}
+
 	let file = unsafe { File::from_raw_fd(fd) };
+
 	validate_executable_metadata(&file.metadata()?, true)?;
 
 	Ok(file)
@@ -322,10 +371,13 @@ fn open_executable_path(path: &Path) -> Result<File> {
 		.map_err(|_| eyre::eyre!("xurl executable path is invalid"))?;
 	let fd =
 		unsafe { libc::open(path.as_ptr(), libc::O_EXEC | libc::O_CLOEXEC | libc::O_NOFOLLOW) };
+
 	if fd == -1 {
 		return Err(std::io::Error::last_os_error().into());
 	}
+
 	let file = unsafe { File::from_raw_fd(fd) };
+
 	validate_executable_metadata(&file.metadata()?, false)?;
 
 	Ok(file)
@@ -333,6 +385,7 @@ fn open_executable_path(path: &Path) -> Result<File> {
 
 fn validate_runtime_directory(runtime: &File) -> Result<()> {
 	let metadata = runtime.metadata()?;
+
 	if !metadata.is_dir()
 		|| metadata.uid() != current_uid()
 		|| metadata.permissions().mode() & 0o777 != 0o700
@@ -399,23 +452,31 @@ fn descriptor_execution_path(binary: &TrustedXurlBinary) -> Result<(PathBuf, Fil
 	let mut buffer = [0_i8; libc::PATH_MAX as usize];
 	let result =
 		unsafe { libc::fcntl(binary.file.as_raw_fd(), libc::F_GETPATH, buffer.as_mut_ptr()) };
+
 	if result == -1 {
 		return Err(eyre::eyre!(
 			"trusted xurl descriptor no longer has an executable filesystem path"
 		));
 	}
+
 	let bytes = unsafe { CStr::from_ptr(buffer.as_ptr()) }.to_bytes();
+
 	if bytes.is_empty() || bytes.contains(&0) {
 		return Err(eyre::eyre!("trusted xurl descriptor path is invalid"));
 	}
+
 	let path = PathBuf::from(OsString::from_vec(bytes.to_vec()));
 	let descriptor_metadata = binary.file.metadata()?;
 	let path_metadata = fs::symlink_metadata(&path)?;
+
 	if path_metadata.file_type().is_symlink() {
 		return Err(eyre::eyre!("trusted xurl descriptor path became a symlink"));
 	}
+
 	require_same_executable(&descriptor_metadata, &path_metadata)?;
+
 	let rebound = open_executable_path(&path)?;
+
 	require_same_executable(&descriptor_metadata, &rebound.metadata()?)?;
 
 	Ok((path, rebound))
@@ -423,10 +484,15 @@ fn descriptor_execution_path(binary: &TrustedXurlBinary) -> Result<(PathBuf, Fil
 
 fn validate_private_copy(file: &mut File, expected: &[u8], digest: &str) -> Result<()> {
 	let before = file.metadata()?;
+
 	validate_runtime_file_metadata(&before)?;
+
 	let mut bytes = Vec::with_capacity(expected.len());
+
 	file.take(MAX_XURL_BINARY_BYTES + 1).read_to_end(&mut bytes)?;
+
 	let after = file.metadata()?;
+
 	if before.dev() != after.dev()
 		|| before.ino() != after.ino()
 		|| before.len() != after.len()
@@ -446,9 +512,11 @@ fn prune_runtime_copies(
 	current_metadata: &fs::Metadata,
 ) -> Result<()> {
 	let mut names = Vec::new();
+
 	for entry in Dir::read_from(runtime)? {
 		let entry = entry?;
 		let name = OsString::from_vec(entry.file_name().to_bytes().to_vec());
+
 		if name != "." && name != ".." {
 			names.push(name);
 		}
@@ -458,6 +526,7 @@ fn prune_runtime_copies(
 			));
 		}
 	}
+
 	names.sort();
 
 	for name in names {
@@ -466,26 +535,37 @@ fn prune_runtime_copies(
 		}
 		if is_runtime_stage_name(&name) {
 			let file = open_runtime_gc_entry(runtime, &name)?;
+
 			validate_runtime_gc_metadata(&file.metadata()?)?;
+
 			unix_fs::unlinkat(runtime, &name, AtFlags::empty())?;
+
 			continue;
 		}
+
 		let mut file = open_runtime_file(runtime, &name)?;
+
 		if name == *current_name {
 			let metadata = file.metadata()?;
+
 			if metadata.dev() != current_metadata.dev()
 				|| metadata.ino() != current_metadata.ino()
 				|| metadata.len() != current_metadata.len()
 			{
 				return Err(eyre::eyre!("private xurl runtime current copy changed during GC"));
 			}
+
 			continue;
 		}
+
 		if let Some(expected_digest) = name.to_str().and_then(|value| value.strip_prefix("xurl-")) {
 			let before = file.metadata()?;
 			let mut bytes = Vec::with_capacity(usize::try_from(before.len()).unwrap_or(0));
+
 			(&mut file).take(MAX_XURL_BINARY_BYTES + 1).read_to_end(&mut bytes)?;
+
 			let after = file.metadata()?;
+
 			if before.dev() != after.dev()
 				|| before.ino() != after.ino()
 				|| before.len() != after.len()
@@ -495,9 +575,12 @@ fn prune_runtime_copies(
 				return Err(eyre::eyre!("stale private xurl runtime copy is invalid"));
 			}
 		}
+
 		unix_fs::unlinkat(runtime, &name, AtFlags::empty())?;
 	}
+
 	runtime.sync_all()?;
+
 	require_only_current_copy(runtime, current_name, current_metadata)
 }
 
@@ -545,11 +628,14 @@ fn require_only_current_copy(
 		.map(|entry| entry.map(|entry| OsString::from_vec(entry.file_name().to_bytes().to_vec())))
 		.collect::<std::result::Result<Vec<_>, _>>()?;
 	let retained = names.into_iter().filter(|name| name != "." && name != "..").collect::<Vec<_>>();
+
 	if retained.len() != 1 || retained[0] != *current_name {
 		return Err(eyre::eyre!("private xurl runtime GC did not retain exactly the current copy"));
 	}
+
 	let file = open_runtime_file(runtime, current_name)?;
 	let metadata = file.metadata()?;
+
 	if metadata.dev() != current_metadata.dev()
 		|| metadata.ino() != current_metadata.ino()
 		|| metadata.len() != current_metadata.len()
@@ -574,7 +660,9 @@ fn is_runtime_stage_name(name: &OsString) -> bool {
 
 fn random_suffix() -> Result<String> {
 	let mut bytes = [0_u8; 16];
+
 	getrandom::fill(&mut bytes).map_err(|_| eyre::eyre!("xurl runtime nonce failed"))?;
+
 	Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
@@ -584,15 +672,19 @@ fn current_uid() -> u32 {
 
 pub(super) fn verify_runtime(binary: &TrustedXurlBinary) -> Result<String> {
 	binary.require_approved_release()?;
+
 	let output = run(binary, ["--version"])?;
+
 	if !output.status.success() {
 		return Err(failure("version probe", &output));
 	}
+
 	let stdout = output_text(&output.stdout, "xurl version output")?;
 	let version = stdout
 		.split_whitespace()
 		.last()
 		.ok_or_else(|| eyre::eyre!("xurl version output is empty"))?;
+
 	if version != APPROVED_XURL_VERSION {
 		return Err(eyre::eyre!(
 			"xurl {version} is unsupported; require the approved official {APPROVED_XURL_VERSION} release"
@@ -604,10 +696,13 @@ pub(super) fn verify_runtime(binary: &TrustedXurlBinary) -> Result<String> {
 
 pub(super) fn verify_auth_status(binary: &TrustedXurlBinary) -> Result<()> {
 	let output = run(binary, ["--app", XURL_APP, "auth", "status"])?;
+
 	if !output.status.success() {
 		return Err(failure("authentication probe", &output));
 	}
+
 	let stdout = output_text(&output.stdout, "xurl authentication output")?;
+
 	validate_auth_status_output(stdout)
 }
 
@@ -616,8 +711,11 @@ pub(super) fn verify_ready(
 	contract: &VerifiedAuthorizationContract,
 ) -> Result<String> {
 	contract.require_runtime(binary)?;
+
 	let version = verify_runtime(binary)?;
+
 	verify_auth_status(binary)?;
+
 	contract.require_runtime(binary)?;
 
 	Ok(version)
@@ -628,23 +726,30 @@ fn validate_auth_status_output(stdout: &str) -> Result<()> {
 	let mut default_sections = 0_usize;
 	let mut in_default_section = false;
 	let mut target_tokens = 0_usize;
+
 	for line in clean.lines() {
 		if let Some(app) = auth_app_header(line) {
 			in_default_section = app == XURL_APP;
+
 			if in_default_section {
 				default_sections += 1;
 			}
+
 			continue;
 		}
+
 		if !in_default_section {
 			continue;
 		}
+
 		let trimmed = line.trim();
 		let normalized = trimmed.strip_prefix('▸').map(str::trim).unwrap_or(trimmed);
+
 		if normalized.strip_prefix("oauth2:").map(str::trim) == Some(TARGET_ACCOUNT) {
 			target_tokens += 1;
 		}
 	}
+
 	if default_sections != 1 || target_tokens != 1 {
 		return Err(eyre::eyre!(
 			"xurl app {XURL_APP} does not have exactly one OAuth2 token labeled {TARGET_ACCOUNT}"
@@ -659,12 +764,15 @@ fn auth_app_header(line: &str) -> Option<&str> {
 		content
 	} else {
 		let content = line.strip_prefix("  ")?;
+
 		if content.chars().next().is_some_and(char::is_whitespace) || content.starts_with('▸') {
 			return None;
 		}
+
 		content
 	};
 	let (app, detail) = content.split_once("  [")?;
+
 	if app.is_empty()
 		|| app.chars().any(char::is_whitespace)
 		|| !detail.ends_with(']')
@@ -672,6 +780,7 @@ fn auth_app_header(line: &str) -> Option<&str> {
 	{
 		return None;
 	}
+
 	Some(app)
 }
 
@@ -722,14 +831,17 @@ fn parse_identity_output(output: &Output) -> Result<VerifiedIdentity> {
 	if !output.status.success() {
 		return Err(failure("identity read", output));
 	}
+
 	let response = parse_json_output(&output.stdout, "xurl identity response")?;
 	let data = response
 		.get("data")
 		.and_then(Value::as_object)
 		.ok_or_else(|| eyre::eyre!("xurl identity response is missing data"))?;
+
 	if data.get("username").and_then(Value::as_str) != Some(TARGET_ACCOUNT) {
 		return Err(eyre::eyre!("xurl identity read did not verify @{TARGET_ACCOUNT}"));
 	}
+
 	let user_id = numeric_id(data.get("id"), "xurl identity response user id")?.to_owned();
 
 	Ok(VerifiedIdentity { user_id, response_sha256: sha256(&output.stdout) })
@@ -747,12 +859,14 @@ fn parse_create_output(output: &Output, text: &str) -> Result<(String, String)> 
 	if !output.status.success() {
 		return Err(failure("post creation", output));
 	}
+
 	let response = parse_json_output(&output.stdout, "xurl post response")?;
 	let data = response
 		.get("data")
 		.and_then(Value::as_object)
 		.ok_or_else(|| eyre::eyre!("xurl post response is missing data"))?;
 	let post_id = numeric_id(data.get("id"), "xurl post response id")?.to_owned();
+
 	if data.get("text").and_then(Value::as_str) != Some(text) {
 		return Err(eyre::eyre!("xurl post response text does not match the candidate"));
 	}
@@ -779,8 +893,11 @@ fn parse_read_output(
 	if !output.status.success() {
 		return Err(failure("post readback", output));
 	}
+
 	let response = parse_json_output(&output.stdout, "xurl read response")?;
+
 	verify_read_response(&response, post_id, text, verified_user_id)?;
+
 	let digest = sha256(&output.stdout);
 
 	Ok((response, digest))
@@ -796,8 +913,11 @@ where
 	S: AsRef<std::ffi::OsStr>,
 {
 	contract.require_runtime(binary)?;
+
 	let output = run(binary, arguments)?;
+
 	contract.require_runtime(binary)?;
+
 	Ok(AuthenticatedOutput { output })
 }
 
@@ -811,12 +931,14 @@ fn verify_read_response(
 		.get("data")
 		.and_then(Value::as_object)
 		.ok_or_else(|| eyre::eyre!("xurl read response is missing data"))?;
+
 	if data.get("id").and_then(Value::as_str) != Some(post_id)
 		|| data.get("text").and_then(Value::as_str) != Some(text)
 		|| data.get("author_id").and_then(Value::as_str) != Some(verified_user_id)
 	{
 		return Err(eyre::eyre!("xurl readback does not match the created post and identity"));
 	}
+
 	let authors = response
 		.get("includes")
 		.and_then(Value::as_object)
@@ -830,6 +952,7 @@ fn verify_read_response(
 				&& author.get("username").and_then(Value::as_str) == Some(TARGET_ACCOUNT)
 		})
 		.count();
+
 	if matches != 1 {
 		return Err(eyre::eyre!(
 			"xurl readback did not verify exactly one @{TARGET_ACCOUNT} author"
@@ -882,12 +1005,17 @@ where
 		.checked_add(deadline)
 		.ok_or_else(|| eyre::eyre!("xurl execution deadline overflowed"))?;
 	let deadline = binary.deadline.min(local_deadline);
+
 	validate_home_directory(&binary.home)?;
 	require_time_remaining(deadline)?;
 	validate_execution_directory(&binary.directory.metadata()?)?;
+
 	let (execution_path, rebound) = descriptor_execution_path(binary)?;
+
 	require_time_remaining(deadline)?;
+
 	let mut command = Command::new(execution_path);
+
 	command
 		.args(arguments)
 		.env_clear()
@@ -896,12 +1024,16 @@ where
 		.process_group(0)
 		.stdout(Stdio::piped())
 		.stderr(Stdio::piped());
+
 	before_spawn();
 	require_time_remaining(deadline)?;
+
 	let mut child = command
 		.spawn()
 		.map_err(|error| eyre::eyre!("failed to execute the trusted xurl binary: {error}"))?;
+
 	drop(rebound);
+
 	let stdout = child.stdout.take().ok_or_else(|| eyre::eyre!("xurl stdout pipe is missing"))?;
 	let stderr = child.stderr.take().ok_or_else(|| eyre::eyre!("xurl stderr pipe is missing"))?;
 	let (stdout_receiver, stdout_reader) = spawn_bounded_reader(stdout);
@@ -909,11 +1041,14 @@ where
 	let status = match child.wait_timeout(remaining_time(deadline)?)? {
 		Some(status) => {
 			kill_process_group(child.id());
+
 			status
 		},
 		None => {
 			kill_process_group(child.id());
+
 			let _ = child.kill();
+
 			return Err(eyre::eyre!("xurl execution exceeded its bounded deadline"));
 		},
 	};
@@ -934,6 +1069,7 @@ fn spawn_bounded_reader(
 	let handle = thread::spawn(move || {
 		let _ = sender.send(drain_bounded(reader));
 	});
+
 	(receiver, handle)
 }
 
@@ -950,8 +1086,11 @@ fn receive_bounded_reader(
 			},
 			mpsc::RecvTimeoutError::Disconnected => eyre::eyre!("{label} failed"),
 		})??;
+
 	handle.join().map_err(|_| eyre::eyre!("{label} failed"))?;
+
 	require_time_remaining(deadline)?;
+
 	Ok(output)
 }
 
@@ -984,18 +1123,25 @@ fn trusted_home_directory() -> Result<PathBuf> {
 			&mut result,
 		)
 	};
+
 	if code != 0 || result.is_null() {
 		return Err(eyre::eyre!("operating-system home directory is unavailable"));
 	}
+
 	let password = unsafe { password.assume_init() };
+
 	if password.pw_dir.is_null() {
 		return Err(eyre::eyre!("operating-system home directory is unavailable"));
 	}
+
 	let bytes = unsafe { CStr::from_ptr(password.pw_dir) }.to_bytes();
+
 	if bytes.is_empty() || bytes.contains(&0) {
 		return Err(eyre::eyre!("operating-system home directory is invalid"));
 	}
+
 	let path = PathBuf::from(OsString::from_vec(bytes.to_vec()));
+
 	validate_home_directory(&path)?;
 
 	Ok(path)
@@ -1005,6 +1151,7 @@ fn validate_home_directory(path: &Path) -> Result<()> {
 	let uid = current_uid();
 	let metadata = fs::symlink_metadata(path)
 		.map_err(|_| eyre::eyre!("operating-system home directory is unavailable"))?;
+
 	if !path.is_absolute()
 		|| metadata.file_type().is_symlink()
 		|| !metadata.is_dir()
@@ -1028,12 +1175,16 @@ fn kill_process_group(child_id: u32) {
 fn drain_bounded(mut reader: impl std::io::Read) -> std::io::Result<Vec<u8>> {
 	let mut retained = Vec::new();
 	let mut buffer = [0_u8; 8192];
+
 	loop {
 		let read = reader.read(&mut buffer)?;
+
 		if read == 0 {
 			break;
 		}
+
 		let remaining = (MAX_XURL_OUTPUT_BYTES + 1).saturating_sub(retained.len());
+
 		retained.extend_from_slice(&buffer[..read.min(remaining)]);
 	}
 
@@ -1043,9 +1194,11 @@ fn drain_bounded(mut reader: impl std::io::Read) -> std::io::Result<Vec<u8>> {
 fn parse_json_output(bytes: &[u8], label: &str) -> Result<Value> {
 	let text = output_text(bytes, label)?;
 	let clean = strip_ansi(text);
+
 	if clean.len() > MAX_XURL_OUTPUT_BYTES {
 		return Err(eyre::eyre!("{label} exceeds the size limit"));
 	}
+
 	serde_json::from_str(clean.trim()).map_err(|_| eyre::eyre!("{label} is not valid JSON"))
 }
 
@@ -1053,15 +1206,18 @@ fn output_text<'a>(bytes: &'a [u8], label: &str) -> Result<&'a str> {
 	if bytes.len() > MAX_XURL_OUTPUT_BYTES {
 		return Err(eyre::eyre!("{label} exceeds the size limit"));
 	}
+
 	std::str::from_utf8(bytes).map_err(|_| eyre::eyre!("{label} is not UTF-8"))
 }
 
 fn strip_ansi(value: &str) -> String {
 	let mut output = String::with_capacity(value.len());
 	let mut characters = value.chars().peekable();
+
 	while let Some(character) = characters.next() {
 		if character == '\u{1b}' && characters.peek() == Some(&'[') {
 			characters.next();
+
 			for next in characters.by_ref() {
 				if next.is_ascii() && ('@'..='~').contains(&next) {
 					break;
@@ -1071,6 +1227,7 @@ fn strip_ansi(value: &str) -> String {
 			output.push(character);
 		}
 	}
+
 	output
 }
 
@@ -1116,6 +1273,7 @@ mod tests {
 	impl io::Read for SlowReader {
 		fn read(&mut self, _buffer: &mut [u8]) -> io::Result<usize> {
 			thread::sleep(Duration::from_millis(200));
+
 			Ok(0)
 		}
 	}
@@ -1132,6 +1290,7 @@ mod tests {
 			"      oauth2: decodexspace\n",
 		))
 		.expect("one target label in the literal default section");
+
 		assert!(
 			validate_auth_status_output(concat!(
 				"▸ personal  [client_id: first…]\n",
@@ -1167,11 +1326,14 @@ mod tests {
 			"#!/bin/sh\n[ -z \"${API_BASE_URL+x}\" ] || exit 1\nprintf '%s' \"$HOME\"\n",
 		);
 		let previous = std::env::var_os("API_BASE_URL");
+
 		unsafe {
 			std::env::set_var("API_BASE_URL", "https://attacker.invalid");
 		}
+
 		let binary = TrustedXurlBinary::open_for_test(&script).expect("trusted test binary");
 		let result = run_with_deadline(&binary, std::iter::empty::<&str>(), Duration::from_secs(3));
+
 		unsafe {
 			if let Some(value) = previous {
 				std::env::set_var("API_BASE_URL", value);
@@ -1179,7 +1341,9 @@ mod tests {
 				std::env::remove_var("API_BASE_URL");
 			}
 		}
+
 		let output = result.expect("clean environment probe");
+
 		assert!(output.status.success());
 		assert_eq!(output.stdout, binary.home.as_os_str().as_bytes());
 	}
@@ -1194,6 +1358,7 @@ mod tests {
 			run_with_deadline(&binary, std::iter::empty::<&str>(), Duration::from_millis(100))
 				.expect_err("hung process must time out")
 				.to_string();
+
 		assert!(error.contains("bounded deadline"));
 		assert!(started.elapsed() < Duration::from_secs(3));
 	}
@@ -1226,6 +1391,7 @@ mod tests {
 		let binary = TrustedXurlBinary::open_for_test(&script).expect("trusted test binary");
 		let output = run_with_deadline(&binary, std::iter::empty::<&str>(), Duration::from_secs(3))
 			.expect("large output process must finish");
+
 		assert!(output.status.success());
 		assert_eq!(output.stdout.len(), MAX_XURL_OUTPUT_BYTES + 1);
 	}
@@ -1236,15 +1402,21 @@ mod tests {
 		let runtime = temp.path().join("runtime");
 		let retained = temp.path().join("retained");
 		let attacker = temp.path().join("attacker");
+
 		fs::create_dir(&runtime).expect("runtime directory");
 		fs::create_dir(&attacker).expect("attacker directory");
+
 		let trusted_path =
 			executable_script(&runtime, "xurl-current", "#!/bin/sh\nprintf 'trusted\\n'\n");
 		let mut binary =
 			TrustedXurlBinary::open_for_test(&trusted_path).expect("pinned test binary");
+
 		binary.home = temp.path().to_path_buf();
+
 		executable_script(&attacker, "xurl-current", "#!/bin/sh\nprintf 'malicious\\n'\nexit 99\n");
+
 		fs::rename(&runtime, &retained).expect("move validated runtime directory");
+
 		symlink(&attacker, &runtime).expect("replace runtime path");
 
 		let output = run_with_deadline(&binary, std::iter::empty::<&str>(), Duration::from_secs(3))
@@ -1264,7 +1436,6 @@ mod tests {
 		);
 		let binary = TrustedXurlBinary::open_for_test(&trusted_path).expect("pinned test binary");
 		let started = Instant::now();
-
 		let error = run_with_deadline_inner(
 			&binary,
 			std::iter::empty::<&str>(),
@@ -1285,18 +1456,21 @@ mod tests {
 	fn private_runtime_gc_retains_only_the_current_copy() {
 		let temp = tempfile::tempdir().expect("tempdir");
 		let runtime_path = temp.path().join("runtime");
+
 		fs::create_dir(&runtime_path).expect("runtime directory");
 		fs::set_permissions(&runtime_path, fs::Permissions::from_mode(0o700))
 			.expect("runtime permissions");
+
 		let runtime = File::open(&runtime_path).expect("runtime descriptor");
 		let stale = b"#!/bin/sh\nprintf 'stale\\n'\n";
 		let stale_digest = sha256(stale);
+
 		write_runtime_entry(&runtime_path, &format!("xurl-{stale_digest}"), stale);
 		write_runtime_entry(&runtime_path, ".stage-0123456789abcdef0123456789abcdef", b"partial");
+
 		let current = b"#!/bin/sh\nprintf 'current\\n'\n";
 		let current_digest = sha256(current);
 		let home = trusted_home_directory().expect("trusted home");
-
 		let binary = install_private_copy_in(
 			&runtime,
 			current,
@@ -1309,9 +1483,12 @@ mod tests {
 			.expect("runtime entries")
 			.map(|entry| entry.expect("runtime entry").file_name())
 			.collect::<Vec<_>>();
+
 		assert_eq!(retained, [OsString::from(format!("xurl-{current_digest}"))]);
+
 		let output = run_with_deadline(&binary, std::iter::empty::<&str>(), Duration::from_secs(3))
 			.expect("current copy executes");
+
 		assert_eq!(output.stdout, b"current\n");
 	}
 
@@ -1319,13 +1496,16 @@ mod tests {
 	fn private_runtime_gc_fails_closed_on_a_symlink() {
 		let temp = tempfile::tempdir().expect("tempdir");
 		let runtime_path = temp.path().join("runtime");
+
 		fs::create_dir(&runtime_path).expect("runtime directory");
 		fs::set_permissions(&runtime_path, fs::Permissions::from_mode(0o700))
 			.expect("runtime permissions");
+
 		let runtime = File::open(&runtime_path).expect("runtime descriptor");
 		let current = b"#!/bin/sh\nprintf 'current\\n'\n";
 		let current_digest = sha256(current);
 		let home = trusted_home_directory().expect("trusted home");
+
 		symlink(
 			"/bin/sh",
 			runtime_path
@@ -1350,9 +1530,10 @@ mod tests {
 	fn private_xurl_entrypoint_accepts_only_the_fixed_secure_home_relative_path() {
 		let temp = crate::repo_local_test_directory("xurl-home-");
 		let bin = temp.path().join(".local/bin");
-		fs::create_dir_all(&bin).expect("private bin");
-		let script = executable_script(&bin, "xurl", "#!/bin/sh\nexit 0\n");
 
+		fs::create_dir_all(&bin).expect("private bin");
+
+		let script = executable_script(&bin, "xurl", "#!/bin/sh\nexit 0\n");
 		let resolved =
 			resolve_trusted_xurl_entrypoint(temp.path()).expect("secure private entrypoint");
 
@@ -1365,9 +1546,13 @@ mod tests {
 			for relative in ["", ".local", ".local/bin", ".local/bin/xurl"] {
 				let temp = crate::repo_local_test_directory("xurl-home-");
 				let bin = temp.path().join(".local/bin");
+
 				fs::create_dir_all(&bin).expect("private bin");
+
 				executable_script(&bin, "xurl", "#!/bin/sh\nexit 0\n");
+
 				let insecure = temp.path().join(relative);
+
 				fs::set_permissions(&insecure, fs::Permissions::from_mode(mode))
 					.expect("unsafe permissions");
 
@@ -1387,8 +1572,11 @@ mod tests {
 	fn private_xurl_entrypoint_rejects_a_final_symlink() {
 		let temp = crate::repo_local_test_directory("xurl-home-");
 		let bin = temp.path().join(".local/bin");
+
 		fs::create_dir_all(&bin).expect("private bin");
+
 		let target = executable_script(&bin, "xurl-real", "#!/bin/sh\nexit 0\n");
+
 		symlink(target, bin.join("xurl")).expect("xurl symlink");
 
 		let error = resolve_trusted_xurl_entrypoint(temp.path())
@@ -1401,11 +1589,14 @@ mod tests {
 	#[test]
 	fn binary_and_runtime_readers_reject_fifos_without_waiting_for_a_writer() {
 		use std::os::unix::fs::OpenOptionsExt as _;
+
 		for kind in ["source", "copy", "stage"] {
 			let temp = tempfile::tempdir().expect("tempdir");
 			let path = temp.path().join("fifo");
 			let name = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+
 			assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+
 			let runtime = File::open(temp.path()).unwrap();
 			let input = path.clone();
 			let (sender, receiver) = std::sync::mpsc::channel();
@@ -1417,6 +1608,7 @@ mod tests {
 					_ => super::open_runtime_gc_entry(&runtime, &OsString::from("fifo"))
 						.and_then(|file| super::validate_runtime_gc_metadata(&file.metadata()?)),
 				};
+
 				sender.send(result).unwrap();
 			});
 			let result = receiver.recv_timeout(Duration::from_secs(2));
@@ -1429,8 +1621,11 @@ mod tests {
 					.open(&path)
 					.unwrap()
 			});
+
 			reader.join().unwrap();
+
 			drop(release);
+
 			assert!(result.expect("FIFO open must not wait for a writer").is_err(), "{kind}");
 		}
 	}
@@ -1440,7 +1635,6 @@ mod tests {
 		let temp = tempfile::tempdir().expect("tempdir");
 		let binary =
 			executable_script(temp.path(), "xurl", "#!/bin/sh\nprintf 'xurl version 1.3.1\\n'\n");
-
 		let error = read_verified_binary(&binary)
 			.expect_err("an arbitrary self-reporting binary must fail")
 			.to_string();
@@ -1452,15 +1646,19 @@ mod tests {
 	fn repository_automation_has_no_raw_xurl_execution_path() {
 		let root = crate::repo_root().expect("repository root");
 		let mut files = Vec::new();
+
 		collect_source_files(&root.join("automations"), &mut files);
 		collect_source_files(&root.join("apps/decodex-publisher/src"), &mut files);
+
 		for path in files {
 			if path.ends_with("social_xurl/runtime.rs")
 				|| path.ends_with("social_xurl/auth_contract.rs")
 			{
 				continue;
 			}
+
 			let source = fs::read_to_string(&path).expect("audited source");
+
 			for forbidden in [
 				"subprocess.run([\"xurl",
 				"subprocess.run(['xurl",
@@ -1489,6 +1687,7 @@ mod tests {
 							|| argument.starts_with('/')
 							|| matches!(argument, "auth" | "post" | "read")
 					});
+
 				assert!(!raw_command, "raw xurl command found in {}", path.display());
 			}
 		}
@@ -1496,6 +1695,7 @@ mod tests {
 
 	fn write_runtime_entry(root: &std::path::Path, name: &str, bytes: &[u8]) {
 		let path = root.join(name);
+
 		fs::write(&path, bytes).expect("runtime entry");
 		fs::set_permissions(&path, fs::Permissions::from_mode(0o500))
 			.expect("runtime entry permissions");
@@ -1503,10 +1703,15 @@ mod tests {
 
 	fn executable_script(root: &std::path::Path, name: &str, body: &str) -> std::path::PathBuf {
 		let path = root.join(name);
+
 		fs::write(&path, body).expect("script");
+
 		let mut permissions = fs::metadata(&path).expect("metadata").permissions();
+
 		permissions.set_mode(0o700);
+
 		fs::set_permissions(&path, permissions).expect("permissions");
+
 		path
 	}
 
@@ -1514,6 +1719,7 @@ mod tests {
 		for entry in fs::read_dir(root).expect("source directory") {
 			let entry = entry.expect("source entry");
 			let path = entry.path();
+
 			if path.is_dir() {
 				collect_source_files(&path, files);
 			} else if matches!(

@@ -21,6 +21,7 @@ impl ValidateSocialCommand {
 			let payload = crate::load_json(&path)?;
 
 			crate::validate_generated_social_artifact(&payload)?;
+
 			println!("validated 1 social artifact file(s)");
 
 			return Ok(());

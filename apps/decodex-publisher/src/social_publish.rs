@@ -21,10 +21,12 @@ pub(crate) fn reserve_social_publish(
 	if !valid_run_id(&request.run_id) {
 		return Err(eyre::eyre!("run_id must be a lowercase UUID"));
 	}
+
 	let reserved_at = OffsetDateTime::parse(&request.reserved_at, &Rfc3339)
 		.map_err(|_| eyre::eyre!("reserved_at must be an RFC3339 timestamp"))?;
 	let expires_at = OffsetDateTime::parse(&request.expires_at, &Rfc3339)
 		.map_err(|_| eyre::eyre!("expires_at must be an RFC3339 timestamp"))?;
+
 	if expires_at <= reserved_at {
 		return Err(eyre::eyre!("expires_at must be later than reserved_at"));
 	}
@@ -32,25 +34,32 @@ pub(crate) fn reserve_social_publish(
 	let root = crate::repo_root()?;
 	let candidates_dir = crate::resolve_against(&root, &request.candidates_dir);
 	let candidate_path = crate::resolve_against(&root, &request.candidate_path);
+
 	crate::require_contained_regular_file(&candidate_path, &candidates_dir)
 		.map_err(|error| eyre::eyre!("candidate is invalid: {error}"))?;
+
 	let (candidate, _) = crate::load_json_with_sha256(&candidate_path)?;
+
 	crate::validate_generated_social_artifact(&candidate)
 		.map_err(|error| eyre::eyre!("candidate failed validation: {error}"))?;
 	crate::social_evidence::validate_source_evidence(&candidate)
 		.map_err(|error| eyre::eyre!("candidate evidence failed validation: {error}"))?;
+
 	if candidate.get("schema").and_then(serde_json::Value::as_str)
 		!= Some(crate::SOCIAL_CANDIDATE_SCHEMA)
 	{
 		return Err(eyre::eyre!("candidate must use {}", crate::SOCIAL_CANDIDATE_SCHEMA));
 	}
+
 	let decision = candidate
 		.get("decision")
 		.and_then(serde_json::Value::as_object)
 		.ok_or_else(|| eyre::eyre!("candidate decision is required"))?;
+
 	if decision.get("worthiness").and_then(serde_json::Value::as_str) != Some("publish") {
 		return Err(eyre::eyre!("candidate decision.worthiness must be publish"));
 	}
+
 	let idempotency_key = decision
 		.get("idempotency_key")
 		.and_then(serde_json::Value::as_str)
@@ -60,7 +69,9 @@ pub(crate) fn reserve_social_publish(
 	let posts_dir = crate::resolve_against(&root, &request.posts_dir);
 	let attempts_dir = crate::resolve_against(&root, &request.attempts_dir);
 	let _state_lock = scan::acquire_social_state_lock(&request.locks_dir)?;
+
 	scan::expire_active_reservations(&out_dir, reserved_at)?;
+
 	if let Some(conflict) = crate::social_xurl::publication_effect_conflict(
 		&attempts_dir,
 		&publication_lineage_sha256,
@@ -80,6 +91,7 @@ pub(crate) fn reserve_social_publish(
 			crate::path_arg(&root, &conflict)
 		));
 	}
+
 	let reservation_path =
 		out_dir.join(&request.day).join(format!("{}.json", idempotency_digest(idempotency_key)));
 	let scan =
@@ -100,6 +112,7 @@ pub(crate) fn reserve_social_publish(
 			request.daily_limit
 		));
 	}
+
 	let reservation_path = reservation_path_for_write(
 		&root,
 		&out_dir,
@@ -110,7 +123,6 @@ pub(crate) fn reserve_social_publish(
 		&publication_lineage_sha256,
 		request,
 	)?;
-
 	let payload =
 		payload::social_publish_reservation_payload(request, &root, &candidate, &candidate_path)?;
 
@@ -141,16 +153,21 @@ pub(crate) fn release_orphaned_active_reservation(
 	if !valid_run_id(replacement_run_id) {
 		return Err(eyre::eyre!("replacement run_id must be a lowercase UUID"));
 	}
+
 	let root = crate::repo_root()?;
 	let reservations_dir = crate::resolve_against(&root, reservations_dir);
 	let attempts_dir = crate::resolve_against(&root, attempts_dir);
 	let reservation_path = crate::resolve_against(&root, reservation_path);
 	let _state_lock = scan::acquire_social_state_lock(locks_dir)?;
+
 	crate::require_contained_regular_file(&reservation_path, &reservations_dir)
 		.map_err(|error| eyre::eyre!("orphaned reservation is invalid: {error}"))?;
+
 	let reservation = crate::load_json(&reservation_path)?;
+
 	crate::validate_generated_social_artifact(&reservation)
 		.map_err(|error| eyre::eyre!("orphaned reservation failed validation: {error}"))?;
+
 	if reservation.get("schema").and_then(Value::as_str)
 		!= Some(crate::SOCIAL_PUBLISH_RESERVATION_SCHEMA)
 	{
@@ -159,10 +176,12 @@ pub(crate) fn release_orphaned_active_reservation(
 	if reservation.get("status").and_then(Value::as_str) != Some("active") {
 		return Ok(false);
 	}
+
 	let owner_run_id = reservation
 		.pointer("/owner/run_id")
 		.and_then(Value::as_str)
 		.ok_or_else(|| eyre::eyre!("orphaned reservation owner is missing"))?;
+
 	if !valid_run_id(owner_run_id) {
 		return Err(eyre::eyre!("orphaned reservation owner is invalid"));
 	}
@@ -171,15 +190,19 @@ pub(crate) fn release_orphaned_active_reservation(
 	}
 
 	let reservation_ref = crate::path_arg(&root, &reservation_path);
+
 	for path in crate::collect_json_files(&[attempts_dir])? {
 		let payload = crate::load_json(&path)?;
+
 		match payload.get("schema").and_then(Value::as_str) {
 			Some(crate::social_xurl::model::ATTEMPT_SCHEMA) => {
 				let attempt: crate::social_xurl::model::XurlAttempt =
 					serde_json::from_value(payload).map_err(|_| {
 						eyre::eyre!("{} is not a valid xurl publication attempt", path.display())
 					})?;
+
 				crate::social_xurl::ledger::validate_publication_cost_record(&attempt)?;
+
 				if attempt.reservation_ref == reservation_ref {
 					return Err(eyre::eyre!(
 						"publication reservation has a durable xurl attempt and cannot be owner-released"
@@ -191,6 +214,7 @@ pub(crate) fn release_orphaned_active_reservation(
 					serde_json::from_value(payload).map_err(|_| {
 						eyre::eyre!("{} is not a valid xurl observation attempt", path.display())
 					})?;
+
 				crate::social_xurl::ledger::validate_observation_cost_record(&attempt)?;
 			},
 			_ => return Err(eyre::eyre!("{} has invalid xurl attempt state", path.display())),
@@ -201,13 +225,16 @@ pub(crate) fn release_orphaned_active_reservation(
 	let object = released
 		.as_object_mut()
 		.ok_or_else(|| eyre::eyre!("publication reservation must be an object"))?;
+
 	object.insert("status".into(), Value::String("expired".into()));
 	object.insert(
 		"release_reason".into(),
 		Value::String("Reservation owner ended before any durable xurl attempt.".into()),
 	);
+
 	crate::validate_generated_social_artifact(&released)?;
 	crate::replace_existing_json(&reservation_path, &reservation, &released)?;
+
 	Ok(true)
 }
 
@@ -229,15 +256,20 @@ fn reservation_path_for_write(
 		Err(error) => return Err(error.into()),
 		Ok(_) => {},
 	}
+
 	crate::require_contained_regular_file(default_path, reservations_dir)
 		.map_err(|error| eyre::eyre!("prior reservation is invalid: {error}"))?;
+
 	let prior = crate::load_json(default_path)?;
+
 	crate::validate_generated_social_artifact(&prior)
 		.map_err(|error| eyre::eyre!("prior reservation failed validation: {error}"))?;
+
 	let prior_run_id = prior
 		.pointer("/owner/run_id")
 		.and_then(Value::as_str)
 		.ok_or_else(|| eyre::eyre!("prior reservation owner is missing"))?;
+
 	if prior.get("schema").and_then(Value::as_str) != Some(crate::SOCIAL_PUBLISH_RESERVATION_SCHEMA)
 		|| prior.get("idempotency_key").and_then(Value::as_str) != Some(idempotency_key)
 		|| prior.get("publication_lineage_sha256").and_then(Value::as_str)
@@ -254,8 +286,10 @@ fn reservation_path_for_write(
 
 	let prior_reservation_ref = crate::path_arg(root, default_path);
 	let mut attempts = Vec::new();
+
 	for path in crate::collect_json_files(&[attempts_dir.to_path_buf()])? {
 		let attempt = crate::load_json(&path)?;
+
 		if attempt.get("schema").and_then(Value::as_str)
 			== Some(crate::social_xurl::model::ATTEMPT_SCHEMA)
 			&& attempt.get("run_id").and_then(Value::as_str) == Some(prior_run_id)
@@ -265,6 +299,7 @@ fn reservation_path_for_write(
 			attempts.push(path);
 		}
 	}
+
 	let released_without_attempt = attempts.is_empty()
 		&& matches!(prior.get("status").and_then(Value::as_str), Some("expired" | "canceled"));
 	let terminal_no_create_attempt = attempts.len() == 1
@@ -273,6 +308,7 @@ fn reservation_path_for_write(
 			attempts_dir,
 			reservations_dir,
 		)?;
+
 	if !released_without_attempt && !terminal_no_create_attempt {
 		return Err(eyre::eyre!(
 			"existing deterministic reservation is not a terminal no-create recovery"
@@ -284,6 +320,7 @@ fn reservation_path_for_write(
 		idempotency_digest(idempotency_key),
 		request.run_id
 	));
+
 	match std::fs::symlink_metadata(&retry_path) {
 		Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(retry_path),
 		Err(error) => Err(error.into()),
@@ -297,6 +334,7 @@ pub(crate) fn idempotency_digest(idempotency_key: &str) -> String {
 
 pub(crate) fn valid_run_id(value: &str) -> bool {
 	let bytes = value.as_bytes();
+
 	bytes.len() == 36
 		&& matches!(bytes.get(8), Some(b'-'))
 		&& matches!(bytes.get(13), Some(b'-'))

@@ -50,11 +50,14 @@ pub(super) fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<
 	validate_social_post_owner(entry.get("owner"), errors);
 	validate_social_post_text(entry.get("text"), errors);
 	validate_social_post_source_refs(entry.get("source_refs"), errors);
+
 	if social_validation::string_field(entry, "status") == Some("published") {
 		if entry.get("text").and_then(Value::as_array).map(Vec::len) != Some(1) {
 			errors.push("published text must contain exactly one item".into());
 		}
+
 		let refs = entry.get("source_refs").and_then(Value::as_object);
+
 		for field in ["reservations", "social_candidates"] {
 			if refs.and_then(|refs| refs.get(field)).and_then(Value::as_array).map(Vec::len)
 				!= Some(1)
@@ -62,6 +65,7 @@ pub(super) fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<
 				errors.push(format!("published source_refs.{field} must contain exactly one item"));
 			}
 		}
+
 		if entry
 			.get("text")
 			.and_then(Value::as_array)
@@ -78,6 +82,7 @@ pub(super) fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<
 		"evidence_notes",
 		errors,
 	);
+
 	validate_social_post_claims(
 		entry.get("claims"),
 		entry.get("source_refs"),
@@ -95,9 +100,12 @@ pub(super) fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<
 fn validate_social_post_owner(owner: Option<&Value>, errors: &mut Vec<String>) {
 	let Some(owner) = owner.and_then(Value::as_object) else {
 		errors.push("owner must be an object".into());
+
 		return;
 	};
+
 	social_validation::validate_exact_keys(owner, "owner", &["automation_id", "run_id"], errors);
+
 	if social_validation::string_field(owner, "automation_id") != Some("decodex-xurl-publisher") {
 		errors.push("owner.automation_id must be decodex-xurl-publisher".into());
 	}

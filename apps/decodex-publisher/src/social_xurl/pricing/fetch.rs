@@ -51,10 +51,12 @@ impl PricingFetchFailure {
 pub(super) fn fetch_official() -> Result<Vec<u8>, PricingFetchFailure> {
 	validate_curl()
 		.map_err(|_| PricingFetchFailure::before_get("x_pricing_fetch_runtime_invalid"))?;
+
 	let deadline = Instant::now()
 		.checked_add(FETCH_DEADLINE)
 		.ok_or_else(|| PricingFetchFailure::before_get("x_pricing_deadline_exceeded"))?;
 	let mut command = Command::new(CURL_PATH);
+
 	command
 		.args(curl_arguments())
 		.current_dir("/")
@@ -66,6 +68,7 @@ pub(super) fn fetch_official() -> Result<Vec<u8>, PricingFetchFailure> {
 		.stdout(Stdio::piped())
 		.stderr(Stdio::piped())
 		.process_group(0);
+
 	let mut child = command
 		.spawn()
 		.map_err(|_| PricingFetchFailure::before_get("x_pricing_network_unavailable"))?;
@@ -79,11 +82,11 @@ pub(super) fn fetch_official() -> Result<Vec<u8>, PricingFetchFailure> {
 		.ok_or_else(|| terminate_with(&mut child, "x_pricing_fetch_runtime_invalid"))?;
 	let (stdout_receiver, stdout_reader) = spawn_bounded_reader(stdout, MAX_SOURCE_BYTES as usize);
 	let (stderr_receiver, stderr_reader) = spawn_bounded_reader(stderr, MAX_STDERR_BYTES);
-
 	let wait = match remaining(deadline) {
 		Ok(wait) => wait,
 		Err(error) => {
 			terminate(&mut child);
+
 			return Err(error);
 		},
 	};
@@ -91,16 +94,21 @@ pub(super) fn fetch_official() -> Result<Vec<u8>, PricingFetchFailure> {
 		Ok(Some(status)) => status,
 		Ok(None) => {
 			terminate(&mut child);
+
 			return Err(PricingFetchFailure::after_get("x_pricing_deadline_exceeded"));
 		},
 		Err(_) => {
 			terminate(&mut child);
+
 			return Err(PricingFetchFailure::after_get("x_pricing_network_unavailable"));
 		},
 	};
+
 	kill_process_group(child.id());
+
 	let stdout = receive_bounded_reader(stdout_receiver, stdout_reader, deadline)?;
 	let stderr = receive_bounded_reader(stderr_receiver, stderr_reader, deadline)?;
+
 	if stderr.len() > MAX_STDERR_BYTES {
 		return Err(PricingFetchFailure::after_get("x_pricing_fetch_output_oversize"));
 	}
@@ -119,6 +127,7 @@ pub(super) fn fetch_official() -> Result<Vec<u8>, PricingFetchFailure> {
 	if stdout.is_empty() {
 		return Err(PricingFetchFailure::after_get("x_pricing_source_empty"));
 	}
+
 	Ok(stdout)
 }
 
@@ -153,6 +162,7 @@ pub(super) fn curl_arguments() -> Vec<&'static str> {
 
 fn validate_curl() -> std::io::Result<()> {
 	let metadata = fs::symlink_metadata(Path::new(CURL_PATH))?;
+
 	if metadata.file_type().is_symlink()
 		|| !metadata.is_file()
 		|| metadata.uid() != 0
@@ -162,6 +172,7 @@ fn validate_curl() -> std::io::Result<()> {
 	{
 		return Err(std::io::Error::other("system curl metadata is not trusted"));
 	}
+
 	Ok(())
 }
 
@@ -175,6 +186,7 @@ fn spawn_bounded_reader(
 	let handle = thread::spawn(move || {
 		let _ = sender.send(drain_bounded(reader, max_bytes));
 	});
+
 	(receiver, handle)
 }
 
@@ -187,21 +199,28 @@ fn receive_bounded_reader(
 		.recv_timeout(remaining(deadline)?)
 		.map_err(|_| PricingFetchFailure::after_get("x_pricing_deadline_exceeded"))?
 		.map_err(|_| PricingFetchFailure::after_get("x_pricing_source_read_invalid"))?;
+
 	handle.join().map_err(|_| PricingFetchFailure::after_get("x_pricing_source_read_invalid"))?;
+
 	Ok(output)
 }
 
 fn drain_bounded(mut reader: impl std::io::Read, max_bytes: usize) -> std::io::Result<Vec<u8>> {
 	let mut retained = Vec::new();
 	let mut buffer = [0_u8; 8192];
+
 	loop {
 		let read = reader.read(&mut buffer)?;
+
 		if read == 0 {
 			break;
 		}
+
 		let remaining = max_bytes.saturating_add(1).saturating_sub(retained.len());
+
 		retained.extend_from_slice(&buffer[..read.min(remaining)]);
 	}
+
 	Ok(retained)
 }
 
@@ -214,11 +233,13 @@ fn remaining(deadline: Instant) -> Result<Duration, PricingFetchFailure> {
 
 fn terminate_with(child: &mut Child, code: &'static str) -> PricingFetchFailure {
 	terminate(child);
+
 	PricingFetchFailure::after_get(code)
 }
 
 fn terminate(child: &mut Child) {
 	kill_process_group(child.id());
+
 	let _ = child.kill();
 	let _ = child.wait();
 }
@@ -238,6 +259,7 @@ mod tests {
 	#[test]
 	fn curl_contract_is_one_credential_free_official_https_get() {
 		let arguments = curl_arguments();
+
 		assert_eq!(arguments.iter().filter(|argument| **argument == "GET").count(), 1);
 		assert_eq!(
 			arguments.iter().filter(|argument| **argument == OFFICIAL_PRICING_SOURCE).count(),
@@ -247,7 +269,9 @@ mod tests {
 		assert!(arguments.windows(2).any(|pair| pair == ["--max-redirs", "0"]));
 		assert!(arguments.windows(2).any(|pair| pair == ["--max-time", "10"]));
 		assert!(arguments.windows(2).any(|pair| pair == ["--max-filesize", "1048576"]));
+
 		let folded = arguments.join(" ").to_ascii_lowercase();
+
 		for forbidden in ["oauth", "token", "authorization:", "/2/", "xurl"] {
 			assert!(!folded.contains(forbidden), "{forbidden}");
 		}
@@ -258,6 +282,7 @@ mod tests {
 		let source = vec![b'x'; MAX_SOURCE_BYTES as usize + 8192];
 		let retained =
 			drain_bounded(source.as_slice(), MAX_SOURCE_BYTES as usize).expect("bounded read");
+
 		assert_eq!(retained.len(), MAX_SOURCE_BYTES as usize + 1);
 	}
 }

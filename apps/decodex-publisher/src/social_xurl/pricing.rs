@@ -128,16 +128,19 @@ struct StoredPricingFailure {
 
 pub(super) fn require_current_at(now: OffsetDateTime) -> Result<()> {
 	let path = default_receipt_path()?;
+
 	require_current_at_path(&path, now)
 }
 
 pub(super) fn report_at(now: OffsetDateTime) -> Result<XPricingPolicyReport> {
 	let path = default_receipt_path()?;
+
 	report_at_path(&path, now)
 }
 
 pub(super) fn refresh_at(now: OffsetDateTime) -> Result<SocialRefreshPricingReport> {
 	let path = default_receipt_path()?;
+
 	refresh_at_path_with(&path, now, fetch::fetch_official)
 }
 
@@ -151,8 +154,11 @@ where
 {
 	let parent =
 		path.parent().ok_or_else(|| eyre::eyre!("X pricing audit receipt path is invalid"))?;
+
 	crate::ensure_private_directory(parent)?;
+
 	let lock = crate::open_or_create_private_lock(&parent.join(PRICING_LOCK_NAME))?;
+
 	lock.lock()?;
 
 	let fetched_at = format_refresh_time(now);
@@ -160,6 +166,7 @@ where
 	let previous = load_optional_receipt(path)?;
 	let failure_path = failure_receipt_path(path)?;
 	let previous_failure = load_optional_failure_receipt(&failure_path)?;
+
 	require_refresh_time(recorded_at, previous.as_ref(), previous_failure.as_ref())?;
 
 	let raw = match fetcher() {
@@ -168,6 +175,7 @@ where
 			let receipt_status =
 				stored_status(previous.as_ref(), previous_failure.as_ref(), recorded_at);
 			let status = if receipt_status == "current" { "network_deferred" } else { "blocked" };
+
 			return Ok(refresh_report(
 				status,
 				receipt_status,
@@ -177,7 +185,6 @@ where
 			));
 		},
 	};
-
 	let raw_sha256 = digest(&raw);
 	let rates = match parser::parse(&raw) {
 		Ok(rates) => rates,
@@ -195,15 +202,21 @@ where
 				diagnostic,
 				integrity_sha256: String::new(),
 			};
+
 			receipt.integrity_sha256 = failure_integrity_sha256(&receipt);
+
 			validate_failure_receipt(&receipt)?;
+
 			let payload = serde_json::to_value(&receipt)?;
+
 			write_private_json(
 				&failure_path,
 				previous_failure.as_ref().map(|stored| &stored.payload),
 				&payload,
 			)?;
+
 			let stored = load_stored_failure_receipt(&failure_path)?;
+
 			if stored.payload != payload || stored.verified.fetched_at != recorded_at {
 				return Err(eyre::eyre!("X pricing failure receipt readback did not match"));
 			}
@@ -221,7 +234,6 @@ where
 			});
 		},
 	};
-
 	let mut receipt = XPricingReceipt {
 		schema: RECEIPT_SCHEMA.into(),
 		parser_version: PARSER_VERSION.into(),
@@ -231,15 +243,23 @@ where
 		rates_microusd: rates,
 		integrity_sha256: String::new(),
 	};
+
 	receipt.integrity_sha256 = integrity_sha256(&receipt);
+
 	validate_receipt(&receipt)?;
+
 	let payload = serde_json::to_value(&receipt)?;
+
 	write_private_json(path, previous.as_ref().map(|stored| &stored.payload), &payload)?;
+
 	let stored = load_stored_receipt(path)?;
+
 	if stored.payload != payload || stored.verified.receipt != receipt {
 		return Err(eyre::eyre!("X pricing success receipt readback did not match"));
 	}
+
 	remove_failure_receipt(&failure_path, previous_failure.as_ref())?;
+
 	let receipt_status = status_at(&stored.verified, None, recorded_at);
 
 	Ok(refresh_report(receipt_status, receipt_status, Some(&stored.verified), None, 1))
@@ -271,6 +291,7 @@ fn require_refresh_time(
 	{
 		return Err(eyre::eyre!("X pricing refresh timestamp must advance stored evidence"));
 	}
+
 	Ok(())
 }
 
@@ -318,9 +339,11 @@ fn stored_status(
 
 fn write_private_json(path: &Path, previous: Option<&Value>, payload: &Value) -> Result<()> {
 	let encoded = serde_json::to_vec_pretty(payload)?;
+
 	if encoded.len().saturating_add(1) > MAX_RECEIPT_BYTES as usize {
 		return Err(eyre::eyre!("X pricing receipt exceeds its bounded size"));
 	}
+
 	if let Some(previous) = previous {
 		crate::replace_existing_json(path, previous, payload)
 	} else {
@@ -331,12 +354,16 @@ fn write_private_json(path: &Path, previous: Option<&Value>, payload: &Value) ->
 fn remove_failure_receipt(path: &Path, previous: Option<&StoredPricingFailure>) -> Result<()> {
 	let Some(previous) = previous else { return Ok(()) };
 	let pinned = crate::filesystem::PinnedPrivateJsonFile::open(path, MAX_RECEIPT_BYTES)?;
+
 	if pinned.payload != previous.payload {
 		return Err(eyre::eyre!("X pricing failure receipt changed before cleanup"));
 	}
+
 	let receipt: XPricingFailureReceipt = serde_json::from_value(pinned.payload.clone())
 		.map_err(|_| eyre::eyre!("X pricing failure receipt contract is invalid"))?;
+
 	validate_failure_receipt(&receipt)?;
+
 	pinned.unlink()
 }
 
@@ -350,6 +377,7 @@ fn require_current_at_path(path: &Path, now: OffsetDateTime) -> Result<()> {
 		Err(error) => return Err(error),
 	};
 	let status = status_at(&verified, failure.as_ref(), now);
+
 	if status != "current" {
 		return Err(eyre::eyre!("X pricing policy is not current: {status}"));
 	}
@@ -367,6 +395,7 @@ fn report_at_path(path: &Path, now: OffsetDateTime) -> Result<XPricingPolicyRepo
 		Err(error) => return Err(error),
 	};
 	let status = status_at(&verified, failure.as_ref(), now);
+
 	Ok(XPricingPolicyReport {
 		policy_id: PRICING_POLICY_ID.into(),
 		official_source: OFFICIAL_PRICING_SOURCE.into(),
@@ -388,6 +417,7 @@ fn failure_receipt_path(success_path: &Path) -> Result<PathBuf> {
 	let parent = success_path
 		.parent()
 		.ok_or_else(|| eyre::eyre!("X pricing audit receipt path is invalid"))?;
+
 	Ok(parent.join(FAILURE_RECEIPT_NAME))
 }
 
@@ -408,13 +438,15 @@ fn load_stored_receipt(path: &Path) -> Result<StoredPricingReceipt> {
 		.map_err(|error| eyre::eyre!("X pricing audit receipt is unavailable: {error}"))?;
 	let receipt: XPricingReceipt = serde_json::from_value(payload)
 		.map_err(|_| eyre::eyre!("X pricing audit receipt contract is invalid"))?;
+
 	validate_receipt(&receipt)?;
+
 	let fetched_at = parse_time(&receipt.fetched_at)?;
 	let expires_at = fetched_at
 		.checked_add(MAX_RECEIPT_AGE)
 		.ok_or_else(|| eyre::eyre!("X pricing receipt expiry is invalid"))?;
-
 	let payload = serde_json::to_value(&receipt)?;
+
 	Ok(StoredPricingReceipt {
 		payload,
 		verified: VerifiedPricingReceipt { receipt, fetched_at, expires_at },
@@ -433,6 +465,7 @@ fn load_optional_failure_receipt(path: &Path) -> Result<Option<StoredPricingFail
 			return Err(eyre::eyre!("X pricing failure receipt is unavailable: {error}"));
 		},
 	}
+
 	load_stored_failure_receipt(path).map(Some)
 }
 
@@ -441,9 +474,12 @@ fn load_stored_failure_receipt(path: &Path) -> Result<StoredPricingFailure> {
 		.map_err(|error| eyre::eyre!("X pricing failure receipt is unavailable: {error}"))?;
 	let receipt: XPricingFailureReceipt = serde_json::from_value(payload)
 		.map_err(|_| eyre::eyre!("X pricing failure receipt contract is invalid"))?;
+
 	validate_failure_receipt(&receipt)?;
+
 	let fetched_at = parse_time(&receipt.fetched_at)?;
 	let payload = serde_json::to_value(&receipt)?;
+
 	Ok(StoredPricingFailure { payload, verified: VerifiedPricingFailure { fetched_at } })
 }
 
@@ -465,6 +501,7 @@ fn validate_receipt(receipt: &XPricingReceipt) -> Result<()> {
 	{
 		return Err(eyre::eyre!("X pricing audit receipt contract is invalid"));
 	}
+
 	parse_time(&receipt.fetched_at)?;
 
 	Ok(())
@@ -473,6 +510,7 @@ fn validate_receipt(receipt: &XPricingReceipt) -> Result<()> {
 fn validate_failure_receipt(receipt: &XPricingFailureReceipt) -> Result<()> {
 	let diagnostic: XPricingDiagnostic = serde_json::from_value(receipt.diagnostic.clone())
 		.map_err(|_| eyre::eyre!("X pricing failure receipt contract is invalid"))?;
+
 	if receipt.schema != FAILURE_RECEIPT_SCHEMA
 		|| receipt.parser_version != PARSER_VERSION
 		|| receipt.source_url != OFFICIAL_PRICING_SOURCE
@@ -490,7 +528,9 @@ fn validate_failure_receipt(receipt: &XPricingFailureReceipt) -> Result<()> {
 	{
 		return Err(eyre::eyre!("X pricing failure receipt contract is invalid"));
 	}
+
 	parse_time(&receipt.fetched_at)?;
+
 	Ok(())
 }
 
@@ -508,6 +548,7 @@ fn valid_diagnostic(diagnostic: &XPricingDiagnostic) -> bool {
 	{
 		return false;
 	}
+
 	for table in &diagnostic.tables {
 		if !bounded_diagnostic_text(&table.nearest_h2)
 			|| !bounded_diagnostic_text(&table.nearest_h3)
@@ -522,6 +563,7 @@ fn valid_diagnostic(diagnostic: &XPricingDiagnostic) -> bool {
 		{
 			return false;
 		}
+
 		for row in &table.sample_rows {
 			if row.cells.len() > 2
 				|| row.cells.iter().any(|cell| !bounded_diagnostic_text(cell))
@@ -531,6 +573,7 @@ fn valid_diagnostic(diagnostic: &XPricingDiagnostic) -> bool {
 			}
 		}
 	}
+
 	true
 }
 
@@ -584,6 +627,7 @@ fn integrity_sha256(receipt: &XPricingReceipt) -> String {
 		rates.post_read,
 		rates.user_read,
 	);
+
 	Sha256::digest(material.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -598,12 +642,15 @@ fn failure_integrity_sha256(receipt: &XPricingFailureReceipt) -> String {
 		receipt.error_code,
 		receipt.diagnostic_sha256,
 	);
+
 	Sha256::digest(material.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn canonical_json_sha256(value: &Value) -> Result<String> {
 	let mut canonical = String::new();
+
 	write_canonical_json(value, &mut canonical)?;
+
 	Ok(Sha256::digest(canonical.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
@@ -618,32 +665,42 @@ fn write_canonical_json(value: &Value, output: &mut String) -> Result<()> {
 		),
 		Value::Array(values) => {
 			output.push('[');
+
 			for (index, value) in values.iter().enumerate() {
 				if index > 0 {
 					output.push(',');
 				}
+
 				write_canonical_json(value, output)?;
 			}
+
 			output.push(']');
 		},
 		Value::Object(values) => {
 			output.push('{');
+
 			let mut keys: Vec<_> = values.keys().collect();
+
 			keys.sort_unstable();
+
 			for (index, key) in keys.into_iter().enumerate() {
 				if index > 0 {
 					output.push(',');
 				}
+
 				output.push_str(
 					&serde_json::to_string(key)
 						.map_err(|_| eyre::eyre!("X pricing diagnostic key is invalid"))?,
 				);
 				output.push(':');
+
 				write_canonical_json(&values[key], output)?;
 			}
+
 			output.push('}');
 		},
 	}
+
 	Ok(())
 }
 
@@ -651,6 +708,7 @@ fn parse_time(value: &str) -> Result<OffsetDateTime> {
 	if value.len() != 20 || !value.ends_with('Z') {
 		return Err(eyre::eyre!("X pricing receipt fetched_at is invalid"));
 	}
+
 	OffsetDateTime::parse(value, &Rfc3339)
 		.map_err(|_| eyre::eyre!("X pricing receipt fetched_at is invalid"))
 }
