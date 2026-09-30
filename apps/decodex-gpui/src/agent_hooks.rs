@@ -109,7 +109,6 @@ impl AgentSurface {
 			None
 		};
 		let saving = action.is_some();
-		let generation = self.generation;
 		self.hook_settings.epoch = self.hook_settings.epoch.wrapping_add(1);
 		let epoch = self.hook_settings.epoch;
 		self.hook_settings.work = Some(work.clone());
@@ -134,7 +133,7 @@ impl AgentSurface {
 		self.hook_settings.task = Some(cx.spawn(async move |surface, cx| {
 			let result = future.await;
 			let _ = surface.update(cx, |s, cx| {
-				if s.generation != generation || s.hook_settings.epoch != epoch {
+				if s.hook_settings.epoch != epoch {
 					return;
 				}
 				s.hook_settings.task = None;
