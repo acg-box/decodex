@@ -2,8 +2,10 @@
 
 use std::{
 	ffi::{CStr, CString, OsStr, OsString},
+	fmt::Write as _,
 	fs::{File, Metadata},
-	io::{Read as _, Write as _},
+	io::{Error, ErrorKind, Read, Write as _},
+	mem::MaybeUninit,
 	os::{
 		fd::{AsRawFd as _, FromRawFd as _, IntoRawFd as _, RawFd},
 		unix::{
@@ -15,14 +17,21 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use crate::prelude::{Result, eyre};
+use libc::{
+	AT_REMOVEDIR, AT_SYMLINK_NOFOLLOW, DIR, F_DUPFD_CLOEXEC, LOCK_EX, LOCK_NB, LOCK_UN, O_CLOEXEC,
+	O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_NONBLOCK, O_RDONLY, O_RDWR, S_IFDIR, S_IFMT,
+	S_IFREG, c_uint, mode_t, stat,
+};
+
+use crate::prelude::{self, eyre};
+
+pub(crate) const TEMP_FILE_PREFIX: &str = ".radar-tmp-";
 
 const CACHE_MARKER: [&str; 4] = [".agent", "automations", "radar", "cache"];
 const LOCK_FILE_NAME: &str = ".radar.lock";
-const MAX_PRIVATE_READ_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_PRIVATE_READ_BYTES: u64 = 64 * 1_024 * 1_024;
 const PRIVATE_DIR_MODE: u32 = 0o700;
 const PRIVATE_FILE_MODE: u32 = 0o600;
-pub(crate) const TEMP_FILE_PREFIX: &str = ".radar-tmp-";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PrivateFileIdentity {
@@ -80,34 +89,34 @@ pub(crate) struct PrivateCache {
 	direct_root: bool,
 }
 impl PrivateCache {
-	pub(crate) fn open_or_create(path: &Path) -> Result<Self> {
+	pub(crate) fn open_or_create(path: &Path) -> prelude::Result<Self> {
 		open_cache_root(path, true)
 	}
 
-	pub(crate) fn open_existing(path: &Path) -> Result<Self> {
+	pub(crate) fn open_existing(path: &Path) -> prelude::Result<Self> {
 		open_cache_root(path, false)
 	}
 
-	pub(crate) fn lock(self) -> Result<RadarCacheLock> {
+	pub(crate) fn lock(self) -> prelude::Result<RadarCacheLock> {
 		self.lock_with_flags(false)
 	}
 
 	#[cfg(test)]
-	pub(crate) fn try_lock(self) -> Result<RadarCacheLock> {
+	pub(crate) fn try_lock(self) -> prelude::Result<RadarCacheLock> {
 		self.lock_with_flags(true)
 	}
 
-	fn lock_with_flags(self, nonblocking: bool) -> Result<RadarCacheLock> {
+	fn lock_with_flags(self, nonblocking: bool) -> prelude::Result<RadarCacheLock> {
 		self.verify_binding()?;
 
 		let relative = Path::new(LOCK_FILE_NAME);
 		let (parent, name) = self.open_parent(relative, true)?;
 		let file = open_or_create_regular_file(parent.as_raw_fd(), &name)?;
 		let identity = validate_open_file(&file, "lock file")?;
-		let operation = libc::LOCK_EX | if nonblocking { libc::LOCK_NB } else { 0 };
+		let operation = LOCK_EX | if nonblocking { LOCK_NB } else { 0 };
 
 		if unsafe { libc::flock(file.as_raw_fd(), operation) } == -1 {
-			return Err(std::io::Error::last_os_error().into());
+			return Err(Error::last_os_error().into());
 		}
 
 		let current = file_snapshot_at(parent.as_raw_fd(), &name)?
@@ -124,11 +133,11 @@ impl PrivateCache {
 		Ok(RadarCacheLock { cache: self, file, identity })
 	}
 
-	pub(crate) fn read(&self, relative: &Path) -> Result<Vec<u8>> {
+	pub(crate) fn read(&self, relative: &Path) -> prelude::Result<Vec<u8>> {
 		self.read_bounded(relative, MAX_PRIVATE_READ_BYTES)
 	}
 
-	pub(crate) fn read_bounded(&self, relative: &Path, max_bytes: u64) -> Result<Vec<u8>> {
+	pub(crate) fn read_bounded(&self, relative: &Path, max_bytes: u64) -> prelude::Result<Vec<u8>> {
 		self.read_bounded_with(relative, max_bytes, || {})
 	}
 
@@ -137,7 +146,7 @@ impl PrivateCache {
 		relative: &Path,
 		max_bytes: u64,
 		after_metadata: impl FnOnce(),
-	) -> Result<Vec<u8>> {
+	) -> prelude::Result<Vec<u8>> {
 		let (mut file, initial) = self.open_regular_file(relative)?;
 
 		if initial.size > max_bytes {
@@ -151,7 +160,7 @@ impl PrivateCache {
 			.checked_add(1)
 			.ok_or_else(|| eyre::eyre!("Radar cache read limit is too large"))?;
 
-		std::io::Read::by_ref(&mut file).take(read_limit).read_to_end(&mut payload)?;
+		Read::by_ref(&mut file).take(read_limit).read_to_end(&mut payload)?;
 
 		if u64::try_from(payload.len()).unwrap_or(u64::MAX) > max_bytes {
 			eyre::bail!("Radar cache file exceeds the bounded read limit");
@@ -173,7 +182,7 @@ impl PrivateCache {
 		Ok(payload)
 	}
 
-	pub(crate) fn entries(&self, relative: &Path) -> Result<Vec<PrivateEntry>> {
+	pub(crate) fn entries(&self, relative: &Path) -> prelude::Result<Vec<PrivateEntry>> {
 		let directory = self.open_directory(relative, false)?;
 		let mut entries = directory_entries(directory.as_raw_fd())?;
 
@@ -183,7 +192,7 @@ impl PrivateCache {
 		Ok(entries)
 	}
 
-	pub(crate) fn metadata(&self, relative: &Path) -> Result<Option<PrivateFileIdentity>> {
+	pub(crate) fn metadata(&self, relative: &Path) -> prelude::Result<Option<PrivateFileIdentity>> {
 		let (parent, name) = match self.open_parent(relative, false) {
 			Ok(value) => value,
 			Err(error) if is_not_found(&error) => return Ok(None),
@@ -200,7 +209,7 @@ impl PrivateCache {
 			.transpose()
 	}
 
-	pub(crate) fn entry_kind(&self, relative: &Path) -> Result<Option<PrivateEntryKind>> {
+	pub(crate) fn entry_kind(&self, relative: &Path) -> prelude::Result<Option<PrivateEntryKind>> {
 		self.entry_kind_with(relative, || {})
 	}
 
@@ -208,7 +217,7 @@ impl PrivateCache {
 		&self,
 		relative: &Path,
 		after_snapshot: impl FnOnce(),
-	) -> Result<Option<PrivateEntryKind>> {
+	) -> prelude::Result<Option<PrivateEntryKind>> {
 		let (parent, name) = match self.open_parent(relative, false) {
 			Ok(value) => value,
 			Err(error) if is_not_found(&error) => {
@@ -226,11 +235,11 @@ impl PrivateCache {
 
 		after_snapshot();
 
-		let kind = if snapshot.file_type == u32::from(libc::S_IFREG) {
+		let kind = if snapshot.file_type == u32::from(S_IFREG) {
 			validate_private_file_snapshot(&snapshot, "entry")?;
 
 			PrivateEntryKind::File
-		} else if snapshot.file_type == u32::from(libc::S_IFDIR) {
+		} else if snapshot.file_type == u32::from(S_IFDIR) {
 			validate_private_directory_snapshot(&snapshot, "entry")?;
 
 			PrivateEntryKind::Directory
@@ -252,14 +261,14 @@ impl PrivateCache {
 		Ok(Some(kind))
 	}
 
-	pub(crate) fn create_directory_all(&self, relative: &Path) -> Result<()> {
+	pub(crate) fn create_directory_all(&self, relative: &Path) -> prelude::Result<()> {
 		drop(self.open_directory(relative, true)?);
 
 		self.verify_binding()
 	}
 
 	#[cfg(test)]
-	pub(crate) fn create_new_file(&self, relative: &Path) -> Result<File> {
+	pub(crate) fn create_new_file(&self, relative: &Path) -> prelude::Result<File> {
 		let (parent, name) = self.open_parent(relative, true)?;
 		let file = create_regular_file(parent.as_raw_fd(), &name)?;
 
@@ -275,7 +284,7 @@ impl PrivateCache {
 		&self,
 		relative: &Path,
 		expected: &PrivateFileIdentity,
-	) -> Result<()> {
+	) -> prelude::Result<()> {
 		let (file, identity) = self.open_regular_file(relative)?;
 
 		drop(file);
@@ -287,7 +296,7 @@ impl PrivateCache {
 		Ok(())
 	}
 
-	fn open_regular_file(&self, relative: &Path) -> Result<(File, PrivateFileIdentity)> {
+	fn open_regular_file(&self, relative: &Path) -> prelude::Result<(File, PrivateFileIdentity)> {
 		self.verify_binding()?;
 
 		let (parent, name) = self.open_parent(relative, false)?;
@@ -307,7 +316,7 @@ impl PrivateCache {
 		Ok((file, identity))
 	}
 
-	fn open_parent(&self, relative: &Path, create: bool) -> Result<(File, CString)> {
+	fn open_parent(&self, relative: &Path, create: bool) -> prelude::Result<(File, CString)> {
 		let components = relative_components(relative)?;
 		let (name, directories) = components
 			.split_last()
@@ -317,13 +326,17 @@ impl PrivateCache {
 		Ok((directory, c_string(name)?))
 	}
 
-	fn open_directory(&self, relative: &Path, create: bool) -> Result<File> {
+	fn open_directory(&self, relative: &Path, create: bool) -> prelude::Result<File> {
 		let components = relative_components(relative)?;
 
 		self.open_directory_components(&components, create)
 	}
 
-	fn open_directory_components(&self, components: &[OsString], create: bool) -> Result<File> {
+	fn open_directory_components(
+		&self,
+		components: &[OsString],
+		create: bool,
+	) -> prelude::Result<File> {
 		self.verify_binding()?;
 
 		let mut directory = duplicate_file(&self.root)?;
@@ -341,7 +354,7 @@ impl PrivateCache {
 		Ok(directory)
 	}
 
-	fn verify_binding(&self) -> Result<()> {
+	fn verify_binding(&self) -> prelude::Result<()> {
 		#[cfg(test)]
 		let reopened = if self.direct_root {
 			open_directory_path_direct(&self.root_path)?
@@ -371,11 +384,11 @@ impl RadarCacheLock {
 		&self.cache
 	}
 
-	pub(crate) fn read(&self, relative: &Path) -> Result<Vec<u8>> {
+	pub(crate) fn read(&self, relative: &Path) -> prelude::Result<Vec<u8>> {
 		self.read_bounded(relative, MAX_PRIVATE_READ_BYTES)
 	}
 
-	pub(crate) fn read_bounded(&self, relative: &Path, max_bytes: u64) -> Result<Vec<u8>> {
+	pub(crate) fn read_bounded(&self, relative: &Path, max_bytes: u64) -> prelude::Result<Vec<u8>> {
 		self.verify_lock()?;
 
 		let payload = self.cache.read_bounded(relative, max_bytes)?;
@@ -385,7 +398,7 @@ impl RadarCacheLock {
 		Ok(payload)
 	}
 
-	pub(crate) fn write_atomic(&self, relative: &Path, payload: &[u8]) -> Result<()> {
+	pub(crate) fn write_atomic(&self, relative: &Path, payload: &[u8]) -> prelude::Result<()> {
 		validate_write_destination(relative)?;
 
 		self.verify_lock()?;
@@ -423,7 +436,7 @@ impl RadarCacheLock {
 		relative: &Path,
 		expected: Option<&PrivateFileIdentity>,
 		payload: &[u8],
-	) -> Result<PrivateFileIdentity> {
+	) -> prelude::Result<PrivateFileIdentity> {
 		validate_write_destination(relative)?;
 
 		self.verify_lock()?;
@@ -466,7 +479,7 @@ impl RadarCacheLock {
 		&self,
 		relative: &Path,
 		expected: &PrivateFileIdentity,
-	) -> Result<()> {
+	) -> prelude::Result<()> {
 		self.verify_lock()?;
 
 		let (parent, name) = self.cache.open_parent(relative, false)?;
@@ -500,7 +513,7 @@ impl RadarCacheLock {
 		self.verify_lock()
 	}
 
-	pub(crate) fn remove_directory_atomic(&self, relative: &Path) -> Result<()> {
+	pub(crate) fn remove_directory_atomic(&self, relative: &Path) -> prelude::Result<()> {
 		let components = relative_components(relative)?;
 		let (name, directories) = components
 			.split_last()
@@ -525,7 +538,7 @@ impl RadarCacheLock {
 			)
 		} == -1
 		{
-			return Err(std::io::Error::last_os_error().into());
+			return Err(Error::last_os_error().into());
 		}
 
 		parent.sync_all()?;
@@ -537,7 +550,7 @@ impl RadarCacheLock {
 		self.verify_lock()
 	}
 
-	pub(crate) fn bootstrap_cache_is_empty(&self) -> Result<bool> {
+	pub(crate) fn bootstrap_cache_is_empty(&self) -> prelude::Result<bool> {
 		self.verify_lock()?;
 
 		let entries = self.cache.entries(Path::new(""))?;
@@ -545,7 +558,7 @@ impl RadarCacheLock {
 		Ok(entries.iter().all(|entry| entry.name == OsStr::new(LOCK_FILE_NAME)))
 	}
 
-	pub(crate) fn relative_path(&self, path: &Path) -> Result<PathBuf> {
+	pub(crate) fn relative_path(&self, path: &Path) -> prelude::Result<PathBuf> {
 		let location = private_file_path(path)?;
 		let expected_root = absolute_path_without_traversal(&self.cache.root_path)?;
 		let actual_root = absolute_path_without_traversal(&location.root)?;
@@ -557,7 +570,7 @@ impl RadarCacheLock {
 		Ok(location.relative)
 	}
 
-	fn verify_lock(&self) -> Result<()> {
+	fn verify_lock(&self) -> prelude::Result<()> {
 		let identity = validate_open_file(&self.file, "lock file")?;
 
 		if identity != self.identity {
@@ -570,7 +583,7 @@ impl RadarCacheLock {
 impl Drop for RadarCacheLock {
 	fn drop(&mut self) {
 		unsafe {
-			libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
+			libc::flock(self.file.as_raw_fd(), LOCK_UN);
 		}
 	}
 }
@@ -598,11 +611,14 @@ impl PrivateTestDirectory {
 		&self.path
 	}
 
-	fn remove(&self) -> Result<()> {
+	fn remove(&self) -> prelude::Result<()> {
 		self.remove_with_before_unlink(|| {})
 	}
 
-	pub(crate) fn remove_with_before_unlink(&self, before_unlink: impl FnOnce()) -> Result<()> {
+	pub(crate) fn remove_with_before_unlink(
+		&self,
+		before_unlink: impl FnOnce(),
+	) -> prelude::Result<()> {
 		verify_test_parent_binding(&self.parent_path, &self.parent, &self.parent_identity)?;
 
 		let identity = directory_identity(&self.directory, "test directory")?;
@@ -620,11 +636,10 @@ impl PrivateTestDirectory {
 			"test directory",
 		)?;
 
-		if unsafe {
-			libc::unlinkat(self.parent.as_raw_fd(), self.name.as_ptr(), libc::AT_REMOVEDIR)
-		} == -1
+		if unsafe { libc::unlinkat(self.parent.as_raw_fd(), self.name.as_ptr(), AT_REMOVEDIR) }
+			== -1
 		{
-			return Err(std::io::Error::last_os_error().into());
+			return Err(Error::last_os_error().into());
 		}
 
 		self.parent.sync_all()?;
@@ -652,7 +667,7 @@ struct FileSnapshot {
 	file_type: u32,
 }
 
-fn open_cache_root(path: &Path, create: bool) -> Result<PrivateCache> {
+fn open_cache_root(path: &Path, create: bool) -> prelude::Result<PrivateCache> {
 	let root_path = absolute_path_without_traversal(path)?;
 
 	#[cfg(test)]
@@ -675,7 +690,7 @@ fn open_cache_root(path: &Path, create: bool) -> Result<PrivateCache> {
 }
 
 #[cfg(test)]
-fn open_sandbox_cache_root(path: &Path, create: bool) -> Result<Option<PrivateCache>> {
+fn open_sandbox_cache_root(path: &Path, create: bool) -> prelude::Result<Option<PrivateCache>> {
 	let sandbox_root = std::env::var_os("TMPDIR")
 		.ok_or_else(|| eyre::eyre!("sandboxed Radar tests require TMPDIR"))?;
 	let sandbox_root = absolute_path_without_traversal(Path::new(&sandbox_root))?;
@@ -709,7 +724,7 @@ fn open_sandbox_private_cache_root(
 	sandbox_root: &Path,
 	relative: &Path,
 	create: bool,
-) -> Result<PrivateCache> {
+) -> prelude::Result<PrivateCache> {
 	let metadata = std::fs::symlink_metadata(sandbox_root)?;
 
 	if metadata.file_type().is_symlink() || !metadata.is_dir() {
@@ -755,7 +770,7 @@ fn open_sandbox_candidate_cache_root(
 	path: &Path,
 	candidate: &Path,
 	relative: &Path,
-) -> Result<PrivateCache> {
+) -> prelude::Result<PrivateCache> {
 	let metadata = std::fs::symlink_metadata(candidate)?;
 
 	if metadata.file_type().is_symlink() || !metadata.is_dir() {
@@ -793,7 +808,7 @@ fn open_sandbox_candidate_cache_root(
 	})
 }
 
-fn open_cache_root_file(path: &Path, create: bool) -> Result<File> {
+fn open_cache_root_file(path: &Path, create: bool) -> prelude::Result<File> {
 	let (_, components) = absolute_components(path)?;
 	let private_start = cache_private_start(&components);
 	let mut directory = File::open("/")?;
@@ -820,13 +835,13 @@ fn cache_private_start(components: &[OsString]) -> usize {
 		.map_or_else(|| components.len().saturating_sub(1), |index| index + CACHE_MARKER.len() - 1)
 }
 
-fn absolute_path_without_traversal(path: &Path) -> Result<PathBuf> {
+fn absolute_path_without_traversal(path: &Path) -> prelude::Result<PathBuf> {
 	let (absolute, _) = absolute_components(path)?;
 
 	Ok(absolute)
 }
 
-fn absolute_components(path: &Path) -> Result<(PathBuf, Vec<OsString>)> {
+fn absolute_components(path: &Path) -> prelude::Result<(PathBuf, Vec<OsString>)> {
 	reject_unsafe_components(path)?;
 
 	let absolute =
@@ -850,7 +865,7 @@ fn absolute_components(path: &Path) -> Result<(PathBuf, Vec<OsString>)> {
 	Ok((absolute, components))
 }
 
-fn reject_unsafe_components(path: &Path) -> Result<()> {
+fn reject_unsafe_components(path: &Path) -> prelude::Result<()> {
 	if path.components().any(|component| matches!(component, Component::ParentDir)) {
 		eyre::bail!("Radar cache path must not contain '..'");
 	}
@@ -858,7 +873,7 @@ fn reject_unsafe_components(path: &Path) -> Result<()> {
 	Ok(())
 }
 
-fn relative_components(path: &Path) -> Result<Vec<OsString>> {
+fn relative_components(path: &Path) -> prelude::Result<Vec<OsString>> {
 	if path.is_absolute() {
 		eyre::bail!("Radar cache-relative path must not be absolute");
 	}
@@ -878,7 +893,7 @@ fn relative_components(path: &Path) -> Result<Vec<OsString>> {
 	Ok(components)
 }
 
-fn validate_write_destination(path: &Path) -> Result<()> {
+fn validate_write_destination(path: &Path) -> prelude::Result<()> {
 	let components = relative_components(path)?;
 	let name = components
 		.last()
@@ -893,16 +908,14 @@ fn validate_write_destination(path: &Path) -> Result<()> {
 	Ok(())
 }
 
-fn open_or_create_directory(parent: RawFd, name: &CStr, create: bool) -> Result<File> {
+fn open_or_create_directory(parent: RawFd, name: &CStr, create: bool) -> prelude::Result<File> {
 	match open_directory_at(parent, name) {
 		Ok(file) => Ok(file),
-		Err(error) if create && error.kind() == std::io::ErrorKind::NotFound => {
-			if unsafe { libc::mkdirat(parent, name.as_ptr(), PRIVATE_DIR_MODE as libc::mode_t) }
-				== -1
-			{
-				let mkdir_error = std::io::Error::last_os_error();
+		Err(error) if create && error.kind() == ErrorKind::NotFound => {
+			if unsafe { libc::mkdirat(parent, name.as_ptr(), PRIVATE_DIR_MODE as mode_t) } == -1 {
+				let mkdir_error = Error::last_os_error();
 
-				if mkdir_error.kind() != std::io::ErrorKind::AlreadyExists {
+				if mkdir_error.kind() != ErrorKind::AlreadyExists {
 					return Err(mkdir_error.into());
 				}
 			}
@@ -915,40 +928,23 @@ fn open_or_create_directory(parent: RawFd, name: &CStr, create: bool) -> Result<
 
 fn open_directory_at(parent: RawFd, name: &CStr) -> std::io::Result<File> {
 	let fd = unsafe {
-		libc::openat(
-			parent,
-			name.as_ptr(),
-			libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-		)
+		libc::openat(parent, name.as_ptr(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
 	};
 
-	if fd == -1 {
-		Err(std::io::Error::last_os_error())
-	} else {
-		Ok(unsafe { File::from_raw_fd(fd) })
-	}
+	if fd == -1 { Err(Error::last_os_error()) } else { Ok(unsafe { File::from_raw_fd(fd) }) }
 }
 
 #[cfg(test)]
-fn open_directory_path_direct(path: &Path) -> Result<File> {
+fn open_directory_path_direct(path: &Path) -> prelude::Result<File> {
 	let path = CString::new(path.as_os_str().as_bytes())
 		.map_err(|_| eyre::eyre!("Radar test root path contains NUL"))?;
-	let fd = unsafe {
-		libc::open(
-			path.as_ptr(),
-			libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-		)
-	};
+	let fd = unsafe { libc::open(path.as_ptr(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) };
 
-	if fd == -1 {
-		Err(std::io::Error::last_os_error().into())
-	} else {
-		Ok(unsafe { File::from_raw_fd(fd) })
-	}
+	if fd == -1 { Err(Error::last_os_error().into()) } else { Ok(unsafe { File::from_raw_fd(fd) }) }
 }
 
 #[cfg(test)]
-fn open_test_parent_path(path: &Path) -> Result<File> {
+fn open_test_parent_path(path: &Path) -> prelude::Result<File> {
 	if std::env::var_os("DECODEX_CANDIDATE_SANDBOX").as_deref() == Some(OsStr::new("1")) {
 		let sandbox_root = std::env::var_os("TMPDIR")
 			.ok_or_else(|| eyre::eyre!("sandboxed Radar tests require TMPDIR"))?;
@@ -971,7 +967,7 @@ fn open_test_parent_path(path: &Path) -> Result<File> {
 }
 
 #[cfg(test)]
-fn validate_test_parent_directory(directory: &File) -> Result<DirectoryIdentity> {
+fn validate_test_parent_directory(directory: &File) -> prelude::Result<DirectoryIdentity> {
 	let metadata = directory.metadata()?;
 
 	if !metadata.is_dir() {
@@ -998,7 +994,7 @@ fn verify_test_parent_binding(
 	path: &Path,
 	held: &File,
 	expected: &DirectoryIdentity,
-) -> Result<()> {
+) -> prelude::Result<()> {
 	let held_identity = validate_test_parent_directory(held)?;
 	let reopened = open_test_parent_path(path)?;
 	let reopened_identity = validate_test_parent_directory(&reopened)?;
@@ -1010,52 +1006,40 @@ fn verify_test_parent_binding(
 	Ok(())
 }
 
-fn open_regular_file(parent: RawFd, name: &CStr) -> Result<File> {
+fn open_regular_file(parent: RawFd, name: &CStr) -> prelude::Result<File> {
+	let fd = unsafe {
+		libc::openat(parent, name.as_ptr(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
+	};
+
+	if fd == -1 { Err(Error::last_os_error().into()) } else { Ok(unsafe { File::from_raw_fd(fd) }) }
+}
+
+fn create_regular_file(parent: RawFd, name: &CStr) -> prelude::Result<File> {
 	let fd = unsafe {
 		libc::openat(
 			parent,
 			name.as_ptr(),
-			libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
+			O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
+			PRIVATE_FILE_MODE as c_uint,
 		)
 	};
 
-	if fd == -1 {
-		Err(std::io::Error::last_os_error().into())
-	} else {
-		Ok(unsafe { File::from_raw_fd(fd) })
-	}
+	if fd == -1 { Err(Error::last_os_error().into()) } else { Ok(unsafe { File::from_raw_fd(fd) }) }
 }
 
-fn create_regular_file(parent: RawFd, name: &CStr) -> Result<File> {
-	let fd = unsafe {
-		libc::openat(
-			parent,
-			name.as_ptr(),
-			libc::O_RDWR | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-			PRIVATE_FILE_MODE as libc::c_uint,
-		)
-	};
-
-	if fd == -1 {
-		Err(std::io::Error::last_os_error().into())
-	} else {
-		Ok(unsafe { File::from_raw_fd(fd) })
-	}
-}
-
-fn open_or_create_regular_file(parent: RawFd, name: &CStr) -> Result<File> {
+fn open_or_create_regular_file(parent: RawFd, name: &CStr) -> prelude::Result<File> {
 	match open_regular_file(parent, name) {
 		Ok(file) => Ok(file),
 		Err(error)
 			if error
-				.downcast_ref::<std::io::Error>()
-				.is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound) =>
+				.downcast_ref::<Error>()
+				.is_some_and(|error| error.kind() == ErrorKind::NotFound) =>
 			match create_regular_file(parent, name) {
 				Ok(file) => Ok(file),
 				Err(create_error)
 					if create_error
-						.downcast_ref::<std::io::Error>()
-						.is_some_and(|error| error.kind() == std::io::ErrorKind::AlreadyExists) =>
+						.downcast_ref::<Error>()
+						.is_some_and(|error| error.kind() == ErrorKind::AlreadyExists) =>
 					open_regular_file(parent, name),
 				Err(create_error) => Err(create_error),
 			},
@@ -1071,7 +1055,7 @@ fn write_and_replace(
 	mut temp: File,
 	original: Option<&FileSnapshot>,
 	payload: &[u8],
-) -> Result<PrivateFileIdentity> {
+) -> prelude::Result<PrivateFileIdentity> {
 	temp.write_all(payload)?;
 	temp.sync_all()?;
 
@@ -1090,7 +1074,7 @@ fn write_and_replace(
 		libc::renameat(parent.as_raw_fd(), temp_name.as_ptr(), parent.as_raw_fd(), name.as_ptr())
 	} == -1
 	{
-		return Err(std::io::Error::last_os_error().into());
+		return Err(Error::last_os_error().into());
 	}
 
 	let installed = file_snapshot_at(parent.as_raw_fd(), name)?
@@ -1127,20 +1111,15 @@ fn same_optional_identity(
 	}
 }
 
-fn file_snapshot_at(parent: RawFd, name: &CStr) -> Result<Option<FileSnapshot>> {
-	let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
-	let result = unsafe {
-		libc::fstatat(parent, name.as_ptr(), stat.as_mut_ptr(), libc::AT_SYMLINK_NOFOLLOW)
-	};
+fn file_snapshot_at(parent: RawFd, name: &CStr) -> prelude::Result<Option<FileSnapshot>> {
+	let mut stat = MaybeUninit::<stat>::uninit();
+	let result =
+		unsafe { libc::fstatat(parent, name.as_ptr(), stat.as_mut_ptr(), AT_SYMLINK_NOFOLLOW) };
 
 	if result == -1 {
-		let error = std::io::Error::last_os_error();
+		let error = Error::last_os_error();
 
-		return if error.kind() == std::io::ErrorKind::NotFound {
-			Ok(None)
-		} else {
-			Err(error.into())
-		};
+		return if error.kind() == ErrorKind::NotFound { Ok(None) } else { Err(error.into()) };
 	}
 
 	let stat = unsafe { stat.assume_init() };
@@ -1148,7 +1127,7 @@ fn file_snapshot_at(parent: RawFd, name: &CStr) -> Result<Option<FileSnapshot>> 
 	Ok(Some(snapshot_from_stat(&stat)))
 }
 
-fn snapshot_from_stat(stat: &libc::stat) -> FileSnapshot {
+fn snapshot_from_stat(stat: &stat) -> FileSnapshot {
 	FileSnapshot {
 		identity: PrivateFileIdentity {
 			dev: stat.st_dev as u64,
@@ -1162,19 +1141,19 @@ fn snapshot_from_stat(stat: &libc::stat) -> FileSnapshot {
 		mode: u32::from(stat.st_mode & 0o777),
 		uid: stat.st_uid,
 		nlink: u64::from(stat.st_nlink),
-		file_type: u32::from(stat.st_mode & libc::S_IFMT),
+		file_type: u32::from(stat.st_mode & S_IFMT),
 	}
 }
 
-fn stat_mtime_nanoseconds(stat: &libc::stat) -> i64 {
+fn stat_mtime_nanoseconds(stat: &stat) -> i64 {
 	stat.st_mtime_nsec
 }
 
-fn stat_ctime_nanoseconds(stat: &libc::stat) -> i64 {
+fn stat_ctime_nanoseconds(stat: &stat) -> i64 {
 	stat.st_ctime_nsec
 }
 
-fn validate_open_file(file: &File, label: &str) -> Result<PrivateFileIdentity> {
+fn validate_open_file(file: &File, label: &str) -> prelude::Result<PrivateFileIdentity> {
 	let metadata = file.metadata()?;
 
 	validate_private_file_metadata(&metadata, label)?;
@@ -1182,7 +1161,7 @@ fn validate_open_file(file: &File, label: &str) -> Result<PrivateFileIdentity> {
 	Ok(identity_from_metadata(&metadata))
 }
 
-fn validate_private_file_metadata(metadata: &Metadata, label: &str) -> Result<()> {
+fn validate_private_file_metadata(metadata: &Metadata, label: &str) -> prelude::Result<()> {
 	if !metadata.is_file() {
 		eyre::bail!("Radar cache {label} must be a regular file");
 	}
@@ -1197,8 +1176,8 @@ fn validate_private_file_metadata(metadata: &Metadata, label: &str) -> Result<()
 	)
 }
 
-fn validate_private_file_snapshot(snapshot: &FileSnapshot, label: &str) -> Result<()> {
-	if snapshot.file_type != u32::from(libc::S_IFREG) {
+fn validate_private_file_snapshot(snapshot: &FileSnapshot, label: &str) -> prelude::Result<()> {
+	if snapshot.file_type != u32::from(S_IFREG) {
 		eyre::bail!("Radar cache {label} must be a regular non-symlink");
 	}
 
@@ -1212,8 +1191,11 @@ fn validate_private_file_snapshot(snapshot: &FileSnapshot, label: &str) -> Resul
 	)
 }
 
-fn validate_private_directory_snapshot(snapshot: &FileSnapshot, label: &str) -> Result<()> {
-	if snapshot.file_type != u32::from(libc::S_IFDIR) {
+fn validate_private_directory_snapshot(
+	snapshot: &FileSnapshot,
+	label: &str,
+) -> prelude::Result<()> {
+	if snapshot.file_type != u32::from(S_IFDIR) {
 		eyre::bail!("Radar cache {label} must be a non-symlink directory");
 	}
 
@@ -1227,7 +1209,7 @@ fn validate_private_directory_snapshot(snapshot: &FileSnapshot, label: &str) -> 
 	)
 }
 
-fn validate_private_directory(file: &File, label: &str) -> Result<DirectoryIdentity> {
+fn validate_private_directory(file: &File, label: &str) -> prelude::Result<DirectoryIdentity> {
 	let metadata = file.metadata()?;
 
 	if !metadata.is_dir() {
@@ -1253,7 +1235,7 @@ fn validate_owner_mode_link(
 	expected_mode: u32,
 	label: &str,
 	require_single_link: bool,
-) -> Result<()> {
+) -> prelude::Result<()> {
 	let expected_uid = unsafe { libc::geteuid() };
 
 	if actual_uid != expected_uid {
@@ -1284,16 +1266,16 @@ fn identity_from_metadata(metadata: &Metadata) -> PrivateFileIdentity {
 	}
 }
 
-fn directory_entries(fd: RawFd) -> Result<Vec<PrivateEntry>> {
+fn directory_entries(fd: RawFd) -> prelude::Result<Vec<PrivateEntry>> {
 	directory_entries_bounded(fd, usize::MAX)
 }
 
-fn directory_entries_bounded(fd: RawFd, max_entries: usize) -> Result<Vec<PrivateEntry>> {
+fn directory_entries_bounded(fd: RawFd, max_entries: usize) -> prelude::Result<Vec<PrivateEntry>> {
 	let duplicate = open_directory_at(fd, c".")?.into_raw_fd();
 	let stream = unsafe { libc::fdopendir(duplicate) };
 
 	if stream.is_null() {
-		let error = std::io::Error::last_os_error();
+		let error = Error::last_os_error();
 
 		unsafe {
 			libc::close(duplicate);
@@ -1323,11 +1305,11 @@ fn directory_entries_bounded(fd: RawFd, max_entries: usize) -> Result<Vec<Privat
 
 		let snapshot = file_snapshot_at(fd, name)?
 			.ok_or_else(|| eyre::eyre!("Radar cache entry changed during directory scan"))?;
-		let kind = if snapshot.file_type == u32::from(libc::S_IFREG) {
+		let kind = if snapshot.file_type == u32::from(S_IFREG) {
 			validate_private_file_snapshot(&snapshot, "file")?;
 
 			PrivateEntryKind::File
-		} else if snapshot.file_type == u32::from(libc::S_IFDIR) {
+		} else if snapshot.file_type == u32::from(S_IFDIR) {
 			let child = open_directory_at(fd, name)?;
 
 			validate_private_directory(&child, "directory")?;
@@ -1347,7 +1329,7 @@ fn directory_entries_bounded(fd: RawFd, max_entries: usize) -> Result<Vec<Privat
 	Ok(entries)
 }
 
-struct DirectoryStream(*mut libc::DIR);
+struct DirectoryStream(*mut DIR);
 impl Drop for DirectoryStream {
 	fn drop(&mut self) {
 		unsafe {
@@ -1356,19 +1338,19 @@ impl Drop for DirectoryStream {
 	}
 }
 
-fn duplicate_file(file: &File) -> Result<File> {
+fn duplicate_file(file: &File) -> prelude::Result<File> {
 	let fd = duplicate_fd(file.as_raw_fd())?;
 
 	Ok(unsafe { File::from_raw_fd(fd) })
 }
 
-fn duplicate_fd(fd: RawFd) -> Result<RawFd> {
-	let duplicate = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
+fn duplicate_fd(fd: RawFd) -> prelude::Result<RawFd> {
+	let duplicate = unsafe { libc::fcntl(fd, F_DUPFD_CLOEXEC, 0) };
 
-	if duplicate == -1 { Err(std::io::Error::last_os_error().into()) } else { Ok(duplicate) }
+	if duplicate == -1 { Err(Error::last_os_error().into()) } else { Ok(duplicate) }
 }
 
-fn temporary_name() -> Result<CString> {
+fn temporary_name() -> prelude::Result<CString> {
 	let mut nonce = [0_u8; 16];
 
 	getrandom::fill(&mut nonce)
@@ -1379,8 +1361,6 @@ fn temporary_name() -> Result<CString> {
 	name.push_str(TEMP_FILE_PREFIX);
 
 	for byte in nonce {
-		use std::fmt::Write as _;
-
 		write!(&mut name, "{byte:02x}").expect("writing into a String must not fail");
 	}
 
@@ -1389,7 +1369,7 @@ fn temporary_name() -> Result<CString> {
 }
 
 #[cfg(test)]
-fn test_temporary_name() -> Result<CString> {
+fn test_temporary_name() -> prelude::Result<CString> {
 	let mut nonce = [0_u8; 8];
 
 	getrandom::fill(&mut nonce)
@@ -1400,8 +1380,6 @@ fn test_temporary_name() -> Result<CString> {
 	name.push_str("rt-");
 
 	for byte in nonce {
-		use std::fmt::Write as _;
-
 		write!(&mut name, "{byte:02x}").expect("writing into a String must not fail");
 	}
 
@@ -1409,15 +1387,15 @@ fn test_temporary_name() -> Result<CString> {
 		.map_err(|_| eyre::eyre!("generated Radar test name unexpectedly contains NUL"))
 }
 
-fn unlink_at(parent: RawFd, name: &CStr) -> Result<()> {
+fn unlink_at(parent: RawFd, name: &CStr) -> prelude::Result<()> {
 	if unsafe { libc::unlinkat(parent, name.as_ptr(), 0) } == -1 {
-		Err(std::io::Error::last_os_error().into())
+		Err(Error::last_os_error().into())
 	} else {
 		Ok(())
 	}
 }
 
-fn remove_directory_tree_at(parent: RawFd, name: &CStr) -> Result<()> {
+fn remove_directory_tree_at(parent: RawFd, name: &CStr) -> prelude::Result<()> {
 	let directory = open_directory_at(parent, name)?;
 
 	for entry in directory_entries(directory.as_raw_fd())? {
@@ -1432,20 +1410,20 @@ fn remove_directory_tree_at(parent: RawFd, name: &CStr) -> Result<()> {
 
 	drop(directory);
 
-	if unsafe { libc::unlinkat(parent, name.as_ptr(), libc::AT_REMOVEDIR) } == -1 {
-		return Err(std::io::Error::last_os_error().into());
+	if unsafe { libc::unlinkat(parent, name.as_ptr(), AT_REMOVEDIR) } == -1 {
+		return Err(Error::last_os_error().into());
 	}
 
 	Ok(())
 }
 
 #[cfg(test)]
-fn remove_test_directory_contents(directory: &File) -> Result<()> {
+fn remove_test_directory_contents(directory: &File) -> prelude::Result<()> {
 	let duplicate = open_directory_at(directory.as_raw_fd(), c".")?.into_raw_fd();
 	let stream = unsafe { libc::fdopendir(duplicate) };
 
 	if stream.is_null() {
-		let error = std::io::Error::last_os_error();
+		let error = Error::last_os_error();
 
 		unsafe {
 			libc::close(duplicate);
@@ -1485,7 +1463,7 @@ fn remove_test_directory_contents(directory: &File) -> Result<()> {
 		if current != expected {
 			eyre::bail!("Radar test entry identity changed during cleanup");
 		}
-		if expected.file_type == u32::from(libc::S_IFDIR) {
+		if expected.file_type == u32::from(S_IFDIR) {
 			let child = open_directory_at(directory.as_raw_fd(), &child_name)?;
 			let identity = directory_identity(&child, "test child directory")?;
 			let expected_identity =
@@ -1503,11 +1481,10 @@ fn remove_test_directory_contents(directory: &File) -> Result<()> {
 				"test child directory",
 			)?;
 
-			if unsafe {
-				libc::unlinkat(directory.as_raw_fd(), child_name.as_ptr(), libc::AT_REMOVEDIR)
-			} == -1
+			if unsafe { libc::unlinkat(directory.as_raw_fd(), child_name.as_ptr(), AT_REMOVEDIR) }
+				== -1
 			{
-				return Err(std::io::Error::last_os_error().into());
+				return Err(Error::last_os_error().into());
 			}
 		} else {
 			let rebound = file_snapshot_at(directory.as_raw_fd(), &child_name)?
@@ -1530,12 +1507,12 @@ fn verify_directory_binding_at(
 	name: &CStr,
 	expected: &DirectoryIdentity,
 	label: &str,
-) -> Result<()> {
+) -> prelude::Result<()> {
 	let snapshot = file_snapshot_at(parent, name)?
 		.ok_or_else(|| eyre::eyre!("Radar {label} disappeared during cleanup"))?;
 	let current = DirectoryIdentity { dev: snapshot.identity.dev, ino: snapshot.identity.ino };
 
-	if snapshot.file_type != u32::from(libc::S_IFDIR) || &current != expected {
+	if snapshot.file_type != u32::from(S_IFDIR) || &current != expected {
 		eyre::bail!("Radar {label} identity changed during cleanup");
 	}
 
@@ -1543,7 +1520,7 @@ fn verify_directory_binding_at(
 }
 
 #[cfg(test)]
-fn directory_identity(directory: &File, label: &str) -> Result<DirectoryIdentity> {
+fn directory_identity(directory: &File, label: &str) -> prelude::Result<DirectoryIdentity> {
 	let metadata = directory.metadata()?;
 
 	if !metadata.is_dir() {
@@ -1556,7 +1533,7 @@ fn directory_identity(directory: &File, label: &str) -> Result<DirectoryIdentity
 	Ok(DirectoryIdentity { dev: metadata.dev(), ino: metadata.ino() })
 }
 
-fn c_string(value: &OsStr) -> Result<CString> {
+fn c_string(value: &OsStr) -> prelude::Result<CString> {
 	CString::new(value.as_bytes())
 		.map_err(|_| eyre::eyre!("Radar cache path component contains NUL"))
 }
@@ -1564,8 +1541,8 @@ fn c_string(value: &OsStr) -> Result<CString> {
 fn is_not_found(error: &eyre::Report) -> bool {
 	error
 		.chain()
-		.find_map(|cause| cause.downcast_ref::<std::io::Error>())
-		.is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+		.find_map(|cause| cause.downcast_ref::<Error>())
+		.is_some_and(|error| error.kind() == ErrorKind::NotFound)
 }
 
 #[derive(Debug)]
@@ -1574,7 +1551,7 @@ struct PrivatePath {
 	relative: PathBuf,
 }
 
-fn private_file_path(path: &Path) -> Result<PrivatePath> {
+fn private_file_path(path: &Path) -> prelude::Result<PrivatePath> {
 	reject_unsafe_components(path)?;
 
 	let components = path.components().collect::<Vec<_>>();
@@ -1617,14 +1594,14 @@ fn private_file_path(path: &Path) -> Result<PrivatePath> {
 	Ok(PrivatePath { root, relative })
 }
 
-pub(crate) fn private_cache_file(path: &Path) -> Result<(PrivateCache, PathBuf)> {
+pub(crate) fn private_cache_file(path: &Path) -> prelude::Result<(PrivateCache, PathBuf)> {
 	let location = private_file_path(path)?;
 	let cache = PrivateCache::open_or_create(&location.root)?;
 
 	Ok((cache, location.relative))
 }
 
-pub(crate) fn private_cache_relative_path(path: &Path) -> Result<PathBuf> {
+pub(crate) fn private_cache_relative_path(path: &Path) -> prelude::Result<PathBuf> {
 	if !is_radar_cache_path(path) {
 		eyre::bail!("path must be below the private Radar cache root");
 	}
@@ -1632,20 +1609,23 @@ pub(crate) fn private_cache_relative_path(path: &Path) -> Result<PathBuf> {
 	Ok(private_file_path(path)?.relative)
 }
 
-pub(crate) fn read_private_file(path: &Path) -> Result<Vec<u8>> {
+pub(crate) fn read_private_file(path: &Path) -> prelude::Result<Vec<u8>> {
 	let location = private_file_path(path)?;
 	let cache = PrivateCache::open_existing(&location.root)?;
 
 	cache.read(&location.relative)
 }
 
-pub(crate) fn read_private_file_under_lock(lock: &RadarCacheLock, path: &Path) -> Result<Vec<u8>> {
+pub(crate) fn read_private_file_under_lock(
+	lock: &RadarCacheLock,
+	path: &Path,
+) -> prelude::Result<Vec<u8>> {
 	let relative = lock.relative_path(path)?;
 
 	lock.read(&relative)
 }
 
-pub(crate) fn write_private_file_atomic(path: &Path, payload: &[u8]) -> Result<()> {
+pub(crate) fn write_private_file_atomic(path: &Path, payload: &[u8]) -> prelude::Result<()> {
 	let location = private_file_path(path)?;
 	let cache = PrivateCache::open_or_create(&location.root)?;
 	let lock = cache.lock()?;
@@ -1653,7 +1633,7 @@ pub(crate) fn write_private_file_atomic(path: &Path, payload: &[u8]) -> Result<(
 	lock.write_atomic(&location.relative, payload)
 }
 
-pub(crate) fn collect_private_json_files(directory: &Path) -> Result<Vec<PathBuf>> {
+pub(crate) fn collect_private_json_files(directory: &Path) -> prelude::Result<Vec<PathBuf>> {
 	let location = private_file_path(directory)?;
 	let cache = PrivateCache::open_existing(&location.root)?;
 	let lock = cache.lock()?;
@@ -1666,7 +1646,9 @@ pub(crate) fn collect_private_json_files(directory: &Path) -> Result<Vec<PathBuf
 	Ok(files)
 }
 
-pub(crate) fn collect_private_json_files_if_present(directory: &Path) -> Result<Vec<PathBuf>> {
+pub(crate) fn collect_private_json_files_if_present(
+	directory: &Path,
+) -> prelude::Result<Vec<PathBuf>> {
 	match collect_private_json_files(directory) {
 		Ok(files) => Ok(files),
 		Err(error) if is_not_found(&error) => Ok(Vec::new()),
@@ -1677,7 +1659,7 @@ pub(crate) fn collect_private_json_files_if_present(directory: &Path) -> Result<
 pub(crate) fn collect_private_json_files_under_lock(
 	lock: &RadarCacheLock,
 	directory: &Path,
-) -> Result<Vec<PathBuf>> {
+) -> prelude::Result<Vec<PathBuf>> {
 	let relative = lock.relative_path(directory)?;
 	let mut files = Vec::new();
 
@@ -1691,7 +1673,7 @@ pub(crate) fn collect_private_json_files_under_lock(
 pub(crate) fn collect_private_json_files_under_lock_if_present(
 	lock: &RadarCacheLock,
 	directory: &Path,
-) -> Result<Vec<PathBuf>> {
+) -> prelude::Result<Vec<PathBuf>> {
 	match collect_private_json_files_under_lock(lock, directory) {
 		Ok(files) => Ok(files),
 		Err(error) if is_not_found(&error) => Ok(Vec::new()),
@@ -1699,7 +1681,7 @@ pub(crate) fn collect_private_json_files_under_lock_if_present(
 	}
 }
 
-pub(crate) fn private_file_exists(path: &Path) -> Result<bool> {
+pub(crate) fn private_file_exists(path: &Path) -> prelude::Result<bool> {
 	let location = private_file_path(path)?;
 	let cache = match PrivateCache::open_existing(&location.root) {
 		Ok(cache) => cache,
@@ -1710,7 +1692,7 @@ pub(crate) fn private_file_exists(path: &Path) -> Result<bool> {
 	Ok(cache.metadata(&location.relative)?.is_some())
 }
 
-pub(crate) fn private_entry_kind(path: &Path) -> Result<Option<PrivateEntryKind>> {
+pub(crate) fn private_entry_kind(path: &Path) -> prelude::Result<Option<PrivateEntryKind>> {
 	let location = private_file_path(path)?;
 	let cache = match PrivateCache::open_existing(&location.root) {
 		Ok(cache) => cache,
@@ -1725,14 +1707,17 @@ pub(crate) fn private_entry_kind(path: &Path) -> Result<Option<PrivateEntryKind>
 pub(crate) fn private_entry_kind_after_snapshot(
 	path: &Path,
 	after_snapshot: impl FnOnce(),
-) -> Result<Option<PrivateEntryKind>> {
+) -> prelude::Result<Option<PrivateEntryKind>> {
 	let location = private_file_path(path)?;
 	let cache = PrivateCache::open_existing(&location.root)?;
 
 	cache.entry_kind_with(&location.relative, after_snapshot)
 }
 
-pub(crate) fn private_file_exists_under_lock(lock: &RadarCacheLock, path: &Path) -> Result<bool> {
+pub(crate) fn private_file_exists_under_lock(
+	lock: &RadarCacheLock,
+	path: &Path,
+) -> prelude::Result<bool> {
 	let relative = lock.relative_path(path)?;
 
 	Ok(lock.cache().metadata(&relative)?.is_some())
@@ -1743,7 +1728,7 @@ pub(crate) fn read_private_file_bounded_after_metadata(
 	path: &Path,
 	max_bytes: u64,
 	after_metadata: impl FnOnce(),
-) -> Result<Vec<u8>> {
+) -> prelude::Result<Vec<u8>> {
 	let location = private_file_path(path)?;
 	let cache = PrivateCache::open_existing(&location.root)?;
 
@@ -1755,7 +1740,7 @@ fn collect_json_files_from_cache(
 	relative: &Path,
 	display_path: &Path,
 	files: &mut Vec<PathBuf>,
-) -> Result<()> {
+) -> prelude::Result<()> {
 	for entry in cache.entries(relative)? {
 		let child_relative = relative.join(&entry.name);
 		let child_display = display_path.join(&entry.name);
@@ -1777,7 +1762,7 @@ fn collect_json_files_from_cache(
 }
 
 #[cfg(test)]
-pub(crate) fn ensure_private_directory(path: &Path) -> Result<()> {
+pub(crate) fn ensure_private_directory(path: &Path) -> prelude::Result<()> {
 	reject_unsafe_components(path)?;
 
 	let components = path.components().collect::<Vec<_>>();
@@ -1812,7 +1797,9 @@ pub(crate) fn ensure_private_directory(path: &Path) -> Result<()> {
 }
 
 #[cfg(test)]
-pub(crate) fn create_private_test_directory(parent_path: &Path) -> Result<PrivateTestDirectory> {
+pub(crate) fn create_private_test_directory(
+	parent_path: &Path,
+) -> prelude::Result<PrivateTestDirectory> {
 	create_private_test_directory_with(parent_path, || {})
 }
 
@@ -1820,7 +1807,7 @@ pub(crate) fn create_private_test_directory(parent_path: &Path) -> Result<Privat
 pub(crate) fn create_private_test_directory_with(
 	parent_path: &Path,
 	after_parent_open: impl FnOnce(),
-) -> Result<PrivateTestDirectory> {
+) -> prelude::Result<PrivateTestDirectory> {
 	let resolved_parent = parent_path.canonicalize()?;
 	let parent = open_test_parent_path(&resolved_parent)?;
 	let parent_identity = validate_test_parent_directory(&parent)?;
@@ -1831,13 +1818,12 @@ pub(crate) fn create_private_test_directory_with(
 
 	let name = test_temporary_name()?;
 
-	if unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), PRIVATE_DIR_MODE as libc::mode_t) }
-		== -1
+	if unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), PRIVATE_DIR_MODE as mode_t) } == -1
 	{
-		return Err(std::io::Error::last_os_error().into());
+		return Err(Error::last_os_error().into());
 	}
 
-	let result = (|| -> Result<(PathBuf, File, DirectoryIdentity)> {
+	let result = (|| -> prelude::Result<(PathBuf, File, DirectoryIdentity)> {
 		let directory = open_directory_at(parent.as_raw_fd(), &name)?;
 		let identity = validate_private_directory(&directory, "test directory")?;
 
@@ -1875,7 +1861,7 @@ pub(crate) fn create_private_test_directory_with(
 				.is_ok()
 				{
 					unsafe {
-						libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), libc::AT_REMOVEDIR);
+						libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), AT_REMOVEDIR);
 					}
 				}
 			}
@@ -1886,7 +1872,7 @@ pub(crate) fn create_private_test_directory_with(
 }
 
 #[cfg(test)]
-pub(crate) fn create_private_file(path: &Path) -> Result<File> {
+pub(crate) fn create_private_file(path: &Path) -> prelude::Result<File> {
 	let location = private_file_path(path)?;
 
 	ensure_private_directory(&location.root)?;
@@ -1905,7 +1891,7 @@ pub(crate) fn is_radar_cache_path(path: &Path) -> bool {
 }
 
 #[cfg(test)]
-pub(crate) fn simulate_wrong_owner_error(_path: &Path) -> Result<()> {
+pub(crate) fn simulate_wrong_owner_error(_path: &Path) -> prelude::Result<()> {
 	let expected_uid = unsafe { libc::geteuid() };
 
 	validate_owner_mode_link(
@@ -1920,11 +1906,13 @@ pub(crate) fn simulate_wrong_owner_error(_path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::{ffi::OsStr, path::Path};
+
+	use crate::{private_fs::PrivateCache, test_support};
 
 	#[test]
 	fn repeated_root_scans_keep_nonempty_cache_visible() {
-		let temp = crate::test_support::private_tempdir();
+		let temp = test_support::private_tempdir();
 		let root = temp.path().join(crate::DEFAULT_CACHE_ROOT);
 		let lock = PrivateCache::open_or_create(&root).unwrap().lock().unwrap();
 
