@@ -1,22 +1,23 @@
 //! Durable Agent work and inbox facts. The caller owns planning and judgment.
 
+mod capacity;
+mod steer;
+
+pub use capacity::AgentCapacityRetry;
+
+pub(crate) use capacity::cancel_pending as cancel_pending_capacity;
+
 use rusqlite::{Connection, OptionalExtension as _, Row, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 
-mod capacity;
-mod steer;
-pub use capacity::AgentCapacityRetry;
-pub(crate) use capacity::cancel_pending as cancel_pending_capacity;
-
 use crate::{DatabaseError, SqliteStore, StoreError, error::sqlite_error, unix_micros};
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentWorkKind {
 	Goal,
 	Task,
 }
-
 impl AgentWorkKind {
 	pub(crate) fn as_str(self) -> &'static str {
 		match self {
@@ -26,7 +27,7 @@ impl AgentWorkKind {
 	}
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentDisposition {
 	Resolved,
@@ -34,8 +35,18 @@ pub enum AgentDisposition {
 	Wait,
 	UserDecision,
 }
+impl AgentDisposition {
+	fn as_str(self) -> &'static str {
+		match self {
+			Self::Resolved => "resolved",
+			Self::FollowUp => "follow_up",
+			Self::Wait => "wait",
+			Self::UserDecision => "user_decision",
+		}
+	}
+}
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentWorkStatus {
 	Open,
@@ -44,17 +55,6 @@ pub enum AgentWorkStatus {
 	Wait,
 	UserDecision,
 }
-
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AgentDispatchState {
-	#[default]
-	Idle,
-	Dispatching,
-	Running,
-	Unknown,
-}
-
 impl AgentWorkStatus {
 	pub(crate) fn as_str(self) -> &'static str {
 		match self {
@@ -67,18 +67,17 @@ impl AgentWorkStatus {
 	}
 }
 
-impl AgentDisposition {
-	fn as_str(self) -> &'static str {
-		match self {
-			Self::Resolved => "resolved",
-			Self::FollowUp => "follow_up",
-			Self::Wait => "wait",
-			Self::UserDecision => "user_decision",
-		}
-	}
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentDispatchState {
+	#[default]
+	Idle,
+	Dispatching,
+	Running,
+	Unknown,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentWorkItem {
 	pub id: String,
 	pub parent_goal_id: Option<String>,
@@ -95,13 +94,13 @@ pub struct AgentWorkItem {
 	pub updated_at_micros: i64,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentDependency {
 	pub work_item_id: String,
 	pub depends_on_id: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct EnqueueAgentEvent {
 	/// Stable identity supplied by the event source; retries must reuse this value.
 	pub source_event_id: String,
@@ -110,7 +109,7 @@ pub struct EnqueueAgentEvent {
 	pub payload: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentInboxEvent {
 	pub id: i64,
 	pub source_event_id: String,
@@ -1412,6 +1411,14 @@ impl SqliteStore {
 	}
 }
 
+pub(crate) fn read_work(connection: &Connection, id: &str) -> Result<AgentWorkItem, StoreError> {
+	connection
+		.query_row("SELECT * FROM agent_work_items WHERE id = ?1", [id], work_row)
+		.optional()
+		.map_err(sqlite_error)?
+		.ok_or_else(|| DatabaseError::NotFound.into())
+}
+
 fn bounded(value: &str, max: usize) -> Result<(), StoreError> {
 	if value.trim().is_empty() || value.len() > max {
 		Err(StoreError::InvalidInput("Agent text is empty or too large"))
@@ -1456,14 +1463,6 @@ fn work_exists(connection: &Connection, id: &str) -> Result<bool, StoreError> {
 			row.get(0)
 		})
 		.map_err(|error| sqlite_error(error).into())
-}
-
-pub(crate) fn read_work(connection: &Connection, id: &str) -> Result<AgentWorkItem, StoreError> {
-	connection
-		.query_row("SELECT * FROM agent_work_items WHERE id = ?1", [id], work_row)
-		.optional()
-		.map_err(sqlite_error)?
-		.ok_or_else(|| DatabaseError::NotFound.into())
 }
 
 fn read_event(connection: &Connection, id: i64) -> Result<AgentInboxEvent, StoreError> {
