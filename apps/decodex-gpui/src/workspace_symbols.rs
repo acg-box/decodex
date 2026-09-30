@@ -33,10 +33,12 @@ pub(super) enum Symbol {
 	Eye,
 	EyeSlash,
 	Lock,
+	AccountSignIn,
+	AccountWarning,
 }
 
-static IMAGES: LazyLock<[Arc<Image>; 28]> = LazyLock::new(|| {
-	let sources: [&[u8]; 28] = [
+static IMAGES: LazyLock<[Arc<Image>; 30]> = LazyLock::new(|| {
+	let sources: [&[u8]; 30] = [
 		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
 		include_bytes!("../../../assets/workspace-symbols/graph.png"),
 		include_bytes!("../../../assets/workspace-symbols/timeline.png"),
@@ -65,6 +67,8 @@ static IMAGES: LazyLock<[Arc<Image>; 28]> = LazyLock::new(|| {
 		include_bytes!("../../../assets/workspace-symbols/eye.png"),
 		include_bytes!("../../../assets/workspace-symbols/eye-slash.png"),
 		include_bytes!("../../../assets/workspace-symbols/lock.png"),
+		include_bytes!("../../../assets/workspace-symbols/account-sign-in.png"),
+		include_bytes!("../../../assets/workspace-symbols/account-warning.png"),
 	];
 	sources.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
 });

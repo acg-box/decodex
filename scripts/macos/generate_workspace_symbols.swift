@@ -12,6 +12,8 @@ let symbols = [
     "eye": "eye",
     "eye-slash": "eye.slash",
     "account-route": "arrow.triangle.branch",
+    "account-sign-in": "person.crop.circle.badge.plus",
+    "account-warning": "exclamationmark.circle",
     "account-login": "arrow.clockwise",
     "account-logout": "rectangle.portrait.and.arrow.right",
     "confirm": "checkmark",
@@ -53,6 +55,7 @@ for (name, symbolName) in symbols {
     symbol.draw(in: NSRect(x: (16-size.width)/2, y: (16-size.height)/2, width: size.width, height: size.height),
         from: .zero, operation: .sourceOver, fraction: 1)
     (name == "send" ? NSColor(srgbRed: 0.04, green: 0.04, blue: 0.06, alpha: 1)
+        : name == "account-warning" ? NSColor.systemRed
         : name == "bell-attention" ? NSColor(srgbRed: 0.88, green: 0.70, blue: 0.40, alpha: 1)
         : name == "bell-info" || name == "account-route-active" || name == "power-on" ? NSColor(srgbRed: 0.54, green: 0.64, blue: 0.91, alpha: 1)
         : NSColor(srgbRed: 0.88, green: 0.86, blue: 0.90, alpha: 1)).setFill()

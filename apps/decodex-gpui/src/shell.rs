@@ -843,8 +843,9 @@ impl Shell {
 		let primary = visual_account("70000000-0000-4000-8000-000000000001", "Primary", 64, 28, 12);
 		let reserve =
 			visual_account("70000000-0000-4000-8000-000000000002", "Build reserve", 18, 9, 7);
-		let research =
+		let mut research =
 			visual_account("70000000-0000-4000-8000-000000000003", "Research reserve", 91, 55, 4);
+		research.observed_state = AccountObservedStateDto::AuthFailed;
 		self.accounts = AccountsSnapshot {
 			load: AccountsLoadState::Ready,
 			command: AccountCommandState::Idle,
@@ -3510,6 +3511,7 @@ fn account_pool_summary(
 	let AccountRowPresentation { index, fixed, can_route, .. } = presentation;
 	let account_id = account.account_id.clone();
 	let enabled = account.enabled;
+	let needs_login = account_needs_login(account);
 	let pin_enabled = can_route && enabled && !fixed;
 
 	let profile_id = account.account_id.clone();
@@ -3528,70 +3530,88 @@ fn account_pool_summary(
 		.min_w_0()
 		.items_center()
 		.gap(px(8.0))
-		.child(account_power_control(
-			account,
-			index,
-			presentation.can_manage,
-			presentation.controls_busy,
-			cx,
-		))
 		.child(account_row_identity(account, presentation.email.as_deref()))
-		.child(
-			div().flex_1().min_w_0().flex().items_center().gap(px(8.0)).children(
-				[
-					quota_meter::meter(
-						"5 hours",
-						account.five_hour_quota,
-						presentation.reset_fill.clone(),
-					),
-					quota_meter::meter(
-						"7 days",
-						account.seven_day_quota,
-						presentation.reset_fill.clone(),
-					),
-				]
-				.into_iter()
-				.flatten(),
-			),
-		)
-		.child(
-			div().flex().items_center().gap_2().child(
+		.when(!needs_login, |row| {
+			row.child(
 				div()
-					.id(("account-pin", index))
-					.role(Role::Button)
-					.aria_label(format!("Route new conversations to {}", account.alias.as_str()))
-					.h(px(26.0))
-					.w(px(26.0))
-					.flex_none()
+					.debug_selector(move || format!("account-quota-{index}"))
+					.flex_1()
+					.min_w_0()
 					.flex()
 					.items_center()
-					.justify_center()
-					.rounded(px(7.0))
-					.bg(if fixed { rgba(0x8baaf738) } else { rgba(0x00000000) })
-					.text_size(px(11.0))
-					.text_color(if fixed { rgb(WB_BLUE) } else { rgb(WB_TEXT_MUTED) })
-					.when(pin_enabled, |button| {
-						button
-							.cursor_pointer()
-							.hover(|element| {
-								element
-									.bg(rgba(crate::ui_theme::HOVER_FILL))
-									.text_color(rgb(WB_TEXT))
-							})
-							.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
-							.on_click(cx.listener(move |shell, _, _, cx| {
-								cx.stop_propagation();
-								shell.select_fixed_account(&account_id, cx);
-							}))
-					})
-					.child(workspace_symbols::icon(if fixed {
-						workspace_symbols::Symbol::AccountRouteActive
-					} else {
-						workspace_symbols::Symbol::AccountRoute
-					}))
-					.smooth(),
-			),
-		)
+					.gap(px(8.0))
+					.children(
+						[
+							quota_meter::meter(
+								"5 hours",
+								account.five_hour_quota,
+								presentation.reset_fill.clone(),
+							),
+							quota_meter::meter(
+								"7 days",
+								account.seven_day_quota,
+								presentation.reset_fill.clone(),
+							),
+						]
+						.into_iter()
+						.flatten(),
+					),
+			)
+		})
+		.when(!needs_login, |row| {
+			row.child(
+				div().flex().items_center().gap_2().child(
+					div()
+						.id(("account-pin", index))
+						.debug_selector(move || format!("account-pin-{index}"))
+						.role(Role::Button)
+						.aria_label(format!(
+							"Route new conversations to {}",
+							account.alias.as_str()
+						))
+						.h(px(26.0))
+						.w(px(26.0))
+						.flex_none()
+						.flex()
+						.items_center()
+						.justify_center()
+						.rounded(px(7.0))
+						.bg(if fixed { rgba(0x8baaf738) } else { rgba(0x00000000) })
+						.text_size(px(11.0))
+						.text_color(if fixed { rgb(WB_BLUE) } else { rgb(WB_TEXT_MUTED) })
+						.when(pin_enabled, |button| {
+							button
+								.cursor_pointer()
+								.hover(|element| {
+									element
+										.bg(rgba(crate::ui_theme::HOVER_FILL))
+										.text_color(rgb(WB_TEXT))
+								})
+								.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
+								.on_click(cx.listener(move |shell, _, _, cx| {
+									cx.stop_propagation();
+									shell.select_fixed_account(&account_id, cx);
+								}))
+						})
+						.child(workspace_symbols::icon(if fixed {
+							workspace_symbols::Symbol::AccountRouteActive
+						} else {
+							workspace_symbols::Symbol::AccountRoute
+						}))
+						.smooth(),
+				),
+			)
+		})
+		.when(!needs_login, |row| {
+			row.child(account_power_control(
+				account,
+				index,
+				presentation.can_manage,
+				presentation.controls_busy,
+				cx,
+			))
+		})
+		.when(needs_login, |row| row.child(div().flex_1()))
 		.child(account_management_actions(account, &presentation, cx))
 		.into_any_element()
 }
@@ -3647,6 +3667,7 @@ fn account_management_actions(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let index = presentation.index;
+	let needs_login = account_needs_login(account);
 	let login_account_id = account.account_id.clone();
 	let reset_account_id = account.account_id.clone();
 	let reset_alias = account.alias.as_str().to_owned();
@@ -3659,49 +3680,60 @@ fn account_management_actions(
 		.justify_start()
 		.items_center()
 		.gap_1()
-		.child(
-			account_icon_action(
-				"account-reset-cards",
-				index,
-				"Show Reset Cards",
-				workspace_symbols::Symbol::AccountLogin,
-				true,
+		.when(!needs_login, |row| {
+			row.child(
+				account_icon_action(
+					"account-reset-cards",
+					index,
+					"Show Reset Cards",
+					workspace_symbols::Symbol::AccountLogin,
+					true,
+				)
+				.on_click(cx.listener(move |shell, _, _, cx| {
+					cx.stop_propagation();
+					shell.show_reset_cards(reset_account_id.clone(), reset_alias.clone(), cx)
+				})),
 			)
-			.on_click(cx.listener(move |shell, _, _, cx| {
-				cx.stop_propagation();
-				shell.show_reset_cards(reset_account_id.clone(), reset_alias.clone(), cx)
-			})),
-		)
+		})
+		.when(needs_login, |row| {
+			row.child(
+				account_icon_action(
+					"account-login-warning",
+					index,
+					"Login refresh required. Sign in again or log out.",
+					workspace_symbols::Symbol::AccountWarning,
+					true,
+				)
+				.on_click(|_, _, cx| cx.stop_propagation()),
+			)
+		})
 		.child(
 			div()
 				.flex()
 				.items_center()
 				.gap_1()
-				.child(
-					account_icon_action(
-						"account-login",
-						index,
-						if account_needs_login(account) {
-							"Sign in again"
-						} else {
-							"Refresh account login"
-						},
-						workspace_symbols::Symbol::AccountLogout,
-						presentation.login_available,
+				.when(needs_login, |row| {
+					row.child(
+						account_icon_action(
+							"account-login",
+							index,
+							"Sign in again",
+							workspace_symbols::Symbol::AccountSignIn,
+							presentation.login_available,
+						)
+						.when(presentation.login_available, |button| {
+							button.on_click(cx.listener(move |shell, _, _, cx| {
+								cx.stop_propagation();
+								shell.start_account_reauthentication(
+									login_account_id.clone(),
+									login_account_revision,
+									login_recovery_operation_id.clone(),
+									cx,
+								);
+							}))
+						}),
 					)
-					.debug_selector(move || format!("account-login-{index}"))
-					.when(presentation.login_available, |button| {
-						button.on_click(cx.listener(move |shell, _, _, cx| {
-							cx.stop_propagation();
-							shell.start_account_reauthentication(
-								login_account_id.clone(),
-								login_account_revision,
-								login_recovery_operation_id.clone(),
-								cx,
-							);
-						}))
-					}),
-				)
+				})
 				.child(
 					account_icon_action(
 						"account-logout",
@@ -3734,6 +3766,7 @@ fn account_icon_action(
 	enabled: bool,
 ) -> gpui::Stateful<gpui::Div> {
 	account_row_action(id, index, label, "", enabled)
+		.debug_selector(move || format!("{id}-{index}"))
 		.w(px(26.))
 		.h(px(26.))
 		.px_0()
@@ -5975,18 +6008,21 @@ fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement
 						.text_color(if enabled { rgb(WB_TEXT) } else { rgb(WB_TEXT_FAINT) })
 						.child(email.unwrap_or(account.alias.as_str()).to_owned()),
 				)
-				.child(
-					div()
-						.flex()
-						.items_center()
-						.gap_2()
-						.font_family(ui_theme::FONT_FAMILY)
-						.text_size(px(10.5))
-						.text_color(rgb(WB_TEXT_FAINT))
-						.when(
-							account.lifecycle_readiness != AccountLifecycleReadinessDto::Ready,
-							|row| row.child(account_readiness_status(account)),
-						),
+				.when(
+					!account_needs_login(account)
+						&& account.lifecycle_readiness != AccountLifecycleReadinessDto::Ready,
+					|row| {
+						row.child(
+							div()
+								.flex()
+								.items_center()
+								.gap_2()
+								.font_family(ui_theme::FONT_FAMILY)
+								.text_size(px(10.5))
+								.text_color(rgb(WB_TEXT_FAINT))
+								.child(account_readiness_status(account)),
+						)
+					},
 				),
 		)
 		.into_any_element()
@@ -6333,7 +6369,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn account_reauthentication_is_visible_before_credentials_fail(cx: &mut TestAppContext) {
+	fn account_recovery_controls_replace_usage_and_keep_logout(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 		for observed in [AccountObservedStateDto::Available, AccountObservedStateDto::AuthFailed] {
 			shell.update(visual, |s, _| {
@@ -6345,7 +6381,16 @@ mod tests {
 				window.resize(size(px(1440.), px(1000.)));
 				window.draw(cx).clear();
 			});
-			assert!(visual.debug_bounds("account-login-0").is_some());
+			let needs_login = observed == AccountObservedStateDto::AuthFailed;
+			for id in ["account-login-0", "account-login-warning-0"] {
+				assert_eq!(visual.debug_bounds(id).is_some(), needs_login, "{id}");
+			}
+			for id in
+				["account-quota-0", "account-pin-0", "account-enabled-0", "account-reset-cards-0"]
+			{
+				assert_eq!(visual.debug_bounds(id).is_some(), !needs_login, "{id}");
+			}
+			assert!(visual.debug_bounds("account-logout-0").is_some());
 		}
 	}
 
