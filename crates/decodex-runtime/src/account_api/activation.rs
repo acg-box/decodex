@@ -197,9 +197,9 @@ impl CompletionStream {
 				match event["type"].as_str() {
 					Some("response.completed")
 						if event["response"]["id"].as_str().is_some_and(|id| !id.is_empty())
-							&& event["response"]["status"]
-								.as_str()
-								.is_none_or(|status| status == "completed") =>
+							&& event["response"]
+								.get("status")
+								.is_none_or(|status| status.as_str() == Some("completed")) =>
 						return Ok(Some(ActivationOutcome::Completed)),
 					Some("response.failed" | "response.incomplete" | "error") =>
 						return Ok(Some(ActivationOutcome::Unknown)),
@@ -315,6 +315,21 @@ mod tests {
 	fn stream_is_bounded_and_malformed_completion_does_not_succeed() {
 		assert_eq!(CompletionStream::default().push(&vec![b'x'; MAX_STREAM_BYTES + 1]), Err(()));
 		assert_eq!(CompletionStream::default().push(b"data: invalid\n\n"), Err(()));
+		for status in [
+			serde_json::json!(null),
+			serde_json::json!(false),
+			serde_json::json!(7),
+			serde_json::json!({}),
+			serde_json::json!("in_progress"),
+		] {
+			let event = serde_json::json!({"type":"response.completed","response":{"id":"r1","status":status}});
+			assert_eq!(
+				CompletionStream::default().push(format!("data: {event}\n\n").as_bytes()),
+				Ok(None),
+				"{status}"
+			);
+		}
+
 		assert_eq!(
 			CompletionStream::default().push(b"data: {\"type\":\"response.completed\"}\n\n"),
 			Ok(None)
