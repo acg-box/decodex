@@ -94,7 +94,7 @@ impl AgentSurface {
 
 	pub(super) fn open_page(&mut self, id: &str, cx: &mut Context<Self>) {
 		self.closing_pages.remove(id);
-		self.native_agents.selected = None;
+		self.close_native_agent(cx);
 		if !self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id)) {
 			return;
 		}
