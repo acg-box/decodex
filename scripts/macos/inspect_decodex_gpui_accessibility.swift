@@ -447,9 +447,23 @@ func keyboardStep(
 		"down_up_interval_ms": interval * 1_000,
 		"elapsed_ms": dispatchElapsed,
 	])
-	let focused = try waitForFocused(
-		expectedLabel, root: root, recorder: recorder, operation: "\(operation).readback"
-	)
+	let focused: ElementFact
+	do {
+		focused = try waitForFocused(expectedLabel, root: root, recorder: recorder, operation: "\(operation).readback")
+	} catch {
+		let (_, value) = try recorder.copy(root, kAXWindowsAttribute, operation: "focus_diagnostic.windows")
+		for window in value as? [AXUIElement] ?? [] {
+			let (_, title) = try recorder.copy(window, kAXTitleAttribute, operation: "focus_diagnostic.title")
+			let (_, focusedWindow) = try recorder.copy(window, kAXFocusedAttribute, operation: "focus_diagnostic.window_focused")
+			let (focusError, _) = try recorder.copy(window, kAXFocusedUIElementAttribute, operation: "focus_diagnostic.window_element")
+			let tree = try snapshot(window, recorder: recorder)
+			try journal.append(["event": "focus_diagnostic", "window": jsonValue(title),
+				"application_active": NSRunningApplication(processIdentifier: pid)?.isActive == true,
+				"window_focused": jsonValue(focusedWindow), "window_element_error": focusError.rawValue,
+				"focused_nodes": tree.facts.filter { $0.focused }.map { ["label": $0.label ?? "missing", "role": $0.role] }])
+		}
+		throw error
+	}
 	return [
 		"expected_label": expectedLabel,
 		"focused_label": focused.label ?? "missing",

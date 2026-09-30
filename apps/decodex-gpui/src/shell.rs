@@ -5349,6 +5349,9 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 			window_background: gpui::WindowBackgroundAppearance::Blurred,
 			window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
 			window_min_size: Some(gpui::size(px(860.), px(480.))),
+			// Install the accessibility adapter before the first key-window notification.
+			focus: false,
+			show: false,
 			..Default::default()
 		},
 		{
@@ -5394,7 +5397,10 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 			}
 		},
 	) {
-		Ok(handle) => owner.update(cx, |s, _| s.settings_window = Some(handle)),
+		Ok(handle) => {
+			owner.update(cx, |s, _| s.settings_window = Some(handle));
+			let _ = handle.update(cx, |_, window, _| window.activate_window());
+		},
 		Err(error) => {
 			owner.update(cx, |s, cx| {
 				s.account_status = Some(format!("Could not open Settings: {error}").into());
