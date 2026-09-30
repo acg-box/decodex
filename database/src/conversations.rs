@@ -498,7 +498,6 @@ struct HistoryReceipt {
 	history_item_id: String,
 }
 
-#[derive(Clone)]
 struct Payload {
 	inline_text: Option<String>,
 	blob_hash: Option<String>,
@@ -2584,17 +2583,6 @@ impl SqliteStore {
 			Ok(ConversationTerminalizationOutcome::Applied(readback))
 		})
 		.await
-	}
-
-	/// SQLite terminalization is one transaction, so there is no partially committed work.
-	pub async fn reconcile_conversation_terminalizations(
-		&self,
-		limit: u16,
-	) -> Result<u16, StoreError> {
-		if !(1..=256).contains(&limit) {
-			return Err(StoreError::InvalidInput("Conversation terminalization bound is invalid"));
-		}
-		Ok(0)
 	}
 
 	pub async fn read_ordinary_task_conversations(
