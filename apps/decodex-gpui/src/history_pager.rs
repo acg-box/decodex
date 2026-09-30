@@ -362,6 +362,7 @@ impl HistoryPager {
 		)
 	}
 
+	#[cfg(test)]
 	fn new(limits: HistoryPagerLimits) -> Self {
 		Self::with_page_cache(limits, PageCacheOwner::Disabled, None)
 	}
@@ -553,6 +554,7 @@ impl HistoryPager {
 		self.lock().snapshot()
 	}
 
+	#[cfg(test)]
 	pub(crate) fn dispatch_is_current(&self, dispatch: &HistoryDispatch) -> bool {
 		self.lock().matches_dispatch(dispatch)
 	}
