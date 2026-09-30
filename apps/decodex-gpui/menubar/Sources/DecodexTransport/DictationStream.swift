@@ -1,19 +1,5 @@
 import Foundation
 
-/// One server utterance can receive many revisions. Final text replaces provisional text.
-struct DictationTranscript {
-    struct Segment { var revision: Int; var text: String; var final: Bool }
-    private var order: [String] = []
-    private var segments: [String: Segment] = [:]
-    mutating func apply(id: String, revision: Int, text: String, final: Bool) -> Bool {
-        if let old = segments[id], old.final || revision < old.revision { return false }
-        if segments[id] == nil { order.append(id) }
-        segments[id] = Segment(revision: revision, text: text, final: final)
-        return true
-    }
-    var text: String { order.compactMap { segments[$0]?.text.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: " ") }
-}
-
 /// Service-only transport. Its token comes from the retained native app-server connection.
 /// URLSession owns networking; this class never opens a microphone or starts an agent turn.
 final class DictationStream: @unchecked Sendable {
@@ -26,7 +12,6 @@ final class DictationStream: @unchecked Sendable {
     private var finishing = false
     private var closed = false
     private var retained: UnsafeMutablePointer<CChar>?
-    private var transcript = DictationTranscript()
 
     init(token: String) {
         let configuration = URLSessionConfiguration.ephemeral
@@ -130,10 +115,8 @@ final class DictationStream: @unchecked Sendable {
             guard let id = event["utterance_id"] as? String, id.count <= 256,
                   let revision = event["revision"] as? Int,
                   let text = event["text"] as? String, text.utf8.count <= 32_768 else { fail("Dictation exceeded the draft limit."); return }
-            if transcript.apply(id: id, revision: revision, text: text, final: type == "transcript.final") {
-                guard transcript.text.utf8.count <= 32_768 else { fail("Dictation exceeded the draft limit."); return }
-                emit(["kind":"transcript", "text":transcript.text])
-            }
+            emit(["kind":"segment", "id":id, "revision":revision, "text":text,
+                  "finalized":type == "transcript.final"])
         case "session.error", "error": fail("The subscription dictation service could not finish this recording.")
         case "session.closed": complete()
         case "session.updated":
@@ -142,15 +125,22 @@ final class DictationStream: @unchecked Sendable {
         }
     }
 
-    private func complete() { emit(["kind":"complete", "text":transcript.text]); stop() }
+    private func complete() { emit(["kind":"complete"]); stop() }
     private func fail(_ message: String) {
         guard !closed else { return }
         emit(["kind":"error", "message":message]); stop()
     }
     private func emit(_ event: [String:Any]) {
-        if event["kind"] as? String == "transcript" { events.removeAll { $0.contains("\"kind\":\"transcript\"") } }
         guard let data = try? JSONSerialization.data(withJSONObject:event,options:.sortedKeys) else { return }
-        if events.count >= 64 { events.removeFirst() }
+        // Segments are incremental: never discard one to make space for another.
+        // Reserve the last slot for a terminal error, after all accepted segments.
+        guard events.count < 63 else {
+            if !closed {
+                events.append("{\"kind\":\"error\",\"message\":\"Dictation updates could not be received fast enough. Your received text remains in the draft.\"}")
+                stop()
+            }
+            return
+        }
         events.append(String(decoding:data,as:UTF8.self))
     }
     private func stop() {

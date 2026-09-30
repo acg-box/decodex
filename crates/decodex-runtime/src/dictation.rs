@@ -11,11 +11,13 @@ use std::{
 use tokio::sync::Mutex;
 
 #[path = "dictation_native.rs"] mod native;
+#[path = "dictation_transcript.rs"] mod transcript;
 
 struct Session {
 	status: DictationStatus,
 	transport: Option<native::Stream>,
 	seen: Instant,
+	transcript: transcript::Transcript,
 }
 #[derive(Clone, Default)]
 pub(crate) struct DictationGateway(Arc<Mutex<Option<Session>>>);
@@ -73,6 +75,7 @@ impl DictationGateway {
 				status: status.clone(),
 				transport: Some(transport),
 				seen: Instant::now(),
+				transcript: Default::default(),
 			});
 			return status;
 		}
@@ -147,16 +150,15 @@ impl Session {
 			match event["kind"].as_str() {
 				Some("ready") if self.status.phase == DictationPhase::Connecting =>
 					self.status.phase = DictationPhase::Listening,
-				Some("transcript" | "complete") => {
-					if let Some(text) =
-						event["text"].as_str().and_then(|s| DictationBuffer::new(s).ok())
-					{
-						self.status.text = text;
-					}
-					if event["kind"] == "complete" {
-						self.status.phase = DictationPhase::Complete;
-						self.transport = None;
-					}
+				Some("segment") => match self.transcript.apply(event) {
+					Ok(text) => self.status.text = text,
+					Err(()) => self.fail(
+						"Invalid or oversized dictation transcript. Your received text remains in the draft.",
+					),
+				},
+				Some("complete") => {
+					self.status.phase = DictationPhase::Complete;
+					self.transport = None;
 				},
 				Some("error") =>
 					self.fail(event["message"].as_str().unwrap_or("Dictation disconnected.")),
