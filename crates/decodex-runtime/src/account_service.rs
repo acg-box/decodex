@@ -3996,18 +3996,44 @@ impl AccountService {
 				)
 				.await;
 		}
-		let proven_applied = match operation.kind {
-			AccountOperationKind::Enroll
-			| AccountOperationKind::Import
-			| AccountOperationKind::Refresh => operation.target.as_ref().is_some_and(|target| {
-				self.credentials.read_exact(&operation.account_id, target).is_ok()
-			}),
-			AccountOperationKind::Logout => operation.expected.as_ref().is_some_and(|expected| {
-				matches!(
-					self.credentials.read_exact(&operation.account_id, expected),
-					Err(CredentialStoreError::NotFound)
-				)
-			}),
+		let (proven_applied, proven_not_applied) = match operation.kind {
+			AccountOperationKind::Refresh if operation.phase == AccountOperationPhase::Prepared =>
+				match classify_prepared_refresh_reconciliation(
+					operation.expected.as_ref(),
+					operation.target.as_ref(),
+					|binding| {
+						self.credentials.read_exact(&operation.account_id, binding).map(|_| ())
+					},
+				) {
+					PreparedRefreshReconciliation::StoreApplied => (true, false),
+					PreparedRefreshReconciliation::NotApplied => (false, true),
+					PreparedRefreshReconciliation::RecoveryRequired => (false, false),
+				},
+			AccountOperationKind::Enroll | AccountOperationKind::Import => {
+				let target =
+					operation.target.as_ref().ok_or(AccountLifecycleError::InvalidOperation)?;
+				match self.credentials.read_exact(&operation.account_id, target) {
+					Ok(_) => (true, false),
+					Err(CredentialStoreError::NotFound) =>
+						(false, operation.phase == AccountOperationPhase::Prepared),
+					Err(_) => (false, false),
+				}
+			},
+			AccountOperationKind::Refresh => (
+				operation.target.as_ref().is_some_and(|target| {
+					self.credentials.read_exact(&operation.account_id, target).is_ok()
+				}),
+				false,
+			),
+			AccountOperationKind::Logout => (
+				operation.expected.as_ref().is_some_and(|expected| {
+					matches!(
+						self.credentials.read_exact(&operation.account_id, expected),
+						Err(CredentialStoreError::NotFound)
+					)
+				}),
+				false,
+			),
 		};
 		if proven_applied {
 			accepted_phase(
@@ -4069,13 +4095,7 @@ impl AccountService {
 				Err(_) => {},
 			}
 		}
-		if matches!(
-			(operation.kind, operation.phase),
-			(
-				AccountOperationKind::Enroll | AccountOperationKind::Import,
-				AccountOperationPhase::Prepared
-			) | (AccountOperationKind::Refresh, AccountOperationPhase::Prepared)
-		) {
+		if proven_not_applied {
 			return self
 				.complete_recovery_operation_command(
 					lease,
@@ -7511,6 +7531,215 @@ mod tests {
 			),
 			ReauthenticationReplayDisposition::Recover
 		);
+	}
+
+	#[tokio::test]
+	async fn manual_prepared_reauthentication_requires_exact_store_evidence() {
+		for state in ["missing", "previous", "applied"] {
+			let (_directory, store, service, account_id, _shared) =
+				independently_owned_observation_service(Err(CredentialRefreshError::Unavailable))
+					.await;
+			let account = service.load_account(&account_id).await.unwrap();
+			let expected = account.credential.unwrap();
+			let operation_id =
+				AccountOperationId::new("22000000-0000-4000-8000-000000000042").unwrap();
+			let bundle = shared_bundle("observed-account", "replacement-access", i64::MAX);
+			let target = bundle
+				.binding_for(
+					&account_id,
+					&operation_id,
+					expected.version.successor().unwrap(),
+					&expected.provider,
+				)
+				.unwrap();
+			accepted_phase(
+				store
+					.prepare_account_operation(&AccountOperationPreparation {
+						operation_id: operation_id.clone(),
+						account_id: account_id.clone(),
+						kind: AccountOperationKind::Refresh,
+						display_label: None,
+						enabled: None,
+						expected_account_revision: Some(account.revision),
+						expected: Some(expected.clone()),
+						target: Some(target.clone()),
+						provider: expected.provider.clone(),
+					})
+					.await
+					.unwrap(),
+			)
+			.unwrap();
+			match state {
+				"missing" => service.credentials.delete(&account_id, &expected).unwrap(),
+				"applied" => service
+					.credentials
+					.compare_and_swap_rotate(&account_id, &expected, &target, bundle)
+					.unwrap(),
+				_ => {},
+			}
+			let (outcome, phase) = match state {
+				"missing" => (
+					super::AccountManualRecoveryOutcome::StillRequiresRecovery,
+					AccountOperationPhase::RecoveryRequired,
+				),
+				"previous" => (
+					super::AccountManualRecoveryOutcome::Cancelled,
+					AccountOperationPhase::Cancelled,
+				),
+				_ => (
+					super::AccountManualRecoveryOutcome::Committed,
+					AccountOperationPhase::Committed,
+				),
+			};
+			assert_manual_recovery(&service, &account_id, &operation_id, outcome, phase).await;
+		}
+	}
+
+	#[tokio::test]
+	async fn manual_prepared_import_requires_absence_before_cancellation() {
+		for kind in [AccountOperationKind::Enroll, AccountOperationKind::Import] {
+			for state in ["conflicting", "missing", "applied"] {
+				let (_directory, store, service, account_id, _shared) =
+					independently_owned_observation_service(Err(
+						CredentialRefreshError::Unavailable,
+					))
+					.await;
+				let previous = service.load_account(&account_id).await.unwrap().credential.unwrap();
+				let tombstone = service
+					.logout(
+						AccountOperationId::new("22000000-0000-4000-8000-000000000042").unwrap(),
+						&account_id,
+						1,
+					)
+					.await
+					.unwrap();
+				let operation_id =
+					AccountOperationId::new("22000000-0000-4000-8000-000000000043").unwrap();
+				let provider =
+					ProviderIdentity::new(AccountProvider::Chatgpt, "observed-account").unwrap();
+				let bundle = shared_bundle("observed-account", "imported-access", i64::MAX);
+				let target = bundle
+					.binding_for(
+						&account_id,
+						&operation_id,
+						previous.version.successor().unwrap(),
+						&provider,
+					)
+					.unwrap();
+				accepted_phase(
+					store
+						.prepare_account_operation(&AccountOperationPreparation {
+							operation_id: operation_id.clone(),
+							account_id: account_id.clone(),
+							kind,
+							display_label: Some(stable_account_alias(&provider)),
+							enabled: Some(true),
+							expected_account_revision: Some(tombstone.revision),
+							expected: None,
+							target: Some(target.clone()),
+							provider,
+						})
+						.await
+						.unwrap(),
+				)
+				.unwrap();
+				match state {
+					"applied" => service
+						.credentials
+						.restore_absent(&account_id, &previous, &target, bundle)
+						.unwrap(),
+					"conflicting" => {
+						let other_bundle =
+							shared_bundle("observed-account", "other-access", i64::MAX);
+						let other = other_bundle
+							.binding_for(
+								&account_id,
+								&operation_id,
+								target.version,
+								&target.provider,
+							)
+							.unwrap();
+						service
+							.credentials
+							.restore_absent(&account_id, &previous, &other, other_bundle)
+							.unwrap();
+					},
+					_ => {},
+				}
+				let (outcome, phase) = match state {
+					"conflicting" => (
+						super::AccountManualRecoveryOutcome::StillRequiresRecovery,
+						AccountOperationPhase::RecoveryRequired,
+					),
+					"missing" => (
+						super::AccountManualRecoveryOutcome::Cancelled,
+						AccountOperationPhase::Cancelled,
+					),
+					_ => (
+						super::AccountManualRecoveryOutcome::Committed,
+						AccountOperationPhase::Committed,
+					),
+				};
+				assert_manual_recovery(&service, &account_id, &operation_id, outcome, phase).await;
+			}
+		}
+	}
+
+	async fn assert_manual_recovery(
+		service: &AccountService,
+		account_id: &AccountId,
+		operation_id: &AccountOperationId,
+		outcome: super::AccountManualRecoveryOutcome,
+		phase: AccountOperationPhase,
+	) {
+		let revision = service.load_account(account_id).await.unwrap().revision;
+		let command = CommandIdentity::new("manual-recovery", b"reconcile exact store").unwrap();
+		let AccountCommandReceiptClaim::Owned(lease) = service
+			.store
+			.reserve_account_command(
+				&command,
+				AccountCommandKind::Recover,
+				operation_id.as_str(),
+				Some(revision),
+			)
+			.await
+			.unwrap()
+		else {
+			panic!("new recovery command")
+		};
+		let response = service
+			.recover_operation_command(
+				lease,
+				operation_id,
+				revision,
+				super::AccountManualRecoveryAction::ReconcileExactStoreState,
+				|result| Ok(json!({"outcome": format!("{:?}", result.unwrap().0)})),
+			)
+			.await
+			.unwrap();
+		assert_eq!(response, json!({"outcome": format!("{outcome:?}")}));
+		assert_eq!(
+			service.store.read_account_operation(operation_id).await.unwrap().unwrap().phase,
+			phase
+		);
+		assert_eq!(
+			service.load_account(account_id).await.unwrap().unsettled_operation.is_some(),
+			phase == AccountOperationPhase::RecoveryRequired
+		);
+		let AccountCommandReceiptClaim::Replayed(replayed) = service
+			.store
+			.reserve_account_command(
+				&command,
+				AccountCommandKind::Recover,
+				operation_id.as_str(),
+				Some(revision),
+			)
+			.await
+			.unwrap()
+		else {
+			panic!("completed recovery receipt")
+		};
+		assert_eq!(replayed, response);
 	}
 
 	#[test]
