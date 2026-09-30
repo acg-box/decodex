@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::artifact_validation::{model::ReleaseOptionTags, release::options, support};
+use crate::artifact_validation::{model::ReleaseOptionTags, support};
 
 pub(super) fn validate_compare_object(
 	compare: Option<&Value>,
@@ -82,16 +82,6 @@ pub(super) fn validate_release_comparisons(
 	if !has_default_comparison {
 		errors.push("comparisons must include the default stable/prerelease pair".into());
 	}
-}
-
-pub(super) fn validate_release_object(
-	release: Option<&Value>,
-	field_name: &str,
-	tag_prefix: &str,
-	expect_prerelease: bool,
-	errors: &mut Vec<String>,
-) {
-	options::validate_release_object(release, field_name, tag_prefix, expect_prerelease, errors);
 }
 
 fn validate_release_comparison_tags(

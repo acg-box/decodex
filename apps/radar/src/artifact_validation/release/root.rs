@@ -19,14 +19,14 @@ pub(crate) fn validate_release_delta(entry: &Map<String, Value>, errors: &mut Ve
 
 	let tag_prefix = support::string_field(entry, "tag_prefix").unwrap_or_default();
 
-	compare::validate_release_object(
+	options::validate_release_object(
 		entry.get("stable_release"),
 		"stable_release",
 		tag_prefix,
 		false,
 		errors,
 	);
-	compare::validate_release_object(
+	options::validate_release_object(
 		entry.get("prerelease"),
 		"prerelease",
 		tag_prefix,
