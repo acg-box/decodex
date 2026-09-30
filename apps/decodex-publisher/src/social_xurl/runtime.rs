@@ -1,7 +1,8 @@
+#[cfg(unix)] use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 use std::{
-	ffi::{CStr, OsString},
-	fs::{self, File, OpenOptions},
-	io::{Read as _, Write as _},
+	ffi::{CStr, CString, OsStr, OsString},
+	fs::{self, File, Metadata, OpenOptions},
+	io::{self, Error, Read, Write as _},
 	mem::MaybeUninit,
 	ops::Deref,
 	os::{
@@ -16,30 +17,32 @@ use std::{
 	process::{Command, Output, Stdio},
 	ptr,
 	sync::mpsc,
-	thread,
+	thread::{self, JoinHandle},
 	time::{Duration, Instant},
 };
 
-#[cfg(unix)] use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-
 use rustix::{
-	fs::{self as unix_fs, AtFlags, Dir, Mode, OFlags},
+	fs::{AtFlags, Dir, Mode, OFlags},
 	io::Errno,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 use wait_timeout::ChildExt as _;
 
-use super::{
-	auth_contract::{APPROVED_XURL_SHA256, APPROVED_XURL_VERSION, VerifiedAuthorizationContract},
-	model::{TARGET_ACCOUNT, VerifiedIdentity, XURL_APP},
+use crate::{
+	prelude::{self, eyre},
+	social_xurl::{
+		auth_contract::{
+			APPROVED_XURL_SHA256, APPROVED_XURL_VERSION, VerifiedAuthorizationContract,
+		},
+		model::{TARGET_ACCOUNT, VerifiedIdentity, XURL_APP},
+	},
 };
-use crate::prelude::{Result, eyre};
 
 const XURL_HOME_RELATIVE_ENTRYPOINT: &str = ".local/bin/xurl";
 const PRIVATE_RUNTIME_DIR: &str = ".agent/automations/decodex/cache/social/x/xurl-runtime";
-const MAX_XURL_OUTPUT_BYTES: usize = 1024 * 1024;
-const MAX_XURL_BINARY_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_XURL_OUTPUT_BYTES: usize = 1_024 * 1_024;
+const MAX_XURL_BINARY_BYTES: u64 = 64 * 1_024 * 1_024;
 const MAX_XURL_RUNTIME_ENTRIES: usize = 64;
 const XURL_DEADLINE: Duration = Duration::from_secs(45);
 
@@ -66,7 +69,7 @@ impl Deref for AuthenticatedOutput {
 
 impl TrustedXurlBinary {
 	#[cfg(test)]
-	pub(super) fn open_for_test(path: &Path) -> Result<Self> {
+	pub(super) fn open_for_test(path: &Path) -> prelude::Result<Self> {
 		let reader = OpenOptions::new()
 			.read(true)
 			.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
@@ -100,7 +103,7 @@ impl TrustedXurlBinary {
 		})
 	}
 
-	pub(super) fn require_approved_release(&self) -> Result<()> {
+	pub(super) fn require_approved_release(&self) -> prelude::Result<()> {
 		if self.digest != APPROVED_XURL_SHA256 {
 			return Err(eyre::eyre!(
 				"xurl executable does not match the approved official 1.3.1 release digest"
@@ -110,12 +113,12 @@ impl TrustedXurlBinary {
 		Ok(())
 	}
 
-	pub(super) fn require_command_time_remaining(&self) -> Result<()> {
+	pub(super) fn require_command_time_remaining(&self) -> prelude::Result<()> {
 		require_time_remaining(self.deadline)
 	}
 }
 
-pub(super) fn trusted_xurl_binary() -> Result<TrustedXurlBinary> {
+pub(super) fn trusted_xurl_binary() -> prelude::Result<TrustedXurlBinary> {
 	let deadline = Instant::now() + XURL_DEADLINE;
 	let home = trusted_home_directory()?;
 
@@ -132,7 +135,7 @@ pub(super) fn trusted_xurl_binary() -> Result<TrustedXurlBinary> {
 	install_private_copy(&bytes, &digest, &home, deadline)
 }
 
-fn resolve_trusted_xurl_entrypoint(home: &Path) -> Result<PathBuf> {
+fn resolve_trusted_xurl_entrypoint(home: &Path) -> prelude::Result<PathBuf> {
 	if !home.is_absolute() {
 		return Err(eyre::eyre!("operating-system home directory is not absolute"));
 	}
@@ -144,7 +147,7 @@ fn resolve_trusted_xurl_entrypoint(home: &Path) -> Result<PathBuf> {
 	Ok(entrypoint)
 }
 
-fn validate_path_chain(path: &Path) -> Result<()> {
+fn validate_path_chain(path: &Path) -> prelude::Result<()> {
 	let current_uid = current_uid();
 	let components = path.ancestors().collect::<Vec<_>>();
 
@@ -173,7 +176,11 @@ fn validate_path_chain(path: &Path) -> Result<()> {
 	Ok(())
 }
 
-fn validate_owner_mode(metadata: &fs::Metadata, current_uid: u32, executable: bool) -> Result<()> {
+fn validate_owner_mode(
+	metadata: &Metadata,
+	current_uid: u32,
+	executable: bool,
+) -> prelude::Result<()> {
 	if !matches!(metadata.uid(), 0) && metadata.uid() != current_uid {
 		return Err(eyre::eyre!("xurl path owner is not trusted"));
 	}
@@ -190,7 +197,7 @@ fn validate_owner_mode(metadata: &fs::Metadata, current_uid: u32, executable: bo
 	Ok(())
 }
 
-fn read_verified_binary(path: &Path) -> Result<(Vec<u8>, String)> {
+fn read_verified_binary(path: &Path) -> prelude::Result<(Vec<u8>, String)> {
 	let mut file = OpenOptions::new()
 		.read(true)
 		.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
@@ -239,7 +246,7 @@ fn install_private_copy(
 	digest: &str,
 	home: &Path,
 	deadline: Instant,
-) -> Result<TrustedXurlBinary> {
+) -> prelude::Result<TrustedXurlBinary> {
 	let repo_root = crate::repo_root()?;
 	let runtime_dir = repo_root.join(PRIVATE_RUNTIME_DIR);
 	let runtime = crate::filesystem::open_private_directory_descriptor(&runtime_dir, true)?;
@@ -255,7 +262,7 @@ fn install_private_copy_in(
 	digest: &str,
 	home: &Path,
 	deadline: Instant,
-) -> Result<TrustedXurlBinary> {
+) -> prelude::Result<TrustedXurlBinary> {
 	lock_execution_directory(runtime)?;
 
 	runtime.set_permissions(fs::Permissions::from_mode(0o700))?;
@@ -294,9 +301,13 @@ fn install_private_copy_in(
 	})
 }
 
-fn create_private_copy(runtime: &File, destination: &OsString, bytes: &[u8]) -> Result<()> {
+fn create_private_copy(
+	runtime: &File,
+	destination: &OsString,
+	bytes: &[u8],
+) -> prelude::Result<()> {
 	let stage = OsString::from(format!(".stage-{}", random_suffix()?));
-	let fd = unix_fs::openat(
+	let fd = rustix::fs::openat(
 		runtime,
 		&stage,
 		OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::CLOEXEC | OFlags::NOFOLLOW,
@@ -311,8 +322,8 @@ fn create_private_copy(runtime: &File, destination: &OsString, bytes: &[u8]) -> 
 	validate_runtime_file_metadata(&file.metadata()?)?;
 	drop(file);
 
-	let linked = unix_fs::linkat(runtime, &stage, runtime, destination, AtFlags::empty());
-	let cleanup = unix_fs::unlinkat(runtime, &stage, AtFlags::empty());
+	let linked = rustix::fs::linkat(runtime, &stage, runtime, destination, AtFlags::empty());
+	let cleanup = rustix::fs::unlinkat(runtime, &stage, AtFlags::empty());
 
 	if let Err(error) = linked {
 		if cleanup.is_err() {
@@ -330,8 +341,8 @@ fn create_private_copy(runtime: &File, destination: &OsString, bytes: &[u8]) -> 
 	Ok(())
 }
 
-fn open_runtime_file(runtime: &File, name: &OsString) -> Result<File> {
-	let fd = unix_fs::openat(
+fn open_runtime_file(runtime: &File, name: &OsString) -> prelude::Result<File> {
+	let fd = rustix::fs::openat(
 		runtime,
 		name,
 		OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
@@ -344,8 +355,8 @@ fn open_runtime_file(runtime: &File, name: &OsString) -> Result<File> {
 	Ok(file)
 }
 
-fn open_runtime_executable(runtime: &File, name: &OsString) -> Result<File> {
-	let name = std::ffi::CString::new(name.as_bytes())
+fn open_runtime_executable(runtime: &File, name: &OsString) -> prelude::Result<File> {
+	let name = CString::new(name.as_bytes())
 		.map_err(|_| eyre::eyre!("private xurl runtime filename is invalid"))?;
 	let fd = unsafe {
 		libc::openat(
@@ -356,7 +367,7 @@ fn open_runtime_executable(runtime: &File, name: &OsString) -> Result<File> {
 	};
 
 	if fd == -1 {
-		return Err(std::io::Error::last_os_error().into());
+		return Err(Error::last_os_error().into());
 	}
 
 	let file = unsafe { File::from_raw_fd(fd) };
@@ -366,14 +377,14 @@ fn open_runtime_executable(runtime: &File, name: &OsString) -> Result<File> {
 	Ok(file)
 }
 
-fn open_executable_path(path: &Path) -> Result<File> {
-	let path = std::ffi::CString::new(path.as_os_str().as_bytes())
+fn open_executable_path(path: &Path) -> prelude::Result<File> {
+	let path = CString::new(path.as_os_str().as_bytes())
 		.map_err(|_| eyre::eyre!("xurl executable path is invalid"))?;
 	let fd =
 		unsafe { libc::open(path.as_ptr(), libc::O_EXEC | libc::O_CLOEXEC | libc::O_NOFOLLOW) };
 
 	if fd == -1 {
-		return Err(std::io::Error::last_os_error().into());
+		return Err(Error::last_os_error().into());
 	}
 
 	let file = unsafe { File::from_raw_fd(fd) };
@@ -383,7 +394,7 @@ fn open_executable_path(path: &Path) -> Result<File> {
 	Ok(file)
 }
 
-fn validate_runtime_directory(runtime: &File) -> Result<()> {
+fn validate_runtime_directory(runtime: &File) -> prelude::Result<()> {
 	let metadata = runtime.metadata()?;
 
 	if !metadata.is_dir()
@@ -396,7 +407,7 @@ fn validate_runtime_directory(runtime: &File) -> Result<()> {
 	Ok(())
 }
 
-fn validate_execution_directory(metadata: &fs::Metadata) -> Result<()> {
+fn validate_execution_directory(metadata: &Metadata) -> prelude::Result<()> {
 	if !metadata.is_dir()
 		|| metadata.uid() != current_uid()
 		|| metadata.permissions().mode() & 0o022 != 0
@@ -407,7 +418,7 @@ fn validate_execution_directory(metadata: &fs::Metadata) -> Result<()> {
 	Ok(())
 }
 
-fn validate_runtime_file_metadata(metadata: &fs::Metadata) -> Result<()> {
+fn validate_runtime_file_metadata(metadata: &Metadata) -> prelude::Result<()> {
 	if !metadata.is_file()
 		|| metadata.len() == 0
 		|| metadata.len() > MAX_XURL_BINARY_BYTES
@@ -421,7 +432,7 @@ fn validate_runtime_file_metadata(metadata: &fs::Metadata) -> Result<()> {
 	Ok(())
 }
 
-fn validate_executable_metadata(metadata: &fs::Metadata, private_copy: bool) -> Result<()> {
+fn validate_executable_metadata(metadata: &Metadata, private_copy: bool) -> prelude::Result<()> {
 	if !metadata.is_file()
 		|| metadata.len() == 0
 		|| metadata.len() > MAX_XURL_BINARY_BYTES
@@ -436,7 +447,7 @@ fn validate_executable_metadata(metadata: &fs::Metadata, private_copy: bool) -> 
 	Ok(())
 }
 
-fn require_same_executable(readable: &fs::Metadata, executable: &fs::Metadata) -> Result<()> {
+fn require_same_executable(readable: &Metadata, executable: &Metadata) -> prelude::Result<()> {
 	if readable.dev() != executable.dev()
 		|| readable.ino() != executable.ino()
 		|| readable.len() != executable.len()
@@ -448,7 +459,7 @@ fn require_same_executable(readable: &fs::Metadata, executable: &fs::Metadata) -
 	Ok(())
 }
 
-fn descriptor_execution_path(binary: &TrustedXurlBinary) -> Result<(PathBuf, File)> {
+fn descriptor_execution_path(binary: &TrustedXurlBinary) -> prelude::Result<(PathBuf, File)> {
 	let mut buffer = [0_i8; libc::PATH_MAX as usize];
 	let result =
 		unsafe { libc::fcntl(binary.file.as_raw_fd(), libc::F_GETPATH, buffer.as_mut_ptr()) };
@@ -482,7 +493,7 @@ fn descriptor_execution_path(binary: &TrustedXurlBinary) -> Result<(PathBuf, Fil
 	Ok((path, rebound))
 }
 
-fn validate_private_copy(file: &mut File, expected: &[u8], digest: &str) -> Result<()> {
+fn validate_private_copy(file: &mut File, expected: &[u8], digest: &str) -> prelude::Result<()> {
 	let before = file.metadata()?;
 
 	validate_runtime_file_metadata(&before)?;
@@ -509,8 +520,8 @@ fn validate_private_copy(file: &mut File, expected: &[u8], digest: &str) -> Resu
 fn prune_runtime_copies(
 	runtime: &File,
 	current_name: &OsString,
-	current_metadata: &fs::Metadata,
-) -> Result<()> {
+	current_metadata: &Metadata,
+) -> prelude::Result<()> {
 	let mut names = Vec::new();
 
 	for entry in Dir::read_from(runtime)? {
@@ -538,7 +549,7 @@ fn prune_runtime_copies(
 
 			validate_runtime_gc_metadata(&file.metadata()?)?;
 
-			unix_fs::unlinkat(runtime, &name, AtFlags::empty())?;
+			rustix::fs::unlinkat(runtime, &name, AtFlags::empty())?;
 
 			continue;
 		}
@@ -576,7 +587,7 @@ fn prune_runtime_copies(
 			}
 		}
 
-		unix_fs::unlinkat(runtime, &name, AtFlags::empty())?;
+		rustix::fs::unlinkat(runtime, &name, AtFlags::empty())?;
 	}
 
 	runtime.sync_all()?;
@@ -584,8 +595,8 @@ fn prune_runtime_copies(
 	require_only_current_copy(runtime, current_name, current_metadata)
 }
 
-fn open_runtime_gc_entry(runtime: &File, name: &OsString) -> Result<File> {
-	let fd = unix_fs::openat(
+fn open_runtime_gc_entry(runtime: &File, name: &OsString) -> prelude::Result<File> {
+	let fd = rustix::fs::openat(
 		runtime,
 		name,
 		OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
@@ -595,7 +606,7 @@ fn open_runtime_gc_entry(runtime: &File, name: &OsString) -> Result<File> {
 	Ok(File::from(fd))
 }
 
-fn validate_runtime_gc_metadata(metadata: &fs::Metadata) -> Result<()> {
+fn validate_runtime_gc_metadata(metadata: &Metadata) -> prelude::Result<()> {
 	if !metadata.is_file()
 		|| metadata.len() > MAX_XURL_BINARY_BYTES
 		|| metadata.uid() != current_uid()
@@ -608,11 +619,11 @@ fn validate_runtime_gc_metadata(metadata: &fs::Metadata) -> Result<()> {
 	Ok(())
 }
 
-fn lock_execution_directory(directory: &File) -> Result<()> {
+fn lock_execution_directory(directory: &File) -> prelude::Result<()> {
 	if unsafe { libc::flock(directory.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == -1 {
 		return Err(eyre::eyre!(
 			"another trusted xurl runtime operation is active: {}",
-			std::io::Error::last_os_error()
+			Error::last_os_error()
 		));
 	}
 
@@ -622,8 +633,8 @@ fn lock_execution_directory(directory: &File) -> Result<()> {
 fn require_only_current_copy(
 	runtime: &File,
 	current_name: &OsString,
-	current_metadata: &fs::Metadata,
-) -> Result<()> {
+	current_metadata: &Metadata,
+) -> prelude::Result<()> {
 	let names = Dir::read_from(runtime)?
 		.map(|entry| entry.map(|entry| OsString::from_vec(entry.file_name().to_bytes().to_vec())))
 		.collect::<std::result::Result<Vec<_>, _>>()?;
@@ -658,7 +669,7 @@ fn is_runtime_stage_name(name: &OsString) -> bool {
 	})
 }
 
-fn random_suffix() -> Result<String> {
+fn random_suffix() -> prelude::Result<String> {
 	let mut bytes = [0_u8; 16];
 
 	getrandom::fill(&mut bytes).map_err(|_| eyre::eyre!("xurl runtime nonce failed"))?;
@@ -670,7 +681,7 @@ fn current_uid() -> u32 {
 	unsafe { libc::geteuid() }
 }
 
-pub(super) fn verify_runtime(binary: &TrustedXurlBinary) -> Result<String> {
+pub(super) fn verify_runtime(binary: &TrustedXurlBinary) -> prelude::Result<String> {
 	binary.require_approved_release()?;
 
 	let output = run(binary, ["--version"])?;
@@ -694,7 +705,7 @@ pub(super) fn verify_runtime(binary: &TrustedXurlBinary) -> Result<String> {
 	Ok(version.into())
 }
 
-pub(super) fn verify_auth_status(binary: &TrustedXurlBinary) -> Result<()> {
+pub(super) fn verify_auth_status(binary: &TrustedXurlBinary) -> prelude::Result<()> {
 	let output = run(binary, ["--app", XURL_APP, "auth", "status"])?;
 
 	if !output.status.success() {
@@ -709,7 +720,7 @@ pub(super) fn verify_auth_status(binary: &TrustedXurlBinary) -> Result<()> {
 pub(super) fn verify_ready(
 	binary: &TrustedXurlBinary,
 	contract: &VerifiedAuthorizationContract,
-) -> Result<String> {
+) -> prelude::Result<String> {
 	contract.require_runtime(binary)?;
 
 	let version = verify_runtime(binary)?;
@@ -721,7 +732,7 @@ pub(super) fn verify_ready(
 	Ok(version)
 }
 
-fn validate_auth_status_output(stdout: &str) -> Result<()> {
+fn validate_auth_status_output(stdout: &str) -> prelude::Result<()> {
 	let clean = strip_ansi(stdout);
 	let mut default_sections = 0_usize;
 	let mut in_default_section = false;
@@ -787,7 +798,7 @@ fn auth_app_header(line: &str) -> Option<&str> {
 pub(super) fn whoami(
 	binary: &TrustedXurlBinary,
 	contract: &VerifiedAuthorizationContract,
-) -> Result<AuthenticatedOutput> {
+) -> prelude::Result<AuthenticatedOutput> {
 	authenticated_run(
 		binary,
 		contract,
@@ -799,7 +810,7 @@ pub(super) fn create(
 	binary: &TrustedXurlBinary,
 	contract: &VerifiedAuthorizationContract,
 	text: &str,
-) -> Result<AuthenticatedOutput> {
+) -> prelude::Result<AuthenticatedOutput> {
 	authenticated_run(
 		binary,
 		contract,
@@ -812,7 +823,7 @@ pub(super) fn read(
 	contract: &VerifiedAuthorizationContract,
 	post_id: &str,
 	_operation: &str,
-) -> Result<AuthenticatedOutput> {
+) -> prelude::Result<AuthenticatedOutput> {
 	authenticated_run(
 		binary,
 		contract,
@@ -823,11 +834,11 @@ pub(super) fn read(
 pub(super) fn parse_identity(
 	output: &mut AuthenticatedOutput,
 	_contract: &VerifiedAuthorizationContract,
-) -> Result<VerifiedIdentity> {
+) -> prelude::Result<VerifiedIdentity> {
 	parse_identity_output(&output.output)
 }
 
-fn parse_identity_output(output: &Output) -> Result<VerifiedIdentity> {
+fn parse_identity_output(output: &Output) -> prelude::Result<VerifiedIdentity> {
 	if !output.status.success() {
 		return Err(failure("identity read", output));
 	}
@@ -851,11 +862,11 @@ pub(super) fn parse_create(
 	output: &mut AuthenticatedOutput,
 	_contract: &VerifiedAuthorizationContract,
 	text: &str,
-) -> Result<(String, String)> {
+) -> prelude::Result<(String, String)> {
 	parse_create_output(&output.output, text)
 }
 
-fn parse_create_output(output: &Output, text: &str) -> Result<(String, String)> {
+fn parse_create_output(output: &Output, text: &str) -> prelude::Result<(String, String)> {
 	if !output.status.success() {
 		return Err(failure("post creation", output));
 	}
@@ -880,7 +891,7 @@ pub(super) fn parse_read(
 	post_id: &str,
 	text: &str,
 	verified_user_id: &str,
-) -> Result<(Value, String)> {
+) -> prelude::Result<(Value, String)> {
 	parse_read_output(&output.output, post_id, text, verified_user_id)
 }
 
@@ -889,7 +900,7 @@ fn parse_read_output(
 	post_id: &str,
 	text: &str,
 	verified_user_id: &str,
-) -> Result<(Value, String)> {
+) -> prelude::Result<(Value, String)> {
 	if !output.status.success() {
 		return Err(failure("post readback", output));
 	}
@@ -907,10 +918,10 @@ fn authenticated_run<I, S>(
 	binary: &TrustedXurlBinary,
 	contract: &VerifiedAuthorizationContract,
 	arguments: I,
-) -> Result<AuthenticatedOutput>
+) -> prelude::Result<AuthenticatedOutput>
 where
 	I: IntoIterator<Item = S>,
-	S: AsRef<std::ffi::OsStr>,
+	S: AsRef<OsStr>,
 {
 	contract.require_runtime(binary)?;
 
@@ -926,7 +937,7 @@ fn verify_read_response(
 	post_id: &str,
 	text: &str,
 	verified_user_id: &str,
-) -> Result<()> {
+) -> prelude::Result<()> {
 	let data = response
 		.get("data")
 		.and_then(Value::as_object)
@@ -962,17 +973,17 @@ fn verify_read_response(
 	Ok(())
 }
 
-fn numeric_id<'a>(value: Option<&'a Value>, label: &str) -> Result<&'a str> {
+fn numeric_id<'a>(value: Option<&'a Value>, label: &str) -> prelude::Result<&'a str> {
 	value
 		.and_then(Value::as_str)
 		.filter(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
 		.ok_or_else(|| eyre::eyre!("{label} is invalid"))
 }
 
-fn run<I, S>(binary: &TrustedXurlBinary, arguments: I) -> Result<Output>
+fn run<I, S>(binary: &TrustedXurlBinary, arguments: I) -> prelude::Result<Output>
 where
 	I: IntoIterator<Item = S>,
-	S: AsRef<std::ffi::OsStr>,
+	S: AsRef<OsStr>,
 {
 	run_with_deadline(binary, arguments, XURL_DEADLINE)
 }
@@ -981,10 +992,10 @@ fn run_with_deadline<I, S>(
 	binary: &TrustedXurlBinary,
 	arguments: I,
 	deadline: Duration,
-) -> Result<Output>
+) -> prelude::Result<Output>
 where
 	I: IntoIterator<Item = S>,
-	S: AsRef<std::ffi::OsStr>,
+	S: AsRef<OsStr>,
 {
 	run_with_deadline_inner(binary, arguments, deadline, || {})
 }
@@ -994,10 +1005,10 @@ fn run_with_deadline_inner<I, S, F>(
 	arguments: I,
 	deadline: Duration,
 	before_spawn: F,
-) -> Result<Output>
+) -> prelude::Result<Output>
 where
 	I: IntoIterator<Item = S>,
-	S: AsRef<std::ffi::OsStr>,
+	S: AsRef<OsStr>,
 	F: FnOnce(),
 {
 	let started = Instant::now();
@@ -1060,11 +1071,11 @@ where
 	Ok(Output { status, stdout, stderr })
 }
 
-type ReaderResult = std::io::Result<Vec<u8>>;
+type ReaderResult = io::Result<Vec<u8>>;
 
 fn spawn_bounded_reader(
-	reader: impl std::io::Read + Send + 'static,
-) -> (mpsc::Receiver<ReaderResult>, thread::JoinHandle<()>) {
+	reader: impl Read + Send + 'static,
+) -> (mpsc::Receiver<ReaderResult>, JoinHandle<()>) {
 	let (sender, receiver) = mpsc::sync_channel(1);
 	let handle = thread::spawn(move || {
 		let _ = sender.send(drain_bounded(reader));
@@ -1075,10 +1086,10 @@ fn spawn_bounded_reader(
 
 fn receive_bounded_reader(
 	receiver: mpsc::Receiver<ReaderResult>,
-	handle: thread::JoinHandle<()>,
+	handle: JoinHandle<()>,
 	deadline: Instant,
 	label: &str,
-) -> Result<Vec<u8>> {
+) -> prelude::Result<Vec<u8>> {
 	let output =
 		receiver.recv_timeout(remaining_time(deadline)?).map_err(|error| match error {
 			mpsc::RecvTimeoutError::Timeout => {
@@ -1094,23 +1105,23 @@ fn receive_bounded_reader(
 	Ok(output)
 }
 
-fn remaining_time(deadline: Instant) -> Result<Duration> {
+fn remaining_time(deadline: Instant) -> prelude::Result<Duration> {
 	deadline
 		.checked_duration_since(Instant::now())
 		.filter(|remaining| !remaining.is_zero())
 		.ok_or_else(|| eyre::eyre!("xurl execution exceeded its bounded deadline"))
 }
 
-fn require_time_remaining(deadline: Instant) -> Result<()> {
+fn require_time_remaining(deadline: Instant) -> prelude::Result<()> {
 	remaining_time(deadline).map(|_| ())
 }
 
-fn trusted_home_directory() -> Result<PathBuf> {
+fn trusted_home_directory() -> prelude::Result<PathBuf> {
 	let uid = current_uid();
 	let suggested = unsafe { libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX) };
 	let buffer_size =
-		if suggested > 0 { usize::try_from(suggested).unwrap_or(16 * 1024) } else { 16 * 1024 }
-			.clamp(1024, 1024 * 1024);
+		if suggested > 0 { usize::try_from(suggested).unwrap_or(16 * 1_024) } else { 16 * 1_024 }
+			.clamp(1_024, 1_024 * 1_024);
 	let mut buffer = vec![0_u8; buffer_size];
 	let mut password = MaybeUninit::<libc::passwd>::zeroed();
 	let mut result = ptr::null_mut();
@@ -1147,7 +1158,7 @@ fn trusted_home_directory() -> Result<PathBuf> {
 	Ok(path)
 }
 
-fn validate_home_directory(path: &Path) -> Result<()> {
+fn validate_home_directory(path: &Path) -> prelude::Result<()> {
 	let uid = current_uid();
 	let metadata = fs::symlink_metadata(path)
 		.map_err(|_| eyre::eyre!("operating-system home directory is unavailable"))?;
@@ -1172,7 +1183,7 @@ fn kill_process_group(child_id: u32) {
 	}
 }
 
-fn drain_bounded(mut reader: impl std::io::Read) -> std::io::Result<Vec<u8>> {
+fn drain_bounded(mut reader: impl Read) -> io::Result<Vec<u8>> {
 	let mut retained = Vec::new();
 	let mut buffer = [0_u8; 8192];
 
@@ -1191,7 +1202,7 @@ fn drain_bounded(mut reader: impl std::io::Read) -> std::io::Result<Vec<u8>> {
 	Ok(retained)
 }
 
-fn parse_json_output(bytes: &[u8], label: &str) -> Result<Value> {
+fn parse_json_output(bytes: &[u8], label: &str) -> prelude::Result<Value> {
 	let text = output_text(bytes, label)?;
 	let clean = strip_ansi(text);
 
@@ -1202,7 +1213,7 @@ fn parse_json_output(bytes: &[u8], label: &str) -> Result<Value> {
 	serde_json::from_str(clean.trim()).map_err(|_| eyre::eyre!("{label} is not valid JSON"))
 }
 
-fn output_text<'a>(bytes: &'a [u8], label: &str) -> Result<&'a str> {
+fn output_text<'a>(bytes: &'a [u8], label: &str) -> prelude::Result<&'a str> {
 	if bytes.len() > MAX_XURL_OUTPUT_BYTES {
 		return Err(eyre::eyre!("{label} exceeds the size limit"));
 	}
