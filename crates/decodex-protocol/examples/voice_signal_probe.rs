@@ -1,35 +1,44 @@
 //! Opt-in native media qualification. Private SDP travels through inherited pipes only.
-use decodex_core as _;
-use decodex_protocol::{
-	AgentClient, AgentVoicePhase, AgentVoiceRequest, ClientProfile, EntityId, VoiceSdp,
+use std::{
+	env,
+	error::Error,
+	io::{self, BufRead as _, Write as _},
+	path::Path,
+	thread,
+	time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+use decodex_core as _;
 use futures_util as _;
 #[cfg(unix)] use libc as _;
 use percent_encoding as _;
 use serde as _;
-use std::{
-	io::{BufRead as _, Write as _},
-	path::Path,
-	time::{Duration, SystemTime, UNIX_EPOCH},
-};
 use tempfile as _;
+use tokio::{
+	sync::mpsc,
+	time::{self, Instant},
+};
 use tokio_tungstenite as _;
 use url as _;
 
+use decodex_protocol::{
+	AgentClient, AgentVoicePhase, AgentVoiceRequest, ClientProfile, EntityId, VoiceSdp,
+};
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let root = std::env::args().nth(1).ok_or("explicit service root required")?;
-	let work = std::env::args().nth(2).ok_or("explicit authorized test Agent required")?;
+async fn main() -> Result<(), Box<dyn Error>> {
+	let root = env::args().nth(1).ok_or("explicit service root required")?;
+	let work = env::args().nth(2).ok_or("explicit authorized test Agent required")?;
 	let client = AgentClient::new(ClientProfile::load(Path::new(&root), None)?);
 	let session = EntityId::new(format!(
 		"voice-qualification-{}",
 		SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
 	))
 	.map_err(|_| "invalid call identity")?;
-	let (send, mut lines) = tokio::sync::mpsc::channel(4);
+	let (send, mut lines) = mpsc::channel(4);
 
-	std::thread::spawn(move || {
-		for line in std::io::stdin().lock().lines() {
+	thread::spawn(move || {
+		for line in io::stdin().lock().lines() {
 			let Ok(line) = line else { break };
 
 			if line.len() > 70_000 || send.blocking_send(line).is_err() {
@@ -47,9 +56,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		options: Default::default(),
 	};
 	let result = async {
-		let mut status = client.voice(start).await?;
+		let status = client.voice(start).await?;
+		let deadline = Instant::now() + Duration::from_secs(60);
+		let mut status = status;
 		let mut answered = false;
-		let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
 
 		loop {
 			if status.phase == AgentVoicePhase::Failed {
@@ -57,12 +67,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 					eprintln!("{}", message.as_str());
 				}
 
-				return Err::<(), Box<dyn std::error::Error>>("service voice failed".into());
+				return Err::<(), Box<dyn Error>>("service voice failed".into());
 			}
 			if !answered && let Some(answer) = status.answer.take() {
 				println!("{}", serde_json::to_string(&answer)?);
 
-				std::io::stdout().flush()?;
+				io::stdout().flush()?;
 
 				answered = true;
 			}
@@ -71,9 +81,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}
 
 			tokio::select! {
-				_=tokio::time::sleep_until(deadline)=>return Err("voice qualification deadline".into()),
+				_=time::sleep_until(deadline)=>return Err("voice qualification deadline".into()),
 				line=lines.recv()=>{if line.as_deref()==Some("stop") || line.is_none() {return Ok(())}},
-				_=tokio::time::sleep(Duration::from_millis(200))=>{},
+				_=time::sleep(Duration::from_millis(200))=>{},
 			}
 
 			status = client.voice(AgentVoiceRequest::Poll { session_id: session.clone() }).await?;
