@@ -16,7 +16,6 @@ pub const MAX_ACCOUNT_LOGIN_URL_BYTES: usize = 8 * 1_024;
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct AccountLoginUrl(String);
-
 impl AccountLoginUrl {
 	/// Validate and construct one bounded provider URL.
 	pub fn new(value: impl Into<String>) -> Result<Self, WireScalarTooLong> {
@@ -95,7 +94,6 @@ pub struct AccountLoginStart {
 	/// Final AccountService installation mode and durable command identity.
 	pub install_mode: AccountLoginInstallMode,
 }
-
 impl AccountLoginStart {
 	/// Validate canonical identities and revision/recovery fences.
 	pub fn validate(&self) -> Result<(), AccountLoginContractError> {
@@ -154,7 +152,6 @@ pub enum AccountLoginRequest {
 		session_id: EntityId,
 	},
 }
-
 impl AccountLoginRequest {
 	/// Borrow the session identity addressed by this operation.
 	pub fn session_id(&self) -> &EntityId {
@@ -272,7 +269,6 @@ pub struct AccountLoginStatus {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub resolved_account_id: Option<EntityId>,
 }
-
 impl AccountLoginStatus {
 	/// Validate state-specific optional fields and all ephemeral identities.
 	pub fn validate(&self) -> Result<(), AccountLoginContractError> {
@@ -360,7 +356,12 @@ fn is_canonical_uuid(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::{
+		AccountLoginContractError, AccountLoginFailure, AccountLoginInstallMode,
+		AccountLoginMethod, AccountLoginPrompt, AccountLoginRequest, AccountLoginStart,
+		AccountLoginState, AccountLoginStatus, AccountLoginUrl, EntityId, IdempotencyKey, WireText,
+		account_login::MAX_ACCOUNT_LOGIN_URL_BYTES,
+	};
 
 	fn entity(value: &str) -> EntityId {
 		EntityId::new(value).expect("fixture entity")

@@ -1,6 +1,6 @@
 //! Compact references to immutable provider-proposed approval decisions.
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 /// A decision whose complete response comes from the exact persisted request.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -14,7 +14,6 @@ pub enum AgentRequestedDecision {
 		index: usize,
 	},
 }
-
 impl AgentRequestedDecision {
 	/// Find a compact reference only when it reconstructs the exact explicit response.
 	pub fn matching_response(method: &str, params: &Value, response: &Value) -> Option<Self> {
@@ -47,7 +46,7 @@ pub fn requested_decision_response(
 		AgentRequestedDecision::PermissionsForTurn
 			if method == "item/permissions/requestApproval"
 				&& params["permissions"].is_object() =>
-			Some(json!({"permissions": params["permissions"], "scope": "turn"})),
+			Some(serde_json::json!({"permissions": params["permissions"], "scope": "turn"})),
 		AgentRequestedDecision::CommandPolicy { index }
 			if method == "item/commandExecution/requestApproval" =>
 		{
@@ -61,7 +60,7 @@ pub fn requested_decision_response(
 				return None;
 			}
 
-			Some(json!({"decision": proposed}))
+			Some(serde_json::json!({"decision": proposed}))
 		},
 		_ => None,
 	}
@@ -69,13 +68,13 @@ pub fn requested_decision_response(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::{AgentRequestedDecision, agent_requested_decision};
 
 	#[test]
 	fn selected_decisions_preserve_large_values_and_exact_array_positions() {
-		let permissions = json!({"fileSystem":{"write":["/tmp/界".repeat(6000)]}});
-		let params = json!({"permissions":permissions});
-		let result = requested_decision_response(
+		let permissions = serde_json::json!({"fileSystem":{"write":["/tmp/界".repeat(6_000)]}});
+		let params = serde_json::json!({"permissions":permissions});
+		let result = agent_requested_decision::requested_decision_response(
 			"item/permissions/requestApproval",
 			&params,
 			&AgentRequestedDecision::PermissionsForTurn,
@@ -83,7 +82,7 @@ mod tests {
 		.unwrap();
 
 		assert!(result.to_string().len() > crate::MAX_HISTORY_INLINE_BYTES);
-		assert_eq!(result, json!({"permissions":permissions,"scope":"turn"}));
+		assert_eq!(result, serde_json::json!({"permissions":permissions,"scope":"turn"}));
 		assert_eq!(
 			AgentRequestedDecision::matching_response(
 				"item/permissions/requestApproval",
@@ -95,7 +94,7 @@ mod tests {
 
 		let mut changed = result;
 
-		changed["scope"] = json!("session");
+		changed["scope"] = serde_json::json!("session");
 
 		assert!(
 			AgentRequestedDecision::matching_response(
@@ -106,7 +105,7 @@ mod tests {
 			.is_none()
 		);
 		assert!(
-			requested_decision_response(
+			agent_requested_decision::requested_decision_response(
 				"mcpServer/elicitation/request",
 				&params,
 				&AgentRequestedDecision::PermissionsForTurn
@@ -114,15 +113,15 @@ mod tests {
 			.is_none()
 		);
 
-		let policy = json!({"acceptWithExecpolicyAmendment":{"execpolicy_amendment":["command".repeat(6000)]}});
-		let params = json!({"availableDecisions":["decline", policy]});
+		let policy = serde_json::json!({"acceptWithExecpolicyAmendment":{"execpolicy_amendment":["command".repeat(6_000)]}});
+		let params = serde_json::json!({"availableDecisions":["decline", policy]});
 		let selected = AgentRequestedDecision::CommandPolicy { index: 1 };
 
 		assert_eq!(
 			AgentRequestedDecision::matching_response(
 				"item/commandExecution/requestApproval",
 				&params,
-				&json!({"decision":policy})
+				&serde_json::json!({"decision":policy})
 			),
 			Some(selected.clone())
 		);
@@ -135,17 +134,17 @@ mod tests {
 
 		assert!(serde_json::to_string(&action).unwrap().len() < 512);
 		assert_eq!(
-			requested_decision_response(
+			agent_requested_decision::requested_decision_response(
 				"item/commandExecution/requestApproval",
 				&params,
 				&selected
 			),
-			Some(json!({"decision":policy}))
+			Some(serde_json::json!({"decision":policy}))
 		);
 
 		for index in [0, 2, usize::MAX] {
 			assert!(
-				requested_decision_response(
+				agent_requested_decision::requested_decision_response(
 					"item/commandExecution/requestApproval",
 					&params,
 					&AgentRequestedDecision::CommandPolicy { index }
@@ -155,8 +154,12 @@ mod tests {
 		}
 
 		assert!(
-			requested_decision_response("item/fileChange/requestApproval", &params, &selected)
-				.is_none()
+			agent_requested_decision::requested_decision_response(
+				"item/fileChange/requestApproval",
+				&params,
+				&selected
+			)
+			.is_none()
 		);
 	}
 }
