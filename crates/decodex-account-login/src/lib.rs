@@ -113,7 +113,6 @@ pub struct Cancellation {
 	cancelled: Arc<AtomicBool>,
 	notify: Arc<Notify>,
 }
-
 impl Cancellation {
 	/// Request cooperative termination of the provider flow.
 	pub fn cancel(&self) {
@@ -149,7 +148,6 @@ pub struct Config {
 	#[cfg(test)]
 	fallback_proxy_fixture: Option<String>,
 }
-
 impl Config {
 	/// Build the exact reviewed production provider configuration.
 	pub fn production() -> Result<Self, Error> {
@@ -226,7 +224,6 @@ pub struct LoginHome {
 	inode: u64,
 	cleaned: bool,
 }
-
 impl LoginHome {
 	/// Create one fresh private home below the daemon-specific temporary root.
 	pub fn create(session_id: &str) -> Result<Self, Error> {
@@ -331,11 +328,269 @@ impl Drop for LoginHome {
 	}
 }
 
+enum CallbackOutcome {
+	Continue,
+	Completed,
+}
+
+struct ExchangeContext<'a> {
+	config: &'a Config,
+	client: &'a Client,
+	login_home: &'a Path,
+	cancellation: &'a Cancellation,
+	deadline: Instant,
+}
+impl ExchangeContext<'_> {
+	async fn run(
+		self,
+		redirect_uri: &str,
+		pkce: &PkceCodes,
+		authorization_code: &str,
+	) -> Result<(), Error> {
+		if !valid_secret_scalar(authorization_code) || !pkce.valid() {
+			return Err(Error::InvalidResponse);
+		}
+
+		let form = [
+			("grant_type", "authorization_code"),
+			("code", authorization_code),
+			("redirect_uri", redirect_uri),
+			("client_id", self.config.client_id.as_str()),
+			("code_verifier", pkce.code_verifier.as_str()),
+		];
+		let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+
+		for (key, value) in form {
+			serializer.append_pair(key, value);
+		}
+
+		let body = Zeroizing::new(serializer.finish());
+		let response = system_proxy::exchange(
+			self.config,
+			self.client,
+			body.as_str(),
+			self.cancellation,
+			self.deadline,
+		)
+		.await?;
+
+		if !response.status().is_success() {
+			return Err(Error::Rejected);
+		}
+
+		let tokens: ExchangedTokens =
+			read_bounded_json(response, self.cancellation, self.deadline).await?;
+
+		tokens.validate()?;
+
+		persist_auth(self.login_home, &tokens)
+	}
+}
+
+#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+struct PkceCodes {
+	code_verifier: String,
+	code_challenge: String,
+}
+impl PkceCodes {
+	fn valid(&self) -> bool {
+		if self.code_verifier.len() < 43
+			|| self.code_verifier.len() > 128
+			|| self.code_challenge.len() != 43
+			|| !self.code_verifier.bytes().all(|byte| {
+				byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~')
+			}) {
+			return false;
+		}
+
+		let digest = Sha256::digest(self.code_verifier.as_bytes());
+
+		URL_SAFE_NO_PAD.encode(digest) == self.code_challenge
+	}
+}
+
+struct CallbackRequest {
+	target: String,
+	stream: TcpStream,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CallbackParseFailure {
+	Incomplete,
+	TooLarge,
+	TooManyHeaders,
+	Invalid,
+}
+
+struct ParsedCallbackHead<'a> {
+	target: &'a str,
+}
+
+#[derive(Serialize)]
+struct DeviceCodeRequest<'a> {
+	client_id: &'a str,
+}
+
+#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
+struct DeviceCodeResponse {
+	device_auth_id: String,
+	#[serde(alias = "user_code", alias = "usercode")]
+	user_code: String,
+	#[serde(default, deserialize_with = "deserialize_interval")]
+	interval: u64,
+}
+
+#[derive(Zeroize, ZeroizeOnDrop)]
+struct DeviceGrant {
+	device_auth_id: String,
+	user_code: String,
+	#[zeroize(skip)]
+	interval: Duration,
+}
+impl DeviceGrant {
+	fn new(response: DeviceCodeResponse) -> Result<Self, Error> {
+		if !valid_device_value(&response.device_auth_id)
+			|| !valid_user_code(&response.user_code)
+			|| response.interval == 0
+			|| response.interval > MAX_DEVICE_POLL_INTERVAL_SECONDS
+		{
+			return Err(Error::InvalidResponse);
+		}
+
+		Ok(Self {
+			device_auth_id: response.device_auth_id.clone(),
+			user_code: response.user_code.clone(),
+			interval: Duration::from_secs(response.interval),
+		})
+	}
+}
+
+#[derive(Serialize)]
+struct DevicePollRequest<'a> {
+	device_auth_id: &'a str,
+	user_code: &'a str,
+}
+
+#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
+struct DevicePollFailure {
+	error: DevicePollError,
+}
+impl DevicePollFailure {
+	fn is_pending(&self) -> bool {
+		matches!(
+			self.error.code.as_str(),
+			"authorization_pending"
+				| "deviceauth_authorization_pending"
+				| "deviceauth_authorization_unknown"
+		)
+	}
+}
+
+#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
+struct DevicePollError {
+	code: String,
+}
+
+#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
+struct DeviceCodeSuccess {
+	authorization_code: String,
+	code_challenge: String,
+	code_verifier: String,
+}
+impl DeviceCodeSuccess {
+	fn validate(&self) -> Result<(), Error> {
+		if !valid_secret_scalar(&self.authorization_code)
+			|| !(PkceCodes {
+				code_verifier: self.code_verifier.clone(),
+				code_challenge: self.code_challenge.clone(),
+			})
+			.valid()
+		{
+			return Err(Error::InvalidResponse);
+		}
+
+		Ok(())
+	}
+}
+
+#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
+struct ExchangedTokens {
+	id_token: String,
+	access_token: String,
+	refresh_token: String,
+}
+impl ExchangedTokens {
+	fn validate(&self) -> Result<(), Error> {
+		if [self.id_token.as_str(), self.access_token.as_str(), self.refresh_token.as_str()]
+			.into_iter()
+			.all(valid_secret_scalar)
+		{
+			Ok(())
+		} else {
+			Err(Error::InvalidResponse)
+		}
+	}
+}
+
+#[derive(Deserialize)]
+struct IdTokenClaims {
+	#[serde(rename = "https://api.openai.com/auth")]
+	authority: Option<IdTokenAuthority>,
+}
+
+#[derive(Deserialize)]
+struct IdTokenAuthority {
+	chatgpt_account_id: Option<String>,
+}
+
+#[derive(Serialize)]
+struct AuthDocument<'a> {
+	auth_mode: &'static str,
+	#[serde(rename = "OPENAI_API_KEY")]
+	openai_api_key: Option<&'static str>,
+	tokens: AuthTokens<'a>,
+	last_refresh: String,
+}
+
+#[derive(Serialize)]
+struct AuthTokens<'a> {
+	id_token: &'a str,
+	access_token: &'a str,
+	refresh_token: &'a str,
+	account_id: &'a str,
+}
+
 /// Remove only bounded, exact daemon-owned stale login homes after singleton acquisition.
 pub fn cleanup_stale_login_homes() -> Result<(), Error> {
 	let root = login_root_path()?;
 
 	cleanup_stale_login_homes_in(&root)
+}
+
+/// Run one bounded provider authorization into an owner-private login home.
+pub fn run(
+	config: &Config,
+	method: LoginMethod,
+	login_home: &Path,
+	runtime: &Handle,
+	cancellation: &Cancellation,
+	publish: impl Fn(LoginEvent),
+) -> Result<(), Error> {
+	let client = system_proxy::client(config, None)?;
+	let deadline = Instant::now() + config.login_timeout;
+
+	match method {
+		LoginMethod::BrowserRedirect =>
+			run_browser(config, &client, login_home, runtime, cancellation, deadline, publish),
+		LoginMethod::DeviceCode => runtime.block_on(run_device(
+			config,
+			&client,
+			login_home,
+			cancellation,
+			deadline,
+			publish,
+		)),
+	}
 }
 
 fn cleanup_stale_login_homes_in(root: &Path) -> Result<(), Error> {
@@ -421,32 +676,6 @@ fn is_canonical_uuid(value: &str) -> bool {
 		})
 }
 
-/// Run one bounded provider authorization into an owner-private login home.
-pub fn run(
-	config: &Config,
-	method: LoginMethod,
-	login_home: &Path,
-	runtime: &Handle,
-	cancellation: &Cancellation,
-	publish: impl Fn(LoginEvent),
-) -> Result<(), Error> {
-	let client = system_proxy::client(config, None)?;
-	let deadline = Instant::now() + config.login_timeout;
-
-	match method {
-		LoginMethod::BrowserRedirect =>
-			run_browser(config, &client, login_home, runtime, cancellation, deadline, publish),
-		LoginMethod::DeviceCode => runtime.block_on(run_device(
-			config,
-			&client,
-			login_home,
-			cancellation,
-			deadline,
-			publish,
-		)),
-	}
-}
-
 fn run_browser(
 	config: &Config,
 	client: &Client,
@@ -503,86 +732,6 @@ fn run_browser(
 			CallbackOutcome::Completed => return Ok(()),
 		}
 	}
-}
-
-async fn run_device(
-	config: &Config,
-	client: &Client,
-	login_home: &Path,
-	cancellation: &Cancellation,
-	deadline: Instant,
-	publish: impl Fn(LoginEvent),
-) -> Result<(), Error> {
-	let user_code_url = endpoint(config, "api/accounts/deviceauth/usercode")?;
-	let request = DeviceCodeRequest { client_id: &config.client_id };
-	let response =
-		cancellable(cancellation, deadline, client.post(user_code_url).json(&request).send())
-			.await?;
-
-	if !response.status().is_success() {
-		return Err(Error::Rejected);
-	}
-
-	let response: DeviceCodeResponse = read_bounded_json(response, cancellation, deadline).await?;
-	let grant = DeviceGrant::new(response)?;
-	let verification_url = endpoint(config, "codex/device")?.to_string();
-
-	publish(LoginEvent::DeviceAuthorization {
-		verification_url,
-		user_code: grant.user_code.clone(),
-	});
-
-	let poll_url = endpoint(config, "api/accounts/deviceauth/token")?;
-
-	loop {
-		check_cancel_or_timeout(cancellation, deadline)?;
-
-		let request = DevicePollRequest {
-			device_auth_id: &grant.device_auth_id,
-			user_code: &grant.user_code,
-		};
-		let response = cancellable(
-			cancellation,
-			deadline,
-			client.post(poll_url.clone()).json(&request).send(),
-		)
-		.await?;
-
-		match response.status().as_u16() {
-			200..=299 => {
-				let code: DeviceCodeSuccess =
-					read_bounded_json(response, cancellation, deadline).await?;
-
-				code.validate()?;
-
-				let redirect_uri = endpoint(config, "deviceauth/callback")?.to_string();
-				let pkce = PkceCodes {
-					code_verifier: code.code_verifier.clone(),
-					code_challenge: code.code_challenge.clone(),
-				};
-
-				return ExchangeContext { config, client, login_home, cancellation, deadline }
-					.run(&redirect_uri, &pkce, &code.authorization_code)
-					.await;
-			},
-			403 | 404 => {
-				let failure: DevicePollFailure =
-					read_bounded_json(response, cancellation, deadline).await?;
-
-				if !failure.is_pending() {
-					return Err(Error::DeviceAuthorizationRejected);
-				}
-
-				sleep_cancellable(cancellation, deadline, grant.interval).await?;
-			},
-			_ => return Err(Error::Rejected),
-		}
-	}
-}
-
-enum CallbackOutcome {
-	Continue,
-	Completed,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -663,122 +812,6 @@ fn handle_callback_request(
 	}
 }
 
-struct ExchangeContext<'a> {
-	config: &'a Config,
-	client: &'a Client,
-	login_home: &'a Path,
-	cancellation: &'a Cancellation,
-	deadline: Instant,
-}
-
-impl ExchangeContext<'_> {
-	async fn run(
-		self,
-		redirect_uri: &str,
-		pkce: &PkceCodes,
-		authorization_code: &str,
-	) -> Result<(), Error> {
-		if !valid_secret_scalar(authorization_code) || !pkce.valid() {
-			return Err(Error::InvalidResponse);
-		}
-
-		let form = [
-			("grant_type", "authorization_code"),
-			("code", authorization_code),
-			("redirect_uri", redirect_uri),
-			("client_id", self.config.client_id.as_str()),
-			("code_verifier", pkce.code_verifier.as_str()),
-		];
-		let mut serializer = url::form_urlencoded::Serializer::new(String::new());
-
-		for (key, value) in form {
-			serializer.append_pair(key, value);
-		}
-
-		let body = Zeroizing::new(serializer.finish());
-		let response = system_proxy::exchange(
-			self.config,
-			self.client,
-			body.as_str(),
-			self.cancellation,
-			self.deadline,
-		)
-		.await?;
-
-		if !response.status().is_success() {
-			return Err(Error::Rejected);
-		}
-
-		let tokens: ExchangedTokens =
-			read_bounded_json(response, self.cancellation, self.deadline).await?;
-
-		tokens.validate()?;
-
-		persist_auth(self.login_home, &tokens)
-	}
-}
-
-async fn cancellable<T>(
-	cancellation: &Cancellation,
-	deadline: Instant,
-	future: impl Future<Output = Result<T, reqwest::Error>>,
-) -> Result<T, Error> {
-	let wait = remaining(deadline)?;
-
-	tokio::select! {
-		biased;
-
-		_ = cancellation.cancelled() => Err(Error::Cancelled),
-		result = tokio::time::timeout(wait, future) => match result {
-			Ok(Ok(value)) => Ok(value),
-			Ok(Err(_)) => Err(Error::Unavailable),
-			Err(_) => Err(Error::TimedOut),
-		},
-	}
-}
-
-async fn read_bounded_json<T: for<'de> Deserialize<'de>>(
-	mut response: HttpResponse,
-	cancellation: &Cancellation,
-	deadline: Instant,
-) -> Result<T, Error> {
-	if response.content_length().is_some_and(|length| length > MAX_RESPONSE_BYTES as u64) {
-		return Err(Error::InvalidResponse);
-	}
-
-	let mut body = Zeroizing::new(Vec::new());
-
-	loop {
-		let chunk = cancellable(cancellation, deadline, response.chunk()).await?;
-		let Some(chunk) = chunk else {
-			break;
-		};
-
-		if body.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
-			return Err(Error::InvalidResponse);
-		}
-
-		body.extend_from_slice(&chunk);
-	}
-
-	serde_json::from_slice(&body).map_err(|_| Error::InvalidResponse)
-}
-
-async fn sleep_cancellable(
-	cancellation: &Cancellation,
-	deadline: Instant,
-	duration: Duration,
-) -> Result<(), Error> {
-	let wait = duration.min(remaining(deadline)?);
-
-	tokio::select! {
-		biased;
-
-		_ = cancellation.cancelled() => Err(Error::Cancelled),
-		_ = tokio::time::sleep(wait) => check_cancel_or_timeout(cancellation, deadline),
-	}
-}
-
 fn endpoint(config: &Config, path: &str) -> Result<Url, Error> {
 	config.issuer.join(path).map_err(|_| Error::Unavailable)
 }
@@ -808,29 +841,6 @@ fn build_authorize_url(
 		.append_pair("originator", OAUTH_ORIGINATOR);
 
 	Ok(url)
-}
-
-#[derive(Clone, Zeroize, ZeroizeOnDrop)]
-struct PkceCodes {
-	code_verifier: String,
-	code_challenge: String,
-}
-
-impl PkceCodes {
-	fn valid(&self) -> bool {
-		if self.code_verifier.len() < 43
-			|| self.code_verifier.len() > 128
-			|| self.code_challenge.len() != 43
-			|| !self.code_verifier.bytes().all(|byte| {
-				byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~')
-			}) {
-			return false;
-		}
-
-		let digest = Sha256::digest(self.code_verifier.as_bytes());
-
-		URL_SAFE_NO_PAD.encode(digest) == self.code_challenge
-	}
 }
 
 fn generate_pkce() -> Result<PkceCodes, Error> {
@@ -867,23 +877,6 @@ fn bind_callback_server(ports: &[u16]) -> Result<TcpListener, Error> {
 	}
 
 	Err(Error::Unavailable)
-}
-
-struct CallbackRequest {
-	target: String,
-	stream: TcpStream,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CallbackParseFailure {
-	Incomplete,
-	TooLarge,
-	TooManyHeaders,
-	Invalid,
-}
-
-struct ParsedCallbackHead<'a> {
-	target: &'a str,
 }
 
 fn parse_callback_head(bytes: &[u8]) -> Result<ParsedCallbackHead<'_>, CallbackParseFailure> {
@@ -1058,20 +1051,6 @@ fn valid_secret_scalar(value: &str) -> bool {
 		&& !value.chars().any(char::is_control)
 }
 
-#[derive(Serialize)]
-struct DeviceCodeRequest<'a> {
-	client_id: &'a str,
-}
-
-#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
-struct DeviceCodeResponse {
-	device_auth_id: String,
-	#[serde(alias = "user_code", alias = "usercode")]
-	user_code: String,
-	#[serde(default, deserialize_with = "deserialize_interval")]
-	interval: u64,
-}
-
 fn deserialize_interval<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
 	D: Deserializer<'de>,
@@ -1079,32 +1058,6 @@ where
 	let interval = String::deserialize(deserializer)?;
 
 	interval.trim().parse::<u64>().map_err(de::Error::custom)
-}
-
-#[derive(Zeroize, ZeroizeOnDrop)]
-struct DeviceGrant {
-	device_auth_id: String,
-	user_code: String,
-	#[zeroize(skip)]
-	interval: Duration,
-}
-
-impl DeviceGrant {
-	fn new(response: DeviceCodeResponse) -> Result<Self, Error> {
-		if !valid_device_value(&response.device_auth_id)
-			|| !valid_user_code(&response.user_code)
-			|| response.interval == 0
-			|| response.interval > MAX_DEVICE_POLL_INTERVAL_SECONDS
-		{
-			return Err(Error::InvalidResponse);
-		}
-
-		Ok(Self {
-			device_auth_id: response.device_auth_id.clone(),
-			user_code: response.user_code.clone(),
-			interval: Duration::from_secs(response.interval),
-		})
-	}
 }
 
 fn valid_device_value(value: &str) -> bool {
@@ -1123,87 +1076,6 @@ fn valid_user_code(value: &str) -> bool {
 			.iter()
 			.enumerate()
 			.all(|(index, byte)| index == 4 || byte.is_ascii_uppercase() || byte.is_ascii_digit())
-}
-
-#[derive(Serialize)]
-struct DevicePollRequest<'a> {
-	device_auth_id: &'a str,
-	user_code: &'a str,
-}
-
-#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
-struct DevicePollFailure {
-	error: DevicePollError,
-}
-
-impl DevicePollFailure {
-	fn is_pending(&self) -> bool {
-		matches!(
-			self.error.code.as_str(),
-			"authorization_pending"
-				| "deviceauth_authorization_pending"
-				| "deviceauth_authorization_unknown"
-		)
-	}
-}
-
-#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
-struct DevicePollError {
-	code: String,
-}
-
-#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
-struct DeviceCodeSuccess {
-	authorization_code: String,
-	code_challenge: String,
-	code_verifier: String,
-}
-
-impl DeviceCodeSuccess {
-	fn validate(&self) -> Result<(), Error> {
-		if !valid_secret_scalar(&self.authorization_code)
-			|| !(PkceCodes {
-				code_verifier: self.code_verifier.clone(),
-				code_challenge: self.code_challenge.clone(),
-			})
-			.valid()
-		{
-			return Err(Error::InvalidResponse);
-		}
-
-		Ok(())
-	}
-}
-
-#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
-struct ExchangedTokens {
-	id_token: String,
-	access_token: String,
-	refresh_token: String,
-}
-
-impl ExchangedTokens {
-	fn validate(&self) -> Result<(), Error> {
-		if [self.id_token.as_str(), self.access_token.as_str(), self.refresh_token.as_str()]
-			.into_iter()
-			.all(valid_secret_scalar)
-		{
-			Ok(())
-		} else {
-			Err(Error::InvalidResponse)
-		}
-	}
-}
-
-#[derive(Deserialize)]
-struct IdTokenClaims {
-	#[serde(rename = "https://api.openai.com/auth")]
-	authority: Option<IdTokenAuthority>,
-}
-
-#[derive(Deserialize)]
-struct IdTokenAuthority {
-	chatgpt_account_id: Option<String>,
 }
 
 fn provider_account_id(id_token: &str) -> Result<Zeroizing<String>, Error> {
@@ -1234,23 +1106,6 @@ fn provider_account_id(id_token: &str) -> Result<Zeroizing<String>, Error> {
 		.ok_or(Error::InvalidResponse)?;
 
 	Ok(Zeroizing::new(account_id))
-}
-
-#[derive(Serialize)]
-struct AuthDocument<'a> {
-	auth_mode: &'static str,
-	#[serde(rename = "OPENAI_API_KEY")]
-	openai_api_key: Option<&'static str>,
-	tokens: AuthTokens<'a>,
-	last_refresh: String,
-}
-
-#[derive(Serialize)]
-struct AuthTokens<'a> {
-	id_token: &'a str,
-	access_token: &'a str,
-	refresh_token: &'a str,
-	account_id: &'a str,
 }
 
 fn persist_auth(login_home: &Path, tokens: &ExchangedTokens) -> Result<(), Error> {
@@ -1317,6 +1172,142 @@ fn verify_private_regular_file(path: &Path) -> Result<(), Error> {
 	}
 
 	Ok(())
+}
+
+async fn run_device(
+	config: &Config,
+	client: &Client,
+	login_home: &Path,
+	cancellation: &Cancellation,
+	deadline: Instant,
+	publish: impl Fn(LoginEvent),
+) -> Result<(), Error> {
+	let user_code_url = endpoint(config, "api/accounts/deviceauth/usercode")?;
+	let request = DeviceCodeRequest { client_id: &config.client_id };
+	let response =
+		cancellable(cancellation, deadline, client.post(user_code_url).json(&request).send())
+			.await?;
+
+	if !response.status().is_success() {
+		return Err(Error::Rejected);
+	}
+
+	let response: DeviceCodeResponse = read_bounded_json(response, cancellation, deadline).await?;
+	let grant = DeviceGrant::new(response)?;
+	let verification_url = endpoint(config, "codex/device")?.to_string();
+
+	publish(LoginEvent::DeviceAuthorization {
+		verification_url,
+		user_code: grant.user_code.clone(),
+	});
+
+	let poll_url = endpoint(config, "api/accounts/deviceauth/token")?;
+
+	loop {
+		check_cancel_or_timeout(cancellation, deadline)?;
+
+		let request = DevicePollRequest {
+			device_auth_id: &grant.device_auth_id,
+			user_code: &grant.user_code,
+		};
+		let response = cancellable(
+			cancellation,
+			deadline,
+			client.post(poll_url.clone()).json(&request).send(),
+		)
+		.await?;
+
+		match response.status().as_u16() {
+			200..=299 => {
+				let code: DeviceCodeSuccess =
+					read_bounded_json(response, cancellation, deadline).await?;
+
+				code.validate()?;
+
+				let redirect_uri = endpoint(config, "deviceauth/callback")?.to_string();
+				let pkce = PkceCodes {
+					code_verifier: code.code_verifier.clone(),
+					code_challenge: code.code_challenge.clone(),
+				};
+
+				return ExchangeContext { config, client, login_home, cancellation, deadline }
+					.run(&redirect_uri, &pkce, &code.authorization_code)
+					.await;
+			},
+			403 | 404 => {
+				let failure: DevicePollFailure =
+					read_bounded_json(response, cancellation, deadline).await?;
+
+				if !failure.is_pending() {
+					return Err(Error::DeviceAuthorizationRejected);
+				}
+
+				sleep_cancellable(cancellation, deadline, grant.interval).await?;
+			},
+			_ => return Err(Error::Rejected),
+		}
+	}
+}
+
+async fn cancellable<T>(
+	cancellation: &Cancellation,
+	deadline: Instant,
+	future: impl Future<Output = Result<T, reqwest::Error>>,
+) -> Result<T, Error> {
+	let wait = remaining(deadline)?;
+
+	tokio::select! {
+		biased;
+
+		_ = cancellation.cancelled() => Err(Error::Cancelled),
+		result = tokio::time::timeout(wait, future) => match result {
+			Ok(Ok(value)) => Ok(value),
+			Ok(Err(_)) => Err(Error::Unavailable),
+			Err(_) => Err(Error::TimedOut),
+		},
+	}
+}
+
+async fn read_bounded_json<T: for<'de> Deserialize<'de>>(
+	mut response: HttpResponse,
+	cancellation: &Cancellation,
+	deadline: Instant,
+) -> Result<T, Error> {
+	if response.content_length().is_some_and(|length| length > MAX_RESPONSE_BYTES as u64) {
+		return Err(Error::InvalidResponse);
+	}
+
+	let mut body = Zeroizing::new(Vec::new());
+
+	loop {
+		let chunk = cancellable(cancellation, deadline, response.chunk()).await?;
+		let Some(chunk) = chunk else {
+			break;
+		};
+
+		if body.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
+			return Err(Error::InvalidResponse);
+		}
+
+		body.extend_from_slice(&chunk);
+	}
+
+	serde_json::from_slice(&body).map_err(|_| Error::InvalidResponse)
+}
+
+async fn sleep_cancellable(
+	cancellation: &Cancellation,
+	deadline: Instant,
+	duration: Duration,
+) -> Result<(), Error> {
+	let wait = duration.min(remaining(deadline)?);
+
+	tokio::select! {
+		biased;
+
+		_ = cancellation.cancelled() => Err(Error::Cancelled),
+		_ = tokio::time::sleep(wait) => check_cancel_or_timeout(cancellation, deadline),
+	}
 }
 
 #[cfg(test)]
