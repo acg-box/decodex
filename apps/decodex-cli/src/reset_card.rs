@@ -10,14 +10,13 @@ use clap::Subcommand;
 use serde::Serialize;
 use tokio::time;
 
+use crate::{CommandOutput, OutputFormat};
 use decodex_protocol::{
 	AccountQuotaStateDto, AccountQuotaWindowDto, ClientFailure, ClientProfile, CommandError,
 	EntityId, EntityRevision, IdempotencyKey, ResetCardClient, ResetCardConsumeResponse,
 	ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult, ResetCardOperationResult,
 	ResetCardOutcome,
 };
-
-use crate::{CommandOutput, OutputFormat, load_client_profile};
 
 const RESET_CARD_OUTPUT_SCHEMA: &str = "decodex/reset-card-cli/1";
 const OPERATION_POLL_DEADLINE: Duration = Duration::from_secs(30);
@@ -200,7 +199,7 @@ pub(crate) async fn execute(
 	}
 
 	let command_name = command.name();
-	let profile = load_client_profile(root, selected_profile, expected_server_id);
+	let profile = crate::load_client_profile(root, selected_profile, expected_server_id);
 	let profile = match profile {
 		Ok(profile) => profile,
 		Err(failure) => return render_client_failure(command_name, format, failure),
@@ -727,7 +726,7 @@ async fn execute_use(
 			);
 		},
 	};
-	let profile = load_client_profile(root, selected_profile, expected_server_id);
+	let profile = crate::load_client_profile(root, selected_profile, expected_server_id);
 	let profile = match profile {
 		Ok(profile) => profile,
 		Err(failure) => {
@@ -808,27 +807,38 @@ async fn poll_operation(
 
 #[cfg(test)]
 mod tests {
-
-	use std as standard;
-
-	use clap::{CommandFactory as _, Parser as _};
-	use decodex_protocol::{
-		ClientFailure, ClientProfile, CommandError, EntityId, EntityRevision, IdempotencyKey,
-		ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult, ResetCardOperationResult,
-		ResetCardOutcome,
+	use std::{
+		fs,
+		path::{Path, PathBuf},
+	};
+	#[cfg(unix)]
+	use std::{
+		fs::Permissions,
+		os::unix::{
+			self,
+			fs::{MetadataExt as _, PermissionsExt as _},
+		},
 	};
 
-	use crate::{Cli, Command, OutputFormat};
+	use clap::{CommandFactory as _, Parser as _};
+	use serde_json::Value;
+	use tempfile::TempDir;
+
+	use crate::{
+		Cli, Command, OutputFormat,
+		reset_card::{self, ResetCardCommand, UseDispatchState},
+	};
+	use decodex_protocol::{
+		AccountQuotaStateDto, AccountQuotaWindowDto, ClientFailure, ClientProfile, CommandError,
+		EntityId, EntityRevision, IdempotencyKey, ResetCardDescriptorDto, ResetCardError,
+		ResetCardInventoryResult, ResetCardOperationResult, ResetCardOutcome,
+	};
 
 	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
-	fn write_client_config(root: &std::path::Path, kind: &str) {
+	fn write_client_config(root: &Path, kind: &str) {
 		#[cfg(unix)]
-		let service_owner_uid = {
-			use std::os::unix::fs::MetadataExt as _;
-
-			standard::fs::metadata(root).expect("test operation must succeed").uid()
-		};
+		let service_owner_uid = { fs::metadata(root).expect("test operation must succeed").uid() };
 		#[cfg(not(unix))]
 		let service_owner_uid = 0_u32;
 		let profile = match kind {
@@ -857,28 +867,24 @@ cache = {{}}
 		);
 		let path = root.join("config.toml");
 
-		standard::fs::write(&path, config).expect("test operation must succeed");
+		fs::write(&path, config).expect("test operation must succeed");
 
 		#[cfg(unix)]
 		{
-			use std::os::unix::fs::PermissionsExt as _;
-
-			standard::fs::set_permissions(path, standard::fs::Permissions::from_mode(0o600))
+			fs::set_permissions(path, Permissions::from_mode(0o600))
 				.expect("test operation must succeed");
 		}
 	}
 
-	fn prepare_client_root(temp: &tempfile::TempDir, kind: &str) -> std::path::PathBuf {
+	fn prepare_client_root(temp: &TempDir, kind: &str) -> PathBuf {
 		let root =
 			temp.path().canonicalize().expect("test operation must succeed").join(".decodex");
 
-		standard::fs::create_dir(&root).expect("test operation must succeed");
+		fs::create_dir(&root).expect("test operation must succeed");
 
 		#[cfg(unix)]
 		{
-			use std::os::unix::fs::PermissionsExt as _;
-
-			standard::fs::set_permissions(&root, standard::fs::Permissions::from_mode(0o700))
+			fs::set_permissions(&root, Permissions::from_mode(0o700))
 				.expect("test operation must succeed");
 		}
 
@@ -888,7 +894,7 @@ cache = {{}}
 	}
 
 	fn local_profile() -> ClientProfile {
-		let temp = tempfile::TempDir::new().expect("test operation must succeed");
+		let temp = TempDir::new().expect("test operation must succeed");
 		let root = prepare_client_root(&temp, "local");
 
 		ClientProfile::load(&root, None).expect("test operation must succeed")
@@ -896,14 +902,14 @@ cache = {{}}
 
 	#[test]
 	fn optional_window_text_has_no_invented_usage() {
-		let quota = decodex_protocol::AccountQuotaWindowDto {
+		let quota = AccountQuotaWindowDto {
 			duration_minutes: 300,
 			observed_at_unix_micros: Some(1_000_000),
-			result: decodex_protocol::AccountQuotaStateDto::NotApplicable,
+			result: AccountQuotaStateDto::NotApplicable,
 		};
 
-		assert!(super::quota_summary(&quota).contains("not applicable"));
-		assert!(!super::quota_summary(&quota).contains('%'));
+		assert!(reset_card::quota_summary(&quota).contains("not applicable"));
+		assert!(!reset_card::quota_summary(&quota).contains('%'));
 	}
 
 	#[test]
@@ -946,20 +952,13 @@ cache = {{}}
 		])
 		.expect("test operation must succeed");
 
-		assert!(matches!(list.command, Command::ResetCard(super::ResetCardCommand::List { .. })));
+		assert!(matches!(list.command, Command::ResetCard(ResetCardCommand::List { .. })));
 		assert!(matches!(
 			use_card.command,
-			Command::ResetCard(super::ResetCardCommand::Use {
-				expected_revision: 7,
-				yes: true,
-				..
-			})
+			Command::ResetCard(ResetCardCommand::Use { expected_revision: 7, yes: true, .. })
 		));
 		assert_eq!(use_card.output, OutputFormat::Json);
-		assert!(matches!(
-			status.command,
-			Command::ResetCard(super::ResetCardCommand::Status { .. })
-		));
+		assert!(matches!(status.command, Command::ResetCard(ResetCardCommand::Status { .. })));
 		assert!(
 			Cli::try_parse_from([
 				"decodex",
@@ -1030,14 +1029,14 @@ cache = {{}}
 	#[test]
 	fn inventory_json_binds_the_selected_profile_and_server() {
 		let profile = local_profile();
-		let inventory = super::render_inventory(
+		let inventory = reset_card::render_inventory(
 			OutputFormat::Json,
 			&profile,
 			&ResetCardInventoryResult::Unavailable {
 				error: ResetCardError::ProductStateUnavailable,
 			},
 		);
-		let value: serde_json::Value =
+		let value: Value =
 			serde_json::from_str(inventory.text()).expect("test operation must succeed");
 
 		assert_eq!(value["authority"]["profile_name"], "selected");
@@ -1049,7 +1048,7 @@ cache = {{}}
 		let key = IdempotencyKey::new("operator-key").expect("test operation must succeed");
 		let account = EntityId::new("40000000-0000-4000-8000-000000000001")
 			.expect("test operation must succeed");
-		let output = super::render_use(
+		let output = reset_card::render_use(
 			OutputFormat::Json,
 			&key,
 			&account,
@@ -1057,7 +1056,7 @@ cache = {{}}
 			EntityRevision(8),
 			ResetCardOperationResult::Completed { outcome: ResetCardOutcome::Reset },
 		);
-		let value: serde_json::Value =
+		let value: Value =
 			serde_json::from_str(output.text()).expect("test operation must succeed");
 
 		assert_eq!(value["schema"], "decodex/reset-card-cli/1");
@@ -1076,16 +1075,16 @@ cache = {{}}
 		let key = IdempotencyKey::new("operator-key").expect("test operation must succeed");
 
 		for (dispatch_state, expected) in [
-			(super::UseDispatchState::DefinitelyNotDispatched, "definitely_not_dispatched"),
-			(super::UseDispatchState::PotentiallyDispatched, "potentially_dispatched"),
+			(UseDispatchState::DefinitelyNotDispatched, "definitely_not_dispatched"),
+			(UseDispatchState::PotentiallyDispatched, "potentially_dispatched"),
 		] {
-			let output = super::render_use_client_failure(
+			let output = reset_card::render_use_client_failure(
 				OutputFormat::Json,
 				&key,
 				dispatch_state,
 				ClientFailure::ProtocolDisconnected,
 			);
-			let value: serde_json::Value =
+			let value: Value =
 				serde_json::from_str(output.text()).expect("test operation must succeed");
 
 			assert_eq!(value["schema"], "decodex/reset-card-cli/1");
@@ -1098,30 +1097,33 @@ cache = {{}}
 			assert!(!output.is_error_stream());
 		}
 
-		let rejected =
-			super::render_rejected(OutputFormat::Json, &key, &CommandError::IdempotencyConflict);
-		let value: serde_json::Value =
+		let rejected = reset_card::render_rejected(
+			OutputFormat::Json,
+			&key,
+			&CommandError::IdempotencyConflict,
+		);
+		let value: Value =
 			serde_json::from_str(rejected.text()).expect("test operation must succeed");
 
 		assert_eq!(value["idempotency_key"], "operator-key");
 		assert_eq!(value["dispatch_state"], "rejected_before_acceptance");
 
-		let unknown = super::render_use_client_failure(
+		let unknown = reset_card::render_use_client_failure(
 			OutputFormat::Json,
 			&key,
-			super::UseDispatchState::PotentiallyDispatched,
+			UseDispatchState::PotentiallyDispatched,
 			ClientFailure::ApplicationAcceptanceUnknown,
 		);
-		let value: serde_json::Value =
+		let value: Value =
 			serde_json::from_str(unknown.text()).expect("test operation must succeed");
 
 		assert_eq!(value["failure"], "application_acceptance_unknown");
 		assert_eq!(value["dispatch_state"], "potentially_dispatched");
 
-		let human = super::render_use_client_failure(
+		let human = reset_card::render_use_client_failure(
 			OutputFormat::Human,
 			&key,
-			super::UseDispatchState::PotentiallyDispatched,
+			UseDispatchState::PotentiallyDispatched,
 			ClientFailure::ProtocolTimeout,
 		);
 
@@ -1135,7 +1137,7 @@ cache = {{}}
 		let key = IdempotencyKey::new("operator-key").expect("test operation must succeed");
 
 		assert_eq!(
-			super::render_operation(
+			reset_card::render_operation(
 				OutputFormat::Json,
 				"status",
 				&key,
@@ -1145,7 +1147,7 @@ cache = {{}}
 			0,
 		);
 		assert_eq!(
-			super::render_operation(
+			reset_card::render_operation(
 				OutputFormat::Json,
 				"status",
 				&key,
@@ -1155,7 +1157,7 @@ cache = {{}}
 			1,
 		);
 
-		let unavailable = super::render_operation(
+		let unavailable = reset_card::render_operation(
 			OutputFormat::Json,
 			"status",
 			&key,
@@ -1163,7 +1165,7 @@ cache = {{}}
 				error: decodex_protocol::ResetCardError::ProductStateUnavailable,
 			},
 		);
-		let value: serde_json::Value =
+		let value: Value =
 			serde_json::from_str(unavailable.text()).expect("test operation must succeed");
 
 		assert_eq!(unavailable.exit_code(), 2);
@@ -1173,11 +1175,11 @@ cache = {{}}
 
 	#[test]
 	fn status_poll_failure_cannot_downgrade_proved_durable_acceptance() {
-		let state = super::accepted_state_after_poll(Err(ClientFailure::ProtocolDisconnected));
+		let state = reset_card::accepted_state_after_poll(Err(ClientFailure::ProtocolDisconnected));
 		let key = IdempotencyKey::new("operator-key").expect("test operation must succeed");
 		let account = EntityId::new("40000000-0000-4000-8000-000000000001")
 			.expect("test operation must succeed");
-		let output = super::render_use(
+		let output = reset_card::render_use(
 			OutputFormat::Json,
 			&key,
 			&account,
@@ -1185,7 +1187,7 @@ cache = {{}}
 			EntityRevision(7),
 			state,
 		);
-		let value: serde_json::Value =
+		let value: Value =
 			serde_json::from_str(output.text()).expect("test operation must succeed");
 
 		assert_eq!(state, ResetCardOperationResult::Prepared);
@@ -1197,17 +1199,17 @@ cache = {{}}
 	#[cfg(unix)]
 	#[tokio::test]
 	async fn valid_use_key_is_retained_for_every_pre_send_failure() {
-		let temp = tempfile::TempDir::new().expect("test operation must succeed");
+		let temp = TempDir::new().expect("test operation must succeed");
 		let temp = temp.path().canonicalize().expect("test operation must succeed");
 		let target = temp.join("root");
 		let root = temp.join("root-link");
 
-		standard::fs::create_dir(&target).expect("test operation must succeed");
-		standard::os::unix::fs::symlink(&target, &root).expect("test operation must succeed");
+		fs::create_dir(&target).expect("test operation must succeed");
+		unix::fs::symlink(&target, &root).expect("test operation must succeed");
 
 		let cases = [
 			(
-				super::ResetCardCommand::Use {
+				ResetCardCommand::Use {
 					account: "40000000-0000-4000-8000-000000000001".into(),
 					granted_at: 1,
 					expires_at: Some(2),
@@ -1218,7 +1220,7 @@ cache = {{}}
 				"confirmation_required",
 			),
 			(
-				super::ResetCardCommand::Use {
+				ResetCardCommand::Use {
 					account: "not-an-account".into(),
 					granted_at: 1,
 					expires_at: Some(2),
@@ -1229,7 +1231,7 @@ cache = {{}}
 				"invalid_account_id",
 			),
 			(
-				super::ResetCardCommand::Use {
+				ResetCardCommand::Use {
 					account: "40000000-0000-4000-8000-000000000001".into(),
 					granted_at: 2,
 					expires_at: Some(1),
@@ -1240,7 +1242,7 @@ cache = {{}}
 				"invalid_descriptor",
 			),
 			(
-				super::ResetCardCommand::Use {
+				ResetCardCommand::Use {
 					account: "40000000-0000-4000-8000-000000000001".into(),
 					granted_at: 1,
 					expires_at: Some(2),
@@ -1253,8 +1255,9 @@ cache = {{}}
 		];
 
 		for (command, expected_failure) in cases {
-			let output = super::execute(command, OutputFormat::Json, Some(&root), None, None).await;
-			let value: serde_json::Value =
+			let output =
+				reset_card::execute(command, OutputFormat::Json, Some(&root), None, None).await;
+			let value: Value =
 				serde_json::from_str(output.text()).expect("test operation must succeed");
 
 			assert_eq!(value["command"], "use");
@@ -1268,7 +1271,7 @@ cache = {{}}
 
 	#[tokio::test]
 	async fn omitted_confirmation_reaches_stable_key_preserving_output() {
-		let root = tempfile::TempDir::new().expect("test operation must succeed");
+		let root = TempDir::new().expect("test operation must succeed");
 		let cli = Cli::try_parse_from([
 			"decodex",
 			"--root",
@@ -1290,7 +1293,7 @@ cache = {{}}
 		])
 		.expect("test operation must succeed");
 		let output = crate::execute(cli).await;
-		let value: serde_json::Value =
+		let value: Value =
 			serde_json::from_str(output.text()).expect("test operation must succeed");
 
 		assert_eq!(value["failure"], "confirmation_required");
@@ -1300,9 +1303,9 @@ cache = {{}}
 
 	#[tokio::test]
 	async fn invalid_use_key_wins_before_other_pre_send_validation() {
-		let root = tempfile::TempDir::new().expect("test operation must succeed");
-		let output = super::execute(
-			super::ResetCardCommand::Use {
+		let root = TempDir::new().expect("test operation must succeed");
+		let output = reset_card::execute(
+			ResetCardCommand::Use {
 				account: "not-an-account".into(),
 				granted_at: 2,
 				expires_at: Some(1),
@@ -1316,7 +1319,7 @@ cache = {{}}
 			None,
 		)
 		.await;
-		let value: serde_json::Value =
+		let value: Value =
 			serde_json::from_str(output.text()).expect("test operation must succeed");
 
 		assert_eq!(value["failure"], "invalid_idempotency_key");
@@ -1326,10 +1329,10 @@ cache = {{}}
 
 	#[tokio::test]
 	async fn invalid_server_pin_preserves_a_valid_use_key_before_dispatch() {
-		let temp = tempfile::TempDir::new().expect("test operation must succeed");
+		let temp = TempDir::new().expect("test operation must succeed");
 		let root = prepare_client_root(&temp, "local");
-		let output = super::execute(
-			super::ResetCardCommand::Use {
+		let output = reset_card::execute(
+			ResetCardCommand::Use {
 				account: "40000000-0000-4000-8000-000000000001".into(),
 				granted_at: 1,
 				expires_at: Some(2),
@@ -1343,7 +1346,7 @@ cache = {{}}
 			Some("not-a-canonical-server-id"),
 		)
 		.await;
-		let value: serde_json::Value =
+		let value: Value =
 			serde_json::from_str(output.text()).expect("test operation must succeed");
 
 		assert_eq!(value["failure"], "configuration_malformed");
@@ -1353,19 +1356,17 @@ cache = {{}}
 
 	#[tokio::test]
 	async fn remote_profile_is_rejected_before_reset_card_transport() {
-		let temp = tempfile::TempDir::new().expect("test operation must succeed");
+		let temp = TempDir::new().expect("test operation must succeed");
 		let root = prepare_client_root(&temp, "remote");
-		let output = super::execute(
-			super::ResetCardCommand::List {
-				account: "40000000-0000-4000-8000-000000000001".to_owned(),
-			},
+		let output = reset_card::execute(
+			ResetCardCommand::List { account: "40000000-0000-4000-8000-000000000001".to_owned() },
 			OutputFormat::Json,
 			Some(&root),
 			None,
 			None,
 		)
 		.await;
-		let value: serde_json::Value =
+		let value: Value =
 			serde_json::from_str(output.text()).expect("test operation must succeed");
 
 		assert_eq!(value["failure"], "remote_mutation_unsupported");
