@@ -2,34 +2,38 @@ const decodexGitHubUrl = "https://github.com/acg-box/decodex";
 
 const productLoops = [
   {
+    title: "Agent coordination",
+    body: "Coordinate goals, collect worker results, and keep decisions linked to the work that needs them.",
+  },
+  {
     title: "Conversations",
-    body: "Start or continue real Codex threads with durable conversation and attempt evidence.",
+    body: "Start or continue Codex threads for direct work, with conversation and turn history.",
   },
   {
     title: "Account routing",
-    body: "Use service-owned accounts, quota observations, and fixed or balanced routing.",
+    body: "Choose fixed or balanced routing. Each conversation keeps its bound account and provider thread.",
   },
   {
-    title: "Adaptive Programs",
-    body: "Repeat bounded evidence-backed Program cycles through the ordinary Conversation runtime.",
-  },
-  {
-    title: "One local product",
-    body: "Decodex.app presents the product while decodex serve owns behavior and persistent SQLite state.",
+    title: "One local workspace",
+    body: "Use the desktop app or CLI with one local service that preserves work across restarts.",
   },
 ];
 
 const commands = [
   "decodex status",
-  "decodex doctor --output json",
+  "decodex agent status",
   "decodex account list",
   "cargo run -p decodex-gpui",
 ];
 
 const docs = [
   {
-    title: "Local product contract",
-    href: `${decodexGitHubUrl}/blob/main/openwiki/specs/local-product-v1.md`,
+    title: "Quickstart",
+    href: `${decodexGitHubUrl}/blob/main/openwiki/quickstart.md`,
+  },
+  {
+    title: "Agent coordination",
+    href: `${decodexGitHubUrl}/blob/main/openwiki/architecture/chief-coordination.md`,
   },
   {
     title: "Commands and validation",

@@ -13,18 +13,6 @@
   backdrop-filter: blur(18px);
 }
 
-.hero-panel__logo {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.hero-panel__logo img {
-  width: 4.5rem;
-  height: 4.5rem;
-  border-radius: 1rem;
-  box-shadow: 0 18px 42px rgba(20, 32, 52, 0.2);
-}
-
 .hero-panel__copy {
   display: grid;
   gap: 0.4rem;
