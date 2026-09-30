@@ -83,6 +83,12 @@ final class DictationCapture: DictationCapturing {
 
     func start(input name: String) throws {
         let input = engine.inputNode
+        // Enabling voice processing replaces the I/O unit. Select the device and
+        // read its format afterward so the encoder uses the processed stream.
+        try input.setVoiceProcessingEnabled(true)
+        input.voiceProcessingOtherAudioDuckingConfiguration = .init(
+            enableAdvancedDucking: false, duckingLevel: .min
+        )
         if !name.isEmpty {
             var device = try Self.device(named: name)
             let status = input.withAudioUnit { unit -> OSStatus in
