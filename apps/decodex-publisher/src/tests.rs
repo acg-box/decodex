@@ -104,6 +104,39 @@ fn record_candidate_is_atomic_idempotent_and_applies_backpressure() {
 }
 
 #[test]
+fn malformed_state_blocks_reservation_and_skip_without_rewriting_evidence() {
+	for (directory, invalid) in [
+		(
+			"reservations",
+			json!({"schema": crate::SOCIAL_PUBLISH_RESERVATION_SCHEMA, "status": "unknown"}),
+		),
+		("posts", json!({"schema": crate::SOCIAL_POST_SCHEMA, "status": "unknown"})),
+		("posts", valid_social_candidate()),
+	] {
+		let temp = tempfile::tempdir().expect("temporary directory");
+		let candidate = write_candidate(temp.path(), "candidate.json", valid_social_candidate());
+		let invalid_path = temp.path().join(directory).join("invalid.json");
+		crate::write_new_json(&invalid_path, &invalid).unwrap();
+		let original = fs::read(&invalid_path).unwrap();
+		assert!(
+			crate::reserve_social_publish(&reserve_request(temp.path(), &candidate, RUN_ID))
+				.is_err()
+		);
+		assert!(crate::terminalize_social_skip(&skip_request(temp.path(), &candidate)).is_err());
+		assert_eq!(fs::read(&invalid_path).unwrap(), original);
+		assert_eq!(
+			crate::collect_json_files(&[
+				temp.path().join("posts"),
+				temp.path().join("reservations")
+			])
+			.unwrap()
+			.len(),
+			1
+		);
+	}
+}
+
+#[test]
 fn reserve_enforces_duplicate_and_one_post_per_day() {
 	let temp = tempfile::tempdir().expect("temporary directory");
 	let candidate = write_candidate(temp.path(), "candidate.json", valid_social_candidate());
