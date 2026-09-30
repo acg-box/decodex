@@ -20,17 +20,17 @@ pub(in crate::cli) struct RadarRefreshReleaseDeltaCommand {
 		default_value = crate::paths::DEFAULT_RELEASE_DELTA_OUT
 	)]
 	out: PathBuf,
-	#[arg(long, default_value = "rust-v")]
+	#[arg(long, default_value = crate::DEFAULT_TAG_PREFIX)]
 	tag_prefix: String,
 	#[arg(long)]
 	token_env: Option<String>,
-	#[arg(long, default_value_t = 0)]
+	#[arg(long, default_value_t = crate::DEFAULT_STABLE_LIMIT)]
 	stable_limit: usize,
-	#[arg(long, default_value_t = 0)]
+	#[arg(long, default_value_t = crate::DEFAULT_PREVIEW_LIMIT)]
 	preview_limit: usize,
-	#[arg(long, default_value_t = 24)]
+	#[arg(long, default_value_t = crate::DEFAULT_PAIR_LIMIT)]
 	pair_limit: usize,
-	#[arg(long, default_value = "rust-v0.116.0")]
+	#[arg(long, default_value = crate::DEFAULT_MIN_STABLE_TAG)]
 	min_stable_tag: String,
 	#[arg(long)]
 	dry_run: bool,
