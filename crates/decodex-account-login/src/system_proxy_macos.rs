@@ -7,7 +7,6 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use super::{RouteFailureClass, SystemProxyDecision};
 use core_foundation::{
 	array::{CFArray, CFArrayRef},
 	base::{CFEqual, CFGetTypeID, CFIndex, CFType, CFTypeRef, TCFType, kCFAllocatorDefault},
@@ -22,10 +21,14 @@ use core_foundation::{
 	url::{CFURL, CFURLCreateWithString, CFURLGetTypeID, CFURLRef},
 };
 
-const PAC_EXECUTION_TIMEOUT: Duration = Duration::from_secs(5);
+use crate::system_proxy::{RouteFailureClass, SystemProxyDecision};
 
 type ProxyDictionary = CFDictionary<CFString, CFType>;
 type ProxyArray = CFArray<ProxyDictionary>;
+type CFProxyAutoConfigurationResultCallback =
+	unsafe extern "C" fn(*mut c_void, CFArrayRef, CFErrorRef);
+
+const PAC_EXECUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[repr(C)]
 struct CFStreamClientContext {
@@ -36,8 +39,16 @@ struct CFStreamClientContext {
 	copy_description: Option<unsafe extern "C" fn(*mut c_void) -> CFStringRef>,
 }
 
-type CFProxyAutoConfigurationResultCallback =
-	unsafe extern "C" fn(*mut c_void, CFArrayRef, CFErrorRef);
+struct PacRunLoopState {
+	result: Option<Result<ProxyArray, RouteFailureClass>>,
+}
+
+enum ProxyEntryDecision {
+	Direct,
+	Proxy { url: String },
+	UnsupportedScheme,
+	Unavailable,
+}
 
 #[link(name = "CFNetwork", kind = "framework")]
 unsafe extern "C" {
@@ -276,10 +287,6 @@ unsafe extern "C" fn pac_result_callback(
 	CFRunLoop::get_current().stop();
 }
 
-struct PacRunLoopState {
-	result: Option<Result<ProxyArray, RouteFailureClass>>,
-}
-
 fn concrete_proxy_entry(proxy: &ProxyDictionary, proxy_scheme: &str) -> ProxyEntryDecision {
 	let Some(host) = cf_string_value(proxy, unsafe { kCFProxyHostNameKey })
 		.map(|host| host.to_string())
@@ -335,20 +342,11 @@ fn cf_url(value: &str) -> Option<CFURL> {
 	if url.is_null() { None } else { Some(unsafe { CFURL::wrap_under_create_rule(url) }) }
 }
 
-enum ProxyEntryDecision {
-	Direct,
-	Proxy { url: String },
-	UnsupportedScheme,
-	Unavailable,
-}
-
 #[cfg(test)]
 mod tests {
-	use super::{
-		CFNetworkExecuteProxyAutoConfigurationScript, SystemProxyDecision, cf_url, execute_pac,
-		proxy_array_decision,
-	};
 	use core_foundation::{base::TCFType as _, string::CFString};
+
+	use crate::system_proxy::{SystemProxyDecision, macos};
 
 	#[test]
 	fn pac_routes_the_destination_host_and_preserves_direct_first() {
@@ -362,9 +360,9 @@ mod tests {
 			("http://auth.example.com/oauth/token", true),
 			("http://other.example.com/other", false),
 		] {
-			let target = cf_url(url).expect("target URL");
-			let result = execute_pac(|callback, context| unsafe {
-				CFNetworkExecuteProxyAutoConfigurationScript(
+			let target = macos::cf_url(url).expect("target URL");
+			let result = macos::execute_pac(|callback, context| unsafe {
+				macos::CFNetworkExecuteProxyAutoConfigurationScript(
 					script.as_concrete_TypeRef(),
 					target.as_concrete_TypeRef(),
 					callback,
@@ -373,7 +371,7 @@ mod tests {
 			})
 			.unwrap_or_else(|_| panic!("CFNetwork PAC evaluation failed"));
 
-			match proxy_array_decision(&result, &target) {
+			match macos::proxy_array_decision(&result, &target) {
 				SystemProxyDecision::Proxy { url } if expected_proxy =>
 					assert_eq!(url, "http://127.0.0.1:8123"),
 				SystemProxyDecision::Direct if !expected_proxy => {},
