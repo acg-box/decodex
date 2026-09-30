@@ -36,7 +36,6 @@ use std::{
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use httparse::{EMPTY_HEADER, Request, Status};
-#[cfg(test)] use reqwest::redirect::Policy;
 use reqwest::{Client, Response};
 use serde::{Deserialize, Deserializer, Serialize, de};
 use sha2::{Digest as _, Sha256};
@@ -1317,10 +1316,31 @@ async fn sleep_cancellable(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use std::{
-		sync::{Mutex, mpsc},
+		collections::HashMap,
+		fs,
+		io::{ErrorKind, Read as _, Write as _},
+		mem,
+		net::{TcpListener, TcpStream},
+		os::unix::fs::PermissionsExt as _,
+		panic, str,
+		sync::{
+			Arc, Mutex,
+			atomic::{AtomicBool, Ordering},
+			mpsc,
+		},
 		thread,
+		time::Duration,
+	};
+
+	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+	use reqwest::redirect::Policy;
+	use url::{Url, form_urlencoded};
+
+	use crate::{
+		CallbackParseFailure, Cancellation, Config, Error, ExchangedTokens, LoginEvent, LoginHome,
+		LoginMethod, MAX_CALLBACK_HEADERS, MAX_CALLBACK_REQUEST_BYTES, MAX_RESPONSE_BYTES,
+		OAUTH_CLIENT_ID, OAUTH_ORIGINATOR, OAUTH_SCOPE,
 	};
 
 	struct MockHttpRequest {
@@ -1380,7 +1400,7 @@ mod tests {
 				&& let Err(payload) = worker.join()
 				&& !thread::panicking()
 			{
-				std::panic::resume_unwind(payload);
+				panic::resume_unwind(payload);
 			}
 		}
 	}
@@ -1418,7 +1438,7 @@ mod tests {
 					if header.name.eq_ignore_ascii_case("content-length") {
 						assert!(content_length.is_none(), "duplicate content length");
 
-						let value = std::str::from_utf8(header.value)
+						let value = str::from_utf8(header.value)
 							.expect("ASCII mock content length")
 							.parse::<usize>()
 							.expect("numeric mock content length");
@@ -1485,7 +1505,7 @@ mod tests {
 	}
 
 	fn fixture_device_success() -> String {
-		let pkce = pkce_from_bytes(&[9_u8; 64]);
+		let pkce = crate::pkce_from_bytes(&[9_u8; 64]);
 
 		serde_json::json!({
 			"authorization_code": "fixture-authorization",
@@ -1518,7 +1538,7 @@ mod tests {
 				"/oauth/token" | "http://127.0.0.1:0/oauth/token"
 			));
 
-			let fields = url::form_urlencoded::parse(&request.body).collect::<HashMap<_, _>>();
+			let fields = form_urlencoded::parse(&request.body).collect::<HashMap<_, _>>();
 
 			assert_eq!(fields.len(), 5);
 			assert!(fields.contains_key("grant_type"));
@@ -1579,8 +1599,7 @@ mod tests {
 					}
 				},
 				"/oauth/token" => {
-					let fields =
-						url::form_urlencoded::parse(&request.body).collect::<HashMap<_, _>>();
+					let fields = form_urlencoded::parse(&request.body).collect::<HashMap<_, _>>();
 
 					assert_eq!(fields.len(), 5);
 
@@ -1625,11 +1644,15 @@ mod tests {
 	#[test]
 	fn authorize_url_matches_the_pinned_codex_contract() {
 		let config = Config::production().expect("production login config");
-		let pkce = pkce_from_bytes(&[7_u8; 64]);
+		let pkce = crate::pkce_from_bytes(&[7_u8; 64]);
 		let state = URL_SAFE_NO_PAD.encode([8_u8; 32]);
-		let url =
-			build_authorize_url(&config, "http://localhost:1455/auth/callback", &pkce, &state)
-				.expect("authorize URL");
+		let url = crate::build_authorize_url(
+			&config,
+			"http://localhost:1455/auth/callback",
+			&pkce,
+			&state,
+		)
+		.expect("authorize URL");
 		let query = url.query_pairs().into_owned().collect::<HashMap<_, _>>();
 
 		assert_eq!(url.scheme(), "https");
@@ -1656,7 +1679,7 @@ mod tests {
 			refresh_token: "fixture-refresh".to_owned(),
 		};
 
-		persist_auth(&home_path, &tokens).expect("private auth persistence");
+		crate::persist_auth(&home_path, &tokens).expect("private auth persistence");
 
 		let path = home_path.join("auth.json");
 		let metadata = fs::symlink_metadata(&path).expect("auth metadata");
@@ -1706,7 +1729,7 @@ mod tests {
 			let worker_home = home_path.clone();
 			let (event_tx, event_rx) = mpsc::channel();
 			let worker = thread::spawn(move || {
-				run(
+				crate::run(
 					&worker_config,
 					LoginMethod::BrowserRedirect,
 					&worker_home,
@@ -1766,7 +1789,7 @@ mod tests {
 		let (_home, home_path) = canonical_temp_home();
 		let runtime = runtime();
 		let events = Mutex::new(Vec::new());
-		let result = run(
+		let result = crate::run(
 			&config,
 			LoginMethod::DeviceCode,
 			&home_path,
@@ -1791,7 +1814,7 @@ mod tests {
 			.expect("device config");
 		let (_home, home_path) = canonical_temp_home();
 		let runtime = runtime();
-		let result = run(
+		let result = crate::run(
 			&config,
 			LoginMethod::DeviceCode,
 			&home_path,
@@ -1821,7 +1844,7 @@ mod tests {
 		let worker_home = home_path.clone();
 		let (event_tx, event_rx) = mpsc::channel();
 		let worker = thread::spawn(move || {
-			run(
+			crate::run(
 				&worker_config,
 				LoginMethod::BrowserRedirect,
 				&worker_home,
@@ -1872,7 +1895,7 @@ mod tests {
 		)
 		.expect("timeout config");
 		let (_timeout_home, timeout_home_path) = canonical_temp_home();
-		let timeout = run(
+		let timeout = crate::run(
 			&timeout_config,
 			LoginMethod::BrowserRedirect,
 			&timeout_home_path,
@@ -1894,7 +1917,7 @@ mod tests {
 		let worker_home = cancel_home_path.clone();
 		let (event_tx, event_rx) = mpsc::channel();
 		let worker = thread::spawn(move || {
-			run(
+			crate::run(
 				&config,
 				LoginMethod::DeviceCode,
 				&worker_home,
@@ -1930,7 +1953,7 @@ mod tests {
 			Config::test(issuer.issuer.clone(), 0, Duration::from_secs(2)).expect("device config");
 		let (_home, home_path) = canonical_temp_home();
 		let runtime = runtime();
-		let result = run(
+		let result = crate::run(
 			&config,
 			LoginMethod::DeviceCode,
 			&home_path,
@@ -1947,7 +1970,7 @@ mod tests {
 	fn callback_parser_rejects_a_full_buffer_without_a_header_terminator() {
 		let bytes = vec![b'A'; MAX_CALLBACK_REQUEST_BYTES];
 
-		assert!(matches!(parse_callback_head(&bytes), Err(CallbackParseFailure::TooLarge)));
+		assert!(matches!(crate::parse_callback_head(&bytes), Err(CallbackParseFailure::TooLarge)));
 	}
 
 	#[test]
@@ -1960,7 +1983,10 @@ mod tests {
 
 		bytes.extend_from_slice(b"\r\n");
 
-		assert!(matches!(parse_callback_head(&bytes), Err(CallbackParseFailure::TooManyHeaders)));
+		assert!(matches!(
+			crate::parse_callback_head(&bytes),
+			Err(CallbackParseFailure::TooManyHeaders)
+		));
 	}
 
 	#[test]
@@ -2006,9 +2032,8 @@ mod tests {
 		let home = LoginHome::create_under(root.path(), session_id).expect("private login home");
 		let path = home.path().to_owned();
 
-		std::mem::forget(home);
-
-		cleanup_stale_login_homes_in(root.path()).expect("bounded startup cleanup");
+		mem::forget(home);
+		crate::cleanup_stale_login_homes_in(root.path()).expect("bounded startup cleanup");
 
 		assert!(!path.exists());
 	}
@@ -2020,7 +2045,10 @@ mod tests {
 
 		fs::create_dir(&unknown).expect("unknown entry");
 
-		assert!(matches!(cleanup_stale_login_homes_in(root.path()), Err(Error::Persistence)));
+		assert!(matches!(
+			crate::cleanup_stale_login_homes_in(root.path()),
+			Err(Error::Persistence)
+		));
 		assert!(unknown.exists());
 	}
 }
