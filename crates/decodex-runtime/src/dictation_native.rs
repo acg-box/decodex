@@ -7,7 +7,7 @@ mod macos {
 		ffi::{CStr, CString, c_char, c_void},
 		sync::OnceLock,
 	};
-	type Create = unsafe extern "C" fn(*const c_char) -> *mut c_void;
+	type Create = unsafe extern "C" fn(*const c_char, *const c_char) -> *mut c_void;
 	type Command = unsafe extern "C" fn(*mut c_void, *const c_char) -> bool;
 	type Poll = unsafe extern "C" fn(*mut c_void) -> *const c_char;
 	type Destroy = unsafe extern "C" fn(*mut c_void);
@@ -27,11 +27,12 @@ mod macos {
 	// Rust session mutex serializes command/poll/drop, including the returned string lifetime.
 	unsafe impl Send for Stream {}
 	impl Stream {
-		pub(crate) fn new(token: &str) -> Result<Self, ()> {
+		pub(crate) fn new(token: &str, initial_message: Value) -> Result<Self, ()> {
 			let api = *API.get_or_init(load).as_ref().map_err(|_| ())?;
 			let token = CString::new(token).map_err(|_| ())?;
+			let initial_message = CString::new(initial_message.to_string()).map_err(|_| ())?;
 			// SAFETY: checked signed-bundle symbols and synchronous copy of the token argument.
-			let host = unsafe { (api.create)(token.as_ptr()) };
+			let host = unsafe { (api.create)(token.as_ptr(), initial_message.as_ptr()) };
 			if host.is_null() { Err(()) } else { Ok(Self { host, api }) }
 		}
 
@@ -76,7 +77,7 @@ mod macos {
 			if library.is_null() {
 				return Err(());
 			}
-			let create = libc::dlsym(library, c"decodex_dictation_create".as_ptr());
+			let create = libc::dlsym(library, c"decodex_dictation_create_v2".as_ptr());
 			let command = libc::dlsym(library, c"decodex_dictation_command".as_ptr());
 			let poll = libc::dlsym(library, c"decodex_dictation_poll".as_ptr());
 			let destroy = libc::dlsym(library, c"decodex_dictation_destroy".as_ptr());
@@ -97,7 +98,7 @@ mod macos {
 pub(crate) struct Stream;
 #[cfg(not(target_os = "macos"))]
 impl Stream {
-	pub(crate) fn new(_: &str) -> Result<Self, ()> {
+	pub(crate) fn new(_: &str, _: Value) -> Result<Self, ()> {
 		Err(())
 	}
 
