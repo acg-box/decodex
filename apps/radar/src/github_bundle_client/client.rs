@@ -19,7 +19,7 @@ impl GithubClient {
 		pr_number: u64,
 		notes: &[String],
 	) -> Result<Value> {
-		let (pr, _) =
+		let pr =
 			self.github_request(&format!("https://api.github.com/repos/{repo}/pulls/{pr_number}"))?;
 		let commits = self.github_paginated(&format!(
 			"https://api.github.com/repos/{repo}/pulls/{pr_number}/commits?per_page=100"
@@ -38,8 +38,9 @@ impl GithubClient {
 		commit_sha: &str,
 		notes: &[String],
 	) -> Result<Value> {
-		let (commit, _) = self
-			.github_request(&format!("https://api.github.com/repos/{repo}/commits/{commit_sha}"))?;
+		let commit = self.github_commit_request(&format!(
+			"https://api.github.com/repos/{repo}/commits/{commit_sha}?per_page=100"
+		))?;
 		let default_branch = self.repo_default_branch(repo)?;
 
 		crate::build_commit_bundle_from_sources(repo, &commit, &default_branch, notes)
@@ -61,7 +62,7 @@ impl GithubClient {
 	}
 
 	fn repo_default_branch(&self, repo: &str) -> Result<String> {
-		let (payload, _) = self.github_request(&format!("https://api.github.com/repos/{repo}"))?;
+		let payload = self.github_request(&format!("https://api.github.com/repos/{repo}"))?;
 		let default_branch = payload.get("default_branch").and_then(Value::as_str);
 
 		default_branch
