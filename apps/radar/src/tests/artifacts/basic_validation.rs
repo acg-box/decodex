@@ -100,3 +100,56 @@ fn empty_json_values_do_not_satisfy_try_instructions_or_effects() {
 		}
 	}
 }
+
+#[test]
+fn bundle_validation_checks_required_field_types_without_rejecting_empty_content() {
+	let mut valid = fixtures::valid_bundle();
+	valid["files"][0]["additions"] = serde_json::json!(0);
+	valid["files"][0]["deletions"] = serde_json::json!(0);
+	assertions::assert_errors(&valid, []);
+	for (pointer, value, error) in [
+		("/files/0/path", serde_json::Value::Null, "files[0].path must be a non-empty string"),
+		("/files/0/status", serde_json::json!(42), "files[0].status must be a non-empty string"),
+		(
+			"/files/0/additions",
+			serde_json::json!("0"),
+			"files[0].additions must be a non-negative integer",
+		),
+		(
+			"/files/0/deletions",
+			serde_json::json!(-1),
+			"files[0].deletions must be a non-negative integer",
+		),
+		(
+			"/primary_pr/number",
+			serde_json::Value::Null,
+			"primary_pr.number must be a positive integer",
+		),
+		(
+			"/primary_pr/number",
+			serde_json::json!(0),
+			"primary_pr.number must be a positive integer",
+		),
+		(
+			"/primary_pr/number",
+			serde_json::json!(u64::MAX),
+			"primary_pr.number must be a positive integer",
+		),
+		("/primary_pr/title", serde_json::json!(""), "primary_pr.title must be a non-empty string"),
+		("/primary_pr/body", serde_json::Value::Null, "primary_pr.body must be a string"),
+		(
+			"/primary_pr/state",
+			serde_json::json!(false),
+			"primary_pr.state must be a non-empty string",
+		),
+		("/primary_pr/labels", serde_json::json!([42]), "primary_pr.labels must be a list"),
+		("/primary_pr/url", serde_json::Value::Null, "primary_pr.url must be a non-empty string"),
+	] {
+		let mut bundle = valid.clone();
+		*bundle.pointer_mut(pointer).unwrap() = value;
+		assertions::assert_errors(&bundle, [error]);
+	}
+	valid["analysis_mode"] = serde_json::json!("commit_only");
+	valid["primary_pr"] = serde_json::Value::Null;
+	assertions::assert_errors(&valid, []);
+}
