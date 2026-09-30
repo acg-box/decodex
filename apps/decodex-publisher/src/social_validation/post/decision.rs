@@ -54,12 +54,14 @@ fn validate_social_post_decision_counts(
 		errors.push("decision.daily_limit must be 1".into());
 	}
 
-	let before = decision.get("daily_count_before").and_then(Value::as_i64);
-	let after = decision.get("daily_count_after").and_then(Value::as_i64);
+	let before = decision.get("daily_count_before").and_then(Value::as_u64);
+	let after = decision.get("daily_count_after").and_then(Value::as_u64);
 
 	match social_validation::string_field(entry, "status") {
 		Some("published")
-			if before.zip(after).is_none_or(|(before, after)| after != before + 1) =>
+			if before
+				.zip(after)
+				.is_none_or(|(before, after)| before.checked_add(1) != Some(after)) =>
 			errors.push(
 				"decision.daily_count_after must equal daily_count_before + 1 for published posts"
 					.into(),
@@ -71,5 +73,44 @@ fn validate_social_post_decision_counts(
 					.into(),
 			),
 		_ => {},
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use serde_json::{Value, json};
+
+	fn errors(status: &str, before: Value, after: Value) -> Vec<String> {
+		let entry = json!({"status": status});
+		let decision =
+			json!({"daily_limit": 1, "daily_count_before": before, "daily_count_after": after});
+		let mut errors = Vec::new();
+		super::validate_social_post_decision_counts(
+			entry.as_object().unwrap(),
+			decision.as_object().unwrap(),
+			&mut errors,
+		);
+		errors
+	}
+
+	#[test]
+	fn decision_counts_reject_negative_and_overflowing_values() {
+		assert!(!errors("published", json!(i64::MAX), json!(0)).is_empty());
+		assert!(!errors("published", json!(u64::MAX), json!(0)).is_empty());
+		assert!(!errors("published", json!(-1), json!(0)).is_empty());
+		for status in ["blocked", "failed", "skipped"] {
+			assert!(!errors(status, json!(-1), json!(-1)).is_empty());
+		}
+	}
+
+	#[test]
+	fn decision_counts_preserve_valid_state_transitions() {
+		assert!(errors("published", json!(0), json!(1)).is_empty());
+		assert!(!errors("published", json!(0), json!(0)).is_empty());
+		for status in ["blocked", "failed", "skipped"] {
+			assert!(errors(status, json!(0), json!(0)).is_empty());
+			assert!(errors(status, json!(1), json!(1)).is_empty());
+			assert!(!errors(status, json!(0), json!(1)).is_empty());
+		}
 	}
 }
