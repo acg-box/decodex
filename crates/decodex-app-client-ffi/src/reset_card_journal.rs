@@ -123,6 +123,74 @@ struct Dispatch {
 	attempt: Attempt,
 }
 
+struct Lock {
+	file: Option<File>,
+	key: PathBuf,
+}
+impl Lock {
+	fn acquire(path: &Path, wait: bool) -> io::Result<Self> {
+		let directory = parent(path)?;
+
+		ensure_dir(directory)?;
+
+		let key = fs::canonicalize(directory)?.join(path.file_name().ok_or_else(denied)?);
+
+		if !KEYS.get_or_init(Mutex::default).lock().map_err(|_| denied())?.insert(key.clone()) {
+			return Err(denied());
+		}
+
+		let mut lock = Self { file: None, key };
+		let name = path.file_name().ok_or_else(denied)?.to_string_lossy();
+		let lock_path = directory.join(format!(".{name}.lock"));
+		let (file, created) = match OpenOptions::new()
+			.read(true)
+			.write(true)
+			.create_new(true)
+			.mode(0o600)
+			.custom_flags(libc::O_NOFOLLOW)
+			.open(&lock_path)
+		{
+			Ok(file) => (file, true),
+			Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (
+				OpenOptions::new()
+					.read(true)
+					.write(true)
+					.custom_flags(libc::O_NOFOLLOW)
+					.open(&lock_path)?,
+				false,
+			),
+			Err(e) => return Err(e),
+		};
+
+		if created {
+			file.set_permissions(fs::Permissions::from_mode(0o600))?;
+		}
+
+		let opened = file.metadata()?;
+		let named = fs::symlink_metadata(lock_path)?;
+
+		if !private_file(&opened) || !private_file(&named) || !same(&opened, &named) {
+			return Err(denied());
+		}
+
+		set_lock(&file, libc::F_WRLCK, if wait { libc::F_SETLKW } else { libc::F_SETLK })?;
+
+		lock.file = Some(file);
+
+		Ok(lock)
+	}
+}
+impl Drop for Lock {
+	fn drop(&mut self) {
+		if let Some(file) = self.file.take() {
+			let _ = set_lock(&file, libc::F_UNLCK, libc::F_SETLK);
+		}
+		if let Ok(mut keys) = KEYS.get_or_init(Mutex::default).lock() {
+			keys.remove(&self.key);
+		}
+	}
+}
+
 pub(super) fn request(bytes: &[u8]) -> Option<Value> {
 	let request: Request = serde_json::from_slice(bytes).ok()?;
 
@@ -189,6 +257,7 @@ pub(super) fn request(bytes: &[u8]) -> Option<Value> {
 		},
 	}
 }
+
 fn dispatches() -> &'static Mutex<HashMap<u64, Dispatch>> {
 	DISPATCHES.get_or_init(Mutex::default)
 }
@@ -394,63 +463,7 @@ fn persist(path: &Path, attempts: &[Attempt]) -> io::Result<()> {
 
 	result
 }
-struct Lock {
-	file: Option<File>,
-	key: PathBuf,
-}
-impl Lock {
-	fn acquire(path: &Path, wait: bool) -> io::Result<Self> {
-		let directory = parent(path)?;
 
-		ensure_dir(directory)?;
-
-		let key = fs::canonicalize(directory)?.join(path.file_name().ok_or_else(denied)?);
-
-		if !KEYS.get_or_init(Mutex::default).lock().map_err(|_| denied())?.insert(key.clone()) {
-			return Err(denied());
-		}
-
-		let mut lock = Self { file: None, key };
-		let name = path.file_name().ok_or_else(denied)?.to_string_lossy();
-		let lock_path = directory.join(format!(".{name}.lock"));
-		let (file, created) = match OpenOptions::new()
-			.read(true)
-			.write(true)
-			.create_new(true)
-			.mode(0o600)
-			.custom_flags(libc::O_NOFOLLOW)
-			.open(&lock_path)
-		{
-			Ok(file) => (file, true),
-			Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (
-				OpenOptions::new()
-					.read(true)
-					.write(true)
-					.custom_flags(libc::O_NOFOLLOW)
-					.open(&lock_path)?,
-				false,
-			),
-			Err(e) => return Err(e),
-		};
-
-		if created {
-			file.set_permissions(fs::Permissions::from_mode(0o600))?;
-		}
-
-		let opened = file.metadata()?;
-		let named = fs::symlink_metadata(lock_path)?;
-
-		if !private_file(&opened) || !private_file(&named) || !same(&opened, &named) {
-			return Err(denied());
-		}
-
-		set_lock(&file, libc::F_WRLCK, if wait { libc::F_SETLKW } else { libc::F_SETLK })?;
-
-		lock.file = Some(file);
-
-		Ok(lock)
-	}
-}
 fn set_lock(file: &File, kind: i16, command: i32) -> io::Result<()> {
 	let mut lock: libc::flock = unsafe { std::mem::zeroed() };
 
@@ -469,28 +482,10 @@ fn set_lock(file: &File, kind: i16, command: i32) -> io::Result<()> {
 		}
 	}
 }
-impl Drop for Lock {
-	fn drop(&mut self) {
-		if let Some(file) = self.file.take() {
-			let _ = set_lock(&file, libc::F_UNLCK, libc::F_SETLK);
-		}
-		if let Ok(mut keys) = KEYS.get_or_init(Mutex::default).lock() {
-			keys.remove(&self.key);
-		}
-	}
-}
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	fn attempt() -> Value {
-		json!({"target":{"authority":{"profileName":"local","serverID":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
-            "accountID":"11111111-1111-4111-8111-111111111111","expectedRevision":7,
-            "descriptor":{"grantedAtUnixSeconds":100}},"idempotencyKey":"22222222-2222-4222-8222-222222222222"})
-	}
-	fn call(value: Value) -> Option<Value> {
-		request(&serde_json::to_vec(&value).unwrap())
-	}
 	struct Fixture(PathBuf);
 	impl Fixture {
 		fn new() -> Self {
@@ -513,6 +508,15 @@ mod tests {
 		fn drop(&mut self) {
 			fs::remove_dir_all(&self.0).unwrap();
 		}
+	}
+
+	fn attempt() -> Value {
+		json!({"target":{"authority":{"profileName":"local","serverID":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
+            "accountID":"11111111-1111-4111-8111-111111111111","expectedRevision":7,
+            "descriptor":{"grantedAtUnixSeconds":100}},"idempotencyKey":"22222222-2222-4222-8222-222222222222"})
+	}
+	fn call(value: Value) -> Option<Value> {
+		request(&serde_json::to_vec(&value).unwrap())
 	}
 
 	#[test]
