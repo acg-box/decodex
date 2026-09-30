@@ -1,5 +1,5 @@
 mod artifacts;
 mod assertions;
-mod automation;
+pub(crate) mod automation;
 mod env;
 pub(crate) mod fixtures;
