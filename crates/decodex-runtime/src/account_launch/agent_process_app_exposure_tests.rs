@@ -11,6 +11,7 @@ struct Config {
 	preference: Option<Vec<String>>,
 	writes: usize,
 	reject: bool,
+	apply_then_reject: bool,
 	missing: bool,
 }
 async fn server(remote: tokio::io::DuplexStream, state: Arc<std::sync::Mutex<Config>>) {
@@ -42,12 +43,14 @@ async fn server(remote: tokio::io::DuplexStream, state: Arc<std::sync::Mutex<Con
 						&request["params"]
 					));
 					config.writes += 1;
-					if config.reject {
-						json!({"fixtureError":true})
-					} else {
+					if !config.reject || config.apply_then_reject {
 						config.preference =
 							serde_json::from_value(request["params"]["edits"][0]["value"].clone())
 								.expect("App exposure fixture");
+					}
+					if config.reject {
+						json!({"fixtureError":true})
+					} else {
 						json!({"status":"ok","filePath":"/fixture/config.toml","version":format!("v{}",config.writes)})
 					}
 				},
@@ -275,5 +278,73 @@ async fn legacy_app_exposure_outcomes_survive_reopen_without_becoming_native_pre
 	assert_eq!(last_outcome.as_deref(), Some("saved"));
 	assert_eq!(preference, Some(vec!["direct".into()]));
 	assert_eq!(config.lock().expect("fixture config").writes, 1);
+	backend.abort();
+}
+
+#[tokio::test]
+async fn applied_app_exposure_error_recovers_after_reopen_without_replaying_write() {
+	let home = tempfile::tempdir().expect("App exposure recovery fixture");
+	let (local, remote) = tokio::io::duplex(65536);
+	let (reader, writer) = tokio::io::split(local);
+	let (client, _events) = AppServerClient::from_io(reader, writer);
+	let config = Arc::new(std::sync::Mutex::new(Config {
+		reject: true,
+		apply_then_reject: true,
+		..Config::default()
+	}));
+	let backend = tokio::spawn(server(remote, config.clone()));
+	let owner = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
+	let State::Available { review_token, can_update: true, .. } =
+		read(&owner.store, || async { Some(owner.source(&owner.key)) }, "calendar").await
+	else {
+		panic!("owned settings review")
+	};
+	assert!(
+		write(
+			&owner.store,
+			|| async { Some(owner.source(&owner.key)) },
+			Change {
+				connector: "calendar",
+				review: review_token.as_str(),
+				omit: Some(vec![]),
+				attempt: "applied-error",
+			}
+		)
+		.await
+		.is_err()
+	);
+	let reopened = SqliteStore::open(&owner.root.paths()).expect("App exposure recovery fixture");
+	let scope = crate::agent_config_settings::digest("/fixture/config.toml");
+	assert_eq!(
+		reopened
+			.agent_app_settings_receipt(scope.clone())
+			.await
+			.expect("App exposure recovery fixture")
+			.expect("App exposure recovery fixture")
+			.state,
+		"unknown"
+	);
+	let State::Available { preference, last_outcome, can_update, .. } =
+		read(&reopened, || async { Some(owner.source(&owner.key)) }, "calendar").await
+	else {
+		panic!("reconciled settings")
+	};
+	assert_eq!(preference, Some(vec![]));
+	assert_eq!(last_outcome.as_deref(), Some("target_observed"));
+	assert!(can_update);
+	assert_eq!(
+		reopened
+			.agent_app_settings_receipt(scope)
+			.await
+			.expect("App exposure recovery fixture")
+			.expect("App exposure recovery fixture")
+			.state,
+		"target_observed"
+	);
+	assert_eq!(
+		config.lock().expect("App exposure recovery fixture").writes,
+		1,
+		"recovery must only read native state"
+	);
 	backend.abort();
 }
