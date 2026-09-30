@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7e10b8afd6d4141e3af77906df64c094e5ce0fb626c6f099685b48a7f4d76f36",
+  "pageVersion": "sha256:5e6351eaa9eea61b9ea5ab84e4238e84be4296f68338c5baae1021548d3a386c",
   "claims": [
     {
       "id": "claim_43cc36a83ec3487a92f18c719c5bdd1a",
@@ -50,7 +50,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift",
-          "version": "repo-file-v1:sha256:6c44f97e06eb99ebb04a69e06ff699790cd1a7c9e6755d10cf26ab169d96d785"
+          "version": "repo-file-v1:sha256:0db63eb79398d35e2b1d4d1d20314e2cf54ac0b8122570f03cd56968e88e4598"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/accounts.rs",
@@ -89,6 +89,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T08:07:44.872Z"
+    "at": "2026-09-30T17:38:04.493Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:605790b7cf2bc4091ff28c7f39941d689e20a30c4e3afa20c216aa095f06d8db",
+  "pageVersion": "sha256:4773a2d675cb5b8c3d35e652b2a251481edc3aba8840462be50936b8808c3c42",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -53,10 +53,60 @@
           "version": "repo-file-v1:sha256:fb8b1109b26ad57070fd66ef8d8dd8cde9a1a4bbda1bae951746d317ba69bbdc"
         }
       ]
+    },
+    {
+      "id": "claim_0c2acd05ce234978884624f505d2825d",
+      "statement": "The menu controller makes its nonactivating panel key on open without application-wide activation, and lifecycle tests require unchanged foreground application identity and a hidden workspace that remains hidden.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/StatusPanelController.swift#L24-L88",
+          "version": "repo-lines-v1:sha256:11c0848491b2868db049511f9f35ac2b78e2722f5fd30c500253a584f958a9fd:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2YjBjM2UxMTczNjAwMTczMGM2NTAyOGM2YjgxODA3YTJhMzE3ZDU0ODJkMjBjNWExMmQyYjg3OTY5NjYyOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlMDVjMDZkNTA3YzJlOWQ0ZGI5Y2IzMWJiMmQwYTc2ZTFjMDZmZDY3YjA1MjdiMmIyNWZiOTMyMzE4OWNiOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyODIyMTFiZjE2MDc0ZTdiM2UzMmVhOTBmZDNjY2I1Yzg2YTI2NzdlYmZlMTUyZWQ2YjcxMTQ0MjdkMzVhNTAifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/StatusPanelLifecycleTests.swift#L278-L315",
+          "version": "repo-lines-v1:sha256:f1e852c20c0fe325af0b59710493e04aadf0c3cdc23154cc2ea0b7a986327edc:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxMWE5MjZkNjRmYTE3MmUwMjczNzYwZGU1YTViMDE0NDgzNTBiNTEzZTFkYmEyOWNjOWNjMzMxZjc4YjM5NjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhZDFjZGIwOTM0NWZkYzVmOWFhZTk5OTM5MWY4NTdhN2M4Y2Q0OWZlZDM0OTY5ZjI3YTA5ZGFkZDBlZmVkYTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVmY2FhYWY0OTFjZTlkMGFkYTkyMTU5ZmQ1ZjRlM2I3NGQxMmVlZjNhMWY2MWNlOGIxN2UxYzViN2QwMWFlYjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5545977e492241089c5365b8086b9888",
+      "statement": "Native account disclosures use one Core Animation transaction to move and reveal account rows; the canvas accommodates both animation endpoints and requests the screen refresh rate without per-frame window resizing.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountRows.swift#L152-L190",
+          "version": "repo-lines-v1:sha256:28e282e326ed5f2f7db5ccd3855ea58c16e53d184de53113a327906f405d3125:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ODJiZmJmYjEzNDNkYTE2ZDk2ZTNiOTEyNGZmNDhkOGJlOTc5MDM1MDJiMWJlZDZjY2YzMzkxOThhZWZiOWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmYTBkNDRjMjdkZDE0Y2RjOGZkZWI4ODViYTJhOTU2MTk4Y2QxYWM1MmUwYTdmYzcyNDQ3ZGExY2RmMDVlYjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUzYjEyYjE3OTNiMTVjMzdmZTcxZWNhNzE5MmEyODM3MzE4ODc4MDgxY2YyY2Y5MTBiMmIyMDkwYjM0NzIwNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1Njg2MzhiNjEwMGRjMjMxYjllMTIwYWIzYTJmZDViN2JlMTkwNmM1OGIwZTYwZGFjNmZlOTc0MDM3Mjk3OWEifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountRows.swift#L57-L107",
+          "version": "repo-lines-v1:sha256:19fa61f27d48867cd3691d897aea15702308580825e51961be7e36b7a6f5a739:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYyYzk1MmVhMzQwY2RlOTQ0NWFiZmExMDcyMGQ4ODZjNDYyMWVkYjU5NzVkZmVlZTE1NmZiZjk5MjhhZDhiNmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3ZTM2NTZiMjYwMTAxM2UxYjc2ODgzODE3OGZiZjUwODY0MGRkZTAzM2NhYmFhODQxN2QwYzJlOWM3ZmZlOTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmNDA3ZTM1NDQ4MTMwYmY5ZjE2ODk1NmJmNTNmYjAyYjk4OTY5ZTBlMWYwYmY4NmE1NzM2ZDkwMjJmNzRlNjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQxNzgzN2Y4NWVjNDVlODUxZmFjNTk4ZGViZTQyYTY0OTk1YjUzNjcyOGY2NzFiODg2MDg5ZTQ2ZDc1OTdjNmUifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/StatusPanelController.swift#L200-L218",
+          "version": "repo-lines-v1:sha256:f2f18466da9c2b6da93cf325571af62cc638a1ed35e2fb3fd8fc429fca48157e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxN2ZmNjc4MDMzYTU1ZjNjNGFlN2RlNmQzODllNjA3NmEyNzExMjZkMjA5MjE0MjJhNzI3M2MyMDA0N2EzNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjMGMzZjU0ZjQxNjE4NzUyNTU4NDk3MDVhZWM0YzQ1MTEyNTUwOGUyYmIyZThmYzNjYzljYTM0Y2Y5OTIxZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhYmE4MmRkYjVkYWUwZjhjZTVhM2ZkZmYwNjQ2NzJmMWE5YzNkZDJhZmQxNDA5MjczMDM4NWY4N2VjNzNkNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwNjEwMTdlZmVmYmFhMzQwNjBkYzVlODdjOWNkYWUxYWIzNTEzNTNiYTY4NWJjZWMzYWEyZDc3MTJkMGI3YTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ea2b8cdc441c4175b2e40d83860f6ea3",
+      "statement": "GPUI status notifications select error, warning, and information colors by priority and render each notice title and detail in its notice color; native account feedback uses one severity color for its icon and popover text.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L3-L38",
+          "version": "repo-lines-v1:sha256:2f92b3e88159af020eeb24c56262cbde6a1f51674b06e809757b49e9a4666f8c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YmZiY2I2OWM3MTIxZmE4Y2UxOTI1ZjM1YzU0ZTc2ODkxNGZkYTY0NDI0YzdmODQxNzE4N2MxZGM4YmY3MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1OTY1ZmU4Zjg5ZDU0OWU2YTkxY2Y5YjIxMGRjNTcwOGEwZDg1OTE5MWI5OTQyNmY5YTBjMzBkYzVkNmU5ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkZjQ2Yjk5OGQzYWY0ZmZkOWEzMmY4MTA5YjI5Njk1NDM2Nzg1MDczMDYxMDE0ZmI0ZmU1ZjlkOTkwNjcxNGIifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell_status.rs#L19-L51",
+          "version": "repo-lines-v1:sha256:acbc319374b820fa0180867eadc29c28ec02a26cf9c3a2c519141f598b630c17:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExY2ZkOTU1M2Q1NGFiMjAxMmM2MzcxOTIzZGNhOWFjYTVkOThkZWZiOTA2NWM1NTZiZmQ0NWI3MDBiMGUwNzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiMzhiMzhmNzUyYjgxZDRkYWRkMDFlMDQwYTZjNDFmZDY0NDA0ZWZlZWM2ZGFjNGU4M2RjODhmYmEwNGRlMzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxMGQ3YjczNmI5MTQwNTllNDE1MTU1NzZhNTZmM2NlNjNhNjIyYmNjM2VlZGQ3MDNlOWExZDU1ZWQyMmZkMjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3ZGUwMTlkMDQ0YzAzOThkODdiNWUyYThjYzgyYmI0MGFjOTA3NjU1ODhlYjQ3OWEzZWJhMDU5NTg4ZDY1MmQifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell_status.rs#L371-L419",
+          "version": "repo-lines-v1:sha256:8870ddc1262c8b69ee1bbd440a875bfe5be2b68fecd55b6643e0e77c12bd4362:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkMWY2MWQwY2UyM2EwODNkMjY1M2Q3Mzk3ZGU4Mjg1ZThiZjcwMzNjOTY3ZWQ5YmJlM2MwMGNiMDg0MzM3NzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1ZTVjMTFhYTMyMWUzOTE1YzNmMGRkNTE0MWM2NGRlZTE5Yjk3ZmM2MWNhMjI3M2FlZmRjNTA1NGQ2NWI1NDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3Y2EyMDYzNTUxNDU1ODYwM2E5MTFjMTkyNTc3NTEwNjZhNTVhOTA4Y2E0YTQyYjI1NzkzZjJlYmI4OGQzZTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkYjlkNzIwM2ZjZmJkZTRlYTUxOGZhODQwMDQzYTY4MzQ1N2U4NzI3NDYyMDNmY2YzYzFkYjRhZWJhN2ViNjAifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.1",
-    "at": "2026-09-30T08:20:44.128Z"
+    "at": "2026-09-30T17:38:04.493Z"
   }
 }

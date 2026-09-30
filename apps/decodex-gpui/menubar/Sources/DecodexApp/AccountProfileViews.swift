@@ -48,7 +48,7 @@ struct AccountProfileDetailView: View {
 						.truncationMode(.tail)
 				}
 				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.foregroundStyle(state.profile == nil ? PanelPalette.secondaryText(colorScheme) : (state.requiresLoginRefresh ? PanelPalette.destructive(colorScheme) : PanelPalette.warning(colorScheme)))
 				.help([state.profileDegradationText, quotaDiagnostic].compactMap { $0 }.joined(separator: "\n"))
 			}
 		}
@@ -61,12 +61,7 @@ struct AccountProfileDetailView: View {
 			return state.isProfileRefreshing ? "Loading activity…" : "No activity"
 		}
 		if profile.isCached || state.profileDegradationText != nil {
-			switch state.profileUnavailable?.error ?? profile.refreshError {
-			case .refreshRejected, .refreshAmbiguous, .accessRejectedAfterRefresh, .unauthorized, .credentialUnavailable:
-				return "Sign in again · Saved data"
-			default:
-				return "Saved data"
-			}
+			return state.requiresLoginRefresh ? "Sign in again · Saved data" : "Saved data"
 		}
 		return quotaDiagnostic == nil ? nil : "Usage unavailable"
 	}

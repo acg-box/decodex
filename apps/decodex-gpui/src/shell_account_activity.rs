@@ -1,5 +1,8 @@
 //! Compact saved-activity metrics and daily usage, matching the menu-bar disclosure.
-use super::{AccountProfileResult, ControlTooltip, Shell, WB_BLUE, WB_TEXT_FAINT, WB_TEXT_MUTED};
+use super::{
+	AccountProfileResult, ControlTooltip, Shell, StatusTooltip, WB_BLUE, WB_TEXT_FAINT,
+	WB_TEXT_MUTED,
+};
 use gpui::{AnyElement, div, prelude::*, px, rgb, rgba};
 pub(super) fn panel(shell: &Shell, account: &decodex_protocol::EntityId) -> AnyElement {
 	let snapshot = shell.account_activity.get(account).map(|(snapshot, _)| snapshot);
@@ -65,32 +68,24 @@ pub(super) fn panel(shell: &Shell, account: &decodex_protocol::EntityId) -> AnyE
 	if let Some(AccountProfileResult::Cached { refresh_error, .. }) =
 		snapshot.and_then(|s| s.result.as_ref())
 	{
-		use decodex_protocol::AccountProfileErrorDto::*;
-		let requires_login = matches!(
-			refresh_error,
-			RefreshRejected
-				| RefreshAmbiguous
-				| AccessRejectedAfterRefresh
-				| Unauthorized
-				| CredentialUnavailable
-		);
+		let requires_login = crate::account_profile::requires_login(*refresh_error);
+		let color = if requires_login { crate::ui_theme::ERROR } else { crate::ui_theme::AMBER };
 		let message = if requires_login { "Sign in again · Saved data" } else { "Saved data" };
 		content = content.child(
 			div()
 				.id("account-activity-status")
-				.text_color(rgb(WB_TEXT_FAINT))
+				.text_color(rgb(color))
 				.truncate()
 				.child(message)
 				.tooltip(move |_, cx| {
-					cx.new(|_| {
-						ControlTooltip(
-							if requires_login {
-								"Showing saved activity. Sign in again to refresh it."
-							} else {
-								"Showing saved activity because refresh is unavailable."
-							}
-							.to_owned(),
-						)
+					cx.new(|_| StatusTooltip {
+						text: if requires_login {
+							"Showing saved activity. Sign in again to refresh it."
+						} else {
+							"Showing saved activity because refresh is unavailable."
+						}
+						.into(),
+						color,
 					})
 					.into()
 				}),

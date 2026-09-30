@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4ef3e6cc29ce0a52e958e3e15a9ebe931ede08159c51240400cb434323815295",
+  "pageVersion": "sha256:29ee89918dc270ca4b26950e10954da684e9f386849e27834cb36dd5beb6c78b",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:074b8d2d8e9c6c25046a5330e32975624891ba25db2332569158f1225eee98b7"
+          "version": "repo-file-v1:sha256:355e1b57e06b9128e540ec047809bdaf866282fe61948cbdc8aa7c221ca95f62"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:074b8d2d8e9c6c25046a5330e32975624891ba25db2332569158f1225eee98b7"
+          "version": "repo-file-v1:sha256:355e1b57e06b9128e540ec047809bdaf866282fe61948cbdc8aa7c221ca95f62"
         }
       ]
     },
@@ -42,13 +42,13 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:074b8d2d8e9c6c25046a5330e32975624891ba25db2332569158f1225eee98b7"
+          "version": "repo-file-v1:sha256:355e1b57e06b9128e540ec047809bdaf866282fe61948cbdc8aa7c221ca95f62"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.6.0",
-    "at": "2026-09-29T06:24:17.023Z"
+    "by": "openwiki/0.6.1",
+    "at": "2026-09-30T17:38:04.493Z"
   }
 }

@@ -14,7 +14,7 @@ struct InlineAccountFeedback: View {
 		Button { expanded.toggle() } label: {
 			Image(systemName: isPending ? "arrow.triangle.2.circlepath" : "exclamationmark.circle")
 				.font(.system(size: 11, weight: .medium))
-				.foregroundStyle(isPending ? PanelPalette.secondaryText(colorScheme) : (isDestructive ? PanelPalette.destructive(colorScheme) : PanelPalette.warning(colorScheme)))
+				.foregroundStyle(feedbackColor)
 				.symbolEffect(.pulse, options: .repeating, isActive: isPending && !reduceMotion)
 				.frame(width: 20, height: 20)
 				.contentShape(Rectangle())
@@ -24,12 +24,15 @@ struct InlineAccountFeedback: View {
 		.accessibilityLabel(text)
 		.popover(isPresented: $expanded, arrowEdge: .bottom) {
 			VStack(alignment: .leading, spacing: 10) {
-				Text(text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+				Text(text).font(.system(size: 12)).foregroundStyle(feedbackColor).fixedSize(horizontal: false, vertical: true)
 				if !isPending {
 					Button("Dismiss") { expanded = false; dismiss() }.buttonStyle(.plain)
 				}
 			}.padding(12).frame(width: 240, alignment: .leading)
 		}
+	}
+	private var feedbackColor: Color {
+		isPending ? PanelPalette.secondaryText(colorScheme) : (isDestructive ? PanelPalette.destructive(colorScheme) : PanelPalette.warning(colorScheme))
 	}
 }
 
@@ -89,7 +92,7 @@ struct ResetCardAccountRow: View {
 						if store.canReorderAccounts { reorderHandle }
 						if let message = store.message, message.accountID == state.account.accountID,
 							message.tone != .success {
-							InlineAccountFeedback(text: message.text) { store.dismissMessage() }
+							InlineAccountFeedback(text: message.text, isDestructive: message.tone == .error) { store.dismissMessage() }
 						}
 						if state.requiresLoginRefresh {
 							InlineAccountFeedback(text: "Login refresh required. Sign in again to use this account.", isDestructive: true)

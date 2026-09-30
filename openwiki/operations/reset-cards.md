@@ -1,20 +1,29 @@
 ---
 type: Reference
 title: "Reset Card operation"
-description: "Reset Card operation"
-tags: ["decodex", "architecture"]
+description: "Account details disclosure, explicit card confirmation, and durable service-owned redemption and recovery."
+tags: [decodex, accounts, operations, reset-cards]
 openwiki_generated: true
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-30T17:38:04.493Z
 sources:
   - id: openwiki-source-a21355e56f76651beb4dffc4
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardCLIClient.swift
   - id: openwiki-source-8c181bb99ef43f180f70a6b8
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardPendingAttemptStore.swift
+  - id: openwiki-source-51c6a903a86b67bbf46fe288
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift
   - id: openwiki-source-08a47b3cdc5d2b1cdae95c23
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift
   - id: openwiki-source-6bb61549bdedebfcb6463cb5
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ResetCardPendingAttemptStoreTests.swift
   - id: openwiki-source-2fab31262c7d705356b67f7b
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ResetCardStoreRecoveryTests.swift
+  - id: openwiki-source-4b6e253ef76717138b4dd66e
+    resource: repo://apps/decodex-gpui/src/shell_reset_cards.rs
+  - id: openwiki-source-1291f5243fa6c9cb52149bda
+    resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-bee528a70eef19ac76275c5e
     resource: repo://crates/decodex-app-client-ffi/src/lib.rs
   - id: openwiki-source-be5e68990eacc4bf6ca42685
@@ -27,12 +36,8 @@ sources:
     resource: repo://database/src/reset_cards.rs
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-09-30T09:30:20.448Z" }
-verified:
-  - by: openwiki/0.6.1
-    at: 2026-09-30T14:27:56.062Z
+generated: { by: "codex", at: "2026-09-30T17:38:04.493Z" }
 ---
-
 
 > Current scope: Reset Card redemption is available in Accounts and the explicit CLI, with durable account-scoped recovery. The embedded schema owns the redemption ledger and separate weekly activation records. The source/release comparison below is a version-bound implementation receipt, not a statement of the currently installed Codex version. Quota refill animation displays confirmed results; it does not redeem a card. See [Weekly activation](quota-activation.md).
 
@@ -41,11 +46,15 @@ verified:
 Reset Cards are required Decodex functionality. They are not part of the retired
 Managed Repository or GitHub effect layers.
 
-In Accounts, open the account menu, select **Reset Cards**, choose one card, and
-confirm **use 1 card**. The panel shows the account and selected card expiry before
-confirmation. Cancel sends no request. Refresh only reads inventory and operation
-status. The CLI offers the same service through `reset-card list`, `use`, and
-`status`; `use` requires an explicit account revision, descriptor, and request key.
+## Find and use a card
+
+In Accounts or the native menu, click the account body to open its details. The activity graph and Reset Cards share this disclosure. Multiple accounts can stay open at the same time. A separate drag handle changes account order; account actions and card clicks do not toggle the disclosure.
+
+Each card shows its expiry. Click the selected card once to arm `Confirm · 5s`, then click the same card again within five seconds to use it. Confirmation expires without dispatch. The UI checks the exact account, revision, descriptor and current eligibility again before use. A confirmed result can animate the quota fill; the animation itself has no redemption authority.
+
+There is no separate Reset Cards expand button or manual refresh button in the compact account details. Inventory and operation-state reads remain service-backed. The CLI offers `reset-card list`, `use`, and `status`; `use` requires an explicit account revision, descriptor, and request key.
+
+Account status uses one inline message and a matching severity color. Detailed feedback stays near its account. See [account presentation](accounts-and-routing.md#account-rows-and-details) and [menu focus and motion](../architecture/desktop-workspace.md#menu-focus-and-account-motion).
 
 ## Ownership and safety
 
