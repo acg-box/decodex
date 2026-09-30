@@ -186,7 +186,7 @@ final class StatusPanelLifecycleTests: XCTestCase {
 			client: EmptyWidgetClient(),
 			pendingStore: ResetCardPendingAttemptStore(nativeRequest: NativeJournalFixture.request, journalURL: root.appendingPathComponent("pending.json"))
 		)
-		let controller = StatusPanelController(store: store)
+		let controller = StatusPanelController(store: store, fastModeStore: FastModeStore(client: MutablePanelFastModeClient()))
 		defer { controller.invalidate() }
 		controller.togglePanel()
 		try await Task.sleep(for: .milliseconds(100))
