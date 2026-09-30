@@ -3,6 +3,7 @@
 use std::{
 	collections::{BTreeMap, BTreeSet, btree_map::Entry},
 	path::{Path, PathBuf},
+	slice,
 };
 
 use serde_json::Value;
@@ -11,6 +12,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use crate::{
 	SOCIAL_OUTCOME_SCHEMA, SOCIAL_POST_SCHEMA,
 	prelude::{Result, eyre},
+	social_evidence,
 };
 
 struct PublishedPostBinding {
@@ -31,7 +33,7 @@ pub(crate) fn validated_observed_windows(
 ) -> Result<BTreeSet<(String, String)>> {
 	let outcomes_dir = crate::resolve_against(root, outcomes_dir);
 	let posts_dir = crate::resolve_against(root, posts_dir);
-	let available_posts = crate::collect_json_files(std::slice::from_ref(&posts_dir))?
+	let available_posts = crate::collect_json_files(slice::from_ref(&posts_dir))?
 		.into_iter()
 		.collect::<BTreeSet<_>>();
 	let outcome_paths = crate::collect_json_files(&[outcomes_dir])?;
@@ -109,7 +111,7 @@ fn load_published_post(path: &Path) -> Result<PublishedPostBinding> {
 		return Err(eyre::eyre!("social outcome must reference a published social_post"));
 	}
 
-	crate::social_evidence::validate_source_evidence(&post).map_err(|error| {
+	social_evidence::validate_source_evidence(&post).map_err(|error| {
 		eyre::eyre!("referenced social post evidence failed validation: {error}")
 	})?;
 
@@ -245,25 +247,23 @@ fn parse_timestamp(value: &str, label: &str) -> Result<OffsetDateTime> {
 mod tests {
 	use std::{
 		fs,
-		os::unix::fs::symlink,
+		os::unix,
 		path::{Path, PathBuf},
 	};
 
-	use serde_json::{Value, json};
+	use serde_json::Value;
 
-	use super::validated_observed_windows;
-	use crate::{SocialObserveDueRequest, repo_local_test_directory};
+	use crate::{SocialObserveDueRequest, social_outcome_store, social_workflow};
 
 	const POST_TEXT: &str = "Codex app-server exposes a typed capability check before experimental calls, so operators can detect unsupported protocol surfaces before a workflow starts.";
 	const RUN_ID: &str = "019fa400-0000-7000-8000-000000000001";
 	const SECOND_RUN_ID: &str = "019fa400-0000-7000-8000-000000000002";
 
 	struct Store {
-		root: std::path::PathBuf,
-		posts: std::path::PathBuf,
-		outcomes: std::path::PathBuf,
+		root: PathBuf,
+		posts: PathBuf,
+		outcomes: PathBuf,
 	}
-
 	impl Store {
 		fn direct(root: &Path) -> Self {
 			Self {
@@ -291,7 +291,8 @@ mod tests {
 		for suffix in ["", "not-a-post", "1001?extra=1", "1001/more", "１００１"] {
 			let mut invalid = valid.clone();
 
-			invalid["published_url"] = json!(format!("https://x.com/decodexspace/status/{suffix}"));
+			invalid["published_url"] =
+				serde_json::json!(format!("https://x.com/decodexspace/status/{suffix}"));
 
 			assert!(crate::validate_generated_social_artifact(&invalid).is_err(), "{suffix:?}");
 		}
@@ -299,7 +300,7 @@ mod tests {
 
 	#[test]
 	fn valid_outcome_is_accepted_by_default_store_validation() {
-		let temp = repo_local_test_directory("publisher-outcome-valid-");
+		let temp = crate::repo_local_test_directory("publisher-outcome-valid-");
 		let store = Store::default(temp.path());
 		let post = write_post(&store, RUN_ID, "post-a", "1001", &"a".repeat(64));
 		let post_ref = crate::path_arg(&store.root, &post);
@@ -310,15 +311,19 @@ mod tests {
 
 		assert_eq!(report.checked_files, 2);
 
-		let observed = validated_observed_windows(&store.root, &store.outcomes, &store.posts)
-			.expect("validated observed windows");
+		let observed = social_outcome_store::validated_observed_windows(
+			&store.root,
+			&store.outcomes,
+			&store.posts,
+		)
+		.expect("validated observed windows");
 
 		assert!(observed.contains(&(post_ref, "24h".into())));
 	}
 
 	#[test]
 	fn copied_outcome_retargeted_to_another_post_fails_validation_and_observed_windows() {
-		let temp = repo_local_test_directory("publisher-outcome-copied-");
+		let temp = crate::repo_local_test_directory("publisher-outcome-copied-");
 		let store = Store::default(temp.path());
 		let post_a = write_post(&store, RUN_ID, "post-a", "1001", &"a".repeat(64));
 		let post_b = write_post(&store, SECOND_RUN_ID, "post-b", "2002", &"b".repeat(64));
@@ -329,7 +334,7 @@ mod tests {
 			&"b".repeat(64),
 		);
 
-		copied["social_post_ref"] = json!(crate::path_arg(&store.root, &post_a));
+		copied["social_post_ref"] = serde_json::json!(crate::path_arg(&store.root, &post_a));
 
 		write_outcome(&store, RUN_ID, &copied);
 
@@ -339,16 +344,20 @@ mod tests {
 
 		assert!(validation_error.contains("does not match"), "{validation_error}");
 
-		let observed_error = validated_observed_windows(&store.root, &store.outcomes, &store.posts)
-			.expect_err("copied outcome must not produce an observed window")
-			.to_string();
+		let observed_error = social_outcome_store::validated_observed_windows(
+			&store.root,
+			&store.outcomes,
+			&store.posts,
+		)
+		.expect_err("copied outcome must not produce an observed window")
+		.to_string();
 
 		assert!(observed_error.contains("does not match"), "{observed_error}");
 	}
 
 	#[test]
 	fn observe_due_rejects_a_tampered_outcome_before_any_xurl_attempt() {
-		let temp = repo_local_test_directory("publisher-outcome-observe-due-");
+		let temp = crate::repo_local_test_directory("publisher-outcome-observe-due-");
 		let store = Store::direct(temp.path());
 		let post_a = write_post(&store, RUN_ID, "post-a", "1001", &"a".repeat(64));
 		let post_b = write_post(&store, SECOND_RUN_ID, "post-b", "2002", &"b".repeat(64));
@@ -360,11 +369,11 @@ mod tests {
 		);
 
 		copied["social_post_ref"] =
-			json!(crate::path_arg(&crate::repo_root().expect("repo root"), &post_a));
+			serde_json::json!(crate::path_arg(&crate::repo_root().expect("repo root"), &post_a));
 
 		write_outcome(&store, RUN_ID, &copied);
 
-		let error = crate::social_workflow::observe_due_with_test_binary(
+		let error = social_workflow::observe_due_with_test_binary(
 			&SocialObserveDueRequest {
 				run_id: SECOND_RUN_ID.into(),
 				observed_at: "2026-08-03T12:02:00Z".into(),
@@ -382,7 +391,7 @@ mod tests {
 	#[test]
 	fn mismatched_url_lineage_and_timing_are_rejected() {
 		for case in ["url", "lineage", "timing"] {
-			let temp = repo_local_test_directory("publisher-outcome-mismatch-");
+			let temp = crate::repo_local_test_directory("publisher-outcome-mismatch-");
 			let store = Store::direct(temp.path());
 			let lineage = "a".repeat(64);
 			let post = write_post(&store, RUN_ID, "post-a", "1001", &lineage);
@@ -390,18 +399,25 @@ mod tests {
 			let mut outcome = valid_outcome("post-a", &post_ref, "1001", &lineage);
 
 			match case {
-				"url" => outcome["published_url"] = json!("https://x.com/decodexspace/status/9999"),
+				"url" =>
+					outcome["published_url"] =
+						serde_json::json!("https://x.com/decodexspace/status/9999"),
 				"lineage" =>
-					outcome["observation"]["publication_lineage_sha256"] = json!("b".repeat(64)),
-				"timing" => outcome["observed_at"] = json!("2026-07-28T10:01:00Z"),
+					outcome["observation"]["publication_lineage_sha256"] =
+						serde_json::json!("b".repeat(64)),
+				"timing" => outcome["observed_at"] = serde_json::json!("2026-07-28T10:01:00Z"),
 				_ => unreachable!(),
 			}
 
 			write_outcome(&store, RUN_ID, &outcome);
 
-			let error = validated_observed_windows(&store.root, &store.outcomes, &store.posts)
-				.expect_err("mismatched outcome must fail")
-				.to_string();
+			let error = social_outcome_store::validated_observed_windows(
+				&store.root,
+				&store.outcomes,
+				&store.posts,
+			)
+			.expect_err("mismatched outcome must fail")
+			.to_string();
 
 			assert!(
 				error.contains("does not match") || error.contains("earliest window"),
@@ -412,7 +428,7 @@ mod tests {
 
 	#[test]
 	fn path_traversal_and_symlink_post_refs_are_rejected() {
-		let traversal = repo_local_test_directory("publisher-outcome-traversal-");
+		let traversal = crate::repo_local_test_directory("publisher-outcome-traversal-");
 		let traversal_store = Store::direct(traversal.path());
 		let lineage = "a".repeat(64);
 
@@ -427,7 +443,7 @@ mod tests {
 		);
 
 		assert!(
-			validated_observed_windows(
+			social_outcome_store::validated_observed_windows(
 				&traversal_store.root,
 				&traversal_store.outcomes,
 				&traversal_store.posts,
@@ -435,12 +451,13 @@ mod tests {
 			.is_err()
 		);
 
-		let linked = repo_local_test_directory("publisher-outcome-symlink-");
+		let linked = crate::repo_local_test_directory("publisher-outcome-symlink-");
 		let linked_store = Store::direct(linked.path());
 		let target = write_post(&linked_store, RUN_ID, "post-a", "1001", &lineage);
 		let link = linked_store.posts.join("linked.json");
 
-		symlink(&target, &link).expect("post symlink fixture");
+		unix::fs::symlink(&target, &link).expect("post symlink fixture");
+
 		write_outcome(
 			&linked_store,
 			RUN_ID,
@@ -448,7 +465,7 @@ mod tests {
 		);
 
 		assert!(
-			validated_observed_windows(
+			social_outcome_store::validated_observed_windows(
 				&linked_store.root,
 				&linked_store.outcomes,
 				&linked_store.posts,
@@ -480,7 +497,7 @@ mod tests {
 	}
 
 	fn valid_post(run_id: &str, slug: &str, post_id: &str, lineage: &str) -> Value {
-		json!({
+		serde_json::json!({
 			"schema": "social_post/v1",
 			"slug": slug,
 			"channel": "x",
@@ -528,13 +545,13 @@ mod tests {
 				"create_response_sha256": "a".repeat(64),
 				"read_response_sha256": "b".repeat(64),
 				"publication_lineage_sha256": lineage,
-				"recorded_cost_ceiling_microusd": 30000
+				"recorded_cost_ceiling_microusd": 30_000
 			}
 		})
 	}
 
 	fn valid_outcome(slug: &str, post_ref: &str, post_id: &str, lineage: &str) -> Value {
-		json!({
+		serde_json::json!({
 			"schema": "social_outcome/v1",
 			"slug": format!("{slug}-24h"),
 			"target_account": "decodexspace",
@@ -551,7 +568,7 @@ mod tests {
 				"verified_account": "decodexspace",
 				"publication_lineage_sha256": lineage,
 				"response_sha256": "c".repeat(64),
-				"recorded_cost_ceiling_microusd": 5000
+				"recorded_cost_ceiling_microusd": 5_000
 			},
 			"notes": ["Metrics were read through the bounded xurl post lookup."]
 		})
