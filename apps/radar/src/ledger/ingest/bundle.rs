@@ -63,6 +63,10 @@ pub(crate) fn ingest_artifact_set(
 	Ok(())
 }
 
+pub(super) fn signal_schema() -> &'static str {
+	SIGNAL_SCHEMA
+}
+
 fn optional_path_exists(reader: &LedgerArtifactReader<'_>, path: Option<&Path>) -> Result<bool> {
 	path.map_or(Ok(false), |path| Ok(reader.existing_path(path)?.is_some()))
 }
@@ -75,10 +79,6 @@ fn existing_optional_path<'a>(
 		Some(path) if optional_path_exists(reader, Some(path))? => Ok(Some(path)),
 		_ => Ok(None),
 	}
-}
-
-pub(super) fn signal_schema() -> &'static str {
-	SIGNAL_SCHEMA
 }
 
 fn record_bundle(

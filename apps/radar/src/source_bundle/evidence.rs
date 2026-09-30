@@ -6,10 +6,20 @@ use crate::{
 	BUNDLE_BUILD_RECEIPT_SCHEMA, BUNDLE_SCHEMA, CACHE_MAX_BYTES_PER_COLLECTION,
 	RadarBundleBuildReceipt, Value,
 	prelude::{Result, eyre},
+	private_fs,
 };
 
 pub(crate) fn install_bundle(path: &Path, bundle: &Value) -> Result<RadarBundleBuildReceipt> {
 	install_bundle_with(path, bundle, || {})
+}
+
+#[cfg(test)]
+pub(crate) fn install_bundle_after_write(
+	path: &Path,
+	bundle: &Value,
+	after_write: impl FnOnce(),
+) -> Result<RadarBundleBuildReceipt> {
+	install_bundle_with(path, bundle, after_write)
 }
 
 fn install_bundle_with<AfterWrite>(
@@ -32,7 +42,7 @@ where
 		eyre::bail!("bundle installation requires a private Radar cache path");
 	}
 
-	let (cache, relative) = crate::private_fs::private_cache_file(path)?;
+	let (cache, relative) = private_fs::private_cache_file(path)?;
 	let lock = cache.lock()?;
 
 	lock.write_atomic(&relative, &expected)?;
@@ -154,13 +164,4 @@ fn pretty_json_bytes(value: &Value) -> Result<Vec<u8>> {
 
 fn sha256_hex(payload: &[u8]) -> String {
 	Sha256::digest(payload).iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-#[cfg(test)]
-pub(crate) fn install_bundle_after_write(
-	path: &Path,
-	bundle: &Value,
-	after_write: impl FnOnce(),
-) -> Result<RadarBundleBuildReceipt> {
-	install_bundle_with(path, bundle, after_write)
 }
