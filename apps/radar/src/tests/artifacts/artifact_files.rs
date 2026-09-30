@@ -1,10 +1,18 @@
-use std::{ffi::CString, fs, os::unix::ffi::OsStrExt as _, sync::mpsc, thread};
+use std::{
+	ffi::CString,
+	fs,
+	os::unix::{self, ffi::OsStrExt as _},
+	slice,
+	sync::mpsc,
+	thread,
+};
 
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-	RadarRenderSignalRequest, RadarValidateRequest,
+	DEFAULT_CACHE_ROOT, DEFAULT_LEDGER_PATH, DEFAULT_QUEUE_OUT, RadarBundleValidateRequest,
+	RadarRenderSignalRequest, RadarValidateRequest, RefreshKind, core_io, ledger, test_support,
 	tests::{env::TestEnvVars, fixtures},
 };
 
@@ -85,8 +93,8 @@ fn validates_json_files_from_directory() {
 
 #[test]
 fn validates_explicit_private_cache_files_by_absolute_path() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let pair = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-artifacts");
+	let temp_dir = test_support::private_tempdir();
+	let pair = temp_dir.path().join(DEFAULT_CACHE_ROOT).join("github/test-artifacts");
 	let review = pair.join("review.json");
 	let impact = pair.join("impact.json");
 
@@ -110,11 +118,9 @@ fn validates_explicit_private_cache_files_by_absolute_path() {
 
 #[test]
 fn validates_json_files_from_explicit_private_cache_directory() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let directory = temp_dir
-		.path()
-		.join(crate::DEFAULT_CACHE_ROOT)
-		.join("github/test-validation-directory.json");
+	let temp_dir = test_support::private_tempdir();
+	let directory =
+		temp_dir.path().join(DEFAULT_CACHE_ROOT).join("github/test-validation-directory.json");
 
 	crate::write_json(&directory.join("bundle.json"), &fixtures::valid_bundle())
 		.expect("private bundle should be written");
@@ -131,15 +137,14 @@ fn validates_json_files_from_explicit_private_cache_directory() {
 
 #[test]
 fn bundle_validation_classifies_private_directories_before_file_extensions() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let directory = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/bundles.json");
+	let temp_dir = test_support::private_tempdir();
+	let directory = temp_dir.path().join(DEFAULT_CACHE_ROOT).join("github/bundles.json");
 
 	crate::write_json(&directory.join("bundle.json"), &fixtures::valid_bundle()).unwrap();
 
-	let report = crate::validate_bundles(&crate::RadarBundleValidateRequest {
-		paths: vec![directory.clone()],
-	})
-	.expect("a private directory ending in .json must be traversed");
+	let report =
+		crate::validate_bundles(&RadarBundleValidateRequest { paths: vec![directory.clone()] })
+			.expect("a private directory ending in .json must be traversed");
 
 	assert_eq!(report.checked_files, 1);
 
@@ -148,31 +153,28 @@ fn bundle_validation_classifies_private_directories_before_file_extensions() {
 	crate::write_json(&explicit_file, &fixtures::valid_bundle()).unwrap();
 
 	assert_eq!(
-		crate::validate_bundles(&crate::RadarBundleValidateRequest {
-			paths: vec![explicit_file.clone()],
-		})
-		.expect("an explicit bundle file is validated by content")
-		.checked_files,
+		crate::validate_bundles(&RadarBundleValidateRequest { paths: vec![explicit_file.clone()] })
+			.expect("an explicit bundle file is validated by content")
+			.checked_files,
 		1
 	);
 
 	let linked = directory.join("linked.json");
 
-	std::os::unix::fs::symlink(explicit_file, &linked).unwrap();
+	unix::fs::symlink(explicit_file, &linked).unwrap();
 
 	for invalid in [linked, directory.join("missing.json")] {
 		assert!(
-			crate::validate_bundles(&crate::RadarBundleValidateRequest { paths: vec![invalid] })
-				.is_err()
+			crate::validate_bundles(&RadarBundleValidateRequest { paths: vec![invalid] }).is_err()
 		);
 	}
 }
 
 #[test]
 fn explicit_private_cache_regular_file_applies_json_extension_filter_after_classification() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 	let non_json =
-		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-artifacts/review.txt");
+		temp_dir.path().join(DEFAULT_CACHE_ROOT).join("github/test-artifacts/review.txt");
 
 	crate::write_private_file_atomic(&non_json, b"not a JSON artifact")
 		.expect("private non-JSON file should be written safely");
@@ -189,14 +191,14 @@ fn explicit_private_cache_regular_file_applies_json_extension_filter_after_class
 
 #[test]
 fn explicit_private_cache_file_validation_rejects_symlink_leaf() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let pair = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-artifacts");
+	let temp_dir = test_support::private_tempdir();
+	let pair = temp_dir.path().join(DEFAULT_CACHE_ROOT).join("github/test-artifacts");
 	let review = pair.join("review.json");
 	let linked = pair.join("linked-review.json");
 
 	crate::write_json(&review, &fixtures::valid_upstream_review())
 		.expect("private review should be written");
-	std::os::unix::fs::symlink(&review, &linked).expect("symlink fixture should be created");
+	unix::fs::symlink(&review, &linked).expect("symlink fixture should be created");
 
 	let error = crate::validate(&RadarValidateRequest {
 		paths: vec![linked],
@@ -210,9 +212,8 @@ fn explicit_private_cache_file_validation_rejects_symlink_leaf() {
 
 #[test]
 fn explicit_private_cache_file_validation_rejects_unexpected_entry_type() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let fifo =
-		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-artifacts/review.json");
+	let temp_dir = test_support::private_tempdir();
+	let fifo = temp_dir.path().join(DEFAULT_CACHE_ROOT).join("github/test-artifacts/review.json");
 
 	crate::ensure_private_directory(fifo.parent().expect("FIFO parent should exist"))
 		.expect("private FIFO parent should be created");
@@ -241,9 +242,9 @@ fn explicit_private_cache_file_validation_rejects_unexpected_entry_type() {
 
 #[test]
 fn explicit_private_cache_file_validation_rejects_malformed_json() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 	let malformed =
-		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-artifacts/review.json");
+		temp_dir.path().join(DEFAULT_CACHE_ROOT).join("github/test-artifacts/review.json");
 
 	crate::write_private_file_atomic(&malformed, b"{not-json")
 		.expect("malformed private JSON should be written safely");
@@ -267,7 +268,7 @@ fn default_collection_traversal_skips_missing_roots_but_explicit_traversal_fails
 	let missing = temp_dir.path().join("missing");
 
 	assert!(
-		crate::collect_json_files(std::slice::from_ref(&missing), true)
+		crate::collect_json_files(slice::from_ref(&missing), true)
 			.expect("missing default collection should be empty")
 			.is_empty()
 	);
@@ -326,7 +327,7 @@ fn successful_equal_refresh_rewrites_the_observation_timestamp() {
 
 	crate::write_json(&path, &old_queue).expect("old queue should be written");
 
-	let refresh = crate::core_io::refresh_json(&path, &refreshed_queue, crate::RefreshKind::Queue)
+	let refresh = core_io::refresh_json(&path, &refreshed_queue, RefreshKind::Queue)
 		.expect("equal refresh should succeed");
 	let stored = crate::load_json(&path).expect("refreshed queue should be readable");
 
@@ -344,7 +345,7 @@ fn queue_refresh_report_binds_the_exact_written_queue_bytes() {
 
 	queue["generated_at"] = serde_json::json!("2026-06-02T00:00:00Z");
 
-	let refresh = crate::core_io::refresh_json(&path, &queue, crate::RefreshKind::Queue)
+	let refresh = core_io::refresh_json(&path, &queue, RefreshKind::Queue)
 		.expect("queue refresh should succeed");
 	let report = crate::queue_report(&queue, refresh, true).expect("queue report should build");
 	let stored = fs::read(&path).expect("refreshed queue bytes should be readable");
@@ -358,8 +359,8 @@ fn queue_refresh_report_binds_the_exact_written_queue_bytes() {
 
 #[test]
 fn concurrent_refresh_compare_and_replace_is_one_monotonic_cache_operation() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let path = temp_dir.path().join(crate::DEFAULT_QUEUE_OUT);
+	let temp_dir = test_support::private_tempdir();
+	let path = temp_dir.path().join(DEFAULT_QUEUE_OUT);
 	let mut old_queue = fixtures::valid_review_queue();
 	let mut newest_queue = old_queue.clone();
 	let mut stale_queue = old_queue.clone();
@@ -374,10 +375,10 @@ fn concurrent_refresh_compare_and_replace_is_one_monotonic_cache_operation() {
 	let (release_sender, release_receiver) = mpsc::channel();
 	let newest_path = path.clone();
 	let newest = thread::spawn(move || {
-		crate::core_io::refresh_json_after_comparison(
+		core_io::refresh_json_after_comparison(
 			&newest_path,
 			&newest_queue,
-			crate::RefreshKind::Queue,
+			RefreshKind::Queue,
 			move || {
 				entered_sender.send(()).expect("newest refresh should announce its lock");
 				release_receiver.recv().expect("newest refresh should be released");
@@ -393,7 +394,7 @@ fn concurrent_refresh_compare_and_replace_is_one_monotonic_cache_operation() {
 	let stale = thread::spawn(move || {
 		stale_started_sender.send(()).expect("stale refresh should announce its attempt");
 
-		crate::core_io::refresh_json(&stale_path, &stale_queue, crate::RefreshKind::Queue)
+		core_io::refresh_json(&stale_path, &stale_queue, RefreshKind::Queue)
 			.map_err(|error| error.to_string())
 	});
 
@@ -413,8 +414,8 @@ fn concurrent_refresh_compare_and_replace_is_one_monotonic_cache_operation() {
 
 #[test]
 fn concurrent_refresh_reports_material_change_against_the_artifact_it_replaces() {
-	let temp_dir = crate::test_support::private_tempdir();
-	let path = temp_dir.path().join(crate::DEFAULT_QUEUE_OUT);
+	let temp_dir = test_support::private_tempdir();
+	let path = temp_dir.path().join(DEFAULT_QUEUE_OUT);
 	let mut old_queue = fixtures::valid_review_queue();
 	let mut first_queue = old_queue.clone();
 
@@ -433,10 +434,10 @@ fn concurrent_refresh_reports_material_change_against_the_artifact_it_replaces()
 	let (release_sender, release_receiver) = mpsc::channel();
 	let first_path = path.clone();
 	let first = thread::spawn(move || {
-		crate::core_io::refresh_json_after_comparison(
+		core_io::refresh_json_after_comparison(
 			&first_path,
 			&first_queue,
-			crate::RefreshKind::Queue,
+			RefreshKind::Queue,
 			move || {
 				entered_sender.send(()).expect("first refresh should announce its lock");
 				release_receiver.recv().expect("first refresh should be released");
@@ -449,7 +450,7 @@ fn concurrent_refresh_reports_material_change_against_the_artifact_it_replaces()
 
 	let second_path = path.clone();
 	let second = thread::spawn(move || {
-		crate::core_io::refresh_json(&second_path, &second_queue, crate::RefreshKind::Queue)
+		core_io::refresh_json(&second_path, &second_queue, RefreshKind::Queue)
 			.map_err(|error| error.to_string())
 	});
 
@@ -477,12 +478,8 @@ fn refresh_rejects_corrupt_existing_json_without_replacing_it() {
 
 	fs::write(&path, corrupt).expect("corrupt fixture should be written");
 
-	let error = crate::core_io::refresh_json(
-		&path,
-		&fixtures::valid_review_queue(),
-		crate::RefreshKind::Queue,
-	)
-	.expect_err("refresh must not treat corrupt existing JSON as absent");
+	let error = core_io::refresh_json(&path, &fixtures::valid_review_queue(), RefreshKind::Queue)
+		.expect_err("refresh must not treat corrupt existing JSON as absent");
 
 	assert!(error.to_string().contains("parse"));
 	assert_eq!(fs::read(&path).expect("fixture should remain readable"), corrupt);
@@ -490,7 +487,7 @@ fn refresh_rejects_corrupt_existing_json_without_replacing_it() {
 
 #[test]
 fn daily_default_presence_fails_closed_but_explicit_bootstrap_accepts_empty_cache() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 	let error = crate::validate_default_cache_presence(temp_dir.path(), false)
 		.expect_err("daily validation must reject an empty cache");
 
@@ -520,8 +517,8 @@ fn explicit_bootstrap_rejects_explicit_validation_paths() {
 #[test]
 fn explicit_bootstrap_rejects_every_partial_generated_cache_shape() {
 	for partial in ["directory", "ledger", "temp_file"] {
-		let temp_dir = crate::test_support::private_tempdir();
-		let cache_root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
+		let temp_dir = test_support::private_tempdir();
+		let cache_root = temp_dir.path().join(DEFAULT_CACHE_ROOT);
 
 		match partial {
 			"directory" => {
@@ -529,9 +526,8 @@ fn explicit_bootstrap_rejects_every_partial_generated_cache_shape() {
 					.expect("partial directory should be created");
 			},
 			"ledger" => {
-				let ledger = temp_dir.path().join(crate::DEFAULT_LEDGER_PATH);
-				let connection =
-					crate::ledger::open_ledger(&ledger).expect("partial ledger should open");
+				let ledger = temp_dir.path().join(DEFAULT_LEDGER_PATH);
+				let connection = ledger::open_ledger(&ledger).expect("partial ledger should open");
 
 				connection.close().expect("partial ledger should be persisted");
 			},
