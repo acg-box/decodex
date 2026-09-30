@@ -3,9 +3,6 @@ type: Reference
 title: "SQLite local product evidence and current verification boundary"
 description: "Current source owners and the limitations of retained desktop and storage evidence."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-09-29T14:10:21.488Z
 sources:
   - id: openwiki-source-acf49c93c3e80379f0023c71
     resource: repo://apps/decodex-gpui/src/accounts.rs
@@ -18,6 +15,9 @@ sources:
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
 generated: { by: "codex", at: "2026-09-29T14:10:21.488Z" }
+verified:
+  - by: openwiki/0.6.1
+    at: 2026-09-30T09:06:10.197Z
 ---
 
 # Current verification boundary

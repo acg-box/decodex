@@ -1,0 +1,360 @@
+//! One native WebRTC call. PCM runs independently of GPUI and service signaling.
+use super::audio::Pcm;
+use futures_util::StreamExt as _;
+use libwebrtc::{
+	audio_frame::AudioFrame,
+	audio_source::{AudioSourceOptions, native::NativeAudioSource},
+	audio_stream::native::NativeAudioStream,
+	data_channel::{DataChannelInit, DataChannelState},
+	media_stream_track::MediaStreamTrack,
+	peer_connection::{IceGatheringState, OfferOptions, PeerConnection, PeerConnectionState},
+	peer_connection_factory::{
+		ContinualGatheringPolicy, PeerConnectionFactory, RtcConfiguration,
+		native::PeerConnectionFactoryExt as _,
+	},
+	session_description::{SdpType, SessionDescription},
+};
+use serde_json::{Value, json};
+use std::sync::{
+	Arc,
+	atomic::{AtomicBool, Ordering},
+	mpsc,
+};
+use tokio::{
+	sync::{mpsc as channel, oneshot},
+	time::{Duration, Instant},
+};
+
+pub(super) enum Command {
+	Answer(String),
+	Mute(bool),
+}
+
+pub(super) struct Transport {
+	commands: channel::Sender<Command>,
+	events: mpsc::Receiver<Value>,
+	overflow: Arc<AtomicBool>,
+	stop: Option<oneshot::Sender<()>>,
+}
+#[derive(Clone)]
+struct Events {
+	sender: mpsc::SyncSender<Value>,
+	overflow: Arc<AtomicBool>,
+}
+impl Events {
+	fn send(&self, value: Value) {
+		if matches!(self.sender.try_send(value), Err(mpsc::TrySendError::Full(_))) {
+			self.overflow.store(true, Ordering::Release);
+		}
+	}
+}
+impl Transport {
+	pub(super) fn start(pcm: Pcm) -> Result<Self, ()> {
+		let (commands, requests) = channel::channel(8);
+		let (sender, events) = mpsc::sync_channel(128);
+		let overflow = Arc::new(AtomicBool::new(false));
+		let output = Events { sender, overflow: overflow.clone() };
+		let (stop, cancelled) = oneshot::channel();
+		std::thread::Builder::new()
+			.name("native-voice".into())
+			.spawn(move || {
+				let Ok(runtime) =
+					tokio::runtime::Builder::new_current_thread().enable_time().build()
+				else {
+					output.send(
+						json!({"type":"error","message":"The native audio runtime could not start."}),
+					);
+					return;
+				};
+				runtime.block_on(async {
+					tokio::select! {
+						_ = cancelled => {},
+						result = run(pcm, requests, output.clone()) => {
+							if let Err(message) = result { output.send(json!({"type":"error","message":message})); }
+						}
+					}
+				});
+			})
+			.map_err(|_| ())?;
+		Ok(Self { commands, events, overflow, stop: Some(stop) })
+	}
+
+	pub(super) fn command(&self, command: Command) -> bool {
+		self.commands.try_send(command).is_ok()
+	}
+
+	pub(super) fn poll(&self) -> Option<Value> {
+		self.events.try_recv().ok().or_else(|| {
+			self.overflow.swap(false, Ordering::AcqRel).then(
+				|| json!({"type":"error","message":"Audio updates could not be delivered. The call stopped."}),
+			)
+		})
+	}
+}
+impl Drop for Transport {
+	fn drop(&mut self) {
+		if let Some(stop) = self.stop.take() {
+			let _ = stop.send(());
+		}
+	}
+}
+struct Peer(PeerConnection);
+impl Drop for Peer {
+	fn drop(&mut self) {
+		self.0.close();
+	}
+}
+
+async fn run(
+	mut pcm: Pcm,
+	mut commands: channel::Receiver<Command>,
+	events: Events,
+) -> Result<(), &'static str> {
+	let factory = PeerConnectionFactory::default();
+	// Apple owns capture, playback and DSP. No second audio device or processing chain.
+	factory.set_adm_recording_enabled(false);
+	factory.set_adm_playout_enabled(false);
+	let mut config = RtcConfiguration::default();
+	config.continual_gathering_policy = ContinualGatheringPolicy::GatherOnce;
+	let peer = Peer(
+		factory
+			.create_peer_connection(config)
+			.map_err(|_| "The audio connection could not start.")?,
+	);
+	let source = NativeAudioSource::new(AudioSourceOptions::default(), 48_000, 1, 40);
+	let track = factory.create_audio_track("microphone", source.clone());
+	peer.0
+		.add_track(track.clone().into(), &["microphone"])
+		.map_err(|_| "The microphone track could not start.")?;
+	let (tracks, mut incoming) = channel::channel(1);
+	peer.0.on_track(Some(Box::new(move |event| {
+		if let MediaStreamTrack::Audio(track) = event.track {
+			let _ = tracks.try_send(track);
+		}
+	})));
+	peer.0.on_data_channel(Some(Box::new(|channel| channel.close())));
+	let data = peer
+		.0
+		.create_data_channel("oai-events", DataChannelInit::default())
+		.map_err(|_| "The audio event channel could not start.")?;
+	let captions = events.clone();
+	data.on_message(Some(Box::new(move |buffer| {
+		if !buffer.binary && buffer.data.len() <= 65_536 {
+			if let Ok(value) = serde_json::from_slice::<Value>(buffer.data) {
+				if matches!(
+					value["type"].as_str(),
+					Some(
+						"input_transcript.added"
+							| "output_transcript.added"
+							| "turn.created"
+							| "turn.done"
+							| "turn.delta"
+					)
+				) {
+					captions.send(json!({"type":"caption","event":value}));
+				}
+			}
+		}
+	})));
+	let offer = tokio::time::timeout(Duration::from_secs(10), async {
+		let options = || OfferOptions { offer_to_receive_audio: true, ..Default::default() };
+		peer.0.set_local_description(peer.0.create_offer(options()).await?).await?;
+		let until = Instant::now() + Duration::from_secs(3);
+		while peer.0.ice_gathering_state() != IceGatheringState::Complete && Instant::now() < until
+		{
+			tokio::time::sleep(Duration::from_millis(20)).await;
+		}
+		// The binding exposes only current (not pending) SDP. Regenerate through libwebrtc
+		// to include gathered candidates while retaining the same ICE credentials.
+		let offer = peer.0.create_offer(options()).await?;
+		peer.0.set_local_description(offer.clone()).await?;
+		Ok::<_, libwebrtc::RtcError>(offer.to_string())
+	})
+	.await
+	.map_err(|_| "The audio offer timed out.")?
+	.map_err(|_| "The audio offer could not be created.")?;
+	// Discard pre-connection capture accumulated while gathering ICE.
+	for _ in 0..pcm.captured.slots() {
+		let _ = pcm.captured.pop();
+	}
+	events.send(json!({"type":"offer","sdp":offer}));
+	let deadline = Instant::now() + Duration::from_secs(30);
+	let mut announced = false;
+	let mut remote: Option<NativeAudioStream> = None;
+	let mut clock = tokio::time::interval(Duration::from_millis(10));
+	clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+	let mut frame = AudioFrame::new(48_000, 1, 480);
+	loop {
+		tokio::select! {
+			command = commands.recv() => match command {
+				Some(Command::Answer(sdp)) => {
+					let answer = SessionDescription::parse(&sdp, SdpType::Answer).map_err(|_| "The audio answer was invalid.")?;
+					peer.0.set_remote_description(answer).await.map_err(|_| "The audio answer could not be applied.")?;
+				},
+				Some(Command::Mute(muted)) => { track.set_enabled(!muted); },
+				None => return Ok(()),
+			},
+			Some(track) = incoming.recv() => remote = Some(NativeAudioStream::new(track, 48_000, 1)),
+			decoded = async { match &mut remote {
+				Some(stream) => stream.next().await,
+				None => std::future::pending().await,
+			}} => {
+				let Some(decoded) = decoded else { return Err("The remote audio track ended."); };
+				for &sample in decoded.data.iter() { let _ = pcm.playback.push(f32::from(sample) / 32768.0); }
+			},
+			_ = clock.tick() => {
+				if events.overflow.load(Ordering::Acquire) { return Err("Audio updates could not be delivered."); }
+				let connected = peer.0.connection_state() == PeerConnectionState::Connected && data.state() == DataChannelState::Open;
+				if !announced && connected { announced = true; events.send(json!({"type":"connected"})); }
+				if matches!(peer.0.connection_state(), PeerConnectionState::Failed | PeerConnectionState::Disconnected | PeerConnectionState::Closed)
+					|| matches!(data.state(), DataChannelState::Closed | DataChannelState::Closing) {
+					return Err("The audio connection was lost.");
+				}
+				if !announced && Instant::now() >= deadline { return Err("The audio connection timed out."); }
+				if pcm.captured.slots() >= 480 {
+					for sample in frame.data.to_mut() {
+						let value = pcm.captured.pop().unwrap_or(0.0);
+						*sample = (value * if value < 0.0 { 32768.0 } else { 32767.0 }) as i16;
+					}
+					source.capture_frame(&frame).await.map_err(|_| "Microphone audio could not be delivered.")?;
+				}
+			},
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use libwebrtc::peer_connection::AnswerOptions;
+
+	async fn event(transport: &Transport, kind: &str) -> Value {
+		tokio::time::timeout(Duration::from_secs(15), async {
+			loop {
+				if let Some(value) = transport.poll() {
+					assert_ne!(value["type"], "error", "{value}");
+					if value["type"] == kind {
+						return value;
+					}
+				}
+				tokio::time::sleep(Duration::from_millis(10)).await;
+			}
+		})
+		.await
+		.expect("native media event")
+	}
+	async fn energy(stream: &mut NativeAudioStream) -> f64 {
+		let mut sum = 0.0;
+		for index in 0..50 {
+			let frame =
+				tokio::time::timeout(Duration::from_secs(5), stream.next()).await.unwrap().unwrap();
+			if index >= 30 {
+				sum += frame.data.iter().map(|&v| f64::from(v).powi(2)).sum::<f64>();
+			}
+		}
+		sum
+	}
+
+	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+	async fn native_call_exchanges_audio_captions_mutes_and_releases_buffers() {
+		tokio::time::timeout(Duration::from_secs(45), async {
+			let (mut input, captured) = rtrb::RingBuffer::new(4_800);
+			let (playback, mut output) = rtrb::RingBuffer::new(4_800);
+			let transport = Transport::start(Pcm { captured, playback }).unwrap();
+			assert!(transport.command(Command::Mute(true)), "mute can precede negotiation");
+			let factory = PeerConnectionFactory::default();
+			factory.set_adm_recording_enabled(false);
+			factory.set_adm_playout_enabled(false);
+			let mut config = RtcConfiguration::default();
+			config.continual_gathering_policy = ContinualGatheringPolicy::GatherOnce;
+			let peer = Peer(factory.create_peer_connection(config).unwrap());
+			let source = NativeAudioSource::new(AudioSourceOptions::default(), 48_000, 1, 40);
+			peer.0
+				.add_track(factory.create_audio_track("remote", source.clone()).into(), &["remote"])
+				.unwrap();
+			let (tracks, mut track_events) = channel::channel(1);
+			peer.0.on_track(Some(Box::new(move |event| {
+				if let MediaStreamTrack::Audio(track) = event.track {
+					let _ = tracks.try_send(track);
+				}
+			})));
+			let (channels, mut channel_events) = channel::channel(1);
+			peer.0.on_data_channel(Some(Box::new(move |data| {
+				let _ = channels.try_send(data);
+			})));
+			let offer = event(&transport, "offer").await;
+			peer.0
+				.set_remote_description(
+					SessionDescription::parse(offer["sdp"].as_str().unwrap(), SdpType::Offer)
+						.unwrap(),
+				)
+				.await
+				.unwrap();
+			peer.0
+				.set_local_description(
+					peer.0.create_answer(AnswerOptions::default()).await.unwrap(),
+				)
+				.await
+				.unwrap();
+			while peer.0.ice_gathering_state() != IceGatheringState::Complete {
+				tokio::time::sleep(Duration::from_millis(10)).await;
+			}
+			assert!(
+				transport.command(Command::Answer(
+					peer.0.current_local_description().unwrap().to_string()
+				))
+			);
+			event(&transport, "connected").await;
+			let data = channel_events.recv().await.unwrap();
+			data.send(br#"{"type":"turn.delta","test":"caption"}"#, false).unwrap();
+			assert_eq!(event(&transport, "caption").await["event"]["test"], "caption");
+			let mut stream = NativeAudioStream::new(track_events.recv().await.unwrap(), 48_000, 1);
+			let feed = tokio::spawn(async move {
+				let mut sample_index = 0;
+				let mut frame = AudioFrame::new(48_000, 1, 480);
+				loop {
+					for sample in frame.data.to_mut() {
+						let value = ((sample_index as f32) * 440.0 * std::f32::consts::TAU
+							/ 48_000.0)
+							.sin()
+							* 0.2;
+						sample_index += 1;
+						let _ = input.push(value);
+						*sample = (value * 32767.0) as i16;
+					}
+					source.capture_frame(&frame).await.unwrap();
+					tokio::time::sleep(Duration::from_millis(10)).await;
+				}
+			});
+			let initially_muted = energy(&mut stream).await;
+			while output.pop().is_ok() {}
+			assert!(transport.command(Command::Mute(false)));
+			let audible = energy(&mut stream).await;
+			assert!(initially_muted < audible * 0.1);
+			assert!(audible > 1_000_000.0);
+			let mut returned = 0.0;
+			while let Ok(sample) = output.pop() {
+				returned += sample.abs();
+			}
+			assert!(returned > 0.1, "decoded return tone reaches the playback queue");
+			assert!(transport.command(Command::Mute(true)));
+			let muted = energy(&mut stream).await;
+			assert!(muted < audible * 0.1, "muted microphone must not transmit the tone");
+			assert!(transport.command(Command::Mute(false)));
+			assert!(energy(&mut stream).await > audible * 0.3);
+			drop(transport);
+			tokio::time::timeout(Duration::from_secs(3), async {
+				while !output.is_abandoned() {
+					tokio::time::sleep(Duration::from_millis(10)).await;
+				}
+			})
+			.await
+			.expect("closing releases the native audio producer");
+			feed.abort();
+			let _ = feed.await;
+			stream.close();
+		})
+		.await
+		.expect("native call lifecycle");
+	}
+}

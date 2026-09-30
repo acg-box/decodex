@@ -29,6 +29,13 @@ tokio                = { workspace = true }
 unicode-segmentation = "1.13.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block2 = { workspace = true }
+libwebrtc = { workspace = true }
+rtrb = { workspace = true }
+futures-util = { workspace = true }
+objc2-avf-audio = { workspace = true }
+objc2-core-audio-types = { workspace = true }
+objc2-audio-toolbox = { workspace = true }
 objc2            = { version = "~0.6" }
 objc2-app-kit    = { version = "=0.3.2", default-features = false, features = ["NSApplication", "NSButton", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSPanel", "NSResponder", "NSRunningApplication", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSTrackingArea", "NSView", "NSVisualEffectView", "NSWindow", "block2", "objc2-core-foundation"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSString", "NSDate", "NSRunLoop"] }

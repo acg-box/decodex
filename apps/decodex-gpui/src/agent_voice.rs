@@ -561,12 +561,23 @@ impl AgentSurface {
 	}
 }
 
+#[cfg(target_os = "macos")]
+#[path = "native_voice_audio.rs"]
+mod audio;
+#[cfg(target_os = "macos")]
+#[path = "native_voice_transport.rs"]
+mod transport;
+
 #[cfg(all(target_os = "macos", not(test)))]
 pub(super) struct Media {
 	host: *mut std::ffi::c_void,
 	command_fn: unsafe extern "C" fn(*mut std::ffi::c_void, *const std::ffi::c_char) -> bool,
 	poll_fn: unsafe extern "C" fn(*mut std::ffi::c_void) -> *const std::ffi::c_char,
 	destroy: unsafe extern "C" fn(*mut std::ffi::c_void),
+	audio: Option<audio::Device>,
+	transport: Option<transport::Transport>,
+	muted: bool,
+	level_at: std::time::Instant,
 	_main_thread: std::marker::PhantomData<std::rc::Rc<()>>,
 }
 #[cfg(all(target_os = "macos", not(test)))]
@@ -589,7 +600,7 @@ impl Media {
 			}
 			let version: unsafe extern "C" fn() -> u32 =
 				symbol(image, c"decodex_voice_media_abi_version").map_err(|_| ())?;
-			if version() != 2 {
+			if version() != 3 {
 				return Err(());
 			}
 			let create: unsafe extern "C" fn(*mut std::ffi::c_void) -> *mut std::ffi::c_void =
@@ -606,27 +617,100 @@ impl Media {
 			if host.is_null() {
 				return Err(());
 			}
-			// Keep the image loaded: WebKit can complete cleanup asynchronously.
-			Ok(Self { host, command_fn, poll_fn, destroy, _main_thread: std::marker::PhantomData })
+			// Keep the signed platform library loaded for native callbacks.
+			Ok(Self {
+				host,
+				command_fn,
+				poll_fn,
+				destroy,
+				audio: None,
+				transport: None,
+				muted: false,
+				level_at: std::time::Instant::now(),
+				_main_thread: std::marker::PhantomData,
+			})
 		}
 	}
 
 	pub(super) fn command(&mut self, value: Value) -> bool {
+		match value["operation"].as_str() {
+			Some("answer") =>
+				return value["sdp"].as_str().is_some_and(|sdp| {
+					self.transport.as_ref().is_some_and(|transport| {
+						transport.command(transport::Command::Answer(sdp.into()))
+					})
+				}),
+			Some("mute") => {
+				self.muted = value["muted"].as_bool().unwrap_or(false);
+				return self.transport.as_ref().is_none_or(|transport| {
+					transport.command(transport::Command::Mute(self.muted))
+				});
+			},
+			Some("start" | "dictate" | "stop") => {
+				self.audio = None;
+				self.transport = None;
+			},
+			_ => {},
+		}
 		let Ok(text) = std::ffi::CString::new(value.to_string()) else { return false };
-		// SAFETY: retained native host; copied UTF-8 argument lives through the synchronous call.
+		// SAFETY: retained native host; argument is copied by the synchronous call.
 		unsafe { (self.command_fn)(self.host, text.as_ptr()) }
 	}
 
 	pub(super) fn poll(&mut self) -> Option<Value> {
-		// SAFETY: native data remains valid until the next poll or destroy. Copy it immediately.
-		unsafe {
+		// SAFETY: native event data lives until the next poll/destroy; copy it immediately.
+		let platform: Option<Value> = unsafe {
 			let event = (self.poll_fn)(self.host);
 			if event.is_null() {
 				None
 			} else {
 				serde_json::from_slice(std::ffi::CStr::from_ptr(event).to_bytes()).ok()
 			}
+		};
+		if let Some(event) = platform {
+			if event["type"] != "voice_authorized" {
+				return Some(event);
+			}
+			let started = event["device"]
+				.as_u64()
+				.and_then(|id| u32::try_from(id).ok())
+				.and_then(|id| audio::Device::start(id).ok())
+				.and_then(|(device, pcm)| {
+					transport::Transport::start(pcm).ok().map(|transport| (device, transport))
+				});
+			match started {
+				Some((device, transport)) => {
+					self.audio = Some(device);
+					if self.muted {
+						transport.command(transport::Command::Mute(true));
+					}
+					self.transport = Some(transport);
+				},
+				None =>
+					return Some(
+						json!({"type":"error","message":"The selected audio device could not start."}),
+					),
+			}
 		}
+		if let Some(transport) = &self.transport {
+			if let Some(event) = transport.poll() {
+				return Some(event);
+			}
+		}
+		if let Some(audio) = &self.audio {
+			if !audio.running() {
+				return Some(
+					json!({"type":"error","message":"The audio device stopped. Select a device and start a new call."}),
+				);
+			}
+			if self.level_at.elapsed() >= Duration::from_millis(50) {
+				self.level_at = std::time::Instant::now();
+				return Some(
+					json!({"type":"level","level":if self.muted { 0.0 } else { (audio.level() * 5.0).min(1.0) }}),
+				);
+			}
+		}
+		None
 	}
 }
 #[cfg(all(target_os = "macos", not(test)))]
