@@ -43,7 +43,7 @@ pub enum InitialModelCatalogResult {
 		/// Visible models projected from the complete native catalog.
 		models: Vec<AgentModelDto>,
 		/// Native defaults, absent when an older service cannot provide them.
-		#[serde(default, skip_serializing_if = "Option::is_none")]
+		#[serde(skip_serializing_if = "Option::is_none")]
 		defaults: Option<Box<InitialModelDefaults>>,
 	},
 	/// A complete, current observation could not be obtained.

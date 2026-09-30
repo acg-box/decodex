@@ -55,7 +55,6 @@ pub enum AgentNativeGoalResult {
 		/// Time this read completed, in Unix microseconds.
 		observed_at_micros: i64,
 		/// Source and semantic goal identity for an explicit edit.
-		#[serde(default)]
 		review_token: Option<crate::WireText>,
 		/// Null means the native thread has no goal.
 		goal: Option<AgentNativeGoal>,

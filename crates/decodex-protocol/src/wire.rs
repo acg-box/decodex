@@ -2333,7 +2333,6 @@ pub enum QueryPayload {
 		/// Exact source item.
 		item_id: WireText,
 		/// Continuation for the unchanged source.
-		#[serde(default)]
 		cursor: Option<crate::AgentActivityDetailCursor>,
 	},
 	/// Read current native model and Memory configuration evidence.
@@ -2629,7 +2628,7 @@ pub enum QueryPayload {
 		/// Last daemon-lifetime generation applied by the caller.
 		after_generation: u64,
 		/// Optionally ask the daemon to schedule one coalesced observation before waiting.
-		#[serde(default, skip_serializing_if = "Option::is_none")]
+		#[serde(skip_serializing_if = "Option::is_none")]
 		request_refresh: Option<bool>,
 	},
 }
@@ -2663,10 +2662,10 @@ pub enum CommandPayload {
 		/// Whether Decodex.app shows its same-process status item.
 		show_in_menu_bar: bool,
 		/// Omission preserves the current activation preference.
-		#[serde(default, skip_serializing_if = "Option::is_none")]
+		#[serde(skip_serializing_if = "Option::is_none")]
 		auto_activate_quota: Option<bool>,
 		/// Omission preserves the automatic recap preference.
-		#[serde(default, skip_serializing_if = "Option::is_none")]
+		#[serde(skip_serializing_if = "Option::is_none")]
 		auto_recap: Option<bool>,
 	},
 	/// Create one ordinary conversation and submit its first turn.
@@ -2680,7 +2679,7 @@ pub enum CommandPayload {
 		/// Explicit execution settings for this user send.
 		execution: ConversationExecutionSettings,
 		/// Source of the reviewed model settings; absent for legacy clients.
-		#[serde(default, skip_serializing_if = "Option::is_none")]
+		#[serde(skip_serializing_if = "Option::is_none")]
 		initial_model_source: Option<Box<crate::InitialModelSource>>,
 	},
 	/// Confirm refreshed model settings for a blocked, unstarted conversation and start it.
@@ -2720,7 +2719,7 @@ pub enum CommandPayload {
 		/// Explicit execution settings for this user send.
 		execution: ConversationExecutionSettings,
 		/// Explicit field choices. Absent preserves the legacy all-explicit command.
-		#[serde(default, skip_serializing_if = "Option::is_none")]
+		#[serde(skip_serializing_if = "Option::is_none")]
 		overrides: Option<crate::ConversationExecutionOverrides>,
 	},
 	/// Reconcile one selected Decodex task with its exact Codex archive state.
