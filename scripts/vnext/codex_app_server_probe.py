@@ -1031,11 +1031,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--account-b")
     args = parser.parse_args()
     args.cwd = args.cwd.resolve()
-    args.auth_sha256_before = sha256_file(
-        Path(args.codex_home).expanduser().resolve() / "auth.json"
-    )
     if args.mode == "live" and (not args.account_a or not args.account_b):
         parser.error("live mode requires --account-a and --account-b")
+    if args.mode == "live":
+        args.auth_sha256_before = sha256_file(
+            Path(args.codex_home).expanduser().resolve() / "auth.json"
+        )
     return args
 
 
