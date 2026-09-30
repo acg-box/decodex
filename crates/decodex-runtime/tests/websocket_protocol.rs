@@ -50,6 +50,7 @@ struct FixtureApplication {
 	execution_delay: Duration,
 	static_snapshot: bool,
 	execution_started: Arc<Notify>,
+	execution_release: Option<Arc<Notify>>,
 	daemon_service: Option<Arc<FixtureDaemonService>>,
 }
 impl FixtureApplication {
@@ -74,10 +75,6 @@ impl FixtureApplication {
 			state: Arc::new(Mutex::new(FixtureState { status, ..FixtureState::default() })),
 			..Self::default()
 		}
-	}
-
-	fn with_delay(execution_delay: Duration) -> Self {
-		Self { execution_delay, ..Self::default() }
 	}
 
 	fn with_revision(revision: u64) -> Self {
@@ -152,6 +149,9 @@ impl Application for FixtureApplication {
 		command: &'a CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
 		self.execution_started.notify_one();
+		if let Some(release) = &self.execution_release {
+			release.notified().await;
+		}
 		if !self.execution_delay.is_zero() {
 			time::sleep(self.execution_delay).await;
 		}
@@ -1020,7 +1020,11 @@ async fn assert_event_overflow(run: u64) {
 #[tokio::test]
 async fn disconnected_delayed_command_finishes_and_deduplicates_on_reconnect() {
 	let (_temp, transport) = local_transport();
-	let application = FixtureApplication::with_delay(Duration::from_millis(200));
+	let release = Arc::new(Notify::new());
+	let application = FixtureApplication {
+		execution_release: Some(Arc::clone(&release)),
+		..FixtureApplication::default()
+	};
 	let mut bound = server("disconnect-shield", application.clone(), ServerConfig::default())
 		.bind(transport.clone())
 		.await
@@ -1030,17 +1034,18 @@ async fn disconnected_delayed_command_finishes_and_deduplicates_on_reconnect() {
 	receive_initial(&mut first).await;
 	send(&mut first, command(CURRENT_VERSION, 1, "disconnect-key")).await;
 
-	time::sleep(Duration::from_millis(25)).await;
-
+	time::timeout(Duration::from_secs(3), application.execution_started.notified())
+		.await
+		.expect("the publication actor must start the command before disconnection");
+	assert_eq!(application.executions(), 0);
 	drop(first);
-
-	time::sleep(Duration::from_millis(300)).await;
-
-	assert_eq!(application.executions(), 1);
+	release.notify_one();
 
 	let mut reconnected = connect(&transport, CURRENT_VERSION).await;
 
+	// This application snapshots through the actor after the retained command settles.
 	receive_initial(&mut reconnected).await;
+	assert_eq!(application.executions(), 1);
 	send(&mut reconnected, command(CURRENT_VERSION, 2, "disconnect-key")).await;
 
 	let ServerMessage::CommandReceipt(receipt) = receive(&mut reconnected).await else {
