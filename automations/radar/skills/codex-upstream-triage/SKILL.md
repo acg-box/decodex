@@ -12,10 +12,12 @@ choose the next artifact without deciding final impact.
 This is a Decodex repository-development instruction surface, not an installed runtime
 capability.
 
-## Read Before Triage
+## Related Analysis
 
-- `automations/radar/skills/codex-code-analysis/SKILL.md`
-- `automations/radar/skills/codex-release-analysis/SKILL.md`
+Read these skills only when the selected item needs that analysis:
+
+- Source behavior: `automations/radar/skills/codex-code-analysis/SKILL.md`
+- Release comparison: `automations/radar/skills/codex-release-analysis/SKILL.md`
 
 ## Inputs
 
