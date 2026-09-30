@@ -8,10 +8,10 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use reqwest::{Client, Proxy, redirect::Policy};
+use reqwest::{Client, Proxy, Response, redirect::Policy};
 use tokio::time;
 
-use crate::{Cancellation, Config, Error, HttpResponse};
+use crate::{Cancellation, Config, Error};
 
 pub(super) enum Route {
 	Direct,
@@ -66,7 +66,7 @@ pub(super) async fn exchange(
 	body: &str,
 	cancellation: &Cancellation,
 	deadline: Instant,
-) -> Result<HttpResponse, Error> {
+) -> Result<Response, Error> {
 	#[cfg(test)]
 	if let Some(proxy) = &config.fallback_proxy_fixture {
 		return exchange_with_route(config, client, body, cancellation, deadline, |_| async {
@@ -85,7 +85,7 @@ async fn exchange_with_route<F, R>(
 	cancellation: &Cancellation,
 	deadline: Instant,
 	resolve_route: F,
-) -> Result<HttpResponse, Error>
+) -> Result<Response, Error>
 where
 	F: FnOnce(String) -> R,
 	R: Future<Output = Result<Route, Error>>,
