@@ -1,14 +1,17 @@
-use std::os::unix::fs::PermissionsExt as _;
+use std::{
+	fs::{self, Permissions},
+	os::unix::fs::PermissionsExt as _,
+};
 
 use rusqlite::Connection;
 
-use crate::RadarLedgerBootstrapRequest;
+use crate::{RadarLedgerBootstrapRequest, ledger, test_support};
 
 #[test]
 fn ledger_bootstrap_rejects_obsolete_schema() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 
-	std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o700))
+	fs::set_permissions(temp_dir.path(), Permissions::from_mode(0o700))
 		.expect("ledger directory should be private");
 
 	let db_path = temp_dir.path().join("radar.sqlite3");
@@ -28,7 +31,7 @@ fn ledger_bootstrap_rejects_obsolete_schema() {
 
 	drop(connection);
 
-	std::fs::set_permissions(&db_path, std::fs::Permissions::from_mode(0o600))
+	fs::set_permissions(&db_path, Permissions::from_mode(0o600))
 		.expect("obsolete ledger should be private");
 
 	let error = crate::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path })
@@ -42,9 +45,9 @@ fn ledger_bootstrap_rejects_obsolete_schema() {
 
 #[test]
 fn ledger_bootstrap_rejects_forged_current_version_with_obsolete_constraints() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 
-	std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o700))
+	fs::set_permissions(temp_dir.path(), Permissions::from_mode(0o700))
 		.expect("ledger directory should be private");
 
 	let db_path = temp_dir.path().join("radar.sqlite3");
@@ -76,7 +79,7 @@ fn ledger_bootstrap_rejects_forged_current_version_with_obsolete_constraints() {
 
 	drop(connection);
 
-	std::fs::set_permissions(&db_path, std::fs::Permissions::from_mode(0o600))
+	fs::set_permissions(&db_path, Permissions::from_mode(0o600))
 		.expect("forged ledger should be private");
 
 	let error = crate::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path })
@@ -87,13 +90,13 @@ fn ledger_bootstrap_rejects_forged_current_version_with_obsolete_constraints() {
 
 #[test]
 fn ledger_bootstrap_preserves_quoted_literal_case_in_schema_attestation() {
-	let temp_dir = crate::test_support::private_tempdir();
+	let temp_dir = test_support::private_tempdir();
 
-	std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o700))
+	fs::set_permissions(temp_dir.path(), Permissions::from_mode(0o700))
 		.expect("ledger directory should be private");
 
 	let db_path = temp_dir.path().join("radar.sqlite3");
-	let initialized = crate::ledger::open_ledger(&db_path).expect("canonical ledger should open");
+	let initialized = ledger::open_ledger(&db_path).expect("canonical ledger should open");
 
 	initialized.close().expect("canonical ledger should persist");
 
