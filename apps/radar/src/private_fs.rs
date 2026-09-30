@@ -5,7 +5,7 @@ use std::{
 	fs::{File, Metadata},
 	io::{Read as _, Write as _},
 	os::{
-		fd::{AsRawFd as _, FromRawFd as _, RawFd},
+		fd::{AsRawFd as _, FromRawFd as _, IntoRawFd as _, RawFd},
 		unix::{
 			ffi::{OsStrExt as _, OsStringExt as _},
 			fs::MetadataExt as _,
@@ -1228,7 +1228,7 @@ fn directory_entries(fd: RawFd) -> Result<Vec<PrivateEntry>> {
 }
 
 fn directory_entries_bounded(fd: RawFd, max_entries: usize) -> Result<Vec<PrivateEntry>> {
-	let duplicate = duplicate_fd(fd)?;
+	let duplicate = open_directory_at(fd, c".")?.into_raw_fd();
 	let stream = unsafe { libc::fdopendir(duplicate) };
 
 	if stream.is_null() {
@@ -1371,7 +1371,7 @@ fn remove_directory_tree_at(parent: RawFd, name: &CStr) -> Result<()> {
 
 #[cfg(test)]
 fn remove_test_directory_contents(directory: &File) -> Result<()> {
-	let duplicate = duplicate_fd(directory.as_raw_fd())?;
+	let duplicate = open_directory_at(directory.as_raw_fd(), c".")?.into_raw_fd();
 	let stream = unsafe { libc::fdopendir(duplicate) };
 
 	if stream.is_null() {
@@ -1829,4 +1829,22 @@ pub(crate) fn simulate_wrong_owner_error(_path: &Path) -> Result<()> {
 		"file",
 		true,
 	)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn repeated_root_scans_keep_nonempty_cache_visible() {
+		let temp = crate::test_support::private_tempdir();
+		let root = temp.path().join(crate::DEFAULT_CACHE_ROOT);
+		let lock = PrivateCache::open_or_create(&root).unwrap().lock().unwrap();
+		lock.write_atomic(Path::new("artifact.json"), b"{}").unwrap();
+		for _ in 0..3 {
+			let entries = lock.cache().entries(Path::new("")).unwrap();
+			assert!(entries.iter().any(|entry| entry.name == OsStr::new("artifact.json")));
+			assert!(!lock.bootstrap_cache_is_empty().unwrap());
+		}
+	}
 }
