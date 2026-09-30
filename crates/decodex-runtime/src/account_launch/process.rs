@@ -5940,6 +5940,26 @@ pub(crate) mod tests {
 		command
 	}
 
+	pub(crate) fn supervisor_child_fixture(directory: &Path) -> super::AttestedProcessChild {
+		let command = fake_command("normal", directory, None);
+		let codex_home = directory.join(".codex");
+		let profile = AttestedAppServerProfile::attest_for_test(
+			command.clone(),
+			&codex_home,
+			Duration::from_secs(5),
+		)
+		.unwrap();
+		let process =
+			SupervisedProcess::spawn(command, AccountBinding::for_test(codex_home)).unwrap();
+		super::AttestedProcessChild {
+			process,
+			build: profile.build,
+			generated: profile.generated,
+			timeout: Duration::from_secs(5),
+			initialized: false,
+		}
+	}
+
 	fn binding() -> AccountBinding {
 		AccountBinding::for_test(PathBuf::from("/tmp/.codex"))
 	}
