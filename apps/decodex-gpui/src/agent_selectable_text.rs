@@ -16,6 +16,12 @@ struct Selection {
 	dragging: bool,
 	focus: FocusHandle,
 }
+impl Selection {
+	fn range(&self, text: &str) -> Range<usize> {
+		text.floor_char_boundary(self.anchor.min(self.head).min(text.len()))
+			..text.floor_char_boundary(self.anchor.max(self.head).min(text.len()))
+	}
+}
 impl RenderOnce for SelectableText {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(
@@ -23,12 +29,10 @@ impl RenderOnce for SelectableText {
 			cx,
 			|_, cx| Selection { anchor: 0, head: 0, dragging: false, focus: cx.focus_handle() },
 		);
-		let (anchor, head, focus) = {
+		let (range, focus) = {
 			let s = state.read(cx);
-			(s.anchor, s.head, s.focus.clone())
+			(s.range(&self.text), s.focus.clone())
 		};
-		let range = self.text.floor_char_boundary(anchor.min(head).min(self.text.len()))
-			..self.text.floor_char_boundary(anchor.max(head).min(self.text.len()));
 		let highlights = selection_highlights(self.text.len(), self.highlights, range);
 
 		let styled = StyledText::new(self.text.clone()).with_highlights(highlights);
@@ -114,7 +118,7 @@ impl RenderOnce for SelectableText {
 			.on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
 				if event.keystroke.modifiers.platform && event.keystroke.key == "c" {
 					let s = key_state.read(cx);
-					let range = s.anchor.min(s.head)..s.anchor.max(s.head).min(self.text.len());
+					let range = s.range(&self.text);
 					if let Some(text) = self.text.get(range).filter(|text| !text.is_empty()) {
 						cx.write_to_clipboard(ClipboardItem::new_string(text.to_owned()));
 					}
@@ -177,5 +181,42 @@ mod tests {
 		assert_eq!(runs[1].1.font_weight, Some(FontWeight::BOLD));
 		assert!(runs[1].1.background_color.is_some());
 		assert!(runs[3].1.background_color.is_none());
+	}
+
+	struct Preview {
+		text: String,
+	}
+	impl gpui::Render for Preview {
+		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+			SelectableText {
+				key: "changing-selection".into(),
+				text: self.text.clone(),
+				highlights: Vec::new(),
+				links: Vec::new(),
+			}
+		}
+	}
+
+	#[gpui::test]
+	fn copy_uses_the_visible_selection_after_unicode_text_changes(cx: &mut gpui::TestAppContext) {
+		let (preview, visual) = cx.add_window_view(|_, _| Preview { text: "abcd".into() });
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		let bounds = visual.debug_bounds("changing-selection").expect("text");
+		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+		visual.simulate_keystrokes("cmd-a");
+		preview.update(visual, |s, cx| {
+			s.text = "中文".into();
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+			cx.write_to_clipboard(ClipboardItem::new_string("sentinel".into()));
+		});
+		visual.simulate_keystrokes("cmd-c");
+		visual.update(|_, cx| {
+			assert_eq!(cx.read_from_clipboard().and_then(|item| item.text()), Some("中".into()));
+		});
 	}
 }
