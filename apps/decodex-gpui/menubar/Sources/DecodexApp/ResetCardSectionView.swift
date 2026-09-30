@@ -75,8 +75,7 @@ struct ResetCardAccountRow: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.compact) {
 			HStack(alignment: .center, spacing: PanelSpacing.section) {
-				Button { detailsBinding.wrappedValue.toggle() } label: { identityHeader }
-					.buttonStyle(PanelPressButtonStyle(pressedScale: 0.99))
+				identityHeader
 					.frame(maxWidth: .infinity, alignment: .leading)
 					.frame(height: 20, alignment: .center)
 					.accessibilityLabel(identityAccessibilityLabel)
@@ -97,14 +96,12 @@ struct ResetCardAccountRow: View {
 					AccountUtilityActionsView(state: state, store: store)
 				}
 				.fixedSize(horizontal: true, vertical: false)
+				.onTapGesture { } // Disabled controls and the reorder handle do not toggle details.
 			}
             .frame(maxWidth: .infinity, alignment: .leading)
 			if exceptionalStatusText != nil { exceptionalStatus.transition(.panelInline) }
 			if !state.requiresLoginRefresh && hasVisibleQuota {
-				Button { detailsBinding.wrappedValue.toggle() } label: {
-					quotaWindows.contentShape(Rectangle())
-				}
-				.buttonStyle(.plain)
+				quotaWindows
 				.accessibilityLabel("Account usage details")
 				.opacity(state.account.enabled ? 1 : 0.45)
 			}
@@ -122,6 +119,11 @@ struct ResetCardAccountRow: View {
 		.padding(.vertical, PanelSpacing.cardVertical)
 
 		.fixedSize(horizontal: false, vertical: true)
+		.contentShape(Rectangle())
+		.onTapGesture { detailsBinding.wrappedValue.toggle() }
+		.accessibilityAction(named: Text(detailsBinding.wrappedValue ? "Collapse" : "Expand")) {
+			detailsBinding.wrappedValue.toggle()
+		}
 		.accessibilityIdentifier("decodex.account.\(state.account.accountID)")
 		.onAppear {
 			confirmation.retainOnly(Set(state.targets))
@@ -164,7 +166,7 @@ struct ResetCardAccountRow: View {
 			.contentShape(Rectangle())
 			.highPriorityGesture(
 				DragGesture(
-					minimumDistance: 4,
+					minimumDistance: 8,
 					coordinateSpace: .named(
 						AccountCardReorderLayout.coordinateSpaceName
 					)
@@ -180,6 +182,7 @@ struct ResetCardAccountRow: View {
 						onReorderDragEnded()
 					}
 			)
+			.onTapGesture { } // A handle click never toggles account details.
 			.allowsHitTesting(
 				store.canReorderAccounts && isReorderGestureEnabled
 			)

@@ -89,6 +89,7 @@ final class StatusPanelController: NSObject {
 
 	private func orderPanelOut() {
 		resizeTask?.cancel()
+		resizeTask = nil
 		targetContentSize = .zero
 		stopObservingOutsideClicks()
 		anchorRetryTask?.cancel()
@@ -202,23 +203,26 @@ final class StatusPanelController: NSObject {
 		guard roundedSize != targetContentSize else { return }
 		targetContentSize = roundedSize
 		resizeTask?.cancel()
+		resizeTask = nil
 		guard panel.isVisible, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
 			panel.setContentSize(roundedSize)
 			positionPanel()
 			return
 		}
-		let initial = panel.frame.size
+		let initial = panel.frame
 		let started = ProcessInfo.processInfo.systemUptime
 		resizeTask = Task { @MainActor [weak self] in
 			while !Task.isCancelled {
 				guard let self else { return }
 				let progress = min(1, (ProcessInfo.processInfo.systemUptime - started) / 0.3)
 				let eased = 1 - pow(1 - progress, 3)
-				self.panel.setContentSize(NSSize(
-					width: initial.width + (roundedSize.width - initial.width) * eased,
-					height: initial.height + (roundedSize.height - initial.height) * eased
-				))
-				self.positionPanel()
+				let width = initial.width + (roundedSize.width - initial.width) * eased
+				let height = initial.height + (roundedSize.height - initial.height) * eased
+				// Commit size and origin together; changing size first exposes an intermediate frame.
+				self.panel.setFrame(NSRect(
+					x: initial.maxX - width, y: initial.maxY - height,
+					width: width, height: height
+				), display: true)
 				if progress >= 1 { self.resizeTask = nil; return }
 				do { try await Task.sleep(for: .milliseconds(8)) } catch { return }
 			}
@@ -227,7 +231,7 @@ final class StatusPanelController: NSObject {
 
 	@discardableResult
 	private func positionPanel() -> Bool {
-		guard isPositioningPanel == false,
+		guard isPositioningPanel == false, resizeTask == nil,
 			let anchorRect = statusItemScreenRect(),
 			let statusWindow = statusItem.button?.window,
 			panel.frame.size != .zero
@@ -391,5 +395,6 @@ private struct StatusPanelRootView: View {
 			fastModeStore: fastModeStore,
 			onContentSizeChange: onContentSizeChange
 		)
+		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 	}
 }

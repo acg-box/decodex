@@ -2826,10 +2826,26 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				},
 				cx,
 			);
+			let profile_id = account.account_id.clone();
+			let target = account.account_id.clone();
 			div()
+				.id(("account-card", index))
+				.group(SharedString::from(format!("account-card-{index}")))
+				.debug_selector(move || format!("account-card-{index}"))
 				.w_full()
 				.rounded(px(8.))
-				.bg(rgba(0xffffff04))
+				.bg(rgba(if fixed == Some(&account.account_id) { 0xffffff0a } else { 0xffffff04 }))
+				.cursor_pointer()
+				.hover(|style| style.bg(rgba(0xffffff0c)))
+				.on_click(cx.listener(move |shell, _, _, cx| {
+					shell.toggle_account_activity(profile_id.clone(), cx);
+				}))
+				.when(snapshot.can_manage, |row| {
+					row.drag_over::<AccountDrag>(|style, _, _, _| style.bg(rgba(0x8baaf72a)))
+						.on_drop(cx.listener(move |s, drag: &AccountDrag, _, cx| {
+							s.drop_account(drag, &target, cx)
+						}))
+				})
 				.flex()
 				.flex_col()
 				.child(row)
@@ -3301,7 +3317,7 @@ fn account_pool_row(
 	presentation: AccountRowPresentation,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let AccountRowPresentation { index, fixed, can_manage, .. } = presentation;
+	let AccountRowPresentation { index, .. } = presentation;
 	let summary = account_pool_summary(account, presentation.clone(), cx);
 	div()
 		.w_full()
@@ -3313,35 +3329,7 @@ fn account_pool_row(
 		.flex_col()
 		.gap(px(6.0))
 		.relative()
-		.when(fixed, |d| d.bg(rgba(0xffffff0a)))
 		.child(summary)
-		.when(can_manage, |row| {
-			let drag = AccountDrag {
-				id: account.account_id.clone(),
-				revision: presentation.routing_revision,
-				label: account.alias.as_str().into(),
-			};
-			let target = account.account_id.clone();
-			let keyboard = target.clone();
-			row.on_drag(drag, |drag, _, _, cx| cx.new(|_| drag.clone()))
-				.drag_over::<AccountDrag>(|style, _, _, _| style.bg(rgba(0x8baaf72a)))
-				.on_drop(cx.listener(move |s, drag: &AccountDrag, _, cx| {
-					s.drop_account(drag, &target, cx)
-				}))
-				.tab_index(0)
-				.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
-					if event.keystroke.modifiers.alt
-						&& ["up", "down"].contains(&event.keystroke.key.as_str())
-					{
-						s.move_account(
-							&keyboard,
-							if event.keystroke.key == "up" { -1 } else { 1 },
-							cx,
-						);
-						cx.stop_propagation();
-					}
-				}))
-		})
 		.into_any_element()
 }
 
@@ -3356,18 +3344,12 @@ fn account_pool_summary(
 	let needs_login = account_needs_login(account);
 	let pin_enabled = can_route && enabled && !fixed;
 
-	let profile_id = account.account_id.clone();
 	div()
 		.id(("account-summary", index))
-		.cursor_pointer()
-		.hover(|style| style.bg(rgba(0xffffff05)))
-		.on_click(cx.listener(move |shell, _, _, cx| {
-			shell.toggle_account_activity(profile_id.clone(), cx);
-		}))
 		.flex()
 		.min_w_0()
 		.items_center()
-		.gap(px(8.0))
+		.gap(px(2.0))
 		.child(account_row_identity(account, presentation.email.as_deref()))
 		.when(!needs_login, |row| {
 			row.child(
@@ -3381,12 +3363,12 @@ fn account_pool_summary(
 					.children(
 						[
 							quota_meter::meter(
-								"5 hours",
+								"5h",
 								account.five_hour_quota,
 								presentation.reset_fill.clone(),
 							),
 							quota_meter::meter(
-								"7 days",
+								"7d",
 								account.seven_day_quota,
 								presentation.reset_fill.clone(),
 							),
@@ -3395,6 +3377,10 @@ fn account_pool_summary(
 						.flatten(),
 					),
 			)
+		})
+		.when(needs_login, |row| row.child(div().flex_1()))
+		.when(presentation.can_manage, |row| {
+			row.child(account_reorder_handle(account, &presentation, cx))
 		})
 		.when(!needs_login, |row| {
 			row.child(
@@ -3407,8 +3393,8 @@ fn account_pool_summary(
 							"Route new conversations to {}",
 							account.alias.as_str()
 						))
-						.h(px(26.0))
-						.w(px(26.0))
+						.h(px(24.0))
+						.w(px(24.0))
 						.flex_none()
 						.flex()
 						.items_center()
@@ -3417,6 +3403,12 @@ fn account_pool_summary(
 						.bg(if fixed { rgba(0x8baaf738) } else { rgba(0x00000000) })
 						.text_size(px(11.0))
 						.text_color(if fixed { rgb(WB_BLUE) } else { rgb(WB_TEXT_MUTED) })
+						.on_click(cx.listener(move |shell, _, _, cx| {
+							cx.stop_propagation();
+							if pin_enabled {
+								shell.select_fixed_account(&account_id, cx);
+							}
+						}))
 						.when(pin_enabled, |button| {
 							button
 								.cursor_pointer()
@@ -3426,10 +3418,6 @@ fn account_pool_summary(
 										.text_color(rgb(WB_TEXT))
 								})
 								.active(|element| element.bg(rgba(crate::ui_theme::PRESSED_FILL)))
-								.on_click(cx.listener(move |shell, _, _, cx| {
-									cx.stop_propagation();
-									shell.select_fixed_account(&account_id, cx);
-								}))
 						})
 						.child(workspace_symbols::icon(if fixed {
 							workspace_symbols::Symbol::AccountRouteActive
@@ -3449,9 +3437,46 @@ fn account_pool_summary(
 				cx,
 			))
 		})
-		.when(needs_login, |row| row.child(div().flex_1()))
 		.child(account_management_actions(account, &presentation, cx))
 		.into_any_element()
+}
+
+// A separate handle keeps disclosure, actions, and card-strip scrolling independent.
+fn account_reorder_handle(
+	account: &AccountDto,
+	presentation: &AccountRowPresentation,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	let keyboard = account.account_id.clone();
+	account_icon_action(
+		"account-reorder",
+		presentation.index,
+		"Drag to reorder accounts",
+		workspace_symbols::Symbol::AccountReorder,
+		true,
+	)
+	.opacity(0.)
+	.group_hover(SharedString::from(format!("account-card-{}", presentation.index)), |style| {
+		style.opacity(1.)
+	})
+	.focus(|style| style.opacity(1.))
+	.cursor(gpui::CursorStyle::OpenHand)
+	.on_click(|_, _, cx| cx.stop_propagation())
+	.on_drag(
+		AccountDrag {
+			id: account.account_id.clone(),
+			revision: presentation.routing_revision,
+			label: account.alias.as_str().into(),
+		},
+		|drag, _, _, cx| cx.new(|_| drag.clone()),
+	)
+	.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+		if event.keystroke.modifiers.alt && ["up", "down"].contains(&event.keystroke.key.as_str()) {
+			s.move_account(&keyboard, if event.keystroke.key == "up" { -1 } else { 1 }, cx);
+			cx.stop_propagation();
+		}
+	}))
+	.into_any_element()
 }
 
 fn account_power_control(
@@ -3515,7 +3540,7 @@ fn account_management_actions(
 		.flex()
 		.justify_start()
 		.items_center()
-		.gap_1()
+		.gap(px(2.))
 		.when(needs_login, |row| {
 			row.child(
 				account_icon_action(
@@ -3532,7 +3557,7 @@ fn account_management_actions(
 			div()
 				.flex()
 				.items_center()
-				.gap_1()
+				.gap(px(2.))
 				.when(needs_login, |row| {
 					row.child(
 						account_icon_action(
@@ -3542,6 +3567,9 @@ fn account_management_actions(
 							workspace_symbols::Symbol::AccountSignIn,
 							presentation.login_available,
 						)
+						.when(!presentation.login_available, |button| {
+							button.on_click(|_, _, cx| cx.stop_propagation())
+						})
 						.when(presentation.login_available, |button| {
 							button.on_click(cx.listener(move |shell, _, _, cx| {
 								cx.stop_propagation();
@@ -3568,6 +3596,9 @@ fn account_management_actions(
 						presentation.can_manage,
 					)
 					.when(presentation.controls_busy, |button| button.opacity(1.0))
+					.when(!presentation.can_manage, |button| {
+						button.on_click(|_, _, cx| cx.stop_propagation())
+					})
 					.when(presentation.can_manage, |button| {
 						button.on_click(cx.listener(move |shell, _, _, cx| {
 							cx.stop_propagation();
@@ -3588,8 +3619,8 @@ fn account_icon_action(
 ) -> gpui::Stateful<gpui::Div> {
 	account_row_action(id, index, label, "", enabled)
 		.debug_selector(move || format!("{id}-{index}"))
-		.w(px(26.))
-		.h(px(26.))
+		.w(px(24.))
+		.h(px(24.))
 		.px_0()
 		.tab_index(0)
 		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())

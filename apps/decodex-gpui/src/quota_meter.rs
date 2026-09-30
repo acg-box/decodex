@@ -78,28 +78,26 @@ impl RenderOnce for QuotaMeter {
 		}
 		let color = quota_color(value);
 		div()
-			.w(px(140.))
+			.flex_1()
+			.min_w_0()
 			.flex()
-			.flex_col()
-			.gap_1()
-			.child(
-				div()
-					.flex()
-					.items_center()
-					.justify_between()
-					.font_family(crate::ui_theme::FONT_FAMILY)
-					.text_size(px(11.))
-					.text_color(rgb(super::WB_TEXT_FAINT))
-					.child(self.label)
-					.child(div().text_color(rgb(color)).child(format!("{value:.0}%"))),
-			)
+			.items_center()
+			.gap(px(4.))
+			.font_family(crate::ui_theme::FONT_FAMILY)
+			.text_size(px(10.))
+			.text_color(rgb(super::WB_TEXT_FAINT))
+			.child(self.label)
 			.child(
 				div()
 					.h(px(3.))
-					.w_full()
+					.w(px(44.))
+					.flex_none()
 					.rounded_full()
 					.bg(rgba(0xffffff0c))
-					.child(div().h_full().w(px(value * 1.4)).rounded_full().bg(rgb(color))),
+					.child(div().h_full().w(px(value * 0.44)).rounded_full().bg(rgb(color))),
+			)
+			.child(
+				div().w(px(28.)).flex_none().text_color(rgb(color)).child(format!("{value:.0}%")),
 			)
 			.children(
 				match self.quota.result {
@@ -107,9 +105,7 @@ impl RenderOnce for QuotaMeter {
 						reset_time(resets_at_unix_micros),
 					_ => None,
 				}
-				.map(|time| {
-					div().text_size(px(10.)).text_color(rgb(super::WB_TEXT_FAINT)).child(time)
-				}),
+				.map(|time| div().whitespace_nowrap().child(time)),
 			)
 	}
 }
