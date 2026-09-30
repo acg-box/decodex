@@ -56,3 +56,47 @@ fn path_validation_accepts_generated_analysis_drafts_without_schema() {
 		["proof_points must be a non-empty list"],
 	);
 }
+
+#[test]
+fn empty_json_values_do_not_satisfy_try_instructions_or_effects() {
+	for empty in [
+		serde_json::Value::Null,
+		serde_json::json!(""),
+		serde_json::json!(false),
+		serde_json::json!(0),
+		serde_json::json!(0.0),
+		serde_json::json!([]),
+		serde_json::json!({}),
+	] {
+		let mut signal = fixtures::valid_signal();
+		signal["kind"] = serde_json::json!("try_now");
+		signal["how_to_try"] = empty.clone();
+		signal["expected_effect"] = serde_json::json!("A visible result");
+		assertions::assert_errors(&signal, ["how_to_try is required"]);
+		assert!(
+			crate::validate_analysis_draft(&signal)
+				.unwrap_err()
+				.to_string()
+				.contains("how_to_try is required")
+		);
+
+		signal["how_to_try"] = serde_json::json!("Run the example");
+		signal["expected_effect"] = empty.clone();
+		assertions::assert_errors(&signal, ["expected_effect is required"]);
+		assert!(
+			crate::validate_analysis_draft(&signal)
+				.unwrap_err()
+				.to_string()
+				.contains("expected_effect is required")
+		);
+
+		signal["kind"] = serde_json::json!("capability");
+		signal["how_to_try"] = empty.clone();
+		signal["caveats"] = serde_json::json!([]);
+		let rendered =
+			crate::rendered_signal(&fixtures::valid_bundle(), &signal, None, vec![]).unwrap();
+		for field in ["how_to_try", "expected_effect", "caveats"] {
+			assert!(rendered.get(field).is_none(), "empty {field} should be omitted: {empty}");
+		}
+	}
+}

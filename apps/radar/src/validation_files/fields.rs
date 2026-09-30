@@ -38,7 +38,10 @@ pub(crate) fn is_truthy_json_value(value: Option<&Value>) -> bool {
 	match value {
 		Some(Value::Null) | None => false,
 		Some(Value::String(value)) => !value.is_empty(),
-		Some(_) => true,
+		Some(Value::Bool(value)) => *value,
+		Some(Value::Number(value)) => value.as_f64().is_some_and(|value| value != 0.0),
+		Some(Value::Array(value)) => !value.is_empty(),
+		Some(Value::Object(value)) => !value.is_empty(),
 	}
 }
 
