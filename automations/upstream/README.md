@@ -6,10 +6,10 @@ reviewer or health role. The task uses the current maintainer model and effort
 from `automations/portfolio.toml` and runs in a Codex-managed project worktree.
 
 The schedule is UTC 20:05, which is Beijing 04:05 the next day throughout the
-year. The explicit UTC start prevents daylight-saving changes. The maintainer
-remains paused during the manual catch-up. After all required changes are
-verified and merged, update its manifest status and native definition to ACTIVE.
-Do not activate it merely because a source-review batch or schema check passes.
+year. The explicit UTC start prevents daylight-saving changes. The portfolio
+declares the desired configuration; inspect the native definition for its current
+status. Preserve the user's pause decision. A source-review batch, schema check
+or manifest status does not authorize activation.
 
 The maintainer reads consecutive official Codex commits and traces relevant
 behavior into current Decodex consumers. It checks merged and concurrent work
@@ -17,9 +17,10 @@ before adding an implementation. Native Codex owns supported execution behavior;
 Decodex owns its presentation and coordination. The installed binary, upstream
 main, local tests and delivered behavior are separate evidence scopes.
 
-Keep `memory.md` in the native automation directory as the short resume index.
-Record the reviewed range, exact next commit, implementation and validation gaps,
-Decodex revision and PR/merge state. Store longer batch evidence separately.
+Use `state.json` in the native automation directory as the current cursor and
+pending-work index, as specified by the [maintainer prompt](prompts/maintainer.md).
+Treat older `memory.md` and dated records as historical evidence. Store longer
+batch evidence separately.
 A source-review cursor must not imply that all adaptation or acceptance is done.
 No-op runs stay quiet; report useful merged changes or actionable blockers.
 
