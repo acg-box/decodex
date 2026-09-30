@@ -5,7 +5,7 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
@@ -33,6 +33,20 @@ use crate::{
 		runtime::{self, TrustedXurlBinary},
 	},
 };
+
+#[cfg(test)]
+std::thread_local! {
+	static INTERRUPT_IDENTITY_READ: Cell<bool> = const { Cell::new(false) };
+	static INTERRUPT_RESERVED_ATTEMPT: Cell<bool> = const { Cell::new(false) };
+}
+
+const NO_CREATE_RELEASE_REASON: &str = "Publication reservation recovered before any create call.";
+const IDENTITY_RECOVERED_RELEASE_REASON: &str =
+	"Identity recovery completed without a create call.";
+const IDENTITY_EXHAUSTED_RELEASE_REASON: &str =
+	"Identity recovery was exhausted without a create call.";
+const READ_EXHAUSTED_RELEASE_REASON: &str =
+	"Post read recovery was exhausted after one durable create call.";
 
 struct PublishContext {
 	root: PathBuf,
@@ -94,20 +108,6 @@ enum PostReadPreparation<'a> {
 	Exhausted,
 }
 
-const NO_CREATE_RELEASE_REASON: &str = "Publication reservation recovered before any create call.";
-const IDENTITY_RECOVERED_RELEASE_REASON: &str =
-	"Identity recovery completed without a create call.";
-const IDENTITY_EXHAUSTED_RELEASE_REASON: &str =
-	"Identity recovery was exhausted without a create call.";
-const READ_EXHAUSTED_RELEASE_REASON: &str =
-	"Post read recovery was exhausted after one durable create call.";
-
-#[cfg(test)]
-std::thread_local! {
-	static INTERRUPT_IDENTITY_READ: Cell<bool> = const { Cell::new(false) };
-	static INTERRUPT_RESERVED_ATTEMPT: Cell<bool> = const { Cell::new(false) };
-}
-
 pub(super) fn run(
 	request: &SocialPublishXurlRequest,
 	xurl_binary: &TrustedXurlBinary,
@@ -154,160 +154,6 @@ pub(super) fn run_with_reserved_attempt_interruption_for_test(
 	INTERRUPT_RESERVED_ATTEMPT.with(|interrupt| interrupt.set(false));
 
 	result
-}
-
-fn run_with_pricing_check(
-	request: &SocialPublishXurlRequest,
-	xurl_binary: &TrustedXurlBinary,
-	require_current_pricing: impl FnOnce(OffsetDateTime) -> Result<()>,
-) -> Result<SocialPublishXurlReport> {
-	let posted_at = validate_request(request)?;
-	let root = crate::repo_root()?;
-	let reservations_dir = crate::resolve_against(&root, &request.reservations_dir);
-	let reservation_path = crate::resolve_against(&root, &request.reservation_path);
-	let candidates_dir = crate::resolve_against(&root, &request.candidates_dir);
-	let posts_dir = crate::resolve_against(&root, &request.posts_dir);
-	let attempts_dir = crate::resolve_against(&root, &request.attempts_dir);
-
-	crate::require_contained_regular_file(&reservation_path, &reservations_dir)
-		.map_err(|error| eyre::eyre!("reservation is invalid: {error}"))?;
-
-	let _state_lock = scan::acquire_social_state_lock(&request.locks_dir)?;
-	let reservation = load_reservation(&reservation_path)?;
-	let billing_month = reservation_billing_month(&reservation)?.to_owned();
-	let attempt_path = attempts_dir.join(&billing_month).join(format!("{}.json", request.run_id));
-	let existing_attempt =
-		load_existing_attempt(&attempt_path, &attempts_dir, &root, &reservation_path, request)?;
-	let post_path = posts_dir.join(format!("{}.json", request.run_id));
-	let existing_post = if post_path.exists() {
-		let post = crate::load_json(&post_path)?;
-
-		crate::validate_generated_social_artifact(&post)
-			.map_err(|error| eyre::eyre!("existing social post failed validation: {error}"))?;
-
-		Some(post)
-	} else {
-		None
-	};
-	let candidate_path =
-		reservation_candidate_path(&root, &reservation, &candidates_dir, &request.run_id)?;
-	let (candidate, candidate_sha256) = crate::load_json_with_sha256(&candidate_path)?;
-
-	crate::validate_generated_social_artifact(&candidate)
-		.map_err(|error| eyre::eyre!("candidate failed validation: {error}"))?;
-	social_evidence::validate_source_evidence(&candidate)
-		.map_err(|error| eyre::eyre!("candidate evidence failed validation: {error}"))?;
-
-	let publication_time =
-		existing_post.as_ref().map(existing_posted_at).transpose()?.unwrap_or(posted_at);
-
-	validate_lineage(&candidate, &reservation, &reservation_path, request, publication_time)?;
-
-	let text = candidate_text(&candidate)?;
-
-	reject_link_like_text(text)?;
-
-	let idempotency_key = required_string(&reservation, "idempotency_key")?.to_owned();
-	let publication_lineage_sha256 =
-		required_string(&reservation, "publication_lineage_sha256")?.to_owned();
-
-	if let Some(conflict) = social_xurl::publication_effect_conflict(
-		&attempts_dir,
-		&publication_lineage_sha256,
-		Some(&attempt_path),
-	)? {
-		return Err(eyre::eyre!(
-			"candidate has a prior uncertain or verified public-write attempt: {}",
-			crate::path_arg(&root, &conflict)
-		));
-	}
-
-	let (authorization_contract_sha256, authorization_contract) = if existing_post.is_some() {
-		let attempt = existing_attempt
-			.as_ref()
-			.ok_or_else(|| eyre::eyre!("existing social post has no publication attempt"))?;
-		let digest = required_authorization_contract_digest(attempt)?;
-
-		(digest, None)
-	} else {
-		require_current_pricing(posted_at)?;
-
-		let contract = auth_contract::load_current_at(
-			&request.authorization_contract_path,
-			posted_at,
-			xurl_binary,
-		)?;
-		let digest = contract.contract_sha256().into();
-
-		(digest, Some(contract))
-	};
-	let context = PublishContext {
-		root,
-		reservations_dir,
-		reservation_path,
-		candidate_path,
-		candidate_sha256,
-		posts_dir,
-		post_path,
-		attempts_dir,
-		attempt_path,
-		idempotency_key,
-		publication_lineage_sha256,
-		reservation_day: required_string(&reservation, "day")?.into(),
-		billing_month,
-		xurl_version: APPROVED_XURL_VERSION.into(),
-		authorization_contract_sha256,
-	};
-
-	if let Some(attempt) = &existing_attempt {
-		validate_attempt(attempt, request, &context)?;
-	}
-	if let Some(post) = existing_post {
-		return finish_existing(request, &context, &reservation, &candidate, &post);
-	}
-
-	scan::expire_active_reservations(&context.reservations_dir, posted_at)?;
-
-	let reservation = load_reservation(&context.reservation_path)?;
-
-	if reservation.get("status").and_then(Value::as_str) != Some("active") {
-		return Err(eyre::eyre!("reservation is not active"));
-	}
-
-	validate_lineage(&candidate, &reservation, &context.reservation_path, request, posted_at)?;
-
-	let mut authorization_contract = authorization_contract
-		.ok_or_else(|| eyre::eyre!("xurl authorization contract is unavailable"))?;
-	let xurl_version = runtime::verify_ready(xurl_binary, &authorization_contract)?;
-
-	if xurl_version != context.xurl_version {
-		return Err(eyre::eyre!("xurl runtime changed after fixed-version validation"));
-	}
-
-	let (mut attempt, created_attempt) = match existing_attempt {
-		Some(attempt) => (attempt, false),
-		None => (create_attempt(request, &context)?, true),
-	};
-
-	validate_attempt(&attempt, request, &context)?;
-
-	#[cfg(test)]
-	if created_attempt && INTERRUPT_RESERVED_ATTEMPT.with(|interrupt| interrupt.replace(false)) {
-		return Err(eyre::eyre!("simulated interruption after the durable reserved attempt"));
-	}
-
-	#[cfg(not(test))]
-	let _ = created_attempt;
-	let verified = continue_publication(
-		xurl_binary,
-		&mut authorization_contract,
-		text,
-		request,
-		&context,
-		&mut attempt,
-	)?;
-
-	finish_new(request, &context, &reservation, &candidate, &mut attempt, &verified)
 }
 
 pub(super) fn reconcile_local(
@@ -492,6 +338,176 @@ pub(super) fn reconcile_safe_read(
 			&mut recovery,
 		)
 	}
+}
+
+pub(super) fn terminal_no_create_recovery(
+	attempt_path: &Path,
+	attempts_dir: &Path,
+	reservations_dir: &Path,
+) -> Result<bool> {
+	terminal_recovery_record(attempt_path, attempts_dir, reservations_dir, true)
+}
+
+pub(super) fn terminal_publication_recovery(
+	attempt_path: &Path,
+	attempts_dir: &Path,
+	reservations_dir: &Path,
+) -> Result<bool> {
+	terminal_recovery_record(attempt_path, attempts_dir, reservations_dir, false)
+}
+
+fn run_with_pricing_check(
+	request: &SocialPublishXurlRequest,
+	xurl_binary: &TrustedXurlBinary,
+	require_current_pricing: impl FnOnce(OffsetDateTime) -> Result<()>,
+) -> Result<SocialPublishXurlReport> {
+	let posted_at = validate_request(request)?;
+	let root = crate::repo_root()?;
+	let reservations_dir = crate::resolve_against(&root, &request.reservations_dir);
+	let reservation_path = crate::resolve_against(&root, &request.reservation_path);
+	let candidates_dir = crate::resolve_against(&root, &request.candidates_dir);
+	let posts_dir = crate::resolve_against(&root, &request.posts_dir);
+	let attempts_dir = crate::resolve_against(&root, &request.attempts_dir);
+
+	crate::require_contained_regular_file(&reservation_path, &reservations_dir)
+		.map_err(|error| eyre::eyre!("reservation is invalid: {error}"))?;
+
+	let _state_lock = scan::acquire_social_state_lock(&request.locks_dir)?;
+	let reservation = load_reservation(&reservation_path)?;
+	let billing_month = reservation_billing_month(&reservation)?.to_owned();
+	let attempt_path = attempts_dir.join(&billing_month).join(format!("{}.json", request.run_id));
+	let existing_attempt =
+		load_existing_attempt(&attempt_path, &attempts_dir, &root, &reservation_path, request)?;
+	let post_path = posts_dir.join(format!("{}.json", request.run_id));
+	let existing_post = if post_path.exists() {
+		let post = crate::load_json(&post_path)?;
+
+		crate::validate_generated_social_artifact(&post)
+			.map_err(|error| eyre::eyre!("existing social post failed validation: {error}"))?;
+
+		Some(post)
+	} else {
+		None
+	};
+	let candidate_path =
+		reservation_candidate_path(&root, &reservation, &candidates_dir, &request.run_id)?;
+	let (candidate, candidate_sha256) = crate::load_json_with_sha256(&candidate_path)?;
+
+	crate::validate_generated_social_artifact(&candidate)
+		.map_err(|error| eyre::eyre!("candidate failed validation: {error}"))?;
+	social_evidence::validate_source_evidence(&candidate)
+		.map_err(|error| eyre::eyre!("candidate evidence failed validation: {error}"))?;
+
+	let publication_time =
+		existing_post.as_ref().map(existing_posted_at).transpose()?.unwrap_or(posted_at);
+
+	validate_lineage(&candidate, &reservation, &reservation_path, request, publication_time)?;
+
+	let text = candidate_text(&candidate)?;
+
+	reject_link_like_text(text)?;
+
+	let idempotency_key = required_string(&reservation, "idempotency_key")?.to_owned();
+	let publication_lineage_sha256 =
+		required_string(&reservation, "publication_lineage_sha256")?.to_owned();
+
+	if let Some(conflict) = social_xurl::publication_effect_conflict(
+		&attempts_dir,
+		&publication_lineage_sha256,
+		Some(&attempt_path),
+	)? {
+		return Err(eyre::eyre!(
+			"candidate has a prior uncertain or verified public-write attempt: {}",
+			crate::path_arg(&root, &conflict)
+		));
+	}
+
+	let (authorization_contract_sha256, authorization_contract) = if existing_post.is_some() {
+		let attempt = existing_attempt
+			.as_ref()
+			.ok_or_else(|| eyre::eyre!("existing social post has no publication attempt"))?;
+		let digest = required_authorization_contract_digest(attempt)?;
+
+		(digest, None)
+	} else {
+		require_current_pricing(posted_at)?;
+
+		let contract = auth_contract::load_current_at(
+			&request.authorization_contract_path,
+			posted_at,
+			xurl_binary,
+		)?;
+		let digest = contract.contract_sha256().into();
+
+		(digest, Some(contract))
+	};
+	let context = PublishContext {
+		root,
+		reservations_dir,
+		reservation_path,
+		candidate_path,
+		candidate_sha256,
+		posts_dir,
+		post_path,
+		attempts_dir,
+		attempt_path,
+		idempotency_key,
+		publication_lineage_sha256,
+		reservation_day: required_string(&reservation, "day")?.into(),
+		billing_month,
+		xurl_version: APPROVED_XURL_VERSION.into(),
+		authorization_contract_sha256,
+	};
+
+	if let Some(attempt) = &existing_attempt {
+		validate_attempt(attempt, request, &context)?;
+	}
+	if let Some(post) = existing_post {
+		return finish_existing(request, &context, &reservation, &candidate, &post);
+	}
+
+	scan::expire_active_reservations(&context.reservations_dir, posted_at)?;
+
+	let reservation = load_reservation(&context.reservation_path)?;
+
+	if reservation.get("status").and_then(Value::as_str) != Some("active") {
+		return Err(eyre::eyre!("reservation is not active"));
+	}
+
+	validate_lineage(&candidate, &reservation, &context.reservation_path, request, posted_at)?;
+
+	let mut authorization_contract = authorization_contract
+		.ok_or_else(|| eyre::eyre!("xurl authorization contract is unavailable"))?;
+	let xurl_version = runtime::verify_ready(xurl_binary, &authorization_contract)?;
+
+	if xurl_version != context.xurl_version {
+		return Err(eyre::eyre!("xurl runtime changed after fixed-version validation"));
+	}
+
+	let (mut attempt, created_attempt) = match existing_attempt {
+		Some(attempt) => (attempt, false),
+		None => (create_attempt(request, &context)?, true),
+	};
+
+	validate_attempt(&attempt, request, &context)?;
+
+	#[cfg(test)]
+	if created_attempt && INTERRUPT_RESERVED_ATTEMPT.with(|interrupt| interrupt.replace(false)) {
+		return Err(eyre::eyre!("simulated interruption after the durable reserved attempt"));
+	}
+
+	#[cfg(not(test))]
+	let _ = created_attempt;
+	let verified = continue_publication(
+		xurl_binary,
+		&mut authorization_contract,
+		text,
+		request,
+		&context,
+		&mut attempt,
+	)?;
+
+	finish_new(request, &context, &reservation, &candidate, &mut attempt, &verified)
 }
 
 fn prepare_publication_recovery(
@@ -735,22 +751,6 @@ fn reconcile_interrupted_post_read(
 	binary.require_command_time_remaining()?;
 
 	Ok(report)
-}
-
-pub(super) fn terminal_no_create_recovery(
-	attempt_path: &Path,
-	attempts_dir: &Path,
-	reservations_dir: &Path,
-) -> Result<bool> {
-	terminal_recovery_record(attempt_path, attempts_dir, reservations_dir, true)
-}
-
-pub(super) fn terminal_publication_recovery(
-	attempt_path: &Path,
-	attempts_dir: &Path,
-	reservations_dir: &Path,
-) -> Result<bool> {
-	terminal_recovery_record(attempt_path, attempts_dir, reservations_dir, false)
 }
 
 fn terminal_recovery_record(
@@ -2722,10 +2722,7 @@ fn required_string<'a>(entry: &'a Value, field: &str) -> Result<&'a str> {
 		.ok_or_else(|| eyre::eyre!("{field} is required"))
 }
 
-fn required_object_string<'a>(
-	entry: &'a serde_json::Map<String, Value>,
-	field: &str,
-) -> Result<&'a str> {
+fn required_object_string<'a>(entry: &'a Map<String, Value>, field: &str) -> Result<&'a str> {
 	entry
 		.get(field)
 		.and_then(Value::as_str)
