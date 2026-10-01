@@ -2,7 +2,6 @@ import SwiftUI
 
 struct AccountProfileSummaryView: View {
 	let profile: AccountProfileSnapshot
-	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.related) {
