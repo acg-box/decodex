@@ -1,8 +1,9 @@
 //! Source-owned response observations. They never create an execution obligation.
 
-use crate::{SqliteStore, StoreError, error::sqlite_error, unix_micros};
-use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
+use rusqlite::{OptionalExtension as _, TransactionBehavior};
 use serde_json::Value;
+
+use crate::{SqliteStore, StoreError, agent_process, error};
 
 /// Bounded display fields; opaque provider metadata stays out of timeline reads.
 pub struct AgentResponseUsageSummary {
@@ -47,11 +48,11 @@ impl SqliteStore {
 			SELECT b.account_id FROM ancestry a JOIN agent_process_bindings b ON b.root_id=a.id ORDER BY a.depth,b.created_at_micros DESC,b.rowid DESC LIMIT 1)),
 			ranked AS (SELECT *,row_number() OVER(PARTITION BY turn_id ORDER BY id DESC) rank,count(*) OVER(PARTITION BY turn_id) count FROM observations)
 			SELECT turn_id,response_id,amount,omitted,count FROM ranked WHERE rank<=8 ORDER BY id")
-			.map_err(sqlite_error)?;
+			.map_err(error::sqlite_error)?;
 
-			query.query_map(params![work,thread,turns],|row|Ok(AgentResponseUsageSummary {
+			query.query_map(rusqlite::params![work,thread,turns],|row|Ok(AgentResponseUsageSummary {
 				turn_id:row.get(0)?,response_id:row.get(1)?,amount:row.get(2)?,metadata_omitted:row.get(3)?,observed_count:row.get(4)?,
-			})).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|sqlite_error(error).into())
+			})).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -61,7 +62,7 @@ impl SqliteStore {
 		generation: Option<String>,
 		payload: String,
 	) -> Result<bool, StoreError> {
-		if payload.len() > 48 * 1024 {
+		if payload.len() > 48 * 1_024 {
 			return Err(StoreError::InvalidInput("response usage exceeds storage budget"));
 		}
 
@@ -80,26 +81,26 @@ impl SqliteStore {
 		let response = identity("responseId")?;
 
 		self.run(move |connection| {
-			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
-			let work: Option<String> = tx.query_row("SELECT id FROM agent_work_items WHERE codex_thread_id=?1",[&thread],|row|row.get(0)).optional().map_err(sqlite_error)?;
+			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
+			let work: Option<String> = tx.query_row("SELECT id FROM agent_work_items WHERE codex_thread_id=?1",[&thread],|row|row.get(0)).optional().map_err(error::sqlite_error)?;
 			let Some(work) = work else { return Ok(false); };
 
-			if !crate::agent_process::owns_work(&tx,&work,generation.as_deref())? { return Ok(false); }
+			if !agent_process::owns_work(&tx,&work,generation.as_deref())? { return Ok(false); }
 
 			let account: Option<String> = if let Some(generation) = generation.as_ref() {
-				tx.query_row("SELECT account_id FROM agent_process_bindings WHERE generation_id=?1",[generation],|row|row.get(0)).optional().map_err(sqlite_error)?
+				tx.query_row("SELECT account_id FROM agent_process_bindings WHERE generation_id=?1",[generation],|row|row.get(0)).optional().map_err(error::sqlite_error)?
 			} else { None };
 			let identity = serde_json::json!(["response_usage",work,account,thread,turn,response]).to_string();
-			let previous: Option<String> = tx.query_row("SELECT payload FROM agent_inbox_events WHERE source_event_id=?1",[&identity],|row|row.get(0)).optional().map_err(sqlite_error)?;
+			let previous: Option<String> = tx.query_row("SELECT payload FROM agent_inbox_events WHERE source_event_id=?1",[&identity],|row|row.get(0)).optional().map_err(error::sqlite_error)?;
 
 			if let Some(previous) = previous {
 				return if previous == payload { Ok(false) } else { Err(StoreError::IdempotencyConflict) };
 			}
 
-			let now = unix_micros()?;
+			let now = crate::unix_micros()?;
 
-			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'response_usage',?3,?4,'resolved','Provider response usage observed.',?4)",params![identity,work,payload,now]).map_err(sqlite_error)?;
-			tx.commit().map_err(sqlite_error)?;
+			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'response_usage',?3,?4,'resolved','Provider response usage observed.',?4)",rusqlite::params![identity,work,payload,now]).map_err(error::sqlite_error)?;
+			tx.commit().map_err(error::sqlite_error)?;
 
 			Ok(true)
 		}).await
@@ -108,8 +109,12 @@ impl SqliteStore {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::{AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus};
+	use serde_json::Value;
+
+	use crate::{
+		AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus, SqliteStore, StoreError,
+		error,
+	};
 
 	#[tokio::test]
 	async fn response_observations_survive_restart_without_waking_or_exposing_metadata() {
@@ -166,7 +171,7 @@ mod tests {
 						[],
 						|row| row.get(0),
 					)
-					.map_err(|error| sqlite_error(error).into())
+					.map_err(|error| error::sqlite_error(error).into())
 			})
 			.await
 			.unwrap();
