@@ -1,4 +1,10 @@
-use super::*;
+use serde_json::Value;
+
+use crate::{
+	SqliteStore,
+	agent_process::tests::{self, DIGEST},
+};
+use decodex_core::{ProcessBootIdentity, ProcessIdentity, ProcessStartIdentity};
 
 #[tokio::test]
 async fn native_warnings_stay_with_owned_threads_and_survive_reopen_without_waking() {
@@ -6,25 +12,11 @@ async fn native_warnings_stay_with_owned_threads_and_survive_reopen_without_waki
 	let path = directory.path().join("native-warnings.sqlite3");
 	let store = SqliteStore::open_test(&path).unwrap();
 
-	seed(&store).await;
+	tests::seed(&store).await;
 
-	store.bind_agent_thread("root".into(), "root-thread".into()).await.unwrap();
-	store.bind_agent_thread("second-root".into(), "other-thread".into()).await.unwrap();
+	seed_warning_threads(&store).await;
 
-	let mut child = store.get_agent_work_item("root".into()).await.unwrap();
-
-	child.id = "child".into();
-	child.parent_goal_id = Some("root".into());
-	child.codex_thread_id = None;
-
-	store.create_agent_work_item(child).await.unwrap();
-	store.bind_agent_thread("child".into(), "child-thread".into()).await.unwrap();
-	store
-		.prepare_agent_bound_process_generation(&intent(1, 1), &binding(1), "root", "warnings")
-		.await
-		.unwrap();
-
-	let generation = generation_id(1).as_str().to_owned();
+	let generation = tests::generation_id(1).as_str().to_owned();
 
 	store
 		.record_agent_native_warning(
@@ -42,7 +34,7 @@ async fn native_warnings_stay_with_owned_threads_and_survive_reopen_without_waki
 	for (owner, thread) in [
 		(generation.clone(), Some("other-thread")),
 		(generation.clone(), Some("unknown")),
-		(generation_id(2).as_str().into(), Some("child-thread")),
+		(tests::generation_id(2).as_str().into(), Some("child-thread")),
 	] {
 		store
 			.record_agent_native_warning(
@@ -77,6 +69,7 @@ async fn native_warnings_stay_with_owned_threads_and_survive_reopen_without_waki
 			.await
 			.unwrap();
 	}
+
 	// Startup config diagnostics can be repeated as thread warnings. Collapse the
 	// same root/generation text, but retain the same notice on a different task.
 	store
@@ -119,10 +112,7 @@ async fn native_warnings_stay_with_owned_threads_and_survive_reopen_without_waki
 
 		assert_eq!(events.len(), if work == "root" { 2 } else { 1 });
 		assert_eq!(events[0].event_kind, "native_warning");
-		assert_eq!(
-			serde_json::from_str::<serde_json::Value>(&events[0].payload).unwrap()["text"],
-			expected
-		);
+		assert_eq!(serde_json::from_str::<Value>(&events[0].payload).unwrap()["text"], expected);
 		assert!(store.list_agent_wake_events(work.into(), 10).await.unwrap().is_empty());
 	}
 
@@ -135,15 +125,38 @@ async fn native_warnings_stay_with_owned_threads_and_survive_reopen_without_waki
 }
 
 async fn mark_warning_process_ready(store: &SqliteStore) {
-	let identity = decodex_core::ProcessIdentity::new(
+	let identity = ProcessIdentity::new(
 		ProcessBootIdentity::new("fixture-boot").unwrap(),
-		1234,
-		decodex_core::ProcessStartIdentity::new("fixture-start").unwrap(),
-		1234,
-		1234,
+		1_234,
+		ProcessStartIdentity::new("fixture-start").unwrap(),
+		1_234,
+		1_234,
 	)
 	.unwrap();
 
-	store.bind_process_generation_identity(&generation_id(1), 1, &identity).await.unwrap();
-	store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+	store.bind_process_generation_identity(&tests::generation_id(1), 1, &identity).await.unwrap();
+	store.mark_process_generation_ready(&tests::generation_id(1), 2).await.unwrap();
+}
+
+async fn seed_warning_threads(store: &SqliteStore) {
+	store.bind_agent_thread("root".into(), "root-thread".into()).await.unwrap();
+	store.bind_agent_thread("second-root".into(), "other-thread".into()).await.unwrap();
+
+	let mut child = store.get_agent_work_item("root".into()).await.unwrap();
+
+	child.id = "child".into();
+	child.parent_goal_id = Some("root".into());
+	child.codex_thread_id = None;
+
+	store.create_agent_work_item(child).await.unwrap();
+	store.bind_agent_thread("child".into(), "child-thread".into()).await.unwrap();
+	store
+		.prepare_agent_bound_process_generation(
+			&tests::intent(1, 1),
+			&tests::binding(1),
+			"root",
+			"warnings",
+		)
+		.await
+		.unwrap();
 }
