@@ -1,4 +1,5 @@
 //! Presentation-neutral ownership of one selected GPUI account-profile observation.
+#[path = "account_profile/observation.rs"] mod observation;
 
 use std::{
 	collections::VecDeque,
@@ -111,8 +112,8 @@ impl AccountProfileController {
 	}
 
 	pub(crate) fn bind_session(&self, generation: u64, server_id: ServerId) {
-		let mut state = self.lock();
 		let binding = SessionBinding { generation, server_id };
+		let mut state = self.lock();
 
 		if state.session.as_ref() == Some(&binding) {
 			return;
@@ -171,8 +172,8 @@ impl AccountProfileController {
 	}
 
 	fn try_take_dispatch(&self, generation: u64, server_id: &ServerId) -> Option<QueryEnvelope> {
-		let mut state = self.lock();
 		let binding = SessionBinding { generation, server_id: server_id.clone() };
+		let mut state = self.lock();
 
 		if state.session.as_ref() != Some(&binding) || state.in_flight.is_some() {
 			return None;
@@ -393,9 +394,13 @@ pub(crate) enum AccountProfileRouteOutcome {
 /// Only definitive authentication failures require another login; a busy or
 /// temporarily unavailable credential remains a recoverable warning.
 pub(crate) fn requires_login(error: AccountProfileErrorDto) -> bool {
-	use decodex_protocol::AccountProfileErrorDto::*;
-
-	matches!(error, RefreshRejected | RefreshAmbiguous | AccessRejectedAfterRefresh | Unauthorized)
+	matches!(
+		error,
+		AccountProfileErrorDto::RefreshRejected
+			| AccountProfileErrorDto::RefreshAmbiguous
+			| AccountProfileErrorDto::AccessRejectedAfterRefresh
+			| AccountProfileErrorDto::Unauthorized
+	)
 }
 
 fn profile_matches(
@@ -633,4 +638,3 @@ mod tests {
 		assert_eq!(controller.snapshot().load, AccountProfileLoadState::Ready);
 	}
 }
-#[path = "account_profile/observation.rs"] mod observation;
