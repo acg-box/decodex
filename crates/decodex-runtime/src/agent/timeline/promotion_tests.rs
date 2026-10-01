@@ -4,7 +4,7 @@ use serde_json::Value;
 use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 use crate::{
-	agent::timeline::{self, Content, promotions},
+	agent::timeline::{self, AgentTimelineContent, promotions},
 	agent_usage_estimate::{Source, SourceKey},
 };
 use decodex_codex::app_server_client::AppServerClient;
@@ -72,14 +72,17 @@ async fn off_page_references_share_one_native_read_and_keep_exact_media_indices(
 
 	assert_eq!(page.next_cursor.as_deref(), Some("older"));
 
-	let Content::Promotion { resolved: Some(first), item_id, .. } = &page.entries[0].content else {
+	let AgentTimelineContent::Promotion { resolved: Some(first), item_id, .. } =
+		&page.entries[0].content
+	else {
 		panic!("missing message")
 	};
 
 	assert_eq!(first.text, "An older exact result");
 	assert_eq!(item_id, "first");
 
-	let Content::Promotion { resolved: Some(second), .. } = &page.entries[1].content else {
+	let AgentTimelineContent::Promotion { resolved: Some(second), .. } = &page.entries[1].content
+	else {
 		panic!("missing tool")
 	};
 
@@ -113,10 +116,10 @@ async fn loaded_reference_does_not_need_transport_and_failure_preserves_referenc
 	promotions::enrich(&client, &mut page).await;
 
 	assert!(
-		matches!(&page.entries[0].content, Content::Promotion { resolved: Some(content), .. } if content.text=="Loaded")
+		matches!(&page.entries[0].content, AgentTimelineContent::Promotion { resolved: Some(content), .. } if content.text=="Loaded")
 	);
 	assert!(
-		matches!(&page.entries[1].content, Content::Promotion { resolved: None, agent_item_id, .. } if agent_item_id=="image")
+		matches!(&page.entries[1].content, AgentTimelineContent::Promotion { resolved: None, agent_item_id, .. } if agent_item_id=="image")
 	);
 }
 
@@ -142,7 +145,10 @@ async fn duplicate_loaded_identity_never_selects_an_arbitrary_message() {
 
 	promotions::enrich(&client, &mut page).await;
 
-	assert!(matches!(&page.entries[0].content, Content::Promotion { resolved: None, .. }));
+	assert!(matches!(
+		&page.entries[0].content,
+		AgentTimelineContent::Promotion { resolved: None, .. }
+	));
 }
 
 #[tokio::test]

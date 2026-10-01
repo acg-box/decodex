@@ -7,14 +7,21 @@ mod attachments;
 mod promotions;
 mod summary;
 
-use decodex_protocol::{AgentTimelineContent as Content, AgentTimelineEntry, AgentTimelinePage};
+use std::{collections::BTreeSet, future::Future, time::Duration};
 
 use serde_json::Value;
 use tokio::time;
 
-use crate::agent::{activity, reasoning};
-
-use decodex_codex::app_server_client::ClientError;
+use crate::{
+	agent::{activity, reasoning},
+	agent_usage_estimate::Source,
+};
+use decodex_codex::app_server_client::{AppServerClient, ClientError};
+use decodex_database::SqliteStore;
+use decodex_protocol::{
+	AgentTimelineContent, AgentTimelineEntry, AgentTimelineError, AgentTimelinePage,
+	AgentTimelineResult, EntityId,
+};
 
 #[derive(Debug)]
 pub(crate) enum ProjectionError {
@@ -22,38 +29,41 @@ pub(crate) enum ProjectionError {
 	Capacity,
 }
 
+#[cfg(test)]
+pub(crate) fn project(thread: &str, value: &Value) -> Result<AgentTimelinePage, ProjectionError> {
+	project_with_origins(thread, value, &[])
+}
+
 pub(crate) async fn read<F, Fut>(
-	store: Option<&decodex_database::SqliteStore>,
+	store: Option<&SqliteStore>,
 	source: F,
 	cursor: Option<&str>,
-) -> decodex_protocol::AgentTimelineResult
+) -> AgentTimelineResult
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<crate::agent_usage_estimate::Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
-	use decodex_protocol::AgentTimelineResult as Result;
-
 	let Some(before) = source().await else {
-		return Result::Unavailable;
+		return AgentTimelineResult::Unavailable;
 	};
 	let operation = async {
 		for limit in [30, 15, 7, 3, 1] {
 			let Some(current) = source().await else {
-				return Result::Unavailable;
+				return AgentTimelineResult::Unavailable;
 			};
 
 			if current.key != before.key {
-				return Result::Unavailable;
+				return AgentTimelineResult::Unavailable;
 			}
 
 			let response =
 				before.client.thread_timeline_page(&before.key.thread, cursor, limit).await;
 			let Some(after) = source().await else {
-				return Result::Unavailable;
+				return AgentTimelineResult::Unavailable;
 			};
 
 			if after.key != before.key {
-				return Result::Unavailable;
+				return AgentTimelineResult::Unavailable;
 			}
 
 			match response {
@@ -75,11 +85,11 @@ where
 						if let Some(store) = store
 							&& metrics::enrich(store, &before.key.work, &mut page).await.is_err()
 						{
-							return Result::Unavailable;
+							return AgentTimelineResult::Unavailable;
 						}
 
 						if source().await.is_none_or(|after| after.key != before.key) {
-							return Result::Unavailable;
+							return AgentTimelineResult::Unavailable;
 						}
 						if serde_json::to_vec(&page)
 							.map_or(true, |encoded| encoded.len() > 60 * 1_024)
@@ -88,69 +98,44 @@ where
 						}
 
 						let (Ok(work_id), Ok(account_id)) = (
-							decodex_protocol::EntityId::new(before.key.work.clone()),
-							decodex_protocol::EntityId::new(before.key.account.as_str()),
+							EntityId::new(before.key.work.clone()),
+							EntityId::new(before.key.account.as_str()),
 						) else {
-							return Result::Unavailable;
+							return AgentTimelineResult::Unavailable;
 						};
 
-						return Result::Available { work_id, account_id, page };
+						return AgentTimelineResult::Available { work_id, account_id, page };
 					},
 					Err(ProjectionError::Capacity) => {},
-					Err(ProjectionError::Malformed) => return Result::Unavailable,
+					Err(ProjectionError::Malformed) => return AgentTimelineResult::Unavailable,
 				},
 				Err(ClientError::Remote(error)) if error.code == -32_601 =>
-					return Result::Unsupported,
+					return AgentTimelineResult::Unsupported,
 				Err(ClientError::CapacityExceeded) => {},
-				Err(_) => return Result::Unavailable,
+				Err(_) => return AgentTimelineResult::Unavailable,
 			}
 		}
 
-		Result::CapacityExceeded
+		AgentTimelineResult::CapacityExceeded
 	};
-	let result = time::timeout(std::time::Duration::from_secs(25), operation)
+	let result = time::timeout(Duration::from_secs(25), operation)
 		.await
-		.unwrap_or(Result::Unavailable);
+		.unwrap_or(AgentTimelineResult::Unavailable);
 
-	if cursor.is_some() || matches!(result, Result::Available { .. }) {
+	if cursor.is_some() || matches!(result, AgentTimelineResult::Available { .. }) {
 		return result;
 	}
 	if source().await.is_none_or(|after| after.key != before.key) {
-		return Result::Unavailable;
+		return AgentTimelineResult::Unavailable;
 	}
 
 	let recovered = summary::read(&before).await;
 
 	if source().await.is_none_or(|after| after.key != before.key) {
-		return Result::Unavailable;
+		return AgentTimelineResult::Unavailable;
 	}
 
 	recovered.unwrap_or(result)
-}
-
-#[cfg(test)]
-mod app_ui_projection_tests {
-	use crate::agent::timeline::{self, Content};
-	#[test]
-	fn retired_app_metadata_keeps_the_tool_result_without_a_viewer() {
-		for (kind, metadata, expected) in [
-			("mcpToolCall", serde_json::json!({"resourceUri":"ui://fixture/view"}), false),
-			("mcpToolCall", serde_json::json!(null), false),
-			("mcpToolCall", serde_json::json!({"resourceUri":"https://example.com"}), false),
-			("agentMessage", serde_json::json!({"resourceUri":"ui://fixture/view"}), false),
-		] {
-			let row = serde_json::json!({"turnId":"turn","item":{"id":"call","type":kind,"text":"Fixture","mcpAppUi":metadata}});
-
-			assert!(
-				matches!(timeline::ordinary(&row).unwrap(),Content::Item{app_ui,..} if app_ui==expected)
-			);
-		}
-	}
-}
-
-#[cfg(test)]
-pub(crate) fn project(thread: &str, value: &Value) -> Result<AgentTimelinePage, ProjectionError> {
-	project_with_origins(thread, value, &[])
 }
 
 fn project_with_origins(
@@ -234,7 +219,7 @@ fn entry(row: &Value) -> Option<AgentTimelineEntry> {
 				None
 			};
 
-			Content::TurnBoundary {
+			AgentTimelineContent::TurnBoundary {
 				turn_id: id(&row["turnId"])?,
 				completed,
 				status,
@@ -244,7 +229,7 @@ fn entry(row: &Value) -> Option<AgentTimelineEntry> {
 				error: if completed && !row["error"].is_null() {
 					let (message, truncated) = visible_text(row["error"]["message"].as_str()?);
 
-					Some(decodex_protocol::AgentTimelineError { message, truncated })
+					Some(AgentTimelineError { message, truncated })
 				} else {
 					None
 				},
@@ -256,7 +241,7 @@ fn entry(row: &Value) -> Option<AgentTimelineEntry> {
 	Some(AgentTimelineEntry { position: row["position"].as_u64()?, content })
 }
 
-fn ordinary(row: &Value) -> Option<Content> {
+fn ordinary(row: &Value) -> Option<AgentTimelineContent> {
 	let item = &row["item"];
 	let kind = id(&item["type"])?;
 	let (attachments, omitted) = attachments::project(item);
@@ -290,7 +275,7 @@ fn ordinary(row: &Value) -> Option<Content> {
 		.then(|| activity::project(&serde_json::json!({"turnId":turn_id,"item":item}), completed))
 		.flatten();
 
-	Some(Content::Item {
+	Some(AgentTimelineContent::Item {
 		phase: item["phase"].as_str().map(str::to_owned),
 		// Retain the wire field for older clients without advertising the retired viewer.
 		app_ui: false,
@@ -304,7 +289,7 @@ fn ordinary(row: &Value) -> Option<Content> {
 	})
 }
 
-fn realtime(item: &Value) -> Option<Content> {
+fn realtime(item: &Value) -> Option<AgentTimelineContent> {
 	let item_id = id(&item["id"])?;
 	let session_id = id(&item["realtimeSessionId"])?;
 
@@ -318,7 +303,13 @@ fn realtime(item: &Value) -> Option<Content> {
 
 			let (text, truncated) = visible_text(item["text"].as_str()?);
 
-			Some(Content::Speech { item_id, session_id, role: role.into(), text, truncated })
+			Some(AgentTimelineContent::Speech {
+				item_id,
+				session_id,
+				role: role.into(),
+				text,
+				truncated,
+			})
 		},
 		"realtimeSessionStarted" | "realtimeSessionClosed" => {
 			let outcome = if item["type"] == "realtimeSessionClosed" {
@@ -333,7 +324,12 @@ fn realtime(item: &Value) -> Option<Content> {
 				None
 			};
 
-			Some(Content::VoiceBoundary { item_id, session_id, kind: id(&item["type"])?, outcome })
+			Some(AgentTimelineContent::VoiceBoundary {
+				item_id,
+				session_id,
+				kind: id(&item["type"])?,
+				outcome,
+			})
 		},
 		"bemItemPromoted" => {
 			let presentation = item["presentation"]["type"].as_str()?;
@@ -344,7 +340,7 @@ fn realtime(item: &Value) -> Option<Content> {
 				_ => return None,
 			};
 
-			Some(Content::Promotion {
+			Some(AgentTimelineContent::Promotion {
 				item_id,
 				session_id,
 				turn_id: id(&item["turnId"])?,
@@ -385,8 +381,8 @@ fn visible_text(text: &str) -> (String, bool) {
 }
 
 async fn project_with_saved_origins(
-	store: Option<&decodex_database::SqliteStore>,
-	client: &decodex_codex::app_server_client::AppServerClient,
+	store: Option<&SqliteStore>,
+	client: &AppServerClient,
 	work: &str,
 	thread: &str,
 	value: &Value,
@@ -396,7 +392,7 @@ async fn project_with_saved_origins(
 		.iter()
 		.filter(|row| row["item"]["type"] == "reasoning")
 		.filter_map(|row| row["turnId"].as_str().map(str::to_owned))
-		.collect::<std::collections::BTreeSet<_>>();
+		.collect::<BTreeSet<_>>();
 	let mut origins = match store {
 		Some(store) => store
 			.read_agent_reasoning_origins(
@@ -440,7 +436,12 @@ mod tests {
 
 	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-	use crate::agent::timeline::{self, Content, ProjectionError, Value};
+	use crate::{
+		agent::timeline::{self, AgentTimelineContent, ProjectionError, Value},
+		agent_usage_estimate::{Source, SourceKey},
+	};
+	use decodex_codex::app_server_client::AppServerClient;
+	use decodex_protocol::AgentTimelineResult;
 
 	#[test]
 	fn reasoning_history_hides_voice_items_and_uses_saved_origins_across_pages() {
@@ -464,7 +465,7 @@ mod tests {
 
 		assert_eq!(projected.entries.len(), 1);
 		assert!(
-			matches!(&projected.entries[0].content, Content::Item { item_id, .. } if item_id == "typed")
+			matches!(&projected.entries[0].content, AgentTimelineContent::Item { item_id, .. } if item_id == "typed")
 		);
 	}
 
@@ -475,21 +476,23 @@ mod tests {
 			"content":["PRIVATE_RAW_REASONING"],"encryptedContent":"PRIVATE_ENCRYPTED"}});
 		let projected = timeline::ordinary(&row).expect("public summary");
 
-		assert!(matches!(&projected, Content::Item { text, activity: None, truncated: false, .. }
-			if text == "Checking the request.\n\nComparing the results."));
+		assert!(
+			matches!(&projected, AgentTimelineContent::Item { text, activity: None, truncated: false, .. }
+			if text == "Checking the request.\n\nComparing the results.")
+		);
 		assert!(!serde_json::to_string(&projected).unwrap().contains("PRIVATE"));
 
 		row["item"]["summary"] = serde_json::json!(["界".repeat(4_000)]);
 
 		assert!(
-			matches!(timeline::ordinary(&row).unwrap(), Content::Item { text, truncated: true, .. }
+			matches!(timeline::ordinary(&row).unwrap(), AgentTimelineContent::Item { text, truncated: true, .. }
 			if text.len() <= 8_192 && text.chars().all(|c| c == '界'))
 		);
 
 		row["item"]["summary"] = serde_json::json!([]);
 
 		assert!(
-			matches!(timeline::ordinary(&row).unwrap(), Content::Item { text, .. } if text.is_empty())
+			matches!(timeline::ordinary(&row).unwrap(), AgentTimelineContent::Item { text, .. } if text.is_empty())
 		);
 
 		row["item"]["summary"] = serde_json::json!([{"text":"do not coerce"}]);
@@ -505,7 +508,9 @@ mod tests {
 			"_meta":{"mcp/www_authenticate":["Bearer PRIVATE"]}}}}],"nextCursor":null,
 			"activeRealtimeSessionAtPageStart":null});
 		let projected = timeline::project("thread", &page).expect("history");
-		let Content::Item { activity: Some(activity), .. } = &projected.entries[0].content else {
+		let AgentTimelineContent::Item { activity: Some(activity), .. } =
+			&projected.entries[0].content
+		else {
 			panic!("missing tool activity");
 		};
 
@@ -519,13 +524,13 @@ mod tests {
 		let mut row = serde_json::json!({"type":"item","position":4,"turnId":"turn","item":{"type":"plan","id":"plan-item","text":"## Final plan\n1. Verify the source\n2. Apply the change"}});
 
 		assert!(
-			matches!(timeline::ordinary(&row).unwrap(),Content::Item {kind,text,truncated:false,..} if kind == "plan" && text == row["item"]["text"])
+			matches!(timeline::ordinary(&row).unwrap(),AgentTimelineContent::Item {kind,text,truncated:false,..} if kind == "plan" && text == row["item"]["text"])
 		);
 
 		row["item"]["text"] = serde_json::json!("界".repeat(4_000));
 
 		assert!(
-			matches!(timeline::ordinary(&row).unwrap(),Content::Item {text,truncated:true,..} if text.len() <= 8_192 && text.chars().all(|c| c == '界'))
+			matches!(timeline::ordinary(&row).unwrap(),AgentTimelineContent::Item {text,truncated:true,..} if text.len() <= 8_192 && text.chars().all(|c| c == '界'))
 		);
 
 		row["item"]["text"] = Value::Null;
@@ -539,7 +544,7 @@ mod tests {
 			let row = serde_json::json!({"turnId":"turn","item":{"id":"item","type":"agentMessage","text":"Public text","phase":phase}});
 
 			assert!(
-				matches!(timeline::ordinary(&row).unwrap(),Content::Item {phase:Some(observed),..} if observed == phase)
+				matches!(timeline::ordinary(&row).unwrap(),AgentTimelineContent::Item {phase:Some(observed),..} if observed == phase)
 			);
 		}
 	}
@@ -550,21 +555,23 @@ mod tests {
 			"status":"failed","durationMs":5,"error":{"message":"Model is overloaded. Try again.","additionalDetails":"private raw metadata"}});
 		let projected = timeline::entry(&row).unwrap();
 
-		assert!(matches!(projected.content, Content::TurnBoundary { error:Some(ref error), .. }
-			if error.message == "Model is overloaded. Try again." && !error.truncated));
+		assert!(
+			matches!(projected.content, AgentTimelineContent::TurnBoundary { error:Some(ref error), .. }
+			if error.message == "Model is overloaded. Try again." && !error.truncated)
+		);
 		assert!(!serde_json::to_string(&projected).unwrap().contains("private raw metadata"));
 
 		row["error"]["message"] = serde_json::json!("界".repeat(4_000));
 
 		assert!(
-			matches!(timeline::entry(&row).unwrap().content, Content::TurnBoundary { error:Some(error), .. }
+			matches!(timeline::entry(&row).unwrap().content, AgentTimelineContent::TurnBoundary { error:Some(error), .. }
 			if error.truncated && error.message.len() <= 8_192 && error.message.chars().all(|c| c == '界'))
 		);
 
 		row["error"]["message"] = serde_json::json!("Bearer abcdefgh");
 
 		assert!(
-			matches!(timeline::entry(&row).unwrap().content, Content::TurnBoundary { error:Some(error), .. }
+			matches!(timeline::entry(&row).unwrap().content, AgentTimelineContent::TurnBoundary { error:Some(error), .. }
 			if error.truncated && error.message == "Sensitive details omitted")
 		);
 
@@ -589,7 +596,7 @@ mod tests {
 			let content = timeline::ordinary(&row).unwrap();
 
 			assert!(
-				matches!(content, Content::Item { text, truncated:false, ref turn_id, ref item_id, .. }
+				matches!(content, AgentTimelineContent::Item { text, truncated:false, ref turn_id, ref item_id, .. }
 				if text == display && turn_id == "turn" && item_id == "message")
 			);
 		}
@@ -606,7 +613,7 @@ mod tests {
 
 		assert_eq!(page.active_realtime_session_at_page_start.as_deref(), Some("session"));
 		assert!(
-			matches!(&page.entries[1].content, Content::Promotion {item_id,agent_item_id,..} if item_id=="promotion" && agent_item_id=="tool")
+			matches!(&page.entries[1].content, AgentTimelineContent::Promotion {item_id,agent_item_id,..} if item_id=="promotion" && agent_item_id=="tool")
 		);
 		assert!(!serde_json::to_string(&page).unwrap().contains("NEVER_PROJECT"));
 	}
@@ -641,7 +648,7 @@ mod tests {
 		let content = timeline::ordinary(&serde_json::json!({"turnId":"turn","item":{"type":"commandExecution","id":"command","status":"inProgress"}})).unwrap();
 
 		assert!(
-			matches!(content, Content::Item { activity:Some(activity), .. } if activity.status=="running")
+			matches!(content, AgentTimelineContent::Item { activity:Some(activity), .. } if activity.status=="running")
 		);
 	}
 
@@ -649,13 +656,12 @@ mod tests {
 	async fn reasoning_origins_read_earlier_native_item_pages_without_local_handoff() {
 		let (local, remote) = io::duplex(65_536);
 		let (reader, writer) = io::split(local);
-		let (client, _events) =
-			decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
+		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
-			let (reader, mut writer) = io::split(remote);
-			let mut lines = BufReader::new(reader).lines();
 			let item = |id, kind, text| serde_json::json!({"turnId":"turn","item":{"id":id,"type":kind,"summary":[text]}});
 			let marker = serde_json::json!({"turnId":"turn","item":{"type":"userMessage","id":"handoff","content":[{"type":"text","text":"<realtime_delegation><input>Voice</input></realtime_delegation>"}]}});
+			let (reader, mut writer) = io::split(remote);
+			let mut lines = BufReader::new(reader).lines();
 
 			for (cursor, page) in [
 				(
@@ -695,7 +701,7 @@ mod tests {
 		assert_eq!(projected.entries.len(), 1);
 		assert!(!serde_json::to_string(&projected).unwrap().contains("PRIVATE"));
 		assert!(
-			matches!(&projected.entries[0].content,Content::Item { item_id,.. } if item_id == "typed")
+			matches!(&projected.entries[0].content,AgentTimelineContent::Item { item_id,.. } if item_id == "typed")
 		);
 
 		server.await.unwrap();
@@ -707,12 +713,11 @@ mod tests {
 			let changed = change != "none";
 			let (local, remote) = io::duplex(512 * 1_024);
 			let (reader, writer) = io::split(local);
-			let (client, _events) =
-				decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
+			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
+				let limits = if changed { vec![30] } else { vec![30, 15, 7] };
 				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
-				let limits = if changed { vec![30] } else { vec![30, 15, 7] };
 
 				for limit in limits {
 					for method in ["thread/read", "thread/timeline/list"] {
@@ -758,9 +763,9 @@ mod tests {
 							return None;
 						}
 
-						Some(crate::agent_usage_estimate::Source {
+						Some(Source {
 							client,
-							key: crate::agent_usage_estimate::SourceKey {
+							key: SourceKey {
 								history_revision: u64::from(
 									change == "history" && observation >= 2,
 								),
@@ -803,12 +808,31 @@ mod tests {
 			server.await.unwrap();
 
 			if changed {
-				assert!(matches!(result, decodex_protocol::AgentTimelineResult::Unavailable));
+				assert!(matches!(result, AgentTimelineResult::Unavailable));
 			} else {
 				assert!(
-					matches!(result, decodex_protocol::AgentTimelineResult::Available {page,..} if page.entries.len()==7 && page.next_cursor.as_deref()==Some("older"))
+					matches!(result, AgentTimelineResult::Available {page,..} if page.entries.len()==7 && page.next_cursor.as_deref()==Some("older"))
 				);
 			}
+		}
+	}
+}
+#[cfg(test)]
+mod app_ui_projection_tests {
+	use crate::agent::timeline::{self, AgentTimelineContent};
+	#[test]
+	fn retired_app_metadata_keeps_the_tool_result_without_a_viewer() {
+		for (kind, metadata, expected) in [
+			("mcpToolCall", serde_json::json!({"resourceUri":"ui://fixture/view"}), false),
+			("mcpToolCall", serde_json::json!(null), false),
+			("mcpToolCall", serde_json::json!({"resourceUri":"https://example.com"}), false),
+			("agentMessage", serde_json::json!({"resourceUri":"ui://fixture/view"}), false),
+		] {
+			let row = serde_json::json!({"turnId":"turn","item":{"id":"call","type":kind,"text":"Fixture","mcpAppUi":metadata}});
+
+			assert!(
+				matches!(timeline::ordinary(&row).unwrap(),AgentTimelineContent::Item{app_ui,..} if app_ui==expected)
+			);
 		}
 	}
 }
