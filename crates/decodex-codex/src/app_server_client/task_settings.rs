@@ -16,7 +16,6 @@ pub struct NativeTaskModelSettings {
 	/// Configured native tier. Null is known-unset, unlike an absent field.
 	pub service_tier: Option<String>,
 }
-
 impl NativeTaskModelSettings {
 	/// Project only complete bounded facts. Unknown fields do not widen this projection.
 	pub fn from_notification(value: &Value) -> Option<Self> {
@@ -37,6 +36,7 @@ impl NativeTaskModelSettings {
 			Value::String(s) if valid(s, 128) => Some(Some(s.clone())),
 			_ => None,
 		};
+
 		Some(Self {
 			model: text("model", 256)?,
 			model_provider: text("modelProvider", 256)?,
@@ -59,20 +59,31 @@ mod tests {
 		let good = json!({"model":"future-model","modelProvider":"custom","effort":null,"serviceTier":"future-tier",
 			"collaborationMode":{"settings":{"developer_instructions":"private instructions"}},"approvalPolicy":"never"});
 		let projected = NativeTaskModelSettings::from_notification(&good).unwrap();
+
 		assert_eq!(projected.effort, None);
 		assert_eq!(projected.service_tier.as_deref(), Some("future-tier"));
 		assert!(!serde_json::to_string(&projected).unwrap().contains("private instructions"));
+
 		let mut response = good.clone();
+
 		response.as_object_mut().unwrap().remove("effort");
+
 		response["reasoningEffort"] = Value::Null;
+
 		assert_eq!(NativeTaskModelSettings::from_thread_response(&response), Some(projected));
 		assert!(NativeTaskModelSettings::from_notification(&response).is_none());
+
 		for field in ["model", "modelProvider", "effort", "serviceTier"] {
 			let mut missing = good.clone();
+
 			missing.as_object_mut().unwrap().remove(field);
+
 			assert!(NativeTaskModelSettings::from_notification(&missing).is_none());
+
 			let mut invalid = good.clone();
+
 			invalid[field] = json!("\n");
+
 			assert!(NativeTaskModelSettings::from_notification(&invalid).is_none());
 		}
 	}

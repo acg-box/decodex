@@ -1,4 +1,5 @@
 use super::*;
+
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 fn options() -> TemporaryStructuredOptions {
@@ -11,54 +12,11 @@ fn options() -> TemporaryStructuredOptions {
 	}
 }
 
-#[tokio::test]
-async fn temporary_permissions_override_builtin_defaults_but_preserve_custom_profiles() {
-	for profile in [None, Some(":workspace"), Some(":read-only"), Some("restricted")] {
-		let (local, remote) = tokio::io::duplex(16384);
-		let (read, write) = tokio::io::split(local);
-		let (client, _events) = AppServerClient::from_io(read, write);
-		let server = tokio::spawn(async move {
-			let (read, mut write) = tokio::io::split(remote);
-			let mut lines = BufReader::new(read).lines();
-			for method in ["config/read", "thread/start", "thread/unsubscribe"] {
-				let req: Value =
-					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
-				assert_eq!(req["method"], method);
-				let result = match method {
-					"config/read" => json!({"config":{"default_permissions":":workspace"}}),
-					"thread/start" => {
-						let params = &req["params"];
-						if profile == Some("restricted") {
-							assert_eq!(params["permissions"], "restricted");
-							assert!(params.get("sandbox").is_none());
-							assert!(params["config"].get("default_permissions").is_none());
-						} else {
-							assert_eq!(params["sandbox"], "read-only");
-							assert!(params.get("permissions").is_none());
-							assert_eq!(params["config"]["default_permissions"], ":read-only");
-						}
-						json!({"thread":{"id":"temporary","ephemeral":true},
-							"sandbox":{"type":"readOnly"},"activePermissionProfile":{"id":profile}})
-					},
-					_ => json!({"status":"unsubscribed"}),
-				};
-				write
-					.write_all(format!("{}\n", json!({"id":req["id"],"result":result})).as_bytes())
-					.await
-					.unwrap();
-			}
-		});
-		let mut options = options();
-		options.active_permission_profile = profile.map(str::to_owned);
-		client.start_temporary_structured(options).await.unwrap().cancel().await.unwrap();
-		server.await.unwrap();
-	}
-}
-
 #[test]
 fn isolation_disables_effective_and_observed_mcp_without_mutating_configuration() {
 	let effective = json!({"mcp_servers":{"native":{"required":true,"command":"must-not-run"}}});
 	let config = isolation_config(&effective, &["observed".into()]).unwrap();
+
 	assert_eq!(
 		config["mcp_servers"],
 		json!({"native":{"enabled":false},"observed":{"enabled":false}})
@@ -78,6 +36,7 @@ fn message(thread: &str, turn: &str, text: &str) -> ServerEvent {
 		params: json!({"threadId":thread,"turnId":turn,"item":{"type":"agentMessage","text":text}}),
 	}
 }
+
 fn completed(thread: &str, turn: &str, status: &str) -> ServerEvent {
 	ServerEvent::Notification {
 		method: "turn/completed".into(),
@@ -86,8 +45,61 @@ fn completed(thread: &str, turn: &str, status: &str) -> ServerEvent {
 }
 
 #[tokio::test]
+async fn temporary_permissions_override_builtin_defaults_but_preserve_custom_profiles() {
+	for profile in [None, Some(":workspace"), Some(":read-only"), Some("restricted")] {
+		let (local, remote) = tokio::io::duplex(16_384);
+		let (read, write) = tokio::io::split(local);
+		let (client, _events) = AppServerClient::from_io(read, write);
+		let server = tokio::spawn(async move {
+			let (read, mut write) = tokio::io::split(remote);
+			let mut lines = BufReader::new(read).lines();
+
+			for method in ["config/read", "thread/start", "thread/unsubscribe"] {
+				let req: Value =
+					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
+				assert_eq!(req["method"], method);
+
+				let result = match method {
+					"config/read" => json!({"config":{"default_permissions":":workspace"}}),
+					"thread/start" => {
+						let params = &req["params"];
+
+						if profile == Some("restricted") {
+							assert_eq!(params["permissions"], "restricted");
+							assert!(params.get("sandbox").is_none());
+							assert!(params["config"].get("default_permissions").is_none());
+						} else {
+							assert_eq!(params["sandbox"], "read-only");
+							assert!(params.get("permissions").is_none());
+							assert_eq!(params["config"]["default_permissions"], ":read-only");
+						}
+
+						json!({"thread":{"id":"temporary","ephemeral":true},
+							"sandbox":{"type":"readOnly"},"activePermissionProfile":{"id":profile}})
+					},
+					_ => json!({"status":"unsubscribed"}),
+				};
+
+				write
+					.write_all(format!("{}\n", json!({"id":req["id"],"result":result})).as_bytes())
+					.await
+					.unwrap();
+			}
+		});
+		let mut options = options();
+
+		options.active_permission_profile = profile.map(str::to_owned);
+
+		client.start_temporary_structured(options).await.unwrap().cancel().await.unwrap();
+		server.await.unwrap();
+	}
+}
+
+#[tokio::test]
 async fn collector_keeps_latest_exact_turn_and_rejects_incomplete_or_oversized_results() {
 	let (tx, mut rx) = mpsc::channel(8);
+
 	for event in [
 		message("other", "turn", "wrong thread"),
 		message("thread", "other", "wrong turn"),
@@ -98,43 +110,53 @@ async fn collector_keeps_latest_exact_turn_and_rejects_incomplete_or_oversized_r
 	] {
 		tx.send(event).await.unwrap();
 	}
+
 	assert_eq!(collect(&mut rx, "thread", "turn").await.unwrap(), "latest");
+
 	for event in [
 		message("thread", "turn", &"x".repeat(MAX_RESPONSE + 1)),
 		completed("thread", "turn", "failed"),
 		completed("thread", "turn", "completed"),
 	] {
 		let (tx, mut rx) = mpsc::channel(1);
+
 		tx.send(event).await.unwrap();
+
 		drop(tx);
+
 		assert!(collect(&mut rx, "thread", "turn").await.is_err());
 	}
 }
 
 #[tokio::test]
 async fn cancellation_waits_for_turn_identity_then_interrupts_and_detaches() {
-	let (local, remote) = tokio::io::duplex(16384);
+	let (local, remote) = tokio::io::duplex(16_384);
 	let (read, write) = tokio::io::split(local);
 	let (client, events) = AppServerClient::from_io(read, write);
 	let (cancel, watch) = watch::channel(false);
 	let server = tokio::spawn(async move {
 		let (read, mut write) = tokio::io::split(remote);
 		let mut lines = BufReader::new(read).lines();
+
 		for method in
 			["config/read", "thread/start", "turn/start", "turn/interrupt", "thread/unsubscribe"]
 		{
 			let req: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 			assert_eq!(req["method"], method);
+
 			let result = match method {
 				"config/read" => json!({"config":{"mcp_servers":{}}}),
 				"thread/start" => {
 					assert_eq!(req["params"]["ephemeral"], true);
 					assert_eq!(req["params"]["dynamicTools"], json!([]));
+
 					json!({"thread":{"id":"temporary","ephemeral":true},"sandbox":{"type":"readOnly"}})
 				},
 				"turn/start" => {
 					cancel.send(true).unwrap();
+
 					json!({"turn":{"id":"exact-turn"}})
 				},
 				"turn/interrupt" => {
@@ -142,13 +164,16 @@ async fn cancellation_waits_for_turn_identity_then_interrupts_and_detaches() {
 						req["params"],
 						json!({"threadId":"temporary","turnId":"exact-turn"})
 					);
+
 					json!({})
 				},
 				_ => {
 					assert_eq!(req["params"]["threadId"], "temporary");
+
 					json!({"status":"unsubscribed"})
 				},
 			};
+
 			write
 				.write_all(format!("{}\n", json!({"id":req["id"],"result":result})).as_bytes())
 				.await
@@ -156,31 +181,37 @@ async fn cancellation_waits_for_turn_identity_then_interrupts_and_detaches() {
 		}
 	});
 	let thread = client.start_temporary_structured(options()).await.unwrap();
+
 	assert!(
 		thread.run("summary".into(), json!({"type":"object"}), None, events, watch).await.is_err()
 	);
+
 	server.await.unwrap();
 }
 
 #[tokio::test]
 async fn rejected_permissions_and_pre_cancelled_requests_detach_without_inference() {
 	for invalid in [false, true] {
-		let (local, remote) = tokio::io::duplex(16384);
+		let (local, remote) = tokio::io::duplex(16_384);
 		let (read, write) = tokio::io::split(local);
 		let (client, events) = AppServerClient::from_io(read, write);
 		let server = tokio::spawn(async move {
 			let (read, mut write) = tokio::io::split(remote);
 			let mut lines = BufReader::new(read).lines();
+
 			for method in ["config/read", "thread/start", "thread/unsubscribe"] {
 				let req: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				assert_eq!(req["method"], method);
+
 				let result = match method {
 					"config/read" => json!({"config":{}}),
 					"thread/start" =>
 						json!({"thread":{"id":"temporary","ephemeral":true},"sandbox":{"type":if invalid {"dangerFullAccess"} else {"readOnly"}}}),
 					_ => json!({"status":"unsubscribed"}),
 				};
+
 				write
 					.write_all(format!("{}\n", json!({"id":req["id"],"result":result})).as_bytes())
 					.await
@@ -188,10 +219,12 @@ async fn rejected_permissions_and_pre_cancelled_requests_detach_without_inferenc
 			}
 		});
 		let thread = client.start_temporary_structured(options()).await;
+
 		if invalid {
 			assert!(thread.is_err());
 		} else {
 			let (_cancel, watch) = watch::channel(true);
+
 			assert!(
 				thread
 					.unwrap()
@@ -200,6 +233,7 @@ async fn rejected_permissions_and_pre_cancelled_requests_detach_without_inferenc
 					.is_err()
 			);
 		}
+
 		server.await.unwrap();
 	}
 }

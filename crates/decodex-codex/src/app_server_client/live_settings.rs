@@ -1,6 +1,8 @@
 //! Exact-turn settings publication. Native policy and pending approvals remain authoritative.
 use super::{AppServerClient, ClientError, HistoryGuard};
+
 use serde::{Deserialize, Serialize};
+
 use serde_json::{Value, json};
 
 /// Explicit review routing for subsequently captured steps in one live turn.
@@ -23,22 +25,6 @@ pub enum LiveSettingsOutcome {
 	TargetUnavailable,
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct ReviewerUpdate {
-	thread_id: String,
-	turn_id: String,
-	approvals_reviewer: LiveReviewer,
-}
-
-/// Admit only an exact-turn reviewer edit through the retained native connection.
-pub fn is_live_reviewer_update(value: &Value) -> bool {
-	serde_json::from_value::<ReviewerUpdate>(value.clone()).is_ok_and(|update| {
-		let _reviewer = update.approvals_reviewer;
-		valid_id(&update.thread_id) && valid_id(&update.turn_id)
-	})
-}
-
 /// Model and effort selected from the current account-bound native catalog.
 /// This request changes one running turn, never saved task or application defaults.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -49,7 +35,6 @@ pub struct LiveModelUpdate {
 	model: String,
 	effort: String,
 }
-
 impl LiveModelUpdate {
 	/// Bind the selection to its originating thread and active turn.
 	/// The runtime must check catalog support, feature availability and source ownership.
@@ -60,6 +45,7 @@ impl LiveModelUpdate {
 			model: model.into(),
 			effort: effort.into(),
 		};
+
 		if update.valid() { Ok(update) } else { Err(ClientError::InvalidFrame) }
 	}
 
@@ -74,13 +60,12 @@ impl LiveModelUpdate {
 	}
 }
 
-/// Recognize only explicit model/effort edits; reject mixed permission or reviewer edits.
-pub fn is_live_model_update(value: &Value) -> bool {
-	serde_json::from_value::<LiveModelUpdate>(value.clone()).is_ok_and(|update| update.valid())
-}
-
-fn valid_id(value: &str) -> bool {
-	!value.trim().is_empty() && value.len() <= 512 && !value.chars().any(char::is_control)
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ReviewerUpdate {
+	thread_id: String,
+	turn_id: String,
+	approvals_reviewer: LiveReviewer,
 }
 
 impl AppServerClient {
@@ -94,7 +79,9 @@ impl AppServerClient {
 		if !update.valid() {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let params = serde_json::to_value(update).map_err(|_| ClientError::InvalidFrame)?;
+
 		self.publish_live_settings(params, guard).await
 	}
 
@@ -111,7 +98,9 @@ impl AppServerClient {
 		if !valid_id(thread) || !valid_id(turn) {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let params = json!({"threadId":thread,"turnId":turn,"approvalsReviewer":reviewer});
+
 		self.publish_live_settings(params, guard).await
 	}
 
@@ -131,21 +120,43 @@ impl AppServerClient {
 		struct Receipt {
 			status: LiveSettingsOutcome,
 		}
+
 		serde_json::from_value::<Receipt>(value)
 			.map(|receipt| receipt.status)
 			.map_err(|_| ClientError::InvalidFrame)
 	}
 }
 
+/// Admit only an exact-turn reviewer edit through the retained native connection.
+pub fn is_live_reviewer_update(value: &Value) -> bool {
+	serde_json::from_value::<ReviewerUpdate>(value.clone()).is_ok_and(|update| {
+		let _reviewer = update.approvals_reviewer;
+
+		valid_id(&update.thread_id) && valid_id(&update.turn_id)
+	})
+}
+
+/// Recognize only explicit model/effort edits; reject mixed permission or reviewer edits.
+pub fn is_live_model_update(value: &Value) -> bool {
+	serde_json::from_value::<LiveModelUpdate>(value.clone()).is_ok_and(|update| update.valid())
+}
+
+fn valid_id(value: &str) -> bool {
+	!value.trim().is_empty() && value.len() <= 512 && !value.chars().any(char::is_control)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+
 	use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 	#[test]
 	fn reviewer_update_cannot_smuggle_other_settings_or_missing_identity() {
 		let good = json!({"threadId":"t","turnId":"u","approvalsReviewer":"user"});
+
 		assert!(is_live_reviewer_update(&good));
+
 		for (field, bad) in [
 			("threadId", json!("")),
 			("turnId", json!("\n")),
@@ -155,64 +166,19 @@ mod tests {
 			("approvalPolicy", json!("never")),
 		] {
 			let mut value = good.clone();
-			value[field] = bad;
-			assert!(!is_live_reviewer_update(&value));
-		}
-	}
 
-	#[tokio::test]
-	async fn exact_live_reviewer_receipt_is_not_a_future_default_or_retry() {
-		for status in ["applied", "targetUnavailable", "unknown", "rejected", "lost"] {
-			let (local, remote) = tokio::io::duplex(4096);
-			let (r, w) = tokio::io::split(local);
-			let (client, _events) = AppServerClient::from_io(r, w);
-			let guard = client.history_guard(0).unwrap();
-			let server = tokio::spawn(async move {
-				let (r, mut w) = tokio::io::split(remote);
-				let mut lines = BufReader::new(r).lines();
-				let request: Value =
-					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
-				assert_eq!(request["method"], "turn/settings/update");
-				assert_eq!(
-					request["params"],
-					json!({"threadId":"thread","turnId":"original","approvalsReviewer":"auto_review"})
-				);
-				if status == "lost" {
-					return;
-				}
-				let reply = if status == "rejected" {
-					json!({"id":request["id"],"error":{"code":-32600,"message":"managed reviewer requirement"}})
-				} else {
-					json!({"id":request["id"],"result":{"status":status}})
-				};
-				w.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
-				assert!(
-					lines.next_line().await.unwrap().is_none(),
-					"must not retry or mutate defaults"
-				);
-			});
-			let result = client
-				.update_live_reviewer("thread", "original", LiveReviewer::AutoReview, guard)
-				.await;
-			match status {
-				"applied" => assert_eq!(result.unwrap(), LiveSettingsOutcome::Applied),
-				"targetUnavailable" =>
-					assert_eq!(result.unwrap(), LiveSettingsOutcome::TargetUnavailable),
-				"rejected" => assert!(
-					matches!(result, Err(ClientError::Remote(error)) if error.code == -32600)
-				),
-				"lost" => assert!(matches!(result, Err(ClientError::Closed | ClientError::Io))),
-				_ => assert!(matches!(result, Err(ClientError::InvalidFrame))),
-			}
-			drop(client);
-			server.await.unwrap();
+			value[field] = bad;
+
+			assert!(!is_live_reviewer_update(&value));
 		}
 	}
 
 	#[test]
 	fn live_model_selection_rejects_unrelated_fields_and_reserve() {
 		let good = json!({"threadId":"thread","turnId":"turn","model":"future-model","effort":"future-effort"});
+
 		assert!(is_live_model_update(&good));
+
 		for (field, value) in [
 			("threadId", json!("")),
 			("turnId", json!("\n")),
@@ -226,15 +192,74 @@ mod tests {
 			("collaborationMode", json!({})),
 		] {
 			let mut bad = good.clone();
+
 			bad[field] = value;
+
 			assert!(!is_live_model_update(&bad), "accepted unrelated or invalid field: {field}");
+		}
+	}
+
+	#[tokio::test]
+	async fn exact_live_reviewer_receipt_is_not_a_future_default_or_retry() {
+		for status in ["applied", "targetUnavailable", "unknown", "rejected", "lost"] {
+			let (local, remote) = tokio::io::duplex(4_096);
+			let (r, w) = tokio::io::split(local);
+			let (client, _events) = AppServerClient::from_io(r, w);
+			let guard = client.history_guard(0).unwrap();
+			let server = tokio::spawn(async move {
+				let (r, mut w) = tokio::io::split(remote);
+				let mut lines = BufReader::new(r).lines();
+				let request: Value =
+					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
+				assert_eq!(request["method"], "turn/settings/update");
+				assert_eq!(
+					request["params"],
+					json!({"threadId":"thread","turnId":"original","approvalsReviewer":"auto_review"})
+				);
+
+				if status == "lost" {
+					return;
+				}
+
+				let reply = if status == "rejected" {
+					json!({"id":request["id"],"error":{"code":-32_600,"message":"managed reviewer requirement"}})
+				} else {
+					json!({"id":request["id"],"result":{"status":status}})
+				};
+
+				w.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
+
+				assert!(
+					lines.next_line().await.unwrap().is_none(),
+					"must not retry or mutate defaults"
+				);
+			});
+			let result = client
+				.update_live_reviewer("thread", "original", LiveReviewer::AutoReview, guard)
+				.await;
+
+			match status {
+				"applied" => assert_eq!(result.unwrap(), LiveSettingsOutcome::Applied),
+				"targetUnavailable" =>
+					assert_eq!(result.unwrap(), LiveSettingsOutcome::TargetUnavailable),
+				"rejected" => assert!(
+					matches!(result, Err(ClientError::Remote(error)) if error.code == -32_600)
+				),
+				"lost" => assert!(matches!(result, Err(ClientError::Closed | ClientError::Io))),
+				_ => assert!(matches!(result, Err(ClientError::InvalidFrame))),
+			}
+
+			drop(client);
+
+			server.await.unwrap();
 		}
 	}
 
 	#[tokio::test]
 	async fn live_model_selection_keeps_exact_scope_and_never_retries_uncertain_replies() {
 		for status in ["applied", "targetUnavailable", "unexpected", "rejected", "lost"] {
-			let (local, remote) = tokio::io::duplex(4096);
+			let (local, remote) = tokio::io::duplex(4_096);
 			let (r, w) = tokio::io::split(local);
 			let (client, _events) = AppServerClient::from_io(r, w);
 			let server = tokio::spawn(async move {
@@ -242,20 +267,25 @@ mod tests {
 				let mut lines = BufReader::new(r).lines();
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				assert_eq!(request["method"], "turn/settings/update");
 				assert_eq!(
 					request["params"],
 					json!({"threadId":"thread","turnId":"original","model":"selected","effort":"high"})
 				);
+
 				if status == "lost" {
 					return;
 				}
+
 				let reply = if status == "rejected" {
-					json!({"id":request["id"],"error":{"code":-32600,"message":"feature disabled"}})
+					json!({"id":request["id"],"error":{"code":-32_600,"message":"feature disabled"}})
 				} else {
 					json!({"id":request["id"],"result":{"status":status}})
 				};
+
 				w.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
+
 				assert!(
 					lines.next_line().await.unwrap().is_none(),
 					"must not retry or write defaults"
@@ -263,26 +293,29 @@ mod tests {
 			});
 			let update = LiveModelUpdate::new("thread", "original", "selected", "high").unwrap();
 			let result = client.update_live_model(&update, client.history_guard(0).unwrap()).await;
+
 			match status {
 				"applied" => assert_eq!(result.unwrap(), LiveSettingsOutcome::Applied),
 				"targetUnavailable" =>
 					assert_eq!(result.unwrap(), LiveSettingsOutcome::TargetUnavailable),
 				"rejected" =>
-					assert!(matches!(result,Err(ClientError::Remote(e)) if e.code == -32600)),
+					assert!(matches!(result,Err(ClientError::Remote(e)) if e.code == -32_600)),
 				"lost" => assert!(matches!(result, Err(ClientError::Closed | ClientError::Io))),
 				_ => assert!(matches!(result, Err(ClientError::InvalidFrame))),
 			}
+
 			drop(client);
+
 			server.await.unwrap();
 		}
 	}
 
 	#[tokio::test]
 	async fn live_updates_reject_a_foreign_history_guard_before_dispatch() {
-		let (local, remote) = tokio::io::duplex(4096);
+		let (local, remote) = tokio::io::duplex(4_096);
 		let (r, w) = tokio::io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
-		let (other, _peer) = tokio::io::duplex(4096);
+		let (other, _peer) = tokio::io::duplex(4_096);
 		let (r, w) = tokio::io::split(other);
 		let (other, _other_events) = AppServerClient::from_io(r, w);
 		let result = client
@@ -293,11 +326,16 @@ mod tests {
 				other.history_guard(0).unwrap(),
 			)
 			.await;
+
 		assert!(matches!(result, Err(ClientError::StaleHistory)));
+
 		let update = LiveModelUpdate::new("thread", "turn", "selected", "high").unwrap();
 		let result = client.update_live_model(&update, other.history_guard(0).unwrap()).await;
+
 		assert!(matches!(result, Err(ClientError::StaleHistory)));
+
 		drop(client);
+
 		assert!(BufReader::new(remote).lines().next_line().await.unwrap().is_none());
 	}
 }

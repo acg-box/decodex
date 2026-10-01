@@ -366,6 +366,7 @@ impl ExactSubmittedTurnReadback {
 		{
 			return Err("Codex submitted Turn readback is invalid");
 		}
+
 		Ok(Self { provider_turn_id, status, assistant_text, witness_digest })
 	}
 

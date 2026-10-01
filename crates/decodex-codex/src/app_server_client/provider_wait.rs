@@ -7,7 +7,6 @@ use std::{
 
 #[derive(Clone, Default)]
 pub(super) struct ProviderWait(Arc<Mutex<HashMap<String, (String, bool)>>>);
-
 impl ProviderWait {
 	pub(super) fn clear(&self) {
 		if let Ok(mut turns) = self.0.lock() {
@@ -18,6 +17,7 @@ impl ProviderWait {
 	pub(super) fn buffering_turn(&self, thread: &str) -> Option<String> {
 		let turns = self.0.lock().ok()?;
 		let (turn, buffering) = turns.get(thread)?;
+
 		buffering.then(|| turn.clone())
 	}
 
@@ -25,6 +25,7 @@ impl ProviderWait {
 		let ServerEvent::Notification { method, params } = event else { return };
 		let Some(thread) = params["threadId"].as_str().filter(|id| !id.is_empty()) else { return };
 		let Ok(mut turns) = self.0.lock() else { return };
+
 		match method.as_str() {
 			"turn/started" => {
 				if let Some(turn) = params["turn"]["id"].as_str().filter(|id| !id.is_empty()) {
@@ -61,6 +62,7 @@ impl AppServerClient {
 		if *self.closed.borrow() || self.outbound.is_closed() {
 			return None;
 		}
+
 		self.server_requests.safety_buffering_turn(thread)
 	}
 }
@@ -73,10 +75,11 @@ mod tests {
 
 	#[tokio::test]
 	async fn safety_buffering_is_exact_live_connection_state_not_replayed_history() {
-		let (local, remote) = tokio::io::duplex(8192);
+		let (local, remote) = tokio::io::duplex(8_192);
 		let (r, w) = tokio::io::split(local);
 		let (client, mut events) = AppServerClient::from_io(r, w);
 		let (_r, mut w) = tokio::io::split(remote);
+
 		for (method, params, expected) in [
 			(
 				"model/safetyBuffering/updated",
@@ -146,11 +149,14 @@ mod tests {
 			w.write_all(format!("{}\n", json!({"method":method,"params":params})).as_bytes())
 				.await
 				.unwrap();
+
 			assert!(matches!(events.recv().await, Some(ServerEvent::Notification { .. })));
 			assert_eq!(client.safety_buffering_turn("t").as_deref(), expected, "{method}");
 		}
+
 		drop(w);
 		drop(_r);
+
 		assert!(matches!(events.recv().await, Some(ServerEvent::Closed(_))));
 		assert_eq!(client.safety_buffering_turn("t"), None);
 	}

@@ -9,23 +9,6 @@ use std::{
 
 #[derive(Clone, Default)]
 pub(super) struct SettingsRevisions(Arc<Mutex<HashMap<String, Weak<AtomicU64>>>>, Arc<AtomicU64>);
-
-#[derive(Clone)]
-pub(super) struct SettingsGuard {
-	counter: Arc<AtomicU64>,
-	revision: u64,
-}
-
-impl SettingsGuard {
-	pub(super) fn revision(&self) -> u64 {
-		self.revision
-	}
-
-	pub(super) fn is_live(&self) -> bool {
-		self.revision != u64::MAX && self.counter.load(Ordering::Acquire) == self.revision
-	}
-}
-
 impl SettingsRevisions {
 	fn next_revision(&self) -> u64 {
 		self.1
@@ -38,19 +21,26 @@ impl SettingsRevisions {
 		if thread.is_empty() || thread.len() > 512 || thread.chars().any(char::is_control) {
 			return None;
 		}
+
 		let mut rows = self.0.lock().ok()?;
+
 		rows.retain(|_, value| value.strong_count() > 0);
+
 		let counter = match rows.get(thread).and_then(Weak::upgrade) {
 			Some(counter) => counter,
 			None => {
 				if rows.len() >= 256 {
 					return None;
 				}
+
 				let counter = Arc::new(AtomicU64::new(self.next_revision()));
+
 				rows.insert(thread.into(), Arc::downgrade(&counter));
+
 				counter
 			},
 		};
+
 		Some(SettingsGuard { revision: counter.load(Ordering::Acquire), counter })
 	}
 
@@ -67,8 +57,24 @@ impl SettingsRevisions {
 			for counter in rows.values().filter_map(Weak::upgrade) {
 				counter.store(u64::MAX, Ordering::Release);
 			}
+
 			rows.clear();
 		}
+	}
+}
+
+#[derive(Clone)]
+pub(super) struct SettingsGuard {
+	counter: Arc<AtomicU64>,
+	revision: u64,
+}
+impl SettingsGuard {
+	pub(super) fn revision(&self) -> u64 {
+		self.revision
+	}
+
+	pub(super) fn is_live(&self) -> bool {
+		self.revision != u64::MAX && self.counter.load(Ordering::Acquire) == self.revision
 	}
 }
 
@@ -81,15 +87,22 @@ mod tests {
 		let first = revisions.capture("task").unwrap();
 		let other = revisions.capture("other").unwrap();
 		let revision = first.revision();
+
 		revisions.invalidate("task");
 		revisions.invalidate("task");
+
 		assert!(!first.is_live());
 		assert!(other.is_live());
+
 		let next = revisions.capture("task").unwrap();
+
 		assert!(next.revision() > revision);
+
 		let revision = next.revision();
+
 		drop(first);
 		drop(next);
+
 		assert!(revisions.capture("task").unwrap().revision() > revision);
 	}
 
@@ -98,21 +111,28 @@ mod tests {
 		let revisions = SettingsRevisions::default();
 		let first = revisions.capture("one").unwrap();
 		let second = revisions.capture("two").unwrap();
+
 		revisions.invalidate("one");
+
 		assert!(!first.is_live());
 		assert!(second.is_live());
+
 		let next = revisions.capture("one").unwrap();
+
 		assert!(next.is_live());
+
 		revisions.clear();
+
 		assert!(!next.is_live());
 		assert!(!second.is_live());
-		for n in 0..1000 {
+
+		for n in 0..1_000 {
 			assert!(revisions.capture(&n.to_string()).unwrap().is_live());
 		}
+
 		assert!(revisions.0.lock().unwrap().len() <= 1);
 	}
 }
-
 #[cfg(test)]
 mod transport_tests {
 	use crate::app_server_client::{AppServerClient, ClientError};
@@ -121,7 +141,7 @@ mod transport_tests {
 
 	#[tokio::test]
 	async fn queued_settings_notification_prevents_retry_write_without_owner_processing() {
-		let (local, remote) = tokio::io::duplex(8192);
+		let (local, remote) = tokio::io::duplex(8_192);
 		let (reader, writer) = tokio::io::split(local);
 		let (client, mut events) = AppServerClient::from_io(reader, writer);
 		let (reader, mut writer) = tokio::io::split(remote);
@@ -136,10 +156,15 @@ mod transport_tests {
 			);
 		let request: Value =
 			serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 		writer.write_all(format!("{}\n",json!({"id":request["id"],"result":{"thread":{"id":"task","model":"selected","reasoningEffort":"high"}}})).as_bytes()).await.unwrap();
+
 		assert_eq!(read.await.unwrap().unwrap().unwrap().model.as_deref(), Some("selected"));
+
 		writer.write_all(format!("{}\n",json!({"method":"thread/settings/updated","params":{"threadId":"task","threadSettings":{"model":"new-choice"}}})).as_bytes()).await.unwrap();
+
 		let _unprocessed = events.recv().await.unwrap();
+
 		assert!(other.is_live());
 		assert!(!guard.is_live());
 		assert!(matches!(
@@ -159,7 +184,6 @@ mod transport_tests {
 		);
 	}
 }
-
 #[cfg(test)]
 mod combined_tests {
 	use super::super::{AppServerClient, ServerEvent, server_requests::ServerRequests};
@@ -171,32 +195,41 @@ mod combined_tests {
 		let combined = requests
 			.with_thread_settings_guard("task", requests.question_guard(0).unwrap())
 			.unwrap();
+
 		requests
 			.observe(&ServerEvent::Notification {
 				method: "thread/settings/updated".into(),
 				params: json!({"threadId":"other"}),
 			})
 			.unwrap();
+
 		assert!(combined.is_live());
+
 		requests
 			.observe(&ServerEvent::Notification {
 				method: "item/completed".into(),
 				params: json!({"threadId":"task","turnId":"turn","item":{"id":"input","type":"userMessage"}}),
 			})
 			.unwrap();
+
 		assert!(!combined.is_live());
 		assert!(requests.with_thread_settings_guard("task", combined).is_none());
+
 		let combined = requests
 			.with_thread_settings_guard("task", requests.question_guard(1).unwrap())
 			.unwrap();
+
 		requests
 			.observe(&ServerEvent::Notification {
 				method: "thread/settings/updated".into(),
 				params: json!({"threadId":"task"}),
 			})
 			.unwrap();
+
 		assert!(!combined.is_live());
+
 		let other = ServerRequests::default();
+
 		assert!(
 			requests.with_thread_settings_guard("task", other.question_guard(0).unwrap()).is_none()
 		);
@@ -208,7 +241,9 @@ mod combined_tests {
 		let (reader, writer) = tokio::io::split(io);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let guard = client.question_guard(0).unwrap();
+
 		client.close();
+
 		assert!(client.with_thread_settings_guard("task", guard).is_none());
 	}
 }

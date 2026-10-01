@@ -9,20 +9,23 @@ async fn installed_state_preserves_disabled_and_non_callable_apps() {
 		{"id":"ready","enabled":true,"callable":true}
 	]);
 	let expected = rows.clone();
-	let (local, remote) = tokio::io::duplex(65536);
+	let (local, remote) = tokio::io::duplex(65_536);
 	let (reader, writer) = tokio::io::split(local);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let server = tokio::spawn(async move {
 		let (reader, mut writer) = tokio::io::split(remote);
 		let mut lines = BufReader::new(reader).lines();
+
 		for refresh in [false, true] {
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 			assert_eq!(request["method"], "app/installed");
 			assert_eq!(
 				request["params"],
 				json!({"threadId":"exact-thread","forceRefresh":refresh})
 			);
+
 			writer
 				.write_all(
 					format!("{}\n", json!({"id":request["id"],"result":{"apps":rows}})).as_bytes(),
@@ -31,11 +34,13 @@ async fn installed_state_preserves_disabled_and_non_callable_apps() {
 				.unwrap();
 		}
 	});
+
 	for refresh in [false, true] {
 		assert_eq!(
 			json!(client.installed_apps_for_thread("exact-thread", refresh).await.unwrap()),
 			expected
 		);
 	}
+
 	server.await.unwrap();
 }

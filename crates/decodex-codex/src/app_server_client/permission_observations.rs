@@ -33,6 +33,7 @@ impl<T: Clone + Serialize> SettingsObservations<T> {
 
 	pub(super) fn record(&self, thread: &str, settings: Option<T>, guard: Option<SettingsGuard>) {
 		self.invalidate_hydration();
+
 		let Ok(mut rows) = self.0.lock() else {
 			return;
 		};
@@ -40,8 +41,9 @@ impl<T: Clone + Serialize> SettingsObservations<T> {
 		let (settings, guard, bytes) = match (settings, guard) {
 			(Some(settings), Some(guard)) => {
 				let bytes = serde_json::to_vec(&settings).map_or(usize::MAX, |v| v.len());
+
 				if rows.values().map(|r| r.bytes).sum::<usize>().saturating_add(bytes)
-					> 8 * 1024 * 1024
+					> 8 * 1_024 * 1_024
 				{
 					(None, None, 0)
 				} else {
@@ -50,9 +52,11 @@ impl<T: Clone + Serialize> SettingsObservations<T> {
 			},
 			_ => (None, None, 0),
 		};
+
 		if rows.len() >= 256 || (settings.is_none() && active_turn.is_none()) {
 			return;
 		}
+
 		rows.insert(thread.into(), Entry { settings, guard, active_turn, bytes });
 	}
 
@@ -63,18 +67,23 @@ impl<T: Clone + Serialize> SettingsObservations<T> {
 	pub(super) fn get(&self, thread: &str) -> Option<(T, SettingsGuard)> {
 		let rows = self.0.lock().ok()?;
 		let row = rows.get(thread)?;
+
 		if row.active_turn.is_some() {
 			return None;
 		}
+
 		let guard = row.guard.as_ref()?;
+
 		if !guard.is_live() {
 			return None;
 		}
+
 		Some((row.settings.clone()?, guard.clone()))
 	}
 
 	pub(super) fn start_turn(&self, thread: &str, turn: Option<&str>) {
 		self.invalidate_hydration();
+
 		let Ok(mut rows) = self.0.lock() else {
 			return;
 		};
@@ -82,8 +91,10 @@ impl<T: Clone + Serialize> SettingsObservations<T> {
 			|s: &str| !s.trim().is_empty() && s.len() <= 512 && !s.chars().any(char::is_control);
 		let Some(turn) = turn.filter(|turn| valid(turn) && valid(thread)) else {
 			rows.remove(thread);
+
 			return;
 		};
+
 		if let Some(row) = rows.get_mut(thread) {
 			row.active_turn = Some(turn.into());
 			// Keep the invalid guard as a revision anchor while running; get() still refuses it.
@@ -107,17 +118,20 @@ impl<T: Clone + Serialize> SettingsObservations<T> {
 		let Some(row) = rows.get_mut(thread) else {
 			return;
 		};
+
 		if turn.is_some() && row.active_turn.as_deref() == turn {
 			// Native publishes every effective persistent-settings change. An unchanged turn has
 			// no settings publication; retain the last facts, but never revive malformed facts.
 			row.active_turn = None;
 			row.guard = guard;
+
 			self.invalidate_hydration();
 		}
 	}
 
 	pub(super) fn remove(&self, thread: &str) {
 		self.invalidate_hydration();
+
 		if let Ok(mut rows) = self.0.lock() {
 			rows.remove(thread);
 		}
@@ -125,6 +139,7 @@ impl<T: Clone + Serialize> SettingsObservations<T> {
 
 	pub(super) fn clear(&self) {
 		self.invalidate_hydration();
+
 		if let Ok(mut rows) = self.0.lock() {
 			rows.clear();
 		}

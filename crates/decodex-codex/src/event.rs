@@ -8,9 +8,10 @@ use crate::{
 	protocol::{MAX_APP_SERVER_FRAME_BYTES, MAX_EXACT_THREAD_ID_BYTES},
 };
 
-const MAX_COLLABORATION_RECEIVERS: usize = 64;
 /// Maximum UTF-8 bytes in one user-visible Conversation message delta.
 pub const MAX_CONVERSATION_MESSAGE_DELTA_BYTES: usize = 64 * 1_024;
+
+const MAX_COLLABORATION_RECEIVERS: usize = 64;
 
 /// Opaque, bounded correlation identifier.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -23,6 +24,92 @@ impl OpaqueId {
 	/// Return the UUID or digest used for correlation.
 	pub fn as_str(&self) -> &str {
 		&self.0
+	}
+}
+
+/// Run-local Codex actor. Optional nickname/role fields are never identity.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RunLocalActor {
+	/// Target agent thread identity used as the runtime actor identity.
+	pub id: ThreadId,
+	/// Thread whose turn contains this activity; it can be a peer of the actor.
+	pub source_thread_id: ThreadId,
+	/// Parent thread identity when supplied by Codex.
+	pub parent_id: Option<ThreadId>,
+	/// Closed activity classification.
+	pub activity: CollaborationActivityKind,
+	/// Whether non-identity nickname or role metadata was present.
+	pub optional_metadata_present: bool,
+	/// Opaque turn correlation.
+	pub turn_id: OpaqueId,
+	/// Opaque item correlation.
+	pub item_id: OpaqueId,
+	/// Whether the activity item reached its terminal notification.
+	pub completed: bool,
+}
+
+/// Native collaboration command, with only bounded labels and opaque identifiers.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CollaborationToolCall {
+	/// Enclosing thread that emitted the item.
+	pub thread_id: ThreadId,
+	/// Opaque turn correlation.
+	pub turn_id: OpaqueId,
+	/// Opaque item correlation.
+	pub item_id: OpaqueId,
+	/// Run-local thread that issued the command.
+	pub sender_thread_id: ThreadId,
+	/// Run-local target threads.
+	pub receiver_thread_ids: Vec<ThreadId>,
+	/// Closed Codex collaboration tool classification.
+	pub tool: CollaborationTool,
+	/// Closed Codex status classification.
+	pub status: CollaborationToolStatus,
+	/// Whether the containing item reached its terminal notification.
+	pub completed: bool,
+}
+
+/// Separate bounded user-visible projection for one ordinary Conversation message delta.
+///
+/// This projection does not change the authority or redaction behavior of [`NormalizedEvent`].
+#[derive(Clone, Eq, PartialEq)]
+pub struct ConversationMessageDelta {
+	thread_id: ThreadId,
+	turn_id: OpaqueId,
+	item_id: OpaqueId,
+	text: String,
+}
+impl ConversationMessageDelta {
+	/// Opaque thread correlation.
+	pub fn thread_id(&self) -> &ThreadId {
+		&self.thread_id
+	}
+
+	/// Opaque turn correlation.
+	pub fn turn_id(&self) -> &OpaqueId {
+		&self.turn_id
+	}
+
+	/// Opaque message-item correlation.
+	pub fn item_id(&self) -> &OpaqueId {
+		&self.item_id
+	}
+
+	/// Exact bounded user-visible delta text.
+	pub fn text(&self) -> &str {
+		&self.text
+	}
+}
+
+impl Debug for ConversationMessageDelta {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("ConversationMessageDelta")
+			.field("thread_id", &self.thread_id)
+			.field("turn_id", &self.turn_id)
+			.field("item_id", &self.item_id)
+			.field("text", &"[REDACTED]")
+			.finish()
 	}
 }
 
@@ -111,48 +198,6 @@ pub enum TurnStatus {
 	Unknown,
 }
 
-/// Run-local Codex actor. Optional nickname/role fields are never identity.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RunLocalActor {
-	/// Target agent thread identity used as the runtime actor identity.
-	pub id: ThreadId,
-	/// Thread whose turn contains this activity; it can be a peer of the actor.
-	pub source_thread_id: ThreadId,
-	/// Parent thread identity when supplied by Codex.
-	pub parent_id: Option<ThreadId>,
-	/// Closed activity classification.
-	pub activity: CollaborationActivityKind,
-	/// Whether non-identity nickname or role metadata was present.
-	pub optional_metadata_present: bool,
-	/// Opaque turn correlation.
-	pub turn_id: OpaqueId,
-	/// Opaque item correlation.
-	pub item_id: OpaqueId,
-	/// Whether the activity item reached its terminal notification.
-	pub completed: bool,
-}
-
-/// Native collaboration command, with only bounded labels and opaque identifiers.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CollaborationToolCall {
-	/// Enclosing thread that emitted the item.
-	pub thread_id: ThreadId,
-	/// Opaque turn correlation.
-	pub turn_id: OpaqueId,
-	/// Opaque item correlation.
-	pub item_id: OpaqueId,
-	/// Run-local thread that issued the command.
-	pub sender_thread_id: ThreadId,
-	/// Run-local target threads.
-	pub receiver_thread_ids: Vec<ThreadId>,
-	/// Closed Codex collaboration tool classification.
-	pub tool: CollaborationTool,
-	/// Closed Codex status classification.
-	pub status: CollaborationToolStatus,
-	/// Whether the containing item reached its terminal notification.
-	pub completed: bool,
-}
-
 /// Stable normalized item categories.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NormalizedItemKind {
@@ -170,49 +215,6 @@ pub enum NormalizedItemKind {
 	Unknown,
 }
 
-/// Separate bounded user-visible projection for one ordinary Conversation message delta.
-///
-/// This projection does not change the authority or redaction behavior of [`NormalizedEvent`].
-#[derive(Clone, Eq, PartialEq)]
-pub struct ConversationMessageDelta {
-	thread_id: ThreadId,
-	turn_id: OpaqueId,
-	item_id: OpaqueId,
-	text: String,
-}
-impl ConversationMessageDelta {
-	/// Opaque thread correlation.
-	pub fn thread_id(&self) -> &ThreadId {
-		&self.thread_id
-	}
-
-	/// Opaque turn correlation.
-	pub fn turn_id(&self) -> &OpaqueId {
-		&self.turn_id
-	}
-
-	/// Opaque message-item correlation.
-	pub fn item_id(&self) -> &OpaqueId {
-		&self.item_id
-	}
-
-	/// Exact bounded user-visible delta text.
-	pub fn text(&self) -> &str {
-		&self.text
-	}
-}
-impl Debug for ConversationMessageDelta {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter
-			.debug_struct("ConversationMessageDelta")
-			.field("thread_id", &self.thread_id)
-			.field("turn_id", &self.turn_id)
-			.field("item_id", &self.item_id)
-			.field("text", &"[REDACTED]")
-			.finish()
-	}
-}
-
 /// Stable user-visible projection error that never embeds app-server input.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConversationMessageDeltaError {
@@ -222,69 +224,6 @@ pub enum ConversationMessageDeltaError {
 	InvalidMessageDelta,
 	/// Input exceeded a mechanical frame or text bound.
 	LimitExceeded,
-}
-
-/// Project one bounded user-visible message delta and discard all other notifications.
-pub fn project_conversation_message_delta(
-	bytes: &[u8],
-) -> Result<Option<ConversationMessageDelta>, ConversationMessageDeltaError> {
-	if bytes.len() > MAX_APP_SERVER_FRAME_BYTES {
-		return Err(ConversationMessageDeltaError::LimitExceeded);
-	}
-
-	let value: Value =
-		serde_json::from_slice(bytes).map_err(|_| ConversationMessageDeltaError::InvalidJson)?;
-	let Some(method) = value.get("method").and_then(Value::as_str) else {
-		return Err(ConversationMessageDeltaError::InvalidMessageDelta);
-	};
-
-	if method != ConversationNotification::AgentMessageDelta.as_str() {
-		return Ok(None);
-	}
-
-	let params = value.get("params").ok_or(ConversationMessageDeltaError::InvalidMessageDelta)?;
-	let thread_id = params
-		.get("threadId")
-		.and_then(Value::as_str)
-		.ok_or(ConversationMessageDeltaError::InvalidMessageDelta)?;
-	let turn_id = params
-		.get("turnId")
-		.and_then(Value::as_str)
-		.ok_or(ConversationMessageDeltaError::InvalidMessageDelta)?;
-	let item_id = params
-		.get("itemId")
-		.and_then(Value::as_str)
-		.ok_or(ConversationMessageDeltaError::InvalidMessageDelta)?;
-	let text = params
-		.get("delta")
-		.and_then(Value::as_str)
-		.ok_or(ConversationMessageDeltaError::InvalidMessageDelta)?;
-
-	if !valid_projection_id(thread_id, MAX_EXACT_THREAD_ID_BYTES)
-		|| !valid_projection_id(turn_id, MAX_EXACT_TURN_ID_BYTES)
-		|| !valid_projection_id(item_id, MAX_EXACT_TURN_ID_BYTES)
-	{
-		return Err(ConversationMessageDeltaError::InvalidMessageDelta);
-	}
-	if text.is_empty() || text.contains('\0') {
-		return Err(ConversationMessageDeltaError::InvalidMessageDelta);
-	}
-	if text.len() > MAX_CONVERSATION_MESSAGE_DELTA_BYTES {
-		return Err(ConversationMessageDeltaError::LimitExceeded);
-	}
-
-	Ok(Some(ConversationMessageDelta {
-		thread_id: ThreadId::from_protocol(thread_id),
-		turn_id: OpaqueId::from_protocol(turn_id),
-		item_id: OpaqueId::from_protocol(item_id),
-		text: text.to_owned(),
-	}))
-}
-
-fn valid_projection_id(value: &str, maximum: usize) -> bool {
-	!value.is_empty()
-		&& value.len() <= maximum
-		&& !value.chars().any(|character| character.is_control())
 }
 
 /// Redacted event model exported to domain/runtime callers.
@@ -361,6 +300,63 @@ pub enum EventDecodeError {
 	LimitExceeded,
 }
 
+/// Project one bounded user-visible message delta and discard all other notifications.
+pub fn project_conversation_message_delta(
+	bytes: &[u8],
+) -> Result<Option<ConversationMessageDelta>, ConversationMessageDeltaError> {
+	if bytes.len() > MAX_APP_SERVER_FRAME_BYTES {
+		return Err(ConversationMessageDeltaError::LimitExceeded);
+	}
+
+	let value: Value =
+		serde_json::from_slice(bytes).map_err(|_| ConversationMessageDeltaError::InvalidJson)?;
+	let Some(method) = value.get("method").and_then(Value::as_str) else {
+		return Err(ConversationMessageDeltaError::InvalidMessageDelta);
+	};
+
+	if method != ConversationNotification::AgentMessageDelta.as_str() {
+		return Ok(None);
+	}
+
+	let params = value.get("params").ok_or(ConversationMessageDeltaError::InvalidMessageDelta)?;
+	let thread_id = params
+		.get("threadId")
+		.and_then(Value::as_str)
+		.ok_or(ConversationMessageDeltaError::InvalidMessageDelta)?;
+	let turn_id = params
+		.get("turnId")
+		.and_then(Value::as_str)
+		.ok_or(ConversationMessageDeltaError::InvalidMessageDelta)?;
+	let item_id = params
+		.get("itemId")
+		.and_then(Value::as_str)
+		.ok_or(ConversationMessageDeltaError::InvalidMessageDelta)?;
+	let text = params
+		.get("delta")
+		.and_then(Value::as_str)
+		.ok_or(ConversationMessageDeltaError::InvalidMessageDelta)?;
+
+	if !valid_projection_id(thread_id, MAX_EXACT_THREAD_ID_BYTES)
+		|| !valid_projection_id(turn_id, MAX_EXACT_TURN_ID_BYTES)
+		|| !valid_projection_id(item_id, MAX_EXACT_TURN_ID_BYTES)
+	{
+		return Err(ConversationMessageDeltaError::InvalidMessageDelta);
+	}
+	if text.is_empty() || text.contains('\0') {
+		return Err(ConversationMessageDeltaError::InvalidMessageDelta);
+	}
+	if text.len() > MAX_CONVERSATION_MESSAGE_DELTA_BYTES {
+		return Err(ConversationMessageDeltaError::LimitExceeded);
+	}
+
+	Ok(Some(ConversationMessageDelta {
+		thread_id: ThreadId::from_protocol(thread_id),
+		turn_id: OpaqueId::from_protocol(turn_id),
+		item_id: OpaqueId::from_protocol(item_id),
+		text: text.to_owned(),
+	}))
+}
+
 /// Decode and normalize one app-server notification without exposing raw JSON.
 pub fn normalize_event(bytes: &[u8]) -> Result<NormalizedEvent, EventDecodeError> {
 	if bytes.len() > MAX_APP_SERVER_FRAME_BYTES {
@@ -405,6 +401,12 @@ pub fn normalize_event(bytes: &[u8]) -> Result<NormalizedEvent, EventDecodeError
 		}),
 		_ => Ok(NormalizedEvent::Ignored),
 	}
+}
+
+fn valid_projection_id(value: &str, maximum: usize) -> bool {
+	!value.is_empty()
+		&& value.len() <= maximum
+		&& !value.chars().any(|character| character.is_control())
 }
 
 fn normalize_item(params: &Value, completed: bool) -> Result<NormalizedEvent, EventDecodeError> {
@@ -571,13 +573,16 @@ mod tests {
 				"threadId":"parent","turnId":"turn","item":{"id":"call","type":"collabAgentToolCall",
 				"senderThreadId":"parent","receiverThreadIds":["child"],"tool":wire,"status":"interrupted","prompt":"private-text"}}});
 			let event = event::normalize_event(frame.to_string().as_bytes()).unwrap();
+
 			assert!(
 				matches!(&event, NormalizedEvent::CollaborationToolCall(call) if call.tool == expected && call.status == CollaborationToolStatus::Interrupted)
 			);
 			assert!(!format!("{event:?}").contains("private-text"));
 		}
+
 		let frame = br#"{"method":"item/completed","params":{"threadId":"parent","turnId":"turn","item":{"id":"activity","type":"subAgentActivity","kind":"completed","agentThreadId":"child"}}}"#;
 		let event = event::normalize_event(frame).unwrap();
+
 		assert!(matches!(
 			event,
 			NormalizedEvent::CollaborationActivity(RunLocalActor {

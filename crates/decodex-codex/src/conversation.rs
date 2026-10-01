@@ -13,7 +13,9 @@ use serde::{
 	de::Error as _,
 	ser::{SerializeSeq as _, SerializeStruct as _},
 };
+
 use serde_json::{Map, Value};
+
 use zeroize::Zeroizing;
 
 use crate::{ExactThreadId, ThreadCwd, protocol::MAX_APP_SERVER_FRAME_BYTES};
@@ -36,6 +38,100 @@ pub const MAX_CONVERSATION_INPUT_BYTES: usize = 256 * 1_024;
 pub const MAX_EXACT_TURN_ID_BYTES: usize = 1_024;
 /// Maximum bytes accepted from one exact Conversation method result payload.
 pub const MAX_CONVERSATION_RESPONSE_BYTES: usize = MAX_APP_SERVER_FRAME_BYTES;
+
+const THREAD_START_RESPONSE_FIELDS: &[&str] = &[
+	"thread",
+	"model",
+	"modelProvider",
+	"serviceTier",
+	"disabledPluginIds",
+	"cwd",
+	"runtimeWorkspaceRoots",
+	"instructionSources",
+	"approvalPolicy",
+	"approvalsReviewer",
+	"sandbox",
+	"activePermissionProfile",
+	"reasoningEffort",
+	"multiAgentMode",
+];
+const THREAD_START_RESPONSE_REQUIRED_FIELDS: &[&str] =
+	&["thread", "model", "modelProvider", "cwd", "approvalPolicy", "approvalsReviewer", "sandbox"];
+const THREAD_RESUME_RESPONSE_FIELDS: &[&str] = &[
+	"thread",
+	"model",
+	"modelProvider",
+	"serviceTier",
+	"disabledPluginIds",
+	"collaborationMode",
+	"cwd",
+	"runtimeWorkspaceRoots",
+	"instructionSources",
+	"approvalPolicy",
+	"approvalsReviewer",
+	"sandbox",
+	"activePermissionProfile",
+	"reasoningEffort",
+	"multiAgentMode",
+	"initialTurnsPage",
+	"turnsBackwardsCursor",
+	"itemsBackwardsCursor",
+];
+const THREAD_RESUME_RESPONSE_REQUIRED_FIELDS: &[&str] =
+	&["thread", "model", "modelProvider", "cwd", "approvalPolicy", "approvalsReviewer", "sandbox"];
+const THREAD_RESPONSE_FIELDS: &[&str] = &[
+	"id",
+	"projectId",
+	"model",
+	"reasoningEffort",
+	"originator",
+	"daybreakEnabled",
+	"environments",
+	"extra",
+	"sessionId",
+	"forkedFromId",
+	"parentThreadId",
+	"preview",
+	"ephemeral",
+	"historyMode",
+	"modelProvider",
+	"createdAt",
+	"updatedAt",
+	"recencyAt",
+	"status",
+	"path",
+	"cwd",
+	"cliVersion",
+	"source",
+	"canAcceptDirectInput",
+	"threadSource",
+	"agentNickname",
+	"agentRole",
+	"gitInfo",
+	"name",
+	"section",
+	"sectionEnteredAt",
+	"turns",
+];
+const THREAD_RESPONSE_REQUIRED_FIELDS: &[&str] = &[
+	"id",
+	"sessionId",
+	"preview",
+	"ephemeral",
+	"modelProvider",
+	"createdAt",
+	"updatedAt",
+	"status",
+	"cwd",
+	"cliVersion",
+	"source",
+	"turns",
+];
+const TURN_START_RESPONSE_FIELDS: &[&str] = &["turn"];
+const TURN_START_RESPONSE_REQUIRED_FIELDS: &[&str] = &["turn"];
+const TURN_RESPONSE_FIELDS: &[&str] =
+	&["id", "items", "itemsView", "status", "error", "startedAt", "completedAt", "durationMs"];
+const TURN_RESPONSE_REQUIRED_FIELDS: &[&str] = &["id", "items", "status"];
 
 /// Closed ordinary Conversation app-server method set.
 ///
@@ -146,6 +242,321 @@ pub enum ConversationContractError {
 	ResponseSemanticMismatch,
 }
 
+/// Closed turn state retained from one typed app-server response.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConversationTurnStatus {
+	/// Turn remains active.
+	InProgress,
+	/// Turn completed normally.
+	Completed,
+	/// Turn was interrupted.
+	Interrupted,
+	/// Turn failed.
+	Failed,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ConversationModeKindWire {
+	Plan,
+	Default,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum ConversationAskForApprovalWire {
+	#[serde(rename = "untrusted")]
+	UnlessTrusted,
+	OnRequest,
+	Granular(ConversationGranularApprovalWire),
+	Never,
+}
+
+#[derive(Deserialize)]
+enum ConversationApprovalsReviewerWire {
+	#[serde(rename = "user")]
+	User,
+	#[serde(rename = "auto_review")]
+	AutoReview,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+enum ConversationSandboxPolicyWire {
+	DangerFullAccess,
+	#[serde(rename_all = "camelCase")]
+	ReadOnly {
+		#[serde(default)]
+		network_access: bool,
+		#[serde(default)]
+		access: Option<ConversationLegacyReadOnlyAccessWire>,
+	},
+	#[serde(rename_all = "camelCase")]
+	ExternalSandbox {
+		#[serde(default)]
+		network_access: ConversationNetworkAccessWire,
+	},
+	#[serde(rename_all = "camelCase")]
+	WorkspaceWrite {
+		#[serde(default)]
+		writable_roots: Vec<ConversationAbsolutePathWire>,
+		#[serde(default)]
+		read_only_access: Option<ConversationLegacyReadOnlyAccessWire>,
+		#[serde(default)]
+		network_access: bool,
+		#[serde(default)]
+		exclude_tmpdir_env_var: bool,
+		#[serde(default)]
+		exclude_slash_tmp: bool,
+	},
+}
+impl ConversationSandboxPolicyWire {
+	fn validate(&self) -> Result<(), ConversationContractError> {
+		match self {
+			Self::ReadOnly {
+				access: Some(ConversationLegacyReadOnlyAccessWire::Restricted),
+				..
+			}
+			| Self::WorkspaceWrite {
+				read_only_access: Some(ConversationLegacyReadOnlyAccessWire::Restricted),
+				..
+			} => Err(ConversationContractError::MalformedResponse),
+			_ => Ok(()),
+		}
+	}
+}
+
+#[derive(Clone, Copy, Deserialize, Eq, PartialEq)]
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+enum ConversationLegacyReadOnlyAccessWire {
+	FullAccess,
+	Restricted,
+}
+
+#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum ConversationNetworkAccessWire {
+	#[default]
+	Restricted,
+	Enabled,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Eq, PartialEq)]
+enum ConversationReasoningEffortWire {
+	None,
+	Minimal,
+	Low,
+	Medium,
+	High,
+	XHigh,
+	Max,
+	Ultra,
+	Custom(String),
+}
+impl ConversationReasoningEffortWire {
+	fn into_string(self) -> String {
+		match self {
+			Self::None => "none".to_owned(),
+			Self::Minimal => "minimal".to_owned(),
+			Self::Low => "low".to_owned(),
+			Self::Medium => "medium".to_owned(),
+			Self::High => "high".to_owned(),
+			Self::XHigh => "xhigh".to_owned(),
+			Self::Max => "max".to_owned(),
+			Self::Ultra => "ultra".to_owned(),
+			Self::Custom(value) => value,
+		}
+	}
+}
+
+impl<'de> Deserialize<'de> for ConversationReasoningEffortWire {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		let value = String::deserialize(deserializer)?;
+		let effort = match value.as_str() {
+			"none" => Self::None,
+			"minimal" => Self::Minimal,
+			"low" => Self::Low,
+			"medium" => Self::Medium,
+			"high" => Self::High,
+			"xhigh" => Self::XHigh,
+			"max" => Self::Max,
+			"ultra" => Self::Ultra,
+			"" => return Err(D::Error::custom("reasoning effort must not be empty")),
+			_ => Self::Custom(value),
+		};
+
+		Ok(effort)
+	}
+}
+
+// Native delegation policy is descriptive, not a caller-selected binding invariant.
+#[allow(dead_code)]
+#[derive(Clone, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum ConversationMultiAgentModeWire {
+	None,
+	Custom(String),
+	#[default]
+	ExplicitRequestOnly,
+	Proactive,
+}
+
+#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum ConversationThreadHistoryModeWire {
+	#[default]
+	Legacy,
+	Paginated,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+enum ConversationThreadStatusWire {
+	NotLoaded,
+	Idle,
+	SystemError,
+	Active {
+		#[serde(rename = "activeFlags")]
+		active_flags: Vec<ConversationThreadActiveFlagWire>,
+	},
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum ConversationThreadActiveFlagWire {
+	WaitingOnApproval,
+	WaitingOnUserInput,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum ConversationSessionSourceWire {
+	Cli,
+	#[serde(rename = "vscode")]
+	VsCode,
+	Exec,
+	AppServer,
+	Custom(String),
+	SubAgent(ConversationSubAgentSourceWire),
+	#[serde(other)]
+	Unknown,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ConversationSubAgentSourceWire {
+	Review,
+	Compact,
+	ThreadSpawn(ConversationThreadSpawnSourceWire),
+	MemoryConsolidation,
+	Other(String),
+}
+
+#[allow(dead_code)]
+enum ConversationThreadSourceWire {
+	User,
+	Subagent,
+	Feature(String),
+	MemoryConsolidation,
+}
+impl<'de> Deserialize<'de> for ConversationThreadSourceWire {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		let value = String::deserialize(deserializer)?;
+
+		Ok(match value.as_str() {
+			"user" => Self::User,
+			"subagent" => Self::Subagent,
+			"memory_consolidation" => Self::MemoryConsolidation,
+			_ => Self::Feature(value),
+		})
+	}
+}
+
+#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum ConversationTurnItemsViewWire {
+	NotLoaded,
+	Summary,
+	#[default]
+	Full,
+}
+
+#[derive(Clone, Copy, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum ConversationTurnStatusWire {
+	Completed,
+	Interrupted,
+	Failed,
+	InProgress,
+}
+impl ConversationTurnStatusWire {
+	const fn into_contract(self) -> ConversationTurnStatus {
+		match self {
+			Self::Completed => ConversationTurnStatus::Completed,
+			Self::Interrupted => ConversationTurnStatus::Interrupted,
+			Self::Failed => ConversationTurnStatus::Failed,
+			Self::InProgress => ConversationTurnStatus::InProgress,
+		}
+	}
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum ConversationCodexErrorInfoWire {
+	ContextWindowExceeded,
+	SessionBudgetExceeded,
+	UsageLimitExceeded,
+	ServerOverloaded,
+	CyberPolicy,
+	HttpConnectionFailed(ConversationHttpStatusWire),
+	ResponseStreamConnectionFailed(ConversationHttpStatusWire),
+	InternalServerError,
+	Unauthorized,
+	BadRequest,
+	ThreadRollbackFailed,
+	SandboxError,
+	ResponseStreamDisconnected(ConversationHttpStatusWire),
+	ResponseTooManyFailedAttempts(ConversationHttpStatusWire),
+	ActiveTurnNotSteerable(ConversationActiveTurnNotSteerableWire),
+	Other,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum ConversationNonSteerableTurnKindWire {
+	Review,
+	Compact,
+}
+
+enum ConversationForbiddenValueWire {}
+impl<'de> Deserialize<'de> for ConversationForbiddenValueWire {
+	fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		Err(D::Error::custom("value is forbidden for this method"))
+	}
+}
+
+#[derive(Clone, Copy)]
+enum ThreadResponseContext<'a> {
+	Start,
+	Resume(&'a ExactThreadId),
+}
+
 /// Bounded caller-selected model identifier.
 #[derive(Clone, Eq, PartialEq)]
 pub struct ConversationModel(String);
@@ -165,11 +576,13 @@ impl ConversationModel {
 		&self.0
 	}
 }
+
 impl Debug for ConversationModel {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str("ConversationModel([REDACTED])")
 	}
 }
+
 impl Serialize for ConversationModel {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -198,11 +611,13 @@ impl ConversationReasoningEffort {
 		&self.0
 	}
 }
+
 impl Debug for ConversationReasoningEffort {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str("ConversationReasoningEffort([REDACTED])")
 	}
 }
+
 impl Serialize for ConversationReasoningEffort {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -231,11 +646,13 @@ impl ExactTurnId {
 		self.0.as_str()
 	}
 }
+
 impl Debug for ExactTurnId {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str("ExactTurnId([REDACTED])")
 	}
 }
+
 impl Serialize for ExactTurnId {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -264,11 +681,13 @@ impl ConversationInstructions {
 		self.0.as_str()
 	}
 }
+
 impl Debug for ConversationInstructions {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str("ConversationInstructions([REDACTED])")
 	}
 }
+
 impl Serialize for ConversationInstructions {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -297,11 +716,13 @@ impl ConversationText {
 		self.0.as_str()
 	}
 }
+
 impl Debug for ConversationText {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str("ConversationText([REDACTED])")
 	}
 }
+
 impl Serialize for ConversationText {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -341,6 +762,7 @@ impl ConversationTurnInput {
 			total_bytes = total_bytes
 				.checked_add(text.as_str().len())
 				.ok_or(ConversationContractError::InputByteLimitExceeded)?;
+
 			if total_bytes > MAX_CONVERSATION_INPUT_BYTES {
 				return Err(ConversationContractError::InputByteLimitExceeded);
 			}
@@ -393,18 +815,21 @@ impl ConversationThreadStartRequest {
 	/// Send the exact caller-selected tier without reducing it to a Fast flag.
 	pub fn with_service_tier(mut self, tier: decodex_core::ServiceTier) -> Self {
 		self.service_tier = Some(tier);
+
 		self
 	}
 
 	/// Use the selected native account's configured model for the new thread.
 	pub fn inherit_model(mut self) -> Self {
 		self.model = None;
+
 		self
 	}
 
 	/// Use native configuration instead of explicitly selecting Standard.
 	pub fn inherit_service_tier(mut self) -> Self {
 		self.service_tier = None;
+
 		self
 	}
 
@@ -428,6 +853,7 @@ impl ConversationThreadStartRequest {
 		false
 	}
 }
+
 impl Serialize for ConversationThreadStartRequest {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -441,12 +867,15 @@ impl Serialize for ConversationThreadStartRequest {
 		if let Some(model) = &self.model {
 			request.serialize_field("model", model.as_str())?;
 		}
+
 		request.serialize_field("cwd", self.cwd.as_str())?;
 		request.serialize_field("developerInstructions", self.developer_instructions.as_str())?;
 		request.serialize_field("ephemeral", &false)?;
+
 		if let Some(tier) = &self.service_tier {
 			request.serialize_field("serviceTier", &tier.thread_value())?;
 		}
+
 		request.end()
 	}
 }
@@ -466,6 +895,7 @@ impl ConversationThreadStartResponse {
 		wire: ConversationThreadStartResponseWire,
 	) -> Result<Self, ConversationContractError> {
 		wire.validate_private_facts()?;
+
 		let facts = validate_thread_response_facts(
 			ThreadResponseContext::Start,
 			request.cwd(),
@@ -511,21 +941,6 @@ impl ConversationThreadStartResponse {
 	}
 }
 
-/// Decode one bounded exact `thread/start` result and bind it to its request facts.
-pub fn decode_conversation_thread_start_response(
-	request: &ConversationThreadStartRequest,
-	bytes: &[u8],
-) -> Result<ConversationThreadStartResponse, ConversationContractError> {
-	validate_thread_response_shape(
-		bytes,
-		THREAD_START_RESPONSE_FIELDS,
-		THREAD_START_RESPONSE_REQUIRED_FIELDS,
-	)?;
-	let wire = decode_response_wire(bytes)?;
-
-	ConversationThreadStartResponse::from_wire(request, wire)
-}
-
 /// Bounded exact-ID `thread/resume` request facts.
 ///
 /// This shape has no history or rollout-path field, so no alternate thread can take
@@ -564,6 +979,7 @@ impl ConversationThreadResumeRequest {
 		self.inherit_native_settings = true;
 		self.model = None;
 		self.service_tier = None;
+
 		self
 	}
 
@@ -575,18 +991,21 @@ impl ConversationThreadResumeRequest {
 	/// Send the exact caller-selected tier without reducing it to a Fast flag.
 	pub fn with_service_tier(mut self, tier: decodex_core::ServiceTier) -> Self {
 		self.service_tier = Some(tier);
+
 		self
 	}
 
 	/// Preserve the native thread model instead of sending a local override.
 	pub fn inherit_model(mut self) -> Self {
 		self.model = None;
+
 		self
 	}
 
 	/// Preserve the native thread tier instead of explicitly selecting Standard.
 	pub fn inherit_service_tier(mut self) -> Self {
 		self.service_tier = None;
+
 		self
 	}
 
@@ -615,6 +1034,7 @@ impl ConversationThreadResumeRequest {
 		true
 	}
 }
+
 impl Serialize for ConversationThreadResumeRequest {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -622,25 +1042,32 @@ impl Serialize for ConversationThreadResumeRequest {
 	{
 		if self.inherit_native_settings {
 			let mut request = serializer.serialize_struct("ConversationThreadResumeRequest", 2)?;
+
 			request.serialize_field("threadId", self.thread_id.as_str())?;
 			request.serialize_field("excludeTurns", &true)?;
+
 			return request.end();
 		}
+
 		let mut request = serializer.serialize_struct(
 			"ConversationThreadResumeRequest",
 			4 + usize::from(self.model.is_some()) + usize::from(self.service_tier.is_some()),
 		)?;
 
 		request.serialize_field("threadId", self.thread_id.as_str())?;
+
 		if let Some(model) = &self.model {
 			request.serialize_field("model", model.as_str())?;
 		}
+
 		request.serialize_field("cwd", self.cwd.as_str())?;
 		request.serialize_field("developerInstructions", self.developer_instructions.as_str())?;
 		request.serialize_field("excludeTurns", &true)?;
+
 		if let Some(tier) = &self.service_tier {
 			request.serialize_field("serviceTier", &tier.thread_value())?;
 		}
+
 		request.end()
 	}
 }
@@ -660,6 +1087,7 @@ impl ConversationThreadResumeResponse {
 		wire: ConversationThreadResumeResponseWire,
 	) -> Result<Self, ConversationContractError> {
 		wire.validate_private_facts()?;
+
 		let facts = validate_thread_response_facts(
 			ThreadResponseContext::Resume(request.thread_id()),
 			request.cwd(),
@@ -702,52 +1130,6 @@ impl ConversationThreadResumeResponse {
 	/// Actual bounded reasoning effort reported by the app server, when present.
 	pub fn reasoning_effort(&self) -> Option<&ConversationReasoningEffort> {
 		self.reasoning_effort.as_ref()
-	}
-}
-
-/// Decode one bounded exact `thread/resume` result and bind it to its request facts.
-pub fn decode_conversation_thread_resume_response(
-	request: &ConversationThreadResumeRequest,
-	bytes: &[u8],
-) -> Result<ConversationThreadResumeResponse, ConversationContractError> {
-	validate_thread_response_shape(
-		bytes,
-		THREAD_RESUME_RESPONSE_FIELDS,
-		THREAD_RESUME_RESPONSE_REQUIRED_FIELDS,
-	)?;
-	let wire = decode_response_wire(bytes)?;
-
-	ConversationThreadResumeResponse::from_wire(request, wire)
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct ConversationTextInput<'a>(&'a ConversationText);
-impl Serialize for ConversationTextInput<'_> {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: Serializer,
-	{
-		let mut input = serializer.serialize_struct("ConversationTextInput", 2)?;
-
-		input.serialize_field("type", "text")?;
-		input.serialize_field("text", self.0.as_str())?;
-		input.end()
-	}
-}
-
-struct ConversationTextInputs<'a>(&'a [ConversationText]);
-impl Serialize for ConversationTextInputs<'_> {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: Serializer,
-	{
-		let mut inputs = serializer.serialize_seq(Some(self.0.len()))?;
-
-		for item in self.0 {
-			inputs.serialize_element(&ConversationTextInput(item))?;
-		}
-
-		inputs.end()
 	}
 }
 
@@ -794,6 +1176,7 @@ impl ConversationTurnStartRequest {
 	/// Classify a user-originated turn at its owning dispatch boundary.
 	pub fn with_user_trigger(mut self) -> Self {
 		self.turn_trigger = Some("user");
+
 		self
 	}
 
@@ -805,6 +1188,7 @@ impl ConversationTurnStartRequest {
 	/// Send the exact caller-selected tier without reducing it to a Fast flag.
 	pub fn with_service_tier(mut self, tier: decodex_core::ServiceTier) -> Self {
 		self.service_tier = Some(tier);
+
 		self
 	}
 
@@ -816,27 +1200,33 @@ impl ConversationTurnStartRequest {
 		client_user_message_id: impl Into<String>,
 	) -> Result<Self, ConversationContractError> {
 		let client_user_message_id = client_user_message_id.into();
+
 		validate_exact_id(&client_user_message_id, MAX_EXACT_TURN_ID_BYTES)
 			.map_err(|()| ConversationContractError::InvalidTurnId)?;
+
 		self.client_user_message_id = Some(client_user_message_id);
+
 		Ok(self)
 	}
 
 	/// Preserve the native thread model instead of sending a local override.
 	pub fn inherit_model(mut self) -> Self {
 		self.model = None;
+
 		self
 	}
 
 	/// Preserve the native thread tier instead of explicitly selecting Standard.
 	pub fn inherit_service_tier(mut self) -> Self {
 		self.service_tier = None;
+
 		self
 	}
 
 	/// Preserve native effort even when the displayed local value is populated.
 	pub fn inherit_reasoning_effort(mut self) -> Self {
 		self.reasoning_effort = None;
+
 		self
 	}
 
@@ -860,6 +1250,7 @@ impl ConversationTurnStartRequest {
 		self.reasoning_effort.as_ref()
 	}
 }
+
 impl Serialize for ConversationTurnStartRequest {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -875,6 +1266,7 @@ impl Serialize for ConversationTurnStartRequest {
 
 		request.serialize_field("threadId", self.thread_id.as_str())?;
 		request.serialize_field("input", &ConversationTextInputs(self.input.items()))?;
+
 		if let Some(model) = &self.model {
 			request.serialize_field("model", model.as_str())?;
 		}
@@ -885,25 +1277,15 @@ impl Serialize for ConversationTurnStartRequest {
 			request.serialize_field("serviceTier", &tier.thread_value())?;
 			request.serialize_field("serviceTierForTurn", tier.as_str())?;
 		}
+
 		request.serialize_field("clientUserMessageId", &self.client_user_message_id)?;
+
 		if let Some(trigger) = self.turn_trigger {
 			request.serialize_field("turnTrigger", trigger)?;
 		}
+
 		request.end()
 	}
-}
-
-/// Closed turn state retained from one typed app-server response.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ConversationTurnStatus {
-	/// Turn remains active.
-	InProgress,
-	/// Turn completed normally.
-	Completed,
-	/// Turn was interrupted.
-	Interrupted,
-	/// Turn failed.
-	Failed,
 }
 
 /// Bounded successful `turn/start` response facts.
@@ -933,16 +1315,6 @@ impl ConversationTurnStartResponse {
 	pub const fn status(&self) -> ConversationTurnStatus {
 		self.status
 	}
-}
-
-/// Decode one bounded exact `turn/start` result.
-pub fn decode_conversation_turn_start_response(
-	bytes: &[u8],
-) -> Result<ConversationTurnStartResponse, ConversationContractError> {
-	validate_turn_start_response_shape(bytes)?;
-	let wire = decode_response_wire(bytes)?;
-
-	ConversationTurnStartResponse::from_wire(wire)
 }
 
 /// Exact `turn/interrupt` request facts.
@@ -983,16 +1355,6 @@ impl ConversationTurnInterruptResponse {
 	}
 }
 
-/// Decode one bounded exact empty `turn/interrupt` result.
-pub fn decode_conversation_turn_interrupt_response(
-	bytes: &[u8],
-) -> Result<ConversationTurnInterruptResponse, ConversationContractError> {
-	validate_empty_response_shape(bytes)?;
-	let wire = decode_response_wire(bytes)?;
-
-	Ok(ConversationTurnInterruptResponse::from_wire(wire))
-}
-
 /// Exact explicit `thread/archive` request facts.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1025,14 +1387,36 @@ impl ConversationThreadArchiveResponse {
 	}
 }
 
-/// Decode one bounded exact empty `thread/archive` result.
-pub fn decode_conversation_thread_archive_response(
-	bytes: &[u8],
-) -> Result<ConversationThreadArchiveResponse, ConversationContractError> {
-	validate_empty_response_shape(bytes)?;
-	let wire = decode_response_wire(bytes)?;
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ConversationTextInput<'a>(&'a ConversationText);
+impl Serialize for ConversationTextInput<'_> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		let mut input = serializer.serialize_struct("ConversationTextInput", 2)?;
 
-	Ok(ConversationThreadArchiveResponse::from_wire(wire))
+		input.serialize_field("type", "text")?;
+		input.serialize_field("text", self.0.as_str())?;
+
+		input.end()
+	}
+}
+
+struct ConversationTextInputs<'a>(&'a [ConversationText]);
+impl Serialize for ConversationTextInputs<'_> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		let mut inputs = serializer.serialize_seq(Some(self.0.len()))?;
+
+		for item in self.0 {
+			inputs.serialize_element(&ConversationTextInput(item))?;
+		}
+
+		inputs.end()
+	}
 }
 
 #[allow(dead_code)]
@@ -1064,8 +1448,10 @@ impl ConversationThreadStartResponseWire {
 		if self.model_provider.trim().is_empty() {
 			return Err(ConversationContractError::InvalidModelProvider);
 		}
+
 		validate_label(&self.model_provider, MAX_CONVERSATION_MODEL_PROVIDER_BYTES)
 			.map_err(|()| ConversationContractError::InvalidModelProvider)?;
+
 		self.sandbox.validate()?;
 
 		Ok(())
@@ -1109,9 +1495,12 @@ impl ConversationThreadResumeResponseWire {
 		if self.model_provider.trim().is_empty() {
 			return Err(ConversationContractError::InvalidModelProvider);
 		}
+
 		validate_label(&self.model_provider, MAX_CONVERSATION_MODEL_PROVIDER_BYTES)
 			.map_err(|()| ConversationContractError::InvalidModelProvider)?;
+
 		self.sandbox.validate()?;
+
 		if self.initial_turns_page.is_some() {
 			return Err(ConversationContractError::UnexpectedResponseCollection);
 		}
@@ -1126,13 +1515,6 @@ impl ConversationThreadResumeResponseWire {
 struct ConversationCollaborationModeWire {
 	mode: ConversationModeKindWire,
 	settings: ConversationCollaborationSettingsWire,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum ConversationModeKindWire {
-	Plan,
-	Default,
 }
 
 #[allow(dead_code)]
@@ -1233,6 +1615,7 @@ impl ConversationAbsolutePathWire {
 		self.0
 	}
 }
+
 impl<'de> Deserialize<'de> for ConversationAbsolutePathWire {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
@@ -1253,17 +1636,6 @@ struct ConversationInstructionSourceWire(String);
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum ConversationAskForApprovalWire {
-	#[serde(rename = "untrusted")]
-	UnlessTrusted,
-	OnRequest,
-	Granular(ConversationGranularApprovalWire),
-	Never,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ConversationGranularApprovalWire {
 	sandbox_approval: bool,
@@ -1275,14 +1647,6 @@ struct ConversationGranularApprovalWire {
 	mcp_elicitations: bool,
 }
 
-#[derive(Deserialize)]
-enum ConversationApprovalsReviewerWire {
-	#[serde(rename = "user")]
-	User,
-	#[serde(rename = "auto_review")]
-	AutoReview,
-}
-
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1290,185 +1654,6 @@ struct ConversationActivePermissionProfileWire {
 	id: String,
 	#[serde(default)]
 	extends: Option<String>,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
-enum ConversationSandboxPolicyWire {
-	DangerFullAccess,
-	#[serde(rename_all = "camelCase")]
-	ReadOnly {
-		#[serde(default)]
-		network_access: bool,
-		#[serde(default)]
-		access: Option<ConversationLegacyReadOnlyAccessWire>,
-	},
-	#[serde(rename_all = "camelCase")]
-	ExternalSandbox {
-		#[serde(default)]
-		network_access: ConversationNetworkAccessWire,
-	},
-	#[serde(rename_all = "camelCase")]
-	WorkspaceWrite {
-		#[serde(default)]
-		writable_roots: Vec<ConversationAbsolutePathWire>,
-		#[serde(default)]
-		read_only_access: Option<ConversationLegacyReadOnlyAccessWire>,
-		#[serde(default)]
-		network_access: bool,
-		#[serde(default)]
-		exclude_tmpdir_env_var: bool,
-		#[serde(default)]
-		exclude_slash_tmp: bool,
-	},
-}
-impl ConversationSandboxPolicyWire {
-	fn validate(&self) -> Result<(), ConversationContractError> {
-		match self {
-			Self::ReadOnly {
-				access: Some(ConversationLegacyReadOnlyAccessWire::Restricted),
-				..
-			}
-			| Self::WorkspaceWrite {
-				read_only_access: Some(ConversationLegacyReadOnlyAccessWire::Restricted),
-				..
-			} => Err(ConversationContractError::MalformedResponse),
-			_ => Ok(()),
-		}
-	}
-}
-
-#[derive(Clone, Copy, Deserialize, Eq, PartialEq)]
-#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
-enum ConversationLegacyReadOnlyAccessWire {
-	FullAccess,
-	Restricted,
-}
-
-#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-enum ConversationNetworkAccessWire {
-	#[default]
-	Restricted,
-	Enabled,
-}
-
-#[allow(dead_code)]
-#[derive(Clone, Eq, PartialEq)]
-enum ConversationReasoningEffortWire {
-	None,
-	Minimal,
-	Low,
-	Medium,
-	High,
-	XHigh,
-	Max,
-	Ultra,
-	Custom(String),
-}
-impl ConversationReasoningEffortWire {
-	fn into_string(self) -> String {
-		match self {
-			Self::None => "none".to_owned(),
-			Self::Minimal => "minimal".to_owned(),
-			Self::Low => "low".to_owned(),
-			Self::Medium => "medium".to_owned(),
-			Self::High => "high".to_owned(),
-			Self::XHigh => "xhigh".to_owned(),
-			Self::Max => "max".to_owned(),
-			Self::Ultra => "ultra".to_owned(),
-			Self::Custom(value) => value,
-		}
-	}
-}
-impl<'de> Deserialize<'de> for ConversationReasoningEffortWire {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		let value = String::deserialize(deserializer)?;
-		let effort = match value.as_str() {
-			"none" => Self::None,
-			"minimal" => Self::Minimal,
-			"low" => Self::Low,
-			"medium" => Self::Medium,
-			"high" => Self::High,
-			"xhigh" => Self::XHigh,
-			"max" => Self::Max,
-			"ultra" => Self::Ultra,
-			"" => return Err(D::Error::custom("reasoning effort must not be empty")),
-			_ => Self::Custom(value),
-		};
-
-		Ok(effort)
-	}
-}
-
-// Native delegation policy is descriptive, not a caller-selected binding invariant.
-#[allow(dead_code)]
-#[derive(Clone, Default, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-enum ConversationMultiAgentModeWire {
-	None,
-	Custom(String),
-	#[default]
-	ExplicitRequestOnly,
-	Proactive,
-}
-
-#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "lowercase")]
-enum ConversationThreadHistoryModeWire {
-	#[default]
-	Legacy,
-	Paginated,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
-enum ConversationThreadStatusWire {
-	NotLoaded,
-	Idle,
-	SystemError,
-	Active {
-		#[serde(rename = "activeFlags")]
-		active_flags: Vec<ConversationThreadActiveFlagWire>,
-	},
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-enum ConversationThreadActiveFlagWire {
-	WaitingOnApproval,
-	WaitingOnUserInput,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-enum ConversationSessionSourceWire {
-	Cli,
-	#[serde(rename = "vscode")]
-	VsCode,
-	Exec,
-	AppServer,
-	Custom(String),
-	SubAgent(ConversationSubAgentSourceWire),
-	#[serde(other)]
-	Unknown,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum ConversationSubAgentSourceWire {
-	Review,
-	Compact,
-	ThreadSpawn(ConversationThreadSpawnSourceWire),
-	MemoryConsolidation,
-	Other(String),
 }
 
 #[allow(dead_code)]
@@ -1494,28 +1679,6 @@ struct ConversationUuidWire(#[serde(deserialize_with = "deserialize_canonical_uu
 #[derive(Deserialize)]
 #[serde(transparent)]
 struct ConversationAgentPathWire(#[serde(deserialize_with = "deserialize_agent_path")] String);
-
-#[allow(dead_code)]
-enum ConversationThreadSourceWire {
-	User,
-	Subagent,
-	Feature(String),
-	MemoryConsolidation,
-}
-impl<'de> Deserialize<'de> for ConversationThreadSourceWire {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		let value = String::deserialize(deserializer)?;
-		Ok(match value.as_str() {
-			"user" => Self::User,
-			"subagent" => Self::Subagent,
-			"memory_consolidation" => Self::MemoryConsolidation,
-			_ => Self::Feature(value),
-		})
-	}
-}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1558,34 +1721,6 @@ impl ConversationTurnResponseWire {
 	}
 }
 
-#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-enum ConversationTurnItemsViewWire {
-	NotLoaded,
-	Summary,
-	#[default]
-	Full,
-}
-
-#[derive(Clone, Copy, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-enum ConversationTurnStatusWire {
-	Completed,
-	Interrupted,
-	Failed,
-	InProgress,
-}
-impl ConversationTurnStatusWire {
-	const fn into_contract(self) -> ConversationTurnStatus {
-		match self {
-			Self::Completed => ConversationTurnStatus::Completed,
-			Self::Interrupted => ConversationTurnStatus::Interrupted,
-			Self::Failed => ConversationTurnStatus::Failed,
-			Self::InProgress => ConversationTurnStatus::InProgress,
-		}
-	}
-}
-
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1594,28 +1729,6 @@ struct ConversationTurnErrorWire {
 	codex_error_info: Option<ConversationCodexErrorInfoWire>,
 	#[serde(default)]
 	additional_details: Option<String>,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-enum ConversationCodexErrorInfoWire {
-	ContextWindowExceeded,
-	SessionBudgetExceeded,
-	UsageLimitExceeded,
-	ServerOverloaded,
-	CyberPolicy,
-	HttpConnectionFailed(ConversationHttpStatusWire),
-	ResponseStreamConnectionFailed(ConversationHttpStatusWire),
-	InternalServerError,
-	Unauthorized,
-	BadRequest,
-	ThreadRollbackFailed,
-	SandboxError,
-	ResponseStreamDisconnected(ConversationHttpStatusWire),
-	ResponseTooManyFailedAttempts(ConversationHttpStatusWire),
-	ActiveTurnNotSteerable(ConversationActiveTurnNotSteerableWire),
-	Other,
 }
 
 #[allow(dead_code)]
@@ -1633,23 +1746,6 @@ struct ConversationActiveTurnNotSteerableWire {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-enum ConversationNonSteerableTurnKindWire {
-	Review,
-	Compact,
-}
-
-enum ConversationForbiddenValueWire {}
-impl<'de> Deserialize<'de> for ConversationForbiddenValueWire {
-	fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		Err(D::Error::custom("value is forbidden for this method"))
-	}
-}
-
-#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ConversationEmptySuccessWire {}
 
@@ -1660,10 +1756,69 @@ struct ValidatedThreadResponseFacts {
 	reasoning_effort: Option<ConversationReasoningEffort>,
 }
 
-#[derive(Clone, Copy)]
-enum ThreadResponseContext<'a> {
-	Start,
-	Resume(&'a ExactThreadId),
+/// Decode one bounded exact `thread/start` result and bind it to its request facts.
+pub fn decode_conversation_thread_start_response(
+	request: &ConversationThreadStartRequest,
+	bytes: &[u8],
+) -> Result<ConversationThreadStartResponse, ConversationContractError> {
+	validate_thread_response_shape(
+		bytes,
+		THREAD_START_RESPONSE_FIELDS,
+		THREAD_START_RESPONSE_REQUIRED_FIELDS,
+	)?;
+
+	let wire = decode_response_wire(bytes)?;
+
+	ConversationThreadStartResponse::from_wire(request, wire)
+}
+
+/// Decode one bounded exact `thread/resume` result and bind it to its request facts.
+pub fn decode_conversation_thread_resume_response(
+	request: &ConversationThreadResumeRequest,
+	bytes: &[u8],
+) -> Result<ConversationThreadResumeResponse, ConversationContractError> {
+	validate_thread_response_shape(
+		bytes,
+		THREAD_RESUME_RESPONSE_FIELDS,
+		THREAD_RESUME_RESPONSE_REQUIRED_FIELDS,
+	)?;
+
+	let wire = decode_response_wire(bytes)?;
+
+	ConversationThreadResumeResponse::from_wire(request, wire)
+}
+
+/// Decode one bounded exact `turn/start` result.
+pub fn decode_conversation_turn_start_response(
+	bytes: &[u8],
+) -> Result<ConversationTurnStartResponse, ConversationContractError> {
+	validate_turn_start_response_shape(bytes)?;
+
+	let wire = decode_response_wire(bytes)?;
+
+	ConversationTurnStartResponse::from_wire(wire)
+}
+
+/// Decode one bounded exact empty `turn/interrupt` result.
+pub fn decode_conversation_turn_interrupt_response(
+	bytes: &[u8],
+) -> Result<ConversationTurnInterruptResponse, ConversationContractError> {
+	validate_empty_response_shape(bytes)?;
+
+	let wire = decode_response_wire(bytes)?;
+
+	Ok(ConversationTurnInterruptResponse::from_wire(wire))
+}
+
+/// Decode one bounded exact empty `thread/archive` result.
+pub fn decode_conversation_thread_archive_response(
+	bytes: &[u8],
+) -> Result<ConversationThreadArchiveResponse, ConversationContractError> {
+	validate_empty_response_shape(bytes)?;
+
+	let wire = decode_response_wire(bytes)?;
+
+	Ok(ConversationThreadArchiveResponse::from_wire(wire))
 }
 
 fn validate_thread_response_facts(
@@ -1687,6 +1842,7 @@ fn validate_thread_response_facts(
 
 	let thread_id =
 		ExactThreadId::new(thread.id).map_err(|_| ConversationContractError::InvalidThreadId)?;
+
 	if matches!(context, ThreadResponseContext::Resume(expected) if expected != &thread_id) {
 		return Err(ConversationContractError::ThreadIdMismatch);
 	}
@@ -1695,6 +1851,7 @@ fn validate_thread_response_facts(
 		.map_err(|_| ConversationContractError::InvalidCwd)?;
 	let cwd = ThreadCwd::from_protocol(response_cwd)
 		.map_err(|_| ConversationContractError::InvalidCwd)?;
+
 	if expected_cwd != &cwd {
 		return Err(ConversationContractError::CwdMismatch);
 	}
@@ -1703,6 +1860,7 @@ fn validate_thread_response_facts(
 	}
 
 	let model = ConversationModel::new(response_model)?;
+
 	if expected_model.is_some_and(|expected| expected != &model) {
 		return Err(ConversationContractError::ModelMismatch);
 	}
@@ -1713,100 +1871,6 @@ fn validate_thread_response_facts(
 	Ok(ValidatedThreadResponseFacts { thread_id, cwd, model, reasoning_effort })
 }
 
-const THREAD_START_RESPONSE_FIELDS: &[&str] = &[
-	"thread",
-	"model",
-	"modelProvider",
-	"serviceTier",
-	"disabledPluginIds",
-	"cwd",
-	"runtimeWorkspaceRoots",
-	"instructionSources",
-	"approvalPolicy",
-	"approvalsReviewer",
-	"sandbox",
-	"activePermissionProfile",
-	"reasoningEffort",
-	"multiAgentMode",
-];
-const THREAD_START_RESPONSE_REQUIRED_FIELDS: &[&str] =
-	&["thread", "model", "modelProvider", "cwd", "approvalPolicy", "approvalsReviewer", "sandbox"];
-const THREAD_RESUME_RESPONSE_FIELDS: &[&str] = &[
-	"thread",
-	"model",
-	"modelProvider",
-	"serviceTier",
-	"disabledPluginIds",
-	"collaborationMode",
-	"cwd",
-	"runtimeWorkspaceRoots",
-	"instructionSources",
-	"approvalPolicy",
-	"approvalsReviewer",
-	"sandbox",
-	"activePermissionProfile",
-	"reasoningEffort",
-	"multiAgentMode",
-	"initialTurnsPage",
-	"turnsBackwardsCursor",
-	"itemsBackwardsCursor",
-];
-const THREAD_RESUME_RESPONSE_REQUIRED_FIELDS: &[&str] =
-	&["thread", "model", "modelProvider", "cwd", "approvalPolicy", "approvalsReviewer", "sandbox"];
-const THREAD_RESPONSE_FIELDS: &[&str] = &[
-	"id",
-	"projectId",
-	"model",
-	"reasoningEffort",
-	"originator",
-	"daybreakEnabled",
-	"environments",
-	"extra",
-	"sessionId",
-	"forkedFromId",
-	"parentThreadId",
-	"preview",
-	"ephemeral",
-	"historyMode",
-	"modelProvider",
-	"createdAt",
-	"updatedAt",
-	"recencyAt",
-	"status",
-	"path",
-	"cwd",
-	"cliVersion",
-	"source",
-	"canAcceptDirectInput",
-	"threadSource",
-	"agentNickname",
-	"agentRole",
-	"gitInfo",
-	"name",
-	"section",
-	"sectionEnteredAt",
-	"turns",
-];
-const THREAD_RESPONSE_REQUIRED_FIELDS: &[&str] = &[
-	"id",
-	"sessionId",
-	"preview",
-	"ephemeral",
-	"modelProvider",
-	"createdAt",
-	"updatedAt",
-	"status",
-	"cwd",
-	"cliVersion",
-	"source",
-	"turns",
-];
-const TURN_START_RESPONSE_FIELDS: &[&str] = &["turn"];
-const TURN_START_RESPONSE_REQUIRED_FIELDS: &[&str] = &["turn"];
-const TURN_RESPONSE_FIELDS: &[&str] =
-	&["id", "items", "itemsView", "status", "error", "startedAt", "completedAt", "durationMs"];
-const TURN_RESPONSE_REQUIRED_FIELDS: &[&str] = &["id", "items", "status"];
-
 fn validate_thread_response_shape(
 	bytes: &[u8],
 	response_fields: &[&str],
@@ -1814,7 +1878,9 @@ fn validate_thread_response_shape(
 ) -> Result<(), ConversationContractError> {
 	let value = decode_bounded_response_value(bytes)?;
 	let response = response_object(&value)?;
+
 	validate_object_fields(response, response_fields, required_response_fields)?;
+
 	if response.get("initialTurnsPage").is_some_and(|page| !page.is_null()) {
 		return Err(ConversationContractError::UnexpectedResponseCollection);
 	}
@@ -1823,12 +1889,14 @@ fn validate_thread_response_shape(
 		.get("thread")
 		.and_then(Value::as_object)
 		.ok_or(ConversationContractError::MalformedResponse)?;
+
 	validate_object_fields(thread, THREAD_RESPONSE_FIELDS, THREAD_RESPONSE_REQUIRED_FIELDS)?;
 
 	let turns = thread
 		.get("turns")
 		.and_then(Value::as_array)
 		.ok_or(ConversationContractError::MalformedResponse)?;
+
 	if !turns.is_empty() {
 		return Err(ConversationContractError::UnexpectedResponseCollection);
 	}
@@ -1839,6 +1907,7 @@ fn validate_thread_response_shape(
 fn validate_turn_start_response_shape(bytes: &[u8]) -> Result<(), ConversationContractError> {
 	let value = decode_bounded_response_value(bytes)?;
 	let response = response_object(&value)?;
+
 	validate_object_fields(
 		response,
 		TURN_START_RESPONSE_FIELDS,
@@ -1849,12 +1918,14 @@ fn validate_turn_start_response_shape(bytes: &[u8]) -> Result<(), ConversationCo
 		.get("turn")
 		.and_then(Value::as_object)
 		.ok_or(ConversationContractError::MalformedResponse)?;
+
 	validate_object_fields(turn, TURN_RESPONSE_FIELDS, TURN_RESPONSE_REQUIRED_FIELDS)?;
 
 	let items = turn
 		.get("items")
 		.and_then(Value::as_array)
 		.ok_or(ConversationContractError::MalformedResponse)?;
+
 	if !items.is_empty() {
 		return Err(ConversationContractError::UnexpectedResponseCollection);
 	}
@@ -1865,6 +1936,7 @@ fn validate_turn_start_response_shape(bytes: &[u8]) -> Result<(), ConversationCo
 fn validate_empty_response_shape(bytes: &[u8]) -> Result<(), ConversationContractError> {
 	let value = decode_bounded_response_value(bytes)?;
 	let response = response_object(&value)?;
+
 	validate_object_fields(response, &[], &[])
 }
 
@@ -1940,6 +2012,7 @@ where
 	D: Deserializer<'de>,
 {
 	let value = String::deserialize(deserializer)?;
+
 	if value == "/morpheus" {
 		return Ok(value);
 	}
@@ -1947,12 +2020,15 @@ where
 	let Some(path) = value.strip_prefix("/root") else {
 		return Err(D::Error::custom("agent path is invalid"));
 	};
+
 	if path.is_empty() {
 		return Ok(value);
 	}
+
 	let Some(path) = path.strip_prefix('/') else {
 		return Err(D::Error::custom("agent path is invalid"));
 	};
+
 	if path.is_empty()
 		|| path.ends_with('/')
 		|| path.split('/').any(|segment| {
@@ -2064,11 +2140,16 @@ mod tests {
 			[json!("explicitRequestOnly"), json!("proactive"), json!({"custom":"Native policy"})]
 		{
 			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+
 			response["multiAgentMode"] = mode;
+
 			let bytes = serde_json::to_vec(&response).unwrap();
+
 			assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_ok());
 			assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_ok());
+
 			response["thread"]["id"] = json!("other-thread");
+
 			assert!(
 				decode_conversation_thread_resume_response(
 					&resume_request(),
@@ -2077,8 +2158,11 @@ mod tests {
 				.is_err()
 			);
 		}
+
 		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+
 		response["multiAgentMode"] = json!("unknown-mode");
+
 		assert!(
 			decode_conversation_thread_start_response(
 				&start_request(),
@@ -2092,12 +2176,15 @@ mod tests {
 	fn ordinary_thread_binding_respects_native_direct_input_capability() {
 		for capability in [None, Some(Value::Null), Some(json!(true)), Some(json!(false))] {
 			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+
 			if let Some(value) = &capability {
 				response["thread"]["canAcceptDirectInput"] = value.clone();
 			}
+
 			let bytes = serde_json::to_vec(&response).expect("fixture must serialize");
 			let start = decode_conversation_thread_start_response(&start_request(), &bytes);
 			let resume = decode_conversation_thread_resume_response(&resume_request(), &bytes);
+
 			if capability == Some(json!(false)) {
 				assert_eq!(start.err(), Some(ConversationContractError::DirectInputRejected));
 				assert_eq!(resume.err(), Some(ConversationContractError::DirectInputRejected));
@@ -2115,7 +2202,9 @@ mod tests {
 		// describe its original provider; do not substitute the historical value.
 		response["modelProvider"] = json!("current-provider");
 		response["thread"]["modelProvider"] = json!("original-provider");
+
 		let bytes = serde_json::to_vec(&response).unwrap();
+
 		assert_eq!(
 			decode_conversation_thread_start_response(&start_request(), &bytes)
 				.unwrap()
@@ -2128,6 +2217,7 @@ mod tests {
 				.model_provider(),
 			"current-provider"
 		);
+
 		for value in [
 			"".to_owned(),
 			"   ".to_owned(),
@@ -2135,7 +2225,9 @@ mod tests {
 			"x".repeat(MAX_CONVERSATION_MODEL_PROVIDER_BYTES + 1),
 		] {
 			response["modelProvider"] = json!(value);
+
 			let bytes = serde_json::to_vec(&response).unwrap();
+
 			assert_eq!(
 				decode_conversation_thread_start_response(&start_request(), &bytes).unwrap_err(),
 				ConversationContractError::InvalidModelProvider
@@ -2151,7 +2243,9 @@ mod tests {
 		}
 		for value in [Value::Null, json!(42), json!({"id":"provider"})] {
 			response["modelProvider"] = value;
+
 			let bytes = serde_json::to_vec(&response).unwrap();
+
 			assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_err());
 			assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_err());
 		}
@@ -2160,19 +2254,24 @@ mod tests {
 	#[test]
 	fn inherited_resume_omits_old_configuration_and_accepts_current_model_without_retargeting() {
 		let request = resume_request().with_fast(true).inherit_native_settings();
+
 		assert_eq!(
 			serde_json::to_value(&request).unwrap(),
 			json!({"threadId":"thread-1","excludeTurns":true})
 		);
+
 		let native =
 			serde_json::to_vec(&thread_response("thread-1", "server-model", "/workspace")).unwrap();
+
 		assert_eq!(
 			decode_conversation_thread_resume_response(&request, &native).unwrap().model().as_str(),
 			"server-model"
 		);
 		assert!(decode_conversation_thread_resume_response(&resume_request(), &native).is_err());
+
 		for (thread, cwd) in [("foreign", "/workspace"), ("thread-1", "/native-moved")] {
 			let native = serde_json::to_vec(&thread_response(thread, "server-model", cwd)).unwrap();
+
 			assert!(decode_conversation_thread_resume_response(&request, &native).is_err());
 		}
 	}
@@ -2192,7 +2291,9 @@ mod tests {
 				"serviceTier": null,
 			})
 		);
+
 		let object = encoded.as_object().expect("request must remain an object");
+
 		for forbidden in [
 			"history",
 			"historyMode",
@@ -2233,11 +2334,14 @@ mod tests {
 			.unwrap()
 			.with_service_tier(tier);
 			let encoded = serde_json::to_value(&turn).unwrap();
+
 			assert_eq!(start["serviceTier"], id);
 			assert_eq!(resume["serviceTier"], id);
 			assert_eq!(encoded["serviceTier"], id);
 			assert_eq!(encoded["serviceTierForTurn"], id);
+
 			let standard = serde_json::to_value(turn.with_fast(false)).unwrap();
+
 			assert!(standard["serviceTier"].is_null());
 			assert_eq!(
 				standard["serviceTierForTurn"], "default",
@@ -2287,12 +2391,17 @@ mod tests {
 				effort.map(str::to_owned),
 			)
 			.unwrap();
+
 			assert_eq!(request.reasoning_effort().map(|value| value.as_str()), effort);
+
 			let wire = serde_json::to_value(request).unwrap();
+
 			assert_eq!(wire.get("effort").and_then(Value::as_str), effort);
+
 			if effort.is_none() {
 				assert!(!wire.as_object().unwrap().contains_key("effort"));
 			}
+
 			assert_eq!(wire["model"], "model");
 			assert_eq!(wire["serviceTierForTurn"], "default");
 		}
@@ -2302,20 +2411,27 @@ mod tests {
 	fn inherited_model_and_tier_are_absent_without_weakening_resume_identity() {
 		let start = start_request().inherit_model().inherit_service_tier();
 		let wire = serde_json::to_value(&start).unwrap();
+
 		assert!(wire.get("model").is_none() && wire.get("serviceTier").is_none());
+
 		let bytes =
 			serde_json::to_vec(&thread_response("new-thread", "native-default", "/workspace"))
 				.unwrap();
+
 		assert_eq!(
 			decode_conversation_thread_start_response(&start, &bytes).unwrap().model().as_str(),
 			"native-default"
 		);
+
 		let resume = resume_request().inherit_model().inherit_service_tier();
 		let wire = serde_json::to_value(&resume).unwrap();
+
 		assert!(wire.get("model").is_none());
 		assert!(wire.get("serviceTier").is_none());
+
 		let response = thread_response("thread-1", "native-new-model", "/workspace");
 		let bytes = serde_json::to_vec(&response).unwrap();
+
 		assert_eq!(
 			decode_conversation_thread_resume_response(&resume, &bytes).unwrap().model().as_str(),
 			"native-new-model"
@@ -2324,6 +2440,7 @@ mod tests {
 			decode_conversation_thread_resume_response(&resume_request(), &bytes).unwrap_err(),
 			ConversationContractError::ModelMismatch
 		);
+
 		for response in [
 			thread_response("wrong-thread", "native-new-model", "/workspace"),
 			thread_response("thread-1", "native-new-model", "/wrong-directory"),
@@ -2337,6 +2454,7 @@ mod tests {
 				.is_err()
 			);
 		}
+
 		let turn = ConversationTurnStartRequest::new(
 			exact_thread(),
 			ConversationTurnInput::text("Continue").unwrap(),
@@ -2348,12 +2466,15 @@ mod tests {
 		.inherit_reasoning_effort()
 		.inherit_service_tier();
 		let inherited = serde_json::to_value(&turn).unwrap();
+
 		for field in ["model", "effort", "serviceTier", "serviceTierForTurn"] {
 			assert!(inherited.get(field).is_none());
 		}
+
 		let standard =
 			serde_json::to_value(turn.with_service_tier(decodex_core::ServiceTier::standard()))
 				.unwrap();
+
 		assert_eq!(standard.get("serviceTier"), Some(&Value::Null));
 		assert_eq!(standard["serviceTierForTurn"], "default");
 	}
@@ -2362,15 +2483,21 @@ mod tests {
 	fn current_plugin_metadata_accepts_lists_and_rejects_malformed_values() {
 		for plugins in [json!([]), json!(["plugin@example"])] {
 			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+
 			response["disabledPluginIds"] = plugins;
+
 			let bytes = serde_json::to_vec(&response).unwrap();
+
 			assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_ok());
 			assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_ok());
 		}
 		for plugins in [Value::Null, json!(true), json!({}), json!([42])] {
 			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+
 			response["disabledPluginIds"] = plugins;
+
 			let bytes = serde_json::to_vec(&response).unwrap();
+
 			assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_err());
 			assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_err());
 		}
@@ -2380,9 +2507,11 @@ mod tests {
 	fn resume_accepts_current_collaboration_settings_without_relaxing_the_wire_contract() {
 		for mode in [json!("default"), json!("plan")] {
 			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+
 			response["collaborationMode"] = json!({"mode":mode,"settings":{
 				"model":"gpt-5","reasoning_effort":"high","developer_instructions":null
 			}});
+
 			assert!(
 				decode_conversation_thread_resume_response(
 					&resume_request(),
@@ -2398,7 +2527,9 @@ mod tests {
 			json!({"mode":"default","settings":{"model":"gpt-5","reasoning_effort":42}}),
 		] {
 			let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+
 			response["collaborationMode"] = mode;
+
 			assert!(
 				decode_conversation_thread_resume_response(
 					&resume_request(),
@@ -2413,6 +2544,7 @@ mod tests {
 	fn current_thread_metadata_does_not_block_start_or_resume() {
 		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
 		let thread = response["thread"].as_object_mut().unwrap();
+
 		for (key, value) in [
 			("projectId", json!(null)),
 			("model", json!("gpt-5")),
@@ -2426,10 +2558,14 @@ mod tests {
 		] {
 			thread.insert(key.into(), value);
 		}
+
 		let bytes = serde_json::to_vec(&response).unwrap();
+
 		assert!(decode_conversation_thread_start_response(&start_request(), &bytes).is_ok());
 		assert!(decode_conversation_thread_resume_response(&resume_request(), &bytes).is_ok());
+
 		response["thread"]["daybreakEnabled"] = json!("invalid");
+
 		assert!(
 			decode_conversation_thread_start_response(
 				&start_request(),
@@ -2453,7 +2589,9 @@ mod tests {
 		assert_eq!(start.reasoning_effort().map(|effort| effort.as_str()), Some("high"));
 
 		let mut canonical_auto_review = canonical.clone();
+
 		canonical_auto_review["approvalsReviewer"] = json!("auto_review");
+
 		assert!(
 			decode_conversation_thread_start_response(
 				&start_request,
@@ -2492,12 +2630,13 @@ mod tests {
 	fn current_thread_section_fields_decode_when_omitted_null_or_populated() {
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
 		let omitted = canonical.clone();
-
 		let mut null = canonical.clone();
+
 		null["thread"]["section"] = Value::Null;
 		null["thread"]["sectionEnteredAt"] = Value::Null;
 
 		let mut populated = canonical;
+
 		populated["thread"]["section"] = json!({"id": "section-1", "name": "Active"});
 		populated["thread"]["sectionEnteredAt"] = json!(2);
 
@@ -2545,7 +2684,9 @@ mod tests {
 
 		for (case, section) in cases {
 			let mut response = canonical.clone();
+
 			response["thread"]["section"] = section;
+
 			let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
 
 			assert!(
@@ -2587,11 +2728,13 @@ mod tests {
 
 		for (case, appearance, expected) in cases {
 			let mut response = canonical.clone();
+
 			response["thread"]["section"] = json!({
 				"id": "section-1",
 				"name": "Active",
 				"appearance": appearance,
 			});
+
 			let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
 
 			assert_eq!(
@@ -2645,6 +2788,7 @@ mod tests {
 
 		for (case, section, expected) in cases {
 			let mut response = canonical.clone();
+
 			response["thread"]["section"] = section;
 
 			assert_eq!(
@@ -2659,6 +2803,7 @@ mod tests {
 		}
 
 		let mut malformed_entered_at = canonical;
+
 		malformed_entered_at["thread"]["sectionEnteredAt"] = json!("2");
 
 		assert_eq!(
@@ -2676,9 +2821,10 @@ mod tests {
 	#[test]
 	fn resume_uses_live_response_cwd_when_persisted_thread_cwd_differs() {
 		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
-		response["thread"]["cwd"] = json!("/persisted");
-		let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
 
+		response["thread"]["cwd"] = json!("/persisted");
+
+		let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
 		let resume = decode_conversation_thread_resume_response(&resume_request(), &bytes)
 			.expect("resume must allow distinct persisted thread metadata cwd");
 
@@ -2688,6 +2834,7 @@ mod tests {
 	#[test]
 	fn resume_rejects_live_response_cwd_that_differs_from_request() {
 		let mut response = thread_response("thread-1", "gpt-5", "/other");
+
 		response["thread"]["cwd"] = json!("/persisted");
 
 		assert_eq!(
@@ -2703,6 +2850,7 @@ mod tests {
 	#[test]
 	fn start_rejects_nested_thread_cwd_that_differs_from_live_response() {
 		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+
 		response["thread"]["cwd"] = json!("/persisted");
 
 		assert_eq!(
@@ -2718,6 +2866,7 @@ mod tests {
 	#[test]
 	fn resume_rejects_relative_persisted_thread_cwd() {
 		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+
 		response["thread"]["cwd"] = json!("persisted");
 
 		assert_eq!(
@@ -2734,14 +2883,16 @@ mod tests {
 	fn malformed_or_unknown_wire_shape_failures_never_mint_conversation_success() {
 		let start_request = start_request();
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
-
 		let mut unknown_nested = canonical.clone();
+
 		unknown_nested["thread"]["unexpected"] = json!(true);
 
 		let mut legacy_reviewer = canonical.clone();
+
 		legacy_reviewer["approvalsReviewer"] = json!("guardian_subagent");
 
 		let mut legacy_agent_type = canonical.clone();
+
 		legacy_agent_type["thread"]["source"] = json!({
 			"subAgent": {
 				"thread_spawn": {
@@ -2756,8 +2907,8 @@ mod tests {
 			.expect("fixture response must serialize")
 			.replacen(r#""id":"thread-1""#, r#""id":"thread-1","id":"thread-1""#, 1)
 			.into_bytes();
-
 		let mut malformed_nested = canonical.clone();
+
 		malformed_nested["sandbox"] = json!({"type": "readOnly", "access": {"type": "restricted"}});
 
 		let cases = [
@@ -2815,17 +2966,20 @@ mod tests {
 		let start_request = start_request();
 		let resume_request = resume_request();
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
-
 		let mut nonempty_turns = canonical.clone();
+
 		nonempty_turns["thread"]["turns"] = json!([{}]);
 
 		let mut wrong_thread = canonical.clone();
+
 		wrong_thread["thread"]["id"] = json!("thread-2");
 
 		let mut wrong_model = canonical.clone();
+
 		wrong_model["model"] = json!("gpt-other");
 
 		let mut wrong_cwd = canonical;
+
 		wrong_cwd["cwd"] = json!("/other");
 
 		let nonempty_items = json!({
@@ -2837,7 +2991,6 @@ mod tests {
 			},
 		});
 		let oversized = vec![b' '; MAX_CONVERSATION_RESPONSE_BYTES + 1];
-
 		let cases = [
 			(
 				"nonempty turns",

@@ -1,7 +1,10 @@
 //! Native voice preferences. Saving affects the next call and never restarts audio.
 use super::{AppServerClient, ClientError, Outbound};
+
 use serde_json::{Value, json};
+
 use std::{path::Path, time::Duration};
+
 use tokio::sync::mpsc;
 
 /// Reviewed native configuration, including the version needed for a conditional write.
@@ -18,11 +21,11 @@ pub struct NativeVoiceSettings {
 	/// The user preference can be overridden by project or managed configuration.
 	pub preference: Option<String>,
 }
-
 impl NativeVoiceSettings {
 	/// Bind a displayed selection to its native directory, version and effective settings.
 	pub fn fingerprint(&self) -> String {
 		use sha2::{Digest as _, Sha256};
+
 		let value = json!([
 			self.cwd,
 			self.file,
@@ -31,6 +34,7 @@ impl NativeVoiceSettings {
 			self.effective,
 			self.preference
 		]);
+
 		Sha256::digest(value.to_string().as_bytes())
 			.iter()
 			.map(|byte| format!("{byte:02x}"))
@@ -47,6 +51,7 @@ impl AppServerClient {
 		if !Path::new(cwd).is_absolute() {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		tokio::time::timeout(Duration::from_secs(15), async {
 			let config =
 				self.request("config/read", json!({"cwd":cwd,"includeLayers":true})).await?;
@@ -55,18 +60,23 @@ impl AppServerClient {
 				.iter()
 				.find(|layer| layer["name"]["type"] == "user")
 				.ok_or(ClientError::InvalidFrame)?;
+
 			if !user["disabledReason"].is_null() || !config["config"].is_object() {
 				return Err(ClientError::InvalidFrame);
 			}
+
 			let file = string(&user["name"]["file"])?;
+
 			if !Path::new(&file).is_absolute() {
 				return Err(ClientError::InvalidFrame);
 			}
+
 			let version = string(&user["version"])?;
 			let (voices, default) = self.realtime_voice_catalog().await;
 			let effective =
 				optional_voice(&config["config"]["realtime"]["voice"])?.or(Some(default));
 			let preference = optional_voice(&user["config"]["realtime"]["voice"])?;
+
 			Ok(NativeVoiceSettings {
 				connection: self.outbound.clone(),
 				cwd: cwd.into(),
@@ -93,6 +103,7 @@ impl AppServerClient {
 		{
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let params = json!({"filePath":observed.file,"expectedVersion":observed.version,
 			"reloadUserConfig":false,"edits":[{"keyPath":"realtime.voice","value":voice,"mergeStrategy":"replace"}]});
 		let receipt = tokio::time::timeout(
@@ -101,12 +112,14 @@ impl AppServerClient {
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
+
 		if !matches!(receipt["status"].as_str(), Some("ok" | "okOverridden"))
 			|| receipt["filePath"] != observed.file
 			|| string(&receipt["version"]).is_err()
 		{
 			return Err(ClientError::InvalidFrame);
 		}
+
 		self.realtime_voice_settings(&observed.cwd).await
 	}
 
@@ -122,6 +135,7 @@ impl AppServerClient {
 		{
 			return (voices, default);
 		}
+
 		(
 			["juniper", "maple", "spruce", "ember", "vale", "breeze", "arbor", "sol", "cove"]
 				.into_iter()
@@ -130,18 +144,6 @@ impl AppServerClient {
 			"cove".into(),
 		)
 	}
-}
-
-fn string(value: &Value) -> Result<String, ClientError> {
-	value
-		.as_str()
-		.filter(|v| !v.is_empty() && v.len() <= 4096 && !v.chars().any(char::is_control))
-		.map(str::to_owned)
-		.ok_or(ClientError::InvalidFrame)
-}
-
-fn optional_voice(value: &Value) -> Result<Option<String>, ClientError> {
-	if value.is_null() { Ok(None) } else { string(value).map(Some) }
 }
 
 /// Accept only a conditional voice edit through the retained native transport.
@@ -157,6 +159,18 @@ pub fn is_realtime_voice_write(params: &Value) -> bool {
 				&& edits[0]["mergeStrategy"] == "replace"
 				&& string(&edits[0]["value"]).is_ok()
 		})
+}
+
+fn string(value: &Value) -> Result<String, ClientError> {
+	value
+		.as_str()
+		.filter(|v| !v.is_empty() && v.len() <= 4_096 && !v.chars().any(char::is_control))
+		.map(str::to_owned)
+		.ok_or(ClientError::InvalidFrame)
+}
+
+fn optional_voice(value: &Value) -> Result<Option<String>, ClientError> {
+	if value.is_null() { Ok(None) } else { string(value).map(Some) }
 }
 
 #[cfg(test)]

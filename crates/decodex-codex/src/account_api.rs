@@ -13,7 +13,9 @@ use decodex_core::{
 	AccountQuotaObservationError, AccountQuotaWindow, AccountUsageConditions, ResetCardDescriptor,
 	ResetCardTimestamp,
 };
+
 use serde_json::{Map, Value};
+
 use zeroize::Zeroizing;
 
 /// Maximum UTF-8 bytes retained for one exact provider credit identifier.
@@ -22,6 +24,11 @@ pub const MAX_EXACT_RESET_CREDIT_ID_BYTES: usize = 1_024;
 pub const MAX_RESET_CARD_IDEMPOTENCY_KEY_BYTES: usize = 256;
 /// Maximum number of reset-credit details retained from one provider response.
 pub const MAX_RESET_CARDS_PER_INVENTORY: usize = decodex_core::MAX_RESET_CARD_ITEMS;
+/// Maximum body size accepted by the account backend decoder.
+pub const MAX_ACCOUNT_API_BODY_BYTES: usize = 256 * 1_024;
+
+const MAX_PROFILE_TEXT_BYTES: usize = 256;
+const MAX_PROFILE_DAILY_BUCKETS: usize = 36;
 
 /// Exact provider reset-credit identifier.
 ///
@@ -33,9 +40,11 @@ impl ExactResetCreditId {
 	/// Validate one exact provider identifier without trimming or normalization.
 	pub fn new(value: impl Into<String>) -> Result<Self, AccountApiProtocolError> {
 		let value = Zeroizing::new(value.into());
+
 		if !is_bounded_scalar(value.as_str(), MAX_EXACT_RESET_CREDIT_ID_BYTES) {
 			return Err(AccountApiProtocolError::InvalidCreditId);
 		}
+
 		Ok(Self(value))
 	}
 
@@ -44,6 +53,7 @@ impl ExactResetCreditId {
 		self.0.as_str()
 	}
 }
+
 impl Debug for ExactResetCreditId {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str("ExactResetCreditId([REDACTED])")
@@ -57,9 +67,11 @@ impl ResetCardIdempotencyKey {
 	/// Validate a stable scalar key while preserving its exact text for retries.
 	pub fn new(value: impl Into<String>) -> Result<Self, AccountApiProtocolError> {
 		let value = Zeroizing::new(value.into());
+
 		if !is_bounded_scalar(value.as_str(), MAX_RESET_CARD_IDEMPOTENCY_KEY_BYTES) {
 			return Err(AccountApiProtocolError::InvalidIdempotencyKey);
 		}
+
 		Ok(Self(value))
 	}
 
@@ -68,16 +80,12 @@ impl ResetCardIdempotencyKey {
 		self.0.as_str()
 	}
 }
+
 impl Debug for ResetCardIdempotencyKey {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str("ResetCardIdempotencyKey([REDACTED])")
 	}
 }
-
-/// Maximum body size accepted by the account backend decoder.
-pub const MAX_ACCOUNT_API_BODY_BYTES: usize = 256 * 1_024;
-const MAX_PROFILE_TEXT_BYTES: usize = 256;
-const MAX_PROFILE_DAILY_BUCKETS: usize = 36;
 
 /// A bounded profile projection returned by `/wham/profiles/me`.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -133,16 +141,6 @@ pub struct AccountApiUsage {
 	account_id: Option<String>,
 	user_id: Option<String>,
 }
-
-/// Identity-matched usage context for resolving backend recovery destinations.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AccountApiRecoveryContext {
-	/// Backend workspace/account identity; never the local Decodex account UUID.
-	pub provider_account_id: String,
-	/// Fresh usage-response plan. Missing or unknown values do not imply a personal plan.
-	pub plan_type: Option<String>,
-}
-
 impl AccountApiUsage {
 	/// Return action context only when both outer identities match the authenticated source.
 	pub fn recovery_context_for(
@@ -189,6 +187,15 @@ impl AccountApiUsage {
 	}
 }
 
+/// Identity-matched usage context for resolving backend recovery destinations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountApiRecoveryContext {
+	/// Backend workspace/account identity; never the local Decodex account UUID.
+	pub provider_account_id: String,
+	/// Fresh usage-response plan. Missing or unknown values do not imply a personal plan.
+	pub plan_type: Option<String>,
+}
+
 /// One exact reset credit decoded from the detail endpoint.
 #[derive(Clone, Eq, PartialEq)]
 pub struct AccountApiResetCredit {
@@ -206,6 +213,7 @@ impl AccountApiResetCredit {
 		self.descriptor
 	}
 }
+
 impl std::fmt::Debug for AccountApiResetCredit {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter
@@ -257,6 +265,7 @@ pub enum AccountApiProtocolError {
 	UnknownConsumeOutcome,
 }
 impl Error for AccountApiProtocolError {}
+
 impl Display for AccountApiProtocolError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(match self {
@@ -275,6 +284,7 @@ pub fn decode_account_api_profile(
 	bytes: &[u8],
 ) -> Result<AccountApiProfile, AccountApiProtocolError> {
 	ensure_body_limit(bytes)?;
+
 	let payload: Value =
 		serde_json::from_slice(bytes).map_err(|_| AccountApiProtocolError::MalformedResponse)?;
 	let object = payload.as_object().ok_or(AccountApiProtocolError::MalformedResponse)?;
@@ -299,13 +309,16 @@ pub fn decode_account_api_profile(
 			values.iter().map(decode_daily_usage).collect::<Result<Vec<_>, _>>()?,
 		Some(_) => return Err(AccountApiProtocolError::MalformedResponse),
 	};
+
 	daily_usage.sort_by(|left, right| left.start_date.cmp(&right.start_date));
+
 	if daily_usage.windows(2).any(|values| values[0].start_date == values[1].start_date) {
 		return Err(AccountApiProtocolError::InvalidValue);
 	}
 	if daily_usage.len() > MAX_PROFILE_DAILY_BUCKETS {
 		daily_usage = daily_usage.split_off(daily_usage.len() - MAX_PROFILE_DAILY_BUCKETS);
 	}
+
 	let profile = AccountApiProfile {
 		display_name,
 		username,
@@ -316,12 +329,14 @@ pub fn decode_account_api_profile(
 		longest_streak_days,
 		daily_usage,
 	};
+
 	Ok(profile)
 }
 
 /// Decode one `/wham/usage` response.
 pub fn decode_account_api_usage(bytes: &[u8]) -> Result<AccountApiUsage, AccountApiProtocolError> {
 	ensure_body_limit(bytes)?;
+
 	let payload: Value =
 		serde_json::from_slice(bytes).map_err(|_| AccountApiProtocolError::MalformedResponse)?;
 	let object = payload.as_object().ok_or(AccountApiProtocolError::MalformedResponse)?;
@@ -344,6 +359,7 @@ pub fn decode_account_api_usage(bytes: &[u8]) -> Result<AccountApiUsage, Account
 			.filter(|value| is_bounded_scalar(value, 512))
 			.map(str::to_owned)
 	};
+
 	Ok(AccountApiUsage {
 		quota_windows,
 		reported_available_count,
@@ -356,6 +372,129 @@ pub fn decode_account_api_usage(bytes: &[u8]) -> Result<AccountApiUsage, Account
 	})
 }
 
+/// Decode one `/wham/rate-limit-reset-credits` response.
+pub fn decode_account_api_reset_credits(
+	bytes: &[u8],
+) -> Result<AccountApiResetCredits, AccountApiProtocolError> {
+	ensure_body_limit(bytes)?;
+
+	let payload: Value =
+		serde_json::from_slice(bytes).map_err(|_| AccountApiProtocolError::MalformedResponse)?;
+	let object = payload.as_object().ok_or(AccountApiProtocolError::MalformedResponse)?;
+	let reported_available_count = decode_reset_credit_summary(object.get("available_count"))?
+		.ok_or(AccountApiProtocolError::MalformedResponse)?;
+	let (credits, mut details_complete) = match object.get("credits") {
+		None | Some(Value::Null) => (Vec::new(), false),
+		Some(Value::Array(values)) =>
+			if values.len() > MAX_RESET_CARDS_PER_INVENTORY {
+				(Vec::new(), false)
+			} else {
+				let mut credits = Vec::with_capacity(values.len());
+				let mut identifiers = BTreeSet::new();
+				let mut descriptors = BTreeSet::new();
+				let mut details_complete = true;
+
+				for value in values {
+					let Some(credit) = value.as_object() else {
+						return Err(AccountApiProtocolError::MalformedResponse);
+					};
+					let status = required_text(credit.get("status"))?;
+
+					if status == "redeeming" || status == "redeemed" {
+						continue;
+					}
+					if status != "available"
+						|| !is_codex_reset_type(required_text(credit.get("reset_type"))?)
+					{
+						details_complete = false;
+
+						continue;
+					}
+
+					let id = required_text(credit.get("id"))?;
+					let Some(expires_at) = credit.get("expires_at") else {
+						details_complete = false;
+
+						continue;
+					};
+					let granted_at = match parse_provider_timestamp(credit.get("granted_at")) {
+						Some(value) => value,
+						None => {
+							details_complete = false;
+
+							continue;
+						},
+					};
+					let expires_at = if expires_at.is_null() {
+						None
+					} else {
+						let Some(expiry) = parse_provider_timestamp(Some(expires_at))
+							.and_then(|value| ResetCardTimestamp::from_unix_seconds(value).ok())
+						else {
+							details_complete = false;
+
+							continue;
+						};
+
+						Some(expiry)
+					};
+					let Ok(granted_at) = ResetCardTimestamp::from_unix_seconds(granted_at) else {
+						details_complete = false;
+
+						continue;
+					};
+					let Ok(descriptor) = ResetCardDescriptor::new(granted_at, expires_at) else {
+						details_complete = false;
+
+						continue;
+					};
+					let Ok(exact_id) = ExactResetCreditId::new(id.to_owned()) else {
+						details_complete = false;
+
+						continue;
+					};
+
+					if !identifiers.insert(exact_id.as_str().to_owned())
+						|| !descriptors.insert(descriptor)
+					{
+						details_complete = false;
+
+						continue;
+					}
+
+					credits.push(AccountApiResetCredit { exact_id, descriptor });
+				}
+
+				(credits, details_complete)
+			},
+		Some(_) => return Err(AccountApiProtocolError::MalformedResponse),
+	};
+
+	details_complete &=
+		reported_available_count == u64::try_from(credits.len()).unwrap_or(u64::MAX);
+
+	Ok(AccountApiResetCredits { reported_available_count, credits, details_complete })
+}
+
+/// Decode one direct consume response.
+pub fn decode_account_api_consume(
+	bytes: &[u8],
+) -> Result<AccountApiConsumeOutcome, AccountApiProtocolError> {
+	ensure_body_limit(bytes)?;
+
+	let payload: Value =
+		serde_json::from_slice(bytes).map_err(|_| AccountApiProtocolError::MalformedResponse)?;
+	let object = payload.as_object().ok_or(AccountApiProtocolError::MalformedResponse)?;
+
+	match required_text(object.get("code"))? {
+		"reset" => Ok(AccountApiConsumeOutcome::Reset),
+		"nothing_to_reset" => Ok(AccountApiConsumeOutcome::NothingToReset),
+		"no_credit" => Ok(AccountApiConsumeOutcome::NoCredit),
+		"already_redeemed" => Ok(AccountApiConsumeOutcome::AlreadyRedeemed),
+		_ => Err(AccountApiProtocolError::UnknownConsumeOutcome),
+	}
+}
+
 fn decode_usage_conditions(
 	object: &Map<String, Value>,
 ) -> Result<AccountUsageConditions, AccountApiProtocolError> {
@@ -365,6 +504,7 @@ fn decode_usage_conditions(
 			Some(Value::Object(parent)) => parent.get(key),
 			Some(_) => return Err(AccountApiProtocolError::MalformedResponse),
 		};
+
 		match value {
 			None | Some(Value::Null) => Ok(None),
 			Some(Value::Bool(value)) => Ok(Some(*value)),
@@ -391,6 +531,7 @@ fn decode_usage_conditions(
 			.then_some(true),
 		Some(_) => return Err(AccountApiProtocolError::MalformedResponse),
 	};
+
 	Ok(AccountUsageConditions {
 		has_credits: boolean("credits", "has_credits")?,
 		unlimited_credits: boolean("credits", "unlimited")?,
@@ -399,111 +540,8 @@ fn decode_usage_conditions(
 	})
 }
 
-/// Decode one `/wham/rate-limit-reset-credits` response.
-pub fn decode_account_api_reset_credits(
-	bytes: &[u8],
-) -> Result<AccountApiResetCredits, AccountApiProtocolError> {
-	ensure_body_limit(bytes)?;
-	let payload: Value =
-		serde_json::from_slice(bytes).map_err(|_| AccountApiProtocolError::MalformedResponse)?;
-	let object = payload.as_object().ok_or(AccountApiProtocolError::MalformedResponse)?;
-	let reported_available_count = decode_reset_credit_summary(object.get("available_count"))?
-		.ok_or(AccountApiProtocolError::MalformedResponse)?;
-	let (credits, mut details_complete) = match object.get("credits") {
-		None | Some(Value::Null) => (Vec::new(), false),
-		Some(Value::Array(values)) =>
-			if values.len() > MAX_RESET_CARDS_PER_INVENTORY {
-				(Vec::new(), false)
-			} else {
-				let mut credits = Vec::with_capacity(values.len());
-				let mut identifiers = BTreeSet::new();
-				let mut descriptors = BTreeSet::new();
-				let mut details_complete = true;
-				for value in values {
-					let Some(credit) = value.as_object() else {
-						return Err(AccountApiProtocolError::MalformedResponse);
-					};
-					let status = required_text(credit.get("status"))?;
-					if status == "redeeming" || status == "redeemed" {
-						continue;
-					}
-					if status != "available"
-						|| !is_codex_reset_type(required_text(credit.get("reset_type"))?)
-					{
-						details_complete = false;
-						continue;
-					}
-					let id = required_text(credit.get("id"))?;
-					let Some(expires_at) = credit.get("expires_at") else {
-						details_complete = false;
-						continue;
-					};
-					let granted_at = match parse_provider_timestamp(credit.get("granted_at")) {
-						Some(value) => value,
-						None => {
-							details_complete = false;
-							continue;
-						},
-					};
-					let expires_at = if expires_at.is_null() {
-						None
-					} else {
-						let Some(expiry) = parse_provider_timestamp(Some(expires_at))
-							.and_then(|value| ResetCardTimestamp::from_unix_seconds(value).ok())
-						else {
-							details_complete = false;
-							continue;
-						};
-						Some(expiry)
-					};
-					let Ok(granted_at) = ResetCardTimestamp::from_unix_seconds(granted_at) else {
-						details_complete = false;
-						continue;
-					};
-					let Ok(descriptor) = ResetCardDescriptor::new(granted_at, expires_at) else {
-						details_complete = false;
-						continue;
-					};
-					let Ok(exact_id) = ExactResetCreditId::new(id.to_owned()) else {
-						details_complete = false;
-						continue;
-					};
-					if !identifiers.insert(exact_id.as_str().to_owned())
-						|| !descriptors.insert(descriptor)
-					{
-						details_complete = false;
-						continue;
-					}
-					credits.push(AccountApiResetCredit { exact_id, descriptor });
-				}
-				(credits, details_complete)
-			},
-		Some(_) => return Err(AccountApiProtocolError::MalformedResponse),
-	};
-	details_complete &=
-		reported_available_count == u64::try_from(credits.len()).unwrap_or(u64::MAX);
-	Ok(AccountApiResetCredits { reported_available_count, credits, details_complete })
-}
-
 fn is_codex_reset_type(value: &str) -> bool {
 	matches!(value, "codexRateLimits" | "codex_rate_limits")
-}
-
-/// Decode one direct consume response.
-pub fn decode_account_api_consume(
-	bytes: &[u8],
-) -> Result<AccountApiConsumeOutcome, AccountApiProtocolError> {
-	ensure_body_limit(bytes)?;
-	let payload: Value =
-		serde_json::from_slice(bytes).map_err(|_| AccountApiProtocolError::MalformedResponse)?;
-	let object = payload.as_object().ok_or(AccountApiProtocolError::MalformedResponse)?;
-	match required_text(object.get("code"))? {
-		"reset" => Ok(AccountApiConsumeOutcome::Reset),
-		"nothing_to_reset" => Ok(AccountApiConsumeOutcome::NothingToReset),
-		"no_credit" => Ok(AccountApiConsumeOutcome::NoCredit),
-		"already_redeemed" => Ok(AccountApiConsumeOutcome::AlreadyRedeemed),
-		_ => Err(AccountApiProtocolError::UnknownConsumeOutcome),
-	}
 }
 
 fn decode_quota_windows(
@@ -542,6 +580,7 @@ fn decode_quota_windows(
 	let Some(bucket) = bucket else {
 		return Ok(optional_quota_windows());
 	};
+
 	decode_camel_case_quota_windows(bucket)
 }
 
@@ -549,6 +588,7 @@ fn decode_snake_case_quota_windows(
 	object: &Map<String, Value>,
 ) -> Result<[AccountApiQuotaWindow; 2], AccountApiProtocolError> {
 	let mut windows = optional_quota_windows();
+
 	for key in ["primary_window", "secondary_window"] {
 		let Some(value) = object.get(key).filter(|value| !value.is_null()) else {
 			continue;
@@ -557,8 +597,10 @@ fn decode_snake_case_quota_windows(
 		let Some(slot) = quota_window_slot(duration_minutes) else {
 			continue;
 		};
+
 		windows[slot] = decode_snake_case_quota_window(Some(value), duration_minutes);
 	}
+
 	Ok(windows)
 }
 
@@ -566,6 +608,7 @@ fn decode_camel_case_quota_windows(
 	object: &Map<String, Value>,
 ) -> Result<[AccountApiQuotaWindow; 2], AccountApiProtocolError> {
 	let mut windows = optional_quota_windows();
+
 	for key in ["primary", "secondary"] {
 		let Some(value) = object.get(key).filter(|value| !value.is_null()) else {
 			continue;
@@ -574,8 +617,10 @@ fn decode_camel_case_quota_windows(
 		let Some(slot) = quota_window_slot(duration_minutes) else {
 			continue;
 		};
+
 		windows[slot] = decode_camel_case_quota_window(Some(value), duration_minutes);
 	}
+
 	Ok(windows)
 }
 
@@ -590,6 +635,7 @@ fn reported_duration_minutes(
 		.checked_div(divisor)
 		.and_then(|value| u32::try_from(value).ok())
 		.ok_or(AccountApiProtocolError::InvalidValue)?;
+
 	Ok(duration)
 }
 
@@ -619,20 +665,25 @@ fn decode_snake_case_quota_window(
 	let Some(value) = value.filter(|value| !value.is_null()) else {
 		return optional_quota_window(expected_duration);
 	};
+
 	if value.as_object().is_some_and(|object| {
 		object.contains_key("windowDurationMins") || object.contains_key("usedPercent")
 	}) {
 		return decode_camel_case_quota_window(Some(value), expected_duration);
 	}
+
 	let result = (|| {
 		let object = value.as_object()?;
 		let duration_seconds = parse_integer(object.get("limit_window_seconds"))?;
 		let duration_minutes = u32::try_from(duration_seconds / 60).ok()?;
+
 		if duration_minutes != expected_duration {
 			return None;
 		}
+
 		let used_percent = u8::try_from(parse_integer(object.get("used_percent"))?).ok()?;
 		let reset_at_micros = parse_reset_at_micros(object.get("reset_at"))?;
+
 		AccountQuotaWindow::new(duration_minutes, used_percent, reset_at_micros).ok()
 	})();
 	let missing_reset = value.as_object().is_some_and(|object| {
@@ -640,6 +691,7 @@ fn decode_snake_case_quota_window(
 			&& object.contains_key("used_percent")
 			&& matches!(object.get("reset_at"), None | Some(Value::Null))
 	});
+
 	AccountApiQuotaWindow {
 		duration_minutes: expected_duration,
 		result: match result {
@@ -661,11 +713,14 @@ fn decode_camel_case_quota_window(
 		let object = value.as_object()?;
 		let duration_minutes = parse_integer(object.get("windowDurationMins"))
 			.and_then(|value| u32::try_from(value).ok())?;
+
 		if duration_minutes != expected_duration {
 			return None;
 		}
+
 		let used_percent = u8::try_from(parse_integer(object.get("usedPercent"))?).ok()?;
 		let reset_at_micros = parse_reset_at_micros(object.get("resetsAt"))?;
+
 		AccountQuotaWindow::new(duration_minutes, used_percent, reset_at_micros).ok()
 	})();
 	let missing_reset = value.as_object().is_some_and(|object| {
@@ -673,6 +728,7 @@ fn decode_camel_case_quota_window(
 			&& object.contains_key("usedPercent")
 			&& matches!(object.get("resetsAt"), None | Some(Value::Null))
 	});
+
 	AccountApiQuotaWindow {
 		duration_minutes: expected_duration,
 		result: match result {
@@ -690,9 +746,11 @@ fn decode_camel_case_quota_window(
 /// expose one internal Unix-microsecond representation to the rest of the application.
 fn parse_reset_at_micros(value: Option<&Value>) -> Option<i64> {
 	let value = parse_integer(value)?;
+
 	if value <= 0 {
 		return None;
 	}
+
 	match value {
 		// Unix seconds, including dates far beyond the current epoch.
 		value if value < 100_000_000_000 => value.checked_mul(1_000_000),
@@ -713,11 +771,13 @@ fn decode_reset_credit_summary(
 		Some(Value::Object(object)) => {
 			let count = parse_integer(object.get("available_count"))
 				.ok_or(AccountApiProtocolError::MalformedResponse)?;
+
 			Ok(Some(nonnegative_count(count)?))
 		},
 		Some(value) => {
 			let count =
 				parse_integer(Some(value)).ok_or(AccountApiProtocolError::MalformedResponse)?;
+
 			Ok(Some(nonnegative_count(count)?))
 		},
 	}
@@ -814,6 +874,7 @@ fn decode_daily_usage(value: &Value) -> Result<AccountApiDailyUsage, AccountApiP
 	let tokens = parse_integer(object.get("tokens"))
 		.filter(|value| *value >= 0)
 		.ok_or(AccountApiProtocolError::InvalidValue)?;
+
 	Ok(AccountApiDailyUsage { start_date, tokens })
 }
 
@@ -838,6 +899,7 @@ fn parse_rfc3339_utc_seconds(value: &str) -> Option<i64> {
 	let value = value.strip_suffix('Z')?;
 	let (whole, fraction) = value.split_once('.').unwrap_or((value, ""));
 	let bytes = whole.as_bytes();
+
 	if bytes.len() != 19
 		|| bytes[4] != b'-'
 		|| bytes[7] != b'-'
@@ -852,6 +914,7 @@ fn parse_rfc3339_utc_seconds(value: &str) -> Option<i64> {
 	{
 		return None;
 	}
+
 	let number = |start: usize, end: usize| {
 		std::str::from_utf8(&bytes[start..end]).ok()?.parse::<i64>().ok()
 	};
@@ -863,6 +926,7 @@ fn parse_rfc3339_utc_seconds(value: &str) -> Option<i64> {
 	let second = number(17, 19)?;
 	let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
 	let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
 	if !(1..=12).contains(&month)
 		|| day < 1
 		|| day > month_days[usize::try_from(month - 1).ok()?]
@@ -872,6 +936,7 @@ fn parse_rfc3339_utc_seconds(value: &str) -> Option<i64> {
 	{
 		return None;
 	}
+
 	let adjusted_year = year - i64::from(month <= 2);
 	let era = adjusted_year.div_euclid(400);
 	let year_of_era = adjusted_year - era * 400;
@@ -879,11 +944,13 @@ fn parse_rfc3339_utc_seconds(value: &str) -> Option<i64> {
 	let day_of_year = (153 * adjusted_month + 2) / 5 + day - 1;
 	let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
 	let days = era * 146_097 + day_of_era - 719_468;
+
 	days.checked_mul(86_400)?.checked_add(hour * 3_600 + minute * 60 + second)
 }
 
 fn canonical_calendar_date(value: &str) -> bool {
 	let bytes = value.as_bytes();
+
 	if bytes.len() != 10 {
 		return false;
 	}
@@ -896,6 +963,7 @@ fn canonical_calendar_date(value: &str) -> bool {
 	{
 		return false;
 	}
+
 	let parse = |start: usize, end: usize| {
 		std::str::from_utf8(&bytes[start..end]).ok()?.parse::<i64>().ok()
 	};
@@ -910,6 +978,7 @@ fn canonical_calendar_date(value: &str) -> bool {
 		2 => 28,
 		_ => return false,
 	};
+
 	year > 0 && (1..=maximum).contains(&day)
 }
 
@@ -922,6 +991,7 @@ mod tests {
 		let mut body = serde_json::json!({"account_id":"workspace-id", "user_id":"user-id", "plan_type":"team", "rate_limit":{}, "rate_limit_upsell":{"plan_type":"pro", "account_id":"foreign"}});
 		let read = |body: &Value| decode_account_api_usage(body.to_string().as_bytes()).unwrap();
 		let usage = read(&body);
+
 		assert_eq!(
 			usage.recovery_context_for("workspace-id", "user-id"),
 			Some(AccountApiRecoveryContext {
@@ -931,6 +1001,7 @@ mod tests {
 		);
 		assert!(usage.recovery_context_for("foreign", "user-id").is_none());
 		assert!(usage.recovery_context_for("workspace-id", "foreign").is_none());
+
 		for plan in [
 			Value::Null,
 			serde_json::json!(false),
@@ -938,12 +1009,15 @@ mod tests {
 			serde_json::json!("team\n"),
 		] {
 			body["plan_type"] = plan;
+
 			assert_eq!(
 				read(&body).recovery_context_for("workspace-id", "user-id").unwrap().plan_type,
 				None
 			);
 		}
+
 		body["plan_type"] = serde_json::json!("future-plan");
+
 		assert_eq!(
 			read(&body)
 				.recovery_context_for("workspace-id", "user-id")
@@ -952,7 +1026,9 @@ mod tests {
 				.as_deref(),
 			Some("future-plan")
 		);
+
 		body.as_object_mut().unwrap().remove("user_id");
+
 		assert!(read(&body).recovery_context_for("workspace-id", "user-id").is_none());
 	}
 
@@ -962,6 +1038,7 @@ mod tests {
 			.map(|index| {
 				let month = index / 4 + 1;
 				let day = index % 4 + 1;
+
 				serde_json::json!({
 					"start_date": format!("2026-{month:02}-{day:02}"),
 					"tokens": index,
@@ -974,6 +1051,7 @@ mod tests {
 		})
 		.to_string();
 		let profile = decode_account_api_profile(body.as_bytes()).expect("profile should decode");
+
 		assert_eq!(profile.display_name.as_deref(), Some("Val"));
 		assert_eq!(profile.peak_daily_tokens, None);
 		assert_eq!(profile.daily_usage.len(), MAX_PROFILE_DAILY_BUCKETS);
@@ -992,6 +1070,7 @@ mod tests {
 			}});
 			let profile = decode_account_api_profile(body.to_string().as_bytes())
 				.expect("optional peak should decode");
+
 			assert_eq!(profile.peak_daily_tokens, expected);
 			assert_eq!(profile.daily_usage[0].tokens, 500);
 		}
@@ -1001,6 +1080,7 @@ mod tests {
 	fn accepts_upstream_profile_with_empty_optional_stats() {
 		let profile = decode_account_api_profile(br#"{"stats":{}}"#)
 			.expect("the upstream stats fields are individually optional");
+
 		assert_eq!(profile.daily_usage, Vec::new());
 		assert_eq!(profile.lifetime_tokens, None);
 	}
@@ -1010,13 +1090,14 @@ mod tests {
 		let body = serde_json::json!({
 			"plan_type": "pro",
 			"rate_limit": {
-				"primary_window": {"used_percent": 12, "limit_window_seconds": 18000, "reset_at": 1_800_000_000},
-				"secondary_window": {"used_percent": 34, "limit_window_seconds": 604800, "reset_at": 1_800_100_000}
+				"primary_window": {"used_percent": 12, "limit_window_seconds": 18_000, "reset_at": 1_800_000_000},
+				"secondary_window": {"used_percent": 34, "limit_window_seconds": 604_800, "reset_at": 1_800_100_000}
 			},
 			"rate_limit_reset_credits": {"available_count": 2}
 		})
 		.to_string();
 		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+
 		assert_eq!(usage.reported_available_count, Some(2));
 		assert_eq!(usage.quota_windows[0].result.unwrap().unwrap().used_percent, 12);
 		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().duration_minutes, 10_080);
@@ -1029,29 +1110,38 @@ mod tests {
 		let read = |body: &Value| decode_account_api_usage(body.to_string().as_bytes()).unwrap();
 		let usage = read(&body);
 		let conditions = usage.conditions_for("a", "u");
+
 		assert_eq!(usage.ordinary_usage_allowed_for("a", "u"), Some(false));
 		assert_eq!(conditions.ordinary_requests_allowed(Some(false)), Some(true));
 		assert_eq!(conditions.ordinary_requests_allowed(None), None);
 		assert_eq!(usage.conditions_for("a", "other"), AccountUsageConditions::default());
+
 		body["spend_control"]["reached"] = serde_json::json!(true);
+
 		assert_eq!(
 			read(&body).conditions_for("a", "u").ordinary_requests_allowed(Some(true)),
 			Some(false)
 		);
+
 		body["spend_control"]["reached"] = serde_json::json!(false);
 		body["rate_limit_reached_type"] =
 			serde_json::json!({"type":"workspace_member_usage_limit_reached"});
+
 		assert_eq!(
 			read(&body).conditions_for("a", "u").ordinary_requests_allowed(Some(true)),
 			Some(false)
 		);
+
 		body["rate_limit_reached_type"] = Value::Null;
 		body["credits"] = serde_json::json!({"has_credits":false,"unlimited":true});
+
 		assert_eq!(
 			read(&body).conditions_for("a", "u").ordinary_requests_allowed(Some(false)),
 			Some(true)
 		);
+
 		body["credits"] = serde_json::json!({"has_credits":"true"});
+
 		assert!(decode_account_api_usage(body.to_string().as_bytes()).is_err());
 	}
 
@@ -1061,18 +1151,21 @@ mod tests {
 			let mut body = serde_json::json!({
 				"account_id": "account-a", "user_id": "user-a",
 				"rate_limit": {"allowed": allowed, "primary_window": {
-					"used_percent": used, "limit_window_seconds": 604800, "reset_at": 1800100000
+					"used_percent": used, "limit_window_seconds": 604_800, "reset_at": 1_800_100_000
 				}}
 			});
 			let decode = |value: &serde_json::Value| {
 				decode_account_api_usage(value.to_string().as_bytes()).unwrap()
 			};
 			let usage = decode(&body);
+
 			assert_eq!(usage.ordinary_usage_allowed_for("account-a", "user-a"), allowed);
 			assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().used_percent, used);
 			assert_eq!(usage.ordinary_usage_allowed_for("account-b", "user-a"), None);
 			assert_eq!(usage.ordinary_usage_allowed_for("account-a", "user-b"), None);
+
 			body["user_id"] = serde_json::Value::Null;
+
 			assert_eq!(decode(&body).ordinary_usage_allowed_for("account-a", "user-a"), None);
 		}
 	}
@@ -1087,9 +1180,10 @@ mod tests {
 		] {
 			let body = serde_json::json!({"account_id": "a", "user_id": value,
 			"rate_limit": {"allowed": false, "primary_window": {
-				"used_percent": 7, "limit_window_seconds": 604800, "reset_at": 1800100000
+				"used_percent": 7, "limit_window_seconds": 604_800, "reset_at": 1_800_100_000
 			}}});
 			let usage = decode_account_api_usage(body.to_string().as_bytes()).unwrap();
+
 			assert_eq!(usage.ordinary_usage_allowed_for("a", value.as_str().unwrap_or("")), None);
 			assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().used_percent, 7);
 		}
@@ -1110,6 +1204,7 @@ mod tests {
 		})
 		.to_string();
 		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+
 		assert_eq!(
 			usage.quota_windows[0].result.unwrap().unwrap().resets_at_unix_micros,
 			1_800_000_000_000_000
@@ -1131,6 +1226,7 @@ mod tests {
 		})
 		.to_string();
 		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+
 		assert_eq!(usage.quota_windows[0].result, Ok(None));
 		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().used_percent, 42);
 	}
@@ -1143,13 +1239,14 @@ mod tests {
 				"primary_window": null,
 				"secondary_window": {
 					"used_percent": 34,
-					"limit_window_seconds": 604800,
+					"limit_window_seconds": 604_800,
 					"reset_at": 1_800_100_000
 				}
 			}
 		})
 		.to_string();
 		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+
 		assert_eq!(usage.quota_windows[0].result, Ok(None));
 		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().duration_minutes, 10_080);
 	}
@@ -1175,6 +1272,7 @@ mod tests {
 		})
 		.to_string();
 		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+
 		assert_eq!(usage.quota_windows[0].result.unwrap().unwrap().used_percent, 17);
 		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().used_percent, 41);
 		assert_eq!(usage.reported_available_count, Some(0));
@@ -1194,6 +1292,7 @@ mod tests {
 		})
 		.to_string();
 		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+
 		assert_eq!(usage.quota_windows[0].result, Ok(None));
 		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().duration_minutes, 10_080);
 	}
@@ -1203,9 +1302,12 @@ mod tests {
 		let mut body = serde_json::json!({"available_count":1,"credits":[{"id":"credit","reset_type":"codexRateLimits","status":"available","granted_at":100,"expires_at":null}]});
 		let credits =
 			decode_account_api_reset_credits(&serde_json::to_vec(&body).unwrap()).unwrap();
+
 		assert!(credits.details_complete);
 		assert!(credits.credits[0].descriptor().expires_at().is_none());
+
 		body["credits"][0].as_object_mut().unwrap().remove("expires_at");
+
 		assert!(
 			!decode_account_api_reset_credits(&serde_json::to_vec(&body).unwrap())
 				.unwrap()
@@ -1229,9 +1331,11 @@ mod tests {
 			.to_string();
 			let credits =
 				decode_account_api_reset_credits(body.as_bytes()).expect("credits should decode");
+
 			assert!(credits.details_complete);
 			assert_eq!(credits.credits[0].descriptor().granted_at().unix_seconds(), 1_800_000_000);
 		}
+
 		assert_eq!(
 			decode_account_api_consume(br#"{"code":"nothing_to_reset","windows_reset":0}"#)
 				.unwrap(),

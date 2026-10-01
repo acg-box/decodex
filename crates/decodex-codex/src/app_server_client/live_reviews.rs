@@ -8,6 +8,89 @@ use std::{
 
 #[derive(Clone, Default)]
 pub(super) struct LiveReviews(Arc<Mutex<State>>);
+impl LiveReviews {
+	pub(super) fn clear(&self) {
+		if let Ok(mut state) = self.0.lock() {
+			state.entries.clear();
+		}
+	}
+
+	pub(super) fn capture(&self, thread: &str, turn: &str) -> Option<(Value, LiveReviewGuard)> {
+		let state = self.0.lock().ok()?;
+		let entry = state.entries.get(thread).filter(|entry| entry.turn == turn)?;
+
+		Some((
+			entry.error.clone(),
+			LiveReviewGuard { reviews: self.clone(), thread: thread.into(), serial: entry.serial },
+		))
+	}
+
+	pub(super) fn observe(&self, event: &ServerEvent) -> Result<(), ClientError> {
+		let ServerEvent::Notification { method, params } = event else {
+			return Ok(());
+		};
+		let Some(thread) =
+			params["threadId"].as_str().filter(|id| !id.is_empty() && id.len() <= 512)
+		else {
+			return Ok(());
+		};
+		let mut state = self.0.lock().map_err(|_| ClientError::Closed)?;
+
+		if ["turn/started", "thread/reverted", "thread/closed", "thread/archived", "thread/deleted"]
+			.contains(&method.as_str())
+			|| super::invalidates_question_state(method, params)
+		{
+			state.entries.remove(thread);
+
+			return Ok(());
+		}
+
+		let (turn, error) = match method.as_str() {
+			"error" if params["willRetry"] == false => (&params["turnId"], &params["error"]),
+			"turn/completed" => (&params["turn"]["id"], &params["turn"]["error"]),
+			_ => return Ok(()),
+		};
+		let Some(turn) = turn.as_str().filter(|id| !id.is_empty() && id.len() <= 512) else {
+			return Ok(());
+		};
+
+		if error["codexErrorInfo"] != "misalignmentPolicyViolation" {
+			// A settings-operation error carries its submission ID, not a new turn ID.
+			if method == "turn/completed"
+				|| state.entries.get(thread).is_some_and(|entry| entry.turn == turn)
+			{
+				state.entries.remove(thread);
+			}
+
+			return Ok(());
+		}
+		// A terminal event may omit the details already supplied by its live error event.
+		if state.entries.get(thread).is_some_and(|entry| {
+			entry.turn == turn && (entry.error == *error || error["misalignment"].is_null())
+		}) {
+			return Ok(());
+		}
+
+		state.entries.remove(thread);
+
+		if !error["misalignment"].is_object()
+			|| error.to_string().len() > 128 * 1_024
+			|| state.entries.len() >= 32
+		{
+			return Ok(());
+		}
+
+		state.next = state.next.checked_add(1).ok_or(ClientError::CapacityExceeded)?;
+
+		let serial = state.next;
+
+		state
+			.entries
+			.insert(thread.into(), Entry { turn: turn.into(), serial, error: error.clone() });
+
+		Ok(())
+	}
+}
 
 struct State {
 	identity: String,
@@ -17,11 +100,13 @@ struct State {
 impl Default for State {
 	fn default() -> Self {
 		static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 		let sequence = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 		let time = std::time::SystemTime::now()
 			.duration_since(std::time::UNIX_EPOCH)
 			.unwrap_or_default()
 			.as_nanos();
+
 		Self {
 			identity: format!("{}:{time}:{sequence}", std::process::id()),
 			next: 0,
@@ -53,10 +138,14 @@ mod tests {
 			let (incoming, frames) = mpsc::channel(8);
 			let (outgoing, mut writes) = mpsc::channel(8);
 			let (client, mut events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+
 			incoming.send(Ok(error("thread"))).await.unwrap();
 			events.recv().await.unwrap();
+
 			let (_, guard) = client.live_misalignment_review("thread", "failed").unwrap();
+
 			incoming.send(Ok(change)).await.unwrap();
+
 			assert!(matches!(
 				client.request_with_history("turn/start", json!({}), guard).await,
 				Err(ClientError::StaleHistory)
@@ -71,10 +160,13 @@ mod tests {
 		let (incoming, frames) = mpsc::channel(8);
 		let (outgoing, mut writes) = mpsc::channel(8);
 		let (client, mut events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+
 		incoming.send(Ok(error("thread"))).await.unwrap();
 		events.recv().await.unwrap();
+
 		let (_, first) = client.live_misalignment_review("thread", "failed").unwrap();
 		let first_identity = first.live_review_identity().unwrap();
+
 		for frame in [
 			json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"failed","status":"failed","error":{"codexErrorInfo":"misalignmentPolicyViolation"}}}}),
 			json!({"method":"turn/started","params":{"threadId":"other","turn":{"id":"new"}}}),
@@ -82,8 +174,10 @@ mod tests {
 		] {
 			incoming.send(Ok(frame)).await.unwrap();
 			events.recv().await.unwrap();
+
 			assert!(first.is_live());
 		}
+
 		incoming
 			.send(Ok(json!({"method":"thread/reverted","params":{"threadId":"thread"}})))
 			.await
@@ -91,46 +185,55 @@ mod tests {
 		events.recv().await.unwrap();
 		incoming.send(Ok(error("thread"))).await.unwrap();
 		events.recv().await.unwrap();
+
 		assert!(!first.is_live());
+
 		let (_, current) = client.live_misalignment_review("thread", "failed").unwrap();
+
 		assert_ne!(current.live_review_identity().unwrap(), first_identity);
+
 		let (other_sender, other_frames) = mpsc::channel(8);
 		let (other_writes, mut other_written) = mpsc::channel(8);
 		let (other, mut other_events) =
 			AppServerClient::from_framed(1, other_frames, other_writes).unwrap();
+
 		other_sender.send(Ok(error("thread"))).await.unwrap();
 		other_events.recv().await.unwrap();
+
 		let (_, other_guard) = other.live_misalignment_review("thread", "failed").unwrap();
+
 		assert_ne!(current.live_review_identity(), other_guard.live_review_identity());
 		assert!(matches!(
 			other.request_with_history("turn/start", json!({}), current.clone()).await,
 			Err(ClientError::StaleHistory)
 		));
 		assert!(other_written.try_recv().is_err());
+
 		drop(other_sender);
+
 		let sender = client.clone();
 		let request = tokio::spawn(async move {
 			sender.request_with_history("turn/start", json!({}), current.clone()).await
 		});
 		let wire = writes.recv().await.unwrap();
+
 		incoming
 			.send(Ok(json!({"id":wire["id"],"result":{"turn":{"id":"accepted"}}})))
 			.await
 			.unwrap();
+
 		assert_eq!(request.await.unwrap().unwrap()["turn"]["id"], "accepted");
+
 		let (_, guard) = client.live_misalignment_review("thread", "failed").unwrap();
+
 		drop(incoming);
+
 		events.recv().await.unwrap();
+
 		assert!(!guard.is_live());
 		assert!(client.live_misalignment_review("thread", "failed").is_none());
 	}
 }
-struct Entry {
-	turn: String,
-	serial: u64,
-	error: Value,
-}
-
 #[derive(Clone)]
 pub(super) struct LiveReviewGuard {
 	reviews: LiveReviews,
@@ -140,7 +243,9 @@ pub(super) struct LiveReviewGuard {
 impl LiveReviewGuard {
 	pub(super) fn identity(&self) -> Option<String> {
 		let state = self.reviews.0.lock().ok()?;
+
 		state.entries.get(&self.thread).filter(|entry| entry.serial == self.serial)?;
+
 		Some(format!("{}:{}", state.identity, self.serial))
 	}
 
@@ -151,74 +256,8 @@ impl LiveReviewGuard {
 	}
 }
 
-impl LiveReviews {
-	pub(super) fn clear(&self) {
-		if let Ok(mut state) = self.0.lock() {
-			state.entries.clear();
-		}
-	}
-
-	pub(super) fn capture(&self, thread: &str, turn: &str) -> Option<(Value, LiveReviewGuard)> {
-		let state = self.0.lock().ok()?;
-		let entry = state.entries.get(thread).filter(|entry| entry.turn == turn)?;
-		Some((
-			entry.error.clone(),
-			LiveReviewGuard { reviews: self.clone(), thread: thread.into(), serial: entry.serial },
-		))
-	}
-
-	pub(super) fn observe(&self, event: &ServerEvent) -> Result<(), ClientError> {
-		let ServerEvent::Notification { method, params } = event else {
-			return Ok(());
-		};
-		let Some(thread) =
-			params["threadId"].as_str().filter(|id| !id.is_empty() && id.len() <= 512)
-		else {
-			return Ok(());
-		};
-		let mut state = self.0.lock().map_err(|_| ClientError::Closed)?;
-		if ["turn/started", "thread/reverted", "thread/closed", "thread/archived", "thread/deleted"]
-			.contains(&method.as_str())
-			|| super::invalidates_question_state(method, params)
-		{
-			state.entries.remove(thread);
-			return Ok(());
-		}
-		let (turn, error) = match method.as_str() {
-			"error" if params["willRetry"] == false => (&params["turnId"], &params["error"]),
-			"turn/completed" => (&params["turn"]["id"], &params["turn"]["error"]),
-			_ => return Ok(()),
-		};
-		let Some(turn) = turn.as_str().filter(|id| !id.is_empty() && id.len() <= 512) else {
-			return Ok(());
-		};
-		if error["codexErrorInfo"] != "misalignmentPolicyViolation" {
-			// A settings-operation error carries its submission ID, not a new turn ID.
-			if method == "turn/completed"
-				|| state.entries.get(thread).is_some_and(|entry| entry.turn == turn)
-			{
-				state.entries.remove(thread);
-			}
-			return Ok(());
-		}
-		// A terminal event may omit the details already supplied by its live error event.
-		if state.entries.get(thread).is_some_and(|entry| {
-			entry.turn == turn && (entry.error == *error || error["misalignment"].is_null())
-		}) {
-			return Ok(());
-		}
-		state.entries.remove(thread);
-		if !error["misalignment"].is_object()
-			|| error.to_string().len() > 128 * 1024
-			|| state.entries.len() >= 32
-		{
-			return Ok(());
-		}
-		state.next = state.next.checked_add(1).ok_or(ClientError::CapacityExceeded)?;
-		let serial = state.next;
-		state
-			.entries
-			.insert(thread.into(), Entry { turn: turn.into(), serial, error: error.clone() });
-		Ok(())
-	}
+struct Entry {
+	turn: String,
+	serial: u64,
+	error: Value,
 }

@@ -1,6 +1,8 @@
 //! Read native connection settings to reconcile historical configuration receipts.
 use super::{AppServerClient, ClientError};
+
 use serde_json::{Value, json};
+
 use std::{path::Path, time::Duration};
 
 /// Narrow readback. No credentials or unrelated native configuration leave this adapter.
@@ -17,13 +19,6 @@ pub struct AppLinkSettings {
 	/// Account reviewer in the writable user layer.
 	pub user_reviewer: Option<String>,
 }
-
-impl std::fmt::Debug for AppLinkSettings {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_str("AppLinkSettings([private native account scope])")
-	}
-}
-
 impl AppLinkSettings {
 	/// Native writable file identity, shared by tasks and account-bound requests using it.
 	pub fn config_file(&self) -> &str {
@@ -33,6 +28,12 @@ impl AppLinkSettings {
 	/// Reviewed version used for native conflict detection.
 	pub fn config_version(&self) -> &str {
 		&self.version
+	}
+}
+
+impl std::fmt::Debug for AppLinkSettings {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str("AppLinkSettings([private native account scope])")
 	}
 }
 
@@ -48,7 +49,9 @@ impl AppServerClient {
 		if !Path::new(cwd).is_absolute() || !valid_identity(app) || !valid_identity(link) {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let response = self.read_app_config(cwd).await?;
+
 		self.project_app_link(app, link, &response)
 	}
 
@@ -56,6 +59,7 @@ impl AppServerClient {
 		if !Path::new(cwd).is_absolute() {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		tokio::time::timeout(
 			Duration::from_secs(30),
 			self.request("config/read", json!({"cwd":cwd,"includeLayers":true})),
@@ -73,9 +77,11 @@ impl AppServerClient {
 		if !valid_identity(app) || !valid_identity(link) {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let (user, file, version) = writable_layer(response)?;
 		let effective = account_config(&response["config"], app, link)?;
 		let writable = account_config(&user["config"], app, link)?;
+
 		Ok(AppLinkSettings {
 			file,
 			version,
@@ -87,24 +93,8 @@ impl AppServerClient {
 	}
 }
 
-fn writable_layer(response: &Value) -> Result<(&Value, String, String), ClientError> {
-	let layers = response["layers"].as_array().ok_or(ClientError::InvalidFrame)?;
-	// Native config/read orders layers high to low; the first user layer is active.
-	let user = layers
-		.iter()
-		.find(|layer| layer["name"]["type"] == "user")
-		.ok_or(ClientError::InvalidFrame)?;
-	if !user["disabledReason"].is_null() || !user["config"].is_object() {
-		return Err(ClientError::InvalidFrame);
-	}
-	let file = required_string(&user["name"]["file"])?;
-	if !Path::new(&file).is_absolute() {
-		return Err(ClientError::InvalidFrame);
-	}
-	Ok((user, file, required_string(&user["version"])?))
-}
 pub(super) fn valid_identity(value: &str) -> bool {
-	!value.is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
+	!value.is_empty() && value.len() <= 4_096 && !value.chars().any(char::is_control)
 }
 
 pub(super) fn quoted_key(value: &str) -> String {
@@ -114,6 +104,7 @@ pub(super) fn quoted_key(value: &str) -> String {
 pub(super) fn take_quoted_key(path: &str) -> Option<(String, &str)> {
 	let mut decoded = String::new();
 	let mut chars = path.strip_prefix('"')?.char_indices();
+
 	while let Some((index, ch)) = chars.next() {
 		match ch {
 			'"' => return Some((decoded, &path[index + 2..])),
@@ -124,11 +115,33 @@ pub(super) fn take_quoted_key(path: &str) -> Option<(String, &str)> {
 			_ => decoded.push(ch),
 		}
 	}
+
 	None
 }
 
 pub(super) fn required_string(value: &Value) -> Result<String, ClientError> {
 	value.as_str().filter(|s| valid_identity(s)).map(str::to_owned).ok_or(ClientError::InvalidFrame)
+}
+
+fn writable_layer(response: &Value) -> Result<(&Value, String, String), ClientError> {
+	let layers = response["layers"].as_array().ok_or(ClientError::InvalidFrame)?;
+	// Native config/read orders layers high to low; the first user layer is active.
+	let user = layers
+		.iter()
+		.find(|layer| layer["name"]["type"] == "user")
+		.ok_or(ClientError::InvalidFrame)?;
+
+	if !user["disabledReason"].is_null() || !user["config"].is_object() {
+		return Err(ClientError::InvalidFrame);
+	}
+
+	let file = required_string(&user["name"]["file"])?;
+
+	if !Path::new(&file).is_absolute() {
+		return Err(ClientError::InvalidFrame);
+	}
+
+	Ok((user, file, required_string(&user["version"])?))
 }
 
 fn account_config<'a>(
@@ -139,7 +152,9 @@ fn account_config<'a>(
 	if !config.is_object() {
 		return Err(ClientError::InvalidFrame);
 	}
+
 	let mut current = config;
+
 	for key in ["apps", app, "links", link] {
 		match current.get(key) {
 			None | Some(Value::Null) => return Ok(None),
@@ -147,6 +162,7 @@ fn account_config<'a>(
 			_ => return Err(ClientError::InvalidFrame),
 		}
 	}
+
 	Ok(Some(current))
 }
 

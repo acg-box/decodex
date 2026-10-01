@@ -2,6 +2,7 @@
 //! tui/src/backend_banners.rs and backend_banners/{actions,render}.rs.
 
 use serde::Deserialize;
+
 use serde_json::Value;
 
 /// Full-read banner presence, including an unsupported payload that must not imply recovery.
@@ -16,6 +17,31 @@ pub enum AccountApiBannerState {
 	Unsupported,
 	/// Bounded backend copy and recognized actions from a matching response.
 	Available(Box<AccountApiBanner>),
+}
+
+/// Supported CTA meanings. Decoding never executes these actions.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AccountApiBannerAction {
+	/// Open the account-appropriate credits purchase surface.
+	AddCredits,
+	/// Open the reset purchase surface.
+	BuyReset,
+	/// Open the existing reset picker, retaining its explicit confirmation.
+	ResetUsage,
+	/// Open personal usage settings.
+	ViewUsage,
+	/// Open the selected workspace's usage settings.
+	ViewWorkspaceUsage,
+	/// Request credits from the workspace owner after explicit user action.
+	NotifyOwner,
+	/// Open a validated increase request URL, or request a usage-limit increase.
+	RequestIncrease,
+	/// Open Plus plan information.
+	PlusPricing,
+	/// Open Pro plan information.
+	ProPricing,
+	/// Open the plan-appropriate pricing dialog.
+	Pricing,
 }
 
 /// Backend-owned copy with exact model scope; this is not an account-wide admission decision.
@@ -52,31 +78,6 @@ pub struct AccountApiBannerCta {
 	pub label: String,
 }
 
-/// Supported CTA meanings. Decoding never executes these actions.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum AccountApiBannerAction {
-	/// Open the account-appropriate credits purchase surface.
-	AddCredits,
-	/// Open the reset purchase surface.
-	BuyReset,
-	/// Open the existing reset picker, retaining its explicit confirmation.
-	ResetUsage,
-	/// Open personal usage settings.
-	ViewUsage,
-	/// Open the selected workspace's usage settings.
-	ViewWorkspaceUsage,
-	/// Request credits from the workspace owner after explicit user action.
-	NotifyOwner,
-	/// Open a validated increase request URL, or request a usage-limit increase.
-	RequestIncrease,
-	/// Open Plus plan information.
-	PlusPricing,
-	/// Open Pro plan information.
-	ProPricing,
-	/// Open the plan-appropriate pricing dialog.
-	Pricing,
-}
-
 #[derive(Deserialize)]
 struct RawBanner {
 	banner_type: String,
@@ -99,26 +100,28 @@ struct RawCta {
 	label: String,
 }
 
-fn inline() -> String {
-	"inline".into()
-}
-
 pub(crate) fn decode_banner(value: Option<&Value>) -> AccountApiBannerState {
 	let Some(value) = value.filter(|value| !value.is_null()) else {
 		return AccountApiBannerState::Absent;
 	};
+
 	parse_banner(value).map_or(AccountApiBannerState::Unsupported, |banner| {
 		AccountApiBannerState::Available(Box::new(banner))
 	})
 }
 
+fn inline() -> String {
+	"inline".into()
+}
+
 fn parse_banner(value: &Value) -> Option<AccountApiBanner> {
 	let raw: RawBanner = serde_json::from_value(value.clone()).ok()?;
+
 	if !scalar(&raw.banner_type, 256)
 		|| raw.title.trim().is_empty()
-		|| raw.title.len() > 1024
+		|| raw.title.len() > 1_024
 		|| raw.title.lines().count() > 3
-		|| raw.description.len() > 4096
+		|| raw.description.len() > 4_096
 		|| raw.description.lines().count() > 12
 		|| raw.ctas.len() > 8
 		|| raw.fallback_model_slugs.len() > 16
@@ -129,11 +132,14 @@ fn parse_banner(value: &Value) -> Option<AccountApiBanner> {
 	{
 		return None;
 	}
+
 	let request_url = raw.request_url.as_deref().and_then(|value| {
-		if value.len() > 4096 {
+		if value.len() > 4_096 {
 			return None;
 		}
+
 		let url = url::Url::parse(value).ok()?;
+
 		(matches!(url.scheme(), "https" | "http")
 			&& url.host_str().is_some()
 			&& url.username().is_empty()
@@ -147,17 +153,21 @@ fn parse_banner(value: &Value) -> Option<AccountApiBanner> {
 			if !scalar(&cta.label, 256) {
 				return None;
 			}
+
 			let action = action(&cta.action)?;
+
 			if action == AccountApiBannerAction::RequestIncrease
 				&& raw.request_url.is_some()
 				&& request_url.is_none()
 			{
 				return None;
 			}
+
 			Some(AccountApiBannerCta { action, label: cta.label })
 		})
 		.collect();
 	let copy = |s: String| s.chars().filter(|c| !c.is_control() || *c == '\n').collect();
+
 	Some(AccountApiBanner {
 		banner_type: raw.banner_type,
 		title: copy(raw.title),
@@ -178,6 +188,7 @@ fn scalar(s: &str, limit: usize) -> bool {
 
 fn action(value: &str) -> Option<AccountApiBannerAction> {
 	use AccountApiBannerAction as A;
+
 	Some(match value {
 		"add_credits" | "buy_credits" => A::AddCredits,
 		"buy_reset" => A::BuyReset,
@@ -211,6 +222,7 @@ mod tests {
 		let S::Available(banner) = usage.banner_for("a", "u") else {
 			panic!("bounded banner");
 		};
+
 		assert_eq!(banner.blocked_model_slug.as_deref(), Some("blocked"));
 		assert_eq!(banner.model_slug.as_deref(), Some("replacement"));
 		assert_eq!(banner.fallback_model_slugs, ["second", "first"]);
@@ -218,9 +230,13 @@ mod tests {
 		assert_eq!(banner.actions[0].action, A::ViewUsage);
 		assert_eq!(usage.banner_for("b", "u"), S::Unavailable);
 		assert_eq!(usage.banner_for("a", "other"), S::Unavailable);
+
 		body["rate_limit_upsell"] = json!({"unsupported":true});
+
 		assert_eq!(read(&body).banner_for("a", "u"), S::Unsupported);
+
 		body["rate_limit_upsell"] = serde_json::Value::Null;
+
 		assert_eq!(read(&body).banner_for("a", "u"), S::Absent);
 	}
 
@@ -232,25 +248,35 @@ mod tests {
 		let S::Available(banner) = super::decode_banner(Some(&raw)) else {
 			panic!("copy remains valid");
 		};
+
 		assert!(banner.actions.is_empty());
 		assert!(banner.request_url.is_none());
+
 		raw["request_url"] = json!("https://user:password@example.test/");
+
 		let S::Available(banner) = super::decode_banner(Some(&raw)) else {
 			panic!("copy remains valid");
 		};
+
 		assert!(banner.actions.is_empty());
+
 		raw["request_url"] = json!("https://example.test/request");
+
 		let S::Available(banner) = super::decode_banner(Some(&raw)) else {
 			panic!("copy remains valid");
 		};
+
 		assert_eq!(banner.actions.len(), 1);
+
 		for (key, value) in [
-			("title", json!("x".repeat(1025))),
+			("title", json!("x".repeat(1_025))),
 			("presentation", json!("future")),
 			("fallback_model_slugs", json!(vec!["x"; 17])),
 		] {
 			let mut invalid = raw.clone();
+
 			invalid[key] = value;
+
 			assert_eq!(super::decode_banner(Some(&invalid)), S::Unsupported);
 		}
 	}

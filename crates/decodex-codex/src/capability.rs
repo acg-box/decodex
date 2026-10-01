@@ -1,8 +1,8 @@
+pub use decodex_core::CodexCapability as Capability;
+
 use std::collections::BTreeMap;
 
 use crate::{BuildId, SchemaContract};
-
-pub use decodex_core::CodexCapability as Capability;
 
 trait CapabilityExt {
 	fn schema_method(self) -> Option<&'static str>;
@@ -10,6 +10,7 @@ trait CapabilityExt {
 	where
 		Self: Sized;
 }
+
 impl CapabilityExt for Capability {
 	fn schema_method(self) -> Option<&'static str> {
 		match self {

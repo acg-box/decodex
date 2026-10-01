@@ -24,25 +24,31 @@ impl AppServerClient {
 			ThreadForkBoundary::BeforeInput(turn) => ("beforeTurnId", turn),
 			ThreadForkBoundary::AfterTurn(turn) => ("lastTurnId", turn),
 		};
+
 		if [source, turn]
 			.iter()
 			.any(|id| id.is_empty() || id.len() > 512 || id.chars().any(char::is_control))
 		{
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let mut params =
 			json!({"threadId":source,"deferGoalContinuation":true,"excludeTurns":true});
+
 		params[field] = json!(turn);
+
 		let guard =
 			self.with_thread_settings_guard(source, guard).ok_or(ClientError::StaleHistory)?;
 		let response = self.request_with_history("thread/fork", params, guard).await?;
 		let thread = &response["thread"];
+
 		if thread["forkedFromId"] != source
 			|| thread["id"].as_str().is_none_or(|id| {
 				id.is_empty() || id.len() > 512 || id == source || id.chars().any(char::is_control)
 			}) {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		Ok(response)
 	}
 }
@@ -55,7 +61,7 @@ mod tests {
 	#[tokio::test]
 	async fn fork_selects_one_boundary_and_never_sends_a_turn_or_revert() {
 		for before in [true, false] {
-			let (local, remote) = tokio::io::duplex(65536);
+			let (local, remote) = tokio::io::duplex(65_536);
 			let (read, write) = tokio::io::split(local);
 			let (client, _events) = AppServerClient::from_io(read, write);
 			let server = tokio::spawn(async move {
@@ -63,6 +69,7 @@ mod tests {
 				let mut lines = BufReader::new(read).lines();
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				assert_eq!(request["method"], "thread/fork");
 				assert_eq!(
 					request["params"],
@@ -72,6 +79,7 @@ mod tests {
 						json!({"threadId":"source","lastTurnId":"first","deferGoalContinuation":true,"excludeTurns":true})
 					}
 				);
+
 				write
 					.write_all(
 						format!(
@@ -82,6 +90,7 @@ mod tests {
 					)
 					.await
 					.unwrap();
+
 				assert!(lines.next_line().await.unwrap().is_none());
 			});
 			let guard = client.thread_settings_guard("source").unwrap();
@@ -90,11 +99,13 @@ mod tests {
 			} else {
 				ThreadForkBoundary::AfterTurn("first")
 			};
+
 			assert_eq!(
 				client.fork_thread_at_boundary("source", boundary, guard).await.unwrap()["thread"]
 					["id"],
 				"branch"
 			);
+
 			client.close();
 			server.await.unwrap();
 		}
