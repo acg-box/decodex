@@ -65,54 +65,11 @@ final class AccountControlNativeClientTests: XCTestCase {
 		let recorder = NativeRequestRecorder()
 		let client = DecodexNativeClient { request, requestedAuthority in
 			recorder.append(request, authority: requestedAuthority)
-			let object = try nativeJSONObject(request)
-			let operation = try XCTUnwrap(object["operation"] as? String)
-			let enabled = (object["enabled"] as? Bool)
-				?? (operation != "disable_account")
-			let payload: String
-			switch operation {
-			case "get_codex_auth_projection":
-				payload = """
-				{"outcome":"current","data":{"account_id":"\(accountID)",
-				  "account_revision":7,"projection_digest":"\(String(repeating: "c", count: 64))"}}
-				"""
-			case "route_account":
-				payload = """
-				{"outcome":"applied","data":{"entity_revision":10,
-				  "result":{"name":"account_routed","data":{
-				    "account":\(controlAccountJSON(accountID: accountID, alias: "Iris", revision: 8)),
-				    "routing":{"revision":10,"mode":{"mode":"fixed","account_id":"\(accountID)"},"order":["\(accountID)","\(secondAccountID)"]},
-				    "projection_digest":"\(String(repeating: "c", count: 64))"}}}}
-				"""
-			case "logout_account":
-				payload = """
-				{"outcome":"applied","data":{"entity_revision":8,
-				  "result":{"name":"account_logged_out","data":{"account_id":"\(accountID)","tombstone_revision":8}}}}
-				"""
-			case "set_balanced_selection":
-				payload = controlRoutingAppliedJSON(
-					revision: 10,
-					mode: #"{"mode":"balanced"}"#,
-					order: [accountID, secondAccountID]
-				)
-			case "set_account_order":
-				payload = controlRoutingAppliedJSON(
-					revision: 10,
-					mode: #"{"mode":"balanced"}"#,
-					order: [secondAccountID, accountID]
-				)
-			default:
-				payload = """
-				{"outcome":"applied","data":{"entity_revision":8,
-				  "result":{"name":"account_changed","data":{"account":
-				    \(controlAccountJSON(accountID: accountID, alias: "Iris", revision: 8, enabled: enabled))
-				  }}}}
-				"""
-			}
-			return nativeSuccess(
-				operation: operation,
+			return try lifecycleResponse(
+				request: request,
 				authority: authority,
-				data: payload
+				accountID: accountID,
+				secondAccountID: secondAccountID
 			)
 		}
 
@@ -845,4 +802,61 @@ private func controlRoutingAppliedJSON(
 	    "revision":\(revision),"mode":\(mode),"order":[\(orderJSON)]
 	  }}}}}
 	"""
+}
+
+private func lifecycleResponse(
+	request: Data,
+	authority: ResetCardAuthority,
+	accountID: String,
+	secondAccountID: String
+) throws -> Data {
+	let object = try nativeJSONObject(request)
+	let operation = try XCTUnwrap(object["operation"] as? String)
+	let enabled = (object["enabled"] as? Bool)
+		?? (operation != "disable_account")
+	let payload: String
+	switch operation {
+	case "get_codex_auth_projection":
+		payload = """
+		{"outcome":"current","data":{"account_id":"\(accountID)",
+		  "account_revision":7,"projection_digest":"\(String(repeating: "c", count: 64))"}}
+		"""
+	case "route_account":
+		payload = """
+		{"outcome":"applied","data":{"entity_revision":10,
+		  "result":{"name":"account_routed","data":{
+		    "account":\(controlAccountJSON(accountID: accountID, alias: "Iris", revision: 8)),
+		    "routing":{"revision":10,"mode":{"mode":"fixed","account_id":"\(accountID)"},"order":["\(accountID)","\(secondAccountID)"]},
+		    "projection_digest":"\(String(repeating: "c", count: 64))"}}}}
+		"""
+	case "logout_account":
+		payload = """
+		{"outcome":"applied","data":{"entity_revision":8,
+		  "result":{"name":"account_logged_out","data":{"account_id":"\(accountID)","tombstone_revision":8}}}}
+		"""
+	case "set_balanced_selection":
+		payload = controlRoutingAppliedJSON(
+			revision: 10,
+			mode: #"{"mode":"balanced"}"#,
+			order: [accountID, secondAccountID]
+		)
+	case "set_account_order":
+		payload = controlRoutingAppliedJSON(
+			revision: 10,
+			mode: #"{"mode":"balanced"}"#,
+			order: [secondAccountID, accountID]
+		)
+	default:
+		payload = """
+		{"outcome":"applied","data":{"entity_revision":8,
+		  "result":{"name":"account_changed","data":{"account":
+		    \(controlAccountJSON(accountID: accountID, alias: "Iris", revision: 8, enabled: enabled))
+		  }}}}
+		"""
+	}
+	return nativeSuccess(
+		operation: operation,
+		authority: authority,
+		data: payload
+	)
 }

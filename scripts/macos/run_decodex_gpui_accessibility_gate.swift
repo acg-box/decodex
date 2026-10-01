@@ -291,6 +291,179 @@ func installSignalHandling(_ state: InterruptState) -> [DispatchSourceSignal] {
 	return sources
 }
 
+func compileInspector(
+	configuration: Configuration,
+	sourceHash: String,
+	inspectorHash: inout String,
+	compileReceipt: inout [String: Any]
+) throws {
+	let inspectorURL = configuration.outputURL.appendingPathComponent("decodex-gpui-ax-inspector")
+	let compileReceiptURL = configuration.outputURL.appendingPathComponent("compile-receipt.json")
+	let harnessHash = try sha256(configuration.harnessURL)
+	let compilerLookup = try runCommand(
+		URL(fileURLWithPath: "/usr/bin/xcrun"), ["--find", "swiftc"], timeout: 10.0
+	)
+	guard compilerLookup.status == 0 else {
+		throw GateError.message("cannot resolve Swift compiler: \(compilerLookup.stderr)")
+	}
+	let compilerPath = compilerLookup.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+	let compilerURL = URL(fileURLWithPath: compilerPath)
+	let sdkLookup = try runCommand(
+		URL(fileURLWithPath: "/usr/bin/xcrun"),
+		["--sdk", "macosx", "--show-sdk-path"],
+		timeout: 10.0
+	)
+	guard sdkLookup.status == 0 else {
+		throw GateError.message("cannot resolve macOS SDK: \(sdkLookup.stderr)")
+	}
+	let sdkPath = sdkLookup.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+	let compilerVersion = try runCommand(compilerURL, ["--version"], timeout: 10.0)
+	guard compilerVersion.status == 0 else {
+		throw GateError.message("cannot read Swift compiler version")
+	}
+	let compile = try runCommand(
+		compilerURL,
+		["-sdk", sdkPath, configuration.inspectorSourceURL.path, "-o", inspectorURL.path],
+		timeout: 60.0
+	)
+	try compile.stdout.write(
+		to: configuration.outputURL.appendingPathComponent("compiler.stdout"),
+		atomically: true,
+		encoding: .utf8
+	)
+	try compile.stderr.write(
+		to: configuration.outputURL.appendingPathComponent("compiler.stderr"),
+		atomically: true,
+		encoding: .utf8
+	)
+	guard compile.status == 0, FileManager.default.isExecutableFile(atPath: inspectorURL.path) else {
+		throw GateError.message("ahead-of-time inspector compilation failed")
+	}
+	let signing = try runCommand(
+		URL(fileURLWithPath: "/usr/bin/codesign"),
+		["--force", "--timestamp=none", "--sign", "-", inspectorURL.path],
+		timeout: 10.0
+	)
+	guard signing.status == 0 else {
+		throw GateError.message("inspector ad hoc signing failed: \(signing.stderr)")
+	}
+	let signingIdentity = try runCommand(
+		URL(fileURLWithPath: "/usr/bin/codesign"),
+		["-dvv", inspectorURL.path],
+		timeout: 10.0
+	)
+	guard signingIdentity.status == 0 else {
+		throw GateError.message("cannot inspect generated inspector signature")
+	}
+	inspectorHash = try sha256(inspectorURL)
+	compileReceipt = [
+		"schema": "decodex/gpui-reset-diagnostic-compile/1",
+		"completed_at": timestamp(),
+		"compiler_path": compilerURL.path,
+		"compiler_version": compilerVersion.stdout.trimmingCharacters(in: .whitespacesAndNewlines),
+		"compiler_stderr": compilerVersion.stderr,
+		"compiler_sdk_path": sdkPath,
+		"inspector_source_path": configuration.inspectorSourceURL.path,
+		"inspector_source_sha256": sourceHash,
+		"inspector_executable_path": inspectorURL.path,
+		"inspector_executable_sha256": inspectorHash,
+		"inspector_codesign_details": signingIdentity.stderr,
+		"inspector_codesign_identity": "adhoc",
+		"harness_path": configuration.harnessURL.path,
+		"harness_sha256": harnessHash,
+		"harness_pid": getpid(),
+		"harness_parent_pid": getppid(),
+		"harness_process_path": processPath(getpid()),
+		"harness_parent_process_path": processPath(getppid()),
+		"responsible_process_public_api": "unavailable",
+	]
+	try writeJSON(compileReceipt, to: compileReceiptURL)
+}
+
+func runInspector(
+	configuration: Configuration,
+	launchedPID: pid_t,
+	executableURL: URL,
+	executableHash: String,
+	sourceHash: String,
+	inspectorHash: String,
+	interruptState: InterruptState,
+	inspector: inout Process?,
+	inspectorReceipt: inout [String: Any]
+) throws {
+	let inspectorURL = configuration.outputURL.appendingPathComponent("decodex-gpui-ax-inspector")
+	let journalURL = configuration.outputURL.appendingPathComponent("phase-journal.jsonl")
+	let inspectorReportURL = configuration.outputURL.appendingPathComponent("inspector-report.json")
+	let screenshotURL = configuration.outputURL.appendingPathComponent("window.png")
+	let inspectorStdoutURL = configuration.outputURL.appendingPathComponent("inspector.stdout")
+	let inspectorStderrURL = configuration.outputURL.appendingPathComponent("inspector.stderr")
+	FileManager.default.createFile(atPath: inspectorStdoutURL.path, contents: nil)
+	FileManager.default.createFile(atPath: inspectorStderrURL.path, contents: nil)
+	let inspectorStdout = try FileHandle(forWritingTo: inspectorStdoutURL)
+	let inspectorStderr = try FileHandle(forWritingTo: inspectorStderrURL)
+	defer { try? inspectorStdout.close(); try? inspectorStderr.close() }
+	let process = Process()
+	process.executableURL = inspectorURL
+	process.arguments = [
+		"--expected-pid", String(launchedPID),
+		"--expected-bundle-url", configuration.appURL.path,
+		"--expected-executable-path", executableURL.path,
+		"--expected-executable-sha256", executableHash,
+		"--inspector-source-path", configuration.inspectorSourceURL.path,
+		"--expected-inspector-source-sha256", sourceHash,
+		"--inspector-executable-path", inspectorURL.path,
+		"--expected-inspector-executable-sha256", inspectorHash,
+		"--journal-path", journalURL.path,
+		"--report-path", inspectorReportURL.path,
+		"--screenshot-path", screenshotURL.path,
+	]
+	process.standardOutput = inspectorStdout
+	process.standardError = inspectorStderr
+	inspector = process
+	try process.run()
+	let inspectorPID = process.processIdentifier
+	let processGroupReady = waitUntil(timeout: 1.0, interrupted: interruptState) {
+		getpgid(inspectorPID) == inspectorPID || !process.isRunning
+	}
+	guard processGroupReady, getpgid(inspectorPID) == inspectorPID else {
+		throw GateError.message("inspector did not establish its process group")
+	}
+	let completed = waitUntil(
+		timeout: inspectorSafetyTimeout,
+		interrupted: interruptState
+	) { !process.isRunning }
+	if !completed {
+		let reason = interruptState.get().map { "interrupted by signal \($0)" }
+			?? "inspector exceeded final safety ceiling"
+		inspectorReceipt["safety_failure"] = reason
+		throw GateError.message(reason)
+	}
+	try inspectorStdout.synchronize()
+	try inspectorStderr.synchronize()
+	let status = process.terminationStatus
+	let reportData = try? Data(contentsOf: inspectorReportURL)
+	let report = reportData.flatMap {
+		try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+	}
+	inspectorReceipt.merge([
+		"inspector_pid": inspectorPID,
+		"inspector_parent_pid": getpid(),
+		"inspector_process_group_id": inspectorPID,
+		"inspector_executable_path": inspectorURL.path,
+		"inspector_executable_sha256": inspectorHash,
+		"inspector_source_path": configuration.inspectorSourceURL.path,
+		"inspector_source_sha256": sourceHash,
+		"exit_status": status,
+		"report_valid": report != nil,
+		"phase_journal_path": journalURL.path,
+		"phase_journal_sha256": (try? sha256(journalURL)) ?? "missing",
+		"passed": status == 0 && report?["passed"] as? Bool == true,
+	]) { _, new in new }
+	guard inspectorReceipt["passed"] as? Bool == true else {
+		throw GateError.message("compiled inspector reported a diagnostic phase failure")
+	}
+}
+
 func main() throws -> Bool {
 	let configuration = try parseConfiguration()
 	guard !FileManager.default.fileExists(atPath: configuration.outputURL.path) else {
@@ -301,14 +474,7 @@ func main() throws -> Bool {
 	let homeURL = configuration.outputURL.appendingPathComponent("application-home", isDirectory: true)
 	try FileManager.default.createDirectory(at: homeURL, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
 	let summaryURL = configuration.outputURL.appendingPathComponent("summary.json")
-	let compileReceiptURL = configuration.outputURL.appendingPathComponent("compile-receipt.json")
 	let executableURL = configuration.appURL.appendingPathComponent("Contents/MacOS/\(executableName)")
-	let inspectorURL = configuration.outputURL.appendingPathComponent("decodex-gpui-ax-inspector")
-	let journalURL = configuration.outputURL.appendingPathComponent("phase-journal.jsonl")
-	let inspectorReportURL = configuration.outputURL.appendingPathComponent("inspector-report.json")
-	let screenshotURL = configuration.outputURL.appendingPathComponent("window.png")
-	let inspectorStdoutURL = configuration.outputURL.appendingPathComponent("inspector.stdout")
-	let inspectorStderrURL = configuration.outputURL.appendingPathComponent("inspector.stderr")
 	let interruptState = InterruptState()
 	let signalSources = installSignalHandling(interruptState)
 	defer { signalSources.forEach { $0.cancel() } }
@@ -339,85 +505,12 @@ func main() throws -> Bool {
 		bundleHashBefore = try bundleFingerprint(configuration.appURL)
 		executableHash = try sha256(executableURL)
 		sourceHash = try sha256(configuration.inspectorSourceURL)
-		let harnessHash = try sha256(configuration.harnessURL)
-		let compilerLookup = try runCommand(
-			URL(fileURLWithPath: "/usr/bin/xcrun"), ["--find", "swiftc"], timeout: 10.0
+		try compileInspector(
+			configuration: configuration,
+			sourceHash: sourceHash,
+			inspectorHash: &inspectorHash,
+			compileReceipt: &compileReceipt
 		)
-		guard compilerLookup.status == 0 else {
-			throw GateError.message("cannot resolve Swift compiler: \(compilerLookup.stderr)")
-		}
-		let compilerPath = compilerLookup.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-		let compilerURL = URL(fileURLWithPath: compilerPath)
-		let sdkLookup = try runCommand(
-			URL(fileURLWithPath: "/usr/bin/xcrun"),
-			["--sdk", "macosx", "--show-sdk-path"],
-			timeout: 10.0
-		)
-		guard sdkLookup.status == 0 else {
-			throw GateError.message("cannot resolve macOS SDK: \(sdkLookup.stderr)")
-		}
-		let sdkPath = sdkLookup.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-		let compilerVersion = try runCommand(compilerURL, ["--version"], timeout: 10.0)
-		guard compilerVersion.status == 0 else {
-			throw GateError.message("cannot read Swift compiler version")
-		}
-		let compile = try runCommand(
-			compilerURL,
-			["-sdk", sdkPath, configuration.inspectorSourceURL.path, "-o", inspectorURL.path],
-			timeout: 60.0
-		)
-		try compile.stdout.write(
-			to: configuration.outputURL.appendingPathComponent("compiler.stdout"),
-			atomically: true,
-			encoding: .utf8
-		)
-		try compile.stderr.write(
-			to: configuration.outputURL.appendingPathComponent("compiler.stderr"),
-			atomically: true,
-			encoding: .utf8
-		)
-		guard compile.status == 0, FileManager.default.isExecutableFile(atPath: inspectorURL.path) else {
-			throw GateError.message("ahead-of-time inspector compilation failed")
-		}
-		let signing = try runCommand(
-			URL(fileURLWithPath: "/usr/bin/codesign"),
-			["--force", "--timestamp=none", "--sign", "-", inspectorURL.path],
-			timeout: 10.0
-		)
-		guard signing.status == 0 else {
-			throw GateError.message("inspector ad hoc signing failed: \(signing.stderr)")
-		}
-		let signingIdentity = try runCommand(
-			URL(fileURLWithPath: "/usr/bin/codesign"),
-			["-dvv", inspectorURL.path],
-			timeout: 10.0
-		)
-		guard signingIdentity.status == 0 else {
-			throw GateError.message("cannot inspect generated inspector signature")
-		}
-		inspectorHash = try sha256(inspectorURL)
-		compileReceipt = [
-			"schema": "decodex/gpui-reset-diagnostic-compile/1",
-			"completed_at": timestamp(),
-			"compiler_path": compilerURL.path,
-			"compiler_version": compilerVersion.stdout.trimmingCharacters(in: .whitespacesAndNewlines),
-			"compiler_stderr": compilerVersion.stderr,
-			"compiler_sdk_path": sdkPath,
-			"inspector_source_path": configuration.inspectorSourceURL.path,
-			"inspector_source_sha256": sourceHash,
-			"inspector_executable_path": inspectorURL.path,
-			"inspector_executable_sha256": inspectorHash,
-			"inspector_codesign_details": signingIdentity.stderr,
-			"inspector_codesign_identity": "adhoc",
-			"harness_path": configuration.harnessURL.path,
-			"harness_sha256": harnessHash,
-			"harness_pid": getpid(),
-			"harness_parent_pid": getppid(),
-			"harness_process_path": processPath(getpid()),
-			"harness_parent_process_path": processPath(getppid()),
-			"responsible_process_public_api": "unavailable",
-		]
-		try writeJSON(compileReceipt, to: compileReceiptURL)
 
 		app = try launch(configuration.appURL, homeURL: homeURL)
 		guard let app else { throw GateError.message("launcher returned no application") }
@@ -434,71 +527,17 @@ func main() throws -> Bool {
 		guard launchIdentityValid else { throw GateError.message("exact app launch identity failed") }
 		_ = app.activate(options: [.activateAllWindows])
 
-		FileManager.default.createFile(atPath: inspectorStdoutURL.path, contents: nil)
-		FileManager.default.createFile(atPath: inspectorStderrURL.path, contents: nil)
-		let inspectorStdout = try FileHandle(forWritingTo: inspectorStdoutURL)
-		let inspectorStderr = try FileHandle(forWritingTo: inspectorStderrURL)
-		defer { try? inspectorStdout.close(); try? inspectorStderr.close() }
-		let process = Process()
-		process.executableURL = inspectorURL
-		process.arguments = [
-			"--expected-pid", String(launchedPID),
-			"--expected-bundle-url", configuration.appURL.path,
-			"--expected-executable-path", executableURL.path,
-			"--expected-executable-sha256", executableHash,
-			"--inspector-source-path", configuration.inspectorSourceURL.path,
-			"--expected-inspector-source-sha256", sourceHash,
-			"--inspector-executable-path", inspectorURL.path,
-			"--expected-inspector-executable-sha256", inspectorHash,
-			"--journal-path", journalURL.path,
-			"--report-path", inspectorReportURL.path,
-			"--screenshot-path", screenshotURL.path,
-		]
-		process.standardOutput = inspectorStdout
-		process.standardError = inspectorStderr
-		inspector = process
-		try process.run()
-		let inspectorPID = process.processIdentifier
-		let processGroupReady = waitUntil(timeout: 1.0, interrupted: interruptState) {
-			getpgid(inspectorPID) == inspectorPID || !process.isRunning
-		}
-		guard processGroupReady, getpgid(inspectorPID) == inspectorPID else {
-			throw GateError.message("inspector did not establish its process group")
-		}
-		let completed = waitUntil(
-			timeout: inspectorSafetyTimeout,
-			interrupted: interruptState
-		) { !process.isRunning }
-		if !completed {
-			let reason = interruptState.get().map { "interrupted by signal \($0)" }
-				?? "inspector exceeded final safety ceiling"
-			inspectorReceipt["safety_failure"] = reason
-			throw GateError.message(reason)
-		}
-		try inspectorStdout.synchronize()
-		try inspectorStderr.synchronize()
-		let status = process.terminationStatus
-		let reportData = try? Data(contentsOf: inspectorReportURL)
-		let report = reportData.flatMap {
-			try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
-		}
-		inspectorReceipt.merge([
-			"inspector_pid": inspectorPID,
-			"inspector_parent_pid": getpid(),
-			"inspector_process_group_id": inspectorPID,
-			"inspector_executable_path": inspectorURL.path,
-			"inspector_executable_sha256": inspectorHash,
-			"inspector_source_path": configuration.inspectorSourceURL.path,
-			"inspector_source_sha256": sourceHash,
-			"exit_status": status,
-			"report_valid": report != nil,
-			"phase_journal_path": journalURL.path,
-			"phase_journal_sha256": (try? sha256(journalURL)) ?? "missing",
-			"passed": status == 0 && report?["passed"] as? Bool == true,
-		]) { _, new in new }
-		guard inspectorReceipt["passed"] as? Bool == true else {
-			throw GateError.message("compiled inspector reported a diagnostic phase failure")
-		}
+		try runInspector(
+			configuration: configuration,
+			launchedPID: launchedPID,
+			executableURL: executableURL,
+			executableHash: executableHash,
+			sourceHash: sourceHash,
+			inspectorHash: inspectorHash,
+			interruptState: interruptState,
+			inspector: &inspector,
+			inspectorReceipt: &inspectorReceipt
+		)
 	} catch {
 		failure = String(describing: error)
 	}
