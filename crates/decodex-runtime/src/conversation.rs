@@ -99,7 +99,7 @@ use decodex_database::{
 	ConversationTerminalizationOutcome, ConversationThreadEstablishmentReadback,
 	CreateConversationRecord, FenceRuntimeSessionThreadStart,
 	FenceRuntimeSessionThreadStartOutcome, FreshConversationProcessGeneration,
-	FreshProviderDispatchFence, FreshRuntimeSessionThreadStart,
+	FreshPreparedProviderAttempt, FreshProviderDispatchFence, FreshRuntimeSessionThreadStart,
 	InitialConversationTurnAdmissionOutcome, InitialModelSource,
 	OrdinaryRuntimeSessionResumeReadback, PendingConversationTerminalizationReadback,
 	PrepareConversationProcessGeneration, PrepareConversationProcessGenerationOutcome,
@@ -2309,7 +2309,7 @@ impl ConversationRuntime {
 		.await
 	}
 
-	#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+	#[allow(clippy::too_many_arguments)]
 	async fn dispatch_turn(
 		&self,
 		operation_key: &str,
@@ -2385,6 +2385,28 @@ impl ConversationRuntime {
 						.await;
 				},
 			};
+
+		self.prepare_dispatch_attempt(
+			TurnDispatch { operation_key, session, turn_id, turn_sequence },
+			decision,
+			plan,
+			runtime_authority,
+			attempt_id,
+			prepared,
+		)
+		.await
+	}
+
+	async fn prepare_dispatch_attempt(
+		&self,
+		dispatch: TurnDispatch<'_>,
+		decision: PersistedDecisionProvenance,
+		plan: ContinuationPlanEffect,
+		runtime_authority: ProviderAttemptRuntimeAuthority,
+		attempt_id: ProviderAttemptId,
+		prepared: PreparedTurnStart,
+	) -> ConversationOutcome {
+		let TurnDispatch { operation_key, session, turn_id, turn_sequence } = dispatch;
 		let request_id = match ProviderRequestId::new(derived_uuid(
 			"provider-request",
 			&[operation_key, turn_id.as_str()],
@@ -2459,6 +2481,23 @@ impl ConversationRuntime {
 				},
 			)
 			.await;
+
+		self.resolve_prepared_dispatch(
+			TurnDispatch { operation_key, session, turn_id, turn_sequence },
+			PreparedTurnDispatch { attempt_id, request_id, provider_key, prepared },
+			post,
+		)
+		.await
+	}
+
+	async fn resolve_prepared_dispatch(
+		&self,
+		dispatch: TurnDispatch<'_>,
+		preparation: PreparedTurnDispatch,
+		post: PostProcessOutcome,
+	) -> ConversationOutcome {
+		let TurnDispatch { operation_key, session, turn_id, turn_sequence } = dispatch;
+		let PreparedTurnDispatch { attempt_id, request_id, provider_key, prepared } = preparation;
 		let fresh = match post {
 			PostProcessOutcome::FreshPrepared { attempt, fresh_preparation: fresh, .. }
 				if attempt.newly_prepared
@@ -2512,6 +2551,23 @@ impl ConversationRuntime {
 					.await;
 			},
 		};
+
+		self.authorize_prepared_dispatch(
+			TurnDispatch { operation_key, session, turn_id, turn_sequence },
+			PreparedTurnDispatch { attempt_id, request_id, provider_key, prepared },
+			fresh,
+		)
+		.await
+	}
+
+	async fn authorize_prepared_dispatch(
+		&self,
+		dispatch: TurnDispatch<'_>,
+		preparation: PreparedTurnDispatch,
+		fresh: FreshPreparedProviderAttempt,
+	) -> ConversationOutcome {
+		let TurnDispatch { operation_key, session, turn_id, turn_sequence } = dispatch;
+		let PreparedTurnDispatch { attempt_id, request_id, provider_key, prepared } = preparation;
 		let prepared_revision = fresh.revision();
 
 		if self.is_shutting_down() {
@@ -2602,6 +2658,24 @@ impl ConversationRuntime {
 				.await;
 		}
 
+		self.start_authorized_dispatch(
+			TurnDispatch { operation_key, session, turn_id, turn_sequence },
+			PreparedTurnDispatch { attempt_id, request_id, provider_key, prepared },
+			authorization,
+			authorized_revision,
+		)
+		.await
+	}
+
+	async fn start_authorized_dispatch(
+		&self,
+		dispatch: TurnDispatch<'_>,
+		preparation: PreparedTurnDispatch,
+		authorization: FreshProviderDispatchFence,
+		authorized_revision: i64,
+	) -> ConversationOutcome {
+		let TurnDispatch { operation_key, session, turn_id, turn_sequence } = dispatch;
+		let PreparedTurnDispatch { attempt_id, request_id, provider_key, prepared } = preparation;
 		let started = match self.start_turn(&session.process, prepared, authorization).await {
 			Ok(started) => started,
 			Err(ConversationProcessError::Rejected {
@@ -2659,6 +2733,27 @@ impl ConversationRuntime {
 			provider_turn_id: started.turn_id.clone(),
 			authorized_revision,
 		};
+
+		self.activate_dispatched_turn(
+			session,
+			turn_id,
+			context,
+			started,
+			commands,
+			command_receiver,
+		)
+		.await
+	}
+
+	async fn activate_dispatched_turn(
+		&self,
+		session: LocalSession,
+		turn_id: TurnId,
+		context: TurnContext,
+		started: StartedOrdinaryTurn,
+		commands: SyncSender<WorkerCommand>,
+		command_receiver: mpsc::Receiver<WorkerCommand>,
+	) -> ConversationOutcome {
 		let mut workers = self.inner.workers.lock().await;
 
 		while workers.try_join_next().is_some() {}
@@ -5682,6 +5777,20 @@ struct ExistingSessionPlanningInput<'a> {
 }
 
 #[derive(Clone)]
+struct TurnDispatch<'a> {
+	operation_key: &'a str,
+	session: LocalSession,
+	turn_id: TurnId,
+	turn_sequence: i64,
+}
+
+struct PreparedTurnDispatch {
+	attempt_id: ProviderAttemptId,
+	request_id: ProviderRequestId,
+	provider_key: ProviderRequestKey,
+	prepared: PreparedTurnStart,
+}
+
 struct TurnContext {
 	session: LocalSession,
 	logical_turn_id: TurnId,
