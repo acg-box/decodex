@@ -1,25 +1,45 @@
 //! Native component preview using an actual saved tool response, not live weather.
+#[path = "../src/agent_weather.rs"] mod weather_card;
+
 use futures_util as _;
+
 use gpui::{
 	Bounds, ClipboardItem, Context, Render, TitlebarOptions, Window, WindowBackgroundAppearance,
 	WindowBounds, WindowOptions, div, prelude::*, px, rgb, rgba, size,
 };
+
 use libc as _;
+
 use objc2 as _;
+
 use objc2_app_kit as _;
+
 use objc2_foundation as _;
+
 use pulldown_cmark as _;
+
 use raw_window_handle as _;
+
 use reqwest as _;
+
 use serde as _;
+
 use serde_json as _;
+
 use sha2 as _;
+
 use tempfile as _;
+
 use time as _;
+
 use tokio as _;
+
 use tokio_tungstenite as _;
+
 use unicode_segmentation as _;
+
 use unicode_width as _;
+
 #[cfg(target_os = "macos")]
 use {
 	block2 as _, libwebrtc as _, objc2_audio_toolbox as _, objc2_avf_audio as _,
@@ -27,7 +47,7 @@ use {
 };
 
 use decodex_protocol::WeatherForecast as Forecast;
-#[path = "../src/agent_weather.rs"] mod weather_card;
+
 struct Preview {
 	forecast: Forecast,
 	copied: bool,
@@ -60,13 +80,16 @@ impl Render for Preview {
 					.cursor_pointer()
 					.on_click(cx.listener(|s, _, _, cx| {
 						cx.write_to_clipboard(ClipboardItem::new_string(s.forecast.markdown()));
+
 						s.copied = true;
+
 						cx.notify();
 					}))
 					.child(if self.copied { "✓" } else { "⧉" }),
 			)
 	}
 }
+
 fn main() {
 	gpui_platform::application().run(|cx| {
 		cx.open_window(
@@ -101,6 +124,7 @@ mod tests {
 	#[::core::prelude::v1::test]
 	fn saved_weather_is_parsed_and_copied_without_control_markers() {
 		let forecast = Forecast::parse(include_str!("fixtures/singapore-weather.txt")).unwrap();
+
 		assert_eq!(forecast.reference, "turn0forecast0");
 		assert_eq!(forecast.celsius, 32);
 		assert_eq!(forecast.hours.len(), 12);

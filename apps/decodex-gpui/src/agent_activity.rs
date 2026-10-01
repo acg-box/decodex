@@ -1,17 +1,21 @@
 //! Compact, anchored navigation through saved conversation turns.
 use super::*;
+
 use gpui::{AnyElement, canvas, point, size};
+
 use std::{cell::Cell, collections::BTreeMap, rc::Rc};
+
+const HISTORY_ANCHOR_INSET: f32 = 56.0;
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum HistoryKey {
 	Local(i64),
 	Native { thread: String, position: u64, kind: u8, id: String },
 }
-
 impl HistoryKey {
 	pub(super) fn native(thread: &str, entry: &decodex_protocol::AgentTimelineEntry) -> Self {
 		let (position, kind, id) = super::native_timeline::key(entry);
+
 		Self::Native { thread: thread.into(), position, kind, id: id.into() }
 	}
 }
@@ -26,63 +30,6 @@ impl std::fmt::Display for HistoryKey {
 	}
 }
 
-#[derive(Clone)]
-pub(super) struct HistoryMark {
-	pub(super) position: Rc<Cell<f32>>,
-	hit_bounds: Rc<Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
-	question: String,
-	time: String,
-	answer: String,
-}
-
-#[derive(Clone)]
-pub(super) struct HistoryScrollAnchor {
-	pub(super) work: String,
-	pub(super) offset: f32,
-	pub(super) maximum: f32,
-	pub(super) message: Option<(HistoryKey, f32)>,
-}
-
-pub(super) struct HistoryNavigation {
-	work: String,
-	id: Option<HistoryKey>,
-	from: f32,
-	to: f32,
-	started: std::time::Instant,
-}
-
-pub(super) struct WheelScroll {
-	work: String,
-	motion: crate::ui_scroll::Motion,
-}
-
-const HISTORY_ANCHOR_INSET: f32 = 56.0;
-
-fn navigation_offset(position: f32, maximum: f32) -> f32 {
-	(-(position - HISTORY_ANCHOR_INSET)).clamp(-maximum.max(0.0), 0.0)
-}
-
-fn dock_influence(index: usize, hover: Option<usize>) -> f32 {
-	hover.map_or(0.0, |hover| (1.0 - index.abs_diff(hover) as f32 / 3.0).max(0.0).powi(2))
-}
-
-fn preview(text: &str) -> String {
-	let text = markdown::plain_text(text);
-	let mut chars = text.chars();
-	let mut text: String = chars.by_ref().take(180).collect();
-	if chars.next().is_some() {
-		text.push('…');
-	}
-	text.replace('\n', " ")
-}
-
-fn current_mark(positions: &[f32], offset: f32) -> usize {
-	positions
-		.iter()
-		.rposition(|position| *position <= offset + HISTORY_ANCHOR_INSET + 0.5)
-		.unwrap_or(0)
-}
-
 impl AgentSurface {
 	pub(super) fn prepare_history_marks(&mut self) {
 		let native = self.snapshot.as_ref().is_some_and(|snapshot| {
@@ -91,9 +38,12 @@ impl AgentSurface {
 			})
 		});
 		let work = self.selected.clone().map(|work| (work, native));
+
 		if self.history_marks_work != work {
 			self.wheel_scroll = None;
+
 			self.history_marks.clear();
+
 			self.history_selected = None;
 			self.history_hover = None;
 			self.history_navigation = None;
@@ -102,27 +52,35 @@ impl AgentSurface {
 		}
 		if native {
 			self.prepare_native_history_marks();
+
 			return;
 		}
+
 		let Some((work, AgentHistoryResult::Available { entries, .. })) =
 			self.history.as_ref().filter(|(work, _)| Some(work) == self.selected.as_ref())
 		else {
 			self.history_marks.clear();
+
 			return;
 		};
 		let mut saved = BTreeMap::new();
+
 		if let Some((older, _)) = self.older_history.get(work) {
 			for entry in older {
 				saved.insert(entry.id, entry);
 			}
 		}
+
 		for entry in entries {
 			saved.insert(entry.id, entry);
 		}
+
 		self.transcript_scroll.entry(work.clone()).or_default();
 		self.history_marks
 			.retain(|id, _| matches!(id, HistoryKey::Local(id) if saved.contains_key(id)));
+
 		let mut current = None;
+
 		for entry in saved.values() {
 			if entry.kind == "user" || entry.kind == "instruction" {
 				let mark =
@@ -143,7 +101,9 @@ impl AgentSurface {
 							answer: String::new(),
 						}
 					});
+
 				mark.answer.clear();
+
 				current = Some(HistoryKey::Local(entry.id));
 			} else if entry.kind == "assistant"
 				&& let Some(id) = current.as_ref()
@@ -160,28 +120,36 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let mut body = history_entry(entry).into_any_element();
+
 		if entry.kind == "assistant"
 			&& let Some(action) =
 				self.voice_read_action(work, &format!("saved-{}", entry.id), &entry.text, true, cx)
 		{
 			body = div().child(body).child(action).into_any_element();
 		}
+
 		self.anchor_history_row(&HistoryKey::Local(entry.id), body)
 	}
 
 	fn prepare_native_history_marks(&mut self) {
 		use decodex_protocol::AgentTimelineContent as Content;
+
 		let Some(binding) = &self.native_history.binding else {
 			return;
 		};
 		let revision = (self.native_history.epoch, self.native_history.revision);
+
 		if self.history_marks_revision == Some(revision) {
 			return;
 		}
+
 		self.history_marks_revision = Some(revision);
+
 		self.transcript_scroll.entry(binding.work.clone()).or_default();
+
 		let mut retained = std::collections::BTreeSet::new();
 		let mut current = None;
+
 		for entry in &self.native_history.entries {
 			let (user, text, label) = match &entry.content {
 				Content::Item { kind, text, .. }
@@ -190,9 +158,12 @@ impl AgentSurface {
 				Content::Speech { role, text, .. } => (role == "user", text, "Voice message"),
 				_ => continue,
 			};
+
 			if user {
 				let key = HistoryKey::native(&binding.thread, entry);
+
 				retained.insert(key.clone());
+
 				let mark = self.history_marks.entry(key.clone()).or_insert_with(|| HistoryMark {
 					position: Rc::new(Cell::new(0.0)),
 					hit_bounds: Rc::new(Cell::new(None)),
@@ -200,15 +171,20 @@ impl AgentSurface {
 					time: label.into(),
 					answer: String::new(),
 				});
+
 				mark.question = preview(text);
+
 				mark.answer.clear();
+
 				current = Some(key);
 			} else if let Some(key) = &current {
 				self.history_marks.get_mut(key).expect("current native mark").answer =
 					preview(text);
 			}
 		}
+
 		self.history_marks.retain(|key, _| retained.contains(key));
+
 		if self.history_selected.as_ref().is_some_and(|key| !retained.contains(key)) {
 			self.history_selected = None;
 		}
@@ -236,6 +212,7 @@ impl AgentSurface {
 			.get(self.selected.as_deref().unwrap_or_default())
 			.cloned()
 			.unwrap_or_default();
+
 		div()
 			.w_full()
 			.flex_none()
@@ -243,8 +220,10 @@ impl AgentSurface {
 				if let Some(bounds) = bounds.first() {
 					let measured =
 						f32::from(bounds.origin.y - scroll.bounds().origin.y - scroll.offset().y);
+
 					if (position.get() - measured).abs() > 0.5 {
 						position.set(measured);
+
 						crate::ui_motion::request_frame(window, cx);
 					}
 				}
@@ -256,8 +235,10 @@ impl AgentSurface {
 
 	fn jump_to_history(&mut self, id: HistoryKey, cx: &mut Context<Self>) {
 		self.latest_follow_work = None;
+
 		self.cancel_native_scroll_anchor();
 		self.set_voice_follow(false);
+
 		if let Some(mark) = self.history_marks.get(&id)
 			&& let Some(work) = self.selected.as_ref()
 			&& let Some(scroll) = self.transcript_scroll.get(work)
@@ -270,6 +251,7 @@ impl AgentSurface {
 				to: navigation_offset(mark.position.get(), scroll.max_offset().y.into()),
 				started: std::time::Instant::now(),
 			});
+
 			cx.notify();
 		}
 	}
@@ -285,12 +267,17 @@ impl AgentSurface {
 		if delta.y == px(0.) {
 			return;
 		}
+
 		self.latest_follow_work = None;
+
 		self.cancel_native_scroll_anchor();
+
 		self.history_navigation = None;
 		self.history_selected = None;
+
 		if let Some(scroll) = self.selected.as_ref().and_then(|id| self.transcript_scroll.get(id)) {
 			let smooth = crate::ui_scroll::smooth(event.delta);
+
 			if smooth {
 				let now = std::time::Instant::now();
 				let current = f32::from(scroll.offset().y);
@@ -298,15 +285,20 @@ impl AgentSurface {
 					work: self.selected.clone().unwrap_or_default(),
 					motion: crate::ui_scroll::Motion::new(current, now),
 				});
+
 				wheel.motion.retarget(current, delta.y.into(), scroll.max_offset().y.into(), now);
 			} else {
 				self.wheel_scroll = None;
+
 				let offset = (scroll.offset().y + delta.y).clamp(-scroll.max_offset().y, px(0.));
+
 				scroll.set_offset(point(px(0.), offset));
 			}
+
 			let following = !smooth
 				&& delta.y < px(0.)
 				&& (scroll.offset().y + scroll.max_offset().y).abs() < px(1.);
+
 			if let Some(id) = &self.selected {
 				if following {
 					self.history_follow_paused.remove(id);
@@ -314,10 +306,13 @@ impl AgentSurface {
 					self.history_follow_paused.insert(id.clone());
 				}
 			}
+
 			self.set_voice_follow(following);
+
 			if delta.y > px(0.) {
 				self.prefetch_older_history(cx);
 			}
+
 			cx.stop_propagation();
 			cx.notify();
 		}
@@ -327,6 +322,7 @@ impl AgentSurface {
 		if self.history_navigation.is_some() || self.latest_follow_work.is_some() {
 			self.wheel_scroll = None;
 		}
+
 		if let Some(wheel) = &self.wheel_scroll {
 			if self.selected.as_ref() != Some(&wheel.work) {
 				self.wheel_scroll = None;
@@ -337,31 +333,41 @@ impl AgentSurface {
 					(wheel.motion.to, false)
 				};
 				let offset = offset.clamp(-f32::from(scroll.max_offset().y).max(0.), 0.);
+
 				scroll.set_offset(point(px(0.), px(offset)));
+
 				if moving {
 					crate::ui_motion::request_frame(window, cx);
+
 					cx.notify();
 				} else {
 					let following = wheel.motion.to < wheel.motion.from
 						&& (offset + f32::from(scroll.max_offset().y)).abs() < 1.;
+
 					if following {
 						self.history_follow_paused.remove(&wheel.work);
 						self.set_voice_follow(true);
 					}
+
 					self.wheel_scroll = None;
 				}
 			}
 		}
+
 		let Some(navigation) = &self.history_navigation else {
 			return;
 		};
+
 		if self.selected.as_ref() != Some(&navigation.work)
 			|| navigation.id.as_ref().is_some_and(|id| !self.history_marks.contains_key(id))
 		{
 			self.history_navigation = None;
+
 			return;
 		}
+
 		let t = (navigation.started.elapsed().as_secs_f32() / 0.28).min(1.0);
+
 		if let Some(scroll) = self.transcript_scroll.get(&navigation.work) {
 			let target = match navigation.id.as_ref() {
 				None => -f32::from(scroll.max_offset().y),
@@ -370,18 +376,22 @@ impl AgentSurface {
 				}),
 			};
 			let offset = navigation.from + (target - navigation.from) * (1.0 - (1.0 - t).powi(3));
+
 			scroll.set_offset(point(
 				px(0.0),
 				px(offset.clamp(-f32::from(scroll.max_offset().y).max(0.0), 0.0)),
 			));
 		}
+
 		if t < 1.0 {
 			crate::ui_motion::request_frame(window, cx);
+
 			cx.notify();
 		} else {
 			let (work, id, started) =
 				(navigation.work.clone(), navigation.id.clone(), navigation.started);
 			let surface = cx.entity().downgrade();
+
 			cx.defer(move |cx| {
 				let _ = surface.update(cx, |s, cx| {
 					if !s.history_navigation.as_ref().is_some_and(|current| {
@@ -391,6 +401,7 @@ impl AgentSurface {
 					}
 					if id.is_none() {
 						s.latest_follow_work = Some(work.clone());
+
 						s.history_follow_paused.remove(&work);
 						s.set_voice_follow(true);
 					}
@@ -407,7 +418,9 @@ impl AgentSurface {
 							)),
 						));
 					}
+
 					s.history_navigation = None;
+
 					cx.notify();
 				});
 			});
@@ -423,7 +436,9 @@ impl AgentSurface {
 		{
 			self.latest_follow_work = Some(work.clone());
 		}
+
 		self.connection_details_expanded = !self.connection_details_expanded;
+
 		cx.notify();
 	}
 
@@ -432,10 +447,12 @@ impl AgentSurface {
 		self.history_selected = None;
 		self.history_navigation = None;
 		self.older_scroll_anchor = None;
+
 		if let Some(work) = &self.selected {
 			self.history_follow_paused.remove(work);
 			self.transcript_scroll.entry(work.clone()).or_default();
 		}
+
 		self.set_voice_follow(true);
 		cx.notify();
 	}
@@ -447,8 +464,11 @@ impl AgentSurface {
 		let Some(scroll) = self.transcript_scroll.get(&work) else {
 			return;
 		};
+
 		self.history_selected = None;
+
 		self.history_follow_paused.insert(work.clone());
+
 		self.history_navigation = Some(HistoryNavigation {
 			work,
 			id: None,
@@ -456,6 +476,7 @@ impl AgentSurface {
 			to: -f32::from(scroll.max_offset().y),
 			started: std::time::Instant::now(),
 		});
+
 		self.set_voice_follow(false);
 		cx.notify();
 	}
@@ -487,6 +508,7 @@ impl AgentSurface {
 		let clock =
 			window.use_keyed_state("jump-latest-clock", cx, |_, _| std::time::Instant::now());
 		let phase = clock.read(cx).elapsed().as_secs_f32() * 4.;
+
 		if visible && working {
 			crate::ui_motion::request_frame(window, cx);
 		}
@@ -497,6 +519,7 @@ impl AgentSurface {
 			window,
 			cx,
 		);
+
 		div()
 			.absolute()
 			.left_0()
@@ -581,6 +604,7 @@ impl AgentSurface {
 		let last = self.history_marks.len().saturating_sub(1);
 		let at_end = scroll.max_offset().y > px(0.)
 			&& (scroll.offset().y + scroll.max_offset().y).abs() < px(1.);
+
 		self.history_selected
 			.as_ref()
 			.and_then(|id| self.history_marks.keys().position(|key| key == id))
@@ -600,6 +624,7 @@ impl AgentSurface {
 		if self.history_marks.is_empty() {
 			return div().into_any_element();
 		}
+
 		let scroll = self
 			.transcript_scroll
 			.get(self.selected.as_deref().unwrap_or_default())
@@ -624,7 +649,6 @@ impl AgentSurface {
 			window,
 			cx,
 		);
-
 		let spacing = ((f32::from(scroll.bounds().size.height) - 32.0) / positions.len() as f32)
 			.clamp(2.0, 11.0);
 		let mut rail = div()
@@ -637,6 +661,7 @@ impl AgentSurface {
 			.flex_col()
 			.justify_center()
 			.overflow_hidden();
+
 		for (index, (id, mark)) in self.history_marks.iter().enumerate() {
 			let influence = crate::ui_motion::value(
 				SharedString::from(format!(
@@ -651,6 +676,7 @@ impl AgentSurface {
 			let id = id.clone();
 			let keyboard_id = id.clone();
 			let hit_bounds = mark.hit_bounds.clone();
+
 			rail = rail.child(
 				div()
 					.id(SharedString::from(format!("history-tick-{id}")))
@@ -667,6 +693,7 @@ impl AgentSurface {
 						} else if s.history_hover == Some(index) {
 							s.history_hover = None;
 						}
+
 						cx.notify();
 					}))
 					.tooltip(move |_, cx| cx.new(|_| HistoryPreview(tip.clone())).into())
@@ -693,6 +720,7 @@ impl AgentSurface {
 								};
 								let width = 7.0 + influence * 16.0;
 								let height = 2.0 + influence;
+
 								window.paint_quad(gpui::fill(
 									gpui::Bounds::new(
 										point(
@@ -709,8 +737,39 @@ impl AgentSurface {
 					),
 			);
 		}
+
 		rail.into_any_element()
 	}
+}
+
+#[derive(Clone)]
+pub(super) struct HistoryMark {
+	pub(super) position: Rc<Cell<f32>>,
+	hit_bounds: Rc<Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
+	question: String,
+	time: String,
+	answer: String,
+}
+
+#[derive(Clone)]
+pub(super) struct HistoryScrollAnchor {
+	pub(super) work: String,
+	pub(super) offset: f32,
+	pub(super) maximum: f32,
+	pub(super) message: Option<(HistoryKey, f32)>,
+}
+
+pub(super) struct HistoryNavigation {
+	work: String,
+	id: Option<HistoryKey>,
+	from: f32,
+	to: f32,
+	started: std::time::Instant,
+}
+
+pub(super) struct WheelScroll {
+	work: String,
+	motion: crate::ui_scroll::Motion,
 }
 
 struct HistoryPreview(HistoryMark);
@@ -742,31 +801,71 @@ impl Render for HistoryPreview {
 	}
 }
 
+fn navigation_offset(position: f32, maximum: f32) -> f32 {
+	(-(position - HISTORY_ANCHOR_INSET)).clamp(-maximum.max(0.0), 0.0)
+}
+
+fn dock_influence(index: usize, hover: Option<usize>) -> f32 {
+	hover.map_or(0.0, |hover| (1.0 - index.abs_diff(hover) as f32 / 3.0).max(0.0).powi(2))
+}
+
+fn preview(text: &str) -> String {
+	let text = markdown::plain_text(text);
+	let mut chars = text.chars();
+	let mut text: String = chars.by_ref().take(180).collect();
+
+	if chars.next().is_some() {
+		text.push('…');
+	}
+
+	text.replace('\n', " ")
+}
+
+fn current_mark(positions: &[f32], offset: f32) -> usize {
+	positions
+		.iter()
+		.rposition(|position| *position <= offset + HISTORY_ANCHOR_INSET + 0.5)
+		.unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 	#[gpui::test]
 	fn agent_loading_keeps_transcript_horizontal_bounds(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(size(px(1400.), px(900.)));
+
+		visual.simulate_resize(size(px(1_400.), px(900.)));
+
 		let saved = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			(s.selected.clone(), s.history.clone())
 		});
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		let original = visual.debug_bounds("workspace-transcript").unwrap();
+
 		for loading in [true, false] {
 			surface.update(visual, |s, cx| {
 				s.selected = if loading { Some("release".into()) } else { saved.0.clone() };
 				s.history = if loading { None } else { saved.1.clone() };
+
 				cx.notify();
 			});
+
 			for delay in [0, 100, 140] {
 				std::thread::sleep(std::time::Duration::from_millis(delay));
+
 				visual.update(|w, cx| w.draw(cx).clear());
+
 				let bounds = visual.debug_bounds("workspace-transcript").unwrap();
+
 				assert_eq!(
 					bounds.origin.x, original.origin.x,
 					"history loading must not move text"
@@ -777,11 +876,16 @@ mod tests {
 		// The explicit toggle still controls the reserved rail width.
 		surface.update(visual, |s, cx| {
 			s.timeline_visible = false;
+
 			cx.notify();
 		});
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		assert!(
 			visual.debug_bounds("workspace-transcript").unwrap().size.width > original.size.width
 		);
@@ -790,27 +894,38 @@ mod tests {
 	#[gpui::test]
 	fn deferred_navigation_finish_does_not_end_a_newer_jump(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(size(px(1400.), px(400.)));
+
+		visual.simulate_resize(size(px(1_400.), px(400.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		surface.update(visual, |s, cx| {
 			s.jump_to_history(HistoryKey::Local(1), cx);
+
 			s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 			surface.update(cx, |s, cx| s.jump_to_history(HistoryKey::Local(3), cx));
 		});
+
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(HistoryKey::Local(3)));
+
 			s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
@@ -827,6 +942,7 @@ mod tests {
 		use decodex_protocol::{
 			AgentTimelineContent as Content, AgentTimelineEntry, AgentTimelinePage,
 		};
+
 		let row = |position, user| AgentTimelineEntry {
 			position,
 			content: Content::Item {
@@ -842,10 +958,14 @@ mod tests {
 			},
 		};
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(size(px(1400.), px(400.)));
+
+		visual.simulate_resize(size(px(1_400.), px(400.)));
+
 		let binding = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -854,12 +974,15 @@ mod tests {
 				.iter_mut()
 				.find(|work| Some(&work.id) == s.selected.as_ref())
 				.unwrap();
+
 			work.codex_thread_id = Some("thread".into());
+
 			let binding = super::super::native_timeline::Binding {
 				work: work.id.clone(),
 				thread: "thread".into(),
 				account: "account".into(),
 			};
+
 			assert!(s.native_history.replace(
 				binding.clone(),
 				AgentTimelinePage {
@@ -871,23 +994,33 @@ mod tests {
 					active_realtime_session_at_page_start: None,
 				}
 			));
+
 			cx.notify();
+
 			binding
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let target = HistoryKey::native("thread", &row(20, true));
 		let bounds =
 			surface.read_with(visual, |s, _| s.history_marks[&target].hit_bounds.get().unwrap());
+
 		visual.simulate_click(bounds.center(), Default::default());
+
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(target.clone()));
+
 			s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
+
 			assert!(s.prepend_native_history(
 				&binding,
 				"older",
@@ -900,14 +1033,17 @@ mod tests {
 					active_realtime_session_at_page_start: None,
 				}
 			));
+
 			cx.notify();
 		});
+
 		for _ in 0..3 {
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
 			});
 			visual.run_until_parked();
 		}
+
 		surface.read_with(visual, |s, _| {
 			let scroll = &s.transcript_scroll[&binding.work];
 			let expected = navigation_offset(
@@ -915,6 +1051,7 @@ mod tests {
 				scroll.max_offset().y.into(),
 			);
 			let actual = f32::from(scroll.offset().y);
+
 			assert!(
 				(actual - expected).abs() < 1.,
 				"jump stopped at {actual}, target is {expected}"
@@ -931,11 +1068,16 @@ mod tests {
 		use decodex_protocol::{
 			AgentTimelineContent as Content, AgentTimelineEntry, AgentTimelinePage,
 		};
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(size(px(1400.), px(400.)));
+
+		visual.simulate_resize(size(px(1_400.), px(400.)));
+
 		let keys = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -944,7 +1086,9 @@ mod tests {
 				.iter_mut()
 				.find(|work| Some(&work.id) == s.selected.as_ref())
 				.unwrap();
+
 			work.codex_thread_id = Some("native-thread".into());
+
 			let text = "A repeated user prompt.\n\n".repeat(20);
 			let entries = vec![
 				AgentTimelineEntry {
@@ -976,6 +1120,7 @@ mod tests {
 				.iter()
 				.map(|entry| HistoryKey::native("native-thread", entry))
 				.collect::<Vec<_>>();
+
 			assert!(s.native_history.replace(
 				super::super::native_timeline::Binding {
 					work: work.id.clone(),
@@ -991,32 +1136,45 @@ mod tests {
 					active_realtime_session_at_page_start: None
 				}
 			));
+
 			cx.notify();
+
 			keys
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let bounds = surface.read_with(visual, |s, _| {
 			assert_eq!(s.history_marks.len(), 2);
 			assert_ne!(keys[0], keys[1]);
 			assert!(
 				s.history_marks[&keys[1]].position.get() > s.history_marks[&keys[0]].position.get()
 			);
+
 			s.history_marks[&keys[0]].hit_bounds.get().unwrap()
 		});
+
 		visual.simulate_click(bounds.center(), Default::default());
+
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.history_selected.as_ref(), Some(&keys[0]));
 			assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(keys[0].clone()));
+
 			s.native_history.entries.remove(0);
+
 			s.native_history.revision += 1;
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
@@ -1031,18 +1189,25 @@ mod tests {
 	#[ignore = "Manual CPU draw benchmark; use --release, not a GPU FPS measurement"]
 	fn long_history_scroll_draw_benchmark(cx: &mut gpui::TestAppContext) {
 		use decodex_protocol::{AgentTimelineContent as Content, AgentTimelineEntry};
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(size(px(1400.), px(900.)));
+
+		visual.simulate_resize(size(px(1_400.), px(900.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
+
 			let work = s.snapshot.as_mut().unwrap().work_items.iter_mut().find(|w| w.id == "agent").unwrap();
+
 			work.codex_thread_id = Some("benchmark-thread".into());
+
 			let entries = (0..300).map(|i| AgentTimelineEntry {
 				position: i,
 				content: if i % 3 == 2 { Content::TurnBoundary {
 					turn_id: format!("turn-{}", i / 3), completed: true, status: Some("completed".into()),
-					duration_ms: Some(3200), usage: None, usage_summary: None, error: None,
+					duration_ms: Some(3_200), usage: None, usage_summary: None, error: None,
 				} } else { Content::Item { phase: None,
 					app_ui: false,
 					turn_id: format!("turn-{}", i / 3), item_id: format!("message-{i}"),
@@ -1051,15 +1216,19 @@ mod tests {
 					truncated: false, activity: None, attachments: vec![],
 				} },
 			}).collect();
+
 			assert!(s.native_history.replace(super::super::native_timeline::Binding {
 				work: "agent".into(), thread: "benchmark-thread".into(), account: "benchmark".into(),
 			}, decodex_protocol::AgentTimelinePage {
 				thread_id: "benchmark-thread".into(), entries, next_cursor: None,
 				weather: Default::default(), safety_buffering_turn_id: None, active_realtime_session_at_page_start: None,
 			}));
+
 			cx.notify();
 		});
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		let anchors = surface.read_with(visual, |s, _| {
 			s.history_marks
 				.iter()
@@ -1068,24 +1237,33 @@ mod tests {
 		});
 		let mut samples = Vec::new();
 		let mut maximum = None;
+
 		for frame in 0..70 {
 			surface.update(visual, |s, cx| {
 				s.latest_follow_work = None;
+
 				s.history_follow_paused.insert("agent".into());
 				s.transcript_scroll["agent"]
-					.set_offset(point(px(0.), px(-2000. - frame as f32 * 17.)));
+					.set_offset(point(px(0.), px(-2_000. - frame as f32 * 17.)));
 				cx.notify();
 			});
+
 			let start = std::time::Instant::now();
+
 			visual.update(|w, cx| w.draw(cx).clear());
+
 			if frame >= 10 {
-				samples.push(start.elapsed().as_secs_f64() * 1000.);
+				samples.push(start.elapsed().as_secs_f64() * 1_000.);
+
 				let current =
 					surface.read_with(visual, |s, _| s.transcript_scroll["agent"].max_offset().y);
+
 				if let Some(expected) = maximum {
 					assert_eq!(current, expected, "windowing must retain exact scroll extent");
 				}
+
 				maximum = Some(current);
+
 				surface.read_with(visual, |s, _| {
 					for (key, expected) in &anchors {
 						assert!(
@@ -1096,7 +1274,9 @@ mod tests {
 				});
 			}
 		}
+
 		samples.sort_by(f64::total_cmp);
+
 		eprintln!(
 			"scroll draw CPU, 300 entries, 60 warm frames: median={:.3}ms p95={:.3}ms max={:.3}ms",
 			samples[30], samples[57], samples[59]
@@ -1105,44 +1285,58 @@ mod tests {
 
 	#[test]
 	fn clicked_anchor_and_active_marker_use_the_same_inset() {
-		let positions = [0., 340., 1117., 2400.];
+		let positions = [0., 340., 1_117., 2_400.];
+
 		for (index, position) in positions.iter().enumerate() {
-			assert_eq!(current_mark(&positions, -navigation_offset(*position, 3000.)), index);
+			assert_eq!(current_mark(&positions, -navigation_offset(*position, 3_000.)), index);
 		}
 	}
 
 	#[gpui::test]
 	fn rail_hit_targets_select_their_own_message(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(size(px(1400.), px(400.)));
+
+		visual.simulate_resize(size(px(1_400.), px(400.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
 		});
+
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
 		});
+
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
 		});
+
 		let ids =
 			surface.read_with(visual, |s, _| s.history_marks.keys().cloned().collect::<Vec<_>>());
+
 		for id in ids {
 			let bounds =
 				surface.read_with(visual, |s, _| s.history_marks[&id].hit_bounds.get().unwrap());
+
 			visual.simulate_mouse_down(
 				bounds.center(),
 				gpui::MouseButton::Left,
 				Default::default(),
 			);
 			visual.simulate_mouse_up(bounds.center(), gpui::MouseButton::Left, Default::default());
+
 			surface.update(visual, |s, cx| {
 				assert_eq!(s.history_selected, Some(id.clone()));
 				assert_eq!(s.history_navigation.as_ref().unwrap().id, Some(id.clone()));
+
 				s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
+
 				cx.notify();
 			});
+
 			visual.update(|w, cx| {
 				w.draw(cx).clear();
 			});
@@ -1153,14 +1347,19 @@ mod tests {
 	#[gpui::test]
 	fn history_marks_jump_to_real_message_anchors(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(size(px(1400.0), px(320.0)));
+
+		visual.simulate_resize(size(px(1_400.0), px(320.0)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		visual.update(|_, cx| {
 			surface.update(cx, |s, cx| {
 				assert_eq!(s.history_marks.len(), 2);
@@ -1168,11 +1367,15 @@ mod tests {
 					s.history_marks[&HistoryKey::Local(3)].position.get()
 						> s.history_marks[&HistoryKey::Local(1)].position.get()
 				);
+
 				s.jump_to_history(HistoryKey::Local(3), cx);
+
 				s.history_navigation.as_mut().unwrap().started -= std::time::Duration::from_secs(1);
+
 				cx.notify();
 			})
 		});
+
 		visual.run_until_parked();
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
@@ -1190,30 +1393,46 @@ mod tests {
 	#[gpui::test]
 	fn mouse_wheel_animates_and_trackpad_takes_over_immediately(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(size(px(1400.), px(300.)));
+
+		visual.simulate_resize(size(px(1_400.), px(300.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		surface.update(visual, |s, cx| {
 			let scroll = s.transcript_scroll["agent"].clone();
+
 			scroll.set_offset(point(px(0.), px(-50.)));
+
 			let event = gpui::ScrollWheelEvent {
 				delta: gpui::ScrollDelta::Lines(point(0., -1.)),
 				..Default::default()
 			};
+
 			s.scroll_history(&event, cx);
+
 			assert_eq!(scroll.offset().y, px(-50.), "notches must not jump immediately");
+
 			let first = s.wheel_scroll.as_ref().unwrap().motion.to;
+
 			s.scroll_history(&event, cx);
+
 			let wheel = s.wheel_scroll.as_ref().unwrap();
+
 			assert!(wheel.motion.to < first, "successive notches accumulate");
+
 			let midpoint =
 				wheel.motion.sample(wheel.motion.started + std::time::Duration::from_millis(60)).0;
+
 			assert!(midpoint < -50. && midpoint > wheel.motion.to);
+
 			scroll.set_offset(point(px(0.), px(midpoint)));
 			s.scroll_history(
 				&gpui::ScrollWheelEvent {
@@ -1222,10 +1441,12 @@ mod tests {
 				},
 				cx,
 			);
+
 			assert!(
 				s.wheel_scroll.as_ref().unwrap().motion.to > midpoint,
 				"reversal cancels pending forward travel"
 			);
+
 			s.scroll_history(
 				&gpui::ScrollWheelEvent {
 					delta: gpui::ScrollDelta::Pixels(point(px(0.), px(0.25))),
@@ -1233,6 +1454,7 @@ mod tests {
 				},
 				cx,
 			);
+
 			assert!(s.wheel_scroll.is_none());
 			assert_eq!(scroll.offset().y, px(midpoint + 0.25));
 		});
@@ -1243,31 +1465,44 @@ mod tests {
 		let now = std::time::Instant::now();
 		let mut wheel =
 			WheelScroll { work: "agent".into(), motion: crate::ui_scroll::Motion::new(-20., now) };
-		wheel.motion.retarget(-20., -1000., 200., now);
+
+		wheel.motion.retarget(-20., -1_000., 200., now);
+
 		assert_eq!(
 			wheel.motion.sample(now + std::time::Duration::from_millis(600)),
 			(-200., false)
 		);
-		wheel.motion.retarget(-80., 1000., 200., now);
+
+		wheel.motion.retarget(-80., 1_000., 200., now);
+
 		assert_eq!(wheel.motion.to, 0.);
 	}
 
 	#[gpui::test]
 	fn trackpad_phase_events_preserve_follow_and_fractional_deltas(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(size(px(1400.), px(300.)));
+
+		visual.simulate_resize(size(px(1_400.), px(300.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		surface.update(visual, |s, cx| {
 			let scroll = s.transcript_scroll["agent"].clone();
+
 			scroll.set_offset(point(px(0.), px(-40.)));
+
 			s.latest_follow_work = Some("agent".into());
+
 			s.history_follow_paused.remove("agent");
+
 			for phase in [gpui::TouchPhase::Started, gpui::TouchPhase::Ended] {
 				s.scroll_history(
 					&gpui::ScrollWheelEvent {
@@ -1277,6 +1512,7 @@ mod tests {
 					},
 					cx,
 				);
+
 				assert_eq!(s.latest_follow_work.as_deref(), Some("agent"));
 				assert!(!s.history_follow_paused.contains("agent"));
 				assert_eq!(scroll.offset().y, px(-40.));
@@ -1290,6 +1526,7 @@ mod tests {
 					cx,
 				);
 			}
+
 			assert_eq!(
 				scroll.offset().y,
 				px(-38.),
@@ -1302,24 +1539,33 @@ mod tests {
 	#[gpui::test]
 	fn wheel_scroll_keeps_adjacent_messages_accessible(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(size(px(1400.0), px(300.0)));
+
+		visual.simulate_resize(size(px(1_400.0), px(300.0)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
 		// Panel animation uses wall time, including in optimized test builds.
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|window, cx| window.draw(cx).clear());
+
 		let scroll = surface.read_with(visual, |s, _| s.transcript_scroll["agent"].clone());
+
 		assert!(scroll.max_offset().y >= px(100.), "fixture must allow the full wheel delta");
 		assert!(
 			scroll.bounds().bottom() > px(280.),
 			"history must extend behind the floating composer instead of clipping above it"
 		);
+
 		let position = scroll.bounds().center();
+
 		visual.simulate_event(gpui::ScrollWheelEvent {
 			position,
 			delta: gpui::ScrollDelta::Pixels(point(px(0.0), px(-100.0))),
@@ -1328,8 +1574,11 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert_eq!(scroll.offset().y, px(-100.0), "wheel delta must be applied once");
+
 		let previous = scroll.offset().y;
+
 		visual.simulate_event(gpui::ScrollWheelEvent {
 			position,
 			delta: gpui::ScrollDelta::Pixels(point(px(0.0), px(60.0))),
@@ -1338,13 +1587,16 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(scroll.offset().y > previous);
+
 		scroll.set_offset(point(px(0.), -scroll.max_offset().y));
 		visual.simulate_event(gpui::ScrollWheelEvent {
 			position,
 			delta: gpui::ScrollDelta::Pixels(point(px(0.), px(5.))),
 			..Default::default()
 		});
+
 		assert!(
 			surface.read_with(visual, |s, _| s.history_follow_paused.contains("agent")),
 			"even a small upward wheel step must pause automatic bottom-follow"
@@ -1356,15 +1608,21 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(size(px(1400.), px(320.)));
+
+		visual.simulate_resize(size(px(1_400.), px(320.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
+
 			if let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history {
 				entries[1].text = "Existing conversation paragraph. ".repeat(80);
 			}
 		});
+
 		visual.update(|window, cx| window.draw(cx).clear());
+
 		for _ in 0..40 {
 			visual.update(|window, cx| window.draw(cx).clear());
 			visual.run_until_parked();
@@ -1372,10 +1630,13 @@ mod tests {
 
 		let before = surface.update(visual, |s, cx| {
 			let scroll = s.transcript_scroll["agent"].clone();
+
 			scroll.set_offset(point(px(0.), px(-50.)));
 			s.history_follow_paused.insert("agent".into());
+
 			let before = s.history_marks[&HistoryKey::Local(1)].position.get()
 				+ f32::from(scroll.offset().y);
+
 			s.older_scroll_anchor = Some(HistoryScrollAnchor {
 				work: "agent".into(),
 				offset: f32::from(scroll.offset().y),
@@ -1385,23 +1646,30 @@ mod tests {
 					s.history_marks[&HistoryKey::Local(1)].position.get(),
 				)),
 			});
+
 			let Some((_, AgentHistoryResult::Available { entries, .. })) = &s.history else {
 				panic!("fixture")
 			};
 			let mut older = entries[0].clone();
+
 			older.id = -10;
 			older.text = "Earlier conversation paragraph. ".repeat(50);
+
 			s.older_history.insert("agent".into(), (vec![older], None));
 			cx.notify();
+
 			before
 		});
+
 		for _ in 0..4 {
 			visual.update(|window, cx| window.draw(cx).clear());
 			visual.run_until_parked();
 		}
+
 		surface.read_with(visual, |s, _| {
 			let after = s.history_marks[&HistoryKey::Local(1)].position.get()
 				+ f32::from(s.transcript_scroll["agent"].offset().y);
+
 			assert!(
 				(after - before).abs() < 1.,
 				"prepend must preserve the reading anchor: {before} -> {after}; offset {:?} max {:?} mark {}",
@@ -1415,10 +1683,14 @@ mod tests {
 	#[gpui::test]
 	fn jump_to_latest_scrolls_to_bottom_and_resumes_follow(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(size(px(1400.), px(320.)));
+
+		visual.simulate_resize(size(px(1_400.), px(320.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
+
 			s.history_follow_paused.insert("agent".into());
 			s.transcript_scroll
 				.entry("agent".into())
@@ -1426,25 +1698,34 @@ mod tests {
 				.set_offset(point(px(0.), px(0.)));
 			cx.notify();
 		});
+
 		visual.update(|window, cx| window.draw(cx).clear());
 		visual.run_until_parked();
 		visual.update(|window, cx| window.draw(cx).clear());
+
 		let button = visual.debug_bounds("jump-to-latest").expect("button while reading history");
+
 		surface.update(visual, |s, cx| {
 			s.jump_to_latest(cx);
+
 			if let Some(navigation) = &mut s.history_navigation {
 				assert!(navigation.id.is_none());
+
 				navigation.started -= std::time::Duration::from_secs(1);
 			}
+
 			cx.notify();
 		});
 		// Let time-based panel transitions settle before checking the final scroll extent.
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		for _ in 0..40 {
 			visual.update(|window, cx| window.draw(cx).clear());
 		}
+
 		surface.read_with(visual, |s, _| {
 			let scroll = &s.transcript_scroll["agent"];
+
 			assert!(
 				(scroll.offset().y + scroll.max_offset().y).abs() < px(1.),
 				"offset={:?}, max={:?}, button={button:?}",
@@ -1458,30 +1739,39 @@ mod tests {
 	#[gpui::test]
 	fn sending_leaves_old_anchor_and_scrolls_to_latest(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(size(px(1400.), px(320.)));
+
+		visual.simulate_resize(size(px(1_400.), px(320.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
 		});
+
 		visual.update(|window, cx| window.draw(cx).clear());
 		surface.update(visual, |s, cx| {
 			s.jump_to_history(HistoryKey::Local(1), cx);
 			s.history_follow_paused.insert("agent".into());
 			s.follow_latest_after_send(cx);
+
 			assert!(s.history_selected.is_none());
 			assert!(s.history_navigation.is_none());
 			assert!(!s.history_follow_paused.contains("agent"));
 		});
 		// Let time-based panel transitions settle before checking the final scroll extent.
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		for _ in 0..40 {
 			visual.update(|window, cx| window.draw(cx).clear());
 		}
+
 		surface.read_with(visual, |s, _| {
 			let scroll = &s.transcript_scroll["agent"];
+
 			assert!((scroll.offset().y + scroll.max_offset().y).abs() < px(1.));
 			assert_eq!(s.active_history_index(scroll), s.history_marks.len() - 1);
 		});
+
 		assert_eq!(
 			current_mark(&[0., 100., f32::INFINITY], 0.),
 			0,
@@ -1492,35 +1782,53 @@ mod tests {
 	#[gpui::test]
 	fn details_resize_preserves_latest_and_history_reading(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(size(px(1400.), px(320.)));
+
+		visual.simulate_resize(size(px(1_400.), px(320.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
 		});
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		surface.update(visual, |s, cx| {
 			let scroll = s.transcript_scroll["agent"].clone();
+
 			scroll.set_offset(point(px(0.), -scroll.max_offset().y));
+
 			s.latest_follow_work = None;
+
 			s.toggle_connection_details(cx);
+
 			assert_eq!(s.latest_follow_work.as_deref(), Some("agent"));
 			// Model the frame between a growing footer's layout and bottom-follow.
 			scroll.set_offset(point(px(0.), scroll.offset().y + px(32.)));
+
 			assert_eq!(s.active_history_index(&scroll), s.history_marks.len() - 1);
 		});
 		// Let time-based panel transitions settle before checking the final scroll extent.
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		for _ in 0..40 {
 			visual.update(|w, cx| w.draw(cx).clear());
 		}
+
 		surface.update(visual, |s, cx| {
 			let scroll = s.transcript_scroll["agent"].clone();
+
 			assert!((scroll.offset().y + scroll.max_offset().y).abs() < px(1.));
+
 			s.latest_follow_work = None;
+
 			scroll.set_offset(point(px(0.), px(-100.)));
+
 			let before = scroll.offset();
 			let active = s.active_history_index(&scroll);
+
 			s.toggle_connection_details(cx);
+
 			assert!(s.latest_follow_work.is_none());
 			assert_eq!(scroll.offset(), before);
 			assert_eq!(s.active_history_index(&scroll), active);
@@ -1529,9 +1837,9 @@ mod tests {
 
 	#[test]
 	fn navigation_cannot_scroll_past_history_and_dock_magnifies_neighbours() {
-		assert_eq!(navigation_offset(5000.0, 1000.0), -1000.0);
-		assert_eq!(navigation_offset(0.0, 1000.0), 0.0);
-		assert_eq!(navigation_offset(500.0, 1000.0), -444.0);
+		assert_eq!(navigation_offset(5_000.0, 1_000.0), -1_000.0);
+		assert_eq!(navigation_offset(0.0, 1_000.0), 0.0);
+		assert_eq!(navigation_offset(500.0, 1_000.0), -444.0);
 		assert!(dock_influence(3, Some(3)) > dock_influence(2, Some(3)));
 		assert!(dock_influence(2, Some(3)) > dock_influence(1, Some(3)));
 		assert_eq!(dock_influence(0, Some(3)), 0.0);
@@ -1539,8 +1847,8 @@ mod tests {
 
 	#[test]
 	fn navigation_uses_message_positions_not_equal_height_assumptions() {
-		assert_eq!(current_mark(&[0.0, 100.0, 1800.0], 200.0), 1);
-		assert_eq!(current_mark(&[0.0, 100.0, 1800.0], 1800.0), 2);
+		assert_eq!(current_mark(&[0.0, 100.0, 1_800.0], 200.0), 1);
+		assert_eq!(current_mark(&[0.0, 100.0, 1_800.0], 1_800.0), 2);
 		assert_eq!(preview(&"字".repeat(181)).chars().count(), 181);
 	}
 }

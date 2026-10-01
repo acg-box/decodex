@@ -12,13 +12,6 @@ use decodex_protocol::{
 	QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId,
 };
 
-/// Only definitive authentication failures require another login; a busy or
-/// temporarily unavailable credential remains a recoverable warning.
-pub(crate) fn requires_login(error: decodex_protocol::AccountProfileErrorDto) -> bool {
-	use decodex_protocol::AccountProfileErrorDto::*;
-	matches!(error, RefreshRejected | RefreshAmbiguous | AccessRejectedAfterRefresh | Unauthorized)
-}
-
 /// Bounded selected-profile state rendered by Accounts.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AccountProfileSnapshot {
@@ -28,35 +21,11 @@ pub(crate) struct AccountProfileSnapshot {
 	pub(crate) result: Option<AccountProfileResult>,
 }
 
-/// Finite account-profile query state.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AccountProfileLoadState {
-	Closed,
-	Loading,
-	Ready,
-	Offline,
-	Refused,
-}
-
-/// Result disposition used to preserve every other retained-session query owner.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AccountProfileRouteOutcome {
-	Fresh,
-	Unmatched,
-	Refused,
-}
-
 /// Cloneable account-profile controller with no transport or product authority.
 #[derive(Clone)]
 pub(crate) struct AccountProfileController {
 	inner: Arc<AccountProfileInner>,
 }
-
-struct AccountProfileInner {
-	state: Mutex<State>,
-	notify: Notify,
-}
-
 impl AccountProfileController {
 	pub(crate) fn production() -> Self {
 		Self {
@@ -82,18 +51,25 @@ impl AccountProfileController {
 
 	fn select_source(&self, account_id: EntityId, revision: Option<EntityRevision>) {
 		let mut state = self.lock();
+
 		if state.selected.as_ref() == Some(&account_id) && state.selected_revision == revision {
 			return;
 		}
+
 		{
 			state.selected = Some(account_id);
 			state.selected_revision = revision;
+
 			state.pending.clear();
+
 			state.in_flight = None;
 			state.result = None;
 		}
+
 		let queued = state.queue_query();
+
 		drop(state);
+
 		if queued {
 			self.inner.notify.notify_one();
 		}
@@ -101,10 +77,13 @@ impl AccountProfileController {
 
 	pub(crate) fn close(&self) {
 		let mut state = self.lock();
+
 		state.refresh_due = false;
 		state.selected = None;
 		state.selected_revision = None;
+
 		state.pending.clear();
+
 		state.in_flight = None;
 		state.result = None;
 		state.load = AccountProfileLoadState::Closed;
@@ -112,31 +91,44 @@ impl AccountProfileController {
 
 	pub(crate) fn refresh(&self) -> bool {
 		let mut state = self.lock();
+
 		state.request_observation_refresh = true;
+
 		state.pending.clear();
+
 		state.in_flight = None;
+
 		let queued = state.queue_query();
+
 		drop(state);
+
 		if queued {
 			self.inner.notify.notify_one();
 		}
+
 		queued
 	}
 
 	pub(crate) fn bind_session(&self, generation: u64, server_id: ServerId) {
 		let mut state = self.lock();
 		let binding = SessionBinding { generation, server_id };
+
 		if state.session.as_ref() == Some(&binding) {
 			return;
 		}
+
 		state.pending.clear();
+
 		state.in_flight = None;
 		state.observation = None;
 		state.observation_generation = 0;
 		state.refresh_due = false;
 		state.session = Some(binding);
+
 		let queued = state.queue_query();
+
 		drop(state);
+
 		if queued {
 			self.inner.notify.notify_one();
 		}
@@ -144,14 +136,18 @@ impl AccountProfileController {
 
 	pub(crate) fn session_ended(&self, generation: u64) {
 		let mut state = self.lock();
+
 		if !state.session.as_ref().is_some_and(|binding| binding.generation == generation) {
 			return;
 		}
+
 		state.pending.clear();
+
 		state.in_flight = None;
 		state.observation = None;
 		state.refresh_due = false;
 		state.session = None;
+
 		if state.selected.is_some() {
 			state.load = AccountProfileLoadState::Offline;
 		}
@@ -164,9 +160,11 @@ impl AccountProfileController {
 	) -> QueryEnvelope {
 		loop {
 			let notified = self.inner.notify.notified();
+
 			if let Some(query) = self.try_take_dispatch(generation, server_id) {
 				return query;
 			}
+
 			notified.await;
 		}
 	}
@@ -174,18 +172,22 @@ impl AccountProfileController {
 	fn try_take_dispatch(&self, generation: u64, server_id: &ServerId) -> Option<QueryEnvelope> {
 		let mut state = self.lock();
 		let binding = SessionBinding { generation, server_id: server_id.clone() };
+
 		if state.session.as_ref() != Some(&binding) || state.in_flight.is_some() {
 			return None;
 		}
+
 		let Some(query) = state.pending.pop_front() else {
 			return state.start_observation(binding);
 		};
+
 		state.in_flight = Some(InFlightQuery {
 			query_id: query.query_id.clone(),
 			payload: query.payload.clone(),
 			account_id: state.selected.clone()?,
 			binding,
 		});
+
 		Some(query)
 	}
 
@@ -196,19 +198,27 @@ impl AccountProfileController {
 		result: &QueryResultEnvelope,
 	) -> AccountProfileRouteOutcome {
 		let mut state = self.lock();
+
 		if state.observation.as_ref().is_some_and(|(id, _)| id == &result.query_id) {
 			let outcome = state.accept_observation(generation, server_id, result);
+
 			drop(state);
+
 			self.inner.notify.notify_one();
+
 			return outcome;
 		}
+
 		let Some(in_flight) = state.in_flight.as_ref() else {
 			return AccountProfileRouteOutcome::Unmatched;
 		};
+
 		if in_flight.query_id != result.query_id {
 			return AccountProfileRouteOutcome::Unmatched;
 		}
+
 		let expected = SessionBinding { generation, server_id: server_id.clone() };
+
 		if in_flight.binding != expected
 			|| state.session.as_ref() != Some(&expected)
 			|| state.selected.as_ref() != Some(&in_flight.account_id)
@@ -217,9 +227,12 @@ impl AccountProfileController {
 		{
 			state.in_flight = None;
 			state.load = AccountProfileLoadState::Refused;
+
 			state.pending.clear();
+
 			return AccountProfileRouteOutcome::Refused;
 		}
+
 		let valid = match (&in_flight.payload, &result.payload) {
 			(
 				QueryPayload::GetAccountProfile { account_id, .. },
@@ -227,15 +240,18 @@ impl AccountProfileController {
 			) => profile_matches(profile, account_id, state.selected_revision),
 			_ => false,
 		};
+
 		state.in_flight = None;
+
 		if valid && let QueryResultPayload::AccountProfile(profile) = &result.payload {
 			state.result = Some(profile.clone());
 		}
-
 		if state.refresh_due && state.pending.is_empty() {
 			state.refresh_due = false;
+
 			state.queue_query();
 		}
+
 		state.load = if !valid {
 			AccountProfileLoadState::Refused
 		} else if state.pending.is_empty() {
@@ -243,14 +259,22 @@ impl AccountProfileController {
 		} else {
 			AccountProfileLoadState::Loading
 		};
+
 		drop(state);
+
 		self.inner.notify.notify_one();
+
 		if valid { AccountProfileRouteOutcome::Fresh } else { AccountProfileRouteOutcome::Refused }
 	}
 
 	fn lock(&self) -> MutexGuard<'_, State> {
 		self.inner.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 	}
+}
+
+struct AccountProfileInner {
+	state: Mutex<State>,
+	notify: Notify,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -280,7 +304,6 @@ struct State {
 	load: AccountProfileLoadState,
 	result: Option<AccountProfileResult>,
 }
-
 impl State {
 	const fn new() -> Self {
 		Self {
@@ -313,15 +336,20 @@ impl State {
 			if self.selected.is_some() {
 				self.load = AccountProfileLoadState::Offline;
 			}
+
 			return false;
 		};
+
 		if !self.pending.is_empty() || self.in_flight.is_some() {
 			return false;
 		}
+
 		let Some(sequence) = self.next_sequence.checked_add(1) else {
 			self.load = AccountProfileLoadState::Refused;
+
 			return false;
 		};
+
 		self.next_sequence = sequence;
 
 		self.pending.push_back(QueryEnvelope {
@@ -336,9 +364,37 @@ impl State {
 				include_email: false,
 			},
 		});
+
 		self.load = AccountProfileLoadState::Loading;
+
 		true
 	}
+}
+
+/// Finite account-profile query state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AccountProfileLoadState {
+	Closed,
+	Loading,
+	Ready,
+	Offline,
+	Refused,
+}
+
+/// Result disposition used to preserve every other retained-session query owner.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AccountProfileRouteOutcome {
+	Fresh,
+	Unmatched,
+	Refused,
+}
+
+/// Only definitive authentication failures require another login; a busy or
+/// temporarily unavailable credential remains a recoverable warning.
+pub(crate) fn requires_login(error: decodex_protocol::AccountProfileErrorDto) -> bool {
+	use decodex_protocol::AccountProfileErrorDto::*;
+
+	matches!(error, RefreshRejected | RefreshAmbiguous | AccessRejectedAfterRefresh | Unauthorized)
 }
 
 fn profile_matches(
@@ -368,17 +424,23 @@ mod tests {
 	#[tokio::test]
 	async fn activity_reads_reject_old_revisions_and_then_wait_for_observation() {
 		use decodex_protocol::{AccountProfileDto, EntityRevision, QueryPayload};
+
 		let controller = AccountProfileController::production();
 		let server = ServerId::new("10000000-0000-4000-8000-000000000001").unwrap();
 		let account = EntityId::new("20000000-0000-4000-8000-000000000001").unwrap();
+
 		controller.bind_session(3, server.clone());
 		controller.select_at_revision(account.clone(), EntityRevision(2));
+
 		for revision in [1, 2] {
 			if revision == 2 {
 				controller.refresh();
 			}
+
 			let query = controller.next_dispatch(3, &server).await;
+
 			assert!(matches!(query.payload, QueryPayload::GetAccountProfile { .. }));
+
 			let result = AccountProfileResult::Current(Box::new(AccountProfileDto {
 				account_id: account.clone(),
 				account_revision: EntityRevision(revision),
@@ -404,6 +466,7 @@ mod tests {
 					payload: QueryResultPayload::AccountProfile(result),
 				},
 			);
+
 			assert_eq!(
 				outcome,
 				if revision == 1 {
@@ -413,7 +476,9 @@ mod tests {
 				}
 			);
 		}
+
 		let observation = controller.next_dispatch(3, &server).await;
+
 		assert!(matches!(observation.payload, QueryPayload::WaitForAccountObservation { .. }));
 	}
 
@@ -422,10 +487,14 @@ mod tests {
 		let controller = AccountProfileController::production();
 		let server = ServerId::new("10000000-0000-4000-8000-000000000001").unwrap();
 		let account = EntityId::new("20000000-0000-4000-8000-000000000001").unwrap();
+
 		controller.bind_session(3, server.clone());
 		controller.select_at_revision(account.clone(), super::EntityRevision(1));
+
 		let old = controller.next_dispatch(3, &server).await;
+
 		controller.select_at_revision(account, super::EntityRevision(2));
+
 		let newer = controller.next_dispatch(3, &server).await;
 		let reply = |query: super::QueryEnvelope| QueryResultEnvelope {
 			version: CURRENT_VERSION,
@@ -437,6 +506,7 @@ mod tests {
 				plan_type: None,
 			}),
 		};
+
 		assert_eq!(
 			controller.route_result(3, &server, &reply(old)),
 			AccountProfileRouteOutcome::Unmatched
@@ -448,7 +518,9 @@ mod tests {
 		);
 		assert!(controller.snapshot().result.is_none());
 		assert_eq!(controller.snapshot().load, AccountProfileLoadState::Loading);
+
 		let current = controller.next_dispatch(3, &server).await;
+
 		assert_eq!(
 			controller.route_result(3, &server, &reply(current)),
 			AccountProfileRouteOutcome::Fresh
@@ -464,10 +536,15 @@ mod tests {
 			ServerId::new("10000000-0000-4000-8000-000000000001").expect("server identity");
 		let account =
 			EntityId::new("20000000-0000-4000-8000-000000000001").expect("account identity");
+
 		controller.select(account.clone());
+
 		assert_eq!(controller.snapshot().load, AccountProfileLoadState::Offline);
+
 		controller.bind_session(3, server.clone());
+
 		let query = controller.next_dispatch(3, &server).await;
+
 		assert!(matches!(
 			query.payload,
 			decodex_protocol::QueryPayload::GetAccountProfile { account_id, include_email: false }
@@ -502,12 +579,16 @@ mod tests {
 			ServerId::new("10000000-0000-4000-8000-000000000001").expect("server identity");
 		let first = EntityId::new("20000000-0000-4000-8000-000000000001").expect("first account");
 		let second = EntityId::new("20000000-0000-4000-8000-000000000002").expect("second account");
+
 		controller.bind_session(3, server.clone());
 		controller.select(first);
+
 		let first_query = controller.next_dispatch(3, &server).await;
 
 		controller.select(second.clone());
+
 		let second_query = controller.next_dispatch(3, &server).await;
+
 		assert_ne!(first_query.query_id, second_query.query_id);
 		assert!(matches!(
 			second_query.payload,
@@ -525,6 +606,7 @@ mod tests {
 				plan_type: None,
 			}),
 		};
+
 		assert_eq!(
 			controller.route_result(3, &server, &late_first),
 			AccountProfileRouteOutcome::Unmatched
@@ -541,6 +623,7 @@ mod tests {
 				plan_type: None,
 			}),
 		};
+
 		assert_eq!(
 			controller.route_result(3, &server, &current_second),
 			AccountProfileRouteOutcome::Fresh
@@ -549,5 +632,4 @@ mod tests {
 		assert_eq!(controller.snapshot().load, AccountProfileLoadState::Ready);
 	}
 }
-
 #[path = "account_profile/observation.rs"] mod observation;

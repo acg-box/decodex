@@ -11,7 +11,6 @@ pub(super) struct Preview {
 	task: Option<Task<()>>,
 	serial: u64,
 }
-
 impl Preview {
 	pub(super) fn clear(&mut self) {
 		*self = Self { serial: self.serial.wrapping_add(1), ..Default::default() };
@@ -39,9 +38,12 @@ impl AgentSurface {
 			timeline,
 			cx,
 		)?;
+
 		self.profile = Some(profile);
 		self.feedback = "Image preview from an isolated native service".into();
+
 		self.load_native_media(request, cx);
+
 		Ok(())
 	}
 
@@ -52,6 +54,7 @@ impl AgentSurface {
 	)]
 	pub(crate) fn visual_media_evidence(&self) -> serde_json::Value {
 		let preview = &self.native_history.preview;
+
 		serde_json::json!({"imageLoaded":preview.image.is_some(),"notice":preview.notice,"request":preview.request})
 	}
 
@@ -76,6 +79,7 @@ impl AgentSurface {
 				"image" | "localImage" | "imageView" | "imageGeneration" | "inputImage"
 			);
 		let mut row = div().flex().flex_col().gap_1().min_w_0();
+
 		if can_preview {
 			row = row.debug_selector(|| "native-media-action".into()).child(self.workspace_action(
 				format!("native-media-{}-{}-{}", turn, item, attachment.index),
@@ -96,12 +100,14 @@ impl AgentSurface {
 						.object_fit(gpui::ObjectFit::Contain),
 				);
 			}
+
 			if preview.task.is_some() {
 				row = row.child(crate::ui_loading::loading("Loading image"));
 			} else if let Some(notice) = preview.notice {
 				row = row.child(muted(notice));
 			}
 		}
+
 		row.into_any_element()
 	}
 
@@ -109,6 +115,7 @@ impl AgentSurface {
 		if self.native_history.preview.task.is_some() {
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
@@ -117,16 +124,20 @@ impl AgentSurface {
 		}) else {
 			return;
 		};
+
 		if self.selected.as_deref() != Some(request.work_id.as_str()) {
 			return;
 		}
+
 		let serial = self.native_history.preview.serial.wrapping_add(1);
+
 		self.native_history.preview = Preview {
 			request: Some(request.clone()),
 			notice: Some("Loading image…"),
 			serial,
 			..Default::default()
 		};
+
 		let epoch = self.native_history.epoch;
 		let account = binding.account.clone();
 		let read = cx.background_executor().spawn(async move {
@@ -134,6 +145,7 @@ impl AgentSurface {
 				.enable_all()
 				.build()
 				.map_err(|_| "Image could not be loaded.")?;
+
 			runtime.block_on(async {
 				tokio::time::timeout(
 					std::time::Duration::from_secs(60),
@@ -143,12 +155,14 @@ impl AgentSurface {
 				.map_err(|_| "Image read timed out.")?
 			})
 		});
+
 		self.native_history.preview.task = Some(cx.spawn(async move |surface, cx| {
 			let result = read.await;
 			let _ = surface.update(cx, |surface, cx| {
 				surface.finish_native_media(epoch, serial, &binding, result, cx);
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -167,8 +181,11 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let preview = &mut self.native_history.preview;
+
 		preview.task = None;
+
 		match result {
 			Ok(image) => {
 				preview.image = Some(image);
@@ -176,6 +193,7 @@ impl AgentSurface {
 			},
 			Err(notice) => preview.notice = Some(notice),
 		}
+
 		cx.notify();
 	}
 }
@@ -204,6 +222,7 @@ async fn load(
 ) -> Result<Arc<gpui::Image>, &'static str> {
 	let mut all = Vec::new();
 	let mut expected = None;
+
 	loop {
 		let result =
 			client.media(request.clone()).await.map_err(|_| "Image could not be loaded.")?;
@@ -222,13 +241,17 @@ async fn load(
 				_ => "Image changed or is no longer available. Select Preview to retry.",
 			});
 		};
+
 		if account_id.as_str() != account
 			|| expected.as_ref().is_some_and(|old| old != &(mime_type.clone(), total_bytes))
 		{
 			return Err("Image source changed. Refresh the conversation.");
 		}
+
 		expected = Some((mime_type.clone(), total_bytes));
+
 		all.extend(bytes);
+
 		if all.len() == total_bytes as usize {
 			let format = match mime_type.as_str() {
 				"image/png" => gpui::ImageFormat::Png,
@@ -237,8 +260,10 @@ async fn load(
 				"image/gif" => gpui::ImageFormat::Gif,
 				_ => return Err("This content is not a supported image."),
 			};
+
 			return Ok(Arc::new(gpui::Image::from_bytes(format, all)));
 		}
+
 		request.offset = all.len() as u32;
 		request.fingerprint = Some(fingerprint);
 	}
@@ -257,11 +282,16 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |surface, cx| {
 			surface.visual_workspace_fixture(cx);
+
 			let mut snapshot = surface.snapshot.clone().unwrap();
+
 			snapshot.runtime_source = Some(EntityId::new("first-process").unwrap());
+
 			surface.apply_result(Ok(AgentSnapshotResult::Available(snapshot.clone())));
+
 			let binding = Binding {
 				work: surface.selected.clone().unwrap(),
 				thread: "same-thread".into(),
@@ -275,28 +305,42 @@ mod tests {
 				safety_buffering_turn_id: None,
 				active_realtime_session_at_page_start: None,
 			};
+
 			assert!(surface.native_history.replace(binding.clone(), page.clone()));
+
 			let image = Arc::new(gpui::Image::from_bytes(
 				gpui::ImageFormat::Png,
 				include_bytes!("../../../assets/workspace-symbols/plus.png").to_vec(),
 			));
+
 			surface.native_history.preview.image = Some(image.clone());
+
 			let epoch = surface.native_history.epoch;
 			let serial = surface.native_history.preview.serial;
+
 			surface.apply_result(Ok(AgentSnapshotResult::Available(snapshot.clone())));
+
 			assert_eq!(surface.native_history.epoch, epoch);
 			assert!(surface.native_history.preview.image.is_some());
+
 			snapshot.runtime_source = Some(EntityId::new("second-process").unwrap());
+
 			surface.apply_result(Ok(AgentSnapshotResult::Available(snapshot.clone())));
+
 			assert!(surface.native_history.binding.is_none());
 			assert!(surface.native_history.preview.image.is_none());
 			assert_ne!(surface.native_history.epoch, epoch);
 			// Reusing the same task, thread and account must not restore an old callback.
 			assert!(surface.native_history.replace(binding.clone(), page));
+
 			surface.finish_native_media(epoch, serial, &binding, Ok(image), cx);
+
 			assert!(surface.native_history.preview.image.is_none());
+
 			snapshot.runtime_source = None;
+
 			surface.apply_result(Ok(AgentSnapshotResult::Available(snapshot)));
+
 			assert!(surface.native_history.binding.is_none());
 		});
 	}
@@ -304,10 +348,14 @@ mod tests {
 	#[gpui::test]
 	fn loaded_image_preview_is_removed_when_native_account_changes(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.update(|window, _| window.resize(size(px(1000.), px(700.))));
+
+		visual.update(|window, _| window.resize(size(px(1_000.), px(700.))));
+
 		let (binding, page, serial) = surface.update(visual, |surface, cx| {
 			surface.visual_workspace_fixture(cx);
+
 			surface.graph_visible = false;
+
 			let work = surface
 				.snapshot
 				.as_mut()
@@ -316,7 +364,9 @@ mod tests {
 				.iter_mut()
 				.find(|work| Some(&work.id) == surface.selected.as_ref())
 				.unwrap();
+
 			work.codex_thread_id = Some("native-thread".into());
+
 			let request = media_request(work, "turn", "image", 0).unwrap();
 			let binding = Binding {
 				work: work.id.clone(),
@@ -349,7 +399,9 @@ mod tests {
 				safety_buffering_turn_id: None,
 				active_realtime_session_at_page_start: None,
 			};
+
 			assert!(surface.native_history.replace(binding.clone(), page.clone()));
+
 			surface.native_history.preview = Preview {
 				request: Some(request),
 				image: Some(Arc::new(gpui::Image::from_bytes(
@@ -359,27 +411,37 @@ mod tests {
 				serial: 8,
 				..Default::default()
 			};
+
 			cx.notify();
+
 			(binding, page, 8)
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("native-media-preview").is_some());
+
 		surface.update(visual, |surface, cx| {
 			let mut other = binding.clone();
+
 			other.account = "second-account".into();
+
 			assert!(surface.native_history.replace(other, page.clone()));
 			assert!(surface.native_history.preview.image.is_none());
 			assert_ne!(surface.native_history.preview.serial, serial);
 			// Returning to the original account must not revive an earlier callback token.
 			assert!(surface.native_history.replace(binding, page));
 			assert_ne!(surface.native_history.preview.serial, serial);
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("native-media-preview").is_none());
 	}
 	#[gpui::test]
@@ -390,12 +452,15 @@ mod tests {
 		let (send, receive) = tokio::sync::oneshot::channel();
 		let (task, original, other, binding, page) = surface.update(visual, |surface, cx| {
 			surface.visual_workspace_fixture(cx);
+
 			let original = surface.selected.clone().unwrap();
 			let snapshot = surface.snapshot.as_mut().unwrap();
 			let other =
 				snapshot.work_items.iter().find(|work| work.id != original).unwrap().id.clone();
 			let work = snapshot.work_items.iter_mut().find(|work| work.id == original).unwrap();
+
 			work.codex_thread_id = Some("native-thread".into());
+
 			let binding = Binding {
 				work: original.clone(),
 				thread: "native-thread".into(),
@@ -409,27 +474,36 @@ mod tests {
 				safety_buffering_turn_id: None,
 				active_realtime_session_at_page_start: None,
 			};
+
 			assert!(surface.native_history.replace(binding.clone(), page.clone()));
+
 			let epoch = surface.native_history.epoch;
 			let serial = surface.native_history.preview.serial;
 			let captured = binding.clone();
 			let task = cx.spawn(async move |surface, cx| {
 				let result = receive.await.unwrap();
+
 				surface
 					.update(cx, |surface, cx| {
 						surface.finish_native_media(epoch, serial, &captured, result, cx)
 					})
 					.unwrap();
 			});
+
 			(task, original, other, binding, page)
 		});
+
 		visual.run_until_parked();
+
 		surface.update(visual, |surface, cx| {
 			surface.open_page(&other, cx);
 			surface.open_page(&original, cx);
+
 			assert!(surface.native_history.replace(binding, page));
+
 			surface.native_history.preview.notice = Some("New preview pending");
 		});
+
 		send.send(Ok(Arc::new(gpui::Image::from_bytes(
 			gpui::ImageFormat::Png,
 			include_bytes!("../../../assets/workspace-symbols/plus.png").to_vec(),
@@ -440,10 +514,10 @@ mod tests {
 			assert!(surface.native_history.preview.image.is_none());
 			assert_eq!(surface.native_history.preview.notice, Some("New preview pending"));
 		});
+
 		drop(task);
 	}
 }
-
 #[cfg(test)]
 #[path = "agent_timeline_media_wire_tests.rs"]
 mod wire_tests;

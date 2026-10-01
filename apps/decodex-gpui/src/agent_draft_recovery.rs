@@ -1,8 +1,9 @@
 //! Explicit conflict reconciliation; copies retain exact service ownership.
-use super::{AgentSurface, Context, DesktopDraftDocument, Drafts, SaveFailure, publish_document};
-use decodex_protocol::{ClientProfile, DesktopRecoveredDraft};
-
 #[path = "agent_draft_export.rs"] mod export;
+
+use super::{AgentSurface, Context, DesktopDraftDocument, Drafts, SaveFailure, publish_document};
+
+use decodex_protocol::{ClientProfile, DesktopRecoveredDraft};
 
 impl AgentSurface {
 	pub(in super::super::super) fn show_recovered_drafts(&self) -> bool {
@@ -11,11 +12,13 @@ impl AgentSurface {
 
 	pub(in super::super::super) fn toggle_recovered_drafts(&mut self, cx: &mut Context<Self>) {
 		self.draft_profiles.storage.show_recovered = !self.draft_profiles.storage.show_recovered;
+
 		cx.notify();
 	}
 
 	pub(in super::super::super) fn can_keep_both_drafts(&self) -> bool {
 		let state = &self.draft_profiles.storage;
+
 		state.reconcilable && state.task.is_none() && !self.sending
 	}
 
@@ -23,11 +26,13 @@ impl AgentSurface {
 		if !self.can_keep_both_drafts() {
 			return;
 		}
+
 		self.reconcile_draft_action(None, None, cx);
 	}
 
 	pub(in super::super::super) fn recovered_drafts(&self) -> Vec<DesktopRecoveredDraft> {
 		let scope = self.draft_profiles.active.as_ref().map(ClientProfile::draft_scope_key);
+
 		self.draft_profiles
 			.storage
 			.document
@@ -40,6 +45,7 @@ impl AgentSurface {
 
 	pub(in super::super::super) fn recovered_draft_count(&self) -> usize {
 		let scope = self.draft_profiles.active.as_ref().map(ClientProfile::draft_scope_key);
+
 		self.draft_profiles
 			.storage
 			.document
@@ -61,6 +67,7 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		self.reconcile_draft_action(Some(copy), None, cx);
 	}
 
@@ -78,6 +85,7 @@ impl AgentSurface {
 	) {
 		if self.recovered_drafts().contains(&copy) && !copy.draft.has_unconfirmed_delivery() {
 			self.draft_profiles.storage.remove_candidate = Some(copy);
+
 			cx.notify();
 		}
 	}
@@ -91,6 +99,7 @@ impl AgentSurface {
 
 	pub(in super::super::super) fn cancel_draft_copy_removal(&mut self, cx: &mut Context<Self>) {
 		self.draft_profiles.storage.remove_candidate = None;
+
 		cx.notify();
 	}
 
@@ -107,7 +116,9 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		self.draft_profiles.storage.remove_candidate = None;
+
 		self.reconcile_draft_action(None, Some(copy), cx);
 	}
 
@@ -119,14 +130,16 @@ impl AgentSurface {
 	) {
 		self.cancel_queued_command(cx);
 		self.remember_draft_document(cx);
+
 		let state = &mut self.draft_profiles.storage;
 		let Some(store) = state.store.clone() else { return };
+
 		if state.seeded {
 			state.document.unbound = Default::default();
 		}
+
 		let captured = state.document.clone();
 		let mut local = captured.clone();
-
 		let mut baseline = state.saved.clone();
 		let write = cx.background_executor().spawn(async move {
 			let snapshot = store.load().map_err(|_| SaveFailure::Failed)?;
@@ -135,8 +148,10 @@ impl AgentSurface {
 			} else {
 				DesktopDraftDocument::decode(&snapshot.payload).map_err(SaveFailure::Invalid)?
 			};
+
 			if let Some(remove) = &remove {
 				latest = latest.remove_recovered_copy(remove).map_err(SaveFailure::Invalid)?;
+
 				local.recovered.retain(|saved| saved != remove);
 				baseline.recovered.retain(|saved| saved != remove);
 			}
@@ -159,18 +174,24 @@ impl AgentSurface {
 					}
 				}
 			}
+
 			let mut merged =
 				local.reconcile_keep_both(&baseline, &latest).map_err(SaveFailure::Invalid)?;
+
 			if let Some(copy) = &copy {
 				merged = merged.restore_recovered_copy(copy).map_err(SaveFailure::Invalid)?;
 			}
+
 			let revision = publish_document(&store, snapshot.revision, &merged)?;
+
 			Ok::<_, SaveFailure>((revision, merged))
 		});
+
 		state.task = Some(cx.spawn(async move |surface, cx| {
 			let result = write.await;
 			let _ = surface.update(cx, |surface, cx| {
 				surface.draft_profiles.storage.task = None;
+
 				match result {
 					Ok((revision, merged)) =>
 						surface.finish_draft_reconciliation(captured, merged, revision, cx),
@@ -184,12 +205,15 @@ impl AgentSurface {
 							SaveFailure::Failed =>
 								"Draft copies could not be saved. Current edits remain in this window.",
 						};
+
 						surface.draft_profiles.storage.error = Some(message.into());
 					},
 				}
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -201,17 +225,22 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		self.remember_draft_document(cx);
+
 		let state = &mut self.draft_profiles.storage;
 		let current = state.document.clone();
+
 		state.saved = merged.clone();
 		state.revision = revision;
+
 		let rebased = match current.reconcile_keep_both(&captured, &merged) {
 			Ok(document) => document,
 			Err(reason) => {
 				state.error = Some(reason.into());
+
 				return;
 			},
 		};
+
 		state.document = rebased.clone();
 		state.error = None;
 		state.reconcilable = false;
@@ -220,25 +249,32 @@ impl AgentSurface {
 		// Every parked profile is already captured in the document. Discard stale
 		// editor caches so an unchanged profile adopts the newer disk version.
 		self.draft_profiles.saved.clear();
+
 		if let Some(profile) = &self.draft_profiles.active {
 			let scope = profile.draft_scope_key();
+
 			if rebased.profiles.get(&scope) != current.profiles.get(&scope)
 				&& let Some(saved) = rebased.profiles.get(&scope)
 			{
 				let previous_owner = self.composer_manager.clone();
+
 				self.apply_drafts(Drafts::from_document(saved.clone(), self.command_epoch), cx);
+
 				if self.composer_manager != previous_owner {
 					self.selected = self.composer_manager.clone();
 					self.history = None;
 					self.history_task = None;
 					self.history_requested_for = None;
+
 					self.load_history(cx);
 				}
 			}
 		} else if rebased.unbound != current.unbound {
 			self.restore_unbound_draft(cx);
 		}
+
 		self.feedback = "Draft changes saved. Nothing was sent.".into();
+
 		self.save_draft_document(cx);
 	}
 }
@@ -262,6 +298,7 @@ mod tests {
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
 				.unwrap();
 		let mut doc = DesktopDraftDocument::default();
+
 		for index in 0..32 {
 			doc.recovered.push(DesktopRecoveredDraft {
 				scope: Some(profile.draft_scope_key()),
@@ -274,13 +311,19 @@ mod tests {
 				},
 			});
 		}
+
 		store.save(0, &doc.encode().unwrap()).unwrap();
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+
 			s.bind_profile(Some(profile.clone()), cx);
 			s.composer.update(cx, |input, cx| input.set_content("unsaved current input", cx));
+
 			let mut remote = doc.clone();
+
 			remote.profiles.insert(
 				profile.draft_scope_key(),
 				DesktopProfileDraft {
@@ -295,11 +338,13 @@ mod tests {
 			s.restore_draft_copy(doc.recovered[0].clone(), cx);
 			s.toggle_recovered_drafts(cx);
 		});
+
 		visual.run_until_parked();
 		surface.read_with(visual, |s, cx| {
 			assert_eq!(s.composer.read(cx).content(), "unsaved current input");
 			assert!(s.draft_storage_notice().unwrap().contains("Too many recovered"));
 		});
+
 		assert_eq!(store.load().unwrap().revision, 2);
 		// Recovery controls belong to a loaded empty workspace, not the cold
 		// startup screen before the first snapshot is known.
@@ -311,40 +356,52 @@ mod tests {
 				dependencies: vec![],
 				pending_events: vec![],
 			});
+
 			cx.notify();
 		});
 
-		visual.simulate_resize(gpui::size(gpui::px(1200.0), gpui::px(1000.0)));
+		visual.simulate_resize(gpui::size(gpui::px(1_200.0), gpui::px(1_000.0)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
 
 		let remove = visual.debug_bounds("draft-copy-remove-0").unwrap();
+
 		visual.simulate_click(remove.center(), gpui::Modifiers::default());
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert_eq!(store.load().unwrap().revision, 2);
+
 		let confirm = visual.debug_bounds("draft-copy-remove-confirm-0").unwrap();
+
 		visual.simulate_click(confirm.center(), gpui::Modifiers::default());
 		visual.run_until_parked();
+
 		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+
 		assert_eq!(saved.recovered.len(), 32);
 		assert_eq!(
 			saved.profiles[&profile.draft_scope_key()].composer.text,
 			"unsaved current input"
 		);
+
 		surface.update(visual, |s, cx| s.restore_draft_copy(doc.recovered[1].clone(), cx));
 		visual.run_until_parked();
 		surface.read_with(visual, |s, cx| {
 			assert_eq!(s.composer.read(cx).content(), "copy-1");
 			assert!(s.submission.command.is_none());
 		});
+
 		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+
 		assert!(
 			saved.recovered.iter().any(|copy| copy.draft.composer.text == "unsaved current input")
 		);
@@ -372,15 +429,23 @@ mod tests {
 			},
 		};
 		let mut doc = DesktopDraftDocument::default();
+
 		doc.recovered.push(copy.clone());
 		store.save(0, &doc.encode().unwrap()).unwrap();
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+
 			s.bind_profile(Some(other), cx);
+
 			assert!(s.recovered_drafts().is_empty());
+
 			s.restore_draft_copy(copy, cx);
+
 			assert!(s.draft_profiles.storage.task.is_none());
+
 			s.bind_profile(Some(profile.clone()), cx);
 			s.composer.update(cx, |input, cx| input.set_content("Unsaved current input", cx));
 		});
@@ -394,24 +459,30 @@ mod tests {
 				dependencies: vec![],
 				pending_events: vec![],
 			});
+
 			cx.notify();
 		});
 
-		visual.simulate_resize(gpui::size(gpui::px(1100.0), gpui::px(800.0)));
+		visual.simulate_resize(gpui::size(gpui::px(1_100.0), gpui::px(800.0)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
 
 		let toggle = visual.debug_bounds("draft-copies-toggle").unwrap();
+
 		visual.simulate_click(toggle.center(), gpui::Modifiers::default());
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let restore = visual.debug_bounds("draft-copy-restore-0").unwrap();
+
 		visual.simulate_click(restore.center(), gpui::Modifiers::default());
 		visual.run_until_parked();
 		surface.read_with(visual, |s, cx| {
@@ -420,7 +491,9 @@ mod tests {
 			assert_eq!(s.selected.as_deref(), Some("original-work"));
 			assert!(!s.draft_owner_available());
 		});
+
 		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+
 		assert_eq!(
 			saved.profiles[&profile.draft_scope_key()].composer.text,
 			"Recovered earlier text"
@@ -431,21 +504,26 @@ mod tests {
 				.iter()
 				.any(|saved| saved.draft.composer.text == "Unsaved current input")
 		);
+
 		surface.update(visual, |s, cx| {
 			let backup = s
 				.recovered_drafts()
 				.into_iter()
 				.find(|copy| copy.draft.composer.text == "Unsaved current input")
 				.unwrap();
+
 			s.restore_draft_copy(backup, cx);
 			s.composer.update(cx, |input, cx| input.set_content("Typed during restore", cx));
 		});
+
 		visual.run_until_parked();
 		surface.read_with(visual, |s, cx| {
 			assert_eq!(s.composer.read(cx).content(), "Typed during restore");
 			assert!(s.submission.command.is_none());
 		});
+
 		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+
 		assert_eq!(
 			saved.profiles[&profile.draft_scope_key()].composer.text,
 			"Typed during restore"
@@ -465,23 +543,31 @@ mod tests {
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
 				.unwrap();
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+
 			s.bind_profile(Some(second.clone()), cx);
 			s.composer.update(cx, |input, cx| input.set_content("old inactive", cx));
 			s.bind_profile(Some(first.clone()), cx);
 			s.composer.update(cx, |input, cx| input.set_content("base active", cx));
 			s.save_draft_document(cx);
 		});
+
 		visual.run_until_parked();
+
 		let original = store.load().unwrap();
 		let mut disk = DesktopDraftDocument::decode(&original.payload).unwrap();
 		let remote = disk.profiles.get_mut(&first.draft_scope_key()).unwrap();
+
 		remote.composer.text = "other window".into();
 		remote.uncertain = true;
+
 		remote.unconfirmed_commands.push(IdempotencyKey::new("remote-command").unwrap());
+
 		disk.profiles.get_mut(&second.draft_scope_key()).unwrap().composer.text =
 			"new inactive".into();
+
 		store.save(original.revision, &disk.encode().unwrap()).unwrap();
 		surface.update(visual, |s, cx| {
 			s.composer.update(cx, |input, cx| input.set_content("my current draft", cx));
@@ -490,6 +576,7 @@ mod tests {
 		visual.run_until_parked();
 		surface.update(visual, |s, cx| {
 			assert!(s.can_keep_both_drafts());
+
 			s.keep_both_drafts(cx);
 			s.composer.update(cx, |input, cx| input.set_content("edited during recovery", cx));
 		});
@@ -500,10 +587,14 @@ mod tests {
 			assert_eq!(s.submission.unconfirmed[0].as_str(), "remote-command");
 			assert!(s.draft_storage_notice().is_none());
 			assert!(s.submission.command.is_none());
+
 			s.bind_profile(Some(second), cx);
+
 			assert_eq!(s.composer.read(cx).content(), "new inactive");
 		});
+
 		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+
 		assert_eq!(
 			saved.profiles[&first.draft_scope_key()].composer.text,
 			"edited during recovery"
@@ -521,6 +612,7 @@ mod tests {
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
 				.unwrap();
 		let mut doc = DesktopDraftDocument::default();
+
 		doc.profiles.insert(
 			profile.draft_scope_key(),
 			DesktopProfileDraft {
@@ -532,11 +624,15 @@ mod tests {
 			},
 		);
 		store.save(0, &doc.encode().unwrap()).unwrap();
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+
 			s.composer.update(cx, |input, cx| input.set_content("new seed", cx));
 			s.bind_profile(Some(profile.clone()), cx);
+
 			assert!(s.can_keep_both_drafts());
 		});
 		// Recovery controls belong to a loaded empty workspace, not the cold
@@ -549,14 +645,17 @@ mod tests {
 				dependencies: vec![],
 				pending_events: vec![],
 			});
+
 			cx.notify();
 		});
 
-		visual.simulate_resize(gpui::size(gpui::px(1000.0), gpui::px(700.0)));
+		visual.simulate_resize(gpui::size(gpui::px(1_000.0), gpui::px(700.0)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
@@ -564,19 +663,26 @@ mod tests {
 		let button = visual
 			.debug_bounds("draft-keep-both")
 			.expect("visible recovery action before a task exists");
+
 		visual.simulate_click(button.center(), gpui::Modifiers::default());
 		visual.run_until_parked();
+
 		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+
 		assert!(saved.unbound.text.is_empty());
 		assert_eq!(saved.profiles[&profile.draft_scope_key()].composer.text, "new seed");
 		assert!(
 			saved.recovered.iter().any(|copy| copy.draft.composer.text == "existing saved draft")
 		);
+
 		let (reopened, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		reopened.update(visual, |s, cx| {
 			s.draft_profiles.storage = Storage::open(Ok(store));
+
 			s.restore_unbound_draft(cx);
 			s.bind_profile(Some(profile), cx);
+
 			assert_eq!(s.composer.read(cx).content(), "new seed");
 			assert!(s.draft_storage_notice().is_none());
 		});

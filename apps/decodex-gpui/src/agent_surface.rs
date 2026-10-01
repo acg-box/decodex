@@ -7,6 +7,8 @@
 #[path = "agent_async_questions.rs"] mod async_questions;
 #[path = "agent_capabilities.rs"] mod capabilities;
 #[path = "agent_composer.rs"] mod composer;
+#[path = "agent_creation_defaults.rs"] mod creation_defaults;
+#[path = "agent_creation_setup.rs"] mod creation_setup;
 #[path = "agent_detail.rs"] mod detail;
 #[path = "agent_dictation.rs"] mod dictation;
 #[path = "agent_drafts.rs"] mod drafts;
@@ -24,6 +26,9 @@
 #[path = "agent_model_settings.rs"] mod model_settings;
 #[path = "agent_models.rs"] mod models;
 #[path = "agent_native_agents.rs"] mod native_agents;
+#[cfg(all(target_os = "macos", not(test)))]
+#[path = "agent_native_composer.rs"]
+mod native_composer;
 #[path = "agent_native_goal.rs"] mod native_goal;
 #[path = "agent_timeline.rs"] mod native_timeline;
 #[path = "agent_output_stream.rs"] mod output_stream;
@@ -57,6 +62,7 @@ use decodex_protocol::{
 	ConversationReasoningEffort, ConversationWorkingDirectory, EntityId, HistoryText,
 	IdempotencyKey, WireText,
 };
+
 use gpui::{
 	ClipboardItem, Context, Entity, FocusHandle, FontWeight, Render, Role, SharedString, Task,
 	Window, div, prelude::*, px, rgb, rgba,
@@ -77,14 +83,6 @@ enum LoadState {
 	Stale,
 	Capacity { work: u64, edges: u64, events: u64 },
 }
-
-fn should_poll_snapshot(has_profile: bool, state: &LoadState) -> bool {
-	has_profile && *state != LoadState::Loading
-}
-
-#[cfg(all(target_os = "macos", not(test)))]
-#[path = "agent_native_composer.rs"]
-mod native_composer;
 
 pub(crate) struct AgentSurface {
 	#[cfg(all(target_os = "macos", not(test)))]
@@ -247,44 +245,6 @@ pub(crate) struct AgentSurface {
 	accounts: Vec<(String, String)>,
 	setup_expanded: bool,
 }
-
-struct AgentInputs {
-	model: Entity<ComposerInput>,
-	cwd: Entity<ComposerInput>,
-	composer: Entity<ComposerInput>,
-}
-
-#[derive(Clone)]
-struct QueuedCommand {
-	profile: ClientProfile,
-	action: AgentActionDto,
-	key: IdempotencyKey,
-	pending: PendingCommand,
-}
-
-#[derive(Clone)]
-struct PendingCommand {
-	recovery: Option<decodex_protocol::DesktopRecoveredDraft>,
-	key: Option<IdempotencyKey>,
-	steer: Option<decodex_protocol::AgentSteerIdentity>,
-	epoch: u64,
-	execution_intent: Option<(String, u64)>,
-	draft: Option<String>,
-	owner: Option<String>,
-	attachments: Option<Vec<decodex_protocol::AgentAttachmentDto>>,
-	references: Option<Vec<decodex_protocol::AgentTaskReferenceDto>>,
-}
-
-#[derive(Clone)]
-struct RequestReadSource {
-	profile_epoch: u64,
-	runtime_source: Option<EntityId>,
-	event: decodex_protocol::AgentPendingEventDto,
-}
-
-#[path = "agent_creation_defaults.rs"] mod creation_defaults;
-#[path = "agent_creation_setup.rs"] mod creation_setup;
-
 impl AgentSurface {
 	#[cfg(feature = "visual-capture")]
 	#[allow(dead_code, reason = "capture-only interaction proof shares the main module")]
@@ -296,7 +256,9 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		use gpui::Focusable;
+
 		self.profile = Some(profile);
+
 		self.composer.update(cx, |input, cx| input.set_content(message, cx));
 		window.focus(&self.composer.focus_handle(cx), cx);
 	}
@@ -321,8 +283,11 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Self {
 		let mut surface = Self::new(cx);
+
 		surface.request = request;
+
 		surface.apply_result(Ok(snapshot));
+
 		if let Some(selected) = selected {
 			surface.selected = Some(selected);
 		}
@@ -332,14 +297,18 @@ impl AgentSurface {
 		if let Some(request) = surface.request.clone() {
 			surface.prepare_question_inputs(&request, cx);
 		}
+
 		surface.feedback = "Read-only capture of a disposable service projection".into();
+
 		surface
 	}
 
 	pub(crate) fn new(cx: &mut Context<Self>) -> Self {
 		let inputs = Self::new_inputs(cx);
 		let mut surface = Self::with_inputs(inputs, cx);
+
 		surface.restore_unbound_draft(cx);
+
 		surface
 	}
 
@@ -347,6 +316,7 @@ impl AgentSurface {
 	#[allow(clippy::too_many_lines)]
 	fn with_inputs(inputs: AgentInputs, cx: &mut Context<Self>) -> Self {
 		let AgentInputs { model, cwd, composer } = inputs;
+
 		Self {
 			voice: None,
 			retired_voice_captions: Vec::new(),
@@ -508,9 +478,12 @@ impl AgentSurface {
 
 	fn new_inputs(cx: &mut Context<Self>) -> AgentInputs {
 		Self::refresh_prompt(cx);
+
 		let model =
 			cx.new(|cx| ComposerInput::with_placeholder(31, "Select model", "Agent model", cx));
+
 		model.update(cx, |input, cx| input.set_content(creation_setup::DEFAULT_MODEL, cx));
+
 		let cwd = cx.new(|cx| {
 			ComposerInput::with_placeholder(
 				32,
@@ -521,13 +494,16 @@ impl AgentSurface {
 		});
 		let composer =
 			cx.new(|cx| ComposerInput::message(35, prompts::next(), "Agent message", cx));
+
 		cx.subscribe(&composer, |s, _, event, cx| {
 			if let crate::composer_input::ComposerEvent::Attach(item) = event {
 				s.attach_clipboard(item, cx);
 			}
+
 			cx.notify();
 		})
 		.detach();
+
 		AgentInputs { model, cwd, composer }
 	}
 
@@ -547,19 +523,26 @@ impl AgentSurface {
 		self.refresh_native_input_receipts(cx);
 		self.load_guardian_reviews(cx);
 		self.load_archive_state(false, cx);
+
 		if self.history.as_ref().is_some_and(|(id, _)| self.selected.as_ref() != Some(id)) {
 			self.history = None;
 		}
+
 		let (Some(profile), Some(id)) = (self.profile.clone(), self.selected.clone()) else {
 			return;
 		};
+
 		if self.history_task.is_some() && self.history_requested_for.as_ref() == Some(&id) {
 			return;
 		}
+
 		let question_scope = self.question_notice_scope(&id);
+
 		self.question_notices.begin(question_scope.clone());
+
 		self.history_requested_for = Some(id.clone());
 		self.history_read_at = Some(std::time::Instant::now());
+
 		let Ok(work_id) = EntityId::new(id.clone()) else {
 			return;
 		};
@@ -568,20 +551,24 @@ impl AgentSurface {
 			else {
 				return AgentHistoryResult::Unavailable;
 			};
+
 			runtime
 				.block_on(AgentClient::new(profile).history(work_id))
 				.unwrap_or(AgentHistoryResult::Unavailable)
 		});
+
 		self.history_task = Some(cx.spawn(async move |surface, cx| {
 			let history = request.await;
 			let _ = surface.update(cx, |surface, cx| {
 				surface.history_task = None;
+
 				if surface.question_notice_scope(&id) != question_scope {
 					return;
 				}
 				if surface.selected.as_ref() == Some(&id) {
 					surface.observe_question_notices(&history);
 					cx.notify();
+
 					if surface
 						.history
 						.as_ref()
@@ -600,6 +587,7 @@ impl AgentSurface {
 						{
 							surface.latest_follow_work = Some(id.clone());
 						}
+
 						if surface.feedback == "Message saved · Waiting for agent…" {
 							let last_reply = |history: &AgentHistoryResult| match history {
 								AgentHistoryResult::Available { entries, .. } => entries
@@ -614,15 +602,19 @@ impl AgentSurface {
 								.as_ref()
 								.filter(|(owner, _)| owner == &id)
 								.and_then(|(_, old)| last_reply(old));
+
 							if last_reply(&history) > previous {
 								surface.feedback.clear();
 							}
 						}
+
 						surface.reconcile_voice_captions(&id, &history);
 						surface.prepare_async_question_inputs(&id, &history, cx);
 						surface.history_cache.insert(id.clone(), history.clone());
+
 						surface.history = Some((id, history));
 					}
+
 					cx.notify();
 				}
 			});
@@ -643,9 +635,12 @@ impl AgentSurface {
 			&& let Some(cwd) = cwd
 		{
 			self.cwd.update(cx, |input, cx| input.set_content(cwd.as_str(), cx));
+
 			self.creation_setup_present = true;
 		}
+
 		self.accounts = accounts;
+
 		cx.notify();
 	}
 
@@ -657,16 +652,19 @@ impl AgentSurface {
 			if models.is_empty() {
 				return;
 			}
+
 			let next = models
 				.iter()
 				.position(|model| model.model.as_str() == self.model.read(cx).content())
 				.map_or(0, |index| (index + 1) % models.len());
 			let model = models[next].model.as_str().to_owned();
+
 			self.select_composer_option("model", &model, cx);
 			self.reconcile_model_options(cx);
 		} else {
 			self.load_capabilities(cx);
 		}
+
 		cx.notify();
 	}
 
@@ -681,6 +679,7 @@ impl AgentSurface {
 				.and_then(|index| self.accounts.get(index + 1))
 				.map(|(id, _)| id.clone())
 		};
+
 		self.account.update(cx, |input, cx| input.set_content(next.as_deref().unwrap_or(""), cx));
 		cx.notify();
 	}
@@ -705,6 +704,7 @@ impl AgentSurface {
 			runtime_source: snapshot.runtime_source.clone(),
 			event,
 		};
+
 		self.request = None;
 
 		let request = cx.background_executor().spawn(async move {
@@ -712,16 +712,19 @@ impl AgentSurface {
 			else {
 				return AgentRequestResult::Unavailable;
 			};
+
 			runtime
 				.block_on(AgentClient::new(profile).request(event_id))
 				.unwrap_or(AgentRequestResult::Unavailable)
 		});
+
 		self.request_task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |surface, cx| {
 				surface.finish_request(source, result, cx);
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -734,7 +737,9 @@ impl AgentSurface {
 		if self.command_epoch != source.profile_epoch {
 			return;
 		}
+
 		self.request_task = None;
+
 		if self.selected.as_ref() == Some(&source.event.work_item_id)
 			&& matches!(self.displayed_load_state(), LoadState::Ready | LoadState::Loading)
 			&& self.snapshot.as_ref().is_some_and(|snapshot| {
@@ -748,8 +753,11 @@ impl AgentSurface {
 			{
 				scroll.scroll_to_bottom();
 			}
+
 			self.prepare_question_inputs(&result, cx);
+
 			self.request = Some(result);
+
 			cx.notify();
 		}
 	}
@@ -760,6 +768,7 @@ impl AgentSurface {
 		else {
 			return;
 		};
+
 		if self.selected.as_ref() != Some(work_id) {
 			return;
 		}
@@ -767,10 +776,14 @@ impl AgentSurface {
 			self.feedback =
 				"Response must be a JSON object that matches the displayed provider request."
 					.into();
+
 			cx.notify();
+
 			return;
 		}
+
 		let Ok(work_id) = EntityId::new(work_id.clone()) else { return };
+
 		if json.len() > decodex_protocol::MAX_HISTORY_INLINE_BYTES
 			&& let (Ok(params), Ok(response)) =
 				(serde_json::from_str(request_json.as_str()), serde_json::from_str(&json))
@@ -786,16 +799,21 @@ impl AgentSurface {
 				None,
 				cx,
 			);
+
 			return;
 		}
+
 		let Ok(response_json) = HistoryText::new(json) else {
 			self.feedback = format!(
 				"Response is too large after encoding (limit {} bytes). Shorten your answers and retry; your entries are preserved.",
 				decodex_protocol::MAX_HISTORY_INLINE_BYTES
 			);
+
 			cx.notify();
+
 			return;
 		};
+
 		self.execute(
 			AgentActionDto::Respond { work_id, event_id: *event_id, response_json },
 			None,
@@ -806,6 +824,7 @@ impl AgentSurface {
 	fn submit(&mut self, cx: &mut Context<Self>) {
 		if self.composer_unavailable_reason().is_some() {
 			cx.notify();
+
 			return;
 		}
 		if self.selected_is_archived() {
@@ -816,21 +835,29 @@ impl AgentSurface {
 		}
 		if self.dictation.is_some() {
 			self.finish_dictation(cx);
+
 			return;
 		}
+
 		if let Some(error) = self.composer_capability_error(cx) {
 			self.feedback = error.into();
+
 			cx.notify();
+
 			return;
 		}
+
 		if self.sending || self.uncertain {
 			return;
 		}
+
 		let text = self.composer.read(cx).content().to_owned();
+
 		if text.trim().is_empty() && self.attachments.is_empty() && self.task_references.is_empty()
 		{
 			return;
 		}
+
 		let build = || -> Result<AgentActionDto, String> {
 			let prompt = HistoryText::new(if text.trim().is_empty() {
 				"Please use the selected skills and inspect the selected tasks and files.".into()
@@ -838,9 +865,11 @@ impl AgentSurface {
 				text.clone()
 			})
 			.map_err(|_| "Message is too long")?;
+
 			if !self.draft_owner_available() {
 				return Err("This draft's conversation is unavailable. Select a conversation before sending.".into());
 			}
+
 			if let Some(root) = self.snapshot.as_ref().and_then(|snapshot| {
 				snapshot
 					.work_items
@@ -859,9 +888,11 @@ impl AgentSurface {
 					text: prompt,
 				});
 			}
+
 			if self.state != LoadState::Ready {
 				return Err("Refresh to confirm whether a Agent already exists.".into());
 			}
+
 			Ok(AgentActionDto::Start(AgentStartDto {
 				root_id: EntityId::new(format!("agent-{}", unique_command()))
 					.map_err(|_| "Invalid Agent identity")?,
@@ -882,6 +913,7 @@ impl AgentSurface {
 				sandbox: self.sandbox,
 			}))
 		};
+
 		match build() {
 			Ok(action) => {
 				let Ok(model) = ConversationModel::new(self.model.read(cx).content()) else {
@@ -905,10 +937,12 @@ impl AgentSurface {
 						self.configured_send(root_id, text, attachments),
 					action => action,
 				};
+
 				self.execute(action, Some(text), cx);
 			},
 			Err(message) => {
 				self.feedback = message;
+
 				cx.notify();
 			},
 		}
@@ -929,6 +963,7 @@ impl AgentSurface {
 		let AgentActionDto::Steer { work_id, turn_id, .. } = action else { return None };
 		let work =
 			self.snapshot.as_ref()?.work_items.iter().find(|work| work.id == work_id.as_str())?;
+
 		Some(decodex_protocol::AgentSteerIdentity {
 			work_id: work_id.clone(),
 			thread_id: WireText::new(work.codex_thread_id.clone()?).ok()?,
@@ -953,31 +988,43 @@ impl AgentSurface {
 		if self.draft_quit_in_progress() {
 			return;
 		}
+
 		if let AgentActionDto::Interrupt { work_id, turn_id } = action {
 			self.request_interrupt(work_id, turn_id, cx);
+
 			return;
 		}
+
 		if self.sending || self.uncertain {
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			self.feedback = "No service profile is configured.".into();
+
 			cx.notify();
+
 			return;
 		};
+
 		if !self.command_connection_ready() {
 			self.feedback =
 				"Connection unavailable. Draft retained; refresh before sending.".into();
+
 			cx.notify();
+
 			return;
 		}
+
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 		let recovery = if draft.is_some() {
 			match self.command_draft_copy(cx) {
 				Ok(copy) => Some(copy),
 				Err(message) => {
 					self.feedback = message.into();
+
 					cx.notify();
+
 					return;
 				},
 			}
@@ -995,24 +1042,32 @@ impl AgentSurface {
 			owner: self.composer_manager.clone().or_else(|| self.root_id()),
 			draft,
 		};
+
 		self.fence_command_draft(&mut pending);
 		self.capture_send_preview(&pending);
+
 		if pending.draft.is_some() {
 			self.follow_latest_after_send(cx);
 		}
+
 		self.sending = true;
 		self.feedback = "Waiting for durable acceptance…".into();
+
 		if pending.steer.is_some() {
 			self.submission.pending = Some(pending.clone());
 		}
+
 		self.submission.unconfirmed.push(key.clone());
+
 		self.submission.waiting = Some(QueuedCommand { profile, action, key, pending });
+
 		self.save_draft_document(cx);
 		cx.notify();
 	}
 
 	fn dispatch_saved_command(&mut self, queued: QueuedCommand, cx: &mut Context<Self>) {
 		let QueuedCommand { profile, action, key, pending } = queued;
+
 		if self.command_epoch != pending.epoch || self.profile.as_ref() != Some(&profile) {
 			return;
 		}
@@ -1022,23 +1077,28 @@ impl AgentSurface {
 				Err("Connection changed before dispatch. Draft retained.".into()),
 				cx,
 			);
+
 			return;
 		}
+
 		let request = cx.background_executor().spawn(async move {
 			let runtime = tokio::runtime::Builder::new_current_thread()
 				.enable_all()
 				.build()
 				.map_err(|_| "Cannot create client runtime".to_string())?;
+
 			runtime
 				.block_on(AgentClient::new(profile).execute(action, key))
 				.map_err(|error| format!("Request failed before dispatch: {error:?}"))
 		});
+
 		self.submission.command = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |surface, cx| {
 				surface.finish_command(pending, result, cx);
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -1051,12 +1111,15 @@ impl AgentSurface {
 		if self.command_epoch != pending.epoch {
 			return;
 		}
+
 		self.sending = false;
+
 		self.finish_send_preview(
 			&pending,
 			matches!(&result, Ok(AgentCommandResponse::Accepted { .. })),
 		);
 		self.remove_command_draft_fence(&pending);
+
 		if !matches!(&result, Ok(AgentCommandResponse::Accepted { .. })) {
 			self.retain_failed_command_draft(
 				&pending,
@@ -1075,10 +1138,12 @@ impl AgentSurface {
 		{
 			self.submission.pending = None;
 		}
+
 		let current_owner = self.composer_manager.clone().or_else(|| self.root_id());
 		let same_owner = current_owner == pending.owner
 			|| (pending.owner.is_none()
 				&& matches!(&result, Ok(AgentCommandResponse::Accepted { work_id }) if current_owner.as_deref()==Some(work_id.as_str())));
+
 		if !same_owner
 			&& matches!(&result, Ok(AgentCommandResponse::Accepted { .. }))
 			&& let Some(owner) = &pending.owner
@@ -1123,6 +1188,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		let surface = self;
+
 		match result {
 			Ok(AgentCommandResponse::Accepted { .. }) => {
 				surface.feedback = if draft.is_some() {
@@ -1130,11 +1196,13 @@ impl AgentSurface {
 				} else {
 					String::new()
 				};
+
 				if draft == Some(surface.composer.read(cx).content()) {
 					surface.composer.update(cx, |input, cx| {
 						input.clear(cx);
 						input.set_placeholder(prompts::next(), cx);
 					});
+
 					Self::refresh_prompt(cx);
 				}
 			},
@@ -1155,9 +1223,11 @@ impl AgentSurface {
 			self.remove_command_draft_fence(&queued.pending);
 			self.retain_failed_command_draft(&queued.pending, false, cx);
 			self.submission.unconfirmed.retain(|key| key != &queued.key);
+
 			if queued.pending.steer.is_some() {
 				self.submission.pending = None;
 			}
+
 			self.sending = false;
 		}
 	}
@@ -1167,17 +1237,23 @@ impl AgentSurface {
 		self.close_native_agent(cx);
 		self.reset_native_agents();
 		self.cancel_queued_command(cx);
+
 		self.command_epoch += 1;
 		self.submission.command = None;
 		self.submission.receipt_task = None;
+
 		if self.sending {
 			self.uncertain = true;
 			self.sending = false;
 			self.feedback = "Service changed before acceptance was confirmed. Draft retained; inspect the previous service before sending again.".into();
 		}
+
 		self.question_notices = Default::default();
+
 		self.bind_drafts(profile.as_ref(), cx);
+
 		let epoch = self.native_history.epoch + 1;
+
 		self.native_history = Default::default();
 		self.native_history.epoch = epoch;
 		self.generation += 1;
@@ -1188,6 +1264,7 @@ impl AgentSurface {
 		self.interrupting = None;
 		self.interrupt_task = None;
 		self.history_read_at = None;
+
 		self.clear_activity_detail();
 		self.reset_resources();
 		self.clear_usage_estimate();
@@ -1196,10 +1273,12 @@ impl AgentSurface {
 		self.resource_title.update(cx, |input, cx| input.clear(cx));
 		self.resource_url.update(cx, |input, cx| input.clear(cx));
 		self.reset_capabilities();
+
 		if self.composer_manager.is_some() {
 			self.fast = false;
 			self.service_tier = None;
 		}
+
 		self.reset_model_settings();
 		self.reset_live_reviewer();
 		self.reset_permission_profiles();
@@ -1212,31 +1291,44 @@ impl AgentSurface {
 		self.reset_recap();
 		self.reset_prompt_edit();
 		self.reset_native_goal();
+
 		self.snapshot = None;
+
 		self.pages.clear();
 		self.closing_pages.clear();
 		self.page_views.clear();
+
 		self.graph_expanded = false;
+
 		self.history_cache.clear();
 		self.history_marks.clear();
+
 		self.history_marks_work = None;
+
 		self.older_history.clear();
+
 		self.older_task = None;
 		self.loading_older = false;
 		self.older_retry_after = None;
+
 		self.transcript_scroll.clear();
 		self.history_follow_paused.clear();
+
 		self.graph_scope = None;
 		self.graph_selected = None;
 		self.history = None;
 		self.history_task = None;
 		self.request = None;
 		self.request_task = None;
+
 		self.question_timers.clear();
+
 		self.mcp_form_event = None;
 		self.mcp_url_opened = None;
+
 		self.mcp_inputs.clear();
 		self.mcp_answers.clear();
+
 		self.misalignment_reviewed = None;
 		self.guardian = Default::default();
 		self.archive = Default::default();
@@ -1245,13 +1337,17 @@ impl AgentSurface {
 		self.poll_task = Some(cx.spawn(async move |surface, cx| {
 			loop {
 				cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
+
 				if surface
 					.update(cx, |surface, cx| {
 						surface.save_draft_document(cx);
+
 						if should_poll_snapshot(surface.profile.is_some(), &surface.state) {
 							surface.refresh(cx);
 						}
+
 						surface.load_archive_state(false, cx);
+
 						if surface.guardian_needs_refresh() {
 							surface.load_guardian_reviews(cx);
 						}
@@ -1262,6 +1358,7 @@ impl AgentSurface {
 				}
 			}
 		}));
+
 		cx.notify();
 	}
 
@@ -1283,7 +1380,9 @@ impl AgentSurface {
 		self.reset_recap();
 		self.reset_prompt_edit();
 		self.reset_native_goal();
+
 		self.question_notices = Default::default();
+
 		self.clear_activity_detail();
 		self.clear_usage_estimate();
 	}
@@ -1291,49 +1390,64 @@ impl AgentSurface {
 	pub(crate) fn mark_stale(&mut self, cx: &mut Context<Self>) {
 		self.disconnect_panels();
 		self.reset_capabilities();
+
 		self.output_stream = Default::default();
 		self.generation += 1;
+
 		self.archive_disconnected();
+
 		self.task = None;
 		self.state =
 			if self.snapshot.is_some() { LoadState::Stale } else { LoadState::Unavailable };
+
 		cx.notify();
 	}
 
 	pub(crate) fn refresh(&mut self, cx: &mut Context<Self>) {
 		self.refresh_steer_receipt(cx);
+
 		if self.state == LoadState::Loading {
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			self.state = LoadState::Unavailable;
+
 			cx.notify();
+
 			return;
 		};
+
 		self.status_before_refresh = Some(self.state.clone());
 		self.state = LoadState::Loading;
 		self.generation += 1;
+
 		let generation = self.generation;
 		let request = cx.background_executor().spawn(async move {
 			let runtime = tokio::runtime::Builder::new_current_thread()
 				.enable_all()
 				.build()
 				.map_err(|_| ())?;
+
 			runtime.block_on(AgentClient::new(profile).query()).map_err(|_| ())
 		});
+
 		self.task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |surface, cx| {
 				if surface.generation != generation {
 					return;
 				}
+
 				let changed = match &result {
 					Ok(AgentSnapshotResult::Available(snapshot)) =>
 						surface.snapshot.as_ref() != Some(snapshot),
 					_ => true,
 				};
+
 				surface.apply_result(result);
 				surface.refresh_native_goal(cx);
+
 				if surface.current_model_catalog(cx).is_none()
 					|| surface.capabilities_checked.is_none_or(|at| at.elapsed().as_secs() >= 60)
 				{
@@ -1349,6 +1463,7 @@ impl AgentSurface {
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -1356,6 +1471,7 @@ impl AgentSurface {
 		if !matches!(&result, Ok(AgentSnapshotResult::Available(_))) {
 			self.disconnect_panels();
 		}
+
 		match result {
 			Ok(AgentSnapshotResult::Available(snapshot)) => {
 				self.invalidate_native_agents(&snapshot);
@@ -1374,6 +1490,7 @@ impl AgentSurface {
 				self.invalidate_recap(&snapshot);
 				self.invalidate_prompt_edit(&snapshot);
 				self.invalidate_native_goal(&snapshot);
+
 				if self.snapshot.as_ref().is_some_and(|old| {
 					old.runtime_source != snapshot.runtime_source
 						|| old.work_items.iter().any(|work| {
@@ -1386,7 +1503,9 @@ impl AgentSurface {
 				}) {
 					self.clear_activity_detail();
 				}
+
 				self.refresh_failures = 0;
+
 				if self.interrupting.as_ref().is_some_and(|(id, turn)| {
 					snapshot
 						.work_items
@@ -1407,7 +1526,6 @@ impl AgentSurface {
 					}) {
 					self.feedback.clear();
 				}
-
 				if self.snapshot.as_ref().and_then(|old| old.runtime_source.as_ref())
 					!= snapshot.runtime_source.as_ref()
 				{
@@ -1424,6 +1542,7 @@ impl AgentSurface {
 						.find(|work| work.parent_goal_id.is_none())
 						.map(|work| work.id.clone());
 				}
+
 				self.snapshot = Some(snapshot);
 				self.state = LoadState::Ready;
 			},
@@ -1446,7 +1565,9 @@ impl AgentSurface {
 			},
 			Err(()) => {
 				self.refresh_failures = self.refresh_failures.saturating_add(1);
+
 				let confirmed = *self.displayed_load_state() == LoadState::Ready;
+
 				self.state = if self.snapshot.is_some() && confirmed && self.refresh_failures < 3 {
 					LoadState::Ready
 				} else if self.snapshot.is_some() {
@@ -1484,6 +1605,7 @@ impl AgentSurface {
 		let mut seen = std::collections::BTreeSet::new();
 		let histories =
 			self.history.iter().map(|(_, history)| history).chain(self.history_cache.values());
+
 		for history in histories {
 			if let AgentHistoryResult::Available { entries, .. } = history {
 				for entry in entries.iter().filter(|entry| startup_feature_warning(entry)) {
@@ -1500,6 +1622,7 @@ impl AgentSurface {
 				}
 			}
 		}
+
 		notices
 	}
 
@@ -1514,6 +1637,7 @@ impl AgentSurface {
 				false,
 			));
 		}
+
 		if let Some(event) = self.snapshot.as_ref().and_then(|snapshot| {
 			snapshot
 				.pending_events
@@ -1528,12 +1652,14 @@ impl AgentSurface {
 				})
 				.map(|work| self.work_label(work))
 				.unwrap_or_else(|| "This conversation".into());
+
 			return Some((
 				"In use by another app",
 				format!("{name} is in use by another app."),
 				false,
 			));
 		}
+
 		let title = match self.displayed_load_state() {
 			LoadState::Stale => "Updates paused",
 			LoadState::Unavailable => "Connection unavailable",
@@ -1543,6 +1669,7 @@ impl AgentSurface {
 					event.event_kind.ends_with("_needs_attention")
 						|| event.event_kind.ends_with("_failed")
 				})?;
+
 				return Some((
 					"Work needs attention",
 					format!("{} · {}.", pending.work_item_id, pending.event_kind.replace('_', " ")),
@@ -1550,6 +1677,7 @@ impl AgentSurface {
 				));
 			},
 		};
+
 		Some((
 			title,
 			self.status_text(),
@@ -1590,6 +1718,7 @@ impl AgentSurface {
 	) -> gpui::AnyElement {
 		let target = cx.entity();
 		let status = graph::state_in(snapshot, work).0;
+
 		div()
 			.flex_none()
 			.px_4()
@@ -1620,6 +1749,7 @@ impl AgentSurface {
 								"Details".into(),
 								|s, cx| {
 									s.details_visible = !s.details_visible;
+
 									if s.details_visible
 										&& let Some(work) = s.selected.clone()
 										&& s.resources
@@ -1628,6 +1758,7 @@ impl AgentSurface {
 									{
 										s.toggle_resources(&work, cx);
 									}
+
 									cx.notify();
 								},
 								cx,
@@ -1691,6 +1822,7 @@ impl AgentSurface {
 		if self.loading_older || self.older_scroll_anchor.is_some() {
 			return false;
 		}
+
 		let Some(id) = self.selected.as_ref().filter(|id| self.history_follow_paused.contains(*id))
 		else {
 			return false;
@@ -1700,13 +1832,16 @@ impl AgentSurface {
 		else {
 			return false;
 		};
+
 		if owner != id
 			|| self.older_history.get(id).map_or(*next_before, |(_, cursor)| *cursor).is_none()
 		{
 			return false;
 		}
+
 		self.transcript_scroll.get(id).is_some_and(|scroll| {
 			let height = f32::from(scroll.bounds().size.height);
+
 			height > 0. && -f32::from(scroll.offset().y) <= (height * 0.6).clamp(240., 600.)
 		})
 	}
@@ -1717,14 +1852,17 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let (Some(profile), Some((id, AgentHistoryResult::Available { next_before, .. }))) =
 			(self.profile.clone(), self.history.as_ref())
 		else {
 			return;
 		};
+
 		if self.selected.as_ref() != Some(id) {
 			return;
 		}
+
 		let before = self.older_history.get(id).map_or(*next_before, |(_, cursor)| *cursor);
 		let Some(before) = before else {
 			return;
@@ -1733,20 +1871,26 @@ impl AgentSurface {
 		let Ok(work) = EntityId::new(id.clone()) else {
 			return;
 		};
+
 		self.loading_older = true;
+
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+
 			runtime.block_on(AgentClient::new(profile).history_page(work, Some(before))).ok()
 		});
+
 		self.older_task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |s, cx| {
 				s.loading_older = false;
+
 				if let Some(AgentHistoryResult::Available { entries, next_before, .. }) = result
 					&& next_before.is_none_or(|next| next < before)
 				{
 					s.older_retry_after = None;
+
 					if s.selected.as_ref() == Some(&id)
 						&& let Some(scroll) = s.transcript_scroll.get(&id)
 					{
@@ -1761,18 +1905,23 @@ impl AgentSurface {
 								.map(|(id, mark)| (id.clone(), mark.position.get())),
 						});
 					}
+
 					let page = s.older_history.entry(id).or_default();
+
 					page.0.extend(entries);
 					page.0.sort_by_key(|entry| entry.id);
 					page.0.dedup_by_key(|entry| entry.id);
+
 					page.1 = next_before;
 				} else {
 					s.older_retry_after =
 						Some(std::time::Instant::now() + std::time::Duration::from_secs(3));
 				}
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -1786,6 +1935,7 @@ impl AgentSurface {
 			.gap(px(ui_theme::MESSAGE_GAP))
 			.child(self.prompt_edit_panel(&work.id, cx))
 			.child(self.native_timeline_panel(work, cx));
+
 		if self.native_history_active(work) {
 			return self.history_activity(
 				panel
@@ -1799,30 +1949,39 @@ impl AgentSurface {
 		if self.native_history_loading(work) {
 			return panel;
 		}
+
 		let mut panel = panel.debug_selector(|| "saved-local-history".into());
+
 		match self.history.as_ref().filter(|(id, _)| id == &work.id).map(|(_, history)| history) {
 			Some(AgentHistoryResult::Available {
 				entries, has_more, next_before, live, ..
 			}) => {
 				let older = self.older_history.get(&work.id);
+
 				if *has_more && next_before.is_none() {
 					panel = panel.child(muted("Some saved message text was shortened."));
 				}
+
 				let mut saved = std::collections::BTreeMap::new();
+
 				if let Some((entries, _)) = older {
 					for entry in entries {
 						saved.insert(entry.id, entry);
 					}
 				}
+
 				for entry in entries {
 					saved.insert(entry.id, entry);
 				}
+
 				panel = panel.children(self.progress_history(
 					saved.values().copied().collect(),
 					work,
 					cx,
 				));
+
 				let live = self.streamed_output(work).unwrap_or(live.as_slice());
+
 				for message in live.iter().filter(|message| {
 					work.active_turn_id.as_deref().is_none_or(|turn| turn == message.turn_id)
 				}) {
@@ -1849,6 +2008,7 @@ impl AgentSurface {
 							}),
 					);
 				}
+
 				if entries.is_empty() && live.is_empty() {
 					panel = panel.child(muted("Waiting for the first message…"));
 				}
@@ -1857,6 +2017,7 @@ impl AgentSurface {
 				panel = panel.child(muted("Messages could not be loaded. Retrying…")),
 			None => panel = panel.child(crate::ui_loading::conversation("Loading conversation")),
 		}
+
 		self.history_activity(panel, work)
 	}
 
@@ -1866,9 +2027,11 @@ impl AgentSurface {
 			AgentDispatchStateDto::Running | AgentDispatchStateDto::Dispatching
 		) || (self.selected.as_ref() == Some(&work.id)
 			&& (self.sending || self.feedback == "Message saved · Waiting for agent…"));
+
 		if !self.native_history_active(work) {
 			panel = panel.children(self.send_previews(&work.id));
 		}
+
 		panel = panel.child(crate::ui_working::Working {
 			key: format!("working-{}", work.id),
 			turn: (active && self.composer_unavailable_reason().is_none()).then(|| work.id.clone()),
@@ -1886,6 +2049,7 @@ impl AgentSurface {
 					.child(muted("Waiting for provider safety checks…")),
 			);
 		}
+
 		panel.children(self.live_chat_caption(&work.id))
 	}
 
@@ -1914,12 +2078,14 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let mut panel = div().flex().flex_col().gap_2();
+
 		for event in snapshot
 			.pending_events
 			.iter()
 			.filter(|event| event.work_item_id == work.id && event.event_kind.ends_with("_pending"))
 		{
 			let id = event.id;
+
 			panel = panel.child(
 				div()
 					.id(SharedString::from(format!("review-request-{id}")))
@@ -1937,6 +2103,7 @@ impl AgentSurface {
 					.smooth(),
 			);
 		}
+
 		panel
 	}
 
@@ -1949,6 +2116,7 @@ impl AgentSurface {
 	) -> impl IntoElement {
 		let selected = id.to_owned();
 		let keyboard_id = selected.clone();
+
 		div()
 			.id(SharedString::from(format!("agent-relation-{label}-{id}")))
 			.role(Role::Button)
@@ -1982,8 +2150,195 @@ impl AgentSurface {
 			AgentSandboxDto::WorkspaceWrite => AgentSandboxDto::FullAccess,
 			AgentSandboxDto::FullAccess => AgentSandboxDto::ReadOnly,
 		};
+
 		cx.notify();
 	}
+}
+
+impl AgentSurface {
+	fn render_preferences(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		div()
+			.w_full()
+			.flex()
+			.flex_col()
+			.gap(px(6.0))
+			.px(px(0.0))
+			.py(px(0.0))
+			.child(
+				div()
+					.id("agent-advanced-preferences")
+					.role(Role::Button)
+					.aria_label("New agent defaults")
+					.aria_expanded(self.setup_expanded)
+					.tab_index(0)
+					.h(px(32.0))
+					.flex()
+					.items_center()
+					.cursor_pointer()
+					.rounded(px(6.0))
+					.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
+					.on_click(cx.listener(|s, _, _, cx| {
+						s.setup_expanded = !s.setup_expanded;
+
+						cx.notify();
+					}))
+					.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
+						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+							s.setup_expanded = !s.setup_expanded;
+
+							cx.notify();
+						}
+					}))
+					.w_full()
+					.justify_between()
+					.child("New agent defaults")
+					.child(super::workspace_symbols::icon(
+						super::workspace_symbols::Symbol::ChevronDown,
+					))
+					.smooth(),
+			)
+			.children(match self.current_model_catalog(cx) {
+				Some(decodex_protocol::AgentCapabilitiesResult::Available {
+					memory_enabled: Some(enabled),
+					..
+				}) => Some(
+					div()
+						.h(px(26.))
+						.flex()
+						.items_center()
+						.justify_between()
+						.child(muted("Codex memory"))
+						.child(muted(if *enabled { "On" } else { "Off" })),
+				),
+				_ => None,
+			})
+			.child(disclosure(
+				"agent-advanced-motion",
+				self.setup_expanded,
+				self.render_setup_controls(cx),
+			))
+			.when_some(self.selected.as_ref(), |panel, work| {
+				panel
+					.child(self.resources_panel(work, cx))
+					.child(self.integrations_panel(work, cx))
+					.child(self.voice_settings_panel(work, cx))
+					.child(self.search_settings_panel(work, cx))
+					.child(self.usage_estimate_panel(work, cx))
+					.child(self.native_goal_panel(cx))
+					.child(self.transcript_panel(cx))
+					.children(
+						self.snapshot
+							.as_ref()
+							.and_then(|s| s.work_items.iter().find(|w| &w.id == work))
+							.map(|item| {
+								div()
+									.flex()
+									.flex_col()
+									.gap_2()
+									.child(self.model_settings_panel(item, cx))
+									.child(self.live_reviewer_panel(item, cx))
+									.child(self.permission_profiles_panel(item, cx))
+									.child(self.task_models_panel(item, cx))
+									.child(self.hook_settings_panel(item, cx))
+							}),
+					)
+			})
+	}
+
+	fn render_setup_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		let account = self
+			.accounts
+			.iter()
+			.find(|(id, _)| id == self.account.read(cx).content())
+			.map_or("Automatic routing", |(_, label)| label.as_str());
+
+		div()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.child(muted("Applies when starting a new agent."))
+			.child(
+				div()
+					.flex()
+					.items_center()
+					.gap_2()
+					.child(div().w(px(72.)).child(muted("Directory")))
+					.child(div().flex_1().min_w_0().child(self.cwd.clone())),
+			)
+			.child(self.workspace_action(
+				"agent-default-account".into(),
+				format!("Account · {account}"),
+				|s, cx| s.cycle_account(cx),
+				cx,
+			))
+			.child(self.workspace_action(
+				"agent-default-access".into(),
+				format!("Access · {:?}", self.sandbox),
+				|s, cx| s.cycle_sandbox(cx),
+				cx,
+			))
+	}
+}
+
+impl Render for AgentSurface {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.observe_recap_focus(window, cx);
+
+		self.render_workspace(window, cx)
+	}
+}
+
+struct AgentInputs {
+	model: Entity<ComposerInput>,
+	cwd: Entity<ComposerInput>,
+	composer: Entity<ComposerInput>,
+}
+
+#[derive(Clone)]
+struct QueuedCommand {
+	profile: ClientProfile,
+	action: AgentActionDto,
+	key: IdempotencyKey,
+	pending: PendingCommand,
+}
+
+#[derive(Clone)]
+struct PendingCommand {
+	recovery: Option<decodex_protocol::DesktopRecoveredDraft>,
+	key: Option<IdempotencyKey>,
+	steer: Option<decodex_protocol::AgentSteerIdentity>,
+	epoch: u64,
+	execution_intent: Option<(String, u64)>,
+	draft: Option<String>,
+	owner: Option<String>,
+	attachments: Option<Vec<decodex_protocol::AgentAttachmentDto>>,
+	references: Option<Vec<decodex_protocol::AgentTaskReferenceDto>>,
+}
+
+#[derive(Clone)]
+struct RequestReadSource {
+	profile_epoch: u64,
+	runtime_source: Option<EntityId>,
+	event: decodex_protocol::AgentPendingEventDto,
+}
+
+pub(crate) fn compact_tokens(value: u64) -> String {
+	let (divisor, suffix) = if value >= 999_950_000 {
+		(1_000_000_000.0, "B")
+	} else if value >= 999_950 {
+		(1_000_000.0, "M")
+	} else if value >= 1_000 {
+		(1_000.0, "K")
+	} else {
+		return value.to_string();
+	};
+	let text = format!("{:.1}", value as f64 / divisor);
+
+	format!("{}{suffix}", text.trim_end_matches(".0"))
+}
+
+fn should_poll_snapshot(has_profile: bool, state: &LoadState) -> bool {
+	has_profile && *state != LoadState::Loading
 }
 
 // This startup advisory describes the Codex environment, not a failed turn.
@@ -1995,10 +2350,12 @@ fn startup_feature_warning(entry: &decodex_protocol::AgentHistoryEntryDto) -> bo
 
 fn unique_command() -> String {
 	static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 	let time = std::time::SystemTime::now()
 		.duration_since(std::time::UNIX_EPOCH)
 		.unwrap_or_default()
 		.as_nanos();
+
 	format!(
 		"gpui-agent-{}-{time}-{}",
 		std::process::id(),
@@ -2010,12 +2367,15 @@ fn offered_decisions(method: &str, request: &str) -> Vec<String> {
 	if method != "item/commandExecution/requestApproval" {
 		return vec![];
 	}
+
 	let Ok(value) = serde_json::from_str::<serde_json::Value>(request) else {
 		return vec![];
 	};
+
 	if value.get("availableDecisions").is_none_or(serde_json::Value::is_null) {
 		return vec!["accept".into(), "decline".into()];
 	}
+
 	value
 		.get("availableDecisions")
 		.and_then(|value| value.as_array())
@@ -2033,26 +2393,30 @@ fn next_check_text(due: i64) -> String {
 		.map(|time| time.as_micros() as i64)
 		.unwrap_or(0);
 	let seconds = due.saturating_sub(now) / 1_000_000;
+
 	if seconds <= 0 {
 		"Due now".into()
 	} else if seconds < 60 {
 		format!("In {seconds} seconds")
-	} else if seconds < 3600 {
+	} else if seconds < 3_600 {
 		format!("In {} minutes", seconds / 60)
-	} else if seconds < 86400 {
-		format!("In {} hours", seconds / 3600)
+	} else if seconds < 86_400 {
+		format!("In {} hours", seconds / 3_600)
 	} else {
-		format!("In {} days", seconds / 86400)
+		format!("In {} days", seconds / 86_400)
 	}
 }
+
 fn muted(text: impl Into<SharedString>) -> impl IntoElement {
 	div()
 		.text_size(px(ui_theme::CAPTION_SIZE))
 		.text_color(rgb(ui_theme::TEXT_MUTED))
 		.child(text.into())
 }
+
 fn auth_recovery_entry(entry: &decodex_protocol::AgentHistoryEntryDto) -> gpui::Div {
 	let id = entry.id;
+
 	div()
 		.w_full()
 		.flex()
@@ -2067,6 +2431,7 @@ fn history_entry(entry: &decodex_protocol::AgentHistoryEntryDto) -> gpui::Div {
 	if entry.kind == "auth_recovery" {
 		return auth_recovery_entry(entry);
 	}
+
 	history_entry_with_key(entry, &entry.id.to_string())
 }
 
@@ -2084,6 +2449,7 @@ fn history_entry_with_metrics(
 ) -> gpui::Div {
 	if entry.kind == "checklist" {
 		let id = entry.id;
+
 		return div()
 			.w_full()
 			.py_2()
@@ -2107,12 +2473,14 @@ fn history_entry_with_metrics(
 				entry.text.clone(),
 			));
 	}
+
 	let user = entry.kind == "user";
 	let visible_text = if entry.kind == "assistant" {
 		markdown::response_text(&entry.text)
 	} else {
 		entry.text.clone()
 	};
+
 	if matches!(entry.kind.as_str(), "execution_notice" | "capacity_retry_pending" | "stopped") {
 		return div()
 			.w_full()
@@ -2130,6 +2498,7 @@ fn history_entry_with_metrics(
 				links: vec![],
 			});
 	}
+
 	div()
 		.w_full()
 		.min_w_0()
@@ -2198,155 +2567,12 @@ fn history_entry_with_metrics(
 		)
 }
 
-pub(crate) fn compact_tokens(value: u64) -> String {
-	let (divisor, suffix) = if value >= 999_950_000 {
-		(1_000_000_000.0, "B")
-	} else if value >= 999_950 {
-		(1_000_000.0, "M")
-	} else if value >= 1000 {
-		(1000.0, "K")
-	} else {
-		return value.to_string();
-	};
-	let text = format!("{:.1}", value as f64 / divisor);
-	format!("{}{suffix}", text.trim_end_matches(".0"))
-}
-
 fn reply_metrics(entry: &decodex_protocol::AgentHistoryEntryDto) -> impl IntoElement {
 	response_metrics::ResponseMetrics {
 		key: format!("local-{}", entry.id),
 		duration_ms: entry.duration_ms,
 		status: None,
 		usage: entry.usage.clone(),
-	}
-}
-
-impl Render for AgentSurface {
-	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.observe_recap_focus(window, cx);
-		self.render_workspace(window, cx)
-	}
-}
-
-impl AgentSurface {
-	fn render_preferences(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		div()
-			.w_full()
-			.flex()
-			.flex_col()
-			.gap(px(6.0))
-			.px(px(0.0))
-			.py(px(0.0))
-			.child(
-				div()
-					.id("agent-advanced-preferences")
-					.role(Role::Button)
-					.aria_label("New agent defaults")
-					.aria_expanded(self.setup_expanded)
-					.tab_index(0)
-					.h(px(32.0))
-					.flex()
-					.items_center()
-					.cursor_pointer()
-					.rounded(px(6.0))
-					.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
-					.on_click(cx.listener(|s, _, _, cx| {
-						s.setup_expanded = !s.setup_expanded;
-						cx.notify();
-					}))
-					.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
-						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-							s.setup_expanded = !s.setup_expanded;
-							cx.notify();
-						}
-					}))
-					.w_full()
-					.justify_between()
-					.child("New agent defaults")
-					.child(super::workspace_symbols::icon(
-						super::workspace_symbols::Symbol::ChevronDown,
-					))
-					.smooth(),
-			)
-			.children(match self.current_model_catalog(cx) {
-				Some(decodex_protocol::AgentCapabilitiesResult::Available {
-					memory_enabled: Some(enabled),
-					..
-				}) => Some(
-					div()
-						.h(px(26.))
-						.flex()
-						.items_center()
-						.justify_between()
-						.child(muted("Codex memory"))
-						.child(muted(if *enabled { "On" } else { "Off" })),
-				),
-				_ => None,
-			})
-			.child(disclosure(
-				"agent-advanced-motion",
-				self.setup_expanded,
-				self.render_setup_controls(cx),
-			))
-			.when_some(self.selected.as_ref(), |panel, work| {
-				panel
-					.child(self.resources_panel(work, cx))
-					.child(self.integrations_panel(work, cx))
-					.child(self.voice_settings_panel(work, cx))
-					.child(self.search_settings_panel(work, cx))
-					.child(self.usage_estimate_panel(work, cx))
-					.child(self.native_goal_panel(cx))
-					.child(self.transcript_panel(cx))
-					.children(
-						self.snapshot
-							.as_ref()
-							.and_then(|s| s.work_items.iter().find(|w| &w.id == work))
-							.map(|item| {
-								div()
-									.flex()
-									.flex_col()
-									.gap_2()
-									.child(self.model_settings_panel(item, cx))
-									.child(self.live_reviewer_panel(item, cx))
-									.child(self.permission_profiles_panel(item, cx))
-									.child(self.task_models_panel(item, cx))
-									.child(self.hook_settings_panel(item, cx))
-							}),
-					)
-			})
-	}
-
-	fn render_setup_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		let account = self
-			.accounts
-			.iter()
-			.find(|(id, _)| id == self.account.read(cx).content())
-			.map_or("Automatic routing", |(_, label)| label.as_str());
-		div()
-			.flex()
-			.flex_col()
-			.gap_2()
-			.child(muted("Applies when starting a new agent."))
-			.child(
-				div()
-					.flex()
-					.items_center()
-					.gap_2()
-					.child(div().w(px(72.)).child(muted("Directory")))
-					.child(div().flex_1().min_w_0().child(self.cwd.clone())),
-			)
-			.child(self.workspace_action(
-				"agent-default-account".into(),
-				format!("Account · {account}"),
-				|s, cx| s.cycle_account(cx),
-				cx,
-			))
-			.child(self.workspace_action(
-				"agent-default-access".into(),
-				format!("Access · {:?}", self.sandbox),
-				|s, cx| s.cycle_sandbox(cx),
-				cx,
-			))
 	}
 }
 
@@ -2359,19 +2585,24 @@ fn resource_field(
 }
 
 #[cfg(test)]
-#[path = "agent_wire_test_support.rs"]
-mod wire_test_support;
-
-#[cfg(test)]
 #[path = "agent_request_source_tests.rs"]
 mod request_source_tests;
-
+#[cfg(test)]
+#[path = "agent_wire_test_support.rs"]
+mod wire_test_support;
 #[cfg(test)]
 mod tests {
+	use super::*;
+
+	use decodex_protocol::AgentWorkKindDto;
+
+	use gpui::Focusable;
+
 	struct BubbleGeometry {
 		text: String,
 		bounds: std::rc::Rc<std::cell::RefCell<Vec<gpui::Bounds<gpui::Pixels>>>>,
 	}
+
 	impl gpui::Render for BubbleGeometry {
 		fn render(
 			&mut self,
@@ -2379,6 +2610,7 @@ mod tests {
 			_: &mut gpui::Context<Self>,
 		) -> impl gpui::IntoElement {
 			let bounds = self.bounds.clone();
+
 			super::history_entry(&decodex_protocol::AgentHistoryEntryDto {
 				native_source: None,
 				turn_id: None,
@@ -2395,23 +2627,30 @@ mod tests {
 			.on_children_prepainted(move |value, _, _| *bounds.borrow_mut() = value)
 		}
 	}
+
 	#[gpui::test]
 	fn startup_warnings_are_deduplicated_across_loaded_conversations(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let (_, history) = s.history.as_mut().unwrap();
 			let AgentHistoryResult::Available { entries, .. } = history else {
 				panic!("fixture");
 			};
 			let mut notice = entries[0].clone();
+
 			notice.kind = "execution_notice".into();
 			notice.text = "Codex warning: Under-development features enabled: chronicle.".into();
+
 			assert!(startup_feature_warning(&notice));
+
 			entries.extend([notice.clone(), notice]);
 			s.history_cache.insert("other-agent".into(), history.clone());
+
 			assert_eq!(
 				s.operation_notices()
 					.iter()
@@ -2419,7 +2658,9 @@ mod tests {
 					.count(),
 				1
 			);
+
 			s.history = None;
+
 			assert_eq!(
 				s.operation_notices()
 					.iter()
@@ -2432,75 +2673,94 @@ mod tests {
 
 	#[gpui::test]
 	fn user_bubbles_stay_right_aligned_at_multiple_widths(cx: &mut gpui::TestAppContext) {
-		for width in [640.0, 1248.0] {
+		for width in [640.0, 1_248.0] {
 			for text in ["1".to_string(), "请检查布局，保持消息上下衔接。".repeat(60)]
 			{
 				let bounds = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
 				let measured = bounds.clone();
 				let (_, visual) = cx.add_window_view(|_, _| BubbleGeometry { text, bounds });
+
 				visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(900.0)));
 				visual.update(|window, cx| {
 					window.draw(cx).clear();
 				});
+
 				let measured = measured.borrow();
 				let bubble = measured.last().unwrap();
+
 				assert!((f32::from(bubble.right()) - width).abs() < 2.0, "{bubble:?}");
 				assert!(f32::from(bubble.size.width) <= width * 0.78 + 2.0);
 			}
 		}
 	}
+
 	#[test]
 	fn token_counts_use_compact_units() {
 		assert_eq!(super::compact_tokens(0), "0");
 		assert_eq!(super::compact_tokens(999), "999");
-		assert_eq!(super::compact_tokens(1000), "1K");
-		assert_eq!(super::compact_tokens(24860), "24.9K");
-		assert_eq!(super::compact_tokens(999950), "1M");
-		assert_eq!(super::compact_tokens(1280000), "1.3M");
-		assert_eq!(super::compact_tokens(999950000), "1B");
-		assert_eq!(super::compact_tokens(2450000000), "2.5B");
+		assert_eq!(super::compact_tokens(1_000), "1K");
+		assert_eq!(super::compact_tokens(24_860), "24.9K");
+		assert_eq!(super::compact_tokens(999_950), "1M");
+		assert_eq!(super::compact_tokens(1_280_000), "1.3M");
+		assert_eq!(super::compact_tokens(999_950_000), "1B");
+		assert_eq!(super::compact_tokens(2_450_000_000), "2.5B");
 	}
+
 	#[gpui::test]
 	fn context_is_hidden_without_reported_usage(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(super::AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			assert!(s.usage_line(cx).is_none());
+
 			s.visual_workspace_fixture(cx);
+
 			assert!(s.usage_line(cx).is_none());
+
 			s.visual_workspace_page("markdown", cx);
+
 			assert!(s.usage_line(cx).is_some());
 		});
 	}
+
 	#[gpui::test]
 	fn context_detail_uses_space_above_the_composer(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| super::AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1000.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.visual_workspace_page("markdown", cx);
+
 			s.context_tip_visible = true;
 			s.composer_menu = None;
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let detail =
 			visual.debug_bounds("composer-context-detail").expect("context shown by parent");
+
 		assert!(detail.top() >= gpui::px(0.));
+
 		surface.update(visual, |s, cx| {
 			s.context_tip_visible = false;
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("composer-context-detail").is_none());
 	}
 
-	use super::*;
-	use decodex_protocol::AgentWorkKindDto;
-	use gpui::Focusable;
 	#[test]
 	fn snapshot_poll_requires_a_profile_and_no_in_flight_read() {
 		assert!(should_poll_snapshot(true, &LoadState::Unavailable));
@@ -2516,6 +2776,7 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		cx.update(crate::composer_input::bind_keys);
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		let input = surface.update(visual, |surface, cx| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
@@ -2534,8 +2795,10 @@ mod tests {
 			surface
 				.composer
 				.update(cx, |input, cx| input.set_content("Please coordinate this goal", cx));
+
 			surface.composer.clone()
 		});
+
 		visual.update(|window, cx| {
 			window.focus(&input.focus_handle(cx), cx);
 			window.draw(cx).clear();
@@ -2548,6 +2811,7 @@ mod tests {
 			);
 			assert_eq!(surface.composer.read(cx).content(), "Please coordinate this goal");
 			assert!(!surface.sending);
+
 			surface.mark_model_intent(cx);
 			surface.mark_effort_intent(cx);
 			surface.mark_tier_intent();
@@ -2565,6 +2829,7 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |surface, cx| {
 			surface.cwd.update(cx, |input, cx| input.set_content("/Users/chosen", cx));
 			surface.seed_context(
@@ -2572,15 +2837,21 @@ mod tests {
 				vec![("exact-id".into(), "My account".into())],
 				cx,
 			);
+
 			assert_eq!(surface.cwd.read(cx).content(), "/Users/chosen");
 			assert_eq!(surface.model.read(cx).content(), "gpt-6-astra");
+
 			surface.cycle_account(cx);
+
 			assert_eq!(surface.account.read(cx).content(), "exact-id");
+
 			surface.cycle_account(cx);
+
 			assert!(surface.account.read(cx).content().is_empty());
 			assert!(!surface.details_visible);
 		});
 	}
+
 	#[test]
 	fn approval_buttons_use_only_the_exact_command_request_choices() {
 		assert_eq!(
@@ -2608,27 +2879,41 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(px(1400.), px(320.)));
+
+		visual.simulate_resize(gpui::size(px(1_400.), px(320.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
+
 			if let Some((_, AgentHistoryResult::Available { next_before, .. })) = &mut s.history {
 				*next_before = Some(1);
 			}
 		});
+
 		visual.update(|window, cx| window.draw(cx).clear());
+
 		surface.update(visual, |s, _| {
 			s.transcript_scroll["agent"].set_offset(gpui::point(px(0.), px(-20.)));
+
 			assert!(
 				!s.history_prefetch_needed(),
 				"startup and bottom-follow must not fetch all history"
 			);
+
 			s.history_follow_paused.insert("agent".into());
+
 			assert!(s.history_prefetch_needed(), "prefetch before reaching the edge");
+
 			s.loading_older = true;
+
 			assert!(!s.history_prefetch_needed(), "only one request may be in flight");
+
 			s.loading_older = false;
+
 			s.older_history.insert("agent".into(), (vec![], None));
+
 			assert!(!s.history_prefetch_needed(), "stop when history is exhausted");
 		});
 	}
@@ -2638,16 +2923,23 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let mut snapshot = s.snapshot.clone().unwrap();
+
 			snapshot.pending_events.clear();
+
 			for work in &mut snapshot.work_items {
 				work.dispatch_state = AgentDispatchStateDto::Idle;
 				work.active_turn_id = None;
 			}
+
 			s.feedback = "Message saved · Waiting for agent…".into();
+
 			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot)));
+
 			assert!(
 				s.feedback.is_empty(),
 				"a completed or failed fast turn must not leave a phantom queue"
@@ -2658,6 +2950,7 @@ mod tests {
 	#[gpui::test]
 	fn pending_capacity_retry_has_an_actionable_cancel_button(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 				runtime_source: None,
@@ -2678,6 +2971,7 @@ mod tests {
 				dependencies: vec![],
 				pending_events: vec![],
 			})));
+
 			surface.history = Some((
 				"root".into(),
 				AgentHistoryResult::Available {
@@ -2705,12 +2999,15 @@ mod tests {
 				},
 			));
 		});
+
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.0), px(1200.0)));
+			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
 			window.draw(cx).clear();
 		});
+
 		let bounds =
 			visual.debug_bounds("capacity-retry-cancel").expect("visible cancellation control");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |surface, _| {
 			assert_eq!(surface.feedback, "No service profile is configured.");
@@ -2721,6 +3018,7 @@ mod tests {
 	#[gpui::test]
 	fn selected_work_history_and_pending_request_render_together(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 				runtime_source: None,
@@ -2748,6 +3046,7 @@ mod tests {
 					delivery_claimed: false,
 				}],
 			})));
+
 			surface.history = Some((
 				"root".into(),
 				AgentHistoryResult::Available {
@@ -2784,27 +3083,36 @@ mod tests {
 				.unwrap(),
 			});
 		});
+
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.0), px(720.0)));
+			window.resize(gpui::size(px(1_180.0), px(720.0)));
 			window.draw(cx).clear();
 		});
 	}
+
 	#[gpui::test]
 	fn offline_commands_preserve_editable_draft_and_attachments(cx: &mut gpui::TestAppContext) {
 		use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
 		let root = tempfile::tempdir_in("/tmp").unwrap();
 		let path = root.path().canonicalize().unwrap();
+
 		std::fs::create_dir(path.join("server")).unwrap();
 		std::fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700))
 			.unwrap();
+
 		let uid = std::fs::metadata(&path).unwrap().uid();
 		let config = path.join("config.toml");
+
 		std::fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
 		std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
+
 		let profile = ClientProfile::load(&path, None).unwrap();
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.profile = Some(profile);
+
 			s.composer.update(cx, |input, cx| input.set_content("draft", cx));
 			s.attachments.push(decodex_protocol::AgentAttachmentDto {
 				path: ConversationWorkingDirectory::new("/tmp/draft.png").unwrap(),
@@ -2816,6 +3124,7 @@ mod tests {
 				thread_id: WireText::new("thread").unwrap(),
 				title: WireText::new("Evidence").unwrap(),
 			});
+
 			for state in [
 				LoadState::Stale,
 				LoadState::Unavailable,
@@ -2823,6 +3132,7 @@ mod tests {
 				LoadState::Capacity { work: 1, edges: 0, events: 0 },
 			] {
 				s.state = state;
+
 				s.execute(
 					AgentActionDto::Send {
 						root_id: EntityId::new("root").unwrap(),
@@ -2831,17 +3141,23 @@ mod tests {
 					Some("draft".into()),
 					cx,
 				);
+
 				assert!(s.submission.command.is_none());
 				assert!(!s.sending);
 				assert!(s.feedback.contains("Connection unavailable"));
 				assert_eq!(s.attachments.len(), 1);
 				assert_eq!(s.task_references.len(), 1);
 			}
+
 			s.composer.update(cx, |input, cx| input.set_content("edited offline", cx));
+
 			assert_eq!(s.composer.read(cx).content(), "edited offline");
+
 			s.state = LoadState::Loading;
 			s.status_before_refresh = Some(LoadState::Stale);
+
 			assert!(!s.command_connection_ready());
+
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 				runtime_source: None,
 				workspaces: vec![],
@@ -2849,10 +3165,13 @@ mod tests {
 				dependencies: vec![],
 				pending_events: vec![],
 			})));
+
 			assert!(s.command_connection_ready());
 			assert!(s.submission.command.is_none(), "fresh readback must not replay the draft");
+
 			s.state = LoadState::Loading;
 			s.status_before_refresh = None;
+
 			assert!(s.command_connection_ready(), "normal polling must not disable sending");
 		});
 	}
@@ -2860,6 +3179,7 @@ mod tests {
 	#[gpui::test]
 	fn old_service_acceptance_cannot_clear_identical_new_draft(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			let file = decodex_protocol::AgentAttachmentDto {
 				path: ConversationWorkingDirectory::new("/tmp/draft.png").unwrap(),
@@ -2877,21 +3197,28 @@ mod tests {
 				attachments: Some(vec![file.clone()]),
 				references: None,
 			};
+
 			s.sending = true;
+
 			s.composer.update(cx, |input, cx| input.set_content("same draft", cx));
 			s.bind_profile(None, cx);
+
 			assert!(s.uncertain);
 			assert!(!s.sending);
 			assert_eq!(s.composer.read(cx).content(), "same draft");
+
 			s.composer_manager = Some("root".into());
 			s.attachments = vec![file];
 			s.sending = true;
+
 			let feedback = s.feedback.clone();
+
 			s.finish_command(
 				pending,
 				Ok(AgentCommandResponse::Accepted { work_id: EntityId::new("root").unwrap() }),
 				cx,
 			);
+
 			assert!(s.sending, "old completion must not mutate current command state");
 			assert!(s.uncertain);
 			assert_eq!(s.feedback, feedback);
@@ -2903,6 +3230,7 @@ mod tests {
 	#[gpui::test]
 	fn durable_acceptance_clears_only_the_submitted_draft(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |surface, cx| {
 			surface.composer.update(cx, |input, cx| input.set_content("edited while sending", cx));
 			surface.apply_command_result(
@@ -2910,12 +3238,15 @@ mod tests {
 				Some("original"),
 				cx,
 			);
+
 			assert_eq!(surface.composer.read(cx).content(), "edited while sending");
+
 			surface.apply_command_result(
 				Ok(AgentCommandResponse::Accepted { work_id: EntityId::new("root").unwrap() }),
 				Some("edited while sending"),
 				cx,
 			);
+
 			assert!(surface.composer.read(cx).content().is_empty());
 		});
 	}
@@ -2923,6 +3254,7 @@ mod tests {
 	#[gpui::test]
 	fn unknown_acceptance_preserves_draft_and_blocks_another_send(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |surface, cx| {
 			surface.composer.update(cx, |input, cx| input.set_content("do work", cx));
 			surface.apply_command_result(
@@ -2932,18 +3264,23 @@ mod tests {
 				Some("do work"),
 				cx,
 			);
+
 			assert!(surface.uncertain);
 			assert_eq!(surface.composer.read(cx).content(), "do work");
+
 			surface.submit(cx);
+
 			assert!(surface.submission.command.is_none());
 			assert!(surface.feedback.contains("Acceptance unknown"));
 		});
 	}
+
 	#[gpui::test]
 	fn failed_refresh_retains_stale_snapshot_but_capacity_never_shows_partial_graph(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 				runtime_source: None,
@@ -2952,35 +3289,50 @@ mod tests {
 				dependencies: vec![],
 				pending_events: vec![],
 			})));
+
 			assert_eq!(surface.state, LoadState::Ready);
+
 			surface.apply_result(Err(()));
+
 			assert_eq!(surface.state, LoadState::Ready);
 			assert!(surface.status_notice().is_none(), "one read failure is not a disconnect");
+
 			surface.apply_result(Err(()));
+
 			assert_eq!(surface.state, LoadState::Ready);
+
 			surface.apply_result(Err(()));
+
 			assert_eq!(surface.state, LoadState::Stale);
 			assert_eq!(surface.status_notice().unwrap().0, "Updates paused");
+
 			surface.status_before_refresh = Some(LoadState::Stale);
 			surface.state = LoadState::Loading;
+
 			let notice = surface.status_notice().unwrap();
+
 			assert_eq!(notice.0, "Updates paused");
 			assert!(!notice.2, "a running refresh must not offer another retry");
+
 			surface.apply_result(Ok(AgentSnapshotResult::Available(
 				surface.snapshot.clone().unwrap(),
 			)));
+
 			assert!(surface.status_notice().is_none(), "recovery clears the status");
 			assert!(surface.snapshot.is_some());
+
 			surface.apply_result(Ok(AgentSnapshotResult::CapacityExceeded {
 				work_items: 101,
 				dependencies: 0,
 				pending_events: 0,
 			}));
+
 			assert!(surface.snapshot.is_none());
 			assert!(surface.status_text().contains("No partial graph"));
 		});
+
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.0), px(720.0)));
+			window.resize(gpui::size(px(1_180.0), px(720.0)));
 			window.draw(cx).clear();
 		});
 	}
@@ -2990,6 +3342,7 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, _| {
 			s.selected = Some("agent".into());
 			s.history = Some((
@@ -3025,7 +3378,9 @@ mod tests {
 				dependencies: vec![],
 				pending_events: vec![],
 			});
+
 			assert!(s.status_notice().is_none());
+
 			s.snapshot.as_mut().unwrap().pending_events.push(
 				decodex_protocol::AgentPendingEventDto {
 					id: 2,
@@ -3036,15 +3391,21 @@ mod tests {
 					delivery_claimed: false,
 				},
 			);
+
 			assert_eq!(s.status_notice().unwrap().0, "Work needs attention");
+
 			s.snapshot.as_mut().unwrap().pending_events[0].event_kind =
 				"thread_in_use_needs_attention".into();
+
 			assert_eq!(s.status_notice().unwrap().0, "In use by another app");
 			assert!(s.thread_in_use("agent"));
 			assert!(!s.thread_in_use("another-agent"));
+
 			s.snapshot.as_mut().unwrap().pending_events.clear();
+
 			assert!(!s.thread_in_use("agent"));
 			assert!(s.status_notice().is_none());
+
 			s.selected = Some("another-agent".into());
 		});
 	}
@@ -3052,8 +3413,10 @@ mod tests {
 	#[gpui::test]
 	fn unconfigured_refresh_has_explicit_unavailable_state(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |surface, cx| {
 			surface.refresh(cx);
+
 			assert_eq!(surface.state, LoadState::Unavailable);
 			assert!(surface.snapshot.is_none());
 			assert!(surface.task.is_none());

@@ -3,20 +3,20 @@ use super::{
 	AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Role,
 	StatefulInteractiveElement, Styled, div, level_label, px, rgb, rgba, ui_theme,
 };
-use gpui::{MouseButton, canvas, relative};
 
-fn index_at(position: f32, count: usize) -> usize {
-	(position.clamp(0.0, 1.0) * count.saturating_sub(1) as f32).round() as usize
-}
+use gpui::{MouseButton, canvas, relative};
 
 impl AgentSurface {
 	pub(crate) fn set_effort_position(&mut self, position: f32, cx: &mut Context<Self>) {
 		if self.effort_drag.is_some() {
 			self.effort_pointer = Some(position.clamp(0., 1.));
 		}
+
 		let levels = self.model_efforts(cx);
+
 		if let Some(level) = levels.get(index_at(position, levels.len())) {
 			self.effort = level.clone();
+
 			self.mark_effort_intent(cx);
 			self.save_draft_document(cx);
 			cx.notify();
@@ -37,20 +37,24 @@ impl AgentSurface {
 		if self.root_id().is_none() && self.creation_inherit_effort {
 			return div().child("Inherited from native configuration").into_any_element();
 		}
+
 		self.explicit_effort_scale(cx)
 	}
 
 	fn explicit_effort_scale(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
 		let levels = self.model_efforts(cx);
 		let count = levels.len();
+
 		if count == 0 {
 			return self.configured_effort_label();
 		}
+
 		let index = levels.iter().position(|v| *v == self.effort).unwrap_or(0);
 		let fraction =
 			self.effort_pointer.unwrap_or(index as f32 / count.saturating_sub(1).max(1) as f32);
 		let measured = cx.entity().downgrade();
 		let events = measured.clone();
+
 		div()
 			.px(px(7.))
 			.py(px(3.))
@@ -85,12 +89,15 @@ impl AgentSurface {
 						MouseButton::Left,
 						cx.listener(move |s, e: &gpui::MouseDownEvent, window, cx| {
 							window.focus(&s.effort_focus, cx);
+
 							let Some(bounds) = s.effort_track_bounds else {
 								return;
 							};
 							let (left, width) =
 								(f32::from(bounds.origin.x), f32::from(bounds.size.width).max(1.));
+
 							s.effort_drag = Some((left, width));
+
 							s.set_effort_position((f32::from(e.position.x) - left) / width, cx);
 							cx.stop_propagation();
 						}),
@@ -105,11 +112,14 @@ impl AgentSurface {
 							"end" => levels.len().saturating_sub(1),
 							_ => return,
 						};
+
 						if let Some(level) = levels.get(next) {
 							s.effort = level.clone();
+
 							s.mark_effort_intent(cx);
 							s.save_draft_document(cx);
 						}
+
 						cx.stop_propagation();
 						cx.notify();
 					}))
@@ -121,11 +131,13 @@ impl AgentSurface {
 							},
 							move |_, _, window, _| {
 								let movement = events.clone();
+
 								window.on_mouse_event(
 									move |e: &gpui::MouseMoveEvent, phase, _, cx| {
 										if !phase.bubble() {
 											return;
 										}
+
 										let _ = movement.update(cx, |s, cx| {
 											if let Some((left, width)) = s.effort_drag {
 												if e.pressed_button == Some(MouseButton::Left) {
@@ -136,17 +148,21 @@ impl AgentSurface {
 												} else {
 													s.effort_drag = None;
 													s.effort_pointer = None;
+
 													cx.notify();
 												}
 											}
 										});
 									},
 								);
+
 								let release = events.clone();
+
 								window.on_mouse_event(move |_: &gpui::MouseUpEvent, _, _, cx| {
 									let _ = release.update(cx, |s, cx| {
 										if s.effort_drag.take().is_some() {
 											s.effort_pointer = None;
+
 											cx.notify();
 										}
 									});
@@ -186,6 +202,7 @@ impl gpui::RenderOnce for SliderTrack {
 			cx,
 		);
 		let thumb = 12. + 2. * feedback;
+
 		div()
 			.id("reasoning-feedback")
 			.absolute()
@@ -193,6 +210,7 @@ impl gpui::RenderOnce for SliderTrack {
 			.on_hover(move |over, _, cx| {
 				hover.update(cx, |state, cx| {
 					*state = *over;
+
 					cx.notify();
 				})
 			})
@@ -240,18 +258,27 @@ impl gpui::RenderOnce for SliderTrack {
 			)
 	}
 }
+
+fn index_at(position: f32, count: usize) -> usize {
+	(position.clamp(0.0, 1.0) * count.saturating_sub(1) as f32).round() as usize
+}
 #[cfg(test)]
 mod tests {
 	use super::{index_at, *};
 	#[gpui::test]
 	fn real_slider_drag_and_outside_dismiss(cx: &mut gpui::TestAppContext) {
 		use crate::shell::agent_surface::ConversationReasoningEffort as Effort;
+
 		use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto};
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(px(1400.), px(900.)));
+
+		visual.simulate_resize(gpui::size(px(1_400.), px(900.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.mark_model_intent(cx);
+
 			s.capabilities = Some(AgentCapabilitiesResult::Available {
 				models: vec![AgentModelDto {
 					model: decodex_protocol::ConversationModel::new(s.model.read(cx).content())
@@ -273,17 +300,22 @@ mod tests {
 			s.composer_menu = Some("model");
 			s.composer_menu_content = Some("model");
 		});
+
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
 		});
+
 		for _ in 0..2 {
 			std::thread::sleep(std::time::Duration::from_millis(200));
+
 			visual.update(|w, cx| {
 				w.draw(cx).clear();
 			});
 		}
+
 		let bounds = surface.update(visual, |s, _| s.effort_track_bounds.unwrap());
 		let start = bounds.center();
+
 		visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
 		surface.update(visual, |s, _| assert!(s.effort_drag.is_some()));
 		visual.simulate_mouse_move(
@@ -295,7 +327,6 @@ mod tests {
 			assert!((s.effort_pointer.unwrap() - 0.4).abs() < 0.01);
 			assert_eq!(s.effort, Effort::High);
 		});
-
 		visual.simulate_mouse_move(
 			gpui::point(bounds.right() + px(30.), start.y),
 			MouseButton::Left,
@@ -321,7 +352,9 @@ mod tests {
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
 		});
+
 		let model = surface.update(visual, |s, _| s.menu_trigger_bounds["model"].center());
+
 		visual.simulate_mouse_down(model, MouseButton::Left, Default::default());
 		visual.simulate_mouse_up(model, MouseButton::Left, Default::default());
 		surface.update(visual, |s, _| assert!(s.composer_menu.is_none()));
@@ -334,7 +367,6 @@ mod tests {
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
 		});
-
 		visual.simulate_mouse_down(
 			gpui::point(px(400.), px(200.)),
 			MouseButton::Left,
@@ -348,12 +380,17 @@ mod tests {
 		use decodex_protocol::{
 			AgentCapabilitiesResult, AgentModelDto, ConversationModel, ConversationReasoningEffort,
 		};
+
 		use gpui::AppContext;
+
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.mark_model_intent(cx);
+
 			let custom = ConversationReasoningEffort::new("provider-defined-effort").unwrap();
+
 			s.capabilities = Some(AgentCapabilitiesResult::Available {
 				memory_enabled: None,
 				models: vec![AgentModelDto {
@@ -371,7 +408,9 @@ mod tests {
 					default_service_tier: None,
 				}],
 			});
+
 			s.set_effort_position(1.0, cx);
+
 			assert_eq!(s.effort, custom);
 			assert_eq!(level_label(s.effort.as_str()), "provider-defined-effort");
 			assert_eq!(s.draft_profiles.execution.choice("agent").reasoning_effort, Some(custom));

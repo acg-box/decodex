@@ -10,6 +10,30 @@ use std::{
 };
 
 #[cfg(all(target_os = "macos", not(test)))]
+type VersionFn = unsafe extern "C" fn() -> u32;
+
+#[cfg(all(target_os = "macos", not(test)))]
+type CreateFn = unsafe extern "C" fn() -> *mut c_void;
+
+#[cfg(all(target_os = "macos", not(test)))]
+type SetVisibleFn = unsafe extern "C" fn(*mut c_void, bool) -> bool;
+
+#[cfg(all(target_os = "macos", not(test)))]
+type DestroyFn = unsafe extern "C" fn(*mut c_void);
+
+#[cfg(all(target_os = "macos", not(test)))]
+type LoginItemStatusFn = unsafe extern "C" fn(*mut c_void) -> i32;
+
+#[cfg(all(target_os = "macos", not(test)))]
+type SetLaunchAtLoginFn = unsafe extern "C" fn(*mut c_void, bool) -> i32;
+
+#[cfg(all(target_os = "macos", not(test)))]
+type OpenLoginItemsSettingsFn = unsafe extern "C" fn(*mut c_void) -> bool;
+
+#[cfg(all(target_os = "macos", not(test)))]
+type WasLaunchedAsLoginItemFn = unsafe extern "C" fn() -> bool;
+
+#[cfg(all(target_os = "macos", not(test)))]
 const MENU_BAR_ABI_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -26,7 +50,6 @@ pub(crate) enum NativeMenuBarFailure {
 	LoginItemFailed,
 	UnsupportedPlatform,
 }
-
 impl NativeMenuBarFailure {
 	pub(crate) const fn detail(self) -> &'static str {
 		match self {
@@ -48,7 +71,6 @@ pub(crate) enum LaunchAtLoginState {
 	NotFound,
 	OperationFailed,
 }
-
 impl LaunchAtLoginState {
 	pub(crate) const fn is_requested(self) -> bool {
 		matches!(self, Self::Enabled | Self::RequiresApproval)
@@ -76,7 +98,6 @@ pub(crate) struct NativeMenuBarHost {
 	#[cfg(any(test, not(target_os = "macos")))]
 	launched_as_login_item: bool,
 }
-
 impl NativeMenuBarHost {
 	pub(crate) fn new() -> Self {
 		Self {
@@ -99,11 +120,13 @@ impl NativeMenuBarHost {
 		#[cfg(test)]
 		{
 			self.visible = enabled;
+
 			Ok(self.visible)
 		}
 		#[cfg(all(not(test), not(target_os = "macos")))]
 		{
 			let _ = enabled;
+
 			Err(NativeMenuBarFailure::UnsupportedPlatform)
 		}
 	}
@@ -133,6 +156,7 @@ impl NativeMenuBarHost {
 		{
 			let state =
 				self.bridge.as_mut().map_err(|failure| *failure)?.set_launch_at_login(enabled);
+
 			if state == LaunchAtLoginState::OperationFailed {
 				Err(NativeMenuBarFailure::LoginItemFailed)
 			} else {
@@ -146,11 +170,13 @@ impl NativeMenuBarHost {
 			} else {
 				LaunchAtLoginState::NotRegistered
 			};
+
 			Ok(self.launch_at_login)
 		}
 		#[cfg(all(not(test), not(target_os = "macos")))]
 		{
 			let _ = enabled;
+
 			Err(NativeMenuBarFailure::UnsupportedPlatform)
 		}
 	}
@@ -187,23 +213,6 @@ impl NativeMenuBarHost {
 }
 
 #[cfg(all(target_os = "macos", not(test)))]
-type VersionFn = unsafe extern "C" fn() -> u32;
-#[cfg(all(target_os = "macos", not(test)))]
-type CreateFn = unsafe extern "C" fn() -> *mut c_void;
-#[cfg(all(target_os = "macos", not(test)))]
-type SetVisibleFn = unsafe extern "C" fn(*mut c_void, bool) -> bool;
-#[cfg(all(target_os = "macos", not(test)))]
-type DestroyFn = unsafe extern "C" fn(*mut c_void);
-#[cfg(all(target_os = "macos", not(test)))]
-type LoginItemStatusFn = unsafe extern "C" fn(*mut c_void) -> i32;
-#[cfg(all(target_os = "macos", not(test)))]
-type SetLaunchAtLoginFn = unsafe extern "C" fn(*mut c_void, bool) -> i32;
-#[cfg(all(target_os = "macos", not(test)))]
-type OpenLoginItemsSettingsFn = unsafe extern "C" fn(*mut c_void) -> bool;
-#[cfg(all(target_os = "macos", not(test)))]
-type WasLaunchedAsLoginItemFn = unsafe extern "C" fn() -> bool;
-
-#[cfg(all(target_os = "macos", not(test)))]
 struct SwiftMenuBarBridge {
 	// The image intentionally stays loaded until process exit because Swift termination uses a
 	// Task.
@@ -217,7 +226,6 @@ struct SwiftMenuBarBridge {
 	launched_as_login_item: bool,
 	_not_send_or_sync: PhantomData<Rc<()>>,
 }
-
 #[cfg(all(target_os = "macos", not(test)))]
 impl SwiftMenuBarBridge {
 	fn load() -> Result<Self, NativeMenuBarFailure> {
@@ -225,13 +233,16 @@ impl SwiftMenuBarBridge {
 		let library = bundled_library_path(&executable)?;
 		let metadata = std::fs::symlink_metadata(&library)
 			.map_err(|_| NativeMenuBarFailure::LibraryUnavailable)?;
+
 		if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
 			return Err(NativeMenuBarFailure::LibraryUnavailable);
 		}
+
 		let encoded = CString::new(library.as_os_str().as_bytes())
 			.map_err(|_| NativeMenuBarFailure::LibraryUnavailable)?;
 		// SAFETY: the path is a checked regular file in this app's Frameworks directory.
 		let image = unsafe { libc::dlopen(encoded.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
+
 		if image.is_null() {
 			return Err(NativeMenuBarFailure::LibraryUnavailable);
 		}
@@ -265,6 +276,7 @@ impl SwiftMenuBarBridge {
 		let launched_as_login_item = unsafe { was_launched_as_login_item() };
 		// SAFETY: loading happens inside GPUI's macOS main-thread application callback.
 		let host = unsafe { create() };
+
 		if host.is_null() {
 			return Err(NativeMenuBarFailure::HostUnavailable);
 		}
@@ -285,6 +297,7 @@ impl SwiftMenuBarBridge {
 	fn apply(&mut self, enabled: bool) -> Result<bool, NativeMenuBarFailure> {
 		// SAFETY: `host` is retained by Swift and all calls occur on the GPUI main thread.
 		let visible = unsafe { (self.set_visible)(self.host, enabled) };
+
 		if visible == enabled { Ok(visible) } else { Err(NativeMenuBarFailure::ApplyFailed) }
 	}
 
@@ -311,6 +324,7 @@ impl Drop for SwiftMenuBarBridge {
 			// SAFETY: this object is main-thread confined and destroys its one retained Swift host
 			// once.
 			unsafe { (self.destroy)(self.host) };
+
 			self.host = std::ptr::null_mut();
 		}
 	}
@@ -319,13 +333,17 @@ impl Drop for SwiftMenuBarBridge {
 #[cfg(all(target_os = "macos", not(test)))]
 pub(crate) fn bundled_library_path(executable: &Path) -> Result<PathBuf, NativeMenuBarFailure> {
 	let macos = executable.parent().ok_or(NativeMenuBarFailure::NotBundled)?;
+
 	if macos.file_name().and_then(|name| name.to_str()) != Some("MacOS") {
 		return Err(NativeMenuBarFailure::NotBundled);
 	}
+
 	let contents = macos.parent().ok_or(NativeMenuBarFailure::NotBundled)?;
+
 	if contents.file_name().and_then(|name| name.to_str()) != Some("Contents") {
 		return Err(NativeMenuBarFailure::NotBundled);
 	}
+
 	Ok(contents.join("Frameworks/libDecodexMenuBar.dylib"))
 }
 
@@ -336,6 +354,7 @@ pub(crate) unsafe fn symbol<T: Copy>(
 ) -> Result<T, NativeMenuBarFailure> {
 	// SAFETY: `image` comes from `dlopen`, and `name` is a static nul-terminated symbol name.
 	let address = unsafe { libc::dlsym(image, name.as_ptr()) };
+
 	if address.is_null() || std::mem::size_of::<T>() != std::mem::size_of::<*mut c_void>() {
 		return Err(NativeMenuBarFailure::Incompatible);
 	}
@@ -350,6 +369,7 @@ mod tests {
 	#[test]
 	fn simulated_bridge_applies_visibility_idempotently() {
 		let mut bridge = NativeMenuBarHost::new();
+
 		assert_eq!(bridge.apply(true), Ok(true));
 		assert_eq!(bridge.apply(true), Ok(true));
 		assert_eq!(bridge.apply(false), Ok(false));
@@ -358,6 +378,7 @@ mod tests {
 	#[test]
 	fn simulated_bridge_keeps_login_item_state_separate_from_menu_visibility() {
 		let mut bridge = NativeMenuBarHost::new();
+
 		assert_eq!(bridge.launch_at_login_state(), Ok(LaunchAtLoginState::NotRegistered));
 		assert_eq!(bridge.set_launch_at_login(true), Ok(LaunchAtLoginState::Enabled));
 		assert_eq!(bridge.apply(false), Ok(false));

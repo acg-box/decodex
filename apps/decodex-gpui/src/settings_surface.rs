@@ -9,6 +9,7 @@ use crate::{
 	ui_motion::{SmoothControl, switch_knob},
 	ui_scroll::SmoothScrollArea,
 };
+
 use gpui::{
 	Context, Render, Role, SharedString, Window, accesskit::Toggled, div, prelude::*, px, rgb, rgba,
 };
@@ -27,14 +28,6 @@ const TEXT: u32 = ui_theme::TEXT;
 const TEXT_MUTED: u32 = ui_theme::TEXT_MUTED;
 const BLUE: u32 = ui_theme::BLUE;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum MenuBarRuntimeState {
-	Visible,
-	Hidden,
-	Waiting,
-	Unavailable,
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum SettingsCategory {
 	#[default]
@@ -48,6 +41,14 @@ impl SettingsCategory {
 			Self::Appearance => "Appearance",
 		}
 	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MenuBarRuntimeState {
+	Visible,
+	Hidden,
+	Waiting,
+	Unavailable,
 }
 
 #[derive(Clone, Copy)]
@@ -68,7 +69,6 @@ pub(crate) struct SettingsSurface {
 	launch_at_login: LaunchAtLoginState,
 	launch_at_login_detail: SharedString,
 }
-
 impl SettingsSurface {
 	pub(crate) fn new(controller: DesktopSettingsController, _: &mut Context<Self>) -> Self {
 		let snapshot = controller.snapshot();
@@ -86,7 +86,9 @@ impl SettingsSurface {
 			launch_at_login,
 			launch_at_login_detail: launch_at_login_detail(launch_at_login).into(),
 		};
+
 		surface.apply_snapshot(snapshot);
+
 		surface
 	}
 
@@ -96,6 +98,7 @@ impl SettingsSurface {
 		cx: &mut Context<Self>,
 	) {
 		self.controller = controller;
+
 		self.synchronize(cx);
 		self.refresh_launch_at_login();
 		cx.notify();
@@ -120,8 +123,10 @@ impl SettingsSurface {
 
 	pub(crate) fn synchronize(&mut self, cx: &mut Context<Self>) {
 		let snapshot = self.controller.snapshot();
+
 		if snapshot != self.snapshot {
 			self.snapshot = snapshot;
+
 			self.apply_snapshot(snapshot);
 			cx.notify();
 		}
@@ -145,11 +150,14 @@ impl SettingsSurface {
 				MenuBarRuntimeState::Waiting
 			};
 			self.detail = settings_detail(snapshot).into();
+
 			return;
 		};
+
 		if snapshot.load != DesktopSettingsLoadState::Ready {
 			self.runtime = MenuBarRuntimeState::Waiting;
 			self.detail = settings_detail(snapshot).into();
+
 			return;
 		}
 
@@ -166,6 +174,7 @@ impl SettingsSurface {
 					"The Decodex menu-bar item is disabled."
 				}
 				.into();
+
 				if matches!(
 					snapshot.command,
 					DesktopSettingsCommandState::Refused
@@ -191,6 +200,7 @@ impl SettingsSurface {
 		) {
 			return false;
 		}
+
 		!matches!(self.runtime, MenuBarRuntimeState::Visible | MenuBarRuntimeState::Hidden)
 			|| !matches!(
 				self.detail.as_ref(),
@@ -200,9 +210,11 @@ impl SettingsSurface {
 
 	pub(crate) fn notifications(&self) -> Vec<(&'static str, String)> {
 		let mut notices = Vec::new();
+
 		if let Some(error) = &self.power.error {
 			notices.push(("System sleep", error.clone()));
 		}
+
 		if self.menubar_needs_attention() {
 			notices.push(("Menu bar", self.detail.to_string()));
 		}
@@ -213,6 +225,7 @@ impl SettingsSurface {
 		{
 			notices.push(("Launch at login", self.launch_at_login_detail.to_string()));
 		}
+
 		notices
 	}
 
@@ -220,6 +233,7 @@ impl SettingsSurface {
 		let Some(settings) = self.snapshot.settings else {
 			return;
 		};
+
 		match self.controller.set_show_in_menu_bar(!settings.show_in_menu_bar) {
 			// The switch already disables itself while the command is pending.
 			// Keep the current presentation until authoritative readback arrives.
@@ -228,7 +242,9 @@ impl SettingsSurface {
 				self.detail = input_error_detail(error).into();
 			},
 		}
+
 		self.snapshot = self.controller.snapshot();
+
 		cx.notify();
 	}
 
@@ -236,19 +252,25 @@ impl SettingsSurface {
 		let Some(settings) = self.snapshot.settings else {
 			return;
 		};
+
 		if let Err(error) = self.controller.set_auto_activate_quota(!settings.auto_activate_quota) {
 			self.detail = input_error_detail(error).into();
 		}
+
 		self.snapshot = self.controller.snapshot();
+
 		cx.notify();
 	}
 
 	fn toggle_recap(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
 		let Some(settings) = self.snapshot.settings else { return };
+
 		if let Err(error) = self.controller.set_auto_recap(!settings.auto_recap) {
 			self.detail = input_error_detail(error).into();
 		}
+
 		self.snapshot = self.controller.snapshot();
+
 		cx.notify();
 	}
 
@@ -259,6 +281,7 @@ impl SettingsSurface {
 		cx: &mut Context<Self>,
 	) {
 		let enabled = !self.launch_at_login.is_requested();
+
 		match self.menu_bar.set_launch_at_login(enabled) {
 			Ok(state) => {
 				self.launch_at_login = state;
@@ -266,11 +289,13 @@ impl SettingsSurface {
 			},
 			Err(failure) => {
 				self.launch_at_login_detail = failure.detail().into();
+
 				if let Ok(state) = self.menu_bar.launch_at_login_state() {
 					self.launch_at_login = state;
 				}
 			},
 		}
+
 		cx.notify();
 	}
 
@@ -283,6 +308,7 @@ impl SettingsSurface {
 		if let Err(failure) = self.menu_bar.open_login_items_settings() {
 			self.launch_at_login_detail = failure.detail().into();
 		}
+
 		cx.notify();
 	}
 
@@ -310,6 +336,7 @@ impl SettingsSurface {
 				)
 				.into_any_element();
 		}
+
 		let enabled = self.snapshot.settings.is_some_and(|settings| match preference {
 			DesktopPreference::MenuBar => settings.show_in_menu_bar,
 			DesktopPreference::Quota => settings.auto_activate_quota,
@@ -327,6 +354,7 @@ impl SettingsSurface {
 				("automatic-recap-toggle", "Automatically recap tasks", "recap-knob"),
 		};
 		let interactive = self.snapshot.can_toggle;
+
 		div()
 			.id(id)
 			.debug_selector(move || id.into())
@@ -377,6 +405,7 @@ impl SettingsSurface {
 			self.launch_at_login,
 			LaunchAtLoginState::NotFound | LaunchAtLoginState::OperationFailed
 		);
+
 		div()
 			.id("launch-at-login-toggle")
 			.debug_selector(|| "launch-at-login-toggle".into())
@@ -434,6 +463,7 @@ impl SettingsSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let enabled = preference(None);
+
 		ui_theme::settings_row().px_0().child(div().flex_1().child(label)).child(
 			div()
 				.id(id)
@@ -456,11 +486,13 @@ impl SettingsSurface {
 				.focus_visible(|d| d.border_color(rgb(BLUE)))
 				.on_click(cx.listener(move |_, _, _, cx| {
 					preference(Some(!enabled));
+
 					cx.refresh_windows();
 				}))
 				.on_key_down(cx.listener(move |_, event: &gpui::KeyDownEvent, _, cx| {
 					if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 						preference(Some(!enabled));
+
 						cx.refresh_windows();
 						cx.stop_propagation();
 					}
@@ -480,7 +512,9 @@ impl SettingsSurface {
 
 	fn panel_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		use crate::panel_preferences::PanelDefaults;
+
 		let current = PanelDefaults::configured();
+
 		div().flex().flex_col().children(
 			[
 				(true, "Default sidebar width", current.sidebar),
@@ -495,7 +529,7 @@ impl SettingsSurface {
 						.gap_2()
 						.child(div().text_size(px(12.)).child(format!("{value} px")))
 						.children(
-							[(-24i32, "−"), (24, "+")]
+							[(-24_i32, "−"), (24, "+")]
 								.into_iter()
 								.map(|(delta, label)| {
 									div()
@@ -517,6 +551,7 @@ impl SettingsSurface {
 										.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
 										.on_click(cx.listener(move |_, _, _, cx| {
 											let mut pref = PanelDefaults::configured();
+
 											if sidebar {
 												pref.sidebar = (i32::from(pref.sidebar) + delta)
 													.clamp(160, 480)
@@ -526,6 +561,7 @@ impl SettingsSurface {
 													.clamp(120, 480)
 													as u16;
 											}
+
 											pref.select(cx);
 										}))
 										.on_key_down(cx.listener(
@@ -535,7 +571,9 @@ impl SettingsSurface {
 												{
 													return;
 												}
+
 												let mut pref = PanelDefaults::configured();
+
 												if sidebar {
 													pref.sidebar = (i32::from(pref.sidebar) + delta)
 														.clamp(160, 480)
@@ -545,6 +583,7 @@ impl SettingsSurface {
 														.clamp(120, 480)
 														as u16;
 												}
+
 												pref.select(cx);
 												cx.stop_propagation();
 											},
@@ -561,6 +600,7 @@ impl SettingsSurface {
 
 	fn cursor_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		use crate::composer_input::cursor::{Preference, Shape};
+
 		let current = Preference::configured();
 		let choices = [
 			(
@@ -579,6 +619,7 @@ impl SettingsSurface {
 				],
 			),
 		];
+
 		div().flex().flex_col().children(choices.into_iter().map(|(title, values)| {
 			ui_theme::settings_row().px_0().child(div().flex_1().child(title)).child(
 				div().flex().gap_1().p_1().rounded(px(9.)).bg(rgba(0xffffff08)).children(
@@ -625,7 +666,9 @@ impl SettingsSurface {
 
 	fn glass_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		use ui_theme::window_material::GlassStyle;
+
 		let style = GlassStyle::configured();
+
 		ui_theme::settings_row().px_0().child(div().flex_1().child("Glass appearance")).child(
 			div().flex().gap_1().p_1().rounded(px(9.)).bg(rgba(0xffffff08)).children(
 				[(GlassStyle::Regular, "Regular"), (GlassStyle::Clear, "Clear")].into_iter().map(
@@ -693,6 +736,7 @@ impl SettingsSurface {
 
 	fn category_content(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
 		let group = || div().flex().flex_col().gap(px(2.));
+
 		match self.category {
 			SettingsCategory::General => div()
 				.flex()
@@ -761,20 +805,14 @@ impl SettingsSurface {
 		}
 	}
 }
-fn settings_group_title(label: &'static str) -> impl IntoElement {
-	div()
-		.text_size(px(11.))
-		.font_weight(gpui::FontWeight::MEDIUM)
-		.text_color(rgb(TEXT_MUTED))
-		.mb(px(4.))
-		.child(label)
-}
+
 impl Render for SettingsSurface {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		#[cfg(not(test))]
 		if self.category == SettingsCategory::General {
 			self.refresh_power(cx);
 		}
+
 		div()
 			.id("settings-surface")
 			.role(Role::Main)
@@ -811,6 +849,15 @@ impl Render for SettingsSurface {
 					.smooth_scroll(("settings-smooth-scroll", self.category as usize)),
 			)
 	}
+}
+
+fn settings_group_title(label: &'static str) -> impl IntoElement {
+	div()
+		.text_size(px(11.))
+		.font_weight(gpui::FontWeight::MEDIUM)
+		.text_color(rgb(TEXT_MUTED))
+		.mb(px(4.))
+		.child(label)
 }
 
 const fn launch_at_login_detail(state: LaunchAtLoginState) -> &'static str {
@@ -889,14 +936,17 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| {
 			SettingsSurface::new(DesktopSettingsController::production(), cx)
 		});
+
 		surface.update(visual, |s, cx| {
 			// Keep this test on the simulated login bridge, with no host power query.
 			s.power.pending = true;
+
 			for (enabled, expected) in
 				[(true, LaunchAtLoginState::Enabled), (false, LaunchAtLoginState::NotRegistered)]
 			{
 				s.menu_bar.set_launch_at_login(enabled).expect("simulate external system change");
 				s.refresh(cx);
+
 				assert_eq!(s.launch_at_login, expected);
 				assert_eq!(s.launch_at_login_detail.as_ref(), launch_at_login_detail(expected));
 				assert!(!s.notifications().iter().any(|(title, _)| *title == "Launch at login"));
@@ -909,12 +959,16 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| {
 			SettingsSurface::new(DesktopSettingsController::production(), cx)
 		});
+
 		surface.update(visual, |s, cx| {
 			s.snapshot.settings = None;
 			s.snapshot.load = DesktopSettingsLoadState::Loading;
+
 			cx.notify();
 		});
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		assert!(visual.debug_bounds("menubar-surface-toggle").is_none());
 		assert!(visual.debug_bounds("automatic-recap-toggle").is_none());
 		assert!(visual.debug_bounds("loading-feedback-").is_some());
@@ -923,27 +977,35 @@ mod tests {
 	#[gpui::test]
 	fn short_settings_window_scrolls_to_last_row(cx: &mut TestAppContext) {
 		struct ShortSettings(gpui::Entity<SettingsSurface>);
+
 		impl Render for ShortSettings {
 			fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 				div().w(px(800.)).h(px(300.)).overflow_hidden().child(self.0.clone())
 			}
 		}
+
 		let (_, visual) = cx.add_window_view(|_, cx| {
 			ShortSettings(
 				cx.new(|cx| SettingsSurface::new(DesktopSettingsController::production(), cx)),
 			)
 		});
+
 		visual.update(|window, cx| window.draw(cx).clear());
+
 		let viewport = visual.debug_bounds("settings-scroll-viewport").unwrap();
 		let before = visual.debug_bounds("notification-count-preference").unwrap();
+
 		assert!(before.bottom() > viewport.bottom(), "before={before:?}, viewport={viewport:?}");
+
 		visual.simulate_event(gpui::ScrollWheelEvent {
 			position: viewport.center(),
-			delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(-1000.))),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(-1_000.))),
 			..Default::default()
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
+
 		let after = visual.debug_bounds("notification-count-preference").unwrap();
+
 		assert!(after.top() < before.top(), "wheel must move the content");
 		assert!(after.bottom() <= viewport.bottom(), "last setting must be reachable");
 	}
@@ -953,18 +1015,23 @@ mod tests {
 		let (settings, visual) = cx.add_window_view(|_, cx| {
 			SettingsSurface::new(DesktopSettingsController::production(), cx)
 		});
+
 		settings.update(visual, |s, cx| {
 			s.snapshot.load = DesktopSettingsLoadState::Ready;
 			s.snapshot.command = DesktopSettingsCommandState::Idle;
 			s.runtime = MenuBarRuntimeState::Hidden;
 			s.detail = "The Decodex menu-bar item is disabled.".into();
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.resize(size(px(800.), px(700.)));
 			window.draw(cx).clear();
 		});
+
 		let original = visual.debug_bounds("launch-at-login-toggle").expect("login toggle");
+
 		for command in
 			[DesktopSettingsCommandState::Sending, DesktopSettingsCommandState::AwaitingResult]
 		{
@@ -972,19 +1039,27 @@ mod tests {
 				s.snapshot.command = command;
 				s.runtime = MenuBarRuntimeState::Waiting;
 				s.detail = "Saving preference…".into();
+
 				cx.notify();
 			});
+
 			visual.update(|window, cx| window.draw(cx).clear());
+
 			assert!(visual.debug_bounds("menubar-runtime-status").is_none());
 			assert_eq!(visual.debug_bounds("launch-at-login-toggle"), Some(original));
 		}
+
 		settings.update(visual, |s, cx| {
 			s.snapshot.command = DesktopSettingsCommandState::Refused;
 			s.detail = "The service refused the change.".into();
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| window.draw(cx).clear());
+
 		assert!(visual.debug_bounds("menubar-runtime-status").is_none());
+
 		visual.update(|_, cx| {
 			assert!(
 				settings
@@ -994,27 +1069,38 @@ mod tests {
 					.any(|(_, detail)| detail == "The service refused the change.")
 			);
 		});
+
 		assert_eq!(visual.debug_bounds("launch-at-login-toggle"), Some(original));
 	}
 
 	#[gpui::test]
 	fn glass_style_buttons_update_the_active_material(cx: &mut TestAppContext) {
 		use ui_theme::window_material::GlassStyle;
+
 		let controller = DesktopSettingsController::production();
 		let (_, visual) = cx.add_window_view(|_, cx| {
 			let mut settings = SettingsSurface::new(controller, cx);
+
 			settings.category = SettingsCategory::Appearance;
+
 			settings
 		});
+
 		visual.update(|window, cx| {
 			window.resize(size(px(800.), px(600.)));
 			window.draw(cx).clear();
 		});
+
 		let clear = visual.debug_bounds("Clear").expect("Clear control");
+
 		visual.simulate_click(clear.center(), Default::default());
+
 		assert_eq!(GlassStyle::configured(), GlassStyle::Clear);
+
 		let regular = visual.debug_bounds("Regular").expect("Regular control");
+
 		visual.simulate_click(regular.center(), Default::default());
+
 		assert_eq!(GlassStyle::configured(), GlassStyle::Regular);
 	}
 
@@ -1022,6 +1108,7 @@ mod tests {
 	fn settings_draw_at_the_selected_desktop_size(cx: &mut TestAppContext) {
 		let controller = DesktopSettingsController::production();
 		let (_settings, visual) = cx.add_window_view(|_, cx| SettingsSurface::new(controller, cx));
+
 		visual.update(|window, cx| {
 			window.resize(size(px(1_490.0), px(1_055.0)));
 			window.draw(cx).clear();

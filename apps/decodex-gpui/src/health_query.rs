@@ -22,36 +22,11 @@ pub(crate) struct HealthSnapshot {
 	pub(crate) can_refresh: bool,
 }
 
-/// Closed query states. A retained report is never replaced by a failed observation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum HealthLoadState {
-	NeverRequested,
-	Loading,
-	Ready,
-	Offline,
-	Stale,
-	Refused,
-}
-
-/// Result disposition used to preserve other retained-session query owners.
-pub(crate) enum HealthRouteOutcome {
-	Fresh,
-	Refused,
-	Stale,
-	Unmatched,
-}
-
 /// Cloneable Health controller. It owns no task, transport, or product authority.
 #[derive(Clone)]
 pub(crate) struct HealthQuery {
 	inner: Arc<HealthQueryInner>,
 }
-
-struct HealthQueryInner {
-	state: Mutex<QueryState>,
-	notify: Notify,
-}
-
 impl HealthQuery {
 	pub(crate) fn production() -> Self {
 		Self {
@@ -72,10 +47,13 @@ impl HealthQuery {
 
 		state.active = true;
 		state.ever_activated = true;
+
 		let queued = state.queue_first_activation();
+
 		if state.session.is_none() {
 			state.load = HealthLoadState::Offline;
 		}
+
 		drop(state);
 
 		if queued {
@@ -96,6 +74,7 @@ impl HealthQuery {
 		}
 
 		let queued = state.queue_request();
+
 		drop(state);
 
 		if queued {
@@ -119,6 +98,7 @@ impl HealthQuery {
 		}
 
 		state.cancel_in_flight();
+
 		state.pending = None;
 		state.session = Some(binding);
 		state.requested_generation = None;
@@ -130,7 +110,9 @@ impl HealthQuery {
 		} else {
 			state.load = HealthLoadState::NeverRequested;
 		}
+
 		drop(state);
+
 		self.inner.notify.notify_one();
 	}
 
@@ -143,6 +125,7 @@ impl HealthQuery {
 		}
 
 		state.cancel_in_flight();
+
 		state.pending = None;
 		state.session = None;
 		state.requested_generation = None;
@@ -151,7 +134,9 @@ impl HealthQuery {
 		} else {
 			HealthLoadState::NeverRequested
 		};
+
 		drop(state);
+
 		self.inner.notify.notify_one();
 	}
 
@@ -186,6 +171,7 @@ impl HealthQuery {
 		}
 
 		let pending = state.pending.take()?;
+
 		if pending.session != expected {
 			return None;
 		}
@@ -244,6 +230,7 @@ impl HealthQuery {
 		};
 
 		state.in_flight = None;
+
 		if let Some(report) = report {
 			state.report = Some(report);
 			state.load = HealthLoadState::Ready;
@@ -259,6 +246,23 @@ impl HealthQuery {
 	fn lock(&self) -> MutexGuard<'_, QueryState> {
 		self.inner.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct HealthDispatch {
+	envelope: QueryEnvelope,
+	session_generation: u64,
+	server_id: ServerId,
+}
+impl HealthDispatch {
+	pub(crate) const fn envelope(&self) -> &QueryEnvelope {
+		&self.envelope
+	}
+}
+
+struct HealthQueryInner {
+	state: Mutex<QueryState>,
+	notify: Notify,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -279,7 +283,6 @@ struct QueryState {
 	load: HealthLoadState,
 	report: Option<DoctorReport>,
 }
-
 impl QueryState {
 	fn new() -> Self {
 		Self {
@@ -300,6 +303,7 @@ impl QueryState {
 		let Some(session) = self.session.as_ref() else {
 			return false;
 		};
+
 		if self.requested_generation == Some(session.generation) {
 			return false;
 		}
@@ -313,6 +317,7 @@ impl QueryState {
 		let Some(session) = self.session.clone() else {
 			return false;
 		};
+
 		if self.pending.is_some() || self.in_flight.is_some() {
 			return false;
 		}
@@ -322,7 +327,9 @@ impl QueryState {
 
 			return false;
 		};
+
 		self.next_request_sequence = request_sequence;
+
 		let query_id =
 			QueryId::new(format!("gpui-health/{}/{request_sequence}", session.generation))
 				.expect("bounded numeric Health query identity");
@@ -339,6 +346,7 @@ impl QueryState {
 		};
 
 		self.cancelled.push_back(CancelledRequest { query_id: in_flight.query_id });
+
 		while self.cancelled.len() > MAX_CANCELLED_REQUESTS {
 			self.cancelled.pop_front();
 		}
@@ -369,7 +377,6 @@ struct InFlightRequest {
 	query_id: QueryId,
 	session: SessionBinding,
 }
-
 impl InFlightRequest {
 	fn from_dispatch(dispatch: &HealthDispatch) -> Self {
 		Self {
@@ -386,17 +393,23 @@ struct CancelledRequest {
 	query_id: QueryId,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct HealthDispatch {
-	envelope: QueryEnvelope,
-	session_generation: u64,
-	server_id: ServerId,
+/// Closed query states. A retained report is never replaced by a failed observation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HealthLoadState {
+	NeverRequested,
+	Loading,
+	Ready,
+	Offline,
+	Stale,
+	Refused,
 }
 
-impl HealthDispatch {
-	pub(crate) const fn envelope(&self) -> &QueryEnvelope {
-		&self.envelope
-	}
+/// Result disposition used to preserve other retained-session query owners.
+pub(crate) enum HealthRouteOutcome {
+	Fresh,
+	Refused,
+	Stale,
+	Unmatched,
 }
 
 #[cfg(test)]
@@ -443,13 +456,16 @@ mod tests {
 		let server_id = server("server-a");
 
 		query.activate();
+
 		assert_eq!(
 			query.snapshot(),
 			HealthSnapshot { load: HealthLoadState::Offline, report: None, can_refresh: false }
 		);
 
 		query.bind_session(7, server_id.clone());
+
 		assert!(!query.refresh());
+
 		let dispatch = query
 			.try_take_dispatch(7, &server_id)
 			.expect("first activation must reserve one dispatch");
@@ -466,6 +482,7 @@ mod tests {
 		assert!(!query.refresh());
 
 		let report = ready_report(&server_id);
+
 		assert!(matches!(
 			query.route_result(
 				7,
@@ -482,12 +499,13 @@ mod tests {
 				can_refresh: true,
 			}
 		);
-
 		assert!(query.refresh());
 		assert!(!query.refresh());
+
 		let refresh = query
 			.try_take_dispatch(7, &server_id)
 			.expect("coalesced refresh must reserve one dispatch");
+
 		assert_eq!(&refresh.envelope().query_id, &QueryId::new("gpui-health/7/2").unwrap());
 		assert!(query.try_take_dispatch(7, &server_id).is_none());
 	}
@@ -500,11 +518,13 @@ mod tests {
 
 		query.bind_session(1, first_server.clone());
 		query.activate();
+
 		let stale_dispatch =
 			query.try_take_dispatch(1, &first_server).expect("first session must own its dispatch");
 
 		query.deactivate();
 		query.bind_session(2, next_server.clone());
+
 		assert_eq!(query.snapshot().load, HealthLoadState::Stale);
 		assert!(matches!(
 			query.route_result(
@@ -521,14 +541,18 @@ mod tests {
 			query_id: QueryId::new("another-query-owner").unwrap(),
 			payload: QueryResultPayload::DoctorStatus(ready_report(&next_server)),
 		};
+
 		assert!(matches!(
 			query.route_result(2, &next_server, &unmatched),
 			HealthRouteOutcome::Unmatched
 		));
 
 		query.session_ended(1);
+
 		assert_eq!(query.snapshot().load, HealthLoadState::Stale);
+
 		query.session_ended(2);
+
 		assert_eq!(query.snapshot().load, HealthLoadState::Offline);
 	}
 
@@ -539,9 +563,11 @@ mod tests {
 
 		query.bind_session(3, server_id.clone());
 		query.activate();
+
 		let initial =
 			query.try_take_dispatch(3, &server_id).expect("initial request must dispatch");
 		let retained = ready_report(&server_id);
+
 		assert!(matches!(
 			query.route_result(
 				3,
@@ -550,11 +576,12 @@ mod tests {
 			),
 			HealthRouteOutcome::Fresh
 		));
-
 		assert!(query.refresh());
+
 		let refresh =
 			query.try_take_dispatch(3, &server_id).expect("refresh request must dispatch");
 		let foreign_report = ready_report(&server("server-b"));
+
 		assert!(matches!(
 			query
 				.route_result(3, &server_id, &result(&refresh, server_id.clone(), foreign_report),),

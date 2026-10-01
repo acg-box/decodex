@@ -34,13 +34,16 @@ impl AgentSurface {
 				.clone()
 				.unwrap_or_else(|| decodex_protocol::ServiceTier::from_fast(self.fast))
 		});
+
 		for (id, label, available) in tiers {
 			let chosen = selected == id;
+
 			panel = panel.child(
 				gpui::div()
 					.id(gpui::SharedString::from(format!("tier-{}", id.as_str())))
 					.debug_selector({
 						let label = format!("tier-{}", id.as_str());
+
 						move || label.clone()
 					})
 					.when(available, |d| d.cursor_pointer())
@@ -62,6 +65,7 @@ impl AgentSurface {
 						if available {
 							s.fast = id.as_str() == "priority";
 							s.service_tier = Some(id.clone());
+
 							s.mark_tier_intent();
 							s.save_draft_document(cx);
 							cx.notify();
@@ -69,6 +73,7 @@ impl AgentSurface {
 					})),
 			);
 		}
+
 		panel.into_any_element()
 	}
 
@@ -97,6 +102,7 @@ impl AgentSurface {
 		{
 			return None;
 		}
+
 		self.capabilities.as_ref()
 	}
 
@@ -113,6 +119,7 @@ impl AgentSurface {
 		if self.capability_task.is_some() {
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
@@ -133,23 +140,29 @@ impl AgentSurface {
 				let Ok(account) = decodex_protocol::EntityId::new(context.account.clone()) else {
 					return;
 				};
+
 				Some(account)
 			};
+
 			Some(decodex_protocol::InitialModelCatalogRequest {
 				working_directory,
 				account_id,
 				purpose: decodex_protocol::ModelCatalogPurpose::Agent,
 			})
 		};
+
 		self.capabilities_checked = Some(std::time::Instant::now());
 		self.capability_generation += 1;
+
 		let generation = self.capability_generation;
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
+
 			if let Some(request) = cold_request {
 				let directory = request.working_directory.clone();
+
 				match runtime.block_on(client.initial_model_catalog(request)).ok()? {
 					result @ decodex_protocol::InitialModelCatalogResult::Available { .. } => {
 						let decodex_protocol::InitialModelCatalogResult::Available {
@@ -161,9 +174,11 @@ impl AgentSurface {
 						else {
 							unreachable!()
 						};
+
 						if *account_revision <= 0 || working_directory != &directory {
 							return Some((AgentCapabilitiesResult::Unavailable, None));
 						}
+
 						Some((
 							AgentCapabilitiesResult::Available {
 								models: models.clone(),
@@ -178,6 +193,7 @@ impl AgentSurface {
 				runtime.block_on(client.capabilities()).ok().map(|result| (result, None))
 			}
 		});
+
 		self.capability_task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |surface, cx| {
@@ -199,15 +215,21 @@ impl AgentSurface {
 		if self.capability_generation != generation {
 			return;
 		}
+
 		self.capability_task = None;
+
 		if self.catalog_context(cx).as_ref() != Some(&context) {
 			self.capabilities_checked = None;
+
 			self.load_capabilities(cx);
+
 			return;
 		}
+
 		self.capabilities_context = Some(context);
 		self.creation_defaults = result.as_ref().and_then(|(_, defaults)| defaults.clone());
 		self.capabilities = result.map(|(capabilities, _)| capabilities);
+
 		self.apply_creation_defaults(cx);
 		self.reconcile_model_options(cx);
 		self.save_draft_document(cx);
@@ -221,6 +243,7 @@ impl AgentSurface {
 			return None;
 		};
 		let selected = self.composer_model_value(cx)?;
+
 		models.iter().find(|model| model.model.as_str() == selected)
 	}
 
@@ -236,6 +259,7 @@ impl AgentSurface {
 			.or_else(|| self.root_id())
 			.map(|owner| self.draft_profiles.execution.choice(&owner));
 		let before_tier = self.service_tier.clone();
+
 		if let Some(model) = self.selected_model(cx).cloned() {
 			if !model.supports_fast {
 				self.fast = false;
@@ -248,6 +272,7 @@ impl AgentSurface {
 				self.fast = false;
 			}
 		}
+
 		if intent.as_ref().is_some_and(|choice| choice.selected_service_tier().is_some())
 			&& self.service_tier != before_tier
 		{
@@ -259,12 +284,14 @@ impl AgentSurface {
 		if self.root_id().is_none() && self.creation_inherit_effort {
 			return;
 		}
+
 		if let Some(model) = self.selected_model(cx)
 			&& !model.efforts.contains(&self.effort)
 			&& let Some(effort) =
 				model.default_effort.clone().or_else(|| model.efforts.first().cloned())
 		{
 			self.effort = effort;
+
 			self.mark_effort_intent(cx);
 		}
 	}
@@ -273,6 +300,7 @@ impl AgentSurface {
 		if self.creation_defaults_need_refresh(cx) {
 			return Some("Refresh account defaults for this directory before sending.");
 		}
+
 		let owner = self.composer_manager.clone().or_else(|| self.root_id());
 		let choice = owner.as_deref().map(|owner| self.draft_profiles.execution.choice(owner));
 		let effort = choice
@@ -294,6 +322,7 @@ impl AgentSurface {
 				.is_some_and(|tier| !matches!(tier.as_str(), "default" | "flex"))
 				.then_some("Refresh model capabilities before selecting a service tier.");
 		};
+
 		if tier.as_ref().is_some_and(|selected| {
 			!matches!(selected.as_str(), "default" | "flex")
 				&& !model.service_tiers.iter().any(|tier| &tier.id == selected)
@@ -313,6 +342,7 @@ impl AgentSurface {
 				"This model does not accept images. Choose another model or remove the image.",
 			);
 		}
+
 		None
 	}
 }
@@ -320,25 +350,29 @@ impl AgentSurface {
 #[cfg(test)]
 #[path = "agent_effort_catalog_tests.rs"]
 mod effort_tests;
-
 #[cfg(test)]
 mod tests {
 	use super::*;
 	#[gpui::test]
 	fn catalog_reply_survives_unrelated_snapshot_refresh(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |surface, cx| {
 			surface.visual_workspace_fixture(cx);
+
 			let context = surface.catalog_context(cx).unwrap();
+
 			surface.capability_generation = 7;
 			surface.capability_task = Some(cx.spawn(async |_, _| std::future::pending().await));
 			surface.generation += 1;
+
 			surface.finish_capabilities(
 				7,
 				context,
 				Some((AgentCapabilitiesResult::Unavailable, None)),
 				cx,
 			);
+
 			assert!(surface.capability_task.is_none(), "completed request releases its slot");
 			assert!(matches!(
 				surface.current_model_catalog(cx),
@@ -350,32 +384,45 @@ mod tests {
 	#[gpui::test]
 	fn catalog_replies_cannot_cross_runtime_or_profile_boundaries(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |surface, cx| {
 			surface.visual_workspace_fixture(cx);
+
 			let old = surface.catalog_context(cx).unwrap();
+
 			surface.capabilities_context = Some(old.clone());
 			surface.capabilities = Some(AgentCapabilitiesResult::Unavailable);
 			surface.snapshot.as_mut().unwrap().runtime_source =
 				Some(decodex_protocol::EntityId::new("replacement-runtime").unwrap());
+
 			assert!(surface.current_model_catalog(cx).is_none());
+
 			surface.capability_generation = 4;
 			surface.capabilities_checked = Some(std::time::Instant::now());
+
 			surface.finish_capabilities(4, old, None, cx);
+
 			assert!(
 				surface.capabilities_checked.is_none(),
 				"source mismatch permits a fresh request"
 			);
 			assert!(surface.current_model_catalog(cx).is_none());
+
 			let current = surface.catalog_context(cx).unwrap();
+
 			surface.bind_profile(None, cx);
+
 			let new_generation = surface.capability_generation;
+
 			surface.capability_task = Some(cx.spawn(async |_, _| std::future::pending().await));
+
 			surface.finish_capabilities(
 				4,
 				current,
 				Some((AgentCapabilitiesResult::Unavailable, None)),
 				cx,
 			);
+
 			assert!(surface.capabilities.is_none());
 			assert_eq!(surface.capability_generation, new_generation);
 			assert!(surface.capability_task.is_some(), "old reply cannot retire a newer request");
@@ -387,20 +434,28 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let context = s.catalog_context(cx).unwrap();
+
 			s.capability_generation = 7;
 			s.capability_task = Some(cx.spawn(async |_, _| std::future::pending().await));
+
 			s.mark_stale(cx);
+
 			assert!(s.capability_task.is_none());
+
 			s.capability_task = Some(cx.spawn(async |_, _| std::future::pending().await));
+
 			s.finish_capabilities(
 				7,
 				context,
 				Some((AgentCapabilitiesResult::Unavailable, None)),
 				cx,
 			);
+
 			assert!(s.capabilities.is_none() && s.creation_defaults.is_none());
 			assert!(s.capability_task.is_some());
 		});
@@ -411,10 +466,12 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.model.update(cx, |input, cx| input.set_content("custom", cx));
 			s.mark_model_intent(cx);
+
 			s.capabilities = Some(AgentCapabilitiesResult::Available {
 				memory_enabled: None,
 				models: vec![AgentModelDto {
@@ -438,38 +495,53 @@ mod tests {
 					),
 				}],
 			});
+
 			s.reconcile_model_options(cx);
+
 			assert!(
 				s.service_tier.is_none(),
 				"catalog default must not silently opt into a paid tier"
 			);
+
 			s.composer_menu = Some("model");
 			s.composer_menu_content = Some("model");
 		});
+
 		visual.update(|window, cx| {
-			window.resize(gpui::size(gpui::px(1280.), gpui::px(1400.)));
+			window.resize(gpui::size(gpui::px(1_280.), gpui::px(1_400.)));
 			window.draw(cx).clear();
 		});
 		// The popover uses a real-time entrance translation; click its settled bounds.
 		std::thread::sleep(std::time::Duration::from_millis(220));
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("tier-inherited").is_none());
 		assert!(visual.debug_bounds("tier-default").is_some());
 		assert!(visual.debug_bounds("tier-ultrafast").is_none());
+
 		let bounds = visual.debug_bounds("tier-priority").expect("Fast tier visible");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "priority");
 			assert!(s.composer_capability_error(cx).is_none());
+
 			if let Some(AgentCapabilitiesResult::Available { models, .. }) = &mut s.capabilities {
 				models[0].service_tiers.clear();
+
 				models[0].supports_fast = false;
 			}
+
 			s.reconcile_model_options(cx);
+
 			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "default");
+
 			let owner = s.composer_manager.clone().or_else(|| s.root_id()).unwrap();
+
 			assert_eq!(
 				s.draft_profiles.execution.choice(&owner).selected_service_tier().unwrap().as_str(),
 				"default"
@@ -480,19 +552,28 @@ mod tests {
 	#[gpui::test]
 	fn catalog_context_changes_disable_previous_account_options(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.capabilities =
 				Some(AgentCapabilitiesResult::Available { models: vec![], memory_enabled: None });
 			s.capabilities_context = s.catalog_context(cx);
+
 			assert!(s.current_model_catalog(cx).is_some());
+
 			s.account.update(cx, |input, cx| {
 				input.set_content("00000000-0000-4000-8000-000000000099", cx)
 			});
+
 			assert!(s.current_model_catalog(cx).is_none());
+
 			s.capabilities_context = s.catalog_context(cx);
+
 			assert!(s.current_model_catalog(cx).is_some());
+
 			s.cwd.update(cx, |input, cx| input.set_content("/different-project", cx));
+
 			assert!(s.current_model_catalog(cx).is_none());
 		});
 	}
@@ -500,16 +581,22 @@ mod tests {
 	#[gpui::test]
 	fn configured_flex_survives_missing_catalog_and_fast_support(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
+
 		for catalog in [false, true] {
 			surface.update(cx, |s, cx| {
 				s.visual_workspace_fixture(cx);
 				s.model.update(cx, |input, cx| input.set_content("configured-model", cx));
 				s.mark_model_intent(cx);
+
 				s.effort = ConversationReasoningEffort::High;
+
 				s.mark_effort_intent(cx);
+
 				s.fast = false;
 				s.service_tier = Some(decodex_protocol::ServiceTier::new("flex").unwrap());
+
 				s.mark_tier_intent();
+
 				s.capabilities = if catalog {
 					Some(AgentCapabilitiesResult::Available {
 						memory_enabled: None,
@@ -532,9 +619,13 @@ mod tests {
 				} else {
 					None
 				};
+
 				s.reconcile_model_options(cx);
+
 				assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "flex");
+
 				let owner = s.composer_manager.clone().or_else(|| s.root_id()).unwrap();
+
 				assert_eq!(
 					s.draft_profiles
 						.execution

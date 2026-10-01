@@ -7,12 +7,13 @@
 //! links, and HTML stay under the ordinary Markdown renderer. Standalone display tracking outlives
 //! the conversion budget; rejected prose-prefixed openers have bounded pairing lookahead.
 
-use pulldown_cmark::{Event, Options, Parser, Tag};
-use std::{borrow::Cow, ops::Range};
-
 #[path = "render.rs"] mod render;
 
-const MAX_MATH_BYTES: usize = 4096;
+use pulldown_cmark::{Event, Options, Parser, Tag};
+
+use std::{borrow::Cow, ops::Range};
+
+const MAX_MATH_BYTES: usize = 4_096;
 
 pub(super) struct MathMarkdown<'a> {
 	pub(super) markdown: Cow<'a, str>,
@@ -20,7 +21,6 @@ pub(super) struct MathMarkdown<'a> {
 	pub(super) display_ranges: Vec<Range<usize>>,
 	replacements: Vec<(Range<usize>, String)>,
 }
-
 impl<'a> MathMarkdown<'a> {
 	pub(super) fn new(input: &'a str, options: Options, width: Option<usize>) -> Self {
 		let mut result = Self {
@@ -29,9 +29,11 @@ impl<'a> MathMarkdown<'a> {
 			display_ranges: Vec::new(),
 			replacements: Vec::new(),
 		};
+
 		if !input.contains('$') && !input.contains("\\(") && !input.contains("\\[") {
 			return result;
 		}
+
 		let (protected, containers) = protected_ranges(input, options);
 		let mut protected = protected.iter().peekable();
 		let mut containers = containers.into_iter().peekable();
@@ -39,37 +41,49 @@ impl<'a> MathMarkdown<'a> {
 		let mut scanned = 0;
 		let mut line_start = 0;
 		let mut line_has_text = false;
+
 		while offset < input.len() {
 			if let Some(index) = input[scanned..offset].rfind('\n') {
 				line_start = scanned + index + 1;
 				line_has_text = false;
 			}
+
 			line_has_text |= !input[scanned.max(line_start)..offset].trim().is_empty();
 			scanned = offset;
+
 			while protected.next_if(|range| range.end <= offset).is_some() {}
 			while containers.next_if(|range| range.end <= offset).is_some() {}
+
 			if let Some(range) = protected.peek()
 				&& range.contains(&offset)
 			{
 				offset = range.end;
+
 				continue;
 			}
+
 			let rest = &input[offset..];
 			let Some((open, close, display)) = delimiters(rest) else {
 				offset += rest.chars().next().expect("nonempty remainder").len_utf8();
+
 				continue;
 			};
 			let start = offset;
+
 			offset += open.len();
+
 			if escaped(input, start) {
 				continue;
 			}
+
 			let body = &input[offset..];
+
 			if open == "$"
 				&& (body.starts_with(char::is_whitespace) || body.starts_with(['(', '{']))
 			{
 				continue;
 			}
+
 			let limit = conversion_limit(body);
 			let rejected_display = display && line_has_text;
 			// Only standalone displays can retain an arbitrarily distant closer.
@@ -83,6 +97,7 @@ impl<'a> MathMarkdown<'a> {
 				rejected_display,
 				protected.clone(),
 			);
+
 			if display && (!rejected_display || end.is_some() || body.len() < MAX_MATH_BYTES) {
 				result.display_ranges.push(start..end.map_or(input.len(), |end| end + close.len()));
 			}
@@ -94,19 +109,26 @@ impl<'a> MathMarkdown<'a> {
 				else {
 					break;
 				};
+
 				offset = next;
+
 				continue;
 			}
+
 			let Some(end) = end else {
 				if display {
 					if body.len() < MAX_MATH_BYTES {
 						result.pending_start.get_or_insert(line_start);
 					}
+
 					let span = start..input.len();
+
 					result.markdown.to_mut().replace_range(span.clone(), &"$".repeat(span.len()));
 					result.replacements.push((span, input[start..].to_owned()));
+
 					break;
 				}
+
 				continue;
 			};
 			let span = start..end + close.len();
@@ -123,15 +145,18 @@ impl<'a> MathMarkdown<'a> {
 			}
 			if open == "$" {
 				let next = input[span.end..].chars().next();
+
 				if formula.ends_with(char::is_whitespace) || next.is_some_and(char::is_alphanumeric)
 				{
 					continue;
 				}
 				if currency_or_environment(formula) {
 					offset = span.end;
+
 					continue;
 				}
 			}
+
 			let rendered = render_formula(
 				input,
 				&span,
@@ -142,15 +167,19 @@ impl<'a> MathMarkdown<'a> {
 			);
 			// Dollars are ordinary text in the Markdown parser and cannot form an HTML tag.
 			result.markdown.to_mut().replace_range(span.clone(), &"$".repeat(span.len()));
+
 			offset = span.end;
+
 			result.replacements.push((span, rendered));
 		}
+
 		result
 	}
 
 	pub(super) fn span(&self, range: &Range<usize>) -> Option<bool> {
 		let index =
 			self.replacements.binary_search_by_key(&range.start, |(span, _)| span.start).ok()?;
+
 		(self.replacements[index].0 == *range)
 			.then(|| self.display_ranges.iter().any(|span| span == range))
 	}
@@ -160,16 +189,21 @@ impl<'a> MathMarkdown<'a> {
 		events: impl Iterator<Item = (Event<'s>, Range<usize>)>,
 	) -> impl Iterator<Item = (Event<'s>, Range<usize>)> {
 		let mut replacements = self.replacements.iter().peekable();
+
 		events.flat_map(move |(event, range)| {
 			while replacements.next_if(|(span, _)| span.end <= range.start).is_some() {}
+
 			let Event::Text(text) = event else {
 				return vec![(event, range)].into_iter();
 			};
+
 			if replacements.peek().is_none_or(|(span, _)| span.start >= range.end) {
 				return vec![(Event::Text(text), range)].into_iter();
 			}
+
 			let mut output = Vec::new();
 			let mut offset = range.start;
+
 			while let Some((span, text)) = replacements.next_if(|(span, _)| span.end <= range.end) {
 				if offset < span.start {
 					output.push((
@@ -177,15 +211,19 @@ impl<'a> MathMarkdown<'a> {
 						offset..span.start,
 					));
 				}
+
 				output.push((Event::Text(text.as_str().into()), span.clone()));
+
 				offset = span.end;
 			}
+
 			if offset < range.end {
 				output.push((
 					Event::Text(self.markdown[offset..range.end].into()),
 					offset..range.end,
 				));
 			}
+
 			output.into_iter()
 		})
 	}
@@ -200,10 +238,12 @@ fn protected_ranges(input: &str, options: Options) -> (Vec<Range<usize>>, Vec<Ra
 	let mut protected: Vec<_> =
 		parser.reference_definitions().iter().map(|(_, def)| def.span.clone()).collect();
 	let mut containers = Vec::new();
+
 	protected.extend(parser.into_offset_iter().filter_map(|(event, range)| {
 		if matches!(event, Event::Start(Tag::List(_) | Tag::BlockQuote)) {
 			containers.push(range.clone());
 		}
+
 		matches!(
 			event,
 			Event::Code(_)
@@ -229,6 +269,7 @@ fn render_formula(
 ) -> String {
 	let rendered =
 		if formula.len() < MAX_MATH_BYTES { render::render(formula, display) } else { None };
+
 	rendered
 		.filter(|text| {
 			// Nested Markdown prefixes have their own width; keep spatial layouts at the top level.
@@ -258,11 +299,13 @@ fn find_close<'a>(
 	let mut rejected_close = false;
 	let end = search.match_indices(&close[..1]).find_map(|(index, _)| {
 		let end = offset + index;
+
 		if !search[index..].starts_with(close) || escaped(input, end) {
 			return None;
 		}
 		if display {
 			while closing_protected.next_if(|range| range.end <= end).is_some() {}
+
 			if closing_protected.peek().is_some_and(|range| range.start < end + close.len()) {
 				return None;
 			}
@@ -274,11 +317,14 @@ fn find_close<'a>(
 			{
 				if multiline_close || input[offset..end].contains('\n') {
 					multiline_close = true;
+
 					return None;
 				}
+
 				rejected_close = true;
 			}
 		}
+
 		Some(end)
 	});
 
@@ -290,11 +336,13 @@ fn delimiters(rest: &str) -> Option<(&'static str, &'static str, bool)> {
 		.into_iter()
 		.find(|(open, _, _)| rest.starts_with(open))
 }
+
 fn currency_or_environment(formula: &str) -> bool {
 	formula.starts_with(|ch: char| ch.is_ascii_digit())
 		&& !formula.contains(['\\', '^', '_', '=', '+', '-', '*', '/', '<', '>'])
 		|| formula.len() > 1 && formula.chars().all(|ch| ch.is_ascii_uppercase())
 }
+
 fn conversion_limit(body: &str) -> usize {
 	body.char_indices()
 		.map(|(index, _)| index)
@@ -326,10 +374,13 @@ fn next_after_rejected(
 		{
 			return Some(offset);
 		}
+
 		return Some(end + close.len());
 	}
+
 	if end.is_none() && open == "\\[" && input.len() - offset < MAX_MATH_BYTES {
 		return None;
 	}
+
 	Some(offset)
 }

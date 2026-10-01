@@ -11,12 +11,17 @@ impl State {
 		{
 			return None;
 		}
+
 		let sequence = self.next_sequence.checked_add(1)?;
+
 		self.next_sequence = sequence;
+
 		let query_id =
 			QueryId::new(format!("gpui-account-observation/{}/{sequence}", binding.generation))
 				.expect("bounded numeric observation query identity");
+
 		self.observation = Some((query_id.clone(), binding));
+
 		Some(QueryEnvelope {
 			version: CURRENT_VERSION,
 			query_id,
@@ -39,19 +44,25 @@ impl State {
 			&& self.session.as_ref() == Some(&expected)
 			&& result.version == CURRENT_VERSION
 			&& result.server_id == *server_id;
+
 		self.observation = None;
+
 		let QueryResultPayload::AccountObservation(signal) = &result.payload else {
 			return AccountProfileRouteOutcome::Refused;
 		};
+
 		if !valid {
 			return AccountProfileRouteOutcome::Refused;
 		}
+
 		self.observation_generation = signal.generation;
+
 		if self.selected.is_some() {
 			// A heartbeat refreshes observation timestamps too. Coalesce with an active profile
 			// read.
 			self.refresh_due = !self.queue_query();
 		}
+
 		AccountProfileRouteOutcome::Fresh
 	}
 }
@@ -79,6 +90,7 @@ impl super::AccountProfileController {
 			},
 			Err(_) => {
 				let mut state = self.lock();
+
 				if state.observation.as_ref().is_some_and(|(id, binding)| {
 					id == &query.query_id
 						&& binding.generation == generation
@@ -86,7 +98,9 @@ impl super::AccountProfileController {
 				}) {
 					state.observation = None;
 				}
+
 				drop(state);
+
 				self.inner.notify.notify_one();
 			},
 		}
@@ -101,14 +115,18 @@ mod tests {
 		let controller = AccountProfileController::production();
 		let server = ServerId::new("10000000-0000-4000-8000-000000000001").unwrap();
 		let account = EntityId::new("20000000-0000-4000-8000-000000000001").unwrap();
+
 		controller.bind_session(3, server.clone());
 		controller.select_at_revision(account.clone(), EntityRevision(1));
+
 		(controller, server, account)
 	}
 
 	fn complete_profile(controller: &AccountProfileController, server: &ServerId) {
 		let profile = controller.try_take_dispatch(3, server).unwrap();
+
 		assert!(matches!(profile.payload, QueryPayload::GetAccountProfile { .. }));
+
 		let result = QueryResultEnvelope {
 			version: CURRENT_VERSION,
 			server_id: server.clone(),
@@ -119,29 +137,42 @@ mod tests {
 				plan_type: None,
 			}),
 		};
+
 		assert_eq!(controller.route_result(3, server, &result), AccountProfileRouteOutcome::Fresh);
 	}
 
 	#[test]
 	fn observation_wait_is_single_across_refresh_close_and_reopen() {
 		let (controller, server, account) = source();
+
 		complete_profile(&controller, &server);
+
 		let wait = controller.try_take_dispatch(3, &server).unwrap();
+
 		assert!(matches!(
 			wait.payload,
 			QueryPayload::WaitForAccountObservation { after_generation: 0, .. }
 		));
 		assert!(controller.try_take_dispatch(3, &server).is_none());
+
 		for _ in 0..4 {
 			assert!(controller.refresh());
+
 			complete_profile(&controller, &server);
+
 			assert!(controller.try_take_dispatch(3, &server).is_none());
 		}
+
 		controller.close();
+
 		assert!(controller.try_take_dispatch(3, &server).is_none());
+
 		controller.select_at_revision(account.clone(), EntityRevision(1));
+
 		complete_profile(&controller, &server);
+
 		assert!(controller.try_take_dispatch(3, &server).is_none());
+
 		let result = QueryResultEnvelope {
 			version: CURRENT_VERSION,
 			server_id: server.clone(),
@@ -150,15 +181,22 @@ mod tests {
 				decodex_protocol::AccountObservationSignal::new(7),
 			),
 		};
+
 		assert_eq!(controller.route_result(3, &server, &result), AccountProfileRouteOutcome::Fresh);
+
 		complete_profile(&controller, &server);
+
 		let wait = controller.try_take_dispatch(3, &server).unwrap();
+
 		assert!(matches!(
 			wait.payload,
 			QueryPayload::WaitForAccountObservation { after_generation: 7, .. }
 		));
+
 		controller.close();
+
 		let result = QueryResultEnvelope { query_id: wait.query_id, ..result };
+
 		assert_eq!(controller.route_result(3, &server, &result), AccountProfileRouteOutcome::Fresh);
 		assert!(controller.try_take_dispatch(3, &server).is_none());
 	}
@@ -166,9 +204,13 @@ mod tests {
 	#[test]
 	fn observation_during_profile_read_coalesces_one_followup_read() {
 		let (controller, server, _) = source();
+
 		complete_profile(&controller, &server);
+
 		let wait = controller.try_take_dispatch(3, &server).unwrap();
+
 		controller.refresh();
+
 		let result = QueryResultEnvelope {
 			version: CURRENT_VERSION,
 			server_id: server.clone(),
@@ -177,9 +219,12 @@ mod tests {
 				decodex_protocol::AccountObservationSignal::new(1),
 			),
 		};
+
 		assert_eq!(controller.route_result(3, &server, &result), AccountProfileRouteOutcome::Fresh);
+
 		complete_profile(&controller, &server);
 		complete_profile(&controller, &server);
+
 		assert!(matches!(
 			controller.try_take_dispatch(3, &server).unwrap().payload,
 			QueryPayload::WaitForAccountObservation { .. }

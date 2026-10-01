@@ -27,7 +27,6 @@ const SEQUENCE: &str = "sequenceDiagram
             end
         end
     end";
-
 const STATE: &str = "stateDiagram-v2
     state \"Payment pending\" as Charging
     [*] --> Draft
@@ -41,7 +40,6 @@ const STATE: &str = "stateDiagram-v2
     Delivered --> [*]
     Rejected --> Draft: revise
     Charging: Retry up to 3 times";
-
 const CLASS: &str = "classDiagram
     class Order {
         +String id
@@ -66,7 +64,6 @@ const CLASS: &str = "classDiagram
     Order \"1\" --> \"1\" Payment : pays with
     Payment <|-- CardPayment
     CardPayment ..> Order : updates";
-
 const ER: &str = "erDiagram
     CUSTOMER ||--o{ ORDER : places
     ORDER ||--|{ LINE_ITEM : contains
@@ -101,8 +98,10 @@ fn complex_families() {
 			.map(UnicodeWidthStr::width)
 			.max()
 			.expect("valid upstream diagram fixture");
+
 		assert_eq!(render(source, width), Ok(output.clone()));
 		assert_eq!(render(source, width - 1), Err(RenderError::TooWide));
+
 		super::assert_snapshot(name, &output);
 	}
 }
@@ -114,16 +113,20 @@ fn unicode_labels_and_later_declarations() {
 			"%% heading\ngraph {direction}; A -->|准备| B; A[请求]; B{{Réponse?}}; B -->|retry| A; B --> C[Ship 🚀]"
 		);
 		let output = render(&source, /* max_width */ 160).expect("valid upstream diagram fixture");
+
 		for label in ["请求", "Réponse?", "Ship 🚀", "准备", "retry"] {
 			assert!(output.contains(label), "{direction}: {label}");
 		}
+
 		let width = output
 			.lines()
 			.map(UnicodeWidthStr::width)
 			.max()
 			.expect("valid upstream diagram fixture");
+
 		assert_eq!(render(&source, width), Ok(output.clone()));
 		assert_eq!(render(&source, width - 1), Err(RenderError::TooWide));
+
 		if direction == "LR" {
 			super::assert_snapshot("LR", &output);
 		}
@@ -152,6 +155,7 @@ fn class_relationship_endpoints() {
 		)
 		.expect("valid upstream diagram fixture");
 		let ports = output.lines().filter(|line| line.contains('├')).collect::<Vec<_>>();
+
 		assert!(ports[0].contains(&format!("├{source_tip}")), "{operator}: {output}");
 		assert!(ports[1].contains(&format!("├{target_tip}")), "{operator}: {output}");
 		assert!(ports[0].contains("(one) uses"));
@@ -170,6 +174,7 @@ fn er_cardinalities() {
 				render(&format!("erDiagram; A {left}--{right} B : owns"), /* max_width */ 100)
 					.expect("valid upstream diagram fixture");
 			let ports = output.lines().filter(|line| line.contains('├')).collect::<Vec<_>>();
+
 			assert!(ports[0].contains(&format!("({source_card}) owns")));
 			assert!(ports[1].contains(&format!("({target_card})")));
 		}
@@ -271,6 +276,7 @@ fn truncated_sources_and_terminal_widths() {
 			.map(UnicodeWidthStr::width)
 			.max()
 			.expect("valid upstream diagram fixture");
+
 		assert_eq!(render(source, width), Ok(output));
 		assert_eq!(render(source, width - 1), Err(RenderError::TooWide));
 	}
@@ -302,6 +308,7 @@ fn sequence_arrows_preserve_sender_recipient_and_style() {
 				rows[1].iter().position(|ch| *ch == 'B').expect("valid upstream diagram fixture");
 			let recipient = if to == "A" { a } else { b };
 			let row = if from == to { 5 } else { 4 };
+
 			assert_eq!(rows[row][recipient], tip, "{from}{operator}{to}");
 			assert_eq!(rows[row].contains(&'┄'), dashed);
 		}
@@ -316,6 +323,7 @@ fn canvas_limit_applies_even_with_unlimited_caller_width() {
 		(0..8).map(|i| format!("participant P{i};")).collect::<String>(),
 		format!("P0->>P7: {};", "x".repeat(40)).repeat(64)
 	);
+
 	for source in [graph, sequence] {
 		assert_eq!(render(&source, /* max_width */ usize::MAX), Err(RenderError::Limit));
 	}

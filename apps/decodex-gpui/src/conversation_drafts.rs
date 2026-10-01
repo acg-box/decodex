@@ -29,6 +29,7 @@ impl Conversations {
 		&self,
 	) -> Vec<(CommandEnvelope, Option<ConversationCreationReceiptResult>)> {
 		let state = self.lock();
+
 		state
 			.delivery
 			.unconfirmed
@@ -53,6 +54,7 @@ impl Conversations {
 			return false;
 		};
 		let mut state = self.lock();
+
 		if state.pending_command.is_some() || state.in_flight_command.is_some()
 			|| !state.delivery.unconfirmed.contains(command)
 			|| !state.delivery.readbacks.iter().any(|(original, result)| original == command
@@ -63,7 +65,9 @@ impl Conversations {
 		if state.selected.is_none() && state.requested_selection.is_none() {
 			state.delivery.new_conversation = None;
 		}
+
 		state.clear_catalog();
+
 		state.execution = request.execution;
 		state.selected = state
 			.tasks
@@ -72,12 +76,18 @@ impl Conversations {
 			.then(|| request.conversation_id.clone());
 		state.requested_selection = state.selected.is_none().then_some(request.conversation_id);
 		state.selection_suppressed = true;
+
 		state.confirm_delivery(command);
 		state.delivery.readbacks.retain(|(original, _)| original != command);
+
 		state.command = ConversationCommandState::Idle;
+
 		state.queue_list();
+
 		drop(state);
+
 		self.inner.notify.notify_one();
+
 		true
 	}
 
@@ -86,25 +96,32 @@ impl Conversations {
 			return false;
 		};
 		let mut state = self.lock();
+
 		if !state.delivery.unconfirmed.contains(command) {
 			return false;
 		}
+
 		let queued = state.queue_query(
 			QueryPayload::GetConversationCreationReceipt { request },
 			ConversationQueryPurpose::CreationReceipt { command: Box::new(command.clone()) },
 		);
+
 		if queued {
 			state.delivery.readbacks.retain(|(original, _)| original != command);
 		}
+
 		drop(state);
+
 		if queued {
 			self.inner.notify.notify_one();
 		}
+
 		queued
 	}
 
 	pub(crate) fn can_cancel_unsent_ordinary(&self) -> bool {
 		let state = self.lock();
+
 		state.delivery.required
 			&& state.pending_command.is_some()
 			&& state.in_flight_command.is_none()
@@ -112,25 +129,32 @@ impl Conversations {
 
 	pub(crate) fn cancel_unsent_ordinary(&self) -> bool {
 		let mut state = self.lock();
+
 		if !state.delivery.required || state.in_flight_command.is_some() {
 			return false;
 		}
+
 		let Some(pending) = state.pending_command.take() else { return false };
 		// Taking the queue entry under the dispatch lock proves that no transport
 		// has taken this command. A dispatched or restored command cannot enter here.
 		state.confirm_delivery(&pending.envelope);
 		state.delivery.saved.retain(|saved| saved != &pending.envelope);
 		state.cancel_refresh_batch();
+
 		state.command = ConversationCommandState::Idle;
 		state.last_submission_accepted = false;
 		state.submission_result_generation = state.submission_result_generation.saturating_add(1);
+
 		drop(state);
+
 		self.inner.notify.notify_one();
+
 		true
 	}
 
 	pub(crate) fn ordinary_editor_owner(&self) -> Option<EntityId> {
 		let state = self.lock();
+
 		state.selected.clone().or_else(|| state.requested_selection.clone())
 	}
 
@@ -140,11 +164,15 @@ impl Conversations {
 
 	pub(crate) fn release_saved_commands(&self, commands: &[CommandEnvelope]) {
 		let mut state = self.lock();
+
 		if state.delivery.saved == commands {
 			return;
 		}
+
 		state.delivery.saved = commands.to_vec();
+
 		drop(state);
+
 		self.inner.notify.notify_one();
 	}
 
@@ -152,6 +180,7 @@ impl Conversations {
 		let state = self.lock();
 		let owner = state.selected.clone().or_else(|| state.requested_selection.clone());
 		let mut unconfirmed = state.delivery.unconfirmed.clone();
+
 		for command in state
 			.pending_command
 			.as_ref()
@@ -163,10 +192,13 @@ impl Conversations {
 				unconfirmed.push(command.clone());
 			}
 		}
+
 		let mut parked = state.delivery.parked.clone();
+
 		if let Some(owner) = &owner {
 			parked.remove(owner.as_str());
 		}
+
 		Some(DesktopOrdinaryDraft {
 			working_directory: self.inner.working_directory.clone()?,
 			composer: DesktopOrdinaryComposerDraft {
@@ -188,11 +220,15 @@ impl Conversations {
 		if self.inner.working_directory.as_ref() != Some(&draft.working_directory) {
 			return false;
 		}
+
 		let mut state = self.lock();
+
 		if state.pending_command.is_some() || state.in_flight_command.is_some() {
 			return false;
 		}
+
 		state.clear_catalog();
+
 		state.execution = draft.composer.execution.clone();
 		state.execution_source = None;
 		state.creation_intent = draft.composer.creation_intent.clone();
@@ -200,11 +236,13 @@ impl Conversations {
 		state.delivery.parked = draft.parked.clone();
 		state.delivery.new_conversation = draft.new_conversation.clone();
 		state.delivery.unconfirmed = draft.unconfirmed.clone();
+
 		let mut successors = draft
 			.unconfirmed
 			.iter()
 			.filter_map(super::RoutingSuccessorReconciliation::from_command);
 		let first = successors.next();
+
 		state.routing_successor_reconciliation =
 			if successors.next().is_none() { first } else { None };
 		state.outcome_unknown_readback_generation = None;
@@ -213,24 +251,30 @@ impl Conversations {
 		state.delivery.readbacks.clear();
 		state.delivery.turn_readbacks.clear();
 		state.delivery.control_readbacks.clear();
+
 		state.requested_selection = draft.composer.conversation_id.clone();
 		state.selected = state
 			.requested_selection
 			.as_ref()
 			.filter(|id| state.tasks.iter().any(|task| &task.conversation_id == *id))
 			.cloned();
+
 		if state.selected.is_some() {
 			state.requested_selection = None;
 		}
+
 		state.selection_suppressed = true;
+
 		if !state.delivery.unconfirmed.is_empty() {
 			state.command = ConversationCommandState::OutcomeUnknown;
 		}
+
 		true
 	}
 
 	pub(crate) fn park_ordinary_editor(&self, editor: DesktopOrdinaryComposerDraft) {
 		let mut state = self.lock();
+
 		if let Some(owner) = &editor.conversation_id {
 			state.delivery.parked.insert(owner.as_str().into(), editor);
 		} else {
@@ -247,10 +291,12 @@ impl Conversations {
 			Some(owner) => state.delivery.parked.get(owner.as_str()).cloned(),
 			None => state.delivery.new_conversation.clone(),
 		}?;
+
 		state.execution = editor.execution.clone();
 		state.execution_source = None;
 		state.creation_intent = editor.creation_intent.clone();
 		state.execution_choice_owner = editor.conversation_id.clone();
+
 		Some(editor)
 	}
 
@@ -268,19 +314,23 @@ impl State {
 		let Some(request) = ConversationCreationReceiptRequest::from_command(command) else {
 			return (ConversationRouteOutcome::Refused, false);
 		};
+
 		if !self.delivery.unconfirmed.contains(command) {
 			return (ConversationRouteOutcome::Unmatched, false);
 		}
+
 		let result = match payload {
 			QueryResultPayload::ConversationCreationReceipt(result) => result.clone(),
 			_ => ConversationCreationReceiptResult::Unavailable,
 		};
+
 		if let ConversationCreationReceiptResult::Recorded { conversation_id, creation_revision } =
 			&result
 			&& (conversation_id != &request.conversation_id || creation_revision.0 == 0)
 		{
 			return (ConversationRouteOutcome::Refused, false);
 		}
+
 		self.delivery.readbacks.retain(|(original, _)| original != command);
 		self.delivery.readbacks.push((command.clone(), result));
 		// Local creation does not prove provider completion or clear the saved original.
@@ -303,14 +353,17 @@ impl State {
 					&& result.payload.is_none(),
 			CommandOutcome::AcceptanceUnknown => false,
 		};
+
 		if terminal {
 			self.confirm_delivery(&in_flight.envelope);
 		}
+
 		terminal
 	}
 
 	pub(super) fn confirm_delivery(&mut self, command: &CommandEnvelope) {
 		self.delivery.unconfirmed.retain(|entry| entry != command);
+
 		if !self.delivery.confirmed.contains(command) {
 			self.delivery.confirmed.push(command.clone());
 		}

@@ -8,6 +8,7 @@ impl AgentSurface {
 		else {
 			return;
 		};
+
 		if owner != work
 			|| review.review_id != digest
 			|| self.misalignment_reviewed.as_ref() != Some(&(work.into(), digest.into()))
@@ -16,11 +17,13 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let (Ok(work_id), Ok(review_id)) =
 			(EntityId::new(work), decodex_protocol::WireText::new(digest))
 		else {
 			return;
 		};
+
 		self.execute(AgentActionDto::ContinueMisalignment { work_id, review_id }, None, cx);
 	}
 
@@ -34,15 +37,19 @@ impl AgentSurface {
 		else {
 			return div().into_any_element();
 		};
+
 		if owner != &work.id {
 			return div().into_any_element();
 		}
+
 		let mut panel=div().p_3().rounded(px(8.0)).border_1().border_color(rgba(0xffffff30)).flex().flex_col().gap_3()
             .child("Conversation paused as a precaution")
             .child(muted("Codex could not confirm that the agent was following your instructions. Review the findings before continuing."));
 		let identity = (work.id.clone(), review.review_id.clone());
+
 		if self.misalignment_reviewed.as_ref() != Some(&identity) {
 			let keyboard_identity = identity.clone();
+
 			return panel
 				.child(
 					div()
@@ -55,11 +62,13 @@ impl AgentSurface {
 						.cursor_pointer()
 						.on_click(cx.listener(move |s, _, _, cx| {
 							s.misalignment_reviewed = Some(identity.clone());
+
 							cx.notify();
 						}))
 						.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
 							if matches!(event.keystroke.key.as_str(), "enter" | "space") {
 								s.misalignment_reviewed = Some(keyboard_identity.clone());
+
 								cx.stop_propagation();
 								cx.notify();
 							}
@@ -68,17 +77,21 @@ impl AgentSurface {
 				)
 				.into_any_element();
 		}
+
 		if let Some(message) = &review.continuation {
 			panel = panel.child("Continuation request (quoted)").child(format!("{message:?}"));
 		}
+
 		panel = panel.child(review.explanation.clone().unwrap_or_else(|| {
 			"Detailed findings are unavailable. Start or resume another conversation.".into()
 		}));
+
 		if review.explanation.is_some() && review.continuation.is_some() {
 			let owner = work.id.clone();
 			let digest = review.review_id.clone();
 			let keyboard_owner = owner.clone();
 			let keyboard_digest = digest.clone();
+
 			panel = panel.child(
 				div()
 					.id("misalignment-continue")
@@ -100,6 +113,7 @@ impl AgentSurface {
 					.child("Acknowledge findings and continue"),
 			);
 		}
+
 		panel.into_any_element()
 	}
 }
@@ -112,6 +126,7 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 				runtime_source: None,
@@ -132,6 +147,7 @@ mod tests {
 					updated_at_micros: 1,
 				}],
 			})));
+
 			s.history = Some((
 				"root".into(),
 				AgentHistoryResult::Available {
@@ -150,14 +166,19 @@ mod tests {
 					live: vec![],
 				},
 			));
+
 			s.feedback.clear();
 		});
+
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.0), px(1200.0)));
+			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("misalignment-continue").is_none());
+
 		let bounds = visual.debug_bounds("misalignment-review").expect("review entry");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, _| {
 			assert!(s.feedback.is_empty());
@@ -166,35 +187,49 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let bounds = visual.debug_bounds("misalignment-continue").expect("explicit continuation");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.feedback, "No service profile is configured.");
+
 			s.feedback.clear();
+
 			if let Some((_, AgentHistoryResult::Available { misalignment: Some(review), .. })) =
 				&mut s.history
 			{
 				review.continuation = None;
 			}
+
 			s.acknowledge_misalignment("root", "review-one", cx);
+
 			assert!(s.feedback.is_empty());
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("misalignment-continue").is_none());
+
 		surface.update(visual, |s, cx| {
 			if let Some((_, AgentHistoryResult::Available { misalignment: Some(review), .. })) =
 				&mut s.history
 			{
 				review.review_id = "review-two".into();
 			}
+
 			s.acknowledge_misalignment("root", "review-one", cx);
+
 			assert!(s.feedback.is_empty());
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("misalignment-continue").is_none());
 		assert!(visual.debug_bounds("misalignment-review").is_some());
 	}

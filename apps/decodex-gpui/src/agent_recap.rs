@@ -1,11 +1,14 @@
 //! Manual task recap presentation. The service owns history and inference.
-use super::{mcp_forms::mcp_button, *};
-use decodex_protocol::{TaskRecapPhase as Phase, TaskRecapStatus};
-use tokio::sync::watch;
-
 #[path = "agent_recap_automatic.rs"] mod automatic;
 #[path = "agent_recap_request.rs"] mod request;
+
 pub(super) use automatic::Automatic;
+
+use super::{mcp_forms::mcp_button, *};
+
+use decodex_protocol::{TaskRecapPhase as Phase, TaskRecapStatus};
+
+use tokio::sync::watch;
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -17,7 +20,6 @@ pub(super) struct Panel {
 	epoch: u64,
 	feedback: String,
 }
-
 impl Panel {
 	fn busy(&self) -> bool {
 		self.task.is_some()
@@ -35,10 +37,12 @@ impl AgentSurface {
 
 	pub(super) fn invalidate_recap(&mut self, next: &AgentSnapshotDto) {
 		self.invalidate_automatic_recap(next);
+
 		let Some(work) = &self.recap.work else { return };
 		let before =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
 		let after = next.work_items.iter().find(|w| &w.id == work);
+
 		if self.snapshot.as_ref().is_none_or(|s| s.runtime_source != next.runtime_source)
 			|| !matches!((before, after), (Some(a), Some(b)) if a.codex_thread_id == b.codex_thread_id && a.active_turn_id == b.active_turn_id)
 		{
@@ -52,6 +56,7 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		self.read_recap(work, false, cx);
 	}
 
@@ -73,19 +78,26 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			self.recap.work = Some(work.into());
 			self.recap.feedback = "Connect to the service to load this recap.".into();
+
 			cx.notify();
+
 			return;
 		};
+
 		if !self.command_connection_ready() {
 			self.recap.work = Some(work.into());
 			self.recap.feedback =
 				"Wait for the service connection before loading or generating a recap.".into();
+
 			cx.notify();
+
 			return;
 		}
+
 		let Some(item) =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == work))
 		else {
@@ -97,18 +109,25 @@ impl AgentSurface {
 			self.recap.work = Some(work.into());
 			self.recap.feedback =
 				"A recap is available after this agent starts a conversation.".into();
+
 			cx.notify();
+
 			return;
 		};
 		let Ok(owner) = EntityId::new(work) else { return };
+
 		self.reset_recap();
+
 		self.recap.work = Some(work.into());
 		self.recap.automatic = automatic;
 		self.recap.feedback = if generate { "Generating recap…" } else { "Reading recap…" }.into();
+
 		let epoch = self.recap.epoch;
 		let (cancel, cancellation) = watch::channel(false);
 		let (updates, mut results) = watch::channel(None);
+
 		self.recap.cancel = Some(cancel);
+
 		if std::thread::Builder::new()
 			.name("task-recap-io".into())
 			.spawn(move || {
@@ -129,28 +148,36 @@ impl AgentSurface {
 		{
 			self.recap.cancel = None;
 			self.recap.feedback = "Recap worker could not start. Refresh to try again.".into();
+
 			cx.notify();
+
 			return;
 		}
+
 		self.recap.task = Some(cx.spawn(async move |surface, cx| {
 			while results.changed().await.is_ok() {
 				let result = results.borrow_and_update().clone();
+
 				if surface
 					.update(cx, |s, cx| {
 						if s.recap.epoch != epoch {
 							return;
 						}
+
 						if let Some((state, feedback)) = result {
 							if state.is_some()
 								&& s.recap.cancel.as_ref().is_some_and(|cancel| *cancel.borrow())
 							{
 								return;
 							}
+
 							if let Some(state) = &state {
 								s.record_recap_result(state);
 							}
+
 							s.recap.state = state;
 							s.recap.feedback = feedback;
+
 							cx.notify();
 						}
 					})
@@ -159,14 +186,17 @@ impl AgentSurface {
 					break;
 				}
 			}
+
 			let _ = surface.update(cx, |s, cx| {
 				if s.recap.epoch == epoch {
 					s.recap.task = None;
 					s.recap.cancel = None;
+
 					cx.notify();
 				}
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -199,19 +229,23 @@ impl AgentSurface {
 					}
 				},
 			));
+
 		if !opened {
 			return panel.into_any_element();
 		}
 		if self.recap.state.as_ref().is_none_or(|s| s.phase != Phase::Ready) {
 			panel = panel.child(self.recap.feedback.clone());
 		}
+
 		if let Some(recap) = self.recap.state.as_ref().and_then(|s| s.recap.as_ref()) {
 			panel =
 				panel.child(markdown::render_process(recap.summary.as_str(), "task-recap-summary"));
+
 			if let Some(next) = &recap.next_action {
 				panel = panel.child(format!("Next: {}", next.as_str()));
 			}
 		}
+
 		if self.recap.busy() {
 			panel = panel.child(mcp_button(
 				"recap-cancel".into(),
@@ -222,13 +256,16 @@ impl AgentSurface {
 					if let Some(cancel) = &s.recap.cancel {
 						let _ = cancel.send(true);
 					}
+
 					s.recap.state = None;
 					s.recap.feedback = "Cancelling recap…".into();
+
 					cx.notify();
 				},
 			));
 		} else {
 			let mut actions = div().flex().gap_2();
+
 			for (id, label, generate) in [
 				("recap-refresh", "Refresh recap", false),
 				("recap-generate", "Generate recap", true),
@@ -236,14 +273,18 @@ impl AgentSurface {
 				if generate && self.recap.state.is_none() {
 					continue;
 				}
+
 				let owner = work.to_owned();
+
 				actions =
 					actions.child(mcp_button(id.into(), label.into(), false, cx, move |s, cx| {
 						s.read_recap(&owner, generate, cx)
 					}));
 			}
+
 			panel = panel.child(actions);
 		}
+
 		panel.into_any_element()
 	}
 }
@@ -256,11 +297,13 @@ mod tests;
 impl AgentSurface {
 	pub(super) fn visual_recap(&mut self) {
 		let Some(work) = self.selected.clone() else { return };
+
 		if let Some(item) =
 			self.snapshot.as_mut().and_then(|s| s.work_items.iter_mut().find(|w| w.id == work))
 		{
 			item.codex_thread_id = Some("fixture-thread".into());
 		}
+
 		self.recap.work = Some(work.clone());
 		self.recap.feedback = "Task recap".into();
 		self.recap.state = Some(TaskRecapStatus {

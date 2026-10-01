@@ -16,6 +16,7 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
@@ -30,15 +31,19 @@ impl AgentSurface {
 					tokio::runtime::Builder::new_current_thread().enable_all().build()
 				else {
 					let _ = loaded.send(Err("Could not start draft restoration"));
+
 					return;
 				};
+
 				runtime.block_on(async move {
 					let client = AgentClient::new(profile);
 					let result = load_restored_history(&client, &original).await;
 					let ready = result.is_ok();
+
 					if loaded.send(result).is_err() || !ready || permitted.await.is_err() {
 						return;
 					}
+
 					let result = async {
 						let _ = client
 							.execute(
@@ -60,11 +65,13 @@ impl AgentSurface {
 							.map_err(
 								|_| "Draft handback could not be confirmed. Read its receipt again.",
 							)?;
+
 						if status.phase != PromptEditPhase::Restored {
 							return Err(
 								"Draft handback is not confirmed. Keep the draft and read its receipt again.",
 							);
 						}
+
 						original.recover_receipt(
 							&status,
 							&PromptDraft::new(content.ok_or("Original input is unavailable")?)?,
@@ -74,23 +81,33 @@ impl AgentSurface {
 					let _ = completed.send(result);
 				});
 			});
+
 		if started.is_err() {
 			self.prompt_edit.feedback = "Could not start draft restoration".into();
+
 			cx.notify();
+
 			return;
 		}
+
 		self.prompt_edit.feedback = "Refreshing history before restoring the draft…".into();
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
 			let result = load.await.unwrap_or(Err("Draft restoration stopped"));
 			let pending = surface.update(cx, |s, cx| {
 				if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() { return None; }
+
 				let result = result.and_then(|(draft, history, timeline)| {
 					if s.prompt_edit.draft.as_ref() != Some(&expected) { return Err("Draft changed during restoration. Try again with the current edit."); }
+
 					s.stage_prompt_editor(draft.clone(), cx)?;
+
 					s.prompt_edit.draft = Some(draft.clone());
+
 					s.restore_prompt_presentation(draft.work_id.as_str(), draft.thread_id.as_str(), history, timeline, cx)?;
+
 					Ok(draft)
 				});
+
 				match result {
 					Ok(draft) => { s.prompt_edit.feedback = "History refreshed. Waiting for the edited draft to be saved…".into(); cx.notify(); Some(draft) },
 					Err(message) => { s.prompt_edit.task = None; s.prompt_edit.feedback = message.into(); cx.notify(); None },
@@ -98,6 +115,7 @@ impl AgentSurface {
 			}).ok().flatten();
 			let Some(pending) = pending else { return; };
 			let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+
 			loop {
 				let ready = surface.update(cx, |s, cx| {
 					if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() { return Some(false); }
@@ -105,15 +123,21 @@ impl AgentSurface {
 						s.prompt_edit.task = None; s.prompt_edit.feedback = "Draft handback was not sent. Keep this draft and restore it again.".into(); cx.notify(); return Some(false);
 					}
 					if s.prompt_editor_saved(&pending) { return Some(true); }
+
 					None
 				}).unwrap_or(Some(false));
+
 				if let Some(ready) = ready { if !ready { return; } break; }
+
 				cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
 			}
+
 			if permit.send(()).is_err() { return; }
+
 			let result = completion.await.unwrap_or(Err("Draft handback reply was lost. Read its receipt again."));
 			let _ = surface.update(cx, |s, cx| {
 				if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() { return; }
+
 				s.prompt_edit.task = None;
 				s.prompt_edit.feedback = if s.prompt_edit.draft.as_ref() != Some(&pending) {
 					"Draft changed. Read the handback receipt again before sending.".into()
@@ -122,9 +146,11 @@ impl AgentSurface {
 						Ok(()) => "Edited draft restored. Nothing was sent.".into(), Err(message) => message.into(),
 					}
 				};
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 }
@@ -149,9 +175,11 @@ async fn load_restored_history(
 		.prompt_edit(original.work_id.clone(), original.thread_id.clone())
 		.await
 		.map_err(|_| "Edit receipt is unavailable")?;
+
 	if !matches!(status.phase, PromptEditPhase::Applied | PromptEditPhase::Restored) {
 		return Err("History edit is not yet confirmed. Keep the draft and recover again.");
 	}
+
 	let recovered = original.recover_receipt(
 		&status,
 		&PromptDraft::new(content.ok_or("Original input is unavailable")?)?,
@@ -166,5 +194,6 @@ async fn load_restored_history(
 		)
 		.await
 		.map_err(|_| "Native history refresh failed")?;
+
 	Ok((recovered, history, timeline))
 }

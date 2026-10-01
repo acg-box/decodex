@@ -1,22 +1,26 @@
 //! Production GPUI window, navigation, focus, and lifecycle rendering boundary.
+#[path = "agent_surface.rs"] pub(crate) mod agent_surface;
+
 #[path = "shell_account_activity.rs"] mod account_activity;
 #[path = "account_feedback.rs"] mod account_feedback;
 #[path = "account_identity.rs"] mod account_identity;
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "shell_native_status.rs"]
 mod native_status;
+#[path = "shell_navigation.rs"] mod navigation;
+#[path = "ordinary_drafts.rs"] mod ordinary_drafts;
 #[path = "quota_meter.rs"] mod quota_meter;
 #[path = "shell_reset_cards.rs"] mod reset_cards;
 #[path = "shell_status.rs"] mod status;
-use crate::ui_motion::SmoothControl;
+#[path = "workspace_symbols.rs"] mod workspace_symbols;
+
 pub(crate) use status::{
 	count_preference as notification_count_preference, question_notice_preference,
 };
 
-#[path = "agent_surface.rs"] pub(crate) mod agent_surface;
+use crate::ui_motion::SmoothControl;
+
 use agent_surface::AgentSurface;
-#[path = "shell_navigation.rs"] mod navigation;
-#[path = "workspace_symbols.rs"] mod workspace_symbols;
 
 use std::{
 	future::Future,
@@ -66,238 +70,6 @@ use crate::{
 	ui_theme,
 };
 
-// Match the gap below floating controls to their inset from the window edge.
-const WINDOW_CONTROLS_CLEARANCE: f32 =
-	ui_theme::CONTROL_MARGIN * 2.0 + ui_theme::CONTROL_GROUP_HEIGHT;
-const WORKBENCH_SESSION_SIDEBAR_WIDTH: f32 = 248.0;
-const WORKBENCH_INSPECTOR_WIDTH: f32 = 344.0;
-const LIFECYCLE_POLL: Duration = Duration::from_millis(40);
-
-const WB_CANVAS: u32 = ui_theme::CANVAS;
-const WB_TEXT: u32 = ui_theme::TEXT;
-const WB_TEXT_MUTED: u32 = ui_theme::TEXT_MUTED;
-const WB_TEXT_FAINT: u32 = ui_theme::TEXT_FAINT;
-const WB_ACCENT: u32 = ui_theme::ACCENT;
-const WB_BLUE: u32 = ui_theme::BLUE;
-const WB_GREEN: u32 = ui_theme::GREEN;
-const WB_AMBER: u32 = ui_theme::AMBER;
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct PendingComposerSubmission {
-	content: String,
-	result_generation: u64,
-	conversation_id: EntityId,
-	turn_id: Option<EntityId>,
-	accepted: bool,
-}
-
-fn pending_submission_clear_decision(
-	pending: &PendingComposerSubmission,
-	result_generation: u64,
-	accepted: bool,
-	current_content: &str,
-) -> Option<bool> {
-	(result_generation > pending.result_generation)
-		.then_some(accepted && current_content == pending.content)
-}
-
-fn pending_submission_is_persisted(
-	pending: &PendingComposerSubmission,
-	history: Option<&HistorySnapshot>,
-) -> bool {
-	let Some(history) = history
-		.filter(|history| history.conversation_id.as_ref() == Some(&pending.conversation_id))
-	else {
-		return false;
-	};
-	let Some(page) = history.visible.as_ref() else {
-		return false;
-	};
-
-	page.items.iter().any(|item| {
-		item.turn_role == HistoryTurnRole::User
-			&& item.kind == HistoryItemKindDto::Message
-			&& pending.turn_id.as_ref().map_or_else(
-				|| item.payload.inline_text().is_some_and(|text| text.as_str() == pending.content),
-				|turn_id| &item.turn_id == turn_id,
-			)
-	})
-}
-
-fn deferred_provider_refresh_ready(
-	pending_conversation_id: Option<&EntityId>,
-	selected_conversation_id: Option<&EntityId>,
-	history: Option<&HistorySnapshot>,
-) -> bool {
-	let (Some(pending), Some(selected), Some(history)) =
-		(pending_conversation_id, selected_conversation_id, history)
-	else {
-		return false;
-	};
-
-	pending == selected
-		&& history.conversation_id.as_ref() == Some(selected)
-		&& history.visible.is_some()
-		&& history.visible_source == Some(HistoryPageSource::FreshServer)
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum TranscriptRow {
-	Prompt {
-		turn_id: Option<EntityId>,
-		text: String,
-		pending: bool,
-	},
-	Response {
-		turn_id: EntityId,
-		text: String,
-		live: bool,
-	},
-	Activity {
-		history_item_id: EntityId,
-		kind: HistoryItemKindDto,
-		status: HistoryItemStatusDto,
-		text: String,
-	},
-}
-
-fn history_item_text(item: &HistoryItemDto) -> String {
-	match &item.payload {
-		HistoryPayloadDto::Inline { text } => text.as_str().to_owned(),
-		HistoryPayloadDto::Blob(reference) => format!(
-			"Stored content: {} bytes; SHA-256 {}...",
-			reference.byte_length.get(),
-			&reference.sha256.as_str()[..12],
-		),
-	}
-}
-
-fn append_response_row(rows: &mut Vec<TranscriptRow>, turn_id: &EntityId, text: &str, live: bool) {
-	if let Some(TranscriptRow::Response {
-		turn_id: existing_turn,
-		text: existing,
-		live: existing_live,
-	}) = rows.last_mut()
-		&& existing_turn == turn_id
-	{
-		existing.push_str(text);
-		*existing_live |= live;
-		return;
-	}
-
-	rows.push(TranscriptRow::Response { turn_id: turn_id.clone(), text: text.to_owned(), live });
-}
-
-fn conversation_transcript_rows(
-	snapshot: &ConversationsSnapshot,
-	history: Option<&HistorySnapshot>,
-	pending: Option<&PendingComposerSubmission>,
-) -> Vec<TranscriptRow> {
-	let selected = snapshot.selected.as_ref();
-	let visible_history = history.filter(|history| history.conversation_id.as_ref() == selected);
-	let persisted_inline_ids = visible_history
-		.and_then(|history| history.visible.as_ref())
-		.into_iter()
-		.flat_map(|page| page.items.iter())
-		.filter(|item| item.payload.inline_text().is_some())
-		.map(|item| item.history_item_id.clone())
-		.collect::<Vec<_>>();
-	let mut rows = Vec::new();
-
-	for item in visible_history
-		.and_then(|history| history.visible.as_ref())
-		.into_iter()
-		.flat_map(|page| page.items.iter())
-	{
-		let text = history_item_text(item);
-		match (item.turn_role, item.kind) {
-			(HistoryTurnRole::User, HistoryItemKindDto::Message) => {
-				rows.push(TranscriptRow::Prompt {
-					turn_id: Some(item.turn_id.clone()),
-					text,
-					pending: false,
-				});
-			},
-			(HistoryTurnRole::Assistant, HistoryItemKindDto::Message) => {
-				append_response_row(&mut rows, &item.turn_id, &text, false);
-			},
-			_ => rows.push(TranscriptRow::Activity {
-				history_item_id: item.history_item_id.clone(),
-				kind: item.kind,
-				status: item.status,
-				text,
-			}),
-		}
-	}
-
-	let active_conversation = selected.or_else(|| pending.map(|pending| &pending.conversation_id));
-	if let Some(pending) = pending
-		&& active_conversation == Some(&pending.conversation_id)
-		&& !pending_submission_is_persisted(pending, visible_history)
-	{
-		rows.push(TranscriptRow::Prompt {
-			turn_id: pending.turn_id.clone(),
-			text: pending.content.clone(),
-			pending: true,
-		});
-	}
-
-	for delta in snapshot.live_deltas.iter().filter(|delta| {
-		active_conversation == Some(&delta.conversation_id)
-			&& !persisted_inline_ids.iter().any(|persisted| persisted == &delta.history_item_id)
-	}) {
-		append_response_row(&mut rows, &delta.turn_id, delta.text.as_str(), true);
-	}
-
-	rows
-}
-
-fn conversation_recovery_presentation(task: Option<&ConversationSummary>) -> (bool, &'static str) {
-	let recovery_action = task.and_then(|task| task.recovery_action);
-	let outcome_unknown = task.is_some_and(|task| task.state == ConversationState::OutcomeUnknown);
-	let executable = outcome_unknown
-		|| recovery_action.is_some_and(|action| {
-			matches!(
-				action,
-				ConversationRecoveryAction::ResumeRouting
-					| ConversationRecoveryAction::CreateRoutingSuccessor
-					| ConversationRecoveryAction::ResumeEstablishment
-					| ConversationRecoveryAction::StartNewConversation
-			)
-		});
-	let label = if outcome_unknown {
-		"Retry sync"
-	} else if recovery_action == Some(ConversationRecoveryAction::StartNewConversation) {
-		"Start new"
-	} else {
-		"Recover"
-	};
-	(executable, label)
-}
-
-const HEALTH_CORE_COMPONENTS: [DoctorComponent; 8] = [
-	DoctorComponent::Configuration,
-	DoctorComponent::ProductStore,
-	DoctorComponent::Conversation,
-	DoctorComponent::Protocol,
-	DoctorComponent::ProtocolVersion,
-	DoctorComponent::ServerIdentity,
-	DoctorComponent::SharedCodexHome,
-	DoctorComponent::CredentialVault,
-];
-const HEALTH_APP_SERVER_COMPONENTS: [DoctorComponent; 8] = [
-	DoctorComponent::AppServerCapability(AppServerCapability::Initialize),
-	DoctorComponent::AppServerCapability(AppServerCapability::AccountRead),
-	DoctorComponent::AppServerCapability(AppServerCapability::ThreadList),
-	DoctorComponent::AppServerCapability(AppServerCapability::ThreadRead),
-	DoctorComponent::AppServerCapability(AppServerCapability::ThreadArchive),
-	DoctorComponent::AppServerCapability(AppServerCapability::PaginatedHistory),
-	DoctorComponent::AppServerCapability(AppServerCapability::NativeCollaboration),
-	DoctorComponent::AppServerCapability(AppServerCapability::ThreadSearch),
-];
-const HEALTH_OPTIONAL_COMPONENTS: [DoctorComponent; 2] =
-	[DoctorComponent::BlobIntegrity, DoctorComponent::PluginReadiness];
-
 actions!(
 	decodex_shell,
 	[
@@ -328,183 +100,42 @@ actions!(
 	]
 );
 
-/// Stable shell destinations. Each live destination remains issue-owned.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Destination {
-	Agent,
-	Advisor,
-	Projects,
-	Conversations,
-	Runs,
-	Automations,
-	Accounts,
-	Health,
-	Settings,
-}
-
-impl Destination {
-	pub(crate) const ALL: [Self; 9] = [
-		Self::Agent,
-		Self::Advisor,
-		Self::Projects,
-		Self::Conversations,
-		Self::Runs,
-		Self::Automations,
-		Self::Accounts,
-		Self::Health,
-		Self::Settings,
-	];
-
-	pub(crate) const fn label(self) -> &'static str {
-		match self {
-			Self::Agent => "Main",
-			Self::Advisor => "Advisor",
-			Self::Projects => "Projects",
-			Self::Conversations => "History",
-			Self::Runs => "Runs",
-			Self::Automations => "Automations",
-			Self::Accounts => "Accounts",
-			Self::Health => "Diagnostics",
-			Self::Settings => "Settings",
-		}
-	}
-
-	const fn description(self) -> &'static str {
-		match self {
-			Self::Agent => "Open Agent",
-			Self::Advisor => "Review guidance and bounded decisions.",
-			Self::Projects => "Own repositories and product context.",
-			Self::Conversations =>
-				"Chat directly with Codex: choose a conversation, write a message, and read its reply.",
-			Self::Runs => "Inspect managed run activity and evidence.",
-			Self::Automations => "Operate scheduled and event-driven work.",
-			Self::Accounts =>
-				"Accounts: manage sign-in, usage limits, and the account used for new work.",
-			Self::Health => "Diagnostics: check connection health and find the cause of errors.",
-			Self::Settings => "Configure the window and in-process menu bar.",
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum InspectorTab {
-	Context,
-	Activity,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct ConnectionPresentation {
-	label: &'static str,
-	detail: SharedString,
-	color: u32,
-}
-
-fn connection_presentation(view: ConnectionView) -> ConnectionPresentation {
-	match view {
-		ConnectionView::Connecting { .. } => ConnectionPresentation {
-			label: "Connecting",
-			detail: "Starting Decodex.".into(),
-			color: 0xf59e0b,
-		},
-		ConnectionView::Online { .. } => ConnectionPresentation {
-			label: "Online",
-			detail: "Connected and ready.".into(),
-			color: 0x22c55e,
-		},
-		ConnectionView::OfflineRetrying { .. } => ConnectionPresentation {
-			label: "Reconnecting",
-			detail: "Trying to restore Decodex.".into(),
-			color: 0xf97316,
-		},
-		ConnectionView::Incompatible(_) => ConnectionPresentation {
-			label: "Restart Decodex",
-			detail: "Restart Decodex to restore the connection.".into(),
-			color: crate::ui_theme::ERROR,
-		},
-		ConnectionView::Quarantined { .. } => ConnectionPresentation {
-			label: "Restart Decodex",
-			detail: "Restart Decodex to restore the connection.".into(),
-			color: 0xdc2626,
-		},
-		ConnectionView::ShuttingDown => ConnectionPresentation {
-			label: "Shutting down",
-			detail: "Closing the retained session cooperatively".into(),
-			color: 0x94a3b8,
-		},
-		ConnectionView::Stopped => ConnectionPresentation {
-			label: "Restart Decodex",
-			detail: "Restart Decodex to restore the connection.".into(),
-			color: 0x64748b,
-		},
-	}
-}
-
-const fn startup_failure(failure: ClientFailure) -> &'static str {
-	match failure {
-		ClientFailure::ConfigurationMissing => "Client configuration is missing",
-		ClientFailure::ConfigurationMalformed => "Client configuration is malformed",
-		ClientFailure::ConfigurationVersion => "Client configuration version is unsupported",
-		ClientFailure::ProfileMissing => "Selected server profile is missing",
-		ClientFailure::UnsafeHostPath => "Client configuration path is unsafe",
-		ClientFailure::ServerIdentityUnavailable => "Stable server identity is unavailable",
-		ClientFailure::RemoteMutationUnsupported =>
-			"Reset-card operations require a local pinned profile",
-		ClientFailure::LocalTransportDisabled => "Local daemon transport is disabled",
-		ClientFailure::RemoteTransportDisabled => "Remote daemon transport is disabled",
-		ClientFailure::LocalTransportUnsupported => "Local daemon transport is unsupported",
-		ClientFailure::UnsafeLocalEndpoint => "Local daemon endpoint is unsafe",
-		ClientFailure::LocalPeerIdentityUnavailable => "Local daemon identity is unavailable",
-		ClientFailure::LocalPeerUidMismatch => "Local daemon peer UID does not match",
-		ClientFailure::ProtocolDisconnected
-		| ClientFailure::ProtocolTimeout
-		| ClientFailure::ServiceVersionMismatch => "Restart Decodex.",
-		ClientFailure::ServerIdentityMismatch => "Stable server identity does not match",
-		ClientFailure::ProtocolMalformed => "Daemon response is malformed",
-		ClientFailure::ProtocolViolation => "Daemon protocol ordering was refused",
-		ClientFailure::ProtocolBackpressure => "Daemon message allowance was exhausted",
-		ClientFailure::ApplicationAcceptanceUnknown => "Application command acceptance is unknown",
-	}
-}
-
-/// Bind the shell's complete keyboard path once at application startup.
-pub(crate) fn bind_keys(cx: &mut App) {
-	composer_input::bind_keys(cx);
-	cx.bind_keys([
-		KeyBinding::new("cmd-w", CloseSettings, Some("SettingsWindow")),
-		KeyBinding::new("escape", CloseSettings, Some("SettingsWindow")),
-	]);
-	cx.bind_keys([
-		KeyBinding::new("tab", FocusNext, None),
-		KeyBinding::new("shift-tab", FocusPrevious, None),
-		KeyBinding::new("cmd-2", ActivateAgent, None),
-		KeyBinding::new("cmd-1", ActivateAgent, None),
-		KeyBinding::new("cmd-3", ActivateHealth, None),
-		KeyBinding::new("cmd-,", ActivateSettings, None),
-		KeyBinding::new("cmd-e", ToggleSidebar, None),
-		KeyBinding::new("ctrl-alt--", ShrinkPanel, None),
-		KeyBinding::new("ctrl-alt-=", GrowPanel, None),
-		KeyBinding::new("ctrl-alt-0", ResetPanel, None),
-		KeyBinding::new("ctrl-alt-shift--", ShrinkPanels, None),
-		KeyBinding::new("ctrl-alt-shift-=", GrowPanels, None),
-		KeyBinding::new("ctrl-alt-shift-0", ResetPanels, None),
-		// macOS normalizes shifted punctuation and consumes the Shift modifier.
-		KeyBinding::new("ctrl-alt-+", GrowPanels, None),
-		KeyBinding::new("ctrl-alt-_", ShrinkPanels, None),
-		KeyBinding::new("ctrl-alt-)", ResetPanels, None),
-		KeyBinding::new("cmd-b", ToggleInspector, None),
-		KeyBinding::new("cmd-j", ToggleGraph, None),
-		KeyBinding::new("cmd-[", NavigateBack, None),
-		KeyBinding::new("cmd-]", NavigateForward, None),
-		KeyBinding::new("enter", ActivateDestination, Some("Destination")),
-		KeyBinding::new("space", ActivateDestination, Some("Destination")),
-		KeyBinding::new("enter", RefreshHealth, Some("HealthRefresh")),
-		KeyBinding::new("space", RefreshHealth, Some("HealthRefresh")),
-		KeyBinding::new("up", SelectPreviousConversation, Some("Conversations")),
-		KeyBinding::new("down", SelectNextConversation, Some("Conversations")),
-		KeyBinding::new("enter", ActivateConversationRow, Some("ConversationRow")),
-		KeyBinding::new("space", ActivateConversationRow, Some("ConversationRow")),
-	]);
-}
+// Match the gap below floating controls to their inset from the window edge.
+const WINDOW_CONTROLS_CLEARANCE: f32 =
+	ui_theme::CONTROL_MARGIN * 2.0 + ui_theme::CONTROL_GROUP_HEIGHT;
+const WORKBENCH_SESSION_SIDEBAR_WIDTH: f32 = 248.0;
+const WORKBENCH_INSPECTOR_WIDTH: f32 = 344.0;
+const LIFECYCLE_POLL: Duration = Duration::from_millis(40);
+const WB_CANVAS: u32 = ui_theme::CANVAS;
+const WB_TEXT: u32 = ui_theme::TEXT;
+const WB_TEXT_MUTED: u32 = ui_theme::TEXT_MUTED;
+const WB_TEXT_FAINT: u32 = ui_theme::TEXT_FAINT;
+const WB_ACCENT: u32 = ui_theme::ACCENT;
+const WB_BLUE: u32 = ui_theme::BLUE;
+const WB_GREEN: u32 = ui_theme::GREEN;
+const WB_AMBER: u32 = ui_theme::AMBER;
+const HEALTH_CORE_COMPONENTS: [DoctorComponent; 8] = [
+	DoctorComponent::Configuration,
+	DoctorComponent::ProductStore,
+	DoctorComponent::Conversation,
+	DoctorComponent::Protocol,
+	DoctorComponent::ProtocolVersion,
+	DoctorComponent::ServerIdentity,
+	DoctorComponent::SharedCodexHome,
+	DoctorComponent::CredentialVault,
+];
+const HEALTH_APP_SERVER_COMPONENTS: [DoctorComponent; 8] = [
+	DoctorComponent::AppServerCapability(AppServerCapability::Initialize),
+	DoctorComponent::AppServerCapability(AppServerCapability::AccountRead),
+	DoctorComponent::AppServerCapability(AppServerCapability::ThreadList),
+	DoctorComponent::AppServerCapability(AppServerCapability::ThreadRead),
+	DoctorComponent::AppServerCapability(AppServerCapability::ThreadArchive),
+	DoctorComponent::AppServerCapability(AppServerCapability::PaginatedHistory),
+	DoctorComponent::AppServerCapability(AppServerCapability::NativeCollaboration),
+	DoctorComponent::AppServerCapability(AppServerCapability::ThreadSearch),
+];
+const HEALTH_OPTIONAL_COMPONENTS: [DoctorComponent; 2] =
+	[DoctorComponent::BlobIntegrity, DoctorComponent::PluginReadiness];
 
 /// One window-owned production shell. Connection ownership lives at application scope.
 pub(crate) struct Shell {
@@ -568,17 +199,16 @@ pub(crate) struct Shell {
 	#[cfg(all(target_os = "macos", not(test)))]
 	native_status: native_status::NativeStatus,
 }
-
-#[path = "ordinary_drafts.rs"] mod ordinary_drafts;
-
 impl Shell {
 	pub(crate) fn drafts_ready_for_quit(&mut self, cx: &mut Context<Self>) -> bool {
 		self.sync_ordinary_drafts(cx);
+
 		self.agent.update(cx, |surface, cx| surface.drafts_ready_for_quit(cx))
 	}
 
 	pub(crate) fn flush_drafts_for_quit(&mut self, cx: &mut Context<Self>) -> Task<bool> {
 		self.sync_ordinary_drafts(cx);
+
 		self.agent.update(cx, |surface, cx| surface.flush_drafts_for_quit(cx))
 	}
 
@@ -588,17 +218,22 @@ impl Shell {
 		cx: &mut Context<Self>,
 	) -> Self {
 		self.account_emails = Default::default();
+
 		self.expanded_accounts.clear();
 		self.account_activity.clear();
+
 		self.reset_cards = Default::default();
 		self.reset_cards.profile = profile.clone();
+
 		let cwd = self.conversations.working_directory();
+
 		self.agent.update(cx, |surface, cx| {
 			surface.bind_profile(profile, cx);
 			surface.seed_context(cwd, vec![], cx);
 			surface.refresh(cx);
 		});
 		self.reset_ordinary_draft_binding(cx);
+
 		self
 	}
 
@@ -616,19 +251,24 @@ impl Shell {
 			cx.focus_handle().tab_index(Destination::ALL.len() as isize).tab_stop(true);
 		let root_focus = cx.focus_handle();
 		let composer = cx.new(|cx| ComposerInput::new(Destination::ALL.len() as isize + 1, cx));
+
 		cx.subscribe(&composer, |shell, _, _: &ComposerEvent, cx| {
 			shell.input_status = None;
+
 			shell.sync_ordinary_drafts(cx);
 			cx.notify();
 		})
 		.detach();
+
 		let agent = cx.new(AgentSurface::new);
+
 		cx.observe(&agent, |shell, _, cx| {
 			shell.record_navigation(cx);
 			shell.sync_ordinary_drafts(cx);
 			cx.notify();
 		})
 		.detach();
+
 		let desktop_settings = DesktopSettingsController::production();
 		let desktop_settings_snapshot = desktop_settings.snapshot();
 		let account_profile_controller = AccountProfileController::production();
@@ -640,10 +280,12 @@ impl Shell {
 		let health_query = HealthQuery::production();
 		let health = health_query.snapshot();
 		let conversations = Conversations::production();
-		conversations.activate();
-		let quick = conversations.snapshot();
-		window.focus(&root_focus, cx);
 
+		conversations.activate();
+
+		let quick = conversations.snapshot();
+
+		window.focus(&root_focus, cx);
 		Self {
 			settings_window: None,
 			settings_selected: Destination::Settings,
@@ -713,6 +355,7 @@ impl Shell {
 		account_login: Option<Arc<AccountLoginController>>,
 	) -> Self {
 		self.account_login = account_login;
+
 		self
 	}
 
@@ -766,6 +409,7 @@ impl Shell {
 			)
 			.expect("visual Conversation projection is valid")
 		};
+
 		shell.quick = ConversationsSnapshot {
 			model_review_message: None,
 			catalog: None,
@@ -816,12 +460,14 @@ impl Shell {
 
 		shell.visual_accounts_and_health();
 		shell.visual_history(conversation_id, runtime_session_id);
+
 		shell
 	}
 
 	#[cfg(any(test, feature = "visual-capture"))]
 	fn visual_accounts_and_health(&mut self) {
 		use decodex_protocol::{AccountRoutingControlDto, EntityRevision, WireText};
+
 		let visual_account =
 			|id: &str, alias: &str, used_five_hour: u8, used_seven_day: u8, revision: u64| {
 				AccountDto {
@@ -854,9 +500,12 @@ impl Shell {
 		let primary = visual_account("70000000-0000-4000-8000-000000000001", "Primary", 64, 28, 12);
 		let mut reserve =
 			visual_account("70000000-0000-4000-8000-000000000002", "Build reserve", 18, 9, 7);
+
 		reserve.five_hour_quota.result = AccountQuotaStateDto::NotApplicable;
+
 		let mut research =
 			visual_account("70000000-0000-4000-8000-000000000003", "Research reserve", 91, 55, 4);
+
 		research.observed_state = AccountObservedStateDto::AuthFailed;
 		self.accounts = AccountsSnapshot {
 			load: AccountsLoadState::Ready,
@@ -872,8 +521,10 @@ impl Shell {
 			can_route: true,
 			route_reopen_notice: false,
 		};
+
 		self.seed_account_activity();
 		self.reset_cards.seed_visual(&self.accounts.accounts);
+
 		let health_checks = DoctorComponent::ALL
 			.into_iter()
 			.map(|component| {
@@ -883,9 +534,11 @@ impl Shell {
 					DoctorComponent::PluginReadiness => DoctorStatus::Unknown(DoctorIssue::Plugin),
 					_ => DoctorStatus::Ready,
 				};
+
 				decodex_protocol::DoctorCheck::new(component, status)
 			})
 			.collect();
+
 		self.health = HealthSnapshot {
 			load: HealthLoadState::Ready,
 			report: Some(
@@ -904,6 +557,7 @@ impl Shell {
 	#[cfg(feature = "visual-capture")]
 	fn visual_history(&mut self, conversation_id: EntityId, runtime_session_id: EntityId) {
 		use crate::history_pager::{HistoryCursorObservation, HistoryPageSource};
+
 		use decodex_protocol::ConversationHistoryPage;
 
 		let item = |history_item_id: &str,
@@ -988,6 +642,7 @@ impl Shell {
 			],
 			next_cursor: None,
 		};
+
 		self.history = Some(HistorySnapshot {
 			conversation_id: Some(conversation_id.clone()),
 			view_generation: 1,
@@ -1022,7 +677,9 @@ impl Shell {
 		cx: &mut Context<Self>,
 	) -> Self {
 		let mut shell = Self::visual_workbench(window, cx);
+
 		shell.selected = destination;
+
 		if destination == Destination::Accounts
 			&& std::env::var_os("DECODEX_VISUAL_ACCOUNTS_EXPANDED").is_some()
 		{
@@ -1034,15 +691,18 @@ impl Shell {
 			shell.connection = ConnectionView::Stopped;
 			shell.agent.update(cx, |surface, cx| {
 				surface.visual_workspace_fixture(cx);
+
 				if let Ok(page) = std::env::var("DECODEX_VISUAL_WORKSPACE_PAGE") {
 					surface
 						.visual_workspace_page(if page == "status" { "empty" } else { &page }, cx);
+
 					if page == "status" {
 						surface.mark_stale(cx);
 					}
 				}
 			});
 		}
+
 		shell.status_open = std::env::var("DECODEX_VISUAL_WORKSPACE_PAGE")
 			.is_ok_and(|page| page == "status")
 			|| std::env::var_os("DECODEX_VISUAL_STATUS").is_some();
@@ -1050,6 +710,7 @@ impl Shell {
 		shell.left_sidebar_mounted = left_sidebar_visible;
 		shell.inspector_visible = inspector_visible;
 		shell.inspector_mounted = inspector_visible;
+
 		shell
 	}
 
@@ -1093,11 +754,12 @@ impl Shell {
 		if self.selected == Destination::Accounts {
 			self.accounts_controller.deactivate();
 		}
-
 		if self.selected == Destination::Agent {
 			self.agent.update(cx, AgentSurface::stop_voice);
 		}
+
 		self.selected = destination;
+
 		if destination == Destination::Agent {
 			let cwd = self.conversations.working_directory();
 			let accounts = self
@@ -1108,6 +770,7 @@ impl Shell {
 					(account.account_id.as_str().to_owned(), account.alias.as_str().to_owned())
 				})
 				.collect();
+
 			self.agent.update(cx, |surface, cx| surface.seed_context(cwd, accounts, cx));
 			self.agent.update(cx, AgentSurface::refresh);
 		}
@@ -1116,6 +779,7 @@ impl Shell {
 		}
 		if destination == Destination::Conversations {
 			self.conversations.activate();
+
 			self.last_provider_sync = None;
 		}
 		if destination == Destination::Accounts {
@@ -1125,7 +789,9 @@ impl Shell {
 		if destination == Destination::Settings {
 			self.settings.update(cx, SettingsSurface::refresh);
 		}
+
 		self.health = self.health_query.snapshot();
+
 		self.record_navigation(cx);
 		cx.notify();
 	}
@@ -1153,26 +819,32 @@ impl Shell {
 		if self.left_sidebar_visible == visible {
 			return;
 		}
+
 		self.left_sidebar_visible = visible;
 		self.left_sidebar_mounted = true;
 		self.left_sidebar_motion_generation = self.left_sidebar_motion_generation.wrapping_add(1);
+
 		let generation = self.left_sidebar_motion_generation;
+
 		if !visible {
 			cx.spawn(async move |shell, cx| {
 				cx.background_executor()
 					.timer(ui_theme::MOTION_PANEL + Duration::from_millis(24))
 					.await;
+
 				let _ = shell.update(cx, |shell, cx| {
 					if !shell.left_sidebar_visible
 						&& shell.left_sidebar_motion_generation == generation
 					{
 						shell.left_sidebar_mounted = false;
+
 						cx.notify();
 					}
 				});
 			})
 			.detach();
 		}
+
 		cx.notify();
 	}
 
@@ -1180,24 +852,30 @@ impl Shell {
 		if self.inspector_visible == visible {
 			return;
 		}
+
 		self.inspector_visible = visible;
 		self.inspector_mounted = true;
 		self.inspector_motion_generation = self.inspector_motion_generation.wrapping_add(1);
+
 		let generation = self.inspector_motion_generation;
+
 		if !visible {
 			cx.spawn(async move |shell, cx| {
 				cx.background_executor()
 					.timer(ui_theme::MOTION_PANEL + Duration::from_millis(24))
 					.await;
+
 				let _ = shell.update(cx, |shell, cx| {
 					if !shell.inspector_visible && shell.inspector_motion_generation == generation {
 						shell.inspector_mounted = false;
+
 						cx.notify();
 					}
 				});
 			})
 			.detach();
 		}
+
 		cx.notify();
 	}
 
@@ -1208,6 +886,7 @@ impl Shell {
 		if self.selected != Destination::Agent {
 			self.set_left_sidebar_visible(!self.left_sidebar_visible, cx);
 		}
+
 		cx.stop_propagation();
 	}
 
@@ -1218,6 +897,7 @@ impl Shell {
 		if self.selected == Destination::Conversations {
 			self.set_inspector_visible(!self.inspector_visible, cx);
 		}
+
 		cx.stop_propagation();
 	}
 
@@ -1233,9 +913,12 @@ impl Shell {
 		if self.selected == Destination::Agent {
 			if self.status_open {
 				self.status_open = false;
+
 				cx.notify();
+
 				return;
 			}
+
 			self.agent.update(cx, AgentSurface::escape_interrupt);
 			cx.stop_propagation();
 		}
@@ -1245,6 +928,7 @@ impl Shell {
 		if self.selected == Destination::Agent {
 			self.agent.update(cx, AgentSurface::toggle_workspace_graph);
 		}
+
 		cx.stop_propagation();
 	}
 
@@ -1259,18 +943,22 @@ impl Shell {
 	fn request_health_refresh(&mut self, cx: &mut Context<Self>) {
 		if self.health_query.refresh() {
 			self.health = self.health_query.snapshot();
+
 			cx.notify();
 		}
 	}
 
 	fn bind_health_query(&mut self, health_query: HealthQuery, cx: &mut Context<Self>) {
 		self.health_query = health_query;
+
 		if self.selected == Destination::Health
 			|| (self.settings_window.is_some() && self.settings_selected == Destination::Health)
 		{
 			self.health_query.activate();
 		}
+
 		self.health = self.health_query.snapshot();
+
 		cx.notify();
 	}
 
@@ -1281,6 +969,7 @@ impl Shell {
 	) {
 		self.desktop_settings = desktop_settings.clone();
 		self.desktop_settings_snapshot = desktop_settings.snapshot();
+
 		self.settings.update(cx, |settings, cx| {
 			settings.bind_controller(desktop_settings, cx);
 		});
@@ -1293,6 +982,7 @@ impl Shell {
 	) {
 		self.account_profile_controller = account_profile;
 		self.account_profile = self.account_profile_controller.snapshot();
+
 		cx.notify();
 	}
 
@@ -1303,13 +993,19 @@ impl Shell {
 		cx: &mut Context<Self>,
 	) {
 		self.conversations.deactivate();
+
 		self.conversations = conversations;
+
 		self.reset_ordinary_draft_binding(cx);
+
 		self.history_pager = Some(history_pager);
+
 		if self.selected == Destination::Conversations {
 			self.conversations.activate();
+
 			self.last_provider_sync = None;
 		}
+
 		self.synchronize_conversations(cx);
 		self.reconcile_pending_submission(cx);
 		cx.notify();
@@ -1317,12 +1013,15 @@ impl Shell {
 
 	fn bind_accounts(&mut self, accounts: AccountsController, cx: &mut Context<Self>) {
 		self.accounts_controller.deactivate();
+
 		self.accounts_controller = accounts;
+
 		if self.selected == Destination::Accounts
 			|| (self.settings_window.is_some() && self.settings_selected == Destination::Accounts)
 		{
 			self.accounts_controller.activate();
 		}
+
 		self.synchronize_accounts();
 		cx.notify();
 	}
@@ -1343,6 +1042,7 @@ impl Shell {
 			.err()
 			.map(account_input_error_label)
 			.map(Into::into);
+
 		self.synchronize_accounts();
 		cx.notify();
 	}
@@ -1354,6 +1054,7 @@ impl Shell {
 			.err()
 			.map(account_input_error_label)
 			.map(Into::into);
+
 		self.synchronize_accounts();
 		cx.notify();
 	}
@@ -1365,6 +1066,7 @@ impl Shell {
 			.err()
 			.map(account_input_error_label)
 			.map(Into::into);
+
 		self.synchronize_accounts();
 		cx.notify();
 	}
@@ -1374,9 +1076,12 @@ impl Shell {
 			self.pending_account_logout = Some(account_id.clone());
 			self.account_status =
 				Some("Select Log out again to confirm credential deletion.".into());
+
 			cx.notify();
+
 			return;
 		}
+
 		self.pending_account_logout = None;
 		self.account_status = self
 			.accounts_controller
@@ -1384,6 +1089,7 @@ impl Shell {
 			.err()
 			.map(account_input_error_label)
 			.map(Into::into);
+
 		self.synchronize_accounts();
 		cx.notify();
 	}
@@ -1395,6 +1101,7 @@ impl Shell {
 			.err()
 			.map(account_input_error_label)
 			.map(Into::into);
+
 		self.synchronize_accounts();
 		cx.notify();
 	}
@@ -1403,6 +1110,7 @@ impl Shell {
 		if !self.expanded_accounts.remove(&account) {
 			self.expanded_accounts.insert(account);
 		}
+
 		self.refresh_expanded_activity();
 		cx.notify();
 	}
@@ -1415,9 +1123,11 @@ impl Shell {
 				&a.account_id == id && cached.selected_revision == Some(a.account_revision)
 			})
 		});
+
 		if self.account_profile.load == AccountProfileLoadState::Loading {
 			return;
 		}
+
 		let next = self.accounts.accounts.iter().find(|account| {
 			self.expanded_accounts.contains(&account.account_id)
 				&& self.account_activity.get(&account.account_id).is_none_or(|(snapshot, at)| {
@@ -1425,6 +1135,7 @@ impl Shell {
 						|| at.elapsed() >= Duration::from_secs(30)
 				})
 		});
+
 		if let Some(account) = next {
 			if self.account_profile_controller.snapshot().selected.as_ref()
 				== Some(&account.account_id)
@@ -1434,7 +1145,9 @@ impl Shell {
 				self.account_profile_controller
 					.select_at_revision(account.account_id.clone(), account.account_revision);
 			}
+
 			self.account_profile = self.account_profile_controller.snapshot();
+
 			if matches!(
 				self.account_profile.load,
 				AccountProfileLoadState::Offline | AccountProfileLoadState::Refused
@@ -1446,12 +1159,14 @@ impl Shell {
 			}
 		} else if self.expanded_accounts.is_empty() {
 			self.account_profile_controller.close();
+
 			self.account_profile = self.account_profile_controller.snapshot();
 		}
 	}
 
 	fn start_account_enrollment(&mut self, method: AccountLoginMethod, cx: &mut Context<Self>) {
 		let start = account_login_start(method, None);
+
 		self.start_account_login(start, cx);
 	}
 
@@ -1466,6 +1181,7 @@ impl Shell {
 			AccountLoginMethod::DeviceCode,
 			Some((account_id, expected_revision, recovery_operation_id)),
 		);
+
 		self.start_account_login(start, cx);
 	}
 
@@ -1476,24 +1192,31 @@ impl Shell {
 	) {
 		if self.account_login_task.is_some() {
 			self.account_login_error = Some("An account login is already active.".into());
+
 			cx.notify();
+
 			return;
 		}
+
 		let Some(controller) = self.account_login.clone() else {
 			self.account_login_error =
 				Some("The local account-login client is unavailable.".into());
+
 			cx.notify();
+
 			return;
 		};
 		let Ok(start) = start else {
 			self.account_login_error = start.err();
+
 			cx.notify();
+
 			return;
 		};
-
 		let cancellation = Arc::new(AtomicBool::new(false));
 		let task_cancellation = Arc::clone(&cancellation);
 		let (updates, receiver) = mpsc::channel();
+
 		self.account_login_status = None;
 		self.account_login_error = None;
 		self.opened_account_login_url = None;
@@ -1504,14 +1227,17 @@ impl Shell {
 				.enable_all()
 				.build()
 				.expect("build the bounded account-login runtime");
+
 			runtime.block_on(async move {
 				let mut status = match controller.start(start).await {
 					Ok(status) => status,
 					Err(failure) => {
 						let _ = updates.send(Err(failure));
+
 						return;
 					},
 				};
+
 				loop {
 					let terminal = matches!(
 						status.state,
@@ -1520,32 +1246,40 @@ impl Shell {
 							| AccountLoginState::Cancelled
 					);
 					let session_id = status.session_id.clone();
+
 					if updates.send(Ok(status)).is_err() || terminal {
 						return;
 					}
+
 					tokio::time::sleep(Duration::from_millis(350)).await;
+
 					let next = if task_cancellation.load(Ordering::Acquire) {
 						controller.cancel(session_id).await
 					} else {
 						controller.status(session_id).await
 					};
+
 					match next {
 						Ok(next) => status = next,
 						Err(failure) => {
 							let _ = updates.send(Err(failure));
+
 							return;
 						},
 					}
 				}
 			});
 		}));
+
 		cx.notify();
 	}
 
 	fn cancel_account_login(&mut self, cx: &mut Context<Self>) {
 		if let Some(cancellation) = &self.account_login_cancellation {
 			cancellation.store(true, Ordering::Release);
+
 			self.account_login_error = Some("Cancelling account login…".into());
+
 			cx.notify();
 		}
 	}
@@ -1556,9 +1290,11 @@ impl Shell {
 			.as_ref()
 			.map(|receiver| receiver.try_iter().collect::<Vec<_>>())
 			.unwrap_or_default();
+
 		if updates.is_empty() {
 			return;
 		}
+
 		for update in updates {
 			match update {
 				Ok(status) => {
@@ -1566,19 +1302,24 @@ impl Shell {
 						&& self.opened_account_login_url.as_deref() != Some(url.as_str())
 					{
 						self.opened_account_login_url = Some(url.as_str().to_owned());
+
 						cx.open_url(url.as_str());
 					}
+
 					let terminal = matches!(
 						status.state,
 						AccountLoginState::Completed
 							| AccountLoginState::Failed
 							| AccountLoginState::Cancelled
 					);
+
 					if status.state == AccountLoginState::Completed {
 						let _ = self.accounts_controller.refresh();
 					}
+
 					self.account_login_error = None;
 					self.account_login_status = Some(status);
+
 					if terminal {
 						self.account_login_task = None;
 						self.account_login_cancellation = None;
@@ -1593,6 +1334,7 @@ impl Shell {
 				},
 			}
 		}
+
 		self.synchronize_accounts();
 		cx.notify();
 	}
@@ -1605,7 +1347,9 @@ impl Shell {
 			.map(|prompt| prompt.user_code.as_str().to_owned())
 		{
 			cx.write_to_clipboard(ClipboardItem::new_string(code));
+
 			self.account_login_error = Some("Login code copied.".into());
+
 			cx.notify();
 		}
 	}
@@ -1617,6 +1361,7 @@ impl Shell {
 					status.prompt.as_ref().map(|prompt| prompt.verification_url.as_str())
 				})
 			});
+
 		if let Some(url) = url {
 			cx.open_url(url);
 		}
@@ -1626,18 +1371,23 @@ impl Shell {
 		self.sync_ordinary_drafts(cx);
 		self.conversations.ensure_initial_catalog();
 		self.conversations.ensure_model_settings();
+
 		let snapshot = self.conversations.snapshot();
 		let selected = snapshot.selected.clone();
+
 		if selected.is_none()
 			&& self.opened_history.is_some()
 			&& let Some(pager) = self.history_pager.as_ref()
 		{
 			pager.cancel();
+
 			self.opened_history = None;
 		}
+
 		let should_open = selected
 			.as_ref()
 			.is_some_and(|conversation_id| self.opened_history.as_ref() != Some(conversation_id));
+
 		if should_open
 			&& let (Some(pager), Some(conversation_id)) =
 				(self.history_pager.as_ref(), selected.clone())
@@ -1648,15 +1398,19 @@ impl Shell {
 		if self.creating_new && snapshot.selected.is_some() {
 			self.creating_new = false;
 		}
+
 		self.quick = snapshot;
 		self.history = self.history_pager.as_ref().map(HistoryPager::snapshot);
+
 		if deferred_provider_refresh_ready(
 			self.deferred_provider_refresh.as_ref(),
 			self.quick.selected.as_ref(),
 			self.history.as_ref(),
 		) {
 			self.deferred_provider_refresh = None;
+
 			let _ = self.conversations.refresh_selected_silently();
+
 			self.quick = self.conversations.snapshot();
 		}
 	}
@@ -1665,10 +1419,13 @@ impl Shell {
 		let Some(pending) = self.pending_submission.as_ref() else {
 			return;
 		};
+
 		if pending.accepted && pending_submission_is_persisted(pending, self.history.as_ref()) {
 			self.pending_submission = None;
+
 			return;
 		}
+
 		let Some(clear) = pending_submission_clear_decision(
 			pending,
 			self.quick.submission_result_generation,
@@ -1677,13 +1434,17 @@ impl Shell {
 		) else {
 			return;
 		};
+
 		if !self.quick.last_submission_accepted {
 			self.pending_submission = None;
+
 			return;
 		}
+
 		if let Some(pending) = self.pending_submission.as_mut() {
 			pending.accepted = true;
 		}
+
 		if clear {
 			self.composer.update(cx, |composer, cx| composer.clear(cx));
 		}
@@ -1698,13 +1459,17 @@ impl Shell {
 
 	fn start_new_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		self.conversations.begin_new();
+
 		self.deferred_provider_refresh = None;
+
 		if let Some(pager) = self.history_pager.as_ref() {
 			pager.cancel();
 		}
+
 		self.opened_history = None;
 		self.creating_new = true;
 		self.input_status = None;
+
 		self.synchronize_conversations(cx);
 		window.focus(&self.composer.focus_handle(cx), cx);
 		cx.notify();
@@ -1723,6 +1488,7 @@ impl Shell {
 			self.creating_new = false;
 			self.opened_history = None;
 			self.input_status = None;
+
 			self.synchronize_conversations(cx);
 			window.focus(&self.composer.focus_handle(cx), cx);
 			cx.notify();
@@ -1733,6 +1499,7 @@ impl Shell {
 		if self.selected != Destination::Conversations || self.quick.tasks.is_empty() {
 			return;
 		}
+
 		let current = self.quick.selected.as_ref().and_then(|selected| {
 			self.quick.tasks.iter().position(|task| &task.conversation_id == selected)
 		});
@@ -1740,11 +1507,13 @@ impl Shell {
 			return;
 		};
 		let conversation_id = self.quick.tasks[next].conversation_id.clone();
+
 		if self.conversations.select(conversation_id.clone()) {
 			self.deferred_provider_refresh = Some(conversation_id);
 			self.creating_new = false;
 			self.opened_history = None;
 			self.input_status = None;
+
 			self.synchronize_conversations(cx);
 			cx.notify();
 		}
@@ -1786,6 +1555,7 @@ impl Shell {
 		} else {
 			self.conversations.submit(&message)
 		};
+
 		match result {
 			Ok(QueuedConversationSubmission { conversation_id, turn_id }) => {
 				self.pending_submission = Some(PendingComposerSubmission {
@@ -1800,6 +1570,7 @@ impl Shell {
 			},
 			Err(error) => self.input_status = Some(input_error_label(error).into()),
 		}
+
 		self.synchronize_conversations(cx);
 		self.reconcile_pending_submission(cx);
 		cx.notify();
@@ -1808,11 +1579,14 @@ impl Shell {
 	fn recover_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		let state = self.quick.selected_task().map(|task| task.state);
 		let action = self.quick.selected_task().and_then(|task| task.recovery_action);
+
 		if state == Some(ConversationState::OutcomeUnknown) {
 			self.input_status =
 				self.conversations.refresh_selected().err().map(input_error_label).map(Into::into);
+
 			self.synchronize_conversations(cx);
 			cx.notify();
+
 			return;
 		}
 		if action == Some(ConversationRecoveryAction::ReviewModelSettings) {
@@ -1827,16 +1601,21 @@ impl Shell {
 			} else {
 				Some("Model options could not be refreshed.".into())
 			};
+
 			self.synchronize_conversations(cx);
 			cx.notify();
+
 			return;
 		}
 		if action == Some(ConversationRecoveryAction::StartNewConversation) {
 			self.start_new_conversation(window, cx);
+
 			return;
 		}
+
 		self.input_status =
 			self.conversations.recover_selected().err().map(input_error_label).map(Into::into);
+
 		self.synchronize_conversations(cx);
 		cx.notify();
 	}
@@ -1845,6 +1624,7 @@ impl Shell {
 		if let Err(error) = self.conversations.interrupt() {
 			self.input_status = Some(input_error_label(error).into());
 		}
+
 		self.synchronize_conversations(cx);
 		cx.notify();
 	}
@@ -1852,6 +1632,7 @@ impl Shell {
 	fn refresh_conversation(&mut self, _: &mut Window, cx: &mut Context<Self>) {
 		self.input_status =
 			self.conversations.refresh_all().err().map(input_error_label).map(Into::into);
+
 		self.synchronize_conversations(cx);
 		cx.notify();
 	}
@@ -1859,6 +1640,7 @@ impl Shell {
 	fn archive_conversation(&mut self, _: &mut Window, cx: &mut Context<Self>) {
 		self.input_status =
 			self.conversations.archive_selected().err().map(input_error_label).map(Into::into);
+
 		self.synchronize_conversations(cx);
 		cx.notify();
 	}
@@ -1885,6 +1667,7 @@ impl Shell {
 		if let Some(pager) = self.history_pager.as_ref() {
 			let _ = pager.show_previous();
 		}
+
 		self.synchronize_conversations(cx);
 		cx.notify();
 	}
@@ -1893,6 +1676,7 @@ impl Shell {
 		if let Some(pager) = self.history_pager.as_ref() {
 			let _ = pager.show_next();
 		}
+
 		self.synchronize_conversations(cx);
 		cx.notify();
 	}
@@ -1901,8 +1685,66 @@ impl Shell {
 		if let Some(pager) = self.history_pager.as_ref() {
 			let _ = pager.retry();
 		}
+
 		self.synchronize_conversations(cx);
 		cx.notify();
+	}
+}
+
+impl Shell {
+	fn drop_account(&mut self, drag: &AccountDrag, target: &EntityId, cx: &mut Context<Self>) {
+		let Some(routing) = &self.accounts.routing else { return };
+
+		if !self.accounts.can_manage || Some(routing.revision) != drag.revision {
+			return;
+		}
+
+		let Some(from) = routing.order.iter().position(|id| id == &drag.id) else { return };
+		let Some(to) = routing.order.iter().position(|id| id == target) else { return };
+
+		if from != to {
+			self.move_account(&drag.id, to as isize - from as isize, cx);
+		}
+	}
+}
+
+impl Shell {
+	fn select_settings_destination(
+		&mut self,
+		destination: Destination,
+		standalone: bool,
+		cx: &mut Context<Self>,
+	) {
+		if standalone {
+			self.select_settings_section(destination, cx);
+		} else {
+			self.select_destination(destination, cx);
+		}
+	}
+
+	fn select_settings_section(&mut self, destination: Destination, cx: &mut Context<Self>) {
+		self.settings_selected = destination;
+
+		match destination {
+			Destination::Accounts => {
+				self.accounts_controller.activate();
+				self.synchronize_accounts();
+			},
+			Destination::Health => self.health_query.activate(),
+			_ => self.settings.update(cx, SettingsSurface::refresh),
+		}
+
+		cx.notify();
+	}
+
+	fn open_settings_window(&mut self, section: Destination, cx: &mut Context<Self>) {
+		if section != Destination::Settings || self.settings_window.is_none() {
+			self.select_settings_section(section, cx);
+		}
+
+		let owner = cx.entity();
+
+		cx.defer(move |cx| open_settings_window(owner, cx));
 	}
 }
 
@@ -1911,6 +1753,710 @@ impl Drop for Shell {
 		if let Some(cancellation) = &self.account_login_cancellation {
 			cancellation.store(true, Ordering::Release);
 		}
+	}
+}
+
+impl Render for Shell {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let presentation = connection_presentation(self.connection);
+		let root = div()
+			.id("decodex-shell")
+			.role(Role::Application)
+			.aria_label("Decodex operational shell")
+			.font_family(ui_theme::FONT_FAMILY)
+			.text_size(px(13.0))
+			.key_context("Conversations")
+			.track_focus(&self.root_focus)
+			.on_action(cx.listener(Self::focus_next))
+			.on_action(cx.listener(Self::focus_previous))
+			.on_action(cx.listener(Self::activate_conversations))
+			.on_action(cx.listener(Self::activate_agent))
+			.on_action(cx.listener(Self::activate_health))
+			.on_action(cx.listener(Self::activate_settings))
+			.on_action(cx.listener(Self::toggle_sidebar))
+			.on_action(cx.listener(|s, _: &ShrinkPanel, window, cx| {
+				if s.selected == Destination::Agent {
+					s.agent.update(cx, |a, cx| a.resize_panel(-24.0, false, false, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &GrowPanel, window, cx| {
+				if s.selected == Destination::Agent {
+					s.agent.update(cx, |a, cx| a.resize_panel(24.0, false, false, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &ResetPanel, window, cx| {
+				if s.selected == Destination::Agent {
+					s.agent.update(cx, |a, cx| a.resize_panel(0.0, true, false, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &ShrinkPanels, window, cx| {
+				if s.selected == Destination::Agent {
+					s.agent.update(cx, |a, cx| a.resize_panel(-24.0, false, true, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &GrowPanels, window, cx| {
+				if s.selected == Destination::Agent {
+					s.agent.update(cx, |a, cx| a.resize_panel(24.0, false, true, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(|s, _: &ResetPanels, window, cx| {
+				if s.selected == Destination::Agent {
+					s.agent.update(cx, |a, cx| a.resize_panel(0.0, true, true, window, cx));
+					cx.stop_propagation();
+				}
+			}))
+			.on_action(cx.listener(Self::toggle_inspector))
+			.on_action(cx.listener(Self::toggle_graph))
+			.on_action(cx.listener(|s, _: &DismissStatus, _, cx| {
+				if s.status_open {
+					s.status_open = false;
+
+					cx.notify();
+				}
+			}))
+			.on_key_down(cx.listener(Self::interrupt_reply))
+			.on_action(cx.listener(|s, _: &NavigateBack, _, cx| s.navigate_history(false, cx)))
+			.on_action(cx.listener(|s, _: &NavigateForward, _, cx| s.navigate_history(true, cx)))
+			.on_action(cx.listener(Self::select_previous_conversation))
+			.on_action(cx.listener(Self::select_next_conversation))
+			.on_action(cx.listener(Self::submit_composer))
+			.size_full()
+			.min_w(px(1_180.0))
+			.min_h(px(720.0))
+			.flex()
+			.flex_col()
+			.bg(rgba(ui_theme::SHELL_MATERIAL))
+			.text_color(rgb(WB_TEXT));
+
+		#[cfg(all(target_os = "macos", not(test)))]
+		self.agent.update(cx, |agent, cx| {
+			agent.prepare_native_composer(self.selected == Destination::Agent, window, cx)
+		});
+
+		let controls = floating_window_controls(self, &presentation, window, cx);
+		#[cfg(all(target_os = "macos", not(test)))]
+		self.prepare_native_status(window, cx);
+
+		let status = self.render_status_center(&presentation, cx);
+		let route = format!("{:?}", self.selected);
+		let content =
+			destination_content(self, presentation, self.refresh_focus.clone(), window, cx);
+
+		root.relative()
+			.child(crate::ui_motion::arrival(route, content))
+			.child(controls)
+			.child(gpui::deferred(status).priority(3))
+		// Keep global notifications above deferred composer menus throughout dismissal.
+	}
+}
+
+pub(crate) struct LifecycleOwner {
+	cancellation: LifecycleCancellation,
+	task: Option<Task<()>>,
+	running: bool,
+	_subscriptions: Vec<Subscription>,
+}
+impl LifecycleOwner {
+	fn new<R: 'static>(
+		cancellation: LifecycleCancellation,
+		views: Receiver<ConnectionView>,
+		background: Task<R>,
+		shell: WeakEntity<Shell>,
+		cx: &mut Context<Self>,
+	) -> Self {
+		let task = cx.spawn(async move |owner, cx| {
+			let background = background;
+
+			loop {
+				publish_views(&shell, &views, cx);
+
+				if background.is_ready() {
+					let _ = background.await;
+
+					publish_views(&shell, &views, cx);
+
+					let _ = owner.update(cx, |owner, _| owner.running = false);
+
+					return;
+				}
+
+				cx.background_executor().timer(LIFECYCLE_POLL).await;
+			}
+		});
+
+		Self {
+			cancellation,
+			task: Some(task),
+			running: true,
+			_subscriptions: vec![cx.on_app_quit(|owner, _| owner.shutdown())],
+		}
+	}
+
+	fn shutdown(&mut self) -> Pin<Box<dyn Future<Output = ()> + 'static>> {
+		self.running = false;
+
+		self.cancellation.cancel();
+
+		let task = self.task.take();
+
+		Box::pin(async move {
+			if let Some(task) = task {
+				task.await;
+			}
+		})
+	}
+
+	#[cfg(test)]
+	pub(crate) fn is_running(&self) -> bool {
+		self.running
+	}
+}
+
+/// Settings render the existing controller-backed surfaces in their own window.
+pub(crate) struct SettingsWindow {
+	owner: Entity<Shell>,
+	focus: FocusHandle,
+	_observation: Subscription,
+}
+impl Render for SettingsWindow {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let content = self.owner.update(cx, |s, cx| {
+			settings_workspace_content(s, true, s.refresh_focus.clone(), window, cx)
+		});
+
+		div()
+			.id("settings-window")
+			.size_full()
+			.flex()
+			.font_family(ui_theme::FONT_FAMILY)
+			.text_color(rgb(WB_TEXT))
+			.bg(rgba(ui_theme::SHELL_MATERIAL))
+			.key_context("SettingsWindow")
+			.track_focus(&self.focus)
+			.on_action(cx.listener(|_, _: &CloseSettings, window, cx| {
+				window.remove_window();
+				cx.stop_propagation();
+			}))
+			.on_action(cx.listener(|_, _: &ActivateSettings, _, cx| cx.stop_propagation()))
+			.on_action(cx.listener(|_, _: &FocusNext, window, cx| window.focus_next(cx)))
+			.on_action(cx.listener(|_, _: &FocusPrevious, window, cx| window.focus_prev(cx)))
+			.relative()
+			.child(content)
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PendingComposerSubmission {
+	content: String,
+	result_generation: u64,
+	conversation_id: EntityId,
+	turn_id: Option<EntityId>,
+	accepted: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ConnectionPresentation {
+	label: &'static str,
+	detail: SharedString,
+	color: u32,
+}
+
+struct LifecycleOwnerGlobal {
+	_owner: Entity<LifecycleOwner>,
+}
+impl Global for LifecycleOwnerGlobal {}
+
+struct RefreshTooltip;
+impl Render for RefreshTooltip {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		div()
+			.px_2()
+			.py_1()
+			.rounded(px(6.0))
+			.border_1()
+			.border_color(rgba(0xffffff14))
+			.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
+			.text_size(px(11.0))
+			.text_color(rgb(WB_TEXT))
+			.child("Refresh health")
+	}
+}
+
+struct ControlTooltip<T>(T);
+impl<T: Clone + Into<SharedString> + 'static> Render for ControlTooltip<T> {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		tooltip_surface(self.0.clone().into(), WB_TEXT)
+	}
+}
+
+struct StatusTooltip {
+	text: SharedString,
+	color: u32,
+}
+impl Render for StatusTooltip {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		tooltip_surface(self.text.clone(), self.color)
+	}
+}
+
+#[derive(Clone, Copy)]
+struct HealthPresentation {
+	label: &'static str,
+	detail: &'static str,
+	color: u32,
+}
+
+#[derive(Clone)]
+struct AccountDrag {
+	id: EntityId,
+	revision: Option<decodex_protocol::EntityRevision>,
+	label: SharedString,
+}
+impl Render for AccountDrag {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		div()
+			.px_3()
+			.py_2()
+			.rounded(px(8.))
+			.bg(rgb(0x29292d))
+			.text_color(rgb(WB_TEXT))
+			.text_size(px(12.))
+			.child(self.label.clone())
+	}
+}
+
+#[derive(Clone)]
+struct AccountRowPresentation {
+	feedback: Option<(String, u32)>,
+	controls_busy: bool,
+	email: Option<String>,
+	reset_fill: Option<quota_meter::ResetFill>,
+	index: usize,
+	routing_revision: Option<decodex_protocol::EntityRevision>,
+	fixed: bool,
+	can_manage: bool,
+	can_route: bool,
+	login_available: bool,
+	logout_pending: bool,
+}
+
+/// Stable shell destinations. Each live destination remains issue-owned.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Destination {
+	Agent,
+	Advisor,
+	Projects,
+	Conversations,
+	Runs,
+	Automations,
+	Accounts,
+	Health,
+	Settings,
+}
+impl Destination {
+	pub(crate) const ALL: [Self; 9] = [
+		Self::Agent,
+		Self::Advisor,
+		Self::Projects,
+		Self::Conversations,
+		Self::Runs,
+		Self::Automations,
+		Self::Accounts,
+		Self::Health,
+		Self::Settings,
+	];
+
+	pub(crate) const fn label(self) -> &'static str {
+		match self {
+			Self::Agent => "Main",
+			Self::Advisor => "Advisor",
+			Self::Projects => "Projects",
+			Self::Conversations => "History",
+			Self::Runs => "Runs",
+			Self::Automations => "Automations",
+			Self::Accounts => "Accounts",
+			Self::Health => "Diagnostics",
+			Self::Settings => "Settings",
+		}
+	}
+
+	const fn description(self) -> &'static str {
+		match self {
+			Self::Agent => "Open Agent",
+			Self::Advisor => "Review guidance and bounded decisions.",
+			Self::Projects => "Own repositories and product context.",
+			Self::Conversations =>
+				"Chat directly with Codex: choose a conversation, write a message, and read its reply.",
+			Self::Runs => "Inspect managed run activity and evidence.",
+			Self::Automations => "Operate scheduled and event-driven work.",
+			Self::Accounts =>
+				"Accounts: manage sign-in, usage limits, and the account used for new work.",
+			Self::Health => "Diagnostics: check connection health and find the cause of errors.",
+			Self::Settings => "Configure the window and in-process menu bar.",
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum TranscriptRow {
+	Prompt {
+		turn_id: Option<EntityId>,
+		text: String,
+		pending: bool,
+	},
+	Response {
+		turn_id: EntityId,
+		text: String,
+		live: bool,
+	},
+	Activity {
+		history_item_id: EntityId,
+		kind: HistoryItemKindDto,
+		status: HistoryItemStatusDto,
+		text: String,
+	},
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum InspectorTab {
+	Context,
+	Activity,
+}
+
+/// Bind the shell's complete keyboard path once at application startup.
+pub(crate) fn bind_keys(cx: &mut App) {
+	composer_input::bind_keys(cx);
+
+	cx.bind_keys([
+		KeyBinding::new("cmd-w", CloseSettings, Some("SettingsWindow")),
+		KeyBinding::new("escape", CloseSettings, Some("SettingsWindow")),
+	]);
+	cx.bind_keys([
+		KeyBinding::new("tab", FocusNext, None),
+		KeyBinding::new("shift-tab", FocusPrevious, None),
+		KeyBinding::new("cmd-2", ActivateAgent, None),
+		KeyBinding::new("cmd-1", ActivateAgent, None),
+		KeyBinding::new("cmd-3", ActivateHealth, None),
+		KeyBinding::new("cmd-,", ActivateSettings, None),
+		KeyBinding::new("cmd-e", ToggleSidebar, None),
+		KeyBinding::new("ctrl-alt--", ShrinkPanel, None),
+		KeyBinding::new("ctrl-alt-=", GrowPanel, None),
+		KeyBinding::new("ctrl-alt-0", ResetPanel, None),
+		KeyBinding::new("ctrl-alt-shift--", ShrinkPanels, None),
+		KeyBinding::new("ctrl-alt-shift-=", GrowPanels, None),
+		KeyBinding::new("ctrl-alt-shift-0", ResetPanels, None),
+		// macOS normalizes shifted punctuation and consumes the Shift modifier.
+		KeyBinding::new("ctrl-alt-+", GrowPanels, None),
+		KeyBinding::new("ctrl-alt-_", ShrinkPanels, None),
+		KeyBinding::new("ctrl-alt-)", ResetPanels, None),
+		KeyBinding::new("cmd-b", ToggleInspector, None),
+		KeyBinding::new("cmd-j", ToggleGraph, None),
+		KeyBinding::new("cmd-[", NavigateBack, None),
+		KeyBinding::new("cmd-]", NavigateForward, None),
+		KeyBinding::new("enter", ActivateDestination, Some("Destination")),
+		KeyBinding::new("space", ActivateDestination, Some("Destination")),
+		KeyBinding::new("enter", RefreshHealth, Some("HealthRefresh")),
+		KeyBinding::new("space", RefreshHealth, Some("HealthRefresh")),
+		KeyBinding::new("up", SelectPreviousConversation, Some("Conversations")),
+		KeyBinding::new("down", SelectNextConversation, Some("Conversations")),
+		KeyBinding::new("enter", ActivateConversationRow, Some("ConversationRow")),
+		KeyBinding::new("space", ActivateConversationRow, Some("ConversationRow")),
+	]);
+}
+
+pub(crate) fn retain_lifecycle(
+	window: WindowHandle<Shell>,
+	mut lifecycle: ClientLifecycle,
+	cx: &mut App,
+) {
+	let cancellation = lifecycle.cancellation();
+	let views = lifecycle.observe_views();
+	let shell = window.entity(cx).expect("the production shell window remains open");
+	let accounts = lifecycle.accounts();
+	let account_profile = lifecycle.account_profile();
+	let desktop_settings = lifecycle.desktop_settings();
+	let health_query = lifecycle.health_query();
+	let conversations = lifecycle.conversations();
+	let history_pager = lifecycle.history_pager();
+
+	shell.update(cx, |shell, cx| {
+		shell.bind_accounts(accounts, cx);
+		shell.bind_account_profile(account_profile, cx);
+		shell.bind_desktop_settings(desktop_settings, cx);
+		shell.bind_health_query(health_query, cx);
+		shell.bind_conversations(conversations, history_pager, cx);
+	});
+
+	let shell = shell.downgrade();
+	let background = cx.background_executor().spawn(async move {
+		let runtime = tokio::runtime::Builder::new_current_thread()
+			.enable_all()
+			.build()
+			.expect("build the bounded client runtime");
+
+		runtime.block_on(lifecycle.run())
+	});
+
+	retain_lifecycle_task(shell, cancellation, views, background, cx);
+}
+
+pub(crate) fn retain_lifecycle_task<R: 'static>(
+	shell: WeakEntity<Shell>,
+	cancellation: LifecycleCancellation,
+	views: Receiver<ConnectionView>,
+	background: Task<R>,
+	cx: &mut App,
+) -> Entity<LifecycleOwner> {
+	debug_assert!(
+		!cx.has_global::<LifecycleOwnerGlobal>(),
+		"the application retains exactly one lifecycle owner"
+	);
+
+	let owner = cx.new(|cx| LifecycleOwner::new(cancellation, views, background, shell, cx));
+
+	cx.set_global(LifecycleOwnerGlobal { _owner: owner.clone() });
+
+	owner
+}
+
+fn pending_submission_clear_decision(
+	pending: &PendingComposerSubmission,
+	result_generation: u64,
+	accepted: bool,
+	current_content: &str,
+) -> Option<bool> {
+	(result_generation > pending.result_generation)
+		.then_some(accepted && current_content == pending.content)
+}
+
+fn pending_submission_is_persisted(
+	pending: &PendingComposerSubmission,
+	history: Option<&HistorySnapshot>,
+) -> bool {
+	let Some(history) = history
+		.filter(|history| history.conversation_id.as_ref() == Some(&pending.conversation_id))
+	else {
+		return false;
+	};
+	let Some(page) = history.visible.as_ref() else {
+		return false;
+	};
+
+	page.items.iter().any(|item| {
+		item.turn_role == HistoryTurnRole::User
+			&& item.kind == HistoryItemKindDto::Message
+			&& pending.turn_id.as_ref().map_or_else(
+				|| item.payload.inline_text().is_some_and(|text| text.as_str() == pending.content),
+				|turn_id| &item.turn_id == turn_id,
+			)
+	})
+}
+
+fn deferred_provider_refresh_ready(
+	pending_conversation_id: Option<&EntityId>,
+	selected_conversation_id: Option<&EntityId>,
+	history: Option<&HistorySnapshot>,
+) -> bool {
+	let (Some(pending), Some(selected), Some(history)) =
+		(pending_conversation_id, selected_conversation_id, history)
+	else {
+		return false;
+	};
+
+	pending == selected
+		&& history.conversation_id.as_ref() == Some(selected)
+		&& history.visible.is_some()
+		&& history.visible_source == Some(HistoryPageSource::FreshServer)
+}
+
+fn history_item_text(item: &HistoryItemDto) -> String {
+	match &item.payload {
+		HistoryPayloadDto::Inline { text } => text.as_str().to_owned(),
+		HistoryPayloadDto::Blob(reference) => format!(
+			"Stored content: {} bytes; SHA-256 {}...",
+			reference.byte_length.get(),
+			&reference.sha256.as_str()[..12],
+		),
+	}
+}
+
+fn append_response_row(rows: &mut Vec<TranscriptRow>, turn_id: &EntityId, text: &str, live: bool) {
+	if let Some(TranscriptRow::Response {
+		turn_id: existing_turn,
+		text: existing,
+		live: existing_live,
+	}) = rows.last_mut()
+		&& existing_turn == turn_id
+	{
+		existing.push_str(text);
+
+		*existing_live |= live;
+
+		return;
+	}
+
+	rows.push(TranscriptRow::Response { turn_id: turn_id.clone(), text: text.to_owned(), live });
+}
+
+fn conversation_transcript_rows(
+	snapshot: &ConversationsSnapshot,
+	history: Option<&HistorySnapshot>,
+	pending: Option<&PendingComposerSubmission>,
+) -> Vec<TranscriptRow> {
+	let selected = snapshot.selected.as_ref();
+	let visible_history = history.filter(|history| history.conversation_id.as_ref() == selected);
+	let persisted_inline_ids = visible_history
+		.and_then(|history| history.visible.as_ref())
+		.into_iter()
+		.flat_map(|page| page.items.iter())
+		.filter(|item| item.payload.inline_text().is_some())
+		.map(|item| item.history_item_id.clone())
+		.collect::<Vec<_>>();
+	let mut rows = Vec::new();
+
+	for item in visible_history
+		.and_then(|history| history.visible.as_ref())
+		.into_iter()
+		.flat_map(|page| page.items.iter())
+	{
+		let text = history_item_text(item);
+
+		match (item.turn_role, item.kind) {
+			(HistoryTurnRole::User, HistoryItemKindDto::Message) => {
+				rows.push(TranscriptRow::Prompt {
+					turn_id: Some(item.turn_id.clone()),
+					text,
+					pending: false,
+				});
+			},
+			(HistoryTurnRole::Assistant, HistoryItemKindDto::Message) => {
+				append_response_row(&mut rows, &item.turn_id, &text, false);
+			},
+			_ => rows.push(TranscriptRow::Activity {
+				history_item_id: item.history_item_id.clone(),
+				kind: item.kind,
+				status: item.status,
+				text,
+			}),
+		}
+	}
+
+	let active_conversation = selected.or_else(|| pending.map(|pending| &pending.conversation_id));
+
+	if let Some(pending) = pending
+		&& active_conversation == Some(&pending.conversation_id)
+		&& !pending_submission_is_persisted(pending, visible_history)
+	{
+		rows.push(TranscriptRow::Prompt {
+			turn_id: pending.turn_id.clone(),
+			text: pending.content.clone(),
+			pending: true,
+		});
+	}
+
+	for delta in snapshot.live_deltas.iter().filter(|delta| {
+		active_conversation == Some(&delta.conversation_id)
+			&& !persisted_inline_ids.iter().any(|persisted| persisted == &delta.history_item_id)
+	}) {
+		append_response_row(&mut rows, &delta.turn_id, delta.text.as_str(), true);
+	}
+
+	rows
+}
+
+fn conversation_recovery_presentation(task: Option<&ConversationSummary>) -> (bool, &'static str) {
+	let recovery_action = task.and_then(|task| task.recovery_action);
+	let outcome_unknown = task.is_some_and(|task| task.state == ConversationState::OutcomeUnknown);
+	let executable = outcome_unknown
+		|| recovery_action.is_some_and(|action| {
+			matches!(
+				action,
+				ConversationRecoveryAction::ResumeRouting
+					| ConversationRecoveryAction::CreateRoutingSuccessor
+					| ConversationRecoveryAction::ResumeEstablishment
+					| ConversationRecoveryAction::StartNewConversation
+			)
+		});
+	let label = if outcome_unknown {
+		"Retry sync"
+	} else if recovery_action == Some(ConversationRecoveryAction::StartNewConversation) {
+		"Start new"
+	} else {
+		"Recover"
+	};
+
+	(executable, label)
+}
+
+fn connection_presentation(view: ConnectionView) -> ConnectionPresentation {
+	match view {
+		ConnectionView::Connecting { .. } => ConnectionPresentation {
+			label: "Connecting",
+			detail: "Starting Decodex.".into(),
+			color: 0xf59e0b,
+		},
+		ConnectionView::Online { .. } => ConnectionPresentation {
+			label: "Online",
+			detail: "Connected and ready.".into(),
+			color: 0x22c55e,
+		},
+		ConnectionView::OfflineRetrying { .. } => ConnectionPresentation {
+			label: "Reconnecting",
+			detail: "Trying to restore Decodex.".into(),
+			color: 0xf97316,
+		},
+		ConnectionView::Incompatible(_) => ConnectionPresentation {
+			label: "Restart Decodex",
+			detail: "Restart Decodex to restore the connection.".into(),
+			color: crate::ui_theme::ERROR,
+		},
+		ConnectionView::Quarantined { .. } => ConnectionPresentation {
+			label: "Restart Decodex",
+			detail: "Restart Decodex to restore the connection.".into(),
+			color: 0xdc2626,
+		},
+		ConnectionView::ShuttingDown => ConnectionPresentation {
+			label: "Shutting down",
+			detail: "Closing the retained session cooperatively".into(),
+			color: 0x94a3b8,
+		},
+		ConnectionView::Stopped => ConnectionPresentation {
+			label: "Restart Decodex",
+			detail: "Restart Decodex to restore the connection.".into(),
+			color: 0x64748b,
+		},
+	}
+}
+
+const fn startup_failure(failure: ClientFailure) -> &'static str {
+	match failure {
+		ClientFailure::ConfigurationMissing => "Client configuration is missing",
+		ClientFailure::ConfigurationMalformed => "Client configuration is malformed",
+		ClientFailure::ConfigurationVersion => "Client configuration version is unsupported",
+		ClientFailure::ProfileMissing => "Selected server profile is missing",
+		ClientFailure::UnsafeHostPath => "Client configuration path is unsafe",
+		ClientFailure::ServerIdentityUnavailable => "Stable server identity is unavailable",
+		ClientFailure::RemoteMutationUnsupported =>
+			"Reset-card operations require a local pinned profile",
+		ClientFailure::LocalTransportDisabled => "Local daemon transport is disabled",
+		ClientFailure::RemoteTransportDisabled => "Remote daemon transport is disabled",
+		ClientFailure::LocalTransportUnsupported => "Local daemon transport is unsupported",
+		ClientFailure::UnsafeLocalEndpoint => "Local daemon endpoint is unsafe",
+		ClientFailure::LocalPeerIdentityUnavailable => "Local daemon identity is unavailable",
+		ClientFailure::LocalPeerUidMismatch => "Local daemon peer UID does not match",
+		ClientFailure::ProtocolDisconnected
+		| ClientFailure::ProtocolTimeout
+		| ClientFailure::ServiceVersionMismatch => "Restart Decodex.",
+		ClientFailure::ServerIdentityMismatch => "Stable server identity does not match",
+		ClientFailure::ProtocolMalformed => "Daemon response is malformed",
+		ClientFailure::ProtocolViolation => "Daemon protocol ordering was refused",
+		ClientFailure::ProtocolBackpressure => "Daemon message allowance was exhausted",
+		ClientFailure::ApplicationAcceptanceUnknown => "Application command acceptance is unknown",
 	}
 }
 
@@ -1929,118 +2475,6 @@ const fn input_error_label(error: ConversationInputError) -> &'static str {
 	}
 }
 
-struct LifecycleOwnerGlobal {
-	_owner: Entity<LifecycleOwner>,
-}
-
-impl Global for LifecycleOwnerGlobal {}
-
-pub(crate) struct LifecycleOwner {
-	cancellation: LifecycleCancellation,
-	task: Option<Task<()>>,
-	running: bool,
-	_subscriptions: Vec<Subscription>,
-}
-
-impl LifecycleOwner {
-	fn new<R: 'static>(
-		cancellation: LifecycleCancellation,
-		views: Receiver<ConnectionView>,
-		background: Task<R>,
-		shell: WeakEntity<Shell>,
-		cx: &mut Context<Self>,
-	) -> Self {
-		let task = cx.spawn(async move |owner, cx| {
-			let background = background;
-			loop {
-				publish_views(&shell, &views, cx);
-				if background.is_ready() {
-					let _ = background.await;
-					publish_views(&shell, &views, cx);
-					let _ = owner.update(cx, |owner, _| owner.running = false);
-
-					return;
-				}
-				cx.background_executor().timer(LIFECYCLE_POLL).await;
-			}
-		});
-
-		Self {
-			cancellation,
-			task: Some(task),
-			running: true,
-			_subscriptions: vec![cx.on_app_quit(|owner, _| owner.shutdown())],
-		}
-	}
-
-	fn shutdown(&mut self) -> Pin<Box<dyn Future<Output = ()> + 'static>> {
-		self.running = false;
-		self.cancellation.cancel();
-		let task = self.task.take();
-
-		Box::pin(async move {
-			if let Some(task) = task {
-				task.await;
-			}
-		})
-	}
-
-	#[cfg(test)]
-	pub(crate) fn is_running(&self) -> bool {
-		self.running
-	}
-}
-
-pub(crate) fn retain_lifecycle(
-	window: WindowHandle<Shell>,
-	mut lifecycle: ClientLifecycle,
-	cx: &mut App,
-) {
-	let cancellation = lifecycle.cancellation();
-	let views = lifecycle.observe_views();
-	let shell = window.entity(cx).expect("the production shell window remains open");
-	let accounts = lifecycle.accounts();
-	let account_profile = lifecycle.account_profile();
-	let desktop_settings = lifecycle.desktop_settings();
-	let health_query = lifecycle.health_query();
-	let conversations = lifecycle.conversations();
-	let history_pager = lifecycle.history_pager();
-	shell.update(cx, |shell, cx| {
-		shell.bind_accounts(accounts, cx);
-		shell.bind_account_profile(account_profile, cx);
-		shell.bind_desktop_settings(desktop_settings, cx);
-		shell.bind_health_query(health_query, cx);
-		shell.bind_conversations(conversations, history_pager, cx);
-	});
-	let shell = shell.downgrade();
-	let background = cx.background_executor().spawn(async move {
-		let runtime = tokio::runtime::Builder::new_current_thread()
-			.enable_all()
-			.build()
-			.expect("build the bounded client runtime");
-
-		runtime.block_on(lifecycle.run())
-	});
-	retain_lifecycle_task(shell, cancellation, views, background, cx);
-}
-
-pub(crate) fn retain_lifecycle_task<R: 'static>(
-	shell: WeakEntity<Shell>,
-	cancellation: LifecycleCancellation,
-	views: Receiver<ConnectionView>,
-	background: Task<R>,
-	cx: &mut App,
-) -> Entity<LifecycleOwner> {
-	debug_assert!(
-		!cx.has_global::<LifecycleOwnerGlobal>(),
-		"the application retains exactly one lifecycle owner"
-	);
-	let owner = cx.new(|cx| LifecycleOwner::new(cancellation, views, background, shell, cx));
-	cx.set_global(LifecycleOwnerGlobal { _owner: owner.clone() });
-
-	owner
-}
-
 fn connection_requires_recovery(previous: ConnectionView, next: ConnectionView) -> bool {
 	match (previous, next) {
 		(
@@ -2057,6 +2491,7 @@ fn online_cursor_progress_does_not_invalidate_the_conversation() {
 		generation,
 		applied: Some(decodex_protocol::Cursor(cursor)),
 	};
+
 	assert!(!connection_requires_recovery(online(1, 10), online(1, 11)));
 	assert!(connection_requires_recovery(online(1, 10), online(2, 11)));
 	assert!(connection_requires_recovery(online(1, 10), ConnectionView::Stopped));
@@ -2075,14 +2510,19 @@ fn publish_views(
 			} else if shell.connection != view && matches!(view, ConnectionView::Online { .. }) {
 				shell.agent.update(cx, |s, cx| s.refresh(cx));
 			}
+
 			shell.connection = view;
+
 			cx.notify();
 		});
 	}
+
 	let _ = shell.update(cx, |shell, cx| {
 		shell.poll_account_login(cx);
 		shell.poll_reset_cards(cx);
+
 		let accounts = shell.accounts_controller.snapshot();
+
 		if let Some(selected) = &shell.account_profile.selected {
 			if let Some(account) = accounts.accounts.iter().find(|a| &a.account_id == selected) {
 				shell
@@ -2092,13 +2532,17 @@ fn publish_views(
 				shell.account_profile_controller.close();
 			}
 		}
+
 		let account_profile = shell.account_profile_controller.snapshot();
 		let desktop_settings = shell.desktop_settings.snapshot();
 		let auto_recap = desktop_settings.settings.is_some_and(|s| s.auto_recap)
 			&& shell.selected == Destination::Agent
 			&& matches!(shell.connection, ConnectionView::Online { .. });
+
 		shell.agent.update(cx, |s, cx| s.poll_automatic_recap(auto_recap, cx));
+
 		let health = shell.health_query.snapshot();
+
 		if shell.selected == Destination::Conversations
 			&& shell.pending_submission.is_none()
 			&& shell.last_provider_sync.is_none_or(|last| last.elapsed() >= Duration::from_secs(60))
@@ -2106,11 +2550,13 @@ fn publish_views(
 		{
 			shell.last_provider_sync = Some(std::time::Instant::now());
 		}
+
 		let quick = shell.conversations.snapshot();
 		let history = shell.history_pager.as_ref().map(HistoryPager::snapshot);
 
 		if accounts != shell.accounts {
 			shell.accounts = accounts;
+
 			cx.notify();
 		}
 		if account_profile != shell.account_profile {
@@ -2121,17 +2567,23 @@ fn publish_views(
 					.account_activity
 					.insert(id.clone(), (account_profile.clone(), std::time::Instant::now()));
 			}
+
 			shell.account_profile = account_profile;
+
 			cx.notify();
 		}
+
 		shell.refresh_expanded_activity();
+
 		if desktop_settings != shell.desktop_settings_snapshot {
 			shell.desktop_settings_snapshot = desktop_settings;
+
 			shell.settings.update(cx, SettingsSurface::synchronize);
 			cx.notify();
 		}
 		if health != shell.health {
 			shell.health = health;
+
 			cx.notify();
 		}
 		if quick != shell.quick || history != shell.history {
@@ -2144,11 +2596,13 @@ fn publish_views(
 
 fn compact_identity(value: &str) -> String {
 	let prefix = value.chars().take(8).collect::<String>();
+
 	if value.chars().count() > 8 { format!("{prefix}…") } else { prefix }
 }
 
 fn adjacent_conversation_index(current: Option<usize>, len: usize, delta: isize) -> Option<usize> {
 	let last = len.checked_sub(1)?;
+
 	Some(current.unwrap_or(0).saturating_add_signed(delta).min(last))
 }
 
@@ -2182,6 +2636,7 @@ fn floating_window_controls(
 		.on_mouse_move(cx.listener(|shell, _, window, _| {
 			if shell.titlebar_drag_pending {
 				shell.titlebar_drag_pending = false;
+
 				window.start_window_move();
 			}
 		}))
@@ -2201,40 +2656,6 @@ fn floating_window_controls(
 		.into_any_element()
 }
 
-struct RefreshTooltip;
-
-impl Render for RefreshTooltip {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		div()
-			.px_2()
-			.py_1()
-			.rounded(px(6.0))
-			.border_1()
-			.border_color(rgba(0xffffff14))
-			.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
-			.text_size(px(11.0))
-			.text_color(rgb(WB_TEXT))
-			.child("Refresh health")
-	}
-}
-
-struct ControlTooltip<T>(T);
-
-impl<T: Clone + Into<SharedString> + 'static> Render for ControlTooltip<T> {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		tooltip_surface(self.0.clone().into(), WB_TEXT)
-	}
-}
-
-struct StatusTooltip {
-	text: SharedString,
-	color: u32,
-}
-impl Render for StatusTooltip {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		tooltip_surface(self.text.clone(), self.color)
-	}
-}
 fn tooltip_surface(text: SharedString, color: u32) -> gpui::Div {
 	div()
 		.px_2()
@@ -2248,13 +2669,6 @@ fn tooltip_surface(text: SharedString, color: u32) -> gpui::Div {
 		.child(text)
 }
 
-#[derive(Clone, Copy)]
-struct HealthPresentation {
-	label: &'static str,
-	detail: &'static str,
-	color: u32,
-}
-
 fn topbar_controls(
 	shell: &Shell,
 	_presentation: &ConnectionPresentation,
@@ -2266,6 +2680,7 @@ fn topbar_controls(
 		.iter()
 		.position(|destination| *destination == Destination::Settings)
 		.expect("Settings destination");
+
 	ui_theme::floating_group()
 		.text_size(px(11.0))
 		.when(shell.selected == Destination::Agent, |controls| {
@@ -2353,6 +2768,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		(1, false) => "Work graph · no work yet",
 		_ => "History · no messages yet",
 	};
+
 	div()
 		.id(("agent-panel-control", index))
 		.role(Role::Button)
@@ -2395,8 +2811,10 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 				if index == 0 && s.selected != Destination::Agent {
 					s.set_left_sidebar_visible(!s.left_sidebar_visible, cx);
 					cx.stop_propagation();
+
 					return;
 				}
+
 				s.agent.update(cx, |agent, cx| match index {
 					0 => agent.toggle_workspace_sidebar(cx),
 					1 => agent.toggle_workspace_graph(cx),
@@ -2436,6 +2854,7 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 					.and_then(|report| report.check(component))
 					.map(|check| check.status)
 			});
+
 			if core_statuses.iter().all(|status| *status == Some(DoctorStatus::Ready)) {
 				HealthPresentation {
 					label: "Core ready",
@@ -2626,6 +3045,7 @@ fn health_component_section(
 			.as_ref()
 			.and_then(|report| report.check(component))
 			.map(|check| check.status);
+
 		health_component_row(index_offset + index, component, status)
 	});
 
@@ -2818,6 +3238,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 		AccountSelectionModeDto::Fixed(account_id) => Some(account_id),
 		AccountSelectionModeDto::Balanced => None,
 	});
+
 	snapshot
 		.accounts
 		.iter()
@@ -2844,6 +3265,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 			);
 			let profile_id = account.account_id.clone();
 			let target = account.account_id.clone();
+
 			div()
 				.id(("account-card", index))
 				.group(SharedString::from(format!("account-card-{index}")))
@@ -3180,6 +3602,7 @@ fn account_login_button(
 	enabled: bool,
 ) -> gpui::Stateful<gpui::Div> {
 	let label = label.into();
+
 	div()
 		.id(id)
 		.role(Role::Button)
@@ -3258,55 +3681,10 @@ fn account_login_start(
 			}
 		};
 	let start = AccountLoginStart { session_id, method, install_mode };
+
 	start.validate().map_err(|_| SharedString::from("Login request is invalid."))?;
+
 	Ok(start)
-}
-
-#[derive(Clone)]
-struct AccountDrag {
-	id: EntityId,
-	revision: Option<decodex_protocol::EntityRevision>,
-	label: SharedString,
-}
-impl Render for AccountDrag {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		div()
-			.px_3()
-			.py_2()
-			.rounded(px(8.))
-			.bg(rgb(0x29292d))
-			.text_color(rgb(WB_TEXT))
-			.text_size(px(12.))
-			.child(self.label.clone())
-	}
-}
-impl Shell {
-	fn drop_account(&mut self, drag: &AccountDrag, target: &EntityId, cx: &mut Context<Self>) {
-		let Some(routing) = &self.accounts.routing else { return };
-		if !self.accounts.can_manage || Some(routing.revision) != drag.revision {
-			return;
-		}
-		let Some(from) = routing.order.iter().position(|id| id == &drag.id) else { return };
-		let Some(to) = routing.order.iter().position(|id| id == target) else { return };
-		if from != to {
-			self.move_account(&drag.id, to as isize - from as isize, cx);
-		}
-	}
-}
-
-#[derive(Clone)]
-struct AccountRowPresentation {
-	feedback: Option<(String, u32)>,
-	controls_busy: bool,
-	email: Option<String>,
-	reset_fill: Option<quota_meter::ResetFill>,
-	index: usize,
-	routing_revision: Option<decodex_protocol::EntityRevision>,
-	fixed: bool,
-	can_manage: bool,
-	can_route: bool,
-	login_available: bool,
-	logout_pending: bool,
 }
 
 fn account_login_recovery_operation_id(account: &AccountDto) -> Option<EntityId> {
@@ -3355,6 +3733,7 @@ fn account_pool_row(
 ) -> AnyElement {
 	let AccountRowPresentation { index, .. } = presentation;
 	let summary = account_pool_summary(account, presentation.clone(), cx);
+
 	div()
 		.w_full()
 		.rounded(px(8.))
@@ -3436,6 +3815,7 @@ fn account_pool_summary(
 						.text_color(if fixed { rgb(WB_BLUE) } else { rgb(WB_TEXT_MUTED) })
 						.on_click(cx.listener(move |shell, _, _, cx| {
 							cx.stop_propagation();
+
 							if pin_enabled {
 								shell.select_fixed_account(&account_id, cx);
 							}
@@ -3479,6 +3859,7 @@ fn account_reorder_handle(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let keyboard = account.account_id.clone();
+
 	account_icon_action(
 		"account-reorder",
 		presentation.index,
@@ -3520,6 +3901,7 @@ fn account_power_control(
 	let id = account.account_id.clone();
 	let enabled = account.enabled;
 	let key_id = id.clone();
+
 	account_icon_action(
 		"account-enabled",
 		index,
@@ -3541,6 +3923,7 @@ fn account_power_control(
 	.flex_none()
 	.on_click(cx.listener(move |s, _, _, cx| {
 		cx.stop_propagation();
+
 		if interactive {
 			s.set_account_enabled(&id, !enabled, cx);
 		}
@@ -3890,6 +4273,7 @@ fn conversation_refresh_status(refresh: ConversationRefreshState) -> Option<Stri
 
 fn conversation_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let rows = conversation_session_rows(shell, cx);
+
 	div()
 		.id("conversation-session-sidebar")
 		.role(Role::TabList)
@@ -3927,6 +4311,7 @@ fn animated_horizontal_panel_slot(
 ) -> AnyElement {
 	if crate::ui_motion::reduced() {
 		let width = px(if visible { full_width } else { 0. });
+
 		return div()
 			.h_full()
 			.flex_none()
@@ -3937,7 +4322,9 @@ fn animated_horizontal_panel_slot(
 			.child(panel)
 			.into_any_element();
 	}
+
 	let animation_id = format!("{id}-{generation}-{}", if visible { "open" } else { "close" });
+
 	div()
 		.h_full()
 		.flex_none()
@@ -3949,6 +4336,7 @@ fn animated_horizontal_panel_slot(
 			move |slot, delta| {
 				let progress = if visible { delta } else { 1.0 - delta };
 				let width = px(full_width * progress);
+
 				slot.w(width).min_w(width).max_w(width).opacity(0.3 + progress * 0.7)
 			},
 		)
@@ -3987,6 +4375,7 @@ fn inspector_tab(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let is_selected = tab == selected;
+
 	div()
 		.id(id)
 		.role(Role::Tab)
@@ -4008,6 +4397,7 @@ fn inspector_tab(
 		.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 		.on_click(cx.listener(move |shell, _, _, cx| {
 			shell.inspector_tab = tab;
+
 			cx.notify();
 		}))
 		.child(label)
@@ -4052,6 +4442,7 @@ fn conversation_native_settings_inspector(
 			.child("Native settings have not been observed.")
 			.into_any_element();
 	};
+
 	div()
 		.id("conversation-native-settings")
 		.debug_selector(|| "conversation-native-settings".into())
@@ -4108,8 +4499,10 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 		))
 		.child(inspector_metadata_row("Runtime", runtime))
 		.child(inspector_metadata_row("Revision", format!("r{}", task.conversation_revision.0)));
+
 	content =
 		content.child(conversation_native_settings_inspector(task.native_settings.as_deref()));
+
 	if let Some(program) = task.program.as_ref() {
 		content = content
 			.child(inspector_metadata_row("Program", compact_identity(program.program_id.as_str())))
@@ -4131,6 +4524,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 		task.codex_thread_id.as_ref().and_then(|thread_id| thread_id.codex_url().ok())
 	{
 		let url = url.to_string();
+
 		content = content.child(
 			div()
 				.id("open-provider-thread")
@@ -4159,6 +4553,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 				.child("Codex link becomes available after exact provider-thread readback."),
 		);
 	}
+
 	content.into_any_element()
 }
 
@@ -4182,6 +4577,7 @@ fn activity_inspector_content(shell: &Shell) -> AnyElement {
 					format!("Stored content · {} bytes", reference.byte_length.get())
 				},
 			};
+
 			(
 				history_kind_label(item.kind, item.status).to_owned(),
 				history_role_label(item.turn_role).to_owned(),
@@ -4190,13 +4586,16 @@ fn activity_inspector_content(shell: &Shell) -> AnyElement {
 			)
 		})
 		.collect::<Vec<_>>();
+
 	items.reverse();
+
 	let rows = items.into_iter().enumerate().map(|(index, (kind, role, summary, status))| {
 		let color = match status {
 			HistoryItemStatusDto::Streaming => WB_BLUE,
 			HistoryItemStatusDto::Completed => WB_TEXT_FAINT,
 			HistoryItemStatusDto::Failed => WB_AMBER,
 		};
+
 		div()
 			.id(("inspector-activity", index))
 			.w_full()
@@ -4489,9 +4888,11 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let can_previous = shell.history.as_ref().is_some_and(|history| history.can_show_previous);
 	let can_next = shell.history.as_ref().is_some_and(|history| history.can_show_next);
 	let can_retry = shell.history.as_ref().is_some_and(|history| history.can_retry);
+
 	if !can_previous && !can_next && !can_retry {
 		return div().w(px(0.0)).into_any_element();
 	}
+
 	let previous = div()
 		.id("conversation-history-previous")
 		.role(Role::Button)
@@ -4604,13 +5005,13 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.map_or("Inherited", |effort| effort.as_str())
 		.to_uppercase();
 	let fast_enabled = shell.quick.execution.fast;
-
 	let send = composer_send(can_send, cx);
 	let interrupt = composer_interrupt(can_interrupt, cx);
 	let recover = composer_recover(can_recover, recovery_label, cx);
 	let model_control = composer_model_control(model_label, cx);
 	let fast_control = composer_fast_control(fast_enabled, cx);
 	let effort_control = composer_effort_control(effort_label, cx);
+
 	div()
 		.min_h(px(88.0))
 		.px_5()
@@ -4694,6 +5095,7 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let mut row =
 		div().id("conversation-service-tiers").flex().flex_wrap().gap_2().text_size(px(11.));
+
 	if let Some(notice) = shell.agent.read(cx).ordinary_draft_notice() {
 		row = row.child(div().id("ordinary-draft-storage-notice").child(notice.to_owned())).child(
 			div()
@@ -4702,7 +5104,9 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 				.child("Review saved drafts")
 				.on_click(cx.listener(|shell, _, _, cx| {
 					shell.agent.update(cx, |agent, cx| agent.show_ordinary_draft_recovery(cx));
+
 					shell.selected = Destination::Agent;
+
 					cx.notify();
 				})),
 		);
@@ -4722,7 +5126,6 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 				})),
 		);
 	}
-
 	if shell.quick.selected.is_none() && !shell.quick.initial_defaults_ready {
 		row = row.child(
 			div()
@@ -4742,6 +5145,7 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 	{
 		row = row.child("Flex");
 	}
+
 	row = row.child(
 		div()
 			.id("conversation-refresh-models")
@@ -4760,20 +5164,25 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 			name: "Standard".into(),
 			description: String::new(),
 		}];
+
 		if let Some(model) = models.iter().find(|model| model.model == shell.quick.execution.model)
 		{
 			choices.extend(
 				model.service_tiers.iter().filter(|tier| tier.id.as_str() != "default").cloned(),
 			);
 		}
+
 		let current = shell.quick.execution.effective_service_tier();
+
 		for choice in choices {
 			let id = choice.id.clone();
+
 			row = row.child(
 				div()
 					.id(SharedString::from(format!("conversation-tier-{}", id.as_str())))
 					.debug_selector({
 						let label = format!("conversation-tier-{}", id.as_str());
+
 						move || label.clone()
 					})
 					.cursor_pointer()
@@ -4798,6 +5207,7 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 			);
 		}
 	}
+
 	row.into_any_element()
 }
 
@@ -4920,12 +5330,14 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 
 fn native_process_summary(value: Option<&decodex_protocol::NativeProcessDiagnostics>) -> String {
 	use decodex_protocol::NativeProcessDiagnostics as Native;
+
 	let memory = |value: Option<u64>| {
 		value.map_or_else(
 			|| "Not reported".into(),
 			|bytes| format!("{:.1} MiB", bytes as f64 / 1_048_576.),
 		)
 	};
+
 	match value {
 		None => "No native process sample yet.".into(),
 		Some(Native::Inactive) => "No active Agent process. Refresh does not start one.".into(),
@@ -4944,7 +5356,6 @@ fn native_process_summary(value: Option<&decodex_protocol::NativeProcessDiagnost
 
 fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 	let presentation = health_presentation(snapshot);
-
 	let content = div()
 		.w_full()
 		.max_w(px(ui_theme::SETTINGS_WIDTH))
@@ -5038,6 +5449,7 @@ fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 					snapshot,
 				)),
 		);
+
 	div()
 		.id("health-scroll-viewport")
 		.flex_1()
@@ -5090,6 +5502,7 @@ fn destination_content(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let selected = shell.selected;
+
 	match selected {
 		Destination::Agent => {
 			return div()
@@ -5121,6 +5534,7 @@ fn destination_content(
 	}
 
 	let content = placeholder_content(selected);
+
 	div()
 		.id("destination-content")
 		.role(Role::Main)
@@ -5165,7 +5579,9 @@ fn settings_navigation(
 				.font_weight(FontWeight::SEMIBOLD)
 				.child("Settings"),
 		);
+
 	use crate::settings_surface::SettingsCategory;
+
 	for (section_index, (destination, category, label)) in [
 		(Destination::Settings, Some(SettingsCategory::General), "General"),
 		(Destination::Settings, Some(SettingsCategory::Appearance), "Appearance"),
@@ -5177,6 +5593,7 @@ fn settings_navigation(
 	{
 		let active = selected == destination
 			&& category.is_none_or(|category| shell.settings.read(cx).category == category);
+
 		navigation = navigation.child(
 			div()
 				.id(gpui::SharedString::from(format!("settings-section-{label}")))
@@ -5187,9 +5604,11 @@ fn settings_navigation(
 				.key_context("Destination")
 				.on_action(cx.listener(move |s, _: &ActivateDestination, _, cx| {
 					s.select_settings_destination(destination, standalone, cx);
+
 					if let Some(category) = category {
 						s.settings.update(cx, |settings, cx| {
 							settings.category = category;
+
 							cx.notify();
 						});
 					}
@@ -5212,9 +5631,11 @@ fn settings_navigation(
 				})
 				.on_click(cx.listener(move |s, _, _, cx| {
 					s.select_settings_destination(destination, standalone, cx);
+
 					if let Some(category) = category {
 						s.settings.update(cx, |settings, cx| {
 							settings.category = category;
+
 							cx.notify();
 						});
 					}
@@ -5223,6 +5644,7 @@ fn settings_navigation(
 				.smooth(),
 		);
 	}
+
 	navigation.into_any_element()
 }
 
@@ -5281,6 +5703,7 @@ fn settings_workspace_content(
 			})
 			.into_any_element()
 	};
+
 	div()
 		.id("settings-workspace")
 		.role(Role::Main)
@@ -5294,86 +5717,20 @@ fn settings_workspace_content(
 		.into_any_element()
 }
 
-/// Settings render the existing controller-backed surfaces in their own window.
-pub(crate) struct SettingsWindow {
-	owner: Entity<Shell>,
-	focus: FocusHandle,
-	_observation: Subscription,
-}
-impl Render for SettingsWindow {
-	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		let content = self.owner.update(cx, |s, cx| {
-			settings_workspace_content(s, true, s.refresh_focus.clone(), window, cx)
-		});
-
-		div()
-			.id("settings-window")
-			.size_full()
-			.flex()
-			.font_family(ui_theme::FONT_FAMILY)
-			.text_color(rgb(WB_TEXT))
-			.bg(rgba(ui_theme::SHELL_MATERIAL))
-			.key_context("SettingsWindow")
-			.track_focus(&self.focus)
-			.on_action(cx.listener(|_, _: &CloseSettings, window, cx| {
-				window.remove_window();
-				cx.stop_propagation();
-			}))
-			.on_action(cx.listener(|_, _: &ActivateSettings, _, cx| cx.stop_propagation()))
-			.on_action(cx.listener(|_, _: &FocusNext, window, cx| window.focus_next(cx)))
-			.on_action(cx.listener(|_, _: &FocusPrevious, window, cx| window.focus_prev(cx)))
-			.relative()
-			.child(content)
-	}
-}
-impl Shell {
-	fn select_settings_destination(
-		&mut self,
-		destination: Destination,
-		standalone: bool,
-		cx: &mut Context<Self>,
-	) {
-		if standalone {
-			self.select_settings_section(destination, cx);
-		} else {
-			self.select_destination(destination, cx);
-		}
-	}
-
-	fn select_settings_section(&mut self, destination: Destination, cx: &mut Context<Self>) {
-		self.settings_selected = destination;
-		match destination {
-			Destination::Accounts => {
-				self.accounts_controller.activate();
-				self.synchronize_accounts();
-			},
-			Destination::Health => self.health_query.activate(),
-			_ => self.settings.update(cx, SettingsSurface::refresh),
-		}
-		cx.notify();
-	}
-
-	fn open_settings_window(&mut self, section: Destination, cx: &mut Context<Self>) {
-		if section != Destination::Settings || self.settings_window.is_none() {
-			self.select_settings_section(section, cx);
-		}
-		let owner = cx.entity();
-		cx.defer(move |cx| open_settings_window(owner, cx));
-	}
-}
-
 fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 	if let Some(handle) = owner.read(cx).settings_window
 		&& handle.update(cx, |_, window, _| window.activate_window()).is_ok()
 	{
 		return;
 	}
+
 	let parent = cx
 		.windows()
 		.into_iter()
 		.filter_map(|w| w.downcast::<Shell>())
 		.find(|w| w.entity(cx).is_ok_and(|entity| entity == owner));
 	let bounds = gpui::Bounds::centered(None, gpui::size(px(920.), px(620.)), cx);
+
 	match cx.open_window(
 		gpui::WindowOptions {
 			titlebar: Some(gpui::TitlebarOptions {
@@ -5391,6 +5748,7 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 		},
 		{
 			let owner = owner.clone();
+
 			move |window, cx| {
 				cx.new(|cx| {
 					{
@@ -5402,7 +5760,9 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 						})
 						.detach();
 					}
+
 					let closing_window = window.window_handle();
+
 					cx.on_release(move |settings: &mut SettingsWindow, cx| {
 						let owner = settings.owner.downgrade();
 						// Run after AppKit has removed Settings so it cannot win key focus back.
@@ -5410,23 +5770,30 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 							let Some(owner) = owner.upgrade() else {
 								return;
 							};
+
 							owner.update(cx, |s, cx| {
 								if s.settings_window
 									.is_some_and(|w| w.window_id() == closing_window.window_id())
 								{
 									s.settings_window = None;
 								}
+
 								cx.notify();
 							});
+
 							if let Some(parent) = parent {
 								let _ = parent.update(cx, |_, window, _| window.activate_window());
 							}
 						});
 					})
 					.detach();
+
 					let focus = cx.focus_handle();
+
 					window.focus(&focus, cx);
+
 					let observation = cx.observe(&owner, |_, _, cx| cx.notify());
+
 					SettingsWindow { owner, focus, _observation: observation }
 				})
 			}
@@ -5434,109 +5801,16 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 	) {
 		Ok(handle) => {
 			owner.update(cx, |s, _| s.settings_window = Some(handle));
+
 			let _ = handle.update(cx, |_, window, _| window.activate_window());
 		},
 		Err(error) => {
 			owner.update(cx, |s, cx| {
 				s.account_status = Some(format!("Could not open Settings: {error}").into());
+
 				cx.notify();
 			});
 		},
-	}
-}
-
-impl Render for Shell {
-	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		let presentation = connection_presentation(self.connection);
-		let root = div()
-			.id("decodex-shell")
-			.role(Role::Application)
-			.aria_label("Decodex operational shell")
-			.font_family(ui_theme::FONT_FAMILY)
-			.text_size(px(13.0))
-			.key_context("Conversations")
-			.track_focus(&self.root_focus)
-			.on_action(cx.listener(Self::focus_next))
-			.on_action(cx.listener(Self::focus_previous))
-			.on_action(cx.listener(Self::activate_conversations))
-			.on_action(cx.listener(Self::activate_agent))
-			.on_action(cx.listener(Self::activate_health))
-			.on_action(cx.listener(Self::activate_settings))
-			.on_action(cx.listener(Self::toggle_sidebar))
-			.on_action(cx.listener(|s, _: &ShrinkPanel, window, cx| {
-				if s.selected == Destination::Agent {
-					s.agent.update(cx, |a, cx| a.resize_panel(-24.0, false, false, window, cx));
-					cx.stop_propagation();
-				}
-			}))
-			.on_action(cx.listener(|s, _: &GrowPanel, window, cx| {
-				if s.selected == Destination::Agent {
-					s.agent.update(cx, |a, cx| a.resize_panel(24.0, false, false, window, cx));
-					cx.stop_propagation();
-				}
-			}))
-			.on_action(cx.listener(|s, _: &ResetPanel, window, cx| {
-				if s.selected == Destination::Agent {
-					s.agent.update(cx, |a, cx| a.resize_panel(0.0, true, false, window, cx));
-					cx.stop_propagation();
-				}
-			}))
-			.on_action(cx.listener(|s, _: &ShrinkPanels, window, cx| {
-				if s.selected == Destination::Agent {
-					s.agent.update(cx, |a, cx| a.resize_panel(-24.0, false, true, window, cx));
-					cx.stop_propagation();
-				}
-			}))
-			.on_action(cx.listener(|s, _: &GrowPanels, window, cx| {
-				if s.selected == Destination::Agent {
-					s.agent.update(cx, |a, cx| a.resize_panel(24.0, false, true, window, cx));
-					cx.stop_propagation();
-				}
-			}))
-			.on_action(cx.listener(|s, _: &ResetPanels, window, cx| {
-				if s.selected == Destination::Agent {
-					s.agent.update(cx, |a, cx| a.resize_panel(0.0, true, true, window, cx));
-					cx.stop_propagation();
-				}
-			}))
-			.on_action(cx.listener(Self::toggle_inspector))
-			.on_action(cx.listener(Self::toggle_graph))
-			.on_action(cx.listener(|s, _: &DismissStatus, _, cx| {
-				if s.status_open {
-					s.status_open = false;
-					cx.notify();
-				}
-			}))
-			.on_key_down(cx.listener(Self::interrupt_reply))
-			.on_action(cx.listener(|s, _: &NavigateBack, _, cx| s.navigate_history(false, cx)))
-			.on_action(cx.listener(|s, _: &NavigateForward, _, cx| s.navigate_history(true, cx)))
-			.on_action(cx.listener(Self::select_previous_conversation))
-			.on_action(cx.listener(Self::select_next_conversation))
-			.on_action(cx.listener(Self::submit_composer))
-			.size_full()
-			.min_w(px(1180.0))
-			.min_h(px(720.0))
-			.flex()
-			.flex_col()
-			.bg(rgba(ui_theme::SHELL_MATERIAL))
-			.text_color(rgb(WB_TEXT));
-
-		#[cfg(all(target_os = "macos", not(test)))]
-		self.agent.update(cx, |agent, cx| {
-			agent.prepare_native_composer(self.selected == Destination::Agent, window, cx)
-		});
-		let controls = floating_window_controls(self, &presentation, window, cx);
-		#[cfg(all(target_os = "macos", not(test)))]
-		self.prepare_native_status(window, cx);
-		let status = self.render_status_center(&presentation, cx);
-		let route = format!("{:?}", self.selected);
-		let content =
-			destination_content(self, presentation, self.refresh_focus.clone(), window, cx);
-		root.relative()
-			.child(crate::ui_motion::arrival(route, content))
-			.child(controls)
-			.child(gpui::deferred(status).priority(3))
-		// Keep global notifications above deferred composer menus throughout dismissal.
 	}
 }
 
@@ -5852,6 +6126,7 @@ fn account_pool_header(
 
 fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement {
 	let enabled = account.enabled;
+
 	div()
 		.id(SharedString::from(format!("account-identity-{}", account.account_id.as_str())))
 		.when_some(email.map(str::to_owned), |row, email| {
@@ -5900,6 +6175,7 @@ fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement
 
 fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> {
 	let selected = shell.quick.selected.clone();
+
 	shell
 		.quick
 		.tasks
@@ -5911,6 +6187,7 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 			let is_selected = selected.as_ref() == Some(&task.conversation_id);
 			let state = task.state;
 			let label = task.title.as_str().to_owned();
+
 			div()
 				.id(("conversation-row", index))
 				.role(Role::Tab)
@@ -5943,6 +6220,7 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 				}))
 				.on_action(cx.listener({
 					let conversation_id = task.conversation_id.clone();
+
 					move |shell, _: &ActivateConversationRow, window, cx| {
 						shell.choose_conversation(conversation_id.clone(), window, cx);
 					}
@@ -6169,10 +6447,20 @@ mod tests {
 	use gpui::{TestAppContext, VisualTestContext, size};
 
 	use super::*;
+
 	use crate::client_lifecycle::{CompatibilityReason, QuarantineReason, QuarantineRecovery};
+
+	struct PanelControlView(Entity<Shell>);
+
+	impl Render for PanelControlView {
+		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+			self.0.update(cx, |shell, cx| agent_panel_control(shell, 0, cx))
+		}
+	}
 
 	fn open_shell(cx: &mut TestAppContext) -> (gpui::Entity<Shell>, &mut VisualTestContext) {
 		cx.update(bind_keys);
+
 		cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped))
 	}
 
@@ -6216,17 +6504,22 @@ mod tests {
 	#[gpui::test]
 	fn account_first_read_does_not_claim_an_empty_pool(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
+
 		for load in
 			[AccountsLoadState::Loading, AccountsLoadState::Ready, AccountsLoadState::Offline]
 		{
 			shell.update(visual, |s, cx| {
 				s.visual_accounts_and_health();
 				s.accounts.accounts.clear();
+
 				s.accounts.load = load;
 				s.selected = Destination::Accounts;
+
 				cx.notify();
 			});
+
 			visual.update(|window, cx| window.draw(cx).clear());
+
 			assert_eq!(
 				visual.debug_bounds("accounts-empty").is_some(),
 				load == AccountsLoadState::Ready
@@ -6241,23 +6534,29 @@ mod tests {
 	#[gpui::test]
 	fn account_recovery_controls_replace_usage_and_keep_logout(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
+
 		for observed in [AccountObservedStateDto::Available, AccountObservedStateDto::AuthFailed] {
 			shell.update(visual, |s, _| {
 				s.visual_accounts_and_health();
+
 				s.accounts.accounts[0].observed_state = observed;
 				s.selected = Destination::Accounts;
 			});
+
 			visual.update(|window, cx| {
-				window.resize(size(px(1440.), px(1000.)));
+				window.resize(size(px(1_440.), px(1_000.)));
 				window.draw(cx).clear();
 			});
+
 			let needs_login = observed == AccountObservedStateDto::AuthFailed;
+
 			for id in ["account-login-0", "account-login-warning-0"] {
 				assert_eq!(visual.debug_bounds(id).is_some(), needs_login, "{id}");
 			}
 			for id in ["account-quota-0", "account-pin-0", "account-enabled-0"] {
 				assert_eq!(visual.debug_bounds(id).is_some(), !needs_login, "{id}");
 			}
+
 			assert!(visual.debug_bounds("account-logout-0").is_some());
 		}
 	}
@@ -6266,6 +6565,7 @@ mod tests {
 	fn account_login_presentations_create_only_daemon_install_requests() {
 		let enrollment = account_login_start(AccountLoginMethod::BrowserRedirect, None)
 			.expect("browser enrollment request");
+
 		assert!(enrollment.validate().is_ok());
 		assert!(matches!(
 			enrollment.install_mode,
@@ -6285,6 +6585,7 @@ mod tests {
 			)),
 		)
 		.expect("device reauthentication request");
+
 		assert!(matches!(
 			reauthentication.install_mode,
 			AccountLoginInstallMode::Reauthenticate {
@@ -6318,6 +6619,7 @@ mod tests {
 		};
 		let recovery_operation_id =
 			EntityId::new("10000000-0000-4000-8000-000000000002").expect("recovery identity");
+
 		rejected.unsettled_operation = Some(decodex_protocol::AccountUnsettledOperationDto {
 			operation_id: recovery_operation_id.clone(),
 			kind: decodex_protocol::AccountOperationKindDto::Refresh,
@@ -6330,16 +6632,20 @@ mod tests {
 
 		assert_eq!(account_login_recovery_operation_id(&rejected), Some(recovery_operation_id));
 		assert_eq!(account_readiness_status(&rejected), "Refresh rejected · re-login");
+
 		rejected.unsettled_operation.as_mut().expect("recovery operation").recovery_code = Some(
 			decodex_protocol::WireText::new("provider_access_rejected_after_refresh")
 				.expect("access rejection code"),
 		);
+
 		assert!(account_login_recovery_operation_id(&rejected).is_some());
 		assert_eq!(account_readiness_status(&rejected), "New login required · re-login");
+
 		rejected.unsettled_operation.as_mut().expect("recovery operation").recovery_code = Some(
 			decodex_protocol::WireText::new("credential_rotate_failed")
 				.expect("other recovery code"),
 		);
+
 		assert_eq!(account_login_recovery_operation_id(&rejected), None);
 	}
 
@@ -6493,14 +6799,17 @@ mod tests {
 			"user",
 			text,
 		);
+
 		item.kind = HistoryItemKindDto::Status;
 		item.status = HistoryItemStatusDto::Failed;
+
 		let history = history_snapshot(
 			&conversation_id,
 			vec![item],
 			HistoryLoadState::Visible,
 			Some(HistoryPageSource::FreshServer),
 		);
+
 		assert!(matches!(conversation_transcript_rows(&snapshot, Some(&history), None).as_slice(),
 			[TranscriptRow::Activity { text: actual, status: HistoryItemStatusDto::Failed, .. }] if actual == text));
 	}
@@ -6667,6 +6976,7 @@ mod tests {
 		for (failure, detail) in cases {
 			assert_eq!(startup_failure(failure), detail);
 		}
+
 		assert_eq!(startup_failure(ClientFailure::ServiceVersionMismatch), "Restart Decodex.");
 	}
 
@@ -6685,6 +6995,7 @@ mod tests {
 				reason,
 				recovery: QuarantineRecovery::OperatorRequired,
 			};
+
 			assert_eq!(connection_presentation(view).label, "Restart Decodex");
 		}
 	}
@@ -6704,11 +7015,13 @@ mod tests {
 	#[test]
 	fn native_health_keeps_missing_memory_distinct_from_zero() {
 		use decodex_protocol::NativeProcessDiagnostics as Native;
+
 		let text = native_process_summary(Some(&Native::Available {
 			process_id: 42,
 			resident_memory_bytes: None,
 			physical_footprint_bytes: Some(0),
 		}));
+
 		assert!(text.contains("PID 42"));
 		assert!(text.contains("Resident: Not reported"));
 		assert!(text.contains("Physical footprint: 0.0 MiB"));
@@ -6727,6 +7040,7 @@ mod tests {
 					DoctorComponent::PluginReadiness => DoctorStatus::Unknown(DoctorIssue::Plugin),
 					_ => DoctorStatus::Ready,
 				};
+
 				decodex_protocol::DoctorCheck::new(component, status)
 			})
 			.collect();
@@ -6762,7 +7076,9 @@ mod tests {
 	#[gpui::test]
 	fn recorded_turn_acknowledgement_preserves_later_and_failed_input(cx: &mut TestAppContext) {
 		use decodex_protocol::ConversationTurnOutcomeState as Outcome;
+
 		let (shell, visual) = open_shell(cx);
+
 		for (outcome, text, expected) in [
 			(Outcome::Completed, "Original message", ""),
 			(Outcome::Completed, "Later unsent input", "Later unsent input"),
@@ -6771,27 +7087,33 @@ mod tests {
 		] {
 			let (conversations, server, _original) =
 				crate::conversations::tests::recorded_turn_fixture(outcome);
+
 			shell.update(visual, |s, cx| {
 				s.conversations = conversations.clone();
 				// Controller-only fixture; shared writer coverage uses a real store separately.
 				s.ordinary_syncing = true;
 				s.selected = Destination::Conversations;
 				s.ordinary_owner = conversations.ordinary_editor_owner();
+
 				s.composer.update(cx, |input, cx| input.set_content(text, cx));
 				s.synchronize_conversations(cx);
 			});
+
 			visual.update(|window, cx| {
-				window.resize(size(px(1440.), px(1000.)));
+				window.resize(size(px(1_440.), px(1_000.)));
 				window.draw(cx).clear();
 			});
+
 			let button = visual
 				.debug_bounds("ordinary-turn-acknowledge-0")
 				.expect("acknowledge terminal outcome");
+
 			visual.simulate_click(button.center(), gpui::Modifiers::default());
 			shell.read_with(visual, |s, cx| {
 				assert_eq!(s.composer.read(cx).content(), expected);
 				assert!(s.conversations.ordinary_turn_outcomes().is_empty());
 			});
+
 			assert!(
 				crate::conversations::tests::take_ready_command(&conversations, &server).is_none()
 			);
@@ -6801,31 +7123,39 @@ mod tests {
 	#[gpui::test]
 	fn recorded_creation_open_button_retains_later_input_without_replay(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
+
 		for text in ["Original creation input", "Later unsent input"] {
 			let (conversations, server, original) =
 				crate::conversations::tests::recorded_creation_fixture(text);
+
 			shell.update(visual, |s, cx| {
 				s.conversations = conversations.clone();
 				// Controller-only fixture; shared writer coverage uses a real store separately.
 				s.ordinary_syncing = true;
 				s.selected = Destination::Conversations;
 				s.ordinary_owner = None;
+
 				s.composer.update(cx, |input, cx| input.set_content(text, cx));
 				s.synchronize_conversations(cx);
 			});
+
 			visual.update(|window, cx| {
-				window.resize(size(px(1440.), px(1000.)));
+				window.resize(size(px(1_440.), px(1_000.)));
 				window.draw(cx).clear();
 			});
+
 			let button = visual
 				.debug_bounds("ordinary-creation-open-0")
 				.expect("open saved creation button");
+
 			visual.simulate_click(button.center(), gpui::Modifiers::default());
+
 			let decodex_protocol::CommandPayload::CreateConversation { conversation_id, .. } =
 				&original.payload
 			else {
 				panic!("creation")
 			};
+
 			shell.read_with(visual, |s, cx| {
 				assert_eq!(
 					s.composer.read(cx).content(),
@@ -6852,27 +7182,35 @@ mod tests {
 	) {
 		let (shell, visual) = open_shell(cx);
 		let (conversations, server, _) = crate::conversations::tests::catalog_conversations();
+
 		conversations.begin_new();
+
 		shell.update(visual, |s, cx| {
 			s.conversations = conversations.clone();
 			// Controller-only fixture; shared writer coverage uses a real store separately.
 			s.ordinary_syncing = true;
 			s.selected = Destination::Conversations;
 			s.creating_new = true;
+
 			s.composer.update(cx, |input, cx| input.set_content("Keep my input", cx));
 			s.synchronize_conversations(cx);
 		});
+
 		visual.update(|window, cx| {
-			window.resize(size(px(1440.), px(1000.)));
+			window.resize(size(px(1_440.), px(1_000.)));
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("conversation-defaults-pending").is_some());
+
 		let send = visual.debug_bounds("conversation-send").unwrap();
+
 		visual.simulate_click(send.center(), gpui::Modifiers::default());
 		shell.update(visual, |s, cx| {
 			assert!(s.pending_submission.is_none());
 			assert_eq!(s.composer.read(cx).content(), "Keep my input");
 		});
+
 		crate::conversations::creation_defaults_tests::reply_defaults(
 			&conversations,
 			&server,
@@ -6888,20 +7226,26 @@ mod tests {
 				catalog_model: None,
 			},
 		);
+
 		shell.update(visual, |s, cx| s.synchronize_conversations(cx));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("conversation-defaults-pending").is_none());
 		assert!(conversations.snapshot().execution.reasoning_effort.is_none());
+
 		let send = visual.debug_bounds("conversation-send").unwrap();
+
 		visual.simulate_click(send.center(), gpui::Modifiers::default());
+
 		let command = crate::conversations::tests::dispatched_command(&conversations, &server);
 		let decodex_protocol::CommandPayload::CreateConversation { message, execution, .. } =
 			command.payload
 		else {
 			panic!("creation")
 		};
+
 		assert_eq!(message.as_str(), "Keep my input");
 		assert_eq!(execution.model.as_str(), "configured-model");
 		assert!(execution.reasoning_effort.is_none());
@@ -6914,17 +7258,21 @@ mod tests {
 	) {
 		let (shell, visual) = open_shell(cx);
 		let (conversations, server_id, _) = crate::conversations::tests::catalog_conversations();
+
 		shell.update(visual, |s, cx| {
 			s.conversations = conversations.clone();
 			// Controller-only fixture; shared writer coverage uses a real store separately.
 			s.ordinary_syncing = true;
+
 			s.synchronize_conversations(cx);
 			s.select_destination(Destination::Conversations, cx);
 		});
+
 		visual.update(|window, cx| {
-			window.resize(size(px(1440.), px(1000.)));
+			window.resize(size(px(1_440.), px(1_000.)));
 			window.draw(cx).clear();
 		});
+
 		for tier in ["ultrafast", "default", "ultrafast"] {
 			let bounds = visual
 				.debug_bounds(if tier == "default" {
@@ -6933,12 +7281,17 @@ mod tests {
 					"conversation-tier-ultrafast"
 				})
 				.expect("advertised tier is rendered");
+
 			visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+
 			assert_eq!(conversations.snapshot().execution.effective_service_tier().as_str(), tier);
 		}
+
 		conversations.submit("Use the selected tier").unwrap();
+
 		let command = crate::conversations::tests::dispatched_command(&conversations, &server_id);
 		let encoded = serde_json::to_value(command).unwrap();
+
 		assert!(encoded.to_string().contains("ultrafast"));
 	}
 
@@ -6947,14 +7300,19 @@ mod tests {
 		cx: &mut TestAppContext,
 	) {
 		let (shell, visual) = open_shell(cx);
+
 		for (index, expected) in
 			[(0, Destination::Settings), (2, Destination::Accounts), (3, Destination::Health)]
 		{
 			let focused = shell.read_with(visual, |shell, _| shell.settings_focus[index].clone());
+
 			shell.update(visual, |shell, cx| shell.select_destination(Destination::Settings, cx));
 			visual.update(|window, cx| window.focus(&focused, cx));
+
 			assert!(visual.update(|window, _| focused.is_focused(window)));
+
 			visual.simulate_keystrokes("enter");
+
 			assert_eq!(shell.read_with(visual, |shell, _| shell.selected), expected);
 		}
 	}
@@ -6962,10 +7320,14 @@ mod tests {
 	#[gpui::test]
 	fn settings_sections_are_reachable_with_tab_and_enter(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
+
 		visual.simulate_keystrokes("cmd-,");
+
 		let handle = shell.read_with(visual, |s, _| s.settings_window.expect("settings window"));
 		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+
 		settings.update(|window, cx| window.draw(cx).clear());
+
 		for (index, (destination, category)) in [
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::General)),
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Appearance)),
@@ -6983,14 +7345,18 @@ mod tests {
 				);
 			});
 			settings.simulate_keystrokes("enter");
+
 			shell.read_with(settings, |s, cx| {
 				assert_eq!(s.settings_selected, destination);
+
 				if let Some(category) = category {
 					assert_eq!(s.settings.read(cx).category, category);
 				}
+
 				assert_eq!(s.selected, Destination::Agent);
 			});
 		}
+
 		settings.simulate_keystrokes("shift-tab enter");
 		shell.read_with(settings, |s, _| assert_eq!(s.settings_selected, Destination::Accounts));
 	}
@@ -6999,11 +7365,15 @@ mod tests {
 	fn settings_window_preserves_workspace_and_reuses_one_window(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 		let before = shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels());
+
 		visual.simulate_keystrokes("cmd-,");
+
 		let handle = shell.read_with(visual, |s, _| {
 			assert_eq!(s.selected, Destination::Agent);
+
 			s.settings_window.expect("settings window")
 		});
+
 		shell.update(visual, |s, cx| s.open_settings_window(Destination::Accounts, cx));
 		shell.read_with(visual, |s, cx| {
 			assert_eq!(s.selected, Destination::Agent);
@@ -7030,6 +7400,7 @@ mod tests {
 	#[gpui::test]
 	fn back_forward_restore_worker_and_settings_without_duplicate_history(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
+
 		shell.update(visual, |s, cx| {
 			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
 		});
@@ -7044,41 +7415,50 @@ mod tests {
 			assert_eq!(s.agent.read(cx).navigation_work().as_deref(), Some("verify"));
 		});
 		visual.simulate_keystrokes("cmd-[");
+
 		assert_eq!(shell.read_with(visual, |s, cx| s.agent.read(cx).navigation_work()), None);
+
 		visual.simulate_keystrokes("cmd-]");
+
 		assert_eq!(
 			shell.read_with(visual, |s, cx| s.agent.read(cx).navigation_work()),
 			Some("verify".into())
 		);
+
 		visual.simulate_keystrokes("cmd-]");
+
 		assert_eq!(shell.read_with(visual, |s, _| s.selected), Destination::Settings);
 	}
 
 	#[gpui::test]
 	fn agent_panel_shortcuts_control_the_current_work_page(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
+
 		shell.update(visual, |s, cx| {
 			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
 		});
+
 		let panels = |visual: &mut VisualTestContext| {
 			shell.read_with(visual, |s, cx| s.agent.read(cx).workspace_panels())
 		};
-		assert_eq!(panels(visual), [(true, true), (true, true), (true, true), (true, true)]);
-		visual.simulate_keystrokes("cmd-j");
-		assert_eq!(panels(visual), [(true, true), (false, true), (true, true), (true, true)]);
-		visual.simulate_keystrokes("cmd-e");
-		assert_eq!(panels(visual), [(false, true), (false, true), (true, true), (true, true)]);
-		visual.simulate_keystrokes("cmd-b");
-		assert_eq!(panels(visual), [(false, true), (false, true), (true, true), (false, true)]);
-		visual.simulate_keystrokes("cmd-e cmd-j cmd-b");
-		assert_eq!(panels(visual), [(true, true), (true, true), (true, true), (true, true)]);
-	}
 
-	struct PanelControlView(Entity<Shell>);
-	impl Render for PanelControlView {
-		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-			self.0.update(cx, |shell, cx| agent_panel_control(shell, 0, cx))
-		}
+		assert_eq!(panels(visual), [(true, true), (true, true), (true, true), (true, true)]);
+
+		visual.simulate_keystrokes("cmd-j");
+
+		assert_eq!(panels(visual), [(true, true), (false, true), (true, true), (true, true)]);
+
+		visual.simulate_keystrokes("cmd-e");
+
+		assert_eq!(panels(visual), [(false, true), (false, true), (true, true), (true, true)]);
+
+		visual.simulate_keystrokes("cmd-b");
+
+		assert_eq!(panels(visual), [(false, true), (false, true), (true, true), (false, true)]);
+
+		visual.simulate_keystrokes("cmd-e cmd-j cmd-b");
+
+		assert_eq!(panels(visual), [(true, true), (true, true), (true, true), (true, true)]);
 	}
 
 	#[gpui::test]
@@ -7087,22 +7467,30 @@ mod tests {
 			PanelControlView(cx.new(|cx| Shell::new(window, cx, ConnectionView::Stopped)))
 		});
 		let shell = view.read_with(visual, |view, _| view.0.clone());
+
 		shell.update(visual, |s, cx| s.select_destination(Destination::Conversations, cx));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 			window.focus_next(cx);
 		});
+
 		for key in ["enter", "space"] {
 			visual.simulate_keystrokes(key);
+
 			let visible = shell.read_with(visual, |s, _| s.left_sidebar_visible);
+
 			assert!(!visible, "fresh key closes sidebar");
+
 			visual.simulate_event(gpui::KeyDownEvent {
 				keystroke: gpui::Keystroke::parse(key).unwrap(),
 				is_held: true,
 				prefer_character_input: false,
 			});
+
 			assert_eq!(shell.read_with(visual, |s, _| s.left_sidebar_visible), visible);
+
 			visual.simulate_keystrokes(key);
+
 			assert!(
 				shell.read_with(visual, |s, _| s.left_sidebar_visible),
 				"fresh key reopens sidebar"
@@ -7113,28 +7501,43 @@ mod tests {
 	#[gpui::test]
 	fn panel_resize_keyboard_bindings_reach_the_focused_panel(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
-		visual.simulate_resize(gpui::size(px(1400.), px(1000.)));
+
+		visual.simulate_resize(gpui::size(px(1_400.), px(1_000.)));
 		shell.update(visual, |s, cx| s.agent.update(cx, |a, cx| a.visual_workspace_fixture(cx)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let dimensions = |visual: &mut VisualTestContext| {
 			shell.read_with(visual, |s, cx| s.agent.read(cx).panel_dimensions())
 		};
 		let initial = dimensions(visual);
+
 		visual.simulate_click(gpui::point(px(50.), px(170.)), Default::default());
 		visual.simulate_keystrokes("ctrl-alt-=");
+
 		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1, initial.2));
+
 		visual.simulate_keystrokes("ctrl-alt--");
+
 		assert_eq!(dimensions(visual), initial);
+
 		visual.simulate_keystrokes("ctrl-alt-shift-=");
+
 		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2 + 24.));
+
 		visual.simulate_keystrokes("ctrl-alt-_");
+
 		assert_eq!(dimensions(visual), initial);
+
 		visual.simulate_keystrokes("ctrl-alt-+");
+
 		assert_eq!(dimensions(visual), (initial.0 + 24., initial.1 + 24., initial.2 + 24.));
+
 		visual.simulate_keystrokes("ctrl-alt-)");
+
 		let defaults = crate::panel_preferences::PanelDefaults::configured();
+
 		assert_eq!(
 			dimensions(visual),
 			(defaults.sidebar.into(), defaults.sidebar.into(), defaults.dock.into())
@@ -7144,7 +7547,9 @@ mod tests {
 	#[gpui::test]
 	fn panel_shortcuts_toggle_both_workbench_sidebars(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
+
 		shell.update(visual, |shell, cx| shell.select_destination(Destination::Conversations, cx));
+
 		assert!(shell.read_with(visual, |shell, _| shell.left_sidebar_visible));
 		assert!(shell.read_with(visual, |shell, _| shell.inspector_visible));
 
@@ -7158,11 +7563,13 @@ mod tests {
 
 		visual.executor().advance_clock(ui_theme::MOTION_PANEL + Duration::from_millis(24));
 		visual.run_until_parked();
+
 		assert!(!shell.read_with(visual, |shell, _| shell.left_sidebar_mounted));
 		assert!(!shell.read_with(visual, |shell, _| shell.inspector_mounted));
 
 		visual.simulate_keystrokes("cmd-e");
 		visual.simulate_keystrokes("cmd-b");
+
 		assert!(shell.read_with(visual, |shell, _| shell.left_sidebar_visible));
 		assert!(shell.read_with(visual, |shell, _| shell.left_sidebar_mounted));
 		assert!(shell.read_with(visual, |shell, _| shell.inspector_visible));
@@ -7174,28 +7581,38 @@ mod tests {
 		let (shell, visual) = open_shell(cx);
 		let (conversations, server_id, review) =
 			crate::conversations::tests::model_review_fixture();
+
 		shell.update(visual, |s, cx| {
 			s.select_destination(Destination::Conversations, cx);
+
 			s.conversations = conversations.clone();
 			s.ordinary_syncing = true; // Controller-only fixture; shared writer tests use a real store.
+
 			s.synchronize_conversations(cx);
 			s.composer.update(cx, |composer, cx| composer.set_content("Later unsent draft", cx));
 		});
+
 		visual.update(|window, cx| {
-			window.resize(size(px(1440.), px(1000.)));
+			window.resize(size(px(1_440.), px(1_000.)));
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("model-review-original-input").is_none());
+
 		let bounds = visual.debug_bounds("conversation-recover").expect("review button");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+
 		let dispatch =
 			crate::conversations::tests::take_fixture_dispatch(&conversations, &server_id)
 				.expect("review query");
 		let query = dispatch.query().expect("click only queries");
+
 		assert!(matches!(
 			query.payload,
 			decodex_protocol::QueryPayload::GetConversationModelReview { .. }
 		));
+
 		conversations.route_query_result(
 			1,
 			&server_id,
@@ -7210,38 +7627,51 @@ mod tests {
 				),
 			},
 		);
+
 		assert!(
 			crate::conversations::tests::take_fixture_dispatch(&conversations, &server_id)
 				.is_none(),
 			"discovery cannot start"
 		);
+
 		shell.update(visual, |s, cx| {
 			s.synchronize_conversations(cx);
 			cx.notify();
 		});
 		visual.update(|window, cx| window.draw(cx).clear());
+
 		assert!(
 			visual.debug_bounds("model-review-original-input").is_some(),
 			"saved request is rendered"
 		);
+
 		let tier = visual.debug_bounds("conversation-tier-ultrafast").expect("advertised tier");
+
 		visual.simulate_click(tier.center(), gpui::Modifiers::default());
+
 		let bounds = visual.debug_bounds("conversation-recover").expect("confirmation button");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+
 		let dispatch =
 			crate::conversations::tests::take_fixture_dispatch(&conversations, &server_id)
 				.expect("explicit confirmation");
 		let command = dispatch.command().expect("confirmation command").clone();
+
 		assert!(
 			matches!(&command.payload, decodex_protocol::CommandPayload::ReviewConversationModelSettings {
             conversation_id, execution, ..
         } if conversation_id.as_str() == review.conversation_id.as_str() && execution.effective_service_tier().as_str() == "ultrafast")
 		);
+
 		conversations.command_sent(&dispatch);
+
 		let mut accepted = conversations.snapshot().selected_task().expect("task").clone();
+
 		accepted.state = ConversationState::RoutingPending;
 		accepted.conversation_revision = decodex_protocol::EntityRevision(2);
 		accepted.recovery_action = Some(ConversationRecoveryAction::ResumeRouting);
+
 		conversations.route_command_result(
 			1,
 			&server_id,
@@ -7277,17 +7707,23 @@ mod tests {
 		let (shell, visual) = open_shell(cx);
 		let conversations = crate::conversations::tests::native_settings_fixture();
 		let execution = conversations.snapshot().execution.clone();
+
 		shell.update(visual, |s, cx| {
 			s.select_destination(Destination::Conversations, cx);
+
 			s.conversations = conversations;
+
 			s.synchronize_conversations(cx);
+
 			s.inspector_visible = true;
 			s.inspector_mounted = true;
 			s.inspector_tab = InspectorTab::Context;
+
 			s.composer.update(cx, |composer, cx| composer.set_content("Unsent local draft", cx));
 		});
+
 		visual.update(|window, cx| {
-			window.resize(size(px(1440.), px(1000.)));
+			window.resize(size(px(1_440.), px(1_000.)));
 			window.draw(cx).clear();
 		});
 		visual.executor().advance_clock(ui_theme::MOTION_PANEL + Duration::from_millis(24));
@@ -7297,12 +7733,14 @@ mod tests {
 			assert_eq!(s.selected, Destination::Conversations);
 			assert!(s.quick.selected_task().unwrap().native_settings.is_some());
 		});
+
 		assert!(
 			visual.debug_bounds("conversation-native-settings").is_some(),
 			"inspector={:?}, heading={:?}",
 			visual.debug_bounds("workbench-inspector"),
 			visual.debug_bounds("inspector-conversation-heading")
 		);
+
 		shell.update(visual, |s, cx| {
 			assert_eq!(s.composer.read(cx).content(), "Unsent local draft");
 			assert_eq!(s.quick.execution, execution);
@@ -7310,10 +7748,14 @@ mod tests {
 				s.quick.selected_task().unwrap().native_settings.as_ref().unwrap().model_provider,
 				"native-observed-provider"
 			);
+
 			s.quick.tasks[0].native_settings = None;
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| window.draw(cx).clear());
+
 		assert!(visual.debug_bounds("conversation-native-settings").is_none());
 		assert!(visual.debug_bounds("conversation-native-settings-unavailable").is_some());
 	}

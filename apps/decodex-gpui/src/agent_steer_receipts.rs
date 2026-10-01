@@ -8,6 +8,7 @@ impl AgentSurface {
 		if self.sending || !self.uncertain || self.submission.receipt_task.is_some() {
 			return;
 		}
+
 		let Some(identity) =
 			self.submission.pending.as_ref().and_then(|pending| pending.steer.clone())
 		else {
@@ -18,15 +19,19 @@ impl AgentSurface {
 		let request = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+
 			runtime.block_on(AgentClient::new(profile).steer_receipt(identity)).ok()
 		});
+
 		self.submission.receipt_task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |surface, cx| {
 				if surface.command_epoch != epoch {
 					return;
 				}
+
 				surface.submission.receipt_task = None;
+
 				if let Some(result) = result {
 					surface.apply_steer_receipt(result, cx);
 				}
@@ -36,6 +41,7 @@ impl AgentSurface {
 
 	fn apply_steer_receipt(&mut self, result: AgentSteerReceiptResult, cx: &mut Context<Self>) {
 		let AgentSteerReceiptResult::Confirmed { identity } = result else { return };
+
 		if self.sending
 			|| !self.uncertain
 			|| self.submission.pending.as_ref().and_then(|pending| pending.steer.as_ref())
@@ -43,10 +49,13 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let Some(mut pending) = self.submission.pending.take() else { return };
+
 		pending.epoch = self.command_epoch;
 		self.uncertain =
 			self.submission.unconfirmed.iter().any(|key| Some(key) != pending.key.as_ref());
+
 		self.resolve_steer_draft_copies(&identity);
 		self.finish_command(
 			pending,
@@ -65,7 +74,9 @@ impl AgentSurface {
 	) {
 		self.profile = Some(profile);
 		self.composer_manager = Some(identity.work_id.as_str().into());
+
 		self.composer.update(cx, |input, cx| input.set_content("Later draft retained.", cx));
+
 		self.uncertain = true;
 		self.feedback = "Acceptance unknown. Waiting for the exact native receipt.".into();
 		self.submission.pending = Some(PendingCommand {
@@ -79,6 +90,7 @@ impl AgentSurface {
 			attachments: None,
 			references: None,
 		});
+
 		cx.notify();
 	}
 }
@@ -92,6 +104,7 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		for mode in ["unchanged", "edited", "other-task"] {
 			surface.update(visual, |s, cx| {
 				let identity = AgentSteerIdentity {
@@ -100,11 +113,15 @@ mod tests {
 					turn_id: WireText::new("turn").unwrap(),
 					submission_id: IdempotencyKey::new("submission").unwrap(),
 				};
+
 				s.composer_manager =
 					Some(if mode == "other-task" { "other" } else { "root" }.into());
+
 				let text = if mode == "unchanged" { "original" } else { "later draft" };
+
 				s.composer.update(cx, |input, cx| input.set_content(text, cx));
 				s.draft_profiles.texts.insert("root".into(), "original".into());
+
 				let file = |path| decodex_protocol::AgentAttachmentDto {
 					path: ConversationWorkingDirectory::new(path).unwrap(),
 					image: true,
@@ -112,12 +129,15 @@ mod tests {
 				};
 				let sent = file("/tmp/sent.png");
 				let later = file("/tmp/later.png");
+
 				s.attachments = if mode == "other-task" {
 					vec![later.clone()]
 				} else {
 					vec![sent.clone(), later.clone()]
 				};
+
 				s.draft_profiles.files.insert("root".into(), vec![sent.clone(), later.clone()]);
+
 				s.uncertain = true;
 				s.feedback = "Acceptance unknown".into();
 				s.submission.pending = Some(PendingCommand {
@@ -131,24 +151,33 @@ mod tests {
 					attachments: Some(vec![sent]),
 					references: None,
 				});
+
 				for result in
 					[AgentSteerReceiptResult::Unconfirmed, AgentSteerReceiptResult::Unavailable]
 				{
 					s.apply_steer_receipt(result, cx);
+
 					assert!(s.uncertain);
 					assert_eq!(s.composer.read(cx).content(), text);
 				}
+
 				let mut foreign = identity.clone();
+
 				foreign.submission_id = IdempotencyKey::new("different").unwrap();
+
 				s.apply_steer_receipt(AgentSteerReceiptResult::Confirmed { identity: foreign }, cx);
+
 				assert!(s.uncertain);
+
 				s.apply_steer_receipt(AgentSteerReceiptResult::Confirmed { identity }, cx);
+
 				assert!(!s.uncertain && s.submission.pending.is_none());
 				assert_eq!(s.attachments, vec![later.clone()]);
 				assert_eq!(
 					s.composer.read(cx).content(),
 					if mode == "unchanged" { "" } else { text }
 				);
+
 				if mode == "other-task" {
 					assert!(!s.draft_profiles.texts.contains_key("root"));
 					assert_eq!(s.draft_profiles.files["root"], vec![later]);

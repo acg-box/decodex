@@ -4,51 +4,11 @@ use gpui::{
 	rgb, rgba,
 };
 
-fn symbol(condition: &str) -> &'static str {
-	let value = condition.to_ascii_lowercase();
-	if value.contains("shower") || value.contains("rain") {
-		"☂"
-	} else if value.contains("sun") {
-		"☀"
-	} else {
-		"☁"
-	}
-}
-fn hour_label(hour: &str) -> String {
-	let short = hour.trim_start_matches('0');
-	let short = if short.starts_with(':') { format!("0{short}") } else { short.to_owned() };
-	short.replace(":00", "")
-}
-
-pub(super) fn render(weather: &decodex_protocol::WeatherForecast, key: &str) -> AnyElement {
-	WeatherCard { weather: weather.clone(), key: key.into() }.into_any_element()
-}
 #[derive(IntoElement)]
 struct WeatherCard {
 	weather: decodex_protocol::WeatherForecast,
 	key: String,
 }
-#[derive(Default)]
-struct PageMotion {
-	target: usize,
-	from: f32,
-	started: Option<std::time::Instant>,
-}
-impl PageMotion {
-	fn position(&self) -> f32 {
-		let t = self.started.map(|at| (at.elapsed().as_secs_f32() / 0.24).min(1.)).unwrap_or(1.);
-		self.from + (self.target as f32 - self.from) * (1. - (1. - t).powi(3))
-	}
-
-	fn select(&mut self, target: usize) {
-		if self.target != target {
-			self.from = self.position();
-			self.target = target;
-			self.started = Some(std::time::Instant::now());
-		}
-	}
-}
-
 impl RenderOnce for WeatherCard {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let weather = &self.weather;
@@ -61,8 +21,10 @@ impl RenderOnce for WeatherCard {
 		);
 		let page = state.read(cx).target.min(pages - 1);
 		let position = state.read(cx).position().clamp(0., (pages - 1) as f32);
+
 		if (position - page as f32).abs() > 0.001 {
 			let state = state.clone();
+
 			window.on_next_frame(move |window, cx| {
 				state.update(cx, |_, cx| cx.notify());
 				window.refresh();
@@ -125,6 +87,7 @@ impl RenderOnce for WeatherCard {
 				card.child(div().flex().justify_center().children((0..pages).map(|index| {
 					let state = state.clone();
 					let selector = format!("weather-page-{key}-{index}");
+
 					div()
 						.id(SharedString::from(selector.clone()))
 						.debug_selector(move || selector.clone())
@@ -156,6 +119,51 @@ impl RenderOnce for WeatherCard {
 	}
 }
 
+#[derive(Default)]
+struct PageMotion {
+	target: usize,
+	from: f32,
+	started: Option<std::time::Instant>,
+}
+impl PageMotion {
+	fn position(&self) -> f32 {
+		let t = self.started.map(|at| (at.elapsed().as_secs_f32() / 0.24).min(1.)).unwrap_or(1.);
+
+		self.from + (self.target as f32 - self.from) * (1. - (1. - t).powi(3))
+	}
+
+	fn select(&mut self, target: usize) {
+		if self.target != target {
+			self.from = self.position();
+			self.target = target;
+			self.started = Some(std::time::Instant::now());
+		}
+	}
+}
+
+pub(super) fn render(weather: &decodex_protocol::WeatherForecast, key: &str) -> AnyElement {
+	WeatherCard { weather: weather.clone(), key: key.into() }.into_any_element()
+}
+
+fn symbol(condition: &str) -> &'static str {
+	let value = condition.to_ascii_lowercase();
+
+	if value.contains("shower") || value.contains("rain") {
+		"☂"
+	} else if value.contains("sun") {
+		"☀"
+	} else {
+		"☁"
+	}
+}
+
+fn hour_label(hour: &str) -> String {
+	let short = hour.trim_start_matches('0');
+	let short = if short.starts_with(':') { format!("0{short}") } else { short.to_owned() };
+
+	short.replace(":00", "")
+}
+
 fn weather_hour(key: &str, i: usize, hour: &str, condition: &str, t: i32) -> AnyElement {
 	div()
 		.id(SharedString::from(format!("weather-hour-{key}-{i}")))
@@ -176,6 +184,7 @@ fn weather_hour(key: &str, i: usize, hour: &str, condition: &str, t: i32) -> Any
 
 fn weather_header(weather: &decodex_protocol::WeatherForecast) -> AnyElement {
 	let location = weather.location.split(", ").next().unwrap_or(&weather.location);
+
 	div()
 		.flex()
 		.items_center()
@@ -223,8 +232,31 @@ fn weather_header(weather: &decodex_protocol::WeatherForecast) -> AnyElement {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
 	use core::prelude::v1::test;
+
 	use gpui::{Context, Modifiers, Render, ScrollDelta, ScrollWheelEvent, size};
+
+	struct Parent {
+		bubbled: std::rc::Rc<std::cell::Cell<usize>>,
+	}
+
+	impl Render for Parent {
+		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+			let count = self.bubbled.clone();
+			let forecast = decodex_protocol::WeatherForecast::parse(include_str!(
+				"../examples/fixtures/singapore-weather.txt"
+			))
+			.unwrap();
+
+			div()
+				.id("parent")
+				.size_full()
+				.on_scroll_wheel(move |_, _, _| count.set(count.get() + 1))
+				.child(super::render(&forecast, "test"))
+		}
+	}
+
 	#[test]
 	fn compact_hours_keep_midnight_and_nonzero_minutes() {
 		for (source, expected) in [
@@ -239,35 +271,21 @@ mod tests {
 		}
 	}
 
-	struct Parent {
-		bubbled: std::rc::Rc<std::cell::Cell<usize>>,
-	}
-	impl Render for Parent {
-		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-			let count = self.bubbled.clone();
-			let forecast = decodex_protocol::WeatherForecast::parse(include_str!(
-				"../examples/fixtures/singapore-weather.txt"
-			))
-			.unwrap();
-			div()
-				.id("parent")
-				.size_full()
-				.on_scroll_wheel(move |_, _, _| count.set(count.get() + 1))
-				.child(super::render(&forecast, "test"))
-		}
-	}
 	#[gpui::test]
 	fn weather_pages_change_only_on_dot_click_and_allow_parent_scroll(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let bubbled = std::rc::Rc::new(std::cell::Cell::new(0));
 		let (_, visual) = cx.add_window_view(|_, _| Parent { bubbled: bubbled.clone() });
+
 		visual.update(|window, cx| {
 			window.resize(size(px(600.), px(400.)));
 			window.draw(cx).clear();
 		});
+
 		let bounds = visual.debug_bounds("weather-card-test").unwrap();
 		let start = visual.debug_bounds("weather-hour-0").unwrap().origin.x;
+
 		visual.simulate_event(ScrollWheelEvent {
 			position: bounds.center(),
 			delta: ScrollDelta::Pixels(point(px(0.), px(-60.))),
@@ -276,13 +294,14 @@ mod tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert_eq!(visual.debug_bounds("weather-hour-0").unwrap().origin.x, start);
 
 		for delta in [
 			point(px(0.), px(-60.)),
-			point(px(-1000.), px(-30.)),
-			point(px(-1000.), px(-30.)),
-			point(px(1000.), px(0.)),
+			point(px(-1_000.), px(-30.)),
+			point(px(-1_000.), px(-30.)),
+			point(px(1_000.), px(0.)),
 		] {
 			visual.simulate_event(ScrollWheelEvent {
 				position: bounds.center(),
@@ -293,36 +312,53 @@ mod tests {
 				window.draw(cx).clear();
 			});
 		}
+
 		assert_eq!(bubbled.get(), 5);
+
 		let dot = visual.debug_bounds("weather-page-test-1").unwrap();
+
 		visual.simulate_click(dot.center(), Modifiers::default());
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let first_frame = visual.debug_bounds("weather-hour-0").unwrap().origin.x;
+
 		std::thread::sleep(std::time::Duration::from_millis(100));
+
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
 		});
+
 		let middle = visual.debug_bounds("weather-hour-0").unwrap().origin.x;
+
 		assert!(middle < first_frame);
+
 		std::thread::sleep(std::time::Duration::from_millis(180));
+
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("weather-hour-6").unwrap().left() < bounds.right());
 		assert!(visual.debug_bounds("weather-hour-6").is_some());
 		assert!(visual.debug_bounds("weather-hour-11").is_some());
+
 		let dot = visual.debug_bounds("weather-page-test-0").unwrap();
+
 		visual.simulate_click(dot.center(), Modifiers::default());
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("weather-hour-0").is_some());
+
 		std::thread::sleep(std::time::Duration::from_millis(280));
+
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
 		});
+
 		assert!((visual.debug_bounds("weather-hour-0").unwrap().origin.x - start).abs() < px(1.));
 	}
 }

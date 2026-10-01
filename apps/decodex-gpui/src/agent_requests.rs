@@ -20,6 +20,7 @@ impl RequestReader {
 		if !self.starts.contains(&to) {
 			self.starts.push(to);
 		}
+
 		self.offset = to;
 	}
 }
@@ -29,7 +30,6 @@ pub(super) struct QuestionTimer {
 	started: std::time::Instant,
 	disabled: bool,
 }
-
 impl QuestionTimer {
 	fn new(value: &serde_json::Value, now: std::time::Instant) -> Self {
 		Self { started: now, disabled: value["isBlocking"].as_bool() != Some(false) }
@@ -39,6 +39,7 @@ impl QuestionTimer {
 		if self.disabled {
 			return None;
 		}
+
 		let elapsed = now.saturating_duration_since(self.started).as_secs();
 		// Upstream ignores deprecated autoResolutionMs: 60s grace, then 60s visible.
 		(elapsed >= 60).then(|| 120_u64.saturating_sub(elapsed))
@@ -50,6 +51,7 @@ impl QuestionTimer {
 		}
 		// Never retry an automatic response, including after an uncertain acknowledgment.
 		self.disabled = true;
+
 		true
 	}
 }
@@ -64,9 +66,11 @@ impl AgentSurface {
 			AgentRequestResult::Available { event_id, .. } => *event_id,
 			_ => 0,
 		};
+
 		self.request_reader.reset(event);
 		self.prepare_mcp_inputs(request, cx);
 		self.question_inputs.clear();
+
 		if let AgentRequestResult::Available { event_id, method, request_json, .. } = request
 			&& method == "item/tool/requestUserInput"
 			&& let Ok(value) = serde_json::from_str::<serde_json::Value>(request_json.as_str())
@@ -74,6 +78,7 @@ impl AgentSurface {
 			self.question_timers
 				.entry(*event_id)
 				.or_insert_with(|| QuestionTimer::new(&value, std::time::Instant::now()));
+
 			for question in value["questions"].as_array().into_iter().flatten() {
 				if let Some(id) = question["id"].as_str() {
 					self.question_inputs.insert(
@@ -85,9 +90,11 @@ impl AgentSurface {
 								"Answer to Agent",
 								cx,
 							);
+
 							if question["isSecret"].as_bool() == Some(true) {
 								input.obscure();
 							}
+
 							input
 						}),
 					);
@@ -107,13 +114,16 @@ impl AgentSurface {
 		else {
 			return div().into_any_element();
 		};
+
 		if work_id != &work.id || !snapshot.pending_events.iter().any(|event| event.id == *event_id)
 		{
 			return div().into_any_element();
 		}
+
 		let large = request_json.as_str().len() > decodex_protocol::MAX_HISTORY_INLINE_BYTES;
 		let value: serde_json::Value =
 			serde_json::from_str(request_json.as_str()).unwrap_or_default();
+
 		if method == "mcpServer/elicitation/request" {
 			return if large {
 				self.large_request_panel(*event_id, request_json.as_str(), cx)
@@ -123,6 +133,7 @@ impl AgentSurface {
 				self.mcp_form_panel(*event_id, &value, cx)
 			};
 		}
+
 		let mut panel = div()
 			.capture_key_down(cx.listener(|s, _, _, cx| {
 				s.snooze_question_timeout();
@@ -143,6 +154,7 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap_2();
+
 		if large {
 			panel = panel.child(self.large_request_panel(*event_id, request_json.as_str(), cx));
 		}
@@ -150,6 +162,7 @@ impl AgentSurface {
 			for question in value["questions"].as_array().into_iter().flatten() {
 				panel = panel.child(self.question_form(question, cx));
 			}
+
 			panel = panel.child(
 				div()
 					.id("agent-answer-questions")
@@ -162,6 +175,7 @@ impl AgentSurface {
 					.child("Send answers")
 					.smooth(),
 			);
+
 			if let Some(remaining) = self
 				.question_timers
 				.get(event_id)
@@ -174,15 +188,18 @@ impl AgentSurface {
 		} else {
 			panel = self.approval_request_panel(panel, method, request_json.as_str(), &value, cx);
 		}
+
 		panel.into_any_element()
 	}
 
 	fn large_request_panel(&self, event: i64, text: &str, cx: &mut Context<Self>) -> gpui::Div {
 		let offset = self.request_reader.offset.min(text.len());
-		let mut end = offset.saturating_add(8192).min(text.len());
+		let mut end = offset.saturating_add(8_192).min(text.len());
+
 		while !text.is_char_boundary(end) {
 			end -= 1;
 		}
+
 		let generation = self.generation;
 		let revision = self.request_reader.revision;
 		let section =
@@ -203,11 +220,13 @@ impl AgentSurface {
 			);
 		let previous =
 			self.request_reader.starts.iter().copied().filter(|start| *start < offset).max();
+
 		for (id, label, target) in [
 			("large-request-previous", "Previous section", previous),
 			("large-request-next", "Next section", (end < text.len()).then_some(end)),
 		] {
 			let Some(target) = target else { continue };
+
 			panel = panel.child(div().id(id).debug_selector(move || id.into())
 				.role(Role::Button).tab_index(0).aria_label(label).cursor_pointer().child(label)
 				.on_key_down(cx.listener(move |s, key: &gpui::KeyDownEvent, _, cx| {
@@ -223,14 +242,16 @@ impl AgentSurface {
 					}
 				})));
 		}
+
 		if end == text.len() {
 			panel = panel.child(muted("End of request"));
 		}
+
 		panel
 	}
 
 	pub(super) fn request_summary(&self, text: String) -> String {
-		if text.len() > 4096
+		if text.len() > 4_096
 			&& matches!(&self.request, Some(AgentRequestResult::Available { request_json, .. }) if request_json.as_str().len() > decodex_protocol::MAX_HISTORY_INLINE_BYTES)
 		{
 			"Complete content is in the request details above.".into()
@@ -257,17 +278,21 @@ impl AgentSurface {
 		} else {
 			("Allow this command?", "approval-kind-command")
 		};
+
 		panel = panel.child(div().debug_selector(move || selector.into()).child(heading));
+
 		for key in ["reason", "command", "cwd", "grantRoot"] {
 			if let Some(text) = value[key].as_str() {
 				panel = panel
 					.child(div().text_size(px(12.0)).child(self.request_summary(text.to_owned())));
 			}
 		}
+
 		if method == "item/fileChange/requestApproval" {
 			let details = value["changeDetails"]
 				.as_str()
 				.unwrap_or("File paths and patch details are unavailable.");
+
 			panel = panel.child(
 				div()
 					.id("file-approval-details")
@@ -277,11 +302,11 @@ impl AgentSurface {
 					.font_family("Menlo")
 					.child(self.request_summary(details.to_owned())),
 			);
+
 			if value["changeDetailsTruncated"] == true {
 				panel = panel.child(muted("File change details shortened"));
 			}
 		}
-
 		if matches!(
 			method,
 			"item/permissions/requestApproval" | "item/commandExecution/requestApproval"
@@ -318,6 +343,7 @@ impl AgentSurface {
 			} else {
 				offered_decisions(method, request_json)
 			};
+
 			for decision in decisions {
 				let label = match decision.as_str() {
 					"accept" => "Allow once",
@@ -326,6 +352,7 @@ impl AgentSurface {
 					"cancel" => "Stop this turn",
 					_ => continue,
 				};
+
 				panel = panel.child(self.request_choice(
 					&decision,
 					label,
@@ -347,6 +374,7 @@ impl AgentSurface {
 				} else {
 					continue;
 				};
+
 				panel =
 					panel.child(div().text_size(px(11.0)).child(self.request_summary(
 						serde_json::to_string_pretty(decision).unwrap_or_default(),
@@ -359,6 +387,7 @@ impl AgentSurface {
 				));
 			}
 		}
+
 		panel
 	}
 
@@ -378,10 +407,12 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let Some(AgentRequestResult::Available { event_id, work_id, method, .. }) = &self.request
 		else {
 			return;
 		};
+
 		if method != "item/tool/requestUserInput"
 			|| self.selected.as_ref() != Some(work_id)
 			|| !self.snapshot.as_ref().is_some_and(|snapshot| {
@@ -399,6 +430,7 @@ impl AgentSurface {
 		}
 		if self.question_inputs.values().any(|input| !input.read(cx).content().is_empty()) {
 			self.snooze_question_timeout();
+
 			return;
 		}
 		if self
@@ -412,16 +444,23 @@ impl AgentSurface {
 
 	fn submit_answers(&mut self, cx: &mut Context<Self>) {
 		self.snooze_question_timeout();
+
 		let mut answers = serde_json::Map::new();
+
 		for (id, input) in &self.question_inputs {
 			let text = input.read(cx).content().trim();
+
 			if text.is_empty() {
 				self.feedback = "Answer each question before sending.".into();
+
 				cx.notify();
+
 				return;
 			}
+
 			answers.insert(id.clone(), serde_json::json!({"answers":[text]}));
 		}
+
 		if !answers.is_empty() {
 			self.respond(serde_json::json!({"answers":answers}).to_string(), cx);
 		}
@@ -431,6 +470,7 @@ impl AgentSurface {
 		if self.request_task.is_some() {
 			return;
 		}
+
 		if let Some(AgentRequestResult::Available { event_id, work_id, .. }) = &self.request
 			&& self.selected.as_ref() == Some(work_id)
 			&& self.snapshot.as_ref().is_some_and(|snapshot| {
@@ -438,6 +478,7 @@ impl AgentSurface {
 			}) {
 			return;
 		}
+
 		let event = self
 			.snapshot
 			.as_ref()
@@ -448,11 +489,13 @@ impl AgentSurface {
 				})
 			})
 			.map(|event| event.id);
+
 		match event {
 			Some(id) if !matches!(&self.request,Some(AgentRequestResult::Available {event_id,..}) if *event_id==id) =>
 				self.load_request(id, cx),
 			None => {
 				self.request = None;
+
 				self.question_inputs.clear();
 			},
 			_ => {},
@@ -473,6 +516,7 @@ impl AgentSurface {
 		let Some(input) = self.question_inputs.get(id) else {
 			return row.into_any_element();
 		};
+
 		for (index, option) in question["options"].as_array().into_iter().flatten().enumerate() {
 			let Some(label) = option["label"].as_str() else {
 				continue;
@@ -482,6 +526,7 @@ impl AgentSurface {
 			let selected = input.read(cx).content() == label;
 			let answer = label.clone();
 			let selector = format!("question-{id}-{index}");
+
 			row = row.child(
 				div()
 					.id(SharedString::from(format!("question-{id}-{index}")))
@@ -502,6 +547,7 @@ impl AgentSurface {
 					.smooth(),
 			);
 		}
+
 		row.child(div().h(px(36.0)).child(input.clone())).into_any_element()
 	}
 
@@ -520,6 +566,7 @@ impl AgentSurface {
 		let revision = self.request_reader.revision;
 		let response = response.to_string();
 		let selector = format!("request-{id}");
+
 		div()
 			.id(SharedString::from(format!("request-{id}")))
 			.debug_selector(move || selector)
@@ -562,6 +609,7 @@ mod timing_tests {
 		let start = Instant::now();
 		let mut timer =
 			QuestionTimer::new(&json!({"isBlocking":false,"autoResolutionMs":1}), start);
+
 		assert_eq!(timer.remaining(start + Duration::from_secs(59)), None);
 		assert_eq!(timer.remaining(start + Duration::from_secs(60)), Some(60));
 		assert_eq!(timer.remaining(start + Duration::from_secs(119)), Some(1));
@@ -573,6 +621,7 @@ mod timing_tests {
 	#[test]
 	fn blocking_missing_malformed_and_snoozed_requests_do_not_auto_resolve() {
 		let start = Instant::now();
+
 		for value in [
 			json!({}),
 			json!({"isBlocking":true}),
@@ -583,32 +632,42 @@ mod timing_tests {
 				!QuestionTimer::new(&value, start).claim_expired(start + Duration::from_secs(500))
 			);
 		}
+
 		let mut timer = QuestionTimer::new(&json!({"isBlocking":false}), start);
+
 		timer.disabled = true;
+
 		assert!(!timer.claim_expired(start + Duration::from_secs(500)));
 	}
 	#[gpui::test]
 	fn large_request_reader_navigates_and_rejects_stale_sections(cx: &mut gpui::TestAppContext) {
 		use super::*;
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx); s.graph_visible = false;
+
 			let work = s.selected.clone().unwrap();
+
 			s.snapshot.as_mut().unwrap().pending_events = vec![decodex_protocol::AgentPendingEventDto { id:902, source_event_id:"large".into(),work_item_id:work.clone(),event_kind:"permission_pending".into(),created_at_micros:1,delivery_claimed:false }];
-			let request = AgentRequestResult::Available { event_id:902,work_id:work,method:"item/commandExecution/requestApproval".into(),request_json:decodex_protocol::AgentRequestText::new(json!({"command":"echo 界🙂".repeat(2000),"availableDecisions":["accept","decline"]}).to_string()).unwrap() };
+
+			let request = AgentRequestResult::Available { event_id:902,work_id:work,method:"item/commandExecution/requestApproval".into(),request_json:decodex_protocol::AgentRequestText::new(json!({"command":"echo 界🙂".repeat(2_000),"availableDecisions":["accept","decline"]}).to_string()).unwrap() };
+
 			s.prepare_question_inputs(&request,cx); s.request = Some(request);
 		});
+
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.), px(1200.)));
+			window.resize(gpui::size(px(1_180.), px(1_200.)));
 			window.draw(cx).clear();
 		});
 		// Let the fixture's dock-close animation settle before choosing a
 		// scroll offset and clicking the request pagination control.
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
-
 		surface.update(visual, |s, cx| {
 			s.transcript_scroll.get(s.selected.as_ref().unwrap()).unwrap().scroll_to_bottom();
 			cx.notify();
@@ -616,7 +675,9 @@ mod timing_tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let next = visual.debug_bounds("large-request-next").expect("next section");
+
 		visual.simulate_click(next.center(), gpui::Modifiers::default());
 		surface.read_with(visual, |s, _| {
 			assert!(s.request_reader.offset > 0);
@@ -625,7 +686,9 @@ mod timing_tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let first_offset = surface.read_with(visual, |s, _| s.request_reader.offset);
+
 		visual.simulate_keystrokes("space");
 		surface.read_with(visual, |s, _| {
 			assert!(
@@ -638,13 +701,18 @@ mod timing_tests {
 		});
 
 		let previous = visual.debug_bounds("large-request-previous").expect("previous section");
+
 		visual.simulate_click(previous.center(), gpui::Modifiers::default());
+
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.request_reader.offset, first_offset);
+
 			let revision = s.request_reader.revision;
 			let request = s.request.clone().unwrap();
+
 			s.prepare_question_inputs(&request, cx);
-			s.request_reader.navigate(902, revision, 0, 8192);
+			s.request_reader.navigate(902, revision, 0, 8_192);
+
 			assert_eq!(
 				s.request_reader.offset, 0,
 				"a control from the previous request rendering cannot move the new reader"
@@ -658,11 +726,16 @@ mod timing_tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		use super::*;
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
+
 			let work = s.selected.clone().unwrap();
+
 			s.snapshot.as_mut().unwrap().pending_events =
 				vec![decodex_protocol::AgentPendingEventDto {
 					id: 904,
@@ -672,22 +745,26 @@ mod timing_tests {
 					created_at_micros: 1,
 					delivery_claimed: false,
 				}];
+
 			let request = AgentRequestResult::Available {
 				event_id: 904,
 				work_id: work,
 				method: "item/permissions/requestApproval".into(),
 				request_json: decodex_protocol::AgentRequestText::new(
-					json!({"permissions":{"fileSystem":{"write":["/tmp/界".repeat(10000)]}}})
+					json!({"permissions":{"fileSystem":{"write":["/tmp/界".repeat(10_000)]}}})
 						.to_string(),
 				)
 				.unwrap(),
 			};
+
 			s.prepare_question_inputs(&request, cx);
+
 			s.request = Some(request);
 		});
+
 		for _ in 0..32 {
 			visual.update(|window, cx| {
-				window.resize(gpui::size(px(1180.), px(1200.)));
+				window.resize(gpui::size(px(1_180.), px(1_200.)));
 				window.draw(cx).clear();
 			});
 			surface.update(visual, |s, cx| {
@@ -697,6 +774,7 @@ mod timing_tests {
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
 			});
+
 			if visual.debug_bounds("request-allow").is_some() {
 				surface.update(visual, |s, cx| {
 					s.transcript_scroll
@@ -708,7 +786,9 @@ mod timing_tests {
 				visual.update(|window, cx| {
 					window.draw(cx).clear();
 				});
+
 				let allow = visual.debug_bounds("request-allow").unwrap();
+
 				visual.simulate_click(allow.center(), gpui::Modifiers::default());
 				surface.read_with(visual, |s, _| {
 					assert_eq!(
@@ -716,20 +796,27 @@ mod timing_tests {
 						"must reach dispatch, not reject the full grant as oversized"
 					);
 				});
+
 				return;
 			}
+
 			let next =
 				visual.debug_bounds("large-request-next").expect("complete permission detail");
+
 			visual.simulate_click(next.center(), gpui::Modifiers::default());
 		}
+
 		panic!("permission approval did not become available");
 	}
 
 	#[gpui::test]
 	fn question_option_interaction_snoozes_only_its_request(cx: &mut gpui::TestAppContext) {
 		use super::*;
+
 		use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
                 runtime_source: None,
@@ -742,39 +829,55 @@ mod timing_tests {
                 }],
                 pending_events:vec![AgentPendingEventDto { id:7, source_event_id:"question".into(), work_item_id:"root".into(),event_kind:"user_input_pending".into(),created_at_micros:1,delivery_claimed:false }]
             })));
+
             let request=AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"item/tool/requestUserInput".into(),request_json:decodex_protocol::AgentRequestText::new(json!({"isBlocking":false,"questions":[{"id":"format","question":"Which format?","options":[{"label":"PDF","description":"Document"}]}]}).to_string()).unwrap()};
+
             s.prepare_question_inputs(&request,cx);
+
             s.question_timers.get_mut(&7).unwrap().started = Instant::now() - Duration::from_secs(61);
+
             s.question_timers.insert(8, QuestionTimer::new(&json!({"isBlocking":false}),Instant::now()));
+
             s.request=Some(request);
         });
+
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.0), px(1200.0)));
+			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
 			window.draw(cx).clear();
 		});
+
 		let bounds = visual.debug_bounds("question-format-0").expect("visible option");
+
 		surface.read_with(visual, |s, cx| {
 			assert!(s.question_inputs["format"].read(cx).content().is_empty());
 			assert!(!s.question_timers[&7].disabled);
 		});
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+
 		surface.update(visual, |s, cx| {
 			assert!(s.question_timers[&7].disabled);
 			assert!(!s.question_timers[&8].disabled);
 			assert_eq!(s.question_inputs["format"].read(cx).content(), "PDF");
+
 			let request = s.request.clone().unwrap();
+
 			s.prepare_question_inputs(&request, cx);
+
 			assert!(s.question_timers[&7].disabled, "reloading must not rearm the same event");
 			// JSON escaping exceeds the wire limit even though the editable answer fits.
 			let answer = "\"".repeat(9_000);
+
 			s.question_inputs["format"].update(cx, |input, cx| input.set_content(&answer, cx));
 			s.submit_answers(cx);
+
 			assert!(s.feedback.starts_with("Response is too large after encoding"));
 			assert_eq!(s.question_inputs["format"].read(cx).content(), answer);
 			assert!(s.submission.command.is_none() && !s.sending);
 			assert_eq!(s.request, Some(request));
+
 			s.question_inputs["format"].update(cx, |input, cx| input.set_content("PDF", cx));
 			s.submit_answers(cx);
+
 			assert_eq!(s.feedback, "No service profile is configured.");
 			assert_eq!(s.question_inputs["format"].read(cx).content(), "PDF");
 		});
@@ -782,7 +885,9 @@ mod timing_tests {
 	#[gpui::test]
 	fn approval_panels_show_only_the_native_executor(cx: &mut gpui::TestAppContext) {
 		use super::*;
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		for method in ["item/permissions/requestApproval", "item/commandExecution/requestApproval"]
 		{
 			for (environment, cwd) in [
@@ -792,8 +897,11 @@ mod timing_tests {
 			] {
 				surface.update(visual, |s, cx| {
 				s.visual_workspace_fixture(cx);
+
 				s.graph_visible = false;
+
 				let work = s.selected.clone().unwrap();
+
 				s.snapshot.as_mut().unwrap().pending_events = vec![decodex_protocol::AgentPendingEventDto {
 					id:902, source_event_id:"executor-request".into(), work_item_id:work.clone(), event_kind:"permission_pending".into(), created_at_micros:1, delivery_claimed:false,
 				}];
@@ -801,12 +909,15 @@ mod timing_tests {
 					event_id:902, work_id:work, method:method.into(),
 					request_json:decodex_protocol::AgentRequestText::new(json!({"environmentId":environment,"cwd":cwd,"permissions":{"network":{"enabled":true}}}).to_string()).unwrap(),
 				});
+
 				cx.notify();
 			});
+
 				visual.update(|window, cx| {
-					window.resize(gpui::size(px(1180.), px(1200.)));
+					window.resize(gpui::size(px(1_180.), px(1_200.)));
 					window.draw(cx).clear();
 				});
+
 				assert!(
 					visual
 						.debug_bounds(if method == "item/permissions/requestApproval" {
@@ -828,28 +939,39 @@ mod timing_tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		use super::*;
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		for kind in [Some("writeStdin"), Some("command"), None] {
 			surface.update(visual, |s, cx| {
 				s.visual_workspace_fixture(cx);
+
 				s.graph_visible = false;
+
 				let work = s.selected.clone().unwrap();
+
 				s.snapshot.as_mut().unwrap().pending_events = vec![decodex_protocol::AgentPendingEventDto {
 					id: 901, source_event_id: "stdin-request".into(), work_item_id: work.clone(),
 					event_kind: "permission_pending".into(), created_at_micros: 1, delivery_claimed: false,
 				}];
+
 				let mut value = json!({"command":"confirm\n", "cwd":"/workspace", "availableDecisions":["accept","decline"]});
+
 				if let Some(kind) = kind { value["kind"] = json!(kind); }
+
 				s.request = Some(AgentRequestResult::Available {
 					event_id: 901, work_id: work, method: "item/commandExecution/requestApproval".into(),
 					request_json: decodex_protocol::AgentRequestText::new(value.to_string()).unwrap(),
 				});
+
 				cx.notify();
 			});
+
 			visual.update(|window, cx| {
-				window.resize(gpui::size(px(1180.), px(1200.)));
+				window.resize(gpui::size(px(1_180.), px(1_200.)));
 				window.draw(cx).clear();
 			});
+
 			assert_eq!(
 				visual.debug_bounds("approval-kind-write-stdin").is_some(),
 				kind == Some("writeStdin")

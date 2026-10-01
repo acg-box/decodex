@@ -19,7 +19,6 @@ pub(super) struct Layout {
 	pub reports: Vec<(usize, usize)>,
 	pub cyclic: bool,
 }
-
 impl Layout {
 	pub fn new(snapshot: &AgentSnapshotDto, scope: Option<&str>) -> Self {
 		let items: Vec<_> = snapshot
@@ -30,6 +29,7 @@ impl Layout {
 		let ids: BTreeSet<_> = items.iter().map(|w| w.id.as_str()).collect();
 		let mut levels = BTreeMap::new();
 		let mut remaining = ids.clone();
+
 		while !remaining.is_empty() {
 			let ready: Vec<_> = remaining
 				.iter()
@@ -42,9 +42,11 @@ impl Layout {
 						.all(|e| levels.contains_key(e.depends_on_id.as_str()))
 				})
 				.collect();
+
 			if ready.is_empty() {
 				break;
 			}
+
 			for id in ready {
 				let level = snapshot
 					.dependencies
@@ -54,18 +56,24 @@ impl Layout {
 					.copied()
 					.max()
 					.map_or(0, |n: usize| n + 1);
+
 				levels.insert(id, level);
 				remaining.remove(id);
 			}
 		}
+
 		let cyclic = !remaining.is_empty();
 		let fallback = levels.values().copied().max().map_or(0, |n| n + 1);
+
 		for id in remaining {
 			levels.insert(id, fallback);
 		}
+
 		let mut nodes: Vec<Node> = Vec::new();
+
 		for level in 0..=fallback {
 			let mut occupied = Vec::<f32>::new();
+
 			for work in items.iter().filter(|w| levels[w.id.as_str()] == level) {
 				let parents: Vec<_> = snapshot
 					.dependencies
@@ -78,9 +86,11 @@ impl Layout {
 				} else {
 					parents.iter().map(|n| n.x).sum::<f32>() / parents.len() as f32
 				};
+
 				while occupied.iter().any(|used| (x - used).abs() < 180.0) {
 					x += 188.0;
 				}
+
 				occupied.push(x);
 				nodes.push(Node { id: work.id.clone(), x, y: 32.0 + level as f32 * 112.0 });
 			}
@@ -97,24 +107,31 @@ impl Layout {
 			})
 			.collect();
 		let mut reports = Vec::new();
+
 		if !nodes.is_empty()
 			&& let Some(owner) =
 				scope.and_then(|id| snapshot.work_items.iter().find(|w| w.id == id))
 		{
 			let center = nodes.iter().map(|n| n.x).sum::<f32>() / nodes.len() as f32;
+
 			for node in &mut nodes {
 				node.y += 112.0;
 			}
+
 			let index = nodes.len();
+
 			reports = (0..index).map(|child| (index, child)).collect();
+
 			nodes.push(Node { id: owner.id.clone(), x: center, y: 32.0 });
 		}
+
 		Self { nodes, edges, reports, cyclic }
 	}
 }
 
 pub(super) fn state(work: &AgentWorkItemDto) -> (&'static str, u32) {
 	use super::ui_theme;
+
 	match work.dispatch_state {
 		AgentDispatchStateDto::Unknown => ("Needs attention", ui_theme::AMBER),
 		AgentDispatchStateDto::Running => ("Running", ui_theme::GREEN),

@@ -1,46 +1,6 @@
 //! Account warnings occupy an icon; their explanation opens only on activation.
 use super::*;
 
-pub(super) fn for_account(shell: &Shell, account: &AccountDto) -> Option<(String, u32)> {
-	if account_needs_login(account) {
-		return Some(("Sign in again to use this account, or log out.".into(), ui_theme::ERROR));
-	}
-	if let Some(result) =
-		shell.account_activity.get(&account.account_id).and_then(|(s, _)| s.result.as_ref())
-	{
-		let error = match result {
-			AccountProfileResult::Cached { refresh_error, .. } => Some(*refresh_error),
-			AccountProfileResult::Unavailable { error, .. } => Some(*error),
-			_ => None,
-		};
-		if let Some(error) = error {
-			return Some(if crate::account_profile::requires_login(error) {
-				("Sign in again to update your activity.".into(), ui_theme::ERROR)
-			} else {
-				("Your activity couldn’t be updated. Try again later.".into(), ui_theme::AMBER)
-			});
-		}
-	}
-	match account.lifecycle_readiness {
-		AccountLifecycleReadinessDto::StoreUnavailable =>
-			Some(("Your sign-in information is temporarily unavailable.".into(), ui_theme::AMBER)),
-		AccountLifecycleReadinessDto::StoreMismatch
-		| AccountLifecycleReadinessDto::ProviderMismatch =>
-			Some(("Your sign-in information has changed. Sign in again.".into(), ui_theme::ERROR)),
-		AccountLifecycleReadinessDto::OperationUnsettled =>
-			Some(("An account update is still in progress.".into(), ui_theme::AMBER)),
-		_ => match account.observed_state {
-			AccountObservedStateDto::PluginUnready =>
-				Some(("Update the provider to use this account.".into(), ui_theme::AMBER)),
-			AccountObservedStateDto::Unknown =>
-				Some(("The account status is temporarily unavailable.".into(), ui_theme::AMBER)),
-			AccountObservedStateDto::Unavailable =>
-				Some(("This account is unavailable.".into(), ui_theme::ERROR)),
-			_ => None,
-		},
-	}
-}
-
 #[derive(IntoElement)]
 pub(super) struct AccountFeedback {
 	pub id: SharedString,
@@ -75,11 +35,13 @@ impl gpui::RenderOnce for AccountFeedback {
 				if !bounds.contains(&event.position) {
 					state.update(cx, |s, cx| {
 						s.0 = false;
+
 						cx.notify();
 					});
 				}
 			})
 			.child(self.text.clone());
+
 		div()
 			.id(self.id)
 			.debug_selector(move || self.selector.clone())
@@ -98,8 +60,10 @@ impl gpui::RenderOnce for AccountFeedback {
 			.hover(|s| s.bg(rgba(ui_theme::HOVER_FILL)))
 			.on_click(move |_, _, cx| {
 				cx.stop_propagation();
+
 				toggle.update(cx, |s, cx| {
 					s.0 = !s.0;
+
 					cx.notify();
 				});
 			})
@@ -134,6 +98,49 @@ impl gpui::RenderOnce for AccountFeedback {
 	}
 }
 
+pub(super) fn for_account(shell: &Shell, account: &AccountDto) -> Option<(String, u32)> {
+	if account_needs_login(account) {
+		return Some(("Sign in again to use this account, or log out.".into(), ui_theme::ERROR));
+	}
+
+	if let Some(result) =
+		shell.account_activity.get(&account.account_id).and_then(|(s, _)| s.result.as_ref())
+	{
+		let error = match result {
+			AccountProfileResult::Cached { refresh_error, .. } => Some(*refresh_error),
+			AccountProfileResult::Unavailable { error, .. } => Some(*error),
+			_ => None,
+		};
+
+		if let Some(error) = error {
+			return Some(if crate::account_profile::requires_login(error) {
+				("Sign in again to update your activity.".into(), ui_theme::ERROR)
+			} else {
+				("Your activity couldn’t be updated. Try again later.".into(), ui_theme::AMBER)
+			});
+		}
+	}
+
+	match account.lifecycle_readiness {
+		AccountLifecycleReadinessDto::StoreUnavailable =>
+			Some(("Your sign-in information is temporarily unavailable.".into(), ui_theme::AMBER)),
+		AccountLifecycleReadinessDto::StoreMismatch
+		| AccountLifecycleReadinessDto::ProviderMismatch =>
+			Some(("Your sign-in information has changed. Sign in again.".into(), ui_theme::ERROR)),
+		AccountLifecycleReadinessDto::OperationUnsettled =>
+			Some(("An account update is still in progress.".into(), ui_theme::AMBER)),
+		_ => match account.observed_state {
+			AccountObservedStateDto::PluginUnready =>
+				Some(("Update the provider to use this account.".into(), ui_theme::AMBER)),
+			AccountObservedStateDto::Unknown =>
+				Some(("The account status is temporarily unavailable.".into(), ui_theme::AMBER)),
+			AccountObservedStateDto::Unavailable =>
+				Some(("This account is unavailable.".into(), ui_theme::ERROR)),
+			_ => None,
+		},
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -146,38 +153,50 @@ mod tests {
 	) {
 		let (shell, visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+
 		shell.update(visual, |s, cx| {
 			s.visual_accounts_and_health();
+
 			s.accounts.accounts[0].observed_state = AccountObservedStateDto::AuthFailed;
 			s.accounts.rejection = Some(AccountCommandRejectionDto::CodexIsRunning);
 			s.selected = Destination::Accounts;
+
 			cx.notify();
 		});
+
 		visual.update(|w, cx| {
-			w.resize(size(px(1440.), px(1000.)));
+			w.resize(size(px(1_440.), px(1_000.)));
 			w.draw(cx).clear();
 		});
+
 		for (selector, popup) in [
 			("account-login-warning-0", "account-login-warning-0-popover"),
 			("account-global-warning", "account-global-warning-popover"),
 		] {
 			assert!(visual.debug_bounds(popup).is_none());
+
 			let height = visual.debug_bounds("account-card-0").unwrap().size.height;
 			let trigger = visual.debug_bounds(selector).unwrap().center();
+
 			visual.simulate_click(trigger, Modifiers::default());
 			visual.update(|w, cx| {
 				w.draw(cx).clear();
 			});
+
 			let bounds =
 				visual.debug_bounds(popup).expect("A warning must open on the first click");
-			assert!(bounds.left() >= px(0.) && bounds.right() <= px(1440.));
+
+			assert!(bounds.left() >= px(0.) && bounds.right() <= px(1_440.));
 			assert_eq!(visual.debug_bounds("account-card-0").unwrap().size.height, height);
+
 			shell.read_with(visual, |s, _| assert!(s.expanded_accounts.is_empty()));
 			visual.simulate_click(point(px(5.), px(5.)), Modifiers::default());
 			visual.update(|w, cx| {
 				w.draw(cx).clear();
 			});
+
 			assert!(visual.debug_bounds(popup).is_none());
+
 			shell.read_with(visual, |s, _| {
 				assert_eq!(s.accounts.rejection, Some(AccountCommandRejectionDto::CodexIsRunning))
 			});

@@ -1,9 +1,11 @@
 #[path = "composer_cursor.rs"] pub(crate) mod cursor;
+
 #[path = "composer_edit.rs"] mod edit;
 #[path = "composer_native.rs"] mod native;
 #[path = "composer_shortcuts.rs"] mod shortcuts;
-use unicode_segmentation::UnicodeSegmentation as _;
 #[path = "composer_text.rs"] mod text;
+
+use unicode_segmentation::UnicodeSegmentation as _;
 // Native bounded text input for the Conversation composer.
 
 use std::ops::Range;
@@ -18,8 +20,6 @@ use gpui::{
 };
 
 use crate::ui_theme;
-
-pub(crate) const MAX_COMPOSER_BYTES: usize = 16 * 1_024;
 
 actions!(
 	decodex_composer_input,
@@ -46,6 +46,8 @@ actions!(
 	]
 );
 
+pub(crate) const MAX_COMPOSER_BYTES: usize = 16 * 1_024;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ComposerEvent {
 	Changed,
@@ -56,36 +58,6 @@ pub(crate) enum ComposerEvent {
 enum ComposerAppearance {
 	Workbench,
 	Field,
-}
-
-impl EventEmitter<ComposerEvent> for ComposerInput {}
-
-pub(crate) fn bind_keys(cx: &mut App) {
-	shortcuts::bind_keys(cx);
-	cx.bind_keys([
-		KeyBinding::new("backspace", Backspace, Some("ComposerInput")),
-		KeyBinding::new("delete", Delete, Some("ComposerInput")),
-		KeyBinding::new("left", Left, Some("ComposerInput")),
-		KeyBinding::new("right", Right, Some("ComposerInput")),
-		KeyBinding::new("up", Up, Some("ComposerInput")),
-		KeyBinding::new("down", Down, Some("ComposerInput")),
-		KeyBinding::new("shift-left", SelectLeft, Some("ComposerInput")),
-		KeyBinding::new("shift-right", SelectRight, Some("ComposerInput")),
-		KeyBinding::new("cmd-a", SelectAll, Some("ComposerInput")),
-		KeyBinding::new("home", Home, Some("ComposerInput")),
-		KeyBinding::new("end", End, Some("ComposerInput")),
-		KeyBinding::new("shift-enter", InsertNewline, Some("ComposerInput")),
-		KeyBinding::new("ctrl-cmd-space", ShowCharacterPalette, Some("ComposerInput")),
-		KeyBinding::new("cmd-v", Paste, Some("ComposerInput")),
-		KeyBinding::new("cmd-x", Cut, Some("ComposerInput")),
-		KeyBinding::new("cmd-c", Copy, Some("ComposerInput")),
-		KeyBinding::new("enter", SubmitComposer, Some("ComposerInput")),
-		KeyBinding::new("cmd-enter", SubmitComposer, Some("ComposerInput")),
-		KeyBinding::new("enter", gpui::NoAction, Some("AsyncQuestion > ComposerInput")),
-		KeyBinding::new("cmd-enter", gpui::NoAction, Some("AsyncQuestion > ComposerInput")),
-		KeyBinding::new("cmd-z", Undo, Some("ComposerInput")),
-		KeyBinding::new("cmd-shift-z", Redo, Some("ComposerInput")),
-	]);
 }
 
 /// Conversation composer input and its native text-input lifecycle.
@@ -109,7 +81,6 @@ pub(crate) struct ComposerInput {
 	undo: Vec<edit::Snapshot>,
 	redo: Vec<edit::Snapshot>,
 }
-
 impl ComposerInput {
 	pub(crate) fn new(tab_index: isize, cx: &mut Context<Self>) -> Self {
 		Self::build(
@@ -178,6 +149,7 @@ impl ComposerInput {
 		cx: &mut Context<Self>,
 	) {
 		self.placeholder = text.into();
+
 		cx.notify();
 	}
 
@@ -197,14 +169,19 @@ impl ComposerInput {
 		if self.content.is_empty() && self.native_part.is_none() {
 			return;
 		}
+
 		self.content.clear();
+
 		self.native_part = None;
+
 		self.undo.clear();
 		self.redo.clear();
+
 		self.selected_range = 0..0;
 		self.selection_reversed = false;
 		self.marked_range = None;
 		self.last_layout = None;
+
 		self.changed(cx);
 	}
 
@@ -212,7 +189,9 @@ impl ComposerInput {
 		if self.content == value && self.native_part.is_none() {
 			return;
 		}
+
 		self.native_part = None;
+
 		self.replace_bytes(0..self.content.len(), value, false, None, cx);
 		self.undo.clear();
 		self.redo.clear();
@@ -220,6 +199,7 @@ impl ComposerInput {
 
 	fn changed(&mut self, cx: &mut Context<Self>) {
 		self.scroll_manually = false;
+
 		cx.notify();
 		cx.emit(ComposerEvent::Changed);
 	}
@@ -247,6 +227,7 @@ impl ComposerInput {
 				lines,
 				position + point(px(0.0), px(ui_theme::BODY_LINE_HEIGHT * direction)),
 			);
+
 			self.move_to(index, cx);
 		}
 	}
@@ -271,6 +252,7 @@ impl ComposerInput {
 		self.selected_range = 0..self.content.len();
 		self.selection_reversed = false;
 		self.marked_range = None;
+
 		cx.notify();
 	}
 
@@ -285,24 +267,32 @@ impl ComposerInput {
 	fn backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
 		if self.selected_range.is_empty() {
 			let previous = previous_boundary(&self.content, self.cursor_offset());
+
 			if previous == self.cursor_offset() {
 				window.play_system_bell();
+
 				return;
 			}
+
 			self.select_to(previous, cx);
 		}
+
 		self.replace_text_in_range(None, "", window, cx);
 	}
 
 	fn delete(&mut self, _: &Delete, window: &mut Window, cx: &mut Context<Self>) {
 		if self.selected_range.is_empty() {
 			let next = next_boundary(&self.content, self.cursor_offset());
+
 			if next == self.cursor_offset() {
 				window.play_system_bell();
+
 				return;
 			}
+
 			self.select_to(next, cx);
 		}
+
 		self.replace_text_in_range(None, "", window, cx);
 	}
 
@@ -328,11 +318,14 @@ impl ComposerInput {
 					.any(|entry| !matches!(entry, gpui::ClipboardEntry::String(_)))
 			{
 				cx.emit(ComposerEvent::Attach(item));
+
 				return;
 			}
+
 			let Some(text) = item.text() else {
 				return;
 			};
+
 			self.replace_text_in_range(None, &text, window, cx);
 		}
 	}
@@ -355,6 +348,7 @@ impl ComposerInput {
 		if self.selected_range.is_empty() {
 			return;
 		}
+
 		cx.write_to_clipboard(ClipboardItem::new_string(
 			self.content[self.selected_range.clone()].to_owned(),
 		));
@@ -369,10 +363,14 @@ impl ComposerInput {
 	) {
 		#[cfg(target_os = "macos")]
 		claim_native_text_focus(window);
+
 		self.cursor.reset();
 		window.focus(&self.focus_handle, cx);
+
 		self.is_selecting = true;
+
 		let offset = self.index_for_mouse_position(event.position);
+
 		if event.modifiers.shift {
 			self.select_to(offset, cx);
 		} else {
@@ -392,21 +390,26 @@ impl ComposerInput {
 
 	fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
 		self.scroll_manually = false;
+
 		let offset = self.content.floor_char_boundary(offset.min(self.content.len()));
+
 		self.selected_range = offset..offset;
 		self.selection_reversed = false;
 		self.marked_range = None;
+
 		cx.notify();
 	}
 
 	fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
 		self.scroll_manually = false;
+
 		let offset = self.content.floor_char_boundary(offset.min(self.content.len()));
 		let anchor = if self.selection_reversed {
 			self.selected_range.end
 		} else {
 			self.selected_range.start
 		};
+
 		if offset < anchor {
 			self.selected_range = offset..anchor;
 			self.selection_reversed = true;
@@ -414,7 +417,9 @@ impl ComposerInput {
 			self.selected_range = anchor..offset;
 			self.selection_reversed = false;
 		}
+
 		self.marked_range = None;
+
 		cx.notify();
 	}
 
@@ -426,16 +431,19 @@ impl ComposerInput {
 		if self.content.is_empty() {
 			return 0;
 		}
+
 		let (Some(bounds), Some(line)) = (self.last_bounds.as_ref(), self.last_layout.as_ref())
 		else {
 			return self.cursor_offset();
 		};
+
 		if position.y < bounds.top() {
 			return 0;
 		}
 		if position.y > bounds.bottom() {
 			return self.content.len();
 		}
+
 		text::index_at(line, position - bounds.origin + point(px(0.0), self.text_offset))
 	}
 
@@ -462,18 +470,24 @@ impl ComposerInput {
 		};
 		let replacement = bounded_input(new_text, maximum.saturating_sub(retained));
 		let mut native_part = self.native_part.clone();
+
 		if let Some(part) = &mut native_part {
 			// Native restoration never truncates an edit or strips a bound marker.
 			if replacement != new_text || part.replace_text(0, range.clone(), new_text).is_err() {
 				return;
 			}
 		}
+
 		self.checkpoint();
+
 		self.native_part = native_part;
+
 		let inserted = range.start..range.start + replacement.len();
 		let relative_selection =
 			selected_range_utf16.map(|selection| range_from_utf16(&replacement, selection));
+
 		self.content.replace_range(range, &replacement);
+
 		self.marked_range = mark.then(|| inserted.clone()).filter(|range| !range.is_empty());
 		self.selected_range = relative_selection.map_or_else(
 			|| inserted.end..inserted.end,
@@ -481,6 +495,7 @@ impl ComposerInput {
 		);
 		self.selection_reversed = false;
 		self.last_layout = None;
+
 		self.changed(cx);
 	}
 
@@ -492,11 +507,14 @@ impl ComposerInput {
 		let Some(gpui::accesskit::ActionData::Value(value)) = data else {
 			return;
 		};
+
 		self.replace_bytes(0..self.content.len(), value, false, None, cx);
 		self.undo.clear();
 		self.redo.clear();
 	}
 }
+
+impl EventEmitter<ComposerEvent> for ComposerInput {}
 
 impl Focusable for ComposerInput {
 	fn focus_handle(&self, _: &App) -> FocusHandle {
@@ -513,7 +531,9 @@ impl EntityInputHandler for ComposerInput {
 		_: &mut Context<Self>,
 	) -> Option<String> {
 		let range = range_from_utf16(&self.content, &range_utf16);
+
 		actual_range.replace(range_to_utf16(&self.content, &range));
+
 		Some(self.content[range].to_owned())
 	}
 
@@ -535,6 +555,7 @@ impl EntityInputHandler for ComposerInput {
 
 	fn unmark_text(&mut self, _: &mut Window, cx: &mut Context<Self>) {
 		self.marked_range = None;
+
 		cx.notify();
 	}
 
@@ -546,6 +567,7 @@ impl EntityInputHandler for ComposerInput {
 		cx: &mut Context<Self>,
 	) {
 		let range = self.replacement_range(range_utf16.as_ref());
+
 		self.replace_bytes(range, new_text, false, None, cx);
 	}
 
@@ -558,6 +580,7 @@ impl EntityInputHandler for ComposerInput {
 		cx: &mut Context<Self>,
 	) {
 		let range = self.replacement_range(range_utf16.as_ref());
+
 		self.replace_bytes(range, new_text, true, new_selected_range_utf16.as_ref(), cx);
 	}
 
@@ -573,6 +596,7 @@ impl EntityInputHandler for ComposerInput {
 		let start = text::position_at(line, range.start);
 		let end = text::position_at(line, range.end);
 		let origin = self.last_bounds.unwrap_or(bounds).origin - point(px(0.0), self.text_offset);
+
 		Some(Bounds::new(
 			origin + start,
 			size((end.x - start.x).max(px(1.0)), px(ui_theme::BODY_LINE_HEIGHT)),
@@ -597,6 +621,7 @@ impl EntityInputHandler for ComposerInput {
 		self.selected_range = range_from_utf16(&self.content, &range_utf16);
 		self.selection_reversed = false;
 		self.marked_range = None;
+
 		cx.notify();
 	}
 
@@ -608,9 +633,11 @@ impl EntityInputHandler for ComposerInput {
 impl Render for ComposerInput {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.update_cursor(window, cx);
+
 		let entity = cx.entity();
 		let focus_handle = self.focus_handle.clone();
 		let workbench = self.appearance == ComposerAppearance::Workbench;
+
 		div()
 			.id("conversation-composer-input")
 			.key_context("ComposerInput")
@@ -625,6 +652,7 @@ impl Render for ComposerInput {
 			.track_focus(&focus_handle)
 			.on_a11y_action(AccessibleAction::SetValue, {
 				let entity = entity.clone();
+
 				move |data, _, cx| {
 					entity.update(cx, |input, cx| input.set_accessible_value(data, cx));
 				}
@@ -662,6 +690,7 @@ impl Render for ComposerInput {
 						- e.delta.pixel_delta(px(ui_theme::BODY_LINE_HEIGHT)).y)
 						.max(px(0.0));
 					s.scroll_manually = true;
+
 					cx.stop_propagation();
 					cx.notify();
 				}
@@ -690,12 +719,43 @@ impl Render for ComposerInput {
 	}
 }
 
+pub(crate) fn bind_keys(cx: &mut App) {
+	shortcuts::bind_keys(cx);
+
+	cx.bind_keys([
+		KeyBinding::new("backspace", Backspace, Some("ComposerInput")),
+		KeyBinding::new("delete", Delete, Some("ComposerInput")),
+		KeyBinding::new("left", Left, Some("ComposerInput")),
+		KeyBinding::new("right", Right, Some("ComposerInput")),
+		KeyBinding::new("up", Up, Some("ComposerInput")),
+		KeyBinding::new("down", Down, Some("ComposerInput")),
+		KeyBinding::new("shift-left", SelectLeft, Some("ComposerInput")),
+		KeyBinding::new("shift-right", SelectRight, Some("ComposerInput")),
+		KeyBinding::new("cmd-a", SelectAll, Some("ComposerInput")),
+		KeyBinding::new("home", Home, Some("ComposerInput")),
+		KeyBinding::new("end", End, Some("ComposerInput")),
+		KeyBinding::new("shift-enter", InsertNewline, Some("ComposerInput")),
+		KeyBinding::new("ctrl-cmd-space", ShowCharacterPalette, Some("ComposerInput")),
+		KeyBinding::new("cmd-v", Paste, Some("ComposerInput")),
+		KeyBinding::new("cmd-x", Cut, Some("ComposerInput")),
+		KeyBinding::new("cmd-c", Copy, Some("ComposerInput")),
+		KeyBinding::new("enter", SubmitComposer, Some("ComposerInput")),
+		KeyBinding::new("cmd-enter", SubmitComposer, Some("ComposerInput")),
+		KeyBinding::new("enter", gpui::NoAction, Some("AsyncQuestion > ComposerInput")),
+		KeyBinding::new("cmd-enter", gpui::NoAction, Some("AsyncQuestion > ComposerInput")),
+		KeyBinding::new("cmd-z", Undo, Some("ComposerInput")),
+		KeyBinding::new("cmd-shift-z", Redo, Some("ComposerInput")),
+	]);
+}
+
 // GPUI focus and AppKit's first responder are separate. A pointer click into
 // the editor must reclaim the native text client after another native view used it.
 #[cfg(target_os = "macos")]
 fn claim_native_text_focus(window: &Window) {
 	use objc2_app_kit::NSView;
+
 	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
 	let Ok(handle) = HasWindowHandle::window_handle(window) else {
 		return;
 	};
@@ -704,6 +764,7 @@ fn claim_native_text_focus(window: &Window) {
 	};
 	// The live GPUI window owns this view; mouse dispatch runs on the main thread.
 	let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
+
 	if let Some(native) = view.window() {
 		native.makeFirstResponder(Some(view));
 	}
@@ -718,6 +779,7 @@ fn previous_boundary(content: &str, offset: usize) -> usize {
 
 fn next_boundary(content: &str, offset: usize) -> usize {
 	let offset = offset.min(content.len());
+
 	content[offset..]
 		.graphemes(true)
 		.next()
@@ -727,32 +789,39 @@ fn next_boundary(content: &str, offset: usize) -> usize {
 fn offset_from_utf16(content: &str, offset: usize) -> usize {
 	let mut utf8 = 0;
 	let mut utf16 = 0;
+
 	for character in content.chars() {
 		if utf16 >= offset {
 			break;
 		}
+
 		utf8 += character.len_utf8();
 		utf16 += character.len_utf16();
 	}
+
 	utf8
 }
 
 fn offset_to_utf16(content: &str, offset: usize) -> usize {
 	let mut utf8 = 0;
 	let mut utf16 = 0;
+
 	for character in content.chars() {
 		if utf8 >= offset {
 			break;
 		}
+
 		utf8 += character.len_utf8();
 		utf16 += character.len_utf16();
 	}
+
 	utf16
 }
 
 fn range_from_utf16(content: &str, range: &Range<usize>) -> Range<usize> {
 	let start = offset_from_utf16(content, range.start);
 	let end = offset_from_utf16(content, range.end).max(start);
+
 	start..end
 }
 
@@ -763,11 +832,13 @@ fn range_to_utf16(content: &str, range: &Range<usize>) -> Range<usize> {
 fn bounded_input(value: &str, maximum_bytes: usize) -> String {
 	let mut output = String::new();
 	let mut characters = value.chars().peekable();
+
 	while let Some(mut character) = characters.next() {
 		if character == '\r' {
 			if characters.peek() == Some(&'\n') {
 				characters.next();
 			}
+
 			character = '\n';
 		}
 		if character.is_control() && !matches!(character, '\n' | '\t') {
@@ -776,8 +847,10 @@ fn bounded_input(value: &str, maximum_bytes: usize) -> String {
 		if output.len().saturating_add(character.len_utf8()) > maximum_bytes {
 			break;
 		}
+
 		output.push(character);
 	}
+
 	output
 }
 
@@ -788,38 +861,55 @@ mod multiline_tests {
 	#[gpui::test]
 	fn pasted_tabs_preserve_indentation_and_undo(cx: &mut gpui::TestAppContext) {
 		cx.update(bind_keys);
+
 		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+
 		visual.update(|window, cx| {
 			window.focus(&input.focus_handle(cx), cx);
 			cx.write_to_clipboard(ClipboardItem::new_string("界\tfirst\r\n\t\tsecond\n".into()));
+
 			input.update(cx, |input, cx| {
 				input.paste(&Paste, window, cx);
+
 				let expected = "界\tfirst\n\t\tsecond\n";
+
 				assert_eq!(input.content(), expected);
+
 				input.undo(&Undo, window, cx);
+
 				assert_eq!(input.content(), "");
+
 				input.redo(&Redo, window, cx);
+
 				assert_eq!(input.content(), expected);
 				assert_eq!(decodex_protocol::WireText::new(expected).unwrap().as_str(), expected);
 			});
 		});
+
 		assert_eq!(bounded_input("界\t\u{0}\u{1b}文", 5), "界\t");
 	}
 
 	#[gpui::test]
 	fn ordinary_draft_preserves_composition_undo_and_redo(cx: &mut gpui::TestAppContext) {
 		cx.update(bind_keys);
+
 		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+
 		visual.update(|window, cx| {
 			window.focus(&input.focus_handle(cx), cx);
 			input.update(cx, |input, cx| {
 				input.replace_and_mark_text_in_range(None, "ni", Some(2..2), window, cx);
 				input.replace_and_mark_text_in_range(None, "你", Some(1..1), window, cx);
 				input.replace_text_in_range(None, "你", window, cx);
+
 				assert_eq!(input.content(), "你");
+
 				input.undo(&Undo, window, cx);
+
 				assert_eq!(input.content(), "");
+
 				input.redo(&Redo, window, cx);
+
 				assert_eq!(input.content(), "你");
 			});
 		});
@@ -828,7 +918,9 @@ mod multiline_tests {
 	#[gpui::test]
 	fn newline_wrap_and_native_caret_share_geometry(cx: &mut gpui::TestAppContext) {
 		cx.update(bind_keys);
+
 		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+
 		visual.simulate_resize(size(px(240.0), px(300.0)));
 		input.update(visual, |input, cx| input.set_content("第一行", cx));
 		visual.update(|window, cx| {
@@ -839,24 +931,33 @@ mod multiline_tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		input.update(visual, |input, cx| {
 			assert_eq!(input.content(), "第一行\n");
+
 			let lines = input.last_layout.as_ref().unwrap();
+
 			assert_eq!(lines.len(), 2);
 			assert_eq!(
 				text::position_at(lines, input.content.len()).y,
 				px(ui_theme::BODY_LINE_HEIGHT)
 			);
+
 			input.set_content(&"宽度有限，长段落必须自动换行。".repeat(40), cx);
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		input.update(visual, |input, _| {
 			let lines = input.last_layout.as_ref().unwrap();
+
 			assert!(!lines[0].wrap_boundaries().is_empty());
 			assert!(input.text_offset > px(0.0));
+
 			let caret = text::position_at(lines, input.content.len());
+
 			assert_eq!(text::index_at(lines, caret), input.content.len());
 			assert!(input.last_bounds.unwrap().size.height <= px(ui_theme::BODY_LINE_HEIGHT * 7.0));
 		});
@@ -864,6 +965,7 @@ mod multiline_tests {
 	#[gpui::test]
 	fn obscured_unicode_mouse_selection_keeps_valid_text_boundaries(cx: &mut gpui::TestAppContext) {
 		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+
 		input.update(visual, |input, cx| {
 			input.set_content("你abc", cx);
 			input.obscure();
@@ -871,10 +973,12 @@ mod multiline_tests {
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let position = input.read_with(visual, |input, _| {
 			input.last_bounds.unwrap().origin
 				+ text::position_at(input.last_layout.as_ref().unwrap(), 1)
 		});
+
 		input.update(visual, |input, cx| {
 			input.move_to(input.index_for_mouse_position(position), cx);
 		});
@@ -884,6 +988,7 @@ mod multiline_tests {
 		});
 		input.update(visual, |input, cx| {
 			input.select_to(input.index_for_mouse_position(position), cx);
+
 			assert!(input.content.is_char_boundary(input.selected_range.start));
 			assert!(input.content.is_char_boundary(input.selected_range.end));
 			assert_eq!(input.content(), "你abc");

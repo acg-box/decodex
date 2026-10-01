@@ -4,10 +4,6 @@
 //! Bounded Unicode layout for a deliberately small TeX math subset.
 //! Accents apply only to single graphemes so their scope survives terminal rendering.
 
-pub(super) fn display_width(text: &str) -> usize {
-	unicode_width::UnicodeWidthStr::width(text)
-		+ text.chars().filter(|ch| matches!(ch, '\u{FF9E}' | '\u{FF9F}')).count()
-}
 use unicode_segmentation::UnicodeSegmentation;
 
 const MAX_ROWS: usize = 16;
@@ -17,7 +13,6 @@ struct Layout {
 	rows: Vec<String>,
 	baseline: usize,
 }
-
 impl Layout {
 	fn text(text: impl Into<String>) -> Self {
 		Self { rows: vec![text.into()], baseline: 0 }
@@ -33,23 +28,29 @@ impl Layout {
 			.max(baseline + right.rows.len() - right.baseline);
 		// Separate neighboring fraction bars so their numerators cannot become one number.
 		let width = self.width() + usize::from(self.rows.len() > 1 && right.rows.len() > 1);
+
 		if height > MAX_ROWS || width + right.width() > MAX_COLUMNS {
 			return None;
 		}
+
 		let mut rows = vec![String::new(); height];
+
 		for (index, row) in rows.iter_mut().enumerate() {
 			if let Some(left) =
 				index.checked_sub(baseline - self.baseline).and_then(|i| self.rows.get(i))
 			{
 				row.push_str(left);
 			}
+
 			row.push_str(&" ".repeat(width - display_width(row)));
+
 			if let Some(right) =
 				index.checked_sub(baseline - right.baseline).and_then(|i| right.rows.get(i))
 			{
 				row.push_str(right);
 			}
 		}
+
 		Some(Self { rows, baseline })
 	}
 
@@ -58,22 +59,17 @@ impl Layout {
 	}
 }
 
-pub(super) fn render(source: &str, display: bool) -> Option<String> {
-	let mut parser = MathParser { remaining: source.trim(), depth: 0, display };
-	let result = parser.sequence(/* group */ false)?;
-	(!result.rows.iter().all(|row| row.trim().is_empty())).then(|| result.rows.join("\n"))
-}
-
 struct MathParser<'a> {
 	remaining: &'a str,
 	depth: usize,
 	display: bool,
 }
-
 impl MathParser<'_> {
 	fn take(&mut self) -> Option<char> {
 		let ch = self.remaining.chars().next()?;
+
 		self.remaining = &self.remaining[ch.len_utf8()..];
+
 		Some(ch)
 	}
 
@@ -81,46 +77,61 @@ impl MathParser<'_> {
 		if self.depth >= 32 {
 			return None;
 		}
+
 		self.depth += 1;
+
 		let mut result = Layout::text("");
 		let mut scripts = 0;
 		let mut has_base = false;
+
 		while let Some(ch) = self.remaining.chars().next() {
 			if ch == '}' {
 				if !group {
 					return None;
 				}
+
 				self.take();
+
 				self.depth -= 1;
+
 				return Some(result);
 			}
 			if ch == '^' || ch == '_' {
 				let script = if ch == '^' { 1 } else { 2 };
+
 				if !has_base || scripts & script != 0 {
 					return None;
 				}
+
 				scripts |= script;
 			} else if !ch.is_whitespace() {
 				scripts = 0;
 			}
+
 			let atom = self.atom()?;
+
 			if !ch.is_whitespace() && ch != '^' && ch != '_' {
 				// Flattening a compound base would change the scope of a following script.
 				has_base = atom
 					.single()
 					.is_some_and(|text| text.graphemes(/* is_extended */ true).count() == 1);
 			}
+
 			result = result.join(atom)?;
 		}
+
 		self.depth -= 1;
+
 		(!group).then_some(result)
 	}
 
 	fn argument(&mut self) -> Option<Layout> {
 		self.remaining = self.remaining.trim_start();
+
 		if self.remaining.starts_with(['^', '_']) {
 			return None;
 		}
+
 		self.atom()
 	}
 
@@ -128,14 +139,19 @@ impl MathParser<'_> {
 		if self.depth >= 32 {
 			return None;
 		}
+
 		self.depth += 1;
+
 		let result = self.atom_inner();
+
 		self.depth -= 1;
+
 		result
 	}
 
 	fn atom_inner(&mut self) -> Option<Layout> {
 		let ch = self.take()?;
+
 		match ch {
 			'{' => self.sequence(/* group */ true),
 			'\\' => self.command(),
@@ -150,15 +166,19 @@ impl MathParser<'_> {
 					("0123456789+-=()aehijklmnoprstuvx", "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜᵤᵥₓ")
 				};
 				let mut output = String::new();
+
 				for value in arg.single()?.chars() {
 					let index = plain.chars().position(|ch| ch == value)?;
+
 					output.push(alphabet.chars().nth(index)?);
 				}
+
 				Some(Layout::text(output))
 			},
 			'}' | '$' | '%' | '#' | '&' | '`' => None,
 			ch if ch.is_whitespace() => {
 				self.remaining = self.remaining.trim_start();
+
 				Some(Layout::text(" "))
 			},
 			ch if ch.is_control() => None,
@@ -169,6 +189,7 @@ impl MathParser<'_> {
 	fn fraction(&mut self) -> Option<Layout> {
 		let numerator = self.argument()?;
 		let denominator = self.argument()?;
+
 		if !self.display {
 			return Some(Layout::text(format!(
 				"(({})/({}))",
@@ -181,9 +202,11 @@ impl MathParser<'_> {
 		let denominator = denominator.single()?;
 		let width =
 			display_width(numerator).max(display_width(denominator)).max(/* other */ 1);
+
 		if width > MAX_COLUMNS {
 			return None;
 		}
+
 		Some(Layout {
 			rows: vec![
 				format!("{}{numerator}", " ".repeat((width - display_width(numerator)) / 2)),
@@ -196,6 +219,7 @@ impl MathParser<'_> {
 
 	fn command(&mut self) -> Option<Layout> {
 		let length = self.remaining.bytes().take_while(u8::is_ascii_alphabetic).count();
+
 		if length == 0 {
 			return match self.take()? {
 				',' | ';' | ':' | ' ' => Some(Layout::text(" ")),
@@ -206,15 +230,20 @@ impl MathParser<'_> {
 				_ => None,
 			};
 		}
+
 		let name = &self.remaining[..length];
+
 		self.remaining = &self.remaining[length..];
+
 		match name {
 			"frac" | "dfrac" | "tfrac" => self.fraction(),
 			"sqrt" => {
 				if self.remaining.trim_start().starts_with('[') {
 					return None;
 				}
+
 				let radicand = self.argument()?;
+
 				Some(Layout::text(format!("√({})", radicand.single()?)))
 			},
 			"mathbb" => {
@@ -228,17 +257,20 @@ impl MathParser<'_> {
 					"P" => "ℙ",
 					_ => return None,
 				};
+
 				Some(Layout::text(text))
 			},
 			"hat" | "bar" | "tilde" | "vec" | "dot" | "ddot" => {
 				let arg = self.argument()?;
 				let text = arg.single()?;
+
 				if text.graphemes(/* is_extended */ true).count() != 1
 					|| text.trim().is_empty()
 					|| display_width(text) == 0
 				{
 					return None;
 				}
+
 				let accent = match name {
 					"hat" => '\u{0302}',
 					"bar" => '\u{0304}',
@@ -248,23 +280,29 @@ impl MathParser<'_> {
 					"ddot" => '\u{0308}',
 					_ => unreachable!(),
 				};
+
 				Some(Layout::text(format!("{text}{accent}")))
 			},
 			"mathrm" | "mathbf" | "mathit" => self.argument(),
 			"text" | "operatorname" => {
 				self.remaining = self.remaining.trim_start().strip_prefix('{')?;
+
 				let end = self.remaining.find('}')?;
 				let text = &self.remaining[..end];
+
 				if text.contains(['{', '\\', '$', '%', '#', '&'])
 					|| text.chars().any(char::is_control)
 				{
 					return None;
 				}
+
 				self.remaining = &self.remaining[end + 1..];
+
 				Some(Layout::text(text))
 			},
 			"left" | "right" => {
 				self.remaining = self.remaining.trim_start();
+
 				match self.take()? {
 					'.' => Some(Layout::text("")),
 					ch @ ('(' | ')' | '[' | ']' | '|') => Some(Layout::text(ch.to_string())),
@@ -278,7 +316,9 @@ impl MathParser<'_> {
 							.count()
 							.max(/* other */ 1);
 						let (name, remaining) = self.remaining.split_at_checked(length)?;
+
 						self.remaining = remaining;
+
 						delimiter(name).map(Layout::text)
 					},
 					_ => None,
@@ -290,6 +330,18 @@ impl MathParser<'_> {
 			_ => symbol(name).map(Layout::text),
 		}
 	}
+}
+
+pub(super) fn display_width(text: &str) -> usize {
+	unicode_width::UnicodeWidthStr::width(text)
+		+ text.chars().filter(|ch| matches!(ch, '\u{FF9E}' | '\u{FF9F}')).count()
+}
+
+pub(super) fn render(source: &str, display: bool) -> Option<String> {
+	let mut parser = MathParser { remaining: source.trim(), depth: 0, display };
+	let result = parser.sequence(/* group */ false)?;
+
+	(!result.rows.iter().all(|row| row.trim().is_empty())).then(|| result.rows.join("\n"))
 }
 
 fn symbol(name: &str) -> Option<&'static str> {

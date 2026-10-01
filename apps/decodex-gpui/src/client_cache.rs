@@ -743,6 +743,7 @@ impl ClientCache {
 			persistent_mutation = true;
 
 			remove_verified_generation(target)?;
+
 			sync_directory(&self.root.join(GENERATIONS_DIRECTORY))
 		})();
 
@@ -1102,7 +1103,6 @@ impl WriterGuard {
 
 			return Err(error);
 		}
-
 		if let Err(error) = sync_directory(&self.root) {
 			self.restore_marker()?;
 
@@ -1116,6 +1116,7 @@ impl WriterGuard {
 		let file = open_new_private_file(&self.root.join(WRITER_LOCK_FILE))?;
 
 		file.sync_all()?;
+
 		sync_directory(&self.root)
 	}
 }
@@ -1285,7 +1286,6 @@ fn preflight_generation(
 	}
 
 	let (expected, recorded_bytes) = validate_manifest_records(&manifest, limits)?;
-
 	let object_directory = path.join(OBJECTS_DIRECTORY);
 	let entry_limit = limits.max_objects.checked_add(1).ok_or(CacheError::BoundsExceeded)?;
 	let entries = bounded_entries(&object_directory, entry_limit)?;
@@ -1293,7 +1293,6 @@ fn preflight_generation(
 	if entries.len() > limits.max_objects {
 		return Err(CacheError::BoundsExceeded);
 	}
-
 	if entries.len() != expected.len() {
 		return Err(CacheError::IntegrityMismatch);
 	}
@@ -1303,7 +1302,6 @@ fn preflight_generation(
 
 	for entry in entries {
 		let name = entry.file_name().into_string().map_err(|_| CacheError::ForeignArtifact)?;
-
 		let expected_length = *expected.get(&name).ok_or(CacheError::ForeignArtifact)?;
 		let object_path = entry.path();
 
@@ -1366,7 +1364,6 @@ fn validate_manifest_records(
 		if object.byte_length > limits.max_bytes {
 			return Err(CacheError::BoundsExceeded);
 		}
-
 		if !keys.insert((&object.entity_id, object.revision)) {
 			return Err(CacheError::InvalidMetadata);
 		}
@@ -1461,6 +1458,7 @@ fn copy_verified(
 		}
 
 		hasher.update(&buffer[..read]);
+
 		std::io::Write::write_all(&mut output, &buffer[..read])?;
 	}
 
@@ -1741,7 +1739,6 @@ fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>, CacheError> {
 
 	let mut bytes =
 		Vec::with_capacity(usize::try_from(length).map_err(|_| CacheError::InvalidMetadata)?);
-
 	let mut reader = std::io::Read::take(
 		File::open(path)?,
 		u64::try_from(limit + 1).map_err(|_| CacheError::InvalidMetadata)?,
@@ -1760,6 +1757,7 @@ fn write_new_synced(path: &Path, bytes: &[u8]) -> Result<(), CacheError> {
 	let mut file = open_new_private_file(path)?;
 
 	std::io::Write::write_all(&mut file, bytes)?;
+
 	file.sync_all()?;
 
 	Ok(())

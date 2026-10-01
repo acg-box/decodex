@@ -27,23 +27,30 @@ impl AgentSurface {
 		if self.selected_is_archived() || self.composer_unavailable_reason().is_some() {
 			return;
 		}
-
 		if self.dictation_task.is_some() || self.voice_task.is_some() {
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else { return };
 		let Ok(mut media) = Media::new(window) else {
 			self.feedback = "Dictation requires the current signed macOS application.".into();
+
 			cx.notify();
+
 			return;
 		};
+
 		if !media.command(serde_json::json!({"operation":"dictate","input":self.audio_input})) {
 			self.feedback = "The microphone could not start.".into();
+
 			cx.notify();
+
 			return;
 		}
+
 		let id = EntityId::new(unique_command()).expect("dictation identity");
 		let original = self.composer.read(cx).content().to_owned();
+
 		self.dictation = Some(DictationUi {
 			media,
 			session: id.clone(),
@@ -67,6 +74,7 @@ impl AgentSurface {
 				let response = cx.background_executor().spawn(async move {
 					let runtime =
 						tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+
 					runtime.block_on(AgentClient::new(profile).dictation(request)).ok()
 				});
 				let response = await_response(response, &surface, cx).await;
@@ -76,11 +84,14 @@ impl AgentSurface {
 					} else {
 						s.dictation = None;
 						s.feedback="Dictation connection was lost. Your received text remains in the draft.".into();
+
 						cx.notify();
 					}
 				});
+
 				cx.background_executor().timer(Duration::from_millis(20)).await;
 			}
+
 			cx.background_executor()
 				.spawn(async move {
 					if let Ok(runtime) =
@@ -93,11 +104,14 @@ impl AgentSurface {
 					}
 				})
 				.await;
+
 			let _ = surface.update(cx, |s, cx| {
 				s.dictation_task = None;
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -108,6 +122,7 @@ impl AgentSurface {
 				self.composer.update(cx, |input, cx| input.set_content(&dictation.original, cx));
 			}
 		}
+
 		cx.notify();
 	}
 
@@ -117,21 +132,28 @@ impl AgentSurface {
 		{
 			dictation.finishing = true;
 			dictation.status = "Finishing dictation…".into();
+
 			dictation.media.command(serde_json::json!({"operation":"finish"}));
 		}
+
 		cx.notify();
 	}
 
 	fn drain_dictation_media(&mut self, cx: &mut Context<Self>) -> Option<()> {
 		let dictation = self.dictation.as_mut()?;
+
 		if self.composer.read(cx).content() != dictation.expected {
 			self.dictation = None;
 			self.feedback = "Dictation stopped to preserve your edit.".into();
+
 			cx.notify();
+
 			return None;
 		}
+
 		for _ in 0..64 {
 			let Some(event) = dictation.media.poll() else { break };
+
 			match event["type"].as_str() {
 				Some("level") => {
 					dictation.level =
@@ -143,12 +165,16 @@ impl AgentSurface {
 					{
 						dictation.audio.push_back(audio);
 					}
+
 					dictation.level =
 						event["level"].as_f64().unwrap_or_default().clamp(0., 1.) as f32;
+
 					if dictation.audio.len() > 128 {
 						self.dictation = None;
 						self.feedback="Dictation stopped because audio delivery fell behind. Your received text remains in the draft.".into();
+
 						cx.notify();
+
 						return None;
 					}
 				},
@@ -164,22 +190,29 @@ impl AgentSurface {
 					self.feedback =
 						event["message"].as_str().unwrap_or("Microphone disconnected.").into();
 					self.dictation = None;
+
 					cx.notify();
+
 					return None;
 				},
 				_ => {},
 			}
 		}
+
 		cx.notify();
+
 		Some(())
 	}
 
 	fn poll_dictation(&mut self, cx: &mut Context<Self>) -> Option<DictationRequest> {
 		self.drain_dictation_media(cx)?;
+
 		let dictation = self.dictation.as_mut()?;
+
 		if let Some(request) = dictation.request.take() {
 			return Some(request);
 		}
+
 		if dictation.network_ready
 			&& let Some(audio) = dictation.audio.pop_front()
 		{
@@ -187,8 +220,10 @@ impl AgentSurface {
 		}
 		if dictation.network_ready && dictation.capture_ended && !dictation.finish_sent {
 			dictation.finish_sent = true;
+
 			return Some(DictationRequest::Finish { session_id: dictation.session.clone() });
 		}
+
 		Some(DictationRequest::Poll { session_id: dictation.session.clone() })
 	}
 
@@ -197,16 +232,23 @@ impl AgentSurface {
 		else {
 			return;
 		};
+
 		if self.composer.read(cx).content() != dictation.expected {
 			self.dictation = None;
+
 			cx.notify();
+
 			return;
 		}
+
 		let text = merge_draft(&dictation.original, status.text.as_str());
+
 		if text != dictation.expected {
 			dictation.expected = text.clone();
+
 			self.composer.update(cx, |input, cx| input.set_content(&text, cx));
 		}
+
 		match status.phase {
 			DictationPhase::Listening => dictation.network_ready = true,
 			DictationPhase::Finalizing => dictation.status = "Final correction…".into(),
@@ -219,6 +261,7 @@ impl AgentSurface {
 			},
 			_ => {},
 		}
+
 		cx.notify();
 	}
 
@@ -229,6 +272,7 @@ impl AgentSurface {
 		} else {
 			d.status.clone()
 		};
+
 		Some(
 			div()
 				.flex_none()
@@ -291,22 +335,28 @@ async fn await_response(
 		future::{Future, poll_fn},
 		task::Poll,
 	};
+
 	let mut response = Box::pin(response);
+
 	loop {
 		let mut tick = Box::pin(cx.background_executor().timer(Duration::from_millis(20)));
 		let result = poll_fn(|task| {
 			if let Poll::Ready(value) = response.as_mut().poll(task) {
 				return Poll::Ready(Some(value));
 			}
+
 			if tick.as_mut().poll(task).is_ready() {
 				return Poll::Ready(None);
 			}
+
 			Poll::Pending
 		})
 		.await;
+
 		if let Some(value) = result {
 			return value;
 		}
+
 		let _ = surface.update(cx, |s, cx| {
 			s.drain_dictation_media(cx);
 		});
@@ -319,6 +369,7 @@ mod tests {
 	#[test]
 	fn provisional_revisions_replace_only_the_dictated_suffix() {
 		let original = "Keep this draft\n";
+
 		assert_eq!(merge_draft(original, "partial"), "Keep this draft\npartial");
 		assert_eq!(merge_draft(original, "Final."), "Keep this draft\nFinal.");
 		assert_eq!(merge_draft(original, ""), original);
@@ -346,8 +397,10 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.snapshot
 				.as_mut()
 				.unwrap()
@@ -356,8 +409,11 @@ mod tests {
 				.find(|work| work.id == "release")
 				.unwrap()
 				.kind = decodex_protocol::AgentWorkKindDto::Manager;
+
 			s.composer.update(cx, |input, cx| input.set_content("Main draft", cx));
+
 			s.dictation = Some(recording("Main draft"));
+
 			s.apply_dictation(
 				DictationStatus {
 					session_id: EntityId::new("dictation-test").unwrap(),
@@ -370,9 +426,12 @@ mod tests {
 			// Identical text does not make this other recipient's draft the recording owner.
 			s.draft_profiles.texts.insert("release".into(), "Main draft partial".into());
 			s.open_page("release", cx);
+
 			assert!(s.dictation.is_none());
 			assert_eq!(s.composer.read(cx).content(), "Main draft partial");
+
 			s.open_page("agent", cx);
+
 			assert_eq!(s.composer.read(cx).content(), "Main draft");
 			assert!(!s.sending);
 			assert!(s.submission.command.is_none());
@@ -384,12 +443,16 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		let waiting = surface.update(visual, |s, cx| {
 			s.dictation = Some(recording(""));
+
 			s.composer.update(cx, |input, cx| input.set_content("Manual edit", cx));
+
 			cx.spawn(async move |surface, cx| {
 				let request = cx.background_executor().spawn(std::future::pending());
+
 				await_response(request, &surface, cx).await
 			})
 		});
+
 		visual.run_until_parked();
 		visual.executor().advance_clock(Duration::from_millis(40));
 		visual.run_until_parked();
@@ -400,6 +463,7 @@ mod tests {
 			);
 			assert_eq!(s.composer.read(cx).content(), "Manual edit");
 		});
+
 		drop(waiting);
 	}
 
@@ -408,10 +472,12 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			let original = "Existing draft";
 			let set_recording = |s: &mut AgentSurface, cx: &mut Context<AgentSurface>| {
 				s.composer.update(cx, |input, cx| input.set_content(original, cx));
+
 				s.dictation = Some(recording(original));
 			};
 			let response = |phase, text| DictationStatus {
@@ -420,20 +486,31 @@ mod tests {
 				text: DictationBuffer::new(text).expect("text"),
 				message: None,
 			};
+
 			set_recording(s, cx);
+
 			s.apply_dictation(response(DictationPhase::Listening, "partial"), cx);
+
 			assert_eq!(s.composer.read(cx).content(), "Existing draft partial");
+
 			s.cancel_dictation(cx);
+
 			assert_eq!(s.composer.read(cx).content(), original);
+
 			set_recording(s, cx);
+
 			s.apply_dictation(response(DictationPhase::Listening, "partial"), cx);
 			s.apply_dictation(response(DictationPhase::Complete, "Final correction."), cx);
+
 			assert_eq!(s.composer.read(cx).content(), "Existing draft Final correction.");
 			assert!(s.dictation.is_none());
 			assert!(!s.sending);
+
 			set_recording(s, cx);
+
 			s.composer.update(cx, |input, cx| input.set_content("My manual edit", cx));
 			s.cancel_dictation(cx);
+
 			assert_eq!(s.composer.read(cx).content(), "My manual edit");
 		});
 	}
@@ -442,14 +519,21 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.composer.update(cx, |input, cx| input.set_content("", cx));
+
 			let mut capture = recording("");
+
 			capture.network_ready = false;
 			capture.capture_ended = true;
+
 			capture.audio.push_back(DictationBuffer::new("AAA=").expect("frame"));
+
 			s.dictation = Some(capture);
+
 			assert!(matches!(s.poll_dictation(cx), Some(DictationRequest::Poll { .. })));
+
 			s.apply_dictation(
 				DictationStatus {
 					session_id: EntityId::new("dictation-test").expect("id"),
@@ -459,6 +543,7 @@ mod tests {
 				},
 				cx,
 			);
+
 			assert!(matches!(s.poll_dictation(cx), Some(DictationRequest::Audio { .. })));
 			assert!(matches!(s.poll_dictation(cx), Some(DictationRequest::Finish { .. })));
 			assert!(matches!(s.poll_dictation(cx), Some(DictationRequest::Poll { .. })));

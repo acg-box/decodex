@@ -24,8 +24,10 @@ impl AgentSurface {
 		if self.composer_manager.clone().or_else(|| self.root_id()).as_deref() != Some(work) {
 			return None;
 		}
+
 		let snapshot = self.snapshot.as_ref()?;
 		let item = snapshot.work_items.iter().find(|item| item.id == work)?;
+
 		Some((work.into(), item.codex_thread_id.clone()?, snapshot.runtime_source.clone()))
 	}
 
@@ -44,8 +46,10 @@ impl AgentSurface {
 		};
 		let value = |input: &Entity<ComposerInput>| {
 			let value = input.read(cx).content().trim().to_owned();
+
 			(!value.is_empty()).then_some(value)
 		};
+
 		Ok(decodex_protocol::AgentVoiceOptions {
 			model: value(&next.model)
 				.map(WireText::new)
@@ -66,6 +70,7 @@ impl AgentSurface {
 		if self.voice_option_target(work).is_none() {
 			return div().into_any_element();
 		}
+
 		let owner = work.to_owned();
 		let active = self
 			.voice_settings
@@ -109,15 +114,18 @@ impl AgentSurface {
 						}),
 					});
 				}
+
 				cx.notify();
 			},
 		));
+
 		if active && let Some(next) = &self.voice_settings.next {
 			panel=panel.child("Applies when you start a call. Blank fields use configured defaults. Changes do not affect an active call.")
                 .child("Realtime model").child(next.model.clone())
                 .child("Instructions for the Agent when voice starts").child(div().h(px(90.)).child(next.start.clone()))
                 .child("Instructions for the Agent when voice ends").child(div().h(px(90.)).child(next.end.clone()));
 		}
+
 		panel.into_any_element()
 	}
 
@@ -126,6 +134,7 @@ impl AgentSurface {
 		let before =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
 		let after = next.work_items.iter().find(|w| &w.id == work);
+
 		if self.snapshot.as_ref().is_none_or(|s| s.runtime_source != next.runtime_source)
 			|| !matches!((before, after), (Some(a), Some(b)) if a.codex_thread_id == b.codex_thread_id)
 		{
@@ -150,9 +159,12 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			self.voice_settings.feedback = "No service connection is available.".into();
+
 			cx.notify();
+
 			return;
 		};
 		let Ok(owner) = EntityId::new(work) else { return };
@@ -162,9 +174,11 @@ impl AgentSurface {
 			else {
 				return;
 			};
+
 			if work_id != &owner || !voices.contains(&voice) {
 				return;
 			}
+
 			Some(AgentActionDto::SetVoicePreference {
 				work_id: owner.clone(),
 				review_token: review_token.clone(),
@@ -173,13 +187,17 @@ impl AgentSurface {
 		} else {
 			None
 		};
+
 		self.voice_settings.work = Some(work.into());
 		self.voice_settings.epoch = self.voice_settings.epoch.wrapping_add(1);
+
 		let epoch = self.voice_settings.epoch;
 		let generation = self.generation;
+
 		self.voice_settings.state = None;
 		self.voice_settings.feedback =
 			if voice.is_some() { "Saving voice…" } else { "Reading voice settings…" }.into();
+
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 		let query_owner = owner.clone();
 		let future = cx.background_executor().spawn(async move {
@@ -189,8 +207,10 @@ impl AgentSurface {
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
 			let state =
 				runtime.block_on(client.voice_settings(query_owner)).unwrap_or(State::Unavailable);
+
 			Some((outcome, state))
 		});
+
 		self.voice_settings.task = Some(cx.spawn(async move |surface, cx| {
 			let result = future.await;
 			let _ = surface.update(cx, |s, cx| {
@@ -200,14 +220,19 @@ impl AgentSurface {
 				{
 					return;
 				}
+
 				s.voice_settings.task = None;
+
 				let (outcome, state) = result.unwrap_or((None, State::Unavailable));
+
 				s.voice_settings.feedback =
 					feedback(voice.as_ref(), outcome.as_ref(), &state).into();
 				s.voice_settings.state = Some(state);
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -219,6 +244,7 @@ impl AgentSurface {
 		if self.native_agents.selected.is_some() {
 			return div().into_any_element();
 		}
+
 		let owner = work.to_owned();
 		let opened = self.voice_settings.work.as_deref() == Some(work);
 		let mut panel = div().flex().flex_col().gap_2().child(mcp_button(
@@ -229,24 +255,32 @@ impl AgentSurface {
 			move |s, cx| {
 				if s.voice_settings.work.as_deref() == Some(&owner) {
 					let next = s.voice_settings.next.take();
+
 					s.reset_voice_settings();
+
 					s.voice_settings.next = next;
+
 					cx.notify();
 				} else {
 					s.update_voice_settings(&owner, None, cx);
 				}
 			},
 		));
+
 		if !opened {
 			return panel.into_any_element();
 		}
+
 		panel = panel
 			.child("Applies to your next voice conversation.")
 			.child(self.voice_settings.feedback.clone());
+
 		if self.voice_settings.task.is_some() {
 			return panel.into_any_element();
 		}
+
 		let owner = work.to_owned();
+
 		panel = panel.child(mcp_button(
 			"voice-settings-refresh".into(),
 			"Refresh voices".into(),
@@ -254,6 +288,7 @@ impl AgentSurface {
 			cx,
 			move |s, cx| s.update_voice_settings(&owner, None, cx),
 		));
+
 		if let Some(State::Available { voices, effective, preference, .. }) =
 			&self.voice_settings.state
 		{
@@ -264,6 +299,7 @@ impl AgentSurface {
 					effective.as_ref().map_or("Server default", WireText::as_str)
 				));
 			}
+
 			for (index, voice) in voices.iter().enumerate() {
 				let owner = work.to_owned();
 				let selected = Some(voice) == effective.as_ref();
@@ -271,6 +307,7 @@ impl AgentSurface {
 					format!("{}{}", voice.as_str(), if selected { " (current)" } else { "" });
 				let voice = voice.clone();
 				let epoch = self.voice_settings.epoch;
+
 				panel = panel.child(mcp_button(
 					format!("voice-choice-{index}"),
 					label,
@@ -286,6 +323,7 @@ impl AgentSurface {
 		} else {
 			panel = panel.child("Voice settings are unavailable. Refresh to try again.");
 		}
+
 		panel.child(self.advanced_voice_options(work, cx)).into_any_element()
 	}
 }

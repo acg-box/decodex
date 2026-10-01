@@ -75,7 +75,6 @@ pub(crate) enum DesktopSettingsDispatch {
 	Query(QueryEnvelope),
 	Command(CommandEnvelope),
 }
-
 impl DesktopSettingsDispatch {
 	pub(crate) fn query(&self) -> Option<&QueryEnvelope> {
 		match self {
@@ -97,12 +96,6 @@ impl DesktopSettingsDispatch {
 pub(crate) struct DesktopSettingsController {
 	inner: Arc<DesktopSettingsInner>,
 }
-
-struct DesktopSettingsInner {
-	state: Mutex<State>,
-	notify: Notify,
-}
-
 impl DesktopSettingsController {
 	pub(crate) fn production() -> Self {
 		Self {
@@ -123,12 +116,17 @@ impl DesktopSettingsController {
 	) -> Result<(), DesktopSettingsInputError> {
 		let mut state = self.lock();
 		let settings = state.settings.ok_or(DesktopSettingsInputError::NotLoaded)?;
+
 		if settings.show_in_menu_bar == show_in_menu_bar {
 			return Ok(());
 		}
+
 		state.queue_command(show_in_menu_bar, None, None, settings.revision)?;
+
 		drop(state);
+
 		self.inner.notify.notify_one();
+
 		Ok(())
 	}
 
@@ -138,35 +136,49 @@ impl DesktopSettingsController {
 	) -> Result<(), DesktopSettingsInputError> {
 		let mut state = self.lock();
 		let settings = state.settings.ok_or(DesktopSettingsInputError::NotLoaded)?;
+
 		state.queue_command(settings.show_in_menu_bar, Some(enabled), None, settings.revision)?;
+
 		drop(state);
+
 		self.inner.notify.notify_one();
+
 		Ok(())
 	}
 
 	pub(crate) fn set_auto_recap(&self, enabled: bool) -> Result<(), DesktopSettingsInputError> {
 		let mut state = self.lock();
 		let settings = state.settings.ok_or(DesktopSettingsInputError::NotLoaded)?;
+
 		state.queue_command(settings.show_in_menu_bar, None, Some(enabled), settings.revision)?;
+
 		drop(state);
+
 		self.inner.notify.notify_one();
+
 		Ok(())
 	}
 
 	pub(crate) fn bind_session(&self, generation: u64, server_id: ServerId) {
 		let mut state = self.lock();
 		let binding = SessionBinding { generation, server_id };
+
 		if state.session.as_ref() == Some(&binding) {
 			return;
 		}
+
 		state.latch_in_flight_outcome_unknown();
+
 		state.pending_query = None;
 		state.in_flight_query = None;
 		state.session = Some(binding);
 		state.settings_are_current = false;
+
 		let query_queued = state.queue_query();
 		let command_queued = state.pending_command.is_some();
+
 		drop(state);
+
 		if query_queued || command_queued {
 			self.inner.notify.notify_one();
 		}
@@ -174,15 +186,19 @@ impl DesktopSettingsController {
 
 	pub(crate) fn session_ended(&self, generation: u64) {
 		let mut state = self.lock();
+
 		if !state.session.as_ref().is_some_and(|binding| binding.generation == generation) {
 			return;
 		}
+
 		state.latch_in_flight_outcome_unknown();
+
 		if state.pending_command.take().is_some()
 			&& state.command != DesktopSettingsCommandState::OutcomeUnknown
 		{
 			state.command = DesktopSettingsCommandState::Refused;
 		}
+
 		state.pending_query = None;
 		state.in_flight_query = None;
 		state.session = None;
@@ -196,9 +212,11 @@ impl DesktopSettingsController {
 	) -> DesktopSettingsDispatch {
 		loop {
 			let notified = self.inner.notify.notified();
+
 			if let Some(dispatch) = self.try_take_dispatch(generation, server_id) {
 				return dispatch;
 			}
+
 			notified.await;
 		}
 	}
@@ -210,6 +228,7 @@ impl DesktopSettingsController {
 	) -> Option<DesktopSettingsDispatch> {
 		let mut state = self.lock();
 		let binding = SessionBinding { generation, server_id: server_id.clone() };
+
 		if state.session.as_ref() != Some(&binding) {
 			return None;
 		}
@@ -217,6 +236,7 @@ impl DesktopSettingsController {
 			&& let Some(envelope) = state.pending_command.take()
 		{
 			state.in_flight_command = Some(InFlightCommand { envelope: envelope.clone(), binding });
+
 			return Some(DesktopSettingsDispatch::Command(envelope));
 		}
 		if state.in_flight_query.is_none()
@@ -224,8 +244,10 @@ impl DesktopSettingsController {
 		{
 			state.in_flight_query =
 				Some(InFlightQuery { query_id: envelope.query_id.clone(), binding });
+
 			return Some(DesktopSettingsDispatch::Query(envelope));
 		}
+
 		None
 	}
 
@@ -234,6 +256,7 @@ impl DesktopSettingsController {
 			return;
 		};
 		let mut state = self.lock();
+
 		if state.in_flight_command.as_ref().is_some_and(|in_flight| {
 			in_flight.envelope.client_command_id == command.client_command_id
 		}) {
@@ -246,6 +269,7 @@ impl DesktopSettingsController {
 			return;
 		};
 		let mut state = self.lock();
+
 		if state.in_flight_command.as_ref().is_some_and(|in_flight| {
 			in_flight.envelope.client_command_id == command.client_command_id
 		}) {
@@ -257,13 +281,16 @@ impl DesktopSettingsController {
 		let EventPayload::DesktopSettingsChanged { settings } = &event.payload else {
 			return;
 		};
+
 		if event.entity_id.as_str() != DESKTOP_SETTINGS_ENTITY_ID
 			|| settings.revision != event.entity_revision
 			|| !settings.is_valid()
 		{
 			return;
 		}
+
 		let mut state = self.lock();
+
 		state.apply_settings(*settings);
 	}
 
@@ -277,10 +304,13 @@ impl DesktopSettingsController {
 		let Some(in_flight) = state.in_flight_query.as_ref() else {
 			return DesktopSettingsRouteOutcome::Unmatched;
 		};
+
 		if in_flight.query_id != result.query_id {
 			return DesktopSettingsRouteOutcome::Unmatched;
 		}
+
 		let expected = SessionBinding { generation, server_id: server_id.clone() };
+
 		if in_flight.binding != expected
 			|| state.session.as_ref() != Some(&expected)
 			|| result.version != CURRENT_VERSION
@@ -288,26 +318,34 @@ impl DesktopSettingsController {
 		{
 			state.in_flight_query = None;
 			state.load = DesktopSettingsLoadState::Refused;
+
 			return DesktopSettingsRouteOutcome::Refused;
 		}
+
 		state.in_flight_query = None;
+
 		match &result.payload {
 			QueryResultPayload::DesktopSettings(DesktopSettingsResult::Available(settings))
 				if settings.is_valid() =>
 			{
 				state.apply_settings(*settings);
+
 				state.load = DesktopSettingsLoadState::Ready;
+
 				if state.in_flight_command.is_none() && state.pending_command.is_none() {
 					state.command = DesktopSettingsCommandState::Idle;
 				}
+
 				DesktopSettingsRouteOutcome::Fresh
 			},
 			QueryResultPayload::DesktopSettings(DesktopSettingsResult::Unavailable) => {
 				state.load = DesktopSettingsLoadState::Unavailable;
+
 				DesktopSettingsRouteOutcome::Fresh
 			},
 			_ => {
 				state.load = DesktopSettingsLoadState::Refused;
+
 				DesktopSettingsRouteOutcome::Refused
 			},
 		}
@@ -323,10 +361,13 @@ impl DesktopSettingsController {
 		let Some(in_flight) = state.in_flight_command.as_ref() else {
 			return DesktopSettingsRouteOutcome::Unmatched;
 		};
+
 		if in_flight.envelope.client_command_id != receipt.client_command_id {
 			return DesktopSettingsRouteOutcome::Unmatched;
 		}
+
 		let expected = SessionBinding { generation, server_id: server_id.clone() };
+
 		if in_flight.binding != expected
 			|| state.session.as_ref() != Some(&expected)
 			|| receipt.version != CURRENT_VERSION
@@ -334,8 +375,10 @@ impl DesktopSettingsController {
 			|| receipt.idempotency_key != in_flight.envelope.idempotency_key
 		{
 			state.latch_in_flight_outcome_unknown();
+
 			return DesktopSettingsRouteOutcome::Refused;
 		}
+
 		match receipt.disposition {
 			ReceiptDisposition::Executed | ReceiptDisposition::Duplicate => {
 				state.command = DesktopSettingsCommandState::AwaitingResult;
@@ -345,6 +388,7 @@ impl DesktopSettingsController {
 				state.command = DesktopSettingsCommandState::Refused;
 			},
 		}
+
 		DesktopSettingsRouteOutcome::Fresh
 	}
 
@@ -358,10 +402,13 @@ impl DesktopSettingsController {
 		let Some(in_flight) = state.in_flight_command.as_ref() else {
 			return DesktopSettingsRouteOutcome::Unmatched;
 		};
+
 		if in_flight.envelope.client_command_id != result.client_command_id {
 			return DesktopSettingsRouteOutcome::Unmatched;
 		}
+
 		let expected = SessionBinding { generation, server_id: server_id.clone() };
+
 		if in_flight.binding != expected
 			|| state.session.as_ref() != Some(&expected)
 			|| result.version != CURRENT_VERSION
@@ -369,12 +416,15 @@ impl DesktopSettingsController {
 			|| result.idempotency_key != in_flight.envelope.idempotency_key
 		{
 			state.latch_in_flight_outcome_unknown();
+
 			return DesktopSettingsRouteOutcome::Refused;
 		}
+
 		let in_flight = state
 			.in_flight_command
 			.take()
 			.expect("matching desktop settings command remains in flight");
+
 		match result.outcome {
 			CommandOutcome::Succeeded => {
 				if let (
@@ -392,22 +442,29 @@ impl DesktopSettingsController {
 					&& result.entity_revision == Some(settings.revision)
 				{
 					state.apply_settings(*settings);
+
 					state.load = DesktopSettingsLoadState::Ready;
 					state.command = DesktopSettingsCommandState::Accepted;
+
 					DesktopSettingsRouteOutcome::Fresh
 				} else {
 					state.command = DesktopSettingsCommandState::Refused;
+
 					DesktopSettingsRouteOutcome::Refused
 				}
 			},
 			CommandOutcome::AcceptanceUnknown => {
 				state.command = DesktopSettingsCommandState::OutcomeUnknown;
+
 				let _ = state.queue_query();
+
 				DesktopSettingsRouteOutcome::Fresh
 			},
 			CommandOutcome::Rejected => {
 				state.command = DesktopSettingsCommandState::Refused;
+
 				let _ = state.queue_query();
+
 				DesktopSettingsRouteOutcome::Fresh
 			},
 		}
@@ -416,6 +473,11 @@ impl DesktopSettingsController {
 	fn lock(&self) -> MutexGuard<'_, State> {
 		self.inner.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 	}
+}
+
+struct DesktopSettingsInner {
+	state: Mutex<State>,
+	notify: Notify,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -447,7 +509,6 @@ struct State {
 	// Cached values from a previous connection are not a revision floor for this connection.
 	settings_are_current: bool,
 }
-
 impl State {
 	const fn new() -> Self {
 		Self {
@@ -488,6 +549,7 @@ impl State {
 					| DesktopSettingsCommandState::AwaitingResult
 					| DesktopSettingsCommandState::OutcomeUnknown
 			);
+
 		DesktopSettingsSnapshot {
 			load: self.load,
 			command: self.command,
@@ -499,15 +561,20 @@ impl State {
 	fn queue_query(&mut self) -> bool {
 		let Some(generation) = self.session.as_ref().map(|session| session.generation) else {
 			self.load = DesktopSettingsLoadState::Offline;
+
 			return false;
 		};
+
 		if self.pending_query.is_some() || self.in_flight_query.is_some() {
 			return false;
 		}
+
 		let Some(sequence) = self.next_query_sequence.checked_add(1) else {
 			self.load = DesktopSettingsLoadState::Refused;
+
 			return false;
 		};
+
 		self.next_query_sequence = sequence;
 		self.pending_query = Some(QueryEnvelope {
 			version: CURRENT_VERSION,
@@ -516,6 +583,7 @@ impl State {
 			payload: QueryPayload::GetDesktopSettings,
 		});
 		self.load = DesktopSettingsLoadState::Loading;
+
 		true
 	}
 
@@ -541,7 +609,9 @@ impl State {
 			) {
 			return Err(DesktopSettingsInputError::Busy);
 		}
+
 		let identity = command_identity()?;
+
 		self.pending_command = Some(CommandEnvelope {
 			version: CURRENT_VERSION,
 			client_command_id: identity.client_command_id,
@@ -556,6 +626,7 @@ impl State {
 			},
 		});
 		self.command = DesktopSettingsCommandState::Sending;
+
 		Ok(())
 	}
 
@@ -574,6 +645,7 @@ struct CommandIdentity {
 
 fn command_identity() -> Result<CommandIdentity, DesktopSettingsInputError> {
 	let value = canonical_uuid_v4()?;
+
 	Ok(CommandIdentity {
 		client_command_id: ClientCommandId::new(format!("gpui-desktop-settings/{value}"))
 			.expect("canonical desktop settings command identity is bounded"),
@@ -591,14 +663,18 @@ fn canonical_uuid_v4() -> Result<String, DesktopSettingsInputError> {
 		.map_err(|_| DesktopSettingsInputError::IdentityUnavailable)?
 		.as_nanos();
 	let mut digest = Sha256::new();
+
 	digest.update(std::process::id().to_be_bytes());
 	digest.update(sequence.to_be_bytes());
 	digest.update(nanos.to_be_bytes());
+
 	let mut bytes: [u8; 16] = digest.finalize()[..16]
 		.try_into()
 		.map_err(|_| DesktopSettingsInputError::IdentityUnavailable)?;
+
 	bytes[6] = (bytes[6] & 0x0f) | 0x40;
 	bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
 	Ok(format!(
 		"{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
 		bytes[0],
@@ -641,14 +717,16 @@ mod tests {
 	async fn connection_queries_daemon_owned_settings_before_enabling_the_toggle() {
 		let controller = DesktopSettingsController::production();
 		let server = server();
+
 		controller.bind_session(4, server.clone());
+
 		let DesktopSettingsDispatch::Query(query) = controller.next_dispatch(4, &server).await
 		else {
 			panic!("first dispatch must query settings")
 		};
+
 		assert!(matches!(query.payload, decodex_protocol::QueryPayload::GetDesktopSettings));
 		assert_eq!(controller.snapshot().load, DesktopSettingsLoadState::Loading);
-
 		assert_eq!(
 			controller.route_query_result(
 				4,
@@ -669,7 +747,9 @@ mod tests {
 			),
 			DesktopSettingsRouteOutcome::Fresh
 		);
+
 		let snapshot = controller.snapshot();
+
 		assert_eq!(snapshot.load, DesktopSettingsLoadState::Ready);
 		assert!(snapshot.can_toggle);
 		assert!(snapshot.settings.expect("settings are available").show_in_menu_bar);
@@ -679,8 +759,10 @@ mod tests {
 	async fn query_readback_preserves_newer_events_in_each_connection() {
 		let controller = DesktopSettingsController::production();
 		let server = server();
+
 		for (generation, query_revision, event_revision) in [(1, 8, 9), (2, 2, 3)] {
 			controller.bind_session(generation, server.clone());
+
 			let DesktopSettingsDispatch::Query(query) =
 				controller.next_dispatch(generation, &server).await
 			else {
@@ -692,6 +774,7 @@ mod tests {
 				auto_recap: true,
 				revision: EntityRevision(event_revision),
 			};
+
 			controller.apply_event(&decodex_protocol::EventEnvelope {
 				version: CURRENT_VERSION,
 				server_id: server.clone(),
@@ -706,8 +789,10 @@ mod tests {
 				causation_id: None,
 				payload: decodex_protocol::EventPayload::DesktopSettingsChanged { settings: newer },
 			});
+
 			assert_eq!(controller.snapshot().settings, Some(newer));
 			assert!(!controller.snapshot().can_toggle, "query is still pending");
+
 			controller.route_query_result(
 				generation,
 				&server,
@@ -725,14 +810,19 @@ mod tests {
 					)),
 				},
 			);
+
 			assert_eq!(controller.snapshot().settings, Some(newer));
 			assert!(controller.snapshot().can_toggle);
+
 			controller.set_auto_recap(false).expect("queue with latest revision");
+
 			let dispatch = controller.next_dispatch(generation, &server).await;
+
 			assert_eq!(
 				dispatch.command().expect("settings command").expected_revision,
 				Some(newer.revision)
 			);
+
 			controller.session_ended(generation);
 		}
 	}
@@ -742,11 +832,14 @@ mod tests {
 		for preference in [0, 1, 2] {
 			let controller = DesktopSettingsController::production();
 			let server = server();
+
 			controller.bind_session(7, server.clone());
+
 			let DesktopSettingsDispatch::Query(query) = controller.next_dispatch(7, &server).await
 			else {
 				panic!("first dispatch must query settings")
 			};
+
 			controller.route_query_result(
 				7,
 				&server,
@@ -772,9 +865,12 @@ mod tests {
 			} else {
 				controller.set_show_in_menu_bar(false).expect("queue menu-bar preference");
 			}
+
 			let dispatch = controller.next_dispatch(7, &server).await;
 			let command = dispatch.command().expect("toggle dispatch is a command").clone();
+
 			controller.command_sent(&dispatch);
+
 			assert_eq!(controller.snapshot().command, DesktopSettingsCommandState::AwaitingResult);
 			assert_eq!(
 				controller.route_receipt(
@@ -791,12 +887,14 @@ mod tests {
 				),
 				DesktopSettingsRouteOutcome::Fresh
 			);
+
 			let settings = DesktopSettingsDto {
 				show_in_menu_bar: preference != 0,
 				auto_activate_quota: preference == 1,
 				auto_recap: preference == 2,
 				revision: EntityRevision(9),
 			};
+
 			assert_eq!(
 				controller.route_command_result(
 					7,
@@ -814,7 +912,9 @@ mod tests {
 				),
 				DesktopSettingsRouteOutcome::Fresh
 			);
+
 			let snapshot = controller.snapshot();
+
 			assert_eq!(snapshot.command, DesktopSettingsCommandState::Accepted);
 			assert_eq!(snapshot.settings.unwrap().auto_recap, preference == 2);
 			assert_eq!(

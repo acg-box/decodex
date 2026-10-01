@@ -28,6 +28,7 @@ impl AgentSurface {
 		let before =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
 		let after = next.work_items.iter().find(|w| &w.id == work);
+
 		if !matches!((before,after),(Some(a),Some(b)) if a.codex_thread_id==b.codex_thread_id && a.status==b.status && a.dispatch_state==b.dispatch_state && a.active_turn_id==b.active_turn_id)
 			|| self.snapshot.as_ref().is_none_or(|s| s.runtime_source != next.runtime_source)
 		{
@@ -55,6 +56,7 @@ impl AgentSurface {
 		else {
 			return None;
 		};
+
 		if work_id != work
 			|| thread_id.as_str() != thread
 			|| self.task_models.work.as_deref() != Some(work.as_str())
@@ -66,6 +68,7 @@ impl AgentSurface {
 		{
 			return None;
 		}
+
 		Some(AgentActionDto::SetTaskModel {
 			work_id: work.clone(),
 			thread_id: thread_id.clone(),
@@ -82,6 +85,7 @@ impl AgentSurface {
 		if matches!(&self.task_models.state, Some(State::Available { models, can_update:true, .. }) if models.iter().any(|m|m.model==model))
 		{
 			self.task_models.selected_model = Some(model);
+
 			cx.notify();
 		}
 	}
@@ -100,6 +104,7 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
@@ -124,19 +129,24 @@ impl AgentSurface {
 			let Some(action) = self.model_selection_action(&work_id, &thread, model, effort) else {
 				return;
 			};
+
 			Some(action)
 		} else {
 			None
 		};
 		let saving = action.is_some();
+
 		self.task_models.epoch = self.task_models.epoch.wrapping_add(1);
+
 		let epoch = self.task_models.epoch;
+
 		self.task_models.work = Some(work.clone());
 		self.task_models.state = None;
 		self.task_models.selected_model = None;
 		self.task_models.reviewed = false;
 		self.task_models.feedback =
 			if saving { "Saving model selection…" } else { "Reading model settings…" }.into();
+
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 		let future = cx.background_executor().spawn(async move {
 			let runtime =
@@ -145,14 +155,17 @@ impl AgentSurface {
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
 			let state =
 				runtime.block_on(client.model_selection(work_id)).unwrap_or(State::Unavailable);
+
 			Some((outcome, state))
 		});
+
 		self.task_models.task = Some(cx.spawn(async move |surface, cx| {
 			let result = future.await;
 			let _ = surface.update(cx, |s, cx| {
 				s.finish_task_models(epoch, (&work, &thread, &source), saving, result, cx);
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -168,10 +181,13 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		let (work, thread, source) = binding;
+
 		if self.task_models.epoch != epoch {
 			return;
 		}
+
 		self.task_models.task = None;
+
 		let current = self.command_connection_ready()
 			&& self.native_agents.selected.is_none()
 			&& self.selected.as_deref() == Some(work)
@@ -182,15 +198,20 @@ impl AgentSurface {
 						.iter()
 						.any(|w| w.id == work && w.codex_thread_id.as_deref() == Some(thread))
 			});
+
 		if !current {
 			self.reset_task_models();
 			cx.notify();
+
 			return;
 		}
+
 		let (outcome, state) = result.unwrap_or((None, State::Unavailable));
+
 		if saving {
 			self.reset_model_settings();
 		}
+
 		self.task_models.reviewed = !saving;
 		self.task_models.feedback = match outcome {
 			Some(Ok(AgentCommandResponse::Accepted { .. })) =>
@@ -208,6 +229,7 @@ impl AgentSurface {
 				State::Unavailable,
 			other => other,
 		});
+
 		cx.notify();
 	}
 
@@ -222,6 +244,7 @@ impl AgentSurface {
 		{
 			return div().into_any_element();
 		}
+
 		let owner = work.id.clone();
 		let mut panel = div().flex().flex_col().gap_2().child("Model").child(mcp_button(
 			"task-models-read".into(),
@@ -230,10 +253,13 @@ impl AgentSurface {
 			cx,
 			move |s, cx| s.update_task_models(owner.clone(), None, cx),
 		));
+
 		if self.task_models.work.as_ref() != Some(&work.id) {
 			return panel.into_any_element();
 		}
+
 		panel = panel.child(self.task_models.feedback.clone());
+
 		match &self.task_models.state {
 			Some(State::Available {
 				model,
@@ -251,6 +277,7 @@ impl AgentSurface {
 					model_provider.as_str(),
 					current_effort.as_ref().map_or("default", |e| e.as_str())
 				));
+
 				if let Some(receipt) = last_receipt {
 					panel = panel.child(
 						div()
@@ -261,6 +288,7 @@ impl AgentSurface {
 				} else if let Some(state) = last_outcome {
 					panel = panel.child(label(*state));
 				}
+
 				if *can_update
 					&& self.task_models.reviewed
 					&& self.task_models.task.is_none()
@@ -279,6 +307,7 @@ impl AgentSurface {
 				panel = panel
 					.child(format!("{} · {}", model.as_str(), label(*state)))
 					.child("Refresh to check confirmation. The change will not be resent.");
+
 				if let Some(receipt) = last_receipt {
 					panel = panel.child(
 						div()
@@ -294,6 +323,7 @@ impl AgentSurface {
 			},
 			None => {},
 		}
+
 		panel.into_any_element()
 	}
 
@@ -313,8 +343,10 @@ impl AgentSurface {
 			.gap_1()
 			.max_h(px(240.))
 			.overflow_y_scroll();
+
 		for (index, model) in models.iter().enumerate() {
 			let selected = model.model.clone();
+
 			choices = choices.child(mcp_button(
 				format!("task-model-{index}"),
 				super::model_settings::model_choice_label(model),
@@ -323,7 +355,9 @@ impl AgentSurface {
 				move |s, cx| s.choose_task_model(selected.clone(), cx),
 			));
 		}
+
 		panel = panel.child(choices);
+
 		if let Some(selected) = self
 			.task_models
 			.selected_model
@@ -331,9 +365,11 @@ impl AgentSurface {
 			.and_then(|selected| models.iter().find(|m| &m.model == selected))
 		{
 			panel = panel.child(format!("Selected: {}", selected.name));
+
 			if &selected.model != model {
 				let owner = work.id.clone();
 				let model = selected.model.clone();
+
 				panel = panel.child(mcp_button(
 					"task-model-preserve".into(),
 					"Use model · keep current effort".into(),
@@ -344,13 +380,16 @@ impl AgentSurface {
 					},
 				));
 			}
+
 			for (index, effort) in selected.efforts.iter().enumerate() {
 				if &selected.model == model && Some(effort) == current_effort {
 					continue;
 				}
+
 				let owner = work.id.clone();
 				let model = selected.model.clone();
 				let effort = effort.clone();
+
 				panel = panel.child(mcp_button(
 					format!("task-model-effort-{index}"),
 					format!("Use model · {} effort", effort.as_str()),
@@ -366,6 +405,7 @@ impl AgentSurface {
 				));
 			}
 		}
+
 		panel.into_any_element()
 	}
 }
@@ -383,6 +423,7 @@ fn label(state: Outcome) -> &'static str {
 
 fn history_label(receipt: &decodex_protocol::AgentModelSelectionReceipt) -> String {
 	use decodex_protocol::AgentModelResponse as Response;
+
 	let response = match receipt.response {
 		Response::Reserved => "awaiting response",
 		Response::Queued => "queued",
@@ -396,6 +437,7 @@ fn history_label(receipt: &decodex_protocol::AgentModelSelectionReceipt) -> Stri
 	} else {
 		""
 	};
+
 	format!(
 		"Last {}: {} / {} — {response}{observation}",
 		if receipt.manual { "manual selection" } else { "automatic fallback" },

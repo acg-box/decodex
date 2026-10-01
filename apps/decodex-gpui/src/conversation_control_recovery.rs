@@ -38,23 +38,12 @@ impl ControlObservation {
 	}
 }
 
-pub(super) fn control_target(command: &CommandEnvelope) -> Option<&EntityId> {
-	match &command.payload {
-		CommandPayload::ArchiveConversation { conversation_id }
-		| CommandPayload::RefreshConversation { conversation_id }
-		| CommandPayload::InterruptConversation { conversation_id, .. }
-		| CommandPayload::ResumeConversationRouting { conversation_id }
-		| CommandPayload::ResumeConversationEstablishment { conversation_id }
-		| CommandPayload::CreateConversationRoutingSuccessor { conversation_id } => Some(conversation_id),
-		_ => None,
-	}
-}
-
 impl Conversations {
 	pub(crate) fn ordinary_control_states(
 		&self,
 	) -> Vec<(CommandEnvelope, Option<ControlObservation>)> {
 		let state = self.lock();
+
 		state
 			.delivery
 			.unconfirmed
@@ -77,27 +66,34 @@ impl Conversations {
 	pub(crate) fn check_ordinary_control(&self, command: &CommandEnvelope) -> bool {
 		let Some(target) = control_target(command) else { return false };
 		let mut state = self.lock();
+
 		if !state.delivery.unconfirmed.contains(command) {
 			return false;
 		}
+
 		let source =
 			state.tasks.iter().find(|task| &task.conversation_id == target).cloned().map(Box::new);
 		let queued = state.queue_query(
 			QueryPayload::GetConversation { conversation_id: target.clone() },
 			ConversationQueryPurpose::ControlState { command: Box::new(command.clone()), source },
 		);
+
 		if queued {
 			state.delivery.control_readbacks.retain(|(original, _)| original != command);
 		}
+
 		drop(state);
+
 		if queued {
 			self.inner.notify.notify_one();
 		}
+
 		queued
 	}
 
 	pub(crate) fn acknowledge_ordinary_control(&self, command: &CommandEnvelope) -> bool {
 		let mut state = self.lock();
+
 		if state.pending_command.is_some()
 			|| state.in_flight_command.is_some()
 			|| !state.delivery.unconfirmed.contains(command)
@@ -109,7 +105,9 @@ impl Conversations {
 		{
 			return false;
 		}
+
 		state.confirm_delivery(command);
+
 		if super::RoutingSuccessorReconciliation::from_command(command)
 			.as_ref()
 			.is_some_and(|saved| state.routing_successor_reconciliation.as_ref() == Some(saved))
@@ -119,12 +117,17 @@ impl Conversations {
 		}
 
 		state.delivery.control_readbacks.retain(|(original, _)| original != command);
+
 		if state.delivery.unconfirmed.is_empty() {
 			state.command = ConversationCommandState::Idle;
 		}
+
 		state.queue_list();
+
 		drop(state);
+
 		self.inner.notify.notify_one();
+
 		true
 	}
 }
@@ -145,19 +148,35 @@ impl State {
 		let Some(target) = control_target(command) else {
 			return (ConversationRouteOutcome::Refused, false);
 		};
+
 		if !self.delivery.unconfirmed.contains(command) {
 			return (ConversationRouteOutcome::Unmatched, false);
 		}
 		if self.tasks.iter().find(|task| &task.conversation_id == target) != source {
 			return (ConversationRouteOutcome::Refused, false);
 		}
+
 		let observation = match payload {
 			QueryResultPayload::Conversation(result) => observe(command, target, result),
 			_ => ControlObservation::Unavailable,
 		};
+
 		self.delivery.control_readbacks.retain(|(original, _)| original != command);
 		self.delivery.control_readbacks.push((command.clone(), observation));
+
 		(ConversationRouteOutcome::Fresh, false)
+	}
+}
+
+pub(super) fn control_target(command: &CommandEnvelope) -> Option<&EntityId> {
+	match &command.payload {
+		CommandPayload::ArchiveConversation { conversation_id }
+		| CommandPayload::RefreshConversation { conversation_id }
+		| CommandPayload::InterruptConversation { conversation_id, .. }
+		| CommandPayload::ResumeConversationRouting { conversation_id }
+		| CommandPayload::ResumeConversationEstablishment { conversation_id }
+		| CommandPayload::CreateConversationRoutingSuccessor { conversation_id } => Some(conversation_id),
+		_ => None,
 	}
 }
 
@@ -167,9 +186,11 @@ fn observe(
 	result: &ConversationResult,
 ) -> ControlObservation {
 	use ControlObservation as O;
+
 	let Some(expected) = command.expected_revision.filter(|revision| revision.0 > 0) else {
 		return O::Conflict;
 	};
+
 	match result {
 		ConversationResult::Archived { conversation_id, conversation_revision }
 			if conversation_id == target
@@ -254,14 +275,18 @@ mod tests {
 
 	fn fixture() -> (CommandEnvelope, ConversationSummary) {
 		let (controller, server, task) = connected_conversations();
+
 		controller.submit("Preserved input").expect("submit");
+
 		let mut command = dispatched_command(&controller, &server);
 		let CommandPayload::SubmitConversationTurn { conversation_id, turn_id, .. } =
 			command.payload
 		else {
 			panic!("turn command")
 		};
+
 		command.payload = CommandPayload::InterruptConversation { conversation_id, turn_id };
+
 		(command, task)
 	}
 
@@ -269,17 +294,22 @@ mod tests {
 	fn absent_active_turn_does_not_resolve_unknown_or_stale_interrupt() {
 		let (command, mut task) = fixture();
 		let target = task.conversation_id.clone();
+
 		assert_eq!(
 			observe(&command, &target, &ConversationResult::Available(task.clone())),
 			ControlObservation::Unavailable
 		);
+
 		task.conversation_revision = EntityRevision(2);
 		task.state = ConversationState::OutcomeUnknown;
+
 		assert_eq!(
 			observe(&command, &target, &ConversationResult::Available(task.clone())),
 			ControlObservation::Unavailable
 		);
+
 		task.state = ConversationState::Ready;
+
 		assert_eq!(
 			observe(&command, &target, &ConversationResult::Available(task)),
 			ControlObservation::TurnInactive
@@ -290,11 +320,14 @@ mod tests {
 	fn missing_or_stale_archive_is_not_archive_evidence() {
 		let (mut command, task) = fixture();
 		let target = task.conversation_id;
+
 		command.payload = CommandPayload::ArchiveConversation { conversation_id: target.clone() };
+
 		assert_eq!(
 			observe(&command, &target, &ConversationResult::NotFound),
 			ControlObservation::Missing
 		);
+
 		for (revision, expected) in
 			[(1, ControlObservation::Conflict), (2, ControlObservation::Archived)]
 		{
@@ -302,27 +335,40 @@ mod tests {
 				conversation_id: target.clone(),
 				conversation_revision: EntityRevision(revision),
 			};
+
 			assert_eq!(observe(&command, &target, &result), expected);
 		}
 	}
 	#[test]
 	fn control_acknowledgement_preserves_unrelated_input_and_never_replays() {
 		let (controller, server, task) = connected_conversations();
+
 		controller.submit("Preserved input").expect("submit");
+
 		let input = dispatched_command(&controller, &server);
+
 		controller.session_ended(1);
+
 		let mut draft = controller.ordinary_draft("Later unsent text").expect("draft");
 		let (control, _) = fixture();
+
 		draft.unconfirmed.push(control.clone());
+
 		let (restored, server, _) = connected_conversations();
+
 		assert!(restored.restore_ordinary_draft(&draft));
 		assert!(!restored.acknowledge_ordinary_control(&control));
+
 		restored.lock().pending_query = None;
+
 		assert!(restored.check_ordinary_control(&control));
+
 		let dispatch = restored.try_take_dispatch(1, &server).expect("query");
 		let query = dispatch.query().expect("no command replay");
 		let mut ready = task;
+
 		ready.conversation_revision = EntityRevision(2);
+
 		assert_eq!(
 			restored.route_query_result(
 				1,
@@ -339,7 +385,9 @@ mod tests {
 			crate::conversations::ConversationRouteOutcome::Fresh
 		);
 		assert!(restored.acknowledge_ordinary_control(&control));
+
 		let saved = restored.ordinary_draft("Later unsent text").expect("saved draft");
+
 		assert_eq!(saved.unconfirmed, vec![input]);
 		assert_eq!(saved.composer.text, "Later unsent text");
 		assert!(!restored.acknowledge_ordinary_control(&control));
@@ -348,12 +396,17 @@ mod tests {
 	#[test]
 	fn changed_target_and_disconnection_invalidate_control_observations() {
 		use crate::conversations::tests::{recorded_archive_fixture, reply_archive_check};
+
 		let (controller, server, original) = recorded_archive_fixture();
+
 		assert!(controller.check_ordinary_control(&original));
+
 		let dispatch = controller.try_take_dispatch(1, &server).expect("query");
 		let query = dispatch.query().expect("read only");
 		let target = controller.lock().tasks[0].conversation_id.clone();
+
 		controller.lock().tasks[0].conversation_revision = EntityRevision(2);
+
 		let reply = decodex_protocol::QueryResultEnvelope {
 			version: decodex_protocol::CURRENT_VERSION,
 			query_id: query.query_id.clone(),
@@ -365,15 +418,20 @@ mod tests {
 				},
 			),
 		};
+
 		assert_eq!(
 			controller.route_query_result(1, &server, &reply),
 			crate::conversations::ConversationRouteOutcome::Refused
 		);
 		assert!(!controller.acknowledge_ordinary_control(&original));
 		assert!(controller.check_ordinary_control(&original));
+
 		reply_archive_check(&controller, &server, &original);
+
 		assert!(controller.ordinary_control_states()[0].1.expect("observation").can_acknowledge());
+
 		controller.session_ended(1);
+
 		assert!(!controller.acknowledge_ordinary_control(&original));
 		assert_eq!(controller.ordinary_control_states()[0].1, None);
 	}
@@ -381,12 +439,14 @@ mod tests {
 	fn routing_controls_require_newer_definite_progress() {
 		let (mut command, mut current) = fixture();
 		let target = current.conversation_id.clone();
+
 		for establishment in [false, true] {
 			command.payload = if establishment {
 				CommandPayload::ResumeConversationEstablishment { conversation_id: target.clone() }
 			} else {
 				CommandPayload::ResumeConversationRouting { conversation_id: target.clone() }
 			};
+
 			for (revision, state, expected) in [
 				(1, ConversationState::Ready, ControlObservation::Conflict),
 				(2, ConversationState::OutcomeUnknown, ControlObservation::Conflict),
@@ -395,19 +455,24 @@ mod tests {
 			] {
 				current.conversation_revision = EntityRevision(revision);
 				current.state = state;
+
 				assert_eq!(
 					observe(&command, &target, &ConversationResult::Available(current.clone())),
 					expected
 				);
 			}
 		}
+
 		command.payload =
 			CommandPayload::CreateConversationRoutingSuccessor { conversation_id: target.clone() };
+
 		let archived = ConversationResult::Archived {
 			conversation_id: target.clone(),
 			conversation_revision: EntityRevision(2),
 		};
+
 		assert_eq!(observe(&command, &target, &archived), ControlObservation::Conflict);
+
 		for (revision, expected) in
 			[(2, ControlObservation::RoutingAdvanced), (3, ControlObservation::Conflict)]
 		{
@@ -420,6 +485,7 @@ mod tests {
 				.expect("id"),
 				successor_conversation_revision: EntityRevision(7),
 			};
+
 			assert_eq!(observe(&command, &target, &redirect), expected);
 		}
 	}

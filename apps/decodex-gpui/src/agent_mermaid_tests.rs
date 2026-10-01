@@ -1,6 +1,15 @@
 //! Diagram integration: closed fences, literal fallback, resizing and source copy.
 use super::*;
 
+struct Preview {
+	text: String,
+}
+impl gpui::Render for Preview {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		super::super::render(&self.text, "diagram-preview")
+	}
+}
+
 fn sources(nodes: &[Node]) -> Vec<(bool, String)> {
 	nodes
 		.iter()
@@ -25,6 +34,7 @@ fn closed_mermaid_fences_render_all_families_and_preserve_source() {
 	] {
 		let markdown = format!("```mermaid title=example\r\n{source}  \r\n```\n\nAfter");
 		let blocks = sources(&parse(&markdown));
+
 		assert_eq!(blocks, vec![(true, format!("{source}  \r\n"))]);
 		assert_eq!(
 			diagram(&blocks[0].1).expect("supported family").text,
@@ -37,6 +47,7 @@ fn closed_mermaid_fences_render_all_families_and_preserve_source() {
 		"- Diagram:\n\n  ```mermaid\n  graph LR; A --> B\n  ```\n",
 	] {
 		let blocks = sources(&parse(markdown));
+
 		assert_eq!(blocks.len(), 1);
 		assert!(blocks[0].0);
 		assert!(diagram(&blocks[0].1).is_some());
@@ -56,20 +67,12 @@ fn streaming_and_unsupported_blocks_keep_complete_literal_source() {
 		"pie; Cats: 2".to_owned(),
 		"flowchart TD; A[unclosed".to_owned(),
 		"flowchart TD; click A https://example.test".to_owned(),
-		"x".repeat(16 * 1024 + 1),
+		"x".repeat(16 * 1_024 + 1),
 	] {
 		let blocks = sources(&parse(&format!("```mermaid\n{source}\n```\n\nAfter")));
+
 		assert_eq!(blocks, vec![(true, format!("{source}\n"))]);
 		assert!(diagram(&blocks[0].1).is_none());
-	}
-}
-
-struct Preview {
-	text: String,
-}
-impl gpui::Render for Preview {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		super::super::render(&self.text, "diagram-preview")
 	}
 }
 
@@ -80,18 +83,25 @@ fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut gpui::Test
 	let (preview, visual) =
 		cx.add_window_view(|_, _| Preview { text: format!("```mermaid\r\n{source}```") });
 	let mut previous_size = None;
+
 	for width in [800., 160.] {
 		visual.simulate_resize(gpui::size(px(width), px(500.)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let bounds = visual.debug_bounds("mermaid-diagram-preview-0").expect("diagram viewport");
+
 		assert!(bounds.size.width <= px(width));
+
 		let text = visual.debug_bounds("mermaid-text-diagram-preview-0").expect("diagram text");
+
 		if let Some(size) = previous_size {
 			assert_eq!(text.size, size, "diagram must not wrap");
 		}
+
 		previous_size = Some(text.size);
+
 		if width == 160. {
 			visual.simulate_event(gpui::ScrollWheelEvent {
 				position: bounds.center(),
@@ -101,23 +111,31 @@ fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut gpui::Test
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
 			});
+
 			let moved =
 				visual.debug_bounds("mermaid-text-diagram-preview-0").expect("scrolled diagram");
+
 			assert!(moved.origin.x < text.origin.x);
 		}
 	}
+
 	let button = visual.debug_bounds("mermaid-copy-diagram-preview-0").expect("source copy");
+
 	visual.simulate_click(button.center(), gpui::Modifiers::default());
 	visual.update(|_, cx| {
 		assert_eq!(cx.read_from_clipboard().and_then(|item| item.text()), Some(source.into()));
 	});
+
 	preview.update(visual, |s, cx| {
 		s.text = "```mermaid\ngraph TD; A --> B\n".into();
+
 		cx.notify();
 	});
+
 	visual.update(|window, cx| {
 		window.draw(cx).clear();
 	});
+
 	assert!(visual.debug_bounds("mermaid-diagram-preview-0").is_none());
 	assert!(visual.debug_bounds("copy-code-diagram-preview-0").is_some());
 }

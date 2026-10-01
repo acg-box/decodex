@@ -15,6 +15,7 @@ impl AgentSurface {
 		let before =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
 		let after = next.work_items.iter().find(|w| &w.id == work);
+
 		if !matches!((before, after), (Some(a), Some(b)) if a.codex_thread_id == b.codex_thread_id)
 			|| self.snapshot.as_ref().is_none_or(|s| s.runtime_source != next.runtime_source)
 		{
@@ -29,10 +30,12 @@ impl AgentSurface {
 	)]
 	pub(crate) fn visual_integrations(&mut self, cx: &mut Context<Self>) {
 		self.visual_workspace_fixture(cx);
+
 		self.profile = None;
 		self.graph_visible = false;
 		self.composer_menu = Some("agent-settings");
 		self.composer_menu_content = Some("agent-settings");
+
 		let apps = [
 			("calendar-disabled", false, false),
 			("calendar-empty", true, false),
@@ -46,6 +49,7 @@ impl AgentSurface {
 			callable,
 		})
 		.collect();
+
 		self.integrations = Some((
 			self.selected.clone().expect("fixture selection"),
 			Some(AgentIntegrationsResult::Available {
@@ -74,6 +78,7 @@ impl AgentSurface {
 				apps: AgentAppInventory::Available { apps },
 			}),
 		));
+
 		cx.notify();
 	}
 
@@ -98,16 +103,20 @@ impl AgentSurface {
 				}
 			},
 		));
+
 		if let Some((_, result)) = opened {
 			panel =
 				panel.child(muted("Configure plugins and connections in Codex for this account."));
+
 			let refresh = work.to_owned();
+
 			panel = panel.child(integration_button(
 				"integration-refresh",
 				"Refresh status",
 				cx,
 				move |s, cx| s.load_integrations(&refresh, cx),
 			));
+
 			if let Some(AgentIntegrationsResult::Available {
 				apps: AgentAppInventory::Available { apps },
 				..
@@ -115,6 +124,7 @@ impl AgentSurface {
 			{
 				for (index, app) in apps.iter().enumerate() {
 					let (owner, connector) = (work.to_owned(), app.id.clone());
+
 					panel = panel.child(integration_button(
 						format!("app-exposure-open-{index}"),
 						format!(
@@ -127,11 +137,14 @@ impl AgentSurface {
 					));
 				}
 			}
+
 			panel = panel.child(self.app_exposure_panel(work, cx));
+
 			let text = match result {
 				None => crate::ui_loading::loading("Loading tools and plugins").into_any_element(),
 				Some(result) => div().child(integration_text(result)).into_any_element(),
 			};
+
 			panel = panel.child(
 				div()
 					.id("integration-status")
@@ -141,18 +154,23 @@ impl AgentSurface {
 					.child(text),
 			);
 		}
+
 		panel.into_any_element()
 	}
 
 	fn load_integrations(&mut self, work: &str, cx: &mut Context<Self>) {
 		// Dropping the previous GPUI task cancels its completion before replacement.
 		self.integrations_task = None;
+
 		if !self.integrations.as_ref().is_some_and(|(owner, _)| owner == work) {
 			self.integrations = Some((work.into(), None));
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			self.integrations = Some((work.into(), Some(AgentIntegrationsResult::Unavailable)));
+
 			cx.notify();
+
 			return;
 		};
 		let work = work.to_owned();
@@ -160,10 +178,12 @@ impl AgentSurface {
 		let query = cx.background_executor().spawn(async move {
 			let runtime =
 				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+
 			runtime
 				.block_on(AgentClient::new(profile).integrations(EntityId::new(requested).ok()?))
 				.ok()
 		});
+
 		self.integrations_task = Some(cx.spawn(async move |surface, cx| {
 			let result = query.await.unwrap_or(AgentIntegrationsResult::Unavailable);
 			let _ = surface.update(cx, |s, cx| {
@@ -172,10 +192,12 @@ impl AgentSurface {
 				{
 					s.integrations = Some((work, Some(result)));
 					s.integrations_task = None;
+
 					cx.notify();
 				}
 			});
 		}));
+
 		cx.notify();
 	}
 }
@@ -194,11 +216,13 @@ fn integration_text(result: &AgentIntegrationsResult) -> String {
         app_inventory_text(apps),
 		"Plugin inventory uses the configured repository. MCP status reflects the loaded task; a running turn keeps its previous environment until the next turn.".into(),
 	];
+
 	match mcp {
 		AgentMcpInventory::Available { servers } => {
 			if servers.is_empty() {
 				lines.push("No MCP servers were reported for this task.".into());
 			}
+
 			for server in servers {
 				let runtime = match server.runtime_status.as_deref() {
 					Some("notStarted") => "Not started",
@@ -217,15 +241,19 @@ fn integration_text(result: &AgentIntegrationsResult) -> String {
 					"unsupported" => "No supported sign-in method",
 					_ => "Authentication status unknown",
 				};
+
 				lines.push(format!("{} — {runtime}; {auth}", server.name));
+
 				if let Some(presentation) = &server.presentation {
 					lines.push(presentation.clone());
 				}
+
 				lines.push(match &server.advertised_capabilities {
 					None => "Advertised capabilities: unavailable".into(),
 					Some(names) if names.is_empty() => "Advertised capabilities: none".into(),
 					Some(names) => format!("Advertised capabilities: {}", names.join(", ")),
 				});
+
 				if let Some(error) = &server.tools_error {
 					lines.push(format!("Tool discovery failed: {error}"));
 				} else {
@@ -237,6 +265,7 @@ fn integration_text(result: &AgentIntegrationsResult) -> String {
 				if let Some(plugin) = &server.plugin_id {
 					lines.push(format!("Plugin: {plugin}"));
 				}
+
 				lines.push(format!(
 					"Reported resources: {}; templates: {}",
 					server.resource_count, server.template_count
@@ -254,6 +283,7 @@ fn integration_text(result: &AgentIntegrationsResult) -> String {
 			if plugins.is_empty() && errors.is_empty() {
 				lines.push("No installed plugins were reported for this repository.".into());
 			}
+
 			for plugin in plugins {
 				lines.push(format!(
 					"{} — {}; {}; policy: {}",
@@ -266,6 +296,7 @@ fn integration_text(result: &AgentIntegrationsResult) -> String {
 					},
 					plugin.availability
 				));
+
 				if let Some(reason) = &plugin.disabled_reason {
 					lines.push(format!("Unavailable reason: {reason}"));
 				}
@@ -281,6 +312,7 @@ fn integration_text(result: &AgentIntegrationsResult) -> String {
 		AgentPluginInventory::Unavailable =>
 			lines.push("Plugin configuration could not be read.".into()),
 	}
+
 	lines.join("\n\n")
 }
 
@@ -294,6 +326,7 @@ fn integration_button(
 	let label = label.into();
 	let action = std::rc::Rc::new(action);
 	let click = action.clone();
+
 	div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id)
@@ -305,6 +338,7 @@ fn integration_button(
 		.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 				cx.stop_propagation();
+
 				action(s, cx);
 			}
 		}))
@@ -318,6 +352,7 @@ fn app_inventory_text(inventory: &AgentAppInventory) -> String {
 			"No installed Apps were reported in the runtime snapshot.".into(),
 		AgentAppInventory::Available { apps } => {
 			let mut lines = vec!["Installed Apps (runtime snapshot):".to_owned()];
+
 			for app in apps {
 				let name = app.runtime_name.as_deref().unwrap_or(&app.id);
 				let status = if !app.enabled {
@@ -327,8 +362,10 @@ fn app_inventory_text(inventory: &AgentAppInventory) -> String {
 				} else {
 					"Enabled; no callable tools reported"
 				};
+
 				lines.push(format!("{name} ({}) — {status}", app.id));
 			}
+
 			lines.join("\n")
 		},
 		AgentAppInventory::Unsupported =>
@@ -369,6 +406,7 @@ mod tests {
 				errors: vec!["Invalid repository configuration".into()],
 			},
 		});
+
 		assert!(text.contains("Reference docs · 1.2"));
 		assert!(text.contains("Sign-in required"));
 		assert!(text.contains("Tool discovery failed"));
@@ -392,9 +430,11 @@ mod tests {
 			})
 			.collect();
 		let text = app_inventory_text(&AgentAppInventory::Available { apps });
+
 		assert!(text.contains("disabled (disabled) — Disabled by effective configuration"));
 		assert!(text.contains("empty (empty) — Enabled; no callable tools reported"));
 		assert!(text.contains("ready (ready) — Enabled; callable tools available"));
+
 		for state in [
 			AgentAppInventory::Unsupported,
 			AgentAppInventory::Unavailable,
@@ -409,8 +449,11 @@ mod tests {
 			CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
 			ServerId, ServerMessage,
 		};
+
 		use futures_util::{SinkExt, StreamExt};
+
 		use tokio_tungstenite::tungstenite::Message;
+
 		let (_dir, profile, server) = super::super::wire_test_support::fixture(
 			|listener| async move {
 				let mut socket = super::super::wire_test_support::accept(&listener).await;
@@ -420,9 +463,11 @@ mod tests {
 				let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
 					panic!("read only")
 				};
+
 				assert!(
 					matches!(query.payload, QueryPayload::GetAgentIntegrations { ref work_id } if work_id.as_str() == "agent")
 				);
+
 				let response = ServerMessage::QueryResult(QueryResultEnvelope {
 					version: CURRENT_VERSION,
 					server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
@@ -431,6 +476,7 @@ mod tests {
 						AgentIntegrationsResult::CapacityExceeded,
 					),
 				});
+
 				socket
 					.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
 					.await
@@ -438,14 +484,21 @@ mod tests {
 			},
 		);
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.profile = Some(profile);
+
 			s.load_integrations("agent", cx);
+
 			assert!(s.integrations_task.is_some());
+
 			s.generation += 1;
+
 			s.apply_result(Ok(AgentSnapshotResult::Available(s.snapshot.clone().unwrap())));
 		});
+
 		cx.run_until_parked();
 		server.join().unwrap();
 		surface.read_with(cx, |s, _| {
@@ -462,13 +515,18 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		for change in ["thread", "source", "removed", "disconnect", "failed"] {
 			surface.update(cx, |s, cx| {
 				s.visual_workspace_fixture(cx);
+
 				let original = s.snapshot.clone().unwrap();
+
 				s.integrations =
 					Some(("agent".into(), Some(AgentIntegrationsResult::CapacityExceeded)));
+
 				let mut next = original.clone();
+
 				match change {
 					"thread" =>
 						next.work_items
@@ -483,10 +541,13 @@ mod tests {
 					"failed" => s.apply_result(Err(())),
 					_ => unreachable!(),
 				}
+
 				if !matches!(change, "disconnect" | "failed") {
 					s.apply_result(Ok(AgentSnapshotResult::Available(next)));
 				}
+
 				s.apply_result(Ok(AgentSnapshotResult::Available(original)));
+
 				assert!(s.integrations.is_none(), "stale inventory returned after {change}");
 			});
 		}

@@ -1,9 +1,11 @@
 //! Conversation-first desktop presentation. All displayed work comes from the service.
 use super::*;
+
 use crate::{
 	ui_motion::{SmoothControl, reveal},
 	ui_scroll::SmoothScrollArea,
 };
+
 use gpui::{AnyElement, MouseButton, PathBuilder, canvas, point};
 
 const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
@@ -16,6 +18,20 @@ pub(super) struct PageView {
 	zoom: f32,
 	graph_visible: bool,
 	timeline_visible: bool,
+}
+
+struct PanelTip(String);
+impl Render for PanelTip {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		div()
+			.px_2()
+			.py_1()
+			.rounded(px(5.0))
+			.bg(rgb(ui_theme::CANVAS))
+			.text_color(rgb(ui_theme::TEXT))
+			.text_size(px(11.0))
+			.child(self.0.clone())
+	}
 }
 
 impl AgentSurface {
@@ -63,12 +79,14 @@ impl AgentSurface {
 
 	pub(crate) fn toggle_workspace_sidebar(&mut self, cx: &mut Context<Self>) {
 		self.sidebar_visible = !self.sidebar_visible;
+
 		cx.notify();
 	}
 
 	pub(crate) fn toggle_workspace_graph(&mut self, cx: &mut Context<Self>) {
 		self.graph_visible = !self.graph_visible;
 		self.graph_expanded = false;
+
 		cx.notify();
 	}
 
@@ -95,6 +113,7 @@ impl AgentSurface {
 	pub(super) fn open_page(&mut self, id: &str, cx: &mut Context<Self>) {
 		self.closing_pages.remove(id);
 		self.close_native_agent(cx);
+
 		if !self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id)) {
 			return;
 		}
@@ -108,6 +127,7 @@ impl AgentSurface {
 			self.reset_integrations();
 			self.resource_feedback.clear();
 		}
+
 		let is_manager = self.snapshot.as_ref().is_some_and(|snapshot| {
 			snapshot.work_items.iter().any(|work| {
 				work.id == id
@@ -115,8 +135,10 @@ impl AgentSurface {
 						|| work.kind == decodex_protocol::AgentWorkKindDto::Manager)
 			})
 		});
+
 		if is_manager {
 			let previous = self.composer_manager.clone().or_else(|| self.root_id());
+
 			if previous.as_deref() != Some(id) {
 				if let Some(previous) = previous {
 					self.draft_profiles
@@ -129,21 +151,28 @@ impl AgentSurface {
 						.texts
 						.insert(previous, self.composer.read(cx).content().into());
 				}
+
 				self.attachments = self.draft_profiles.files.remove(id).unwrap_or_default();
 				self.task_references = self.draft_profiles.tasks.remove(id).unwrap_or_default();
 				self.composer_menu = None;
+
 				let draft = self.draft_profiles.texts.get(id).cloned().unwrap_or_default();
+
 				self.composer.update(cx, |input, cx| {
 					input.set_content(&draft, cx);
 					input.set_placeholder(prompts::next(), cx);
 				});
+
 				Self::refresh_prompt(cx);
 			}
+
 			self.composer_manager = Some(id.into());
 		}
+
 		if let Some((old, history)) = &self.history {
 			self.history_cache.insert(old.clone(), history.clone());
 		}
+
 		if self.root_id().as_deref() != Some(id) && !self.pages.iter().any(|p| p == id) {
 			self.pages.push(id.to_owned());
 		}
@@ -161,6 +190,7 @@ impl AgentSurface {
 					},
 				);
 			}
+
 			let saved = self.page_views.get(id).cloned().unwrap_or_else(|| PageView {
 				scope: self
 					.snapshot
@@ -179,6 +209,7 @@ impl AgentSurface {
 				graph_visible: self.graph_visible,
 				timeline_visible: self.timeline_visible,
 			});
+
 			self.graph_scope = saved.scope;
 			self.graph_selected = saved.selected;
 			self.graph_pan = saved.pan;
@@ -197,25 +228,28 @@ impl AgentSurface {
 		self.clear_activity_detail();
 		self.reset_recap();
 		self.reset_prompt_edit();
+
 		self.selected = Some(id.to_owned());
 		self.connection_details_expanded = false;
 		self.history = self.history_cache.get(id).cloned().map(|h| (id.to_owned(), h));
 		self.details_visible = false;
 		self.request = None;
 		self.request_task = None;
-		self.load_history(cx);
 
+		self.load_history(cx);
 		self.sync_request(cx);
 		cx.notify();
 	}
 
 	fn close_page(&mut self, id: &str, cx: &mut Context<Self>) {
 		self.closing_pages.insert(id.to_owned());
+
 		if self.selected.as_deref() == Some(id)
 			&& let Some(root) = self.root_id()
 		{
 			self.open_page(&root, cx);
 		}
+
 		cx.notify();
 	}
 
@@ -261,6 +295,7 @@ impl AgentSurface {
 		let action = std::rc::Rc::new(action);
 		let keyboard = action.clone();
 		let debug_id = id.clone();
+
 		div()
 			.debug_selector(move || debug_id)
 			.id(SharedString::from(id))
@@ -295,6 +330,7 @@ impl AgentSurface {
 			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					keyboard(s, cx);
+
 					cx.stop_propagation();
 				}
 			}))
@@ -341,6 +377,7 @@ impl AgentSurface {
 			.gap_1()
 			.bg(rgba(ui_theme::AGENT_SIDEBAR_MATERIAL))
 			.pr(px(4.));
+
 		panel = panel.child(self.workspace_action(
 			"agent-home".into(),
 			"Main".into(),
@@ -368,6 +405,7 @@ impl AgentSurface {
 						if let Some(id) = s.root_id() {
 							s.open_page(&id, cx);
 						}
+
 						if s.composer.read(cx).content().trim().is_empty() {
 							s.composer.update(cx, |input, cx| {
 								input.set_content("Create a project workspace for ", cx)
@@ -375,12 +413,15 @@ impl AgentSurface {
 						} else {
 							s.feedback="Your draft is kept. Send or clear it before starting a new project.".into();
 						}
+
 						cx.notify();
 					},
 					cx,
 				)),
 		);
+
 		let mut list = div().id("agent-sidebar-work").flex_1().min_h_0().overflow_y_scroll();
+
 		if let Some(snapshot) = &self.snapshot {
 			for work in snapshot.work_items.iter().filter(|w| {
 				snapshot.workspaces.iter().any(|p| p.agent_id == w.id)
@@ -419,13 +460,16 @@ impl AgentSurface {
 						cx,
 					),
 				));
+
 				if let Some(waiting) = waiting {
 					let target = waiting.id.clone();
+
 					row = row.child(self.workspace_action(
 						format!("attention-{}", work.id),
 						format!("{count}"),
 						move |s, cx| {
 							s.open_page(&target, cx);
+
 							if let Some(scroll) = s.transcript_scroll.get(&target) {
 								scroll.scroll_to_bottom();
 							}
@@ -433,10 +477,13 @@ impl AgentSurface {
 						cx,
 					));
 				}
+
 				list = list.child(row);
 			}
 		}
+
 		panel = panel.child(list.smooth_scroll("workspace-sidebar-scroll"));
+
 		panel.child(self.sidebar_resize_handle(cx)).into_any_element()
 	}
 
@@ -453,6 +500,7 @@ impl AgentSurface {
 			.items_center();
 		let root = self.root_id();
 		let mut pages = vec![(root.clone().unwrap_or_default(), "Main".to_owned(), false)];
+
 		if let Some(snapshot) = &self.snapshot {
 			pages.extend(self.pages.iter().filter_map(|id| {
 				snapshot
@@ -462,6 +510,7 @@ impl AgentSurface {
 					.map(|w| (id.clone(), self.work_label(w), true))
 			}));
 		}
+
 		for (id, label, closable) in pages {
 			let active =
 				self.selected.as_ref() == Some(&id) || (!closable && self.selected.is_none());
@@ -483,9 +532,11 @@ impl AgentSurface {
 					move |s, cx| s.open_page(&select, cx),
 					cx,
 				));
+
 			if closable {
 				let close = id.clone();
 				let keyboard = close.clone();
+
 				tab = tab.child(
 					div()
 						.id(SharedString::from(format!("close-{id}")))
@@ -520,6 +571,7 @@ impl AgentSurface {
 			if closable {
 				let visible = !self.closing_pages.contains(&id);
 				let surface = cx.entity().downgrade();
+
 				row = row.child(crate::ui_motion::TabReveal {
 					id: SharedString::from(format!("tab-reveal-{id}")).into(),
 					visible,
@@ -537,6 +589,7 @@ impl AgentSurface {
 				row = row.child(tab.mr(px(4.)));
 			}
 		}
+
 		row.into_any_element()
 	}
 
@@ -549,13 +602,16 @@ impl AgentSurface {
 		if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
 			return Some("The service connection is unavailable. Your history and draft are kept.");
 		}
+
 		let selected = self.selected.as_deref()?;
 		let snapshot = self.snapshot.as_ref()?;
 		let root = self.root_id();
+
 		for event in &snapshot.pending_events {
 			if event.work_item_id != selected && Some(&event.work_item_id) != root.as_ref() {
 				continue;
 			}
+
 			let reason = match event.event_kind.as_str() {
 				"thread_in_use_needs_attention" => THREAD_LOCKED_MESSAGE,
 				"reconnection_needs_attention" =>
@@ -566,8 +622,10 @@ impl AgentSurface {
 					"The agent could not resume this conversation. Your history and draft are kept.",
 				_ => continue,
 			};
+
 			return Some(reason);
 		}
+
 		snapshot
 			.work_items
 			.iter()
@@ -590,9 +648,11 @@ impl AgentSurface {
 		let (owner, AgentHistoryResult::Available { entries, .. }) = self.history.as_ref()? else {
 			return None;
 		};
+
 		if owner != selected {
 			return None;
 		}
+
 		entries
 			.iter()
 			.find(|entry| entry.id == event.id && entry.kind == "system")
@@ -639,6 +699,7 @@ impl AgentSurface {
 			),
 			_ => ("Can't continue this conversation", reason),
 		};
+
 		div()
 			.id("conversation-unavailable")
 			.role(Role::Status)
@@ -726,6 +787,7 @@ impl AgentSurface {
 					let _ = owner.update(cx, |s, cx| {
 						if (s.composer_footer_height - height).abs() > 0.5 {
 							s.composer_footer_height = height;
+
 							cx.notify();
 						}
 					});
@@ -783,6 +845,7 @@ impl AgentSurface {
 			.overflow_hidden()
 			.track_scroll(&scroll)
 			.on_scroll_wheel(cx.listener(|s, event, _, cx| s.scroll_history(event, cx)));
+
 		if let Some(work) = selected {
 			if let Some(snapshot) = &self.snapshot {
 				let content = if is_agent {
@@ -807,6 +870,7 @@ impl AgentSurface {
 				} else {
 					self.details(snapshot, work, cx).into_any_element()
 				};
+
 				transcript = transcript.child(content);
 			}
 		} else if self.snapshot.is_none() {
@@ -822,6 +886,7 @@ impl AgentSurface {
 		} else {
 			transcript = transcript.child(self.workspace_welcome(window, cx));
 		}
+
 		transcript.into_any_element()
 	}
 
@@ -833,13 +898,14 @@ impl AgentSurface {
 		self.poll_native_agents(cx);
 		self.observe_visible_output(cx);
 		self.prepare_workspace_history(window, cx);
+
 		let is_agent = self.selected_is_manager();
 		let selected = self
 			.snapshot
 			.as_ref()
 			.and_then(|s| s.work_items.iter().find(|w| Some(&w.id) == self.selected.as_ref()))
 			.cloned();
-		let wide = f32::from(window.viewport_size().width) > 1000.0;
+		let wide = f32::from(window.viewport_size().width) > 1_000.0;
 		let mut chat = div()
 			.id("conversation-panel-focus")
 			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.focused_panel = None))
@@ -852,8 +918,10 @@ impl AgentSurface {
 			.flex_col()
 			.rounded(px(10.))
 			.bg(rgba(ui_theme::AGENT_CHAT_OVERLAY));
+
 		chat = chat
 			.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)));
+
 		if let (Some(snapshot), Some(work)) = (&self.snapshot, &selected) {
 			chat = chat.child(self.work_context(snapshot, work, cx));
 		} else {
@@ -872,6 +940,7 @@ impl AgentSurface {
 				.child(transcript)
 				.child(self.latest_button(window, cx)),
 		);
+
 		if self.native_agents.selected.is_none()
 			&& is_agent
 			&& selected.is_some()
@@ -891,6 +960,7 @@ impl AgentSurface {
 			window,
 			cx,
 		);
+
 		if presence > 0.001
 			&& let (Some(snapshot), Some(work)) = (&self.snapshot, selected.as_ref())
 		{
@@ -915,7 +985,9 @@ impl AgentSurface {
 			chat.into_any_element()
 		};
 		let (graph_width, graph_height) = self.workspace_graph_size(window, wide);
+
 		self.update_graph_inset(graph_width, graph_height);
+
 		let center = div().flex_1().min_w_0().h_full().flex().flex_col().child(chat).child(reveal(
 			"agent-graph-dock",
 			graph_height,
@@ -955,23 +1027,29 @@ impl AgentSurface {
 	fn prepare_workspace_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		self.graph_display_zoom =
 			crate::ui_motion::value("agent-graph-zoom", self.graph_zoom, window, cx);
+
 		if self.older_scroll_anchor.is_none() {
 			self.prefetch_older_history(cx);
 		}
+
 		self.restore_history_anchor(window, cx);
 		self.prepare_history_marks();
 		self.prepare_history_layout(window);
 		self.animate_history_scroll(window, cx);
 		self.follow_voice_scroll(window, cx);
+
 		if self.latest_follow_work == self.selected
 			&& let Some(scroll) =
 				self.selected.as_ref().and_then(|work| self.transcript_scroll.get(work))
 		{
 			let current = f32::from(scroll.offset().y);
 			let target = -f32::from(scroll.max_offset().y);
+
 			if (target - current).abs() > 0.5 {
 				scroll.set_offset(point(px(0.), px(current + (target - current) * 0.22)));
+
 				crate::ui_motion::request_frame(window, cx);
+
 				cx.notify();
 			} else {
 				scroll.set_offset(point(px(0.), px(target)));
@@ -985,29 +1063,37 @@ impl AgentSurface {
 		else {
 			return;
 		};
+
 		if self.selected.as_ref() != Some(&id) {
 			self.older_scroll_anchor = None;
+
 			return;
 		}
+
 		self.wheel_scroll = None;
+
 		if let Some(scroll) = self.transcript_scroll.get(&id).cloned() {
 			let entity = cx.entity();
+
 			cx.defer(move |cx| {
 				entity.update(cx, |s, cx| {
 					if s.selected.as_ref() != Some(&id) {
 						return;
 					}
+
 					let delta = anchor
 						.and_then(|(id, position)| {
 							s.history_marks.get(&id).map(|mark| mark.position.get() - position)
 						})
 						.unwrap_or_else(|| f32::from(scroll.max_offset().y) - maximum);
 					let target = (offset - delta).clamp(-f32::from(scroll.max_offset().y), 0.);
+
 					if (f32::from(scroll.offset().y) - target).abs() < 0.5 {
 						s.older_scroll_anchor = None;
 					} else {
 						scroll.set_offset(point(scroll.offset().x, px(target)));
 					}
+
 					cx.notify();
 				})
 			});
@@ -1037,6 +1123,7 @@ impl AgentSurface {
 			move |s, cx| {
 				if let Some(root) = s.root_id() {
 					s.open_page(&root, cx);
+
 					if s.composer.read(cx).content().trim().is_empty() {
 						s.composer.update(cx, |input, cx| {
 							input.set_content(&format!("About {title}: "), cx)
@@ -1046,6 +1133,7 @@ impl AgentSurface {
 			},
 			cx,
 		));
+
 		footer
 			.when(
 				self.command_connection_ready()
@@ -1075,10 +1163,12 @@ impl AgentSurface {
 		{
 			return "Main".into();
 		}
+
 		if let Some(snapshot) = &self.snapshot {
 			if let Some(project) = snapshot.workspaces.iter().find(|p| p.agent_id == work.id) {
 				return project.name.clone();
 			}
+
 			if work.title == work.id && work.kind == decodex_protocol::AgentWorkKindDto::Task {
 				let position = snapshot
 					.work_items
@@ -1087,9 +1177,11 @@ impl AgentSurface {
 					.position(|w| w.id == work.id)
 					.unwrap_or(0)
 					+ 1;
+
 				return format!("Agent {position}");
 			}
 		}
+
 		work.title.clone()
 	}
 
@@ -1110,13 +1202,17 @@ impl AgentSurface {
 		let layout = self.workspace_graph_layout();
 		let zoom = self.graph_zoom;
 		let mut area = self.graph_canvas(&layout, cx);
+
 		for node in &layout.nodes {
 			let Some(work) = snapshot.work_items.iter().find(|w| w.id == node.id) else {
 				continue;
 			};
+
 			area = area.child(self.graph_node(node, work, cx));
 		}
+
 		panel = panel.child(area);
+
 		if !layout.edges.is_empty() {
 			panel = panel.child(
 				div()
@@ -1148,6 +1244,7 @@ impl AgentSurface {
 						"−".into(),
 						|s, cx| {
 							s.graph_zoom = (s.graph_zoom / 1.2).max(0.35);
+
 							cx.notify();
 						},
 						cx,
@@ -1158,6 +1255,7 @@ impl AgentSurface {
 						|s, cx| {
 							s.graph_zoom = 0.85;
 							s.graph_pan = (0.0, 0.0);
+
 							cx.notify();
 						},
 						cx,
@@ -1167,6 +1265,7 @@ impl AgentSurface {
 						"+".into(),
 						|s, cx| {
 							s.graph_zoom = (s.graph_zoom * 1.2).min(1.8);
+
 							cx.notify();
 						},
 						cx,
@@ -1177,6 +1276,7 @@ impl AgentSurface {
 
 	fn graph_frame(&self, title: String, cx: &mut Context<Self>) -> gpui::Div {
 		let mut panel = div().w_full().min_w_0().h_full().flex().flex_col().pt(px(8.));
+
 		panel = panel.child(
 			div()
 				.h(px(ui_theme::PANEL_HEADER_HEIGHT))
@@ -1198,6 +1298,7 @@ impl AgentSurface {
 							})
 							.and_then(|w| w.parent_goal_id.clone());
 						s.graph_pan = (0.0, 0.0);
+
 						cx.notify();
 					},
 					cx,
@@ -1217,6 +1318,7 @@ impl AgentSurface {
 							.into(),
 						|s, cx| {
 							s.graph_expanded = !s.graph_expanded;
+
 							cx.notify();
 						},
 						cx,
@@ -1228,11 +1330,13 @@ impl AgentSurface {
 					|s, cx| {
 						s.graph_visible = false;
 						s.graph_expanded = false;
+
 						cx.notify();
 					},
 					cx,
 				)),
 		);
+
 		panel
 	}
 
@@ -1251,9 +1355,11 @@ impl AgentSurface {
 			.map(|((a, b), report)| {
 				let a = &layout.nodes[*a];
 				let b = &layout.nodes[*b];
+
 				((a.x + 160.0, a.y + 26.0), (b.x, b.y + 26.0), report)
 			})
 			.collect();
+
 		div()
 			.id("work-graph-canvas")
 			.tab_index(0)
@@ -1270,6 +1376,7 @@ impl AgentSurface {
 					"escape" => s.graph_expanded = false,
 					_ => return,
 				};
+
 				cx.stop_propagation();
 				cx.notify();
 			}))
@@ -1279,12 +1386,14 @@ impl AgentSurface {
 			.overflow_hidden()
 			.on_scroll_wheel(cx.listener(|s, event: &gpui::ScrollWheelEvent, _, cx| {
 				let delta = event.delta.pixel_delta(px(20.0));
+
 				if event.modifiers.control || event.modifiers.platform {
 					s.graph_zoom = (s.graph_zoom + f32::from(delta.y) * 0.002).clamp(0.35, 1.8);
 				} else {
 					s.graph_pan.0 += f32::from(delta.x);
 					s.graph_pan.1 += f32::from(delta.y);
 				}
+
 				cx.stop_propagation();
 				cx.notify();
 			}))
@@ -1306,6 +1415,7 @@ impl AgentSurface {
 						s.graph_pan.0 += f32::from(event.position.x - previous.x);
 						s.graph_pan.1 += f32::from(event.position.y - previous.y);
 						s.graph_drag = Some(event.position);
+
 						cx.notify();
 					}
 				} else {
@@ -1322,17 +1432,20 @@ impl AgentSurface {
 							let end = bounds.origin
 								+ point(px(b.0 * zoom + pan.0), px(b.1 * zoom + pan.1));
 							let mut path = PathBuilder::stroke(px(1.0));
+
 							path.move_to(start);
 							path.cubic_bezier_to(
 								end,
 								point((start.x + end.x) * 0.5, start.y),
 								point((start.x + end.x) * 0.5, end.y),
 							);
+
 							if !report {
 								path.move_to(end + point(px(-5.0), px(-3.0)));
 								path.line_to(end);
 								path.line_to(end + point(px(-5.0), px(3.0)));
 							}
+
 							if let Ok(path) = path.build() {
 								window.paint_path(
 									path,
@@ -1355,7 +1468,6 @@ impl AgentSurface {
 	) -> AnyElement {
 		let zoom = self.graph_display_zoom;
 		let pan = (self.graph_pan.0 + self.graph_inset.0, self.graph_pan.1 + self.graph_inset.1);
-
 		let id = work.id.clone();
 		let key = id.clone();
 		let (status, color) = self
@@ -1402,8 +1514,10 @@ impl AgentSurface {
 			.text_size(px((12.0 * zoom).max(10.0)))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.open_page(&id, cx);
+
 				s.graph_visible = true;
 				s.graph_selected = Some(id.clone());
+
 				cx.notify();
 			}))
 			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
@@ -1413,31 +1527,9 @@ impl AgentSurface {
 			}))
 			.child(div().whitespace_nowrap().text_ellipsis().child(self.work_label(work)))
 			.child(div().text_size(px(10.0)).text_color(rgb(color)).child(status));
+
 		element.into_any_element()
 	}
-}
-
-pub(super) fn within_project(snapshot: &AgentSnapshotDto, project: &str, work: &str) -> bool {
-	let mut current = Some(work);
-	for _ in 0..=snapshot.work_items.len() {
-		let Some(id) = current else {
-			return false;
-		};
-		if id == project {
-			return true;
-		}
-		current = snapshot
-			.work_items
-			.iter()
-			.find(|w| w.id == id)
-			.and_then(|w| w.parent_goal_id.as_deref());
-	}
-	false
-}
-
-pub(super) fn clock_label(micros: i64) -> String {
-	let seconds = micros / 1_000_000;
-	format!("{:02}:{:02}:{:02}", (seconds / 3600) % 24, (seconds / 60) % 60, seconds % 60)
 }
 
 #[cfg(any(test, feature = "visual-capture"))]
@@ -1445,19 +1537,23 @@ impl AgentSurface {
 	pub(crate) fn visual_workspace_page(&mut self, page: &str, cx: &mut Context<Self>) {
 		if matches!(page, "attachments" | "microphone") {
 			self.visual_workspace_page("markdown", cx);
+
 			self.composer_menu =
 				Some(if page == "microphone" { "microphone" } else { "attachments" });
 			self.audio_inputs =
 				vec!["MacBook Pro Microphone".into(), "Studio Display Microphone".into()];
+
 			return;
 		}
 		if page == "activity" || page == "activity-collapsed" {
 			self.visual_progress_fixture(page == "activity", cx);
+
 			return;
 		}
 		if ["composer", "composer-menu", "composer-effort"].contains(&page) {
 			self.visual_workspace_page("markdown", cx);
 			self.composer.update(cx, |input,cx|input.set_content("Review the interface and simplify the controls.\nKeep the glass material and check keyboard navigation.",cx));
+
 			self.capabilities = Some(decodex_protocol::AgentCapabilitiesResult::Available {
 				models: ["gpt-6-astra", "gpt-5.6-sol"]
 					.into_iter()
@@ -1484,15 +1580,19 @@ impl AgentSurface {
 				memory_enabled: None,
 			});
 			self.fast = true;
+
 			if matches!(page, "composer-menu" | "composer-effort") {
 				self.composer_menu = Some("model");
 			}
+
 			return;
 		}
 		if ["questions", "approval", "live", "hierarchy"].contains(&page) {
 			self.visual_functional_page(page, cx);
+
 			return;
 		}
+
 		match page {
 			#[cfg(feature = "visual-capture")]
 			"prompt-editor" | "prompt-remove" => self.visual_prompt_editor(page == "prompt-remove", cx),
@@ -1500,11 +1600,13 @@ impl AgentSurface {
 			"worker" => self.open_page("verify", cx),
 			"empty" | "empty-draft" => {
 				self.sidebar_visible = false;
+
 				if page == "empty-draft" {
 					self.composer.update(cx, |input, cx| {
 						input.set_content("Review the release plan with me.", cx)
 					});
 				}
+
 				self.snapshot = Some(AgentSnapshotDto {
 					runtime_source: None,
 					workspaces: vec![],
@@ -1514,6 +1616,7 @@ impl AgentSurface {
 				});
 				self.selected = None;
 				self.history = None;
+
 				self.pages.clear();
 				self.closing_pages.clear();
 			},
@@ -1521,6 +1624,7 @@ impl AgentSurface {
 			"in-use" => {
 				self.graph_visible = false;
 				self.timeline_visible = false;
+
 				self.snapshot.as_mut().expect("fixture").pending_events.push(
 					decodex_protocol::AgentPendingEventDto {
 						id: 999,
@@ -1540,18 +1644,21 @@ impl AgentSurface {
 			"markdown" => {
 				self.graph_visible = false;
 				self.timeline_visible = false;
+
 				if let Some((_, AgentHistoryResult::Available { entries, usage, .. })) =
 					&mut self.history
 				{
 					*usage = Some(decodex_protocol::AgentUsageDto {
-						input_tokens: 24860,
-						output_tokens: 1820,
-						context_tokens: 26700,
-						context_window: Some(128000),
+						input_tokens: 24_860,
+						output_tokens: 1_820,
+						context_tokens: 26_700,
+						context_window: Some(128_000),
 					});
+
 					entries.clear();
+
 					for (i,(kind,text)) in [("user","请整理检查结果，并说明下一步安排。"),("assistant","## 检查完成\n\n两位下属已提交报告，**现有会话保持可用**。\n\n- 登录流程：保留原会话\n- 启动流程：继续验证性能\n\n| 工作 | 结果 | 下一步 |\n|---|---|---|\n| 登录检查 | 已验收 | 合并检查结果 |\n| 启动检查 | 待验证 | 补充冷启动数据 |\n\n### 验证命令\n```rust\nlet status = review.result();\nassert!(status.is_verified());\n```\n\n查看 [源码](/Users/x/code/acg-box/decodex/apps/decodex-gpui/src/agent_surface.rs:1)，再确认 `review` 的结果。")].into_iter().enumerate() {
-                        entries.push(decodex_protocol::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: (kind == "assistant").then_some(decodex_protocol::AgentTurnUsageDto {details:None,input_tokens:24860,output_tokens:1820}),duration_ms: (kind == "assistant").then_some(18400),id:i as i64+1,kind:kind.into(),text:text.into(),created_at_micros:1789480440000000});
+                        entries.push(decodex_protocol::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: (kind == "assistant").then_some(decodex_protocol::AgentTurnUsageDto {details:None,input_tokens:24_860,output_tokens:1_820}),duration_ms: (kind == "assistant").then_some(18_400),id:i as i64+1,kind:kind.into(),text:text.into(),created_at_micros:1_789_480_440_000_000});
                     }
 				}
 			},
@@ -1562,13 +1669,16 @@ impl AgentSurface {
 			},
 			_ => {},
 		}
+
 		cx.notify();
 	}
 
 	/// Explicit capture fixture. Never installed by the normal application path.
 	pub(crate) fn visual_workspace_fixture(&mut self, cx: &mut Context<Self>) {
 		self.sidebar_visible = true;
+
 		use decodex_protocol::{AgentDependencyDto, AgentHistoryEntryDto, AgentWorkKindDto};
+
 		let make =
 			|id: &str, parent: Option<&str>, title: &str, status, dispatch| AgentWorkItemDto {
 				id: id.into(),
@@ -1587,8 +1697,11 @@ impl AgentSurface {
 				created_at_micros: 1_789_480_440_000_000,
 				updated_at_micros: 1_789_481_040_000_000,
 			};
+
 		use AgentDispatchStateDto::{Idle, Running};
+
 		use AgentWorkStatusDto::{Open, Resolved, UserDecision};
+
 		self.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 			runtime_source: None,
 			workspaces: vec![],
@@ -1614,6 +1727,7 @@ impl AgentSurface {
 			.collect(),
 			pending_events: vec![],
 		})));
+
 		let messages = [
 			("user", "Get September ready to ship. Simplify sign-in and improve startup."),
 			(
@@ -1657,54 +1771,19 @@ impl AgentSurface {
 			next_before: None,
 			live: vec![],
 		};
+
 		self.history_cache.insert("agent".into(), history.clone());
+
 		self.history = Some(("agent".into(), history));
 		self.selected = Some("agent".into());
 		self.pages = vec!["verify".into()];
 		self.graph_scope = Some("release".into());
 		self.graph_selected = Some("verify".into());
 		self.timeline_visible = true;
+
 		self.history_cache.insert("verify".into(),AgentHistoryResult::Available{questions:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
 		cx.notify();
 	}
-}
-
-pub(super) fn selected_history_available(surface: &AgentSurface) -> bool {
-	surface.has_work() || surface.history.as_ref().is_some_and(
-		|(_, history)| matches!(history,AgentHistoryResult::Available{entries,..} if !entries.is_empty()),
-	)
-}
-
-struct PanelTip(String);
-impl Render for PanelTip {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		div()
-			.px_2()
-			.py_1()
-			.rounded(px(5.0))
-			.bg(rgb(ui_theme::CANVAS))
-			.text_color(rgb(ui_theme::TEXT))
-			.text_size(px(11.0))
-			.child(self.0.clone())
-	}
-}
-
-fn panel_icon(id: &str) -> Option<AnyElement> {
-	use super::super::workspace_symbols::{self, Symbol};
-	let symbol = match id {
-		"workspace-sidebar" => Symbol::Sidebar,
-		"workspace-graph" => Symbol::Graph,
-		"workspace-timeline" => Symbol::Timeline,
-		"workspace-agents" => Symbol::Agents,
-		"graph-expand" => Symbol::Expand,
-		"graph-close" | "timeline-close" | "tree-close" => Symbol::Close,
-		"graph-up" => Symbol::Back,
-		"zoom-in" => Symbol::Plus,
-		"zoom-out" => Symbol::Minus,
-		id if id.starts_with("close-") => Symbol::Close,
-		_ => return None,
-	};
-	Some(workspace_symbols::icon(symbol))
 }
 
 impl AgentSurface {
@@ -1716,14 +1795,17 @@ impl AgentSurface {
 	) -> AnyElement {
 		let mut row = div().flex().flex_wrap().gap_2();
 		let export = copy.clone();
+
 		row = row.child(self.workspace_action(
 			format!("draft-copy-export-{index}"),
 			"Export full draft".into(),
 			move |s, cx| s.export_draft_copy(export.clone(), cx),
 			cx,
 		));
+
 		if self.draft_copy_matches_service(&copy) {
 			let restore = copy.clone();
+
 			row = row.child(self.workspace_action(
 				format!("draft-copy-restore-{index}"),
 				"Restore this copy".into(),
@@ -1758,21 +1840,26 @@ impl AgentSurface {
 				cx,
 			));
 		}
+
 		row.into_any_element()
 	}
 
 	fn recovered_draft_panel(&self, cx: &mut Context<Self>) -> AnyElement {
 		let count = self.recovered_draft_count();
+
 		if count == 0 {
 			return div().into_any_element();
 		}
+
 		let mut panel = div().w_full().flex().flex_col().gap_2().px_4().py_2();
+
 		panel = panel.child(self.workspace_action(
 			"draft-copies-toggle".into(),
 			format!("Saved draft copies ({count})"),
 			|s, cx| s.toggle_recovered_drafts(cx),
 			cx,
 		));
+
 		if self.show_recovered_drafts() {
 			let copies = self.recovered_drafts();
 			let mut list = div()
@@ -1782,6 +1869,7 @@ impl AgentSurface {
 				.flex()
 				.flex_col()
 				.gap_2();
+
 			for (index, copy) in copies.into_iter().enumerate() {
 				let preview: String = copy.draft.composer.text.chars().take(180).collect();
 				let ordinary_preview = copy.draft.ordinary.values().next().map(|draft| {
@@ -1799,6 +1887,7 @@ impl AgentSurface {
 					copy.draft.questions.len(),
 					copy.draft.ordinary.len()
 				);
+
 				list = list.child(
 					div()
 						.flex()
@@ -1813,8 +1902,10 @@ impl AgentSurface {
 						.child(self.draft_copy_controls(index, copy, cx)),
 				);
 			}
+
 			panel = panel.child(list);
 		}
+
 		panel.into_any_element()
 	}
 
@@ -1844,7 +1935,6 @@ impl AgentSurface {
 			snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())
 		});
 		let notice = self.status_notice();
-
 		let pending = self
 			.snapshot
 			.as_ref()
@@ -1857,9 +1947,11 @@ impl AgentSurface {
 			})
 			.unwrap_or_default();
 		let compacting = selected.is_some_and(|work| self.has_active_compaction(work));
+
 		if self.sending && !compacting {
 			return div().into_any_element();
 		}
+
 		let label = if self.uncertain {
 			Some("Delivery unconfirmed · Draft kept. Sending is paused to avoid duplicates.")
 		} else if let Some(notice) = self.draft_storage_notice() {
@@ -1917,25 +2009,31 @@ impl AgentSurface {
 		self.graph_visible = false;
 		self.timeline_visible = false;
 		self.sidebar_visible = page == "hierarchy";
+
 		if page == "hierarchy" {
 			let snapshot = self.snapshot.as_mut().expect("fixture");
 			let project =
 				snapshot.work_items.iter_mut().find(|work| work.id == "release").expect("fixture");
+
 			project.kind = decodex_protocol::AgentWorkKindDto::Manager;
+
 			snapshot.workspaces.push(decodex_protocol::AgentWorkspaceDto {
 				agent_id: "release".into(),
 				name: "September release".into(),
 				directory: "/Users/demo/projects/release".into(),
 			});
 			self.open_page("release", cx);
+
 			return;
 		}
 		if page == "live" {
 			if let Some((_, AgentHistoryResult::Available { live, .. })) = &mut self.history {
 				live.push(decodex_protocol::AgentLiveMessageDto { kind: Default::default(),turn_id:"live-turn".into(),item_id:"live-item".into(),text:"The compatibility check is progressing. I’m reviewing the existing session behavior and…".into(),truncated:false});
 			}
+
 			return;
 		}
+
 		let (method, value) = if page == "questions" {
 			(
 				"item/tool/requestUserInput",
@@ -1947,6 +2045,7 @@ impl AgentSurface {
 				serde_json::json!({"command":"cargo test -p app --lib","cwd":"/Users/demo/projects/release","reason":"Verify the changed sign-in behavior.","availableDecisions":["accept","decline"]}),
 			)
 		};
+
 		self.snapshot.as_mut().expect("fixture").pending_events.push(
 			decodex_protocol::AgentPendingEventDto {
 				id: 987,
@@ -1957,6 +2056,7 @@ impl AgentSurface {
 				delivery_claimed: false,
 			},
 		);
+
 		let request = AgentRequestResult::Available {
 			work_id: "agent".into(),
 			event_id: 987,
@@ -1964,73 +2064,75 @@ impl AgentSurface {
 			request_json: decodex_protocol::AgentRequestText::new(value.to_string())
 				.expect("bounded fixture"),
 		};
+
 		self.prepare_question_inputs(&request, cx);
+
 		self.request = Some(request);
+
 		self.transcript_scroll.entry("agent".into()).or_default().scroll_to_bottom();
 	}
+}
+
+pub(super) fn within_project(snapshot: &AgentSnapshotDto, project: &str, work: &str) -> bool {
+	let mut current = Some(work);
+
+	for _ in 0..=snapshot.work_items.len() {
+		let Some(id) = current else {
+			return false;
+		};
+
+		if id == project {
+			return true;
+		}
+
+		current = snapshot
+			.work_items
+			.iter()
+			.find(|w| w.id == id)
+			.and_then(|w| w.parent_goal_id.as_deref());
+	}
+
+	false
+}
+
+pub(super) fn clock_label(micros: i64) -> String {
+	let seconds = micros / 1_000_000;
+
+	format!("{:02}:{:02}:{:02}", (seconds / 3_600) % 24, (seconds / 60) % 60, seconds % 60)
+}
+
+pub(super) fn selected_history_available(surface: &AgentSurface) -> bool {
+	surface.has_work() || surface.history.as_ref().is_some_and(
+		|(_, history)| matches!(history,AgentHistoryResult::Available{entries,..} if !entries.is_empty()),
+	)
+}
+
+fn panel_icon(id: &str) -> Option<AnyElement> {
+	use super::super::workspace_symbols::{self, Symbol};
+
+	let symbol = match id {
+		"workspace-sidebar" => Symbol::Sidebar,
+		"workspace-graph" => Symbol::Graph,
+		"workspace-timeline" => Symbol::Timeline,
+		"workspace-agents" => Symbol::Agents,
+		"graph-expand" => Symbol::Expand,
+		"graph-close" | "timeline-close" | "tree-close" => Symbol::Close,
+		"graph-up" => Symbol::Back,
+		"zoom-in" => Symbol::Plus,
+		"zoom-out" => Symbol::Minus,
+		id if id.starts_with("close-") => Symbol::Close,
+		_ => return None,
+	};
+
+	Some(workspace_symbols::icon(symbol))
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	#[gpui::test]
-	fn connection_details_match_the_current_failure_not_an_old_log(cx: &mut gpui::TestAppContext) {
-		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		surface.update(visual, |s, cx| {
-			s.visual_workspace_fixture(cx);
-			s.snapshot.as_mut().unwrap().pending_events =
-				vec![decodex_protocol::AgentPendingEventDto {
-					id: 99,
-					source_event_id: "failure".into(),
-					work_item_id: "agent".into(),
-					event_kind: "reconnection_needs_attention".into(),
-					created_at_micros: 1,
-					delivery_claimed: false,
-				}];
-			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
-				panic!("fixture");
-			};
-			let mut entry = entries[0].clone();
-			entry.id = 99;
-			entry.kind = "system".into();
-			entry.text = "Agent process requires recovery: ProcessUnavailable".into();
-			entries.push(entry);
-			assert!(s.connection_failure_detail().unwrap().contains("ProcessUnavailable"));
-			s.snapshot.as_mut().unwrap().pending_events[0].id = 100;
-			assert!(s.connection_failure_detail().is_none(), "never reuse an obsolete error");
-		});
-	}
-
-	#[gpui::test]
-	fn unavailable_thread_blocks_submission_without_losing_draft(cx: &mut gpui::TestAppContext) {
-		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		surface.update(visual, |s, cx| {
-			s.visual_workspace_fixture(cx);
-			s.snapshot.as_mut().unwrap().pending_events.clear();
-			assert!(s.composer_unavailable_reason().is_none());
-			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
-			s.snapshot.as_mut().unwrap().pending_events.push(
-				decodex_protocol::AgentPendingEventDto {
-					id: 99,
-					source_event_id: "offline".into(),
-					work_item_id: "agent".into(),
-					event_kind: "reconnection_needs_attention".into(),
-					created_at_micros: 1,
-					delivery_claimed: false,
-				},
-			);
-			assert!(s.composer_unavailable_reason().unwrap().contains("could not reconnect"));
-			s.submit(cx);
-			assert!(!s.sending);
-			assert!(s.submission.command.is_none());
-			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
-			s.snapshot.as_mut().unwrap().pending_events.clear();
-			assert!(s.composer_unavailable_reason().is_none());
-			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
-		});
-	}
 
 	struct ActionView(gpui::Entity<AgentSurface>);
+
 	impl Render for ActionView {
 		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 			self.0.update(cx, |s, cx| {
@@ -2045,25 +2147,108 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn connection_details_match_the_current_failure_not_an_old_log(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+
+			s.snapshot.as_mut().unwrap().pending_events =
+				vec![decodex_protocol::AgentPendingEventDto {
+					id: 99,
+					source_event_id: "failure".into(),
+					work_item_id: "agent".into(),
+					event_kind: "reconnection_needs_attention".into(),
+					created_at_micros: 1,
+					delivery_claimed: false,
+				}];
+
+			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
+				panic!("fixture");
+			};
+			let mut entry = entries[0].clone();
+
+			entry.id = 99;
+			entry.kind = "system".into();
+			entry.text = "Agent process requires recovery: ProcessUnavailable".into();
+
+			entries.push(entry);
+
+			assert!(s.connection_failure_detail().unwrap().contains("ProcessUnavailable"));
+
+			s.snapshot.as_mut().unwrap().pending_events[0].id = 100;
+
+			assert!(s.connection_failure_detail().is_none(), "never reuse an obsolete error");
+		});
+	}
+
+	#[gpui::test]
+	fn unavailable_thread_blocks_submission_without_losing_draft(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.snapshot.as_mut().unwrap().pending_events.clear();
+
+			assert!(s.composer_unavailable_reason().is_none());
+
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+			s.snapshot.as_mut().unwrap().pending_events.push(
+				decodex_protocol::AgentPendingEventDto {
+					id: 99,
+					source_event_id: "offline".into(),
+					work_item_id: "agent".into(),
+					event_kind: "reconnection_needs_attention".into(),
+					created_at_micros: 1,
+					delivery_claimed: false,
+				},
+			);
+
+			assert!(s.composer_unavailable_reason().unwrap().contains("could not reconnect"));
+
+			s.submit(cx);
+
+			assert!(!s.sending);
+			assert!(s.submission.command.is_none());
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+
+			s.snapshot.as_mut().unwrap().pending_events.clear();
+
+			assert!(s.composer_unavailable_reason().is_none());
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+		});
+	}
+
+	#[gpui::test]
 	fn first_snapshot_has_feedback_without_replacing_retained_history(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.state = LoadState::Loading;
+
 			cx.notify();
 		});
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		let reserved = visual.update(|window, cx| {
 			let s = surface.read(cx);
+
 			(s.agent_tree_width(window), s.workspace_graph_size(window, true))
 		});
+
 		assert!(visual.debug_bounds("loading-feedback-Loading workspace").is_some());
+
 		surface.update(visual, |s, cx| {
 			s.state = LoadState::Unavailable;
+
 			cx.notify();
 		});
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		assert!(visual.debug_bounds("loading-feedback-Connecting to workspace").is_some());
 		assert!(
 			visual.debug_bounds("workspace-welcome").is_none(),
@@ -2072,22 +2257,32 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.state = LoadState::Loading;
+
 			cx.notify();
 		});
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		assert!(visual.debug_bounds("loading-feedback-Loading workspace").is_none());
+
 		let loaded = visual.update(|window, cx| {
 			let s = surface.read(cx);
+
 			(s.agent_tree_width(window), s.workspace_graph_size(window, true))
 		});
+
 		assert_eq!(reserved, loaded, "the first snapshot fills existing panel slots");
+
 		let header = visual.debug_bounds("workspace-conversation-header").unwrap();
+
 		surface.update(visual, |s, cx| {
 			s.pages.push("release".into());
 			cx.notify();
 		});
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		assert_eq!(
 			header,
 			visual.debug_bounds("workspace-conversation-header").unwrap(),
@@ -2099,10 +2294,14 @@ mod tests {
 	fn held_keys_do_not_repeat_workspace_actions(cx: &mut gpui::TestAppContext) {
 		let (view, visual) = cx.add_window_view(|_, cx| ActionView(cx.new(AgentSurface::new)));
 		let surface = view.read_with(visual, |v, _| v.0.clone());
+
 		visual.update(|window, cx| window.draw(cx).clear());
+
 		let bounds = visual.debug_bounds("test-action").expect("workspace action");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.read_with(visual, |s, _| assert_eq!(s.feedback, "x", "click activates action"));
+
 		for key in ["enter", "space"] {
 			visual.simulate_event(gpui::KeyDownEvent {
 				keystroke: gpui::Keystroke::parse(key).expect("activation key"),
@@ -2112,6 +2311,7 @@ mod tests {
 			surface
 				.read_with(visual, |s, _| assert_eq!(s.feedback, "x", "held key repeats action"));
 		}
+
 		visual.simulate_keystrokes("enter space");
 		surface
 			.read_with(visual, |s, _| assert_eq!(s.feedback, "xxx", "fresh keys activate action"));
@@ -2120,9 +2320,11 @@ mod tests {
 	#[gpui::test]
 	fn running_worker_keeps_an_explicit_stop_control(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.open_page("verify", cx);
+
 			s.snapshot
 				.as_mut()
 				.expect("snapshot")
@@ -2131,22 +2333,32 @@ mod tests {
 				.find(|work| work.id == "verify")
 				.expect("worker")
 				.active_turn_id = Some("worker-turn".into());
+
 			s.composer.update(cx, |input, cx| input.set_content("Retained manager draft", cx));
 		});
+
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.), px(1200.)));
+			window.resize(gpui::size(px(1_180.), px(1_200.)));
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("worker-stop").is_some(), "running worker has no stop control");
+
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.running_turn().expect("running worker").0.as_str(), "verify");
+
 			s.interrupt_current(cx);
+
 			assert_eq!(s.feedback, "No service profile is configured.");
 			assert_eq!(s.composer.read(cx).content(), "Retained manager draft");
+
 			s.state = LoadState::Unavailable;
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| window.draw(cx).clear());
+
 		assert!(visual.debug_bounds("worker-stop").is_none(), "disconnected worker cannot stop");
 	}
 
@@ -2155,38 +2367,52 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		use gpui::Focusable as _;
+
 		cx.update(crate::composer_input::bind_keys);
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		let input = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.state = LoadState::Stale;
+
 			s.snapshot.as_mut().unwrap().pending_events.clear();
 			s.composer.update(cx, |input, cx| input.set_content("Saved", cx));
+
 			s.attachments = vec![decodex_protocol::AgentAttachmentDto {
 				path: ConversationWorkingDirectory::new("/tmp/retained.txt").unwrap(),
 				image: false,
 				skill_name: None,
 			}];
+
 			s.composer.clone()
 		});
+
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.), px(1200.)));
+			window.resize(gpui::size(px(1_180.), px(1_200.)));
 			window.focus(&input.focus_handle(cx), cx);
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("recovery-draft-editor").is_some());
+
 		visual.simulate_keystrokes("cmd-end space e d i t e d enter cmd-enter");
+
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.composer.read(cx).content(), "Saved edited");
 			assert_eq!(s.attachments.len(), 1);
+
 			s.escape_interrupt(cx);
 			s.escape_interrupt(cx);
 			s.interrupt_current(cx);
+
 			assert!(!s.sending);
 			assert!(s.submission.command.is_none());
 			assert!(s.interrupt_task.is_none());
 			assert!(s.escape_stop.is_none());
+
 			s.state = LoadState::Ready;
+
 			assert_eq!(s.composer.read(cx).content(), "Saved edited");
 			assert!(s.submission.command.is_none(), "reconnection cannot submit retained edits");
 		});
@@ -2197,16 +2423,24 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.state = LoadState::Unavailable;
+
 			s.composer.update(cx, |input, cx| input.set_content("Keep before connection", cx));
+
 			assert!(s.composer_unavailable_reason().is_some());
+
 			s.submit(cx);
+
 			assert!(s.submission.command.is_none());
+
 			s.state = LoadState::Ready;
 			s.uncertain = true;
+
 			s.composer.update(cx, |input, cx| input.set_content("Edited uncertain draft", cx));
 			s.submit(cx);
+
 			assert!(s.submission.command.is_none());
 			assert_eq!(s.composer.read(cx).content(), "Edited uncertain draft");
 		});
@@ -2215,33 +2449,44 @@ mod tests {
 	#[gpui::test]
 	fn pages_reuse_identity_preserve_draft_and_return_to_agent(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.composer.update(cx, |input, cx| input.set_content("Keep my draft", cx));
+
 			s.graph_pan = (15.0, 25.0);
 			s.graph_zoom = 1.2;
+
 			s.open_page("verify", cx);
 			s.open_page("verify", cx);
+
 			assert_eq!(s.pages, vec!["verify"]);
 			assert_eq!(s.selected.as_deref(), Some("verify"));
 			assert!(s.history.as_ref().is_some_and(|(id, _)| id == "verify"));
+
 			s.close_page("verify", cx);
+
 			assert_eq!(s.selected.as_deref(), Some("agent"));
 			assert!(s.closing_pages.contains("verify"));
 			assert_eq!(s.graph_pan, (15.0, 25.0));
 			assert_eq!(s.graph_zoom, 1.2);
 			assert_eq!(s.graph_scope.as_deref(), Some("release"));
 			assert_eq!(s.composer.read(cx).content(), "Keep my draft");
+
 			s.open_page("missing", cx);
+
 			assert_eq!(s.selected.as_deref(), Some("agent"));
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
 	}
+
 	#[gpui::test]
 	fn reopening_a_closing_tab_keeps_it_and_close_returns_to_main(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.open_page("verify", cx);
@@ -2260,6 +2505,7 @@ mod tests {
 		visual.update(|w, cx| w.draw(cx).clear());
 		// Wait only for deferred removal; visual smoothness is not a unit-test claim.
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|w, cx| w.draw(cx).clear());
 		visual.run_until_parked();
 		surface.update(visual, |s, _| {
@@ -2271,8 +2517,10 @@ mod tests {
 	#[gpui::test]
 	fn manager_switches_keep_drafts_with_their_recipient(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.snapshot
 				.as_mut()
 				.unwrap()
@@ -2281,13 +2529,19 @@ mod tests {
 				.find(|work| work.id == "release")
 				.unwrap()
 				.kind = decodex_protocol::AgentWorkKindDto::Manager;
+
 			s.composer.update(cx, |input, cx| input.set_content("Main Agent draft", cx));
 			s.open_page("release", cx);
+
 			assert_eq!(s.composer.read(cx).content(), "");
+
 			s.composer.update(cx, |input, cx| input.set_content("Project Agent draft", cx));
 			s.open_page("agent", cx);
+
 			assert_eq!(s.composer.read(cx).content(), "Main Agent draft");
+
 			s.open_page("release", cx);
+
 			assert_eq!(s.composer.read(cx).content(), "Project Agent draft");
 		});
 	}
@@ -2295,26 +2549,35 @@ mod tests {
 	#[gpui::test]
 	fn graph_layers_dependencies_and_flags_cycles(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let mut snapshot = s.snapshot.clone().expect("fixture has snapshot");
 			let layout = graph::Layout::new(&snapshot, Some("release"));
+
 			assert_eq!(layout.nodes.len(), 7);
 			assert_eq!(layout.reports.len(), 6);
 			assert_eq!(layout.edges.len(), 5);
 			assert!(!layout.cyclic);
+
 			let location =
 				|id: &str| layout.nodes.iter().find(|n| n.id == id).expect("fixture node");
+
 			assert_eq!(location("impact").x, location("improve").x);
 			assert_ne!(location("impact").x, location("verify").x);
+
 			for (a, b) in &layout.edges {
 				assert!(layout.nodes[*a].y < layout.nodes[*b].y);
 			}
+
 			snapshot.dependencies.push(decodex_protocol::AgentDependencyDto {
 				work_item_id: "flow".into(),
 				depends_on_id: "ready".into(),
 			});
+
 			let cycle = graph::Layout::new(&snapshot, Some("release"));
+
 			assert!(cycle.cyclic);
 			assert_eq!(cycle.nodes.len(), 7);
 			assert!(graph::Layout::new(&snapshot, Some("missing")).nodes.is_empty());

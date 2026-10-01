@@ -18,12 +18,16 @@ impl AgentSurface {
 		else {
 			return;
 		};
+
 		if text.is_empty() {
 			return;
 		}
+
 		let retained = std::mem::take(&mut self.submission.previews);
+
 		self.submission.previews =
 			retained.into_iter().filter(|p| !self.preview_recorded(p)).collect();
+
 		let local_after = self
 			.history
 			.as_ref()
@@ -71,8 +75,11 @@ impl AgentSurface {
 		if preview.recorded.get() {
 			return true;
 		}
+
 		let recorded = self.preview_in_history(preview);
+
 		preview.recorded.set(recorded);
+
 		recorded
 	}
 
@@ -82,16 +89,19 @@ impl AgentSurface {
 			.as_ref()
 			.and_then(|s| s.work_items.iter().find(|w| w.id == preview.owner))
 			.is_some_and(|w| self.native_history_active(w));
+
 		if native && !self.native_history.summary_only() {
 			return self.native_history.entries.iter().filter(|e| preview.native_after.is_none_or(|position| e.position > position) && matches!(&e.content,
                 decodex_protocol::AgentTimelineContent::Item { kind, text, .. } if kind == "userMessage" && text == &preview.text)).count() >= preview.native_ordinal;
 		}
+
 		let history = self
 			.history
 			.as_ref()
 			.filter(|(id, _)| id == &preview.owner)
 			.map(|(_, h)| h)
 			.or_else(|| self.history_cache.get(&preview.owner));
+
 		matches!(history, Some(AgentHistoryResult::Available { entries, .. }) if entries.iter().filter(|e| e.id > preview.local_after && matches!(e.kind.as_str(), "user" | "instruction") && e.text == preview.text).count() >= preview.local_ordinal)
 	}
 
@@ -134,6 +144,7 @@ impl AgentSurface {
 					.as_ref()
 					.and_then(|s| s.work_items.iter().find(|w| w.id == work))
 					.is_some_and(|w| self.native_history_active(w));
+
 				div()
 					.debug_selector(|| "sending-message-preview".into())
 					.child(history_entry_with_key(&entry, &format!("sending-{}", p.key)))
@@ -150,9 +161,12 @@ mod tests {
 	#[gpui::test]
 	fn native_echo_replaces_preview_without_changing_bubble_bounds(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(px(1400.), px(1000.)));
+
+		visual.simulate_resize(gpui::size(px(1_400.), px(1_000.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.snapshot
 				.as_mut()
 				.unwrap()
@@ -166,6 +180,7 @@ mod tests {
 				thread: "thread".into(),
 				account: "account".into(),
 			});
+
 			s.capture_send_preview(&PendingCommand {
 				recovery: None,
 				key: Some(IdempotencyKey::new("native-preview").unwrap()),
@@ -179,10 +194,15 @@ mod tests {
 			});
 			cx.notify();
 		});
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		let preview = visual.debug_bounds("sending-message-preview").unwrap();
+
 		surface.update(visual, |s, cx| {
 			s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
 				position: 0,
@@ -201,6 +221,7 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		assert!(visual.debug_bounds("sending-message-preview").is_none());
 		assert_eq!(visual.debug_bounds("native-promotion-content").unwrap(), preview);
 	}
@@ -208,15 +229,19 @@ mod tests {
 	#[gpui::test]
 	fn acceptance_does_not_override_reading_position(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.latest_follow_work = None;
+
 			s.history_follow_paused.insert("agent".into());
 			s.apply_command_result(
 				Ok(AgentCommandResponse::Accepted { work_id: EntityId::new("agent").unwrap() }),
 				Some("sent text"),
 				cx,
 			);
+
 			assert!(s.latest_follow_work.is_none());
 			assert!(s.history_follow_paused.contains("agent"));
 		});
@@ -227,17 +252,23 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let (_, AgentHistoryResult::Available { entries, .. }) = s.history.as_mut().unwrap()
 			else {
 				panic!("fixture")
 			};
 			let mut record = entries[0].clone();
+
 			record.kind = "user".into();
 			record.text = "hello".into();
+
 			entries.push(record.clone());
+
 			record.id = entries.iter().map(|e| e.id).max().unwrap() + 1;
+
 			let pending = |key: &str| PendingCommand {
 				recovery: None,
 				key: Some(IdempotencyKey::new(key).unwrap()),
@@ -250,28 +281,40 @@ mod tests {
 				draft: Some("hello".into()),
 			};
 			let first = pending("preview-first");
+
 			s.capture_send_preview(&first);
+
 			assert_eq!(s.send_previews("agent").len(), 1, "visible before any server response");
 			assert!(s.send_previews("release").is_empty());
+
 			s.finish_send_preview(&first, true);
+
 			let second = pending("preview-second");
+
 			s.capture_send_preview(&second);
+
 			assert_eq!(
 				s.send_previews("agent").len(),
 				2,
 				"old equal text is not an acknowledgement"
 			);
+
 			let (_, AgentHistoryResult::Available { entries, .. }) = s.history.as_mut().unwrap()
 			else {
 				unreachable!()
 			};
+
 			entries.push(record);
+
 			assert_eq!(s.send_previews("agent").len(), 1, "one record replaces only one preview");
+
 			s.finish_send_preview(&second, false);
+
 			assert!(
 				s.send_previews("agent").is_empty(),
 				"rejection removes preview, draft recovery owns the text"
 			);
+
 			s.snapshot
 				.as_mut()
 				.unwrap()
@@ -285,12 +328,16 @@ mod tests {
 				thread: "thread".into(),
 				account: "account".into(),
 			});
+
 			assert!(
 				s.send_previews("agent").is_empty(),
 				"source changes must not resurrect confirmed previews"
 			);
+
 			s.capture_send_preview(&pending("first-native"));
+
 			assert_eq!(s.send_previews("agent").len(), 1);
+
 			s.native_history.entries.push(decodex_protocol::AgentTimelineEntry {
 				position: 0,
 				content: decodex_protocol::AgentTimelineContent::Item {
@@ -305,6 +352,7 @@ mod tests {
 					attachments: vec![],
 				},
 			});
+
 			assert!(s.send_previews("agent").is_empty(), "the first native position can be zero");
 		});
 	}

@@ -25,7 +25,9 @@ impl AgentSurface {
 		else {
 			return;
 		};
+
 		self.bind_async_question_thread(work);
+
 		if *questions_recovering {
 			return;
 		}
@@ -34,7 +36,9 @@ impl AgentSurface {
 				owner != work || questions.iter().any(|question| &question.id == id)
 			});
 		}
+
 		self.async_question_choices.retain(|key, _| self.async_question_inputs.contains_key(key));
+
 		for question in questions {
 			self.async_question_choices.entry((work.into(), question.id.clone())).or_insert_with(
 				|| ChoiceDraft {
@@ -42,18 +46,22 @@ impl AgentSurface {
 					..Default::default()
 				},
 			);
+
 			self.async_question_inputs.entry((work.into(), question.id.clone())).or_insert_with(
 				|| {
 					let input = cx.new(|cx| {
 						ComposerInput::with_placeholder(40, "Your answer", "Answer to Agent", cx)
 					});
+
 					if let Some(option) = question.options.first() {
 						input.update(cx, |input, cx| input.set_content(option, cx));
 					}
+
 					input
 				},
 			);
 		}
+
 		self.restore_async_drafts(work, questions, *questions_truncated, cx);
 	}
 
@@ -62,9 +70,11 @@ impl AgentSurface {
 		cx: &Context<Self>,
 	) -> Option<Vec<decodex_protocol::DesktopQuestionDraft>> {
 		let mut saved = self.restored_question_drafts.clone();
+
 		for ((work, question), input) in &self.async_question_inputs {
 			let thread = self.async_question_threads.get(work)?;
 			let state = self.async_question_choices.get(&(work.clone(), question.clone()));
+
 			saved.push(decodex_protocol::DesktopQuestionDraft {
 				work_id: EntityId::new(work).ok()?,
 				thread_id: WireText::new(thread).ok()?,
@@ -77,6 +87,7 @@ impl AgentSurface {
 				collapsed: self.collapsed_async_questions.contains(work),
 			});
 		}
+
 		Some(saved)
 	}
 
@@ -90,26 +101,32 @@ impl AgentSurface {
 		let Some(thread) = self.async_question_threads.get(work).cloned() else {
 			return;
 		};
+
 		for saved in std::mem::take(&mut self.restored_question_drafts) {
 			if saved.work_id.as_str() != work {
 				self.restored_question_drafts.push(saved);
+
 				continue;
 			}
 			if saved.thread_id.as_str() != thread {
 				continue;
 			}
+
 			let Some(question) =
 				questions.iter().find(|question| question.id == saved.question_id.as_str())
 			else {
 				if truncated {
 					self.restored_question_drafts.push(saved);
 				}
+
 				continue;
 			};
 			let key = (work.into(), question.id.clone());
+
 			if let Some(input) = self.async_question_inputs.get(&key) {
 				input.update(cx, |input, cx| input.set_content(&saved.text, cx));
 			}
+
 			let custom = saved.custom.map(|text| {
 				cx.new(|cx| {
 					let mut input = ComposerInput::with_placeholder(
@@ -118,13 +135,17 @@ impl AgentSurface {
 						"Answer to Agent",
 						cx,
 					);
+
 					input.set_content(&text, cx);
+
 					input
 				})
 			});
 			let selected = saved.selected.filter(|option| question.options.contains(option));
+
 			self.async_question_choices
 				.insert(key, ChoiceDraft { selected, custom, ..Default::default() });
+
 			if saved.collapsed {
 				self.collapsed_async_questions.insert(work.into());
 			}
@@ -140,6 +161,7 @@ impl AgentSurface {
 			return;
 		};
 		let thread = owner.codex_thread_id.clone();
+
 		if self
 			.async_question_threads
 			.get(work)
@@ -149,6 +171,7 @@ impl AgentSurface {
 			self.async_question_choices.retain(|(owner, _), _| owner != work);
 			self.collapsed_async_questions.remove(work);
 		}
+
 		if let Some(thread) = thread {
 			self.async_question_threads.insert(work.into(), thread);
 		} else {
@@ -167,14 +190,18 @@ impl AgentSurface {
 			return;
 		};
 		let state = self.async_question_choices.entry(key.clone()).or_default();
+
 		if state.selected.as_deref() != Some(current.read(cx).content()) {
 			state.custom = Some(current);
 		}
+
 		let input = if let Some(option) = option {
 			let input = cx.new(|cx| {
 				ComposerInput::with_placeholder(40, "Your answer", "Answer to Agent", cx)
 			});
+
 			input.update(cx, |input, cx| input.set_content(option, cx));
+
 			input
 		} else {
 			state
@@ -191,11 +218,15 @@ impl AgentSurface {
 				})
 				.clone()
 		};
+
 		state.selected = option.map(str::to_owned);
+
 		if option.is_none() {
 			use gpui::Focusable;
+
 			window.focus(&input.focus_handle(cx), cx);
 		}
+
 		self.async_question_inputs.insert(key.clone(), input);
 		cx.notify();
 	}
@@ -209,17 +240,20 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> gpui::AnyElement {
 		let visible = std::rc::Rc::new(std::cell::Cell::new(false));
+
 		if let Some(option) = option
 			&& let Some(state) = self.async_question_choices.get(key)
 		{
 			state.visible.borrow_mut().insert(option.into(), visible.clone());
 		}
+
 		let label = option.unwrap_or("Other (write an answer)").to_owned();
 		let option = option.map(str::to_owned);
 		let key_option = option.clone();
 		let owner = key.clone();
 		let key_owner = key.clone();
 		let selector = format!("async-option-{}-{index}", key.1);
+
 		div()
 			.id(SharedString::from(selector.clone()))
 			.debug_selector(move || selector)
@@ -241,6 +275,7 @@ impl AgentSurface {
 					if !event.is_held {
 						s.select_async_choice(&key_owner, key_option.as_deref(), window, cx);
 					}
+
 					cx.stop_propagation();
 				}
 			}))
@@ -252,6 +287,7 @@ impl AgentSurface {
 							gpui::Point::default(),
 							window.viewport_size(),
 						));
+
 						visible.set(
 							bounds.size.width > px(0.0)
 								&& bounds.size.height > px(0.0)
@@ -270,6 +306,7 @@ impl AgentSurface {
 		if self.sending || self.uncertain {
 			return;
 		}
+
 		let Some(input) = self.async_question_inputs.get(&(work.into(), question.into())) else {
 			return;
 		};
@@ -278,9 +315,11 @@ impl AgentSurface {
 		else {
 			return;
 		};
+
 		if answer.as_str().is_empty() {
 			return;
 		}
+
 		let Some((owner, AgentHistoryResult::Available { questions, .. })) = &self.history else {
 			return;
 		};
@@ -296,24 +335,32 @@ impl AgentSurface {
 					state.visible.borrow().get(*option).is_some_and(|shown| shown.get())
 				})
 			});
+
 		if self.collapsed_async_questions.contains(work)
 			|| (!matching_options.is_empty() && !visible)
 		{
 			self.feedback = "Show the entire suggested answer before sending.".into();
+
 			cx.notify();
+
 			return;
 		}
+
 		if let Err(message) = decodex_protocol::agent_async_question_reply(source, answer.as_str())
 		{
 			self.feedback = message;
+
 			cx.notify();
+
 			return;
 		}
+
 		let (Ok(work_id), Ok(question_id)) =
 			(EntityId::new(work), decodex_protocol::WireText::new(question))
 		else {
 			return;
 		};
+
 		self.execute(AgentActionDto::AnswerQuestion { work_id, question_id, answer }, None, cx);
 	}
 
@@ -336,6 +383,7 @@ impl AgentSurface {
 		let action = AgentActionDto::SkipQuestion { work_id, thread_id, question_id };
 		let key_action = action.clone();
 		let selector = format!("async-skip-{question}");
+
 		div()
 			.id(SharedString::from(selector.clone()))
 			.debug_selector(move || selector)
@@ -354,6 +402,7 @@ impl AgentSurface {
 					if !s.sending && !s.uncertain {
 						s.execute(key_action.clone(), None, cx);
 					}
+
 					cx.stop_propagation();
 				}
 			}))
@@ -363,10 +412,12 @@ impl AgentSurface {
 
 	fn toggle_async_questions(&mut self, work: &str, window: &mut Window, cx: &mut Context<Self>) {
 		use gpui::Focusable;
+
 		if !self.collapsed_async_questions.remove(work) {
 			self.collapsed_async_questions.insert(work.into());
 			window.focus(&self.composer.focus_handle(cx), cx);
 		}
+
 		cx.notify();
 	}
 
@@ -384,6 +435,7 @@ impl AgentSurface {
 		};
 		let owner = work.to_owned();
 		let key_owner = owner.clone();
+
 		div()
 			.id("async-question-toggle")
 			.debug_selector(|| "async-question-toggle".into())
@@ -415,6 +467,7 @@ impl AgentSurface {
 				state.visible.borrow_mut().clear();
 			}
 		}
+
 		let Some((
 			id,
 			AgentHistoryResult::Available {
@@ -427,17 +480,23 @@ impl AgentSurface {
 		else {
 			return div().into_any_element();
 		};
+
 		if id != &work.id {
 			return div().into_any_element();
 		}
+
 		let mut panel = div().flex().flex_col().gap_3();
+
 		if *questions_recovering || questions.is_empty() {
 			return div().into_any_element();
 		}
+
 		panel = panel.child(self.async_question_toggle(&work.id, questions.len(), cx));
+
 		if self.collapsed_async_questions.contains(&work.id) {
 			return panel.into_any_element();
 		}
+
 		for question in questions {
 			let key = (work.id.clone(), question.id.clone());
 			let Some(input) = self.async_question_inputs.get(&key) else {
@@ -452,6 +511,7 @@ impl AgentSurface {
 				.flex_col()
 				.gap_2()
 				.child(question.title.clone());
+
 			for (index, option) in question.options.iter().enumerate() {
 				card = card.child(self.async_choice_button(
 					&key,
@@ -461,6 +521,7 @@ impl AgentSurface {
 					cx,
 				));
 			}
+
 			if !question.options.is_empty() {
 				card = card.child(
 					self.async_choice_button(
@@ -474,6 +535,7 @@ impl AgentSurface {
 					),
 				);
 			}
+
 			let owner = work.id.clone();
 			let question_id = question.id.clone();
 			let enter_owner = owner.clone();
@@ -481,10 +543,12 @@ impl AgentSurface {
 			let send_selector = format!("async-send-{question_id}");
 			let key_owner = owner.clone();
 			let key_question = question_id.clone();
+
 			card = card
 				.key_context("AsyncQuestion")
 				.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
 					let modifiers = event.keystroke.modifiers;
+
 					if event.keystroke.key == "enter"
 						&& !modifiers.shift
 						&& !modifiers.control
@@ -493,6 +557,7 @@ impl AgentSurface {
 						if !event.is_held {
 							s.answer_async_question(&key_owner, &key_question, cx);
 						}
+
 						cx.stop_propagation();
 					}
 				}))
@@ -517,9 +582,11 @@ impl AgentSurface {
 				);
 			panel = panel.child(card.child(self.async_question_skip(work, &question.id, cx)));
 		}
+
 		if *questions_truncated {
 			panel = panel.child(muted("More questions are available after these are answered."));
 		}
+
 		panel.into_any_element()
 	}
 }
@@ -532,42 +599,63 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			install_question_fixture(s, cx);
+
 			let key = ("root".into(), "q1".into());
+
 			s.async_question_inputs[&key]
 				.update(cx, |input, cx| input.set_content("Saved answer", cx));
+
 			s.restored_question_drafts = s.capture_async_drafts(cx).unwrap();
+
 			s.async_question_inputs.clear();
 			s.async_question_choices.clear();
+
 			let (_, mut history) = s.history.clone().unwrap();
+
 			if let AgentHistoryResult::Available { questions_recovering, .. } = &mut history {
 				*questions_recovering = true;
 			}
+
 			s.prepare_async_question_inputs("root", &history, cx);
+
 			assert!(s.async_question_inputs.is_empty());
 			assert_eq!(s.capture_async_drafts(cx).unwrap().len(), 1);
+
 			if let AgentHistoryResult::Available { questions_recovering, .. } = &mut history {
 				*questions_recovering = false;
 			}
+
 			s.prepare_async_question_inputs("root", &history, cx);
+
 			assert_eq!(s.async_question_inputs[&key].read(cx).content(), "Saved answer");
 			assert!(s.restored_question_drafts.is_empty());
+
 			s.restored_question_drafts = s.capture_async_drafts(cx).unwrap();
+
 			s.async_question_inputs.clear();
 			s.async_question_choices.clear();
+
 			if let AgentHistoryResult::Available { questions, questions_truncated, .. } =
 				&mut history
 			{
 				questions.clear();
+
 				*questions_truncated = true;
 			}
+
 			s.prepare_async_question_inputs("root", &history, cx);
+
 			assert_eq!(s.restored_question_drafts.len(), 1);
+
 			if let AgentHistoryResult::Available { questions_truncated, .. } = &mut history {
 				*questions_truncated = false;
 			}
+
 			s.prepare_async_question_inputs("root", &history, cx);
+
 			assert!(s.restored_question_drafts.is_empty());
 			assert!(s.async_question_inputs.is_empty());
 			assert!(!s.sending);
@@ -576,6 +664,7 @@ mod tests {
 	#[gpui::test]
 	fn async_question_drafts_survive_refresh_and_other_work(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			let question = |index| decodex_protocol::AgentAsyncQuestionDto {
 				arrived_live: false,
@@ -596,34 +685,50 @@ mod tests {
 				next_before: None,
 				live: vec![],
 			};
+
 			s.prepare_async_question_inputs("a", &history, cx);
+
 			let key = ("a".to_owned(), second.id.clone());
+
 			assert_eq!(s.async_question_inputs[&key].read(cx).content(), "Suggested");
+
 			s.async_question_inputs[&key]
 				.update(cx, |input, cx| input.set_content("My answer", cx));
 			s.prepare_async_question_inputs("b", &history, cx);
 			s.prepare_async_question_inputs("a", &history, cx);
+
 			assert_eq!(s.async_question_inputs[&key].read(cx).content(), "My answer");
 			assert_eq!(
 				s.async_question_inputs[&("b".into(), second.id.clone())].read(cx).content(),
 				"Suggested"
 			);
+
 			if let AgentHistoryResult::Available { questions, .. } = &mut history {
 				questions.remove(0);
 			}
+
 			s.prepare_async_question_inputs("a", &history, cx);
+
 			assert!(!s.async_question_inputs.contains_key(&("a".into(), first.id)));
 			assert_eq!(s.async_question_inputs[&key].read(cx).content(), "My answer");
+
 			s.prepare_async_question_inputs("a", &AgentHistoryResult::Unavailable, cx);
+
 			assert_eq!(s.async_question_inputs[&key].read(cx).content(), "My answer");
+
 			s.async_question_inputs[&key].update(cx, |input, cx| input.clear(cx));
 			s.prepare_async_question_inputs("a", &history, cx);
+
 			assert_eq!(s.async_question_inputs[&key].read(cx).content(), "");
+
 			if let AgentHistoryResult::Available { questions, .. } = &mut history {
 				questions[0].id = "free-text".into();
+
 				questions[0].options.clear();
 			}
+
 			s.prepare_async_question_inputs("a", &history, cx);
+
 			assert_eq!(
 				s.async_question_inputs[&("a".into(), "free-text".into())].read(cx).content(),
 				""
@@ -637,11 +742,14 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		use gpui::Focusable;
+
 		cx.update(crate::composer_input::bind_keys);
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, install_question_fixture);
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.0), px(1200.0)));
+			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
 			window.draw(cx).clear();
 		});
 		surface.read_with(visual, |s, cx| {
@@ -652,7 +760,9 @@ mod tests {
 			assert!(!s.sending);
 			assert!(s.submission.command.is_none());
 		});
+
 		let bounds = visual.debug_bounds("async-option-q1-1").expect("visible async option");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, cx| {
 			assert_eq!(
@@ -662,15 +772,23 @@ mod tests {
 			assert!(!s.sending);
 			assert!(s.submission.command.is_none());
 		});
+
 		let bounds = visual.debug_bounds("async-send-q1").expect("visible explicit send");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+
 		let input = surface.update(visual, |s, cx| {
 			assert_eq!(s.feedback, "No service profile is configured.");
+
 			s.feedback.clear();
+
 			let input = s.async_question_inputs[&("root".into(), "q1".into())].clone();
+
 			assert_eq!(input.read(cx).content(), "Markdown");
+
 			input
 		});
+
 		visual.update(|window, cx| {
 			window.focus(&input.focus_handle(cx), cx);
 			window.draw(cx).clear();
@@ -687,6 +805,7 @@ mod tests {
 			{
 				input.update(cx, |input, cx| input.set_content(literal, cx));
 				s.answer_async_question("root", "q1", cx);
+
 				assert_eq!(s.feedback, "No service profile is configured.");
 				assert_eq!(input.read(cx).content(), literal);
 			}
@@ -712,6 +831,7 @@ mod tests {
 				updated_at_micros: 1,
 			}],
 		})));
+
 		let history = AgentHistoryResult::Available {
 			questions: vec![decodex_protocol::AgentAsyncQuestionDto {
 				arrived_live: false,
@@ -728,25 +848,32 @@ mod tests {
 			next_before: None,
 			live: vec![],
 		};
+
 		s.prepare_async_question_inputs("root", &history, cx);
+
 		s.history = Some(("root".into(), history));
 	}
 
 	#[gpui::test]
 	fn collapsed_questions_preserve_both_drafts_and_never_send(cx: &mut gpui::TestAppContext) {
 		use gpui::Focusable;
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			install_question_fixture(s, cx);
+
 			s.composer.update(cx, |input, cx| input.set_content("Main draft", cx));
 			s.async_question_inputs[&("root".into(), "q1".into())]
 				.update(cx, |input, cx| input.set_content("Answer draft", cx));
 		});
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.0), px(1200.0)));
+			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
 			window.draw(cx).clear();
 		});
+
 		let bounds = visual.debug_bounds("async-question-toggle").expect("return control");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		visual.update(|window, cx| {
 			surface.read_with(cx, |s, cx| {
@@ -758,17 +885,24 @@ mod tests {
 			});
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("async-send-q1").is_none());
+
 		surface.update(visual, |s, cx| {
 			let history = s.history.as_ref().expect("history").1.clone();
+
 			s.prepare_async_question_inputs("root", &history, cx);
 		});
+
 		let bounds = visual.debug_bounds("async-question-toggle").expect("reopen control");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("async-send-q1").is_some());
+
 		surface.read_with(visual, |s, cx| {
 			assert_eq!(s.composer.read(cx).content(), "Main draft");
 			assert_eq!(
@@ -782,15 +916,19 @@ mod tests {
 	#[gpui::test]
 	fn rejected_skip_preserves_question_and_main_drafts(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			install_question_fixture(s, cx);
+
 			s.composer.update(cx, |input, cx| input.set_content("Keep main draft", cx));
 		});
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.0), px(1200.0)));
+			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
 			window.draw(cx).clear();
 		});
+
 		let bounds = visual.debug_bounds("async-skip-q1").expect("explicit skip control");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.read_with(visual, |s, cx| {
 			assert_eq!(s.feedback, "No service profile is configured.");
@@ -806,26 +944,37 @@ mod tests {
 	#[gpui::test]
 	fn custom_answer_survives_choice_switches_with_its_editor(cx: &mut gpui::TestAppContext) {
 		cx.update(crate::composer_input::bind_keys);
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, install_question_fixture);
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.0), px(1200.0)));
+			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
 			window.draw(cx).clear();
 		});
+
 		let key = ("root".into(), "q1".into());
 		let bounds = visual.debug_bounds("async-option-q1-2").expect("custom answer option");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+
 		let custom = surface.update(visual, |s, cx| {
 			let input = s.async_question_inputs[&key].clone();
+
 			assert_eq!(input.read(cx).content(), "");
 
 			input
 		});
+
 		visual.simulate_keystrokes("m y space c u s t o m space a n s w e r");
+
 		let bounds = visual.debug_bounds("async-option-q1-1").expect("suggested answer");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
+
 		let selected_input =
 			surface.read_with(visual, |s, _| s.async_question_inputs[&key].clone());
+
 		visual.simulate_keystrokes("space");
 		surface.read_with(visual, |s, cx| {
 			assert_ne!(
@@ -837,7 +986,9 @@ mod tests {
 			assert!(!s.sending);
 			assert!(s.feedback.is_empty());
 		});
+
 		let bounds = visual.debug_bounds("async-option-q1-2").expect("restore custom answer");
+
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.read_with(visual, |s, cx| {
 			assert_eq!(
@@ -851,17 +1002,24 @@ mod tests {
 	#[gpui::test]
 	fn held_enter_cannot_submit_an_async_answer(cx: &mut gpui::TestAppContext) {
 		use gpui::Focusable;
+
 		cx.update(crate::composer_input::bind_keys);
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, install_question_fixture);
+
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1180.0), px(1200.0)));
+			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
+
 			let focus = surface.read_with(cx, |s, cx| {
 				s.async_question_inputs[&("root".into(), "q1".into())].focus_handle(cx)
 			});
+
 			window.focus(&focus, cx);
 			window.draw(cx).clear();
 		});
+
 		visual.simulate_event(gpui::KeyDownEvent {
 			keystroke: gpui::Keystroke::parse("enter").unwrap(),
 			is_held: true,
@@ -882,13 +1040,17 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		let label = format!("{} but do not deploy", "Read the full proposed change. ".repeat(20));
+
 		surface.update(visual, |s, cx| {
 			install_question_fixture(s, cx);
+
 			let (_, history) = s.history.as_mut().unwrap();
 			let AgentHistoryResult::Available { questions, .. } = history else {
 				panic!("fixture history");
 			};
+
 			questions[0].options = vec![label.clone()];
+
 			for index in 2..12 {
 				questions.push(decodex_protocol::AgentAsyncQuestionDto {
 					arrived_live: false,
@@ -897,37 +1059,48 @@ mod tests {
 					options: vec!["One".into(), "Two".into()],
 				});
 			}
+
 			let history = history.clone();
+
 			s.prepare_async_question_inputs("root", &history, cx);
 			s.async_question_inputs[&("root".into(), "q1".into())]
 				.update(cx, |input, cx| input.set_content(&label, cx));
 		});
+
 		for (width, height, bottom, allowed) in [
-			(1180.0, 1200.0, false, true),
-			(1180.0, 1200.0, true, false),
+			(1_180.0, 1_200.0, false, true),
+			(1_180.0, 1_200.0, true, false),
 			(380.0, 160.0, false, false),
-			(380.0, 1200.0, false, true),
-			(1180.0, 1200.0, false, true),
+			(380.0, 1_200.0, false, true),
+			(1_180.0, 1_200.0, false, true),
 		] {
 			visual.simulate_resize(gpui::size(px(width), px(height)));
+
 			visual.update(|window, cx| {
 				assert_eq!(window.viewport_size(), gpui::size(px(width), px(height)));
+
 				window.draw(cx).clear();
+
 				surface.update(cx, |s, cx| {
 					let scroll =
 						s.transcript_scroll.get("root").expect("rendered conversation scroll");
+
 					if bottom {
 						scroll.scroll_to_bottom();
 					} else {
 						scroll.set_offset(gpui::point(px(0.0), px(0.0)));
 					}
+
 					s.feedback.clear();
 					cx.notify();
 				});
+
 				window.draw(cx).clear();
 			});
+
 			surface.update(visual, |s, cx| {
 				s.answer_async_question("root", "q1", cx);
+
 				assert_eq!(
 					s.feedback,
 					if allowed {
@@ -949,22 +1122,32 @@ mod tests {
 	#[gpui::test]
 	fn changed_native_thread_cannot_inherit_question_drafts(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			install_question_fixture(s, cx);
+
 			let key = ("root".into(), "q1".into());
 			let old = s.async_question_inputs[&key].clone();
+
 			old.update(cx, |input, cx| input.set_content("Private old-thread draft", cx));
+
 			let history = s.history.as_ref().unwrap().1.clone();
+
 			s.snapshot.as_mut().unwrap().work_items[0].codex_thread_id = Some("new-thread".into());
+
 			s.prepare_async_question_inputs("root", &history, cx);
+
 			assert_ne!(s.async_question_inputs[&key], old);
 			assert_eq!(s.async_question_inputs[&key].read(cx).content(), "PDF");
+
 			let mut resolved = history.clone();
 			let AgentHistoryResult::Available { questions, .. } = &mut resolved else {
 				panic!("fixture");
 			};
+
 			questions.clear();
 			s.prepare_async_question_inputs("root", &resolved, cx);
+
 			assert!(!s.async_question_inputs.contains_key(&key));
 			assert!(!s.async_question_choices.contains_key(&key));
 		});

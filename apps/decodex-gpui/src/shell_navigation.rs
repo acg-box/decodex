@@ -1,17 +1,10 @@
 //! Local navigation history. Traversal restores a view; it never replays a command.
 use super::*;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct Location {
-	destination: Destination,
-	work: Option<String>,
-}
-
 pub(super) struct NavigationHistory {
 	entries: Vec<Location>,
 	cursor: usize,
 }
-
 impl NavigationHistory {
 	pub(super) fn new() -> Self {
 		Self { entries: vec![Location { destination: Destination::Agent, work: None }], cursor: 0 }
@@ -21,13 +14,22 @@ impl NavigationHistory {
 		if self.entries[self.cursor] == location {
 			return;
 		}
+
 		self.entries.truncate(self.cursor + 1);
 		self.entries.push(location);
+
 		if self.entries.len() > 100 {
 			self.entries.remove(0);
 		}
+
 		self.cursor = self.entries.len() - 1;
 	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Location {
+	destination: Destination,
+	work: Option<String>,
 }
 
 impl Shell {
@@ -44,9 +46,12 @@ impl Shell {
 
 	fn navigation_neighbor(&self, forward: bool, cx: &Context<Self>) -> Option<usize> {
 		let mut index = self.navigation.cursor;
+
 		loop {
 			index = if forward { index.checked_add(1)? } else { index.checked_sub(1)? };
+
 			let location = self.navigation.entries.get(index)?;
+
 			if location.destination != Destination::Agent
 				|| self.agent.read(cx).can_restore_work(location.work.as_deref())
 			{
@@ -57,14 +62,18 @@ impl Shell {
 
 	pub(super) fn navigate_history(&mut self, forward: bool, cx: &mut Context<Self>) {
 		self.record_navigation(cx);
+
 		let Some(index) = self.navigation_neighbor(forward, cx) else {
 			return;
 		};
 		let location = self.navigation.entries[index].clone();
+
 		self.navigation.cursor = index;
+
 		if location.destination == Destination::Agent {
 			self.agent.update(cx, |agent, cx| agent.restore_work(location.work.as_deref(), cx));
 		}
+
 		self.select_destination(location.destination, cx);
 		cx.notify();
 	}
@@ -72,6 +81,7 @@ impl Shell {
 	pub(super) fn navigation_control(&self, forward: bool, cx: &Context<Self>) -> AnyElement {
 		let enabled = self.navigation_neighbor(forward, cx).is_some();
 		let label = if forward { "Forward · Command-]" } else { "Back · Command-[" };
+
 		div()
 			.id(if forward { "navigate-forward" } else { "navigate-back" })
 			.role(Role::Button)
@@ -100,6 +110,7 @@ impl Shell {
 				if enabled {
 					s.navigate_history(forward, cx);
 				}
+
 				cx.stop_propagation();
 			}))
 			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
@@ -126,12 +137,17 @@ mod tests {
 	fn new_navigation_replaces_the_forward_branch_and_deduplicates_refreshes() {
 		let mut history = NavigationHistory::new();
 		let worker = Location { destination: Destination::Agent, work: Some("worker".into()) };
+
 		history.record(worker.clone());
 		history.record(worker);
 		history.record(Location { destination: Destination::Settings, work: None });
+
 		assert_eq!(history.entries.len(), 3);
+
 		history.cursor = 1;
+
 		history.record(Location { destination: Destination::Health, work: None });
+
 		assert_eq!(history.entries.len(), 3);
 		assert_eq!(history.entries[2].destination, Destination::Health);
 		assert_eq!(history.cursor, 2);

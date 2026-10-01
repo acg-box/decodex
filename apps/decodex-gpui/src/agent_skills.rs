@@ -1,13 +1,8 @@
 //! Select native skill references for the existing composer and draft owner.
 use super::*;
+
 use decodex_protocol::{AgentSkillDto, AgentSkillsResult, AgentSkillsTarget};
 
-#[derive(Clone, PartialEq)]
-struct Source {
-	target: AgentSkillsTarget,
-	thread: Option<String>,
-	runtime: Option<EntityId>,
-}
 #[derive(Default)]
 pub(super) struct Picker {
 	search: Option<Entity<ComposerInput>>,
@@ -16,11 +11,20 @@ pub(super) struct Picker {
 	task: Option<Task<()>>,
 	epoch: u64,
 }
+
+#[derive(Clone, PartialEq)]
+struct Source {
+	target: AgentSkillsTarget,
+	thread: Option<String>,
+	runtime: Option<EntityId>,
+}
+
 impl AgentSurface {
 	fn skill_source(&self, cx: &Context<Self>) -> Option<Source> {
 		if !self.draft_owner_available() {
 			return None;
 		}
+
 		let owner = self.snapshot.as_ref().and_then(|snapshot| {
 			snapshot
 				.work_items
@@ -40,7 +44,9 @@ impl AgentSurface {
 			if self.state != LoadState::Ready {
 				return None;
 			}
+
 			let account = self.account.read(cx).content().trim();
+
 			(
 				AgentSkillsTarget::New {
 					request: decodex_protocol::InitialModelCatalogRequest {
@@ -59,6 +65,7 @@ impl AgentSurface {
 				None,
 			)
 		};
+
 		Some(Source {
 			target,
 			thread,
@@ -72,12 +79,14 @@ impl AgentSurface {
 
 	pub(super) fn open_skill_picker(&mut self, cx: &mut Context<Self>) {
 		self.reset_skill_picker();
+
 		self.escape_stop = None;
 		self.skills.search = Some(cx.new(|cx| {
 			ComposerInput::with_placeholder(0, "Search skills", "Search native skills", cx)
 		}));
 		self.composer_menu = Some("skills");
 		self.composer_menu_content = Some("skills");
+
 		self.load_skills(cx);
 	}
 
@@ -85,48 +94,63 @@ impl AgentSurface {
 		if self.skills.task.is_some() {
 			return;
 		}
+
 		let (Some(profile), Some(source)) = (self.profile.clone(), self.skill_source(cx)) else {
 			self.skills.state = Some(AgentSkillsResult::Unavailable);
+
 			cx.notify();
+
 			return;
 		};
 		let filter =
 			self.skills.search.as_ref().map(|input| input.read(cx).content()).unwrap_or("");
 		let Ok(filter) = WireText::new(filter) else {
 			self.feedback = "Skill search is too long.".into();
+
 			cx.notify();
+
 			return;
 		};
+
 		self.skills.epoch = self.skills.epoch.wrapping_add(1);
+
 		let epoch = self.skills.epoch;
 		let generation = self.generation;
+
 		self.skills.source = Some(source.clone());
 		self.skills.state = None;
+
 		let target = source.target.clone();
 		let pending = cx.background_executor().spawn(async move {
 			let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build()
 			else {
 				return AgentSkillsResult::Unavailable;
 			};
+
 			runtime
 				.block_on(AgentClient::new(profile).skills(target, filter))
 				.unwrap_or(AgentSkillsResult::Unavailable)
 		});
+
 		self.skills.task = Some(cx.spawn(async move |surface, cx| {
 			let state = pending.await;
 			let _ = surface.update(cx, |s, cx| {
 				if s.skills.epoch != epoch {
 					return;
 				}
+
 				s.skills.task = None;
+
 				if s.generation != generation || s.skill_source(cx).as_ref() != Some(&source) {
 					s.skills.state = Some(AgentSkillsResult::Unavailable);
 				} else {
 					s.skills.state = Some(state);
 				}
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -146,11 +170,14 @@ impl AgentSurface {
 				image: false,
 				skill_name: Some(skill.name.clone()),
 			};
+
 			if !self.attachments.contains(&attachment) {
 				self.attachments.push(attachment);
 			}
+
 			self.composer_menu = None;
 		}
+
 		cx.notify();
 	}
 
@@ -161,18 +188,22 @@ impl AgentSurface {
 				cx.stop_propagation();
 			},
 		));
+
 		if let Some(search) = &self.skills.search {
 			panel = panel.child(div().h(px(36.)).child(search.clone()));
 		}
+
 		panel = panel.child(self.workspace_action(
 			"skill-search".into(),
 			"Find skills".into(),
 			|s, cx| s.load_skills(cx),
 			cx,
 		));
+
 		if self.skills.task.is_some() {
 			return panel.child(muted("Reading available skills…")).into_any_element();
 		}
+
 		let Some(source) = self
 			.skills
 			.source
@@ -190,9 +221,11 @@ impl AgentSurface {
 		};
 		let mut list =
 			div().id("skill-results").max_h(px(280.)).overflow_y_scroll().flex().flex_col().gap_1();
+
 		for (index, skill) in page.skills.iter().enumerate() {
 			let source = source.clone();
 			let selected = skill.clone();
+
 			list = list.child(
 				div()
 					.flex()
@@ -219,10 +252,13 @@ impl AgentSurface {
 					),
 			);
 		}
+
 		if page.skills.is_empty() {
 			list = list.child(muted("No matching enabled skills."));
 		}
+
 		panel = panel.child(list);
+
 		if page.truncated {
 			panel = panel.child(muted("More skills match. Refine your search."));
 		}
@@ -230,6 +266,7 @@ impl AgentSurface {
 			panel = panel
 				.child(muted(format!("Codex reported {} skill discovery errors.", page.errors)));
 		}
+
 		panel.into_any_element()
 	}
 }
@@ -242,6 +279,7 @@ mod tests {
 	impl Render for SkillPanel {
 		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 			let panel = self.0.update(cx, |s, cx| s.skill_options(cx));
+
 			div().child(panel).on_action(|_: &SubmitComposer, _, _| {
 				panic!("skill search must not submit the main composer")
 			})
@@ -252,14 +290,19 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		cx.update(crate::composer_input::bind_keys);
+
 		let (view, visual) = cx.add_window_view(|_, cx| {
 			let surface = cx.new(AgentSurface::new);
+
 			surface.update(cx, |s, cx| {
 				s.visual_workspace_fixture(cx);
+
 				s.skills.search = Some(cx.new(|cx| {
 					ComposerInput::with_placeholder(0, "Search skills", "Search native skills", cx)
 				}));
+
 				let source = s.skill_source(cx).unwrap();
+
 				s.skills.source = Some(source.clone());
 				s.skills.state = Some(AgentSkillsResult::Available {
 					target: source.target,
@@ -275,32 +318,46 @@ mod tests {
 					},
 				});
 			});
+
 			SkillPanel(surface)
 		});
 		let surface = view.read_with(visual, |v, _| v.0.clone());
+
 		visual.update(|w, cx| {
 			w.resize(gpui::size(px(380.), px(500.)));
 			w.draw(cx).clear();
 		});
+
 		let button = visual.debug_bounds("skill-choice-0").unwrap();
+
 		visual.simulate_click(button.center(), Default::default());
+
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.attachments.len(), 1);
+
 			let selected = s.attachments[0].clone();
+
 			assert_eq!(selected.skill_name.unwrap().as_str(), "fixture-skill");
 			assert_eq!(selected.path.as_str(), "/tmp/skills (exact)/SKILL.md");
+
 			let source = s.skills.source.clone().unwrap();
 			let Some(AgentSkillsResult::Available { page, .. }) = &s.skills.state else {
 				panic!("catalog")
 			};
 			let skill = page.skills[0].clone();
+
 			s.attachments.clear();
+
 			s.snapshot.as_mut().unwrap().runtime_source =
 				Some(EntityId::new("replacement-runtime").unwrap());
+
 			s.select_skill(&source, &skill, cx);
+
 			assert!(s.attachments.is_empty());
 		});
+
 		let search = surface.read_with(visual, |s, _| s.skills.search.clone().unwrap());
+
 		visual.update(|w, cx| {
 			w.focus(&search.focus_handle(cx), cx);
 			w.draw(cx).clear();

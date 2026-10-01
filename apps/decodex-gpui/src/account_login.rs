@@ -9,7 +9,6 @@ use decodex_protocol::{
 pub(crate) struct AccountLoginController {
 	client: AccountLoginClient,
 }
-
 impl AccountLoginController {
 	/// Bind login exchanges to one already verified local client profile.
 	pub(crate) const fn new(profile: ClientProfile) -> Self {

@@ -1,5 +1,6 @@
 //! Compact, expandable native execution receipts in the continuous conversation.
 use super::*;
+
 use decodex_protocol::{AgentActivityDto, AgentHistoryEntryDto};
 
 impl AgentSurface {
@@ -8,9 +9,11 @@ impl AgentSurface {
 		else {
 			return false;
 		};
+
 		if id != &work.id || work.dispatch_state != AgentDispatchStateDto::Running {
 			return false;
 		}
+
 		entries.iter().filter_map(|entry| entry.activity.as_ref()).any(|item| {
 			item.kind == "contextCompaction"
 				&& item.status == "running"
@@ -27,6 +30,7 @@ impl AgentSurface {
 		if !self.expanded_progress.remove(key) {
 			self.expanded_progress.insert(key.into());
 		}
+
 		cx.notify();
 	}
 
@@ -38,12 +42,14 @@ impl AgentSurface {
 	) -> Vec<gpui::AnyElement> {
 		let mut result = Vec::new();
 		let mut pending: Vec<&AgentActivityDto> = Vec::new();
+
 		for entry in &entries {
 			if super::startup_feature_warning(entry)
 				|| checklist_superseded(entry, entries.iter().copied())
 			{
 				continue;
 			}
+
 			if let Some(activity) = &entry.activity {
 				let superseded = activity.status == "running"
 					&& entries.iter().any(|other| {
@@ -53,11 +59,13 @@ impl AgentSurface {
 								&& other.status != "running"
 						})
 					});
+
 				if !superseded {
 					if pending.last().is_some_and(|previous| previous.turn_id != activity.turn_id) {
 						result.push(self.progress_group(&pending, work, cx));
 						pending.clear();
 					}
+
 					pending.push(activity);
 				}
 			} else if entry.kind != "system" {
@@ -85,9 +93,11 @@ impl AgentSurface {
 				}
 			}
 		}
+
 		if !pending.is_empty() {
 			result.push(self.progress_group(&pending, work, cx));
 		}
+
 		result
 	}
 
@@ -123,6 +133,7 @@ impl AgentSurface {
 			.mt(px(6.))
 			.border_l_1()
 			.border_color(rgba(0xffffff18));
+
 		for item in items {
 			let status = if item.status == "running"
 				&& (!active || work.active_turn_id.as_deref() != Some(item.turn_id.as_str()))
@@ -139,7 +150,8 @@ impl AgentSurface {
 			};
 			let duration = item
 				.duration_ms
-				.map_or_else(String::new, |ms| format!(" · {:.1}s", ms as f64 / 1000.));
+				.map_or_else(String::new, |ms| format!(" · {:.1}s", ms as f64 / 1_000.));
+
 			rows = rows.child(
 				self.detail_row(
 					work,
@@ -157,6 +169,7 @@ impl AgentSurface {
 				),
 			);
 		}
+
 		div()
 			.id(SharedString::from(key))
 			.w_full()
@@ -198,9 +211,11 @@ impl AgentSurface {
 	pub(super) fn visual_progress_fixture(&mut self, expanded: bool, cx: &mut Context<Self>) {
 		self.graph_visible = false;
 		self.timeline_visible = false;
+
 		let Some((id, AgentHistoryResult::Available { entries, .. })) = &mut self.history else {
 			return;
 		};
+
 		entries.clear();
 		entries.push(AgentHistoryEntryDto {
 			native_source: None,
@@ -215,6 +230,7 @@ impl AgentSurface {
 			text: "Review the changes and check the tests.".into(),
 			created_at_micros: 1,
 		});
+
 		for (index, (kind, label, detail, status)) in [
 			("commandExecution", "Reading files", "", "completed"),
 			("mcpToolCall", "Using tool", "docs · search", "completed"),
@@ -239,7 +255,7 @@ impl AgentSurface {
 					plugin_id: None,
 					read_only_hint: None,
 					native_timestamp_ms: None,
-					duration_ms: (status == "completed").then_some(1200),
+					duration_ms: (status == "completed").then_some(1_200),
 				}),
 				usage: None,
 				duration_ms: None,
@@ -249,9 +265,11 @@ impl AgentSurface {
 				created_at_micros: 2,
 			});
 		}
+
 		if expanded {
 			self.expanded_progress.insert(progress_key(id, "capture-turn", "capture-0"));
 		}
+
 		if let Some(work) = self
 			.snapshot
 			.as_mut()
@@ -260,8 +278,31 @@ impl AgentSurface {
 			work.active_turn_id = Some("capture-turn".into());
 			work.dispatch_state = AgentDispatchStateDto::Running;
 		}
+
 		cx.notify();
 	}
+}
+
+/// Collapse older cached pages as well as the latest service page.
+pub(super) fn checklist_superseded<'a>(
+	entry: &AgentHistoryEntryDto,
+	entries: impl IntoIterator<Item = &'a AgentHistoryEntryDto>,
+) -> bool {
+	if entry.kind != "checklist" {
+		return false;
+	}
+
+	let Some(turn) = entry.receipt.as_ref().and_then(|receipt| receipt.delivered_turn_id.as_ref())
+	else {
+		return false;
+	};
+
+	entries.into_iter().any(|other| {
+		other.kind == "checklist"
+			&& other.id > entry.id
+			&& other.receipt.as_ref().and_then(|receipt| receipt.delivered_turn_id.as_ref())
+				== Some(turn)
+	})
 }
 
 fn activity_title(item: &AgentActivityDto) -> String {
@@ -276,43 +317,29 @@ fn progress_key(work: &str, turn: &str, item: &str) -> String {
 	serde_json::json!([work, turn, item]).to_string()
 }
 
-/// Collapse older cached pages as well as the latest service page.
-pub(super) fn checklist_superseded<'a>(
-	entry: &AgentHistoryEntryDto,
-	entries: impl IntoIterator<Item = &'a AgentHistoryEntryDto>,
-) -> bool {
-	if entry.kind != "checklist" {
-		return false;
-	}
-	let Some(turn) = entry.receipt.as_ref().and_then(|receipt| receipt.delivered_turn_id.as_ref())
-	else {
-		return false;
-	};
-	entries.into_iter().any(|other| {
-		other.kind == "checklist"
-			&& other.id > entry.id
-			&& other.receipt.as_ref().and_then(|receipt| receipt.delivered_turn_id.as_ref())
-				== Some(turn)
-	})
-}
-
 #[cfg(test)]
 mod tests {
 
 	#[gpui::test]
 	fn compaction_status_remains_visible_while_sending(cx: &mut gpui::TestAppContext) {
 		use super::{AgentHistoryResult, AgentSurface};
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.visual_progress_fixture(false, cx);
+
 			s.sending = true;
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
-			window.resize(gpui::size(gpui::px(1180.0), gpui::px(1200.0)));
+			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
 			window.draw(cx).clear();
 		});
+
 		surface.read_with(visual, |s, _| {
 			let work = s
 				.snapshot
@@ -322,29 +349,39 @@ mod tests {
 				.iter()
 				.find(|w| Some(&w.id) == s.selected.as_ref())
 				.unwrap();
+
 			assert!(s.has_active_compaction(work), "selected compaction survives render");
 			assert!(s.native_agents.selected.is_none());
 		});
+
 		assert!(visual.debug_bounds("conversation-activity-status").is_some());
+
 		surface.update(visual, |s, cx| {
 			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
 				panic!("fixture history")
 			};
+
 			entries.last_mut().unwrap().activity.as_mut().unwrap().status = "completed".into();
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		assert!(visual.debug_bounds("conversation-activity-status").is_none());
 	}
 	#[gpui::test]
 	fn live_compaction_yields_only_to_its_completion_or_turn_end(cx: &mut gpui::TestAppContext) {
 		use super::{AgentDispatchStateDto, AgentHistoryResult, AgentSurface};
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.visual_progress_fixture(false, cx);
+
 			let mut work = s
 				.snapshot
 				.as_ref()
@@ -354,48 +391,76 @@ mod tests {
 				.find(|work| Some(&work.id) == s.selected.as_ref())
 				.unwrap()
 				.clone();
+
 			assert!(s.has_active_compaction(&work));
+
 			work.dispatch_state = AgentDispatchStateDto::Idle;
+
 			assert!(!s.has_active_compaction(&work));
+
 			work.dispatch_state = AgentDispatchStateDto::Running;
 			work.active_turn_id = Some("new-turn".into());
+
 			assert!(!s.has_active_compaction(&work));
+
 			work.active_turn_id = Some("capture-turn".into());
+
 			let original_work = work.id.clone();
+
 			work.id = "different-work".into();
+
 			assert!(!s.has_active_compaction(&work));
+
 			work.id = original_work;
+
 			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
 				panic!("fixture history")
 			};
 			let mut tool = entries.last().unwrap().clone();
+
 			tool.id += 1;
+
 			let item = tool.activity.as_mut().unwrap();
+
 			item.item_id = "background-tool".into();
 			item.kind = "commandExecution".into();
 			item.label = "Running command".into();
+
 			entries.push(tool);
+
 			assert!(s.has_active_compaction(&work));
+
 			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
 				panic!("fixture history")
 			};
 			let mut finished = entries[4].clone();
+
 			finished.id = 9;
 			finished.activity.as_mut().unwrap().status = "completed".into();
 			finished.activity.as_mut().unwrap().turn_id = "previous-turn".into();
+
 			entries.push(finished.clone());
+
 			assert!(s.has_active_compaction(&work));
+
 			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
 				panic!("fixture history")
 			};
+
 			finished.id = 10;
 			finished.activity.as_mut().unwrap().turn_id = "capture-turn".into();
+
 			entries.push(finished);
+
 			assert!(!s.has_active_compaction(&work));
+
 			work.dispatch_state = AgentDispatchStateDto::Idle;
+
 			assert!(!s.has_active_compaction(&work));
+
 			work.dispatch_state = AgentDispatchStateDto::Running;
 			work.active_turn_id = Some("new-turn".into());
+
 			assert!(!s.has_active_compaction(&work));
 		});
 	}

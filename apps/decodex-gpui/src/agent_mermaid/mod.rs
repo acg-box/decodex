@@ -15,13 +15,14 @@ mod sequence;
 mod state;
 
 pub use output::{Role, Span};
+
 use std::fmt;
 
-const MAX_SOURCE: usize = 16 * 1024;
+const MAX_SOURCE: usize = 16 * 1_024;
 const MAX_NODES: usize = 16;
 const MAX_EDGES: usize = 24;
 const MAX_LABEL: usize = 40;
-const MAX_CELLS: usize = 64 * 1024;
+const MAX_CELLS: usize = 64 * 1_024;
 
 /// A diagram cannot be faithfully represented by this bounded prototype.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +34,7 @@ pub enum RenderError {
 	/// The complete diagram exceeds the supplied display width.
 	TooWide,
 }
+impl std::error::Error for RenderError {}
 
 impl fmt::Display for RenderError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -44,46 +46,6 @@ impl fmt::Display for RenderError {
 	}
 }
 
-impl std::error::Error for RenderError {}
-
-/// Render a bounded subset of Mermaid as plain Unicode text.
-///
-/// Supports flowcharts, sequence diagrams, flat state diagrams, class diagrams, and ER diagrams.
-/// See the crate README for each grammar and its limits. Unknown syntax, unsafe terminal text,
-/// and diagrams exceeding `max_width` return errors; no partial result is returned.
-#[cfg(test)]
-pub fn render(source: &str, max_width: usize) -> Result<String, RenderError> {
-	Ok(render_spans(source, max_width)?
-		.into_iter()
-		.map(|line| line.into_iter().map(|span| span.text).collect::<String>())
-		.collect::<Vec<_>>()
-		.join("\n"))
-}
-
-/// Render the same bounded diagram as lines of semantic spans for caller-provided styling.
-pub fn render_spans(source: &str, max_width: usize) -> Result<Vec<Vec<Span>>, RenderError> {
-	if source.len() > MAX_SOURCE {
-		return Err(RenderError::Limit);
-	}
-	let statements = source
-		.lines()
-		.filter(|line| !line.trim_start().starts_with("%%"))
-		.flat_map(|line| line.split(';'))
-		.map(str::trim)
-		.filter(|line| !line.is_empty())
-		.collect::<Vec<_>>();
-	if source.lines().any(|line| line.trim_start().starts_with("%%{")) {
-		return Err(RenderError::Unsupported);
-	}
-	let (header, body) = statements.split_first().ok_or(RenderError::Unsupported)?;
-	match *header {
-		"sequenceDiagram" => sequence::render(body, max_width),
-		"stateDiagram-v2" | "stateDiagram" | "classDiagram" | "erDiagram" =>
-			draw::render(&relations::parse(header, body)?, max_width),
-		_ => draw::render(&parse::parse(header, body)?, max_width),
-	}
-}
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 enum Direction {
 	#[default]
@@ -92,7 +54,6 @@ enum Direction {
 	Right,
 	Left,
 }
-
 impl Direction {
 	fn parse(text: &str) -> Result<Self, RenderError> {
 		match text {
@@ -131,7 +92,6 @@ struct Edge {
 	target_tip: char,
 	dashed: bool,
 }
-
 impl Edge {
 	fn directed(from: usize, to: usize, label: String) -> Self {
 		Self {
@@ -152,15 +112,16 @@ struct Graph {
 	nodes: Vec<Node>,
 	edges: Vec<Edge>,
 }
-
 impl Graph {
 	fn node(&mut self, id: &str) -> Result<usize, RenderError> {
 		if let Some(index) = self.nodes.iter().position(|node| node.id == id) {
 			return Ok(index);
 		}
+
 		if self.nodes.len() == MAX_NODES {
 			return Err(RenderError::Limit);
 		}
+
 		self.nodes.push(Node {
 			id: id.to_owned(),
 			label: id.to_owned(),
@@ -168,17 +129,59 @@ impl Graph {
 			declared: false,
 			members: Vec::new(),
 		});
+
 		Ok(self.nodes.len() - 1)
 	}
 }
 
+/// Render a bounded subset of Mermaid as plain Unicode text.
+///
+/// Supports flowcharts, sequence diagrams, flat state diagrams, class diagrams, and ER diagrams.
+/// See the crate README for each grammar and its limits. Unknown syntax, unsafe terminal text,
+/// and diagrams exceeding `max_width` return errors; no partial result is returned.
 #[cfg(test)]
-#[path = "tests.rs"]
-mod tests;
+pub fn render(source: &str, max_width: usize) -> Result<String, RenderError> {
+	Ok(render_spans(source, max_width)?
+		.into_iter()
+		.map(|line| line.into_iter().map(|span| span.text).collect::<String>())
+		.collect::<Vec<_>>()
+		.join("\n"))
+}
+
+/// Render the same bounded diagram as lines of semantic spans for caller-provided styling.
+pub fn render_spans(source: &str, max_width: usize) -> Result<Vec<Vec<Span>>, RenderError> {
+	if source.len() > MAX_SOURCE {
+		return Err(RenderError::Limit);
+	}
+
+	let statements = source
+		.lines()
+		.filter(|line| !line.trim_start().starts_with("%%"))
+		.flat_map(|line| line.split(';'))
+		.map(str::trim)
+		.filter(|line| !line.is_empty())
+		.collect::<Vec<_>>();
+
+	if source.lines().any(|line| line.trim_start().starts_with("%%{")) {
+		return Err(RenderError::Unsupported);
+	}
+
+	let (header, body) = statements.split_first().ok_or(RenderError::Unsupported)?;
+
+	match *header {
+		"sequenceDiagram" => sequence::render(body, max_width),
+		"stateDiagram-v2" | "stateDiagram" | "classDiagram" | "erDiagram" =>
+			draw::render(&relations::parse(header, body)?, max_width),
+		_ => draw::render(&parse::parse(header, body)?, max_width),
+	}
+}
 
 #[cfg(test)]
 #[path = "families_tests.rs"]
 mod families_tests;
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;
 
 #[cfg(test)]
 fn assert_snapshot(name: &str, actual: &str) {
@@ -193,5 +196,6 @@ fn assert_snapshot(name: &str, actual: &str) {
 		_ => panic!("unknown upstream snapshot"),
 	};
 	let (_, expected) = snapshot.split_once("\n---\n").expect("snapshot metadata");
+
 	assert_eq!(actual, expected.trim_end_matches('\n'), "{name}");
 }

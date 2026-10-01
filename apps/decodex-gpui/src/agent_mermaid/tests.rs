@@ -6,6 +6,7 @@ use unicode_width::UnicodeWidthStr;
 #[test]
 fn branches_merges_and_retry_loop() {
 	let source = "flowchart TD\nA[Checkout] --> B{In stock?}\nB -->|yes| C[Reserve]\nB -->|no| D[Waitlist]\nC --> E{Paid?}\nE -->|yes| F[Ship]\nE -->|no| G[Retry payment]\nG --> E\nD --> H[Notify buyer]\nF --> H";
+
 	super::assert_snapshot(
 		"branches_merges_and_retry_loop",
 		&render(source, 100).expect("valid upstream diagram fixture"),
@@ -50,17 +51,19 @@ fn rejects_partial_or_unsupported_input() {
 #[test]
 fn source_graph_and_width_limits() {
 	for source in [
-		" ".repeat(16 * 1024 + 1),
+		" ".repeat(16 * 1_024 + 1),
 		format!("graph TD; A[{}]", "x".repeat(41)),
 		format!("graph TD; {}", (0..17).map(|n| format!("N{n};")).collect::<String>()),
 		format!("graph TD; {}", "A-->B;".repeat(25)),
 	] {
 		assert_eq!(render(&source, /* max_width */ 200), Err(RenderError::Limit));
 	}
+
 	let output =
 		render("graph TD; A --> B", /* max_width */ 100).expect("valid upstream diagram fixture");
 	let width =
 		output.lines().map(UnicodeWidthStr::width).max().expect("valid upstream diagram fixture");
+
 	assert_eq!(render("graph TD; A --> B", width), Ok(output));
 	assert_eq!(render("graph TD; A --> B", width - 1), Err(RenderError::TooWide));
 	assert_eq!(render("graph TD; A", /* max_width */ 0), Err(RenderError::TooWide));
@@ -71,25 +74,30 @@ fn reconstruct_every_edge_from_rendered_paths() {
 	// All 512 directed graphs on three nodes, including self-loops, cycles, fan-in and fan-out.
 	// Reconstruct connections from the emitted glyphs without consulting the renderer's layout.
 	for (mask, direction) in
-		(0u16..512).flat_map(|mask| ["TD", "BT", "LR", "RL"].map(|direction| (mask, direction)))
+		(0_u16..512).flat_map(|mask| ["TD", "BT", "LR", "RL"].map(|direction| (mask, direction)))
 	{
 		let mut source = format!("graph {direction}; A; B; C;");
 		let mut expected = Vec::new();
+
 		for from in 0..3 {
 			for to in 0..3 {
 				if mask & (1 << (from * 3 + to)) != 0 {
 					let a = char::from(b'A' + from);
 					let b = char::from(b'A' + to);
+
 					source.push_str(&format!("{a}-->{b};"));
 					expected.push((a, b));
 				}
 			}
 		}
+
 		let output = render(&source, /* max_width */ 100).expect("valid upstream diagram fixture");
 		let mut rows =
 			output.lines().map(|line| line.chars().collect::<Vec<_>>()).collect::<Vec<_>>();
+
 		if matches!(direction, "LR" | "RL") {
 			let width = rows.iter().map(Vec::len).max().expect("valid upstream diagram fixture");
+
 			rows = (0..width)
 				.map(|x| {
 					rows.iter()
@@ -106,12 +114,15 @@ fn reconstruct_every_edge_from_rendered_paths() {
 				})
 				.collect();
 		}
+
 		let mut order = Vec::new();
 		let mut owners = vec![' '; rows.len()];
+
 		for (top, row) in rows.iter().enumerate() {
 			if row.first() != Some(&'┌') {
 				continue;
 			}
+
 			let bottom = (top + 1..rows.len())
 				.find(|y| rows[*y].first() == Some(&'└'))
 				.expect("valid upstream diagram fixture");
@@ -120,9 +131,11 @@ fn reconstruct_every_edge_from_rendered_paths() {
 				.flatten()
 				.find(|ch| matches!(ch, 'A' | 'B' | 'C'))
 				.expect("valid upstream diagram fixture");
+
 			owners[top..=bottom].fill(*owner);
 			order.push(*owner);
 		}
+
 		assert_eq!(
 			order,
 			if matches!(direction, "BT" | "RL") {
@@ -131,27 +144,37 @@ fn reconstruct_every_edge_from_rendered_paths() {
 				vec!['A', 'B', 'C']
 			}
 		);
+
 		let mut actual = Vec::new();
+
 		for (y, row) in rows.iter().enumerate() {
 			if let Some(port) = row.windows(2).position(|pair| pair == ['├', '─']) {
 				let lane = (port + 1..row.len())
 					.find(|x| matches!(row[*x], '┐' | '┘'))
 					.expect("valid upstream diagram fixture");
 				let mut target = y;
+
 				loop {
 					target = if row[lane] == '┐' { target + 1 } else { target - 1 };
+
 					let ch = rows[target][lane];
+
 					if matches!(ch, '┘' | '┐') {
 						break;
 					}
+
 					assert!(matches!(ch, '│' | '╪'), "broken vertical path: {source}");
 				}
+
 				assert_eq!(&rows[target][port..port + 2], &['├', '◄']);
 				assert!(rows[target][port + 2..lane].iter().all(|ch| matches!(ch, '─' | '╪')));
+
 				actual.push((owners[y], owners[target]));
 			}
 		}
+
 		actual.sort_unstable();
+
 		assert_eq!(actual, expected, "{source}");
 	}
 }
@@ -167,6 +190,7 @@ fn semantic_spans_distinguish_labels_from_matching_endpoint_glyphs() {
 		.flatten()
 		.flat_map(|span| span.text.chars().filter(|ch| *ch == 'x').map(|_| span.role))
 		.collect::<Vec<_>>();
+
 	assert_eq!(roles, vec![Role::Text, Role::Edge]);
 	assert_eq!(
 		lines[0]
@@ -176,6 +200,7 @@ fn semantic_spans_distinguish_labels_from_matching_endpoint_glyphs() {
 			.role,
 		Role::Node
 	);
+
 	for direction in ["TD", "BT", "LR", "RL"] {
 		let lines = super::render_spans(
 			&format!("flowchart {direction}; A --> B"),
@@ -189,6 +214,7 @@ fn semantic_spans_distinguish_labels_from_matching_endpoint_glyphs() {
 				span.text.chars().filter(|ch| matches!(ch, '├' | '┬')).map(|_| span.role)
 			})
 			.collect::<Vec<_>>();
+
 		assert_eq!(ports, vec![Role::Node, Role::Node]);
 	}
 }
@@ -200,9 +226,12 @@ fn stadium_shapes_references_and_widths() {
 			"flowchart {direction}; A; A([开始]); A([开始]) --> B[Work] --> C{{Done?}}; C --> A"
 		);
 		let output = render(&source, 100).expect("mixed stadium flowchart");
+
 		assert!(output.contains('╭') && output.contains('╯'));
 		assert!(output.contains('┌') && output.contains('◇'));
+
 		let width = output.lines().map(UnicodeWidthStr::width).max().expect("rendered lines");
+
 		assert_eq!(render(&source, width), Ok(output));
 		assert_eq!(render(&source, width - 1), Err(RenderError::TooWide));
 	}
@@ -222,5 +251,6 @@ fn stadium_shapes_references_and_widths() {
 			"{source}"
 		);
 	}
+
 	assert_eq!(render(&format!("graph TD; A([{}])", "x".repeat(41)), 100), Err(RenderError::Limit));
 }

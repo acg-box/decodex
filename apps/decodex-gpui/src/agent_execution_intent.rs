@@ -26,8 +26,11 @@ impl Intents {
 
 	fn change(&mut self, owner: String, update: impl FnOnce(&mut AgentExecutionOverrides)) {
 		self.revision = self.revision.wrapping_add(1);
+
 		let value = self.choices.entry(owner).or_default();
+
 		value.0 = self.revision;
+
 		update(&mut value.1);
 	}
 
@@ -38,6 +41,7 @@ impl Intents {
 	pub(super) fn capture(&self, action: &AgentActionDto) -> Option<(String, u64)> {
 		let AgentActionDto::SendConfigured { root_id, execution, .. } = action else { return None };
 		let (revision, choice) = self.choices.get(root_id.as_str())?;
+
 		(choice == execution && !choice.is_empty()).then(|| (root_id.as_str().into(), *revision))
 	}
 
@@ -46,6 +50,7 @@ impl Intents {
 			&& self.choices.get(owner).is_some_and(|v| v.0 == *revision)
 		{
 			self.choices.remove(owner);
+
 			self.revision = self.revision.wrapping_add(1);
 		}
 	}
@@ -55,8 +60,10 @@ impl AgentSurface {
 	pub(super) fn mark_model_intent(&mut self, cx: &mut Context<Self>) {
 		if self.root_id().is_none() && self.composer_manager.is_none() {
 			self.creation_intent.model = true;
+
 			self.apply_creation_defaults(cx);
 		}
+
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
 		let Ok(model) = ConversationModel::new(self.model.read(cx).content()) else { return };
 		let effort = self.effort.clone();
@@ -64,9 +71,11 @@ impl AgentSurface {
 			.service_tier
 			.clone()
 			.unwrap_or_else(|| decodex_protocol::ServiceTier::from_fast(self.fast));
+
 		self.draft_profiles.execution.change(owner, |choice| {
 			choice.model = Some(model);
 			choice.reasoning_effort = Some(effort);
+
 			if choice.service_tier.is_some() || choice.fast.is_some() {
 				choice.service_tier = Some(tier);
 				choice.fast = None;
@@ -78,10 +87,13 @@ impl AgentSurface {
 		if self.root_id().is_none() {
 			self.creation_inherit_effort = false;
 			self.creation_intent.reasoning = true;
+
 			self.apply_creation_defaults(cx);
 		}
+
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
 		let effort = self.effort.clone();
+
 		self.draft_profiles
 			.execution
 			.change(owner, |choice| choice.reasoning_effort = Some(effort));
@@ -91,11 +103,13 @@ impl AgentSurface {
 		if self.root_id().is_none() && self.composer_manager.is_none() {
 			self.creation_intent.service_tier = true;
 		}
+
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
 		let tier = self
 			.service_tier
 			.clone()
 			.unwrap_or_else(|| decodex_protocol::ServiceTier::from_fast(self.fast));
+
 		self.draft_profiles.execution.change(owner, |choice| {
 			choice.service_tier = Some(tier);
 			choice.fast = None;
@@ -117,6 +131,7 @@ mod tests {
 		let AgentActionDto::SendConfigured { execution, .. } = action else {
 			panic!("expected queued message")
 		};
+
 		execution
 	}
 
@@ -125,31 +140,44 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.steer = false;
+
 			s.model.update(cx, |input, cx| input.set_content("stale-display-model", cx));
+
 			s.effort = ConversationReasoningEffort::Ultra;
 			s.fast = true;
+
 			assert!(choice(action(s, "agent")).is_empty());
+
 			s.mark_effort_intent(cx);
+
 			let selected = choice(action(s, "agent"));
+
 			assert_eq!(selected.reasoning_effort, Some(ConversationReasoningEffort::Ultra));
 			assert!(selected.model.is_none() && selected.selected_service_tier().is_none());
 			assert!(choice(action(s, "other-manager")).is_empty());
 
 			s.select_composer_option("effort", "provider-defined-effort", cx);
+
 			assert_eq!(
 				choice(action(s, "agent")).reasoning_effort.unwrap().as_str(),
 				"provider-defined-effort"
 			);
+
 			let encoded = serde_json::to_value(action(s, "agent")).unwrap();
 			let decoded = serde_json::from_value(encoded).unwrap();
+
 			assert_eq!(
 				choice(decoded).reasoning_effort.unwrap().as_str(),
 				"provider-defined-effort"
 			);
+
 			s.select_composer_option("model", "explicit-model", cx);
+
 			assert_eq!(choice(action(s, "agent")).model.unwrap().as_str(), "explicit-model");
 			assert!(choice(action(s, "agent")).selected_service_tier().is_none());
 		});
@@ -160,25 +188,39 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.steer = false;
 			s.effort = ConversationReasoningEffort::High;
+
 			s.mark_effort_intent(cx);
+
 			let older = s.draft_profiles.execution.capture(&action(s, "agent")).unwrap();
+
 			s.effort = ConversationReasoningEffort::Low;
+
 			s.mark_effort_intent(cx);
 			s.draft_profiles.execution.accepted(Some(&older));
+
 			assert_eq!(
 				choice(action(s, "agent")).reasoning_effort,
 				Some(ConversationReasoningEffort::Low)
 			);
+
 			let current = s.draft_profiles.execution.capture(&action(s, "agent")).unwrap();
+
 			s.draft_profiles.execution.accepted(Some(&current));
+
 			assert!(choice(action(s, "agent")).is_empty());
+
 			s.effort = ConversationReasoningEffort::Medium;
+
 			s.mark_effort_intent(cx);
+
 			s.steer = true;
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -187,9 +229,12 @@ mod tests {
 				.iter_mut()
 				.find(|w| w.id == "agent")
 				.unwrap();
+
 			work.dispatch_state = AgentDispatchStateDto::Running;
 			work.active_turn_id = Some("turn".into());
+
 			let steering = action(s, "agent");
+
 			assert!(matches!(steering, AgentActionDto::Steer { .. }));
 			assert!(s.draft_profiles.execution.capture(&steering).is_none());
 			assert!(!s.draft_profiles.execution.choice("agent").is_empty());

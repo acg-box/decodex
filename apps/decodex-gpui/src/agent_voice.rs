@@ -1,8 +1,19 @@
 //! Live media controls; subscription signaling and task execution stay in the service.
+#[cfg(target_os = "macos")]
+#[path = "native_voice_audio.rs"]
+mod audio;
+#[cfg(target_os = "macos")]
+#[path = "native_voice_transport.rs"]
+mod transport;
+
 use super::*;
+
 use decodex_protocol::{AgentVoicePhase, AgentVoiceRequest, VoiceSdp};
+
 use raw_window_handle as _;
+
 use serde_json::{Value, json};
+
 use std::time::Duration;
 
 pub(super) struct VoiceUi {
@@ -21,6 +32,220 @@ pub(super) struct VoiceUi {
 	levels: std::collections::VecDeque<f32>,
 	follow: bool,
 }
+
+#[cfg(all(target_os = "macos", not(test)))]
+pub(super) struct Media {
+	host: *mut std::ffi::c_void,
+	command_fn: unsafe extern "C" fn(*mut std::ffi::c_void, *const std::ffi::c_char) -> bool,
+	poll_fn: unsafe extern "C" fn(*mut std::ffi::c_void) -> *const std::ffi::c_char,
+	destroy: unsafe extern "C" fn(*mut std::ffi::c_void),
+	audio: Option<audio::Device>,
+	transport: Option<transport::Transport>,
+	muted: bool,
+	level_at: std::time::Instant,
+	_main_thread: std::marker::PhantomData<std::rc::Rc<()>>,
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+pub(super) struct Media;
+#[cfg(all(target_os = "macos", not(test)))]
+impl Media {
+	pub(super) fn new(window: &Window) -> Result<Self, ()> {
+		use crate::native_menu_bar::{bundled_library_path, symbol};
+
+		use std::{ffi::CString, os::unix::ffi::OsStrExt as _};
+
+		let path =
+			bundled_library_path(&std::env::current_exe().map_err(|_| ())?).map_err(|_| ())?;
+
+		if !std::fs::symlink_metadata(&path).map_err(|_| ())?.file_type().is_file() {
+			return Err(());
+		}
+
+		let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| ())?;
+		// SAFETY: fixed signed-app library and exact versioned C ABI; this object cannot cross
+		// threads.
+		unsafe {
+			let image = libc::dlopen(path.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL);
+
+			if image.is_null() {
+				return Err(());
+			}
+
+			let version: unsafe extern "C" fn() -> u32 =
+				symbol(image, c"decodex_voice_media_abi_version").map_err(|_| ())?;
+
+			if version() != 3 {
+				return Err(());
+			}
+
+			let create: unsafe extern "C" fn(*mut std::ffi::c_void) -> *mut std::ffi::c_void =
+				symbol(image, c"decodex_voice_media_create").map_err(|_| ())?;
+			let command_fn = symbol(image, c"decodex_voice_media_command").map_err(|_| ())?;
+			let poll_fn = symbol(image, c"decodex_voice_media_poll").map_err(|_| ())?;
+			let destroy = symbol(image, c"decodex_voice_media_destroy").map_err(|_| ())?;
+			let native =
+				raw_window_handle::HasWindowHandle::window_handle(window).map_err(|_| ())?;
+			let raw_window_handle::RawWindowHandle::AppKit(handle) = native.as_raw() else {
+				return Err(());
+			};
+			let host = create(handle.ns_view.as_ptr());
+
+			if host.is_null() {
+				return Err(());
+			}
+			// Keep the signed platform library loaded for native callbacks.
+			Ok(Self {
+				host,
+				command_fn,
+				poll_fn,
+				destroy,
+				audio: None,
+				transport: None,
+				muted: false,
+				level_at: std::time::Instant::now(),
+				_main_thread: std::marker::PhantomData,
+			})
+		}
+	}
+
+	pub(super) fn command(&mut self, value: Value) -> bool {
+		match value["operation"].as_str() {
+			Some("answer") =>
+				return value["sdp"].as_str().is_some_and(|sdp| {
+					self.transport.as_ref().is_some_and(|transport| {
+						transport.command(transport::Command::Answer(sdp.into()))
+					})
+				}),
+			Some("mute") => {
+				let muted = value["muted"].as_bool().unwrap_or(false);
+				let accepted = self
+					.transport
+					.as_ref()
+					.is_none_or(|transport| transport.command(transport::Command::Mute(muted)));
+
+				if accepted {
+					self.muted = muted;
+				}
+
+				return accepted;
+			},
+			Some("start" | "dictate" | "stop") => {
+				self.audio = None;
+				self.transport = None;
+			},
+			_ => {},
+		}
+
+		let Ok(text) = std::ffi::CString::new(value.to_string()) else { return false };
+		// SAFETY: retained native host; argument is copied by the synchronous call.
+		unsafe { (self.command_fn)(self.host, text.as_ptr()) }
+	}
+
+	pub(super) fn poll(&mut self) -> Option<Value> {
+		// SAFETY: native event data lives until the next poll/destroy; copy it immediately.
+		let platform: Option<Value> = unsafe {
+			let event = (self.poll_fn)(self.host);
+
+			if event.is_null() {
+				None
+			} else {
+				serde_json::from_slice(std::ffi::CStr::from_ptr(event).to_bytes()).ok()
+			}
+		};
+
+		if let Some(event) = platform {
+			if event["type"] != "voice_authorized" {
+				return Some(event);
+			}
+
+			let started = event["device"]
+				.as_u64()
+				.and_then(|id| u32::try_from(id).ok())
+				.and_then(|id| audio::Device::start(id).ok())
+				.and_then(|(device, pcm)| {
+					transport::Transport::start(pcm).ok().map(|transport| (device, transport))
+				});
+
+			match started {
+				Some((device, transport)) => {
+					self.audio = Some(device);
+
+					if self.muted {
+						transport.command(transport::Command::Mute(true));
+					}
+
+					self.transport = Some(transport);
+				},
+				None =>
+					return Some(
+						json!({"type":"error","message":"The selected audio device could not start."}),
+					),
+			}
+		}
+		if let Some(transport) = &self.transport
+			&& let Some(event) = transport.poll()
+		{
+			return Some(event);
+		}
+		if let Some(audio) = &self.audio {
+			if !audio.running() {
+				return Some(
+					json!({"type":"error","message":"The audio device stopped. Select a device and start a new call."}),
+				);
+			}
+			if self.level_at.elapsed() >= Duration::from_millis(50) {
+				self.level_at = std::time::Instant::now();
+
+				return Some(
+					json!({"type":"level","level":if self.muted { 0.0 } else { (audio.level() * 5.0).min(1.0) }}),
+				);
+			}
+		}
+
+		None
+	}
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+impl Media {
+	pub(super) fn new(_: &Window) -> Result<Self, ()> {
+		Err(())
+	}
+
+	pub(super) fn command(&mut self, _: Value) -> bool {
+		false
+	}
+
+	pub(super) fn poll(&mut self) -> Option<Value> {
+		None
+	}
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+impl Drop for Media {
+	fn drop(&mut self) {
+		self.command(json!({"operation":"stop"}));
+		// SAFETY: unique host, destroyed exactly once on the GPUI main thread.
+		unsafe { (self.destroy)(self.host) };
+	}
+}
+
+pub(super) struct CaptionHistory {
+	session: EntityId,
+	work: EntityId,
+	captions: Vec<Caption>,
+	matched_receipts: std::collections::BTreeSet<i64>,
+}
+
+#[derive(Clone, Debug)]
+struct Caption {
+	complete: bool,
+	turn: String,
+	role: &'static str,
+	text: String,
+}
+
 impl AgentSurface {
 	pub(crate) fn stop_voice(&mut self, cx: &mut Context<Self>) {
 		self.cancel_dictation(cx);
@@ -39,10 +264,13 @@ impl AgentSurface {
 		let voice = self.voice.as_ref().filter(|v| {
 			v.work.as_str() == work && v.connected && v.answered && v.request.is_none()
 		})?;
+
 		if text.trim().is_empty() {
 			return None;
 		}
+
 		let (work, text, session) = (work.to_owned(), text.to_owned(), voice.session.clone());
+
 		Some(self.workspace_action(
 			format!("voice-read-{identity}"),
 			if partial { "Read shown text" } else { "Read aloud" }.into(),
@@ -67,9 +295,11 @@ impl AgentSurface {
 		}) else {
 			return;
 		};
+
 		if text.trim().is_empty() {
 			return;
 		}
+
 		match decodex_protocol::HistoryText::new(text) {
 			Ok(text) => {
 				voice.request =
@@ -78,6 +308,7 @@ impl AgentSurface {
 			},
 			Err(_) => self.feedback = "This reply is too long to read aloud in one request.".into(),
 		}
+
 		cx.notify();
 	}
 
@@ -85,10 +316,10 @@ impl AgentSurface {
 		if self.selected_is_archived() || self.composer_unavailable_reason().is_some() {
 			return;
 		}
-
 		if self.voice_task.is_some() || self.dictation_task.is_some() {
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else { return };
 		let Some(work) = self
 			.composer_manager
@@ -97,14 +328,18 @@ impl AgentSurface {
 			.and_then(|id| EntityId::new(id).ok())
 		else {
 			self.feedback = "Start an Agent conversation before opening Live voice.".into();
+
 			cx.notify();
+
 			return;
 		};
 		let options = match self.voice_call_options(work.as_str(), cx) {
 			Ok(options) => options,
 			Err(message) => {
 				self.feedback = message.into();
+
 				cx.notify();
+
 				return;
 			},
 		};
@@ -112,16 +347,23 @@ impl AgentSurface {
 			Ok(media) => media,
 			Err(()) => {
 				self.feedback = "Live voice requires the current signed Decodex.app build.".into();
+
 				cx.notify();
+
 				return;
 			},
 		};
+
 		if !media.command(json!({"operation":"start","input":self.audio_input})) {
 			self.feedback = "The audio host could not start.".into();
+
 			cx.notify();
+
 			return;
 		}
+
 		let session = EntityId::new(unique_command()).expect("bounded voice identity");
+
 		self.voice = Some(VoiceUi {
 			options,
 			media,
@@ -144,6 +386,7 @@ impl AgentSurface {
 				let Some(request) = request else {
 					let profile = profile.clone();
 					let session = session.clone();
+
 					cx.background_executor()
 						.spawn(async move {
 							if let Ok(runtime) =
@@ -157,6 +400,7 @@ impl AgentSurface {
 							}
 						})
 						.await;
+
 					break;
 				};
 				// Wait for the local offer before asking the service to start a call.
@@ -169,6 +413,7 @@ impl AgentSurface {
 								.enable_all()
 								.build()
 								.ok()?;
+
 							runtime.block_on(AgentClient::new(profile).voice(request)).ok()
 						})
 						.await;
@@ -176,23 +421,30 @@ impl AgentSurface {
 						s.apply_voice_response(&session, result, cx);
 					});
 				}
+
 				cx.background_executor().timer(Duration::from_millis(100)).await;
 			}
+
 			let _ = surface.update(cx, |s, cx| {
 				s.voice_task = None;
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 
 	fn poll_voice_media(&mut self, cx: &mut Context<Self>) -> Option<Option<AgentVoiceRequest>> {
 		let voice = self.voice.as_mut()?;
+
 		for _ in 0..128 {
 			let Some(event) = voice.media.poll() else { break };
+
 			match event["type"].as_str() {
 				Some("offer") => {
 					let offer = event["sdp"].as_str().and_then(|s| VoiceSdp::new(s.into()).ok())?;
+
 					voice.signaling = true;
 					voice.connection_status = "Connecting…".into();
 					voice.request = Some(AgentVoiceRequest::Start {
@@ -220,21 +472,28 @@ impl AgentSurface {
 						self.feedback =
 							event["message"].as_str().unwrap_or("Voice disconnected.").into();
 					}
+
 					self.retire_voice_media();
 					cx.notify();
+
 					return None;
 				},
 				_ => {},
 			}
 		}
+
 		let request = voice.request.take().or_else(|| {
 			voice.signaling.then(|| AgentVoiceRequest::Poll { session_id: voice.session.clone() })
 		});
+
 		if let Some((work, history)) = self.history.take() {
 			self.reconcile_voice_captions(&work, &history);
+
 			self.history = Some((work, history));
 		}
+
 		cx.notify();
+
 		Some(request)
 	}
 
@@ -247,13 +506,16 @@ impl AgentSurface {
 		if !self.voice.as_ref().is_some_and(|voice| &voice.session == session) {
 			return;
 		}
+
 		if let Some(status) = status {
 			self.apply_voice_status(status, cx);
 		} else {
 			// Signaling can disconnect while WebRTC still sends microphone audio.
 			// Dropping media stops local capture; the loop then stops this exact session.
 			self.retire_voice_media();
+
 			self.feedback = "Voice stopped because the service connection was lost.".into();
+
 			cx.notify();
 		}
 	}
@@ -266,6 +528,7 @@ impl AgentSurface {
 		let Some(voice) = self.voice.as_mut().filter(|v| v.session == status.session_id) else {
 			return;
 		};
+
 		match status.phase {
 			AgentVoicePhase::Connecting => {
 				voice.request = Some(AgentVoiceRequest::Poll { session_id: voice.session.clone() });
@@ -274,6 +537,7 @@ impl AgentSurface {
 				if let Some(message) = status.message {
 					self.feedback = message.as_str().into();
 				}
+
 				if !voice.answered
 					&& let Some(answer) = status.answer
 				{
@@ -285,9 +549,11 @@ impl AgentSurface {
 				if let Some(message) = status.message {
 					self.feedback = message.as_str().into();
 				}
+
 				self.retire_voice_media();
 			},
 		}
+
 		cx.notify();
 	}
 
@@ -295,11 +561,15 @@ impl AgentSurface {
 		if self.composer_menu == Some("microphone") {
 			self.composer_menu = Some("attachments");
 			self.composer_menu_content = self.composer_menu;
+
 			cx.notify();
+
 			return;
 		}
+
 		if let Ok(mut media) = Media::new(window) {
 			media.command(json!({"operation":"devices"}));
+
 			while let Some(event) = media.poll() {
 				if event["type"] == "devices" {
 					self.audio_inputs = event["inputs"]
@@ -311,14 +581,18 @@ impl AgentSurface {
 				}
 			}
 		}
+
 		self.composer_menu = Some("microphone");
 		self.composer_menu_content = self.composer_menu;
+
 		cx.notify();
 	}
 
 	pub(super) fn audio_palette(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
 		let mut inputs = vec![String::new()];
+
 		inputs.extend(self.audio_inputs.clone());
+
 		div()
 			.id("microphone-device-list")
 			.max_h(px(168.))
@@ -331,6 +605,7 @@ impl AgentSurface {
 				let keyboard_input = input.clone();
 				let label =
 					if input.is_empty() { "System default".to_owned() } else { input.clone() };
+
 				div()
 					.id(("microphone-input", i))
 					.role(Role::Button)
@@ -350,12 +625,14 @@ impl AgentSurface {
 					.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
 						if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 							s.audio_input = keyboard_input.clone();
+
 							cx.stop_propagation();
 							cx.notify();
 						}
 					}))
 					.on_click(cx.listener(move |s, _, _, cx| {
 						s.audio_input = input.clone();
+
 						cx.notify();
 					}))
 					.smooth()
@@ -369,6 +646,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Option<gpui::AnyElement> {
 		let voice = self.voice.as_ref()?;
+
 		Some(
 			div()
 				.w_full()
@@ -384,6 +662,7 @@ impl AgentSurface {
 						window,
 						cx,
 					);
+
 					div()
 						.id(("live-wave", i))
 						.w(px(3.))
@@ -404,6 +683,7 @@ impl AgentSurface {
 		} else {
 			"Live"
 		};
+
 		Some(
 			div()
 				.flex_none()
@@ -426,13 +706,16 @@ impl AgentSurface {
 					|s, cx| {
 						if let Some(voice) = &mut s.voice {
 							let muted = !voice.muted;
+
 							if voice.media.command(json!({"operation":"mute","muted":muted})) {
 								voice.muted = muted;
 							} else {
 								s.retire_voice_media();
+
 								s.feedback = "Voice stopped because the microphone control could not be updated.".into();
 							}
 						}
+
 						cx.notify();
 					},
 					cx,
@@ -455,9 +738,11 @@ impl AgentSurface {
 	fn retire_voice_media(&mut self) {
 		if let Some(mut voice) = self.voice.take() {
 			drain_caption_events(&mut voice.captions, || voice.media.poll());
+
 			for caption in &mut voice.captions {
 				caption.complete = true;
 			}
+
 			self.retired_voice_captions.push(CaptionHistory {
 				session: voice.session,
 				matched_receipts: voice.matched_receipts,
@@ -467,12 +752,14 @@ impl AgentSurface {
 		}
 		if let Some((work, history)) = self.history.take() {
 			self.reconcile_voice_captions(&work, &history);
+
 			self.history = Some((work, history));
 		}
 	}
 
 	pub(super) fn reconcile_voice_captions(&mut self, work: &str, history: &AgentHistoryResult) {
 		let AgentHistoryResult::Available { entries, .. } = history else { return };
+
 		for call in self.retired_voice_captions.iter_mut().filter(|v| v.work.as_str() == work) {
 			reconcile_captions(
 				&call.session,
@@ -481,7 +768,9 @@ impl AgentSurface {
 				entries,
 			);
 		}
+
 		self.retired_voice_captions.retain(|v| !v.captions.is_empty());
+
 		if let Some(call) = self.voice.as_mut().filter(|v| v.work.as_str() == work) {
 			reconcile_captions(
 				&call.session,
@@ -516,9 +805,11 @@ impl AgentSurface {
 				2
 			}
 		});
+
 		if captions.is_empty() {
 			return None;
 		}
+
 		Some(
 			div()
 				.flex()
@@ -548,13 +839,17 @@ impl AgentSurface {
 		let Some(scroll) = self.transcript_scroll.get(v.work.as_str()) else { return };
 		let current = f32::from(scroll.offset().y);
 		let target = -f32::from(scroll.max_offset().y);
+
 		if (target - current).abs() > 0.5 {
 			let reduced = crate::ui_motion::reduced();
 			let next = if reduced { target } else { current + (target - current) * 0.24 };
+
 			scroll.set_offset(gpui::point(px(0.), px(next)));
+
 			if !reduced {
 				crate::ui_motion::request_frame(window, cx);
 			}
+
 			cx.notify();
 		}
 	}
@@ -564,203 +859,6 @@ impl AgentSurface {
 			voice.follow = following;
 		}
 	}
-}
-
-#[cfg(target_os = "macos")]
-#[path = "native_voice_audio.rs"]
-mod audio;
-#[cfg(target_os = "macos")]
-#[path = "native_voice_transport.rs"]
-mod transport;
-
-#[cfg(all(target_os = "macos", not(test)))]
-pub(super) struct Media {
-	host: *mut std::ffi::c_void,
-	command_fn: unsafe extern "C" fn(*mut std::ffi::c_void, *const std::ffi::c_char) -> bool,
-	poll_fn: unsafe extern "C" fn(*mut std::ffi::c_void) -> *const std::ffi::c_char,
-	destroy: unsafe extern "C" fn(*mut std::ffi::c_void),
-	audio: Option<audio::Device>,
-	transport: Option<transport::Transport>,
-	muted: bool,
-	level_at: std::time::Instant,
-	_main_thread: std::marker::PhantomData<std::rc::Rc<()>>,
-}
-#[cfg(all(target_os = "macos", not(test)))]
-impl Media {
-	pub(super) fn new(window: &Window) -> Result<Self, ()> {
-		use crate::native_menu_bar::{bundled_library_path, symbol};
-		use std::{ffi::CString, os::unix::ffi::OsStrExt as _};
-		let path =
-			bundled_library_path(&std::env::current_exe().map_err(|_| ())?).map_err(|_| ())?;
-		if !std::fs::symlink_metadata(&path).map_err(|_| ())?.file_type().is_file() {
-			return Err(());
-		}
-		let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| ())?;
-		// SAFETY: fixed signed-app library and exact versioned C ABI; this object cannot cross
-		// threads.
-		unsafe {
-			let image = libc::dlopen(path.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL);
-			if image.is_null() {
-				return Err(());
-			}
-			let version: unsafe extern "C" fn() -> u32 =
-				symbol(image, c"decodex_voice_media_abi_version").map_err(|_| ())?;
-			if version() != 3 {
-				return Err(());
-			}
-			let create: unsafe extern "C" fn(*mut std::ffi::c_void) -> *mut std::ffi::c_void =
-				symbol(image, c"decodex_voice_media_create").map_err(|_| ())?;
-			let command_fn = symbol(image, c"decodex_voice_media_command").map_err(|_| ())?;
-			let poll_fn = symbol(image, c"decodex_voice_media_poll").map_err(|_| ())?;
-			let destroy = symbol(image, c"decodex_voice_media_destroy").map_err(|_| ())?;
-			let native =
-				raw_window_handle::HasWindowHandle::window_handle(window).map_err(|_| ())?;
-			let raw_window_handle::RawWindowHandle::AppKit(handle) = native.as_raw() else {
-				return Err(());
-			};
-			let host = create(handle.ns_view.as_ptr());
-			if host.is_null() {
-				return Err(());
-			}
-			// Keep the signed platform library loaded for native callbacks.
-			Ok(Self {
-				host,
-				command_fn,
-				poll_fn,
-				destroy,
-				audio: None,
-				transport: None,
-				muted: false,
-				level_at: std::time::Instant::now(),
-				_main_thread: std::marker::PhantomData,
-			})
-		}
-	}
-
-	pub(super) fn command(&mut self, value: Value) -> bool {
-		match value["operation"].as_str() {
-			Some("answer") =>
-				return value["sdp"].as_str().is_some_and(|sdp| {
-					self.transport.as_ref().is_some_and(|transport| {
-						transport.command(transport::Command::Answer(sdp.into()))
-					})
-				}),
-			Some("mute") => {
-				let muted = value["muted"].as_bool().unwrap_or(false);
-				let accepted = self
-					.transport
-					.as_ref()
-					.is_none_or(|transport| transport.command(transport::Command::Mute(muted)));
-				if accepted {
-					self.muted = muted;
-				}
-				return accepted;
-			},
-			Some("start" | "dictate" | "stop") => {
-				self.audio = None;
-				self.transport = None;
-			},
-			_ => {},
-		}
-		let Ok(text) = std::ffi::CString::new(value.to_string()) else { return false };
-		// SAFETY: retained native host; argument is copied by the synchronous call.
-		unsafe { (self.command_fn)(self.host, text.as_ptr()) }
-	}
-
-	pub(super) fn poll(&mut self) -> Option<Value> {
-		// SAFETY: native event data lives until the next poll/destroy; copy it immediately.
-		let platform: Option<Value> = unsafe {
-			let event = (self.poll_fn)(self.host);
-			if event.is_null() {
-				None
-			} else {
-				serde_json::from_slice(std::ffi::CStr::from_ptr(event).to_bytes()).ok()
-			}
-		};
-		if let Some(event) = platform {
-			if event["type"] != "voice_authorized" {
-				return Some(event);
-			}
-			let started = event["device"]
-				.as_u64()
-				.and_then(|id| u32::try_from(id).ok())
-				.and_then(|id| audio::Device::start(id).ok())
-				.and_then(|(device, pcm)| {
-					transport::Transport::start(pcm).ok().map(|transport| (device, transport))
-				});
-			match started {
-				Some((device, transport)) => {
-					self.audio = Some(device);
-					if self.muted {
-						transport.command(transport::Command::Mute(true));
-					}
-					self.transport = Some(transport);
-				},
-				None =>
-					return Some(
-						json!({"type":"error","message":"The selected audio device could not start."}),
-					),
-			}
-		}
-		if let Some(transport) = &self.transport
-			&& let Some(event) = transport.poll()
-		{
-			return Some(event);
-		}
-		if let Some(audio) = &self.audio {
-			if !audio.running() {
-				return Some(
-					json!({"type":"error","message":"The audio device stopped. Select a device and start a new call."}),
-				);
-			}
-			if self.level_at.elapsed() >= Duration::from_millis(50) {
-				self.level_at = std::time::Instant::now();
-				return Some(
-					json!({"type":"level","level":if self.muted { 0.0 } else { (audio.level() * 5.0).min(1.0) }}),
-				);
-			}
-		}
-		None
-	}
-}
-#[cfg(all(target_os = "macos", not(test)))]
-impl Drop for Media {
-	fn drop(&mut self) {
-		self.command(json!({"operation":"stop"}));
-		// SAFETY: unique host, destroyed exactly once on the GPUI main thread.
-		unsafe { (self.destroy)(self.host) };
-	}
-}
-#[cfg(any(not(target_os = "macos"), test))]
-pub(super) struct Media;
-#[cfg(any(not(target_os = "macos"), test))]
-impl Media {
-	pub(super) fn new(_: &Window) -> Result<Self, ()> {
-		Err(())
-	}
-
-	pub(super) fn command(&mut self, _: Value) -> bool {
-		false
-	}
-
-	pub(super) fn poll(&mut self) -> Option<Value> {
-		None
-	}
-}
-
-#[derive(Clone, Debug)]
-struct Caption {
-	complete: bool,
-	turn: String,
-	role: &'static str,
-	text: String,
-}
-
-pub(super) struct CaptionHistory {
-	session: EntityId,
-	work: EntityId,
-	captions: Vec<Caption>,
-	matched_receipts: std::collections::BTreeSet<i64>,
 }
 
 fn reconcile_captions(
@@ -776,6 +874,7 @@ fn reconcile_captions(
 		if caption.text.is_empty() {
 			return false;
 		}
+
 		let found = entries.iter().find(|entry| {
 			!matched.contains(&entry.id)
 				&& entry.kind == caption.role
@@ -786,8 +885,10 @@ fn reconcile_captions(
 						&& receipt.disposed
 				})
 		});
+
 		if let Some(entry) = found {
 			matched.insert(entry.id);
+
 			false
 		} else {
 			true
@@ -800,6 +901,7 @@ fn reconcile_captions(
 fn drain_caption_events(captions: &mut Vec<Caption>, mut poll: impl FnMut() -> Option<Value>) {
 	for _ in 0..128 {
 		let Some(event) = poll() else { break };
+
 		if event["type"] == "caption" {
 			update_caption(&event["event"], captions);
 		}
@@ -814,8 +916,10 @@ fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
 		"output_transcript.added" => Some("assistant"),
 		_ => None,
 	};
+
 	if let Some(role) = added_role {
 		let Some(delta) = event.pointer("/item/text").and_then(Value::as_str) else { return };
+
 		if delta.is_empty() {
 			return;
 		}
@@ -827,15 +931,20 @@ fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
 				text: String::new(),
 			});
 		}
+
 		let caption = captions
 			.iter_mut()
 			.rev()
 			.find(|c| c.role == role && !c.complete)
 			.expect("unfinished caption exists after insertion");
+
 		caption.text.push_str(delta);
+
 		bound_caption(caption);
+
 		return;
 	}
+
 	let id = if kind == "turn.delta" {
 		event["turn_id"].as_str()
 	} else {
@@ -847,8 +956,10 @@ fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
 		Some("assistant") => Some("assistant"),
 		_ => None,
 	};
+
 	if kind == "turn.created" {
 		let (Some(id), Some(role)) = (id, role) else { return };
+
 		if !captions.iter().any(|c| c.turn == id) {
 			captions.push(Caption { complete: false, turn: id.into(), role, text: String::new() });
 		}
@@ -857,10 +968,12 @@ fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
 	if kind == "turn.done" && id.is_none() {
 		let Some(role) = role else { return };
 		let Some(text) = event.pointer("/turn/transcript").and_then(Value::as_str) else { return };
+
 		if !captions.iter().any(|c| c.role == role && !c.complete) {
 			if text.is_empty() {
 				return;
 			}
+
 			captions.push(Caption {
 				complete: false,
 				turn: String::new(),
@@ -868,17 +981,23 @@ fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
 				text: String::new(),
 			});
 		}
+
 		let caption = captions
 			.iter_mut()
 			.rev()
 			.find(|c| c.role == role && !c.complete)
 			.expect("unfinished caption exists after insertion");
+
 		caption.text = text.into();
 		caption.complete = true;
+
 		bound_caption(caption);
+
 		return;
 	}
+
 	let Some(id) = id else { return };
+
 	if kind == "turn.done"
 		&& !captions.iter().any(|c| c.turn == id)
 		&& let Some(role) = role
@@ -899,9 +1018,11 @@ fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
 	}
 
 	let Some(caption) = captions.iter_mut().find(|c| c.turn == id) else { return };
+
 	if kind == "turn.done" {
 		caption.complete = true;
 	}
+
 	match kind {
 		"turn.created" | "turn.done" => {
 			if let Some(text) = event.pointer("/turn/transcript").and_then(Value::as_str) {
@@ -911,25 +1032,47 @@ fn update_caption(event: &Value, captions: &mut Vec<Caption>) {
 		"turn.delta" => caption.text.push_str(event["delta"].as_str().unwrap_or_default()),
 		_ => return,
 	}
+
 	bound_caption(caption);
 }
 
 fn bound_caption(caption: &mut Caption) {
 	// Match persisted voice tails so history can replace the live caption.
 	let mut start = caption.text.len().saturating_sub(32_768);
+
 	while !caption.text.is_char_boundary(start) {
 		start += 1;
 	}
+
 	caption.text.drain(..start);
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
 	use gpui::{EntityInputHandler as _, Focusable as _};
+
+	struct VoiceComposerView(Entity<AgentSurface>);
+
+	struct VoiceToolbarView(Entity<AgentSurface>);
+
+	impl Render for VoiceComposerView {
+		fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+			self.0.update(cx, |s, cx| s.render_composer_capsule(false, window, cx))
+		}
+	}
+
+	impl Render for VoiceToolbarView {
+		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+			self.0.update(cx, |s, cx| div().children(s.voice_toolbar(cx)))
+		}
+	}
+
 	#[test]
 	fn captions_preserve_both_speakers_and_late_finals() {
 		let mut captions = Vec::new();
+
 		for event in [
 			json!({"type":"turn.created","turn":{"id":"u","role":"user","transcript":"Hello"}}),
 			json!({"type":"turn.created","turn":{"id":"a","role":"assistant","transcript":"Hi"}}),
@@ -938,14 +1081,17 @@ mod tests {
 		] {
 			update_caption(&event, &mut captions);
 		}
+
 		assert_eq!(
 			captions.iter().map(|c| (c.role, c.text.as_str())).collect::<Vec<_>>(),
 			vec![("user", "Hello, world!"), ("assistant", "Hi")]
 		);
+
 		update_caption(
 			&json!({"type":"turn.done","turn":{"id":"a","transcript":""}}),
 			&mut captions,
 		);
+
 		assert_eq!(captions[0].text, "Hello, world!");
 		assert!(captions[1].text.is_empty());
 	}
@@ -953,6 +1099,7 @@ mod tests {
 	#[test]
 	fn frameless_captions_accept_interleaved_deltas_and_idless_finals() {
 		let mut captions = Vec::new();
+
 		for event in [
 			json!({"type":"input_transcript.added","item":{"text":"hello"}}),
 			json!({"type":"output_transcript.added","item":{"text":"reply"}}),
@@ -963,6 +1110,7 @@ mod tests {
 		] {
 			update_caption(&event, &mut captions);
 		}
+
 		assert_eq!(
 			captions.iter().map(|c| (c.role, c.text.as_str(), c.complete)).collect::<Vec<_>>(),
 			vec![
@@ -971,6 +1119,7 @@ mod tests {
 				("user", "Another sentence.", true)
 			]
 		);
+
 		update_caption(
 			&json!({"type":"input_transcript.added","item":{"text":"discard"}}),
 			&mut captions,
@@ -979,21 +1128,26 @@ mod tests {
 			&json!({"type":"turn.done","turn":{"role":"user","transcript":""}}),
 			&mut captions,
 		);
+
 		assert_eq!(captions.len(), 4);
 		assert!(captions[3].text.is_empty() && captions[3].complete);
+
 		update_caption(
-			&json!({"type":"input_transcript.added","item":{"text":"界".repeat(12000)}}),
+			&json!({"type":"input_transcript.added","item":{"text":"界".repeat(12_000)}}),
 			&mut captions,
 		);
-		assert_eq!(captions[4].text.len(), 32766);
+
+		assert_eq!(captions[4].text.len(), 32_766);
 	}
 
 	#[test]
 	fn long_live_captions_keep_the_latest_utf8_correction() {
 		let prefix = "Old opening ".to_owned() + &"界".repeat(11_000);
 		let suffix = " The latest correction must remain.";
+
 		for finalized in [false, true] {
 			let mut captions = Vec::new();
+
 			if finalized {
 				update_caption(
 					&json!({"type":"turn.done","turn":{"role":"user","transcript":prefix.clone()+suffix}}),
@@ -1007,6 +1161,7 @@ mod tests {
 					);
 				}
 			}
+
 			assert_eq!(captions.len(), 1);
 			assert!(captions[0].text.len() <= 32_768);
 			assert!(captions[0].text.ends_with(suffix));
@@ -1018,42 +1173,36 @@ mod tests {
 	#[test]
 	fn retiring_media_reads_queued_corrections_before_finalizing_captions() {
 		let mut captions = Vec::new();
+
 		update_caption(
 			&json!({"type":"input_transcript.added","item":{"text":"uncorrected"}}),
 			&mut captions,
 		);
+
 		let mut pending = std::collections::VecDeque::from([
 			json!({"type":"level","level":0.2}),
 			json!({"type":"caption","event":{"type":"turn.done","turn":{"role":"user","transcript":"Corrected final."}}}),
 			json!({"type":"caption","event":{"type":"output_transcript.added","item":{"text":"Reply"}}}),
 			json!({"type":"ended"}),
 		]);
+
 		drain_caption_events(&mut captions, || pending.pop_front());
+
 		assert!(pending.is_empty());
 		assert_eq!(
 			captions.iter().map(|c| (c.role, c.text.as_str(), c.complete)).collect::<Vec<_>>(),
 			vec![("user", "Corrected final.", true), ("assistant", "Reply", false)]
 		);
+
 		let mut polled = 0;
+
 		drain_caption_events(&mut captions, || {
 			polled += 1;
+
 			Some(json!({"type":"level"}))
 		});
+
 		assert_eq!(polled, 128, "Retirement must not wait for an ongoing producer");
-	}
-
-	struct VoiceComposerView(Entity<AgentSurface>);
-	impl Render for VoiceComposerView {
-		fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-			self.0.update(cx, |s, cx| s.render_composer_capsule(false, window, cx))
-		}
-	}
-
-	struct VoiceToolbarView(Entity<AgentSurface>);
-	impl Render for VoiceToolbarView {
-		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-			self.0.update(cx, |s, cx| div().children(s.voice_toolbar(cx)))
-		}
 	}
 
 	#[gpui::test]
@@ -1061,8 +1210,10 @@ mod tests {
 		for muted in [false, true] {
 			let (view, visual) = cx.add_window_view(|_, cx| {
 				let surface = cx.new(AgentSurface::new);
+
 				surface.update(cx, |s, cx| {
 					s.composer.update(cx, |input, cx| input.set_content("Draft remains", cx));
+
 					s.voice = Some(VoiceUi {
 						options: Default::default(),
 						media: Media,
@@ -1085,20 +1236,28 @@ mod tests {
 						follow: true,
 					});
 				});
+
 				VoiceToolbarView(surface)
 			});
+
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
 			});
+
 			let button = visual.debug_bounds("composer-voice-mute").expect("microphone control");
+
 			visual.simulate_click(button.center(), Default::default());
+
 			view.read_with(visual, |view, cx| {
 				let s = view.0.read(cx);
+
 				assert!(s.voice.is_none(), "A rejected microphone command must stop local media");
 				assert!(s.feedback.contains("microphone"));
 				assert_eq!(s.composer.read(cx).content(), "Draft remains");
 				assert_eq!(s.retired_voice_captions.len(), 1);
+
 				let caption = &s.retired_voice_captions[0].captions[0];
+
 				assert_eq!(caption.text, "Keep this caption");
 				assert!(caption.complete);
 			});
@@ -1110,9 +1269,12 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.composer.update(cx, |input, cx| input.set_content("Draft", cx));
+
 			let id = EntityId::new("call").unwrap();
+
 			s.voice = Some(VoiceUi {
 				options: Default::default(),
 				media: Media,
@@ -1129,6 +1291,7 @@ mod tests {
 				levels: Default::default(),
 				follow: true,
 			});
+
 			s.queue_voice_speech("other", &id, "Wrong work", cx);
 			s.queue_voice_speech(
 				"agent",
@@ -1136,11 +1299,16 @@ mod tests {
 				"Stale button",
 				cx,
 			);
+
 			assert!(s.voice.as_ref().unwrap().request.is_none());
+
 			s.queue_voice_speech("agent", &id, &"x".repeat(65_537), cx);
+
 			assert!(s.voice.as_ref().unwrap().request.is_none(), "no silent truncation");
+
 			s.queue_voice_speech("agent", &id, "Selected reply", cx);
 			s.queue_voice_speech("agent", &id, "Do not replace pending output", cx);
+
 			assert_eq!(
 				s.poll_voice_media(cx).unwrap().unwrap(),
 				AgentVoiceRequest::Speak {
@@ -1152,6 +1320,7 @@ mod tests {
 				s.poll_voice_media(cx).unwrap().unwrap(),
 				AgentVoiceRequest::Poll { .. }
 			));
+
 			s.apply_voice_status(
 				decodex_protocol::AgentVoiceStatus {
 					session_id: id,
@@ -1162,6 +1331,7 @@ mod tests {
 				},
 				cx,
 			);
+
 			assert!(s.voice.as_ref().unwrap().connected);
 			assert!(s.feedback.contains("not be confirmed"));
 			assert_eq!(s.composer.read(cx).content(), "Draft");
@@ -1171,10 +1341,13 @@ mod tests {
 	#[gpui::test]
 	fn active_voice_keeps_the_draft_visible_and_editable(cx: &mut gpui::TestAppContext) {
 		cx.update(crate::composer_input::bind_keys);
+
 		let (view, visual) = cx.add_window_view(|_, cx| {
 			let surface = cx.new(AgentSurface::new);
+
 			surface.update(cx, |s, cx| {
 				s.composer.update(cx, |input, cx| input.set_content("Draft", cx));
+
 				s.voice = Some(VoiceUi {
 					options: Default::default(),
 					media: Media,
@@ -1192,36 +1365,43 @@ mod tests {
 					follow: true,
 				});
 			});
+
 			VoiceComposerView(surface)
 		});
 		let surface = view.read_with(visual, |v, _| v.0.clone());
 		let input = surface.read_with(visual, |s, _| s.composer.clone());
+
 		for width in [320., 800.] {
 			visual.update(|window, cx| {
 				window.resize(gpui::size(px(width), px(400.)));
 				window.focus(&input.focus_handle(cx), cx);
 				window.draw(cx).clear();
 			});
+
 			visual.update(|window, cx| {
 				input.update(cx, |input, cx| {
 					let text = input
 						.bounds_for_range(0..5, Default::default(), window, cx)
 						.expect("the visible draft must have text layout");
+
 					assert!(text.size.width > px(0.) && text.size.height > px(0.));
 					assert!(text.origin.x >= px(0.) && text.origin.y >= px(0.));
 					assert!(text.origin.x + text.size.width <= px(width));
 				});
 			});
 		}
+
 		visual.simulate_keystrokes("shift-enter");
 		input.read_with(visual, |input, _| assert_eq!(input.content(), "Draft\n"));
 		surface.read_with(visual, |s, _| assert!(s.voice.is_some()));
 	}
+
 	#[gpui::test]
 	fn saved_voice_caption_and_disconnect_remain_bound_to_the_current_call(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.voice = Some(VoiceUi {
 				options: Default::default(),
@@ -1244,6 +1424,7 @@ mod tests {
 				levels: Default::default(),
 				follow: true,
 			});
+
 			let history = |session: Option<&str>| AgentHistoryResult::Available {
 				questions: vec![],
 				questions_truncated: false,
@@ -1272,13 +1453,19 @@ mod tests {
 					created_at_micros: 100,
 				}],
 			};
+
 			for sample in [history(None), history(Some("other-call"))] {
 				s.reconcile_voice_captions("agent", &sample);
+
 				assert!(s.live_chat_caption("agent").is_some());
 			}
+
 			s.reconcile_voice_captions("other-work", &history(Some("call")));
+
 			assert!(s.live_chat_caption("agent").is_some());
+
 			s.reconcile_voice_captions("agent", &history(Some("call")));
+
 			assert!(s.live_chat_caption("agent").is_none());
 
 			s.voice.as_mut().unwrap().captions.push(Caption {
@@ -1288,18 +1475,23 @@ mod tests {
 				text: "Hello".into(),
 			});
 			s.reconcile_voice_captions("agent", &history(Some("call")));
+
 			assert!(
 				s.live_chat_caption("agent").is_some(),
 				"One receipt must not hide two captions"
 			);
-
 			assert!(s.live_chat_caption("other-work").is_none());
 
 			s.voice.as_mut().expect("voice").captions[0].role = "assistant";
+
 			assert!(s.live_chat_caption("agent").is_some());
+
 			s.apply_voice_response(&EntityId::new("old-call").expect("id"), None, cx);
+
 			assert!(s.voice.is_some(), "An old request must not stop the current call");
+
 			s.apply_voice_response(&EntityId::new("call").expect("id"), None, cx);
+
 			assert!(s.voice.is_none(), "A failed control connection must retire local media");
 			assert!(
 				s.live_chat_caption("agent").is_some(),
@@ -1308,14 +1500,19 @@ mod tests {
 			assert!(s.live_chat_caption("other-work").is_none());
 
 			let mut saved = history(Some("call"));
+
 			if let AgentHistoryResult::Available { entries, .. } = &mut saved {
 				entries[0].id = 2;
 				entries[0].kind = "assistant".into();
 				entries[0].receipt.as_mut().unwrap().event_kind = "voice_assistant".into();
 			}
+
 			s.reconcile_voice_captions("agent", &saved);
+
 			assert!(s.retired_voice_captions.is_empty());
+
 			s.history = None;
+
 			assert!(
 				s.live_chat_caption("agent").is_none(),
 				"Pagination cannot resurrect accepted captions"

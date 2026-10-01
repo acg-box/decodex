@@ -4,19 +4,218 @@ use super::*;
 pub(super) struct ComposerTextElement {
 	pub(super) input: Entity<ComposerInput>,
 }
+impl IntoElement for ComposerTextElement {
+	type Element = Self;
+
+	fn into_element(self) -> Self {
+		self
+	}
+}
+
+impl Element for ComposerTextElement {
+	type PrepaintState = TextPaint;
+	type RequestLayoutState = ();
+
+	fn id(&self) -> Option<ElementId> {
+		None
+	}
+
+	fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+		None
+	}
+
+	fn request_layout(
+		&mut self,
+		_: Option<&GlobalElementId>,
+		_: Option<&InspectorElementId>,
+		window: &mut Window,
+		_: &mut App,
+	) -> (LayoutId, ()) {
+		let mut style = Style::default();
+
+		style.size.width = relative(1.0).into();
+
+		let input = self.input.clone();
+
+		(
+			window.request_measured_layout(style, move |known, available, window, cx| {
+				let width = known.width.unwrap_or_else(|| match available.width {
+					gpui::AvailableSpace::Definite(width) => width,
+					_ => px(500.0),
+				});
+				let input = input.read(cx);
+				let lines = shape(input, width, window);
+				let limit =
+					if input.appearance == ComposerAppearance::Workbench { 7.0 } else { 1.0 };
+
+				size(
+					width,
+					height(&lines).clamp(
+						px(ui_theme::BODY_LINE_HEIGHT),
+						px(ui_theme::BODY_LINE_HEIGHT * limit),
+					),
+				)
+			}),
+			(),
+		)
+	}
+
+	fn prepaint(
+		&mut self,
+		_: Option<&GlobalElementId>,
+		_: Option<&InspectorElementId>,
+		bounds: Bounds<Pixels>,
+		_: &mut (),
+		window: &mut Window,
+		cx: &mut App,
+	) -> TextPaint {
+		let input = self.input.read(cx);
+		let lines = shape(input, bounds.size.width, window);
+		let caret = position_at(&lines, input.cursor_offset()).y;
+		let max = (height(&lines) - bounds.size.height).max(px(0.0));
+		let offset = if input.scroll_manually {
+			input.text_offset.clamp(px(0.0), max)
+		} else {
+			input
+				.text_offset
+				.max(caret + px(ui_theme::BODY_LINE_HEIGHT) - bounds.size.height)
+				.min(caret)
+				.clamp(px(0.0), max)
+		};
+
+		TextPaint { lines, offset }
+	}
+
+	fn paint(
+		&mut self,
+		_: Option<&GlobalElementId>,
+		_: Option<&InspectorElementId>,
+		bounds: Bounds<Pixels>,
+		_: &mut (),
+		state: &mut TextPaint,
+		window: &mut Window,
+		cx: &mut App,
+	) {
+		let input = self.input.read(cx);
+		let focus = input.focus_handle.clone();
+		let selections = [input.selected_range.clone()];
+		let draw_cursor = input.cursor.visible
+			&& cursor::eligible(
+				focus.is_focused(window),
+				window.is_window_active(),
+				input.selected_range.is_empty(),
+			);
+		let cursor_shape = cursor::Preference::configured().shape;
+		let next = next_boundary(&input.content, input.cursor_offset());
+		let gutter = px(0.);
+		let origin = bounds.origin + point(gutter, -state.offset);
+
+		window.handle_input(&focus, ElementInputHandler::new(bounds, self.input.clone()), cx);
+
+		let mut y = px(0.0);
+		let mut start = 0;
+
+		for line in &state.lines {
+			let line_height = px(ui_theme::BODY_LINE_HEIGHT);
+			let rows = line.wrap_boundaries().len() + 1;
+
+			for row in 0..rows {
+				let top = line_height * row;
+				let first = line
+					.closest_index_for_position(point(px(0.0), top), line_height)
+					.unwrap_or_else(|i| i);
+				let last = line
+					.closest_index_for_position(point(bounds.size.width - gutter, top), line_height)
+					.unwrap_or_else(|i| i);
+
+				for selection in &selections {
+					let from = selection.start.max(start + first);
+					let to = selection.end.min(start + last);
+
+					if from < to {
+						let x = line
+							.position_for_index(from - start, line_height)
+							.unwrap_or_default()
+							.x;
+						let end = if to == start + last {
+							line.width()
+						} else {
+							line.position_for_index(to - start, line_height).unwrap_or_default().x
+						};
+
+						window.paint_quad(fill(
+							Bounds::new(
+								origin + point(x, y + top),
+								size((end - x).max(px(1.0)), line_height),
+							),
+							rgba(0x60a5fa40),
+						));
+					}
+				}
+			}
+
+			let _ = line.paint(
+				origin + point(px(0.0), y),
+				line_height,
+				gpui::TextAlign::Left,
+				None,
+				window,
+				cx,
+			);
+
+			y += line.size(line_height).height;
+			start += line.len() + 1;
+		}
+
+		if draw_cursor {
+			let caret = position_at(&state.lines, selections[0].end);
+			let next = position_at(&state.lines, next);
+			let width = if next.y == caret.y && next.x > caret.x {
+				next.x - caret.x
+			} else {
+				px(ui_theme::BODY_SIZE * 0.6)
+			};
+			let (offset, extent, color) = match cursor_shape {
+				cursor::Shape::Bar => (
+					point(px(0.), px(0.)),
+					size(px(1.5), px(ui_theme::BODY_LINE_HEIGHT)),
+					rgba(0xe5e7ebff),
+				),
+				cursor::Shape::Block => (
+					point(px(0.), px(0.)),
+					size(width, px(ui_theme::BODY_LINE_HEIGHT)),
+					rgba(0xe5e7eb55),
+				),
+				cursor::Shape::Underline => (
+					point(px(0.), px(ui_theme::BODY_LINE_HEIGHT - 2.)),
+					size(width, px(2.)),
+					rgba(0xe5e7ebff),
+				),
+			};
+
+			window.paint_quad(fill(Bounds::new(origin + caret + offset, extent), color));
+		}
+
+		self.input.update(cx, |input, _| {
+			input.last_layout = Some(std::mem::take(&mut state.lines));
+			input.last_bounds = Some(Bounds::new(
+				bounds.origin + point(gutter, px(0.0)),
+				size(bounds.size.width - gutter, bounds.size.height),
+			));
+			input.text_offset = state.offset;
+		});
+	}
+}
 
 pub(super) struct TextPaint {
 	lines: Vec<WrappedLine>,
 	offset: Pixels,
 }
 
-fn height(lines: &[WrappedLine]) -> Pixels {
-	lines.iter().map(|line| line.size(px(ui_theme::BODY_LINE_HEIGHT)).height).sum()
-}
-
 pub(super) fn position_at(lines: &[WrappedLine], index: usize) -> Point<Pixels> {
 	let mut start = 0;
 	let mut y = px(0.0);
+
 	for line in lines {
 		if index <= start + line.len() {
 			return line
@@ -24,17 +223,21 @@ pub(super) fn position_at(lines: &[WrappedLine], index: usize) -> Point<Pixels> 
 				.unwrap_or_default()
 				+ point(px(0.0), y);
 		}
+
 		start += line.len() + 1;
 		y += line.size(px(ui_theme::BODY_LINE_HEIGHT)).height;
 	}
+
 	point(px(0.0), y)
 }
 
 pub(super) fn index_at(lines: &[WrappedLine], position: Point<Pixels>) -> usize {
 	let mut start = 0;
 	let mut y = px(0.0);
+
 	for line in lines {
 		let next = y + line.size(px(ui_theme::BODY_LINE_HEIGHT)).height;
+
 		if position.y < next {
 			return start
 				+ line
@@ -44,10 +247,16 @@ pub(super) fn index_at(lines: &[WrappedLine], position: Point<Pixels>) -> usize 
 					)
 					.unwrap_or_else(|index| index);
 		}
+
 		start += line.len() + 1;
 		y = next;
 	}
+
 	start.saturating_sub(1)
+}
+
+fn height(lines: &[WrappedLine]) -> Pixels {
+	lines.iter().map(|line| line.size(px(ui_theme::BODY_LINE_HEIGHT)).height).sum()
 }
 
 fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLine> {
@@ -85,6 +294,7 @@ fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLi
 	} else {
 		vec![run]
 	};
+
 	window
 		.text_system()
 		.shape_text(
@@ -96,191 +306,4 @@ fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLi
 		)
 		.unwrap_or_default()
 		.into_vec()
-}
-
-impl IntoElement for ComposerTextElement {
-	type Element = Self;
-
-	fn into_element(self) -> Self {
-		self
-	}
-}
-
-impl Element for ComposerTextElement {
-	type PrepaintState = TextPaint;
-	type RequestLayoutState = ();
-
-	fn id(&self) -> Option<ElementId> {
-		None
-	}
-
-	fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-		None
-	}
-
-	fn request_layout(
-		&mut self,
-		_: Option<&GlobalElementId>,
-		_: Option<&InspectorElementId>,
-		window: &mut Window,
-		_: &mut App,
-	) -> (LayoutId, ()) {
-		let mut style = Style::default();
-		style.size.width = relative(1.0).into();
-		let input = self.input.clone();
-		(
-			window.request_measured_layout(style, move |known, available, window, cx| {
-				let width = known.width.unwrap_or_else(|| match available.width {
-					gpui::AvailableSpace::Definite(width) => width,
-					_ => px(500.0),
-				});
-				let input = input.read(cx);
-				let lines = shape(input, width, window);
-				let limit =
-					if input.appearance == ComposerAppearance::Workbench { 7.0 } else { 1.0 };
-				size(
-					width,
-					height(&lines).clamp(
-						px(ui_theme::BODY_LINE_HEIGHT),
-						px(ui_theme::BODY_LINE_HEIGHT * limit),
-					),
-				)
-			}),
-			(),
-		)
-	}
-
-	fn prepaint(
-		&mut self,
-		_: Option<&GlobalElementId>,
-		_: Option<&InspectorElementId>,
-		bounds: Bounds<Pixels>,
-		_: &mut (),
-		window: &mut Window,
-		cx: &mut App,
-	) -> TextPaint {
-		let input = self.input.read(cx);
-		let lines = shape(input, bounds.size.width, window);
-		let caret = position_at(&lines, input.cursor_offset()).y;
-		let max = (height(&lines) - bounds.size.height).max(px(0.0));
-		let offset = if input.scroll_manually {
-			input.text_offset.clamp(px(0.0), max)
-		} else {
-			input
-				.text_offset
-				.max(caret + px(ui_theme::BODY_LINE_HEIGHT) - bounds.size.height)
-				.min(caret)
-				.clamp(px(0.0), max)
-		};
-		TextPaint { lines, offset }
-	}
-
-	fn paint(
-		&mut self,
-		_: Option<&GlobalElementId>,
-		_: Option<&InspectorElementId>,
-		bounds: Bounds<Pixels>,
-		_: &mut (),
-		state: &mut TextPaint,
-		window: &mut Window,
-		cx: &mut App,
-	) {
-		let input = self.input.read(cx);
-		let focus = input.focus_handle.clone();
-		let selections = [input.selected_range.clone()];
-		let draw_cursor = input.cursor.visible
-			&& cursor::eligible(
-				focus.is_focused(window),
-				window.is_window_active(),
-				input.selected_range.is_empty(),
-			);
-		let cursor_shape = cursor::Preference::configured().shape;
-		let next = next_boundary(&input.content, input.cursor_offset());
-		let gutter = px(0.);
-		let origin = bounds.origin + point(gutter, -state.offset);
-		window.handle_input(&focus, ElementInputHandler::new(bounds, self.input.clone()), cx);
-		let mut y = px(0.0);
-		let mut start = 0;
-		for line in &state.lines {
-			let line_height = px(ui_theme::BODY_LINE_HEIGHT);
-			let rows = line.wrap_boundaries().len() + 1;
-			for row in 0..rows {
-				let top = line_height * row;
-				let first = line
-					.closest_index_for_position(point(px(0.0), top), line_height)
-					.unwrap_or_else(|i| i);
-				let last = line
-					.closest_index_for_position(point(bounds.size.width - gutter, top), line_height)
-					.unwrap_or_else(|i| i);
-				for selection in &selections {
-					let from = selection.start.max(start + first);
-					let to = selection.end.min(start + last);
-					if from < to {
-						let x = line
-							.position_for_index(from - start, line_height)
-							.unwrap_or_default()
-							.x;
-						let end = if to == start + last {
-							line.width()
-						} else {
-							line.position_for_index(to - start, line_height).unwrap_or_default().x
-						};
-						window.paint_quad(fill(
-							Bounds::new(
-								origin + point(x, y + top),
-								size((end - x).max(px(1.0)), line_height),
-							),
-							rgba(0x60a5fa40),
-						));
-					}
-				}
-			}
-			let _ = line.paint(
-				origin + point(px(0.0), y),
-				line_height,
-				gpui::TextAlign::Left,
-				None,
-				window,
-				cx,
-			);
-			y += line.size(line_height).height;
-			start += line.len() + 1;
-		}
-		if draw_cursor {
-			let caret = position_at(&state.lines, selections[0].end);
-			let next = position_at(&state.lines, next);
-			let width = if next.y == caret.y && next.x > caret.x {
-				next.x - caret.x
-			} else {
-				px(ui_theme::BODY_SIZE * 0.6)
-			};
-			let (offset, extent, color) = match cursor_shape {
-				cursor::Shape::Bar => (
-					point(px(0.), px(0.)),
-					size(px(1.5), px(ui_theme::BODY_LINE_HEIGHT)),
-					rgba(0xe5e7ebff),
-				),
-				cursor::Shape::Block => (
-					point(px(0.), px(0.)),
-					size(width, px(ui_theme::BODY_LINE_HEIGHT)),
-					rgba(0xe5e7eb55),
-				),
-				cursor::Shape::Underline => (
-					point(px(0.), px(ui_theme::BODY_LINE_HEIGHT - 2.)),
-					size(width, px(2.)),
-					rgba(0xe5e7ebff),
-				),
-			};
-			window.paint_quad(fill(Bounds::new(origin + caret + offset, extent), color));
-		}
-
-		self.input.update(cx, |input, _| {
-			input.last_layout = Some(std::mem::take(&mut state.lines));
-			input.last_bounds = Some(Bounds::new(
-				bounds.origin + point(gutter, px(0.0)),
-				size(bounds.size.width - gutter, bounds.size.height),
-			));
-			input.text_offset = state.offset;
-		});
-	}
 }

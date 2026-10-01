@@ -1,6 +1,8 @@
 //! Present completed native turns without discarding their process records.
 use super::{AgentSurface, AgentTimelineEntry, Content};
+
 use gpui::{AnyElement, Context, Role, SharedString, div, prelude::*, px, rgb};
+
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) struct Group {
@@ -9,101 +11,6 @@ pub(super) struct Group {
 	pub expanded: bool,
 	pub first_index: usize,
 	pub count: usize,
-}
-
-/// Hide only empty terminal reasoning. Keep live, truncated and attachment-bearing rows.
-pub(super) fn empty_completed_reasoning(entries: &[AgentTimelineEntry]) -> BTreeSet<usize> {
-	let completed: BTreeSet<_> = entries
-		.iter()
-		.filter_map(|entry| match &entry.content {
-			Content::TurnBoundary { turn_id, completed: true, .. } => Some(turn_id.as_str()),
-			_ => None,
-		})
-		.collect();
-	entries
-		.iter()
-		.enumerate()
-		.filter_map(|(index, entry)| match &entry.content {
-			Content::Item { turn_id, kind, text, truncated: false, attachments, .. }
-				if kind == "reasoning"
-					&& text.trim().is_empty()
-					&& attachments.is_empty()
-					&& completed.contains(turn_id.as_str()) =>
-				Some(index),
-			_ => None,
-		})
-		.collect()
-}
-
-pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>) -> Vec<Group> {
-	let empty = empty_completed_reasoning(entries);
-	let finished: BTreeSet<_> = entries
-		.iter()
-		.filter_map(|e| match &e.content {
-			Content::TurnBoundary { turn_id, completed: true, status, error: None, .. }
-				if status.as_deref() == Some("completed") =>
-				Some(turn_id.as_str()),
-			_ => None,
-		})
-		.collect();
-	let finals: BTreeSet<_> = entries
-		.iter()
-		.filter_map(|e| match &e.content {
-			Content::Item { turn_id, kind, phase, text, .. }
-				if kind == "agentMessage"
-					&& phase.as_deref() == Some("final_answer")
-					&& !text.trim().is_empty() =>
-				Some(turn_id.as_str()),
-			_ => None,
-		})
-		.collect();
-	let mut steps: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
-	for (index, entry) in entries.iter().enumerate() {
-		if empty.contains(&index) {
-			continue;
-		}
-		if let Content::Item { turn_id, kind, phase, app_ui: false, attachments, activity, .. } =
-			&entry.content
-			&& finished.contains(turn_id.as_str())
-			&& finals.contains(turn_id.as_str())
-			&& attachments.is_empty()
-			&& (matches!(kind.as_str(), "reasoning" | "plan")
-				|| (kind == "agentMessage" && phase.as_deref() == Some("commentary"))
-				|| activity.as_ref().is_some_and(|a| {
-					matches!(a.status.as_str(), "completed" | "failed" | "exited")
-				})) {
-			steps.entry(turn_id).or_default().push(index);
-		}
-	}
-	// Keep interleaved user messages and interactive items in source order.
-	steps
-		.into_iter()
-		.flat_map(|(turn, indices)| {
-			let mut segments: Vec<Group> = Vec::new();
-			let first_index = indices[0];
-			let count = indices.len();
-			for index in indices {
-				if let Some(last) = segments.last_mut()
-					&& last.indices.last() == index.checked_sub(1).as_ref()
-				{
-					last.indices.push(index);
-				} else {
-					segments.push(Group {
-						turn: turn.into(),
-						first_index,
-						count,
-						indices: vec![index],
-						expanded: expanded.contains(turn),
-					});
-				}
-			}
-			segments
-		})
-		.collect()
-}
-
-fn earlier_messages_label(count: usize) -> String {
-	format!("{count} earlier {}", if count == 1 { "message" } else { "messages" })
 }
 
 impl AgentSurface {
@@ -145,24 +52,129 @@ impl AgentSurface {
 			))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.anchor_process_toggle(&work_id, &entry);
+
 				if !s.native_history.expanded_turns.remove(&turn) {
 					s.native_history.expanded_turns.insert(turn.clone());
 				}
+
 				cx.notify();
 			}))
 			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
 				if ["enter", "space"].contains(&event.keystroke.key.as_str()) && !event.is_held {
 					s.anchor_process_toggle(&keyboard.0, &keyboard.1);
+
 					if !s.native_history.expanded_turns.remove(&keyboard.2) {
 						s.native_history.expanded_turns.insert(keyboard.2.clone());
 					}
+
 					cx.notify();
 					cx.stop_propagation();
 				}
 			}))
 			.into_any_element();
+
 		div().flex().child(control).into_any_element()
 	}
+}
+
+/// Hide only empty terminal reasoning. Keep live, truncated and attachment-bearing rows.
+pub(super) fn empty_completed_reasoning(entries: &[AgentTimelineEntry]) -> BTreeSet<usize> {
+	let completed: BTreeSet<_> = entries
+		.iter()
+		.filter_map(|entry| match &entry.content {
+			Content::TurnBoundary { turn_id, completed: true, .. } => Some(turn_id.as_str()),
+			_ => None,
+		})
+		.collect();
+
+	entries
+		.iter()
+		.enumerate()
+		.filter_map(|(index, entry)| match &entry.content {
+			Content::Item { turn_id, kind, text, truncated: false, attachments, .. }
+				if kind == "reasoning"
+					&& text.trim().is_empty()
+					&& attachments.is_empty()
+					&& completed.contains(turn_id.as_str()) =>
+				Some(index),
+			_ => None,
+		})
+		.collect()
+}
+
+pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>) -> Vec<Group> {
+	let empty = empty_completed_reasoning(entries);
+	let finished: BTreeSet<_> = entries
+		.iter()
+		.filter_map(|e| match &e.content {
+			Content::TurnBoundary { turn_id, completed: true, status, error: None, .. }
+				if status.as_deref() == Some("completed") =>
+				Some(turn_id.as_str()),
+			_ => None,
+		})
+		.collect();
+	let finals: BTreeSet<_> = entries
+		.iter()
+		.filter_map(|e| match &e.content {
+			Content::Item { turn_id, kind, phase, text, .. }
+				if kind == "agentMessage"
+					&& phase.as_deref() == Some("final_answer")
+					&& !text.trim().is_empty() =>
+				Some(turn_id.as_str()),
+			_ => None,
+		})
+		.collect();
+	let mut steps: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+
+	for (index, entry) in entries.iter().enumerate() {
+		if empty.contains(&index) {
+			continue;
+		}
+
+		if let Content::Item { turn_id, kind, phase, app_ui: false, attachments, activity, .. } =
+			&entry.content
+			&& finished.contains(turn_id.as_str())
+			&& finals.contains(turn_id.as_str())
+			&& attachments.is_empty()
+			&& (matches!(kind.as_str(), "reasoning" | "plan")
+				|| (kind == "agentMessage" && phase.as_deref() == Some("commentary"))
+				|| activity.as_ref().is_some_and(|a| {
+					matches!(a.status.as_str(), "completed" | "failed" | "exited")
+				})) {
+			steps.entry(turn_id).or_default().push(index);
+		}
+	}
+	// Keep interleaved user messages and interactive items in source order.
+	steps
+		.into_iter()
+		.flat_map(|(turn, indices)| {
+			let mut segments: Vec<Group> = Vec::new();
+			let first_index = indices[0];
+			let count = indices.len();
+
+			for index in indices {
+				if let Some(last) = segments.last_mut()
+					&& last.indices.last() == index.checked_sub(1).as_ref()
+				{
+					last.indices.push(index);
+				} else {
+					segments.push(Group {
+						turn: turn.into(),
+						first_index,
+						count,
+						indices: vec![index],
+						expanded: expanded.contains(turn),
+					});
+				}
+			}
+
+			segments
+		})
+		.collect()
+}
+
+fn earlier_messages_label(count: usize) -> String {
+	format!("{count} earlier {}", if count == 1 { "message" } else { "messages" })
 }
 
 #[cfg(test)]
@@ -202,21 +214,29 @@ mod tests {
 	fn empty_reasoning_disappears_only_after_completion_and_does_not_count_as_process() {
 		let mut entries =
 			vec![message(1, "reasoning", None), message(2, "agentMessage", Some("final_answer"))];
+
 		if let Content::Item { text, .. } = &mut entries[0].content {
 			*text = " \n\t".into();
 		}
+
 		assert!(empty_completed_reasoning(&entries).is_empty());
+
 		entries.push(completed("completed"));
+
 		assert_eq!(empty_completed_reasoning(&entries), BTreeSet::from([0]));
 		assert!(groups(&entries, &BTreeSet::new()).is_empty());
+
 		if let Content::Item { truncated, .. } = &mut entries[0].content {
 			*truncated = true;
 		}
+
 		assert!(empty_completed_reasoning(&entries).is_empty());
+
 		if let Content::Item { text, truncated, .. } = &mut entries[0].content {
 			*text = "Retained summary".into();
 			*truncated = false;
 		}
+
 		assert!(empty_completed_reasoning(&entries).is_empty());
 		assert_eq!(groups(&entries, &BTreeSet::new())[0].count, 1);
 	}
@@ -229,18 +249,26 @@ mod tests {
 			message(2, "reasoning", None),
 			message(3, "agentMessage", Some("final_answer")),
 		];
+
 		assert!(
 			groups(&entries, &BTreeSet::new()).is_empty(),
 			"final output can arrive before work finishes"
 		);
+
 		entries.push(completed("completed"));
+
 		let result = groups(&entries, &BTreeSet::new());
+
 		assert_eq!(result[0].indices, vec![1, 2]);
 		assert!(!result[0].expanded);
 		assert!(groups(&entries, &BTreeSet::from(["turn".into()]))[0].expanded);
+
 		entries[4] = completed("failed");
+
 		assert!(groups(&entries, &BTreeSet::new()).is_empty());
+
 		entries[4] = completed("interrupted");
+
 		assert!(groups(&entries, &BTreeSet::new()).is_empty());
 	}
 	#[test]
@@ -251,12 +279,17 @@ mod tests {
 			message(2, "agentMessage", None),
 			completed("completed"),
 		];
+
 		assert!(groups(&entries, &BTreeSet::new()).is_empty());
+
 		entries[2] = message(2, "agentMessage", Some("final_answer"));
+
 		assert_eq!(groups(&entries, &BTreeSet::new())[0].indices, vec![1]);
+
 		if let Content::Item { app_ui, .. } = &mut entries[1].content {
 			*app_ui = true;
 		}
+
 		assert!(groups(&entries, &BTreeSet::new()).is_empty());
 	}
 	#[test]
@@ -270,6 +303,7 @@ mod tests {
 			completed("completed"),
 		];
 		let result = groups(&entries, &BTreeSet::new());
+
 		assert_eq!(
 			result.iter().map(|g| g.first_index).collect::<BTreeSet<_>>(),
 			BTreeSet::from([1])
@@ -288,11 +322,16 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		use super::super::{Binding, Timeline};
+
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(px(1400.), px(1400.)));
+
+		visual.simulate_resize(gpui::size(px(1_400.), px(1_400.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -301,8 +340,11 @@ mod tests {
 				.iter_mut()
 				.find(|w| Some(&w.id) == s.selected.as_ref())
 				.unwrap();
+
 			work.codex_thread_id = Some("thread".into());
+
 			let mut timeline = Timeline::default();
+
 			assert!(timeline.replace(
 				Binding {
 					work: work.id.clone(),
@@ -323,48 +365,73 @@ mod tests {
 					active_realtime_session_at_page_start: None,
 				}
 			));
+
 			s.native_history = timeline;
+
 			cx.notify();
 		});
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		assert!(visual.debug_bounds("native-reasoning-summary").is_none());
 		assert!(visual.debug_bounds("native-promotion-content").is_some());
+
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
+
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		assert!(visual.debug_bounds("native-reasoning-summary").is_some());
 		assert!(visual.debug_bounds("native-promotion-content").is_some());
+
 		surface.update(visual, |_, cx| cx.notify());
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		assert!(
 			visual.debug_bounds("native-reasoning-summary").is_some(),
 			"refresh preserves an explicit expansion"
 		);
+
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		let process = visual.debug_bounds("native-reasoning-summary").unwrap();
 		let header = visual.debug_bounds("turn-process-toggle").unwrap();
+
 		assert!(
 			process.origin.y >= header.origin.y + header.size.height,
 			"disclosed content must appear below its control"
 		);
+
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
+
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
+
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		assert!(
 			surface.update(visual, |s, _| s.native_history.expanded_turns.contains("turn")),
 			"reversal reopens the same native turn"
 		);
+
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
+
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|w, cx| w.draw(cx).clear());
+
 		assert!(visual.debug_bounds("native-reasoning-summary").is_none());
 	}
 }

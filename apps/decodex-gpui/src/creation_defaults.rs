@@ -7,6 +7,7 @@ pub(crate) fn resolve(
 	explicit: InitialExecutionDefaults,
 ) -> InitialExecutionDefaults {
 	let managed_pair = !intent.model && !intent.reasoning;
+
 	InitialExecutionDefaults {
 		model: if intent.model {
 			explicit.model

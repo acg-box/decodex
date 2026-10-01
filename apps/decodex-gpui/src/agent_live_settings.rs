@@ -18,7 +18,6 @@ enum Edit {
 	Reviewer(Reviewer),
 	Model(decodex_protocol::AgentLiveModelSelection),
 }
-
 impl Edit {
 	fn action(
 		self,
@@ -42,6 +41,7 @@ impl Edit {
 				}) {
 					return None;
 				}
+
 				AgentActionDto::SetLiveModel {
 					work_id: work.clone(),
 					turn_id: turn.clone(),
@@ -66,6 +66,7 @@ impl AgentSurface {
 			== next.runtime_source.as_ref();
 		let unchanged = same_source
 			&& matches!((before,after),(Some(a),Some(b)) if a.codex_thread_id==b.codex_thread_id && a.active_turn_id==b.active_turn_id && b.dispatch_state==AgentDispatchStateDto::Running);
+
 		if !unchanged {
 			self.reset_live_reviewer();
 		}
@@ -91,6 +92,7 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
@@ -126,24 +128,30 @@ impl AgentSurface {
 			else {
 				return;
 			};
+
 			if self.live_reviewer.work.as_ref() != Some(&work)
 				|| turn_id.as_str() != turn
 				|| thread_id.as_str() != thread
 			{
 				return;
 			}
+
 			let Some(action) =
 				edit.action(&work_id, turn_id, review_token, model_choices.as_deref())
 			else {
 				return;
 			};
+
 			Some(action)
 		} else {
 			None
 		};
 		let saving = action.is_some();
+
 		self.live_reviewer.epoch = self.live_reviewer.epoch.wrapping_add(1);
+
 		let epoch = self.live_reviewer.epoch;
+
 		self.live_reviewer.work = Some(work.clone());
 		self.live_reviewer.state = None;
 		self.live_reviewer.reviewed = false;
@@ -153,6 +161,7 @@ impl AgentSurface {
 			"Reading current-turn operation state…"
 		}
 		.into();
+
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 		let future = cx.background_executor().spawn(async move {
 			let runtime =
@@ -161,18 +170,26 @@ impl AgentSurface {
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
 			let state =
 				runtime.block_on(client.live_settings(work_id, true)).unwrap_or(State::Unavailable);
+
 			Some((outcome, state))
 		});
+
 		self.live_reviewer.task=Some(cx.spawn(async move |surface,cx| {
 			let result=future.await;
 			let _=surface.update(cx,|s,cx| {
 				if s.live_reviewer.epoch!=epoch {return;}
+
 				s.live_reviewer.task=None;
+
 				let current=s.snapshot.as_ref().is_some_and(|snapshot| snapshot.runtime_source.as_ref()==Some(&source)
 					&& snapshot.work_items.iter().any(|w| w.id==work && w.codex_thread_id.as_deref()==Some(&thread) && w.active_turn_id.as_deref()==Some(&turn) && w.dispatch_state==AgentDispatchStateDto::Running));
+
 				if !current||s.selected.as_ref()!=Some(&work) {s.reset_live_reviewer();cx.notify();return;}
+
 				let (outcome,state)=result.unwrap_or((None,State::Unavailable));
+
 				s.live_reviewer.reviewed = !saving;
+
 				s.live_reviewer.feedback=match outcome {
 					Some(Ok(AgentCommandResponse::Accepted {..}))=>"Published for subsequent steps of this turn. This does not confirm a later inference used the selection.",
 					Some(Ok(AgentCommandResponse::Rejected {..}))=>"The edit was not accepted. Refresh and review the current turn.",
@@ -185,6 +202,7 @@ impl AgentSurface {
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -196,6 +214,7 @@ impl AgentSurface {
 		if self.native_agents.selected.is_some() || !self.command_connection_ready() {
 			return div().into_any_element();
 		}
+
 		let Some(turn) = work
 			.active_turn_id
 			.as_ref()
@@ -212,8 +231,10 @@ impl AgentSurface {
 				cx,
 				move |s, cx| s.update_live_settings(owner.clone(), target.clone(), None, cx),
 			));
+
 		if self.live_reviewer.work.as_ref() == Some(&work.id) {
 			panel = panel.child(self.live_reviewer.feedback.clone());
+
 			if let Some(State::Available {
 				turn_id,
 				can_update,
@@ -243,6 +264,7 @@ impl AgentSurface {
 						outcome_label(*outcome)
 					));
 				}
+
 				if *can_update
 					&& self.live_reviewer.reviewed
 					&& let Some(models) = model_choices
@@ -255,6 +277,7 @@ impl AgentSurface {
 						("live-reviewer-auto", "Automatic review", Reviewer::AutoReview),
 					] {
 						let (owner, target) = (work.id.clone(), turn.clone());
+
 						panel = panel.child(mcp_button(
 							id.into(),
 							label.into(),
@@ -273,6 +296,7 @@ impl AgentSurface {
 				}
 			}
 		}
+
 		panel.into_any_element()
 	}
 
@@ -289,12 +313,15 @@ impl AgentSurface {
 			cx,
 			|s, cx| {
 				s.live_reviewer.choosing_model = !s.live_reviewer.choosing_model;
+
 				cx.notify();
 			},
 		));
+
 		if !self.live_reviewer.choosing_model {
 			return panel.into_any_element();
 		}
+
 		let mut choices = div()
 			.id("live-model-choices")
 			.flex()
@@ -302,6 +329,7 @@ impl AgentSurface {
 			.gap_1()
 			.max_h(px(180.))
 			.overflow_y_scroll();
+
 		for (index, model) in models.iter().enumerate() {
 			let Some(effort) =
 				model.default_effort.clone().or_else(|| model.efforts.first().cloned())
@@ -310,6 +338,7 @@ impl AgentSurface {
 			};
 			let selection =
 				decodex_protocol::AgentLiveModelSelection { model: model.model.clone(), effort };
+
 			choices = choices.child(mcp_button(
 				format!("live-model-choice-{index}"),
 				super::model_settings::model_choice_label(model),
@@ -317,18 +346,24 @@ impl AgentSurface {
 				cx,
 				move |s, cx| {
 					s.live_reviewer.model_draft = Some(selection.clone());
+
 					cx.notify();
 				},
 			));
 		}
+
 		panel = panel.child(choices);
+
 		if let Some(selection) = &self.live_reviewer.model_draft
 			&& let Some(model) = models.iter().find(|m| m.model == selection.model)
 		{
 			panel = panel.child(format!("{} / {}", model.name, selection.effort.as_str()));
+
 			let mut efforts = div().flex().flex_wrap().gap_1();
+
 			for (index, effort) in model.efforts.iter().enumerate() {
 				let effort = effort.clone();
+
 				efforts = efforts.child(mcp_button(
 					format!("live-model-effort-{index}"),
 					effort.as_str().into(),
@@ -338,15 +373,18 @@ impl AgentSurface {
 						if let Some(draft) = &mut s.live_reviewer.model_draft {
 							draft.effort = effort.clone();
 						}
+
 						cx.notify();
 					},
 				));
 			}
+
 			let (owner, turn, selection) = (
 				work.id.clone(),
 				work.active_turn_id.clone().unwrap_or_default(),
 				selection.clone(),
 			);
+
 			panel = panel.child(efforts).child(mcp_button(
 				"live-model-apply".into(),
 				"Apply to this turn".into(),
@@ -362,12 +400,14 @@ impl AgentSurface {
 				},
 			));
 		}
+
 		panel.into_any_element()
 	}
 }
 
 fn outcome_label(outcome: decodex_protocol::AgentLiveReviewerOutcome) -> &'static str {
 	use decodex_protocol::AgentLiveReviewerOutcome as O;
+
 	match outcome {
 		O::Reserved => "awaiting confirmation",
 		O::Applied => "published",

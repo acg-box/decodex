@@ -1,6 +1,8 @@
 //! One value drives the quota percentage and bar during a confirmed reset.
 use decodex_protocol::{AccountQuotaStateDto, AccountQuotaWindowDto, EntityRevision};
+
 use gpui::{App, IntoElement, RenderOnce, Window, div, prelude::*, px, rgb, rgba};
+
 use std::time::{Duration, Instant};
 
 pub(super) const FILL_DURATION: Duration = Duration::from_millis(850);
@@ -17,44 +19,19 @@ impl ResetFill {
 		if quota.result == AccountQuotaStateDto::NotApplicable {
 			return None;
 		}
+
 		let initial =
 			self.initial.iter().find(|window| window.duration_minutes == quota.duration_minutes)?;
 		let from = remaining(*initial)?;
 		let elapsed = now.saturating_duration_since(self.started);
+
 		if (reduced || elapsed >= FILL_DURATION)
 			&& quota.observed_at_unix_micros.is_some_and(|at| at > self.confirmed_at_micros)
 		{
 			return None;
 		}
+
 		Some(if reduced { 100.0 } else { fill_value(from, elapsed) })
-	}
-}
-fn fill_value(from: f32, elapsed: Duration) -> f32 {
-	let progress = (elapsed.as_secs_f32() / FILL_DURATION.as_secs_f32()).clamp(0.0, 1.0);
-	let eased = 1.0 - (1.0 - progress).powi(3);
-	from + (100.0 - from) * eased
-}
-fn remaining(quota: AccountQuotaWindowDto) -> Option<f32> {
-	match quota.result {
-		AccountQuotaStateDto::Current { used_percent, .. } => Some(100.0 - f32::from(used_percent)),
-		_ => None,
-	}
-}
-// Keep the framework-specific colors here; the shared fixture checks the quota bands.
-fn quota_color(remaining: f32) -> u32 {
-	match quota_tone(remaining) {
-		"critical" => crate::ui_theme::ERROR,
-		"warning" => super::WB_AMBER,
-		_ => super::WB_BLUE,
-	}
-}
-fn quota_tone(remaining: f32) -> &'static str {
-	if remaining > 50. {
-		"healthy"
-	} else if remaining > 20. {
-		"warning"
-	} else {
-		"critical"
 	}
 }
 
@@ -71,6 +48,7 @@ impl RenderOnce for QuotaMeter {
 		let animated = self.fill.as_ref().and_then(|fill| fill.remaining(self.quota, now, reduced));
 		let observed = animated.or_else(|| remaining(self.quota));
 		let value = observed.unwrap_or(0.0).clamp(0.0, 100.0);
+
 		if !reduced
 			&& animated.is_some()
 			&& self
@@ -80,7 +58,9 @@ impl RenderOnce for QuotaMeter {
 		{
 			window.request_animation_frame();
 		}
+
 		let color = if observed.is_some() { quota_color(value) } else { super::WB_TEXT_FAINT };
+
 		div()
 			.flex_1()
 			.min_w_0()
@@ -135,17 +115,13 @@ impl RenderOnce for QuotaMeter {
 			)
 	}
 }
+
 pub(super) fn meter(
 	label: &'static str,
 	quota: AccountQuotaWindowDto,
 	fill: Option<ResetFill>,
 ) -> gpui::AnyElement {
 	QuotaMeter { label, quota, fill }.into_any_element()
-}
-
-/// Match the native menu's local calendar date and 24-hour reset time.
-fn reset_time(micros: i64) -> Option<String> {
-	local_date_time(micros / 1_000_000)
 }
 
 pub(super) fn local_date_time(seconds: i64) -> Option<String> {
@@ -166,8 +142,47 @@ pub(super) fn local_date_time(seconds: i64) -> Option<String> {
 		{
 			return None;
 		}
+
 		Some(std::ffi::CStr::from_ptr(output.as_ptr()).to_string_lossy().into_owned())
 	}
+}
+
+fn fill_value(from: f32, elapsed: Duration) -> f32 {
+	let progress = (elapsed.as_secs_f32() / FILL_DURATION.as_secs_f32()).clamp(0.0, 1.0);
+	let eased = 1.0 - (1.0 - progress).powi(3);
+
+	from + (100.0 - from) * eased
+}
+
+fn remaining(quota: AccountQuotaWindowDto) -> Option<f32> {
+	match quota.result {
+		AccountQuotaStateDto::Current { used_percent, .. } => Some(100.0 - f32::from(used_percent)),
+		_ => None,
+	}
+}
+
+// Keep the framework-specific colors here; the shared fixture checks the quota bands.
+fn quota_color(remaining: f32) -> u32 {
+	match quota_tone(remaining) {
+		"critical" => crate::ui_theme::ERROR,
+		"warning" => super::WB_AMBER,
+		_ => super::WB_BLUE,
+	}
+}
+
+fn quota_tone(remaining: f32) -> &'static str {
+	if remaining > 50. {
+		"healthy"
+	} else if remaining > 20. {
+		"warning"
+	} else {
+		"critical"
+	}
+}
+
+/// Match the native menu's local calendar date and 24-hour reset time.
+fn reset_time(micros: i64) -> Option<String> {
+	local_date_time(micros / 1_000_000)
 }
 
 #[cfg(test)]
@@ -179,6 +194,7 @@ mod tests {
 			"../../../tests/fixtures/account-quota-presentation.json"
 		))
 		.unwrap();
+
 		for case in cases.as_array().unwrap() {
 			assert_eq!(
 				quota_tone(case["remaining"].as_f64().unwrap() as f32),
@@ -201,8 +217,10 @@ mod tests {
 	fn percentage_and_bar_value_fill_smoothly_without_overshoot() {
 		for start in [0., 36., 72., 100.] {
 			assert_eq!(fill_value(start, Duration::ZERO), start);
+
 			let samples: Vec<_> =
 				(0..=100).map(|step| fill_value(start, Duration::from_millis(step * 10))).collect();
+
 			assert!(samples.windows(2).all(|pair| pair[0] <= pair[1]));
 			assert!(samples.iter().all(|value| *value >= start && *value <= 100.));
 			assert_eq!(fill_value(start, FILL_DURATION), 100.);
@@ -217,14 +235,17 @@ mod tests {
 			started,
 			confirmed_at_micros: 10,
 		};
+
 		assert_eq!(fill.remaining(quota(0, 11), started, false), Some(36.));
 		assert_eq!(fill.remaining(quota(64, 1), started + FILL_DURATION, false), Some(100.));
 		assert_eq!(fill.remaining(quota(1, 11), started + FILL_DURATION, false), None);
 		assert_eq!(remaining(quota(1, 11)), Some(99.));
 		assert_eq!(fill.remaining(quota(64, 1), started, true), Some(100.));
 		assert_eq!(fill.remaining(quota(1, 11), started, true), None);
+
 		let not_applicable =
 			AccountQuotaWindowDto { result: AccountQuotaStateDto::NotApplicable, ..quota(64, 1) };
+
 		assert_eq!(fill.remaining(not_applicable, started, false), None);
 	}
 }

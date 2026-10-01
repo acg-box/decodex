@@ -23,29 +23,6 @@ actions!(
 	]
 );
 
-pub(super) fn bind_keys(cx: &mut App) {
-	cx.bind_keys([
-		KeyBinding::new("alt-left", WordLeft, Some("ComposerInput")),
-		KeyBinding::new("alt-right", WordRight, Some("ComposerInput")),
-		KeyBinding::new("alt-shift-left", SelectWordLeft, Some("ComposerInput")),
-		KeyBinding::new("alt-shift-right", SelectWordRight, Some("ComposerInput")),
-		KeyBinding::new("cmd-left", LineStart, Some("ComposerInput")),
-		KeyBinding::new("cmd-right", LineEnd, Some("ComposerInput")),
-		KeyBinding::new("cmd-shift-left", SelectLineStart, Some("ComposerInput")),
-		KeyBinding::new("cmd-shift-right", SelectLineEnd, Some("ComposerInput")),
-		KeyBinding::new("cmd-up", Home, Some("ComposerInput")),
-		KeyBinding::new("cmd-down", End, Some("ComposerInput")),
-		KeyBinding::new("cmd-shift-up", SelectDocumentStart, Some("ComposerInput")),
-		KeyBinding::new("cmd-shift-down", SelectDocumentEnd, Some("ComposerInput")),
-		KeyBinding::new("shift-up", SelectUp, Some("ComposerInput")),
-		KeyBinding::new("shift-down", SelectDown, Some("ComposerInput")),
-		KeyBinding::new("alt-backspace", DeleteWordBackward, Some("ComposerInput")),
-		KeyBinding::new("alt-delete", DeleteWordForward, Some("ComposerInput")),
-		KeyBinding::new("cmd-backspace", DeleteLineBackward, Some("ComposerInput")),
-		KeyBinding::new("cmd-delete", DeleteLineForward, Some("ComposerInput")),
-	]);
-}
-
 #[derive(Clone, Copy)]
 pub(super) enum Boundary {
 	WordStart,
@@ -61,6 +38,7 @@ pub(super) enum Boundary {
 impl ComposerInput {
 	fn boundary(&self, boundary: Boundary) -> usize {
 		let cursor = self.cursor_offset();
+
 		match boundary {
 			Boundary::WordStart =>
 				self.content[..cursor].unicode_word_indices().next_back().map_or(0, |(i, _)| i),
@@ -73,6 +51,7 @@ impl ComposerInput {
 			_ =>
 				if let Some(lines) = self.last_layout.as_ref() {
 					let mut position = text::position_at(lines, cursor);
+
 					match boundary {
 						Boundary::LineStart => position.x = px(0.),
 						Boundary::LineEnd => position.x = px(1_000_000.),
@@ -80,6 +59,7 @@ impl ComposerInput {
 						Boundary::RowDown => position.y += px(ui_theme::BODY_LINE_HEIGHT),
 						_ => unreachable!(),
 					}
+
 					text::index_at(lines, position).min(self.content.len())
 				} else {
 					match boundary {
@@ -101,6 +81,7 @@ impl ComposerInput {
 		cx: &mut Context<Self>,
 	) {
 		let target = self.boundary(boundary);
+
 		if select {
 			self.select_to(target, cx);
 		} else {
@@ -116,13 +97,39 @@ impl ComposerInput {
 	) {
 		if self.selected_range.is_empty() {
 			let target = self.boundary(boundary);
+
 			if target == self.cursor_offset() {
 				return;
 			}
+
 			self.select_to(target, cx);
 		}
+
 		self.replace_text_in_range(None, "", window, cx);
 	}
+}
+
+pub(super) fn bind_keys(cx: &mut App) {
+	cx.bind_keys([
+		KeyBinding::new("alt-left", WordLeft, Some("ComposerInput")),
+		KeyBinding::new("alt-right", WordRight, Some("ComposerInput")),
+		KeyBinding::new("alt-shift-left", SelectWordLeft, Some("ComposerInput")),
+		KeyBinding::new("alt-shift-right", SelectWordRight, Some("ComposerInput")),
+		KeyBinding::new("cmd-left", LineStart, Some("ComposerInput")),
+		KeyBinding::new("cmd-right", LineEnd, Some("ComposerInput")),
+		KeyBinding::new("cmd-shift-left", SelectLineStart, Some("ComposerInput")),
+		KeyBinding::new("cmd-shift-right", SelectLineEnd, Some("ComposerInput")),
+		KeyBinding::new("cmd-up", Home, Some("ComposerInput")),
+		KeyBinding::new("cmd-down", End, Some("ComposerInput")),
+		KeyBinding::new("cmd-shift-up", SelectDocumentStart, Some("ComposerInput")),
+		KeyBinding::new("cmd-shift-down", SelectDocumentEnd, Some("ComposerInput")),
+		KeyBinding::new("shift-up", SelectUp, Some("ComposerInput")),
+		KeyBinding::new("shift-down", SelectDown, Some("ComposerInput")),
+		KeyBinding::new("alt-backspace", DeleteWordBackward, Some("ComposerInput")),
+		KeyBinding::new("alt-delete", DeleteWordForward, Some("ComposerInput")),
+		KeyBinding::new("cmd-backspace", DeleteLineBackward, Some("ComposerInput")),
+		KeyBinding::new("cmd-delete", DeleteLineForward, Some("ComposerInput")),
+	]);
 }
 
 pub(super) fn bind_actions(
@@ -186,7 +193,9 @@ mod tests {
 	#[gpui::test]
 	fn editing_keys_preserve_other_lines_and_support_undo(cx: &mut gpui::TestAppContext) {
 		cx.update(super::super::bind_keys);
+
 		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+
 		visual.simulate_resize(size(px(500.), px(200.)));
 		visual.update(|window, cx| {
 			window.focus(&input.focus_handle(cx), cx);
@@ -212,6 +221,7 @@ mod tests {
 	#[test]
 	fn character_navigation_keeps_composed_graphemes_intact() {
 		let text = "你e\u{301}👩‍💻";
+
 		assert_eq!(previous_boundary(text, text.len()), "你e\u{301}".len());
 		assert_eq!(next_boundary(text, "你".len()), "你e\u{301}".len());
 		assert_eq!(previous_boundary(text, "你e\u{301}".len()), "你".len());

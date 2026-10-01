@@ -12,9 +12,11 @@ impl AgentSurface {
 		if !self.recovered_drafts().contains(&copy) {
 			return;
 		}
+
 		let directory =
 			std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_else(|| "/tmp".into());
 		let destination = cx.prompt_for_new_path(&directory, Some("decodex-draft-copy.json"));
+
 		cx.spawn(async move |surface, cx| {
 			let Ok(Ok(Some(path))) = destination.await else { return };
 			let result =
@@ -24,6 +26,7 @@ impl AgentSurface {
 					Ok(()) => "Draft copy exported. The saved copy is still retained.".into(),
 					Err(reason) => reason.into(),
 				};
+
 				cx.notify();
 			});
 		})
@@ -40,13 +43,17 @@ fn export_copy(path: &Path, copy: DesktopRecoveredDraft) -> Result<(), &'static 
 		.mode(0o600)
 		.open(path)
 		.map_err(|_| "Export could not create a new file. Choose a different filename.")?;
+
 	file.write_all(&bytes)
 		.and_then(|_| file.sync_all())
 		.map_err(|_| "Export could not be confirmed. The saved draft copy is unchanged.")?;
+
 	let parent = path.parent().ok_or("Export directory is unavailable")?;
+
 	std::fs::File::open(parent)
 		.and_then(|parent| parent.sync_all())
 		.map_err(|_| "Export could not be confirmed. The saved draft copy is unchanged.")?;
+
 	Ok(())
 }
 
@@ -59,14 +66,21 @@ mod tests {
 		let root = tempfile::tempdir().unwrap();
 		let path = root.path().join("draft.json");
 		let mut copy = DesktopRecoveredDraft { scope: None, draft: Default::default() };
+
 		copy.draft.composer.text = "完整草稿 🧭".into();
+
 		export_copy(&path, copy.clone()).unwrap();
+
 		let data = std::fs::read(&path).unwrap();
+
 		assert!(DesktopDraftDocument::decode(&data).unwrap().recovered[0] == copy);
 		assert_eq!(std::fs::metadata(&path).unwrap().mode() & 0o777, 0o600);
 		assert!(export_copy(&path, copy.clone()).is_err());
+
 		let alias = root.path().join("alias.json");
+
 		symlink(&path, &alias).unwrap();
+
 		assert!(export_copy(&alias, copy).is_err());
 		assert_eq!(std::fs::read(path).unwrap(), data);
 	}

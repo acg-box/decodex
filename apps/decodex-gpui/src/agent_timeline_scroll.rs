@@ -2,20 +2,88 @@
 use super::{
 	AgentSurface, AgentTimelineEntry, AgentTimelinePage, AgentWorkItemDto, Binding, Context, key,
 };
-use gpui::{AnyElement, InteractiveElement, IntoElement, ParentElement, Styled, div, point, px};
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
-pub(super) const ROW_GAP: f32 = 8.;
+use gpui::{AnyElement, InteractiveElement, IntoElement, ParentElement, Styled, div, point, px};
+
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 type RowKey = (u64, u8, String);
 
-fn row_key(entry: &AgentTimelineEntry) -> RowKey {
-	let (position, kind, id) = key(entry);
-	(position, kind, id.into())
-}
+pub(super) const ROW_GAP: f32 = 8.;
 
 #[derive(Default)]
 pub(super) struct Viewport(Rc<RefCell<Geometry>>);
+impl Viewport {
+	fn prepare_layout(&self, layout: Layout) {
+		let mut state = self.0.borrow_mut();
+
+		if state.layout != Some(layout) {
+			state.rows.clear();
+
+			state.layout = Some(layout);
+		}
+	}
+
+	/// Preserve measured space outside a bounded overscan buffer.
+	/// Never estimate heights or cull while a pagination anchor is pending.
+	pub(super) fn offscreen_height(
+		&self,
+		entry: &AgentTimelineEntry,
+		offset: f32,
+		height: f32,
+	) -> Option<f32> {
+		let state = self.0.borrow();
+
+		if state.pending.is_some() || state.pinned.as_ref() == Some(&row_key(entry)) || height <= 0.
+		{
+			return None;
+		}
+
+		let (top, row_height) = *state.rows.get(&row_key(entry))?;
+		let y = top + offset;
+		let overscan = (height * 0.25).clamp(80., 160.);
+
+		(y + row_height < -overscan || y > height + overscan).then_some(row_height)
+	}
+
+	pub(super) fn request_latest(&self) {
+		self.0.borrow_mut().latest_requested = true;
+	}
+
+	pub(super) fn take_latest_request(&self) -> bool {
+		std::mem::take(&mut self.0.borrow_mut().latest_requested)
+	}
+
+	pub(super) fn retain(&self, entries: &[AgentTimelineEntry]) {
+		let keys = entries.iter().map(row_key).collect::<std::collections::BTreeSet<_>>();
+		let mut state = self.0.borrow_mut();
+
+		state.rows.retain(|key, _| keys.contains(key));
+
+		if state.pending.as_ref().is_some_and(|anchor| !keys.contains(&anchor.key)) {
+			state.pending = None;
+			state.process_motion_until = None;
+		}
+	}
+
+	fn capture(&self, offset: f32, height: f32) {
+		let mut state = self.0.borrow_mut();
+
+		state.revision = state.revision.wrapping_add(1);
+		state.pending = state
+			.rows
+			.iter()
+			.find(|(_, (top, row_height))| {
+				*top + offset < height && *top + *row_height + offset > 0.0
+			})
+			.map(|(key, (top, _))| Anchor {
+				key: key.clone(),
+				viewport_top: *top + offset,
+				revision: state.revision,
+				scheduled: false,
+			});
+	}
+}
 
 #[derive(Default)]
 struct Geometry {
@@ -27,6 +95,39 @@ struct Geometry {
 	process_motion_until: Option<std::time::Instant>,
 	revision: u64,
 	latest_requested: bool,
+}
+impl Geometry {
+	fn measure(&mut self, key: RowKey, top: f32, height: f32) -> Option<u64> {
+		self.rows.insert(key.clone(), (top, height));
+
+		let pending = self.pending.as_mut()?;
+
+		if pending.key != key || pending.scheduled {
+			return None;
+		}
+
+		pending.scheduled = true;
+
+		Some(pending.revision)
+	}
+
+	fn finish(&mut self, revision: u64, maximum: f32) -> Option<f32> {
+		if self.pending.as_ref()?.revision != revision {
+			return None;
+		}
+
+		let pending = self.pending.take()?;
+		let (top, _) = self.rows.get(&pending.key)?;
+		let offset = (pending.viewport_top - *top).clamp(-maximum.max(0.0), 0.0);
+
+		if self.process_motion_until.is_some_and(|until| std::time::Instant::now() < until) {
+			self.pending = Some(Anchor { scheduled: false, ..pending });
+		} else {
+			self.process_motion_until = None;
+		}
+
+		Some(offset)
+	}
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -48,97 +149,6 @@ struct Anchor {
 	scheduled: bool,
 }
 
-impl Viewport {
-	fn prepare_layout(&self, layout: Layout) {
-		let mut state = self.0.borrow_mut();
-		if state.layout != Some(layout) {
-			state.rows.clear();
-			state.layout = Some(layout);
-		}
-	}
-
-	/// Preserve measured space outside a bounded overscan buffer.
-	/// Never estimate heights or cull while a pagination anchor is pending.
-	pub(super) fn offscreen_height(
-		&self,
-		entry: &AgentTimelineEntry,
-		offset: f32,
-		height: f32,
-	) -> Option<f32> {
-		let state = self.0.borrow();
-		if state.pending.is_some() || state.pinned.as_ref() == Some(&row_key(entry)) || height <= 0.
-		{
-			return None;
-		}
-		let (top, row_height) = *state.rows.get(&row_key(entry))?;
-		let y = top + offset;
-		let overscan = (height * 0.25).clamp(80., 160.);
-		(y + row_height < -overscan || y > height + overscan).then_some(row_height)
-	}
-
-	pub(super) fn request_latest(&self) {
-		self.0.borrow_mut().latest_requested = true;
-	}
-
-	pub(super) fn take_latest_request(&self) -> bool {
-		std::mem::take(&mut self.0.borrow_mut().latest_requested)
-	}
-
-	pub(super) fn retain(&self, entries: &[AgentTimelineEntry]) {
-		let keys = entries.iter().map(row_key).collect::<std::collections::BTreeSet<_>>();
-		let mut state = self.0.borrow_mut();
-		state.rows.retain(|key, _| keys.contains(key));
-		if state.pending.as_ref().is_some_and(|anchor| !keys.contains(&anchor.key)) {
-			state.pending = None;
-			state.process_motion_until = None;
-		}
-	}
-
-	fn capture(&self, offset: f32, height: f32) {
-		let mut state = self.0.borrow_mut();
-		state.revision = state.revision.wrapping_add(1);
-		state.pending = state
-			.rows
-			.iter()
-			.find(|(_, (top, row_height))| {
-				*top + offset < height && *top + *row_height + offset > 0.0
-			})
-			.map(|(key, (top, _))| Anchor {
-				key: key.clone(),
-				viewport_top: *top + offset,
-				revision: state.revision,
-				scheduled: false,
-			});
-	}
-}
-
-impl Geometry {
-	fn measure(&mut self, key: RowKey, top: f32, height: f32) -> Option<u64> {
-		self.rows.insert(key.clone(), (top, height));
-		let pending = self.pending.as_mut()?;
-		if pending.key != key || pending.scheduled {
-			return None;
-		}
-		pending.scheduled = true;
-		Some(pending.revision)
-	}
-
-	fn finish(&mut self, revision: u64, maximum: f32) -> Option<f32> {
-		if self.pending.as_ref()?.revision != revision {
-			return None;
-		}
-		let pending = self.pending.take()?;
-		let (top, _) = self.rows.get(&pending.key)?;
-		let offset = (pending.viewport_top - *top).clamp(-maximum.max(0.0), 0.0);
-		if self.process_motion_until.is_some_and(|until| std::time::Instant::now() < until) {
-			self.pending = Some(Anchor { scheduled: false, ..pending });
-		} else {
-			self.process_motion_until = None;
-		}
-		Some(offset)
-	}
-}
-
 impl AgentSurface {
 	pub(in super::super) fn prepare_history_layout(&self, window: &gpui::Window) {
 		let width = self
@@ -146,6 +156,7 @@ impl AgentSurface {
 			.as_ref()
 			.and_then(|work| self.transcript_scroll.get(work))
 			.map_or(0., |scroll| f32::from(scroll.bounds().size.width));
+
 		self.native_history.viewport.prepare_layout(Layout {
 			window_width: f32::from(window.viewport_size().width),
 			left_width: self.sidebar_width,
@@ -164,21 +175,29 @@ impl AgentSurface {
 		entry: &AgentTimelineEntry,
 	) {
 		self.latest_follow_work = None;
+
 		self.history_follow_paused.insert(work.into());
+
 		self.history_navigation = None;
+
 		let mut state = self.native_history.viewport.0.borrow_mut();
 		let key = row_key(entry);
+
 		state.process_motion_until =
 			Some(std::time::Instant::now() + std::time::Duration::from_millis(240));
+
 		if let (Some((top, _)), Some(scroll)) =
 			(state.rows.get(&key), self.transcript_scroll.get(work))
 		{
 			let viewport_top = *top + f32::from(scroll.offset().y);
+
 			state.revision += 1;
 			state.pending =
 				Some(Anchor { key, viewport_top, revision: state.revision, scheduled: false });
 		}
+
 		state.rows.clear();
+
 		self.wheel_scroll = None;
 	}
 
@@ -189,14 +208,17 @@ impl AgentSurface {
 	) {
 		let folded = hidden.iter().map(|i| row_key(&self.native_history.entries[*i])).collect();
 		let mut state = self.native_history.viewport.0.borrow_mut();
+
 		if state.folded != folded {
 			state.folded = folded;
+
 			state.rows.clear();
 		}
 	}
 
 	pub(in super::super) fn cancel_native_scroll_anchor(&self) {
 		let mut state = self.native_history.viewport.0.borrow_mut();
+
 		state.pending = None;
 		state.process_motion_until = None;
 		state.latest_requested = false;
@@ -219,7 +241,9 @@ impl AgentSurface {
 		} else {
 			self.cancel_native_scroll_anchor();
 		}
+
 		let accepted = self.native_history.prepend(binding, cursor, page);
+
 		if accepted {
 			// The saved viewport anchor now owns the offset in the new layout.
 			self.wheel_scroll = None;
@@ -227,6 +251,7 @@ impl AgentSurface {
 		if !accepted {
 			self.cancel_native_scroll_anchor();
 		}
+
 		accepted
 	}
 
@@ -243,7 +268,9 @@ impl AgentSurface {
 			.into_iter()
 			.map(|(entry, row_height)| {
 				let offset = height;
+
 				height += row_height + ROW_GAP;
+
 				let mark = self
 					.history_marks
 					.get(&super::super::activity::HistoryKey::native(
@@ -251,10 +278,13 @@ impl AgentSurface {
 						entry,
 					))
 					.map(|mark| mark.position.clone());
+
 				(row_key(entry), offset, row_height, mark)
 			})
 			.collect();
+
 		height = (height - ROW_GAP).max(0.);
+
 		div()
 			.w_full()
 			.flex_none()
@@ -264,8 +294,10 @@ impl AgentSurface {
 				let Some(bounds) = bounds.first() else { return };
 				let top = f32::from(bounds.origin.y - scroll.bounds().origin.y - scroll.offset().y);
 				let mut geometry = geometry.borrow_mut();
+
 				for (key, offset, height, mark) in &rows {
 					geometry.rows.insert(key.clone(), (top + offset, *height));
+
 					if let Some(mark) = mark {
 						mark.set(top + offset);
 					}
@@ -290,6 +322,7 @@ impl AgentSurface {
 		let owner = work.id.clone();
 		let selection = geometry.clone();
 		let selected_key = key.clone();
+
 		div()
 			.w_full()
 			.min_w_0()
@@ -311,6 +344,7 @@ impl AgentSurface {
 				};
 				let (geometry, surface, scroll, owner) =
 					(geometry.clone(), surface.clone(), scroll.clone(), owner.clone());
+
 				cx.defer(move |cx| {
 					let _ = surface.update(cx, |s, cx| {
 						if !Rc::ptr_eq(&geometry, &s.native_history.viewport.0)
@@ -319,6 +353,7 @@ impl AgentSurface {
 						{
 							return;
 						}
+
 						if let Some(offset) =
 							geometry.borrow_mut().finish(revision, scroll.max_offset().y.into())
 							&& (f32::from(scroll.offset().y) - offset).abs() > 0.1
@@ -331,6 +366,12 @@ impl AgentSurface {
 			})
 			.into_any_element()
 	}
+}
+
+fn row_key(entry: &AgentTimelineEntry) -> RowKey {
+	let (position, kind, id) = key(entry);
+
+	(position, kind, id.into())
 }
 
 #[cfg(test)]
@@ -353,13 +394,16 @@ mod tests {
 			),
 			..Default::default()
 		};
+
 		assert_eq!(geometry.measure(key.clone(), 300., 20.), Some(1));
-		assert_eq!(geometry.finish(1, 1000.), Some(-200.));
+		assert_eq!(geometry.finish(1, 1_000.), Some(-200.));
 		assert_eq!(geometry.measure(key.clone(), 420., 20.), Some(1));
-		assert_eq!(geometry.finish(1, 1000.), Some(-320.));
+		assert_eq!(geometry.finish(1, 1_000.), Some(-320.));
+
 		geometry.process_motion_until = Some(std::time::Instant::now());
+
 		assert_eq!(geometry.measure(key, 500., 20.), Some(1));
-		assert_eq!(geometry.finish(1, 1000.), Some(-400.));
+		assert_eq!(geometry.finish(1, 1_000.), Some(-400.));
 		assert!(geometry.pending.is_none());
 	}
 
@@ -384,12 +428,16 @@ mod tests {
 	fn measured_rows_keep_space_and_selection_with_a_viewport_buffer() {
 		let viewport = Viewport::default();
 		let entry = row(1);
-		viewport.0.borrow_mut().measure(row_key(&entry), 5000., 700.);
+
+		viewport.0.borrow_mut().measure(row_key(&entry), 5_000., 700.);
+
 		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), Some(700.));
-		assert_eq!(viewport.offscreen_height(&entry, -4000., 900.), None);
-		assert_eq!(viewport.offscreen_height(&entry, -5800., 900.), None);
-		assert_eq!(viewport.offscreen_height(&entry, -7000., 900.), Some(700.));
+		assert_eq!(viewport.offscreen_height(&entry, -4_000., 900.), None);
+		assert_eq!(viewport.offscreen_height(&entry, -5_800., 900.), None);
+		assert_eq!(viewport.offscreen_height(&entry, -7_000., 900.), Some(700.));
+
 		viewport.0.borrow_mut().pinned = Some(row_key(&entry));
+
 		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), None);
 	}
 
@@ -397,7 +445,7 @@ mod tests {
 	fn layout_changes_invalidate_measured_heights() {
 		let viewport = Viewport::default();
 		let mut layout = Layout {
-			window_width: 1400.,
+			window_width: 1_400.,
 			left_width: 240.,
 			right_width: 240.,
 			transcript_width: 900.,
@@ -406,13 +454,20 @@ mod tests {
 			rail_visible: true,
 			graph_expanded: false,
 		};
+
 		viewport.prepare_layout(layout);
+
 		let entry = row(1);
-		viewport.0.borrow_mut().measure(row_key(&entry), 5000., 700.);
+
+		viewport.0.borrow_mut().measure(row_key(&entry), 5_000., 700.);
 		viewport.prepare_layout(layout);
+
 		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), Some(700.));
+
 		layout.left_width = 300.;
+
 		viewport.prepare_layout(layout);
+
 		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), None);
 	}
 
@@ -429,10 +484,14 @@ mod tests {
 			(false, true, true),
 		] {
 			let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-			visual.simulate_resize(gpui::size(px(1400.), px(500.)));
+
+			visual.simulate_resize(gpui::size(px(1_400.), px(500.)));
+
 			let binding = surface.update(visual, |s, cx| {
 				s.visual_workspace_fixture(cx);
+
 				s.graph_visible = false;
+
 				let work = s
 					.snapshot
 					.as_mut()
@@ -441,12 +500,15 @@ mod tests {
 					.iter_mut()
 					.find(|work| Some(&work.id) == s.selected.as_ref())
 					.unwrap();
+
 				work.codex_thread_id = Some("thread".into());
+
 				let binding = Binding {
 					work: work.id.clone(),
 					thread: "thread".into(),
 					account: "account".into(),
 				};
+
 				assert!(s.native_history.replace(
 					binding.clone(),
 					AgentTimelinePage {
@@ -458,14 +520,20 @@ mod tests {
 						active_realtime_session_at_page_start: None,
 					}
 				));
+
 				cx.notify();
+
 				binding
 			});
+
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
 			});
+
 			let button = visual.debug_bounds("native-latest-action").unwrap();
+
 			visual.simulate_click(button.center(), Default::default());
+
 			let scroll = surface.read_with(visual, |s, _| {
 				assert_eq!(
 					s.native_history.entries,
@@ -473,8 +541,10 @@ mod tests {
 					"keep the visible page while the read is pending"
 				);
 				assert!(s.native_history.viewport.0.borrow().latest_requested);
+
 				s.transcript_scroll[&binding.work].clone()
 			});
+
 			if cancel {
 				visual.simulate_event(gpui::ScrollWheelEvent {
 					position: scroll.bounds().center(),
@@ -482,6 +552,7 @@ mod tests {
 					..Default::default()
 				});
 			}
+
 			surface.update(visual, |s, cx| {
 				if cold {
 					s.transcript_scroll.remove(&binding.work);
@@ -504,15 +575,20 @@ mod tests {
 						}
 					));
 				}
+
 				cx.notify();
 			});
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
 			});
+
 			let scroll =
 				surface.read_with(visual, |s, _| s.transcript_scroll[&binding.work].clone());
-			assert!(scroll.max_offset().y > px(1000.));
+
+			assert!(scroll.max_offset().y > px(1_000.));
+
 			let distance = (scroll.offset().y + scroll.max_offset().y).abs();
+
 			if cancel {
 				assert!(distance > px(100.));
 			} else {
@@ -524,11 +600,16 @@ mod tests {
 	#[gpui::test]
 	fn background_refresh_keeps_history_height_and_reading_position(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(px(1400.), px(700.)));
+
+		visual.simulate_resize(gpui::size(px(1_400.), px(700.)));
+
 		let work = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
+
 			let work = s.selected.clone().unwrap();
+
 			s.snapshot
 				.as_mut()
 				.unwrap()
@@ -538,6 +619,7 @@ mod tests {
 				.unwrap()
 				.codex_thread_id = Some("thread".into());
 			s.native_history.requested = Some((work.clone(), "thread".into()));
+
 			assert!(s.native_history.replace(
 				Binding { work: work.clone(), thread: "thread".into(), account: "account".into() },
 				AgentTimelinePage {
@@ -549,37 +631,48 @@ mod tests {
 					active_realtime_session_at_page_start: None
 				}
 			));
+
 			s.latest_follow_work = None;
+
 			s.history_follow_paused.insert(work.clone());
 			cx.notify();
+
 			work
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
 		// The fixture closes the initially reserved dock. Measure refreshes only
 		// after that independent panel animation has settled.
 		std::thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
 
 		let scroll = surface.read_with(visual, |s, _| s.transcript_scroll[&work].clone());
+
 		scroll.set_offset(point(px(0.), px(-300.)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let maximum = scroll.max_offset();
 		let offset = scroll.offset();
+
 		for pending in [true, false, true, false] {
 			surface.update(visual, |s, cx| {
 				s.native_history.task =
 					pending.then(|| cx.spawn(async |_, _| std::future::pending::<()>().await));
+
 				cx.notify();
 			});
+
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
 			});
+
 			assert_eq!(
 				scroll.max_offset(),
 				maximum,
@@ -597,15 +690,23 @@ mod tests {
 	fn evicted_rows_and_obsolete_layout_callbacks_cannot_move_the_viewport() {
 		let viewport = Viewport::default();
 		let key = row_key(&row(10));
+
 		viewport.0.borrow_mut().measure(key.clone(), 100., 300.);
 		viewport.capture(-150., 400.);
+
 		let old_revision = viewport.0.borrow_mut().measure(key.clone(), 600., 300.).unwrap();
+
 		viewport.capture(-650., 400.);
-		assert!(viewport.0.borrow_mut().finish(old_revision, 1000.).is_none());
+
+		assert!(viewport.0.borrow_mut().finish(old_revision, 1_000.).is_none());
+
 		let revision = viewport.0.borrow_mut().measure(key, 800., 300.).unwrap();
-		assert_eq!(viewport.0.borrow_mut().finish(revision, 1000.), Some(-850.));
+
+		assert_eq!(viewport.0.borrow_mut().finish(revision, 1_000.), Some(-850.));
+
 		viewport.capture(-850., 400.);
 		viewport.retain(&[row(1)]);
+
 		assert!(viewport.0.borrow().pending.is_none());
 		assert!(viewport.0.borrow().rows.is_empty());
 	}
@@ -616,16 +717,22 @@ mod tests {
 	) {
 		let short = |position| {
 			let mut entry = row(position);
+
 			if let Content::Item { text, .. } = &mut entry.content {
 				*text = "Agent message.".into();
 			}
+
 			entry
 		};
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(px(1400.), px(500.)));
+
+		visual.simulate_resize(gpui::size(px(1_400.), px(500.)));
+
 		let binding = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -634,41 +741,53 @@ mod tests {
 				.iter_mut()
 				.find(|work| Some(&work.id) == s.selected.as_ref())
 				.unwrap();
+
 			work.codex_thread_id = Some("thread".into());
+
 			let binding = Binding {
 				work: work.id.clone(),
 				thread: "thread".into(),
 				account: "account".into(),
 			};
+
 			assert!(s.native_history.replace(
 				binding.clone(),
 				AgentTimelinePage {
 					thread_id: "thread".into(),
-					entries: (10..1010).map(short).collect(),
+					entries: (10..1_010).map(short).collect(),
 					next_cursor: Some("older".into()),
 					weather: Default::default(),
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
 				}
 			));
+
 			cx.notify();
+
 			binding
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let key = row_key(&row(11));
+
 		surface.update(visual, |s, cx| {
 			let top = s.native_history.viewport.0.borrow().rows[&key].0;
+
 			s.transcript_scroll[&binding.work].set_offset(point(px(0.), px(40. - top)));
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let before = surface.update(visual, |s, cx| {
 			let before = s.native_history.viewport.0.borrow().rows[&key].0
 				+ f32::from(s.transcript_scroll[&binding.work].offset().y);
+
 			assert!(s.prepend_native_history(
 				&binding,
 				"older",
@@ -682,23 +801,28 @@ mod tests {
 				}
 			));
 			assert!(s.native_history.browsing_window);
+
 			cx.notify();
+
 			before
 		});
+
 		for _ in 0..3 {
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
 			});
 			visual.run_until_parked();
 		}
+
 		surface.read_with(visual, |s, _| {
 			let geometry = s.native_history.viewport.0.borrow();
 			let after =
 				geometry.rows[&key].0 + f32::from(s.transcript_scroll[&binding.work].offset().y);
+
 			assert!((after - before).abs() < 1., "trim moved row from {before} to {after}");
-			assert_eq!(s.native_history.entries.len(), 1000);
-			assert_eq!(geometry.rows.len(), 1000);
-			assert!(!geometry.rows.contains_key(&row_key(&row(1009))));
+			assert_eq!(s.native_history.entries.len(), 1_000);
+			assert_eq!(geometry.rows.len(), 1_000);
+			assert!(!geometry.rows.contains_key(&row_key(&row(1_009))));
 		});
 	}
 
@@ -707,10 +831,14 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(px(1400.), px(500.)));
+
+		visual.simulate_resize(gpui::size(px(1_400.), px(500.)));
+
 		let binding = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.graph_visible = false;
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -719,12 +847,15 @@ mod tests {
 				.iter_mut()
 				.find(|work| Some(&work.id) == s.selected.as_ref())
 				.unwrap();
+
 			work.codex_thread_id = Some("thread".into());
+
 			let binding = Binding {
 				work: work.id.clone(),
 				thread: "thread".into(),
 				account: "account".into(),
 			};
+
 			assert!(s.native_history.replace(
 				binding.clone(),
 				AgentTimelinePage {
@@ -736,25 +867,35 @@ mod tests {
 					active_realtime_session_at_page_start: None,
 				}
 			));
+
 			cx.notify();
+
 			binding
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let key = row_key(&row(11));
+
 		surface.update(visual, |s, cx| {
 			assert!(s.history_marks.is_empty());
+
 			let top = s.native_history.viewport.0.borrow().rows[&key].0;
+
 			s.transcript_scroll[&binding.work].set_offset(point(px(0.), px(40. - top)));
 			cx.notify();
 		});
+
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
+
 		let before = surface.update(visual, |s, cx| {
 			let before = s.native_history.viewport.0.borrow().rows[&key].0
 				+ f32::from(s.transcript_scroll[&binding.work].offset().y);
+
 			assert!(s.prepend_native_history(
 				&binding,
 				"older",
@@ -767,19 +908,24 @@ mod tests {
 					active_realtime_session_at_page_start: None,
 				}
 			));
+
 			cx.notify();
+
 			before
 		});
+
 		for _ in 0..3 {
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
 			});
 			visual.run_until_parked();
 		}
+
 		surface.read_with(visual, |s, _| {
 			let geometry = s.native_history.viewport.0.borrow();
 			let after =
 				geometry.rows[&key].0 + f32::from(s.transcript_scroll[&binding.work].offset().y);
+
 			assert!(
 				(after - before).abs() < 1.,
 				"row moved from {before} to {after}; offset={:?}, max={:?}, pending={:?}",
