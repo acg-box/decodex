@@ -1,7 +1,7 @@
 //! Native voice preferences. Saving affects the next call and never restarts audio.
 use std::{path::Path, time::Duration};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::{sync::mpsc::Sender, time};
 
 use crate::app_server_client::{AppServerClient, ClientError, Outbound, realtime_settings};
@@ -25,7 +25,7 @@ impl NativeVoiceSettings {
 	pub fn fingerprint(&self) -> String {
 		use sha2::{Digest as _, Sha256};
 
-		let value = json!([
+		let value = serde_json::json!([
 			self.cwd,
 			self.file,
 			self.version,
@@ -52,8 +52,9 @@ impl AppServerClient {
 		}
 
 		time::timeout(Duration::from_secs(15), async {
-			let config =
-				self.request("config/read", json!({"cwd":cwd,"includeLayers":true})).await?;
+			let config = self
+				.request("config/read", serde_json::json!({"cwd":cwd,"includeLayers":true}))
+				.await?;
 			let layers = config["layers"].as_array().ok_or(ClientError::InvalidFrame)?;
 			let user = layers
 				.iter()
@@ -103,7 +104,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		let params = json!({"filePath":observed.file,"expectedVersion":observed.version,
+		let params = serde_json::json!({"filePath":observed.file,"expectedVersion":observed.version,
 			"reloadUserConfig":false,"edits":[{"keyPath":"realtime.voice","value":voice,"mergeStrategy":"replace"}]});
 		let receipt =
 			time::timeout(Duration::from_secs(15), self.request("config/batchWrite", params))
@@ -121,7 +122,7 @@ impl AppServerClient {
 	}
 
 	pub(super) async fn realtime_voice_catalog(&self) -> (Vec<String>, String) {
-		if let Ok(value) = self.request("thread/realtime/listVoices", json!({})).await
+		if let Ok(value) = self.request("thread/realtime/listVoices", serde_json::json!({})).await
 			&& let Some(catalog) = value["voices"]["v1"].as_array()
 			&& !catalog.is_empty()
 			&& catalog.len() <= 64

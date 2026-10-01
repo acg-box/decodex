@@ -1,6 +1,6 @@
 //! Native backend estimates, distinct from live token counters and account quotas.
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::app_server_client::{AppServerClient, ClientError};
 
@@ -48,7 +48,8 @@ impl AppServerClient {
 		&self,
 		thread: &str,
 	) -> Result<Option<ThreadUsageEstimate>, ClientError> {
-		let response = self.request("account/usage/read", json!({"threadId":thread})).await?;
+		let response =
+			self.request("account/usage/read", serde_json::json!({"threadId":thread})).await?;
 
 		if !response.is_object() {
 			return Err(ClientError::InvalidFrame);
@@ -112,10 +113,10 @@ mod tests {
 
 	#[test]
 	fn thread_usage_rejects_negative_and_out_of_range_estimates() {
-		for value in [usage::json!(-1), usage::json!(u64::MAX)] {
+		for value in [serde_json::json!(-1), serde_json::json!(u64::MAX)] {
 			assert!(
 				usage::decode(
-					&usage::json!({"threadId":"thread","estimatedUsageCreditsMicros":value,"groups":[]}),
+					&serde_json::json!({"threadId":"thread","estimatedUsageCreditsMicros":value,"groups":[]}),
 					"thread"
 				)
 				.is_err()
@@ -137,9 +138,9 @@ mod tests {
 				.unwrap();
 
 				assert_eq!(request["method"], "account/usage/read");
-				assert_eq!(request["params"], usage::json!({"threadId":"thread"}));
+				assert_eq!(request["params"], serde_json::json!({"threadId":"thread"}));
 
-				write.write_all(format!("{}\n",usage::json!({"id":request["id"],"result":{"threadUsage":{"threadId":returned,"estimatedUsageCreditsMicros":9_007_199_254_740_993_u64,"estimatedUsageUsdMicros":null,"groups":[{"estimatedUsageCreditsMicros":0,"inputTokens":0,"cachedInputTokens":null}]}}})).as_bytes()).await.unwrap();
+				write.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"result":{"threadUsage":{"threadId":returned,"estimatedUsageCreditsMicros":9_007_199_254_740_993_u64,"estimatedUsageUsdMicros":null,"groups":[{"estimatedUsageCreditsMicros":0,"inputTokens":0,"cachedInputTokens":null}]}}})).as_bytes()).await.unwrap();
 			});
 			let result = client.thread_usage_estimate("thread").await;
 
@@ -161,9 +162,9 @@ mod tests {
 	#[tokio::test]
 	async fn native_thread_usage_keeps_missing_null_and_failure_distinct() {
 		for (result, absent) in [
-			(usage::json!({}), true),
-			(usage::json!({"threadUsage":null}), true),
-			(usage::json!([]), false),
+			(serde_json::json!({}), true),
+			(serde_json::json!({"threadUsage":null}), true),
+			(serde_json::json!([]), false),
 		] {
 			let (local, remote) = io::duplex(4_096);
 			let (read, write) = io::split(local);
@@ -177,7 +178,7 @@ mod tests {
 
 				write
 					.write_all(
-						format!("{}\n", usage::json!({"id":request["id"],"result":result}))
+						format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
 							.as_bytes(),
 					)
 					.await

@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError};
@@ -25,7 +25,7 @@ impl AppServerClient {
 		}
 
 		time::timeout(Duration::from_secs(20), async {
-			let metadata = self.thread_read(json!({"threadId":thread})).await?;
+			let metadata = self.thread_read(serde_json::json!({"threadId":thread})).await?;
 
 			if metadata.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
 				return Err(ClientError::InvalidFrame);
@@ -34,7 +34,7 @@ impl AppServerClient {
 			let page = self
 				.request(
 					"thread/timeline/list",
-					json!({"threadId":thread,"cursor":cursor,"limit":limit}),
+					serde_json::json!({"threadId":thread,"cursor":cursor,"limit":limit}),
 				)
 				.await?;
 
@@ -128,7 +128,7 @@ mod tests {
 
 	#[test]
 	fn equal_positions_keep_native_kind_order_and_opening_voice_state() {
-		let page = timeline::json!({"data":[
+		let page = serde_json::json!({"data":[
 			{"type":"turnStarted","position":5,"turnId":"turn"},
 			{"type":"item","position":5,"turnId":"turn","item":{"type":"userMessage","id":"message"}},
 			{"type":"realtime","position":5,"item":{"type":"transcriptSegment","id":"speech","realtimeSessionId":"voice"}},
@@ -154,17 +154,17 @@ mod tests {
 	#[test]
 	fn incomplete_pages_are_not_empty_history() {
 		for page in [
-			timeline::json!({}),
-			timeline::json!({"data":[],"nextCursor":null}),
-			timeline::json!({"data":[],"nextCursor":"older","activeRealtimeSessionAtPageStart":null}),
-			timeline::json!({"data":[],"nextCursor":null,"activeRealtimeSessionAtPageStart":""}),
+			serde_json::json!({}),
+			serde_json::json!({"data":[],"nextCursor":null}),
+			serde_json::json!({"data":[],"nextCursor":"older","activeRealtimeSessionAtPageStart":null}),
+			serde_json::json!({"data":[],"nextCursor":null,"activeRealtimeSessionAtPageStart":""}),
 		] {
 			assert!(timeline::validate_page(&page, None, 10).is_err());
 		}
 
 		assert!(
 			timeline::validate_page(
-				&timeline::json!({"data":[],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}),
+				&serde_json::json!({"data":[],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}),
 				None,
 				10
 			)
@@ -182,19 +182,23 @@ mod tests {
 			let mut lines = BufReader::new(reader).lines();
 
 			for (method, thread, mut response) in [
-				("thread/read", "legacy", timeline::json!({"result":{"thread":{"id":"legacy"}}})),
+				("thread/read", "legacy", serde_json::json!({"result":{"thread":{"id":"legacy"}}})),
 				(
 					"thread/timeline/list",
 					"legacy",
-					timeline::json!({"error":{"code":-32_601,"message":"unsupported"}}),
+					serde_json::json!({"error":{"code":-32_601,"message":"unsupported"}}),
 				),
-				("thread/read", "paged", timeline::json!({"result":{"thread":{"id":"paged"}}})),
+				("thread/read", "paged", serde_json::json!({"result":{"thread":{"id":"paged"}}})),
 				(
 					"thread/timeline/list",
 					"paged",
-					timeline::json!({"result":{"data":[],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}}),
+					serde_json::json!({"result":{"data":[],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}}),
 				),
-				("thread/read", "wrong", timeline::json!({"result":{"thread":{"id":"unrelated"}}})),
+				(
+					"thread/read",
+					"wrong",
+					serde_json::json!({"result":{"thread":{"id":"unrelated"}}}),
+				),
 			] {
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -205,7 +209,7 @@ mod tests {
 				if method == "thread/timeline/list" {
 					assert_eq!(
 						request["params"],
-						timeline::json!({"threadId":thread,"limit":10,"cursor":null})
+						serde_json::json!({"threadId":thread,"limit":10,"cursor":null})
 					);
 				}
 

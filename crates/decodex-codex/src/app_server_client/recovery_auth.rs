@@ -1,7 +1,7 @@
 //! Read process authentication metadata without requesting exported credentials.
 use std::time::Duration;
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
@@ -29,7 +29,7 @@ impl AppServerClient {
 			Duration::from_secs(8),
 			self.request_with_history(
 				"getAuthStatus",
-				json!({"includeToken":false,"refreshToken":false}),
+				serde_json::json!({"includeToken":false,"refreshToken":false}),
 				guard.clone(),
 			),
 		)
@@ -83,36 +83,36 @@ mod tests {
 		for kind in ["chatgpt", "chatgptAuthTokens"] {
 			assert_eq!(
 				recovery_auth::project(
-					&recovery_auth::json!({"authMethod":kind,"authToken":null,"requiresOpenaiAuth":true})
+					&serde_json::json!({"authMethod":kind,"authToken":null,"requiresOpenaiAuth":true})
 				),
 				NativeRecoveryAuth::ChatGpt
 			);
 			assert_eq!(
 				recovery_auth::project(
-					&recovery_auth::json!({"authMethod":kind,"requiresOpenaiAuth":false})
+					&serde_json::json!({"authMethod":kind,"requiresOpenaiAuth":false})
 				),
 				NativeRecoveryAuth::Inapplicable
 			);
 		}
 		for value in [
-			recovery_auth::json!({}),
-			recovery_auth::json!({"authMethod":"chatgpt"}),
-			recovery_auth::json!({"authMethod":"future","requiresOpenaiAuth":true}),
-			recovery_auth::json!({"authMethod":true,"requiresOpenaiAuth":true}),
-			recovery_auth::json!({"authMethod":"chatgpt","requiresOpenaiAuth":true,"authToken":"synthetic-unrequested-token"}),
+			serde_json::json!({}),
+			serde_json::json!({"authMethod":"chatgpt"}),
+			serde_json::json!({"authMethod":"future","requiresOpenaiAuth":true}),
+			serde_json::json!({"authMethod":true,"requiresOpenaiAuth":true}),
+			serde_json::json!({"authMethod":"chatgpt","requiresOpenaiAuth":true,"authToken":"synthetic-unrequested-token"}),
 		] {
 			assert_eq!(recovery_auth::project(&value), NativeRecoveryAuth::Unavailable);
 		}
 		for kind in [
 			Value::Null,
-			recovery_auth::json!("apikey"),
-			recovery_auth::json!("headers"),
-			recovery_auth::json!("agentIdentity"),
-			recovery_auth::json!("personalAccessToken"),
+			serde_json::json!("apikey"),
+			serde_json::json!("headers"),
+			serde_json::json!("agentIdentity"),
+			serde_json::json!("personalAccessToken"),
 		] {
 			assert_eq!(
 				recovery_auth::project(
-					&recovery_auth::json!({"authMethod":kind,"requiresOpenaiAuth":true})
+					&serde_json::json!({"authMethod":kind,"requiresOpenaiAuth":true})
 				),
 				NativeRecoveryAuth::Inapplicable
 			);
@@ -134,10 +134,10 @@ mod tests {
 			assert_eq!(request["method"], "getAuthStatus");
 			assert_eq!(
 				request["params"],
-				recovery_auth::json!({"includeToken":false,"refreshToken":false})
+				serde_json::json!({"includeToken":false,"refreshToken":false})
 			);
 
-			w.write_all(format!("{}\n",recovery_auth::json!({"id":request["id"],"result":{"authMethod":"chatgptAuthTokens","authToken":null,"requiresOpenaiAuth":true}})).as_bytes()).await.unwrap();
+			w.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"result":{"authMethod":"chatgptAuthTokens","authToken":null,"requiresOpenaiAuth":true}})).as_bytes()).await.unwrap();
 
 			let _ = released.await;
 

@@ -2,7 +2,7 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
@@ -101,7 +101,8 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		let params = json!({"threadId":thread,"turnId":turn,"approvalsReviewer":reviewer});
+		let params =
+			serde_json::json!({"threadId":thread,"turnId":turn,"approvalsReviewer":reviewer});
 
 		self.publish_live_settings(params, guard).await
 	}
@@ -158,17 +159,17 @@ mod tests {
 
 	#[test]
 	fn reviewer_update_cannot_smuggle_other_settings_or_missing_identity() {
-		let good = live_settings::json!({"threadId":"t","turnId":"u","approvalsReviewer":"user"});
+		let good = serde_json::json!({"threadId":"t","turnId":"u","approvalsReviewer":"user"});
 
 		assert!(live_settings::is_live_reviewer_update(&good));
 
 		for (field, bad) in [
-			("threadId", live_settings::json!("")),
-			("turnId", live_settings::json!("\n")),
+			("threadId", serde_json::json!("")),
+			("turnId", serde_json::json!("\n")),
 			("approvalsReviewer", Value::Null),
-			("approvalsReviewer", live_settings::json!("guardian_subagent")),
-			("model", live_settings::json!("other")),
-			("approvalPolicy", live_settings::json!("never")),
+			("approvalsReviewer", serde_json::json!("guardian_subagent")),
+			("model", serde_json::json!("other")),
+			("approvalPolicy", serde_json::json!("never")),
 		] {
 			let mut value = good.clone();
 
@@ -180,21 +181,21 @@ mod tests {
 
 	#[test]
 	fn live_model_selection_rejects_unrelated_fields_and_reserve() {
-		let good = live_settings::json!({"threadId":"thread","turnId":"turn","model":"future-model","effort":"future-effort"});
+		let good = serde_json::json!({"threadId":"thread","turnId":"turn","model":"future-model","effort":"future-effort"});
 
 		assert!(live_settings::is_live_model_update(&good));
 
 		for (field, value) in [
-			("threadId", live_settings::json!("")),
-			("turnId", live_settings::json!("\n")),
-			("model", live_settings::json!("gpt-reserve")),
+			("threadId", serde_json::json!("")),
+			("turnId", serde_json::json!("\n")),
+			("model", serde_json::json!("gpt-reserve")),
 			("effort", Value::Null),
-			("model", live_settings::json!("x".repeat(257))),
-			("effort", live_settings::json!("x".repeat(129))),
+			("model", serde_json::json!("x".repeat(257))),
+			("effort", serde_json::json!("x".repeat(129))),
 			("serviceTier", Value::Null),
-			("approvalsReviewer", live_settings::json!("user")),
-			("approvalPolicy", live_settings::json!("never")),
-			("collaborationMode", live_settings::json!({})),
+			("approvalsReviewer", serde_json::json!("user")),
+			("approvalPolicy", serde_json::json!("never")),
+			("collaborationMode", serde_json::json!({})),
 		] {
 			let mut bad = good.clone();
 
@@ -223,7 +224,7 @@ mod tests {
 				assert_eq!(request["method"], "turn/settings/update");
 				assert_eq!(
 					request["params"],
-					live_settings::json!({"threadId":"thread","turnId":"original","approvalsReviewer":"auto_review"})
+					serde_json::json!({"threadId":"thread","turnId":"original","approvalsReviewer":"auto_review"})
 				);
 
 				if status == "lost" {
@@ -231,9 +232,9 @@ mod tests {
 				}
 
 				let reply = if status == "rejected" {
-					live_settings::json!({"id":request["id"],"error":{"code":-32_600,"message":"managed reviewer requirement"}})
+					serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":"managed reviewer requirement"}})
 				} else {
-					live_settings::json!({"id":request["id"],"result":{"status":status}})
+					serde_json::json!({"id":request["id"],"result":{"status":status}})
 				};
 
 				w.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
@@ -279,7 +280,7 @@ mod tests {
 				assert_eq!(request["method"], "turn/settings/update");
 				assert_eq!(
 					request["params"],
-					live_settings::json!({"threadId":"thread","turnId":"original","model":"selected","effort":"high"})
+					serde_json::json!({"threadId":"thread","turnId":"original","model":"selected","effort":"high"})
 				);
 
 				if status == "lost" {
@@ -287,9 +288,9 @@ mod tests {
 				}
 
 				let reply = if status == "rejected" {
-					live_settings::json!({"id":request["id"],"error":{"code":-32_600,"message":"feature disabled"}})
+					serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":"feature disabled"}})
 				} else {
-					live_settings::json!({"id":request["id"],"result":{"status":status}})
+					serde_json::json!({"id":request["id"],"result":{"status":status}})
 				};
 
 				w.write_all(format!("{reply}\n").as_bytes()).await.unwrap();

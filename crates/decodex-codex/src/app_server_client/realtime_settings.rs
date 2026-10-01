@@ -1,7 +1,7 @@
 //! Resolve voice defaults from the owning server for each new conversation.
 use std::{path::Path, time::Duration};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError};
@@ -14,7 +14,7 @@ impl AppServerClient {
 		thread: &str,
 	) -> Result<Option<String>, ClientError> {
 		time::timeout(Duration::from_secs(15), async {
-			let history = self.thread_read(json!({"threadId":thread})).await?;
+			let history = self.thread_read(serde_json::json!({"threadId":thread})).await?;
 
 			if history["thread"]["id"] != thread {
 				return Err(ClientError::InvalidFrame);
@@ -24,18 +24,20 @@ impl AppServerClient {
 				.as_str()
 				.filter(|cwd| Path::new(cwd).is_absolute())
 				.ok_or(ClientError::InvalidFrame)?;
-			let config =
-				match self.request("config/read", json!({"cwd":cwd,"includeLayers":true})).await {
-					Ok(value) => value,
-					Err(ClientError::Remote(error))
-						if error.code == -32_601
-							|| (error.code == -32_600
-								&& error.message.contains("config/read")
-								&& (error.message.contains("unknown variant")
-									|| error.message.contains("unknown method"))) =>
-						return Ok(None),
-					Err(error) => return Err(error),
-				};
+			let config = match self
+				.request("config/read", serde_json::json!({"cwd":cwd,"includeLayers":true}))
+				.await
+			{
+				Ok(value) => value,
+				Err(ClientError::Remote(error))
+					if error.code == -32_601
+						|| (error.code == -32_600
+							&& error.message.contains("config/read")
+							&& (error.message.contains("unknown variant")
+								|| error.message.contains("unknown method"))) =>
+					return Ok(None),
+				Err(error) => return Err(error),
+			};
 
 			if !config["config"].is_object() {
 				return Err(ClientError::InvalidFrame);
@@ -44,7 +46,8 @@ impl AppServerClient {
 			match &config["config"]["realtime"]["voice"] {
 				Value::Null => {
 					// V3 uses the V1 catalog. Cove is the upstream built-in default.
-					let catalog = self.request("thread/realtime/listVoices", json!({})).await;
+					let catalog =
+						self.request("thread/realtime/listVoices", serde_json::json!({})).await;
 					let default = catalog
 						.as_ref()
 						.ok()
@@ -92,49 +95,49 @@ pub(super) fn known_voice(voice: &str) -> bool {
 mod tests {
 	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-	use crate::app_server_client::realtime_settings::{self, AppServerClient, Value};
+	use crate::app_server_client::realtime_settings::{AppServerClient, Value};
 
 	#[tokio::test]
 	async fn voice_start_reads_each_project_and_distinguishes_unsupported_from_failed_config() {
 		for (config, catalog, expected) in [
 			(
-				realtime_settings::json!({"result":{"config":{"realtime":{"voice":"juniper"}}}}),
-				realtime_settings::json!({}),
+				serde_json::json!({"result":{"config":{"realtime":{"voice":"juniper"}}}}),
+				serde_json::json!({}),
 				Ok(Some("juniper")),
 			),
 			(
-				realtime_settings::json!({"result":{"config":{}}}),
-				realtime_settings::json!({"result":{"voices":{"defaultV1":"maple"}}}),
+				serde_json::json!({"result":{"config":{}}}),
+				serde_json::json!({"result":{"voices":{"defaultV1":"maple"}}}),
 				Ok(Some("maple")),
 			),
 			(
-				realtime_settings::json!({"result":{"config":{}}}),
-				realtime_settings::json!({"error":{"code":-32_601,"message":"missing"}}),
+				serde_json::json!({"result":{"config":{}}}),
+				serde_json::json!({"error":{"code":-32_601,"message":"missing"}}),
 				Ok(Some("cove")),
 			),
 			(
-				realtime_settings::json!({"result":{"config":{"realtime":{"voice":"future_voice"}}}}),
-				realtime_settings::json!({}),
+				serde_json::json!({"result":{"config":{"realtime":{"voice":"future_voice"}}}}),
+				serde_json::json!({}),
 				Ok(None),
 			),
 			(
-				realtime_settings::json!({"error":{"code":-32_601,"message":"missing"}}),
-				realtime_settings::json!({}),
+				serde_json::json!({"error":{"code":-32_601,"message":"missing"}}),
+				serde_json::json!({}),
 				Ok(None),
 			),
 			(
-				realtime_settings::json!({"error":{"code":-32_600,"message":"config/read unknown variant"}}),
-				realtime_settings::json!({}),
+				serde_json::json!({"error":{"code":-32_600,"message":"config/read unknown variant"}}),
+				serde_json::json!({}),
 				Ok(None),
 			),
 			(
-				realtime_settings::json!({"error":{"code":-32_600,"message":"invalid configuration"}}),
-				realtime_settings::json!({}),
+				serde_json::json!({"error":{"code":-32_600,"message":"invalid configuration"}}),
+				serde_json::json!({}),
 				Err(()),
 			),
 			(
-				realtime_settings::json!({"result":{"config":{"realtime":{"voice":42}}}}),
-				realtime_settings::json!({}),
+				serde_json::json!({"result":{"config":{"realtime":{"voice":42}}}}),
+				serde_json::json!({}),
 				Err(()),
 			),
 		] {
@@ -154,12 +157,12 @@ mod tests {
 
 							cwd = format!("/projects/{thread}");
 
-							realtime_settings::json!({"result":{"thread":{"id":thread,"cwd":cwd}}})
+							serde_json::json!({"result":{"thread":{"id":thread,"cwd":cwd}}})
 						},
 						"config/read" => {
 							assert_eq!(
 								request["params"],
-								realtime_settings::json!({"cwd":cwd,"includeLayers":true})
+								serde_json::json!({"cwd":cwd,"includeLayers":true})
 							);
 
 							config.clone()

@@ -2,7 +2,7 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
@@ -49,7 +49,7 @@ impl AppServerClient {
 			Duration::from_secs(8),
 			self.request_with_history(
 				"thread/read",
-				json!({"threadId":thread,"includeTurns":false}),
+				serde_json::json!({"threadId":thread,"includeTurns":false}),
 				guard,
 			),
 		)
@@ -97,13 +97,10 @@ mod tests {
 	fn nullable_settings_are_distinct_from_missing_or_invalid_metadata() {
 		for (model, effort) in [
 			(Value::Null, Value::Null),
-			(
-				thread_model_settings::json!("future-model"),
-				thread_model_settings::json!("future-effort"),
-			),
+			(serde_json::json!("future-model"), serde_json::json!("future-effort")),
 		] {
 			let settings = thread_model_settings::project(
-				thread_model_settings::json!({"thread":{"id":"t","model":model,"reasoningEffort":effort}}),
+				serde_json::json!({"thread":{"id":"t","model":model,"reasoningEffort":effort}}),
 				"t",
 			)
 			.unwrap()
@@ -111,43 +108,34 @@ mod tests {
 
 			assert_eq!(
 				serde_json::to_value(settings).unwrap(),
-				thread_model_settings::json!({"model":model,"reasoningEffort":effort,"modelProvider":null})
+				serde_json::json!({"model":model,"reasoningEffort":effort,"modelProvider":null})
 			);
 		}
 
 		assert!(
-			thread_model_settings::project(
-				thread_model_settings::json!({"thread":{"id":"t"}}),
-				"t"
-			)
-			.unwrap()
-			.is_none()
+			thread_model_settings::project(serde_json::json!({"thread":{"id":"t"}}), "t")
+				.unwrap()
+				.is_none()
 		);
 
 		for thread in [
-			thread_model_settings::json!({"id":"other"}),
-			thread_model_settings::json!({"id":"t","model":42,"reasoningEffort":null}),
-			thread_model_settings::json!({"id":"t","model":"ok","reasoningEffort":"\n"}),
+			serde_json::json!({"id":"other"}),
+			serde_json::json!({"id":"t","model":42,"reasoningEffort":null}),
+			serde_json::json!({"id":"t","model":"ok","reasoningEffort":"\n"}),
 		] {
 			assert!(
-				thread_model_settings::project(
-					thread_model_settings::json!({"thread":thread}),
-					"t"
-				)
-				.is_err()
+				thread_model_settings::project(serde_json::json!({"thread":thread}), "t").is_err()
 			);
 		}
 	}
 
 	#[test]
 	fn provider_is_native_metadata_and_never_a_local_fallback() {
-		for provider in [
-			thread_model_settings::json!("server-ollama"),
-			thread_model_settings::json!("server-bedrock"),
-			Value::Null,
-		] {
+		for provider in
+			[serde_json::json!("server-ollama"), serde_json::json!("server-bedrock"), Value::Null]
+		{
 			let value = thread_model_settings::project(
-				thread_model_settings::json!({"thread":{"id":"t","model":"m","reasoningEffort":null,"modelProvider":provider}}),
+				serde_json::json!({"thread":{"id":"t","model":"m","reasoningEffort":null,"modelProvider":provider}}),
 				"t",
 			)
 			.unwrap()
@@ -156,14 +144,14 @@ mod tests {
 			assert_eq!(value.model_provider.as_deref(), provider.as_str());
 		}
 		for provider in [
-			thread_model_settings::json!(""),
-			thread_model_settings::json!("\n"),
-			thread_model_settings::json!(42),
-			thread_model_settings::json!("x".repeat(513)),
+			serde_json::json!(""),
+			serde_json::json!("\n"),
+			serde_json::json!(42),
+			serde_json::json!("x".repeat(513)),
 		] {
 			assert!(
 				thread_model_settings::project(
-					thread_model_settings::json!({"thread":{"id":"t","model":"m","reasoningEffort":null,"modelProvider":provider}}),
+					serde_json::json!({"thread":{"id":"t","model":"m","reasoningEffort":null,"modelProvider":provider}}),
 					"t"
 				)
 				.is_err()
@@ -184,12 +172,9 @@ mod tests {
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 
 			assert_eq!(request["method"], "thread/read");
-			assert_eq!(
-				request["params"],
-				thread_model_settings::json!({"threadId":"t","includeTurns":false})
-			);
+			assert_eq!(request["params"], serde_json::json!({"threadId":"t","includeTurns":false}));
 
-			w.write_all(format!("{}\n",thread_model_settings::json!({"id":request["id"],"result":{"thread":{"id":"t","model":"configured","reasoningEffort":null,"turns":[]}}})).as_bytes()).await.unwrap();
+			w.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"result":{"thread":{"id":"t","model":"configured","reasoningEffort":null,"turns":[]}}})).as_bytes()).await.unwrap();
 		});
 		let settings = client.thread_model_settings("t", guard).await.unwrap().unwrap();
 

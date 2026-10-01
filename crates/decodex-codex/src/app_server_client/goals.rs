@@ -2,7 +2,7 @@
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
 use decodex_core::AccountOperationId;
@@ -59,16 +59,16 @@ pub struct NativeGoalUpdate {
 }
 impl NativeGoalUpdate {
 	fn params(&self, thread: &str) -> Value {
-		let mut params = json!({"threadId":thread});
+		let mut params = serde_json::json!({"threadId":thread});
 
 		if let Some(objective) = &self.objective {
-			params["objective"] = json!(objective);
+			params["objective"] = serde_json::json!(objective);
 		}
 		if let Some(status) = &self.status {
-			params["status"] = json!(status);
+			params["status"] = serde_json::json!(status);
 		}
 		if let Some(budget) = self.token_budget {
-			params["tokenBudget"] = json!(budget);
+			params["tokenBudget"] = serde_json::json!(budget);
 		}
 
 		params
@@ -102,7 +102,7 @@ impl AppServerClient {
 
 		self.request_with_history(
 			"fs/createDirectory",
-			json!({"path":directory,"recursive":true}),
+			serde_json::json!({"path":directory,"recursive":true}),
 			guard.clone(),
 		)
 		.await?;
@@ -111,7 +111,7 @@ impl AppServerClient {
 
 		self.request_with_history(
 			"fs/writeFile",
-			json!({"path":path,"dataBase64":STANDARD.encode(text)}),
+			serde_json::json!({"path":path,"dataBase64":STANDARD.encode(text)}),
 			guard,
 		)
 		.await?;
@@ -140,7 +140,8 @@ impl AppServerClient {
 
 	/// Read the exact native goal without changing its status or starting model work.
 	pub async fn thread_goal(&self, thread: &str) -> Result<Option<NativeThreadGoal>, ClientError> {
-		let response = self.request("thread/goal/get", json!({"threadId":thread})).await?;
+		let response =
+			self.request("thread/goal/get", serde_json::json!({"threadId":thread})).await?;
 
 		project_goal(&response, thread)
 	}
@@ -235,31 +236,32 @@ mod tests {
 	use serde_json::Value;
 	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-	use crate::app_server_client::goals::{self, AppServerClient};
+	use crate::app_server_client::goals::AppServerClient;
 	#[tokio::test]
 	async fn native_goal_reads_distinguish_absence_limits_and_malformed_receipts() {
-		let base = goals::json!({"threadId":"thread","objective":"Native objective","status":"paused","tokenBudget":null,"tokensUsed":23,"timeUsedSeconds":7,"createdAt":10,"updatedAt":17});
-		let mut cases = vec![(goals::json!({"goal":null}), true), (goals::json!({}), false)];
+		let base = serde_json::json!({"threadId":"thread","objective":"Native objective","status":"paused","tokenBudget":null,"tokensUsed":23,"timeUsedSeconds":7,"createdAt":10,"updatedAt":17});
+		let mut cases =
+			vec![(serde_json::json!({"goal":null}), true), (serde_json::json!({}), false)];
 
 		for status in ["active", "paused", "blocked", "usageLimited", "budgetLimited", "complete"] {
 			let mut goal = base.clone();
 
-			goal["status"] = goals::json!(status);
+			goal["status"] = serde_json::json!(status);
 
-			cases.push((goals::json!({"goal":goal}), true));
+			cases.push((serde_json::json!({"goal":goal}), true));
 		}
 		for (key, value) in [
-			("threadId", goals::json!("other")),
-			("tokensUsed", goals::json!(-1)),
-			("timeUsedSeconds", goals::json!(-1)),
-			("tokenBudget", goals::json!(0)),
-			("status", goals::json!("future")),
+			("threadId", serde_json::json!("other")),
+			("tokensUsed", serde_json::json!(-1)),
+			("timeUsedSeconds", serde_json::json!(-1)),
+			("tokenBudget", serde_json::json!(0)),
+			("status", serde_json::json!("future")),
 		] {
 			let mut goal = base.clone();
 
 			goal[key] = value;
 
-			cases.push((goals::json!({"goal":goal}), false));
+			cases.push((serde_json::json!({"goal":goal}), false));
 		}
 		for (result, valid) in cases {
 			let (local, remote) = io::duplex(4_096);
@@ -273,11 +275,11 @@ mod tests {
 				.unwrap();
 
 				assert_eq!(request["method"], "thread/goal/get");
-				assert_eq!(request["params"], goals::json!({"threadId":"thread"}));
+				assert_eq!(request["params"], serde_json::json!({"threadId":"thread"}));
 
 				writer
 					.write_all(
-						format!("{}\n", goals::json!({"id":request["id"],"result":result}))
+						format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
 							.as_bytes(),
 					)
 					.await
@@ -296,7 +298,7 @@ mod edit_tests {
 
 	use crate::app_server_client::{
 		app_link_settings::tests,
-		goals::{self, ClientError, NativeGoalUpdate, NativeThreadGoalStatus},
+		goals::{ClientError, NativeGoalUpdate, NativeThreadGoalStatus},
 	};
 
 	#[tokio::test]
@@ -313,7 +315,7 @@ mod edit_tests {
 		let (client, mut child) = tests::native(home.path()).await;
 		let started = client
 			.thread_start(
-				goals::json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}),
+				serde_json::json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}),
 			)
 			.await
 			.unwrap();

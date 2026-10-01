@@ -1,7 +1,7 @@
 //! Read a canonical edit candidate without changing native history or starting work.
 use std::time::Duration;
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
@@ -41,7 +41,7 @@ impl AppServerClient {
 
 		time::timeout(Duration::from_secs(60), async {
 			let guard = self.thread_settings_guard(thread).ok_or(ClientError::InvalidFrame)?;
-			let metadata = self.thread_read(json!({"threadId":thread})).await?;
+			let metadata = self.thread_read(serde_json::json!({"threadId":thread})).await?;
 
 			if metadata["thread"]["id"] != thread {
 				return Err(ClientError::InvalidFrame);

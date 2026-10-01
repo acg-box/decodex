@@ -2,7 +2,6 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError};
@@ -41,7 +40,10 @@ impl AppServerClient {
 	) -> AccountNudgeOutcome {
 		let result = time::timeout(
 			Duration::from_secs(15),
-			self.request("account/sendAddCreditsNudgeEmail", json!({"creditType": credit_type})),
+			self.request(
+				"account/sendAddCreditsNudgeEmail",
+				serde_json::json!({"creditType": credit_type}),
+			),
 		)
 		.await;
 		let value = match result {
@@ -74,7 +76,7 @@ impl AppServerClient {
 #[cfg(test)]
 mod tests {
 	use crate::app_server_client::account_nudge::{
-		self, AccountNudgeCreditType, AccountNudgeOutcome, AppServerClient,
+		AccountNudgeCreditType, AccountNudgeOutcome, AppServerClient,
 	};
 	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 	#[tokio::test]
@@ -82,27 +84,27 @@ mod tests {
 		for (credit_type, response, expected) in [
 			(
 				AccountNudgeCreditType::Credits,
-				account_nudge::json!({"result":{"status":"sent"}}),
+				serde_json::json!({"result":{"status":"sent"}}),
 				AccountNudgeOutcome::Sent,
 			),
 			(
 				AccountNudgeCreditType::UsageLimit,
-				account_nudge::json!({"result":{"status":"cooldown_active"}}),
+				serde_json::json!({"result":{"status":"cooldown_active"}}),
 				AccountNudgeOutcome::CooldownActive,
 			),
 			(
 				AccountNudgeCreditType::Credits,
-				account_nudge::json!({"result":{"status":"future_status"}}),
+				serde_json::json!({"result":{"status":"future_status"}}),
 				AccountNudgeOutcome::Uncertain,
 			),
 			(
 				AccountNudgeCreditType::Credits,
-				account_nudge::json!({"error":{"code":-32_601,"message":"unsupported"}}),
+				serde_json::json!({"error":{"code":-32_601,"message":"unsupported"}}),
 				AccountNudgeOutcome::Unsupported,
 			),
 			(
 				AccountNudgeCreditType::Credits,
-				account_nudge::json!({"error":{"code":-32_603,"message":"delivery unknown"}}),
+				serde_json::json!({"error":{"code":-32_603,"message":"delivery unknown"}}),
 				AccountNudgeOutcome::Uncertain,
 			),
 		] {
@@ -116,7 +118,7 @@ mod tests {
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 
 				assert_eq!(request["method"], "account/sendAddCreditsNudgeEmail");
-				assert_eq!(request["params"], account_nudge::json!({"creditType":credit_type}));
+				assert_eq!(request["params"], serde_json::json!({"creditType":credit_type}));
 
 				let mut reply = response;
 

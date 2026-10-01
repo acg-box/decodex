@@ -1,7 +1,7 @@
 //! Source-bound integration discovery. Catalog metadata is not runtime readiness.
 use std::{collections::HashSet, path::Path, time::Duration};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError, MAX_FRAME_BYTES};
@@ -20,7 +20,10 @@ impl AppServerClient {
 
 		let response = time::timeout(
 			Duration::from_secs(30),
-			self.request("app/installed", json!({"threadId":thread,"forceRefresh":force_refresh})),
+			self.request(
+				"app/installed",
+				serde_json::json!({"threadId":thread,"forceRefresh":force_refresh}),
+			),
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
@@ -65,7 +68,7 @@ impl AppServerClient {
 				let page = self
 					.request(
 						"mcpServerStatus/list",
-						json!({"threadId":thread,"detail":"full","limit":100,"cursor":cursor}),
+						serde_json::json!({"threadId":thread,"detail":"full","limit":100,"cursor":cursor}),
 					)
 					.await?;
 
@@ -125,7 +128,7 @@ impl AppServerClient {
 
 		let result = time::timeout(
 			Duration::from_secs(30),
-			self.request("plugin/installed", json!({"cwds":[cwd]})),
+			self.request("plugin/installed", serde_json::json!({"cwds":[cwd]})),
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
@@ -144,9 +147,9 @@ impl AppServerClient {
 mod tests {
 	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-	use crate::app_server_client::integrations::{self, AppServerClient, ClientError, Value};
+	use crate::app_server_client::integrations::{AppServerClient, ClientError, Value};
 	fn server(name: &str, status: Value, error: Value) -> Value {
-		integrations::json!({"name":name,"runtimeStatus":status,"authStatus":"notLoggedIn","tools":{},"toolsError":error,"resources":[],"resourceTemplates":[],"serverCapabilities":{"resources":{}},"pluginId":null})
+		serde_json::json!({"name":name,"runtimeStatus":status,"authStatus":"notLoggedIn","tools":{},"toolsError":error,"resources":[],"resourceTemplates":[],"serverCapabilities":{"resources":{}},"pluginId":null})
 	}
 	#[tokio::test]
 	async fn discovery_keeps_failure_distinct_from_empty_and_uses_exact_scope() {
@@ -160,17 +163,17 @@ mod tests {
 			for (method, response, cursor) in [
 				(
 					"mcpServerStatus/list",
-					integrations::json!({"data":[server("broken",integrations::json!("authenticationRequired"),integrations::json!("Discovery failed"))],"nextCursor":"page2"}),
+					serde_json::json!({"data":[server("broken",serde_json::json!("authenticationRequired"),serde_json::json!("Discovery failed"))],"nextCursor":"page2"}),
 					Value::Null,
 				),
 				(
 					"mcpServerStatus/list",
-					integrations::json!({"data":[server("empty",integrations::json!("connected"),Value::Null)],"nextCursor":null}),
-					integrations::json!("page2"),
+					serde_json::json!({"data":[server("empty",serde_json::json!("connected"),Value::Null)],"nextCursor":null}),
+					serde_json::json!("page2"),
 				),
 				(
 					"plugin/installed",
-					integrations::json!({"marketplaces":[],"marketplaceLoadErrors":[{"marketplacePath":"/repo/marketplace.json","message":"Invalid repository configuration"}]}),
+					serde_json::json!({"marketplaces":[],"marketplaceLoadErrors":[{"marketplacePath":"/repo/marketplace.json","message":"Invalid repository configuration"}]}),
 					Value::Null,
 				),
 			] {
@@ -184,16 +187,13 @@ mod tests {
 					assert_eq!(request["params"]["cursor"], cursor);
 					assert_eq!(request["params"]["detail"], "full");
 				} else {
-					assert_eq!(request["params"], integrations::json!({"cwds":["/repo"]}));
+					assert_eq!(request["params"], serde_json::json!({"cwds":["/repo"]}));
 				}
 
 				writer
 					.write_all(
-						format!(
-							"{}\n",
-							integrations::json!({"id":request["id"],"result":response})
-						)
-						.as_bytes(),
+						format!("{}\n", serde_json::json!({"id":request["id"],"result":response}))
+							.as_bytes(),
 					)
 					.await
 					.unwrap();
@@ -229,7 +229,7 @@ mod tests {
 					.write_all(
 						format!(
 							"{}\n",
-							integrations::json!({"id":request["id"],"result":{"data":[],"nextCursor":"repeat"}})
+							serde_json::json!({"id":request["id"],"result":{"data":[],"nextCursor":"repeat"}})
 						)
 						.as_bytes(),
 					)

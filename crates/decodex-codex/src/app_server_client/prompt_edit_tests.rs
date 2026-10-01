@@ -2,10 +2,10 @@ use crate::app_server_client::prompt_edit::*;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 fn user(id: &str, content: Value) -> Value {
-	json!({"type":"userMessage","id":id,"content":content})
+	serde_json::json!({"type":"userMessage","id":id,"content":content})
 }
 fn page(items: Vec<Value>, next: Option<&str>) -> Value {
-	json!({"data":items.into_iter().map(|item| json!({"turnId":"target","item":item})).collect::<Vec<_>>(),"nextCursor":next})
+	serde_json::json!({"data":items.into_iter().map(|item| serde_json::json!({"turnId":"target","item":item})).collect::<Vec<_>>(),"nextCursor":next})
 }
 async fn read(
 	mode: &str,
@@ -33,16 +33,16 @@ async fn read(
 			assert_eq!(request["params"]["threadId"], "thread");
 
 			let result = match request["method"].as_str().unwrap() {
-				"thread/read" => json!({"thread":{"id":"thread","historyMode":mode}}),
+				"thread/read" => serde_json::json!({"thread":{"id":"thread","historyMode":mode}}),
 				"thread/turns/list" =>
 					if request["params"]["limit"] == 1 {
 						if reverted {
 							w.write_all(b"{\"method\":\"thread/reverted\",\"params\":{\"threadId\":\"thread\"}}\n").await.unwrap();
 						}
 
-						json!({"data":[{"id":if changed {"changed"} else {"target"},"status":status}],"nextCursor":null})
+						serde_json::json!({"data":[{"id":if changed {"changed"} else {"target"},"status":status}],"nextCursor":null})
 					} else {
-						json!({"data":[{"id":"target","status":status,"completedAt":null},{"id":"previous","status":"completed"}],"nextCursor":null})
+						serde_json::json!({"data":[{"id":"target","status":status,"completedAt":null},{"id":"previous","status":"completed"}],"nextCursor":null})
 					},
 				"thread/items/list" => {
 					assert_eq!(request["params"]["sortDirection"], "asc");
@@ -50,14 +50,14 @@ async fn read(
 					if request["params"]["turnId"] == "previous" {
 						let items = if previous_review {
 							vec![
-								json!({"type":"enteredReviewMode","id":"enter"}),
-								json!({"type":"exitedReviewMode","id":"exit"}),
+								serde_json::json!({"type":"enteredReviewMode","id":"enter"}),
+								serde_json::json!({"type":"exitedReviewMode","id":"exit"}),
 							]
 						} else {
 							vec![]
 						};
 
-						json!({"data":items.into_iter().map(|item|json!({"turnId":"previous","item":item})).collect::<Vec<_>>(),"nextCursor":null})
+						serde_json::json!({"data":items.into_iter().map(|item|serde_json::json!({"turnId":"previous","item":item})).collect::<Vec<_>>(),"nextCursor":null})
 					} else {
 						assert_eq!(request["params"]["turnId"], "target");
 
@@ -67,9 +67,11 @@ async fn read(
 				other => panic!("selection must not mutate or infer: {other}"),
 			};
 
-			w.write_all(format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes())
-				.await
-				.unwrap();
+			w.write_all(
+				format!("{}\n", serde_json::json!({"id":request["id"],"result":result})).as_bytes(),
+			)
+			.await
+			.unwrap();
 			requests.push(request);
 		}
 
@@ -88,7 +90,7 @@ async fn read(
 }
 #[tokio::test]
 async fn full_input_preserves_native_text_spans_mentions_and_attachments() {
-	let content = json!([
+	let content = serde_json::json!([
 		{"type":"text","text":"use $skill @sample","text_elements":[{"byteRange":{"start":4,"end":10},"placeholder":"$skill"}]},
 		{"type":"skill","name":"skill","path":"/fixture/skills/skill/SKILL.md"},
 		{"type":"mention","name":"Sample Plugin","path":"plugin://sample@test"},
@@ -96,7 +98,10 @@ async fn full_input_preserves_native_text_spans_mentions_and_attachments() {
 		{"type":"image","fileId":"native-file","detail":null}
 	]);
 	let pages = vec![
-		page(vec![json!({"type":"agentMessage","id":"earlier","text":"Context"})], Some("next")),
+		page(
+			vec![serde_json::json!({"type":"agentMessage","id":"earlier","text":"Context"})],
+			Some("next"),
+		),
 		page(vec![user("selected", content.clone())], None),
 	];
 	let (result, requests, live) = read("paginated", "completed", pages, false, false, false).await;
@@ -113,7 +118,7 @@ async fn full_input_preserves_native_text_spans_mentions_and_attachments() {
 }
 #[tokio::test]
 async fn clipped_steer_is_not_an_independent_prompt() {
-	let input = json!([{"type":"text","text":"Input"}]);
+	let input = serde_json::json!([{"type":"text","text":"Input"}]);
 	let pages = vec![
 		page(vec![user("first", input.clone())], Some("next")),
 		page(vec![user("selected", input)], None),
@@ -134,9 +139,12 @@ async fn legacy_and_running_turns_do_not_offer_an_edit() {
 }
 #[tokio::test]
 async fn hidden_inline_and_nested_review_inputs_are_not_editable() {
-	let input = json!([{"type":"text","text":"Review input"}]);
+	let input = serde_json::json!([{"type":"text","text":"Review input"}]);
 	let inline = vec![page(
-		vec![json!({"type":"enteredReviewMode","id":"enter"}), user("selected", input.clone())],
+		vec![
+			serde_json::json!({"type":"enteredReviewMode","id":"enter"}),
+			user("selected", input.clone()),
+		],
 		None,
 	)];
 
@@ -158,8 +166,10 @@ async fn hidden_inline_and_nested_review_inputs_are_not_editable() {
 #[tokio::test]
 async fn concurrent_new_turn_or_revert_rejects_the_observation() {
 	for (changed, reverted) in [(true, false), (false, true)] {
-		let pages =
-			vec![page(vec![user("selected", json!([{"type":"text","text":"Keep"}]))], None)];
+		let pages = vec![page(
+			vec![user("selected", serde_json::json!([{"type":"text","text":"Keep"}]))],
+			None,
+		)];
 
 		assert!(matches!(
 			read("paginated", "completed", pages, false, changed, reverted).await.0,
