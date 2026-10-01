@@ -331,6 +331,7 @@ impl SqliteStore {
 					Ok(rejected(ProcessGenerationRejection::EvidenceConflict, current))
 				};
 			}
+
 			// A prior-boot proof intentionally has no process identity: the boot ending
 			// proves every process from that boot ended, including bound generations.
 			let identity_matches = if evidence.kind == ProcessDeathEvidenceKind::PriorBootEnded {

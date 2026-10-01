@@ -4,10 +4,7 @@ use rusqlite::{self, Connection, OptionalExtension as _, Transaction, Transactio
 use serde_json::{self, Value};
 use sha2::{Digest as _, Sha256};
 
-use crate::{
-	SqliteStore, StoreError,
-	account_lifecycle::{self, sql_error},
-};
+use crate::{SqliteStore, StoreError, account_lifecycle};
 use decodex_core::{
 	ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS, AccountId, AccountLifecycleReadiness,
 	AccountQuotaDisposition, AccountQuotaObservationError, AccountQuotaWindowObservation,
@@ -16,7 +13,6 @@ use decodex_core::{
 	AccountRegistryRoutingMember, AccountRegistryRoutingSnapshot, AccountSelectionMode,
 	AccountState, ConversationId, ExecutionConsumer, QuotaWindowClass, RoutingBlocker,
 	RoutingCommandOutcome, RoutingDecisionCause, RoutingRejection, RuntimeSessionId, TurnId,
-	decide_account_registry_routing,
 };
 
 /// Exact Conversation coordinates for its sole initial account route.
@@ -70,9 +66,18 @@ pub struct ConversationContinuationBinding {
 	pub decided_at_micros: i64,
 }
 
+struct ContinuationAuthority {
+	account_id: String,
+	account_revision: i64,
+	account_snapshot_id: String,
+	profile_snapshot_id: String,
+	profile_revision: i64,
+	initial_decision_id: String,
+	routing_revision: i64,
+}
+
 impl SqliteStore {
 	/// Route one open ordinary Conversation from one transactionally captured registry universe.
-	#[allow(clippy::too_many_lines)] // Keep one atomic initial-route decision together.
 	pub async fn route_conversation_initial(
 		&self,
 		idempotency_key: &str,
@@ -90,84 +95,19 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let request_sha = route_request_sha(&request);
 
-			if let Some((stored_sha, decision_id)) = transaction
-				.query_row(
-					"SELECT request_sha256, routing_decision_id FROM routing_decisions
-					 WHERE idempotency_key = ?1",
-					rusqlite::params![key],
-					|row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-				)
-				.optional()
-				.map_err(sql_error)?
+			if let Some(decision_id) = replayed_routing_decision(&transaction, &key, &request_sha)?
 			{
-				if stored_sha != request_sha {
-					return Err(StoreError::IdempotencyConflict);
-				}
-
 				let route = read_initial_route_by_id(&transaction, &decision_id)?;
 
-				transaction.commit().map_err(sql_error)?;
+				transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 				return Ok(ConversationInitialRouteOutcome::Replayed(route));
 			}
-
-			let conversation_matches: bool = transaction
-				.query_row(
-					"SELECT EXISTS (
-					   SELECT 1 FROM conversations AS c
-					   JOIN quick_task_requests AS q USING (conversation_id)
-					   WHERE c.conversation_id = ?1 AND c.revision = ?2 AND c.state = 'active'
-					 )",
-					rusqlite::params![
-						request.conversation_id.as_str(),
-						request.expected_conversation_revision
-					],
-					|row| row.get(0),
-				)
-				.map_err(sql_error)?;
-
-			if !conversation_matches {
-				return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
-					operation: "route_quick_task_initial".to_owned(),
-					code: "conversation_mismatch".to_owned(),
-				}));
-			}
-
-			let already_bound: bool = transaction
-				.query_row(
-					"SELECT EXISTS (
-					   SELECT 1 FROM routing_decisions
-					   WHERE conversation_id = ?1
-					     AND authority_shape = 'conversation_account_registry'
-					 )",
-					rusqlite::params![request.conversation_id.as_str()],
-					|row| row.get(0),
-				)
-				.map_err(sql_error)?;
-
-			if already_bound {
-				return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
-					operation: "route_quick_task_initial".to_owned(),
-					code: "initial_routing_already_bound".to_owned(),
-				}));
-			}
-
-			let review_required: bool = transaction
-				.query_row(
-					"SELECT model_source_review_required FROM quick_task_requests WHERE conversation_id = ?1",
-					rusqlite::params![request.conversation_id.as_str()],
-					|row| row.get(0),
-				)
-				.map_err(sql_error)?;
-
-			if review_required {
-				return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
-					operation: "route_quick_task_initial".to_owned(),
-					code: "initial_model_source_changed".to_owned(),
-				}));
+			if let Some(rejection) = initial_route_rejection(&transaction, &request)? {
+				return Ok(ConversationInitialRouteOutcome::Rejected(rejection));
 			}
 
 			let accounts = account_lifecycle::read_account_registry_sync(&transaction, None, 512)?;
@@ -184,7 +124,7 @@ impl SqliteStore {
 				.query_row("SELECT revision FROM role_profiles WHERE role = 'task'", [], |row| {
 					row.get(0)
 				})
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let decided_at_micros = crate::unix_micros().map_err(StoreError::from)?;
 			let snapshot = build_snapshot(
 				account_lifecycle::random_uuid_v4()?,
@@ -195,9 +135,10 @@ impl SqliteStore {
 				&accounts,
 			)?;
 			let decision =
-				decide_account_registry_routing(&snapshot, decided_at_micros).map_err(|_| {
-					StoreError::Incompatible("routing snapshot is incomplete".to_owned())
-				})?;
+				decodex_core::decide_account_registry_routing(&snapshot, decided_at_micros)
+					.map_err(|_| {
+						StoreError::Incompatible("routing snapshot is incomplete".to_owned())
+					})?;
 			let decision_id = account_lifecycle::random_uuid_v4()?;
 			let operation_id = account_lifecycle::random_uuid_v4()?;
 			let turn_id = TurnId::new(account_lifecycle::random_uuid_v4()?)
@@ -209,83 +150,27 @@ impl SqliteStore {
 					.map(|account| account.revision)
 			});
 
-			if let Some(selected) = decision.selected_account_id.as_ref() {
-				let source_matches: bool = transaction
-					.query_row(
-						"SELECT model_source_account_id IS NULL OR
-					   (model_source_account_id = ?2 AND model_source_account_revision = ?3)
-					 FROM quick_task_requests WHERE conversation_id = ?1",
-						rusqlite::params![
-							request.conversation_id.as_str(),
-							selected.as_str(),
-							account_revision
-						],
-						|row| row.get(0),
-					)
-					.map_err(sql_error)?;
+			if mark_changed_model_source(
+				&transaction,
+				&request,
+				decision.selected_account_id.as_ref(),
+				account_revision,
+				decided_at_micros,
+			)? {
+				transaction.commit().map_err(account_lifecycle::sql_error)?;
 
-				if !source_matches {
-					transaction
-						.execute(
-							"UPDATE quick_task_requests SET model_source_review_required = 1 WHERE conversation_id = ?1",
-							rusqlite::params![request.conversation_id.as_str()],
-						)
-						.map_err(sql_error)?;
-                    transaction.execute(
-                        "UPDATE conversations SET updated_at_micros = MAX(updated_at_micros + 1, ?2) WHERE conversation_id = ?1",
-                        rusqlite::params![request.conversation_id.as_str(), decided_at_micros],
-                    ).map_err(sql_error)?;
-					transaction.commit().map_err(sql_error)?;
-
-					return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
-						operation: "route_quick_task_initial".to_owned(),
-						code: "initial_model_source_changed".to_owned(),
-					}));
-				}
+				return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
+					operation: "route_quick_task_initial".to_owned(),
+					code: "initial_model_source_changed".to_owned(),
+				}));
 			}
-
-			let quota_classification = quota_classification(&decision, &snapshot);
-
-			transaction
-				.execute(
-					"INSERT INTO routing_decisions (
-					   routing_decision_id, operation_id, idempotency_key, request_sha256,
-					   authority_shape, conversation_id, turn_id, conversation_revision,
-					   snapshot_id, snapshot_json, decision_kind, account_id, account_revision,
-					   routing_revision, quota_classification, causes_json, exclusions_json,
-					   created_at_micros
-					 ) VALUES (
-					   ?1, ?2, ?3, ?4, 'conversation_account_registry', ?5, ?6, ?7,
-					   ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17
-					 )",
-					rusqlite::params![
-						decision_id,
-						operation_id,
-						key,
-						request_sha,
-						request.conversation_id.as_str(),
-						turn_id.as_str(),
-						request.expected_conversation_revision,
-						snapshot.snapshot_id,
-						serialize_snapshot(&snapshot)?.to_string(),
-						decision_kind_text(decision.kind),
-						decision.selected_account_id.as_ref().map(AccountId::as_str),
-						account_revision,
-						routing_revision,
-						quota_classification,
-						serialize_causes(&decision.causes).to_string(),
-						serialize_exclusions(&decision.exclusions).to_string(),
-						decided_at_micros,
-					],
-				)
-				.map_err(sql_error)?;
 
 			let route = ConversationInitialRoute {
 				decision_id,
 				operation_id,
 				snapshot,
 				consumer: ExecutionConsumer::ConversationTurn {
-					conversation_id: request.conversation_id,
+					conversation_id: request.conversation_id.clone(),
 					conversation_revision: request.expected_conversation_revision,
 					source_runtime_session_id: None,
 					source_runtime_session_revision: None,
@@ -296,7 +181,16 @@ impl SqliteStore {
 				decision,
 			};
 
-			transaction.commit().map_err(sql_error)?;
+			insert_initial_route(
+				&transaction,
+				&key,
+				&request_sha,
+				&request,
+				&route,
+				account_revision,
+			)?;
+
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(ConversationInitialRouteOutcome::Fresh(route))
 		})
@@ -320,7 +214,7 @@ impl SqliteStore {
 					|row| row.get::<_, String>(0),
 				)
 				.optional()
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			decision_id.map(|id| read_initial_route_by_id(connection, &id)).transpose()
 		})
@@ -328,7 +222,6 @@ impl SqliteStore {
 	}
 
 	/// Bind one later Turn to the original selected account without selecting again.
-	#[allow(clippy::too_many_lines)] // Keep one atomic continuation binding together.
 	pub async fn bind_conversation_continuation(
 		&self,
 		idempotency_key: &str,
@@ -350,70 +243,20 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 			let request_sha = continuation_request_sha(&request);
 
-			if let Some((stored_sha, decision_id)) = transaction
-				.query_row(
-					"SELECT request_sha256, routing_decision_id FROM routing_decisions
-					 WHERE idempotency_key = ?1",
-					rusqlite::params![key],
-					|row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-				)
-				.optional()
-				.map_err(sql_error)?
+			if let Some(decision_id) = replayed_routing_decision(&transaction, &key, &request_sha)?
 			{
-				if stored_sha != request_sha {
-					return Err(StoreError::IdempotencyConflict);
-				}
-
 				let binding = read_continuation_binding(&transaction, &decision_id)?;
 
-				transaction.commit().map_err(sql_error)?;
+				transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 				return Ok(RoutingCommandOutcome::Success(binding));
 			}
 
-			let session = transaction
-				.query_row(
-					"SELECT s.account_id, s.account_revision, s.account_snapshot_id,
-					        s.profile_snapshot_id, s.profile_revision, initial.routing_decision_id,
-					        initial.routing_revision
-					 FROM runtime_sessions AS s
-					 JOIN conversations AS c ON c.conversation_id = s.conversation_id
-					 JOIN routing_decisions AS initial
-					   ON initial.conversation_id = c.conversation_id
-					  AND initial.authority_shape = 'conversation_account_registry'
-					 WHERE s.runtime_session_id = ?1 AND s.conversation_id = ?2
-					   AND s.revision = ?3 AND s.state = 'active'
-					   AND c.revision = ?4 AND c.state = 'active'
-					   AND EXISTS (
-					     SELECT 1 FROM turns AS t WHERE t.turn_id = ?5
-					       AND t.conversation_id = c.conversation_id
-					       AND t.runtime_session_id = s.runtime_session_id AND t.status = 'active'
-					   )",
-					rusqlite::params![
-						request.source_runtime_session_id.as_str(),
-						request.conversation_id.as_str(),
-						request.expected_source_runtime_session_revision,
-						request.expected_conversation_revision,
-						request.turn_id.as_str(),
-					],
-					|row| {
-						Ok((
-							row.get::<_, String>(0)?,
-							row.get::<_, i64>(1)?,
-							row.get::<_, String>(2)?,
-							row.get::<_, String>(3)?,
-							row.get::<_, i64>(4)?,
-							row.get::<_, String>(5)?,
-							row.get::<_, i64>(6)?,
-						))
-					},
-				)
-				.optional()
-				.map_err(sql_error)?;
-			let Some((
+			let session = read_continuation_authority(&transaction, &request)?;
+			let Some(ContinuationAuthority {
 				account_id,
 				account_revision,
 				account_snapshot_id,
@@ -421,7 +264,7 @@ impl SqliteStore {
 				profile_revision,
 				initial_decision_id,
 				routing_revision,
-			)) = session
+			}) = session
 			else {
 				return Ok(RoutingCommandOutcome::Rejected(RoutingRejection {
 					operation: "bind_quick_task_continuation".to_owned(),
@@ -462,7 +305,7 @@ impl SqliteStore {
 						decided_at_micros,
 					],
 				)
-				.map_err(sql_error)?;
+				.map_err(account_lifecycle::sql_error)?;
 
 			let binding = ConversationContinuationBinding {
 				decision_id,
@@ -483,12 +326,233 @@ impl SqliteStore {
 				decided_at_micros,
 			};
 
-			transaction.commit().map_err(sql_error)?;
+			transaction.commit().map_err(account_lifecycle::sql_error)?;
 
 			Ok(RoutingCommandOutcome::Success(binding))
 		})
 		.await
 	}
+}
+
+fn replayed_routing_decision(
+	transaction: &Transaction<'_>,
+	key: &str,
+	request_sha: &str,
+) -> Result<Option<String>, StoreError> {
+	let stored = transaction
+		.query_row(
+			"SELECT request_sha256, routing_decision_id FROM routing_decisions
+		 WHERE idempotency_key = ?1",
+			rusqlite::params![key],
+			|row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+		)
+		.optional()
+		.map_err(account_lifecycle::sql_error)?;
+	let Some((stored_sha, decision_id)) = stored else {
+		return Ok(None);
+	};
+
+	if stored_sha != request_sha {
+		return Err(StoreError::IdempotencyConflict);
+	}
+
+	Ok(Some(decision_id))
+}
+
+fn initial_route_rejection(
+	transaction: &Transaction<'_>,
+	request: &RouteConversationInitial,
+) -> Result<Option<RoutingRejection>, StoreError> {
+	let conversation_matches: bool = transaction
+		.query_row(
+			"SELECT EXISTS (
+		   SELECT 1 FROM conversations AS c
+		   JOIN quick_task_requests AS q USING (conversation_id)
+		   WHERE c.conversation_id = ?1 AND c.revision = ?2 AND c.state = 'active'
+		 )",
+			rusqlite::params![
+				request.conversation_id.as_str(),
+				request.expected_conversation_revision
+			],
+			|row| row.get(0),
+		)
+		.map_err(account_lifecycle::sql_error)?;
+
+	if !conversation_matches {
+		return Ok(Some(RoutingRejection {
+			operation: "route_quick_task_initial".to_owned(),
+			code: "conversation_mismatch".to_owned(),
+		}));
+	}
+
+	let already_bound: bool = transaction
+		.query_row(
+			"SELECT EXISTS (
+		   SELECT 1 FROM routing_decisions
+		   WHERE conversation_id = ?1
+		     AND authority_shape = 'conversation_account_registry'
+		 )",
+			rusqlite::params![request.conversation_id.as_str()],
+			|row| row.get(0),
+		)
+		.map_err(account_lifecycle::sql_error)?;
+
+	if already_bound {
+		return Ok(Some(RoutingRejection {
+			operation: "route_quick_task_initial".to_owned(),
+			code: "initial_routing_already_bound".to_owned(),
+		}));
+	}
+
+	let review_required: bool = transaction
+		.query_row(
+			"SELECT model_source_review_required FROM quick_task_requests WHERE conversation_id = ?1",
+			rusqlite::params![request.conversation_id.as_str()],
+			|row| row.get(0),
+		)
+		.map_err(account_lifecycle::sql_error)?;
+
+	if review_required {
+		return Ok(Some(RoutingRejection {
+			operation: "route_quick_task_initial".to_owned(),
+			code: "initial_model_source_changed".to_owned(),
+		}));
+	}
+
+	Ok(None)
+}
+
+fn mark_changed_model_source(
+	transaction: &Transaction<'_>,
+	request: &RouteConversationInitial,
+	selected: Option<&AccountId>,
+	account_revision: Option<i64>,
+	decided_at_micros: i64,
+) -> Result<bool, StoreError> {
+	if let Some(selected) = selected {
+		let source_matches: bool = transaction
+			.query_row(
+				"SELECT model_source_account_id IS NULL OR
+					   (model_source_account_id = ?2 AND model_source_account_revision = ?3)
+					 FROM quick_task_requests WHERE conversation_id = ?1",
+				rusqlite::params![
+					request.conversation_id.as_str(),
+					selected.as_str(),
+					account_revision
+				],
+				|row| row.get(0),
+			)
+			.map_err(account_lifecycle::sql_error)?;
+
+		if !source_matches {
+			transaction
+				.execute(
+					"UPDATE quick_task_requests SET model_source_review_required = 1 WHERE conversation_id = ?1",
+					rusqlite::params![request.conversation_id.as_str()],
+				)
+				.map_err(account_lifecycle::sql_error)?;
+			transaction.execute(
+                        "UPDATE conversations SET updated_at_micros = MAX(updated_at_micros + 1, ?2) WHERE conversation_id = ?1",
+                        rusqlite::params![request.conversation_id.as_str(), decided_at_micros],
+                    ).map_err(account_lifecycle::sql_error)?;
+
+			return Ok(true);
+		}
+	}
+
+	Ok(false)
+}
+
+fn insert_initial_route(
+	transaction: &Transaction<'_>,
+	key: &str,
+	request_sha: &str,
+	request: &RouteConversationInitial,
+	route: &ConversationInitialRoute,
+	account_revision: Option<i64>,
+) -> Result<(), StoreError> {
+	let quota_classification = quota_classification(&route.decision, &route.snapshot);
+
+	transaction
+		.execute(
+			"INSERT INTO routing_decisions (
+		   routing_decision_id, operation_id, idempotency_key, request_sha256,
+		   authority_shape, conversation_id, turn_id, conversation_revision,
+		   snapshot_id, snapshot_json, decision_kind, account_id, account_revision,
+		   routing_revision, quota_classification, causes_json, exclusions_json,
+		   created_at_micros
+		 ) VALUES (
+		   ?1, ?2, ?3, ?4, 'conversation_account_registry', ?5, ?6, ?7,
+		   ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17
+		 )",
+			rusqlite::params![
+				route.decision_id,
+				route.operation_id,
+				key,
+				request_sha,
+				request.conversation_id.as_str(),
+				route.turn_id.as_str(),
+				request.expected_conversation_revision,
+				route.snapshot.snapshot_id,
+				serialize_snapshot(&route.snapshot)?.to_string(),
+				decision_kind_text(route.decision.kind),
+				route.decision.selected_account_id.as_ref().map(AccountId::as_str),
+				account_revision,
+				route.snapshot.routing_revision,
+				quota_classification,
+				serialize_causes(&route.decision.causes).to_string(),
+				serialize_exclusions(&route.decision.exclusions).to_string(),
+				route.decided_at_micros,
+			],
+		)
+		.map_err(account_lifecycle::sql_error)?;
+
+	Ok(())
+}
+
+fn read_continuation_authority(
+	transaction: &Transaction<'_>,
+	request: &BindConversationContinuation,
+) -> Result<Option<ContinuationAuthority>, StoreError> {
+	transaction
+		.query_row(
+			"SELECT s.account_id, s.account_revision, s.account_snapshot_id,
+		        s.profile_snapshot_id, s.profile_revision, initial.routing_decision_id,
+		        initial.routing_revision
+		 FROM runtime_sessions AS s
+		 JOIN conversations AS c ON c.conversation_id = s.conversation_id
+		 JOIN routing_decisions AS initial
+		   ON initial.conversation_id = c.conversation_id
+		  AND initial.authority_shape = 'conversation_account_registry'
+		 WHERE s.runtime_session_id = ?1 AND s.conversation_id = ?2
+		   AND s.revision = ?3 AND s.state = 'active'
+		   AND c.revision = ?4 AND c.state = 'active'
+		   AND EXISTS (
+		     SELECT 1 FROM turns AS t WHERE t.turn_id = ?5
+		       AND t.conversation_id = c.conversation_id
+		       AND t.runtime_session_id = s.runtime_session_id AND t.status = 'active'
+		   )",
+			rusqlite::params![
+				request.source_runtime_session_id.as_str(),
+				request.conversation_id.as_str(),
+				request.expected_source_runtime_session_revision,
+				request.expected_conversation_revision,
+				request.turn_id.as_str(),
+			],
+			|row| {
+				Ok(ContinuationAuthority {
+					account_id: row.get(0)?,
+					account_revision: row.get(1)?,
+					account_snapshot_id: row.get(2)?,
+					profile_snapshot_id: row.get(3)?,
+					profile_revision: row.get(4)?,
+					initial_decision_id: row.get(5)?,
+					routing_revision: row.get(6)?,
+				})
+			},
+		)
+		.optional()
+		.map_err(account_lifecycle::sql_error)
 }
 
 fn build_snapshot(
@@ -622,7 +686,7 @@ fn read_routing_control(
 			[],
 			|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
 		)
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 	let mode = match (mode.as_str(), fixed) {
 		("balanced", None) => AccountSelectionMode::Balanced,
 		("fixed", Some(account)) => AccountSelectionMode::Fixed(
@@ -663,7 +727,7 @@ fn read_initial_route_by_id(
 				))
 			},
 		)
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 	let conversation_id = ConversationId::new(row.1)
 		.map_err(|_| StoreError::Incompatible("Conversation identity".to_owned()))?;
 	let turn_id =
@@ -741,7 +805,7 @@ fn read_continuation_binding(
 				))
 			},
 		)
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 	let conversation_id = ConversationId::new(row.0)
 		.map_err(|_| StoreError::Incompatible("Conversation identity".to_owned()))?;
 	let turn_id =
@@ -1181,8 +1245,7 @@ mod tests {
 					},
 				],
 			};
-			let decision =
-				conversation_routing::decide_account_registry_routing(&snapshot, now).unwrap();
+			let decision = decodex_core::decide_account_registry_routing(&snapshot, now).unwrap();
 
 			assert_eq!(decision.selected_account_id.as_ref(), Some(&account));
 			assert_eq!(conversation_routing::quota_classification(&decision, &snapshot), expected);

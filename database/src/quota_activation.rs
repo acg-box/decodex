@@ -208,6 +208,7 @@ mod tests {
 					.unwrap()
 			);
 		}
+
 		// A positive receipt alone does not permit another request for the drifting window.
 		store.finish_quota_activation(&id, now, true).await.unwrap();
 
@@ -219,6 +220,7 @@ mod tests {
 				.await
 				.unwrap()
 		);
+
 		// The provider eventually starts a real countdown, even if usage still rounds to zero.
 		let reset = later + week;
 

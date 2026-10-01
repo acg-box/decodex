@@ -7,7 +7,6 @@ use serde_json::{self, Value};
 
 use crate::{
 	CommandIdentity, DatabaseError, SqliteStore, StoreError, account_alias, account_usage,
-	unix_micros,
 };
 use decodex_core::{
 	AccountId, AccountLifecycleReadiness, AccountOperation, AccountOperationId,
@@ -41,6 +40,18 @@ pub struct AccountOperationPreparation {
 pub struct AccountLifecycleMutation {
 	pub account_revision: i64,
 	pub phase: AccountOperationPhase,
+}
+
+/// One durable account notification receipt; absence of a response means uncertain delivery.
+pub struct AccountNudgeReceipt {
+	/// Original notification command key.
+	pub operation_key: String,
+	/// Account revision captured by the command.
+	pub account_revision: i64,
+	/// Time when the command was reserved, in Unix microseconds.
+	pub reserved_at_unix_micros: i64,
+	/// Saved response; absence does not authorize another notification.
+	pub response: Option<Value>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -809,7 +820,7 @@ impl SqliteStore {
 					 WHERE account_id = ?1 AND tombstoned_at_micros IS NULL",
 					rusqlite::params![
 						account_id.as_str(),
-						unix_micros().map_err(StoreError::from)?
+						crate::unix_micros().map_err(StoreError::from)?
 					],
 				)
 				.map_err(sql_error)?;
@@ -896,7 +907,7 @@ impl SqliteStore {
 				 SELECT 1 FROM account_quota_facts WHERE account_id = ?1 AND error_code IS NULL AND used_percent >= 100
 				 ) THEN 'depleted' ELSE 'available' END, updated_at_micros = ?2
 				 WHERE account_id = ?1 AND tombstoned_at_micros IS NULL",
-				rusqlite::params![account_id.as_str(), unix_micros().map_err(StoreError::from)?]).map_err(sql_error)?;
+				rusqlite::params![account_id.as_str(), crate::unix_micros().map_err(StoreError::from)?]).map_err(sql_error)?;
 
 			if account_changed != 1 { return Err(StoreError::InvalidInput("quota absence rejected")); }
 
@@ -931,7 +942,7 @@ impl SqliteStore {
 					 updated_at_micros = ?2 WHERE account_id = ?3 AND revision = ?4",
 					rusqlite::params![
 						store_observation_text(observation),
-						unix_micros().map_err(StoreError::from)?,
+						crate::unix_micros().map_err(StoreError::from)?,
 						account_id.as_str(),
 						expected_revision,
 					],
@@ -984,7 +995,7 @@ impl SqliteStore {
 						attestation.callback_profile_sha256,
 						attestation.login_chatgpt_auth_tokens,
 						attestation.refresh_callback,
-						unix_micros().map_err(StoreError::from)?,
+						crate::unix_micros().map_err(StoreError::from)?,
 					],
 				)
 				.map_err(sql_error)?;
@@ -992,6 +1003,30 @@ impl SqliteStore {
 			Ok(attestation.login_chatgpt_auth_tokens && attestation.refresh_callback)
 		})
 		.await
+	}
+
+	pub async fn read_account_nudge_receipt(
+		&self,
+		account_id: &AccountId,
+		kind: AccountCommandKind,
+		operation_key: Option<&str>,
+	) -> Result<Option<AccountNudgeReceipt>, StoreError> {
+		if !matches!(
+			kind,
+			AccountCommandKind::NotifyWorkspaceOwner
+				| AccountCommandKind::RequestWorkspaceUsageIncrease
+		) {
+			return Err(StoreError::InvalidInput("invalid account notification kind"));
+		}
+
+		let account_id = account_id.as_str().to_owned();
+		let operation_key = operation_key.map(str::to_owned);
+
+		self.run(move |connection| {
+			let row = connection.query_row("SELECT idempotency_key,expected_revision,reserved_at_micros,response_json FROM command_receipts WHERE protocol=?1 AND operation=?2 AND entity_id=?3 AND (?4 IS NULL OR idempotency_key=?4) ORDER BY reserved_at_micros DESC,idempotency_key DESC LIMIT 1", rusqlite::params![ACCOUNT_COMMAND_PROTOCOL,kind.as_str(),account_id,operation_key], |row| Ok((row.get::<_,String>(0)?,row.get::<_,i64>(1)?,row.get::<_,i64>(2)?,row.get::<_,Option<String>>(3)?))).optional().map_err(sql_error)?;
+
+			row.map(|(operation_key,account_revision,reserved_at_unix_micros,response)| Ok(AccountNudgeReceipt { operation_key, account_revision, reserved_at_unix_micros, response: response.map(|s| serde_json::from_str(&s).map_err(|_| incompatible("account notification receipt"))).transpose()? })).transpose()
+		}).await
 	}
 }
 
@@ -1109,7 +1144,7 @@ fn reserve_command_sync(
 ) -> Result<AccountCommandReceiptClaim, StoreError> {
 	let transaction =
 		connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
-	let now = unix_micros().map_err(StoreError::from)?;
+	let now = crate::unix_micros().map_err(StoreError::from)?;
 
 	if kind == AccountCommandKind::Route
 		&& transaction
@@ -1247,7 +1282,7 @@ fn finish_command_sync(
 			   AND state = 'reserved' AND claim_token = ?6 AND claim_expires_at_micros > ?2",
 			rusqlite::params![
 				response,
-				unix_micros().map_err(StoreError::from)?,
+				crate::unix_micros().map_err(StoreError::from)?,
 				reservation.protocol,
 				reservation.key,
 				reservation.request_hash,
@@ -1339,7 +1374,7 @@ fn prepare_operation_sync(
 		});
 	}
 
-	let now = unix_micros().map_err(StoreError::from)?;
+	let now = crate::unix_micros().map_err(StoreError::from)?;
 
 	connection
 		.execute(
@@ -1518,7 +1553,7 @@ fn advance_operation_sync(
 		return Ok(AccountLifecycleMutationOutcome::Rejected { rejection, actual });
 	}
 
-	let now = unix_micros().map_err(StoreError::from)?;
+	let now = crate::unix_micros().map_err(StoreError::from)?;
 	let completed =
 		matches!(target, AccountOperationPhase::Committed | AccountOperationPhase::Cancelled)
 			.then_some(now);
@@ -1554,7 +1589,7 @@ fn commit_account_operation(
 	connection: &Connection,
 	operation: &AccountOperation,
 ) -> Result<Option<AccountLifecycleRejection>, StoreError> {
-	let now = unix_micros().map_err(StoreError::from)?;
+	let now = crate::unix_micros().map_err(StoreError::from)?;
 
 	if let Some(rejection) = validate_reauthentication_takeover_commit(connection, operation)? {
 		return Ok(Some(rejection));
@@ -1835,7 +1870,7 @@ fn set_operation_target_sync(
 			   AND target_credential_json IS NULL",
 			rusqlite::params![
 				binding_json(Some(target))?,
-				unix_micros().map_err(StoreError::from)?,
+				crate::unix_micros().map_err(StoreError::from)?,
 				operation_id.as_str(),
 			],
 		)
@@ -2259,7 +2294,7 @@ fn quota_observation_sync(
 			return Err(incompatible("quota absence shape"));
 		}
 
-		let now = unix_micros().map_err(StoreError::from)?;
+		let now = crate::unix_micros().map_err(StoreError::from)?;
 
 		if observed > now || observed.saturating_add(QUOTA_FRESHNESS_MICROS) < now {
 			return AccountQuotaWindowObservation::unknown(duration)
@@ -2286,7 +2321,7 @@ fn quota_observation_sync(
 				resets,
 			)
 			.map_err(|_| incompatible("quota window"))?;
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 
 			if resets <= now || observed.saturating_add(QUOTA_FRESHNESS_MICROS) < now {
 				AccountQuotaDisposition::Stale(fact)
@@ -2376,7 +2411,7 @@ fn set_account_enabled_sync(
 			rusqlite::params![
 				enabled,
 				revision,
-				unix_micros().map_err(StoreError::from)?,
+				crate::unix_micros().map_err(StoreError::from)?,
 				account_id.as_str(),
 				expected_revision,
 			],
@@ -2419,7 +2454,7 @@ fn set_fixed_routing_sync(
 			rusqlite::params![
 				account_id.as_str(),
 				revision,
-				unix_micros().map_err(StoreError::from)?,
+				crate::unix_micros().map_err(StoreError::from)?,
 				expected_routing_revision,
 			],
 		)
@@ -2481,7 +2516,7 @@ fn set_balanced_routing_sync(
 			 revision = ?1, updated_at_micros = ?2 WHERE singleton = 1 AND revision = ?3",
 			rusqlite::params![
 				revision,
-				unix_micros().map_err(StoreError::from)?,
+				crate::unix_micros().map_err(StoreError::from)?,
 				expected_routing_revision,
 			],
 		)
@@ -2508,7 +2543,7 @@ fn set_account_order_sync(
 		return Ok(RoutingControlOutcome::InvalidOrder { revision: routing.revision });
 	}
 
-	let now = unix_micros().map_err(StoreError::from)?;
+	let now = crate::unix_micros().map_err(StoreError::from)?;
 
 	connection.execute("DELETE FROM account_routing_order", []).map_err(sql_error)?;
 
@@ -2998,7 +3033,7 @@ mod optional_quota_tests {
 			Ok(())
 		}).await.expect("fixture");
 
-		let now = account_lifecycle::unix_micros().expect("clock");
+		let now = crate::unix_micros().expect("clock");
 
 		store
 			.observe_account_quota(
@@ -3108,44 +3143,6 @@ mod optional_quota_tests {
 		}).await.expect("current readback");
 	}
 }
-
-/// One durable account notification receipt; absence of a response means uncertain delivery.
-pub struct AccountNudgeReceipt {
-	/// Original notification command key.
-	pub operation_key: String,
-	/// Account revision captured by the command.
-	pub account_revision: i64,
-	/// Time when the command was reserved, in Unix microseconds.
-	pub reserved_at_unix_micros: i64,
-	/// Saved response; absence does not authorize another notification.
-	pub response: Option<Value>,
-}
-impl SqliteStore {
-	pub async fn read_account_nudge_receipt(
-		&self,
-		account_id: &AccountId,
-		kind: AccountCommandKind,
-		operation_key: Option<&str>,
-	) -> Result<Option<AccountNudgeReceipt>, StoreError> {
-		if !matches!(
-			kind,
-			AccountCommandKind::NotifyWorkspaceOwner
-				| AccountCommandKind::RequestWorkspaceUsageIncrease
-		) {
-			return Err(StoreError::InvalidInput("invalid account notification kind"));
-		}
-
-		let account_id = account_id.as_str().to_owned();
-		let operation_key = operation_key.map(str::to_owned);
-
-		self.run(move |connection| {
-			let row = connection.query_row("SELECT idempotency_key,expected_revision,reserved_at_micros,response_json FROM command_receipts WHERE protocol=?1 AND operation=?2 AND entity_id=?3 AND (?4 IS NULL OR idempotency_key=?4) ORDER BY reserved_at_micros DESC,idempotency_key DESC LIMIT 1", rusqlite::params![ACCOUNT_COMMAND_PROTOCOL,kind.as_str(),account_id,operation_key], |row| Ok((row.get::<_,String>(0)?,row.get::<_,i64>(1)?,row.get::<_,i64>(2)?,row.get::<_,Option<String>>(3)?))).optional().map_err(sql_error)?;
-
-			row.map(|(operation_key,account_revision,reserved_at_unix_micros,response)| Ok(AccountNudgeReceipt { operation_key, account_revision, reserved_at_unix_micros, response: response.map(|s| serde_json::from_str(&s).map_err(|_| incompatible("account notification receipt"))).transpose()? })).transpose()
-		}).await
-	}
-}
-
 #[cfg(test)]
 mod nudge_receipt_tests {
 	use crate::account_lifecycle::{

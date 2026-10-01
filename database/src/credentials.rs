@@ -1,6 +1,8 @@
 use std::fmt::{Debug, Formatter};
 
-use rusqlite::{self, OptionalExtension as _, TransactionBehavior, ffi::SQLITE_CONSTRAINT_UNIQUE};
+use rusqlite::{
+	self, Error, OptionalExtension as _, TransactionBehavior, ffi::SQLITE_CONSTRAINT_UNIQUE,
+};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::{DatabaseError, SqliteStore, error};
@@ -71,7 +73,7 @@ impl SqliteStore {
 					],
 				)
 				.map_err(|error| match error {
-					rusqlite::Error::SqliteFailure(inner, _)
+					Error::SqliteFailure(inner, _)
 						if inner.extended_code == SQLITE_CONSTRAINT_UNIQUE =>
 						DatabaseError::Conflict,
 					_ => error::sqlite_error(error),
