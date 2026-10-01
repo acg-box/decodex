@@ -1,7 +1,7 @@
 use super::*;
 
 fn file_event(root: &AgentWorkItem) -> Value {
-	json!({"method":"item/started","params":{"threadId":root.codex_thread_id,"turnId":root.active_turn_id,"item":{"id":"patch","type":"fileChange","changes":[{"path":"/tmp/fixture","kind":{"type":"add"},"diff":format!("+{} REQUIRED FILE SUFFIX", "界".repeat(30000))}]}}})
+	json!({"method":"item/started","params":{"threadId":root.codex_thread_id,"turnId":root.active_turn_id,"item":{"id":"patch","type":"fileChange","changes":[{"path":"/tmp/fixture","kind":{"type":"add"},"diff":format!("+{} REQUIRED FILE SUFFIX", "界".repeat(30_000))}]}}})
 }
 
 #[tokio::test]
@@ -19,6 +19,7 @@ async fn live_file_approval_preserves_original_params_and_replays_exact_saved_ev
 	let id = agent.pending_requests[&RequestId::Number(91)];
 	let saved = agent.store.get_agent_inbox_event(id).await.unwrap();
 	let payload: Value = serde_json::from_str(&saved.payload).unwrap();
+
 	assert_eq!(payload["params"], params);
 	assert_eq!(payload["fileChange"], file["params"]["item"]);
 	assert!(
@@ -27,6 +28,7 @@ async fn live_file_approval_preserves_original_params_and_replays_exact_saved_ev
 			.ends_with("REQUIRED FILE SUFFIX")
 	);
 	assert!(agent.pending_file_changes.get(agent.client.connection_identity(), &params).is_none());
+
 	agent
 		.handle_event(ServerEvent::Request {
 			id: RequestId::Number(91),
@@ -35,13 +37,18 @@ async fn live_file_approval_preserves_original_params_and_replays_exact_saved_ev
 		})
 		.await
 		.unwrap();
+
 	assert_eq!(agent.store.get_agent_inbox_event(id).await.unwrap().payload, saved.payload);
+
 	let root =
 		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
 			.unwrap();
 	let reopened = SqliteStore::open(&root.paths()).unwrap();
+
 	assert_eq!(reopened.get_agent_inbox_event(id).await.unwrap().payload, saved.payload);
+
 	agent.respond_pending_event(id, json!({"decision":"decline"})).await.unwrap();
+
 	assert_eq!(sent.recv().await.unwrap(), json!({"id":91,"result":{"decision":"decline"}}));
 	assert!(agent.respond_pending_event(id, json!({"decision":"accept"})).await.is_err());
 }
@@ -51,6 +58,7 @@ async fn failed_file_approval_write_keeps_evidence_until_commit() {
 	let (mut agent, _sent, directory) = fixture().await;
 	let root = agent.start_agent("agent", "Coordinate").await.unwrap();
 	let file = file_event(&root);
+
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "item/started".into(),
@@ -58,28 +66,36 @@ async fn failed_file_approval_write_keeps_evidence_until_commit() {
 		})
 		.await
 		.unwrap();
+
 	let params =
 		json!({"threadId":root.codex_thread_id,"turnId":root.active_turn_id,"itemId":"patch"});
 	let root =
 		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
 			.unwrap();
 	let db = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+
 	db.execute_batch("CREATE TRIGGER refuse_file_evidence BEFORE INSERT ON agent_request_payloads BEGIN SELECT RAISE(ABORT,'fixture failure'); END;").unwrap();
+
 	let request = || ServerEvent::Request {
 		id: RequestId::Number(91),
 		method: "item/fileChange/requestApproval".into(),
 		params: params.clone(),
 	};
+
 	assert!(agent.handle_event(request()).await.is_err());
 	assert!(agent.pending_file_changes.get(agent.client.connection_identity(), &params).is_some());
+
 	db.execute_batch("DROP TRIGGER refuse_file_evidence").unwrap();
 	agent.handle_event(request()).await.unwrap();
+
 	assert!(agent.pending_file_changes.get(agent.client.connection_identity(), &params).is_none());
+
 	let saved = agent
 		.store
 		.get_agent_inbox_event(agent.pending_requests[&RequestId::Number(91)])
 		.await
 		.unwrap();
+
 	assert_eq!(
 		serde_json::from_str::<Value>(&saved.payload).unwrap()["fileChange"],
 		file["params"]["item"]

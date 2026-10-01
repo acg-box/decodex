@@ -3,6 +3,10 @@
 //! Missing process listings and identity mismatches are diagnostic only. Exit witnesses
 //! or the separate strict macOS kernel ESRCH check provide durable exit evidence.
 
+#[cfg(target_os = "macos")]
+#[path = "process_platform_macos_signal.rs"]
+mod macos_signal;
+
 use std::{
 	fmt::{Display, Formatter},
 	io,
@@ -15,6 +19,7 @@ use std::{
 };
 
 #[cfg(target_os = "linux")] use std::fs;
+
 #[cfg(target_os = "macos")] use std::{
 	ffi::CStr,
 	mem::{self, MaybeUninit},
@@ -24,9 +29,9 @@ use decodex_core::{
 	ProcessBootIdentity, ProcessDeathEvidenceKind, ProcessIdentity, ProcessStartIdentity,
 };
 
+const MACOS_BOOT_SESSION_IDENTITY_PREFIX: &str = "macos:bootsessionuuid:v1:";
 #[cfg(target_os = "macos")]
-#[path = "process_platform_macos_signal.rs"]
-mod macos_signal;
+const MACOS_BOOT_SESSION_UUID_C_STRING_BYTES: usize = 37;
 
 /// A supported-OS observation that never interprets absence as death.
 #[derive(Debug)]
@@ -40,6 +45,38 @@ pub(crate) enum ExactProcessObservation {
 		/// Current facts, when the operating system exposed a complete identity.
 		observed: ProcessIdentity,
 	},
+}
+
+/// Closed supported-OS adapter failure.
+#[derive(Debug)]
+pub(crate) enum ProcessPlatformError {
+	/// This build target has no accepted ProcessGeneration adapter.
+	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+	Unsupported,
+	/// Boot identity could not be read.
+	BootIdentity(io::Error),
+	/// Process identity could not be read safely.
+	ProcessIdentity(io::Error),
+	/// A kernel exit witness could not be attached or polled.
+	Observation(io::Error),
+	/// Exact owned-process signaling failed.
+	Signal(io::Error),
+}
+impl std::error::Error for ProcessPlatformError {}
+
+impl Display for ProcessPlatformError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		match self {
+			#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+			Self::Unsupported => formatter.write_str("the host has no accepted ProcessGeneration adapter"),
+			Self::BootIdentity(error) => write!(formatter, "boot identity failed: {error}"),
+			Self::ProcessIdentity(error) => write!(formatter, "process identity failed: {error}"),
+			Self::Observation(error) => {
+				write!(formatter, "process exit observation failed: {error}")
+			},
+			Self::Signal(error) => write!(formatter, "exact owned-process signal failed: {error}"),
+		}
+	}
 }
 
 /// An OS-owned exit source attached only after exact identity validation.
@@ -76,6 +113,7 @@ impl KernelExitWitness {
 				libc::pollfd { fd: self.descriptor.as_raw_fd(), events: libc::POLLIN, revents: 0 };
 			// SAFETY: `descriptor` is valid for one element and timeout zero does not block.
 			let result = unsafe { libc::poll(&mut descriptor, 1, 0) };
+
 			if result == -1 {
 				return Err(ProcessPlatformError::Observation(io::Error::last_os_error()));
 			}
@@ -83,8 +121,10 @@ impl KernelExitWitness {
 				&& descriptor.revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) != 0
 			{
 				self.positive_exit.store(true, Ordering::Release);
+
 				return Ok(Some(self.kind));
 			}
+
 			return Ok(None);
 		}
 
@@ -104,12 +144,14 @@ impl KernelExitWitness {
 					&timeout,
 				)
 			};
+
 			if result == -1 {
 				return Err(ProcessPlatformError::Observation(io::Error::last_os_error()));
 			}
 			if result == 1 {
 				// SAFETY: `kevent` initialized one output event.
 				let event = unsafe { event.assume_init() };
+
 				if event.flags & libc::EV_ERROR != 0 {
 					return Err(ProcessPlatformError::Observation(io::Error::other(
 						"macOS process witness returned an error event",
@@ -120,45 +162,16 @@ impl KernelExitWitness {
 					&& event.fflags & libc::NOTE_EXIT != 0
 				{
 					self.positive_exit.store(true, Ordering::Release);
+
 					return Ok(Some(self.kind));
 				}
 			}
+
 			Ok(None)
 		}
 
 		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 		Err(ProcessPlatformError::Unsupported)
-	}
-}
-
-/// Closed supported-OS adapter failure.
-#[derive(Debug)]
-pub(crate) enum ProcessPlatformError {
-	/// This build target has no accepted ProcessGeneration adapter.
-	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-	Unsupported,
-	/// Boot identity could not be read.
-	BootIdentity(io::Error),
-	/// Process identity could not be read safely.
-	ProcessIdentity(io::Error),
-	/// A kernel exit witness could not be attached or polled.
-	Observation(io::Error),
-	/// Exact owned-process signaling failed.
-	Signal(io::Error),
-}
-impl std::error::Error for ProcessPlatformError {}
-impl Display for ProcessPlatformError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		match self {
-			#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-			Self::Unsupported => formatter.write_str("the host has no accepted ProcessGeneration adapter"),
-			Self::BootIdentity(error) => write!(formatter, "boot identity failed: {error}"),
-			Self::ProcessIdentity(error) => write!(formatter, "process identity failed: {error}"),
-			Self::Observation(error) => {
-				write!(formatter, "process exit observation failed: {error}")
-			},
-			Self::Signal(error) => write!(formatter, "exact owned-process signal failed: {error}"),
-		}
 	}
 }
 
@@ -168,6 +181,7 @@ pub(crate) fn current_boot_identity() -> Result<ProcessBootIdentity, ProcessPlat
 	{
 		let value = fs::read_to_string("/proc/sys/kernel/random/boot_id")
 			.map_err(ProcessPlatformError::BootIdentity)?;
+
 		return ProcessBootIdentity::new(format!("linux:{}", value.trim()))
 			.map_err(|_| ProcessPlatformError::BootIdentity(invalid_identity()));
 	}
@@ -176,6 +190,7 @@ pub(crate) fn current_boot_identity() -> Result<ProcessBootIdentity, ProcessPlat
 	{
 		let boot_session_uuid =
 			read_macos_boot_session_uuid().map_err(ProcessPlatformError::BootIdentity)?;
+
 		ProcessBootIdentity::new(format!("{MACOS_BOOT_SESSION_IDENTITY_PREFIX}{boot_session_uuid}"))
 			.map_err(|_| ProcessPlatformError::BootIdentity(invalid_identity()))
 	}
@@ -183,8 +198,6 @@ pub(crate) fn current_boot_identity() -> Result<ProcessBootIdentity, ProcessPlat
 	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 	Err(ProcessPlatformError::Unsupported)
 }
-
-const MACOS_BOOT_SESSION_IDENTITY_PREFIX: &str = "macos:bootsessionuuid:v1:";
 
 /// Return true only when two exact identities use the same supported durable scheme and differ.
 ///
@@ -206,64 +219,6 @@ pub(crate) fn boot_identity_mismatch_proves_prior_boot(
 		&& macos_boot_session_uuid_from_identity(current).is_some();
 
 	same_linux_scheme || same_macos_scheme
-}
-
-#[cfg(target_os = "macos")]
-const MACOS_BOOT_SESSION_UUID_C_STRING_BYTES: usize = 37;
-
-#[cfg(target_os = "macos")]
-fn read_macos_boot_session_uuid() -> io::Result<String> {
-	let mut bytes = [0_u8; MACOS_BOOT_SESSION_UUID_C_STRING_BYTES];
-	let mut length = bytes.len();
-	// SAFETY: the name is a static C string, the output is bounded by `bytes`, and this is a
-	// read-only sysctl request.
-	let result = unsafe {
-		libc::sysctlbyname(
-			c"kern.bootsessionuuid".as_ptr(),
-			bytes.as_mut_ptr().cast(),
-			&mut length,
-			std::ptr::null_mut(),
-			0,
-		)
-	};
-	if result == -1 {
-		return Err(io::Error::last_os_error());
-	}
-	if length > bytes.len() {
-		return Err(invalid_boot_session_uuid());
-	}
-	parse_macos_boot_session_uuid(&bytes[..length])
-}
-
-#[cfg(target_os = "macos")]
-fn parse_macos_boot_session_uuid(bytes: &[u8]) -> io::Result<String> {
-	if bytes.len() != MACOS_BOOT_SESSION_UUID_C_STRING_BYTES {
-		return Err(invalid_boot_session_uuid());
-	}
-	let value = CStr::from_bytes_with_nul(bytes).map_err(|_| invalid_boot_session_uuid())?;
-	let value = value.to_str().map_err(|_| invalid_boot_session_uuid())?;
-	if !is_macos_boot_session_uuid(value) {
-		return Err(invalid_boot_session_uuid());
-	}
-	Ok(value.to_ascii_lowercase())
-}
-
-fn macos_boot_session_uuid_from_identity(identity: &str) -> Option<&str> {
-	let value = identity.strip_prefix(MACOS_BOOT_SESSION_IDENTITY_PREFIX)?;
-	is_macos_boot_session_uuid(value).then_some(value)
-}
-
-fn is_macos_boot_session_uuid(value: &str) -> bool {
-	value.len() == 36
-		&& value.bytes().enumerate().all(|(index, byte)| match index {
-			8 | 13 | 18 | 23 => byte == b'-',
-			_ => byte.is_ascii_hexdigit(),
-		})
-}
-
-#[cfg(target_os = "macos")]
-fn invalid_boot_session_uuid() -> io::Error {
-	io::Error::new(io::ErrorKind::InvalidData, "macOS boot session UUID is invalid")
 }
 
 /// Read one complete exact process identity. Missing processes return `None` without proof.
@@ -290,16 +245,20 @@ pub(crate) fn inspect_process_identity(
 				"Linux process stat has no command prefix",
 			))
 		})?;
+
 		if parse_u32(stat[..open].trim())? != process_id {
 			return Err(ProcessPlatformError::ProcessIdentity(invalid_identity()));
 		}
+
 		let fields = stat[close + 1..].split_ascii_whitespace().collect::<Vec<_>>();
+
 		if fields.len() <= 19 {
 			return Err(ProcessPlatformError::ProcessIdentity(io::Error::new(
 				io::ErrorKind::InvalidData,
 				"Linux process stat is incomplete",
 			)));
 		}
+
 		let process_group_id = parse_u32(fields[2])?;
 		let session_id = parse_u32(fields[3])?;
 		let start_ticks = fields[19].parse::<u64>().map_err(|_| {
@@ -308,6 +267,7 @@ pub(crate) fn inspect_process_identity(
 				"Linux process start identity is invalid",
 			))
 		})?;
+
 		ProcessIdentity::new(
 			boot_id.clone(),
 			process_id,
@@ -331,6 +291,7 @@ pub(crate) fn inspect_process_identity(
 		let result = unsafe {
 			libc::proc_pidinfo(pid, libc::PROC_PIDTBSDINFO, 0, info.as_mut_ptr().cast(), size)
 		};
+
 		if result == 0 {
 			return Ok(None);
 		}
@@ -341,13 +302,17 @@ pub(crate) fn inspect_process_identity(
 		let info = unsafe { info.assume_init() };
 		// SAFETY: `getsid` performs a read-only process lookup.
 		let session_id = unsafe { libc::getsid(pid) };
+
 		if session_id == -1 {
 			let error = io::Error::last_os_error();
+
 			if error.raw_os_error() == Some(libc::ESRCH) {
 				return Ok(None);
 			}
+
 			return Err(ProcessPlatformError::ProcessIdentity(error));
 		}
+
 		ProcessIdentity::new(
 			boot_id.clone(),
 			process_id,
@@ -367,6 +332,7 @@ pub(crate) fn inspect_process_identity(
 	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 	{
 		let _ = (process_id, boot_id);
+
 		Err(ProcessPlatformError::Unsupported)
 	}
 }
@@ -376,9 +342,11 @@ pub(crate) fn attach_exit_witness(
 	expected: &ProcessIdentity,
 ) -> Result<ExactProcessObservation, ProcessPlatformError> {
 	let boot = current_boot_identity()?;
+
 	if boot != expected.boot_id {
 		return Ok(ExactProcessObservation::NotObserved);
 	}
+
 	match inspect_process_identity(expected.process_id, &boot)? {
 		Some(observed) if observed == *expected => {},
 		Some(observed) => return Ok(ExactProcessObservation::IdentityMismatch { observed }),
@@ -391,15 +359,19 @@ pub(crate) fn attach_exit_witness(
 			.map_err(|_| ProcessPlatformError::Observation(invalid_identity()))?;
 		// SAFETY: `pidfd_open` receives one positive persisted PID and zero flags.
 		let raw = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+
 		if raw == -1 {
 			let error = io::Error::last_os_error();
+
 			if error.raw_os_error() == Some(libc::ESRCH) {
 				return Ok(ExactProcessObservation::NotObserved);
 			}
+
 			return Err(ProcessPlatformError::Observation(error));
 		}
 		// SAFETY: successful `pidfd_open` returns a new owned descriptor.
 		let descriptor = unsafe { OwnedFd::from_raw_fd(raw as i32) };
+
 		(descriptor, ProcessDeathEvidenceKind::LinuxPidfdExit)
 	};
 
@@ -407,6 +379,7 @@ pub(crate) fn attach_exit_witness(
 	let (descriptor, kind) = {
 		// SAFETY: `kqueue` returns a new descriptor on success.
 		let raw = unsafe { libc::kqueue() };
+
 		if raw == -1 {
 			return Err(ProcessPlatformError::Observation(io::Error::last_os_error()));
 		}
@@ -431,13 +404,17 @@ pub(crate) fn attach_exit_witness(
 				std::ptr::null(),
 			)
 		};
+
 		if result == -1 {
 			let error = io::Error::last_os_error();
+
 			if error.raw_os_error() == Some(libc::ESRCH) {
 				return Ok(ExactProcessObservation::NotObserved);
 			}
+
 			return Err(ProcessPlatformError::Observation(error));
 		}
+
 		(descriptor, ProcessDeathEvidenceKind::MacosKqueueExitAndGroupQuiescence)
 	};
 
@@ -474,6 +451,7 @@ pub(crate) fn configure_session_command(command: &mut Command, max_file_bytes: O
 
 			if let Some(limit) = max_file_bytes {
 				let limit = libc::rlimit { rlim_cur: limit, rlim_max: limit };
+
 				if libc::setrlimit(libc::RLIMIT_FSIZE, &limit) == -1 {
 					return Err(io::Error::last_os_error());
 				}
@@ -482,6 +460,7 @@ pub(crate) fn configure_session_command(command: &mut Command, max_file_bytes: O
 			for descriptor in 3..descriptor_limit {
 				mark_descriptor_close_on_exec(descriptor)?;
 			}
+
 			Ok(())
 		});
 	}
@@ -496,6 +475,7 @@ pub(crate) fn signal_owned_process_group(
 		ProcessPlatformError::BootIdentity(error) => ProcessPlatformError::Signal(error),
 		_ => ProcessPlatformError::Signal(invalid_identity()),
 	})?;
+
 	match inspect_process_identity(identity.process_id, &boot_id).map_err(|error| match error {
 		ProcessPlatformError::ProcessIdentity(error) => ProcessPlatformError::Signal(error),
 		_ => ProcessPlatformError::Signal(invalid_identity()),
@@ -503,6 +483,7 @@ pub(crate) fn signal_owned_process_group(
 		Some(observed) if observed == *identity => {},
 		Some(_) | None => return Err(ProcessPlatformError::Signal(invalid_identity())),
 	}
+
 	signal_owned_process_group_id(identity.process_group_id, signal)
 }
 
@@ -527,6 +508,7 @@ pub(crate) fn signal_owned_process_group_id(
 	let result = macos_signal::signal_group(process_group_id, signal, signal_target);
 	#[cfg(not(target_os = "macos"))]
 	let result = signal_target(-process_group_id, signal);
+
 	result.map_err(ProcessPlatformError::Signal)
 }
 
@@ -543,31 +525,21 @@ pub(crate) fn macos_kernel_confirms_gone(
 	{
 		return Ok(false);
 	}
+
 	let pid = i32::try_from(identity.process_id)
 		.map_err(|_| ProcessPlatformError::Observation(invalid_identity()))?;
+
 	if pid <= 1 {
 		return Ok(false);
 	}
+
 	let leader_absent = kernel_reports_missing(pid)?;
 	let group_absent = kernel_reports_missing(-pid)?;
+
 	Ok(leader_absent
 		&& group_absent
 		&& kernel_reports_missing(pid)?
 		&& current_boot_identity()? == identity.boot_id)
-}
-
-#[cfg(target_os = "macos")]
-fn kernel_reports_missing(pid: i32) -> Result<bool, ProcessPlatformError> {
-	// SAFETY: signal zero is a kernel existence/permission query; no signal is sent.
-	if unsafe { libc::kill(pid, 0) } == 0 {
-		return Ok(false);
-	}
-	let error = io::Error::last_os_error();
-	match error.raw_os_error() {
-		Some(libc::ESRCH) => Ok(true),
-		Some(libc::EPERM) => Ok(false),
-		_ => Err(ProcessPlatformError::Observation(error)),
-	}
 }
 
 /// Check group quiescence only as corroboration after positive exact-leader death.
@@ -585,9 +557,11 @@ pub(crate) fn process_group_id_is_quiescent(
 		.map_err(|_| ProcessPlatformError::Observation(invalid_identity()))?;
 	// SAFETY: signal zero does not mutate the target.
 	let result = unsafe { libc::kill(-process_group_id, 0) };
+
 	if result == 0 {
 		return Ok(false);
 	}
+
 	match io::Error::last_os_error().raw_os_error() {
 		Some(libc::ESRCH) => Ok(true),
 		Some(libc::EPERM) => Ok(false),
@@ -595,11 +569,90 @@ pub(crate) fn process_group_id_is_quiescent(
 	}
 }
 
+#[cfg(target_os = "macos")]
+fn read_macos_boot_session_uuid() -> io::Result<String> {
+	let mut bytes = [0_u8; MACOS_BOOT_SESSION_UUID_C_STRING_BYTES];
+	let mut length = bytes.len();
+	// SAFETY: the name is a static C string, the output is bounded by `bytes`, and this is a
+	// read-only sysctl request.
+	let result = unsafe {
+		libc::sysctlbyname(
+			c"kern.bootsessionuuid".as_ptr(),
+			bytes.as_mut_ptr().cast(),
+			&mut length,
+			std::ptr::null_mut(),
+			0,
+		)
+	};
+
+	if result == -1 {
+		return Err(io::Error::last_os_error());
+	}
+	if length > bytes.len() {
+		return Err(invalid_boot_session_uuid());
+	}
+
+	parse_macos_boot_session_uuid(&bytes[..length])
+}
+
+#[cfg(target_os = "macos")]
+fn parse_macos_boot_session_uuid(bytes: &[u8]) -> io::Result<String> {
+	if bytes.len() != MACOS_BOOT_SESSION_UUID_C_STRING_BYTES {
+		return Err(invalid_boot_session_uuid());
+	}
+
+	let value = CStr::from_bytes_with_nul(bytes).map_err(|_| invalid_boot_session_uuid())?;
+	let value = value.to_str().map_err(|_| invalid_boot_session_uuid())?;
+
+	if !is_macos_boot_session_uuid(value) {
+		return Err(invalid_boot_session_uuid());
+	}
+
+	Ok(value.to_ascii_lowercase())
+}
+
+fn macos_boot_session_uuid_from_identity(identity: &str) -> Option<&str> {
+	let value = identity.strip_prefix(MACOS_BOOT_SESSION_IDENTITY_PREFIX)?;
+
+	is_macos_boot_session_uuid(value).then_some(value)
+}
+
+fn is_macos_boot_session_uuid(value: &str) -> bool {
+	value.len() == 36
+		&& value.bytes().enumerate().all(|(index, byte)| match index {
+			8 | 13 | 18 | 23 => byte == b'-',
+			_ => byte.is_ascii_hexdigit(),
+		})
+}
+
+#[cfg(target_os = "macos")]
+fn invalid_boot_session_uuid() -> io::Error {
+	io::Error::new(io::ErrorKind::InvalidData, "macOS boot session UUID is invalid")
+}
+
+#[cfg(target_os = "macos")]
+fn kernel_reports_missing(pid: i32) -> Result<bool, ProcessPlatformError> {
+	// SAFETY: signal zero is a kernel existence/permission query; no signal is sent.
+	if unsafe { libc::kill(pid, 0) } == 0 {
+		return Ok(false);
+	}
+
+	let error = io::Error::last_os_error();
+
+	match error.raw_os_error() {
+		Some(libc::ESRCH) => Ok(true),
+		Some(libc::EPERM) => Ok(false),
+		_ => Err(ProcessPlatformError::Observation(error)),
+	}
+}
+
 unsafe fn mark_descriptor_close_on_exec(descriptor: i32) -> io::Result<()> {
 	// SAFETY: callers provide an integer descriptor and `fcntl` is async-signal-safe.
 	let flags = unsafe { libc::fcntl(descriptor, libc::F_GETFD) };
+
 	if flags == -1 {
 		let error = io::Error::last_os_error();
+
 		if error.raw_os_error() != Some(libc::EBADF) {
 			return Err(error);
 		}
@@ -608,6 +661,7 @@ unsafe fn mark_descriptor_close_on_exec(descriptor: i32) -> io::Result<()> {
 	{
 		return Err(io::Error::last_os_error());
 	}
+
 	Ok(())
 }
 
@@ -643,32 +697,47 @@ mod tests {
 			io::{BufRead as _, BufReader},
 			process::{Command, Stdio},
 		};
+
 		let mut command = Command::new("/bin/sh");
+
 		command
 			.args(["-c", "sleep 2 & echo ready; read line"])
 			.stdin(Stdio::piped())
 			.stdout(Stdio::piped());
+
 		super::configure_session_command(&mut command, None);
+
 		let mut child = command.spawn().unwrap();
 		let mut line = String::new();
+
 		BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
+
 		let boot = current_boot_identity().unwrap();
 		let identity = super::inspect_process_identity(child.id(), &boot).unwrap().unwrap();
+
 		assert!(!super::macos_kernel_confirms_gone(&identity).unwrap());
+
 		drop(child.stdin.take());
+
 		child.wait().unwrap();
 		// The leader is gone, but its sleeping child still holds the group.
 		assert!(!super::macos_kernel_confirms_gone(&identity).unwrap());
+
 		let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+
 		while !super::macos_kernel_confirms_gone(&identity).unwrap() {
 			assert!(std::time::Instant::now() < deadline);
+
 			std::thread::sleep(std::time::Duration::from_millis(20));
 		}
+
 		let mut other_boot = identity.clone();
+
 		other_boot.boot_id = ProcessBootIdentity::new(
 			"macos:bootsessionuuid:v1:01234567-89ab-cdef-0123-456789abcdef",
 		)
 		.unwrap();
+
 		assert!(!super::macos_kernel_confirms_gone(&other_boot).unwrap());
 	}
 
@@ -685,6 +754,7 @@ mod tests {
 			mark_descriptor_close_on_exec(descriptor).unwrap();
 
 			let flags = libc::fcntl(descriptor, libc::F_GETFD);
+
 			assert_ne!(flags, -1);
 			assert_ne!(flags & libc::FD_CLOEXEC, 0);
 		}

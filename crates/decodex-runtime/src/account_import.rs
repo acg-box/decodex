@@ -11,14 +11,17 @@ use base64::{
 	Engine as _,
 	engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD},
 };
+
 use decodex_core::{AccountProvider, ProviderIdentity};
+
 use serde::Deserialize;
+
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::host_credentials::CredentialSecretBundle;
 
-const MAX_CREDENTIAL_FILE_BYTES: u64 = 256 * 1024;
-const MAX_TOKEN_BYTES: usize = 64 * 1024;
+const MAX_CREDENTIAL_FILE_BYTES: u64 = 256 * 1_024;
+const MAX_TOKEN_BYTES: usize = 64 * 1_024;
 const MAX_PROVIDER_ACCOUNT_ID_BYTES: usize = 512;
 const MAX_PLAN_TYPE_BYTES: usize = 64;
 const MAX_EMAIL_BYTES: usize = 320;
@@ -29,119 +32,10 @@ pub(crate) struct ImportedCredential {
 	pub bundle: CredentialSecretBundle,
 }
 
-/// Local input before a PAT has been hydrated by the account-service network owner.
-pub(crate) enum CredentialSource {
-	Oauth(Box<ImportedCredential>),
-	PersonalAccessToken(Zeroizing<String>),
-}
-
 pub(crate) struct DecodedChatgptIdentity {
 	pub provider: ProviderIdentity,
 	pub provider_email: Option<String>,
 	pub plan_type: Option<String>,
-}
-
-/// Read the normal Codex-owned shared auth file without modifying it.
-pub(crate) fn read_shared_codex_credential() -> Result<CredentialSource, CredentialImportError> {
-	let home = std::env::var_os("HOME")
-		.filter(|value| !value.is_empty())
-		.ok_or(CredentialImportError::UnsafeSource)?;
-	read_credential_file(&PathBuf::from(home).join(".codex/auth.json"), SourceKind::SharedCodex)
-}
-
-/// Read one explicit owner-private source selected by a credential-negative descriptor.
-pub(crate) fn read_explicit_credential_file(
-	descriptor: &str,
-) -> Result<CredentialSource, CredentialImportError> {
-	read_explicit_source(descriptor, SourceKind::VersionedImport)
-}
-
-/// Read one explicit owner-private Codex auth file for an existing-account reauthentication.
-pub(crate) fn read_explicit_shared_codex_credential_file(
-	descriptor: &str,
-) -> Result<CredentialSource, CredentialImportError> {
-	read_explicit_source(descriptor, SourceKind::SharedCodex)
-}
-
-fn read_explicit_source(
-	descriptor: &str,
-	source_kind: SourceKind,
-) -> Result<CredentialSource, CredentialImportError> {
-	if descriptor.is_empty() || descriptor.len() > 4096 || descriptor.chars().any(char::is_control)
-	{
-		return Err(CredentialImportError::InvalidSource);
-	}
-	let path = Path::new(descriptor);
-	if !path.is_absolute() {
-		return Err(CredentialImportError::InvalidSource);
-	}
-	read_credential_file(path, source_kind)
-}
-
-#[derive(Clone, Copy)]
-enum SourceKind {
-	SharedCodex,
-	VersionedImport,
-}
-
-fn read_credential_file(
-	path: &Path,
-	source_kind: SourceKind,
-) -> Result<CredentialSource, CredentialImportError> {
-	validate_components(path)?;
-	let mut options = OpenOptions::new();
-	options.read(true).custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
-	let file = options.open(path).map_err(|_| CredentialImportError::Unavailable)?;
-	validate_open_file(&file)?;
-	let bytes = read_bounded(file)?;
-	match source_kind {
-		SourceKind::SharedCodex => parse_shared_codex_source(&bytes),
-		SourceKind::VersionedImport => parse_versioned_source(&bytes),
-	}
-}
-
-fn validate_components(path: &Path) -> Result<(), CredentialImportError> {
-	let mut current = PathBuf::new();
-	for component in path.components() {
-		match component {
-			Component::RootDir => current.push(component.as_os_str()),
-			Component::Normal(value) => current.push(value),
-			_ => return Err(CredentialImportError::UnsafeSource),
-		}
-		let metadata =
-			std::fs::symlink_metadata(&current).map_err(|_| CredentialImportError::Unavailable)?;
-		if metadata.file_type().is_symlink() {
-			return Err(CredentialImportError::UnsafeSource);
-		}
-	}
-	Ok(())
-}
-
-fn validate_open_file(file: &File) -> Result<(), CredentialImportError> {
-	let metadata = file.metadata().map_err(|_| CredentialImportError::Unavailable)?;
-	// SAFETY: `geteuid` has no arguments and cannot fail.
-	let effective_uid = unsafe { libc::geteuid() };
-	if !metadata.is_file()
-		|| metadata.uid() != effective_uid
-		|| metadata.mode() & 0o077 != 0
-		|| metadata.len() == 0
-		|| metadata.len() > MAX_CREDENTIAL_FILE_BYTES
-	{
-		return Err(CredentialImportError::UnsafeSource);
-	}
-	Ok(())
-}
-
-fn read_bounded(file: File) -> Result<Zeroizing<Vec<u8>>, CredentialImportError> {
-	let mut bytes = Zeroizing::new(Vec::new());
-	let mut reader: Take<File> = file.take(MAX_CREDENTIAL_FILE_BYTES + 1);
-	reader.read_to_end(&mut bytes).map_err(|_| CredentialImportError::Unavailable)?;
-	if bytes.is_empty()
-		|| u64::try_from(bytes.len()).ok().is_none_or(|len| len > MAX_CREDENTIAL_FILE_BYTES)
-	{
-		return Err(CredentialImportError::InvalidCredential);
-	}
-	Ok(bytes)
 }
 
 #[derive(Deserialize)]
@@ -167,56 +61,6 @@ struct PersonalAccessTokenSource {
 	agent_identity: Option<serde::de::IgnoredAny>,
 	#[zeroize(skip)]
 	bedrock_api_key: Option<serde::de::IgnoredAny>,
-}
-
-pub(crate) fn parse_shared_codex_source(
-	bytes: &[u8],
-) -> Result<CredentialSource, CredentialImportError> {
-	let mode: SourceMode =
-		serde_json::from_slice(bytes).map_err(|_| CredentialImportError::InvalidCredential)?;
-	if mode.auth_mode.as_deref() == Some("personalAccessToken")
-		|| (mode.auth_mode.is_none() && mode.personal_access_token.is_some())
-	{
-		parse_pat_source(bytes, false)
-	} else {
-		parse_shared_codex(bytes).map(|credential| CredentialSource::Oauth(Box::new(credential)))
-	}
-}
-
-fn parse_versioned_source(bytes: &[u8]) -> Result<CredentialSource, CredentialImportError> {
-	let mode: SourceMode =
-		serde_json::from_slice(bytes).map_err(|_| CredentialImportError::InvalidCredential)?;
-	if mode.schema.as_deref() == Some("decodex/account-credential-import/2") {
-		parse_pat_source(bytes, true)
-	} else {
-		parse_versioned_import(bytes)
-			.map(|credential| CredentialSource::Oauth(Box::new(credential)))
-	}
-}
-
-fn parse_pat_source(
-	bytes: &[u8],
-	versioned: bool,
-) -> Result<CredentialSource, CredentialImportError> {
-	let mut source: PersonalAccessTokenSource =
-		serde_json::from_slice(bytes).map_err(|_| CredentialImportError::InvalidCredential)?;
-	if source.api_key.is_some()
-		|| source.tokens.is_some()
-		|| source.agent_identity.is_some()
-		|| source.bedrock_api_key.is_some()
-		|| source.auth_mode.as_deref().is_some_and(|mode| mode != "personalAccessToken")
-		|| if versioned {
-			source.schema.as_deref() != Some("decodex/account-credential-import/2")
-				|| source.provider.as_deref() != Some("chatgpt")
-		} else {
-			source.schema.is_some() || source.provider.is_some()
-		} {
-		return Err(CredentialImportError::InvalidCredential);
-	}
-	validate_token(&source.personal_access_token)?;
-	Ok(CredentialSource::PersonalAccessToken(Zeroizing::new(std::mem::take(
-		&mut source.personal_access_token,
-	))))
 }
 
 #[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -288,19 +132,85 @@ struct UsageIdentityAuthority {
 	chatgpt_account_is_fedramp: bool,
 }
 
+/// Local input before a PAT has been hydrated by the account-service network owner.
+pub(crate) enum CredentialSource {
+	Oauth(Box<ImportedCredential>),
+	PersonalAccessToken(Zeroizing<String>),
+}
+
+/// Closed private-source failure. No variant contains a path or credential value.
+#[derive(Debug)]
+pub(crate) enum CredentialImportError {
+	InvalidSource,
+	UnsafeSource,
+	Unavailable,
+	InvalidCredential,
+	ProviderMismatch,
+	Store,
+}
+
+#[derive(Clone, Copy)]
+enum SourceKind {
+	SharedCodex,
+	VersionedImport,
+}
+
+/// Read the normal Codex-owned shared auth file without modifying it.
+pub(crate) fn read_shared_codex_credential() -> Result<CredentialSource, CredentialImportError> {
+	let home = std::env::var_os("HOME")
+		.filter(|value| !value.is_empty())
+		.ok_or(CredentialImportError::UnsafeSource)?;
+
+	read_credential_file(&PathBuf::from(home).join(".codex/auth.json"), SourceKind::SharedCodex)
+}
+
+/// Read one explicit owner-private source selected by a credential-negative descriptor.
+pub(crate) fn read_explicit_credential_file(
+	descriptor: &str,
+) -> Result<CredentialSource, CredentialImportError> {
+	read_explicit_source(descriptor, SourceKind::VersionedImport)
+}
+
+/// Read one explicit owner-private Codex auth file for an existing-account reauthentication.
+pub(crate) fn read_explicit_shared_codex_credential_file(
+	descriptor: &str,
+) -> Result<CredentialSource, CredentialImportError> {
+	read_explicit_source(descriptor, SourceKind::SharedCodex)
+}
+
+pub(crate) fn parse_shared_codex_source(
+	bytes: &[u8],
+) -> Result<CredentialSource, CredentialImportError> {
+	let mode: SourceMode =
+		serde_json::from_slice(bytes).map_err(|_| CredentialImportError::InvalidCredential)?;
+
+	if mode.auth_mode.as_deref() == Some("personalAccessToken")
+		|| (mode.auth_mode.is_none() && mode.personal_access_token.is_some())
+	{
+		parse_pat_source(bytes, false)
+	} else {
+		parse_shared_codex(bytes).map(|credential| CredentialSource::Oauth(Box::new(credential)))
+	}
+}
+
 /// Read the usage user identity only for the selected non-FedRAMP credential.
 /// This parses an already owned credential; it is not JWT signature verification.
 pub(crate) fn usage_user_id(id_token: &str, account_id: &str) -> Option<Zeroizing<String>> {
 	validate_token(id_token).ok()?;
+
 	let mut claims: UsageIdentityClaims = decode_claims(id_token).ok()?;
 	let mut authority = claims.authority.take()?;
+
 	if authority.chatgpt_account_is_fedramp
 		|| authority.chatgpt_account_id.as_deref() != Some(account_id)
 	{
 		return None;
 	}
+
 	let user_id = authority.chatgpt_user_id.take().or_else(|| authority.user_id.take())?;
+
 	validate_scalar(&user_id, MAX_PROVIDER_ACCOUNT_ID_BYTES).ok()?;
+
 	Some(Zeroizing::new(user_id))
 }
 
@@ -309,18 +219,23 @@ pub(crate) fn parse_shared_codex(
 ) -> Result<ImportedCredential, CredentialImportError> {
 	let mut auth: SharedCodexAuth =
 		serde_json::from_slice(bytes).map_err(|_| CredentialImportError::InvalidCredential)?;
+
 	if auth.auth_mode.as_deref().is_some_and(|mode| mode != "chatgpt")
 		|| auth.api_key.as_ref().is_some_and(|value| !value.is_empty())
 	{
 		return Err(CredentialImportError::InvalidCredential);
 	}
+
 	let identity = decode_chatgpt_identity(&auth.tokens.id_token)?;
+
 	if identity.provider.account_id() != auth.tokens.account_id {
 		return Err(CredentialImportError::ProviderMismatch);
 	}
+
 	validate_scalar(&auth.tokens.account_id, MAX_PROVIDER_ACCOUNT_ID_BYTES)?;
 	validate_token(&auth.tokens.access_token)?;
 	validate_token(&auth.tokens.refresh_token)?;
+
 	let expiry = decode_expiry_micros(&auth.tokens.access_token)?;
 	let bundle = CredentialSecretBundle::chatgpt(
 		std::mem::take(&mut auth.tokens.access_token),
@@ -332,27 +247,208 @@ pub(crate) fn parse_shared_codex(
 		expiry,
 	)
 	.map_err(|_| CredentialImportError::Store)?;
+
 	Ok(ImportedCredential { provider: identity.provider, bundle })
+}
+
+pub(crate) fn decode_chatgpt_identity(
+	id_token: &str,
+) -> Result<DecodedChatgptIdentity, CredentialImportError> {
+	validate_token(id_token)?;
+
+	let mut claims: IdentityClaims = decode_claims(id_token)?;
+	let mut authority = claims.authority.take().ok_or(CredentialImportError::InvalidCredential)?;
+	let provider_account_id =
+		authority.chatgpt_account_id.take().ok_or(CredentialImportError::InvalidCredential)?;
+	let provider_email = claims.email.take();
+	let plan_type = authority.chatgpt_plan_type.take();
+
+	validate_scalar(&provider_account_id, MAX_PROVIDER_ACCOUNT_ID_BYTES)?;
+
+	if let Some(email) = &provider_email {
+		validate_scalar(email, MAX_EMAIL_BYTES)?;
+
+		if !email.contains('@') {
+			return Err(CredentialImportError::InvalidCredential);
+		}
+	}
+	if let Some(plan_type) = plan_type.as_ref() {
+		validate_scalar(plan_type, MAX_PLAN_TYPE_BYTES)?;
+	}
+
+	let provider = ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id)
+		.map_err(|_| CredentialImportError::InvalidCredential)?;
+
+	Ok(DecodedChatgptIdentity { provider, provider_email, plan_type })
+}
+
+pub(crate) fn decode_expiry_micros(token: &str) -> Result<i64, CredentialImportError> {
+	let claims: ExpiryClaims = decode_claims(token)?;
+
+	claims
+		.exp
+		.checked_mul(1_000_000)
+		.filter(|value| *value > 0)
+		.ok_or(CredentialImportError::InvalidCredential)
+}
+
+fn read_explicit_source(
+	descriptor: &str,
+	source_kind: SourceKind,
+) -> Result<CredentialSource, CredentialImportError> {
+	if descriptor.is_empty() || descriptor.len() > 4_096 || descriptor.chars().any(char::is_control)
+	{
+		return Err(CredentialImportError::InvalidSource);
+	}
+
+	let path = Path::new(descriptor);
+
+	if !path.is_absolute() {
+		return Err(CredentialImportError::InvalidSource);
+	}
+
+	read_credential_file(path, source_kind)
+}
+
+fn read_credential_file(
+	path: &Path,
+	source_kind: SourceKind,
+) -> Result<CredentialSource, CredentialImportError> {
+	validate_components(path)?;
+
+	let mut options = OpenOptions::new();
+
+	options.read(true).custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
+
+	let file = options.open(path).map_err(|_| CredentialImportError::Unavailable)?;
+
+	validate_open_file(&file)?;
+
+	let bytes = read_bounded(file)?;
+
+	match source_kind {
+		SourceKind::SharedCodex => parse_shared_codex_source(&bytes),
+		SourceKind::VersionedImport => parse_versioned_source(&bytes),
+	}
+}
+
+fn validate_components(path: &Path) -> Result<(), CredentialImportError> {
+	let mut current = PathBuf::new();
+
+	for component in path.components() {
+		match component {
+			Component::RootDir => current.push(component.as_os_str()),
+			Component::Normal(value) => current.push(value),
+			_ => return Err(CredentialImportError::UnsafeSource),
+		}
+
+		let metadata =
+			std::fs::symlink_metadata(&current).map_err(|_| CredentialImportError::Unavailable)?;
+
+		if metadata.file_type().is_symlink() {
+			return Err(CredentialImportError::UnsafeSource);
+		}
+	}
+
+	Ok(())
+}
+
+fn validate_open_file(file: &File) -> Result<(), CredentialImportError> {
+	let metadata = file.metadata().map_err(|_| CredentialImportError::Unavailable)?;
+	// SAFETY: `geteuid` has no arguments and cannot fail.
+	let effective_uid = unsafe { libc::geteuid() };
+
+	if !metadata.is_file()
+		|| metadata.uid() != effective_uid
+		|| metadata.mode() & 0o077 != 0
+		|| metadata.len() == 0
+		|| metadata.len() > MAX_CREDENTIAL_FILE_BYTES
+	{
+		return Err(CredentialImportError::UnsafeSource);
+	}
+
+	Ok(())
+}
+
+fn read_bounded(file: File) -> Result<Zeroizing<Vec<u8>>, CredentialImportError> {
+	let mut bytes = Zeroizing::new(Vec::new());
+	let mut reader: Take<File> = file.take(MAX_CREDENTIAL_FILE_BYTES + 1);
+
+	reader.read_to_end(&mut bytes).map_err(|_| CredentialImportError::Unavailable)?;
+
+	if bytes.is_empty()
+		|| u64::try_from(bytes.len()).ok().is_none_or(|len| len > MAX_CREDENTIAL_FILE_BYTES)
+	{
+		return Err(CredentialImportError::InvalidCredential);
+	}
+
+	Ok(bytes)
+}
+
+fn parse_versioned_source(bytes: &[u8]) -> Result<CredentialSource, CredentialImportError> {
+	let mode: SourceMode =
+		serde_json::from_slice(bytes).map_err(|_| CredentialImportError::InvalidCredential)?;
+
+	if mode.schema.as_deref() == Some("decodex/account-credential-import/2") {
+		parse_pat_source(bytes, true)
+	} else {
+		parse_versioned_import(bytes)
+			.map(|credential| CredentialSource::Oauth(Box::new(credential)))
+	}
+}
+
+fn parse_pat_source(
+	bytes: &[u8],
+	versioned: bool,
+) -> Result<CredentialSource, CredentialImportError> {
+	let mut source: PersonalAccessTokenSource =
+		serde_json::from_slice(bytes).map_err(|_| CredentialImportError::InvalidCredential)?;
+
+	if source.api_key.is_some()
+		|| source.tokens.is_some()
+		|| source.agent_identity.is_some()
+		|| source.bedrock_api_key.is_some()
+		|| source.auth_mode.as_deref().is_some_and(|mode| mode != "personalAccessToken")
+		|| if versioned {
+			source.schema.as_deref() != Some("decodex/account-credential-import/2")
+				|| source.provider.as_deref() != Some("chatgpt")
+		} else {
+			source.schema.is_some() || source.provider.is_some()
+		} {
+		return Err(CredentialImportError::InvalidCredential);
+	}
+
+	validate_token(&source.personal_access_token)?;
+
+	Ok(CredentialSource::PersonalAccessToken(Zeroizing::new(std::mem::take(
+		&mut source.personal_access_token,
+	))))
 }
 
 fn parse_versioned_import(bytes: &[u8]) -> Result<ImportedCredential, CredentialImportError> {
 	let mut import: VersionedImport =
 		serde_json::from_slice(bytes).map_err(|_| CredentialImportError::InvalidCredential)?;
+
 	if import.schema != "decodex/account-credential-import/1" || import.provider != "chatgpt" {
 		return Err(CredentialImportError::InvalidCredential);
 	}
+
 	validate_scalar(&import.provider_account_id, MAX_PROVIDER_ACCOUNT_ID_BYTES)?;
+
 	if let Some(email) = &import.provider_email {
 		validate_scalar(email, MAX_EMAIL_BYTES)?;
 	}
+
 	validate_token(&import.access_token)?;
 	validate_token(&import.refresh_token)?;
+
 	if let Some(id_token) = import.id_token.as_ref() {
 		validate_token(id_token)?;
 	}
 	if let Some(plan_type) = import.plan_type.as_ref() {
 		validate_scalar(plan_type, MAX_PLAN_TYPE_BYTES)?;
 	}
+
 	let provider =
 		ProviderIdentity::new(AccountProvider::Chatgpt, import.provider_account_id.clone())
 			.map_err(|_| CredentialImportError::InvalidCredential)?;
@@ -366,6 +462,7 @@ fn parse_versioned_import(bytes: &[u8]) -> Result<ImportedCredential, Credential
 		import.access_token_expires_at_unix_micros,
 	)
 	.map_err(|_| CredentialImportError::Store)?;
+
 	Ok(ImportedCredential { provider, bundle })
 }
 
@@ -374,6 +471,7 @@ fn decode_claims<T: for<'de> Deserialize<'de>>(token: &str) -> Result<T, Credent
 	let header = components.next();
 	let payload = components.next();
 	let signature = components.next();
+
 	if header.is_none_or(str::is_empty)
 		|| payload.is_none_or(str::is_empty)
 		|| signature.is_none_or(str::is_empty)
@@ -381,6 +479,7 @@ fn decode_claims<T: for<'de> Deserialize<'de>>(token: &str) -> Result<T, Credent
 	{
 		return Err(CredentialImportError::InvalidCredential);
 	}
+
 	let payload = payload.expect("JWT payload was checked");
 	let decoded = Zeroizing::new(
 		if payload.ends_with('=') {
@@ -390,44 +489,12 @@ fn decode_claims<T: for<'de> Deserialize<'de>>(token: &str) -> Result<T, Credent
 		}
 		.map_err(|_| CredentialImportError::InvalidCredential)?,
 	);
-	if decoded.len() > 64 * 1024 {
+
+	if decoded.len() > 64 * 1_024 {
 		return Err(CredentialImportError::InvalidCredential);
 	}
+
 	serde_json::from_slice(&decoded).map_err(|_| CredentialImportError::InvalidCredential)
-}
-
-pub(crate) fn decode_chatgpt_identity(
-	id_token: &str,
-) -> Result<DecodedChatgptIdentity, CredentialImportError> {
-	validate_token(id_token)?;
-	let mut claims: IdentityClaims = decode_claims(id_token)?;
-	let mut authority = claims.authority.take().ok_or(CredentialImportError::InvalidCredential)?;
-	let provider_account_id =
-		authority.chatgpt_account_id.take().ok_or(CredentialImportError::InvalidCredential)?;
-	let provider_email = claims.email.take();
-	let plan_type = authority.chatgpt_plan_type.take();
-	validate_scalar(&provider_account_id, MAX_PROVIDER_ACCOUNT_ID_BYTES)?;
-	if let Some(email) = &provider_email {
-		validate_scalar(email, MAX_EMAIL_BYTES)?;
-		if !email.contains('@') {
-			return Err(CredentialImportError::InvalidCredential);
-		}
-	}
-	if let Some(plan_type) = plan_type.as_ref() {
-		validate_scalar(plan_type, MAX_PLAN_TYPE_BYTES)?;
-	}
-	let provider = ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id)
-		.map_err(|_| CredentialImportError::InvalidCredential)?;
-	Ok(DecodedChatgptIdentity { provider, provider_email, plan_type })
-}
-
-pub(crate) fn decode_expiry_micros(token: &str) -> Result<i64, CredentialImportError> {
-	let claims: ExpiryClaims = decode_claims(token)?;
-	claims
-		.exp
-		.checked_mul(1_000_000)
-		.filter(|value| *value > 0)
-		.ok_or(CredentialImportError::InvalidCredential)
 }
 
 fn validate_token(value: &str) -> Result<(), CredentialImportError> {
@@ -446,17 +513,6 @@ fn validate_scalar(value: &str, maximum: usize) -> Result<(), CredentialImportEr
 	}
 }
 
-/// Closed private-source failure. No variant contains a path or credential value.
-#[derive(Debug)]
-pub(crate) enum CredentialImportError {
-	InvalidSource,
-	UnsafeSource,
-	Unavailable,
-	InvalidCredential,
-	ProviderMismatch,
-	Store,
-}
-
 #[cfg(test)]
 mod tests {
 	use std::{fs, os::unix::fs::PermissionsExt as _};
@@ -471,6 +527,7 @@ mod tests {
 
 	fn token(claims: serde_json::Value) -> String {
 		let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
+
 		format!("header.{payload}.signature")
 	}
 
@@ -478,8 +535,10 @@ mod tests {
 		let temp = tempdir().unwrap();
 		let root = fs::canonicalize(temp.path()).unwrap();
 		let path = root.join("auth.json");
+
 		fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
 		fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+
 		(temp, path.to_string_lossy().into_owned())
 	}
 
@@ -490,17 +549,25 @@ mod tests {
 		let decode = |auth: &serde_json::Value, account: &str| {
 			super::usage_user_id(&token(json!({"https://api.openai.com/auth": auth})), account)
 		};
+
 		assert_eq!(decode(&auth, "account").as_deref().map(String::as_str), Some("user"));
 		assert!(decode(&auth, "other").is_none());
+
 		auth["chatgpt_account_is_fedramp"] = json!(true);
+
 		assert!(decode(&auth, "account").is_none());
+
 		auth["chatgpt_account_is_fedramp"] = json!(false);
 		auth["chatgpt_user_id"] = serde_json::Value::Null;
+
 		assert_eq!(decode(&auth, "account").as_deref().map(String::as_str), Some("fallback"));
+
 		for invalid in [json!(""), json!("x".repeat(513)), json!("user\n"), json!(42)] {
 			auth["chatgpt_user_id"] = invalid;
+
 			assert!(decode(&auth, "account").is_none());
 		}
+
 		assert!(super::usage_user_id("invalid", "account").is_none());
 	}
 
@@ -524,13 +591,18 @@ mod tests {
 	fn chatgpt_identity_preserves_missing_email_without_relaxing_account_identity() {
 		for email in [None, Some(serde_json::Value::Null)] {
 			let mut claims = json!({"https://api.openai.com/auth":{"chatgpt_account_id":"exact-account","chatgpt_plan_type":"pro"}});
+
 			if let Some(email) = email {
 				claims["email"] = email;
 			}
+
 			let identity = decode_chatgpt_identity(&token(claims.clone())).unwrap();
+
 			assert!(identity.provider_email.is_none());
 			assert_eq!(identity.provider.account_id(), "exact-account");
+
 			claims["https://api.openai.com/auth"]["chatgpt_account_id"] = json!("");
+
 			assert!(decode_chatgpt_identity(&token(claims)).is_err());
 		}
 	}
@@ -579,7 +651,6 @@ mod tests {
 			},
 			"last_refresh": null
 		}));
-
 		let super::CredentialSource::Oauth(imported) =
 			read_explicit_shared_codex_credential_file(&path).unwrap()
 		else {
@@ -597,15 +668,19 @@ mod tests {
 			read_explicit_shared_codex_credential_file("auth.json"),
 			Err(CredentialImportError::InvalidSource)
 		));
+
 		let (_temp, path) = owner_private_json(json!({
 			"schema": "decodex/account-credential-import/1",
 			"provider": "chatgpt"
 		}));
+
 		assert!(matches!(
 			read_explicit_shared_codex_credential_file(&path),
 			Err(CredentialImportError::InvalidCredential)
 		));
+
 		fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+
 		assert!(matches!(
 			read_explicit_shared_codex_credential_file(&path),
 			Err(CredentialImportError::UnsafeSource)
@@ -621,14 +696,18 @@ mod tests {
 		else {
 			panic!("expected PAT source")
 		};
+
 		assert_eq!(token.as_str(), "synthetic-pat");
+
 		let (_temp, path) = owner_private_json(
 			json!({"schema":"decodex/account-credential-import/2","provider":"chatgpt","personal_access_token":"synthetic-pat"}),
 		);
+
 		assert!(matches!(
 			super::read_explicit_credential_file(&path),
 			Ok(super::CredentialSource::PersonalAccessToken(_))
 		));
+
 		for (field, value) in [
 			("OPENAI_API_KEY", json!("unexpected-key")),
 			("tokens", json!({"access_token":"mixed"})),
@@ -637,7 +716,9 @@ mod tests {
 			("personal_access_token", json!("\ninvalid")),
 		] {
 			let mut invalid = native.clone();
+
 			invalid[field] = value;
+
 			assert!(
 				super::parse_shared_codex_source(&serde_json::to_vec(&invalid).unwrap()).is_err(),
 				"{field}"

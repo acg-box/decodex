@@ -11,12 +11,12 @@ pub(super) struct Projection {
 	bytes: usize,
 	items: usize,
 }
-
 impl Projection {
 	pub fn observe(&mut self, thread: &str, turn: &str, item: &Value) -> Result<(), AgentError> {
 		self.bytes = self.bytes.saturating_add(item.to_string().len());
 		self.items += 1;
-		if self.bytes > 8 * 1024 * 1024 || self.items > 8192 {
+
+		if self.bytes > 8 * 1_024 * 1_024 || self.items > 8_192 {
 			return Err(AgentError::Invalid("native question history exceeds read bounds".into()));
 		}
 		if item["type"] == "agentMessage" && item["delivery"] == "async" {
@@ -25,10 +25,12 @@ impl Projection {
 			let id = item["id"]
 				.as_str()
 				.ok_or_else(|| AgentError::Invalid("missing native question item".into()))?;
+
 			for question in questions {
 				if !self.seen.insert(question.id.clone()) {
 					return Err(AgentError::Invalid("duplicate native question identity".into()));
 				}
+
 				self.questions.push(AgentAsyncQuestion {
 					arrived_live: false,
 					thread_id: thread.into(),
@@ -46,6 +48,7 @@ impl Projection {
 				.into_iter()
 				.flatten()
 				.filter(|part| part["type"] != "skill" && part["type"] != "mention");
+
 			if let Some(part) = content.next()
 				&& content.next().is_none()
 				&& part["type"] == "text"
@@ -56,6 +59,7 @@ impl Projection {
 				self.answers.extend(replies.into_iter().map(|r| r.question_item_id));
 			}
 		}
+
 		Ok(())
 	}
 }

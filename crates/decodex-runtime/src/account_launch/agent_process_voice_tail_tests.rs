@@ -44,6 +44,7 @@ async fn failed_final_voice_transcript_preserves_correction_until_close() {
 async fn oversized_final_voice_transcript_keeps_a_valid_suffix_after_write_failure() {
 	let final_answer = format!("Start {} end", "文".repeat(12_000));
 	let expected = format!("{} end", "文".repeat(10_921));
+
 	check_disconnected_tails("Correction", "", "Correction", Some((&final_answer, &expected)))
 		.await;
 }
@@ -55,13 +56,14 @@ async fn check_disconnected_tails(
 	final_answer: Option<(&str, &str)>,
 ) {
 	let home = tempfile::tempdir().expect("voice transcript fixture");
-	let (local, remote) = tokio::io::duplex(65536);
+	let (local, remote) = tokio::io::duplex(65_536);
 	let (reader, writer) = tokio::io::split(local);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let (sent, mut requests) = tokio::sync::mpsc::unbounded_channel();
 	let server = tokio::spawn(async move {
 		let (reader, mut writer) = tokio::io::split(remote);
 		let mut lines = BufReader::new(reader).lines();
+
 		while let Some(line) = lines.next_line().await.expect("voice transcript fixture") {
 			let request: serde_json::Value =
 				serde_json::from_str(&line).expect("voice transcript fixture");
@@ -71,10 +73,12 @@ async fn check_disconnected_tails(
 				"config/read" => json!({"config":{"realtime":{"voice":"juniper"}}}),
 				"thread/realtime/start" => {
 					assert_eq!(request["params"]["voice"], "juniper");
+
 					json!({})
 				},
 				method => panic!("Unexpected native request: {method}"),
 			};
+
 			sent.send(request.clone()).expect("voice transcript fixture");
 			writer
 				.write_all(format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes())
@@ -94,16 +98,21 @@ async fn check_disconnected_tails(
 	)
 	.expect("voice transcript fixture");
 	let gateway = crate::agent_voice::VoiceGateway::new();
+
 	agent.attach_voice_host(GENERATION.into(), gateway.clone());
+
 	let start = AgentVoiceRequest::Start {
 		session_id: EntityId::new("voice").expect("voice transcript fixture"),
 		work_id: EntityId::new("root").expect("voice transcript fixture"),
 		offer: VoiceSdp::new("offer".into()).expect("voice transcript fixture"),
 		options: Default::default(),
 	};
+
 	gateway.exchange(&start);
 	agent.voice_request(start).await.expect("voice transcript fixture");
+
 	while requests.try_recv().is_ok() {}
+
 	for (role, delta) in
 		[("assistant", "Answer"), ("user", user_delta), ("assistant", " tail"), ("user", user_end)]
 	{
@@ -115,9 +124,12 @@ async fn check_disconnected_tails(
 			.await
 			.expect("voice transcript fixture");
 	}
+
 	let db = rusqlite::Connection::open(owned.root.paths().product_database_file())
 		.expect("voice transcript fixture");
+
 	db.execute_batch("CREATE TRIGGER fail_voice_tail BEFORE INSERT ON agent_inbox_events WHEN NEW.event_kind='voice_assistant' BEGIN SELECT RAISE(FAIL, 'injected transcript failure'); END;").expect("voice transcript fixture");
+
 	if let Some((text, _)) = final_answer {
 		assert!(
 			agent
@@ -129,11 +141,15 @@ async fn check_disconnected_tails(
 				.is_err()
 		);
 	}
+
 	assert!(agent.handle_event(ServerEvent::Closed(ClientError::Closed)).await.is_err());
+
 	db.execute_batch("DROP TRIGGER fail_voice_tail;").expect("voice transcript fixture");
+
 	for _ in 0..2 {
 		assert!(agent.handle_event(ServerEvent::Closed(ClientError::Closed)).await.is_err());
 	}
+
 	assert_eq!(
 		gateway
 			.exchange(&AgentVoiceRequest::Poll {
@@ -142,16 +158,21 @@ async fn check_disconnected_tails(
 			.phase,
 		AgentVoicePhase::Failed
 	);
+
 	let reopened = SqliteStore::open(&owned.root.paths()).expect("voice transcript fixture");
+
 	assert_eq!(
 		reopened.open_agent_voice_calls().await.expect("voice transcript fixture").len(),
 		1,
 		"Transport loss does not prove process death"
 	);
+
 	drop(db);
+
 	let db = rusqlite::Connection::open(owned.root.paths().product_database_file())
 		.expect("voice transcript fixture");
 	let rows = db.prepare("SELECT event_kind,json_extract(payload,'$.text'),disposition FROM agent_inbox_events WHERE event_kind LIKE 'voice_%' ORDER BY id").expect("voice transcript fixture").query_map([], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?,row.get::<_,String>(2)?))).expect("voice transcript fixture").collect::<Result<Vec<_>,_>>().expect("voice transcript fixture");
+
 	assert_eq!(
 		rows,
 		vec![
@@ -163,13 +184,17 @@ async fn check_disconnected_tails(
 			)
 		]
 	);
+
 	let complete: bool = db.query_row("SELECT json_extract(payload,'$.complete') FROM agent_inbox_events WHERE event_kind='voice_assistant'", [], |row| row.get(0)).expect("saved finality");
+
 	assert_eq!(
 		complete,
 		final_answer.is_some_and(|(text, _)| text.len() <= 32_768),
 		"truncated final text remains partial"
 	);
 	assert!(requests.try_recv().is_err(), "Transcript preservation must not send native input");
+
 	server.abort();
+
 	assert!(server.await.expect_err("cancelled fixture server").is_cancelled());
 }

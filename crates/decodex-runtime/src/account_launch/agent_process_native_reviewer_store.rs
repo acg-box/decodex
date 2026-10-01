@@ -1,6 +1,22 @@
 //! Disposable ownership fixture. This does not qualify kernel admission or credential enrollment.
+#[path = "agent_process_app_exposure_tests.rs"] mod exposure;
+#[path = "agent_process_hook_service_tests.rs"] mod hook_service_tests;
+#[path = "agent_process_native_live_model_tests.rs"] mod live_model;
+#[path = "agent_process_model_fallback_service_tests.rs"] mod model_fallback_service;
+#[path = "agent_process_model_service_tests.rs"] mod model_service_tests;
+#[path = "agent_process_model_settings_tests.rs"] mod model_settings_tests;
+#[path = "agent_process_native_reviewer_outcome_tests.rs"] mod outcome_tests;
+#[path = "agent_process_permission_tests.rs"] mod permission_owner_tests;
+#[path = "agent_process_permission_service_tests.rs"] mod permission_service_tests;
+#[path = "agent_process_native_task_model_tests.rs"] mod task_model_tests;
+#[path = "agent_process_voice_settings_start_tests.rs"] mod voice_settings_start;
+#[path = "agent_process_voice_tail_tests.rs"] mod voice_tail_tests;
+#[path = "agent_process_warning_tests.rs"] mod warning_tests;
+
 use crate::agent_usage_estimate::{Source, SourceKey};
+
 use decodex_codex::app_server_client::AppServerClient;
+
 use decodex_core::{
 	AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
 	CredentialStoreSchemaVersion, CredentialVersion, DecodexRoot, ProcessBootIdentity,
@@ -8,12 +24,16 @@ use decodex_core::{
 	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent, ProcessIdentity,
 	ProcessIsolationKind, ProcessRunnerIdentity, ProcessStartIdentity, ProviderIdentity,
 };
+
 use decodex_database::{
 	AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus,
 	CodexAccountCapabilityAttestation, SqliteStore,
 };
+
 use decodex_protocol::{AgentLiveReviewerOutcome, AgentLiveReviewerState, AgentReviewer};
+
 use sha2::Digest as _;
+
 const DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const ACCOUNT: &str = "10000000-0000-4000-8000-000000000001";
 const OPERATION: &str = "20000000-0000-4000-8000-000000000001";
@@ -25,13 +45,13 @@ pub(super) struct OwnedReviewer {
 	key: SourceKey,
 	client: AppServerClient,
 }
-
 impl OwnedReviewer {
 	pub(super) async fn observe_model(&self) {
 		let state = crate::agent_model_settings::read(&self.store, || async {
 			Some(self.source(&self.key))
 		})
 		.await;
+
 		assert!(matches!(state, decodex_protocol::AgentModelSettingsResult::Available {
 			work_id, thread_id, account_id, model: Some(model), model_provider:Some(provider), ..
 		} if work_id.as_str() == "root" && thread_id.as_str() == self.key.thread
@@ -46,9 +66,13 @@ impl OwnedReviewer {
 	) -> Self {
 		let root = DecodexRoot::new(home.canonicalize().expect("fixture home").join("state"))
 			.expect("fixture root");
+
 		root.paths().ensure_layout().expect("fixture layout");
+
 		let store = SqliteStore::open(&root.paths()).expect("fixture database");
+
 		seed_account(&root);
+
 		store
 			.attest_codex_account_capability(&CodexAccountCapabilityAttestation {
 				build_identity: "fixture".into(),
@@ -77,6 +101,7 @@ impl OwnedReviewer {
 			})
 			.await
 			.expect("fixture root work");
+
 		let generation = ProcessGenerationId::new(GENERATION).expect("fixture generation");
 		let account = AccountId::new(ACCOUNT).expect("fixture account");
 		let boot = ProcessBootIdentity::new("fixture-boot").expect("fixture boot");
@@ -108,18 +133,21 @@ impl OwnedReviewer {
 			DIGEST,
 		)
 		.expect("fixture binding");
+
 		store
 			.prepare_agent_bound_process_generation(&intent, &binding, "root", "reviewer-admission")
 			.await
 			.expect("fixture admission");
+
 		let identity = ProcessIdentity::new(
 			boot,
-			1234,
+			1_234,
 			ProcessStartIdentity::new("fixture-start").expect("fixture start"),
-			1234,
-			1234,
+			1_234,
+			1_234,
 		)
 		.expect("fixture identity");
+
 		store
 			.bind_process_generation_identity(&generation, 1, &identity)
 			.await
@@ -165,7 +193,9 @@ impl OwnedReviewer {
 			panic!("editable native owner");
 		};
 		let mut changed = self.key.clone();
+
 		changed.revision += 1;
+
 		assert!(
 			crate::agent_live_settings::write(
 				&self.store,
@@ -185,6 +215,7 @@ impl OwnedReviewer {
 				.expect("receipt query")
 				.is_none()
 		);
+
 		crate::agent_live_settings::write(
 			&self.store,
 			|| async { Some(self.source(&self.key)) },
@@ -195,6 +226,7 @@ impl OwnedReviewer {
 		)
 		.await
 		.expect("native reviewer publication");
+
 		assert!(
 			crate::agent_live_settings::write(
 				&self.store,
@@ -207,10 +239,12 @@ impl OwnedReviewer {
 			.await
 			.is_err()
 		);
+
 		let reopened = SqliteStore::open(&self.root.paths()).expect("reopen durable receipt");
 		let state =
 			crate::agent_live_settings::read(&reopened, || async { Some(self.source(&self.key)) })
 				.await;
+
 		assert!(matches!(
 			state,
 			AgentLiveReviewerState::Available {
@@ -231,6 +265,7 @@ impl OwnedReviewer {
 		let AgentLiveReviewerState::Available { review_token, .. } = state else {
 			panic!("local running receipt");
 		};
+
 		assert!(
 			crate::agent_live_settings::write(
 				&self.store,
@@ -243,10 +278,12 @@ impl OwnedReviewer {
 			.await
 			.is_err()
 		);
+
 		let state = crate::agent_live_settings::read(&self.store, || async {
 			Some(self.source(&self.key))
 		})
 		.await;
+
 		assert!(matches!(
 			state,
 			AgentLiveReviewerState::Available {
@@ -257,36 +294,17 @@ impl OwnedReviewer {
 	}
 }
 
-fn seed_account(root: &DecodexRoot) {
-	let connection = rusqlite::Connection::open(root.paths().product_database_file())
-		.expect("disposable fixture connection");
-	connection
-		.execute("INSERT INTO account_identities VALUES (?1,1)", [ACCOUNT])
-		.expect("fixture identity");
-	connection.execute("INSERT INTO account_operations (operation_id,account_id,kind,phase,provider,provider_account_id,requested_display_label,requested_enabled,created_at_micros,updated_at_micros,completed_at_micros) VALUES (?1,?2,'enroll','committed','chatgpt','provider-1','Fixture',1,1,1,1)",rusqlite::params![OPERATION,ACCOUNT]).expect("fixture operation");
-	connection.execute("INSERT INTO accounts VALUES (?1,'Fixture',1,'available',1,'chatgpt','provider-1','exact',1,1,NULL)",[ACCOUNT]).expect("fixture account");
-	connection
-		.execute(
-			"INSERT INTO account_credentials VALUES (?1,1,1,?2,?3,'chatgpt','provider-1',X'01020304',1)",
-			rusqlite::params![ACCOUNT, DIGEST, OPERATION],
-		)
-		.expect("inert fixture credential row");
-}
-
-#[path = "agent_process_native_reviewer_outcome_tests.rs"] mod outcome_tests;
-
-#[path = "agent_process_permission_tests.rs"] mod permission_owner_tests;
-#[path = "agent_process_permission_service_tests.rs"] mod permission_service_tests;
-
 impl OwnedReviewer {
 	pub(super) async fn select_permission(&self) {
 		use decodex_protocol::{AgentPermissionOutcome as Outcome, AgentPermissionState as State};
+
 		let source = || async { Some(self.source(&self.key)) };
 		let State::Available { review_token, .. } =
 			crate::agent_permissions::read(&self.store, source).await
 		else {
 			panic!("native permission review")
 		};
+
 		crate::agent_permissions::write(
 			&self.store,
 			source,
@@ -305,11 +323,13 @@ impl OwnedReviewer {
 				) {
 					break;
 				}
+
 				tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 			}
 		})
 		.await
 		.expect("native publication settles receipt");
+
 		assert!(
 			crate::agent_permissions::write(
 				&self.store,
@@ -322,7 +342,9 @@ impl OwnedReviewer {
 			.await
 			.is_err()
 		);
+
 		let reopened = SqliteStore::open(&self.root.paths()).expect("receipt restart");
+
 		assert_eq!(
 			reopened
 				.agent_permission_receipt("root".into(), self.key.thread.clone())
@@ -335,18 +357,17 @@ impl OwnedReviewer {
 	}
 }
 
-#[path = "agent_process_model_service_tests.rs"] mod model_service_tests;
-#[path = "agent_process_model_settings_tests.rs"] mod model_settings_tests;
-
 impl OwnedReviewer {
 	pub(super) async fn select_task_model(&self, model: &str, effort: Option<&str>) {
 		use decodex_protocol::{AgentModelOutcome as Outcome, AgentModelSelectionState as State};
+
 		let source = || async { Some(self.source(&self.key)) };
 		let State::Available { review_token, .. } =
 			crate::agent_models::read(&self.store, source).await
 		else {
 			panic!("native model review")
 		};
+
 		crate::agent_models::write(
 			&self.store,
 			source,
@@ -368,11 +389,13 @@ impl OwnedReviewer {
 				) {
 					break;
 				}
+
 				tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 			}
 		})
 		.await
 		.expect("native model publication");
+
 		assert!(
 			crate::agent_models::write(
 				&self.store,
@@ -391,14 +414,15 @@ impl OwnedReviewer {
 	}
 }
 
-#[path = "agent_process_hook_service_tests.rs"] mod hook_service_tests;
-
 impl OwnedReviewer {
 	pub(super) async fn trust_hook(&self) {
 		use decodex_protocol::{AgentHookChange, AgentHookSettingsState as State};
+
 		let source = || async {
 			let mut key = self.key.clone();
+
 			key.history_revision = self.client.history_revision();
+
 			Some(self.source(&key))
 		};
 		let State::Available { review_token, hooks, config_file, .. } =
@@ -410,7 +434,9 @@ impl OwnedReviewer {
 			.iter()
 			.find(|h| h.details.contains("echo isolated-plugin-hook"))
 			.expect("known harmless fixture hook");
+
 		assert_eq!(hook.trust_status, "untrusted");
+
 		crate::agent_hooks::write(
 			&self.store,
 			source,
@@ -424,11 +450,13 @@ impl OwnedReviewer {
 		)
 		.await
 		.expect("production hook trust");
+
 		let State::Available { last_edit: Some(edit), hooks, .. } =
 			crate::agent_hooks::read(&self.store, source).await
 		else {
 			panic!("native hook readback")
 		};
+
 		assert_eq!(edit.outcome, "saved");
 		assert_eq!(hooks.iter().find(|h| h.key == hook.key).expect("hook").trust_status, "trusted");
 		assert!(
@@ -446,11 +474,13 @@ impl OwnedReviewer {
 			.await
 			.is_err()
 		);
+
 		let scope: String = sha2::Sha256::digest(config_file.as_str().as_bytes())
 			.iter()
 			.map(|b| format!("{b:02x}"))
 			.collect();
 		let reopened = SqliteStore::open(&self.root.paths()).expect("hook receipt reopen");
+
 		assert_eq!(
 			reopened
 				.agent_hook_receipt(scope)
@@ -463,16 +493,19 @@ impl OwnedReviewer {
 	}
 }
 
-#[path = "agent_process_app_exposure_tests.rs"] mod exposure;
+fn seed_account(root: &DecodexRoot) {
+	let connection = rusqlite::Connection::open(root.paths().product_database_file())
+		.expect("disposable fixture connection");
 
-#[path = "agent_process_warning_tests.rs"] mod warning_tests;
-
-#[path = "agent_process_voice_settings_start_tests.rs"] mod voice_settings_start;
-
-#[path = "agent_process_voice_tail_tests.rs"] mod voice_tail_tests;
-
-#[path = "agent_process_native_live_model_tests.rs"] mod live_model;
-
-#[path = "agent_process_native_task_model_tests.rs"] mod task_model_tests;
-
-#[path = "agent_process_model_fallback_service_tests.rs"] mod model_fallback_service;
+	connection
+		.execute("INSERT INTO account_identities VALUES (?1,1)", [ACCOUNT])
+		.expect("fixture identity");
+	connection.execute("INSERT INTO account_operations (operation_id,account_id,kind,phase,provider,provider_account_id,requested_display_label,requested_enabled,created_at_micros,updated_at_micros,completed_at_micros) VALUES (?1,?2,'enroll','committed','chatgpt','provider-1','Fixture',1,1,1,1)",rusqlite::params![OPERATION,ACCOUNT]).expect("fixture operation");
+	connection.execute("INSERT INTO accounts VALUES (?1,'Fixture',1,'available',1,'chatgpt','provider-1','exact',1,1,NULL)",[ACCOUNT]).expect("fixture account");
+	connection
+		.execute(
+			"INSERT INTO account_credentials VALUES (?1,1,1,?2,?3,'chatgpt','provider-1',X'01020304',1)",
+			rusqlite::params![ACCOUNT, DIGEST, OPERATION],
+		)
+		.expect("inert fixture credential row");
+}

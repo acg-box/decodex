@@ -26,6 +26,7 @@ pub(super) async fn qualify(client: &AgentClient) -> SmokeResult<()> {
 		"# Live Agent acceptance\n\nActual read-only provider tasks. No simulated tool results.\n",
 	);
 	let mut inspected_tool = false;
+
 	for (id, source) in [("engineering", "agent_capabilities"), ("research", "subscription-voice")]
 	{
 		let entries = history(client, id).await?;
@@ -35,10 +36,13 @@ pub(super) async fn qualify(client: &AgentClient) -> SmokeResult<()> {
 			.map(|entry| entry.text.as_str())
 			.collect::<Vec<_>>()
 			.join("\n\n");
+
 		if !answer.contains(source) {
 			return Err("real report did not cite the requested source".into());
 		}
+
 		report.push_str(&format!("\n## {id}\n\n{answer}\n"));
+
 		for item in entries
 			.iter()
 			.filter_map(|entry| entry.activity.as_ref())
@@ -55,13 +59,16 @@ pub(super) async fn qualify(client: &AgentClient) -> SmokeResult<()> {
 				&& !text.is_empty()
 			{
 				inspected_tool = true;
+
 				break;
 			}
 		}
 	}
+
 	if !inspected_tool {
 		return Err("no real worker tool evidence was readable".into());
 	}
+
 	let root_report = history(client, "agent-service-smoke")
 		.await?
 		.into_iter()
@@ -69,15 +76,20 @@ pub(super) async fn qualify(client: &AgentClient) -> SmokeResult<()> {
 		.map(|entry| entry.text)
 		.collect::<Vec<_>>()
 		.join("\n\n");
+
 	report.push_str(&format!(
 		"\n## Agent assessment\n\n{root_report}\n\nWork records: {}\n",
 		graph.work_items.len()
 	));
+
 	let destination = std::path::Path::new("target/agent-live-acceptance.md");
+
 	std::fs::write(destination, report)?;
+
 	println!(
 		"Real engineering and research reports verified; native worker evidence read successfully. Report: {}",
 		destination.display()
 	);
+
 	Ok(())
 }

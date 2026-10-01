@@ -11,17 +11,21 @@ use std::{
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};
+
 use tempfile::TempDir;
+
 use tokio::{
 	sync::{Notify, watch},
 	time,
 };
+
 use tokio_tungstenite::{
 	self, WebSocketStream,
 	tungstenite::{Message, protocol::frame::coding::CloseCode},
 };
 
 use decodex_core::{DecodexRoot, LocalTrustPolicy};
+
 use decodex_protocol::{
 	AccountLoginInstallMode, AccountLoginMethod, AccountLoginRequest, AccountLoginRequestEnvelope,
 	AccountLoginStart, AccountLoginState, AccountLoginStatus, AccountsResult, CURRENT_VERSION,
@@ -33,6 +37,7 @@ use decodex_protocol::{
 	Refusal, ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, ResumeCursor,
 	ServerId, ServerInstanceId, ServerMessage, SnapshotItem, WireText,
 };
+
 use decodex_runtime::{
 	ActorCommandDeadlineClass, Application, ApplicationPublication, ProtocolServer, ServerConfig,
 	ServerError, TerminationPrimary, TerminationReceipt,
@@ -100,13 +105,6 @@ impl FixtureApplication {
 	}
 }
 
-#[derive(Default)]
-struct FixtureDaemonService {
-	started: Notify,
-	stop_observed: Notify,
-	release: Notify,
-}
-
 impl Application for FixtureApplication {
 	fn command_independent_snapshot(&self) -> Option<Vec<SnapshotItem>> {
 		self.static_snapshot.then(Vec::new)
@@ -122,6 +120,7 @@ impl Application for FixtureApplication {
 
 		vec![Box::pin(async move {
 			service.started.notify_one();
+
 			loop {
 				if *stop.borrow_and_update() {
 					break;
@@ -130,6 +129,7 @@ impl Application for FixtureApplication {
 					break;
 				}
 			}
+
 			service.stop_observed.notify_one();
 			service.release.notified().await;
 		})]
@@ -150,9 +150,11 @@ impl Application for FixtureApplication {
 		command: &'a CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
 		self.execution_started.notify_one();
+
 		if let Some(release) = &self.execution_release {
 			release.notified().await;
 		}
+
 		if !self.execution_delay.is_zero() {
 			time::sleep(self.execution_delay).await;
 		}
@@ -160,8 +162,10 @@ impl Application for FixtureApplication {
 		let mut state = self.state.lock().expect("test state mutex poisoned");
 
 		state.attempts += 1;
+
 		if state.acceptance_unknown_remaining > 0 {
 			state.acceptance_unknown_remaining -= 1;
+
 			return Err(CommandError::AcceptanceUnknown);
 		}
 
@@ -236,6 +240,7 @@ impl Application for FixtureApplication {
 		let mut state = self.state.lock().expect("test state mutex poisoned");
 
 		state.queries += 1;
+
 		let result = match &query.payload {
 			QueryPayload::GetDoctorStatus => {
 				let database = if state.queries == 1 {
@@ -243,6 +248,7 @@ impl Application for FixtureApplication {
 				} else {
 					DoctorStatus::Unavailable(DoctorIssue::DatabaseUnreachable)
 				};
+
 				QueryResultPayload::DoctorStatus(
 					DoctorReport::new(
 						ServerId::new("fixture-server").expect("bounded fixture server ID"),
@@ -261,6 +267,7 @@ impl Application for FixtureApplication {
 
 	async fn account_login<'a>(&'a self, request: &'a AccountLoginRequest) -> AccountLoginStatus {
 		self.state.lock().expect("test state mutex poisoned").login_requests += 1;
+
 		let state = match request {
 			AccountLoginRequest::Start { start } => match start.method {
 				AccountLoginMethod::BrowserRedirect => AccountLoginState::OpeningBrowser,
@@ -269,6 +276,7 @@ impl Application for FixtureApplication {
 			AccountLoginRequest::Status { .. } | AccountLoginRequest::Cancel { .. } =>
 				AccountLoginState::Cancelled,
 		};
+
 		AccountLoginStatus {
 			session_id: request.session_id().clone(),
 			state,
@@ -278,6 +286,13 @@ impl Application for FixtureApplication {
 			resolved_account_id: None,
 		}
 	}
+}
+
+#[derive(Default)]
+struct FixtureDaemonService {
+	started: Notify,
+	stop_observed: Notify,
+	release: Notify,
 }
 
 struct FixtureState {
@@ -399,6 +414,74 @@ fn reset_card_command(version: ProtocolVersion, number: u64, key: &str) -> Clien
 			descriptor: ResetCardDescriptorDto::new(100, 200).expect("valid descriptor"),
 		},
 	})
+}
+
+fn conversation_fixture(
+	state: decodex_protocol::ConversationState,
+	recovery: Option<decodex_protocol::ConversationRecoveryAction>,
+) -> decodex_protocol::ConversationSummary {
+	use decodex_protocol::{ConversationState as State, ConversationSummary, ConversationTitle};
+
+	let has_session = matches!(state, State::Ready | State::Running | State::Establishing);
+
+	ConversationSummary::new(
+		EntityId::new("40000000-0000-4000-8000-000000000001")
+			.expect("conversation observer fixture"),
+		ConversationTitle::new("Observer fixture").expect("conversation observer fixture"),
+		None,
+		None,
+		EntityRevision(1),
+		1,
+		has_session.then(|| {
+			EntityId::new("41000000-0000-4000-8000-000000000001")
+				.expect("conversation observer fixture")
+		}),
+		has_session.then_some(EntityRevision(1)),
+		state,
+		(state == State::Running).then(|| {
+			EntityId::new("42000000-0000-4000-8000-000000000001")
+				.expect("conversation observer fixture")
+		}),
+		recovery,
+	)
+	.expect("conversation observer fixture")
+}
+
+fn conversation_fixture_command(
+	conversation: &decodex_protocol::ConversationSummary,
+	interrupt: bool,
+) -> ClientMessage {
+	let ClientMessage::Command(mut command) = command(CURRENT_VERSION, 1, "conversation") else {
+		unreachable!()
+	};
+	let conversation_id = conversation.conversation_id.clone();
+
+	command.payload = if interrupt {
+		CommandPayload::InterruptConversation {
+			conversation_id,
+			turn_id: conversation.active_turn_id.clone().expect("conversation observer fixture"),
+		}
+	} else if conversation.runtime_session_id.is_some() {
+		CommandPayload::RefreshConversation { conversation_id }
+	} else {
+		CommandPayload::CreateConversation {
+			conversation_id,
+			message: decodex_protocol::HistoryText::new("Observe this conversation")
+				.expect("conversation observer fixture"),
+			working_directory: decodex_protocol::ConversationWorkingDirectory::new("/tmp")
+				.expect("conversation observer fixture"),
+			execution: decodex_protocol::ConversationExecutionSettings::new(
+				decodex_protocol::ConversationModel::new("fixture-model")
+					.expect("conversation observer fixture"),
+				decodex_protocol::ConversationReasoningEffort::Low,
+				false,
+			),
+			initial_model_source: None,
+		}
+	};
+	command.expected_revision = conversation.runtime_session_id.as_ref().map(|_| EntityRevision(1));
+
+	ClientMessage::Command(command)
 }
 
 async fn connect(transport: &LocalTransportAuthority, version: ProtocolVersion) -> Client {
@@ -539,7 +622,6 @@ async fn exact_current_and_pre_payload_version_refusals_use_real_websockets() {
 		.bind(transport.clone())
 		.await
 		.expect("test operation must succeed");
-
 	let mut client = connect(&transport, ProtocolVersion { major: 1, minor: 5 }).await;
 	let ServerMessage::Refusal(refusal) = receive(&mut client).await else {
 		panic!("expected version refusal");
@@ -564,12 +646,14 @@ async fn exact_current_and_pre_payload_version_refusals_use_real_websockets() {
 	let ServerMessage::Welcome(welcome) = receive(&mut client).await else {
 		panic!("expected welcome");
 	};
+
 	assert_eq!(welcome.version, CURRENT_VERSION);
 	assert!(welcome.instance_id.is_some());
 	assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
-	execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
-	client.close(None).await.expect("test operation must succeed");
 
+	execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
+
+	client.close(None).await.expect("test operation must succeed");
 	bound.shutdown().await.expect("test operation must succeed");
 }
 
@@ -593,24 +677,31 @@ async fn post_negotiation_payload_envelopes_require_exact_current_version() {
 		}),
 	)
 	.await;
+
 	assert!(matches!(receive(&mut client).await, ServerMessage::Refusal(_)));
 	assert_eq!(application.queries(), 0);
 
 	send(&mut client, command(ProtocolVersion { major: 1, minor: 5 }, 1, "legacy-command")).await;
+
 	assert!(matches!(receive(&mut client).await, ServerMessage::Refusal(_)));
 	assert_eq!(application.executions(), 0);
 
 	send(&mut client, doctor_query_for(CURRENT_VERSION, 1)).await;
+
 	let ServerMessage::QueryResult(result) = receive(&mut client).await else {
 		panic!("exact-current doctor query must be supported");
 	};
+
 	assert_eq!(result.version, CURRENT_VERSION);
 	assert!(matches!(result.payload, QueryResultPayload::DoctorStatus(_)));
 	assert_eq!(application.queries(), 1);
+
 	execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
+
 	assert_eq!(application.executions(), 1);
 
 	drop(client);
+
 	bound.shutdown().await.expect("shutdown exact-current feature-gate server");
 }
 
@@ -625,24 +716,32 @@ async fn account_login_exchange_does_not_advance_or_enter_retained_state() {
 	let mut first = connect(&transport, CURRENT_VERSION).await;
 
 	assert!(matches!(receive(&mut first).await, ServerMessage::Welcome(_)));
+
 	let ServerMessage::Snapshot(before) = receive(&mut first).await else {
 		panic!("expected initial snapshot");
 	};
+
 	send(&mut first, account_login_start()).await;
+
 	let ServerMessage::AccountLogin(response) = receive(&mut first).await else {
 		panic!("expected dedicated account-login response");
 	};
+
 	assert_eq!(response.version, CURRENT_VERSION);
 	assert_eq!(response.status.state, AccountLoginState::OpeningBrowser);
 	assert_eq!(application.login_requests(), 1);
 	assert_eq!((application.queries(), application.executions()), (0, 0));
+
 	drop(first);
 
 	let mut second = connect(&transport, CURRENT_VERSION).await;
+
 	assert!(matches!(receive(&mut second).await, ServerMessage::Welcome(_)));
+
 	let ServerMessage::Snapshot(after) = receive(&mut second).await else {
 		panic!("expected fresh snapshot");
 	};
+
 	assert_eq!(after.cursor, before.cursor);
 	assert_eq!(after.items, before.items);
 	assert!(
@@ -652,6 +751,7 @@ async fn account_login_exchange_does_not_advance_or_enter_retained_state() {
 	);
 
 	drop(second);
+
 	bound.shutdown().await.expect("shutdown ephemeral account-login server");
 }
 
@@ -673,96 +773,40 @@ async fn v2_reset_card_events_reach_each_exact_current_subscriber() {
 
 	assert!(matches!(receive(&mut current).await, ServerMessage::CommandReceipt(_)));
 	assert!(matches!(receive(&mut current).await, ServerMessage::CommandResult(_)));
+
 	let ServerMessage::Event(event) = receive(&mut current).await else {
 		panic!("current client must receive the reset-card event");
 	};
 
 	assert_eq!(event.version, CURRENT_VERSION);
 	assert!(matches!(event.payload, EventPayload::ResetCardOperationAccepted { .. }));
+
 	let ServerMessage::Event(observer_event) = receive(&mut observer).await else {
 		panic!("the second current subscriber must receive the reset-card event");
 	};
+
 	assert_eq!(observer_event.version, CURRENT_VERSION);
 	assert!(matches!(observer_event.payload, EventPayload::ResetCardOperationAccepted { .. }));
+
 	send(&mut observer, doctor_query_for(CURRENT_VERSION, 2)).await;
+
 	let ServerMessage::QueryResult(result) = receive(&mut observer).await else {
 		panic!("the second current subscriber must remain usable after the event");
 	};
+
 	assert_eq!(result.version, CURRENT_VERSION);
 	assert!(matches!(result.payload, QueryResultPayload::DoctorStatus(_)));
 	assert_eq!(application.executions(), 1);
 
 	drop(current);
+
 	bound.shutdown().await.expect("shutdown reset-card event feature-gate server");
-}
-
-fn conversation_fixture(
-	state: decodex_protocol::ConversationState,
-	recovery: Option<decodex_protocol::ConversationRecoveryAction>,
-) -> decodex_protocol::ConversationSummary {
-	use decodex_protocol::{ConversationState as State, ConversationSummary, ConversationTitle};
-	let has_session = matches!(state, State::Ready | State::Running | State::Establishing);
-	ConversationSummary::new(
-		EntityId::new("40000000-0000-4000-8000-000000000001")
-			.expect("conversation observer fixture"),
-		ConversationTitle::new("Observer fixture").expect("conversation observer fixture"),
-		None,
-		None,
-		EntityRevision(1),
-		1,
-		has_session.then(|| {
-			EntityId::new("41000000-0000-4000-8000-000000000001")
-				.expect("conversation observer fixture")
-		}),
-		has_session.then_some(EntityRevision(1)),
-		state,
-		(state == State::Running).then(|| {
-			EntityId::new("42000000-0000-4000-8000-000000000001")
-				.expect("conversation observer fixture")
-		}),
-		recovery,
-	)
-	.expect("conversation observer fixture")
-}
-
-fn conversation_fixture_command(
-	conversation: &decodex_protocol::ConversationSummary,
-	interrupt: bool,
-) -> ClientMessage {
-	let ClientMessage::Command(mut command) = command(CURRENT_VERSION, 1, "conversation") else {
-		unreachable!()
-	};
-	let conversation_id = conversation.conversation_id.clone();
-	command.payload = if interrupt {
-		CommandPayload::InterruptConversation {
-			conversation_id,
-			turn_id: conversation.active_turn_id.clone().expect("conversation observer fixture"),
-		}
-	} else if conversation.runtime_session_id.is_some() {
-		CommandPayload::RefreshConversation { conversation_id }
-	} else {
-		CommandPayload::CreateConversation {
-			conversation_id,
-			message: decodex_protocol::HistoryText::new("Observe this conversation")
-				.expect("conversation observer fixture"),
-			working_directory: decodex_protocol::ConversationWorkingDirectory::new("/tmp")
-				.expect("conversation observer fixture"),
-			execution: decodex_protocol::ConversationExecutionSettings::new(
-				decodex_protocol::ConversationModel::new("fixture-model")
-					.expect("conversation observer fixture"),
-				decodex_protocol::ConversationReasoningEffort::Low,
-				false,
-			),
-			initial_model_source: None,
-		}
-	};
-	command.expected_revision = conversation.runtime_session_id.as_ref().map(|_| EntityRevision(1));
-	ClientMessage::Command(command)
 }
 
 #[tokio::test]
 async fn settled_conversation_results_reach_observers_without_runtime_events() {
 	use decodex_protocol::{ConversationRecoveryAction as Recovery, ConversationState as State};
+
 	for (state, recovery, interrupt, publishes) in [
 		(State::ModelSettingsReviewRequired, Some(Recovery::ReviewModelSettings), false, true),
 		(State::RoutingPending, Some(Recovery::ResumeRouting), false, true),
@@ -788,12 +832,16 @@ async fn settled_conversation_results_reach_observers_without_runtime_events() {
 		let mut observer = connect(&transport, CURRENT_VERSION).await;
 		let mut current = connect(&transport, CURRENT_VERSION).await;
 		let (_, _, before, _) = receive_initial(&mut observer).await;
+
 		receive_initial(&mut current).await;
 		send(&mut current, conversation_fixture_command(&conversation, interrupt)).await;
+
 		assert!(matches!(receive(&mut current).await, ServerMessage::CommandReceipt(_)));
+
 		let ServerMessage::CommandResult(result) = receive(&mut current).await else {
 			panic!("initiator must receive its result");
 		};
+
 		assert!(matches!(
 			&result.payload,
 			Some(
@@ -801,10 +849,12 @@ async fn settled_conversation_results_reach_observers_without_runtime_events() {
 					| ResultPayload::ConversationInterruptAccepted { .. }
 			)
 		));
+
 		if publishes {
 			let ServerMessage::Event(event) = receive(&mut observer).await else {
 				panic!("observer must receive settled conversation {state:?}");
 			};
+
 			assert_eq!(event.payload, EventPayload::ConversationChanged { conversation });
 			assert_eq!(event.channel, Channel::ConversationStream);
 			assert!(
@@ -814,12 +864,17 @@ async fn settled_conversation_results_reach_observers_without_runtime_events() {
 			// The new handshake is ordered after command settlement by the publication actor.
 			let mut barrier = connect(&transport, CURRENT_VERSION).await;
 			let (_, _, after, _) = receive_initial(&mut barrier).await;
+
 			assert_eq!(after, before, "active receipts must not add a command event");
+
 			drop(barrier);
 		}
+
 		assert_eq!(application.executions(), 1);
+
 		drop(current);
 		drop(observer);
+
 		bound.shutdown().await.expect("conversation observer fixture");
 	}
 }
@@ -979,6 +1034,7 @@ async fn acceptance_unknown_is_not_cached_and_same_key_can_recover() {
 	assert_eq!(application.executions(), 1);
 
 	drop(client);
+
 	bound.shutdown().await.expect("test operation must succeed");
 }
 
@@ -1182,15 +1238,20 @@ async fn disconnected_delayed_command_finishes_and_deduplicates_on_reconnect() {
 	time::timeout(Duration::from_secs(3), application.execution_started.notified())
 		.await
 		.expect("the publication actor must start the command before disconnection");
+
 	assert_eq!(application.executions(), 0);
+
 	drop(first);
+
 	release.notify_one();
 
 	let mut reconnected = connect(&transport, CURRENT_VERSION).await;
 
 	// This application snapshots through the actor after the retained command settles.
 	receive_initial(&mut reconnected).await;
+
 	assert_eq!(application.executions(), 1);
+
 	send(&mut reconnected, command(CURRENT_VERSION, 2, "disconnect-key")).await;
 
 	let ServerMessage::CommandReceipt(receipt) = receive(&mut reconnected).await else {
@@ -1385,11 +1446,14 @@ async fn receipt_capacity_has_one_exact_current_namespace() {
 
 	receive_initial(&mut second).await;
 	send(&mut second, command(CURRENT_VERSION, 4, "key-1")).await;
+
 	let ServerMessage::CommandReceipt(replayed) = receive(&mut second).await else {
 		panic!("expected exact-current replay");
 	};
+
 	assert_eq!(replayed.disposition, ReceiptDisposition::Duplicate);
 	assert!(matches!(receive(&mut second).await, ServerMessage::CommandResult(_)));
+
 	send(&mut second, command(CURRENT_VERSION, 5, "new-key-at-capacity")).await;
 
 	let ServerMessage::CommandReceipt(refused) = receive(&mut second).await else {
@@ -1499,12 +1563,12 @@ async fn malformed_and_abandoned_pre_registration_sessions_are_session_local() {
 	.bind(transport.clone())
 	.await
 	.expect("bind pre-registration peer-failure server");
-
 	let stream = transport.connect().await.expect("connect abandoned local stream");
 	let (abandoned, _) =
 		tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, None)
 			.await
 			.expect("connect abandoned real WebSocket client");
+
 	drop(abandoned);
 
 	let stream = transport.connect().await.expect("connect malformed local stream");
@@ -1512,21 +1576,27 @@ async fn malformed_and_abandoned_pre_registration_sessions_are_session_local() {
 		tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, None)
 			.await
 			.expect("connect malformed real WebSocket client");
+
 	malformed
 		.send(Message::Text("{".into()))
 		.await
 		.expect("send malformed first WebSocket message");
+
 	let ServerMessage::Refusal(refusal) = receive(&mut malformed).await else {
 		panic!("expected malformed first-message refusal");
 	};
+
 	assert!(matches!(refusal.refusal, Refusal::ProtocolViolation { .. }));
+
 	drop(malformed);
 
 	let mut healthy = connect(&transport, CURRENT_VERSION).await;
+
 	receive_initial(&mut healthy).await;
 	drop(healthy);
 
 	let receipt = bound.shutdown().await.expect("requested shutdown remains exact");
+
 	assert_eq!(
 		receipt,
 		TerminationReceipt {
@@ -1564,11 +1634,13 @@ async fn daemon_service_settlement_holds_namespace_authority_until_zero_survivor
 	time::timeout(Duration::from_secs(1), service.started.notified())
 		.await
 		.expect("daemon service must start under the server lifecycle");
+
 	let shutdown = tokio::spawn(async move { bound.shutdown().await });
 
 	time::timeout(Duration::from_secs(1), service.stop_observed.notified())
 		.await
 		.expect("daemon service must observe stopping");
+
 	let contender = server(
 		"service-settlement-contender",
 		FixtureApplication::default(),
@@ -1583,6 +1655,7 @@ async fn daemon_service_settlement_holds_namespace_authority_until_zero_survivor
 	));
 
 	service.release.notify_one();
+
 	time::timeout(Duration::from_secs(2), shutdown)
 		.await
 		.expect("server must finish after registered service work settles")
@@ -1616,6 +1689,7 @@ async fn missing_canonical_publication_stops_established_service_and_allows_rebi
 	let mut established = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut established).await;
+
 	fs::remove_file(&socket_path).expect("remove canonical publication");
 
 	let error = time::timeout(Duration::from_secs(2), bound.wait())
@@ -1625,11 +1699,14 @@ async fn missing_canonical_publication_stops_established_service_and_allows_rebi
 	let ServerError::Terminated(receipt) = error else {
 		panic!("expected deterministic terminated receipt, got {error:?}");
 	};
+
 	assert_eq!(receipt.endpoint_refusal, Some(LocalTransportRefusal::EndpointReplaced));
 	assert_eq!(receipt.cleanup_refusal, Some(LocalTransportRefusal::EndpointReplaced));
+
 	let old_stream = time::timeout(Duration::from_secs(1), established.next())
 		.await
 		.expect("established stream must stop with the lost publication");
+
 	assert!(matches!(old_stream, None | Some(Ok(Message::Close(_))) | Some(Err(_))));
 
 	let mut restarted = server(
@@ -1645,6 +1722,7 @@ async fn missing_canonical_publication_stops_established_service_and_allows_rebi
 	receive_initial(&mut reconnected).await;
 	drop(reconnected);
 	drop(established);
+
 	restarted.shutdown().await.expect("shutdown republished fixture server");
 }
 
@@ -1664,9 +1742,12 @@ async fn replacement_publication_stops_service_without_unlinking_replacement() {
 	let mut established = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut established).await;
+
 	fs::rename(&socket_path, &retained_path).expect("move owned publication aside");
+
 	let replacement =
 		StandardUnixListener::bind(&socket_path).expect("publish unowned replacement socket");
+
 	fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600))
 		.expect("scope replacement socket");
 
@@ -1677,6 +1758,7 @@ async fn replacement_publication_stops_service_without_unlinking_replacement() {
 	let ServerError::Terminated(receipt) = error else {
 		panic!("expected deterministic terminated receipt, got {error:?}");
 	};
+
 	assert_eq!(receipt.endpoint_refusal, Some(LocalTransportRefusal::EndpointReplaced));
 	assert_eq!(receipt.cleanup_refusal, Some(LocalTransportRefusal::EndpointReplaced));
 	assert!(socket_path.exists(), "cleanup must preserve an unowned replacement");
@@ -1689,6 +1771,7 @@ async fn replacement_publication_stops_service_without_unlinking_replacement() {
 
 	drop(established);
 	drop(replacement);
+
 	fs::remove_file(&socket_path).expect("remove replacement fixture socket");
 	fs::remove_file(&retained_path).expect("remove retained fixture socket");
 }
@@ -1797,22 +1880,31 @@ async fn static_snapshot_queries_remain_responsive_during_a_slow_command() {
 		.await
 		.expect("bind server");
 	let mut command_client = connect(&transport, CURRENT_VERSION).await;
+
 	receive_initial(&mut command_client).await;
 	send(&mut command_client, command(CURRENT_VERSION, 1, "slow-command")).await;
+
 	application.execution_started.notified().await;
+
 	time::timeout(Duration::from_millis(300), async {
 		let mut query_client = connect(&transport, CURRENT_VERSION).await;
+
 		receive_initial(&mut query_client).await;
 		send(&mut query_client, doctor_query(1)).await;
+
 		assert!(matches!(receive(&mut query_client).await, ServerMessage::QueryResult(_)));
 	})
 	.await
 	.expect("query must finish before the slow command");
+
 	assert_eq!(application.executions(), 0);
 	assert!(matches!(receive(&mut command_client).await, ServerMessage::CommandReceipt(_)));
 	assert!(matches!(receive(&mut command_client).await, ServerMessage::CommandResult(_)));
 	assert!(matches!(receive(&mut command_client).await, ServerMessage::Event(_)));
+
 	drop(command_client);
+
 	bound.shutdown().await.expect("shutdown after command settles");
+
 	assert_eq!(application.executions(), 1);
 }

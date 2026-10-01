@@ -14,6 +14,7 @@ impl AccountObservationService {
 		else {
 			return P::Unavailable;
 		};
+
 		if before != banner
 			|| !expected.valid_for(&current.account_id, current.account_revision)
 			|| expected.observed_at_unix_micros > current.observed_at_unix_micros
@@ -21,6 +22,7 @@ impl AccountObservationService {
 		{
 			return P::Unavailable;
 		}
+
 		let Ok(id) = AccountId::new(current.account_id.as_str()) else {
 			return P::Unavailable;
 		};
@@ -36,9 +38,11 @@ impl AccountObservationService {
 		let Some(destination) = destination(&context, banner, action) else {
 			return P::Unavailable;
 		};
+
 		if self.recovery(&expected.account_id, expected.account_revision).await != current {
 			return P::Unavailable;
 		}
+
 		P::Ready { source: Box::new(current), action, destination }
 	}
 }
@@ -69,20 +73,27 @@ fn destination(
 		A::ProPricing => "https://chatgpt.com/explore/pro".into(),
 		A::Pricing => {
 			let plan = context.plan_type.as_deref()?;
+
 			workspace(plan)?;
+
 			let target = if matches!(plan, "plus" | "prolite") { "pro" } else { "plus" };
 			let mut url = reqwest::Url::parse("https://chatgpt.com/").ok()?;
+
 			url.query_pairs_mut()
 				.append_pair("cta_tab", "personal")
 				.append_pair("highlight_plan", target);
+
 			if plan == "prolite" {
 				url.query_pairs_mut().append_pair("pro_variant", "2x");
 			}
+
 			url.set_fragment(Some("pricing"));
+
 			url.into()
 		},
 	};
 	let mut url = reqwest::Url::parse(&url).ok()?;
+
 	if !matches!(url.scheme(), "https" | "http")
 		|| url.host_str().is_none()
 		|| !url.username().is_empty()
@@ -94,8 +105,10 @@ fn destination(
 		if context.provider_account_id.is_empty() {
 			return None;
 		}
+
 		url.query_pairs_mut().append_pair("account_id", &context.provider_account_id);
 	}
+
 	Some(D::OpenUrl(WireText::new(url.as_str()).ok()?))
 }
 
@@ -119,6 +132,7 @@ fn workspace(plan: &str) -> Option<bool> {
 
 fn validated_url(raw: &str) -> Option<D> {
 	let url = reqwest::Url::parse(raw).ok()?;
+
 	if !matches!(url.scheme(), "https" | "http")
 		|| url.host_str().is_none()
 		|| !url.username().is_empty()
@@ -126,6 +140,7 @@ fn validated_url(raw: &str) -> Option<D> {
 	{
 		return None;
 	}
+
 	Some(D::OpenUrl(WireText::new(url.as_str()).ok()?))
 }
 
@@ -152,6 +167,7 @@ mod tests {
 		action: A,
 	) -> reqwest::Url {
 		let Some(D::OpenUrl(url)) = destination(context, banner, action) else { panic!("url") };
+
 		reqwest::Url::parse(url.as_str()).unwrap()
 	}
 	#[test]
@@ -162,19 +178,26 @@ mod tests {
 		};
 		let banner = banner();
 		let target = url(&context, &banner, A::AddCredits);
+
 		assert_eq!(target.path(), "/admin/billing");
 		assert_eq!(
 			target.query_pairs().find(|(k, _)| k == "account_id").unwrap().1,
 			context.provider_account_id
 		);
 		assert!(!target.query_pairs().any(|(k, _)| k == "other"));
+
 		context.plan_type = Some("prolite".into());
+
 		assert_eq!(url(&context, &banner, A::AddCredits).path(), "/codex/settings/usage");
+
 		let target = url(&context, &banner, A::Pricing);
+
 		assert!(target.query_pairs().any(|(k, v)| k == "highlight_plan" && v == "pro"));
 		assert!(target.query_pairs().any(|(k, v)| k == "pro_variant" && v == "2x"));
 		assert_eq!(target.fragment(), Some("pricing"));
+
 		context.plan_type = Some("future-plan".into());
+
 		assert!(destination(&context, &banner, A::AddCredits).is_none());
 		assert!(destination(&context, &banner, A::Pricing).is_none());
 	}
@@ -185,18 +208,24 @@ mod tests {
 			plan_type: None,
 		};
 		let mut banner = banner();
+
 		assert_eq!(
 			destination(&context, &banner, A::RequestIncrease),
 			Some(D::RequestUsageIncrease)
 		);
 		assert_eq!(destination(&context, &banner, A::ResetUsage), Some(D::ResetPicker));
 		assert_eq!(destination(&context, &banner, A::NotifyOwner), Some(D::RequestCredits));
+
 		banner.request_url =
 			Some(WireText::new("https://chatgpt.com/admin/custom?ticket=1").unwrap());
+
 		let target = url(&context, &banner, A::RequestIncrease);
+
 		assert_eq!(target.query(), Some("ticket=1"));
+
 		for invalid in ["javascript:alert(1)", "https://user@host/path", "file:///tmp/example"] {
 			banner.request_url = Some(WireText::new(invalid).unwrap());
+
 			assert!(destination(&context, &banner, A::RequestIncrease).is_none());
 		}
 	}

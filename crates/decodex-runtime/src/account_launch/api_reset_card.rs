@@ -22,14 +22,6 @@ use tokio::sync::{Mutex, Notify, watch};
 
 #[derive(Clone)]
 pub(crate) struct ApiResetCardRuntime(Arc<Inner>);
-struct Inner {
-	store: SqliteStore,
-	provider: Arc<dyn ResetCardProvider>,
-	stopping: AtomicBool,
-	worker: Mutex<()>,
-	wakeup: Notify,
-	observation: Arc<Notify>,
-}
 impl ApiResetCardRuntime {
 	pub(crate) fn new(store: SqliteStore, api: Arc<AccountApiRuntime>) -> Self {
 		Self::with_provider(store, api)
@@ -64,7 +56,9 @@ impl ApiResetCardRuntime {
 			if *stop.borrow() || self.0.stopping.load(Ordering::Acquire) {
 				return;
 			}
+
 			self.process_pending().await;
+
 			tokio::select! {
 				_ = stop.changed() => { if *stop.borrow() || stop.has_changed().is_err() { return; } },
 				_ = self.0.wakeup.notified() => {},
@@ -82,6 +76,7 @@ impl ApiResetCardRuntime {
 	) -> Result<ResetCardPreparation, ResetCardServiceError> {
 		ResetCardIdempotencyKey::new(key.to_owned())
 			.map_err(|_| ResetCardServiceError::InvalidRequest)?;
+
 		if revision <= 0 {
 			return Err(ResetCardServiceError::InvalidRequest);
 		}
@@ -96,18 +91,22 @@ impl ApiResetCardRuntime {
 			{
 				return Err(ResetCardServiceError::IdempotencyConflict);
 			}
+
 			return Ok(ResetCardPreparation {
 				account_id: account_id.clone(),
 				account_revision: revision,
 				descriptor,
 			});
 		}
+
 		if self.0.stopping.load(Ordering::Acquire) {
 			return Err(ResetCardServiceError::ProductStateUnavailable);
 		}
+
 		let mut session = self.0.provider.session(account_id, revision).await?;
 		let inventory = session.inventory().await?;
 		let credit = select_credit(&inventory, revision, descriptor)?;
+
 		self.0
 			.store
 			.prepare_reset_card(ResetCardOperation {
@@ -124,6 +123,7 @@ impl ApiResetCardRuntime {
 			.await
 			.map_err(map_store)?;
 		self.0.wakeup.notify_one();
+
 		Ok(ResetCardPreparation {
 			account_id: account_id.clone(),
 			account_revision: revision,
@@ -144,11 +144,13 @@ impl ApiResetCardRuntime {
 	) -> Result<ResetCardOperationStatus, ResetCardServiceError> {
 		ResetCardIdempotencyKey::new(key.to_owned())
 			.map_err(|_| ResetCardServiceError::InvalidRequest)?;
+
 		let Some(operation) =
 			self.0.store.reset_card_operation(key.to_owned()).await.map_err(map_store)?
 		else {
 			return Ok(ResetCardOperationStatus::NotFound);
 		};
+
 		Ok(match operation.state.as_str() {
 			"prepared" => ResetCardOperationStatus::Prepared,
 			"sending" => ResetCardOperationStatus::EffectAmbiguous,
@@ -170,10 +172,12 @@ impl ApiResetCardRuntime {
 		let Ok(operations) = self.0.store.pending_reset_cards().await else {
 			return;
 		};
+
 		for operation in operations {
 			if self.0.stopping.load(Ordering::Acquire) {
 				break;
 			}
+
 			self.process(operation).await;
 		}
 	}
@@ -182,9 +186,12 @@ impl ApiResetCardRuntime {
 		if operation.outcome.is_some() {
 			// A committed receipt needs only local completion, never another provider write.
 			let _ = self.0.store.complete_reset_card(operation.key).await;
+
 			self.0.observation.notify_one();
+
 			return;
 		}
+
 		let session = self.session_for_operation(&operation).await;
 		let mut session = match session {
 			Ok(session) => session,
@@ -199,6 +206,7 @@ impl ApiResetCardRuntime {
 				};
 				let _ =
 					self.0.store.fail_reset_card_before_send(operation.key, failure.into()).await;
+
 				return;
 			},
 		};
@@ -212,9 +220,11 @@ impl ApiResetCardRuntime {
 		if !matches!(self.0.store.begin_reset_card_send(operation.key.clone()).await, Ok(true)) {
 			return;
 		}
+
 		let Ok(outcome) = session.consume(&key, &credit).await else {
 			return;
 		};
+
 		if self
 			.0
 			.store
@@ -223,6 +233,7 @@ impl ApiResetCardRuntime {
 			.is_ok()
 		{
 			let _ = self.0.store.complete_reset_card(operation.key).await;
+
 			self.0.observation.notify_one();
 		}
 	}
@@ -235,7 +246,9 @@ impl ApiResetCardRuntime {
 			.map_err(|_| ResetCardServiceError::AccountChanged)?;
 		let mut session = self.0.provider.session(&account, operation.account_revision).await?;
 		let inventory = session.inventory().await?;
+
 		use decodex_core::ResetCardTimestamp;
+
 		let descriptor = ResetCardTimestamp::from_unix_seconds(operation.granted_at)
 			.and_then(|grant| {
 				operation
@@ -246,11 +259,22 @@ impl ApiResetCardRuntime {
 			})
 			.map_err(|_| ResetCardServiceError::InventoryChanged)?;
 		let credit = select_credit(&inventory, operation.account_revision, descriptor)?;
+
 		if Some(credit.as_str()) != operation.exact_credit_id.as_deref() {
 			return Err(ResetCardServiceError::InventoryChanged);
 		}
+
 		Ok(session)
 	}
+}
+
+struct Inner {
+	store: SqliteStore,
+	provider: Arc<dyn ResetCardProvider>,
+	stopping: AtomicBool,
+	worker: Mutex<()>,
+	wakeup: Notify,
+	observation: Arc<Notify>,
 }
 fn select_credit(
 	inventory: &AccountApiInventory,
@@ -265,21 +289,26 @@ fn select_credit(
 	{
 		return Err(ResetCardServiceError::InventoryIncomplete);
 	}
+
 	let now = SystemTime::now()
 		.duration_since(UNIX_EPOCH)
 		.map_err(|_| ResetCardServiceError::InvalidRequest)?
 		.as_secs();
+
 	if descriptor
 		.expires_at()
 		.is_some_and(|expiry| now >= u64::try_from(expiry.unix_seconds()).unwrap_or(0))
 	{
 		return Err(ResetCardServiceError::InventoryChanged);
 	}
+
 	let mut matches = inventory.credits.iter().filter(|card| card.descriptor() == descriptor);
 	let credit = matches.next().ok_or(ResetCardServiceError::InventoryChanged)?;
+
 	if matches.next().is_some() {
 		return Err(ResetCardServiceError::InventoryChanged);
 	}
+
 	Ok(credit.exact_id().clone())
 }
 fn map_store(error: StoreError) -> ResetCardServiceError {

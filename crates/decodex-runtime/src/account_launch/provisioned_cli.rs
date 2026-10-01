@@ -20,6 +20,7 @@ exec "$bin_dir/../CodexCLI.app/Contents/MacOS/codex" "$@"
 
 pub(super) fn native_entrypoint(path: PathBuf) -> Result<PathBuf, SupervisionError> {
 	let unavailable = || SupervisionError::ExecutableUnavailable;
+
 	if path.file_name().is_none_or(|name| name != "codex")
 		|| path.parent().and_then(Path::file_name).is_none_or(|name| name != "bin")
 	{
@@ -32,14 +33,18 @@ pub(super) fn native_entrypoint(path: PathBuf) -> Result<PathBuf, SupervisionErr
 	{
 		return Ok(path);
 	}
+
 	let package = path.parent().and_then(Path::parent).ok_or_else(unavailable)?;
 	let metadata_path = package.join("codex-package.json");
-	if fs::metadata(&metadata_path).map_err(|_| unavailable())?.len() > 65536 {
+
+	if fs::metadata(&metadata_path).map_err(|_| unavailable())?.len() > 65_536 {
 		return Err(unavailable());
 	}
+
 	let metadata: serde_json::Value =
 		serde_json::from_slice(&fs::read(metadata_path).map_err(|_| unavailable())?)
 			.map_err(|_| unavailable())?;
+
 	if metadata["variant"] != "codex"
 		|| metadata["layoutVersion"] != 1
 		|| metadata["entrypoint"] != "bin/codex"
@@ -61,18 +66,24 @@ mod tests {
 
 	fn package(root: &Path) -> PathBuf {
 		let entry = root.join("bin/codex");
+
 		fs::create_dir_all(entry.parent().expect("provisioned package fixture"))
 			.expect("provisioned package fixture");
 		fs::write(&entry, LAUNCHER).expect("provisioned package fixture");
 		fs::set_permissions(&entry, fs::Permissions::from_mode(0o755))
 			.expect("provisioned package fixture");
 		fs::write(root.join("codex-package.json"), r#"{"variant":"codex","layoutVersion":1,"entrypoint":"bin/codex","target":"aarch64-apple-darwin"}"#).expect("provisioned package fixture");
+
 		let native = root.join("CodexCLI.app/Contents/MacOS/codex");
+
 		fs::create_dir_all(native.parent().expect("provisioned package fixture"))
 			.expect("provisioned package fixture");
 		fs::copy("/bin/echo", &native).expect("provisioned package fixture");
+
 		let contents = root.join("CodexCLI.app/Contents");
+
 		fs::create_dir_all(contents.join("_CodeSignature")).expect("fixture signature directory");
+
 		for relative in ["Info.plist", "embedded.provisionprofile", "_CodeSignature/CodeResources"]
 		{
 			fs::write(contents.join(relative), "fixture").expect("fixture bundle context");
@@ -84,13 +95,20 @@ mod tests {
 	#[test]
 	fn relocated_package_and_symlink_resolve_the_native_image() {
 		let home = tempfile::tempdir().expect("provisioned package fixture");
+
 		package(&home.path().join("original"));
+
 		let root = home.path().join("relocated package");
+
 		fs::rename(home.path().join("original"), &root).expect("provisioned package fixture");
+
 		let link = home.path().join("installed-codex");
+
 		symlink("relocated package/bin/codex", &link).expect("provisioned package fixture");
+
 		let (resolved, _, digest) = super::super::resolve_executable(link.as_os_str())
 			.expect("provisioned package fixture");
+
 		assert_eq!(
 			resolved,
 			root.join("CodexCLI.app/Contents/MacOS/codex")
@@ -111,12 +129,16 @@ mod tests {
 	fn altered_launcher_or_layout_does_not_gain_script_execution() {
 		let home = tempfile::tempdir().expect("provisioned package fixture");
 		let entry = package(home.path());
+
 		fs::write(&entry, format!("{LAUNCHER}echo unexpected\n"))
 			.expect("provisioned package fixture");
+
 		assert!(super::super::resolve_executable(entry.as_os_str()).is_err());
+
 		fs::write(&entry, LAUNCHER).expect("provisioned package fixture");
 		fs::write(home.path().join("codex-package.json"), "{}")
 			.expect("provisioned package fixture");
+
 		assert!(super::super::resolve_executable(entry.as_os_str()).is_err());
 	}
 
@@ -124,8 +146,10 @@ mod tests {
 	fn bundled_target_still_requires_native_executable_validation() {
 		let home = tempfile::tempdir().expect("provisioned package fixture");
 		let entry = package(home.path());
+
 		fs::write(home.path().join("CodexCLI.app/Contents/MacOS/codex"), "#!/bin/sh\nexit 0\n")
 			.expect("provisioned package fixture");
+
 		assert!(super::super::resolve_executable(entry.as_os_str()).is_err());
 	}
 }

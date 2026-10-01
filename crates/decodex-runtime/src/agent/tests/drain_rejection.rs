@@ -4,6 +4,7 @@ use super::*;
 async fn drain_wire_refusal_distinguishes_direct_input_from_injected_updates() {
 	let (mut agent, mut sent, _directory) =
 		fixture_with_history(json!({"_turn_draining":true})).await;
+
 	assert!(matches!(
 		agent.start_agent("agent", "Keep the original instruction").await,
 		Err(AgentError::InputNotSent(decodex_database::AgentDispatchRefusal::ServerDraining))
@@ -12,20 +13,30 @@ async fn drain_wire_refusal_distinguishes_direct_input_from_injected_updates() {
 		agent.store.get_agent_work_item("agent".into()).await.unwrap().dispatch_state,
 		decodex_database::AgentDispatchState::Idle
 	);
+
 	let mut starts = 0;
+
 	while let Ok(request) = sent.try_recv() {
 		assert_ne!(request["method"], "thread/inject_items");
+
 		starts += usize::from(request["method"] == "turn/start");
 	}
+
 	assert_eq!(starts, 1);
+
 	agent.wake_pending().await.unwrap();
+
 	assert!(sent.try_recv().is_err());
 
 	let (mut agent, mut sent, _directory) =
 		fixture_with_history(json!({"_turn_draining_after_injection":true})).await;
+
 	agent.start_agent("agent", "Initial").await.unwrap();
+
 	complete(&mut agent, "agent").await;
+
 	while sent.try_recv().is_ok() {}
+
 	let before = agent.store.get_agent_work_item("agent".into()).await.unwrap();
 	let event = agent
 		.store
@@ -37,11 +48,15 @@ async fn drain_wire_refusal_distinguishes_direct_input_from_injected_updates() {
 		})
 		.await
 		.unwrap();
+
 	assert!(agent.dispatch_with_events(&before, "Process update", vec![event.id]).await.is_err());
+
 	let mut methods = Vec::new();
+
 	while let Ok(request) = sent.try_recv() {
 		methods.push(request["method"].as_str().unwrap().to_owned());
 	}
+
 	assert!(
 		methods.iter().position(|m| m == "thread/inject_items").unwrap()
 			< methods.iter().position(|m| m == "turn/start").unwrap()
@@ -65,8 +80,11 @@ async fn native_rejection_preserves_input_and_never_replays_ambiguous_effects() 
 			[(false, false, true), (true, false, false), (false, true, false)]
 		{
 			let (mut agent, mut sent, directory) = fixture().await;
+
 			agent.start_agent("agent", "Initial").await.unwrap();
+
 			complete(&mut agent, "agent").await;
+
 			let before = agent.store.get_agent_work_item("agent".into()).await.unwrap();
 			let event = agent
 				.store
@@ -78,16 +96,18 @@ async fn native_rejection_preserves_input_and_never_replays_ambiguous_effects() 
 				})
 				.await
 				.unwrap();
+
 			agent
 				.store
 				.begin_agent_dispatch_with_input("agent".into(), vec![event.id], None)
 				.await
 				.unwrap();
+
 			let error = if lost_response {
 				ClientError::Closed
 			} else {
 				ClientError::Remote(decodex_codex::app_server_client::RpcError {
-					code: -32600,
+					code: -32_600,
 					message: message.into(),
 					data: None,
 				})
@@ -102,6 +122,7 @@ async fn native_rejection_preserves_input_and_never_replays_ambiguous_effects() 
 					None,
 				)
 				.await;
+
 			assert_eq!(
 				if managed {
 					matches!(
@@ -120,10 +141,15 @@ async fn native_rejection_preserves_input_and_never_replays_ambiguous_effects() 
 				},
 				expected_rejection
 			);
+
 			while sent.try_recv().is_ok() {}
+
 			agent.wake_pending().await.unwrap();
+
 			assert!(sent.try_recv().is_err(), "Refused or uncertain input must not be replayed");
+
 			drop(agent);
+
 			let root = decodex_core::DecodexRoot::new(
 				directory.path().canonicalize().unwrap().join("root"),
 			)
@@ -131,7 +157,9 @@ async fn native_rejection_preserves_input_and_never_replays_ambiguous_effects() 
 			let store = SqliteStore::open(&root.paths()).unwrap();
 			let work = store.get_agent_work_item("agent".into()).await.unwrap();
 			let saved = store.get_agent_inbox_event(event.id).await.unwrap();
+
 			assert!(saved.payload.contains("Keep this input"));
+
 			if expected_rejection {
 				assert_eq!(work.dispatch_state, decodex_database::AgentDispatchState::Idle);
 				assert_eq!(work.status, decodex_database::AgentWorkStatus::UserDecision);
@@ -140,7 +168,9 @@ async fn native_rejection_preserves_input_and_never_replays_ambiguous_effects() 
 					Some(decodex_database::AgentDisposition::UserDecision)
 				);
 				assert!(saved.delivered_turn_id.is_none());
+
 				let note = saved.disposition_note.unwrap();
+
 				assert!(note.contains("Not sent"));
 				assert_eq!(note.contains("managed model provider"), managed);
 			} else {

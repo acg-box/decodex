@@ -41,6 +41,7 @@ impl ConversationRuntime {
 				self.inner.provider_attempts.record_positive_evidence(&evidence).await.ok(),
 			Err(_) => None,
 		};
+
 		if !matches!(
 			result,
 			Some(
@@ -74,7 +75,9 @@ impl ConversationRuntime {
 					.ambiguous_session(session, turn_id, ConversationAmbiguity::TurnFinalization)
 					.await,
 		}
+
 		let readback = session_readback(&session, ConversationLocalState::ManualRecovery, None);
+
 		self.emit(ConversationOutcome::HistoryChanged {
 			readback: readback.clone(),
 			history_item_id: HistoryItemId::new(derived_uuid(

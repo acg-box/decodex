@@ -6,7 +6,7 @@ fn history(item: Value) -> Value {
 
 #[test]
 fn complete_mcp_results_survive_paging_with_resources_and_failure_tail() {
-	let long = "界".repeat(12000);
+	let long = "界".repeat(12_000);
 	let item = json!({"id":"item","type":"mcpToolCall","server":"docs","tool":"read","status":"failed","result":{"content":[
 		{"type":"text","text":long},
 		{"type":"resource_link","uri":"https://example.test/result","name":"report","description":"Result report"},
@@ -19,20 +19,26 @@ fn complete_mcp_results_survive_paging_with_resources_and_failure_tail() {
 	let text = project_text(&history(item), "thread", "turn", "item").unwrap();
 	let mut combined = String::new();
 	let mut cursor = None;
+
 	loop {
 		let AgentActivityDetailResult::Available { text, next, .. } =
 			page(&text, "scope", cursor.as_ref()).unwrap()
 		else {
 			panic!("page")
 		};
+
 		combined.push_str(&text);
+
 		if next.is_none() {
 			break;
 		}
+
 		cursor = next;
 	}
+
 	assert_eq!(combined, text);
 	assert!(combined.contains(&long));
+
 	for expected in [
 		"https://example.test/result",
 		"Result report",
@@ -46,6 +52,7 @@ fn complete_mcp_results_survive_paging_with_resources_and_failure_tail() {
 	] {
 		assert!(combined.contains(expected), "{expected}");
 	}
+
 	assert!(combined.ends_with("Trailing failure diagnostic"));
 	assert!(!combined.contains("DO_NOT_RENDER"));
 }
@@ -57,12 +64,15 @@ fn structured_only_result_and_public_siblings_remain_visible() {
 		{"type":"text","text":"Public result"}
 	],"structuredContent":{"count":3,"items":["one","two","three"]},"_meta":{"private":"META_DO_NOT_RENDER"}}});
 	let text = project_text(&history(item), "thread", "turn", "item").unwrap();
+
 	assert!(text.contains("[Sensitive content omitted]"));
 	assert!(text.contains("Public result"));
 	assert!(text.contains("Structured result:"));
 	assert!(text.contains("three"));
 	assert!(!text.contains("DO_NOT_RENDER"));
+
 	let item = json!({"id":"item","type":"mcpToolCall","result":{"content":[],"structuredContent":{"count":0}}});
+
 	assert!(project_text(&history(item), "thread", "turn", "item").unwrap().contains("count"));
 }
 
@@ -75,6 +85,7 @@ fn dynamic_media_and_malformed_blocks_do_not_disappear() {
 		{"type":"text","unexpected":"Malformed text result"}
 	]});
 	let text = project_text(&history(item), "thread", "turn", "item").unwrap();
+
 	for expected in [
 		"fixture",
 		"Text result",
@@ -85,12 +96,13 @@ fn dynamic_media_and_malformed_blocks_do_not_disappear() {
 	] {
 		assert!(text.contains(expected));
 	}
+
 	assert!(!text.contains("DO_NOT_RENDER"));
 }
 
 #[test]
 fn standalone_result_details_retain_long_text_without_media_or_encrypted_bodies() {
-	let long = "界".repeat(12000);
+	let long = "界".repeat(12_000);
 	let item = json!({"id":"item","type":"functionCallOutput","name":"result","namespace":"tools","output":[
 	 {"type":"input_text","text":long},
 	 {"type":"input_image","image_url":"data:image/png;base64,RAW_DO_NOT_RENDER"},
@@ -99,29 +111,40 @@ fn standalone_result_details_retain_long_text_without_media_or_encrypted_bodies(
 	 {"type":"input_text","text":"Public tail"}
 	]});
 	let text = project_text(&history(item.clone()), "thread", "turn", "item").unwrap();
+
 	assert!(text.starts_with("tools/result"));
 	assert!(text.contains(&long));
 	assert!(text.ends_with("Public tail"));
 	assert!(text.contains("[Sensitive content omitted]"));
 	assert!(!text.contains("DO_NOT_RENDER"));
+
 	let mut combined = String::new();
 	let mut cursor = None;
+
 	loop {
 		let AgentActivityDetailResult::Available { text: chunk, next, .. } =
 			page(&text, "scope", cursor.as_ref()).unwrap()
 		else {
 			panic!("page")
 		};
-		assert!(chunk.len() <= 8192);
+
+		assert!(chunk.len() <= 8_192);
+
 		combined.push_str(&chunk);
+
 		if next.is_none() {
 			break;
 		}
+
 		cursor = next;
 	}
+
 	assert_eq!(combined, text);
+
 	let mut scalar = item;
+
 	scalar["output"] = json!("Plain result");
+
 	assert!(
 		project_text(&history(scalar), "thread", "turn", "item").unwrap().ends_with("Plain result")
 	);
@@ -131,13 +154,16 @@ fn standalone_result_details_retain_long_text_without_media_or_encrypted_bodies(
 fn image_path_and_app_context_are_descriptive_native_evidence() {
 	let item = json!({"id":"item","type":"imageView","path":"/remote/image.png"});
 	let text = project_text(&history(item), "thread", "turn", "item").unwrap();
+
 	assert!(text.contains("/remote/image.png"));
 	assert!(text.contains("does not identify the executor"));
+
 	let item = json!({"id":"item","type":"mcpToolCall","appContext":{
   "connectorId":"app-fixture","appName":"Calendar","actionName":"Read event",
   "linkId":"link-fixture","resourceUri":"ui://event","private":"RAW_DO_NOT_RENDER"
  },"arguments":{"link_id":"ARGUMENT_MUST_NOT_AUTHORIZE"},"result":{"content":[{"type":"text","text":"Event found"}]}});
 	let text = project_text(&history(item.clone()), "thread", "turn", "item").unwrap();
+
 	for expected in [
 		"App: Calendar",
 		"Action: Read event",
@@ -148,15 +174,20 @@ fn image_path_and_app_context_are_descriptive_native_evidence() {
 	] {
 		assert!(text.contains(expected), "{expected}");
 	}
+
 	assert!(!text.contains("DO_NOT_RENDER"));
 	assert!(text.contains("\"link_id\": \"ARGUMENT_MUST_NOT_AUTHORIZE\""));
 	assert!(
 		!text.contains("Link: ARGUMENT_MUST_NOT_AUTHORIZE"),
 		"input is not authoritative App metadata"
 	);
+
 	let mut partial = item;
+
 	partial["appContext"] = json!({"appName":"Calendar","linkId":false,"resourceUri":null});
+
 	let text = project_text(&history(partial), "thread", "turn", "item").unwrap();
+
 	assert!(text.contains("App: Calendar"));
 	assert!(!text.contains("Link:"));
 	assert!(!text.contains("Resource:"));
@@ -166,11 +197,16 @@ fn image_path_and_app_context_are_descriptive_native_evidence() {
 fn dynamic_inputs_are_readable_without_exposing_sensitive_arguments() {
 	let item = json!({"id":"item","type":"dynamicToolCall","tool":"read","arguments":{"path":"src/main.rs","lines":10},"contentItems":[{"type":"text","text":"Result"}]});
 	let text = project_text(&history(item.clone()), "thread", "turn", "item").unwrap();
+
 	assert!(text.contains("Input\n{\n"));
 	assert!(text.contains("src/main.rs"));
+
 	let mut sensitive = item;
+
 	sensitive["arguments"] = json!({"token":"Bearer fixture-private-access-token-123456789"});
+
 	let text = project_text(&history(sensitive), "thread", "turn", "item").unwrap();
+
 	assert!(!text.contains("fixture-private-access-token"));
 	assert!(text.contains("[Sensitive content omitted]"));
 	assert!(text.contains("Result"));

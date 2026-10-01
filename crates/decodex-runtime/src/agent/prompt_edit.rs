@@ -30,23 +30,31 @@ impl AgentCoordinator {
 		boundary: decodex_database::AgentForkBoundary,
 	) -> Result<decodex_database::AgentForkReceipt, AgentError> {
 		use decodex_codex::app_server_client::ThreadForkBoundary;
+
 		use decodex_database::{AgentForkAttempt, AgentForkBoundary};
+
 		let a = review.attempt;
 		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
+
 		if a.generation != generation || !review.guard.is_live() {
 			return Err(rejected());
 		}
+
 		let Some(current) =
 			self.client.prompt_edit_candidate(&a.thread, &a.before_turn_id, &a.item_id).await?
 		else {
 			return Err(rejected());
 		};
+
 		if current.content != a.content || current.turn_ids != a.turn_ids || !review.guard.is_live()
 		{
 			return Err(rejected());
 		}
+
 		let attempt = AgentForkAttempt { source: a, target_work, boundary };
+
 		self.store.reserve_agent_fork(attempt.clone()).await?.ok_or_else(rejected)?;
+
 		let native_boundary = match boundary {
 			AgentForkBoundary::BeforeInput =>
 				ThreadForkBoundary::BeforeInput(&attempt.source.before_turn_id),
@@ -62,14 +70,17 @@ impl AgentCoordinator {
 			),
 		)
 		.await;
+
 		match response {
 			Ok(Ok(response)) => {
 				let thread = response["thread"]["id"].as_str().ok_or_else(rejected)?.to_owned();
+
 				self.store
 					.record_agent_fork_identity(attempt.clone(), thread.clone())
 					.await?
 					.ok_or_else(rejected)?;
 				self.loaded_threads.insert(thread);
+
 				let _ = self
 					.recover_prompt_fork(&attempt.source.work, &attempt.source.review_token)
 					.await;
@@ -81,11 +92,12 @@ impl AgentCoordinator {
 			)) => {
 				self.store.reject_agent_fork(attempt.clone()).await?;
 			},
-			Ok(Err(ClientError::Remote(error))) if (-32602..=-32600).contains(&error.code) => {
+			Ok(Err(ClientError::Remote(error))) if (-32_602..=-32_600).contains(&error.code) => {
 				self.store.reject_agent_fork(attempt.clone()).await?;
 			},
 			_ => {}, // Unknown acceptance keeps the durable reservation; never submit another fork.
 		}
+
 		self.store
 			.agent_fork_receipt(attempt.source.work, attempt.source.review_token)
 			.await?
@@ -103,10 +115,13 @@ impl AgentCoordinator {
 		else {
 			return Ok(None);
 		};
+
 		if saved.state != "acknowledged" {
 			return Ok(Some(saved));
 		}
+
 		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
+
 		if !self
 			.store
 			.agent_thread_is_owned(
@@ -118,17 +133,22 @@ impl AgentCoordinator {
 		{
 			return Err(rejected());
 		}
+
 		let thread = saved.target_thread.as_ref().ok_or_else(rejected)?;
 		let metadata = self.client.thread_read(json!({"threadId":thread})).await?;
+
 		if metadata["thread"]["id"] != thread.as_str()
 			|| metadata["thread"]["forkedFromId"] != saved.attempt.source.thread
 		{
 			return Err(rejected());
 		}
+
 		let (turns, guard) = self.read_edit_history(thread).await?;
+
 		if !guard.is_live() {
 			return Err(rejected());
 		}
+
 		self.store
 			.acknowledge_agent_fork(saved.attempt, thread.clone(), turns)
 			.await
@@ -148,17 +168,22 @@ impl AgentCoordinator {
 		if review_id.is_empty() || review_id.len() > 512 {
 			return Err(rejected());
 		}
+
 		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
+
 		if !self.store.agent_thread_is_owned(work.into(), thread.into(), generation.clone()).await?
 		{
 			return Ok(None);
 		}
+
 		let Some(candidate) = self.client.prompt_edit_candidate(thread, turn, item).await? else {
 			return Ok(None);
 		};
+
 		if super::voice_handoff(&json!({"type":"userMessage","content":candidate.content})) {
 			return Ok(None);
 		}
+
 		let mut attempt = AgentPromptEditAttempt {
 			work: work.into(),
 			thread: thread.into(),
@@ -170,15 +195,18 @@ impl AgentCoordinator {
 			turn_ids: candidate.turn_ids,
 			content: candidate.content,
 		};
+
 		attempt.review_token = Sha256::digest(json!(attempt).to_string().as_bytes())
 			.iter()
 			.map(|b| format!("{b:02x}"))
 			.collect();
+
 		if !candidate.guard.is_live()
 			|| !self.store.agent_thread_is_owned(work.into(), thread.into(), generation).await?
 		{
 			return Ok(None);
 		}
+
 		Ok(Some(PromptEditReview { attempt, guard: candidate.guard }))
 	}
 
@@ -191,18 +219,22 @@ impl AgentCoordinator {
 	) -> Result<AgentPromptEditReceipt, AgentError> {
 		let a = review.attempt;
 		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
+
 		if a.generation != generation || !review.guard.is_live() {
 			return Err(rejected());
 		}
+
 		let Some(current) =
 			self.client.prompt_edit_candidate(&a.thread, &a.before_turn_id, &a.item_id).await?
 		else {
 			return Err(rejected());
 		};
+
 		if !review.guard.is_live() || current.content != a.content || current.turn_ids != a.turn_ids
 		{
 			return Err(rejected());
 		}
+
 		let id = self.store.reserve_agent_prompt_edit(a.clone()).await?.ok_or_else(rejected)?;
 		let response = tokio::time::timeout(
 			Duration::from_secs(60),
@@ -213,12 +245,13 @@ impl AgentCoordinator {
 			),
 		)
 		.await;
+
 		if matches!(
 			response,
 			Ok(Err(ClientError::StaleHistory
 				| ClientError::RequestTooLarge
 				| ClientError::RequestQueueFull))
-		) || matches!(&response,Ok(Err(ClientError::Remote(error))) if (-32602..=-32600).contains(&error.code))
+		) || matches!(&response,Ok(Err(ClientError::Remote(error))) if (-32_602..=-32_600).contains(&error.code))
 		{
 			self.store.reject_agent_prompt_edit_without_mutation(id, a.clone()).await?;
 		} else {
@@ -227,6 +260,7 @@ impl AgentCoordinator {
 			// again.
 			let _ = self.recover_prompt_edit(&a.work, &a.thread).await;
 		}
+
 		self.store.agent_prompt_edit_receipt(a.work, a.thread).await?.ok_or_else(rejected)
 	}
 
@@ -237,22 +271,27 @@ impl AgentCoordinator {
 		thread: &str,
 	) -> Result<Option<AgentPromptEditReceipt>, AgentError> {
 		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
+
 		if !self.store.agent_thread_is_owned(work.into(), thread.into(), generation.clone()).await?
 		{
 			return Err(rejected());
 		}
+
 		let Some(receipt) =
 			self.store.agent_prompt_edit_receipt(work.into(), thread.into()).await?
 		else {
 			return Ok(None);
 		};
+
 		if !matches!(receipt.state.as_str(), "reserved" | "applied") {
 			return Ok(Some(receipt));
 		}
+
 		let (turns, guard) =
 			tokio::time::timeout(Duration::from_secs(60), self.read_edit_history(thread))
 				.await
 				.map_err(|_| AgentError::UnknownDispatch)??;
+
 		if !guard.is_live() {
 			return Err(rejected());
 		}
@@ -263,20 +302,25 @@ impl AgentCoordinator {
 				.iter()
 				.position(|id| id == &receipt.attempt.before_turn_id)
 				.ok_or_else(rejected)?;
+
 			if turns != receipt.attempt.turn_ids[..boundary] {
 				return Err(rejected());
 			}
 		} else {
 			self.store.observe_agent_prompt_edit(receipt.id, generation, turns).await?;
 		}
+
 		let current = self.store.agent_prompt_edit_receipt(work.into(), thread.into()).await?;
+
 		if current.as_ref().is_some_and(|r| r.state == "applied") {
 			self.observe_notification("thread/reverted", &json!({"threadId":thread})).await?;
 			self.recover_async_questions().await?;
+
 			if self.store.agent_async_questions_recovering(work.into()).await? || !guard.is_live() {
 				return Err(AgentError::UnknownDispatch);
 			}
 		}
+
 		Ok(current)
 	}
 
@@ -286,24 +330,30 @@ impl AgentCoordinator {
 	) -> Result<(Vec<String>, HistoryGuard), AgentError> {
 		let guard = self.client.thread_settings_guard(thread).ok_or_else(rejected)?;
 		let metadata = self.client.thread_read(json!({"threadId":thread})).await?;
+
 		if metadata["thread"]["id"] != thread || metadata["thread"]["historyMode"] != "paginated" {
 			return Err(rejected());
 		}
+
 		let headers = self.client.thread_turns_since(thread, None).await?;
+
 		if headers.last().is_some_and(|t| {
 			!matches!(t["status"].as_str(), Some("completed" | "failed" | "interrupted"))
 		}) {
 			return Err(rejected());
 		}
+
 		let turns = headers
 			.iter()
 			.map(|t| t["id"].as_str().map(str::to_owned).ok_or_else(rejected))
 			.collect::<Result<Vec<_>, _>>()?;
+
 		if self.client.thread_latest_turn_id(thread).await? != turns.last().cloned()
 			|| !guard.is_live()
 		{
 			return Err(rejected());
 		}
+
 		Ok((turns, guard))
 	}
 }

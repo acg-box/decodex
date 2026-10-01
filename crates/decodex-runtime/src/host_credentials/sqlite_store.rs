@@ -14,7 +14,6 @@ use super::{
 pub struct SqliteCredentialStore {
 	store: SqliteStore,
 }
-
 impl SqliteCredentialStore {
 	/// Bind credential access to the already-open daemon store.
 	pub fn new(store: SqliteStore) -> Self {
@@ -27,13 +26,17 @@ impl SqliteCredentialStore {
 	) -> Result<(PersistedCredential, CredentialBinding), CredentialStoreError> {
 		let record = self.store.read_credential(account_id.as_str()).map_err(map_read_error)?;
 		let (persisted, fingerprint) = decode(record.payload.to_vec())?;
+
 		if persisted.account_id()? != *account_id {
 			return Err(CredentialStoreError::AccountMismatch);
 		}
+
 		let binding = persisted.binding(fingerprint)?;
+
 		if credential_key(&binding, account_id) != record.key {
 			return Err(CredentialStoreError::CorruptBundle);
 		}
+
 		Ok((persisted, binding))
 	}
 }
@@ -54,6 +57,7 @@ impl HostCredentialStore for SqliteCredentialStore {
 		if target.version.get() != 1 {
 			return Err(CredentialStoreError::VersionConflict);
 		}
+
 		let persisted = PersistedCredential::new(
 			account_id,
 			&target.writer_operation_id,
@@ -63,7 +67,9 @@ impl HostCredentialStore for SqliteCredentialStore {
 		);
 		let bytes = encode(&persisted)?;
 		let binding = persisted.binding(fingerprint(&bytes)?)?;
+
 		enforce_exact(&binding, target)?;
+
 		self.store
 			.create_credential(CredentialRecord {
 				key: credential_key(target, account_id),
@@ -81,14 +87,17 @@ impl HostCredentialStore for SqliteCredentialStore {
 	) -> Result<(), CredentialStoreError> {
 		let next =
 			previous.version.successor().map_err(|_| CredentialStoreError::VersionConflict)?;
+
 		if target.version != next || target.provider != previous.provider {
 			return Err(CredentialStoreError::VersionConflict);
 		}
+
 		match self.store.read_credential(account_id.as_str()) {
 			Err(DatabaseError::NotFound) => {},
 			Ok(_) => return Err(CredentialStoreError::AlreadyExists),
 			Err(error) => return Err(map_read_error(error)),
 		}
+
 		let persisted = PersistedCredential::new(
 			account_id,
 			&target.writer_operation_id,
@@ -98,7 +107,9 @@ impl HostCredentialStore for SqliteCredentialStore {
 		);
 		let bytes = encode(&persisted)?;
 		let binding = persisted.binding(fingerprint(&bytes)?)?;
+
 		enforce_exact(&binding, target)?;
+
 		self.store
 			.create_credential(CredentialRecord {
 				key: credential_key(target, account_id),
@@ -114,6 +125,7 @@ impl HostCredentialStore for SqliteCredentialStore {
 	) -> Result<StoredCredential, CredentialStoreError> {
 		let (persisted, binding) = self.read_record(account_id)?;
 		let bundle = persisted.into_bundle()?;
+
 		seal_exact_read(account_id, &binding, expected, bundle)
 	}
 
@@ -126,11 +138,15 @@ impl HostCredentialStore for SqliteCredentialStore {
 	) -> Result<(), CredentialStoreError> {
 		let next =
 			expected.version.successor().map_err(|_| CredentialStoreError::VersionConflict)?;
+
 		if target.version != next || target.provider != expected.provider {
 			return Err(CredentialStoreError::VersionConflict);
 		}
+
 		let (_, actual) = self.read_record(account_id)?;
+
 		enforce_exact(&actual, expected)?;
+
 		let persisted = PersistedCredential::new(
 			account_id,
 			&target.writer_operation_id,
@@ -140,7 +156,9 @@ impl HostCredentialStore for SqliteCredentialStore {
 		);
 		let bytes = encode(&persisted)?;
 		let target_binding = persisted.binding(fingerprint(&bytes)?)?;
+
 		enforce_exact(&target_binding, target)?;
+
 		self.store
 			.rotate_credential(
 				&credential_key(expected, account_id),
@@ -155,7 +173,9 @@ impl HostCredentialStore for SqliteCredentialStore {
 		expected: &CredentialBinding,
 	) -> Result<(), CredentialStoreError> {
 		let (_, actual) = self.read_record(account_id)?;
+
 		enforce_exact(&actual, expected)?;
+
 		self.store
 			.delete_credential(&credential_key(expected, account_id))
 			.map_err(map_delete_error)

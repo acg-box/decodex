@@ -1,16 +1,25 @@
 #[cfg(all(test, target_os = "macos"))]
-#[path = "activation_policy_native_tests.rs"]
-mod activation_policy_native_tests;
-#[path = "exact_history.rs"] mod exact_history;
-#[cfg(all(test, target_os = "macos"))]
 #[path = "process_native_control_tests.rs"]
 pub(crate) mod native_control_tests;
+
+#[cfg(all(test, target_os = "macos"))]
+#[path = "activation_policy_native_tests.rs"]
+mod activation_policy_native_tests;
+#[cfg(target_os = "macos")]
+#[path = "process_bundle_snapshot.rs"]
+mod bundle_snapshot;
+#[path = "exact_history.rs"] mod exact_history;
+#[path = "executable_discovery.rs"] mod executable_discovery;
 #[cfg(target_os = "macos")]
 #[path = "provisioned_cli.rs"]
 mod provisioned_cli;
 
+pub(crate) use decodex_database::ConversationResumeRejection as ConversationRejectionReason;
+
 #[cfg(target_os = "linux")] use std::os::fd::{AsRawFd as _, FromRawFd as _};
+
 #[cfg(test)] use std::sync::atomic::AtomicU32;
+
 use std::{
 	cell::UnsafeCell,
 	collections::BTreeSet,
@@ -39,16 +48,23 @@ use std::{
 };
 
 use libc::{EPERM, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, SIGKILL, SIGTERM};
+
 #[cfg(target_os = "linux")]
 use libc::{
 	F_ADD_SEALS, F_GET_SEALS, F_SEAL_EXEC, F_SEAL_GROW, F_SEAL_SEAL, F_SEAL_SHRINK, F_SEAL_WRITE,
 	MFD_ALLOW_SEALING, MFD_CLOEXEC, MFD_EXEC,
 };
+
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+
 use serde_json::{self};
+
 use sha2::{Digest as _, Sha256};
+
 use tempfile::{NamedTempFile, TempDir};
+
 use zeroize::{Zeroize as _, Zeroizing};
+
 #[cfg(target_os = "macos")]
 use {
 	libc::UF_IMMUTABLE,
@@ -58,11 +74,13 @@ use {
 };
 
 #[cfg(test)] use crate::account_launch::RunnerCapacity;
+
 #[cfg(target_os = "macos")]
 use crate::account_launch::macos_attested_spawn::{
 	AttestedChild, AttestedCodeIdentity, PRIVATE_STDIO_STARTUP_ENV, PRIVATE_STDIO_STARTUP_VALUE,
 	spawn_private_stdio_suspended, spawn_private_stdio_suspended_at, spawn_suspended,
 };
+
 use crate::account_launch::{
 	RunnerPermit,
 	protocol::{
@@ -73,7 +91,9 @@ use crate::account_launch::{
 		exact_thread_facts,
 	},
 };
+
 #[cfg(test)] use decodex_codex::schema::SchemaMarker;
+
 use decodex_codex::{
 	ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, Capability, CapabilityCache,
 	CapabilityProfile, ConversationMessageDelta, ConversationThreadResumeRequest,
@@ -88,16 +108,19 @@ use decodex_codex::{
 	normalize_event, project_conversation_message_delta,
 	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES},
 };
+
 use decodex_core::{
 	AccountId, ProcessBootIdentity, ProcessControlKind, ProcessExecutionAuthorization,
 	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
 	ProcessIsolationKind, ProcessRunnerIdentity, ProviderAttemptId, TurnId,
 };
+
 use decodex_database::{
 	BindRuntimeSessionThread, CodexAccountCapabilityAttestation,
 	FreshConversationProcessGeneration, FreshProviderDispatchFence, FreshRuntimeSessionThreadStart,
 	SuccessfulRuntimeSessionThreadStart,
 };
+
 use decodex_protocol::MAX_CONVERSATION_WORKING_DIRECTORY_BYTES;
 
 use crate::process_supervisor::{FencedProcess, ProcessGenerationControl, ProcessSupervisorError};
@@ -128,6 +151,7 @@ const QUARANTINE_SLOT_RESERVED: u8 = 1;
 const QUARANTINE_SLOT_READY: u8 = 2;
 const QUARANTINE_SLOT_WORKING: u8 = 3;
 const QUARANTINE_SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
+
 #[cfg(test)]
 static ZEROIZED_INBOUND_BLOCKS: AtomicUsize = AtomicUsize::new(0);
 #[cfg(test)]
@@ -156,6 +180,12 @@ pub(crate) trait AccountRefreshCallback: Send + Sync {
 	) -> Result<ChatgptRefreshProjection, CredentialVaultError>;
 }
 
+/// Final synchronous check owned by Conversation and executed at the child creation boundary.
+pub(crate) trait ConversationPreSpawnCheck: Send + Sync {
+	fn validate_at_spawn_boundary(&self) -> Result<(), ()>;
+	fn working_directory_descriptor(&self) -> i32;
+}
+
 /// Secret-bearing callback response retained only through one zeroizing JSON write.
 pub(crate) struct ChatgptRefreshProjection {
 	access_token: Zeroizing<String>,
@@ -179,6 +209,7 @@ impl ChatgptRefreshProjection {
 		Ok(Self { access_token, provider_account_id, plan_type })
 	}
 }
+
 impl Debug for ChatgptRefreshProjection {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter
@@ -210,6 +241,422 @@ pub(crate) struct AccountBinding {
 	refresh_callback: Option<Arc<dyn AccountRefreshCallback>>,
 	personal_access_token: Option<Zeroizing<String>>,
 }
+
+/// Daemon-lifetime observed Codex capability evidence shared by account-scoped launches.
+///
+/// Startup constructs this profile once from one immutable executable snapshot and one generated
+/// schema preflight. Each account launch still verifies the canonical executable, binds the exact
+/// account credential revision, and uses suspended dynamic code-identity attestation before user
+/// code can run.
+#[derive(Clone)]
+pub(crate) struct AttestedAppServerProfile {
+	command: AppServerCommand,
+	build: BuildId,
+	generated: GeneratedSchemaEvidence,
+	capability: ExactBuildLaunchCapability,
+}
+
+/// One non-forgeable account-bound app-server launch.
+///
+/// It retains the protected executable snapshot and derives the durable launch-manifest identity
+/// from the same verified executable, command, arguments, working directory, environment, account,
+/// and runtime capability that it later spawns. No mutable [`Command`] or caller-supplied runner
+/// digest crosses the ProcessSupervisor boundary.
+pub(crate) struct AttestedAppServerLaunch {
+	command: AppServerCommand,
+	binding: AccountBinding,
+	build: BuildId,
+	generated: GeneratedSchemaEvidence,
+	runner_identity: ProcessRunnerIdentity,
+	capability: ExactBuildLaunchCapability,
+	timeout: Duration,
+	guard: RunnerPermit,
+	conversation_pre_spawn_check: Option<Arc<dyn ConversationPreSpawnCheck>>,
+}
+
+/// Exact newly spawned protocol child plus immutable build evidence and capacity authority.
+pub(crate) struct AttestedProcessChild {
+	process: SupervisedProcess,
+	build: BuildId,
+	generated: GeneratedSchemaEvidence,
+	timeout: Duration,
+	initialized: bool,
+}
+
+/// Exact request facts reserved before a RuntimeSession thread-start fence.
+pub(crate) struct PreparedThreadStart {
+	request: ConversationThreadStartRequest,
+	wire: PreparedConversationRequest,
+}
+
+/// Successful durable thread establishment ready for the exact bind command.
+pub(crate) struct EstablishedOrdinaryThread {
+	pub(crate) settings: decodex_database::ConversationNativeSettings,
+	pub(crate) codex_thread_id: String,
+	pub(crate) binding: BindRuntimeSessionThread,
+	pub(crate) events: Vec<ConversationProcessEvent>,
+}
+
+/// Successful exact-thread resume facts ready for one affine runtime proof.
+pub(crate) struct ResumedOrdinaryThread {
+	pub(crate) settings: decodex_database::ConversationNativeSettings,
+	pub(crate) codex_thread_id: String,
+	pub(crate) request_id: i64,
+	pub(crate) request_sha256: String,
+	pub(crate) response_id: i64,
+	pub(crate) response_sha256: String,
+	pub(crate) events: Vec<ConversationProcessEvent>,
+}
+
+/// Exact `turn/start` request reserved before generic ProviderAttempt preparation.
+pub(crate) struct PreparedTurnStart {
+	attempt_id: ProviderAttemptId,
+	wire: PreparedConversationRequest,
+}
+
+/// Successful `turn/start` response plus notifications observed before that response.
+pub(crate) struct StartedOrdinaryTurn {
+	pub(crate) turn_id: String,
+	pub(crate) status: decodex_codex::ConversationTurnStatus,
+	pub(crate) response_sha256: String,
+	pub(crate) events: Vec<ConversationProcessEvent>,
+}
+
+/// Exact active-account identity retained only in zeroizing, redacted process memory.
+#[derive(Clone, Eq, PartialEq)]
+pub(crate) struct AccountIdentity {
+	kind: Zeroizing<String>,
+	email: Option<Zeroizing<String>>,
+	requires_openai_auth: bool,
+}
+
+/// Single-use process-scoped credential sink owned by the Codex adapter.
+pub(crate) struct CredentialProjection<'a> {
+	process: &'a mut SupervisedProcess,
+	timeout: Duration,
+	used: bool,
+}
+
+/// Exact executable contract for one supervised app-server build.
+#[derive(Clone)]
+pub(super) struct AppServerCommand {
+	program: PathBuf,
+	executable: Arc<ExecutableSnapshot>,
+	executable_digest: [u8; 32],
+	#[cfg(target_os = "macos")]
+	attested_code_identity: Option<AttestedCodeIdentity>,
+	app_server_args: Vec<OsString>,
+	version_args: Vec<OsString>,
+	schema_args: Vec<OsString>,
+	working_directory: PathBuf,
+	#[cfg(test)]
+	preflight_cleanup_test: Option<PreflightCleanupTest>,
+	#[cfg(test)]
+	before_spawn_test: Option<BeforeSpawnTest>,
+	#[cfg(test)]
+	after_verification_test: Option<BeforeSpawnTest>,
+	#[cfg(all(test, target_os = "macos"))]
+	test_spawn_path: Option<PathBuf>,
+}
+
+/// Default host-vault boundary until an operator supplies a concrete local vault.
+/// It never reads ambient credentials and always keeps runner creation unavailable.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct UnavailableCredentialVault;
+
+pub(super) struct StdoutPump {
+	cancelled: Arc<AtomicBool>,
+	done: Receiver<()>,
+	thread: Option<JoinHandle<()>>,
+}
+
+/// Owned app-server child and its immutable account authority.
+pub(super) struct SupervisedProcess {
+	owner: ProcessGroupOwner,
+	stdin: Box<dyn Write + Send>,
+	stdout: Receiver<InboundFrame>,
+	protocol_limit_exceeded: Arc<AtomicBool>,
+	binding: AccountBinding,
+	#[cfg(test)]
+	command: AppServerCommand,
+	expected_account_identity: Option<AccountIdentity>,
+	next_request_id: u64,
+	abandoned_request_ids: BTreeSet<u64>,
+	agent_retained: bool,
+	agent_bridge: Option<super::agent_process::AgentProcessBridge>,
+	config_warnings: Vec<serde_json::Value>,
+	deferred_conversation_events: std::collections::VecDeque<ConversationProcessEvent>,
+}
+
+/// Typed result from `initialize` plus a bounded `thread/list`; no raw JSON escapes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct ReadOnlyProbeResult {
+	/// Exact-build negotiated capability profile.
+	pub profile: CapabilityProfile,
+	/// Redacted bounded thread summaries.
+	pub threads: Vec<ThreadSummary>,
+	/// Exact non-secret account selected before the child was spawned.
+	pub account_id: AccountId,
+	/// Exact OS process identity that produced the account readback.
+	pub process_id: u32,
+}
+
+/// Fake/live probe that cannot construct a turn or account-selection request.
+pub(super) struct ReadOnlyProbe {
+	command: AppServerCommand,
+	binding: AccountBinding,
+	timeout: Duration,
+	#[cfg(test)]
+	attestation_timeout_override: Option<Duration>,
+}
+
+/// Private account-bound exact reconciliation configuration.
+///
+/// This is deliberately separate from [`ReadOnlyProbe`]: archive is never part of capability-probe
+/// execution, and no public caller can construct or dispatch this owner.
+pub(super) struct ExactThreadReconciler {
+	command: AppServerCommand,
+	binding: AccountBinding,
+	timeout: Duration,
+}
+
+#[derive(Serialize)]
+pub(super) struct OutboundRequest<'a, P>
+where
+	P: ?Sized,
+{
+	id: u64,
+	method: &'static str,
+	params: &'a P,
+}
+
+#[derive(Serialize)]
+pub(super) struct OutboundNotification<'a, P>
+where
+	P: ?Sized,
+{
+	method: &'a str,
+	params: &'a P,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ChatgptAuthParams<'a> {
+	#[serde(rename = "type")]
+	kind: &'static str,
+	access_token: &'a str,
+	chatgpt_account_id: &'a str,
+	chatgpt_plan_type: Option<&'a str>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct CredentialProjectionResponse {
+	#[serde(rename = "type")]
+	_kind: CredentialProjectionResponseKind,
+}
+
+#[derive(Deserialize)]
+pub(super) struct InboundHeader {
+	id: Option<u64>,
+	method: Option<String>,
+}
+
+#[cfg(test)]
+#[derive(Clone)]
+pub(super) struct PreflightCleanupTest {
+	trigger_spawn: u32,
+	spawn_count: Arc<AtomicU32>,
+	process_group: Arc<AtomicU32>,
+	reaper_delay: Duration,
+	quarantine: Arc<ProcessQuarantine>,
+}
+
+pub(super) struct ProbeNegotiation<'a> {
+	cache: &'a mut CapabilityCache,
+	build: &'a BuildId,
+	generated: &'a GeneratedSchemaEvidence,
+	observations: Vec<MethodObservation>,
+}
+
+pub(super) struct ReapJob {
+	child: ManagedChild,
+	process_group: u32,
+	// PID/PGID reuse makes signaling invalid after positive reap or an uncertain wait error.
+	may_signal_process_group: bool,
+	pump: Option<StdoutPump>,
+	_guard: Option<RunnerPermit>,
+	#[cfg(test)]
+	not_before: Option<Instant>,
+}
+
+pub(super) struct ProcessGroupOwner {
+	child: Option<ManagedChild>,
+	process_group: u32,
+	// This authority is monotonic: no observation can restore it after reap or wait failure.
+	may_signal_process_group: bool,
+	guard: Option<RunnerPermit>,
+	pump: Option<StdoutPump>,
+	#[cfg(test)]
+	reap_not_before: Option<Instant>,
+}
+
+/// One fixed allocation that explicitly wipes its complete contents before release.
+pub(super) struct ZeroizingInboundBlock {
+	bytes: Box<[u8]>,
+}
+
+/// Chunked inbound frame. Secret-bearing allocations never grow or reallocate.
+pub(super) struct InboundFrame {
+	blocks: Vec<ZeroizingInboundBlock>,
+	len: usize,
+}
+
+pub(super) struct QuarantineSlotLease {
+	state: Arc<ProcessQuarantineState>,
+	index: usize,
+	installed: bool,
+}
+
+pub(super) struct QuarantineSlot {
+	state: AtomicU8,
+	job: UnsafeCell<MaybeUninit<ReapJob>>,
+}
+
+pub(super) struct ProcessQuarantine {
+	state: Arc<ProcessQuarantineState>,
+	shutdown: SyncSender<()>,
+	joined: Mutex<Receiver<()>>,
+	worker_id: ThreadId,
+}
+
+struct PreparedConversationRequest {
+	resume_thread_id: Option<String>,
+	request_id: i64,
+	request_sha256: String,
+	frame: ZeroizingOutboundFrame,
+}
+
+struct ConversationWireReceipt {
+	request_id: i64,
+	request_sha256: String,
+	response_id: i64,
+	response_sha256: String,
+}
+
+struct ConversationProcessSuccess<T> {
+	value: T,
+	wire: ConversationWireReceipt,
+	events: Vec<ConversationProcessEvent>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChatgptRefreshRequest {
+	id: u64,
+	method: String,
+	params: ChatgptRefreshParams,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ChatgptRefreshParams {
+	reason: String,
+	previous_account_id: Option<String>,
+}
+
+#[derive(Serialize)]
+struct OutboundRpcSuccess<T> {
+	id: u64,
+	result: T,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatgptRefreshResponse<'a> {
+	access_token: &'a str,
+	chatgpt_account_id: &'a str,
+	chatgpt_plan_type: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+struct OutboundRpcError {
+	id: u64,
+	error: OutboundRpcErrorBody,
+}
+
+#[derive(Serialize)]
+struct OutboundRpcErrorBody {
+	code: i32,
+	message: &'static str,
+}
+
+struct RpcWireReceipt {
+	request_id: i64,
+	request_digest: String,
+	response_id: i64,
+	response_digest: String,
+}
+
+struct RpcSuccess<T> {
+	value: T,
+	wire: RpcWireReceipt,
+}
+
+struct ProcessQuarantineState {
+	slots: Box<[QuarantineSlot]>,
+	ready: Condvar,
+	wake: Mutex<()>,
+	next_slot: AtomicUsize,
+	worker_cursor: AtomicUsize,
+	shutdown: AtomicBool,
+	#[cfg(test)]
+	panic_after_worker_pops: AtomicUsize,
+	lifecycle: Arc<QuarantineLifecycleProbe>,
+}
+
+struct InFlightReapJob {
+	state: Arc<ProcessQuarantineState>,
+	index: usize,
+	job: Option<ReapJob>,
+}
+
+#[derive(Default)]
+struct QuarantineLifecycleProbe {
+	started: AtomicBool,
+	exited: AtomicBool,
+	joined: AtomicBool,
+}
+
+struct ExecutableSnapshot {
+	#[cfg(target_os = "macos")]
+	_directory: TempDir,
+	#[cfg(target_os = "macos")]
+	path: PathBuf,
+	#[cfg(target_os = "linux")]
+	file: File,
+	source_device: u64,
+	source_inode: u64,
+}
+
+#[cfg(test)]
+#[derive(Clone)]
+struct BeforeSpawnTest {
+	trigger_spawn: u32,
+	spawn_count: Arc<AtomicU32>,
+	action: Arc<dyn Fn() + Send + Sync>,
+}
+
+struct ZeroizingOutboundBlock {
+	bytes: Box<[u8]>,
+}
+
+struct ZeroizingOutboundFrame {
+	blocks: Vec<ZeroizingOutboundBlock>,
+	len: usize,
+	limit_exceeded: bool,
+}
+
 impl AccountBinding {
 	pub(super) fn codex_home(&self) -> &std::path::Path {
 		&self.expected_codex_home
@@ -237,8 +684,10 @@ impl AccountBinding {
 		refresh_callback: Arc<dyn AccountRefreshCallback>,
 	) -> Result<Self, SupervisionError> {
 		let mut binding = Self::shared_home(account_id)?;
+
 		binding.process_binding = Some(process_binding);
 		binding.refresh_callback = Some(refresh_callback);
+
 		Ok(binding)
 	}
 
@@ -254,6 +703,7 @@ impl AccountBinding {
 			self.personal_access_token =
 				Some(Zeroizing::new(stored.bundle().access_token().to_owned()));
 		}
+
 		Ok(self)
 	}
 
@@ -264,7 +714,9 @@ impl AccountBinding {
 		process_binding: ProcessGenerationAccountBinding,
 	) -> Result<Self, SupervisionError> {
 		let mut binding = Self::shared_home(account_id)?;
+
 		binding.process_binding = Some(process_binding);
+
 		Ok(binding)
 	}
 
@@ -308,27 +760,6 @@ impl Debug for AccountBinding {
 	}
 }
 
-/// Exact executable contract for one supervised app-server build.
-#[derive(Clone)]
-pub(super) struct AppServerCommand {
-	program: PathBuf,
-	executable: Arc<ExecutableSnapshot>,
-	executable_digest: [u8; 32],
-	#[cfg(target_os = "macos")]
-	attested_code_identity: Option<AttestedCodeIdentity>,
-	app_server_args: Vec<OsString>,
-	version_args: Vec<OsString>,
-	schema_args: Vec<OsString>,
-	working_directory: PathBuf,
-	#[cfg(test)]
-	preflight_cleanup_test: Option<PreflightCleanupTest>,
-	#[cfg(test)]
-	before_spawn_test: Option<BeforeSpawnTest>,
-	#[cfg(test)]
-	after_verification_test: Option<BeforeSpawnTest>,
-	#[cfg(all(test, target_os = "macos"))]
-	test_spawn_path: Option<PathBuf>,
-}
 impl AppServerCommand {
 	/// Construct the only production command shape: Codex app-server plus read-only attestation.
 	///
@@ -557,19 +988,6 @@ impl Debug for AppServerCommand {
 	}
 }
 
-/// Daemon-lifetime observed Codex capability evidence shared by account-scoped launches.
-///
-/// Startup constructs this profile once from one immutable executable snapshot and one generated
-/// schema preflight. Each account launch still verifies the canonical executable, binds the exact
-/// account credential revision, and uses suspended dynamic code-identity attestation before user
-/// code can run.
-#[derive(Clone)]
-pub(crate) struct AttestedAppServerProfile {
-	command: AppServerCommand,
-	build: BuildId,
-	generated: GeneratedSchemaEvidence,
-	capability: ExactBuildLaunchCapability,
-}
 impl AttestedAppServerProfile {
 	/// Existing attested control directory for account-only native operations.
 	pub(crate) fn control_working_directory(&self) -> PathBuf {
@@ -582,7 +1000,9 @@ impl AttestedAppServerProfile {
 		timeout: Duration,
 	) -> Result<Self, ProbeError> {
 		let command = AppServerCommand::new(working_directory)?;
+
 		validated_working_directory(&command)?;
+
 		let capability = ExactBuildLaunchCapability::attest_profile(&command)?;
 		let home = env::var_os("HOME")
 			.filter(|home| !home.is_empty())
@@ -590,9 +1010,11 @@ impl AttestedAppServerProfile {
 		let expected_codex_home = PathBuf::from(home).join(".codex");
 		let (build, generated, guard) =
 			attest_executable_for_home(&command, &expected_codex_home, timeout, None)?;
+
 		if guard.is_some() {
 			return Err(SupervisionError::CleanupUnavailable.into());
 		}
+
 		Ok(Self { command, build, generated, capability })
 	}
 
@@ -615,8 +1037,10 @@ impl AttestedAppServerProfile {
 		timeout: Duration,
 	) -> Result<Self, ProbeError> {
 		validated_working_directory(&command)?;
+
 		let (build, generated, guard) =
 			attest_executable_for_home(&command, expected_codex_home, timeout, None)?;
+
 		if guard.is_some() {
 			return Err(SupervisionError::CleanupUnavailable.into());
 		}
@@ -640,9 +1064,13 @@ impl AttestedAppServerProfile {
 		if guard.account_id.as_str() != binding.account_id.as_str() || guard.account_revision < 1 {
 			return Err(SupervisionError::InvalidBinding.into());
 		}
+
 		self.command.working_directory = working_directory;
+
 		validated_working_directory(&self.command)?;
+
 		let process_binding = binding.process_binding()?;
+
 		if self.generated.account_callback_profile_sha256()
 			!= process_binding.refresh_callback_profile_sha256
 		{
@@ -654,6 +1082,7 @@ impl AttestedAppServerProfile {
 		{
 			return Err(SupervisionError::InvalidBinding.into());
 		}
+
 		let runner_identity =
 			attested_launch_identity(&self.command, &binding, &self.build, self.capability)?;
 
@@ -671,119 +1100,10 @@ impl AttestedAppServerProfile {
 	}
 }
 
-fn validated_working_directory(command: &AppServerCommand) -> Result<String, ProbeError> {
-	command
-		.working_directory
-		.to_str()
-		.filter(|value| {
-			value.starts_with('/')
-				&& !value.is_empty()
-				&& value.len() <= MAX_CONVERSATION_WORKING_DIRECTORY_BYTES
-				&& !value.chars().any(char::is_control)
-				&& !decodex_core::contains_credential_material(value)
-		})
-		.map(str::to_owned)
-		.ok_or_else(|| SupervisionError::InvalidBinding.into())
-}
-
 impl Debug for AttestedAppServerProfile {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.debug_struct("AttestedAppServerProfile").finish_non_exhaustive()
 	}
-}
-
-/// Runtime launch capability derived from the current executable and protocol preflight.
-///
-/// This type has no public constructor. The fixed app-server command must match the process
-/// contract. Codex consumes
-/// `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` at process startup and selects
-/// `DisabledEphemeral` when `app-server --stdio` has no remote-control argument. This marker is
-/// startup-state evidence, not a permanent in-process policy. ProcessGeneration therefore keeps
-/// the raw channels private and returns no protocol writer. Unsupported protocol shapes still
-/// fail closed after runtime schema validation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ExactBuildLaunchCapability {
-	PrivateStdioDisabledEphemeralStartupV1,
-}
-impl ExactBuildLaunchCapability {
-	/// Reject unsupported platforms and process shapes before a profile-dependent preflight can
-	/// spawn a child.
-	fn attest_profile(command: &AppServerCommand) -> Result<Self, SupervisionError> {
-		if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-			return Err(SupervisionError::LaunchCapabilityUnavailable);
-		}
-		let exact_args = command.app_server_args.len() == 2
-			&& command.app_server_args[0].as_os_str() == OsStr::new("app-server")
-			&& command.app_server_args[1].as_os_str() == OsStr::new("--stdio");
-		if !exact_args {
-			return Err(SupervisionError::LaunchCapabilityUnavailable);
-		}
-
-		Ok(Self::PrivateStdioDisabledEphemeralStartupV1)
-	}
-
-	const fn identity(self) -> &'static str {
-		match self {
-			Self::PrivateStdioDisabledEphemeralStartupV1 => PRIVATE_STDIO_CAPABILITY_ID,
-		}
-	}
-
-	const fn lifetime(self) -> ExactProcessGenerationLifetimeCapability {
-		match self {
-			Self::PrivateStdioDisabledEphemeralStartupV1 =>
-				ExactProcessGenerationLifetimeCapability::MacosPrivateStdioBestEffortEofV1,
-		}
-	}
-}
-
-/// Exact lifetime capability derived only from one accepted executable profile.
-///
-/// There is intentionally no Linux variant. Generic session and descriptor setup cannot install
-/// `PR_SET_PDEATHSIG`; a future Linux primitive requires a separately accepted exact profile.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ExactProcessGenerationLifetimeCapability {
-	MacosPrivateStdioBestEffortEofV1,
-}
-impl ExactProcessGenerationLifetimeCapability {
-	const fn control_kind(self) -> ProcessControlKind {
-		match self {
-			Self::MacosPrivateStdioBestEffortEofV1 => ProcessControlKind::StdioOnlyBestEffortEof,
-		}
-	}
-
-	fn configure(self, _command: &mut Command) -> Result<(), SupervisionError> {
-		match self {
-			Self::MacosPrivateStdioBestEffortEofV1
-				if cfg!(all(target_os = "macos", target_arch = "aarch64")) =>
-				Ok(()),
-			Self::MacosPrivateStdioBestEffortEofV1 =>
-				Err(SupervisionError::LaunchCapabilityUnavailable),
-		}
-	}
-}
-
-/// One non-forgeable account-bound app-server launch.
-///
-/// It retains the protected executable snapshot and derives the durable launch-manifest identity
-/// from the same verified executable, command, arguments, working directory, environment, account,
-/// and runtime capability that it later spawns. No mutable [`Command`] or caller-supplied runner
-/// digest crosses the ProcessSupervisor boundary.
-pub(crate) struct AttestedAppServerLaunch {
-	command: AppServerCommand,
-	binding: AccountBinding,
-	build: BuildId,
-	generated: GeneratedSchemaEvidence,
-	runner_identity: ProcessRunnerIdentity,
-	capability: ExactBuildLaunchCapability,
-	timeout: Duration,
-	guard: RunnerPermit,
-	conversation_pre_spawn_check: Option<Arc<dyn ConversationPreSpawnCheck>>,
-}
-
-/// Final synchronous check owned by Conversation and executed at the child creation boundary.
-pub(crate) trait ConversationPreSpawnCheck: Send + Sync {
-	fn validate_at_spawn_boundary(&self) -> Result<(), ()>;
-	fn working_directory_descriptor(&self) -> i32;
 }
 
 impl AttestedAppServerLaunch {
@@ -795,6 +1115,7 @@ impl AttestedAppServerLaunch {
 		guard: RunnerPermit,
 	) -> Result<Self, ProbeError> {
 		let working_directory = profile.command.working_directory.clone();
+
 		profile.bind(working_directory, binding, timeout, guard)
 	}
 
@@ -819,7 +1140,9 @@ impl AttestedAppServerLaunch {
 		pre_spawn_check: Arc<dyn ConversationPreSpawnCheck>,
 	) -> Result<Self, ProbeError> {
 		let mut launch = profile.bind(working_directory, binding, timeout, guard)?;
+
 		launch.conversation_pre_spawn_check = Some(pre_spawn_check);
+
 		Ok(launch)
 	}
 
@@ -865,9 +1188,11 @@ impl AttestedAppServerLaunch {
 			guard,
 			conversation_pre_spawn_check,
 		} = self;
+
 		if ExactBuildLaunchCapability::attest_profile(&command)? != capability {
 			return Err(SupervisionError::LaunchCapabilityUnavailable);
 		}
+
 		let process = SupervisedProcess::spawn_attested_with_pre_spawn_check(
 			command,
 			binding,
@@ -880,42 +1205,6 @@ impl AttestedAppServerLaunch {
 	}
 }
 
-/// Consume one fresh exact Conversation admission before the ordinary supervisor may spawn.
-pub(crate) async fn spawn_admitted_conversation_process(
-	control: &ProcessGenerationControl,
-	admission: FreshConversationProcessGeneration,
-	execution_authorization: ProcessExecutionAuthorization,
-	mut launch: AttestedAppServerLaunch,
-	pre_spawn_check: Arc<dyn ConversationPreSpawnCheck>,
-) -> Result<FencedProcess, ProcessSupervisorError> {
-	launch.conversation_pre_spawn_check = Some(pre_spawn_check);
-	control.spawn_fenced_conversation(admission, execution_authorization, launch).await
-}
-
-/// Keep the same attested directory boundary for a retained Agent process admission.
-pub(crate) async fn spawn_admitted_agent_process(
-	control: &ProcessGenerationControl,
-	root_id: String,
-	operation_key: String,
-	generation_id: ProcessGenerationId,
-	execution_authorization: ProcessExecutionAuthorization,
-	mut launch: AttestedAppServerLaunch,
-	pre_spawn_check: Arc<dyn ConversationPreSpawnCheck>,
-) -> Result<FencedProcess, ProcessSupervisorError> {
-	launch.conversation_pre_spawn_check = Some(pre_spawn_check);
-	control
-		.spawn_fenced_agent(root_id, operation_key, generation_id, execution_authorization, launch)
-		.await
-}
-
-/// Exact newly spawned protocol child plus immutable build evidence and capacity authority.
-pub(crate) struct AttestedProcessChild {
-	process: SupervisedProcess,
-	build: BuildId,
-	generated: GeneratedSchemaEvidence,
-	timeout: Duration,
-	initialized: bool,
-}
 impl AttestedProcessChild {
 	pub(crate) fn process_id(&self) -> u32 {
 		self.process.process_id()
@@ -938,6 +1227,7 @@ impl AttestedProcessChild {
 		if let Some(bridge) = &self.process.agent_bridge {
 			bridge.close();
 		}
+
 		self.process.stdin = Box::new(io::sink());
 	}
 
@@ -955,6 +1245,7 @@ impl AttestedProcessChild {
 		if !self.generated.supports_standalone_tool_output() {
 			return Err(ConversationProcessError::Incompatible);
 		}
+
 		self.retain_account_control_connection()
 	}
 
@@ -969,12 +1260,16 @@ impl AttestedProcessChild {
 		ConversationProcessError,
 	> {
 		self.require_ordinary_turns_initialized()?;
+
 		if !self.process.abandoned_request_ids.is_empty() {
 			return Err(ConversationProcessError::Unavailable);
 		}
+
 		let sequence = i64::try_from(self.process.next_request_id)
 			.map_err(|_| ConversationProcessError::Incompatible)?;
+
 		self.process.agent_retained = true;
+
 		let stdin = mem::replace(&mut self.process.stdin, Box::new(io::sink()));
 		let (_, empty) = mpsc::sync_channel(1);
 		let stdout = mem::replace(&mut self.process.stdout, empty);
@@ -987,7 +1282,9 @@ impl AttestedProcessChild {
 			mem::take(&mut self.process.config_warnings),
 		)
 		.map_err(|_| ConversationProcessError::Unavailable)?;
+
 		self.process.agent_bridge = Some(bridge);
+
 		Ok((client, events))
 	}
 
@@ -1015,12 +1312,15 @@ impl AttestedProcessChild {
 		if self.initialized || !self.has_private_lifetime_channels() {
 			return Err(ConversationProcessError::Unavailable);
 		}
+
 		self.generated
 			.contract()
 			.check_conversation_contract()
 			.map_err(|_| ConversationProcessError::Incompatible)?;
+
 		let mut cache = CapabilityCache::default();
 		let mut negotiation = ProbeNegotiation::new(&mut cache, &self.build, &self.generated);
+
 		initialize_probe(
 			&mut self.process,
 			Some(vault),
@@ -1029,7 +1329,9 @@ impl AttestedProcessChild {
 			capabilities,
 		)
 		.map_err(|_| ConversationProcessError::Unavailable)?;
+
 		self.initialized = true;
+
 		Ok(())
 	}
 
@@ -1038,6 +1340,7 @@ impl AttestedProcessChild {
 		&mut self,
 	) -> Result<super::activation_policy::ActivationPolicy, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
+
 		let account: serde_json::Value = self
 			.process
 			.request(ReadOnlyMethod::AccountRead, &serde_json::json!({}), self.timeout)
@@ -1051,6 +1354,7 @@ impl AttestedProcessChild {
 			.binding
 			.process_binding()
 			.map_err(|_| ConversationProcessError::Unavailable)?;
+
 		super::activation_policy::ActivationPolicy::decode(
 			&account,
 			&requirements,
@@ -1071,12 +1375,14 @@ impl AttestedProcessChild {
 		let mut events = Vec::new();
 		let result = (|| {
 			self.require_ordinary_turns_initialized()?;
+
 			let (method, params) = if requirements {
 				("configRequirements/read", serde_json::json!({}))
 			} else {
 				("config/read", serde_json::json!({"cwd":cwd,"includeLayers":false}))
 			};
 			let request = self.process.prepare_conversation_request(method, &params)?;
+
 			self.process
 				.conversation_request_buffered(
 					request,
@@ -1093,6 +1399,7 @@ impl AttestedProcessChild {
 						} else {
 							decodex_codex::app_server_client::NativeExecutionDefaults::from_config_response(&value)
 						};
+
 						decoded.map_err(|_| {
 							decodex_codex::ConversationContractError::MalformedResponse
 						})
@@ -1100,6 +1407,7 @@ impl AttestedProcessChild {
 				)
 				.map(|result| result.value)
 		})();
+
 		(result, events)
 	}
 
@@ -1112,14 +1420,20 @@ impl AttestedProcessChild {
 		let mut events = Vec::new();
 		let result = (|| {
 			self.require_ordinary_turns_initialized()?;
+
 			let mut calls = Vec::new();
+
 			if let Some(roots) = roots {
 				calls.push(("skills/extraRoots/set", serde_json::json!({"extraRoots":roots})));
 			}
+
 			calls.push(("skills/list", serde_json::json!({"cwds":[cwd],"forceReload":true})));
+
 			let mut value = serde_json::Value::Null;
+
 			for (method, params) in calls {
 				let request = self.process.prepare_conversation_request(method, &params)?;
+
 				value = self
 					.process
 					.conversation_request_buffered(
@@ -1135,8 +1449,10 @@ impl AttestedProcessChild {
 					)?
 					.value;
 			}
+
 			Ok(value)
 		})();
+
 		(result, events)
 	}
 
@@ -1148,13 +1464,16 @@ impl AttestedProcessChild {
 		let mut events = Vec::new();
 		let result = (|| {
 			self.require_ordinary_turns_initialized()?;
-			if cursor.is_some_and(|value| value.len() > 4096) {
+
+			if cursor.is_some_and(|value| value.len() > 4_096) {
 				return Err(ConversationProcessError::Incompatible);
 			}
+
 			let request = self.process.prepare_conversation_request(
 				"model/list",
 				&serde_json::json!({"limit":100,"includeHidden":false,"cursor":cursor}),
 			)?;
+
 			self.process
 				.conversation_request_buffered(
 					request,
@@ -1169,6 +1488,7 @@ impl AttestedProcessChild {
 				)
 				.map(|result| result.value)
 		})();
+
 		(result, events)
 	}
 
@@ -1186,6 +1506,7 @@ impl AttestedProcessChild {
 		let mut events = Vec::new();
 		let result = (|| {
 			self.require_ordinary_turns_initialized()?;
+
 			let thread =
 				ExactThreadId::new(thread).map_err(|_| ConversationProcessError::Incompatible)?;
 			let request = self.process.prepare_conversation_request(
@@ -1202,12 +1523,14 @@ impl AttestedProcessChild {
 						.map_err(|_| decodex_codex::ConversationContractError::MalformedResponse)
 				},
 			)?;
+
 			decodex_codex::app_server_client::NativeThreadModelSettings::from_read_response(
 				result.value,
 				thread.as_str(),
 			)
 			.map_err(|_| ConversationProcessError::Incompatible)
 		})();
+
 		(result, events)
 	}
 
@@ -1221,7 +1544,9 @@ impl AttestedProcessChild {
 		{
 			return Err(ConversationProcessError::Incompatible);
 		}
+
 		self.process.deferred_conversation_events.extend(events);
+
 		Ok(())
 	}
 
@@ -1233,7 +1558,9 @@ impl AttestedProcessChild {
 		let (notices, execution): (Vec<_>, Vec<_>) = events
 			.into_iter()
 			.partition(|event| matches!(event, ConversationProcessEvent::Warning { .. }));
+
 		self.retain_ordinary_events(notices)?;
+
 		Ok(execution)
 	}
 
@@ -1243,6 +1570,7 @@ impl AttestedProcessChild {
 		request: &ConversationThreadStartRequest,
 	) -> Result<PreparedThreadStart, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
+
 		Ok(PreparedThreadStart {
 			request: request.clone(),
 			wire: self.process.prepare_conversation_request("thread/start", request)?,
@@ -1256,13 +1584,16 @@ impl AttestedProcessChild {
 		authority: FreshRuntimeSessionThreadStart,
 	) -> Result<EstablishedOrdinaryThread, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
+
 		let PreparedThreadStart { request, wire } = prepared;
 		let readback = authority.readback();
+
 		if readback.thread_start_request_id != wire.request_id
 			|| readback.thread_start_request_sha256.as_str() != wire.request_sha256.as_str()
 		{
 			return Err(ConversationProcessError::Incompatible);
 		}
+
 		let request_id = wire.request_id;
 		let request_sha256 = wire.request_sha256.clone();
 		let success = self.process.conversation_request(wire, self.timeout, true, |bytes| {
@@ -1274,8 +1605,10 @@ impl AttestedProcessChild {
 			response_sha256: success.wire.response_sha256,
 			codex_thread_id: codex_thread_id.clone(),
 		});
+
 		debug_assert_eq!(request_id, binding.thread_start_request_id);
 		debug_assert_eq!(request_sha256, binding.thread_start_request_sha256);
+
 		Ok(EstablishedOrdinaryThread {
 			settings: decodex_database::ConversationNativeSettings {
 				model: success.value.model().as_str().to_owned(),
@@ -1298,7 +1631,9 @@ impl AttestedProcessChild {
 		request: &ConversationThreadResumeRequest,
 	) -> Result<ResumedOrdinaryThread, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
+
 		let mut wire = self.process.prepare_conversation_request("thread/resume", request)?;
+
 		wire.resume_thread_id = Some(request.thread_id().as_str().to_owned());
 		// A refused attempt can still observe turn events. Include them in the
 		// eventual resume result so the caller cannot mistake it for an idle thread.
@@ -1314,10 +1649,12 @@ impl AttestedProcessChild {
 			Ok(success) => success,
 			Err(error) => {
 				self.retain_ordinary_events(events)?;
+
 				return Err(error);
 			},
 		};
 		let events = self.retain_ordinary_notices(events)?;
+
 		Ok(ResumedOrdinaryThread {
 			settings: decodex_database::ConversationNativeSettings {
 				model: success.value.model().as_str().to_owned(),
@@ -1344,6 +1681,7 @@ impl AttestedProcessChild {
 		request: &ConversationTurnStartRequest,
 	) -> Result<PreparedTurnStart, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
+
 		Ok(PreparedTurnStart {
 			attempt_id,
 			wire: self.process.prepare_conversation_request("turn/start", request)?,
@@ -1357,10 +1695,13 @@ impl AttestedProcessChild {
 		authority: FreshProviderDispatchFence,
 	) -> Result<StartedOrdinaryTurn, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
+
 		let PreparedTurnStart { attempt_id, wire } = prepared;
+
 		if authority.attempt_id() != &attempt_id {
 			return Err(ConversationProcessError::Incompatible);
 		}
+
 		let success = self.process.conversation_request(
 			wire,
 			self.timeout,
@@ -1368,6 +1709,7 @@ impl AttestedProcessChild {
 			decode_conversation_turn_start_response,
 		)?;
 		let mut notices: Vec<_> = self.process.deferred_conversation_events.drain(..).collect();
+
 		for warning in mem::take(&mut self.process.config_warnings) {
 			if let Some(event) = decode_conversation_process_event(
 				&serde_json::to_vec(&warning)
@@ -1376,7 +1718,9 @@ impl AttestedProcessChild {
 				notices.push(event);
 			}
 		}
+
 		notices.extend(success.events);
+
 		Ok(StartedOrdinaryTurn {
 			turn_id: success.value.turn_id().as_str().to_owned(),
 			status: success.value.status(),
@@ -1391,6 +1735,7 @@ impl AttestedProcessChild {
 		wait: Duration,
 	) -> Result<Option<ConversationProcessEvent>, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
+
 		self.process.next_conversation_event(wait)
 	}
 
@@ -1400,7 +1745,9 @@ impl AttestedProcessChild {
 		request: &ConversationTurnInterruptRequest,
 	) -> Result<Vec<ConversationProcessEvent>, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
+
 		let wire = self.process.prepare_conversation_request("turn/interrupt", request)?;
+
 		self.process
 			.conversation_request(
 				wire,
@@ -1419,6 +1766,7 @@ impl AttestedProcessChild {
 		thread_id: &ExactThreadId,
 	) -> Result<ExactThreadReadResult, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
+
 		self.process
 			.read_exact_thread(thread_id, self.timeout)
 			.map_err(|_| ConversationProcessError::Unavailable)
@@ -1431,6 +1779,7 @@ impl AttestedProcessChild {
 		client_user_message_id: &TurnId,
 	) -> Result<ExactThreadReadResult, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
+
 		self.process
 			.read_exact_thread_for_client(thread_id, client_user_message_id.as_str(), self.timeout)
 			.map_err(|_| ConversationProcessError::Unavailable)
@@ -1442,6 +1791,7 @@ impl AttestedProcessChild {
 		thread_id: &ExactThreadId,
 	) -> Result<ArchiveReconciliationOutcome, ConversationProcessError> {
 		self.require_ordinary_turns_initialized()?;
+
 		Ok(self.process.reconcile_archive(thread_id, self.timeout))
 	}
 
@@ -1460,11 +1810,6 @@ impl AttestedProcessChild {
 	}
 }
 
-/// Exact request facts reserved before a RuntimeSession thread-start fence.
-pub(crate) struct PreparedThreadStart {
-	request: ConversationThreadStartRequest,
-	wire: PreparedConversationRequest,
-}
 impl PreparedThreadStart {
 	pub(crate) const fn request_id(&self) -> i64 {
 		self.wire.request_id
@@ -1475,30 +1820,6 @@ impl PreparedThreadStart {
 	}
 }
 
-/// Successful durable thread establishment ready for the exact bind command.
-pub(crate) struct EstablishedOrdinaryThread {
-	pub(crate) settings: decodex_database::ConversationNativeSettings,
-	pub(crate) codex_thread_id: String,
-	pub(crate) binding: BindRuntimeSessionThread,
-	pub(crate) events: Vec<ConversationProcessEvent>,
-}
-
-/// Successful exact-thread resume facts ready for one affine runtime proof.
-pub(crate) struct ResumedOrdinaryThread {
-	pub(crate) settings: decodex_database::ConversationNativeSettings,
-	pub(crate) codex_thread_id: String,
-	pub(crate) request_id: i64,
-	pub(crate) request_sha256: String,
-	pub(crate) response_id: i64,
-	pub(crate) response_sha256: String,
-	pub(crate) events: Vec<ConversationProcessEvent>,
-}
-
-/// Exact `turn/start` request reserved before generic ProviderAttempt preparation.
-pub(crate) struct PreparedTurnStart {
-	attempt_id: ProviderAttemptId,
-	wire: PreparedConversationRequest,
-}
 impl PreparedTurnStart {
 	pub(crate) const fn request_id(&self) -> i64 {
 		self.wire.request_id
@@ -1509,111 +1830,6 @@ impl PreparedTurnStart {
 	}
 }
 
-/// Successful `turn/start` response plus notifications observed before that response.
-pub(crate) struct StartedOrdinaryTurn {
-	pub(crate) turn_id: String,
-	pub(crate) status: decodex_codex::ConversationTurnStatus,
-	pub(crate) response_sha256: String,
-	pub(crate) events: Vec<ConversationProcessEvent>,
-}
-
-/// Closed user-visible event set emitted by the private ordinary-turn child gateway.
-pub(crate) enum ConversationProcessEvent {
-	/// Display-only public notice; never turn-completion evidence.
-	Warning { thread_id: Option<String>, text: String },
-	/// One bounded assistant-message delta.
-	MessageDelta(ConversationMessageDelta),
-	/// One exact turn reached a terminal app-server notification.
-	TurnCompleted {
-		/// Opaque exact provider turn identity.
-		turn_id: String,
-		/// Closed terminal provider state.
-		status: TurnStatus,
-		/// SHA-256 witness of the accepted notification frame.
-		witness_digest: String,
-	},
-}
-
-/// Closed private-gateway failure that never embeds provider or credential text.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum ConversationProcessError {
-	/// No method bytes were admitted because initialization or local authority was unavailable.
-	Unavailable,
-	/// The exact app-server method rejected the request with a bounded response witness.
-	Rejected { witness_digest: String, reason: ConversationRejectionReason },
-	/// App-server bytes contradicted the accepted typed contract.
-	Incompatible,
-	/// Local supervision was lost while a blocking operation may already have crossed send.
-	ControlLost,
-	/// Request bytes may have reached app-server and no usable exact response was retained.
-	Ambiguous { request_id: i64, request_sha256: String },
-}
-
-pub(crate) use decodex_database::ConversationResumeRejection as ConversationRejectionReason;
-
-fn conversation_rejection_reason(
-	error: &super::protocol::JsonRpcError,
-	resume_thread_id: Option<&str>,
-) -> ConversationRejectionReason {
-	let message = error.message();
-	if let Some(refusal) =
-		decodex_codex::app_server_client::classify_dispatch_refusal(error.code, message)
-	{
-		return match refusal {
-			decodex_codex::app_server_client::NativeDispatchRefusal::ServerDraining =>
-				ConversationRejectionReason::ServerDraining,
-			decodex_codex::app_server_client::NativeDispatchRefusal::ManagedProviderChanged =>
-				ConversationRejectionReason::ManagedProviderChanged,
-		};
-	}
-	if let Some(thread) = resume_thread_id {
-		if error.code == -32600 && message.starts_with(&format!("thread {thread} is closing;")) {
-			return ConversationRejectionReason::ClosingThread;
-		}
-		if error.code == -32600 && message == format!("no rollout found for thread id {thread}") {
-			return ConversationRejectionReason::MissingThread;
-		}
-		if error.code == -32600
-			&& message
-				== format!(
-					"session {thread} is archived. Run `codex unarchive {thread}` to unarchive it first."
-				) {
-			return ConversationRejectionReason::ArchivedThread;
-		}
-		if message.contains("failed to prepare fs sandbox") {
-			return ConversationRejectionReason::SandboxConfiguration;
-		}
-	}
-	ConversationRejectionReason::Other
-}
-
-struct PreparedConversationRequest {
-	resume_thread_id: Option<String>,
-	request_id: i64,
-	request_sha256: String,
-	frame: ZeroizingOutboundFrame,
-}
-
-struct ConversationWireReceipt {
-	request_id: i64,
-	request_sha256: String,
-	response_id: i64,
-	response_sha256: String,
-}
-
-struct ConversationProcessSuccess<T> {
-	value: T,
-	wire: ConversationWireReceipt,
-	events: Vec<ConversationProcessEvent>,
-}
-
-/// Exact active-account identity retained only in zeroizing, redacted process memory.
-#[derive(Clone, Eq, PartialEq)]
-pub(crate) struct AccountIdentity {
-	kind: Zeroizing<String>,
-	email: Option<Zeroizing<String>>,
-	requires_openai_auth: bool,
-}
 impl AccountIdentity {
 	pub(crate) fn from_observation(
 		kind: &str,
@@ -1627,16 +1843,13 @@ impl AccountIdentity {
 		}
 	}
 }
+
 impl Debug for AccountIdentity {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.debug_struct("AccountIdentity").finish_non_exhaustive()
 	}
 }
 
-/// Default host-vault boundary until an operator supplies a concrete local vault.
-/// It never reads ambient credentials and always keeps runner creation unavailable.
-#[derive(Clone, Copy, Debug, Default)]
-pub(super) struct UnavailableCredentialVault;
 impl CredentialVault for UnavailableCredentialVault {
 	fn project(
 		&self,
@@ -1647,12 +1860,6 @@ impl CredentialVault for UnavailableCredentialVault {
 	}
 }
 
-/// Single-use process-scoped credential sink owned by the Codex adapter.
-pub(crate) struct CredentialProjection<'a> {
-	process: &'a mut SupervisedProcess,
-	timeout: Duration,
-	used: bool,
-}
 impl CredentialProjection<'_> {
 	/// Verify the native PAT mode established by this child's exact launch environment.
 	pub fn authenticate_personal_access_token(
@@ -1662,7 +1869,9 @@ impl CredentialProjection<'_> {
 		if self.used {
 			return Err(CredentialVaultError::ProjectionAlreadyUsed);
 		}
+
 		self.used = true;
+
 		if self.process.binding.personal_access_token.as_deref().map(String::as_str) != Some(token)
 		{
 			return Err(CredentialVaultError::ProjectionRejected);
@@ -1673,6 +1882,7 @@ impl CredentialProjection<'_> {
 			auth_method: Option<String>,
 			auth_token: Option<serde::de::IgnoredAny>,
 		}
+
 		let status: Status = self
 			.process
 			.request(
@@ -1681,11 +1891,13 @@ impl CredentialProjection<'_> {
 				self.timeout,
 			)
 			.map_err(|_| CredentialVaultError::ProjectionRejected)?;
+
 		if status.auth_method.as_deref() != Some("personalAccessToken")
 			|| status.auth_token.is_some()
 		{
 			return Err(CredentialVaultError::ProjectionRejected);
 		}
+
 		Ok(())
 	}
 
@@ -1727,11 +1939,6 @@ impl Debug for CredentialProjection<'_> {
 	}
 }
 
-pub(super) struct StdoutPump {
-	cancelled: Arc<AtomicBool>,
-	done: Receiver<()>,
-	thread: Option<JoinHandle<()>>,
-}
 impl StdoutPump {
 	fn start<R>(
 		reader: R,
@@ -1824,23 +2031,6 @@ impl StdoutPump {
 	}
 }
 
-/// Owned app-server child and its immutable account authority.
-pub(super) struct SupervisedProcess {
-	owner: ProcessGroupOwner,
-	stdin: Box<dyn Write + Send>,
-	stdout: Receiver<InboundFrame>,
-	protocol_limit_exceeded: Arc<AtomicBool>,
-	binding: AccountBinding,
-	#[cfg(test)]
-	command: AppServerCommand,
-	expected_account_identity: Option<AccountIdentity>,
-	next_request_id: u64,
-	abandoned_request_ids: BTreeSet<u64>,
-	agent_retained: bool,
-	agent_bridge: Option<super::agent_process::AgentProcessBridge>,
-	config_warnings: Vec<serde_json::Value>,
-	deferred_conversation_events: std::collections::VecDeque<ConversationProcessEvent>,
-}
 impl SupervisedProcess {
 	#[cfg(test)]
 	fn spawn(command: AppServerCommand, binding: AccountBinding) -> Result<Self, SupervisionError> {
@@ -1881,6 +2071,7 @@ impl SupervisedProcess {
 		run_before_spawn_test(&command);
 		verify_canonical_executable_identity(&command)?;
 		run_after_verification_test(&command);
+
 		let (sender, receiver) = mpsc::sync_channel(PROTOCOL_QUEUE_CAPACITY);
 		let protocol_limit_exceeded = Arc::new(AtomicBool::new(false));
 		let reader_limit_exceeded = Arc::clone(&protocol_limit_exceeded);
@@ -1921,6 +2112,7 @@ impl SupervisedProcess {
 		run_before_spawn_test(&command);
 		verify_executable(&command)?;
 		run_after_verification_test(&command);
+
 		let (sender, receiver) = mpsc::sync_channel(PROTOCOL_QUEUE_CAPACITY);
 		let protocol_limit_exceeded = Arc::new(AtomicBool::new(false));
 		let reader_limit_exceeded = Arc::clone(&protocol_limit_exceeded);
@@ -2013,9 +2205,11 @@ impl SupervisedProcess {
 		if request_id < self.next_request_id || self.abandoned_request_ids.contains(&request_id) {
 			return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
 		}
+
 		self.next_request_id = request_id
 			.checked_add(1)
 			.ok_or(RpcError::Supervision(SupervisionError::ProtocolLimitExceeded))?;
+
 		let frame = exact_request_frame(request_id, method, params).map_err(rpc_supervision)?;
 		let request_digest = frame.sha256();
 
@@ -2052,9 +2246,9 @@ impl SupervisedProcess {
 					return Err(RpcError::Supervision(error));
 				},
 			};
-
 			let header: InboundHeader = serde_json::from_slice(&line)
 				.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
+
 			if header.id.is_none()
 				&& matches!(header.method.as_deref(), Some("configWarning" | "warning"))
 			{
@@ -2063,6 +2257,7 @@ impl SupervisedProcess {
 				} else {
 					crate::native_config_warning::from_frame(&line)
 				};
+
 				if let Some(warning) = projected
 					&& !self.config_warnings.contains(&warning)
 				{
@@ -2072,9 +2267,9 @@ impl SupervisedProcess {
 						self.config_warnings.push(serde_json::json!({"method":"configWarning","params":{"summary":"Additional configuration warnings exceeded the display limit.","details":null}}));
 					}
 				}
+
 				continue;
 			}
-
 			// Thread history and titles legitimately contain JSON escapes. As with
 			// conversation_request, decode these bounded ordinary data frames.
 			// Credential-bearing methods retain their scratch-free boundary.
@@ -2088,6 +2283,7 @@ impl SupervisedProcess {
 					.map_err(|()| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 				Self::service_inbound_request(&self.binding, &mut self.stdin, id, method, &line)
 					.map_err(rpc_supervision)?;
+
 				continue;
 			}
 
@@ -2142,16 +2338,20 @@ impl SupervisedProcess {
 		P: Serialize,
 	{
 		let request_id = self.next_request_id;
+
 		if self.abandoned_request_ids.contains(&request_id) {
 			return Err(ConversationProcessError::Incompatible);
 		}
+
 		self.next_request_id =
 			request_id.checked_add(1).ok_or(ConversationProcessError::Incompatible)?;
+
 		let frame = exact_request_frame(request_id, method, params)
 			.map_err(|_| ConversationProcessError::Incompatible)?;
 		let request_id =
 			i64::try_from(request_id).map_err(|_| ConversationProcessError::Incompatible)?;
 		let request_sha256 = frame.sha256();
+
 		Ok(PreparedConversationRequest {
 			request_id,
 			request_sha256,
@@ -2175,7 +2375,9 @@ impl SupervisedProcess {
 			&mut events,
 			decode,
 		)?;
+
 		result.events = events;
+
 		Ok(result)
 	}
 
@@ -2205,31 +2407,39 @@ impl SupervisedProcess {
 			request_id,
 			request_sha256: request_sha256.clone(),
 		};
+
 		frame.write_to(&mut self.stdin).map_err(|_| ambiguous())?;
 		self.stdin.flush().map_err(|_| ambiguous())?;
 
 		let mut native_activity = false;
 		let deadline = Instant::now() + timeout;
+
 		loop {
 			let remaining = deadline.saturating_duration_since(Instant::now());
+
 			if remaining.is_zero() {
 				let _ = self.abandon_request(request_id_u64);
+
 				return Err(ambiguous());
 			}
+
 			let line = match self.receive_conversation_frame(remaining) {
 				Ok(Some(line)) => line,
 				Ok(None) | Err(_) => {
 					let _ = self.abandon_request(request_id_u64);
+
 					return Err(ambiguous());
 				},
 			};
 			let header: InboundHeader =
 				serde_json::from_slice(&line).map_err(|_| invalid_response())?;
+
 			if header.method.is_some()
 				&& !matches!(header.method.as_deref(), Some("warning" | "configWarning"))
 			{
 				native_activity = true;
 			}
+
 			if let (Some(id), Some(inbound_method)) = (header.id, header.method.as_deref()) {
 				Self::service_inbound_request(
 					&self.binding,
@@ -2239,19 +2449,24 @@ impl SupervisedProcess {
 					&line,
 				)
 				.map_err(|_| ambiguous())?;
+
 				continue;
 			}
+
 			if header.id == Some(request_id_u64) {
 				let witness_digest = hex_digest(&Sha256::digest(&line));
 				let response: JsonRpcResponse<serde_json::Value> =
 					serde_json::from_slice(&line).map_err(|_| invalid_response())?;
+
 				if response.id != request_id_u64 || !response.has_compatible_version() {
 					return Err(invalid_response());
 				}
+
 				return match (response.result, response.error) {
 					(Some(result), None) => {
 						let bytes = serde_json::to_vec(&result).map_err(|_| invalid_response())?;
 						let value = decode(&bytes).map_err(|_| invalid_response())?;
+
 						Ok(ConversationProcessSuccess {
 							value,
 							wire: ConversationWireReceipt {
@@ -2287,16 +2502,21 @@ impl SupervisedProcess {
 				let Some(event) = event else {
 					continue;
 				};
+
 				if events.len() >= MAX_CONVERSATION_BUFFERED_EVENTS {
 					return Err(invalid_response());
 				}
+
 				events.push(event);
+
 				continue;
 			}
+
 			if let Some(id) = header.id {
 				if self.abandoned_request_ids.remove(&id) {
 					continue;
 				}
+
 				return Err(invalid_response());
 			}
 		}
@@ -2309,6 +2529,7 @@ impl SupervisedProcess {
 		if let Some(event) = self.deferred_conversation_events.pop_front() {
 			return Ok(Some(event));
 		}
+
 		let line = match self.stdout.recv_timeout(wait) {
 			Ok(line) => line.into_contiguous(),
 			Err(RecvTimeoutError::Timeout) => return Ok(None),
@@ -2319,17 +2540,21 @@ impl SupervisedProcess {
 		// zeroizing and mechanically bounded; the landed typed contract validates its projection.
 		let header: InboundHeader =
 			serde_json::from_slice(&line).map_err(|_| ConversationProcessError::Incompatible)?;
+
 		if let (Some(id), Some(method)) = (header.id, header.method.as_deref()) {
 			Self::service_inbound_request(&self.binding, &mut self.stdin, id, method, &line)
 				.map_err(|_| ConversationProcessError::Unavailable)?;
+
 			return Ok(None);
 		}
 		if let Some(id) = header.id {
 			if self.abandoned_request_ids.remove(&id) {
 				return Ok(None);
 			}
+
 			return Err(ConversationProcessError::Incompatible);
 		}
+
 		decode_conversation_process_event(&line)
 	}
 
@@ -2343,6 +2568,7 @@ impl SupervisedProcess {
 			Err(RecvTimeoutError::Disconnected) =>
 				return Err(ConversationProcessError::Unavailable),
 		};
+
 		Ok(Some(line))
 	}
 
@@ -2367,8 +2593,10 @@ impl SupervisedProcess {
 				},
 			);
 		}
+
 		let request: ChatgptRefreshRequest =
 			serde_json::from_slice(line).map_err(|_| SupervisionError::InvalidProtocol)?;
+
 		if request.id != id
 			|| request.method != decodex_codex::schema::ACCOUNT_REFRESH_CALLBACK_METHOD
 			|| request.params.reason != "unauthorized"
@@ -2377,6 +2605,7 @@ impl SupervisedProcess {
 			}) {
 			return Err(SupervisionError::InvalidProtocol.into());
 		}
+
 		let account_id = binding.account_id.clone();
 		let process_binding = binding.process_binding()?.clone();
 		let callback = binding
@@ -2404,9 +2633,11 @@ impl SupervisedProcess {
 				);
 			},
 		};
+
 		if projection.provider_account_id != process_binding.credential.provider.account_id() {
 			return Err(SupervisionError::AccountChanged.into());
 		}
+
 		Self::write_bound_json(
 			stdin,
 			&OutboundRpcSuccess {
@@ -2556,6 +2787,7 @@ impl SupervisedProcess {
 		if &facts.id != thread_id {
 			return Err(ExactReconciliationError::InvalidResult);
 		}
+
 		let history = if client_user_message_id.is_some() {
 			self.read_submission_history(&mut response.thread, thread_id, started, timeout)?
 		} else {
@@ -2643,6 +2875,7 @@ impl SupervisedProcess {
 				Some(_) => return Err(ExactReconciliationError::InvalidResult),
 				None => return Ok(false),
 			};
+
 			if cursor.as_ref().is_some_and(
 				|previous: &crate::account_launch::protocol::SensitiveString| {
 					previous.as_str() == next.as_str()
@@ -2650,6 +2883,7 @@ impl SupervisedProcess {
 			) {
 				return Err(ExactReconciliationError::InvalidResult);
 			}
+
 			cursor = Some(next);
 		}
 
@@ -2728,6 +2962,7 @@ impl SupervisedProcess {
 		if let Some(bridge) = &self.agent_bridge {
 			bridge.close();
 		}
+
 		self.owner.shutdown(timeout)
 	}
 
@@ -2747,143 +2982,6 @@ impl SupervisedProcess {
 	}
 }
 
-pub(super) fn project_exact_submitted_turn(
-	thread: &crate::account_launch::protocol::ProtocolThread,
-	client_user_message_id: &str,
-) -> Result<Option<ExactSubmittedTurnReadback>, ExactReconciliationError> {
-	TurnId::new(client_user_message_id.to_owned())
-		.map_err(|_| ExactReconciliationError::InvalidResult)?;
-	if thread.turns.len() > MAX_EXACT_THREAD_READ_TURNS {
-		return Err(ExactReconciliationError::InvalidResult);
-	}
-	let mut item_count = 0_usize;
-	let mut matched = None;
-	for turn in &thread.turns {
-		item_count = item_count
-			.checked_add(turn.items.len())
-			.filter(|count| *count <= MAX_EXACT_THREAD_READ_ITEMS)
-			.ok_or(ExactReconciliationError::InvalidResult)?;
-		let client_matches = turn
-			.items
-			.iter()
-			.filter(|item| {
-				item.kind.as_str() == "userMessage"
-					&& item
-						.client_id
-						.as_ref()
-						.is_some_and(|id| id.as_str() == client_user_message_id)
-			})
-			.count();
-		if client_matches == 0 {
-			continue;
-		}
-		if client_matches != 1 || matched.is_some() {
-			return Err(ExactReconciliationError::InvalidResult);
-		}
-		matched = Some(turn);
-	}
-	let Some(turn) = matched else {
-		return Ok(None);
-	};
-	let provider_turn_id = ExactTurnId::new(turn.id.as_str().to_owned())
-		.map_err(|_| ExactReconciliationError::InvalidResult)?;
-	let status = turn.status.into_conversation();
-	let mut assistant_text = String::new();
-	for item in &turn.items {
-		if item.kind.as_str() != "agentMessage" {
-			continue;
-		}
-		let text = item.text.as_ref().ok_or(ExactReconciliationError::InvalidResult)?.as_str();
-		assistant_text
-			.len()
-			.checked_add(text.len())
-			.filter(|length| *length <= MAX_EXACT_TURN_ASSISTANT_BYTES)
-			.ok_or(ExactReconciliationError::InvalidResult)?;
-		assistant_text.push_str(text);
-	}
-	let mut witness = Sha256::new();
-	for part in [
-		"decodex/exact-submitted-turn/v1",
-		thread.id.as_str(),
-		client_user_message_id,
-		provider_turn_id.as_str(),
-		match status {
-			decodex_codex::ConversationTurnStatus::Completed => "completed",
-			decodex_codex::ConversationTurnStatus::Interrupted => "interrupted",
-			decodex_codex::ConversationTurnStatus::Failed => "failed",
-			decodex_codex::ConversationTurnStatus::InProgress => "in_progress",
-		},
-		assistant_text.as_str(),
-	] {
-		witness.update(part.len().to_be_bytes());
-		witness.update(part.as_bytes());
-	}
-	let witness_digest = hex_digest(&witness.finalize());
-	ExactSubmittedTurnReadback::from_protocol(
-		provider_turn_id,
-		status,
-		assistant_text,
-		witness_digest,
-	)
-	.map(Some)
-	.map_err(|_| ExactReconciliationError::InvalidResult)
-}
-
-fn decode_conversation_process_event(
-	bytes: &[u8],
-) -> Result<Option<ConversationProcessEvent>, ConversationProcessError> {
-	let header: InboundHeader =
-		serde_json::from_slice(bytes).map_err(|_| ConversationProcessError::Incompatible)?;
-	if header.id.is_none() && matches!(header.method.as_deref(), Some("warning" | "configWarning"))
-	{
-		let frame: serde_json::Value =
-			serde_json::from_slice(bytes).map_err(|_| ConversationProcessError::Incompatible)?;
-		let value = if header.method.as_deref() == Some("warning") {
-			crate::native_config_warning::warning(&frame["params"])
-		} else {
-			crate::native_config_warning::project(&frame["params"]).map(|value| {
-				let mut message = value["summary"].as_str().unwrap_or_default().to_owned();
-				if let Some(details) =
-					value["details"].as_str().filter(|text| !text.trim().is_empty())
-				{
-					message.push_str("\n\n");
-					message.push_str(details);
-				}
-				serde_json::json!({"threadId":null,"message":message})
-			})
-		};
-		return Ok(value.map(|value| ConversationProcessEvent::Warning {
-			thread_id: value["threadId"].as_str().map(str::to_owned),
-			text: format!("Codex warning: {}", value["message"].as_str().unwrap_or_default()),
-		}));
-	}
-	if let Some(delta) = project_conversation_message_delta(bytes)
-		.map_err(|_| ConversationProcessError::Incompatible)?
-	{
-		return Ok(Some(ConversationProcessEvent::MessageDelta(delta)));
-	}
-	match normalize_event(bytes).map_err(|_| ConversationProcessError::Incompatible)? {
-		NormalizedEvent::TurnCompleted { status, .. } => {
-			// Display normalization hashes opaque IDs. Runtime correlation must retain
-			// the exact native identity, including when metadata queries collect events.
-			let frame: serde_json::Value = serde_json::from_slice(bytes)
-				.map_err(|_| ConversationProcessError::Incompatible)?;
-			let turn_id = decodex_codex::ExactTurnId::new(
-				frame["params"]["turn"]["id"]
-					.as_str()
-					.ok_or(ConversationProcessError::Incompatible)?,
-			)
-			.map_err(|_| ConversationProcessError::Incompatible)?;
-			Ok(Some(ConversationProcessEvent::TurnCompleted {
-				turn_id: turn_id.as_str().to_owned(),
-				status,
-				witness_digest: hex_digest(&Sha256::digest(bytes)),
-			}))
-		},
-		_ => Ok(None),
-	}
-}
-
 impl Debug for SupervisedProcess {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.debug_struct("SupervisedProcess").field("pid", &self.owner.process_id()).finish()
@@ -2896,192 +2994,6 @@ impl Drop for SupervisedProcess {
 	}
 }
 
-fn spawn_protocol_process(
-	command: &AppServerCommand,
-	binding: &AccountBinding,
-	guard: Option<RunnerPermit>,
-	sender: SyncSender<InboundFrame>,
-	protocol_limit_exceeded: Arc<AtomicBool>,
-) -> Result<(ProcessGroupOwner, Box<dyn Write + Send>), SupervisionError> {
-	#[cfg(target_os = "macos")]
-	if let Some(identity) = &command.attested_code_identity {
-		let home = binding.expected_codex_home.parent().ok_or(SupervisionError::InvalidBinding)?;
-		let suspended =
-			spawn_suspended(identity, &command.app_server_args, &command.working_directory, home)
-				.map_err(|_| SupervisionError::SpawnFailed)?;
-
-		// This non-profile path retains full filesystem and snapshot digest verification. The
-		// dynamic code check then binds the stopped image to that snapshot before SIGCONT.
-		verify_executable(command)?;
-
-		let spawned =
-			suspended.attest_and_resume(identity).map_err(|_| SupervisionError::SpawnFailed)?;
-		let mut owner = ProcessGroupOwner::new(ManagedChild::Attested(spawned.child), guard);
-		let pump = StdoutPump::start(spawned.stdout, sender, protocol_limit_exceeded)?;
-
-		owner.attach_pump(pump);
-
-		return Ok((owner, Box::new(spawned.stdin)));
-	}
-
-	let mut process = Command::new(protected_spawn_path(command));
-
-	process
-		.arg0(&command.program)
-		.args(&command.app_server_args)
-		.current_dir(&command.working_directory)
-		.stdin(Stdio::piped())
-		.stdout(Stdio::piped())
-		.stderr(Stdio::null());
-
-	configure_child_environment(&mut process, binding)?;
-	configure_process_session(&mut process, None);
-
-	let child = process.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
-	let mut owner = ProcessGroupOwner::new(child, guard);
-	let (stdin, stdout) = match owner.child_mut() {
-		ManagedChild::Standard(child) => {
-			let stdin = child.stdin.take().ok_or(SupervisionError::StdinUnavailable)?;
-			let stdout = child.stdout.take().ok_or(SupervisionError::InvalidProtocol)?;
-
-			(stdin, stdout)
-		},
-		#[cfg(target_os = "macos")]
-		ManagedChild::Attested(_) => unreachable!("snapshot spawn created an attested child"),
-	};
-	let pump = StdoutPump::start(stdout, sender, protocol_limit_exceeded)?;
-
-	owner.attach_pump(pump);
-
-	Ok((owner, Box::new(stdin)))
-}
-
-fn finish_attested_protocol_spawn<R>(
-	mut owner: ProcessGroupOwner,
-	stdin: Box<dyn Write + Send>,
-	stdout: R,
-	sender: SyncSender<InboundFrame>,
-	protocol_limit_exceeded: Arc<AtomicBool>,
-) -> (ProcessGroupOwner, Box<dyn Write + Send>)
-where
-	R: Read + std::os::fd::AsRawFd + Send + 'static,
-{
-	// Creation has already occurred. A missing pump is a channel-readiness failure;
-	// return the child so its supervisor can retain it until positive exit evidence.
-	if let Ok(pump) = StdoutPump::start(stdout, sender, protocol_limit_exceeded) {
-		owner.attach_pump(pump);
-	}
-	(owner, stdin)
-}
-
-fn spawn_attested_protocol_process(
-	command: &AppServerCommand,
-	binding: &AccountBinding,
-	guard: RunnerPermit,
-	capability: ExactBuildLaunchCapability,
-	pre_spawn_check: Option<&dyn ConversationPreSpawnCheck>,
-	sender: SyncSender<InboundFrame>,
-	protocol_limit_exceeded: Arc<AtomicBool>,
-) -> Result<(ProcessGroupOwner, Box<dyn Write + Send>), SupervisionError> {
-	#[cfg(target_os = "macos")]
-	{
-		let identity = command
-			.attested_code_identity
-			.as_ref()
-			.ok_or(SupervisionError::LaunchCapabilityUnavailable)?;
-		let home = binding.expected_codex_home.parent().ok_or(SupervisionError::InvalidBinding)?;
-		if let Some(check) = pre_spawn_check {
-			check.validate_at_spawn_boundary().map_err(|()| SupervisionError::InvalidBinding)?;
-		}
-		let suspended = match (capability, pre_spawn_check) {
-			(ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1, Some(check)) =>
-				spawn_private_stdio_suspended_at(
-					identity,
-					&command.app_server_args,
-					check.working_directory_descriptor(),
-					home,
-					binding.personal_access_token.as_deref().map(String::as_str),
-				),
-			(ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1, None) =>
-				spawn_private_stdio_suspended(
-					identity,
-					&command.app_server_args,
-					&command.working_directory,
-					home,
-					binding.personal_access_token.as_deref().map(String::as_str),
-				),
-		}
-		.map_err(|_| SupervisionError::SpawnFailed)?;
-		if let Some(check) = pre_spawn_check {
-			check.validate_at_spawn_boundary().map_err(|()| SupervisionError::InvalidBinding)?;
-		}
-
-		// Startup already hashed and statically validated the immutable snapshot and canonical
-		// image. Keep the canonical object identity stable here; exact dynamic CDHash and path
-		// attestation below bind the suspended child to that startup profile before user code runs.
-		verify_canonical_executable_identity(command)?;
-
-		let spawned =
-			suspended.attest_and_resume(identity).map_err(|_| SupervisionError::SpawnFailed)?;
-		let owner = ProcessGroupOwner::new(ManagedChild::Attested(spawned.child), Some(guard));
-		Ok(finish_attested_protocol_spawn(
-			owner,
-			Box::new(spawned.stdin),
-			spawned.stdout,
-			sender,
-			protocol_limit_exceeded,
-		))
-	}
-
-	#[cfg(not(target_os = "macos"))]
-	{
-		let mut process = configured_attested_app_server_process(command, binding, capability)?;
-		if let Some(check) = pre_spawn_check {
-			check.validate_at_spawn_boundary().map_err(|()| SupervisionError::InvalidBinding)?;
-		}
-		let child = process.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
-		let mut owner = ProcessGroupOwner::new(child, Some(guard));
-		let (stdin, stdout) = match owner.child_mut() {
-			ManagedChild::Standard(child) => {
-				let stdin = child.stdin.take().ok_or(SupervisionError::StdinUnavailable)?;
-				let stdout = child.stdout.take().ok_or(SupervisionError::InvalidProtocol)?;
-
-				(stdin, stdout)
-			},
-			#[cfg(target_os = "macos")]
-			ManagedChild::Attested(_) => unreachable!("configured spawn created a standard child"),
-		};
-		Ok(finish_attested_protocol_spawn(
-			owner,
-			Box::new(stdin),
-			stdout,
-			sender,
-			protocol_limit_exceeded,
-		))
-	}
-}
-
-/// Typed result from `initialize` plus a bounded `thread/list`; no raw JSON escapes.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct ReadOnlyProbeResult {
-	/// Exact-build negotiated capability profile.
-	pub profile: CapabilityProfile,
-	/// Redacted bounded thread summaries.
-	pub threads: Vec<ThreadSummary>,
-	/// Exact non-secret account selected before the child was spawned.
-	pub account_id: AccountId,
-	/// Exact OS process identity that produced the account readback.
-	pub process_id: u32,
-}
-
-/// Fake/live probe that cannot construct a turn or account-selection request.
-pub(super) struct ReadOnlyProbe {
-	command: AppServerCommand,
-	binding: AccountBinding,
-	timeout: Duration,
-	#[cfg(test)]
-	attestation_timeout_override: Option<Duration>,
-}
 impl ReadOnlyProbe {
 	/// Configure a probe. Schema validation is deferred to `run` but precedes spawn.
 	pub fn new(command: AppServerCommand, binding: AccountBinding, timeout: Duration) -> Self {
@@ -3205,15 +3117,6 @@ impl ReadOnlyProbe {
 	}
 }
 
-/// Private account-bound exact reconciliation configuration.
-///
-/// This is deliberately separate from [`ReadOnlyProbe`]: archive is never part of capability-probe
-/// execution, and no public caller can construct or dispatch this owner.
-pub(super) struct ExactThreadReconciler {
-	command: AppServerCommand,
-	binding: AccountBinding,
-	timeout: Duration,
-}
 impl ExactThreadReconciler {
 	pub(super) fn new(
 		command: AppServerCommand,
@@ -3302,314 +3205,6 @@ impl ExactThreadReconciler {
 	}
 }
 
-pub(super) enum ExactThreadReconciliation {
-	List(ExactThreadListFilter),
-	Read(ExactThreadId),
-	Archive(ExactThreadId),
-}
-
-pub(super) enum ExactThreadReconciliationResult {
-	List(ExactThreadListResult),
-	Read(ExactThreadReadResult),
-	Archive(ArchiveReconciliationOutcome),
-}
-
-#[derive(Debug)]
-pub(super) enum ExactThreadReconciliationFailure {
-	Probe(ProbeError),
-	Operation(ExactReconciliationError),
-	Shutdown(SupervisionError),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ExactReconciliationError {
-	Transport,
-	MethodUnsupported,
-	InvalidResult,
-	AccountBindingChanged,
-}
-impl ExactReconciliationError {
-	fn from_rpc(error: RpcError) -> Self {
-		match error {
-			RpcError::MethodRejected(-32_601) => Self::MethodUnsupported,
-			RpcError::MethodRejected(_) | RpcError::Supervision(_) => Self::Transport,
-		}
-	}
-
-	const fn archive_outcome(self) -> ArchiveReconciliationOutcome {
-		let reason = match self {
-			Self::MethodUnsupported => ArchiveUnverifiedReason::MethodUnsupported,
-			Self::AccountBindingChanged => ArchiveUnverifiedReason::AccountBindingChanged,
-			Self::Transport | Self::InvalidResult => ArchiveUnverifiedReason::ReadbackFailed,
-		};
-
-		ArchiveReconciliationOutcome::Unverified(reason)
-	}
-}
-
-/// Closed credential-vault failure without secret, provider, or account text.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CredentialVaultError {
-	/// The selected account has no usable host-vault entry.
-	Unavailable,
-	/// The child rejected the process-scoped credential projection.
-	ProjectionRejected,
-	/// A vault attempted to switch credentials under one live child.
-	ProjectionAlreadyUsed,
-}
-impl std::error::Error for CredentialVaultError {}
-
-impl Display for CredentialVaultError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(formatter, "{self:?}")
-	}
-}
-
-/// Bounded child shutdown result.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ShutdownOutcome {
-	/// Child had already exited.
-	Exited,
-	/// Child process group exited after termination.
-	Terminated,
-	/// Child process group required kill after the deadline.
-	KilledAfterTimeout,
-}
-
-/// Sanitized process-supervision failure.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum SupervisionError {
-	/// The shared-home binding could not be established.
-	InvalidBinding,
-	/// Initialize reported a different Codex home than the immutable binding.
-	CodexHomeMismatch,
-	/// No active account identity was available after initialization.
-	AccountUnavailable,
-	/// The account identity changed while capability authority was being read.
-	AccountChanged,
-	/// The configured executable could not be resolved to an executable regular file.
-	ExecutableUnavailable,
-	/// Executable contents changed after command construction.
-	ExecutableChanged,
-	/// Executable version/schema attestation failed.
-	PreflightFailed,
-	/// The exact image cannot attest the required private-stdio launch capability.
-	LaunchCapabilityUnavailable,
-	/// Child could not be spawned.
-	SpawnFailed,
-	/// Autonomous bounded cleanup ownership could not be established.
-	CleanupUnavailable,
-	/// Child stdin was not available.
-	StdinUnavailable,
-	/// A request could not be written.
-	WriteFailed,
-	/// No response arrived within the bounded timeout.
-	ResponseTimeout,
-	/// Child exited before producing a response.
-	ProcessExited,
-	/// Child emitted a response outside the typed contract.
-	InvalidProtocol,
-	/// Child exceeded a bounded protocol frame, queue, or result limit.
-	ProtocolLimitExceeded,
-	/// Process-group shutdown could not be completed.
-	ShutdownFailed,
-}
-impl std::error::Error for SupervisionError {}
-
-impl Display for SupervisionError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(formatter, "{self:?}")
-	}
-}
-
-/// Sanitized read-only capability-probe failure.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ProbeError {
-	/// Required schema markers were absent before spawn.
-	SchemaMissing {
-		/// Exact missing marker names.
-		markers: Vec<String>,
-	},
-	/// Process lifecycle or transport failed.
-	Supervision(SupervisionError),
-	/// A read-only method returned a typed JSON-RPC rejection.
-	MethodRejected {
-		/// Closed read-only method classification.
-		method: ReadOnlyMethod,
-		/// Numeric JSON-RPC code; raw messages are discarded.
-		code: i64,
-	},
-	/// A different profile already occupied this observed-executable cache key.
-	CapabilityConflict,
-	/// The selected host-vault credential could not be projected into this child.
-	CredentialVault(CredentialVaultError),
-}
-impl std::error::Error for ProbeError {}
-
-impl Display for ProbeError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(formatter, "{self:?}")
-	}
-}
-
-impl From<SupervisionError> for ProbeError {
-	fn from(value: SupervisionError) -> Self {
-		Self::Supervision(value)
-	}
-}
-
-/// Read-only methods available to the bounded foundation probe.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ReadOnlyMethod {
-	/// Initialize the app-server connection.
-	Initialize,
-	/// Project one selected account before immutable readback attestation.
-	AccountLoginStart,
-	/// Read the immutable process account.
-	AccountRead,
-	/// Verify native authentication mode without requesting a credential.
-	GetAuthStatus,
-	/// Read current managed configuration requirements.
-	ConfigRequirementsRead,
-	/// Read a bounded page of threads.
-	ThreadList,
-	/// Read one exact thread without turns.
-	ThreadRead,
-}
-impl ReadOnlyMethod {
-	fn as_str(self) -> &'static str {
-		match self {
-			Self::Initialize => "initialize",
-			Self::AccountLoginStart => "account/login/start",
-			Self::AccountRead => "account/read",
-			Self::GetAuthStatus => "getAuthStatus",
-			Self::ConfigRequirementsRead => "configRequirements/read",
-			Self::ThreadList => "thread/list",
-			Self::ThreadRead => "thread/read",
-		}
-	}
-}
-
-#[derive(Serialize)]
-pub(super) struct OutboundRequest<'a, P>
-where
-	P: ?Sized,
-{
-	id: u64,
-	method: &'static str,
-	params: &'a P,
-}
-
-fn exact_request_frame<P>(
-	request_id: u64,
-	method: &'static str,
-	params: &P,
-) -> Result<ZeroizingOutboundFrame, ProbeError>
-where
-	P: Serialize,
-{
-	ZeroizingOutboundFrame::serialize(&OutboundRequest { id: request_id, method, params })
-}
-
-fn hex_digest(bytes: &[u8]) -> String {
-	bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-#[derive(Serialize)]
-pub(super) struct OutboundNotification<'a, P>
-where
-	P: ?Sized,
-{
-	method: &'a str,
-	params: &'a P,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct ChatgptAuthParams<'a> {
-	#[serde(rename = "type")]
-	kind: &'static str,
-	access_token: &'a str,
-	chatgpt_account_id: &'a str,
-	chatgpt_plan_type: Option<&'a str>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct CredentialProjectionResponse {
-	#[serde(rename = "type")]
-	_kind: CredentialProjectionResponseKind,
-}
-
-#[derive(Deserialize)]
-enum CredentialProjectionResponseKind {
-	#[serde(rename = "chatgptAuthTokens")]
-	ChatgptAuthTokens,
-}
-
-#[derive(Deserialize)]
-pub(super) struct InboundHeader {
-	id: Option<u64>,
-	method: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ChatgptRefreshRequest {
-	id: u64,
-	method: String,
-	params: ChatgptRefreshParams,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct ChatgptRefreshParams {
-	reason: String,
-	previous_account_id: Option<String>,
-}
-
-#[derive(Serialize)]
-struct OutboundRpcSuccess<T> {
-	id: u64,
-	result: T,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ChatgptRefreshResponse<'a> {
-	access_token: &'a str,
-	chatgpt_account_id: &'a str,
-	chatgpt_plan_type: Option<&'a str>,
-}
-
-#[derive(Serialize)]
-struct OutboundRpcError {
-	id: u64,
-	error: OutboundRpcErrorBody,
-}
-
-#[derive(Serialize)]
-struct OutboundRpcErrorBody {
-	code: i32,
-	message: &'static str,
-}
-
-#[cfg(test)]
-#[derive(Clone)]
-pub(super) struct PreflightCleanupTest {
-	trigger_spawn: u32,
-	spawn_count: Arc<AtomicU32>,
-	process_group: Arc<AtomicU32>,
-	reaper_delay: Duration,
-	quarantine: Arc<ProcessQuarantine>,
-}
-
-pub(super) struct ProbeNegotiation<'a> {
-	cache: &'a mut CapabilityCache,
-	build: &'a BuildId,
-	generated: &'a GeneratedSchemaEvidence,
-	observations: Vec<MethodObservation>,
-}
 impl<'a> ProbeNegotiation<'a> {
 	fn new(
 		cache: &'a mut CapabilityCache,
@@ -3647,55 +3242,6 @@ impl<'a> ProbeNegotiation<'a> {
 	}
 }
 
-enum ManagedChild {
-	Standard(Child),
-	#[cfg(target_os = "macos")]
-	Attested(AttestedChild),
-}
-impl ManagedChild {
-	fn id(&self) -> u32 {
-		match self {
-			Self::Standard(child) => child.id(),
-			#[cfg(target_os = "macos")]
-			Self::Attested(child) => child.id(),
-		}
-	}
-
-	fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
-		match self {
-			Self::Standard(child) => child.try_wait(),
-			#[cfg(target_os = "macos")]
-			Self::Attested(child) => child.try_wait(),
-		}
-	}
-}
-impl From<Child> for ManagedChild {
-	fn from(child: Child) -> Self {
-		Self::Standard(child)
-	}
-}
-
-pub(super) struct ReapJob {
-	child: ManagedChild,
-	process_group: u32,
-	// PID/PGID reuse makes signaling invalid after positive reap or an uncertain wait error.
-	may_signal_process_group: bool,
-	pump: Option<StdoutPump>,
-	_guard: Option<RunnerPermit>,
-	#[cfg(test)]
-	not_before: Option<Instant>,
-}
-
-pub(super) struct ProcessGroupOwner {
-	child: Option<ManagedChild>,
-	process_group: u32,
-	// This authority is monotonic: no observation can restore it after reap or wait failure.
-	may_signal_process_group: bool,
-	guard: Option<RunnerPermit>,
-	pump: Option<StdoutPump>,
-	#[cfg(test)]
-	reap_not_before: Option<Instant>,
-}
 impl ProcessGroupOwner {
 	fn new(child: impl Into<ManagedChild>, guard: Option<RunnerPermit>) -> Self {
 		let child = child.into();
@@ -3773,7 +3319,6 @@ impl ProcessGroupOwner {
 		self.pump = None;
 
 		let mut child = self.child.take().expect("confirmed child was present");
-
 		let result = child.try_wait();
 
 		if !matches!(result, Ok(Some(_))) {
@@ -3815,10 +3360,6 @@ impl Drop for ProcessGroupOwner {
 	}
 }
 
-/// One fixed allocation that explicitly wipes its complete contents before release.
-pub(super) struct ZeroizingInboundBlock {
-	bytes: Box<[u8]>,
-}
 impl ZeroizingInboundBlock {
 	fn new() -> Self {
 		Self { bytes: vec![0; INBOUND_BLOCK_BYTES].into_boxed_slice() }
@@ -3828,6 +3369,7 @@ impl ZeroizingInboundBlock {
 		self.bytes.zeroize();
 	}
 }
+
 impl Drop for ZeroizingInboundBlock {
 	fn drop(&mut self) {
 		self.wipe();
@@ -3836,16 +3378,13 @@ impl Drop for ZeroizingInboundBlock {
 	}
 }
 
-/// Chunked inbound frame. Secret-bearing allocations never grow or reallocate.
-pub(super) struct InboundFrame {
-	blocks: Vec<ZeroizingInboundBlock>,
-	len: usize,
-}
 impl InboundFrame {
 	#[cfg(test)]
 	pub(super) fn fixture(bytes: &[u8]) -> Self {
 		let mut frame = Self::new();
+
 		frame.extend_from_slice(bytes).expect("bounded test frame");
+
 		frame
 	}
 
@@ -3899,11 +3438,6 @@ impl InboundFrame {
 	}
 }
 
-pub(super) struct QuarantineSlotLease {
-	state: Arc<ProcessQuarantineState>,
-	index: usize,
-	installed: bool,
-}
 impl QuarantineSlotLease {
 	pub(super) fn index(&self) -> usize {
 		self.index
@@ -3913,11 +3447,13 @@ impl QuarantineSlotLease {
 		self.installed = true;
 	}
 }
+
 impl Debug for QuarantineSlotLease {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.debug_struct("QuarantineSlotLease").finish_non_exhaustive()
 	}
 }
+
 impl Drop for QuarantineSlotLease {
 	fn drop(&mut self) {
 		if !self.installed {
@@ -3929,14 +3465,11 @@ impl Drop for QuarantineSlotLease {
 	}
 }
 
-pub(super) struct QuarantineSlot {
-	state: AtomicU8,
-	job: UnsafeCell<MaybeUninit<ReapJob>>,
-}
 // SAFETY: `state` grants exclusive access to `job`: only the reservation owner writes RESERVED,
 // one worker may transition READY to WORKING and read it, and that worker either restores READY
 // or clears the slot after dropping the job. No state permits concurrent `job` access.
 unsafe impl Sync for QuarantineSlot {}
+
 impl QuarantineSlot {
 	const fn new() -> Self {
 		Self {
@@ -3946,12 +3479,6 @@ impl QuarantineSlot {
 	}
 }
 
-pub(super) struct ProcessQuarantine {
-	state: Arc<ProcessQuarantineState>,
-	shutdown: SyncSender<()>,
-	joined: Mutex<Receiver<()>>,
-	worker_id: ThreadId,
-}
 impl ProcessQuarantine {
 	pub(super) fn new() -> Arc<Self> {
 		Self::try_new().expect("the cleanup owner must exist before test capacity")
@@ -4143,35 +3670,6 @@ impl Drop for ProcessQuarantine {
 	}
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum RpcError {
-	Supervision(SupervisionError),
-	MethodRejected(i64),
-}
-
-struct RpcWireReceipt {
-	request_id: i64,
-	request_digest: String,
-	response_id: i64,
-	response_digest: String,
-}
-
-struct RpcSuccess<T> {
-	value: T,
-	wire: RpcWireReceipt,
-}
-
-struct ProcessQuarantineState {
-	slots: Box<[QuarantineSlot]>,
-	ready: Condvar,
-	wake: Mutex<()>,
-	next_slot: AtomicUsize,
-	worker_cursor: AtomicUsize,
-	shutdown: AtomicBool,
-	#[cfg(test)]
-	panic_after_worker_pops: AtomicUsize,
-	lifecycle: Arc<QuarantineLifecycleProbe>,
-}
 impl ProcessQuarantineState {
 	fn worker_loop(self: Arc<Self>) {
 		while !self.shutdown.load(Ordering::Acquire) {
@@ -4240,11 +3738,6 @@ impl ProcessQuarantineState {
 	}
 }
 
-struct InFlightReapJob {
-	state: Arc<ProcessQuarantineState>,
-	index: usize,
-	job: Option<ReapJob>,
-}
 impl InFlightReapJob {
 	fn new(state: Arc<ProcessQuarantineState>, index: usize, job: ReapJob) -> Self {
 		Self { state, index, job: Some(job) }
@@ -4270,6 +3763,7 @@ impl InFlightReapJob {
 		self.state.ready.notify_one();
 	}
 }
+
 impl Drop for InFlightReapJob {
 	fn drop(&mut self) {
 		if let Some(job) = self.job.take() {
@@ -4283,30 +3777,6 @@ impl Drop for InFlightReapJob {
 	}
 }
 
-#[derive(Default)]
-struct QuarantineLifecycleProbe {
-	started: AtomicBool,
-	exited: AtomicBool,
-	joined: AtomicBool,
-}
-
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum QuarantineStartFailure {
-	None,
-	Worker,
-	Coordinator,
-}
-
-struct ExecutableSnapshot {
-	#[cfg(target_os = "macos")]
-	_directory: TempDir,
-	#[cfg(target_os = "macos")]
-	path: PathBuf,
-	#[cfg(target_os = "linux")]
-	file: File,
-	source_device: u64,
-	source_inode: u64,
-}
 impl ExecutableSnapshot {
 	fn execution_path(&self) -> PathBuf {
 		#[cfg(target_os = "macos")]
@@ -4324,6 +3794,7 @@ impl ExecutableSnapshot {
 		return executable_digest_file(&self.file);
 	}
 }
+
 #[cfg(target_os = "macos")]
 impl Drop for ExecutableSnapshot {
 	fn drop(&mut self) {
@@ -4331,22 +3802,12 @@ impl Drop for ExecutableSnapshot {
 	}
 }
 
-#[cfg(test)]
-#[derive(Clone)]
-struct BeforeSpawnTest {
-	trigger_spawn: u32,
-	spawn_count: Arc<AtomicU32>,
-	action: Arc<dyn Fn() + Send + Sync>,
-}
-
-struct ZeroizingOutboundBlock {
-	bytes: Box<[u8]>,
-}
 impl ZeroizingOutboundBlock {
 	fn new() -> Self {
 		Self { bytes: vec![0; OUTBOUND_BLOCK_BYTES].into_boxed_slice() }
 	}
 }
+
 impl Drop for ZeroizingOutboundBlock {
 	fn drop(&mut self) {
 		self.bytes.zeroize();
@@ -4355,11 +3816,6 @@ impl Drop for ZeroizingOutboundBlock {
 	}
 }
 
-struct ZeroizingOutboundFrame {
-	blocks: Vec<ZeroizingOutboundBlock>,
-	len: usize,
-	limit_exceeded: bool,
-}
 impl ZeroizingOutboundFrame {
 	fn new() -> Self {
 		Self { blocks: Vec::new(), len: 0, limit_exceeded: false }
@@ -4414,6 +3870,7 @@ impl ZeroizingOutboundFrame {
 		Ok(())
 	}
 }
+
 impl Write for ZeroizingOutboundFrame {
 	fn write(&mut self, mut bytes: &[u8]) -> io::Result<usize> {
 		if self.len.saturating_add(bytes.len()) > MAX_APP_SERVER_FRAME_BYTES {
@@ -4448,14 +3905,786 @@ impl Write for ZeroizingOutboundFrame {
 	}
 }
 
+impl ExactBuildLaunchCapability {
+	/// Reject unsupported platforms and process shapes before a profile-dependent preflight can
+	/// spawn a child.
+	fn attest_profile(command: &AppServerCommand) -> Result<Self, SupervisionError> {
+		if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+			return Err(SupervisionError::LaunchCapabilityUnavailable);
+		}
+		let exact_args = command.app_server_args.len() == 2
+			&& command.app_server_args[0].as_os_str() == OsStr::new("app-server")
+			&& command.app_server_args[1].as_os_str() == OsStr::new("--stdio");
+		if !exact_args {
+			return Err(SupervisionError::LaunchCapabilityUnavailable);
+		}
+
+		Ok(Self::PrivateStdioDisabledEphemeralStartupV1)
+	}
+
+	const fn identity(self) -> &'static str {
+		match self {
+			Self::PrivateStdioDisabledEphemeralStartupV1 => PRIVATE_STDIO_CAPABILITY_ID,
+		}
+	}
+
+	const fn lifetime(self) -> ExactProcessGenerationLifetimeCapability {
+		match self {
+			Self::PrivateStdioDisabledEphemeralStartupV1 =>
+				ExactProcessGenerationLifetimeCapability::MacosPrivateStdioBestEffortEofV1,
+		}
+	}
+}
+
+impl ExactProcessGenerationLifetimeCapability {
+	const fn control_kind(self) -> ProcessControlKind {
+		match self {
+			Self::MacosPrivateStdioBestEffortEofV1 => ProcessControlKind::StdioOnlyBestEffortEof,
+		}
+	}
+
+	fn configure(self, _command: &mut Command) -> Result<(), SupervisionError> {
+		match self {
+			Self::MacosPrivateStdioBestEffortEofV1
+				if cfg!(all(target_os = "macos", target_arch = "aarch64")) =>
+				Ok(()),
+			Self::MacosPrivateStdioBestEffortEofV1 =>
+				Err(SupervisionError::LaunchCapabilityUnavailable),
+		}
+	}
+}
+
+impl ExactReconciliationError {
+	fn from_rpc(error: RpcError) -> Self {
+		match error {
+			RpcError::MethodRejected(-32_601) => Self::MethodUnsupported,
+			RpcError::MethodRejected(_) | RpcError::Supervision(_) => Self::Transport,
+		}
+	}
+
+	const fn archive_outcome(self) -> ArchiveReconciliationOutcome {
+		let reason = match self {
+			Self::MethodUnsupported => ArchiveUnverifiedReason::MethodUnsupported,
+			Self::AccountBindingChanged => ArchiveUnverifiedReason::AccountBindingChanged,
+			Self::Transport | Self::InvalidResult => ArchiveUnverifiedReason::ReadbackFailed,
+		};
+
+		ArchiveReconciliationOutcome::Unverified(reason)
+	}
+}
+
+impl std::error::Error for CredentialVaultError {}
+
+impl Display for CredentialVaultError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(formatter, "{self:?}")
+	}
+}
+
+impl std::error::Error for SupervisionError {}
+
+impl Display for SupervisionError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(formatter, "{self:?}")
+	}
+}
+
+impl std::error::Error for ProbeError {}
+
+impl Display for ProbeError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(formatter, "{self:?}")
+	}
+}
+
+impl From<SupervisionError> for ProbeError {
+	fn from(value: SupervisionError) -> Self {
+		Self::Supervision(value)
+	}
+}
+
+impl ReadOnlyMethod {
+	fn as_str(self) -> &'static str {
+		match self {
+			Self::Initialize => "initialize",
+			Self::AccountLoginStart => "account/login/start",
+			Self::AccountRead => "account/read",
+			Self::GetAuthStatus => "getAuthStatus",
+			Self::ConfigRequirementsRead => "configRequirements/read",
+			Self::ThreadList => "thread/list",
+			Self::ThreadRead => "thread/read",
+		}
+	}
+}
+
+/// Closed user-visible event set emitted by the private ordinary-turn child gateway.
+pub(crate) enum ConversationProcessEvent {
+	/// Display-only public notice; never turn-completion evidence.
+	Warning { thread_id: Option<String>, text: String },
+	/// One bounded assistant-message delta.
+	MessageDelta(ConversationMessageDelta),
+	/// One exact turn reached a terminal app-server notification.
+	TurnCompleted {
+		/// Opaque exact provider turn identity.
+		turn_id: String,
+		/// Closed terminal provider state.
+		status: TurnStatus,
+		/// SHA-256 witness of the accepted notification frame.
+		witness_digest: String,
+	},
+}
+
+/// Closed private-gateway failure that never embeds provider or credential text.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ConversationProcessError {
+	/// No method bytes were admitted because initialization or local authority was unavailable.
+	Unavailable,
+	/// The exact app-server method rejected the request with a bounded response witness.
+	Rejected { witness_digest: String, reason: ConversationRejectionReason },
+	/// App-server bytes contradicted the accepted typed contract.
+	Incompatible,
+	/// Local supervision was lost while a blocking operation may already have crossed send.
+	ControlLost,
+	/// Request bytes may have reached app-server and no usable exact response was retained.
+	Ambiguous { request_id: i64, request_sha256: String },
+}
+
+pub(super) enum ExactThreadReconciliation {
+	List(ExactThreadListFilter),
+	Read(ExactThreadId),
+	Archive(ExactThreadId),
+}
+
+pub(super) enum ExactThreadReconciliationResult {
+	List(ExactThreadListResult),
+	Read(ExactThreadReadResult),
+	Archive(ArchiveReconciliationOutcome),
+}
+
+#[derive(Debug)]
+pub(super) enum ExactThreadReconciliationFailure {
+	Probe(ProbeError),
+	Operation(ExactReconciliationError),
+	Shutdown(SupervisionError),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ExactReconciliationError {
+	Transport,
+	MethodUnsupported,
+	InvalidResult,
+	AccountBindingChanged,
+}
+
+/// Closed credential-vault failure without secret, provider, or account text.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CredentialVaultError {
+	/// The selected account has no usable host-vault entry.
+	Unavailable,
+	/// The child rejected the process-scoped credential projection.
+	ProjectionRejected,
+	/// A vault attempted to switch credentials under one live child.
+	ProjectionAlreadyUsed,
+}
+
+/// Bounded child shutdown result.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShutdownOutcome {
+	/// Child had already exited.
+	Exited,
+	/// Child process group exited after termination.
+	Terminated,
+	/// Child process group required kill after the deadline.
+	KilledAfterTimeout,
+}
+
+/// Sanitized process-supervision failure.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SupervisionError {
+	/// The shared-home binding could not be established.
+	InvalidBinding,
+	/// Initialize reported a different Codex home than the immutable binding.
+	CodexHomeMismatch,
+	/// No active account identity was available after initialization.
+	AccountUnavailable,
+	/// The account identity changed while capability authority was being read.
+	AccountChanged,
+	/// The configured executable could not be resolved to an executable regular file.
+	ExecutableUnavailable,
+	/// Executable contents changed after command construction.
+	ExecutableChanged,
+	/// Executable version/schema attestation failed.
+	PreflightFailed,
+	/// The exact image cannot attest the required private-stdio launch capability.
+	LaunchCapabilityUnavailable,
+	/// Child could not be spawned.
+	SpawnFailed,
+	/// Autonomous bounded cleanup ownership could not be established.
+	CleanupUnavailable,
+	/// Child stdin was not available.
+	StdinUnavailable,
+	/// A request could not be written.
+	WriteFailed,
+	/// No response arrived within the bounded timeout.
+	ResponseTimeout,
+	/// Child exited before producing a response.
+	ProcessExited,
+	/// Child emitted a response outside the typed contract.
+	InvalidProtocol,
+	/// Child exceeded a bounded protocol frame, queue, or result limit.
+	ProtocolLimitExceeded,
+	/// Process-group shutdown could not be completed.
+	ShutdownFailed,
+}
+
+/// Sanitized read-only capability-probe failure.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProbeError {
+	/// Required schema markers were absent before spawn.
+	SchemaMissing {
+		/// Exact missing marker names.
+		markers: Vec<String>,
+	},
+	/// Process lifecycle or transport failed.
+	Supervision(SupervisionError),
+	/// A read-only method returned a typed JSON-RPC rejection.
+	MethodRejected {
+		/// Closed read-only method classification.
+		method: ReadOnlyMethod,
+		/// Numeric JSON-RPC code; raw messages are discarded.
+		code: i64,
+	},
+	/// A different profile already occupied this observed-executable cache key.
+	CapabilityConflict,
+	/// The selected host-vault credential could not be projected into this child.
+	CredentialVault(CredentialVaultError),
+}
+
+/// Read-only methods available to the bounded foundation probe.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReadOnlyMethod {
+	/// Initialize the app-server connection.
+	Initialize,
+	/// Project one selected account before immutable readback attestation.
+	AccountLoginStart,
+	/// Read the immutable process account.
+	AccountRead,
+	/// Verify native authentication mode without requesting a credential.
+	GetAuthStatus,
+	/// Read current managed configuration requirements.
+	ConfigRequirementsRead,
+	/// Read a bounded page of threads.
+	ThreadList,
+	/// Read one exact thread without turns.
+	ThreadRead,
+}
+
+/// Runtime launch capability derived from the current executable and protocol preflight.
+///
+/// This type has no public constructor. The fixed app-server command must match the process
+/// contract. Codex consumes
+/// `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` at process startup and selects
+/// `DisabledEphemeral` when `app-server --stdio` has no remote-control argument. This marker is
+/// startup-state evidence, not a permanent in-process policy. ProcessGeneration therefore keeps
+/// the raw channels private and returns no protocol writer. Unsupported protocol shapes still
+/// fail closed after runtime schema validation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ExactBuildLaunchCapability {
+	PrivateStdioDisabledEphemeralStartupV1,
+}
+
+/// Exact lifetime capability derived only from one accepted executable profile.
+///
+/// There is intentionally no Linux variant. Generic session and descriptor setup cannot install
+/// `PR_SET_PDEATHSIG`; a future Linux primitive requires a separately accepted exact profile.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ExactProcessGenerationLifetimeCapability {
+	MacosPrivateStdioBestEffortEofV1,
+}
+
+#[derive(Deserialize)]
+enum CredentialProjectionResponseKind {
+	#[serde(rename = "chatgptAuthTokens")]
+	ChatgptAuthTokens,
+}
+
+enum ManagedChild {
+	Standard(Child),
+	#[cfg(target_os = "macos")]
+	Attested(AttestedChild),
+}
+impl ManagedChild {
+	fn id(&self) -> u32 {
+		match self {
+			Self::Standard(child) => child.id(),
+			#[cfg(target_os = "macos")]
+			Self::Attested(child) => child.id(),
+		}
+	}
+
+	fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+		match self {
+			Self::Standard(child) => child.try_wait(),
+			#[cfg(target_os = "macos")]
+			Self::Attested(child) => child.try_wait(),
+		}
+	}
+}
+
+impl From<Child> for ManagedChild {
+	fn from(child: Child) -> Self {
+		Self::Standard(child)
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum RpcError {
+	Supervision(SupervisionError),
+	MethodRejected(i64),
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum QuarantineStartFailure {
+	None,
+	Worker,
+	Coordinator,
+}
+
+/// Consume one fresh exact Conversation admission before the ordinary supervisor may spawn.
+pub(crate) async fn spawn_admitted_conversation_process(
+	control: &ProcessGenerationControl,
+	admission: FreshConversationProcessGeneration,
+	execution_authorization: ProcessExecutionAuthorization,
+	mut launch: AttestedAppServerLaunch,
+	pre_spawn_check: Arc<dyn ConversationPreSpawnCheck>,
+) -> Result<FencedProcess, ProcessSupervisorError> {
+	launch.conversation_pre_spawn_check = Some(pre_spawn_check);
+
+	control.spawn_fenced_conversation(admission, execution_authorization, launch).await
+}
+
+/// Keep the same attested directory boundary for a retained Agent process admission.
+pub(crate) async fn spawn_admitted_agent_process(
+	control: &ProcessGenerationControl,
+	root_id: String,
+	operation_key: String,
+	generation_id: ProcessGenerationId,
+	execution_authorization: ProcessExecutionAuthorization,
+	mut launch: AttestedAppServerLaunch,
+	pre_spawn_check: Arc<dyn ConversationPreSpawnCheck>,
+) -> Result<FencedProcess, ProcessSupervisorError> {
+	launch.conversation_pre_spawn_check = Some(pre_spawn_check);
+
+	control
+		.spawn_fenced_agent(root_id, operation_key, generation_id, execution_authorization, launch)
+		.await
+}
+
+pub(super) fn project_exact_submitted_turn(
+	thread: &crate::account_launch::protocol::ProtocolThread,
+	client_user_message_id: &str,
+) -> Result<Option<ExactSubmittedTurnReadback>, ExactReconciliationError> {
+	TurnId::new(client_user_message_id.to_owned())
+		.map_err(|_| ExactReconciliationError::InvalidResult)?;
+
+	if thread.turns.len() > MAX_EXACT_THREAD_READ_TURNS {
+		return Err(ExactReconciliationError::InvalidResult);
+	}
+
+	let mut item_count = 0_usize;
+	let mut matched = None;
+
+	for turn in &thread.turns {
+		item_count = item_count
+			.checked_add(turn.items.len())
+			.filter(|count| *count <= MAX_EXACT_THREAD_READ_ITEMS)
+			.ok_or(ExactReconciliationError::InvalidResult)?;
+
+		let client_matches = turn
+			.items
+			.iter()
+			.filter(|item| {
+				item.kind.as_str() == "userMessage"
+					&& item
+						.client_id
+						.as_ref()
+						.is_some_and(|id| id.as_str() == client_user_message_id)
+			})
+			.count();
+
+		if client_matches == 0 {
+			continue;
+		}
+		if client_matches != 1 || matched.is_some() {
+			return Err(ExactReconciliationError::InvalidResult);
+		}
+
+		matched = Some(turn);
+	}
+
+	let Some(turn) = matched else {
+		return Ok(None);
+	};
+	let provider_turn_id = ExactTurnId::new(turn.id.as_str().to_owned())
+		.map_err(|_| ExactReconciliationError::InvalidResult)?;
+	let status = turn.status.into_conversation();
+	let mut assistant_text = String::new();
+
+	for item in &turn.items {
+		if item.kind.as_str() != "agentMessage" {
+			continue;
+		}
+
+		let text = item.text.as_ref().ok_or(ExactReconciliationError::InvalidResult)?.as_str();
+
+		assistant_text
+			.len()
+			.checked_add(text.len())
+			.filter(|length| *length <= MAX_EXACT_TURN_ASSISTANT_BYTES)
+			.ok_or(ExactReconciliationError::InvalidResult)?;
+		assistant_text.push_str(text);
+	}
+
+	let mut witness = Sha256::new();
+
+	for part in [
+		"decodex/exact-submitted-turn/v1",
+		thread.id.as_str(),
+		client_user_message_id,
+		provider_turn_id.as_str(),
+		match status {
+			decodex_codex::ConversationTurnStatus::Completed => "completed",
+			decodex_codex::ConversationTurnStatus::Interrupted => "interrupted",
+			decodex_codex::ConversationTurnStatus::Failed => "failed",
+			decodex_codex::ConversationTurnStatus::InProgress => "in_progress",
+		},
+		assistant_text.as_str(),
+	] {
+		witness.update(part.len().to_be_bytes());
+		witness.update(part.as_bytes());
+	}
+
+	let witness_digest = hex_digest(&witness.finalize());
+
+	ExactSubmittedTurnReadback::from_protocol(
+		provider_turn_id,
+		status,
+		assistant_text,
+		witness_digest,
+	)
+	.map(Some)
+	.map_err(|_| ExactReconciliationError::InvalidResult)
+}
+
+fn validated_working_directory(command: &AppServerCommand) -> Result<String, ProbeError> {
+	command
+		.working_directory
+		.to_str()
+		.filter(|value| {
+			value.starts_with('/')
+				&& !value.is_empty()
+				&& value.len() <= MAX_CONVERSATION_WORKING_DIRECTORY_BYTES
+				&& !value.chars().any(char::is_control)
+				&& !decodex_core::contains_credential_material(value)
+		})
+		.map(str::to_owned)
+		.ok_or_else(|| SupervisionError::InvalidBinding.into())
+}
+
+fn conversation_rejection_reason(
+	error: &super::protocol::JsonRpcError,
+	resume_thread_id: Option<&str>,
+) -> ConversationRejectionReason {
+	let message = error.message();
+
+	if let Some(refusal) =
+		decodex_codex::app_server_client::classify_dispatch_refusal(error.code, message)
+	{
+		return match refusal {
+			decodex_codex::app_server_client::NativeDispatchRefusal::ServerDraining =>
+				ConversationRejectionReason::ServerDraining,
+			decodex_codex::app_server_client::NativeDispatchRefusal::ManagedProviderChanged =>
+				ConversationRejectionReason::ManagedProviderChanged,
+		};
+	}
+	if let Some(thread) = resume_thread_id {
+		if error.code == -32_600 && message.starts_with(&format!("thread {thread} is closing;")) {
+			return ConversationRejectionReason::ClosingThread;
+		}
+		if error.code == -32_600 && message == format!("no rollout found for thread id {thread}") {
+			return ConversationRejectionReason::MissingThread;
+		}
+		if error.code == -32_600
+			&& message
+				== format!(
+					"session {thread} is archived. Run `codex unarchive {thread}` to unarchive it first."
+				) {
+			return ConversationRejectionReason::ArchivedThread;
+		}
+		if message.contains("failed to prepare fs sandbox") {
+			return ConversationRejectionReason::SandboxConfiguration;
+		}
+	}
+
+	ConversationRejectionReason::Other
+}
+
+fn decode_conversation_process_event(
+	bytes: &[u8],
+) -> Result<Option<ConversationProcessEvent>, ConversationProcessError> {
+	let header: InboundHeader =
+		serde_json::from_slice(bytes).map_err(|_| ConversationProcessError::Incompatible)?;
+
+	if header.id.is_none() && matches!(header.method.as_deref(), Some("warning" | "configWarning"))
+	{
+		let frame: serde_json::Value =
+			serde_json::from_slice(bytes).map_err(|_| ConversationProcessError::Incompatible)?;
+		let value = if header.method.as_deref() == Some("warning") {
+			crate::native_config_warning::warning(&frame["params"])
+		} else {
+			crate::native_config_warning::project(&frame["params"]).map(|value| {
+				let mut message = value["summary"].as_str().unwrap_or_default().to_owned();
+
+				if let Some(details) =
+					value["details"].as_str().filter(|text| !text.trim().is_empty())
+				{
+					message.push_str("\n\n");
+					message.push_str(details);
+				}
+
+				serde_json::json!({"threadId":null,"message":message})
+			})
+		};
+
+		return Ok(value.map(|value| ConversationProcessEvent::Warning {
+			thread_id: value["threadId"].as_str().map(str::to_owned),
+			text: format!("Codex warning: {}", value["message"].as_str().unwrap_or_default()),
+		}));
+	}
+
+	if let Some(delta) = project_conversation_message_delta(bytes)
+		.map_err(|_| ConversationProcessError::Incompatible)?
+	{
+		return Ok(Some(ConversationProcessEvent::MessageDelta(delta)));
+	}
+
+	match normalize_event(bytes).map_err(|_| ConversationProcessError::Incompatible)? {
+		NormalizedEvent::TurnCompleted { status, .. } => {
+			// Display normalization hashes opaque IDs. Runtime correlation must retain
+			// the exact native identity, including when metadata queries collect events.
+			let frame: serde_json::Value = serde_json::from_slice(bytes)
+				.map_err(|_| ConversationProcessError::Incompatible)?;
+			let turn_id = decodex_codex::ExactTurnId::new(
+				frame["params"]["turn"]["id"]
+					.as_str()
+					.ok_or(ConversationProcessError::Incompatible)?,
+			)
+			.map_err(|_| ConversationProcessError::Incompatible)?;
+
+			Ok(Some(ConversationProcessEvent::TurnCompleted {
+				turn_id: turn_id.as_str().to_owned(),
+				status,
+				witness_digest: hex_digest(&Sha256::digest(bytes)),
+			}))
+		},
+		_ => Ok(None),
+	}
+}
+
+fn spawn_protocol_process(
+	command: &AppServerCommand,
+	binding: &AccountBinding,
+	guard: Option<RunnerPermit>,
+	sender: SyncSender<InboundFrame>,
+	protocol_limit_exceeded: Arc<AtomicBool>,
+) -> Result<(ProcessGroupOwner, Box<dyn Write + Send>), SupervisionError> {
+	#[cfg(target_os = "macos")]
+	if let Some(identity) = &command.attested_code_identity {
+		let home = binding.expected_codex_home.parent().ok_or(SupervisionError::InvalidBinding)?;
+		let suspended =
+			spawn_suspended(identity, &command.app_server_args, &command.working_directory, home)
+				.map_err(|_| SupervisionError::SpawnFailed)?;
+
+		// This non-profile path retains full filesystem and snapshot digest verification. The
+		// dynamic code check then binds the stopped image to that snapshot before SIGCONT.
+		verify_executable(command)?;
+
+		let spawned =
+			suspended.attest_and_resume(identity).map_err(|_| SupervisionError::SpawnFailed)?;
+		let mut owner = ProcessGroupOwner::new(ManagedChild::Attested(spawned.child), guard);
+		let pump = StdoutPump::start(spawned.stdout, sender, protocol_limit_exceeded)?;
+
+		owner.attach_pump(pump);
+
+		return Ok((owner, Box::new(spawned.stdin)));
+	}
+
+	let mut process = Command::new(protected_spawn_path(command));
+
+	process
+		.arg0(&command.program)
+		.args(&command.app_server_args)
+		.current_dir(&command.working_directory)
+		.stdin(Stdio::piped())
+		.stdout(Stdio::piped())
+		.stderr(Stdio::null());
+
+	configure_child_environment(&mut process, binding)?;
+	configure_process_session(&mut process, None);
+
+	let child = process.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
+	let mut owner = ProcessGroupOwner::new(child, guard);
+	let (stdin, stdout) = match owner.child_mut() {
+		ManagedChild::Standard(child) => {
+			let stdin = child.stdin.take().ok_or(SupervisionError::StdinUnavailable)?;
+			let stdout = child.stdout.take().ok_or(SupervisionError::InvalidProtocol)?;
+
+			(stdin, stdout)
+		},
+		#[cfg(target_os = "macos")]
+		ManagedChild::Attested(_) => unreachable!("snapshot spawn created an attested child"),
+	};
+	let pump = StdoutPump::start(stdout, sender, protocol_limit_exceeded)?;
+
+	owner.attach_pump(pump);
+
+	Ok((owner, Box::new(stdin)))
+}
+
+fn finish_attested_protocol_spawn<R>(
+	mut owner: ProcessGroupOwner,
+	stdin: Box<dyn Write + Send>,
+	stdout: R,
+	sender: SyncSender<InboundFrame>,
+	protocol_limit_exceeded: Arc<AtomicBool>,
+) -> (ProcessGroupOwner, Box<dyn Write + Send>)
+where
+	R: Read + std::os::fd::AsRawFd + Send + 'static,
+{
+	// Creation has already occurred. A missing pump is a channel-readiness failure;
+	// return the child so its supervisor can retain it until positive exit evidence.
+	if let Ok(pump) = StdoutPump::start(stdout, sender, protocol_limit_exceeded) {
+		owner.attach_pump(pump);
+	}
+
+	(owner, stdin)
+}
+
+fn spawn_attested_protocol_process(
+	command: &AppServerCommand,
+	binding: &AccountBinding,
+	guard: RunnerPermit,
+	capability: ExactBuildLaunchCapability,
+	pre_spawn_check: Option<&dyn ConversationPreSpawnCheck>,
+	sender: SyncSender<InboundFrame>,
+	protocol_limit_exceeded: Arc<AtomicBool>,
+) -> Result<(ProcessGroupOwner, Box<dyn Write + Send>), SupervisionError> {
+	#[cfg(target_os = "macos")]
+	{
+		let identity = command
+			.attested_code_identity
+			.as_ref()
+			.ok_or(SupervisionError::LaunchCapabilityUnavailable)?;
+		let home = binding.expected_codex_home.parent().ok_or(SupervisionError::InvalidBinding)?;
+
+		if let Some(check) = pre_spawn_check {
+			check.validate_at_spawn_boundary().map_err(|()| SupervisionError::InvalidBinding)?;
+		}
+
+		let suspended = match (capability, pre_spawn_check) {
+			(ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1, Some(check)) =>
+				spawn_private_stdio_suspended_at(
+					identity,
+					&command.app_server_args,
+					check.working_directory_descriptor(),
+					home,
+					binding.personal_access_token.as_deref().map(String::as_str),
+				),
+			(ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1, None) =>
+				spawn_private_stdio_suspended(
+					identity,
+					&command.app_server_args,
+					&command.working_directory,
+					home,
+					binding.personal_access_token.as_deref().map(String::as_str),
+				),
+		}
+		.map_err(|_| SupervisionError::SpawnFailed)?;
+
+		if let Some(check) = pre_spawn_check {
+			check.validate_at_spawn_boundary().map_err(|()| SupervisionError::InvalidBinding)?;
+		}
+
+		// Startup already hashed and statically validated the immutable snapshot and canonical
+		// image. Keep the canonical object identity stable here; exact dynamic CDHash and path
+		// attestation below bind the suspended child to that startup profile before user code runs.
+		verify_canonical_executable_identity(command)?;
+
+		let spawned =
+			suspended.attest_and_resume(identity).map_err(|_| SupervisionError::SpawnFailed)?;
+		let owner = ProcessGroupOwner::new(ManagedChild::Attested(spawned.child), Some(guard));
+
+		Ok(finish_attested_protocol_spawn(
+			owner,
+			Box::new(spawned.stdin),
+			spawned.stdout,
+			sender,
+			protocol_limit_exceeded,
+		))
+	}
+
+	#[cfg(not(target_os = "macos"))]
+	{
+		let mut process = configured_attested_app_server_process(command, binding, capability)?;
+
+		if let Some(check) = pre_spawn_check {
+			check.validate_at_spawn_boundary().map_err(|()| SupervisionError::InvalidBinding)?;
+		}
+
+		let child = process.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
+		let mut owner = ProcessGroupOwner::new(child, Some(guard));
+		let (stdin, stdout) = match owner.child_mut() {
+			ManagedChild::Standard(child) => {
+				let stdin = child.stdin.take().ok_or(SupervisionError::StdinUnavailable)?;
+				let stdout = child.stdout.take().ok_or(SupervisionError::InvalidProtocol)?;
+
+				(stdin, stdout)
+			},
+			#[cfg(target_os = "macos")]
+			ManagedChild::Attested(_) => unreachable!("configured spawn created a standard child"),
+		};
+
+		Ok(finish_attested_protocol_spawn(
+			owner,
+			Box::new(stdin),
+			stdout,
+			sender,
+			protocol_limit_exceeded,
+		))
+	}
+}
+
+fn exact_request_frame<P>(
+	request_id: u64,
+	method: &'static str,
+	params: &P,
+) -> Result<ZeroizingOutboundFrame, ProbeError>
+where
+	P: Serialize,
+{
+	ZeroizingOutboundFrame::serialize(&OutboundRequest { id: request_id, method, params })
+}
+
+fn hex_digest(bytes: &[u8]) -> String {
+	bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 fn rpc_supervision(error: ProbeError) -> RpcError {
 	match error {
 		ProbeError::Supervision(error) => RpcError::Supervision(error),
 		_ => RpcError::Supervision(SupervisionError::InvalidProtocol),
 	}
 }
-
-#[path = "executable_discovery.rs"] mod executable_discovery;
 
 fn resolve_executable(
 	program: &OsStr,
@@ -4471,10 +4700,6 @@ fn resolve_executable(
 
 	Ok((canonical, Arc::new(snapshot), digest))
 }
-
-#[cfg(target_os = "macos")]
-#[path = "process_bundle_snapshot.rs"]
-mod bundle_snapshot;
 
 fn capture_executable_snapshot(
 	path: &Path,
@@ -4548,10 +4773,12 @@ fn finalize_executable_snapshot(
 	};
 
 	set_snapshot_immutable(&snapshot.path, true)?;
+
 	let digest = snapshot.digest()?;
 
 	Ok((snapshot, digest))
 }
+
 #[cfg(target_os = "linux")]
 fn capture_platform_executable_snapshot(
 	source: &File,
@@ -4763,6 +4990,7 @@ fn verify_canonical_executable_identity(
 
 fn verify_canonical_executable(command: &AppServerCommand) -> Result<(), SupervisionError> {
 	verify_canonical_executable_identity(command)?;
+
 	if executable_digest(&command.program).map_err(|_| SupervisionError::ExecutableChanged)?
 		!= command.executable_digest
 	{
@@ -4774,6 +5002,7 @@ fn verify_canonical_executable(command: &AppServerCommand) -> Result<(), Supervi
 
 fn verify_executable(command: &AppServerCommand) -> Result<(), SupervisionError> {
 	verify_canonical_executable(command)?;
+
 	if command.executable.digest().map_err(|_| SupervisionError::ExecutableChanged)?
 		!= command.executable_digest
 	{
@@ -4816,6 +5045,7 @@ fn configured_app_server_process(
 	run_after_verification_test(command);
 
 	let mut process = Command::new(command.executable.execution_path());
+
 	process
 		.arg0(&command.program)
 		.args(&command.app_server_args)
@@ -4823,6 +5053,7 @@ fn configured_app_server_process(
 		.stdin(Stdio::piped())
 		.stdout(Stdio::piped())
 		.stderr(Stdio::null());
+
 	configure_child_environment(&mut process, binding)?;
 	configure_process_session(&mut process, None);
 
@@ -4836,12 +5067,15 @@ fn configured_attested_app_server_process(
 	capability: ExactBuildLaunchCapability,
 ) -> Result<Command, SupervisionError> {
 	let mut process = configured_app_server_process(command, binding)?;
+
 	match capability {
 		ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1 => {
 			process.env(PRIVATE_STDIO_STARTUP_ENV, PRIVATE_STDIO_STARTUP_VALUE);
 		},
 	}
+
 	capability.lifetime().configure(&mut process)?;
+
 	Ok(process)
 }
 
@@ -4870,9 +5104,11 @@ fn attested_launch_identity(
 	hash_launch_field(&mut digest, b"build", build.as_str().as_bytes());
 	hash_launch_field(&mut digest, b"image", &command.executable_digest);
 	hash_launch_field(&mut digest, b"arg0", command.program.as_os_str().as_bytes());
+
 	for argument in &command.app_server_args {
 		hash_launch_field(&mut digest, b"argument", argument.as_os_str().as_bytes());
 	}
+
 	hash_launch_field(
 		&mut digest,
 		b"working-directory",
@@ -4886,7 +5122,9 @@ fn attested_launch_identity(
 	hash_launch_field(&mut digest, b"environment-name", PRIVATE_STDIO_STARTUP_ENV.as_bytes());
 	hash_launch_field(&mut digest, b"environment-value", PRIVATE_STDIO_STARTUP_VALUE.as_bytes());
 	hash_launch_field(&mut digest, b"account", binding.account_id.as_str().as_bytes());
+
 	let process_binding = binding.process_binding()?;
+
 	hash_launch_field(
 		&mut digest,
 		b"account-revision",
@@ -4923,6 +5161,7 @@ fn attested_launch_identity(
 		b"refresh-callback-profile",
 		process_binding.refresh_callback_profile_sha256.as_bytes(),
 	);
+
 	if binding.personal_access_token.is_some() {
 		hash_launch_field(&mut digest, b"environment-name", b"CODEX_ACCESS_TOKEN");
 		hash_launch_field(
@@ -4931,6 +5170,7 @@ fn attested_launch_identity(
 			process_binding.credential.fingerprint.as_str().as_bytes(),
 		);
 	}
+
 	hash_launch_field(&mut digest, b"capability", capability.identity().as_bytes());
 
 	ProcessRunnerIdentity::new(format!("sha256:{}", hex_digest(&digest.finalize())))
@@ -4953,11 +5193,13 @@ fn cleanup_process_group_once(job: &mut ReapJob) -> bool {
 	let exited = match job.child.try_wait() {
 		Ok(Some(_)) => {
 			job.may_signal_process_group = false;
+
 			true
 		},
 		Ok(None) => false,
 		Err(_) => {
 			job.may_signal_process_group = false;
+
 			false
 		},
 	};
@@ -4972,7 +5214,6 @@ fn cleanup_process_group_once(job: &mut ReapJob) -> bool {
 			return true;
 		}
 	}
-
 	if job.may_signal_process_group {
 		let _ = signal_process_group(job.process_group, SIGKILL);
 	}
@@ -5046,6 +5287,7 @@ fn initialize_probe_projection(
 	capabilities: InitializeCapabilities,
 ) -> Result<(), ProbeError> {
 	initialize_probe_connection(process, timeout, negotiation, capabilities)?;
+
 	let account_id = process.binding.account_id().clone();
 	let mut projection = CredentialProjection { process, timeout, used: false };
 	let expected =
@@ -5445,9 +5687,11 @@ fn configure_child_environment(
 	binding: &AccountBinding,
 ) -> Result<(), SupervisionError> {
 	configure_home_environment(command, &binding.expected_codex_home)?;
+
 	if let Some(token) = &binding.personal_access_token {
 		command.env("CODEX_ACCESS_TOKEN", token.as_str());
 	}
+
 	Ok(())
 }
 
@@ -5491,7 +5735,6 @@ fn terminate_process_group(
 	if !process_group_exists(pid)? {
 		return Ok(ShutdownOutcome::Exited);
 	}
-
 	if *may_signal_process_group {
 		signal_process_group(pid, SIGTERM)?;
 	}
@@ -5538,11 +5781,13 @@ fn observe_owned_child_exit(
 	match child.try_wait() {
 		Ok(Some(_)) => {
 			*may_signal_process_group = false;
+
 			Ok(true)
 		},
 		Ok(None) => Ok(false),
 		Err(_) => {
 			*may_signal_process_group = false;
+
 			Err(SupervisionError::ShutdownFailed)
 		},
 	}
@@ -5622,6 +5867,7 @@ pub(crate) mod tests {
 		Serialize,
 		ser::{Error as _, SerializeMap as _},
 	};
+
 	use tempfile::TempDir;
 
 	use crate::account_launch::{
@@ -5639,11 +5885,13 @@ pub(crate) mod tests {
 			JsonRpcResponse, ProtocolThread,
 		},
 	};
+
 	use decodex_codex::{
 		ArchiveReconciliationOutcome, ArchiveUnverifiedReason, Capability, CapabilityCache,
 		CapabilityState, DecodexThreadSearchTerm, ExactThreadId, ExactThreadListFilter,
 		SchemaMarker, ThreadArchivedFilter, UnavailableReason, UnsupportedReason,
 	};
+
 	use decodex_core::{
 		AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
 		CredentialStoreSchemaVersion, CredentialVersion, ProcessGenerationAccountBinding,
@@ -5653,6 +5901,17 @@ pub(crate) mod tests {
 	struct TestCapacity {
 		inner: RunnerCapacity,
 	}
+
+	struct FixtureVault {
+		expected_email: &'static str,
+		process_id: AtomicU32,
+		double_project: bool,
+	}
+
+	struct LateSerializationFailure<'a>(&'a str);
+
+	struct FailAfterOneWrite(bool);
+
 	impl TestCapacity {
 		fn new(limit: u16) -> Self {
 			Self { inner: RunnerCapacity::try_with_limit(limit).unwrap() }
@@ -5667,12 +5926,6 @@ pub(crate) mod tests {
 		fn active(&self) -> u16 {
 			self.inner.active()
 		}
-	}
-
-	struct FixtureVault {
-		expected_email: &'static str,
-		process_id: AtomicU32,
-		double_project: bool,
 	}
 
 	impl FixtureVault {
@@ -5712,6 +5965,84 @@ pub(crate) mod tests {
 		}
 	}
 
+	impl Serialize for LateSerializationFailure<'_> {
+		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: serde::Serializer,
+		{
+			let mut map = serializer.serialize_map(Some(2))?;
+
+			map.serialize_entry("accessToken", self.0)?;
+
+			Err(S::Error::custom("synthetic late serialization failure"))
+		}
+	}
+
+	impl Write for FailAfterOneWrite {
+		fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+			if mem::replace(&mut self.0, true) {
+				Err(io::Error::new(ErrorKind::BrokenPipe, "synthetic write failure"))
+			} else {
+				Ok(bytes.len())
+			}
+		}
+
+		fn flush(&mut self) -> io::Result<()> {
+			Ok(())
+		}
+	}
+
+	pub(crate) fn supervisor_child_fixture(directory: &Path) -> super::AttestedProcessChild {
+		let command = fake_command("normal", directory, None);
+		let codex_home = directory.join(".codex");
+		let profile = AttestedAppServerProfile::attest_for_test(
+			command.clone(),
+			&codex_home,
+			Duration::from_secs(5),
+		)
+		.unwrap();
+		let process =
+			SupervisedProcess::spawn(command, AccountBinding::for_test(codex_home)).unwrap();
+
+		super::AttestedProcessChild {
+			process,
+			build: profile.build,
+			generated: profile.generated,
+			timeout: Duration::from_secs(5),
+			initialized: false,
+		}
+	}
+
+	pub(crate) fn ordinary_runtime_fixture_profile(directory: &Path) -> AttestedAppServerProfile {
+		AttestedAppServerProfile::attest_for_test(
+			fake_command("ordinary-capabilities", directory, None),
+			directory,
+			Duration::from_secs(2),
+		)
+		.expect("isolated ordinary runtime profile")
+	}
+
+	pub(crate) fn ordinary_catalog_child(mode: &str) -> (TempDir, super::AttestedProcessChild) {
+		let (temp, process) = initialized_bound_process(mode);
+		let profile = AttestedAppServerProfile::attest_for_test(
+			process.command.clone(),
+			&process.binding.expected_codex_home,
+			Duration::from_secs(2),
+		)
+		.unwrap();
+
+		(
+			temp,
+			super::AttestedProcessChild {
+				process,
+				build: profile.build,
+				generated: profile.generated,
+				timeout: Duration::from_secs(2),
+				initialized: true,
+			},
+		)
+	}
+
 	fn profile_binding(
 		account_id: AccountId,
 		account_revision: i64,
@@ -5729,6 +6060,7 @@ pub(crate) mod tests {
 			writer_operation_id: AccountOperationId::new("20000000-0000-4000-8000-000000000001")
 				.unwrap(),
 		};
+
 		AccountBinding {
 			account_id,
 			expected_codex_home: PathBuf::from("/tmp/.codex"),
@@ -5820,13 +6152,18 @@ pub(crate) mod tests {
 					&original.provider,
 				)
 				.unwrap();
+
 			crate::host_credentials::seal_exact_read(&account, &credential, &credential, bundle)
 				.unwrap()
 		};
 		let selected = stored("synthetic-selected-pat");
+
 		binding.process_binding.as_mut().unwrap().credential = selected.binding().clone();
+
 		assert!(binding.clone().with_credential(&stored("synthetic-other-pat")).is_err());
+
 		let capacity = RunnerCapacity::try_with_limit(1).unwrap();
+
 		assert!(
 			AttestedAppServerLaunch::bind(
 				profile.clone(),
@@ -5836,6 +6173,7 @@ pub(crate) mod tests {
 			)
 			.is_err()
 		);
+
 		let launch = AttestedAppServerLaunch::bind(
 			profile,
 			binding.with_credential(&selected).unwrap(),
@@ -5843,41 +6181,13 @@ pub(crate) mod tests {
 			capacity.reserve(account, 1).unwrap(),
 		)
 		.unwrap();
+
 		assert_eq!(launch.account_binding().credential, *selected.binding());
 		assert_eq!(
 			launch.binding.personal_access_token.as_deref().map(String::as_str),
 			Some("synthetic-selected-pat")
 		);
 		assert!(!format!("{:?}", launch.binding).contains("synthetic-selected-pat"));
-	}
-
-	struct LateSerializationFailure<'a>(&'a str);
-	impl Serialize for LateSerializationFailure<'_> {
-		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-		where
-			S: serde::Serializer,
-		{
-			let mut map = serializer.serialize_map(Some(2))?;
-
-			map.serialize_entry("accessToken", self.0)?;
-
-			Err(S::Error::custom("synthetic late serialization failure"))
-		}
-	}
-
-	struct FailAfterOneWrite(bool);
-	impl Write for FailAfterOneWrite {
-		fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-			if mem::replace(&mut self.0, true) {
-				Err(io::Error::new(ErrorKind::BrokenPipe, "synthetic write failure"))
-			} else {
-				Ok(bytes.len())
-			}
-		}
-
-		fn flush(&mut self) -> io::Result<()> {
-			Ok(())
-		}
 	}
 
 	fn fake_command(mode: &str, directory: &Path, extra: Option<&Path>) -> AppServerCommand {
@@ -5938,6 +6248,7 @@ pub(crate) mod tests {
 		if mode == "preflight-uncertain-schema" {
 			schema_args.push("--preflight-hang".into());
 		}
+
 		let version_flag = match mode {
 			"preflight-hang" | "preflight-uncertain-version" => "--version-hang",
 			"oversized-version" => "--version-oversized",
@@ -5973,26 +6284,6 @@ pub(crate) mod tests {
 		let command = command.with_spawn_path_for_test(spawn_path);
 
 		command
-	}
-
-	pub(crate) fn supervisor_child_fixture(directory: &Path) -> super::AttestedProcessChild {
-		let command = fake_command("normal", directory, None);
-		let codex_home = directory.join(".codex");
-		let profile = AttestedAppServerProfile::attest_for_test(
-			command.clone(),
-			&codex_home,
-			Duration::from_secs(5),
-		)
-		.unwrap();
-		let process =
-			SupervisedProcess::spawn(command, AccountBinding::for_test(codex_home)).unwrap();
-		super::AttestedProcessChild {
-			process,
-			build: profile.build,
-			generated: profile.generated,
-			timeout: Duration::from_secs(5),
-			initialized: false,
-		}
 	}
 
 	fn binding() -> AccountBinding {
@@ -6265,6 +6556,7 @@ pub(crate) mod tests {
 			.iter()
 			.map(|(path, _)| {
 				let metadata = fs::metadata(path).unwrap();
+
 				(
 					path.clone(),
 					fs::read(path).unwrap(),
@@ -6307,6 +6599,7 @@ pub(crate) mod tests {
 		) in before
 		{
 			let metadata = fs::metadata(&path).unwrap();
+
 			assert_eq!(fs::read(path).unwrap(), bytes);
 			assert_eq!(metadata.dev(), device);
 			assert_eq!(metadata.ino(), inode);
@@ -6675,19 +6968,23 @@ pub(crate) mod tests {
 	#[test]
 	fn attested_pump_failure_preserves_created_child_state() {
 		struct UnavailableDescriptor;
+
 		impl io::Read for UnavailableDescriptor {
 			fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
 				panic!("invalid descriptor must be rejected before a reader starts")
 			}
 		}
+
 		impl std::os::fd::AsRawFd for UnavailableDescriptor {
 			fn as_raw_fd(&self) -> std::os::fd::RawFd {
 				-1
 			}
 		}
+
 		let directory = TempDir::new().unwrap();
 		let capacity = TestCapacity::new(1);
 		let mut command = Command::new("/bin/sleep");
+
 		command
 			.arg("30")
 			.env_clear()
@@ -6695,7 +6992,9 @@ pub(crate) mod tests {
 			.stdin(Stdio::piped())
 			.stdout(Stdio::piped())
 			.stderr(Stdio::null());
+
 		process::configure_process_session(&mut command, None);
+
 		let mut child = command.spawn().unwrap();
 		let pid = child.id();
 		let stdin = child.stdin.take().unwrap();
@@ -6708,40 +7007,54 @@ pub(crate) mod tests {
 			sender,
 			Arc::new(AtomicBool::new(false)),
 		);
+
 		assert_eq!(owner.process_id(), pid);
 		assert!(owner.try_wait().unwrap().is_none(), "created child must remain owned");
 		assert!(owner.pump.is_none());
 		assert_eq!(capacity.active(), 1);
 		assert!(matches!(receiver.try_recv(), Err(mpsc::TryRecvError::Disconnected)));
+
 		drop(stdin);
+
 		owner.shutdown(Duration::from_secs(1)).unwrap();
+
 		assert_eq!(capacity.active(), 0);
 	}
 
 	#[test]
 	fn missing_attested_pump_refuses_initialization_before_any_request() {
 		let (directory, mut child) = ordinary_catalog_child("ordinary-capabilities");
+
 		child.initialized = false;
+
 		let mut pump = child.process.owner.pump.take().unwrap();
+
 		assert!(pump.stop(Duration::from_secs(1)));
+
 		let request_id = child.process.next_request_id;
+
 		assert!(matches!(
 			child.initialize_ordinary_turns(&FixtureVault::matching()),
 			Err(super::ConversationProcessError::Unavailable)
 		));
 		assert_eq!(child.process.next_request_id, request_id);
+
 		child.shutdown().unwrap();
+
 		drop(directory);
 	}
 
 	#[test]
 	fn stdout_pump_preserves_large_native_media_and_the_following_peer_frame() {
-		let value = serde_json::json!({"id":17,"result":{"data":[{"turnId":"turn","item":{"id":"image","type":"dynamicToolCall","contentItems":[{"type":"inputImage","imageUrl":format!("data:image/png;base64,{}", "A".repeat(2*1024*1024))}]}}],"nextCursor":null}});
+		let value = serde_json::json!({"id":17,"result":{"data":[{"turnId":"turn","item":{"id":"image","type":"dynamicToolCall","contentItems":[{"type":"inputImage","imageUrl":format!("data:image/png;base64,{}", "A".repeat(2*1_024*1_024))}]}}],"nextCursor":null}});
 		let mut input = serde_json::to_vec(&value).unwrap();
+
 		input.extend_from_slice(b"\n{\"id\":18,\"result\":{\"thread\":{\"id\":\"peer\"}}}\n");
+
 		let (sender, receiver) = mpsc::sync_channel(2);
 		let exceeded = Arc::new(AtomicBool::new(false));
 		let before = process::ZEROIZED_INBOUND_BLOCKS.load(Ordering::Acquire);
+
 		process::pump_stdout(
 			Cursor::new(input),
 			sender,
@@ -6749,18 +7062,25 @@ pub(crate) mod tests {
 			&AtomicBool::new(false),
 			None,
 		);
+
 		assert!(
 			!exceeded.load(Ordering::Acquire),
 			"ordinary native media exceeded admitted transport limit"
 		);
+
 		let first = receiver.recv().unwrap().into_contiguous();
+
 		assert_eq!(serde_json::from_slice::<serde_json::Value>(&first).unwrap(), value);
+
 		let peer = receiver.recv().unwrap().into_contiguous();
+
 		assert_eq!(
 			serde_json::from_slice::<serde_json::Value>(&peer).unwrap()["result"]["thread"]["id"],
 			"peer"
 		);
+
 		drop((first, peer));
+
 		assert!(process::ZEROIZED_INBOUND_BLOCKS.load(Ordering::Acquire) > before);
 	}
 
@@ -7209,6 +7529,7 @@ pub(crate) mod tests {
 		// Model a source whose copied bytes no longer pass native format validation.
 		fs::write(&image, b"invalid copied image").unwrap();
 		fs::set_permissions(&image, fs::Permissions::from_mode(0o500)).unwrap();
+
 		let metadata = image.metadata().unwrap();
 		let result = process::finalize_executable_snapshot(directory, image.clone(), &metadata);
 		let left_image = image.exists();
@@ -7220,6 +7541,7 @@ pub(crate) mod tests {
 		if left_directory {
 			fs::remove_dir_all(&directory_path).unwrap();
 		}
+
 		assert!(matches!(result, Err(SupervisionError::ExecutableUnavailable)));
 		assert!(!left_image, "digest failure left an immutable executable image");
 		assert!(!left_directory, "digest failure left its snapshot directory");
@@ -7268,10 +7590,10 @@ pub(crate) mod tests {
 
 		fs::copy("/bin/cat", &source).unwrap();
 		fs::set_permissions(&source, fs::Permissions::from_mode(0o755)).unwrap();
+
 		let source_metadata = fs::metadata(&source).unwrap();
 		let source_device = source_metadata.dev();
 		let source_inode = source_metadata.ino();
-
 		let command = AppServerCommand::new_for_test(
 			&source,
 			[
@@ -7291,6 +7613,7 @@ pub(crate) mod tests {
 			Arc::new(move || {
 				fs::copy("/bin/sh", &source_for_action).unwrap();
 				fs::set_permissions(&source_for_action, fs::Permissions::from_mode(0o755)).unwrap();
+
 				let replacement_metadata = fs::metadata(&source_for_action).unwrap();
 
 				assert_eq!(replacement_metadata.dev(), source_device);
@@ -8040,15 +8363,6 @@ pub(crate) mod tests {
 			.unwrap()
 	}
 
-	pub(crate) fn ordinary_runtime_fixture_profile(directory: &Path) -> AttestedAppServerProfile {
-		AttestedAppServerProfile::attest_for_test(
-			fake_command("ordinary-capabilities", directory, None),
-			directory,
-			Duration::from_secs(2),
-		)
-		.expect("isolated ordinary runtime profile")
-	}
-
 	fn initialized_bound_process(mode: &str) -> (TempDir, SupervisedProcess) {
 		let temp = TempDir::new().unwrap();
 		let timeout = Duration::from_secs(2);
@@ -8094,57 +8408,23 @@ pub(crate) mod tests {
 				initialized: false,
 			};
 			let vault = FixtureVault::matching();
+
 			if agent {
 				child.initialize_agent_turns(&vault).unwrap();
 			} else {
 				child.initialize_ordinary_turns(&vault).unwrap();
 			}
+
 			assert!(child.initialized);
+
 			child.close_private_lifetime_channels();
 		}
-	}
-
-	#[tokio::test]
-	async fn config_warnings_survive_initialization_and_retained_handoff() {
-		let (_temp, process) = initialized_bound_process("exact-config-warning");
-		assert_eq!(process.config_warnings.len(), 3);
-		let profile = AttestedAppServerProfile::attest_for_test(
-			process.command.clone(),
-			&process.binding.expected_codex_home,
-			Duration::from_secs(2),
-		)
-		.unwrap();
-		let mut child = super::AttestedProcessChild {
-			process,
-			build: profile.build,
-			generated: profile.generated,
-			timeout: Duration::from_secs(2),
-			initialized: true,
-		};
-		let (_client, mut events) = child.retain_agent_connection().unwrap();
-		for (expected_method, field, expected) in [
-			("configWarning", "summary", "Ignored \"fixture\" setting"),
-			("warning", "message", "Retained \"fixture\" instructions"),
-			("configWarning", "summary", "Second fixture warning"),
-		] {
-			let event =
-				tokio::time::timeout(Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
-			let decodex_codex::app_server_client::ServerEvent::Notification { method, params } =
-				event
-			else {
-				panic!("warning notification")
-			};
-			assert_eq!(method, expected_method);
-			assert_eq!(params[field], expected);
-			assert!(params.get("path").is_none());
-		}
-		assert!(child.process.config_warnings.is_empty());
-		child.close_private_lifetime_channels();
 	}
 
 	#[test]
 	fn ordinary_warnings_preserve_scope_without_terminal_authority() {
 		use super::{ConversationProcessEvent, decode_conversation_process_event};
+
 		for frame in [
 			br#"{"method":"warning","params":{"threadId":"exact-thread","message":"Retained old instructions"}}"#.as_slice(),
 			br#"{"method":"configWarning","params":{"summary":"Ignored setting","details":"Details"}}"#.as_slice(),
@@ -8153,13 +8433,16 @@ pub(crate) mod tests {
 			let ConversationProcessEvent::Warning { thread_id, text } = event else {
 				panic!("display-only notice");
 			};
+
 			assert!(text.starts_with("Codex warning:"));
+
 			if text.contains("Retained") {
 				assert_eq!(thread_id.as_deref(), Some("exact-thread"));
 			} else {
 				assert!(thread_id.is_none());
 			}
 		}
+
 		assert!(
 			decode_conversation_process_event(
 				br#"{"method":"warning","params":{"threadId":42,"message":"bad"}}"#
@@ -8191,6 +8474,7 @@ pub(crate) mod tests {
 					.conversation_request(request, Duration::from_secs(2), true, |_| Ok(()))
 					.err()
 					.expect("refusal");
+
 				if mode.ends_with("wrong-id") {
 					assert!(matches!(error, super::ConversationProcessError::Ambiguous { .. }));
 				} else {
@@ -8198,7 +8482,9 @@ pub(crate) mod tests {
 						matches!(&error,super::ConversationProcessError::Rejected {reason,witness_digest} if (*reason == expected) == suffix.is_empty() && witness_digest.len() == 64)
 					);
 				}
+
 				assert!(!format!("{error:?}").contains("fixture-secret"));
+
 				process.shutdown(Duration::from_secs(2)).unwrap();
 			}
 		}
@@ -8214,8 +8500,10 @@ pub(crate) mod tests {
 			"Fixture instructions",
 		)
 		.unwrap();
+
 		for _ in 0..2 {
 			let resumed = child.resume_ordinary_thread(&request).unwrap();
+
 			assert!(resumed.events.is_empty(), "A warning does not make an idle resume ambiguous");
 			assert_eq!(child.process.deferred_conversation_events.len(), 2);
 		}
@@ -8227,13 +8515,16 @@ pub(crate) mod tests {
 				matches!(child.process.next_conversation_event(Duration::from_millis(10)).unwrap(), Some(super::ConversationProcessEvent::Warning { text, .. }) if text == expected)
 			);
 		}
+
 		assert!(child.process.deferred_conversation_events.is_empty());
+
 		child.shutdown().unwrap();
 	}
 
 	#[test]
 	fn config_warning_backlog_is_bounded_without_blocking_account_initialization() {
 		let (_temp, process) = initialized_bound_process("exact-config-warning-flood");
+
 		assert_eq!(process.config_warnings.len(), 33);
 		assert!(
 			process.config_warnings.last().unwrap()["params"]["summary"]
@@ -8243,77 +8534,24 @@ pub(crate) mod tests {
 		);
 	}
 
-	#[tokio::test]
-	async fn retained_connection_transition_is_one_way_and_keeps_supervisor_revocation() {
-		let (_temp, process) = initialized_bound_process("exact");
-		let profile = AttestedAppServerProfile::attest_for_test(
-			process.command.clone(),
-			&process.binding.expected_codex_home,
-			Duration::from_secs(2),
-		)
-		.unwrap();
-		let mut child = super::AttestedProcessChild {
-			process,
-			build: profile.build,
-			generated: profile.generated,
-			timeout: Duration::from_secs(2),
-			initialized: true,
-		};
-		let process_id = child.process_id();
-		let (client, _events) = child.retain_agent_connection().unwrap();
-		assert_eq!(child.process_id(), process_id);
-		assert!(child.has_private_lifetime_channels());
-		assert!(matches!(
-			child.retain_agent_connection(),
-			Err(super::ConversationProcessError::Unavailable)
-		));
-		assert!(matches!(
-			child.next_ordinary_turn_event(Duration::ZERO),
-			Err(super::ConversationProcessError::Unavailable)
-		));
-		child.close_private_lifetime_channels();
-		assert!(matches!(
-			client.thread_read(serde_json::json!({"threadId":"peer"})).await,
-			Err(decodex_codex::app_server_client::ClientError::Closed)
-		));
-		child.shutdown().unwrap();
-	}
-
 	#[test]
 	fn retained_agent_rejects_missing_tool_input_support_without_transferring_io() {
 		let (_temp, mut child) = ordinary_catalog_child("missing-optional");
+
 		assert!(matches!(
 			child.retain_agent_connection(),
 			Err(super::ConversationProcessError::Incompatible)
 		));
 		assert!(!child.process.agent_retained);
 		assert!(child.process.agent_bridge.is_none());
-		child.shutdown().unwrap();
-	}
 
-	pub(crate) fn ordinary_catalog_child(mode: &str) -> (TempDir, super::AttestedProcessChild) {
-		let (temp, process) = initialized_bound_process(mode);
-		let profile = AttestedAppServerProfile::attest_for_test(
-			process.command.clone(),
-			&process.binding.expected_codex_home,
-			Duration::from_secs(2),
-		)
-		.unwrap();
-		(
-			temp,
-			super::AttestedProcessChild {
-				process,
-				build: profile.build,
-				generated: profile.generated,
-				timeout: Duration::from_secs(2),
-				initialized: true,
-			},
-		)
+		child.shutdown().unwrap();
 	}
 
 	#[test]
 	fn resume_rejection_classification_requires_exact_thread_evidence() {
 		use super::ConversationRejectionReason as Reason;
+
 		for (mode, expected) in [
 			("resume-reject-closing", Reason::ClosingThread),
 			("resume-reject-closing-other-thread", Reason::Other),
@@ -8334,6 +8572,7 @@ pub(crate) mod tests {
 			)
 			.expect("resume request");
 			let error = child.resume_ordinary_thread(&request).err().expect("native rejection");
+
 			assert!(
 				matches!(&error, super::ConversationProcessError::Rejected { reason, witness_digest }
 				if *reason == expected && witness_digest.len() == 64),
@@ -8343,10 +8582,12 @@ pub(crate) mod tests {
 				!format!("{error:?}").contains("fixture-secret"),
 				"provider text must stay private"
 			);
+
 			if mode.starts_with("resume-reject-closing") {
 				assert!(matches!(child.next_ordinary_turn_event(Duration::ZERO).unwrap(),
 					Some(super::ConversationProcessEvent::TurnCompleted { turn_id, .. }) if turn_id == "closing-turn"));
 			}
+
 			child.shutdown().expect("closed fixture process");
 		}
 	}
@@ -8361,6 +8602,7 @@ pub(crate) mod tests {
 			"Fixture instructions",
 		)
 		.unwrap();
+
 		assert!(matches!(
 			child.resume_ordinary_thread(&request),
 			Err(super::ConversationProcessError::Rejected {
@@ -8368,7 +8610,9 @@ pub(crate) mod tests {
 				..
 			})
 		));
+
 		let success = child.resume_ordinary_thread(&request).unwrap();
+
 		assert_eq!(success.codex_thread_id, request.thread_id().as_str());
 		assert_eq!(success.settings.model, "fixture-model");
 		assert_eq!(success.settings.model_provider, "openai");
@@ -8381,20 +8625,27 @@ pub(crate) mod tests {
 			matches!(&success.events[0], super::ConversationProcessEvent::TurnCompleted { turn_id, .. } if turn_id == "closing-turn")
 		);
 		assert!(child.process.deferred_conversation_events.is_empty());
+
 		child.shutdown().unwrap();
 	}
 
 	#[test]
 	fn timed_out_catalog_keeps_completion_and_discards_its_late_reply() {
 		let (_temp, mut child) = ordinary_catalog_child("exact-catalog-late");
+
 		child.timeout = Duration::from_millis(20);
+
 		let (page, events) = child.read_ordinary_model_page(None);
+
 		assert!(matches!(page, Err(super::ConversationProcessError::Ambiguous { .. })));
+
 		child.retain_ordinary_events(events).unwrap();
+
 		assert!(matches!(child.next_ordinary_turn_event(Duration::ZERO).unwrap(),
 			Some(super::ConversationProcessEvent::TurnCompleted { turn_id, .. }) if turn_id == "catalog-turn"));
 		assert!(child.next_ordinary_turn_event(Duration::from_secs(2)).unwrap().is_none());
 		assert!(child.next_ordinary_turn_event(Duration::ZERO).unwrap().is_none());
+
 		child.shutdown().unwrap();
 	}
 
@@ -8403,21 +8654,27 @@ pub(crate) mod tests {
 		for mode in ["exact", "exact-catalog-rejected"] {
 			let (_temp, mut child) = ordinary_catalog_child(mode);
 			let (page, events) = child.read_ordinary_model_page(None);
+
 			if mode == "exact" {
 				let page = page.unwrap();
+
 				assert_eq!(page["data"][0]["displayName"], "Model \"quoted\"");
 				assert_eq!(page["data"][0]["serviceTiers"][0]["id"], "ultrafast");
 			} else {
 				assert!(matches!(page, Err(super::ConversationProcessError::Rejected { .. })));
 			}
+
 			assert!(
 				matches!(events.as_slice(),[super::ConversationProcessEvent::TurnCompleted{turn_id,..}] if turn_id == "catalog-turn")
 			);
+
 			child.retain_ordinary_events(events).unwrap();
+
 			assert!(
 				matches!(child.next_ordinary_turn_event(Duration::ZERO).unwrap(), Some(super::ConversationProcessEvent::TurnCompleted{turn_id,..}) if turn_id == "catalog-turn")
 			);
 			assert!(child.next_ordinary_turn_event(Duration::ZERO).unwrap().is_none());
+
 			child.shutdown().unwrap();
 		}
 	}
@@ -8478,6 +8735,7 @@ pub(crate) mod tests {
 				Duration::from_secs(2),
 			)
 			.expect("submitted turn read");
+
 		assert_eq!(read.history, decodex_codex::LossyThreadHistory::IncludeTurnsReadback);
 		assert_eq!(
 			read.submitted_turn.expect("positive correlation").assistant_text(),
@@ -8488,6 +8746,7 @@ pub(crate) mod tests {
 	#[test]
 	fn paginated_submission_reconciliation_rejects_incomplete_or_ambiguous_evidence() {
 		let client = "50000000-0000-4000-8000-000000000001";
+
 		for mode in [
 			"exact-paged-ok",
 			"exact-paged-cycle",
@@ -8503,13 +8762,16 @@ pub(crate) mod tests {
 				client,
 				Duration::from_secs(2),
 			);
+
 			if mode == "exact-paged-ok" {
 				let read = read.expect("complete native pages");
+
 				assert_eq!(read.history, decodex_codex::LossyThreadHistory::PaginatedReadback);
 				assert_eq!(
 					read.submitted_turn.expect("positive correlation").assistant_text(),
 					"Paged response"
 				);
+
 				let absent = process
 					.read_exact_thread_for_client(
 						&exact_thread_id(),
@@ -8517,6 +8779,7 @@ pub(crate) mod tests {
 						Duration::from_secs(2),
 					)
 					.expect("bounded read without a matching client ID");
+
 				assert!(absent.submitted_turn.is_none());
 				assert_eq!(absent.history, decodex_codex::LossyThreadHistory::PaginatedReadback);
 			} else {
@@ -8534,6 +8797,7 @@ pub(crate) mod tests {
 				"50000000-0000-4000-8000-000000000001",
 				Duration::from_secs(10),
 			);
+
 			assert!(
 				matches!(result, Err(super::ExactReconciliationError::InvalidResult)),
 				"{mode}: expected invalid history to be rejected"
@@ -8547,6 +8811,7 @@ pub(crate) mod tests {
 		let timeout = Duration::from_secs(2);
 		let exact = exact_thread_id();
 		let read = process.read_exact_thread(&exact, timeout).expect("metadata read");
+
 		assert_eq!(read.history, decodex_codex::LossyThreadHistory::MetadataOnly);
 		assert!(read.submitted_turn.is_none());
 		assert_eq!(
@@ -8577,6 +8842,7 @@ pub(crate) mod tests {
 		let (_temp, mut process) = initialized_bound_process("exact-escaped-title");
 		let timeout = Duration::from_secs(2);
 		let exact = exact_thread_id();
+
 		assert!(!process.read_exact_thread(&exact, timeout).unwrap().facts.archived);
 		assert_eq!(
 			process.reconcile_archive(&exact, timeout),
@@ -8735,6 +9001,7 @@ pub(crate) mod tests {
 		let matched = super::project_exact_submitted_turn(&thread, client_id)
 			.expect("project exact submitted Turn")
 			.expect("stable client identity is present");
+
 		assert_eq!(matched.provider_turn_id().as_str(), "provider-turn-1");
 		assert_eq!(matched.status(), decodex_codex::ConversationTurnStatus::Completed);
 		assert_eq!(matched.assistant_text(), "Hello world");
@@ -8742,6 +9009,7 @@ pub(crate) mod tests {
 
 		let absent =
 			TurnId::new("50000000-0000-4000-8000-000000000002").expect("absent client identity");
+
 		assert_eq!(
 			super::project_exact_submitted_turn(&thread, absent.as_str())
 				.expect("absence is a valid lossy observation"),
@@ -8760,6 +9028,7 @@ pub(crate) mod tests {
 			]
 		}))
 		.expect("decode duplicate submitted Turn fixture");
+
 		assert!(super::project_exact_submitted_turn(&duplicate, client_id).is_err());
 	}
 
@@ -8774,5 +9043,89 @@ pub(crate) mod tests {
 			),
 			Err(super::ExactReconciliationError::AccountBindingChanged)
 		);
+	}
+
+	#[tokio::test]
+	async fn config_warnings_survive_initialization_and_retained_handoff() {
+		let (_temp, process) = initialized_bound_process("exact-config-warning");
+
+		assert_eq!(process.config_warnings.len(), 3);
+
+		let profile = AttestedAppServerProfile::attest_for_test(
+			process.command.clone(),
+			&process.binding.expected_codex_home,
+			Duration::from_secs(2),
+		)
+		.unwrap();
+		let mut child = super::AttestedProcessChild {
+			process,
+			build: profile.build,
+			generated: profile.generated,
+			timeout: Duration::from_secs(2),
+			initialized: true,
+		};
+		let (_client, mut events) = child.retain_agent_connection().unwrap();
+
+		for (expected_method, field, expected) in [
+			("configWarning", "summary", "Ignored \"fixture\" setting"),
+			("warning", "message", "Retained \"fixture\" instructions"),
+			("configWarning", "summary", "Second fixture warning"),
+		] {
+			let event =
+				tokio::time::timeout(Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
+			let decodex_codex::app_server_client::ServerEvent::Notification { method, params } =
+				event
+			else {
+				panic!("warning notification")
+			};
+
+			assert_eq!(method, expected_method);
+			assert_eq!(params[field], expected);
+			assert!(params.get("path").is_none());
+		}
+
+		assert!(child.process.config_warnings.is_empty());
+
+		child.close_private_lifetime_channels();
+	}
+
+	#[tokio::test]
+	async fn retained_connection_transition_is_one_way_and_keeps_supervisor_revocation() {
+		let (_temp, process) = initialized_bound_process("exact");
+		let profile = AttestedAppServerProfile::attest_for_test(
+			process.command.clone(),
+			&process.binding.expected_codex_home,
+			Duration::from_secs(2),
+		)
+		.unwrap();
+		let mut child = super::AttestedProcessChild {
+			process,
+			build: profile.build,
+			generated: profile.generated,
+			timeout: Duration::from_secs(2),
+			initialized: true,
+		};
+		let process_id = child.process_id();
+		let (client, _events) = child.retain_agent_connection().unwrap();
+
+		assert_eq!(child.process_id(), process_id);
+		assert!(child.has_private_lifetime_channels());
+		assert!(matches!(
+			child.retain_agent_connection(),
+			Err(super::ConversationProcessError::Unavailable)
+		));
+		assert!(matches!(
+			child.next_ordinary_turn_event(Duration::ZERO),
+			Err(super::ConversationProcessError::Unavailable)
+		));
+
+		child.close_private_lifetime_channels();
+
+		assert!(matches!(
+			client.thread_read(serde_json::json!({"threadId":"peer"})).await,
+			Err(decodex_codex::app_server_client::ClientError::Closed)
+		));
+
+		child.shutdown().unwrap();
 	}
 }

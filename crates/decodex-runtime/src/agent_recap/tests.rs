@@ -4,9 +4,10 @@ use decodex_core::{AccountId, ProcessGenerationId};
 use serde_json::json;
 
 fn source() -> (Source, tokio::io::DuplexStream, mpsc::Receiver<ServerEvent>) {
-	let (local, remote) = tokio::io::duplex(4096);
+	let (local, remote) = tokio::io::duplex(4_096);
 	let (read, write) = tokio::io::split(local);
 	let (client, events) = AppServerClient::from_io(read, write);
+
 	(
 		Source {
 			client,
@@ -36,7 +37,9 @@ fn result() -> TaskRecap {
 fn recap_requires_nullable_next_action_and_character_bounds() {
 	assert!(parse(r#"{"summary":"done"}"#).is_none());
 	assert!(parse(r#"{"summary":"done","next_action":null,"extra":true}"#).is_none());
+
 	let long = json!({"summary":"字".repeat(700),"next_action":"步".repeat(200)}).to_string();
+
 	assert!(parse(&long).is_some());
 	assert!(parse(&json!({"summary":"字".repeat(701),"next_action":null}).to_string()).is_none());
 	assert!(parse(r#"{"summary":"  ","next_action":null}"#).is_none());
@@ -51,30 +54,45 @@ async fn exact_cancel_and_source_changes_never_replace_a_newer_request() {
 	let (source, _remote, _events) = source();
 	let recaps = Recaps::default();
 	let cancel = recaps.start(copy(&source), "one", Default::default()).expect("first request");
+
 	recaps.cancel_request("work", "other");
+
 	assert!(!*cancel.borrow());
+
 	recaps.cancel_request("work", "one");
+
 	assert!(*cancel.borrow());
 	assert!(recaps.start(copy(&source), "two", Default::default()).is_err());
+
 	recaps.finish("work", "one", None, Some(result()));
+
 	assert_eq!(
 		recaps.status(EntityId::new("work").expect("id"), Some(&source)).phase,
 		Phase::Cancelled
 	);
+
 	let _second = recaps.start(copy(&source), "two", Default::default()).expect("cleanup finished");
+
 	recaps.finish("work", "one", None, Some(result()));
+
 	assert_eq!(
 		recaps.status(EntityId::new("work").expect("id"), Some(&source)).phase,
 		Phase::Pending
 	);
+
 	recaps.finish("work", "two", None, Some(result()));
+
 	assert_eq!(
 		recaps.status(EntityId::new("work").expect("id"), Some(&source)).phase,
 		Phase::Ready
 	);
+
 	let mut changed = copy(&source);
+
 	changed.key.revision += 1;
+
 	let state = recaps.status(EntityId::new("work").expect("id"), Some(&changed));
+
 	assert_eq!(state.phase, Phase::Cancelled);
 	assert!(state.recap.is_none());
 	assert!(state.is_valid());
@@ -90,6 +108,7 @@ async fn temporary_events_are_private_and_new_user_input_invalidates_only_its_so
 		method: method.into(),
 		params: json!({"threadId":thread,"item":{"type":"userMessage"}}),
 	};
+
 	assert!(recaps.route(event("temporary", "turn/completed")).is_none());
 	assert!(routed.recv().await.is_some());
 	assert!(!*cancelled.borrow());
@@ -105,11 +124,16 @@ async fn restarting_the_transient_owner_does_not_restore_or_replay_a_recap() {
 	let recaps = Recaps::default();
 	let _cancel = recaps.start(copy(&source), "one", Default::default()).expect("request");
 	let mut other = copy(&source);
+
 	other.key.work = "other".into();
+
 	assert!(recaps.start(other, "two", Default::default()).is_err());
+
 	recaps.finish("work", "one", None, Some(result()));
+
 	let restarted = Recaps::default();
 	let state = restarted.status(EntityId::new("work").expect("id"), Some(&source));
+
 	assert_eq!(state.phase, Phase::Idle);
 	assert!(state.recap.is_none());
 	assert!(state.is_valid());
@@ -118,14 +142,18 @@ async fn restarting_the_transient_owner_does_not_restore_or_replay_a_recap() {
 #[tokio::test]
 async fn transport_observed_changes_hide_ready_results_before_service_event_delivery() {
 	use tokio::io::AsyncWriteExt as _;
+
 	let (source, mut remote, mut events) = source();
 	let recaps = Recaps::default();
 	let cancelled = recaps.start(copy(&source), "one", Default::default()).expect("request");
+
 	recaps.finish("work", "one", None, Some(result()));
 	remote.write_all(format!("{}\n",json!({"method":"turn/started","params":{"threadId":"native","turn":{"id":"new","status":"inProgress"}}})).as_bytes()).await.expect("native notification");
+
 	let _queued = events.recv().await.expect("transport observed event");
 	// The service has not routed this event. Its readonly query still rejects the stale result.
 	let status = recaps.status(EntityId::new("work").expect("id"), Some(&source));
+
 	assert_eq!(status.phase, Phase::Cancelled);
 	assert!(status.recap.is_none());
 	assert!(!*cancelled.borrow(), "query did not send a cancellation effect");
@@ -134,6 +162,7 @@ async fn transport_observed_changes_hide_ready_results_before_service_event_deli
 #[tokio::test]
 async fn voice_transcripts_retire_a_recap_before_service_routing_without_a_native_turn() {
 	use tokio::io::AsyncWriteExt as _;
+
 	for (method, role, field) in [
 		("thread/realtime/transcript/delta", "user", "delta"),
 		("thread/realtime/transcript/done", "user", "text"),
@@ -143,24 +172,31 @@ async fn voice_transcripts_retire_a_recap_before_service_routing_without_a_nativ
 		let recaps = Recaps::default();
 		let cancelled =
 			recaps.start(copy(&source), "voice-recap", Default::default()).expect("request");
+
 		recaps.finish("work", "voice-recap", None, Some(result()));
+
 		for (thread, text, expected) in [
 			("another-thread", "Spoken correction", Phase::Ready),
 			("native", "", Phase::Ready),
 			("native", "Spoken correction", Phase::Cancelled),
 		] {
 			let mut params = json!({"threadId":thread,"role":role});
+
 			params[field] = json!(text);
+
 			remote
 				.write_all(format!("{}\n", json!({"method":method,"params":params})).as_bytes())
 				.await
 				.expect("native voice notification");
+
 			let event = events.recv().await.expect("transport observed caption");
 			let state = recaps.status(EntityId::new("work").expect("work"), Some(&source));
+
 			assert_eq!(state.phase, expected, "{method} {role} {thread}");
 			assert!(!*cancelled.borrow(), "readonly status must not cancel native inference");
 			assert!(recaps.route(event).is_some(), "voice still reaches its normal owner");
 		}
+
 		assert!(*cancelled.borrow(), "service routing retires the exact recap");
 	}
 }

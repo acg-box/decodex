@@ -21,11 +21,13 @@ use futures_util::{
 	FutureExt as _, SinkExt as _, StreamExt as _,
 	stream::{SplitSink, SplitStream},
 };
+
 use tokio::{
 	sync::{mpsc, mpsc::Receiver, oneshot, watch},
 	task::{AbortHandle, Id as TokioTaskId, JoinError, JoinHandle, JoinSet},
 	time,
 };
+
 use tokio_tungstenite::{
 	WebSocketStream, accept_hdr_async_with_config,
 	tungstenite::{
@@ -38,7 +40,9 @@ use tokio_tungstenite::{
 };
 
 use crate::{Application, ApplicationEventPublication, ApplicationPublication};
+
 use decodex_core::ServerIdentity;
+
 use decodex_protocol::{
 	self, AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, CausationId, ClientCommandId,
 	ClientHello, ClientMessage, CommandEnvelope, CommandError, CommandOutcome, CommandReceipt,
@@ -49,36 +53,26 @@ use decodex_protocol::{
 	ServerMessage, ServerWelcome, SnapshotEnvelope, SnapshotItem, WireText,
 };
 
+type WebSocket = WebSocketStream<LocalTransportStream>;
+
+type OwnedFuture = Pin<Box<dyn Future<Output = OwnedTaskResult> + Send + 'static>>;
+
+type ApplicationShutdownFuture = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
+
+type RegistrationSnapshotResult = Result<Vec<SnapshotItem>, ()>;
+
+type RegistrationSnapshotFuture =
+	Pin<Box<dyn Future<Output = RegistrationSnapshotResult> + Send + 'static>>;
+
+type ActiveCommandResult = Result<Result<ApplicationPublication, CommandError>, ()>;
+
+type ActiveCommandFuture = Pin<Box<dyn Future<Output = ActiveCommandResult> + Send + 'static>>;
+
 const WS_PATH: &str = "/v1/ws";
 const PUBLICATION_INSTANCE_MINIMUM_VERSION: ProtocolVersion =
 	ProtocolVersion { major: 2, minor: 0 };
-
-const fn supports_publication_instance(version: ProtocolVersion) -> bool {
-	version.major == PUBLICATION_INSTANCE_MINIMUM_VERSION.major
-}
-
-type WebSocket = WebSocketStream<LocalTransportStream>;
-type OwnedFuture = Pin<Box<dyn Future<Output = OwnedTaskResult> + Send + 'static>>;
-
 const PRODUCT_MAXIMUM_SESSION_TASKS: usize = 64;
 const LISTENER_PUBLICATION_HEALTH_INTERVAL: Duration = Duration::from_millis(100);
-
-// Tungstenite fixes this callback's error type to the full HTTP response.
-#[allow(clippy::result_large_err)]
-fn validate_websocket_route(
-	request: &Request,
-	response: Response,
-) -> Result<Response, ErrorResponse> {
-	if request.uri().path() == WS_PATH && request.uri().query().is_none() {
-		return Ok(response);
-	}
-
-	let mut refusal = ErrorResponse::new(Some("WebSocket route is unavailable".to_owned()));
-
-	*refusal.status_mut() = StatusCode::NOT_FOUND;
-
-	Err(refusal)
-}
 
 /// Bounded transport and lifecycle settings. None of these enable remote binding.
 #[derive(Clone, Debug)]
@@ -102,7 +96,6 @@ pub struct ServerConfig {
 	/// Maximum concurrent admitted WebSocket tasks, including incomplete handshakes.
 	pub maximum_concurrent_sessions: usize,
 }
-
 impl Default for ServerConfig {
 	fn default() -> Self {
 		Self {
@@ -123,15 +116,6 @@ impl Default for ServerConfig {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct SpawnId(pub u64);
 
-/// Closed task kind for the one owned runtime task set.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum OwnedTaskKind {
-	/// One admitted WebSocket session, including handshake and queries.
-	Session,
-	/// One daemon-local service future under the established lifecycle authority.
-	Service,
-}
-
 /// Stable identity and kind of one owned task.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct OwnedTaskIdentity {
@@ -139,32 +123,6 @@ pub struct OwnedTaskIdentity {
 	pub spawn_id: SpawnId,
 	/// Closed owned task kind.
 	pub kind: OwnedTaskKind,
-}
-
-/// Deterministic primary termination class.
-///
-/// Rank from highest to lowest is cleanup refusal, endpoint refusal, owner
-/// integrity failure, child panic, unexpected child failure, forced task deadline,
-/// actor-command deadline, and requested shutdown. Task-class ties select the lowest stable
-/// spawn ID.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TerminationPrimary {
-	/// Exact requested shutdown completed without an abnormal fact.
-	RequestedShutdown,
-	/// The absolute deadline classified the lowest identified abort-safe task.
-	ForcedDeadline(OwnedTaskIdentity),
-	/// The absolute server deadline elapsed while one actor-owned application command was active.
-	ActorCommandDeadline,
-	/// An owned task or its local transport ended unexpectedly without a panic or deadline.
-	ChildFailure(OwnedTaskIdentity),
-	/// An owned task panicked.
-	ChildPanic(OwnedTaskIdentity),
-	/// Stable task accounting or identity became inconsistent.
-	OwnerIntegrity,
-	/// The published listener failed a point-in-time authority check.
-	EndpointRefusal(LocalTransportRefusal),
-	/// Exact cleanup refused to remove the retained publication.
-	CleanupRefusal(LocalTransportRefusal),
 }
 
 /// Bounded deterministic readback for one complete lifecycle.
@@ -205,7 +163,6 @@ pub struct TerminationReceipt {
 	/// Identity-checked cleanup refusal, if observed.
 	pub cleanup_refusal: Option<LocalTransportRefusal>,
 }
-
 impl TerminationReceipt {
 	/// Whether the receipt proves requested shutdown, complete harvesting, and exact cleanup.
 	pub const fn is_success(self) -> bool {
@@ -227,26 +184,11 @@ impl TerminationReceipt {
 	}
 }
 
-/// Actor-command settlement at the one absolute server deadline.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum ActorCommandDeadlineClass {
-	/// Shutdown began with no active actor-owned application command.
-	#[default]
-	NoActiveCommand,
-	/// The active command settled before the absolute server deadline.
-	SettledBeforeDeadline,
-	/// The deadline elapsed, then the command settled during application-owner shutdown.
-	DeadlineElapsedThenSettledDuringApplicationShutdown,
-	/// Application settlement and event EOF completed while the command remained unsettled.
-	ApplicationSettledWithCommandUnsettled,
-}
-
 /// A running same-UID local server and its cancellation-safe lifecycle handle.
 pub struct BoundServer {
 	shutdown_sender: Option<oneshot::Sender<()>>,
 	task: Option<JoinHandle<TerminationReceipt>>,
 }
-
 impl BoundServer {
 	/// Request shutdown and wait for complete owned-task and cleanup readback.
 	pub async fn shutdown(&mut self) -> Result<TerminationReceipt, ServerError> {
@@ -267,6 +209,7 @@ impl BoundServer {
 		let joined = task.await;
 
 		self.task.take();
+
 		let receipt = joined.map_err(ServerError::LifecycleJoin)?;
 
 		if receipt.is_success() {
@@ -292,7 +235,6 @@ where
 {
 	inner: Arc<ServerInner<A>>,
 }
-
 impl<A> ProtocolServer<A>
 where
 	A: Application,
@@ -408,6 +350,7 @@ where
 				return SessionTaskCompletion::unregistered(connection_id);
 			},
 		};
+
 		if let Some(expected) = hello.expected_server_id.as_ref()
 			&& expected != &self.inner.server_id
 		{
@@ -534,6 +477,7 @@ where
 		actor_sender: &mpsc::Sender<PublicationRequest>,
 	) -> Result<Vec<ServerMessage>, Refusal> {
 		let (reply, result) = oneshot::channel();
+
 		actor_sender
 			.send(PublicationRequest::Register {
 				connection_id,
@@ -547,6 +491,7 @@ where
 			.map_err(|_| Refusal::ProtocolViolation {
 				message: bounded_text("server publication owner is unavailable"),
 			})?;
+
 		result.await.map_err(|_| Refusal::ProtocolViolation {
 			message: bounded_text("server publication owner is unavailable"),
 		})?
@@ -773,6 +718,7 @@ where
 				}
 			},
 		}
+
 		Ok(())
 	}
 
@@ -802,6 +748,7 @@ where
 		version: ProtocolVersion,
 	) -> bool {
 		let status = self.inner.application.account_login(&request.request).await;
+
 		if status.validate().is_err() {
 			return self
 				.enqueue(
@@ -814,12 +761,14 @@ where
 				)
 				.await;
 		}
+
 		let result = AccountLoginResponseEnvelope {
 			version,
 			server_id: self.inner.server_id.clone(),
 			request_id: request.request_id,
 			status,
 		};
+
 		self.enqueue(actor_sender, connection_id, ServerMessage::AccountLogin(result)).await
 	}
 
@@ -863,6 +812,7 @@ where
 		message: ServerMessage,
 	) -> bool {
 		let (reply, result) = oneshot::channel();
+
 		if actor_sender
 			.send(PublicationRequest::Enqueue { connection_id, message: Box::new(message), reply })
 			.await
@@ -870,6 +820,7 @@ where
 		{
 			return false;
 		}
+
 		result.await.unwrap_or(false)
 	}
 
@@ -953,7 +904,6 @@ where
 	frozen_reader: Option<SessionReaderCompletion>,
 	locally_written: SessionOrdinalProgress,
 }
-
 impl<A> RegisteredSessionIo<A>
 where
 	A: Application,
@@ -1013,6 +963,7 @@ where
 			&actor_sender,
 			stop,
 		);
+
 		tokio::pin!(reader);
 
 		loop {
@@ -1034,7 +985,6 @@ where
 				)
 				.await;
 			};
-
 			let encoded = match Self::prepare_outbound_message(
 				transport,
 				&mut socket_writer,
@@ -1060,7 +1010,9 @@ where
 			}
 
 			let flush = time::timeout(transport.write_timeout, socket_writer.flush());
+
 			tokio::pin!(flush);
+
 			let flush_result = if frozen_reader.is_some() {
 				flush.await
 			} else {
@@ -1070,10 +1022,13 @@ where
 					result = &mut flush => result,
 					completion = &mut reader => {
 						let peer_close = completion.is_peer_close();
+
 						frozen_reader = Some(completion);
+
 						outbound_receiver.close();
 
 						let result = flush.await;
+
 						if peer_close && matches!(&result, Ok(Ok(()))) {
 							peer_close_reply_flushed = true;
 						}
@@ -1082,6 +1037,7 @@ where
 					},
 				}
 			};
+
 			if frozen_reader.is_some_and(SessionReaderCompletion::is_peer_close)
 				&& matches!(
 					&flush_result,
@@ -1099,6 +1055,7 @@ where
 					SessionTransportFailure::MessageWrite,
 				);
 			}
+
 			locally_written = SessionOrdinalProgress::Through(item.ordinal);
 		}
 	}
@@ -1115,14 +1072,17 @@ where
 			if frozen_reader.is_some() {
 				return outbound_receiver.recv().await;
 			}
+
 			match outbound_receiver.try_recv() {
 				Ok(item) => return Some(item),
 				Err(mpsc::error::TryRecvError::Disconnected) => return None,
 				Err(mpsc::error::TryRecvError::Empty) => {},
 			}
+
 			tokio::select! {
 				completion = reader.as_mut() => {
 					*frozen_reader = Some(completion);
+
 					outbound_receiver.close();
 				},
 				item = outbound_receiver.recv() => return item,
@@ -1166,6 +1126,7 @@ where
 				SessionTransportFailure::CloseWrite,
 			)
 		};
+
 		SessionTaskCompletion::registered(connection_id, seal_reason, transport)
 	}
 
@@ -1189,6 +1150,7 @@ where
 								.unwrap_or(SessionSealReason::WriterFailed),
 						),
 					);
+
 					if seal_reason == SessionSealReason::OutboundFull {
 						let _ = Self::send_close(
 							socket_writer,
@@ -1213,6 +1175,7 @@ where
 						SessionTransportDisposition::failed(locally_written, cause),
 					));
 				}
+
 				Err(Self::transport_failure(
 					transport.connection_id,
 					seal_receiver,
@@ -1230,9 +1193,11 @@ where
 	) -> Result<String, SessionTransportFailure> {
 		let encoded = decodex_protocol::encode_server_message(message)
 			.map_err(|_| SessionTransportFailure::MessageEncoding)?;
+
 		if encoded.len() > maximum_message_bytes {
 			return Err(SessionTransportFailure::MessageTooLarge);
 		}
+
 		Ok(encoded)
 	}
 
@@ -1253,6 +1218,7 @@ where
 					return Err((cause, seal_reason));
 				},
 			};
+
 			if encoded.len() > self.server.inner.config.maximum_message_bytes {
 				let seal_reason = Self::finalize_seal_reason(
 					&mut self.context.seal_receiver,
@@ -1273,11 +1239,13 @@ where
 
 				return Err((SessionTransportFailure::InitialPrefixTooLarge, seal_reason));
 			}
+
 			let result = time::timeout(
 				self.server.inner.config.write_timeout,
 				self.socket_writer.send(Message::Text(encoded.into())),
 			)
 			.await;
+
 			if !matches!(result, Ok(Ok(()))) {
 				let seal_reason = Self::finalize_seal_reason(
 					&mut self.context.seal_receiver,
@@ -1351,11 +1319,6 @@ where
 	}
 }
 
-type ApplicationShutdownFuture = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
-type RegistrationSnapshotResult = Result<Vec<SnapshotItem>, ()>;
-type RegistrationSnapshotFuture =
-	Pin<Box<dyn Future<Output = RegistrationSnapshotResult> + Send + 'static>>;
-
 struct OwnerLoop<A>
 where
 	A: Application,
@@ -1382,102 +1345,6 @@ where
 	application_settled: bool,
 	command_shutdown: CommandShutdownState,
 }
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum OwnerPhase {
-	Accepting,
-	DrainingApplication,
-	DrainingEgress,
-	Closed,
-}
-
-struct OwnerDeadline {
-	at: time::Instant,
-	sleep: Pin<Box<time::Sleep>>,
-	state: OwnerDeadlineState,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum OwnerDeadlineState {
-	Pending,
-	Elapsed,
-}
-
-enum ActiveActorOperation {
-	Command(Box<ActiveCommand>),
-	RegistrationSnapshot(PendingRegistrationSnapshot),
-}
-
-struct PendingRegistrationSnapshot {
-	connection_id: u64,
-	sender: mpsc::Sender<OutboundItem>,
-	seal_sender: oneshot::Sender<SessionSealReason>,
-	hello: ClientHello,
-	version: ProtocolVersion,
-	base_cursor: Cursor,
-	reply: oneshot::Sender<Result<Vec<ServerMessage>, Refusal>>,
-	future: RegistrationSnapshotFuture,
-}
-
-enum ActiveActorOperationCompletion {
-	Command(Box<ActiveCommandResult>),
-	RegistrationSnapshot(RegistrationSnapshotResult),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum OwnerDirective {
-	Continue,
-	BeginStopping(StopCause),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum StopCause {
-	RequestedShutdown,
-	EndpointRefusal(LocalTransportRefusal),
-	ActorIngressClosed,
-	UnexpectedEventEof,
-	OwnerIntegrity,
-	ChildPanic(OwnedTaskIdentity),
-	ChildFailure(OwnedTaskIdentity),
-	TransportFailed(OwnedTaskIdentity),
-	DeadlineClassification(OwnedTaskIdentity),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CommandShutdownState {
-	NoCommand,
-	Retained,
-	DeadlineElapsed,
-	IntegrityRecorded,
-	IntegrityRecordedAfterDeadline,
-	SettledBeforeDeadline,
-	SettledAfterDeadline,
-}
-
-enum AcceptingWake {
-	RequestedShutdown,
-	ListenerHealth,
-	OwnedTask(Option<Result<(TokioTaskId, OwnedTaskCompletion), JoinError>>),
-	Operation(ActiveActorOperationCompletion),
-	Ordinary(Box<AcceptingOrdinaryWake>),
-}
-
-enum AcceptingOrdinaryWake {
-	Accepted(Result<LocalTransportStream, LocalTransportRefusal>),
-	Request(Option<PublicationRequest>),
-	ApplicationEvent(Option<ApplicationEventPublication>),
-}
-
-enum StoppingWake {
-	Deadline,
-	OwnedTask(Option<Result<(TokioTaskId, OwnedTaskCompletion), JoinError>>),
-	Operation(ActiveActorOperationCompletion),
-	ApplicationSettled,
-	Request(Option<PublicationRequest>),
-	FlushDeferred,
-	ApplicationEvent(Option<ApplicationEventPublication>),
-}
-
 impl<A> OwnerLoop<A>
 where
 	A: Application,
@@ -1557,7 +1424,9 @@ where
 		let event_eof = !server.inner.application.has_publication_source();
 		let services = server.inner.application.daemon_service_tasks(service_stop_receiver);
 		let mut listener_health = time::interval(LISTENER_PUBLICATION_HEALTH_INTERVAL);
+
 		listener_health.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
+
 		let mut owner = Self {
 			server,
 			listener,
@@ -1588,9 +1457,11 @@ where
 
 				OwnedTaskResult::Service
 			});
+
 			if owner.tasks.spawn(OwnedTaskKind::Service, None, future, &mut owner.receipt).is_err()
 			{
 				owner.begin_stopping(StopCause::OwnerIntegrity);
+
 				break;
 			}
 		}
@@ -1603,15 +1474,20 @@ where
 			match self.phase {
 				OwnerPhase::Accepting => {
 					let directive = self.wait_accepting().await;
+
 					self.apply_directive(directive);
 				},
 				OwnerPhase::DrainingApplication | OwnerPhase::DrainingEgress => {
 					self.enforce_deadline();
+
 					let directive = self.command_shutdown_integrity();
+
 					self.apply_directive(directive);
 					self.advance_stopping_phase();
+
 					if self.phase != OwnerPhase::Closed {
 						let directive = self.wait_stopping().await;
+
 						self.apply_directive(directive);
 					}
 				},
@@ -1630,11 +1506,13 @@ where
 
 	fn begin_stopping(&mut self, cause: StopCause) {
 		self.record_stop_cause(cause);
+
 		if self.phase != OwnerPhase::Accepting {
 			return;
 		}
 
 		self.phase = OwnerPhase::DrainingApplication;
+
 		let started = time::Instant::now();
 		let at =
 			started.checked_add(self.server.inner.config.shutdown_timeout).unwrap_or_else(|| {
@@ -1642,6 +1520,7 @@ where
 
 				started
 			});
+
 		self.deadline = Some(OwnerDeadline {
 			at,
 			sleep: Box::pin(time::sleep_until(at)),
@@ -1649,9 +1528,13 @@ where
 		});
 
 		let _ = self.stop_sender.send(true);
+
 		self.actor_receiver.close();
+
 		drop(self.actor_sender.take());
+
 		self.server.inner.application.begin_shutdown();
+
 		let _ = self.service_stop_sender.send(true);
 
 		if let Some(operation) = self.operation.take() {
@@ -1662,6 +1545,7 @@ where
 				},
 				ActiveActorOperation::RegistrationSnapshot(snapshot) => {
 					let _ = snapshot.reply.send(Err(Self::shutdown_refusal()));
+
 					self.command_shutdown = CommandShutdownState::NoCommand;
 				},
 			}
@@ -1670,9 +1554,11 @@ where
 		}
 
 		let application = Arc::clone(&self.server.inner);
+
 		self.application_shutdown = Some(Box::pin(async move {
 			application.application.wait_for_shutdown().await;
 		}));
+
 		self.drain_ingress();
 	}
 
@@ -1680,12 +1566,14 @@ where
 		while let Some(request) = self.deferred_requests.pop_front() {
 			self.reject_during_shutdown(request);
 		}
+
 		loop {
 			match self.actor_receiver.try_recv() {
 				Ok(request) => self.reject_during_shutdown(request),
 				Err(mpsc::error::TryRecvError::Empty) => return,
 				Err(mpsc::error::TryRecvError::Disconnected) => {
 					self.ingress_drained = true;
+
 					return;
 				},
 			}
@@ -1696,9 +1584,11 @@ where
 		if self.phase == OwnerPhase::Accepting {
 			return;
 		}
+
 		let elapsed = self.deadline.as_ref().is_some_and(|deadline| {
 			deadline.state == OwnerDeadlineState::Pending && time::Instant::now() >= deadline.at
 		});
+
 		if elapsed {
 			self.handle_deadline();
 		}
@@ -1707,15 +1597,19 @@ where
 	fn handle_deadline(&mut self) {
 		let Some(deadline) = self.deadline.as_mut() else {
 			self.receipt.record_owner_integrity();
+
 			return;
 		};
+
 		if deadline.state == OwnerDeadlineState::Elapsed {
 			return;
 		}
+
 		deadline.state = OwnerDeadlineState::Elapsed;
 
 		self.tasks.classify_session_deadlines(&mut self.state);
 		self.tasks.abort_classified_sessions();
+
 		self.command_shutdown = match self.command_shutdown {
 			CommandShutdownState::Retained => CommandShutdownState::DeadlineElapsed,
 			CommandShutdownState::IntegrityRecorded =>
@@ -1752,17 +1646,20 @@ where
 		if self.phase == OwnerPhase::Accepting {
 			return OwnerDirective::Continue;
 		}
+
 		match self.command_shutdown {
 			CommandShutdownState::Retained => {
 				self.command_shutdown = CommandShutdownState::SettledBeforeDeadline;
 				self.receipt.actor_command_deadline =
 					ActorCommandDeadlineClass::SettledBeforeDeadline;
+
 				OwnerDirective::Continue
 			},
 			CommandShutdownState::DeadlineElapsed => {
 				self.command_shutdown = CommandShutdownState::SettledAfterDeadline;
 				self.receipt.actor_command_deadline =
 					ActorCommandDeadlineClass::DeadlineElapsedThenSettledDuringApplicationShutdown;
+
 				OwnerDirective::Continue
 			},
 			CommandShutdownState::IntegrityRecorded
@@ -1782,9 +1679,9 @@ where
 		{
 			self.enforce_deadline();
 			self.state.seal_all(SessionSealReason::ServerDrained);
+
 			self.phase = OwnerPhase::DrainingEgress;
 		}
-
 		if self.phase == OwnerPhase::DrainingEgress
 			&& self.operation.is_none()
 			&& self.deferred_events.is_empty()
@@ -1804,6 +1701,7 @@ where
 		{
 			return self.handle_request(request);
 		}
+
 		let may_read_requests =
 			self.deferred_requests.len() < self.server.inner.config.outbound_queue_capacity;
 		let operation_active = self.operation.is_some();
@@ -1831,7 +1729,9 @@ where
 					_ = std::future::pending::<()>() => unreachable!(),
 				}
 			};
+
 			tokio::pin!(ordinary);
+
 			tokio::select! {
 				biased;
 
@@ -1904,6 +1804,7 @@ where
 		match wake {
 			StoppingWake::Deadline => {
 				self.handle_deadline();
+
 				OwnerDirective::Continue
 			},
 			StoppingWake::OwnedTask(Some(joined)) => self.harvest_task(joined),
@@ -1912,15 +1813,19 @@ where
 			StoppingWake::Operation(completion) => self.finish_operation(completion),
 			StoppingWake::ApplicationSettled => {
 				self.application_settled = true;
+
 				drop(self.application_shutdown.take());
+
 				OwnerDirective::Continue
 			},
 			StoppingWake::Request(Some(request)) => {
 				self.reject_during_shutdown(request);
+
 				OwnerDirective::Continue
 			},
 			StoppingWake::Request(None) => {
 				self.ingress_drained = true;
+
 				OwnerDirective::Continue
 			},
 			StoppingWake::FlushDeferred => self.flush_deferred_events(),
@@ -1961,6 +1866,7 @@ where
 							.await,
 					)
 				});
+
 				if self
 					.tasks
 					.spawn(OwnedTaskKind::Session, Some(connection_id), session, &mut self.receipt)
@@ -1986,16 +1892,19 @@ where
 				if self.deferred_events.len() >= A::EVENT_CAPACITY {
 					return OwnerDirective::BeginStopping(StopCause::OwnerIntegrity);
 				}
+
 				self.deferred_events.push_back(publication);
 
 				OwnerDirective::Continue
 			},
 			Some(publication) => {
 				self.enforce_deadline();
+
 				self.publish_event_locked(decodex_protocol::CURRENT_VERSION, publication)
 			},
 			None => {
 				self.event_eof = true;
+
 				if self.phase == OwnerPhase::Accepting {
 					OwnerDirective::BeginStopping(StopCause::UnexpectedEventEof)
 				} else {
@@ -2032,6 +1941,7 @@ where
 		let Some(next_cursor) = self.state.cursor.0.checked_add(1) else {
 			return OwnerDirective::BeginStopping(StopCause::OwnerIntegrity);
 		};
+
 		self.state.cursor.0 = next_cursor;
 
 		let event = EventEnvelope {
@@ -2047,6 +1957,7 @@ where
 		};
 
 		self.state.events.push_back(event.clone());
+
 		while self.state.events.len() > self.server.inner.config.replay_capacity {
 			self.state.events.pop_front();
 		}
@@ -2063,12 +1974,15 @@ where
 			})
 			.collect::<Vec<_>>();
 		let mut directive = OwnerDirective::Continue;
+
 		for (connection_id, version) in subscribers {
 			let mut event = event.clone();
 
 			event.version = version;
+
 			let acceptance =
 				accept_for_session(&mut self.state, connection_id, ServerMessage::Event(event));
+
 			directive =
 				Self::combine_directives(directive, Self::directive_for_acceptance(acceptance));
 		}
@@ -2084,12 +1998,14 @@ where
 		}
 
 		let independent_snapshot = self.server.inner.application.command_independent_snapshot();
+
 		if self.operation.is_some()
 			&& (matches!(&request, PublicationRequest::Command { .. })
 				|| (matches!(&request, PublicationRequest::Register { .. })
 					&& independent_snapshot.is_none()))
 		{
 			self.deferred_requests.push_back(request);
+
 			return OwnerDirective::Continue;
 		}
 
@@ -2109,6 +2025,7 @@ where
 
 					return OwnerDirective::BeginStopping(StopCause::OwnerIntegrity);
 				}
+
 				let base_cursor = self.state.cursor;
 				let application = Arc::clone(&self.server.inner);
 				let future = Box::pin(async move {
@@ -2127,9 +2044,11 @@ where
 					reply,
 					future,
 				};
+
 				if let Some(items) = independent_snapshot {
 					return self.finish_registration_snapshot(pending, Ok(items));
 				}
+
 				self.operation = Some(ActiveActorOperation::RegistrationSnapshot(pending));
 
 				OwnerDirective::Continue
@@ -2158,6 +2077,7 @@ where
 			serde_json::to_vec(&(version, &command.expected_revision, &command.payload))
 				.expect("typed command serialization cannot fail");
 		let receipt_key = (version, command.idempotency_key.clone());
+
 		if let Some(stored) = self.state.receipts.get(&receipt_key).cloned() {
 			let command_receipt = CommandReceipt {
 				version,
@@ -2168,14 +2088,17 @@ where
 				original_client_command_id: stored.original_client_command_id,
 			};
 			let mut result = stored.result;
+
 			result.version = version;
 			result.client_command_id = command.client_command_id.clone();
+
 			if stored.fingerprint != fingerprint {
 				result.outcome = CommandOutcome::Rejected;
 				result.entity_revision = None;
 				result.payload = None;
 				result.error = Some(CommandError::IdempotencyConflict);
 			}
+
 			let receipt_acceptance = accept_for_session(
 				&mut self.state,
 				connection_id,
@@ -2202,6 +2125,7 @@ where
 			.keys()
 			.filter(|(stored_version, _)| stored_version == &version)
 			.count();
+
 		if version_receipt_count >= self.server.inner.config.receipt_capacity {
 			let command_receipt = CommandReceipt {
 				version,
@@ -2245,6 +2169,7 @@ where
 
 		self.receipt.actor_commands_admitted =
 			self.receipt.actor_commands_admitted.saturating_add(1);
+
 		let application = Arc::clone(&self.server.inner);
 		let execution_command = command.clone();
 		let future = Box::pin(async move {
@@ -2253,6 +2178,7 @@ where
 				.await
 				.map_err(|_| ())
 		});
+
 		self.operation = Some(ActiveActorOperation::Command(Box::new(ActiveCommand {
 			connection_id,
 			command,
@@ -2269,6 +2195,7 @@ where
 		let Some(operation) = self.operation.take() else {
 			return OwnerDirective::BeginStopping(StopCause::OwnerIntegrity);
 		};
+
 		match operation {
 			ActiveActorOperation::Command(command) => match completion {
 				ActiveActorOperationCompletion::Command(execution) =>
@@ -2301,6 +2228,7 @@ where
 
 			return OwnerDirective::BeginStopping(StopCause::OwnerIntegrity);
 		}
+
 		let snapshot_items = match result {
 			Ok(items) => items,
 			Err(()) => {
@@ -2311,6 +2239,7 @@ where
 				return OwnerDirective::BeginStopping(StopCause::OwnerIntegrity);
 			},
 		};
+
 		if snapshot_items.len() > self.server.inner.config.maximum_snapshot_items {
 			let _ = snapshot.reply.send(Err(Refusal::ProtocolViolation {
 				message: bounded_text("application snapshot exceeds the bounded item limit"),
@@ -2337,6 +2266,7 @@ where
 			snapshot.version,
 			snapshot_items,
 		);
+
 		messages.insert(
 			0,
 			ServerMessage::Welcome(ServerWelcome {
@@ -2353,11 +2283,11 @@ where
 			snapshot.connection_id,
 			Subscriber::new(snapshot.sender, snapshot.seal_sender, snapshot.version),
 		);
+
 		if snapshot.reply.send(Ok(messages)).is_err() {
 			self.state
 				.seal_session(snapshot.connection_id, SessionSealReason::RegistrationAbandoned);
 		}
-
 		if self.operation.is_some() {
 			OwnerDirective::Continue
 		} else {
@@ -2371,10 +2301,14 @@ where
 		execution: ActiveCommandResult,
 	) -> OwnerDirective {
 		self.receipt.actor_commands_settled = self.receipt.actor_commands_settled.saturating_add(1);
+
 		let mut directive = self.mark_command_settled();
+
 		self.enforce_deadline();
+
 		let Ok(execution) = execution else {
 			let _ = active.reply.send(false);
+
 			directive = Self::combine_directives(
 				directive,
 				OwnerDirective::BeginStopping(StopCause::OwnerIntegrity),
@@ -2382,7 +2316,6 @@ where
 
 			return directive;
 		};
-
 		let correlation =
 			(active.command.correlation_id.clone(), active.command.causation_id.clone());
 		let receipt_key = (active.version, active.command.idempotency_key.clone());
@@ -2392,6 +2325,7 @@ where
 			active.version,
 			execution,
 		);
+
 		if result.outcome != CommandOutcome::AcceptanceUnknown
 			&& !result.payload.as_ref().is_some_and(ResultPayload::is_evolving_receipt)
 		{
@@ -2404,6 +2338,7 @@ where
 				},
 			);
 		}
+
 		let command_receipt = CommandReceipt {
 			version: active.version,
 			server_id: self.server.inner.server_id.clone(),
@@ -2423,18 +2358,25 @@ where
 			ServerMessage::CommandResult(result),
 		);
 		let delivered = receipt_acceptance.is_accepted() && result_acceptance.is_accepted();
+
 		directive =
 			Self::combine_directives(directive, Self::directive_for_acceptance(receipt_acceptance));
 		directive =
 			Self::combine_directives(directive, Self::directive_for_acceptance(result_acceptance));
+
 		if let Some(publication) = publication.filter(ApplicationPublication::publishes_event) {
 			self.enforce_deadline();
+
 			let publication_directive =
 				self.publish_locked(active.version, correlation, publication);
+
 			directive = Self::combine_directives(directive, publication_directive);
 		}
+
 		let flush_directive = self.flush_deferred_events();
+
 		directive = Self::combine_directives(directive, flush_directive);
+
 		let delivered = delivered && self.state.subscribers.contains_key(&active.connection_id);
 		let _ = active.reply.send(delivered);
 
@@ -2445,11 +2387,15 @@ where
 		if self.operation.is_some() || self.deferred_events.is_empty() {
 			return OwnerDirective::Continue;
 		}
+
 		self.enforce_deadline();
+
 		let mut directive = OwnerDirective::Continue;
+
 		while let Some(publication) = self.deferred_events.pop_front() {
 			let publication_directive =
 				self.publish_event_locked(decodex_protocol::CURRENT_VERSION, publication);
+
 			directive = Self::combine_directives(directive, publication_directive);
 		}
 
@@ -2470,15 +2416,18 @@ where
 
 					return OwnerDirective::BeginStopping(StopCause::OwnerIntegrity);
 				};
+
 				if record.identity != completion_identity {
 					if let Some(connection_id) = record.connection_id {
 						self.state
 							.resolve_failed_session(connection_id, record.deadline_classified);
 					}
+
 					self.receipt.record_failed_task(Some(record.identity));
 
 					return OwnerDirective::BeginStopping(StopCause::OwnerIntegrity);
 				}
+
 				match (record.identity.kind, completion.result) {
 					(OwnedTaskKind::Service, OwnedTaskResult::Service) => {
 						if self.phase == OwnerPhase::Accepting {
@@ -2497,6 +2446,7 @@ where
 						if record.connection_id == Some(completion.connection_id) =>
 					{
 						let connection_id = completion.connection_id;
+
 						match self
 							.state
 							.reconcile_session_completion(completion, record.deadline_classified)
@@ -2538,6 +2488,7 @@ where
 							self.state
 								.resolve_failed_session(connection_id, record.deadline_classified);
 						}
+
 						self.receipt.record_failed_task(Some(completion_identity));
 
 						OwnerDirective::BeginStopping(StopCause::OwnerIntegrity)
@@ -2552,6 +2503,7 @@ where
 				};
 				let identity = record.identity;
 				let mut deadline_cancel = false;
+
 				if let Some(connection_id) = record.connection_id {
 					deadline_cancel = error.is_cancelled()
 						&& record.deadline_classified
@@ -2559,6 +2511,7 @@ where
 							self.state.reconcile_deadline_cancel(connection_id),
 							SessionCompletionClassification::Deadline
 						);
+
 					if !deadline_cancel {
 						self.state
 							.resolve_failed_session(connection_id, record.deadline_classified);
@@ -2619,7 +2572,9 @@ where
 
 	fn finish(mut self) -> TerminationReceipt {
 		debug_assert_eq!(self.phase, OwnerPhase::Closed);
+
 		self.finish_task_accounting();
+
 		let Self {
 			server,
 			listener,
@@ -2643,6 +2598,7 @@ where
 			application_settled: _,
 			command_shutdown: _,
 		} = self;
+
 		drop(operation);
 		drop(deferred_events);
 		drop(deferred_requests);
@@ -2661,14 +2617,29 @@ where
 		if let Err(refusal) = listener.cleanup() {
 			receipt.record_cleanup_refusal(refusal);
 		}
+
 		Self::ensure_termination_fact(&mut receipt);
 
 		receipt.finish()
 	}
 }
 
-type ActiveCommandResult = Result<Result<ApplicationPublication, CommandError>, ()>;
-type ActiveCommandFuture = Pin<Box<dyn Future<Output = ActiveCommandResult> + Send + 'static>>;
+struct OwnerDeadline {
+	at: time::Instant,
+	sleep: Pin<Box<time::Sleep>>,
+	state: OwnerDeadlineState,
+}
+
+struct PendingRegistrationSnapshot {
+	connection_id: u64,
+	sender: mpsc::Sender<OutboundItem>,
+	seal_sender: oneshot::Sender<SessionSealReason>,
+	hello: ClientHello,
+	version: ProtocolVersion,
+	base_cursor: Cursor,
+	reply: oneshot::Sender<Result<Vec<ServerMessage>, Refusal>>,
+	future: RegistrationSnapshotFuture,
+}
 
 struct ActiveCommand {
 	connection_id: u64,
@@ -2682,142 +2653,10 @@ struct ActiveCommand {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct SessionOrdinal(u64);
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-enum SessionOrdinalProgress {
-	Empty,
-	Through(SessionOrdinal),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SessionAcceptance {
-	Accepted(SessionOrdinal),
-	Unavailable,
-	Sealed(SessionSealReason),
-}
-
-impl SessionAcceptance {
-	fn is_accepted(self) -> bool {
-		match self {
-			Self::Accepted(_ordinal) => true,
-			Self::Unavailable | Self::Sealed(_) => false,
-		}
-	}
-}
-
-enum InitialHello {
-	Received(ClientHello),
-	Stopped,
-	Failed,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SessionReaderCompletion {
-	PeerClose,
-	Reason(SessionSealReason),
-}
-
-impl SessionReaderCompletion {
-	fn is_peer_close(self) -> bool {
-		matches!(self, Self::PeerClose)
-	}
-
-	fn requested_seal(self) -> SessionSealReason {
-		match self {
-			Self::PeerClose => SessionSealReason::PeerDisconnected,
-			Self::Reason(reason) => reason,
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SessionSealReason {
-	ActorUnavailable,
-	Deadline,
-	InitialPrefixFailed,
-	OrdinalExhausted,
-	OutboundClosed,
-	OutboundFull,
-	PeerDisconnected,
-	RegistrationAbandoned,
-	ServerDrained,
-	ServerShutdown,
-	TaskFailed,
-	WriterFailed,
-}
-
-impl SessionSealReason {
-	fn canonicalizes_outbound_closed(self) -> bool {
-		matches!(
-			self,
-			Self::ActorUnavailable
-				| Self::PeerDisconnected
-				| Self::ServerShutdown
-				| Self::WriterFailed
-		)
-	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SessionTransportFailure {
-	InitialPrefixEncoding,
-	InitialPrefixTooLarge,
-	InitialPrefixWrite,
-	MessageEncoding,
-	MessageTooLarge,
-	MessageWrite,
-	CloseWrite,
-}
-
-impl SessionTransportFailure {
-	fn is_initial_prefix(self) -> bool {
-		matches!(
-			self,
-			Self::InitialPrefixEncoding | Self::InitialPrefixTooLarge | Self::InitialPrefixWrite
-		)
-	}
-
-	fn is_encoding(self) -> bool {
-		matches!(self, Self::InitialPrefixEncoding | Self::MessageEncoding)
-	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SessionTransportDisposition {
-	// These variants prove local sink progress only. WebSocket writes do not prove peer receipt.
-	DrainedThrough(SessionOrdinalProgress),
-	TransportFailed { locally_written: SessionOrdinalProgress, cause: SessionTransportFailure },
-}
-
-impl SessionTransportDisposition {
-	fn drained(locally_written: SessionOrdinalProgress) -> Self {
-		Self::DrainedThrough(locally_written)
-	}
-
-	fn failed(locally_written: SessionOrdinalProgress, cause: SessionTransportFailure) -> Self {
-		Self::TransportFailed { locally_written, cause }
-	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SessionCompletionClassification {
-	Unregistered,
-	ExactDrained,
-	SessionLocal,
-	TransportFailed,
-	Deadline,
-	Invalid,
-}
-
 struct SessionTaskCompletion {
 	connection_id: u64,
 	registration: SessionRegistrationCompletion,
 }
-
-enum SessionRegistrationCompletion {
-	Unregistered,
-	Registered { seal_reason: SessionSealReason, transport: SessionTransportDisposition },
-}
-
 impl SessionTaskCompletion {
 	fn unregistered(connection_id: u64) -> Self {
 		Self { connection_id, registration: SessionRegistrationCompletion::Unregistered }
@@ -2835,52 +2674,6 @@ impl SessionTaskCompletion {
 	}
 }
 
-enum OwnedTaskResult {
-	Session(SessionTaskCompletion),
-	Service,
-}
-
-enum PublicationRequest {
-	Register {
-		connection_id: u64,
-		sender: mpsc::Sender<OutboundItem>,
-		seal_sender: oneshot::Sender<SessionSealReason>,
-		hello: ClientHello,
-		version: ProtocolVersion,
-		reply: oneshot::Sender<Result<Vec<ServerMessage>, Refusal>>,
-	},
-	Enqueue {
-		connection_id: u64,
-		message: Box<ServerMessage>,
-		reply: oneshot::Sender<bool>,
-	},
-	Command {
-		connection_id: u64,
-		command: CommandEnvelope,
-		version: ProtocolVersion,
-		reply: oneshot::Sender<bool>,
-	},
-}
-
-async fn poll_active_operation(
-	operation: &mut Option<ActiveActorOperation>,
-) -> ActiveActorOperationCompletion {
-	match operation.as_mut().expect("guarded active operation exists") {
-		ActiveActorOperation::Command(command) =>
-			ActiveActorOperationCompletion::Command(Box::new(command.future.as_mut().await)),
-		ActiveActorOperation::RegistrationSnapshot(snapshot) =>
-			ActiveActorOperationCompletion::RegistrationSnapshot(snapshot.future.as_mut().await),
-	}
-}
-
-async fn poll_owner_deadline(deadline: &mut Option<OwnerDeadline>) {
-	deadline.as_mut().expect("stopping owns one deadline").sleep.as_mut().await;
-}
-
-async fn poll_application_shutdown(shutdown: &mut Option<ApplicationShutdownFuture>) {
-	shutdown.as_mut().expect("application shutdown is active").as_mut().await;
-}
-
 #[derive(Default)]
 struct PublicationState {
 	cursor: Cursor,
@@ -2888,6 +2681,143 @@ struct PublicationState {
 	receipts: HashMap<(ProtocolVersion, IdempotencyKey), StoredCommand>,
 	subscribers: HashMap<u64, Subscriber>,
 	sealed_sessions: HashMap<u64, SealedSession>,
+}
+impl PublicationState {
+	fn contains_session(&self, connection_id: u64) -> bool {
+		self.subscribers.contains_key(&connection_id)
+			|| self.sealed_sessions.contains_key(&connection_id)
+	}
+
+	fn seal_session(&mut self, connection_id: u64, reason: SessionSealReason) {
+		if self.sealed_sessions.contains_key(&connection_id) {
+			return;
+		}
+
+		if let Some(subscriber) = self.subscribers.remove(&connection_id) {
+			let Subscriber { sender, seal_sender, accepted_through, .. } = subscriber;
+
+			self.sealed_sessions.insert(
+				connection_id,
+				SealedSession {
+					accepted_through,
+					reason,
+					deadline_classified: reason == SessionSealReason::Deadline,
+				},
+			);
+			// Publish the first-wins reason before FIFO closure wakes the session writer.
+			let _ = seal_sender.send(reason);
+
+			drop(sender);
+		}
+	}
+
+	fn seal_all(&mut self, reason: SessionSealReason) {
+		let connection_ids = self.subscribers.keys().copied().collect::<Vec<_>>();
+
+		for connection_id in connection_ids {
+			self.seal_session(connection_id, reason);
+		}
+	}
+
+	fn canonicalize_outbound_closed(&mut self, connection_id: u64, seal_reason: SessionSealReason) {
+		if !seal_reason.canonicalizes_outbound_closed() {
+			return;
+		}
+
+		let Some(sealed) = self.sealed_sessions.get_mut(&connection_id) else {
+			return;
+		};
+
+		if sealed.reason == SessionSealReason::OutboundClosed {
+			sealed.reason = seal_reason;
+		}
+	}
+
+	fn classify_deadline(&mut self) {
+		self.seal_all(SessionSealReason::Deadline);
+
+		for sealed in self.sealed_sessions.values_mut() {
+			sealed.deadline_classified = true;
+		}
+	}
+
+	fn reconcile_session_completion(
+		&mut self,
+		completion: SessionTaskCompletion,
+		deadline_classified: bool,
+	) -> SessionCompletionClassification {
+		match completion.registration {
+			SessionRegistrationCompletion::Unregistered => {
+				if self.contains_session(completion.connection_id) {
+					SessionCompletionClassification::Invalid
+				} else if deadline_classified {
+					SessionCompletionClassification::Deadline
+				} else {
+					SessionCompletionClassification::Unregistered
+				}
+			},
+			SessionRegistrationCompletion::Registered { seal_reason, transport } => {
+				if self.subscribers.contains_key(&completion.connection_id) {
+					self.seal_session(completion.connection_id, seal_reason);
+				}
+
+				self.canonicalize_outbound_closed(completion.connection_id, seal_reason);
+
+				let Some(sealed) = self.sealed_sessions.get(&completion.connection_id) else {
+					return SessionCompletionClassification::Invalid;
+				};
+
+				if sealed.deadline_classified != deadline_classified {
+					return SessionCompletionClassification::Invalid;
+				}
+
+				let classification = sealed.reconcile(transport);
+
+				if classification != SessionCompletionClassification::Invalid || deadline_classified
+				{
+					self.sealed_sessions.remove(&completion.connection_id);
+				}
+
+				classification
+			},
+		}
+	}
+
+	fn reconcile_deadline_cancel(&mut self, connection_id: u64) -> SessionCompletionClassification {
+		if self.subscribers.contains_key(&connection_id) {
+			return SessionCompletionClassification::Invalid;
+		}
+
+		match self.sealed_sessions.remove(&connection_id) {
+			Some(sealed) if sealed.deadline_classified => SessionCompletionClassification::Deadline,
+			Some(_) => SessionCompletionClassification::Invalid,
+			None => SessionCompletionClassification::Deadline,
+		}
+	}
+
+	fn seal_failed_session(&mut self, connection_id: u64) {
+		self.seal_session(connection_id, SessionSealReason::TaskFailed);
+	}
+
+	fn resolve_failed_session(&mut self, connection_id: u64, deadline_classified: bool) {
+		self.seal_failed_session(connection_id);
+
+		if deadline_classified {
+			if let Some(sealed) = self.sealed_sessions.get_mut(&connection_id) {
+				sealed.deadline_classified = true;
+			}
+
+			self.sealed_sessions.remove(&connection_id);
+		}
+	}
+
+	fn resolve_deadline_orphans(&mut self, mut task_owns_connection: impl FnMut(u64) -> bool) {
+		self.sealed_sessions.retain(|connection_id, sealed| {
+			debug_assert!(sealed.deadline_classified);
+
+			task_owns_connection(*connection_id)
+		});
+	}
 }
 
 struct Subscriber {
@@ -2897,7 +2827,6 @@ struct Subscriber {
 	next_ordinal: SessionOrdinal,
 	accepted_through: SessionOrdinalProgress,
 }
-
 impl Subscriber {
 	fn new(
 		sender: mpsc::Sender<OutboundItem>,
@@ -2924,7 +2853,6 @@ struct SealedSession {
 	reason: SessionSealReason,
 	deadline_classified: bool,
 }
-
 impl SealedSession {
 	fn reconcile(&self, transport: SessionTransportDisposition) -> SessionCompletionClassification {
 		let progress_matches = match transport {
@@ -2937,6 +2865,7 @@ impl SealedSession {
 			SessionTransportDisposition::TransportFailed { locally_written, .. } =>
 				locally_written <= self.accepted_through,
 		};
+
 		if !progress_matches {
 			return SessionCompletionClassification::Invalid;
 		}
@@ -2956,6 +2885,7 @@ impl SealedSession {
 			| (SessionSealReason::OutboundClosed, _) => false,
 			_ => true,
 		};
+
 		if !reason_matches {
 			return SessionCompletionClassification::Invalid;
 		}
@@ -2968,6 +2898,7 @@ impl SealedSession {
 		if self.deadline_classified {
 			return SessionCompletionClassification::Deadline;
 		}
+
 		match transport {
 			SessionTransportDisposition::DrainedThrough(_) => match self.reason {
 				SessionSealReason::ActorUnavailable =>
@@ -3002,129 +2933,6 @@ impl SealedSession {
 	}
 }
 
-impl PublicationState {
-	fn contains_session(&self, connection_id: u64) -> bool {
-		self.subscribers.contains_key(&connection_id)
-			|| self.sealed_sessions.contains_key(&connection_id)
-	}
-
-	fn seal_session(&mut self, connection_id: u64, reason: SessionSealReason) {
-		if self.sealed_sessions.contains_key(&connection_id) {
-			return;
-		}
-		if let Some(subscriber) = self.subscribers.remove(&connection_id) {
-			let Subscriber { sender, seal_sender, accepted_through, .. } = subscriber;
-			self.sealed_sessions.insert(
-				connection_id,
-				SealedSession {
-					accepted_through,
-					reason,
-					deadline_classified: reason == SessionSealReason::Deadline,
-				},
-			);
-			// Publish the first-wins reason before FIFO closure wakes the session writer.
-			let _ = seal_sender.send(reason);
-			drop(sender);
-		}
-	}
-
-	fn seal_all(&mut self, reason: SessionSealReason) {
-		let connection_ids = self.subscribers.keys().copied().collect::<Vec<_>>();
-		for connection_id in connection_ids {
-			self.seal_session(connection_id, reason);
-		}
-	}
-
-	fn canonicalize_outbound_closed(&mut self, connection_id: u64, seal_reason: SessionSealReason) {
-		if !seal_reason.canonicalizes_outbound_closed() {
-			return;
-		}
-		let Some(sealed) = self.sealed_sessions.get_mut(&connection_id) else {
-			return;
-		};
-		if sealed.reason == SessionSealReason::OutboundClosed {
-			sealed.reason = seal_reason;
-		}
-	}
-
-	fn classify_deadline(&mut self) {
-		self.seal_all(SessionSealReason::Deadline);
-		for sealed in self.sealed_sessions.values_mut() {
-			sealed.deadline_classified = true;
-		}
-	}
-
-	fn reconcile_session_completion(
-		&mut self,
-		completion: SessionTaskCompletion,
-		deadline_classified: bool,
-	) -> SessionCompletionClassification {
-		match completion.registration {
-			SessionRegistrationCompletion::Unregistered => {
-				if self.contains_session(completion.connection_id) {
-					SessionCompletionClassification::Invalid
-				} else if deadline_classified {
-					SessionCompletionClassification::Deadline
-				} else {
-					SessionCompletionClassification::Unregistered
-				}
-			},
-			SessionRegistrationCompletion::Registered { seal_reason, transport } => {
-				if self.subscribers.contains_key(&completion.connection_id) {
-					self.seal_session(completion.connection_id, seal_reason);
-				}
-				self.canonicalize_outbound_closed(completion.connection_id, seal_reason);
-				let Some(sealed) = self.sealed_sessions.get(&completion.connection_id) else {
-					return SessionCompletionClassification::Invalid;
-				};
-				if sealed.deadline_classified != deadline_classified {
-					return SessionCompletionClassification::Invalid;
-				}
-				let classification = sealed.reconcile(transport);
-				if classification != SessionCompletionClassification::Invalid || deadline_classified
-				{
-					self.sealed_sessions.remove(&completion.connection_id);
-				}
-
-				classification
-			},
-		}
-	}
-
-	fn reconcile_deadline_cancel(&mut self, connection_id: u64) -> SessionCompletionClassification {
-		if self.subscribers.contains_key(&connection_id) {
-			return SessionCompletionClassification::Invalid;
-		}
-		match self.sealed_sessions.remove(&connection_id) {
-			Some(sealed) if sealed.deadline_classified => SessionCompletionClassification::Deadline,
-			Some(_) => SessionCompletionClassification::Invalid,
-			None => SessionCompletionClassification::Deadline,
-		}
-	}
-
-	fn seal_failed_session(&mut self, connection_id: u64) {
-		self.seal_session(connection_id, SessionSealReason::TaskFailed);
-	}
-
-	fn resolve_failed_session(&mut self, connection_id: u64, deadline_classified: bool) {
-		self.seal_failed_session(connection_id);
-		if deadline_classified {
-			if let Some(sealed) = self.sealed_sessions.get_mut(&connection_id) {
-				sealed.deadline_classified = true;
-			}
-			self.sealed_sessions.remove(&connection_id);
-		}
-	}
-
-	fn resolve_deadline_orphans(&mut self, mut task_owns_connection: impl FnMut(u64) -> bool) {
-		self.sealed_sessions.retain(|connection_id, sealed| {
-			debug_assert!(sealed.deadline_classified);
-
-			task_owns_connection(*connection_id)
-		});
-	}
-}
-
 #[derive(Clone)]
 struct StoredCommand {
 	fingerprint: Vec<u8>,
@@ -3150,7 +2958,6 @@ struct OwnedTasks {
 	next_spawn_id: u64,
 	active_sessions: usize,
 }
-
 impl OwnedTasks {
 	fn new() -> Self {
 		Self {
@@ -3171,8 +2978,10 @@ impl OwnedTasks {
 		if (kind == OwnedTaskKind::Session) != connection_id.is_some() {
 			return Err(());
 		}
+
 		let next = self.next_spawn_id.checked_add(1).ok_or(())?;
 		let identity = OwnedTaskIdentity { spawn_id: SpawnId(self.next_spawn_id), kind };
+
 		self.next_spawn_id = next;
 
 		let abort_handle = self.set.spawn(async move {
@@ -3190,6 +2999,7 @@ impl OwnedTasks {
 		}
 
 		receipt.record_spawn(kind);
+
 		if kind == OwnedTaskKind::Session {
 			self.active_sessions = self.active_sessions.checked_add(1).ok_or(())?;
 		}
@@ -3203,6 +3013,7 @@ impl OwnedTasks {
 
 	fn take_record(&mut self, task_id: TokioTaskId) -> Option<OwnedTaskRecord> {
 		let record = self.identities.remove(&task_id)?;
+
 		if record.identity.kind == OwnedTaskKind::Session {
 			self.active_sessions = self.active_sessions.checked_sub(1)?;
 		}
@@ -3212,12 +3023,15 @@ impl OwnedTasks {
 
 	fn classify_session_deadlines(&mut self, state: &mut PublicationState) {
 		state.classify_deadline();
+
 		for record in self.identities.values_mut() {
 			if record.identity.kind == OwnedTaskKind::Session {
 				record.deadline_classified = true;
 			}
 		}
+
 		let identities = &self.identities;
+
 		state.resolve_deadline_orphans(|connection_id| {
 			identities.values().any(|record| record.connection_id == Some(connection_id))
 		});
@@ -3260,7 +3074,6 @@ struct TerminationReceiptBuilder {
 	endpoint_refusal: Option<LocalTransportRefusal>,
 	cleanup_refusal: Option<LocalTransportRefusal>,
 }
-
 impl TerminationReceiptBuilder {
 	fn record_spawn(&mut self, kind: OwnedTaskKind) {
 		match kind {
@@ -3287,11 +3100,13 @@ impl TerminationReceiptBuilder {
 
 	fn record_panicked_task(&mut self, identity: OwnedTaskIdentity) {
 		self.panicked_tasks = self.panicked_tasks.saturating_add(1);
+
 		record_lowest(&mut self.lowest_panicked, identity);
 	}
 
 	fn record_failed_task(&mut self, identity: Option<OwnedTaskIdentity>) {
 		self.failed_tasks = self.failed_tasks.saturating_add(1);
+
 		if let Some(identity) = identity {
 			record_lowest(&mut self.lowest_failed, identity);
 		}
@@ -3299,6 +3114,7 @@ impl TerminationReceiptBuilder {
 
 	fn record_forced_cancelled_task(&mut self, identity: OwnedTaskIdentity) {
 		self.forced_cancelled_tasks = self.forced_cancelled_tasks.saturating_add(1);
+
 		record_lowest(&mut self.lowest_forced, identity);
 	}
 
@@ -3358,6 +3174,55 @@ impl TerminationReceiptBuilder {
 	}
 }
 
+/// Closed task kind for the one owned runtime task set.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum OwnedTaskKind {
+	/// One admitted WebSocket session, including handshake and queries.
+	Session,
+	/// One daemon-local service future under the established lifecycle authority.
+	Service,
+}
+
+/// Deterministic primary termination class.
+///
+/// Rank from highest to lowest is cleanup refusal, endpoint refusal, owner
+/// integrity failure, child panic, unexpected child failure, forced task deadline,
+/// actor-command deadline, and requested shutdown. Task-class ties select the lowest stable
+/// spawn ID.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TerminationPrimary {
+	/// Exact requested shutdown completed without an abnormal fact.
+	RequestedShutdown,
+	/// The absolute deadline classified the lowest identified abort-safe task.
+	ForcedDeadline(OwnedTaskIdentity),
+	/// The absolute server deadline elapsed while one actor-owned application command was active.
+	ActorCommandDeadline,
+	/// An owned task or its local transport ended unexpectedly without a panic or deadline.
+	ChildFailure(OwnedTaskIdentity),
+	/// An owned task panicked.
+	ChildPanic(OwnedTaskIdentity),
+	/// Stable task accounting or identity became inconsistent.
+	OwnerIntegrity,
+	/// The published listener failed a point-in-time authority check.
+	EndpointRefusal(LocalTransportRefusal),
+	/// Exact cleanup refused to remove the retained publication.
+	CleanupRefusal(LocalTransportRefusal),
+}
+
+/// Actor-command settlement at the one absolute server deadline.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ActorCommandDeadlineClass {
+	/// Shutdown began with no active actor-owned application command.
+	#[default]
+	NoActiveCommand,
+	/// The active command settled before the absolute server deadline.
+	SettledBeforeDeadline,
+	/// The deadline elapsed, then the command settled during application-owner shutdown.
+	DeadlineElapsedThenSettledDuringApplicationShutdown,
+	/// Application settlement and event EOF completed while the command remained unsettled.
+	ApplicationSettledWithCommandUnsettled,
+}
+
 /// Failure to publish, own, or read back the local server lifecycle.
 #[derive(Debug)]
 pub enum ServerError {
@@ -3370,7 +3235,6 @@ pub enum ServerError {
 	/// The lifecycle completed with a deterministic abnormal receipt.
 	Terminated(Box<TerminationReceipt>),
 }
-
 impl std::error::Error for ServerError {}
 
 impl Display for ServerError {
@@ -3384,6 +3248,258 @@ impl Display for ServerError {
 			},
 		}
 	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OwnerPhase {
+	Accepting,
+	DrainingApplication,
+	DrainingEgress,
+	Closed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OwnerDeadlineState {
+	Pending,
+	Elapsed,
+}
+
+enum ActiveActorOperation {
+	Command(Box<ActiveCommand>),
+	RegistrationSnapshot(PendingRegistrationSnapshot),
+}
+
+enum ActiveActorOperationCompletion {
+	Command(Box<ActiveCommandResult>),
+	RegistrationSnapshot(RegistrationSnapshotResult),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OwnerDirective {
+	Continue,
+	BeginStopping(StopCause),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StopCause {
+	RequestedShutdown,
+	EndpointRefusal(LocalTransportRefusal),
+	ActorIngressClosed,
+	UnexpectedEventEof,
+	OwnerIntegrity,
+	ChildPanic(OwnedTaskIdentity),
+	ChildFailure(OwnedTaskIdentity),
+	TransportFailed(OwnedTaskIdentity),
+	DeadlineClassification(OwnedTaskIdentity),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CommandShutdownState {
+	NoCommand,
+	Retained,
+	DeadlineElapsed,
+	IntegrityRecorded,
+	IntegrityRecordedAfterDeadline,
+	SettledBeforeDeadline,
+	SettledAfterDeadline,
+}
+
+enum AcceptingWake {
+	RequestedShutdown,
+	ListenerHealth,
+	OwnedTask(Option<Result<(TokioTaskId, OwnedTaskCompletion), JoinError>>),
+	Operation(ActiveActorOperationCompletion),
+	Ordinary(Box<AcceptingOrdinaryWake>),
+}
+
+enum AcceptingOrdinaryWake {
+	Accepted(Result<LocalTransportStream, LocalTransportRefusal>),
+	Request(Option<PublicationRequest>),
+	ApplicationEvent(Option<ApplicationEventPublication>),
+}
+
+enum StoppingWake {
+	Deadline,
+	OwnedTask(Option<Result<(TokioTaskId, OwnedTaskCompletion), JoinError>>),
+	Operation(ActiveActorOperationCompletion),
+	ApplicationSettled,
+	Request(Option<PublicationRequest>),
+	FlushDeferred,
+	ApplicationEvent(Option<ApplicationEventPublication>),
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum SessionOrdinalProgress {
+	Empty,
+	Through(SessionOrdinal),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SessionAcceptance {
+	Accepted(SessionOrdinal),
+	Unavailable,
+	Sealed(SessionSealReason),
+}
+impl SessionAcceptance {
+	fn is_accepted(self) -> bool {
+		match self {
+			Self::Accepted(_ordinal) => true,
+			Self::Unavailable | Self::Sealed(_) => false,
+		}
+	}
+}
+
+enum InitialHello {
+	Received(ClientHello),
+	Stopped,
+	Failed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SessionReaderCompletion {
+	PeerClose,
+	Reason(SessionSealReason),
+}
+impl SessionReaderCompletion {
+	fn is_peer_close(self) -> bool {
+		matches!(self, Self::PeerClose)
+	}
+
+	fn requested_seal(self) -> SessionSealReason {
+		match self {
+			Self::PeerClose => SessionSealReason::PeerDisconnected,
+			Self::Reason(reason) => reason,
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SessionSealReason {
+	ActorUnavailable,
+	Deadline,
+	InitialPrefixFailed,
+	OrdinalExhausted,
+	OutboundClosed,
+	OutboundFull,
+	PeerDisconnected,
+	RegistrationAbandoned,
+	ServerDrained,
+	ServerShutdown,
+	TaskFailed,
+	WriterFailed,
+}
+impl SessionSealReason {
+	fn canonicalizes_outbound_closed(self) -> bool {
+		matches!(
+			self,
+			Self::ActorUnavailable
+				| Self::PeerDisconnected
+				| Self::ServerShutdown
+				| Self::WriterFailed
+		)
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SessionTransportFailure {
+	InitialPrefixEncoding,
+	InitialPrefixTooLarge,
+	InitialPrefixWrite,
+	MessageEncoding,
+	MessageTooLarge,
+	MessageWrite,
+	CloseWrite,
+}
+impl SessionTransportFailure {
+	fn is_initial_prefix(self) -> bool {
+		matches!(
+			self,
+			Self::InitialPrefixEncoding | Self::InitialPrefixTooLarge | Self::InitialPrefixWrite
+		)
+	}
+
+	fn is_encoding(self) -> bool {
+		matches!(self, Self::InitialPrefixEncoding | Self::MessageEncoding)
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SessionTransportDisposition {
+	// These variants prove local sink progress only. WebSocket writes do not prove peer receipt.
+	DrainedThrough(SessionOrdinalProgress),
+	TransportFailed { locally_written: SessionOrdinalProgress, cause: SessionTransportFailure },
+}
+impl SessionTransportDisposition {
+	fn drained(locally_written: SessionOrdinalProgress) -> Self {
+		Self::DrainedThrough(locally_written)
+	}
+
+	fn failed(locally_written: SessionOrdinalProgress, cause: SessionTransportFailure) -> Self {
+		Self::TransportFailed { locally_written, cause }
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SessionCompletionClassification {
+	Unregistered,
+	ExactDrained,
+	SessionLocal,
+	TransportFailed,
+	Deadline,
+	Invalid,
+}
+
+enum SessionRegistrationCompletion {
+	Unregistered,
+	Registered { seal_reason: SessionSealReason, transport: SessionTransportDisposition },
+}
+
+enum OwnedTaskResult {
+	Session(SessionTaskCompletion),
+	Service,
+}
+
+enum PublicationRequest {
+	Register {
+		connection_id: u64,
+		sender: mpsc::Sender<OutboundItem>,
+		seal_sender: oneshot::Sender<SessionSealReason>,
+		hello: ClientHello,
+		version: ProtocolVersion,
+		reply: oneshot::Sender<Result<Vec<ServerMessage>, Refusal>>,
+	},
+	Enqueue {
+		connection_id: u64,
+		message: Box<ServerMessage>,
+		reply: oneshot::Sender<bool>,
+	},
+	Command {
+		connection_id: u64,
+		command: CommandEnvelope,
+		version: ProtocolVersion,
+		reply: oneshot::Sender<bool>,
+	},
+}
+
+const fn supports_publication_instance(version: ProtocolVersion) -> bool {
+	version.major == PUBLICATION_INSTANCE_MINIMUM_VERSION.major
+}
+
+// Tungstenite fixes this callback's error type to the full HTTP response.
+#[allow(clippy::result_large_err)]
+fn validate_websocket_route(
+	request: &Request,
+	response: Response,
+) -> Result<Response, ErrorResponse> {
+	if request.uri().path() == WS_PATH && request.uri().query().is_none() {
+		return Ok(response);
+	}
+
+	let mut refusal = ErrorResponse::new(Some("WebSocket route is unavailable".to_owned()));
+
+	*refusal.status_mut() = StatusCode::NOT_FOUND;
+
+	Err(refusal)
 }
 
 fn result_from_execution(
@@ -3454,6 +3570,7 @@ fn accept_for_session(
 	} else {
 		Err(SessionSealReason::OrdinalExhausted)
 	};
+
 	match decision {
 		Ok(ordinal) => SessionAcceptance::Accepted(ordinal),
 		Err(reason) => {
@@ -3514,6 +3631,25 @@ const fn refusal_rank(refusal: LocalTransportRefusal) -> u8 {
 		LocalTransportRefusal::PeerCredentialsUnavailable => 10,
 		LocalTransportRefusal::PeerUidMismatch => 11,
 	}
+}
+
+async fn poll_active_operation(
+	operation: &mut Option<ActiveActorOperation>,
+) -> ActiveActorOperationCompletion {
+	match operation.as_mut().expect("guarded active operation exists") {
+		ActiveActorOperation::Command(command) =>
+			ActiveActorOperationCompletion::Command(Box::new(command.future.as_mut().await)),
+		ActiveActorOperation::RegistrationSnapshot(snapshot) =>
+			ActiveActorOperationCompletion::RegistrationSnapshot(snapshot.future.as_mut().await),
+	}
+}
+
+async fn poll_owner_deadline(deadline: &mut Option<OwnerDeadline>) {
+	deadline.as_mut().expect("stopping owns one deadline").sleep.as_mut().await;
+}
+
+async fn poll_application_shutdown(shutdown: &mut Option<ApplicationShutdownFuture>) {
+	shutdown.as_mut().expect("application shutdown is active").as_mut().await;
 }
 
 async fn stopped(receiver: &mut watch::Receiver<bool>) {

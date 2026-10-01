@@ -10,9 +10,11 @@ pub(super) async fn check(
 	requests: &std::sync::atomic::AtomicUsize,
 ) {
 	let png = include_bytes!("../../../../assets/workspace-symbols/plus.png");
+
 	std::fs::write(home.join("fixture.png"), png).expect("native media fixture");
 	// A complete two-second PCM WAV forces several public chunks.
 	let mut wav = b"RIFF".to_vec();
+
 	wav.extend(64036_u32.to_le_bytes());
 	wav.extend(b"WAVEfmt ");
 	wav.extend(16_u32.to_le_bytes());
@@ -24,11 +26,16 @@ pub(super) async fn check(
 	wav.extend(16_u16.to_le_bytes());
 	wav.extend(b"data");
 	wav.extend(64000_u32.to_le_bytes());
-	wav.resize(64044, 0);
+	wav.resize(64_044, 0);
+
 	std::fs::write(home.join("fixture.wav"), &wav).expect("native media fixture");
+
 	let thread_directory = home.join("thread-directory");
+
 	std::fs::create_dir(&thread_directory).expect("native media fixture");
+
 	let work = EntityId::new("recap-root").expect("native media fixture");
+
 	accepted(
 		client,
 		Action::Start(AgentStartDto {
@@ -46,9 +53,11 @@ pub(super) async fn check(
 		"media-parent",
 	)
 	.await;
+
 	let thread = settled(client).await;
 	let native = runtime.agent_client().expect("native media fixture");
 	let (generation, ..) = runtime.agent_usage_source().await.expect("native media fixture");
+
 	assert_eq!(runtime.agent_input_directory(&generation).as_deref(), home.to_str());
 	// Simulate native input from another client, preserving native relative paths.
 	let started = native
@@ -60,14 +69,19 @@ pub(super) async fn check(
 		.await
 		.expect("native media fixture");
 	let turn = started["turn"]["id"].as_str().expect("native media fixture");
+
 	loop {
 		let history = native.thread_read_turn(&thread, turn).await.expect("native media fixture");
+
 		if history["thread"]["turns"][0]["status"] == "completed" {
 			break;
 		}
+
 		tokio::time::sleep(Duration::from_millis(20)).await;
 	}
+
 	assert_eq!(settled(client).await, thread);
+
 	let items = native.thread_read_turn_items(&thread, turn).await.expect("native media fixture");
 	let item = items
 		.as_array()
@@ -75,10 +89,13 @@ pub(super) async fn check(
 		.iter()
 		.find(|item| item["type"] == "userMessage")
 		.expect("native media fixture");
+
 	assert_eq!(item["content"][1]["path"], "fixture.png");
 	assert_eq!(item["content"][2]["path"], "fixture.wav");
+
 	let before = requests.load(Ordering::Acquire);
 	let mut evidence = Vec::new();
+
 	for (index, expected, mime) in
 		[(1, png.as_slice(), "image/png"), (2, wav.as_slice(), "audio/wav")]
 	{
@@ -93,13 +110,18 @@ pub(super) async fn check(
 			fingerprint: None,
 		};
 		let (bytes, chunks) = read_media(client, &mut request, account, mime).await;
+
 		assert_eq!(bytes, expected);
+
 		if index == 2 {
 			assert!(chunks > 1);
 		}
+
 		evidence.push(json!({"index":index,"mime":mime,"bytes":bytes.len(),"chunks":chunks}));
+
 		request.offset = 0;
 		request.fingerprint = None;
+
 		if index == 1 {
 			std::fs::write(
 				home.join("media-source.json"),
@@ -107,13 +129,17 @@ pub(super) async fn check(
 			)
 			.expect("native media fixture");
 		}
+
 		request.work_id = EntityId::new("foreign-work").expect("native media fixture");
+
 		assert_eq!(
 			client.media(request).await.expect("native media fixture"),
 			AgentMediaResult::Unavailable
 		);
 	}
+
 	assert_eq!(requests.load(Ordering::Acquire), before, "media reads cannot infer");
+
 	std::fs::write(
 		home.join("media-evidence.json"),
 		serde_json::to_vec_pretty(
@@ -122,31 +148,44 @@ pub(super) async fn check(
 		.expect("native media fixture"),
 	)
 	.expect("native media fixture");
+
 	qualify_desktop(home, &work, item, requests, before).await;
 	qualify_resources(client, &work).await;
+
 	assert_eq!(requests.load(Ordering::Acquire), before, "resource association cannot infer");
 }
 
 async fn qualify_resources(client: &AgentClient, work: &EntityId) {
 	use decodex_protocol::AgentResourcesResult;
+
 	let empty = AgentResourcesResult::Available { resources: vec![] };
+
 	assert_eq!(client.resources(work.clone()).await.expect("native media fixture"), empty);
+
 	let add = Action::AddResourceLink {
 		work_id: work.clone(),
 		title: WireText::new("Local fixture link").expect("native media fixture"),
 		url: WireText::new("https://example.invalid/media-fixture").expect("native media fixture"),
 	};
+
 	accepted(client, add.clone(), "resource-add").await;
+
 	let first = client.resources(work.clone()).await.expect("native media fixture");
 	let AgentResourcesResult::Available { resources } = &first else {
 		panic!("native resources: {first:?}");
 	};
+
 	assert_eq!(resources.len(), 1);
+
 	let resource = &resources[0];
+
 	assert!(!resource.payload_omitted);
 	assert!(resource.payload_json.contains("https://example.invalid/media-fixture"));
+
 	accepted(client, add, "resource-add-again").await;
+
 	assert_eq!(client.resources(work.clone()).await.expect("native media fixture"), first);
+
 	accepted(
 		client,
 		Action::RemoveResource {
@@ -158,6 +197,7 @@ async fn qualify_resources(client: &AgentClient, work: &EntityId) {
 		"resource-remove",
 	)
 	.await;
+
 	assert_eq!(client.resources(work.clone()).await.expect("native media fixture"), empty);
 }
 
@@ -170,6 +210,7 @@ async fn qualify_desktop(
 ) {
 	if let Some(binary) = std::env::var_os("DECODEX_TEST_MEDIA_GUI_BINARY") {
 		assert!(std::path::Path::new(&binary).is_absolute());
+
 		let log = home.join("media-capture.log");
 		let stdout = std::fs::File::create(&log).expect("native media fixture");
 		let stderr = stdout.try_clone().expect("native media fixture");
@@ -188,11 +229,14 @@ async fn qualify_desktop(
 			.await
 			.expect("bounded desktop capture")
 			.expect("native media fixture");
+
 		assert!(status.success(), "media capture failed; inspect {}", log.display());
+
 		let saved: Value = serde_json::from_slice(
 			&std::fs::read(output.with_extension("media.json")).expect("native media fixture"),
 		)
 		.expect("native media fixture");
+
 		assert_eq!(saved["imageLoaded"], true);
 		assert!(saved["notice"].is_null());
 		assert_eq!(saved["request"]["item_id"], item["id"]);
@@ -208,6 +252,7 @@ async fn read_media(
 ) -> (Vec<u8>, usize) {
 	let mut bytes = Vec::new();
 	let mut chunks = 0;
+
 	loop {
 		let result = client.media(request.clone()).await.expect("native media fixture");
 		let AgentMediaResult::Available {
@@ -221,15 +266,21 @@ async fn read_media(
 		else {
 			panic!("native media: {result:?}");
 		};
+
 		assert_eq!(account_id.as_str(), account.as_str());
 		assert_eq!(mime_type, mime);
+
 		bytes.extend(chunk);
+
 		chunks += 1;
+
 		if bytes.len() == total_bytes as usize {
 			break;
 		}
+
 		request.offset = bytes.len() as u32;
 		request.fingerprint = Some(fingerprint);
 	}
+
 	(bytes, chunks)
 }

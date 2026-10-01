@@ -16,16 +16,20 @@ where
 				crate::agent::native_subagents::request_owner(store, &before.client, thread)
 					.await
 					.ok()?;
+
 			if owner.id != before.key.work {
 				return None;
 			}
 		}
+
 		Some(before.client.thread_goal(thread).await)
 	};
 	let response = tokio::time::timeout(std::time::Duration::from_secs(30), operation).await;
+
 	if source().await.is_none_or(|after| after.key != before.key) {
 		return Result::Unavailable;
 	}
+
 	match response {
 		Ok(Some(Ok(goal))) => {
 			let review_token =
@@ -40,12 +44,14 @@ where
 						.map_or(goal.objective.len(), |(index, _)| index);
 					let truncated = sensitive || end < goal.objective.len();
 					let mut value = serde_json::to_value(&goal).ok()?;
+
 					value["objective"] = serde_json::json!(if sensitive {
 						"[Private content omitted]"
 					} else {
 						&goal.objective[..end]
 					});
 					value["objectiveTruncated"] = serde_json::json!(truncated);
+
 					serde_json::from_value(value).ok()
 				})
 				.map_or(Some(None), |goal| goal.map(Some));
@@ -63,11 +69,12 @@ where
 			else {
 				return Result::Unavailable;
 			};
+
 			Result::Available { work_id, thread_id, observed_at_micros, review_token, goal }
 		},
-		Ok(Some(Err(ClientError::Remote(error)))) if error.code == -32601 => Result::Unsupported,
+		Ok(Some(Err(ClientError::Remote(error)))) if error.code == -32_601 => Result::Unsupported,
 		Ok(Some(Err(ClientError::Remote(error))))
-			if error.code == -32600 && error.message == "goals feature is disabled" =>
+			if error.code == -32_600 && error.message == "goals feature is disabled" =>
 			Result::Disabled,
 		_ => Result::Unavailable,
 	}
@@ -76,21 +83,6 @@ where
 #[cfg(test)]
 #[path = "agent_native_goal_tests.rs"]
 mod tests;
-
-fn review_token(
-	source: &Source,
-	thread: &str,
-	goal: Option<&decodex_codex::app_server_client::NativeThreadGoal>,
-) -> String {
-	use sha2::{Digest as _, Sha256};
-	let identity = serde_json::json!([
-		format!("{:?}", source.key),
-		source.client.connection_identity(),
-		thread,
-		goal.map(|goal| (&goal.objective, &goal.status, goal.token_budget, goal.created_at))
-	]);
-	Sha256::digest(identity.to_string().as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
-}
 
 pub(crate) async fn write<F, Fut>(
 	store: &SqliteStore,
@@ -104,9 +96,12 @@ where
 	Fut: std::future::Future<Output = Option<Source>>,
 {
 	use crate::agent_host::AgentHostError::{Rejected, Unknown};
+
 	use decodex_codex::app_server_client::{NativeGoalUpdate, NativeThreadGoalStatus};
+
 	use decodex_protocol::{AgentGoalBudgetEdit as Budget, AgentNativeGoalStatus as Status};
-	if edit.objective.as_ref().is_some_and(|text| text.trim().is_empty() || text.len() > 64 * 1024)
+
+	if edit.objective.as_ref().is_some_and(|text| text.trim().is_empty() || text.len() > 64 * 1_024)
 		|| matches!(edit.budget,Budget::Set(n) if n<=0)
 		|| edit.status.as_ref().is_some_and(|status| {
 			!matches!(status, Status::Active | Status::Paused | Status::Complete)
@@ -117,20 +112,25 @@ where
 	{
 		return Err(Rejected("Enter an objective or an explicit goal change."));
 	}
+
 	let before = source().await.ok_or(Rejected("The goal source is unavailable."))?;
+
 	if thread != before.key.thread {
 		let owner = crate::agent::native_subagents::request_owner(store, &before.client, thread)
 			.await
 			.map_err(|_| Rejected("The native goal is not owned by this task."))?;
+
 		if owner.id != before.key.work {
 			return Err(Rejected("The native goal is not owned by this task."));
 		}
 	}
+
 	let goal = before
 		.client
 		.thread_goal(thread)
 		.await
 		.map_err(|_| Rejected("Read the native goal before editing."))?;
+
 	if review_token(&before, thread, goal.as_ref()) != expected {
 		return Err(Rejected("The goal changed. Read it again before saving."));
 	}
@@ -139,6 +139,7 @@ where
 			"A new goal needs an objective and an explicit start or pause choice.",
 		));
 	}
+
 	let guard = before
 		.client
 		.history_guard(before.key.history_revision)
@@ -153,9 +154,11 @@ where
 		),
 		None => None,
 	};
+
 	if source().await.is_none_or(|after| after.key != before.key) {
 		return Err(Rejected("The goal source changed."));
 	}
+
 	let update = NativeGoalUpdate {
 		objective,
 		status: edit.status.as_ref().map(|status| match status {
@@ -169,6 +172,7 @@ where
 			Budget::Set(n) => Some(Some(n)),
 		},
 	};
+
 	before.client.update_thread_goal(thread, &update, guard).await.map_err(
 		|error| match error {
 			ClientError::Remote(_) | ClientError::InvalidFrame | ClientError::StaleHistory =>
@@ -176,5 +180,23 @@ where
 			_ => Unknown("The goal edit is unconfirmed. Read the goal before retrying."),
 		},
 	)?;
+
 	Ok(())
+}
+
+fn review_token(
+	source: &Source,
+	thread: &str,
+	goal: Option<&decodex_codex::app_server_client::NativeThreadGoal>,
+) -> String {
+	use sha2::{Digest as _, Sha256};
+
+	let identity = serde_json::json!([
+		format!("{:?}", source.key),
+		source.client.connection_identity(),
+		thread,
+		goal.map(|goal| (&goal.objective, &goal.status, goal.token_budget, goal.created_at))
+	]);
+
+	Sha256::digest(identity.to_string().as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
 }

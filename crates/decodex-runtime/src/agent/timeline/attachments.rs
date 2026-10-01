@@ -38,19 +38,26 @@ fn parts(
 	};
 	let mut attachments = Vec::new();
 	let mut omitted = false;
+
 	for (index, part) in parts.iter().enumerate().filter(|(_, part)| part["type"] != text_kind) {
 		if attachments.len() == 16 {
 			omitted = true;
+
 			break;
 		}
+
 		let Ok(index) = u32::try_from(index) else {
 			omitted = true;
+
 			break;
 		};
 		let (attachment, shortened) = describe(index, part);
+
 		attachments.push(attachment);
+
 		omitted |= shortened;
 	}
+
 	(attachments, omitted)
 }
 
@@ -91,6 +98,7 @@ fn mcp(index: u32, part: &Value) -> (Attachment, bool) {
 		Some(kind @ ("image" | "audio")) => {
 			let present = part["data"].as_str().is_some_and(|data| !data.is_empty())
 				&& part["mimeType"].as_str().is_some_and(|mime| !mime.is_empty());
+
 			make(
 				index,
 				kind,
@@ -112,6 +120,7 @@ fn mcp(index: u32, part: &Value) -> (Attachment, bool) {
 			let resource = &part["resource"];
 			let present = resource["uri"].as_str().is_some_and(|uri| !uri.is_empty())
 				&& (resource["text"].is_string() || resource["blob"].is_string());
+
 			make(
 				index,
 				"resource",
@@ -137,6 +146,7 @@ fn describe(index: u32, part: &Value) -> (Attachment, bool) {
 			make(index, "image", "Stored image", Source::Stored),
 		Some(kind @ ("image" | "audio")) => {
 			let source = uri_source(part["url"].as_str());
+
 			make(index, kind, if kind == "image" { "Image" } else { "Audio" }, source)
 		},
 		Some(kind @ ("skill" | "mention")) =>
@@ -149,6 +159,7 @@ fn local(index: u32, kind: &str, path: Option<&str>, fallback: &str) -> (Attachm
 	let label = path
 		.filter(|path| !path.is_empty())
 		.and_then(|path| std::path::Path::new(path).file_name().and_then(|name| name.to_str()));
+
 	make(
 		index,
 		kind,
@@ -168,6 +179,7 @@ fn make(index: u32, kind: &str, label: &str, source: Source) -> (Attachment, boo
 			.map(|c| if c.is_control() { ' ' } else { c })
 			.collect()
 	};
+
 	(Attachment { index, kind: kind.into(), label, source }, shortened)
 }
 
@@ -184,6 +196,7 @@ mod tests {
 			{"type":"skill","name":"Read docs","path":"/private/SKILL.md"}, {"type":"mention","name":"Calendar","path":"app://private-id"}
 		]});
 		let (attachments, omitted) = project(&item);
+
 		assert!(!omitted);
 		assert_eq!(
 			attachments.iter().map(|part| part.index).collect::<Vec<_>>(),
@@ -193,7 +206,9 @@ mod tests {
 		assert_eq!(attachments[1].source, Source::Inline);
 		assert_eq!(attachments[2].source, Source::Stored);
 		assert_eq!(attachments[3].source, Source::Remote);
+
 		let encoded = serde_json::to_string(&attachments).unwrap();
+
 		for private in [
 			"PRIVATE_BYTES",
 			"PRIVATE_SIGNATURE",
@@ -212,15 +227,20 @@ mod tests {
 			{"type":"input_image","file_id":"private-file-id","detail":"original"},
 			{"type":"input_image","image_url":"data:image/png;base64,PRIVATE"}
 		]}));
+
 		assert!(!omitted);
 		assert_eq!(parts.iter().map(|part| part.index).collect::<Vec<_>>(), vec![1, 2]);
 		assert_eq!((parts[0].label.as_str(), parts[0].source), ("Stored image", Source::Stored));
 		assert_eq!(parts[1].source, Source::Inline);
+
 		let encoded = serde_json::to_string(&parts).unwrap();
+
 		assert!(!encoded.contains("private-file-id") && !encoded.contains("PRIVATE"));
+
 		let (parts, omitted) = project(&json!({"type":"functionCallOutput","output":[
 			{"type":"input_image","file_id":""}, {"type":"input_image","file_id":42}
 		]}));
+
 		assert!(omitted && parts.iter().all(|part| part.source == Source::Unknown));
 	}
 
@@ -231,6 +251,7 @@ mod tests {
 			{"type":"inputImage","imageUrl":"data:image/png;base64,PRIVATE"},
 			{"type":"inputAudio","audioUrl":"https://example.test/?signature=PRIVATE"}
 		]}));
+
 		assert!(!omitted);
 		assert_eq!(parts.iter().map(|part| part.index).collect::<Vec<_>>(), vec![1, 2]);
 		assert_eq!((parts[0].kind.as_str(), parts[0].source), ("inputImage", Source::Inline));
@@ -241,9 +262,11 @@ mod tests {
 			(vec![], false)
 		);
 		assert!(project(&json!({"type":"dynamicToolCall","contentItems":{}})).1);
+
 		let (parts, omitted) = project(&json!({"type":"dynamicToolCall","contentItems":[
 			{"type":"inputImage","imageUrl":null}, {"type":"futurePart"}
 		]}));
+
 		assert!(omitted && parts.iter().all(|part| part.source == Source::Unknown));
 	}
 
@@ -256,16 +279,19 @@ mod tests {
 			{"type":"resource","resource":{"uri":"file:///PRIVATE","text":"PRIVATE"}},
 			{"type":"resource_link","uri":"https://example.test/PRIVATE","name":"Report"}
 		],"structuredContent":{"private":"PRIVATE"},"_meta":{"private":"PRIVATE"}}}));
+
 		assert!(!omitted);
 		assert_eq!(parts.iter().map(|part| part.index).collect::<Vec<_>>(), vec![1, 2, 3, 4]);
 		assert!(parts[..3].iter().all(|part| part.source == Source::Inline));
 		assert_eq!((parts[3].label.as_str(), parts[3].source), ("Report", Source::Reference));
 		assert!(!serde_json::to_string(&parts).unwrap().contains("PRIVATE"));
 		assert_eq!(project(&json!({"type":"mcpToolCall","result":null})), (vec![], false));
+
 		let (parts, omitted) = project(&json!({"type":"mcpToolCall","result":{"content":[
 			{"type":"image","data":"PRIVATE"}, {"type":"resource","resource":{}},
 			{"type":"resource_link","name":"Link"}, {"type":"futureBlock"}
 		]}}));
+
 		assert!(omitted && parts.iter().all(|part| part.source == Source::Unknown));
 	}
 
@@ -274,21 +300,30 @@ mod tests {
 		let (parts, omitted) = project(
 			&json!({"type":"userMessage","content":[{"type":"futureContent","value":"private"},{"type":"localAudio","path":format!("/tmp/{}", "界".repeat(100))}]}),
 		);
+
 		assert!(omitted && parts[0].source == Source::Unknown);
 		assert!(parts[1].label.len() <= 256 && parts[1].label.ends_with('界'));
+
 		let (parts, omitted) = project(
 			&json!({"type":"userMessage","content":vec![json!({"type":"image","fileId":"file"});17]}),
 		);
+
 		assert!(omitted);
 		assert_eq!(parts.len(), 16);
+
 		let (parts, _) = project(
 			&json!({"type":"imageGeneration","result":"PRIVATE_BYTES","savedPath":"/tmp/result.png"}),
 		);
+
 		assert_eq!(parts[0].source, Source::Inline);
 		assert_eq!(parts[0].label, "Generated image");
+
 		let (parts, _) = project(&json!({"type":"imageGeneration","savedPath":"/tmp/result.png"}));
+
 		assert_eq!(parts[0].source, Source::Unknown);
+
 		let (parts, _) = project(&json!({"type":"imageGeneration","result":"PRIVATE_BYTES"}));
+
 		assert_eq!(parts[0].source, Source::Inline);
 	}
 }

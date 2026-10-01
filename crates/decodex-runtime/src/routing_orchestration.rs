@@ -35,7 +35,6 @@ pub(crate) struct ExecutionCommand {
 	/// Exact open Conversation coordinates. The product store generates route and Turn identities.
 	routing: RouteConversationInitial,
 }
-
 impl ExecutionCommand {
 	/// Construct first-Turn pre-process input without exposing a process operation.
 	pub(crate) fn initial_thread(
@@ -73,7 +72,6 @@ pub(crate) struct ContinuationExecutionCommand {
 	/// Complete ordinary Conversation Context Pack.
 	fallback_context_pack: ContextPack,
 }
-
 impl ContinuationExecutionCommand {
 	/// Construct one non-selecting ordinary continuation bind-and-plan sequence.
 	#[allow(clippy::too_many_arguments)]
@@ -115,7 +113,6 @@ pub(crate) struct RoutingSuccessorExecutionCommand {
 	/// Exact key for the new Conversation's route transaction.
 	routing_idempotency_key: String,
 }
-
 impl RoutingSuccessorExecutionCommand {
 	/// Construct the separate successor command and its follow-on initial route coordinates.
 	pub(crate) fn new(
@@ -230,7 +227,6 @@ pub(crate) enum PostProcessOutcome {
 /// Zero-sized coordinator. All durable state belongs to the sequenced owners.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ExecutionCoordinator;
-
 impl ExecutionCoordinator {
 	/// Atomically route one initial Conversation, then plan only when selection committed.
 	pub(crate) async fn pre_process(
@@ -250,6 +246,7 @@ impl ExecutionCoordinator {
 			Ok(ConversationInitialRouteOutcome::Rejected(_)) | Err(_) =>
 				return failed(ExecutionFailureKind::Other),
 		};
+
 		match route.decision.kind {
 			AccountRegistryRoutingDecisionKind::Selected =>
 				self.plan_selected_initial(store, route).await,
@@ -278,6 +275,7 @@ impl ExecutionCoordinator {
 				route,
 			Ok(_) | Err(_) => return failed(ExecutionFailureKind::Other),
 		};
+
 		self.plan_selected_initial(store, route).await
 	}
 
@@ -312,6 +310,7 @@ impl ExecutionCoordinator {
 				),
 			)
 			.await;
+
 		Ok(RoutingSuccessorExecutionOutcome { successor, routing })
 	}
 
@@ -359,6 +358,7 @@ impl ExecutionCoordinator {
 			},
 			Err(_) => return failed(ExecutionFailureKind::Other),
 		};
+
 		if plan.plan.routing_decision_id != decision.decision_id
 			|| plan.plan.consumer != decision.consumer
 			|| plan.plan.replay_permitted
@@ -367,6 +367,7 @@ impl ExecutionCoordinator {
 		{
 			return failed(ExecutionFailureKind::Other);
 		}
+
 		PreProcessOutcome::Planned { decision, plan }
 	}
 
@@ -378,9 +379,11 @@ impl ExecutionCoordinator {
 		let Some(selected_account_id) = route.decision.selected_account_id.clone() else {
 			return failed(ExecutionFailureKind::Other);
 		};
+
 		if route.decision.kind != AccountRegistryRoutingDecisionKind::Selected {
 			return failed(ExecutionFailureKind::Other);
 		}
+
 		let consumer = route.consumer.clone();
 		let decision = PersistedDecisionProvenance {
 			decision_id: route.decision_id.clone(),
@@ -403,6 +406,7 @@ impl ExecutionCoordinator {
 				return PreProcessOutcome::EstablishmentPending;
 			},
 		};
+
 		if plan.plan.routing_decision_id != route.decision_id
 			|| plan.plan.consumer != consumer
 			|| plan.plan.selected_account_id != selected_account_id
@@ -425,6 +429,7 @@ impl ExecutionCoordinator {
 	) -> PostProcessOutcome {
 		let PostProcessCommand { decision, plan, provider_attempt, runtime_authority } = command;
 		let consumer = decision.consumer.clone();
+
 		if !same_consumer(&consumer, &provider_attempt.consumer)
 			|| plan.plan.consumer != consumer
 			|| plan.plan.routing_decision_id != decision.decision_id
@@ -434,6 +439,7 @@ impl ExecutionCoordinator {
 		{
 			return PostProcessOutcome::DefiniteRejection(DefinitePostProcessRefusal::NoAttempt);
 		}
+
 		let attempt = match attempts
 			.prepare(&plan, process, &provider_attempt, runtime_authority)
 			.await
@@ -449,6 +455,7 @@ impl ExecutionCoordinator {
 				};
 			},
 		};
+
 		match attempt {
 			PrepareProviderAttemptOutcome::Fresh(fresh) => {
 				let attempt = PreparedAttemptHandoff {
@@ -456,6 +463,7 @@ impl ExecutionCoordinator {
 					revision: fresh.revision(),
 					newly_prepared: true,
 				};
+
 				PostProcessOutcome::FreshPrepared { attempt, fresh_preparation: fresh }
 			},
 			PrepareProviderAttemptOutcome::Replayed(actual)
@@ -499,10 +507,12 @@ fn routing_scoped_key(scope: &str, key: &str) -> String {
 
 fn routing_digest(parts: &[&str]) -> String {
 	let mut digest = Sha256::new();
+
 	for part in parts {
 		digest.update(part.len().to_be_bytes());
 		digest.update(part.as_bytes());
 	}
+
 	digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -511,9 +521,12 @@ fn routing_uuid(scope: &str, parts: &[&str]) -> String {
 		format!("decodex/ordinary-task/{scope}/{}", routing_digest(parts)).as_bytes(),
 	);
 	let mut bytes = [0_u8; 16];
+
 	bytes.copy_from_slice(&digest[..16]);
+
 	bytes[6] = (bytes[6] & 0x0f) | 0x40;
 	bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
 	format!(
 		"{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
 		bytes[0],

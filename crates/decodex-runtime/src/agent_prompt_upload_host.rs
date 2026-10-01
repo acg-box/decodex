@@ -1,23 +1,11 @@
 //! Durable input staging does not authorize native execution.
 use super::{AgentHost, AgentHostError};
+
 use decodex_database::AgentPromptUpload;
+
 use decodex_protocol::{
 	AgentActionDto as Action, PromptInputUpload, PromptInputUploadStatus as Status,
 };
-
-fn source(upload: &PromptInputUpload) -> Result<AgentPromptUpload, AgentHostError> {
-	if !upload.is_valid() {
-		return Err("Invalid prompt upload".into());
-	}
-	Ok(AgentPromptUpload {
-		upload_id: upload.upload_id.as_str().into(),
-		work: upload.work_id.as_str().into(),
-		thread: upload.thread_id.as_str().into(),
-		edit_receipt_id: upload.edit_receipt_id,
-		sha256: upload.sha256.as_str().into(),
-		total_bytes: upload.total_bytes as i64,
-	})
-}
 
 impl AgentHost {
 	pub(crate) async fn prompt_send_status(
@@ -36,6 +24,7 @@ impl AgentHost {
 			.await
 			.ok()
 			.flatten();
+
 		decodex_protocol::PromptInputSendStatus { identity, accepted_event_id }
 	}
 
@@ -66,18 +55,21 @@ impl AgentHost {
 			.await
 			.map_err(|_| "Prompt input is unavailable")?
 			.ok_or("Prompt input is unavailable")?;
+
 		if input.edit_receipt_id != edit_receipt_id || input.sha256 != sha256.as_str() {
 			return Err("Prompt input source changed".into());
 		}
+
 		decodex_protocol::PromptDraft::new(input.content.clone())
 			.and_then(|draft| draft.validate_native_input())
 			.map_err(|_| "Prompt input is invalid")?;
+
 		let text: String = input
 			.content
 			.iter()
 			.filter_map(|part| part.get("text").and_then(serde_json::Value::as_str))
 			.flat_map(|text| text.chars().chain(std::iter::once('\n')))
-			.take(2000)
+			.take(2_000)
 			.collect();
 		let preview = decodex_protocol::HistoryText::new(format!(
 			"[Edited input preview; full content retained]\n{text}"
@@ -87,6 +79,7 @@ impl AgentHost {
 			"canonicalInput":{"id":input_id,"threadId":thread_id,"editReceiptId":edit_receipt_id,"sha256":sha256}});
 		let mut params =
 			serde_json::json!({"threadId":thread_id,"input":input.content,"turnTrigger":"user"});
+
 		crate::agent::apply_message_options(
 			&mut params,
 			&serde_json::json!({"options":options}).to_string(),
@@ -94,6 +87,7 @@ impl AgentHost {
 		.map_err(|_| "Prompt execution settings are invalid")?;
 		decodex_codex::app_server_client::AppServerClient::preflight_request("turn/start", &params)
 			.map_err(|_| "Prompt input is too large for the native request")?;
+
 		self.accept_message(&work_id, &preview, key, Some(&options), active).await
 	}
 
@@ -105,10 +99,12 @@ impl AgentHost {
 			Action::UploadPromptInput { upload, offset, fragment } => {
 				let source = source(&upload)?;
 				let offset = i64::try_from(offset).map_err(|_| "Invalid prompt upload offset")?;
+
 				self.store
 					.append_agent_prompt_chunk(source, offset, fragment)
 					.await
 					.map_err(|_| "Prompt input chunk could not be saved")?;
+
 				Ok(upload.work_id.as_str().into())
 			},
 			Action::CompletePromptInputUpload { upload } => {
@@ -116,6 +112,7 @@ impl AgentHost {
 					.complete_agent_prompt_upload(source(&upload)?)
 					.await
 					.map_err(|_| "Prompt input could not be completed")?;
+
 				Ok(upload.work_id.as_str().into())
 			},
 			_ => Err("Unsupported prompt upload command".into()),
@@ -131,6 +128,7 @@ impl AgentHost {
 			.get_agent_work_item(source.work.clone())
 			.await
 			.is_ok_and(|work| work.codex_thread_id.as_deref() == Some(source.thread.as_str()));
+
 		if !bound {
 			return Status::Unavailable { upload };
 		}
@@ -145,13 +143,16 @@ impl AgentHost {
 				receipt.id == source.edit_receipt_id
 					&& matches!(receipt.state.as_str(), "applied" | "draft_restored")
 			});
+
 		if !valid {
 			return Status::Unavailable { upload };
 		}
+
 		let received = match self.store.agent_prompt_upload_received(source.clone()).await {
 			Ok(bytes) => bytes as u64,
 			Err(_) => return Status::Unavailable { upload },
 		};
+
 		match self
 			.store
 			.agent_prompt_input_id(
@@ -168,4 +169,19 @@ impl AgentHost {
 			Err(_) => Status::Unavailable { upload },
 		}
 	}
+}
+
+fn source(upload: &PromptInputUpload) -> Result<AgentPromptUpload, AgentHostError> {
+	if !upload.is_valid() {
+		return Err("Invalid prompt upload".into());
+	}
+
+	Ok(AgentPromptUpload {
+		upload_id: upload.upload_id.as_str().into(),
+		work: upload.work_id.as_str().into(),
+		thread: upload.thread_id.as_str().into(),
+		edit_receipt_id: upload.edit_receipt_id,
+		sha256: upload.sha256.as_str().into(),
+		total_bytes: upload.total_bytes as i64,
+	})
 }

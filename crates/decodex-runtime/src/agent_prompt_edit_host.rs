@@ -1,19 +1,25 @@
 //! Public commands retain opaque reviews in the existing Agent actor. Queries are read-only.
 use super::{AgentCoordinator, AgentHost, AgentHostError};
+
 use crate::PromptEditReview;
+
 use decodex_database::AgentPromptEditAttempt;
+
 use decodex_protocol::{
 	AgentActionDto as Action, EntityId, PromptEditEvidence, PromptEditPhase as Phase,
 	PromptEditStatus, WireText,
 };
+
 use std::{
 	collections::BTreeMap,
 	sync::Arc,
 	time::{Duration, Instant},
 };
+
 use tokio::sync::Mutex;
 
 pub(super) type Reviews = Arc<Mutex<BTreeMap<String, (Instant, PromptEditReview)>>>;
+
 const REVIEW_LIFETIME: Duration = Duration::from_secs(600);
 
 impl AgentHost {
@@ -24,6 +30,7 @@ impl AgentHost {
 		agent: Option<&mut AgentCoordinator>,
 	) -> Result<String, AgentHostError> {
 		let agent = agent.ok_or("Task connection is unavailable")?;
+
 		match action {
 			Action::PreparePromptEdit { work_id, thread_id, turn_id, item_id } => {
 				let pending = self
@@ -31,9 +38,11 @@ impl AgentHost {
 					.agent_prompt_edit_receipt(work_id.as_str().into(), thread_id.as_str().into())
 					.await
 					.map_err(|_| "Edit receipt is unavailable")?;
+
 				if pending.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "applied")) {
 					return Err("Recover the existing prompt edit first".into());
 				}
+
 				let review = agent
 					.prepare_prompt_edit(
 						work_id.as_str(),
@@ -46,13 +55,17 @@ impl AgentHost {
 					.map_err(|_| "Prompt review failed")?
 					.ok_or("This input cannot be edited")?;
 				let mut reviews = self.prompt_edits.lock().await;
+
 				reviews.retain(|_, (when, review)| {
 					when.elapsed() < REVIEW_LIFETIME && review.is_live()
 				});
+
 				if reviews.len() >= 8 && !reviews.contains_key(work_id.as_str()) {
 					return Err("Too many active prompt reviews".into());
 				}
+
 				reviews.insert(work_id.as_str().into(), (Instant::now(), review));
+
 				Ok(work_id.as_str().into())
 			},
 			Action::ConfirmPromptEdit { work_id, thread_id, review_token } => {
@@ -65,10 +78,13 @@ impl AgentHost {
 				{
 					return Ok(work_id.as_str().into()); // Lost command reply: report the receipt, never replay.
 				}
+
 				let review = self.take_prompt_review(&work_id, &thread_id, &review_token).await?;
+
 				agent.confirm_prompt_edit(review).await.map_err(|_| {
 					AgentHostError::Unknown("Prompt edit could not be confirmed; read its receipt")
 				})?;
+
 				Ok(work_id.as_str().into())
 			},
 			Action::ForkPromptEdit {
@@ -84,6 +100,7 @@ impl AgentHost {
 					decodex_protocol::PromptForkBoundary::AfterTurn =>
 						decodex_database::AgentForkBoundary::AfterTurn,
 				};
+
 				if let Some(receipt) = self
 					.store
 					.agent_fork_receipt(work_id.as_str().into(), review_token.as_str().into())
@@ -96,9 +113,12 @@ impl AgentHost {
 					{
 						return Err("Branch intent changed".into());
 					}
+
 					return Ok(target_work_id.as_str().into());
 				}
+
 				let review = self.take_prompt_review(&work_id, &thread_id, &review_token).await?;
+
 				agent
 					.fork_prompt_edit(review, target_work_id.as_str().into(), boundary)
 					.await
@@ -107,6 +127,7 @@ impl AgentHost {
 							"Branch creation could not be confirmed; read its receipt",
 						)
 					})?;
+
 				Ok(target_work_id.as_str().into())
 			},
 			Action::RecoverPromptFork { work_id, review_token } => {
@@ -114,12 +135,14 @@ impl AgentHost {
 					.recover_prompt_fork(work_id.as_str(), review_token.as_str())
 					.await
 					.map_err(|_| AgentHostError::Unknown("Branch history could not be reloaded"))?;
+
 				Ok(work_id.as_str().into())
 			},
 			Action::RecoverPromptEdit { work_id, thread_id } => {
 				agent.recover_prompt_edit(work_id.as_str(), thread_id.as_str()).await.map_err(
 					|_| AgentHostError::Unknown("Prompt edit history could not be reloaded"),
 				)?;
+
 				Ok(work_id.as_str().into())
 			},
 			Action::AcknowledgePromptEditDraft { work_id, thread_id, receipt_id, review_token } =>
@@ -143,21 +166,26 @@ impl AgentHost {
 			.await
 			.map_err(|_| "Edit receipt is unavailable")?
 			.ok_or("Edit receipt is unavailable")?;
+
 		if receipt.id != receipt_id || receipt.attempt.review_token != review_token.as_str() {
 			return Err("Draft receipt changed".into());
 		}
 		if receipt.state == "draft_restored" {
 			return Ok(work_id.as_str().into());
 		}
+
 		let current = agent
 			.recover_prompt_edit(work_id.as_str(), thread_id.as_str())
 			.await
 			.map_err(|_| "Native edit recovery is incomplete")?
 			.ok_or("Edit receipt is unavailable")?;
+
 		if current.id != receipt_id || current.state != "applied" {
 			return Err("Native edit recovery is incomplete".into());
 		}
+
 		let generation = agent.native_generation().map(|g| g.as_str().to_owned());
+
 		if !self
 			.store
 			.release_agent_prompt_edit_draft(receipt_id, generation)
@@ -166,6 +194,7 @@ impl AgentHost {
 		{
 			return Err("Draft acknowledgement changed".into());
 		}
+
 		Ok(work_id.as_str().into())
 	}
 
@@ -177,12 +206,14 @@ impl AgentHost {
 	) -> Result<PromptEditReview, AgentHostError> {
 		let mut reviews = self.prompt_edits.lock().await;
 		let (when, review) = reviews.get(work_id.as_str()).ok_or("Prompt review expired")?;
+
 		if when.elapsed() >= REVIEW_LIFETIME
 			|| review.evidence().thread != thread_id.as_str()
 			|| review.evidence().review_token != review_token.as_str()
 		{
 			return Err("Prompt review changed".into());
 		}
+
 		Ok(reviews.remove(work_id.as_str()).ok_or("Prompt review expired")?.1)
 	}
 
@@ -207,11 +238,13 @@ impl AgentHost {
 			Ok(receipt) => receipt,
 			Err(_) => {
 				result.phase = Phase::Unavailable;
+
 				return result;
 			},
 		};
 		let prepared = {
 			let reviews = self.prompt_edits.lock().await;
+
 			reviews
 				.get(work.as_str())
 				.filter(|(when, r)| {
@@ -231,9 +264,11 @@ impl AgentHost {
 				"draft_restored" => Phase::Restored,
 				_ => {
 					result.phase = Phase::Unavailable;
+
 					return result;
 				},
 			};
+
 			(receipt.attempt, Some(receipt.id), phase)
 		} else if let Some(prepared) = prepared {
 			if !self
@@ -247,51 +282,28 @@ impl AgentHost {
 				.unwrap_or(false)
 			{
 				result.phase = Phase::Unavailable;
+
 				return result;
 			}
+
 			(prepared, None, Phase::Review)
 		} else {
 			return result;
 		};
+
 		if (offset > 0 && review.is_none())
 			|| review.is_some_and(|r| r.as_str() != attempt.review_token)
 		{
 			result.phase = Phase::Unavailable;
+
 			return result;
 		}
+
 		result.evidence = fragment(&attempt, id, offset);
 		result.phase = if result.evidence.is_some() { phase } else { Phase::Unavailable };
+
 		result
 	}
-}
-
-fn fragment(
-	a: &AgentPromptEditAttempt,
-	id: Option<i64>,
-	offset: u64,
-) -> Option<PromptEditEvidence> {
-	let text = serde_json::to_string(&a.content).ok()?;
-	let start = usize::try_from(offset).ok()?;
-	if start >= text.len() || !text.is_char_boundary(start) {
-		return None;
-	}
-	let mut end = (start + 64 * 1024).min(text.len());
-	while !text.is_char_boundary(end) {
-		end -= 1;
-	}
-	Some(PromptEditEvidence {
-		review_token: WireText::new(a.review_token.clone()).ok()?,
-		receipt_id: id,
-		before_turn_id: WireText::new(a.before_turn_id.clone()).ok()?,
-		item_id: WireText::new(a.item_id.clone()).ok()?,
-		removed_turns: u32::try_from(
-			a.turn_ids.len() - a.turn_ids.iter().position(|t| t == &a.before_turn_id)?,
-		)
-		.ok()?,
-		content_bytes: text.len() as u64,
-		offset,
-		fragment: text[start..end].into(),
-	})
 }
 
 /// Read saved branch state without requiring a live native process.
@@ -305,6 +317,7 @@ impl AgentHost {
 			PromptForkBoundary as Boundary, PromptForkPhase as Phase, PromptForkResult as Result,
 			PromptForkStatus,
 		};
+
 		let saved =
 			match self.store.agent_fork_receipt(work.as_str().into(), review.as_str().into()).await
 			{
@@ -333,11 +346,45 @@ impl AgentHost {
 				edit_receipt_id: saved.edit_receipt_id,
 			})
 		};
+
 		match convert() {
 			Some(status) => Result::Available(Some(status)),
 			None => Result::Unavailable,
 		}
 	}
+}
+
+fn fragment(
+	a: &AgentPromptEditAttempt,
+	id: Option<i64>,
+	offset: u64,
+) -> Option<PromptEditEvidence> {
+	let text = serde_json::to_string(&a.content).ok()?;
+	let start = usize::try_from(offset).ok()?;
+
+	if start >= text.len() || !text.is_char_boundary(start) {
+		return None;
+	}
+
+	let mut end = (start + 64 * 1_024).min(text.len());
+
+	while !text.is_char_boundary(end) {
+		end -= 1;
+	}
+
+	Some(PromptEditEvidence {
+		review_token: WireText::new(a.review_token.clone()).ok()?,
+		receipt_id: id,
+		before_turn_id: WireText::new(a.before_turn_id.clone()).ok()?,
+		item_id: WireText::new(a.item_id.clone()).ok()?,
+		removed_turns: u32::try_from(
+			a.turn_ids.len() - a.turn_ids.iter().position(|t| t == &a.before_turn_id)?,
+		)
+		.ok()?,
+		content_bytes: text.len() as u64,
+		offset,
+		fragment: text[start..end].into(),
+	})
 }
 
 #[cfg(test)]
@@ -355,21 +402,25 @@ mod tests {
 			item_id: "input".into(),
 			turn_ids: vec!["prefix".into(), "selected".into(), "suffix".into()],
 			content: vec![
-				serde_json::json!({"type":"text","text":"界\\\"".repeat(40000),"text_elements":[]}),
+				serde_json::json!({"type":"text","text":"界\\\"".repeat(40_000),"text_elements":[]}),
 				serde_json::json!({"type":"image","fileId":"native-file"}),
 			],
 		};
 		let expected = serde_json::to_string(&a.content).unwrap();
 		let mut restored = String::new();
+
 		while restored.len() < expected.len() {
 			let page = fragment(&a, None, restored.len() as u64).unwrap();
+
 			assert_eq!(page.removed_turns, 2);
 			assert!(
-				serde_json::to_vec(&page).unwrap().len() < 200 * 1024,
+				serde_json::to_vec(&page).unwrap().len() < 200 * 1_024,
 				"leave room in the 256KiB wire envelope"
 			);
+
 			restored.push_str(&page.fragment);
 		}
+
 		assert_eq!(restored, expected);
 		assert!(fragment(&a, None, (expected.find('界').unwrap() + 1) as u64).is_none());
 		assert!(fragment(&a, None, expected.len() as u64).is_none());

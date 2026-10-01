@@ -15,12 +15,14 @@ pub(crate) async fn read(
 		client.request("server/diagnostics", json!({})),
 	)
 	.await;
+
 	if source().is_none_or(|(current, _)| current != generation) {
 		return Result::Unavailable;
 	}
+
 	match response {
 		Ok(Ok(value)) => project(&value).unwrap_or(Result::Unavailable),
-		Ok(Err(ClientError::Remote(error))) if error.code == -32601 => Result::Unsupported,
+		Ok(Err(ClientError::Remote(error))) if error.code == -32_601 => Result::Unsupported,
 		_ => Result::Unavailable,
 	}
 }
@@ -33,7 +35,9 @@ fn project(value: &Value) -> Option<Result> {
 		resident_memory_bytes: Option<u64>,
 		physical_footprint_bytes: Option<u64>,
 	}
+
 	let process: Process = serde_json::from_value(value["process"].clone()).ok()?;
+
 	(process.id != 0).then_some(Result::Available {
 		process_id: process.id,
 		resident_memory_bytes: process.resident_memory_bytes,
@@ -56,6 +60,7 @@ mod tests {
 				physical_footprint_bytes: None
 			})
 		);
+
 		for value in [
 			json!({}),
 			json!({"process":{"id":0}}),
@@ -67,17 +72,22 @@ mod tests {
 	#[tokio::test]
 	async fn diagnostic_read_does_not_start_a_process_and_rejects_changed_generation() {
 		use std::sync::atomic::{AtomicBool, Ordering};
+
 		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
 		assert_eq!(read(|| None).await, Result::Inactive);
+
 		for state in ["same", "stopped", "replaced"] {
-			let (local, remote) = tokio::io::duplex(4096);
+			let (local, remote) = tokio::io::duplex(4_096);
 			let (reader, writer) = tokio::io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
 				let (reader, mut writer) = tokio::io::split(remote);
 				let line = BufReader::new(reader).lines().next_line().await.unwrap().unwrap();
 				let request: Value = serde_json::from_str(&line).unwrap();
+
 				assert_eq!(request["method"], "server/diagnostics");
+
 				writer
 					.write_all(
 						format!(
@@ -92,6 +102,7 @@ mod tests {
 			let called = AtomicBool::new(false);
 			let result = read(|| {
 				let after_response = called.swap(true, Ordering::SeqCst);
+
 				if after_response && state == "stopped" {
 					None
 				} else {
@@ -107,7 +118,9 @@ mod tests {
 				}
 			})
 			.await;
+
 			server.await.unwrap();
+
 			assert_eq!(
 				result,
 				if state != "same" {

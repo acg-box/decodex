@@ -11,7 +11,9 @@ use decodex_codex::{
 	AccountApiResetCredits, AccountApiUsage, decode_account_api_profile,
 	decode_account_api_reset_credits, decode_account_api_usage,
 };
+
 use decodex_core::{AccountId, AccountOperationId, AccountProvider, ProviderIdentity};
+
 use reqwest::{Method, StatusCode};
 
 use crate::account_service::{
@@ -27,18 +29,6 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const MINIMUM_ACCESS_TOKEN_VALIDITY: Duration = Duration::from_secs(20);
 const RESET_CREDIT_DETAIL_RETRY_DELAY: Duration = Duration::from_millis(250);
 
-fn account_http_client() -> Result<reqwest::Client, AccountApiRuntimeError> {
-	reqwest::Client::builder()
-		.connect_timeout(CONNECT_TIMEOUT)
-		.timeout(HTTP_TIMEOUT)
-		.redirect(reqwest::redirect::Policy::none())
-		.retry(reqwest::retry::never())
-		.user_agent("decodex")
-		.cookie_provider(Arc::new(routing_cookies::RoutingCookies::default()))
-		.build()
-		.map_err(|_| AccountApiRuntimeError::ProviderUnavailable)
-}
-
 /// Closed provider failure safe for UI and durable operation mapping.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AccountApiRuntimeError {
@@ -52,349 +42,6 @@ pub(crate) enum AccountApiRuntimeError {
 	ProviderUnavailable,
 	ProtocolUnavailable,
 	AccountChanged,
-}
-
-/// One provider API inventory after optional reset-credit detail enrichment.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct AccountApiInventory {
-	pub(crate) account_revision: i64,
-	pub(crate) ordinary_usage_allowed: Option<bool>,
-	pub(crate) conditions: decodex_core::AccountUsageConditions,
-	pub(crate) banner: decodex_codex::AccountApiBannerState,
-	pub(crate) recovery_context: Option<decodex_codex::AccountApiRecoveryContext>,
-	pub(crate) quota_windows: [AccountApiQuotaWindow; 2],
-	pub(crate) reported_available_count: Option<u64>,
-	pub(crate) details_complete: bool,
-	pub(crate) credits: Vec<AccountApiResetCredit>,
-}
-
-/// Result of one coalesced provider refresh round.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct AccountApiObservation {
-	pub(crate) account_revision: i64,
-	pub(crate) provider: Option<ProviderIdentity>,
-	pub(crate) inventory: Result<AccountApiInventory, AccountApiRuntimeError>,
-	pub(crate) profile: Result<AccountApiProfile, AccountApiRuntimeError>,
-}
-
-/// The singleton backend API adapter shared by background observation and reset-card effects.
-#[derive(Clone)]
-pub(crate) struct AccountApiRuntime {
-	accounts: Arc<AccountService>,
-	store: decodex_database::SqliteStore,
-	client: reqwest::Client,
-	activation_profile: Option<crate::account_launch::AttestedAppServerProfile>,
-}
-impl AccountApiRuntime {
-	/// Build the account client; only model activation needs the optional native policy profile.
-	pub(crate) fn new(
-		accounts: Arc<AccountService>,
-		store: decodex_database::SqliteStore,
-		activation_profile: Option<crate::account_launch::AttestedAppServerProfile>,
-	) -> Result<Self, AccountApiRuntimeError> {
-		let client = account_http_client()?;
-		Ok(Self { accounts, store, client, activation_profile })
-	}
-
-	pub(crate) async fn reset_session(
-		&self,
-		account_id: &AccountId,
-		revision: i64,
-	) -> Result<AccountApiCredential, AccountApiRuntimeError> {
-		let credential = self
-			.accounts
-			.api_credential_for_reset(account_id, revision)
-			.await
-			.map_err(map_account_service_error)?;
-		if credential.binding.provider.provider() != AccountProvider::Chatgpt {
-			return Err(AccountApiRuntimeError::ProtocolUnavailable);
-		}
-		Ok(credential)
-	}
-
-	pub(crate) async fn reset_inventory(
-		&self,
-		credential: &AccountApiCredential,
-	) -> Result<AccountApiInventory, AccountApiRuntimeError> {
-		let body = self
-			.request_json(Method::GET, USAGE_PATH, credential, None)
-			.await
-			.map_err(map_request_error)?;
-		let usage = decode_account_api_usage(&body).map_err(map_protocol_error)?;
-		self.enrich_inventory(credential, usage).await
-	}
-
-	/// One attempt only. Any transport/protocol failure leaves the durable operation uncertain.
-	pub(crate) async fn consume_exact_reset_credit(
-		&self,
-		credential: &AccountApiCredential,
-		key: &decodex_codex::ResetCardIdempotencyKey,
-		credit: &decodex_codex::ExactResetCreditId,
-	) -> Result<decodex_core::ResetCardConsumeOutcome, AccountApiRuntimeError> {
-		let body =
-			serde_json::json!({"redeem_request_id": key.as_str(), "credit_id": credit.as_str()});
-		let response = self
-			.request_json(
-				Method::POST,
-				"/wham/rate-limit-reset-credits/consume",
-				credential,
-				Some(&body),
-			)
-			.await
-			.map_err(map_request_error)?;
-		use decodex_codex::AccountApiConsumeOutcome;
-		use decodex_core::ResetCardConsumeOutcome;
-		Ok(
-			match decodex_codex::decode_account_api_consume(&response)
-				.map_err(map_protocol_error)?
-			{
-				AccountApiConsumeOutcome::Reset => ResetCardConsumeOutcome::Reset,
-				AccountApiConsumeOutcome::NothingToReset => ResetCardConsumeOutcome::NothingToReset,
-				AccountApiConsumeOutcome::NoCredit => ResetCardConsumeOutcome::NoCredit,
-				AccountApiConsumeOutcome::AlreadyRedeemed =>
-					ResetCardConsumeOutcome::AlreadyRedeemed,
-			},
-		)
-	}
-
-	/// Observe profile, usage, and reset-credit details through one shared auth/request boundary.
-	pub(crate) async fn observe_account(&self, account_id: &AccountId) -> AccountApiObservation {
-		let first = self.observe_with_current_credential(account_id).await;
-		if !first.requires_auth_retry() {
-			return first.into_observation();
-		}
-
-		let first_revision = first.account_revision();
-		if let Err(error) = self.refresh_after_unauthorized(account_id, first_revision).await {
-			return first.with_auth_retry_error(error).into_observation();
-		}
-		let second = self.observe_with_current_credential(account_id).await;
-		if !second.requires_auth_retry() {
-			return second.into_observation();
-		}
-
-		let second_revision = second.account_revision();
-		let operation_id = match AccountOperationId::generate() {
-			Ok(operation_id) => operation_id,
-			Err(_) =>
-				return second
-					.with_auth_retry_error(AccountApiRuntimeError::AccountChanged)
-					.into_observation(),
-		};
-		let error = match self
-			.accounts
-			.require_observation_reauthentication(operation_id, account_id, second_revision)
-			.await
-		{
-			Ok(()) => AccountApiRuntimeError::AccessRejectedAfterRefresh,
-			Err(error) => map_account_service_error(error),
-		};
-		second.with_auth_retry_error(error).into_observation()
-	}
-
-	async fn observe_with_current_credential(
-		&self,
-		account_id: &AccountId,
-	) -> PendingAccountApiObservation {
-		let credential = match self
-			.accounts
-			.api_credential_for_observation(account_id, MINIMUM_ACCESS_TOKEN_VALIDITY)
-			.await
-		{
-			Ok(credential) => credential,
-			Err(error) => {
-				let error = map_account_service_error(error);
-				return PendingAccountApiObservation::credential_error(error);
-			},
-		};
-		if credential.binding.provider.provider() != AccountProvider::Chatgpt {
-			return PendingAccountApiObservation::failed(
-				credential.account_revision,
-				AccountApiRuntimeError::ProtocolUnavailable,
-			);
-		}
-
-		let usage = self.request_json(Method::GET, USAGE_PATH, &credential, None);
-		let profile = self.request_json(Method::GET, PROFILE_PATH, &credential, None);
-		let (usage, profile) = tokio::join!(usage, profile);
-		let usage = usage
-			.map_err(map_request_error)
-			.and_then(|body| decode_account_api_usage(&body).map_err(map_protocol_error));
-		let profile = profile
-			.map_err(map_request_error)
-			.and_then(|body| decode_account_api_profile(&body).map_err(map_protocol_error));
-
-		let inventory = match usage {
-			Ok(usage) => self.enrich_inventory(&credential, usage).await,
-			Err(error) => Err(error),
-		};
-		PendingAccountApiObservation::Pending(Box::new(AccountApiObservation {
-			account_revision: credential.account_revision,
-			provider: Some(credential.binding.provider.clone()),
-			inventory,
-			profile,
-		}))
-	}
-
-	async fn enrich_inventory(
-		&self,
-		credential: &AccountApiCredential,
-		usage: AccountApiUsage,
-	) -> Result<AccountApiInventory, AccountApiRuntimeError> {
-		let account_id = credential.binding.provider.account_id();
-		let bundle = credential.stored.bundle();
-		let user_id = bundle
-			.personal_access_token_user_id()
-			.map(|user_id| zeroize::Zeroizing::new(user_id.to_owned()))
-			.or_else(|| {
-				bundle
-					.id_token()
-					.and_then(|token| crate::account_import::usage_user_id(token, account_id))
-			});
-		let (ordinary_usage_allowed, conditions, banner, recovery_context) = user_id
-			.map(|user_id| {
-				(
-					usage.ordinary_usage_allowed_for(account_id, &user_id),
-					usage.conditions_for(account_id, &user_id),
-					usage.banner_for(account_id, &user_id),
-					usage.recovery_context_for(account_id, &user_id),
-				)
-			})
-			.unwrap_or_default();
-		let Some(reported_available_count) = usage.reported_available_count else {
-			return Ok(AccountApiInventory {
-				account_revision: credential.account_revision,
-				ordinary_usage_allowed,
-				conditions,
-				banner: banner.clone(),
-				recovery_context: recovery_context.clone(),
-				quota_windows: usage.quota_windows,
-				reported_available_count: None,
-				details_complete: false,
-				credits: Vec::new(),
-			});
-		};
-		if reported_available_count == 0 {
-			return Ok(AccountApiInventory {
-				account_revision: credential.account_revision,
-				ordinary_usage_allowed,
-				conditions,
-				banner: banner.clone(),
-				recovery_context: recovery_context.clone(),
-				quota_windows: usage.quota_windows,
-				reported_available_count: Some(0),
-				details_complete: true,
-				credits: Vec::new(),
-			});
-		}
-		let mut details = self.request_reset_credit_details(credential).await;
-		if should_retry_reset_credit_details(reported_available_count, &details) {
-			// The summary and detail endpoints are independent provider projections. One bounded
-			// successor read absorbs their common short convergence window without delaying any
-			// other account's observation owner.
-			tokio::time::sleep(RESET_CREDIT_DETAIL_RETRY_DELAY).await;
-			details = self.request_reset_credit_details(credential).await;
-		}
-		match details {
-			Ok(details)
-				if reset_credit_details_are_complete(reported_available_count, &details) =>
-				Ok(AccountApiInventory {
-					account_revision: credential.account_revision,
-					ordinary_usage_allowed,
-					conditions,
-					banner: banner.clone(),
-					recovery_context: recovery_context.clone(),
-					quota_windows: usage.quota_windows,
-					reported_available_count: Some(reported_available_count),
-					details_complete: true,
-					credits: details.credits,
-				}),
-			Err(AccountApiRuntimeError::Unauthorized) => Err(AccountApiRuntimeError::Unauthorized),
-			Ok(_) | Err(_) => Ok(AccountApiInventory {
-				// Preserve the fresh quota projection even when the optional details do not
-				// converge. The observation cache retains a same-revision complete public
-				// inventory, if one exists, and a later daemon round retries this bounded
-				// provider read.
-				account_revision: credential.account_revision,
-				ordinary_usage_allowed,
-				conditions,
-				banner: banner.clone(),
-				recovery_context: recovery_context.clone(),
-				quota_windows: usage.quota_windows,
-				reported_available_count: Some(reported_available_count),
-				details_complete: false,
-				credits: Vec::new(),
-			}),
-		}
-	}
-
-	async fn request_reset_credit_details(
-		&self,
-		credential: &AccountApiCredential,
-	) -> Result<AccountApiResetCredits, AccountApiRuntimeError> {
-		match self.request_json(Method::GET, RESET_CREDITS_PATH, credential, None).await {
-			Ok(body) => decode_account_api_reset_credits(&body).map_err(map_protocol_error),
-			Err(error) => Err(map_request_error(error)),
-		}
-	}
-
-	async fn refresh_after_unauthorized(
-		&self,
-		account_id: &AccountId,
-		account_revision: i64,
-	) -> Result<(), AccountApiRuntimeError> {
-		let operation_id =
-			AccountOperationId::generate().map_err(|_| AccountApiRuntimeError::AccountChanged)?;
-		self.accounts
-			.refresh_for_observation(operation_id, account_id, account_revision)
-			.await
-			.map(|_| ())
-			.map_err(map_account_service_error)
-	}
-
-	async fn request_json(
-		&self,
-		method: Method,
-		path: &str,
-		credential: &AccountApiCredential,
-		json: Option<&serde_json::Value>,
-	) -> Result<Vec<u8>, AccountApiRequestError> {
-		let mut request = self
-			.client
-			.request(method, format!("{BACKEND_API_BASE}{path}"))
-			.bearer_auth(credential.stored.bundle().access_token())
-			.header("ChatGPT-Account-Id", credential.binding.provider.account_id())
-			.header("Accept", "application/json")
-			.header("Cache-Control", "no-cache, no-store");
-		if let Some(json) = json {
-			request = request.json(json);
-		}
-		let mut response =
-			request.send().await.map_err(|_| AccountApiRequestError::ProviderUnavailable)?;
-		let status = response.status();
-		if status == StatusCode::UNAUTHORIZED {
-			return Err(AccountApiRequestError::Unauthorized);
-		}
-		if !status.is_success() {
-			return Err(AccountApiRequestError::ProviderUnavailable);
-		}
-		if response
-			.content_length()
-			.is_some_and(|length| length > decodex_codex::MAX_ACCOUNT_API_BODY_BYTES as u64)
-		{
-			return Err(AccountApiRequestError::ProtocolUnavailable);
-		}
-		let mut body = Vec::new();
-		while let Some(chunk) =
-			response.chunk().await.map_err(|_| AccountApiRequestError::ProviderUnavailable)?
-		{
-			if chunk.len() > decodex_codex::MAX_ACCOUNT_API_BODY_BYTES.saturating_sub(body.len()) {
-				return Err(AccountApiRequestError::ProtocolUnavailable);
-			}
-			body.extend_from_slice(&chunk);
-		}
-		Ok(body)
-	}
 }
 
 enum PendingAccountApiObservation {
@@ -452,6 +99,7 @@ impl PendingAccountApiObservation {
 				observation.profile = Err(error);
 			}
 		}
+
 		self
 	}
 }
@@ -461,6 +109,388 @@ enum AccountApiRequestError {
 	Unauthorized,
 	ProviderUnavailable,
 	ProtocolUnavailable,
+}
+
+/// One provider API inventory after optional reset-credit detail enrichment.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AccountApiInventory {
+	pub(crate) account_revision: i64,
+	pub(crate) ordinary_usage_allowed: Option<bool>,
+	pub(crate) conditions: decodex_core::AccountUsageConditions,
+	pub(crate) banner: decodex_codex::AccountApiBannerState,
+	pub(crate) recovery_context: Option<decodex_codex::AccountApiRecoveryContext>,
+	pub(crate) quota_windows: [AccountApiQuotaWindow; 2],
+	pub(crate) reported_available_count: Option<u64>,
+	pub(crate) details_complete: bool,
+	pub(crate) credits: Vec<AccountApiResetCredit>,
+}
+
+/// Result of one coalesced provider refresh round.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AccountApiObservation {
+	pub(crate) account_revision: i64,
+	pub(crate) provider: Option<ProviderIdentity>,
+	pub(crate) inventory: Result<AccountApiInventory, AccountApiRuntimeError>,
+	pub(crate) profile: Result<AccountApiProfile, AccountApiRuntimeError>,
+}
+
+/// The singleton backend API adapter shared by background observation and reset-card effects.
+#[derive(Clone)]
+pub(crate) struct AccountApiRuntime {
+	accounts: Arc<AccountService>,
+	store: decodex_database::SqliteStore,
+	client: reqwest::Client,
+	activation_profile: Option<crate::account_launch::AttestedAppServerProfile>,
+}
+impl AccountApiRuntime {
+	/// Build the account client; only model activation needs the optional native policy profile.
+	pub(crate) fn new(
+		accounts: Arc<AccountService>,
+		store: decodex_database::SqliteStore,
+		activation_profile: Option<crate::account_launch::AttestedAppServerProfile>,
+	) -> Result<Self, AccountApiRuntimeError> {
+		let client = account_http_client()?;
+
+		Ok(Self { accounts, store, client, activation_profile })
+	}
+
+	pub(crate) async fn reset_session(
+		&self,
+		account_id: &AccountId,
+		revision: i64,
+	) -> Result<AccountApiCredential, AccountApiRuntimeError> {
+		let credential = self
+			.accounts
+			.api_credential_for_reset(account_id, revision)
+			.await
+			.map_err(map_account_service_error)?;
+
+		if credential.binding.provider.provider() != AccountProvider::Chatgpt {
+			return Err(AccountApiRuntimeError::ProtocolUnavailable);
+		}
+
+		Ok(credential)
+	}
+
+	pub(crate) async fn reset_inventory(
+		&self,
+		credential: &AccountApiCredential,
+	) -> Result<AccountApiInventory, AccountApiRuntimeError> {
+		let body = self
+			.request_json(Method::GET, USAGE_PATH, credential, None)
+			.await
+			.map_err(map_request_error)?;
+		let usage = decode_account_api_usage(&body).map_err(map_protocol_error)?;
+
+		self.enrich_inventory(credential, usage).await
+	}
+
+	/// One attempt only. Any transport/protocol failure leaves the durable operation uncertain.
+	pub(crate) async fn consume_exact_reset_credit(
+		&self,
+		credential: &AccountApiCredential,
+		key: &decodex_codex::ResetCardIdempotencyKey,
+		credit: &decodex_codex::ExactResetCreditId,
+	) -> Result<decodex_core::ResetCardConsumeOutcome, AccountApiRuntimeError> {
+		let body =
+			serde_json::json!({"redeem_request_id": key.as_str(), "credit_id": credit.as_str()});
+		let response = self
+			.request_json(
+				Method::POST,
+				"/wham/rate-limit-reset-credits/consume",
+				credential,
+				Some(&body),
+			)
+			.await
+			.map_err(map_request_error)?;
+
+		use decodex_codex::AccountApiConsumeOutcome;
+
+		use decodex_core::ResetCardConsumeOutcome;
+
+		Ok(
+			match decodex_codex::decode_account_api_consume(&response)
+				.map_err(map_protocol_error)?
+			{
+				AccountApiConsumeOutcome::Reset => ResetCardConsumeOutcome::Reset,
+				AccountApiConsumeOutcome::NothingToReset => ResetCardConsumeOutcome::NothingToReset,
+				AccountApiConsumeOutcome::NoCredit => ResetCardConsumeOutcome::NoCredit,
+				AccountApiConsumeOutcome::AlreadyRedeemed =>
+					ResetCardConsumeOutcome::AlreadyRedeemed,
+			},
+		)
+	}
+
+	/// Observe profile, usage, and reset-credit details through one shared auth/request boundary.
+	pub(crate) async fn observe_account(&self, account_id: &AccountId) -> AccountApiObservation {
+		let first = self.observe_with_current_credential(account_id).await;
+
+		if !first.requires_auth_retry() {
+			return first.into_observation();
+		}
+
+		let first_revision = first.account_revision();
+
+		if let Err(error) = self.refresh_after_unauthorized(account_id, first_revision).await {
+			return first.with_auth_retry_error(error).into_observation();
+		}
+
+		let second = self.observe_with_current_credential(account_id).await;
+
+		if !second.requires_auth_retry() {
+			return second.into_observation();
+		}
+
+		let second_revision = second.account_revision();
+		let operation_id = match AccountOperationId::generate() {
+			Ok(operation_id) => operation_id,
+			Err(_) =>
+				return second
+					.with_auth_retry_error(AccountApiRuntimeError::AccountChanged)
+					.into_observation(),
+		};
+		let error = match self
+			.accounts
+			.require_observation_reauthentication(operation_id, account_id, second_revision)
+			.await
+		{
+			Ok(()) => AccountApiRuntimeError::AccessRejectedAfterRefresh,
+			Err(error) => map_account_service_error(error),
+		};
+
+		second.with_auth_retry_error(error).into_observation()
+	}
+
+	async fn observe_with_current_credential(
+		&self,
+		account_id: &AccountId,
+	) -> PendingAccountApiObservation {
+		let credential = match self
+			.accounts
+			.api_credential_for_observation(account_id, MINIMUM_ACCESS_TOKEN_VALIDITY)
+			.await
+		{
+			Ok(credential) => credential,
+			Err(error) => {
+				let error = map_account_service_error(error);
+
+				return PendingAccountApiObservation::credential_error(error);
+			},
+		};
+
+		if credential.binding.provider.provider() != AccountProvider::Chatgpt {
+			return PendingAccountApiObservation::failed(
+				credential.account_revision,
+				AccountApiRuntimeError::ProtocolUnavailable,
+			);
+		}
+
+		let usage = self.request_json(Method::GET, USAGE_PATH, &credential, None);
+		let profile = self.request_json(Method::GET, PROFILE_PATH, &credential, None);
+		let (usage, profile) = tokio::join!(usage, profile);
+		let usage = usage
+			.map_err(map_request_error)
+			.and_then(|body| decode_account_api_usage(&body).map_err(map_protocol_error));
+		let profile = profile
+			.map_err(map_request_error)
+			.and_then(|body| decode_account_api_profile(&body).map_err(map_protocol_error));
+		let inventory = match usage {
+			Ok(usage) => self.enrich_inventory(&credential, usage).await,
+			Err(error) => Err(error),
+		};
+
+		PendingAccountApiObservation::Pending(Box::new(AccountApiObservation {
+			account_revision: credential.account_revision,
+			provider: Some(credential.binding.provider.clone()),
+			inventory,
+			profile,
+		}))
+	}
+
+	async fn enrich_inventory(
+		&self,
+		credential: &AccountApiCredential,
+		usage: AccountApiUsage,
+	) -> Result<AccountApiInventory, AccountApiRuntimeError> {
+		let account_id = credential.binding.provider.account_id();
+		let bundle = credential.stored.bundle();
+		let user_id = bundle
+			.personal_access_token_user_id()
+			.map(|user_id| zeroize::Zeroizing::new(user_id.to_owned()))
+			.or_else(|| {
+				bundle
+					.id_token()
+					.and_then(|token| crate::account_import::usage_user_id(token, account_id))
+			});
+		let (ordinary_usage_allowed, conditions, banner, recovery_context) = user_id
+			.map(|user_id| {
+				(
+					usage.ordinary_usage_allowed_for(account_id, &user_id),
+					usage.conditions_for(account_id, &user_id),
+					usage.banner_for(account_id, &user_id),
+					usage.recovery_context_for(account_id, &user_id),
+				)
+			})
+			.unwrap_or_default();
+		let Some(reported_available_count) = usage.reported_available_count else {
+			return Ok(AccountApiInventory {
+				account_revision: credential.account_revision,
+				ordinary_usage_allowed,
+				conditions,
+				banner: banner.clone(),
+				recovery_context: recovery_context.clone(),
+				quota_windows: usage.quota_windows,
+				reported_available_count: None,
+				details_complete: false,
+				credits: Vec::new(),
+			});
+		};
+
+		if reported_available_count == 0 {
+			return Ok(AccountApiInventory {
+				account_revision: credential.account_revision,
+				ordinary_usage_allowed,
+				conditions,
+				banner: banner.clone(),
+				recovery_context: recovery_context.clone(),
+				quota_windows: usage.quota_windows,
+				reported_available_count: Some(0),
+				details_complete: true,
+				credits: Vec::new(),
+			});
+		}
+
+		let mut details = self.request_reset_credit_details(credential).await;
+
+		if should_retry_reset_credit_details(reported_available_count, &details) {
+			// The summary and detail endpoints are independent provider projections. One bounded
+			// successor read absorbs their common short convergence window without delaying any
+			// other account's observation owner.
+			tokio::time::sleep(RESET_CREDIT_DETAIL_RETRY_DELAY).await;
+
+			details = self.request_reset_credit_details(credential).await;
+		}
+
+		match details {
+			Ok(details)
+				if reset_credit_details_are_complete(reported_available_count, &details) =>
+				Ok(AccountApiInventory {
+					account_revision: credential.account_revision,
+					ordinary_usage_allowed,
+					conditions,
+					banner: banner.clone(),
+					recovery_context: recovery_context.clone(),
+					quota_windows: usage.quota_windows,
+					reported_available_count: Some(reported_available_count),
+					details_complete: true,
+					credits: details.credits,
+				}),
+			Err(AccountApiRuntimeError::Unauthorized) => Err(AccountApiRuntimeError::Unauthorized),
+			Ok(_) | Err(_) => Ok(AccountApiInventory {
+				// Preserve the fresh quota projection even when the optional details do not
+				// converge. The observation cache retains a same-revision complete public
+				// inventory, if one exists, and a later daemon round retries this bounded
+				// provider read.
+				account_revision: credential.account_revision,
+				ordinary_usage_allowed,
+				conditions,
+				banner: banner.clone(),
+				recovery_context: recovery_context.clone(),
+				quota_windows: usage.quota_windows,
+				reported_available_count: Some(reported_available_count),
+				details_complete: false,
+				credits: Vec::new(),
+			}),
+		}
+	}
+
+	async fn request_reset_credit_details(
+		&self,
+		credential: &AccountApiCredential,
+	) -> Result<AccountApiResetCredits, AccountApiRuntimeError> {
+		match self.request_json(Method::GET, RESET_CREDITS_PATH, credential, None).await {
+			Ok(body) => decode_account_api_reset_credits(&body).map_err(map_protocol_error),
+			Err(error) => Err(map_request_error(error)),
+		}
+	}
+
+	async fn refresh_after_unauthorized(
+		&self,
+		account_id: &AccountId,
+		account_revision: i64,
+	) -> Result<(), AccountApiRuntimeError> {
+		let operation_id =
+			AccountOperationId::generate().map_err(|_| AccountApiRuntimeError::AccountChanged)?;
+
+		self.accounts
+			.refresh_for_observation(operation_id, account_id, account_revision)
+			.await
+			.map(|_| ())
+			.map_err(map_account_service_error)
+	}
+
+	async fn request_json(
+		&self,
+		method: Method,
+		path: &str,
+		credential: &AccountApiCredential,
+		json: Option<&serde_json::Value>,
+	) -> Result<Vec<u8>, AccountApiRequestError> {
+		let mut request = self
+			.client
+			.request(method, format!("{BACKEND_API_BASE}{path}"))
+			.bearer_auth(credential.stored.bundle().access_token())
+			.header("ChatGPT-Account-Id", credential.binding.provider.account_id())
+			.header("Accept", "application/json")
+			.header("Cache-Control", "no-cache, no-store");
+
+		if let Some(json) = json {
+			request = request.json(json);
+		}
+
+		let mut response =
+			request.send().await.map_err(|_| AccountApiRequestError::ProviderUnavailable)?;
+		let status = response.status();
+
+		if status == StatusCode::UNAUTHORIZED {
+			return Err(AccountApiRequestError::Unauthorized);
+		}
+		if !status.is_success() {
+			return Err(AccountApiRequestError::ProviderUnavailable);
+		}
+		if response
+			.content_length()
+			.is_some_and(|length| length > decodex_codex::MAX_ACCOUNT_API_BODY_BYTES as u64)
+		{
+			return Err(AccountApiRequestError::ProtocolUnavailable);
+		}
+
+		let mut body = Vec::new();
+
+		while let Some(chunk) =
+			response.chunk().await.map_err(|_| AccountApiRequestError::ProviderUnavailable)?
+		{
+			if chunk.len() > decodex_codex::MAX_ACCOUNT_API_BODY_BYTES.saturating_sub(body.len()) {
+				return Err(AccountApiRequestError::ProtocolUnavailable);
+			}
+
+			body.extend_from_slice(&chunk);
+		}
+
+		Ok(body)
+	}
+}
+
+fn account_http_client() -> Result<reqwest::Client, AccountApiRuntimeError> {
+	reqwest::Client::builder()
+		.connect_timeout(CONNECT_TIMEOUT)
+		.timeout(HTTP_TIMEOUT)
+		.redirect(reqwest::redirect::Policy::none())
+		.retry(reqwest::retry::never())
+		.user_agent("decodex")
+		.cookie_provider(Arc::new(routing_cookies::RoutingCookies::default()))
+		.build()
+		.map_err(|_| AccountApiRuntimeError::ProviderUnavailable)
 }
 
 fn map_request_error(error: AccountApiRequestError) -> AccountApiRuntimeError {
@@ -558,6 +588,7 @@ mod tests {
 			br#"{"available_count":1,"credits":[{"id":"credit-1","reset_type":"codexRateLimits","status":"available","granted_at":1800000000,"expires_at":1800003600}]}"#,
 		)
 		.expect("complete fixture");
+
 		assert!(reset_credit_details_are_complete(1, &complete));
 		assert!(!should_retry_reset_credit_details(1, &Ok(complete.clone())));
 		assert!(should_retry_reset_credit_details(2, &Ok(complete)));
@@ -567,6 +598,7 @@ mod tests {
 			credits: Vec::new(),
 			details_complete: false,
 		};
+
 		assert!(should_retry_reset_credit_details(1, &Ok(incomplete)));
 		assert!(should_retry_reset_credit_details(
 			1,

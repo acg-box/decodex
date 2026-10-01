@@ -1,18 +1,21 @@
+#[doc(hidden)]
+pub use decodex_codex::app_server_client::MAX_FRAME_BYTES as MAX_APP_SERVER_FRAME_BYTES;
+
+pub use decodex_codex::app_server_client::InitializeCapabilities;
+
 use std::{
 	fmt::{Debug, Formatter},
 	ops::Deref,
 };
 
 use serde::{Deserialize, Deserializer, Serialize};
+
 use zeroize::{Zeroize as _, Zeroizing};
 
 use decodex_codex::{
 	ConversationTurnStatus, DecodexThreadSearchTerm, ExactThreadFacts, ExactThreadId,
 	ThreadCreatedAt, ThreadCwd, ThreadId, ThreadProvenance, ThreadSummary, ThreadTitle,
 };
-
-#[doc(hidden)]
-pub use decodex_codex::app_server_client::MAX_FRAME_BYTES as MAX_APP_SERVER_FRAME_BYTES;
 
 impl From<&ProtocolThread> for ThreadSummary {
 	fn from(value: &ProtocolThread) -> Self {
@@ -36,26 +39,6 @@ impl TryFrom<&ProtocolThread> for ExactThreadFacts {
 	}
 }
 
-pub(crate) fn exact_thread_facts(
-	value: &ProtocolThread,
-	archived: bool,
-) -> Result<ExactThreadFacts, &'static str> {
-	Ok(ExactThreadFacts {
-		id: ExactThreadId::new(value.id.as_str())?,
-		provenance: value
-			.thread_source
-			.as_deref()
-			.map(ThreadProvenance::from_protocol)
-			.transpose()?,
-		created_at: ThreadCreatedAt::from_protocol(
-			value.created_at.ok_or("Codex thread creation timestamp is missing")?,
-		)?,
-		title: value.name.as_deref().map(ThreadTitle::from_protocol).transpose()?,
-		cwd: ThreadCwd::from_protocol(value.cwd.as_deref().ok_or("Codex thread cwd is missing")?)?,
-		archived,
-	})
-}
-
 /// One independently zeroizing string allocated directly by typed Serde decoding.
 #[derive(Deserialize)]
 #[serde(transparent)]
@@ -67,11 +50,13 @@ impl SensitiveString {
 		self.0.as_str()
 	}
 }
+
 impl Debug for SensitiveString {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str("SensitiveString([REDACTED])")
 	}
 }
+
 impl Deref for SensitiveString {
 	type Target = str;
 
@@ -79,6 +64,7 @@ impl Deref for SensitiveString {
 		self.as_str()
 	}
 }
+
 impl Drop for SensitiveString {
 	fn drop(&mut self) {
 		self.0.zeroize();
@@ -100,8 +86,6 @@ pub struct ClientInfo<'a> {
 	pub name: &'a str,
 	pub version: &'a str,
 }
-
-pub use decodex_codex::app_server_client::InitializeCapabilities;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -223,25 +207,6 @@ pub struct ProtocolTurn {
 	pub items: Vec<ProtocolThreadItem>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ProtocolTurnStatus {
-	Completed,
-	Interrupted,
-	Failed,
-	InProgress,
-}
-impl ProtocolTurnStatus {
-	pub const fn into_conversation(self) -> ConversationTurnStatus {
-		match self {
-			Self::Completed => ConversationTurnStatus::Completed,
-			Self::Interrupted => ConversationTurnStatus::Interrupted,
-			Self::Failed => ConversationTurnStatus::Failed,
-			Self::InProgress => ConversationTurnStatus::InProgress,
-		}
-	}
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProtocolThreadItem {
@@ -260,7 +225,6 @@ pub struct JsonRpcError {
 	#[serde(rename = "message")]
 	_message: SensitiveString,
 }
-
 impl JsonRpcError {
 	pub(super) fn message(&self) -> &str {
 		self._message.as_str()
@@ -284,13 +248,43 @@ impl<T> JsonRpcResponse<T> {
 	}
 }
 
-fn deserialize_present_jsonrpc_version<'de, D>(
-	deserializer: D,
-) -> Result<Option<SensitiveString>, D::Error>
-where
-	D: Deserializer<'de>,
-{
-	SensitiveString::deserialize(deserializer).map(Some)
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ProtocolTurnStatus {
+	Completed,
+	Interrupted,
+	Failed,
+	InProgress,
+}
+impl ProtocolTurnStatus {
+	pub const fn into_conversation(self) -> ConversationTurnStatus {
+		match self {
+			Self::Completed => ConversationTurnStatus::Completed,
+			Self::Interrupted => ConversationTurnStatus::Interrupted,
+			Self::Failed => ConversationTurnStatus::Failed,
+			Self::InProgress => ConversationTurnStatus::InProgress,
+		}
+	}
+}
+
+pub(crate) fn exact_thread_facts(
+	value: &ProtocolThread,
+	archived: bool,
+) -> Result<ExactThreadFacts, &'static str> {
+	Ok(ExactThreadFacts {
+		id: ExactThreadId::new(value.id.as_str())?,
+		provenance: value
+			.thread_source
+			.as_deref()
+			.map(ThreadProvenance::from_protocol)
+			.transpose()?,
+		created_at: ThreadCreatedAt::from_protocol(
+			value.created_at.ok_or("Codex thread creation timestamp is missing")?,
+		)?,
+		title: value.name.as_deref().map(ThreadTitle::from_protocol).transpose()?,
+		cwd: ThreadCwd::from_protocol(value.cwd.as_deref().ok_or("Codex thread cwd is missing")?)?,
+		archived,
+	})
 }
 
 #[cfg(test)]
@@ -301,6 +295,15 @@ pub(crate) fn reset_sensitive_string_drops() {
 #[cfg(test)]
 pub(crate) fn sensitive_string_drops() -> usize {
 	sensitive_string_test_counter::count()
+}
+
+fn deserialize_present_jsonrpc_version<'de, D>(
+	deserializer: D,
+) -> Result<Option<SensitiveString>, D::Error>
+where
+	D: Deserializer<'de>,
+{
+	SensitiveString::deserialize(deserializer).map(Some)
 }
 
 #[cfg(test)]
@@ -401,7 +404,9 @@ mod tests {
 		.unwrap();
 
 		assert_eq!(response.thread.archived, None);
+
 		let facts = super::exact_thread_facts(&response.thread, true).unwrap();
+
 		assert!(facts.archived);
 	}
 
@@ -489,6 +494,7 @@ mod tests {
 		.unwrap();
 
 		drop(bare);
+
 		assert_eq!(super::sensitive_string_drops(), 0);
 
 		let legacy = serde_json::from_slice::<JsonRpcResponse<serde_json::Value>>(
@@ -497,6 +503,7 @@ mod tests {
 		.unwrap();
 
 		drop(legacy);
+
 		assert_eq!(super::sensitive_string_drops(), 1);
 	}
 
@@ -511,7 +518,9 @@ mod tests {
 		let debug = format!("{:?}", response.error.as_ref().unwrap());
 
 		assert!(!debug.contains("private provider detail"));
+
 		drop(response);
+
 		assert_eq!(super::sensitive_string_drops(), 1);
 
 		for json in [

@@ -19,10 +19,13 @@ async fn native_misalignment_requires_live_confirmation_and_submits_only_once() 
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve(listener, Arc::clone(&calls)));
+
 	std::fs::write(path.join("config.toml"), format!(
 		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated continuation fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n"
 	)).unwrap();
+
 	let mut command = tokio::process::Command::new(std::env::var("DECODEX_NATIVE_BINARY").unwrap());
+
 	command
 		.arg("app-server")
 		.current_dir(&path)
@@ -30,23 +33,31 @@ async fn native_misalignment_requires_live_confirmation_and_submits_only_once() 
 		.env("HOME", &path)
 		.env("CODEX_HOME", &path)
 		.env("PATH", "/usr/bin:/bin");
+
 	let (client, mut events, mut process) = AppServerClient::spawn(&mut command).unwrap();
 	let (mut agent, _, _database) = fixture().await;
+
 	agent.client = client;
 	agent.config =
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), path.display().to_string());
 	agent.config.sandbox = "read-only".into();
+
 	let result = std::panic::AssertUnwindSafe(tokio::time::timeout(
 		std::time::Duration::from_secs(40),
 		async {
 			agent.initialize().await.unwrap();
 			agent.start_agent("agent", "Inspect the synthetic fixture.").await.unwrap();
+
 			finish_turn(&mut agent, &mut events, "failed").await;
+
 			let review = agent.store.agent_misalignment("agent".into()).await.unwrap().unwrap();
+
 			assert!(review.details_json.as_deref().unwrap().contains("Review the fixture scope."));
+
 			let (_, guard) =
 				agent.client.live_misalignment_review(&review.thread_id, &review.turn_id).unwrap();
 			let token = crate::agent::misalignment::review_token(&review, &guard).unwrap();
+
 			assert_eq!(calls.load(Ordering::Acquire), 1);
 			assert!(
 				agent
@@ -55,11 +66,14 @@ async fn native_misalignment_requires_live_confirmation_and_submits_only_once() 
 					.is_err()
 			);
 			assert_eq!(calls.load(Ordering::Acquire), 1);
+
 			agent
 				.continue_misalignment("agent", review.clone(), "explicit-confirmation", &token)
 				.await
 				.unwrap();
+
 			finish_turn(&mut agent, &mut events, "completed").await;
+
 			assert!(agent.store.agent_misalignment("agent".into()).await.unwrap().is_none());
 			assert!(agent.continue_misalignment("agent", review, "repeat", &token).await.is_err());
 			assert_eq!(calls.load(Ordering::Acquire), 2);
@@ -67,6 +81,7 @@ async fn native_misalignment_requires_live_confirmation_and_submits_only_once() 
 	))
 	.catch_unwind()
 	.await;
+
 	process.shutdown().await.unwrap();
 	backend.abort();
 	result.expect("native continuation panicked").expect("native continuation timed out");
@@ -80,12 +95,15 @@ async fn finish_turn(
 	loop {
 		let event = events.recv().await.expect("native event");
 		let done = matches!(&event, ServerEvent::Notification { method, .. } if method == "turn/completed");
+
 		if let ServerEvent::Notification { method, params } = &event
 			&& method == "turn/completed"
 		{
 			assert_eq!(params["turn"]["status"], status, "native terminal: {params}");
 		}
+
 		agent.handle_event(event).await.unwrap();
+
 		if done {
 			return;
 		}
@@ -107,6 +125,7 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>) {
 		} else {
 			assert_eq!(serial, 1, "no automatic retry or repeated continuation");
 			assert!(body.to_string().contains("Continue within the fixture scope."));
+
 			vec![
 				json!({"type":"response.created","response":{"id":"continued"}}),
 				json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":"Completed within scope."}]}}),
@@ -121,6 +140,7 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>) {
 			"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{data}",
 			data.len()
 		);
+
 		socket.write_all(response.as_bytes()).await.unwrap();
 	}
 }

@@ -2,20 +2,26 @@
 #![allow(unused_crate_dependencies)]
 
 #[cfg(unix)] use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+
 use std::{fs, fs::OpenOptions, io::Write as _};
 
 use futures_util::{SinkExt as _, StreamExt as _};
+
 use tempfile::TempDir;
+
 use tokio::io::{AsyncRead, AsyncWrite};
+
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 
 use decodex_core::{Availability, DecodexRoot, LocalTrustPolicy};
+
 use decodex_protocol::{
 	AppServerCapability, CURRENT_VERSION, ClientHello, ClientMessage, ConversationHistoryResult,
 	DoctorComponent, DoctorIssue, DoctorStatus, EntityId, HistoryQueryError,
 	LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream, ProtocolVersion,
 	QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, Refusal, ServerId, ServerMessage,
 };
+
 use decodex_runtime::{ServerConfig, ServiceBootstrap, ServiceComposition};
 
 // Handshake metadata only. The stream is already admitted by the local authority.
@@ -52,11 +58,13 @@ fn write_config(root: &DecodexRoot, body: &str) {
 	paths.ensure_layout().expect("create private fixture layout");
 
 	let mut options = OpenOptions::new();
+
 	options.create(true).truncate(true).write(true);
 	#[cfg(unix)]
 	options.mode(0o600);
 
 	let mut file = options.open(paths.config_file()).expect("open fixture config");
+
 	file.write_all(body.as_bytes()).expect("write fixture config");
 	file.sync_all().expect("sync fixture config");
 
@@ -69,6 +77,7 @@ fn write_config(root: &DecodexRoot, body: &str) {
 
 fn local_transport(root: &DecodexRoot) -> LocalTransportAuthority {
 	let paths = root.paths();
+
 	paths.ensure_layout().expect("create owner-only local transport layout");
 
 	// SAFETY: `geteuid` has no arguments or failure return.
@@ -76,18 +85,6 @@ fn local_transport(root: &DecodexRoot) -> LocalTransportAuthority {
 
 	LocalTransportAuthority::new(paths, LocalTrustPolicy::SameUid, Some(service_owner_uid))
 		.expect("same-UID local transport authority")
-}
-
-async fn connect_local(
-	transport: &LocalTransportAuthority,
-) -> WebSocketStream<LocalTransportStream> {
-	let stream = transport.connect().await.expect("connect admitted local stream");
-	let (socket, _) =
-		tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, None)
-			.await
-			.expect("complete local WebSocket handshake");
-
-	socket
 }
 
 fn status(bootstrap: &ServiceBootstrap, component: DoctorComponent) -> DoctorStatus {
@@ -100,6 +97,18 @@ fn doctor_query(version: ProtocolVersion, query_id: &str) -> QueryEnvelope {
 		query_id: QueryId::new(query_id).expect("bounded query ID"),
 		payload: QueryPayload::GetDoctorStatus,
 	}
+}
+
+async fn connect_local(
+	transport: &LocalTransportAuthority,
+) -> WebSocketStream<LocalTransportStream> {
+	let stream = transport.connect().await.expect("connect admitted local stream");
+	let (socket, _) =
+		tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, None)
+			.await
+			.expect("complete local WebSocket handshake");
+
+	socket
 }
 
 #[tokio::test]
@@ -123,6 +132,7 @@ async fn missing_malformed_and_redacted_bootstrap_are_typed() {
 	let malformed_temp = TempDir::new().expect("malformed-config temp");
 	let malformed_root = root(&malformed_temp);
 	let secret = "fixture-password-must-never-leak";
+
 	write_config(&malformed_root, &format!("version = 1\npassword = \"{secret}\"\n"));
 
 	let malformed = ServiceComposition::bootstrap(malformed_root).await;
@@ -144,6 +154,7 @@ async fn missing_malformed_and_redacted_bootstrap_are_typed() {
 async fn singleton_authority_precedes_identity_and_database_bootstrap() {
 	let temp = TempDir::new().expect("singleton-order temp");
 	let decodex_root = root(&temp);
+
 	write_config(&decodex_root, &local_config());
 
 	let paths = decodex_root.paths();
@@ -153,6 +164,7 @@ async fn singleton_authority_precedes_identity_and_database_bootstrap() {
 	assert!(!paths.server_identity_file().exists());
 
 	let blocked = ServiceComposition::bootstrap(decodex_root).await;
+
 	assert!(
 		!paths.server_identity_file().exists(),
 		"a blocked daemon must not create identity or SQLite before singleton authority",
@@ -171,7 +183,9 @@ async fn singleton_authority_precedes_identity_and_database_bootstrap() {
 async fn symlinked_database_is_rejected_before_sqlite_open() {
 	let temp = TempDir::new().expect("symlinked-database temp");
 	let decodex_root = root(&temp);
+
 	write_config(&decodex_root, &local_config());
+
 	let paths = decodex_root.paths();
 	let external = temp.path().join("external.sqlite3");
 
@@ -198,6 +212,7 @@ async fn symlinked_owned_config_is_unsafe_not_malformed() {
 	let external = temp.path().join("external-config.toml");
 
 	paths.ensure_layout().expect("create fixture layout");
+
 	fs::write(&external, "version = 1\n").expect("write external config");
 	std::os::unix::fs::symlink(&external, paths.config_file()).expect("symlink config fixture");
 
@@ -217,6 +232,7 @@ async fn symlinked_owned_config_is_unsafe_not_malformed() {
 async fn fresh_sqlite_bootstrap_is_ready_and_deferred_surfaces_are_explicit() {
 	let temp = TempDir::new().expect("fresh SQLite temp");
 	let decodex_root = root(&temp);
+
 	write_config(&decodex_root, &local_config());
 
 	let bootstrap = ServiceComposition::bootstrap(decodex_root.clone()).await;
@@ -251,6 +267,7 @@ async fn fresh_sqlite_bootstrap_is_ready_and_deferred_surfaces_are_explicit() {
 async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 	let temp = TempDir::new().expect("protocol temp");
 	let decodex_root = root(&temp);
+
 	write_config(&decodex_root, &local_config());
 
 	let transport = local_transport(&decodex_root);
@@ -272,6 +289,7 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 	let ServerMessage::Refusal(refusal) = receive(&mut wrong).await else {
 		panic!("expected wrong-server refusal");
 	};
+
 	assert!(matches!(
 		refusal.refusal,
 		Refusal::ServerIdentityMismatch{ expected, actual }
@@ -280,6 +298,7 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 	));
 
 	let mut client = connect_local(&transport).await;
+
 	send(
 		&mut client,
 		ClientMessage::Hello(ClientHello {
@@ -294,12 +313,14 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 	assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
 
 	send(&mut client, ClientMessage::Query(doctor_query(CURRENT_VERSION, "doctor-query"))).await;
+
 	let ServerMessage::QueryResult(result) = receive(&mut client).await else {
 		panic!("expected doctor result");
 	};
 	let QueryResultPayload::DoctorStatus(report) = result.payload else {
 		panic!("expected doctor result");
 	};
+
 	assert_eq!(report.server_id(), &server_id);
 	assert_eq!(report.version(), CURRENT_VERSION);
 
@@ -317,6 +338,7 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 		}),
 	)
 	.await;
+
 	assert!(matches!(
 		receive(&mut client).await,
 		ServerMessage::QueryResult(result)
@@ -332,6 +354,7 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 
 	assert_exact_current_doctor_queries(&transport, &server_id).await;
 	drop((wrong, client));
+
 	bound.shutdown().await.expect("shutdown daemon fixture");
 }
 
@@ -340,6 +363,7 @@ async fn assert_exact_current_doctor_queries(
 	server_id: &ServerId,
 ) {
 	let mut legacy = connect_local(transport).await;
+
 	send(
 		&mut legacy,
 		ClientMessage::Hello(ClientHello {
@@ -349,12 +373,15 @@ async fn assert_exact_current_doctor_queries(
 		}),
 	)
 	.await;
+
 	let ServerMessage::Refusal(refusal) = receive(&mut legacy).await else {
 		panic!("expected V1.5 major-version refusal");
 	};
+
 	assert!(matches!(refusal.refusal, Refusal::ServiceVersionMismatch { .. }));
 
 	let mut future = connect_local(transport).await;
+
 	send(
 		&mut future,
 		ClientMessage::Hello(ClientHello {
@@ -367,12 +394,15 @@ async fn assert_exact_current_doctor_queries(
 		}),
 	)
 	.await;
+
 	let ServerMessage::Refusal(refusal) = receive(&mut future).await else {
 		panic!("expected future minor-version refusal");
 	};
+
 	assert!(matches!(refusal.refusal, Refusal::ServiceVersionMismatch { .. }));
 
 	let mut current = connect_local(transport).await;
+
 	send(
 		&mut current,
 		ClientMessage::Hello(ClientHello {
@@ -382,6 +412,7 @@ async fn assert_exact_current_doctor_queries(
 		}),
 	)
 	.await;
+
 	assert!(matches!(receive(&mut current).await, ServerMessage::Welcome(_)));
 	assert!(matches!(receive(&mut current).await, ServerMessage::Snapshot(_)));
 
@@ -393,9 +424,11 @@ async fn assert_exact_current_doctor_queries(
 		)),
 	)
 	.await;
+
 	let ServerMessage::Refusal(result) = receive(&mut current).await else {
 		panic!("expected mismatched future-minor doctor rejection");
 	};
+
 	assert!(matches!(result.refusal, Refusal::ProtocolViolation { .. }));
 }
 
@@ -413,6 +446,7 @@ where
 	S: AsyncRead + AsyncWrite + Unpin,
 {
 	let encoded = serde_json::to_string(&message).expect("encode client message");
+
 	client.send(Message::Text(encoded.into())).await.expect("send client message");
 }
 

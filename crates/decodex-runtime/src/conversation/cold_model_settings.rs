@@ -14,20 +14,26 @@ impl ConversationRuntime {
 			return ResultDto::Unavailable;
 		};
 		let mut workers = self.inner.workers.lock().await;
+
 		if self.is_shutting_down() {
 			return ResultDto::Unavailable;
 		}
+
 		while workers.try_join_next().is_some() {}
+
 		let runtime = self.clone();
 		let key = key.to_owned();
 		let conversation = conversation.to_owned();
 		let (reply, result) = tokio::sync::oneshot::channel();
+
 		workers.spawn(async move {
 			let _permit = permit;
 			let observed = runtime.read_cold_model_settings(&key, &conversation).await;
 			let _ = reply.send(observed.unwrap_or(ResultDto::Unavailable));
 		});
+
 		drop(workers);
+
 		tokio::time::timeout(Duration::from_secs(35), result)
 			.await
 			.ok()
@@ -37,9 +43,11 @@ impl ConversationRuntime {
 
 	async fn read_cold_model_settings(&self, key: &str, conversation: &str) -> Option<ResultDto> {
 		let id = ConversationId::new(conversation).ok()?;
+
 		if self.local().contains_key(conversation) {
 			return None;
 		}
+
 		let source =
 			self.inner.store.read_ordinary_runtime_session_for_resume(&id).await.ok()??;
 		let request = self.inner.store.read_conversation_request(&id).await.ok()??;
@@ -75,13 +83,16 @@ impl ConversationRuntime {
 				callback,
 				|child| {
 					let (settings, events) = child.read_ordinary_model_settings(&thread);
+
 					child.retain_ordinary_events(events).ok()?;
+
 					settings.ok().flatten()
 				},
 			)
 		})
 		.await
 		.ok()??;
+
 		if self.is_shutting_down()
 			|| !self.inner.store.account_is_ready_at_revision(&account, revision).await.ok()?
 			|| self.inner.store.read_ordinary_runtime_session_for_resume(&id).await.ok()?.as_ref()

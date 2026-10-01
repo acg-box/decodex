@@ -4,6 +4,13 @@
 //! RuntimeSession, ProcessGeneration, and ProviderAttempt. This module retains only bounded
 //! daemon-local process and active-turn handles.
 
+mod execution_overrides;
+mod model_catalog;
+mod model_settings;
+mod non_submission;
+mod resume_retry;
+mod skill_catalog;
+
 use std::{
 	collections::BTreeMap,
 	ffi::{CStr, CString, OsStr},
@@ -26,6 +33,7 @@ use decodex_codex::{
 	ConversationTurnStatus, ExactSubmittedTurnReadback, ExactThreadId, ExactThreadReadResult,
 	MAX_CONVERSATION_INPUT_BYTES, TurnStatus,
 };
+
 use decodex_core::{
 	AccountId, AccountLifecycleReadiness, AccountOperationId, ContextPack, ContextPackInput,
 	ContextPackPolicy, ContextPackSource, ContextSourceKind, ContinuationRejection, ConversationId,
@@ -38,6 +46,7 @@ use decodex_core::{
 	ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome, RuntimeSessionId,
 	RuntimeSessionState, TurnId, TurnRole, compile_context_pack,
 };
+
 use decodex_database::{
 	AdmitInitialConversationTurn, ArchiveConversationOutcome, ArchiveConversationRecord,
 	ArchiveLocalConversationOutcome, ArchiveLocalConversationRecord,
@@ -54,8 +63,11 @@ use decodex_database::{
 	TerminalizeConversationTurn, TurnReservationOutcome, UnknownConversationAttemptReadback,
 	bounded_conversation_title,
 };
+
 use decodex_protocol::{ConversationUnavailableReason, HistoryText, MAX_HISTORY_INLINE_BYTES};
+
 use sha2::{Digest as _, Sha256};
+
 use tokio::{
 	sync::{Mutex as AsyncMutex, mpsc as tokio_mpsc},
 	task::{self, JoinSet},
@@ -87,13 +99,7 @@ use crate::account_launch::process::{
 	spawn_admitted_conversation_process,
 };
 
-mod execution_overrides;
-mod model_catalog;
-mod model_settings;
-mod non_submission;
-mod skill_catalog;
 use execution_overrides::{apply_start_overrides, apply_turn_overrides, inherit_resume_settings};
-mod resume_retry;
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
 const TURN_TIMEOUT: Duration = Duration::from_secs(30 * 60);
@@ -103,205 +109,7 @@ const PROCESS_COMMAND_CAPACITY: usize = 2;
 const MAX_LOCAL_TASKS: usize = 32;
 const MAX_SELECTED_CWD_COMPONENTS: usize = 128;
 const INITIAL_PASSWD_BUFFER_BYTES: usize = 16 * 1_024;
-const MAX_PASSWD_BUFFER_BYTES: usize = 1024 * 1024;
-
-#[derive(Clone, Copy, Eq, PartialEq)]
-struct DirectoryIdentity {
-	device: u64,
-	inode: u64,
-	uid: u32,
-	mode: u32,
-}
-
-impl DirectoryIdentity {
-	fn from_metadata(metadata: &Metadata) -> Self {
-		Self {
-			device: metadata.dev(),
-			inode: metadata.ino(),
-			uid: metadata.uid(),
-			mode: metadata.mode(),
-		}
-	}
-}
-
-/// Descriptor-retained proof for the one working directory selected under host policy.
-struct SelectedWorkingDirectory {
-	path: String,
-	components: Vec<(File, DirectoryIdentity)>,
-}
-
-impl SelectedWorkingDirectory {
-	fn acquire(path: &str) -> Result<Self, ()> {
-		let path_value = Path::new(path);
-		let effective_uid = unsafe { libc::geteuid() };
-		let components = open_selected_path(path_value, effective_uid)?;
-		let home = open_selected_path(&effective_user_home(effective_uid)?, effective_uid)?;
-		if components.len() < home.len()
-			|| components.iter().zip(&home).any(|(selected, home)| selected.1 != home.1)
-		{
-			return Err(());
-		}
-
-		Ok(Self { path: path.to_owned(), components })
-	}
-
-	fn revalidate(&self) -> Result<(), ()> {
-		for (directory, expected) in &self.components {
-			let metadata = directory.metadata().map_err(|_| ())?;
-			if !metadata.is_dir() || DirectoryIdentity::from_metadata(&metadata) != *expected {
-				return Err(());
-			}
-		}
-		let current = Self::acquire(&self.path)?;
-		if current.components.len() != self.components.len()
-			|| current
-				.components
-				.iter()
-				.zip(&self.components)
-				.any(|(current, expected)| current.1 != expected.1)
-		{
-			return Err(());
-		}
-		Ok(())
-	}
-
-	fn descriptor(&self) -> i32 {
-		self.components.last().expect("selected directory exists").0.as_raw_fd()
-	}
-}
-
-fn open_selected_path(
-	path: &Path,
-	effective_uid: u32,
-) -> Result<Vec<(File, DirectoryIdentity)>, ()> {
-	let parts = selected_cwd_components(path)?;
-	let root = open_selected_directory(Path::new("/"))?;
-	let root_metadata = root.metadata().map_err(|_| ())?;
-	validate_selected_component(&root_metadata, effective_uid, false)?;
-	let mut components = vec![(root, DirectoryIdentity::from_metadata(&root_metadata))];
-
-	for part in parts {
-		let parent = &components.last().expect("root descriptor exists").0;
-		let child = open_selected_directory_at(parent, part)?;
-		let metadata = child.metadata().map_err(|_| ())?;
-		validate_selected_component(&metadata, effective_uid, false)?;
-		components.push((child, DirectoryIdentity::from_metadata(&metadata)));
-	}
-
-	let final_metadata =
-		components.last().expect("selected directory exists").0.metadata().map_err(|_| ())?;
-	validate_selected_component(&final_metadata, effective_uid, true)?;
-	Ok(components)
-}
-
-impl ConversationPreSpawnCheck for SelectedWorkingDirectory {
-	fn validate_at_spawn_boundary(&self) -> Result<(), ()> {
-		self.revalidate()
-	}
-
-	fn working_directory_descriptor(&self) -> i32 {
-		self.descriptor()
-	}
-}
-
-fn effective_user_home(effective_uid: u32) -> Result<PathBuf, ()> {
-	let mut buffer_len = INITIAL_PASSWD_BUFFER_BYTES;
-	loop {
-		let mut entry = MaybeUninit::<libc::passwd>::zeroed();
-		let mut result = ptr::null_mut();
-		let mut buffer = vec![0_u8; buffer_len];
-		let status = unsafe {
-			libc::getpwuid_r(
-				effective_uid,
-				entry.as_mut_ptr(),
-				buffer.as_mut_ptr().cast(),
-				buffer.len(),
-				&mut result,
-			)
-		};
-		if status == libc::ERANGE && buffer_len < MAX_PASSWD_BUFFER_BYTES {
-			buffer_len = buffer_len.saturating_mul(2).min(MAX_PASSWD_BUFFER_BYTES);
-			continue;
-		}
-		if status != 0 || result.is_null() {
-			return Err(());
-		}
-		let entry = unsafe { entry.assume_init() };
-		if entry.pw_dir.is_null() {
-			return Err(());
-		}
-		let value = unsafe { CStr::from_ptr(entry.pw_dir) }.to_bytes();
-		if value.is_empty() {
-			return Err(());
-		}
-		return Ok(PathBuf::from(OsStr::from_bytes(value)));
-	}
-}
-
-fn selected_cwd_components(path: &Path) -> Result<Vec<&OsStr>, ()> {
-	let mut components = path.components();
-	if !matches!(components.next(), Some(Component::RootDir)) {
-		return Err(());
-	}
-	let mut parts = Vec::new();
-	for component in components {
-		match component {
-			Component::Normal(part) if !part.is_empty() => parts.push(part),
-			_ => return Err(()),
-		}
-	}
-	if parts.is_empty() || parts.len() > MAX_SELECTED_CWD_COMPONENTS {
-		return Err(());
-	}
-	Ok(parts)
-}
-
-fn validate_selected_component(
-	metadata: &Metadata,
-	effective_uid: u32,
-	require_effective_owner: bool,
-) -> Result<(), ()> {
-	let owner_allowed = if require_effective_owner {
-		metadata.uid() == effective_uid
-	} else {
-		metadata.uid() == 0 || metadata.uid() == effective_uid
-	};
-	if !metadata.is_dir() || !owner_allowed || metadata.mode() & 0o022 != 0 || metadata.nlink() == 0
-	{
-		return Err(());
-	}
-	Ok(())
-}
-
-fn open_selected_directory(path: &Path) -> Result<File, ()> {
-	let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| ())?;
-	let descriptor = unsafe {
-		libc::open(
-			path.as_ptr(),
-			libc::O_RDONLY | libc::O_CLOEXEC | libc::O_DIRECTORY | libc::O_NOFOLLOW,
-		)
-	};
-	selected_directory_from_descriptor(descriptor)
-}
-
-fn open_selected_directory_at(parent: &File, name: &OsStr) -> Result<File, ()> {
-	let name = CString::new(name.as_bytes()).map_err(|_| ())?;
-	let descriptor = unsafe {
-		libc::openat(
-			parent.as_raw_fd(),
-			name.as_ptr(),
-			libc::O_RDONLY | libc::O_CLOEXEC | libc::O_DIRECTORY | libc::O_NOFOLLOW,
-		)
-	};
-	selected_directory_from_descriptor(descriptor)
-}
-
-fn selected_directory_from_descriptor(descriptor: i32) -> Result<File, ()> {
-	if descriptor == -1 {
-		return Err(());
-	}
-	Ok(unsafe { File::from_raw_fd(descriptor) })
-}
+const MAX_PASSWD_BUFFER_BYTES: usize = 1_024 * 1_024;
 
 /// Request-scoped execution settings; omitted effort inherits the native thread setting.
 #[derive(Clone)]
@@ -323,7 +131,6 @@ pub(crate) struct CreateConversation {
 	pub working_directory: String,
 	pub execution: ConversationExecutionSettings,
 }
-
 impl CreateConversation {
 	pub(crate) fn creation_identity(&self) -> Result<CommandIdentity, ()> {
 		let revision =
@@ -338,16 +145,19 @@ impl CreateConversation {
 			self.execution.service_tier.as_str(),
 			"ordinary",
 		];
+
 		if let Some(source) = &self.initial_model_source {
 			if source.account_revision <= 0 {
 				return Err(());
 			}
+
 			parts.extend([
 				"initial_model_source",
 				source.account_id.as_str(),
 				revision.as_deref().ok_or(())?,
 			]);
 		}
+
 		exact_command("conversation", &self.operation_key, &parts)
 	}
 }
@@ -386,37 +196,6 @@ pub(crate) struct ControlConversation {
 	pub archive: bool,
 }
 
-/// Closed selected-thread control result.
-pub(crate) enum ConversationControlOutcome {
-	Current,
-	Archived { conversation_revision: i64 },
-	Busy,
-	Conflict,
-	OutcomeUnknown,
-	Unavailable,
-}
-
-enum ControlThreadOperation {
-	Read { client_user_message_id: Option<TurnId> },
-	Archive,
-}
-
-enum ControlThreadObservation {
-	Read(ExactThreadReadResult),
-	Archived,
-}
-
-struct InitialConversationExecution {
-	operation_key: String,
-	correlation_id: String,
-	causation_id: Option<String>,
-	conversation_id: ConversationId,
-	turn_id: TurnId,
-	message: String,
-	working_directory: String,
-	execution: ConversationExecutionSettings,
-}
-
 /// Daemon-local projection. It is never serialized or accepted as durable authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ConversationReadback {
@@ -433,21 +212,6 @@ pub(crate) struct ConversationReadback {
 	pub state: ConversationLocalState,
 }
 
-/// Closed local lifecycle projection with no durable transition power.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ConversationLocalState {
-	ModelSettingsReviewRequired,
-	RoutingPending,
-	EstablishmentPending,
-	QuotaExhausted,
-	NoRoute,
-	Establishing,
-	Ready,
-	Running,
-	ManualRecovery,
-	OutcomeUnknown,
-}
-
 /// Bounded daemon-local overlay for one durable ordinary Conversation projection.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ConversationProjection {
@@ -455,428 +219,11 @@ pub(crate) struct ConversationProjection {
 	pub recovery: Option<ConversationManualRecovery>,
 }
 
-/// Typed manual action after definite missing or incompatible authority.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ConversationManualRecovery {
-	WaitForThreadClose,
-	RestoreArchivedThread,
-	ReviewSandboxConfiguration,
-	ReviewCodexConfiguration,
-	EnableAccount,
-	EnrollCredentials,
-	ResolveAccountOperation,
-	RepairCredentialStore,
-	RestoreProviderAgreement,
-	RefreshQuota,
-	SelectedAccountDrift,
-	SelectedAccountReadiness,
-	UpgradeCodex,
-	SelectWorkingDirectory,
-	MissingLocalProcess,
-	MissingThread,
-	IncompatibleThread,
-	PriorActiveTurn,
-	PriorAttemptUnresolved,
-	ProcessUnavailable,
-}
-
-/// Closed ambiguity location. None permits retry, search, or thread adoption.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ConversationAmbiguity {
-	ProcessGeneration,
-	ThreadStart,
-	ThreadBind,
-	ThreadResume,
-	TurnStart,
-	ActiveTurn,
-	TurnFinalization,
-}
-
-/// Positive terminal state retained from exact provider evidence.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ConversationTerminalState {
-	Succeeded,
-	Failed,
-}
-
-/// Complete application-facing synchronous results and asynchronous events.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum ConversationOutcome {
-	PreSession(ConversationReadback),
-	Started {
-		readback: ConversationReadback,
-		provider_turn_id: String,
-	},
-	HistoryChanged {
-		readback: ConversationReadback,
-		history_item_id: HistoryItemId,
-	},
-	Streaming {
-		readback: ConversationReadback,
-		history_item_id: HistoryItemId,
-		text: HistoryText,
-	},
-	Terminal {
-		readback: ConversationReadback,
-		turn_id: TurnId,
-		state: ConversationTerminalState,
-		provider_turn_id: String,
-	},
-	Unknown {
-		readback: ConversationReadback,
-		ambiguity: ConversationAmbiguity,
-	},
-	ManualRecovery {
-		readback: ConversationReadback,
-		action: ConversationManualRecovery,
-	},
-	Busy(ConversationReadback),
-	Conflict,
-	InterruptRequested(ConversationReadback),
-	Unavailable,
-}
-
-/// Typed Conversation readiness projected by daemon bootstrap and Doctor.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ConversationReadiness {
-	/// Every fallible dependency owner returned one validated dependency.
-	Ready,
-	/// Conversation is closed for one redacted startup reason.
-	Unavailable(ConversationUnavailableReason),
-}
-
-/// Immutable daemon-lifetime Conversation capability.
-#[derive(Clone)]
-pub(crate) enum ConversationCapability {
-	Ready(ConversationRuntime),
-	Unavailable(ConversationUnavailableReason),
-}
-
-impl ConversationCapability {
-	pub(crate) const fn readiness(&self) -> ConversationReadiness {
-		match self {
-			Self::Ready(_) => ConversationReadiness::Ready,
-			Self::Unavailable(reason) => ConversationReadiness::Unavailable(*reason),
-		}
-	}
-
-	pub(crate) const fn runtime(&self) -> Option<&ConversationRuntime> {
-		match self {
-			Self::Ready(runtime) => Some(runtime),
-			Self::Unavailable(_) => None,
-		}
-	}
-}
-
 /// Ordinary use-case composition. It owns no durable Conversation state.
 #[derive(Clone)]
 pub(crate) struct ConversationRuntime {
 	inner: Arc<ConversationRuntimeInner>,
 }
-
-struct ConversationRuntimeInner {
-	store: SqliteStore,
-	blob_store: decodex_core::BlobStore,
-	accounts: Arc<AccountService>,
-	process_generations: ProcessGenerationControl,
-	provider_attempts: ProviderAttemptControl,
-	execution_authorization: ProcessExecutionAuthorization,
-	launch_profile: AttestedAppServerProfile,
-	capacity: Arc<RunnerCapacity>,
-	local: Mutex<BTreeMap<String, LocalTask>>,
-	events: tokio_mpsc::Sender<ConversationOutcome>,
-	event_receiver: AsyncMutex<tokio_mpsc::Receiver<ConversationOutcome>>,
-	event_stream_closed: tokio::sync::watch::Sender<bool>,
-	workers: AsyncMutex<JoinSet<()>>,
-	shutting_down: Arc<std::sync::atomic::AtomicBool>,
-	agent_launch: AsyncMutex<()>,
-	agent_process: Mutex<Option<RetainedAgentProcess>>,
-	initial_catalog: Arc<AsyncMutex<()>>,
-}
-
-pub(crate) struct StartAgentProcess {
-	pub operation_key: String,
-	pub root_id: String,
-	pub working_directory: String,
-	pub account_id: Option<AccountId>,
-}
-
-/// Already authenticated and initialized; the runtime retains process ownership.
-pub(crate) struct AgentConnection {
-	pub client: decodex_codex::app_server_client::AppServerClient,
-	pub events: tokio_mpsc::Receiver<decodex_codex::app_server_client::ServerEvent>,
-	pub account_id: AccountId,
-	pub process_generation_id: ProcessGenerationId,
-}
-
-#[derive(Debug)]
-pub(crate) enum AgentLaunchError {
-	QuotaDepleted,
-	Unavailable,
-	Conflict,
-	AccountSelection(decodex_core::AccountSelectionRecovery),
-	Process(ConversationManualRecovery),
-}
-
-impl std::fmt::Display for AgentLaunchError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::QuotaDepleted => formatter.write_str("This Agent's account has reached its usage limit. Conversation history is preserved. Check Accounts for the reset time."),
-            Self::Unavailable => formatter.write_str("Agent process is unavailable"),
-			Self::Conflict =>
-				formatter.write_str("Agent process authority conflicts with this request"),
-			Self::AccountSelection(recovery) => {
-				write!(formatter, "Agent account requires recovery: {recovery:?}")
-			},
-			Self::Process(recovery) => {
-				write!(formatter, "Agent process requires recovery: {recovery:?}")
-			},
-		}
-	}
-}
-impl std::error::Error for AgentLaunchError {}
-
-struct RetainedAgentProcess {
-	root_id: String,
-	working_directory: String,
-	generation_id: ProcessGenerationId,
-	client: Option<decodex_codex::app_server_client::AppServerClient>,
-}
-
-// The caller holds agent_launch across this operation.
-async fn retire_agent_process_slot<F: std::future::Future<Output = bool>>(
-	slot: &Mutex<Option<RetainedAgentProcess>>,
-	retire: impl FnOnce(ProcessGenerationId) -> F,
-) -> bool {
-	let generation = {
-		let mut slot = slot.lock().unwrap_or_else(PoisonError::into_inner);
-		let Some(retained) = slot.as_mut() else {
-			return true;
-		};
-		if let Some(client) = retained.client.take() {
-			client.close();
-		}
-		retained.generation_id.clone()
-	};
-	// Keep revoked ownership visible if the asynchronous retirement is cancelled.
-	let retired = retire(generation).await;
-	if retired {
-		slot.lock().unwrap_or_else(PoisonError::into_inner).take();
-	}
-	retired
-}
-
-fn agent_retirement_retry(
-	slot: Option<&RetainedAgentProcess>,
-	root_id: &str,
-) -> Result<bool, AgentLaunchError> {
-	match slot {
-		None => Ok(false),
-		Some(slot) if slot.root_id == root_id && slot.client.is_none() => Ok(true),
-		Some(_) => Err(AgentLaunchError::Conflict),
-	}
-}
-
-enum AccountLaunchAdmission {
-	Conversation(FreshConversationProcessGeneration),
-	Agent { root_id: String, operation_key: String, generation_id: ProcessGenerationId },
-}
-
-impl AccountLaunchAdmission {
-	fn generation_id(&self) -> ProcessGenerationId {
-		match self {
-			Self::Conversation(admission) => admission.generation_id().clone(),
-			Self::Agent { generation_id, .. } => generation_id.clone(),
-		}
-	}
-}
-
-struct LocalTask {
-	operation_key: String,
-	state: LocalTaskState,
-}
-
-enum LocalTaskState {
-	Establishing,
-	Preparing(LocalSession),
-	CatalogReading(LocalSession),
-	Ready(LocalSession),
-	Active {
-		session: LocalSession,
-		turn_id: TurnId,
-		attempt_id: ProviderAttemptId,
-		commands: mpsc::SyncSender<WorkerCommand>,
-	},
-	Recovery {
-		readback: ConversationReadback,
-		action: ConversationManualRecovery,
-	},
-}
-
-#[derive(Clone)]
-struct LocalSession {
-	operation_key: String,
-	correlation_id: String,
-	causation_id: Option<String>,
-	conversation_id: ConversationId,
-	conversation_revision: i64,
-	runtime_session_id: RuntimeSessionId,
-	runtime_session_revision: i64,
-	codex_thread_id: String,
-	has_acknowledged_turn: bool,
-	account_id: AccountId,
-	process: FencedProcess,
-	model: String,
-	reasoning_effort: Option<String>,
-	fast: bool,
-	service_tier: decodex_core::ServiceTier,
-	working_directory: String,
-	instructions: String,
-	next_user_sequence: i64,
-	execution_overrides: Option<decodex_protocol::ConversationExecutionOverrides>,
-}
-
-enum WorkerCommand {
-	ModelSettings(
-		tokio::sync::oneshot::Sender<
-			Option<decodex_codex::app_server_client::NativeThreadModelSettings>,
-		>,
-	),
-	Interrupt,
-	Shutdown,
-	ModelCatalog(tokio::sync::oneshot::Sender<Option<Vec<decodex_protocol::AgentModelDto>>>),
-}
-
-enum WorkerOutput {
-	Event(ConversationProcessEvent),
-	Failed,
-}
-
-enum ReservedTurnRefusal {
-	Conflict,
-	Unavailable,
-	Recovery(ConversationManualRecovery),
-}
-
-enum PreparedCancellationDisposition {
-	Canceled,
-	Conflict,
-	Ambiguous,
-}
-
-enum ExistingSessionPlanningRefusal {
-	Recovery(ConversationManualRecovery),
-	Conflict,
-	Unknown,
-}
-
-const fn continuation_recovery(
-	rejection: ContinuationRejection,
-) -> Option<ConversationManualRecovery> {
-	match rejection {
-		ContinuationRejection::SelectedAccountDrift =>
-			Some(ConversationManualRecovery::SelectedAccountDrift),
-		ContinuationRejection::SelectedAccountReadinessRequired =>
-			Some(ConversationManualRecovery::SelectedAccountReadiness),
-		ContinuationRejection::SelectedAccountQuotaRequired =>
-			Some(ConversationManualRecovery::RefreshQuota),
-		_ => None,
-	}
-}
-
-struct ExistingSessionExpectation<'a> {
-	account_id: &'a AccountId,
-	runtime_session_id: &'a RuntimeSessionId,
-	runtime_session_revision: i64,
-	thread_id: &'a str,
-}
-
-struct ExistingSessionPlanningInput<'a> {
-	operation_key: &'a str,
-	consumer: ExecutionConsumer,
-	message_bytes: usize,
-	expected: ExistingSessionExpectation<'a>,
-}
-
-fn resume_rejection_recovery(reason: ConversationRejectionReason) -> ConversationManualRecovery {
-	match reason {
-		ConversationRejectionReason::ClosingThread =>
-			ConversationManualRecovery::WaitForThreadClose,
-		ConversationRejectionReason::MissingThread => ConversationManualRecovery::MissingThread,
-		ConversationRejectionReason::ArchivedThread =>
-			ConversationManualRecovery::RestoreArchivedThread,
-		ConversationRejectionReason::SandboxConfiguration =>
-			ConversationManualRecovery::ReviewSandboxConfiguration,
-		ConversationRejectionReason::ServerDraining
-		| ConversationRejectionReason::ManagedProviderChanged =>
-			ConversationManualRecovery::ProcessUnavailable,
-		ConversationRejectionReason::Other => ConversationManualRecovery::ReviewCodexConfiguration,
-	}
-}
-
-enum SameThreadResumeRefusal {
-	Rejected { reason: ConversationRejectionReason, witness_digest: String },
-	IncompatibleThread,
-	ProcessUnavailable,
-	Ambiguous,
-}
-
-#[derive(Clone)]
-struct TurnContext {
-	session: LocalSession,
-	logical_turn_id: TurnId,
-	logical_turn_sequence: i64,
-	assistant_turn_id: TurnId,
-	attempt_id: ProviderAttemptId,
-	request_id: ProviderRequestId,
-	provider_key: ProviderRequestKey,
-	provider_turn_id: String,
-	authorized_revision: i64,
-}
-
-struct AdmittedLaterTurn {
-	session: LocalSession,
-	sequence: i64,
-	consumer: ExecutionConsumer,
-}
-
-struct RehydratedTurnAdmission {
-	readback: OrdinaryRuntimeSessionResumeReadback,
-	durable_readback: ConversationReadback,
-	sequence: i64,
-}
-
-struct RehydratedTurnPlan {
-	admission: RehydratedTurnAdmission,
-	decision: PersistedDecisionProvenance,
-	plan: decodex_database::ContinuationPlanEffect,
-}
-
-struct RehydratedAccountRevision {
-	planned: RehydratedTurnPlan,
-	launch_account_revision: i64,
-}
-
-struct RehydratedProcessAdmission {
-	account: RehydratedAccountRevision,
-	working_directory: String,
-	admission: FreshConversationProcessGeneration,
-	establishment: ReconcileConversationThreadEstablishment,
-}
-
-struct RehydratedProcessLaunch {
-	decision: PersistedDecisionProvenance,
-	plan: decodex_database::ContinuationPlanEffect,
-	session: LocalSession,
-	sequence: i64,
-}
-
-enum InitialRouteAction {
-	Route,
-	ResumeEstablishment,
-	Preplanned(Box<PreProcessOutcome>),
-}
-
 impl ConversationRuntime {
 	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new(
@@ -891,6 +238,7 @@ impl ConversationRuntime {
 	) -> Self {
 		let (events, event_receiver) = tokio_mpsc::channel(EVENT_QUEUE_CAPACITY);
 		let (event_stream_closed, _) = tokio::sync::watch::channel(false);
+
 		Self {
 			inner: Arc::new(ConversationRuntimeInner {
 				store,
@@ -930,13 +278,17 @@ impl ConversationRuntime {
 		if self.is_shutting_down() {
 			return decodex_protocol::AgentCapabilitiesResult::Unavailable;
 		}
+
 		let idle = {
 			let mut local = self.local();
+
 			match local.get_mut(conversation) {
 				Some(LocalTask { state, .. }) => match state {
 					LocalTaskState::Ready(session) => {
 						let session = session.clone();
+
 						*state = LocalTaskState::CatalogReading(session.clone());
+
 						Some(session)
 					},
 					_ => None,
@@ -944,6 +296,7 @@ impl ConversationRuntime {
 				None => None,
 			}
 		};
+
 		if let Some(session) = idle {
 			let runtime = self.clone();
 			let conversation = conversation.to_owned();
@@ -951,12 +304,14 @@ impl ConversationRuntime {
 			let query = tokio::spawn(async move {
 				runtime.idle_model_capabilities(conversation, session).await
 			});
+
 			return tokio::time::timeout(Duration::from_secs(12), query)
 				.await
 				.ok()
 				.and_then(Result::ok)
 				.unwrap_or(decodex_protocol::AgentCapabilitiesResult::Unavailable);
 		}
+
 		self.active_model_capabilities(conversation).await
 	}
 
@@ -966,6 +321,7 @@ impl ConversationRuntime {
 		session: LocalSession,
 	) -> decodex_protocol::AgentCapabilitiesResult {
 		use decodex_protocol::AgentCapabilitiesResult;
+
 		let before =
 			self.inner.accounts.inspect(&session.account_id).await.ok().map(|v| v.account.revision);
 		let control = self.inner.process_generations.clone();
@@ -976,19 +332,25 @@ impl ConversationRuntime {
 					let mut pages = crate::agent_capabilities::ModelCatalogPages::default();
 					let mut cursor = None;
 					let deadline = Instant::now() + Duration::from_secs(8);
+
 					for _ in 0..8 {
 						if Instant::now() >= deadline {
 							return Err(ConversationProcessError::Unavailable);
 						}
+
 						let (page, events) = child.read_ordinary_model_page(cursor.as_deref());
+
 						child.retain_ordinary_events(events)?;
+
 						let page = page?;
+
 						match pages.push(&page) {
 							Ok(Some(next)) => cursor = Some(next),
 							Ok(None) => return Ok(pages.models),
 							Err(()) => return Err(ConversationProcessError::Incompatible),
 						}
 					}
+
 					Err(ConversationProcessError::Unavailable)
 				})
 			})
@@ -1005,14 +367,18 @@ impl ConversationRuntime {
 		let Some(task) = local.get_mut(&conversation) else {
 			return AgentCapabilitiesResult::Unavailable;
 		};
+
 		if !matches!(&task.state,LocalTaskState::CatalogReading(current) if same_local_process(current, &session))
 		{
 			return AgentCapabilitiesResult::Unavailable;
 		}
+
 		task.state = LocalTaskState::Ready(session);
+
 		if before.is_none() || before != after {
 			return AgentCapabilitiesResult::Unavailable;
 		}
+
 		result.map_or(AgentCapabilitiesResult::Unavailable, |models| {
 			AgentCapabilitiesResult::Available { models, memory_enabled: None }
 		})
@@ -1023,6 +389,7 @@ impl ConversationRuntime {
 		conversation: &str,
 	) -> decodex_protocol::AgentCapabilitiesResult {
 		use decodex_protocol::AgentCapabilitiesResult;
+
 		let (source, commands) = {
 			let local = self.local();
 			let Some(LocalTask { state: LocalTaskState::Active { session, commands, .. }, .. }) =
@@ -1030,15 +397,18 @@ impl ConversationRuntime {
 			else {
 				return AgentCapabilitiesResult::Unavailable;
 			};
+
 			(session.clone(), commands.clone())
 		};
 		let Ok(before) = self.inner.accounts.inspect(&source.account_id).await else {
 			return AgentCapabilitiesResult::Unavailable;
 		};
 		let (reply, result) = tokio::sync::oneshot::channel();
+
 		if commands.try_send(WorkerCommand::ModelCatalog(reply)).is_err() {
 			return AgentCapabilitiesResult::Unavailable;
 		}
+
 		let Ok(Ok(Some(models))) = tokio::time::timeout(Duration::from_secs(12), result).await
 		else {
 			return AgentCapabilitiesResult::Unavailable;
@@ -1046,14 +416,18 @@ impl ConversationRuntime {
 		let Ok(after) = self.inner.accounts.inspect(&source.account_id).await else {
 			return AgentCapabilitiesResult::Unavailable;
 		};
+
 		if before.account.revision != after.account.revision {
 			return AgentCapabilitiesResult::Unavailable;
 		}
+
 		let local = self.local();
 		let same = matches!(local.get(conversation),Some(LocalTask {state:LocalTaskState::Active{session,..}|LocalTaskState::Ready(session),..}) if same_local_process(session, &source));
+
 		if !same {
 			return AgentCapabilitiesResult::Unavailable;
 		}
+
 		AgentCapabilitiesResult::Available { models, memory_enabled: None }
 	}
 
@@ -1069,6 +443,7 @@ impl ConversationRuntime {
 	pub(crate) fn agent_input_directory(&self, generation: &ProcessGenerationId) -> Option<String> {
 		let slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner);
 		let process = slot.as_ref()?;
+
 		(process.generation_id == *generation && process.client.is_some())
 			.then(|| process.working_directory.clone())
 	}
@@ -1085,16 +460,21 @@ impl ConversationRuntime {
 		let (root, generation, client) = {
 			let slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner);
 			let process = slot.as_ref()?;
+
 			(process.root_id.clone(), process.generation_id.clone(), process.client.clone()?)
 		};
 		let binding = self.inner.store.read_agent_process_binding(&root).await.ok()??;
+
 		if binding.generation_id != generation {
 			return None;
 		}
+
 		let inspection = self.inner.accounts.inspect(&binding.account_id).await.ok()?;
+
 		if self.agent_catalog_client().is_none_or(|(current, _)| current != generation) {
 			return None;
 		}
+
 		Some((generation, binding.account_id, inspection.account.revision, client))
 	}
 
@@ -1108,6 +488,7 @@ impl ConversationRuntime {
 		let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else {
 			return false;
 		};
+
 		[&inspection.account.five_hour_quota, &inspection.account.seven_day_quota].iter().any(
 			|window| {
 				window.current().is_some_and(|fact| {
@@ -1138,6 +519,7 @@ impl ConversationRuntime {
 						}) {
 					return Err(AgentLaunchError::QuotaDepleted);
 				}
+
 				Err(AgentLaunchError::AccountSelection(failure.recovery))
 			},
 		}
@@ -1151,11 +533,14 @@ impl ConversationRuntime {
 	) -> Result<AgentConnection, AgentLaunchError> {
 		let _launch = self.inner.agent_launch.lock().await;
 		let _catalog = self.inner.initial_catalog.lock().await;
+
 		if self.is_shutting_down() {
 			return Err(AgentLaunchError::Unavailable);
 		}
+
 		let retry_retirement = {
 			let slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner);
+
 			agent_retirement_retry(slot.as_ref(), &request.root_id)?
 		};
 		// A prior close can outlive its bounded wait. Recheck only the revoked
@@ -1163,6 +548,7 @@ impl ConversationRuntime {
 		if retry_retirement && !self.retire_agent_slot().await {
 			return Err(AgentLaunchError::Conflict);
 		}
+
 		let prior = self
 			.inner
 			.store
@@ -1192,6 +578,7 @@ impl ConversationRuntime {
 			&[&request.root_id, &request.operation_key],
 		))
 		.map_err(|_| AgentLaunchError::Conflict)?;
+
 		*self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner) =
 			Some(RetainedAgentProcess {
 				root_id: request.root_id.clone(),
@@ -1199,6 +586,7 @@ impl ConversationRuntime {
 				generation_id: generation_id.clone(),
 				client: None,
 			});
+
 		let process = match self
 			.launch_account_process(
 				&account_id,
@@ -1215,6 +603,7 @@ impl ConversationRuntime {
 			Ok(process) => process,
 			Err(error) => {
 				self.retire_agent_slot().await;
+
 				return Err(AgentLaunchError::Process(error));
 			},
 		};
@@ -1227,25 +616,33 @@ impl ConversationRuntime {
 			Ok(Ok(Ok(connection))) => connection,
 			_ => {
 				self.retire_agent_slot().await;
+
 				return Err(AgentLaunchError::Unavailable);
 			},
 		};
+
 		if self.is_shutting_down() {
 			client.close();
 			self.retire_agent_slot().await;
+
 			return Err(AgentLaunchError::Unavailable);
 		}
+
 		{
 			let mut slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner);
 			let Some(slot) = slot.as_mut() else {
 				client.close();
+
 				return Err(AgentLaunchError::Unavailable);
 			};
+
 			slot.client = Some(client.clone());
+
 			if self.is_shutting_down() {
 				client.close();
 			}
 		}
+
 		Ok(AgentConnection { client, events, account_id, process_generation_id: generation_id })
 	}
 
@@ -1255,6 +652,7 @@ impl ConversationRuntime {
 		root_id: &str,
 	) -> Result<(), AgentLaunchError> {
 		let _launch = self.inner.agent_launch.lock().await;
+
 		if self
 			.inner
 			.agent_process
@@ -1265,6 +663,7 @@ impl ConversationRuntime {
 		{
 			return Err(AgentLaunchError::Conflict);
 		}
+
 		if self.retire_agent_slot().await { Ok(()) } else { Err(AgentLaunchError::Unavailable) }
 	}
 
@@ -1294,11 +693,14 @@ impl ConversationRuntime {
 		if self.is_shutting_down() {
 			return ConversationOutcome::Unavailable;
 		}
+
 		if let Err(outcome) = self.reserve_initial(&command) {
 			return *outcome;
 		}
+
 		let conversation_id = command.conversation_id.clone();
 		let outcome = self.create_inner(command).await;
+
 		if matches!(
 			&outcome,
 			ConversationOutcome::PreSession(_)
@@ -1307,6 +709,7 @@ impl ConversationRuntime {
 		) {
 			self.remove_establishing(&conversation_id);
 		}
+
 		outcome
 	}
 
@@ -1332,6 +735,7 @@ impl ConversationRuntime {
 		if self.is_shutting_down() || command.expected_conversation_revision <= 0 {
 			return;
 		}
+
 		let request =
 			match self.inner.store.read_conversation_request(&command.conversation_id).await {
 				Ok(Some(request)) => request,
@@ -1371,11 +775,13 @@ impl ConversationRuntime {
 		if self.is_shutting_down() || command.expected_conversation_revision <= 0 {
 			return ConversationOutcome::Unavailable;
 		}
+
 		let request =
 			match self.inner.store.read_conversation_request(&command.conversation_id).await {
 				Ok(Some(request)) => request,
 				Ok(None) | Err(_) => return ConversationOutcome::Unavailable,
 			};
+
 		self.run_reserved_initial(
 			CreateConversation {
 				initial_model_source: request.initial_model_source,
@@ -1409,8 +815,10 @@ impl ConversationRuntime {
 		if let Err(outcome) = self.reserve_initial(&command) {
 			return *outcome;
 		}
+
 		let conversation_id = command.conversation_id.clone();
 		let outcome = self.establish_first_session(command, conversation_revision, action).await;
+
 		if matches!(
 			&outcome,
 			ConversationOutcome::PreSession(_)
@@ -1419,6 +827,7 @@ impl ConversationRuntime {
 		) {
 			self.remove_establishing(&conversation_id);
 		}
+
 		outcome
 	}
 
@@ -1451,6 +860,7 @@ impl ConversationRuntime {
 			Ok(conversation) => conversation,
 			Err(error) => return store_outcome(error),
 		};
+
 		self.establish_first_session(command, conversation.revision, InitialRouteAction::Route)
 			.await
 	}
@@ -1469,6 +879,7 @@ impl ConversationRuntime {
 					command.conversation_id.clone(),
 					conversation_revision,
 				);
+
 				ExecutionCoordinator.pre_process(&self.inner.store, &execution).await
 			},
 			InitialRouteAction::ResumeEstablishment =>
@@ -1542,6 +953,7 @@ impl ConversationRuntime {
 		let Some(session) = plan.runtime_session.clone() else {
 			return ConversationOutcome::Conflict;
 		};
+
 		if plan.plan.consumer != consumer
 			|| plan.plan.kind != decodex_core::ContinuationPlanKind::InitialThread
 			|| plan.plan.source_runtime_session_id != session.runtime_session_id
@@ -1558,6 +970,7 @@ impl ConversationRuntime {
 		{
 			return ConversationOutcome::Conflict;
 		}
+
 		let runtime_session_id = session.runtime_session_id.clone();
 		let selected_account_id = plan.plan.selected_account_id.clone();
 		let selected_account_revision = session.account_snapshot.source_revision;
@@ -1568,6 +981,7 @@ impl ConversationRuntime {
 			Ok(value) => value,
 			Err(_) => return ConversationOutcome::Conflict,
 		};
+
 		match self
 			.inner
 			.store
@@ -1637,6 +1051,7 @@ impl ConversationRuntime {
 					.await;
 			},
 		};
+
 		let created = ConversationReadback {
 			operation_key: Some(command.operation_key.clone()),
 			correlation_id: Some(command.correlation_id.clone()),
@@ -1765,6 +1180,7 @@ impl ConversationRuntime {
 			Ok(request) => request,
 			Err(_) => {
 				self.terminate_process(&process).await;
+
 				return self
 					.reconcile_pre_effect(
 						&command.operation_key,
@@ -1782,6 +1198,7 @@ impl ConversationRuntime {
 			Ok(prepared) => prepared,
 			Err(_) => {
 				self.terminate_process(&process).await;
+
 				return self
 					.reconcile_pre_effect(
 						&command.operation_key,
@@ -1819,6 +1236,7 @@ impl ConversationRuntime {
 				)
 				| Err(_) => {
 					self.terminate_process(&process).await;
+
 					return self
 						.reconcile_pre_effect(
 							&command.operation_key,
@@ -1831,6 +1249,7 @@ impl ConversationRuntime {
 				},
 			};
 		let fence_readback = authority.readback();
+
 		if fence_readback.conversation_id != command.conversation_id
 			|| fence_readback.conversation_revision != conversation_revision
 			|| fence_readback.runtime_session_id != runtime_session_id
@@ -1849,8 +1268,10 @@ impl ConversationRuntime {
 			|| fence_readback.thread_start_request_sha256 != prepared.request_sha256()
 		{
 			self.terminate_process(&process).await;
+
 			return self.ambiguous(spawned, ConversationAmbiguity::ThreadStart).await;
 		}
+
 		let fenced = ConversationReadback {
 			operation_key: Some(command.operation_key.clone()),
 			correlation_id: Some(command.correlation_id.clone()),
@@ -1868,6 +1289,7 @@ impl ConversationRuntime {
 			Ok(established) => established,
 			Err(_) => {
 				self.terminate_process(&process).await;
+
 				return self
 					.reconcile_pre_effect(
 						&command.operation_key,
@@ -1881,10 +1303,13 @@ impl ConversationRuntime {
 					.await;
 			},
 		};
+
 		if !established.events.is_empty() {
 			self.terminate_process(&process).await;
+
 			return self.ambiguous(fenced, ConversationAmbiguity::ThreadStart).await;
 		}
+
 		let binding_key = scoped_key("thread-bind", &command.operation_key);
 		let binding = match self
 			.inner
@@ -1908,10 +1333,12 @@ impl ConversationRuntime {
 				)
 				| Err(_) => {
 					self.terminate_process(&process).await;
+
 					return self.ambiguous(fenced, ConversationAmbiguity::ThreadBind).await;
 				},
 			},
 		};
+
 		if binding.conversation_id != command.conversation_id
 			|| binding.conversation_revision != conversation_revision
 			|| binding.runtime_session_id != runtime_session_id
@@ -1935,8 +1362,10 @@ impl ConversationRuntime {
 			|| binding.codex_thread_id != established.binding.successful_response.codex_thread_id
 		{
 			self.terminate_process(&process).await;
+
 			return self.ambiguous(fenced, ConversationAmbiguity::ThreadBind).await;
 		}
+
 		let local = LocalSession {
 			execution_overrides: None,
 			operation_key: command.operation_key.clone(),
@@ -1958,13 +1387,16 @@ impl ConversationRuntime {
 			instructions: session.profile_snapshot.instructions,
 			next_user_sequence: 2,
 		};
+
 		if !self.set_preparing(local.clone()) {
 			self.terminate_process(&local.process).await;
+
 			let readback = session_readback(
 				&local,
 				ConversationLocalState::OutcomeUnknown,
 				Some(command.turn_id.clone()),
 			);
+
 			return self.ambiguous(readback, ConversationAmbiguity::ThreadBind).await;
 		}
 		if self
@@ -1985,6 +1417,7 @@ impl ConversationRuntime {
 				)
 				.await;
 		}
+
 		self.dispatch_turn(
 			&command.operation_key,
 			decision,
@@ -2021,6 +1454,7 @@ impl ConversationRuntime {
 		else {
 			return ConversationOutcome::Conflict;
 		};
+
 		if plan.plan.kind != decodex_core::ContinuationPlanKind::ContextPackFallback
 			|| plan.plan.consumer
 				!= (ExecutionConsumer::ConversationTurn {
@@ -2045,9 +1479,11 @@ impl ConversationRuntime {
 		{
 			return ConversationOutcome::Conflict;
 		}
+
 		if let Some(prior) = &prior_session {
 			self.terminate_process(&prior.process).await;
 		}
+
 		let runtime_session_id = runtime_session.runtime_session_id.clone();
 		let selected_account_id = runtime_session.account_snapshot.source_account_id.clone();
 		let created = ConversationReadback {
@@ -2171,6 +1607,7 @@ impl ConversationRuntime {
 			Ok(request) => request,
 			Err(_) => {
 				self.terminate_process(&process).await;
+
 				return self
 					.reconcile_pre_effect(
 						&command.operation_key,
@@ -2188,6 +1625,7 @@ impl ConversationRuntime {
 			Ok(prepared) => prepared,
 			Err(_) => {
 				self.terminate_process(&process).await;
+
 				return self
 					.reconcile_pre_effect(
 						&command.operation_key,
@@ -2225,6 +1663,7 @@ impl ConversationRuntime {
 				)
 				| Err(_) => {
 					self.terminate_process(&process).await;
+
 					return self
 						.reconcile_pre_effect(
 							&command.operation_key,
@@ -2239,6 +1678,7 @@ impl ConversationRuntime {
 				},
 			};
 		let fence_readback = authority.readback();
+
 		if fence_readback.conversation_id != command.conversation_id
 			|| fence_readback.conversation_revision != conversation_revision
 			|| fence_readback.runtime_session_id != runtime_session_id
@@ -2252,8 +1692,10 @@ impl ConversationRuntime {
 			|| fence_readback.process_generation_revision != process.revision()
 		{
 			self.terminate_process(&process).await;
+
 			return self.ambiguous(spawned, ConversationAmbiguity::ThreadStart).await;
 		}
+
 		let fenced = ConversationReadback {
 			runtime_session_revision: Some(fence_readback.revision),
 			..spawned
@@ -2262,6 +1704,7 @@ impl ConversationRuntime {
 			Ok(established) if established.events.is_empty() => established,
 			Ok(_) | Err(_) => {
 				self.terminate_process(&process).await;
+
 				return self
 					.reconcile_pre_effect(
 						&command.operation_key,
@@ -2293,10 +1736,12 @@ impl ConversationRuntime {
 				Ok(ConversationThreadEstablishmentReadback::Bound(binding)) => binding,
 				_ => {
 					self.terminate_process(&process).await;
+
 					return self.ambiguous(fenced, ConversationAmbiguity::ThreadBind).await;
 				},
 			},
 		};
+
 		if binding.conversation_id != command.conversation_id
 			|| binding.conversation_revision != conversation_revision
 			|| binding.runtime_session_id != runtime_session_id
@@ -2308,8 +1753,10 @@ impl ConversationRuntime {
 			|| binding.codex_thread_id != established.codex_thread_id
 		{
 			self.terminate_process(&process).await;
+
 			return self.ambiguous(fenced, ConversationAmbiguity::ThreadBind).await;
 		}
+
 		let local = LocalSession {
 			execution_overrides: command.overrides,
 			operation_key: command.operation_key.clone(),
@@ -2341,8 +1788,10 @@ impl ConversationRuntime {
 				)
 				.is_ok(),
 		};
+
 		if !installed {
 			self.terminate_process(&local.process).await;
+
 			return self
 				.ambiguous(
 					session_readback(
@@ -2372,6 +1821,7 @@ impl ConversationRuntime {
 				)
 				.await;
 		}
+
 		self.dispatch_turn(
 			&command.operation_key,
 			decision,
@@ -2409,6 +1859,7 @@ impl ConversationRuntime {
 			)
 			.await?;
 		let mut optional_sources = Vec::with_capacity(entries.len());
+
 		for entry in entries {
 			let content = match (entry.inline_text, entry.blob_hash) {
 				(Some(text), None) => text,
@@ -2444,8 +1895,10 @@ impl ConversationRuntime {
 				),
 			}
 			.map_err(|_| StoreError::InvalidInput("history cannot compile into a Context Pack"))?;
+
 			optional_sources.push(source);
 		}
+
 		let max_bytes = MAX_CONTEXT_PACK_BYTES.min(
 			MAX_CONVERSATION_INPUT_BYTES
 				.checked_sub(message_bytes)
@@ -2468,6 +1921,7 @@ impl ConversationRuntime {
 			),
 		)
 		.map_err(|_| StoreError::InvalidInput("Conversation Context Pack pin is invalid"))?;
+
 		compile_context_pack(ContextPackInput {
 			conversation_id: conversation_id.clone(),
 			possible_side_effects: PossibleSideEffects::Unknown,
@@ -2517,6 +1971,7 @@ impl ConversationRuntime {
 			turn_id,
 			fallback_context_pack,
 		);
+
 		match ExecutionCoordinator
 			.continuation_bind_to_plan(&self.inner.store, &self.inner.blob_store, &execution)
 			.await
@@ -2614,9 +2069,11 @@ impl ConversationRuntime {
 				ConversationProcessError::ControlLost
 				| ConversationProcessError::Ambiguous { .. } => SameThreadResumeRefusal::Ambiguous,
 			})?;
+
 		if !resumed.events.is_empty() {
 			return Err(SameThreadResumeRefusal::Ambiguous);
 		}
+
 		self.save_native_settings(
 			session,
 			resumed.settings,
@@ -2625,6 +2082,7 @@ impl ConversationRuntime {
 		)
 		.await
 		.map_err(|()| SameThreadResumeRefusal::ProcessUnavailable)?;
+
 		FreshRuntimeSessionResume::new(
 			session.runtime_session_id.clone(),
 			session.runtime_session_revision,
@@ -2647,6 +2105,7 @@ impl ConversationRuntime {
 		if self.is_shutting_down() {
 			return ConversationOutcome::Unavailable;
 		}
+
 		let mut session = match self.reserve_later_turn(&command) {
 			Ok(session) => session,
 			Err(outcome) => match *outcome {
@@ -2657,15 +2116,20 @@ impl ConversationRuntime {
 				outcome => return outcome,
 			},
 		};
+
 		session.execution_overrides = command.overrides;
+
 		session.model.clone_from(&command.execution.model);
 		session.reasoning_effort.clone_from(&command.execution.reasoning_effort);
+
 		session.fast = command.execution.fast;
 		session.service_tier = command.execution.service_tier.clone();
+
 		let admitted = match self.admit_later_turn(&command, session).await {
 			Ok(admitted) => admitted,
 			Err(outcome) => return *outcome,
 		};
+
 		self.submit_admitted_turn(command, admitted).await
 	}
 
@@ -2689,6 +2153,7 @@ impl ConversationRuntime {
 			Ok(reservation) => reservation,
 			Err(error) if turn_reservation_is_definite(&error) => {
 				self.restore_ready(session);
+
 				return Err(Box::new(ConversationOutcome::Conflict));
 			},
 			Err(error) if turn_reservation_is_integrity_failure(&error) => {
@@ -2699,6 +2164,7 @@ impl ConversationRuntime {
 						ConversationManualRecovery::PriorActiveTurn,
 					)
 					.await;
+
 				return Err(Box::new(outcome));
 			},
 			Err(_) => {
@@ -2709,21 +2175,29 @@ impl ConversationRuntime {
 						ConversationAmbiguity::TurnFinalization,
 					)
 					.await;
+
 				return Err(Box::new(outcome));
 			},
 		};
+
 		if !turn_admits_execution(&turn_reservation) {
 			self.restore_ready(session);
+
 			return Err(Box::new(ConversationOutcome::Conflict));
 		}
+
 		session.next_user_sequence = sequence.saturating_add(1);
+
 		if !self.set_preparing(session.clone()) {
 			self.terminate_process(&session.process).await;
+
 			let outcome = self
 				.finalize_bound_refusal(session, &command.turn_id, ReservedTurnRefusal::Unavailable)
 				.await;
+
 			return Err(Box::new(outcome));
 		}
+
 		let consumer = ExecutionConsumer::ConversationTurn {
 			conversation_id: command.conversation_id.clone(),
 			conversation_revision: session.conversation_revision,
@@ -2731,6 +2205,7 @@ impl ConversationRuntime {
 			source_runtime_session_revision: Some(session.runtime_session_revision),
 			turn_id: command.turn_id.clone(),
 		};
+
 		Ok(AdmittedLaterTurn { session, sequence, consumer })
 	}
 
@@ -2783,11 +2258,13 @@ impl ConversationRuntime {
 					.await;
 			},
 		};
+
 		if plan.plan.kind == decodex_core::ContinuationPlanKind::ContextPackFallback {
 			return self
 				.establish_context_fallback(command, sequence, decision, plan, Some(session))
 				.await;
 		}
+
 		let resume = match self.resume_same_thread(&session).await {
 			Ok(resume) => resume,
 			Err(SameThreadResumeRefusal::Rejected { reason, witness_digest }) => {
@@ -2823,6 +2300,7 @@ impl ConversationRuntime {
 					.await;
 			},
 		};
+
 		self.dispatch_turn(
 			&command.operation_key,
 			decision,
@@ -3041,6 +2519,7 @@ impl ConversationRuntime {
 			},
 		};
 		let prepared_revision = fresh.revision();
+
 		if self.is_shutting_down() {
 			return match self.cancel_prepared_exact(&attempt_id, prepared_revision).await {
 				PreparedCancellationDisposition::Canceled =>
@@ -3057,6 +2536,7 @@ impl ConversationRuntime {
 					self.ambiguous_session(session, turn_id, ConversationAmbiguity::TurnStart).await,
 			};
 		}
+
 		let authorization = match self
 			.inner
 			.provider_attempts
@@ -3103,6 +2583,7 @@ impl ConversationRuntime {
 						.mark_unknown(&attempt_id, actual.revision)
 						.await;
 				}
+
 				return self
 					.ambiguous_session(session, turn_id, ConversationAmbiguity::TurnStart)
 					.await;
@@ -3114,16 +2595,19 @@ impl ConversationRuntime {
 			},
 		};
 		let authorized_revision = authorization.attempt_revision();
+
 		if authorization.attempt_id() != &attempt_id
 			|| authorization.process_generation_id() != session.process.generation_id()
 			|| authorization.process_generation_revision() != session.process.revision()
 		{
 			let _ =
 				self.inner.provider_attempts.mark_unknown(&attempt_id, authorized_revision).await;
+
 			return self
 				.ambiguous_session(session, turn_id.clone(), ConversationAmbiguity::TurnStart)
 				.await;
 		}
+
 		let started = match self.start_turn(&session.process, prepared, authorization).await {
 			Ok(started) => started,
 			Err(ConversationProcessError::Rejected {
@@ -3142,6 +2626,7 @@ impl ConversationRuntime {
 						witness_digest,
 					)
 					.await;
+
 				if matches!(outcome, ConversationOutcome::Unknown { .. }) {
 					let _ = self
 						.inner
@@ -3149,6 +2634,7 @@ impl ConversationRuntime {
 						.mark_unknown(&attempt_id, authorized_revision)
 						.await;
 				}
+
 				return outcome;
 			},
 			Err(_) => {
@@ -3157,6 +2643,7 @@ impl ConversationRuntime {
 					.provider_attempts
 					.mark_unknown(&attempt_id, authorized_revision)
 					.await;
+
 				return self
 					.ambiguous_session(session, turn_id.clone(), ConversationAmbiguity::TurnStart)
 					.await;
@@ -3179,17 +2666,21 @@ impl ConversationRuntime {
 			authorized_revision,
 		};
 		let mut workers = self.inner.workers.lock().await;
+
 		while workers.try_join_next().is_some() {}
+
 		if self.is_shutting_down()
 			|| !self.set_active(session.clone(), turn_id, context.attempt_id.clone(), commands)
 			|| self.is_shutting_down()
 		{
 			drop(workers);
+
 			let _ = self
 				.inner
 				.provider_attempts
 				.mark_unknown(&context.attempt_id, context.authorized_revision)
 				.await;
+
 			return self
 				.ambiguous_session(
 					session,
@@ -3198,6 +2689,7 @@ impl ConversationRuntime {
 				)
 				.await;
 		}
+
 		let readback = session_readback(
 			&session,
 			ConversationLocalState::Running,
@@ -3206,10 +2698,13 @@ impl ConversationRuntime {
 		let outcome =
 			ConversationOutcome::Started { readback, provider_turn_id: started.turn_id.clone() };
 		let runtime = self.clone();
+
 		workers.spawn(async move {
 			runtime.drive_turn(context, started, command_receiver).await;
 		});
+
 		drop(workers);
+
 		outcome
 	}
 
@@ -3221,6 +2716,7 @@ impl ConversationRuntime {
 	) {
 		let mut assistant_ordinal = 0_i32;
 		let mut warning_ids = std::collections::HashSet::new();
+
 		for event in started.events {
 			match self
 				.handle_process_event(&context, &mut assistant_ordinal, &mut warning_ids, event)
@@ -3230,10 +2726,12 @@ impl ConversationRuntime {
 				Ok(false) => {},
 				Err(()) => {
 					self.mark_active_unknown(&context, ConversationAmbiguity::ActiveTurn).await;
+
 					return;
 				},
 			}
 		}
+
 		if started.status != ConversationTurnStatus::InProgress {
 			let status = match started.status {
 				ConversationTurnStatus::Completed => TurnStatus::Completed,
@@ -3253,11 +2751,14 @@ impl ConversationRuntime {
 					},
 				)
 				.await;
+
 			if handled != Ok(true) {
 				self.mark_active_unknown(&context, ConversationAmbiguity::ActiveTurn).await;
 			}
+
 			return;
 		}
+
 		let (output, mut outputs) = tokio_mpsc::channel(EVENT_QUEUE_CAPACITY);
 		let control = self.inner.process_generations.clone();
 		let process = context.session.process.clone();
@@ -3277,6 +2778,7 @@ impl ConversationRuntime {
 		});
 		let mut terminal = false;
 		let mut stop_worker = false;
+
 		while let Some(output) = outputs.recv().await {
 			match output {
 				WorkerOutput::Event(event) => {
@@ -3291,12 +2793,14 @@ impl ConversationRuntime {
 					{
 						Ok(is_terminal) => {
 							terminal = is_terminal;
+
 							if terminal {
 								break;
 							}
 						},
 						Err(()) => {
 							stop_worker = true;
+
 							break;
 						},
 					}
@@ -3304,11 +2808,15 @@ impl ConversationRuntime {
 				WorkerOutput::Failed => break,
 			}
 		}
+
 		if stop_worker {
 			self.stop_active_worker(&context.attempt_id, &context.session.conversation_id);
 		}
+
 		drop(outputs);
+
 		let _ = worker.await;
+
 		if !terminal {
 			self.mark_active_unknown(&context, ConversationAmbiguity::ActiveTurn).await;
 		}
@@ -3330,13 +2838,16 @@ impl ConversationRuntime {
 				{
 					return Err(());
 				}
+
 				let assistant_sequence = context.logical_turn_sequence.checked_add(1).ok_or(())?;
 				let assistant_sequence_text = assistant_sequence.to_string();
 				let text = delta.text();
 				let mut offset = 0;
 				let mut first = true;
+
 				while first || offset < text.len() {
 					first = false;
+
 					let end = history_chunk_end(text, offset);
 					let bounded_text =
 						HistoryText::new(text[offset..end].to_owned()).map_err(|_| ())?;
@@ -3361,6 +2872,7 @@ impl ConversationRuntime {
 						],
 					)
 					.map_err(|_| ())?;
+
 					self.inner
 						.store
 						.record_history_item(
@@ -3386,28 +2898,35 @@ impl ConversationRuntime {
 						)
 						.await
 						.map_err(|_| ())?;
+
 					*assistant_ordinal = (*assistant_ordinal).checked_add(1).ok_or(())?;
+
 					let readback = session_readback(
 						&context.session,
 						ConversationLocalState::Running,
 						Some(context.logical_turn_id.clone()),
 					);
+
 					self.emit(ConversationOutcome::Streaming {
 						readback,
 						history_item_id,
 						text: bounded_text,
 					})
 					.await;
+
 					offset = end;
 				}
+
 				Ok(false)
 			},
 			ConversationProcessEvent::TurnCompleted { turn_id, status, witness_digest } => {
 				if turn_id != context.provider_turn_id {
 					return Err(());
 				}
+
 				self.finish_positive_turn(context, status, witness_digest, *assistant_ordinal > 0)
 					.await?;
+
 				Ok(true)
 			},
 		}
@@ -3423,10 +2942,13 @@ impl ConversationRuntime {
 		if thread_id.as_deref().is_some_and(|id| id != context.session.codex_thread_id.as_str()) {
 			return Ok(false);
 		}
+
 		let id = derived_uuid("native-warning", &[context.attempt_id.as_str(), &text]);
+
 		if warning_ids.len() >= 64 || !warning_ids.insert(id.clone()) {
 			return Ok(false);
 		}
+
 		let history_item_id = HistoryItemId::new(id).map_err(|_| ())?;
 		let command = exact_command(
 			"native-warning",
@@ -3434,6 +2956,7 @@ impl ConversationRuntime {
 			&[context.attempt_id.as_str(), &text],
 		)
 		.map_err(|_| ())?;
+
 		self.inner
 			.store
 			.record_history_item(
@@ -3468,6 +2991,7 @@ impl ConversationRuntime {
 			history_item_id,
 		})
 		.await;
+
 		Ok(false)
 	}
 
@@ -3503,6 +3027,7 @@ impl ConversationRuntime {
 			witness_digest,
 		)
 		.map_err(|_| ())?;
+
 		match self
 			.inner
 			.provider_attempts
@@ -3515,6 +3040,7 @@ impl ConversationRuntime {
 				if state == outcome.state() => {},
 			_ => return Err(()),
 		}
+
 		let terminal_attempt_revision = context.authorized_revision.checked_add(1).ok_or(())?;
 		let terminalization = TerminalizeConversationTurn {
 			conversation_id: context.session.conversation_id.clone(),
@@ -3547,16 +3073,22 @@ impl ConversationRuntime {
 			| ConversationTerminalizationOutcome::Unknown => return Err(()),
 		};
 		let mut session = context.session.clone();
+
 		session.runtime_session_revision = terminalization.runtime_session_revision;
 		session.has_acknowledged_turn = true;
+
 		let sequence_increment = if has_assistant_turn { 2 } else { 1 };
+
 		session.next_user_sequence =
 			context.logical_turn_sequence.saturating_add(sequence_increment);
+
 		let readback = session_readback(&session, ConversationLocalState::Ready, None);
+
 		if self.retire_process(&session.process).await {
 			if !self.remove_active_if(&context.attempt_id, &session.conversation_id) {
 				return Err(());
 			}
+
 			self.emit(ConversationOutcome::Terminal {
 				readback,
 				turn_id: context.logical_turn_id.clone(),
@@ -3566,7 +3098,9 @@ impl ConversationRuntime {
 			.await;
 		} else {
 			let mut recovery = readback;
+
 			recovery.state = ConversationLocalState::ManualRecovery;
+
 			if !self.set_recovery_if_active(
 				&context.attempt_id,
 				recovery.clone(),
@@ -3574,12 +3108,14 @@ impl ConversationRuntime {
 			) {
 				return Err(());
 			}
+
 			self.emit(ConversationOutcome::ManualRecovery {
 				readback: recovery,
 				action: ConversationManualRecovery::ProcessUnavailable,
 			})
 			.await;
 		}
+
 		Ok(())
 	}
 
@@ -3591,6 +3127,7 @@ impl ConversationRuntime {
 				action: ConversationManualRecovery::MissingLocalProcess,
 			};
 		};
+
 		match &task.state {
 			LocalTaskState::Active { session, turn_id, commands, .. } => {
 				let readback = session_readback(
@@ -3598,6 +3135,7 @@ impl ConversationRuntime {
 					ConversationLocalState::Running,
 					Some(turn_id.clone()),
 				);
+
 				match commands.try_send(WorkerCommand::Interrupt) {
 					Ok(()) => ConversationOutcome::InterruptRequested(readback),
 					Err(mpsc::TrySendError::Full(_)) => ConversationOutcome::Busy(readback),
@@ -3617,9 +3155,11 @@ impl ConversationRuntime {
 	) -> Option<ConversationProjection> {
 		let local = self.local();
 		let task = local.get(conversation_id.as_str())?;
+
 		if matches!(&task.state, LocalTaskState::Establishing) {
 			return None;
 		}
+
 		let readback = local_readback(conversation_id, task);
 		let recovery = match &task.state {
 			LocalTaskState::Recovery { action, .. }
@@ -3627,6 +3167,7 @@ impl ConversationRuntime {
 				Some(*action),
 			_ => None,
 		};
+
 		Some(ConversationProjection { readback, recovery })
 	}
 
@@ -3639,9 +3180,11 @@ impl ConversationRuntime {
 			Ok(context) => context,
 			Err(outcome) => return outcome,
 		};
+
 		if session.has_unresolved_process_generation {
 			return ConversationControlOutcome::Conflict;
 		}
+
 		let unknown = match self
 			.inner
 			.store
@@ -3651,10 +3194,13 @@ impl ConversationRuntime {
 			Ok(unknown) => unknown,
 			Err(_) => return ConversationControlOutcome::Unavailable,
 		};
+
 		if session.has_unresolved_provider_attempt != unknown.is_some() {
 			return ConversationControlOutcome::Conflict;
 		}
+
 		let mut observed_archived = None;
+
 		if let Some(unknown) = unknown.as_ref() {
 			if unknown.conversation_revision != session.conversation_revision
 				|| unknown.runtime_session_id != session.runtime_session_id
@@ -3667,6 +3213,7 @@ impl ConversationRuntime {
 			{
 				return ConversationControlOutcome::Conflict;
 			}
+
 			let observation = self
 				.observe_control_thread(
 					&command.operation_key,
@@ -3682,6 +3229,7 @@ impl ConversationRuntime {
 			let submitted = match observation {
 				Ok(ControlThreadObservation::Read(readback)) => {
 					observed_archived = Some(readback.facts.archived);
+
 					readback.submitted_turn
 				},
 				Ok(ControlThreadObservation::Archived) => {
@@ -3691,6 +3239,7 @@ impl ConversationRuntime {
 					if !matches!(outcome, ConversationControlOutcome::Unavailable) {
 						return outcome;
 					}
+
 					None
 				},
 				Err(outcome) => return outcome,
@@ -3702,13 +3251,17 @@ impl ConversationRuntime {
 					self.close_unknown_control_turn(unknown).await,
 				Some(_) | None => Err(ConversationControlOutcome::Busy),
 			};
+
 			if let Err(outcome) = reconciled {
 				return outcome;
 			}
+
 			self.remove_recovery_projection(&command.conversation_id);
+
 			if !command.archive && observed_archived != Some(true) {
 				return ConversationControlOutcome::Current;
 			}
+
 			session = match self
 				.inner
 				.store
@@ -3725,6 +3278,7 @@ impl ConversationRuntime {
 		{
 			return outcome;
 		}
+
 		self.finish_control_archive(
 			&command,
 			session,
@@ -3747,8 +3301,10 @@ impl ConversationRuntime {
 		{
 			return Err(ConversationControlOutcome::Unavailable);
 		}
+
 		{
 			let local = self.local();
+
 			if let Some(task) = local.get(command.conversation_id.as_str()) {
 				match &task.state {
 					LocalTaskState::Active { .. }
@@ -3760,6 +3316,7 @@ impl ConversationRuntime {
 				}
 			}
 		}
+
 		let mut session = match self
 			.inner
 			.store
@@ -3770,6 +3327,7 @@ impl ConversationRuntime {
 			Ok(None) => return Err(self.archive_local_control_thread(command).await),
 			Err(_) => return Err(ConversationControlOutcome::Unavailable),
 		};
+
 		if session.conversation_revision != command.expected_conversation_revision
 			|| session.runtime_session_id != command.runtime_session_id
 			|| session.runtime_session_revision != command.expected_runtime_session_revision
@@ -3778,6 +3336,7 @@ impl ConversationRuntime {
 		{
 			return Err(ConversationControlOutcome::Conflict);
 		}
+
 		let request =
 			match self.inner.store.read_conversation_request(&command.conversation_id).await {
 				Ok(Some(request)) => request,
@@ -3793,6 +3352,7 @@ impl ConversationRuntime {
 			Ok(pending) => pending,
 			Err(_) => return Err(ConversationControlOutcome::Unavailable),
 		};
+
 		if let Some(pending) = pending_terminalization.as_ref() {
 			if session.has_unresolved_provider_attempt
 				|| pending.conversation_revision != session.conversation_revision
@@ -3804,11 +3364,14 @@ impl ConversationRuntime {
 			{
 				return Err(ConversationControlOutcome::Conflict);
 			}
+
 			self.finish_pending_terminalization(pending).await?;
 			self.remove_recovery_projection(&command.conversation_id);
+
 			if !command.archive {
 				return Err(ConversationControlOutcome::Current);
 			}
+
 			session = match self
 				.inner
 				.store
@@ -3819,6 +3382,7 @@ impl ConversationRuntime {
 				_ => return Err(ConversationControlOutcome::Unavailable),
 			};
 		}
+
 		Ok((session, request))
 	}
 
@@ -3852,9 +3416,11 @@ impl ConversationRuntime {
 				Err(outcome) => return outcome,
 			}
 		};
+
 		if !archived {
 			return ConversationControlOutcome::Current;
 		}
+
 		let persistence = match exact_command(
 			"archive-conversation",
 			&command.operation_key,
@@ -3892,14 +3458,17 @@ impl ConversationRuntime {
 		};
 		let process = {
 			let mut local = self.local();
+
 			local.remove(command.conversation_id.as_str()).and_then(|task| match task.state {
 				LocalTaskState::Ready(session) => Some(session.process),
 				_ => None,
 			})
 		};
+
 		if let Some(process) = process {
 			self.terminate_process(&process).await;
 		}
+
 		ConversationControlOutcome::Archived {
 			conversation_revision: archived.conversation_revision,
 		}
@@ -3936,6 +3505,7 @@ impl ConversationRuntime {
 			readback.witness_digest(),
 		)
 		.map_err(|_| ConversationControlOutcome::Conflict)?;
+
 		match self
 			.inner
 			.provider_attempts
@@ -3948,6 +3518,7 @@ impl ConversationRuntime {
 				if state == outcome.state() => {},
 			_ => return Err(ConversationControlOutcome::Conflict),
 		}
+
 		let terminal_attempt_revision =
 			unknown.attempt_revision.checked_add(1).ok_or(ConversationControlOutcome::Conflict)?;
 		let terminalization = TerminalizeConversationTurn {
@@ -3965,6 +3536,7 @@ impl ConversationRuntime {
 			provider_thread_id: unknown.codex_thread_id.clone(),
 			provider_turn_id: readback.provider_turn_id().as_str().to_owned(),
 		};
+
 		match self
 			.inner
 			.store
@@ -4015,6 +3587,7 @@ impl ConversationRuntime {
 			provider_thread_id: pending.codex_thread_id.clone(),
 			provider_turn_id: pending.provider_turn_id.clone(),
 		};
+
 		match self
 			.inner
 			.store
@@ -4050,9 +3623,11 @@ impl ConversationRuntime {
 			)
 			.await
 			.map_err(|_| ConversationControlOutcome::Unavailable)?;
+
 		if prefix.as_ref().is_some_and(|prefix| prefix.turn_revision != 1) {
 			return Err(ConversationControlOutcome::Conflict);
 		}
+
 		let (assistant_turn_id, assistant_sequence, mut ordinal, suffix) = match prefix.as_ref() {
 			Some(prefix) if assistant_text.starts_with(&prefix.text) => (
 				prefix.turn_id.clone(),
@@ -4077,11 +3652,14 @@ impl ConversationRuntime {
 			),
 		};
 		let mut offset = 0_usize;
+
 		while offset < suffix.len() {
 			let end = history_chunk_end(suffix, offset);
+
 			if end == offset {
 				return Err(ConversationControlOutcome::Conflict);
 			}
+
 			let bounded = HistoryText::new(suffix[offset..end].to_owned())
 				.map_err(|_| ConversationControlOutcome::Conflict)?;
 			let ordinal_text = ordinal.to_string();
@@ -4106,6 +3684,7 @@ impl ConversationRuntime {
 				],
 			)
 			.map_err(|_| ConversationControlOutcome::Conflict)?;
+
 			self.inner
 				.store
 				.record_history_item(
@@ -4131,9 +3710,11 @@ impl ConversationRuntime {
 				)
 				.await
 				.map_err(|_| ConversationControlOutcome::OutcomeUnknown)?;
+
 			ordinal = ordinal.checked_add(1).ok_or(ConversationControlOutcome::Conflict)?;
 			offset = end;
 		}
+
 		Ok(Some((assistant_turn_id, 1)))
 	}
 
@@ -4183,6 +3764,7 @@ impl ConversationRuntime {
 			)
 			.await
 			.map_err(|_| ConversationControlOutcome::OutcomeUnknown)?;
+
 		match recovered {
 			RecoverUnknownConversationTurnOutcome::Applied(readback)
 			| RecoverUnknownConversationTurnOutcome::Replayed(readback)
@@ -4196,6 +3778,7 @@ impl ConversationRuntime {
 
 	fn remove_recovery_projection(&self, conversation_id: &ConversationId) {
 		let mut local = self.local();
+
 		if local
 			.get(conversation_id.as_str())
 			.is_some_and(|task| matches!(&task.state, LocalTaskState::Recovery { .. }))
@@ -4239,6 +3822,7 @@ impl ConversationRuntime {
 			)
 			.await
 			.map_err(|_| ConversationControlOutcome::OutcomeUnknown)?;
+
 		match outcome {
 			ReconcileStrandedConversationTurnOutcome::Applied { turn_revision }
 			| ReconcileStrandedConversationTurnOutcome::Replayed { turn_revision }
@@ -4249,13 +3833,16 @@ impl ConversationRuntime {
 				return Err(ConversationControlOutcome::Conflict);
 			},
 		}
+
 		let mut local = self.local();
+
 		if local
 			.get(command.conversation_id.as_str())
 			.is_some_and(|task| matches!(&task.state, LocalTaskState::Recovery { .. }))
 		{
 			local.remove(command.conversation_id.as_str());
 		}
+
 		Ok(())
 	}
 
@@ -4274,6 +3861,7 @@ impl ConversationRuntime {
 			(None, None) => {},
 			_ => return ConversationControlOutcome::Conflict,
 		}
+
 		let persistence = match exact_command(
 			"archive-local-conversation",
 			&command.operation_key,
@@ -4308,7 +3896,9 @@ impl ConversationRuntime {
 			},
 			Err(_) => return ConversationControlOutcome::OutcomeUnknown,
 		};
+
 		self.local().remove(command.conversation_id.as_str());
+
 		ConversationControlOutcome::Archived {
 			conversation_revision: archived.conversation_revision,
 		}
@@ -4331,11 +3921,13 @@ impl ConversationRuntime {
 			.inspect(account_id)
 			.await
 			.map_err(|_| ConversationControlOutcome::Unavailable)?;
+
 		if &inspection.account.account_id != account_id
 			|| inspection.account.revision < account_revision
 		{
 			return Err(ConversationControlOutcome::Conflict);
 		}
+
 		let account_revision = inspection.account.revision;
 		let credential = self
 			.inner
@@ -4355,6 +3947,7 @@ impl ConversationRuntime {
 			&[operation_key, thread_id.as_str()],
 		))
 		.map_err(|_| ConversationControlOutcome::Conflict)?;
+
 		task::spawn_blocking(move || {
 			let selected = Arc::new(
 				SelectedWorkingDirectory::acquire(&working_directory)
@@ -4383,11 +3976,15 @@ impl ConversationRuntime {
 			)
 			.map_err(|_| ConversationControlOutcome::Unavailable)?;
 			let mut child = launch.spawn().map_err(|_| ConversationControlOutcome::Unavailable)?;
+
 			if child.initialize_ordinary_turns(&vault).is_err() {
 				let _ = child.shutdown();
+
 				return Err(ConversationControlOutcome::Unavailable);
 			}
+
 			drop(credential.launch_guard);
+
 			let thread_id =
 				ExactThreadId::new(thread_id).map_err(|_| ConversationControlOutcome::Conflict)?;
 			let observation = match operation {
@@ -4406,12 +4003,15 @@ impl ConversationRuntime {
 							child.read_exact_ordinary_submitted_turn(&thread_id, client_id),
 						None => child.read_exact_ordinary_thread(&thread_id),
 					};
+
 					readback
 						.map(ControlThreadObservation::Read)
 						.map_err(|_| ConversationControlOutcome::Unavailable)
 				},
 			};
+
 			child.shutdown().map_err(|_| ConversationControlOutcome::OutcomeUnknown)?;
+
 			observation
 		})
 		.await
@@ -4421,9 +4021,11 @@ impl ConversationRuntime {
 	pub(crate) async fn next_event(&self) -> Option<ConversationOutcome> {
 		let mut closed = self.inner.event_stream_closed.subscribe();
 		let mut receiver = self.inner.event_receiver.lock().await;
+
 		if *closed.borrow() {
 			return receiver.try_recv().ok();
 		}
+
 		tokio::select! {
 			biased;
 
@@ -4440,6 +4042,7 @@ impl ConversationRuntime {
 
 	pub(crate) fn begin_shutdown(&self) {
 		self.inner.shutting_down.store(true, std::sync::atomic::Ordering::Release);
+
 		if let Some(client) = self
 			.inner
 			.agent_process
@@ -4450,7 +4053,9 @@ impl ConversationRuntime {
 		{
 			client.close();
 		}
+
 		let local = self.local();
+
 		for task in local.values() {
 			if let LocalTaskState::Active { commands, .. } = &task.state {
 				let _ = commands.try_send(WorkerCommand::Shutdown);
@@ -4461,13 +4066,18 @@ impl ConversationRuntime {
 	pub(crate) async fn wait_for_shutdown(&self) {
 		{
 			let _launch = self.inner.agent_launch.lock().await;
+
 			self.retire_agent_slot().await;
 		}
+
 		let mut workers = {
 			let mut shared = self.inner.workers.lock().await;
+
 			std::mem::take(&mut *shared)
 		};
+
 		while workers.join_next().await.is_some() {}
+
 		let processes = {
 			let mut local = self.local();
 			let processes = local
@@ -4480,12 +4090,16 @@ impl ConversationRuntime {
 					LocalTaskState::Establishing | LocalTaskState::Recovery { .. } => None,
 				})
 				.collect::<Vec<_>>();
+
 			local.clear();
+
 			processes
 		};
+
 		for process in processes {
 			self.terminate_process(&process).await;
 		}
+
 		self.inner.event_stream_closed.send_replace(true);
 	}
 
@@ -4513,6 +4127,7 @@ impl ConversationRuntime {
 			],
 		)
 		.map_err(|_| StoreError::InvalidInput("user Turn command identity is invalid"))?;
+
 		self.inner
 			.store
 			.reserve_user_turn_with_history_item(
@@ -4546,6 +4161,7 @@ impl ConversationRuntime {
 	) -> Result<PreparedThreadStart, ConversationProcessError> {
 		let control = self.inner.process_generations.clone();
 		let process = process.clone();
+
 		match task::spawn_blocking(move || {
 			control
 				.with_fenced_child(&process, |child| child.prepare_ordinary_thread_start(&request))
@@ -4564,14 +4180,17 @@ impl ConversationRuntime {
 		authority: decodex_database::FreshRuntimeSessionThreadStart,
 	) -> Result<EstablishedOrdinaryThread, ConversationProcessError> {
 		let fence = authority.readback();
+
 		if &fence.process_generation_id != process.generation_id()
 			|| fence.process_generation_revision != process.revision()
 			|| fence.process_execution_epoch_id != self.inner.execution_authorization.epoch_id
 		{
 			return Err(ConversationProcessError::Incompatible);
 		}
+
 		let control = self.inner.process_generations.clone();
 		let process = process.clone();
+
 		match task::spawn_blocking(move || {
 			control.with_fenced_child(&process, |child| {
 				child.start_ordinary_thread(prepared, authority)
@@ -4600,6 +4219,7 @@ impl ConversationRuntime {
 	) -> Result<ResumedOrdinaryThread, ConversationProcessError> {
 		let control = self.inner.process_generations.clone();
 		let process = process.clone();
+
 		match task::spawn_blocking(move || {
 			control.with_fenced_child(&process, |child| child.resume_ordinary_thread(&request))
 		})
@@ -4619,6 +4239,7 @@ impl ConversationRuntime {
 	) -> Result<PreparedTurnStart, ConversationProcessError> {
 		let control = self.inner.process_generations.clone();
 		let process = process.clone();
+
 		match task::spawn_blocking(move || {
 			control.with_fenced_child(&process, |child| {
 				child.prepare_ordinary_turn_start(attempt_id, &request)
@@ -4639,6 +4260,7 @@ impl ConversationRuntime {
 	) -> Result<StartedOrdinaryTurn, ConversationProcessError> {
 		let control = self.inner.process_generations.clone();
 		let process = process.clone();
+
 		match task::spawn_blocking(move || {
 			control
 				.with_fenced_child(&process, |child| child.start_ordinary_turn(prepared, authority))
@@ -4667,6 +4289,7 @@ impl ConversationRuntime {
 			.process_credential(account_id, account_revision)
 			.await
 			.map_err(account_recovery)?;
+
 		self.launch_process_with_credential(account_id, admission, credential, working_directory)
 			.await
 	}
@@ -4736,9 +4359,11 @@ impl ConversationRuntime {
 					permit,
 				)
 				.map_err(|_| ConversationManualRecovery::ProcessUnavailable)?;
+
 				selected_working_directory
 					.revalidate()
 					.map_err(|()| ConversationManualRecovery::ProcessUnavailable)?;
+
 				Ok::<_, ConversationManualRecovery>((
 					launch,
 					vault,
@@ -4773,11 +4398,15 @@ impl ConversationRuntime {
 		.map_err(|_| ConversationManualRecovery::ProcessUnavailable)?;
 		let selected_working_directory_is_current =
 			task::spawn_blocking(move || selected_working_directory.revalidate()).await;
+
 		if !matches!(selected_working_directory_is_current, Ok(Ok(()))) {
 			self.terminate_process(&process).await;
+
 			return Err(ConversationManualRecovery::ProcessUnavailable);
 		}
+
 		drop(launch_guard);
+
 		let process_for_init = process.clone();
 		let control = self.inner.process_generations.clone();
 		let initialized = task::spawn_blocking(move || {
@@ -4790,21 +4419,27 @@ impl ConversationRuntime {
 			})
 		})
 		.await;
+
 		match initialized {
 			Ok(Ok(Ok(()))) => {},
 			Ok(Ok(Err(ConversationProcessError::Incompatible))) => {
 				self.terminate_process(&process).await;
+
 				return Err(ConversationManualRecovery::UpgradeCodex);
 			},
 			_ => {
 				self.terminate_process(&process).await;
+
 				return Err(ConversationManualRecovery::ProcessUnavailable);
 			},
 		}
+
 		if self.inner.process_generations.mark_spawned_ready(&mut process).await.is_err() {
 			self.terminate_process(&process).await;
+
 			return Err(ConversationManualRecovery::ProcessUnavailable);
 		}
+
 		Ok(process)
 	}
 
@@ -4814,12 +4449,15 @@ impl ConversationRuntime {
 			.provider_attempts
 			.mark_unknown(&context.attempt_id, context.authorized_revision)
 			.await;
+
 		self.terminate_process(&context.session.process).await;
+
 		let readback = session_readback(
 			&context.session,
 			ConversationLocalState::OutcomeUnknown,
 			Some(context.logical_turn_id.clone()),
 		);
+
 		self.set_recovery(readback.clone(), ConversationManualRecovery::MissingLocalProcess);
 		self.emit(ConversationOutcome::Unknown { readback, ambiguity }).await;
 	}
@@ -4848,17 +4486,21 @@ impl ConversationRuntime {
 		command: &CreateConversation,
 	) -> Result<(), Box<ConversationOutcome>> {
 		let mut local = self.local();
+
 		if let Some(existing) = local.get(command.conversation_id.as_str()) {
 			let readback = local_readback(&command.conversation_id, existing);
+
 			return Err(Box::new(if existing.operation_key == command.operation_key {
 				ConversationOutcome::Busy(readback)
 			} else {
 				ConversationOutcome::Conflict
 			}));
 		}
+
 		if local.len() >= MAX_LOCAL_TASKS {
 			return Err(Box::new(ConversationOutcome::Unavailable));
 		}
+
 		local.insert(
 			command.conversation_id.as_str().to_owned(),
 			LocalTask {
@@ -4866,6 +4508,7 @@ impl ConversationRuntime {
 				state: LocalTaskState::Establishing,
 			},
 		);
+
 		Ok(())
 	}
 
@@ -4882,12 +4525,15 @@ impl ConversationRuntime {
 			Ok(planned) => planned,
 			Err(outcome) => return *outcome,
 		};
+
 		if planned.plan.plan.kind == decodex_core::ContinuationPlanKind::ContextPackFallback {
 			let RehydratedTurnPlan { admission, decision, plan } = planned;
+
 			return self
 				.establish_context_fallback(command, admission.sequence, decision, plan, None)
 				.await;
 		}
+
 		let account = match self.load_rehydrated_account_revision(&command, planned).await {
 			Ok(account) => account,
 			Err(outcome) => return *outcome,
@@ -4900,6 +4546,7 @@ impl ConversationRuntime {
 			Ok(launch) => launch,
 			Err(outcome) => return *outcome,
 		};
+
 		self.resume_rehydrated_turn(command, launch).await
 	}
 
@@ -4934,6 +4581,7 @@ impl ConversationRuntime {
 			Err(error) => return Err(Box::new(store_outcome(error))),
 		};
 		let mut durable_readback = ordinary_resume_readback(&readback, command);
+
 		if readback.has_active_turn {
 			return Err(Box::new(ConversationOutcome::ManualRecovery {
 				readback: durable_readback,
@@ -4965,6 +4613,7 @@ impl ConversationRuntime {
 			},
 			Err(error) if turn_reservation_is_integrity_failure(&error) => {
 				durable_readback.active_turn_id = Some(command.turn_id.clone());
+
 				return Err(Box::new(ConversationOutcome::ManualRecovery {
 					readback: durable_readback,
 					action: ConversationManualRecovery::PriorActiveTurn,
@@ -4972,15 +4621,20 @@ impl ConversationRuntime {
 			},
 			Err(_) => {
 				durable_readback.active_turn_id = Some(command.turn_id.clone());
+
 				let outcome =
 					self.ambiguous(durable_readback, ConversationAmbiguity::TurnFinalization).await;
+
 				return Err(Box::new(outcome));
 			},
 		};
+
 		if !turn_admits_execution(&turn_reservation) {
 			return Err(Box::new(ConversationOutcome::Conflict));
 		}
+
 		durable_readback.active_turn_id = Some(command.turn_id.clone());
+
 		Ok(RehydratedTurnAdmission { readback, durable_readback, sequence })
 	}
 
@@ -5020,6 +4674,7 @@ impl ConversationRuntime {
 						ReservedTurnRefusal::Recovery(recovery),
 					)
 					.await;
+
 				return Err(Box::new(outcome));
 			},
 			Err(ExistingSessionPlanningRefusal::Conflict) => {
@@ -5031,15 +4686,18 @@ impl ConversationRuntime {
 						ReservedTurnRefusal::Conflict,
 					)
 					.await;
+
 				return Err(Box::new(outcome));
 			},
 			Err(ExistingSessionPlanningRefusal::Unknown) => {
 				let outcome = self
 					.ambiguous(admission.durable_readback, ConversationAmbiguity::TurnFinalization)
 					.await;
+
 				return Err(Box::new(outcome));
 			},
 		};
+
 		Ok(RehydratedTurnPlan { admission, decision, plan })
 	}
 
@@ -5070,6 +4728,7 @@ impl ConversationRuntime {
 						refusal,
 					)
 					.await;
+
 				Err(Box::new(outcome))
 			},
 		}
@@ -5095,6 +4754,7 @@ impl ConversationRuntime {
 						ReservedTurnRefusal::Unavailable,
 					)
 					.await;
+
 				return Err(Box::new(outcome));
 			},
 		};
@@ -5151,9 +4811,11 @@ impl ConversationRuntime {
 						refusal,
 					)
 					.await;
+
 				return Err(Box::new(outcome));
 			},
 		};
+
 		Ok(RehydratedProcessAdmission { account, working_directory, admission, establishment })
 	}
 
@@ -5187,6 +4849,7 @@ impl ConversationRuntime {
 						ReservedTurnRefusal::Recovery(action),
 					)
 					.await;
+
 				return Err(Box::new(outcome));
 			},
 		};
@@ -5211,6 +4874,7 @@ impl ConversationRuntime {
 			instructions: readback.instructions,
 			next_user_sequence: sequence.saturating_add(1),
 		};
+
 		Ok(RehydratedProcessLaunch { decision, plan, session, sequence })
 	}
 
@@ -5255,6 +4919,7 @@ impl ConversationRuntime {
 					.await;
 			},
 		};
+
 		if self
 			.install_rehydrated_preparing(
 				&command.operation_key,
@@ -5268,9 +4933,12 @@ impl ConversationRuntime {
 				ConversationLocalState::ManualRecovery,
 				Some(command.turn_id.clone()),
 			);
+
 			self.terminate_process(&session.process).await;
+
 			return self.ambiguous(readback, ConversationAmbiguity::ThreadResume).await;
 		}
+
 		self.dispatch_turn(
 			&command.operation_key,
 			decision,
@@ -5292,12 +4960,14 @@ impl ConversationRuntime {
 		session: &LocalSession,
 	) -> Result<(), Box<ConversationOutcome>> {
 		let mut local = self.local();
+
 		if local.contains_key(conversation_id.as_str()) {
 			return Err(Box::new(ConversationOutcome::Conflict));
 		}
 		if local.len() >= MAX_LOCAL_TASKS {
 			return Err(Box::new(ConversationOutcome::Unavailable));
 		}
+
 		local.insert(
 			conversation_id.as_str().to_owned(),
 			LocalTask {
@@ -5305,6 +4975,7 @@ impl ConversationRuntime {
 				state: LocalTaskState::Preparing(session.clone()),
 			},
 		);
+
 		Ok(())
 	}
 
@@ -5323,21 +4994,26 @@ impl ConversationRuntime {
 			}));
 		};
 		let current = std::mem::replace(&mut task.state, LocalTaskState::Establishing);
+
 		match current {
 			LocalTaskState::Ready(mut session) => {
 				if session.working_directory != command.working_directory {
 					task.state = LocalTaskState::Ready(session);
+
 					return Err(Box::new(ConversationOutcome::Conflict));
 				}
+
 				session.operation_key = command.operation_key.clone();
 				session.correlation_id = command.correlation_id.clone();
 				session.causation_id = command.causation_id.clone();
 				task.operation_key = command.operation_key.clone();
 				task.state = LocalTaskState::Preparing(session.clone());
+
 				Ok(session)
 			},
 			other => {
 				task.state = other;
+
 				Err(Box::new(match &task.state {
 					LocalTaskState::Preparing(session)
 					| LocalTaskState::CatalogReading(session) => ConversationOutcome::Busy(session_readback(
@@ -5376,9 +5052,11 @@ impl ConversationRuntime {
 			| LocalTaskState::Active { .. }
 			| LocalTaskState::Recovery { .. } => false,
 		};
+
 		if accepts {
 			task.state = LocalTaskState::Preparing(session);
 		}
+
 		accepts
 	}
 
@@ -5391,6 +5069,7 @@ impl ConversationRuntime {
 		let Some(task) = local.get_mut(predecessor.conversation_id.as_str()) else {
 			return false;
 		};
+
 		if !matches!(
 			&task.state,
 			LocalTaskState::Preparing(current) if same_local_process(current, predecessor)
@@ -5399,8 +5078,10 @@ impl ConversationRuntime {
 		{
 			return false;
 		}
+
 		task.operation_key = successor.operation_key.clone();
 		task.state = LocalTaskState::Preparing(successor);
+
 		true
 	}
 
@@ -5415,18 +5096,22 @@ impl ConversationRuntime {
 		let Some(task) = local.get_mut(session.conversation_id.as_str()) else {
 			return false;
 		};
+
 		if !matches!(
 			&task.state,
 			LocalTaskState::Preparing(current) if same_local_process(current, &session)
 		) {
 			return false;
 		}
+
 		task.state = LocalTaskState::Active { session, turn_id, attempt_id, commands };
+
 		true
 	}
 
 	fn restore_ready(&self, session: LocalSession) {
 		let mut local = self.local();
+
 		if let Some(task) = local.get_mut(session.conversation_id.as_str()) {
 			task.state = LocalTaskState::Ready(session);
 		}
@@ -5445,9 +5130,11 @@ impl ConversationRuntime {
 					if active_attempt_id == attempt_id
 			)
 		});
+
 		if belongs {
 			local.remove(conversation_id.as_str());
 		}
+
 		belongs
 	}
 
@@ -5461,6 +5148,7 @@ impl ConversationRuntime {
 		let Some(task) = local.get_mut(readback.conversation_id.as_str()) else {
 			return false;
 		};
+
 		if !matches!(
 			&task.state,
 			LocalTaskState::Active { attempt_id: active_attempt_id, .. }
@@ -5468,12 +5156,15 @@ impl ConversationRuntime {
 		) {
 			return false;
 		}
+
 		task.state = LocalTaskState::Recovery { readback, action };
+
 		true
 	}
 
 	fn stop_active_worker(&self, attempt_id: &ProviderAttemptId, conversation_id: &ConversationId) {
 		let local = self.local();
+
 		if let Some(task) = local.get(conversation_id.as_str())
 			&& let LocalTaskState::Active { attempt_id: active_attempt_id, commands, .. } =
 				&task.state
@@ -5485,6 +5176,7 @@ impl ConversationRuntime {
 
 	fn set_recovery(&self, readback: ConversationReadback, action: ConversationManualRecovery) {
 		let mut local = self.local();
+
 		if let Some(task) = local.get_mut(readback.conversation_id.as_str()) {
 			task.state = LocalTaskState::Recovery { readback, action };
 		}
@@ -5498,6 +5190,7 @@ impl ConversationRuntime {
 		let Some(canceled_revision) = prepared_revision.checked_add(1) else {
 			return PreparedCancellationDisposition::Conflict;
 		};
+
 		match self.inner.provider_attempts.cancel_prepared(attempt_id, prepared_revision).await {
 			Ok(
 				ProviderAttemptMutationOutcome::Applied(mutation)
@@ -5518,6 +5211,7 @@ impl ConversationRuntime {
 						.mark_unknown(attempt_id, actual.revision)
 						.await;
 				}
+
 				PreparedCancellationDisposition::Ambiguous
 			},
 			Ok(_) => PreparedCancellationDisposition::Conflict,
@@ -5532,6 +5226,7 @@ impl ConversationRuntime {
 		action: ConversationManualRecovery,
 	) -> ConversationOutcome {
 		self.terminate_process(&session.process).await;
+
 		self.recover(
 			session_readback(&session, ConversationLocalState::ManualRecovery, Some(turn_id)),
 			action,
@@ -5552,9 +5247,11 @@ impl ConversationRuntime {
 			.transition_turn(&command, turn_id, 1, decodex_core::TurnStatus::Failed)
 			.await
 			.map_err(|_| ())?;
+
 		if revision != 2 {
 			return Err(());
 		}
+
 		Ok(())
 	}
 
@@ -5576,7 +5273,9 @@ impl ConversationRuntime {
 		if !session.has_acknowledged_turn {
 			return self.recover_session(session, ConversationManualRecovery::MissingThread).await;
 		}
+
 		self.restore_ready(session.clone());
+
 		match refusal {
 			ReservedTurnRefusal::Conflict => ConversationOutcome::Conflict,
 			ReservedTurnRefusal::Unavailable => ConversationOutcome::Unavailable,
@@ -5612,6 +5311,7 @@ impl ConversationRuntime {
 			let descriptor = serde_json::to_string(&record).map_err(|_| ())?;
 			let command =
 				exact_command("resume-rejection", &session.operation_key, &[&descriptor])?;
+
 			self.inner
 				.store
 				.record_conversation_resume_rejection(&command, &record)
@@ -5619,6 +5319,7 @@ impl ConversationRuntime {
 				.map_err(|_| ())
 		}
 		.await;
+
 		if persisted.is_err() {
 			return self
 				.ambiguous_session(
@@ -5628,8 +5329,11 @@ impl ConversationRuntime {
 				)
 				.await;
 		}
+
 		let outcome = self.recover_session(session, resume_rejection_recovery(reason)).await;
+
 		self.emit(outcome.clone()).await;
+
 		outcome
 	}
 
@@ -5648,6 +5352,7 @@ impl ConversationRuntime {
 				)
 				.await;
 		}
+
 		self.recover_session(session, action).await
 	}
 
@@ -5660,16 +5365,19 @@ impl ConversationRuntime {
 		refusal: ReservedTurnRefusal,
 	) -> ConversationOutcome {
 		readback.process_generation_id = Some(coordinates.process_generation_id.clone());
+
 		match self.inner.store.reconcile_conversation_thread_establishment(coordinates).await {
 			Ok(ConversationThreadEstablishmentReadback::DefinitelyNotStarted(_)) =>
 				self.finalize_initial_refusal(operation_key, turn_id, readback, refusal).await,
 			Ok(ConversationThreadEstablishmentReadback::Fenced(fence)) => {
 				readback.runtime_session_revision = Some(fence.revision);
+
 				self.ambiguous(readback, ConversationAmbiguity::ThreadStart).await
 			},
 			Ok(ConversationThreadEstablishmentReadback::Bound(binding)) => {
 				readback.runtime_session_revision = Some(binding.revision);
 				readback.codex_thread_id = Some(binding.codex_thread_id);
+
 				self.ambiguous(readback, ConversationAmbiguity::ThreadBind).await
 			},
 			Ok(ConversationThreadEstablishmentReadback::Unknown) | Err(_) =>
@@ -5687,6 +5395,7 @@ impl ConversationRuntime {
 		if self.finalize_reserved_turn(operation_key, turn_id).await.is_err() {
 			return self.ambiguous(readback, ConversationAmbiguity::TurnFinalization).await;
 		}
+
 		match refusal {
 			ReservedTurnRefusal::Conflict => ConversationOutcome::Conflict,
 			ReservedTurnRefusal::Unavailable => ConversationOutcome::Unavailable,
@@ -5700,7 +5409,9 @@ impl ConversationRuntime {
 		action: ConversationManualRecovery,
 	) -> ConversationOutcome {
 		readback.state = ConversationLocalState::ManualRecovery;
+
 		self.set_recovery(readback.clone(), action);
+
 		ConversationOutcome::ManualRecovery { readback, action }
 	}
 
@@ -5710,6 +5421,7 @@ impl ConversationRuntime {
 		action: ConversationManualRecovery,
 	) -> ConversationOutcome {
 		self.terminate_process(&session.process).await;
+
 		self.recover(
 			session_readback(&session, ConversationLocalState::ManualRecovery, None),
 			action,
@@ -5744,7 +5456,9 @@ impl ConversationRuntime {
 		ambiguity: ConversationAmbiguity,
 	) -> ConversationOutcome {
 		readback.state = ConversationLocalState::OutcomeUnknown;
+
 		self.set_recovery(readback.clone(), ConversationManualRecovery::MissingLocalProcess);
+
 		ConversationOutcome::Unknown { readback, ambiguity }
 	}
 
@@ -5755,6 +5469,7 @@ impl ConversationRuntime {
 		ambiguity: ConversationAmbiguity,
 	) -> ConversationOutcome {
 		self.terminate_process(&session.process).await;
+
 		self.ambiguous(
 			session_readback(
 				&session,
@@ -5772,6 +5487,7 @@ impl ConversationRuntime {
 
 	fn remove_establishing(&self, conversation_id: &ConversationId) {
 		let mut local = self.local();
+
 		if local
 			.get(conversation_id.as_str())
 			.is_some_and(|task| matches!(&task.state, LocalTaskState::Establishing))
@@ -5789,6 +5505,751 @@ impl ConversationRuntime {
 	}
 }
 
+pub(crate) struct StartAgentProcess {
+	pub operation_key: String,
+	pub root_id: String,
+	pub working_directory: String,
+	pub account_id: Option<AccountId>,
+}
+
+/// Already authenticated and initialized; the runtime retains process ownership.
+pub(crate) struct AgentConnection {
+	pub client: decodex_codex::app_server_client::AppServerClient,
+	pub events: tokio_mpsc::Receiver<decodex_codex::app_server_client::ServerEvent>,
+	pub account_id: AccountId,
+	pub process_generation_id: ProcessGenerationId,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+struct DirectoryIdentity {
+	device: u64,
+	inode: u64,
+	uid: u32,
+	mode: u32,
+}
+impl DirectoryIdentity {
+	fn from_metadata(metadata: &Metadata) -> Self {
+		Self {
+			device: metadata.dev(),
+			inode: metadata.ino(),
+			uid: metadata.uid(),
+			mode: metadata.mode(),
+		}
+	}
+}
+
+/// Descriptor-retained proof for the one working directory selected under host policy.
+struct SelectedWorkingDirectory {
+	path: String,
+	components: Vec<(File, DirectoryIdentity)>,
+}
+impl SelectedWorkingDirectory {
+	fn acquire(path: &str) -> Result<Self, ()> {
+		let path_value = Path::new(path);
+		let effective_uid = unsafe { libc::geteuid() };
+		let components = open_selected_path(path_value, effective_uid)?;
+		let home = open_selected_path(&effective_user_home(effective_uid)?, effective_uid)?;
+
+		if components.len() < home.len()
+			|| components.iter().zip(&home).any(|(selected, home)| selected.1 != home.1)
+		{
+			return Err(());
+		}
+
+		Ok(Self { path: path.to_owned(), components })
+	}
+
+	fn revalidate(&self) -> Result<(), ()> {
+		for (directory, expected) in &self.components {
+			let metadata = directory.metadata().map_err(|_| ())?;
+
+			if !metadata.is_dir() || DirectoryIdentity::from_metadata(&metadata) != *expected {
+				return Err(());
+			}
+		}
+
+		let current = Self::acquire(&self.path)?;
+
+		if current.components.len() != self.components.len()
+			|| current
+				.components
+				.iter()
+				.zip(&self.components)
+				.any(|(current, expected)| current.1 != expected.1)
+		{
+			return Err(());
+		}
+
+		Ok(())
+	}
+
+	fn descriptor(&self) -> i32 {
+		self.components.last().expect("selected directory exists").0.as_raw_fd()
+	}
+}
+
+impl ConversationPreSpawnCheck for SelectedWorkingDirectory {
+	fn validate_at_spawn_boundary(&self) -> Result<(), ()> {
+		self.revalidate()
+	}
+
+	fn working_directory_descriptor(&self) -> i32 {
+		self.descriptor()
+	}
+}
+
+struct InitialConversationExecution {
+	operation_key: String,
+	correlation_id: String,
+	causation_id: Option<String>,
+	conversation_id: ConversationId,
+	turn_id: TurnId,
+	message: String,
+	working_directory: String,
+	execution: ConversationExecutionSettings,
+}
+
+struct ConversationRuntimeInner {
+	store: SqliteStore,
+	blob_store: decodex_core::BlobStore,
+	accounts: Arc<AccountService>,
+	process_generations: ProcessGenerationControl,
+	provider_attempts: ProviderAttemptControl,
+	execution_authorization: ProcessExecutionAuthorization,
+	launch_profile: AttestedAppServerProfile,
+	capacity: Arc<RunnerCapacity>,
+	local: Mutex<BTreeMap<String, LocalTask>>,
+	events: tokio_mpsc::Sender<ConversationOutcome>,
+	event_receiver: AsyncMutex<tokio_mpsc::Receiver<ConversationOutcome>>,
+	event_stream_closed: tokio::sync::watch::Sender<bool>,
+	workers: AsyncMutex<JoinSet<()>>,
+	shutting_down: Arc<std::sync::atomic::AtomicBool>,
+	agent_launch: AsyncMutex<()>,
+	agent_process: Mutex<Option<RetainedAgentProcess>>,
+	initial_catalog: Arc<AsyncMutex<()>>,
+}
+
+struct RetainedAgentProcess {
+	root_id: String,
+	working_directory: String,
+	generation_id: ProcessGenerationId,
+	client: Option<decodex_codex::app_server_client::AppServerClient>,
+}
+
+struct LocalTask {
+	operation_key: String,
+	state: LocalTaskState,
+}
+
+#[derive(Clone)]
+struct LocalSession {
+	operation_key: String,
+	correlation_id: String,
+	causation_id: Option<String>,
+	conversation_id: ConversationId,
+	conversation_revision: i64,
+	runtime_session_id: RuntimeSessionId,
+	runtime_session_revision: i64,
+	codex_thread_id: String,
+	has_acknowledged_turn: bool,
+	account_id: AccountId,
+	process: FencedProcess,
+	model: String,
+	reasoning_effort: Option<String>,
+	fast: bool,
+	service_tier: decodex_core::ServiceTier,
+	working_directory: String,
+	instructions: String,
+	next_user_sequence: i64,
+	execution_overrides: Option<decodex_protocol::ConversationExecutionOverrides>,
+}
+
+struct ExistingSessionExpectation<'a> {
+	account_id: &'a AccountId,
+	runtime_session_id: &'a RuntimeSessionId,
+	runtime_session_revision: i64,
+	thread_id: &'a str,
+}
+
+struct ExistingSessionPlanningInput<'a> {
+	operation_key: &'a str,
+	consumer: ExecutionConsumer,
+	message_bytes: usize,
+	expected: ExistingSessionExpectation<'a>,
+}
+
+#[derive(Clone)]
+struct TurnContext {
+	session: LocalSession,
+	logical_turn_id: TurnId,
+	logical_turn_sequence: i64,
+	assistant_turn_id: TurnId,
+	attempt_id: ProviderAttemptId,
+	request_id: ProviderRequestId,
+	provider_key: ProviderRequestKey,
+	provider_turn_id: String,
+	authorized_revision: i64,
+}
+
+struct AdmittedLaterTurn {
+	session: LocalSession,
+	sequence: i64,
+	consumer: ExecutionConsumer,
+}
+
+struct RehydratedTurnAdmission {
+	readback: OrdinaryRuntimeSessionResumeReadback,
+	durable_readback: ConversationReadback,
+	sequence: i64,
+}
+
+struct RehydratedTurnPlan {
+	admission: RehydratedTurnAdmission,
+	decision: PersistedDecisionProvenance,
+	plan: decodex_database::ContinuationPlanEffect,
+}
+
+struct RehydratedAccountRevision {
+	planned: RehydratedTurnPlan,
+	launch_account_revision: i64,
+}
+
+struct RehydratedProcessAdmission {
+	account: RehydratedAccountRevision,
+	working_directory: String,
+	admission: FreshConversationProcessGeneration,
+	establishment: ReconcileConversationThreadEstablishment,
+}
+
+struct RehydratedProcessLaunch {
+	decision: PersistedDecisionProvenance,
+	plan: decodex_database::ContinuationPlanEffect,
+	session: LocalSession,
+	sequence: i64,
+}
+
+struct ConversationCredentialVault {
+	account_id: AccountId,
+	stored: crate::StoredCredential,
+}
+impl Debug for ConversationCredentialVault {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str("ConversationCredentialVault([REDACTED])")
+	}
+}
+
+impl CredentialVault for ConversationCredentialVault {
+	fn project(
+		&self,
+		account_id: &AccountId,
+		projection: &mut CredentialProjection<'_>,
+	) -> Result<AccountIdentity, CredentialVaultError> {
+		if account_id != &self.account_id {
+			return Err(CredentialVaultError::Unavailable);
+		}
+
+		let binding = self.stored.binding();
+		let bundle = self.stored.bundle();
+
+		if bundle.is_personal_access_token() {
+			projection.authenticate_personal_access_token(bundle.access_token())?;
+		} else {
+			projection.authenticate_chatgpt(
+				bundle.access_token(),
+				binding.provider.account_id(),
+				bundle.plan_type(),
+			)?;
+		}
+
+		Ok(AccountIdentity::from_observation("chatgpt", bundle.provider_email(), true))
+	}
+}
+
+struct ConversationRefreshCallback {
+	accounts: Arc<AccountService>,
+	runtime: tokio::runtime::Handle,
+	generation_id: ProcessGenerationId,
+}
+impl ProcessAccountRefreshCallback for ConversationRefreshCallback {
+	fn refresh(
+		&self,
+		account_id: &AccountId,
+		initial_binding: &ProcessGenerationAccountBinding,
+		reason: &str,
+		previous_provider_account_id: Option<&str>,
+	) -> Result<ChatgptRefreshProjection, CredentialVaultError> {
+		if reason != "unauthorized" {
+			return Err(CredentialVaultError::ProjectionRejected);
+		}
+
+		let operation_id =
+			AccountOperationId::generate().map_err(|_| CredentialVaultError::Unavailable)?;
+		let projection = self
+			.runtime
+			.block_on(self.accounts.refresh(
+				operation_id,
+				account_id,
+				None,
+				Some((&self.generation_id, initial_binding)),
+				previous_provider_account_id,
+			))
+			.map_err(|_| CredentialVaultError::Unavailable)?;
+
+		ChatgptRefreshProjection::new(
+			projection.access_token().to_owned(),
+			projection.provider_account_id().to_owned(),
+			projection.plan_type().map(str::to_owned),
+		)
+	}
+}
+
+/// Closed selected-thread control result.
+pub(crate) enum ConversationControlOutcome {
+	Current,
+	Archived { conversation_revision: i64 },
+	Busy,
+	Conflict,
+	OutcomeUnknown,
+	Unavailable,
+}
+
+/// Closed local lifecycle projection with no durable transition power.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ConversationLocalState {
+	ModelSettingsReviewRequired,
+	RoutingPending,
+	EstablishmentPending,
+	QuotaExhausted,
+	NoRoute,
+	Establishing,
+	Ready,
+	Running,
+	ManualRecovery,
+	OutcomeUnknown,
+}
+
+/// Typed manual action after definite missing or incompatible authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ConversationManualRecovery {
+	WaitForThreadClose,
+	RestoreArchivedThread,
+	ReviewSandboxConfiguration,
+	ReviewCodexConfiguration,
+	EnableAccount,
+	EnrollCredentials,
+	ResolveAccountOperation,
+	RepairCredentialStore,
+	RestoreProviderAgreement,
+	RefreshQuota,
+	SelectedAccountDrift,
+	SelectedAccountReadiness,
+	UpgradeCodex,
+	SelectWorkingDirectory,
+	MissingLocalProcess,
+	MissingThread,
+	IncompatibleThread,
+	PriorActiveTurn,
+	PriorAttemptUnresolved,
+	ProcessUnavailable,
+}
+
+/// Closed ambiguity location. None permits retry, search, or thread adoption.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ConversationAmbiguity {
+	ProcessGeneration,
+	ThreadStart,
+	ThreadBind,
+	ThreadResume,
+	TurnStart,
+	ActiveTurn,
+	TurnFinalization,
+}
+
+/// Positive terminal state retained from exact provider evidence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ConversationTerminalState {
+	Succeeded,
+	Failed,
+}
+
+/// Complete application-facing synchronous results and asynchronous events.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ConversationOutcome {
+	PreSession(ConversationReadback),
+	Started {
+		readback: ConversationReadback,
+		provider_turn_id: String,
+	},
+	HistoryChanged {
+		readback: ConversationReadback,
+		history_item_id: HistoryItemId,
+	},
+	Streaming {
+		readback: ConversationReadback,
+		history_item_id: HistoryItemId,
+		text: HistoryText,
+	},
+	Terminal {
+		readback: ConversationReadback,
+		turn_id: TurnId,
+		state: ConversationTerminalState,
+		provider_turn_id: String,
+	},
+	Unknown {
+		readback: ConversationReadback,
+		ambiguity: ConversationAmbiguity,
+	},
+	ManualRecovery {
+		readback: ConversationReadback,
+		action: ConversationManualRecovery,
+	},
+	Busy(ConversationReadback),
+	Conflict,
+	InterruptRequested(ConversationReadback),
+	Unavailable,
+}
+
+/// Immutable daemon-lifetime Conversation capability.
+#[derive(Clone)]
+pub(crate) enum ConversationCapability {
+	Ready(ConversationRuntime),
+	Unavailable(ConversationUnavailableReason),
+}
+impl ConversationCapability {
+	pub(crate) const fn readiness(&self) -> ConversationReadiness {
+		match self {
+			Self::Ready(_) => ConversationReadiness::Ready,
+			Self::Unavailable(reason) => ConversationReadiness::Unavailable(*reason),
+		}
+	}
+
+	pub(crate) const fn runtime(&self) -> Option<&ConversationRuntime> {
+		match self {
+			Self::Ready(runtime) => Some(runtime),
+			Self::Unavailable(_) => None,
+		}
+	}
+}
+
+#[derive(Debug)]
+pub(crate) enum AgentLaunchError {
+	QuotaDepleted,
+	Unavailable,
+	Conflict,
+	AccountSelection(decodex_core::AccountSelectionRecovery),
+	Process(ConversationManualRecovery),
+}
+impl std::fmt::Display for AgentLaunchError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::QuotaDepleted => formatter.write_str("This Agent's account has reached its usage limit. Conversation history is preserved. Check Accounts for the reset time."),
+            Self::Unavailable => formatter.write_str("Agent process is unavailable"),
+			Self::Conflict =>
+				formatter.write_str("Agent process authority conflicts with this request"),
+			Self::AccountSelection(recovery) => {
+				write!(formatter, "Agent account requires recovery: {recovery:?}")
+			},
+			Self::Process(recovery) => {
+				write!(formatter, "Agent process requires recovery: {recovery:?}")
+			},
+		}
+	}
+}
+
+impl std::error::Error for AgentLaunchError {}
+
+/// Typed Conversation readiness projected by daemon bootstrap and Doctor.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConversationReadiness {
+	/// Every fallible dependency owner returned one validated dependency.
+	Ready,
+	/// Conversation is closed for one redacted startup reason.
+	Unavailable(ConversationUnavailableReason),
+}
+
+enum ControlThreadOperation {
+	Read { client_user_message_id: Option<TurnId> },
+	Archive,
+}
+
+enum ControlThreadObservation {
+	Read(ExactThreadReadResult),
+	Archived,
+}
+
+enum AccountLaunchAdmission {
+	Conversation(FreshConversationProcessGeneration),
+	Agent { root_id: String, operation_key: String, generation_id: ProcessGenerationId },
+}
+impl AccountLaunchAdmission {
+	fn generation_id(&self) -> ProcessGenerationId {
+		match self {
+			Self::Conversation(admission) => admission.generation_id().clone(),
+			Self::Agent { generation_id, .. } => generation_id.clone(),
+		}
+	}
+}
+
+enum LocalTaskState {
+	Establishing,
+	Preparing(LocalSession),
+	CatalogReading(LocalSession),
+	Ready(LocalSession),
+	Active {
+		session: LocalSession,
+		turn_id: TurnId,
+		attempt_id: ProviderAttemptId,
+		commands: mpsc::SyncSender<WorkerCommand>,
+	},
+	Recovery {
+		readback: ConversationReadback,
+		action: ConversationManualRecovery,
+	},
+}
+
+enum WorkerCommand {
+	ModelSettings(
+		tokio::sync::oneshot::Sender<
+			Option<decodex_codex::app_server_client::NativeThreadModelSettings>,
+		>,
+	),
+	Interrupt,
+	Shutdown,
+	ModelCatalog(tokio::sync::oneshot::Sender<Option<Vec<decodex_protocol::AgentModelDto>>>),
+}
+
+enum WorkerOutput {
+	Event(ConversationProcessEvent),
+	Failed,
+}
+
+enum ReservedTurnRefusal {
+	Conflict,
+	Unavailable,
+	Recovery(ConversationManualRecovery),
+}
+
+enum PreparedCancellationDisposition {
+	Canceled,
+	Conflict,
+	Ambiguous,
+}
+
+enum ExistingSessionPlanningRefusal {
+	Recovery(ConversationManualRecovery),
+	Conflict,
+	Unknown,
+}
+
+enum SameThreadResumeRefusal {
+	Rejected { reason: ConversationRejectionReason, witness_digest: String },
+	IncompatibleThread,
+	ProcessUnavailable,
+	Ambiguous,
+}
+
+enum InitialRouteAction {
+	Route,
+	ResumeEstablishment,
+	Preplanned(Box<PreProcessOutcome>),
+}
+
+pub(crate) fn ordinary_provider_attempt_id(
+	operation_key: &str,
+	turn_id: &TurnId,
+) -> Result<ProviderAttemptId, ()> {
+	ProviderAttemptId::new(derived_uuid("provider-attempt", &[operation_key, turn_id.as_str()]))
+		.map_err(|_| ())
+}
+
+fn open_selected_path(
+	path: &Path,
+	effective_uid: u32,
+) -> Result<Vec<(File, DirectoryIdentity)>, ()> {
+	let parts = selected_cwd_components(path)?;
+	let root = open_selected_directory(Path::new("/"))?;
+	let root_metadata = root.metadata().map_err(|_| ())?;
+
+	validate_selected_component(&root_metadata, effective_uid, false)?;
+
+	let mut components = vec![(root, DirectoryIdentity::from_metadata(&root_metadata))];
+
+	for part in parts {
+		let parent = &components.last().expect("root descriptor exists").0;
+		let child = open_selected_directory_at(parent, part)?;
+		let metadata = child.metadata().map_err(|_| ())?;
+
+		validate_selected_component(&metadata, effective_uid, false)?;
+
+		components.push((child, DirectoryIdentity::from_metadata(&metadata)));
+	}
+
+	let final_metadata =
+		components.last().expect("selected directory exists").0.metadata().map_err(|_| ())?;
+
+	validate_selected_component(&final_metadata, effective_uid, true)?;
+
+	Ok(components)
+}
+
+fn effective_user_home(effective_uid: u32) -> Result<PathBuf, ()> {
+	let mut buffer_len = INITIAL_PASSWD_BUFFER_BYTES;
+
+	loop {
+		let mut entry = MaybeUninit::<libc::passwd>::zeroed();
+		let mut result = ptr::null_mut();
+		let mut buffer = vec![0_u8; buffer_len];
+		let status = unsafe {
+			libc::getpwuid_r(
+				effective_uid,
+				entry.as_mut_ptr(),
+				buffer.as_mut_ptr().cast(),
+				buffer.len(),
+				&mut result,
+			)
+		};
+
+		if status == libc::ERANGE && buffer_len < MAX_PASSWD_BUFFER_BYTES {
+			buffer_len = buffer_len.saturating_mul(2).min(MAX_PASSWD_BUFFER_BYTES);
+
+			continue;
+		}
+		if status != 0 || result.is_null() {
+			return Err(());
+		}
+
+		let entry = unsafe { entry.assume_init() };
+
+		if entry.pw_dir.is_null() {
+			return Err(());
+		}
+
+		let value = unsafe { CStr::from_ptr(entry.pw_dir) }.to_bytes();
+
+		if value.is_empty() {
+			return Err(());
+		}
+
+		return Ok(PathBuf::from(OsStr::from_bytes(value)));
+	}
+}
+
+fn selected_cwd_components(path: &Path) -> Result<Vec<&OsStr>, ()> {
+	let mut components = path.components();
+
+	if !matches!(components.next(), Some(Component::RootDir)) {
+		return Err(());
+	}
+
+	let mut parts = Vec::new();
+
+	for component in components {
+		match component {
+			Component::Normal(part) if !part.is_empty() => parts.push(part),
+			_ => return Err(()),
+		}
+	}
+
+	if parts.is_empty() || parts.len() > MAX_SELECTED_CWD_COMPONENTS {
+		return Err(());
+	}
+
+	Ok(parts)
+}
+
+fn validate_selected_component(
+	metadata: &Metadata,
+	effective_uid: u32,
+	require_effective_owner: bool,
+) -> Result<(), ()> {
+	let owner_allowed = if require_effective_owner {
+		metadata.uid() == effective_uid
+	} else {
+		metadata.uid() == 0 || metadata.uid() == effective_uid
+	};
+
+	if !metadata.is_dir() || !owner_allowed || metadata.mode() & 0o022 != 0 || metadata.nlink() == 0
+	{
+		return Err(());
+	}
+
+	Ok(())
+}
+
+fn open_selected_directory(path: &Path) -> Result<File, ()> {
+	let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| ())?;
+	let descriptor = unsafe {
+		libc::open(
+			path.as_ptr(),
+			libc::O_RDONLY | libc::O_CLOEXEC | libc::O_DIRECTORY | libc::O_NOFOLLOW,
+		)
+	};
+
+	selected_directory_from_descriptor(descriptor)
+}
+
+fn open_selected_directory_at(parent: &File, name: &OsStr) -> Result<File, ()> {
+	let name = CString::new(name.as_bytes()).map_err(|_| ())?;
+	let descriptor = unsafe {
+		libc::openat(
+			parent.as_raw_fd(),
+			name.as_ptr(),
+			libc::O_RDONLY | libc::O_CLOEXEC | libc::O_DIRECTORY | libc::O_NOFOLLOW,
+		)
+	};
+
+	selected_directory_from_descriptor(descriptor)
+}
+
+fn selected_directory_from_descriptor(descriptor: i32) -> Result<File, ()> {
+	if descriptor == -1 {
+		return Err(());
+	}
+
+	Ok(unsafe { File::from_raw_fd(descriptor) })
+}
+
+fn agent_retirement_retry(
+	slot: Option<&RetainedAgentProcess>,
+	root_id: &str,
+) -> Result<bool, AgentLaunchError> {
+	match slot {
+		None => Ok(false),
+		Some(slot) if slot.root_id == root_id && slot.client.is_none() => Ok(true),
+		Some(_) => Err(AgentLaunchError::Conflict),
+	}
+}
+
+const fn continuation_recovery(
+	rejection: ContinuationRejection,
+) -> Option<ConversationManualRecovery> {
+	match rejection {
+		ContinuationRejection::SelectedAccountDrift =>
+			Some(ConversationManualRecovery::SelectedAccountDrift),
+		ContinuationRejection::SelectedAccountReadinessRequired =>
+			Some(ConversationManualRecovery::SelectedAccountReadiness),
+		ContinuationRejection::SelectedAccountQuotaRequired =>
+			Some(ConversationManualRecovery::RefreshQuota),
+		_ => None,
+	}
+}
+
+fn resume_rejection_recovery(reason: ConversationRejectionReason) -> ConversationManualRecovery {
+	match reason {
+		ConversationRejectionReason::ClosingThread =>
+			ConversationManualRecovery::WaitForThreadClose,
+		ConversationRejectionReason::MissingThread => ConversationManualRecovery::MissingThread,
+		ConversationRejectionReason::ArchivedThread =>
+			ConversationManualRecovery::RestoreArchivedThread,
+		ConversationRejectionReason::SandboxConfiguration =>
+			ConversationManualRecovery::ReviewSandboxConfiguration,
+		ConversationRejectionReason::ServerDraining
+		| ConversationRejectionReason::ManagedProviderChanged =>
+			ConversationManualRecovery::ProcessUnavailable,
+		ConversationRejectionReason::Other => ConversationManualRecovery::ReviewCodexConfiguration,
+	}
+}
+
 fn run_event_worker(
 	control: ProcessGenerationControl,
 	process: FencedProcess,
@@ -5801,6 +6262,7 @@ fn run_event_worker(
 	let result = control.with_fenced_child(&process, |child| {
 		run_event_loop(child, thread_id, provider_turn_id, commands, &shutting_down, &output)
 	});
+
 	if !matches!(result, Ok(Ok(()))) {
 		let _ = output.blocking_send(WorkerOutput::Failed);
 	}
@@ -5819,24 +6281,31 @@ fn run_event_loop(
 	let provider_turn_id = decodex_codex::ExactTurnId::new(provider_turn_id)
 		.map_err(|_| ConversationProcessError::Incompatible)?;
 	let deadline = Instant::now() + TURN_TIMEOUT;
+
 	loop {
 		if shutting_down.load(std::sync::atomic::Ordering::Acquire) || Instant::now() >= deadline {
 			let request =
 				ConversationTurnInterruptRequest::new(thread_id.clone(), provider_turn_id.clone());
 			let _ = child.interrupt_ordinary_turn(&request);
+
 			return Err(ConversationProcessError::Unavailable);
 		}
+
 		match commands.try_recv() {
 			Ok(WorkerCommand::ModelSettings(reply)) => {
 				let (result, events) = child.read_ordinary_model_settings(thread_id.as_str());
 				let mut terminal = false;
+
 				for event in events {
 					terminal |= matches!(&event, ConversationProcessEvent::TurnCompleted { .. });
+
 					output
 						.blocking_send(WorkerOutput::Event(event))
 						.map_err(|_| ConversationProcessError::Unavailable)?;
 				}
+
 				let _ = reply.send(result.ok().flatten());
+
 				if terminal {
 					return Ok(());
 				}
@@ -5845,38 +6314,48 @@ fn run_event_loop(
 				let mut pages = crate::agent_capabilities::ModelCatalogPages::default();
 				let mut cursor = None;
 				let mut complete = false;
+
 				for _ in 0..8 {
 					if reply.is_closed() {
 						break;
 					}
+
 					let (page, events) = child.read_ordinary_model_page(cursor.as_deref());
 					let mut terminal = false;
+
 					for event in events {
 						terminal |=
 							matches!(&event, ConversationProcessEvent::TurnCompleted { .. });
+
 						output
 							.blocking_send(WorkerOutput::Event(event))
 							.map_err(|_| ConversationProcessError::Unavailable)?;
 					}
+
 					if terminal {
 						let _ = reply.send(None);
+
 						return Ok(());
 					}
+
 					let page = match page {
 						Ok(page) => page,
 						// A metadata failure does not change turn execution. The event
 						// reader still detects a disconnected or invalid transport.
 						Err(_) => break,
 					};
+
 					match pages.push(&page) {
 						Ok(Some(next)) => cursor = Some(next),
 						Ok(None) => {
 							complete = true;
+
 							break;
 						},
 						Err(()) => break,
 					}
 				}
+
 				let _ = reply.send(complete.then_some(pages.models));
 			},
 			Ok(WorkerCommand::Interrupt) => {
@@ -5884,6 +6363,7 @@ fn run_event_loop(
 					thread_id.clone(),
 					provider_turn_id.clone(),
 				);
+
 				for event in child.interrupt_ordinary_turn(&request)? {
 					output
 						.blocking_send(WorkerOutput::Event(event))
@@ -5896,6 +6376,7 @@ fn run_event_loop(
 					provider_turn_id.clone(),
 				);
 				let _ = child.interrupt_ordinary_turn(&request);
+
 				return Err(ConversationProcessError::Unavailable);
 			},
 			Err(mpsc::TryRecvError::Empty) => {},
@@ -5905,53 +6386,22 @@ fn run_event_loop(
 					provider_turn_id.clone(),
 				);
 				let _ = child.interrupt_ordinary_turn(&request);
+
 				return Err(ConversationProcessError::Unavailable);
 			},
 		}
+
 		if let Some(event) = child.next_ordinary_turn_event(EVENT_POLL)? {
 			let terminal = matches!(&event, ConversationProcessEvent::TurnCompleted { .. });
+
 			output
 				.blocking_send(WorkerOutput::Event(event))
 				.map_err(|_| ConversationProcessError::Unavailable)?;
+
 			if terminal {
 				return Ok(());
 			}
 		}
-	}
-}
-
-struct ConversationCredentialVault {
-	account_id: AccountId,
-	stored: crate::StoredCredential,
-}
-
-impl CredentialVault for ConversationCredentialVault {
-	fn project(
-		&self,
-		account_id: &AccountId,
-		projection: &mut CredentialProjection<'_>,
-	) -> Result<AccountIdentity, CredentialVaultError> {
-		if account_id != &self.account_id {
-			return Err(CredentialVaultError::Unavailable);
-		}
-		let binding = self.stored.binding();
-		let bundle = self.stored.bundle();
-		if bundle.is_personal_access_token() {
-			projection.authenticate_personal_access_token(bundle.access_token())?;
-		} else {
-			projection.authenticate_chatgpt(
-				bundle.access_token(),
-				binding.provider.account_id(),
-				bundle.plan_type(),
-			)?;
-		}
-		Ok(AccountIdentity::from_observation("chatgpt", bundle.provider_email(), true))
-	}
-}
-
-impl Debug for ConversationCredentialVault {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str("ConversationCredentialVault([REDACTED])")
 	}
 }
 
@@ -5965,43 +6415,6 @@ fn same_local_process(left: &LocalSession, right: &LocalSession) -> bool {
 		&& left.process.generation_id() == right.process.generation_id()
 		&& left.process.revision() == right.process.revision()
 		&& left.process.identity() == right.process.identity()
-}
-
-struct ConversationRefreshCallback {
-	accounts: Arc<AccountService>,
-	runtime: tokio::runtime::Handle,
-	generation_id: ProcessGenerationId,
-}
-
-impl ProcessAccountRefreshCallback for ConversationRefreshCallback {
-	fn refresh(
-		&self,
-		account_id: &AccountId,
-		initial_binding: &ProcessGenerationAccountBinding,
-		reason: &str,
-		previous_provider_account_id: Option<&str>,
-	) -> Result<ChatgptRefreshProjection, CredentialVaultError> {
-		if reason != "unauthorized" {
-			return Err(CredentialVaultError::ProjectionRejected);
-		}
-		let operation_id =
-			AccountOperationId::generate().map_err(|_| CredentialVaultError::Unavailable)?;
-		let projection = self
-			.runtime
-			.block_on(self.accounts.refresh(
-				operation_id,
-				account_id,
-				None,
-				Some((&self.generation_id, initial_binding)),
-				previous_provider_account_id,
-			))
-			.map_err(|_| CredentialVaultError::Unavailable)?;
-		ChatgptRefreshProjection::new(
-			projection.access_token().to_owned(),
-			projection.provider_account_id().to_owned(),
-			projection.plan_type().map(str::to_owned),
-		)
-	}
 }
 
 fn ordinary_resume_readback(
@@ -6164,9 +6577,11 @@ fn store_outcome(error: decodex_database::StoreError) -> ConversationOutcome {
 
 fn history_chunk_end(text: &str, start: usize) -> usize {
 	let mut end = start.saturating_add(MAX_HISTORY_INLINE_BYTES).min(text.len());
+
 	while end > start && !text.is_char_boundary(end) {
 		end -= 1;
 	}
+
 	end
 }
 
@@ -6220,19 +6635,13 @@ fn scoped_key(scope: &str, key: &str) -> String {
 
 fn request_digest(parts: &[&str]) -> String {
 	let mut digest = Sha256::new();
+
 	for part in parts {
 		digest.update(part.len().to_be_bytes());
 		digest.update(part.as_bytes());
 	}
-	digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
-}
 
-pub(crate) fn ordinary_provider_attempt_id(
-	operation_key: &str,
-	turn_id: &TurnId,
-) -> Result<ProviderAttemptId, ()> {
-	ProviderAttemptId::new(derived_uuid("provider-attempt", &[operation_key, turn_id.as_str()]))
-		.map_err(|_| ())
+	digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn derived_uuid(scope: &str, parts: &[&str]) -> String {
@@ -6240,9 +6649,12 @@ fn derived_uuid(scope: &str, parts: &[&str]) -> String {
 		format!("decodex/ordinary-task/{scope}/{}", request_digest(parts)).as_bytes(),
 	);
 	let mut bytes = [0_u8; 16];
+
 	bytes.copy_from_slice(&digest[..16]);
+
 	bytes[6] = (bytes[6] & 0x0f) | 0x40;
 	bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
 	format!(
 		"{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
 		bytes[0],
@@ -6264,15 +6676,44 @@ fn derived_uuid(scope: &str, parts: &[&str]) -> String {
 	)
 }
 
+// The caller holds agent_launch across this operation.
+async fn retire_agent_process_slot<F: std::future::Future<Output = bool>>(
+	slot: &Mutex<Option<RetainedAgentProcess>>,
+	retire: impl FnOnce(ProcessGenerationId) -> F,
+) -> bool {
+	let generation = {
+		let mut slot = slot.lock().unwrap_or_else(PoisonError::into_inner);
+		let Some(retained) = slot.as_mut() else {
+			return true;
+		};
+
+		if let Some(client) = retained.client.take() {
+			client.close();
+		}
+
+		retained.generation_id.clone()
+	};
+	// Keep revoked ownership visible if the asynchronous retirement is cancelled.
+	let retired = retire(generation).await;
+
+	if retired {
+		slot.lock().unwrap_or_else(PoisonError::into_inner).take();
+	}
+
+	retired
+}
+
 #[cfg(test)]
 mod tests {
 	use decodex_core::{ContinuationRejection, TurnId, TurnStatus};
+
 	use decodex_database::{TurnReservationOutcome, TurnReservationReadback};
 
 	use super::{
 		ConversationManualRecovery, account_recovery, continuation_recovery, derived_uuid,
 		request_digest, scoped_key, turn_admits_execution,
 	};
+
 	use crate::account_service::AccountLifecycleError;
 
 	fn reservation(status: TurnStatus, revision: i64) -> TurnReservationReadback {
@@ -6283,6 +6724,114 @@ mod tests {
 			status,
 			revision,
 		}
+	}
+
+	#[test]
+	fn active_catalog_query_delivers_completion_once_even_when_catalog_is_rejected() {
+		for mode in ["exact", "exact-catalog-rejected"] {
+			let (_temp, mut child) =
+				crate::account_launch::process::tests::ordinary_catalog_child(mode);
+			let (commands, receiver) = std::sync::mpsc::channel();
+			let (reply, mut result) = tokio::sync::oneshot::channel();
+
+			commands.send(super::WorkerCommand::ModelCatalog(reply)).unwrap();
+
+			let (output, mut events) = tokio::sync::mpsc::channel(8);
+			let shutdown = std::sync::atomic::AtomicBool::new(false);
+
+			assert!(
+				super::run_event_loop(
+					&mut child,
+					"catalog-thread".into(),
+					"catalog-turn".into(),
+					receiver,
+					&shutdown,
+					&output,
+				)
+				.is_ok()
+			);
+			assert!(result.try_recv().unwrap().is_none());
+			assert!(matches!(events.try_recv().unwrap(), super::WorkerOutput::Event(
+				super::ConversationProcessEvent::TurnCompleted { turn_id, .. }
+			) if turn_id == "catalog-turn"));
+			assert!(events.try_recv().is_err());
+			assert!(child.next_ordinary_turn_event(std::time::Duration::ZERO).unwrap().is_none());
+
+			child.shutdown().unwrap();
+		}
+	}
+
+	#[test]
+	fn only_active_revision_one_turn_authority_admits_execution() {
+		assert!(turn_admits_execution(&TurnReservationOutcome::Fresh(reservation(
+			TurnStatus::Active,
+			1,
+		))));
+		assert!(turn_admits_execution(&TurnReservationOutcome::Replayed(reservation(
+			TurnStatus::Active,
+			1,
+		))));
+		assert!(!turn_admits_execution(&TurnReservationOutcome::Fresh(reservation(
+			TurnStatus::Active,
+			2,
+		))));
+		assert!(!turn_admits_execution(&TurnReservationOutcome::Fresh(reservation(
+			TurnStatus::Completed,
+			1,
+		))));
+	}
+
+	#[test]
+	fn ordinary_task_identities_are_deterministic_and_scope_separated() {
+		let digest = request_digest(&["account", "conversation"]);
+
+		assert_eq!(digest, request_digest(&["account", "conversation"]));
+		assert_ne!(digest, request_digest(&["conversation", "account"]));
+		assert_ne!(scoped_key("route", "command"), scoped_key("continue", "command"));
+
+		let first = derived_uuid("provider-attempt", &["account", "conversation"]);
+
+		assert_eq!(first, derived_uuid("provider-attempt", &["account", "conversation"]));
+		assert_ne!(first, derived_uuid("runtime-session", &["account", "conversation"]));
+		assert_eq!(first.as_bytes()[14], b'4');
+		assert!(matches!(first.as_bytes()[19], b'8' | b'9' | b'a' | b'b'));
+	}
+
+	#[test]
+	fn account_failures_preserve_typed_manual_recovery() {
+		assert_eq!(
+			account_recovery(AccountLifecycleError::AccountDisabled),
+			ConversationManualRecovery::EnableAccount
+		);
+		assert_eq!(
+			account_recovery(AccountLifecycleError::ProviderMismatch),
+			ConversationManualRecovery::RestoreProviderAgreement
+		);
+		assert_eq!(
+			account_recovery(AccountLifecycleError::StaleAccount),
+			ConversationManualRecovery::SelectedAccountDrift
+		);
+		assert_eq!(
+			account_recovery(AccountLifecycleError::AccountMissing),
+			ConversationManualRecovery::MissingLocalProcess
+		);
+	}
+
+	#[test]
+	fn continuation_account_recovery_is_typed_without_reselection() {
+		assert_eq!(
+			continuation_recovery(ContinuationRejection::SelectedAccountDrift),
+			Some(ConversationManualRecovery::SelectedAccountDrift),
+		);
+		assert_eq!(
+			continuation_recovery(ContinuationRejection::SelectedAccountReadinessRequired),
+			Some(ConversationManualRecovery::SelectedAccountReadiness),
+		);
+		assert_eq!(
+			continuation_recovery(ContinuationRejection::SelectedAccountQuotaRequired),
+			Some(ConversationManualRecovery::RefreshQuota),
+		);
+		assert_eq!(continuation_recovery(ContinuationRejection::SameThreadUnavailable), None);
 	}
 
 	#[tokio::test]
@@ -6338,6 +6887,7 @@ mod tests {
 			)
 			.await
 			.unwrap();
+
 		assert_eq!(
 			store
 				.read_conversation_creation_receipt(&command.creation_identity().unwrap(), &id)
@@ -6345,44 +6895,15 @@ mod tests {
 				.unwrap(),
 			Some(created)
 		);
+
 		command.execution.reasoning_effort = Some("none".into());
+
 		assert!(matches!(
 			store
 				.read_conversation_creation_receipt(&command.creation_identity().unwrap(), &id)
 				.await,
 			Err(super::StoreError::IdempotencyConflict)
 		));
-	}
-
-	#[test]
-	fn active_catalog_query_delivers_completion_once_even_when_catalog_is_rejected() {
-		for mode in ["exact", "exact-catalog-rejected"] {
-			let (_temp, mut child) =
-				crate::account_launch::process::tests::ordinary_catalog_child(mode);
-			let (commands, receiver) = std::sync::mpsc::channel();
-			let (reply, mut result) = tokio::sync::oneshot::channel();
-			commands.send(super::WorkerCommand::ModelCatalog(reply)).unwrap();
-			let (output, mut events) = tokio::sync::mpsc::channel(8);
-			let shutdown = std::sync::atomic::AtomicBool::new(false);
-			assert!(
-				super::run_event_loop(
-					&mut child,
-					"catalog-thread".into(),
-					"catalog-turn".into(),
-					receiver,
-					&shutdown,
-					&output,
-				)
-				.is_ok()
-			);
-			assert!(result.try_recv().unwrap().is_none());
-			assert!(matches!(events.try_recv().unwrap(), super::WorkerOutput::Event(
-				super::ConversationProcessEvent::TurnCompleted { turn_id, .. }
-			) if turn_id == "catalog-turn"));
-			assert!(events.try_recv().is_err());
-			assert!(child.next_ordinary_turn_event(std::time::Duration::ZERO).unwrap().is_none());
-			child.shutdown().unwrap();
-		}
 	}
 
 	#[tokio::test]
@@ -6392,7 +6913,7 @@ mod tests {
 			&["cancelled-retirement"],
 		))
 		.unwrap();
-		let (io, _server) = tokio::io::duplex(4096);
+		let (io, _server) = tokio::io::duplex(4_096);
 		let (reader, writer) = tokio::io::split(io);
 		let (client, _) =
 			decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
@@ -6404,24 +6925,31 @@ mod tests {
 		}));
 		let mut retirement = Box::pin(super::retire_agent_process_slot(&slot, |id| {
 			assert_eq!(id, generation);
+
 			std::future::pending::<bool>()
 		}));
+
 		assert!(futures_util::poll!(retirement.as_mut()).is_pending());
+
 		drop(retirement);
+
 		{
 			let retained = slot.lock().unwrap();
 			let retained =
 				retained.as_ref().expect("cancelled retirement must retain its exact owner");
+
 			assert_eq!(retained.generation_id, generation);
 			assert!(retained.client.is_none());
 			assert!(super::agent_retirement_retry(Some(retained), "agent").unwrap());
 			assert!(super::agent_retirement_retry(Some(retained), "other").is_err());
 		}
+
 		assert!(!super::retire_agent_process_slot(&slot, |_| async { false }).await);
 		assert!(slot.lock().unwrap().is_some());
 		assert!(
 			super::retire_agent_process_slot(&slot, |id| {
 				assert_eq!(id, generation);
+
 				std::future::ready(true)
 			})
 			.await
@@ -6446,86 +6974,18 @@ mod tests {
 		for _ in 0..3 {
 			assert!(super::agent_retirement_retry(Some(&slot), "agent").unwrap());
 		}
+
 		assert!(super::agent_retirement_retry(Some(&slot), "other").is_err());
-		let (io, _server) = tokio::io::duplex(4096);
+
+		let (io, _server) = tokio::io::duplex(4_096);
 		let (reader, writer) = tokio::io::split(io);
 		let (client, _) =
 			decodex_codex::app_server_client::AppServerClient::from_io(reader, writer);
+
 		slot.client = Some(client);
+
 		assert!(super::agent_retirement_retry(Some(&slot), "agent").is_err());
 		assert!(!super::agent_retirement_retry(None, "agent").unwrap());
 	}
-
-	#[test]
-	fn only_active_revision_one_turn_authority_admits_execution() {
-		assert!(turn_admits_execution(&TurnReservationOutcome::Fresh(reservation(
-			TurnStatus::Active,
-			1,
-		))));
-		assert!(turn_admits_execution(&TurnReservationOutcome::Replayed(reservation(
-			TurnStatus::Active,
-			1,
-		))));
-		assert!(!turn_admits_execution(&TurnReservationOutcome::Fresh(reservation(
-			TurnStatus::Active,
-			2,
-		))));
-		assert!(!turn_admits_execution(&TurnReservationOutcome::Fresh(reservation(
-			TurnStatus::Completed,
-			1,
-		))));
-	}
-
-	#[test]
-	fn ordinary_task_identities_are_deterministic_and_scope_separated() {
-		let digest = request_digest(&["account", "conversation"]);
-		assert_eq!(digest, request_digest(&["account", "conversation"]));
-		assert_ne!(digest, request_digest(&["conversation", "account"]));
-		assert_ne!(scoped_key("route", "command"), scoped_key("continue", "command"));
-
-		let first = derived_uuid("provider-attempt", &["account", "conversation"]);
-		assert_eq!(first, derived_uuid("provider-attempt", &["account", "conversation"]));
-		assert_ne!(first, derived_uuid("runtime-session", &["account", "conversation"]));
-		assert_eq!(first.as_bytes()[14], b'4');
-		assert!(matches!(first.as_bytes()[19], b'8' | b'9' | b'a' | b'b'));
-	}
-
-	#[test]
-	fn account_failures_preserve_typed_manual_recovery() {
-		assert_eq!(
-			account_recovery(AccountLifecycleError::AccountDisabled),
-			ConversationManualRecovery::EnableAccount
-		);
-		assert_eq!(
-			account_recovery(AccountLifecycleError::ProviderMismatch),
-			ConversationManualRecovery::RestoreProviderAgreement
-		);
-		assert_eq!(
-			account_recovery(AccountLifecycleError::StaleAccount),
-			ConversationManualRecovery::SelectedAccountDrift
-		);
-		assert_eq!(
-			account_recovery(AccountLifecycleError::AccountMissing),
-			ConversationManualRecovery::MissingLocalProcess
-		);
-	}
-
-	#[test]
-	fn continuation_account_recovery_is_typed_without_reselection() {
-		assert_eq!(
-			continuation_recovery(ContinuationRejection::SelectedAccountDrift),
-			Some(ConversationManualRecovery::SelectedAccountDrift),
-		);
-		assert_eq!(
-			continuation_recovery(ContinuationRejection::SelectedAccountReadinessRequired),
-			Some(ConversationManualRecovery::SelectedAccountReadiness),
-		);
-		assert_eq!(
-			continuation_recovery(ContinuationRejection::SelectedAccountQuotaRequired),
-			Some(ConversationManualRecovery::RefreshQuota),
-		);
-		assert_eq!(continuation_recovery(ContinuationRejection::SameThreadUnavailable), None);
-	}
 }
-
 #[path = "conversation/account_nudge.rs"] mod account_nudge;

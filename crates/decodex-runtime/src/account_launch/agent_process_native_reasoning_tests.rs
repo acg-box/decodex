@@ -16,32 +16,43 @@ async fn installed_public_reasoning_is_saved_and_projected_after_cold_restart() 
 			{"type":"message","id":"answer-fixture","role":"assistant","content":[{"type":"output_text","text":"Done."}]}
 		])
 	}));
+
 	std::fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).unwrap();
+
 	let root =
 		decodex_core::DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
+
 	root.paths().ensure_layout().unwrap();
+
 	let store = decodex_database::SqliteStore::open(&root.paths()).unwrap();
 	let mut session = NativeSession::start(&binary, home.path());
 	let mut config =
 		AgentConfig::new("gpt-5.6-sol".into(), "high".into(), home.path().display().to_string());
+
 	config.approval_policy = json!("never");
 	config.sandbox = "read-only".into();
+
 	let mut agent = AgentCoordinator::new(store.clone(), session.client.clone(), config).unwrap();
 	let work = agent.start_agent("agent", "Summarize the fixture").await.unwrap();
 	let thread = work.codex_thread_id.unwrap();
 	let mut observed = false;
+
 	tokio::time::timeout(Duration::from_secs(30), async {
 		loop {
 			let event = session.events.recv().await.unwrap();
 			let done =
 				matches!(&event,ServerEvent::Notification{method,..} if method=="turn/completed");
+
 			agent.handle_event(event).await.unwrap();
+
 			for row in store.read_agent_output("agent".into()).await.unwrap() {
 				if row.kind == "reasoningSummary" {
 					assert!(!row.text.contains("PRIVATE"));
+
 					observed |= row.text == "Public summary fixture.";
 				}
 			}
+
 			if done {
 				break;
 			}
@@ -49,17 +60,24 @@ async fn installed_public_reasoning_is_saved_and_projected_after_cold_restart() 
 	})
 	.await
 	.unwrap();
+
 	assert!(observed);
+
 	let before = read(&store, &session.client, &thread).await;
+
 	assert!(before.contains("Public summary fixture."));
 	assert!(!before.contains("PRIVATE_RAW_FIXTURE"));
+
 	drop(agent);
 	drop(session);
 	drop(store);
+
 	let store = decodex_database::SqliteStore::open(&root.paths()).unwrap();
 	let session = NativeSession::start(&binary, home.path());
+
 	assert_eq!(read(&store, &session.client, &thread).await, before);
 	assert_eq!(calls.load(Ordering::Acquire), 1);
+
 	backend.abort();
 }
 
@@ -93,5 +111,6 @@ async fn read(
 	let decodex_protocol::AgentTimelineResult::Available { page, .. } = result else {
 		panic!("native summary projection unavailable")
 	};
+
 	serde_json::to_string(&page).expect("native reasoning fixture")
 }

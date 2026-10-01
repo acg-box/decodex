@@ -23,16 +23,6 @@ struct Fake {
 	release: Notify,
 }
 struct Session(Arc<Fake>);
-impl ResetCardProvider for Arc<Fake> {
-	fn session(&self, _: &AccountId, _: i64) -> TestFuture<'_, Box<dyn ResetCardSession>> {
-		Box::pin(async {
-			if self.unavailable.load(Ordering::Acquire) {
-				return Err(ResetCardServiceError::AccountChanged);
-			}
-			Ok(Box::new(Session(Self::clone(self))) as Box<dyn ResetCardSession>)
-		})
-	}
-}
 impl ResetCardSession for Session {
 	fn inventory(&mut self) -> TestFuture<'_, AccountApiInventory> {
 		Box::pin(async { Ok(self.0.inventory.lock().expect("isolated reset fixture").clone()) })
@@ -51,10 +41,24 @@ impl ResetCardSession for Session {
 				.expect("isolated reset fixture")
 				.push((key.as_str().into(), credit.as_str().into()));
 			self.0.entered.notify_one();
+
 			if self.0.pause_send.load(Ordering::Acquire) {
 				self.0.release.notified().await;
 			}
+
 			*self.0.outcome.lock().expect("isolated reset fixture")
+		})
+	}
+}
+
+impl ResetCardProvider for Arc<Fake> {
+	fn session(&self, _: &AccountId, _: i64) -> TestFuture<'_, Box<dyn ResetCardSession>> {
+		Box::pin(async {
+			if self.unavailable.load(Ordering::Acquire) {
+				return Err(ResetCardServiceError::AccountChanged);
+			}
+
+			Ok(Box::new(Session(Self::clone(self))) as Box<dyn ResetCardSession>)
 		})
 	}
 }
@@ -90,6 +94,7 @@ fn fixture()
 		release: Notify::new(),
 	});
 	let runtime = ApiResetCardRuntime::with_provider(store.clone(), Arc::new(Arc::clone(&fake)));
+
 	(
 		dir,
 		store,
@@ -102,12 +107,16 @@ fn fixture()
 #[tokio::test]
 async fn exact_card_is_sent_once_and_completed_replay_needs_no_credentials() {
 	let (_dir, store, fake, runtime, account, descriptor) = fixture();
+
 	runtime.prepare("manual-1", &account, 1, descriptor).await.expect("isolated reset fixture");
+
 	assert_eq!(fake.sends.load(Ordering::SeqCst), 0);
+
 	runtime.process_pending().await;
 	fake.unavailable.store(true, Ordering::Release);
 	runtime.prepare("manual-1", &account, 1, descriptor).await.expect("isolated reset fixture");
 	runtime.process_pending().await;
+
 	assert_eq!(
 		runtime.operation_status("manual-1").await.expect("isolated reset fixture"),
 		ResetCardOperationStatus::Completed(ResetCardConsumeOutcome::Reset)
@@ -136,12 +145,16 @@ async fn exact_card_is_sent_once_and_completed_replay_needs_no_credentials() {
 #[tokio::test]
 async fn response_loss_and_restart_never_resend_or_admit_another_key() {
 	let (dir, store, fake, runtime, account, descriptor) = fixture();
+
 	*fake.outcome.lock().expect("isolated reset fixture") =
 		Err(ResetCardServiceError::ProviderUnavailable);
+
 	runtime.prepare("manual-1", &account, 1, descriptor).await.expect("isolated reset fixture");
 	runtime.process_pending().await;
+
 	drop(runtime);
 	drop(store);
+
 	let paths = DecodexRoot::new(dir.path().canonicalize().expect("isolated reset fixture"))
 		.expect("isolated reset fixture")
 		.paths();
@@ -149,8 +162,10 @@ async fn response_loss_and_restart_never_resend_or_admit_another_key() {
 		SqliteStore::open(&paths).expect("isolated reset fixture"),
 		Arc::new(Arc::clone(&fake)),
 	);
+
 	restarted.prepare("manual-1", &account, 1, descriptor).await.expect("isolated reset fixture");
 	restarted.process_pending().await;
+
 	assert_eq!(
 		restarted.operation_status("manual-1").await.expect("isolated reset fixture"),
 		ResetCardOperationStatus::EffectAmbiguous
@@ -167,10 +182,15 @@ async fn response_loss_and_restart_never_resend_or_admit_another_key() {
 #[tokio::test]
 async fn prepared_rechecks_exact_identity_and_rejects_replacement_card() {
 	let (_dir, _store, fake, runtime, account, descriptor) = fixture();
+
 	runtime.prepare("manual-1", &account, 1, descriptor).await.expect("isolated reset fixture");
+
 	let replacement = decodex_codex::decode_account_api_reset_credits(br#"{"available_count":1,"credits":[{"id":"FAKE-ONLY-replacement","reset_type":"codexRateLimits","status":"available","granted_at":1800000000,"expires_at":4102444800}]}"#).expect("isolated reset fixture");
+
 	fake.inventory.lock().expect("isolated reset fixture").credits = replacement.credits;
+
 	runtime.process_pending().await;
+
 	assert_eq!(fake.sends.load(Ordering::SeqCst), 0);
 	assert_eq!(
 		runtime.operation_status("manual-1").await.expect("isolated reset fixture"),
@@ -180,7 +200,9 @@ async fn prepared_rechecks_exact_identity_and_rejects_replacement_card() {
 #[tokio::test]
 async fn incomplete_duplicate_and_stale_inventory_never_send() {
 	let (_dir, _store, fake, runtime, account, descriptor) = fixture();
+
 	fake.inventory.lock().expect("isolated reset fixture").details_complete = false;
+
 	assert_eq!(
 		runtime
 			.prepare("manual-1", &account, 1, descriptor)
@@ -188,13 +210,19 @@ async fn incomplete_duplicate_and_stale_inventory_never_send() {
 			.expect_err("expected safe refusal"),
 		ResetCardServiceError::InventoryIncomplete
 	);
+
 	{
 		let mut inventory = fake.inventory.lock().expect("isolated reset fixture");
+
 		inventory.details_complete = true;
+
 		let credit = inventory.credits[0].clone();
+
 		inventory.credits.push(credit);
+
 		inventory.reported_available_count = Some(2);
 	}
+
 	assert_eq!(
 		runtime
 			.prepare("manual-1", &account, 1, descriptor)
@@ -202,7 +230,9 @@ async fn incomplete_duplicate_and_stale_inventory_never_send() {
 			.expect_err("expected safe refusal"),
 		ResetCardServiceError::InventoryChanged
 	);
+
 	fake.inventory.lock().expect("isolated reset fixture").account_revision = 2;
+
 	assert_eq!(
 		runtime
 			.prepare("manual-1", &account, 1, descriptor)
@@ -215,14 +245,19 @@ async fn incomplete_duplicate_and_stale_inventory_never_send() {
 #[tokio::test]
 async fn durable_receipt_finishes_after_restart_without_a_provider_session() {
 	let (dir, store, fake, runtime, account, descriptor) = fixture();
+
 	runtime.prepare("manual-1", &account, 1, descriptor).await.expect("isolated reset fixture");
+
 	assert!(store.begin_reset_card_send("manual-1".into()).await.expect("isolated reset fixture"));
+
 	store
 		.record_reset_card_outcome("manual-1".into(), "already_redeemed".into())
 		.await
 		.expect("isolated reset fixture");
+
 	drop(runtime);
 	drop(store);
+
 	let paths = DecodexRoot::new(dir.path().canonicalize().expect("canonical temporary root"))
 		.expect("temporary root")
 		.paths();
@@ -230,8 +265,10 @@ async fn durable_receipt_finishes_after_restart_without_a_provider_session() {
 		SqliteStore::open(&paths).expect("reopened ledger"),
 		Arc::new(Arc::clone(&fake)),
 	);
+
 	fake.unavailable.store(true, Ordering::Release);
 	runtime.process_pending().await;
+
 	assert_eq!(
 		runtime.operation_status("manual-1").await.expect("isolated reset fixture"),
 		ResetCardOperationStatus::Completed(ResetCardConsumeOutcome::AlreadyRedeemed)
@@ -241,10 +278,12 @@ async fn durable_receipt_finishes_after_restart_without_a_provider_session() {
 #[tokio::test]
 async fn shutdown_preserves_prepared_work_without_sending() {
 	let (_dir, _store, fake, runtime, account, descriptor) = fixture();
+
 	runtime.prepare("manual-1", &account, 1, descriptor).await.expect("isolated reset fixture");
 	runtime.begin_shutdown();
 	runtime.process_pending().await;
 	runtime.wait_for_shutdown().await;
+
 	assert_eq!(
 		runtime.operation_status("manual-1").await.expect("isolated reset fixture"),
 		ResetCardOperationStatus::Prepared
@@ -259,31 +298,42 @@ async fn competing_workers_and_double_clicks_send_only_once() {
 		runtime.prepare("manual-1", &account, 1, descriptor),
 		runtime.prepare("manual-1", &account, 1, descriptor),
 	);
+
 	first.expect("accepted first confirmation");
 	second.expect("same confirmation replay");
+
 	let other_owner = ApiResetCardRuntime::with_provider(store, Arc::new(Arc::clone(&fake)));
+
 	tokio::join!(runtime.process_pending(), other_owner.process_pending());
+
 	assert_eq!(fake.sends.load(Ordering::SeqCst), 1);
 }
 #[tokio::test]
 async fn shutdown_drains_a_send_without_cancelling_or_replaying_it() {
 	let (_dir, _store, fake, runtime, account, descriptor) = fixture();
+
 	fake.pause_send.store(true, Ordering::Release);
 	runtime.prepare("manual-1", &account, 1, descriptor).await.expect("prepare fake credit");
+
 	let worker = runtime.clone();
 	let task = tokio::spawn(async move {
 		worker.process_pending().await;
 	});
+
 	tokio::time::timeout(Duration::from_secs(2), fake.entered.notified())
 		.await
 		.expect("fake send started");
+
 	runtime.begin_shutdown();
+
 	assert!(
 		tokio::time::timeout(Duration::from_millis(20), runtime.wait_for_shutdown()).await.is_err()
 	);
+
 	fake.release.notify_one();
 	task.await.expect("drained fake send");
 	runtime.wait_for_shutdown().await;
+
 	assert_eq!(fake.sends.load(Ordering::SeqCst), 1);
 	assert_eq!(
 		runtime.operation_status("manual-1").await.expect("receipt"),
@@ -293,13 +343,18 @@ async fn shutdown_drains_a_send_without_cancelling_or_replaying_it() {
 #[tokio::test]
 async fn account_recovery_discovers_the_original_key_without_provider_access() {
 	let (_dir, _store, fake, runtime, account, descriptor) = fixture();
+
 	runtime.prepare("manual-1", &account, 1, descriptor).await.expect("prepare fake credit");
 	fake.unavailable.store(true, Ordering::Release);
+
 	let operation =
 		runtime.latest_operation(&account).await.expect("ledger read").expect("saved operation");
+
 	assert_eq!(operation.key, "manual-1");
 	assert_eq!(operation.account_revision, 1);
+
 	runtime.process_pending().await;
+
 	assert_eq!(fake.sends.load(Ordering::SeqCst), 0);
 	assert_eq!(
 		runtime.operation_status("manual-1").await.expect("receipt"),
@@ -314,16 +369,21 @@ async fn expired_cards_and_known_no_effect_outcomes_remain_distinct() {
 		decodex_core::ResetCardTimestamp::from_unix_seconds(2).expect("expiry"),
 	)
 	.expect("descriptor");
+
 	assert_eq!(
 		runtime.prepare("expired", &account, 1, expired).await.expect_err("expired"),
 		ResetCardServiceError::InventoryChanged
 	);
 	assert_eq!(fake.sends.load(Ordering::SeqCst), 0);
+
 	for outcome in [ResetCardConsumeOutcome::NothingToReset, ResetCardConsumeOutcome::NoCredit] {
 		let (_dir, _store, fake, runtime, account, descriptor) = fixture();
+
 		*fake.outcome.lock().expect("fake result") = Ok(outcome);
+
 		runtime.prepare("manual-1", &account, 1, descriptor).await.expect("prepare");
 		runtime.process_pending().await;
+
 		assert_eq!(
 			runtime.operation_status("manual-1").await.expect("receipt"),
 			ResetCardOperationStatus::Completed(outcome)
@@ -337,8 +397,11 @@ async fn nonexpiring_reset_card_keeps_exact_id_and_replay_protection() {
 	let (_dir, store, fake, runtime, account, _) = fixture();
 	let credits = decodex_codex::decode_account_api_reset_credits(br#"{"available_count":1,"credits":[{"id":"nonexpiring-credit","reset_type":"codexRateLimits","status":"available","granted_at":100,"expires_at":null}]}"#).unwrap();
 	let descriptor = credits.credits[0].descriptor();
+
 	fake.inventory.lock().unwrap().credits = credits.credits;
+
 	runtime.prepare("nonexpiring", &account, 1, descriptor).await.unwrap();
+
 	assert!(
 		store
 			.reset_card_operation("nonexpiring".into())
@@ -348,9 +411,11 @@ async fn nonexpiring_reset_card_keeps_exact_id_and_replay_protection() {
 			.expires_at
 			.is_none()
 	);
+
 	runtime.process_pending().await;
 	runtime.prepare("nonexpiring", &account, 1, descriptor).await.unwrap();
 	runtime.process_pending().await;
+
 	assert_eq!(fake.sends.load(Ordering::SeqCst), 1);
 	assert_eq!(
 		*fake.identities.lock().unwrap(),

@@ -12,6 +12,7 @@ pub(crate) async fn pending(
 	work_id: &EntityId,
 ) -> decodex_protocol::AgentPendingAppUiCall {
 	use decodex_protocol::AgentPendingAppUiCall;
+
 	match store.pending_agent_app_ui_call(work_id.as_str().into()).await {
 		Ok(receipt) => {
 			let operation_id = match receipt {
@@ -21,6 +22,7 @@ pub(crate) async fn pending(
 				},
 				None => None,
 			};
+
 			AgentPendingAppUiCall::Available { work_id: work_id.clone(), operation_id }
 		},
 		Err(_) => AgentPendingAppUiCall::Unavailable,
@@ -43,6 +45,7 @@ pub(crate) async fn read(store: &SqliteStore, request: &AgentAppUiReceiptRequest
 	{
 		return Result::Unavailable;
 	}
+
 	let Ok(Some(receipt)) = store
 		.agent_app_ui_call_receipt(
 			request.work_id.as_str().into(),
@@ -54,6 +57,7 @@ pub(crate) async fn read(store: &SqliteStore, request: &AgentAppUiReceiptRequest
 	};
 	let a = receipt.attempt;
 	let document = json!({"reservationId":receipt.id,"operationId":a.attempt_id,"workId":a.owner.work,"threadId":a.owner.thread,"accountId":a.owner.account,"sourceFingerprint":a.source_fingerprint,"turnId":a.turn,"itemId":a.item,"server":a.server,"tool":a.tool,"arguments":a.arguments,"state":receipt.state,"uncertaintyAcknowledged":receipt.uncertainty_acknowledged,"result":receipt.result});
+
 	chunk(request, serde_json::to_vec(&document).expect("saved JSON serializes"))
 }
 
@@ -61,17 +65,21 @@ fn chunk(request: &AgentAppUiReceiptRequest, document: Vec<u8>) -> Result {
 	if document.len() > MAX_AGENT_APP_UI_RECEIPT_BYTES {
 		return Result::CapacityExceeded;
 	}
+
 	let fingerprint = EntityId::new(
 		Sha256::digest(&document).iter().map(|b| format!("{b:02x}")).collect::<String>(),
 	)
 	.expect("digest identity");
+
 	if request.fingerprint.as_ref().is_some_and(|expected| expected != &fingerprint)
 		|| request.offset as usize >= document.len()
 	{
 		return Result::Unavailable;
 	}
+
 	let start = request.offset as usize;
 	let end = (start + AGENT_APP_UI_RECEIPT_CHUNK_BYTES).min(document.len());
+
 	Result::Available {
 		request: Box::new(request.clone()),
 		fingerprint,
@@ -95,14 +103,20 @@ mod tests {
 		let Result::Available { fingerprint, bytes, .. } = chunk(&request, document.clone()) else {
 			panic!("first chunk")
 		};
+
 		assert_eq!(bytes.len(), AGENT_APP_UI_RECEIPT_CHUNK_BYTES);
+
 		request.offset = bytes.len() as u32;
 		request.fingerprint = Some(fingerprint);
+
 		assert!(
 			matches!(chunk(&request,document.clone()),Result::Available{bytes,..} if bytes.len()==7)
 		);
+
 		let mut changed = document;
+
 		changed[0] = b'b';
+
 		assert_eq!(chunk(&request, changed), Result::Unavailable);
 	}
 }

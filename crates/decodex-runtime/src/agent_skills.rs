@@ -12,10 +12,12 @@ pub(crate) fn project(value: &Value, cwd: &str, filter: &str) -> Option<AgentSki
 	let errors = u32::try_from(entry["errors"].as_array()?.len()).ok()?;
 	let query = filter.trim().to_lowercase();
 	let mut skills = Vec::new();
+
 	for item in entry["skills"].as_array()? {
 		if item["enabled"] != true {
 			continue;
 		}
+
 		let name = item["name"].as_str()?;
 		let path = item["path"].as_str()?;
 		let description = item
@@ -23,6 +25,7 @@ pub(crate) fn project(value: &Value, cwd: &str, filter: &str) -> Option<AgentSki
 			.and_then(Value::as_str)
 			.or_else(|| item["shortDescription"].as_str())
 			.or_else(|| item["description"].as_str())?;
+
 		if name.trim().is_empty()
 			|| name.chars().any(char::is_control)
 			|| !std::path::Path::new(path).is_absolute()
@@ -35,6 +38,7 @@ pub(crate) fn project(value: &Value, cwd: &str, filter: &str) -> Option<AgentSki
 		{
 			continue;
 		}
+
 		skills.push(AgentSkillDto {
 			name: WireText::new(name).ok()?,
 			path: ConversationWorkingDirectory::new(path).ok()?,
@@ -44,16 +48,22 @@ pub(crate) fn project(value: &Value, cwd: &str, filter: &str) -> Option<AgentSki
 			.ok()?,
 		});
 	}
+
 	skills.sort_by(|a, b| {
 		(a.name.as_str(), a.path.as_str()).cmp(&(b.name.as_str(), b.path.as_str()))
 	});
 	skills.dedup_by(|a, b| a.name == b.name && a.path == b.path);
+
 	let mut truncated = skills.len() > 50;
+
 	skills.truncate(50);
-	while serde_json::to_vec(&skills).ok()?.len() > 100 * 1024 {
+
+	while serde_json::to_vec(&skills).ok()?.len() > 100 * 1_024 {
 		skills.pop()?;
+
 		truncated = true;
 	}
+
 	Some(AgentSkillsPage { skills, truncated, errors })
 }
 
@@ -65,26 +75,31 @@ where
 	let Some(before) = source().await else { return AgentSkillsResult::Unavailable };
 	let observed = tokio::time::timeout(std::time::Duration::from_secs(20), async {
 		let native = before.client.thread_read(json!({"threadId":before.key.thread})).await.ok()?;
+
 		if native["thread"]["id"] != before.key.thread {
 			return None;
 		}
+
 		let cwd = native["thread"]["cwd"].as_str()?;
 		let value = before
 			.client
 			.request("skills/list", json!({"cwds":[cwd],"forceReload":true}))
 			.await
 			.ok()?;
+
 		project(&value, cwd, filter)
 	})
 	.await
 	.ok()
 	.flatten();
+
 	if source().await.is_none_or(|after| {
 		after.key != before.key
 			|| after.client.connection_identity() != before.client.connection_identity()
 	}) {
 		return AgentSkillsResult::Unavailable;
 	}
+
 	match observed {
 		Some(page) => AgentSkillsResult::Available {
 			target: AgentSkillsTarget::Existing {
@@ -103,13 +118,18 @@ mod tests {
 	#[test]
 	fn skills_filter_full_inventory_before_bounding_and_keep_exact_paths() {
 		let mut skills:Vec<_>=(0..60).map(|index|json!({"name":format!("skill-{index:02}"),"path":format!("/skills (local)/{index}/SKILL.md"),"description":"Fixture skill","enabled":true})).collect();
+
 		skills.push(json!({"name":"disabled","path":"/skills/disabled/SKILL.md","description":"Fixture","enabled":false}));
+
 		let response = json!({"data":[{"cwd":"/project","skills":skills,"errors":[{"message":"not projected"}]}]});
 		let page = project(&response, "/project", "").unwrap();
+
 		assert_eq!(page.skills.len(), 50);
 		assert!(page.truncated);
 		assert_eq!(page.errors, 1);
+
 		let page = project(&response, "/project", "SKILL-59").unwrap();
+
 		assert_eq!(page.skills.len(), 1);
 		assert!(!page.truncated);
 		assert_eq!(page.skills[0].path.as_str(), "/skills (local)/59/SKILL.md");

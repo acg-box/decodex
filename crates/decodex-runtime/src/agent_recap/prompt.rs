@@ -1,4 +1,7 @@
 //! Bounded public conversation input for native recap inference.
+pub(super) const MAX_BYTES: usize = 32 * 1_024;
+pub(super) const HISTORY_MAX_BYTES: usize = MAX_BYTES - PROMPT_PREFIX.len();
+
 const PROMPT_PREFIX: &str = r#"Write a brief catch-up for a user returning to this task. Return JSON with summary and nullable next_action.
 
 Summary: explain the broader active goal, meaningful completed progress, and material blocker or limitation. Use the latest user message to determine current scope and corrections. Look across the provided conversation for completed outcomes; do not let the latest subtask erase earlier progress toward the goal. Prefer concrete results over descriptions of investigating or discussing.
@@ -12,8 +15,6 @@ Use supported facts, plain text, and the user's language. Aim for 40-60 words to
 Conversation:
 "#;
 
-pub(super) const MAX_BYTES: usize = 32 * 1024;
-pub(super) const HISTORY_MAX_BYTES: usize = MAX_BYTES - PROMPT_PREFIX.len();
 pub(super) fn build(history: &str) -> String {
 	format!("{PROMPT_PREFIX}{history}")
 }

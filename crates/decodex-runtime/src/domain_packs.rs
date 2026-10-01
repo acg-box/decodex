@@ -6,14 +6,18 @@ use std::{
 };
 
 use decodex_core::ConversationId;
+
 use decodex_database::{ProgramCycleRecord, ProgramDomainPackBinding};
+
 use decodex_protocol::{
 	DEVELOPMENT_DOMAIN_PACK_ID, DomainEntityDto, DomainEntityFieldDto, DomainPackCapabilityDto,
 	DomainPackCapabilityStatus, DomainPackDescriptorDto, DomainPackProjectionDto,
 	DomainPackViewKind, DomainRelationDto, EntityId, PAPER_INVESTMENT_DOMAIN_PACK_ID,
 	ProviderThreadId, Sha256Digest, WireText,
 };
+
 use serde::Deserialize;
+
 use sha2::{Digest as _, Sha256};
 
 const MANIFEST_SCHEMA: &str = "decodex/domain-pack/1";
@@ -28,6 +32,8 @@ const PAPER_INVESTMENT_MANIFEST_DIGEST: &str =
 	"996a5133a30bc968d27a16835bdbdb34736777c9d11ca2a5ed87d221c957e9eb";
 const TREASURY_FIXTURE_DIGEST: &str =
 	"1736087dfc077c238d8ab206629c4ccf9a2cb127e21b0cd91a53e5d0d4b0daf7";
+
+static REGISTRY: OnceLock<Result<DomainPackRegistry, DomainPackError>> = OnceLock::new();
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DomainPackError {
@@ -53,6 +59,48 @@ struct BuiltInDomainPack {
 struct DomainPackRegistry {
 	packs: Vec<BuiltInDomainPack>,
 	treasury: TreasuryFixture,
+}
+impl DomainPackRegistry {
+	fn load() -> Result<Self, DomainPackError> {
+		let development = parse_pack(
+			BuiltInPackKind::Development,
+			DEVELOPMENT_DOMAIN_PACK_ID,
+			DEVELOPMENT_MANIFEST,
+			DEVELOPMENT_MANIFEST_DIGEST,
+		)?;
+		let paper = parse_pack(
+			BuiltInPackKind::PaperInvestment,
+			PAPER_INVESTMENT_DOMAIN_PACK_ID,
+			PAPER_INVESTMENT_MANIFEST,
+			PAPER_INVESTMENT_MANIFEST_DIGEST,
+		)?;
+		let manifest: DomainPackManifest = serde_json::from_str(PAPER_INVESTMENT_MANIFEST)
+			.map_err(|_| DomainPackError::RegistryInvalid)?;
+		let dataset = manifest.dataset.ok_or(DomainPackError::RegistryInvalid)?;
+
+		if dataset.sha256 != TREASURY_FIXTURE_DIGEST
+			|| digest_hex(TREASURY_FIXTURE.as_bytes()) != TREASURY_FIXTURE_DIGEST
+			|| dataset.period != "2025-06"
+			|| dataset.fields != ["date", "2_year", "10_year"]
+		{
+			return Err(DomainPackError::RegistryInvalid);
+		}
+
+		let treasury = TreasuryFixture {
+			source: dataset.source,
+			period: dataset.period,
+			observations: parse_treasury_fixture(TREASURY_FIXTURE)?,
+		};
+
+		Ok(Self { packs: vec![development, paper], treasury })
+	}
+
+	fn pack(&self, pack_id: &str) -> Result<&BuiltInDomainPack, DomainPackError> {
+		self.packs
+			.iter()
+			.find(|pack| pack.descriptor.id.as_str() == pack_id)
+			.ok_or(DomainPackError::UnknownPack)
+	}
 }
 
 #[derive(Deserialize)]
@@ -92,52 +140,6 @@ struct TreasuryFixture {
 	observations: Vec<TreasuryObservation>,
 }
 
-static REGISTRY: OnceLock<Result<DomainPackRegistry, DomainPackError>> = OnceLock::new();
-
-fn registry() -> Result<&'static DomainPackRegistry, DomainPackError> {
-	REGISTRY.get_or_init(DomainPackRegistry::load).as_ref().map_err(|error| *error)
-}
-
-impl DomainPackRegistry {
-	fn load() -> Result<Self, DomainPackError> {
-		let development = parse_pack(
-			BuiltInPackKind::Development,
-			DEVELOPMENT_DOMAIN_PACK_ID,
-			DEVELOPMENT_MANIFEST,
-			DEVELOPMENT_MANIFEST_DIGEST,
-		)?;
-		let paper = parse_pack(
-			BuiltInPackKind::PaperInvestment,
-			PAPER_INVESTMENT_DOMAIN_PACK_ID,
-			PAPER_INVESTMENT_MANIFEST,
-			PAPER_INVESTMENT_MANIFEST_DIGEST,
-		)?;
-		let manifest: DomainPackManifest = serde_json::from_str(PAPER_INVESTMENT_MANIFEST)
-			.map_err(|_| DomainPackError::RegistryInvalid)?;
-		let dataset = manifest.dataset.ok_or(DomainPackError::RegistryInvalid)?;
-		if dataset.sha256 != TREASURY_FIXTURE_DIGEST
-			|| digest_hex(TREASURY_FIXTURE.as_bytes()) != TREASURY_FIXTURE_DIGEST
-			|| dataset.period != "2025-06"
-			|| dataset.fields != ["date", "2_year", "10_year"]
-		{
-			return Err(DomainPackError::RegistryInvalid);
-		}
-		let treasury = TreasuryFixture {
-			source: dataset.source,
-			period: dataset.period,
-			observations: parse_treasury_fixture(TREASURY_FIXTURE)?,
-		};
-		Ok(Self { packs: vec![development, paper], treasury })
-	}
-
-	fn pack(&self, pack_id: &str) -> Result<&BuiltInDomainPack, DomainPackError> {
-		self.packs
-			.iter()
-			.find(|pack| pack.descriptor.id.as_str() == pack_id)
-			.ok_or(DomainPackError::UnknownPack)
-	}
-}
-
 pub(crate) fn projection(
 	record: &ProgramCycleRecord,
 	provider_threads: &HashMap<ConversationId, ProviderThreadId>,
@@ -150,7 +152,12 @@ pub(crate) fn projection(
 		BuiltInPackKind::Development => development_projection(pack, record, provider_threads),
 		BuiltInPackKind::PaperInvestment => paper_projection(pack, record, &registry()?.treasury),
 	}?;
+
 	Ok(Some(projection))
+}
+
+fn registry() -> Result<&'static DomainPackRegistry, DomainPackError> {
+	REGISTRY.get_or_init(DomainPackRegistry::load).as_ref().map_err(|error| *error)
 }
 
 fn validated_pack(
@@ -158,11 +165,13 @@ fn validated_pack(
 ) -> Result<&'static BuiltInDomainPack, DomainPackError> {
 	let binding = binding.ok_or(DomainPackError::BindingMissing)?;
 	let pack = registry()?.pack(&binding.pack_id)?;
+
 	if pack.descriptor.version.as_str() != binding.pack_version
 		|| pack.descriptor.digest.as_str() != binding.pack_digest
 	{
 		return Err(DomainPackError::BindingMismatch);
 	}
+
 	Ok(pack)
 }
 
@@ -175,6 +184,7 @@ fn parse_pack(
 	let manifest: DomainPackManifest =
 		serde_json::from_str(raw).map_err(|_| DomainPackError::RegistryInvalid)?;
 	let digest = manifest_digest(raw.as_bytes());
+
 	if manifest.schema != MANIFEST_SCHEMA
 		|| manifest.id != expected_id
 		|| manifest.version != "1.0.0"
@@ -194,6 +204,7 @@ fn parse_pack(
 	{
 		return Err(DomainPackError::RegistryInvalid);
 	}
+
 	let descriptor = DomainPackDescriptorDto {
 		id: text(manifest.id)?,
 		version: text(manifest.version)?,
@@ -214,7 +225,9 @@ fn parse_pack(
 		entity_types: manifest.entity_types.into_iter().map(text).collect::<Result<_, _>>()?,
 		relation_types: manifest.relation_types.into_iter().map(text).collect::<Result<_, _>>()?,
 	};
+
 	validate_descriptor(&descriptor)?;
+
 	Ok(BuiltInDomainPack { kind, descriptor })
 }
 
@@ -237,6 +250,7 @@ fn validate_descriptor(descriptor: &DomainPackDescriptorDto) -> Result<(), Domai
 		to: entity_id,
 		kind: descriptor.relation_types[0].clone(),
 	};
+
 	DomainPackProjectionDto::new(descriptor.clone(), vec![entity], vec![relation], &program_id)
 		.map(|_| ())
 		.map_err(|_| DomainPackError::RegistryInvalid)
@@ -292,6 +306,7 @@ fn development_projection(
 				.iter()
 				.find(|item| item.evidence_id == review.external_evidence_id)
 				.map(|item| item.source.clone());
+
 			(
 				"Latest work item review".to_owned(),
 				review.rationale.clone(),
@@ -317,6 +332,7 @@ fn development_projection(
 		source: validation_source.map(text).transpose()?,
 		fields,
 	};
+
 	DomainPackProjectionDto::new(
 		pack.descriptor.clone(),
 		vec![repository, change, validation],
@@ -419,6 +435,7 @@ fn paper_projection(
 			field("Dataset SHA-256", TREASURY_FIXTURE_DIGEST)?,
 		],
 	};
+
 	DomainPackProjectionDto::new(
 		pack.descriptor.clone(),
 		vec![two_year, ten_year, thesis, scenario],
@@ -442,15 +459,19 @@ fn paper_projection(
 
 fn parse_treasury_fixture(raw: &str) -> Result<Vec<TreasuryObservation>, DomainPackError> {
 	let mut lines = raw.lines();
+
 	if lines.next() != Some("date,2_year,10_year") {
 		return Err(DomainPackError::RegistryInvalid);
 	}
+
 	let observations = lines
 		.map(|line| {
 			let values = line.split(',').collect::<Vec<_>>();
+
 			if values.len() != 3 || values[0].len() != 10 {
 				return Err(DomainPackError::RegistryInvalid);
 			}
+
 			Ok(TreasuryObservation {
 				date: values[0].to_owned(),
 				two_year_basis_points: parse_yield(values[1])?,
@@ -458,23 +479,28 @@ fn parse_treasury_fixture(raw: &str) -> Result<Vec<TreasuryObservation>, DomainP
 			})
 		})
 		.collect::<Result<Vec<_>, _>>()?;
+
 	if observations.len() != 20 || observations.windows(2).any(|pair| pair[0].date >= pair[1].date)
 	{
 		return Err(DomainPackError::RegistryInvalid);
 	}
+
 	Ok(observations)
 }
 
 fn parse_yield(value: &str) -> Result<i64, DomainPackError> {
 	let (whole, fraction) = value.split_once('.').ok_or(DomainPackError::RegistryInvalid)?;
+
 	if fraction.len() != 2
 		|| !whole.bytes().all(|byte| byte.is_ascii_digit())
 		|| !fraction.bytes().all(|byte| byte.is_ascii_digit())
 	{
 		return Err(DomainPackError::RegistryInvalid);
 	}
+
 	let whole = whole.parse::<i64>().map_err(|_| DomainPackError::RegistryInvalid)?;
 	let fraction = fraction.parse::<i64>().map_err(|_| DomainPackError::RegistryInvalid)?;
+
 	Ok(whole * 100 + fraction)
 }
 
@@ -488,17 +514,22 @@ fn stable_entity_id(
 	local_key: &str,
 ) -> Result<EntityId, DomainPackError> {
 	let mut hasher = Sha256::new();
+
 	hasher.update(b"decodex-domain-entity-v1\0");
 	hasher.update(record.program.program_id.as_str().as_bytes());
 	hasher.update([0]);
 	hasher.update(pack.descriptor.digest.as_str().as_bytes());
 	hasher.update([0]);
 	hasher.update(local_key.as_bytes());
+
 	let digest = hasher.finalize();
 	let mut bytes = [0_u8; 16];
+
 	bytes.copy_from_slice(&digest[..16]);
+
 	bytes[6] = (bytes[6] & 0x0f) | 0x40;
 	bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
 	entity(format!(
 		"{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
 		bytes[0],
@@ -522,8 +553,10 @@ fn stable_entity_id(
 
 fn manifest_digest(raw: &[u8]) -> String {
 	let mut hasher = Sha256::new();
+
 	hasher.update(MANIFEST_DIGEST_DOMAIN);
 	hasher.update(raw);
+
 	hex(hasher.finalize().as_slice())
 }
 
@@ -533,11 +566,14 @@ fn digest_hex(raw: &[u8]) -> String {
 
 fn hex(bytes: &[u8]) -> String {
 	const HEX: &[u8; 16] = b"0123456789abcdef";
+
 	let mut output = String::with_capacity(bytes.len() * 2);
+
 	for byte in bytes {
 		output.push(char::from(HEX[usize::from(byte >> 4)]));
 		output.push(char::from(HEX[usize::from(byte & 0x0f)]));
 	}
+
 	output
 }
 
@@ -567,10 +603,19 @@ fn field(
 
 #[cfg(test)]
 mod tests {
+	use decodex_core::{
+		ObjectiveId, ObjectiveState, ProgramId, ProgramState, WorkItemId, WorkItemState,
+	};
+
+	use decodex_database::{ProgramCharterRecord, ProgramObjectiveRecord, ProgramWorkItemRecord};
+
+	use super::*;
+
 	fn resolve_identity(
 		pack_id: &str,
 	) -> Result<decodex_database::DomainPackIdentity, DomainPackError> {
 		let pack = registry()?.pack(pack_id)?;
+
 		Ok(decodex_database::DomainPackIdentity {
 			pack_id: pack.descriptor.id.as_str().to_owned(),
 			pack_version: pack.descriptor.version.as_str().to_owned(),
@@ -578,17 +623,11 @@ mod tests {
 		})
 	}
 
-	use decodex_core::{
-		ObjectiveId, ObjectiveState, ProgramId, ProgramState, WorkItemId, WorkItemState,
-	};
-	use decodex_database::{ProgramCharterRecord, ProgramObjectiveRecord, ProgramWorkItemRecord};
-
-	use super::*;
-
 	fn program(pack_id: &str) -> ProgramCycleRecord {
 		let identity = resolve_identity(pack_id).expect("built-in identity");
 		let program_id =
 			ProgramId::new("81000000-0000-4000-8000-000000000001").expect("Program ID");
+
 		ProgramCycleRecord {
 			program: ProgramCharterRecord {
 				program_id: program_id.clone(),
@@ -650,6 +689,7 @@ mod tests {
 	fn built_in_manifests_have_stable_distinct_identities() {
 		let development = resolve_identity(DEVELOPMENT_DOMAIN_PACK_ID).expect("development Pack");
 		let paper = resolve_identity(PAPER_INVESTMENT_DOMAIN_PACK_ID).expect("paper Pack");
+
 		assert_eq!(development.pack_digest, DEVELOPMENT_MANIFEST_DIGEST);
 		assert_eq!(paper.pack_digest, PAPER_INVESTMENT_MANIFEST_DIGEST);
 		assert_ne!(development.pack_digest, paper.pack_digest);
@@ -663,6 +703,7 @@ mod tests {
 			.iter()
 			.map(|item| item.ten_year_basis_points - item.two_year_basis_points)
 			.collect::<Vec<_>>();
+
 		assert_eq!(spreads.first(), Some(&52));
 		assert_eq!(spreads.last(), Some(&52));
 		assert_eq!(spreads.iter().min(), Some(&44));
@@ -680,11 +721,14 @@ mod tests {
 		let second = projection(&development, &provider_threads)
 			.expect("projection")
 			.expect("bound projection");
+
 		assert_eq!(first, second);
 		assert_eq!(first.entities.len(), 3);
+
 		let paper = projection(&program(PAPER_INVESTMENT_DOMAIN_PACK_ID), &provider_threads)
 			.expect("projection")
 			.expect("bound projection");
+
 		assert_eq!(paper.entities.len(), 4);
 		assert_ne!(first.entities[0].id, paper.entities[0].id);
 	}
@@ -694,7 +738,9 @@ mod tests {
 		let mut development = program(DEVELOPMENT_DOMAIN_PACK_ID);
 		let conversation_id = ConversationId::new("36000000-0000-4000-8000-000000000001")
 			.expect("fixture Conversation identity");
+
 		development.work_items[0].conversation_id = Some(conversation_id.clone());
+
 		let without_binding = projection(&development, &HashMap::new())
 			.expect("projection")
 			.expect("bound projection");
@@ -703,13 +749,16 @@ mod tests {
 			.iter()
 			.find(|entity| entity.kind.as_str() == "dev.change")
 			.expect("development change");
+
 		assert!(change.source.is_none());
 
 		let mut provider_threads = HashMap::new();
+
 		provider_threads.insert(
 			conversation_id,
 			ProviderThreadId::new("provider-thread:opaque-1").expect("provider thread identity"),
 		);
+
 		let with_binding = projection(&development, &provider_threads)
 			.expect("projection")
 			.expect("bound projection");
@@ -718,6 +767,7 @@ mod tests {
 			.iter()
 			.find(|entity| entity.kind.as_str() == "dev.change")
 			.expect("development change");
+
 		assert_eq!(
 			change.source.as_ref().map(WireText::as_str),
 			Some("codex://threads/provider-thread:opaque-1")
@@ -729,7 +779,9 @@ mod tests {
 		let mut record: ProgramCycleRecord =
 			serde_json::from_str(include_str!("../tests/fixtures/historical_program_cycle.json"))
 				.expect("two-cycle history");
+
 		record.domain_pack = program(DEVELOPMENT_DOMAIN_PACK_ID).domain_pack;
+
 		let validation = |record: &ProgramCycleRecord| {
 			projection(record, &HashMap::new())
 				.unwrap()
@@ -740,13 +792,16 @@ mod tests {
 				.unwrap()
 		};
 		let pending = validation(&record);
+
 		assert_eq!(pending.state.as_str(), "pending");
 		assert!(pending.source.is_none());
 		assert_eq!(pending.summary.as_str(), record.program.review_policy);
 
 		// The first cycle still renders its own recorded review and evidence.
 		record.work_items.pop();
+
 		let reviewed = validation(&record);
+
 		assert_eq!(reviewed.state.as_str(), "knowledge_progress");
 		assert_eq!(reviewed.summary.as_str(), record.reviews[0].rationale);
 		assert_eq!(reviewed.source.as_ref().map(WireText::as_str), Some("provider"));
@@ -755,10 +810,15 @@ mod tests {
 	#[test]
 	fn historical_binding_and_declared_capabilities_are_verified() {
 		let mut record = program(DEVELOPMENT_DOMAIN_PACK_ID);
+
 		assert_eq!(resolve_identity("decodex.unknown"), Err(DomainPackError::UnknownPack));
+
 		record.domain_pack.as_mut().expect("binding").pack_digest.replace_range(0..1, "0");
+
 		assert_eq!(projection(&record, &HashMap::new()), Err(DomainPackError::BindingMismatch));
+
 		let paper = resolve_identity(PAPER_INVESTMENT_DOMAIN_PACK_ID).expect("paper Pack");
+
 		assert!(
 			!registry()
 				.expect("registry")

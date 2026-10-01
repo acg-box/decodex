@@ -7,8 +7,10 @@ async fn reasoning_summary_stream_keeps_typed_items_and_excludes_raw_and_voice_d
 	let event = |method: &str, mut params: Value| {
 		params["threadId"] = json!(work.codex_thread_id);
 		params["turnId"] = json!(work.active_turn_id);
+
 		ServerEvent::Notification { method: method.into(), params }
 	};
+
 	agent
 		.handle_event(event(
 			"item/started",
@@ -60,10 +62,14 @@ async fn reasoning_summary_stream_keeps_typed_items_and_excludes_raw_and_voice_d
 		))
 		.await
 		.unwrap();
+
 	let live = agent.store.read_agent_output("agent".into()).await.unwrap();
+
 	assert_eq!(live.len(), 1);
 	assert_eq!(live[0].text, "Corrected public summary.");
 	assert_eq!(live[0].kind, "reasoningSummary");
+
 	complete(&mut agent, "agent").await;
+
 	assert!(agent.store.read_agent_output("agent".into()).await.unwrap().is_empty());
 }

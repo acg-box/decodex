@@ -14,12 +14,14 @@ use std::{
 };
 
 use decodex_codex::ExactThreadId;
+
 use decodex_core::{
 	AccountId, ContinuationPlanKind, ExecutionConsumer, ProcessExecutionEpochId,
 	ProcessGenerationId, ProviderAttempt, ProviderAttemptConsumer, ProviderAttemptId,
 	ProviderAttemptPreparation, ProviderAttemptState, ProviderAttemptUnknownReason,
 	ProviderEvidenceId, ProviderPositiveEvidence, ProviderRequestId, RuntimeSessionId,
 };
+
 use decodex_database::{
 	AuthorizeProviderDispatchOutcome, ContinuationPlanEffect, FreshPreparedProviderAttempt,
 	PrepareProviderAttemptOutcome, ProviderAttemptMutationOutcome, RuntimeSessionBindingReceipt,
@@ -31,114 +33,6 @@ use crate::process_supervisor::FencedProcess;
 const RECONCILIATION_PAGE_SIZE: u16 = 256;
 const RECONCILIATION_INTERVAL: Duration = Duration::from_secs(5);
 const EVIDENCE_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
-
-/// Authority-bound diagnostic and positive-reconciliation port.
-#[derive(Clone)]
-pub struct ProviderAttemptControl {
-	inner: Arc<ProviderAttemptService>,
-}
-
-/// Sole in-process owner of every durable ProviderAttempt mutation capability.
-struct ProviderAttemptService {
-	store: SqliteStore,
-	evidence_source: Arc<dyn ProviderPositiveEvidenceSource>,
-	reconciliation_cursor: tokio::sync::Mutex<ProviderAttemptReconciliationCursor>,
-}
-
-#[derive(Default)]
-struct ProviderAttemptReconciliationCursor {
-	dispatch_authorized: Option<ProviderAttemptId>,
-	unknown: Option<ProviderAttemptId>,
-}
-
-/// Exact bounded diagnostic that cannot expose provider keys or request bytes.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProviderAttemptDiagnostic {
-	/// Stable original attempt identity.
-	pub attempt_id: ProviderAttemptId,
-	/// Exact immutable consumer.
-	pub consumer: ProviderAttemptConsumer,
-	/// Exact Continuation Plan consumed by this attempt.
-	pub continuation_plan_id: String,
-	/// Exact Routing Decision consumed by the plan.
-	pub routing_decision_id: String,
-	/// Accepted RuntimeSession supplied by Continuation Plan.
-	pub runtime_session_id: RuntimeSessionId,
-	/// Exact accepted RuntimeSession revision.
-	pub runtime_session_revision: i64,
-	/// Selected account.
-	pub account_id: AccountId,
-	/// Bound ProcessGeneration identity.
-	pub process_generation_id: decodex_core::ProcessGenerationId,
-	/// Exact ready generation revision retained before authorization.
-	pub process_generation_revision: i64,
-	/// Exact external execution epoch of the bound generation.
-	pub process_execution_epoch_id: ProcessExecutionEpochId,
-	/// Exact logical request identity.
-	pub request_id: ProviderRequestId,
-	/// True when an exact provider idempotency key is retained privately.
-	pub has_idempotency_key: bool,
-	/// True when an exact provider correlation key is retained privately.
-	pub has_correlation_key: bool,
-	/// Current durable state.
-	pub state: ProviderAttemptState,
-	/// Closed reason only for an unknown attempt.
-	pub unknown_reason: Option<ProviderAttemptUnknownReason>,
-	/// Positive terminal evidence, when one exists.
-	pub terminal_evidence_id: Option<ProviderEvidenceId>,
-	/// Current durable revision.
-	pub revision: i64,
-	/// Product-store-authored last-transition instant in Unix microseconds.
-	pub updated_at_micros: i64,
-}
-
-/// Result of one exact positive-only reconciliation request.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ProviderAttemptReconciliation {
-	/// The attempt is already terminal and remains attributable to its original identity.
-	AlreadyTerminal {
-		/// Current terminal state.
-		state: ProviderAttemptState,
-	},
-	/// Positive evidence committed now or was read back exactly.
-	PositiveEvidenceRecorded {
-		/// Positively established terminal state.
-		state: ProviderAttemptState,
-	},
-	/// No positive result or positive non-submission evidence is currently available.
-	AwaitingPositiveEvidence {
-		/// Current nonterminal state.
-		state: ProviderAttemptState,
-	},
-	/// The exact attempt does not exist.
-	AttemptMissing,
-	/// A supplied positive receipt contradicted durable original-attempt authority.
-	EvidenceRejected,
-}
-
-/// Daemon-local readiness for ProviderAttempt restore projection and reconciliation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProviderAttemptReadiness {
-	/// Restore projection and the first positive-only reconciliation pass completed.
-	Ready,
-	/// Durable product authority was unavailable or inconsistent.
-	ProductStateUnavailable,
-}
-
-/// Closed lookup failure. Absence and provider errors grant no state transition.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProviderEvidenceLookupError {
-	/// The positive provider evidence source is unavailable.
-	Unavailable,
-	/// The source returned a malformed or cross-linked positive receipt.
-	InvalidEvidence,
-}
-impl std::error::Error for ProviderEvidenceLookupError {}
-impl Display for ProviderEvidenceLookupError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(formatter, "{self:?}")
-	}
-}
 
 /// Positive-evidence lookup seam for a provider adapter.
 ///
@@ -158,123 +52,11 @@ pub trait ProviderPositiveEvidenceSource: Send + Sync {
 	>;
 }
 
-/// Closed service failure without provider keys, credentials, or database detail.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProviderAttemptServiceError {
-	/// Durable ProviderAttempt authority was unavailable or inconsistent.
-	ProductState,
-	/// A requested attempt or positive receipt contradicted durable authority.
-	AuthorityConflict,
-	/// The positive provider evidence source was unavailable or returned invalid evidence.
-	EvidenceUnavailable,
+/// Authority-bound diagnostic and positive-reconciliation port.
+#[derive(Clone)]
+pub struct ProviderAttemptControl {
+	inner: Arc<ProviderAttemptService>,
 }
-impl std::error::Error for ProviderAttemptServiceError {}
-impl Display for ProviderAttemptServiceError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(formatter, "{self:?}")
-	}
-}
-
-/// Exact credential-negative request facts for one in-memory thread resume.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RuntimeSessionResumeRequest {
-	/// Positive JSON-RPC request identity.
-	pub request_id: i64,
-	/// Lowercase SHA-256 of the exact resume request bytes.
-	pub request_sha256: String,
-}
-
-/// Exact typed successful response facts for one in-memory thread resume.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SuccessfulRuntimeSessionResume {
-	/// Positive response identity matching the request identity.
-	pub response_id: i64,
-	/// Lowercase SHA-256 of the exact typed response bytes.
-	pub response_sha256: String,
-	/// Exact thread returned by the successful response.
-	pub codex_thread_id: String,
-}
-
-/// One-time positive resume proof for the exact current ready generation.
-///
-/// This type is intentionally not `Clone`; ProviderAttempt preparation consumes it.
-#[derive(Debug, Eq, PartialEq)]
-pub struct FreshRuntimeSessionResume {
-	runtime_session_id: RuntimeSessionId,
-	runtime_session_revision: i64,
-	process_generation_id: ProcessGenerationId,
-	process_generation_revision: i64,
-	process_execution_epoch_id: ProcessExecutionEpochId,
-	request: RuntimeSessionResumeRequest,
-	response: SuccessfulRuntimeSessionResume,
-}
-
-impl FreshRuntimeSessionResume {
-	/// Construct one typed positive resume result at the future process-operation boundary.
-	#[allow(clippy::too_many_arguments)]
-	pub(crate) fn new(
-		runtime_session_id: RuntimeSessionId,
-		runtime_session_revision: i64,
-		process: &FencedProcess,
-		process_execution_epoch_id: ProcessExecutionEpochId,
-		request: RuntimeSessionResumeRequest,
-		response: SuccessfulRuntimeSessionResume,
-	) -> Result<Self, ProviderAttemptServiceError> {
-		if runtime_session_revision <= 0
-			|| process.revision() <= 0
-			|| request.request_id <= 0
-			|| response.response_id != request.request_id
-			|| !is_lower_sha256(&request.request_sha256)
-			|| !is_lower_sha256(&response.response_sha256)
-			|| ExactThreadId::new(response.codex_thread_id.clone()).is_err()
-		{
-			return Err(ProviderAttemptServiceError::AuthorityConflict);
-		}
-		Ok(Self {
-			runtime_session_id,
-			runtime_session_revision,
-			process_generation_id: process.generation_id().clone(),
-			process_generation_revision: process.revision(),
-			process_execution_epoch_id,
-			request,
-			response,
-		})
-	}
-}
-
-/// Closed post-process RuntimeSession authority consumed by ProviderAttempt preparation.
-pub(crate) enum ProviderAttemptRuntimeAuthority {
-	/// Exact durable two-transition binding and current ready epoch.
-	InitialSessionBinding {
-		binding: RuntimeSessionThreadBindingReadback,
-		process_execution_epoch_id: ProcessExecutionEpochId,
-	},
-	/// Exact Context-Pack successor binding and current ready epoch.
-	FallbackSessionBinding {
-		binding: RuntimeSessionThreadBindingReadback,
-		process_execution_epoch_id: ProcessExecutionEpochId,
-	},
-	/// One-time positive in-memory resume proof.
-	ExistingSessionResume(FreshRuntimeSessionResume),
-}
-
-struct NoPositiveProviderEvidence;
-impl ProviderPositiveEvidenceSource for NoPositiveProviderEvidence {
-	fn positive_evidence<'a>(
-		&'a self,
-		_attempt: &'a ProviderAttempt,
-	) -> Pin<
-		Box<
-			dyn Future<
-					Output = Result<Option<ProviderPositiveEvidence>, ProviderEvidenceLookupError>,
-				> + Send
-				+ 'a,
-		>,
-	> {
-		Box::pin(future::ready(Ok(None)))
-	}
-}
-
 impl ProviderAttemptControl {
 	/// Restore fail closed and perform one positive-only reconciliation pass.
 	///
@@ -292,6 +74,7 @@ impl ProviderAttemptControl {
 			.project_provider_attempts_after_supervisor_loss()
 			.await
 			.map_err(|_| ProviderAttemptServiceError::ProductState)?;
+
 		let control = Self {
 			inner: Arc::new(ProviderAttemptService {
 				store,
@@ -301,6 +84,7 @@ impl ProviderAttemptControl {
 				),
 			}),
 		};
+
 		control.reconcile_all().await?;
 
 		Ok(control)
@@ -320,9 +104,11 @@ impl ProviderAttemptControl {
 
 					changed = stop.changed() => {
 						let stopping = changed.is_err() || *stop.borrow_and_update();
+
 						if stopping {
 							break;
 						}
+
 						continue;
 					},
 					_ = tokio::time::sleep(RECONCILIATION_INTERVAL) => {},
@@ -331,6 +117,7 @@ impl ProviderAttemptControl {
 				if *stop.borrow_and_update() {
 					break;
 				}
+
 				let Some(inner) = weak.upgrade() else {
 					break;
 				};
@@ -369,6 +156,7 @@ impl ProviderAttemptControl {
 		else {
 			return Ok(ProviderAttemptReconciliation::AttemptMissing);
 		};
+
 		self.reconcile_loaded(attempt).await
 	}
 
@@ -388,6 +176,7 @@ impl ProviderAttemptControl {
 		else {
 			return Ok(ProviderAttemptReconciliation::AttemptMissing);
 		};
+
 		self.commit_positive_evidence(&attempt, evidence).await
 	}
 
@@ -453,6 +242,7 @@ impl ProviderAttemptControl {
 				state: attempt.state,
 			});
 		}
+
 		let evidence = tokio::time::timeout(
 			EVIDENCE_LOOKUP_TIMEOUT,
 			self.inner.evidence_source.positive_evidence(&attempt),
@@ -465,6 +255,7 @@ impl ProviderAttemptControl {
 				state: attempt.state,
 			});
 		};
+
 		self.commit_positive_evidence(&attempt, &evidence).await
 	}
 
@@ -479,6 +270,7 @@ impl ProviderAttemptControl {
 		{
 			return Ok(ProviderAttemptReconciliation::EvidenceRejected);
 		}
+
 		match self
 			.inner
 			.store
@@ -513,7 +305,9 @@ impl ProviderAttemptControl {
 				.map_err(|_| ProviderAttemptServiceError::ProductState)?;
 			let next_after = (page.len() == usize::from(RECONCILIATION_PAGE_SIZE))
 				.then(|| page.last().expect("a full page is nonempty").attempt_id.clone());
+
 			self.inner.reconciliation_cursor.lock().await.set(state, next_after);
+
 			for attempt in page {
 				match self.reconcile_loaded(attempt).await {
 					Ok(_) | Err(ProviderAttemptServiceError::EvidenceUnavailable) => {},
@@ -521,28 +315,125 @@ impl ProviderAttemptControl {
 				}
 			}
 		}
+
 		Ok(())
 	}
 }
 
-impl ProviderAttemptReconciliationCursor {
-	fn after(&self, state: ProviderAttemptState) -> Option<&ProviderAttemptId> {
-		match state {
-			ProviderAttemptState::DispatchAuthorized => self.dispatch_authorized.as_ref(),
-			ProviderAttemptState::Unknown => self.unknown.as_ref(),
-			_ => None,
-		}
-	}
+/// Exact bounded diagnostic that cannot expose provider keys or request bytes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderAttemptDiagnostic {
+	/// Stable original attempt identity.
+	pub attempt_id: ProviderAttemptId,
+	/// Exact immutable consumer.
+	pub consumer: ProviderAttemptConsumer,
+	/// Exact Continuation Plan consumed by this attempt.
+	pub continuation_plan_id: String,
+	/// Exact Routing Decision consumed by the plan.
+	pub routing_decision_id: String,
+	/// Accepted RuntimeSession supplied by Continuation Plan.
+	pub runtime_session_id: RuntimeSessionId,
+	/// Exact accepted RuntimeSession revision.
+	pub runtime_session_revision: i64,
+	/// Selected account.
+	pub account_id: AccountId,
+	/// Bound ProcessGeneration identity.
+	pub process_generation_id: decodex_core::ProcessGenerationId,
+	/// Exact ready generation revision retained before authorization.
+	pub process_generation_revision: i64,
+	/// Exact external execution epoch of the bound generation.
+	pub process_execution_epoch_id: ProcessExecutionEpochId,
+	/// Exact logical request identity.
+	pub request_id: ProviderRequestId,
+	/// True when an exact provider idempotency key is retained privately.
+	pub has_idempotency_key: bool,
+	/// True when an exact provider correlation key is retained privately.
+	pub has_correlation_key: bool,
+	/// Current durable state.
+	pub state: ProviderAttemptState,
+	/// Closed reason only for an unknown attempt.
+	pub unknown_reason: Option<ProviderAttemptUnknownReason>,
+	/// Positive terminal evidence, when one exists.
+	pub terminal_evidence_id: Option<ProviderEvidenceId>,
+	/// Current durable revision.
+	pub revision: i64,
+	/// Product-store-authored last-transition instant in Unix microseconds.
+	pub updated_at_micros: i64,
+}
 
-	fn set(&mut self, state: ProviderAttemptState, after: Option<ProviderAttemptId>) {
-		match state {
-			ProviderAttemptState::DispatchAuthorized => self.dispatch_authorized = after,
-			ProviderAttemptState::Unknown => self.unknown = after,
-			_ => {},
+/// Exact credential-negative request facts for one in-memory thread resume.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeSessionResumeRequest {
+	/// Positive JSON-RPC request identity.
+	pub request_id: i64,
+	/// Lowercase SHA-256 of the exact resume request bytes.
+	pub request_sha256: String,
+}
+
+/// Exact typed successful response facts for one in-memory thread resume.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SuccessfulRuntimeSessionResume {
+	/// Positive response identity matching the request identity.
+	pub response_id: i64,
+	/// Lowercase SHA-256 of the exact typed response bytes.
+	pub response_sha256: String,
+	/// Exact thread returned by the successful response.
+	pub codex_thread_id: String,
+}
+
+/// One-time positive resume proof for the exact current ready generation.
+///
+/// This type is intentionally not `Clone`; ProviderAttempt preparation consumes it.
+#[derive(Debug, Eq, PartialEq)]
+pub struct FreshRuntimeSessionResume {
+	runtime_session_id: RuntimeSessionId,
+	runtime_session_revision: i64,
+	process_generation_id: ProcessGenerationId,
+	process_generation_revision: i64,
+	process_execution_epoch_id: ProcessExecutionEpochId,
+	request: RuntimeSessionResumeRequest,
+	response: SuccessfulRuntimeSessionResume,
+}
+impl FreshRuntimeSessionResume {
+	/// Construct one typed positive resume result at the future process-operation boundary.
+	#[allow(clippy::too_many_arguments)]
+	pub(crate) fn new(
+		runtime_session_id: RuntimeSessionId,
+		runtime_session_revision: i64,
+		process: &FencedProcess,
+		process_execution_epoch_id: ProcessExecutionEpochId,
+		request: RuntimeSessionResumeRequest,
+		response: SuccessfulRuntimeSessionResume,
+	) -> Result<Self, ProviderAttemptServiceError> {
+		if runtime_session_revision <= 0
+			|| process.revision() <= 0
+			|| request.request_id <= 0
+			|| response.response_id != request.request_id
+			|| !is_lower_sha256(&request.request_sha256)
+			|| !is_lower_sha256(&response.response_sha256)
+			|| ExactThreadId::new(response.codex_thread_id.clone()).is_err()
+		{
+			return Err(ProviderAttemptServiceError::AuthorityConflict);
 		}
+
+		Ok(Self {
+			runtime_session_id,
+			runtime_session_revision,
+			process_generation_id: process.generation_id().clone(),
+			process_generation_revision: process.revision(),
+			process_execution_epoch_id,
+			request,
+			response,
+		})
 	}
 }
 
+/// Sole in-process owner of every durable ProviderAttempt mutation capability.
+struct ProviderAttemptService {
+	store: SqliteStore,
+	evidence_source: Arc<dyn ProviderPositiveEvidenceSource>,
+	reconciliation_cursor: tokio::sync::Mutex<ProviderAttemptReconciliationCursor>,
+}
 impl ProviderAttemptService {
 	/// Prepare one attempt from an accepted Continuation Plan effect and exact live process fence.
 	async fn prepare(
@@ -555,6 +446,7 @@ impl ProviderAttemptService {
 		if plan.plan.plan_id != preparation.continuation_plan_id {
 			return Err(ProviderAttemptServiceError::AuthorityConflict);
 		}
+
 		let (expected_conversation_revision, expected_turn_revision) = match &plan.plan.consumer {
 			ExecutionConsumer::ConversationTurn {
 				conversation_id,
@@ -635,6 +527,7 @@ impl ProviderAttemptService {
 				(resume.process_execution_epoch_id, None),
 			_ => return Err(ProviderAttemptServiceError::AuthorityConflict),
 		};
+
 		self.store
 			.prepare_provider_attempt(
 				preparation,
@@ -688,6 +581,129 @@ impl ProviderAttemptService {
 			.await
 			.map_err(|_| ProviderAttemptServiceError::ProductState)
 	}
+}
+
+#[derive(Default)]
+struct ProviderAttemptReconciliationCursor {
+	dispatch_authorized: Option<ProviderAttemptId>,
+	unknown: Option<ProviderAttemptId>,
+}
+impl ProviderAttemptReconciliationCursor {
+	fn after(&self, state: ProviderAttemptState) -> Option<&ProviderAttemptId> {
+		match state {
+			ProviderAttemptState::DispatchAuthorized => self.dispatch_authorized.as_ref(),
+			ProviderAttemptState::Unknown => self.unknown.as_ref(),
+			_ => None,
+		}
+	}
+
+	fn set(&mut self, state: ProviderAttemptState, after: Option<ProviderAttemptId>) {
+		match state {
+			ProviderAttemptState::DispatchAuthorized => self.dispatch_authorized = after,
+			ProviderAttemptState::Unknown => self.unknown = after,
+			_ => {},
+		}
+	}
+}
+
+struct NoPositiveProviderEvidence;
+impl ProviderPositiveEvidenceSource for NoPositiveProviderEvidence {
+	fn positive_evidence<'a>(
+		&'a self,
+		_attempt: &'a ProviderAttempt,
+	) -> Pin<
+		Box<
+			dyn Future<
+					Output = Result<Option<ProviderPositiveEvidence>, ProviderEvidenceLookupError>,
+				> + Send
+				+ 'a,
+		>,
+	> {
+		Box::pin(future::ready(Ok(None)))
+	}
+}
+
+/// Result of one exact positive-only reconciliation request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProviderAttemptReconciliation {
+	/// The attempt is already terminal and remains attributable to its original identity.
+	AlreadyTerminal {
+		/// Current terminal state.
+		state: ProviderAttemptState,
+	},
+	/// Positive evidence committed now or was read back exactly.
+	PositiveEvidenceRecorded {
+		/// Positively established terminal state.
+		state: ProviderAttemptState,
+	},
+	/// No positive result or positive non-submission evidence is currently available.
+	AwaitingPositiveEvidence {
+		/// Current nonterminal state.
+		state: ProviderAttemptState,
+	},
+	/// The exact attempt does not exist.
+	AttemptMissing,
+	/// A supplied positive receipt contradicted durable original-attempt authority.
+	EvidenceRejected,
+}
+
+/// Daemon-local readiness for ProviderAttempt restore projection and reconciliation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderAttemptReadiness {
+	/// Restore projection and the first positive-only reconciliation pass completed.
+	Ready,
+	/// Durable product authority was unavailable or inconsistent.
+	ProductStateUnavailable,
+}
+
+/// Closed lookup failure. Absence and provider errors grant no state transition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderEvidenceLookupError {
+	/// The positive provider evidence source is unavailable.
+	Unavailable,
+	/// The source returned a malformed or cross-linked positive receipt.
+	InvalidEvidence,
+}
+impl std::error::Error for ProviderEvidenceLookupError {}
+
+impl Display for ProviderEvidenceLookupError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(formatter, "{self:?}")
+	}
+}
+
+/// Closed service failure without provider keys, credentials, or database detail.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderAttemptServiceError {
+	/// Durable ProviderAttempt authority was unavailable or inconsistent.
+	ProductState,
+	/// A requested attempt or positive receipt contradicted durable authority.
+	AuthorityConflict,
+	/// The positive provider evidence source was unavailable or returned invalid evidence.
+	EvidenceUnavailable,
+}
+impl std::error::Error for ProviderAttemptServiceError {}
+
+impl Display for ProviderAttemptServiceError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(formatter, "{self:?}")
+	}
+}
+
+/// Closed post-process RuntimeSession authority consumed by ProviderAttempt preparation.
+pub(crate) enum ProviderAttemptRuntimeAuthority {
+	/// Exact durable two-transition binding and current ready epoch.
+	InitialSessionBinding {
+		binding: RuntimeSessionThreadBindingReadback,
+		process_execution_epoch_id: ProcessExecutionEpochId,
+	},
+	/// Exact Context-Pack successor binding and current ready epoch.
+	FallbackSessionBinding {
+		binding: RuntimeSessionThreadBindingReadback,
+		process_execution_epoch_id: ProcessExecutionEpochId,
+	},
+	/// One-time positive in-memory resume proof.
+	ExistingSessionResume(FreshRuntimeSessionResume),
 }
 
 fn existing_session_resume_matches(
@@ -829,6 +845,7 @@ mod tests {
 				codex_thread_id: "x".repeat(decodex_core::MAX_PROVIDER_THREAD_ID_BYTES + 1),
 			},
 		);
+
 		assert!(matches!(result, Err(super::ProviderAttemptServiceError::AuthorityConflict)));
 	}
 
@@ -839,12 +856,16 @@ mod tests {
 		let root = decodex_core::DecodexRoot::new(canonical).expect("typed Decodex root");
 		let paths = root.paths();
 		let store = SqliteStore::open(&paths).expect("initialize SQLite authority");
+
 		drop(store);
+
 		let connection = Connection::open(paths.product_database_file())
 			.expect("open isolated fixture database");
+
 		connection
 			.execute_batch(include_str!("../tests/fixtures/opaque_resume_authority.sql"))
 			.expect("seed exact post-restart authority");
+
 		drop(connection);
 
 		let reopened = SqliteStore::open(&paths).expect("reconstruct SQLite service authority");
@@ -924,7 +945,6 @@ mod tests {
 			)
 			.expect("opaque post-restart resume")
 		};
-
 		let first = control
 			.prepare(
 				&plan,
@@ -934,7 +954,9 @@ mod tests {
 			)
 			.await
 			.expect("prepare real post-restart ProviderAttempt");
+
 		assert!(matches!(first, PrepareProviderAttemptOutcome::Fresh(_)));
+
 		let replay = control
 			.prepare(
 				&plan,
@@ -944,12 +966,15 @@ mod tests {
 			)
 			.await
 			.expect("replay exact ProviderAttempt preparation");
+
 		assert!(matches!(
 			replay,
 			PrepareProviderAttemptOutcome::Replayed(ref mutation)
 				if mutation.state == ProviderAttemptState::Prepared && mutation.revision == 1
 		));
+
 		let attempts = control.diagnostics(None, None, 8).await.expect("read attempts");
+
 		assert_eq!(attempts.len(), 1);
 		assert_eq!(attempts[0].state, ProviderAttemptState::Prepared);
 	}

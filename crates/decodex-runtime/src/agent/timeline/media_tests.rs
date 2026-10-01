@@ -1,7 +1,11 @@
 use super::*;
+
 use decodex_codex::app_server_client::AppServerClient;
+
 use decodex_core::{AccountId, ProcessGenerationId};
+
 use std::sync::atomic::{AtomicUsize, Ordering};
+
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 fn key() -> SourceKey {
@@ -14,6 +18,7 @@ fn key() -> SourceKey {
 		work: "work".into(),
 	}
 }
+
 fn request() -> AgentMediaRequest {
 	AgentMediaRequest {
 		work_id: EntityId::new("work").unwrap(),
@@ -31,25 +36,38 @@ fn continuation_rejects_changed_bytes_binding_and_out_of_range_offsets() {
 	let bytes = vec![255; AGENT_MEDIA_CHUNK_BYTES + 17];
 	let mut request = request();
 	let first = chunk(&key(), &request, "image/png".into(), bytes.clone());
-	assert!(serde_json::to_vec(&first).unwrap().len() < 256 * 1024);
+
+	assert!(serde_json::to_vec(&first).unwrap().len() < 256 * 1_024);
+
 	let Result::Available { fingerprint, bytes: first_bytes, total_bytes, .. } = first else {
 		panic!("available")
 	};
+
 	assert_eq!(first_bytes.len(), AGENT_MEDIA_CHUNK_BYTES);
 	assert_eq!(total_bytes as usize, bytes.len());
+
 	request.offset = AGENT_MEDIA_CHUNK_BYTES as u32;
 	request.fingerprint = Some(fingerprint);
+
 	assert!(
 		matches!(chunk(&key(), &request, "image/png".into(), bytes.clone()), Result::Available { bytes, .. } if bytes == vec![255;17])
 	);
 	assert_eq!(chunk(&key(), &request, "image/jpeg".into(), bytes.clone()), Result::Unavailable);
+
 	let mut changed = bytes.clone();
+
 	changed[0] = 0;
+
 	assert_eq!(chunk(&key(), &request, "image/png".into(), changed), Result::Unavailable);
+
 	let mut other = key();
+
 	other.revision += 1;
+
 	assert_eq!(chunk(&other, &request, "image/png".into(), bytes.clone()), Result::Unavailable);
+
 	request.offset = total_bytes;
+
 	assert_eq!(chunk(&key(), &request, "image/png".into(), bytes), Result::Unavailable);
 }
 
@@ -64,10 +82,13 @@ fn exact_item_indices_and_supported_payloads_are_required() {
 		req.item_id.as_str(),
 	)
 	.unwrap();
+
 	assert!(matches!(locate(item, 1), Ok(Media::Uri("data:image/png;base64,AQID"))));
 	assert!(matches!(locate(item, 0), Err(Result::Unsupported)));
 	assert!(matches!(locate(item, 2), Err(Result::Unavailable)));
+
 	req.thread_id = EntityId::new("another").unwrap();
+
 	assert!(
 		super::super::promotions::exact_item(
 			&history,
@@ -85,6 +106,7 @@ fn exact_item_indices_and_supported_payloads_are_required() {
 		Err(Result::CapacityExceeded)
 	);
 	assert_eq!(sniff(b"<html>not an image</html>"), None);
+
 	for (item, index) in [
 		(
 			json!({"type":"dynamicToolCall","contentItems":[{"type":"inputAudio","audioUrl":"data:audio/wav;base64,AQID"}]}),
@@ -108,12 +130,32 @@ fn standalone_tool_media_uses_native_indices_without_exposing_encrypted_parts() 
 		{"type":"input_audio","audio_url":"data:audio/wav;base64,AQID"},
 		{"type":"encrypted_content","encrypted_content":"opaque"}
 	]});
+
 	assert!(matches!(locate(&item, 1), Ok(Media::Uri("data:image/png;base64,AQID"))));
 	assert!(matches!(locate(&item, 2), Ok(Media::Uri("data:audio/wav;base64,AQID"))));
+
 	for index in [0, 3] {
 		assert!(matches!(locate(&item, index), Err(Result::Unsupported)));
 	}
+
 	assert!(matches!(locate(&item, 4), Err(Result::Unavailable)));
+}
+
+#[test]
+fn executor_image_path_cannot_read_a_same_named_host_file() {
+	let directory = tempfile::tempdir().unwrap();
+	let path = directory.path().join("remote-image.png");
+
+	std::fs::write(&path, b"\x89PNG\r\n\x1a\nlocal-private-content").unwrap();
+
+	let item = json!({"id":"image","type":"imageView","path":path});
+
+	assert!(matches!(locate(&item, 0), Err(Result::Unsupported)));
+
+	let (descriptors, _) = super::super::attachments::project(&item);
+
+	assert_eq!(descriptors[0].source, decodex_protocol::AgentTimelineAttachmentSource::Unknown);
+	assert!(!serde_json::to_string(&descriptors).unwrap().contains(path.to_str().unwrap()));
 }
 
 async fn server(remote: tokio::io::DuplexStream, path: Option<String>) {
@@ -132,10 +174,13 @@ async fn server(remote: tokio::io::DuplexStream, path: Option<String>) {
 			json!({"data":[{"turnId":"turn","item":{"id":"item","type":"userMessage","content":[{"type":"text","text":"image"},content]}}],"nextCursor":null}),
 		),
 	];
+
 	for (method, result) in replies {
 		let request: Value =
 			serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 		assert_eq!(request["method"], method);
+
 		writer
 			.write_all(format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes())
 			.await
@@ -147,10 +192,12 @@ async fn server(remote: tokio::io::DuplexStream, path: Option<String>) {
 async fn native_reads_use_exact_item_and_discard_bytes_after_source_changes() {
 	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("photo.png");
+
 	std::fs::write(&path, b"\x89PNG\r\n\x1a\nfixture").unwrap();
+
 	for change in ["none", "revision", "history", "account", "process", "thread", "closed"] {
 		for local in ["inline", "absolute", "relative"] {
-			let (io, remote) = tokio::io::duplex(65536);
+			let (io, remote) = tokio::io::duplex(65_536);
 			let (reader, writer) = tokio::io::split(io);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let native_path = match local {
@@ -164,8 +211,10 @@ async fn native_reads_use_exact_item_and_discard_bytes_after_source_changes() {
 				|| {
 					let later = calls.fetch_add(1, Ordering::SeqCst) > 0;
 					let client = client.clone();
+
 					async move {
 						let mut key = key();
+
 						if later {
 							match change {
 								"revision" => key.revision += 1,
@@ -184,17 +233,21 @@ async fn native_reads_use_exact_item_and_discard_bytes_after_source_changes() {
 								_ => {},
 							}
 						}
+
 						Some(Source { key, client })
 					}
 				},
 				|source| {
 					assert_eq!(source, &key());
+
 					Some(directory.path().to_str().unwrap().into())
 				},
 				&request(),
 			)
 			.await;
+
 			server.await.unwrap();
+
 			if change == "none" {
 				assert!(
 					matches!(result,Result::Available { mime_type, bytes, .. } if mime_type == "image/png" && !bytes.is_empty())
@@ -209,8 +262,10 @@ async fn native_reads_use_exact_item_and_discard_bytes_after_source_changes() {
 #[tokio::test]
 async fn oversized_local_attachment_does_not_send_file_bytes_through_native_transport() {
 	let file = tempfile::NamedTempFile::new().unwrap();
+
 	file.as_file().set_len((MAX_AGENT_MEDIA_BYTES + 1) as u64).unwrap();
-	let (io, remote) = tokio::io::duplex(65536);
+
+	let (io, remote) = tokio::io::duplex(65_536);
 	let (reader, writer) = tokio::io::split(io);
 	let (client, _events) = AppServerClient::from_io(reader, writer);
 	let path = file.path().to_str().unwrap().to_owned();
@@ -218,6 +273,7 @@ async fn oversized_local_attachment_does_not_send_file_bytes_through_native_tran
 	let server = tokio::spawn(async move {
 		let (reader, mut writer) = tokio::io::split(remote);
 		let mut lines = BufReader::new(reader).lines();
+
 		for (method, result) in [
 			("thread/read", json!({"thread":{"id":"thread","historyMode":"paginated"}})),
 			("thread/turns/list", json!({"data":[{"id":"turn"}],"nextCursor":null})),
@@ -229,7 +285,9 @@ async fn oversized_local_attachment_does_not_send_file_bytes_through_native_tran
 		] {
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 			assert_eq!(request["method"], method);
+
 			writer
 				.write_all(format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes())
 				.await
@@ -242,20 +300,27 @@ async fn oversized_local_attachment_does_not_send_file_bytes_through_native_tran
 		&request(),
 	)
 	.await;
+
 	assert_eq!(result, Result::CapacityExceeded);
+
 	let peer = client.thread_read(json!({"threadId":"peer"})).await.unwrap();
+
 	assert_eq!(peer["thread"]["id"], "peer");
+
 	server.await.unwrap();
 }
 
 #[tokio::test]
 async fn local_reads_reject_relative_paths_and_non_files() {
 	assert_eq!(local_media("relative.png").await, Err(Result::Unavailable));
+
 	let directory = tempfile::tempdir().unwrap();
+
 	assert_eq!(local_media(directory.path().to_str().unwrap()).await, Err(Result::Unsupported));
 	#[cfg(unix)]
 	{
 		use std::ffi::CString;
+
 		let path = directory.path().join("pipe");
 		let native = CString::new(path.as_os_str().as_encoded_bytes()).unwrap();
 		// Fixture-only FIFO demonstrates that opening an attachment cannot block waiting for a
@@ -273,36 +338,31 @@ async fn local_reads_reject_relative_paths_and_non_files() {
 	}
 }
 
-#[test]
-fn executor_image_path_cannot_read_a_same_named_host_file() {
-	let directory = tempfile::tempdir().unwrap();
-	let path = directory.path().join("remote-image.png");
-	std::fs::write(&path, b"\x89PNG\r\n\x1a\nlocal-private-content").unwrap();
-	let item = json!({"id":"image","type":"imageView","path":path});
-	assert!(matches!(locate(&item, 0), Err(Result::Unsupported)));
-	let (descriptors, _) = super::super::attachments::project(&item);
-	assert_eq!(descriptors[0].source, decodex_protocol::AgentTimelineAttachmentSource::Unknown);
-	assert!(!serde_json::to_string(&descriptors).unwrap().contains(path.to_str().unwrap()));
-}
-
 #[tokio::test]
 async fn generated_image_uses_native_bytes_even_when_saved_path_exists() {
 	let directory = tempfile::tempdir().unwrap();
 	let path = directory.path().join("generated.png");
+
 	std::fs::write(&path, b"\x89PNG\r\n\x1a\nwrong-host-image").unwrap();
+
 	let expected = b"\x89PNG\r\n\x1a\nnative-image";
 	let mut item =
 		json!({"type":"imageGeneration","savedPath":path,"result":STANDARD.encode(expected)});
+
 	assert_eq!(
 		resolve(locate(&item, 0).unwrap(), None).await,
 		Ok(("image/png".into(), expected.to_vec()))
 	);
+
 	std::fs::remove_file(&path).unwrap();
+
 	assert_eq!(
 		resolve(locate(&item, 0).unwrap(), None).await,
 		Ok(("image/png".into(), expected.to_vec()))
 	);
+
 	item["result"] = json!("");
+
 	assert!(matches!(locate(&item, 0), Err(Result::Unsupported)));
 }
 
@@ -310,10 +370,13 @@ async fn generated_image_uses_native_bytes_even_when_saved_path_exists() {
 async fn relative_media_requires_an_absolute_admitted_process_directory() {
 	let directory = tempfile::tempdir().unwrap();
 	let expected = b"\x89PNG\r\n\x1a\nrelative-native-image";
+
 	std::fs::write(directory.path().join("photo.png"), expected).unwrap();
+
 	for base in [None, Some("relative-base")] {
 		assert_eq!(resolve(Media::Local("photo.png"), base).await, Err(Result::Unavailable));
 	}
+
 	assert_eq!(
 		resolve(Media::Local("photo.png"), directory.path().to_str()).await,
 		Ok(("image/png".into(), expected.to_vec()))

@@ -18,18 +18,23 @@ use zeroize as _;
 // Uses a disposable database, enrolling the current Codex login through AccountClient.
 // Does not route accounts or replace the installed Decodex service.
 
+#[path = "agent_service_smoke/evidence.rs"] mod evidence;
+#[path = "agent_service_smoke/reliability.rs"] mod reliability;
+
 use decodex_core::{DecodexRoot, ProcessExecutionAuthorization, ServerIdentity};
+
 use decodex_protocol::{
 	AccountClient, AccountCommandResponse, AgentActionDto, AgentClient, AgentCommandResponse,
 	AgentHistoryResult, AgentSandboxDto, AgentSnapshotResult, AgentStartDto, ClientProfile,
 	CommandPayload, ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory,
 	EntityId, HistoryText, IdempotencyKey,
 };
+
 use decodex_runtime::{ServerConfig, ServiceComposition};
+
 use std::{error::Error, fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, time::Duration};
 
-#[path = "agent_service_smoke/evidence.rs"] mod evidence;
-#[path = "agent_service_smoke/reliability.rs"] mod reliability;
+type SmokeResult<T> = Result<T, Box<dyn Error>>;
 
 #[derive(Clone, Copy, PartialEq)]
 enum SmokeScope {
@@ -39,7 +44,6 @@ enum SmokeScope {
 	LongOutput,
 	Hierarchy,
 }
-
 impl SmokeScope {
 	fn label(self) -> &'static str {
 		match self {
@@ -71,6 +75,23 @@ fn id() -> EntityId {
 		.expect("valid bounded qualification fixture")
 }
 
+fn idle(graph: &decodex_protocol::AgentSnapshotDto) -> bool {
+	graph
+		.work_items
+		.iter()
+		.all(|work| work.dispatch_state == decodex_protocol::AgentDispatchStateDto::Idle)
+}
+
+fn choice_receipts(entries: &[decodex_protocol::AgentHistoryEntryDto]) -> usize {
+	entries
+		.iter()
+		.filter(|entry| {
+			entry.kind == "automation"
+				&& entry.text.contains("Choose summary format A concise or B detailed")
+		})
+		.count()
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
 	let model = std::env::args().nth(1).ok_or("explicit MODEL required")?;
@@ -79,14 +100,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	// effective user's home. The disposable socket root is deliberately elsewhere.
 	let working_directory = std::env::current_dir()?.canonicalize()?;
 	let (_temporary, root) = disposable_profile()?;
+
 	println!("Bootstrapping disposable service (120-second deadline).");
+
 	let boot =
 		tokio::time::timeout(Duration::from_secs(120), ServiceComposition::bootstrap(root.clone()))
 			.await?;
+
 	println!("Disposable service bootstrap completed.");
+
 	let mut service =
 		tokio::time::timeout(Duration::from_secs(10), boot.bind(ServerConfig::default())).await??;
+
 	println!("Disposable service root: {}", root.as_path().display());
+
 	let run = async {
 		let (client, account) = enroll_service_account(&root).await?;
 		let outcome=client.execute(AgentActionDto::Start(AgentStartDto {
@@ -95,10 +122,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			model:ConversationModel::new(model).map_err(|_|"invalid model")?,effort:Some(ConversationReasoningEffort::Medium),
 			cwd:ConversationWorkingDirectory::new(working_directory.to_string_lossy()).map_err(|_|"invalid smoke directory")?,account_id:Some(account),sandbox:AgentSandboxDto::ReadOnly,
 		}),IdempotencyKey::new("smoke-start").expect("valid bounded qualification fixture")).await?;
+
 		if !matches!(outcome, AgentCommandResponse::Accepted { .. }) {
 			eprintln!("Agent public start outcome: {outcome:?}");
+
 			return Err::<(), Box<dyn Error>>("production Agent start was not accepted".into());
 		}
+
 		tokio::time::timeout(Duration::from_secs(90), async {
 			loop {
 				if let AgentHistoryResult::Available { entries, .. } = client
@@ -113,27 +143,35 @@ async fn main() -> Result<(), Box<dyn Error>> {
 					}) {
 						break;
 					}
+
 					if let Some(entry) = entries.iter().find(|entry| {
 						entry.kind == "system"
 							&& entry.text.contains("reconnection_needs_attention")
 					}) {
 						eprintln!("Agent public attention: {}", entry.text);
+
 						return Err("production Agent connection needs attention".into());
 					}
 				}
+
 				tokio::time::sleep(Duration::from_millis(500)).await;
 			}
+
 			Ok::<(), Box<dyn Error>>(())
 		})
 		.await??;
+
 		if !matches!(client.query().await?, AgentSnapshotResult::Available(_)) {
 			return Err("snapshot unavailable".into());
 		}
+
 		println!(
 			"Production Agent start, model response, history and snapshot passed through same-UID protocol."
 		);
+
 		verify_capabilities(&client).await?;
 		closed_loop_before_restart(&client, &root, scope).await?;
+
 		Ok(())
 	};
 	let result = match tokio::time::timeout(Duration::from_secs(900), run).await {
@@ -149,20 +187,30 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	} else {
 		Ok(None)
 	};
+
 	if result.is_ok() {
 		capture_before_restart().await;
 	}
+
 	let stopped = std::time::Instant::now();
+
 	tokio::time::timeout(Duration::from_secs(10), service.shutdown()).await??;
+
 	println!("Production service shutdown completed in {:?}.", stopped.elapsed());
+
 	result?;
+
 	if scope != SmokeScope::Full {
 		println!("{} passed through the production service.", scope.label());
+
 		return Ok(());
 	}
+
 	let original_thread = original_thread?;
 	let original_workers = original_workers?;
+
 	println!("Rebootstrapping disposable service (120-second deadline).");
+
 	let boot =
 		tokio::time::timeout(Duration::from_secs(120), ServiceComposition::bootstrap(root.clone()))
 			.await?;
@@ -170,31 +218,45 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		tokio::time::timeout(Duration::from_secs(10), boot.bind(ServerConfig::default())).await??;
 	let resumed=async {
 		if Some(agent_thread(&root).await?) != original_thread {return Err::<(),Box<dyn Error>>("Agent thread identity changed after restart".into());}
+
 		let client=AgentClient::new(ClientProfile::load(root.as_path(),None)?);
+
 		closed_loop_after_restart(&client,original_workers.as_ref().ok_or("missing original graph")?).await?;
+
 		let outcome=client.execute(AgentActionDto::Send {
 			root_id:EntityId::new("agent-service-smoke").expect("valid bounded qualification fixture"),
 			text:HistoryText::new("Continue this same read-only qualification. Reply SERVICE_RESTORED. Do not use tools or create workers.").expect("valid bounded qualification fixture"),
 		},IdempotencyKey::new("smoke-resume").expect("valid bounded qualification fixture")).await?;
+
 		if !matches!(outcome,AgentCommandResponse::Accepted{..}) {return Err("resumed input was not accepted".into());}
+
 		tokio::time::timeout(Duration::from_secs(90),async {
 			loop {
 				if let AgentHistoryResult::Available{entries,..}=client.history(EntityId::new("agent-service-smoke").expect("valid bounded qualification fixture")).await?
 					&& entries.iter().any(|entry|entry.kind=="assistant"&&entry.text.contains("SERVICE_RESTORED")) {break;
 				}
+
 				tokio::time::sleep(Duration::from_millis(500)).await;
 			}
+
 			Ok::<(),Box<dyn Error>>(())
 		}).await??;
+
 		if Some(agent_thread(&root).await?) != original_thread {return Err("resumed response used a different thread".into());}
+
 		println!("Production service restart preserved Agent thread and completed a later user turn.");
+
 		reliability::long_result(&client, &root).await?;
+
 		Ok(())
 	}.await;
+
 	if resumed.is_ok() {
 		capture_after_restart(&root).await;
 	}
+
 	tokio::time::timeout(Duration::from_secs(10), service.shutdown()).await??;
+
 	resumed
 }
 
@@ -203,6 +265,7 @@ async fn agent_thread(root: &DecodexRoot) -> Result<String, Box<dyn Error>> {
 	let AgentSnapshotResult::Available(snapshot) = client.query().await? else {
 		return Err("snapshot unavailable".into());
 	};
+
 	snapshot
 		.work_items
 		.into_iter()
@@ -218,16 +281,16 @@ async fn capture_before_restart() {
 		.filter(|seconds| *seconds <= 60)
 	{
 		println!("Disposable service available for read-only capture for {seconds} seconds.");
+
 		tokio::time::sleep(Duration::from_secs(seconds)).await;
 	}
 }
-
-type SmokeResult<T> = Result<T, Box<dyn Error>>;
 
 async fn snapshot(client: &AgentClient) -> SmokeResult<decodex_protocol::AgentSnapshotDto> {
 	match client.query().await? {
 		AgentSnapshotResult::Available(snapshot) => {
 			reliability::record_threads(&snapshot);
+
 			Ok(snapshot)
 		},
 		_ => Err("Agent snapshot unavailable".into()),
@@ -265,6 +328,7 @@ async fn accept(client: &AgentClient, action: AgentActionDto, key: &str) -> Smok
 		AgentCommandResponse::Accepted { .. } => Ok(()),
 		outcome => {
 			eprintln!("Public command outcome: {outcome:?}");
+
 			Err("command acceptance not confirmed; do not replay".into())
 		},
 	}
@@ -287,27 +351,24 @@ async fn wait_graph_for(
 	let result = tokio::time::timeout(deadline, async {
 		loop {
 			let graph = snapshot(client).await?;
+
 			if predicate(&graph) {
 				return Ok::<_, Box<dyn Error>>(graph);
 			}
+
 			tokio::time::sleep(Duration::from_millis(500)).await;
 		}
 	})
 	.await;
+
 	match result {
 		Ok(value) => value,
 		Err(_) => {
 			eprintln!("Timed out phase: {label}; public graph: {:?}", snapshot(client).await?);
+
 			Err("closed-loop phase timed out; no automatic retry".into())
 		},
 	}
-}
-
-fn idle(graph: &decodex_protocol::AgentSnapshotDto) -> bool {
-	graph
-		.work_items
-		.iter()
-		.all(|work| work.dispatch_state == decodex_protocol::AgentDispatchStateDto::Idle)
 }
 
 async fn closed_loop_before_restart(
@@ -321,7 +382,9 @@ async fn closed_loop_before_restart(
 	if scope == SmokeScope::Hierarchy {
 		return qualify_hierarchy(client, root).await;
 	}
+
 	use decodex_protocol::AgentWorkStatusDto as Status;
+
 	let initial = wait_graph(client, "two workers complete and wake Agent", |graph| {
 		graph.work_items.len() == 3
 			&& idle(graph)
@@ -335,9 +398,11 @@ async fn closed_loop_before_restart(
 	.await?;
 	let threads: std::collections::HashSet<_> =
 		initial.work_items.iter().filter_map(|work| work.codex_thread_id.as_ref()).collect();
+
 	if threads.len() != 3 {
 		return Err("workers did not use independent threads".into());
 	}
+
 	for (work, marker) in [("service-a", "DRAFT_A"), ("service-b", "RESULT_B")] {
 		if !history(client, work)
 			.await?
@@ -345,21 +410,29 @@ async fn closed_loop_before_restart(
 			.any(|entry| entry.kind == "assistant" && entry.text.contains(marker))
 		{
 			eprintln!("Missing marker {marker} in work {work}");
+
 			return Err("worker result missing".into());
 		}
 	}
+
 	println!(
 		"Service graph: two independent workers completed; later Agent turns disposed both results."
 	);
+
 	if scope == SmokeScope::LongOutput {
 		return reliability::long_result(client, root).await;
 	}
+
 	reliability::timer_reconnect(client, root).await?;
+
 	if scope == SmokeScope::Reconnect {
 		return reliability::no_stale_host_errors(client).await;
 	}
+
 	reliability::carryover(client, root).await?;
+
 	send(client,"repair-original-worker","Use agent_continue_worker exactly once on existing service-a; request exactly REPAIRED_A without tools. Do not create work. Resolve the new worker completion event when it arrives and summarize REPAIR_ACCEPTED. Only Agent coordination tools.").await?;
+
 	let repaired = wait_graph(client, "repair original worker", |graph| {
 		idle(graph)
 			&& graph
@@ -372,6 +445,7 @@ async fn closed_loop_before_restart(
 			})
 	})
 	.await?;
+
 	for work in &initial.work_items {
 		if repaired
 			.work_items
@@ -383,20 +457,26 @@ async fn closed_loop_before_restart(
 			return Err("repair changed a thread identity".into());
 		}
 	}
+
 	let results = history(client, "service-a").await?;
 	let assistants: Vec<_> = results.iter().filter(|entry| entry.kind == "assistant").collect();
+
 	if assistants.len() != 2 || !assistants.iter().any(|entry| entry.text.contains("REPAIRED_A")) {
 		return Err("repair did not complete exactly once".into());
 	}
+
 	println!(
 		"Service repair: original service-a thread produced exactly two assistant completions."
 	);
+
 	send(client,"decision-policy","The next automation result for service-a will present a choice of two summary formats: A concise or B detailed. Record user_decision on that exact automation event and ask the user to choose. Do not choose automatically. The next service-b automation result carries nextCheckAtMicros: record wait on that exact event and schedule that exact check; when followup_due arrives, resolve it and summarize FOLLOWUP_DONE. Never dispatch another worker for these events.").await?;
 	wait_graph(client, "decision policy accepted", |graph| {
 		idle(graph) && !graph.pending_events.iter().any(|event| event.event_kind == "user_message")
 	})
 	.await?;
+
 	let decision=AgentActionDto::AutomationResult {work_id:EntityId::new("service-a").expect("valid bounded qualification fixture"),source_event_id:decodex_protocol::WireText::new("service-choice-1").expect("valid bounded qualification fixture"),payload:HistoryText::new(r#"{"observation":"Choose summary format A concise or B detailed; user selection is required."}"#).expect("valid bounded qualification fixture")};
+
 	accept(client, decision.clone(), "automation-choice-first").await?;
 	accept(client, decision.clone(), "automation-choice-duplicate").await?;
 	wait_graph(client, "user decision surfaced", |graph| {
@@ -407,16 +487,22 @@ async fn closed_loop_before_restart(
 				.any(|work| work.id == "service-a" && work.status == Status::UserDecision)
 	})
 	.await?;
+
 	let events = history(client, "service-a").await?;
+
 	if choice_receipts(&events) != 1 {
 		return Err("automation source was not deduplicated".into());
 	}
+
 	accept(client, decision, "automation-choice-after-disposition").await?;
+
 	if choice_receipts(&history(client, "service-a").await?) != 1 {
 		return Err("disposed automation duplicate changed receipt count".into());
 	}
+
 	let due = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_micros()
 		+ 150_000_000;
+
 	accept(client,AgentActionDto::AutomationResult {work_id:EntityId::new("service-b").expect("valid bounded qualification fixture"),source_event_id:decodex_protocol::WireText::new("service-followup-1").expect("valid bounded qualification fixture"),payload:HistoryText::new(serde_json::json!({"observation":"Check readiness after restart without worker dispatch","nextCheckAtMicros":due}).to_string()).expect("valid bounded qualification fixture")},"automation-followup").await?;
 	wait_graph(client, "durable pending followup", |graph| {
 		idle(graph)
@@ -426,20 +512,12 @@ async fn closed_loop_before_restart(
 				.any(|work| work.id == "service-b" && work.next_check_at_micros.is_some())
 	})
 	.await?;
+
 	println!(
 		"Service automation: stable-source deduplication, user decision and scheduled obligation persisted before restart."
 	);
-	Ok(())
-}
 
-fn choice_receipts(entries: &[decodex_protocol::AgentHistoryEntryDto]) -> usize {
-	entries
-		.iter()
-		.filter(|entry| {
-			entry.kind == "automation"
-				&& entry.text.contains("Choose summary format A concise or B detailed")
-		})
-		.count()
+	Ok(())
 }
 
 #[cfg(test)]
@@ -468,8 +546,40 @@ mod tests {
 			),
 			entry(3, "automation", "unrelated observation"),
 		];
+
 		assert_eq!(super::choice_receipts(&entries), 1);
 	}
+}
+
+fn disposable_profile() -> SmokeResult<(tempfile::TempDir, DecodexRoot)> {
+	// Short canonical path is required for the platform Unix socket limit.
+	let temporary = tempfile::Builder::new().prefix("dc-").tempdir_in("/private/tmp")?;
+	let root = DecodexRoot::new(temporary.path().join("p"))?;
+	let paths = root.paths();
+
+	paths.ensure_layout()?;
+
+	let mut file =
+		OpenOptions::new().write(true).create_new(true).mode(0o600).open(paths.config_file())?;
+	// SAFETY: geteuid reads the current user's numeric identity.
+	write!(
+		file,
+		"version = 1\nactive_profile = \"local\"\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {}\n[cache]\nmax_entries = 128\nmax_bytes = 1048576\nmax_entry_bytes = 65536\n",
+		unsafe { libc::geteuid() }
+	)?;
+
+	file.sync_all()?;
+
+	ProcessExecutionAuthorization::load_or_create(&paths)?;
+
+	Ok((temporary, root))
+}
+
+fn hierarchy_prompt(directory: &std::path::Path) -> String {
+	format!(
+		"Read-only integration qualification. Use only Agent coordination tools; never shell, file, network or native subagent tools. Create exactly one workspace with agent_create_workspace: id project, name Demo project, directory {}. Its instructions: use only Agent coordination tools, create exactly one subordinate Agent with id team; tell team to create exactly one worker id leaf whose sole task is to reply LEAF_RESULT with no tools. Each manager must assess its direct child's completion events, resolve each exact delivered event, and emit its own final result only after its child result is verified. Team final marker TEAM_RESULT, project final marker PROJECT_RESULT. Managers may finish initial turns while waiting, then act on later completion inbox events. You must consume project completion events; resolve initial waiting events without treating them as final success, and only emit HIERARCHY_DONE when PROJECT_RESULT arrives. Do not create other work. Finish your initial turn with SERVICE_READY.",
+		directory.display()
+	)
 }
 
 async fn closed_loop_after_restart(
@@ -477,7 +587,9 @@ async fn closed_loop_after_restart(
 	original: &decodex_protocol::AgentSnapshotDto,
 ) -> SmokeResult<()> {
 	use decodex_protocol::AgentWorkStatusDto as Status;
+
 	send(client,"answer-decision","I choose option A: concise summary. Call agent_resolve_decision with id service-a, userEventId the exact currently delivered user_message event ID for this reply, and a summary of the user's chosen concise format. Do not dispatch workers. Report DECISION_RESOLVED. Continue honoring service-b scheduled check, resolving its due event without worker dispatch.").await?;
+
 	let graph =
 		wait_graph(client, "decision and due followup after restart", |graph| {
 			idle(graph)
@@ -486,9 +598,11 @@ async fn closed_loop_after_restart(
 				)
 		})
 		.await?;
+
 	if graph.work_items.len() != original.work_items.len() {
 		return Err("restart created extra work".into());
 	}
+
 	for work in &original.work_items {
 		if graph
 			.work_items
@@ -507,6 +621,7 @@ async fn closed_loop_after_restart(
 			return Err("restart duplicated worker dispatch".into());
 		}
 	}
+
 	if !history(client, "service-b").await?.iter().any(|entry| entry.text.contains("followup_due"))
 	{
 		return Err("due check evidence absent".into());
@@ -518,9 +633,11 @@ async fn closed_loop_after_restart(
 	{
 		return Err("explicit decision-resolution evidence absent".into());
 	}
+
 	println!(
 		"Service restart: pending obligation completed, explicit user choice resolved, all original threads preserved, no duplicate worker dispatch."
 	);
+
 	Ok(())
 }
 
@@ -538,9 +655,11 @@ async fn enroll_service_account(root: &DecodexRoot) -> SmokeResult<(AgentClient,
 			IdempotencyKey::new("smoke-enroll").expect("valid bounded qualification fixture"),
 		)
 		.await?;
+
 	if !matches!(enrolled, AccountCommandResponse::Applied { .. }) {
 		return Err("disposable account enrollment was not applied".into());
 	}
+
 	let accounts = AccountClient::new(profile.clone());
 	let _ = accounts.request_observation_refresh(0).await?;
 	let observed = tokio::time::timeout(Duration::from_secs(60), async {
@@ -560,11 +679,14 @@ async fn enroll_service_account(root: &DecodexRoot) -> SmokeResult<(AgentClient,
 				) {
 				break;
 			}
+
 			tokio::time::sleep(Duration::from_secs(1)).await;
 		}
+
 		Ok::<(), Box<dyn Error>>(())
 	})
 	.await;
+
 	if let decodex_protocol::AccountInspectResult::Available(row) =
 		accounts.inspect(account.clone()).await?
 	{
@@ -573,6 +695,7 @@ async fn enroll_service_account(root: &DecodexRoot) -> SmokeResult<(AgentClient,
 			row.lifecycle_readiness, row.five_hour_quota, row.seven_day_quota
 		);
 	}
+
 	if observed.is_err() {
 		// These queries read daemon-owned cached observations. Print only closed
 		// error classes and quota facts, never profile identity or provider bytes.
@@ -608,27 +731,10 @@ async fn enroll_service_account(root: &DecodexRoot) -> SmokeResult<(AgentClient,
 			},
 		}
 	}
-	observed.map_err(|_| "account quota observations remain unavailable after 60 seconds")??;
-	Ok((AgentClient::new(profile), account))
-}
 
-fn disposable_profile() -> SmokeResult<(tempfile::TempDir, DecodexRoot)> {
-	// Short canonical path is required for the platform Unix socket limit.
-	let temporary = tempfile::Builder::new().prefix("dc-").tempdir_in("/private/tmp")?;
-	let root = DecodexRoot::new(temporary.path().join("p"))?;
-	let paths = root.paths();
-	paths.ensure_layout()?;
-	let mut file =
-		OpenOptions::new().write(true).create_new(true).mode(0o600).open(paths.config_file())?;
-	// SAFETY: geteuid reads the current user's numeric identity.
-	write!(
-		file,
-		"version = 1\nactive_profile = \"local\"\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {}\n[cache]\nmax_entries = 128\nmax_bytes = 1048576\nmax_entry_bytes = 65536\n",
-		unsafe { libc::geteuid() }
-	)?;
-	file.sync_all()?;
-	ProcessExecutionAuthorization::load_or_create(&paths)?;
-	Ok((temporary, root))
+	observed.map_err(|_| "account quota observations remain unavailable after 60 seconds")??;
+
+	Ok((AgentClient::new(profile), account))
 }
 
 async fn capture_after_restart(root: &DecodexRoot) {
@@ -641,15 +747,9 @@ async fn capture_after_restart(root: &DecodexRoot) {
 			"ALL SCRIPTED ASSERTIONS PASSED. Final service root {} available for explicit UI qualification for {seconds} seconds.",
 			root.as_path().display()
 		);
+
 		tokio::time::sleep(Duration::from_secs(seconds)).await;
 	}
-}
-
-fn hierarchy_prompt(directory: &std::path::Path) -> String {
-	format!(
-		"Read-only integration qualification. Use only Agent coordination tools; never shell, file, network or native subagent tools. Create exactly one workspace with agent_create_workspace: id project, name Demo project, directory {}. Its instructions: use only Agent coordination tools, create exactly one subordinate Agent with id team; tell team to create exactly one worker id leaf whose sole task is to reply LEAF_RESULT with no tools. Each manager must assess its direct child's completion events, resolve each exact delivered event, and emit its own final result only after its child result is verified. Team final marker TEAM_RESULT, project final marker PROJECT_RESULT. Managers may finish initial turns while waiting, then act on later completion inbox events. You must consume project completion events; resolve initial waiting events without treating them as final success, and only emit HIERARCHY_DONE when PROJECT_RESULT arrives. Do not create other work. Finish your initial turn with SERVICE_READY.",
-		directory.display()
-	)
 }
 
 async fn qualify_hierarchy(client: &AgentClient, root: &DecodexRoot) -> SmokeResult<()> {
@@ -668,6 +768,7 @@ async fn qualify_hierarchy(client: &AgentClient, root: &DecodexRoot) -> SmokeRes
 		},
 	)
 	.await?;
+
 	for (id, parent) in [("project", "agent-service-smoke"), ("team", "project"), ("leaf", "team")]
 	{
 		if !graph
@@ -678,12 +779,17 @@ async fn qualify_hierarchy(client: &AgentClient, root: &DecodexRoot) -> SmokeRes
 			return Err("manager lineage differs".into());
 		}
 	}
+
 	if graph.workspaces.len() != 1 || graph.workspaces[0].agent_id != "project" {
 		return Err("workspace projection missing".into());
 	}
+
 	println!("Nested workspace -> manager -> worker results returned through their owners.");
+
 	send(client,"stream-probe","Without tools, write 40 numbered lines. Each line must contain the sentence 'Live conversation output is visible while this reply is still being written.' End with STREAM_DONE.").await?;
+
 	let mut saw_partial = false;
+
 	tokio::time::timeout(Duration::from_secs(180), async {
 		loop {
 			if let AgentHistoryResult::Available { entries, live, .. } = client
@@ -691,6 +797,7 @@ async fn qualify_hierarchy(client: &AgentClient, root: &DecodexRoot) -> SmokeRes
 				.await?
 			{
 				saw_partial |= live.iter().any(|message| !message.text.is_empty());
+
 				if entries
 					.iter()
 					.any(|entry| entry.kind == "assistant" && entry.text.contains("STREAM_DONE"))
@@ -698,17 +805,24 @@ async fn qualify_hierarchy(client: &AgentClient, root: &DecodexRoot) -> SmokeRes
 					break;
 				}
 			}
+
 			tokio::time::sleep(Duration::from_millis(100)).await;
 		}
+
 		Ok::<(), Box<dyn Error>>(())
 	})
 	.await??;
+
 	if !saw_partial {
 		return Err("no pre-completion streamed output observed".into());
 	}
+
 	println!("Partial assistant output observed before saved terminal reply.");
+
 	wait_graph(client, "stream turn idle", idle).await?;
+
 	reliability::timer_reconnect(client, root).await?;
+
 	reliability::no_stale_host_errors(client).await
 }
 
@@ -719,11 +833,13 @@ async fn verify_capabilities(client: &AgentClient) -> SmokeResult<()> {
 				"NATIVE_CAPABILITIES models={} memory_configured={memory_enabled:?}",
 				models.len()
 			);
+
 			if models.is_empty() {
 				return Err("native model catalog is empty".into());
 			}
 		},
 		_ => return Err("native capabilities are unavailable".into()),
 	}
+
 	Ok(())
 }

@@ -17,6 +17,7 @@ impl AgentHost {
 				self.start_recap(key, work_id.as_str(), thread_id.as_str()).await,
 			decodex_protocol::AgentActionDto::CancelRecap { work_id, request_id } => {
 				self.recaps.cancel_request(work_id.as_str(), request_id.as_str());
+
 				Ok(work_id.as_str().into())
 			},
 			_ => Err(AgentHostError::Rejected("Unsupported recap command")),
@@ -25,6 +26,7 @@ impl AgentHost {
 
 	async fn recap_source(&self, work: &str, thread: &str) -> Option<Source> {
 		let source = self.timeline_source(work, thread).await?;
+
 		self.store
 			.agent_thread_is_owned(
 				work.into(),
@@ -48,6 +50,7 @@ impl AgentHost {
 			None => None,
 		};
 		let mut result = self.recaps.status(work.clone(), source.as_ref());
+
 		if result.phase != decodex_protocol::TaskRecapPhase::Idle {
 			let revision = match &source {
 				Some(source) => self
@@ -57,11 +60,13 @@ impl AgentHost {
 					.ok(),
 				None => None,
 			};
+
 			if revision.as_ref().is_none_or(|v| !self.recaps.voice_is_current(work.as_str(), v)) {
 				result.phase = decodex_protocol::TaskRecapPhase::Cancelled;
 				result.recap = None;
 			}
 		}
+
 		result
 	}
 
@@ -78,16 +83,20 @@ impl AgentHost {
 			.read_agent_voice_history(work.into(), thread.into())
 			.await
 			.map_err(|_| "Voice history is unavailable")?;
+
 		if voice.revision.open_calls > 0 {
 			return Err("Finish the voice conversation before generating a recap".into());
 		}
+
 		let copy = Source { key: source.key.clone(), client: source.client.clone() };
 		let cancelled = self.recaps.start(copy, key, voice.revision.clone())?;
 		let host = self.clone();
 		let key = key.to_owned();
+
 		tokio::spawn(async move {
 			host.run_recap(key, source, cancelled, voice).await;
 		});
+
 		Ok(work.into())
 	}
 
@@ -106,6 +115,7 @@ impl AgentHost {
 		{
 			return false;
 		}
+
 		self.recap_source(&source.key.work, &source.key.thread)
 			.await
 			.is_some_and(|current| crate::agent_recap::same_owner(source, &current))
@@ -121,41 +131,52 @@ impl AgentHost {
 		let mut temporary_id = None;
 		let result = async {
 			let prepared = crate::agent_recap::prepare(&source, Some(&voice)).await?;
+
 			if *cancelled.borrow()
 				|| !prepared.guard.is_live()
 				|| !self.recap_owner_is_current(&source, &voice.revision).await
 			{
 				return None;
 			}
+
 			let temporary =
 				source.client.start_temporary_structured(prepared.options).await.ok()?;
+
 			temporary_id = Some(temporary.id().to_owned());
+
 			let latest = source.client.thread_latest_turn_id(&source.key.thread).await;
+
 			if *cancelled.borrow()
 				|| !prepared.guard.is_live()
 				|| !self.recap_owner_is_current(&source, &voice.revision).await
 				|| latest.ok() != Some(prepared.latest_turn)
 			{
 				let _ = temporary.cancel().await;
+
 				return None;
 			}
+
 			let Some(events) = self.recaps.register(temporary.id()) else {
 				let _ = temporary.cancel().await;
+
 				return None;
 			};
 			let output = temporary
 				.run(prepared.prompt, crate::agent_recap::schema(), None, events, cancelled.clone())
 				.await
 				.ok()?;
+
 			if *cancelled.borrow()
 				|| !prepared.guard.is_live()
 				|| !self.recap_owner_is_current(&source, &voice.revision).await
 			{
 				return None;
 			}
+
 			crate::agent_recap::parse(&output)
 		}
 		.await;
+
 		self.recaps.finish(&source.key.work, &key, temporary_id.as_deref(), result);
 	}
 }

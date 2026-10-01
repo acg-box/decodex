@@ -3,9 +3,11 @@ use serde_json::Value;
 
 pub(super) fn parts(item: &Value) -> Vec<String> {
 	let mut parts = Vec::new();
+
 	for field in ["server", "namespace", "tool"] {
 		append_text(&mut parts, &item[field]);
 	}
+
 	if let Some(context) = item.get("appContext").filter(|value| value.is_object()) {
 		for (field, label) in [
 			("appName", "App"),
@@ -25,21 +27,27 @@ pub(super) fn parts(item: &Value) -> Vec<String> {
 		let text = value.as_str().map(str::to_owned).unwrap_or_else(|| {
 			serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
 		});
+
 		parts.push(format!("Input\n{text}"));
 	}
+
 	let content = item.pointer("/result/content").or_else(|| item.get("contentItems"));
+
 	for block in content.and_then(Value::as_array).into_iter().flatten() {
 		content_parts(block, &mut parts);
 	}
+
 	if let Some(structured) = item.pointer("/result/structuredContent").filter(|v| !v.is_null()) {
 		parts.push(format!(
 			"Structured result:\n{}",
 			serde_json::to_string_pretty(structured).unwrap_or_else(|_| structured.to_string())
 		));
 	}
+
 	if item["status"] == "failed" || item["success"] == false {
 		parts.push("Tool reported failure".into());
 	}
+
 	if let Some(error) = item.get("error").filter(|v| !v.is_null()) {
 		if let Some(message) = error["message"].as_str() {
 			parts.push(message.into());
@@ -47,6 +55,7 @@ pub(super) fn parts(item: &Value) -> Vec<String> {
 			parts.push(format!("Tool error: {error}"));
 		}
 	}
+
 	parts
 }
 
@@ -62,21 +71,25 @@ fn content_parts(block: &Value, parts: &mut Vec<String>) {
 			append_text(parts, &block["text"]),
 		Some("image" | "inputImage" | "audio" | "inputAudio") => {
 			let image = matches!(block["type"].as_str(), Some("image" | "inputImage"));
+
 			parts.push(if image { "Returned image" } else { "Returned audio" }.into());
 			// Code-mode blocks can include useful text alongside media.
 			append_text(parts, &block["text"]);
 		},
 		Some("resource") => {
 			parts.push("Embedded resource".into());
+
 			append_text(parts, &block["resource"]["uri"]);
 			append_text(parts, &block["resource"]["mimeType"]);
 			append_text(parts, &block["resource"]["text"]);
+
 			if block["resource"].get("blob").is_some() {
 				parts.push("Binary resource content retained in native history".into());
 			}
 		},
 		Some("resource_link") => {
 			parts.push("Resource link".into());
+
 			for field in ["uri", "name", "title", "description", "mimeType"] {
 				append_text(parts, &block[field]);
 			}

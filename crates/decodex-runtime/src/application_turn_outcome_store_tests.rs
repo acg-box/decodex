@@ -17,15 +17,19 @@ fn request() -> ConversationTurnOutcomeRequest {
 
 fn seed(root: &DecodexRoot, request: &ConversationTurnOutcomeRequest) {
 	drop(SqliteStore::open(&root.paths()).unwrap());
+
 	let connection = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+
 	connection
 		.execute_batch(include_str!("../tests/fixtures/opaque_resume_authority.sql"))
 		.unwrap();
+
 	let id = ordinary_provider_attempt_id(
 		request.idempotency_key.as_str(),
 		&TurnId::new(request.turn_id.as_str()).unwrap(),
 	)
 	.unwrap();
+
 	connection.execute("INSERT INTO provider_attempts (
         attempt_id, conversation_id, turn_id, continuation_plan_id, routing_decision_id,
         runtime_session_id, runtime_session_revision, account_id, process_generation_id,
@@ -55,7 +59,9 @@ async fn stored_turn_outcomes_require_exact_consumer_and_real_terminal_evidence(
 		let temp = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(temp.path().canonicalize().unwrap()).unwrap();
 		let request = request();
+
 		seed(&root, &request);
+
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
 		let observed = |outcome| ResultDto::Observed {
@@ -63,14 +69,19 @@ async fn stored_turn_outcomes_require_exact_consumer_and_real_terminal_evidence(
 			turn_id: request.turn_id.clone(),
 			outcome,
 		};
+
 		assert_eq!(
 			query_turn_outcome(&owner, &request).await,
 			observed(StateDto::Unknown),
 			"local failed turn is not provider failure"
 		);
+
 		let mut foreign = request.clone();
+
 		foreign.conversation_id = EntityId::new("44000000-0000-4000-8000-000000000099").unwrap();
+
 		assert_eq!(query_turn_outcome(&owner, &foreign).await, ResultDto::Conflict);
+
 		let attempt = ordinary_provider_attempt_id(
 			request.idempotency_key.as_str(),
 			&TurnId::new(request.turn_id.as_str()).unwrap(),
@@ -89,21 +100,28 @@ async fn stored_turn_outcomes_require_exact_consumer_and_real_terminal_evidence(
 			"a".repeat(64),
 		)
 		.unwrap();
+
 		assert!(matches!(
 			store.record_provider_attempt_positive_evidence(1, &evidence).await.unwrap(),
 			decodex_database::ProviderAttemptMutationOutcome::Applied(_)
 		));
+
 		drop(owner);
 		drop(store);
+
 		let owner = ProductStore::Available(SqliteStore::open(&root.paths()).unwrap());
+
 		assert_eq!(query_turn_outcome(&owner, &request).await, observed(expected));
+
 		let connection = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+
 		connection
 			.execute(
 				"DELETE FROM provider_attempt_positive_evidence WHERE evidence_id=?1",
 				[evidence.evidence_id.as_str()],
 			)
 			.unwrap();
+
 		assert_eq!(
 			query_turn_outcome(&owner, &request).await,
 			ResultDto::Unavailable,

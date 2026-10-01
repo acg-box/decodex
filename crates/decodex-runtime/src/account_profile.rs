@@ -6,7 +6,9 @@ use std::{
 };
 
 use decodex_codex::AccountApiProfile;
+
 use decodex_core::{AccountId, ProviderIdentity};
+
 use decodex_database::{
 	AccountProfileDailyUsage, AccountProfileObservation, AccountProfileObservationOutcome,
 	AccountProfileSnapshot, SqliteStore,
@@ -19,6 +21,22 @@ pub(crate) enum AccountProfileRuntimeResult {
 	Current(AccountProfileView),
 	Cached { profile: AccountProfileView, refresh_error: AccountProfileRuntimeError },
 	Unavailable { claims: AccountProfileClaimsView, error: AccountProfileRuntimeError },
+}
+
+/// Closed profile failure that cannot carry provider bodies, tokens, or raw errors.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AccountProfileRuntimeError {
+	AccountUnavailable,
+	ProductStateUnavailable,
+	CredentialUnavailable,
+	CredentialBusy,
+	RefreshRejected,
+	RefreshAmbiguous,
+	AccessRejectedAfterRefresh,
+	Unauthorized,
+	ProviderUnavailable,
+	ProtocolUnavailable,
+	AccountChanged,
 }
 
 /// Daemon-owned refresh state for one exact account revision.
@@ -40,22 +58,6 @@ pub(crate) struct AccountProfileView {
 pub(crate) struct AccountProfileClaimsView {
 	pub(crate) email: Option<String>,
 	pub(crate) plan_type: Option<String>,
-}
-
-/// Closed profile failure that cannot carry provider bodies, tokens, or raw errors.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AccountProfileRuntimeError {
-	AccountUnavailable,
-	ProductStateUnavailable,
-	CredentialUnavailable,
-	CredentialBusy,
-	RefreshRejected,
-	RefreshAmbiguous,
-	AccessRejectedAfterRefresh,
-	Unauthorized,
-	ProviderUnavailable,
-	ProtocolUnavailable,
-	AccountChanged,
 }
 
 /// Read and persist the profile projection produced by the shared backend API adapter.
@@ -114,6 +116,7 @@ impl AccountProfileRuntime {
 				})
 				.collect(),
 		};
+
 		match self.store.observe_account_profile(&observation).await {
 			Ok(AccountProfileObservationOutcome::Observed)
 			| Ok(AccountProfileObservationOutcome::StaleObservation) =>
@@ -231,6 +234,7 @@ impl AccountProfileRuntime {
 					.await;
 			},
 		};
+
 		if snapshot.account_id != *account_id || snapshot.account_revision != account.revision {
 			return self
 				.unavailable(account_id, include_email, AccountProfileRuntimeError::AccountChanged)
@@ -238,6 +242,7 @@ impl AccountProfileRuntime {
 		}
 
 		let profile = self.profile_view(snapshot, include_email).await;
+
 		match refresh_error {
 			Some(refresh_error) => AccountProfileRuntimeResult::Cached { profile, refresh_error },
 			None => AccountProfileRuntimeResult::Current(profile),
@@ -258,6 +263,7 @@ impl AccountProfileRuntime {
 			)
 			.await
 			.unwrap_or_else(ProfileClaims::redacted);
+
 		claims.attach(snapshot)
 	}
 
@@ -271,6 +277,7 @@ impl AccountProfileRuntime {
 			.current_claims(account_id, include_email, None, None)
 			.await
 			.unwrap_or_else(ProfileClaims::redacted);
+
 		AccountProfileRuntimeResult::Unavailable { claims: claims.into_view(), error }
 	}
 
@@ -283,21 +290,28 @@ impl AccountProfileRuntime {
 	) -> Option<ProfileClaims> {
 		let account =
 			self.store.read_account_registry(Some(account_id), 1).await.ok()?.into_iter().next()?;
+
 		if account.account_id != *account_id || account.tombstoned {
 			return None;
 		}
+
 		let revision = account.revision;
 		let binding = account.credential?;
+
 		if !claims_source_matches(expected_revision, expected_provider, revision, &binding.provider)
 		{
 			return None;
 		}
+
 		let stored = self.credentials.read_exact(account_id, &binding).ok()?;
+
 		if stored.binding() != &binding {
 			return None;
 		}
+
 		let confirmed =
 			self.store.read_account_registry(Some(account_id), 1).await.ok()?.into_iter().next()?;
+
 		if confirmed.account_id != *account_id
 			|| confirmed.tombstoned
 			|| confirmed.revision != revision
@@ -305,7 +319,41 @@ impl AccountProfileRuntime {
 		{
 			return None;
 		}
+
 		Some(ProfileClaims::from_stored(&stored, include_email))
+	}
+}
+
+struct ProfileClaims {
+	email: Option<String>,
+	plan_type: Option<String>,
+}
+impl ProfileClaims {
+	fn from_stored(stored: &StoredCredential, include_email: bool) -> Self {
+		let email = include_email
+			.then(|| {
+				stored
+					.bundle()
+					.provider_email()
+					.and_then(|email| normalized_bounded_text(email, 320))
+			})
+			.flatten();
+		let plan_type =
+			stored.bundle().plan_type().and_then(|value| normalized_bounded_text(value, 128));
+
+		Self { email, plan_type }
+	}
+
+	const fn redacted() -> Self {
+		Self { email: None, plan_type: None }
+	}
+
+	fn attach(self, snapshot: AccountProfileSnapshot) -> AccountProfileView {
+		AccountProfileView { snapshot, email: self.email, plan_type: self.plan_type }
+	}
+
+	fn into_view(self) -> AccountProfileClaimsView {
+		AccountProfileClaimsView { email: self.email, plan_type: self.plan_type }
 	}
 }
 
@@ -330,40 +378,9 @@ fn claims_source_matches(
 		&& expected_provider.is_none_or(|provider| provider == current_provider)
 }
 
-struct ProfileClaims {
-	email: Option<String>,
-	plan_type: Option<String>,
-}
-impl ProfileClaims {
-	fn from_stored(stored: &StoredCredential, include_email: bool) -> Self {
-		let email = include_email
-			.then(|| {
-				stored
-					.bundle()
-					.provider_email()
-					.and_then(|email| normalized_bounded_text(email, 320))
-			})
-			.flatten();
-		let plan_type =
-			stored.bundle().plan_type().and_then(|value| normalized_bounded_text(value, 128));
-		Self { email, plan_type }
-	}
-
-	const fn redacted() -> Self {
-		Self { email: None, plan_type: None }
-	}
-
-	fn attach(self, snapshot: AccountProfileSnapshot) -> AccountProfileView {
-		AccountProfileView { snapshot, email: self.email, plan_type: self.plan_type }
-	}
-
-	fn into_view(self) -> AccountProfileClaimsView {
-		AccountProfileClaimsView { email: self.email, plan_type: self.plan_type }
-	}
-}
-
 fn normalized_bounded_text(value: &str, maximum: usize) -> Option<String> {
 	let value = value.trim();
+
 	(!value.is_empty() && value.len() <= maximum && !value.chars().any(char::is_control))
 		.then(|| value.to_owned())
 }

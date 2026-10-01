@@ -16,9 +16,11 @@ pub(crate) async fn enrich(
 			_ => None,
 		})
 		.collect::<Vec<_>>();
+
 	if !items.is_empty() {
 		let durations =
 			store.read_agent_activity_durations(work.into(), page.thread_id.clone(), items).await?;
+
 		for entry in &mut page.entries {
 			if let Content::Item { turn_id, item_id, activity: Some(activity), .. } =
 				&mut entry.content
@@ -31,6 +33,7 @@ pub(crate) async fn enrich(
 			}
 		}
 	}
+
 	let turns = page
 		.entries
 		.iter()
@@ -39,12 +42,15 @@ pub(crate) async fn enrich(
 			_ => None,
 		})
 		.collect::<Vec<_>>();
+
 	if turns.is_empty() {
 		return Ok(());
 	}
+
 	let responses =
 		store.read_agent_response_usage(work.into(), page.thread_id.clone(), turns.clone()).await?;
 	let saved = store.read_agent_turn_metrics(work.into(), page.thread_id.clone(), turns).await?;
+
 	for entry in &mut page.entries {
 		if let Content::TurnBoundary { turn_id, completed: true, usage_summary, usage, .. } =
 			&mut entry.content
@@ -57,6 +63,7 @@ pub(crate) async fn enrich(
 				.filter(|u| {
 					u.input_tokens <= i64::MAX as u64 && u.output_tokens <= i64::MAX as u64
 				});
+
 			if let Some(usage) = usage {
 				usage.details = Some(usage_details(
 					saved
@@ -69,12 +76,15 @@ pub(crate) async fn enrich(
 						.map(|row| row.observed_count as u64),
 				));
 			}
+
 			let tokens = saved.iter().find(|saved| &saved.turn_id == turn_id).and_then(summary);
 			let response = response_summary(&responses, turn_id);
 			let parts = [tokens, response].into_iter().flatten().collect::<Vec<_>>();
+
 			*usage_summary = (!parts.is_empty()).then(|| parts.join("\n"));
 		}
 	}
+
 	Ok(())
 }
 
@@ -83,6 +93,7 @@ fn usage_details(
 	responses: Option<u64>,
 ) -> decodex_protocol::AgentUsageDetailsDto {
 	let mut details = decodex_protocol::AgentUsageDetailsDto { responses, ..Default::default() };
+
 	if let Some(usage) = observation
 		.and_then(|json| serde_json::from_str::<decodex_codex::ThreadTokenUsage>(json).ok())
 		.filter(|usage| usage.is_valid())
@@ -94,6 +105,7 @@ fn usage_details(
 		details.thread_total = Some(usage.total.total_tokens);
 		details.context_capacity = usage.model_context_window;
 	}
+
 	details
 }
 
@@ -108,6 +120,7 @@ fn response_summary(
 		first.observed_count,
 		rows.len()
 	)];
+
 	for row in rows {
 		let amount = row
 			.amount
@@ -121,16 +134,19 @@ fn response_summary(
 			})
 			.unwrap_or("unknown");
 		let identity = super::visible_text(&row.response_id).0;
+
 		lines.push(format!(
 			"Response {identity:?}: {amount}.{}",
 			if row.metadata_omitted { " Extended metadata omitted due to size." } else { "" }
 		));
 	}
+
 	Some(lines.join("\n"))
 }
 
 fn summary(saved: &decodex_database::AgentTurnMetrics) -> Option<String> {
 	let mut parts = Vec::new();
+
 	if let Some(usage) = saved
 		.usage_json
 		.as_deref()
@@ -151,6 +167,7 @@ fn summary(saved: &decodex_database::AgentTurnMetrics) -> Option<String> {
 	{
 		parts.push(observation);
 	}
+
 	(!parts.is_empty()).then(|| parts.join("\n"))
 }
 
@@ -161,17 +178,20 @@ mod tests {
 	#[test]
 	fn structured_details_keep_response_totals_separate_and_missing_values_unknown() {
 		let missing = usage_details(None, Some(2));
+
 		assert_eq!(missing.responses, Some(2));
 		assert_eq!(missing.last_input, None);
-		let counts = json!({"totalTokens":63197,"inputTokens":63045,"cachedInputTokens":62592,"outputTokens":152,"reasoningOutputTokens":85});
-		let value = json!({"last":counts,"total":{"totalTokens":2759729,"inputTokens":2700000,"cachedInputTokens":2000000,"outputTokens":59729,"reasoningOutputTokens":0},"modelContextWindow":380000}).to_string();
+
+		let counts = json!({"totalTokens":63_197,"inputTokens":63_045,"cachedInputTokens":62_592,"outputTokens":152,"reasoningOutputTokens":85});
+		let value = json!({"last":counts,"total":{"totalTokens":2_759_729,"inputTokens":2_700_000,"cachedInputTokens":2_000_000,"outputTokens":59_729,"reasoningOutputTokens":0},"modelContextWindow":380_000}).to_string();
 		let details = usage_details(Some(&value), Some(2));
-		assert_eq!(details.last_input, Some(63045));
-		assert_eq!(details.cached_input, Some(62592));
+
+		assert_eq!(details.last_input, Some(63_045));
+		assert_eq!(details.cached_input, Some(62_592));
 		assert_eq!(details.last_output, Some(152));
 		assert_eq!(details.reasoning_output, Some(85));
-		assert_eq!(details.thread_total, Some(2759729));
-		assert_eq!(details.context_capacity, Some(380000));
+		assert_eq!(details.thread_total, Some(2_759_729));
+		assert_eq!(details.context_capacity, Some(380_000));
 		assert_eq!(usage_details(Some("{}"), None).last_output, None);
 	}
 
@@ -201,6 +221,7 @@ mod tests {
 			},
 		];
 		let text = response_summary(&rows, "turn").unwrap();
+
 		assert!(text.contains("0.12345678901234567890"));
 		assert!(text.contains("Response \"b\": 0."));
 		assert!(text.contains("Response \"c\": unknown."));
@@ -215,39 +236,55 @@ mod tests {
 			turn_id: "turn".into(),
 			usage_json: Some(json!({"input_tokens":240,"output_tokens":60}).to_string()),
 			observation_json: Some(
-				json!({"last":counts,"total":{"totalTokens":900,"inputTokens":700,"cachedInputTokens":200,"cacheWriteInputTokens":20,"outputTokens":200,"reasoningOutputTokens":100},"modelContextWindow":128000}).to_string(),
+				json!({"last":counts,"total":{"totalTokens":900,"inputTokens":700,"cachedInputTokens":200,"cacheWriteInputTokens":20,"outputTokens":200,"reasoningOutputTokens":100},"modelContextWindow":128_000}).to_string(),
 			),
 		};
 		let text = summary(&saved).unwrap();
+
 		assert!(text.contains("Turn tokens: input 240, output 60."));
 		assert!(text.contains(
 			"Last response tokens: input 120, cached input 50, output 30, reasoning output 8."
 		));
 		assert!(text.contains("Cache write input tokens: 10."));
 		assert!(text.contains("Thread total tokens: 900."));
+
 		saved.usage_json = None;
+
 		assert!(!summary(&saved).unwrap().contains("Turn tokens:"));
+
 		saved.observation_json = None;
+
 		assert_eq!(summary(&saved), None);
+
 		saved.usage_json = Some(json!({"input_tokens":0,"output_tokens":0}).to_string());
+
 		assert_eq!(summary(&saved).as_deref(), Some("Turn tokens: input 0, output 0."));
+
 		saved.usage_json = Some(json!({"input_tokens":u64::MAX,"output_tokens":0}).to_string());
+
 		assert_eq!(summary(&saved), None);
 	}
 	#[tokio::test]
 	async fn native_page_reads_enrich_exact_turns_and_recheck_source_after_saved_usage() {
 		use crate::agent_usage_estimate::{Source, SourceKey};
+
 		use decodex_codex::app_server_client::AppServerClient;
+
 		use decodex_core::{AccountId, DecodexRoot, ProcessGenerationId};
+
 		use decodex_database::{
 			AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus, EnqueueAgentEvent,
 			SqliteStore,
 		};
+
 		use std::sync::atomic::{AtomicUsize, Ordering};
+
 		use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
+
 		store
 			.create_agent_work_item(AgentWorkItem {
 				id: "work".into(),
@@ -266,13 +303,15 @@ mod tests {
 			.await
 			.unwrap();
 		store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:json!(["turn/completed","thread","turn"]).to_string(),work_item_id:"work".into(),event_kind:"agent_turn_completed".into(),payload:json!({"terminal":{"threadId":"thread","turn":{"id":"turn"}},"usage":{"input_tokens":11,"output_tokens":2}}).to_string()}).await.unwrap();
+
 		for change in [false, true] {
-			let (local, remote) = tokio::io::duplex(8192);
+			let (local, remote) = tokio::io::duplex(8_192);
 			let (reader, writer) = tokio::io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
 				let (reader, mut writer) = tokio::io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
+
 				for (method, result) in [
 					("thread/read", json!({"thread":{"id":"thread"}})),
 					(
@@ -282,7 +321,9 @@ mod tests {
 				] {
 					let request: serde_json::Value =
 						serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 					assert_eq!(request["method"], method);
+
 					writer
 						.write_all(
 							format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
@@ -296,6 +337,7 @@ mod tests {
 				Some(&store),
 				|| {
 					let after = calls.fetch_add(1, Ordering::SeqCst) >= 3;
+
 					std::future::ready(Some(Source {
 						client: client.clone(),
 						key: SourceKey {
@@ -315,13 +357,16 @@ mod tests {
 				None,
 			)
 			.await;
+
 			server.await.unwrap();
+
 			if change {
 				assert_eq!(result, decodex_protocol::AgentTimelineResult::Unavailable);
 			} else {
 				let decodex_protocol::AgentTimelineResult::Available { page, .. } = result else {
 					panic!("available native page")
 				};
+
 				assert!(
 					matches!(&page.entries[0].content,Content::TurnBoundary {usage_summary:Some(text),..} if text=="Turn tokens: input 11, output 2.")
 				);

@@ -15,8 +15,10 @@ pub(super) fn find(requested: &Path) -> Option<PathBuf> {
 		if let Some(home) = env::var_os("HOME").filter(|home| !home.is_empty()) {
 			applications.push(PathBuf::from(home).join("Applications"));
 		}
+
 		applications.push(PathBuf::from("/Applications"));
 	}
+
 	select(requested, &applications, env::var_os("PATH"))
 }
 
@@ -33,12 +35,14 @@ fn select(requested: &Path, applications: &[PathBuf], path: Option<OsString>) ->
 				"ChatGPT.app/Contents/Resources/codex",
 			] {
 				let candidate = directory.join(relative);
+
 				if candidate.is_file() {
 					return Some(candidate);
 				}
 			}
 		}
 	}
+
 	env::split_paths(&path?)
 		.map(|directory| directory.join(requested))
 		.find(|candidate| candidate.is_file())
@@ -55,12 +59,17 @@ mod tests {
 		let app = root.path().join("Applications");
 		let bundled =
 			app.join("ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex");
+
 		fs::create_dir_all(bundled.parent().unwrap()).unwrap();
 		fs::write(&bundled, b"fixture").unwrap();
+
 		let bin = root.path().join("bin");
+
 		fs::create_dir(&bin).unwrap();
 		fs::write(bin.join("codex"), b"fixture").unwrap();
+
 		let path = env::join_paths([bin]).unwrap();
+
 		assert_eq!(
 			select(Path::new("codex"), std::slice::from_ref(&app), Some(path)),
 			Some(bundled.clone())
@@ -72,8 +81,11 @@ mod tests {
 	fn missing_app_uses_path_and_explicit_paths_are_preserved() {
 		let root = tempfile::tempdir().unwrap();
 		let binary = root.path().join("codex");
+
 		fs::write(&binary, b"fixture").unwrap();
+
 		let path = env::join_paths([root.path()]).unwrap();
+
 		assert_eq!(
 			select(Path::new("codex"), &[root.path().join("Applications")], Some(path)),
 			Some(binary.clone())
@@ -86,8 +98,10 @@ mod tests {
 	fn standalone_codex_app_is_supported_without_changing_other_programs() {
 		let root = tempfile::tempdir().unwrap();
 		let binary = root.path().join("Codex.app/Contents/Resources/codex");
+
 		fs::create_dir_all(binary.parent().unwrap()).unwrap();
 		fs::write(&binary, b"fixture").unwrap();
+
 		assert_eq!(select(Path::new("codex"), &[root.path().to_owned()], None), Some(binary));
 		assert_eq!(select(Path::new("python3"), &[root.path().to_owned()], None), None);
 	}

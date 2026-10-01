@@ -6,6 +6,7 @@ const PROVENANCE: &str = "Source notes: Native task turns and spoken dialogue ar
 
 pub(super) fn compose(native: &history::History, voice: &AgentVoiceHistory) -> Option<String> {
 	let mut messages = Vec::new();
+
 	for call in &voice.calls {
 		for entry in &call.entries {
 			messages.push(history::Message {
@@ -25,14 +26,18 @@ pub(super) fn compose(native: &history::History, voice: &AgentVoiceHistory) -> O
 			});
 		}
 	}
+
 	messages.reverse();
+
 	let spoken = history::select(&messages);
+
 	if native.exchanges.is_empty() && spoken.is_empty() {
 		return None;
 	}
 	if spoken.is_empty() && voice.revision.calls == 0 {
 		return Some(prompt::build(&excerpts::render(&native.exchanges)));
 	}
+
 	let omitted =
 		if voice.truncated { "Older voice calls or sentences were omitted.\n" } else { "" };
 	let missing = if voice.calls.iter().any(|call| call.entries.is_empty()) {
@@ -50,6 +55,7 @@ pub(super) fn compose(native: &history::History, voice: &AgentVoiceHistory) -> O
 	};
 	let native = excerpts::render_budget(&native.exchanges, budget - voice_budget);
 	let spoken = excerpts::render_budget(&spoken, voice_budget);
+
 	Some(prompt::build(&format!("{headers}{native}{separator}{spoken}")))
 }
 
@@ -81,12 +87,14 @@ mod tests {
 			latest_turn: Some("latest-native".into()),
 			exchanges: vec![excerpts::Exchange {
 				user: "Fix the issue".into(),
-				assistant: format!("TESTED{}NOT INSTALLED", "字".repeat(20000)),
+				assistant: format!("TESTED{}NOT INSTALLED", "字".repeat(20_000)),
 			}],
 		};
-		let voice = snapshot(format!("SPOKEN START{}DO NOT PUBLISH", "声".repeat(20000)));
+		let voice = snapshot(format!("SPOKEN START{}DO NOT PUBLISH", "声".repeat(20_000)));
 		let rendered = compose(&native, &voice).expect("combined recap input");
+
 		assert!(rendered.len() <= prompt::MAX_BYTES);
+
 		for expected in [
 			"TESTED",
 			"NOT INSTALLED",
@@ -104,11 +112,11 @@ mod tests {
 		let native = history::History { latest_turn: None, exchanges: vec![] };
 		let rendered = compose(&native, &snapshot("Summarize what we agreed in voice.".into()))
 			.expect("voice context");
+
 		assert!(rendered.contains("Pending user request:"));
 		assert!(rendered.contains("Summarize what we agreed in voice."));
 	}
 }
-
 #[cfg(test)]
 mod missing_tests {
 	use super::*;
@@ -134,6 +142,7 @@ mod missing_tests {
 			}],
 		};
 		let rendered = compose(&native, &voice).expect("partial native evidence");
+
 		assert!(rendered.contains("Tests passed"));
 		assert!(rendered.contains("no stored transcript"));
 	}

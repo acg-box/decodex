@@ -5,7 +5,7 @@ use decodex_protocol::{AgentResourceDto, AgentResourcesResult};
 pub(crate) async fn read(client: &AppServerClient, thread: &str) -> AgentResourcesResult {
 	match client.thread_attachments(thread).await {
 		Ok(resources) => project(resources),
-		Err(ClientError::Remote(error)) if error.code == -32601 =>
+		Err(ClientError::Remote(error)) if error.code == -32_601 =>
 			AgentResourcesResult::Unsupported,
 		Err(ClientError::CapacityExceeded) => AgentResourcesResult::CapacityExceeded,
 		Err(_) => AgentResourcesResult::Unavailable,
@@ -16,11 +16,14 @@ fn project(resources: Vec<ThreadAttachment>) -> AgentResourcesResult {
 	if resources.len() > 128 {
 		return AgentResourcesResult::CapacityExceeded;
 	}
+
 	let mut projected = Vec::new();
+
 	for resource in resources {
 		let payload = resource.payload.to_string();
 		let omitted =
-			payload.len() > 16 * 1024 || decodex_core::contains_credential_material(&payload);
+			payload.len() > 16 * 1_024 || decodex_core::contains_credential_material(&payload);
+
 		projected.push(AgentResourceDto {
 			id: resource.id,
 			attachment_type: resource.attachment_type,
@@ -30,8 +33,10 @@ fn project(resources: Vec<ThreadAttachment>) -> AgentResourcesResult {
 			created_at: resource.created_at,
 		});
 	}
+
 	let result = AgentResourcesResult::Available { resources: projected };
-	if serde_json::to_vec(&result).map_or(true, |bytes| bytes.len() > 64 * 1024) {
+
+	if serde_json::to_vec(&result).map_or(true, |bytes| bytes.len() > 64 * 1_024) {
 		AgentResourcesResult::CapacityExceeded
 	} else {
 		result
@@ -54,14 +59,17 @@ mod tests {
 	#[test]
 	fn complete_list_keeps_identity_and_marks_unavailable_payloads() {
 		let empty = project(vec![]);
+
 		assert!(matches!(empty,AgentResourcesResult::Available{resources} if resources.is_empty()));
+
 		let result = project(vec![
 			resource(json!({"title":"Review"})),
-			resource(json!({"text":"x".repeat(17000)})),
+			resource(json!({"text":"x".repeat(17_000)})),
 		]);
 		let AgentResourcesResult::Available { resources } = result else {
 			panic!("complete list");
 		};
+
 		assert_eq!(resources.len(), 2);
 		assert_eq!(resources[0].identity_key, "one");
 		assert_eq!(resources[0].payload_json, "{\"title\":\"Review\"}");
@@ -76,7 +84,7 @@ mod tests {
 			AgentResourcesResult::CapacityExceeded
 		);
 		assert_eq!(
-			project((0..8).map(|_| resource(json!({"text":"x".repeat(10000)}))).collect()),
+			project((0..8).map(|_| resource(json!({"text":"x".repeat(10_000)}))).collect()),
 			AgentResourcesResult::CapacityExceeded
 		);
 	}
@@ -89,9 +97,12 @@ pub(crate) async fn add_link(
 	url: &str,
 ) -> Result<(), crate::agent::AgentError> {
 	use crate::agent::AgentError;
+
 	use sha2::{Digest, Sha256};
+
 	let url = reqwest::Url::parse(url)
 		.map_err(|_| AgentError::Rejected("Invalid resource URL".into()))?;
+
 	if !matches!(url.scheme(), "https" | "http")
 		|| url.host_str().is_none()
 		|| !url.username().is_empty()
@@ -102,12 +113,14 @@ pub(crate) async fn add_link(
 			"Use a title and an HTTP or HTTPS link without embedded credentials".into(),
 		));
 	}
+
 	let url = url.to_string();
 	// This is a Decodex convention, not an upstream-reserved type. Native add keeps
 	// the first title for an existing normalized URL rather than silently replacing it.
 	let digest =
 		Sha256::digest(url.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
 	let key = format!("sha256:{digest}");
+
 	client
 		.add_thread_attachment(
 			thread,
@@ -116,6 +129,7 @@ pub(crate) async fn add_link(
 			serde_json::json!({"title":title,"url":url}),
 		)
 		.await?;
+
 	Ok(())
 }
 
@@ -127,35 +141,44 @@ mod link_tests {
 
 	#[tokio::test]
 	async fn links_use_stable_native_identity_without_replacing_existing_metadata() {
-		let (local, remote) = tokio::io::duplex(65536);
+		let (local, remote) = tokio::io::duplex(65_536);
 		let (reader, writer) = tokio::io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
 			let (reader, mut writer) = tokio::io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
 			let mut first = None;
+
 			for index in 0..2 {
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				assert_eq!(request["method"], "thread/attachment/add");
 				assert_eq!(request["params"]["threadId"], "thread-exact");
 				assert_eq!(request["params"]["attachmentType"], "decodex.link");
 				assert_eq!(request["params"]["payload"]["url"], "https://example.test/");
+
 				let current = json!({"id":"resource","attachmentType":request["params"]["attachmentType"],"identityKey":request["params"]["identityKey"],"payload":request["params"]["payload"],"createdAt":1});
 				let original = first.get_or_insert(current);
+
 				assert_eq!(original["identityKey"], request["params"]["identityKey"]);
+
 				let reply = json!({"id":request["id"],"result":{"outcome":if index==0 {"created"} else {"existing"},"attachment":original}});
+
 				writer.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
 			}
 		});
+
 		for url in ["file:///tmp/private", "https://user:password@example.test/", "not a URL"] {
 			assert!(matches!(
 				add_link(&client, "thread-exact", "Title", url).await,
 				Err(crate::agent::AgentError::Rejected(_))
 			));
 		}
+
 		add_link(&client, "thread-exact", "Original", "https://EXAMPLE.test").await.unwrap();
 		add_link(&client, "thread-exact", "Changed", "https://example.test/").await.unwrap();
+
 		server.await.unwrap();
 	}
 }

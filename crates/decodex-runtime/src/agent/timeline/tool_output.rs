@@ -11,6 +11,7 @@ pub(crate) fn parts(item: &Value) -> Option<Vec<String>> {
 		name.to_owned()
 	} else {
 		let namespace = item["namespace"].as_str()?;
+
 		if namespace.is_empty() { name.to_owned() } else { format!("{namespace}/{name}") }
 	};
 	let output = match &item["output"] {
@@ -22,6 +23,7 @@ pub(crate) fn parts(item: &Value) -> Option<Vec<String>> {
 			.collect::<Option<Vec<_>>>()?,
 		_ => return None,
 	};
+
 	Some(std::iter::once(title).chain(output).collect())
 }
 
@@ -41,39 +43,50 @@ mod tests {
 		else {
 			panic!("item")
 		};
+
 		assert_eq!(kind, "functionCallOutput");
 		assert_eq!(activity.unwrap().kind, "functionCallOutput");
 		assert_eq!(text, "decodex/work_instruction\nInspect the delegated task.");
+
 		for namespace in [json!(null), json!("")] {
 			let mut unnamed = row.clone();
+
 			unnamed["item"]["namespace"] = namespace;
+
 			assert!(
 				matches!(super::super::ordinary(&unnamed).unwrap(), AgentTimelineContent::Item {text,..} if text.starts_with("work_instruction\n"))
 			);
 		}
+
 		row["item"]["output"] = json!([
 			{"type":"input_text","text":"Visible"},
 			{"type":"input_image","image_url":"data:image/png;base64,PRIVATE_IMAGE"},
 			{"type":"input_audio","audio_url":"https://example.invalid/private-audio"},
 			{"type":"encrypted_content","encrypted_content":"PRIVATE_ENCRYPTED"}
 		]);
+
 		let projected = super::super::ordinary(&row).unwrap();
 		let AgentTimelineContent::Item { text, attachments, .. } = &projected else {
 			panic!("item")
 		};
+
 		assert_eq!(text, "decodex/work_instruction\nVisible");
 		assert_eq!(attachments.iter().map(|a| a.index).collect::<Vec<_>>(), vec![1, 2, 3]);
 		assert_eq!(attachments[0].kind, "inputImage");
 		assert_eq!(attachments[1].kind, "inputAudio");
 		assert!(!serde_json::to_string(&projected).unwrap().contains("PRIVATE_"));
 		assert!(!serde_json::to_string(&projected).unwrap().contains("private-audio"));
-		for output in ["界".repeat(4000), "Bearer abcdefgh".into()] {
+
+		for output in ["界".repeat(4_000), "Bearer abcdefgh".into()] {
 			row["item"]["output"] = json!(output);
+
 			assert!(
-				matches!(super::super::ordinary(&row).unwrap(), AgentTimelineContent::Item {text,truncated:true,..} if text.len()<=8192)
+				matches!(super::super::ordinary(&row).unwrap(), AgentTimelineContent::Item {text,truncated:true,..} if text.len()<=8_192)
 			);
 		}
+
 		row["item"]["output"] = json!([{"type":"input_text","text":false}]);
+
 		assert!(super::super::ordinary(&row).is_none());
 	}
 }

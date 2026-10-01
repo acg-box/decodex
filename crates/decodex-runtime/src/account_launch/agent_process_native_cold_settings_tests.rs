@@ -1,7 +1,9 @@
 //! Isolated account-bound runtime qualification; never use the real user's home.
-use super::*;
 #[path = "agent_process_native_recap_socket_tests.rs"] mod recap_socket;
 #[path = "agent_process_native_runtime_submit_tests.rs"] mod submit;
+
+use super::*;
+
 use crate::{
 	account_service::{
 		AccountService, CredentialRefreshError, CredentialRefreshPort, CredentialRefreshResult,
@@ -9,11 +11,14 @@ use crate::{
 	conversation::ConversationRuntime,
 	host_credentials::{CredentialSecretBundle, SqliteCredentialStore},
 };
+
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
 use decodex_core::{
 	AccountId, AccountOperationId, BlobStore, DecodexRoot, ProcessExecutionAuthorization,
 	ProcessExecutionEpochId,
 };
+
 use decodex_database::{
 	AccountCommandKind, AccountCommandReceiptClaim, CommandIdentity, SqliteStore,
 };
@@ -28,6 +33,73 @@ impl CredentialRefreshPort for NoRefresh {
 	}
 }
 
+fn seed(root: &DecodexRoot, account: &AccountId, thread: &str, directory: &std::path::Path) {
+	let source = include_str!("../../tests/fixtures/opaque_resume_authority.sql");
+	let operations = &source[source
+		.find("INSERT INTO account_operations")
+		.expect("settled conversation history fixture")
+		..source.find("INSERT INTO accounts").expect("settled conversation history fixture")];
+	let facts = &source
+		[source.find("INSERT INTO conversations").expect("settled conversation history fixture")..];
+	let sql = format!("PRAGMA foreign_keys=ON;\n{operations}{facts}")
+		.replace("46000000-0000-4000-8000-000000000001", account.as_str())
+		.replace("opaque-restart-provider", "workspace-fixture")
+		.replace("sha256:fixture", &format!("sha256:{}", "a".repeat(64)))
+		.replace("provider/thread?after#restart%opaque", thread);
+	let connection = rusqlite::Connection::open(root.paths().product_database_file())
+		.expect("settled conversation history fixture");
+
+	connection.execute_batch(&sql).expect("settled conversation history fixture");
+	// The initial native process has exited. Seed settled historical ownership,
+	// not a fictitious live process for the supervisor to recover.
+	connection
+		.execute_batch(
+			"INSERT INTO process_generation_death_evidence
+		(evidence_id,generation_id,kind,observed_boot_id,bound_boot_id,process_id,
+		process_start_id,process_group_id,session_id,witness_sha256,observed_at_micros)
+		SELECT '51000000-0000-4000-8000-000000000001',generation_id,'owned_child_exit',
+		bound_boot_id,bound_boot_id,process_id,process_start_id,process_group_id,session_id,
+		'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',2
+		FROM process_generations;
+		UPDATE process_generations SET state='dead',
+		death_evidence_id='51000000-0000-4000-8000-000000000001',revision=4,updated_at_micros=2;",
+		)
+		.expect("settled conversation history fixture");
+	connection.execute("INSERT INTO quick_task_requests(conversation_id,operation_key,correlation_id,initial_turn_id,message,working_directory,model,reasoning_effort,fast,created_at_micros,service_tier) VALUES (?1,'original-key','original-key','45000000-0000-4000-8000-000000000000','Original input',?2,'old-requested-model','low',0,1,'flex')", rusqlite::params!["44000000-0000-4000-8000-000000000001", directory.to_str().expect("settled conversation history fixture")]).expect("settled conversation history fixture");
+}
+
+fn counter_output(input: &Value) -> Value {
+	let mut specs = input["tools"].as_array().cloned().unwrap_or_default();
+
+	for item in input["input"].as_array().expect("fixture input") {
+		if item["type"] == "additional_tools" {
+			specs.extend(item["tools"].as_array().cloned().unwrap_or_default());
+		}
+	}
+
+	fn counter(specs: &[Value], namespace: Option<&str>) -> Option<Value> {
+		for spec in specs {
+			if let Some(children) = spec["tools"].as_array() {
+				if let Some(call) = counter(children, spec["name"].as_str()) {
+					return Some(call);
+				}
+			} else if spec["name"].as_str().is_some_and(|name| name.contains("counter")) {
+				let mut call = json!({"type":"function_call","id":"widget-origin","call_id":"widget-origin-call","name":spec["name"],"arguments":"{\"value\":7}"});
+
+				if let Some(namespace) = namespace {
+					call["namespace"] = json!(namespace);
+				}
+
+				return Some(call);
+			}
+		}
+
+		None
+	}
+
+	counter(&specs, None).expect("advertised native counter tool")
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "run alone with isolated HOME, DECODEX_TEST_ACCOUNT_HOME and DECODEX_TEST_CODEX_BINARY"]
 async fn installed_cold_runtime_settings_read_and_submit_without_replaying() {
@@ -36,6 +108,7 @@ async fn installed_cold_runtime_settings_read_and_submit_without_replaying() {
 	)
 	.canonicalize()
 	.expect("isolated fixture home");
+
 	assert_eq!(
 		std::path::PathBuf::from(std::env::var_os("HOME").expect("isolated fixture home")),
 		home
@@ -46,6 +119,7 @@ async fn installed_cold_runtime_settings_read_and_submit_without_replaying() {
 		"isolated-native-settings\n"
 	);
 	assert!(!home.join(".codex").exists());
+
 	tokio::time::timeout(Duration::from_secs(90), qualify(&home))
 		.await
 		.expect("bounded native cold runtime fixture");
@@ -53,7 +127,9 @@ async fn installed_cold_runtime_settings_read_and_submit_without_replaying() {
 
 async fn qualify(home: &std::path::Path) {
 	let native_home = home.join(".codex");
+
 	std::fs::create_dir(&native_home).expect("native cold-read qualification");
+
 	let binary =
 		std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native cold-read qualification");
 	let listener =
@@ -63,6 +139,7 @@ async fn qualify(home: &std::path::Path) {
 	let metadata_requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 	let backend = tokio::spawn(serve(listener, requests.clone(), metadata_requests.clone(), None));
 	let catalog = native_home.join("models.json");
+
 	std::fs::write(
 		&catalog,
 		serde_json::to_vec(
@@ -72,6 +149,7 @@ async fn qualify(home: &std::path::Path) {
 	)
 	.expect("native cold-read qualification");
 	std::fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", json!(catalog))).expect("native cold-read qualification");
+
 	let mut native = NativeSession::start(&binary, &native_home);
 	let started = native
 		.client
@@ -87,22 +165,29 @@ async fn qualify(home: &std::path::Path) {
 		)
 		.await
 		.expect("native cold-read qualification");
+
 	loop {
 		if matches!(native.events.recv().await.expect("native cold-read qualification"), ServerEvent::Notification { method, params } if method == "turn/completed" && params["threadId"] == thread && params["turn"]["id"] == turn["turn"]["id"])
 		{
 			break;
 		}
 	}
+
 	drop(native);
 	// The saved fixture turn did not need authentication. The production reader
 	// uses the enrolled ChatGPT account and must admit native token projection.
 	let config = native_home.join("config.toml");
 	let text = std::fs::read_to_string(&config).expect("native cold-read qualification");
+
 	std::fs::write(config, text.replace("requires_openai_auth=false", "requires_openai_auth=true"))
 		.expect("native cold-read qualification");
+
 	assert_eq!(requests.load(Ordering::Acquire), 1);
+
 	let root = DecodexRoot::new(home.join("product")).expect("native cold-read qualification");
+
 	root.paths().ensure_layout().expect("native cold-read qualification");
+
 	let store = SqliteStore::open(&root.paths()).expect("native cold-read qualification");
 	let accounts = Arc::new(AccountService::new(
 		store.clone(),
@@ -120,11 +205,14 @@ async fn qualify(home: &std::path::Path) {
 	.await
 	.expect("native cold-read qualification")
 	.expect("production native profile attestation");
+
 	accounts
 		.attest_callback_capability(profile.account_callback_attestation())
 		.await
 		.expect("native cold-read qualification");
+
 	seed(&root, &account, &thread, home);
+
 	let runtime = runtime(&root, &store, accounts.clone(), profile.clone()).await;
 	let id = decodex_core::ConversationId::new("44000000-0000-4000-8000-000000000001")
 		.expect("native cold-read qualification");
@@ -135,6 +223,7 @@ async fn qualify(home: &std::path::Path) {
 	let routing =
 		store.read_account_routing_control().await.expect("native cold-read qualification");
 	let result = runtime.model_settings("cold-model-query", id.as_str()).await;
+
 	assert!(
 		matches!(result, decodex_protocol::ConversationModelSettingsResult::Available { model: Some(ref model), reasoning_effort: Some(ref effort), requested_service_tier: None, .. } if model.as_str() == "cold-native-model" && effort.as_str() == "provider-effort"),
 		"cold owned settings read: {result:?}"
@@ -151,18 +240,23 @@ async fn qualify(home: &std::path::Path) {
 		store.read_account_routing_control().await.expect("native cold-read qualification")
 	);
 	assert_eq!(requests.load(Ordering::Acquire), 1, "metadata read cannot infer or replay");
+
 	submit::qualify(&runtime, &store, home).await;
+
 	assert_eq!(
 		requests.load(Ordering::Acquire),
 		3,
 		"one original fixture and two explicit runtime turns"
 	);
+
 	runtime.begin_shutdown();
 	runtime.wait_for_shutdown().await;
+
 	drop(runtime);
 	drop(accounts);
 	drop(store);
 	restart_and_submit(&root, profile, home).await;
+
 	assert_eq!(requests.load(Ordering::Acquire), 4, "restart sends exactly one new turn");
 	assert!(!backend.is_finished());
 	eprintln!(
@@ -170,6 +264,7 @@ async fn qualify(home: &std::path::Path) {
 		metadata_requests.load(Ordering::Acquire),
 		requests.load(Ordering::Acquire)
 	);
+
 	backend.abort();
 }
 
@@ -184,11 +279,14 @@ async fn restart_and_submit(
 		Arc::new(SqliteCredentialStore::new(store.clone())),
 		Arc::new(NoRefresh),
 	));
+
 	accounts
 		.attest_callback_capability(profile.account_callback_attestation())
 		.await
 		.expect("restore account callback capability");
+
 	let restarted = runtime(root, &store, accounts, profile).await;
+
 	submit::assert_warning_history(&restarted, &store, home).await;
 	submit::submit_inherited(
 		&restarted,
@@ -199,6 +297,7 @@ async fn restart_and_submit(
 	)
 	.await;
 	submit::archive(&restarted, &store, home).await;
+
 	restarted.begin_shutdown();
 	restarted.wait_for_shutdown().await;
 }
@@ -218,6 +317,7 @@ async fn enroll_numbered(
 	number: u64,
 ) -> AccountId {
 	use std::{io::Write as _, os::unix::fs::OpenOptionsExt as _};
+
 	let account = AccountId::new(format!("10000000-0000-4000-8000-{number:012}"))
 		.expect("synthetic account enrollment");
 	let workspace = if number == 1 {
@@ -239,8 +339,11 @@ async fn enroll_numbered(
 		.mode(0o600)
 		.open(&path)
 		.expect("synthetic account enrollment");
+
 	file.write_all(value.to_string().as_bytes()).expect("synthetic account enrollment");
+
 	drop(file);
+
 	let identity =
 		CommandIdentity::new(format!("cold-fixture-enroll-{number}"), b"synthetic enrollment")
 			.expect("synthetic account enrollment");
@@ -251,6 +354,7 @@ async fn enroll_numbered(
 	else {
 		panic!("enrollment owner")
 	};
+
 	service
 		.enroll_from_credential_file_command(
 			lease,
@@ -261,47 +365,16 @@ async fn enroll_numbered(
 			path.to_str().expect("synthetic account enrollment"),
 			|result| {
 				assert!(result.is_ok());
+
 				Ok(json!({"enrolled":true}))
 			},
 		)
 		.await
 		.expect("synthetic account enrollment");
-	std::fs::remove_file(path).expect("synthetic account enrollment");
-	account
-}
 
-fn seed(root: &DecodexRoot, account: &AccountId, thread: &str, directory: &std::path::Path) {
-	let source = include_str!("../../tests/fixtures/opaque_resume_authority.sql");
-	let operations = &source[source
-		.find("INSERT INTO account_operations")
-		.expect("settled conversation history fixture")
-		..source.find("INSERT INTO accounts").expect("settled conversation history fixture")];
-	let facts = &source
-		[source.find("INSERT INTO conversations").expect("settled conversation history fixture")..];
-	let sql = format!("PRAGMA foreign_keys=ON;\n{operations}{facts}")
-		.replace("46000000-0000-4000-8000-000000000001", account.as_str())
-		.replace("opaque-restart-provider", "workspace-fixture")
-		.replace("sha256:fixture", &format!("sha256:{}", "a".repeat(64)))
-		.replace("provider/thread?after#restart%opaque", thread);
-	let connection = rusqlite::Connection::open(root.paths().product_database_file())
-		.expect("settled conversation history fixture");
-	connection.execute_batch(&sql).expect("settled conversation history fixture");
-	// The initial native process has exited. Seed settled historical ownership,
-	// not a fictitious live process for the supervisor to recover.
-	connection
-		.execute_batch(
-			"INSERT INTO process_generation_death_evidence
-		(evidence_id,generation_id,kind,observed_boot_id,bound_boot_id,process_id,
-		process_start_id,process_group_id,session_id,witness_sha256,observed_at_micros)
-		SELECT '51000000-0000-4000-8000-000000000001',generation_id,'owned_child_exit',
-		bound_boot_id,bound_boot_id,process_id,process_start_id,process_group_id,session_id,
-		'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',2
-		FROM process_generations;
-		UPDATE process_generations SET state='dead',
-		death_evidence_id='51000000-0000-4000-8000-000000000001',revision=4,updated_at_micros=2;",
-		)
-		.expect("settled conversation history fixture");
-	connection.execute("INSERT INTO quick_task_requests(conversation_id,operation_key,correlation_id,initial_turn_id,message,working_directory,model,reasoning_effort,fast,created_at_micros,service_tier) VALUES (?1,'original-key','original-key','45000000-0000-4000-8000-000000000000','Original input',?2,'old-requested-model','low',0,1,'flex')", rusqlite::params!["44000000-0000-4000-8000-000000000001", directory.to_str().expect("settled conversation history fixture")]).expect("settled conversation history fixture");
+	std::fs::remove_file(path).expect("synthetic account enrollment");
+
+	account
 }
 
 async fn runtime(
@@ -338,24 +411,33 @@ async fn serve(
 	expected_recap: Option<&str>,
 ) {
 	use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _};
+
 	while let Ok((socket, _)) = listener.accept().await {
 		let mut socket = tokio::io::BufReader::new(socket);
 		let mut first = String::new();
+
 		socket.read_line(&mut first).await.expect("loopback native backend");
+
 		let path = first.split_whitespace().nth(1).expect("loopback native backend").to_owned();
 		let mut length = 0;
+
 		loop {
 			let mut line = String::new();
+
 			assert!(socket.read_line(&mut line).await.expect("loopback native backend") > 0);
+
 			if line == "\r\n" {
 				break;
 			}
+
 			if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
 				length = value.trim().parse::<usize>().expect("loopback native backend");
 			}
 		}
+
 		let (status, content_type, body) = if first.starts_with("GET ") {
 			metadata.fetch_add(1, Ordering::AcqRel);
+
 			if path.contains("/models") {
 				(200, "application/json", json!({"models":[effort::fixture_model("cold-native-model", "provider-effort")]}).to_string())
 			} else if path.contains("/accounts/check") {
@@ -366,6 +448,7 @@ async fn serve(
 				(200, "application/json", "[]".into())
 			} else {
 				eprintln!("optional fixture metadata unavailable: {path}");
+
 				(404, "application/json", "{}".into())
 			}
 		} else {
@@ -373,20 +456,27 @@ async fn serve(
 				first.starts_with("POST ") && path.ends_with("/responses"),
 				"unexpected fixture inference route: {path}"
 			);
-			assert!((1..=2 * 1024 * 1024).contains(&length));
+			assert!((1..=2 * 1_024 * 1_024).contains(&length));
+
 			let mut input = vec![0; length];
+
 			socket.read_exact(&mut input).await.expect("loopback native backend");
+
 			let input: Value = serde_json::from_slice(&input).expect("loopback native backend");
+
 			assert_eq!(input["model"], "cold-native-model");
 			assert_eq!(input["reasoning"]["effort"], "provider-effort");
 			assert!(
 				input.get("service_tier").is_none(),
 				"cached priority must not override Standard"
 			);
+
 			let serial = requests.fetch_add(1, Ordering::AcqRel);
+
 			if hold_shutdown_response(&mut socket).await {
 				continue;
 			}
+
 			let id = format!("cold-fixture-{serial}");
 			let answer = if input["text"]["format"]["type"] == "json_schema" {
 				if let Some(expected) = expected_recap {
@@ -395,6 +485,7 @@ async fn serve(
 						"recap omitted visible voice input"
 					);
 				}
+
 				assert!(
 					input["tools"].as_array().is_none_or(Vec::is_empty),
 					"structured fixture tool names: {:?}; schema fields: {:?}",
@@ -422,6 +513,7 @@ async fn serve(
 				json!({"type":"response.output_item.done","item":output}),
 				json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
 			];
+
 			(
 				200,
 				"text/event-stream",
@@ -436,18 +528,22 @@ async fn serve(
 					.collect::<String>(),
 			)
 		};
+
 		socket.get_mut().write_all(format!("HTTP/1.1 {status} Fixture\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.expect("loopback native backend");
 	}
 }
 
 async fn hold_shutdown_response(socket: &mut tokio::io::BufReader<tokio::net::TcpStream>) -> bool {
 	use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
 	if std::env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_none() {
 		return false;
 	}
+
 	let home = std::path::PathBuf::from(
 		std::env::var_os("DECODEX_TEST_ACCOUNT_HOME").expect("isolated home"),
 	);
+
 	socket
 		.get_mut()
 		.write_all(
@@ -455,40 +551,19 @@ async fn hold_shutdown_response(socket: &mut tokio::io::BufReader<tokio::net::Tc
 		)
 		.await
 		.expect("pending fixture response");
+
 	std::fs::write(home.join("active-provider-started"), "pending\n").expect("active witness");
+
 	let mut byte = [0];
 	let read = socket.read(&mut byte).await;
+
 	assert!(
 		matches!(read, Ok(0))
 			|| matches!(&read, Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset),
 		"provider did not observe cancellation: {read:?}"
 	);
-	std::fs::write(home.join("active-provider-closed"), "closed\n").expect("closure witness");
-	true
-}
 
-fn counter_output(input: &Value) -> Value {
-	let mut specs = input["tools"].as_array().cloned().unwrap_or_default();
-	for item in input["input"].as_array().expect("fixture input") {
-		if item["type"] == "additional_tools" {
-			specs.extend(item["tools"].as_array().cloned().unwrap_or_default());
-		}
-	}
-	fn counter(specs: &[Value], namespace: Option<&str>) -> Option<Value> {
-		for spec in specs {
-			if let Some(children) = spec["tools"].as_array() {
-				if let Some(call) = counter(children, spec["name"].as_str()) {
-					return Some(call);
-				}
-			} else if spec["name"].as_str().is_some_and(|name| name.contains("counter")) {
-				let mut call = json!({"type":"function_call","id":"widget-origin","call_id":"widget-origin-call","name":spec["name"],"arguments":"{\"value\":7}"});
-				if let Some(namespace) = namespace {
-					call["namespace"] = json!(namespace);
-				}
-				return Some(call);
-			}
-		}
-		None
-	}
-	counter(&specs, None).expect("advertised native counter tool")
+	std::fs::write(home.join("active-provider-closed"), "closed\n").expect("closure witness");
+
+	true
 }

@@ -45,6 +45,7 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 		"subAgentActivity" => {
 			let agent = item["agentThreadId"].as_str()?;
 			let path = item["agentPath"].as_str()?;
+
 			if agent.is_empty()
 				|| agent.len() > 512
 				|| agent.chars().any(char::is_control)
@@ -63,6 +64,7 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 		"mcpToolCall" | "dynamicToolCall" => {
 			let tool = item["tool"].as_str().unwrap_or("Tool");
 			let server = item["server"].as_str().or(item["namespace"].as_str());
+
 			server.map_or_else(|| tool.to_owned(), |server| format!("{server} · {tool}"))
 		},
 		"commandExecution" =>
@@ -87,6 +89,7 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 	} else {
 		"completed"
 	};
+
 	Some(AgentActivityDto {
 		turn_id: params["turnId"].as_str()?.into(),
 		item_id: item["id"].as_str()?.into(),
@@ -113,6 +116,7 @@ fn authentication_required(item: &Value) -> bool {
 	// Only project the reconnect signal, never challenge URLs or transport details.
 	let valid = |value: &Value| value.as_str().is_some_and(|text| !text.trim().is_empty());
 	let challenge = &item["result"]["_meta"]["mcp/www_authenticate"];
+
 	valid(challenge)
 		|| challenge.as_array().is_some_and(|values| !values.is_empty() && values.iter().all(valid))
 }
@@ -130,11 +134,16 @@ fn search_exit_without_failure(item: &Value) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::project;
+
+	use serde_json::json;
+
 	#[test]
 	fn mcp_attribution_and_advisory_hint_preserve_missing_history() {
 		let mut value = serde_json::json!({"turnId":"turn","item":{"type":"mcpToolCall","id":"item","server":"docs","tool":"read","pluginId":"docs@example","readOnlyHint":true}});
+
 		for completed in [false, true] {
 			let activity = project(&value, completed).unwrap();
+
 			assert_eq!(activity.plugin_id.as_deref(), Some("docs@example"));
 			assert_eq!(activity.read_only_hint, Some(true));
 		}
@@ -144,14 +153,20 @@ mod tests {
 			(serde_json::json!("true"), None),
 		] {
 			value["item"]["readOnlyHint"] = hint;
+
 			assert_eq!(project(&value, true).unwrap().read_only_hint, expected);
 		}
+
 		value["item"].as_object_mut().unwrap().remove("pluginId");
+
 		assert!(project(&value, true).unwrap().plugin_id.is_none());
+
 		let old = serde_json::json!({"turn_id":"turn","item_id":"item","kind":"mcpToolCall","status":"completed","label":"Using tool","detail":"docs","duration_ms":null});
 		let old: decodex_protocol::AgentActivityDto = serde_json::from_value(old).unwrap();
+
 		assert!(old.plugin_id.is_none() && old.read_only_hint.is_none());
 	}
+
 	#[test]
 	fn web_action_labels_do_not_expose_raw_parameters() {
 		for (kind, label) in [
@@ -162,32 +177,41 @@ mod tests {
 		] {
 			let params = serde_json::json!({"turnId":"t","item":{"id":"i","type":"webSearch","action":{"type":kind,"url":"private","pattern":"private"}}});
 			let activity = project(&params, true).unwrap();
+
 			assert_eq!(activity.label, label);
 			assert!(activity.detail.is_empty());
 			assert_eq!(activity.status, "completed");
 		}
 	}
-	use serde_json::json;
+
 	#[test]
 	fn mcp_authentication_challenge_is_visible_without_exposing_metadata() {
 		let mut value = json!({"turnId":"turn","item":{"id":"item","type":"mcpToolCall",
 			"server":"docs","tool":"search","status":"failed","result":{"content":[],
 			"_meta":{"mcp/www_authenticate":"Bearer PRIVATE"}}}});
+
 		for challenge in [json!("Bearer PRIVATE"), json!(["Basic PRIVATE", "Bearer PRIVATE"])] {
 			value["item"]["result"]["_meta"]["mcp/www_authenticate"] = challenge;
+
 			let activity = project(&value, true).expect("activity");
+
 			assert_eq!(activity.label, "Sign-in required");
 			assert_eq!(activity.status, "failed");
 			assert_eq!(activity.detail, "docs · search");
 			assert!(!serde_json::to_string(&activity).expect("json").contains("PRIVATE"));
 			assert_eq!(project(&value, false).expect("started").label, "Using tool");
 		}
+
 		value["item"]["status"] = json!("completed");
+
 		assert_eq!(project(&value, true).expect("success").label, "Using tool");
+
 		value["item"]["status"] = json!("failed");
+
 		for challenge in [json!(null), json!(" "), json!([]), json!([1]), json!({"url":"PRIVATE"})]
 		{
 			value["item"]["result"]["_meta"]["mcp/www_authenticate"] = challenge;
+
 			assert_eq!(project(&value, true).expect("other failure").label, "Using tool");
 		}
 	}
@@ -195,6 +219,7 @@ mod tests {
 	#[test]
 	fn subagent_projection_rejects_unknown_or_malformed_identity() {
 		let good = json!({"turnId":"turn","item":{"id":"item","type":"subAgentActivity","kind":"started","agentThreadId":"child","agentPath":"/root/worker"}});
+
 		for (field, bad) in [
 			("kind", json!("future")),
 			("agentThreadId", json!("")),
@@ -202,30 +227,44 @@ mod tests {
 			("agentPath", json!("/root/\nworker")),
 		] {
 			let mut value = good.clone();
+
 			value["item"][field] = bad;
+
 			assert!(project(&value, true).is_none());
 		}
+
 		let mut value = good;
+
 		value["item"]["agentPath"] = json!("Bearer fixture-private-access-token-123456789");
+
 		assert_eq!(project(&value, true).unwrap().detail, "Subagent");
 	}
+
 	#[test]
 	fn tool_projection_excludes_arguments_and_output() {
 		let value = json!({"turnId":"turn", "item":{"id":"item", "type":"mcpToolCall", "server":"docs", "tool":"search", "arguments":{"secret":"DO_NOT_SHOW"}, "result":"DO_NOT_SHOW"}});
 		let activity = project(&value, false).expect("activity");
+
 		assert_eq!(activity.detail, "docs · search");
 		assert!(!serde_json::to_string(&activity).expect("json").contains("DO_NOT_SHOW"));
 	}
+
 	#[test]
 	fn compaction_and_command_failure_use_native_evidence() {
 		let mut value = json!({"turnId":"turn", "item":{"id":"item", "type":"contextCompaction"}});
+
 		assert_eq!(project(&value, false).expect("start").status, "running");
 		assert_eq!(project(&value, true).expect("end").status, "completed");
+
 		value["item"] = json!({"id":"command", "type":"commandExecution", "exitCode":1});
+
 		assert_eq!(project(&value, true).expect("failed").status, "failed");
+
 		value["item"]["type"] = json!("agentMessage");
+
 		assert!(project(&value, true).is_none());
 	}
+
 	#[test]
 	fn search_exit_one_keeps_the_code_without_marking_activity_failed() {
 		for (actions, code, expected) in [
@@ -237,6 +276,7 @@ mod tests {
 		] {
 			let value = json!({"turnId":"turn","item":{"id":"command","type":"commandExecution","status":"failed","exitCode":code,"commandActions":actions}});
 			let activity = project(&value, true).unwrap();
+
 			assert_eq!(activity.status, expected);
 			assert_eq!(activity.detail, format!("Exit code {code}"));
 			assert_eq!(project(&value, false).unwrap().status, "running");

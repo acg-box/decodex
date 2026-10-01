@@ -25,6 +25,7 @@ impl AgentCoordinator {
 				)
 				.await?;
 		}
+
 		Ok(())
 	}
 
@@ -37,8 +38,11 @@ impl AgentCoordinator {
 		if error["codexErrorInfo"] != "misalignmentPolicyViolation" {
 			return Ok(());
 		}
+
 		let details = super::misalignment::details(error);
+
 		self.store.record_agent_misalignment(thread.into(), turn.into(), details).await?;
+
 		if self.store.list_agent_work_items().await?.into_iter().any(|work| {
 			work.codex_thread_id.as_deref() == Some(thread)
 				&& work.active_turn_id.as_deref() == Some(turn)
@@ -67,9 +71,11 @@ impl AgentCoordinator {
 			let latest = turns.last().and_then(|turn| turn["id"].as_str()).map(str::to_owned);
 			let superseded = self.superseded_misalignment(&work, &thread, &turns).await?;
 			let mut complete = true;
+
 			for header in turns {
 				let Some(turn) = header["id"].as_str() else {
 					complete = false;
+
 					break;
 				};
 				let Ok(Ok(history)) =
@@ -77,6 +83,7 @@ impl AgentCoordinator {
 						.await
 				else {
 					complete = false;
+
 					break;
 				};
 				let Some(items) = history
@@ -86,8 +93,10 @@ impl AgentCoordinator {
 					.and_then(|turn| turn["items"].as_array())
 				else {
 					complete = false;
+
 					break;
 				};
+
 				if latest.as_deref() == Some(turn)
 					&& let Some(native_turn) =
 						history.pointer("/thread/turns").and_then(Value::as_array).and_then(
@@ -105,19 +114,25 @@ impl AgentCoordinator {
 						.await?;
 					self.stop_voice_for_precaution(&thread).await?;
 				}
+
 				for item in items {
 					self.observe_steer_receipt(&thread, turn, item).await?;
+
 					saw_required |=
 						item["id"].as_str().is_some_and(|id| required_item.as_deref() == Some(id));
+
 					if projection.observe(&thread, turn, item).is_err() {
 						complete = false;
+
 						break;
 					}
 				}
+
 				if !complete {
 					break;
 				}
 			}
+
 			if complete && saw_required && self.client.question_revision() == revision {
 				if let Some(expected) = superseded
 					&& let Some(guard) = self.client.question_guard(revision)
@@ -129,6 +144,7 @@ impl AgentCoordinator {
 						})
 						.await?;
 				}
+
 				self.store
 					.replace_agent_async_projection(
 						work,
@@ -138,11 +154,13 @@ impl AgentCoordinator {
 						projection.answers.into_iter().collect(),
 					)
 					.await?;
+
 				if self.client.question_revision() != revision {
 					self.store.refresh_agent_async_projection(thread).await?;
 				}
 			}
 		}
+
 		Ok(())
 	}
 
@@ -163,17 +181,21 @@ impl AgentCoordinator {
 			.await?;
 		self.loaded_threads.remove(thread);
 		self.usage_replays.remove(thread);
+
 		for (id, event_id) in self.pending_requests.clone() {
 			let event = self.store.get_agent_inbox_event(event_id).await?;
 			let payload: Value = serde_json::from_str(&event.payload)
 				.map_err(|_| AgentError::Invalid("invalid persisted provider request".into()))?;
+
 			if payload["params"]["threadId"].as_str() == Some(thread) {
 				if event.disposition.is_none() {
 					self.store.resolve_agent_request_event(event_id).await?;
 				}
+
 				self.pending_requests.remove(&id);
 			}
 		}
+
 		Ok(())
 	}
 
@@ -186,6 +208,7 @@ impl AgentCoordinator {
 			if let Some(usage) = decodex_codex::decode_response_usage(params) {
 				let payload = serde_json::to_string(&usage)
 					.map_err(|_| AgentError::Invalid("invalid response usage".into()))?;
+
 				self.store
 					.record_agent_response_usage(
 						self.native_generation.as_ref().map(|id| id.as_str().to_owned()),
@@ -193,15 +216,19 @@ impl AgentCoordinator {
 					)
 					.await?;
 			}
+
 			return Ok(());
 		}
+
 		self.observe_notification(method, params).await?;
+
 		if decodex_codex::app_server_client::invalidates_question_state(method, params) {
 			self.handled_question_revision = self
 				.handled_question_revision
 				.saturating_add(1)
 				.min(self.client.question_revision());
 		}
+
 		Ok(())
 	}
 
@@ -213,12 +240,14 @@ impl AgentCoordinator {
 	) -> Result<(), AgentError> {
 		self.observe_steer_receipt(thread, turn, item).await?;
 		self.record_async_question_item(thread, turn, item, true).await?;
+
 		if is_plain_user_prompt(item)
 			&& let Some(id) = item["id"].as_str()
 		{
 			self.store.request_agent_async_recovery(thread.into(), id.into()).await?;
 			self.recover_async_questions().await?;
 		}
+
 		Ok(())
 	}
 
@@ -240,6 +269,7 @@ impl AgentCoordinator {
 				)
 				.await?;
 		}
+
 		Ok(())
 	}
 
@@ -251,6 +281,7 @@ impl AgentCoordinator {
 		if method == "thread/reverted" {
 			return self.invalidate_reverted_requests(&exact(params, "/threadId")?).await;
 		}
+
 		if let Some(review) = decodex_codex::guardian::decode_review(method, params) {
 			self.store
 				.record_agent_guardian_review(decodex_database::AgentGuardianObservation {
@@ -262,8 +293,10 @@ impl AgentCoordinator {
 					event_json: review.event.to_string(),
 				})
 				.await?;
+
 			return Ok(());
 		}
+
 		if method == "autoApprovalReview/strictReviewRequired" {
 			return self.observe_strict_review(params).await;
 		}
@@ -288,6 +321,7 @@ impl AgentCoordinator {
 		{
 			return Ok(());
 		}
+
 		let thread = exact(params, "/threadId")?;
 		let turn = exact(params, "/turnId")?;
 		let Some(work) = self.store.list_agent_work_items().await?.into_iter().find(|work| {
@@ -303,10 +337,13 @@ impl AgentCoordinator {
 				else {
 					return Ok(());
 				};
+
 				if !usage.is_valid() {
 					return Ok(());
 				}
+
 				let value = json!({"threadId":thread,"turnId":turn,"tokenUsage":usage});
+
 				("token_usage", value.clone(), value)
 			},
 			"item/completed"
@@ -319,6 +356,7 @@ impl AgentCoordinator {
 				let Some(item) = messages.first() else {
 					return Ok(());
 				};
+
 				(
 					"assistant_message",
 					json!([thread, turn, item_id]),
@@ -327,6 +365,7 @@ impl AgentCoordinator {
 			},
 			"item/completed" if params["item"]["type"] == "contextCompaction" => {
 				let item_id = exact(params, "/item/id")?;
+
 				(
 					"context_compacted",
 					json!([thread, turn, item_id]),
@@ -339,6 +378,7 @@ impl AgentCoordinator {
 			.iter()
 			.map(|byte| format!("{byte:02x}"))
 			.collect();
+
 		self.store
 			.record_agent_observation(EnqueueAgentEvent {
 				source_event_id: format!("{kind}:{digest}"),
@@ -347,6 +387,7 @@ impl AgentCoordinator {
 				payload: payload.to_string(),
 			})
 			.await?;
+
 		Ok(())
 	}
 
@@ -380,6 +421,7 @@ impl AgentCoordinator {
 						)
 					})
 					.collect();
+
 				if live {
 					self.store
 						.record_live_agent_async_questions(
@@ -406,6 +448,7 @@ impl AgentCoordinator {
 				.into_iter()
 				.flatten()
 				.filter(|part| part["type"] != "skill" && part["type"] != "mention");
+
 			if let Some(part) = content.next()
 				&& content.next().is_none()
 				&& part["type"] == "text"
@@ -413,7 +456,7 @@ impl AgentCoordinator {
 				&& let Some(replies) = decodex_protocol::parse_agent_async_question_replies(text)
 				&& replies.len() <= 32
 				&& replies.iter().all(|reply| {
-					!reply.question_item_id.is_empty() && reply.question_item_id.len() <= 4096
+					!reply.question_item_id.is_empty() && reply.question_item_id.len() <= 4_096
 				}) {
 				self.store
 					.resolve_agent_async_questions(
@@ -423,15 +466,18 @@ impl AgentCoordinator {
 					.await?;
 			}
 		}
+
 		Ok(())
 	}
 }
 
 pub(crate) fn usage_text(value: &Value) -> Option<String> {
 	let usage: ThreadTokenUsage = serde_json::from_value(value.clone()).ok()?;
+
 	if !usage.is_valid() {
 		return None;
 	}
+
 	let mut text = format!(
 		"Last response tokens: input {}, cached input {}, output {}, reasoning output {}.\nThread total tokens: {}.",
 		usage.last.input_tokens,
@@ -440,15 +486,18 @@ pub(crate) fn usage_text(value: &Value) -> Option<String> {
 		usage.last.reasoning_output_tokens,
 		usage.total.total_tokens
 	);
+
 	if usage.last.cache_write_input_tokens > 0 {
 		text.push_str(&format!(
 			"\nCache write input tokens: {}.",
 			usage.last.cache_write_input_tokens
 		));
 	}
+
 	if let Some(capacity) = usage.model_context_window {
 		text.push_str(&format!("\nModel context capacity: {capacity} tokens."));
 	}
+
 	Some(text)
 }
 
@@ -456,6 +505,7 @@ pub(super) fn is_plain_user_prompt(item: &Value) -> bool {
 	if item["type"] != "userMessage" {
 		return false;
 	}
+
 	let Some(content) = item["content"].as_array() else {
 		return false;
 	};
@@ -463,6 +513,7 @@ pub(super) fn is_plain_user_prompt(item: &Value) -> bool {
 		.iter()
 		.filter(|part| part["type"] != "skill" && part["type"] != "mention")
 		.collect::<Vec<_>>();
+
 	if let [part] = parts.as_slice()
 		&& part["type"] == "text"
 		&& part["text"].as_str().is_some_and(|text| {
@@ -470,5 +521,6 @@ pub(super) fn is_plain_user_prompt(item: &Value) -> bool {
 		}) {
 		return false;
 	}
+
 	!parts.is_empty()
 }

@@ -65,12 +65,16 @@ async fn qualify(
 	));
 	let model_name = if inherit { "fixture-selected" } else { "gpt-5.6-sol" };
 	let mut model = effort::fixture_model(model_name, "provider-effort");
+
 	model["default_reasoning_level"] = Value::Null;
+
 	if tier_override {
 		model["service_tiers"] =
 			json!([{ "id":"flex", "name":"Flex", "description":"Synthetic Flex capability" }]);
 	}
+
 	let catalog = home.path().join("models.json");
+
 	std::fs::write(
 		&catalog,
 		serde_json::to_vec(&json!({"models":[model]})).expect("native ordinary effort fixture"),
@@ -81,7 +85,9 @@ async fn qualify(
 	let reasoning = configured
 		.map(|value| format!("model_reasoning_effort={}\n", json!(value)))
 		.unwrap_or_default();
+
 	std::fs::write(home.path().join("config.toml"), format!("{reasoning}model={}\nservice_tier=\"{configured_tier}\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nfast_mode=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(model_name),json!(catalog))).expect("native ordinary effort fixture");
+
 	let mut session = NativeSession::start(&binary, home.path());
 	let start = ConversationThreadStartRequest::new(
 		"stale-display-model",
@@ -92,24 +98,35 @@ async fn qualify(
 	.inherit_model()
 	.inherit_service_tier();
 	let mut wire = serde_json::to_value(start).expect("native start wire");
+
 	wire["approvalPolicy"] = json!("never");
 	wire["sandbox"] = json!("read-only");
+
 	let started = session.client.thread_start(wire).await.expect("native ordinary effort fixture");
+
 	if inherit {
 		assert_eq!(started["serviceTier"], if tier_override { Value::Null } else { json!("flex") });
 	}
+
 	let id = started["thread"]["id"].as_str().expect("native ordinary effort fixture").to_owned();
 	let first_client_id = "50000000-0000-4000-8000-000000000001";
 	let second_client_id = "50000000-0000-4000-8000-000000000002";
 	let first_turn =
 		send(&mut session, &id, requested, first_client_id, inherit, tier_override).await;
+
 	assert_readback(&session, &id, first_client_id, &first_turn).await;
 	assert_settings(&session, &id, model_name, requested.or(configured)).await;
+
 	assert_eq!(requests.load(Ordering::Acquire), 1);
+
 	drop(session);
+
 	let mut session = NativeSession::start(&binary, home.path());
+
 	assert_settings(&session, &id, model_name, requested.or(configured)).await;
+
 	assert_eq!(requests.load(Ordering::Acquire), 1, "cold settings read cannot infer");
+
 	let resume = ConversationThreadResumeRequest::new(
 		ExactThreadId::new(&id).expect("exact saved thread"),
 		"deliberately-stale-model",
@@ -123,31 +140,43 @@ async fn qualify(
 		.thread_resume(serde_json::to_value(&resume).expect("typed resume wire"))
 		.await
 		.expect("native ordinary effort fixture");
+
 	if tier_override {
 		assert_eq!(response["serviceTier"], Value::Null, "per-turn Flex must not persist");
 	}
+
 	let decoded = decode_conversation_thread_resume_response(
 		&resume,
 		&serde_json::to_vec(&response).expect("native resume response"),
 	)
 	.expect("inheritance accepts actual native model while checking thread and directory");
+
 	assert_eq!(decoded.model().as_str(), model_name);
+
 	assert_readback(&session, &id, first_client_id, &first_turn).await;
+
 	assert_eq!(requests.load(Ordering::Acquire), 1, "restart and readback cannot replay input");
+
 	let second_turn =
 		send(&mut session, &id, requested, second_client_id, inherit, tier_override).await;
+
 	assert_ne!(first_turn, second_turn);
+
 	assert_readback(&session, &id, first_client_id, &first_turn).await;
 	assert_readback(&session, &id, second_client_id, &second_turn).await;
+
 	assert_eq!(requests.load(Ordering::Acquire), 2, "one turn per call, no replay");
 	assert!(!backend.is_finished(), "backend effort assertions must pass");
+
 	for body in bodies.lock().expect("captured inference bodies").iter() {
 		assert_eq!(body["reasoning"]["effort"], json!(requested.or(configured)));
+
 		if inherit {
 			assert_eq!(body["model"], model_name);
 			assert_eq!(body["service_tier"], "flex", "explicit Flex survives native filtering");
 		}
 	}
+
 	backend.abort();
 }
 
@@ -172,23 +201,29 @@ async fn send(
 	.with_user_trigger();
 	let request = if inherit { request.inherit_model().inherit_service_tier() } else { request };
 	let mut wire = serde_json::to_value(request).expect("native ordinary effort fixture");
+
 	if inherit && tier_override {
 		wire.as_object_mut()
 			.expect("native turn object")
 			.insert("serviceTierForTurn".into(), json!("flex"));
 	}
+
 	let turn = session.client.turn_start(wire).await.expect("native ordinary effort fixture");
+
 	loop {
 		let event = session.events.recv().await.expect("native ordinary effort fixture");
+
 		if let ServerEvent::Notification { method, params } = event
 			&& method == "turn/completed"
 			&& params["threadId"] == id
 			&& params["turn"]["id"] == turn["turn"]["id"]
 		{
 			assert_eq!(params["turn"]["status"], "completed");
+
 			break;
 		}
 	}
+
 	turn["turn"]["id"].as_str().expect("native provider turn ID").into()
 }
 
@@ -205,6 +240,7 @@ async fn assert_readback(session: &NativeSession, thread_id: &str, client_id: &s
 		crate::account_launch::process::project_exact_submitted_turn(&thread, client_id)
 			.expect("project exact native identity")
 			.expect("native user client ID survives history persistence");
+
 	assert_eq!(recovered.provider_turn_id().as_str(), turn_id);
 	assert_eq!(recovered.status(), decodex_codex::ConversationTurnStatus::Completed);
 	assert_eq!(recovered.assistant_text(), "Native ordinary answer");
@@ -234,6 +270,7 @@ async fn assert_settings(
 		.await
 		.expect("exact settings read")
 		.expect("installed thread settings support");
+
 	assert_eq!(settings.model.as_deref(), Some(expected_model));
 	assert_eq!(settings.model_provider.as_deref(), Some("fixture"));
 	assert_eq!(settings.reasoning_effort.as_deref(), expected_effort);

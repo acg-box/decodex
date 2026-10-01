@@ -1,6 +1,9 @@
 //! Explicit isolated-process qualification of the durable notification command owner.
+#[path = "application_model_review_native_tests.rs"] mod model_review;
 #[path = "application_account_nudge_socket_tests.rs"] mod socket;
+
 use super::*;
+
 use crate::{
 	account_observation::AccountObservationService,
 	account_service::{
@@ -9,16 +12,21 @@ use crate::{
 	conversation::{ConversationCapability, ConversationRuntime},
 	host_credentials::{CredentialSecretBundle, SqliteCredentialStore},
 };
+
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
 use decodex_core::{
 	AccountId, AccountOperationId, BlobStore, DecodexRoot, ProcessExecutionAuthorization,
 	ProcessExecutionEpochId,
 };
+
 use decodex_protocol::{
 	CURRENT_VERSION, ClientCommandId, CommandPayload, CorrelationId, EntityId, EntityRevision,
 	IdempotencyKey,
 };
+
 use serde_json::json;
+
 use std::{
 	io::Write as _, os::unix::fs::OpenOptionsExt as _, path::PathBuf, sync::Arc, time::Duration,
 };
@@ -39,6 +47,7 @@ fn isolated_home() -> PathBuf {
 			.expect("explicit disposable home under the OS account home, outside .codex"),
 	);
 	let home = requested.canonicalize().expect("canonical fixture home");
+
 	assert_eq!(PathBuf::from(std::env::var_os("HOME").expect("HOME")), home);
 	assert_eq!(
 		std::fs::read_to_string(home.join(".decodex-native-test-home"))
@@ -46,6 +55,7 @@ fn isolated_home() -> PathBuf {
 		"native-account-command-fixture\n"
 	);
 	assert!(!home.join(".codex").exists(), "fixture requires a fresh isolated home");
+
 	home
 }
 
@@ -66,8 +76,14 @@ fn credential_file(home: &std::path::Path) -> PathBuf {
 		.mode(0o600)
 		.open(&path)
 		.expect("private fixture input");
+
 	file.write_all(value.to_string().as_bytes()).expect("synthetic credential input");
+
 	path
+}
+
+fn fixture_usage() -> decodex_codex::AccountApiUsage {
+	decodex_codex::decode_account_api_usage(br#"{"account_id":"workspace-fixture","user_id":"user-fixture","plan_type":"team","rate_limit":{},"rate_limit_upsell":{"banner_type":"limit","title":"Workspace limit","description":"Ask the owner","ctas":[{"action":"notify_owner","label":"Notify owner"}]}}"#).expect("backend recovery source")
 }
 
 async fn enroll(
@@ -86,6 +102,7 @@ async fn enroll(
 		panic!("enrollment owner")
 	};
 	let source = credential_file(home);
+
 	service
 		.enroll_from_credential_file_command(
 			lease,
@@ -96,12 +113,15 @@ async fn enroll(
 			source.to_str().expect("fixture path"),
 			|result| {
 				assert!(result.is_ok(), "synthetic account enrollment failed");
+
 				Ok(json!({"enrolled":true}))
 			},
 		)
 		.await
 		.expect("owned credential enrollment");
+
 	std::fs::remove_file(source).expect("remove synthetic import file");
+
 	account
 }
 
@@ -110,17 +130,24 @@ async fn enroll(
 async fn native_notification_command_sends_once_and_replays_after_store_reopen() {
 	let home = isolated_home();
 	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+
 	assert!(std::path::Path::new(&binary).is_absolute());
+
 	std::fs::create_dir(home.join(".codex")).expect("isolated Codex home");
+
 	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("fixture backend");
 	let address = listener.local_addr().expect("loopback address");
+
 	std::fs::write(
 		home.join(".codex/config.toml"),
 		format!("chatgpt_base_url = \"http://{address}\"\ncli_auth_credentials_store = \"file\"\n"),
 	)
 	.expect("fixture configuration");
+
 	let root = DecodexRoot::new(home.join("product")).expect("isolated product root");
+
 	root.paths().ensure_layout().expect("product layout");
+
 	let store = decodex_database::SqliteStore::open(&root.paths()).expect("product store");
 	let accounts = Arc::new(AccountService::new(
 		store.clone(),
@@ -137,18 +164,23 @@ async fn native_notification_command_sends_once_and_replays_after_store_reopen()
 	})
 	.await
 	.expect("native profile owner");
+
 	assert!(
 		accounts
 			.attest_callback_capability(profile.account_callback_attestation())
 			.await
 			.expect("native callback attestation")
 	);
+
 	let revision = accounts.inspect(&account).await.expect("enrolled account").account.revision;
+
 	assert!(
 		store.account_is_ready_at_revision(&account, revision).await.expect("account readiness")
 	);
+
 	let observations = AccountObservationService::new(Arc::clone(&accounts), None, None, None);
 	let usage = fixture_usage();
+
 	observations
 		.cache_recovery_fixture(
 			account.clone(),
@@ -158,6 +190,7 @@ async fn native_notification_command_sends_once_and_replays_after_store_reopen()
 			"user-fixture",
 		)
 		.await;
+
 	let source = observations
 		.recovery(
 			&EntityId::new(account.as_str()).expect("account entity"),
@@ -167,7 +200,9 @@ async fn native_notification_command_sends_once_and_replays_after_store_reopen()
 	let runtime = runtime(&root, &store, accounts, profile).await;
 	let mut app = super::tests::application(store.clone())
 		.with_account_observations(Some(observations.clone()));
+
 	app.conversations = ConversationCapability::Ready(runtime);
+
 	let command = CommandEnvelope {
 		version: CURRENT_VERSION,
 		client_command_id: ClientCommandId::new("native-nudge").expect("command id"),
@@ -193,14 +228,19 @@ async fn native_notification_command_sends_once_and_replays_after_store_reopen()
 	})
 	.await
 	.expect("bounded native command");
+
 	assert!(matches!(
 		result.expect("command result").result,
 		ResultPayload::AccountRecoveryNudge { status: Status::Sent, .. }
 	));
+
 	assert_source_invalidated_during_launch(&app, &command, &source, &observations, &listener)
 		.await;
+
 	socket::qualify(app, &root, &source, &observations, &listener).await;
+
 	drop(store);
+
 	let reopened = super::tests::application(
 		decodex_database::SqliteStore::open(&root.paths()).expect("reopen store"),
 	);
@@ -208,6 +248,7 @@ async fn native_notification_command_sends_once_and_replays_after_store_reopen()
 		.execute_recovery_nudge(&command, &source, AccountRecoveryAction::NotifyOwner)
 		.await
 		.expect("durable replay");
+
 	assert!(matches!(
 		replay.result,
 		ResultPayload::AccountRecoveryNudge { status: Status::Sent, .. }
@@ -253,8 +294,10 @@ async fn assert_source_invalidated_during_launch(
 	listener: &tokio::net::TcpListener,
 ) {
 	let mut command = original.clone();
+
 	command.idempotency_key =
 		IdempotencyKey::new("invalidate-during-native-launch").expect("new explicit operation");
+
 	let gate = Arc::new((tokio::sync::Notify::new(), tokio::sync::Notify::new()));
 	let change = async {
 		gate.0.notified().await;
@@ -279,14 +322,17 @@ async fn assert_source_invalidated_during_launch(
 	.await
 	.expect("bounded source mutation")
 	.expect("persist refused command");
+
 	assert!(matches!(
 		outcome.result,
 		ResultPayload::AccountRecoveryNudge { status: Status::Unavailable, .. }
 	));
+
 	let replay = app
 		.execute_recovery_nudge(&command, source, AccountRecoveryAction::NotifyOwner)
 		.await
 		.expect("replay refused command");
+
 	assert!(matches!(
 		replay.result,
 		ResultPayload::AccountRecoveryNudge { status: Status::Unavailable, .. }
@@ -299,13 +345,16 @@ async fn concurrent_sends(
 	source: &AccountRecoveryResult,
 ) -> Result<ApplicationPublication, CommandError> {
 	let mut peer = command.clone();
+
 	peer.client_command_id =
 		ClientCommandId::new("native-nudge-peer").expect("second client command");
+
 	let (first, second) = tokio::join!(
 		app.execute_recovery_nudge(command, source, AccountRecoveryAction::NotifyOwner),
 		app.execute_recovery_nudge(&peer, source, AccountRecoveryAction::NotifyOwner)
 	);
 	let results = [first?, second?];
+
 	assert_eq!(
 		results
 			.iter()
@@ -326,6 +375,7 @@ async fn concurrent_sends(
 			.count(),
 		1
 	);
+
 	Ok(results
 		.into_iter()
 		.find(|r| {
@@ -333,9 +383,3 @@ async fn concurrent_sends(
 		})
 		.expect("one native send owner"))
 }
-
-fn fixture_usage() -> decodex_codex::AccountApiUsage {
-	decodex_codex::decode_account_api_usage(br#"{"account_id":"workspace-fixture","user_id":"user-fixture","plan_type":"team","rate_limit":{},"rate_limit_upsell":{"banner_type":"limit","title":"Workspace limit","description":"Ask the owner","ctas":[{"action":"notify_owner","label":"Notify owner"}]}}"#).expect("backend recovery source")
-}
-
-#[path = "application_model_review_native_tests.rs"] mod model_review;
