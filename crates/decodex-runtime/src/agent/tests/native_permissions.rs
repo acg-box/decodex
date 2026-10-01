@@ -13,7 +13,10 @@ use std::{
 use futures_util::FutureExt as _;
 use tokio::{net::TcpListener, process::Command, sync::mpsc::Receiver, time};
 
-use crate::agent::tests::{native_goal_fixture::serve, *};
+use crate::agent::tests::{
+	self, AgentConfig, AgentCoordinator, AppServerClient, ServerEvent, SqliteStore,
+	native_goal_fixture,
+};
 use decodex_codex::app_server_client::{NativeTaskPermissions, ThreadPermissionSelection};
 use decodex_core::DecodexRoot;
 use decodex_database::AgentPermissionAttempt;
@@ -31,14 +34,14 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
-	let backend = tokio::spawn(serve(listener, Arc::clone(&calls)));
+	let backend = tokio::spawn(native_goal_fixture::serve(listener, Arc::clone(&calls)));
 
 	fs::write(home.join("config.toml"), format!(
 		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\napprovals_reviewer = \"user\"\n[model_providers.fixture]\nname = \"Isolated permissions fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[permissions.scoped.filesystem]\n\":root\" = \"read\"\n{} = \"write\"\n{} = \"deny\"\n",
 		serde_json::json!(workspace.join("writable")), serde_json::json!(workspace.join("writable/private"))
 	)).unwrap();
 
-	let (mut agent, _, store_home) = fixture().await;
+	let (mut agent, _, store_home) = tests::fixture().await;
 
 	agent.config =
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.display().to_string());

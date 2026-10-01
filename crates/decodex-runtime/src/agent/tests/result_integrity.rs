@@ -1,4 +1,4 @@
-use crate::agent::tests::*;
+use crate::agent::tests::{self, ClientError, Value, result_messages};
 
 #[test]
 fn completion_summary_excludes_nonfinal_and_unscoped_items() {
@@ -29,7 +29,7 @@ async fn paginated_recovery_retains_exact_worker_output_without_full_thread_hydr
 			{"id":"answer","type":"agentMessage","text":"Recovered result","phase":"final_answer"}
 		]}]
 	}}});
-	let (mut coordinator, mut sent, _directory) = fixture_with_history(history).await;
+	let (mut coordinator, mut sent, _directory) = tests::fixture_with_history(history).await;
 
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -77,7 +77,7 @@ async fn recovery_saves_large_result_without_duplicating_terminal_items() {
 		let history = serde_json::json!({"opaque thread/1":{"thread":{
 			"id":"opaque thread/1","status":{"type":"idle"},"turns":[turn]
 		}}});
-		let (mut coordinator, _sent, _directory) = fixture_with_history(history).await;
+		let (mut coordinator, _sent, _directory) = tests::fixture_with_history(history).await;
 
 		coordinator.start_agent("agent", "Coordinate").await.unwrap();
 		coordinator.recover_persisted().await.unwrap();
@@ -117,7 +117,7 @@ async fn completion_summary_repairs_missing_final_output_without_claiming_full_r
 			serde_json::json!({"thread":{"id":"foreign","turns":[{"id":"opaque turn/1","items":[{"type":"agentMessage","id":"foreign-answer","text":"Foreign output"}]}]}}),
 		),
 	] {
-		let (mut coordinator, _sent, _directory) = fixture().await;
+		let (mut coordinator, _sent, _directory) = tests::fixture().await;
 
 		coordinator.start_agent("agent", "Coordinate").await.unwrap();
 		coordinator.observe_live_text("item/agentMessage/delta", &serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"answer","delta":"Partial"})).await.unwrap();

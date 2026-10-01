@@ -12,7 +12,10 @@ use tokio::{
 	task::JoinHandle,
 };
 
-use crate::{agent_search_settings::*, agent_usage_estimate::SourceKey};
+use crate::{
+	agent_search_settings::{self, AgentSearchSettingsResult, Source, WireText},
+	agent_usage_estimate::SourceKey,
+};
 use decodex_codex::app_server_client::{self, AppServerClient};
 use decodex_core::{AccountId, ProcessGenerationId};
 
@@ -89,7 +92,7 @@ async fn search_settings_bind_source_version_and_report_uncertain_readback() {
 		let (client, writes, task) = fixture(fail_readback);
 		let read_source = || future::ready(Some(source(client.clone(), 1)));
 		let AgentSearchSettingsResult::Available { review_token, modes, .. } =
-			read(read_source).await
+			agent_search_settings::read(read_source).await
 		else {
 			panic!("settings")
 		};
@@ -99,11 +102,11 @@ async fn search_settings_bind_source_version_and_report_uncertain_readback() {
 			vec!["disabled", "cached", "indexed"]
 		);
 		assert!(
-			write(read_source, review_token.as_str(), "live").await.is_err(),
+			agent_search_settings::write(read_source, review_token.as_str(), "live").await.is_err(),
 			"native requirements exclude live mode"
 		);
 		assert!(
-			write(
+			agent_search_settings::write(
 				|| future::ready(Some(source(client.clone(), 2))),
 				review_token.as_str(),
 				"indexed"
@@ -113,16 +116,21 @@ async fn search_settings_bind_source_version_and_report_uncertain_readback() {
 		);
 		assert_eq!(writes.load(Ordering::SeqCst), 0);
 
-		let result = write(read_source, review_token.as_str(), "indexed").await;
+		let result =
+			agent_search_settings::write(read_source, review_token.as_str(), "indexed").await;
 
 		assert_eq!(result.is_ok(), !fail_readback);
 		assert_eq!(writes.load(Ordering::SeqCst), 1);
-		assert!(write(read_source, review_token.as_str(), "indexed").await.is_err());
+		assert!(
+			agent_search_settings::write(read_source, review_token.as_str(), "indexed")
+				.await
+				.is_err()
+		);
 		assert_eq!(writes.load(Ordering::SeqCst), 1);
 
 		if !fail_readback {
 			let AgentSearchSettingsResult::Available { effective, preference, .. } =
-				read(read_source).await
+				agent_search_settings::read(read_source).await
 			else {
 				panic!("readback")
 			};

@@ -1,6 +1,12 @@
 use rusqlite::Connection;
 
-use crate::{agent::tests::*, agent_detail};
+use crate::{
+	agent::{
+		tests,
+		tests::{AgentWorkItem, RequestId, ServerEvent, SqliteStore, Value},
+	},
+	agent_detail,
+};
 use decodex_core::DecodexRoot;
 
 fn file_event(root: &AgentWorkItem) -> Value {
@@ -9,11 +15,11 @@ fn file_event(root: &AgentWorkItem) -> Value {
 
 #[tokio::test]
 async fn live_file_approval_preserves_original_params_and_replays_exact_saved_evidence() {
-	let (mut agent, _sent, directory) = fixture().await;
+	let (mut agent, _sent, directory) = tests::fixture().await;
 	let root = agent.start_agent("agent", "Coordinate").await.unwrap();
 	let file = file_event(&root);
 	let params = serde_json::json!({"threadId":root.codex_thread_id,"turnId":root.active_turn_id,"itemId":"patch","reason":"Review"});
-	let mut sent = attach_request_transport(
+	let mut sent = tests::attach_request_transport(
 		&mut agent,
 		serde_json::json!({}),
 		serde_json::json!([file,{"id":91,"method":"item/fileChange/requestApproval","params":params}]),
@@ -57,7 +63,7 @@ async fn live_file_approval_preserves_original_params_and_replays_exact_saved_ev
 
 #[tokio::test]
 async fn failed_file_approval_write_keeps_evidence_until_commit() {
-	let (mut agent, _sent, directory) = fixture().await;
+	let (mut agent, _sent, directory) = tests::fixture().await;
 	let root = agent.start_agent("agent", "Coordinate").await.unwrap();
 	let file = file_event(&root);
 

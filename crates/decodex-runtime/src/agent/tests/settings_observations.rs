@@ -7,7 +7,10 @@ use tokio::{
 	time,
 };
 
-use crate::agent::tests::*;
+use crate::agent::tests::{
+	self, AgentCoordinator, AppServerClient, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader,
+	ServerEvent, SqliteStore, Value,
+};
 use decodex_codex::app_server_client::{NativeTaskModelSettings, NativeTaskPermissions};
 use decodex_core::DecodexRoot;
 use decodex_database::{AgentPermissionAttempt, AgentTaskSettingsObservation};
@@ -218,7 +221,7 @@ async fn assert_foreign_generation(
 
 #[tokio::test]
 async fn wire_settings_preserve_transitions_privacy_and_reopen_without_dispatch() {
-	let (mut agent, mut sent, directory) = fixture().await;
+	let (mut agent, mut sent, directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -321,7 +324,7 @@ async fn wire_settings_preserve_transitions_privacy_and_reopen_without_dispatch(
 
 #[tokio::test]
 async fn queued_notification_payload_cannot_replace_newer_wire_settings() {
-	let (mut agent, mut sent, _directory) = fixture().await;
+	let (mut agent, mut sent, _directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -352,7 +355,7 @@ async fn queued_notification_payload_cannot_replace_newer_wire_settings() {
 
 #[tokio::test]
 async fn resumed_wire_settings_require_exact_thread_and_complete_model_facts() {
-	let (mut agent, mut sent, _directory) = fixture().await;
+	let (mut agent, mut sent, _directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -395,7 +398,7 @@ async fn resumed_wire_settings_require_exact_thread_and_complete_model_facts() {
 
 #[tokio::test]
 async fn permission_receipt_requires_current_wire_facts_not_queued_payload_or_history() {
-	let (mut agent, mut sent, directory) = fixture().await;
+	let (mut agent, mut sent, directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 

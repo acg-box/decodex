@@ -40,20 +40,22 @@ use std::{
 	env,
 	ffi::OsStr,
 	fs,
-	io::{BufRead, BufReader},
+	io::BufRead,
 	path::Path,
 	process::{Child, Command, Stdio},
-	sync::mpsc as sync_mpsc,
 	thread,
 	time::Instant,
 };
 
-use mpsc::Receiver;
 use serde_json::json;
 use tokio::time;
 
 use crate::{
-	account_launch::agent_process::*,
+	account_launch::agent_process::{
+		AccountBinding, AgentProcessBridge, AppServerClient, Arc, AtomicBool, ClientError,
+		Duration, InboundFrame, JoinHandle, Ordering, ServerEvent, Value, Write, mpsc,
+		mpsc::Receiver,
+	},
 	agent::{timeline, timeline::media},
 	agent_usage_estimate::{Source, SourceKey},
 };
@@ -97,9 +99,9 @@ impl NativeSession {
 		);
 		let mut stdin = child.0.stdin.take().expect("native session setup");
 		let stdout = child.0.stdout.take().expect("native session setup");
-		let (send, receive) = sync_mpsc::sync_channel(64);
+		let (send, receive) = std::sync::mpsc::sync_channel(64);
 		let reader = thread::spawn(move || {
-			for line in BufReader::new(stdout).lines() {
+			for line in std::io::BufReader::new(stdout).lines() {
 				let Ok(line) = line else { break };
 
 				if send.send(InboundFrame::fixture(line.as_bytes())).is_err() {

@@ -41,8 +41,7 @@ use serde_json::Value;
 
 use crate::agent_resources;
 use decodex_codex::app_server_client::{
-	AppServerClient, ClientError, HistoryGuard, NativeDispatchRefusal, RequestId, ServerEvent,
-	classify_dispatch_refusal,
+	self, AppServerClient, ClientError, HistoryGuard, NativeDispatchRefusal, RequestId, ServerEvent,
 };
 use decodex_core::ProcessGenerationId;
 use decodex_database::{
@@ -1129,12 +1128,17 @@ impl AgentCoordinator {
 						return None;
 					};
 
-					Some(match classify_dispatch_refusal(remote.code, &remote.message)? {
-						NativeDispatchRefusal::ServerDraining =>
-							decodex_database::AgentDispatchRefusal::ServerDraining,
-						NativeDispatchRefusal::ManagedProviderChanged =>
-							decodex_database::AgentDispatchRefusal::ManagedProviderChanged,
-					})
+					Some(
+						match app_server_client::classify_dispatch_refusal(
+							remote.code,
+							&remote.message,
+						)? {
+							NativeDispatchRefusal::ServerDraining =>
+								decodex_database::AgentDispatchRefusal::ServerDraining,
+							NativeDispatchRefusal::ManagedProviderChanged =>
+								decodex_database::AgentDispatchRefusal::ManagedProviderChanged,
+						},
+					)
 				});
 
 				if let (Some(event), Some(refusal)) = (history_event, refusal) {

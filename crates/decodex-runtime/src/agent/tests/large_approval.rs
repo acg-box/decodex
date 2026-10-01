@@ -1,9 +1,9 @@
-use crate::agent::tests::*;
+use crate::agent::tests::{self, EnqueueAgentEvent, RequestId, ServerEvent, SqliteStore, Value};
 use decodex_core::DecodexRoot;
 
 #[tokio::test]
 async fn large_user_approval_keeps_complete_request_without_breaking_the_coordinator() {
-	let (mut coordinator, _sent, directory) = fixture().await;
+	let (mut coordinator, _sent, directory) = tests::fixture().await;
 	let root = coordinator.start_agent("agent", "Coordinate").await.unwrap();
 	let command = format!("true # {} REQUIRED ACTION SUFFIX", "界".repeat(100_000));
 	let params = serde_json::json!({"threadId":root.codex_thread_id,"turnId":root.active_turn_id,

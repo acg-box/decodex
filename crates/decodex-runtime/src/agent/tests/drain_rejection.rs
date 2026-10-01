@@ -1,11 +1,11 @@
-use crate::agent::tests::*;
+use crate::agent::tests::{self, AgentError, ClientError, EnqueueAgentEvent, SqliteStore};
 use decodex_codex::app_server_client::RpcError;
 use decodex_core::DecodexRoot;
 
 #[tokio::test]
 async fn drain_wire_refusal_distinguishes_direct_input_from_injected_updates() {
 	let (mut agent, mut sent, _directory) =
-		fixture_with_history(serde_json::json!({"_turn_draining":true})).await;
+		tests::fixture_with_history(serde_json::json!({"_turn_draining":true})).await;
 
 	assert!(matches!(
 		agent.start_agent("agent", "Keep the original instruction").await,
@@ -31,11 +31,12 @@ async fn drain_wire_refusal_distinguishes_direct_input_from_injected_updates() {
 	assert!(sent.try_recv().is_err());
 
 	let (mut agent, mut sent, _directory) =
-		fixture_with_history(serde_json::json!({"_turn_draining_after_injection":true})).await;
+		tests::fixture_with_history(serde_json::json!({"_turn_draining_after_injection":true}))
+			.await;
 
 	agent.start_agent("agent", "Initial").await.unwrap();
 
-	complete(&mut agent, "agent").await;
+	tests::complete(&mut agent, "agent").await;
 
 	while sent.try_recv().is_ok() {}
 
@@ -81,11 +82,11 @@ async fn native_rejection_preserves_input_and_never_replays_ambiguous_effects() 
 		for (prior_effects, lost_response, expected_rejection) in
 			[(false, false, true), (true, false, false), (false, true, false)]
 		{
-			let (mut agent, mut sent, directory) = fixture().await;
+			let (mut agent, mut sent, directory) = tests::fixture().await;
 
 			agent.start_agent("agent", "Initial").await.unwrap();
 
-			complete(&mut agent, "agent").await;
+			tests::complete(&mut agent, "agent").await;
 
 			let before = agent.store.get_agent_work_item("agent".into()).await.unwrap();
 			let event = agent

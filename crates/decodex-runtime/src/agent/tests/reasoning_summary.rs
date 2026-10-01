@@ -1,8 +1,8 @@
-use crate::agent::tests::*;
+use crate::agent::tests::{self, ServerEvent, Value};
 
 #[tokio::test]
 async fn reasoning_summary_stream_keeps_typed_items_and_excludes_raw_and_voice_delegation() {
-	let (mut agent, _sent, _directory) = fixture().await;
+	let (mut agent, _sent, _directory) = tests::fixture().await;
 	let work = agent.start_agent("agent", "Talk").await.unwrap();
 	let event = |method: &str, mut params: Value| {
 		params["threadId"] = serde_json::json!(work.codex_thread_id);
@@ -69,7 +69,7 @@ async fn reasoning_summary_stream_keeps_typed_items_and_excludes_raw_and_voice_d
 	assert_eq!(live[0].text, "Corrected public summary.");
 	assert_eq!(live[0].kind, "reasoningSummary");
 
-	complete(&mut agent, "agent").await;
+	tests::complete(&mut agent, "agent").await;
 
 	assert!(agent.store.read_agent_output("agent".into()).await.unwrap().is_empty());
 }

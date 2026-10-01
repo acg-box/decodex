@@ -3,7 +3,9 @@ use std::{env, fs, net::SocketAddr, path::Path, sync::atomic::AtomicUsize};
 
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::agent_process::native_tests::{reviewer, *};
+use crate::account_launch::agent_process::native_tests::{
+	self, Arc, Duration, NativeSession, Ordering, ServerEvent, reviewer,
+};
 use decodex_codex::app_server_client::{HookSettingsChange, HookSettingsWrite};
 
 fn setup(root: &Path, address: SocketAddr) {
@@ -34,7 +36,7 @@ async fn qualify_hooks() {
 
 	setup(&root, listener.local_addr().expect("address"));
 
-	let backend = tokio::spawn(serve(listener, calls.clone()));
+	let backend = tokio::spawn(native_tests::serve(listener, calls.clone()));
 	let mut session = NativeSession::start(&binary, &root);
 	let started = session
 		.client

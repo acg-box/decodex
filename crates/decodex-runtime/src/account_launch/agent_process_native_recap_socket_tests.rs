@@ -18,7 +18,16 @@ use tokio::{net::TcpListener, process::Command, task, time};
 
 use crate::{
 	ProtocolServer, ServerConfig,
-	account_launch::{AttestedAppServerProfile, agent_process::native_tests::cold_settings::*},
+	account_launch::{
+		AttestedAppServerProfile,
+		agent_process::native_tests::{
+			cold_settings,
+			cold_settings::{
+				AccountId, AccountService, Arc, ConversationRuntime, DecodexRoot, Duration,
+				NoRefresh, Ordering, SqliteCredentialStore, SqliteStore, Value, effort, submit,
+			},
+		},
+	},
 };
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::{AccountQuotaWindow, LocalTrustPolicy};
@@ -124,7 +133,7 @@ async fn qualify(home: &Path) {
 	let address = listener.local_addr().expect("loopback address");
 	let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 	let metadata = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-	let backend = tokio::spawn(serve(
+	let backend = tokio::spawn(cold_settings::serve(
 		listener,
 		requests.clone(),
 		metadata,
@@ -157,7 +166,7 @@ async fn qualify(home: &Path) {
 		Arc::new(SqliteCredentialStore::new(store.clone())),
 		Arc::new(NoRefresh),
 	));
-	let account = enroll(&store, &accounts, home).await;
+	let account = cold_settings::enroll(&store, &accounts, home).await;
 
 	observe_fixture_quota(&accounts, &account).await;
 
@@ -190,7 +199,7 @@ async fn qualify(home: &Path) {
 		.await
 		.expect("native callback attestation");
 
-	let runtime = runtime(&root, &store, accounts.clone(), profile).await;
+	let runtime = cold_settings::runtime(&root, &store, accounts.clone(), profile).await;
 	let server_id = ServerId::new("20000000-0000-4000-8000-000000000001").expect("server id");
 	let authority = || {
 		LocalTransportAuthority::new(
@@ -1054,7 +1063,7 @@ async fn qualify_account_rotation(
 
 	assert_eq!(&original.account_id, first);
 
-	let second = enroll_numbered(store, accounts, home, 2).await;
+	let second = cold_settings::enroll_numbered(store, accounts, home, 2).await;
 	let count = requests.load(Ordering::Acquire);
 	let observed =
 		SystemTime::now().duration_since(UNIX_EPOCH).expect("native recap fixture").as_micros()

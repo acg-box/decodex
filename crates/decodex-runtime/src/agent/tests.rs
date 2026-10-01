@@ -36,7 +36,6 @@ use std::{iter, slice, time::Duration};
 
 use rusqlite::Connection;
 use tempfile::TempDir;
-use timeline::metrics;
 use tokio::{
 	io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream, WriteHalf},
 	sync::{
@@ -47,14 +46,19 @@ use tokio::{
 };
 
 use crate::{
-	agent::{AgentInputExtras, async_projection::Projection, misalignment, *},
+	agent::{
+		self, AgentConfig, AgentCoordinator, AgentDisposition, AgentError, AgentInboxEvent,
+		AgentInputExtras, AgentWorkItem, AgentWorkStatus, AppServerClient, ClientError,
+		EnqueueAgentEvent, MAX_WAKE_BATCH_BYTES, RequestId, ServerEvent, SqliteStore, Value,
+		apply_message_options, async_projection::Projection, misalignment, result_messages,
+		timeline, timeline::metrics,
+	},
 	application,
 };
 use decodex_core::DecodexRoot;
 use decodex_database::{AgentMisalignment, AgentOutputUpdate};
 use decodex_protocol::{
 	AgentActivityDto, AgentAsyncQuestionDto, AgentRequestedDecision, AgentTimelineContent,
-	requested_decision_response,
 };
 
 struct FixtureFaults {
@@ -1187,7 +1191,7 @@ async fn wait_requires_future_due_and_due_checks_wake_once_per_timestamp() {
 			.is_err()
 	);
 
-	let due = now_micros().unwrap() + 60_000_000;
+	let due = agent::now_micros().unwrap() + 60_000_000;
 
 	args["nextCheckAtMicros"] = serde_json::json!(due);
 
@@ -1496,7 +1500,9 @@ async fn large_requested_decisions_reach_native_once_without_truncation() {
 
 		let stored = agent.store.get_agent_inbox_event(event.id).await.unwrap();
 		let payload: Value = serde_json::from_str(&stored.payload).unwrap();
-		let response = requested_decision_response(method, &payload["params"], &decision).unwrap();
+		let response =
+			decodex_protocol::requested_decision_response(method, &payload["params"], &decision)
+				.unwrap();
 
 		assert!(response.to_string().len() > decodex_protocol::MAX_HISTORY_INLINE_BYTES);
 
@@ -2156,10 +2162,10 @@ async fn queued_user_messages_keep_native_turn_boundaries() {
 			.is_none()
 	);
 
-	let message = wake_message(slice::from_ref(&evidence)).unwrap();
+	let message = agent::wake_message(slice::from_ref(&evidence)).unwrap();
 
 	assert!(!message.contains("Background evidence"));
-	assert!(wake_evidence(&evidence).to_string().contains("Background evidence"));
+	assert!(agent::wake_evidence(&evidence).to_string().contains("Background evidence"));
 	assert!(!message.contains("source_event_id"));
 	assert!(!message.contains("delivered_turn_id"));
 }

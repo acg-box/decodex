@@ -6,7 +6,9 @@ use serde_json::{self, Value};
 use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream};
 
 use crate::{
-	account_launch::agent_process::native_tests::reviewer::store::*,
+	account_launch::agent_process::native_tests::reviewer::store::{
+		AppServerClient, OwnedReviewer, SqliteStore,
+	},
 	agent_app_exposure::{self, Change},
 	agent_config_settings,
 };

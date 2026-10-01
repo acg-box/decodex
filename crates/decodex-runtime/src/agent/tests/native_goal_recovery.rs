@@ -12,7 +12,10 @@ use std::{
 use futures_util::FutureExt as _;
 use tokio::{net::TcpListener, process::Command, sync::mpsc::Receiver, time};
 
-use crate::agent::tests::*;
+use crate::agent::tests::{
+	self, AgentConfig, AgentCoordinator, AppServerClient, ServerEvent, SqliteStore, Value,
+	native_goal_fixture,
+};
 use decodex_core::DecodexRoot;
 
 #[tokio::test]
@@ -29,7 +32,7 @@ async fn native_active_goal_on_unloaded_thread_resumes_without_local_turn_submis
   "model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\ngoals = true\n[model_providers.fixture]\nname = \"Isolated goal recovery\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n"
  )).unwrap();
 
-	let (mut agent, _, store_home) = fixture().await;
+	let (mut agent, _, store_home) = tests::fixture().await;
 
 	agent.config =
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.display().to_string());
@@ -143,11 +146,11 @@ async fn goal_recovery_hydrates_only_exact_active_unloaded_thread() {
 
 		let expected = goal["threadId"] == "opaque thread/1" && goal["status"] == "active";
 		let (mut agent, mut sent, _home) =
-			fixture_with_history(serde_json::json!({"_goal":goal})).await;
+			tests::fixture_with_history(serde_json::json!({"_goal":goal})).await;
 
 		agent.start_agent("agent", "Initial input").await.unwrap();
 
-		complete(&mut agent, "agent").await;
+		tests::complete(&mut agent, "agent").await;
 
 		agent.loaded_threads.clear();
 
@@ -186,14 +189,14 @@ async fn goal_recovery_hydrates_only_exact_active_unloaded_thread() {
 #[tokio::test]
 async fn native_goal_capacity_failure_does_not_create_a_local_retry() {
 	let failure = serde_json::json!({"id":"native-turn","status":"failed","error":{"message":"Capacity unavailable","codexErrorInfo":"serverOverloaded"},"items":[]});
-	let (mut agent, mut sent, _home) = fixture_with_history(
+	let (mut agent, mut sent, _home) = tests::fixture_with_history(
 		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[failure]}}}),
 	)
 	.await;
 
 	agent.start_agent("agent", "Original input").await.unwrap();
 
-	complete(&mut agent, "agent").await;
+	tests::complete(&mut agent, "agent").await;
 
 	while sent.try_recv().is_ok() {}
 

@@ -1,13 +1,16 @@
 //! Native child MCP requests retain policy decisions and exact response ownership.
 use std::{env, fs, panic::AssertUnwindSafe, time::Duration};
 
+use futures_util::FutureExt as _;
 use tokio::{net::TcpListener, process::Command, sync::mpsc, time};
 
-use crate::agent::tests::native_subagent_live::*;
+use crate::agent::tests::native_subagent_live::{
+	self, AgentConfig, AppServerClient, ServerEvent, Value,
+};
 
 fn mcp_response(body: &Value, serial: usize) -> Value {
 	if serial == 1 {
-		return response(body, serial);
+		return native_subagent_live::response(body, serial);
 	}
 
 	let answered = body["input"]
@@ -16,7 +19,7 @@ fn mcp_response(body: &Value, serial: usize) -> Value {
 		.iter()
 		.any(|i| i["type"] == "function_call_output" && i["call_id"] == "child-mcp");
 
-	if is_child(body) && !answered {
+	if native_subagent_live::is_child(body) && !answered {
 		return serde_json::json!({"type":"function_call","id":"child-mcp","call_id":"child-mcp","namespace":"mcp__fixture","name":"ask","arguments":"{}"});
 	}
 
@@ -55,11 +58,15 @@ async fn qualify(marker: Value, interactive: bool) {
 	let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener");
 	let address = listener.local_addr().expect("address");
 	let (requests_tx, mut requests_rx) = mpsc::unbounded_channel();
-	let backend = tokio::spawn(serve_with_response(listener, requests_tx, mcp_response));
+	let backend = tokio::spawn(native_subagent_live::serve_with_response(
+		listener,
+		requests_tx,
+		mcp_response,
+	));
 
 	fs::write(home.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2=true\n[model_providers.fixture]\nname=\"Isolated MCP child\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{},{},{}]\nrequired=true\ndefault_tools_approval_mode=\"approve\"\n",serde_json::json!(script),serde_json::json!(record),serde_json::json!(marker.to_string()),serde_json::json!(interactive.to_string()))).expect("config");
 
-	let (mut agent, _, _store_home) = fixture().await;
+	let (mut agent, _, _store_home) = native_subagent_live::fixture().await;
 	let mut command = Command::new(binary);
 
 	command
@@ -134,7 +141,7 @@ async fn qualify(marker: Value, interactive: bool) {
  let mut continuations=0;
 
  while let Ok(body)=requests_rx.try_recv() {
-  if is_child(&body) {
+  if native_subagent_live::is_child(&body) {
    let output=body["input"].as_array().expect("child input").iter().find(|i|i["type"]=="function_call_output" && i["call_id"]=="child-mcp");
 
    if let Some(output)=output {assert!(output.to_string().contains("accept"));continuations+=1;} else {child_calls+=1;}

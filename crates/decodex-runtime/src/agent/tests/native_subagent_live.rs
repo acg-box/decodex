@@ -10,7 +10,13 @@ use tokio::{
 	time,
 };
 
-use crate::{agent::tests::*, native_agents};
+use crate::{
+	agent::tests::{
+		AgentConfig, AppServerClient, AsyncWriteExt, ServerEvent, Value, fixture,
+		native_task_references,
+	},
+	native_agents,
+};
 use decodex_protocol::NativeAgentsResult;
 
 fn response(body: &Value, serial: usize) -> Value {

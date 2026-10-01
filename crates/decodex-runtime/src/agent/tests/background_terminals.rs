@@ -1,11 +1,11 @@
 use std::iter;
 
-use crate::agent::tests::*;
+use crate::agent::tests;
 
 #[tokio::test]
 async fn background_commands_keep_native_identity_and_do_not_start_turns() {
 	for terminated in [true, false] {
-		let (mut agent,mut sent,_directory)=fixture_with_history(serde_json::json!({"_background":{"data":[{"processId":"712","itemId":"item","command":"sleep 90","cwd":"/fixture"}],"nextCursor":null},"_terminated":terminated})).await;
+		let (mut agent,mut sent,_directory)=tests::fixture_with_history(serde_json::json!({"_background":{"data":[{"processId":"712","itemId":"item","command":"sleep 90","cwd":"/fixture"}],"nextCursor":null},"_terminated":terminated})).await;
 		let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
 
 		while sent.try_recv().is_ok() {}
@@ -43,7 +43,7 @@ async fn background_commands_keep_native_identity_and_do_not_start_turns() {
 
 #[tokio::test]
 async fn background_commands_reject_foreign_worker_and_stale_thread_before_rpc() {
-	let (mut agent, mut sent, _directory) = fixture().await;
+	let (mut agent, mut sent, _directory) = tests::fixture().await;
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
 
 	agent.create_manager("agent", "child", "Manage", None).await.unwrap();

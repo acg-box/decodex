@@ -8,7 +8,11 @@ use std::{
 
 use tokio::{process::Command, time};
 
-use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::*;
+use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::{
+	self, AccountId, AgentActionDto, AgentClient, AgentSandboxDto, AgentStartDto,
+	ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory, Duration,
+	EntityId, HistoryText, Ordering,
+};
 
 pub(super) async fn check(
 	client: &AgentClient,
@@ -23,8 +27,7 @@ pub(super) async fn check(
 	let workspace = home.join("workspace");
 
 	fs::create_dir(&workspace).expect("create isolated workspace");
-
-	accepted(
+	recap_socket::accepted(
 		client,
 		AgentActionDto::Start(AgentStartDto {
 			root_id: EntityId::new("recap-root").expect("valid fixture root"),
@@ -45,12 +48,12 @@ pub(super) async fn check(
 	)
 	.await;
 
-	let thread = settled(client).await;
+	let thread = recap_socket::settled(client).await;
 	let background_recap = env::var_os("DECODEX_TEST_DESKTOP_BACKGROUND_RECAP").is_some();
 
 	if background_recap {
 		for index in 1..=2 {
-			accepted(
+			recap_socket::accepted(
 				client,
 				AgentActionDto::Send {
 					root_id: EntityId::new("recap-root").expect("fixture root"),
@@ -61,7 +64,7 @@ pub(super) async fn check(
 			)
 			.await;
 
-			assert_eq!(settled(client).await, thread);
+			assert_eq!(recap_socket::settled(client).await, thread);
 		}
 
 		assert_eq!(requests.load(Ordering::Acquire), 3);

@@ -1,12 +1,16 @@
 //! Isolated installed-native control launch with production executable attestation.
+#[cfg(target_os = "linux")] use std::os::fd::FromRawFd as _;
 use std::sync::atomic::AtomicUsize;
 
 use reqwest::Client;
 use tokio::task;
 
+#[cfg(test)] use crate::account_launch::process::RunnerCapacity;
 use crate::account_launch::process::{
-	native_control_tests::{SyntheticVault, attested_profile},
-	*,
+	AccountBinding, AccountId, Arc, AttestedAppServerLaunch, AttestedProcessChild, Duration,
+	Ordering, OsStr, Path, ProcessGenerationAccountBinding, env, fs,
+	native_control_tests::{self, SyntheticVault},
+	serde_json,
 };
 use decodex_core::{
 	AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
@@ -14,7 +18,7 @@ use decodex_core::{
 };
 
 fn control_child(binary: &OsStr, home: &Path) -> AttestedProcessChild {
-	let profile = attested_profile(binary, home);
+	let profile = native_control_tests::attested_profile(binary, home);
 	let callback_profile = profile.generated.account_callback_profile_sha256().to_owned();
 	let codex_home = home.join(".codex");
 	let account = AccountId::new("10000000-0000-4000-8000-000000000001").expect("fixture account");

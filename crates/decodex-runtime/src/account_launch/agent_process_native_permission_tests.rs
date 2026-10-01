@@ -3,7 +3,9 @@ use std::{env, ffi::OsStr, fs, path::Path, sync::atomic::AtomicUsize};
 
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::agent_process::native_tests::{reviewer, *};
+use crate::account_launch::agent_process::native_tests::{
+	self, Arc, ClientError, Duration, NativeSession, Ordering, ServerEvent, reviewer,
+};
 use decodex_codex::app_server_client::{NativeTaskPermissions, ThreadPermissionSelection};
 
 #[tokio::test]
@@ -38,7 +40,10 @@ async fn qualify(running: bool) {
 	let mut backend = None;
 
 	if !running {
-		backend = Some(tokio::spawn(serve(listener.take().expect("listener"), calls.clone())));
+		backend = Some(tokio::spawn(native_tests::serve(
+			listener.take().expect("listener"),
+			calls.clone(),
+		)));
 	}
 
 	fs::write(root.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\napprovals_reviewer=\"user\"\n[model_providers.fixture]\nname=\"Isolated permission fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[permissions.scoped.filesystem]\n\":root\"=\"read\"\n{}=\"write\"\n{}=\"deny\"\n",serde_json::json!(workspace.join("writable")),serde_json::json!(workspace.join("writable/private")))).expect("fixture config");
@@ -142,7 +147,10 @@ async fn qualify(running: bool) {
 	if running {
 		assert!(session.client.observed_task_permissions(&thread).is_none());
 
-		backend = Some(tokio::spawn(serve(listener.take().expect("held listener"), calls.clone())));
+		backend = Some(tokio::spawn(native_tests::serve(
+			listener.take().expect("held listener"),
+			calls.clone(),
+		)));
 
 		wait_turn(&mut session, &thread, "turn/completed").await;
 

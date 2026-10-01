@@ -1,7 +1,9 @@
-use mpsc::Receiver;
 use tokio::io::{self, DuplexStream};
 
-use crate::{agent_recap::*, agent_usage_estimate::SourceKey};
+use crate::{
+	agent_recap::{self, EntityId, Phase, Recaps, ServerEvent, Source, TaskRecap, mpsc::Receiver},
+	agent_usage_estimate::SourceKey,
+};
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::{AccountId, ProcessGenerationId};
 
@@ -32,25 +34,30 @@ fn copy(source: &Source) -> Source {
 	Source { client: source.client.clone(), key: source.key.clone() }
 }
 fn result() -> TaskRecap {
-	parse(r#"{"summary":"Tested but not installed", "next_action":null}"#).expect("valid recap")
+	agent_recap::parse(r#"{"summary":"Tested but not installed", "next_action":null}"#)
+		.expect("valid recap")
 }
 
 #[test]
 fn recap_requires_nullable_next_action_and_character_bounds() {
-	assert!(parse(r#"{"summary":"done"}"#).is_none());
-	assert!(parse(r#"{"summary":"done","next_action":null,"extra":true}"#).is_none());
+	assert!(agent_recap::parse(r#"{"summary":"done"}"#).is_none());
+	assert!(agent_recap::parse(r#"{"summary":"done","next_action":null,"extra":true}"#).is_none());
 
 	let long =
 		serde_json::json!({"summary":"字".repeat(700),"next_action":"步".repeat(200)}).to_string();
 
-	assert!(parse(&long).is_some());
+	assert!(agent_recap::parse(&long).is_some());
 	assert!(
-		parse(&serde_json::json!({"summary":"字".repeat(701),"next_action":null}).to_string())
-			.is_none()
+		agent_recap::parse(
+			&serde_json::json!({"summary":"字".repeat(701),"next_action":null}).to_string()
+		)
+		.is_none()
 	);
-	assert!(parse(r#"{"summary":"  ","next_action":null}"#).is_none());
+	assert!(agent_recap::parse(r#"{"summary":"  ","next_action":null}"#).is_none());
 	assert_eq!(
-		parse(r#"{"summary":" done ","next_action":" "}"#).expect("trimmed recap").next_action,
+		agent_recap::parse(r#"{"summary":" done ","next_action":" "}"#)
+			.expect("trimmed recap")
+			.next_action,
 		None
 	);
 }

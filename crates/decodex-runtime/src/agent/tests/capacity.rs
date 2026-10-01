@@ -2,7 +2,10 @@ use std::iter;
 
 use tokio::io;
 
-use crate::agent::tests::*;
+use crate::agent::tests::{
+	self, AgentCoordinator, AgentDisposition, AgentError, AppServerClient, AsyncBufReadExt as _,
+	AsyncWriteExt as _, BufReader, EnqueueAgentEvent, ServerEvent, SqliteStore, Value,
+};
 use decodex_core::DecodexRoot;
 
 fn failed(turn: &str, code: &str) -> Value {
@@ -12,7 +15,7 @@ fn failed(turn: &str, code: &str) -> Value {
 #[tokio::test]
 async fn fresh_user_input_supersedes_a_due_capacity_retry() {
 	let first = failed("opaque turn/1", "serverOverloaded");
-	let (mut agent, mut sent, _dir) = fixture_with_history(
+	let (mut agent, mut sent, _dir) = tests::fixture_with_history(
 		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
 	)
 	.await;
@@ -44,7 +47,7 @@ async fn fresh_user_input_supersedes_a_due_capacity_retry() {
 async fn successful_capacity_continuation_handles_the_original_input_once() {
 	let first = failed("opaque turn/1", "serverOverloaded");
 	let second = serde_json::json!({"id":"opaque turn/2","status":"completed","items":[]});
-	let (mut agent, mut sent, _dir) = fixture_with_history(
+	let (mut agent, mut sent, _dir) = tests::fixture_with_history(
 		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first,second]}}}),
 	)
 	.await;
@@ -99,7 +102,7 @@ async fn worker_capacity_wait_does_not_wake_agent_and_cancel_publishes_failure()
 	for draining in [false, true] {
 		let first = serde_json::json!({"id":"opaque turn/1","status":"completed","items":[]});
 		let failure = failed("opaque turn/2", "serverOverloaded");
-		let (mut agent, mut sent, _dir) = fixture_with_history(serde_json::json!({
+		let (mut agent, mut sent, _dir) = tests::fixture_with_history(serde_json::json!({
 			"_capacity_draining":draining,
 			"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}},
 			"opaque thread/2":{"thread":{"id":"opaque thread/2","turns":[failure]}}
@@ -162,7 +165,7 @@ async fn worker_capacity_wait_does_not_wake_agent_and_cancel_publishes_failure()
 async fn capacity_retry_keeps_model_thread_and_context_and_stops_after_three_attempts() {
 	let turns: Vec<_> =
 		(1..=4).map(|n| failed(&format!("opaque turn/{n}"), "serverOverloaded")).collect();
-	let (mut agent, mut sent, _dir) = fixture_with_history(
+	let (mut agent, mut sent, _dir) = tests::fixture_with_history(
 		serde_json::json!({"_started_turns_only":true,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":turns}}}),
 	)
 	.await;
@@ -246,7 +249,7 @@ async fn quota_other_errors_and_missing_history_do_not_schedule_capacity_retries
 		} else {
 			serde_json::json!({})
 		};
-		let (mut agent, mut sent, _dir) = fixture_with_history(history).await;
+		let (mut agent, mut sent, _dir) = tests::fixture_with_history(history).await;
 
 		agent.start_agent("agent", "request").await.unwrap();
 		agent
@@ -270,7 +273,7 @@ async fn quota_other_errors_and_missing_history_do_not_schedule_capacity_retries
 #[tokio::test]
 async fn terminal_quota_failure_preserves_accepted_input_without_replay_after_recovery() {
 	let turn = failed("opaque turn/1", "usageLimitExceeded");
-	let (mut agent, mut sent, _dir) = fixture_with_history(
+	let (mut agent, mut sent, _dir) = tests::fixture_with_history(
 		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[turn]}}}),
 	)
 	.await;
@@ -318,7 +321,7 @@ async fn terminal_quota_failure_preserves_accepted_input_without_replay_after_re
 #[tokio::test]
 async fn lost_retry_submission_is_unknown_and_never_replayed() {
 	let turn = failed("opaque turn/1", "serverOverloaded");
-	let (mut agent, _sent, _dir) = fixture_with_history(
+	let (mut agent, _sent, _dir) = tests::fixture_with_history(
 		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[turn]}}}),
 	)
 	.await;
@@ -378,7 +381,7 @@ async fn refused_capacity_continuation_retains_original_delivery_and_cannot_repl
 		),
 	] {
 		let first = failed("opaque turn/1", "serverOverloaded");
-		let (mut agent,mut sent,directory) = fixture_with_history(serde_json::json!({"_capacity_draining":true,"_refusal_message":message,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}})).await;
+		let (mut agent,mut sent,directory) = tests::fixture_with_history(serde_json::json!({"_capacity_draining":true,"_refusal_message":message,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}})).await;
 
 		AgentCoordinator::reserve_root(&agent.store, "agent", "original request").await.unwrap();
 
@@ -466,7 +469,7 @@ async fn refused_capacity_continuation_retains_original_delivery_and_cannot_repl
 async fn native_revert_cancels_only_unclaimed_capacity_intent_durably() {
 	for claimed in [false, true] {
 		let failure = failed("opaque turn/1", "serverOverloaded");
-		let (mut agent, mut sent, directory) = fixture_with_history(
+		let (mut agent, mut sent, directory) = tests::fixture_with_history(
 			serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[failure]}}}),
 		)
 		.await;
@@ -566,7 +569,7 @@ async fn native_revert_cancels_only_unclaimed_capacity_intent_durably() {
 async fn reverted_worker_capacity_wait_does_not_publish_a_completion_or_wake_agent() {
 	let first = serde_json::json!({"id":"opaque turn/1","status":"completed","items":[]});
 	let failure = failed("opaque turn/2", "serverOverloaded");
-	let (mut agent, mut sent, _dir) = fixture_with_history(serde_json::json!({
+	let (mut agent, mut sent, _dir) = tests::fixture_with_history(serde_json::json!({
 		"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}},
 		"opaque thread/2":{"thread":{"id":"opaque thread/2","turns":[failure]}}
 	}))
@@ -633,7 +636,7 @@ async fn reverted_worker_capacity_wait_does_not_publish_a_completion_or_wake_age
 #[tokio::test]
 async fn task_selection_during_capacity_backoff_cancels_old_retry() {
 	let first = failed("opaque turn/1", "serverOverloaded");
-	let (mut agent, mut sent, _dir) = fixture_with_history(
+	let (mut agent, mut sent, _dir) = tests::fixture_with_history(
 		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
 	)
 	.await;
@@ -674,7 +677,7 @@ async fn task_selection_during_capacity_backoff_cancels_old_retry() {
 #[tokio::test]
 async fn selected_turn_model_survives_restart_and_capacity_retry_without_startup_defaults() {
 	let first = failed("opaque turn/1", "serverOverloaded");
-	let (mut agent, mut sent, dir) = fixture_with_history(
+	let (mut agent, mut sent, dir) = tests::fixture_with_history(
 		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
 	)
 	.await;
@@ -732,7 +735,7 @@ async fn selected_turn_model_survives_restart_and_capacity_retry_without_startup
 #[tokio::test]
 async fn capacity_selection_changes_do_not_revive_a_cancelled_retry_when_changed_back() {
 	let first = failed("opaque turn/1", "serverOverloaded");
-	let (mut agent, mut sent, _dir) = fixture_with_history(
+	let (mut agent, mut sent, _dir) = tests::fixture_with_history(
 		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
 	)
 	.await;
@@ -760,11 +763,11 @@ async fn capacity_selection_changes_do_not_revive_a_cancelled_retry_when_changed
 
 #[tokio::test]
 async fn ordinary_continuation_binds_current_task_choice_instead_of_initial_defaults() {
-	let (mut agent, mut sent, _dir) = fixture().await;
+	let (mut agent, mut sent, _dir) = tests::fixture().await;
 
 	agent.start_agent("agent", "request").await.unwrap();
 
-	complete(&mut agent, "agent").await;
+	tests::complete(&mut agent, "agent").await;
 
 	agent
 		.client
@@ -799,11 +802,11 @@ async fn ordinary_continuation_binds_current_task_choice_instead_of_initial_defa
 
 #[tokio::test]
 async fn effort_only_input_preserves_native_model_and_tier_after_recovery() {
-	let (mut agent, mut sent, _dir) = fixture().await;
+	let (mut agent, mut sent, _dir) = tests::fixture().await;
 
 	agent.start_agent("agent", "initial").await.unwrap();
 
-	complete(&mut agent, "agent").await;
+	tests::complete(&mut agent, "agent").await;
 
 	agent
 		.client

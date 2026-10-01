@@ -3,7 +3,13 @@ use std::{collections::BTreeSet, iter, time::Duration};
 use tokio::{io, time};
 
 use crate::{
-	agent::tests::*,
+	agent::{
+		tests,
+		tests::{
+			AgentConfig, AgentCoordinator, AgentError, AppServerClient, AsyncWriteExt as _,
+			ServerEvent, SqliteStore, Value,
+		},
+	},
 	agent_guardian,
 	application::{Application, ProductStore},
 	conversation::ConversationCapability,
@@ -63,7 +69,7 @@ fn detail_service(store: SqliteStore) -> crate::application::ServiceApplication 
 async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 	use decodex_protocol::AgentGuardianDetailResult as Detail;
 
-	let (mut agent, mut sent, directory) = fixture().await;
+	let (mut agent, mut sent, directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -209,7 +215,7 @@ async fn deliver(agent: &mut AgentCoordinator, value: Value) {
 
 #[tokio::test]
 async fn guardian_observations_are_monotonic_bound_durable_and_do_not_wake_work() {
-	let (mut agent, mut sent, directory) = fixture().await;
+	let (mut agent, mut sent, directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -300,7 +306,7 @@ async fn guardian_observations_are_monotonic_bound_durable_and_do_not_wake_work(
 
 #[tokio::test]
 async fn conflicting_guardian_evidence_retains_original_and_invalidates_approval_identity() {
-	let (mut agent, _sent, _directory) = fixture().await;
+	let (mut agent, _sent, _directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -333,7 +339,7 @@ async fn conflicting_guardian_evidence_retains_original_and_invalidates_approval
 
 #[tokio::test]
 async fn guardian_review_from_unbound_native_generation_is_not_retained() {
-	let (mut agent, _sent, _directory) = fixture().await;
+	let (mut agent, _sent, _directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 	agent.bind_native_generation(
@@ -354,7 +360,7 @@ async fn guardian_review_from_unbound_native_generation_is_not_retained() {
 
 #[tokio::test]
 async fn guardian_user_approval_submits_exact_denial_once_without_executing_a_turn() {
-	let (mut agent, mut sent, _directory) = fixture_with_history(approval_history()).await;
+	let (mut agent, mut sent, _directory) = tests::fixture_with_history(approval_history()).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -408,7 +414,7 @@ async fn guardian_user_approval_submits_exact_denial_once_without_executing_a_tu
 
 #[tokio::test]
 async fn guardian_unloaded_approval_preserves_native_settings_without_starting_a_turn() {
-	let (mut agent, mut sent, _directory) = fixture_with_history(approval_history()).await;
+	let (mut agent, mut sent, _directory) = tests::fixture_with_history(approval_history()).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -465,7 +471,7 @@ async fn guardian_rejection_and_lost_reply_have_distinct_durable_outcomes() {
 
 		history[mode] = serde_json::json!(true);
 
-		let (mut agent, mut sent, directory) = fixture_with_history(history).await;
+		let (mut agent, mut sent, directory) = tests::fixture_with_history(history).await;
 
 		agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -547,7 +553,7 @@ async fn guardian_approval_rejects_superseded_turn_and_changed_action_before_rpc
 				serde_json::json!("newer-turn");
 		}
 
-		let (mut agent, mut sent, _directory) = fixture_with_history(history).await;
+		let (mut agent, mut sent, _directory) = tests::fixture_with_history(history).await;
 
 		agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -594,7 +600,7 @@ async fn guardian_approval_rejects_superseded_turn_and_changed_action_before_rpc
 
 #[tokio::test]
 async fn concurrent_guardian_clicks_reserve_only_one_durable_submission() {
-	let (mut agent, _sent, _directory) = fixture_with_history(approval_history()).await;
+	let (mut agent, _sent, _directory) = tests::fixture_with_history(approval_history()).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -625,7 +631,7 @@ async fn concurrent_guardian_clicks_reserve_only_one_durable_submission() {
 
 #[tokio::test]
 async fn guardian_query_pages_preserve_all_reviews_and_frame_budget() {
-	let (mut agent, _sent, _directory) = fixture().await;
+	let (mut agent, _sent, _directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -670,7 +676,7 @@ async fn guardian_query_pages_preserve_all_reviews_and_frame_budget() {
 
 #[tokio::test]
 async fn guardian_expanded_approval_frame_is_rejected_before_reservation_or_rpc() {
-	let (mut agent, mut sent, _directory) = fixture_with_history(approval_history()).await;
+	let (mut agent, mut sent, _directory) = tests::fixture_with_history(approval_history()).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -705,7 +711,7 @@ async fn guardian_expanded_approval_frame_is_rejected_before_reservation_or_rpc(
 
 #[tokio::test]
 async fn strict_review_from_unbound_native_generation_is_not_retained() {
-	let (mut agent, mut sent, _directory) = fixture().await;
+	let (mut agent, mut sent, _directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -731,7 +737,7 @@ async fn strict_review_from_unbound_native_generation_is_not_retained() {
 
 #[tokio::test]
 async fn guardian_review_failure_preserves_absent_assessment_after_restart() {
-	let (mut agent, mut sent, directory) = fixture().await;
+	let (mut agent, mut sent, directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -771,7 +777,7 @@ async fn guardian_review_failure_preserves_absent_assessment_after_restart() {
 
 #[tokio::test]
 async fn finished_command_survives_late_network_review_cancellation() {
-	let (mut agent, mut sent, directory) = fixture().await;
+	let (mut agent, mut sent, directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -852,7 +858,7 @@ async fn finished_command_survives_late_network_review_cancellation() {
 
 #[tokio::test]
 async fn large_guardian_approval_keeps_the_complete_action_on_the_native_request() {
-	let (mut agent, mut sent, _directory) = fixture_with_history(approval_history()).await;
+	let (mut agent, mut sent, _directory) = tests::fixture_with_history(approval_history()).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -901,7 +907,7 @@ async fn large_guardian_approval_keeps_the_complete_action_on_the_native_request
 
 #[tokio::test]
 async fn foreign_guardian_paths_survive_storage_and_explicit_approval() {
-	let (mut agent, mut sent, directory) = fixture_with_history(approval_history()).await;
+	let (mut agent, mut sent, directory) = tests::fixture_with_history(approval_history()).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 

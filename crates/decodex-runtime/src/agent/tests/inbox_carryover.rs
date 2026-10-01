@@ -1,12 +1,14 @@
-use crate::agent::tests::*;
+use crate::agent::tests::{
+	self, AgentDisposition, AgentInboxEvent, EnqueueAgentEvent, MAX_WAKE_BATCH_BYTES,
+};
 
 #[tokio::test]
 async fn large_wake_batch_preserves_whole_events_and_leaves_remainder_unclaimed() {
-	let (mut coordinator, mut sent, _directory) = fixture().await;
+	let (mut coordinator, mut sent, _directory) = tests::fixture().await;
 
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
 
-	complete(&mut coordinator, "agent").await;
+	tests::complete(&mut coordinator, "agent").await;
 
 	let mut events = Vec::new();
 
@@ -87,13 +89,13 @@ async fn large_wake_batch_preserves_whole_events_and_leaves_remainder_unclaimed(
 
 #[tokio::test]
 async fn later_wake_carries_unhandled_evidence_without_replaying_worker() {
-	let (mut coordinator, mut sent, _directory) = fixture().await;
+	let (mut coordinator, mut sent, _directory) = tests::fixture().await;
 
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
 	coordinator.create_worker("agent", "worker", "Inspect").await.unwrap();
 
-	complete(&mut coordinator, "agent").await;
-	complete(&mut coordinator, "worker").await;
+	tests::complete(&mut coordinator, "agent").await;
+	tests::complete(&mut coordinator, "worker").await;
 
 	let previous = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
 	let event = coordinator
@@ -103,7 +105,7 @@ async fn later_wake_carries_unhandled_evidence_without_replaying_worker() {
 		.unwrap()
 		.remove(0);
 
-	complete(&mut coordinator, "agent").await;
+	tests::complete(&mut coordinator, "agent").await;
 
 	coordinator.wake_pending().await.unwrap();
 
@@ -160,13 +162,13 @@ async fn later_wake_carries_unhandled_evidence_without_replaying_worker() {
 
 #[tokio::test]
 async fn user_turn_preserves_plain_text_and_can_inspect_earlier_unhandled_results() {
-	let (mut coordinator, mut sent, _directory) = fixture().await;
+	let (mut coordinator, mut sent, _directory) = tests::fixture().await;
 
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
 	coordinator.create_worker("agent", "worker", "Inspect").await.unwrap();
 
-	complete(&mut coordinator, "agent").await;
-	complete(&mut coordinator, "worker").await;
+	tests::complete(&mut coordinator, "agent").await;
+	tests::complete(&mut coordinator, "worker").await;
 
 	let previous = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
 	let event = coordinator
@@ -176,7 +178,7 @@ async fn user_turn_preserves_plain_text_and_can_inspect_earlier_unhandled_result
 		.unwrap()
 		.remove(0);
 
-	complete(&mut coordinator, "agent").await;
+	tests::complete(&mut coordinator, "agent").await;
 
 	while sent.try_recv().is_ok() {}
 
@@ -216,11 +218,11 @@ async fn user_turn_preserves_plain_text_and_can_inspect_earlier_unhandled_result
 
 #[tokio::test]
 async fn exhausted_account_pause_preserves_input_without_dispatch() {
-	let (mut coordinator, mut sent, _directory) = fixture().await;
+	let (mut coordinator, mut sent, _directory) = tests::fixture().await;
 
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
 
-	complete(&mut coordinator, "agent").await;
+	tests::complete(&mut coordinator, "agent").await;
 
 	let event = coordinator
 		.store

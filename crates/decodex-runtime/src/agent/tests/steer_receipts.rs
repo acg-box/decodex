@@ -1,13 +1,13 @@
 use std::iter;
 
-use crate::agent::tests::*;
+use crate::agent::tests::{self, ServerEvent, SqliteStore};
 use decodex_core::DecodexRoot;
 
 #[tokio::test]
 async fn lost_steer_reply_is_resolved_by_exact_live_or_cold_receipt_without_replay() {
 	for mode in ["live", "running", "idle"] {
 		let (mut agent, mut sent, directory) =
-			fixture_with_history(serde_json::json!({"_steer_disconnect":true})).await;
+			tests::fixture_with_history(serde_json::json!({"_steer_disconnect":true})).await;
 
 		agent.start_agent("agent", "Supplement").await.unwrap();
 
@@ -46,7 +46,8 @@ async fn lost_steer_reply_is_resolved_by_exact_live_or_cold_receipt_without_repl
 			drop(agent);
 
 			let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":if mode == "idle" {"idle"} else {"active"}},"turns":[{"id":"opaque turn/1","status":if mode == "idle" {"completed"} else {"inProgress"},"items":[receipt("older-submission"),receipt("exact-submission")]}]}}});
-			let (mut recovered, mut calls, _new_directory) = fixture_with_history(history).await;
+			let (mut recovered, mut calls, _new_directory) =
+				tests::fixture_with_history(history).await;
 
 			recovered.store = SqliteStore::open(&root.paths()).unwrap();
 

@@ -1,4 +1,10 @@
-use crate::{agent::tests::*, native_agents};
+use crate::{
+	agent::{
+		tests,
+		tests::{AgentCoordinator, AgentDisposition, RequestId, ServerEvent, SqliteStore, Value},
+	},
+	native_agents,
+};
 use decodex_core::DecodexRoot;
 use decodex_protocol::NativeAgentsResult;
 
@@ -9,7 +15,8 @@ fn child(thread: &str, parent: &str) -> Value {
 #[tokio::test]
 async fn native_child_reconnect_and_peer_resolution_require_exact_child_request() {
 	let (mut agent, mut sent, _directory) =
-		fixture_with_history(serde_json::json!({"child":child("child","opaque thread/1")})).await;
+		tests::fixture_with_history(serde_json::json!({"child":child("child","opaque thread/1")}))
+			.await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -67,12 +74,12 @@ async fn native_child_reconnect_and_peer_resolution_require_exact_child_request(
 #[tokio::test]
 async fn nested_native_approval_keeps_child_identity_and_resolves_once() {
 	let history = serde_json::json!({"child":child("child","opaque thread/1"),"grandchild":child("grandchild","child")});
-	let (mut agent, _old_sent, directory) = fixture_with_history(history.clone()).await;
+	let (mut agent, _old_sent, directory) = tests::fixture_with_history(history.clone()).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
 	let params = serde_json::json!({"threadId":"grandchild","turnId":"child-turn","itemId":"command","command":"pwd"});
-	let mut sent = attach_request_transport(
+	let mut sent = tests::attach_request_transport(
 		&mut agent,
 		history,
 		serde_json::json!({"id":71,"method":"item/commandExecution/requestApproval","params":params}),
@@ -130,7 +137,7 @@ async fn unowned_fork_mismatched_readback_and_cyclic_children_do_not_gain_author
 		serde_json::json!({"thread":{"id":"child","parentThreadId":"opaque thread/1","source":{"subAgent":{"thread_spawn":{"parent_thread_id":"different"}}}}}),
 	] {
 		let (mut agent, mut sent, _directory) =
-			fixture_with_history(serde_json::json!({"child":native})).await;
+			tests::fixture_with_history(serde_json::json!({"child":native})).await;
 
 		agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -157,7 +164,8 @@ async fn unowned_fork_mismatched_readback_and_cyclic_children_do_not_gain_author
 #[tokio::test]
 async fn native_children_do_not_inherit_agent_management_tools() {
 	let (mut agent, mut sent, _directory) =
-		fixture_with_history(serde_json::json!({"child":child("child","opaque thread/1")})).await;
+		tests::fixture_with_history(serde_json::json!({"child":child("child","opaque thread/1")}))
+			.await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -190,7 +198,7 @@ async fn native_agent_inspection_requires_exact_ancestry_and_never_starts_work()
 
 	native["thread"]["turns"] = serde_json::json!([]);
 
-	let (mut agent, mut sent, _directory) = fixture_with_history(
+	let (mut agent, mut sent, _directory) = tests::fixture_with_history(
 		serde_json::json!({"child":native,"foreign":child("foreign","unrelated")}),
 	)
 	.await;

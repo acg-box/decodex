@@ -5,12 +5,12 @@ use tokio::{
 	time,
 };
 
-use crate::agent::tests::*;
+use crate::agent::tests::{self, AppServerClient, EnqueueAgentEvent, ServerEvent};
 
 #[tokio::test]
 async fn native_changes_during_question_rebuild_preserve_recovery_until_fresh_read() {
 	for change in ["revert", "input", "disconnect"] {
-		let (mut agent, mut sent, _directory) = fixture().await;
+		let (mut agent, mut sent, _directory) = tests::fixture().await;
 
 		agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -81,7 +81,7 @@ async fn native_changes_during_question_rebuild_preserve_recovery_until_fresh_re
 		assert!(sent.try_recv().is_err());
 
 		let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"old","status":"completed","items":[question]}]}}});
-		let (mut fresh, mut reads, _other_directory) = fixture_with_history(history).await;
+		let (mut fresh, mut reads, _other_directory) = tests::fixture_with_history(history).await;
 
 		fresh.store = agent.store.clone();
 
@@ -103,7 +103,7 @@ async fn native_changes_during_question_rebuild_preserve_recovery_until_fresh_re
 
 #[tokio::test]
 async fn only_live_item_events_mark_question_arrivals() {
-	let (mut agent, mut sent, _directory) = fixture().await;
+	let (mut agent, mut sent, _directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 

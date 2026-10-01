@@ -12,7 +12,13 @@ use std::{
 use futures_util::FutureExt as _;
 use tokio::{process::Command, time};
 
-use crate::agent::{tests::*, timeline};
+use crate::agent::{
+	tests::{
+		self, AgentCoordinator, AppServerClient, AsyncWriteExt as _, ServerEvent,
+		native_task_references,
+	},
+	timeline,
+};
 use decodex_protocol::AgentTimelineContent;
 
 const FINAL_PLAN: &str = "# Final plan\n1. Inspect source\n2. Verify changes\n";
@@ -32,7 +38,7 @@ async fn native_proposed_plan_history_survives_restart_without_model_replay() {
 	let mut thread = String::new();
 
 	for cold in [false, true] {
-		let (mut agent, _, _store_home) = fixture().await;
+		let (mut agent, _, _store_home) = tests::fixture().await;
 		let mut command = Command::new(env::var("DECODEX_NATIVE_BINARY").unwrap());
 
 		command

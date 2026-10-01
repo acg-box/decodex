@@ -15,7 +15,15 @@ use crate::{
 	account_launch::process::native_control_tests,
 	application::{
 		Application, ServiceApplication,
-		account_nudge::{native_tests::*, tests},
+		account_nudge::{
+			native_tests::{
+				self, AccountId, AccountService, Arc, BlobStore, CURRENT_VERSION, ClientCommandId,
+				CommandIdentity, CommandPayload, ConversationCapability, ConversationRuntime,
+				CorrelationId, DecodexRoot, Duration, EntityId, EntityRevision, IdempotencyKey,
+				NoRefresh, SqliteCredentialStore,
+			},
+			tests,
+		},
 	},
 	conversation::RecoverConversation,
 };
@@ -65,7 +73,7 @@ async fn native_project_warning_does_not_block_ordinary_creation_and_survives_re
 }
 
 async fn qualify_review_discovery(confirm: bool, warning: bool) {
-	let home = isolated_home();
+	let home = native_tests::isolated_home();
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 
 	assert!(std::path::Path::new(&binary).is_absolute());
@@ -102,7 +110,7 @@ async fn qualify_review_discovery(confirm: bool, warning: bool) {
 		Arc::new(SqliteCredentialStore::new(store.clone())),
 		Arc::new(NoRefresh),
 	));
-	let account = enroll(&store, &accounts, &home).await;
+	let account = native_tests::enroll(&store, &accounts, &home).await;
 	let profile_home = home.clone();
 	let profile = task::spawn_blocking(move || {
 		native_control_tests::attested_profile(&binary, &profile_home)
@@ -117,7 +125,7 @@ async fn qualify_review_discovery(confirm: bool, warning: bool) {
 
 	let revision = accounts.inspect(&account).await.expect("account observation").account.revision;
 	let conversation = seed_review(&store, &account, revision, &saved).await;
-	let runtime = runtime(&root, &store, accounts, profile).await;
+	let runtime = native_tests::runtime(&root, &store, accounts, profile).await;
 
 	assert_runtime_review_boundary(&runtime, &conversation).await;
 

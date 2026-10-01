@@ -1,4 +1,6 @@
-use crate::agent::tests::*;
+use crate::agent::tests::{
+	self, AgentError, ClientError, EnqueueAgentEvent, ServerEvent, SqliteStore,
+};
 use decodex_codex::app_server_client::RpcError;
 use decodex_core::DecodexRoot;
 
@@ -21,7 +23,7 @@ fn archived_resume_diagnostic_is_bound_to_the_exact_thread_and_never_authorizes_
 #[tokio::test]
 async fn restore_preserves_identity_and_pending_input_without_creating_a_turn() {
 	let (mut agent, mut sent, _directory) =
-		fixture_with_history(serde_json::json!({"_archived":true})).await;
+		tests::fixture_with_history(serde_json::json!({"_archived":true})).await;
 
 	agent.start_agent("agent", "Initial").await.unwrap();
 	agent.handle_event(ServerEvent::Notification {method:"turn/completed".into(),params:serde_json::json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
@@ -84,7 +86,7 @@ async fn restore_distinguishes_rejection_disconnect_and_another_clients_success(
 			"active",
 		),
 	] {
-		let (mut agent, mut sent, _directory) = fixture_with_history(settings).await;
+		let (mut agent, mut sent, _directory) = tests::fixture_with_history(settings).await;
 
 		agent.start_agent("agent", "Initial").await.unwrap();
 
@@ -113,7 +115,7 @@ async fn restore_distinguishes_rejection_disconnect_and_another_clients_success(
 #[tokio::test]
 async fn restoration_reconciles_only_exact_positive_terminal_history_after_reopen() {
 	let history = serde_json::json!({"_archived":true,"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"notLoaded"},"turns":[{"id":"opaque turn/1","status":"interrupted","items":[]}]}}});
-	let (mut agent, mut sent, directory) = fixture_with_history(history).await;
+	let (mut agent, mut sent, directory) = tests::fixture_with_history(history).await;
 
 	agent.start_agent("agent", "Initial").await.unwrap();
 	agent.store.mark_agent_dispatch_unknown("agent".into()).await.unwrap();

@@ -12,7 +12,10 @@ use std::{
 use futures_util::FutureExt as _;
 use tokio::{net::TcpListener, process::Command, sync::mpsc::Receiver, time};
 
-use crate::agent::tests::*;
+use crate::agent::tests::{
+	self, AgentConfig, AgentCoordinator, AppServerClient, EnqueueAgentEvent, ServerEvent, Value,
+	native_goal_fixture,
+};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY; isolated native goal lifecycle"]
@@ -34,7 +37,7 @@ async fn native_goal_turn_preserves_separate_user_input_delivery() {
 		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\ngoals = true\n[model_providers.fixture]\nname = \"Isolated goal fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n"
 	)).unwrap();
 
-	let (fixture, _, _store_home) = fixture().await;
+	let (fixture, _, _store_home) = tests::fixture().await;
 	let mut command = Command::new(env::var("DECODEX_NATIVE_BINARY").unwrap());
 
 	command

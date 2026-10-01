@@ -12,7 +12,10 @@ use tokio::{
 	task::JoinHandle,
 };
 
-use crate::{agent_usage_estimate::SourceKey, agent_voice_settings::*};
+use crate::{
+	agent_usage_estimate::SourceKey,
+	agent_voice_settings::{self, AgentVoiceSettingsResult, Source},
+};
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::{AccountId, ProcessGenerationId};
 
@@ -83,13 +86,14 @@ async fn voice_settings_bind_source_version_and_report_uncertain_readback() {
 	for fail_readback in [false, true] {
 		let (client, writes, task) = fixture(fail_readback);
 		let read_source = || future::ready(Some(source(client.clone(), 1)));
-		let AgentVoiceSettingsResult::Available { review_token, .. } = read(read_source).await
+		let AgentVoiceSettingsResult::Available { review_token, .. } =
+			agent_voice_settings::read(read_source).await
 		else {
 			panic!("settings")
 		};
 
 		assert!(
-			write(
+			agent_voice_settings::write(
 				|| future::ready(Some(source(client.clone(), 2))),
 				review_token.as_str(),
 				"juniper"
@@ -99,16 +103,21 @@ async fn voice_settings_bind_source_version_and_report_uncertain_readback() {
 		);
 		assert_eq!(writes.load(Ordering::SeqCst), 0);
 
-		let result = write(read_source, review_token.as_str(), "juniper").await;
+		let result =
+			agent_voice_settings::write(read_source, review_token.as_str(), "juniper").await;
 
 		assert_eq!(result.is_ok(), !fail_readback);
 		assert_eq!(writes.load(Ordering::SeqCst), 1);
-		assert!(write(read_source, review_token.as_str(), "juniper").await.is_err());
+		assert!(
+			agent_voice_settings::write(read_source, review_token.as_str(), "juniper")
+				.await
+				.is_err()
+		);
 		assert_eq!(writes.load(Ordering::SeqCst), 1);
 
 		if !fail_readback {
 			let AgentVoiceSettingsResult::Available { effective, preference, .. } =
-				read(read_source).await
+				agent_voice_settings::read(read_source).await
 			else {
 				panic!("readback")
 			};
@@ -125,9 +134,10 @@ async fn voice_settings_bind_source_version_and_report_uncertain_readback() {
 async fn voice_settings_discard_observation_when_source_changes_during_read() {
 	let (client, writes, task) = fixture(false);
 	let calls = AtomicUsize::new(0);
-	let result =
-		read(|| future::ready(Some(source(client.clone(), calls.fetch_add(1, Ordering::SeqCst)))))
-			.await;
+	let result = agent_voice_settings::read(|| {
+		future::ready(Some(source(client.clone(), calls.fetch_add(1, Ordering::SeqCst))))
+	})
+	.await;
 
 	assert_eq!(result, AgentVoiceSettingsResult::Unavailable);
 	assert_eq!(writes.load(Ordering::SeqCst), 0);
@@ -140,18 +150,24 @@ async fn replaced_connection_cannot_reuse_review_or_publish_old_observation() {
 	let (first, first_writes, first_task) = fixture(false);
 	let (second, second_writes, second_task) = fixture(false);
 	let before = || future::ready(Some(source(first.clone(), 1)));
-	let AgentVoiceSettingsResult::Available { review_token, .. } = read(before).await else {
+	let AgentVoiceSettingsResult::Available { review_token, .. } =
+		agent_voice_settings::read(before).await
+	else {
 		panic!("voice review")
 	};
 
 	assert!(
-		write(|| future::ready(Some(source(second.clone(), 1))), review_token.as_str(), "juniper")
-			.await
-			.is_err()
+		agent_voice_settings::write(
+			|| future::ready(Some(source(second.clone(), 1))),
+			review_token.as_str(),
+			"juniper"
+		)
+		.await
+		.is_err()
 	);
 
 	let calls = AtomicUsize::new(0);
-	let state = read(|| {
+	let state = agent_voice_settings::read(|| {
 		let client =
 			if calls.fetch_add(1, Ordering::SeqCst) == 0 { first.clone() } else { second.clone() };
 

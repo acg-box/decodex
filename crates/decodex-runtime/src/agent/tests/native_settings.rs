@@ -1,15 +1,18 @@
 use std::iter;
 
-use crate::agent::tests::*;
+use crate::agent::tests::{
+	self, AgentConfig, AgentCoordinator, AgentDisposition, AgentError, ClientError,
+	EnqueueAgentEvent, ServerEvent, SqliteStore,
+};
 use decodex_core::DecodexRoot;
 
 #[tokio::test]
 async fn cold_resume_preserves_task_selection_and_partial_user_changes() {
-	let (mut agent, mut sent, _directory) = fixture().await;
+	let (mut agent, mut sent, _directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Start").await.unwrap();
 
-	complete(&mut agent, "agent").await;
+	tests::complete(&mut agent, "agent").await;
 
 	agent.store.enqueue_agent_event(EnqueueAgentEvent {
 		source_event_id:"changed-model".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),
@@ -17,7 +20,7 @@ async fn cold_resume_preserves_task_selection_and_partial_user_changes() {
 	}).await.unwrap();
 	agent.wake_pending().await.unwrap();
 
-	complete(&mut agent, "agent").await;
+	tests::complete(&mut agent, "agent").await;
 
 	let config = AgentConfig::new("new-startup-model".into(), "low".into(), "/tmp".into());
 	let mut agent =
@@ -40,7 +43,7 @@ async fn cold_resume_preserves_task_selection_and_partial_user_changes() {
 	assert_eq!(turn["params"]["model"], "chosen-model");
 	assert_eq!(turn["params"]["effort"], "future-effort");
 
-	complete(&mut agent, "agent").await;
+	tests::complete(&mut agent, "agent").await;
 
 	agent.store.enqueue_agent_event(EnqueueAgentEvent {
 		source_event_id:"effort-only".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),
@@ -58,7 +61,7 @@ async fn cold_resume_preserves_task_selection_and_partial_user_changes() {
 #[tokio::test]
 async fn a_changed_native_selection_cancels_capacity_retry_without_a_new_turn() {
 	let failure = serde_json::json!({"id":"opaque turn/1","status":"failed","error":{"message":"At capacity","codexErrorInfo":"serverOverloaded"},"items":[]});
-	let (mut agent, mut sent, _directory) = fixture_with_history(
+	let (mut agent, mut sent, _directory) = tests::fixture_with_history(
 		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[failure]}}}),
 	)
 	.await;
@@ -99,11 +102,11 @@ async fn a_changed_native_selection_cancels_capacity_retry_without_a_new_turn() 
 
 #[tokio::test]
 async fn known_settings_refusal_preserves_unsent_input_for_user_decision() {
-	let (mut agent, mut sent, _directory) = fixture().await;
+	let (mut agent, mut sent, _directory) = tests::fixture().await;
 
 	agent.start_agent("agent", "Start").await.unwrap();
 
-	complete(&mut agent, "agent").await;
+	tests::complete(&mut agent, "agent").await;
 
 	let previous = agent.store.get_agent_work_item("agent".into()).await.unwrap();
 
@@ -157,7 +160,7 @@ async fn known_settings_refusal_preserves_unsent_input_for_user_decision() {
 #[tokio::test]
 async fn capacity_retry_keeps_the_acknowledged_selection_after_store_reopen() {
 	let failure = serde_json::json!({"id":"opaque turn/1","status":"failed","error":{"message":"At capacity","codexErrorInfo":"serverOverloaded"},"items":[]});
-	let (mut agent, mut sent, directory) = fixture_with_history(
+	let (mut agent, mut sent, directory) = tests::fixture_with_history(
 		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[failure]}}}),
 	)
 	.await;
@@ -196,7 +199,7 @@ async fn capacity_retry_keeps_the_acknowledged_selection_after_store_reopen() {
 
 #[tokio::test]
 async fn resume_bootstrap_avoids_a_second_history_read_and_does_not_replay_input() {
-	let (mut agent, mut sent, _home) = fixture_with_history(
+	let (mut agent, mut sent, _home) = tests::fixture_with_history(
 		serde_json::json!({"thread":{"thread":{"id":"thread","turns":[{"id":"latest","items":[]}]}}}),
 	)
 	.await;
