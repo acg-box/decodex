@@ -1,9 +1,30 @@
 //! Verify native folder trust without granting trust or replaying input.
-use std::{env, fs, sync::atomic::AtomicUsize};
+use std::{
+	env, fs,
+	path::{Path, PathBuf},
+	sync::atomic::AtomicUsize,
+};
 
 use tokio::{net::TcpListener, time};
 
 use crate::account_launch::agent_process::native_tests::*;
+
+fn fixture_directories(root: &Path) -> Vec<PathBuf> {
+	let mut directories = Vec::new();
+
+	for name in ["trusted", "untrusted", "unknown"] {
+		let directory = root.join(name);
+
+		fs::create_dir_all(directory.join(".codex")).expect("create project config directory");
+		fs::create_dir(directory.join(".git")).expect("create project git directory");
+		fs::write(directory.join(".codex/config.toml"), "model_reasoning_effort = \"low\"\n")
+			.expect("write project config");
+
+		directories.push(directory.canonicalize().expect("canonical project directory"));
+	}
+
+	directories
+}
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native folder trust qualification"]
@@ -14,19 +35,7 @@ async fn installed_native_config_reads_preserve_folder_trust_without_granting_it
 
 	fs::create_dir(&home).unwrap();
 
-	let mut directories = Vec::new();
-
-	for name in ["trusted", "untrusted", "unknown"] {
-		let directory = root.path().join(name);
-
-		fs::create_dir_all(directory.join(".codex")).unwrap();
-		fs::create_dir(directory.join(".git")).unwrap();
-		fs::write(directory.join(".codex/config.toml"), "model_reasoning_effort = \"low\"\n")
-			.unwrap();
-
-		directories.push(directory.canonicalize().unwrap());
-	}
-
+	let directories = fixture_directories(root.path());
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
@@ -98,6 +107,7 @@ async fn installed_native_config_reads_preserve_folder_trust_without_granting_it
 	})
 	.await
 	.unwrap();
+
 	// Simulate another client revoking trust after the task is loaded.
 	let revoked = config.replacen("trust_level = \"trusted\"", "trust_level = \"untrusted\"", 1);
 

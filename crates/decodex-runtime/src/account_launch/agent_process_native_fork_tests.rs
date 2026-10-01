@@ -32,16 +32,13 @@ pub(super) async fn check(
 			.expect("selected user input");
 		let target = EntityId::new(format!("fork-{index}")).expect("target work identity");
 
-		accepted(
+		prepare_review(
 			client,
-			Action::PreparePromptEdit {
-				work_id: work.clone(),
-				thread_id: WireText::new(thread).expect("source thread identity"),
-				turn_id: WireText::new(selected).expect("selected turn identity"),
-				item_id: WireText::new(input["id"].as_str().expect("source input identity"))
-					.expect("bounded source input identity"),
-			},
-			&format!("fork-review-{index}"),
+			work,
+			thread,
+			selected,
+			input["id"].as_str().expect("source input identity"),
+			index,
 		)
 		.await;
 
@@ -134,4 +131,25 @@ pub(super) async fn check(
 		3,
 		"retries must not reserve extra work"
 	);
+}
+
+async fn prepare_review(
+	client: &AgentClient,
+	work: &EntityId,
+	thread: &str,
+	selected: &str,
+	input_id: &str,
+	index: usize,
+) {
+	accepted(
+		client,
+		Action::PreparePromptEdit {
+			work_id: work.clone(),
+			thread_id: WireText::new(thread).expect("source thread identity"),
+			turn_id: WireText::new(selected).expect("selected turn identity"),
+			item_id: WireText::new(input_id).expect("bounded source input identity"),
+		},
+		&format!("fork-review-{index}"),
+	)
+	.await;
 }
