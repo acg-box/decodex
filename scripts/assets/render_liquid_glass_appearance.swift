@@ -7,13 +7,15 @@ import Foundation
 precondition(CommandLine.arguments.count>=3,"Usage: render_liquid_glass_appearance.swift APP OUTPUT [-AppleIconAppearanceTheme THEME]")
 let app=CommandLine.arguments[1],output=CommandLine.arguments[2]
 let theme=UserDefaults.standard.string(forKey:"AppleIconAppearanceTheme") ?? "system"
-let appearance=NSAppearance(named:theme.hasSuffix("Dark") ? .darkAqua : .aqua)!
-let rep=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:1_024,pixelsHigh:1_024,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
-NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=NSGraphicsContext(bitmapImageRep:rep)
+guard let appearance=NSAppearance(named:theme.hasSuffix("Dark") ? .darkAqua : .aqua) else { throw NSError(domain:"DecodexIconAppearance",code:1) }
+guard let rep=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:1_024,pixelsHigh:1_024,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0) else { throw NSError(domain:"DecodexIconAppearance",code:2) }
+guard let context=NSGraphicsContext(bitmapImageRep:rep) else { throw NSError(domain:"DecodexIconAppearance",code:4) }
+ NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=context
 appearance.performAsCurrentDrawingAppearance {
     let icon=NSWorkspace.shared.icon(forFile:app)
     icon.draw(in:NSRect(x:0,y:0,width:1_024,height:1_024))
 }
 NSGraphicsContext.restoreGraphicsState()
-try rep.representation(using:.png,properties:[:])!.write(to:URL(fileURLWithPath:output))
+guard let png=rep.representation(using:.png,properties:[:]) else { throw NSError(domain:"DecodexIconAppearance",code:3) }
+try png.write(to:URL(fileURLWithPath:output))
 print(UserDefaults.standard.string(forKey:"AppleIconAppearanceTheme") ?? "system")
