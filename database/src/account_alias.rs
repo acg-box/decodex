@@ -1,22 +1,10 @@
 //! Allocate display names in the same transaction that installs an account.
 use std::collections::HashSet;
 
-use decodex_core::{AccountProvider, ProviderIdentity, account_alias_candidate};
-use rusqlite::{Connection, params};
+use rusqlite::{self, Connection};
 
 use crate::{DatabaseError, error::sqlite_error};
-
-fn allocate(provider: &ProviderIdentity, used: &HashSet<String>) -> String {
-	for attempt in 0.. {
-		let name = account_alias_candidate(provider, attempt);
-
-		if !used.contains(&name) {
-			return name;
-		}
-	}
-
-	unreachable!("account alias candidate space exhausted")
-}
+use decodex_core::{self, AccountProvider, ProviderIdentity};
 
 pub(crate) fn for_enrollment(
 	connection: &Connection,
@@ -62,7 +50,7 @@ pub(crate) fn migrate_names(connection: &Connection) -> Result<(), DatabaseError
 		connection
 			.execute(
 				"UPDATE accounts SET display_label = ?1 WHERE account_id = ?2",
-				params![name, id],
+				rusqlite::params![name, id],
 			)
 			.map_err(sqlite_error)?;
 		used.insert(name);
@@ -71,9 +59,21 @@ pub(crate) fn migrate_names(connection: &Connection) -> Result<(), DatabaseError
 	Ok(())
 }
 
+fn allocate(provider: &ProviderIdentity, used: &HashSet<String>) -> String {
+	for attempt in 0.. {
+		let name = decodex_core::account_alias_candidate(provider, attempt);
+
+		if !used.contains(&name) {
+			return name;
+		}
+	}
+
+	unreachable!("account alias candidate space exhausted")
+}
+
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::account_alias::{self, AccountProvider, Connection, HashSet, ProviderIdentity};
 
 	#[test]
 	fn aliases_resolve_collisions_and_dictionary_exhaustion() {
@@ -83,12 +83,12 @@ mod tests {
 			let provider =
 				ProviderIdentity::new(AccountProvider::Chatgpt, format!("provider-{number}"))
 					.unwrap();
-			let name = allocate(&provider, &used);
+			let name = account_alias::allocate(&provider, &used);
 
 			assert!((2..=16).contains(&name.len()));
 			assert!(name.as_bytes()[0].is_ascii_uppercase());
 			assert!(name.as_bytes()[1..].iter().all(u8::is_ascii_lowercase));
-			assert_eq!(name, allocate(&provider, &used));
+			assert_eq!(name, account_alias::allocate(&provider, &used));
 			assert!(used.insert(name));
 		}
 	}
@@ -99,13 +99,13 @@ mod tests {
 
 		connection.execute_batch("CREATE TABLE accounts(account_id TEXT, provider TEXT, provider_account_id TEXT, display_label TEXT); INSERT INTO accounts VALUES ('local-a', 'chatgpt', 'provider-a', 'Val'), ('local-b', 'chatgpt', 'provider-b', 'Val');").unwrap();
 
-		migrate_names(&connection).unwrap();
+		account_alias::migrate_names(&connection).unwrap();
 
 		let a = ProviderIdentity::new(AccountProvider::Chatgpt, "provider-a").unwrap();
 		let b = ProviderIdentity::new(AccountProvider::Chatgpt, "provider-b").unwrap();
-		let original = for_enrollment(&connection, &a).unwrap();
+		let original = account_alias::for_enrollment(&connection, &a).unwrap();
 
-		assert_ne!(original, for_enrollment(&connection, &b).unwrap());
+		assert_ne!(original, account_alias::for_enrollment(&connection, &b).unwrap());
 
 		connection
 			.execute(
@@ -114,12 +114,12 @@ mod tests {
 			)
 			.unwrap();
 
-		assert_eq!(original, for_enrollment(&connection, &a).unwrap());
+		assert_eq!(original, account_alias::for_enrollment(&connection, &a).unwrap());
 		// Replaying the deterministic backfill retains names for the same population.
 		connection.execute("DELETE FROM accounts WHERE account_id = 'local-c'", []).unwrap();
 
-		migrate_names(&connection).unwrap();
+		account_alias::migrate_names(&connection).unwrap();
 
-		assert_eq!(original, for_enrollment(&connection, &a).unwrap());
+		assert_eq!(original, account_alias::for_enrollment(&connection, &a).unwrap());
 	}
 }

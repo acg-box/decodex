@@ -1,20 +1,24 @@
+use rusqlite::{self, Connection};
+
+use crate::migrations::{self, APPLICATION_ID, MIGRATIONS};
+
 #[test]
 fn reset_credit_expiry_migration_preserves_attempts_and_account_exclusion() {
-	use super::{APPLICATION_ID, MIGRATIONS, configure, migrate, migration_digest};
-
-	use rusqlite::{Connection, params};
-
 	let directory = tempfile::tempdir().unwrap();
 	let mut connection = Connection::open(directory.path().join("upgrade.sqlite3")).unwrap();
 
-	configure(&connection).unwrap();
+	migrations::configure(&connection).unwrap();
 
 	for migration in MIGRATIONS.iter().filter(|migration| migration.version < 51) {
 		connection.execute_batch(migration.sql).unwrap();
 		connection
 			.execute(
 				"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
-				params![migration.version, migration.name, migration_digest(migration.sql)],
+				rusqlite::params![
+					migration.version,
+					migration.name,
+					migrations::migration_digest(migration.sql)
+				],
 			)
 			.unwrap();
 	}
@@ -23,7 +27,7 @@ fn reset_credit_expiry_migration_preserves_attempts_and_account_exclusion() {
 	connection.pragma_update(None, "user_version", 50).unwrap();
 	connection.execute("INSERT INTO reset_card_operations VALUES ('old','account',7,100,200,'credit','sending',NULL,NULL)", []).unwrap();
 
-	migrate(&mut connection).unwrap();
+	migrations::migrate(&mut connection).unwrap();
 
 	let prior: (i64, i64, String, String) = connection.query_row("SELECT account_revision,expires_at,exact_credit_id,state FROM reset_card_operations WHERE idempotency_key='old'", [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).unwrap();
 
@@ -34,7 +38,7 @@ fn reset_credit_expiry_migration_preserves_attempts_and_account_exclusion() {
 
 	assert!(connection.execute("INSERT INTO reset_card_operations VALUES ('invalid','third',3,100,99,'credit3','prepared',NULL,NULL)", []).is_err());
 
-	migrate(&mut connection).unwrap();
+	migrations::migrate(&mut connection).unwrap();
 
 	assert_eq!(
 		connection

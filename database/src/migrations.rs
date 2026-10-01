@@ -1,20 +1,13 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior, params};
+use rusqlite::{self, Connection, OptionalExtension as _, TransactionBehavior};
 use sha2::{Digest as _, Sha256};
 
-use crate::{DatabaseError, error::sqlite_error};
+use crate::{DatabaseError, account_alias, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
+
 const CURRENT_SCHEMA_VERSION: i64 = 52;
-
-#[derive(Clone, Copy)]
-struct Migration {
-	version: i64,
-	name: &'static str,
-	sql: &'static str,
-}
-
 const MIGRATIONS: &[Migration] = &[
 	Migration {
 		version: 48,
@@ -43,8 +36,15 @@ const MIGRATIONS: &[Migration] = &[
 	},
 ];
 
+#[derive(Clone, Copy)]
+struct Migration {
+	version: i64,
+	name: &'static str,
+	sql: &'static str,
+}
+
 pub(crate) fn configure(connection: &Connection) -> Result<(), DatabaseError> {
-	connection.busy_timeout(std::time::Duration::from_secs(5)).map_err(sqlite_error)?;
+	connection.busy_timeout(Duration::from_secs(5)).map_err(sqlite_error)?;
 	connection
 		.execute_batch(
 			"PRAGMA foreign_keys = ON;
@@ -101,14 +101,14 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> 
 			transaction.execute_batch(migration.sql).map_err(sqlite_error)?;
 
 			if migration.version == 50 {
-				crate::account_alias::migrate_names(&transaction)?;
+				account_alias::migrate_names(&transaction)?;
 			}
 
 			transaction
 				.execute(
 					"INSERT INTO schema_migrations (version, name, sha256, applied_at_micros)
 				 VALUES (?1, ?2, ?3, ?4)",
-					params![migration.version, migration.name, digest, now],
+					rusqlite::params![migration.version, migration.name, digest, now],
 				)
 				.map_err(sqlite_error)?;
 			transaction
@@ -188,6 +188,11 @@ pub(crate) fn verify(connection: &Connection) -> Result<(), DatabaseError> {
 	}
 
 	Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn expected_migration_digests() -> Vec<String> {
+	MIGRATIONS.iter().map(|migration| migration_digest(migration.sql)).collect()
 }
 
 fn verify_applied_migrations(connection: &Connection) -> Result<(), DatabaseError> {
@@ -314,25 +319,17 @@ fn schema_inventory(
 }
 
 #[cfg(test)]
-pub(crate) fn expected_migration_digests() -> Vec<String> {
-	MIGRATIONS.iter().map(|migration| migration_digest(migration.sql)).collect()
-}
-
+#[path = "account_alias_migration_tests.rs"]
+mod account_alias_tests;
 #[cfg(test)]
 #[path = "initial_model_source_migration_tests.rs"]
 mod initial_model_source_tests;
 #[cfg(test)]
 #[path = "misalignment_voice_migration_tests.rs"]
 mod misalignment_voice_tests;
-
-#[cfg(test)]
-#[path = "account_alias_migration_tests.rs"]
-mod account_alias_tests;
-
-#[cfg(test)]
-#[path = "reset_credit_expiry_migration_tests.rs"]
-mod reset_credit_expiry_tests;
-
 #[cfg(test)]
 #[path = "pat_credential_migration_tests.rs"]
 mod pat_credential_tests;
+#[cfg(test)]
+#[path = "reset_credit_expiry_migration_tests.rs"]
+mod reset_credit_expiry_tests;

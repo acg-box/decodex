@@ -8,7 +8,6 @@ pub enum RoleProfileRole {
 	Task,
 	Reviewer,
 }
-
 impl RoleProfileRole {
 	pub(crate) const fn as_sql(self) -> &'static str {
 		match self {

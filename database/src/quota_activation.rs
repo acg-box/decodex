@@ -1,19 +1,13 @@
 //! One durable activation reservation per account. No prompts or responses are stored.
 
-use decodex_core::{AccountId, AccountQuotaWindow};
-use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
+use rusqlite::{self, OptionalExtension as _, TransactionBehavior};
 
 use crate::{SqliteStore, StoreError, error::sqlite_error};
+use decodex_core::{AccountId, AccountQuotaWindow};
 
 const REJECTION_BACKOFF_MICROS: i64 = 900_000_000;
 const COUNTDOWN_SAMPLE_MICROS: i64 = 30_000_000;
 const RESET_CLOCK_TOLERANCE_MICROS: i64 = 15_000_000;
-
-fn full_window_ahead(reset: i64, observed_at: i64) -> bool {
-	let duration = i64::from(AccountQuotaWindow::SEVEN_DAYS_MINUTES) * 60_000_000;
-
-	reset.saturating_sub(observed_at).abs_diff(duration) <= RESET_CLOCK_TOLERANCE_MICROS as u64
-}
 
 impl SqliteStore {
 	/// Observe expiry or a floating weekly reset and reserve activation before any network effect.
@@ -42,7 +36,7 @@ impl SqliteStore {
 					"SELECT EXISTS(SELECT 1 FROM accounts, desktop_settings
 				 WHERE accounts.account_id=?1 AND accounts.revision=?2 AND accounts.enabled=1
 				 AND accounts.tombstoned_at_micros IS NULL AND desktop_settings.auto_activate_quota=1)",
-					params![account_id, account_revision],
+					rusqlite::params![account_id, account_revision],
 					|row| row.get(0),
 				)
 				.map_err(sqlite_error)?;
@@ -97,7 +91,7 @@ impl SqliteStore {
 				 observed_at_micros=?7,
 				 attempted_at_micros=CASE WHEN ?6 THEN ?4 ELSE attempted_at_micros END,
 				 outcome=CASE WHEN ?6 THEN 'unknown' ELSE outcome END",
-				params![
+				rusqlite::params![
 					account_id,
 					reset,
 					due,
@@ -131,7 +125,7 @@ impl SqliteStore {
 					"UPDATE account_quota_activation SET outcome=?3,
 				 next_due_at_micros=CASE WHEN ?4 THEN next_due_at_micros ELSE ?5 END
 				 WHERE account_id=?1 AND attempted_at_micros=?2 AND outcome='unknown'",
-					params![
+					rusqlite::params![
 						account_id,
 						attempted_at,
 						if completed { "completed" } else { "rejected" },
@@ -147,9 +141,15 @@ impl SqliteStore {
 	}
 }
 
+fn full_window_ahead(reset: i64, observed_at: i64) -> bool {
+	let duration = i64::from(AccountQuotaWindow::SEVEN_DAYS_MINUTES) * 60_000_000;
+
+	reset.saturating_sub(observed_at).abs_diff(duration) <= RESET_CLOCK_TOLERANCE_MICROS as u64
+}
+
 #[cfg(test)]
 mod tests {
-	use super::{REJECTION_BACKOFF_MICROS, SqliteStore, sqlite_error};
+	use crate::quota_activation::{REJECTION_BACKOFF_MICROS, SqliteStore, sqlite_error};
 	use decodex_core::{AccountId, AccountQuotaWindow};
 	fn quota(used: u8, reset: i64) -> AccountQuotaWindow {
 		AccountQuotaWindow::new(10_080, used, reset).expect("quota")
@@ -198,7 +198,7 @@ mod tests {
 			store.claim_quota_activation(&id, 1, quota(0, now + week), true, now).await.unwrap()
 		);
 
-		for seconds in [35, 120, 3600] {
+		for seconds in [35, 120, 3_600] {
 			let later = start + seconds * 1_000_000;
 
 			assert!(
@@ -270,7 +270,7 @@ mod tests {
 		let start = 1_790_000_000_000_000;
 		let reset = start + 604_800_000_000;
 
-		for seconds in [0, 5, 15, 30, 60, 3600] {
+		for seconds in [0, 5, 15, 30, 60, 3_600] {
 			let now = start + seconds * 1_000_000;
 
 			assert!(

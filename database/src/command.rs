@@ -8,7 +8,6 @@ pub struct CommandIdentity {
 	pub(crate) key: String,
 	pub(crate) request_hash: String,
 }
-
 impl CommandIdentity {
 	pub fn new(key: impl Into<String>, request: &[u8]) -> Result<Self, StoreError> {
 		let key = key.into();

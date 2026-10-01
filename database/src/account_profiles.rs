@@ -1,9 +1,9 @@
 //! Bounded non-secret account-profile snapshots.
 
-use decodex_core::{AccountId, AccountProvider, ProviderIdentity};
-use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
+use rusqlite::{self, OptionalExtension as _, TransactionBehavior};
 
 use crate::{SqliteStore, StoreError};
+use decodex_core::{AccountId, AccountProvider, ProviderIdentity};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AccountProfileDailyUsage {
@@ -68,7 +68,7 @@ impl SqliteStore {
 				.query_row(
 					"SELECT revision, provider, provider_account_id, tombstoned_at_micros IS NOT NULL
 					 FROM accounts WHERE account_id = ?1",
-					params![observation.account_id.as_str()],
+					rusqlite::params![observation.account_id.as_str()],
 					|row| {
 						Ok((
 							row.get::<_, i64>(0)?,
@@ -97,7 +97,7 @@ impl SqliteStore {
 			let prior = transaction
 				.query_row(
 					"SELECT observed_at_micros FROM account_profile_snapshots WHERE account_id = ?1",
-					params![observation.account_id.as_str()],
+					rusqlite::params![observation.account_id.as_str()],
 					|row| row.get::<_, i64>(0),
 				)
 				.optional()
@@ -127,7 +127,7 @@ impl SqliteStore {
 					   longest_task_seconds = excluded.longest_task_seconds,
 					   current_streak_days = excluded.current_streak_days,
 					   longest_streak_days = excluded.longest_streak_days",
-					params![
+					rusqlite::params![
 						observation.account_id.as_str(),
 						observation.account_revision,
 						provider_text(observation.provider.provider()),
@@ -146,7 +146,7 @@ impl SqliteStore {
 			transaction
 				.execute(
 					"DELETE FROM account_profile_daily_usage WHERE account_id = ?1",
-					params![observation.account_id.as_str()],
+					rusqlite::params![observation.account_id.as_str()],
 				)
 				.map_err(super::account_lifecycle::sql_error)?;
 
@@ -156,7 +156,7 @@ impl SqliteStore {
 						"INSERT INTO account_profile_daily_usage (
 						   account_id, start_date, tokens, observed_at_micros
 						 ) VALUES (?1, ?2, ?3, ?4)",
-						params![
+						rusqlite::params![
 							observation.account_id.as_str(),
 							fact.start_date,
 							fact.tokens,
@@ -192,7 +192,7 @@ impl SqliteStore {
 					 WHERE profile.account_id = ?1 AND account.tombstoned_at_micros IS NULL
 					   AND profile.provider = account.provider
 					   AND profile.provider_account_id = account.provider_account_id",
-					params![account_id.as_str()],
+					rusqlite::params![account_id.as_str()],
 					|row| {
 						Ok((
 							row.get::<_, i64>(0)?,
@@ -240,7 +240,7 @@ impl SqliteStore {
 				)
 				.map_err(super::account_lifecycle::sql_error)?;
 			let rows = statement
-				.query_map(params![account_id.as_str()], |row| {
+				.query_map(rusqlite::params![account_id.as_str()], |row| {
 					Ok(AccountProfileDailyUsage { start_date: row.get(0)?, tokens: row.get(1)? })
 				})
 				.map_err(super::account_lifecycle::sql_error)?;
@@ -400,7 +400,10 @@ fn incompatible() -> StoreError {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::account_profiles::{
+		AccountId, AccountProfileDailyUsage, AccountProfileObservation,
+		AccountProfileObservationOutcome, AccountProvider, ProviderIdentity, SqliteStore,
+	};
 
 	#[tokio::test]
 	async fn refreshed_missing_peak_replaces_cached_peak_and_preserves_explicit_zero() {
@@ -424,7 +427,7 @@ mod tests {
 			observed_at_unix_micros: 100,
 			display_name: None,
 			username: None,
-			lifetime_tokens: Some(1000),
+			lifetime_tokens: Some(1_000),
 			peak_daily_tokens: Some(900),
 			longest_task_seconds: None,
 			current_streak_days: None,

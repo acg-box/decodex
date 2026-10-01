@@ -5,42 +5,45 @@ use rusqlite as _;
 use serde as _;
 use serde_json as _;
 use sha2 as _;
+use zeroize::Zeroizing;
 
 use decodex_core::{
-	AccountId, AccountLifecycleReadiness, AccountOperationId, AccountProvider, AccountQuotaWindow,
-	AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl, AccountSelectionMode,
-	AccountState, BlobStore, ContextPackInput, ContextPackPolicy, ContinuationCommandOutcome,
-	ContinuationPlanKind, ConversationId, CredentialBinding, CredentialFingerprint,
-	CredentialStoreSchemaVersion, CredentialVersion, DecodexRoot, HistoryItemId, HistoryItemKind,
-	HistoryMediaType, HistoryMetadata, ItemStatus, PinnedContextSource, PossibleSideEffects,
-	ProcessBootIdentity, ProcessControlKind, ProcessDeathEvidence, ProcessDeathEvidenceId,
-	ProcessDeathEvidenceKind, ProcessExecutionAuthorization, ProcessExecutionEpochId,
-	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
-	ProcessGenerationState, ProcessIdentity, ProcessIsolationKind, ProcessRunnerIdentity,
-	ProcessStartIdentity, ProviderAttemptConsumer, ProviderAttemptId, ProviderAttemptPreparation,
-	ProviderAttemptState, ProviderDuplicateRisk, ProviderEvidenceId, ProviderEvidenceSource,
-	ProviderIdentity, ProviderPositiveEvidence, ProviderRequestId, ProviderRequestKey,
-	ProviderRequestKeys, ProviderTerminalOutcome, RoutingCommandOutcome, RuntimeSessionState,
-	SameThreadContinuationEvidence, TurnId, TurnRole, compile_context_pack,
+	self, AccountId, AccountLifecycleReadiness, AccountOperationId, AccountProvider,
+	AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl,
+	AccountSelectionMode, AccountState, BlobStore, ContextPackInput, ContextPackPolicy,
+	ContinuationCommandOutcome, ContinuationPlanKind, ConversationId, CredentialBinding,
+	CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, DecodexRoot,
+	HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus,
+	MAX_PROVIDER_THREAD_ID_BYTES, PinnedContextSource, PossibleSideEffects, ProcessBootIdentity,
+	ProcessControlKind, ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
+	ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessGenerationAccountBinding,
+	ProcessGenerationId, ProcessGenerationIntent, ProcessGenerationState, ProcessIdentity,
+	ProcessIsolationKind, ProcessRunnerIdentity, ProcessStartIdentity, ProviderAttemptConsumer,
+	ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState, ProviderDuplicateRisk,
+	ProviderEvidenceId, ProviderEvidenceSource, ProviderIdentity, ProviderPositiveEvidence,
+	ProviderRequestId, ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome,
+	RoutingCommandOutcome, RuntimeSessionId, RuntimeSessionState, SameThreadContinuationEvidence,
+	ServiceTier, TurnId, TurnRole,
 };
 use decodex_database::{
-	AdmitInitialConversationTurn, AuthorizeProviderDispatchOutcome, BindConversationContinuation,
+	self, AccountAdministrationOutcome, AdmitInitialConversationTurn,
+	AuthorizeProviderDispatchOutcome, BindConversationContinuation,
 	BindRuntimeSessionThreadOutcome, CodexAccountCapabilityAttestation, CommandIdentity,
-	ConversationInitialRouteOutcome, ConversationPreEffectEvidenceKind,
+	ConversationInitialRouteOutcome, ConversationNativeSettings, ConversationPreEffectEvidenceKind,
 	ConversationTerminalizationOutcome, ConversationThreadEstablishmentReadback,
-	CreateConversationRecord, CredentialKey, CredentialRecord, FenceRuntimeSessionThreadStart,
-	FenceRuntimeSessionThreadStartOutcome, InitialConversationTurnAdmissionOutcome,
+	CreateConversationRecord, CreateConversationRoutingSuccessor, CredentialKey, CredentialRecord,
+	FenceRuntimeSessionThreadStart, FenceRuntimeSessionThreadStartOutcome,
+	InitialConversationTurnAdmissionOutcome, InitialModelReviewOutcome, InitialModelSource,
 	LocalAccountTransfer, LocalAccountTransferBatch, LocalAccountTransferOutcome,
 	OrdinaryTaskConversationProjection, PlanContinuation, PlanInitialThreadContinuation,
 	PrepareConversationProcessGeneration, PrepareConversationProcessGenerationOutcome,
 	PrepareProcessGenerationOutcome, PrepareProviderAttemptOutcome,
 	ProcessGenerationMutationOutcome, ProviderAttemptMutationOutcome,
-	ReconcileConversationThreadEstablishment, RecordHistoryItem, RouteConversationInitial,
-	RoutingControlOutcome, RuntimeSessionBindingReceipt, SqliteStore,
+	ReconcileConversationThreadEstablishment, RecordConversationNativeSettings, RecordHistoryItem,
+	ReviewInitialModelSettings, RouteConversationInitial, RoutingControlOutcome,
+	RuntimeSessionBindingReceipt, RuntimeSessionThreadBindingReadback, SqliteStore,
 	SuccessfulRuntimeSessionThreadStart, TerminalizeConversationTurn, TurnReservationOutcome,
 };
-use tempfile::tempdir;
-use zeroize::Zeroizing;
 
 const ACCOUNT_ID: &str = "10000000-0000-4000-8000-000000000001";
 const ALTERNATE_ACCOUNT_ID: &str = "10000000-0000-4000-8000-000000000002";
@@ -70,11 +73,97 @@ const DIGEST_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 const DIGEST_C: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const DIGEST_D: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
+fn fixture_account_transfer(
+	account_id: &str,
+	operation_id: &str,
+	provider_account_id: &str,
+	fingerprint: &str,
+	label: &str,
+	payload: &[u8],
+) -> (AccountId, CredentialBinding, LocalAccountTransfer) {
+	let typed_account_id = AccountId::new(account_id).expect("account identity");
+	let typed_operation_id = AccountOperationId::new(operation_id).expect("operation identity");
+	let provider = ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id)
+		.expect("provider identity");
+	let credential = CredentialBinding {
+		schema_version: CredentialStoreSchemaVersion::V1,
+		version: CredentialVersion::new(1).expect("credential version"),
+		fingerprint: CredentialFingerprint::new(fingerprint).expect("credential fingerprint"),
+		provider,
+		writer_operation_id: typed_operation_id,
+	};
+	let account = AccountRecord {
+		account_id: typed_account_id.clone(),
+		label: label.to_owned(),
+		enabled: true,
+		revision: 1,
+		observed_state: AccountState::Available,
+		lifecycle_readiness: AccountLifecycleReadiness::Ready,
+		credential: Some(credential.clone()),
+		unsettled_operation: None,
+		usage_observation: None,
+		five_hour_quota: AccountQuotaWindowObservation::unknown(
+			AccountQuotaWindow::FIVE_HOURS_MINUTES,
+		)
+		.expect("unknown five-hour window"),
+		seven_day_quota: AccountQuotaWindowObservation::unknown(
+			AccountQuotaWindow::SEVEN_DAYS_MINUTES,
+		)
+		.expect("unknown seven-day window"),
+		tombstoned: false,
+	};
+	let transferred = LocalAccountTransfer {
+		account,
+		credential: CredentialRecord {
+			key: CredentialKey {
+				account_id: account_id.to_owned(),
+				schema_version: 1,
+				credential_version: 1,
+				fingerprint: fingerprint.to_owned(),
+				writer_operation_id: operation_id.to_owned(),
+				provider: "chatgpt".to_owned(),
+				provider_account_id: provider_account_id.to_owned(),
+			},
+			payload: Zeroizing::new(payload.to_vec()),
+		},
+	};
+
+	(typed_account_id, credential, transferred)
+}
+
+fn history_item(
+	conversation_id: &ConversationId,
+	runtime_session_id: &RuntimeSessionId,
+	turn_id: &TurnId,
+	turn_sequence: i64,
+	turn_role: TurnRole,
+	history_item_id: &str,
+	text: &str,
+) -> RecordHistoryItem {
+	RecordHistoryItem {
+		conversation_id: conversation_id.clone(),
+		runtime_session_id: runtime_session_id.clone(),
+		turn_id: turn_id.clone(),
+		turn_sequence,
+		turn_role,
+		possible_side_effects: PossibleSideEffects::Unknown,
+		history_item_id: HistoryItemId::new(history_item_id).expect("history item identity"),
+		ordinal: 0,
+		kind: HistoryItemKind::Message,
+		status: ItemStatus::Completed,
+		text: text.to_owned(),
+		media_type: HistoryMediaType::new("text/markdown").expect("history media type"),
+		metadata: HistoryMetadata::empty(),
+		expected_revision: None,
+		artifact: None,
+	}
+}
+
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // Keep one complete persisted execution and restart proof together.
 async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_duplicate_dispatch()
 {
-	let temporary = tempdir().expect("temporary Decodex root");
+	let temporary = tempfile::tempdir().expect("temporary Decodex root");
 	let canonical_root = temporary.path().canonicalize().expect("canonical temporary root");
 	let root = DecodexRoot::new(canonical_root).expect("typed Decodex root");
 	let paths = root.paths();
@@ -89,7 +178,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		.create_conversation(
 			&conversation_command,
 			&CreateConversationRecord {
-				initial_model_source: Some(decodex_database::InitialModelSource {
+				initial_model_source: Some(InitialModelSource {
 					account_id: account_id.clone(),
 					account_revision: 1,
 				}),
@@ -100,7 +189,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 				model: "gpt-5.6-sol".to_owned(),
 				reasoning_effort: Some("high".to_owned()),
 				fast: false,
-				service_tier: Some(decodex_core::ServiceTier::new("ultrafast").unwrap()),
+				service_tier: Some(ServiceTier::new("ultrafast").unwrap()),
 			},
 		)
 		.await
@@ -364,7 +453,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 		FenceRuntimeSessionThreadStartOutcome::Fresh(authority) => authority,
 		other => panic!("thread-start fence was not fresh: {other:?}"),
 	};
-	let codex_thread_id = "x".repeat(decodex_core::MAX_PROVIDER_THREAD_ID_BYTES);
+	let codex_thread_id = "x".repeat(MAX_PROVIDER_THREAD_ID_BYTES);
 	let thread_binding = thread_authority.into_binding(SuccessfulRuntimeSessionThreadStart {
 		response_id: 1,
 		response_sha256: DIGEST_B.to_owned(),
@@ -373,7 +462,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 	let mut oversized_binding = thread_binding.clone();
 
 	oversized_binding.successful_response.codex_thread_id =
-		"x".repeat(decodex_core::MAX_PROVIDER_THREAD_ID_BYTES + 1);
+		"x".repeat(MAX_PROVIDER_THREAD_ID_BYTES + 1);
 
 	assert!(matches!(
 		store.bind_runtime_session_thread("oversized-provider-thread", &oversized_binding).await,
@@ -825,7 +914,7 @@ async fn conversation_continues_on_the_same_thread_after_sqlite_reopen_without_d
 			panic!("restart continuation binding was rejected: {rejection:?}")
 		},
 	};
-	let fallback_pack = compile_context_pack(ContextPackInput {
+	let fallback_pack = decodex_core::compile_context_pack(ContextPackInput {
 		conversation_id: conversation_id.clone(),
 		possible_side_effects: PossibleSideEffects::Unknown,
 		policy: ContextPackPolicy::new(4_096, 4).expect("Context Pack policy"),
@@ -985,96 +1074,10 @@ async fn import_ready_accounts(store: &SqliteStore) -> (AccountId, CredentialBin
 	(account_id, credential, alternate_account_id)
 }
 
-fn fixture_account_transfer(
-	account_id: &str,
-	operation_id: &str,
-	provider_account_id: &str,
-	fingerprint: &str,
-	label: &str,
-	payload: &[u8],
-) -> (AccountId, CredentialBinding, LocalAccountTransfer) {
-	let typed_account_id = AccountId::new(account_id).expect("account identity");
-	let typed_operation_id = AccountOperationId::new(operation_id).expect("operation identity");
-	let provider = ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id)
-		.expect("provider identity");
-	let credential = CredentialBinding {
-		schema_version: CredentialStoreSchemaVersion::V1,
-		version: CredentialVersion::new(1).expect("credential version"),
-		fingerprint: CredentialFingerprint::new(fingerprint).expect("credential fingerprint"),
-		provider,
-		writer_operation_id: typed_operation_id,
-	};
-	let account = AccountRecord {
-		account_id: typed_account_id.clone(),
-		label: label.to_owned(),
-		enabled: true,
-		revision: 1,
-		observed_state: AccountState::Available,
-		lifecycle_readiness: AccountLifecycleReadiness::Ready,
-		credential: Some(credential.clone()),
-		unsettled_operation: None,
-		usage_observation: None,
-		five_hour_quota: AccountQuotaWindowObservation::unknown(
-			AccountQuotaWindow::FIVE_HOURS_MINUTES,
-		)
-		.expect("unknown five-hour window"),
-		seven_day_quota: AccountQuotaWindowObservation::unknown(
-			AccountQuotaWindow::SEVEN_DAYS_MINUTES,
-		)
-		.expect("unknown seven-day window"),
-		tombstoned: false,
-	};
-	let transferred = LocalAccountTransfer {
-		account,
-		credential: CredentialRecord {
-			key: CredentialKey {
-				account_id: account_id.to_owned(),
-				schema_version: 1,
-				credential_version: 1,
-				fingerprint: fingerprint.to_owned(),
-				writer_operation_id: operation_id.to_owned(),
-				provider: "chatgpt".to_owned(),
-				provider_account_id: provider_account_id.to_owned(),
-			},
-			payload: Zeroizing::new(payload.to_vec()),
-		},
-	};
-
-	(typed_account_id, credential, transferred)
-}
-
-fn history_item(
-	conversation_id: &ConversationId,
-	runtime_session_id: &decodex_core::RuntimeSessionId,
-	turn_id: &TurnId,
-	turn_sequence: i64,
-	turn_role: TurnRole,
-	history_item_id: &str,
-	text: &str,
-) -> RecordHistoryItem {
-	RecordHistoryItem {
-		conversation_id: conversation_id.clone(),
-		runtime_session_id: runtime_session_id.clone(),
-		turn_id: turn_id.clone(),
-		turn_sequence,
-		turn_role,
-		possible_side_effects: PossibleSideEffects::Unknown,
-		history_item_id: HistoryItemId::new(history_item_id).expect("history item identity"),
-		ordinal: 0,
-		kind: HistoryItemKind::Message,
-		status: ItemStatus::Completed,
-		text: text.to_owned(),
-		media_type: HistoryMediaType::new("text/markdown").expect("history media type"),
-		metadata: HistoryMetadata::empty(),
-		expected_revision: None,
-		artifact: None,
-	}
-}
-
 #[tokio::test]
 async fn original_reasoning_choice_survives_reopen_and_idempotent_creation() {
 	for effort in [None, Some("none"), Some("provider-effort-over-thirty-two-characters")] {
-		let temporary = tempdir().unwrap();
+		let temporary = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(temporary.path().canonicalize().unwrap()).unwrap();
 		let paths = root.paths();
 		let store = SqliteStore::open(&paths).unwrap();
@@ -1089,7 +1092,7 @@ async fn original_reasoning_choice_survives_reopen_and_idempotent_creation() {
 			model: "native-model".into(),
 			reasoning_effort: effort.map(str::to_owned),
 			fast: false,
-			service_tier: Some(decodex_core::ServiceTier::new("flex").unwrap()),
+			service_tier: Some(ServiceTier::new("flex").unwrap()),
 		};
 		let created = store.create_conversation(&command, &record).await.unwrap();
 		let original = store.read_conversation_request(&id).await.unwrap().unwrap();
@@ -1126,7 +1129,7 @@ async fn original_reasoning_choice_survives_reopen_and_idempotent_creation() {
 
 #[tokio::test]
 async fn creation_receipt_readback_is_exact_and_survives_reopen() {
-	let temporary = tempdir().unwrap();
+	let temporary = tempfile::tempdir().unwrap();
 	let root = DecodexRoot::new(temporary.path().canonicalize().unwrap()).unwrap();
 	let paths = root.paths();
 	let store = SqliteStore::open(&paths).unwrap();
@@ -1187,15 +1190,13 @@ async fn creation_receipt_readback_is_exact_and_survives_reopen() {
 
 #[tokio::test]
 async fn initial_model_source_survives_reopen_and_rejects_changed_replays() {
-	let temporary = tempdir().unwrap();
+	let temporary = tempfile::tempdir().unwrap();
 	let root = DecodexRoot::new(temporary.path().canonicalize().unwrap()).unwrap();
 	let paths = root.paths();
 	let store = SqliteStore::open(&paths).unwrap();
 	let command = CommandIdentity::new("source-bound-create", b"original request").unwrap();
-	let source = decodex_database::InitialModelSource {
-		account_id: AccountId::new(ACCOUNT_ID).unwrap(),
-		account_revision: 7,
-	};
+	let source =
+		InitialModelSource { account_id: AccountId::new(ACCOUNT_ID).unwrap(), account_revision: 7 };
 	let record = CreateConversationRecord {
 		conversation_id: ConversationId::new(CONVERSATION_ID).unwrap(),
 		title: "Source-bound request".into(),
@@ -1224,8 +1225,8 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_replays() {
 
 	for replacement in [
 		None,
-		Some(decodex_database::InitialModelSource { account_revision: 8, ..source.clone() }),
-		Some(decodex_database::InitialModelSource {
+		Some(InitialModelSource { account_revision: 8, ..source.clone() }),
+		Some(InitialModelSource {
 			account_id: AccountId::new(ALTERNATE_ACCOUNT_ID).unwrap(),
 			..source.clone()
 		}),
@@ -1242,8 +1243,7 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_replays() {
 
 	let mut invalid = record.clone();
 
-	invalid.initial_model_source =
-		Some(decodex_database::InitialModelSource { account_revision: 0, ..source });
+	invalid.initial_model_source = Some(InitialModelSource { account_revision: 0, ..source });
 
 	assert!(matches!(
 		reopened.create_conversation(&command, &invalid).await,
@@ -1266,10 +1266,7 @@ async fn seed_model_review(store: &SqliteStore) -> CreateConversationRecord {
 		reasoning_effort: Some("high".to_owned()),
 		fast: false,
 		service_tier: None,
-		initial_model_source: Some(decodex_database::InitialModelSource {
-			account_id,
-			account_revision: 9,
-		}),
+		initial_model_source: Some(InitialModelSource { account_id, account_revision: 9 }),
 	};
 
 	store
@@ -1321,12 +1318,8 @@ async fn seed_model_review(store: &SqliteStore) -> CreateConversationRecord {
 
 #[tokio::test]
 async fn model_review_is_explicit_revision_fenced_and_idempotent_after_reopen() {
-	use decodex_database::{
-		InitialModelReviewOutcome, InitialModelSource, ReviewInitialModelSettings,
-	};
-
 	for (effort, tier) in [(None, None), (Some("low"), Some("flex"))] {
-		let temporary = tempdir().expect("temporary review store");
+		let temporary = tempfile::tempdir().expect("temporary review store");
 		let root = DecodexRoot::new(temporary.path().canonicalize().expect("canonical root"))
 			.expect("root");
 		let paths = root.paths();
@@ -1338,7 +1331,7 @@ async fn model_review_is_explicit_revision_fenced_and_idempotent_after_reopen() 
 			model: "gpt-6-astra".to_owned(),
 			reasoning_effort: effort.map(str::to_owned),
 			fast: false,
-			service_tier: tier.map(|tier| decodex_core::ServiceTier::new(tier).expect("tier")),
+			service_tier: tier.map(|tier| ServiceTier::new(tier).expect("tier")),
 			source: InitialModelSource {
 				account_id: AccountId::new(ACCOUNT_ID).expect("account"),
 				account_revision: 1,
@@ -1445,7 +1438,7 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 	for (source_id, source_revision, accepted) in
 		[(ACCOUNT_ID, 1, true), (ACCOUNT_ID, 3, false), (ALTERNATE_ACCOUNT_ID, 1, false)]
 	{
-		let temporary = tempdir().expect("temporary model-source root");
+		let temporary = tempfile::tempdir().expect("temporary model-source root");
 		let root = DecodexRoot::new(temporary.path().canonicalize().expect("canonical root"))
 			.expect("typed root");
 		let paths = root.paths();
@@ -1453,7 +1446,7 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 
 		import_ready_accounts(&store).await;
 
-		let source = decodex_database::InitialModelSource {
+		let source = InitialModelSource {
 			account_id: AccountId::new(source_id).expect("source identity"),
 			account_revision: source_revision,
 		};
@@ -1520,11 +1513,11 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 								.set_account_enabled(&id, 1, false)
 								.await
 								.expect("disable account"),
-							decodex_database::AccountAdministrationOutcome::Updated { revision: 2 }
+							AccountAdministrationOutcome::Updated { revision: 2 }
 						));
 						assert!(matches!(
 							store.set_account_enabled(&id, 2, true).await.expect("restore account"),
-							decodex_database::AccountAdministrationOutcome::Updated { revision: 3 }
+							AccountAdministrationOutcome::Updated { revision: 3 }
 						));
 						// The next cold attempt now matches the saved source, but must still
 						// require review.
@@ -1556,7 +1549,7 @@ async fn initial_model_source_survives_reopen_and_rejects_changed_routing() {
 
 #[tokio::test]
 async fn routing_successor_retains_initial_model_source_after_reopen() {
-	let temporary = tempdir().expect("temporary successor source root");
+	let temporary = tempfile::tempdir().expect("temporary successor source root");
 	let root = DecodexRoot::new(temporary.path().canonicalize().expect("canonical root"))
 		.expect("typed root");
 	let paths = root.paths();
@@ -1565,7 +1558,7 @@ async fn routing_successor_retains_initial_model_source_after_reopen() {
 
 	store.set_account_enabled(&account_id, 1, false).await.expect("disable fixed account");
 
-	let source = decodex_database::InitialModelSource { account_id, account_revision: 1 };
+	let source = InitialModelSource { account_id, account_revision: 1 };
 	let conversation_id = ConversationId::new(CONVERSATION_ID).expect("source conversation");
 
 	store
@@ -1593,7 +1586,7 @@ async fn routing_successor_retains_initial_model_source_after_reopen() {
         if route.decision.selected_account_id.is_none())
 	);
 
-	let request = decodex_database::CreateConversationRoutingSuccessor {
+	let request = CreateConversationRoutingSuccessor {
 		source_conversation_id: conversation_id,
 		expected_source_revision: 1,
 	};
@@ -1631,7 +1624,7 @@ async fn routing_successor_retains_initial_model_source_after_reopen() {
 #[tokio::test]
 async fn advertised_reasoning_efforts_survive_create_review_and_reopen() {
 	for effort in ["none", "minimal", "persistent", "provider-defined-effort"] {
-		let temporary = tempdir().expect("effort persistence root");
+		let temporary = tempfile::tempdir().expect("effort persistence root");
 		let root = DecodexRoot::new(temporary.path().canonicalize().expect("canonical root"))
 			.expect("root");
 		let paths = root.paths();
@@ -1651,14 +1644,14 @@ async fn advertised_reasoning_efforts_survive_create_review_and_reopen() {
 			.await
 			.expect("create with advertised effort");
 
-		let review = decodex_database::ReviewInitialModelSettings {
+		let review = ReviewInitialModelSettings {
 			conversation_id: original.conversation_id.clone(),
 			expected_revision: 1,
 			model: original.model,
 			reasoning_effort: Some(effort.to_owned()),
 			fast: false,
-			service_tier: Some(decodex_core::ServiceTier::from_fast(false)),
-			source: decodex_database::InitialModelSource {
+			service_tier: Some(ServiceTier::from_fast(false)),
+			source: InitialModelSource {
 				account_id: AccountId::new(ACCOUNT_ID).expect("account"),
 				account_revision: 1,
 			},
@@ -1669,7 +1662,7 @@ async fn advertised_reasoning_efforts_survive_create_review_and_reopen() {
 				.review_initial_model_settings("effort-review", &review)
 				.await
 				.expect("review advertised effort"),
-			decodex_database::InitialModelReviewOutcome::Applied { revision: 2, replayed: false }
+			InitialModelReviewOutcome::Applied { revision: 2, replayed: false }
 		));
 
 		drop(store);
@@ -1705,7 +1698,7 @@ async fn advertised_reasoning_efforts_survive_create_review_and_reopen() {
 async fn verify_native_settings_observations(
 	store: &SqliteStore,
 	root: &DecodexRoot,
-	binding: &decodex_database::RuntimeSessionThreadBindingReadback,
+	binding: &RuntimeSessionThreadBindingReadback,
 	generation: &ProcessGenerationId,
 ) {
 	let original =
@@ -1721,7 +1714,7 @@ async fn verify_native_settings_observations(
 	assert!(row.native_settings.is_none());
 	assert!(original.is_some(), "saved execution intent remains available");
 
-	let mut observation = decodex_database::RecordConversationNativeSettings {
+	let mut observation = RecordConversationNativeSettings {
 		runtime_session_id: binding.runtime_session_id.clone(),
 		expected_session_revision: binding.revision,
 		codex_thread_id: binding.codex_thread_id.clone(),
@@ -1729,7 +1722,7 @@ async fn verify_native_settings_observations(
 		expected_process_revision: 3,
 		response_id: 2,
 		response_sha256: DIGEST_B.into(),
-		settings: decodex_database::ConversationNativeSettings {
+		settings: ConversationNativeSettings {
 			model: "native-current-model".into(),
 			model_provider: "native-provider".into(),
 			cwd: "/native/project".into(),

@@ -1,16 +1,15 @@
 //! RuntimeSession thread-establishment and restart readback authority.
 
-use decodex_core::{
-	AccountId, AccountState, ConversationId, MAX_PROVIDER_THREAD_ID_BYTES, ProcessExecutionEpochId,
-	ProcessGenerationId, RuntimeSessionId, RuntimeSessionState, TurnId,
-};
-use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
+use rusqlite::{self, Connection, OptionalExtension as _, Transaction, TransactionBehavior};
 use sha2::{Digest as _, Sha256};
 
 use crate::{
 	RoleProfileRole, SqliteStore, StoreError,
-	account_lifecycle::{parse_account_state, sql_error},
-	unix_micros,
+	account_lifecycle::{self, sql_error},
+};
+use decodex_core::{
+	AccountId, AccountState, ConversationId, MAX_PROVIDER_THREAD_ID_BYTES, ProcessExecutionEpochId,
+	ProcessGenerationId, RuntimeSessionId, RuntimeSessionState, TurnId,
 };
 
 /// Exact Conversation, RuntimeSession, and active revision-one Turn coordinates before spawn.
@@ -35,15 +34,6 @@ pub struct ConversationProcessGenerationReadback {
 	pub rejection: Option<ConversationProcessGenerationRejection>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ConversationProcessGenerationRejection {
-	MissingTurn,
-	InactiveTurn,
-	StaleTurn,
-	AuthorityUnavailable,
-	InvalidInput,
-}
-
 /// One-use pre-spawn admission. Replays cannot construct this type.
 #[derive(Debug, Eq, PartialEq)]
 pub struct FreshConversationProcessGeneration {
@@ -51,7 +41,6 @@ pub struct FreshConversationProcessGeneration {
 	request_sha256: String,
 	readback: ConversationProcessGenerationReadback,
 }
-
 impl FreshConversationProcessGeneration {
 	pub const fn readback(&self) -> &ConversationProcessGenerationReadback {
 		&self.readback
@@ -70,14 +59,6 @@ impl FreshConversationProcessGeneration {
 	}
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum PrepareConversationProcessGenerationOutcome {
-	Fresh(FreshConversationProcessGeneration),
-	Replayed(ConversationProcessGenerationReadback),
-	Rejected(ConversationProcessGenerationReadback),
-	Unknown(ConversationProcessGenerationReadback),
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReconcileConversationThreadEstablishment {
 	pub conversation_id: ConversationId,
@@ -92,26 +73,11 @@ pub struct ReconcileConversationThreadEstablishment {
 	pub process_generation_id: ProcessGenerationId,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ConversationPreEffectEvidenceKind {
-	AdmissionRejected,
-	SpawnNotCreated,
-	ProcessDead,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ConversationThreadStartNonEffect {
 	pub process_generation_revision: Option<i64>,
 	pub kind: ConversationPreEffectEvidenceKind,
 	pub evidence_id: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ConversationThreadEstablishmentReadback {
-	Bound(RuntimeSessionThreadBindingReadback),
-	Fenced(RuntimeSessionThreadFenceReadback),
-	DefinitelyNotStarted(ConversationThreadStartNonEffect),
-	Unknown,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -195,7 +161,6 @@ pub struct RuntimeSessionThreadFenceReadback {
 pub struct FreshRuntimeSessionThreadStart {
 	readback: RuntimeSessionThreadFenceReadback,
 }
-
 impl FreshRuntimeSessionThreadStart {
 	pub const fn readback(&self) -> &RuntimeSessionThreadFenceReadback {
 		&self.readback
@@ -221,24 +186,11 @@ impl FreshRuntimeSessionThreadStart {
 	}
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum FenceRuntimeSessionThreadStartOutcome {
-	Fresh(FreshRuntimeSessionThreadStart),
-	Replayed(RuntimeSessionThreadFenceReadback),
-	Rejected(RuntimeSessionThreadEstablishmentRejection),
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SuccessfulRuntimeSessionThreadStart {
 	pub response_id: i64,
 	pub response_sha256: String,
 	pub codex_thread_id: String,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RuntimeSessionThreadEstablishmentRejection {
-	InvalidInput,
-	AuthorityUnavailable,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -280,13 +232,6 @@ pub struct RuntimeSessionThreadBindingReadback {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum BindRuntimeSessionThreadOutcome {
-	Applied(RuntimeSessionThreadBindingReadback),
-	Replayed(RuntimeSessionThreadBindingReadback),
-	Rejected(RuntimeSessionThreadEstablishmentRejection),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OrdinaryRuntimeSessionResumeReadback {
 	pub conversation_id: ConversationId,
 	pub conversation_revision: i64,
@@ -311,6 +256,58 @@ pub struct OrdinaryRuntimeSessionResumeReadback {
 	pub has_unresolved_process_generation: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConversationProcessGenerationRejection {
+	MissingTurn,
+	InactiveTurn,
+	StaleTurn,
+	AuthorityUnavailable,
+	InvalidInput,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum PrepareConversationProcessGenerationOutcome {
+	Fresh(FreshConversationProcessGeneration),
+	Replayed(ConversationProcessGenerationReadback),
+	Rejected(ConversationProcessGenerationReadback),
+	Unknown(ConversationProcessGenerationReadback),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConversationPreEffectEvidenceKind {
+	AdmissionRejected,
+	SpawnNotCreated,
+	ProcessDead,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ConversationThreadEstablishmentReadback {
+	Bound(RuntimeSessionThreadBindingReadback),
+	Fenced(RuntimeSessionThreadFenceReadback),
+	DefinitelyNotStarted(ConversationThreadStartNonEffect),
+	Unknown,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum FenceRuntimeSessionThreadStartOutcome {
+	Fresh(FreshRuntimeSessionThreadStart),
+	Replayed(RuntimeSessionThreadFenceReadback),
+	Rejected(RuntimeSessionThreadEstablishmentRejection),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RuntimeSessionThreadEstablishmentRejection {
+	InvalidInput,
+	AuthorityUnavailable,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BindRuntimeSessionThreadOutcome {
+	Applied(RuntimeSessionThreadBindingReadback),
+	Replayed(RuntimeSessionThreadBindingReadback),
+	Rejected(RuntimeSessionThreadEstablishmentRejection),
+}
+
 impl SqliteStore {
 	pub async fn prepare_conversation_process_generation(
 		&self,
@@ -331,7 +328,7 @@ impl SqliteStore {
 			if let Some(stored_sha) = transaction
 				.query_row(
 					"SELECT request_sha256 FROM runtime_command_receipts WHERE idempotency_key = ?1",
-					params![key],
+					rusqlite::params![key],
 					|row| row.get::<_, String>(0),
 				)
 				.optional()
@@ -364,7 +361,7 @@ impl SqliteStore {
 				));
 			}
 
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 
 			transaction
 				.execute(
@@ -372,7 +369,12 @@ impl SqliteStore {
 				   idempotency_key, request_sha256, operation, entity_id, response_json,
 				   completed_at_micros
 				 ) VALUES (?1, ?2, 'prepare_quick_task_process_generation', ?3, '{}', ?4)",
-					params![key, request_sha256, request.process_generation_id.as_str(), now],
+					rusqlite::params![
+						key,
+						request_sha256,
+						request.process_generation_id.as_str(),
+						now
+					],
 				)
 				.map_err(sql_error)?;
 
@@ -422,7 +424,7 @@ impl SqliteStore {
 			if let Some(existing_key) = transaction
 				.query_row(
 					"SELECT thread_start_fence_key FROM runtime_sessions WHERE runtime_session_id = ?1",
-					params![fence.runtime_session_id.as_str()],
+					rusqlite::params![fence.runtime_session_id.as_str()],
 					|row| row.get::<_, Option<String>>(0),
 				)
 				.optional()
@@ -448,7 +450,7 @@ impl SqliteStore {
 					RuntimeSessionThreadEstablishmentRejection::AuthorityUnavailable,
 				));
 			};
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 			let revision = fence
 				.expected_revision
 				.checked_add(1)
@@ -465,7 +467,7 @@ impl SqliteStore {
 				   thread_start_execution_epoch_id = ?9,
 				   revision = ?10, updated_at_micros = ?11
 				 WHERE runtime_session_id = ?12 AND revision = ?13 AND state = 'starting'",
-					params![
+					rusqlite::params![
 						fence.thread_start_request_id,
 						fence.thread_start_request_sha256,
 						key,
@@ -549,7 +551,7 @@ impl SqliteStore {
 			if let Some(existing_key) = transaction
 				.query_row(
 					"SELECT thread_start_binding_key FROM runtime_sessions WHERE runtime_session_id = ?1",
-					params![binding.runtime_session_id.as_str()],
+					rusqlite::params![binding.runtime_session_id.as_str()],
 					|row| row.get::<_, Option<String>>(0),
 				)
 				.optional()
@@ -581,7 +583,7 @@ impl SqliteStore {
 				.expected_revision
 				.checked_add(1)
 				.ok_or(StoreError::InvalidInput("RuntimeSession revision overflow"))?;
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 			let changed = transaction
 				.execute(
 					"UPDATE runtime_sessions SET codex_thread_id = ?1, state = 'active',
@@ -589,7 +591,7 @@ impl SqliteStore {
 				   thread_start_binding_key = ?4, revision = ?5, updated_at_micros = ?6
 				 WHERE runtime_session_id = ?7 AND revision = ?8 AND state = 'starting'
 				   AND thread_start_fence_key = ?9",
-					params![
+					rusqlite::params![
 						binding.successful_response.codex_thread_id,
 						binding.successful_response.response_id,
 						binding.successful_response.response_sha256,
@@ -650,7 +652,7 @@ impl SqliteStore {
 				.query_row(
 					"SELECT thread_start_fence_key, thread_start_binding_key
 				 FROM runtime_sessions WHERE runtime_session_id = ?1",
-					params![request.runtime_session_id.as_str()],
+					rusqlite::params![request.runtime_session_id.as_str()],
 					|row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?)),
 				)
 				.optional()
@@ -668,7 +670,7 @@ impl SqliteStore {
 						.query_row(
 							"SELECT state, revision, death_evidence_id FROM process_generations
 							 WHERE generation_id = ?1",
-							params![request.process_generation_id.as_str()],
+							rusqlite::params![request.process_generation_id.as_str()],
 							|row| {
 								Ok((
 									row.get::<_, String>(0)?,
@@ -699,7 +701,10 @@ impl SqliteStore {
 							"SELECT MIN(idempotency_key) FROM runtime_command_receipts
 							 WHERE operation = 'prepare_quick_task_process_generation'
 							   AND entity_id = ?1 AND request_sha256 = ?2",
-							params![request.process_generation_id.as_str(), admission_sha256],
+							rusqlite::params![
+								request.process_generation_id.as_str(),
+								admission_sha256
+							],
 							|row| row.get::<_, Option<String>>(0),
 						)
 						.map_err(sql_error)?;
@@ -755,7 +760,7 @@ impl SqliteStore {
 				 FROM conversations AS c
 				 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
 				 WHERE c.conversation_id = ?1 AND c.state = 'active' AND s.state = 'active'",
-					params![conversation_id.as_str()],
+					rusqlite::params![conversation_id.as_str()],
 					|row| {
 						Ok((
 							row.get::<_, i64>(0)?,
@@ -826,8 +831,111 @@ impl SqliteStore {
 	}
 }
 
+pub(crate) fn read_stored_runtime_session(
+	connection: &Connection,
+	runtime_session_id: &str,
+) -> Result<StoredRuntimeSession, StoreError> {
+	let row = connection
+		.query_row(
+			"SELECT runtime_session_id, conversation_id, account_id, account_revision,
+		        account_snapshot_id, account_display_label, account_observed_state,
+		        profile_snapshot_id, profile_revision, profile_role, model,
+		        reasoning_effort, service_tier, instructions_sha256, instructions,
+		        profile_provenance, codex_thread_id, last_known_turn_id, state, revision,
+		        created_at_micros, updated_at_micros, ended_at_micros
+		 FROM runtime_sessions WHERE runtime_session_id = ?1",
+			rusqlite::params![runtime_session_id],
+			|row| {
+				Ok((
+					row.get::<_, String>(0)?,
+					row.get::<_, String>(1)?,
+					row.get::<_, String>(2)?,
+					row.get::<_, i64>(3)?,
+					row.get::<_, String>(4)?,
+					row.get::<_, String>(5)?,
+					row.get::<_, String>(6)?,
+					row.get::<_, String>(7)?,
+					row.get::<_, i64>(8)?,
+					row.get::<_, String>(9)?,
+					row.get::<_, String>(10)?,
+					row.get::<_, String>(11)?,
+					row.get::<_, String>(12)?,
+					row.get::<_, String>(13)?,
+					row.get::<_, String>(14)?,
+					row.get::<_, Option<String>>(15)?,
+					row.get::<_, Option<String>>(16)?,
+					row.get::<_, Option<String>>(17)?,
+					row.get::<_, String>(18)?,
+					row.get::<_, i64>(19)?,
+					row.get::<_, i64>(20)?,
+					row.get::<_, i64>(21)?,
+					row.get::<_, Option<i64>>(22)?,
+				))
+			},
+		)
+		.map_err(sql_error)?;
+
+	if row.9 != RoleProfileRole::Task.as_sql() {
+		return Err(incompatible("RoleProfile role"));
+	}
+
+	let state = match row.18.as_str() {
+		"starting" => RuntimeSessionState::Starting,
+		"active" => RuntimeSessionState::Active,
+		"ended" => RuntimeSessionState::Ended,
+		"diverged" => RuntimeSessionState::Diverged,
+		_ => return Err(incompatible("RuntimeSession state")),
+	};
+
+	Ok(StoredRuntimeSession {
+		runtime_session_id: RuntimeSessionId::new(row.0)
+			.map_err(|_| incompatible("RuntimeSession identity"))?,
+		conversation_id: ConversationId::new(row.1)
+			.map_err(|_| incompatible("Conversation identity"))?,
+		account_snapshot: RuntimeSessionAccountSnapshot {
+			account_snapshot_id: row.4,
+			source_account_id: AccountId::new(row.2)
+				.map_err(|_| incompatible("account identity"))?,
+			display_label: row.5,
+			observed_state: account_lifecycle::parse_account_state(&row.6)?,
+			source_revision: row.3,
+			created_at: row.20.to_string(),
+		},
+		profile_snapshot: RuntimeSessionProfileSnapshot {
+			profile_snapshot_id: row.7,
+			role: RoleProfileRole::Task,
+			source_revision: row.8,
+			model: row.10,
+			reasoning_effort: row.11,
+			service_tier: row.12,
+			instructions_digest: row.13,
+			instructions: row.14,
+			provenance: row.15,
+			created_at: row.20.to_string(),
+		},
+		codex_thread_id: row.16,
+		last_known_turn_id: row.17,
+		state,
+		revision: row.19,
+		created_at: row.20.to_string(),
+		updated_at: row.21.to_string(),
+		ended_at: row.22.map(|value| value.to_string()),
+	})
+}
+
+pub(crate) fn digest(parts: &[&str]) -> String {
+	let mut digest = Sha256::new();
+
+	for part in parts {
+		digest.update(part.len().to_be_bytes());
+		digest.update(part.as_bytes());
+	}
+
+	digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 fn process_admission_authority(
-	transaction: &rusqlite::Transaction<'_>,
+	transaction: &Transaction<'_>,
 	request: &PrepareConversationProcessGeneration,
 ) -> Result<Option<ConversationProcessGenerationRejection>, StoreError> {
 	let turn = transaction
@@ -879,7 +987,7 @@ fn process_admission_authority(
 			        )
 		 FROM turns AS t WHERE t.turn_id = ?4 AND t.conversation_id = ?3
 		   AND t.runtime_session_id = ?5",
-			params![
+			rusqlite::params![
 				request.continuation_plan_id,
 				request.routing_decision_id,
 				request.conversation_id.as_str(),
@@ -906,7 +1014,7 @@ fn process_admission_authority(
 }
 
 fn thread_fence_authority(
-	transaction: &rusqlite::Transaction<'_>,
+	transaction: &Transaction<'_>,
 	fence: &FenceRuntimeSessionThreadStart,
 ) -> Result<Option<(String, AccountId)>, StoreError> {
 	transaction
@@ -927,7 +1035,7 @@ fn thread_fence_authority(
 		   AND t.revision = ?8 AND t.status = 'active'
 		   AND g.revision = ?9 AND g.state = 'ready' AND g.runtime_session_id = s.runtime_session_id
 		   AND g.execution_epoch_id = ?10 AND g.account_id = p.selected_account_id",
-			params![
+			rusqlite::params![
 				fence.process_generation_id.as_str(),
 				fence.continuation_plan_id,
 				fence.conversation_id.as_str(),
@@ -954,7 +1062,7 @@ fn thread_fence_authority(
 // Binding advances the session once after the start fence. Remove that increment from
 // fence coordinates; subsequent session or conversation changes still invalidate old requests.
 fn read_thread_fence(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	runtime_session_id: &RuntimeSessionId,
 ) -> Result<RuntimeSessionThreadFenceReadback, StoreError> {
 	let row = connection
@@ -969,7 +1077,7 @@ fn read_thread_fence(
 		        s.thread_start_request_id, s.thread_start_request_sha256
 		 FROM runtime_sessions AS s JOIN conversations AS c USING (conversation_id)
 		 WHERE s.runtime_session_id = ?1 AND s.thread_start_fence_key IS NOT NULL",
-			params![runtime_session_id.as_str()],
+			rusqlite::params![runtime_session_id.as_str()],
 			|row| {
 				Ok((
 					row.get::<_, String>(0)?,
@@ -1016,7 +1124,7 @@ fn read_thread_fence(
 }
 
 fn read_thread_binding(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	runtime_session_id: &RuntimeSessionId,
 ) -> Result<RuntimeSessionThreadBindingReadback, StoreError> {
 	let fence = read_thread_fence(connection, runtime_session_id)?;
@@ -1026,7 +1134,7 @@ fn read_thread_binding(
 		        thread_start_response_sha256, codex_thread_id
 		 FROM runtime_sessions WHERE runtime_session_id = ?1
 		   AND thread_start_binding_key IS NOT NULL AND state = 'active'",
-			params![runtime_session_id.as_str()],
+			rusqlite::params![runtime_session_id.as_str()],
 			|row| {
 				Ok((
 					row.get::<_, i64>(0)?,
@@ -1115,98 +1223,6 @@ fn binding_matches_fence(
 		&& binding.thread_start_request_sha256 == fence.thread_start_request_sha256
 }
 
-pub(crate) fn read_stored_runtime_session(
-	connection: &rusqlite::Connection,
-	runtime_session_id: &str,
-) -> Result<StoredRuntimeSession, StoreError> {
-	let row = connection
-		.query_row(
-			"SELECT runtime_session_id, conversation_id, account_id, account_revision,
-		        account_snapshot_id, account_display_label, account_observed_state,
-		        profile_snapshot_id, profile_revision, profile_role, model,
-		        reasoning_effort, service_tier, instructions_sha256, instructions,
-		        profile_provenance, codex_thread_id, last_known_turn_id, state, revision,
-		        created_at_micros, updated_at_micros, ended_at_micros
-		 FROM runtime_sessions WHERE runtime_session_id = ?1",
-			params![runtime_session_id],
-			|row| {
-				Ok((
-					row.get::<_, String>(0)?,
-					row.get::<_, String>(1)?,
-					row.get::<_, String>(2)?,
-					row.get::<_, i64>(3)?,
-					row.get::<_, String>(4)?,
-					row.get::<_, String>(5)?,
-					row.get::<_, String>(6)?,
-					row.get::<_, String>(7)?,
-					row.get::<_, i64>(8)?,
-					row.get::<_, String>(9)?,
-					row.get::<_, String>(10)?,
-					row.get::<_, String>(11)?,
-					row.get::<_, String>(12)?,
-					row.get::<_, String>(13)?,
-					row.get::<_, String>(14)?,
-					row.get::<_, Option<String>>(15)?,
-					row.get::<_, Option<String>>(16)?,
-					row.get::<_, Option<String>>(17)?,
-					row.get::<_, String>(18)?,
-					row.get::<_, i64>(19)?,
-					row.get::<_, i64>(20)?,
-					row.get::<_, i64>(21)?,
-					row.get::<_, Option<i64>>(22)?,
-				))
-			},
-		)
-		.map_err(sql_error)?;
-
-	if row.9 != RoleProfileRole::Task.as_sql() {
-		return Err(incompatible("RoleProfile role"));
-	}
-
-	let state = match row.18.as_str() {
-		"starting" => RuntimeSessionState::Starting,
-		"active" => RuntimeSessionState::Active,
-		"ended" => RuntimeSessionState::Ended,
-		"diverged" => RuntimeSessionState::Diverged,
-		_ => return Err(incompatible("RuntimeSession state")),
-	};
-
-	Ok(StoredRuntimeSession {
-		runtime_session_id: RuntimeSessionId::new(row.0)
-			.map_err(|_| incompatible("RuntimeSession identity"))?,
-		conversation_id: ConversationId::new(row.1)
-			.map_err(|_| incompatible("Conversation identity"))?,
-		account_snapshot: RuntimeSessionAccountSnapshot {
-			account_snapshot_id: row.4,
-			source_account_id: AccountId::new(row.2)
-				.map_err(|_| incompatible("account identity"))?,
-			display_label: row.5,
-			observed_state: parse_account_state(&row.6)?,
-			source_revision: row.3,
-			created_at: row.20.to_string(),
-		},
-		profile_snapshot: RuntimeSessionProfileSnapshot {
-			profile_snapshot_id: row.7,
-			role: RoleProfileRole::Task,
-			source_revision: row.8,
-			model: row.10,
-			reasoning_effort: row.11,
-			service_tier: row.12,
-			instructions_digest: row.13,
-			instructions: row.14,
-			provenance: row.15,
-			created_at: row.20.to_string(),
-		},
-		codex_thread_id: row.16,
-		last_known_turn_id: row.17,
-		state,
-		revision: row.19,
-		created_at: row.20.to_string(),
-		updated_at: row.21.to_string(),
-		ended_at: row.22.map(|value| value.to_string()),
-	})
-}
-
 fn process_admission_sha(request: &PrepareConversationProcessGeneration) -> String {
 	digest(&[
 		request.conversation_id.as_str(),
@@ -1237,17 +1253,6 @@ fn reconciliation_process_admission_sha(
 		request.selected_account_id.as_str(),
 		request.process_generation_id.as_str(),
 	])
-}
-
-pub(crate) fn digest(parts: &[&str]) -> String {
-	let mut digest = Sha256::new();
-
-	for part in parts {
-		digest.update(part.len().to_be_bytes());
-		digest.update(part.as_bytes());
-	}
-
-	digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn validate_key(key: &str) -> Result<(), StoreError> {

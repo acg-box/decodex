@@ -1,5 +1,10 @@
 //! Sole durable writer for local ProcessGeneration authority.
 
+use rusqlite::{self, Connection, OptionalExtension as _, Transaction, TransactionBehavior};
+
+use crate::{
+	FreshConversationProcessGeneration, SqliteStore, StoreError, account_lifecycle::sql_error,
+};
 use decodex_core::{
 	AccountId, AccountOperationId, AccountProvider, BoundProcessGeneration, CredentialBinding,
 	CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion,
@@ -9,12 +14,27 @@ use decodex_core::{
 	ProcessGenerationState, ProcessIdentity, ProcessIsolationKind, ProcessRunnerIdentity,
 	ProcessStartIdentity, ProviderIdentity,
 };
-use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
 
-use crate::{
-	FreshConversationProcessGeneration, SqliteStore, StoreError, account_lifecycle::sql_error,
-	unix_micros,
-};
+type GenerationRow = (
+	String,
+	String,
+	String,
+	String,
+	String,
+	String,
+	String,
+	Option<String>,
+	Option<i64>,
+	Option<String>,
+	Option<i64>,
+	Option<i64>,
+	String,
+	i64,
+	Option<String>,
+	Option<String>,
+	i64,
+	i64,
+);
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct FreshProcessGenerationFence {
@@ -22,7 +42,6 @@ pub struct FreshProcessGenerationFence {
 	revision: i64,
 	fenced_at_micros: i64,
 }
-
 impl FreshProcessGenerationFence {
 	pub fn generation_id(&self) -> &ProcessGenerationId {
 		&self.generation_id
@@ -42,38 +61,6 @@ pub struct ProcessGenerationMutation {
 	pub revision: i64,
 	pub state: ProcessGenerationState,
 	pub recorded_at_micros: i64,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProcessGenerationRejection {
-	IdentityConflict,
-	ConversationAuthorityUnavailable,
-	RestoreAuthorityUnavailable,
-	AccountMissing,
-	AccountQuarantined,
-	AccountLifecycleUnready,
-	CallbackCapabilityUnready,
-	GenerationMissing,
-	StaleGeneration,
-	ProcessIdentityConflict,
-	InvalidProcessIdentity,
-	EvidenceConflict,
-	InvalidEvidence,
-	EvidenceMismatch,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum PrepareProcessGenerationOutcome {
-	Fresh(FreshProcessGenerationFence),
-	Replayed(ProcessGenerationMutation),
-	Rejected { rejection: ProcessGenerationRejection, actual: ProcessGenerationMutation },
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ProcessGenerationMutationOutcome {
-	Applied(ProcessGenerationMutation),
-	Replayed(ProcessGenerationMutation),
-	Rejected { rejection: ProcessGenerationRejection, actual: ProcessGenerationMutation },
 }
 
 impl SqliteStore {
@@ -108,7 +95,7 @@ impl SqliteStore {
 				     AND operation = 'prepare_quick_task_process_generation'
 				     AND entity_id = ?3
 				 )",
-					params![
+					rusqlite::params![
 						admission.idempotency_key(),
 						admission.request_sha256(),
 						intent.generation_id.as_str()
@@ -231,7 +218,7 @@ impl SqliteStore {
 				return Ok(rejected(ProcessGenerationRejection::StaleGeneration, &current));
 			}
 
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 			let revision = expected_revision + 1;
 
 			transaction
@@ -239,7 +226,7 @@ impl SqliteStore {
 					"UPDATE process_generations SET bound_boot_id = ?1, process_id = ?2,
 				   process_start_id = ?3, process_group_id = ?4, session_id = ?5,
 				   revision = ?6, updated_at_micros = ?7 WHERE generation_id = ?8",
-					params![
+					rusqlite::params![
 						identity.boot_id.as_str(),
 						i64::from(identity.process_id),
 						identity.process_start_id.as_str(),
@@ -316,7 +303,7 @@ impl SqliteStore {
 			connection.execute(
 				"UPDATE process_generations SET state = 'death_unknown', authority_loss_reason = ?1,
 				 revision = ?2, updated_at_micros = ?3 WHERE generation_id = ?4",
-				params![reason.as_sql(), revision, now, current.generation_id.as_str()],
+				rusqlite::params![reason.as_sql(), revision, now, current.generation_id.as_str()],
 			).map_err(sql_error)?;
 
 			Ok(ProcessGenerationMutationOutcome::Applied(ProcessGenerationMutation {
@@ -376,7 +363,7 @@ impl SqliteStore {
 				 evidence_id, generation_id, kind, observed_boot_id, bound_boot_id, process_id,
 				 process_start_id, process_group_id, session_id, witness_sha256, observed_at_micros
 				 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-					params![
+					rusqlite::params![
 						evidence.evidence_id.as_str(),
 						evidence.generation_id.as_str(),
 						evidence.kind.as_sql(),
@@ -399,7 +386,7 @@ impl SqliteStore {
 					"UPDATE process_generations SET state = 'dead', authority_loss_reason = NULL,
 				 death_evidence_id = ?1, revision = ?2, updated_at_micros = ?3
 				 WHERE generation_id = ?4",
-					params![
+					rusqlite::params![
 						evidence.evidence_id.as_str(),
 						revision,
 						now,
@@ -421,13 +408,13 @@ impl SqliteStore {
 		&self,
 	) -> Result<u64, StoreError> {
 		self.run(move |connection| {
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 			let changed = connection
 				.execute(
 					"UPDATE process_generations SET state = 'death_unknown',
 				 authority_loss_reason = 'supervisor_restarted', revision = revision + 1,
 				 updated_at_micros = ?1 WHERE state NOT IN ('dead', 'death_unknown')",
-					params![now],
+					rusqlite::params![now],
 				)
 				.map_err(sql_error)?;
 
@@ -468,7 +455,7 @@ impl SqliteStore {
 			connection.execute(
 				"UPDATE process_generations SET state = ?1, revision = ?2, updated_at_micros = ?3
 				 WHERE generation_id = ?4",
-				params![target_state.as_sql(), revision, now, current.generation_id.as_str()],
+				rusqlite::params![target_state.as_sql(), revision, now, current.generation_id.as_str()],
 			).map_err(sql_error)?;
 
 			Ok(ProcessGenerationMutationOutcome::Applied(ProcessGenerationMutation {
@@ -487,7 +474,7 @@ impl SqliteStore {
 	) -> Result<ProcessGenerationMutationOutcome, StoreError>
 	where
 		F: FnOnce(
-				&rusqlite::Transaction<'_>,
+				&Transaction<'_>,
 				&ProcessGeneration,
 				i64,
 			) -> Result<ProcessGenerationMutationOutcome, StoreError>
@@ -504,7 +491,7 @@ impl SqliteStore {
 					actual: empty_mutation(),
 				});
 			};
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 			let outcome = operation(&transaction, &current, now)?;
 
 			transaction.commit().map_err(sql_error)?;
@@ -515,9 +502,41 @@ impl SqliteStore {
 	}
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessGenerationRejection {
+	IdentityConflict,
+	ConversationAuthorityUnavailable,
+	RestoreAuthorityUnavailable,
+	AccountMissing,
+	AccountQuarantined,
+	AccountLifecycleUnready,
+	CallbackCapabilityUnready,
+	GenerationMissing,
+	StaleGeneration,
+	ProcessIdentityConflict,
+	InvalidProcessIdentity,
+	EvidenceConflict,
+	InvalidEvidence,
+	EvidenceMismatch,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum PrepareProcessGenerationOutcome {
+	Fresh(FreshProcessGenerationFence),
+	Replayed(ProcessGenerationMutation),
+	Rejected { rejection: ProcessGenerationRejection, actual: ProcessGenerationMutation },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProcessGenerationMutationOutcome {
+	Applied(ProcessGenerationMutation),
+	Replayed(ProcessGenerationMutation),
+	Rejected { rejection: ProcessGenerationRejection, actual: ProcessGenerationMutation },
+}
+
 /// Shared account, epoch, credential, and unique-slot admission inside the caller transaction.
 pub(crate) fn prepare_bound_generation(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	intent: &ProcessGenerationIntent,
 	binding: &ProcessGenerationAccountBinding,
 	runtime_session_id: Option<&str>,
@@ -555,7 +574,7 @@ pub(crate) fn prepare_bound_generation(
 		.query_row(
 			"SELECT EXISTS (SELECT 1 FROM process_generations
 		 WHERE account_id = ?1 AND state <> 'dead')",
-			params![intent.account_id.as_str()],
+			rusqlite::params![intent.account_id.as_str()],
 			|row| row.get(0),
 		)
 		.map_err(sql_error)?;
@@ -572,10 +591,10 @@ pub(crate) fn prepare_bound_generation(
 			"INSERT OR IGNORE INTO process_execution_epochs (
 		   execution_epoch_id, authorization_sha256, created_at_micros
 		 ) VALUES (?1, ?2, ?3)",
-			params![
+			rusqlite::params![
 				intent.execution_authorization.epoch_id.as_str(),
 				intent.execution_authorization.authorization_digest,
-				unix_micros().map_err(StoreError::from)?,
+				crate::unix_micros().map_err(StoreError::from)?,
 			],
 		)
 		.map_err(sql_error)?;
@@ -584,7 +603,7 @@ pub(crate) fn prepare_bound_generation(
 		.query_row(
 			"SELECT authorization_sha256 FROM process_execution_epochs
 		 WHERE execution_epoch_id = ?1",
-			params![intent.execution_authorization.epoch_id.as_str()],
+			rusqlite::params![intent.execution_authorization.epoch_id.as_str()],
 			|row| row.get(0),
 		)
 		.map_err(sql_error)?;
@@ -596,7 +615,7 @@ pub(crate) fn prepare_bound_generation(
 		});
 	}
 
-	let now = unix_micros().map_err(StoreError::from)?;
+	let now = crate::unix_micros().map_err(StoreError::from)?;
 	let credential_version = i64::try_from(binding.credential.version.get())
 		.map_err(|_| StoreError::InvalidInput("credential version overflows SQLite integer"))?;
 
@@ -613,7 +632,7 @@ pub(crate) fn prepare_bound_generation(
 		   ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
 		   ?14, ?15, ?16, ?17, 'starting', 1, ?18, ?18
 		 )",
-			params![
+			rusqlite::params![
 				intent.generation_id.as_str(),
 				intent.account_id.as_str(),
 				runtime_session_id,
@@ -643,8 +662,57 @@ pub(crate) fn prepare_bound_generation(
 	}))
 }
 
+pub(crate) fn read_generation(
+	connection: &Connection,
+	id: &str,
+) -> Result<Option<ProcessGeneration>, StoreError> {
+	connection
+		.query_row(
+			"SELECT generation_id, account_id, execution_epoch_id, runner_identity,
+		        intended_boot_id, control_kind, isolation_kind, bound_boot_id, process_id,
+		        process_start_id, process_group_id, session_id, state, revision,
+		        authority_loss_reason, death_evidence_id, created_at_micros, updated_at_micros
+		 FROM process_generations WHERE generation_id = ?1",
+			rusqlite::params![id],
+			|row| {
+				Ok((
+					row.get::<_, String>(0)?,
+					row.get::<_, String>(1)?,
+					row.get::<_, String>(2)?,
+					row.get::<_, String>(3)?,
+					row.get::<_, String>(4)?,
+					row.get::<_, String>(5)?,
+					row.get::<_, String>(6)?,
+					row.get::<_, Option<String>>(7)?,
+					row.get::<_, Option<i64>>(8)?,
+					row.get::<_, Option<String>>(9)?,
+					row.get::<_, Option<i64>>(10)?,
+					row.get::<_, Option<i64>>(11)?,
+					row.get::<_, String>(12)?,
+					row.get::<_, i64>(13)?,
+					row.get::<_, Option<String>>(14)?,
+					row.get::<_, Option<String>>(15)?,
+					row.get::<_, i64>(16)?,
+					row.get::<_, i64>(17)?,
+				))
+			},
+		)
+		.optional()
+		.map_err(sql_error)?
+		.map(parse_generation_row)
+		.transpose()
+}
+
+pub(crate) fn empty_mutation() -> ProcessGenerationMutation {
+	ProcessGenerationMutation {
+		revision: 0,
+		state: ProcessGenerationState::Starting,
+		recorded_at_micros: 0,
+	}
+}
+
 fn account_authority(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	account_id: &AccountId,
 	binding: &ProcessGenerationAccountBinding,
 ) -> Result<Option<ProcessGenerationRejection>, StoreError> {
@@ -661,7 +729,7 @@ fn account_authority(
 		                AND callback_profile_sha256 = ?2)
 		 FROM accounts AS a LEFT JOIN account_credentials AS c USING (account_id)
 		 WHERE a.account_id = ?1",
-			params![account_id.as_str(), binding.refresh_callback_profile_sha256],
+			rusqlite::params![account_id.as_str(), binding.refresh_callback_profile_sha256],
 			|row| {
 				Ok((
 					row.get::<_, i64>(0)?,
@@ -705,7 +773,7 @@ fn account_authority(
 }
 
 fn read_bound_page(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	account_id: Option<&str>,
 	include_dead: bool,
 	after: Option<&str>,
@@ -720,7 +788,7 @@ fn read_bound_page(
 		)
 		.map_err(sql_error)?;
 	let ids = statement
-		.query_map(params![account_id, include_dead, after, i64::from(limit)], |row| {
+		.query_map(rusqlite::params![account_id, include_dead, after, i64::from(limit)], |row| {
 			row.get::<_, String>(0)
 		})
 		.map_err(sql_error)?
@@ -737,68 +805,6 @@ fn read_bound_page(
 		})
 		.collect()
 }
-
-pub(crate) fn read_generation(
-	connection: &rusqlite::Connection,
-	id: &str,
-) -> Result<Option<ProcessGeneration>, StoreError> {
-	connection
-		.query_row(
-			"SELECT generation_id, account_id, execution_epoch_id, runner_identity,
-		        intended_boot_id, control_kind, isolation_kind, bound_boot_id, process_id,
-		        process_start_id, process_group_id, session_id, state, revision,
-		        authority_loss_reason, death_evidence_id, created_at_micros, updated_at_micros
-		 FROM process_generations WHERE generation_id = ?1",
-			params![id],
-			|row| {
-				Ok((
-					row.get::<_, String>(0)?,
-					row.get::<_, String>(1)?,
-					row.get::<_, String>(2)?,
-					row.get::<_, String>(3)?,
-					row.get::<_, String>(4)?,
-					row.get::<_, String>(5)?,
-					row.get::<_, String>(6)?,
-					row.get::<_, Option<String>>(7)?,
-					row.get::<_, Option<i64>>(8)?,
-					row.get::<_, Option<String>>(9)?,
-					row.get::<_, Option<i64>>(10)?,
-					row.get::<_, Option<i64>>(11)?,
-					row.get::<_, String>(12)?,
-					row.get::<_, i64>(13)?,
-					row.get::<_, Option<String>>(14)?,
-					row.get::<_, Option<String>>(15)?,
-					row.get::<_, i64>(16)?,
-					row.get::<_, i64>(17)?,
-				))
-			},
-		)
-		.optional()
-		.map_err(sql_error)?
-		.map(parse_generation_row)
-		.transpose()
-}
-
-type GenerationRow = (
-	String,
-	String,
-	String,
-	String,
-	String,
-	String,
-	String,
-	Option<String>,
-	Option<i64>,
-	Option<String>,
-	Option<i64>,
-	Option<i64>,
-	String,
-	i64,
-	Option<String>,
-	Option<String>,
-	i64,
-	i64,
-);
 
 fn parse_generation_row(row: GenerationRow) -> Result<ProcessGeneration, StoreError> {
 	let intended_boot_id =
@@ -850,7 +856,7 @@ fn parse_generation_row(row: GenerationRow) -> Result<ProcessGeneration, StoreEr
 }
 
 fn read_generation_binding(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	id: &str,
 ) -> Result<ProcessGenerationAccountBinding, StoreError> {
 	let row = connection
@@ -859,7 +865,7 @@ fn read_generation_binding(
 		        credential_fingerprint, credential_writer_operation_id, provider,
 		        provider_account_id, refresh_callback_profile_sha256
 		 FROM process_generations WHERE generation_id = ?1",
-			params![id],
+			rusqlite::params![id],
 			|row| {
 				Ok((
 					row.get::<_, i64>(0)?,
@@ -901,7 +907,7 @@ fn read_generation_binding(
 }
 
 fn read_required_generation(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	id: &ProcessGenerationId,
 ) -> Result<ProcessGeneration, StoreError> {
 	read_generation(connection, id.as_str())?.ok_or_else(|| incompatible("generation missing"))
@@ -943,14 +949,6 @@ fn rejected(
 	generation: &ProcessGeneration,
 ) -> ProcessGenerationMutationOutcome {
 	ProcessGenerationMutationOutcome::Rejected { rejection, actual: mutation(generation) }
-}
-
-pub(crate) fn empty_mutation() -> ProcessGenerationMutation {
-	ProcessGenerationMutation {
-		revision: 0,
-		state: ProcessGenerationState::Starting,
-		recorded_at_micros: 0,
-	}
 }
 
 fn validate_limit(limit: u16) -> Result<(), StoreError> {

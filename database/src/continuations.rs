@@ -1,21 +1,20 @@
 //! Inert continuation plans over one immutable routing decision.
 
+use rusqlite::{self, Connection, OptionalExtension as _, Transaction, TransactionBehavior};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
+
+use crate::{
+	SqliteStore, StoreError, StoredRuntimeSession,
+	account_lifecycle::{self, sql_error},
+	runtime_sessions::{self},
+};
 use decodex_core::{
 	AccountId, ArtifactId, BlobHash, BlobStore, ContextPack, ContextPackPolicy,
 	ContextSourceDisposition, ContextSourceKind, ContextSourceManifest, ContinuationCommandOutcome,
 	ContinuationPlan, ContinuationPlanKind, ContinuationRejection, ConversationId,
 	ExecutionConsumer, PossibleSideEffects, ProviderAttemptId, ProviderEvidenceId,
 	RuntimeSessionId, SameThreadContinuationEvidence, TurnId,
-};
-use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
-use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
-
-use crate::{
-	SqliteStore, StoreError, StoredRuntimeSession,
-	account_lifecycle::{random_uuid_v4, sql_error},
-	runtime_sessions::{digest, read_stored_runtime_session},
-	unix_micros,
 };
 
 /// Exact coordinates for an existing-session continuation plan.
@@ -131,7 +130,7 @@ impl SqliteStore {
 				.query_row(
 					"SELECT request_sha256, continuation_plan_id FROM continuation_plans
 				 WHERE idempotency_key = ?1",
-					params![key],
+					rusqlite::params![key],
 					|row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
 				)
 				.optional()
@@ -162,7 +161,10 @@ impl SqliteStore {
 				   AND d.decision_kind = 'selected' AND c.state = 'active'
 				   AND c.revision = ?2 AND d.conversation_revision = ?2
 				   AND d.account_revision = a.revision",
-					params![request.routing_decision_id, request.expected_conversation_revision],
+					rusqlite::params![
+						request.routing_decision_id,
+						request.expected_conversation_revision
+					],
 					|row| {
 						Ok((
 							row.get::<_, String>(0)?,
@@ -186,10 +188,10 @@ impl SqliteStore {
 					ContinuationRejection::MissingDecision,
 				));
 			};
-			let runtime_session_id = RuntimeSessionId::new(random_uuid_v4()?)
+			let runtime_session_id = RuntimeSessionId::new(account_lifecycle::random_uuid_v4()?)
 				.map_err(|_| incompatible("generated RuntimeSession identity"))?;
-			let account_snapshot_id = random_uuid_v4()?;
-			let profile_snapshot_id = random_uuid_v4()?;
+			let account_snapshot_id = account_lifecycle::random_uuid_v4()?;
+			let profile_snapshot_id = account_lifecycle::random_uuid_v4()?;
 			let instructions_sha256 = Sha256::digest(authority.10.as_bytes())
 				.iter()
 				.map(|byte| format!("{byte:02x}"))
@@ -201,11 +203,11 @@ impl SqliteStore {
 				   'fingerprint', fingerprint, 'writer_operation_id', writer_operation_id,
 				   'provider', provider, 'provider_account_id', provider_account_id
 				 ) FROM account_credentials WHERE account_id = ?1",
-					params![authority.2],
+					rusqlite::params![authority.2],
 					|row| row.get(0),
 				)
 				.map_err(sql_error)?;
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 
 			transaction
 				.execute(
@@ -219,7 +221,7 @@ impl SqliteStore {
 				   ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'task', ?11, ?12, ?13,
 				   ?14, ?15, NULL, 'starting', 1, ?16, ?16
 				 )",
-					params![
+					rusqlite::params![
 						runtime_session_id.as_str(),
 						authority.0,
 						authority.2,
@@ -247,7 +249,7 @@ impl SqliteStore {
 				   source_runtime_session_revision, selected_account_id, runtime_session_id,
 				   kind, created_at_micros
 				 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, ?8, 'initial_thread', ?10)",
-					params![
+					rusqlite::params![
 						request.plan_id,
 						request.operation_id,
 						key,
@@ -328,7 +330,7 @@ impl SqliteStore {
 				));
 			};
 			let same_thread = has_same_thread_evidence(&authority);
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 
 			if same_thread {
 				insert_same_thread_plan(
@@ -386,7 +388,7 @@ impl SqliteStore {
 						"UPDATE turns SET runtime_session_id = ?1, updated_at_micros = ?5
 						 WHERE turn_id = ?2 AND conversation_id = ?3 AND runtime_session_id = ?4
 						   AND status = 'active' AND revision = 1",
-						params![
+						rusqlite::params![
 							request.fallback_runtime_session_id,
 							authority.turn_id,
 							authority.conversation_id,
@@ -416,7 +418,7 @@ impl SqliteStore {
 }
 
 fn end_fallback_source(
-	transaction: &rusqlite::Transaction<'_>,
+	transaction: &Transaction<'_>,
 	authority: &ExistingContinuationAuthority,
 	now: i64,
 ) -> Result<usize, StoreError> {
@@ -425,7 +427,7 @@ fn end_fallback_source(
 			"UPDATE runtime_sessions SET state = 'ended', revision = revision + 1,
 			 updated_at_micros = ?3, ended_at_micros = ?3
 			 WHERE runtime_session_id = ?1 AND revision = ?2 AND state = 'active'",
-			params![
+			rusqlite::params![
 				authority.source_runtime_session_id,
 				authority.source_runtime_session_revision,
 				now,
@@ -443,7 +445,7 @@ fn has_same_thread_evidence(authority: &ExistingContinuationAuthority) -> bool {
 }
 
 fn read_plan_replay(
-	transaction: &rusqlite::Transaction<'_>,
+	transaction: &Transaction<'_>,
 	key: &str,
 	request_sha: &str,
 	blob_store: &BlobStore,
@@ -453,7 +455,7 @@ fn read_plan_replay(
 		.query_row(
 			"SELECT request_sha256, continuation_plan_id FROM continuation_plans
 		 WHERE idempotency_key = ?1",
-			params![key],
+			rusqlite::params![key],
 			|row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
 		)
 		.optional()
@@ -481,7 +483,7 @@ fn read_plan_replay(
 }
 
 fn read_continuation_authority(
-	transaction: &rusqlite::Transaction<'_>,
+	transaction: &Transaction<'_>,
 	request: &PlanContinuation,
 ) -> Result<Option<ExistingContinuationAuthority>, StoreError> {
 	transaction
@@ -528,7 +530,7 @@ fn read_continuation_authority(
 		                 AND current_turn.runtime_session_id = s.runtime_session_id
 		                 AND current_turn.status = 'active'
 		                 AND current_turn.revision = 1)",
-			params![
+			rusqlite::params![
 				request.routing_decision_id,
 				request.expected_consumer_revision,
 				request.fallback_account_snapshot_id,
@@ -567,7 +569,7 @@ fn read_continuation_authority(
 }
 
 fn insert_same_thread_plan(
-	transaction: &rusqlite::Transaction<'_>,
+	transaction: &Transaction<'_>,
 	key: &str,
 	request_sha: &str,
 	request: &PlanContinuation,
@@ -584,7 +586,7 @@ fn insert_same_thread_plan(
 	   created_at_micros
 	 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, NULL,
 	           'same_thread', ?11, ?12, ?13, ?14)",
-			params![
+			rusqlite::params![
 				request.plan_id,
 				request.operation_id,
 				key,
@@ -607,13 +609,13 @@ fn insert_same_thread_plan(
 }
 
 fn insert_fallback_session(
-	transaction: &rusqlite::Transaction<'_>,
+	transaction: &Transaction<'_>,
 	request: &PlanContinuation,
 	authority: &ExistingContinuationAuthority,
 	now: i64,
 ) -> Result<(), StoreError> {
-	let account_snapshot_id = random_uuid_v4()?;
-	let profile_snapshot_id = random_uuid_v4()?;
+	let account_snapshot_id = account_lifecycle::random_uuid_v4()?;
+	let profile_snapshot_id = account_lifecycle::random_uuid_v4()?;
 
 	transaction
 		.execute(
@@ -626,7 +628,7 @@ fn insert_fallback_session(
 			 created_at_micros, updated_at_micros
 			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'task',
 			 ?11, ?12, ?13, ?14, ?15, ?16, 'starting', 1, ?17, ?17)",
-			params![
+			rusqlite::params![
 				request.fallback_runtime_session_id,
 				authority.conversation_id,
 				authority.account_id,
@@ -652,7 +654,7 @@ fn insert_fallback_session(
 }
 
 fn insert_fallback_plan(
-	transaction: &rusqlite::Transaction<'_>,
+	transaction: &Transaction<'_>,
 	key: &str,
 	request_sha: &str,
 	request: &PlanContinuation,
@@ -669,7 +671,7 @@ fn insert_fallback_plan(
 			 fallback_context_pack_id, created_at_micros
 			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
 			 'context_pack_fallback', ?12, ?13)",
-			params![
+			rusqlite::params![
 				request.plan_id,
 				request.operation_id,
 				key,
@@ -691,7 +693,7 @@ fn insert_fallback_plan(
 }
 
 fn read_plan_kind(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	kind: &str,
 	attempt: Option<String>,
 	evidence: Option<String>,
@@ -709,7 +711,7 @@ fn read_plan_kind(
 			let attempt_revision: i64 = connection
 				.query_row(
 					"SELECT revision FROM provider_attempts WHERE attempt_id = ?1",
-					params![attempt_id.as_str()],
+					rusqlite::params![attempt_id.as_str()],
 					|row| row.get(0),
 				)
 				.map_err(sql_error)?;
@@ -729,7 +731,7 @@ fn read_plan_kind(
 }
 
 fn read_plan_effect(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	plan_id: &str,
 	blob_store: Option<&BlobStore>,
 ) -> Result<ContinuationPlanEffect, StoreError> {
@@ -744,7 +746,7 @@ fn read_plan_effect(
 		 FROM continuation_plans AS p
 		 JOIN routing_decisions AS d ON d.routing_decision_id = p.routing_decision_id
 		 WHERE p.continuation_plan_id = ?1",
-			params![plan_id],
+			rusqlite::params![plan_id],
 			|row| {
 				Ok((
 					row.get::<_, String>(0)?,
@@ -782,8 +784,11 @@ fn read_plan_effect(
 		turn_id,
 	};
 	let (kind, same_thread_evidence) = read_plan_kind(connection, &row.8, row.11, row.12)?;
-	let runtime_session =
-		row.7.as_deref().map(|id| read_stored_runtime_session(connection, id)).transpose()?;
+	let runtime_session = row
+		.7
+		.as_deref()
+		.map(|id| runtime_sessions::read_stored_runtime_session(connection, id))
+		.transpose()?;
 	let fallback_context_pack = if kind == ContinuationPlanKind::ContextPackFallback {
 		let context_pack_id =
 			row.10.as_deref().ok_or_else(|| incompatible("fallback Context Pack identity"))?;
@@ -806,7 +811,7 @@ fn read_plan_effect(
 				   WHERE candidate.runtime_session_id = ?1
 				   ORDER BY candidate.created_at_micros DESC, candidate.attempt_id DESC LIMIT 1
 				 ) AND latest.state = 'unknown'",
-				params![source_runtime_session_id.as_str()],
+				rusqlite::params![source_runtime_session_id.as_str()],
 				|row| row.get::<_, String>(0),
 			)
 			.optional()
@@ -849,7 +854,7 @@ fn read_plan_effect(
 
 #[allow(clippy::too_many_arguments)]
 fn persist_context_pack(
-	transaction: &rusqlite::Transaction<'_>,
+	transaction: &Transaction<'_>,
 	context_pack_id: &str,
 	conversation_id: &str,
 	pack: &ContextPack,
@@ -869,7 +874,7 @@ fn persist_context_pack(
 			 policy_max_bytes, policy_recent_item_limit, manifest_json, manifest_sha256,
 			 compiled_sha256, byte_length, truncated, omitted_source_count, created_at_micros
 			 ) VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-			params![
+			rusqlite::params![
 				context_pack_id,
 				conversation_id,
 				side_effects_text(pack.possible_side_effects()),
@@ -892,7 +897,7 @@ fn persist_context_pack(
 }
 
 fn read_context_pack(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	blob_store: &BlobStore,
 	context_pack_id: &str,
 	expected_conversation_id: &ConversationId,
@@ -903,7 +908,7 @@ fn read_context_pack(
 			        policy_recent_item_limit, manifest_json, manifest_sha256, compiled_sha256,
 			        byte_length, truncated, omitted_source_count
 			 FROM context_packs WHERE context_pack_id = ?1",
-			params![context_pack_id],
+			rusqlite::params![context_pack_id],
 			|row| {
 				Ok((
 					row.get::<_, String>(0)?,
@@ -1061,7 +1066,7 @@ fn parse_disposition(value: &str) -> Result<ContextSourceDisposition, StoreError
 }
 
 fn initial_request_sha(request: &PlanInitialThreadContinuation) -> String {
-	digest(&[
+	runtime_sessions::digest(&[
 		&request.operation_id,
 		&request.routing_decision_id,
 		&request.expected_conversation_revision.to_string(),
@@ -1070,7 +1075,7 @@ fn initial_request_sha(request: &PlanInitialThreadContinuation) -> String {
 }
 
 fn continuation_request_sha(request: &PlanContinuation) -> String {
-	digest(&[
+	runtime_sessions::digest(&[
 		&request.operation_id,
 		&request.routing_decision_id,
 		&request.expected_consumer_revision.to_string(),

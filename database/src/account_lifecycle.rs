@@ -2,6 +2,13 @@
 
 use std::collections::BTreeSet;
 
+use rusqlite::{self, Connection, Error, OptionalExtension as _, TransactionBehavior};
+use serde_json::{self, Value};
+
+use crate::{
+	CommandIdentity, DatabaseError, SqliteStore, StoreError, account_alias, account_usage,
+	unix_micros,
+};
 use decodex_core::{
 	AccountId, AccountLifecycleReadiness, AccountOperation, AccountOperationId,
 	AccountOperationKind, AccountOperationPhase, AccountOperationStatus, AccountProvider,
@@ -10,10 +17,6 @@ use decodex_core::{
 	AccountState, CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion,
 	CredentialVersion, ProviderIdentity,
 };
-use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior, params};
-use serde_json::{Value, json};
-
-use crate::{CommandIdentity, DatabaseError, SqliteStore, StoreError, unix_micros};
 
 const ACCOUNT_COMMAND_PROTOCOL: &str = "decodex/account-command/1";
 const CLAIM_LIFETIME_MICROS: i64 = 5 * 60 * 1_000_000;
@@ -38,6 +41,37 @@ pub struct AccountOperationPreparation {
 pub struct AccountLifecycleMutation {
 	pub account_revision: i64,
 	pub phase: AccountOperationPhase,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexAccountCapabilityAttestation {
+	pub build_identity: String,
+	pub executable_sha256: String,
+	pub schema_sha256: String,
+	pub callback_profile_sha256: String,
+	pub login_chatgpt_auth_tokens: bool,
+	pub refresh_callback: bool,
+}
+
+pub struct AccountCommandReceiptLease(CommandReservation);
+
+struct CommandReservation {
+	protocol: &'static str,
+	key: String,
+	request_hash: String,
+	claim_token: String,
+}
+
+struct AccountBase {
+	account_id: String,
+	label: String,
+	enabled: bool,
+	state: String,
+	revision: i64,
+	provider: String,
+	provider_account_id: String,
+	store_observation: String,
+	tombstoned: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -91,16 +125,6 @@ pub enum AccountStoreObservation {
 	Unavailable,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexAccountCapabilityAttestation {
-	pub build_identity: String,
-	pub executable_sha256: String,
-	pub schema_sha256: String,
-	pub callback_profile_sha256: String,
-	pub login_chatgpt_auth_tokens: bool,
-	pub refresh_callback: bool,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AccountCommandKind {
 	/// Non-idempotent native notification; an unfinished claim is never reassigned.
@@ -117,7 +141,6 @@ pub enum AccountCommandKind {
 	Refresh,
 	Recover,
 }
-
 impl AccountCommandKind {
 	const fn as_str(self) -> &'static str {
 		match self {
@@ -136,31 +159,10 @@ impl AccountCommandKind {
 	}
 }
 
-pub struct AccountCommandReceiptLease(CommandReservation);
-
 pub enum AccountCommandReceiptClaim {
 	Owned(AccountCommandReceiptLease),
 	Pending(Value),
 	Replayed(Value),
-}
-
-struct CommandReservation {
-	protocol: &'static str,
-	key: String,
-	request_hash: String,
-	claim_token: String,
-}
-
-struct AccountBase {
-	account_id: String,
-	label: String,
-	enabled: bool,
-	state: String,
-	revision: i64,
-	provider: String,
-	provider_account_id: String,
-	store_observation: String,
-	tombstoned: bool,
 }
 
 impl SqliteStore {
@@ -258,7 +260,7 @@ impl SqliteStore {
 
 				transaction.execute(
 					"UPDATE command_receipts SET progress_json=?1 WHERE protocol=?2 AND idempotency_key=?3 AND request_sha256=?4",
-					params![diagnostic, lease.0.protocol, lease.0.key, lease.0.request_hash],
+					rusqlite::params![diagnostic, lease.0.protocol, lease.0.key, lease.0.request_hash],
 				).map_err(sql_error)?;
 			}
 
@@ -464,7 +466,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			let rows = statement
-				.query_map(params![i64::from(limit)], |row| row.get::<_, String>(0))
+				.query_map(rusqlite::params![i64::from(limit)], |row| row.get::<_, String>(0))
 				.map_err(sql_error)?;
 			let ids = rows.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
 
@@ -783,7 +785,7 @@ impl SqliteStore {
 					   not_applicable = 0,
 					   observed_at_micros = excluded.observed_at_micros
 					 WHERE excluded.observed_at_micros >= account_quota_facts.observed_at_micros",
-					params![
+					rusqlite::params![
 						account_id.as_str(),
 						i64::from(fact.duration_minutes),
 						i64::from(fact.used_percent),
@@ -805,7 +807,10 @@ impl SqliteStore {
 					 ) THEN 'depleted' ELSE 'available' END,
 					 updated_at_micros = ?2
 					 WHERE account_id = ?1 AND tombstoned_at_micros IS NULL",
-					params![account_id.as_str(), unix_micros().map_err(StoreError::from)?],
+					rusqlite::params![
+						account_id.as_str(),
+						unix_micros().map_err(StoreError::from)?
+					],
 				)
 				.map_err(sql_error)?;
 
@@ -845,7 +850,7 @@ impl SqliteStore {
 					   not_applicable = 0,
 					   observed_at_micros = excluded.observed_at_micros
 					 WHERE excluded.observed_at_micros >= account_quota_facts.observed_at_micros",
-					params![
+					rusqlite::params![
 						account_id.as_str(),
 						i64::from(duration_minutes),
 						quota_error_text(error),
@@ -882,7 +887,7 @@ impl SqliteStore {
 				 ON CONFLICT(account_id, duration_minutes) DO UPDATE SET used_percent = NULL,
 				 resets_at_micros = NULL, error_code = NULL, observed_at_micros = excluded.observed_at_micros, not_applicable = 1
 				 WHERE excluded.observed_at_micros >= account_quota_facts.observed_at_micros",
-				params![account_id.as_str(), observed_at_unix_micros]).map_err(sql_error)?;
+				rusqlite::params![account_id.as_str(), observed_at_unix_micros]).map_err(sql_error)?;
 
 			if changed != 1 { return Err(StoreError::InvalidInput("quota absence rejected")); }
 
@@ -891,7 +896,7 @@ impl SqliteStore {
 				 SELECT 1 FROM account_quota_facts WHERE account_id = ?1 AND error_code IS NULL AND used_percent >= 100
 				 ) THEN 'depleted' ELSE 'available' END, updated_at_micros = ?2
 				 WHERE account_id = ?1 AND tombstoned_at_micros IS NULL",
-				params![account_id.as_str(), unix_micros().map_err(StoreError::from)?]).map_err(sql_error)?;
+				rusqlite::params![account_id.as_str(), unix_micros().map_err(StoreError::from)?]).map_err(sql_error)?;
 
 			if account_changed != 1 { return Err(StoreError::InvalidInput("quota absence rejected")); }
 
@@ -924,7 +929,7 @@ impl SqliteStore {
 				.execute(
 					"UPDATE accounts SET credential_store_observation = ?1,
 					 updated_at_micros = ?2 WHERE account_id = ?3 AND revision = ?4",
-					params![
+					rusqlite::params![
 						store_observation_text(observation),
 						unix_micros().map_err(StoreError::from)?,
 						account_id.as_str(),
@@ -972,7 +977,7 @@ impl SqliteStore {
 					   login_chatgpt_auth_tokens = excluded.login_chatgpt_auth_tokens,
 					   refresh_callback = excluded.refresh_callback,
 					   observed_at_micros = excluded.observed_at_micros",
-					params![
+					rusqlite::params![
 						attestation.build_identity,
 						attestation.executable_sha256,
 						attestation.schema_sha256,
@@ -990,6 +995,111 @@ impl SqliteStore {
 	}
 }
 
+pub(crate) fn read_account_registry_sync(
+	connection: &Connection,
+	account_id: Option<&str>,
+	limit: u16,
+) -> Result<Vec<AccountRecord>, StoreError> {
+	if account_id.is_none() {
+		let count: i64 = connection
+			.query_row(
+				"SELECT COUNT(*) FROM accounts WHERE tombstoned_at_micros IS NULL",
+				[],
+				|row| row.get(0),
+			)
+			.map_err(sql_error)?;
+
+		if count > i64::from(limit) {
+			return Err(StoreError::CapacityExhausted("account registry"));
+		}
+	}
+
+	let capability_ready: bool = connection
+		.query_row(
+			"SELECT EXISTS (
+			   SELECT 1 FROM codex_account_capability
+			   WHERE singleton = 1 AND login_chatgpt_auth_tokens = 1 AND refresh_callback = 1
+			 )",
+			[],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)?;
+	let mut statement = connection
+		.prepare(
+			"SELECT a.account_id, a.display_label, a.enabled, a.state, a.revision,
+			        a.provider, a.provider_account_id, a.credential_store_observation,
+			        a.tombstoned_at_micros IS NOT NULL
+			 FROM accounts AS a
+			 LEFT JOIN account_routing_order AS ordering USING (account_id)
+			 WHERE (?1 IS NULL AND a.tombstoned_at_micros IS NULL) OR a.account_id = ?1
+			 ORDER BY COALESCE(ordering.position, 2147483647), a.account_id LIMIT ?2",
+		)
+		.map_err(sql_error)?;
+	let rows = statement
+		.query_map(rusqlite::params![account_id, i64::from(limit)], |row| {
+			Ok(AccountBase {
+				account_id: row.get(0)?,
+				label: row.get(1)?,
+				enabled: row.get(2)?,
+				state: row.get(3)?,
+				revision: row.get(4)?,
+				provider: row.get(5)?,
+				provider_account_id: row.get(6)?,
+				store_observation: row.get(7)?,
+				tombstoned: row.get(8)?,
+			})
+		})
+		.map_err(sql_error)?;
+	let bases = rows.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
+
+	bases.into_iter().map(|base| account_from_base(connection, base, capability_ready)).collect()
+}
+
+pub(crate) fn random_uuid_v4() -> Result<String, StoreError> {
+	let mut bytes = [0_u8; 16];
+
+	getrandom::fill(&mut bytes).map_err(|_| StoreError::Database(DatabaseError::Unavailable))?;
+
+	bytes[6] = (bytes[6] & 0x0f) | 0x40;
+	bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+	Ok(format!(
+		"{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+		bytes[0],
+		bytes[1],
+		bytes[2],
+		bytes[3],
+		bytes[4],
+		bytes[5],
+		bytes[6],
+		bytes[7],
+		bytes[8],
+		bytes[9],
+		bytes[10],
+		bytes[11],
+		bytes[12],
+		bytes[13],
+		bytes[14],
+		bytes[15],
+	))
+}
+
+pub(crate) fn parse_account_state(value: &str) -> Result<AccountState, StoreError> {
+	match value {
+		"unavailable" => Ok(AccountState::Unavailable),
+		"unknown" => Ok(AccountState::Unknown),
+		"available" => Ok(AccountState::Available),
+		"depleted" => Ok(AccountState::Depleted),
+		"auth_failed" => Ok(AccountState::AuthFailed),
+		"plugin_unready" => Ok(AccountState::PluginUnready),
+		_ => Err(incompatible("account state")),
+	}
+}
+
+pub(crate) fn sql_error(_error: Error) -> StoreError {
+	StoreError::Database(DatabaseError::Unavailable)
+}
+
 fn reserve_command_sync(
 	connection: &mut Connection,
 	command: CommandIdentity,
@@ -1005,7 +1115,7 @@ fn reserve_command_sync(
 		&& transaction
 			.query_row(
 				"SELECT 1 FROM legacy_account_route_interruptions WHERE idempotency_key = ?1",
-				params![command.key],
+				rusqlite::params![command.key],
 				|row| row.get::<_, i64>(0),
 			)
 			.optional()
@@ -1020,7 +1130,7 @@ fn reserve_command_sync(
 			"SELECT request_sha256, operation, entity_id, expected_revision, state,
 			        response_json, claim_expires_at_micros
 			 FROM command_receipts WHERE protocol = ?1 AND idempotency_key = ?2",
-			params![ACCOUNT_COMMAND_PROTOCOL, command.key],
+			rusqlite::params![ACCOUNT_COMMAND_PROTOCOL, command.key],
 			|row| {
 				Ok((
 					row.get::<_, String>(0)?,
@@ -1083,7 +1193,7 @@ fn reserve_command_sync(
 			.execute(
 				"UPDATE command_receipts SET claim_token = ?1, claim_expires_at_micros = ?2
 			 WHERE protocol = ?3 AND idempotency_key = ?4 AND state = 'reserved'",
-				params![claim_token, expires, ACCOUNT_COMMAND_PROTOCOL, command.key],
+				rusqlite::params![claim_token, expires, ACCOUNT_COMMAND_PROTOCOL, command.key],
 			)
 			.map_err(sql_error)?;
 	} else {
@@ -1095,7 +1205,7 @@ fn reserve_command_sync(
 			   claim_expires_at_micros, reserved_at_micros, completed_at_micros,
 			   request_json, progress_json
 			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'reserved', NULL, ?7, ?8, ?9, NULL, NULL, NULL)",
-				params![
+				rusqlite::params![
 					ACCOUNT_COMMAND_PROTOCOL,
 					command.key,
 					command.request_hash,
@@ -1135,7 +1245,7 @@ fn finish_command_sync(
 			     progress_json = NULL
 			 WHERE protocol = ?3 AND idempotency_key = ?4 AND request_sha256 = ?5
 			   AND state = 'reserved' AND claim_token = ?6 AND claim_expires_at_micros > ?2",
-			params![
+			rusqlite::params![
 				response,
 				unix_micros().map_err(StoreError::from)?,
 				reservation.protocol,
@@ -1185,7 +1295,7 @@ fn prepare_operation_sync(
 			"SELECT phase, account_id FROM account_operations
 			 WHERE account_id = ?1 AND phase NOT IN ('committed', 'cancelled')
 			   AND superseded_by_operation_id IS NULL LIMIT 1",
-			params![preparation.account_id.as_str()],
+			rusqlite::params![preparation.account_id.as_str()],
 			|row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
 		)
 		.optional()
@@ -1235,7 +1345,7 @@ fn prepare_operation_sync(
 		.execute(
 			"INSERT OR IGNORE INTO account_identities (account_id, created_at_micros)
 			 VALUES (?1, ?2)",
-			params![preparation.account_id.as_str(), now],
+			rusqlite::params![preparation.account_id.as_str(), now],
 		)
 		.map_err(sql_error)?;
 	connection
@@ -1250,7 +1360,7 @@ fn prepare_operation_sync(
 			   ?1, ?2, ?3, 'prepared', ?4, ?5, ?6, ?7, ?8, ?9, ?10, NULL, ?11, ?11,
 			   NULL, ?12, NULL
 			 )",
-			params![
+			rusqlite::params![
 				preparation.operation_id.as_str(),
 				preparation.account_id.as_str(),
 				operation_kind_text(preparation.kind),
@@ -1354,7 +1464,7 @@ fn validate_reauthentication_takeover_sync(
 			"SELECT phase FROM account_operations
 			 WHERE recovery_operation_id = ?1
 			   AND phase NOT IN ('committed', 'cancelled') LIMIT 1",
-			params![recovery_operation_id.as_str()],
+			rusqlite::params![recovery_operation_id.as_str()],
 			|row| row.get::<_, String>(0),
 		)
 		.optional()
@@ -1417,7 +1527,7 @@ fn advance_operation_sync(
 			"UPDATE account_operations SET phase = ?1, recovery_code = ?2,
 			 updated_at_micros = ?3, completed_at_micros = ?4
 			 WHERE operation_id = ?5 AND phase = ?6",
-			params![
+			rusqlite::params![
 				operation_phase_text(target),
 				recovery_code,
 				now,
@@ -1461,7 +1571,7 @@ fn commit_account_operation(
 				return Ok(Some(AccountLifecycleRejection::StaleAccount));
 			}
 
-			let label = crate::account_alias::for_enrollment(connection, &target.provider)
+			let label = account_alias::for_enrollment(connection, &target.provider)
 				.map_err(StoreError::from)?;
 			let enabled = operation
 				.requested_enabled
@@ -1480,7 +1590,7 @@ fn commit_account_operation(
 							   provider_account_id, credential_store_observation,
 							   created_at_micros, updated_at_micros, tombstoned_at_micros
 							 ) VALUES (?1, ?2, ?3, 'available', 1, ?4, ?5, 'exact', ?6, ?6, NULL)",
-							params![
+							rusqlite::params![
 								operation.account_id.as_str(),
 								label,
 								enabled,
@@ -1519,7 +1629,7 @@ fn commit_account_operation(
 							     tombstoned_at_micros = NULL
 							 WHERE account_id = ?6 AND revision = ?7
 							   AND tombstoned_at_micros IS NOT NULL",
-							params![
+							rusqlite::params![
 								label,
 								enabled,
 								provider_text(target.provider.provider()),
@@ -1546,7 +1656,7 @@ fn commit_account_operation(
 				.execute(
 					"INSERT INTO account_routing_order (account_id, position, updated_at_micros)
 					 VALUES (?1, ?2, ?3)",
-					params![operation.account_id.as_str(), position, now],
+					rusqlite::params![operation.account_id.as_str(), position, now],
 				)
 				.map_err(sql_error)?;
 
@@ -1568,7 +1678,7 @@ fn commit_account_operation(
 					 provider_account_id = ?2, credential_store_observation = 'exact',
 					 updated_at_micros = ?3
 					 WHERE account_id = ?4 AND tombstoned_at_micros IS NULL",
-					params![
+					rusqlite::params![
 						provider_text(target.provider.provider()),
 						target.provider.account_id(),
 						now,
@@ -1587,7 +1697,7 @@ fn commit_account_operation(
 					"SELECT EXISTS (
 					   SELECT 1 FROM process_generations WHERE account_id = ?1 AND state <> 'dead'
 					 )",
-					params![operation.account_id.as_str()],
+					rusqlite::params![operation.account_id.as_str()],
 					|row| row.get(0),
 				)
 				.map_err(sql_error)?;
@@ -1605,7 +1715,7 @@ fn commit_account_operation(
 					 credential_store_observation = 'missing', updated_at_micros = ?1,
 					 tombstoned_at_micros = ?1
 					 WHERE account_id = ?2 AND tombstoned_at_micros IS NULL",
-					params![now, operation.account_id.as_str()],
+					rusqlite::params![now, operation.account_id.as_str()],
 				)
 				.map_err(sql_error)?;
 
@@ -1616,7 +1726,7 @@ fn commit_account_operation(
 			connection
 				.execute(
 					"DELETE FROM account_routing_order WHERE account_id = ?1",
-					params![operation.account_id.as_str()],
+					rusqlite::params![operation.account_id.as_str()],
 				)
 				.map_err(sql_error)?;
 
@@ -1628,7 +1738,7 @@ fn commit_account_operation(
 					 SET mode = CASE WHEN fixed_account_id = ?1 THEN 'balanced' ELSE mode END,
 					     fixed_account_id = CASE WHEN fixed_account_id = ?1 THEN NULL ELSE fixed_account_id END
 					 WHERE singleton = 1",
-					params![operation.account_id.as_str()],
+					rusqlite::params![operation.account_id.as_str()],
 				)
 				.map_err(sql_error)?;
 
@@ -1681,7 +1791,7 @@ fn record_reauthentication_supersession(
 			   AND target_credential_json IS NULL
 			   AND recovery_operation_id IS NULL
 			   AND superseded_by_operation_id IS NULL",
-			params![operation.operation_id.as_str(), now, recovery_operation_id.as_str()],
+			rusqlite::params![operation.operation_id.as_str(), now, recovery_operation_id.as_str()],
 		)
 		.map_err(sql_error)?;
 
@@ -1723,7 +1833,7 @@ fn set_operation_target_sync(
 			"UPDATE account_operations SET target_credential_json = ?1, updated_at_micros = ?2
 			 WHERE operation_id = ?3 AND phase = 'provider_effect_pending'
 			   AND target_credential_json IS NULL",
-			params![
+			rusqlite::params![
 				binding_json(Some(target))?,
 				unix_micros().map_err(StoreError::from)?,
 				operation_id.as_str(),
@@ -1745,7 +1855,7 @@ fn read_operation_sync(
 			        expected_credential_json, target_credential_json, recovery_code,
 			        recovery_operation_id, superseded_by_operation_id
 			 FROM account_operations WHERE operation_id = ?1",
-			params![operation_id.as_str()],
+			rusqlite::params![operation_id.as_str()],
 			|row| {
 				Ok((
 					row.get::<_, String>(0)?,
@@ -1804,66 +1914,6 @@ fn read_operation_sync(
 		.transpose()
 }
 
-pub(crate) fn read_account_registry_sync(
-	connection: &Connection,
-	account_id: Option<&str>,
-	limit: u16,
-) -> Result<Vec<AccountRecord>, StoreError> {
-	if account_id.is_none() {
-		let count: i64 = connection
-			.query_row(
-				"SELECT COUNT(*) FROM accounts WHERE tombstoned_at_micros IS NULL",
-				[],
-				|row| row.get(0),
-			)
-			.map_err(sql_error)?;
-
-		if count > i64::from(limit) {
-			return Err(StoreError::CapacityExhausted("account registry"));
-		}
-	}
-
-	let capability_ready: bool = connection
-		.query_row(
-			"SELECT EXISTS (
-			   SELECT 1 FROM codex_account_capability
-			   WHERE singleton = 1 AND login_chatgpt_auth_tokens = 1 AND refresh_callback = 1
-			 )",
-			[],
-			|row| row.get(0),
-		)
-		.map_err(sql_error)?;
-	let mut statement = connection
-		.prepare(
-			"SELECT a.account_id, a.display_label, a.enabled, a.state, a.revision,
-			        a.provider, a.provider_account_id, a.credential_store_observation,
-			        a.tombstoned_at_micros IS NOT NULL
-			 FROM accounts AS a
-			 LEFT JOIN account_routing_order AS ordering USING (account_id)
-			 WHERE (?1 IS NULL AND a.tombstoned_at_micros IS NULL) OR a.account_id = ?1
-			 ORDER BY COALESCE(ordering.position, 2147483647), a.account_id LIMIT ?2",
-		)
-		.map_err(sql_error)?;
-	let rows = statement
-		.query_map(params![account_id, i64::from(limit)], |row| {
-			Ok(AccountBase {
-				account_id: row.get(0)?,
-				label: row.get(1)?,
-				enabled: row.get(2)?,
-				state: row.get(3)?,
-				revision: row.get(4)?,
-				provider: row.get(5)?,
-				provider_account_id: row.get(6)?,
-				store_observation: row.get(7)?,
-				tombstoned: row.get(8)?,
-			})
-		})
-		.map_err(sql_error)?;
-	let bases = rows.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
-
-	bases.into_iter().map(|base| account_from_base(connection, base, capability_ready)).collect()
-}
-
 fn account_from_base(
 	connection: &Connection,
 	base: AccountBase,
@@ -1906,7 +1956,7 @@ fn account_from_base(
 		lifecycle_readiness,
 		credential,
 		unsettled_operation,
-		usage_observation: crate::account_usage::read_usage_observation(connection, &account_id)?,
+		usage_observation: account_usage::read_usage_observation(connection, &account_id)?,
 		five_hour_quota: quota_observation_sync(
 			connection,
 			&account_id,
@@ -1931,7 +1981,7 @@ fn account_base_sync(
 			        provider_account_id, credential_store_observation,
 			        tombstoned_at_micros IS NOT NULL
 			 FROM accounts WHERE account_id = ?1",
-			params![account_id.as_str()],
+			rusqlite::params![account_id.as_str()],
 			|row| {
 				Ok(AccountBase {
 					account_id: row.get(0)?,
@@ -1959,7 +2009,7 @@ fn resolve_account_enrollment_sync(
 		.query_row(
 			"SELECT account_id FROM accounts
 			 WHERE provider = ?1 AND provider_account_id = ?2",
-			params![provider_text(provider.provider()), provider.account_id()],
+			rusqlite::params![provider_text(provider.provider()), provider.account_id()],
 			|row| row.get::<_, String>(0),
 		)
 		.optional()
@@ -2041,7 +2091,10 @@ fn is_legacy_tombstone_enrollment_collision_sync(
 			"SELECT account_id, revision FROM accounts
 			 WHERE provider = ?1 AND provider_account_id = ?2
 			   AND tombstoned_at_micros IS NOT NULL",
-			params![provider_text(target.provider.provider()), target.provider.account_id(),],
+			rusqlite::params![
+				provider_text(target.provider.provider()),
+				target.provider.account_id(),
+			],
 			|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
 		)
 		.optional()
@@ -2063,7 +2116,7 @@ fn is_legacy_tombstone_enrollment_collision_sync(
 			   UNION ALL SELECT 1 FROM account_profile_snapshots WHERE account_id = ?1
 			   UNION ALL SELECT 1 FROM account_routing_control WHERE fixed_account_id = ?1
 			 )",
-			params![operation.account_id.as_str()],
+			rusqlite::params![operation.account_id.as_str()],
 			|row| row.get(0),
 		)
 		.map_err(sql_error)?;
@@ -2084,7 +2137,7 @@ fn tombstone_predecessor_credential_sync(
 			 WHERE account_id = ?1 AND kind = 'logout' AND phase = 'committed'
 			 ORDER BY expected_account_revision DESC, completed_at_micros DESC,
 			          operation_id DESC LIMIT 1",
-			params![account_id.as_str()],
+			rusqlite::params![account_id.as_str()],
 			|row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<i64>>(1)?)),
 		)
 		.optional()
@@ -2114,7 +2167,7 @@ fn credential_binding_sync(
 			"SELECT schema_version, credential_version, fingerprint, writer_operation_id,
 			        provider, provider_account_id
 			 FROM account_credentials WHERE account_id = ?1",
-			params![account_id.as_str()],
+			rusqlite::params![account_id.as_str()],
 			|row| {
 				Ok((
 					row.get::<_, i64>(0)?,
@@ -2145,7 +2198,7 @@ fn unsettled_operation_sync(
 			   AND superseded_by_operation_id IS NULL
 			 ORDER BY recovery_operation_id IS NULL, created_at_micros, operation_id
 			 LIMIT 1",
-			params![account_id.as_str()],
+			rusqlite::params![account_id.as_str()],
 			|row| {
 				Ok((
 					row.get::<_, String>(0)?,
@@ -2178,7 +2231,7 @@ fn quota_observation_sync(
 		.query_row(
 			"SELECT used_percent, resets_at_micros, error_code, observed_at_micros, not_applicable
 			 FROM account_quota_facts WHERE account_id = ?1 AND duration_minutes = ?2",
-			params![account_id.as_str(), i64::from(duration)],
+			rusqlite::params![account_id.as_str(), i64::from(duration)],
 			|row| {
 				Ok((
 					row.get::<_, Option<i64>>(0)?,
@@ -2320,7 +2373,7 @@ fn set_account_enabled_sync(
 		.execute(
 			"UPDATE accounts SET enabled = ?1, revision = ?2, updated_at_micros = ?3
 			 WHERE account_id = ?4 AND revision = ?5 AND tombstoned_at_micros IS NULL",
-			params![
+			rusqlite::params![
 				enabled,
 				revision,
 				unix_micros().map_err(StoreError::from)?,
@@ -2363,7 +2416,7 @@ fn set_fixed_routing_sync(
 		.execute(
 			"UPDATE account_routing_control SET mode = 'fixed', fixed_account_id = ?1,
 			 revision = ?2, updated_at_micros = ?3 WHERE singleton = 1 AND revision = ?4",
-			params![
+			rusqlite::params![
 				account_id.as_str(),
 				revision,
 				unix_micros().map_err(StoreError::from)?,
@@ -2426,7 +2479,11 @@ fn set_balanced_routing_sync(
 		.execute(
 			"UPDATE account_routing_control SET mode = 'balanced', fixed_account_id = NULL,
 			 revision = ?1, updated_at_micros = ?2 WHERE singleton = 1 AND revision = ?3",
-			params![revision, unix_micros().map_err(StoreError::from)?, expected_routing_revision,],
+			rusqlite::params![
+				revision,
+				unix_micros().map_err(StoreError::from)?,
+				expected_routing_revision,
+			],
 		)
 		.map_err(sql_error)?;
 
@@ -2460,7 +2517,7 @@ fn set_account_order_sync(
 			.execute(
 				"INSERT INTO account_routing_order (account_id, position, updated_at_micros)
 				 VALUES (?1, ?2, ?3)",
-				params![
+				rusqlite::params![
 					account_id.as_str(),
 					i64::try_from(position)
 						.map_err(|_| StoreError::CapacityExhausted("account routing order"))?,
@@ -2487,7 +2544,7 @@ fn compact_routing_order(connection: &Connection, now: i64) -> Result<(), StoreE
 	connection
 		.execute(
 			"UPDATE account_routing_order SET position = position + ?1, updated_at_micros = ?2",
-			params![
+			rusqlite::params![
 				i64::try_from(MAX_ACCOUNT_COUNT)
 					.map_err(|_| StoreError::CapacityExhausted("account routing order"))?,
 				now,
@@ -2500,7 +2557,7 @@ fn compact_routing_order(connection: &Connection, now: i64) -> Result<(), StoreE
 			.execute(
 				"UPDATE account_routing_order SET position = ?1, updated_at_micros = ?2
 				 WHERE account_id = ?3",
-				params![
+				rusqlite::params![
 					i64::try_from(position)
 						.map_err(|_| StoreError::CapacityExhausted("account routing order"))?,
 					now,
@@ -2518,7 +2575,7 @@ fn bump_routing_revision(connection: &Connection, now: i64) -> Result<(), StoreE
 		.execute(
 			"UPDATE account_routing_control
 			 SET revision = revision + 1, updated_at_micros = ?1 WHERE singleton = 1",
-			params![now],
+			rusqlite::params![now],
 		)
 		.map_err(sql_error)?;
 
@@ -2549,7 +2606,7 @@ fn account_revision_sync(
 fn binding_json(binding: Option<&CredentialBinding>) -> Result<Option<String>, StoreError> {
 	binding
 		.map(|binding| {
-			serde_json::to_string(&json!({
+			serde_json::to_string(&serde_json::json!({
 				"schema_version": binding.schema_version.get(),
 				"credential_version": binding.version.get(),
 				"fingerprint": binding.fingerprint.as_str(),
@@ -2797,40 +2854,11 @@ fn allowed_operation_transition(
 	)
 }
 
-pub(crate) fn random_uuid_v4() -> Result<String, StoreError> {
-	let mut bytes = [0_u8; 16];
-
-	getrandom::fill(&mut bytes).map_err(|_| StoreError::Database(DatabaseError::Unavailable))?;
-
-	bytes[6] = (bytes[6] & 0x0f) | 0x40;
-	bytes[8] = (bytes[8] & 0x3f) | 0x80;
-
-	Ok(format!(
-		"{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-		bytes[0],
-		bytes[1],
-		bytes[2],
-		bytes[3],
-		bytes[4],
-		bytes[5],
-		bytes[6],
-		bytes[7],
-		bytes[8],
-		bytes[9],
-		bytes[10],
-		bytes[11],
-		bytes[12],
-		bytes[13],
-		bytes[14],
-		bytes[15],
-	))
-}
-
 fn validate_account_command_response(value: &Value) -> Result<(), StoreError> {
 	let bytes = serde_json::to_vec(value)
 		.map_err(|_| StoreError::InvalidInput("account command result is invalid"))?;
 
-	if bytes.len() > 256 * 1024 {
+	if bytes.len() > 256 * 1_024 {
 		return Err(StoreError::InvalidInput("account command result is invalid"));
 	}
 
@@ -2902,18 +2930,6 @@ fn parse_operation_phase(value: &str) -> Result<AccountOperationPhase, StoreErro
 	}
 }
 
-pub(crate) fn parse_account_state(value: &str) -> Result<AccountState, StoreError> {
-	match value {
-		"unavailable" => Ok(AccountState::Unavailable),
-		"unknown" => Ok(AccountState::Unknown),
-		"available" => Ok(AccountState::Available),
-		"depleted" => Ok(AccountState::Depleted),
-		"auth_failed" => Ok(AccountState::AuthFailed),
-		"plugin_unready" => Ok(AccountState::PluginUnready),
-		_ => Err(incompatible("account state")),
-	}
-}
-
 const fn provider_text(provider: AccountProvider) -> &'static str {
 	match provider {
 		AccountProvider::Chatgpt => "chatgpt",
@@ -2954,19 +2970,15 @@ fn is_sha256(value: &str) -> bool {
 		&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-pub(crate) fn sql_error(_error: rusqlite::Error) -> StoreError {
-	StoreError::Database(DatabaseError::Unavailable)
-}
-
 fn incompatible(value: &'static str) -> StoreError {
 	StoreError::Incompatible(format!("stored {value} is malformed"))
 }
 
 #[cfg(test)]
 mod optional_quota_tests {
-	use super::{
-		AccountId, AccountQuotaDisposition, AccountQuotaObservationError, AccountQuotaWindow,
-		QUOTA_FRESHNESS_MICROS, SqliteStore, quota_observation_sync, unix_micros,
+	use crate::account_lifecycle::{
+		self, AccountId, AccountQuotaDisposition, AccountQuotaObservationError, AccountQuotaWindow,
+		QUOTA_FRESHNESS_MICROS, SqliteStore,
 	};
 	use decodex_core::DecodexRoot;
 
@@ -2986,7 +2998,7 @@ mod optional_quota_tests {
 			Ok(())
 		}).await.expect("fixture");
 
-		let now = unix_micros().expect("clock");
+		let now = account_lifecycle::unix_micros().expect("clock");
 
 		store
 			.observe_account_quota(
@@ -2998,7 +3010,7 @@ mod optional_quota_tests {
 			.expect("depleted observation");
 		store.observe_account_quota_absence(&account, 300, now).await.expect("absence observation");
 
-		assert!(store.observe_account_quota_absence(&account, 10080, now).await.is_err());
+		assert!(store.observe_account_quota_absence(&account, 10_080, now).await.is_err());
 		assert!(store.observe_account_quota_absence(&account, 300, now - 1).await.is_err());
 		assert!(
 			store
@@ -3026,12 +3038,12 @@ mod optional_quota_tests {
 		let id = account.clone();
 
 		reopened.run(move |connection| {
-			let observation = quota_observation_sync(connection,&id,300)?;
+			let observation = account_lifecycle::quota_observation_sync(connection,&id,300)?;
 
 			assert_eq!(observation.disposition,AccountQuotaDisposition::NotApplicable);
 			assert_eq!(observation.observed_at_unix_micros,Some(now));
 			assert_eq!(observation.current(),None);
-			assert_eq!(quota_observation_sync(connection,&id,10080)?.disposition,AccountQuotaDisposition::Unknown);
+			assert_eq!(account_lifecycle::quota_observation_sync(connection,&id,10_080)?.disposition,AccountQuotaDisposition::Unknown);
 
 			let stored: (Option<i64>,Option<i64>,Option<String>,i64) = connection.query_row("SELECT used_percent,resets_at_micros,error_code,not_applicable FROM account_quota_facts WHERE duration_minutes=300",[],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).expect("stored marker");
 
@@ -3043,11 +3055,11 @@ mod optional_quota_tests {
 
 			connection.execute("UPDATE account_quota_facts SET observed_at_micros=?1",[now+QUOTA_FRESHNESS_MICROS]).expect("future observation");
 
-			assert_eq!(quota_observation_sync(connection,&id,300)?.disposition,AccountQuotaDisposition::Unknown);
+			assert_eq!(account_lifecycle::quota_observation_sync(connection,&id,300)?.disposition,AccountQuotaDisposition::Unknown);
 
 			connection.execute("UPDATE account_quota_facts SET observed_at_micros=?1",[now-QUOTA_FRESHNESS_MICROS-1]).expect("expire observation");
 
-			let stale=quota_observation_sync(connection,&id,300)?;
+			let stale=account_lifecycle::quota_observation_sync(connection,&id,300)?;
 
 			assert_eq!(stale.disposition,AccountQuotaDisposition::Unknown);
 			assert_eq!(stale.observed_at_unix_micros,None);
@@ -3070,7 +3082,7 @@ mod optional_quota_tests {
 		store
 			.run(move |connection| {
 				assert_eq!(
-					quota_observation_sync(connection, &id, 300)?.disposition,
+					account_lifecycle::quota_observation_sync(connection, &id, 300)?.disposition,
 					AccountQuotaDisposition::Error(
 						AccountQuotaObservationError::ProviderUnavailable
 					)
@@ -3090,7 +3102,7 @@ mod optional_quota_tests {
 			.await
 			.expect("newer current replaces absence");
 		store.run(move |connection| {
-			assert!(matches!(quota_observation_sync(connection,&account,300)?.disposition,AccountQuotaDisposition::Current(fact) if fact.used_percent==7));
+			assert!(matches!(account_lifecycle::quota_observation_sync(connection,&account,300)?.disposition,AccountQuotaDisposition::Current(fact) if fact.used_percent==7));
 
 			Ok(())
 		}).await.expect("current readback");
@@ -3127,7 +3139,7 @@ impl SqliteStore {
 		let operation_key = operation_key.map(str::to_owned);
 
 		self.run(move |connection| {
-			let row = connection.query_row("SELECT idempotency_key,expected_revision,reserved_at_micros,response_json FROM command_receipts WHERE protocol=?1 AND operation=?2 AND entity_id=?3 AND (?4 IS NULL OR idempotency_key=?4) ORDER BY reserved_at_micros DESC,idempotency_key DESC LIMIT 1", params![ACCOUNT_COMMAND_PROTOCOL,kind.as_str(),account_id,operation_key], |row| Ok((row.get::<_,String>(0)?,row.get::<_,i64>(1)?,row.get::<_,i64>(2)?,row.get::<_,Option<String>>(3)?))).optional().map_err(sql_error)?;
+			let row = connection.query_row("SELECT idempotency_key,expected_revision,reserved_at_micros,response_json FROM command_receipts WHERE protocol=?1 AND operation=?2 AND entity_id=?3 AND (?4 IS NULL OR idempotency_key=?4) ORDER BY reserved_at_micros DESC,idempotency_key DESC LIMIT 1", rusqlite::params![ACCOUNT_COMMAND_PROTOCOL,kind.as_str(),account_id,operation_key], |row| Ok((row.get::<_,String>(0)?,row.get::<_,i64>(1)?,row.get::<_,i64>(2)?,row.get::<_,Option<String>>(3)?))).optional().map_err(sql_error)?;
 
 			row.map(|(operation_key,account_revision,reserved_at_unix_micros,response)| Ok(AccountNudgeReceipt { operation_key, account_revision, reserved_at_unix_micros, response: response.map(|s| serde_json::from_str(&s).map_err(|_| incompatible("account notification receipt"))).transpose()? })).transpose()
 		}).await
@@ -3136,7 +3148,10 @@ impl SqliteStore {
 
 #[cfg(test)]
 mod nudge_receipt_tests {
-	use super::*;
+	use crate::account_lifecycle::{
+		AccountCommandKind, AccountCommandReceiptClaim, AccountId, CommandIdentity, SqliteStore,
+		StoreError, sql_error,
+	};
 	#[tokio::test]
 	async fn native_nudge_claim_cannot_be_reassigned_after_restart_or_expiry() {
 		let temp = tempfile::tempdir().unwrap();

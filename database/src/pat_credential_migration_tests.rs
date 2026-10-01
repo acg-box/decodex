@@ -1,18 +1,24 @@
-use super::{APPLICATION_ID, MIGRATIONS, configure, migrate, migration_digest};
-use rusqlite::{Connection, params};
+use rusqlite::{self, Connection};
+use tempfile::TempDir;
 
-fn version_51_fixture() -> (tempfile::TempDir, Connection) {
+use crate::migrations::{self, APPLICATION_ID, MIGRATIONS};
+
+fn version_51_fixture() -> (TempDir, Connection) {
 	let directory = tempfile::tempdir().unwrap();
 	let connection = Connection::open(directory.path().join("upgrade.sqlite3")).unwrap();
 
-	configure(&connection).unwrap();
+	migrations::configure(&connection).unwrap();
 
 	for migration in MIGRATIONS.iter().filter(|migration| migration.version < 52) {
 		connection.execute_batch(migration.sql).unwrap();
 		connection
 			.execute(
 				"INSERT INTO schema_migrations VALUES(?1,?2,?3,1)",
-				params![migration.version, migration.name, migration_digest(migration.sql)],
+				rusqlite::params![
+					migration.version,
+					migration.name,
+					migrations::migration_digest(migration.sql)
+				],
 			)
 			.unwrap();
 	}
@@ -39,7 +45,7 @@ INSERT INTO agent_voice_observed_turns VALUES('50000000-0000-4000-8000-000000000
 fn pat_migration_preserves_payloads_and_dependent_process_rows() {
 	let (_directory, mut connection) = version_51_fixture();
 
-	migrate(&mut connection).unwrap();
+	migrations::migrate(&mut connection).unwrap();
 
 	let old: (i64, Vec<u8>) = connection
 		.query_row("SELECT schema_version,payload FROM account_credentials", [], |row| {
@@ -69,7 +75,7 @@ fn pat_migration_preserves_payloads_and_dependent_process_rows() {
 			.is_err()
 	);
 
-	migrate(&mut connection).unwrap();
+	migrations::migrate(&mut connection).unwrap();
 
 	assert!(connection.execute("DELETE FROM process_generations", []).is_err());
 	assert_eq!(
@@ -86,7 +92,7 @@ fn pat_migration_rolls_back_and_restores_foreign_keys_on_invalid_source() {
 	connection.execute("DELETE FROM process_execution_epochs", []).unwrap();
 	connection.pragma_update(None, "foreign_keys", true).unwrap();
 
-	assert!(migrate(&mut connection).is_err());
+	assert!(migrations::migrate(&mut connection).is_err());
 	assert_eq!(
 		connection.query_row("PRAGMA foreign_keys", [], |row| row.get::<_, i64>(0)).unwrap(),
 		1

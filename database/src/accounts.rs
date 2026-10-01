@@ -1,9 +1,9 @@
 //! Small account reads used at process admission boundaries.
 
-use decodex_core::{AccountId, AccountLifecycleReadiness, AccountState};
-use serde_json::{Value, json};
+use serde_json::{self, Value};
 
-use crate::{SqliteStore, StoreError};
+use crate::{SqliteStore, StoreError, account_lifecycle};
+use decodex_core::{AccountId, AccountLifecycleReadiness, AccountState};
 
 /// Credential-negative metadata for one exact account.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -29,7 +29,7 @@ impl SqliteStore {
 		let account_id = account_id.clone();
 
 		self.run(move |connection| {
-			let account = super::account_lifecycle::read_account_registry_sync(
+			let account = account_lifecycle::read_account_registry_sync(
 				connection,
 				Some(account_id.as_str()),
 				1,
@@ -59,7 +59,7 @@ impl SqliteStore {
 		let account_id = account_id.clone();
 
 		self.run(move |connection| {
-			Ok(super::account_lifecycle::read_account_registry_sync(
+			Ok(account_lifecycle::read_account_registry_sync(
 				connection,
 				Some(account_id.as_str()),
 				1,
@@ -70,7 +70,7 @@ impl SqliteStore {
 				account_id: account.account_id,
 				display_label: account.label,
 				state: account.observed_state,
-				metadata: json!({
+				metadata: serde_json::json!({
 					"enabled": account.enabled,
 					"lifecycle_ready": account.lifecycle_readiness == AccountLifecycleReadiness::Ready,
 				}),
