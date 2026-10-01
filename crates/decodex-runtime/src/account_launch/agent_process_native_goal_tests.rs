@@ -3,7 +3,9 @@ use std::{env, ffi::OsStr, fs, path::Path, sync::atomic::AtomicUsize};
 
 use tokio::{net::TcpListener, process::Command, time};
 
-use crate::account_launch::agent_process::native_tests::*;
+use crate::account_launch::agent_process::native_tests::{
+	self, AppServerClient, Arc, ClientError, Duration, NativeSession, Ordering, ServerEvent, Stdio,
+};
 use decodex_codex::app_server_client::NativeThreadGoalStatus;
 
 #[tokio::test]
@@ -21,7 +23,7 @@ async fn qualify() {
 	let listener = TcpListener::bind("127.0.0.1:0").await.expect("native goal fixture");
 	let address = listener.local_addr().expect("native goal fixture");
 	let requests = Arc::new(AtomicUsize::new(0));
-	let backend = tokio::spawn(serve(listener, Arc::clone(&requests)));
+	let backend = tokio::spawn(native_tests::serve(listener, Arc::clone(&requests)));
 
 	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\n[features]\ngoals=true\n[model_providers.fixture]\nname=\"Isolated goal fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("native goal fixture");
 
@@ -192,7 +194,7 @@ async fn qualify_active() {
 	// Hold the fake provider until the active goal has accumulated a whole second.
 	time::sleep(Duration::from_millis(1_200)).await;
 
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		requests.clone(),
 		None,

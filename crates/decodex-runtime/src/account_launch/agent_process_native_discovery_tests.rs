@@ -3,7 +3,9 @@ use std::{env, fs};
 
 use tokio::time;
 
-use crate::account_launch::agent_process::native_tests::*;
+use crate::account_launch::agent_process::native_tests::{
+	Child, ClientError, Duration, NativeSession, Value,
+};
 
 struct NativeChild(Child);
 impl Drop for NativeChild {

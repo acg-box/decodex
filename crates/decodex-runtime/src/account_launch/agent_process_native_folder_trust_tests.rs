@@ -7,7 +7,9 @@ use std::{
 
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::agent_process::native_tests::*;
+use crate::account_launch::agent_process::native_tests::{
+	self, Arc, Duration, NativeSession, Ordering, ServerEvent,
+};
 
 fn fixture_directories(root: &Path) -> Vec<PathBuf> {
 	let mut directories = Vec::new();
@@ -39,7 +41,7 @@ async fn installed_native_config_reads_preserve_folder_trust_without_granting_it
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
-	let backend = tokio::spawn(serve(listener, calls.clone()));
+	let backend = tokio::spawn(native_tests::serve(listener, calls.clone()));
 	let config = format!(
 		"model_reasoning_effort = \"high\"\n[projects.{}]\ntrust_level = \"trusted\"\n[projects.{}]\ntrust_level = \"untrusted\"\n",
 		serde_json::to_string(directories[0].to_str().unwrap()).unwrap(),

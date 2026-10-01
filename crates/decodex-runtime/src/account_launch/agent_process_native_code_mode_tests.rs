@@ -7,7 +7,9 @@ use std::{
 use serde_json::Value;
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::agent_process::native_tests::*;
+use crate::account_launch::agent_process::native_tests::{
+	self, Arc, Duration, NativeSession, Ordering, ServerEvent,
+};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY and its packaged Code Mode helper"]
@@ -18,7 +20,7 @@ async fn installed_native_code_mode_yielded_cells_keep_their_outputs() {
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		calls.clone(),
 		None,
@@ -143,7 +145,7 @@ async fn installed_native_delayed_mcp_keeps_original_turn_after_restart() {
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		calls.clone(),
 		None,

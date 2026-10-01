@@ -3,7 +3,7 @@ use std::{env, fs};
 
 use tokio::time;
 
-use crate::account_launch::agent_process::native_tests::*;
+use crate::account_launch::agent_process::native_tests::{ClientError, Duration, NativeSession};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native login policy"]

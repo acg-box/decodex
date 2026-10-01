@@ -8,7 +8,9 @@ use std::{
 
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::agent_process::native_tests::*;
+use crate::account_launch::agent_process::native_tests::{
+	self, AppServerClient, Arc, Duration, NativeSession, Ordering, ServerEvent, Value,
+};
 
 const SUMMARY: &str = "isolated-compaction-checkpoint";
 
@@ -53,7 +55,7 @@ async fn installed_native_streams_auto_compaction_and_resumes_its_checkpoint() {
 		let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 		let address = listener.local_addr().unwrap();
 		let bodies = Arc::new(Mutex::new(Vec::new()));
-		let backend = tokio::spawn(serve_fixture_usage(
+		let backend = tokio::spawn(native_tests::serve_fixture_usage(
 			listener,
 			Arc::new(AtomicUsize::new(0)),
 			None,
@@ -123,7 +125,7 @@ async fn installed_native_preserves_prompt_before_compaction_error_and_after_res
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
-	let backend = tokio::spawn(serve_fixture_usage(
+	let backend = tokio::spawn(native_tests::serve_fixture_usage(
 		listener,
 		requests.clone(),
 		None,

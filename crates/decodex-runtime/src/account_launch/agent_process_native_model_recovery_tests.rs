@@ -6,7 +6,9 @@ use std::{
 
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::agent_process::native_tests::*;
+use crate::account_launch::agent_process::native_tests::{
+	self, Arc, Duration, NativeSession, Ordering, ServerEvent, Value,
+};
 use decodex_codex::app_server_client::{NativeTaskModelSettings, ThreadModelRecoveryUpdate};
 
 fn assert_resumed_settings(resumed: &Value, mode: &str) {
@@ -53,7 +55,7 @@ async fn qualify(mode: &str, preserve_tier: bool) {
 	let address = listener.local_addr().expect("loopback address");
 	let count = Arc::new(AtomicUsize::new(0));
 	let requests = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture_usage(
+	let backend = tokio::spawn(native_tests::serve_fixture_usage(
 		listener,
 		Arc::clone(&count),
 		None,

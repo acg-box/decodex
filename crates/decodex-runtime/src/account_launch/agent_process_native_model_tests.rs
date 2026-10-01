@@ -5,7 +5,9 @@ use std::{env, fs, path::Path};
 
 use tokio::{task::JoinHandle, time};
 
-use crate::account_launch::agent_process::native_tests::*;
+use crate::account_launch::agent_process::native_tests::{
+	self, Arc, Duration, NativeSession, Ordering, ServerEvent, Value, effort, reviewer,
+};
 use decodex_codex::app_server_client::ThreadModelSelection;
 
 const EFFORT: &str = "future-provider-reasoning-effort-over-32-bytes";
@@ -15,7 +17,7 @@ fn start_backend(
 	requests: Arc<std::sync::atomic::AtomicUsize>,
 	bodies: Arc<std::sync::Mutex<Vec<Value>>>,
 ) -> JoinHandle<()> {
-	tokio::spawn(serve_fixture(
+	tokio::spawn(native_tests::serve_fixture(
 		listener,
 		requests,
 		None,
