@@ -1,24 +1,34 @@
-use super::*;
-use serde_json::json;
+use crate::{
+	AgentForkAttempt, AgentForkBoundary, AgentPromptEditAttempt, AgentVoiceCall, SqliteStore,
+	agent_process::tests::{self, DIGEST},
+};
 
 #[tokio::test]
 async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_managers() {
 	let dir = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&dir.path().join("fork.sqlite3")).unwrap();
 
-	seed(&store).await;
+	tests::seed(&store).await;
 
 	store.bind_agent_thread("root".into(), "native-source".into()).await.unwrap();
 	store
-		.prepare_agent_bound_process_generation(&intent(1, 1), &binding(1), "root", "first")
+		.prepare_agent_bound_process_generation(
+			&tests::intent(1, 1),
+			&tests::binding(1),
+			"root",
+			"first",
+		)
 		.await
 		.unwrap();
-	store.bind_process_generation_identity(&generation_id(1), 1, &identity(123)).await.unwrap();
-	store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+	store
+		.bind_process_generation_identity(&tests::generation_id(1), 1, &tests::identity(123))
+		.await
+		.unwrap();
+	store.mark_process_generation_ready(&tests::generation_id(1), 2).await.unwrap();
 
-	let generation = Some(generation_id(1).as_str().to_owned());
-	let attempt = crate::AgentForkAttempt {
-		source: crate::AgentPromptEditAttempt {
+	let generation = Some(tests::generation_id(1).as_str().to_owned());
+	let attempt = AgentForkAttempt {
+		source: AgentPromptEditAttempt {
 			work: "root".into(),
 			thread: "native-source".into(),
 			generation: generation.clone(),
@@ -27,10 +37,10 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 			before_turn_id: "first".into(),
 			item_id: "input".into(),
 			turn_ids: vec!["first".into()],
-			content: vec![json!({"type":"text","text":"preserve"})],
+			content: vec![serde_json::json!({"type":"text","text":"preserve"})],
 		},
 		target_work: "branch".into(),
-		boundary: crate::AgentForkBoundary::BeforeInput,
+		boundary: AgentForkBoundary::BeforeInput,
 	};
 
 	store.reserve_agent_fork(attempt.clone()).await.unwrap().unwrap();
@@ -88,11 +98,11 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 		("branch", "native-fork", true),
 	] {
 		let result = store
-			.begin_agent_voice_call(crate::AgentVoiceCall {
+			.begin_agent_voice_call(AgentVoiceCall {
 				session_id: format!("voice-{work}"),
 				work_id: work.into(),
 				thread_id: thread.into(),
-				generation_id: generation_id(1).as_str().into(),
+				generation_id: tests::generation_id(1).as_str().into(),
 				baseline_turn_id: None,
 			})
 			.await;
