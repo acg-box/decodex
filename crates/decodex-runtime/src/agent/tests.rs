@@ -63,7 +63,7 @@ impl FixtureFaults {
 					&& request["params"]["toolOutput"]["name"] == "capacity_retry")
 				|| (self.injected && history["_turn_draining_after_injection"] == true))
 		{
-			writer.write_all(format!("{}\n",json!({"id":request["id"],"error":{"code":-32_600,"message":history["_refusal_message"].as_str().unwrap_or("Server is draining; retry after reconnecting")}})).as_bytes()).await.unwrap();
+			writer.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":history["_refusal_message"].as_str().unwrap_or("Server is draining; retry after reconnecting")}})).as_bytes()).await.unwrap();
 
 			return Some(true);
 		}
@@ -81,8 +81,8 @@ impl FixtureFaults {
 			let error = history
 				.get("_resume_error")
 				.cloned()
-				.unwrap_or_else(|| json!({"code":-32_600,"message":message}));
-			let mut frame = json!({"id":request["id"],"error":error}).to_string();
+				.unwrap_or_else(|| serde_json::json!({"code":-32_600,"message":message}));
+			let mut frame = serde_json::json!({"id":request["id"],"error":error}).to_string();
 
 			frame.push('\n');
 			writer.write_all(frame.as_bytes()).await.unwrap();
@@ -106,7 +106,7 @@ impl FixtureFaults {
 					.write_all(
 						format!(
 							"{}\n",
-							json!({"id":request["id"],"error":{"code":-32_600,"message":"restore rejected"}})
+							serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":"restore rejected"}})
 						)
 						.as_bytes(),
 					)
@@ -123,7 +123,7 @@ impl FixtureFaults {
 			if history["_guardian_reject"] == true {
 				let frame = format!(
 					"{}\n",
-					json!({"id":request["id"],"error":{"code":-32_600,"message":"approval rejected"}})
+					serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":"approval rejected"}})
 				);
 
 				writer.write_all(frame.as_bytes()).await.unwrap();
@@ -155,7 +155,7 @@ impl FixtureFaults {
 		if request["method"] == "turn/steer" && history["_steer_error"] == true {
 			let frame = format!(
 				"{}\n",
-				json!({"id":request["id"],"error":{"code":-32_600,"message":"turn ended"}})
+				serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":"turn ended"}})
 			);
 
 			writer.write_all(frame.as_bytes()).await.unwrap();
@@ -171,7 +171,7 @@ impl FixtureFaults {
 			if history["_continuation_reject"] == true {
 				let frame = format!(
 					"{}\n",
-					json!({"id":request["id"],"error":{"code":-32_600,"message":"continuation rejected private-steer-sentinel"}})
+					serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":"continuation rejected private-steer-sentinel"}})
 				);
 
 				writer.write_all(frame.as_bytes()).await.unwrap();
@@ -228,12 +228,11 @@ fn fixture_thread_read(
 	started_turns: u64,
 ) -> Value {
 	let id = request["params"]["threadId"].as_str().unwrap();
-	let mut result = history
-		.get(id)
-		.cloned()
-		.unwrap_or_else(|| json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}));
+	let mut result = history.get(id).cloned().unwrap_or_else(
+		|| serde_json::json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
+	);
 	let configured = settings.get(id).cloned().unwrap_or_else(
-		|| json!({"model":"selected-model","reasoningEffort":"high","modelProvider":"openai"}),
+		|| serde_json::json!({"model":"selected-model","reasoningEffort":"high","modelProvider":"openai"}),
 	);
 
 	for field in ["model", "reasoningEffort", "modelProvider"] {
@@ -243,7 +242,7 @@ fn fixture_thread_read(
 	}
 
 	if result["thread"]["cwd"].is_null() {
-		result["thread"]["cwd"] = json!("/tmp");
+		result["thread"]["cwd"] = serde_json::json!("/tmp");
 	}
 	if history["_started_turns_only"] == true
 		&& let Some(turns) = result["thread"]["turns"].as_array_mut()
@@ -253,7 +252,7 @@ fn fixture_thread_read(
 	if result["thread"]["historyMode"] == "paginated" {
 		assert_ne!(request["params"]["includeTurns"], true);
 
-		result["thread"]["turns"] = json!([]);
+		result["thread"]["turns"] = serde_json::json!([]);
 	}
 
 	result
@@ -261,24 +260,26 @@ fn fixture_thread_read(
 
 #[test]
 fn partial_message_settings_preserve_existing_values_and_explicit_standard_clears_tier() {
-	let baseline =
-		json!({"input":[],"model":"native-model","effort":"high","serviceTier":"priority"});
+	let baseline = serde_json::json!({"input":[],"model":"native-model","effort":"high","serviceTier":"priority"});
 	let mut params = baseline.clone();
-	let message =
-		|execution: Value| json!({"options":{"execution":execution,"attachments":[]}}).to_string();
+	let message = |execution: Value| {
+		serde_json::json!({"options":{"execution":execution,"attachments":[]}}).to_string()
+	};
 
-	apply_message_options(&mut params, &message(json!({}))).unwrap();
+	apply_message_options(&mut params, &message(serde_json::json!({}))).unwrap();
 
 	assert_eq!(params, baseline);
 
-	apply_message_options(&mut params, &message(json!({"reasoning_effort":"medium"}))).unwrap();
+	apply_message_options(&mut params, &message(serde_json::json!({"reasoning_effort":"medium"})))
+		.unwrap();
 
 	assert_eq!(params["model"], "native-model");
 	assert_eq!(params["effort"], "medium");
 	assert_eq!(params["serviceTier"], "priority");
 	assert!(params.get("serviceTierForTurn").is_none());
 
-	apply_message_options(&mut params, &message(json!({"service_tier":"default"}))).unwrap();
+	apply_message_options(&mut params, &message(serde_json::json!({"service_tier":"default"})))
+		.unwrap();
 
 	assert!(params["serviceTier"].is_null());
 	assert_eq!(params["serviceTierForTurn"], "default");
@@ -288,10 +289,9 @@ fn partial_message_settings_preserve_existing_values_and_explicit_standard_clear
 
 #[test]
 fn steering_receipt_preserves_turn_settings_when_carried_as_evidence() {
-	let mut params =
-		json!({"input":[],"model":"current-model","effort":"high","serviceTier":"priority"});
+	let mut params = serde_json::json!({"input":[],"model":"current-model","effort":"high","serviceTier":"priority"});
 
-	apply_message_options(&mut params,&json!({"text":"Supplement","options":{"attachments":[{"path":"/tmp/steer.png","image":true}]}}).to_string()).unwrap();
+	apply_message_options(&mut params,&serde_json::json!({"text":"Supplement","options":{"attachments":[{"path":"/tmp/steer.png","image":true}]}}).to_string()).unwrap();
 
 	assert_eq!(params["model"], "current-model");
 	assert_eq!(params["effort"], "high");
@@ -413,7 +413,7 @@ async fn subagent_activity_survives_parent_completion_and_restart_without_waking
 
 	for (index, kind) in ["started", "interacted", "interrupted", "completed"].iter().enumerate() {
 		if *kind == "completed" {
-			agent.handle_event(ServerEvent::Notification { method:"turn/completed".into(), params:json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
+			agent.handle_event(ServerEvent::Notification { method:"turn/completed".into(), params:serde_json::json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
 		}
 
 		for (thread, turn) in [
@@ -422,7 +422,7 @@ async fn subagent_activity_survives_parent_completion_and_restart_without_waking
 			("opaque thread/1", "opaque turn/1"),
 		] {
 			for method in ["item/started", "item/completed", "item/completed"] {
-				let wire = json!({"method":method,"params":{"threadId":thread,"turnId":turn,"item":{"id":format!("activity-{index}"),"type":"subAgentActivity","kind":kind,"agentThreadId":"child-thread","agentPath":"/root/worker","prompt":"PRIVATE_PROMPT"}}});
+				let wire = serde_json::json!({"method":method,"params":{"threadId":thread,"turnId":turn,"item":{"id":format!("activity-{index}"),"type":"subAgentActivity","kind":kind,"agentThreadId":"child-thread","agentPath":"/root/worker","prompt":"PRIVATE_PROMPT"}}});
 
 				write.write_all(format!("{wire}\n").as_bytes()).await.unwrap();
 
@@ -500,7 +500,7 @@ async fn native_activity_duration_pairs_exact_receipts_and_survives_restart() {
 			agent
 				.handle_event(ServerEvent::Notification {
 					method: "item/started".into(),
-					params: json!({"threadId":thread,"turnId":"opaque turn/1","startedAtMs":stamp,
+					params: serde_json::json!({"threadId":thread,"turnId":"opaque turn/1","startedAtMs":stamp,
 					"item":{"id":id,"type":"webSearch"}}),
 				})
 				.await
@@ -510,7 +510,7 @@ async fn native_activity_duration_pairs_exact_receipts_and_survives_restart() {
 			agent
 				.handle_event(ServerEvent::Notification {
 					method: "item/completed".into(),
-					params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","completedAtMs":end,
+					params: serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","completedAtMs":end,
 					"item":{"id":id,"type":"webSearch","durationMs":explicit}}),
 				})
 				.await
@@ -538,11 +538,12 @@ async fn native_activity_duration_pairs_exact_receipts_and_survives_restart() {
 		.iter()
 		.enumerate()
 		.map(|(position, (id, _, _, explicit, _))| {
-			json!({"type":"item","position":position,"turnId":"opaque turn/1",
+			serde_json::json!({"type":"item","position":position,"turnId":"opaque turn/1",
 			"item":{"id":id,"type":"webSearch","status":"completed","durationMs":explicit}})
 		})
 		.collect::<Vec<_>>();
-	let native = json!({"data":rows,"nextCursor":null,"activeRealtimeSessionAtPageStart":null});
+	let native =
+		serde_json::json!({"data":rows,"nextCursor":null,"activeRealtimeSessionAtPageStart":null});
 	let mut page = timeline::project("opaque thread/1", &native).unwrap();
 
 	metrics::enrich(&store, "agent", &mut page).await.unwrap();
@@ -580,7 +581,7 @@ async fn native_activity_duration_pairs_exact_receipts_and_survives_restart() {
 
 #[tokio::test]
 async fn terminal_readback_recovers_missed_subagent_activity() {
-	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"idle"},"turns":[{"id":"opaque turn/1","status":"completed","items":[{"id":"recovered","type":"subAgentActivity","kind":"started","agentThreadId":"child","agentPath":"/root/worker"}]}]}}});
+	let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"idle"},"turns":[{"id":"opaque turn/1","status":"completed","items":[{"id":"recovered","type":"subAgentActivity","kind":"started","agentThreadId":"child","agentPath":"/root/worker"}]}]}}});
 	let (mut agent, _sent, _directory) = fixture_with_history(history).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
@@ -606,14 +607,14 @@ async fn strict_review_notice_is_turn_bound_and_does_not_wake_or_stop_execution(
 	let (_client, mut events) = AppServerClient::from_io(reader, writer);
 
 	for (thread, turn, started) in [
-		("wrong", "opaque turn/1", json!(1)),
-		("opaque thread/1", "old", json!(1)),
-		("opaque thread/1", "opaque turn/1", json!(-1)),
-		("opaque thread/1", "opaque turn/1", json!("1")),
-		("opaque thread/1", "opaque turn/1", json!(1)),
-		("opaque thread/1", "opaque turn/1", json!(2)),
+		("wrong", "opaque turn/1", serde_json::json!(1)),
+		("opaque thread/1", "old", serde_json::json!(1)),
+		("opaque thread/1", "opaque turn/1", serde_json::json!(-1)),
+		("opaque thread/1", "opaque turn/1", serde_json::json!("1")),
+		("opaque thread/1", "opaque turn/1", serde_json::json!(1)),
+		("opaque thread/1", "opaque turn/1", serde_json::json!(2)),
 	] {
-		let wire = json!({"method":"autoApprovalReview/strictReviewRequired","params":{"threadId":thread,"turnId":turn,"startedAtMs":started}});
+		let wire = serde_json::json!({"method":"autoApprovalReview/strictReviewRequired","params":{"threadId":thread,"turnId":turn,"startedAtMs":started}});
 
 		write.write_all(format!("{wire}\n").as_bytes()).await.unwrap();
 
@@ -650,7 +651,7 @@ async fn asynchronous_questions_and_usage_are_observed_without_completing_or_wak
 
 	while sent.try_recv().is_ok() {}
 
-	let message = json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{
+	let message = serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{
 		"id":"question","type":"agentMessage","delivery":"async","text":"Which format?\n- PDF\n- Markdown",
 		"questions":[{"title":"Which format?","options":["PDF","Markdown"]}]}});
 
@@ -664,7 +665,7 @@ async fn asynchronous_questions_and_usage_are_observed_without_completing_or_wak
 			.unwrap();
 	}
 	// Freeform async updates use final_answer without completing the active turn.
-	let update = json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{
+	let update = serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{
 		"id":"freeform-update","type":"agentMessage","delivery":"async",
 		"phase":"final_answer","text":"Please review this finding while I continue."}});
 
@@ -683,12 +684,12 @@ async fn asynchronous_questions_and_usage_are_observed_without_completing_or_wak
 		1
 	);
 
-	let counts = json!({"totalTokens":1_200,"inputTokens":1_000,"cachedInputTokens":500,"outputTokens":200,"reasoningOutputTokens":100});
+	let counts = serde_json::json!({"totalTokens":1_200,"inputTokens":1_000,"cachedInputTokens":500,"outputTokens":200,"reasoningOutputTokens":100});
 
-	coordinator.handle_event(ServerEvent::Notification { method:"thread/tokenUsage/updated".into(), params:json!({
+	coordinator.handle_event(ServerEvent::Notification { method:"thread/tokenUsage/updated".into(), params:serde_json::json!({
 		"threadId":"opaque thread/1","turnId":"opaque turn/1","tokenUsage":{"total":counts,"last":counts,"modelContextWindow":128_000}
 	}) }).await.unwrap();
-	coordinator.handle_event(ServerEvent::Notification { method:"item/completed".into(), params:json!({
+	coordinator.handle_event(ServerEvent::Notification { method:"item/completed".into(), params:serde_json::json!({
 		"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{"type":"contextCompaction","id":"compact"}
 	}) }).await.unwrap();
 
@@ -729,7 +730,7 @@ async fn asynchronous_questions_and_usage_are_observed_without_completing_or_wak
 
 async fn fixture()
 -> (AgentCoordinator, tokio::sync::mpsc::UnboundedReceiver<Value>, tempfile::TempDir) {
-	fixture_with_history(json!({})).await
+	fixture_with_history(serde_json::json!({})).await
 }
 
 // Deliver through the actual native transport so response guards have real evidence.
@@ -775,13 +776,14 @@ async fn emit_fixture_review_events(
 		&& request["params"]["includeTurns"] != false
 		&& history["_misalignment_revert_on_read"] == true
 	{
-		let notice = json!({"method":"thread/reverted","params":{"threadId":"opaque thread/1"}});
+		let notice =
+			serde_json::json!({"method":"thread/reverted","params":{"threadId":"opaque thread/1"}});
 
 		writer.write_all(format!("{notice}\n").as_bytes()).await.unwrap();
 	}
 	if request["method"] == "turn/start" && turns == 1 && history["_live_misalignment"].is_object()
 	{
-		let notification = json!({"method":"error","params":{"threadId":"opaque thread/1","turnId":"opaque turn/1","willRetry":false,"error":history["_live_misalignment"]}});
+		let notification = serde_json::json!({"method":"error","params":{"threadId":"opaque thread/1","turnId":"opaque turn/1","willRetry":false,"error":history["_live_misalignment"]}});
 
 		writer.write_all(format!("{notification}\n").as_bytes()).await.unwrap();
 	}
@@ -820,19 +822,19 @@ async fn serve_fixture(
 
 		let result = match request["method"].as_str() {
 			Some("thread/list") =>
-				json!({"data":if request["params"]["archived"]==faults.archived {vec![json!({"id":"opaque thread/1"})]} else {vec![]},"nextCursor":null}),
+				serde_json::json!({"data":if request["params"]["archived"]==faults.archived {vec![serde_json::json!({"id":"opaque thread/1"})]} else {vec![]},"nextCursor":null}),
 			Some("thread/unarchive") => {
 				faults.archived = false;
 
-				json!({"thread":{"id":request["params"]["threadId"]}})
+				serde_json::json!({"thread":{"id":request["params"]["threadId"]}})
 			},
-			Some("turn/steer") => json!({"turnId":request["params"]["expectedTurnId"]}),
+			Some("turn/steer") => serde_json::json!({"turnId":request["params"]["expectedTurnId"]}),
 			Some("thread/backgroundTerminals/list") => history["_background"].clone(),
 			Some("thread/backgroundTerminals/terminate") =>
-				json!({"terminated":history["_terminated"]}),
+				serde_json::json!({"terminated":history["_terminated"]}),
 			Some("thread/search") => history["_search"].clone(),
 			Some("thread/searchOccurrences") => history["_occurrences"].clone(),
-			Some("thread/goal/get") => json!({"goal":history["_goal"]}),
+			Some("thread/goal/get") => serde_json::json!({"goal":history["_goal"]}),
 			Some("thread/read") => fixture_thread_read(&request, &history, &settings, turns),
 			Some("thread/turns/list") => {
 				let id = request["params"]["threadId"].as_str().unwrap();
@@ -840,14 +842,14 @@ async fn serve_fixture(
 
 				for turn in turns.as_array_mut().unwrap() {
 					if request["params"]["itemsView"] == "full" {
-						turn["itemsView"] = json!("full");
+						turn["itemsView"] = serde_json::json!("full");
 					} else {
-						turn["items"] = json!([]);
-						turn["itemsView"] = json!("notLoaded");
+						turn["items"] = serde_json::json!([]);
+						turn["itemsView"] = serde_json::json!("notLoaded");
 					}
 				}
 
-				json!({"data":turns,"nextCursor":null})
+				serde_json::json!({"data":turns,"nextCursor":null})
 			},
 			Some("thread/items/list") => {
 				let id = request["params"]["threadId"].as_str().unwrap();
@@ -862,29 +864,28 @@ async fn serve_fixture(
 					.as_array()
 					.unwrap()
 					.iter()
-					.map(|item| json!({"turnId":turn_id,"item":item}))
+					.map(|item| serde_json::json!({"turnId":turn_id,"item":item}))
 					.collect();
 
-				json!({"data":entries,"nextCursor":null})
+				serde_json::json!({"data":entries,"nextCursor":null})
 			},
 			Some("thread/resume") => {
 				let id = request["params"]["threadId"].as_str().unwrap();
-				let configured = settings
-					.get(id)
-					.cloned()
-					.unwrap_or_else(|| json!({"model":"selected-model","reasoningEffort":"high"}));
+				let configured = settings.get(id).cloned().unwrap_or_else(
+					|| serde_json::json!({"model":"selected-model","reasoningEffort":"high"}),
+				);
 
-				json!({"thread":{"id":id,"turns":if request["params"]["excludeTurns"] == true { json!([]) } else { history[id]["thread"]["turns"].clone() }},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
+				serde_json::json!({"thread":{"id":id,"turns":if request["params"]["excludeTurns"] == true { serde_json::json!([]) } else { history[id]["thread"]["turns"].clone() }},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
 			},
 			Some("thread/start") => {
 				threads += 1;
 
 				let id = format!("opaque thread/{threads}");
-				let configured = json!({"model":request["params"]["model"],"reasoningEffort":request["params"]["config"]["model_reasoning_effort"],"modelProvider":"openai"});
+				let configured = serde_json::json!({"model":request["params"]["model"],"reasoningEffort":request["params"]["config"]["model_reasoning_effort"],"modelProvider":"openai"});
 
 				settings.insert(id.clone(), configured.clone());
 
-				json!({"thread":{"id":id},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
+				serde_json::json!({"thread":{"id":id},"model":configured["model"],"reasoningEffort":configured["reasoningEffort"]})
 			},
 			Some("turn/start" | "thread/settings/update") => {
 				let id = request["params"]["threadId"].as_str().unwrap();
@@ -900,17 +901,17 @@ async fn serve_fixture(
 				if request["method"] == "turn/start" {
 					turns += 1;
 
-					json!({"turn":{"id":format!("opaque turn/{turns}")}})
+					serde_json::json!({"turn":{"id":format!("opaque turn/{turns}")}})
 				} else {
-					json!({})
+					serde_json::json!({})
 				}
 			},
-			_ => json!({}),
+			_ => serde_json::json!({}),
 		};
 
 		emit_fixture_review_events(&request, &history, turns, &mut writer).await;
 
-		let frame = format!("{}\n", json!({"id":request["id"],"result":result}));
+		let frame = format!("{}\n", serde_json::json!({"id":request["id"],"result":result}));
 
 		writer.write_all(frame.as_bytes()).await.unwrap();
 	}
@@ -939,7 +940,7 @@ async fn unloaded_thread_resumes_exact_identity_without_new_thread() {
 	coordinator
 		.handle_event(ServerEvent::Notification {
 			method: "thread/closed".into(),
-			params: json!({"threadId":original.codex_thread_id}),
+			params: serde_json::json!({"threadId":original.codex_thread_id}),
 		})
 		.await
 		.unwrap();
@@ -956,7 +957,7 @@ async fn unloaded_thread_resumes_exact_identity_without_new_thread() {
 	}
 
 	assert_eq!(resumes.len(), 1);
-	assert_eq!(resumes[0]["params"]["threadId"], json!(original.codex_thread_id));
+	assert_eq!(resumes[0]["params"]["threadId"], serde_json::json!(original.codex_thread_id));
 
 	for field in [
 		"approvalPolicy",
@@ -980,7 +981,11 @@ async fn automation_delivery_is_deduplicated_across_later_agent_turns() {
 	complete(&mut coordinator, "agent").await;
 
 	coordinator
-		.ingest_automation_result("feed:event:1", "agent", json!({"result":"review requested"}))
+		.ingest_automation_result(
+			"feed:event:1",
+			"agent",
+			serde_json::json!({"result":"review requested"}),
+		)
 		.await
 		.unwrap();
 
@@ -989,7 +994,11 @@ async fn automation_delivery_is_deduplicated_across_later_agent_turns() {
 	assert!(first.active_turn_id.is_some());
 
 	coordinator
-		.ingest_automation_result("feed:event:1", "agent", json!({"result":"review requested"}))
+		.ingest_automation_result(
+			"feed:event:1",
+			"agent",
+			serde_json::json!({"result":"review requested"}),
+		)
 		.await
 		.unwrap();
 
@@ -1001,7 +1010,11 @@ async fn automation_delivery_is_deduplicated_across_later_agent_turns() {
 	complete(&mut coordinator, "agent").await;
 
 	coordinator
-		.ingest_automation_result("feed:event:1", "agent", json!({"result":"review requested"}))
+		.ingest_automation_result(
+			"feed:event:1",
+			"agent",
+			serde_json::json!({"result":"review requested"}),
+		)
 		.await
 		.unwrap();
 
@@ -1159,7 +1172,7 @@ async fn wait_requires_future_due_and_due_checks_wake_once_per_timestamp() {
 	complete(&mut coordinator, "agent").await;
 
 	coordinator
-		.ingest_automation_result("source:wait", "agent", json!({"result":"not ready"}))
+		.ingest_automation_result("source:wait", "agent", serde_json::json!({"result":"not ready"}))
 		.await
 		.unwrap();
 
@@ -1172,21 +1185,23 @@ async fn wait_requires_future_due_and_due_checks_wake_once_per_timestamp() {
 		.into_iter()
 		.find(|event| event.event_kind == "automation_result")
 		.unwrap();
-	let mut args =
-		json!({"id":"agent","eventIds":[event.id],"status":"wait","summary":"Check source again"});
+	let mut args = serde_json::json!({"id":"agent","eventIds":[event.id],"status":"wait","summary":"Check source again"});
 
 	assert!(
 		coordinator
-			.tool(&agent, &json!({"tool":"agent_disposition","arguments":args}))
+			.tool(&agent, &serde_json::json!({"tool":"agent_disposition","arguments":args}))
 			.await
 			.is_err()
 	);
 
 	let due = now_micros().unwrap() + 60_000_000;
 
-	args["nextCheckAtMicros"] = json!(due);
+	args["nextCheckAtMicros"] = serde_json::json!(due);
 
-	coordinator.tool(&agent, &json!({"tool":"agent_disposition","arguments":args})).await.unwrap();
+	coordinator
+		.tool(&agent, &serde_json::json!({"tool":"agent_disposition","arguments":args}))
+		.await
+		.unwrap();
 
 	complete(&mut coordinator, "agent").await;
 
@@ -1296,7 +1311,7 @@ async fn failed_thread_start_remains_unknown_without_retry() {
 
 #[tokio::test]
 async fn recovery_records_only_exact_terminal_evidence_without_dispatching() {
-	let history = json!({
+	let history = serde_json::json!({
 		"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"idle"},"turns":[{"id":"opaque turn/1","status":"completed","items":[{"type":"agentMessage","text":"Agent waiting"}]}]}},
 		"opaque thread/2":{"thread":{"id":"opaque thread/2","status":{"type":"idle"},"turns":[{"id":"opaque turn/2","status":"failed","items":[{"type":"agentMessage","text":"Worker exact evidence"}]}]}}
 	});
@@ -1349,7 +1364,7 @@ async fn recovery_records_only_exact_terminal_evidence_without_dispatching() {
 
 #[tokio::test]
 async fn recovery_missing_exact_turn_preserves_unknown_without_replay() {
-	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"different-turn","status":"completed","items":[]}]}}});
+	let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"different-turn","status":"completed","items":[]}]}}});
 	let (mut coordinator, mut sent, _directory) = fixture_with_history(history).await;
 
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
@@ -1377,7 +1392,7 @@ async fn recovery_missing_exact_turn_preserves_unknown_without_replay() {
 
 #[tokio::test]
 async fn recovery_preserves_positive_active_turn_observation() {
-	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"active","activeFlags":[]},"turns":[{"id":"opaque turn/1","status":"inProgress","items":[]}]}}});
+	let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"active","activeFlags":[]},"turns":[{"id":"opaque turn/1","status":"inProgress","items":[]}]}}});
 	let (mut coordinator, mut sent, _directory) = fixture_with_history(history).await;
 
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
@@ -1412,7 +1427,7 @@ async fn initial_user_input_starts_once_and_receipt_ack_leaves_newer_input_pendi
 	let work = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
 
 	coordinator.enqueue_user_message("agent", "command-2", "A later request").await.unwrap();
-	coordinator.record_terminal(json!({"threadId":work.codex_thread_id,"turn":{"id":work.active_turn_id,"status":"completed","items":[]}}),Ok(json!({})),true).await.unwrap();
+	coordinator.record_terminal(serde_json::json!({"threadId":work.codex_thread_id,"turn":{"id":work.active_turn_id,"status":"completed","items":[]}}),Ok(serde_json::json!({})),true).await.unwrap();
 
 	let pending = coordinator.store.list_pending_agent_events(100).await.unwrap();
 
@@ -1454,12 +1469,12 @@ async fn large_requested_decisions_reach_native_once_without_truncation() {
 	for (method, requested, decision) in [
 		(
 			"item/permissions/requestApproval",
-			json!({"permissions":{"fileSystem":{"write":["/tmp/界".repeat(10_000)]}}}),
+			serde_json::json!({"permissions":{"fileSystem":{"write":["/tmp/界".repeat(10_000)]}}}),
 			AgentRequestedDecision::PermissionsForTurn,
 		),
 		(
 			"item/commandExecution/requestApproval",
-			json!({"command":"fixture","availableDecisions":["decline",{"acceptWithExecpolicyAmendment":{"execpolicy_amendment":["large-argument".repeat(8_000)]}}]}),
+			serde_json::json!({"command":"fixture","availableDecisions":["decline",{"acceptWithExecpolicyAmendment":{"execpolicy_amendment":["large-argument".repeat(8_000)]}}]}),
 			AgentRequestedDecision::CommandPolicy { index: 1 },
 		),
 	] {
@@ -1467,14 +1482,14 @@ async fn large_requested_decisions_reach_native_once_without_truncation() {
 		let root = agent.start_agent("agent", "Coordinate").await.unwrap();
 		let mut params = requested;
 
-		params["threadId"] = json!(root.codex_thread_id);
-		params["turnId"] = json!(root.active_turn_id);
-		params["itemId"] = json!("large-selected-decision");
+		params["threadId"] = serde_json::json!(root.codex_thread_id);
+		params["turnId"] = serde_json::json!(root.active_turn_id);
+		params["itemId"] = serde_json::json!("large-selected-decision");
 
 		let mut sent = attach_request_transport(
 			&mut agent,
-			json!({}),
-			json!({"id":7,"method":method,"params":params}),
+			serde_json::json!({}),
+			serde_json::json!({"id":7,"method":method,"params":params}),
 		)
 		.await;
 		let event = agent
@@ -1496,7 +1511,7 @@ async fn large_requested_decisions_reach_native_once_without_truncation() {
 
 		agent.respond_pending_event(event.id, response.clone()).await.unwrap();
 
-		assert_eq!(sent.recv().await.unwrap(), json!({"id":7,"result":response}));
+		assert_eq!(sent.recv().await.unwrap(), serde_json::json!({"id":7,"result":response}));
 		assert!(agent.respond_pending_event(event.id, response).await.is_err());
 		assert!(sent.try_recv().is_err());
 		assert!(agent.store.get_agent_inbox_event(event.id).await.unwrap().disposition.is_some());
@@ -1507,7 +1522,7 @@ async fn large_requested_decisions_reach_native_once_without_truncation() {
 async fn permission_response_uses_live_event_identity_even_when_rpc_id_is_reused() {
 	let (mut coordinator, _old_sent, _directory) = fixture().await;
 	let root = coordinator.start_agent("agent", "Coordinate").await.unwrap();
-	let params = json!({"threadId":root.codex_thread_id,"turnId":root.active_turn_id,
+	let params = serde_json::json!({"threadId":root.codex_thread_id,"turnId":root.active_turn_id,
 		"command": "true # 界".repeat(10_000), "availableDecisions":["accept","decline"]});
 
 	coordinator
@@ -1528,8 +1543,8 @@ async fn permission_response_uses_live_event_identity_even_when_rpc_id_is_reused
 	.unwrap();
 	let mut sent = attach_request_transport(
 		&mut reconnected,
-		json!({}),
-		json!({"id":7,"method":"item/commandExecution/requestApproval","params":params}),
+		serde_json::json!({}),
+		serde_json::json!({"id":7,"method":"item/commandExecution/requestApproval","params":params}),
 	)
 	.await;
 	let new_id = reconnected
@@ -1545,17 +1560,26 @@ async fn permission_response_uses_live_event_identity_even_when_rpc_id_is_reused
 	while sent.try_recv().is_ok() {}
 
 	assert!(
-		reconnected.respond_pending_event(old_id, json!({"decision":"decline"})).await.is_err()
+		reconnected
+			.respond_pending_event(old_id, serde_json::json!({"decision":"decline"}))
+			.await
+			.is_err()
 	);
 	assert!(sent.try_recv().is_err());
 
-	reconnected.respond_pending_event(new_id, json!({"decision":"decline"})).await.unwrap();
+	reconnected
+		.respond_pending_event(new_id, serde_json::json!({"decision":"decline"}))
+		.await
+		.unwrap();
 
 	let response = sent.recv().await.unwrap();
 
-	assert_eq!(response, json!({"id":7,"result":{"decision":"decline"}}));
+	assert_eq!(response, serde_json::json!({"id":7,"result":{"decision":"decline"}}));
 	assert!(
-		reconnected.respond_pending_event(new_id, json!({"decision":"decline"})).await.is_err()
+		reconnected
+			.respond_pending_event(new_id, serde_json::json!({"decision":"decline"}))
+			.await
+			.is_err()
 	);
 	assert_eq!(
 		reconnected.store.get_agent_work_item("agent".into()).await.unwrap().status,
@@ -1594,9 +1618,9 @@ async fn resolving_prerequisite_releases_authorized_unbound_worker_once() {
 
 	while sent.try_recv().is_ok() {}
 
-	let result=coordinator.tool(&agent,&json!({"tool":"agent_disposition","arguments":{"id":"first","status":"resolved","summary":"Evidence accepted","eventIds":[event.id]}})).await.unwrap();
+	let result=coordinator.tool(&agent,&serde_json::json!({"tool":"agent_disposition","arguments":{"id":"first","status":"resolved","summary":"Evidence accepted","eventIds":[event.id]}})).await.unwrap();
 
-	assert_eq!(result["releasedWorkIds"], json!(["second"]));
+	assert_eq!(result["releasedWorkIds"], serde_json::json!(["second"]));
 
 	let second = coordinator.store.get_agent_work_item("second".into()).await.unwrap();
 
@@ -1611,10 +1635,10 @@ async fn resolving_prerequisite_releases_authorized_unbound_worker_once() {
 
 	let turn = requests.iter().find(|request| request["method"] == "turn/start").unwrap();
 
-	assert_eq!(turn["params"]["input"], json!([]));
+	assert_eq!(turn["params"]["input"], serde_json::json!([]));
 	assert_eq!(
 		turn["params"]["toolOutput"],
-		json!({"name":"work_instruction","namespace":"decodex","output":"Use the result"})
+		serde_json::json!({"name":"work_instruction","namespace":"decodex","output":"Use the result"})
 	);
 }
 
@@ -1622,7 +1646,7 @@ async fn complete(coordinator: &mut AgentCoordinator, id: &str) {
 	let work = coordinator.store.get_agent_work_item(id.into()).await.unwrap();
 
 	coordinator.handle_event(ServerEvent::Notification {
-        method:"turn/completed".into(),params:json!({"threadId":work.codex_thread_id,"turn":{"id":work.active_turn_id,"status":"completed","items":[{"type":"agentMessage","text":"result"}]}})
+        method:"turn/completed".into(),params:serde_json::json!({"threadId":work.codex_thread_id,"turn":{"id":work.active_turn_id,"status":"completed","items":[{"type":"agentMessage","text":"result"}]}})
     }).await.unwrap();
 }
 
@@ -1648,14 +1672,14 @@ async fn goal_completion_requires_explicit_judgment_and_related_evidence() {
 		.find(|event| event.work_item_id == "worker")
 		.unwrap();
 
-	coordinator.tool(&agent,&json!({"tool":"agent_disposition","arguments":{"id":"worker","status":"resolved","eventIds":[event.id],"summary":"Result accepted"}})).await.unwrap();
+	coordinator.tool(&agent,&serde_json::json!({"tool":"agent_disposition","arguments":{"id":"worker","status":"resolved","eventIds":[event.id],"summary":"Result accepted"}})).await.unwrap();
 
 	assert_eq!(
 		coordinator.store.get_agent_work_item("goal".into()).await.unwrap().status,
 		AgentWorkStatus::Open
 	);
 
-	let command = |id| json!({"tool":"agent_resolve_goal","arguments":{"id":id,"evidenceEventId":event.id,"summary":"The accepted evidence satisfies this goal"}});
+	let command = |id| serde_json::json!({"tool":"agent_resolve_goal","arguments":{"id":id,"evidenceEventId":event.id,"summary":"The accepted evidence satisfies this goal"}});
 
 	assert!(coordinator.tool(&agent, &command("other")).await.is_err());
 
@@ -1697,7 +1721,7 @@ async fn explicit_user_reply_resolves_worker_decision_without_rewriting_old_evid
 		.find(|event| event.work_item_id == "worker")
 		.unwrap();
 
-	coordinator.tool(&agent,&json!({"tool":"agent_disposition","arguments":{"id":"worker","status":"user_decision","summary":"Choose A or B","eventIds":[event.id]}})).await.unwrap();
+	coordinator.tool(&agent,&serde_json::json!({"tool":"agent_disposition","arguments":{"id":"worker","status":"user_decision","summary":"Choose A or B","eventIds":[event.id]}})).await.unwrap();
 
 	complete(&mut coordinator, "agent").await;
 
@@ -1716,7 +1740,7 @@ async fn explicit_user_reply_resolves_worker_decision_without_rewriting_old_evid
 		.into_iter()
 		.find(|event| event.event_kind == "user_message")
 		.unwrap();
-	let command = |user_id| json!({"tool":"agent_resolve_decision","arguments":{"id":"worker","userEventId":user_id,"summary":"User selected A; result accepted"}});
+	let command = |user_id| serde_json::json!({"tool":"agent_resolve_decision","arguments":{"id":"worker","userEventId":user_id,"summary":"User selected A; result accepted"}});
 
 	assert!(coordinator.tool(&agent, &command(event.id)).await.is_err());
 
@@ -1813,9 +1837,9 @@ async fn independent_workers_queue_then_wake_and_continue_same_identity() {
 	}
 
 	assert_eq!(starts.len(), 6);
-	assert_eq!(starts[4]["params"]["threadId"], json!(first.codex_thread_id));
+	assert_eq!(starts[4]["params"]["threadId"], serde_json::json!(first.codex_thread_id));
 	assert_eq!(starts[1]["params"]["effort"], "medium");
-	assert_eq!(starts[3]["params"]["threadId"], json!(resumed.codex_thread_id));
+	assert_eq!(starts[3]["params"]["threadId"], serde_json::json!(resumed.codex_thread_id));
 }
 
 #[tokio::test]
@@ -1847,11 +1871,11 @@ async fn disposition_cannot_consume_undelivered_events_and_requests_stay_pending
 		})
 		.await
 		.unwrap();
-	let params = json!({"tool":"agent_disposition","arguments":{"id":"first","status":"resolved","summary":"Reviewed result","eventIds":[newer.id]}});
+	let params = serde_json::json!({"tool":"agent_disposition","arguments":{"id":"first","status":"resolved","summary":"Reviewed result","eventIds":[newer.id]}});
 
 	assert!(coordinator.tool(&agent, &params).await.is_err());
 
-	let params = json!({"tool":"agent_disposition","arguments":{"id":"first","status":"resolved","summary":"Reviewed result","eventIds":[delivered.id]}});
+	let params = serde_json::json!({"tool":"agent_disposition","arguments":{"id":"first","status":"resolved","summary":"Reviewed result","eventIds":[delivered.id]}});
 
 	coordinator.tool(&agent, &params).await.unwrap();
 
@@ -1871,7 +1895,7 @@ async fn disposition_cannot_consume_undelivered_events_and_requests_stay_pending
 		.handle_event(ServerEvent::Request {
 			id: RequestId::String("approval opaque".into()),
 			method: "item/commandExecution/requestApproval".into(),
-			params: json!({"threadId":agent.codex_thread_id}),
+			params: serde_json::json!({"threadId":agent.codex_thread_id}),
 		})
 		.await
 		.unwrap();
@@ -1919,7 +1943,7 @@ async fn live_output_is_turn_bound_bounded_and_replaced_by_final_history() {
 	let work = coordinator.start_agent("agent", "Talk").await.unwrap();
 	let event = |turn: &str, text: &str| ServerEvent::Notification {
 		method: "item/agentMessage/delta".into(),
-		params: json!({"threadId":work.codex_thread_id,"turnId":turn,"itemId":"answer","delta":text}),
+		params: serde_json::json!({"threadId":work.codex_thread_id,"turnId":turn,"itemId":"answer","delta":text}),
 	};
 	let turn = work.active_turn_id.as_deref().unwrap();
 
@@ -1996,12 +2020,12 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 	coordinator.create_worker("team", "worker", "Do work").await.unwrap();
 
 	let root = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
-	let denied = coordinator.tool(&root,&json!({"tool":"agent_continue_worker","arguments":{"id":"worker","prompt":"Bypass its manager"}})).await;
+	let denied = coordinator.tool(&root,&serde_json::json!({"tool":"agent_continue_worker","arguments":{"id":"worker","prompt":"Bypass its manager"}})).await;
 
 	assert!(denied.is_err());
 
 	let visible = coordinator
-		.tool(&manager, &json!({"tool":"agent_list_work","arguments":{}}))
+		.tool(&manager, &serde_json::json!({"tool":"agent_list_work","arguments":{}}))
 		.await
 		.unwrap();
 
@@ -2037,7 +2061,10 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 	assert!(starts[1]["params"]["dynamicTools"].is_array());
 	assert!(starts[2]["params"]["dynamicTools"].is_array());
 	assert!(starts[3]["params"].get("dynamicTools").is_none());
-	assert_eq!(starts[3]["params"]["cwd"], json!(directory.path().canonicalize().unwrap()));
+	assert_eq!(
+		starts[3]["params"]["cwd"],
+		serde_json::json!(directory.path().canonicalize().unwrap())
+	);
 }
 
 #[tokio::test]
@@ -2053,7 +2080,7 @@ async fn legacy_manager_keeps_native_thread_without_replaying_saved_input() {
 			source_event_id: "old-user".into(),
 			work_item_id: "agent".into(),
 			event_kind: "user_message".into(),
-			payload: json!({"text":"Remember the existing project"}).to_string(),
+			payload: serde_json::json!({"text":"Remember the existing project"}).to_string(),
 		})
 		.await
 		.unwrap();
@@ -2108,7 +2135,7 @@ async fn queued_user_messages_keep_native_turn_boundaries() {
 			source_event_id: "background-result".into(),
 			work_item_id: "agent".into(),
 			event_kind: "automation_result".into(),
-			payload: json!({"result":"Background evidence"}).to_string(),
+			payload: serde_json::json!({"result":"Background evidence"}).to_string(),
 		})
 		.await
 		.unwrap();
@@ -2156,7 +2183,7 @@ async fn usage_is_source_bound_persistent_and_does_not_wake_managers() {
 	let work = coordinator.start_agent("agent", "Talk").await.unwrap();
 	let event = |turn: &str, input: i64| ServerEvent::Notification {
 		method: "thread/tokenUsage/updated".into(),
-		params: json!({"threadId":work.codex_thread_id,"turnId":turn,"tokenUsage":{
+		params: serde_json::json!({"threadId":work.codex_thread_id,"turnId":turn,"tokenUsage":{
 			"total":{"inputTokens":input,"outputTokens":45},
 			"last":{"totalTokens":1_200},"modelContextWindow":10_000}}),
 	};
@@ -2198,7 +2225,7 @@ async fn usage_is_source_bound_persistent_and_does_not_wake_managers() {
 #[tokio::test]
 async fn external_writer_release_requires_a_new_send() {
 	let (mut coordinator, mut sent, _directory) =
-		fixture_with_history(json!({"_resume_failures":1})).await;
+		fixture_with_history(serde_json::json!({"_resume_failures":1})).await;
 	let original = coordinator.start_agent("agent", "Initial").await.unwrap();
 
 	complete(&mut coordinator, "agent").await;
@@ -2271,7 +2298,7 @@ async fn turn_usage_sums_model_calls_without_double_counting_or_using_context_as
 	let thread = first.codex_thread_id.clone().unwrap();
 	let event = |turn: &str, input: i64, output: i64, context: i64| ServerEvent::Notification {
 		method: "thread/tokenUsage/updated".into(),
-		params: json!({"threadId":thread,"turnId":turn,"tokenUsage":{
+		params: serde_json::json!({"threadId":thread,"turnId":turn,"tokenUsage":{
 			"total":{"inputTokens":input,"outputTokens":output},
 			"last":{"totalTokens":context},"modelContextWindow":10_000}}),
 	};
@@ -2286,7 +2313,7 @@ async fn turn_usage_sums_model_calls_without_double_counting_or_using_context_as
 	let events = coordinator.store.read_agent_work_events("agent".into(), 10).await.unwrap();
 	let first_usage: Value = serde_json::from_str(&events.last().unwrap().payload).unwrap();
 
-	assert_eq!(first_usage["usage"], json!({"input_tokens":1_000,"output_tokens":100}));
+	assert_eq!(first_usage["usage"], serde_json::json!({"input_tokens":1_000,"output_tokens":100}));
 
 	coordinator.continue_worker("agent", "Second").await.unwrap();
 
@@ -2313,7 +2340,7 @@ async fn turn_usage_sums_model_calls_without_double_counting_or_using_context_as
 	let events = coordinator.store.read_agent_work_events("agent".into(), 10).await.unwrap();
 	let second_usage: Value = serde_json::from_str(&events.last().unwrap().payload).unwrap();
 
-	assert_eq!(second_usage["usage"], json!({"input_tokens":300,"output_tokens":50}));
+	assert_eq!(second_usage["usage"], serde_json::json!({"input_tokens":300,"output_tokens":50}));
 
 	coordinator.continue_worker("agent", "Third").await.unwrap();
 
@@ -2335,7 +2362,7 @@ async fn turn_usage_sums_model_calls_without_double_counting_or_using_context_as
 
 #[tokio::test]
 async fn native_usage_replay_restores_context_and_the_next_turn_baseline() {
-	let (mut coordinator, _sent, _directory) = fixture_with_history(json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"completed","items":[]}]}}})).await;
+	let (mut coordinator, _sent, _directory) = fixture_with_history(serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"completed","items":[]}]}}})).await;
 	let first = coordinator.start_agent("agent", "Initial").await.unwrap();
 
 	complete(&mut coordinator, "agent").await;
@@ -2347,7 +2374,7 @@ async fn native_usage_replay_restores_context_and_the_next_turn_baseline() {
 	let thread = current.codex_thread_id.clone().unwrap();
 	let event = |turn: &str, input: i64, output: i64, context: i64| ServerEvent::Notification {
 		method: "thread/tokenUsage/updated".into(),
-		params: json!({"threadId":thread,"turnId":turn,"tokenUsage":{
+		params: serde_json::json!({"threadId":thread,"turnId":turn,"tokenUsage":{
 			"total":{"inputTokens":input,"outputTokens":output},
 			"last":{"totalTokens":context},"modelContextWindow":10_000}}),
 	};
@@ -2391,7 +2418,7 @@ async fn configured_message_dispatches_native_images_skills_and_exact_turn_setti
 
 	coordinator.store.enqueue_agent_event(EnqueueAgentEvent {
         source_event_id:"configured-message".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),
-        payload:json!({"text":"Inspect these files", "options":{
+        payload:serde_json::json!({"text":"Inspect these files", "options":{
             "execution":{"model":"different-model","reasoning_effort":"high","fast":true},
             "attachments":[{"path":"/tmp/example.png","image":true},{"path":"/tmp/example.rs","image":false},{"path":"/tmp/skills (exact)/SKILL.md","image":false,"skill_name":"selected-skill"}]}}).to_string(),
     }).await.unwrap();
@@ -2410,21 +2437,24 @@ async fn configured_message_dispatches_native_images_skills_and_exact_turn_setti
 	assert_eq!(params["serviceTier"], "priority");
 	assert_eq!(params["serviceTierForTurn"], "priority");
 	assert_eq!(params["input"][0]["text"], "Inspect these files");
-	assert_eq!(params["input"][1], json!({"type":"localImage","path":"/tmp/example.png"}));
+	assert_eq!(
+		params["input"][1],
+		serde_json::json!({"type":"localImage","path":"/tmp/example.png"})
+	);
 	assert!(params["input"][2]["text"].as_str().unwrap().contains("/tmp/example.rs"));
 	assert_eq!(
 		params["input"][3],
-		json!({"type":"skill","name":"selected-skill","path":"/tmp/skills (exact)/SKILL.md"})
+		serde_json::json!({"type":"skill","name":"selected-skill","path":"/tmp/skills (exact)/SKILL.md"})
 	);
 
-	let mut params = json!({"input":[],"serviceTier":"priority"});
+	let mut params = serde_json::json!({"input":[],"serviceTier":"priority"});
 
-	apply_message_options(&mut params,&json!({"options":{"execution":{"model":"selected-model","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string()).unwrap();
+	apply_message_options(&mut params,&serde_json::json!({"options":{"execution":{"model":"selected-model","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string()).unwrap();
 
 	assert!(params["serviceTier"].is_null());
 	assert_eq!(params["serviceTierForTurn"], "default");
 
-	let tiered = json!({"options":{"execution":{"model":"chosen","reasoning_effort":"high","fast":false,"service_tier":"ultrafast"},"attachments":[]}});
+	let tiered = serde_json::json!({"options":{"execution":{"model":"chosen","reasoning_effort":"high","fast":false,"service_tier":"ultrafast"},"attachments":[]}});
 
 	apply_message_options(&mut params, &tiered.to_string()).unwrap();
 
@@ -2480,7 +2510,9 @@ async fn steer_uses_exact_running_turn_and_never_starts_a_second_turn() {
 
 #[tokio::test]
 async fn rejected_or_uncertain_steer_never_replays_as_queued_input() {
-	for flags in [json!({"_steer_error":true}), json!({"_steer_disconnect":true})] {
+	for flags in
+		[serde_json::json!({"_steer_error":true}), serde_json::json!({"_steer_disconnect":true})]
+	{
 		let (mut agent, mut sent, _dir) = fixture_with_history(flags).await;
 
 		agent.start_agent("agent", "Initial task").await.unwrap();
@@ -2507,7 +2539,7 @@ async fn native_activity_notifications_reach_history_without_agent_delivery() {
 		coordinator
 			.handle_event(ServerEvent::Notification {
 				method: method.into(),
-				params: json!({"threadId":work.codex_thread_id,"turnId":work.active_turn_id,
+				params: serde_json::json!({"threadId":work.codex_thread_id,"turnId":work.active_turn_id,
 				"item":{"id":"compact", "type":"contextCompaction"}}),
 			})
 			.await
@@ -2536,7 +2568,7 @@ async fn native_revert_retires_exact_thread_requests_without_replies_or_replay()
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 	agent.handle_event(ServerEvent::Notification {
 		method: "item/agentMessage/delta".into(),
-		params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"partial","delta":"Removed native output"}),
+		params: serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"partial","delta":"Removed native output"}),
 	}).await.unwrap();
 
 	assert_eq!(agent.store.read_agent_output("agent".into()).await.unwrap().len(), 1);
@@ -2553,14 +2585,14 @@ async fn native_revert_retires_exact_thread_requests_without_replies_or_replay()
 
 	let id = RequestId::Number(73);
 
-	agent.handle_event(ServerEvent::Request { id: id.clone(), method: "item/commandExecution/requestApproval".into(), params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"item","command":"pwd"}) }).await.unwrap();
+	agent.handle_event(ServerEvent::Request { id: id.clone(), method: "item/commandExecution/requestApproval".into(), params: serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"item","command":"pwd"}) }).await.unwrap();
 
 	let event_id = agent.pending_requests[&id];
 
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "thread/reverted".into(),
-			params: json!({"threadId":"other"}),
+			params: serde_json::json!({"threadId":"other"}),
 		})
 		.await
 		.unwrap();
@@ -2572,7 +2604,7 @@ async fn native_revert_retires_exact_thread_requests_without_replies_or_replay()
 		agent
 			.handle_event(ServerEvent::Notification {
 				method: "thread/reverted".into(),
-				params: json!({"threadId":"opaque thread/1"}),
+				params: serde_json::json!({"threadId":"opaque thread/1"}),
 			})
 			.await
 			.unwrap();
@@ -2591,7 +2623,12 @@ async fn native_revert_retires_exact_thread_requests_without_replies_or_replay()
 	let event = agent.store.get_agent_inbox_event(event_id).await.unwrap();
 
 	assert_eq!(event.disposition, Some(AgentDisposition::Resolved));
-	assert!(agent.respond_pending_event(event_id, json!({"decision":"accept"})).await.is_err());
+	assert!(
+		agent
+			.respond_pending_event(event_id, serde_json::json!({"decision":"accept"}))
+			.await
+			.is_err()
+	);
 	assert!(sent.try_recv().is_err());
 }
 
@@ -2604,16 +2641,16 @@ async fn native_request_resolution_requires_exact_thread_and_request_identity() 
 	while sent.try_recv().is_ok() {}
 
 	for id in [RequestId::String("shared-item-A".into()), RequestId::Number(7)] {
-		coordinator.handle_event(ServerEvent::Request { id: id.clone(), method:"item/commandExecution/requestApproval".into(),params:json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"shared-item","command":"pwd"}) }).await.unwrap();
+		coordinator.handle_event(ServerEvent::Request { id: id.clone(), method:"item/commandExecution/requestApproval".into(),params:serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"shared-item","command":"pwd"}) }).await.unwrap();
 	}
 
 	let id = RequestId::String("shared-item-A".into());
 	let event_id = coordinator.pending_requests[&id];
 
 	for params in [
-		json!({"threadId":"other-thread","requestId":id}),
-		json!({"threadId":"opaque thread/1","requestId":"7"}),
-		json!({"threadId":"opaque thread/1","requestId":null}),
+		serde_json::json!({"threadId":"other-thread","requestId":id}),
+		serde_json::json!({"threadId":"opaque thread/1","requestId":"7"}),
+		serde_json::json!({"threadId":"opaque thread/1","requestId":null}),
 	] {
 		coordinator
 			.handle_event(ServerEvent::Notification {
@@ -2630,7 +2667,7 @@ async fn native_request_resolution_requires_exact_thread_and_request_identity() 
 		coordinator
 			.handle_event(ServerEvent::Notification {
 				method: "serverRequest/resolved".into(),
-				params: json!({"threadId":"opaque thread/1","requestId":id}),
+				params: serde_json::json!({"threadId":"opaque thread/1","requestId":id}),
 			})
 			.await
 			.unwrap();
@@ -2644,7 +2681,10 @@ async fn native_request_resolution_requires_exact_thread_and_request_identity() 
 	assert_eq!(event.disposition, Some(AgentDisposition::Resolved));
 	assert!(event.disposition_note.unwrap().contains("no local response was sent"));
 	assert!(
-		coordinator.respond_pending_event(event_id, json!({"decision":"accept"})).await.is_err()
+		coordinator
+			.respond_pending_event(event_id, serde_json::json!({"decision":"accept"}))
+			.await
+			.is_err()
 	);
 	assert!(sent.try_recv().is_err());
 	assert_eq!(
@@ -2672,14 +2712,14 @@ async fn async_question_answers_survive_replay_and_reopening_without_waking_work
 		"A",
 	)
 	.unwrap();
-	let response = json!({"type":"userMessage","id":"answer","content":[{"type":"text","text":reply.as_str()}]});
-	let questions = json!({"type":"agentMessage","delivery":"async","id":"questions","text":"Choose","questions":[{"title":"Same","options":["A","B"]},{"title":"Same","options":["A","B"]}]});
+	let response = serde_json::json!({"type":"userMessage","id":"answer","content":[{"type":"text","text":reply.as_str()}]});
+	let questions = serde_json::json!({"type":"agentMessage","delivery":"async","id":"questions","text":"Choose","questions":[{"title":"Same","options":["A","B"]},{"title":"Same","options":["A","B"]}]});
 	// A committed answer can arrive before the corresponding history item.
 	for item in [response, questions.clone(), questions.clone()] {
 		coordinator
 			.handle_event(ServerEvent::Notification {
 				method: "item/completed".into(),
-				params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":item}),
+				params: serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":item}),
 			})
 			.await
 			.unwrap();
@@ -2725,7 +2765,7 @@ async fn async_question_answers_survive_replay_and_reopening_without_waking_work
 
 #[tokio::test]
 async fn async_question_upgrade_reads_native_history_and_preserves_later_questions() {
-	let question = |id: &str| json!({"id":id,"type":"agentMessage","delivery":"async","text":"Question","questions":[{"title":"Which?","options":["A","B"]}]});
+	let question = |id: &str| serde_json::json!({"id":id,"type":"agentMessage","delivery":"async","text":"Question","questions":[{"title":"Which?","options":["A","B"]}]});
 	let answer = decodex_protocol::agent_async_question_reply(
 		&decodex_protocol::AgentAsyncQuestionDto {
 			arrived_live: false,
@@ -2736,7 +2776,7 @@ async fn async_question_upgrade_reads_native_history_and_preserves_later_questio
 		"B",
 	)
 	.unwrap();
-	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"old","status":"completed","items":[question("old"),{"type":"userMessage","content":[{"type":"text","text":"New task"}]},question("answered"),{"type":"userMessage","content":[{"type":"text","text":answer.as_str()}]},question("pending")]}]}}});
+	let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"old","status":"completed","items":[question("old"),{"type":"userMessage","content":[{"type":"text","text":"New task"}]},question("answered"),{"type":"userMessage","content":[{"type":"text","text":answer.as_str()}]},question("pending")]}]}}});
 	let (mut agent, mut sent, directory) = fixture_with_history(history).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
@@ -2775,8 +2815,8 @@ async fn async_question_upgrade_reads_native_history_and_preserves_later_questio
 
 #[tokio::test]
 async fn reverted_async_history_reopens_retained_questions_and_removes_deleted_questions() {
-	let item = json!({"id":"question","type":"agentMessage","delivery":"async","text":"Question","questions":[{"title":"Which?"}]});
-	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"old","status":"completed","items":[item.clone()]}]}}});
+	let item = serde_json::json!({"id":"question","type":"agentMessage","delivery":"async","text":"Question","questions":[{"title":"Which?"}]});
+	let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"old","status":"completed","items":[item.clone()]}]}}});
 	let (mut agent, mut sent, _directory) = fixture_with_history(history).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
@@ -2797,7 +2837,7 @@ async fn reverted_async_history_reopens_retained_questions_and_removes_deleted_q
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "thread/reverted".into(),
-			params: json!({"threadId":"opaque thread/1"}),
+			params: serde_json::json!({"threadId":"opaque thread/1"}),
 		})
 		.await
 		.unwrap();
@@ -2821,11 +2861,12 @@ async fn reverted_async_history_reopens_retained_questions_and_removes_deleted_q
 			source_event_id: "offline-answer".into(),
 			work_item_id: "agent".into(),
 			event_kind: "async_question_answer".into(),
-			payload: json!({"text":"answer","asyncQuestionId":id}).to_string(),
+			payload: serde_json::json!({"text":"answer","asyncQuestionId":id}).to_string(),
 		})
 		.await
 		.unwrap();
-	let empty = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[]}}});
+	let empty =
+		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[]}}});
 	let (mut reconnected, mut sent, _other) = fixture_with_history(empty).await;
 
 	reconnected.store = agent.store.clone();
@@ -2852,7 +2893,7 @@ async fn other_client_input_blocks_question_writes_before_owner_observation() {
 
 		agent.start_agent("agent", "Coordinate").await.unwrap();
 
-		let item = json!({"id":"questions","type":"agentMessage","delivery":"async","questions":[{"title":"First?"},{"title":"Second?"}]});
+		let item = serde_json::json!({"id":"questions","type":"agentMessage","delivery":"async","questions":[{"title":"First?"},{"title":"Second?"}]});
 
 		agent.observe_async_question_item("opaque thread/1", "opaque turn/1", &item).await.unwrap();
 
@@ -2874,7 +2915,7 @@ async fn other_client_input_blocks_question_writes_before_owner_observation() {
 
 		agent.client = client.clone();
 
-		incoming.send(Ok(json!({"method":"item/completed","params":{"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{"id":"input","type":"userMessage","content":[{"type":"text","text":text}]}}}))).await.unwrap();
+		incoming.send(Ok(serde_json::json!({"method":"item/completed","params":{"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{"id":"input","type":"userMessage","content":[{"type":"text","text":text}]}}}))).await.unwrap();
 
 		time::timeout(std::time::Duration::from_secs(2), async {
 			while client.question_revision() == 0 {
@@ -2912,7 +2953,7 @@ async fn transport_revert_blocks_old_question_before_coordinator_reads_notificat
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
-	let question = json!({"id":"question","type":"agentMessage","delivery":"async","questions":[{"title":"Which?"}]});
+	let question = serde_json::json!({"id":"question","type":"agentMessage","delivery":"async","questions":[{"title":"Which?"}]});
 
 	agent.observe_async_question_item("opaque thread/1", "opaque turn/1", &question).await.unwrap();
 
@@ -2925,7 +2966,9 @@ async fn transport_revert_blocks_old_question_before_coordinator_reads_notificat
 	agent.client = client.clone();
 
 	incoming
-		.send(Ok(json!({"method":"thread/reverted","params":{"threadId":"opaque thread/1"}})))
+		.send(Ok(
+			serde_json::json!({"method":"thread/reverted","params":{"threadId":"opaque thread/1"}}),
+		))
 		.await
 		.unwrap();
 
@@ -2966,7 +3009,7 @@ async fn stale_history_guard_prevents_async_turn_and_steer_without_unknown_recei
 		agent.start_agent("agent", "Coordinate").await.unwrap();
 
 		if !running {
-			agent.handle_event(ServerEvent::Notification {method:"turn/completed".into(),params:json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
+			agent.handle_event(ServerEvent::Notification {method:"turn/completed".into(),params:serde_json::json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
 		}
 		if !running {
 			let root = decodex_core::DecodexRoot::new(
@@ -3009,7 +3052,8 @@ async fn stale_history_guard_prevents_async_turn_and_steer_without_unknown_recei
 					source_event_id: "stale-answer".into(),
 					work_item_id: "agent".into(),
 					event_kind: "async_question_answer".into(),
-					payload: json!({"text":"answer","asyncQuestionId":"question"}).to_string(),
+					payload: serde_json::json!({"text":"answer","asyncQuestionId":"question"})
+						.to_string(),
 				})
 				.await
 				.unwrap();
@@ -3067,7 +3111,7 @@ async fn async_revert_marker_survives_reopen_and_preserves_uncertain_deliveries(
 					"async_question_answer"
 				}
 				.into(),
-				payload: json!({"text":"answer","asyncQuestionId":"q"}).to_string(),
+				payload: serde_json::json!({"text":"answer","asyncQuestionId":"q"}).to_string(),
 			})
 			.await
 			.unwrap();
@@ -3140,13 +3184,12 @@ async fn async_revert_marker_survives_reopen_and_preserves_uncertain_deliveries(
 
 #[tokio::test]
 async fn incomplete_async_recovery_hides_cards_until_a_later_complete_read() {
-	let bad =
-		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","historyMode":"unknown"}}});
+	let bad = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","historyMode":"unknown"}}});
 	let (mut agent, mut sent, directory) = fixture_with_history(bad).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
-	let item = json!({"id":"pending","type":"agentMessage","delivery":"async","text":"Question","questions":[{"title":"Which?"}]});
+	let item = serde_json::json!({"id":"pending","type":"agentMessage","delivery":"async","text":"Question","questions":[{"title":"Which?"}]});
 
 	agent.observe_async_question_item("opaque thread/1", "old", &item).await.unwrap();
 
@@ -3174,7 +3217,7 @@ async fn incomplete_async_recovery_hides_cards_until_a_later_complete_read() {
 		assert_eq!(request["method"], "thread/read");
 	}
 
-	let good = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","historyMode":"paginated","turns":[{"id":"old","status":"completed","items":[item]}]}}});
+	let good = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","historyMode":"paginated","turns":[{"id":"old","status":"completed","items":[item]}]}}});
 	let (mut recovered, mut sent, _other_directory) = fixture_with_history(good).await;
 
 	recovered.store = agent.store.clone();
@@ -3207,7 +3250,7 @@ async fn async_answers_target_running_and_idle_workers_and_preserve_sibling_ques
 		let worker = agent.create_worker("agent", "worker", "Inspect").await.unwrap();
 		let thread = worker.codex_thread_id.unwrap();
 		let turn = worker.active_turn_id.unwrap();
-		let item = json!({"id":"question","type":"agentMessage","delivery":"async","text":"Questions","questions":[{"title":"Same title"},{"title":"Same title"}]});
+		let item = serde_json::json!({"id":"question","type":"agentMessage","delivery":"async","text":"Questions","questions":[{"title":"Same title"},{"title":"Same title"}]});
 
 		agent.observe_async_question_item(&thread, &turn, &item).await.unwrap();
 
@@ -3274,12 +3317,14 @@ async fn async_answers_target_running_and_idle_workers_and_preserve_sibling_ques
 
 #[tokio::test]
 async fn rejected_or_uncertain_async_answers_keep_question_and_do_not_queue_retry() {
-	for history in [json!({"_steer_error":true}), json!({"_steer_disconnect":true})] {
+	for history in
+		[serde_json::json!({"_steer_error":true}), serde_json::json!({"_steer_disconnect":true})]
+	{
 		let uncertain = history["_steer_disconnect"] == true;
 		let (mut agent, mut sent, directory) = fixture_with_history(history).await;
 
 		agent.start_agent("agent", "Coordinate").await.unwrap();
-		agent.observe_async_question_item("opaque thread/1","opaque turn/1",&json!({"id":"question","type":"agentMessage","delivery":"async","questions":[{"title":"Which?"}]})).await.unwrap();
+		agent.observe_async_question_item("opaque thread/1","opaque turn/1",&serde_json::json!({"id":"question","type":"agentMessage","delivery":"async","questions":[{"title":"Which?"}]})).await.unwrap();
 
 		while sent.try_recv().is_ok() {}
 
@@ -3328,8 +3373,8 @@ async fn rejected_or_uncertain_async_answers_keep_question_and_do_not_queue_retr
 #[tokio::test]
 async fn other_client_prompt_sync_requires_exact_item_and_replay_preserves_newer_questions() {
 	for contains_prompt in [false, true] {
-		let question = |id: &str| json!({"id":id,"type":"agentMessage","delivery":"async","questions":[{"title":"Question"}]});
-		let prompt = json!({"id":"remote-prompt","type":"userMessage","content":[{"type":"text","text":"Move on"}]});
+		let question = |id: &str| serde_json::json!({"id":id,"type":"agentMessage","delivery":"async","questions":[{"title":"Question"}]});
+		let prompt = serde_json::json!({"id":"remote-prompt","type":"userMessage","content":[{"type":"text","text":"Move on"}]});
 		let mut items = vec![question("old")];
 
 		if contains_prompt {
@@ -3338,7 +3383,7 @@ async fn other_client_prompt_sync_requires_exact_item_and_replay_preserves_newer
 
 		items.push(question("new"));
 
-		let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"inProgress","items":items}]}}});
+		let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"inProgress","items":items}]}}});
 		let (mut agent, mut sent, _directory) = fixture_with_history(history).await;
 
 		agent.start_agent("agent", "Coordinate").await.unwrap();
@@ -3349,7 +3394,7 @@ async fn other_client_prompt_sync_requires_exact_item_and_replay_preserves_newer
 			agent
 				.observe_notification(
 					"item/completed",
-					&json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":prompt}),
+					&serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":prompt}),
 				)
 				.await
 				.unwrap();
@@ -3380,7 +3425,7 @@ async fn async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade() {
 	let (mut agent, mut sent, directory) = fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
-	agent.observe_async_question_item("opaque thread/1","opaque turn/1",&json!({"id":"question","type":"agentMessage","delivery":"async","questions":[{"title":"Which?"}]})).await.unwrap();
+	agent.observe_async_question_item("opaque thread/1","opaque turn/1",&serde_json::json!({"id":"question","type":"agentMessage","delivery":"async","questions":[{"title":"Which?"}]})).await.unwrap();
 	agent.store.complete_agent_turn("agent".into(), "opaque turn/1".into()).await.unwrap();
 
 	let root =
@@ -3430,12 +3475,12 @@ async fn misalignment_precaution_survives_reopen_and_blocks_ordinary_dispatch() 
 
 	agent.enqueue_user_message("agent", "queued-before-stop", "Queued work").await.unwrap();
 
-	let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review the scope.","steer":{"message":"Continue with the clarified scope"}}});
+	let error = serde_json::json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review the scope.","steer":{"message":"Continue with the clarified scope"}}});
 
 	agent
 		.observe_notification(
 			"error",
-			&json!({"threadId":"opaque thread/1","turnId":"stale","willRetry":false,"error":error}),
+			&serde_json::json!({"threadId":"opaque thread/1","turnId":"stale","willRetry":false,"error":error}),
 		)
 		.await
 		.unwrap();
@@ -3445,7 +3490,7 @@ async fn misalignment_precaution_survives_reopen_and_blocks_ordinary_dispatch() 
 	agent
 		.observe_notification(
 			"error",
-			&json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","willRetry":true,"error":error}),
+			&serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","willRetry":true,"error":error}),
 		)
 		.await
 		.unwrap();
@@ -3455,7 +3500,7 @@ async fn misalignment_precaution_survives_reopen_and_blocks_ordinary_dispatch() 
 	agent
 		.observe_notification(
 			"error",
-			&json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","willRetry":false,"error":error}),
+			&serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","willRetry":false,"error":error}),
 		)
 		.await
 		.unwrap();
@@ -3463,7 +3508,7 @@ async fn misalignment_precaution_survives_reopen_and_blocks_ordinary_dispatch() 
 		.observe_misalignment(
 			"opaque thread/1",
 			"opaque turn/1",
-			&json!({"codexErrorInfo":"misalignmentPolicyViolation"}),
+			&serde_json::json!({"codexErrorInfo":"misalignmentPolicyViolation"}),
 		)
 		.await
 		.unwrap();
@@ -3490,8 +3535,8 @@ async fn misalignment_precaution_survives_reopen_and_blocks_ordinary_dispatch() 
 
 #[tokio::test]
 async fn explicit_misalignment_continuation_uses_native_override_and_clears_after_ack() {
-	let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
-	let history = json!({"_live_misalignment":error,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":{"codexErrorInfo":"misalignmentPolicyViolation"},"items":[]}]}}});
+	let error = serde_json::json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
+	let history = serde_json::json!({"_live_misalignment":error,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":{"codexErrorInfo":"misalignmentPolicyViolation"},"items":[]}]}}});
 	let (mut agent, mut sent, _directory) = fixture_with_history(history).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
@@ -3544,14 +3589,14 @@ async fn explicit_misalignment_continuation_uses_native_override_and_clears_afte
 #[tokio::test]
 async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution() {
 	for outcome in ["changed", "rejected", "uncertain", "reverted"] {
-		let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
+		let error = serde_json::json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
 		let mut native_error = error.clone();
 
 		if outcome == "changed" {
-			native_error["misalignment"]["detailedExplanation"] = json!("New findings");
+			native_error["misalignment"]["detailedExplanation"] = serde_json::json!("New findings");
 		}
 
-		let history = json!({"_live_misalignment":error,"_misalignment_revert_on_read":outcome=="reverted","_continuation_disconnect":outcome=="uncertain","_continuation_reject":outcome=="rejected","opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":native_error,"items":[]}]}}});
+		let history = serde_json::json!({"_live_misalignment":error,"_misalignment_revert_on_read":outcome=="reverted","_continuation_disconnect":outcome=="uncertain","_continuation_reject":outcome=="rejected","opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":native_error,"items":[]}]}}});
 		let (mut agent, mut sent, directory) = fixture_with_history(history).await;
 
 		agent.start_agent("agent", "Coordinate").await.unwrap();
@@ -3610,7 +3655,7 @@ async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution
 
 #[tokio::test]
 async fn misalignment_saved_details_cannot_authorize_a_reconnected_transport() {
-	let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
+	let error = serde_json::json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Review scope","steer":{"message":"Clarified scope"}}});
 	let (mut agent, _sent, directory) = fixture().await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
@@ -3651,8 +3696,8 @@ async fn idle_thread_recovery_restores_only_latest_misalignment_failure() {
 		(true, true, true),
 		(true, false, false),
 	] {
-		let error = json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Recovered findings","steer":{"message":"Clarified scope"}}});
-		let mut history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":error,"items":[]},{"id":"latest","status":if stopped {"failed"} else {"completed"},"error":if stopped {error.clone()} else {Value::Null},"items":[]}]}}});
+		let error = serde_json::json!({"codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"Recovered findings","steer":{"message":"Clarified scope"}}});
+		let mut history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"failed","error":error,"items":[]},{"id":"latest","status":if stopped {"failed"} else {"completed"},"error":if stopped {error.clone()} else {Value::Null},"items":[]}]}}});
 
 		if !has_old {
 			history["opaque thread/1"]["thread"]["turns"].as_array_mut().unwrap().remove(0);
@@ -3702,7 +3747,7 @@ async fn misalignment_does_not_send_or_consume_pending_provider_approval() {
 
 	let id = RequestId::Number(7);
 
-	agent.handle_event(ServerEvent::Request {id:id.clone(),method:"item/commandExecution/requestApproval".into(),params:json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"item","command":"pwd"})}).await.unwrap();
+	agent.handle_event(ServerEvent::Request {id:id.clone(),method:"item/commandExecution/requestApproval".into(),params:serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"item","command":"pwd"})}).await.unwrap();
 
 	let event = agent.pending_requests[&id];
 
@@ -3710,14 +3755,16 @@ async fn misalignment_does_not_send_or_consume_pending_provider_approval() {
 		.observe_misalignment(
 			"opaque thread/1",
 			"opaque turn/1",
-			&json!({"codexErrorInfo":"misalignmentPolicyViolation"}),
+			&serde_json::json!({"codexErrorInfo":"misalignmentPolicyViolation"}),
 		)
 		.await
 		.unwrap();
 
 	while sent.try_recv().is_ok() {}
 
-	assert!(agent.respond_pending_event(event, json!({"decision":"accept"})).await.is_err());
+	assert!(
+		agent.respond_pending_event(event, serde_json::json!({"decision":"accept"})).await.is_err()
+	);
 	assert_eq!(agent.pending_requests[&id], event);
 	assert!(agent.store.get_agent_inbox_event(event).await.unwrap().disposition.is_none());
 	assert!(sent.try_recv().is_err());
@@ -3732,15 +3779,15 @@ async fn mcp_form_response_validates_original_schema_before_consuming_live_reque
 		agent.store.complete_agent_turn("agent".into(), "opaque turn/1".into()).await.unwrap();
 
 		let id = RequestId::String("mcp-form".into());
-		let mut sent = attach_request_transport(&mut agent, json!({}), json!({"id":id,"method":"mcpServer/elicitation/request","params":{"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":mode,"requestedSchema":{"type":"object","properties":{"allow":{"type":"boolean"}},"required":["allow"]}}})).await;
+		let mut sent = attach_request_transport(&mut agent, serde_json::json!({}), serde_json::json!({"id":id,"method":"mcpServer/elicitation/request","params":{"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":mode,"requestedSchema":{"type":"object","properties":{"allow":{"type":"boolean"}},"required":["allow"]}}})).await;
 		let event = agent.pending_requests[&id];
 
 		while sent.try_recv().is_ok() {}
 
 		for response in [
-			json!({"action":"accept","content":{"allow":"true"}}),
-			json!({"action":"accept","content":{"allow":true},"_meta":{"persist":"always"}}),
-			json!({"decision":"accept"}),
+			serde_json::json!({"action":"accept","content":{"allow":"true"}}),
+			serde_json::json!({"action":"accept","content":{"allow":true},"_meta":{"persist":"always"}}),
+			serde_json::json!({"decision":"accept"}),
 		] {
 			assert!(matches!(
 				agent.respond_pending_event(event, response).await,
@@ -3753,7 +3800,7 @@ async fn mcp_form_response_validates_original_schema_before_consuming_live_reque
 		agent
 			.respond_pending_event(
 				event,
-				json!({"action":"accept","content":{"allow":false},"_meta":null}),
+				serde_json::json!({"action":"accept","content":{"allow":false},"_meta":null}),
 			)
 			.await
 			.unwrap();
@@ -3765,7 +3812,7 @@ async fn mcp_form_response_validates_original_schema_before_consuming_live_reque
 		assert!(!agent.pending_requests.contains_key(&id));
 		assert!(
 			agent
-				.respond_pending_event(event, json!({"action":"cancel","content":null}))
+				.respond_pending_event(event, serde_json::json!({"action":"cancel","content":null}))
 				.await
 				.is_err()
 		);
@@ -3782,7 +3829,7 @@ async fn standalone_mcp_resolution_and_reconnection_never_replay_a_reply() {
 		agent.store.complete_agent_turn("agent".into(), "opaque turn/1".into()).await.unwrap();
 
 		let id = RequestId::Number(17);
-		let params = json!({"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":mode,"requestedSchema":null});
+		let params = serde_json::json!({"threadId":"opaque thread/1","turnId":null,"serverName":"test","mode":mode,"requestedSchema":null});
 
 		agent
 			.handle_event(ServerEvent::Request {
@@ -3802,7 +3849,10 @@ async fn standalone_mcp_resolution_and_reconnection_never_replay_a_reply() {
 
 		assert!(
 			reconnected
-				.respond_pending_event(old_event, json!({"action":"accept","content":null}))
+				.respond_pending_event(
+					old_event,
+					serde_json::json!({"action":"accept","content":null})
+				)
 				.await
 				.is_err()
 		);
@@ -3824,7 +3874,7 @@ async fn standalone_mcp_resolution_and_reconnection_never_replay_a_reply() {
 		reconnected
 			.handle_event(ServerEvent::Notification {
 				method: "serverRequest/resolved".into(),
-				params: json!({"threadId":"wrong-thread","requestId":17}),
+				params: serde_json::json!({"threadId":"wrong-thread","requestId":17}),
 			})
 			.await
 			.unwrap();
@@ -3834,7 +3884,7 @@ async fn standalone_mcp_resolution_and_reconnection_never_replay_a_reply() {
 		reconnected
 			.handle_event(ServerEvent::Notification {
 				method: "serverRequest/resolved".into(),
-				params: json!({"threadId":"opaque thread/1","requestId":17}),
+				params: serde_json::json!({"threadId":"opaque thread/1","requestId":17}),
 			})
 			.await
 			.unwrap();
@@ -3846,7 +3896,7 @@ async fn standalone_mcp_resolution_and_reconnection_never_replay_a_reply() {
 		);
 		assert!(
 			reconnected
-				.respond_pending_event(event, json!({"action":"accept","content":null}))
+				.respond_pending_event(event, serde_json::json!({"action":"accept","content":null}))
 				.await
 				.is_err()
 		);
@@ -3862,7 +3912,7 @@ async fn async_question_skip_is_source_bound_durable_and_never_a_native_answer()
 
 	while sent.try_recv().is_ok() {}
 
-	let item = json!({"type":"agentMessage","delivery":"async","id":"skip-source","questions":[{"title":"First?"},{"title":"Second?"}]});
+	let item = serde_json::json!({"type":"agentMessage","delivery":"async","id":"skip-source","questions":[{"title":"First?"},{"title":"Second?"}]});
 
 	agent.observe_async_question_item("opaque thread/1", "opaque turn/1", &item).await.unwrap();
 
@@ -3927,7 +3977,7 @@ async fn async_question_skip_is_source_bound_durable_and_never_a_native_answer()
 			source_event_id: "pending-answer".into(),
 			work_item_id: "agent".into(),
 			event_kind: "steer_pending".into(),
-			payload: json!({"asyncQuestionId":second}).to_string(),
+			payload: serde_json::json!({"asyncQuestionId":second}).to_string(),
 		})
 		.await
 		.unwrap();
@@ -3945,7 +3995,7 @@ async fn skipped_question_survives_rebuild_only_while_native_content_is_unchange
 
 	while sent.try_recv().is_ok() {}
 
-	let mut item = json!({"type":"agentMessage","delivery":"async","id":"skip-rebuild","questions":[{"title":"Original?"}]});
+	let mut item = serde_json::json!({"type":"agentMessage","delivery":"async","id":"skip-rebuild","questions":[{"title":"Original?"}]});
 
 	agent.observe_async_question_item("opaque thread/1", "opaque turn/1", &item).await.unwrap();
 
@@ -3957,7 +4007,7 @@ async fn skipped_question_survives_rebuild_only_while_native_content_is_unchange
 		let mut projection = super::async_projection::Projection::default();
 
 		if step == 1 {
-			item["questions"][0]["title"] = json!("Changed?");
+			item["questions"][0]["title"] = serde_json::json!("Changed?");
 		}
 		if step < 2 {
 			projection.observe("opaque thread/1", "opaque turn/1", &item).unwrap();
@@ -3997,14 +4047,14 @@ async fn skipped_question_survives_rebuild_only_while_native_content_is_unchange
 async fn unfinished_native_text_keeps_source_and_display_only_status_after_reopen() {
 	for final_readback in ["missing", "complete", "empty", "complete_plan"] {
 		let items = if final_readback == "complete_plan" {
-			json!([{"id":"answer","type":"agentMessage","text":"Authoritative final answer"},
+			serde_json::json!([{"id":"answer","type":"agentMessage","text":"Authoritative final answer"},
 				{"id":"plan","type":"plan","text":"Authoritative final plan"}])
 		} else if final_readback != "missing" {
-			json!([{"id":"answer","type":"agentMessage","text":if final_readback == "complete" { "Authoritative final answer" } else { "" }}])
+			serde_json::json!([{"id":"answer","type":"agentMessage","text":if final_readback == "complete" { "Authoritative final answer" } else { "" }}])
 		} else {
-			json!([])
+			serde_json::json!([])
 		};
-		let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"interrupted","items":items}]}}});
+		let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"opaque turn/1","status":"interrupted","items":items}]}}});
 		let (mut agent, mut sent, directory) = fixture_with_history(history).await;
 
 		agent.start_agent("agent", "Talk").await.unwrap();
@@ -4016,7 +4066,7 @@ async fn unfinished_native_text_keeps_source_and_display_only_status_after_reope
 		for (id, method) in [("answer", "item/agentMessage/delta"), ("plan", "item/plan/delta")] {
 			agent.handle_event(ServerEvent::Notification {
 			method: method.into(),
-			params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":id,"delta":source}),
+			params: serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":id,"delta":source}),
 		}).await.unwrap();
 		}
 
@@ -4029,7 +4079,7 @@ async fn unfinished_native_text_keeps_source_and_display_only_status_after_reope
 
 		agent.handle_event(ServerEvent::Notification {
 		method: "turn/completed".into(),
-		params: json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"interrupted","items":[]}}),
+		params: serde_json::json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"interrupted","items":[]}}),
 	}).await.unwrap();
 
 		let root =
@@ -4083,7 +4133,7 @@ async fn unfinished_native_text_keeps_source_and_display_only_status_after_reope
 #[tokio::test]
 async fn missed_native_active_turn_recovery_rejects_reverted_readback() {
 	for reverted in [false, true] {
-		let history = json!({"_misalignment_revert_on_read":reverted,"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"active"},"turns":[{"id":"native-turn","status":"inProgress","items":[]}]}}});
+		let history = serde_json::json!({"_misalignment_revert_on_read":reverted,"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"active"},"turns":[{"id":"native-turn","status":"inProgress","items":[]}]}}});
 		let (mut agent, mut sent, _home) = fixture_with_history(history).await;
 
 		agent.start_agent("agent", "Original user input").await.unwrap();
@@ -4123,7 +4173,7 @@ async fn live_plan_finality_and_kind_survive_restart() {
 	let turn = work.active_turn_id.as_deref().unwrap();
 	let delta = |turn: &str, text: &str| ServerEvent::Notification {
 		method: "item/plan/delta".into(),
-		params: json!({"threadId":work.codex_thread_id,"turnId":turn,"itemId":"plan","delta":text}),
+		params: serde_json::json!({"threadId":work.codex_thread_id,"turnId":turn,"itemId":"plan","delta":text}),
 	};
 
 	coordinator.handle_event(delta("wrong-turn", "Wrong")).await.unwrap();
@@ -4139,7 +4189,7 @@ async fn live_plan_finality_and_kind_survive_restart() {
 
 	coordinator.handle_event(ServerEvent::Notification {
         method: "item/completed".into(),
-        params: json!({"threadId":work.codex_thread_id,"turnId":turn,"item":{"id":"plan","type":"plan","text":"Final plan"}}),
+        params: serde_json::json!({"threadId":work.codex_thread_id,"turnId":turn,"item":{"id":"plan","type":"plan","text":"Final plan"}}),
     }).await.unwrap();
 
 	let thread = work.codex_thread_id.unwrap();

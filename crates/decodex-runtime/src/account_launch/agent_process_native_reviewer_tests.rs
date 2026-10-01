@@ -13,7 +13,7 @@ use std::{
 	time::Duration,
 };
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::{net::TcpListener, sync::mpsc::Receiver, time};
 
 use crate::account_launch::agent_process::native_tests::{NativeSession, serve_fixture};
@@ -53,13 +53,13 @@ pub(super) async fn select_task_model(
 fn output(serial: usize) -> Value {
 	match serial {
 		0 =>
-			json!({"type":"function_call","name":"pause_fixture","arguments":"{}","call_id":"pause"}),
+			serde_json::json!({"type":"function_call","name":"pause_fixture","arguments":"{}","call_id":"pause"}),
 		1 | 3 =>
-			json!({"type":"function_call","name":"exec_command","arguments":json!({"cmd":"echo reviewer-test","sandbox_permissions":"require_escalated","justification":"isolated routing fixture"}).to_string(),"call_id":format!("command-{serial}")}),
+			serde_json::json!({"type":"function_call","name":"exec_command","arguments":serde_json::json!({"cmd":"echo reviewer-test","sandbox_permissions":"require_escalated","justification":"isolated routing fixture"}).to_string(),"call_id":format!("command-{serial}")}),
 		4 =>
-			json!({"type":"message","role":"assistant","id":"review","content":[{"type":"output_text","text":"{\"outcome\":\"deny\"}"}]}),
+			serde_json::json!({"type":"message","role":"assistant","id":"review","content":[{"type":"output_text","text":"{\"outcome\":\"deny\"}"}]}),
 		_ =>
-			json!({"type":"message","role":"assistant","id":format!("done-{serial}"),"content":[{"type":"output_text","text":"Done"}]}),
+			serde_json::json!({"type":"message","role":"assistant","id":format!("done-{serial}"),"content":[{"type":"output_text","text":"Done"}]}),
 	}
 }
 
@@ -140,9 +140,9 @@ async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
 	let mut session = NativeSession::start(&binary, home.path());
 
 	time::timeout(Duration::from_secs(60), async {
-		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Wait for fixture input","inputSchema":{"type":"object","properties":{}}}]})).await.unwrap();
+		let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Wait for fixture input","inputSchema":{"type":"object","properties":{}}}]})).await.unwrap();
 		let thread = started["thread"]["id"].as_str().unwrap();
-		let turn = session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Run the isolated reviewer fixture."}]})).await.unwrap();
+		let turn = session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Run the isolated reviewer fixture."}]})).await.unwrap();
 		let turn = turn["turn"]["id"].as_str().unwrap();
 		let (id, method, params) = next_request(&mut session.events).await;
 
@@ -156,7 +156,7 @@ async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
 		assert_eq!(requests.load(Ordering::Acquire), 1, "settings update cannot release pending tool");
 		assert!(session.client.server_request_guard(&id, &method, &params).is_some());
 
-		session.client.respond_guarded(id, json!({"contentItems":[{"type":"inputText","text":"Continue"}],"success":true}), pending).await.unwrap();
+		session.client.respond_guarded(id, serde_json::json!({"contentItems":[{"type":"inputText","text":"Continue"}],"success":true}), pending).await.unwrap();
 
 		let (id, method, params) = next_request(&mut session.events).await;
 
@@ -175,7 +175,7 @@ async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
 		assert_eq!(session.client.update_live_reviewer(thread, turn, LiveReviewer::User, guard).await.unwrap(), LiveSettingsOutcome::Applied);
 		assert_eq!(requests.load(Ordering::Acquire), 2);
 
-		session.client.respond_guarded(id, json!({"decision":"decline"}), pending_approval).await.unwrap();
+		session.client.respond_guarded(id, serde_json::json!({"decision":"decline"}), pending_approval).await.unwrap();
 
 		finish(&mut session.events).await;
 
@@ -187,7 +187,7 @@ async fn installed_native_live_reviewer_changes_only_the_selected_turn() {
 
 		assert_eq!(requests.load(Ordering::Acquire), 3);
 
-		session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Run the next isolated turn."}]})).await.unwrap();
+		session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Run the next isolated turn."}]})).await.unwrap();
 
 		finish(&mut session.events).await;
 
@@ -247,16 +247,16 @@ async fn installed_native_guardian_preserves_large_action() {
 		requests.clone(),
 		None,
 		Some(bodies.clone()),
-		Some(json!({"input_tokens":0,"output_tokens":0,"total_tokens":0})),
+		Some(serde_json::json!({"input_tokens":0,"output_tokens":0,"total_tokens":0})),
 		move |serial| match serial {
 			0 =>
-				json!({"type":"function_call","name":"exec_command","arguments":json!({"cmd":emitted,"sandbox_permissions":"require_escalated","justification":"Isolated large action fixture"}).to_string(),"call_id":"large-command"}),
+				serde_json::json!({"type":"function_call","name":"exec_command","arguments":serde_json::json!({"cmd":emitted,"sandbox_permissions":"require_escalated","justification":"Isolated large action fixture"}).to_string(),"call_id":"large-command"}),
 			1 =>
-				json!({"type":"function_call","name":"decodex_fixture_mutation","arguments":"{}","call_id":"excluded-tool"}),
+				serde_json::json!({"type":"function_call","name":"decodex_fixture_mutation","arguments":"{}","call_id":"excluded-tool"}),
 			2 =>
-				json!({"type":"message","role":"assistant","id":"review","content":[{"type":"output_text","text":"{\"outcome\":\"deny\"}"}]}),
+				serde_json::json!({"type":"message","role":"assistant","id":"review","content":[{"type":"output_text","text":"{\"outcome\":\"deny\"}"}]}),
 			_ =>
-				json!({"type":"message","role":"assistant","id":"done","content":[{"type":"output_text","text":"Done"}]}),
+				serde_json::json!({"type":"message","role":"assistant","id":"done","content":[{"type":"output_text","text":"Done"}]}),
 		},
 	));
 
@@ -272,10 +272,10 @@ async fn installed_native_guardian_preserves_large_action() {
 	let mut session = NativeSession::start(&binary, home.path());
 
 	time::timeout(Duration::from_secs(60), async {
-		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":"read-only","dynamicTools":[{"name":"decodex_fixture_mutation","description":"Isolated parent tool","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native thread");
+		let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":"read-only","dynamicTools":[{"name":"decodex_fixture_mutation","description":"Isolated parent tool","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native thread");
 		let thread = started["thread"]["id"].as_str().expect("thread id");
 
-		session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Review the isolated large action."}]})).await.expect("native turn");
+		session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Review the isolated large action."}]})).await.expect("native turn");
 
 		let mut reviews = Vec::new();
 
@@ -349,7 +349,7 @@ async fn qualify_direction(updated: Reviewer) {
 		requests.clone(),
 		None,
 		Some(bodies.clone()),
-		Some(json!({"input_tokens":0,"output_tokens":0,"total_tokens":0})),
+		Some(serde_json::json!({"input_tokens":0,"output_tokens":0,"total_tokens":0})),
 		move |serial| direction_output(serial, updated),
 	));
 
@@ -358,9 +358,9 @@ async fn qualify_direction(updated: Reviewer) {
 	let mut session = NativeSession::start(&binary, home.path());
 
 	time::timeout(Duration::from_secs(60), async {
-		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":match updated {Reviewer::User=>Reviewer::AutoReview,Reviewer::AutoReview=>Reviewer::User},"sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Wait for fixture input","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native reviewer fixture");
+		let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":match updated {Reviewer::User=>Reviewer::AutoReview,Reviewer::AutoReview=>Reviewer::User},"sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Wait for fixture input","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native reviewer fixture");
 		let thread = started["thread"]["id"].as_str().expect("native reviewer fixture");
-		let turn = session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Run the isolated reviewer fixture."}]})).await.expect("native reviewer fixture");
+		let turn = session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Run the isolated reviewer fixture."}]})).await.expect("native reviewer fixture");
 		let turn = turn["turn"]["id"].as_str().expect("native reviewer fixture");
 		let (id, method, params) = next_request(&mut session.events).await;
 
@@ -375,7 +375,7 @@ async fn qualify_direction(updated: Reviewer) {
 		assert_eq!(requests.load(Ordering::Acquire), 1, "settings update cannot release pending tool");
 		assert!(session.client.server_request_guard(&id, &method, &params).is_some());
 
-		session.client.respond_guarded(id, json!({"contentItems":[{"type":"inputText","text":"Continue"}],"success":true}), pending).await.expect("native reviewer fixture");
+		session.client.respond_guarded(id, serde_json::json!({"contentItems":[{"type":"inputText","text":"Continue"}],"success":true}), pending).await.expect("native reviewer fixture");
 
 		if updated==Reviewer::User { decline_command(&session.client,&mut session.events,turn).await; }
 
@@ -386,7 +386,7 @@ async fn qualify_direction(updated: Reviewer) {
 
 		assert_eq!(requests.load(Ordering::Acquire), if updated==Reviewer::User {3} else {4});
 
-		let next=session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Run the next isolated turn."}]})).await.expect("native reviewer fixture");
+		let next=session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Run the next isolated turn."}]})).await.expect("native reviewer fixture");
 
 		if updated==Reviewer::AutoReview {decline_command(&session.client,&mut session.events,next["turn"]["id"].as_str().expect("native reviewer fixture")).await;}
 
@@ -409,5 +409,8 @@ async fn decline_command(client: &AppServerClient, events: &mut Receiver<ServerE
 	assert_eq!(method, "item/commandExecution/requestApproval");
 	assert_eq!(params["turnId"], turn);
 
-	client.respond(id, json!({"decision":"decline"})).await.expect("explicit fixture decline");
+	client
+		.respond(id, serde_json::json!({"decision":"decline"}))
+		.await
+		.expect("explicit fixture decline");
 }

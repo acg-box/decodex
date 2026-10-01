@@ -10,7 +10,7 @@ use std::{
 	time::Duration,
 };
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::{net::TcpListener, time};
 
 use crate::{
@@ -48,12 +48,12 @@ async fn qualify_live_model(enabled: bool) {
 		calls.clone(),
 		None,
 		Some(bodies.clone()),
-		Some(json!({"input_tokens":1,"output_tokens":1,"total_tokens":2})),
+		Some(serde_json::json!({"input_tokens":1,"output_tokens":1,"total_tokens":2})),
 		|serial| {
 			if serial == 0 {
-				json!({"type":"function_call","name":"pause_fixture","arguments":"{}","call_id":"pause"})
+				serde_json::json!({"type":"function_call","name":"pause_fixture","arguments":"{}","call_id":"pause"})
 			} else {
-				json!({"type":"message","role":"assistant","id":format!("done-{serial}"),"content":[{"type":"output_text","text":"Done"}]})
+				serde_json::json!({"type":"message","role":"assistant","id":format!("done-{serial}"),"content":[{"type":"output_text","text":"Done"}]})
 			}
 		},
 	));
@@ -63,9 +63,9 @@ async fn qualify_live_model(enabled: bool) {
 	let config = fs::read(home.path().join("config.toml")).expect("native live-model fixture");
 	let mut session = NativeSession::start(&binary, home.path());
 	let thread=time::timeout(Duration::from_secs(45),async {
-        let start=session.client.thread_start(json!({"cwd":home.path(),"model":"gpt-5.6-sol","approvalPolicy":"never","sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Pause this local fixture","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native live-model fixture");
+        let start=session.client.thread_start(serde_json::json!({"cwd":home.path(),"model":"gpt-5.6-sol","approvalPolicy":"never","sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Pause this local fixture","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native live-model fixture");
         let thread=start["thread"]["id"].as_str().expect("native live-model fixture").to_owned();
-        let turn=session.client.turn_start(json!({"threadId":thread,"effort":"low","input":[{"type":"text","text":"Run the local pause fixture."}]})).await.expect("native live-model fixture");
+        let turn=session.client.turn_start(serde_json::json!({"threadId":thread,"effort":"low","input":[{"type":"text","text":"Run the local pause fixture."}]})).await.expect("native live-model fixture");
         let turn=turn["turn"]["id"].as_str().expect("native live-model fixture");
         let (id,method,params)=super::super::next_request(&mut session.events).await;
 
@@ -105,7 +105,7 @@ async fn qualify_live_model(enabled: bool) {
 
         drop(observer);
 
-        session.client.respond_guarded(id,json!({"contentItems":[{"type":"inputText","text":"Continue"}],"success":true}),guard).await.expect("native live-model fixture");
+        session.client.respond_guarded(id,serde_json::json!({"contentItems":[{"type":"inputText","text":"Continue"}],"success":true}),guard).await.expect("native live-model fixture");
 
         super::super::finish(&mut session.events).await;
 
@@ -119,8 +119,8 @@ async fn qualify_live_model(enabled: bool) {
 	let mut cold = NativeSession::start(&binary, home.path());
 
 	time::timeout(Duration::from_secs(30),async {
-        cold.client.thread_resume(json!({"threadId":thread})).await.expect("native live-model fixture");
-        cold.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Confirm the following turn uses its saved settings."}]})).await.expect("native live-model fixture");
+        cold.client.thread_resume(serde_json::json!({"threadId":thread})).await.expect("native live-model fixture");
+        cold.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Confirm the following turn uses its saved settings."}]})).await.expect("native live-model fixture");
 
         super::super::finish(&mut cold.events).await;
     }).await.expect("cold native model deadline");

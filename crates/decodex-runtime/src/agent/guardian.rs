@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tokio::time;
 
-use crate::agent::{self, AgentCoordinator, AgentError, ClientError, Value};
+use crate::agent::{AgentCoordinator, AgentError, ClientError, Value};
 use decodex_codex::guardian;
 
 impl AgentCoordinator {
@@ -93,7 +93,7 @@ impl AgentCoordinator {
 			Duration::from_secs(20),
 			self.client.request(
 				"thread/approveGuardianDeniedAction",
-				agent::json!({"threadId":review.thread_id,"event":event}),
+				serde_json::json!({"threadId":review.thread_id,"event":event}),
 			),
 		)
 		.await;

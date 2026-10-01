@@ -7,8 +7,6 @@ use decodex_protocol::{AgentActivityDetailCursor, AgentActivityDetailResult};
 
 use serde_json::Value;
 
-#[cfg(test)] use serde_json::json;
-
 use sha2::{Digest as _, Sha256};
 use tokio::time;
 
@@ -325,8 +323,8 @@ mod tests {
 
 	#[test]
 	fn image_quota_is_visible_in_timeline_and_exact_activity_details() {
-		let item = agent_detail::json!({"id":"image","type":"imageGeneration","status":"failed","failure":{"type":"usageLimitExceeded","limitId":"image_gen","resetsAt":1_790_683_200},"result":""});
-		let page=timeline::project("thread",&agent_detail::json!({"data":[{"type":"item","turnId":"turn","position":0,"item":item}],"nextCursor":null,"activeRealtimeSessionAtPageStart":null})).unwrap();
+		let item = serde_json::json!({"id":"image","type":"imageGeneration","status":"failed","failure":{"type":"usageLimitExceeded","limitId":"image_gen","resetsAt":1_790_683_200},"result":""});
+		let page=timeline::project("thread",&serde_json::json!({"data":[{"type":"item","turnId":"turn","position":0,"item":item}],"nextCursor":null,"activeRealtimeSessionAtPageStart":null})).unwrap();
 		let decodex_protocol::AgentTimelineContent::Item { activity: Some(activity), .. } =
 			&page.entries[0].content
 		else {
@@ -337,7 +335,7 @@ mod tests {
 		assert_eq!(activity.status, "failed");
 
 		let history =
-			agent_detail::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[item]}]}});
+			serde_json::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[item]}]}});
 		let text = agent_detail::project_text(&history, "thread", "turn", "image").unwrap();
 
 		assert!(text.contains("Image generation usage limit reached"));
@@ -347,7 +345,7 @@ mod tests {
 
 	#[test]
 	fn exact_source_required_and_reasoning_not_projected() {
-		let history = agent_detail::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"item","type":"commandExecution","command":"cargo test","aggregatedOutput":"Passed","exitCode":0},{"id":"private","type":"reasoning","text":"private"}]}]}});
+		let history = serde_json::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"item","type":"commandExecution","command":"cargo test","aggregatedOutput":"Passed","exitCode":0},{"id":"private","type":"reasoning","text":"private"}]}]}});
 
 		assert!(
 			matches!(agent_detail::project(&history,"thread","turn","item"),Some(AgentActivityDetailResult::Available {text,..}) if text.contains("Passed"))
@@ -359,7 +357,7 @@ mod tests {
 
 	#[test]
 	fn output_is_bounded_at_utf8_boundary() {
-		let history = agent_detail::json!({"thread":{"id":"t","turns":[{"id":"u","items":[{"id":"i","type":"commandExecution","aggregatedOutput":"界".repeat(10_000)}]}]}});
+		let history = serde_json::json!({"thread":{"id":"t","turns":[{"id":"u","items":[{"id":"i","type":"commandExecution","aggregatedOutput":"界".repeat(10_000)}]}]}});
 		let Some(AgentActivityDetailResult::Available { text, truncated, offset, next }) =
 			agent_detail::page(
 				&agent_detail::project_text(&history, "t", "u", "i").unwrap(),
@@ -379,7 +377,7 @@ mod tests {
 
 	#[test]
 	fn complete_detail_is_not_shortened_before_request_paging() {
-		let history = agent_detail::json!({"thread":{"id":"t","turns":[{"id":"u","items":[{"id":"i","type":"commandExecution","aggregatedOutput":"界".repeat(10_000)}]}]}});
+		let history = serde_json::json!({"thread":{"id":"t","turns":[{"id":"u","items":[{"id":"i","type":"commandExecution","aggregatedOutput":"界".repeat(10_000)}]}]}});
 		let Some(AgentActivityDetailResult::Available { text, truncated, .. }) =
 			agent_detail::project(&history, "t", "u", "i")
 		else {
@@ -403,15 +401,15 @@ mod tests {
 				for (method, result) in [
 					(
 						"thread/read",
-						agent_detail::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
+						serde_json::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
 					),
 					(
 						"thread/turns/list",
-						agent_detail::json!({"data":[{"id":"turn"}],"nextCursor":null}),
+						serde_json::json!({"data":[{"id":"turn"}],"nextCursor":null}),
 					),
 					(
 						"thread/items/list",
-						agent_detail::json!({"data":[{"turnId":"turn","item":{"id":"patch","type":kind,"command":"must not show command", "changes":[{"path":"C:\\remote\\old.txt","kind":{"type":"update","move_path":"C:\\remote\\new.txt"},"diff":format!("-old\n+new{} REQUIRED PATCH SUFFIX", "界".repeat(20_000))}]}}],"nextCursor":null}),
+						serde_json::json!({"data":[{"turnId":"turn","item":{"id":"patch","type":kind,"command":"must not show command", "changes":[{"path":"C:\\remote\\old.txt","kind":{"type":"update","move_path":"C:\\remote\\new.txt"},"diff":format!("-old\n+new{} REQUIRED PATCH SUFFIX", "界".repeat(20_000))}]}}],"nextCursor":null}),
 					),
 				] {
 					let request: Value =
@@ -424,7 +422,7 @@ mod tests {
 						.write_all(
 							format!(
 								"{}\n",
-								agent_detail::json!({"id":request["id"],"result":result})
+								serde_json::json!({"id":request["id"],"result":result})
 							)
 							.as_bytes(),
 						)
@@ -477,15 +475,15 @@ mod tests {
 				for (method, result) in [
 					(
 						"thread/read",
-						agent_detail::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
+						serde_json::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
 					),
 					(
 						"thread/turns/list",
-						agent_detail::json!({"data":[{"id":"turn"}],"nextCursor":null}),
+						serde_json::json!({"data":[{"id":"turn"}],"nextCursor":null}),
 					),
 					(
 						"thread/items/list",
-						agent_detail::json!({"data":[{"turnId":"turn","item":{"id":"item","type":"commandExecution","aggregatedOutput":"Passed"}}],"nextCursor":null}),
+						serde_json::json!({"data":[{"turnId":"turn","item":{"id":"item","type":"commandExecution","aggregatedOutput":"Passed"}}],"nextCursor":null}),
 					),
 				] {
 					let request: Value =
@@ -498,7 +496,7 @@ mod tests {
 						.write_all(
 							format!(
 								"{}\n",
-								agent_detail::json!({"id":request["id"],"result":result})
+								serde_json::json!({"id":request["id"],"result":result})
 							)
 							.as_bytes(),
 						)

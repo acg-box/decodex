@@ -9,7 +9,7 @@ mod summary;
 
 use decodex_protocol::{AgentTimelineContent as Content, AgentTimelineEntry, AgentTimelinePage};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::agent::{activity, reasoning};
@@ -134,12 +134,12 @@ mod app_ui_projection_tests {
 	#[test]
 	fn retired_app_metadata_keeps_the_tool_result_without_a_viewer() {
 		for (kind, metadata, expected) in [
-			("mcpToolCall", timeline::json!({"resourceUri":"ui://fixture/view"}), false),
-			("mcpToolCall", timeline::json!(null), false),
-			("mcpToolCall", timeline::json!({"resourceUri":"https://example.com"}), false),
-			("agentMessage", timeline::json!({"resourceUri":"ui://fixture/view"}), false),
+			("mcpToolCall", serde_json::json!({"resourceUri":"ui://fixture/view"}), false),
+			("mcpToolCall", serde_json::json!(null), false),
+			("mcpToolCall", serde_json::json!({"resourceUri":"https://example.com"}), false),
+			("agentMessage", serde_json::json!({"resourceUri":"ui://fixture/view"}), false),
 		] {
-			let row = timeline::json!({"turnId":"turn","item":{"id":"call","type":kind,"text":"Fixture","mcpAppUi":metadata}});
+			let row = serde_json::json!({"turnId":"turn","item":{"id":"call","type":kind,"text":"Fixture","mcpAppUi":metadata}});
 
 			assert!(
 				matches!(timeline::ordinary(&row).unwrap(),Content::Item{app_ui,..} if app_ui==expected)
@@ -287,7 +287,7 @@ fn ordinary(row: &Value) -> Option<Content> {
 	let turn_id = id(&row["turnId"])?;
 	let completed = !matches!(item["status"].as_str(), Some("inProgress" | "in_progress"));
 	let activity = (kind != "reasoning")
-		.then(|| activity::project(&json!({"turnId":turn_id,"item":item}), completed))
+		.then(|| activity::project(&serde_json::json!({"turnId":turn_id,"item":item}), completed))
 		.flatten();
 
 	Some(Content::Item {
@@ -444,15 +444,15 @@ mod tests {
 
 	#[test]
 	fn reasoning_history_hides_voice_items_and_uses_saved_origins_across_pages() {
-		let row = |position, item: &str| timeline::json!({"type":"item","position":position,"turnId":"turn","item":{"type":"reasoning","id":item,"summary":[item]}});
-		let marker = timeline::json!({"type":"item","position":2,"turnId":"turn","item":{"type":"userMessage","id":"handoff","content":[{"type":"text","text":"<realtime_delegation><input>Voice</input></realtime_delegation>","textElements":[]}]}});
-		let mut page = timeline::json!({"data":[row(1,"typed"),marker,row(3,"voice")],"nextCursor":null,"activeRealtimeSessionAtPageStart":null});
+		let row = |position, item: &str| serde_json::json!({"type":"item","position":position,"turnId":"turn","item":{"type":"reasoning","id":item,"summary":[item]}});
+		let marker = serde_json::json!({"type":"item","position":2,"turnId":"turn","item":{"type":"userMessage","id":"handoff","content":[{"type":"text","text":"<realtime_delegation><input>Voice</input></realtime_delegation>","textElements":[]}]}});
+		let mut page = serde_json::json!({"data":[row(1,"typed"),marker,row(3,"voice")],"nextCursor":null,"activeRealtimeSessionAtPageStart":null});
 		let projected = timeline::project("thread", &page).unwrap();
 
 		assert_eq!(projected.entries.len(), 2);
 		assert!(!serde_json::to_string(&projected).unwrap().contains("\"voice\""));
 		// A later page can omit the marker and contain a typed completion after it.
-		page["data"] = timeline::json!([row(4, "typed"), row(5, "voice")]);
+		page["data"] = serde_json::json!([row(4, "typed"), row(5, "voice")]);
 
 		let projected = timeline::project_with_origins(
 			"thread",
@@ -469,7 +469,7 @@ mod tests {
 
 	#[test]
 	fn reasoning_history_projects_only_public_summary_without_inventing_completion() {
-		let mut row = timeline::json!({"type":"item","position":1,"turnId":"turn","item":{
+		let mut row = serde_json::json!({"type":"item","position":1,"turnId":"turn","item":{
 			"type":"reasoning","id":"reasoning-item","summary":["Checking the request.","Comparing the results."],
 			"content":["PRIVATE_RAW_REASONING"],"encryptedContent":"PRIVATE_ENCRYPTED"}});
 		let projected = timeline::ordinary(&row).expect("public summary");
@@ -478,27 +478,27 @@ mod tests {
 			if text == "Checking the request.\n\nComparing the results."));
 		assert!(!serde_json::to_string(&projected).unwrap().contains("PRIVATE"));
 
-		row["item"]["summary"] = timeline::json!(["界".repeat(4_000)]);
+		row["item"]["summary"] = serde_json::json!(["界".repeat(4_000)]);
 
 		assert!(
 			matches!(timeline::ordinary(&row).unwrap(), Content::Item { text, truncated: true, .. }
 			if text.len() <= 8_192 && text.chars().all(|c| c == '界'))
 		);
 
-		row["item"]["summary"] = timeline::json!([]);
+		row["item"]["summary"] = serde_json::json!([]);
 
 		assert!(
 			matches!(timeline::ordinary(&row).unwrap(), Content::Item { text, .. } if text.is_empty())
 		);
 
-		row["item"]["summary"] = timeline::json!([{"text":"do not coerce"}]);
+		row["item"]["summary"] = serde_json::json!([{"text":"do not coerce"}]);
 
 		assert!(timeline::ordinary(&row).is_none());
 	}
 
 	#[test]
 	fn mcp_authentication_challenge_survives_history_projection_without_raw_metadata() {
-		let page = timeline::json!({"data":[{"type":"item","position":1,"turnId":"turn","item":{
+		let page = serde_json::json!({"data":[{"type":"item","position":1,"turnId":"turn","item":{
 			"type":"mcpToolCall","id":"call","server":"docs","tool":"search","status":"failed",
 			"result":{"content":[{"type":"text","text":"Authentication required"}],
 			"_meta":{"mcp/www_authenticate":["Bearer PRIVATE"]}}}}],"nextCursor":null,
@@ -515,13 +515,13 @@ mod tests {
 
 	#[test]
 	fn proposed_plan_history_preserves_authoritative_text_and_bounds() {
-		let mut row = timeline::json!({"type":"item","position":4,"turnId":"turn","item":{"type":"plan","id":"plan-item","text":"## Final plan\n1. Verify the source\n2. Apply the change"}});
+		let mut row = serde_json::json!({"type":"item","position":4,"turnId":"turn","item":{"type":"plan","id":"plan-item","text":"## Final plan\n1. Verify the source\n2. Apply the change"}});
 
 		assert!(
 			matches!(timeline::ordinary(&row).unwrap(),Content::Item {kind,text,truncated:false,..} if kind == "plan" && text == row["item"]["text"])
 		);
 
-		row["item"]["text"] = timeline::json!("界".repeat(4_000));
+		row["item"]["text"] = serde_json::json!("界".repeat(4_000));
 
 		assert!(
 			matches!(timeline::ordinary(&row).unwrap(),Content::Item {text,truncated:true,..} if text.len() <= 8_192 && text.chars().all(|c| c == '界'))
@@ -535,7 +535,7 @@ mod tests {
 	#[test]
 	fn assistant_phase_survives_the_public_timeline_projection() {
 		for phase in ["commentary", "final_answer"] {
-			let row = timeline::json!({"turnId":"turn","item":{"id":"item","type":"agentMessage","text":"Public text","phase":phase}});
+			let row = serde_json::json!({"turnId":"turn","item":{"id":"item","type":"agentMessage","text":"Public text","phase":phase}});
 
 			assert!(
 				matches!(timeline::ordinary(&row).unwrap(),Content::Item {phase:Some(observed),..} if observed == phase)
@@ -545,7 +545,7 @@ mod tests {
 
 	#[test]
 	fn failed_turn_keeps_public_reason_and_explicit_bounds() {
-		let mut row = timeline::json!({"type":"turnCompleted","position":9,"turnId":"turn",
+		let mut row = serde_json::json!({"type":"turnCompleted","position":9,"turnId":"turn",
 			"status":"failed","durationMs":5,"error":{"message":"Model is overloaded. Try again.","additionalDetails":"private raw metadata"}});
 		let projected = timeline::entry(&row).unwrap();
 
@@ -553,21 +553,21 @@ mod tests {
 			if error.message == "Model is overloaded. Try again." && !error.truncated));
 		assert!(!serde_json::to_string(&projected).unwrap().contains("private raw metadata"));
 
-		row["error"]["message"] = timeline::json!("界".repeat(4_000));
+		row["error"]["message"] = serde_json::json!("界".repeat(4_000));
 
 		assert!(
 			matches!(timeline::entry(&row).unwrap().content, Content::TurnBoundary { error:Some(error), .. }
 			if error.truncated && error.message.len() <= 8_192 && error.message.chars().all(|c| c == '界'))
 		);
 
-		row["error"]["message"] = timeline::json!("Bearer abcdefgh");
+		row["error"]["message"] = serde_json::json!("Bearer abcdefgh");
 
 		assert!(
 			matches!(timeline::entry(&row).unwrap().content, Content::TurnBoundary { error:Some(error), .. }
 			if error.truncated && error.message == "Sensitive details omitted")
 		);
 
-		row["error"] = timeline::json!({"message":false});
+		row["error"] = serde_json::json!({"message":false});
 
 		assert!(timeline::entry(&row).is_none());
 	}
@@ -582,7 +582,7 @@ mod tests {
 			("userMessage", format!("Example: {envelope}"), format!("Example: {envelope}")),
 			("agentMessage", envelope.to_owned(), envelope.to_owned()),
 		] {
-			let row = timeline::json!({"type":"item","position":1,"turnId":"turn","item":{
+			let row = serde_json::json!({"type":"item","position":1,"turnId":"turn","item":{
 				"type":kind,"id":"message","text":source,"content":[{"type":"text","text":source}]
 			}});
 			let content = timeline::ordinary(&row).unwrap();
@@ -596,7 +596,7 @@ mod tests {
 
 	#[test]
 	fn speech_identity_and_promotions_survive_without_copying_tool_arguments() {
-		let value = timeline::json!({"data":[
+		let value = serde_json::json!({"data":[
 			{"type":"realtime","position":1,"item":{"type":"transcriptSegment","id":"speech","realtimeSessionId":"session","role":"assistant","text":"Hello"}},
 			{"type":"realtime","position":2,"item":{"type":"bemItemPromoted","id":"promotion","realtimeSessionId":"session","turnId":"turn","itemId":"tool","presentation":{"type":"wholeItem"}}},
 			{"type":"item","position":3,"turnId":"turn","item":{"type":"dynamicToolCall","id":"tool","tool":"action","arguments":{"private":"NEVER_PROJECT"},"status":"completed","success":true}}
@@ -616,28 +616,28 @@ mod tests {
 
 		assert!(truncated && text.len() <= 8_192 && text.ends_with('界'));
 
-		let item = timeline::json!({"type":"bemItemPromoted","id":"p","realtimeSessionId":"s","turnId":"t","itemId":"i","presentation":{"type":"inlineVisualization","index":-1}});
+		let item = serde_json::json!({"type":"bemItemPromoted","id":"p","realtimeSessionId":"s","turnId":"t","itemId":"i","presentation":{"type":"inlineVisualization","index":-1}});
 
 		assert!(timeline::realtime(&item).is_none());
 		assert!(
-			timeline::project("thread", &timeline::json!({"data":[],"nextCursor":null})).is_err()
+			timeline::project("thread", &serde_json::json!({"data":[],"nextCursor":null})).is_err()
 		);
 	}
 
 	#[test]
 	fn large_pages_report_capacity_and_running_items_stay_running() {
-		let rows: Vec<_> = (0..20).map(|n| timeline::json!({"type":"realtime","position":n,
+		let rows: Vec<_> = (0..20).map(|n| serde_json::json!({"type":"realtime","position":n,
 			"item":{"type":"transcriptSegment","id":format!("speech-{n}"),"realtimeSessionId":"session","role":"user","text":"x".repeat(8_192)}})).collect();
 
 		assert!(matches!(
 			timeline::project(
 				"thread",
-				&timeline::json!({"data":rows,"nextCursor":null,"activeRealtimeSessionAtPageStart":null})
+				&serde_json::json!({"data":rows,"nextCursor":null,"activeRealtimeSessionAtPageStart":null})
 			),
 			Err(ProjectionError::Capacity)
 		));
 
-		let content = timeline::ordinary(&timeline::json!({"turnId":"turn","item":{"type":"commandExecution","id":"command","status":"inProgress"}})).unwrap();
+		let content = timeline::ordinary(&serde_json::json!({"turnId":"turn","item":{"type":"commandExecution","id":"command","status":"inProgress"}})).unwrap();
 
 		assert!(
 			matches!(content, Content::Item { activity:Some(activity), .. } if activity.status=="running")
@@ -653,17 +653,17 @@ mod tests {
 		let server = tokio::spawn(async move {
 			let (reader, mut writer) = io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
-			let item = |id, kind, text| timeline::json!({"turnId":"turn","item":{"id":id,"type":kind,"summary":[text]}});
-			let marker = timeline::json!({"turnId":"turn","item":{"type":"userMessage","id":"handoff","content":[{"type":"text","text":"<realtime_delegation><input>Voice</input></realtime_delegation>"}]}});
+			let item = |id, kind, text| serde_json::json!({"turnId":"turn","item":{"id":id,"type":kind,"summary":[text]}});
+			let marker = serde_json::json!({"turnId":"turn","item":{"type":"userMessage","id":"handoff","content":[{"type":"text","text":"<realtime_delegation><input>Voice</input></realtime_delegation>"}]}});
 
 			for (cursor, page) in [
 				(
 					Value::Null,
-					timeline::json!({"data":[item("typed","reasoning","Public"),marker],"nextCursor":"next"}),
+					serde_json::json!({"data":[item("typed","reasoning","Public"),marker],"nextCursor":"next"}),
 				),
 				(
-					timeline::json!("next"),
-					timeline::json!({"data":[item("voice","reasoning","PRIVATE")],"nextCursor":null}),
+					serde_json::json!("next"),
+					serde_json::json!({"data":[item("voice","reasoning","PRIVATE")],"nextCursor":null}),
 				),
 			] {
 				let request: Value =
@@ -677,15 +677,15 @@ mod tests {
 
 				writer
 					.write_all(
-						format!("{}\n", timeline::json!({"id":request["id"],"result":page}))
+						format!("{}\n", serde_json::json!({"id":request["id"],"result":page}))
 							.as_bytes(),
 					)
 					.await
 					.unwrap();
 			}
 		});
-		let row = |position, id, text| timeline::json!({"type":"item","position":position,"turnId":"turn","item":{"type":"reasoning","id":id,"summary":[text]}});
-		let page = timeline::json!({"data":[row(40,"typed","Public"),row(41,"voice","PRIVATE")],"nextCursor":"older","activeRealtimeSessionAtPageStart":null});
+		let row = |position, id, text| serde_json::json!({"type":"item","position":position,"turnId":"turn","item":{"type":"reasoning","id":id,"summary":[text]}});
+		let page = serde_json::json!({"data":[row(40,"typed","Public"),row(41,"voice","PRIVATE")],"nextCursor":"older","activeRealtimeSessionAtPageStart":null});
 		let projected =
 			timeline::project_with_saved_origins(None, &client, "work", "thread", &page)
 				.await
@@ -722,21 +722,21 @@ mod tests {
 						assert_eq!(request["method"], method);
 
 						let result = if method == "thread/read" {
-							timeline::json!({"thread":{"id":"thread"}})
+							serde_json::json!({"thread":{"id":"thread"}})
 						} else {
 							assert_eq!(request["params"]["limit"], limit);
 							assert_eq!(request["params"]["cursor"], "same-cursor");
 
-							let rows:Vec<_> = (0..limit).map(|n| timeline::json!({"type":"realtime","position":n,"item":{"type":"transcriptSegment","id":format!("s{n}"),"realtimeSessionId":"session","role":"user","text":"x".repeat(8_192)}})).collect();
+							let rows:Vec<_> = (0..limit).map(|n| serde_json::json!({"type":"realtime","position":n,"item":{"type":"transcriptSegment","id":format!("s{n}"),"realtimeSessionId":"session","role":"user","text":"x".repeat(8_192)}})).collect();
 
-							timeline::json!({"data":rows,"nextCursor":"older","activeRealtimeSessionAtPageStart":"session"})
+							serde_json::json!({"data":rows,"nextCursor":"older","activeRealtimeSessionAtPageStart":"session"})
 						};
 
 						writer
 							.write_all(
 								format!(
 									"{}\n",
-									timeline::json!({"id":request["id"],"result":result})
+									serde_json::json!({"id":request["id"],"result":result})
 								)
 								.as_bytes(),
 							)

@@ -35,7 +35,7 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 
 	fs::write(home.join("config.toml"), format!(
 		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\napprovals_reviewer = \"user\"\n[model_providers.fixture]\nname = \"Isolated permissions fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[permissions.scoped.filesystem]\n\":root\" = \"read\"\n{} = \"write\"\n{} = \"deny\"\n",
-		json!(workspace.join("writable")), json!(workspace.join("writable/private"))
+		serde_json::json!(workspace.join("writable")), serde_json::json!(workspace.join("writable/private"))
 	)).unwrap();
 
 	let (mut agent, _, store_home) = fixture().await;
@@ -43,7 +43,7 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 	agent.config =
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.display().to_string());
 	agent.config.sandbox = "danger-full-access".into();
-	agent.config.approval_policy = json!("never");
+	agent.config.approval_policy = serde_json::json!("never");
 
 	for cold in [false, true] {
 		if cold {
@@ -103,7 +103,7 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 
 			let actual = agent
 				.client
-				.thread_resume(json!({
+				.thread_resume(serde_json::json!({
 					"threadId":item.codex_thread_id, "excludeTurns":true
 				}))
 				.await
@@ -112,7 +112,7 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 			assert_eq!(actual["activePermissionProfile"]["id"], "scoped", "cold={cold}: {actual}");
 			assert_eq!(actual["approvalPolicy"], "on-request", "cold={cold}");
 			assert_eq!(actual["approvalsReviewer"], "auto_review", "cold={cold}");
-			assert_eq!(actual["cwd"], json!(workspace), "cold={cold}");
+			assert_eq!(actual["cwd"], serde_json::json!(workspace), "cold={cold}");
 
 			let (wire_permissions, wire_guard) = agent
 				.client
@@ -169,7 +169,7 @@ async fn select_native_permissions(
 		.client
 		.request(
 			"thread/settings/update",
-			json!({
+			serde_json::json!({
 				"threadId": item.codex_thread_id,
 				"approvalPolicy":"on-request", "approvalsReviewer":"auto_review", "cwd":workspace
 			}),

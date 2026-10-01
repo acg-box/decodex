@@ -89,7 +89,7 @@ async fn installed_native_tool_context_survives_restart_without_replay() {
 		None,
 		Some(Arc::clone(&bodies)),
 		None,
-		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native context answer"}]}),
+		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native context answer"}]}),
 	));
 
 	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated context fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
@@ -104,7 +104,7 @@ async fn installed_native_tool_context_survives_restart_without_replay() {
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.path().display().to_string());
 
 	config.sandbox = "read-only".into();
-	config.approval_policy = json!("never");
+	config.approval_policy = serde_json::json!("never");
 
 	let mut agent =
 		AgentCoordinator::new(store.clone(), session.client.clone(), config.clone()).unwrap();
@@ -114,7 +114,11 @@ async fn installed_native_tool_context_survives_restart_without_replay() {
 		terminal(&mut agent, &mut session.events, &store).await;
 
 		agent
-			.ingest_automation_result("fixture-source", "agent", json!({"result":EXTERNAL}))
+			.ingest_automation_result(
+				"fixture-source",
+				"agent",
+				serde_json::json!({"result":EXTERNAL}),
+			)
 			.await
 			.unwrap();
 
@@ -122,7 +126,11 @@ async fn installed_native_tool_context_survives_restart_without_replay() {
 		assert_external_delivery(&bodies.lock().unwrap());
 
 		agent
-			.ingest_automation_result("fixture-source", "agent", json!({"result":EXTERNAL}))
+			.ingest_automation_result(
+				"fixture-source",
+				"agent",
+				serde_json::json!({"result":EXTERNAL}),
+			)
 			.await
 			.unwrap();
 

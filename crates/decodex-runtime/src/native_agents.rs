@@ -1,7 +1,7 @@
 //! Native observations only: never promote spawned threads into manager authority.
 use std::time::Duration;
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::agent::native_subagents;
@@ -27,12 +27,12 @@ pub(crate) async fn read(
 
             if verified.id != work { return None; }
 
-            let value = client.thread_read(json!({"threadId":thread,"includeTurns":true})).await.ok()?;
+            let value = client.thread_read(serde_json::json!({"threadId":thread,"includeTurns":true})).await.ok()?;
 
             return conversation(&value,thread);
         }
 
-        let value = client.request("thread/list",json!({"ancestorThreadId":root,"sourceKinds":["subAgentThreadSpawn"],"sortKey":"recency_at","sortDirection":"desc","limit":100,"cursor":cursor,"useStateDbOnly":true})).await.ok()?;
+        let value = client.request("thread/list",serde_json::json!({"ancestorThreadId":root,"sourceKinds":["subAgentThreadSpawn"],"sortKey":"recency_at","sortDirection":"desc","limit":100,"cursor":cursor,"useStateDbOnly":true})).await.ok()?;
         let data = value["data"].as_array()?;
 
         if data.len()>100 {return None;}
@@ -161,7 +161,7 @@ mod tests {
 	use crate::native_agents::{self, NativeAgentsResult};
 	#[test]
 	fn native_preview_keeps_roles_and_does_not_guess_input_capability() {
-		let v = native_agents::json!({"thread":{"id":"child","turns":[{"id":"t","status":"inProgress","items":[{"id":"u","type":"userMessage","content":[{"text":"Check"}]},{"id":"a","type":"agentMessage","text":"Result"}]}]}});
+		let v = serde_json::json!({"thread":{"id":"child","turns":[{"id":"t","status":"inProgress","items":[{"id":"u","type":"userMessage","content":[{"text":"Check"}]},{"id":"a","type":"agentMessage","text":"Result"}]}]}});
 		let Some(NativeAgentsResult::Conversation { can_input, active_turn, messages, .. }) =
 			native_agents::conversation(&v, "child")
 		else {

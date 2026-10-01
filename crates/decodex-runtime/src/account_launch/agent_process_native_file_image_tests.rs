@@ -40,12 +40,12 @@ async fn qualify(omit_media: bool) {
 		None,
 		Some(bodies.clone()),
 		None,
-		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]}),
+		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]}),
 	));
 
 	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[features]\nomit_app_server_notification_media = {omit_media}\n[model_providers.fixture]\nname = \"Isolated image fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("fixture config");
 
-	let input = json!([
+	let input = serde_json::json!([
 		{"type":"text","text":"Compare these references.","text_elements":[]},
 		{"type":"image","fileId":"file_fixture_first","detail":"original"},
 		{"type":"image","url":format!("data:image/png;base64,{PNG}"),"detail":"high"},
@@ -54,9 +54,9 @@ async fn qualify(omit_media: bool) {
 
 	time::timeout(Duration::from_secs(45), async {
 		let mut session = NativeSession::start(&binary, home.path());
-		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.expect("native thread");
+		let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.expect("native thread");
 		let thread = started["thread"]["id"].as_str().expect("thread ID").to_owned();
-		let started = session.client.turn_start(json!({"threadId":thread,"input":input})).await.expect("native turn");
+		let started = session.client.turn_start(serde_json::json!({"threadId":thread,"input":input})).await.expect("native turn");
 		let turn = started["turn"]["id"].as_str().expect("turn ID").to_owned();
 		let mut observed = 0;
 
@@ -99,8 +99,8 @@ async fn qualify(omit_media: bool) {
 
 		assert_eq!(requests.load(Ordering::Acquire), 1, "cold read must not replay input");
 
-        reopened.client.thread_resume(json!({"threadId":thread,"excludeTurns":true})).await.expect("cold resume");
-        reopened.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Continue with the same recorded images."}]})).await.expect("cold continuation");
+        reopened.client.thread_resume(serde_json::json!({"threadId":thread,"excludeTurns":true})).await.expect("cold resume");
+        reopened.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Continue with the same recorded images."}]})).await.expect("cold continuation");
 
         loop {
             if let ServerEvent::Notification {method,params}=reopened.events.recv().await.expect("continuation event") {

@@ -90,8 +90,10 @@ pub(super) async fn check(
 			source
 		);
 
-		let metadata =
-			native.thread_read(json!({"threadId":fork.as_str()})).await.expect("read fork lineage");
+		let metadata = native
+			.thread_read(serde_json::json!({"threadId":fork.as_str()}))
+			.await
+			.expect("read fork lineage");
 
 		assert_eq!(metadata["thread"]["forkedFromId"], thread);
 

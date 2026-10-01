@@ -5,7 +5,7 @@ use decodex_core::DecodexRoot;
 #[tokio::test]
 async fn drain_wire_refusal_distinguishes_direct_input_from_injected_updates() {
 	let (mut agent, mut sent, _directory) =
-		fixture_with_history(json!({"_turn_draining":true})).await;
+		fixture_with_history(serde_json::json!({"_turn_draining":true})).await;
 
 	assert!(matches!(
 		agent.start_agent("agent", "Keep the original instruction").await,
@@ -31,7 +31,7 @@ async fn drain_wire_refusal_distinguishes_direct_input_from_injected_updates() {
 	assert!(sent.try_recv().is_err());
 
 	let (mut agent, mut sent, _directory) =
-		fixture_with_history(json!({"_turn_draining_after_injection":true})).await;
+		fixture_with_history(serde_json::json!({"_turn_draining_after_injection":true})).await;
 
 	agent.start_agent("agent", "Initial").await.unwrap();
 
@@ -46,7 +46,7 @@ async fn drain_wire_refusal_distinguishes_direct_input_from_injected_updates() {
 			source_event_id: "external-update".into(),
 			work_item_id: "agent".into(),
 			event_kind: "automation_result".into(),
-			payload: json!({"text":"External evidence"}).to_string(),
+			payload: serde_json::json!({"text":"External evidence"}).to_string(),
 		})
 		.await
 		.unwrap();
@@ -94,7 +94,8 @@ async fn native_rejection_preserves_input_and_never_replays_ambiguous_effects() 
 					source_event_id: "drain-input".into(),
 					work_item_id: "agent".into(),
 					event_kind: "user_message".into(),
-					payload: json!({"text":"Keep this input","source":"user"}).to_string(),
+					payload: serde_json::json!({"text":"Keep this input","source":"user"})
+						.to_string(),
 				})
 				.await
 				.unwrap();

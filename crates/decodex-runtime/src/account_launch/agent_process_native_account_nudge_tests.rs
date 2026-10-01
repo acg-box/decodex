@@ -1,5 +1,5 @@
 //! Exercise native notifications through the retained bridge with synthetic credentials.
-use crate::account_launch::agent_process::native_tests::{self, NativeSession};
+use crate::account_launch::agent_process::native_tests::NativeSession;
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
@@ -44,7 +44,7 @@ pub(crate) async fn serve_notification_with_gate(
 }
 
 fn write_fixture_credentials(home: &std::path::Path) {
-	let claims = native_tests::json!({"email":"fixture@example.test","exp":4102444800_u64,
+	let claims = serde_json::json!({"email":"fixture@example.test","exp":4102444800_u64,
 		"https://api.openai.com/auth":{"chatgpt_account_id":"workspace-fixture",
 		"chatgpt_user_id":"user-fixture","chatgpt_plan_type":"team"}});
 	let token = format!(
@@ -52,7 +52,7 @@ fn write_fixture_credentials(home: &std::path::Path) {
 		URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#),
 		URL_SAFE_NO_PAD.encode(claims.to_string())
 	);
-	let auth = native_tests::json!({"auth_mode":"chatgpt","tokens":{"id_token":token,
+	let auth = serde_json::json!({"auth_mode":"chatgpt","tokens":{"id_token":token,
 		"access_token":"fixture-only","refresh_token":"fixture-only","account_id":"workspace-fixture"},
 		"last_refresh":"2026-09-21T15:00:00Z"});
 	let mut file = std::fs::OpenOptions::new()
@@ -98,7 +98,7 @@ async fn installed_native_account_nudge_uses_attested_control_and_ephemeral_auth
 
 		assert_eq!(
 			account["workspaceRouting"],
-			native_tests::json!({
+			serde_json::json!({
 				"chatgptAccountId": "workspace-fixture",
 				"backendOrigin": format!("https://{address}"),
 				"accountRoutingOverride": "NO_CONSTRAINT"
@@ -239,7 +239,7 @@ async fn handle_request(
 		assert_eq!(account.as_deref(), Some("workspace-fixture"));
 
 		let origin = format!("https://{}", stream.get_ref().local_addr().expect("loopback origin"));
-		let body = native_tests::json!({"default_account_id":"other-workspace", "accounts":[
+		let body = serde_json::json!({"default_account_id":"other-workspace", "accounts":[
 			{"id":"other-workspace", "workspace_backend_origin":"https://other-workspace.invalid",
 			"account_routing_override":"us_cr"},
 			{"id":"workspace-fixture", "workspace_backend_origin":origin,
@@ -272,7 +272,7 @@ async fn handle_request(
 
 	assert_eq!(
 		serde_json::from_slice::<serde_json::Value>(&body).expect("JSON body"),
-		native_tests::json!({"credit_type":purpose})
+		serde_json::json!({"credit_type":purpose})
 	);
 
 	stream.write_all(format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}").as_bytes())

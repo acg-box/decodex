@@ -92,10 +92,10 @@ fn counter_output(input: &Value) -> Value {
 					return Some(call);
 				}
 			} else if spec["name"].as_str().is_some_and(|name| name.contains("counter")) {
-				let mut call = json!({"type":"function_call","id":"widget-origin","call_id":"widget-origin-call","name":spec["name"],"arguments":"{\"value\":7}"});
+				let mut call = serde_json::json!({"type":"function_call","id":"widget-origin","call_id":"widget-origin-call","name":spec["name"],"arguments":"{\"value\":7}"});
 
 				if let Some(namespace) = namespace {
-					call["namespace"] = json!(namespace);
+					call["namespace"] = serde_json::json!(namespace);
 				}
 
 				return Some(call);
@@ -145,17 +145,19 @@ async fn qualify(home: &Path) {
 	fs::write(
 		&catalog,
 		serde_json::to_vec(
-			&json!({"models":[effort::fixture_model("cold-native-model", "provider-effort")]}),
+			&serde_json::json!({"models":[effort::fixture_model("cold-native-model", "provider-effort")]}),
 		)
 		.expect("native cold-read qualification"),
 	)
 	.expect("native cold-read qualification");
-	fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", json!(catalog))).expect("native cold-read qualification");
+	fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", serde_json::json!(catalog))).expect("native cold-read qualification");
 
 	let mut native = NativeSession::start(&binary, &native_home);
 	let started = native
 		.client
-		.thread_start(json!({"cwd":home,"approvalPolicy":"never","sandbox":"read-only"}))
+		.thread_start(
+			serde_json::json!({"cwd":home,"approvalPolicy":"never","sandbox":"read-only"}),
+		)
 		.await
 		.expect("native cold-read qualification");
 	let thread =
@@ -163,7 +165,7 @@ async fn qualify(home: &Path) {
 	let turn = native
 		.client
 		.turn_start(
-			json!({"threadId":thread,"input":[{"type":"text","text":"Save fixture input"}]}),
+			serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Save fixture input"}]}),
 		)
 		.await
 		.expect("native cold-read qualification");
@@ -323,13 +325,13 @@ async fn enroll_numbered(
 	} else {
 		format!("workspace-fixture-{number}")
 	};
-	let claims = json!({"email":"fixture@example.test","exp":4102444800_u64,"https://api.openai.com/auth":{"chatgpt_account_id":workspace,"chatgpt_user_id":"user-fixture","chatgpt_plan_type":"team"}});
+	let claims = serde_json::json!({"email":"fixture@example.test","exp":4102444800_u64,"https://api.openai.com/auth":{"chatgpt_account_id":workspace,"chatgpt_user_id":"user-fixture","chatgpt_plan_type":"team"}});
 	let token = format!(
 		"{}.{}.fixture-signature",
 		URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#),
 		URL_SAFE_NO_PAD.encode(claims.to_string())
 	);
-	let value = json!({"auth_mode":"chatgpt","tokens":{"access_token":token,"id_token":token,"refresh_token":"fixture-only","account_id":workspace},"last_refresh":"2026-09-24T00:00:00Z"});
+	let value = serde_json::json!({"auth_mode":"chatgpt","tokens":{"access_token":token,"id_token":token,"refresh_token":"fixture-only","account_id":workspace},"last_refresh":"2026-09-24T00:00:00Z"});
 	let path = home.join("synthetic-credential.json");
 	let mut file = OpenOptions::new()
 		.write(true)
@@ -364,7 +366,7 @@ async fn enroll_numbered(
 			|result| {
 				assert!(result.is_ok());
 
-				Ok(json!({"enrolled":true}))
+				Ok(serde_json::json!({"enrolled":true}))
 			},
 		)
 		.await
@@ -433,11 +435,15 @@ async fn serve(
 			metadata.fetch_add(1, Ordering::AcqRel);
 
 			if path.contains("/models") {
-				(200, "application/json", json!({"models":[effort::fixture_model("cold-native-model", "provider-effort")]}).to_string())
+				(200, "application/json", serde_json::json!({"models":[effort::fixture_model("cold-native-model", "provider-effort")]}).to_string())
 			} else if path.contains("/accounts/check") {
-				(200,"application/json",json!({"accounts":[{"id":"workspace-fixture","workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"},{"id":"workspace-fixture-2","workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"}]}).to_string())
+				(200,"application/json",serde_json::json!({"accounts":[{"id":"workspace-fixture","workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"},{"id":"workspace-fixture-2","workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"}]}).to_string())
 			} else if path.contains("/settings/user") {
-				(200, "application/json", json!({"commit_attribution_enabled":false}).to_string())
+				(
+					200,
+					"application/json",
+					serde_json::json!({"commit_attribution_enabled":false}).to_string(),
+				)
 			} else if path.contains("/plugins/featured") {
 				(200, "application/json", "[]".into())
 			} else {
@@ -498,12 +504,12 @@ async fn serve(
 			let output = if env::var("DECODEX_TEST_APP_UI").as_deref() == Ok("1") && serial == 0 {
 				counter_output(&input)
 			} else {
-				json!({"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":answer}]})
+				serde_json::json!({"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":answer}]})
 			};
 			let frames = [
-				json!({"type":"response.created","response":{"id":id}}),
-				json!({"type":"response.output_item.done","item":output}),
-				json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
+				serde_json::json!({"type":"response.created","response":{"id":id}}),
+				serde_json::json!({"type":"response.output_item.done","item":output}),
+				serde_json::json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
 			];
 
 			(

@@ -5,8 +5,8 @@ async fn reasoning_summary_stream_keeps_typed_items_and_excludes_raw_and_voice_d
 	let (mut agent, _sent, _directory) = fixture().await;
 	let work = agent.start_agent("agent", "Talk").await.unwrap();
 	let event = |method: &str, mut params: Value| {
-		params["threadId"] = json!(work.codex_thread_id);
-		params["turnId"] = json!(work.active_turn_id);
+		params["threadId"] = serde_json::json!(work.codex_thread_id);
+		params["turnId"] = serde_json::json!(work.active_turn_id);
 
 		ServerEvent::Notification { method: method.into(), params }
 	};
@@ -14,51 +14,51 @@ async fn reasoning_summary_stream_keeps_typed_items_and_excludes_raw_and_voice_d
 	agent
 		.handle_event(event(
 			"item/started",
-			json!({"item":{"type":"reasoning","id":"typed","summary":[]}}),
+			serde_json::json!({"item":{"type":"reasoning","id":"typed","summary":[]}}),
 		))
 		.await
 		.unwrap();
 	agent
 		.handle_event(event(
 			"item/reasoning/textDelta",
-			json!({"itemId":"typed","delta":"PRIVATE_RAW"}),
+			serde_json::json!({"itemId":"typed","delta":"PRIVATE_RAW"}),
 		))
 		.await
 		.unwrap();
 	agent
 		.handle_event(event(
 			"item/reasoning/summaryTextDelta",
-			json!({"itemId":"typed","summaryIndex":0,"delta":"Public summary."}),
+			serde_json::json!({"itemId":"typed","summaryIndex":0,"delta":"Public summary."}),
 		))
 		.await
 		.unwrap();
-	agent.handle_event(event("item/started", json!({"item":{"type":"userMessage","id":"handoff","content":[{"type":"text","text":"<realtime_delegation><input>Voice request</input></realtime_delegation>","textElements":[]}]}}))).await.unwrap();
+	agent.handle_event(event("item/started", serde_json::json!({"item":{"type":"userMessage","id":"handoff","content":[{"type":"text","text":"<realtime_delegation><input>Voice request</input></realtime_delegation>","textElements":[]}]}}))).await.unwrap();
 	agent
 		.handle_event(event(
 			"item/started",
-			json!({"item":{"type":"reasoning","id":"voice","summary":[]}}),
+			serde_json::json!({"item":{"type":"reasoning","id":"voice","summary":[]}}),
 		))
 		.await
 		.unwrap();
 	agent
 		.handle_event(event(
 			"item/reasoning/summaryTextDelta",
-			json!({"itemId":"voice","summaryIndex":0,"delta":"PRIVATE_VOICE"}),
+			serde_json::json!({"itemId":"voice","summaryIndex":0,"delta":"PRIVATE_VOICE"}),
 		))
 		.await
 		.unwrap();
 	agent
 		.handle_event(event(
 			"item/completed",
-			json!({"item":{"type":"reasoning","id":"voice","summary":["PRIVATE_VOICE"]}}),
+			serde_json::json!({"item":{"type":"reasoning","id":"voice","summary":["PRIVATE_VOICE"]}}),
 		))
 		.await
 		.unwrap();
-	agent.handle_event(event("item/completed", json!({"item":{"type":"reasoning","id":"typed","summary":["Corrected public summary."],"content":["PRIVATE_RAW"]}}))).await.unwrap();
+	agent.handle_event(event("item/completed", serde_json::json!({"item":{"type":"reasoning","id":"typed","summary":["Corrected public summary."],"content":["PRIVATE_RAW"]}}))).await.unwrap();
 	agent
 		.handle_event(event(
 			"item/reasoning/summaryTextDelta",
-			json!({"itemId":"typed","summaryIndex":0,"delta":"Late"}),
+			serde_json::json!({"itemId":"typed","summaryIndex":0,"delta":"Late"}),
 		))
 		.await
 		.unwrap();

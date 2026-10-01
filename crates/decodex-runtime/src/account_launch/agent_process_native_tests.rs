@@ -108,7 +108,7 @@ impl NativeSession {
 			}
 		});
 
-		writeln!(stdin, "{}", json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"decodex_native_history_test","version":"0.1"},"capabilities":{"experimentalApi":true,"optOutNotificationMethods":["rawResponseItem/completed"]}}})).expect("native session setup");
+		writeln!(stdin, "{}", serde_json::json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"decodex_native_history_test","version":"0.1"},"capabilities":{"experimentalApi":true,"optOutNotificationMethods":["rawResponseItem/completed"]}}})).expect("native session setup");
 
 		let deadline = Instant::now() + Duration::from_secs(15);
 
@@ -126,7 +126,8 @@ impl NativeSession {
 			}
 		}
 
-		writeln!(stdin, "{}", json!({"method":"initialized"})).expect("native session setup");
+		writeln!(stdin, "{}", serde_json::json!({"method":"initialized"}))
+			.expect("native session setup");
 
 		let binding = AccountBinding::fixture(
 			AccountId::new("10000000-0000-4000-8000-000000000001").expect("native session setup"),
@@ -186,7 +187,7 @@ async fn qualify_notification_media(omit_media: bool) -> Vec<Vec<Value>> {
 		None,
 		Some(Arc::clone(&bodies)),
 		None,
-		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]}),
+		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]}),
 	));
 
 	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated history fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[features]\nomit_app_server_notification_media = {omit_media}\n")).expect("native notification media fixture");
@@ -194,13 +195,13 @@ async fn qualify_notification_media(omit_media: bool) -> Vec<Vec<Value>> {
 	let mut session = NativeSession::start(&binary, home.path());
 	let (id, before) = time::timeout(Duration::from_secs(30), async {
 		let client = &session.client;
-		let started = client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.expect("native notification media fixture");
+		let started = client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.expect("native notification media fixture");
 		let id = started["thread"]["id"].as_str().expect("native notification media fixture");
 
 		assert!(matches!(client.thread_timeline_page(id, None, 30).await,
 			Err(ClientError::Remote(error)) if error.code == -32_601));
 
-		let read = client.thread_read(json!({"threadId":id,"includeTurns":false})).await.expect("native notification media fixture");
+		let read = client.thread_read(serde_json::json!({"threadId":id,"includeTurns":false})).await.expect("native notification media fixture");
 
 		assert_eq!(read["thread"]["id"], id);
 		assert_eq!(read["thread"]["historyMode"], "paginated");
@@ -267,7 +268,7 @@ async fn qualify_history(
 ) {
 	for text in ["First native history input", "Second native history input"] {
 		let turn = client
-			.turn_start(json!({"threadId":thread_id,"input":[{"type":"text","text":text},{"type":"image","url":format!("data:image/png;base64,{PNG}")}]}))
+			.turn_start(serde_json::json!({"threadId":thread_id,"input":[{"type":"text","text":text},{"type":"image","url":format!("data:image/png;base64,{PNG}")}]}))
 			.await
 			.expect("native history fixture operation");
 		let mut user_events = HashSet::new();
@@ -428,7 +429,7 @@ async fn serve_with_effort(
 	requests: Arc<std::sync::atomic::AtomicUsize>,
 	effort: Option<&str>,
 ) {
-	serve_fixture(listener, requests, effort, None, None, |serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]})).await;
+	serve_fixture(listener, requests, effort, None, None, |serial| serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native bridge answer"}]})).await;
 }
 
 async fn serve_fixture(
@@ -439,7 +440,7 @@ async fn serve_fixture(
 	usage: Option<Value>,
 	output: impl Fn(usize) -> Value,
 ) {
-	serve_fixture_usage(listener, requests, effort, bodies, |_| usage.clone().unwrap_or_else(|| json!({"extra":{"fixture":"native-usage"},"input_tokens":0,"output_tokens":0,"total_tokens":0})), output).await;
+	serve_fixture_usage(listener, requests, effort, bodies, |_| usage.clone().unwrap_or_else(|| serde_json::json!({"extra":{"fixture":"native-usage"},"input_tokens":0,"output_tokens":0,"total_tokens":0})), output).await;
 }
 
 async fn serve_fixture_usage(
@@ -454,13 +455,13 @@ async fn serve_fixture_usage(
 			let id = format!("fixture-{serial}");
 			let output = output(serial);
 			let items = output.as_array().cloned().unwrap_or_else(|| vec![output]);
-			let mut frames = vec![json!({"type":"response.created","response":{"id":id}})];
+			let mut frames = vec![serde_json::json!({"type":"response.created","response":{"id":id}})];
 
 			frames.extend(
-				items.into_iter().map(|item| json!({"type":"response.output_item.done","item":item})),
+				items.into_iter().map(|item| serde_json::json!({"type":"response.output_item.done","item":item})),
 			);
 			frames.extend([
-				json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":usage(serial)}}),
+				serde_json::json!({"type":"response.completed","response":{"id":id,"usage_metadata":{"amount":"0.12345678901234567890"},"usage":usage(serial)}}),
 			]);
 
 			frames

@@ -1,6 +1,6 @@
 //! Restore native task configuration without applying creation defaults.
 use crate::{
-	agent::{self, AgentCoordinator, AgentError, Value},
+	agent::{AgentCoordinator, AgentError, Value},
 	agent_models, agent_permissions, agent_plugins,
 };
 
@@ -61,13 +61,13 @@ impl AgentCoordinator {
 		let mut params = Self::resume_params(thread);
 
 		params["initialTurnsPage"] =
-			agent::json!({"limit":1,"sortDirection":"desc","itemsView":"summary"});
+			serde_json::json!({"limit":1,"sortDirection":"desc","itemsView":"summary"});
 
 		params
 	}
 
 	pub(super) fn resume_params(thread: &str) -> Value {
-		agent::json!({"threadId":thread,"excludeTurns":true,"experimentalRawEvents":true})
+		serde_json::json!({"threadId":thread,"excludeTurns":true,"experimentalRawEvents":true})
 	}
 
 	pub(super) fn hydrated_thread_matches(response: &Value, thread: &str) -> bool {

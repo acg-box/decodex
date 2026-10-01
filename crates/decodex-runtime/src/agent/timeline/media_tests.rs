@@ -75,7 +75,7 @@ fn continuation_rejects_changed_bytes_binding_and_out_of_range_offsets() {
 
 #[test]
 fn exact_item_indices_and_supported_payloads_are_required() {
-	let history = json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"item","type":"userMessage","content":[{"type":"text","text":"literal"},{"type":"image","url":"data:image/png;base64,AQID"}]}]}]}});
+	let history = serde_json::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"item","type":"userMessage","content":[{"type":"text","text":"literal"},{"type":"image","url":"data:image/png;base64,AQID"}]}]}]}});
 	let mut req = request();
 	let item = promotions::exact_item(
 		&history,
@@ -111,14 +111,14 @@ fn exact_item_indices_and_supported_payloads_are_required() {
 
 	for (item, index) in [
 		(
-			json!({"type":"dynamicToolCall","contentItems":[{"type":"inputAudio","audioUrl":"data:audio/wav;base64,AQID"}]}),
+			serde_json::json!({"type":"dynamicToolCall","contentItems":[{"type":"inputAudio","audioUrl":"data:audio/wav;base64,AQID"}]}),
 			0,
 		),
 		(
-			json!({"type":"mcpToolCall","result":{"content":[{"type":"image","mimeType":"image/png","data":"AQID"}]}}),
+			serde_json::json!({"type":"mcpToolCall","result":{"content":[{"type":"image","mimeType":"image/png","data":"AQID"}]}}),
 			0,
 		),
-		(json!({"type":"imageGeneration","savedPath":null,"result":"AQID"}), 0),
+		(serde_json::json!({"type":"imageGeneration","savedPath":null,"result":"AQID"}), 0),
 	] {
 		assert!(locate(&item, index).is_ok());
 	}
@@ -126,7 +126,7 @@ fn exact_item_indices_and_supported_payloads_are_required() {
 
 #[test]
 fn standalone_tool_media_uses_native_indices_without_exposing_encrypted_parts() {
-	let item = json!({"type":"functionCallOutput","output":[
+	let item = serde_json::json!({"type":"functionCallOutput","output":[
 		{"type":"input_text","text":"Description"},
 		{"type":"input_image","image_url":"data:image/png;base64,AQID"},
 		{"type":"input_audio","audio_url":"data:audio/wav;base64,AQID"},
@@ -150,7 +150,7 @@ fn executor_image_path_cannot_read_a_same_named_host_file() {
 
 	fs::write(&path, b"\x89PNG\r\n\x1a\nlocal-private-content").unwrap();
 
-	let item = json!({"id":"image","type":"imageView","path":path});
+	let item = serde_json::json!({"id":"image","type":"imageView","path":path});
 
 	assert!(matches!(locate(&item, 0), Err(Result::Unsupported)));
 
@@ -164,16 +164,16 @@ async fn server(remote: DuplexStream, path: Option<String>) {
 	let (reader, mut writer) = io::split(remote);
 	let mut lines = BufReader::new(reader).lines();
 	let content = if let Some(path) = path {
-		json!({"type":"localImage","path":path})
+		serde_json::json!({"type":"localImage","path":path})
 	} else {
-		json!({"type":"image","url":"data:image/png;base64,AQID"})
+		serde_json::json!({"type":"image","url":"data:image/png;base64,AQID"})
 	};
 	let replies = vec![
-		("thread/read", json!({"thread":{"id":"thread","historyMode":"paginated"}})),
-		("thread/turns/list", json!({"data":[{"id":"turn"}],"nextCursor":null})),
+		("thread/read", serde_json::json!({"thread":{"id":"thread","historyMode":"paginated"}})),
+		("thread/turns/list", serde_json::json!({"data":[{"id":"turn"}],"nextCursor":null})),
 		(
 			"thread/items/list",
-			json!({"data":[{"turnId":"turn","item":{"id":"item","type":"userMessage","content":[{"type":"text","text":"image"},content]}}],"nextCursor":null}),
+			serde_json::json!({"data":[{"turnId":"turn","item":{"id":"item","type":"userMessage","content":[{"type":"text","text":"image"},content]}}],"nextCursor":null}),
 		),
 	];
 
@@ -184,7 +184,9 @@ async fn server(remote: DuplexStream, path: Option<String>) {
 		assert_eq!(request["method"], method);
 
 		writer
-			.write_all(format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes())
+			.write_all(
+				format!("{}\n", serde_json::json!({"id":request["id"],"result":result})).as_bytes(),
+			)
 			.await
 			.unwrap();
 	}
@@ -277,13 +279,16 @@ async fn oversized_local_attachment_does_not_send_file_bytes_through_native_tran
 		let mut lines = BufReader::new(reader).lines();
 
 		for (method, result) in [
-			("thread/read", json!({"thread":{"id":"thread","historyMode":"paginated"}})),
-			("thread/turns/list", json!({"data":[{"id":"turn"}],"nextCursor":null})),
+			(
+				"thread/read",
+				serde_json::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
+			),
+			("thread/turns/list", serde_json::json!({"data":[{"id":"turn"}],"nextCursor":null})),
 			(
 				"thread/items/list",
-				json!({"data":[{"turnId":"turn","item":{"id":"item","type":"userMessage","content":[{"type":"text","text":"image"},{"type":"localImage","path":path}]}}],"nextCursor":null}),
+				serde_json::json!({"data":[{"turnId":"turn","item":{"id":"item","type":"userMessage","content":[{"type":"text","text":"image"},{"type":"localImage","path":path}]}}],"nextCursor":null}),
 			),
-			("thread/read", json!({"thread":{"id":"peer","historyMode":"paginated"}})),
+			("thread/read", serde_json::json!({"thread":{"id":"peer","historyMode":"paginated"}})),
 		] {
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -291,7 +296,10 @@ async fn oversized_local_attachment_does_not_send_file_bytes_through_native_tran
 			assert_eq!(request["method"], method);
 
 			writer
-				.write_all(format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes())
+				.write_all(
+					format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
+						.as_bytes(),
+				)
 				.await
 				.unwrap();
 		}
@@ -305,7 +313,7 @@ async fn oversized_local_attachment_does_not_send_file_bytes_through_native_tran
 
 	assert_eq!(result, Result::CapacityExceeded);
 
-	let peer = client.thread_read(json!({"threadId":"peer"})).await.unwrap();
+	let peer = client.thread_read(serde_json::json!({"threadId":"peer"})).await.unwrap();
 
 	assert_eq!(peer["thread"]["id"], "peer");
 
@@ -348,8 +356,7 @@ async fn generated_image_uses_native_bytes_even_when_saved_path_exists() {
 	fs::write(&path, b"\x89PNG\r\n\x1a\nwrong-host-image").unwrap();
 
 	let expected = b"\x89PNG\r\n\x1a\nnative-image";
-	let mut item =
-		json!({"type":"imageGeneration","savedPath":path,"result":STANDARD.encode(expected)});
+	let mut item = serde_json::json!({"type":"imageGeneration","savedPath":path,"result":STANDARD.encode(expected)});
 
 	assert_eq!(
 		resolve(locate(&item, 0).unwrap(), None).await,
@@ -363,7 +370,7 @@ async fn generated_image_uses_native_bytes_even_when_saved_path_exists() {
 		Ok(("image/png".into(), expected.to_vec()))
 	);
 
-	item["result"] = json!("");
+	item["result"] = serde_json::json!("");
 
 	assert!(matches!(locate(&item, 0), Err(Result::Unsupported)));
 }

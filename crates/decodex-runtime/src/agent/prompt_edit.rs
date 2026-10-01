@@ -4,7 +4,7 @@ use std::time::Duration;
 use sha2::{Digest as _, Sha256};
 use tokio::time;
 
-use crate::agent::{self, AgentCoordinator, AgentError, ClientError, HistoryGuard};
+use crate::agent::{AgentCoordinator, AgentError, ClientError, HistoryGuard};
 use decodex_codex::app_server_client::ThreadForkBoundary;
 use decodex_database::{
 	AgentForkAttempt, AgentForkBoundary, AgentForkReceipt, AgentPromptEditAttempt,
@@ -138,7 +138,7 @@ impl AgentCoordinator {
 		}
 
 		let thread = saved.target_thread.as_ref().ok_or_else(rejected)?;
-		let metadata = self.client.thread_read(agent::json!({"threadId":thread})).await?;
+		let metadata = self.client.thread_read(serde_json::json!({"threadId":thread})).await?;
 
 		if metadata["thread"]["id"] != thread.as_str()
 			|| metadata["thread"]["forkedFromId"] != saved.attempt.source.thread
@@ -183,7 +183,9 @@ impl AgentCoordinator {
 			return Ok(None);
 		};
 
-		if super::voice_handoff(&agent::json!({"type":"userMessage","content":candidate.content})) {
+		if super::voice_handoff(
+			&serde_json::json!({"type":"userMessage","content":candidate.content}),
+		) {
 			return Ok(None);
 		}
 
@@ -199,7 +201,7 @@ impl AgentCoordinator {
 			content: candidate.content,
 		};
 
-		attempt.review_token = Sha256::digest(agent::json!(attempt).to_string().as_bytes())
+		attempt.review_token = Sha256::digest(serde_json::json!(attempt).to_string().as_bytes())
 			.iter()
 			.map(|b| format!("{b:02x}"))
 			.collect();
@@ -243,7 +245,7 @@ impl AgentCoordinator {
 			Duration::from_secs(60),
 			self.client.request_with_history(
 				"thread/revert",
-				agent::json!({"threadId":a.thread,"beforeTurnId":a.before_turn_id}),
+				serde_json::json!({"threadId":a.thread,"beforeTurnId":a.before_turn_id}),
 				current.guard,
 			),
 		)
@@ -315,7 +317,7 @@ impl AgentCoordinator {
 		let current = self.store.agent_prompt_edit_receipt(work.into(), thread.into()).await?;
 
 		if current.as_ref().is_some_and(|r| r.state == "applied") {
-			self.observe_notification("thread/reverted", &agent::json!({"threadId":thread}))
+			self.observe_notification("thread/reverted", &serde_json::json!({"threadId":thread}))
 				.await?;
 			self.recover_async_questions().await?;
 
@@ -332,7 +334,7 @@ impl AgentCoordinator {
 		thread: &str,
 	) -> Result<(Vec<String>, HistoryGuard), AgentError> {
 		let guard = self.client.thread_settings_guard(thread).ok_or_else(rejected)?;
-		let metadata = self.client.thread_read(agent::json!({"threadId":thread})).await?;
+		let metadata = self.client.thread_read(serde_json::json!({"threadId":thread})).await?;
 
 		if metadata["thread"]["id"] != thread || metadata["thread"]["historyMode"] != "paginated" {
 			return Err(rejected());

@@ -2,7 +2,7 @@ use crate::agent::tests::*;
 
 #[test]
 fn completion_summary_excludes_nonfinal_and_unscoped_items() {
-	let turn = json!({"status":"completed","itemsView":"summary","items":[
+	let turn = serde_json::json!({"status":"completed","itemsView":"summary","items":[
 		{"type":"agentMessage","id":"valid","text":"Legacy final"},
 		{"type":"agentMessage","id":"comment","phase":"commentary","text":"Progress"},
 		{"type":"agentMessage","id":"empty","phase":"final_answer","text":" "},
@@ -14,7 +14,7 @@ fn completion_summary_excludes_nonfinal_and_unscoped_items() {
 	for (field, value) in [("status", "failed"), ("itemsView", "notLoaded")] {
 		let mut invalid = turn.clone();
 
-		invalid[field] = json!(value);
+		invalid[field] = serde_json::json!(value);
 
 		assert!(result_messages::completion_summary(&invalid).is_none());
 	}
@@ -22,7 +22,7 @@ fn completion_summary_excludes_nonfinal_and_unscoped_items() {
 
 #[tokio::test]
 async fn paginated_recovery_retains_exact_worker_output_without_full_thread_hydration() {
-	let history = json!({"opaque thread/1":{"thread":{
+	let history = serde_json::json!({"opaque thread/1":{"thread":{
 		"id":"opaque thread/1","historyMode":"paginated","status":{"type":"idle"},
 		"turns":[{"id":"opaque turn/1","status":"completed",
 		"startedAt":1_700_000_000,"completedAt":1_700_000_125,"durationMs":125_000,"items":[
@@ -65,16 +65,16 @@ async fn paginated_recovery_retains_exact_worker_output_without_full_thread_hydr
 async fn recovery_saves_large_result_without_duplicating_terminal_items() {
 	for with_id in [false, true] {
 		let text = "界🙂\"\\\n\u{0001}".repeat(12_000);
-		let mut item = json!({"type":"agentMessage","text":text});
+		let mut item = serde_json::json!({"type":"agentMessage","text":text});
 
 		if with_id {
-			item["id"] = json!("large-answer");
+			item["id"] = serde_json::json!("large-answer");
 		}
 
-		let turn = json!({"id":"opaque turn/1","status":"failed",
+		let turn = serde_json::json!({"id":"opaque turn/1","status":"failed",
 			"items":[item],
 			"error":{"message":"Failure details ".repeat(8_000),"code":"failed"}});
-		let history = json!({"opaque thread/1":{"thread":{
+		let history = serde_json::json!({"opaque thread/1":{"thread":{
 			"id":"opaque thread/1","status":{"type":"idle"},"turns":[turn]
 		}}});
 		let (mut coordinator, _sent, _directory) = fixture_with_history(history).await;
@@ -114,15 +114,15 @@ async fn completion_summary_repairs_missing_final_output_without_claiming_full_r
 	for readback in [
 		Err(ClientError::Closed),
 		Ok(
-			json!({"thread":{"id":"foreign","turns":[{"id":"opaque turn/1","items":[{"type":"agentMessage","id":"foreign-answer","text":"Foreign output"}]}]}}),
+			serde_json::json!({"thread":{"id":"foreign","turns":[{"id":"opaque turn/1","items":[{"type":"agentMessage","id":"foreign-answer","text":"Foreign output"}]}]}}),
 		),
 	] {
 		let (mut coordinator, _sent, _directory) = fixture().await;
 
 		coordinator.start_agent("agent", "Coordinate").await.unwrap();
-		coordinator.observe_live_text("item/agentMessage/delta", &json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"answer","delta":"Partial"})).await.unwrap();
+		coordinator.observe_live_text("item/agentMessage/delta", &serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":"answer","delta":"Partial"})).await.unwrap();
 
-		let params = json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","itemsView":"summary","items":[{"type":"agentMessage","id":"answer","phase":"final_answer","text":"Complete answer"}]}});
+		let params = serde_json::json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","itemsView":"summary","items":[{"type":"agentMessage","id":"answer","phase":"final_answer","text":"Complete answer"}]}});
 
 		coordinator.record_terminal(params.clone(), readback, true).await.unwrap();
 		// A repeated terminal cannot append or replace output for a finished turn.

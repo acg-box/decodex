@@ -2,7 +2,6 @@
 use std::{future::Future, time::Duration};
 
 use AgentHostError::{Rejected, Unknown};
-use serde_json::json;
 use sha2::{Digest as _, Sha256};
 use tokio::time;
 
@@ -86,7 +85,8 @@ fn project(
 }
 
 async fn inspect(source: &Source) -> Option<(NativeSearchSettings, String)> {
-	let native = source.client.thread_read(json!({"threadId":source.key.thread})).await.ok()?;
+	let native =
+		source.client.thread_read(serde_json::json!({"threadId":source.key.thread})).await.ok()?;
 
 	if native["thread"]["id"] != source.key.thread {
 		return None;
@@ -94,7 +94,7 @@ async fn inspect(source: &Source) -> Option<(NativeSearchSettings, String)> {
 
 	let settings = source.client.search_settings(native["thread"]["cwd"].as_str()?).await.ok()?;
 	let key = &source.key;
-	let identity = json!([
+	let identity = serde_json::json!([
 		key.work,
 		key.thread,
 		key.generation.as_str(),

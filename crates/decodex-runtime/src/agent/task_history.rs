@@ -3,7 +3,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use reqwest::Url;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::agent::{self, AgentCoordinator, AgentError, AgentWorkItem};
@@ -77,8 +77,10 @@ impl AgentCoordinator {
 				return Err(AgentError::Invalid("work thread changed during search".into()));
 			}
 
-			return Ok(json!({"workId":id,"threadId":expected,"occurrences":page["data"],
-				"nextCursor":page["nextCursor"],"evidenceOnly":true,"sourceUrl":source_url(&expected)}));
+			return Ok(
+				serde_json::json!({"workId":id,"threadId":expected,"occurrences":page["data"],
+				"nextCursor":page["nextCursor"],"evidenceOnly":true,"sourceUrl":source_url(&expected)}),
+			);
 		}
 
 		let native = self.client.thread_history_page(&expected, cursor, limit).await?;
@@ -94,7 +96,7 @@ impl AgentCoordinator {
 			.iter()
 			.map(|turn| summarize_turn(turn, outputs))
 			.collect();
-		let result = json!({"workId":id,"threadId":expected,"turns":turns,
+		let result = serde_json::json!({"workId":id,"threadId":expected,"turns":turns,
 			"order":"newest_first","nextCursor":native["nextCursor"],
 			"evidenceOnly":true,"previousThreadIds":previous});
 
@@ -142,14 +144,17 @@ impl AgentCoordinator {
 			};
 
 			if let Some(work) = work {
-				matches.push(json!({"workId":work,"threadId":thread,"title":row["title"],
+				matches
+					.push(serde_json::json!({"workId":work,"threadId":thread,"title":row["title"],
 					"snippet":row["snippet"],"sourceUrl":source_url(thread)}));
 			}
 		}
 
-		Ok(json!({"matches":matches,"nextCursor":page["nextCursor"],"evidenceOnly":true,
+		Ok(
+			serde_json::json!({"matches":matches,"nextCursor":page["nextCursor"],"evidenceOnly":true,
 			"scope":"current native connection; owned work and user-selected task references",
-			"pageMayBeEmptyAfterScopeFilter":true}))
+			"pageMayBeEmptyAfterScopeFilter":true}),
+		)
 	}
 
 	async fn native_history_search(
@@ -163,12 +168,12 @@ impl AgentCoordinator {
 			.ok_or_else(|| AgentError::Invalid("searchTerm must contain 1 to 512 bytes".into()))?;
 		let cursor = match args.get("cursor") {
 			None | Some(Value::Null) => Value::Null,
-			Some(Value::String(s)) if !s.is_empty() && s.len() <= 4_096 => json!(s),
+			Some(Value::String(s)) if !s.is_empty() && s.len() <= 4_096 => serde_json::json!(s),
 			_ => return Err(AgentError::Invalid("invalid search cursor".into())),
 		};
-		let mut params = json!({"searchTerm":query,"cursor":cursor,"limit":20});
+		let mut params = serde_json::json!({"searchTerm":query,"cursor":cursor,"limit":20});
 		let method = if let Some(thread) = thread {
-			params["threadId"] = json!(thread);
+			params["threadId"] = serde_json::json!(thread);
 			"thread/searchOccurrences"
 		} else {
 			let archived = match args.get("archived") {
@@ -177,9 +182,9 @@ impl AgentCoordinator {
 				_ => return Err(AgentError::Invalid("archived must be boolean".into())),
 			};
 
-			params["archived"] = json!(archived);
-			params["sortKey"] = json!("recency_at");
-			params["sourceKinds"] = json!([
+			params["archived"] = serde_json::json!(archived);
+			params["sortKey"] = serde_json::json!("recency_at");
+			params["sourceKinds"] = serde_json::json!([
 				"cli",
 				"vscode",
 				"exec",
@@ -202,7 +207,7 @@ impl AgentCoordinator {
 			Value::Null => Value::Null,
 			Value::String(next)
 				if !next.is_empty() && next.len() <= 4_096 && page["nextCursor"] != cursor =>
-				json!(next),
+				serde_json::json!(next),
 			_ => return Err(invalid()),
 		};
 		let mut data = Vec::new();
@@ -218,19 +223,19 @@ impl AgentCoordinator {
 					.filter(|s| !s.is_empty() && s.len() <= 4_096)
 					.ok_or_else(invalid)?;
 
-				json!({"turnId":turn,"itemId":item,"turnCursor":turn_cursor,"snippet":snippet,
+				serde_json::json!({"turnId":turn,"itemId":item,"turnCursor":turn_cursor,"snippet":snippet,
 					"snippetMatchRange":row["snippetMatchRange"],"rangeEncoding":"utf16"})
 			} else {
 				let id = agent::exact(row, "/thread/id")?;
 				let title = row["thread"]["name"].as_str().filter(|s| s.len() <= 4_096);
 
-				json!({"threadId":id,"title":title,"snippet":snippet})
+				serde_json::json!({"threadId":id,"title":title,"snippet":snippet})
 			};
 
 			data.push(projected);
 		}
 
-		let result = json!({"data":data,"nextCursor":next});
+		let result = serde_json::json!({"data":data,"nextCursor":next});
 
 		if result.to_string().len() > 64 * 1_024 {
 			return Err(invalid());
@@ -254,12 +259,12 @@ fn summarize_turn(turn: &Value, outputs: bool) -> Value {
 	let summarized: Vec<_> =
 		items[start..].iter().map(|item| summarize_item(item, outputs)).collect();
 
-	json!({"id":turn["id"],"status":turn["status"],"items":summarized,
+	serde_json::json!({"id":turn["id"],"status":turn["status"],"items":summarized,
 		"omittedEarlierItems":start,"startedAt":turn["startedAt"],"completedAt":turn["completedAt"]})
 }
 
 fn summarize_item(item: &Value, outputs: bool) -> Value {
-	let mut result = json!({});
+	let mut result = serde_json::json!({});
 	let mut truncated = false;
 
 	for field in [
@@ -300,8 +305,8 @@ fn summarize_item(item: &Value, outputs: bool) -> Value {
 		}
 	}
 
-	result["truncated"] = json!(truncated);
-	result["outputsIncluded"] = json!(outputs);
+	result["truncated"] = serde_json::json!(truncated);
+	result["outputsIncluded"] = serde_json::json!(outputs);
 
 	result
 }
@@ -310,7 +315,7 @@ fn bounded(value: &Value, depth: usize, truncated: &mut bool) -> Value {
 	if depth > 4 {
 		*truncated = true;
 
-		return json!("[depth omitted]");
+		return serde_json::json!("[depth omitted]");
 	}
 
 	match value {
@@ -318,14 +323,14 @@ fn bounded(value: &Value, depth: usize, truncated: &mut bool) -> Value {
 			if text.starts_with("data:") {
 				*truncated = true;
 
-				return json!("[inline media omitted]");
+				return serde_json::json!("[inline media omitted]");
 			}
 
 			let shortened: String = text.chars().take(1_024).collect();
 
 			*truncated |= shortened.len() < text.len();
 
-			json!(shortened)
+			serde_json::json!(shortened)
 		},
 		Value::Array(values) => {
 			*truncated |= values.len() > 16;
@@ -355,12 +360,12 @@ mod tests {
 	fn summary_reports_omitted_items_and_unicode_truncation() {
 		let items: Vec<_> = (0..25)
 			.map(|id| {
-				task_history::json!({"id":id.to_string(),
+				serde_json::json!({"id":id.to_string(),
 			"type":"agentMessage","text":"界".repeat(1_100)})
 			})
 			.collect();
 		let result =
-			task_history::summarize_turn(&task_history::json!({"id":"turn","items":items}), false);
+			task_history::summarize_turn(&serde_json::json!({"id":"turn","items":items}), false);
 
 		assert_eq!(result["omittedEarlierItems"], 5);
 		assert_eq!(result["items"].as_array().unwrap().len(), 20);

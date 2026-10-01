@@ -1,6 +1,6 @@
 //! Bounded public configuration diagnostics. Never retain arbitrary provider fields.
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::agent_usage_estimate::Source;
 use decodex_codex::app_server_client::RpcError;
@@ -25,7 +25,9 @@ pub(crate) fn from_frame(bytes: &[u8]) -> Option<Value> {
 
 	let frame: Frame = serde_json::from_slice(bytes).ok()?;
 
-	notification(&json!({"summary":frame.params.summary,"details":frame.params.details}))
+	notification(
+		&serde_json::json!({"summary":frame.params.summary,"details":frame.params.details}),
+	)
 }
 
 pub(crate) fn project(params: &Value) -> Option<Value> {
@@ -48,11 +50,11 @@ pub(crate) fn project(params: &Value) -> Option<Value> {
 		}
 	};
 
-	Some(json!({"summary":clean(summary),"details":details.map(clean)}))
+	Some(serde_json::json!({"summary":clean(summary),"details":details.map(clean)}))
 }
 
 pub(crate) fn notification(params: &Value) -> Option<Value> {
-	Some(json!({"method":"configWarning","params":project(params)?}))
+	Some(serde_json::json!({"method":"configWarning","params":project(params)?}))
 }
 
 /// Keep only the public message and exact optional thread identity.
@@ -65,9 +67,9 @@ pub(crate) fn warning(params: &Value) -> Option<Value> {
 		_ => return None,
 	};
 	let message = params.get("message")?.as_str()?;
-	let projected = project(&json!({"summary":message}))?;
+	let projected = project(&serde_json::json!({"summary":message}))?;
 
-	Some(json!({"threadId":thread,"message":projected["summary"]}))
+	Some(serde_json::json!({"threadId":thread,"message":projected["summary"]}))
 }
 
 pub(crate) fn warning_from_frame(bytes: &[u8]) -> Option<Value> {
@@ -77,7 +79,7 @@ pub(crate) fn warning_from_frame(bytes: &[u8]) -> Option<Value> {
 
 	let frame: Value = serde_json::from_slice(bytes).ok()?;
 
-	Some(json!({"method":"warning","params":warning(frame.get("params")?)?}))
+	Some(serde_json::json!({"method":"warning","params":warning(frame.get("params")?)?}))
 }
 
 pub(crate) async fn record(
@@ -168,7 +170,7 @@ pub(crate) async fn record_settings_error(
 		store,
 		&source.key.work,
 		&source.key.generation,
-		&json!({"threadId":source.key.thread,"message":message}),
+		&serde_json::json!({"threadId":source.key.thread,"message":message}),
 	)
 	.await;
 }
@@ -185,12 +187,12 @@ fn mcp_reauthentication_notice(params: &Value) -> Option<Value> {
 	}
 
 	warning(
-		&json!({"threadId":params["threadId"],"message":format!("MCP server {name} needs you to sign in again. Open Codex for this account to reconnect it.")}),
+		&serde_json::json!({"threadId":params["threadId"],"message":format!("MCP server {name} needs you to sign in again. Open Codex for this account to reconnect it.")}),
 	)
 }
 
 fn settings_error_message(operation: &str, error: &RpcError) -> Option<String> {
-	let projected = project(&json!({"summary":error.message}))?;
+	let projected = project(&serde_json::json!({"summary":error.message}))?;
 
 	Some(format!(
 		"{operation}: {} (code {}). No automatic retry was made; refresh the saved settings before further action.",
@@ -206,7 +208,7 @@ mod tests {
 
 	#[test]
 	fn mcp_reauthentication_requires_explicit_native_cause() {
-		let mut params = native_config_warning::json!({"threadId":"thread","name":"docs","status":"failed","failureReason":"reauthenticationRequired","error":"PRIVATE_ERROR"});
+		let mut params = serde_json::json!({"threadId":"thread","name":"docs","status":"failed","failureReason":"reauthenticationRequired","error":"PRIVATE_ERROR"});
 		let notice = native_config_warning::mcp_reauthentication_notice(&params).unwrap();
 
 		assert_eq!(notice["threadId"], "thread");
@@ -217,14 +219,14 @@ mod tests {
 
 		assert!(native_config_warning::mcp_reauthentication_notice(&params).is_none());
 
-		params["failureReason"] = native_config_warning::json!("reauthenticationRequired");
-		params["status"] = native_config_warning::json!("ready");
+		params["failureReason"] = serde_json::json!("reauthenticationRequired");
+		params["status"] = serde_json::json!("ready");
 
 		assert!(native_config_warning::mcp_reauthentication_notice(&params).is_none());
 	}
 	#[test]
 	fn settings_errors_keep_actionable_causes_but_hide_private_material() {
-		let mut error=RpcError{code:-32_603,message:"failed to load configuration: /fixture/config.toml:1:24: unclosed array, expected `]`".into(),data:Some(native_config_warning::json!({"private":"do-not-display"}))};
+		let mut error=RpcError{code:-32_603,message:"failed to load configuration: /fixture/config.toml:1:24: unclosed array, expected `]`".into(),data:Some(serde_json::json!({"private":"do-not-display"}))};
 		let message =
 			native_config_warning::settings_error_message("Account setting failed", &error)
 				.unwrap();
@@ -254,35 +256,29 @@ mod tests {
 	#[test]
 	fn native_warning_keeps_only_safe_message_and_exact_optional_thread() {
 		let value = native_config_warning::warning(
-			&native_config_warning::json!({"threadId":"task","message":"Read failed\nRetained previous text","private":"hidden"}),
+			&serde_json::json!({"threadId":"task","message":"Read failed\nRetained previous text","private":"hidden"}),
 		)
 		.unwrap();
 
 		assert_eq!(
 			value,
-			native_config_warning::json!({"threadId":"task","message":"Read failed\nRetained previous text"})
+			serde_json::json!({"threadId":"task","message":"Read failed\nRetained previous text"})
+		);
+		assert!(
+			native_config_warning::warning(&serde_json::json!({"threadId":12,"message":"warning"}))
+				.is_none()
+		);
+		assert!(
+			native_config_warning::warning(&serde_json::json!({"threadId":"","message":"warning"}))
+				.is_none()
+		);
+		assert!(
+			native_config_warning::warning(&serde_json::json!({"message":"x".repeat(8_193)}))
+				.is_none()
 		);
 		assert!(
 			native_config_warning::warning(
-				&native_config_warning::json!({"threadId":12,"message":"warning"})
-			)
-			.is_none()
-		);
-		assert!(
-			native_config_warning::warning(
-				&native_config_warning::json!({"threadId":"","message":"warning"})
-			)
-			.is_none()
-		);
-		assert!(
-			native_config_warning::warning(
-				&native_config_warning::json!({"message":"x".repeat(8_193)})
-			)
-			.is_none()
-		);
-		assert!(
-			native_config_warning::warning(
-				&native_config_warning::json!({"message":"Bearer fixture-private-access-token-123456789"})
+				&serde_json::json!({"message":"Bearer fixture-private-access-token-123456789"})
 			)
 			.unwrap()["message"]
 				.as_str()
@@ -299,27 +295,27 @@ mod tests {
 	}
 	#[test]
 	fn only_bounded_public_diagnostics_are_projected() {
-		let warning = native_config_warning::project(&native_config_warning::json!({"summary":"Ignored \"setting\"","details":"one\ntwo","path":"private","unknown":"secret"})).unwrap();
+		let warning = native_config_warning::project(&serde_json::json!({"summary":"Ignored \"setting\"","details":"one\ntwo","path":"private","unknown":"secret"})).unwrap();
 
 		assert_eq!(
 			warning,
-			native_config_warning::json!({"summary":"Ignored \"setting\"","details":"one\ntwo"})
+			serde_json::json!({"summary":"Ignored \"setting\"","details":"one\ntwo"})
 		);
 
 		for bad in [
-			native_config_warning::json!({}),
-			native_config_warning::json!({"summary":" "}),
-			native_config_warning::json!({"summary":1}),
-			native_config_warning::json!({"summary":"x","details":false}),
-			native_config_warning::json!({"summary":"x".repeat(8_193)}),
-			native_config_warning::json!({"summary":"x","details":"x".repeat(16_385)}),
+			serde_json::json!({}),
+			serde_json::json!({"summary":" "}),
+			serde_json::json!({"summary":1}),
+			serde_json::json!({"summary":"x","details":false}),
+			serde_json::json!({"summary":"x".repeat(8_193)}),
+			serde_json::json!({"summary":"x","details":"x".repeat(16_385)}),
 		] {
 			assert!(native_config_warning::project(&bad).is_none());
 		}
 
 		let secret = "Bearer fixture-private-access-token-123456789";
 		let safe = native_config_warning::project(
-			&native_config_warning::json!({"summary":"Invalid header","details":secret}),
+			&serde_json::json!({"summary":"Invalid header","details":secret}),
 		)
 		.unwrap();
 

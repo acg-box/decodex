@@ -42,16 +42,16 @@ async fn qualify(mode: &str) {
 		None,
 		Some(bodies.clone()),
 		None,
-		|serial| json!({"type":"message","role":"assistant","id":format!("output-{serial}"),"content":[{"type":"output_text","text":if serial==1 {r#"{"summary":"The fix was tested but is not installed.","next_action":null}"#} else {"The fix is tested, but not installed."}}]}),
+		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("output-{serial}"),"content":[{"type":"output_text","text":if serial==1 {r#"{"summary":"The fix was tested but is not installed.","next_action":null}"#} else {"The fix is tested, but not installed."}}]}),
 	));
 
 	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("fixture config");
 
 	let mut session = NativeSession::start(&binary, home.path());
-	let started=session.client.thread_start(json!({"cwd":home.path(),"model":"gpt-5.6-sol","approvalPolicy":"never","sandbox":"read-only","historyMode":mode})).await.expect("parent thread");
+	let started=session.client.thread_start(serde_json::json!({"cwd":home.path(),"model":"gpt-5.6-sol","approvalPolicy":"never","sandbox":"read-only","historyMode":mode})).await.expect("parent thread");
 	let thread = started["thread"]["id"].as_str().expect("parent identity").to_owned();
 
-	session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Fix the bug and validate it. Do not install."}]})).await.expect("initial turn");
+	session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Fix the bug and validate it. Do not install."}]})).await.expect("initial turn");
 
 	while let Some(event) = session.events.recv().await {
 		if matches!(event,ServerEvent::Notification{method,params} if method=="turn/completed" && params["threadId"]==thread)
@@ -126,7 +126,9 @@ async fn qualify(mode: &str) {
 
 	session
 		.client
-		.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"New correction"}]}))
+		.turn_start(
+			serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"New correction"}]}),
+		)
 		.await
 		.expect("new input");
 

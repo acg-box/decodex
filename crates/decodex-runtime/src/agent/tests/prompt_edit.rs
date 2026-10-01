@@ -13,7 +13,7 @@ use decodex_database::{AgentForkBoundary, EnqueueAgentEvent};
 
 type NativeHistory = Arc<Mutex<Vec<Value>>>;
 fn history() -> NativeHistory {
-	Arc::new(Mutex::new(["prefix","selected","suffix"].iter().map(|id| json!({"id":id,"status":"completed","items":[{"type":"userMessage","id":format!("{id}-input"),"content":[{"type":"text","text":format!("Input {id}"),"text_elements":[]},{"type":"mention","name":"Sample","path":"plugin://sample@test"}]}]})).collect()))
+	Arc::new(Mutex::new(["prefix","selected","suffix"].iter().map(|id| serde_json::json!({"id":id,"status":"completed","items":[{"type":"userMessage","id":format!("{id}-input"),"content":[{"type":"text","text":format!("Input {id}"),"text_elements":[]},{"type":"mention","name":"Sample","path":"plugin://sample@test"}]}]})).collect()))
 }
 fn transport(
 	mode: &'static str,
@@ -48,7 +48,7 @@ fn transport(
 			if method == "thread/revert" {
 				assert_eq!(
 					request["params"],
-					json!({"threadId":"opaque thread/1","beforeTurnId":"selected"})
+					serde_json::json!({"threadId":"opaque thread/1","beforeTurnId":"selected"})
 				);
 
 				if mode != "validation" {
@@ -58,7 +58,7 @@ fn transport(
 					return;
 				}
 				if mode == "validation" || mode == "internal-after-commit" {
-					incoming.send(Ok(json!({"id":request["id"],"error":{"code":if mode=="validation" {-32_602} else {-32_603},"message":"fixture"}}))).await.unwrap();
+					incoming.send(Ok(serde_json::json!({"id":request["id"],"error":{"code":if mode=="validation" {-32_602} else {-32_603},"message":"fixture"}}))).await.unwrap();
 
 					continue;
 				}
@@ -84,12 +84,12 @@ fn transport(
 						return;
 					}
 
-					json!({"thread":{"id":"branch-thread","forkedFromId":"opaque thread/1","historyMode":"paginated","turns":[]}})
+					serde_json::json!({"thread":{"id":"branch-thread","forkedFromId":"opaque thread/1","historyMode":"paginated","turns":[]}})
 				},
 				"thread/read" if is_fork =>
-					json!({"thread":{"id":"branch-thread","forkedFromId":"opaque thread/1","historyMode":"paginated","turns":[]}}),
+					serde_json::json!({"thread":{"id":"branch-thread","forkedFromId":"opaque thread/1","historyMode":"paginated","turns":[]}}),
 				"thread/read" | "thread/revert" =>
-					json!({"thread":{"id":"opaque thread/1","historyMode":"paginated","turns":[]}}),
+					serde_json::json!({"thread":{"id":"opaque thread/1","historyMode":"paginated","turns":[]}}),
 				"thread/turns/list" => {
 					let mut turns = visible.clone();
 
@@ -98,11 +98,11 @@ fn transport(
 
 					if request["params"]["itemsView"] != "full" {
 						for t in &mut turns {
-							t["items"] = json!([]);
+							t["items"] = serde_json::json!([]);
 						}
 					}
 
-					json!({"data":turns,"nextCursor":null})
+					serde_json::json!({"data":turns,"nextCursor":null})
 				},
 				"thread/items/list" => {
 					let turn = request["params"]["turnId"].as_str().unwrap();
@@ -115,16 +115,21 @@ fn transport(
 						selected_reads += 1;
 
 						if mode == "changed-content" && selected_reads > 1 {
-							items[0]["content"][0]["text"] = json!("Different persisted input");
+							items[0]["content"][0]["text"] =
+								serde_json::json!("Different persisted input");
 						}
 					}
 
-					json!({"data":items.into_iter().map(|item|json!({"turnId":turn,"item":item})).collect::<Vec<_>>(),"nextCursor":null})
+					serde_json::json!({"data":items.into_iter().map(|item|serde_json::json!({"turnId":turn,"item":item})).collect::<Vec<_>>(),"nextCursor":null})
 				},
 				other => panic!("unexpected native effect: {other}"),
 			};
 
-			if incoming.send(Ok(json!({"id":request["id"],"result":result}))).await.is_err() {
+			if incoming
+				.send(Ok(serde_json::json!({"id":request["id"],"result":result})))
+				.await
+				.is_err()
+			{
 				break;
 			}
 		}
@@ -261,9 +266,9 @@ async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_
 		.unwrap();
 	let receipt = agent.confirm_prompt_edit(review).await.unwrap();
 	let content = vec![
-		json!({"type":"text","text":"Use $skill","text_elements":[{"byteRange":{"start":4,"end":10},"placeholder":"skill"}]}),
-		json!({"type":"image","url":format!("data:image/png;base64,{}", "A".repeat(100_000)),"detail":"original"}),
-		json!({"type":"skill","name":"skill","path":"/fixture/SKILL.md"}),
+		serde_json::json!({"type":"text","text":"Use $skill","text_elements":[{"byteRange":{"start":4,"end":10},"placeholder":"skill"}]}),
+		serde_json::json!({"type":"image","url":format!("data:image/png;base64,{}", "A".repeat(100_000)),"detail":"original"}),
+		serde_json::json!({"type":"skill","name":"skill","path":"/fixture/SKILL.md"}),
 	];
 	let saved = agent
 		.store
@@ -276,8 +281,8 @@ async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_
 		.await
 		.unwrap();
 	let event = EnqueueAgentEvent {
-		source_event_id: json!(["user_message", "agent", "canonical-send"]).to_string(), work_item_id: "agent".into(), event_kind: "user_message".into(),
-		payload: json!({"text":"BOUNDED PREVIEW ONLY","source":"user","options":{
+		source_event_id: serde_json::json!(["user_message", "agent", "canonical-send"]).to_string(), work_item_id: "agent".into(), event_kind: "user_message".into(),
+		payload: serde_json::json!({"text":"BOUNDED PREVIEW ONLY","source":"user","options":{
 			"canonicalInput":{"id":saved.id,"threadId":saved.thread,"editReceiptId":receipt.id,"sha256":saved.sha256},
 			"execution":{"reasoning_effort":"high"},"attachments":[],"taskReferences":[]
 		}}).to_string(),
@@ -330,7 +335,7 @@ async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_
 				"agent".into(),
 				"canonical-send".into(),
 				reference.clone(),
-				json!({"reasoning_effort":"low"})
+				serde_json::json!({"reasoning_effort":"low"})
 			)
 			.await
 			.unwrap(),
@@ -339,7 +344,7 @@ async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_
 
 	let mut crossed = reference;
 
-	crossed["threadId"] = json!("different-thread");
+	crossed["threadId"] = serde_json::json!("different-thread");
 
 	assert_eq!(
 		agent
@@ -355,7 +360,7 @@ async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_
 	let (params, _) =
 		agent.dispatch_input(&item, "BOUNDED PREVIEW ONLY", &[queued.id], false).await.unwrap();
 
-	assert_eq!(params["input"], json!(content));
+	assert_eq!(params["input"], serde_json::json!(content));
 	assert_eq!(params["effort"], "high");
 	assert_eq!(params["turnTrigger"], "user");
 
@@ -371,7 +376,7 @@ async fn canonical_input_queue_preserves_parts_and_settings_without_sending_the_
 
 	let mut payload: Value = serde_json::from_str(&foreign.payload).unwrap();
 
-	payload["options"]["canonicalInput"]["sha256"] = json!("0".repeat(64));
+	payload["options"]["canonicalInput"]["sha256"] = serde_json::json!("0".repeat(64));
 	foreign.payload = payload.to_string();
 
 	assert!(agent.store.enqueue_agent_event(foreign).await.is_err());

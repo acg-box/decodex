@@ -52,7 +52,7 @@ async fn native_checklist_notifications_are_not_replayed_by_history() {
             agent.initialize().await.unwrap();
 
             if !cold {
-                let response = agent.client.thread_start(json!({"model":"gpt-5.6-sol","cwd":path,"approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
+                let response = agent.client.thread_start(serde_json::json!({"model":"gpt-5.6-sol","cwd":path,"approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
 
                 thread = response["thread"]["id"].as_str().unwrap().into();
 
@@ -61,7 +61,7 @@ async fn native_checklist_notifications_are_not_replayed_by_history() {
                 agent.store.bind_agent_thread("agent".into(),thread.clone()).await.unwrap();
                 agent.store.begin_agent_dispatch("agent".into()).await.unwrap();
 
-                let started = agent.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Track the fixture checklist.","text_elements":[]}]})).await.unwrap();
+                let started = agent.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Track the fixture checklist.","text_elements":[]}]})).await.unwrap();
 
                 agent.store.acknowledge_agent_dispatch("agent".into(),started["turn"]["id"].as_str().unwrap().into()).await.unwrap();
 
@@ -161,15 +161,15 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>) {
 		let _request = native_task_references::read_http_body(&mut socket).await;
 		let serial = calls.fetch_add(1, Ordering::AcqRel);
 		let item = if serial < 2 {
-			json!({"type":"function_call","id":format!("item-{serial}"),"call_id":format!("call-{serial}"),"name":"update_plan","arguments":json!({"explanation":if serial == 0 { "Starting checklist" } else { "First step verified" },"plan":[{"step":"PRIVATE_CHECKLIST_STEP one","status":if serial == 0 { "in_progress" } else { "completed" }},{"step":"PRIVATE_CHECKLIST_STEP two","status":"pending"}]}).to_string()})
+			serde_json::json!({"type":"function_call","id":format!("item-{serial}"),"call_id":format!("call-{serial}"),"name":"update_plan","arguments":serde_json::json!({"explanation":if serial == 0 { "Starting checklist" } else { "First step verified" },"plan":[{"step":"PRIVATE_CHECKLIST_STEP one","status":if serial == 0 { "in_progress" } else { "completed" }},{"step":"PRIVATE_CHECKLIST_STEP two","status":"pending"}]}).to_string()})
 		} else {
-			json!({"type":"message","role":"assistant","id":"message","phase":"final_answer","content":[{"type":"output_text","text":"Checklist fixture done"}]})
+			serde_json::json!({"type":"message","role":"assistant","id":"message","phase":"final_answer","content":[{"type":"output_text","text":"Checklist fixture done"}]})
 		};
 		let frames = [
-			json!({"type":"response.created","response":{"id":format!("response-{serial}")}}),
-			json!({"type":"response.output_item.added","output_index":0,"item":item}),
-			json!({"type":"response.output_item.done","output_index":0,"item":item}),
-			json!({"type":"response.completed","response":{"id":format!("response-{serial}"),"usage":{"input_tokens":1,"output_tokens":5,"total_tokens":6}}}),
+			serde_json::json!({"type":"response.created","response":{"id":format!("response-{serial}")}}),
+			serde_json::json!({"type":"response.output_item.added","output_index":0,"item":item}),
+			serde_json::json!({"type":"response.output_item.done","output_index":0,"item":item}),
+			serde_json::json!({"type":"response.completed","response":{"id":format!("response-{serial}"),"usage":{"input_tokens":1,"output_tokens":5,"total_tokens":6}}}),
 		];
 		let body = frames
 			.iter()

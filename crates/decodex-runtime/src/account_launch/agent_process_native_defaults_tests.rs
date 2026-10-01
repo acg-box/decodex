@@ -22,7 +22,7 @@ async fn installed_creation_defaults_use_the_requested_trusted_directory() {
         let calls=Arc::new(Mutex::new(Vec::new()));
         let server=tokio::spawn(serve(listener,calls.clone()));
 
-        fs::write(root.join("config.toml"),format!("model=\"global-model\"\nmodel_reasoning_effort=\"low\"\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nrequires_openai_auth=true\nsupports_websockets=false\n[projects.{}]\ntrust_level=\"trusted\"\n",json!(workspace))).expect("global config");
+        fs::write(root.join("config.toml"),format!("model=\"global-model\"\nmodel_reasoning_effort=\"low\"\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nrequires_openai_auth=true\nsupports_websockets=false\n[projects.{}]\ntrust_level=\"trusted\"\n",serde_json::json!(workspace))).expect("global config");
         fs::write(workspace.join(".codex/config.toml"),"model=\"project-model\"\nmodel_reasoning_effort=\"high\"\nservice_tier=\"flex\"\n").expect("project config");
 
         let mut session=AuthSession::start(&binary,&root).await;

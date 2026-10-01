@@ -20,17 +20,18 @@ fn archived_resume_diagnostic_is_bound_to_the_exact_thread_and_never_authorizes_
 
 #[tokio::test]
 async fn restore_preserves_identity_and_pending_input_without_creating_a_turn() {
-	let (mut agent, mut sent, _directory) = fixture_with_history(json!({"_archived":true})).await;
+	let (mut agent, mut sent, _directory) =
+		fixture_with_history(serde_json::json!({"_archived":true})).await;
 
 	agent.start_agent("agent", "Initial").await.unwrap();
-	agent.handle_event(ServerEvent::Notification {method:"turn/completed".into(),params:json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
+	agent.handle_event(ServerEvent::Notification {method:"turn/completed".into(),params:serde_json::json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
 	agent
 		.store
 		.enqueue_agent_event(EnqueueAgentEvent {
 			source_event_id: "queued".into(),
 			work_item_id: "agent".into(),
 			event_kind: "user_message".into(),
-			payload: json!({"text":"Keep this input"}).to_string(),
+			payload: serde_json::json!({"text":"Keep this input"}).to_string(),
 		})
 		.await
 		.unwrap();
@@ -76,9 +77,12 @@ async fn restore_preserves_identity_and_pending_input_without_creating_a_turn() 
 #[tokio::test]
 async fn restore_distinguishes_rejection_disconnect_and_another_clients_success() {
 	for (settings, expected) in [
-		(json!({"_archived":true,"_archive_reject":true}), "rejected"),
-		(json!({"_archived":true,"_archive_disconnect":true}), "unknown"),
-		(json!({"_archived":true,"_archive_reject":true,"_archive_peer_restored":true}), "active"),
+		(serde_json::json!({"_archived":true,"_archive_reject":true}), "rejected"),
+		(serde_json::json!({"_archived":true,"_archive_disconnect":true}), "unknown"),
+		(
+			serde_json::json!({"_archived":true,"_archive_reject":true,"_archive_peer_restored":true}),
+			"active",
+		),
 	] {
 		let (mut agent, mut sent, _directory) = fixture_with_history(settings).await;
 
@@ -108,7 +112,7 @@ async fn restore_distinguishes_rejection_disconnect_and_another_clients_success(
 
 #[tokio::test]
 async fn restoration_reconciles_only_exact_positive_terminal_history_after_reopen() {
-	let history = json!({"_archived":true,"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"notLoaded"},"turns":[{"id":"opaque turn/1","status":"interrupted","items":[]}]}}});
+	let history = serde_json::json!({"_archived":true,"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"notLoaded"},"turns":[{"id":"opaque turn/1","status":"interrupted","items":[]}]}}});
 	let (mut agent, mut sent, directory) = fixture_with_history(history).await;
 
 	agent.start_agent("agent", "Initial").await.unwrap();

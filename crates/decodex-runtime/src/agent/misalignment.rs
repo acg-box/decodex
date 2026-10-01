@@ -101,7 +101,7 @@ impl AgentCoordinator {
 			.store
 			.begin_agent_misalignment_continuation(id.into(), review.clone(), key.into())
 			.await?;
-		let result=self.client.request_with_history("turn/start",agent::json!({"threadId":review.thread_id,"input":[{"type":"text","text":text,"text_elements":[]}],"responsesapiClientMetadata":{"misalignment_override":agent::json!({"timestamp":timestamp}).to_string()}}),guard).await;
+		let result=self.client.request_with_history("turn/start",serde_json::json!({"threadId":review.thread_id,"input":[{"type":"text","text":text,"text_elements":[]}],"responsesapiClientMetadata":{"misalignment_override":serde_json::json!({"timestamp":timestamp}).to_string()}}),guard).await;
 
 		match result {
 			Ok(value) => {
@@ -142,7 +142,7 @@ pub(crate) fn review_token(review: &AgentMisalignment, guard: &HistoryGuard) -> 
 	let identity = guard.live_review_identity()?;
 
 	Some(
-		Sha256::digest(agent::json!([review.review_id(), identity]).to_string().as_bytes())
+		Sha256::digest(serde_json::json!([review.review_id(), identity]).to_string().as_bytes())
 			.iter()
 			.map(|byte| format!("{byte:02x}"))
 			.collect(),
@@ -154,6 +154,6 @@ pub(crate) fn details(error: &Value) -> Option<String> {
         let explanation=value["detailedExplanation"].as_str().filter(|text|!text.trim().is_empty() && text.len()<=65_536);
         let steer=value.pointer("/steer/message").and_then(Value::as_str).filter(|text|!text.trim().is_empty() && text.len()<=1_024);
 
-        agent::json!({"detailedExplanation":explanation,"steer":steer.map(|message|agent::json!({"message":message}))}).to_string()
+        serde_json::json!({"detailedExplanation":explanation,"steer":steer.map(|message|serde_json::json!({"message":message}))}).to_string()
     })
 }

@@ -1,7 +1,7 @@
 //! Recover only exact closing refusals on the retained connection.
 use std::time::Duration;
 
-use crate::agent::{self, AgentCoordinator, AgentError, AgentWorkItem, ClientError, Value};
+use crate::agent::{AgentCoordinator, AgentError, AgentWorkItem, ClientError, Value};
 use decodex_database::AgentDispatchState;
 
 pub(super) struct ClosingResume {
@@ -133,7 +133,7 @@ impl AgentCoordinator {
 		match exact_turn["status"].as_str() {
 			Some("completed" | "failed" | "interrupted") => {
 				self.record_terminal(
-					agent::json!({"threadId":thread,"turn":exact_turn}),
+					serde_json::json!({"threadId":thread,"turn":exact_turn}),
 					Ok(history),
 					false,
 				)

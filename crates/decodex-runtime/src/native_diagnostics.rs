@@ -2,7 +2,7 @@
 use std::time::Duration;
 
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use decodex_codex::app_server_client::{AppServerClient, ClientError};
@@ -15,9 +15,11 @@ pub(crate) async fn read(
 	let Some((generation, client)) = source() else {
 		return Result::Inactive;
 	};
-	let response =
-		time::timeout(Duration::from_secs(2), client.request("server/diagnostics", json!({})))
-			.await;
+	let response = time::timeout(
+		Duration::from_secs(2),
+		client.request("server/diagnostics", serde_json::json!({})),
+	)
+	.await;
 
 	if source().is_none_or(|(current, _)| current != generation) {
 		return Result::Unavailable;
@@ -60,7 +62,7 @@ mod tests {
 	fn resource_samples_keep_unknown_memory_and_ignore_unselected_gauges() {
 		assert_eq!(
 			native_diagnostics::project(
-				&native_diagnostics::json!({"process":{"id":17,"residentMemoryBytes":42},"gauges":[{"name":"PRIVATE","value":7}]})
+				&serde_json::json!({"process":{"id":17,"residentMemoryBytes":42},"gauges":[{"name":"PRIVATE","value":7}]})
 			),
 			Some(Result::Available {
 				process_id: 17,
@@ -70,9 +72,9 @@ mod tests {
 		);
 
 		for value in [
-			native_diagnostics::json!({}),
-			native_diagnostics::json!({"process":{"id":0}}),
-			native_diagnostics::json!({"process":{"id":17,"residentMemoryBytes":-1}}),
+			serde_json::json!({}),
+			serde_json::json!({"process":{"id":0}}),
+			serde_json::json!({"process":{"id":17,"residentMemoryBytes":-1}}),
 		] {
 			assert!(native_diagnostics::project(&value).is_none());
 		}
@@ -96,7 +98,7 @@ mod tests {
 					.write_all(
 						format!(
 							"{}\n",
-							native_diagnostics::json!({"id":request["id"],"result":{"process":{"id":17},"gauges":[]}})
+							serde_json::json!({"id":request["id"],"result":{"process":{"id":17},"gauges":[]}})
 						)
 						.as_bytes(),
 					)

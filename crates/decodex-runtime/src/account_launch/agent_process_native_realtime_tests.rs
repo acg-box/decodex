@@ -56,8 +56,8 @@ async fn installed_native_realtime_history_survives_agent_and_cold_bridge() {
 		requests.clone(),
 		None,
 		None,
-		Some(json!({"input_tokens":10,"output_tokens":2,"total_tokens":12})),
-		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":if serial == 0 { "Seed" } else { "::codex-realtime-inline{}\nShared artifact" }}]}),
+		Some(serde_json::json!({"input_tokens":10,"output_tokens":2,"total_tokens":12})),
+		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":if serial == 0 { "Seed" } else { "::codex-realtime-inline{}\nShared artifact" }}]}),
 	));
 	let (speech_tx, speech_rx) = oneshot::channel();
 	let (done_tx, done_rx) = oneshot::channel();
@@ -74,7 +74,7 @@ async fn installed_native_realtime_history_survives_agent_and_cold_bridge() {
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.path().display().to_string());
 
 	config.sandbox = "read-only".into();
-	config.approval_policy = json!("never");
+	config.approval_policy = serde_json::json!("never");
 
 	let mut session = NativeSession::start(&binary, home.path());
 	let mut agent =
@@ -87,7 +87,7 @@ async fn installed_native_realtime_history_survives_agent_and_cold_bridge() {
 
 		let thread = store.get_agent_work_item("agent".into()).await.unwrap().codex_thread_id.unwrap();
 
-		session.client.request("thread/realtime/start",json!({"threadId":thread,"prompt":"fixture","version":"v2","outputModality":"text","transport":{"type":"websocket"}})).await.unwrap();
+		session.client.request("thread/realtime/start",serde_json::json!({"threadId":thread,"prompt":"fixture","version":"v2","outputModality":"text","transport":{"type":"websocket"}})).await.unwrap();
 		speech_tx.send(()).unwrap();
 
 		drain(&mut agent, &mut session.events, "thread/realtime/transcript/delta", 2, &mut completed).await;
@@ -213,15 +213,17 @@ async fn serve_realtime(
 
 	socket
 		.send(Message::Text(
-			json!({"type":"session.updated","session":{"id":"voice-fixture"}}).to_string().into(),
+			serde_json::json!({"type":"session.updated","session":{"id":"voice-fixture"}})
+				.to_string()
+				.into(),
 		))
 		.await
 		.expect("session update");
 	speech.await.expect("speech gate");
 
 	for event in [
-		json!({"type":"response.output_text.delta","delta":"Speech before typed input"}),
-		json!({"type":"conversation.item.input_audio_transcription.delta","delta":"User speech"}),
+		serde_json::json!({"type":"response.output_text.delta","delta":"Speech before typed input"}),
+		serde_json::json!({"type":"conversation.item.input_audio_transcription.delta","delta":"User speech"}),
 	] {
 		socket.send(Message::Text(event.to_string().into())).await.expect("speech delta");
 	}
@@ -229,8 +231,8 @@ async fn serve_realtime(
 	done.await.expect("speech completion gate");
 
 	for event in [
-		json!({"type":"response.output_text.done","text":"Speech before typed input"}),
-		json!({"type":"conversation.item.input_audio_transcription.completed","transcript":"User speech"}),
+		serde_json::json!({"type":"response.output_text.done","text":"Speech before typed input"}),
+		serde_json::json!({"type":"conversation.item.input_audio_transcription.completed","transcript":"User speech"}),
 	] {
 		socket.send(Message::Text(event.to_string().into())).await.expect("speech done");
 	}

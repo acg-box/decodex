@@ -6,14 +6,14 @@ use crate::agent::tests::*;
 use decodex_core::DecodexRoot;
 
 fn failed(turn: &str, code: &str) -> Value {
-	json!({"id":turn,"status":"failed","error":{"message":"Selected model is at capacity.","codexErrorInfo":code},"items":[{"id":"input","type":"userMessage","content":[{"type":"text","text":"original request"}]}]})
+	serde_json::json!({"id":turn,"status":"failed","error":{"message":"Selected model is at capacity.","codexErrorInfo":code},"items":[{"id":"input","type":"userMessage","content":[{"type":"text","text":"original request"}]}]})
 }
 
 #[tokio::test]
 async fn fresh_user_input_supersedes_a_due_capacity_retry() {
 	let first = failed("opaque turn/1", "serverOverloaded");
 	let (mut agent, mut sent, _dir) = fixture_with_history(
-		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
+		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
 	)
 	.await;
 
@@ -21,7 +21,7 @@ async fn fresh_user_input_supersedes_a_due_capacity_retry() {
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "turn/completed".into(),
-			params: json!({"threadId":"opaque thread/1","turn":first}),
+			params: serde_json::json!({"threadId":"opaque thread/1","turn":first}),
 		})
 		.await
 		.unwrap();
@@ -43,9 +43,9 @@ async fn fresh_user_input_supersedes_a_due_capacity_retry() {
 #[tokio::test]
 async fn successful_capacity_continuation_handles_the_original_input_once() {
 	let first = failed("opaque turn/1", "serverOverloaded");
-	let second = json!({"id":"opaque turn/2","status":"completed","items":[]});
+	let second = serde_json::json!({"id":"opaque turn/2","status":"completed","items":[]});
 	let (mut agent, mut sent, _dir) = fixture_with_history(
-		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first,second]}}}),
+		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first,second]}}}),
 	)
 	.await;
 
@@ -56,7 +56,7 @@ async fn successful_capacity_continuation_handles_the_original_input_once() {
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "turn/completed".into(),
-			params: json!({"threadId":"opaque thread/1","turn":first}),
+			params: serde_json::json!({"threadId":"opaque thread/1","turn":first}),
 		})
 		.await
 		.unwrap();
@@ -69,7 +69,7 @@ async fn successful_capacity_continuation_handles_the_original_input_once() {
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "turn/completed".into(),
-			params: json!({"threadId":"opaque thread/1","turn":second}),
+			params: serde_json::json!({"threadId":"opaque thread/1","turn":second}),
 		})
 		.await
 		.unwrap();
@@ -97,9 +97,9 @@ async fn successful_capacity_continuation_handles_the_original_input_once() {
 #[tokio::test]
 async fn worker_capacity_wait_does_not_wake_agent_and_cancel_publishes_failure() {
 	for draining in [false, true] {
-		let first = json!({"id":"opaque turn/1","status":"completed","items":[]});
+		let first = serde_json::json!({"id":"opaque turn/1","status":"completed","items":[]});
 		let failure = failed("opaque turn/2", "serverOverloaded");
-		let (mut agent, mut sent, _dir) = fixture_with_history(json!({
+		let (mut agent, mut sent, _dir) = fixture_with_history(serde_json::json!({
 			"_capacity_draining":draining,
 			"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}},
 			"opaque thread/2":{"thread":{"id":"opaque thread/2","turns":[failure]}}
@@ -110,7 +110,7 @@ async fn worker_capacity_wait_does_not_wake_agent_and_cancel_publishes_failure()
 		agent
 			.handle_event(ServerEvent::Notification {
 				method: "turn/completed".into(),
-				params: json!({"threadId":"opaque thread/1","turn":first}),
+				params: serde_json::json!({"threadId":"opaque thread/1","turn":first}),
 			})
 			.await
 			.unwrap();
@@ -121,7 +121,7 @@ async fn worker_capacity_wait_does_not_wake_agent_and_cancel_publishes_failure()
 		agent
 			.handle_event(ServerEvent::Notification {
 				method: "turn/completed".into(),
-				params: json!({"threadId":"opaque thread/2","turn":failure}),
+				params: serde_json::json!({"threadId":"opaque thread/2","turn":failure}),
 			})
 			.await
 			.unwrap();
@@ -163,7 +163,7 @@ async fn capacity_retry_keeps_model_thread_and_context_and_stops_after_three_att
 	let turns: Vec<_> =
 		(1..=4).map(|n| failed(&format!("opaque turn/{n}"), "serverOverloaded")).collect();
 	let (mut agent, mut sent, _dir) = fixture_with_history(
-		json!({"_started_turns_only":true,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":turns}}}),
+		serde_json::json!({"_started_turns_only":true,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":turns}}}),
 	)
 	.await;
 
@@ -172,7 +172,7 @@ async fn capacity_retry_keeps_model_thread_and_context_and_stops_after_three_att
 	while sent.try_recv().is_ok() {}
 
 	for n in 1..=4 {
-		agent.handle_event(ServerEvent::Notification { method:"turn/completed".into(),params:json!({"threadId":"opaque thread/1","turn":failed(&format!("opaque turn/{n}"),"serverOverloaded")}) }).await.unwrap();
+		agent.handle_event(ServerEvent::Notification { method:"turn/completed".into(),params:serde_json::json!({"threadId":"opaque thread/1","turn":failed(&format!("opaque turn/{n}"),"serverOverloaded")}) }).await.unwrap();
 
 		if n == 4 {
 			break;
@@ -205,7 +205,7 @@ async fn capacity_retry_keeps_model_thread_and_context_and_stops_after_three_att
 				assert_eq!(request["params"]["threadId"], "opaque thread/1");
 				assert_eq!(request["params"]["model"], "selected-model");
 				assert_eq!(request["params"]["effort"], "high");
-				assert_eq!(request["params"]["input"], json!([]));
+				assert_eq!(request["params"]["input"], serde_json::json!([]));
 				assert_eq!(request["params"]["toolOutput"]["name"], "capacity_retry");
 				assert_eq!(request["params"]["turnTrigger"], "retry");
 				assert_eq!(request["params"]["toolOutput"]["namespace"], "decodex");
@@ -242,9 +242,9 @@ async fn quota_other_errors_and_missing_history_do_not_schedule_capacity_retries
 	] {
 		let turn = failed("opaque turn/1", code);
 		let history = if history_present {
-			json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[turn]}}})
+			serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[turn]}}})
 		} else {
-			json!({})
+			serde_json::json!({})
 		};
 		let (mut agent, mut sent, _dir) = fixture_with_history(history).await;
 
@@ -252,7 +252,7 @@ async fn quota_other_errors_and_missing_history_do_not_schedule_capacity_retries
 		agent
 			.handle_event(ServerEvent::Notification {
 				method: "turn/completed".into(),
-				params: json!({"threadId":"opaque thread/1","turn":turn}),
+				params: serde_json::json!({"threadId":"opaque thread/1","turn":turn}),
 			})
 			.await
 			.unwrap();
@@ -271,7 +271,7 @@ async fn quota_other_errors_and_missing_history_do_not_schedule_capacity_retries
 async fn terminal_quota_failure_preserves_accepted_input_without_replay_after_recovery() {
 	let turn = failed("opaque turn/1", "usageLimitExceeded");
 	let (mut agent, mut sent, _dir) = fixture_with_history(
-		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[turn]}}}),
+		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[turn]}}}),
 	)
 	.await;
 
@@ -282,7 +282,7 @@ async fn terminal_quota_failure_preserves_accepted_input_without_replay_after_re
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "turn/completed".into(),
-			params: json!({"threadId":"opaque thread/1","turn":turn}),
+			params: serde_json::json!({"threadId":"opaque thread/1","turn":turn}),
 		})
 		.await
 		.unwrap();
@@ -319,7 +319,7 @@ async fn terminal_quota_failure_preserves_accepted_input_without_replay_after_re
 async fn lost_retry_submission_is_unknown_and_never_replayed() {
 	let turn = failed("opaque turn/1", "serverOverloaded");
 	let (mut agent, _sent, _dir) = fixture_with_history(
-		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[turn]}}}),
+		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[turn]}}}),
 	)
 	.await;
 
@@ -327,7 +327,7 @@ async fn lost_retry_submission_is_unknown_and_never_replayed() {
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "turn/completed".into(),
-			params: json!({"threadId":"opaque thread/1","turn":turn}),
+			params: serde_json::json!({"threadId":"opaque thread/1","turn":turn}),
 		})
 		.await
 		.unwrap();
@@ -343,7 +343,7 @@ async fn lost_retry_submission_is_unknown_and_never_replayed() {
 
 		assert_eq!(request["method"], "thread/read");
 
-		writer.write_all(format!("{}\n",json!({"id":request["id"],"result":{"thread":{"id":"opaque thread/1","model":"selected-model","reasoningEffort":"high"}}})).as_bytes()).await.unwrap();
+		writer.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"result":{"thread":{"id":"opaque thread/1","model":"selected-model","reasoningEffort":"high"}}})).as_bytes()).await.unwrap();
 
 		let request: Value =
 			serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
@@ -378,7 +378,7 @@ async fn refused_capacity_continuation_retains_original_delivery_and_cannot_repl
 		),
 	] {
 		let first = failed("opaque turn/1", "serverOverloaded");
-		let (mut agent,mut sent,directory) = fixture_with_history(json!({"_capacity_draining":true,"_refusal_message":message,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}})).await;
+		let (mut agent,mut sent,directory) = fixture_with_history(serde_json::json!({"_capacity_draining":true,"_refusal_message":message,"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}})).await;
 
 		AgentCoordinator::reserve_root(&agent.store, "agent", "original request").await.unwrap();
 
@@ -387,7 +387,7 @@ async fn refused_capacity_continuation_retains_original_delivery_and_cannot_repl
 		agent
 			.handle_event(ServerEvent::Notification {
 				method: "turn/completed".into(),
-				params: json!({"threadId":"opaque thread/1","turn":first}),
+				params: serde_json::json!({"threadId":"opaque thread/1","turn":first}),
 			})
 			.await
 			.unwrap();
@@ -467,7 +467,7 @@ async fn native_revert_cancels_only_unclaimed_capacity_intent_durably() {
 	for claimed in [false, true] {
 		let failure = failed("opaque turn/1", "serverOverloaded");
 		let (mut agent, mut sent, directory) = fixture_with_history(
-			json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[failure]}}}),
+			serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[failure]}}}),
 		)
 		.await;
 
@@ -475,7 +475,7 @@ async fn native_revert_cancels_only_unclaimed_capacity_intent_durably() {
 		agent
 			.handle_event(ServerEvent::Notification {
 				method: "turn/completed".into(),
-				params: json!({"threadId":"opaque thread/1","turn":failure}),
+				params: serde_json::json!({"threadId":"opaque thread/1","turn":failure}),
 			})
 			.await
 			.unwrap();
@@ -494,7 +494,7 @@ async fn native_revert_cancels_only_unclaimed_capacity_intent_durably() {
 		agent
 			.handle_event(ServerEvent::Notification {
 				method: "thread/reverted".into(),
-				params: json!({"threadId":"other"}),
+				params: serde_json::json!({"threadId":"other"}),
 			})
 			.await
 			.unwrap();
@@ -518,7 +518,7 @@ async fn native_revert_cancels_only_unclaimed_capacity_intent_durably() {
 			agent
 				.handle_event(ServerEvent::Notification {
 					method: "thread/reverted".into(),
-					params: json!({"threadId":"opaque thread/1"}),
+					params: serde_json::json!({"threadId":"opaque thread/1"}),
 				})
 				.await
 				.unwrap();
@@ -564,9 +564,9 @@ async fn native_revert_cancels_only_unclaimed_capacity_intent_durably() {
 
 #[tokio::test]
 async fn reverted_worker_capacity_wait_does_not_publish_a_completion_or_wake_agent() {
-	let first = json!({"id":"opaque turn/1","status":"completed","items":[]});
+	let first = serde_json::json!({"id":"opaque turn/1","status":"completed","items":[]});
 	let failure = failed("opaque turn/2", "serverOverloaded");
-	let (mut agent, mut sent, _dir) = fixture_with_history(json!({
+	let (mut agent, mut sent, _dir) = fixture_with_history(serde_json::json!({
 		"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}},
 		"opaque thread/2":{"thread":{"id":"opaque thread/2","turns":[failure]}}
 	}))
@@ -576,7 +576,7 @@ async fn reverted_worker_capacity_wait_does_not_publish_a_completion_or_wake_age
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "turn/completed".into(),
-			params: json!({"threadId":"opaque thread/1","turn":first}),
+			params: serde_json::json!({"threadId":"opaque thread/1","turn":first}),
 		})
 		.await
 		.unwrap();
@@ -587,7 +587,7 @@ async fn reverted_worker_capacity_wait_does_not_publish_a_completion_or_wake_age
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "turn/completed".into(),
-			params: json!({"threadId":"opaque thread/2","turn":failure}),
+			params: serde_json::json!({"threadId":"opaque thread/2","turn":failure}),
 		})
 		.await
 		.unwrap();
@@ -599,7 +599,7 @@ async fn reverted_worker_capacity_wait_does_not_publish_a_completion_or_wake_age
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "thread/reverted".into(),
-			params: json!({"threadId":"opaque thread/2"}),
+			params: serde_json::json!({"threadId":"opaque thread/2"}),
 		})
 		.await
 		.unwrap();
@@ -634,7 +634,7 @@ async fn reverted_worker_capacity_wait_does_not_publish_a_completion_or_wake_age
 async fn task_selection_during_capacity_backoff_cancels_old_retry() {
 	let first = failed("opaque turn/1", "serverOverloaded");
 	let (mut agent, mut sent, _dir) = fixture_with_history(
-		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
+		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
 	)
 	.await;
 
@@ -642,7 +642,7 @@ async fn task_selection_during_capacity_backoff_cancels_old_retry() {
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "turn/completed".into(),
-			params: json!({"threadId":"opaque thread/1","turn":first}),
+			params: serde_json::json!({"threadId":"opaque thread/1","turn":first}),
 		})
 		.await
 		.unwrap();
@@ -650,7 +650,7 @@ async fn task_selection_during_capacity_backoff_cancels_old_retry() {
 		.client
 		.request(
 			"thread/settings/update",
-			json!({"threadId":"opaque thread/1","model":"new-user-choice","effort":"medium"}),
+			serde_json::json!({"threadId":"opaque thread/1","model":"new-user-choice","effort":"medium"}),
 		)
 		.await
 		.unwrap();
@@ -675,7 +675,7 @@ async fn task_selection_during_capacity_backoff_cancels_old_retry() {
 async fn selected_turn_model_survives_restart_and_capacity_retry_without_startup_defaults() {
 	let first = failed("opaque turn/1", "serverOverloaded");
 	let (mut agent, mut sent, dir) = fixture_with_history(
-		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
+		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
 	)
 	.await;
 
@@ -683,13 +683,13 @@ async fn selected_turn_model_survives_restart_and_capacity_retry_without_startup
 
 	agent.store.enqueue_agent_event(EnqueueAgentEvent {
 		source_event_id:"selected-input".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),
-		payload:json!({"text":"request","options":{"execution":{"model":"user-selected","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string(),
+		payload:serde_json::json!({"text":"request","options":{"execution":{"model":"user-selected","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string(),
 	}).await.unwrap();
 	agent.wake_pending().await.unwrap();
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "turn/completed".into(),
-			params: json!({"threadId":"opaque thread/1","turn":first}),
+			params: serde_json::json!({"threadId":"opaque thread/1","turn":first}),
 		})
 		.await
 		.unwrap();
@@ -733,7 +733,7 @@ async fn selected_turn_model_survives_restart_and_capacity_retry_without_startup
 async fn capacity_selection_changes_do_not_revive_a_cancelled_retry_when_changed_back() {
 	let first = failed("opaque turn/1", "serverOverloaded");
 	let (mut agent, mut sent, _dir) = fixture_with_history(
-		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
+		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[first]}}}),
 	)
 	.await;
 
@@ -741,13 +741,13 @@ async fn capacity_selection_changes_do_not_revive_a_cancelled_retry_when_changed
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "turn/completed".into(),
-			params: json!({"threadId":"opaque thread/1","turn":first}),
+			params: serde_json::json!({"threadId":"opaque thread/1","turn":first}),
 		})
 		.await
 		.unwrap();
 
 	for model in ["new-choice", "selected-model"] {
-		agent.handle_event(ServerEvent::Notification {method:"thread/settings/updated".into(),params:json!({"threadId":"opaque thread/1","threadSettings":{"model":model,"modelProvider":"openai","effort":"high","serviceTier":null}})}).await.unwrap();
+		agent.handle_event(ServerEvent::Notification {method:"thread/settings/updated".into(),params:serde_json::json!({"threadId":"opaque thread/1","threadSettings":{"model":model,"modelProvider":"openai","effort":"high","serviceTier":null}})}).await.unwrap();
 	}
 
 	while sent.try_recv().is_ok() {}
@@ -770,7 +770,7 @@ async fn ordinary_continuation_binds_current_task_choice_instead_of_initial_defa
 		.client
 		.request(
 			"thread/settings/update",
-			json!({"threadId":"opaque thread/1","model":"recovered-task-model","effort":"medium"}),
+			serde_json::json!({"threadId":"opaque thread/1","model":"recovered-task-model","effort":"medium"}),
 		)
 		.await
 		.unwrap();
@@ -809,11 +809,11 @@ async fn effort_only_input_preserves_native_model_and_tier_after_recovery() {
 		.client
 		.request(
 			"thread/settings/update",
-			json!({"threadId":"opaque thread/1","model":"recovered-native","effort":"high"}),
+			serde_json::json!({"threadId":"opaque thread/1","model":"recovered-native","effort":"high"}),
 		)
 		.await
 		.unwrap();
-	agent.store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:"effort-only".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),payload:json!({"text":"continue","options":{"execution":{"reasoning_effort":"medium"},"attachments":[]}}).to_string()}).await.unwrap();
+	agent.store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:"effort-only".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),payload:serde_json::json!({"text":"continue","options":{"execution":{"reasoning_effort":"medium"},"attachments":[]}}).to_string()}).await.unwrap();
 
 	while sent.try_recv().is_ok() {}
 

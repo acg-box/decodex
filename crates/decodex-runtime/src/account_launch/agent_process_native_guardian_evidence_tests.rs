@@ -23,19 +23,19 @@ async fn installed_guardian_retains_answer_after_compaction_and_restart() {
 		|serial| {
 			let tokens = if serial == 1 { 250_000 } else { 0 };
 
-			json!({"input_tokens":tokens,"output_tokens":0,"total_tokens":tokens})
+			serde_json::json!({"input_tokens":tokens,"output_tokens":0,"total_tokens":tokens})
 		},
 		|serial| match serial {
 			0 =>
-				json!({"type":"function_call","name":"request_user_input","call_id":"publish-scope","arguments":json!({"questions":[{"id":"publish","header":"Publish","question":"Where may this fixture publish?","options":[{"label":"Private","description":"Private repositories only."},{"label":"Nowhere","description":"Keep local."}]}]}).to_string()}),
+				serde_json::json!({"type":"function_call","name":"request_user_input","call_id":"publish-scope","arguments":serde_json::json!({"questions":[{"id":"publish","header":"Publish","question":"Where may this fixture publish?","options":[{"label":"Private","description":"Private repositories only."},{"label":"Nowhere","description":"Keep local."}]}]}).to_string()}),
 			2 =>
-				json!({"type":"compaction","id":"guardian-checkpoint","encrypted_content":"isolated Guardian checkpoint"}),
+				serde_json::json!({"type":"compaction","id":"guardian-checkpoint","encrypted_content":"isolated Guardian checkpoint"}),
 			4 =>
-				json!({"type":"function_call","name":"exec_command","call_id":"review-action","arguments":json!({"cmd":"exit 0","sandbox_permissions":"require_escalated","justification":"Isolated evidence test"}).to_string()}),
+				serde_json::json!({"type":"function_call","name":"exec_command","call_id":"review-action","arguments":serde_json::json!({"cmd":"exit 0","sandbox_permissions":"require_escalated","justification":"Isolated evidence test"}).to_string()}),
 			5 =>
-				json!({"type":"message","role":"assistant","id":"review","content":[{"type":"output_text","text":"{\"outcome\":\"deny\"}"}]}),
+				serde_json::json!({"type":"message","role":"assistant","id":"review","content":[{"type":"output_text","text":"{\"outcome\":\"deny\"}"}]}),
 			_ =>
-				json!({"type":"message","role":"assistant","id":"done","content":[{"type":"output_text","text":"Done"}]}),
+				serde_json::json!({"type":"message","role":"assistant","id":"done","content":[{"type":"output_text","text":"Done"}]}),
 		},
 	));
 
@@ -43,10 +43,10 @@ async fn installed_guardian_retains_answer_after_compaction_and_restart() {
 
 	time::timeout(Duration::from_secs(60), async {
 		let mut session = NativeSession::start(&binary, home.path());
-		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":"read-only"})).await.unwrap();
+		let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":"read-only"})).await.unwrap();
 		let thread = started["thread"]["id"].as_str().unwrap().to_owned();
 
-		session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Keep the working tree unchanged. Ask where publishing is allowed."}]})).await.unwrap();
+		session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Keep the working tree unchanged. Ask where publishing is allowed."}]})).await.unwrap();
 
 		let mut answered = false;
 
@@ -56,7 +56,7 @@ async fn installed_guardian_retains_answer_after_compaction_and_restart() {
 					assert_eq!(method, "item/tool/requestUserInput");
 					assert!(!answered);
 
-					session.client.respond(id, json!({"answers":{"publish":{"answers":["Private. Verified fixture answer 1351."]}}})).await.unwrap();
+					session.client.respond(id, serde_json::json!({"answers":{"publish":{"answers":["Private. Verified fixture answer 1351."]}}})).await.unwrap();
 
 					answered = true;
 				},
@@ -71,15 +71,15 @@ async fn installed_guardian_retains_answer_after_compaction_and_restart() {
 
 		assert!(answered);
 
-		session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Continue after automatic compaction."}]})).await.unwrap();
+		session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Continue after automatic compaction."}]})).await.unwrap();
 
 		finish_compaction(&mut session).await;
 		drop(session);
 
 		let mut session = NativeSession::start(&binary, home.path());
 
-		session.client.thread_resume(json!({"threadId":thread})).await.unwrap();
-		session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Review the isolated command."}]})).await.unwrap();
+		session.client.thread_resume(serde_json::json!({"threadId":thread})).await.unwrap();
+		session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Review the isolated command."}]})).await.unwrap();
 
 		let mut denied = false;
 

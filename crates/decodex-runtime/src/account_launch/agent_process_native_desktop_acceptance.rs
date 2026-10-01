@@ -88,7 +88,7 @@ pub(super) async fn check(
 	let mut exits = 0;
 	let mut exited = false;
 	let write = |pid, launches, exits| {
-		fs::write(home.join("desktop-ready.json"), serde_json::to_vec_pretty(&json!({"pid":pid,"launches":launches,"exits":exits,"thread":thread,"root":home.join(".decodex"),"model_requests":requests.load(Ordering::Acquire)})).expect("serialize desktop process evidence")).expect("write desktop process evidence");
+		fs::write(home.join("desktop-ready.json"), serde_json::to_vec_pretty(&serde_json::json!({"pid":pid,"launches":launches,"exits":exits,"thread":thread,"root":home.join(".decodex"),"model_requests":requests.load(Ordering::Acquire)})).expect("serialize desktop process evidence")).expect("write desktop process evidence");
 	};
 
 	write(child.id(), launches, exits);

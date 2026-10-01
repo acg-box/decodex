@@ -61,20 +61,20 @@ async fn installed_native_model_access_metadata_refreshes_after_cold_restart() {
 	});
 
 	fs::write(home.path().join("config.toml"),format!("model_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}\"\ncli_auth_credentials_store=\"file\"\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}/v1\"\nwire_api=\"responses\"\nrequires_openai_auth=true\n")).unwrap();
-	fs::write(home.path().join("auth.json"),serde_json::to_vec(&json!({"auth_mode":"chatgpt","tokens":{
+	fs::write(home.path().join("auth.json"),serde_json::to_vec(&serde_json::json!({"auth_mode":"chatgpt","tokens":{
         "id_token":"e30.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOiB7ImNoYXRncHRfYWNjb3VudF9pZCI6ICJhY2Nlc3MtZml4dHVyZSIsICJjaGF0Z3B0X3VzZXJfaWQiOiAiYWNjZXNzLWZpeHR1cmUiLCAiY2hhdGdwdF9wbGFuX3R5cGUiOiAicHJvIn19.signature",
         "access_token":"synthetic-access-fixture","refresh_token":"synthetic-refresh-fixture","account_id":"access-fixture"
     },"last_refresh":String::from_utf8(Command::new("/bin/date").args(["-u", "+%Y-%m-%dT%H:%M:%SZ"]).output().unwrap().stdout).unwrap().trim()})).unwrap()).unwrap();
 
 	for (native_programs, expected) in [
 		(
-			json!({"cyber":["standard","daybreak_blue","future_program"]}),
+			serde_json::json!({"cyber":["standard","daybreak_blue","future_program"]}),
 			Some(vec!["standard".to_owned(), "daybreakBlue".to_owned()]),
 		),
-		(json!({"cyber":[]}), Some(vec![])),
+		(serde_json::json!({"cyber":[]}), Some(vec![])),
 		(Value::Null, None),
 	] {
-		fs::write(&catalog,serde_json::to_vec(&json!({"models":[{
+		fs::write(&catalog,serde_json::to_vec(&serde_json::json!({"models":[{
             "slug":"access-fixture","display_name":"Access fixture","description":"Synthetic catalog",
             "available_access_programs":native_programs,
             "default_reasoning_level":"high","supported_reasoning_levels":[{"effort":"high","description":"High"}],
@@ -118,9 +118,9 @@ async fn installed_native_model_access_metadata_refreshes_after_cold_restart() {
 			if native_programs.is_null() {
 				Value::Null
 			} else if expected.as_ref().unwrap().is_empty() {
-				json!({"cyber":[]})
+				serde_json::json!({"cyber":[]})
 			} else {
-				json!({"cyber":["standard","daybreak_blue"]})
+				serde_json::json!({"cyber":["standard","daybreak_blue"]})
 			}
 		);
 	}

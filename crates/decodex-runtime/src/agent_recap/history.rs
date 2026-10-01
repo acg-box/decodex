@@ -1,7 +1,7 @@
 //! Read public native messages through the existing bounded item-page owner.
 use std::{collections::HashSet, mem, time::Duration};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::{
@@ -60,7 +60,8 @@ impl Recent {
 
 		if self.voice {
 			for message in &mut next {
-				message.text = format!("[Native task turn {}]\n{}", json!(id), message.text);
+				message.text =
+					format!("[Native task turn {}]\n{}", serde_json::json!(id), message.text);
 			}
 		}
 		if turn["status"] != "completed"
@@ -199,7 +200,7 @@ async fn read_inner(
 	thread: &str,
 	voice: bool,
 ) -> Result<History, ClientError> {
-	let metadata = client.thread_read(json!({"threadId":thread})).await?;
+	let metadata = client.thread_read(serde_json::json!({"threadId":thread})).await?;
 
 	if metadata["thread"]["id"] != thread {
 		return Err(ClientError::InvalidFrame);
@@ -209,8 +210,9 @@ async fn read_inner(
 
 	match metadata["thread"]["historyMode"].as_str() {
 		None | Some("legacy") => {
-			let history =
-				client.thread_read(json!({"threadId":thread,"includeTurns":true})).await?;
+			let history = client
+				.thread_read(serde_json::json!({"threadId":thread,"includeTurns":true}))
+				.await?;
 
 			if history["thread"]["id"] != thread {
 				return Err(ClientError::InvalidFrame);
@@ -244,7 +246,7 @@ async fn read_pages(
 	let mut cursors = HashSet::new();
 
 	for _ in 0..8 {
-		let page=client.request("thread/turns/list",json!({"threadId":thread,"cursor":cursor,"limit":8,"sortDirection":"desc","itemsView":"notLoaded"})).await?;
+		let page=client.request("thread/turns/list",serde_json::json!({"threadId":thread,"cursor":cursor,"limit":8,"sortDirection":"desc","itemsView":"notLoaded"})).await?;
 		let turns = page["data"].as_array().ok_or(ClientError::InvalidFrame)?;
 
 		if turns.len() > 8 {

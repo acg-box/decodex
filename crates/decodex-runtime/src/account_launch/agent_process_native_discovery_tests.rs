@@ -43,7 +43,7 @@ async fn installed_native_mcp_capabilities_survive_tool_discovery_failure() {
 			let started = session
 				.client
 				.thread_start(
-					json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}),
+					serde_json::json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}),
 				)
 				.await
 				.unwrap();
@@ -60,7 +60,7 @@ async fn installed_native_mcp_capabilities_survive_tool_discovery_failure() {
 					.client
 					.request(
 						"mcpServerStatus/list",
-						json!({
+						serde_json::json!({
 							"threadId":id,"detail":"full","limit":1,"cursor":cursor,
 						}),
 					)
@@ -89,11 +89,11 @@ async fn installed_native_mcp_capabilities_survive_tool_discovery_failure() {
 						row["serverCapabilities"]["extensions"]["openai/settings"]["readTool"],
 						"settings.read"
 					);
-					assert_eq!(row["serverCapabilities"]["tools"], json!({}));
+					assert_eq!(row["serverCapabilities"]["tools"], serde_json::json!({}));
 				}
 				if mode == "tools-error" {
 					assert!(row["toolsError"].as_str().is_some());
-					assert_eq!(row["tools"], json!({}));
+					assert_eq!(row["tools"], serde_json::json!({}));
 				}
 			}
 		})
@@ -178,7 +178,7 @@ auth = "ema_auth"
 		let session = NativeSession::start(&binary, &home);
 
 		time::timeout(Duration::from_secs(30), async {
-			let login = session.client.request("mcpServer/oauth/login", json!({"name":"enterprise"})).await;
+			let login = session.client.request("mcpServer/oauth/login", serde_json::json!({"name":"enterprise"})).await;
 
 			assert!(matches!(login, Err(ClientError::Remote(error)) if error.message.contains("EMA MCP connections are not enabled")));
 
@@ -193,7 +193,7 @@ auth = "ema_auth"
 			] {
 				fs::write(project.join(".codex/config.toml"), format!("[mcp_servers.enterprise]\n{change}\n")).unwrap();
 
-				let result = session.client.thread_start(json!({"cwd":project,"approvalPolicy":"never","sandbox":"read-only"})).await;
+				let result = session.client.thread_start(serde_json::json!({"cwd":project,"approvalPolicy":"never","sandbox":"read-only"})).await;
 
 				assert!(matches!(&result, Err(ClientError::Remote(error)) if error.message.contains("one non-project config layer")), "project override {change}: {result:?}");
 			}

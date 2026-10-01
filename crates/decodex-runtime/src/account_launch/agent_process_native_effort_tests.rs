@@ -23,7 +23,7 @@ use decodex_protocol::{
 const EFFORT: &str = "future-provider-reasoning-effort-over-32-bytes";
 
 pub(super) fn fixture_model(slug: &str, effort: &str) -> Value {
-	json!({
+	serde_json::json!({
 		"slug":slug,"display_name":"Fixture","description":"Synthetic model",
 		"default_reasoning_level":effort,"supported_reasoning_levels":[{"effort":effort,"description":"Custom"}],
 		"shell_type":"shell_command","visibility":"list","minimal_client_version":"0.1.0",
@@ -94,14 +94,17 @@ async fn qualify(
 	let catalog = home.path().join("models.json");
 	let mut model = fixture_model("gpt-5.6-sol", EFFORT);
 
-	model["default_reasoning_level"] = json!(catalog_default);
+	model["default_reasoning_level"] = serde_json::json!(catalog_default);
 
 	if catalog_default.is_none() {
-		model["supported_reasoning_levels"] = json!([]);
+		model["supported_reasoning_levels"] = serde_json::json!([]);
 	}
 
-	fs::write(&catalog, serde_json::to_vec(&json!({"models":[model]})).expect("catalog JSON"))
-		.expect("write catalog");
+	fs::write(
+		&catalog,
+		serde_json::to_vec(&serde_json::json!({"models":[model]})).expect("catalog JSON"),
+	)
+	.expect("write catalog");
 
 	let listener = TcpListener::bind("127.0.0.1:0").await.expect("loopback fixture");
 	let address = listener.local_addr().expect("fixture address");
@@ -113,7 +116,7 @@ async fn qualify(
 		effective,
 		Some(bodies.clone()),
 		None,
-		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native Agent answer"}]}),
+		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native Agent answer"}]}),
 	));
 
 	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", serde_json::to_string(&catalog).expect("catalog path"))).expect("write config");
@@ -122,8 +125,11 @@ async fn qualify(
 		let path = home.path().join("config.toml");
 		let original = fs::read_to_string(&path).expect("config");
 
-		fs::write(path, format!("model_reasoning_effort={}\n{original}", json!(configured)))
-			.expect("native effort config");
+		fs::write(
+			path,
+			format!("model_reasoning_effort={}\n{original}", serde_json::json!(configured)),
+		)
+		.expect("native effort config");
 	}
 
 	let root = DecodexRoot::new(home.path().canonicalize().expect("fixture path").join("product"))
@@ -223,7 +229,7 @@ async fn qualify(
 	assert!(!backend.is_finished(), "fixture server must not fail an effort assertion");
 
 	for body in bodies.lock().expect("captured inference bodies").iter() {
-		assert_eq!(body["reasoning"]["effort"], json!(effective));
+		assert_eq!(body["reasoning"]["effort"], serde_json::json!(effective));
 	}
 
 	backend.abort();

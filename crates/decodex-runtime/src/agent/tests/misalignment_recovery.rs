@@ -3,18 +3,19 @@ use crate::agent::tests::*;
 #[tokio::test]
 async fn complete_later_native_history_reconciles_only_the_exact_old_precaution() {
 	for case in ["latest", "later", "voice", "missing-original", "missing-item"] {
-		let error = json!({"codexErrorInfo":"misalignmentPolicyViolation"});
-		let mut turns =
-			vec![json!({"id":"opaque turn/1","status":"failed","error":error,"items":[]})];
+		let error = serde_json::json!({"codexErrorInfo":"misalignmentPolicyViolation"});
+		let mut turns = vec![
+			serde_json::json!({"id":"opaque turn/1","status":"failed","error":error,"items":[]}),
+		];
 
 		if case == "missing-original" {
 			turns.clear();
 		}
 		if case != "latest" {
-			turns.push(json!({"id":"later","status":"completed","items":[]}));
+			turns.push(serde_json::json!({"id":"later","status":"completed","items":[]}));
 		}
 
-		let (mut agent, mut sent, _directory) = fixture_with_history(json!({
+		let (mut agent, mut sent, _directory) = fixture_with_history(serde_json::json!({
 			"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":turns}}
 		}))
 		.await;

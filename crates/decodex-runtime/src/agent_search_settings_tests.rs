@@ -45,27 +45,29 @@ fn fixture(fail_readback: bool) -> (AppServerClient, Arc<AtomicUsize>, JoinHandl
 			let saved = count.load(Ordering::SeqCst) > 0;
 			let version = if saved { "v2" } else { "v1" };
 			let mut response = match request["method"].as_str().unwrap() {
-				"thread/read" => json!({"result":{"thread":{"id":"thread","cwd":"/project"}}}),
+				"thread/read" =>
+					serde_json::json!({"result":{"thread":{"id":"thread","cwd":"/project"}}}),
 				"config/read" if saved && fail_readback =>
-					json!({"error":{"code":-32_603,"message":"read unavailable"}}),
-				"config/read" => json!({"result":{"config":{"web_search":"live"},"layers":[{
-					"name":{"type":"user","file":"/home/config.toml"},"version":version,
-					"config":{"web_search":if saved {"indexed"} else {"cached"}}
-				}]}}),
+					serde_json::json!({"error":{"code":-32_603,"message":"read unavailable"}}),
+				"config/read" =>
+					serde_json::json!({"result":{"config":{"web_search":"live"},"layers":[{
+						"name":{"type":"user","file":"/home/config.toml"},"version":version,
+						"config":{"web_search":if saved {"indexed"} else {"cached"}}
+					}]}}),
 				"configRequirements/read" =>
-					json!({"result":{"requirements":{"allowedWebSearchModes":["disabled","cached","indexed","future-mode"]}}}),
+					serde_json::json!({"result":{"requirements":{"allowedWebSearchModes":["disabled","cached","indexed","future-mode"]}}}),
 				"config/batchWrite" => {
 					assert_eq!(request["params"]["expectedVersion"], version);
 					assert_eq!(request["params"]["reloadUserConfig"], false);
 					assert_eq!(
 						request["params"]["edits"],
-						json!([{"keyPath":"web_search","value":"indexed","mergeStrategy":"replace"}])
+						serde_json::json!([{"keyPath":"web_search","value":"indexed","mergeStrategy":"replace"}])
 					);
 					assert!(app_server_client::is_search_mode_write(&request["params"]));
 
 					count.fetch_add(1, Ordering::SeqCst);
 
-					json!({"result":{"filePath":"/home/config.toml","version":"v2","status":"okOverridden"}})
+					serde_json::json!({"result":{"filePath":"/home/config.toml","version":"v2","status":"okOverridden"}})
 				},
 				other => panic!("unexpected native action {other}"),
 			};

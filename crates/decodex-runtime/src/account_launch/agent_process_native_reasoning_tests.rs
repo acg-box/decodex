@@ -20,7 +20,7 @@ async fn installed_public_reasoning_is_saved_and_projected_after_cold_restart() 
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(serve_fixture(listener, calls.clone(), None, None, None, |_| {
-		json!([
+		serde_json::json!([
 			{"type":"reasoning","id":"reasoning-fixture","summary":[{"type":"summary_text","text":"Public summary fixture."}],"content":[{"type":"reasoning_text","text":"PRIVATE_RAW_FIXTURE"}]},
 			{"type":"message","id":"answer-fixture","role":"assistant","content":[{"type":"output_text","text":"Done."}]}
 		])
@@ -37,7 +37,7 @@ async fn installed_public_reasoning_is_saved_and_projected_after_cold_restart() 
 	let mut config =
 		AgentConfig::new("gpt-5.6-sol".into(), "high".into(), home.path().display().to_string());
 
-	config.approval_policy = json!("never");
+	config.approval_policy = serde_json::json!("never");
 	config.sandbox = "read-only".into();
 
 	let mut agent = AgentCoordinator::new(store.clone(), session.client.clone(), config).unwrap();

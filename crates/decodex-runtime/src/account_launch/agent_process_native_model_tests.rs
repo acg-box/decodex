@@ -21,7 +21,7 @@ fn start_backend(
 		None,
 		Some(bodies),
 		None,
-		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Done"}]}),
+		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Done"}]}),
 	))
 }
 
@@ -60,7 +60,7 @@ fn write_catalog(catalog: &Path, no_effort_choices: bool) {
 	let mut target = effort::fixture_model("fixture-b", EFFORT);
 
 	if no_effort_choices {
-		target["supported_reasoning_levels"] = json!([]);
+		target["supported_reasoning_levels"] = serde_json::json!([]);
 		target["default_reasoning_level"] = Value::Null;
 	}
 
@@ -68,7 +68,8 @@ fn write_catalog(catalog: &Path, no_effort_choices: bool) {
 
 	fs::write(
 		catalog,
-		serde_json::to_vec(&json!({"models":models})).expect("native model fixture operation"),
+		serde_json::to_vec(&serde_json::json!({"models":models}))
+			.expect("native model fixture operation"),
 	)
 	.expect("native model fixture operation");
 }
@@ -133,7 +134,7 @@ async fn qualify(running: bool, no_effort_choices: bool, explicit_effort: bool) 
 	}
 
 	let configured_effort = if explicit_effort {
-		format!("model_reasoning_effort={}\n", json!(EFFORT))
+		format!("model_reasoning_effort={}\n", serde_json::json!(EFFORT))
 	} else {
 		String::new()
 	};
@@ -141,7 +142,7 @@ async fn qualify(running: bool, no_effort_choices: bool, explicit_effort: bool) 
 	fs::write(home.path().join("config.toml"), format!("model=\"fixture-a\"\n{configured_effort}model_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n", serde_json::to_string(&catalog).expect("native model fixture operation"))).expect("native model fixture operation");
 
 	let mut session = NativeSession::start(&binary, home.path());
-	let started = session.client.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only","model":"fixture-a","developerInstructions":"Keep fixture instructions"})).await.expect("native model fixture operation");
+	let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only","model":"fixture-a","developerInstructions":"Keep fixture instructions"})).await.expect("native model fixture operation");
 	let thread =
 		started["thread"]["id"].as_str().expect("native model fixture operation").to_owned();
 	let original = session.client.observed_task_models(&thread).expect("start hydration").0;
@@ -152,7 +153,7 @@ async fn qualify(running: bool, no_effort_choices: bool, explicit_effort: bool) 
 		let result = session
 			.client
 			.turn_start(
-				json!({"threadId":thread,"input":[{"type":"text","text":"Return fixture output"}]}),
+				serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Return fixture output"}]}),
 			)
 			.await
 			.expect("native model fixture operation");
@@ -213,7 +214,7 @@ async fn qualify(running: bool, no_effort_choices: bool, explicit_effort: bool) 
 
 	session
 		.client
-		.thread_resume(json!({"threadId":thread}))
+		.thread_resume(serde_json::json!({"threadId":thread}))
 		.await
 		.expect("native model fixture operation");
 
@@ -264,7 +265,7 @@ async fn run_turn(session: &mut NativeSession, thread: &str) {
 	let result = session
 		.client
 		.turn_start(
-			json!({"threadId":thread,"input":[{"type":"text","text":"Return fixture output"}]}),
+			serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Return fixture output"}]}),
 		)
 		.await
 		.expect("native model fixture operation");
@@ -302,7 +303,7 @@ async fn wait_selection(session: &mut NativeSession, thread: &str, model: &str) 
 }
 
 async fn qualify_independent_task(session: &mut NativeSession, home: &Path) {
-	let started=session.client.thread_start(json!({"cwd":home,"approvalPolicy":"never","sandbox":"read-only","developerInstructions":"Keep fixture instructions"})).await.expect("independent task");
+	let started=session.client.thread_start(serde_json::json!({"cwd":home,"approvalPolicy":"never","sandbox":"read-only","developerInstructions":"Keep fixture instructions"})).await.expect("independent task");
 	let thread = started["thread"]["id"].as_str().expect("independent thread");
 
 	assert_eq!(

@@ -17,23 +17,23 @@ use decodex_protocol::{
 };
 
 fn review(id: &str, status: &str) -> Value {
-	let mut value = json!({"threadId":"opaque thread/1","turnId":"opaque turn/1",
+	let mut value = serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1",
 		"reviewId":id,"targetItemId":null,"startedAtMs":100,
 		"review":{"status":status,"riskLevel":null,"userAuthorization":null,"rationale":null},
 		"action":{"type":"networkAccess","target":"https://example.test:443",
 			"host":"example.test","protocol":"https","port":443}});
 
 	if status != "inProgress" {
-		value["completedAtMs"] = json!(101);
-		value["decisionSource"] = json!("agent");
-		value["review"]["rationale"] = json!("User did not request this host.");
+		value["completedAtMs"] = serde_json::json!(101);
+		value["decisionSource"] = serde_json::json!("agent");
+		value["review"]["rationale"] = serde_json::json!("User did not request this host.");
 	}
 
 	value
 }
 
 fn approval_history() -> Value {
-	json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"active"},"turns":[{"id":"opaque turn/1","status":"inProgress","items":[]}]}}})
+	serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":"active"},"turns":[{"id":"opaque turn/1","status":"inProgress","items":[]}]}}})
 }
 
 fn detail_service(store: SqliteStore) -> crate::application::ServiceApplication {
@@ -72,14 +72,15 @@ async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 	let command = "echo 中文\\n\"quoted\" ".repeat(20_000) + "FINAL ACTION SUFFIX";
 	let mut event = review("large-command", "inProgress");
 
-	event["action"] = json!({"type":"command","source":"shell","command":command,"cwd":"/tmp"});
+	event["action"] =
+		serde_json::json!({"type":"command","source":"shell","command":command,"cwd":"/tmp"});
 
 	deliver(&mut agent, event.clone()).await;
 
-	event["completedAtMs"] = json!(101);
-	event["decisionSource"] = json!("agent");
-	event["review"]["status"] = json!("denied");
-	event["review"]["rationale"] = json!("Long findings. ".repeat(6_000));
+	event["completedAtMs"] = serde_json::json!(101);
+	event["decisionSource"] = serde_json::json!("agent");
+	event["review"]["status"] = serde_json::json!("denied");
+	event["review"]["rationale"] = serde_json::json!("Long findings. ".repeat(6_000));
 
 	deliver(&mut agent, event.clone()).await;
 
@@ -167,7 +168,7 @@ async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 		);
 	}
 	// A second writer conflicts with the saved action. An earlier page digest must stop working.
-	event["action"]["command"] = json!("different action");
+	event["action"]["command"] = serde_json::json!("different action");
 
 	store
 		.record_agent_guardian_review(AgentGuardianObservation {
@@ -196,7 +197,7 @@ async fn deliver(agent: &mut AgentCoordinator, value: Value) {
 	let (io, mut write) = io::duplex(8_192);
 	let (read, writer) = io::split(io);
 	let (_client, mut events) = AppServerClient::from_io(read, writer);
-	let wire = json!({"method":method,"params":value});
+	let wire = serde_json::json!({"method":method,"params":value});
 
 	write.write_all(format!("{wire}\n").as_bytes()).await.unwrap();
 
@@ -216,8 +217,8 @@ async fn guardian_observations_are_monotonic_bound_durable_and_do_not_wake_work(
 	for (thread, turn) in [("foreign", "opaque turn/1"), ("opaque thread/1", "unknown")] {
 		let mut value = review("ignored", "denied");
 
-		value["threadId"] = json!(thread);
-		value["turnId"] = json!(turn);
+		value["threadId"] = serde_json::json!(thread);
+		value["turnId"] = serde_json::json!(turn);
 
 		deliver(&mut agent, value).await;
 	}
@@ -230,14 +231,14 @@ async fn guardian_observations_are_monotonic_bound_durable_and_do_not_wake_work(
 	for id in ["execve-a", "execve-b"] {
 		let mut value = review(id, "denied");
 
-		value["targetItemId"] = json!("parent-command");
+		value["targetItemId"] = serde_json::json!("parent-command");
 
 		deliver(&mut agent, value).await;
 	}
 
 	let mut large = review("large-action", "denied");
 
-	large["action"] = json!({"type":"command","source":"shell","command":"界".repeat(100_000) + " exact-required-suffix","cwd":"/tmp"});
+	large["action"] = serde_json::json!({"type":"command","source":"shell","command":"界".repeat(100_000) + " exact-required-suffix","cwd":"/tmp"});
 
 	deliver(&mut agent, large.clone()).await;
 	deliver(&mut agent, review("unresolved", "inProgress")).await;
@@ -252,7 +253,7 @@ async fn guardian_observations_are_monotonic_bound_durable_and_do_not_wake_work(
 
 	assert_eq!(work.dispatch_state, decodex_database::AgentDispatchState::Running);
 
-	agent.handle_event(ServerEvent::Notification {method:"turn/completed".into(), params:json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
+	agent.handle_event(ServerEvent::Notification {method:"turn/completed".into(), params:serde_json::json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
 	// Native completion may be processed after the owning turn's terminal event.
 	deliver(&mut agent, review("late", "approved")).await;
 
@@ -306,7 +307,7 @@ async fn conflicting_guardian_evidence_retains_original_and_invalidates_approval
 
 	let mut changed = original.clone();
 
-	changed["action"]["host"] = json!("different.test");
+	changed["action"]["host"] = serde_json::json!("different.test");
 
 	deliver(&mut agent, changed).await;
 	deliver(&mut agent, original.clone()).await;
@@ -417,7 +418,7 @@ async fn guardian_unloaded_approval_preserves_native_settings_without_starting_a
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "thread/closed".into(),
-			params: json!({"threadId":"opaque thread/1"}),
+			params: serde_json::json!({"threadId":"opaque thread/1"}),
 		})
 		.await
 		.unwrap();
@@ -435,7 +436,7 @@ async fn guardian_unloaded_approval_preserves_native_settings_without_starting_a
 	assert_eq!(resumes.len(), 1);
 	assert_eq!(
 		resumes[0]["params"],
-		json!({"threadId":"opaque thread/1","excludeTurns":true,"experimentalRawEvents":true})
+		serde_json::json!({"threadId":"opaque thread/1","excludeTurns":true,"experimentalRawEvents":true})
 	);
 
 	let approvals: Vec<_> =
@@ -458,7 +459,7 @@ async fn guardian_rejection_and_lost_reply_have_distinct_durable_outcomes() {
 	{
 		let mut history = approval_history();
 
-		history[mode] = json!(true);
+		history[mode] = serde_json::json!(true);
 
 		let (mut agent, mut sent, directory) = fixture_with_history(history).await;
 
@@ -538,7 +539,8 @@ async fn guardian_approval_rejects_superseded_turn_and_changed_action_before_rpc
 		let mut history = approval_history();
 
 		if !changed_action {
-			history["opaque thread/1"]["thread"]["turns"][0]["id"] = json!("newer-turn");
+			history["opaque thread/1"]["thread"]["turns"][0]["id"] =
+				serde_json::json!("newer-turn");
 		}
 
 		let (mut agent, mut sent, _directory) = fixture_with_history(history).await;
@@ -557,7 +559,7 @@ async fn guardian_approval_rejects_superseded_turn_and_changed_action_before_rpc
 		if changed_action {
 			let mut changed = review("network", "denied");
 
-			changed["action"]["host"] = json!("different.test");
+			changed["action"]["host"] = serde_json::json!("different.test");
 
 			deliver(&mut agent, changed).await;
 		}
@@ -626,7 +628,7 @@ async fn guardian_query_pages_preserve_all_reviews_and_frame_budget() {
 	for number in 0..19 {
 		let mut value = review(&format!("review-{number}"), "denied");
 
-		value["action"] = json!({"type":"command","source":"shell","command":"word ".repeat(10_000),"cwd":"/tmp"});
+		value["action"] = serde_json::json!({"type":"command","source":"shell","command":"word ".repeat(10_000),"cwd":"/tmp"});
 
 		deliver(&mut agent, value).await;
 	}
@@ -670,10 +672,10 @@ async fn guardian_expanded_approval_frame_is_rejected_before_reservation_or_rpc(
 
 	let mut value = review("expanded-path", "denied");
 
-	value["action"] = json!({"type":"writeStdin","approvalId":"child",
+	value["action"] = serde_json::json!({"type":"writeStdin","approvalId":"child",
 		"processId":"terminal","stdin":"exact input","cwd":"/".to_owned() + &"界".repeat(1_000_000)});
 
-	let wire = json!({"method":"item/autoApprovalReview/completed","params":value});
+	let wire = serde_json::json!({"method":"item/autoApprovalReview/completed","params":value});
 
 	assert!(serde_json::to_vec(&wire).unwrap().len() < decodex_core::MAX_NATIVE_MESSAGE_BYTES);
 
@@ -711,7 +713,7 @@ async fn strict_review_from_unbound_native_generation_is_not_retained() {
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "autoApprovalReview/strictReviewRequired".into(),
-			params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","startedAtMs":100}),
+			params: serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","startedAtMs":100}),
 		})
 		.await
 		.unwrap();
@@ -734,7 +736,7 @@ async fn guardian_review_failure_preserves_absent_assessment_after_restart() {
 	let mut event = review("failed-review", "denied");
 	let rationale = "Automatic approval review failed: temporary review error";
 
-	event["review"]["rationale"] = json!(rationale);
+	event["review"]["rationale"] = serde_json::json!(rationale);
 
 	deliver(&mut agent, event.clone()).await;
 
@@ -773,14 +775,14 @@ async fn finished_command_survives_late_network_review_cancellation() {
 
 	let mut pending = review("network", "inProgress");
 
-	pending["targetItemId"] = json!("command");
+	pending["targetItemId"] = serde_json::json!("command");
 
 	deliver(&mut agent, pending.clone()).await;
 
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "item/completed".into(),
-			params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1",
+			params: serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1",
 			"item":{"id":"command","type":"commandExecution","status":"completed",
 				"exitCode":0,"aggregatedOutput":"build complete\n"}}),
 		})
@@ -789,7 +791,7 @@ async fn finished_command_survives_late_network_review_cancellation() {
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "turn/completed".into(),
-			params: json!({"threadId":"opaque thread/1",
+			params: serde_json::json!({"threadId":"opaque thread/1",
 			"turn":{"id":"opaque turn/1","status":"completed","items":[]}}),
 		})
 		.await
@@ -797,8 +799,8 @@ async fn finished_command_survives_late_network_review_cancellation() {
 
 	let mut cancelled = review("network", "aborted");
 
-	cancelled["targetItemId"] = json!("command");
-	cancelled["review"]["rationale"] = json!(null);
+	cancelled["targetItemId"] = serde_json::json!("command");
+	cancelled["review"]["rationale"] = serde_json::json!(null);
 
 	deliver(&mut agent, cancelled.clone()).await;
 	deliver(&mut agent, pending).await;
@@ -853,7 +855,8 @@ async fn large_guardian_approval_keeps_the_complete_action_on_the_native_request
 	let command = "echo 中\\\" ".repeat(40_000) + "EXACT FINAL ARGUMENT";
 	let mut event = review("large-denial", "denied");
 
-	event["action"] = json!({"type":"command","source":"shell","command":command,"cwd":"/tmp"});
+	event["action"] =
+		serde_json::json!({"type":"command","source":"shell","command":command,"cwd":"/tmp"});
 
 	deliver(&mut agent, event).await;
 
@@ -908,9 +911,9 @@ async fn foreign_guardian_paths_survive_storage_and_explicit_approval() {
 			let mut event = review(&format!("foreign-{index}-{kind}"), "denied");
 
 			event["action"] = if kind == "command" {
-				json!({"type":kind,"source":"unifiedExec","command":"inspect","cwd":path})
+				serde_json::json!({"type":kind,"source":"unifiedExec","command":"inspect","cwd":path})
 			} else {
-				json!({"type":kind,"cwd":path,"files":[format!("{path}/file #.txt")]})
+				serde_json::json!({"type":kind,"cwd":path,"files":[format!("{path}/file #.txt")]})
 			};
 
 			deliver(&mut agent, event.clone()).await;
@@ -949,9 +952,9 @@ async fn foreign_guardian_paths_survive_storage_and_explicit_approval() {
 			let mut expected = event["action"].clone();
 
 			if kind == "command" {
-				expected["source"] = json!("unified_exec");
+				expected["source"] = serde_json::json!("unified_exec");
 			} else {
-				expected["type"] = json!("apply_patch");
+				expected["type"] = serde_json::json!("apply_patch");
 			}
 
 			assert_eq!(approvals, vec![expected]);

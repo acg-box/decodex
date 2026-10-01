@@ -35,7 +35,7 @@ pub(crate) async fn request_owner(
 				return Ok(owner.clone());
 			}
 
-			let native = client.thread_read(agent::json!({"threadId":current})).await?;
+			let native = client.thread_read(serde_json::json!({"threadId":current})).await?;
 
 			if native["thread"]["id"] != current {
 				break;

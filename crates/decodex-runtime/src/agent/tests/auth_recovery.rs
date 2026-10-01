@@ -17,7 +17,7 @@ async fn retired_auth_recovery_ignores_notifications_and_preserves_saved_history
 	let (io, mut write) = io::duplex(16_384);
 	let (read, writer) = io::split(io);
 	let (_client, mut events) = AppServerClient::from_io(read, writer);
-	let params = json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","provider":"AWS","message":"[Sign in](https://example.invalid)"});
+	let params = serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","provider":"AWS","message":"[Sign in](https://example.invalid)"});
 
 	for completed in [false, true, false] {
 		let method = if completed {
@@ -25,7 +25,7 @@ async fn retired_auth_recovery_ignores_notifications_and_preserves_saved_history
 		} else {
 			"modelProvider/authRecoveryStarted"
 		};
-		let wire = json!({"method":method,"params":params});
+		let wire = serde_json::json!({"method":method,"params":params});
 
 		write.write_all(format!("{wire}\n").as_bytes()).await.unwrap();
 

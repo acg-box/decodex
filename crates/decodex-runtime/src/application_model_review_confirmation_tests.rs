@@ -126,7 +126,7 @@ fn response(
 	if first.starts_with("GET /api/codex/accounts/check ") {
 		let address = listener.local_addr().expect("address");
 
-		return ("200 OK", "application/json", json!({"accounts":[{"id":"workspace-fixture","workspace_backend_origin":format!("https://{address}"),"account_routing_override":"NO_CONSTRAINT"}]}).to_string());
+		return ("200 OK", "application/json", serde_json::json!({"accounts":[{"id":"workspace-fixture","workspace_backend_origin":format!("https://{address}"),"account_routing_override":"NO_CONSTRAINT"}]}).to_string());
 	}
 	if first.starts_with("GET ") {
 		return ("404 Not Found", "application/json", "{}".into());
@@ -137,9 +137,9 @@ fn response(
 	requests.lock().expect("requests").push(serde_json::from_slice(body).expect("inference JSON"));
 
 	let frames = [
-		json!({"type":"response.created","response":{"id":"review-response"}}),
-		json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"review-answer","content":[{"type":"output_text","text":"Fixture complete."}]}}),
-		json!({"type":"response.completed","response":{"id":"review-response","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}),
+		serde_json::json!({"type":"response.created","response":{"id":"review-response"}}),
+		serde_json::json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"review-answer","content":[{"type":"output_text","text":"Fixture complete."}]}}),
+		serde_json::json!({"type":"response.completed","response":{"id":"review-response","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}),
 	];
 	let data = frames
 		.iter()

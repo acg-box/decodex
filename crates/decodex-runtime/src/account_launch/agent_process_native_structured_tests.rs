@@ -32,7 +32,7 @@ async fn qualify() {
 		None,
 		Some(bodies.clone()),
 		None,
-		|_| json!({"type":"message","id":"recap-output","role":"assistant","content":[{"type":"output_text","text":"{\"summary\":\"Fixture recap\",\"next\":null}"}]}),
+		|_| serde_json::json!({"type":"message","id":"recap-output","role":"assistant","content":[{"type":"output_text","text":"{\"summary\":\"Fixture recap\",\"next\":null}"}]}),
 	));
 	let config = format!(
 		"model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ndefault_permissions=\"recap-restricted\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.forbidden]\ncommand=\"must-not-run-recap-tool\"\nrequired=true\n[permissions.recap-restricted.filesystem]\n\":root\"=\"read\"\n\"/private/recap-denied\"=\"deny\"\n"
@@ -76,7 +76,7 @@ async fn qualify() {
 
 			events
 		});
-		let schema = json!({"type":"object","properties":{"summary":{"type":"string"},"next":{"type":["string","null"]}},"required":["summary","next"],"additionalProperties":false});
+		let schema = serde_json::json!({"type":"object","properties":{"summary":{"type":"string"},"next":{"type":["string","null"]}},"required":["summary","next"],"additionalProperties":false});
 		let value = thread
 			.run("Summarize the fixture without tools.".into(), schema, None, receive, watch)
 			.await
@@ -96,7 +96,7 @@ async fn qualify() {
 
 		let listed = session
 			.client
-			.request("thread/list", json!({"limit":100}))
+			.request("thread/list", serde_json::json!({"limit":100}))
 			.await
 			.expect("native temporary fixture");
 

@@ -10,7 +10,7 @@ use decodex_core::{AccountId, ProcessGenerationId};
 use decodex_protocol::{AgentTimelineEntry, AgentTimelineResult};
 
 fn page() -> AgentTimelinePage {
-	super::super::project("thread", &json!({"data":[
+	super::super::project("thread", &serde_json::json!({"data":[
 		{"type":"realtime","position":5,"item":{"type":"bemItemPromoted","id":"first","realtimeSessionId":"voice","turnId":"old-turn","itemId":"message","presentation":{"type":"inlineMarkdown"}}},
 		{"type":"realtime","position":6,"item":{"type":"bemItemPromoted","id":"second","realtimeSessionId":"voice","turnId":"old-turn","itemId":"image","presentation":{"type":"wholeItem"}}}
 	],"nextCursor":"older","activeRealtimeSessionAtPageStart":"voice"})).unwrap()
@@ -18,14 +18,14 @@ fn page() -> AgentTimelinePage {
 
 #[test]
 fn exact_reference_rejects_ambiguous_turns_items_and_wrong_thread() {
-	let item = json!({"id":"message","type":"agentMessage","text":"Exact"});
-	let turn = json!({"id":"old-turn","items":[item]});
+	let item = serde_json::json!({"id":"message","type":"agentMessage","text":"Exact"});
+	let turn = serde_json::json!({"id":"old-turn","items":[item]});
 
 	for history in [
-		json!({"thread":{"id":"other","turns":[turn]}}),
-		json!({"thread":{"id":"thread","turns":[turn,turn]}}),
-		json!({"thread":{"id":"thread","turns":[{"id":"old-turn","items":[item,item]}]}}),
-		json!({"thread":{"id":"thread","turns":[{"id":"other-turn","items":[item]}]}}),
+		serde_json::json!({"thread":{"id":"other","turns":[turn]}}),
+		serde_json::json!({"thread":{"id":"thread","turns":[turn,turn]}}),
+		serde_json::json!({"thread":{"id":"thread","turns":[{"id":"old-turn","items":[item,item]}]}}),
+		serde_json::json!({"thread":{"id":"thread","turns":[{"id":"other-turn","items":[item]}]}}),
 	] {
 		assert!(exact_item(&history, "thread", "old-turn", "message").is_none());
 	}
@@ -48,13 +48,16 @@ async fn off_page_references_share_one_native_read_and_keep_exact_media_indices(
 			assert_eq!(request["params"]["threadId"], "thread");
 			assert_eq!(request["params"]["includeTurns"].as_bool().unwrap_or(false), include);
 
-			let result = json!({"thread":{"id":"thread","turns":[{"id":"old-turn","items":[
+			let result = serde_json::json!({"thread":{"id":"thread","turns":[{"id":"old-turn","items":[
 				{"type":"agentMessage","id":"message","text":"An older exact result"},
 				{"type":"dynamicToolCall","id":"image","tool":"image","status":"completed","success":true,"contentItems":[{"type":"inputText","text":"private raw tool output"},{"type":"inputImage","imageUrl":"data:image/png;base64,PRIVATE"}]}
 			]}]}});
 
 			writer
-				.write_all(format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes())
+				.write_all(
+					format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
+						.as_bytes(),
+				)
 				.await
 				.unwrap();
 		}
@@ -100,7 +103,7 @@ async fn loaded_reference_does_not_need_transport_and_failure_preserves_referenc
 	page.entries.push(AgentTimelineEntry {
 		position: 7,
 		content: ordinary(
-			&json!({"turnId":"old-turn","item":{"id":"message","type":"agentMessage","text":"Loaded"}}),
+			&serde_json::json!({"turnId":"old-turn","item":{"id":"message","type":"agentMessage","text":"Loaded"}}),
 		)
 		.unwrap(),
 	});
@@ -129,7 +132,7 @@ async fn duplicate_loaded_identity_never_selects_an_arbitrary_message() {
 		page.entries.push(AgentTimelineEntry {
 			position,
 			content: ordinary(
-				&json!({"turnId":"old-turn","item":{"id":"message","type":"agentMessage","text":text}}),
+				&serde_json::json!({"turnId":"old-turn","item":{"id":"message","type":"agentMessage","text":text}}),
 			)
 			.unwrap(),
 		});
@@ -159,9 +162,9 @@ async fn enriched_pages_shrink_on_same_cursor_and_recheck_source_after_reference
 						assert_eq!(request["params"]["limit"], limit);
 						assert_eq!(request["params"]["cursor"], "same-cursor");
 
-						let data = (0..limit).map(|n| json!({"type":"realtime","position":n,"item":{"type":"bemItemPromoted","id":format!("p{n}"),"realtimeSessionId":"voice","turnId":"old-turn","itemId":"message","presentation":{"type":"inlineMarkdown"}}})).collect::<Vec<_>>();
+						let data = (0..limit).map(|n| serde_json::json!({"type":"realtime","position":n,"item":{"type":"bemItemPromoted","id":format!("p{n}"),"realtimeSessionId":"voice","turnId":"old-turn","itemId":"message","presentation":{"type":"inlineMarkdown"}}})).collect::<Vec<_>>();
 
-						json!({"data":data,"nextCursor":"older","activeRealtimeSessionAtPageStart":"voice"})
+						serde_json::json!({"data":data,"nextCursor":"older","activeRealtimeSessionAtPageStart":"voice"})
 					} else {
 						assert_eq!(request["method"], "thread/read");
 						assert_eq!(request["params"]["threadId"], "thread");
@@ -170,12 +173,16 @@ async fn enriched_pages_shrink_on_same_cursor_and_recheck_source_after_reference
 							step == 3
 						);
 
-						json!({"thread":{"id":"thread","turns":[{"id":"old-turn","items":[{"id":"message","type":"agentMessage","text":"x".repeat(8_192)}]}]}})
+						serde_json::json!({"thread":{"id":"thread","turns":[{"id":"old-turn","items":[{"id":"message","type":"agentMessage","text":"x".repeat(8_192)}]}]}})
 					};
 
 					writer
 						.write_all(
-							format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+							format!(
+								"{}\n",
+								serde_json::json!({"id":request["id"],"result":result})
+							)
+							.as_bytes(),
 						)
 						.await
 						.unwrap();

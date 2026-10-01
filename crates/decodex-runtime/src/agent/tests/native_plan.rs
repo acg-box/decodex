@@ -51,7 +51,7 @@ async fn native_proposed_plan_history_survives_restart_without_model_replay() {
    agent.initialize().await.unwrap();
 
    if !cold {
-    let response = agent.client.thread_start(json!({"model":"gpt-5.6-sol","cwd":path,"approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
+    let response = agent.client.thread_start(serde_json::json!({"model":"gpt-5.6-sol","cwd":path,"approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
 
     thread = response["thread"]["id"].as_str().unwrap().into();
 
@@ -60,7 +60,7 @@ async fn native_proposed_plan_history_survives_restart_without_model_replay() {
     agent.store.bind_agent_thread("agent".into(),thread.clone()).await.unwrap();
     agent.store.begin_agent_dispatch("agent".into()).await.unwrap();
 
-    let started = agent.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Propose the fixture plan.","text_elements":[]}],"collaborationMode":{"mode":"plan","settings":{"model":"gpt-5.6-sol","reasoning_effort":"medium","developer_instructions":null}}})).await.unwrap();
+    let started = agent.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Propose the fixture plan.","text_elements":[]}],"collaborationMode":{"mode":"plan","settings":{"model":"gpt-5.6-sol","reasoning_effort":"medium","developer_instructions":null}}})).await.unwrap();
 
     agent.store.acknowledge_agent_dispatch("agent".into(),started["turn"]["id"].as_str().unwrap().into()).await.unwrap();
 
@@ -135,11 +135,11 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>) {
 		calls.fetch_add(1, Ordering::AcqRel);
 
 		let frames = [
-			json!({"type":"response.created","response":{"id":"response"}}),
-			json!({"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant","id":"message","phase":"final_answer","content":[]}}),
-			json!({"type":"response.output_text.delta","item_id":"message","output_index":0,"content_index":0,"delta":"<proposed_plan>\nDraft only\n</proposed_plan>\n"}),
-			json!({"type":"response.output_item.done","output_index":0,"item":{"type":"message","role":"assistant","id":"message","phase":"final_answer","content":[{"type":"output_text","text":format!("<proposed_plan>\n{FINAL_PLAN}</proposed_plan>\n")}]}}),
-			json!({"type":"response.completed","response":{"id":"response","usage":{"input_tokens":1,"output_tokens":5,"total_tokens":6}}}),
+			serde_json::json!({"type":"response.created","response":{"id":"response"}}),
+			serde_json::json!({"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant","id":"message","phase":"final_answer","content":[]}}),
+			serde_json::json!({"type":"response.output_text.delta","item_id":"message","output_index":0,"content_index":0,"delta":"<proposed_plan>\nDraft only\n</proposed_plan>\n"}),
+			serde_json::json!({"type":"response.output_item.done","output_index":0,"item":{"type":"message","role":"assistant","id":"message","phase":"final_answer","content":[{"type":"output_text","text":format!("<proposed_plan>\n{FINAL_PLAN}</proposed_plan>\n")}]}}),
+			serde_json::json!({"type":"response.completed","response":{"id":"response","usage":{"input_tokens":1,"output_tokens":5,"total_tokens":6}}}),
 		];
 		let data = frames
 			.iter()

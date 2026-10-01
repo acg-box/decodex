@@ -28,7 +28,7 @@ impl Wire {
 	}
 
 	async fn publish(&mut self, agent: &mut AgentCoordinator, thread: &str, settings: Value) {
-		let event = json!({"method":"thread/settings/updated","params":{"threadId":thread,"threadSettings":settings}});
+		let event = serde_json::json!({"method":"thread/settings/updated","params":{"threadId":thread,"threadSettings":settings}});
 
 		self.remote.write_all(format!("{event}\n").as_bytes()).await.unwrap();
 
@@ -46,7 +46,7 @@ impl Wire {
 		response: Value,
 	) {
 		let client = agent.client.clone();
-		let params = json!({"threadId":thread});
+		let params = serde_json::json!({"threadId":thread});
 		let pending = tokio::spawn(async move {
 			match method {
 				"thread/resume" => client.thread_resume(params).await,
@@ -70,7 +70,10 @@ impl Wire {
 		assert_eq!(request["params"]["threadId"], thread);
 
 		self.remote
-			.write_all(format!("{}\n", json!({"id":request["id"],"result":response})).as_bytes())
+			.write_all(
+				format!("{}\n", serde_json::json!({"id":request["id"],"result":response}))
+					.as_bytes(),
+			)
 			.await
 			.unwrap();
 		pending.await.unwrap().unwrap();
@@ -91,7 +94,7 @@ impl Wire {
 }
 
 fn facts(model: &str) -> Value {
-	json!({"model":model,"modelProvider":"fixture","effort":"high","serviceTier":null,
+	serde_json::json!({"model":model,"modelProvider":"fixture","effort":"high","serviceTier":null,
         "cwd":"/fixture","activePermissionProfile":{"id":model},"approvalPolicy":"on-request",
         "approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"},
         "disabledPluginIds":[format!("{model}@market")],
@@ -103,7 +106,7 @@ fn assert_projections(values: &[AgentTaskSettingsObservation; 3]) {
 
 	assert_eq!(
 		model,
-		json!({"model":"first","modelProvider":"fixture","effort":"high","serviceTier":null})
+		serde_json::json!({"model":"first","modelProvider":"fixture","effort":"high","serviceTier":null})
 	);
 
 	let permissions: NativeTaskPermissions =
@@ -113,24 +116,24 @@ fn assert_projections(values: &[AgentTaskSettingsObservation; 3]) {
 
 	let plugins: Value = serde_json::from_str(values[2].settings_json.as_ref().unwrap()).unwrap();
 
-	assert_eq!(plugins, json!({"disabledPluginIds":["first@market"]}));
+	assert_eq!(plugins, serde_json::json!({"disabledPluginIds":["first@market"]}));
 	assert_ne!(values[0].id, values[1].id);
 	assert_ne!(values[1].id, values[2].id);
 }
 
 #[test]
 fn hydrated_settings_accept_native_changes_but_not_foreign_or_malformed_replies() {
-	let valid = json!({"thread":{"id":"exact"},"model":"native-replacement","reasoningEffort":"future-effort"});
+	let valid = serde_json::json!({"thread":{"id":"exact"},"model":"native-replacement","reasoningEffort":"future-effort"});
 
 	assert!(AgentCoordinator::hydrated_thread_matches(&valid, "exact"));
 	assert!(!AgentCoordinator::hydrated_thread_matches(&valid, "foreign"));
 
 	for (field, value) in [
 		("model", Value::Null),
-		("model", json!("")),
-		("model", json!("\n")),
-		("reasoningEffort", json!(42)),
-		("reasoningEffort", json!("\n")),
+		("model", serde_json::json!("")),
+		("model", serde_json::json!("\n")),
+		("reasoningEffort", serde_json::json!(42)),
+		("reasoningEffort", serde_json::json!("\n")),
 	] {
 		let mut bad = valid.clone();
 
@@ -153,7 +156,7 @@ fn hydrated_settings_accept_native_changes_but_not_foreign_or_malformed_replies(
 fn response(thread: &str, model: &str) -> Value {
 	let mut value = facts(model);
 
-	value["thread"] = json!({"id":thread});
+	value["thread"] = serde_json::json!({"id":thread});
 	value["reasoningEffort"] = Value::Null;
 
 	value.as_object_mut().unwrap().remove("effort");
@@ -254,7 +257,7 @@ async fn wire_settings_preserve_transitions_privacy_and_reopen_without_dispatch(
 
 	let mut empty_plugins = facts("second");
 
-	empty_plugins["disabledPluginIds"] = json!([]);
+	empty_plugins["disabledPluginIds"] = serde_json::json!([]);
 
 	wire.publish(&mut agent, &thread, empty_plugins).await;
 
@@ -262,7 +265,7 @@ async fn wire_settings_preserve_transitions_privacy_and_reopen_without_dispatch(
 
 	assert_eq!(
 		serde_json::from_str::<Value>(second[2].settings_json.as_ref().unwrap()).unwrap(),
-		json!({"disabledPluginIds":[]})
+		serde_json::json!({"disabledPluginIds":[]})
 	);
 
 	wire.publish(&mut agent, &thread, facts("first")).await;
@@ -335,7 +338,7 @@ async fn queued_notification_payload_cannot_replace_newer_wire_settings() {
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "thread/settings/updated".into(),
-			params: json!({"threadId":thread,"threadSettings":facts("stale")}),
+			params: serde_json::json!({"threadId":thread,"threadSettings":facts("stale")}),
 		})
 		.await
 		.unwrap();
@@ -427,7 +430,7 @@ async fn permission_receipt_requires_current_wire_facts_not_queued_payload_or_hi
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "thread/settings/updated".into(),
-			params: json!({"threadId":thread,"threadSettings":facts("scoped")}),
+			params: serde_json::json!({"threadId":thread,"threadSettings":facts("scoped")}),
 		})
 		.await
 		.unwrap();
