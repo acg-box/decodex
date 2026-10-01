@@ -1,11 +1,14 @@
 //! Durable permission selection attempts. A queued response never proves application.
-use crate::{SqliteStore, StoreError, agent_process::owns_work, error::sqlite_error, unix_micros};
-use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
+use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+use crate::{
+	SqliteStore, StoreError, agent_models, agent_plugins, agent_process, agent_prompt_edit, error,
+};
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentPermissionAttempt {
 	pub work: String,
 	pub thread: String,
@@ -15,14 +18,6 @@ pub struct AgentPermissionAttempt {
 	pub review_token: String,
 	pub attempt_id: String,
 }
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AgentPermissionReceipt {
-	pub id: i64,
-	pub attempt: AgentPermissionAttempt,
-	pub state: String,
-}
-
 impl AgentPermissionAttempt {
 	fn validate(&self) -> Result<(), StoreError> {
 		if [&self.work, &self.thread, &self.profile, &self.attempt_id]
@@ -42,7 +37,7 @@ impl AgentPermissionAttempt {
 
 	fn key(&self) -> String {
 		// A new request ID cannot replay an already reserved review.
-		let identity = json!([self.work, self.thread, self.review_token]);
+		let identity = serde_json::json!([self.work, self.thread, self.review_token]);
 		let digest: String = Sha256::digest(identity.to_string().as_bytes())
 			.iter()
 			.map(|b| format!("{b:02x}"))
@@ -52,8 +47,11 @@ impl AgentPermissionAttempt {
 	}
 }
 
-pub(crate) fn pending(connection: &rusqlite::Connection, work: &str) -> Result<bool, StoreError> {
-	connection.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events e WHERE e.work_item_id=?1 AND e.event_kind='permission_selection' AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND r.event_kind='permission_selection_result' AND json_extract(r.payload,'$.state')='rejected') OR (r.source_event_id=e.source_event_id||':observation' AND r.event_kind='permission_selection_observation')))", [work], |r|r.get(0)).map_err(|e|sqlite_error(e).into())
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgentPermissionReceipt {
+	pub id: i64,
+	pub attempt: AgentPermissionAttempt,
+	pub state: String,
 }
 
 impl SqliteStore {
@@ -67,23 +65,23 @@ impl SqliteStore {
 		attempt.validate()?;
 
 		self.run(move |connection| {
-			let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
+			let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 
-			if !owns_work(&tx,&attempt.work,attempt.generation.as_deref())? || crate::agent_prompt_edit::pending(&tx,&attempt.work)? || pending(&tx,&attempt.work)? || crate::agent_models::pending(&tx,&attempt.work)? || crate::agent_plugins::pending(&tx,&attempt.work)? { return Ok(None); }
+			if !agent_process::owns_work(&tx,&attempt.work,attempt.generation.as_deref())? || agent_prompt_edit::pending(&tx,&attempt.work)? || pending(&tx,&attempt.work)? || agent_models::pending(&tx,&attempt.work)? || agent_plugins::pending(&tx,&attempt.work)? { return Ok(None); }
 
-			let valid: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items w JOIN agent_inbox_events e ON e.work_item_id=w.id WHERE w.id=?1 AND w.codex_thread_id=?2 AND ((w.dispatch_state='idle' AND w.active_turn_id IS NULL) OR (w.dispatch_state='running' AND w.active_turn_id IS NOT NULL)) AND w.status<>'resolved' AND e.id=?4 AND e.event_kind='native_task_permissions' AND json_extract(e.payload,'$.threadId')=?2 AND json_extract(e.payload,'$.generationId') IS ?3 AND json_type(e.payload,'$.settings')='object' AND json_extract(e.payload,'$.settings.profileId') IS NOT ?5 AND e.id=(SELECT max(n.id) FROM agent_inbox_events n WHERE n.work_item_id=w.id AND n.event_kind='native_task_permissions' AND json_extract(n.payload,'$.threadId')=?2 AND json_extract(n.payload,'$.generationId') IS ?3))",params![attempt.work,attempt.thread,attempt.generation,attempt.settings_event,attempt.profile],|r|r.get(0)).map_err(sqlite_error)?;
+			let valid: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items w JOIN agent_inbox_events e ON e.work_item_id=w.id WHERE w.id=?1 AND w.codex_thread_id=?2 AND ((w.dispatch_state='idle' AND w.active_turn_id IS NULL) OR (w.dispatch_state='running' AND w.active_turn_id IS NOT NULL)) AND w.status<>'resolved' AND e.id=?4 AND e.event_kind='native_task_permissions' AND json_extract(e.payload,'$.threadId')=?2 AND json_extract(e.payload,'$.generationId') IS ?3 AND json_type(e.payload,'$.settings')='object' AND json_extract(e.payload,'$.settings.profileId') IS NOT ?5 AND e.id=(SELECT max(n.id) FROM agent_inbox_events n WHERE n.work_item_id=w.id AND n.event_kind='native_task_permissions' AND json_extract(n.payload,'$.threadId')=?2 AND json_extract(n.payload,'$.generationId') IS ?3))",rusqlite::params![attempt.work,attempt.thread,attempt.generation,attempt.settings_event,attempt.profile],|r|r.get(0)).map_err(error::sqlite_error)?;
 
 			if !valid {return Ok(None);}
 
-			let conflict: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_misalignment WHERE work_id=?1)",[&attempt.work],|r|r.get(0)).map_err(sqlite_error)?;
+			let conflict: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_misalignment WHERE work_id=?1)",[&attempt.work],|r|r.get(0)).map_err(error::sqlite_error)?;
 
 			if conflict {return Ok(None);}
 
 			let key=attempt.key();
-			let now=unix_micros()?;
-			let changed=tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'permission_selection',?3,?4,'resolved','Permission selection reserved; not confirmed.',?4)",params![key,attempt.work,json!({"attempt":attempt}).to_string(),now]).map_err(sqlite_error)?;
+			let now=crate::unix_micros()?;
+			let changed=tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'permission_selection',?3,?4,'resolved','Permission selection reserved; not confirmed.',?4)",rusqlite::params![key,attempt.work,serde_json::json!({"attempt":attempt}).to_string(),now]).map_err(error::sqlite_error)?;
 
-			let id=tx.last_insert_rowid();tx.commit().map_err(sqlite_error)?;Ok((changed==1).then_some(id))
+			let id=tx.last_insert_rowid();tx.commit().map_err(error::sqlite_error)?;Ok((changed==1).then_some(id))
 		}).await
 	}
 
@@ -102,9 +100,9 @@ impl SqliteStore {
 
 		self.run(move |connection| {
 			let key=attempt.key();
-			let expected=json!({"attempt":attempt}).to_string();
+			let expected=serde_json::json!({"attempt":attempt}).to_string();
 
-			Ok(connection.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) SELECT source_event_id||':result',work_item_id,'permission_selection_result',?4,?5,'resolved','Native RPC outcome; application is separate.',?5 FROM agent_inbox_events WHERE id=?1 AND source_event_id=?2 AND payload=?3 AND event_kind='permission_selection'",params![event,key,expected,json!({"reservation":event,"state":state}).to_string(),unix_micros()?]).map_err(sqlite_error)?==1)
+			Ok(connection.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) SELECT source_event_id||':result',work_item_id,'permission_selection_result',?4,?5,'resolved','Native RPC outcome; application is separate.',?5 FROM agent_inbox_events WHERE id=?1 AND source_event_id=?2 AND payload=?3 AND event_kind='permission_selection'",rusqlite::params![event,key,expected,serde_json::json!({"reservation":event,"state":state}).to_string(),crate::unix_micros()?]).map_err(error::sqlite_error)?==1)
 		}).await
 	}
 
@@ -114,17 +112,21 @@ impl SqliteStore {
 		thread: String,
 	) -> Result<Option<AgentPermissionReceipt>, StoreError> {
 		self.run(move |connection| {
-			let row:Option<(i64,String,String)>=connection.query_row("SELECT e.id,json_extract(e.payload,'$.attempt'),COALESCE(json_extract(o.payload,'$.state'),json_extract(r.payload,'$.state'),'reserved') FROM agent_inbox_events e LEFT JOIN agent_inbox_events r ON r.source_event_id=e.source_event_id||':result' AND r.event_kind='permission_selection_result' LEFT JOIN agent_inbox_events o ON o.source_event_id=e.source_event_id||':observation' AND o.event_kind='permission_selection_observation' WHERE e.work_item_id=?1 AND e.event_kind='permission_selection' AND json_extract(e.payload,'$.attempt.thread')=?2 ORDER BY e.id DESC LIMIT 1",params![work,thread],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(sqlite_error)?;
+			let row:Option<(i64,String,String)>=connection.query_row("SELECT e.id,json_extract(e.payload,'$.attempt'),COALESCE(json_extract(o.payload,'$.state'),json_extract(r.payload,'$.state'),'reserved') FROM agent_inbox_events e LEFT JOIN agent_inbox_events r ON r.source_event_id=e.source_event_id||':result' AND r.event_kind='permission_selection_result' LEFT JOIN agent_inbox_events o ON o.source_event_id=e.source_event_id||':observation' AND o.event_kind='permission_selection_observation' WHERE e.work_item_id=?1 AND e.event_kind='permission_selection' AND json_extract(e.payload,'$.attempt.thread')=?2 ORDER BY e.id DESC LIMIT 1",rusqlite::params![work,thread],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(error::sqlite_error)?;
 
 			row.map(|(id,attempt,state)|Ok(AgentPermissionReceipt {id,attempt:serde_json::from_str(&attempt).map_err(|_|StoreError::InvalidInput("invalid saved permission attempt"))?,state})).transpose()
 		}).await
 	}
 }
 
+pub(crate) fn pending(connection: &Connection, work: &str) -> Result<bool, StoreError> {
+	connection.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events e WHERE e.work_item_id=?1 AND e.event_kind='permission_selection' AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND r.event_kind='permission_selection_result' AND json_extract(r.payload,'$.state')='rejected') OR (r.source_event_id=e.source_event_id||':observation' AND r.event_kind='permission_selection_observation')))", [work], |r|r.get(0)).map_err(|e|error::sqlite_error(e).into())
+}
+
 /// The journal owner calls this with wire-current facts in the observation transaction.
 /// A new owner can reconcile an old attempt only after the old process is confirmed dead.
 pub(crate) fn observe(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	work: &str,
 	thread: &str,
 	generation: Option<&str>,
@@ -155,11 +157,11 @@ pub(crate) fn observe(
 		_ => return Ok(()),
 	};
 
-	if !owns_work(connection, work, generation)? {
+	if !agent_process::owns_work(connection, work, generation)? {
 		return Ok(());
 	}
 
-	let row:Option<(i64,String,Option<String>,String)>=connection.query_row("SELECT e.id,e.source_event_id,json_extract(e.payload,'$.attempt.generation'),json_extract(e.payload,'$.attempt.profile') FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id AND w.codex_thread_id=?2 WHERE e.work_item_id=?1 AND e.event_kind='permission_selection' AND e.id<?3 AND json_extract(e.payload,'$.attempt.thread')=?2 AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND json_extract(r.payload,'$.state')='rejected') OR r.source_event_id=e.source_event_id||':observation') ORDER BY e.id DESC LIMIT 1",params![work,thread,observation],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(sqlite_error)?;
+	let row:Option<(i64,String,Option<String>,String)>=connection.query_row("SELECT e.id,e.source_event_id,json_extract(e.payload,'$.attempt.generation'),json_extract(e.payload,'$.attempt.profile') FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id AND w.codex_thread_id=?2 WHERE e.work_item_id=?1 AND e.event_kind='permission_selection' AND e.id<?3 AND json_extract(e.payload,'$.attempt.thread')=?2 AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND json_extract(r.payload,'$.state')='rejected') OR r.source_event_id=e.source_event_id||':observation') ORDER BY e.id DESC LIMIT 1",rusqlite::params![work,thread,observation],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(error::sqlite_error)?;
 	let Some((reservation, key, previous, target)) = row else {
 		return Ok(());
 	};
@@ -173,7 +175,7 @@ pub(crate) fn observe(
 		let (Some(previous), Some(_current)) = (previous.as_deref(), generation) else {
 			return Ok(());
 		};
-		let dead:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM process_generations g JOIN process_generation_death_evidence e ON e.evidence_id=g.death_evidence_id AND e.generation_id=g.generation_id WHERE g.generation_id=?1 AND g.state='dead')",[previous],|r|r.get(0)).map_err(sqlite_error)?;
+		let dead:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM process_generations g JOIN process_generation_death_evidence e ON e.evidence_id=g.death_evidence_id AND e.generation_id=g.generation_id WHERE g.generation_id=?1 AND g.state='dead')",[previous],|r|r.get(0)).map_err(error::sqlite_error)?;
 
 		if !dead {
 			return Ok(());
@@ -181,21 +183,20 @@ pub(crate) fn observe(
 
 		if matches { "target_observed" } else { "superseded" }
 	};
-	let now = unix_micros()?;
+	let now = crate::unix_micros()?;
 
-	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'permission_selection_observation',?3,?4,'resolved','Current native permissions observed; prior request causation is not asserted.',?4)",params![format!("{key}:observation"),work,json!({"reservation":reservation,"settingsEvent":observation,"state":state,"generationId":generation}).to_string(),now]).map_err(sqlite_error)?;
+	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'permission_selection_observation',?3,?4,'resolved','Current native permissions observed; prior request causation is not asserted.',?4)",rusqlite::params![format!("{key}:observation"),work,serde_json::json!({"reservation":reservation,"settingsEvent":observation,"state":state,"generationId":generation}).to_string(),now]).map_err(error::sqlite_error)?;
 
 	Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::{AgentDispatchState, tests::bound_agent_store as setup};
+	use crate::{
+		AgentDispatchState, AgentPermissionAttempt, AgentPermissionReceipt, EnqueueAgentEvent,
+		SqliteStore, tests,
+	};
 
-	async fn facts(store: &SqliteStore, profile: Option<&str>, digest: char) -> i64 {
-		store.record_agent_task_permissions_publication("thread".into(),None,profile.map(|profile|json!({"profileId":profile,"cwd":"/native","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"}}).to_string()),digest.to_string().repeat(64)).await.unwrap().unwrap()
-	}
 	fn attempt(settings_event: i64, token: char) -> AgentPermissionAttempt {
 		AgentPermissionAttempt {
 			work: "work".into(),
@@ -207,6 +208,10 @@ mod tests {
 			attempt_id: format!("attempt-{token}"),
 		}
 	}
+
+	async fn facts(store: &SqliteStore, profile: Option<&str>, digest: char) -> i64 {
+		store.record_agent_task_permissions_publication("thread".into(),None,profile.map(|profile|serde_json::json!({"profileId":profile,"cwd":"/native","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"}}).to_string()),digest.to_string().repeat(64)).await.unwrap().unwrap()
+	}
 	async fn receipt(store: &SqliteStore) -> AgentPermissionReceipt {
 		store.agent_permission_receipt("work".into(), "thread".into()).await.unwrap().unwrap()
 	}
@@ -215,7 +220,7 @@ mod tests {
 	async fn running_permission_reservation_accepts_named_profiles_and_does_not_replay() {
 		let dir = tempfile::tempdir().expect("fixture");
 		let path = dir.path().join("permissions.sqlite3");
-		let store = setup(&path).await;
+		let store = tests::bound_agent_store(&path).await;
 		let observed = facts(&store, Some(":read-only"), 'a').await;
 
 		store.begin_agent_dispatch("work".into()).await.expect("dispatch");
@@ -273,7 +278,7 @@ mod tests {
 	async fn permission_reservation_survives_crash_and_blocks_dispatch_until_native_confirmation() {
 		let dir = tempfile::tempdir().unwrap();
 		let path = dir.path().join("state.sqlite3");
-		let store = setup(&path).await;
+		let store = tests::bound_agent_store(&path).await;
 		let observed = facts(&store, Some("readonly"), 'a').await;
 		let a = attempt(observed, 'a');
 		let b = attempt(observed, 'b');
@@ -326,7 +331,7 @@ mod tests {
 			.record_agent_task_permissions(
 				"thread".into(),
 				None,
-				Some(json!({"profileId":"scoped"}).to_string()),
+				Some(serde_json::json!({"profileId":"scoped"}).to_string()),
 				"d".repeat(64),
 			)
 			.await
@@ -348,7 +353,7 @@ mod tests {
 	#[tokio::test]
 	async fn permission_publication_before_ack_wins_and_rejected_review_cannot_replay() {
 		let dir = tempfile::tempdir().unwrap();
-		let store = setup(&dir.path().join("state.sqlite3")).await;
+		let store = tests::bound_agent_store(&dir.path().join("state.sqlite3")).await;
 		let first = facts(&store, Some("readonly"), 'a').await;
 		let newer = facts(&store, Some("other"), 'b').await;
 
@@ -401,13 +406,13 @@ mod tests {
 	#[tokio::test]
 	async fn observation_revisions_preserve_reversions_without_consuming_transcript_pages() {
 		let dir = tempfile::tempdir().unwrap();
-		let store = setup(&dir.path().join("observations.sqlite3")).await;
+		let store = tests::bound_agent_store(&dir.path().join("observations.sqlite3")).await;
 		let message = store
-			.record_agent_observation(crate::EnqueueAgentEvent {
+			.record_agent_observation(EnqueueAgentEvent {
 				source_event_id: "answer".into(),
 				work_item_id: "work".into(),
 				event_kind: "assistant_message".into(),
-				payload: json!({"text":"Visible answer"}).to_string(),
+				payload: serde_json::json!({"text":"Visible answer"}).to_string(),
 			})
 			.await
 			.unwrap();
