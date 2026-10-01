@@ -923,93 +923,11 @@ final class ResetCardStore {
 			} else {
 				discovered = try await client.accounts(authority: retainedAuthority)
 			}
-			let previousByID = Dictionary(
-				uniqueKeysWithValues: accounts.map { ($0.account.accountID, $0) }
+			publishAccountSkeleton(
+				discovered: discovered,
+				retainedAuthority: retainedAuthority,
+				backgroundObservation: backgroundObservation
 			)
-			let nextAccounts = discovered.map { account in
-				let previous = previousByID[account.accountID]
-				let authority = retainedAuthority
-					?? account.authority
-					?? previous?.account.authority
-					?? previous?.inventory?.authority
-				let boundAccount = Self.boundAccount(
-					account,
-					previous: previous,
-					authority: authority
-				)
-				let sameRevision = previous?.account.accountRevision
-					== boundAccount.accountRevision
-				let retriesInventory = sameRevision
-					&& (
-						previous?.error?.isRetryableReadFailure == true
-							|| previous?.inventory?.observationError?.isRetryableReadFailure == true
-					)
-				let retainedInventory = previous?.inventory
-				let retainedError = sameRevision
-					? previous?.error
-					: nil
-				let retainedProfile = sameRevision
-					? previous?.profile
-					: nil
-				let retriesProfile = sameRevision
-					&& (
-						previous?.profileError?.isRetryableReadFailure == true
-							|| previous?.profileUnavailable?.error.isRetryableReadFailure == true
-					)
-				let retainedProfileUnavailable = sameRevision && retriesProfile == false
-					? previous?.profileUnavailable
-					: nil
-				let retainedProfileError = sameRevision && retriesProfile == false
-					? previous?.profileError
-					: nil
-				return ResetCardAccountState(
-					account: boundAccount,
-					inventory: retainedInventory,
-					error: retainedError,
-					// A daemon cache read may be newer than this independently read
-					// account projection. Keep the retained value visible while the
-					// projection catches up; the revision fence remains on effects.
-					isRefreshing: (backgroundObservation == false && retriesInventory)
-						|| postUseReconciliationAccountIDs.contains(
-							account.accountID
-						)
-						|| (retainedInventory == nil && retainedError == nil),
-					profile: profileEmailsVisible
-						? retainedProfile
-						: retainedProfile?.redactingEmail(),
-					profileUnavailable: profileEmailsVisible
-						? retainedProfileUnavailable
-						: retainedProfileUnavailable?.redactingEmail(),
-					profileError: retainedProfileError,
-					isProfileRefreshing: accountProfileClient != nil
-						&& retainedProfile == nil
-						&& retainedProfileUnavailable == nil
-						&& retainedProfileError == nil
-				)
-			}
-			if accounts != nextAccounts {
-				accounts = nextAccounts
-			}
-			// The account skeleton is the first usable panel state. Detail reads below
-			// are independent daemon-cache reads and must not keep the panel in its
-			// initial-loading state while one account is slow.
-			hasLoaded = true
-			if let accountReadFailureMessage, message == accountReadFailureMessage {
-				message = nil
-			}
-			accountReadFailureMessage = nil
-			prunePostUseReconciliationsForCurrentAccounts()
-			pruneProfileEmailCache()
-			reconcileAccountSkeletonRevisionTargets()
-			if backgroundObservation == false,
-				message?.tone == .error,
-				isPendingRecoveryBlocked == false
-			{
-				message = nil
-			}
-			if backgroundObservation == false {
-				refreshSkeletonIsPublished = true
-			}
 			if let accountControlClient {
 				// The account snapshot is the authoritative read fence. Publish it before
 				// requesting the shared-auth projection so a completed Route cannot be
@@ -1022,112 +940,7 @@ final class ResetCardStore {
 				}
 			}
 
-			let inventoryReads = self.inventoryReads
-			let accountProfileClient = self.accountProfileClient
-			let includeEmail = true
-			var profileRequests = [AccountProfileRequest]()
-			let visibilityEpoch = profilePrivacyEpoch
-			var expectedAuthority = retainedAuthority
-			var reads = [@Sendable () async -> ResetCardAccountRead]()
-			for state in accounts {
-				let account = state.account
-				reads.append {
-					do {
-						return .inventoryAvailable(
-							accountID: account.accountID,
-							try await inventoryReads.inventory(for: account)
-						)
-					} catch {
-						return .inventoryFailed(
-							accountID: account.accountID,
-							Self.clientError(error)
-						)
-					}
-				}
-				if let accountProfileClient {
-					let profileRequest = AccountProfileRequest(
-						generation: beginProfileRequestGeneration(
-							accountID: account.accountID
-						),
-						includesEmail: includeEmail,
-						accountID: account.accountID,
-						accountRevision: account.accountRevision
-					)
-					profileRequests.append(profileRequest)
-					reads.append {
-						do {
-							switch try await accountProfileClient.profile(
-								for: account,
-								includeEmail: includeEmail
-							) {
-							case .available(let profile):
-								return .profileAvailable(
-									accountID: account.accountID,
-									request: profileRequest,
-									profile
-								)
-							case .unavailable(let unavailable):
-								return .profileUnavailable(
-									accountID: account.accountID,
-									request: profileRequest,
-									unavailable
-								)
-							}
-						} catch {
-							return .profileFailed(
-								accountID: account.accountID,
-								request: profileRequest,
-								Self.clientError(error)
-							)
-						}
-					}
-				}
-			}
-			await withTaskGroup(of: ResetCardAccountRead.self) { group in
-				for read in reads {
-					group.addTask(operation: read)
-				}
-
-				while let read = await group.next() {
-					guard Task.isCancelled == false else {
-						return
-					}
-					switch read {
-					case .inventoryAvailable(let accountID, let inventory):
-						if expectedAuthority == nil || expectedAuthority == inventory.authority {
-							expectedAuthority = inventory.authority
-							applyInventory(inventory, accountID: accountID)
-						} else {
-							applyInventoryFailure(
-								.invalidResponse,
-								accountID: accountID
-							)
-						}
-					case .inventoryFailed(let accountID, let error):
-						applyInventoryFailure(error, accountID: accountID)
-					case .profileAvailable(let accountID, let request, let profile):
-						if isCurrentProfileRequest(request) {
-							applyProfile(profile, accountID: accountID, request: request)
-						}
-					case .profileUnavailable(let accountID, let request, let unavailable):
-						if isCurrentProfileRequest(request) {
-							applyProfileUnavailable(
-								unavailable,
-								accountID: accountID,
-								request: request
-							)
-						}
-					case .profileFailed(let accountID, let request, let error):
-						if isCurrentProfileRequest(request) {
-							applyProfileFailure(error, accountID: accountID, request: request)
-						}
-					}
-				}
-			}
-			for request in profileRequests {
-				finishProfileRequest(request)
-			}
-			_ = publishProfileEmailsIfReady(expectedEpoch: visibilityEpoch)
+			await refreshAccountDetails(retainedAuthority: retainedAuthority)
 			if let projectionReadTask,
 				let projection = await projectionReadTask.value,
 				let projectionReadGeneration,
@@ -1173,6 +986,216 @@ final class ResetCardStore {
 		}
 
 		return shouldRetry ? .retryNeeded : .complete
+	}
+
+	private func publishAccountSkeleton(
+		discovered: [ResetCardAccountRecord],
+		retainedAuthority: ResetCardAuthority?,
+		backgroundObservation: Bool
+	) {
+		let previousByID = Dictionary(
+			uniqueKeysWithValues: accounts.map { ($0.account.accountID, $0) }
+		)
+		let nextAccounts = discovered.map { account in
+			let previous = previousByID[account.accountID]
+			let authority = retainedAuthority
+				?? account.authority
+				?? previous?.account.authority
+				?? previous?.inventory?.authority
+			let boundAccount = Self.boundAccount(
+				account,
+				previous: previous,
+				authority: authority
+			)
+			let sameRevision = previous?.account.accountRevision
+				== boundAccount.accountRevision
+			let retriesInventory = sameRevision
+				&& (
+					previous?.error?.isRetryableReadFailure == true
+						|| previous?.inventory?.observationError?.isRetryableReadFailure == true
+				)
+			let retainedInventory = previous?.inventory
+			let retainedError = sameRevision
+				? previous?.error
+				: nil
+			let retainedProfile = sameRevision
+				? previous?.profile
+				: nil
+			let retriesProfile = sameRevision
+				&& (
+					previous?.profileError?.isRetryableReadFailure == true
+						|| previous?.profileUnavailable?.error.isRetryableReadFailure == true
+				)
+			let retainedProfileUnavailable = sameRevision && retriesProfile == false
+				? previous?.profileUnavailable
+				: nil
+			let retainedProfileError = sameRevision && retriesProfile == false
+				? previous?.profileError
+				: nil
+			return ResetCardAccountState(
+				account: boundAccount,
+				inventory: retainedInventory,
+				error: retainedError,
+				// A daemon cache read may be newer than this independently read
+				// account projection. Keep the retained value visible while the
+				// projection catches up; the revision fence remains on effects.
+				isRefreshing: (backgroundObservation == false && retriesInventory)
+					|| postUseReconciliationAccountIDs.contains(
+						account.accountID
+					)
+					|| (retainedInventory == nil && retainedError == nil),
+				profile: profileEmailsVisible
+					? retainedProfile
+					: retainedProfile?.redactingEmail(),
+				profileUnavailable: profileEmailsVisible
+					? retainedProfileUnavailable
+					: retainedProfileUnavailable?.redactingEmail(),
+				profileError: retainedProfileError,
+				isProfileRefreshing: accountProfileClient != nil
+					&& retainedProfile == nil
+					&& retainedProfileUnavailable == nil
+					&& retainedProfileError == nil
+			)
+		}
+		if accounts != nextAccounts {
+			accounts = nextAccounts
+		}
+		// The account skeleton is the first usable panel state. Detail reads below
+		// are independent daemon-cache reads and must not keep the panel in its
+		// initial-loading state while one account is slow.
+		hasLoaded = true
+		if let accountReadFailureMessage, message == accountReadFailureMessage {
+			message = nil
+		}
+		accountReadFailureMessage = nil
+		prunePostUseReconciliationsForCurrentAccounts()
+		pruneProfileEmailCache()
+		reconcileAccountSkeletonRevisionTargets()
+		if backgroundObservation == false,
+			message?.tone == .error,
+			isPendingRecoveryBlocked == false
+		{
+			message = nil
+		}
+		if backgroundObservation == false {
+			refreshSkeletonIsPublished = true
+		}
+	}
+
+	private func refreshAccountDetails(retainedAuthority: ResetCardAuthority?) async {
+		let inventoryReads = self.inventoryReads
+		let accountProfileClient = self.accountProfileClient
+		let includeEmail = true
+		var profileRequests = [AccountProfileRequest]()
+		let visibilityEpoch = profilePrivacyEpoch
+		var expectedAuthority = retainedAuthority
+		var reads = [@Sendable () async -> ResetCardAccountRead]()
+		for state in accounts {
+			let account = state.account
+			reads.append {
+				do {
+					return .inventoryAvailable(
+						accountID: account.accountID,
+						try await inventoryReads.inventory(for: account)
+					)
+				} catch {
+					return .inventoryFailed(
+						accountID: account.accountID,
+						Self.clientError(error)
+					)
+				}
+			}
+			if let accountProfileClient {
+				let profileRequest = AccountProfileRequest(
+					generation: beginProfileRequestGeneration(
+						accountID: account.accountID
+					),
+					includesEmail: includeEmail,
+					accountID: account.accountID,
+					accountRevision: account.accountRevision
+				)
+				profileRequests.append(profileRequest)
+				reads.append {
+					do {
+						switch try await accountProfileClient.profile(
+							for: account,
+							includeEmail: includeEmail
+						) {
+						case .available(let profile):
+							return .profileAvailable(
+								accountID: account.accountID,
+								request: profileRequest,
+								profile
+							)
+						case .unavailable(let unavailable):
+							return .profileUnavailable(
+								accountID: account.accountID,
+								request: profileRequest,
+								unavailable
+							)
+						}
+					} catch {
+						return .profileFailed(
+							accountID: account.accountID,
+							request: profileRequest,
+							Self.clientError(error)
+						)
+					}
+				}
+			}
+		}
+		await withTaskGroup(of: ResetCardAccountRead.self) { group in
+			for read in reads {
+				group.addTask(operation: read)
+			}
+
+			while let read = await group.next() {
+				guard Task.isCancelled == false else {
+					return
+				}
+				applyAccountRead(read, expectedAuthority: &expectedAuthority)
+			}
+		}
+		for request in profileRequests {
+			finishProfileRequest(request)
+		}
+		_ = publishProfileEmailsIfReady(expectedEpoch: visibilityEpoch)
+	}
+
+	private func applyAccountRead(
+		_ read: ResetCardAccountRead,
+		expectedAuthority: inout ResetCardAuthority?
+	) {
+		switch read {
+		case .inventoryAvailable(let accountID, let inventory):
+			if expectedAuthority == nil || expectedAuthority == inventory.authority {
+				expectedAuthority = inventory.authority
+				applyInventory(inventory, accountID: accountID)
+			} else {
+				applyInventoryFailure(
+					.invalidResponse,
+					accountID: accountID
+				)
+			}
+		case .inventoryFailed(let accountID, let error):
+			applyInventoryFailure(error, accountID: accountID)
+		case .profileAvailable(let accountID, let request, let profile):
+			if isCurrentProfileRequest(request) {
+				applyProfile(profile, accountID: accountID, request: request)
+			}
+		case .profileUnavailable(let accountID, let request, let unavailable):
+			if isCurrentProfileRequest(request) {
+				applyProfileUnavailable(
+					unavailable,
+					accountID: accountID,
+					request: request
+				)
+			}
+		case .profileFailed(let accountID, let request, let error):
+			if isCurrentProfileRequest(request) {
+				applyProfileFailure(error, accountID: accountID, request: request)
+			}
+		}
 	}
 
 	func use(_ attempt: ResetCardUseAttempt) async -> ResetCardUseCompletion {
