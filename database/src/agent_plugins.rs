@@ -1,10 +1,13 @@
 //! Read and reconcile historical plugin selections after local plugin writes were retired.
-use crate::{SqliteStore, StoreError, agent_process::owns_work, error::sqlite_error, unix_micros};
-use rusqlite::{OptionalExtension as _, params};
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use std::collections::HashSet;
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+use rusqlite::{Connection, OptionalExtension as _};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::{SqliteStore, StoreError, agent_process, error};
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentPluginAttempt {
 	pub work: String,
 	pub thread: String,
@@ -22,19 +25,6 @@ pub struct AgentPluginReceipt {
 	pub state: String,
 }
 
-fn valid_ids(ids: &[String]) -> bool {
-	ids.len() <= 128
-		&& ids.iter().map(String::len).sum::<usize>() <= 32768
-		&& ids
-			.iter()
-			.all(|s| !s.trim().is_empty() && s.len() <= 512 && !s.chars().any(char::is_control))
-		&& ids.iter().collect::<std::collections::HashSet<_>>().len() == ids.len()
-}
-
-pub(crate) fn pending(connection: &rusqlite::Connection, work: &str) -> Result<bool, StoreError> {
-	connection.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events e WHERE e.work_item_id=?1 AND e.event_kind='plugin_selection' AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND r.event_kind='plugin_selection_result' AND json_extract(r.payload,'$.state')='rejected') OR (r.source_event_id=e.source_event_id||':observation' AND r.event_kind='plugin_selection_observation')))", [work], |r|r.get(0)).map_err(|e|sqlite_error(e).into())
-}
-
 impl SqliteStore {
 	pub async fn agent_plugin_receipt(
 		&self,
@@ -42,17 +32,21 @@ impl SqliteStore {
 		thread: String,
 	) -> Result<Option<AgentPluginReceipt>, StoreError> {
 		self.run(move |connection| {
-			let row:Option<(i64,String,String)>=connection.query_row("SELECT e.id,json_extract(e.payload,'$.attempt'),COALESCE(json_extract(o.payload,'$.state'),json_extract(r.payload,'$.state'),'reserved') FROM agent_inbox_events e LEFT JOIN agent_inbox_events r ON r.source_event_id=e.source_event_id||':result' AND r.event_kind='plugin_selection_result' LEFT JOIN agent_inbox_events o ON o.source_event_id=e.source_event_id||':observation' AND o.event_kind='plugin_selection_observation' WHERE e.work_item_id=?1 AND e.event_kind='plugin_selection' AND json_extract(e.payload,'$.attempt.thread')=?2 ORDER BY e.id DESC LIMIT 1",params![work,thread],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(sqlite_error)?;
+			let row:Option<(i64,String,String)>=connection.query_row("SELECT e.id,json_extract(e.payload,'$.attempt'),COALESCE(json_extract(o.payload,'$.state'),json_extract(r.payload,'$.state'),'reserved') FROM agent_inbox_events e LEFT JOIN agent_inbox_events r ON r.source_event_id=e.source_event_id||':result' AND r.event_kind='plugin_selection_result' LEFT JOIN agent_inbox_events o ON o.source_event_id=e.source_event_id||':observation' AND o.event_kind='plugin_selection_observation' WHERE e.work_item_id=?1 AND e.event_kind='plugin_selection' AND json_extract(e.payload,'$.attempt.thread')=?2 ORDER BY e.id DESC LIMIT 1",rusqlite::params![work,thread],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(error::sqlite_error)?;
 
 			row.map(|(id,attempt,state)|Ok(AgentPluginReceipt {id,attempt:serde_json::from_str(&attempt).map_err(|_|StoreError::InvalidInput("invalid saved plugin attempt"))?,state})).transpose()
 		}).await
 	}
 }
 
+pub(crate) fn pending(connection: &Connection, work: &str) -> Result<bool, StoreError> {
+	connection.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events e WHERE e.work_item_id=?1 AND e.event_kind='plugin_selection' AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND r.event_kind='plugin_selection_result' AND json_extract(r.payload,'$.state')='rejected') OR (r.source_event_id=e.source_event_id||':observation' AND r.event_kind='plugin_selection_observation')))", [work], |r|r.get(0)).map_err(|e|error::sqlite_error(e).into())
+}
+
 /// The journal owner calls this with wire-current facts in the observation transaction.
 /// A new owner can reconcile an old attempt only after the old process is confirmed dead.
 pub(crate) fn observe(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	work: &str,
 	thread: &str,
 	generation: Option<&str>,
@@ -72,11 +66,11 @@ pub(crate) fn observe(
 
 	selected.sort_unstable();
 
-	if !owns_work(connection, work, generation)? {
+	if !agent_process::owns_work(connection, work, generation)? {
 		return Ok(());
 	}
 
-	let row:Option<(i64,String,Option<String>,String)>=connection.query_row("SELECT e.id,e.source_event_id,json_extract(e.payload,'$.attempt.generation'),json_extract(e.payload,'$.attempt.disabled_plugin_ids') FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id AND w.codex_thread_id=?2 WHERE e.work_item_id=?1 AND e.event_kind='plugin_selection' AND e.id<?3 AND json_extract(e.payload,'$.attempt.thread')=?2 AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND json_extract(r.payload,'$.state')='rejected') OR r.source_event_id=e.source_event_id||':observation') ORDER BY e.id DESC LIMIT 1",params![work,thread,observation],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(sqlite_error)?;
+	let row:Option<(i64,String,Option<String>,String)>=connection.query_row("SELECT e.id,e.source_event_id,json_extract(e.payload,'$.attempt.generation'),json_extract(e.payload,'$.attempt.disabled_plugin_ids') FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id AND w.codex_thread_id=?2 WHERE e.work_item_id=?1 AND e.event_kind='plugin_selection' AND e.id<?3 AND json_extract(e.payload,'$.attempt.thread')=?2 AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND json_extract(r.payload,'$.state')='rejected') OR r.source_event_id=e.source_event_id||':observation') ORDER BY e.id DESC LIMIT 1",rusqlite::params![work,thread,observation],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(error::sqlite_error)?;
 	let Some((reservation, key, previous, target)) = row else {
 		return Ok(());
 	};
@@ -95,7 +89,7 @@ pub(crate) fn observe(
 		let (Some(previous), Some(_current)) = (previous.as_deref(), generation) else {
 			return Ok(());
 		};
-		let dead:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM process_generations g JOIN process_generation_death_evidence e ON e.evidence_id=g.death_evidence_id AND e.generation_id=g.generation_id WHERE g.generation_id=?1 AND g.state='dead')",[previous],|r|r.get(0)).map_err(sqlite_error)?;
+		let dead:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM process_generations g JOIN process_generation_death_evidence e ON e.evidence_id=g.death_evidence_id AND e.generation_id=g.generation_id WHERE g.generation_id=?1 AND g.state='dead')",[previous],|r|r.get(0)).map_err(error::sqlite_error)?;
 
 		if !dead {
 			return Ok(());
@@ -103,9 +97,9 @@ pub(crate) fn observe(
 
 		if matches { "target_observed" } else { "superseded" }
 	};
-	let now = unix_micros()?;
+	let now = crate::unix_micros()?;
 
-	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'plugin_selection_observation',?3,?4,'resolved','Current native plugins observed; prior request causation is not asserted.',?4)",params![format!("{key}:observation"),work,json!({"reservation":reservation,"settingsEvent":observation,"state":state,"generationId":generation}).to_string(),now]).map_err(sqlite_error)?;
+	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'plugin_selection_observation',?3,?4,'resolved','Current native plugins observed; prior request causation is not asserted.',?4)",rusqlite::params![format!("{key}:observation"),work,serde_json::json!({"reservation":reservation,"settingsEvent":observation,"state":state,"generationId":generation}).to_string(),now]).map_err(error::sqlite_error)?;
 
 	Ok(())
 }
@@ -121,37 +115,36 @@ pub(crate) async fn seed_legacy_selection(
 	store.run(move |connection| {
 		// Historical journal rows, not a replacement implementation of the retired writer.
 		let key = format!("plugin-selection:{}", attempt.review_token);
-		let payload = json!({"attempt":{"work":attempt.work,"thread":attempt.thread,"generation":attempt.generation,"settings_event":attempt.settings_event,"disabled_plugin_ids":attempt.disabled_plugin_ids,"review_token":attempt.review_token,"attempt_id":attempt.attempt_id}});
+		let payload = serde_json::json!({"attempt":{"work":attempt.work,"thread":attempt.thread,"generation":attempt.generation,"settings_event":attempt.settings_event,"disabled_plugin_ids":attempt.disabled_plugin_ids,"review_token":attempt.review_token,"attempt_id":attempt.attempt_id}});
 
-		connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'plugin_selection',?3,1,'resolved','Historical fixture',1)", params![key,attempt.work,payload.to_string()]).map_err(sqlite_error)?;
+		connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'plugin_selection',?3,1,'resolved','Historical fixture',1)", rusqlite::params![key,attempt.work,payload.to_string()]).map_err(error::sqlite_error)?;
 
 		let id=connection.last_insert_rowid();
 
 		if let Some(state)=state {
-			connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'plugin_selection_result',?3,2,'resolved','Historical fixture',2)",params![format!("{key}:result"),attempt.work,json!({"reservation":id,"state":state}).to_string()]).map_err(sqlite_error)?;
+			connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'plugin_selection_result',?3,2,'resolved','Historical fixture',2)",rusqlite::params![format!("{key}:result"),attempt.work,serde_json::json!({"reservation":id,"state":state}).to_string()]).map_err(error::sqlite_error)?;
 		}
 
 		Ok(())
 	}).await.expect("load historical plugin selection");
 }
 
+fn valid_ids(ids: &[String]) -> bool {
+	ids.len() <= 128
+		&& ids.iter().map(String::len).sum::<usize>() <= 32_768
+		&& ids
+			.iter()
+			.all(|s| !s.trim().is_empty() && s.len() <= 512 && !s.chars().any(char::is_control))
+		&& ids.iter().collect::<HashSet<_>>().len() == ids.len()
+}
+
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::tests::bound_agent_store as setup;
+	use crate::{
+		AgentPermissionAttempt, AgentPluginAttempt, AgentPluginReceipt, EnqueueAgentEvent,
+		SqliteStore, agent_plugins, tests,
+	};
 
-	async fn facts(store: &SqliteStore, profile: Option<&str>, digest: char) -> i64 {
-		store
-			.record_agent_task_plugins_publication(
-				"thread".into(),
-				None,
-				profile.map(|profile| json!({"disabledPluginIds":[profile]}).to_string()),
-				digest.to_string().repeat(64),
-			)
-			.await
-			.unwrap()
-			.unwrap()
-	}
 	fn attempt(settings_event: i64) -> AgentPluginAttempt {
 		AgentPluginAttempt {
 			work: "work".into(),
@@ -163,6 +156,20 @@ mod tests {
 			attempt_id: "legacy".into(),
 		}
 	}
+
+	async fn facts(store: &SqliteStore, profile: Option<&str>, digest: char) -> i64 {
+		store
+			.record_agent_task_plugins_publication(
+				"thread".into(),
+				None,
+				profile
+					.map(|profile| serde_json::json!({"disabledPluginIds":[profile]}).to_string()),
+				digest.to_string().repeat(64),
+			)
+			.await
+			.unwrap()
+			.unwrap()
+	}
 	async fn receipt(store: &SqliteStore) -> AgentPluginReceipt {
 		store.agent_plugin_receipt("work".into(), "thread".into()).await.unwrap().unwrap()
 	}
@@ -172,11 +179,12 @@ mod tests {
 		for state in [None, Some("queued"), Some("unknown")] {
 			let dir = tempfile::tempdir().unwrap();
 			let path = dir.path().join("state.sqlite3");
-			let store = setup(&path).await;
+			let store = tests::bound_agent_store(&path).await;
 			let observed = facts(&store, Some("readonly"), 'a').await;
 			let original = attempt(observed);
 
-			seed_legacy_selection(&store, original.clone(), state).await;
+			agent_plugins::seed_legacy_selection(&store, original.clone(), state).await;
+
 			drop(store);
 
 			let store = SqliteStore::open_test(&path).unwrap();
@@ -192,7 +200,7 @@ mod tests {
 				.record_agent_task_plugins(
 					"thread".into(),
 					None,
-					Some(json!({"disabledPluginIds":["scoped"]}).to_string()),
+					Some(serde_json::json!({"disabledPluginIds":["scoped"]}).to_string()),
 					"d".repeat(64),
 				)
 				.await
@@ -216,10 +224,11 @@ mod tests {
 	async fn historical_rejection_is_not_replaced_by_later_plugin_observation() {
 		let dir = tempfile::tempdir().unwrap();
 		let path = dir.path().join("state.sqlite3");
-		let store = setup(&path).await;
+		let store = tests::bound_agent_store(&path).await;
 		let observed = facts(&store, Some("readonly"), 'a').await;
 
-		seed_legacy_selection(&store, attempt(observed), Some("rejected")).await;
+		agent_plugins::seed_legacy_selection(&store, attempt(observed), Some("rejected")).await;
+
 		facts(&store, Some("scoped"), 'b').await;
 		drop(store);
 
@@ -232,16 +241,16 @@ mod tests {
 	#[tokio::test]
 	async fn historical_plugin_edit_blocks_running_permission_selection() {
 		let dir = tempfile::tempdir().unwrap();
-		let store = setup(&dir.path().join("mixed.sqlite3")).await;
+		let store = tests::bound_agent_store(&dir.path().join("mixed.sqlite3")).await;
 		let observed = facts(&store, Some("original"), 'a').await;
-		let event=store.record_agent_task_permissions_publication("thread".into(),None,Some(json!({"profileId":":read-only","cwd":"/native","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"}}).to_string()),"a".repeat(64)).await.unwrap().unwrap();
+		let event=store.record_agent_task_permissions_publication("thread".into(),None,Some(serde_json::json!({"profileId":":read-only","cwd":"/native","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"}}).to_string()),"a".repeat(64)).await.unwrap().unwrap();
 
 		store.begin_agent_dispatch("work".into()).await.unwrap();
 		store.acknowledge_agent_dispatch("work".into(), "active".into()).await.unwrap();
 
-		seed_legacy_selection(&store, attempt(observed), Some("unknown")).await;
+		agent_plugins::seed_legacy_selection(&store, attempt(observed), Some("unknown")).await;
 
-		let permission = crate::AgentPermissionAttempt {
+		let permission = AgentPermissionAttempt {
 			work: "work".into(),
 			thread: "thread".into(),
 			generation: None,
@@ -267,13 +276,13 @@ mod tests {
 	#[tokio::test]
 	async fn observation_revisions_preserve_reversions_without_consuming_transcript_pages() {
 		let dir = tempfile::tempdir().unwrap();
-		let store = setup(&dir.path().join("observations.sqlite3")).await;
+		let store = tests::bound_agent_store(&dir.path().join("observations.sqlite3")).await;
 		let message = store
-			.record_agent_observation(crate::EnqueueAgentEvent {
+			.record_agent_observation(EnqueueAgentEvent {
 				source_event_id: "answer".into(),
 				work_item_id: "work".into(),
 				event_kind: "assistant_message".into(),
-				payload: json!({"text":"Visible answer"}).to_string(),
+				payload: serde_json::json!({"text":"Visible answer"}).to_string(),
 			})
 			.await
 			.unwrap();
@@ -302,7 +311,8 @@ mod tests {
 				.is_none()
 		);
 
-		seed_legacy_selection(&store, attempt(reverted), Some("queued")).await;
+		agent_plugins::seed_legacy_selection(&store, attempt(reverted), Some("queued")).await;
+
 		facts(&store, Some("scoped"), 'b').await;
 
 		assert_eq!(
