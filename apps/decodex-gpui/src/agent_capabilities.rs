@@ -1,7 +1,13 @@
 //! Runtime model catalog. Loading metadata never sends a conversation message.
 use std::time::Instant;
 
-use gpui::{AnyElement, SharedString, prelude::*};
+use gpui::{
+	AnyElement, SharedString,
+	prelude::{
+		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+		Styled,
+	},
+};
 use tokio::runtime::Builder;
 
 use crate::{
@@ -345,6 +351,8 @@ impl AgentSurface {
 mod effort_tests;
 #[cfg(test)]
 mod tests {
+	use gpui::AppContext as _;
+
 	use crate::shell::agent_surface::capabilities::*;
 
 	use std::{future, thread};

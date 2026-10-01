@@ -33,12 +33,18 @@ use std::{
 };
 
 use gpui::{
-	Animation, AnimationExt, AnyElement, App, AsyncApp, Bounds, BoxShadow, ClipboardItem, Context,
-	CursorStyle, Div, ElementId, Entity, FocusHandle, Focusable, FontWeight, Global, Hsla,
-	KeyBinding, KeyDownEvent, MouseButton, Render, Role, SharedString, Stateful, Subscription,
-	Task, TitlebarOptions, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds,
-	WindowControlArea, WindowHandle, WindowOptions, accesskit::Toggled, actions, div, ease_in_out,
-	prelude::*, px, rgb, rgba,
+	Animation, AnimationExt, AnyElement, App, AppContext as _, AsyncApp, Bounds, BoxShadow,
+	ClipboardItem, Context, CursorStyle, Div, ElementId, Entity, FocusHandle, Focusable,
+	FontWeight, Global, Hsla, KeyBinding, KeyDownEvent, MouseButton, Render, Role, SharedString,
+	Stateful, Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBackgroundAppearance,
+	WindowBounds, WindowControlArea, WindowHandle, WindowOptions,
+	accesskit::Toggled,
+	actions, div, ease_in_out,
+	prelude::{
+		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+		Styled,
+	},
+	px, rgb, rgba,
 };
 use tokio::{runtime::Builder, time};
 

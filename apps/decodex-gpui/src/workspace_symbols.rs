@@ -6,7 +6,7 @@ use std::{
 
 use gpui::{
 	self, AnyElement, App, ElementId, Image, ImageFormat, PathBuilder, RenderOnce, Window,
-	prelude::*,
+	prelude::{IntoElement, Styled as _},
 };
 
 use crate::{ui_motion, ui_theme::TEXT_MUTED};

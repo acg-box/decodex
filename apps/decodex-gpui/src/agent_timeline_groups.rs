@@ -2,7 +2,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use gpui::{
-	AnyElement, Context, FontWeight, KeyDownEvent, Role, SharedString, div, prelude::*, px, rgb,
+	AnyElement, Context, FontWeight, KeyDownEvent, Role, SharedString, div,
+	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
+	px, rgb,
 };
 
 use crate::{

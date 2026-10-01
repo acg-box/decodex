@@ -7,7 +7,13 @@
 
 use gpui::{
 	AnyElement, ClickEvent, Context, FontWeight, KeyDownEvent, Render, Role, SharedString, Window,
-	accesskit::Toggled, div, prelude::*, px, rgb, rgba,
+	accesskit::Toggled,
+	div,
+	prelude::{
+		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+		Styled,
+	},
+	px, rgb, rgba,
 };
 use ui_theme::window_material::GlassStyle;
 
@@ -918,6 +924,8 @@ fn quote_attribution() -> impl IntoElement {
 
 #[cfg(test)]
 mod tests {
+	use gpui::AppContext as _;
+
 	use gpui::{self, TestAppContext};
 
 	use crate::settings_surface::*;

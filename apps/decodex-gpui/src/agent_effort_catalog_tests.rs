@@ -7,7 +7,7 @@ use std::{
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};
-use gpui::{Context, Entity, Render, TestAppContext, Window};
+use gpui::{AppContext as _, Context, Entity, Render, TestAppContext, Window};
 use tempfile::TempDir;
 use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;

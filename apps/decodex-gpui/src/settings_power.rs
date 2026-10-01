@@ -1,7 +1,11 @@
 //! Host-owned macOS sleep policy. Never stores a competing application preference.
 use gpui::{AnyElement, KeyDownEvent, Task};
 
-use crate::settings_surface::*;
+use crate::settings_surface::{
+	BLUE, Context, FluentBuilder, InteractiveElement, IntoElement, LINE, ParentElement, Role,
+	SettingsSurface, StatefulInteractiveElement, Styled, TEXT_MUTED, Toggled, div, px, rgb, rgba,
+	switch_knob, ui_theme,
+};
 
 #[derive(Default)]
 pub(super) struct PowerSettings {

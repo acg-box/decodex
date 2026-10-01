@@ -3,8 +3,10 @@
 
 use futures_util as _;
 use gpui::{
-	Bounds, ClipboardItem, Context, Render, TitlebarOptions, Window, WindowBackgroundAppearance,
-	WindowBounds, WindowOptions, div, prelude::*, px, rgb, rgba, size,
+	AppContext as _, Bounds, ClipboardItem, Context, Render, TitlebarOptions, Window,
+	WindowBackgroundAppearance, WindowBounds, WindowOptions, div,
+	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
+	px, rgb, rgba, size,
 };
 use libc as _;
 use objc2 as _;

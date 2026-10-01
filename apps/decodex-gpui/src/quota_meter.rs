@@ -7,7 +7,9 @@ use std::{
 };
 
 use gpui::{
-	AnyElement, App, FontFeatures, IntoElement, RenderOnce, Window, div, prelude::*, px, rgb, rgba,
+	AnyElement, App, FontFeatures, IntoElement, RenderOnce, Window, div,
+	prelude::{InteractiveElement, ParentElement, Styled},
+	px, rgb, rgba,
 };
 use libc::{c_char, time_t, tm};
 
