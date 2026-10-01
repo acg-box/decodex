@@ -3,7 +3,7 @@ use crate::agent_usage_estimate::Source;
 use decodex_codex::app_server_client::{
 	ClientError, HistoryGuard, HookSettingsChange, HookSettingsReview, HookSettingsWrite,
 };
-use decodex_database::{AgentHookAttempt, AgentHookOwner, AgentHookReceipt, SqliteStore};
+use decodex_database::{AgentConfigOwner, AgentHookAttempt, AgentHookReceipt, SqliteStore};
 use decodex_protocol::{
 	AgentHookChange as Change, AgentHookDto, AgentHookEditReceipt, AgentHookSettingsState as State,
 	EntityId, WireText,
@@ -20,9 +20,9 @@ struct Review {
 fn digest(value: &str) -> String {
 	Sha256::digest(value.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
 }
-fn owner(source: &Source) -> AgentHookOwner {
+fn owner(source: &Source) -> AgentConfigOwner {
 	let k = &source.key;
-	AgentHookOwner {
+	AgentConfigOwner {
 		work: k.work.clone(),
 		thread: k.thread.clone(),
 		generation: k.generation.as_str().into(),
