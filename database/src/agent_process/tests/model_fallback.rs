@@ -1,12 +1,23 @@
 //! Automatic fallback shares the model journal without weakening explicit selection.
-use super::*;
-use serde_json::{Value, json};
+use serde_json::Value;
+use sha2::{Digest as _, Sha256};
 
-fn identity() -> decodex_core::ProcessIdentity {
-	decodex_core::ProcessIdentity::new(
+use crate::{
+	AgentManualModelSource, AgentModelAttempt, AgentModelReceipt, AgentModelRecoveryContext,
+	AgentPermissionAttempt, EnqueueAgentEvent, PrepareProcessGenerationOutcome, SqliteStore,
+	agent_process::tests::{self, DIGEST, OTHER_DIGEST},
+	error,
+};
+use decodex_core::{
+	ProcessAuthorityLossReason, ProcessBootIdentity, ProcessDeathEvidence, ProcessDeathEvidenceId,
+	ProcessDeathEvidenceKind, ProcessIdentity, ProcessStartIdentity,
+};
+
+fn identity() -> ProcessIdentity {
+	ProcessIdentity::new(
 		ProcessBootIdentity::new("fixture-boot").unwrap(),
 		123,
-		decodex_core::ProcessStartIdentity::new("fixture-123").unwrap(),
+		ProcessStartIdentity::new("fixture-123").unwrap(),
 		123,
 		123,
 	)
@@ -17,9 +28,9 @@ async fn publish(store: &SqliteStore, model: &str, tier: Value, digest: &str) ->
 	store
 		.record_agent_task_models_publication(
 			"thread".into(),
-			Some(generation_id(1).as_str().into()),
+			Some(tests::generation_id(1).as_str().into()),
 			Some(
-				json!({"model":model,"modelProvider":"fixture","effort":"high","serviceTier":tier})
+				serde_json::json!({"model":model,"modelProvider":"fixture","effort":"high","serviceTier":tier})
 					.to_string(),
 			),
 			digest.into(),
@@ -29,23 +40,28 @@ async fn publish(store: &SqliteStore, model: &str, tier: Value, digest: &str) ->
 		.unwrap()
 }
 
-async fn ready(store: &SqliteStore) -> crate::AgentModelAttempt {
-	seed(store).await;
+async fn ready(store: &SqliteStore) -> AgentModelAttempt {
+	tests::seed(store).await;
 
 	store.bind_agent_thread("root".into(), "thread".into()).await.unwrap();
 	store
-		.prepare_agent_bound_process_generation(&intent(1, 1), &binding(1), "root", "first")
+		.prepare_agent_bound_process_generation(
+			&tests::intent(1, 1),
+			&tests::binding(1),
+			"root",
+			"first",
+		)
 		.await
 		.unwrap();
-	store.bind_process_generation_identity(&generation_id(1), 1, &identity()).await.unwrap();
-	store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+	store.bind_process_generation_identity(&tests::generation_id(1), 1, &identity()).await.unwrap();
+	store.mark_process_generation_ready(&tests::generation_id(1), 2).await.unwrap();
 
-	let event = publish(store, "blocked", json!("default"), DIGEST).await;
+	let event = publish(store, "blocked", serde_json::json!("default"), DIGEST).await;
 
-	crate::AgentModelAttempt {
+	AgentModelAttempt {
 		work: "root".into(),
 		thread: "thread".into(),
-		generation: Some(generation_id(1).as_str().into()),
+		generation: Some(tests::generation_id(1).as_str().into()),
 		settings_event: event,
 		model: "fallback".into(),
 		model_provider: "fixture".into(),
@@ -53,8 +69,8 @@ async fn ready(store: &SqliteStore) -> crate::AgentModelAttempt {
 		review_token: DIGEST.into(),
 		attempt_id: "first".into(),
 		manual_source: None,
-		recovery: Some(crate::AgentModelRecoveryContext {
-			account: account_id(1).as_str().into(),
+		recovery: Some(AgentModelRecoveryContext {
+			account: tests::account_id(1).as_str().into(),
 			account_revision: 1,
 			banner_digest: DIGEST.into(),
 			from_model: "blocked".into(),
@@ -63,7 +79,7 @@ async fn ready(store: &SqliteStore) -> crate::AgentModelAttempt {
 	}
 }
 
-async fn receipt(store: &SqliteStore) -> crate::AgentModelReceipt {
+async fn receipt(store: &SqliteStore) -> AgentModelReceipt {
 	store.agent_model_receipt("root".into(), "thread".into()).await.unwrap().unwrap()
 }
 
@@ -78,7 +94,7 @@ async fn automatic_model_reservation_binds_account_idle_and_explicit_input() {
 		let recovery = stale.recovery.as_mut().unwrap();
 
 		match change {
-			"account" => recovery.account = account_id(2).as_str().into(),
+			"account" => recovery.account = tests::account_id(2).as_str().into(),
 			"revision" => recovery.account_revision = 2,
 			_ => recovery.from_model = "different".into(),
 		}
@@ -108,11 +124,11 @@ async fn automatic_model_reservation_binds_account_idle_and_explicit_input() {
 
 	store.complete_agent_turn("root".into(), "turn".into()).await.unwrap();
 	store
-		.enqueue_agent_event(crate::EnqueueAgentEvent {
+		.enqueue_agent_event(EnqueueAgentEvent {
 			source_event_id: "explicit-input".into(),
 			work_item_id: "root".into(),
 			event_kind: "user_message".into(),
-			payload: json!({"text":"next","options":{"execution":{"reasoning_effort":"low"}}})
+			payload: serde_json::json!({"text":"next","options":{"execution":{"reasoning_effort":"low"}}})
 				.to_string(),
 		})
 		.await
@@ -139,15 +155,18 @@ async fn automatic_model_receipts_require_tier_and_never_replay_after_reopen() {
 	assert!(store.begin_agent_dispatch("root".into()).await.is_err());
 	assert!(store.reserve_agent_model_selection(attempt.clone()).await.unwrap().is_none());
 
-	publish(&store, "fallback", json!("default"), OTHER_DIGEST).await;
+	publish(&store, "fallback", serde_json::json!("default"), OTHER_DIGEST).await;
 
 	assert_eq!(receipt(&store).await.state, "unknown");
 
 	store
 		.record_agent_task_models_publication(
 			"thread".into(),
-			Some(generation_id(1).as_str().into()),
-			Some(json!({"model":"fallback","modelProvider":"fixture","effort":"high"}).to_string()),
+			Some(tests::generation_id(1).as_str().into()),
+			Some(
+				serde_json::json!({"model":"fallback","modelProvider":"fixture","effort":"high"})
+					.to_string(),
+			),
 			DIGEST.into(),
 		)
 		.await
@@ -155,12 +174,16 @@ async fn automatic_model_receipts_require_tier_and_never_replay_after_reopen() {
 
 	assert_eq!(receipt(&store).await.state, "unknown", "missing tier is not an observed absence");
 
-	publish(&store, "fallback", json!("priority"), OTHER_DIGEST).await;
+	publish(&store, "fallback", serde_json::json!("priority"), OTHER_DIGEST).await;
 
 	assert_eq!(receipt(&store).await.state, "target_observed");
 
 	let historical = store
-		.agent_model_history("root".into(), "thread".into(), generation_id(1).as_str().into())
+		.agent_model_history(
+			"root".into(),
+			"thread".into(),
+			tests::generation_id(1).as_str().into(),
+		)
 		.await
 		.expect("automatic history")
 		.expect("automatic receipt");
@@ -176,9 +199,9 @@ async fn automatic_model_receipts_require_tier_and_never_replay_after_reopen() {
 			connection
 				.execute(
 					"UPDATE accounts SET revision=2 WHERE account_id=?1",
-					[account_id(1).as_str()],
+					[tests::account_id(1).as_str()],
 				)
-				.map_err(crate::error::sqlite_error)?;
+				.map_err(error::sqlite_error)?;
 
 			Ok(())
 		})
@@ -187,7 +210,7 @@ async fn automatic_model_receipts_require_tier_and_never_replay_after_reopen() {
 
 	let mut replay = attempt;
 
-	replay.settings_event = publish(&store, "blocked", json!("default"), DIGEST).await;
+	replay.settings_event = publish(&store, "blocked", serde_json::json!("default"), DIGEST).await;
 	replay.review_token = OTHER_DIGEST.into();
 	replay.attempt_id = "fresh-request".into();
 	replay.recovery.as_mut().unwrap().account_revision = 2;
@@ -218,16 +241,16 @@ async fn automatic_model_confirmation_refuses_changed_account_revision() {
 			connection
 				.execute(
 					"UPDATE accounts SET revision=2 WHERE account_id=?1",
-					[account_id(1).as_str()],
+					[tests::account_id(1).as_str()],
 				)
-				.map_err(crate::error::sqlite_error)?;
+				.map_err(error::sqlite_error)?;
 
 			Ok(())
 		})
 		.await
 		.unwrap();
 
-	publish(&store, "fallback", json!("priority"), OTHER_DIGEST).await;
+	publish(&store, "fallback", serde_json::json!("priority"), OTHER_DIGEST).await;
 
 	assert_eq!(receipt(&store).await.state, "queued");
 	assert!(store.begin_agent_dispatch("root".into()).await.is_err());
@@ -249,8 +272,8 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 
 	if manual {
 		attempt.recovery = None;
-		attempt.manual_source = Some(crate::AgentManualModelSource {
-			account: account_id(1).as_str().into(),
+		attempt.manual_source = Some(AgentManualModelSource {
+			account: tests::account_id(1).as_str().into(),
 			account_revision: 1,
 		});
 	}
@@ -260,16 +283,16 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 	store.finish_agent_model_selection(id, attempt, "unknown".into()).await.unwrap();
 	store
 		.mark_process_generation_death_unknown(
-			&generation_id(1),
+			&tests::generation_id(1),
 			3,
-			decodex_core::ProcessAuthorityLossReason::SupervisorRestarted,
+			ProcessAuthorityLossReason::SupervisorRestarted,
 		)
 		.await
 		.unwrap();
 
 	let evidence = ProcessDeathEvidence::new(
 		ProcessDeathEvidenceId::new("50000000-0000-4000-8000-000000000001").unwrap(),
-		generation_id(1),
+		tests::generation_id(1),
 		ProcessDeathEvidenceKind::OwnedChildExit,
 		ProcessBootIdentity::new("fixture-boot").unwrap(),
 		Some(identity()),
@@ -281,23 +304,28 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 
 	assert!(matches!(
 		store
-			.prepare_agent_bound_process_generation(&intent(1, 2), &binding(1), "root", "new")
+			.prepare_agent_bound_process_generation(
+				&tests::intent(1, 2),
+				&tests::binding(1),
+				"root",
+				"new"
+			)
 			.await
 			.unwrap(),
 		PrepareProcessGenerationOutcome::Fresh(_)
 	));
 
-	let next = decodex_core::ProcessIdentity::new(
+	let next = ProcessIdentity::new(
 		ProcessBootIdentity::new("fixture-boot").unwrap(),
 		124,
-		decodex_core::ProcessStartIdentity::new("fixture-124").unwrap(),
+		ProcessStartIdentity::new("fixture-124").unwrap(),
 		124,
 		124,
 	)
 	.unwrap();
 
-	store.bind_process_generation_identity(&generation_id(2), 1, &next).await.unwrap();
-	store.mark_process_generation_ready(&generation_id(2), 2).await.unwrap();
+	store.bind_process_generation_identity(&tests::generation_id(2), 1, &next).await.unwrap();
+	store.mark_process_generation_ready(&tests::generation_id(2), 2).await.unwrap();
 
 	for enabled in [false, true] {
 		store
@@ -305,17 +333,17 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 				connection
 					.execute(
 						"UPDATE accounts SET enabled=?1 WHERE account_id=?2",
-						rusqlite::params![enabled, account_id(1).as_str()],
+						rusqlite::params![enabled, tests::account_id(1).as_str()],
 					)
-					.map_err(crate::error::sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				Ok(())
 			})
 			.await
 			.unwrap();
 		store.record_agent_task_models_publication(
-			"thread".into(), Some(generation_id(2).as_str().into()),
-			Some(json!({"model":observed_model,"modelProvider":"fixture","effort":"high","serviceTier":"priority"}).to_string()),
+			"thread".into(), Some(tests::generation_id(2).as_str().into()),
+			Some(serde_json::json!({"model":observed_model,"modelProvider":"fixture","effort":"high","serviceTier":"priority"}).to_string()),
 			OTHER_DIGEST.into(),
 		).await.unwrap().unwrap();
 
@@ -332,7 +360,11 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 	assert_eq!(receipt(&store).await.state, "superseded");
 
 	let historical = store
-		.agent_model_history("root".into(), "thread".into(), generation_id(2).as_str().into())
+		.agent_model_history(
+			"root".into(),
+			"thread".into(),
+			tests::generation_id(2).as_str().into(),
+		)
 		.await
 		.expect("reconciled history")
 		.expect("automatic receipt");
@@ -347,12 +379,12 @@ async fn qualify_new_owner(manual: bool, observed_model: &str) {
 }
 
 async fn assert_permissions_after_reconciliation(store: &SqliteStore) {
-	let generation = Some(generation_id(2).as_str().to_owned());
+	let generation = Some(tests::generation_id(2).as_str().to_owned());
 	let observed = store.record_agent_task_permissions_publication(
         "thread".into(), generation.clone(),
-        Some(json!({"profileId":":read-only","cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"}}).to_string()),
+        Some(serde_json::json!({"profileId":":read-only","cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"}}).to_string()),
         OTHER_DIGEST.into()).await.unwrap().unwrap();
-	let permission = crate::AgentPermissionAttempt {
+	let permission = AgentPermissionAttempt {
 		work: "root".into(),
 		thread: "thread".into(),
 		generation,
@@ -375,9 +407,11 @@ async fn assert_permissions_after_reconciliation(store: &SqliteStore) {
 #[tokio::test]
 async fn manual_model_selection_respects_queued_execution_choices() {
 	for running in [false, true] {
-		for execution in
-			[json!({"model":"queued-model"}), json!({"reasoning_effort":"high"}), json!({})]
-		{
+		for execution in [
+			serde_json::json!({"model":"queued-model"}),
+			serde_json::json!({"reasoning_effort":"high"}),
+			serde_json::json!({}),
+		] {
 			let dir = tempfile::tempdir().unwrap();
 			let store = SqliteStore::open_test(&dir.path().join("manual-queue.sqlite3")).unwrap();
 			let mut attempt = ready(&store).await;
@@ -395,12 +429,13 @@ async fn manual_model_selection_respects_queued_execution_choices() {
 			}
 
 			store
-				.enqueue_agent_event(crate::EnqueueAgentEvent {
+				.enqueue_agent_event(EnqueueAgentEvent {
 					source_event_id: "queued-input".into(),
 					work_item_id: "root".into(),
 					event_kind: "user_message".into(),
-					payload: json!({"text":"Next input", "options":{"execution":execution}})
-						.to_string(),
+					payload:
+						serde_json::json!({"text":"Next input", "options":{"execution":execution}})
+							.to_string(),
 				})
 				.await
 				.unwrap();
@@ -409,7 +444,7 @@ async fn manual_model_selection_respects_queued_execution_choices() {
 
 			assert_eq!(
 				reserved.is_some(),
-				execution == json!({}),
+				execution == serde_json::json!({}),
 				"running={running}, execution={execution}"
 			);
 
@@ -431,8 +466,8 @@ async fn manual_model_confirmation_keeps_the_reviewed_account_revision() {
 	let mut attempt = ready(&store).await;
 
 	attempt.recovery = None;
-	attempt.manual_source = Some(crate::AgentManualModelSource {
-		account: account_id(1).as_str().into(),
+	attempt.manual_source = Some(AgentManualModelSource {
+		account: tests::account_id(1).as_str().into(),
 		account_revision: 1,
 	});
 
@@ -444,16 +479,16 @@ async fn manual_model_confirmation_keeps_the_reviewed_account_revision() {
 			connection
 				.execute(
 					"UPDATE accounts SET revision=revision+1 WHERE account_id=?1",
-					[account_id(1).as_str()],
+					[tests::account_id(1).as_str()],
 				)
-				.map_err(crate::error::sqlite_error)?;
+				.map_err(error::sqlite_error)?;
 
 			Ok(())
 		})
 		.await
 		.unwrap();
 
-	publish(&store, "fallback", json!("priority"), OTHER_DIGEST).await;
+	publish(&store, "fallback", serde_json::json!("priority"), OTHER_DIGEST).await;
 
 	assert_eq!(
 		receipt(&store).await.state,
@@ -474,19 +509,20 @@ async fn manual_model_reservation_rechecks_its_account_and_retains_old_payload_s
 	let old = serde_json::to_value(&attempt).unwrap();
 
 	assert!(old.get("manual_source").is_none());
-	assert_eq!(serde_json::from_value::<crate::AgentModelAttempt>(old).unwrap(), attempt);
+	assert_eq!(serde_json::from_value::<AgentModelAttempt>(old).unwrap(), attempt);
 
-	for (account, revision) in
-		[(account_id(2).as_str().to_owned(), 1), (account_id(1).as_str().to_owned(), 2)]
-	{
+	for (account, revision) in [
+		(tests::account_id(2).as_str().to_owned(), 1),
+		(tests::account_id(1).as_str().to_owned(), 2),
+	] {
 		attempt.manual_source =
-			Some(crate::AgentManualModelSource { account, account_revision: revision });
+			Some(AgentManualModelSource { account, account_revision: revision });
 
 		assert!(store.reserve_agent_model_selection(attempt.clone()).await.unwrap().is_none());
 	}
 
-	attempt.manual_source = Some(crate::AgentManualModelSource {
-		account: account_id(1).as_str().into(),
+	attempt.manual_source = Some(AgentManualModelSource {
+		account: tests::account_id(1).as_str().into(),
 		account_revision: 1,
 	});
 
@@ -494,7 +530,7 @@ async fn manual_model_reservation_rechecks_its_account_and_retains_old_payload_s
 
 	store.finish_agent_model_selection(id, attempt.clone(), "unknown".into()).await.unwrap();
 
-	publish(&store, "fallback", json!("priority"), OTHER_DIGEST).await;
+	publish(&store, "fallback", serde_json::json!("priority"), OTHER_DIGEST).await;
 
 	let receipt = receipt(&store).await;
 
@@ -517,15 +553,13 @@ async fn ordinary_model_selection_rejects_reserve() {
 
 #[tokio::test]
 async fn completed_legacy_fallback_cannot_replay_in_the_current_journal() {
-	use sha2::{Digest as _, Sha256};
-
 	for terminal in ["rejected", "observed", "reconciled"] {
 		let dir = tempfile::tempdir().unwrap();
 		let path = dir.path().join("legacy-identity.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 		let attempt = ready(&store).await;
 		let recovery = attempt.recovery.as_ref().unwrap();
-		let identity = json!([
+		let identity = serde_json::json!([
 			attempt.work,
 			attempt.thread,
 			recovery.account,
@@ -540,7 +574,7 @@ async fn completed_legacy_fallback_cannot_replay_in_the_current_journal() {
 			.map(|byte| format!("{byte:02x}"))
 			.collect();
 		let key = format!("model-recovery:{digest}");
-		let original = json!({"attempt":{
+		let original = serde_json::json!({"attempt":{
             "work":attempt.work,"thread":attempt.thread,"generation":attempt.generation,
             "account":recovery.account,"account_revision":recovery.account_revision,
             "settings_event":attempt.settings_event,"banner_digest":recovery.banner_digest,
@@ -550,7 +584,7 @@ async fn completed_legacy_fallback_cannot_replay_in_the_current_journal() {
 
 		store.run(move |connection| {
             let insert = |key: &str, kind: &str, payload: &str| {
-                connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,'root',?2,?3,1,'resolved','Preserved legacy fixture',1)",rusqlite::params![key,kind,payload]).map_err(crate::error::sqlite_error)
+                connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,'root',?2,?3,1,'resolved','Preserved legacy fixture',1)",rusqlite::params![key,kind,payload]).map_err(error::sqlite_error)
             };
 
             insert(&key,"model_recovery",&original)?;
@@ -562,7 +596,7 @@ async fn completed_legacy_fallback_cannot_replay_in_the_current_journal() {
                 _ => ("reconciliation","model_selection_reconciled","superseded"),
             };
 
-            insert(&format!("{key}:{suffix}"),kind,&json!({"reservation":id,"state":state}).to_string())?;
+            insert(&format!("{key}:{suffix}"),kind,&serde_json::json!({"reservation":id,"state":state}).to_string())?;
 
             Ok(())
         }).await.unwrap();
