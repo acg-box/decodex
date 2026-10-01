@@ -1,21 +1,24 @@
 //! Start recap work through the existing Agent command owner without blocking its event loop.
+use tokio::sync::watch::Receiver;
+
 use crate::{
 	agent_host::{AgentHost, AgentHostError},
+	agent_recap,
 	agent_usage_estimate::Source,
 };
-use decodex_protocol::{EntityId, TaskRecapStatus};
-use tokio::sync::watch;
+use decodex_database::{AgentVoiceHistory, AgentVoiceHistoryRevision};
+use decodex_protocol::{AgentActionDto, EntityId, TaskRecapPhase, TaskRecapStatus};
 
 impl AgentHost {
 	pub(super) async fn handle_recap(
 		&self,
 		key: &str,
-		action: decodex_protocol::AgentActionDto,
+		action: AgentActionDto,
 	) -> Result<String, AgentHostError> {
 		match action {
-			decodex_protocol::AgentActionDto::GenerateRecap { work_id, thread_id } =>
+			AgentActionDto::GenerateRecap { work_id, thread_id } =>
 				self.start_recap(key, work_id.as_str(), thread_id.as_str()).await,
-			decodex_protocol::AgentActionDto::CancelRecap { work_id, request_id } => {
+			AgentActionDto::CancelRecap { work_id, request_id } => {
 				self.recaps.cancel_request(work_id.as_str(), request_id.as_str());
 
 				Ok(work_id.as_str().into())
@@ -51,7 +54,7 @@ impl AgentHost {
 		};
 		let mut result = self.recaps.status(work.clone(), source.as_ref());
 
-		if result.phase != decodex_protocol::TaskRecapPhase::Idle {
+		if result.phase != TaskRecapPhase::Idle {
 			let revision = match &source {
 				Some(source) => self
 					.store
@@ -62,7 +65,7 @@ impl AgentHost {
 			};
 
 			if revision.as_ref().is_none_or(|v| !self.recaps.voice_is_current(work.as_str(), v)) {
-				result.phase = decodex_protocol::TaskRecapPhase::Cancelled;
+				result.phase = TaskRecapPhase::Cancelled;
 				result.recap = None;
 			}
 		}
@@ -103,7 +106,7 @@ impl AgentHost {
 	async fn recap_owner_is_current(
 		&self,
 		source: &Source,
-		voice: &decodex_database::AgentVoiceHistoryRevision,
+		voice: &AgentVoiceHistoryRevision,
 	) -> bool {
 		if self
 			.store
@@ -118,19 +121,19 @@ impl AgentHost {
 
 		self.recap_source(&source.key.work, &source.key.thread)
 			.await
-			.is_some_and(|current| crate::agent_recap::same_owner(source, &current))
+			.is_some_and(|current| agent_recap::same_owner(source, &current))
 	}
 
 	async fn run_recap(
 		&self,
 		key: String,
 		source: Source,
-		cancelled: watch::Receiver<bool>,
-		voice: decodex_database::AgentVoiceHistory,
+		cancelled: Receiver<bool>,
+		voice: AgentVoiceHistory,
 	) {
 		let mut temporary_id = None;
 		let result = async {
-			let prepared = crate::agent_recap::prepare(&source, Some(&voice)).await?;
+			let prepared = agent_recap::prepare(&source, Some(&voice)).await?;
 
 			if *cancelled.borrow()
 				|| !prepared.guard.is_live()
@@ -162,7 +165,7 @@ impl AgentHost {
 				return None;
 			};
 			let output = temporary
-				.run(prepared.prompt, crate::agent_recap::schema(), None, events, cancelled.clone())
+				.run(prepared.prompt, agent_recap::schema(), None, events, cancelled.clone())
 				.await
 				.ok()?;
 
@@ -173,7 +176,7 @@ impl AgentHost {
 				return None;
 			}
 
-			crate::agent_recap::parse(&output)
+			agent_recap::parse(&output)
 		}
 		.await;
 
