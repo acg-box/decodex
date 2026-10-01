@@ -6,7 +6,9 @@ use std::sync::atomic::AtomicUsize;
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native audio preparation"]
 async fn installed_native_replaces_empty_tool_audio_without_losing_other_output() {
 	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+
 	assert!(std::path::Path::new(&binary).is_absolute());
+
 	let home = tempfile::tempdir().expect("native audio fixture");
 	let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
 	let address = listener.local_addr().expect("fixture address");
@@ -26,40 +28,56 @@ async fn installed_native_replaces_empty_tool_audio_without_losing_other_output(
 			}
 		},
 	));
+
 	std::fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated audio fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("fixture config");
+
 	let mut session = NativeSession::start(&binary, home.path());
+
 	tokio::time::timeout(Duration::from_secs(60), async {
 		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only","dynamicTools":[{"name":"audio_fixture","description":"Return fixture audio","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native thread");
 		let thread = started["thread"]["id"].as_str().expect("thread id");
+
 		session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Read the fixture output."}]})).await.expect("native turn");
+
 		let mut answered = false;
+
 		loop {
 			match session.events.recv().await.expect("native event") {
 				ServerEvent::Request { id, method, .. } => {
 					assert_eq!(method, "item/tool/call");
 					assert!(!answered);
+
 					session.client.respond(id,json!({"contentItems":[{"type":"inputText","text":"before-audio"},{"type":"inputAudio","audioUrl":"data:audio/wav;base64,"},{"type":"inputText","text":"after-audio"}],"success":true})).await.expect("fixture tool response");
+
 					answered = true;
 				},
 				ServerEvent::Notification { method, params } if method == "turn/completed" => {
 					assert_eq!(params["turn"]["status"], "completed");
+
 					break;
 				},
 				_ => {},
 			}
 		}
+
 		assert!(answered);
+
 		let bodies = bodies.lock().expect("fixture bodies");
+
 		assert_eq!(bodies.len(), 2);
+
 		let output = bodies[1]["input"].as_array().expect("model input").iter()
 			.find(|item| item["type"] == "function_call_output" && item["call_id"] == "audio")
 			.expect("tool output");
+
 		assert_eq!(output["output"], json!([
 			{"type":"input_text","text":"before-audio"},
 			{"type":"input_text","text":"audio content omitted because it could not be processed"},
 			{"type":"input_text","text":"after-audio"}
 		]));
 	}).await.expect("native audio deadline");
+
 	drop(session);
+
 	backend.abort();
 }

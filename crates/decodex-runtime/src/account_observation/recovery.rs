@@ -42,6 +42,7 @@ pub(super) fn project(
 		return result;
 	};
 	let current = cached.current && now.saturating_sub(cached.observed_at) <= 300_000_000;
+
 	result.observed_at_unix_micros = Some(cached.observed_at);
 	result.state = match cached.banner {
 		AccountApiBannerState::Available(banner) => match project_banner(*banner) {
@@ -54,6 +55,7 @@ pub(super) fn project(
 		AccountApiBannerState::Unsupported if current => AccountRecoveryState::Unsupported,
 		_ => AccountRecoveryState::Unavailable,
 	};
+
 	result
 }
 
@@ -81,6 +83,7 @@ fn project_banner(banner: AccountApiBanner) -> Option<AccountRecoveryBanner> {
 			})
 		})
 		.collect::<Option<Vec<_>>>()?;
+
 	Some(AccountRecoveryBanner {
 		banner_type: text(banner.banner_type)?,
 		title: text(banner.title)?,
@@ -118,6 +121,7 @@ mod tests {
 		let read = |value: CachedAccountBanner, revision, now| {
 			project(account.clone(), EntityRevision(revision), Some(value), now).state
 		};
+
 		assert!(
 			matches!(read(cached.clone(),1,100),S::Current(b) if b.blocked_model_slug.as_ref().unwrap().as_str()=="model-a")
 		);

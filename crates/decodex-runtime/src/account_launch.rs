@@ -1,21 +1,26 @@
 //! Runtime-owned SQLite authorization and bounded process-capacity composition.
 
-mod activation_policy;
 pub(crate) mod api_reset_card;
-pub(crate) use activation_policy::read_activation_policy;
+pub(crate) mod process;
+
+mod activation_policy;
 mod agent_process;
+#[cfg(target_os = "macos")] mod macos_attested_spawn;
+mod protocol;
+mod reset_card_types;
+
+pub(crate) use activation_policy::read_activation_policy;
+
 #[cfg(all(test, unix))]
 pub(crate) use agent_process::native_tests::account_nudge::{
 	serve_notification as serve_native_nudge_fixture,
 	serve_notification_with_gate as serve_native_nudge_with_gate,
 };
-#[cfg(target_os = "macos")] mod macos_attested_spawn;
-pub(crate) mod process;
-mod protocol;
-mod reset_card_types;
 
 pub(crate) use api_reset_card::ApiResetCardRuntime;
+
 pub(crate) use process::{AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild};
+
 pub(crate) use reset_card_types::{
 	ResetCardFailureCode, ResetCardInventoryObservation, ResetCardInventoryView,
 	ResetCardObservationFailure, ResetCardOperationStatus, ResetCardPreparation,
@@ -31,6 +36,7 @@ use std::{
 };
 
 use crate::account_launch::process::QuarantineSlotLease;
+
 use decodex_core::AccountId;
 
 const MAX_RUNNER_CAPACITY: u16 = 64;
@@ -124,12 +130,6 @@ impl RunnerCapacity {
 	}
 }
 
-struct CapacityInner {
-	limit: u16,
-	active: AtomicU16,
-	quarantine: Arc<process::ProcessQuarantine>,
-}
-
 pub(crate) struct RunnerPermit {
 	capacity: Arc<CapacityInner>,
 	account_id: AccountId,
@@ -150,6 +150,7 @@ impl RunnerPermit {
 		self.quarantine = Arc::clone(quarantine);
 	}
 }
+
 impl Debug for RunnerPermit {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter
@@ -159,6 +160,7 @@ impl Debug for RunnerPermit {
 			.finish_non_exhaustive()
 	}
 }
+
 impl Drop for RunnerPermit {
 	fn drop(&mut self) {
 		let previous = self.capacity.active.fetch_sub(1, Ordering::AcqRel);
@@ -169,6 +171,12 @@ impl Drop for RunnerPermit {
 
 #[derive(Debug)]
 pub(crate) struct CapacityExhausted;
+
+struct CapacityInner {
+	limit: u16,
+	active: AtomicU16,
+	quarantine: Arc<process::ProcessQuarantine>,
+}
 
 #[cfg(test)]
 mod tests {

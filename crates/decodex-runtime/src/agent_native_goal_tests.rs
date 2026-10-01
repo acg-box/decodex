@@ -31,8 +31,11 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 	] {
 		let home = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
+
 		root.paths().ensure_layout().unwrap();
+
 		let store = SqliteStore::open(&root.paths()).unwrap();
+
 		store
 			.create_agent_work_item(AgentWorkItem {
 				id: "work".into(),
@@ -51,7 +54,8 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 			.await
 			.unwrap();
 		store.bind_agent_thread("work".into(), "root".into()).await.unwrap();
-		let (local, remote) = tokio::io::duplex(65536);
+
+		let (local, remote) = tokio::io::duplex(65_536);
 		let (reader, writer) = tokio::io::split(local);
 		let (client, _events) = AppServerClient::from_io(reader, writer);
 		let target = if matches!(case, "child" | "unowned") { "child" } else { "root" };
@@ -62,10 +66,12 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 			|| {
 				let later = calls.fetch_add(1, Ordering::SeqCst) > 0;
 				let client = client.clone();
+
 				async move {
 					if later && case == "closed" {
 						return None;
 					}
+
 					Some(Source {
 						client,
 						key: SourceKey {
@@ -94,12 +100,15 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 			target,
 		)
 		.await;
+
 		server.await.unwrap();
+
 		match case {
 			"root" | "child" | "redacted" | "long" | "unicode" => {
 				let Result::Available { work_id, thread_id, goal: Some(goal), .. } = result else {
 					panic!("{case}")
 				};
+
 				assert_eq!(work_id.as_str(), "work");
 				assert_eq!(thread_id.as_str(), target);
 				assert_eq!(goal.tokens_used, 12);
@@ -114,6 +123,7 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 			"unsupported" => assert_eq!(result, Result::Unsupported),
 			_ => assert_eq!(result, Result::Unavailable, "{case}"),
 		}
+
 		assert!(store.list_agent_wake_events("work".into(), 10).await.unwrap().is_empty());
 	}
 }
@@ -121,58 +131,69 @@ async fn native_goal_observation_checks_source_ownership_and_absence() {
 async fn serve(remote: tokio::io::DuplexStream, target: &str, case: &str) {
 	let (reader, mut writer) = tokio::io::split(remote);
 	let mut lines = BufReader::new(reader).lines();
+
 	if target == "child" {
 		let request: Value = serde_json::from_str(
 			&lines.next_line().await.expect("goal wire fixture").expect("goal wire fixture"),
 		)
 		.expect("goal wire fixture");
+
 		assert_eq!(request["method"], "thread/read");
 		assert_eq!(request["params"]["threadId"], "child");
+
 		let thread = if case == "unowned" {
 			json!({"id":"child","parentThreadId":"root","source":"cli"})
 		} else {
 			json!({"id":"child","parentThreadId":"root","source":{"subAgent":{"thread_spawn":{"parent_thread_id":"root"}}}})
 		};
+
 		writer
 			.write_all(
 				format!("{}\n", json!({"id":request["id"],"result":{"thread":thread}})).as_bytes(),
 			)
 			.await
 			.expect("goal wire fixture");
+
 		if case == "unowned" {
 			assert!(
 				tokio::time::timeout(std::time::Duration::from_millis(30), lines.next_line())
 					.await
 					.is_err()
 			);
+
 			return;
 		}
 	}
+
 	let request: Value = serde_json::from_str(
 		&lines.next_line().await.expect("goal wire fixture").expect("goal wire fixture"),
 	)
 	.expect("goal wire fixture");
+
 	assert_eq!(request["method"], "thread/goal/get");
 	assert_eq!(request["params"]["threadId"], target);
+
 	if case == "lost" {
 		return;
 	}
+
 	let objective = match case {
 		"redacted" => "Bearer fixture-private-access-token-123456789".into(),
-		"long" => "界".repeat(5000),
-		"unicode" => "界".repeat(4000),
+		"long" => "界".repeat(5_000),
+		"unicode" => "界".repeat(4_000),
 		_ => "Native objective".into(),
 	};
 	let response = match case {
 		"disabled" =>
-			json!({"id":request["id"],"error":{"code":-32600,"message":"goals feature is disabled"}}),
+			json!({"id":request["id"],"error":{"code":-32_600,"message":"goals feature is disabled"}}),
 		"unsupported" =>
-			json!({"id":request["id"],"error":{"code":-32601,"message":"unknown method"}}),
+			json!({"id":request["id"],"error":{"code":-32_601,"message":"unknown method"}}),
 		"missing" => json!({"id":request["id"],"result":{"goal":null}}),
 		"malformed" => json!({"id":request["id"],"result":{}}),
 		_ =>
 			json!({"id":request["id"],"result":{"goal":{"threadId":target,"objective":objective,"status":"budgetLimited","tokenBudget":11,"tokensUsed":12,"timeUsedSeconds":7,"createdAt":1,"updatedAt":2}}}),
 	};
+
 	writer.write_all(format!("{response}\n").as_bytes()).await.expect("goal wire fixture");
 }
 
@@ -181,9 +202,11 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 	for case in ["accepted", "stale", "account"] {
 		let home = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(home.path().canonicalize().unwrap().join("state")).unwrap();
+
 		root.paths().ensure_layout().unwrap();
+
 		let store = SqliteStore::open(&root.paths()).unwrap();
-		let (local, remote) = tokio::io::duplex(65536);
+		let (local, remote) = tokio::io::duplex(65_536);
 		let (reader, writer) = tokio::io::split(local);
 		let (client, _) = AppServerClient::from_io(reader, writer);
 		let key = SourceKey {
@@ -205,23 +228,31 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 			let mut current = raw;
 			let read: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 			assert_eq!(read["method"], "thread/goal/get");
+
 			if case == "stale" {
 				current["objective"] = json!("Other edit");
 			}
+
 			current["tokensUsed"] = json!(2); // Usage updates do not invalidate semantic edits.
+
 			writer
 				.write_all(
 					format!("{}\n", json!({"id":read["id"],"result":{"goal":current}})).as_bytes(),
 				)
 				.await
 				.unwrap();
+
 			if case == "accepted" {
 				let update: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				assert_eq!(update["method"], "thread/goal/set");
 				assert_eq!(update["params"], json!({"threadId":"root","objective":"Updated"}));
+
 				current["objective"] = json!("Updated");
+
 				writer
 					.write_all(
 						format!("{}\n", json!({"id":update["id"],"result":{"goal":current}}))
@@ -235,6 +266,7 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 					_ = lines.next_line() => panic!("Rejected {case} edit sent another request"),
 				}
 			}
+
 			let _ = done.await;
 		});
 		let calls = AtomicUsize::new(0);
@@ -243,9 +275,11 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 			|| {
 				let mut key = key.clone();
 				let client = client.clone();
+
 				if calls.fetch_add(1, Ordering::SeqCst) > 0 && case == "account" {
 					key.account = AccountId::new("40000000-0000-4000-8000-000000000004").unwrap();
 				}
+
 				async move { Some(Source { key, client }) }
 			},
 			"root",
@@ -257,6 +291,7 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 			},
 		)
 		.await;
+
 		if case == "accepted" {
 			result.unwrap();
 		} else {
@@ -265,7 +300,9 @@ async fn native_goal_edits_reject_stale_reviews_and_changed_accounts_before_writ
 				"{case}: {result:?}"
 			);
 		}
+
 		let _ = release.send(());
+
 		server.await.unwrap();
 	}
 }

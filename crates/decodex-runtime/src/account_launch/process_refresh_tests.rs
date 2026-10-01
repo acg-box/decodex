@@ -1,16 +1,22 @@
 //! Exercise the production refresh response owner with synthetic credentials only.
+#[path = "process_refresh_native_tests.rs"] mod native;
+
 use super::*;
+
 use decodex_core::{
 	AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
 	CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
 };
+
 use serde_json::{Value, json};
+
 use std::sync::{
 	Mutex,
 	atomic::{AtomicUsize, Ordering},
 };
 
 const PROVIDER: &str = "123e4567-e89b-42d3-a456-426614174011";
+
 struct Refresh {
 	token: String,
 	provider: String,
@@ -29,18 +35,23 @@ impl AccountRefreshCallback for Refresh {
 		assert_eq!(binding.credential.provider.account_id(), PROVIDER);
 		assert_eq!(reason, "unauthorized");
 		assert!(previous.is_none_or(|p| p == PROVIDER));
+
 		self.calls.fetch_add(1, Ordering::SeqCst);
+
 		if self.fail {
 			return Err(CredentialVaultError::Unavailable);
 		}
+
 		ChatgptRefreshProjection::new(self.token.clone(), self.provider.clone(), None)
 	}
 }
+
 #[derive(Clone, Default)]
 struct Capture(Arc<Mutex<Vec<u8>>>);
 impl Write for Capture {
 	fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
 		self.0.lock().expect("capture").extend_from_slice(bytes);
+
 		Ok(bytes.len())
 	}
 
@@ -48,6 +59,7 @@ impl Write for Capture {
 		Ok(())
 	}
 }
+
 fn binding(token: &str, provider: &str, fail: bool) -> (AccountBinding, Arc<AtomicUsize>) {
 	let calls = Arc::new(AtomicUsize::new(0));
 	let credential = CredentialBinding {
@@ -73,8 +85,10 @@ fn binding(token: &str, provider: &str, fail: bool) -> (AccountBinding, Arc<Atom
 			calls: calls.clone(),
 		})),
 	};
+
 	(binding, calls)
 }
+
 fn handle(
 	binding: &AccountBinding,
 	id: u64,
@@ -83,6 +97,7 @@ fn handle(
 ) -> Result<Vec<u8>, ProbeError> {
 	let capture = Capture::default();
 	let mut writer: Box<dyn Write + Send> = Box::new(capture.clone());
+
 	SupervisedProcess::service_inbound_request(
 		binding,
 		&mut writer,
@@ -90,14 +105,18 @@ fn handle(
 		method,
 		&serde_json::to_vec(request).expect("request"),
 	)?;
+
 	let bytes = capture.0.lock().expect("capture").clone();
+
 	Ok(bytes)
 }
 
 #[test]
 fn pat_bound_child_cannot_invoke_the_oauth_refresh_owner() {
 	let (mut binding, calls) = binding("synthetic-oauth", PROVIDER, false);
+
 	binding.personal_access_token = Some(Zeroizing::new("synthetic-pat".into()));
+
 	let method = decodex_codex::schema::ACCOUNT_REFRESH_CALLBACK_METHOD;
 	let result = handle(
 		&binding,
@@ -106,31 +125,44 @@ fn pat_bound_child_cannot_invoke_the_oauth_refresh_owner() {
 		&json!({"id":17,"method":method,"params":{"reason":"unauthorized"}}),
 	)
 	.unwrap();
+
 	assert_eq!(calls.load(Ordering::SeqCst), 0);
+
 	let response: Value = serde_json::from_slice(&result).unwrap();
-	assert_eq!(response["error"]["code"], -32601);
+
+	assert_eq!(response["error"]["code"], -32_601);
 	assert!(!String::from_utf8(result).unwrap().contains("synthetic"));
 }
+
 #[test]
 fn refresh_owner_preserves_optional_fields_and_rejects_wrong_identity_before_reply() {
 	const METHOD: &str = "account/chatgptAuthTokens/refresh";
+
 	for (provider, fail) in [(PROVIDER, false), (PROVIDER, true), ("other-account", false)] {
 		for previous in [None, Some(json!(null)), Some(json!(PROVIDER))] {
 			let (binding, calls) = binding("synthetic-nonsecret-token", provider, fail);
 			let mut request = json!({"id":17,"method":METHOD,"params":{"reason":"unauthorized"}});
+
 			if let Some(previous) = previous {
 				request["params"]["previousAccountId"] = previous;
 			}
+
 			let result = handle(&binding, 17, METHOD, &request);
+
 			assert_eq!(calls.load(Ordering::SeqCst), 1);
+
 			if provider != PROVIDER {
 				assert!(result.is_err());
+
 				continue;
 			}
+
 			let response: Value = serde_json::from_slice(&result.unwrap()).unwrap();
+
 			assert_eq!(response["id"], 17);
+
 			if fail {
-				assert_eq!(response["error"]["code"], -32001);
+				assert_eq!(response["error"]["code"], -32_001);
 				assert!(response.get("result").is_none());
 			} else {
 				assert_eq!(response["result"]["accessToken"], "synthetic-nonsecret-token");
@@ -142,6 +174,7 @@ fn refresh_owner_preserves_optional_fields_and_rejects_wrong_identity_before_rep
 	for mutation in ["id", "method", "reason", "empty_previous", "bad_previous"] {
 		let (binding, calls) = binding("synthetic-nonsecret-token", PROVIDER, false);
 		let mut request = json!({"id":17,"method":METHOD,"params":{"reason":"unauthorized"}});
+
 		match mutation {
 			"id" => request["id"] = json!(18),
 			"method" => request["method"] = json!("other"),
@@ -149,9 +182,8 @@ fn refresh_owner_preserves_optional_fields_and_rejects_wrong_identity_before_rep
 			"empty_previous" => request["params"]["previousAccountId"] = json!(""),
 			_ => request["params"]["previousAccountId"] = json!(false),
 		}
+
 		assert!(handle(&binding, 17, METHOD, &request).is_err());
 		assert_eq!(calls.load(Ordering::SeqCst), 0);
 	}
 }
-
-#[path = "process_refresh_native_tests.rs"] mod native;

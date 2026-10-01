@@ -2,12 +2,16 @@
 #[cfg(all(test, target_os = "macos"))]
 #[path = "application_account_nudge_native_tests.rs"]
 mod native_tests;
+
 use super::{ApplicationPublication, ProductStore, ServiceApplication, application_unavailable};
+
 use decodex_database::{AccountCommandKind, AccountCommandReceiptClaim, CommandIdentity};
+
 use decodex_protocol::{
 	AccountRecoveryAction, AccountRecoveryNudgeStatus as Status, AccountRecoveryResult, Channel,
 	CommandEnvelope, CommandError, EventPayload, ResultPayload,
 };
+
 impl ServiceApplication {
 	pub(super) async fn execute_recovery_nudge(
 		&self,
@@ -20,6 +24,7 @@ impl ServiceApplication {
 		{
 			return Err(application_unavailable("account notification source changed"));
 		}
+
 		let ProductStore::Available(store) = &self.store else {
 			return Err(application_unavailable("account state unavailable"));
 		};
@@ -58,13 +63,16 @@ impl ServiceApplication {
 							.await,
 					_ => Status::Unavailable,
 				};
+
 				store
 					.complete_account_command(lease, &serde_json::json!({"status":status}))
 					.await
 					.map_err(|_| CommandError::AcceptanceUnknown)?;
+
 				status
 			},
 		};
+
 		Ok(ApplicationPublication {
 			channel: Channel::AccountsHealth,
 			entity_id: source.account_id.clone(),
@@ -83,13 +91,6 @@ impl ServiceApplication {
 	}
 }
 
-fn nudge_kind(action: AccountRecoveryAction) -> AccountCommandKind {
-	if action == AccountRecoveryAction::RequestIncrease {
-		AccountCommandKind::RequestWorkspaceUsageIncrease
-	} else {
-		AccountCommandKind::NotifyWorkspaceOwner
-	}
-}
 impl ServiceApplication {
 	pub(super) async fn account_nudge_status(
 		&self,
@@ -98,6 +99,7 @@ impl ServiceApplication {
 		key: Option<&decodex_protocol::IdempotencyKey>,
 	) -> decodex_protocol::QueryResultPayload {
 		use decodex_protocol::{AccountRecoveryNudgeResult as R, QueryResultPayload};
+
 		let result = async {
 			let ProductStore::Available(store) = &self.store else {
 				return R::Unavailable;
@@ -127,6 +129,7 @@ impl ServiceApplication {
 						Err(_) => return R::Unavailable,
 					},
 			};
+
 			R::Found(decodex_protocol::AccountRecoveryNudgeOperation {
 				account_id: account_id.clone(),
 				account_revision: decodex_protocol::EntityRevision(revision),
@@ -137,7 +140,16 @@ impl ServiceApplication {
 			})
 		}
 		.await;
+
 		QueryResultPayload::AccountRecoveryNudge(result)
+	}
+}
+
+fn nudge_kind(action: AccountRecoveryAction) -> AccountCommandKind {
+	if action == AccountRecoveryAction::RequestIncrease {
+		AccountCommandKind::RequestWorkspaceUsageIncrease
+	} else {
+		AccountCommandKind::NotifyWorkspaceOwner
 	}
 }
 
@@ -161,6 +173,7 @@ mod tests {
 				.collect(),
 		)
 		.unwrap();
+
 		ServiceApplication::new(
 			ProductStore::Available(store),
 			None,
@@ -215,21 +228,26 @@ mod tests {
 			.execute_recovery_nudge(&command, &source, AccountRecoveryAction::NotifyOwner)
 			.await
 			.unwrap();
+
 		assert!(matches!(
 			result.result,
 			ResultPayload::AccountRecoveryNudge { status: Status::Unavailable, .. }
 		));
+
 		drop(app);
 		drop(store);
+
 		let app = application(decodex_database::SqliteStore::open(&root.paths()).unwrap());
 		let result = app
 			.execute_recovery_nudge(&command, &source, AccountRecoveryAction::NotifyOwner)
 			.await
 			.unwrap();
+
 		assert!(matches!(
 			result.result,
 			ResultPayload::AccountRecoveryNudge { status: Status::Unavailable, .. }
 		));
+
 		let status = app
 			.account_nudge_status(
 				&source.account_id,
@@ -237,31 +255,40 @@ mod tests {
 				Some(&command.idempotency_key),
 			)
 			.await;
+
 		assert!(
 			matches!(status, decodex_protocol::QueryResultPayload::AccountRecoveryNudge(decodex_protocol::AccountRecoveryNudgeResult::Found(operation)) if operation.outcome == Status::Unavailable && operation.operation_key == command.idempotency_key)
 		);
+
 		let other_purpose = app
 			.account_nudge_status(&source.account_id, AccountRecoveryAction::RequestIncrease, None)
 			.await;
+
 		assert!(matches!(
 			other_purpose,
 			decodex_protocol::QueryResultPayload::AccountRecoveryNudge(
 				decodex_protocol::AccountRecoveryNudgeResult::NotFound
 			)
 		));
+
 		command.expected_revision = Some(EntityRevision(2));
+
 		assert!(
 			app.execute_recovery_nudge(&command, &source, AccountRecoveryAction::NotifyOwner)
 				.await
 				.is_err()
 		);
+
 		command.expected_revision = Some(EntityRevision(1));
+
 		let mut changed = source.clone();
+
 		changed.observed_at_unix_micros = Some(101);
 		command.payload = CommandPayload::SendAccountRecoveryNudge {
 			source: Box::new(changed.clone()),
 			action: AccountRecoveryAction::NotifyOwner,
 		};
+
 		assert!(
 			app.execute_recovery_nudge(&command, &changed, AccountRecoveryAction::NotifyOwner)
 				.await

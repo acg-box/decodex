@@ -31,9 +31,11 @@ pub(super) async fn query_turn_outcome(
 	};
 	let expected =
 		ProviderAttemptConsumer::ConversationTurn { conversation_id: conversation, turn_id: turn };
+
 	if attempt.consumer != expected {
 		return ResultDto::Conflict;
 	}
+
 	let evidence_matches = match store.provider_attempt_terminal_evidence_matches(&attempt).await {
 		Ok(matches) => matches,
 		Err(_) => return ResultDto::Unavailable,
@@ -41,6 +43,7 @@ pub(super) async fn query_turn_outcome(
 	let Some(outcome) = project_state(attempt.state, evidence_matches) else {
 		return ResultDto::Unavailable;
 	};
+
 	ResultDto::Observed {
 		conversation_id: request.conversation_id.clone(),
 		turn_id: request.turn_id.clone(),
@@ -50,6 +53,7 @@ pub(super) async fn query_turn_outcome(
 
 fn project_state(state: ProviderAttemptState, terminal_evidence: bool) -> Option<StateDto> {
 	use ProviderAttemptState as Source;
+
 	match state {
 		Source::Prepared | Source::DispatchAuthorized => Some(StateDto::Pending),
 		Source::Unknown => Some(StateDto::Unknown),
@@ -67,6 +71,7 @@ mod tests {
 	#[test]
 	fn outcome_lookup_preserves_the_existing_attempt_identity() {
 		let turn = TurnId::new("50000000-0000-4000-8000-000000000001").unwrap();
+
 		assert_eq!(
 			ordinary_provider_attempt_id("original-submission", &turn).unwrap().as_str(),
 			"7dc84ac4-d679-42cd-8f43-235a20459b8d"
@@ -76,6 +81,7 @@ mod tests {
 	#[test]
 	fn provider_terminal_results_require_positive_evidence() {
 		use ProviderAttemptState as Source;
+
 		for (source, expected) in [
 			(Source::Succeeded, StateDto::Completed),
 			(Source::FailedDefinitive, StateDto::Failed),
@@ -84,6 +90,7 @@ mod tests {
 			assert_eq!(project_state(source, false), None);
 			assert_eq!(project_state(source, true), Some(expected));
 		}
+
 		assert_eq!(project_state(Source::Unknown, false), Some(StateDto::Unknown));
 		assert_eq!(project_state(Source::Prepared, false), Some(StateDto::Pending));
 		assert_eq!(project_state(Source::DispatchAuthorized, false), Some(StateDto::Pending));
@@ -103,13 +110,13 @@ mod tests {
 			turn_id: decodex_protocol::EntityId::new("50000000-0000-4000-8000-000000000001")
 				.unwrap(),
 		};
+
 		assert_eq!(
 			query_turn_outcome(&ProductStore::Available(store), &request).await,
 			ResultDto::NotRecorded
 		);
 	}
 }
-
 #[cfg(test)]
 #[path = "application_turn_outcome_store_tests.rs"]
 mod store_tests;

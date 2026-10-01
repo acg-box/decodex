@@ -2,13 +2,21 @@
 //! The existing supervisor keeps process ownership. Credential callbacks remain on the
 //! zeroizing synchronous path and never enter the general-purpose event channel.
 
+#[cfg(all(test, unix))]
+#[path = "agent_process_native_tests.rs"]
+pub(crate) mod native_tests;
+
 use super::process::{AccountBinding, InboundFrame, SupervisedProcess};
+
 use decodex_codex::{
 	app_server_client::{AppServerClient, ClientError, RequestId, ServerEvent},
 	schema::ACCOUNT_REFRESH_CALLBACK_METHOD,
 };
+
 use serde::Deserialize;
+
 use serde_json::Value;
+
 use std::{
 	collections::HashSet,
 	io::{self, Write},
@@ -20,20 +28,16 @@ use std::{
 	thread::{self, JoinHandle},
 	time::Duration,
 };
+
 use tokio::sync::mpsc;
 
 const BRIDGE_CAPACITY: usize = 64;
-
-#[cfg(all(test, unix))]
-#[path = "agent_process_native_tests.rs"]
-pub(crate) mod native_tests;
 
 pub(super) struct AgentProcessBridge {
 	cancelled: Arc<AtomicBool>,
 	client: AppServerClient,
 	thread: Option<JoinHandle<()>>,
 }
-
 impl AgentProcessBridge {
 	pub(super) fn start(
 		stdin: Box<dyn Write + Send>,
@@ -46,7 +50,9 @@ impl AgentProcessBridge {
 		let (incoming, frames) = mpsc::channel(BRIDGE_CAPACITY);
 		let (outgoing, commands) = mpsc::channel(BRIDGE_CAPACITY);
 		let (client, events) = AppServerClient::from_framed(next_request_id, frames, outgoing)?;
+
 		client.bind_native_home(binding.codex_home().to_path_buf())?;
+
 		let cancelled = Arc::new(AtomicBool::new(false));
 		let worker_cancelled = Arc::clone(&cancelled);
 		let worker = thread::Builder::new()
@@ -57,11 +63,13 @@ impl AgentProcessBridge {
 					cancelled: Arc::clone(&worker_cancelled),
 				});
 				let terminal = incoming.clone();
+
 				for warning in config_warnings {
 					if incoming.blocking_send(Ok(warning)).is_err() {
 						return;
 					}
 				}
+
 				let result = pump(
 					&mut writer,
 					stdout,
@@ -81,12 +89,15 @@ impl AgentProcessBridge {
 						.map_err(|_| ClientError::Io)
 					},
 				);
+
 				finish_bridge(writer, terminal, result);
 			})
 			.map_err(|_| {
 				client.close();
+
 				ClientError::Io
 			})?;
+
 		Ok((Self { cancelled, client: client.clone(), thread: Some(worker) }, client, events))
 	}
 
@@ -96,22 +107,10 @@ impl AgentProcessBridge {
 	}
 }
 
-fn finish_bridge(
-	writer: Box<dyn Write + Send>,
-	terminal: mpsc::Sender<Result<Value, ClientError>>,
-	result: Result<(), ClientError>,
-) {
-	// Release stdin before a potentially blocked terminal event delivery. EOF lets
-	// Codex shut down its threads and helpers even if the consumer stopped polling.
-	drop(writer);
-	// Preserve queued evidence before transport EOF. Revocation closes the client
-	// separately, including when an AccountService callback is still pending.
-	let _ = terminal.blocking_send(Err(result.err().unwrap_or(ClientError::Closed)));
-}
-
 impl Drop for AgentProcessBridge {
 	fn drop(&mut self) {
 		self.close();
+
 		if self.thread.as_ref().is_some_and(JoinHandle::is_finished)
 			&& let Some(worker) = self.thread.take()
 		{
@@ -131,6 +130,7 @@ impl Write for RevocableWriter {
 		if self.cancelled.load(Ordering::Acquire) {
 			return Err(io::ErrorKind::BrokenPipe.into());
 		}
+
 		self.inner.write(bytes)
 	}
 
@@ -138,6 +138,7 @@ impl Write for RevocableWriter {
 		if self.cancelled.load(Ordering::Acquire) {
 			return Err(io::ErrorKind::BrokenPipe.into());
 		}
+
 		self.inner.flush()
 	}
 }
@@ -147,6 +148,19 @@ struct Header<'a> {
 	id: Option<RequestId>,
 	#[serde(borrow)]
 	method: Option<&'a str>,
+}
+
+fn finish_bridge(
+	writer: Box<dyn Write + Send>,
+	terminal: mpsc::Sender<Result<Value, ClientError>>,
+	result: Result<(), ClientError>,
+) {
+	// Release stdin before a potentially blocked terminal event delivery. EOF lets
+	// Codex shut down its threads and helpers even if the consumer stopped polling.
+	drop(writer);
+	// Preserve queued evidence before transport EOF. Revocation closes the client
+	// separately, including when an AccountService callback is still pending.
+	let _ = terminal.blocking_send(Err(result.err().unwrap_or(ClientError::Closed)));
 }
 
 #[allow(clippy::too_many_arguments)] // Keep bridge I/O, revocation and credential callback explicit.
@@ -161,16 +175,19 @@ fn pump(
 	mut refresh: impl FnMut(&mut Box<dyn Write + Send>, u64, &[u8]) -> Result<(), ClientError>,
 ) -> Result<(), ClientError> {
 	let mut requests = HashSet::new();
+
 	loop {
 		if cancelled.load(Ordering::Acquire) {
 			return Err(ClientError::Closed);
 		}
+
 		for _ in 0..BRIDGE_CAPACITY {
 			let value = match commands.try_recv() {
 				Ok(value) => value,
 				Err(mpsc::error::TryRecvError::Empty) => break,
 				Err(mpsc::error::TryRecvError::Disconnected) => return Err(ClientError::Closed),
 			};
+
 			if let Err(error) = validate_outbound(&value, &mut requests)
 				.and_then(|_| validate_goal_attachment_owner(&value, native_home))
 			{
@@ -182,14 +199,18 @@ fn pump(
 				{
 					// Refuse this local RPC before writing any bytes. Optional UI reads
 					// must not close the conversation's shared transport.
-					events.try_send(Ok(serde_json::json!({"id":id,"error":{"code":-32601,"message":"Method is not available on the Agent connection."}})))
+					events.try_send(Ok(serde_json::json!({"id":id,"error":{"code":-32_601,"message":"Method is not available on the Agent connection."}})))
                         .map_err(|_| ClientError::CapacityExceeded)?;
+
 					continue;
 				}
+
 				return Err(error);
 			}
+
 			SupervisedProcess::write_bound_json(writer, &value).map_err(|_| ClientError::Io)?;
 		}
+
 		let frame = match stdout.recv_timeout(Duration::from_millis(5)) {
 			Ok(frame) => frame.into_contiguous(),
 			Err(RecvTimeoutError::Timeout) => continue,
@@ -203,14 +224,18 @@ fn pump(
 		};
 		let header: Header<'_> =
 			serde_json::from_slice(&frame).map_err(|_| ClientError::InvalidFrame)?;
+
 		if header.method == Some(ACCOUNT_REFRESH_CALLBACK_METHOD) {
 			SupervisedProcess::validate_zero_scratch_json(&frame)
 				.map_err(|_| ClientError::InvalidFrame)?;
+
 			let Some(RequestId::Number(id)) = header.id else {
 				return Err(ClientError::InvalidFrame);
 			};
 			let id = u64::try_from(id).map_err(|_| ClientError::InvalidFrame)?;
+
 			refresh(writer, id, &frame)?;
+
 			continue;
 		}
 		if header.method.is_some_and(|method| method.starts_with("account/")) {
@@ -218,6 +243,7 @@ fn pump(
 			if header.id.is_some() {
 				return Err(ClientError::InvalidFrame);
 			}
+
 			continue;
 		}
 		if header.method.is_some()
@@ -226,7 +252,9 @@ fn pump(
 		{
 			return Err(ClientError::CapacityExceeded);
 		}
+
 		let value = serde_json::from_slice(&frame).map_err(|_| ClientError::InvalidFrame)?;
+
 		events.try_send(Ok(value)).map_err(|error| match error {
 			mpsc::error::TrySendError::Full(_) => ClientError::CapacityExceeded,
 			mpsc::error::TrySendError::Closed(_) => ClientError::Closed,
@@ -239,9 +267,11 @@ fn validate_goal_attachment_owner(
 	native_home: Option<&std::path::Path>,
 ) -> Result<(), ClientError> {
 	let method = value["method"].as_str().unwrap_or("");
+
 	if !matches!(method, "fs/createDirectory" | "fs/writeFile") {
 		return Ok(());
 	}
+
 	let home = native_home.ok_or(ClientError::InvalidFrame)?;
 	let path =
 		std::path::Path::new(value["params"]["path"].as_str().ok_or(ClientError::InvalidFrame)?);
@@ -250,9 +280,11 @@ fn validate_goal_attachment_owner(
 	} else {
 		path
 	};
+
 	if directory.parent() != Some(home.join("attachments").as_path()) {
 		return Err(ClientError::InvalidFrame);
 	}
+
 	Ok(())
 }
 
@@ -260,11 +292,14 @@ fn validate_outbound(value: &Value, requests: &mut HashSet<RequestId>) -> Result
 	if let Some(method) = value.get("method") {
 		return validate_outbound_method(method, &value["params"]);
 	}
+
 	let id = serde_json::from_value(value.get("id").cloned().ok_or(ClientError::InvalidFrame)?)
 		.map_err(|_| ClientError::InvalidFrame)?;
+
 	if !requests.remove(&id) {
 		return Err(ClientError::InvalidFrame);
 	}
+
 	Ok(())
 }
 
@@ -272,6 +307,7 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 	if method == "thread/fork" {
 		return validate_fork_request(params);
 	}
+
 	if let Some(method @ ("fs/createDirectory" | "fs/writeFile")) = method.as_str() {
 		return if decodex_codex::app_server_client::is_goal_attachment_write(method, params) {
 			Ok(())
@@ -279,6 +315,7 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 			Err(ClientError::InvalidFrame)
 		};
 	}
+
 	if method == "thread/goal/set" {
 		return if decodex_codex::app_server_client::is_native_goal_update(params) {
 			Ok(())
@@ -377,6 +414,7 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 	) {
 		return Err(ClientError::InvalidFrame);
 	}
+
 	Ok(())
 }
 
@@ -386,6 +424,7 @@ fn validate_fork_request(params: &Value) -> Result<(), ClientError> {
 			!id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control)
 		})
 	};
+
 	if params.as_object().is_some_and(|p| {
 		p.len() == 4
 			&& p.keys().all(|key| {
@@ -419,8 +458,11 @@ mod tests {
 		for boundary in ["beforeTurnId", "lastTurnId"] {
 			let mut params =
 				json!({"threadId":"source","deferGoalContinuation":true,"excludeTurns":true});
+
 			params[boundary] = json!("selected");
+
 			assert!(validate_outbound_method(&json!("thread/fork"), &params).is_ok());
+
 			for (field, value) in [
 				("path", json!("/unreviewed/history.jsonl")),
 				("deferGoalContinuation", json!(false)),
@@ -432,7 +474,9 @@ mod tests {
 				),
 			] {
 				let mut invalid = params.clone();
+
 				invalid[field] = value;
+
 				assert!(validate_outbound_method(&json!("thread/fork"), &invalid).is_err());
 			}
 		}
@@ -466,18 +510,25 @@ mod tests {
 		let mut requests = HashSet::new();
 		let frame = json!({"id":42,"method":"turn/settings/update","params":{
             "threadId":"thread","turnId":"turn","model":"selected-model","effort":"high"}});
+
 		assert!(validate_outbound(&frame, &mut requests).is_ok());
+
 		for (field, value) in [
 			("approvalPolicy", json!("never")),
 			("approvalsReviewer", json!("auto_review")),
 			("serviceTier", json!("fast")),
 		] {
 			let mut mixed = frame.clone();
+
 			mixed["params"][field] = value;
+
 			assert!(validate_outbound(&mixed, &mut requests).is_err());
 		}
+
 		let mut saved = frame;
+
 		saved["method"] = json!("thread/settings/update");
+
 		assert!(validate_outbound(&saved, &mut requests).is_err());
 	}
 
@@ -487,17 +538,24 @@ mod tests {
 		let mut requests = HashSet::new();
 		let mut frame = json!({"id":42,"method":"turn/settings/update","params":{
 			"threadId":"thread","turnId":"turn","approvalsReviewer":"user"}});
+
 		assert!(validate_outbound(&frame, &mut requests).is_ok());
+
 		frame["params"]["approvalPolicy"] = json!("never");
+
 		assert!(validate_outbound(&frame, &mut requests).is_err());
+
 		frame["method"] = json!("thread/settings/update");
+
 		assert!(validate_outbound(&frame, &mut requests).is_err());
 	}
 
 	#[test]
 	fn permission_bridge_rejects_unrelated_setting_changes() {
 		let mut request = json!({"id":42,"method":"thread/settings/update","params":{"threadId":"thread","permissions":"scoped"}});
+
 		assert!(validate_outbound(&request, &mut HashSet::new()).is_ok());
+
 		for field in [
 			"model",
 			"sandboxPolicy",
@@ -508,7 +566,9 @@ mod tests {
 			"cwd",
 		] {
 			request["params"][field] = json!("unrelated");
+
 			assert!(validate_outbound(&request, &mut HashSet::new()).is_err());
+
 			request["params"].as_object_mut().unwrap().remove(field);
 		}
 	}
@@ -517,6 +577,7 @@ mod tests {
 	fn goal_attachments_stay_in_the_admitted_native_home() {
 		let home = std::path::Path::new("/fixture/.codex");
 		let request = json!({"method":"fs/writeFile","params":{"path":"/fixture/.codex/attachments/20000000-0000-4000-8000-000000000002/goal-objective.md","dataBase64":"b2JqZWN0aXZl"}});
+
 		assert!(validate_outbound(&request, &mut HashSet::new()).is_ok());
 		assert!(validate_goal_attachment_owner(&request, Some(home)).is_ok());
 		assert!(
@@ -524,13 +585,16 @@ mod tests {
 				.is_err()
 		);
 		assert!(validate_goal_attachment_owner(&request, None).is_err());
+
 		for path in [
 			"/fixture/.codex/auth.json",
 			"/fixture/.codex/attachments/../goal-objective.md",
 			"/fixture/.codex/attachments/20000000-0000-4000-8000-000000000002/config.toml",
 		] {
 			let mut invalid = request.clone();
+
 			invalid["params"]["path"] = json!(path);
+
 			assert!(validate_outbound(&invalid, &mut HashSet::new()).is_err());
 		}
 	}
@@ -551,12 +615,14 @@ mod tests {
 		}
 		for edit in [
 			json!({"objective":"Updated objective"}),
-			json!({"tokenBudget":1234}),
+			json!({"tokenBudget":1_234}),
 			json!({"tokenBudget":null}),
 			json!({"status":"paused"}),
 		] {
 			let mut params = edit;
+
 			params["threadId"] = json!("thread");
+
 			assert!(
 				validate_outbound(
 					&json!({"id":2,"method":"thread/goal/set","params":params}),
@@ -572,7 +638,9 @@ mod tests {
 			json!({"objective":"New", "cwd":"/other"}),
 		] {
 			let mut params = edit;
+
 			params["threadId"] = json!("thread");
+
 			assert!(
 				validate_outbound(
 					&json!({"id":3,"method":"thread/goal/set","params":params}),
@@ -586,11 +654,16 @@ mod tests {
 	#[test]
 	fn rejected_optional_request_does_not_close_the_shared_transport() {
 		let (sender, stdout) = sync_mpsc::sync_channel(2);
+
 		sender.send(InboundFrame::fixture(br#"{"id":2,"result":{"data":[]}}"#)).unwrap();
+
 		drop(sender);
+
 		let (outgoing, commands) = mpsc::channel(4);
+
 		outgoing.try_send(json!({"id":1,"method":"account/login/start","params":{}})).unwrap();
 		outgoing.try_send(json!({"id":2,"method":"thread/list","params":{}})).unwrap();
+
 		let (events, mut receiver) = mpsc::channel(4);
 		let mut writer: Box<dyn Write + Send> = Box::new(io::sink());
 		let result = pump(
@@ -603,10 +676,13 @@ mod tests {
 			None,
 			|_, _, _| panic!("no refresh expected"),
 		);
+
 		assert!(matches!(result, Err(ClientError::Closed)));
+
 		let denied = receiver.try_recv().unwrap().unwrap();
+
 		assert_eq!(denied["id"], 1);
-		assert_eq!(denied["error"]["code"], -32601);
+		assert_eq!(denied["error"]["code"], -32_601);
 		assert_eq!(receiver.try_recv().unwrap().unwrap()["id"], 2);
 	}
 
@@ -618,7 +694,6 @@ mod tests {
 				&mut HashSet::new()
 			).is_err(), "Retired local plugin selection");
 		}
-
 		for method in [
 			"plugin/list",
 			"plugin/read",
@@ -659,6 +734,7 @@ mod tests {
 	#[test]
 	fn native_context_injection_is_admitted_without_opening_account_methods() {
 		let mut requests = HashSet::new();
+
 		assert!(
 			validate_outbound(
 				&json!({"id":1,"method":"thread/inject_items","params":{"threadId":"fixture","items":[]}}),
@@ -678,20 +754,28 @@ mod tests {
 	#[test]
 	fn blocked_terminal_delivery_does_not_keep_child_stdin_open() {
 		use std::io::Read as _;
+
 		let (writer, mut child_stdin) = std::os::unix::net::UnixStream::pair().unwrap();
+
 		child_stdin.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+
 		let (terminal, mut events) = mpsc::channel(1);
+
 		terminal.try_send(Ok(json!({"method":"turn/completed"}))).unwrap();
+
 		let worker = thread::spawn(move || finish_bridge(Box::new(writer), terminal, Ok(())));
+
 		assert_eq!(child_stdin.read(&mut [0_u8; 1]).unwrap(), 0);
 		assert_eq!(events.blocking_recv().unwrap().unwrap()["method"], "turn/completed");
 		assert!(matches!(events.blocking_recv(), Some(Err(ClientError::Closed))));
+
 		worker.join().unwrap();
 	}
 
 	#[test]
 	fn refresh_callback_is_consumed_privately_before_event_conversion() {
 		let (sender, stdout) = sync_mpsc::sync_channel(4);
+
 		sender.send(InboundFrame::fixture(br#"{"id":17,"method":"account/chatgptAuthTokens/refresh","params":{"reason":"unauthorized","previousAccountId":"test-account"}}"#)).unwrap();
 		sender
 			.send(InboundFrame::fixture(
@@ -703,7 +787,9 @@ mod tests {
 				br#"{"method":"turn/completed","params":{"threadId":"peer"}}"#,
 			))
 			.unwrap();
+
 		drop(sender);
+
 		let (_outgoing, commands) = mpsc::channel(4);
 		let (events, mut receiver) = mpsc::channel(4);
 		let mut writer: Box<dyn Write + Send> = Box::new(io::sink());
@@ -719,10 +805,13 @@ mod tests {
 			|_, id, bytes| {
 				assert_eq!(id, 17);
 				assert!(bytes.windows(b"unauthorized".len()).any(|part| part == b"unauthorized"));
+
 				refreshed = true;
+
 				Ok(())
 			},
 		);
+
 		assert!(refreshed);
 		assert!(matches!(result, Err(ClientError::Closed)));
 		assert_eq!(receiver.try_recv().unwrap().unwrap()["method"], "turn/completed");
@@ -732,8 +821,11 @@ mod tests {
 	#[test]
 	fn ordinary_text_preserves_json_escapes() {
 		let (sender, stdout) = sync_mpsc::sync_channel(1);
+
 		sender.send(InboundFrame::fixture(br#"{"method":"item/agentMessage/delta","params":{"delta":"first\nsecond \"quoted\""}}"#)).unwrap();
+
 		drop(sender);
+
 		let (_outgoing, commands) = mpsc::channel(1);
 		let (events, mut receiver) = mpsc::channel(1);
 		let mut writer: Box<dyn Write + Send> = Box::new(io::sink());
@@ -747,6 +839,7 @@ mod tests {
 			None,
 			|_, _, _| panic!("not an account callback"),
 		);
+
 		assert_eq!(
 			receiver.try_recv().unwrap().unwrap()["params"]["delta"],
 			"first\nsecond \"quoted\""
@@ -756,6 +849,7 @@ mod tests {
 	#[test]
 	fn retained_capability_rejects_reauthentication_and_unowned_responses() {
 		let mut requests = HashSet::new();
+
 		assert!(
 			validate_outbound(&json!({"id":41,"method":"initialize","params":{}}), &mut requests)
 				.is_err()
@@ -768,13 +862,16 @@ mod tests {
 			.is_err()
 		);
 		assert!(validate_outbound(&json!({"id":17,"result":{}}), &mut requests).is_err());
+
 		for method in ["thread/turns/list", "thread/items/list"] {
 			assert!(
 				validate_outbound(&json!({"id":43,"method":method,"params":{}}), &mut requests)
 					.is_ok()
 			);
 		}
+
 		requests.insert(RequestId::String("approval".into()));
+
 		assert!(
 			validate_outbound(
 				&json!({"id":"approval","result":{"decision":"decline"}}),
@@ -794,11 +891,17 @@ mod tests {
 		let mut requests = HashSet::new();
 		let params = json!({"edits":[{"keyPath":"hooks.state.\"plugin.key\".enabled","value":false,"mergeStrategy":"replace"}],"expectedVersion":"reviewed-version","reloadUserConfig":true});
 		let mut request = json!({"id":45,"method":"config/batchWrite","params":params});
+
 		assert!(validate_outbound(&request, &mut requests).is_ok());
+
 		request["params"]["filePath"] = json!("/other/config.toml");
+
 		assert!(validate_outbound(&request, &mut requests).is_err());
+
 		request["params"].as_object_mut().unwrap().remove("filePath");
+
 		request["params"]["edits"][0]["keyPath"] = json!("bypass_hook_trust");
+
 		assert!(validate_outbound(&request, &mut requests).is_err());
 	}
 
@@ -810,6 +913,7 @@ mod tests {
 					"filePath":"/fixture/config.toml","expectedVersion":"v1","reloadUserConfig":true,
 					"edits":[{"keyPath":format!("apps.\"calendar\".links.\"work\".{field}"),
 						"mergeStrategy":"replace","value":value}]}});
+
 				assert!(validate_outbound(&request, &mut HashSet::new()).is_err());
 			}
 		}
@@ -821,27 +925,35 @@ mod tests {
 		let frame = json!({"id":48,"method":"config/batchWrite","params":{
 			"filePath":"/fixture/config.toml","expectedVersion":"v1","reloadUserConfig":true,
 			"edits":[{"keyPath":"apps.\"connector.with.dot\".omit_tools_from","value":["deferred"],"mergeStrategy":"replace"}]}});
+
 		assert!(validate_outbound(&frame, &mut requests).is_ok());
+
 		for path in [
 			"apps.\"_default\".omit_tools_from",
 			"apps.\"connector.with.dot\".links.\"work\".omit_tools_from",
 			"apps.\"connector.with.dot\".enabled",
 		] {
 			let mut changed = frame.clone();
+
 			changed["params"]["edits"][0]["keyPath"] = json!(path);
+
 			assert!(validate_outbound(&changed, &mut requests).is_err());
 		}
+
 		let mut changed = frame;
+
 		changed["params"]["edits"]
 			.as_array_mut()
 			.unwrap()
 			.push(json!({"keyPath":"model","value":"other","mergeStrategy":"replace"}));
+
 		assert!(validate_outbound(&changed, &mut requests).is_err());
 	}
 
 	#[test]
 	fn metadata_reads_are_allowed_but_feature_changes_remain_private() {
 		let mut requests = HashSet::new();
+
 		assert!(
 			validate_outbound(
 				&json!({"id":42,"method":"experimentalFeature/list","params":{"limit":100}}),
@@ -849,12 +961,14 @@ mod tests {
 			)
 			.is_ok()
 		);
+
 		for method in ["experimentalFeature/enablement/set", "config/value/write", "memory/reset"] {
 			assert!(
 				validate_outbound(&json!({"id":43,"method":method,"params":{}}), &mut requests)
 					.is_err()
 			);
 		}
+
 		assert!(
 			validate_outbound(&json!({"id":44,"method":"turn/start","params":{}}), &mut requests)
 				.is_ok()
@@ -866,8 +980,10 @@ mod tests {
 		let cancelled = Arc::new(AtomicBool::new(false));
 		let mut writer =
 			RevocableWriter { inner: Box::new(io::sink()), cancelled: Arc::clone(&cancelled) };
+
 		writer.write_all(b"before").unwrap();
 		cancelled.store(true, Ordering::Release);
+
 		assert_eq!(writer.write_all(b"after").unwrap_err().kind(), io::ErrorKind::BrokenPipe);
 		assert_eq!(writer.flush().unwrap_err().kind(), io::ErrorKind::BrokenPipe);
 	}
@@ -878,9 +994,11 @@ mod tests {
 			bytes: Vec<u8>,
 			flushed: Option<tokio::sync::oneshot::Sender<Vec<u8>>>,
 		}
+
 		impl Write for RequestWriter {
 			fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
 				self.bytes.extend_from_slice(bytes);
+
 				Ok(bytes.len())
 			}
 
@@ -888,11 +1006,12 @@ mod tests {
 				if let Some(flushed) = self.flushed.take() {
 					let _ = flushed.send(std::mem::take(&mut self.bytes));
 				}
+
 				Ok(())
 			}
 		}
-		let (flushed, request) = tokio::sync::oneshot::channel();
 
+		let (flushed, request) = tokio::sync::oneshot::channel();
 		let (_sender, stdout) = sync_mpsc::sync_channel(4);
 		let binding = AccountBinding::fixture(
 			decodex_core::AccountId::new("10000000-0000-4000-8000-000000000001").unwrap(),
@@ -914,10 +1033,13 @@ mod tests {
 			);
 		let frame = tokio::time::timeout(Duration::from_secs(2), request).await.unwrap().unwrap();
 		let frame: Value = serde_json::from_slice(&frame).unwrap();
+
 		assert_eq!(frame["method"], "thread/read");
 		assert_eq!(frame["params"]["threadId"], "peer");
 		assert!(!pending.is_finished(), "request must await a response before bridge shutdown");
+
 		drop(bridge);
+
 		assert!(matches!(
 			tokio::time::timeout(Duration::from_secs(2), pending).await.unwrap().unwrap(),
 			Err(ClientError::Closed)
@@ -928,8 +1050,11 @@ mod tests {
 	#[tokio::test]
 	async fn native_timeline_read_crosses_retained_bridge_and_keeps_peer_available() {
 		use std::io::{BufRead, BufReader};
+
 		let (writer, reader) = std::os::unix::net::UnixStream::pair().unwrap();
+
 		reader.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+
 		let (sender, stdout) = sync_mpsc::sync_channel(4);
 		let binding = AccountBinding::fixture(
 			decodex_core::AccountId::new("10000000-0000-4000-8000-000000000001").unwrap(),
@@ -946,11 +1071,12 @@ mod tests {
 		.unwrap();
 		let server = thread::spawn(move || {
 			let mut lines = BufReader::new(reader).lines();
+
 			for (method, result) in [
 				("thread/read", json!({"thread":{"id":"thread","historyMode":"paginated"}})),
 				(
 					"thread/timeline/list",
-					json!({"data":[{"type":"item","position":1,"turnId":"turn","item":{"id":"item","type":"userMessage","content":[{"type":"text","text":"visible"},{"type":"image","url":format!("data:image/png;base64,{}", "A".repeat(2*1024*1024))}]}}],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}),
+					json!({"data":[{"type":"item","position":1,"turnId":"turn","item":{"id":"item","type":"userMessage","content":[{"type":"text","text":"visible"},{"type":"image","url":format!("data:image/png;base64,{}", "A".repeat(2*1_024*1_024))}]}}],"nextCursor":null,"activeRealtimeSessionAtPageStart":null}),
 				),
 				("thread/read", json!({"thread":{"id":"peer","historyMode":"paginated"}})),
 			] {
@@ -958,9 +1084,12 @@ mod tests {
 					return;
 				};
 				let request: Value = serde_json::from_str(&line).unwrap();
+
 				assert_eq!(request["method"], method);
+
 				let response =
 					serde_json::to_vec(&json!({"id":request["id"],"result":result})).unwrap();
+
 				sender.send(InboundFrame::fixture(&response)).unwrap();
 			}
 		});
@@ -970,21 +1099,33 @@ mod tests {
 		)
 		.await
 		.unwrap();
+
 		assert!(page.is_ok(), "retained bridge rejected native timeline: {page:?}");
+
 		let page = page.unwrap();
+
 		assert_eq!(page["data"][0]["item"]["content"][0]["text"], "visible");
-		assert!(page["data"][0]["item"]["content"][1]["url"].as_str().unwrap().len() > 1024 * 1024);
+		assert!(
+			page["data"][0]["item"]["content"][1]["url"].as_str().unwrap().len() > 1_024 * 1_024
+		);
+
 		let peer = client.thread_read(json!({"threadId":"peer"})).await.unwrap();
+
 		assert_eq!(peer["thread"]["id"], "peer");
+
 		server.join().unwrap();
+
 		drop(bridge);
 	}
 	#[cfg(unix)]
 	#[tokio::test]
 	async fn existing_usage_resources_and_integrations_use_retained_bridge() {
 		use std::io::{BufRead, BufReader};
+
 		let (writer, reader) = std::os::unix::net::UnixStream::pair().unwrap();
+
 		reader.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+
 		let (sender, stdout) = sync_mpsc::sync_channel(4);
 		let binding = AccountBinding::fixture(
 			decodex_core::AccountId::new("10000000-0000-4000-8000-000000000001").unwrap(),
@@ -1001,6 +1142,7 @@ mod tests {
 		.unwrap();
 		let server = thread::spawn(move || {
 			let mut lines = BufReader::new(reader).lines();
+
 			for (method, result) in [
 				(
 					"account/usage/read",
@@ -1014,12 +1156,16 @@ mod tests {
 					return;
 				};
 				let request: Value = serde_json::from_str(&line).unwrap();
+
 				assert_eq!(request["method"], method);
+
 				let response =
 					serde_json::to_vec(&json!({"id":request["id"],"result":result})).unwrap();
+
 				sender.send(InboundFrame::fixture(&response)).unwrap();
 			}
 		});
+
 		assert_eq!(
 			client
 				.thread_usage_estimate("thread")
@@ -1035,7 +1181,9 @@ mod tests {
 			client.installed_plugins_for_directory("/project").await.unwrap()["marketplaces"],
 			json!([])
 		);
+
 		server.join().unwrap();
+
 		drop(bridge);
 	}
 }

@@ -10,6 +10,7 @@ pub(super) fn digest(value: &str) -> String {
 }
 pub(super) fn owner(source: &Source) -> AgentConfigOwner {
 	let k = &source.key;
+
 	AgentConfigOwner {
 		work: k.work.clone(),
 		thread: k.thread.clone(),
@@ -39,6 +40,7 @@ pub(super) fn project(receipt: &Receipt) -> AgentConfigEditReceipt {
 			r.saved_version.clone(),
 		),
 	};
+
 	AgentConfigEditReceipt {
 		outcome: state.clone(),
 		target,
@@ -52,6 +54,7 @@ pub(super) fn pending(receipt: &Receipt) -> bool {
 		Receipt::Hook(r) => &r.state,
 		Receipt::App(r) => &r.state,
 	};
+
 	matches!(state.as_str(), "reserved" | "unknown")
 }
 pub(super) fn raw_app(
@@ -73,15 +76,19 @@ pub(super) async fn reconcile(
 	let Some(receipt) = store.agent_config_receipt(scope.into()).await.ok()? else {
 		return Some(());
 	};
+
 	if !pending(&receipt) {
 		return Some(());
 	}
+
 	match receipt {
 		Receipt::Hook(r) => {
 			let native = source.client.hook_settings(cwd).await.ok()?;
+
 			if digest(native.config_file()) != scope {
 				return None;
 			}
+
 			store
 				.observe_agent_hook_setting(
 					r.id,
@@ -104,9 +111,11 @@ pub(super) async fn reconcile(
 			let (value, version) = if r.attempt.field == "omit_tools_from" {
 				let native =
 					source.client.app_tool_exposure(cwd, &r.attempt.connector).await.ok()?;
+
 				if digest(native.config_file()) != scope {
 					return None;
 				}
+
 				(
 					native.preference.as_ref().map(|v| serde_json::json!(v)),
 					native.config_version().to_owned(),
@@ -117,11 +126,14 @@ pub(super) async fn reconcile(
 					.app_link_settings(cwd, &r.attempt.connector, &r.attempt.link)
 					.await
 					.ok()?;
+
 				if digest(native.config_file()) != scope {
 					return None;
 				}
+
 				(raw_app(&native, &r.attempt.field), native.config_version().to_owned())
 			};
+
 			store
 				.observe_agent_app_settings(
 					r.id,
@@ -139,5 +151,6 @@ pub(super) async fn reconcile(
 				.ok()?;
 		},
 	}
+
 	Some(())
 }

@@ -3,6 +3,7 @@ use super::*;
 #[test]
 fn latest_eight_answered_exchanges_and_pending_correction_exclude_tool_and_reasoning_text() {
 	let mut items = Vec::new();
+
 	for n in 0..10 {
 		items.push(
 			json!({"type":"userMessage","content":[{"type":"text","text":format!("question-{n}")}]}),
@@ -11,12 +12,17 @@ fn latest_eight_answered_exchanges_and_pending_correction_exclude_tool_and_reaso
 		items.push(json!({"type":"reasoning","text":"PRIVATE_REASONING"}));
 		items.push(json!({"type":"agentMessage","text":format!("answer-{n}")}));
 	}
+
 	items
 		.push(json!({"type":"userMessage","content":[{"type":"text","text":"latest correction"}]}));
 	items.push(json!({"type":"userMessage","content":[{"type":"text","text":"steer detail"}]}));
+
 	let mut messages = visible(&items).expect("visible fixture");
+
 	messages.reverse();
+
 	let result = finish(select(&messages), Some("latest".into())).expect("bounded history");
+
 	assert!(!crate::agent_recap::excerpts::render(&result.exchanges).contains("question-1"));
 	assert!(crate::agent_recap::excerpts::render(&result.exchanges).contains("question-2"));
 	assert!(
@@ -30,16 +36,18 @@ fn latest_eight_answered_exchanges_and_pending_correction_exclude_tool_and_reaso
 fn unicode_excerpt_keeps_answer_and_latest_correction_ends_within_full_prompt_budget() {
 	let exchange = |user: String, assistant: String| Exchange { user, assistant };
 	let exchanges = vec![
-		exchange("old".repeat(20000), "old answer".into()),
+		exchange("old".repeat(20_000), "old answer".into()),
 		exchange(
-			format!("START{}END", "中".repeat(30000)),
-			format!("FIXED{}NOT INSTALLED", "汉".repeat(30000)),
+			format!("START{}END", "中".repeat(30_000)),
+			format!("FIXED{}NOT INSTALLED", "汉".repeat(30_000)),
 		),
-		exchange(format!("LATEST{}CORRECTION", "字".repeat(20000)), String::new()),
+		exchange(format!("LATEST{}CORRECTION", "字".repeat(20_000)), String::new()),
 	];
 	let history = super::super::excerpts::render(&exchanges);
 	let prompt = super::super::prompt::build(&history);
+
 	assert!(prompt.len() <= super::super::prompt::MAX_BYTES);
+
 	for value in [
 		"Earlier exchanges omitted",
 		"START",
@@ -51,6 +59,7 @@ fn unicode_excerpt_keeps_answer_and_latest_correction_ends_within_full_prompt_bu
 	] {
 		assert!(prompt.contains(value), "missing {value}");
 	}
+
 	assert!(!prompt.contains("old answer"));
 }
 
@@ -59,15 +68,38 @@ fn media_is_described_without_payloads_and_internal_voice_handoff_is_not_summari
 	let image =
 		json!({"type":"userMessage","content":[{"type":"image","url":"data:PRIVATE_IMAGE"}]});
 	let projected = visible(&[image]).expect("visible media placeholder");
+
 	assert_eq!(projected[0].text, "[Image attachment]");
+
 	let handoff = json!({"type":"userMessage","content":[{"type":"text","text":"<realtime_delegation><input>PRIVATE_INTERNAL_HANDOFF</input></realtime_delegation>","textElements":[]}]});
+
 	assert!(visible(&[handoff]).is_err());
+}
+
+#[test]
+fn voice_history_skips_internal_handoff_but_keeps_native_task_output_and_anchor() {
+	let mut recent = Recent { voice: true, ..Default::default() };
+	let items = json!([
+	 {"type":"userMessage","content":[{"type":"text","text":"<realtime_delegation><input>PRIVATE_INTERNAL_HANDOFF</input></realtime_delegation>"}]},
+	 {"type":"agentMessage","text":"The task was tested, not installed."}
+	]);
+
+	recent.push(&json!({"id":"native-output","status":"completed"}), &items).unwrap();
+
+	let history = recent.finish().unwrap();
+	let rendered = crate::agent_recap::excerpts::render(&history.exchanges);
+
+	assert!(rendered.contains("The task was tested, not installed."));
+	assert!(rendered.contains("native-output"));
+	assert!(!rendered.contains("PRIVATE_INTERNAL_HANDOFF"));
+	assert!(!rendered.contains("User:"));
 }
 
 #[tokio::test]
 async fn native_turn_and_item_pages_are_joined_without_model_requests() {
 	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
-	let (local, remote) = tokio::io::duplex(16384);
+
+	let (local, remote) = tokio::io::duplex(16_384);
 	let (read, write) = tokio::io::split(local);
 	let (client, _events) = AppServerClient::from_io(read, write);
 	let server = tokio::spawn(async move {
@@ -89,18 +121,22 @@ async fn native_turn_and_item_pages_are_joined_without_model_requests() {
 				json!({"data":[{"turnId":"turn","item":{"id":"answer","type":"agentMessage","text":"Tested; not deployed"}}],"nextCursor":null}),
 			),
 		];
+
 		for (index, (method, result)) in replies.into_iter().enumerate() {
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.expect("read").expect("request"))
 					.expect("JSON");
+
 			assert_eq!(request["method"], method);
 			assert_eq!(request["params"]["threadId"], "source");
+
 			if index == 2 {
 				assert_eq!(request["params"]["cursor"], "older");
 			}
 			if index == 4 {
 				assert_eq!(request["params"]["cursor"], "more");
 			}
+
 			write
 				.write_all(format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes())
 				.await
@@ -108,6 +144,7 @@ async fn native_turn_and_item_pages_are_joined_without_model_requests() {
 		}
 	});
 	let prepared = super::read(&client, "source", false).await.expect("complete native pages");
+
 	assert_eq!(prepared.latest_turn.as_deref(), Some("turn"));
 	assert!(
 		crate::agent_recap::excerpts::render(&prepared.exchanges).contains("Keep the current goal")
@@ -115,21 +152,6 @@ async fn native_turn_and_item_pages_are_joined_without_model_requests() {
 	assert!(
 		crate::agent_recap::excerpts::render(&prepared.exchanges).contains("Tested; not deployed")
 	);
-	server.await.expect("fixture");
-}
 
-#[test]
-fn voice_history_skips_internal_handoff_but_keeps_native_task_output_and_anchor() {
-	let mut recent = Recent { voice: true, ..Default::default() };
-	let items = json!([
-	 {"type":"userMessage","content":[{"type":"text","text":"<realtime_delegation><input>PRIVATE_INTERNAL_HANDOFF</input></realtime_delegation>"}]},
-	 {"type":"agentMessage","text":"The task was tested, not installed."}
-	]);
-	recent.push(&json!({"id":"native-output","status":"completed"}), &items).unwrap();
-	let history = recent.finish().unwrap();
-	let rendered = crate::agent_recap::excerpts::render(&history.exchanges);
-	assert!(rendered.contains("The task was tested, not installed."));
-	assert!(rendered.contains("native-output"));
-	assert!(!rendered.contains("PRIVATE_INTERNAL_HANDOFF"));
-	assert!(!rendered.contains("User:"));
+	server.await.expect("fixture");
 }

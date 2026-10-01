@@ -14,8 +14,11 @@ pub(super) async fn reserve(
 ) -> (SqliteStore, AgentModelAttempt, i64) {
 	let root = decodex_core::DecodexRoot::new(home.canonicalize().expect("home").join("product"))
 		.expect("product root");
+
 	root.paths().ensure_layout().expect("layout");
+
 	let store = SqliteStore::open(&root.paths()).expect("store");
+
 	store
 		.create_agent_work_item(AgentWorkItem {
 			id: "model-task".into(),
@@ -34,6 +37,7 @@ pub(super) async fn reserve(
 		.await
 		.expect("work");
 	store.bind_agent_thread("model-task".into(), thread.into()).await.expect("binding");
+
 	if let Some(turn) = active_turn {
 		store.begin_agent_dispatch("model-task".into()).await.expect("dispatch");
 		store
@@ -41,7 +45,9 @@ pub(super) async fn reserve(
 			.await
 			.expect("active turn");
 	}
+
 	crate::agent_models::persist_current(&store, client, thread, None).await.expect("native facts");
+
 	let observed = store
 		.agent_task_models("model-task".into(), thread.into(), None)
 		.await
@@ -67,7 +73,9 @@ pub(super) async fn reserve(
 		.await
 		.expect("reserve")
 		.expect("reservation");
+
 	assert!(store.begin_agent_dispatch("model-task".into()).await.is_err());
+
 	(store, attempt, id)
 }
 
@@ -82,6 +90,7 @@ pub(super) async fn observe(
 		.finish_agent_model_selection(id, attempt.clone(), "unknown".into())
 		.await
 		.expect("lost response");
+
 	assert_eq!(
 		store
 			.agent_model_receipt(attempt.work.clone(), attempt.thread.clone())
@@ -91,9 +100,11 @@ pub(super) async fn observe(
 			.state,
 		"unknown"
 	);
+
 	crate::agent_models::persist_current(store, client, &attempt.thread, None)
 		.await
 		.expect("native publication");
+
 	assert_eq!(
 		store
 			.agent_model_receipt(attempt.work, attempt.thread)

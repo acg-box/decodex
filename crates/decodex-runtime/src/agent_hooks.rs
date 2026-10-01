@@ -1,15 +1,29 @@
 //! Shared hook edits with exact native review, durable receipts and no replay.
 use crate::agent_usage_estimate::Source;
+
 use decodex_codex::app_server_client::{
 	ClientError, HistoryGuard, HookSettingsChange, HookSettingsReview, HookSettingsWrite,
 };
+
 use decodex_database::{AgentConfigOwner, AgentHookAttempt, AgentHookReceipt, SqliteStore};
+
 use decodex_protocol::{
 	AgentHookChange as Change, AgentHookDto, AgentHookEditReceipt, AgentHookSettingsState as State,
 	EntityId, WireText,
 };
+
 use serde_json::{Value, json};
+
 use sha2::{Digest as _, Sha256};
+
+pub(crate) struct Selection<'a> {
+	pub thread: &'a str,
+	pub review: &'a str,
+	pub hook: &'a str,
+	pub change: Change,
+	pub attempt_id: &'a str,
+}
+
 struct Review {
 	native: HookSettingsReview,
 	guard: HistoryGuard,
@@ -17,11 +31,134 @@ struct Review {
 	prior: Option<AgentHookReceipt>,
 	state: State,
 }
+
+pub(crate) async fn read<F, Fut>(store: &SqliteStore, source: F) -> State
+where
+	F: Fn() -> Fut,
+	Fut: std::future::Future<Output = Option<Source>>,
+{
+	tokio::time::timeout(std::time::Duration::from_secs(35), inspect(store, &source))
+		.await
+		.ok()
+		.flatten()
+		.map_or(State::Unavailable, |(_, review)| review.state)
+}
+
+pub(crate) async fn write<F, Fut>(
+	store: &SqliteStore,
+	source: F,
+	selection: Selection<'_>,
+) -> Result<(), crate::agent_host::AgentHostError>
+where
+	F: Fn() -> Fut,
+	Fut: std::future::Future<Output = Option<Source>>,
+{
+	use crate::agent_host::AgentHostError::{Rejected, Unknown};
+
+	let (before, review) =
+		tokio::time::timeout(std::time::Duration::from_secs(35), inspect(store, &source))
+			.await
+			.ok()
+			.flatten()
+			.ok_or(Rejected("Current hook settings are unavailable."))?;
+	let State::Available { review_token, can_update: true, .. } = &review.state else {
+		return Err(Rejected("A shared hook edit remains unconfirmed."));
+	};
+
+	if before.key.thread != selection.thread || review_token.as_str() != selection.review {
+		return Err(Rejected("The reviewed hook source changed. Refresh hook settings."));
+	}
+
+	let change = match selection.change {
+		Change::Trust => HookSettingsChange::Trust,
+		Change::Enabled(enabled) => HookSettingsChange::Enabled(enabled),
+	};
+	let params = review
+		.native
+		.change(selection.hook, change)
+		.map_err(|_| Rejected("The selected hook cannot be changed."))?;
+	let field = field(selection.change);
+	let value = params["edits"][0]["value"].clone();
+	let previous_value = raw(&review.native, selection.hook, field);
+
+	if previous_value.as_ref() == Some(&value) {
+		return Err(Rejected("The requested override is already saved."));
+	}
+	if !review.guard.is_live() || source().await.is_none_or(|after| after.key != before.key) {
+		return Err(Rejected("The native source changed before the write."));
+	}
+
+	let attempt = AgentHookAttempt {
+		owner: owner(&before),
+		scope: review.scope,
+		hook: selection.hook.into(),
+		field: field.into(),
+		value,
+		previous_value,
+		config_version: review.native.config_version().into(),
+		review_token: selection.review.into(),
+		attempt_id: selection.attempt_id.into(),
+		previous_id: review.prior.map(|r| r.id),
+	};
+	let id = store
+		.reserve_agent_hook_setting(attempt)
+		.await
+		.map_err(|_| Unknown("The hook reservation is unconfirmed. Refresh saved state."))?
+		.ok_or(Rejected("This review was consumed or another shared edit is pending."))?;
+	let response =
+		if !review.guard.is_live() || source().await.is_none_or(|after| after.key != before.key) {
+			Err(ClientError::StaleHistory)
+		} else {
+			before.client.write_hook_settings(params, review.guard).await
+		};
+
+	if source().await.is_some_and(|after| after.key == before.key)
+		&& let Err(error) = &response
+	{
+		crate::native_config_warning::record_settings_error(
+			store,
+			&before,
+			"Settings write or readback failed",
+			error,
+		)
+		.await;
+	}
+
+	let state = match response {
+		Ok(HookSettingsWrite::Saved) => "saved",
+		Ok(HookSettingsWrite::Overridden) => "overridden",
+		Err(
+			ClientError::StaleHistory
+			| ClientError::RequestTooLarge
+			| ClientError::RequestQueueFull,
+		) => "rejected",
+		Err(ClientError::Remote(ref error)) if matches!(error.code, -32_602..=-32_600) =>
+			"rejected",
+		_ => "unknown",
+	};
+
+	if !store
+		.finish_agent_hook_setting(id, selection.attempt_id.into(), state.into())
+		.await
+		.unwrap_or(false)
+	{
+		return Err(Unknown("The hook result could not be saved. It will not be replayed."));
+	}
+
+	match state {
+		"saved" | "overridden" => Ok(()),
+		"rejected" => Err(Rejected("Native policy or a changed config rejected this edit.")),
+		_ => Err(Unknown("The hook write is unconfirmed. It will not be retried.")),
+	}
+}
+
 fn digest(value: &str) -> String {
 	Sha256::digest(value.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
 }
+
 fn owner(source: &Source) -> AgentConfigOwner {
 	let k = &source.key;
+
 	AgentConfigOwner {
 		work: k.work.clone(),
 		thread: k.thread.clone(),
@@ -29,15 +166,33 @@ fn owner(source: &Source) -> AgentConfigOwner {
 		account: k.account.as_str().into(),
 	}
 }
+
 fn field(change: Change) -> &'static str {
 	match change {
 		Change::Trust => "trusted_hash",
 		Change::Enabled(_) => "enabled",
 	}
 }
+
 fn raw(native: &HookSettingsReview, key: &str, field: &str) -> Option<Value> {
 	native.saved_hook(key).and_then(|s| s.get(field)).cloned()
 }
+
+fn project_hook(h: &Value, native: &HookSettingsReview) -> Option<AgentHookDto> {
+	let key = h["key"].as_str()?;
+
+	Some(AgentHookDto {
+		key: WireText::new(key).ok()?,
+		trust_status: h["trustStatus"].as_str()?.into(),
+		enabled: h["enabled"].as_bool()?,
+		managed: h["isManaged"].as_bool()?,
+		current_hash: WireText::new(h["currentHash"].as_str()?).ok()?,
+		saved_enabled: raw(native, key, "enabled").and_then(|v| v.as_bool()),
+		saved_hash: raw(native, key, "trusted_hash").and_then(|v| v.as_str().map(str::to_owned)),
+		details: serde_json::to_string_pretty(h).ok()?,
+	})
+}
+
 async fn inspect<F, Fut>(store: &SqliteStore, source: &F) -> Option<(Source, Review)>
 where
 	F: Fn() -> Fut,
@@ -45,6 +200,7 @@ where
 {
 	let before = source().await?;
 	let k = &before.key;
+
 	if !store
 		.agent_thread_is_owned(k.work.clone(), k.thread.clone(), Some(k.generation.as_str().into()))
 		.await
@@ -52,14 +208,18 @@ where
 	{
 		return None;
 	}
+
 	let guard = before.client.thread_settings_guard(&k.thread)?;
 	let thread =
 		before.client.thread_read(json!({"threadId":k.thread,"includeTurns":false})).await.ok()?;
+
 	if thread["thread"]["id"] != k.thread {
 		return None;
 	}
+
 	let cwd = thread["thread"]["cwd"].as_str()?;
 	let response = before.client.hook_settings(cwd).await;
+
 	if source().await.is_some_and(|after| after.key == before.key)
 		&& let Err(error) = &response
 	{
@@ -71,12 +231,16 @@ where
 		)
 		.await;
 	}
+
 	let native = response.ok()?;
 	let scope = digest(native.config_file());
+
 	if !guard.is_live() || source().await.is_none_or(|after| after.key != before.key) {
 		return None;
 	}
+
 	crate::agent_config_settings::reconcile(store, &before, cwd, &scope).await;
+
 	let shared = store.agent_config_receipt(scope.clone()).await.ok()?;
 	let prior = store.agent_hook_receipt(scope.clone()).await.ok()?;
 	let work = store.get_agent_work_item(k.work.clone()).await.ok()?;
@@ -110,13 +274,16 @@ where
 		.flat_map(|field| native.inventory[field].as_array().into_iter().flatten())
 		.map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string()))
 		.collect();
+
 	if let Some(decodex_database::AgentConfigReceipt::App(_)) = &shared {
 		let receipt = crate::agent_config_settings::project(shared.as_ref()?);
+
 		notices.push(format!(
 			"Shared configuration: {} — {}. Original task: {}; Codex account: {}.",
 			receipt.target, receipt.outcome, receipt.work_id, receipt.account_id
 		));
 	}
+
 	let last_edit = match &prior {
 		Some(r) => Some(AgentHookEditReceipt {
 			outcome: r.state.clone(),
@@ -136,136 +303,10 @@ where
 		can_update,
 		last_edit: last_edit.map(Box::new),
 	};
+
 	if !guard.is_live() || source().await.is_none_or(|after| after.key != before.key) {
 		return None;
 	}
+
 	Some((before, Review { native, guard, scope, prior, state }))
-}
-fn project_hook(h: &Value, native: &HookSettingsReview) -> Option<AgentHookDto> {
-	let key = h["key"].as_str()?;
-	Some(AgentHookDto {
-		key: WireText::new(key).ok()?,
-		trust_status: h["trustStatus"].as_str()?.into(),
-		enabled: h["enabled"].as_bool()?,
-		managed: h["isManaged"].as_bool()?,
-		current_hash: WireText::new(h["currentHash"].as_str()?).ok()?,
-		saved_enabled: raw(native, key, "enabled").and_then(|v| v.as_bool()),
-		saved_hash: raw(native, key, "trusted_hash").and_then(|v| v.as_str().map(str::to_owned)),
-		details: serde_json::to_string_pretty(h).ok()?,
-	})
-}
-pub(crate) async fn read<F, Fut>(store: &SqliteStore, source: F) -> State
-where
-	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
-{
-	tokio::time::timeout(std::time::Duration::from_secs(35), inspect(store, &source))
-		.await
-		.ok()
-		.flatten()
-		.map_or(State::Unavailable, |(_, review)| review.state)
-}
-pub(crate) struct Selection<'a> {
-	pub thread: &'a str,
-	pub review: &'a str,
-	pub hook: &'a str,
-	pub change: Change,
-	pub attempt_id: &'a str,
-}
-pub(crate) async fn write<F, Fut>(
-	store: &SqliteStore,
-	source: F,
-	selection: Selection<'_>,
-) -> Result<(), crate::agent_host::AgentHostError>
-where
-	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
-{
-	use crate::agent_host::AgentHostError::{Rejected, Unknown};
-	let (before, review) =
-		tokio::time::timeout(std::time::Duration::from_secs(35), inspect(store, &source))
-			.await
-			.ok()
-			.flatten()
-			.ok_or(Rejected("Current hook settings are unavailable."))?;
-	let State::Available { review_token, can_update: true, .. } = &review.state else {
-		return Err(Rejected("A shared hook edit remains unconfirmed."));
-	};
-	if before.key.thread != selection.thread || review_token.as_str() != selection.review {
-		return Err(Rejected("The reviewed hook source changed. Refresh hook settings."));
-	}
-	let change = match selection.change {
-		Change::Trust => HookSettingsChange::Trust,
-		Change::Enabled(enabled) => HookSettingsChange::Enabled(enabled),
-	};
-	let params = review
-		.native
-		.change(selection.hook, change)
-		.map_err(|_| Rejected("The selected hook cannot be changed."))?;
-	let field = field(selection.change);
-	let value = params["edits"][0]["value"].clone();
-	let previous_value = raw(&review.native, selection.hook, field);
-	if previous_value.as_ref() == Some(&value) {
-		return Err(Rejected("The requested override is already saved."));
-	}
-	if !review.guard.is_live() || source().await.is_none_or(|after| after.key != before.key) {
-		return Err(Rejected("The native source changed before the write."));
-	}
-	let attempt = AgentHookAttempt {
-		owner: owner(&before),
-		scope: review.scope,
-		hook: selection.hook.into(),
-		field: field.into(),
-		value,
-		previous_value,
-		config_version: review.native.config_version().into(),
-		review_token: selection.review.into(),
-		attempt_id: selection.attempt_id.into(),
-		previous_id: review.prior.map(|r| r.id),
-	};
-	let id = store
-		.reserve_agent_hook_setting(attempt)
-		.await
-		.map_err(|_| Unknown("The hook reservation is unconfirmed. Refresh saved state."))?
-		.ok_or(Rejected("This review was consumed or another shared edit is pending."))?;
-	let response =
-		if !review.guard.is_live() || source().await.is_none_or(|after| after.key != before.key) {
-			Err(ClientError::StaleHistory)
-		} else {
-			before.client.write_hook_settings(params, review.guard).await
-		};
-	if source().await.is_some_and(|after| after.key == before.key)
-		&& let Err(error) = &response
-	{
-		crate::native_config_warning::record_settings_error(
-			store,
-			&before,
-			"Settings write or readback failed",
-			error,
-		)
-		.await;
-	}
-	let state = match response {
-		Ok(HookSettingsWrite::Saved) => "saved",
-		Ok(HookSettingsWrite::Overridden) => "overridden",
-		Err(
-			ClientError::StaleHistory
-			| ClientError::RequestTooLarge
-			| ClientError::RequestQueueFull,
-		) => "rejected",
-		Err(ClientError::Remote(ref error)) if matches!(error.code, -32602..=-32600) => "rejected",
-		_ => "unknown",
-	};
-	if !store
-		.finish_agent_hook_setting(id, selection.attempt_id.into(), state.into())
-		.await
-		.unwrap_or(false)
-	{
-		return Err(Unknown("The hook result could not be saved. It will not be replayed."));
-	}
-	match state {
-		"saved" | "overridden" => Ok(()),
-		"rejected" => Err(Rejected("Native policy or a changed config rejected this edit.")),
-		_ => Err(Unknown("The hook write is unconfirmed. It will not be retried.")),
-	}
 }

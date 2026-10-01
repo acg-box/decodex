@@ -20,6 +20,7 @@ impl AgentCoordinator {
 			// Preserve every deliberate field in a partial user selection.
 			if params.get("model").is_none() {
 				let Some(model) = settings.model else { return Ok(None) };
+
 				params["model"] = json!(model);
 			}
 			if params.get("effort").is_none()
@@ -31,6 +32,7 @@ impl AgentCoordinator {
 		if !guard.is_live() {
 			return Err(super::ClientError::StaleHistory.into());
 		}
+
 		Ok(Some(AgentTurnExecution {
 			model: params["model"]
 				.as_str()
@@ -54,10 +56,13 @@ impl AgentCoordinator {
 			.store
 			.agent_turn_execution(item.id.clone(), thread, pending.failed_turn_id)
 			.await?;
+
 		if expected.is_none() || execution != expected.as_ref() {
 			self.store.cancel_agent_capacity_retry(item.id.clone(), event).await?;
+
 			return Err(AgentError::CapacityRetrySuperseded);
 		}
+
 		Ok(())
 	}
 
@@ -73,6 +78,7 @@ impl AgentCoordinator {
 			.into_iter()
 			.find(|w| w.codex_thread_id.as_deref() == Some(thread));
 		let Some(work) = work else { return Ok(()) };
+
 		if !self
 			.store
 			.agent_thread_is_owned(
@@ -84,6 +90,7 @@ impl AgentCoordinator {
 		{
 			return Ok(());
 		}
+
 		let Some(retry) = self.store.pending_agent_capacity_retry(work.id.clone()).await? else {
 			return Ok(());
 		};
@@ -96,9 +103,11 @@ impl AgentCoordinator {
 				&& settings.get("effort").is_some()
 				&& settings["effort"].as_str() == s.effort.as_deref()
 		});
+
 		if !matches {
 			self.store.cancel_agent_capacity_retry(work.id, retry.event_id).await?;
 		}
+
 		Ok(())
 	}
 }

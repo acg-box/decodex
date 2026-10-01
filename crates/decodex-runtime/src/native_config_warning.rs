@@ -7,25 +7,31 @@ pub(crate) fn from_frame(bytes: &[u8]) -> Option<Value> {
 		summary: String,
 		details: Option<String>,
 	}
+
 	#[derive(serde::Deserialize)]
 	struct Frame {
 		params: Fields,
 	}
-	if bytes.len() > 32768 {
+
+	if bytes.len() > 32_768 {
 		return None;
 	}
+
 	let frame: Frame = serde_json::from_slice(bytes).ok()?;
+
 	notification(&json!({"summary":frame.params.summary,"details":frame.params.details}))
 }
 
 pub(crate) fn project(params: &Value) -> Option<Value> {
 	let summary = params.get("summary")?.as_str()?;
-	if summary.trim().is_empty() || summary.len() > 8192 {
+
+	if summary.trim().is_empty() || summary.len() > 8_192 {
 		return None;
 	}
+
 	let details = match params.get("details") {
 		None | Some(Value::Null) => None,
-		Some(Value::String(text)) if text.len() <= 16384 => Some(text.as_str()),
+		Some(Value::String(text)) if text.len() <= 16_384 => Some(text.as_str()),
 		_ => return None,
 	};
 	let clean = |text: &str| {
@@ -35,11 +41,37 @@ pub(crate) fn project(params: &Value) -> Option<Value> {
 			text.chars().filter(|c| !c.is_control() || *c == '\n' || *c == '\t').collect()
 		}
 	};
+
 	Some(json!({"summary":clean(summary),"details":details.map(clean)}))
 }
 
 pub(crate) fn notification(params: &Value) -> Option<Value> {
 	Some(json!({"method":"configWarning","params":project(params)?}))
+}
+
+/// Keep only the public message and exact optional thread identity.
+pub(crate) fn warning(params: &Value) -> Option<Value> {
+	let thread = match params.get("threadId") {
+		None | Some(Value::Null) => None,
+		Some(Value::String(id))
+			if !id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control) =>
+			Some(id),
+		_ => return None,
+	};
+	let message = params.get("message")?.as_str()?;
+	let projected = project(&json!({"summary":message}))?;
+
+	Some(json!({"threadId":thread,"message":projected["summary"]}))
+}
+
+pub(crate) fn warning_from_frame(bytes: &[u8]) -> Option<Value> {
+	if bytes.len() > 32_768 {
+		return None;
+	}
+
+	let frame: Value = serde_json::from_slice(bytes).ok()?;
+
+	Some(json!({"method":"warning","params":warning(frame.get("params")?)?}))
 }
 
 pub(crate) async fn record(
@@ -49,15 +81,19 @@ pub(crate) async fn record(
 	params: &Value,
 ) -> Result<(), decodex_database::StoreError> {
 	use sha2::{Digest as _, Sha256};
+
 	let Some(value) = project(params) else {
 		return Ok(());
 	};
 	let mut text = format!("Codex warning: {}", value["summary"].as_str().unwrap_or_default());
+
 	if let Some(details) = value["details"].as_str().filter(|s| !s.trim().is_empty()) {
 		text.push_str("\n\n");
 		text.push_str(details);
 	}
+
 	let digest = Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+
 	store.record_agent_config_warning(root.into(), generation.as_str().into(), digest, text).await
 }
 
@@ -76,45 +112,11 @@ pub(crate) async fn record_notification(
 			if let Some(value) = mcp_reauthentication_notice(params) {
 				record_warning(store, root, generation, &value).await?;
 			}
+
 			Ok(())
 		},
 		_ => Ok(()),
 	}
-}
-
-fn mcp_reauthentication_notice(params: &Value) -> Option<Value> {
-	if params["status"] != "failed" || params["failureReason"] != "reauthenticationRequired" {
-		return None;
-	}
-	let name = params["name"].as_str()?.trim();
-	if name.is_empty() || name.len() > 512 {
-		return None;
-	}
-	warning(
-		&json!({"threadId":params["threadId"],"message":format!("MCP server {name} needs you to sign in again. Open Codex for this account to reconnect it.")}),
-	)
-}
-
-/// Keep only the public message and exact optional thread identity.
-pub(crate) fn warning(params: &Value) -> Option<Value> {
-	let thread = match params.get("threadId") {
-		None | Some(Value::Null) => None,
-		Some(Value::String(id))
-			if !id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control) =>
-			Some(id),
-		_ => return None,
-	};
-	let message = params.get("message")?.as_str()?;
-	let projected = project(&json!({"summary":message}))?;
-	Some(json!({"threadId":thread,"message":projected["summary"]}))
-}
-
-pub(crate) fn warning_from_frame(bytes: &[u8]) -> Option<Value> {
-	if bytes.len() > 32768 {
-		return None;
-	}
-	let frame: Value = serde_json::from_slice(bytes).ok()?;
-	Some(json!({"method":"warning","params":warning(frame.get("params")?)?}))
 }
 
 pub(crate) async fn record_warning(
@@ -124,11 +126,13 @@ pub(crate) async fn record_warning(
 	params: &Value,
 ) -> Result<(), decodex_database::StoreError> {
 	use sha2::{Digest as _, Sha256};
+
 	let Some(value) = warning(params) else {
 		return Ok(());
 	};
 	let text = format!("Codex warning: {}", value["message"].as_str().unwrap_or_default());
 	let digest = Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+
 	store
 		.record_agent_native_warning(
 			root.into(),
@@ -163,11 +167,28 @@ pub(crate) async fn record_settings_error(
 	.await;
 }
 
+fn mcp_reauthentication_notice(params: &Value) -> Option<Value> {
+	if params["status"] != "failed" || params["failureReason"] != "reauthenticationRequired" {
+		return None;
+	}
+
+	let name = params["name"].as_str()?.trim();
+
+	if name.is_empty() || name.len() > 512 {
+		return None;
+	}
+
+	warning(
+		&json!({"threadId":params["threadId"],"message":format!("MCP server {name} needs you to sign in again. Open Codex for this account to reconnect it.")}),
+	)
+}
+
 fn settings_error_message(
 	operation: &str,
 	error: &decodex_codex::app_server_client::RpcError,
 ) -> Option<String> {
 	let projected = project(&json!({"summary":error.message}))?;
+
 	Some(format!(
 		"{operation}: {} (code {}). No automatic retry was made; refresh the saved settings before further action.",
 		projected["summary"].as_str()?,
@@ -182,29 +203,41 @@ mod tests {
 	fn mcp_reauthentication_requires_explicit_native_cause() {
 		let mut params = json!({"threadId":"thread","name":"docs","status":"failed","failureReason":"reauthenticationRequired","error":"PRIVATE_ERROR"});
 		let notice = mcp_reauthentication_notice(&params).unwrap();
+
 		assert_eq!(notice["threadId"], "thread");
 		assert!(notice["message"].as_str().unwrap().contains("Open Codex for this account"));
 		assert!(!notice.to_string().contains("PRIVATE_ERROR"));
+
 		params["failureReason"] = Value::Null;
+
 		assert!(mcp_reauthentication_notice(&params).is_none());
+
 		params["failureReason"] = json!("reauthenticationRequired");
 		params["status"] = json!("ready");
+
 		assert!(mcp_reauthentication_notice(&params).is_none());
 	}
 	#[test]
 	fn settings_errors_keep_actionable_causes_but_hide_private_material() {
 		use decodex_codex::app_server_client::RpcError;
-		let mut error=RpcError{code:-32603,message:"failed to load configuration: /fixture/config.toml:1:24: unclosed array, expected `]`".into(),data:Some(json!({"private":"do-not-display"}))};
+
+		let mut error=RpcError{code:-32_603,message:"failed to load configuration: /fixture/config.toml:1:24: unclosed array, expected `]`".into(),data:Some(json!({"private":"do-not-display"}))};
 		let message = settings_error_message("Account setting failed", &error).unwrap();
+
 		assert!(message.contains("/fixture/config.toml:1:24: unclosed array"));
 		assert!(message.contains("code -32603"));
 		assert!(message.contains("No automatic retry"));
 		assert!(!message.contains("do-not-display"));
+
 		error.message = "Bearer fixture-private-access-token-123456789".into();
+
 		let message = settings_error_message("Account setting failed", &error).unwrap();
+
 		assert!(message.contains("hidden"));
 		assert!(!message.contains("fixture-private"));
-		error.message = "x".repeat(8193);
+
+		error.message = "x".repeat(8_193);
+
 		assert!(settings_error_message("Account setting failed", &error).is_none());
 	}
 
@@ -214,13 +247,14 @@ mod tests {
 			&json!({"threadId":"task","message":"Read failed\nRetained previous text","private":"hidden"}),
 		)
 		.unwrap();
+
 		assert_eq!(
 			value,
 			json!({"threadId":"task","message":"Read failed\nRetained previous text"})
 		);
 		assert!(warning(&json!({"threadId":12,"message":"warning"})).is_none());
 		assert!(warning(&json!({"threadId":"","message":"warning"})).is_none());
-		assert!(warning(&json!({"message":"x".repeat(8193)})).is_none());
+		assert!(warning(&json!({"message":"x".repeat(8_193)})).is_none());
 		assert!(warning(&json!({"message":"Bearer fixture-private-access-token-123456789"})).unwrap()["message"].as_str().unwrap().contains("hidden"));
 		assert_eq!(
 			warning_from_frame(br#"{"method":"warning","params":{"message":"global"}}"#).unwrap()["params"]
@@ -231,19 +265,23 @@ mod tests {
 	#[test]
 	fn only_bounded_public_diagnostics_are_projected() {
 		let warning = project(&json!({"summary":"Ignored \"setting\"","details":"one\ntwo","path":"private","unknown":"secret"})).unwrap();
+
 		assert_eq!(warning, json!({"summary":"Ignored \"setting\"","details":"one\ntwo"}));
+
 		for bad in [
 			json!({}),
 			json!({"summary":" "}),
 			json!({"summary":1}),
 			json!({"summary":"x","details":false}),
-			json!({"summary":"x".repeat(8193)}),
-			json!({"summary":"x","details":"x".repeat(16385)}),
+			json!({"summary":"x".repeat(8_193)}),
+			json!({"summary":"x","details":"x".repeat(16_385)}),
 		] {
 			assert!(project(&bad).is_none());
 		}
+
 		let secret = "Bearer fixture-private-access-token-123456789";
 		let safe = project(&json!({"summary":"Invalid header","details":secret})).unwrap();
+
 		assert!(!safe.to_string().contains(secret));
 	}
 }

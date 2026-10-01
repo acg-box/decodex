@@ -25,7 +25,7 @@ fn source(client: AppServerClient, revision: usize) -> Source {
 fn fixture(
 	fail_readback: bool,
 ) -> (AppServerClient, Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
-	let (local, remote) = tokio::io::duplex(8192);
+	let (local, remote) = tokio::io::duplex(8_192);
 	let (read, write) = tokio::io::split(local);
 	let (client, _events) = AppServerClient::from_io(read, write);
 	let writes = Arc::new(AtomicUsize::new(0));
@@ -33,6 +33,7 @@ fn fixture(
 	let task = tokio::spawn(async move {
 		let (read, mut write) = tokio::io::split(remote);
 		let mut lines = BufReader::new(read).lines();
+
 		while let Some(line) = lines.next_line().await.unwrap() {
 			let request: serde_json::Value = serde_json::from_str(&line).unwrap();
 			let saved = count.load(Ordering::SeqCst) > 0;
@@ -40,7 +41,7 @@ fn fixture(
 			let mut response = match request["method"].as_str().unwrap() {
 				"thread/read" => json!({"result":{"thread":{"id":"thread","cwd":"/project"}}}),
 				"config/read" if saved && fail_readback =>
-					json!({"error":{"code":-32603,"message":"read unavailable"}}),
+					json!({"error":{"code":-32_603,"message":"read unavailable"}}),
 				"config/read" =>
 					json!({"result":{"config":{"realtime":{"voice":"maple"}},"layers":[{
 						"name":{"type":"user","file":"/home/config.toml"},"version":version,
@@ -51,17 +52,22 @@ fn fixture(
 				"config/batchWrite" => {
 					assert_eq!(request["params"]["expectedVersion"], version);
 					assert_eq!(request["params"]["reloadUserConfig"], false);
+
 					count.fetch_add(1, Ordering::SeqCst);
+
 					json!({"result":{"filePath":"/home/config.toml","version":"v2","status":"okOverridden"}})
 				},
 				other => panic!("unexpected native action {other}"),
 			};
+
 			response["id"] = request["id"].clone();
+
 			if write.write_all(format!("{response}\n").as_bytes()).await.is_err() {
 				break;
 			}
 		}
 	});
+
 	(client, writes, task)
 }
 
@@ -74,6 +80,7 @@ async fn voice_settings_bind_source_version_and_report_uncertain_readback() {
 		else {
 			panic!("settings")
 		};
+
 		assert!(
 			write(
 				|| std::future::ready(Some(source(client.clone(), 2))),
@@ -84,20 +91,25 @@ async fn voice_settings_bind_source_version_and_report_uncertain_readback() {
 			.is_err()
 		);
 		assert_eq!(writes.load(Ordering::SeqCst), 0);
+
 		let result = write(read_source, review_token.as_str(), "juniper").await;
+
 		assert_eq!(result.is_ok(), !fail_readback);
 		assert_eq!(writes.load(Ordering::SeqCst), 1);
 		assert!(write(read_source, review_token.as_str(), "juniper").await.is_err());
 		assert_eq!(writes.load(Ordering::SeqCst), 1);
+
 		if !fail_readback {
 			let AgentVoiceSettingsResult::Available { effective, preference, .. } =
 				read(read_source).await
 			else {
 				panic!("readback")
 			};
+
 			assert_eq!(effective.unwrap().as_str(), "maple");
 			assert_eq!(preference.unwrap().as_str(), "juniper");
 		}
+
 		task.abort();
 	}
 }
@@ -110,8 +122,10 @@ async fn voice_settings_discard_observation_when_source_changes_during_read() {
 		std::future::ready(Some(source(client.clone(), calls.fetch_add(1, Ordering::SeqCst))))
 	})
 	.await;
+
 	assert_eq!(result, AgentVoiceSettingsResult::Unavailable);
 	assert_eq!(writes.load(Ordering::SeqCst), 0);
+
 	task.abort();
 }
 
@@ -123,6 +137,7 @@ async fn replaced_connection_cannot_reuse_review_or_publish_old_observation() {
 	let AgentVoiceSettingsResult::Available { review_token, .. } = read(before).await else {
 		panic!("voice review")
 	};
+
 	assert!(
 		write(
 			|| std::future::ready(Some(source(second.clone(), 1))),
@@ -132,16 +147,20 @@ async fn replaced_connection_cannot_reuse_review_or_publish_old_observation() {
 		.await
 		.is_err()
 	);
+
 	let calls = AtomicUsize::new(0);
 	let state = read(|| {
 		let client =
 			if calls.fetch_add(1, Ordering::SeqCst) == 0 { first.clone() } else { second.clone() };
+
 		std::future::ready(Some(source(client, 1)))
 	})
 	.await;
+
 	assert_eq!(state, AgentVoiceSettingsResult::Unavailable);
 	assert_eq!(first_writes.load(Ordering::SeqCst), 0);
 	assert_eq!(second_writes.load(Ordering::SeqCst), 0);
+
 	first_task.abort();
 	second_task.abort();
 }

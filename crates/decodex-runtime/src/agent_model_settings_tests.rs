@@ -22,7 +22,6 @@ pub(crate) struct OwnedReviewer {
 	pub(crate) key: SourceKey,
 	client: AppServerClient,
 }
-
 impl OwnedReviewer {
 	pub(crate) async fn new(
 		home: &std::path::Path,
@@ -32,9 +31,13 @@ impl OwnedReviewer {
 	) -> Self {
 		let root = DecodexRoot::new(home.canonicalize().expect("fixture home").join("state"))
 			.expect("fixture root");
+
 		root.paths().ensure_layout().expect("fixture layout");
+
 		let store = SqliteStore::open(&root.paths()).expect("fixture database");
+
 		seed_account(&root);
+
 		store
 			.attest_codex_account_capability(&CodexAccountCapabilityAttestation {
 				build_identity: "fixture".into(),
@@ -63,6 +66,7 @@ impl OwnedReviewer {
 			})
 			.await
 			.expect("fixture root work");
+
 		let generation = ProcessGenerationId::new(GENERATION).expect("fixture generation");
 		let account = AccountId::new(ACCOUNT).expect("fixture account");
 		let boot = ProcessBootIdentity::new("fixture-boot").expect("fixture boot");
@@ -94,18 +98,21 @@ impl OwnedReviewer {
 			DIGEST,
 		)
 		.expect("fixture binding");
+
 		store
 			.prepare_agent_bound_process_generation(&intent, &binding, "root", "reviewer-admission")
 			.await
 			.expect("fixture admission");
+
 		let identity = ProcessIdentity::new(
 			boot,
-			1234,
+			1_234,
 			ProcessStartIdentity::new("fixture-start").expect("fixture start"),
-			1234,
-			1234,
+			1_234,
+			1_234,
 		)
 		.expect("fixture identity");
+
 		store
 			.bind_process_generation_identity(&generation, 1, &identity)
 			.await
@@ -139,6 +146,7 @@ impl OwnedReviewer {
 fn seed_account(root: &DecodexRoot) {
 	let connection = rusqlite::Connection::open(root.paths().product_database_file())
 		.expect("disposable fixture connection");
+
 	connection
 		.execute("INSERT INTO account_identities VALUES (?1,1)", [ACCOUNT])
 		.expect("fixture identity");
@@ -176,7 +184,7 @@ async fn model_settings_discard_changed_sources_and_preserve_null_metadata() {
 		"other_settings",
 	] {
 		let home = tempfile::tempdir().unwrap();
-		let (local, remote) = tokio::io::duplex(4096);
+		let (local, remote) = tokio::io::duplex(4_096);
 		let (r, w) = tokio::io::split(local);
 		let (client, _events) = AppServerClient::from_io(r, w);
 		let owner = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
@@ -186,36 +194,43 @@ async fn model_settings_discard_changed_sources_and_preserve_null_metadata() {
 			let mut lines = BufReader::new(r).lines();
 			let request: serde_json::Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 			assert_eq!(request["method"], "thread/read");
 			assert_eq!(
 				request["params"],
 				serde_json::json!({"threadId":"thread","includeTurns":false})
 			);
+
 			let mut thread = match change {
 				"missing" => serde_json::json!({"id":"thread"}),
 				"null" => serde_json::json!({"id":"thread","model":null,"reasoningEffort":null}),
 				_ =>
 					serde_json::json!({"id":"thread","model":"configured-model","reasoningEffort":"future-effort","modelProvider":"server-provider"}),
 			};
+
 			if change == "invalid_provider" {
 				thread["modelProvider"] = serde_json::json!("\n");
 			}
 			if matches!(change, "settings" | "other_settings") {
 				let target = if change == "settings" { "thread" } else { "other" };
+
 				w.write_all(format!("{}\n",serde_json::json!({"method":"thread/settings/updated","params":{"threadId":target,"threadSettings":{"model":"new-choice"}}})).as_bytes()).await.unwrap();
 			}
+
 			w.write_all(
 				format!("{}\n", serde_json::json!({"id":request["id"],"result":{"thread":thread}}))
 					.as_bytes(),
 			)
 			.await
 			.unwrap();
+
 			let _ = released.await;
 		});
 		let calls = AtomicUsize::new(0);
 		let result = crate::agent_model_settings::read(&owner.store, || {
 			let later = calls.fetch_add(1, Ordering::SeqCst) > 0;
 			let mut key = owner.key.clone();
+
 			if later {
 				match change {
 					"account" =>
@@ -232,12 +247,16 @@ async fn model_settings_discard_changed_sources_and_preserve_null_metadata() {
 					_ => {},
 				}
 			}
+
 			let source = (!(later && change == "closed")).then(|| owner.source(&key));
+
 			async move { source }
 		})
 		.await;
 		let _ = release.send(());
+
 		server.await.unwrap();
+
 		match change {
 			"none" | "other_settings" => assert!(
 				matches!(result, Result::Available { model: Some(ref model), reasoning_effort: Some(ref effort), model_provider: Some(ref provider), .. } if model.as_str()=="configured-model" && effort.as_str()=="future-effort" && provider.as_str()=="server-provider")
@@ -249,6 +268,7 @@ async fn model_settings_discard_changed_sources_and_preserve_null_metadata() {
 			"missing" => assert_eq!(result, Result::NotReported),
 			_ => assert_eq!(result, Result::Unavailable, "{change}"),
 		}
+
 		assert!(owner.store.list_pending_agent_events(100).await.unwrap().is_empty());
 	}
 }
@@ -256,18 +276,22 @@ async fn model_settings_discard_changed_sources_and_preserve_null_metadata() {
 #[tokio::test]
 async fn model_settings_do_not_read_a_foreign_thread() {
 	let home = tempfile::tempdir().unwrap();
-	let (local, mut remote) = tokio::io::duplex(4096);
+	let (local, mut remote) = tokio::io::duplex(4_096);
 	let (r, w) = tokio::io::split(local);
 	let (client, _events) = AppServerClient::from_io(r, w);
 	let owner = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
 	let mut key = owner.key.clone();
+
 	key.thread = "foreign".into();
+
 	assert_eq!(
 		crate::agent_model_settings::read(&owner.store, || async { Some(owner.source(&key)) })
 			.await,
 		Result::Unavailable
 	);
+
 	let mut byte = [0];
+
 	assert!(
 		tokio::time::timeout(
 			std::time::Duration::from_millis(25),

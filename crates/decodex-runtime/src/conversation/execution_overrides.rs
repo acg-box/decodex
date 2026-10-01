@@ -15,6 +15,7 @@ pub(super) fn apply_start_overrides(
 			request = request.inherit_service_tier();
 		}
 	}
+
 	request
 }
 
@@ -39,6 +40,7 @@ pub(super) fn apply_turn_overrides(
 			request = request.inherit_service_tier();
 		}
 	}
+
 	request
 }
 
@@ -58,6 +60,7 @@ mod tests {
 		)
 		.unwrap();
 		let wire = serde_json::to_value(inherit_resume_settings(request)).unwrap();
+
 		assert_eq!(wire, serde_json::json!({"threadId":"native-thread", "excludeTurns":true}));
 	}
 
@@ -70,6 +73,7 @@ mod tests {
 				service_tier: bits & 4 != 0,
 			})
 		}));
+
 		for intent in choices {
 			let thread = ExactThreadId::new("native-thread").expect("thread");
 			let start =
@@ -94,6 +98,7 @@ mod tests {
 				serde_json::to_value(inherit_resume_settings(resume)).expect("resume wire"),
 				serde_json::to_value(apply_turn_overrides(turn, intent)).expect("turn wire"),
 			];
+
 			for wire in [&wires[0], &wires[2]] {
 				assert_eq!(wire.get("model").is_some(), intent.is_none_or(|v| v.model));
 				assert_eq!(
@@ -101,6 +106,7 @@ mod tests {
 					intent.is_none_or(|v| v.service_tier)
 				);
 			}
+
 			assert_eq!(wires[2].get("effort").is_some(), intent.is_none_or(|v| v.reasoning));
 			assert_eq!(
 				wires[2].get("serviceTierForTurn").is_some(),

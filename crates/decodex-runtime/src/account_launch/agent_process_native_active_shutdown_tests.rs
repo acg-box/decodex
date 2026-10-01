@@ -20,6 +20,7 @@ pub(super) async fn prepare(client: &AgentClient, home: &std::path::Path, accoun
 		"active-shutdown-start",
 	)
 	.await;
+
 	tokio::time::timeout(Duration::from_secs(15), async {
 		loop {
 			if home.join("active-provider-started").exists()
@@ -34,8 +35,10 @@ pub(super) async fn prepare(client: &AgentClient, home: &std::path::Path, accoun
 					serde_json::to_vec_pretty(work).expect("work evidence"),
 				)
 				.expect("save active evidence");
+
 				break;
 			}
+
 			tokio::time::sleep(Duration::from_millis(20)).await;
 		}
 	})
@@ -47,6 +50,7 @@ pub(super) async fn verify(home: &std::path::Path, requests: &std::sync::atomic:
 	if std::env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_none() {
 		return;
 	}
+
 	tokio::time::timeout(Duration::from_secs(5), async {
 		while !home.join("active-provider-closed").exists() {
 			tokio::time::sleep(Duration::from_millis(20)).await;
@@ -54,7 +58,9 @@ pub(super) async fn verify(home: &std::path::Path, requests: &std::sync::atomic:
 	})
 	.await
 	.expect("native provider connection closed after service shutdown");
+
 	assert_eq!(requests.load(Ordering::Acquire), 1, "shutdown cannot replay input");
+
 	std::fs::write(
 		home.join("active-shutdown-result.json"),
 		b"{\"service_shutdown_success\":true,\"provider_closed\":true,\"model_requests\":1}\n",

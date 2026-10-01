@@ -7,14 +7,17 @@ impl AgentCoordinator {
 		if self.dispatch_paused {
 			return Ok(());
 		}
+
 		for work in self.store.list_agent_work_items().await? {
 			if work.dispatch_state != AgentDispatchState::Idle {
 				continue;
 			}
+
 			let Some(thread) = work.codex_thread_id else {
 				continue;
 			};
 			let generation = self.native_generation.as_ref().map(|id| id.as_str().to_owned());
+
 			if !self
 				.store
 				.agent_thread_is_owned(work.id, thread.clone(), generation.clone())
@@ -22,7 +25,9 @@ impl AgentCoordinator {
 			{
 				continue;
 			}
+
 			self.resume_active_native_goal(&thread).await?;
+
 			let revision = self.client.history_revision();
 			let Ok(Some(turn)) = self.client.thread_latest_turn_id(&thread).await else { continue };
 			let Ok(history) = self.client.thread_read_turn(&thread, &turn).await else { continue };
@@ -34,11 +39,14 @@ impl AgentCoordinator {
 			else {
 				continue;
 			};
+
 			if history.pointer("/thread/id").and_then(Value::as_str) != Some(&thread) {
 				continue;
 			}
+
 			let terminal =
 				matches!(observed["status"].as_str(), Some("completed" | "failed" | "interrupted"));
+
 			if !terminal {
 				if observed["status"] != "inProgress"
 					|| history["thread"]["status"]["type"] != "active"
@@ -50,9 +58,11 @@ impl AgentCoordinator {
 				else {
 					continue;
 				};
+
 				if resumed["thread"]["id"].as_str() != Some(&thread) {
 					continue;
 				}
+
 				self.persist_task_settings(&thread).await?;
 			}
 			if self.client.thread_latest_turn_id(&thread).await.ok().flatten().as_deref()
@@ -84,6 +94,7 @@ impl AgentCoordinator {
 				self.loaded_threads.insert(thread);
 			}
 		}
+
 		Ok(())
 	}
 
@@ -91,9 +102,11 @@ impl AgentCoordinator {
 		if self.loaded_threads.contains(thread) {
 			return Ok(());
 		}
+
 		let Ok(Some(goal)) = self.client.thread_goal(thread).await else {
 			return Ok(());
 		};
+
 		if goal.status != decodex_codex::app_server_client::NativeThreadGoalStatus::Active {
 			return Ok(());
 		}
@@ -105,6 +118,7 @@ impl AgentCoordinator {
 			self.persist_task_settings(thread).await?;
 			self.loaded_threads.insert(thread.into());
 		}
+
 		Ok(())
 	}
 
@@ -119,6 +133,7 @@ impl AgentCoordinator {
 				)
 				.await?;
 		}
+
 		Ok(())
 	}
 }

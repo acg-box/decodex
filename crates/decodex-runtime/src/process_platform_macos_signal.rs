@@ -14,7 +14,9 @@ pub(super) fn signal_group(
 	let mut members = group_members(group)?;
 	// Signal the leader last so it can reap children that exit during cleanup.
 	members.sort_unstable_by_key(|pid| *pid == group);
+
 	let mut delivered = false;
+
 	for pid in members {
 		// SAFETY: getpgid only queries membership. Recheck the listing before each signal.
 		if pid > 1 && unsafe { libc::getpgid(pid) } == group {
@@ -28,20 +30,25 @@ pub(super) fn signal_group(
 
 fn group_members(group: i32) -> io::Result<Vec<i32>> {
 	let mut members = vec![0; 16];
+
 	loop {
 		let bytes = i32::try_from(std::mem::size_of_val(members.as_slice()))
 			.map_err(|_| io::Error::other("process group is too large"))?;
 		// SAFETY: the buffer is writable for the supplied byte count.
 		let count = unsafe { libc::proc_listpgrppids(group, members.as_mut_ptr().cast(), bytes) };
 		let count = usize::try_from(count).map_err(|_| io::Error::last_os_error())?;
+
 		if count < members.len() {
 			members.truncate(count);
+
 			return Ok(members);
 		}
+
 		let capacity = members
 			.len()
 			.checked_mul(2)
 			.ok_or_else(|| io::Error::other("process group is too large"))?;
+
 		members.resize(capacity, 0);
 	}
 }

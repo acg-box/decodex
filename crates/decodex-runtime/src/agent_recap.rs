@@ -6,53 +6,24 @@ mod response;
 mod voice;
 
 use crate::agent_usage_estimate::Source;
+
 use decodex_codex::app_server_client::ServerEvent;
+
 use decodex_protocol::{EntityId, TaskRecap, TaskRecapPhase as Phase, TaskRecapStatus, WireText};
+
 use std::{
 	collections::BTreeMap,
 	sync::{Arc, Mutex},
 };
+
 use tokio::sync::{mpsc, watch};
 
 #[derive(Clone, Default)]
 pub(crate) struct Recaps(Arc<Mutex<State>>);
-#[derive(Default)]
-struct State {
-	requests: BTreeMap<String, Record>,
-	routes: BTreeMap<String, mpsc::Sender<ServerEvent>>,
-}
-struct Record {
-	voice_revision: decodex_database::AgentVoiceHistoryRevision,
-	source: Source,
-	guard: Option<decodex_codex::app_server_client::HistoryGuard>,
-	key: String,
-	cancel: watch::Sender<bool>,
-	phase: Phase,
-	recap: Option<TaskRecap>,
-}
-
-pub(crate) fn same_owner(a: &Source, b: &Source) -> bool {
-	b.client.history_guard(b.client.history_revision()).is_some()
-		&& a.key.work == b.key.work
-		&& a.key.thread == b.key.thread
-		&& a.key.account == b.key.account
-		&& a.key.generation == b.key.generation
-		&& a.key.revision == b.key.revision
-		&& a.client.connection_identity() == b.client.connection_identity()
-}
-fn cancel(record: &mut Record) {
-	let _ = record.cancel.send(true);
-	record.recap = None;
-	record.phase = if matches!(record.phase, Phase::Pending | Phase::Cancelling) {
-		Phase::Cancelling
-	} else {
-		Phase::Cancelled
-	};
-}
-
 impl Recaps {
 	pub(crate) fn note_input(&self, action: &decodex_protocol::AgentActionDto) {
 		use decodex_protocol::AgentActionDto as Action;
+
 		match action {
 			Action::Send { root_id, .. } | Action::SendConfigured { root_id, .. } =>
 				self.cancel_work(root_id.as_str()),
@@ -78,6 +49,7 @@ impl Recaps {
 			for record in state.requests.values_mut() {
 				cancel(record);
 			}
+
 			state.routes.clear();
 		}
 	}
@@ -89,6 +61,7 @@ impl Recaps {
 		voice_revision: decodex_database::AgentVoiceHistoryRevision,
 	) -> Result<watch::Receiver<bool>, &'static str> {
 		let mut state = self.0.lock().map_err(|_| "Recap service unavailable")?;
+
 		if state.requests.values().any(|r| matches!(r.phase, Phase::Pending | Phase::Cancelling)) {
 			return Err("A recap is already running or being cancelled");
 		}
@@ -99,10 +72,13 @@ impl Recaps {
 				.find(|(_, r)| !matches!(r.phase, Phase::Pending | Phase::Cancelling))
 				.map(|(key, _)| key.clone())
 				.ok_or("Recap capacity is full")?;
+
 			state.requests.remove(&oldest);
 		}
+
 		let (send, receive) = watch::channel(false);
 		let guard = source.client.thread_settings_guard(&source.key.thread);
+
 		state.requests.insert(
 			source.key.work.clone(),
 			Record {
@@ -115,6 +91,7 @@ impl Recaps {
 				recap: None,
 			},
 		);
+
 		Ok(receive)
 	}
 
@@ -145,16 +122,19 @@ impl Recaps {
 			phase: Phase::Idle,
 			recap: None,
 		};
+
 		if let Ok(state) = self.0.lock()
 			&& let Some(record) = state.requests.get(work.as_str())
 		{
 			let current = source.is_some_and(|source| same_owner(&record.source, source))
 				&& record.guard.as_ref().is_none_or(|guard| guard.is_live());
+
 			result.thread_id = WireText::new(record.source.key.thread.clone()).ok();
 			result.request_id = WireText::new(record.key.clone()).ok();
 			result.phase = if current { record.phase } else { Phase::Cancelled };
 			result.recap = if current { record.recap.clone() } else { None };
 		}
+
 		result
 	}
 
@@ -169,19 +149,25 @@ impl Recaps {
 				for record in state.requests.values_mut() {
 					cancel(record);
 				}
+
 				state.routes.clear();
+
 				return Some(event);
 			},
 			_ => return Some(event),
 		};
+
 		if let Some(thread) = thread {
 			if let Some(route) = state.routes.get(thread) {
 				let thread = thread.to_owned();
+
 				if route.try_send(event).is_err() {
 					state.routes.remove(&thread);
 				}
+
 				return None;
 			}
+
 			if new_input
 				|| event.has_voice_transcript()
 				|| matches!(
@@ -200,16 +186,21 @@ impl Recaps {
 				}
 			}
 		}
+
 		Some(event)
 	}
 
 	pub(crate) fn register(&self, thread: &str) -> Option<mpsc::Receiver<ServerEvent>> {
 		let mut state = self.0.lock().ok()?;
+
 		if state.routes.len() >= 32 || state.routes.contains_key(thread) {
 			return None;
 		}
+
 		let (send, receive) = mpsc::channel(64);
+
 		state.routes.insert(thread.into(), send);
+
 		Some(receive)
 	}
 
@@ -245,6 +236,41 @@ pub(crate) struct Prepared {
 	pub prompt: String,
 	pub latest_turn: Option<String>,
 }
+
+#[derive(Default)]
+struct State {
+	requests: BTreeMap<String, Record>,
+	routes: BTreeMap<String, mpsc::Sender<ServerEvent>>,
+}
+
+struct Record {
+	voice_revision: decodex_database::AgentVoiceHistoryRevision,
+	source: Source,
+	guard: Option<decodex_codex::app_server_client::HistoryGuard>,
+	key: String,
+	cancel: watch::Sender<bool>,
+	phase: Phase,
+	recap: Option<TaskRecap>,
+}
+
+pub(crate) fn same_owner(a: &Source, b: &Source) -> bool {
+	b.client.history_guard(b.client.history_revision()).is_some()
+		&& a.key.work == b.key.work
+		&& a.key.thread == b.key.thread
+		&& a.key.account == b.key.account
+		&& a.key.generation == b.key.generation
+		&& a.key.revision == b.key.revision
+		&& a.client.connection_identity() == b.client.connection_identity()
+}
+
+pub(crate) fn parse(value: &str) -> Option<TaskRecap> {
+	response::parse(value)
+}
+
+pub(crate) fn schema() -> serde_json::Value {
+	response::schema()
+}
+
 pub(crate) async fn prepare(
 	source: &Source,
 	voice: Option<&decodex_database::AgentVoiceHistory>,
@@ -254,9 +280,11 @@ pub(crate) async fn prepare(
 		source.client.thread_model_settings(&source.key.thread, guard.clone()).await.ok()??;
 	let has_voice = voice.is_some_and(|v| v.revision.calls > 0);
 	let history = history::read(&source.client, &source.key.thread, has_voice).await.ok()?;
+
 	if !guard.is_live() {
 		return None;
 	}
+
 	Some(Prepared {
 		guard,
 		options: decodex_codex::app_server_client::TemporaryStructuredOptions {
@@ -274,11 +302,15 @@ pub(crate) async fn prepare(
 	})
 }
 
-pub(crate) fn parse(value: &str) -> Option<TaskRecap> {
-	response::parse(value)
-}
-pub(crate) fn schema() -> serde_json::Value {
-	response::schema()
+fn cancel(record: &mut Record) {
+	let _ = record.cancel.send(true);
+
+	record.recap = None;
+	record.phase = if matches!(record.phase, Phase::Pending | Phase::Cancelling) {
+		Phase::Cancelling
+	} else {
+		Phase::Cancelled
+	};
 }
 
 #[cfg(test)] mod tests;

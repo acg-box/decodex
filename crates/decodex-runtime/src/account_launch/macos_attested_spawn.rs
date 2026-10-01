@@ -35,27 +35,29 @@ use core_foundation::{
 	string::{CFString, CFStringRef},
 	url::{CFURL, CFURLGetTypeID, CFURLRef},
 };
+
 use libc::{
 	EINTR, ESRCH, F_GETFD, F_GETFL, F_SETFL, FD_CLOEXEC, O_CLOEXEC, O_NOFOLLOW, O_NONBLOCK,
 	O_RDONLY, O_WRONLY, SIGCONT, SIGKILL, WNOHANG, posix_spawn_file_actions_t, posix_spawnattr_t,
 };
+
 use security_framework::os::macos::code_signing::{
 	Flags, GuestAttributes, SecCode, SecRequirement, SecStaticCode,
 };
+
 use tempfile::{Builder as TempDirBuilder, TempDir};
 
-const CHILD_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 pub(super) const PRIVATE_STDIO_STARTUP_ENV: &str =
 	"CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED";
 pub(super) const PRIVATE_STDIO_STARTUP_VALUE: &str = "1";
+
+const CHILD_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 const MAX_CODE_IDENTITY_BYTES: usize = 64;
 const DYNAMIC_CODE_LOOKUP_ATTEMPTS: usize = 50;
 const DYNAMIC_CODE_LOOKUP_DELAY: Duration = Duration::from_millis(10);
-
 // Darwin defines this flag in <sys/spawn.h>, but libc does not currently expose it for Apple
 // targets. The other two Darwin flags are exposed as c_int and are converted together below.
 const POSIX_SPAWN_SETSID_DARWIN: c_short = 0x0400;
-
 // Static and dynamic validation must not consult the network. Static checking covers every
 // architecture so a universal executable cannot pass because only its host-native slice was
 // inspected.
@@ -108,7 +110,6 @@ pub(super) struct AttestedCodeIdentity {
 	unique_len: u8,
 	architectures: Vec<Vec<u8>>,
 }
-
 impl AttestedCodeIdentity {
 	/// Capture an exact signed identity from a trusted snapshot and bind it to an execution path.
 	pub(super) fn capture(reference_snapshot: &Path, execution_path: &Path) -> io::Result<Self> {
@@ -139,15 +140,18 @@ impl AttestedCodeIdentity {
 		for architecture in ["arm64", "arm64e", "arm64e.x1", "x86_64"] {
 			let reference = static_architecture_identity(&reference_snapshot, architecture)?;
 			let execution = static_architecture_identity(&execution_path, architecture)?;
+
 			if reference != execution {
 				return Err(permission_denied("execution architecture differs from reference"));
 			}
+
 			if let Some(identity) = reference
 				&& !architectures.contains(&identity)
 			{
 				architectures.push(identity);
 			}
 		}
+
 		Ok(Self { execution_path, unique, unique_len, architectures })
 	}
 
@@ -176,7 +180,6 @@ pub(super) struct AttestedSpawn {
 	pub(super) stdin: File,
 	pub(super) stdout: File,
 }
-
 impl Debug for AttestedSpawn {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.debug_struct("AttestedSpawn").field("child", &self.child).finish_non_exhaustive()
@@ -190,7 +193,6 @@ pub(super) struct SuspendedAttestedSpawn {
 	stdin: Option<File>,
 	stdout: Option<File>,
 }
-
 impl SuspendedAttestedSpawn {
 	/// OS process identifier for bounded filesystem re-verification while the child is suspended.
 	#[cfg(test)]
@@ -243,185 +245,11 @@ impl Drop for SuspendedAttestedSpawn {
 	}
 }
 
-/// Spawn one canonical executable and return it still suspended.
-///
-/// `args` excludes `argv[0]`; the canonical executable path is always used for `argv[0]` and the
-/// executed path. The child receives only `HOME` and the fixed system `PATH` environment entries.
-pub(super) fn spawn_suspended(
-	identity: &AttestedCodeIdentity,
-	args: &[OsString],
-	working_directory: &Path,
-	home: &Path,
-) -> io::Result<SuspendedAttestedSpawn> {
-	spawn_suspended_with_environment(
-		identity,
-		args,
-		SuspendedWorkingDirectory::Path(working_directory),
-		home,
-		SuspendedEnvironment::HomeAndSystemPath,
-	)
-}
-
-/// Spawn the accepted private-stdio profile from the canonical executable and keep it suspended.
-///
-/// Only the fixed startup environment and the selected PAT can enter this profile.
-pub(super) fn spawn_private_stdio_suspended(
-	identity: &AttestedCodeIdentity,
-	args: &[OsString],
-	working_directory: &Path,
-	home: &Path,
-	personal_access_token: Option<&str>,
-) -> io::Result<SuspendedAttestedSpawn> {
-	spawn_suspended_with_environment(
-		identity,
-		args,
-		SuspendedWorkingDirectory::Path(working_directory),
-		home,
-		SuspendedEnvironment::PrivateStdioDisabledEphemeral { personal_access_token },
-	)
-}
-
-/// Spawn the private-stdio profile with cwd bound to one caller-retained directory descriptor.
-pub(super) fn spawn_private_stdio_suspended_at(
-	identity: &AttestedCodeIdentity,
-	args: &[OsString],
-	working_directory_descriptor: libc::c_int,
-	home: &Path,
-	personal_access_token: Option<&str>,
-) -> io::Result<SuspendedAttestedSpawn> {
-	spawn_suspended_with_environment(
-		identity,
-		args,
-		SuspendedWorkingDirectory::Descriptor(working_directory_descriptor),
-		home,
-		SuspendedEnvironment::PrivateStdioDisabledEphemeral { personal_access_token },
-	)
-}
-
-#[derive(Clone, Copy)]
-enum SuspendedEnvironment<'a> {
-	HomeAndSystemPath,
-	PrivateStdioDisabledEphemeral { personal_access_token: Option<&'a str> },
-}
-
-#[derive(Clone, Copy)]
-enum SuspendedWorkingDirectory<'a> {
-	Path(&'a Path),
-	Descriptor(libc::c_int),
-}
-
-fn spawn_suspended_with_environment(
-	identity: &AttestedCodeIdentity,
-	args: &[OsString],
-	working_directory: SuspendedWorkingDirectory<'_>,
-	home: &Path,
-	environment: SuspendedEnvironment<'_>,
-) -> io::Result<SuspendedAttestedSpawn> {
-	let spawned_execution_path = identity.execution_path.clone();
-	let executable = os_string(identity.execution_path.as_os_str())?;
-	let working_directory_path = match working_directory {
-		SuspendedWorkingDirectory::Path(path) => Some(os_string(path.as_os_str())?),
-		SuspendedWorkingDirectory::Descriptor(descriptor) if descriptor >= 0 => None,
-		SuspendedWorkingDirectory::Descriptor(_) => {
-			return Err(invalid_input("working-directory descriptor is invalid"));
-		},
-	};
-	let mut argv = Vec::with_capacity(args.len() + 1);
-
-	argv.push(os_string(identity.execution_path.as_os_str())?);
-	argv.extend(args.iter().map(|arg| os_string(arg)).collect::<io::Result<Vec<_>>>()?);
-
-	let home_environment = environment_entry(b"HOME", home.as_os_str())?;
-	let path_environment = CString::new(format!("PATH={CHILD_PATH}"))
-		.map_err(|_| invalid_input("child PATH contains a NUL byte"))?;
-	let private_stdio_environment = match environment {
-		SuspendedEnvironment::HomeAndSystemPath => None,
-		SuspendedEnvironment::PrivateStdioDisabledEphemeral { .. } => Some(environment_entry(
-			PRIVATE_STDIO_STARTUP_ENV.as_bytes(),
-			OsStr::new(PRIVATE_STDIO_STARTUP_VALUE),
-		)?),
-	};
-	let pat_environment = match environment {
-		SuspendedEnvironment::PrivateStdioDisabledEphemeral {
-			personal_access_token: Some(token),
-		} => Some(Zeroizing::new(
-			environment_entry(b"CODEX_ACCESS_TOKEN", OsStr::new(token))?.into_bytes_with_nul(),
-		)),
-		_ => None,
-	};
-	let mut argv_pointers = argv
-		.iter()
-		.map(|value| value.as_ptr().cast_mut())
-		.chain(std::iter::once(ptr::null_mut()))
-		.collect::<Vec<_>>();
-	let mut environment_pointers = [
-		Some(home_environment.as_ptr()),
-		Some(path_environment.as_ptr()),
-		private_stdio_environment.as_ref().map(|value| value.as_ptr()),
-		pat_environment.as_ref().map(|value| value.as_ptr().cast()),
-	]
-	.into_iter()
-	.flatten()
-	.map(|value| value.cast_mut())
-	.chain(std::iter::once(ptr::null_mut()))
-	.collect::<Vec<_>>();
-
-	let protocol = ProtocolFifos::new()?;
-	let mut actions = SpawnFileActions::new()?;
-
-	actions.open(libc::STDIN_FILENO, protocol.stdin_path(), O_RDONLY | O_NOFOLLOW, 0)?;
-	actions.open(libc::STDOUT_FILENO, protocol.stdout_path(), O_WRONLY | O_NOFOLLOW, 0)?;
-	actions.open(libc::STDERR_FILENO, c"/dev/null", O_WRONLY, 0)?;
-	match (working_directory, working_directory_path.as_ref()) {
-		(SuspendedWorkingDirectory::Path(_), Some(path)) => actions.chdir(path)?,
-		(SuspendedWorkingDirectory::Descriptor(descriptor), None) => actions.fchdir(descriptor)?,
-		_ => return Err(invalid_input("working-directory action is incomplete")),
-	}
-
-	let mut attributes = SpawnAttributes::new()?;
-	attributes.set_attested_flags()?;
-
-	let mut pid = -1;
-	// SAFETY: every pointer targets a live, NUL-terminated allocation for the duration of the call;
-	// the action and attribute handles were initialized successfully.
-	let result = unsafe {
-		libc::posix_spawn(
-			&mut pid,
-			executable.as_ptr(),
-			actions.as_ptr(),
-			attributes.as_ptr(),
-			argv_pointers.as_mut_ptr(),
-			environment_pointers.as_mut_ptr(),
-		)
-	};
-
-	if result != 0 {
-		return Err(io::Error::from_raw_os_error(result));
-	}
-	if pid <= 0 {
-		return Err(io::Error::other("posix_spawn returned an invalid child identifier"));
-	}
-
-	let mut suspended = SuspendedAttestedSpawn {
-		execution_path: spawned_execution_path,
-		child: Some(AttestedChild { pid, status: None }),
-		stdin: None,
-		stdout: None,
-	};
-	let (parent_stdin, parent_stdout) = protocol.finish_after_spawn()?;
-
-	suspended.stdin = Some(parent_stdin);
-	suspended.stdout = Some(parent_stdout);
-
-	Ok(suspended)
-}
-
 /// Minimal owned child handle for a pid returned directly by `posix_spawn`.
 pub(super) struct AttestedChild {
 	pid: libc::pid_t,
 	status: Option<ExitStatus>,
 }
-
 impl AttestedChild {
 	pub(super) fn id(&self) -> u32 {
 		u32::try_from(self.pid).expect("a positive macOS pid fits in u32")
@@ -439,13 +267,13 @@ impl AttestedChild {
 		if self.status.is_some() {
 			return Ok(());
 		}
-
 		// SAFETY: this handle retains exclusive wait ownership for its positive child pid.
 		if unsafe { libc::kill(self.pid, SIGKILL) } == 0 {
 			return Ok(());
 		}
 
 		let error = io::Error::last_os_error();
+
 		if error.raw_os_error() == Some(ESRCH) && self.try_wait()?.is_some() {
 			Ok(())
 		} else {
@@ -504,6 +332,355 @@ impl Debug for AttestedChild {
 	}
 }
 
+struct ProtocolFifos {
+	directory: TempDir,
+	stdin_path: CString,
+	stdout_path: CString,
+	parent_stdin: File,
+	parent_stdout: File,
+}
+impl ProtocolFifos {
+	fn new() -> io::Result<Self> {
+		let directory = TempDirBuilder::new().prefix("decodex-app-server-fifos-").tempdir()?;
+
+		fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))?;
+
+		validate_private_directory(directory.path())?;
+
+		let stdin_path = os_string(directory.path().join("stdin").as_os_str())?;
+		let stdout_path = os_string(directory.path().join("stdout").as_os_str())?;
+
+		create_fifo(&stdin_path)?;
+		create_fifo(&stdout_path)?;
+
+		// A temporary nonblocking reader lets the parent open its write endpoint atomically with
+		// O_CLOEXEC before the child exists. The retained writer then lets the child's fd 0 open
+		// complete during posix_spawn.
+		let temporary_stdin_reader =
+			open_fifo(&stdin_path, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)?;
+		let parent_stdin = open_fifo(&stdin_path, O_WRONLY | O_CLOEXEC | O_NOFOLLOW)?;
+
+		drop(temporary_stdin_reader);
+
+		// A nonblocking parent reader can open before a writer exists. It lets the child's fd 1
+		// open complete; the nonblocking flag is cleared after posix_spawn returns.
+		let parent_stdout =
+			open_fifo(&stdout_path, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)?;
+
+		validate_fifo(&stdin_path, &parent_stdin)?;
+		validate_fifo(&stdout_path, &parent_stdout)?;
+
+		Ok(Self { directory, stdin_path, stdout_path, parent_stdin, parent_stdout })
+	}
+
+	fn stdin_path(&self) -> &std::ffi::CStr {
+		&self.stdin_path
+	}
+
+	fn stdout_path(&self) -> &std::ffi::CStr {
+		&self.stdout_path
+	}
+
+	fn finish_after_spawn(self) -> io::Result<(File, File)> {
+		set_blocking(&self.parent_stdout)?;
+		validate_fifo(&self.stdin_path, &self.parent_stdin)?;
+		validate_fifo(&self.stdout_path, &self.parent_stdout)?;
+		unlink_fifo(&self.stdin_path)?;
+		unlink_fifo(&self.stdout_path)?;
+
+		let Self { directory, stdin_path: _, stdout_path: _, parent_stdin, parent_stdout } = self;
+
+		drop(directory);
+
+		Ok((parent_stdin, parent_stdout))
+	}
+}
+
+struct SpawnFileActions(posix_spawn_file_actions_t);
+impl SpawnFileActions {
+	fn new() -> io::Result<Self> {
+		let mut actions = ptr::null_mut();
+		// SAFETY: `actions` points to uninitialized storage expected by the initializer.
+		let result = unsafe { libc::posix_spawn_file_actions_init(&mut actions) };
+
+		if result == 0 { Ok(Self(actions)) } else { Err(io::Error::from_raw_os_error(result)) }
+	}
+
+	fn as_ptr(&self) -> *const posix_spawn_file_actions_t {
+		&self.0
+	}
+
+	fn open(
+		&mut self,
+		descriptor: libc::c_int,
+		path: &std::ffi::CStr,
+		flags: libc::c_int,
+		mode: libc::mode_t,
+	) -> io::Result<()> {
+		// SAFETY: the actions object is initialized and `path` is NUL-terminated.
+		let result = unsafe {
+			libc::posix_spawn_file_actions_addopen(
+				&mut self.0,
+				descriptor,
+				path.as_ptr(),
+				flags,
+				mode,
+			)
+		};
+
+		spawn_configuration_result(result)
+	}
+
+	fn chdir(&mut self, path: &CString) -> io::Result<()> {
+		// SAFETY: the actions object is initialized and `path` is NUL-terminated.
+		let result = unsafe { posix_spawn_file_actions_addchdir_np(&mut self.0, path.as_ptr()) };
+
+		spawn_configuration_result(result)
+	}
+
+	fn fchdir(&mut self, descriptor: libc::c_int) -> io::Result<()> {
+		// SAFETY: the actions object is initialized and the caller retains the live descriptor
+		// through the complete posix_spawn call.
+		let result = unsafe { posix_spawn_file_actions_addfchdir_np(&mut self.0, descriptor) };
+
+		spawn_configuration_result(result)
+	}
+}
+
+impl Drop for SpawnFileActions {
+	fn drop(&mut self) {
+		// SAFETY: this wrapper is constructed only after successful initialization and destroys the
+		// action object exactly once.
+		unsafe { libc::posix_spawn_file_actions_destroy(&mut self.0) };
+	}
+}
+
+struct SpawnAttributes(posix_spawnattr_t);
+impl SpawnAttributes {
+	fn new() -> io::Result<Self> {
+		let mut attributes = ptr::null_mut();
+		// SAFETY: `attributes` points to uninitialized storage expected by the initializer.
+		let result = unsafe { libc::posix_spawnattr_init(&mut attributes) };
+
+		if result == 0 { Ok(Self(attributes)) } else { Err(io::Error::from_raw_os_error(result)) }
+	}
+
+	fn as_ptr(&self) -> *const posix_spawnattr_t {
+		&self.0
+	}
+
+	fn set_attested_flags(&mut self) -> io::Result<()> {
+		let mut default_signals = std::mem::MaybeUninit::<libc::sigset_t>::uninit();
+		// SAFETY: sigemptyset initializes the complete output object before it is read.
+		if unsafe { libc::sigemptyset(default_signals.as_mut_ptr()) } != 0 {
+			return Err(io::Error::last_os_error());
+		}
+		// SAFETY: the set was initialized above and SIGPIPE is a valid signal number.
+		if unsafe { libc::sigaddset(default_signals.as_mut_ptr(), libc::SIGPIPE) } != 0 {
+			return Err(io::Error::last_os_error());
+		}
+		// SAFETY: both the spawn attributes and complete signal set are initialized and live.
+		let result =
+			unsafe { libc::posix_spawnattr_setsigdefault(&mut self.0, default_signals.as_ptr()) };
+
+		spawn_configuration_result(result)?;
+
+		let exposed = libc::POSIX_SPAWN_START_SUSPENDED
+			| libc::POSIX_SPAWN_CLOEXEC_DEFAULT
+			| libc::POSIX_SPAWN_SETSIGDEF;
+		let flags = c_short::try_from(exposed)
+			.map_err(|_| invalid_input("Darwin spawn flags do not fit posix_spawnattr_setflags"))?
+			| POSIX_SPAWN_SETSID_DARWIN;
+		// SAFETY: the attributes object is initialized and `flags` contains only Darwin-defined
+		// posix_spawn bits.
+		let result = unsafe { libc::posix_spawnattr_setflags(&mut self.0, flags) };
+
+		spawn_configuration_result(result)
+	}
+}
+
+impl Drop for SpawnAttributes {
+	fn drop(&mut self) {
+		// SAFETY: this wrapper is constructed only after successful initialization and destroys the
+		// attribute object exactly once.
+		unsafe { libc::posix_spawnattr_destroy(&mut self.0) };
+	}
+}
+
+#[derive(Clone, Copy)]
+enum SuspendedEnvironment<'a> {
+	HomeAndSystemPath,
+	PrivateStdioDisabledEphemeral { personal_access_token: Option<&'a str> },
+}
+
+#[derive(Clone, Copy)]
+enum SuspendedWorkingDirectory<'a> {
+	Path(&'a Path),
+	Descriptor(libc::c_int),
+}
+
+/// Spawn one canonical executable and return it still suspended.
+///
+/// `args` excludes `argv[0]`; the canonical executable path is always used for `argv[0]` and the
+/// executed path. The child receives only `HOME` and the fixed system `PATH` environment entries.
+pub(super) fn spawn_suspended(
+	identity: &AttestedCodeIdentity,
+	args: &[OsString],
+	working_directory: &Path,
+	home: &Path,
+) -> io::Result<SuspendedAttestedSpawn> {
+	spawn_suspended_with_environment(
+		identity,
+		args,
+		SuspendedWorkingDirectory::Path(working_directory),
+		home,
+		SuspendedEnvironment::HomeAndSystemPath,
+	)
+}
+
+/// Spawn the accepted private-stdio profile from the canonical executable and keep it suspended.
+///
+/// Only the fixed startup environment and the selected PAT can enter this profile.
+pub(super) fn spawn_private_stdio_suspended(
+	identity: &AttestedCodeIdentity,
+	args: &[OsString],
+	working_directory: &Path,
+	home: &Path,
+	personal_access_token: Option<&str>,
+) -> io::Result<SuspendedAttestedSpawn> {
+	spawn_suspended_with_environment(
+		identity,
+		args,
+		SuspendedWorkingDirectory::Path(working_directory),
+		home,
+		SuspendedEnvironment::PrivateStdioDisabledEphemeral { personal_access_token },
+	)
+}
+
+/// Spawn the private-stdio profile with cwd bound to one caller-retained directory descriptor.
+pub(super) fn spawn_private_stdio_suspended_at(
+	identity: &AttestedCodeIdentity,
+	args: &[OsString],
+	working_directory_descriptor: libc::c_int,
+	home: &Path,
+	personal_access_token: Option<&str>,
+) -> io::Result<SuspendedAttestedSpawn> {
+	spawn_suspended_with_environment(
+		identity,
+		args,
+		SuspendedWorkingDirectory::Descriptor(working_directory_descriptor),
+		home,
+		SuspendedEnvironment::PrivateStdioDisabledEphemeral { personal_access_token },
+	)
+}
+
+fn spawn_suspended_with_environment(
+	identity: &AttestedCodeIdentity,
+	args: &[OsString],
+	working_directory: SuspendedWorkingDirectory<'_>,
+	home: &Path,
+	environment: SuspendedEnvironment<'_>,
+) -> io::Result<SuspendedAttestedSpawn> {
+	let spawned_execution_path = identity.execution_path.clone();
+	let executable = os_string(identity.execution_path.as_os_str())?;
+	let working_directory_path = match working_directory {
+		SuspendedWorkingDirectory::Path(path) => Some(os_string(path.as_os_str())?),
+		SuspendedWorkingDirectory::Descriptor(descriptor) if descriptor >= 0 => None,
+		SuspendedWorkingDirectory::Descriptor(_) => {
+			return Err(invalid_input("working-directory descriptor is invalid"));
+		},
+	};
+	let mut argv = Vec::with_capacity(args.len() + 1);
+
+	argv.push(os_string(identity.execution_path.as_os_str())?);
+	argv.extend(args.iter().map(|arg| os_string(arg)).collect::<io::Result<Vec<_>>>()?);
+
+	let home_environment = environment_entry(b"HOME", home.as_os_str())?;
+	let path_environment = CString::new(format!("PATH={CHILD_PATH}"))
+		.map_err(|_| invalid_input("child PATH contains a NUL byte"))?;
+	let private_stdio_environment = match environment {
+		SuspendedEnvironment::HomeAndSystemPath => None,
+		SuspendedEnvironment::PrivateStdioDisabledEphemeral { .. } => Some(environment_entry(
+			PRIVATE_STDIO_STARTUP_ENV.as_bytes(),
+			OsStr::new(PRIVATE_STDIO_STARTUP_VALUE),
+		)?),
+	};
+	let pat_environment = match environment {
+		SuspendedEnvironment::PrivateStdioDisabledEphemeral {
+			personal_access_token: Some(token),
+		} => Some(Zeroizing::new(
+			environment_entry(b"CODEX_ACCESS_TOKEN", OsStr::new(token))?.into_bytes_with_nul(),
+		)),
+		_ => None,
+	};
+	let mut argv_pointers = argv
+		.iter()
+		.map(|value| value.as_ptr().cast_mut())
+		.chain(std::iter::once(ptr::null_mut()))
+		.collect::<Vec<_>>();
+	let mut environment_pointers = [
+		Some(home_environment.as_ptr()),
+		Some(path_environment.as_ptr()),
+		private_stdio_environment.as_ref().map(|value| value.as_ptr()),
+		pat_environment.as_ref().map(|value| value.as_ptr().cast()),
+	]
+	.into_iter()
+	.flatten()
+	.map(|value| value.cast_mut())
+	.chain(std::iter::once(ptr::null_mut()))
+	.collect::<Vec<_>>();
+	let protocol = ProtocolFifos::new()?;
+	let mut actions = SpawnFileActions::new()?;
+
+	actions.open(libc::STDIN_FILENO, protocol.stdin_path(), O_RDONLY | O_NOFOLLOW, 0)?;
+	actions.open(libc::STDOUT_FILENO, protocol.stdout_path(), O_WRONLY | O_NOFOLLOW, 0)?;
+	actions.open(libc::STDERR_FILENO, c"/dev/null", O_WRONLY, 0)?;
+
+	match (working_directory, working_directory_path.as_ref()) {
+		(SuspendedWorkingDirectory::Path(_), Some(path)) => actions.chdir(path)?,
+		(SuspendedWorkingDirectory::Descriptor(descriptor), None) => actions.fchdir(descriptor)?,
+		_ => return Err(invalid_input("working-directory action is incomplete")),
+	}
+
+	let mut attributes = SpawnAttributes::new()?;
+
+	attributes.set_attested_flags()?;
+
+	let mut pid = -1;
+	// SAFETY: every pointer targets a live, NUL-terminated allocation for the duration of the call;
+	// the action and attribute handles were initialized successfully.
+	let result = unsafe {
+		libc::posix_spawn(
+			&mut pid,
+			executable.as_ptr(),
+			actions.as_ptr(),
+			attributes.as_ptr(),
+			argv_pointers.as_mut_ptr(),
+			environment_pointers.as_mut_ptr(),
+		)
+	};
+
+	if result != 0 {
+		return Err(io::Error::from_raw_os_error(result));
+	}
+	if pid <= 0 {
+		return Err(io::Error::other("posix_spawn returned an invalid child identifier"));
+	}
+
+	let mut suspended = SuspendedAttestedSpawn {
+		execution_path: spawned_execution_path,
+		child: Some(AttestedChild { pid, status: None }),
+		stdin: None,
+		stdout: None,
+	};
+	let (parent_stdin, parent_stdout) = protocol.finish_after_spawn()?;
+
+	suspended.stdin = Some(parent_stdin);
+	suspended.stdout = Some(parent_stdout);
+
+	Ok(suspended)
+}
+
 fn validated_static_code(canonical_path: &Path) -> io::Result<SecStaticCode> {
 	let url = CFURL::from_path(canonical_path, false)
 		.ok_or_else(|| invalid_input("canonical executable path is unavailable"))?;
@@ -540,15 +717,18 @@ fn verify_dynamic_identity(pid: libc::pid_t, expected: &AttestedCodeIdentity) ->
 	if expected.architectures.first().map(Vec::as_slice) != Some(expected.unique()) {
 		return Err(permission_denied("captured code identity is inconsistent"));
 	}
+
 	let code = dynamic_code_for_pid(pid)?;
 	let (actual, actual_len) =
 		copy_unique_identity(code.as_concrete_TypeRef().cast::<c_void>().cast_const())?;
 	let actual = &actual[..usize::from(actual_len)];
+
 	if !expected.architectures.iter().any(|identity| identity.as_slice() == actual) {
 		return Err(permission_denied(
 			"dynamic code identity differs from reference architectures",
 		));
 	}
+
 	let requirement = exact_cdhash_requirement(actual)?;
 
 	code.check_validity(DYNAMIC_CODE_VALIDATION_FLAGS, &requirement).map_err(|error| {
@@ -591,6 +771,7 @@ fn static_architecture_identity(path: &Path, architecture: &str) -> io::Result<O
 			&mut raw,
 		)
 	};
+
 	if status != 0 {
 		return Ok(None);
 	}
@@ -599,9 +780,12 @@ fn static_architecture_identity(path: &Path, architecture: &str) -> io::Result<O
 	}
 	// SAFETY: success transfers one retained SecStaticCode reference to this owner.
 	let code = unsafe { SecStaticCode::wrap_under_create_rule(raw as _) };
+
 	check_static_validity(&code)?;
+
 	let (identity, length) =
 		copy_unique_identity(code.as_concrete_TypeRef().cast::<c_void>().cast_const())?;
+
 	Ok(Some(identity[..usize::from(length)].to_vec()))
 }
 
@@ -611,10 +795,12 @@ fn exact_cdhash_requirement(unique: &[u8]) -> io::Result<SecRequirement> {
 	let mut text = String::with_capacity("cdhash H\"\"".len() + unique.len() * 2);
 
 	text.push_str("cdhash H\"");
+
 	for byte in unique {
 		text.push(char::from(HEX[usize::from(byte >> 4)]));
 		text.push(char::from(HEX[usize::from(byte & 0x0f)]));
 	}
+
 	text.push('"');
 
 	text.parse().map_err(|_| invalid_data("exact CDHash requirement is unavailable"))
@@ -674,6 +860,7 @@ fn signing_information(
 	let status = unsafe { SecCodeCopySigningInformation(code, 0, &mut raw_information) };
 
 	security_status(status, "code signing information is unavailable")?;
+
 	if raw_information.is_null() {
 		return Err(invalid_data("code signing information is empty"));
 	}
@@ -682,6 +869,7 @@ fn signing_information(
 	let information = unsafe {
 		CFDictionary::<*const c_void, *const c_void>::wrap_under_create_rule(raw_information)
 	};
+
 	Ok(information)
 }
 
@@ -694,6 +882,7 @@ fn copy_main_executable(code: *const c_void) -> io::Result<PathBuf> {
 			kSecCodeInfoMainExecutable.cast::<c_void>(),
 		)
 	};
+
 	if value.is_null() {
 		return Err(invalid_data("signed code has no main executable"));
 	}
@@ -704,6 +893,7 @@ fn copy_main_executable(code: *const c_void) -> io::Result<PathBuf> {
 	// SAFETY: the type check establishes a CFURL. Get Rule retains it independently.
 	let url = unsafe { CFURL::wrap_under_get_rule(value as CFURLRef) };
 	let path = url.to_path().ok_or_else(|| invalid_data("signed executable URL is malformed"))?;
+
 	fs::canonicalize(path)
 }
 
@@ -735,6 +925,7 @@ fn copy_unique_identity(code: *const c_void) -> io::Result<([u8; MAX_CODE_IDENTI
 	// SAFETY: CFData promises `length` readable bytes; a positive length requires a non-null byte
 	// pointer. The bytes are copied before the dictionary is released.
 	let source = unsafe { CFDataGetBytePtr(data) };
+
 	if source.is_null() {
 		return Err(invalid_data("unique code identity has no bytes"));
 	}
@@ -745,70 +936,6 @@ fn copy_unique_identity(code: *const c_void) -> io::Result<([u8; MAX_CODE_IDENTI
 	unsafe { ptr::copy_nonoverlapping(source, unique.as_mut_ptr(), length) };
 
 	Ok((unique, u8::try_from(length).expect("the unique code identity bound fits in u8")))
-}
-
-struct ProtocolFifos {
-	directory: TempDir,
-	stdin_path: CString,
-	stdout_path: CString,
-	parent_stdin: File,
-	parent_stdout: File,
-}
-
-impl ProtocolFifos {
-	fn new() -> io::Result<Self> {
-		let directory = TempDirBuilder::new().prefix("decodex-app-server-fifos-").tempdir()?;
-
-		fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))?;
-		validate_private_directory(directory.path())?;
-
-		let stdin_path = os_string(directory.path().join("stdin").as_os_str())?;
-		let stdout_path = os_string(directory.path().join("stdout").as_os_str())?;
-
-		create_fifo(&stdin_path)?;
-		create_fifo(&stdout_path)?;
-
-		// A temporary nonblocking reader lets the parent open its write endpoint atomically with
-		// O_CLOEXEC before the child exists. The retained writer then lets the child's fd 0 open
-		// complete during posix_spawn.
-		let temporary_stdin_reader =
-			open_fifo(&stdin_path, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)?;
-		let parent_stdin = open_fifo(&stdin_path, O_WRONLY | O_CLOEXEC | O_NOFOLLOW)?;
-
-		drop(temporary_stdin_reader);
-
-		// A nonblocking parent reader can open before a writer exists. It lets the child's fd 1
-		// open complete; the nonblocking flag is cleared after posix_spawn returns.
-		let parent_stdout =
-			open_fifo(&stdout_path, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)?;
-
-		validate_fifo(&stdin_path, &parent_stdin)?;
-		validate_fifo(&stdout_path, &parent_stdout)?;
-
-		Ok(Self { directory, stdin_path, stdout_path, parent_stdin, parent_stdout })
-	}
-
-	fn stdin_path(&self) -> &std::ffi::CStr {
-		&self.stdin_path
-	}
-
-	fn stdout_path(&self) -> &std::ffi::CStr {
-		&self.stdout_path
-	}
-
-	fn finish_after_spawn(self) -> io::Result<(File, File)> {
-		set_blocking(&self.parent_stdout)?;
-		validate_fifo(&self.stdin_path, &self.parent_stdin)?;
-		validate_fifo(&self.stdout_path, &self.parent_stdout)?;
-		unlink_fifo(&self.stdin_path)?;
-		unlink_fifo(&self.stdout_path)?;
-
-		let Self { directory, stdin_path: _, stdout_path: _, parent_stdin, parent_stdout } = self;
-
-		drop(directory);
-
-		Ok((parent_stdin, parent_stdout))
-	}
 }
 
 fn validate_private_directory(path: &Path) -> io::Result<()> {
@@ -900,119 +1027,6 @@ fn unlink_fifo(path: &std::ffi::CStr) -> io::Result<()> {
 		Ok(())
 	} else {
 		Err(io::Error::last_os_error())
-	}
-}
-
-struct SpawnFileActions(posix_spawn_file_actions_t);
-
-impl SpawnFileActions {
-	fn new() -> io::Result<Self> {
-		let mut actions = ptr::null_mut();
-		// SAFETY: `actions` points to uninitialized storage expected by the initializer.
-		let result = unsafe { libc::posix_spawn_file_actions_init(&mut actions) };
-
-		if result == 0 { Ok(Self(actions)) } else { Err(io::Error::from_raw_os_error(result)) }
-	}
-
-	fn as_ptr(&self) -> *const posix_spawn_file_actions_t {
-		&self.0
-	}
-
-	fn open(
-		&mut self,
-		descriptor: libc::c_int,
-		path: &std::ffi::CStr,
-		flags: libc::c_int,
-		mode: libc::mode_t,
-	) -> io::Result<()> {
-		// SAFETY: the actions object is initialized and `path` is NUL-terminated.
-		let result = unsafe {
-			libc::posix_spawn_file_actions_addopen(
-				&mut self.0,
-				descriptor,
-				path.as_ptr(),
-				flags,
-				mode,
-			)
-		};
-
-		spawn_configuration_result(result)
-	}
-
-	fn chdir(&mut self, path: &CString) -> io::Result<()> {
-		// SAFETY: the actions object is initialized and `path` is NUL-terminated.
-		let result = unsafe { posix_spawn_file_actions_addchdir_np(&mut self.0, path.as_ptr()) };
-
-		spawn_configuration_result(result)
-	}
-
-	fn fchdir(&mut self, descriptor: libc::c_int) -> io::Result<()> {
-		// SAFETY: the actions object is initialized and the caller retains the live descriptor
-		// through the complete posix_spawn call.
-		let result = unsafe { posix_spawn_file_actions_addfchdir_np(&mut self.0, descriptor) };
-
-		spawn_configuration_result(result)
-	}
-}
-
-impl Drop for SpawnFileActions {
-	fn drop(&mut self) {
-		// SAFETY: this wrapper is constructed only after successful initialization and destroys the
-		// action object exactly once.
-		unsafe { libc::posix_spawn_file_actions_destroy(&mut self.0) };
-	}
-}
-
-struct SpawnAttributes(posix_spawnattr_t);
-
-impl SpawnAttributes {
-	fn new() -> io::Result<Self> {
-		let mut attributes = ptr::null_mut();
-		// SAFETY: `attributes` points to uninitialized storage expected by the initializer.
-		let result = unsafe { libc::posix_spawnattr_init(&mut attributes) };
-
-		if result == 0 { Ok(Self(attributes)) } else { Err(io::Error::from_raw_os_error(result)) }
-	}
-
-	fn as_ptr(&self) -> *const posix_spawnattr_t {
-		&self.0
-	}
-
-	fn set_attested_flags(&mut self) -> io::Result<()> {
-		let mut default_signals = std::mem::MaybeUninit::<libc::sigset_t>::uninit();
-		// SAFETY: sigemptyset initializes the complete output object before it is read.
-		if unsafe { libc::sigemptyset(default_signals.as_mut_ptr()) } != 0 {
-			return Err(io::Error::last_os_error());
-		}
-		// SAFETY: the set was initialized above and SIGPIPE is a valid signal number.
-		if unsafe { libc::sigaddset(default_signals.as_mut_ptr(), libc::SIGPIPE) } != 0 {
-			return Err(io::Error::last_os_error());
-		}
-		// SAFETY: both the spawn attributes and complete signal set are initialized and live.
-		let result =
-			unsafe { libc::posix_spawnattr_setsigdefault(&mut self.0, default_signals.as_ptr()) };
-
-		spawn_configuration_result(result)?;
-
-		let exposed = libc::POSIX_SPAWN_START_SUSPENDED
-			| libc::POSIX_SPAWN_CLOEXEC_DEFAULT
-			| libc::POSIX_SPAWN_SETSIGDEF;
-		let flags = c_short::try_from(exposed)
-			.map_err(|_| invalid_input("Darwin spawn flags do not fit posix_spawnattr_setflags"))?
-			| POSIX_SPAWN_SETSID_DARWIN;
-		// SAFETY: the attributes object is initialized and `flags` contains only Darwin-defined
-		// posix_spawn bits.
-		let result = unsafe { libc::posix_spawnattr_setflags(&mut self.0, flags) };
-
-		spawn_configuration_result(result)
-	}
-}
-
-impl Drop for SpawnAttributes {
-	fn drop(&mut self) {
-		// SAFETY: this wrapper is constructed only after successful initialization and destroys the
-		// attribute object exactly once.
-		unsafe { libc::posix_spawnattr_destroy(&mut self.0) };
 	}
 }
 
@@ -1118,6 +1132,7 @@ mod tests {
 		let mut spawned = suspended.attest_and_resume(&identity).unwrap();
 
 		spawned.stdin.write_all(marker).unwrap();
+
 		drop(spawned.stdin);
 
 		let mut output = Vec::new();
@@ -1273,6 +1288,7 @@ mod tests {
 
 		drop(spawned.stdin);
 		drop(spawned.stdout);
+
 		spawned.child.kill().unwrap();
 
 		let status = spawned.child.wait().unwrap();

@@ -48,21 +48,26 @@ async fn automatic_recap_preference_uses_existing_command_and_readback_owner() {
 	let ResultPayload::DesktopSettingsChanged { settings } = published.result else {
 		panic!("settings result")
 	};
+
 	assert!(settings.auto_recap && settings.auto_activate_quota);
 	assert_eq!(app.desktop_settings().await, DesktopSettingsResult::Available(settings));
 	assert!(
 		matches!(published.event, EventPayload::DesktopSettingsChanged { settings: event } if event == settings)
 	);
 	assert!(app.execute_desktop_settings(&command).await.is_err(), "stale revision must fail");
+
 	command.expected_revision = Some(settings.revision);
 	command.payload = CommandPayload::SetDesktopSettings {
 		show_in_menu_bar: false,
 		auto_activate_quota: Some(false),
 		auto_recap: None,
 	};
+
 	app.execute_desktop_settings(&command).await.unwrap();
+
 	let DesktopSettingsResult::Available(retained) = app.desktop_settings().await else {
 		panic!("settings readback")
 	};
+
 	assert!(retained.auto_recap && !retained.auto_activate_quota && !retained.show_in_menu_bar);
 }

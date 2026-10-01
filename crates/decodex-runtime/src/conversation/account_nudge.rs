@@ -26,6 +26,7 @@ impl ConversationRuntime {
 		let Ok(revision) = i64::try_from(source.account_revision.0) else {
 			return Status::Unavailable;
 		};
+
 		if self.is_shutting_down()
 			|| !self
 				.inner
@@ -36,6 +37,7 @@ impl ConversationRuntime {
 		{
 			return Status::Unavailable;
 		}
+
 		let Ok(credential) = self.inner.accounts.process_credential(&account, revision).await
 		else {
 			return Status::Unavailable;
@@ -54,6 +56,7 @@ impl ConversationRuntime {
 				generation_id,
 			});
 		let owner = self.clone();
+
 		tokio::task::spawn_blocking(move || {
 			let directory = owner.inner.launch_profile.control_working_directory();
 			let Some(directory_text) = directory.to_str() else { return Status::Unavailable; };
@@ -64,7 +67,9 @@ impl ConversationRuntime {
 			let Ok(launch) = AttestedAppServerLaunch::bind_selected_control_working_directory(owner.inner.launch_profile.clone(), directory, binding, Duration::from_secs(8), permit, Arc::new(selected)) else { return Status::Unavailable; };
 			let Ok(mut child) = launch.spawn() else { return Status::Unavailable; };
 			let initialized = child.initialize_ordinary_turns(&vault);
+
 			drop(credential.launch_guard);
+
 			let result = if initialized.is_ok() && !owner.is_shutting_down() {
 				match child.retain_account_control_connection() {
 					Ok((client, mut events)) => runtime.block_on(async {
@@ -76,14 +81,18 @@ impl ConversationRuntime {
 						};
 						let Some(purpose) = purpose else { client.close(); return Status::Unavailable; };
 						let sending = client.send_account_nudge(purpose);
+
 						tokio::pin!(sending);
+
 						let outcome = loop {
 							tokio::select! {
 								outcome = &mut sending => break outcome,
 								event = events.recv() => if !matches!(event, Some(ServerEvent::Notification { .. })) { break AccountNudgeOutcome::Uncertain; },
 							}
 						};
+
 						client.close();
+
 						match outcome { AccountNudgeOutcome::Sent => Status::Sent, AccountNudgeOutcome::CooldownActive => Status::CooldownActive, AccountNudgeOutcome::Unsupported => Status::Unsupported, AccountNudgeOutcome::Uncertain => Status::Uncertain }
 					}),
 					Err(_) => Status::Unavailable,
@@ -92,6 +101,7 @@ impl ConversationRuntime {
 			// Shutdown transfers unproved cleanup to the existing owned reaper. Do not
 			// erase a confirmed notification result because process cleanup is delayed.
 			let _ = child.shutdown();
+
 			result
 		}).await.unwrap_or(Status::Uncertain)
 	}

@@ -56,6 +56,7 @@ async fn persist_original(root: &DecodexRoot, original: &CommandEnvelope, scope:
 		execution: super::runtime_execution_settings(&request.execution),
 	};
 	let store = SqliteStore::open(&root.paths()).unwrap();
+
 	store
 		.create_conversation(
 			&command.creation_identity().unwrap(),
@@ -73,7 +74,9 @@ async fn persist_original(root: &DecodexRoot, original: &CommandEnvelope, scope:
 		)
 		.await
 		.unwrap();
+
 	let mut document = DesktopDraftDocument::default();
+
 	document.profiles.entry(scope.into()).or_default().ordinary.insert(
 		"/tmp".into(),
 		DesktopOrdinaryDraft {
@@ -89,6 +92,7 @@ async fn persist_original(root: &DecodexRoot, original: &CommandEnvelope, scope:
 			unconfirmed: vec![original.clone()],
 		},
 	);
+
 	ClientDraftStore::open_at(root.as_path())
 		.unwrap()
 		.save(0, &document.encode().unwrap())
@@ -101,6 +105,7 @@ async fn query(
 	sequence: u64,
 ) -> Receipt {
 	let query_id = QueryId::new(format!("creation-read-{sequence}")).unwrap();
+
 	session
 		.send_query(QueryEnvelope {
 			version: CURRENT_VERSION,
@@ -109,13 +114,17 @@ async fn query(
 		})
 		.await
 		.unwrap();
+
 	let SessionDelivery::QueryResult(result) = session.next().await.unwrap() else {
 		panic!("read-only query must not produce a command receipt or mutation event");
 	};
+
 	assert_eq!(result.query_id, query_id);
+
 	let QueryResultPayload::ConversationCreationReceipt(receipt) = result.payload else {
 		panic!("typed receipt")
 	};
+
 	receipt
 }
 
@@ -123,18 +132,26 @@ async fn query(
 async fn creation_receipt_survives_store_and_service_restart_without_replay() {
 	let temporary = tempfile::tempdir().unwrap();
 	let root = DecodexRoot::new(temporary.path().canonicalize().unwrap()).unwrap();
+
 	root.paths().ensure_layout().unwrap();
+
 	let original = original();
 	let server_id = ServerId::new("20000000-0000-4000-8000-000000000001").unwrap();
 	// SAFETY: geteuid has no arguments or failure return.
 	let uid = unsafe { libc::geteuid() };
+
 	use std::os::unix::fs::PermissionsExt as _;
+
 	let config = root.as_path().join("config.toml");
+
 	std::fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"20000000-0000-4000-8000-000000000001\"\n")).unwrap();
 	std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o600)).unwrap();
+
 	let profile = decodex_protocol::ClientProfile::load(root.as_path(), None).unwrap();
 	let scope = profile.draft_scope_key();
+
 	persist_original(&root, &original, &scope).await;
+
 	for _ in 0..2 {
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let before = store.read_ordinary_task_conversations(None, None, 65).await.unwrap();
@@ -143,8 +160,10 @@ async fn creation_receipt_survives_store_and_service_restart_without_replay() {
 		let restored = DesktopDraftDocument::decode(&saved.payload).unwrap();
 		let profile = decodex_protocol::ClientProfile::load(root.as_path(), None).unwrap();
 		let draft = &restored.profiles[&profile.draft_scope_key()].ordinary["/tmp"];
+
 		assert_eq!(draft.composer.text, "Later unsent input");
 		assert_eq!(draft.unconfirmed, vec![original.clone()]);
+
 		let request =
 			ConversationCreationReceiptRequest::from_command(&draft.unconfirmed[0]).unwrap();
 		let doctor = DoctorReport::new(
@@ -183,7 +202,9 @@ async fn creation_receipt_survives_store_and_service_restart_without_replay() {
 		let SessionDelivery::Snapshot { confirmation, .. } = client.next().await.unwrap() else {
 			panic!("initial snapshot")
 		};
+
 		client.confirm_applied(confirmation).unwrap();
+
 		assert_eq!(
 			query(&mut client, request.clone(), 1).await,
 			Receipt::Recorded {
@@ -191,14 +212,22 @@ async fn creation_receipt_survives_store_and_service_restart_without_replay() {
 				creation_revision: EntityRevision(1)
 			}
 		);
+
 		let mut missing = request.clone();
+
 		missing.idempotency_key = IdempotencyKey::new("not-recorded").unwrap();
+
 		assert_eq!(query(&mut client, missing, 2).await, Receipt::NotRecorded);
+
 		let mut conflicting = request;
+
 		conflicting.message = HistoryText::new("Later unsent input").unwrap();
+
 		assert_eq!(query(&mut client, conflicting, 3).await, Receipt::Conflict);
+
 		client.close().await.unwrap();
 		server.shutdown().await.unwrap();
+
 		assert_eq!(store.read_ordinary_task_conversations(None, None, 65).await.unwrap(), before);
 		assert_eq!(drafts.load().unwrap().payload, saved.payload);
 	}

@@ -30,19 +30,25 @@ impl ConversationRuntime {
 		};
 		let (reply, received) = tokio::sync::oneshot::channel();
 		let mut workers = self.inner.workers.lock().await;
+
 		if self.is_shutting_down() {
 			return AgentSkillsResult::Unavailable;
 		}
+
 		while workers.try_join_next().is_some() {}
+
 		let runtime = self.clone();
 		let key = key.to_owned();
+
 		workers.spawn(async move {
 			let _permit = permit;
 			let target = AgentSkillsTarget::New { request: request.clone() };
 			let observation = runtime
 				.discover_initial_metadata(&key, request, move |child, cwd| {
 					let (result, events) = child.read_ordinary_skills(cwd, roots.values());
+
 					child.retain_ordinary_events(events).ok()?;
+
 					crate::agent_skills::project(&result.ok()?, cwd, &filter)
 				})
 				.await;
@@ -51,7 +57,9 @@ impl ConversationRuntime {
 			});
 			let _ = reply.send(result);
 		});
+
 		drop(workers);
+
 		tokio::time::timeout(Duration::from_secs(35).saturating_sub(started.elapsed()), received)
 			.await
 			.ok()

@@ -4,10 +4,13 @@ use crate::{
 	conversation as c,
 	host_credentials::CredentialSecretBundle,
 };
+
 use decodex_core::{
 	BlobStore, DecodexRoot, ProcessExecutionAuthorization, ProcessExecutionEpochId,
 };
+
 use decodex_database::SqliteStore;
+
 use std::sync::Arc;
 
 const CONVERSATION: &str = "44000000-0000-4000-8000-000000000001";
@@ -29,31 +32,10 @@ impl CredentialRefreshPort for NoRefresh {
 	}
 }
 
-async fn runtime(root: &DecodexRoot, store: &SqliteStore) -> c::ConversationRuntime {
-	let accounts = Arc::new(c::AccountService::new(
-		store.clone(),
-		Arc::new(crate::host_credentials::SqliteCredentialStore::new(store.clone())),
-		Arc::new(NoRefresh),
-	));
-	c::ConversationRuntime::new(
-		store.clone(),
-		BlobStore::open(root.paths()).expect("fixture blobs"),
-		accounts,
-		c::ProcessGenerationControl::start(store.clone()).await.expect("fixture supervisor"),
-		c::ProviderAttemptControl::start(store.clone()).await.expect("fixture evidence owner"),
-		ProcessExecutionAuthorization::new(
-			ProcessExecutionEpochId::new(EPOCH).expect("fixture epoch"),
-			"c".repeat(64),
-		)
-		.expect("fixture authorization"),
-		crate::account_launch::process::tests::ordinary_runtime_fixture_profile(root.as_path()),
-		c::RunnerCapacity::daemon().expect("fixture capacity"),
-	)
-}
-
 fn seed(root: &DecodexRoot, failure: &str) {
 	let connection =
 		rusqlite::Connection::open(root.paths().product_database_file()).expect("fixture database");
+
 	connection
 		.execute_batch(include_str!("../../tests/fixtures/opaque_resume_authority.sql"))
 		.expect("fixture authority");
@@ -66,6 +48,7 @@ fn seed(root: &DecodexRoot, failure: &str) {
         '4b000000-0000-4000-8000-000000000001', ?4, 4, ?5, ?6, 3, ?7, ?8, ?9,
         'original-provider-key', 'unknown', 'dispatch_outcome_unavailable', 1, 1, 1)",
         rusqlite::params![ATTEMPT, CONVERSATION, TURN, SESSION, ACCOUNT, GENERATION, EPOCH, REQUEST, "f".repeat(64)]).expect("fixture attempt");
+
 	if failure == "evidence" {
 		connection.execute_batch("CREATE TRIGGER reject_non_submission BEFORE INSERT ON history_items WHEN json_extract(NEW.metadata_json,'$.type')='native_turn_not_submitted' BEGIN SELECT RAISE(ABORT,'fixture failure'); END;").expect("fixture failure injection");
 	}
@@ -101,6 +84,29 @@ fn session() -> c::LocalSession {
 	}
 }
 
+async fn runtime(root: &DecodexRoot, store: &SqliteStore) -> c::ConversationRuntime {
+	let accounts = Arc::new(c::AccountService::new(
+		store.clone(),
+		Arc::new(crate::host_credentials::SqliteCredentialStore::new(store.clone())),
+		Arc::new(NoRefresh),
+	));
+
+	c::ConversationRuntime::new(
+		store.clone(),
+		BlobStore::open(root.paths()).expect("fixture blobs"),
+		accounts,
+		c::ProcessGenerationControl::start(store.clone()).await.expect("fixture supervisor"),
+		c::ProviderAttemptControl::start(store.clone()).await.expect("fixture evidence owner"),
+		ProcessExecutionAuthorization::new(
+			ProcessExecutionEpochId::new(EPOCH).expect("fixture epoch"),
+			"c".repeat(64),
+		)
+		.expect("fixture authorization"),
+		crate::account_launch::process::tests::ordinary_runtime_fixture_profile(root.as_path()),
+		c::RunnerCapacity::daemon().expect("fixture capacity"),
+	)
+}
+
 #[tokio::test]
 async fn ordinary_non_submission_runtime_preserves_atomic_evidence_and_manual_recovery() {
 	for failure in ["none", "evidence", "readback"] {
@@ -109,8 +115,11 @@ async fn ordinary_non_submission_runtime_preserves_atomic_evidence_and_manual_re
 			.expect("fixture root");
 		let store = SqliteStore::open(&root.paths()).expect("fixture store");
 		let runtime = runtime(&root, &store).await;
+
 		seed(&root, failure);
+
 		let session = session();
+
 		runtime.local().insert(
 			CONVERSATION.into(),
 			c::LocalTask {
@@ -118,6 +127,7 @@ async fn ordinary_non_submission_runtime_preserves_atomic_evidence_and_manual_re
 				state: c::LocalTaskState::Preparing(session.clone()),
 			},
 		);
+
 		let outcome = runtime
 			.finish_native_non_submission(
 				session,
@@ -128,14 +138,17 @@ async fn ordinary_non_submission_runtime_preserves_atomic_evidence_and_manual_re
 				"9".repeat(64),
 			)
 			.await;
+
 		rusqlite::Connection::open(root.paths().product_database_file()).expect("fixture database")
             .execute_batch("DROP TRIGGER IF EXISTS reject_non_submission; DROP TRIGGER IF EXISTS replace_non_submission_session;").expect("remove failure injection before schema validation");
+
 		let reopened = SqliteStore::open(&root.paths()).expect("reopen fixture");
 		let attempt = reopened
 			.read_provider_attempt(&c::ProviderAttemptId::new(ATTEMPT).expect("fixture attempt"))
 			.await
 			.expect("attempt read")
 			.expect("attempt");
+
 		if failure != "none" {
 			assert!(matches!(outcome, c::ConversationOutcome::Unknown { .. }));
 			assert_eq!(
@@ -160,6 +173,7 @@ async fn ordinary_non_submission_runtime_preserves_atomic_evidence_and_manual_re
 				.await
 				.expect("session read")
 				.expect("session");
+
 			assert_eq!(readback.conversation_revision, Some(saved.conversation_revision));
 			assert_eq!(readback.runtime_session_revision, Some(saved.runtime_session_revision));
 			assert_eq!(attempt.state, c::ProviderAttemptState::NotSubmitted);

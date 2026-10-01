@@ -25,10 +25,13 @@ impl ConversationRuntime {
 		};
 		let (reply, received) = tokio::sync::oneshot::channel();
 		let mut workers = self.inner.workers.lock().await;
+
 		if self.is_shutting_down() {
 			return InitialModelCatalogResult::Unavailable;
 		}
+
 		while workers.try_join_next().is_some() {}
+
 		let runtime = self.clone();
 		let key = key.to_owned();
 		// The runtime owns completion and cleanup even when the requesting client leaves.
@@ -37,7 +40,9 @@ impl ConversationRuntime {
 			let result = runtime.discover_initial_models(&key, request).await;
 			let _ = reply.send(result.unwrap_or(InitialModelCatalogResult::Unavailable));
 		});
+
 		drop(workers);
+
 		tokio::time::timeout(Duration::from_secs(35), received)
 			.await
 			.ok()
@@ -63,7 +68,8 @@ impl ConversationRuntime {
 			models,
 			defaults: Some(Box::new(defaults)),
 		};
-		(serde_json::to_vec(&result).ok()?.len() <= 128 * 1024).then_some(result)
+
+		(serde_json::to_vec(&result).ok()?.len() <= 128 * 1_024).then_some(result)
 	}
 
 	/// Share account selection, process lifetime and final source checks for initial catalogs.
@@ -93,9 +99,11 @@ impl ConversationRuntime {
 		.await
 		.ok()?
 		.ok()?;
+
 		if self.is_shutting_down() {
 			return None;
 		}
+
 		let runtime = self.clone();
 		let callback: Arc<dyn ProcessAccountRefreshCallback> =
 			Arc::new(ConversationRefreshCallback {
@@ -121,11 +129,13 @@ impl ConversationRuntime {
 		})
 		.await
 		.ok()??;
+
 		if self.is_shutting_down()
 			|| !self.inner.store.account_is_ready_at_revision(&account, revision).await.ok()?
 		{
 			return None;
 		}
+
 		let now =
 			i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_micros()).ok()?;
 		let current = match request.purpose {
@@ -134,9 +144,11 @@ impl ConversationRuntime {
 			ModelCatalogPurpose::Conversation =>
 				self.inner.accounts.select_initial(now).await.ok()?,
 		};
+
 		if current.account.account_id != account || current.account.revision != revision {
 			return None;
 		}
+
 		Some((EntityId::new(account.as_str()).ok()?, revision, request.working_directory, value))
 	}
 
@@ -157,9 +169,11 @@ impl ConversationRuntime {
 		let vault =
 			ConversationCredentialVault { account_id: account.clone(), stored: credential.stored };
 		let permit = self.inner.capacity.reserve(account.clone(), revision).ok()?;
+
 		if self.is_shutting_down() {
 			return None;
 		}
+
 		let launch = AttestedAppServerLaunch::bind_selected_control_working_directory(
 			self.inner.launch_profile.clone(),
 			directory.into(),
@@ -171,11 +185,14 @@ impl ConversationRuntime {
 		.ok()?;
 		let mut child = launch.spawn().ok()?;
 		let initialized = child.initialize_ordinary_turns(&vault);
+
 		drop(credential.launch_guard);
+
 		let result = if initialized.is_ok() { read(&mut child) } else { None };
 		// Cleanup failure cannot produce a successful catalog observation.
 		child.shutdown().ok()?;
 		selected.revalidate().ok()?;
+
 		result
 	}
 }
@@ -196,27 +213,35 @@ fn read_catalog_with_default(
 	let mut cursor = None;
 	let mut default_model = None;
 	let deadline = Instant::now() + Duration::from_secs(8);
+
 	for _ in 0..8 {
 		if cancelled() || Instant::now() >= deadline {
 			return None;
 		}
+
 		let (page, events) = child.read_ordinary_model_page(cursor.as_deref());
+
 		child.retain_ordinary_events(events).ok()?;
+
 		let page = page.ok()?;
+
 		for model in page["data"].as_array()? {
 			if model["isDefault"] == true {
 				if default_model.is_some() {
 					return None;
 				}
+
 				default_model =
 					Some(decodex_protocol::ConversationModel::new(model["model"].as_str()?).ok()?);
 			}
 		}
+
 		match pages.push(&page).ok()? {
 			Some(next) => cursor = Some(next),
 			None => return Some((pages.models, default_model)),
 		}
 	}
+
 	None
 }
 
@@ -246,34 +271,49 @@ fn read_initial_defaults(
 	if cancelled() {
 		return None;
 	}
+
 	let (configured, events) = child.read_ordinary_model_defaults(directory, false);
+
 	child.retain_ordinary_events(events).ok()?;
+
 	let configured = project_native_defaults(configured.ok()?)?;
+
 	if cancelled() {
 		return None;
 	}
+
 	let (managed, events) = child.read_ordinary_model_defaults(directory, true);
+
 	child.retain_ordinary_events(events).ok()?;
+
 	let managed = project_native_defaults(managed.ok()?)?;
 	let (models, catalog_model) = read_catalog_with_default(child, cancelled)?;
+
 	Some((models, InitialModelDefaults { configured, managed, catalog_model }))
 }
 
 #[cfg(test)]
 mod tests {
 	use super::read_catalog;
+
+	use crate::account_launch::process::tests::ordinary_catalog_child;
+
 	#[test]
 	fn defaults_projection_distinguishes_absent_from_invalid() {
 		use serde_json::json;
+
 		let project_defaults = |value: &serde_json::Value, managed| {
 			use decodex_codex::app_server_client::NativeExecutionDefaults;
+
 			let native = if managed {
 				NativeExecutionDefaults::from_requirements_response(value)
 			} else {
 				NativeExecutionDefaults::from_config_response(value)
 			};
+
 			native.ok().and_then(super::project_native_defaults)
 		};
+
 		assert_eq!(
 			project_defaults(&json!({"requirements":null}), true),
 			Some(decodex_protocol::InitialExecutionDefaults::default())
@@ -282,6 +322,7 @@ mod tests {
 			project_defaults(&json!({"config":{}}), false),
 			Some(decodex_protocol::InitialExecutionDefaults::default())
 		);
+
 		for invalid in [
 			json!({}),
 			json!({"requirements":false}),
@@ -290,15 +331,18 @@ mod tests {
 		] {
 			assert!(project_defaults(&invalid, true).is_none());
 		}
+
 		let custom = project_defaults(
 			&json!({"config":{"model_reasoning_effort":"provider-defined-effort"}}),
 			false,
 		)
 		.expect("native custom default");
+
 		assert_eq!(
 			custom.reasoning_effort.expect("default effort").as_str(),
 			"provider-defined-effort"
 		);
+
 		for config in [
 			json!({"model":"bad\nmodel"}),
 			json!({"model_reasoning_effort":"bad\neffort"}),
@@ -322,17 +366,17 @@ mod tests {
 			)
 			.expect("native turn request");
 			let encoded = serde_json::to_value(request).expect("native wire");
+
 			assert_eq!(encoded["effort"], if value == "x_high" { "xhigh" } else { value });
 		}
 	}
-
-	use crate::account_launch::process::tests::ordinary_catalog_child;
 
 	#[test]
 	fn initial_defaults_preserve_distinct_sources_and_interleaved_events() {
 		let (_temp, mut child) = ordinary_catalog_child("exact");
 		let (models, defaults) =
 			super::read_initial_defaults(&mut child, "/tmp", || false).expect("complete defaults");
+
 		assert_eq!(models.len(), 1);
 		assert_eq!(defaults.configured.model.as_ref().unwrap().as_str(), "configured-model");
 		assert_eq!(defaults.managed.model.as_ref().unwrap().as_str(), "managed-model");
@@ -341,10 +385,14 @@ mod tests {
 		assert_eq!(defaults.managed.service_tier.as_ref().unwrap().as_str(), "priority");
 		assert!(!serde_json::to_string(&defaults).unwrap().contains("not-public"));
 		assert!(child.next_ordinary_turn_event(std::time::Duration::ZERO).unwrap().is_some());
+
 		child.shutdown().unwrap();
+
 		for mode in ["exact-defaults-rejected", "exact-config-defaults-rejected"] {
 			let (_temp, mut child) = ordinary_catalog_child(mode);
+
 			assert!(super::read_initial_defaults(&mut child, "/tmp", || false).is_none());
+
 			child.shutdown().unwrap();
 		}
 	}
@@ -353,6 +401,7 @@ mod tests {
 	fn metadata_catalog_preserves_tiers_and_interleaved_events() {
 		let (_temp, mut child) = ordinary_catalog_child("exact");
 		let models = read_catalog(&mut child, || false).expect("complete native catalog");
+
 		assert_eq!(models.len(), 1);
 		assert_eq!(models[0].model.as_str(), "catalog-model");
 		assert_eq!(models[0].service_tiers[0].id.as_str(), "ultrafast");
@@ -362,12 +411,14 @@ mod tests {
 				.expect("buffered event")
 				.is_some()
 		);
+
 		child.shutdown().expect("metadata process closes");
 	}
 
 	#[test]
 	fn cancelled_or_rejected_catalog_never_returns_partial_models() {
 		let (_temp, mut child) = ordinary_catalog_child("exact");
+
 		assert!(read_catalog(&mut child, || true).is_none());
 		assert!(
 			child
@@ -375,9 +426,13 @@ mod tests {
 				.expect("no query was sent")
 				.is_none()
 		);
+
 		child.shutdown().expect("cancelled process closes");
+
 		let (_temp, mut child) = ordinary_catalog_child("exact-catalog-rejected");
+
 		assert!(read_catalog(&mut child, || false).is_none());
+
 		child.shutdown().expect("rejected process closes");
 	}
 }

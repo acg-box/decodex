@@ -31,7 +31,9 @@ async fn qualify(configured: bool) {
 		|serial| json!({"type":"message","role":"assistant","id":format!("message-{serial}"),"content":[{"type":"output_text","text":"Done"}]}),
 	));
 	let tier = if configured { "service_tier=\"flex\"\n" } else { "" };
+
 	std::fs::write(home.path().join("config.toml"),format!("{tier}model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nfast_mode=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"Fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("fixture config");
+
 	let mut session = NativeSession::start(&binary, home.path());
 	let started = session
 		.client
@@ -41,6 +43,7 @@ async fn qualify(configured: bool) {
 		.await
 		.expect("start");
 	let thread = started["thread"]["id"].as_str().expect("thread").to_owned();
+
 	if !configured {
 		let update = ThreadModelRecoveryUpdate::new(&thread, "gpt-5.6-sol", "low", "flex")
 			.expect("tier update");
@@ -48,7 +51,9 @@ async fn qualify(configured: bool) {
 			.client
 			.history_guard(session.client.history_revision())
 			.expect("settings guard");
+
 		session.client.queue_thread_model_recovery(&update, guard).await.expect("native update");
+
 		loop {
 			if let ServerEvent::Notification { method, params } =
 				session.events.recv().await.expect("settings event")
@@ -56,47 +61,61 @@ async fn qualify(configured: bool) {
 				&& params["threadId"] == thread
 			{
 				assert_eq!(params["threadSettings"]["serviceTier"], "flex");
+
 				break;
 			}
 		}
 	}
+
 	for cold in [false, true] {
 		if cold {
 			drop(session);
+
 			session = NativeSession::start(&binary, home.path());
+
 			let resumed = session
 				.client
 				.thread_resume(json!({"threadId":thread,"excludeTurns":true}))
 				.await
 				.expect("cold resume");
+
 			assert_eq!(resumed["serviceTier"], "flex");
 		}
+
 		session
 			.client
 			.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Return done."}]}))
 			.await
 			.expect("turn");
+
 		loop {
 			if let ServerEvent::Notification { method, params } =
 				session.events.recv().await.expect("native event")
 			{
 				assert_ne!(method, "error", "{params}");
+
 				if method == "turn/completed" {
 					assert_eq!(params["turn"]["status"], "completed");
+
 					break;
 				}
 			}
 		}
+
 		let captured = bodies.lock().expect("captured request");
+
 		assert_eq!(
 			captured.last().expect("outbound request")["service_tier"],
 			"flex",
 			"configured={configured}, cold={cold}"
 		);
 	}
+
 	assert_eq!(count.load(Ordering::Acquire), 2);
+
 	for body in bodies.lock().expect("captured requests").iter() {
 		assert_eq!(body["service_tier"], "flex", "configured={configured}");
 	}
+
 	backend.abort();
 }

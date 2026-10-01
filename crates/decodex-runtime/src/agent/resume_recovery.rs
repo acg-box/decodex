@@ -12,6 +12,7 @@ pub(super) struct ClosingResume {
 impl AgentCoordinator {
 	pub(super) fn observe_unloaded_thread(&mut self, method: &str, thread: &str) {
 		self.loaded_threads.remove(thread);
+
 		if method != "thread/closed" {
 			self.closing_resumes.retain(|_, pending| pending.thread != thread);
 		}
@@ -21,6 +22,7 @@ impl AgentCoordinator {
 		if self.dispatch_paused {
 			return Ok(());
 		}
+
 		let now = tokio::time::Instant::now();
 		let Some(id) = self
 			.closing_resumes
@@ -33,6 +35,7 @@ impl AgentCoordinator {
 		};
 		let Some(pending) = self.closing_resumes.remove(&id) else { return Ok(()) };
 		let item = self.store.get_agent_work_item(id).await?;
+
 		if item.dispatch_state != decodex_database::AgentDispatchState::Unknown
 			|| item.codex_thread_id.as_deref() != Some(&pending.thread)
 			|| item.active_turn_id.as_deref() != Some(&pending.turn)
@@ -40,6 +43,7 @@ impl AgentCoordinator {
 		{
 			return Ok(());
 		}
+
 		self.recover_persisted_work(item, Some(pending.revision), pending.attempts).await
 	}
 
@@ -61,7 +65,7 @@ impl AgentCoordinator {
 		let resumed = match result {
 			Ok(resumed) => resumed,
 			Err(ClientError::Remote(error))
-				if error.code == -32600
+				if error.code == -32_600
 					&& error.message.starts_with(&format!("thread {thread} is closing;")) =>
 			{
 				self.closing_resumes.insert(
@@ -81,31 +85,39 @@ impl AgentCoordinator {
 						attempts: attempts.saturating_add(1),
 					},
 				);
+
 				return Ok(());
 			},
 			Err(_) => return Ok(()),
 		};
+
 		if !Self::hydrated_thread_matches(&resumed, thread) {
 			return Ok(());
 		}
+
 		self.expect_usage_replay(thread, &resumed, revision).await;
 		self.loaded_threads.insert(thread.clone());
 		self.persist_task_settings(thread).await?;
+
 		let Ok(history) = self.client.thread_read_turn(thread, turn).await else {
 			return Ok(());
 		};
+
 		if history.pointer("/thread/id").and_then(Value::as_str) != Some(thread)
 			|| self.client.history_revision() != revision
 		{
 			return Ok(());
 		}
+
 		let current = self.store.get_agent_work_item(item.id.clone()).await?;
+
 		if current.dispatch_state != decodex_database::AgentDispatchState::Unknown
 			|| current.codex_thread_id != item.codex_thread_id
 			|| current.active_turn_id != item.active_turn_id
 		{
 			return Ok(());
 		}
+
 		let Some(exact_turn) = history
 			.pointer("/thread/turns")
 			.and_then(Value::as_array)
@@ -114,6 +126,7 @@ impl AgentCoordinator {
 		else {
 			return Ok(());
 		};
+
 		match exact_turn["status"].as_str() {
 			Some("completed" | "failed" | "interrupted") => {
 				self.record_terminal(
@@ -131,6 +144,7 @@ impl AgentCoordinator {
 			},
 			_ => {},
 		}
+
 		Ok(())
 	}
 }

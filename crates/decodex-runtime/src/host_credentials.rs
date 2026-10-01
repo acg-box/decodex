@@ -1,5 +1,9 @@
 //! Narrow versioned host credential storage for daemon-owned account lifecycle.
 
+mod sqlite_store;
+
+pub use sqlite_store::SqliteCredentialStore;
+
 use std::{
 	error::Error,
 	fmt::{Debug, Display, Formatter},
@@ -9,12 +13,58 @@ use decodex_core::{
 	AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
 	CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
 };
+
 use serde::{Deserialize, Serialize};
+
 use sha2::{Digest, Sha256};
+
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 const FINGERPRINT_DOMAIN: &[u8] = b"decodex-host-credential-store-v1\0";
-const MAX_CREDENTIAL_RECORD_BYTES: usize = 1024 * 1024;
+const MAX_CREDENTIAL_RECORD_BYTES: usize = 1_024 * 1_024;
+
+/// Narrow host credential-store contract. Implementations must make each method atomic.
+pub trait HostCredentialStore: Send + Sync {
+	/// Create version one. Existing material is an exact typed conflict.
+	fn create(
+		&self,
+		account_id: &AccountId,
+		target: &CredentialBinding,
+		bundle: CredentialSecretBundle,
+	) -> Result<(), CredentialStoreError>;
+
+	/// Recreate an absent bundle only at the immediate successor of the last deleted binding.
+	fn restore_absent(
+		&self,
+		account_id: &AccountId,
+		previous: &CredentialBinding,
+		target: &CredentialBinding,
+		bundle: CredentialSecretBundle,
+	) -> Result<(), CredentialStoreError>;
+
+	/// Read only when schema, version, fingerprint, and provider all agree.
+	fn read_exact(
+		&self,
+		account_id: &AccountId,
+		expected: &CredentialBinding,
+	) -> Result<StoredCredential, CredentialStoreError>;
+
+	/// Rotate only from the exact expected binding to its immediate successor.
+	fn compare_and_swap_rotate(
+		&self,
+		account_id: &AccountId,
+		expected: &CredentialBinding,
+		target: &CredentialBinding,
+		bundle: CredentialSecretBundle,
+	) -> Result<(), CredentialStoreError>;
+
+	/// Delete only the exact expected version and fingerprint.
+	fn delete(
+		&self,
+		account_id: &AccountId,
+		expected: &CredentialBinding,
+	) -> Result<(), CredentialStoreError>;
+}
 
 /// Secret bundle kept only in the host credential store and short-lived daemon memory.
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
@@ -49,6 +99,7 @@ impl CredentialSecretBundle {
 			access_token_expires_at_unix_micros: Some(access_token_expires_at_unix_micros),
 			personal_access_token_user_id: None,
 		};
+
 		if bundle.access_token.is_empty()
 			|| bundle.refresh_token.as_deref().is_none_or(str::is_empty)
 			|| bundle.provider_email.as_ref().is_some_and(|email| {
@@ -59,6 +110,7 @@ impl CredentialSecretBundle {
 		{
 			return Err(CredentialStoreError::InvalidBundle);
 		}
+
 		Ok(bundle)
 	}
 
@@ -71,7 +123,7 @@ impl CredentialSecretBundle {
 		provider_email: Option<String>,
 	) -> Result<Self, CredentialStoreError> {
 		if access_token.is_empty()
-			|| access_token.len() > 64 * 1024
+			|| access_token.len() > 64 * 1_024
 			|| access_token.chars().any(char::is_control)
 			|| user_id.is_empty()
 			|| user_id.len() > 512
@@ -81,6 +133,7 @@ impl CredentialSecretBundle {
 			}) {
 			return Err(CredentialStoreError::InvalidBundle);
 		}
+
 		Ok(Self {
 			access_token,
 			refresh_token: None,
@@ -158,6 +211,7 @@ impl CredentialSecretBundle {
 		persisted.binding(fingerprint(&bytes)?)
 	}
 }
+
 impl Debug for CredentialSecretBundle {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str("CredentialSecretBundle([REDACTED])")
@@ -199,6 +253,7 @@ impl StoredCredential {
 		)
 	}
 }
+
 impl Debug for StoredCredential {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter
@@ -206,97 +261,6 @@ impl Debug for StoredCredential {
 			.field("binding", &self.binding)
 			.field("bundle", &"[REDACTED]")
 			.finish()
-	}
-}
-
-/// Narrow host credential-store contract. Implementations must make each method atomic.
-pub trait HostCredentialStore: Send + Sync {
-	/// Create version one. Existing material is an exact typed conflict.
-	fn create(
-		&self,
-		account_id: &AccountId,
-		target: &CredentialBinding,
-		bundle: CredentialSecretBundle,
-	) -> Result<(), CredentialStoreError>;
-
-	/// Recreate an absent bundle only at the immediate successor of the last deleted binding.
-	fn restore_absent(
-		&self,
-		account_id: &AccountId,
-		previous: &CredentialBinding,
-		target: &CredentialBinding,
-		bundle: CredentialSecretBundle,
-	) -> Result<(), CredentialStoreError>;
-
-	/// Read only when schema, version, fingerprint, and provider all agree.
-	fn read_exact(
-		&self,
-		account_id: &AccountId,
-		expected: &CredentialBinding,
-	) -> Result<StoredCredential, CredentialStoreError>;
-
-	/// Rotate only from the exact expected binding to its immediate successor.
-	fn compare_and_swap_rotate(
-		&self,
-		account_id: &AccountId,
-		expected: &CredentialBinding,
-		target: &CredentialBinding,
-		bundle: CredentialSecretBundle,
-	) -> Result<(), CredentialStoreError>;
-
-	/// Delete only the exact expected version and fingerprint.
-	fn delete(
-		&self,
-		account_id: &AccountId,
-		expected: &CredentialBinding,
-	) -> Result<(), CredentialStoreError>;
-}
-
-/// Closed store failure that cannot carry credential material.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CredentialStoreError {
-	/// The protected store or its serialization boundary is unavailable.
-	Unavailable,
-	/// No exact account item exists.
-	NotFound,
-	/// Create found an existing account item.
-	AlreadyExists,
-	/// The current or target credential version is incompatible.
-	VersionConflict,
-	/// The current serialized bundle digest differs.
-	FingerprintMismatch,
-	/// The current provider identity differs.
-	ProviderMismatch,
-	/// Another account record already owns the same provider identity.
-	DuplicateProvider,
-	/// The serialized account identity differs.
-	AccountMismatch,
-	/// The current writer operation differs.
-	WriterMismatch,
-	/// The serialized store schema is not supported.
-	UnsupportedSchema,
-	/// A caller supplied an invalid secret bundle.
-	InvalidBundle,
-	/// A stored bundle is malformed or internally inconsistent.
-	CorruptBundle,
-}
-impl Error for CredentialStoreError {}
-impl Display for CredentialStoreError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str(match self {
-			Self::Unavailable => "host credential store unavailable",
-			Self::NotFound => "host credential item not found",
-			Self::AlreadyExists => "host credential item already exists",
-			Self::VersionConflict => "host credential version conflict",
-			Self::FingerprintMismatch => "host credential fingerprint mismatch",
-			Self::ProviderMismatch => "host credential provider mismatch",
-			Self::DuplicateProvider => "host credential provider already exists",
-			Self::AccountMismatch => "host credential account mismatch",
-			Self::WriterMismatch => "host credential writer operation mismatch",
-			Self::UnsupportedSchema => "host credential schema unsupported",
-			Self::InvalidBundle => "host credential bundle invalid",
-			Self::CorruptBundle => "host credential bundle corrupt",
-		})
 	}
 }
 
@@ -384,6 +348,7 @@ impl PersistedCredential {
 			{
 				return Err(CredentialStoreError::CorruptBundle);
 			}
+
 			return CredentialSecretBundle::personal_access_token(
 				std::mem::take(&mut self.access_token),
 				self.personal_access_token_user_id
@@ -398,6 +363,7 @@ impl PersistedCredential {
 		{
 			return Err(CredentialStoreError::CorruptBundle);
 		}
+
 		CredentialSecretBundle::chatgpt(
 			std::mem::take(&mut self.access_token),
 			self.refresh_token.take().ok_or(CredentialStoreError::CorruptBundle)?,
@@ -414,10 +380,80 @@ impl PersistedCredential {
 	}
 }
 
+/// Closed store failure that cannot carry credential material.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CredentialStoreError {
+	/// The protected store or its serialization boundary is unavailable.
+	Unavailable,
+	/// No exact account item exists.
+	NotFound,
+	/// Create found an existing account item.
+	AlreadyExists,
+	/// The current or target credential version is incompatible.
+	VersionConflict,
+	/// The current serialized bundle digest differs.
+	FingerprintMismatch,
+	/// The current provider identity differs.
+	ProviderMismatch,
+	/// Another account record already owns the same provider identity.
+	DuplicateProvider,
+	/// The serialized account identity differs.
+	AccountMismatch,
+	/// The current writer operation differs.
+	WriterMismatch,
+	/// The serialized store schema is not supported.
+	UnsupportedSchema,
+	/// A caller supplied an invalid secret bundle.
+	InvalidBundle,
+	/// A stored bundle is malformed or internally inconsistent.
+	CorruptBundle,
+}
+impl Error for CredentialStoreError {}
+
+impl Display for CredentialStoreError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str(match self {
+			Self::Unavailable => "host credential store unavailable",
+			Self::NotFound => "host credential item not found",
+			Self::AlreadyExists => "host credential item already exists",
+			Self::VersionConflict => "host credential version conflict",
+			Self::FingerprintMismatch => "host credential fingerprint mismatch",
+			Self::ProviderMismatch => "host credential provider mismatch",
+			Self::DuplicateProvider => "host credential provider already exists",
+			Self::AccountMismatch => "host credential account mismatch",
+			Self::WriterMismatch => "host credential writer operation mismatch",
+			Self::UnsupportedSchema => "host credential schema unsupported",
+			Self::InvalidBundle => "host credential bundle invalid",
+			Self::CorruptBundle => "host credential bundle corrupt",
+		})
+	}
+}
+
+/// Seal one exact host-store read after canonical reconstruction and typed comparison.
+pub(crate) fn seal_exact_read(
+	account_id: &AccountId,
+	actual: &CredentialBinding,
+	expected: &CredentialBinding,
+	bundle: CredentialSecretBundle,
+) -> Result<StoredCredential, CredentialStoreError> {
+	let recomputed = bundle.binding_for(
+		account_id,
+		&actual.writer_operation_id,
+		actual.version,
+		&actual.provider,
+	)?;
+
+	enforce_exact(&recomputed, actual)?;
+	enforce_exact(actual, expected)?;
+
+	Ok(StoredCredential { binding: actual.clone(), bundle })
+}
+
 fn encode(persisted: &PersistedCredential) -> Result<Zeroizing<Vec<u8>>, CredentialStoreError> {
 	let bytes = Zeroizing::new(
 		serde_json::to_vec(persisted).map_err(|_| CredentialStoreError::InvalidBundle)?,
 	);
+
 	if bytes.len() > MAX_CREDENTIAL_RECORD_BYTES {
 		return Err(CredentialStoreError::InvalidBundle);
 	}
@@ -429,9 +465,11 @@ fn decode(
 	bytes: Vec<u8>,
 ) -> Result<(PersistedCredential, CredentialFingerprint), CredentialStoreError> {
 	let bytes = Zeroizing::new(bytes);
+
 	if bytes.len() > MAX_CREDENTIAL_RECORD_BYTES {
 		return Err(CredentialStoreError::CorruptBundle);
 	}
+
 	let fingerprint = fingerprint(&bytes)?;
 	let persisted =
 		serde_json::from_slice(&bytes).map_err(|_| CredentialStoreError::CorruptBundle)?;
@@ -441,8 +479,10 @@ fn decode(
 
 fn fingerprint(bytes: &[u8]) -> Result<CredentialFingerprint, CredentialStoreError> {
 	let mut digest = Sha256::new();
+
 	digest.update(FINGERPRINT_DOMAIN);
 	digest.update(bytes);
+
 	CredentialFingerprint::new(
 		digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
 	)
@@ -478,51 +518,32 @@ fn enforce_exact(
 	Ok(())
 }
 
-/// Seal one exact host-store read after canonical reconstruction and typed comparison.
-pub(crate) fn seal_exact_read(
-	account_id: &AccountId,
-	actual: &CredentialBinding,
-	expected: &CredentialBinding,
-	bundle: CredentialSecretBundle,
-) -> Result<StoredCredential, CredentialStoreError> {
-	let recomputed = bundle.binding_for(
-		account_id,
-		&actual.writer_operation_id,
-		actual.version,
-		&actual.provider,
-	)?;
-	enforce_exact(&recomputed, actual)?;
-	enforce_exact(actual, expected)?;
-
-	Ok(StoredCredential { binding: actual.clone(), bundle })
-}
-
-mod sqlite_store;
-
-pub use sqlite_store::SqliteCredentialStore;
-
 #[cfg(test)]
 mod optional_email_tests {
 	use super::*;
+
 	use serde_json::json;
+
+	use serde_json::Value;
 
 	#[test]
 	fn stored_credentials_preserve_null_email_and_read_existing_string_email() {
 		for email in [None, Some(Value::Null), Some(Value::String("user@example.test".into()))] {
 			let mut record = json!({"schema_version":1,"account_id":"account","credential_version":1,"writer_operation_id":"operation","provider":"chatgpt","provider_account_id":"provider","access_token":"synthetic-access","refresh_token":"synthetic-refresh","id_token":null,"plan_type":"pro","token_type":"bearer","access_token_expires_at_unix_micros":100});
+
 			if let Some(email) = email.clone() {
 				record["provider_email"] = email;
 			}
+
 			let decoded: PersistedCredential = serde_json::from_value(record).unwrap();
 			let encoded = serde_json::to_value(&decoded).unwrap();
 			let bundle = decoded.into_bundle().unwrap();
+
 			assert_eq!(bundle.provider_email(), email.as_ref().and_then(Value::as_str));
 			assert_eq!(encoded["provider_email"], email.unwrap_or(Value::Null));
 		}
 	}
-	use serde_json::Value;
 }
-
 #[cfg(test)]
 mod personal_access_token_tests {
 	use super::*;
@@ -533,9 +554,12 @@ mod personal_access_token_tests {
 	fn oauth_record_keeps_exact_bytes_and_fingerprint() {
 		let (record, original_fingerprint) = decode(OAUTH_RECORD.to_vec()).unwrap();
 		let encoded = encode(&record).unwrap();
+
 		assert_eq!(encoded.as_slice(), OAUTH_RECORD);
 		assert_eq!(fingerprint(&encoded).unwrap(), original_fingerprint);
+
 		let bundle = record.into_bundle().unwrap();
+
 		assert!(!bundle.is_personal_access_token());
 		assert_eq!(bundle.refresh_token(), Some("synthetic-refresh"));
 		assert_eq!(bundle.access_token_expires_at_unix_micros(), Some(100));
@@ -544,18 +568,22 @@ mod personal_access_token_tests {
 	#[test]
 	fn pat_roundtrip_preserves_identity_without_oauth_fields() {
 		let mut record: serde_json::Value = serde_json::from_slice(OAUTH_RECORD).unwrap();
+
 		record["account_id"] = "20000000-0000-4000-8000-000000000039".into();
 		record["writer_operation_id"] = "30000000-0000-4000-8000-000000000039".into();
 		record["schema_version"] = 2.into();
 		record["refresh_token"] = serde_json::Value::Null;
 		record["access_token_expires_at_unix_micros"] = serde_json::Value::Null;
 		record["personal_access_token_user_id"] = "pat-user".into();
+
 		let (decoded, _) = decode(serde_json::to_vec(&record).unwrap()).unwrap();
 		let bundle = decoded.into_bundle().unwrap();
+
 		assert!(bundle.is_personal_access_token());
 		assert_eq!(bundle.personal_access_token_user_id(), Some("pat-user"));
 		assert_eq!(bundle.refresh_token(), None);
 		assert_eq!(bundle.access_token_expires_at_unix_micros(), None);
+
 		let persisted = PersistedCredential::new(
 			&AccountId::new("20000000-0000-4000-8000-000000000039").unwrap(),
 			&AccountOperationId::new("30000000-0000-4000-8000-000000000039").unwrap(),
@@ -563,6 +591,7 @@ mod personal_access_token_tests {
 			&ProviderIdentity::new(AccountProvider::Chatgpt, "provider").unwrap(),
 			bundle,
 		);
+
 		assert_eq!(serde_json::to_value(&persisted).unwrap(), record);
 		assert!(!format!("{:?}", persisted.into_bundle().unwrap()).contains("synthetic-access"));
 	}
@@ -571,10 +600,12 @@ mod personal_access_token_tests {
 	fn pat_rejects_oauth_material_and_missing_user_identity() {
 		let oauth: serde_json::Value = serde_json::from_slice(OAUTH_RECORD).unwrap();
 		let mut pat = oauth.clone();
+
 		pat["schema_version"] = 2.into();
 		pat["refresh_token"] = serde_json::Value::Null;
 		pat["access_token_expires_at_unix_micros"] = serde_json::Value::Null;
 		pat["personal_access_token_user_id"] = "pat-user".into();
+
 		for (key, value) in [
 			("refresh_token", "unexpected-refresh".into()),
 			("id_token", "unexpected-id-token".into()),
@@ -583,8 +614,11 @@ mod personal_access_token_tests {
 			("schema_version", 1.into()),
 		] {
 			let mut invalid = pat.clone();
+
 			invalid[key] = value;
+
 			let decoded: PersistedCredential = serde_json::from_value(invalid).unwrap();
+
 			assert!(decoded.into_bundle().is_err(), "{key}");
 		}
 	}
@@ -609,7 +643,9 @@ mod personal_access_token_tests {
 		let binding = bundle
 			.binding_for(&account, &operation, CredentialVersion::new(1).unwrap(), &provider)
 			.unwrap();
+
 		assert_eq!(binding.schema_version, CredentialStoreSchemaVersion::V2);
+
 		database
 			.prepare_account_operation(&decodex_database::AccountOperationPreparation {
 				operation_id: operation.clone(),
@@ -625,13 +661,17 @@ mod personal_access_token_tests {
 			.await
 			.unwrap();
 		store.create(&account, &binding, bundle).unwrap();
+
 		drop(store);
 		drop(database);
+
 		let store =
 			SqliteCredentialStore::new(decodex_database::SqliteStore::open(&root.paths()).unwrap());
 		let restored = store.read_exact(&account, &binding).unwrap();
+
 		assert_eq!(restored.bundle().access_token(), "synthetic-pat");
 		assert_eq!(restored.bundle().personal_access_token_user_id(), Some("pat-user"));
+
 		let oauth = CredentialSecretBundle::chatgpt(
 			"synthetic-access".into(),
 			"synthetic-refresh".into(),
@@ -645,7 +685,9 @@ mod personal_access_token_tests {
 		let next = oauth
 			.binding_for(&account, &operation, CredentialVersion::new(2).unwrap(), &provider)
 			.unwrap();
+
 		store.compare_and_swap_rotate(&account, &binding, &next, oauth).unwrap();
+
 		assert!(store.read_exact(&account, &binding).is_err());
 		assert!(!store.read_exact(&account, &next).unwrap().bundle().is_personal_access_token());
 	}

@@ -9,7 +9,7 @@ use decodex_core::{AccountId, AccountQuotaWindow};
 use super::{AccountApiInventory, AccountApiObservation, AccountApiRuntime};
 
 const ACTIVATION_TIMEOUT: Duration = Duration::from_secs(60);
-const MAX_STREAM_BYTES: usize = 256 * 1024;
+const MAX_STREAM_BYTES: usize = 256 * 1_024;
 const ACTIVATION_MODEL: &str = "gpt-5.6-sol";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -34,6 +34,7 @@ impl AccountApiRuntime {
 		}) else {
 			return observation;
 		};
+
 		if !self
 			.store
 			.read_desktop_settings()
@@ -54,9 +55,11 @@ impl AccountApiRuntime {
 		else {
 			return observation;
 		};
+
 		if credential.account_revision != observation.account_revision {
 			return observation;
 		}
+
 		let Some(now) = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
 			.ok()
@@ -66,6 +69,7 @@ impl AccountApiRuntime {
 		};
 		let can_send =
 			observation.inventory.as_ref().is_ok_and(|inventory| can_activate(inventory, now));
+
 		if !self
 			.store
 			.claim_quota_activation(account_id, credential.account_revision, weekly, can_send, now)
@@ -74,12 +78,14 @@ impl AccountApiRuntime {
 		{
 			return observation;
 		}
+
 		let Ok((policy, credential)) =
 			crate::account_launch::read_activation_policy(profile, account_id.clone(), credential)
 				.await
 		else {
 			// No model request was made. Preserve the existing bounded rejection backoff.
 			let _ = self.store.finish_quota_activation(account_id, now, false).await;
+
 			return observation;
 		};
 		let request = policy
@@ -92,6 +98,7 @@ impl AccountApiRuntime {
 		let outcome = send_activation(request).await;
 		// Do not retain the credential lock while querying again.
 		drop(credential);
+
 		match outcome {
 			ActivationOutcome::Completed | ActivationOutcome::Rejected => {
 				let _ = self
@@ -108,6 +115,64 @@ impl AccountApiRuntime {
 		// Read the provider's reset time even on ambiguous transport termination; never resend
 		// just because a completed minimal request still rounds to 0 percent used.
 		self.observe_account(account_id).await
+	}
+}
+
+#[derive(Default)]
+struct CompletionStream {
+	bytes: Vec<u8>,
+	data: Vec<u8>,
+	total: usize,
+}
+impl CompletionStream {
+	fn push(&mut self, chunk: &[u8]) -> Result<Option<ActivationOutcome>, ()> {
+		self.total = self.total.checked_add(chunk.len()).ok_or(())?;
+
+		if self.total > MAX_STREAM_BYTES {
+			return Err(());
+		}
+
+		self.bytes.extend_from_slice(chunk);
+
+		while let Some(end) = self.bytes.iter().position(|byte| *byte == b'\n') {
+			let mut line: Vec<_> = self.bytes.drain(..=end).collect();
+
+			line.pop();
+
+			if line.last() == Some(&b'\r') {
+				line.pop();
+			}
+			if line.is_empty() {
+				if self.data.is_empty() {
+					continue;
+				}
+
+				let event =
+					serde_json::from_slice::<serde_json::Value>(&self.data).map_err(|_| ())?;
+
+				self.data.clear();
+
+				match event["type"].as_str() {
+					Some("response.completed")
+						if event["response"]["id"].as_str().is_some_and(|id| !id.is_empty())
+							&& event["response"]
+								.get("status")
+								.is_none_or(|status| status.as_str() == Some("completed")) =>
+						return Ok(Some(ActivationOutcome::Completed)),
+					Some("response.failed" | "response.incomplete" | "error") =>
+						return Ok(Some(ActivationOutcome::Unknown)),
+					_ => {},
+				}
+			} else if let Some(data) = line.strip_prefix(b"data:") {
+				if !self.data.is_empty() {
+					self.data.push(b'\n');
+				}
+
+				self.data.extend_from_slice(data.strip_prefix(b" ").unwrap_or(data));
+			}
+		}
+
+		Ok(None)
 	}
 }
 
@@ -154,7 +219,9 @@ async fn send_activation(request: reqwest::RequestBuilder) -> ActivationOutcome 
 	if !response.status().is_success() {
 		return ActivationOutcome::Unknown;
 	}
+
 	let mut parser = CompletionStream::default();
+
 	loop {
 		match response.chunk().await {
 			Ok(Some(chunk)) => match parser.push(&chunk) {
@@ -167,60 +234,12 @@ async fn send_activation(request: reqwest::RequestBuilder) -> ActivationOutcome 
 	}
 }
 
-#[derive(Default)]
-struct CompletionStream {
-	bytes: Vec<u8>,
-	data: Vec<u8>,
-	total: usize,
-}
-
-impl CompletionStream {
-	fn push(&mut self, chunk: &[u8]) -> Result<Option<ActivationOutcome>, ()> {
-		self.total = self.total.checked_add(chunk.len()).ok_or(())?;
-		if self.total > MAX_STREAM_BYTES {
-			return Err(());
-		}
-		self.bytes.extend_from_slice(chunk);
-		while let Some(end) = self.bytes.iter().position(|byte| *byte == b'\n') {
-			let mut line: Vec<_> = self.bytes.drain(..=end).collect();
-			line.pop();
-			if line.last() == Some(&b'\r') {
-				line.pop();
-			}
-			if line.is_empty() {
-				if self.data.is_empty() {
-					continue;
-				}
-				let event =
-					serde_json::from_slice::<serde_json::Value>(&self.data).map_err(|_| ())?;
-				self.data.clear();
-				match event["type"].as_str() {
-					Some("response.completed")
-						if event["response"]["id"].as_str().is_some_and(|id| !id.is_empty())
-							&& event["response"]
-								.get("status")
-								.is_none_or(|status| status.as_str() == Some("completed")) =>
-						return Ok(Some(ActivationOutcome::Completed)),
-					Some("response.failed" | "response.incomplete" | "error") =>
-						return Ok(Some(ActivationOutcome::Unknown)),
-					_ => {},
-				}
-			} else if let Some(data) = line.strip_prefix(b"data:") {
-				if !self.data.is_empty() {
-					self.data.push(b'\n');
-				}
-				self.data.extend_from_slice(data.strip_prefix(b" ").unwrap_or(data));
-			}
-		}
-		Ok(None)
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use super::{
 		ActivationOutcome, CompletionStream, MAX_STREAM_BYTES, activation_request, send_activation,
 	};
+
 	use std::time::Duration;
 
 	#[test]
@@ -238,69 +257,42 @@ mod tests {
 			credits: Vec::new(),
 		};
 		let after_reset = 1_800_000_001_000_000;
+
 		assert!(!super::can_activate(&inventory, after_reset));
+
 		inventory.conditions.has_credits = Some(true);
+
 		assert!(
 			!super::can_activate(&inventory, after_reset),
 			"paid credits do not authorize the synthetic included-window probe"
 		);
+
 		inventory.ordinary_usage_allowed = None;
+
 		assert!(super::can_activate(&inventory, after_reset));
+
 		inventory.ordinary_usage_allowed = Some(true);
+
 		assert!(super::can_activate(&inventory, after_reset));
+
 		inventory.conditions.spend_control_reached = Some(true);
+
 		assert!(!super::can_activate(&inventory, after_reset));
-	}
-
-	#[tokio::test]
-	async fn failure_to_connect_can_retry_without_replaying_an_accepted_request() {
-		let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("listener");
-		let address = listener.local_addr().expect("address");
-		drop(listener);
-		let request = reqwest::Client::new()
-			.post(format!("http://{address}/responses"))
-			.timeout(Duration::from_secs(2))
-			.json(&activation_request());
-		assert_eq!(send_activation(request).await, ActivationOutcome::Rejected);
-	}
-
-	#[tokio::test]
-	async fn production_client_never_redirects_or_replays_activation() {
-		use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
-		for status in ["307 Temporary Redirect", "503 Service Unavailable"] {
-			let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("backend");
-			let address = listener.local_addr().expect("address");
-			let server = tokio::spawn(async move {
-				let (mut socket, _) = listener.accept().await.expect("activation");
-				let mut bytes = [0; 4096];
-				assert!(socket.read(&mut bytes).await.expect("request") > 0);
-				socket.write_all(format!("HTTP/1.1 {status}\r\nLocation: http://{address}/redirected\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.expect("response");
-				drop(socket);
-				assert!(
-					tokio::time::timeout(Duration::from_millis(300), listener.accept())
-						.await
-						.is_err(),
-					"no redirect or replay"
-				);
-			});
-			let request = super::super::account_http_client()
-				.expect("production client")
-				.post(format!("http://{address}/responses"))
-				.json(&activation_request());
-			assert_eq!(send_activation(request).await, ActivationOutcome::Unknown);
-			server.await.expect("single request verified");
-		}
 	}
 
 	#[test]
 	fn completion_handles_every_chunk_boundary_and_never_trusts_output_text() {
 		let bytes = b"event: response.completed\r\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",\"status\":\"completed\"}}\r\n\r\n";
+
 		for split in 0..bytes.len() {
 			let mut parser = CompletionStream::default();
+
 			assert_eq!(parser.push(&bytes[..split]), Ok(None));
 			assert_eq!(parser.push(&bytes[split..]), Ok(Some(ActivationOutcome::Completed)));
 		}
+
 		let mut parser = CompletionStream::default();
+
 		assert_eq!(
 			parser.push(b"data: {\"type\":\"response.output_text.delta\",\"delta\":\"OK\"}\n\n"),
 			Ok(None)
@@ -315,6 +307,7 @@ mod tests {
 	fn stream_is_bounded_and_malformed_completion_does_not_succeed() {
 		assert_eq!(CompletionStream::default().push(&vec![b'x'; MAX_STREAM_BYTES + 1]), Err(()));
 		assert_eq!(CompletionStream::default().push(b"data: invalid\n\n"), Err(()));
+
 		for status in [
 			serde_json::json!(null),
 			serde_json::json!(false),
@@ -323,6 +316,7 @@ mod tests {
 			serde_json::json!("in_progress"),
 		] {
 			let event = serde_json::json!({"type":"response.completed","response":{"id":"r1","status":status}});
+
 			assert_eq!(
 				CompletionStream::default().push(format!("data: {event}\n\n").as_bytes()),
 				Ok(None),
@@ -337,8 +331,59 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn failure_to_connect_can_retry_without_replaying_an_accepted_request() {
+		let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("listener");
+		let address = listener.local_addr().expect("address");
+
+		drop(listener);
+
+		let request = reqwest::Client::new()
+			.post(format!("http://{address}/responses"))
+			.timeout(Duration::from_secs(2))
+			.json(&activation_request());
+
+		assert_eq!(send_activation(request).await, ActivationOutcome::Rejected);
+	}
+
+	#[tokio::test]
+	async fn production_client_never_redirects_or_replays_activation() {
+		use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+		for status in ["307 Temporary Redirect", "503 Service Unavailable"] {
+			let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("backend");
+			let address = listener.local_addr().expect("address");
+			let server = tokio::spawn(async move {
+				let (mut socket, _) = listener.accept().await.expect("activation");
+				let mut bytes = [0; 4_096];
+
+				assert!(socket.read(&mut bytes).await.expect("request") > 0);
+
+				socket.write_all(format!("HTTP/1.1 {status}\r\nLocation: http://{address}/redirected\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.expect("response");
+
+				drop(socket);
+
+				assert!(
+					tokio::time::timeout(Duration::from_millis(300), listener.accept())
+						.await
+						.is_err(),
+					"no redirect or replay"
+				);
+			});
+			let request = super::super::account_http_client()
+				.expect("production client")
+				.post(format!("http://{address}/responses"))
+				.json(&activation_request());
+
+			assert_eq!(send_activation(request).await, ActivationOutcome::Unknown);
+
+			server.await.expect("single request verified");
+		}
+	}
+
+	#[tokio::test]
 	async fn http_request_has_no_storage_or_tools_and_requires_positive_completion() {
 		use std::io::{Read as _, Write as _};
+
 		for (status, body, expected) in [
 			(
 				"200 OK",
@@ -357,13 +402,19 @@ mod tests {
 			let address = listener.local_addr().expect("valid test fixture");
 			let server = std::thread::spawn(move || {
 				let (mut socket, _) = listener.accept().expect("valid test fixture");
+
 				socket.set_read_timeout(Some(Duration::from_secs(5))).expect("valid test fixture");
+
 				let mut request = Vec::new();
+
 				loop {
-					let mut chunk = [0; 4096];
+					let mut chunk = [0; 4_096];
 					let count = socket.read(&mut chunk).expect("valid test fixture");
+
 					assert!(count > 0);
+
 					request.extend_from_slice(&chunk[..count]);
+
 					if let Some(end) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
 						let headers = String::from_utf8_lossy(&request[..end]).to_lowercase();
 						let length: usize = headers
@@ -372,25 +423,32 @@ mod tests {
 							.expect("valid test fixture")
 							.parse()
 							.expect("valid test fixture");
+
 						if request.len() < end + 4 + length {
 							continue;
 						}
+
 						let json: serde_json::Value = serde_json::from_slice(&request[end + 4..])
 							.expect("valid test fixture");
+
 						assert_eq!(json["store"], false);
 						assert_eq!(json["tools"], serde_json::json!([]));
 						assert_eq!(json["input"].as_array().expect("valid test fixture").len(), 1);
 						assert!(json.get("previous_response_id").is_none());
+
 						break;
 					}
 				}
+
 				write!(socket,"HTTP/1.1 {status}\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).expect("valid test fixture");
 			});
 			let request = reqwest::Client::new()
 				.post(format!("http://{address}/responses"))
 				.timeout(Duration::from_secs(5))
 				.json(&activation_request());
+
 			assert_eq!(send_activation(request).await, expected);
+
 			server.join().expect("valid test fixture");
 		}
 	}

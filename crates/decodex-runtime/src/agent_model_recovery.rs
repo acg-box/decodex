@@ -25,6 +25,7 @@ where
 	if !events.is_empty() {
 		return Ok(());
 	}
+
 	let Some(before) = source().await else {
 		return Ok(());
 	};
@@ -36,13 +37,16 @@ where
 		return Ok(());
 	};
 	let recovery = banner(account.clone(), EntityRevision(revision)).await;
+
 	if !matches!(&recovery.state, decodex_protocol::AccountRecoveryState::Current(b) if !b.fallback_model_slugs.is_empty())
 	{
 		return Ok(());
 	}
+
 	let Some((native, guard)) = before.client.configured_task_models(thread) else {
 		return Ok(());
 	};
+
 	super::persist_current(
 		store,
 		&before.client,
@@ -50,6 +54,7 @@ where
 		Some(before.key.generation.as_str().into()),
 	)
 	.await?;
+
 	let Some(observed) = store
 		.agent_task_models(
 			before.key.work.clone(),
@@ -67,12 +72,14 @@ where
 	else {
 		return Ok(());
 	};
+
 	if settings != native || !guard.is_live() {
 		return Ok(());
 	}
 	if before.client.native_recovery_auth(guard.clone()).await? != NativeRecoveryAuth::ChatGpt {
 		return Ok(());
 	}
+
 	let AgentCapabilitiesResult::Available { models, .. } =
 		crate::agent_capabilities::read(&before.client).await
 	else {
@@ -93,22 +100,27 @@ where
 	else {
 		return Ok(());
 	};
+
 	if !recovery_source_ready(&guard, events)
 		|| source().await.is_none_or(|after| after.key != before.key)
 		|| banner(account.clone(), EntityRevision(revision)).await != recovery
 	{
 		return Ok(());
 	}
+
 	let Some(event) = store.reserve_agent_model_selection(attempt.clone()).await? else {
 		return Ok(());
 	};
+
 	if !recovery_source_ready(&guard, events)
 		|| source().await.is_none_or(|after| after.key != before.key)
 		|| banner(account, EntityRevision(revision)).await != recovery
 	{
 		store.finish_agent_model_selection(event, attempt, "rejected".into()).await?;
+
 		return Ok(());
 	}
+
 	let state = match before.client.queue_thread_model_recovery(&update, guard).await {
 		Ok(_) => "queued",
 		Err(
@@ -117,11 +129,13 @@ where
 			| decodex_codex::app_server_client::ClientError::RequestQueueFull,
 		) => "rejected",
 		Err(decodex_codex::app_server_client::ClientError::Remote(ref error))
-			if matches!(error.code, -32602..=-32600) =>
+			if matches!(error.code, -32_602..=-32_600) =>
 			"rejected",
 		Err(_) => "unknown",
 	};
+
 	store.finish_agent_model_selection(event, attempt, state.into()).await?;
+
 	Ok(())
 }
 
@@ -169,6 +183,7 @@ fn prepare_recovery(
 			service_tier: tier.or(settings.service_tier),
 		}),
 	};
+
 	Ok(Some((update, attempt)))
 }
 
@@ -210,6 +225,7 @@ fn target_settings(
 			}),
 		}
 	};
+
 	Some((effort.as_str().into(), tier))
 }
 
@@ -261,8 +277,11 @@ mod tests {
 				Some(("medium".into(), Some("default".into())))
 			);
 		}
+
 		let mut unknown = target();
+
 		unknown.default_effort = None;
+
 		assert!(
 			target_settings(&current(Some("future"), Some("default")), &unknown, Some(true))
 				.is_none()
@@ -271,12 +290,15 @@ mod tests {
 	#[test]
 	fn fallback_resolves_advertised_tier_without_inventing_unknown_feature_support() {
 		let mut model = target();
+
 		model.service_tiers.push(decodex_protocol::AgentServiceTierDto {
 			id: decodex_core::ServiceTier::new("priority").unwrap(),
 			name: "Fast".into(),
 			description: String::new(),
 		});
+
 		model.default_service_tier = Some(decodex_core::ServiceTier::new("priority").unwrap());
+
 		assert_eq!(
 			target_settings(&current(None, None), &model, Some(true)),
 			Some(("medium".into(), Some("priority".into())))
@@ -293,7 +315,9 @@ mod tests {
 			target_settings(&current(None, Some("withdrawn")), &model, Some(false)),
 			Some(("medium".into(), None))
 		);
+
 		model.service_tiers.clear();
+
 		assert_eq!(
 			target_settings(&current(None, None), &model, Some(true)),
 			Some(("medium".into(), Some("default".into())))
@@ -304,25 +328,35 @@ mod tests {
 	#[tokio::test]
 	async fn queued_native_settings_block_a_guard_captured_after_notification() {
 		use decodex_codex::app_server_client::AppServerClient;
+
 		use serde_json::{Value, json};
+
 		use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
-		let (local, remote) = tokio::io::duplex(4096);
+
+		let (local, remote) = tokio::io::duplex(4_096);
 		let (reader, writer) = tokio::io::split(local);
 		let (client, mut events) = AppServerClient::from_io(reader, writer);
 		let server = tokio::spawn(async move {
 			let (reader, mut writer) = tokio::io::split(remote);
 			let mut lines = BufReader::new(reader).lines();
+
 			for index in 0..2 {
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				assert_eq!(request["method"], "getAuthStatus");
+
 				if index == 0 {
 					let event = json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":{"model":"manual-choice"}}});
+
 					writer.write_all(format!("{event}\n").as_bytes()).await.unwrap();
 				}
+
 				let reply = json!({"id":request["id"],"result":{"authMethod":"chatgpt","requiresOpenaiAuth":true}});
+
 				writer.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
 			}
+
 			assert!(
 				tokio::time::timeout(std::time::Duration::from_millis(25), lines.next_line())
 					.await
@@ -331,18 +365,23 @@ mod tests {
 		});
 		// The transport has published a settings event, but the Agent reducer has not consumed it.
 		client.native_recovery_auth(client.history_guard(0).unwrap()).await.unwrap();
+
 		let guard = client.thread_settings_guard("thread").unwrap();
+
 		assert_eq!(
 			client.native_recovery_auth(guard.clone()).await.unwrap(),
 			NativeRecoveryAuth::ChatGpt
 		);
 		assert!(guard.is_live(), "a fresh guard alone cannot prove the journal is current");
 		assert!(!recovery_source_ready(&guard, &events));
+
 		let event = events.recv().await.unwrap();
+
 		assert!(
 			matches!(event, decodex_codex::app_server_client::ServerEvent::Notification { method, .. } if method == "thread/settings/updated")
 		);
 		assert!(recovery_source_ready(&guard, &events));
+
 		server.await.unwrap();
 		client.close();
 	}

@@ -23,6 +23,7 @@ where
 	Fut: std::future::Future<Output = Option<Source>>,
 {
 	use AgentUsageEstimateResult as Result;
+
 	let Some(before) = source().await else {
 		return Result::Unavailable;
 	};
@@ -34,9 +35,11 @@ where
 	let Some(after) = source().await else {
 		return Result::Unavailable;
 	};
+
 	if before.key != after.key {
 		return Result::Unavailable;
 	}
+
 	match response {
 		Ok(Ok(Some(estimate))) => {
 			let Ok(estimate) = serde_json::to_value(estimate).and_then(serde_json::from_value)
@@ -56,10 +59,11 @@ where
 			let Some(observed_at_micros) = observed_at_micros else {
 				return Result::Unavailable;
 			};
+
 			Result::Available { work_id, account_id, observed_at_micros, estimate }
 		},
 		Ok(Ok(None)) => Result::NotReported,
-		Ok(Err(ClientError::Remote(error))) if error.code == -32601 => Result::Unsupported,
+		Ok(Err(ClientError::Remote(error))) if error.code == -32_601 => Result::Unsupported,
 		Ok(Err(ClientError::CapacityExceeded)) => Result::CapacityExceeded,
 		_ => Result::Unavailable,
 	}
@@ -77,7 +81,7 @@ mod tests {
 	#[tokio::test]
 	async fn task_usage_discards_reply_after_account_revision_process_or_thread_changes() {
 		for change in ["none", "account", "revision", "history", "process", "thread", "closed"] {
-			let (local, remote) = tokio::io::duplex(4096);
+			let (local, remote) = tokio::io::duplex(4_096);
 			let (reader, writer) = tokio::io::split(local);
 			let (client, _) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
@@ -86,17 +90,21 @@ mod tests {
 					&BufReader::new(reader).lines().next_line().await.unwrap().unwrap(),
 				)
 				.unwrap();
+
 				assert_eq!(request["params"]["threadId"], "thread");
+
 				writer.write_all(format!("{}\n",json!({"id":request["id"],"result":{"threadUsage":{"threadId":"thread","estimatedUsageCreditsMicros":1,"groups":[]}}})).as_bytes()).await.unwrap();
 			});
 			let calls = Arc::new(AtomicUsize::new(0));
 			let result = read(|| {
 				let later = calls.fetch_add(1, Ordering::SeqCst) > 0;
 				let client = client.clone();
+
 				async move {
 					if later && change == "closed" {
 						return None;
 					}
+
 					Some(Source {
 						client,
 						key: SourceKey {
@@ -122,7 +130,9 @@ mod tests {
 				}
 			})
 			.await;
+
 			server.await.unwrap();
+
 			if change == "none" {
 				assert!(matches!(result, AgentUsageEstimateResult::Available { .. }));
 			} else {

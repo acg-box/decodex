@@ -11,6 +11,7 @@ use std::{
 };
 
 #[cfg(target_os = "macos")] use crate::host_credentials::SqliteCredentialStore;
+
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
 	account_api::AccountApiRuntime,
@@ -25,18 +26,32 @@ use crate::{
 	},
 	provider_attempt_service::{ProviderAttemptControl, ProviderAttemptReadiness},
 };
+
 use decodex_core::{
 	Availability, BlobStore, ConfigError, DecodexConfig, DecodexPaths, DecodexRoot, PathError,
 	ProcessExecutionAuthorization, ProductState as _, ServerIdentity, ServerProfile,
 };
+
 use decodex_database::{BootstrapFailure, SqliteStore};
+
 use decodex_protocol::{
 	AppServerCapability, CURRENT_VERSION, ConversationUnavailableReason, DoctorCheck,
 	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, LocalTransportAuthority,
 	LocalTransportListener, LocalTransportRefusal, ServerId,
 };
 
+#[cfg(target_os = "macos")]
+type MacosAccountRuntimeBootstrap = (
+	Option<Arc<AccountService>>,
+	Option<AccountProfileRuntime>,
+	Option<Arc<AccountApiRuntime>>,
+	Option<ApiResetCardRuntime>,
+	Option<AttestedAppServerProfile>,
+	DoctorStatus,
+);
+
 const ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Value-free failure from explicit local-database initialization or validation.
 #[derive(Clone, Eq, PartialEq)]
 pub enum LocalDatabaseError {
@@ -56,6 +71,7 @@ impl std::fmt::Debug for LocalDatabaseError {
 		}
 	}
 }
+
 impl Display for LocalDatabaseError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(match self {
@@ -65,7 +81,14 @@ impl Display for LocalDatabaseError {
 		})
 	}
 }
+
 impl std::error::Error for LocalDatabaseError {}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HostDirectoryError {
+	Missing,
+	Unsafe,
+}
 
 /// Complete daemon bootstrap under one already-acquired singleton capability.
 pub struct ServiceBootstrap {
@@ -185,6 +208,7 @@ impl ServiceBootstrap {
 			.with_account_login(account_login),
 			config,
 		);
+
 		Ok(server.bind_listener(listener))
 	}
 }
@@ -199,10 +223,21 @@ struct DoctorInputs {
 	vault: DoctorStatus,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum HostDirectoryError {
-	Missing,
-	Unsafe,
+#[cfg(target_os = "macos")]
+struct ConversationComposition {
+	store: Option<SqliteStore>,
+	blob_store: Option<BlobStore>,
+	accounts: Option<Arc<AccountService>>,
+	process_generations: Option<ProcessGenerationControl>,
+	provider_attempts: Option<ProviderAttemptControl>,
+	execution_authorization: Option<ProcessExecutionAuthorization>,
+	launch_profile: Option<AttestedAppServerProfile>,
+}
+
+#[cfg(target_os = "macos")]
+struct MacosAccountServiceComposition {
+	service: Arc<AccountService>,
+	account_profiles: Option<AccountProfileRuntime>,
 }
 
 pub(crate) async fn bootstrap_default() -> ServiceBootstrap {
@@ -256,15 +291,24 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 	bootstrap_with_authority(paths, loaded, config_status, listener).await
 }
 
-#[cfg(target_os = "macos")]
-struct ConversationComposition {
-	store: Option<SqliteStore>,
-	blob_store: Option<BlobStore>,
-	accounts: Option<Arc<AccountService>>,
-	process_generations: Option<ProcessGenerationControl>,
-	provider_attempts: Option<ProviderAttemptControl>,
-	execution_authorization: Option<ProcessExecutionAuthorization>,
-	launch_profile: Option<AttestedAppServerProfile>,
+pub(crate) async fn initialize_local_database(root: DecodexRoot) -> Result<(), LocalDatabaseError> {
+	let paths = root.paths();
+	let store = SqliteStore::open(&paths).map_err(local_database_error)?;
+
+	store.revalidate().await.map_err(local_database_error)?;
+	store.close();
+
+	Ok(())
+}
+
+pub(crate) async fn validate_local_database(root: DecodexRoot) -> Result<(), LocalDatabaseError> {
+	let paths = root.paths();
+	let store = SqliteStore::open(&paths).map_err(local_database_error)?;
+
+	store.revalidate().await.map_err(local_database_error)?;
+	store.close();
+
+	Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -278,6 +322,7 @@ fn compose_conversations(composition: ConversationComposition) -> ConversationCa
 		execution_authorization,
 		launch_profile,
 	} = composition;
+
 	match (
 		store,
 		blob_store,
@@ -327,152 +372,6 @@ fn compose_conversations(composition: ConversationComposition) -> ConversationCa
 	}
 }
 
-async fn bootstrap_with_authority(
-	paths: DecodexPaths,
-	_loaded: Result<DecodexConfig, ConfigError>,
-	config_status: DoctorStatus,
-	listener: LocalTransportListener,
-) -> ServiceBootstrap {
-	let identity = ServerIdentity::load_or_create(&paths);
-	let (server_id, identity_status) = server_identity(identity);
-	let blob_store = BlobStore::open(paths.clone());
-	#[cfg(target_os = "macos")]
-	let conversation_blob_store = match &blob_store {
-		Ok(store) => Some(store.clone()),
-		Err(_) => None,
-	};
-	let blob_integrity = match &blob_store {
-		Ok(_) => DoctorStatus::Unknown(DoctorIssue::NotProbed),
-		Err(_) => DoctorStatus::Unavailable(DoctorIssue::Integrity),
-	};
-	let shared_home = shared_codex_home();
-	let (store, product_store, mut vault) = connect_database(&paths);
-	let sqlite = match &store {
-		ProductStore::Available(store) => Some(store.clone()),
-		ProductStore::Unavailable(_) => None,
-	};
-	let (process_generations, process_generation_readiness) = match sqlite.clone() {
-		Some(store) => match ProcessGenerationControl::start(store).await {
-			Ok(control) => (Some(control), ProcessGenerationReadiness::Ready),
-			Err(ProcessSupervisorError::Platform) =>
-				(None, ProcessGenerationReadiness::PlatformUnavailable),
-			Err(_) => (None, ProcessGenerationReadiness::ProductStateUnavailable),
-		},
-		None => (None, ProcessGenerationReadiness::ProductStateUnavailable),
-	};
-	#[cfg(target_os = "macos")]
-	let process_execution_authorization = ProcessExecutionAuthorization::load(&paths).ok();
-	let (provider_attempts, provider_attempt_readiness) = match sqlite.clone() {
-		Some(store) => match ProviderAttemptControl::start(store).await {
-			Ok(control) => (Some(control), ProviderAttemptReadiness::Ready),
-			Err(_) => (None, ProviderAttemptReadiness::ProductStateUnavailable),
-		},
-		None => (None, ProviderAttemptReadiness::ProductStateUnavailable),
-	};
-	#[cfg(target_os = "macos")]
-	let (accounts, account_profiles, account_api, reset_cards, conversation_launch_profile) =
-		match sqlite.clone() {
-			Some(store) => {
-				let (service, profiles, api, runtime, launch_profile, status) =
-					bootstrap_macos_account_runtime(
-						store,
-						&paths,
-						process_generations.clone(),
-						process_execution_authorization.clone(),
-					)
-					.await;
-				vault = status;
-				(service, profiles, api, runtime, launch_profile)
-			},
-			None => (None, None, None, None, None),
-		};
-	#[cfg(not(target_os = "macos"))]
-	let (accounts, account_profiles, account_api, reset_cards) = {
-		vault = DoctorStatus::Unavailable(DoctorIssue::Authentication);
-		(None, None, None, None)
-	};
-	#[cfg(target_os = "macos")]
-	let conversations = compose_conversations(ConversationComposition {
-		store: sqlite,
-		blob_store: conversation_blob_store,
-		accounts: accounts.as_ref().map(Arc::clone),
-		process_generations: process_generations.clone(),
-		provider_attempts: provider_attempts.clone(),
-		execution_authorization: process_execution_authorization,
-		launch_profile: conversation_launch_profile,
-	});
-	#[cfg(not(target_os = "macos"))]
-	let conversations =
-		ConversationCapability::Unavailable(ConversationUnavailableReason::UnsupportedPlatform);
-	let conversation = conversation_doctor(&conversations);
-	let doctor = doctor_report(
-		server_id.clone(),
-		DoctorInputs {
-			configuration: config_status,
-			product_store,
-			conversation,
-			server_identity: identity_status,
-			shared_home,
-			blob_integrity,
-			vault,
-		},
-	);
-
-	ServiceBootstrap {
-		server_id,
-		store,
-		process_generations,
-		process_generation_readiness,
-		provider_attempts,
-		provider_attempt_readiness,
-		blob_store: blob_store.ok(),
-		accounts,
-		account_profiles,
-		account_api,
-		reset_cards,
-		login_system_proxy_fallback: _loaded
-			.as_ref()
-			.is_ok_and(DecodexConfig::login_system_proxy_fallback),
-		conversations,
-		doctor,
-		daemon_authority: Ok(listener),
-	}
-}
-
-#[cfg(target_os = "macos")]
-type MacosAccountRuntimeBootstrap = (
-	Option<Arc<AccountService>>,
-	Option<AccountProfileRuntime>,
-	Option<Arc<AccountApiRuntime>>,
-	Option<ApiResetCardRuntime>,
-	Option<AttestedAppServerProfile>,
-	DoctorStatus,
-);
-
-#[cfg(target_os = "macos")]
-struct MacosAccountServiceComposition {
-	service: Arc<AccountService>,
-	account_profiles: Option<AccountProfileRuntime>,
-}
-
-#[cfg(target_os = "macos")]
-async fn compose_macos_account_service(
-	store: &SqliteStore,
-	_paths: &DecodexPaths,
-) -> Result<MacosAccountServiceComposition, DoctorIssue> {
-	let refresher = match tokio::task::spawn_blocking(OpenAiCredentialRefresher::new).await {
-		Ok(Ok(refresher)) => refresher,
-		Ok(Err(_)) => return Err(DoctorIssue::Authentication),
-		Err(_) => return Err(DoctorIssue::Integrity),
-	};
-	let credentials = SqliteCredentialStore::new(store.clone());
-	let credentials: Arc<dyn crate::HostCredentialStore> = Arc::new(credentials);
-	let account_profiles =
-		Some(AccountProfileRuntime::new(store.clone(), Arc::clone(&credentials)));
-	let service = Arc::new(AccountService::new(store.clone(), credentials, Arc::new(refresher)));
-	Ok(MacosAccountServiceComposition { service, account_profiles })
-}
-
 #[cfg(target_os = "macos")]
 fn unavailable_macos_account_runtime(
 	service: Option<Arc<AccountService>>,
@@ -480,58 +379,6 @@ fn unavailable_macos_account_runtime(
 	issue: DoctorIssue,
 ) -> MacosAccountRuntimeBootstrap {
 	(service, account_profiles, None, None, None, DoctorStatus::Unavailable(issue))
-}
-
-#[cfg(target_os = "macos")]
-async fn bootstrap_macos_account_runtime(
-	store: SqliteStore,
-	paths: &DecodexPaths,
-	_process_generations: Option<ProcessGenerationControl>,
-	_execution_authorization: Option<ProcessExecutionAuthorization>,
-) -> MacosAccountRuntimeBootstrap {
-	let MacosAccountServiceComposition { service, account_profiles } =
-		match compose_macos_account_service(&store, paths).await {
-			Ok(composition) => composition,
-			Err(issue) => return unavailable_macos_account_runtime(None, None, issue),
-		};
-	let _ = service.reconcile_startup().await;
-	// Conversations may still use the optional Codex process adapter, but account health no longer
-	// depends on its executable, callback, schema, or version.  Failure here only disables that
-	// separate capability.
-	let conversation_launch_profile = AttestedAppServerProfile::attest(
-		paths.root().as_path().to_owned(),
-		ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT,
-	)
-	.ok();
-	if let Some(profile) = &conversation_launch_profile {
-		let _ = service.attest_callback_capability(profile.account_callback_attestation()).await;
-	}
-	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
-	let api = if crate::account_service::process_acceptance_fixture_endpoint().is_some() {
-		None
-	} else {
-		AccountApiRuntime::new(
-			Arc::clone(&service),
-			store.clone(),
-			conversation_launch_profile.clone(),
-		)
-		.ok()
-		.map(Arc::new)
-	};
-	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
-	let api = AccountApiRuntime::new(
-		Arc::clone(&service),
-		store.clone(),
-		conversation_launch_profile.clone(),
-	)
-	.ok()
-	.map(Arc::new);
-	let status = match &api {
-		Some(_) => DoctorStatus::Ready,
-		None => DoctorStatus::Unavailable(DoctorIssue::Authentication),
-	};
-	let reset_cards = api.as_ref().map(|api| ApiResetCardRuntime::new(store, Arc::clone(api)));
-	(Some(service), account_profiles, api, reset_cards, conversation_launch_profile, status)
 }
 
 fn bootstrap_without_authority(
@@ -737,22 +584,6 @@ fn database_config_issue(error: ConfigError) -> DoctorIssue {
 	}
 }
 
-pub(crate) async fn initialize_local_database(root: DecodexRoot) -> Result<(), LocalDatabaseError> {
-	let paths = root.paths();
-	let store = SqliteStore::open(&paths).map_err(local_database_error)?;
-	store.revalidate().await.map_err(local_database_error)?;
-	store.close();
-	Ok(())
-}
-
-pub(crate) async fn validate_local_database(root: DecodexRoot) -> Result<(), LocalDatabaseError> {
-	let paths = root.paths();
-	let store = SqliteStore::open(&paths).map_err(local_database_error)?;
-	store.revalidate().await.map_err(local_database_error)?;
-	store.close();
-	Ok(())
-}
-
 const fn local_database_error(error: decodex_database::DatabaseError) -> LocalDatabaseError {
 	match sqlite_bootstrap_failure(error) {
 		BootstrapFailure::UnsafeHostPath | BootstrapFailure::UnsafeAuthority =>
@@ -765,6 +596,7 @@ const fn local_database_error(error: decodex_database::DatabaseError) -> LocalDa
 
 fn connect_database(paths: &DecodexPaths) -> (ProductStore, DoctorStatus, DoctorStatus) {
 	let vault = DoctorStatus::Unknown(DoctorIssue::NotProbed);
+
 	match SqliteStore::open(paths) {
 		Ok(store) => (ProductStore::Available(store), DoctorStatus::Ready, vault),
 		Err(error) => {
@@ -793,6 +625,7 @@ fn connect_database(paths: &DecodexPaths) -> (ProductStore, DoctorStatus, Doctor
 					vault,
 				),
 			};
+
 			(ProductStore::Unavailable(reason), DoctorStatus::Unavailable(issue), vault)
 		},
 	}
@@ -811,6 +644,194 @@ const fn sqlite_bootstrap_failure(error: decodex_database::DatabaseError) -> Boo
 	}
 }
 
+async fn bootstrap_with_authority(
+	paths: DecodexPaths,
+	_loaded: Result<DecodexConfig, ConfigError>,
+	config_status: DoctorStatus,
+	listener: LocalTransportListener,
+) -> ServiceBootstrap {
+	let identity = ServerIdentity::load_or_create(&paths);
+	let (server_id, identity_status) = server_identity(identity);
+	let blob_store = BlobStore::open(paths.clone());
+	#[cfg(target_os = "macos")]
+	let conversation_blob_store = match &blob_store {
+		Ok(store) => Some(store.clone()),
+		Err(_) => None,
+	};
+	let blob_integrity = match &blob_store {
+		Ok(_) => DoctorStatus::Unknown(DoctorIssue::NotProbed),
+		Err(_) => DoctorStatus::Unavailable(DoctorIssue::Integrity),
+	};
+	let shared_home = shared_codex_home();
+	let (store, product_store, mut vault) = connect_database(&paths);
+	let sqlite = match &store {
+		ProductStore::Available(store) => Some(store.clone()),
+		ProductStore::Unavailable(_) => None,
+	};
+	let (process_generations, process_generation_readiness) = match sqlite.clone() {
+		Some(store) => match ProcessGenerationControl::start(store).await {
+			Ok(control) => (Some(control), ProcessGenerationReadiness::Ready),
+			Err(ProcessSupervisorError::Platform) =>
+				(None, ProcessGenerationReadiness::PlatformUnavailable),
+			Err(_) => (None, ProcessGenerationReadiness::ProductStateUnavailable),
+		},
+		None => (None, ProcessGenerationReadiness::ProductStateUnavailable),
+	};
+	#[cfg(target_os = "macos")]
+	let process_execution_authorization = ProcessExecutionAuthorization::load(&paths).ok();
+	let (provider_attempts, provider_attempt_readiness) = match sqlite.clone() {
+		Some(store) => match ProviderAttemptControl::start(store).await {
+			Ok(control) => (Some(control), ProviderAttemptReadiness::Ready),
+			Err(_) => (None, ProviderAttemptReadiness::ProductStateUnavailable),
+		},
+		None => (None, ProviderAttemptReadiness::ProductStateUnavailable),
+	};
+	#[cfg(target_os = "macos")]
+	let (accounts, account_profiles, account_api, reset_cards, conversation_launch_profile) =
+		match sqlite.clone() {
+			Some(store) => {
+				let (service, profiles, api, runtime, launch_profile, status) =
+					bootstrap_macos_account_runtime(
+						store,
+						&paths,
+						process_generations.clone(),
+						process_execution_authorization.clone(),
+					)
+					.await;
+
+				vault = status;
+
+				(service, profiles, api, runtime, launch_profile)
+			},
+			None => (None, None, None, None, None),
+		};
+	#[cfg(not(target_os = "macos"))]
+	let (accounts, account_profiles, account_api, reset_cards) = {
+		vault = DoctorStatus::Unavailable(DoctorIssue::Authentication);
+
+		(None, None, None, None)
+	};
+	#[cfg(target_os = "macos")]
+	let conversations = compose_conversations(ConversationComposition {
+		store: sqlite,
+		blob_store: conversation_blob_store,
+		accounts: accounts.as_ref().map(Arc::clone),
+		process_generations: process_generations.clone(),
+		provider_attempts: provider_attempts.clone(),
+		execution_authorization: process_execution_authorization,
+		launch_profile: conversation_launch_profile,
+	});
+	#[cfg(not(target_os = "macos"))]
+	let conversations =
+		ConversationCapability::Unavailable(ConversationUnavailableReason::UnsupportedPlatform);
+	let conversation = conversation_doctor(&conversations);
+	let doctor = doctor_report(
+		server_id.clone(),
+		DoctorInputs {
+			configuration: config_status,
+			product_store,
+			conversation,
+			server_identity: identity_status,
+			shared_home,
+			blob_integrity,
+			vault,
+		},
+	);
+
+	ServiceBootstrap {
+		server_id,
+		store,
+		process_generations,
+		process_generation_readiness,
+		provider_attempts,
+		provider_attempt_readiness,
+		blob_store: blob_store.ok(),
+		accounts,
+		account_profiles,
+		account_api,
+		reset_cards,
+		login_system_proxy_fallback: _loaded
+			.as_ref()
+			.is_ok_and(DecodexConfig::login_system_proxy_fallback),
+		conversations,
+		doctor,
+		daemon_authority: Ok(listener),
+	}
+}
+
+#[cfg(target_os = "macos")]
+async fn compose_macos_account_service(
+	store: &SqliteStore,
+	_paths: &DecodexPaths,
+) -> Result<MacosAccountServiceComposition, DoctorIssue> {
+	let refresher = match tokio::task::spawn_blocking(OpenAiCredentialRefresher::new).await {
+		Ok(Ok(refresher)) => refresher,
+		Ok(Err(_)) => return Err(DoctorIssue::Authentication),
+		Err(_) => return Err(DoctorIssue::Integrity),
+	};
+	let credentials = SqliteCredentialStore::new(store.clone());
+	let credentials: Arc<dyn crate::HostCredentialStore> = Arc::new(credentials);
+	let account_profiles =
+		Some(AccountProfileRuntime::new(store.clone(), Arc::clone(&credentials)));
+	let service = Arc::new(AccountService::new(store.clone(), credentials, Arc::new(refresher)));
+
+	Ok(MacosAccountServiceComposition { service, account_profiles })
+}
+
+#[cfg(target_os = "macos")]
+async fn bootstrap_macos_account_runtime(
+	store: SqliteStore,
+	paths: &DecodexPaths,
+	_process_generations: Option<ProcessGenerationControl>,
+	_execution_authorization: Option<ProcessExecutionAuthorization>,
+) -> MacosAccountRuntimeBootstrap {
+	let MacosAccountServiceComposition { service, account_profiles } =
+		match compose_macos_account_service(&store, paths).await {
+			Ok(composition) => composition,
+			Err(issue) => return unavailable_macos_account_runtime(None, None, issue),
+		};
+	let _ = service.reconcile_startup().await;
+	// Conversations may still use the optional Codex process adapter, but account health no longer
+	// depends on its executable, callback, schema, or version.  Failure here only disables that
+	// separate capability.
+	let conversation_launch_profile = AttestedAppServerProfile::attest(
+		paths.root().as_path().to_owned(),
+		ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT,
+	)
+	.ok();
+
+	if let Some(profile) = &conversation_launch_profile {
+		let _ = service.attest_callback_capability(profile.account_callback_attestation()).await;
+	}
+	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
+	let api = if crate::account_service::process_acceptance_fixture_endpoint().is_some() {
+		None
+	} else {
+		AccountApiRuntime::new(
+			Arc::clone(&service),
+			store.clone(),
+			conversation_launch_profile.clone(),
+		)
+		.ok()
+		.map(Arc::new)
+	};
+	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
+	let api = AccountApiRuntime::new(
+		Arc::clone(&service),
+		store.clone(),
+		conversation_launch_profile.clone(),
+	)
+	.ok()
+	.map(Arc::new);
+	let status = match &api {
+		Some(_) => DoctorStatus::Ready,
+		None => DoctorStatus::Unavailable(DoctorIssue::Authentication),
+	};
+	let reset_cards = api.as_ref().map(|api| ApiResetCardRuntime::new(store, Arc::clone(api)));
+
+	(Some(service), account_profiles, api, reset_cards, conversation_launch_profile, status)
+}
+
 #[cfg(test)]
 mod tests {
 	use crate::bootstrap;
@@ -819,6 +840,7 @@ mod tests {
 	#[test]
 	fn local_database_errors_are_value_free() {
 		let error = bootstrap::LocalDatabaseError::Incompatible;
+
 		assert_eq!(error.to_string(), "local database is incompatible");
 		assert_eq!(format!("{error:?}"), "Incompatible");
 	}

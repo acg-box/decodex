@@ -3,9 +3,13 @@ use super::*;
 #[tokio::test]
 async fn large_wake_batch_preserves_whole_events_and_leaves_remainder_unclaimed() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;
+
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
+
 	complete(&mut coordinator, "agent").await;
+
 	let mut events = Vec::new();
+
 	for index in 0..80 {
 		if index == 40 {
 			coordinator
@@ -23,6 +27,7 @@ async fn large_wake_batch_preserves_whole_events_and_leaves_remainder_unclaimed(
 				.unwrap();
 			coordinator.store.complete_agent_turn("agent".into(), "previous".into()).await.unwrap();
 		}
+
 		events.push(
 			coordinator
 				.store
@@ -36,35 +41,46 @@ async fn large_wake_batch_preserves_whole_events_and_leaves_remainder_unclaimed(
 				.unwrap(),
 		);
 	}
+
 	while sent.try_recv().is_ok() {}
+
 	coordinator.wake_pending().await.unwrap();
+
 	let agent = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
 	let inbox = coordinator
 		.store
-		.list_agent_events_for_turn(agent.active_turn_id.unwrap(), 1000)
+		.list_agent_events_for_turn(agent.active_turn_id.unwrap(), 1_000)
 		.await
 		.unwrap();
+
 	assert!(!inbox.is_empty());
 	assert_eq!(inbox[0].id, events[40].id);
 	assert!(inbox.len() < 40);
 	assert!(json!(inbox).to_string().len() <= MAX_WAKE_BATCH_BYTES);
+
 	for (index, event) in events.iter().enumerate() {
 		let saved = coordinator.store.get_agent_inbox_event(event.id).await.unwrap();
+
 		assert_eq!(saved.payload, event.payload);
+
 		if index < 40 {
 			assert_eq!(saved.delivered_turn_id.as_deref(), Some("previous"));
 		} else if !inbox.iter().any(|entry| entry.id == event.id) {
 			assert!(saved.delivered_turn_id.is_none());
 		}
 	}
+
 	let mut starts = Vec::new();
+
 	while let Ok(request) = sent.try_recv() {
 		assert_ne!(request["method"], "thread/start");
-		assert!(request.to_string().len() < 2 * 1024 * 1024);
+		assert!(request.to_string().len() < 2 * 1_024 * 1_024);
+
 		if request["method"] == "turn/start" {
 			starts.push(request);
 		}
 	}
+
 	assert_eq!(starts.len(), 1);
 	assert_eq!(starts[0]["params"]["threadId"], json!(agent.codex_thread_id));
 }
@@ -72,10 +88,13 @@ async fn large_wake_batch_preserves_whole_events_and_leaves_remainder_unclaimed(
 #[tokio::test]
 async fn later_wake_carries_unhandled_evidence_without_replaying_worker() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;
+
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
 	coordinator.create_worker("agent", "worker", "Inspect").await.unwrap();
+
 	complete(&mut coordinator, "agent").await;
 	complete(&mut coordinator, "worker").await;
+
 	let previous = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
 	let event = coordinator
 		.store
@@ -83,8 +102,11 @@ async fn later_wake_carries_unhandled_evidence_without_replaying_worker() {
 		.await
 		.unwrap()
 		.remove(0);
+
 	complete(&mut coordinator, "agent").await;
+
 	coordinator.wake_pending().await.unwrap();
+
 	assert!(
 		coordinator
 			.store
@@ -94,27 +116,38 @@ async fn later_wake_carries_unhandled_evidence_without_replaying_worker() {
 			.active_turn_id
 			.is_none()
 	);
+
 	while sent.try_recv().is_ok() {}
+
 	coordinator
 		.ingest_automation_result("new-signal", "agent", json!({"result":"Check outstanding work"}))
 		.await
 		.unwrap();
+
 	let agent = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
 	let inbox =
 		coordinator.tool(&agent, &json!({"tool":"agent_list_work","arguments":{}})).await.unwrap();
+
 	assert!(inbox["inbox"].as_array().unwrap().iter().any(|entry| entry["id"] == event.id));
+
 	coordinator.tool(&agent, &json!({"tool":"agent_disposition","arguments":{"id":"worker","status":"resolved","eventIds":[event.id],"summary":"Accepted saved evidence"}})).await.unwrap();
+
 	let saved = coordinator.store.get_agent_inbox_event(event.id).await.unwrap();
+
 	assert_eq!(saved.source_event_id, event.source_event_id);
 	assert_eq!(saved.payload, event.payload);
 	assert_eq!(saved.disposition, Some(AgentDisposition::Resolved));
+
 	let mut starts = Vec::new();
+
 	while let Ok(request) = sent.try_recv() {
 		assert_ne!(request["method"], "thread/start");
+
 		if request["method"] == "turn/start" {
 			starts.push(request);
 		}
 	}
+
 	assert_eq!(starts.len(), 1);
 	assert_eq!(starts[0]["params"]["threadId"], json!(agent.codex_thread_id));
 }
@@ -122,10 +155,13 @@ async fn later_wake_carries_unhandled_evidence_without_replaying_worker() {
 #[tokio::test]
 async fn user_turn_preserves_plain_text_and_can_inspect_earlier_unhandled_results() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;
+
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
 	coordinator.create_worker("agent", "worker", "Inspect").await.unwrap();
+
 	complete(&mut coordinator, "agent").await;
 	complete(&mut coordinator, "worker").await;
+
 	let previous = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
 	let event = coordinator
 		.store
@@ -133,25 +169,35 @@ async fn user_turn_preserves_plain_text_and_can_inspect_earlier_unhandled_result
 		.await
 		.unwrap()
 		.remove(0);
+
 	complete(&mut coordinator, "agent").await;
+
 	while sent.try_recv().is_ok() {}
+
 	coordinator
 		.enqueue_user_message("agent", "follow-up", "Discuss the earlier result.")
 		.await
 		.unwrap();
 	coordinator.wake_pending().await.unwrap();
+
 	let agent = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
 	let inbox =
 		coordinator.tool(&agent, &json!({"tool":"agent_list_work","arguments":{}})).await.unwrap();
+
 	assert!(inbox["inbox"].as_array().unwrap().iter().any(|entry| entry["id"] == event.id));
+
 	coordinator.tool(&agent, &json!({"tool":"agent_disposition","arguments":{"id":"worker","status":"resolved","eventIds":[event.id],"summary":"Accepted existing evidence"}})).await.unwrap();
+
 	let mut starts = Vec::new();
+
 	while let Ok(request) = sent.try_recv() {
 		assert_ne!(request["method"], "thread/start");
+
 		if request["method"] == "turn/start" {
 			starts.push(request);
 		}
 	}
+
 	assert_eq!(starts.len(), 1);
 	assert_eq!(starts[0]["params"]["input"][0]["text"], "Discuss the earlier result.");
 	assert_eq!(
@@ -163,8 +209,11 @@ async fn user_turn_preserves_plain_text_and_can_inspect_earlier_unhandled_result
 #[tokio::test]
 async fn exhausted_account_pause_preserves_input_without_dispatch() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;
+
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
+
 	complete(&mut coordinator, "agent").await;
+
 	let event = coordinator
 		.store
 		.enqueue_agent_event(EnqueueAgentEvent {
@@ -175,9 +224,12 @@ async fn exhausted_account_pause_preserves_input_without_dispatch() {
 		})
 		.await
 		.unwrap();
+
 	while sent.try_recv().is_ok() {}
+
 	coordinator.pause_dispatch(true);
 	coordinator.wake_pending().await.unwrap();
+
 	assert!(sent.try_recv().is_err());
 	assert!(
 		coordinator
@@ -188,8 +240,10 @@ async fn exhausted_account_pause_preserves_input_without_dispatch() {
 			.delivered_turn_id
 			.is_none()
 	);
+
 	coordinator.pause_dispatch(false);
 	coordinator.wake_pending().await.unwrap();
+
 	assert!(
 		coordinator
 			.store

@@ -16,11 +16,14 @@ impl AgentCoordinator {
 			)
 		};
 		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
+
 		if !self.store.agent_thread_is_owned(work.into(), thread.into(), generation.clone()).await?
 		{
 			return Err(reject());
 		}
+
 		let state = self.client.thread_archive_state(thread).await.map_err(|_| reject())?;
+
 		if !matches!(state, ThreadArchiveState::Active | ThreadArchiveState::Archived) {
 			return Err(reject());
 		}
@@ -30,19 +33,25 @@ impl AgentCoordinator {
 		}
 		if state == ThreadArchiveState::Active {
 			self.reconcile_restored_turn(work, thread).await;
+
 			return Ok(());
 		}
+
 		self.loaded_threads.remove(thread);
+
 		let submitted = self.client.thread_unarchive(thread).await;
 		// Even an explicit native error may mean another client restored it first.
 		// Only desired-state readback can resolve an uncertain mutation.
 		let observed = self.client.thread_archive_state(thread).await;
+
 		if !self.store.agent_thread_is_owned(work.into(), thread.into(), generation).await? {
 			return Err(AgentError::UnknownDispatch);
 		}
+
 		match observed {
 			Ok(ThreadArchiveState::Active) => {
 				self.reconcile_restored_turn(work, thread).await;
+
 				Ok(())
 			},
 			Ok(ThreadArchiveState::Archived)
@@ -62,13 +71,17 @@ impl AgentCoordinator {
 			let Some(turn) = item.active_turn_id.as_ref() else {
 				return Ok::<(), AgentError>(());
 			};
+
 			if item.codex_thread_id.as_deref() != Some(thread) {
 				return Ok(());
 			}
+
 			let history = self.client.thread_read_turn(thread, turn).await?;
+
 			if history["thread"]["id"].as_str() != Some(thread) {
 				return Ok(());
 			}
+
 			let Some(exact_turn) = history["thread"]["turns"]
 				.as_array()
 				.and_then(|turns| turns.iter().find(|entry| entry["id"].as_str() == Some(turn)))
@@ -76,6 +89,7 @@ impl AgentCoordinator {
 			else {
 				return Ok(());
 			};
+
 			if !matches!(
 				exact_turn["status"].as_str(),
 				Some("completed" | "failed" | "interrupted")
@@ -93,6 +107,7 @@ impl AgentCoordinator {
 			{
 				return Ok(());
 			}
+
 			self.record_terminal(json!({"threadId":thread,"turn":exact_turn}), Ok(history), false)
 				.await
 		})

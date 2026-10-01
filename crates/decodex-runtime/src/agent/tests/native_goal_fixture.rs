@@ -19,9 +19,11 @@ pub(super) async fn serve_with_gate(
 	while let Ok((mut socket, _)) = listener.accept().await {
 		let _body = native_task_references::read_http_body(&mut socket).await;
 		let serial = calls.fetch_add(1, Ordering::AcqRel);
+
 		if let Some((_, gate)) = gates.iter().find(|(blocked, _)| serial == *blocked) {
 			gate.notified().await;
 		}
+
 		let id = format!("permissions-{serial}");
 		let frames = [
 			json!({"type":"response.created","response":{"id":id}}),
@@ -36,6 +38,7 @@ pub(super) async fn serve_with_gate(
 			"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{data}",
 			data.len()
 		);
+
 		socket.write_all(response.as_bytes()).await.unwrap();
 	}
 }

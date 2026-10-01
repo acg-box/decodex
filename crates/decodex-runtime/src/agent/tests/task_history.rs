@@ -1,5 +1,16 @@
 use super::*;
 
+#[test]
+fn saved_task_references_are_rendered_on_queued_native_turn_input() {
+	let mut params = json!({"input":[{"type":"text","text":"Compare it"}]});
+	let payload=json!({"options":{"attachments":[],"taskReferences":[{"workId":"target","threadId":"native-thread","title":"Reference title"}]}}).to_string();
+
+	apply_message_options(&mut params, &payload).unwrap();
+
+	assert_eq!(params["input"].as_array().unwrap().len(), 2);
+	assert!(params["input"][1]["text"].as_str().unwrap().contains("native-thread"));
+}
+
 #[tokio::test]
 async fn task_history_reads_live_evidence_without_dispatch_or_resume() {
 	let history = json!({"opaque thread/2":{"thread":{"id":"opaque thread/2",
@@ -11,17 +22,25 @@ async fn task_history_reads_live_evidence_without_dispatch_or_resume() {
 	let (mut agent, mut sent, _directory) = fixture_with_history(history).await;
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
 	let worker = agent.create_worker("agent", "worker", "Investigate").await.unwrap();
+
 	while sent.try_recv().is_ok() {}
+
 	let mut args = json!({"id":"worker","threadId":worker.codex_thread_id});
 	let page = agent.read_work_history(&manager, &args).await.unwrap();
+
 	assert_eq!(page["turns"][0]["items"][0]["text"], "native evidence");
 	assert!(!page.to_string().contains("raw output"));
 	assert!(!page.to_string().contains("PRIVATE_MEDIA"));
 	assert_eq!(page["turns"][0]["items"][2]["truncated"], true);
+
 	args["includeOutputs"] = json!(true);
+
 	let page = agent.read_work_history(&manager, &args).await.unwrap();
+
 	assert_eq!(page["turns"][0]["items"][1]["aggregatedOutput"], "raw output");
+
 	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+
 	assert_eq!(requests.len(), 4);
 	assert!(
 		requests
@@ -40,17 +59,26 @@ async fn task_history_denies_foreign_scope_stale_binding_and_worker_authority() 
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
 	let child = agent.create_manager("agent", "child", "Manage", None).await.unwrap();
 	let worker = agent.create_worker("child", "worker", "Investigate").await.unwrap();
+
 	while sent.try_recv().is_ok() {}
+
 	let args = json!({"id":"worker","threadId":worker.codex_thread_id});
+
 	assert!(agent.read_work_history(&manager, &args).await.is_err());
 	assert!(agent.read_work_history(&worker, &args).await.is_err());
+
 	let stale = json!({"id":"worker","threadId":"old-thread"});
+
 	assert!(agent.read_work_history(&child, &stale).await.is_err());
+
 	for invalid in [json!(0), json!(6), json!("3")] {
 		let mut invalid_args = args.clone();
+
 		invalid_args["turnLimit"] = invalid;
+
 		assert!(agent.read_work_history(&child, &invalid_args).await.is_err());
 	}
+
 	assert!(sent.try_recv().is_err());
 }
 
@@ -60,13 +88,17 @@ async fn upgraded_manager_can_read_previous_thread_after_store_reopen() {
 		"historyMode":"paginated","turns":[{"id":"old-turn","status":"completed","items":[
 		{"id":"old-answer","type":"agentMessage","text":"before upgrade"}]}]}}});
 	let (mut agent, _sent, directory) = fixture_with_history(history).await;
+
 	agent.start_agent("agent", "Original").await.unwrap();
+
 	complete(&mut agent, "agent").await;
+
 	let root =
 		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
 			.unwrap();
 	// Seed a migration completed by an older release; current code never upgrades threads.
 	let database = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+
 	database
 		.execute_batch(
 			"UPDATE agent_work_items SET codex_thread_id='historic-new-thread' WHERE id='agent';
@@ -74,14 +106,18 @@ async fn upgraded_manager_can_read_previous_thread_after_store_reopen() {
 		 VALUES('agent','opaque thread/1','historic-new-thread',1);",
 		)
 		.unwrap();
+
 	drop(database);
+
 	let current = agent.store.get_agent_work_item("agent".into()).await.unwrap();
 
 	agent.store = SqliteStore::open(&root.paths()).unwrap();
+
 	let page = agent
 		.read_work_history(&current, &json!({"id":"agent","threadId":"opaque thread/1"}))
 		.await
 		.unwrap();
+
 	assert_eq!(page["turns"][0]["items"][0]["text"], "before upgrade");
 	assert_eq!(page["previousThreadIds"], json!(["opaque thread/1"]));
 	assert_eq!(
@@ -97,11 +133,16 @@ async fn explicit_delivered_reference_reads_only_selected_foreign_thread() {
 		{"id":"result","type":"agentMessage","text":"selected evidence"}]}]}}});
 	let (mut agent, mut sent, _directory) = fixture_with_history(history).await;
 	let root = agent.start_agent("agent", "Coordinate").await.unwrap();
+
 	agent.create_manager("agent", "child", "Manage", None).await.unwrap();
+
 	let target = agent.create_worker("child", "target", "Investigate").await.unwrap();
 	let args = json!({"id":"target","threadId":target.codex_thread_id});
+
 	while sent.try_recv().is_ok() {}
+
 	assert!(agent.read_work_history(&root, &args).await.is_err());
+
 	let payload = json!({"text":"Read selected task","source":"user","options":{"taskReferences":[
 		{"workId":"target","threadId":target.codex_thread_id,"title":"Selected task"}
 	]}})
@@ -116,6 +157,7 @@ async fn explicit_delivered_reference_reads_only_selected_foreign_thread() {
 		)
 		.await
 		.unwrap();
+
 	assert!(agent.read_work_history(&root, &args).await.is_err());
 	assert_eq!(
 		agent
@@ -125,7 +167,9 @@ async fn explicit_delivered_reference_reads_only_selected_foreign_thread() {
 			.unwrap(),
 		None
 	);
+
 	agent.store.finish_agent_steer(event, true).await.unwrap();
+
 	assert_eq!(
 		agent
 			.store
@@ -135,7 +179,9 @@ async fn explicit_delivered_reference_reads_only_selected_foreign_thread() {
 			.as_deref(),
 		Some("target")
 	);
+
 	let page = agent.read_work_history(&root, &args).await.unwrap();
+
 	assert_eq!(page["turns"][0]["items"][0]["text"], "selected evidence");
 	assert_eq!(page["previousThreadIds"], json!([]));
 	assert!(
@@ -144,7 +190,9 @@ async fn explicit_delivered_reference_reads_only_selected_foreign_thread() {
 			.await
 			.is_err()
 	);
+
 	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+
 	assert_eq!(requests.len(), 2);
 	assert!(
 		requests
@@ -157,7 +205,9 @@ async fn explicit_delivered_reference_reads_only_selected_foreign_thread() {
 async fn native_steer_carries_typed_reference_and_only_acknowledgment_grants_read() {
 	let (mut agent, mut sent, _directory) = fixture().await;
 	let root = agent.start_agent("agent", "Coordinate").await.unwrap();
+
 	agent.create_manager("agent", "child", "Manage", None).await.unwrap();
+
 	let target = agent.create_worker("child", "target", "Work").await.unwrap();
 	let references = vec![decodex_protocol::AgentTaskReferenceDto {
 		work_id: decodex_protocol::EntityId::new("target").unwrap(),
@@ -165,7 +215,9 @@ async fn native_steer_carries_typed_reference_and_only_acknowledgment_grants_rea
 			.unwrap(),
 		title: decodex_protocol::WireText::new("Quoted \"title\" <instructions>").unwrap(),
 	}];
+
 	while sent.try_recv().is_ok() {}
+
 	agent
 		.steer_work_with_references(
 			"agent",
@@ -176,15 +228,21 @@ async fn native_steer_carries_typed_reference_and_only_acknowledgment_grants_rea
 		)
 		.await
 		.unwrap();
+
 	let request = sent.try_recv().unwrap();
+
 	assert_eq!(request["method"], "turn/steer");
 	assert_eq!(request["params"]["input"][0]["text"], "Compare it");
+
 	let metadata = request["params"]["input"][1]["text"].as_str().unwrap();
+
 	assert!(metadata.contains("agent_read_work"));
+
 	let rendered: Value = serde_json::from_str(
 		metadata.lines().next().unwrap().strip_prefix("User-selected task references: ").unwrap(),
 	)
 	.unwrap();
+
 	assert_eq!(rendered, json!(references));
 	assert!(metadata.contains("untrusted evidence"));
 	assert!(
@@ -201,15 +259,6 @@ async fn native_steer_carries_typed_reference_and_only_acknowledgment_grants_rea
 	assert!(sent.try_recv().is_err());
 }
 
-#[test]
-fn saved_task_references_are_rendered_on_queued_native_turn_input() {
-	let mut params = json!({"input":[{"type":"text","text":"Compare it"}]});
-	let payload=json!({"options":{"attachments":[],"taskReferences":[{"workId":"target","threadId":"native-thread","title":"Reference title"}]}}).to_string();
-	apply_message_options(&mut params, &payload).unwrap();
-	assert_eq!(params["input"].as_array().unwrap().len(), 2);
-	assert!(params["input"][1]["text"].as_str().unwrap().contains("native-thread"));
-}
-
 #[tokio::test]
 async fn stale_reference_and_old_running_tools_reject_before_native_steer() {
 	let (mut agent, mut sent, directory) = fixture().await;
@@ -223,10 +272,13 @@ async fn stale_reference_and_old_running_tools_reject_before_native_steer() {
 		thread_id: decodex_protocol::WireText::new(work.codex_thread_id.unwrap()).unwrap(),
 		title: decodex_protocol::WireText::new("Agent").unwrap(),
 	}];
+
 	while sent.try_recv().is_ok() {}
+
 	connection
 		.execute("UPDATE agent_tool_versions SET version=2 WHERE work_id='agent'", [])
 		.unwrap();
+
 	assert!(matches!(
 		agent
 			.steer_work_with_references(
@@ -239,10 +291,13 @@ async fn stale_reference_and_old_running_tools_reject_before_native_steer() {
 			.await,
 		Err(AgentError::Rejected(_))
 	));
+
 	connection
 		.execute("UPDATE agent_tool_versions SET version=3 WHERE work_id='agent'", [])
 		.unwrap();
+
 	references[0].thread_id = decodex_protocol::WireText::new("stale-thread").unwrap();
+
 	assert!(matches!(
 		agent
 			.steer_work_with_references(
@@ -272,19 +327,24 @@ async fn native_search_filters_foreign_work_and_preserves_cursor_and_exact_sourc
 	let history = json!({"_search":{"data":[
 		{"thread":{"id":"opaque thread/1","name":"Root"},"snippet":"matched body"},
 		{"thread":{"id":"foreign-thread","name":"PRIVATE_TITLE"},"snippet":"PRIVATE_BODY"}
+
 	],"nextCursor":"more"},"_occurrences":{"data":[{"turnId":"turn-hit","itemId":"item-hit",
 		"snippet":"matched body","snippetMatchRange":{"start":0,"end":7},"turnCursor":"exact-turn"}],"nextCursor":null}});
 	let (mut agent, mut sent, _directory) = fixture_with_history(history).await;
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
+
 	while sent.try_recv().is_ok() {}
+
 	let page = agent
 		.read_work_history(&manager, &json!({"searchTerm":"matched","archived":true}))
 		.await
 		.unwrap();
+
 	assert_eq!(page["matches"].as_array().unwrap().len(), 1);
 	assert_eq!(page["nextCursor"], "more");
 	assert_eq!(page["matches"][0]["sourceUrl"], "codex://threads/opaque%20thread%2F1");
 	assert!(!page.to_string().contains("PRIVATE"));
+
 	let hits = agent
 		.read_work_history(
 			&manager,
@@ -292,10 +352,13 @@ async fn native_search_filters_foreign_work_and_preserves_cursor_and_exact_sourc
 		)
 		.await
 		.unwrap();
+
 	assert_eq!(hits["occurrences"][0]["turnCursor"], "exact-turn");
 	assert_eq!(hits["occurrences"][0]["itemId"], "item-hit");
 	assert_eq!(hits["occurrences"][0]["rangeEncoding"], "utf16");
+
 	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+
 	assert_eq!(requests.len(), 2);
 	assert_eq!(requests[0]["method"], "thread/search");
 	assert_eq!(requests[0]["params"]["archived"], true);
@@ -313,6 +376,7 @@ async fn native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors()
 	.await;
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
 	let page = agent.read_work_history(&manager, &json!({"searchTerm":"term"})).await.unwrap();
+
 	assert_eq!(page["matches"], json!([]));
 	assert_eq!(page["nextCursor"], "more");
 	assert!(
@@ -329,7 +393,9 @@ async fn native_occurrence_search_rejects_foreign_scope_before_rpc() {
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
 	let _child = agent.create_manager("agent", "child", "Manage", None).await.unwrap();
 	let worker = agent.create_worker("child", "worker", "Investigate").await.unwrap();
+
 	while sent.try_recv().is_ok() {}
+
 	assert!(
 		agent
 			.read_work_history(

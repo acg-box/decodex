@@ -29,19 +29,6 @@ struct ApiSession {
 	api: AccountApiRuntime,
 	credential: AccountApiCredential,
 }
-impl ResetCardProvider for AccountApiRuntime {
-	fn session(
-		&self,
-		account: &AccountId,
-		revision: i64,
-	) -> ResultFuture<'_, Box<dyn ResetCardSession>> {
-		let account = account.clone();
-		Box::pin(async move {
-			let credential = self.reset_session(&account, revision).await.map_err(map_error)?;
-			Ok(Box::new(ApiSession { api: self.clone(), credential }) as Box<dyn ResetCardSession>)
-		})
-	}
-}
 impl ResetCardSession for ApiSession {
 	fn inventory(&mut self) -> ResultFuture<'_, AccountApiInventory> {
 		Box::pin(async { self.api.reset_inventory(&self.credential).await.map_err(map_error) })
@@ -57,6 +44,22 @@ impl ResetCardSession for ApiSession {
 				.consume_exact_reset_credit(&self.credential, key, credit)
 				.await
 				.map_err(map_error)
+		})
+	}
+}
+
+impl ResetCardProvider for AccountApiRuntime {
+	fn session(
+		&self,
+		account: &AccountId,
+		revision: i64,
+	) -> ResultFuture<'_, Box<dyn ResetCardSession>> {
+		let account = account.clone();
+
+		Box::pin(async move {
+			let credential = self.reset_session(&account, revision).await.map_err(map_error)?;
+
+			Ok(Box::new(ApiSession { api: self.clone(), credential }) as Box<dyn ResetCardSession>)
 		})
 	}
 }

@@ -44,63 +44,98 @@ async fn qualify(plan: bool) {
 			}
 		},
 	));
+
 	std::fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_reasoning_effort=\"low\"\nmodel_provider=\"fixture\"\n[features]\nstep_model_switching=true\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("native task model fixture");
+
 	let config = std::fs::read(home.path().join("config.toml")).expect("native task model fixture");
 	let mut session = NativeSession::start(&binary, home.path());
 	let thread=tokio::time::timeout(Duration::from_secs(45),async {
         let start=session.client.thread_start(json!({"cwd":home.path(),"model":"gpt-5.6-sol","approvalPolicy":"never","sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Pause this local fixture","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native task model fixture");
         let thread=start["thread"]["id"].as_str().expect("native task model fixture").to_owned();
         let mut params=json!({"threadId":thread,"effort":"low","input":[{"type":"text","text":"Run the local pause fixture."}]});
+
         if plan {params["collaborationMode"]=json!({"mode":"plan","settings":{"model":"gpt-5.6-sol","reasoning_effort":"low","developer_instructions":null}});}
+
         let turn=session.client.turn_start(params).await.expect("native task model fixture");
         let turn=turn["turn"]["id"].as_str().expect("native task model fixture");
         let (id,method,params)=super::super::next_request(&mut session.events).await;
+
         assert_eq!(method,"item/tool/call");
+
         let guard=session.client.server_request_guard(&id,&method,&params).expect("native task model fixture");
         let owned=OwnedReviewer::new(home.path(),&session.client,&thread,turn).await;
         let initial=decodex_codex::app_server_client::NativeTaskModelSettings::from_thread_response(&start).expect("complete start settings");
+
         persist_current(&owned.store,&session.client,&thread,Some(owned.key.generation.as_str().into())).await.expect("native task model fixture");
+
         let state=read(&owned.store,|| async {Some(owned.source(&owned.key))}).await;
         let AgentModelSelectionState::Available {review_token,models:choices,..}=state else {panic!("native task choices unavailable: {state:?}");};
+
         assert!(choices.iter().any(|m|m.model.as_str()=="gpt-5.6-terra" && m.efforts.contains(&ConversationReasoningEffort::High)));
+
         write(&owned.store,|| async {Some(owned.source(&owned.key))},Change {thread:&thread,review:review_token.as_str(),model:"gpt-5.6-terra",effort:Some("high"),attempt_id:"native-task-model"}).await.expect("native task model fixture");
+
         assert_eq!(owned.store.agent_model_receipt("root".into(),thread.clone()).await.expect("queued receipt").expect("reserved selection").state,"queued");
         assert_eq!(calls.load(Ordering::Acquire),1,"selection must not release the paused tool");
+
         loop {
             if let ServerEvent::Notification {method,params}=session.events.recv().await.expect("native task model fixture")
                 && method=="thread/settings/updated" && params["threadId"]==thread {
                 let settings=decodex_codex::app_server_client::NativeTaskModelSettings::from_notification(&params["threadSettings"]).expect("native task model fixture");
+
                 if settings.model!="gpt-5.6-terra" {continue;}
+
                 assert_eq!(settings.effort.as_deref(),Some("high"));
+
                 if plan {assert_eq!(params["threadSettings"]["collaborationMode"]["mode"],"plan");}
+
                 assert_eq!(settings.service_tier,initial.service_tier);
+
                 persist_current(&owned.store,&session.client,&thread,Some(owned.key.generation.as_str().into())).await.expect("native task model fixture");
+
                 break;
             }
         }
+
         let reopened=SqliteStore::open(&owned.root.paths()).expect("native task model fixture");
         let status=reopened.agent_model_receipt("root".into(),thread.clone()).await.expect("native task model fixture").expect("native task model fixture");
+
         assert_eq!(status.state,"target_observed");
         assert_eq!(status.attempt.generation.as_deref(),Some(owned.key.generation.as_str()));
+
         session.client.respond_guarded(id,json!({"contentItems":[{"type":"inputText","text":"Continue"}],"success":true}),guard).await.expect("native task model fixture");
+
         super::super::finish(&mut session.events).await;
+
         assert_eq!(calls.load(Ordering::Acquire),2);
 
         thread
     }).await.expect("native live model deadline");
+
 	drop(session);
+
 	let mut cold = NativeSession::start(&binary, home.path());
+
 	tokio::time::timeout(Duration::from_secs(30),async {
         let resumed=cold.client.thread_resume(json!({"threadId":thread})).await.expect("native task model fixture");
+
         if plan {assert_eq!(resumed["collaborationMode"]["mode"],"plan");}
+
         cold.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Confirm the following turn uses its saved settings."}]})).await.expect("native task model fixture");
+
         super::super::finish(&mut cold.events).await;
+
         let other=cold.client.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"})).await.expect("native task model fixture");
+
         cold.client.turn_start(json!({"threadId":other["thread"]["id"],"input":[{"type":"text","text":"Use independent defaults."}]})).await.expect("native task model fixture");
+
         super::super::finish(&mut cold.events).await;
     }).await.expect("cold native model deadline");
+
 	let captured = bodies.lock().expect("native task model fixture");
+
 	assert_eq!(captured.len(), 4);
+
 	for (request, (model, effort)) in captured.iter().zip([
 		("gpt-5.6-sol", "low"),
 		("gpt-5.6-sol", "low"),
@@ -108,15 +143,18 @@ async fn qualify(plan: bool) {
 		("gpt-5.6-sol", "low"),
 	]) {
 		assert_eq!(request["model"], model);
+
 		let metadata: Value = serde_json::from_str(
 			request["client_metadata"]["x-codex-turn-metadata"]
 				.as_str()
 				.expect("native task model fixture"),
 		)
 		.expect("native task model fixture");
+
 		assert_eq!(metadata["model"], model);
 		assert_eq!(metadata["reasoning_effort"], effort);
 	}
+
 	if plan {
 		for index in [0, 1, 2] {
 			assert!(
@@ -124,16 +162,20 @@ async fn qualify(plan: bool) {
 				"Plan mode lost on request {index}"
 			);
 		}
+
 		assert!(
 			!captured[3].to_string().contains("# Plan Mode (Conversational)"),
 			"Plan mode leaked into a new task"
 		);
 	}
+
 	assert_eq!(
 		std::fs::read(home.path().join("config.toml")).expect("native task model fixture"),
 		config
 	);
+
 	drop(captured);
 	drop(cold);
+
 	backend.abort();
 }

@@ -1,11 +1,15 @@
 //! Source-bound configured model reads on the existing ordinary process.
+#[path = "cold_model_settings.rs"] mod cold;
+
 use super::{ConversationRuntime, LocalSession, LocalTaskState, WorkerCommand, same_local_process};
+
 use decodex_codex::app_server_client::NativeThreadModelSettings;
+
 use decodex_protocol::{
 	ConversationModel, ConversationModelSettingsResult as ResultDto, ConversationReasoningEffort,
 };
+
 use std::time::Duration;
-#[path = "cold_model_settings.rs"] mod cold;
 
 impl ConversationRuntime {
 	pub(crate) async fn model_settings(&self, key: &str, conversation: &str) -> ResultDto {
@@ -15,13 +19,17 @@ impl ConversationRuntime {
 		if !self.local().contains_key(conversation) {
 			return self.cold_model_settings(key, conversation).await;
 		}
+
 		let (source, commands) = {
 			let mut local = self.local();
 			let Some(task) = local.get_mut(conversation) else { return ResultDto::Unavailable };
+
 			match &task.state {
 				LocalTaskState::Ready(session) => {
 					let source = session.clone();
+
 					task.state = LocalTaskState::CatalogReading(source.clone());
+
 					(source, None)
 				},
 				LocalTaskState::Active { session, commands, .. } =>
@@ -45,6 +53,7 @@ impl ConversationRuntime {
 				None
 			} else if let Some(commands) = commands {
 				let (reply, result) = tokio::sync::oneshot::channel();
+
 				if commands.try_send(WorkerCommand::ModelSettings(reply)).is_ok() {
 					tokio::time::timeout(Duration::from_secs(10), result)
 						.await
@@ -75,23 +84,28 @@ impl ConversationRuntime {
 					same_local_process(current, &source),
 				_ => false,
 			};
+
 			if !same {
 				return ResultDto::Unavailable;
 			}
+
 			let requested_tier = source
 				.execution_overrides
 				.is_none_or(|intent| intent.service_tier)
 				.then(|| source.service_tier.clone());
+
 			if idle {
 				task.state = LocalTaskState::Ready(source);
 			}
 			if before.is_none() || before != after {
 				return ResultDto::Unavailable;
 			}
+
 			result
 				.and_then(|settings| project(settings, requested_tier))
 				.unwrap_or(ResultDto::Unavailable)
 		});
+
 		tokio::time::timeout(Duration::from_secs(12), query)
 			.await
 			.ok()
@@ -106,10 +120,13 @@ impl ConversationRuntime {
 		let control = self.inner.process_generations.clone();
 		let process = source.process.clone();
 		let thread = source.codex_thread_id.clone();
+
 		tokio::task::spawn_blocking(move || {
 			control.with_fenced_child(&process, |child| {
 				let (result, events) = child.read_ordinary_model_settings(&thread);
+
 				child.retain_ordinary_events(events)?;
+
 				result
 			})
 		})
@@ -151,8 +168,10 @@ mod tests {
 			let (_temp, mut child) =
 				crate::account_launch::process::tests::ordinary_catalog_child(mode);
 			let (result, events) = child.read_ordinary_model_settings("settings-thread");
+
 			if mode == "exact-settings-valid" {
 				let settings = result.unwrap().unwrap();
+
 				assert_eq!(settings.model.as_deref(), Some("configured-model"));
 				assert_eq!(settings.reasoning_effort, None);
 			} else if mode == "exact-settings-missing" {
@@ -160,11 +179,14 @@ mod tests {
 			} else {
 				assert!(result.is_err());
 			}
+
 			child.retain_ordinary_events(events).unwrap();
+
 			assert!(
 				matches!(child.next_ordinary_turn_event(Duration::ZERO).unwrap(), Some(super::super::ConversationProcessEvent::TurnCompleted { turn_id, .. }) if turn_id == "settings-turn")
 			);
 			assert!(child.next_ordinary_turn_event(Duration::ZERO).unwrap().is_none());
+
 			child.shutdown().unwrap();
 		}
 	}
@@ -175,9 +197,12 @@ mod tests {
 				crate::account_launch::process::tests::ordinary_catalog_child(mode);
 			let (commands, receiver) = std::sync::mpsc::channel();
 			let (reply, mut result) = tokio::sync::oneshot::channel();
+
 			commands.send(WorkerCommand::ModelSettings(reply)).unwrap();
+
 			let (output, mut events) = tokio::sync::mpsc::channel(8);
 			let shutdown = std::sync::atomic::AtomicBool::new(false);
+
 			super::super::run_event_loop(
 				&mut child,
 				"settings-thread".into(),
@@ -187,12 +212,14 @@ mod tests {
 				&output,
 			)
 			.unwrap();
+
 			assert_eq!(result.try_recv().unwrap().is_some(), mode == "exact-settings-valid");
 			assert!(
 				matches!(events.try_recv().unwrap(), super::super::WorkerOutput::Event(super::super::ConversationProcessEvent::TurnCompleted { turn_id, .. }) if turn_id == "settings-turn")
 			);
 			assert!(events.try_recv().is_err());
 			assert!(child.next_ordinary_turn_event(Duration::ZERO).unwrap().is_none());
+
 			child.shutdown().unwrap();
 		}
 	}

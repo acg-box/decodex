@@ -20,6 +20,7 @@ impl AgentCoordinator {
 					.as_u64()
 					.and_then(|index| usize::try_from(index).ok())
 					.ok_or_else(|| AgentError::Invalid("Invalid reasoning summary part".into()))?;
+
 				(
 					exact(params, "/itemId")?,
 					AgentReasoningSummaryChange::Delta { index, text: exact(params, "/delta")? },
@@ -32,10 +33,12 @@ impl AgentCoordinator {
 						parts.iter().map(|part| part.as_str().map(str::to_owned)).collect()
 					})
 					.ok_or_else(|| AgentError::Invalid("Invalid reasoning summary".into()))?;
+
 				(exact(params, "/item/id")?, AgentReasoningSummaryChange::Completed { parts })
 			},
 			_ => return Ok(false),
 		};
+
 		self.store
 			.update_agent_reasoning_summary(
 				exact(params, "/threadId")?,
@@ -45,6 +48,7 @@ impl AgentCoordinator {
 				change,
 			)
 			.await?;
+
 		Ok(true)
 	}
 }
@@ -53,17 +57,20 @@ pub(crate) fn voice_handoff(item: &Value) -> bool {
 	if item["type"] != "userMessage" {
 		return false;
 	}
+
 	let Some(content) = item["content"].as_array() else {
 		return false;
 	};
 	let [part] = content.as_slice() else {
 		return false;
 	};
+
 	if part["type"] != "text"
 		|| part["textElements"].as_array().is_some_and(|elements| !elements.is_empty())
 	{
 		return false;
 	}
+
 	part["text"]
 		.as_str()
 		.and_then(|text| text.trim().strip_prefix("<realtime_delegation>"))

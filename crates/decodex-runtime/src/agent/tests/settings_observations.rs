@@ -1,34 +1,31 @@
 //! Native wire publications reach the existing durable settings owners without dispatch.
 use super::*;
 
-fn facts(model: &str) -> Value {
-	json!({"model":model,"modelProvider":"fixture","effort":"high","serviceTier":null,
-        "cwd":"/fixture","activePermissionProfile":{"id":model},"approvalPolicy":"on-request",
-        "approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"},
-        "disabledPluginIds":[format!("{model}@market")],
-        "collaborationMode":{"settings":{"developer_instructions":"private instruction sentinel"}}})
-}
-
 struct Wire {
 	remote: tokio::io::DuplexStream,
 	events: tokio::sync::mpsc::Receiver<ServerEvent>,
 }
 impl Wire {
 	fn attach(agent: &mut AgentCoordinator) -> Self {
-		let (local, remote) = tokio::io::duplex(32768);
+		let (local, remote) = tokio::io::duplex(32_768);
 		let (reader, writer) = tokio::io::split(local);
 		let (client, events) = AppServerClient::from_io(reader, writer);
+
 		agent.client = client;
+
 		Self { remote, events }
 	}
 
 	async fn publish(&mut self, agent: &mut AgentCoordinator, thread: &str, settings: Value) {
 		let event = json!({"method":"thread/settings/updated","params":{"threadId":thread,"threadSettings":settings}});
+
 		self.remote.write_all(format!("{event}\n").as_bytes()).await.unwrap();
+
 		let event = tokio::time::timeout(std::time::Duration::from_secs(2), self.events.recv())
 			.await
 			.unwrap()
 			.unwrap();
+
 		agent.handle_event(event).await.unwrap();
 	}
 
@@ -49,6 +46,7 @@ impl Wire {
 			}
 		});
 		let mut line = String::new();
+
 		tokio::time::timeout(
 			std::time::Duration::from_secs(2),
 			BufReader::new(&mut self.remote).read_line(&mut line),
@@ -56,9 +54,12 @@ impl Wire {
 		.await
 		.unwrap()
 		.unwrap();
+
 		let request: Value = serde_json::from_str(&line).unwrap();
+
 		assert_eq!(request["method"], method);
 		assert_eq!(request["params"]["threadId"], thread);
+
 		self.remote
 			.write_all(format!("{}\n", json!({"id":request["id"],"result":response})).as_bytes())
 			.await
@@ -68,7 +69,9 @@ impl Wire {
 
 	async fn assert_no_requests(&mut self) {
 		use tokio::io::AsyncReadExt as _;
+
 		let mut byte = [0];
+
 		assert!(
 			tokio::time::timeout(std::time::Duration::from_millis(20), self.remote.read(&mut byte))
 				.await
@@ -77,6 +80,80 @@ impl Wire {
 		);
 	}
 }
+
+fn facts(model: &str) -> Value {
+	json!({"model":model,"modelProvider":"fixture","effort":"high","serviceTier":null,
+        "cwd":"/fixture","activePermissionProfile":{"id":model},"approvalPolicy":"on-request",
+        "approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"},
+        "disabledPluginIds":[format!("{model}@market")],
+        "collaborationMode":{"settings":{"developer_instructions":"private instruction sentinel"}}})
+}
+
+fn assert_projections(values: &[decodex_database::AgentTaskSettingsObservation; 3]) {
+	let model: Value = serde_json::from_str(values[0].settings_json.as_ref().unwrap()).unwrap();
+
+	assert_eq!(
+		model,
+		json!({"model":"first","modelProvider":"fixture","effort":"high","serviceTier":null})
+	);
+
+	let permissions: decodex_codex::app_server_client::NativeTaskPermissions =
+		serde_json::from_str(values[1].settings_json.as_ref().unwrap()).unwrap();
+
+	assert_eq!(permissions.profile_id.as_deref(), Some("first"));
+
+	let plugins: Value = serde_json::from_str(values[2].settings_json.as_ref().unwrap()).unwrap();
+
+	assert_eq!(plugins, json!({"disabledPluginIds":["first@market"]}));
+	assert_ne!(values[0].id, values[1].id);
+	assert_ne!(values[1].id, values[2].id);
+}
+
+#[test]
+fn hydrated_settings_accept_native_changes_but_not_foreign_or_malformed_replies() {
+	let valid = json!({"thread":{"id":"exact"},"model":"native-replacement","reasoningEffort":"future-effort"});
+
+	assert!(AgentCoordinator::hydrated_thread_matches(&valid, "exact"));
+	assert!(!AgentCoordinator::hydrated_thread_matches(&valid, "foreign"));
+
+	for (field, value) in [
+		("model", Value::Null),
+		("model", json!("")),
+		("model", json!("\n")),
+		("reasoningEffort", json!(42)),
+		("reasoningEffort", json!("\n")),
+	] {
+		let mut bad = valid.clone();
+
+		bad[field] = value;
+
+		assert!(!AgentCoordinator::hydrated_thread_matches(&bad, "exact"));
+	}
+
+	let mut unset = valid.clone();
+
+	unset["reasoningEffort"] = Value::Null;
+
+	assert!(AgentCoordinator::hydrated_thread_matches(&unset, "exact"));
+
+	unset.as_object_mut().unwrap().remove("reasoningEffort");
+
+	assert!(!AgentCoordinator::hydrated_thread_matches(&unset, "exact"));
+}
+
+fn response(thread: &str, model: &str) -> Value {
+	let mut value = facts(model);
+
+	value["thread"] = json!({"id":thread});
+	value["reasoningEffort"] = Value::Null;
+
+	value.as_object_mut().unwrap().remove("effort");
+
+	value["sandbox"] = value["sandboxPolicy"].take();
+
+	value
+}
+
 async fn records(
 	store: &SqliteStore,
 	thread: &str,
@@ -88,27 +165,13 @@ async fn records(
 	]
 }
 
-fn assert_projections(values: &[decodex_database::AgentTaskSettingsObservation; 3]) {
-	let model: Value = serde_json::from_str(values[0].settings_json.as_ref().unwrap()).unwrap();
-	assert_eq!(
-		model,
-		json!({"model":"first","modelProvider":"fixture","effort":"high","serviceTier":null})
-	);
-	let permissions: decodex_codex::app_server_client::NativeTaskPermissions =
-		serde_json::from_str(values[1].settings_json.as_ref().unwrap()).unwrap();
-	assert_eq!(permissions.profile_id.as_deref(), Some("first"));
-	let plugins: Value = serde_json::from_str(values[2].settings_json.as_ref().unwrap()).unwrap();
-	assert_eq!(plugins, json!({"disabledPluginIds":["first@market"]}));
-	assert_ne!(values[0].id, values[1].id);
-	assert_ne!(values[1].id, values[2].id);
-}
-
 async fn assert_foreign_generation(
 	store: &SqliteStore,
 	thread: &str,
 	first: &decodex_database::AgentTaskSettingsObservation,
 ) {
 	let foreign = Some("foreign-generation".to_owned());
+
 	assert!(
 		store
 			.agent_task_models("agent".into(), thread.into(), foreign.clone())
@@ -147,81 +210,124 @@ async fn assert_foreign_generation(
 #[tokio::test]
 async fn wire_settings_preserve_transitions_privacy_and_reopen_without_dispatch() {
 	let (mut agent, mut sent, directory) = fixture().await;
+
 	agent.start_agent("agent", "Coordinate").await.unwrap();
+
 	while sent.try_recv().is_ok() {}
+
 	let thread =
 		agent.store.get_agent_work_item("agent".into()).await.unwrap().codex_thread_id.unwrap();
 	let mut wire = Wire::attach(&mut agent);
+
 	wire.publish(&mut agent, "foreign", facts("first")).await;
+
 	assert!(records(&agent.store, &thread).await.iter().all(Option::is_none));
+
 	wire.publish(&mut agent, &thread, facts("first")).await;
+
 	let first = records(&agent.store, &thread).await.map(Option::unwrap);
+
 	assert_projections(&first);
+
 	agent.persist_task_settings(&thread).await.unwrap();
+
 	assert_eq!(
 		records(&agent.store, &thread).await,
 		first.clone().map(Some),
 		"same source read must deduplicate"
 	);
+
 	wire.publish(&mut agent, &thread, facts("first")).await;
+
 	let repeated = records(&agent.store, &thread).await.map(Option::unwrap);
+
 	for i in 0..3 {
 		assert!(repeated[i].id > first[i].id, "a new wire revision must invalidate old reviews");
 		assert_eq!(repeated[i].settings_json, first[i].settings_json);
 	}
+
 	let mut empty_plugins = facts("second");
+
 	empty_plugins["disabledPluginIds"] = json!([]);
+
 	wire.publish(&mut agent, &thread, empty_plugins).await;
+
 	let second = records(&agent.store, &thread).await.map(Option::unwrap);
+
 	assert_eq!(
 		serde_json::from_str::<Value>(second[2].settings_json.as_ref().unwrap()).unwrap(),
 		json!({"disabledPluginIds":[]})
 	);
+
 	wire.publish(&mut agent, &thread, facts("first")).await;
+
 	let restored = records(&agent.store, &thread).await.map(Option::unwrap);
+
 	for i in 0..3 {
 		assert!(first[i].id < second[i].id && second[i].id < restored[i].id);
 		assert_eq!(first[i].settings_json, restored[i].settings_json);
+
 		let event = agent.store.get_agent_inbox_event(restored[i].id).await.unwrap();
+
 		assert!(event.disposition.is_some());
 		assert!(!event.payload.contains("private instruction sentinel"));
 	}
+
 	let mut malformed_plugins = facts("first");
+
 	malformed_plugins["disabledPluginIds"] = Value::Null;
+
 	wire.publish(&mut agent, &thread, malformed_plugins).await;
+
 	assert!(records(&agent.store, &thread).await[2].as_ref().unwrap().settings_json.is_none());
+
 	let mut incomplete = facts("first");
+
 	for field in ["serviceTier", "approvalsReviewer", "disabledPluginIds"] {
 		incomplete.as_object_mut().unwrap().remove(field);
 	}
+
 	wire.publish(&mut agent, &thread, incomplete).await;
+
 	let invalid = records(&agent.store, &thread).await.map(Option::unwrap);
+
 	for i in 0..3 {
 		assert!(invalid[i].id > restored[i].id);
 		assert!(invalid[i].settings_json.is_none());
 	}
+
 	assert!(agent.store.list_pending_agent_events(100).await.unwrap().is_empty());
 	assert!(agent.store.list_agent_wake_events("agent".into(), 100).await.unwrap().is_empty());
 	assert!(sent.try_recv().is_err());
+
 	wire.assert_no_requests().await;
+
 	let root =
 		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
 			.unwrap();
 	let reopened = SqliteStore::open(&root.paths()).unwrap();
+
 	assert_eq!(records(&reopened, &thread).await, invalid.map(Some));
+
 	assert_foreign_generation(&reopened, &thread, &first[0]).await;
 }
 
 #[tokio::test]
 async fn queued_notification_payload_cannot_replace_newer_wire_settings() {
 	let (mut agent, mut sent, _directory) = fixture().await;
+
 	agent.start_agent("agent", "Coordinate").await.unwrap();
+
 	while sent.try_recv().is_ok() {}
+
 	let thread =
 		agent.store.get_agent_work_item("agent".into()).await.unwrap().codex_thread_id.unwrap();
 	let mut wire = Wire::attach(&mut agent);
+
 	wire.publish(&mut agent, &thread, facts("current")).await;
+
 	let current = records(&agent.store, &thread).await;
+
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "thread/settings/updated".into(),
@@ -229,82 +335,74 @@ async fn queued_notification_payload_cannot_replace_newer_wire_settings() {
 		})
 		.await
 		.unwrap();
+
 	assert_eq!(records(&agent.store, &thread).await, current);
+
 	wire.assert_no_requests().await;
+
 	assert!(sent.try_recv().is_err());
-}
-
-#[test]
-fn hydrated_settings_accept_native_changes_but_not_foreign_or_malformed_replies() {
-	let valid = json!({"thread":{"id":"exact"},"model":"native-replacement","reasoningEffort":"future-effort"});
-	assert!(AgentCoordinator::hydrated_thread_matches(&valid, "exact"));
-	assert!(!AgentCoordinator::hydrated_thread_matches(&valid, "foreign"));
-	for (field, value) in [
-		("model", Value::Null),
-		("model", json!("")),
-		("model", json!("\n")),
-		("reasoningEffort", json!(42)),
-		("reasoningEffort", json!("\n")),
-	] {
-		let mut bad = valid.clone();
-		bad[field] = value;
-		assert!(!AgentCoordinator::hydrated_thread_matches(&bad, "exact"));
-	}
-	let mut unset = valid.clone();
-	unset["reasoningEffort"] = Value::Null;
-	assert!(AgentCoordinator::hydrated_thread_matches(&unset, "exact"));
-	unset.as_object_mut().unwrap().remove("reasoningEffort");
-	assert!(!AgentCoordinator::hydrated_thread_matches(&unset, "exact"));
-}
-
-fn response(thread: &str, model: &str) -> Value {
-	let mut value = facts(model);
-	value["thread"] = json!({"id":thread});
-	value["reasoningEffort"] = Value::Null;
-	value.as_object_mut().unwrap().remove("effort");
-	value["sandbox"] = value["sandboxPolicy"].take();
-	value
 }
 
 #[tokio::test]
 async fn resumed_wire_settings_require_exact_thread_and_complete_model_facts() {
 	let (mut agent, mut sent, _directory) = fixture().await;
+
 	agent.start_agent("agent", "Coordinate").await.unwrap();
+
 	while sent.try_recv().is_ok() {}
+
 	let thread =
 		agent.store.get_agent_work_item("agent".into()).await.unwrap().codex_thread_id.unwrap();
 	let mut wire = Wire::attach(&mut agent);
+
 	wire.reply(&agent, "thread/resume", &thread, response("foreign", "resumed")).await;
 	agent.persist_task_settings(&thread).await.unwrap();
+
 	assert!(records(&agent.store, &thread).await[0].is_none());
+
 	let mut resumed = response(&thread, "resumed");
+
 	wire.reply(&agent, "thread/resume", &thread, resumed.clone()).await;
 	agent.persist_task_settings(&thread).await.unwrap();
+
 	let observed = records(&agent.store, &thread).await[0].clone().unwrap();
 	let settings: decodex_codex::app_server_client::NativeTaskModelSettings =
 		serde_json::from_str(observed.settings_json.as_ref().unwrap()).unwrap();
+
 	assert_eq!(settings.model, "resumed");
 	assert_eq!(settings.effort, None);
 	assert_eq!(settings.service_tier, None);
+
 	resumed.as_object_mut().unwrap().remove("reasoningEffort");
 	wire.reply(&agent, "thread/resume", &thread, resumed).await;
 	agent.persist_task_settings(&thread).await.unwrap();
+
 	let invalid = records(&agent.store, &thread).await[0].clone().unwrap();
+
 	assert!(invalid.id > observed.id && invalid.settings_json.is_none());
+
 	wire.assert_no_requests().await;
+
 	assert!(sent.try_recv().is_err());
 }
 
 #[tokio::test]
 async fn permission_receipt_requires_current_wire_facts_not_queued_payload_or_history() {
 	let (mut agent, mut sent, directory) = fixture().await;
+
 	agent.start_agent("agent", "Coordinate").await.unwrap();
+
 	let work = agent.store.get_agent_work_item("agent".into()).await.unwrap();
 	let thread = work.codex_thread_id.unwrap();
+
 	agent.store.complete_agent_turn("agent".into(), work.active_turn_id.unwrap()).await.unwrap();
+
 	while sent.try_recv().is_ok() {}
+
 	let mut wire = Wire::attach(&mut agent);
+
 	wire.publish(&mut agent, &thread, facts("readonly")).await;
+
 	let observed = records(&agent.store, &thread).await[1].clone().unwrap();
 	let attempt = decodex_database::AgentPermissionAttempt {
 		work: "agent".into(),
@@ -317,9 +415,11 @@ async fn permission_receipt_requires_current_wire_facts_not_queued_payload_or_hi
 	};
 	let id =
 		agent.store.reserve_agent_permission_selection(attempt.clone()).await.unwrap().unwrap();
+
 	assert!(
 		agent.store.finish_agent_permission_selection(id, attempt, "queued".into()).await.unwrap()
 	);
+
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "thread/settings/updated".into(),
@@ -327,6 +427,7 @@ async fn permission_receipt_requires_current_wire_facts_not_queued_payload_or_hi
 		})
 		.await
 		.unwrap();
+
 	assert_eq!(
 		agent
 			.store
@@ -337,8 +438,10 @@ async fn permission_receipt_requires_current_wire_facts_not_queued_payload_or_hi
 			.state,
 		"queued"
 	);
+
 	wire.reply(&agent, "thread/read", &thread, response(&thread, "scoped")).await;
 	agent.persist_task_settings(&thread).await.unwrap();
+
 	assert_eq!(
 		agent
 			.store
@@ -350,16 +453,21 @@ async fn permission_receipt_requires_current_wire_facts_not_queued_payload_or_hi
 		"queued"
 	);
 	assert!(agent.store.begin_agent_dispatch("agent".into()).await.is_err());
+
 	wire.publish(&mut agent, &thread, facts("scoped")).await;
+
 	let root =
 		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
 			.unwrap();
 	let reopened = SqliteStore::open(&root.paths()).unwrap();
+
 	assert_eq!(
 		reopened.agent_permission_receipt("agent".into(), thread).await.unwrap().unwrap().state,
 		"target_observed"
 	);
 	assert!(reopened.begin_agent_dispatch("agent".into()).await.is_ok());
+
 	wire.assert_no_requests().await;
+
 	assert!(sent.try_recv().is_err());
 }

@@ -57,6 +57,7 @@ pub(super) async fn qualify(
 			"user-fixture",
 		)
 		.await;
+
 	let authority = LocalTransportAuthority::new(
 		root.paths(),
 		decodex_core::LocalTrustPolicy::SameUid,
@@ -84,11 +85,14 @@ pub(super) async fn qualify(
 	else {
 		panic!("initial snapshot")
 	};
+
 	peer.confirm_applied(confirmation).expect("snapshot admission");
+
 	let current = client
 		.recovery(source.account_id.clone(), source.account_revision)
 		.await
 		.expect("recovery query");
+
 	assert!(matches!(
 		client
 			.prepare_recovery(current.clone(), AccountRecoveryAction::NotifyOwner)
@@ -99,6 +103,7 @@ pub(super) async fn qualify(
 			..
 		}
 	));
+
 	let key =
 		IdempotencyKey::new("native-notification-through-socket").expect("explicit operation");
 	let (response, ()) = tokio::time::timeout(Duration::from_secs(30), async {
@@ -117,10 +122,12 @@ pub(super) async fn qualify(
 	})
 	.await
 	.expect("bounded admitted command");
+
 	assert!(
 		matches!(response.expect("verified command response"), AccountCommandResponse::Applied { result, .. }
 		if matches!(&*result, ResultPayload::AccountRecoveryNudge { status:Status::Sent, operation_key, .. } if operation_key == &key))
 	);
+
 	let SessionDelivery::Event { event, confirmation } =
 		tokio::time::timeout(Duration::from_secs(5), peer.next())
 			.await
@@ -129,10 +136,13 @@ pub(super) async fn qualify(
 	else {
 		panic!("account notification publication")
 	};
+
 	assert!(
 		matches!(event.payload, EventPayload::AccountRecoveryNudge { status:Status::Sent, operation_key, .. } if operation_key == key)
 	);
+
 	peer.confirm_applied(confirmation).expect("peer applied event");
+
 	let outcome = client
 		.recovery_nudge_status(
 			source.account_id.clone(),
@@ -141,6 +151,7 @@ pub(super) async fn qualify(
 		)
 		.await
 		.expect("status readback");
+
 	assert!(
 		matches!(outcome, AccountRecoveryNudgeResult::Found(operation) if operation.outcome == Status::Sent && operation.operation_key == key)
 	);
@@ -152,6 +163,8 @@ pub(super) async fn qualify(
 		tokio::time::timeout(Duration::from_millis(300), listener.accept()).await.is_err(),
 		"wire replay must not start native work"
 	);
+
 	peer.close().await.expect("peer close");
+
 	assert!(server.shutdown().await.expect("server shutdown").is_success());
 }

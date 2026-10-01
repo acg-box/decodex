@@ -27,8 +27,11 @@ async fn qualify() {
 	let config = format!(
 		"model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ndefault_permissions=\"recap-restricted\"\n[features]\nenable_request_compression=false\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.forbidden]\ncommand=\"must-not-run-recap-tool\"\nrequired=true\n[permissions.recap-restricted.filesystem]\n\":root\"=\"read\"\n\"/private/recap-denied\"=\"deny\"\n"
 	);
+
 	std::fs::write(home.path().join("config.toml"), &config).expect("native temporary fixture");
+
 	let mut session = NativeSession::start(&binary, home.path());
+
 	for profile in [None, Some("recap-restricted")] {
 		let thread = session
 			.client
@@ -60,6 +63,7 @@ async fn qualify() {
 					}
 				}
 			}
+
 			events
 		});
 		let schema = json!({"type":"object","properties":{"summary":{"type":"string"},"next":{"type":["string","null"]}},"required":["summary","next"],"additionalProperties":false});
@@ -67,21 +71,25 @@ async fn qualify() {
 			.run("Summarize the fixture without tools.".into(), schema, None, receive, watch)
 			.await
 			.expect("native structured result");
+
 		assert_eq!(
 			serde_json::from_str::<Value>(&value).expect("native temporary fixture")["summary"],
 			"Fixture recap"
 		);
 		// Unsubscribe detaches this connection; it is not an immediate thread shutdown.
 		let _ = stop.send(());
+
 		session.events = tokio::time::timeout(Duration::from_secs(5), forward)
 			.await
 			.expect("event route stopped")
 			.expect("native temporary fixture");
+
 		let listed = session
 			.client
 			.request("thread/list", json!({"limit":100}))
 			.await
 			.expect("native temporary fixture");
+
 		assert!(
 			!listed["data"]
 				.as_array()
@@ -90,7 +98,9 @@ async fn qualify() {
 				.any(|t| t["id"] == id)
 		);
 	}
+
 	assert_eq!(calls.load(Ordering::Acquire), 2);
+
 	for body in bodies.lock().expect("native temporary fixture").iter() {
 		assert!(
 			body["tools"].as_array().is_none_or(Vec::is_empty),
@@ -98,9 +108,11 @@ async fn qualify() {
 		);
 		assert_eq!(body["text"]["format"]["type"], "json_schema");
 	}
+
 	assert_eq!(
 		std::fs::read_to_string(home.path().join("config.toml")).expect("native temporary fixture"),
 		config
 	);
+
 	backend.abort();
 }

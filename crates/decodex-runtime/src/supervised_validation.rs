@@ -33,6 +33,11 @@ const MAX_DRAIN_EVENTS: usize = 32;
 const MAX_DRAIN_BYTES: usize = 256 * 1_024;
 const MAX_DRAIN_TIME: Duration = Duration::from_millis(2);
 
+/// Authority-specific protected-state observer. It must not derive identity from ambient CWD.
+pub trait ProtectedWorktreeStateProbe {
+	fn observe(&mut self) -> Result<ProtectedWorktreeFingerprint, ValidationSupervisionError>;
+}
+
 /// Explicit, immutable command authority for one supervised validation invocation.
 pub struct ValidationCommandAuthority {
 	executable: PathBuf,
@@ -44,7 +49,6 @@ pub struct ValidationCommandAuthority {
 	stderr_limit: usize,
 	expected_source_revision: RepositoryContentRevision,
 }
-
 impl ValidationCommandAuthority {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
@@ -81,12 +85,15 @@ impl ValidationCommandAuthority {
 				"validation capture limits must be 1..=4194304 bytes",
 			));
 		}
+
 		let mut names = BTreeSet::new();
+
 		if environment.iter().any(|(name, _)| name.is_empty() || !names.insert(name.clone())) {
 			return Err(ValidationSupervisionError::InvalidAuthority(
 				"validation environment names must be non-empty and unique",
 			));
 		}
+
 		Ok(Self {
 			executable,
 			argv,
@@ -131,17 +138,11 @@ pub struct ProtectedWorktreeFingerprint {
 	pub worktree_state: [u8; 32],
 }
 
-/// Authority-specific protected-state observer. It must not derive identity from ambient CWD.
-pub trait ProtectedWorktreeStateProbe {
-	fn observe(&mut self) -> Result<ProtectedWorktreeFingerprint, ValidationSupervisionError>;
-}
-
 /// Cooperative cancellation handle. Cancellation terminates the complete child process group.
 #[derive(Clone, Default)]
 pub struct ValidationCancellation {
 	cancelled: Arc<AtomicBool>,
 }
-
 impl ValidationCancellation {
 	pub fn cancel(&self) {
 		self.cancelled.store(true, Ordering::Release);
@@ -150,6 +151,118 @@ impl ValidationCancellation {
 	pub fn is_cancelled(&self) -> bool {
 		self.cancelled.load(Ordering::Acquire)
 	}
+}
+
+/// Complete bounded observation of one supervised command.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SupervisedValidationEvidence {
+	pub source_revision: RepositoryContentRevision,
+	pub before: ProtectedWorktreeFingerprint,
+	pub after: Option<ProtectedWorktreeFingerprint>,
+	pub termination: ValidationTermination,
+	pub acceptance: ValidationAcceptance,
+	pub stdout: Vec<u8>,
+	pub stderr: Vec<u8>,
+}
+
+struct CaptureState {
+	receiver: Receiver<CaptureEvent>,
+	stdout: Vec<u8>,
+	stderr: Vec<u8>,
+	stdout_limit: usize,
+	stderr_limit: usize,
+	stdout_done: bool,
+	stderr_done: bool,
+	failed: bool,
+	output_exceeded: bool,
+}
+impl CaptureState {
+	fn new(receiver: Receiver<CaptureEvent>, stdout_limit: usize, stderr_limit: usize) -> Self {
+		Self {
+			receiver,
+			stdout: Vec::with_capacity(stdout_limit.min(64 * 1_024)),
+			stderr: Vec::with_capacity(stderr_limit.min(64 * 1_024)),
+			stdout_limit,
+			stderr_limit,
+			stdout_done: false,
+			stderr_done: false,
+			failed: false,
+			output_exceeded: false,
+		}
+	}
+
+	fn drain_bounded(&mut self, deadline: Instant) {
+		let drain_deadline = deadline.min(Instant::now() + MAX_DRAIN_TIME);
+		let mut events = 0;
+		let mut bytes = 0;
+
+		while events < MAX_DRAIN_EVENTS
+			&& bytes < MAX_DRAIN_BYTES
+			&& Instant::now() < drain_deadline
+			&& !self.output_exceeded
+		{
+			match self.receiver.try_recv() {
+				Ok(CaptureEvent::Chunk(stream, chunk)) => {
+					events += 1;
+					bytes = bytes.saturating_add(chunk.len());
+
+					self.append(stream, &chunk);
+				},
+				Ok(CaptureEvent::Eof(stream)) => {
+					events += 1;
+
+					self.mark_done(stream);
+				},
+				Ok(CaptureEvent::Failed(stream)) => {
+					events += 1;
+					self.failed = true;
+
+					self.mark_done(stream);
+				},
+				Err(TryRecvError::Empty) => break,
+				Err(TryRecvError::Disconnected) => {
+					if !self.stdout_done || !self.stderr_done {
+						self.failed = true;
+					}
+
+					break;
+				},
+			}
+		}
+	}
+
+	fn append(&mut self, stream: CaptureStream, bytes: &[u8]) {
+		let (output, limit) = match stream {
+			CaptureStream::Stdout => (&mut self.stdout, self.stdout_limit),
+			CaptureStream::Stderr => (&mut self.stderr, self.stderr_limit),
+		};
+		let remaining = limit.saturating_sub(output.len());
+
+		output.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
+
+		self.output_exceeded |= bytes.len() > remaining;
+	}
+
+	fn mark_done(&mut self, stream: CaptureStream) {
+		match stream {
+			CaptureStream::Stdout => self.stdout_done = true,
+			CaptureStream::Stderr => self.stderr_done = true,
+		}
+	}
+
+	fn complete(&self) -> bool {
+		self.stdout_done && self.stderr_done && !self.failed
+	}
+
+	fn settled(&self) -> bool {
+		self.stdout_done && self.stderr_done
+	}
+}
+
+struct TeardownOutcome {
+	status: Option<ExitStatus>,
+	confirmed: bool,
+	observed_before_signal: bool,
 }
 
 /// Deterministic leader-process classification, or the supervisor reason that preempted it.
@@ -181,18 +294,6 @@ pub enum ValidationAcceptance {
 	Rejected(ValidationRejection),
 }
 
-/// Complete bounded observation of one supervised command.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SupervisedValidationEvidence {
-	pub source_revision: RepositoryContentRevision,
-	pub before: ProtectedWorktreeFingerprint,
-	pub after: Option<ProtectedWorktreeFingerprint>,
-	pub termination: ValidationTermination,
-	pub acceptance: ValidationAcceptance,
-	pub stdout: Vec<u8>,
-	pub stderr: Vec<u8>,
-}
-
 /// Boundary/configuration error before trustworthy complete evidence can be returned.
 #[derive(Debug)]
 pub enum ValidationSupervisionError {
@@ -200,7 +301,6 @@ pub enum ValidationSupervisionError {
 	StateObservation(String),
 	Spawn(io::Error),
 }
-
 impl Display for ValidationSupervisionError {
 	fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
@@ -217,6 +317,18 @@ impl Display for ValidationSupervisionError {
 
 impl std::error::Error for ValidationSupervisionError {}
 
+#[derive(Clone, Copy)]
+enum CaptureStream {
+	Stdout,
+	Stderr,
+}
+
+enum CaptureEvent {
+	Chunk(CaptureStream, Vec<u8>),
+	Eof(CaptureStream),
+	Failed(CaptureStream),
+}
+
 /// Run one explicitly authorized validation command under bounded fail-closed supervision.
 pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 	authority: &ValidationCommandAuthority,
@@ -224,6 +336,7 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 	probe: &mut P,
 ) -> Result<SupervisedValidationEvidence, ValidationSupervisionError> {
 	let before = probe.observe()?;
+
 	if before.source_revision != authority.expected_source_revision {
 		return Err(ValidationSupervisionError::StateObservation(
 			"protected source revision differs from command authority".to_owned(),
@@ -247,6 +360,7 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 	}
 
 	let mut command = Command::new(&authority.executable);
+
 	command
 		.args(&authority.argv)
 		.current_dir(&authority.cwd)
@@ -255,7 +369,9 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 		.stdin(Stdio::null())
 		.stdout(Stdio::piped())
 		.stderr(Stdio::piped());
+
 	configure_child(&mut command);
+
 	let mut child = command.spawn().map_err(ValidationSupervisionError::Spawn)?;
 	let stdout = match child.stdout.take() {
 		Some(stdout) => stdout,
@@ -265,7 +381,6 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 		Some(stderr) => stderr,
 		None => return Err(missing_capture(&mut child, "stderr")),
 	};
-
 	let (capture_sender, capture_receiver) = sync_channel(16);
 	let _stdout_reader = spawn_capture(stdout, CaptureStream::Stdout, capture_sender.clone());
 	let _stderr_reader = spawn_capture(stderr, CaptureStream::Stderr, capture_sender);
@@ -279,10 +394,13 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 			Ok(None) => {},
 			Err(_) => {
 				forced = Some(ValidationTermination::SupervisionLost);
+
 				break None;
 			},
 		}
+
 		capture.drain_bounded(authority.deadline);
+
 		let now = Instant::now();
 		let supervisor_event = if capture.output_exceeded {
 			Some(ValidationTermination::OutputLimitExceeded)
@@ -293,6 +411,7 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 		} else {
 			None
 		};
+
 		if let Some(supervisor_event) = supervisor_event {
 			// Close the observation gap between the iteration's first poll and committing a
 			// forced outcome. Any exit observed here has already happened and remains
@@ -302,8 +421,10 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 				Ok(None) => forced = Some(supervisor_event),
 				Err(_) => forced = Some(ValidationTermination::SupervisionLost),
 			}
+
 			break None;
 		}
+
 		sleep_bounded(authority.deadline);
 	};
 	// The command deadline decides the validation outcome. Once that decision is made, the
@@ -311,16 +432,19 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 	// and to collect the resulting capture EOFs.
 	let teardown_deadline = Instant::now() + TEARDOWN_TIMEOUT;
 	let teardown = teardown_process_group(&mut child, teardown_deadline, recorded_status);
+
 	while teardown.confirmed
 		&& !capture.output_exceeded
 		&& !capture.settled()
 		&& Instant::now() < teardown_deadline
 	{
 		capture.drain_bounded(teardown_deadline);
+
 		if !capture.settled() {
 			sleep_bounded(teardown_deadline);
 		}
 	}
+
 	let termination = if teardown.confirmed {
 		if capture.output_exceeded {
 			ValidationTermination::OutputLimitExceeded
@@ -370,106 +494,6 @@ fn pre_spawn_rejection(
 	}
 }
 
-#[derive(Clone, Copy)]
-enum CaptureStream {
-	Stdout,
-	Stderr,
-}
-
-enum CaptureEvent {
-	Chunk(CaptureStream, Vec<u8>),
-	Eof(CaptureStream),
-	Failed(CaptureStream),
-}
-
-struct CaptureState {
-	receiver: Receiver<CaptureEvent>,
-	stdout: Vec<u8>,
-	stderr: Vec<u8>,
-	stdout_limit: usize,
-	stderr_limit: usize,
-	stdout_done: bool,
-	stderr_done: bool,
-	failed: bool,
-	output_exceeded: bool,
-}
-
-impl CaptureState {
-	fn new(receiver: Receiver<CaptureEvent>, stdout_limit: usize, stderr_limit: usize) -> Self {
-		Self {
-			receiver,
-			stdout: Vec::with_capacity(stdout_limit.min(64 * 1_024)),
-			stderr: Vec::with_capacity(stderr_limit.min(64 * 1_024)),
-			stdout_limit,
-			stderr_limit,
-			stdout_done: false,
-			stderr_done: false,
-			failed: false,
-			output_exceeded: false,
-		}
-	}
-
-	fn drain_bounded(&mut self, deadline: Instant) {
-		let drain_deadline = deadline.min(Instant::now() + MAX_DRAIN_TIME);
-		let mut events = 0;
-		let mut bytes = 0;
-		while events < MAX_DRAIN_EVENTS
-			&& bytes < MAX_DRAIN_BYTES
-			&& Instant::now() < drain_deadline
-			&& !self.output_exceeded
-		{
-			match self.receiver.try_recv() {
-				Ok(CaptureEvent::Chunk(stream, chunk)) => {
-					events += 1;
-					bytes = bytes.saturating_add(chunk.len());
-					self.append(stream, &chunk);
-				},
-				Ok(CaptureEvent::Eof(stream)) => {
-					events += 1;
-					self.mark_done(stream);
-				},
-				Ok(CaptureEvent::Failed(stream)) => {
-					events += 1;
-					self.failed = true;
-					self.mark_done(stream);
-				},
-				Err(TryRecvError::Empty) => break,
-				Err(TryRecvError::Disconnected) => {
-					if !self.stdout_done || !self.stderr_done {
-						self.failed = true;
-					}
-					break;
-				},
-			}
-		}
-	}
-
-	fn append(&mut self, stream: CaptureStream, bytes: &[u8]) {
-		let (output, limit) = match stream {
-			CaptureStream::Stdout => (&mut self.stdout, self.stdout_limit),
-			CaptureStream::Stderr => (&mut self.stderr, self.stderr_limit),
-		};
-		let remaining = limit.saturating_sub(output.len());
-		output.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
-		self.output_exceeded |= bytes.len() > remaining;
-	}
-
-	fn mark_done(&mut self, stream: CaptureStream) {
-		match stream {
-			CaptureStream::Stdout => self.stdout_done = true,
-			CaptureStream::Stderr => self.stderr_done = true,
-		}
-	}
-
-	fn complete(&self) -> bool {
-		self.stdout_done && self.stderr_done && !self.failed
-	}
-
-	fn settled(&self) -> bool {
-		self.stdout_done && self.stderr_done
-	}
-}
-
 fn spawn_capture<R: Read + Send + 'static>(
 	mut reader: R,
 	stream: CaptureStream,
@@ -477,19 +501,23 @@ fn spawn_capture<R: Read + Send + 'static>(
 ) -> thread::JoinHandle<()> {
 	thread::spawn(move || {
 		let mut buffer = [0_u8; 8 * 1_024];
+
 		loop {
 			let count = match reader.read(&mut buffer) {
 				Ok(0) => {
 					let _ = sender.send(CaptureEvent::Eof(stream));
+
 					return;
 				},
 				Ok(count) => count,
 				Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
 				Err(_) => {
 					let _ = sender.send(CaptureEvent::Failed(stream));
+
 					return;
 				},
 			};
+
 			if sender.send(CaptureEvent::Chunk(stream, buffer[..count].to_vec())).is_err() {
 				return;
 			}
@@ -502,23 +530,20 @@ fn configure_child(command: &mut Command) {
 	unsafe {
 		command.pre_exec(|| {
 			libc::umask(0o077);
+
 			if libc::setpgid(0, 0) == -1 {
 				return Err(io::Error::last_os_error());
 			}
+
 			Ok(())
 		});
 	}
 }
 
-struct TeardownOutcome {
-	status: Option<ExitStatus>,
-	confirmed: bool,
-	observed_before_signal: bool,
-}
-
 fn missing_capture(child: &mut Child, stream: &'static str) -> ValidationSupervisionError {
 	let teardown = teardown_process_group(child, Instant::now() + TEARDOWN_TIMEOUT, None);
 	let suffix = if teardown.confirmed { "" } else { "; teardown unconfirmed" };
+
 	ValidationSupervisionError::Spawn(io::Error::other(format!(
 		"{stream} supervision unavailable{suffix}"
 	)))
@@ -531,21 +556,29 @@ fn teardown_process_group(
 ) -> TeardownOutcome {
 	let pid = child.id();
 	let mut status = recorded_status;
+
 	poll_status(child, &mut status);
+
 	let observed_before_signal = status.is_some();
 	let grace_deadline = deadline.min(Instant::now() + TERMINATION_GRACE);
+
 	if Instant::now() < deadline {
 		let _ = signal_group_until(pid, libc::SIGTERM, deadline);
 	}
+
 	loop {
 		poll_status(child, &mut status);
+
 		if group_gone(pid, deadline) && status.is_some() {
 			return TeardownOutcome { status, confirmed: true, observed_before_signal };
 		}
+
 		let now = Instant::now();
+
 		if now >= grace_deadline {
 			break;
 		}
+
 		sleep_bounded(grace_deadline);
 	}
 
@@ -553,21 +586,29 @@ fn teardown_process_group(
 	// budget.
 	let _ = signal_group_until(pid, libc::SIGKILL, deadline);
 	let _ = child.kill();
+
 	loop {
 		poll_status(child, &mut status);
+
 		if group_gone(pid, deadline) && status.is_some() {
 			return TeardownOutcome { status, confirmed: true, observed_before_signal };
 		}
+
 		let now = Instant::now();
+
 		if now >= deadline {
 			break;
 		}
+
 		let _ = signal_group_until(pid, libc::SIGKILL, deadline);
+
 		sleep_bounded(deadline);
 	}
 	// One final nonblocking observation at the deadline; never call blocking `wait` or `join`.
 	poll_status(child, &mut status);
+
 	let confirmed = group_gone(pid, deadline) && status.is_some();
+
 	TeardownOutcome { status, confirmed, observed_before_signal }
 }
 
@@ -581,12 +622,15 @@ fn poll_status(child: &mut Child, status: &mut Option<ExitStatus>) {
 
 fn signal_group_until(pid: u32, signal: i32, deadline: Instant) -> io::Result<()> {
 	let pid = i32::try_from(pid).map_err(|_| io::Error::other("invalid child process identity"))?;
+
 	loop {
 		// SAFETY: the negative PID addresses only the group created in `pre_exec`.
 		if unsafe { libc::kill(-pid, signal) } == 0 {
 			return Ok(());
 		}
+
 		let error = io::Error::last_os_error();
+
 		match error.raw_os_error() {
 			Some(libc::ESRCH) => return Ok(()),
 			Some(libc::EINTR) if Instant::now() < deadline => continue,
@@ -597,11 +641,13 @@ fn signal_group_until(pid: u32, signal: i32, deadline: Instant) -> io::Result<()
 
 fn group_gone(pid: u32, deadline: Instant) -> bool {
 	let Ok(pid) = i32::try_from(pid) else { return false };
+
 	loop {
 		// SAFETY: signal zero observes only the child-created process group.
 		if unsafe { libc::kill(-pid, 0) } == 0 {
 			return false;
 		}
+
 		match io::Error::last_os_error().raw_os_error() {
 			Some(libc::ESRCH) => return true,
 			Some(libc::EINTR) if Instant::now() < deadline => continue,
@@ -645,6 +691,7 @@ fn classify_acceptance(
 	if !capture_complete {
 		return ValidationAcceptance::Rejected(ValidationRejection::IncompleteEvidence);
 	}
+
 	match termination {
 		ValidationTermination::Exited(0) => ValidationAcceptance::Accepted,
 		ValidationTermination::TimedOut =>

@@ -210,11 +210,13 @@ async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_state
 			status(&document, "blob_integrity"),
 			&serde_json::json!({"state": "unknown", "issue": "not_probed"}),
 		);
+
 		let expected_vault = if cfg!(target_os = "macos") {
 			serde_json::json!({"state": "ready"})
 		} else {
 			serde_json::json!({"state": "unavailable", "issue": "authentication"})
 		};
+
 		assert_eq!(status(&document, "credential_vault"), &expected_vault);
 		assert_eq!(
 			status(&document, "plugin_readiness"),
@@ -234,7 +236,6 @@ async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_state
 	assert_redacted(&fixture, &wrong_server);
 
 	bound.shutdown().await.expect("shutdown isolated runtime");
-
 	fixture.write_config(&fixture.config(Some(SERVER_ID)));
 
 	let disconnected = fixture.run("status", &[]);

@@ -21,6 +21,7 @@ pub(crate) async fn persist_current(
 		.iter()
 		.map(|b| format!("{b:02x}"))
 		.collect();
+
 	if current {
 		store
 			.record_agent_task_plugins_publication(thread.into(), generation, encoded, digest)
@@ -28,5 +29,6 @@ pub(crate) async fn persist_current(
 	} else {
 		store.record_agent_task_plugins(thread.into(), generation, None, digest).await?;
 	}
+
 	Ok(())
 }

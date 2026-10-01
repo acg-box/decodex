@@ -1,9 +1,26 @@
 //! Preserve whole recent exchanges before excerpting both ends of long fields.
 const OMITTED_HISTORY: &str = "[Earlier exchanges omitted]\n\n";
 const EXCERPT_MARKER: &str = "\n[... excerpted ...]\n";
+
+#[derive(Default)]
+pub(super) struct Exchange {
+	pub user: String,
+	pub assistant: String,
+}
+impl Exchange {
+	fn fields(&self) -> impl Iterator<Item = (&'static str, &str)> {
+		let user_label = if self.assistant.is_empty() { "Pending user request" } else { "User" };
+
+		[(user_label, self.user.as_str()), ("Assistant", self.assistant.as_str())]
+			.into_iter()
+			.filter(|(_, text)| !text.is_empty())
+	}
+}
+
 pub(super) fn render(exchanges: &[Exchange]) -> String {
 	render_budget(exchanges, super::prompt::HISTORY_MAX_BYTES)
 }
+
 pub(super) fn render_budget(exchanges: &[Exchange], max_bytes: usize) -> String {
 	let Some(latest) = exchanges.last() else {
 		return String::new();
@@ -19,6 +36,7 @@ pub(super) fn render_budget(exchanges: &[Exchange], max_bytes: usize) -> String 
 		})
 		.collect::<Vec<_>>();
 	let mut bytes = blocks.iter().map(String::len).sum::<usize>() + 2 * (blocks.len() - 1);
+
 	if bytes <= max_bytes {
 		return blocks.join("\n\n");
 	}
@@ -27,12 +45,15 @@ pub(super) fn render_budget(exchanges: &[Exchange], max_bytes: usize) -> String 
 	let retained = if latest.assistant.is_empty() { 2 } else { 1 };
 	let oldest_retained = exchanges.len().saturating_sub(retained);
 	let mut start = 0;
+
 	while bytes > max_bytes - OMITTED_HISTORY.len() && start < oldest_retained {
 		bytes -= blocks[start].len() + 2;
 		start += 1;
 	}
+
 	let omission = if start > 0 { OMITTED_HISTORY } else { "" };
 	let budget = max_bytes - omission.len();
+
 	if bytes <= budget {
 		return format!("{omission}{}", blocks[start..].join("\n\n"));
 	}
@@ -51,37 +72,27 @@ pub(super) fn render_budget(exchanges: &[Exchange], max_bytes: usize) -> String 
 			let reserved =
 				fields[index + 1..].iter().map(|(_, text)| text.len().min(share)).sum::<usize>();
 			let excerpt = excerpt(text, remaining - reserved);
+
 			remaining -= excerpt.len();
+
 			format!("{label}: {excerpt}")
 		})
 		.collect::<Vec<_>>()
 		.join("\n\n");
+
 	format!("{omission}{excerpts}")
-}
-
-#[derive(Default)]
-pub(super) struct Exchange {
-	pub user: String,
-	pub assistant: String,
-}
-
-impl Exchange {
-	fn fields(&self) -> impl Iterator<Item = (&'static str, &str)> {
-		let user_label = if self.assistant.is_empty() { "Pending user request" } else { "User" };
-		[(user_label, self.user.as_str()), ("Assistant", self.assistant.as_str())]
-			.into_iter()
-			.filter(|(_, text)| !text.is_empty())
-	}
 }
 
 fn excerpt(text: &str, max_bytes: usize) -> String {
 	if text.len() <= max_bytes {
 		return text.to_owned();
 	}
+
 	let Some(content_bytes) = max_bytes.checked_sub(EXCERPT_MARKER.len()) else {
 		return text[..text.floor_char_boundary(max_bytes)].to_owned();
 	};
 	let head = text.floor_char_boundary(content_bytes / 2);
 	let tail = text.ceil_char_boundary(text.len() - (content_bytes - content_bytes / 2));
+
 	format!("{}{EXCERPT_MARKER}{}", &text[..head], &text[tail..])
 }

@@ -16,6 +16,7 @@ pub(super) fn parse(value: &str) -> Option<TaskRecap> {
 		summary: WireText::new(decoded.summary.trim()).ok()?,
 		next_action: next.map(WireText::new).transpose().ok()?,
 	};
+
 	recap.is_valid().then_some(recap)
 }
 pub(super) fn schema() -> Value {

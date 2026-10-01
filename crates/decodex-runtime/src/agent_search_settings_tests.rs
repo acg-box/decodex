@@ -25,7 +25,7 @@ fn source(client: AppServerClient, revision: usize) -> Source {
 fn fixture(
 	fail_readback: bool,
 ) -> (AppServerClient, Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
-	let (local, remote) = tokio::io::duplex(8192);
+	let (local, remote) = tokio::io::duplex(8_192);
 	let (read, write) = tokio::io::split(local);
 	let (client, _events) = AppServerClient::from_io(read, write);
 	let writes = Arc::new(AtomicUsize::new(0));
@@ -33,6 +33,7 @@ fn fixture(
 	let task = tokio::spawn(async move {
 		let (read, mut write) = tokio::io::split(remote);
 		let mut lines = BufReader::new(read).lines();
+
 		while let Some(line) = lines.next_line().await.unwrap() {
 			let request: serde_json::Value = serde_json::from_str(&line).unwrap();
 			let saved = count.load(Ordering::SeqCst) > 0;
@@ -40,7 +41,7 @@ fn fixture(
 			let mut response = match request["method"].as_str().unwrap() {
 				"thread/read" => json!({"result":{"thread":{"id":"thread","cwd":"/project"}}}),
 				"config/read" if saved && fail_readback =>
-					json!({"error":{"code":-32603,"message":"read unavailable"}}),
+					json!({"error":{"code":-32_603,"message":"read unavailable"}}),
 				"config/read" => json!({"result":{"config":{"web_search":"live"},"layers":[{
 					"name":{"type":"user","file":"/home/config.toml"},"version":version,
 					"config":{"web_search":if saved {"indexed"} else {"cached"}}
@@ -57,17 +58,22 @@ fn fixture(
 					assert!(decodex_codex::app_server_client::is_search_mode_write(
 						&request["params"]
 					));
+
 					count.fetch_add(1, Ordering::SeqCst);
+
 					json!({"result":{"filePath":"/home/config.toml","version":"v2","status":"okOverridden"}})
 				},
 				other => panic!("unexpected native action {other}"),
 			};
+
 			response["id"] = request["id"].clone();
+
 			if write.write_all(format!("{response}\n").as_bytes()).await.is_err() {
 				break;
 			}
 		}
 	});
+
 	(client, writes, task)
 }
 
@@ -81,6 +87,7 @@ async fn search_settings_bind_source_version_and_report_uncertain_readback() {
 		else {
 			panic!("settings")
 		};
+
 		assert_eq!(
 			modes.iter().map(WireText::as_str).collect::<Vec<_>>(),
 			vec!["disabled", "cached", "indexed"]
@@ -99,20 +106,25 @@ async fn search_settings_bind_source_version_and_report_uncertain_readback() {
 			.is_err()
 		);
 		assert_eq!(writes.load(Ordering::SeqCst), 0);
+
 		let result = write(read_source, review_token.as_str(), "indexed").await;
+
 		assert_eq!(result.is_ok(), !fail_readback);
 		assert_eq!(writes.load(Ordering::SeqCst), 1);
 		assert!(write(read_source, review_token.as_str(), "indexed").await.is_err());
 		assert_eq!(writes.load(Ordering::SeqCst), 1);
+
 		if !fail_readback {
 			let AgentSearchSettingsResult::Available { effective, preference, .. } =
 				read(read_source).await
 			else {
 				panic!("readback")
 			};
+
 			assert_eq!(effective.unwrap().as_str(), "live");
 			assert_eq!(preference.unwrap().as_str(), "indexed");
 		}
+
 		task.abort();
 	}
 }

@@ -8,6 +8,7 @@ where
 	Fut: Future<Output = Result<T, ConversationProcessError>>,
 {
 	let mut result = attempt().await;
+
 	for delay in [1, 2, 4, 8] {
 		if !matches!(
 			&result,
@@ -20,8 +21,10 @@ where
 		}
 		// No supervisor lock is held while waiting. The closure fences each send.
 		tokio::time::sleep(Duration::from_secs(delay)).await;
+
 		result = attempt().await;
 	}
+
 	result
 }
 
@@ -55,10 +58,13 @@ mod tests {
 			let count = Cell::new(0);
 			let result = retry(|| {
 				let n = count.get();
+
 				count.set(n + 1);
+
 				std::future::ready(if n == 0 { Err(closing()) } else { end.clone() })
 			})
 			.await;
+
 			assert_eq!(result, end);
 			assert_eq!(count.get(), 2);
 		}
@@ -69,12 +75,14 @@ mod tests {
 		let count = Cell::new(0);
 		let result: Result<(), _> = retry(|| {
 			count.set(count.get() + 1);
+
 			std::future::ready(Err(ConversationProcessError::Rejected {
 				witness_digest: format!("{:064x}", count.get()),
 				reason: ConversationRejectionReason::ClosingThread,
 			}))
 		})
 		.await;
+
 		assert_eq!(count.get(), 5);
 		assert_eq!(
 			result,

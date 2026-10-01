@@ -12,6 +12,7 @@ pub(super) async fn query_creation_receipt(
 	request: &ConversationCreationReceiptRequest,
 ) -> ConversationCreationReceiptResult {
 	use ConversationCreationReceiptResult as Receipt;
+
 	let ProductStore::Available(store) = store else {
 		return Receipt::Unavailable;
 	};
@@ -36,6 +37,7 @@ pub(super) async fn query_creation_receipt(
 	let Ok(identity) = command.creation_identity() else {
 		return Receipt::Conflict;
 	};
+
 	match store.read_conversation_creation_receipt(&identity, &conversation_id).await {
 		Ok(Some(record)) =>
 			match (EntityId::new(record.conversation_id.as_str()), u64::try_from(record.revision)) {
@@ -76,10 +78,12 @@ mod tests {
 				service_tier: None,
 			},
 		};
+
 		assert_eq!(
 			query_creation_receipt(&owner, &request).await,
 			ConversationCreationReceiptResult::NotRecorded
 		);
+
 		let command = CreateConversation {
 			initial_model_source: super::super::runtime_initial_model_source(
 				request.initial_model_source.as_deref(),
@@ -93,6 +97,7 @@ mod tests {
 			working_directory: "/tmp".into(),
 			execution: runtime_execution_settings(&request.execution),
 		};
+
 		store
 			.create_conversation(
 				&command.creation_identity().unwrap(),
@@ -110,6 +115,7 @@ mod tests {
 			)
 			.await
 			.unwrap();
+
 		assert_eq!(
 			query_creation_receipt(&owner, &request).await,
 			ConversationCreationReceiptResult::Recorded {
@@ -117,24 +123,33 @@ mod tests {
 				creation_revision: EntityRevision(1),
 			}
 		);
+
 		let mut changed_source = request.clone();
+
 		changed_source.initial_model_source.as_mut().unwrap().account_revision = 8;
+
 		assert_eq!(
 			query_creation_receipt(&owner, &changed_source).await,
 			ConversationCreationReceiptResult::Conflict
 		);
+
 		changed_source.initial_model_source = None;
+
 		assert_eq!(
 			query_creation_receipt(&owner, &changed_source).await,
 			ConversationCreationReceiptResult::Conflict
 		);
+
 		request.message = decodex_protocol::HistoryText::new("Later composer text").unwrap();
+
 		assert_eq!(
 			query_creation_receipt(&owner, &request).await,
 			ConversationCreationReceiptResult::Conflict
 		);
+
 		let unavailable =
 			ProductStore::Unavailable(super::super::ProductStoreUnavailableReason::Unreachable);
+
 		assert_eq!(
 			query_creation_receipt(&unavailable, &request).await,
 			ConversationCreationReceiptResult::Unavailable
@@ -150,7 +165,6 @@ mod tests {
 		);
 	}
 }
-
 #[cfg(test)]
 #[path = "application_creation_receipt_socket_tests.rs"]
 mod socket_tests;

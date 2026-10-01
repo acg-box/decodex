@@ -1,206 +1,40 @@
 //! Source-bound model selection; the native runtime owns capability filtering.
 #[path = "agent_model_recovery.rs"] mod recovery;
+
+pub(crate) use recovery::recover_ordinary_model;
+
 use crate::agent_usage_estimate::Source;
+
 use decodex_codex::app_server_client::{
 	ClientError, HistoryGuard, NativeTaskModelSettings, ThreadModelSelection,
 };
+
 use decodex_database::{AgentModelAttempt, SqliteStore};
+
 use decodex_protocol::{
 	AgentCapabilitiesResult, AgentModelOutcome as Outcome, AgentModelResponse as Response,
 	AgentModelSelectionReceipt as Receipt, AgentModelSelectionState as State, ConversationModel,
 	ConversationReasoningEffort, EntityId, WireText,
 };
-pub(crate) use recovery::recover_ordinary_model;
+
 use serde_json::json;
+
 use sha2::{Digest as _, Sha256};
+
+pub(crate) struct Change<'a> {
+	pub thread: &'a str,
+	pub review: &'a str,
+	pub model: &'a str,
+	pub effort: Option<&'a str>,
+	pub attempt_id: &'a str,
+}
 
 struct Inspection {
 	state: State,
 	settings_event: i64,
 	guard: Option<HistoryGuard>,
 }
-fn outcome(value: &str) -> Option<Outcome> {
-	Some(match value {
-		"reserved" => Outcome::Reserved,
-		"queued" => Outcome::Queued,
-		"unknown" => Outcome::Unknown,
-		"rejected" => Outcome::Rejected,
-		"target_observed" => Outcome::TargetObserved,
-		"superseded" => Outcome::Superseded,
-		_ => return None,
-	})
-}
-fn pending(
-	model: &str,
-	effort: Option<&str>,
-	state: Outcome,
-	last_receipt: Option<Receipt>,
-) -> Option<Inspection> {
-	Some(Inspection {
-		state: State::Pending {
-			model: ConversationModel::new(model).ok()?,
-			effort: effort.map(ConversationReasoningEffort::new).transpose().ok()?,
-			state,
-			last_receipt,
-		},
-		settings_event: 0,
-		guard: None,
-	})
-}
-fn historical_receipt(history: &decodex_database::AgentModelHistory) -> Option<Receipt> {
-	Some(Receipt {
-		model: ConversationModel::new(history.model.clone()).ok()?,
-		effort: history.effort.as_deref().map(ConversationReasoningEffort::new).transpose().ok()?,
-		manual: history.manual,
-		response: match history.response.as_str() {
-			"reserved" => Response::Reserved,
-			"queued" => Response::Queued,
-			"rejected" => Response::Rejected,
-			"unknown" => Response::Unknown,
-			_ => return None,
-		},
-		target_observed: history.target_observed,
-		reconciled: history.reconciled,
-	})
-}
-async fn selection_editable(
-	store: &SqliteStore,
-	source: &Source,
-	work: &decodex_database::AgentWorkItem,
-) -> Option<bool> {
-	let k = &source.key;
-	let permission_pending = store
-		.agent_permission_receipt(k.work.clone(), k.thread.clone())
-		.await
-		.ok()?
-		.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown"));
-	Some(
-		((work.dispatch_state == decodex_database::AgentDispatchState::Idle
-			&& work.active_turn_id.is_none())
-			|| (work.dispatch_state == decodex_database::AgentDispatchState::Running
-				&& work.active_turn_id.is_some()))
-			&& work.status != decodex_database::AgentWorkStatus::Resolved
-			&& !permission_pending
-			&& !store
-				.agent_plugin_receipt(k.work.clone(), k.thread.clone())
-				.await
-				.ok()?
-				.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown")),
-	)
-}
-async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
-	let k = &source.key;
-	if !store
-		.agent_thread_is_owned(k.work.clone(), k.thread.clone(), Some(k.generation.as_str().into()))
-		.await
-		.ok()?
-	{
-		return None;
-	}
-	let work = store.get_agent_work_item(k.work.clone()).await.ok()?;
-	if work.codex_thread_id.as_deref() != Some(&k.thread) {
-		return None;
-	}
-	persist_current(store, &source.client, &k.thread, Some(k.generation.as_str().into()))
-		.await
-		.ok()?;
-	let history = store
-		.agent_model_history(k.work.clone(), k.thread.clone(), k.generation.as_str().into())
-		.await
-		.ok()?;
-	let last_receipt = match &history {
-		Some(history) => Some(historical_receipt(history)?),
-		None => None,
-	};
-	if let Some(legacy) = store
-		.pending_agent_legacy_model_change(
-			k.work.clone(),
-			k.thread.clone(),
-			k.generation.as_str().into(),
-		)
-		.await
-		.ok()?
-	{
-		return pending(&legacy.model, Some(&legacy.effort), outcome(&legacy.state)?, last_receipt);
-	}
-	let prior = store.agent_model_receipt(k.work.clone(), k.thread.clone()).await.ok()?;
-	let last_outcome = match &prior {
-		Some(receipt) => Some(outcome(&receipt.state)?),
-		None => None,
-	};
-	if let Some(prior) = &prior
-		&& matches!(last_outcome, Some(Outcome::Reserved | Outcome::Queued | Outcome::Unknown))
-	{
-		return pending(
-			&prior.attempt.model,
-			prior.attempt.effort.as_deref(),
-			last_outcome?,
-			last_receipt,
-		);
-	}
-	let (native, guard) = source.client.configured_task_models(&k.thread)?;
-	let saved = store
-		.agent_task_models(k.work.clone(), k.thread.clone(), Some(k.generation.as_str().into()))
-		.await
-		.ok()??;
-	let facts: NativeTaskModelSettings =
-		serde_json::from_str(saved.settings_json.as_ref()?).ok()?;
-	if facts != native || !guard.is_live() {
-		return None;
-	}
-	let AgentCapabilitiesResult::Available { mut models, .. } =
-		crate::agent_capabilities::read(&source.client).await
-	else {
-		return None;
-	};
-	models.retain(|model| model.model.as_str() != "gpt-reserve");
-	if !guard.is_live() {
-		return None;
-	}
-	let can_update = selection_editable(store, source, &work).await?;
 
-	let identity = json!([
-		k.work,
-		k.thread,
-		k.generation.as_str(),
-		k.account.as_str(),
-		k.revision,
-		k.history_revision,
-		saved.id,
-		native,
-		models,
-		prior.as_ref().map(|r| r.id),
-		last_outcome,
-		history.as_ref().map(|receipt| receipt.id),
-		last_receipt,
-		can_update
-	]);
-	let token: String = Sha256::digest(identity.to_string().as_bytes())
-		.iter()
-		.map(|b| format!("{b:02x}"))
-		.collect();
-	Some(Inspection {
-		settings_event: saved.id,
-		guard: Some(guard),
-		state: State::Available {
-			work_id: EntityId::new(k.work.clone()).ok()?,
-			thread_id: EntityId::new(k.thread.clone()).ok()?,
-			review_token: WireText::new(token).ok()?,
-			model: ConversationModel::new(native.model).ok()?,
-			model_provider: WireText::new(native.model_provider).ok()?,
-			effort: native
-				.effort
-				.as_deref()
-				.map(ConversationReasoningEffort::new)
-				.transpose()
-				.ok()?,
-			models,
-			can_update,
-			last_outcome,
-			last_receipt,
-		},
-	})
-}
 pub(crate) async fn read<F, Fut>(store: &SqliteStore, source: F) -> State
 where
 	F: Fn() -> Fut,
@@ -213,21 +47,16 @@ where
 		.await
 		.ok()
 		.flatten();
+
 	if source().await.is_none_or(|after| after.key != before.key) {
 		return State::Unavailable;
 	}
+
 	result
 		.filter(|r| r.guard.as_ref().is_none_or(HistoryGuard::is_live))
 		.map_or(State::Unavailable, |r| r.state)
 }
 
-pub(crate) struct Change<'a> {
-	pub thread: &'a str,
-	pub review: &'a str,
-	pub model: &'a str,
-	pub effort: Option<&'a str>,
-	pub attempt_id: &'a str,
-}
 pub(crate) async fn write<F, Fut>(
 	store: &SqliteStore,
 	source: F,
@@ -238,10 +67,13 @@ where
 	Fut: std::future::Future<Output = Option<Source>>,
 {
 	use crate::agent_host::AgentHostError::{Rejected, Unknown};
+
 	let before = source().await.ok_or(Rejected("The task source is unavailable."))?;
+
 	if before.key.thread != change.thread {
 		return Err(Rejected("The task thread changed. Refresh model settings."));
 	}
+
 	let inspected =
 		tokio::time::timeout(std::time::Duration::from_secs(30), inspect(store, &before))
 			.await
@@ -257,18 +89,22 @@ where
 		model.model.as_str() == change.model
 			&& change.effort.is_none_or(|effort| model.efforts.iter().any(|e| e.as_str() == effort))
 	});
+
 	if review_token.as_str() != change.review || !can_update || !advertised {
 		return Err(Rejected("The reviewed model selection changed. Refresh the task."));
 	}
+
 	let selected_effort = change.effort.map(str::to_owned);
 	let expected_effort =
 		selected_effort.clone().or_else(|| effort.as_ref().map(|e| e.as_str().to_owned()));
 	let selection = ThreadModelSelection::new(change.thread, change.model, selected_effort)
 		.map_err(|_| Rejected("Invalid model selection."))?;
 	let guard = inspected.guard.ok_or(Rejected("Current model evidence is unavailable."))?;
+
 	if !guard.is_live() || source().await.is_none_or(|after| after.key != before.key) {
 		return Err(Rejected("The task source changed before selection."));
 	}
+
 	let attempt = AgentModelAttempt {
 		work: before.key.work.clone(),
 		thread: change.thread.into(),
@@ -303,9 +139,10 @@ where
 			| ClientError::RequestTooLarge
 			| ClientError::RequestQueueFull,
 		) => "rejected",
-		Err(ClientError::Remote(ref e)) if matches!(e.code, -32602..=-32600) => "rejected",
+		Err(ClientError::Remote(ref e)) if matches!(e.code, -32_602..=-32_600) => "rejected",
 		_ => "unknown",
 	};
+
 	if !store
 		.finish_agent_model_selection(reservation, attempt, state.into())
 		.await
@@ -313,6 +150,7 @@ where
 	{
 		return Err(Unknown("The selection result could not be saved. It will not be retried."));
 	}
+
 	match state {
 		"queued" => Ok(()),
 		"rejected" => Err(Rejected("Native policy or changed source rejected the selection.")),
@@ -339,6 +177,7 @@ pub(crate) async fn persist_current(
 		.iter()
 		.map(|b| format!("{b:02x}"))
 		.collect();
+
 	if current {
 		store
 			.record_agent_task_models_publication(thread.into(), generation, encoded, digest)
@@ -346,5 +185,208 @@ pub(crate) async fn persist_current(
 	} else {
 		store.record_agent_task_models(thread.into(), generation, None, digest).await?;
 	}
+
 	Ok(())
+}
+
+fn outcome(value: &str) -> Option<Outcome> {
+	Some(match value {
+		"reserved" => Outcome::Reserved,
+		"queued" => Outcome::Queued,
+		"unknown" => Outcome::Unknown,
+		"rejected" => Outcome::Rejected,
+		"target_observed" => Outcome::TargetObserved,
+		"superseded" => Outcome::Superseded,
+		_ => return None,
+	})
+}
+
+fn pending(
+	model: &str,
+	effort: Option<&str>,
+	state: Outcome,
+	last_receipt: Option<Receipt>,
+) -> Option<Inspection> {
+	Some(Inspection {
+		state: State::Pending {
+			model: ConversationModel::new(model).ok()?,
+			effort: effort.map(ConversationReasoningEffort::new).transpose().ok()?,
+			state,
+			last_receipt,
+		},
+		settings_event: 0,
+		guard: None,
+	})
+}
+
+fn historical_receipt(history: &decodex_database::AgentModelHistory) -> Option<Receipt> {
+	Some(Receipt {
+		model: ConversationModel::new(history.model.clone()).ok()?,
+		effort: history.effort.as_deref().map(ConversationReasoningEffort::new).transpose().ok()?,
+		manual: history.manual,
+		response: match history.response.as_str() {
+			"reserved" => Response::Reserved,
+			"queued" => Response::Queued,
+			"rejected" => Response::Rejected,
+			"unknown" => Response::Unknown,
+			_ => return None,
+		},
+		target_observed: history.target_observed,
+		reconciled: history.reconciled,
+	})
+}
+
+async fn selection_editable(
+	store: &SqliteStore,
+	source: &Source,
+	work: &decodex_database::AgentWorkItem,
+) -> Option<bool> {
+	let k = &source.key;
+	let permission_pending = store
+		.agent_permission_receipt(k.work.clone(), k.thread.clone())
+		.await
+		.ok()?
+		.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown"));
+
+	Some(
+		((work.dispatch_state == decodex_database::AgentDispatchState::Idle
+			&& work.active_turn_id.is_none())
+			|| (work.dispatch_state == decodex_database::AgentDispatchState::Running
+				&& work.active_turn_id.is_some()))
+			&& work.status != decodex_database::AgentWorkStatus::Resolved
+			&& !permission_pending
+			&& !store
+				.agent_plugin_receipt(k.work.clone(), k.thread.clone())
+				.await
+				.ok()?
+				.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown")),
+	)
+}
+
+async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
+	let k = &source.key;
+
+	if !store
+		.agent_thread_is_owned(k.work.clone(), k.thread.clone(), Some(k.generation.as_str().into()))
+		.await
+		.ok()?
+	{
+		return None;
+	}
+
+	let work = store.get_agent_work_item(k.work.clone()).await.ok()?;
+
+	if work.codex_thread_id.as_deref() != Some(&k.thread) {
+		return None;
+	}
+
+	persist_current(store, &source.client, &k.thread, Some(k.generation.as_str().into()))
+		.await
+		.ok()?;
+
+	let history = store
+		.agent_model_history(k.work.clone(), k.thread.clone(), k.generation.as_str().into())
+		.await
+		.ok()?;
+	let last_receipt = match &history {
+		Some(history) => Some(historical_receipt(history)?),
+		None => None,
+	};
+
+	if let Some(legacy) = store
+		.pending_agent_legacy_model_change(
+			k.work.clone(),
+			k.thread.clone(),
+			k.generation.as_str().into(),
+		)
+		.await
+		.ok()?
+	{
+		return pending(&legacy.model, Some(&legacy.effort), outcome(&legacy.state)?, last_receipt);
+	}
+
+	let prior = store.agent_model_receipt(k.work.clone(), k.thread.clone()).await.ok()?;
+	let last_outcome = match &prior {
+		Some(receipt) => Some(outcome(&receipt.state)?),
+		None => None,
+	};
+
+	if let Some(prior) = &prior
+		&& matches!(last_outcome, Some(Outcome::Reserved | Outcome::Queued | Outcome::Unknown))
+	{
+		return pending(
+			&prior.attempt.model,
+			prior.attempt.effort.as_deref(),
+			last_outcome?,
+			last_receipt,
+		);
+	}
+
+	let (native, guard) = source.client.configured_task_models(&k.thread)?;
+	let saved = store
+		.agent_task_models(k.work.clone(), k.thread.clone(), Some(k.generation.as_str().into()))
+		.await
+		.ok()??;
+	let facts: NativeTaskModelSettings =
+		serde_json::from_str(saved.settings_json.as_ref()?).ok()?;
+
+	if facts != native || !guard.is_live() {
+		return None;
+	}
+
+	let AgentCapabilitiesResult::Available { mut models, .. } =
+		crate::agent_capabilities::read(&source.client).await
+	else {
+		return None;
+	};
+
+	models.retain(|model| model.model.as_str() != "gpt-reserve");
+
+	if !guard.is_live() {
+		return None;
+	}
+
+	let can_update = selection_editable(store, source, &work).await?;
+	let identity = json!([
+		k.work,
+		k.thread,
+		k.generation.as_str(),
+		k.account.as_str(),
+		k.revision,
+		k.history_revision,
+		saved.id,
+		native,
+		models,
+		prior.as_ref().map(|r| r.id),
+		last_outcome,
+		history.as_ref().map(|receipt| receipt.id),
+		last_receipt,
+		can_update
+	]);
+	let token: String = Sha256::digest(identity.to_string().as_bytes())
+		.iter()
+		.map(|b| format!("{b:02x}"))
+		.collect();
+
+	Some(Inspection {
+		settings_event: saved.id,
+		guard: Some(guard),
+		state: State::Available {
+			work_id: EntityId::new(k.work.clone()).ok()?,
+			thread_id: EntityId::new(k.thread.clone()).ok()?,
+			review_token: WireText::new(token).ok()?,
+			model: ConversationModel::new(native.model).ok()?,
+			model_provider: WireText::new(native.model_provider).ok()?,
+			effort: native
+				.effort
+				.as_deref()
+				.map(ConversationReasoningEffort::new)
+				.transpose()
+				.ok()?,
+			models,
+			can_update,
+			last_outcome,
+			last_receipt,
+		},
+	})
 }
