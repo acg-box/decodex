@@ -6,11 +6,12 @@ use std::{
 };
 
 use futures_util::FutureExt as _;
-use mpsc::Receiver;
-use tokio::{net::TcpListener, time};
+use tokio::{net::TcpListener, sync::mpsc::Receiver, time};
 
 use crate::{
-	account_launch::agent_process::native_tests::*,
+	account_launch::agent_process::native_tests::{
+		self, AppServerClient, Arc, Duration, NativeSession, Ordering, ServerEvent, Value,
+	},
 	agent::{AgentConfig, AgentCoordinator, timeline::metrics},
 };
 use decodex_core::DecodexRoot;
@@ -83,7 +84,7 @@ async fn installed_native_tool_context_survives_restart_without_replay() {
 	let address = listener.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		Arc::clone(&requests),
 		None,

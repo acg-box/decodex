@@ -11,7 +11,9 @@ use tokio::{
 };
 
 use crate::{
-	account_launch::agent_process::native_tests::*,
+	account_launch::agent_process::native_tests::{
+		self, Arc, Duration, NativeSession, Ordering, ServerEvent,
+	},
 	agent_recap::{self, Recaps},
 	agent_usage_estimate::{Source, SourceKey},
 };
@@ -36,7 +38,7 @@ async fn qualify(mode: &str) {
 	let address = listener.local_addr().expect("address");
 	let calls = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		calls.clone(),
 		None,

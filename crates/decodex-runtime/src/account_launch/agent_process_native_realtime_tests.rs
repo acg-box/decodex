@@ -6,7 +6,9 @@ use tokio::{sync::oneshot, time};
 use tokio_tungstenite::tungstenite::{Error, Message, error::ProtocolError};
 
 use crate::{
-	account_launch::agent_process::native_tests::*,
+	account_launch::agent_process::native_tests::{
+		self, AppServerClient, Arc, Duration, NativeSession, Ordering, ServerEvent, Value, mpsc,
+	},
 	agent::{AgentConfig, AgentCoordinator, timeline},
 	agent_usage_estimate::{Source, SourceKey},
 };
@@ -51,7 +53,7 @@ async fn installed_native_realtime_history_survives_agent_and_cold_bridge() {
 	let websocket = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let realtime_address = websocket.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		responses,
 		requests.clone(),
 		None,

@@ -2,7 +2,12 @@ use std::{env, fs, path::Path, sync::atomic::AtomicUsize};
 
 use tokio::{io::BufReader, net::TcpListener, time};
 
-use crate::{account_launch::agent_process::native_tests::*, agent_capabilities};
+use crate::{
+	account_launch::agent_process::native_tests::{
+		Arc, Command, Duration, NativeSession, Ordering, Value,
+	},
+	agent_capabilities,
+};
 use decodex_protocol::AgentCapabilitiesResult;
 
 fn assert_cached_access(home: &Path, native_programs: &Value, expected: &Option<Vec<String>>) {

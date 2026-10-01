@@ -8,7 +8,9 @@ use std::{
 use tokio::{net::TcpListener, time};
 
 use crate::{
-	account_launch::agent_process::native_tests::*,
+	account_launch::agent_process::native_tests::{
+		self, Arc, Duration, NativeSession, Ordering, ServerEvent, Value,
+	},
 	agent::{AgentConfig, AgentCoordinator},
 	agent_capabilities, agent_host,
 };
@@ -110,7 +112,7 @@ async fn qualify(
 	let address = listener.local_addr().expect("fixture address");
 	let requests = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		requests.clone(),
 		effective,

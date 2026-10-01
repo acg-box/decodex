@@ -7,7 +7,11 @@ use std::{
 use tokio::{net::TcpListener, time};
 
 use crate::{
-	AgentConfig, AgentCoordinator, account_launch::agent_process::native_tests::*, agent_detail,
+	AgentConfig, AgentCoordinator,
+	account_launch::agent_process::native_tests::{
+		self, Arc, Duration, NativeSession, ServerEvent, Value,
+	},
+	agent_detail,
 };
 use decodex_core::DecodexRoot;
 use decodex_database::SqliteStore;
@@ -29,7 +33,7 @@ async fn installed_native_file_approval_saves_live_diff_before_history_and_decli
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		calls.clone(),
 		None,

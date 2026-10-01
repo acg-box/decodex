@@ -1,11 +1,12 @@
 //! Qualify restored native token counters through the real Agent and SQLite owners.
 use std::{env, fs, sync::atomic::AtomicUsize};
 
-use mpsc::Receiver;
-use tokio::{net::TcpListener, time};
+use tokio::{net::TcpListener, sync::mpsc::Receiver, time};
 
 use crate::{
-	account_launch::agent_process::native_tests::*,
+	account_launch::agent_process::native_tests::{
+		self, Arc, Duration, NativeSession, Ordering, ServerEvent, Value,
+	},
 	agent::{AgentConfig, AgentCoordinator},
 };
 use decodex_core::DecodexRoot;
@@ -22,7 +23,7 @@ async fn installed_native_usage_restores_agent_baseline_after_cold_resume() {
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
-	let backend = tokio::spawn(serve_fixture_usage(
+	let backend = tokio::spawn(native_tests::serve_fixture_usage(
 		listener,
 		requests.clone(),
 		None,

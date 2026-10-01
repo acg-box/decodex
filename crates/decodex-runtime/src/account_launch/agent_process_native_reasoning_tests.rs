@@ -4,7 +4,9 @@ use std::{env, fs, future, sync::atomic::AtomicUsize};
 use tokio::{net::TcpListener, time};
 
 use crate::{
-	account_launch::agent_process::native_tests::*,
+	account_launch::agent_process::native_tests::{
+		self, AppServerClient, Arc, Duration, NativeSession, Ordering, ServerEvent,
+	},
 	agent::{AgentConfig, AgentCoordinator, timeline},
 	agent_usage_estimate::{Source, SourceKey},
 };
@@ -19,12 +21,19 @@ async fn installed_public_reasoning_is_saved_and_projected_after_cold_restart() 
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
 	let calls = Arc::new(AtomicUsize::new(0));
-	let backend = tokio::spawn(serve_fixture(listener, calls.clone(), None, None, None, |_| {
-		serde_json::json!([
-			{"type":"reasoning","id":"reasoning-fixture","summary":[{"type":"summary_text","text":"Public summary fixture."}],"content":[{"type":"reasoning_text","text":"PRIVATE_RAW_FIXTURE"}]},
-			{"type":"message","id":"answer-fixture","role":"assistant","content":[{"type":"output_text","text":"Done."}]}
-		])
-	}));
+	let backend = tokio::spawn(native_tests::serve_fixture(
+		listener,
+		calls.clone(),
+		None,
+		None,
+		None,
+		|_| {
+			serde_json::json!([
+				{"type":"reasoning","id":"reasoning-fixture","summary":[{"type":"summary_text","text":"Public summary fixture."}],"content":[{"type":"reasoning_text","text":"PRIVATE_RAW_FIXTURE"}]},
+				{"type":"message","id":"answer-fixture","role":"assistant","content":[{"type":"output_text","text":"Done."}]}
+			])
+		},
+	));
 
 	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).unwrap();
 

@@ -1,11 +1,12 @@
 //! Real overload, durable selection, cold resume and same-model retry through the native bridge.
 use std::{env, fs, sync::atomic::AtomicUsize};
 
-use mpsc::Receiver;
-use tokio::{net::TcpListener, time};
+use tokio::{net::TcpListener, sync::mpsc::Receiver, time};
 
 use crate::{
-	account_launch::agent_process::native_tests::*,
+	account_launch::agent_process::native_tests::{
+		self, Arc, Duration, NativeSession, Ordering, ServerEvent, Value,
+	},
 	agent::{AgentConfig, AgentCoordinator},
 };
 use decodex_core::DecodexRoot;
@@ -25,7 +26,7 @@ async fn installed_capacity_retry_retains_selected_model_after_process_and_store
 	let address = listener.local_addr().expect("backend address");
 	let count = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture_frames(
+	let backend = tokio::spawn(native_tests::serve_fixture_frames(
 		listener,
 		Arc::clone(&count),
 		None,
@@ -199,7 +200,7 @@ async fn native_error_classification(code: &'static str, expected: &str, request
 	let listener = TcpListener::bind("127.0.0.1:0").await.expect("backend");
 	let address = listener.local_addr().expect("address");
 	let count = Arc::new(AtomicUsize::new(0));
-	let backend = tokio::spawn(serve_fixture_frames(
+	let backend = tokio::spawn(native_tests::serve_fixture_frames(
 		listener,
 		Arc::clone(&count),
 		None,
