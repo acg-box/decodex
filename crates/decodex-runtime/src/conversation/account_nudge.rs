@@ -6,8 +6,8 @@ use tokio::{runtime::Handle, task};
 use crate::{
 	account_observation::AccountObservationService,
 	conversation::{
-		self, AccountBinding, AccountId, AttestedAppServerLaunch, ConversationCredentialVault,
-		ConversationRefreshCallback, ConversationRuntime, ProcessAccountRefreshCallback,
+		self, AccountBinding, AccountId, AccountRefreshCallback, AttestedAppServerLaunch,
+		ConversationCredentialVault, ConversationRefreshCallback, ConversationRuntime,
 		ProcessGenerationId, SelectedWorkingDirectory,
 	},
 };
@@ -54,12 +54,11 @@ impl ConversationRuntime {
 			return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable;
 		};
 		let runtime = Handle::current();
-		let callback: Arc<dyn ProcessAccountRefreshCallback> =
-			Arc::new(ConversationRefreshCallback {
-				accounts: self.inner.accounts.clone(),
-				runtime: runtime.clone(),
-				generation_id,
-			});
+		let callback: Arc<dyn AccountRefreshCallback> = Arc::new(ConversationRefreshCallback {
+			accounts: self.inner.accounts.clone(),
+			runtime: runtime.clone(),
+			generation_id,
+		});
 		let owner = self.clone();
 
 		task::spawn_blocking(move || {
