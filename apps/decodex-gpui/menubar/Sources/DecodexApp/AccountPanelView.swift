@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-private struct AccountReorderInteraction {
+struct AccountReorderInteraction {
 	let token = UUID()
 	let accountID: String
 	let baseOrder: [String]
@@ -9,6 +9,19 @@ private struct AccountReorderInteraction {
 	let frames: [String: CGRect]
 	var draggedOffsetY: CGFloat
 	var isSettling = false
+
+	func isCurrent(for accountIDs: [String]) -> Bool {
+		accountIDs == baseOrder || (isSettling && accountIDs == visualOrder)
+	}
+
+	func presentedAccounts(_ accounts: [ResetCardAccountState]) -> [ResetCardAccountState] {
+		guard isCurrent(for: accounts.map(\.id)) else { return accounts }
+		let stateByID = Dictionary(
+			uniqueKeysWithValues: accounts.map { ($0.id, $0) }
+		)
+		let states = baseOrder.compactMap { stateByID[$0] }
+		return states.count == accounts.count ? states : accounts
+	}
 }
 
 struct AccountPanelView: View {
@@ -80,6 +93,13 @@ struct AccountPanelView: View {
 		// system appearance changes.
 		.id(colorScheme == .dark ? "account-panel-dark" : "account-panel-light")
 		.animation(panelLayoutAnimation, value: store.accountReauthentication != nil)
+		.onChange(of: store.accounts.map(\.id)) { _, accountIDs in
+			if let interaction = accountReorderInteraction,
+				!interaction.isCurrent(for: accountIDs) {
+				accountReorderInteraction = nil
+			}
+		}
+		.onDisappear { accountReorderInteraction = nil }
 		.task(id: accountPrivacy) {
 			guard loadsExternalState else {
 				return
@@ -327,15 +347,17 @@ struct AccountPanelView: View {
 		}
 	}
 
+	private var activeReorderInteraction: AccountReorderInteraction? {
+		guard let interaction = accountReorderInteraction,
+			interaction.isCurrent(for: store.accounts.map(\.id)) else { return nil }
+		return interaction
+	}
+
 	private var presentedAccountStates: [ResetCardAccountState] {
-		guard let interaction = accountReorderInteraction else {
+		guard let interaction = activeReorderInteraction else {
 			return store.accounts
 		}
-		let stateByID = Dictionary(
-			uniqueKeysWithValues: store.accounts.map { ($0.id, $0) }
-		)
-		let states = interaction.baseOrder.compactMap { stateByID[$0] }
-		return states.count == store.accounts.count ? states : store.accounts
+		return interaction.presentedAccounts(store.accounts)
 	}
 
 	private func updateHoveredAccount(_ accountID: String?) {
@@ -345,7 +367,7 @@ struct AccountPanelView: View {
 	}
 
 	private func updateAccountCardFrames(_ frames: [String: CGRect]) {
-		guard accountReorderInteraction == nil else {
+		guard activeReorderInteraction == nil else {
 			return
 		}
 		let accountIDs = Set(store.accounts.map(\.id))
@@ -359,7 +381,7 @@ struct AccountPanelView: View {
 		guard store.canReorderAccounts else {
 			return false
 		}
-		guard let interaction = accountReorderInteraction else {
+		guard let interaction = activeReorderInteraction else {
 			return true
 		}
 		return interaction.accountID == accountID
@@ -370,7 +392,7 @@ struct AccountPanelView: View {
 		accountID: String,
 		translationY: CGFloat
 	) {
-		if accountReorderInteraction == nil {
+		if activeReorderInteraction == nil {
 			let baseOrder = store.accounts.map(\.id)
 			guard store.canReorderAccounts,
 				baseOrder.contains(accountID),
@@ -387,7 +409,7 @@ struct AccountPanelView: View {
 			)
 		}
 
-		guard var interaction = accountReorderInteraction,
+		guard var interaction = activeReorderInteraction,
 			interaction.accountID == accountID,
 			interaction.isSettling == false
 		else {
@@ -410,7 +432,7 @@ struct AccountPanelView: View {
 	}
 
 	private func finishAccountReorder(accountID: String) {
-		guard var interaction = accountReorderInteraction,
+		guard var interaction = activeReorderInteraction,
 			interaction.accountID == accountID,
 			interaction.isSettling == false
 		else {
@@ -437,7 +459,7 @@ struct AccountPanelView: View {
 				try? await Task.sleep(for: .milliseconds(240))
 			}
 			guard Task.isCancelled == false,
-				accountReorderInteraction?.token == token
+				activeReorderInteraction?.token == token
 			else {
 				return
 			}
@@ -447,7 +469,7 @@ struct AccountPanelView: View {
 					before: targetAccountID
 				)
 			}
-			guard accountReorderInteraction?.token == token else {
+			guard activeReorderInteraction?.token == token else {
 				return
 			}
 			let authoritativeOrder = store.accounts.map(\.id)
@@ -485,7 +507,7 @@ struct AccountPanelView: View {
 	}
 
 	private func accountReorderOffset(for accountID: String) -> CGFloat {
-		guard let interaction = accountReorderInteraction else {
+		guard let interaction = activeReorderInteraction else {
 			return 0
 		}
 		if interaction.accountID == accountID {
@@ -501,7 +523,7 @@ struct AccountPanelView: View {
 	}
 
 	private func isDraggedAccount(_ accountID: String) -> Bool {
-		accountReorderInteraction?.accountID == accountID
+		activeReorderInteraction?.accountID == accountID
 	}
 
 	private var accountListViewportHeight: CGFloat {
