@@ -6670,10 +6670,13 @@ fn derived_uuid(scope: &str, parts: &[&str]) -> String {
 }
 
 // The caller holds agent_launch across this operation.
-async fn retire_agent_process_slot<F: Future<Output = bool>>(
+async fn retire_agent_process_slot<F>(
 	slot: &std::sync::Mutex<Option<RetainedAgentProcess>>,
 	retire: impl FnOnce(ProcessGenerationId) -> F,
-) -> bool {
+) -> bool
+where
+	F: Future<Output = bool>,
+{
 	let generation = {
 		let mut slot = slot.lock().unwrap_or_else(PoisonError::into_inner);
 		let Some(retained) = slot.as_mut() else {

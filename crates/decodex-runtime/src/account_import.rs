@@ -466,7 +466,10 @@ fn parse_versioned_import(bytes: &[u8]) -> Result<ImportedCredential, Credential
 	Ok(ImportedCredential { provider, bundle })
 }
 
-fn decode_claims<T: for<'de> Deserialize<'de>>(token: &str) -> Result<T, CredentialImportError> {
+fn decode_claims<T>(token: &str) -> Result<T, CredentialImportError>
+where
+	T: for<'de> Deserialize<'de>,
+{
 	let mut components = token.split('.');
 	let header = components.next();
 	let payload = components.next();
