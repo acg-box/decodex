@@ -179,22 +179,23 @@ fn summary(saved: &AgentTurnMetrics) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use crate::agent::timeline::metrics::{self, AgentTimelineContent};
+	use std::{
+		future,
+		sync::atomic::{AtomicUsize, Ordering},
+	};
 
-	use crate::agent_usage_estimate::{Source, SourceKey};
+	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
+	use crate::{
+		agent::timeline::metrics::{self, AgentTimelineContent},
+		agent_usage_estimate::{Source, SourceKey},
+	};
 	use decodex_codex::app_server_client::AppServerClient;
-
 	use decodex_core::{AccountId, DecodexRoot, ProcessGenerationId};
-
 	use decodex_database::{
 		AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus, EnqueueAgentEvent,
 		SqliteStore,
 	};
-
-	use std::sync::atomic::{AtomicUsize, Ordering};
-
-	use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	#[test]
 	fn structured_details_keep_response_totals_separate_and_missing_values_unknown() {
@@ -313,11 +314,11 @@ mod tests {
 		store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:serde_json::json!(["turn/completed","thread","turn"]).to_string(),work_item_id:"work".into(),event_kind:"agent_turn_completed".into(),payload:serde_json::json!({"terminal":{"threadId":"thread","turn":{"id":"turn"}},"usage":{"input_tokens":11,"output_tokens":2}}).to_string()}).await.unwrap();
 
 		for change in [false, true] {
-			let (local, remote) = tokio::io::duplex(8_192);
-			let (reader, writer) = tokio::io::split(local);
+			let (local, remote) = io::duplex(8_192);
+			let (reader, writer) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
 			let server = tokio::spawn(async move {
-				let (reader, mut writer) = tokio::io::split(remote);
+				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
 
 				for (method, result) in [
@@ -350,7 +351,7 @@ mod tests {
 				|| {
 					let after = calls.fetch_add(1, Ordering::SeqCst) >= 3;
 
-					std::future::ready(Some(Source {
+					future::ready(Some(Source {
 						client: client.clone(),
 						key: SourceKey {
 							history_revision: 0,

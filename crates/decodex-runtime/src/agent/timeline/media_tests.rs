@@ -1,3 +1,4 @@
+#[cfg(unix)] use std::ffi::CString;
 use std::{
 	fs, future,
 	sync::atomic::{AtomicUsize, Ordering},
@@ -186,8 +187,6 @@ fn executor_image_path_cannot_read_a_same_named_host_file() {
 }
 
 async fn server(remote: DuplexStream, path: Option<String>) {
-	let (reader, mut writer) = io::split(remote);
-	let mut lines = BufReader::new(reader).lines();
 	let content = if let Some(path) = path {
 		serde_json::json!({"type":"localImage","path":path})
 	} else {
@@ -201,6 +200,8 @@ async fn server(remote: DuplexStream, path: Option<String>) {
 			serde_json::json!({"data":[{"turnId":"turn","item":{"id":"item","type":"userMessage","content":[{"type":"text","text":"image"},content]}}],"nextCursor":null}),
 		),
 	];
+	let (reader, mut writer) = io::split(remote);
+	let mut lines = BufReader::new(reader).lines();
 
 	for (method, result) in replies {
 		let request: Value =
@@ -358,8 +359,6 @@ async fn local_reads_reject_relative_paths_and_non_files() {
 
 	#[cfg(unix)]
 	{
-		use std::ffi::CString;
-
 		let path = directory.path().join("pipe");
 		let native = CString::new(path.as_os_str().as_encoded_bytes()).unwrap();
 
