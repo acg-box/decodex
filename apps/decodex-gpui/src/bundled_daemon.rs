@@ -348,7 +348,7 @@ fn set_close_on_exec(raw_fd: i32, enabled: bool) -> io::Result<()> {
 	Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests {
 	use std::{
 		fs,
@@ -368,7 +368,6 @@ mod tests {
 	};
 	use decodex_protocol::DoctorClient;
 
-	#[cfg(target_os = "macos")]
 	struct ProcessFixture {
 		_temporary: TempDir,
 		daemon: PathBuf,
@@ -378,12 +377,10 @@ mod tests {
 		socket: PathBuf,
 	}
 
-	#[cfg(target_os = "macos")]
 	struct IndependentDaemon {
 		child: Option<Child>,
 	}
 
-	#[cfg(target_os = "macos")]
 	impl ProcessFixture {
 		fn new() -> Self {
 			let temporary =
@@ -460,7 +457,6 @@ max_entry_bytes = 65536
 		}
 	}
 
-	#[cfg(target_os = "macos")]
 	impl IndependentDaemon {
 		fn id(&self) -> u32 {
 			self.child.as_ref().expect("independent daemon remains retained").id()
@@ -490,7 +486,6 @@ max_entry_bytes = 65536
 		}
 	}
 
-	#[cfg(target_os = "macos")]
 	impl Drop for IndependentDaemon {
 		fn drop(&mut self) {
 			if let Some(mut child) = self.child.take() {
@@ -500,7 +495,6 @@ max_entry_bytes = 65536
 		}
 	}
 
-	#[cfg(target_os = "macos")]
 	#[test]
 	fn staged_executable_resolves_the_one_helper_payload() {
 		let executable = Path::new("/Applications/Decodex.app/Contents/MacOS/decodex-gpui");
@@ -515,7 +509,6 @@ max_entry_bytes = 65536
 		);
 	}
 
-	#[cfg(target_os = "macos")]
 	#[test]
 	fn lifetime_child_fd_is_inherited_but_parent_fd_is_not() {
 		let (parent, child) = bundled_daemon::lifetime_channel().expect("create lifetime channel");
@@ -528,7 +521,6 @@ max_entry_bytes = 65536
 		assert_eq!(child_flags & libc::FD_CLOEXEC, 0);
 	}
 
-	#[cfg(target_os = "macos")]
 	#[test]
 	#[ignore = "run through scripts/test_gpui_bundled_daemon_supervision.sh with a freshly built decodex"]
 	fn process_listener_loss_restarts_exact_owned_daemon_and_rebinds_client() {
@@ -568,7 +560,6 @@ max_entry_bytes = 65536
 		});
 	}
 
-	#[cfg(target_os = "macos")]
 	#[test]
 	#[ignore = "run through scripts/test_gpui_bundled_daemon_supervision.sh with a freshly built decodex"]
 	fn process_recovery_never_terminates_independently_managed_daemon() {
@@ -619,7 +610,6 @@ max_entry_bytes = 65536
 		independent.stop();
 	}
 
-	#[cfg(target_os = "macos")]
 	fn wait_for_client(runtime: &tokio::runtime::Runtime, root: &Path) {
 		let deadline = Instant::now() + Duration::from_secs(20);
 
@@ -636,7 +626,6 @@ max_entry_bytes = 65536
 		}
 	}
 
-	#[cfg(target_os = "macos")]
 	fn wait_until(label: &str, mut predicate: impl FnMut() -> bool) {
 		let deadline = Instant::now() + Duration::from_secs(20);
 
@@ -647,7 +636,6 @@ max_entry_bytes = 65536
 		}
 	}
 
-	#[cfg(target_os = "macos")]
 	fn process_is_alive(pid: u32) -> bool {
 		// SAFETY: signal 0 performs a liveness/permission check and has no process effect.
 		unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
