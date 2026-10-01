@@ -117,9 +117,17 @@ struct ConversationTurnFence {
 	turn_revision: i64,
 }
 
+struct PreparedAttemptAuthority {
+	routing_decision_id: String,
+	runtime_session_id: String,
+	runtime_session_revision: i64,
+	account_id: String,
+	plan_kind: String,
+	source_runtime_session_id: String,
+}
+
 impl SqliteStore {
 	#[allow(clippy::too_many_arguments)]
-	#[allow(clippy::too_many_lines)] // Keep one atomic dispatch-intent transaction together.
 	pub async fn prepare_provider_attempt(
 		&self,
 		preparation: &ProviderAttemptPreparation,
@@ -139,27 +147,7 @@ impl SqliteStore {
 			));
 		}
 
-		let (conversation_id, turn_id) = match &preparation.consumer {
-			ProviderAttemptConsumer::ConversationTurn { conversation_id, turn_id } =>
-				(conversation_id.clone(), turn_id.clone()),
-			ProviderAttemptConsumer::ManagedRunExecution { .. } => {
-				return Err(StoreError::InvalidInput("ManagedRun ProviderAttempt is deferred"));
-			},
-		};
-		let (conversation_revision, turn_revision) = expected_conversation_turn_revisions;
-		let conversation_revision = conversation_revision.ok_or(StoreError::InvalidInput(
-			"Conversation ProviderAttempt requires a Conversation revision",
-		))?;
-		let turn_revision = turn_revision.ok_or(StoreError::InvalidInput(
-			"Conversation ProviderAttempt requires a Turn revision",
-		))?;
-
-		if conversation_revision <= 0 || turn_revision != 1 {
-			return Err(StoreError::InvalidInput(
-				"Conversation ProviderAttempt revision is invalid",
-			));
-		}
-
+		let fence = preparation_turn_fence(preparation, expected_conversation_turn_revisions)?;
 		let preparation = preparation.clone();
 		let process_generation_id = process_generation_id.clone();
 		let process_execution_epoch_id = process_execution_epoch_id.clone();
@@ -171,90 +159,30 @@ impl SqliteStore {
 				.map_err(sql_error)?;
 
 			if let Some(existing) = read_attempt(&transaction, preparation.attempt_id.as_str())? {
-				let same = existing.consumer == preparation.consumer
-					&& existing.continuation_plan_id == preparation.continuation_plan_id
-					&& existing.process_generation_id == process_generation_id
-					&& existing.request_id == preparation.request_id
-					&& existing.request_digest == preparation.request_digest
-					&& existing.provider_keys == preparation.provider_keys
-					&& existing.duplicate_risk == preparation.duplicate_risk;
-				let actual = mutation(&existing);
+				let outcome = replayed_preparation(&existing, &preparation, &process_generation_id);
 
 				transaction.commit().map_err(sql_error)?;
 
-				return if same {
-					Ok(PrepareProviderAttemptOutcome::Replayed(actual))
-				} else {
-					Ok(PrepareProviderAttemptOutcome::Rejected {
-						rejection: ProviderAttemptRejection::IdentityConflict,
-						actual,
-					})
-				};
+				return Ok(outcome);
 			}
 
-			let authority = transaction
-				.query_row(
-					"SELECT p.routing_decision_id,
-				        COALESCE(p.runtime_session_id, p.source_runtime_session_id), execution.revision,
-				        p.selected_account_id, p.kind, p.source_runtime_session_id
-				 FROM continuation_plans AS p
-				 JOIN routing_decisions AS d ON d.routing_decision_id = p.routing_decision_id
-				 JOIN runtime_sessions AS source
-				   ON source.runtime_session_id = p.source_runtime_session_id
-				 JOIN runtime_sessions AS execution
-				   ON execution.runtime_session_id = COALESCE(p.runtime_session_id, p.source_runtime_session_id)
-				 JOIN conversations AS c ON c.conversation_id = p.conversation_id
-				 JOIN turns AS t ON t.turn_id = p.turn_id
-				 JOIN process_generations AS g ON g.generation_id = ?1
-				 WHERE p.continuation_plan_id = ?2 AND p.conversation_id = ?3 AND p.turn_id = ?4
-				   AND c.revision = ?5 AND c.state = 'active'
-				   AND t.revision = ?6 AND t.status = 'active'
-				   AND t.runtime_session_id = execution.runtime_session_id
-				   AND g.revision = ?7 AND g.state = 'ready'
-				   AND g.execution_epoch_id = ?8 AND g.account_id = p.selected_account_id
-				   AND g.runtime_session_id = execution.runtime_session_id
-				   AND (?9 IS NULL OR execution.thread_start_binding_key = ?9)
-				   AND (
-				     (p.kind IN ('initial_thread', 'same_thread')
-				      AND execution.runtime_session_id = source.runtime_session_id
-				      AND source.state = 'active')
-				     OR
-				     (p.kind = 'context_pack_fallback' AND p.runtime_session_id = execution.runtime_session_id
-				      AND execution.state = 'active' AND source.state = 'ended'
-				      AND source.revision = p.source_runtime_session_revision + 1)
-				   )",
-					rusqlite::params![
-						process_generation_id.as_str(),
-						preparation.continuation_plan_id,
-						conversation_id.as_str(),
-						turn_id.as_str(),
-						conversation_revision,
-						turn_revision,
-						process_generation_revision,
-						process_execution_epoch_id.as_str(),
-						binding_key,
-					],
-					|row| {
-						Ok((
-							row.get::<_, String>(0)?,
-							row.get::<_, String>(1)?,
-							row.get::<_, i64>(2)?,
-							row.get::<_, String>(3)?,
-							row.get::<_, String>(4)?,
-							row.get::<_, String>(5)?,
-						))
-					},
-				)
-				.optional()
-				.map_err(sql_error)?;
-			let Some((
+			let authority = read_prepared_attempt_authority(
+				&transaction,
+				&preparation,
+				&process_generation_id,
+				process_generation_revision,
+				&process_execution_epoch_id,
+				binding_key.as_deref(),
+				&fence,
+			)?;
+			let Some(PreparedAttemptAuthority {
 				routing_decision_id,
 				runtime_session_id,
 				runtime_session_revision,
 				account_id,
 				plan_kind,
 				source_runtime_session_id,
-			)) = authority
+			}) = authority
 			else {
 				return Ok(PrepareProviderAttemptOutcome::Rejected {
 					rejection: ProviderAttemptRejection::AuthorityUnavailable,
@@ -265,8 +193,8 @@ impl SqliteStore {
 			if !duplicate_risk_matches_plan(
 				&transaction,
 				&preparation.duplicate_risk,
-				&conversation_id,
-				&turn_id,
+				&fence.conversation_id,
+				&fence.turn_id,
 				&plan_kind,
 				&source_runtime_session_id,
 				&preparation.continuation_plan_id,
@@ -296,8 +224,8 @@ impl SqliteStore {
 				 )",
 					rusqlite::params![
 						preparation.attempt_id.as_str(),
-						conversation_id.as_str(),
-						turn_id.as_str(),
+						fence.conversation_id.as_str(),
+						fence.turn_id.as_str(),
 						preparation.continuation_plan_id,
 						routing_decision_id,
 						runtime_session_id,
@@ -322,12 +250,7 @@ impl SqliteStore {
 				attempt_id: preparation.attempt_id,
 				revision: 1,
 				prepared_at_micros: now,
-				conversation_turn_fence: Some(ConversationTurnFence {
-					conversation_id,
-					conversation_revision,
-					turn_id,
-					turn_revision,
-				}),
+				conversation_turn_fence: Some(fence),
 			}))
 		})
 		.await
@@ -743,6 +666,121 @@ pub enum ProviderAttemptMutationOutcome {
 	Applied(ProviderAttemptMutation),
 	Replayed(ProviderAttemptMutation),
 	Rejected { rejection: ProviderAttemptRejection, actual: ProviderAttemptMutation },
+}
+
+fn replayed_preparation(
+	existing: &ProviderAttempt,
+	preparation: &ProviderAttemptPreparation,
+	process_generation_id: &ProcessGenerationId,
+) -> PrepareProviderAttemptOutcome {
+	let same = existing.consumer == preparation.consumer
+		&& existing.continuation_plan_id == preparation.continuation_plan_id
+		&& &existing.process_generation_id == process_generation_id
+		&& existing.request_id == preparation.request_id
+		&& existing.request_digest == preparation.request_digest
+		&& existing.provider_keys == preparation.provider_keys
+		&& existing.duplicate_risk == preparation.duplicate_risk;
+	let actual = mutation(existing);
+
+	if same {
+		PrepareProviderAttemptOutcome::Replayed(actual)
+	} else {
+		PrepareProviderAttemptOutcome::Rejected {
+			rejection: ProviderAttemptRejection::IdentityConflict,
+			actual,
+		}
+	}
+}
+
+fn preparation_turn_fence(
+	preparation: &ProviderAttemptPreparation,
+	expected_conversation_turn_revisions: (Option<i64>, Option<i64>),
+) -> Result<ConversationTurnFence, StoreError> {
+	let (conversation_id, turn_id) = match &preparation.consumer {
+		ProviderAttemptConsumer::ConversationTurn { conversation_id, turn_id } =>
+			(conversation_id.clone(), turn_id.clone()),
+		ProviderAttemptConsumer::ManagedRunExecution { .. } => {
+			return Err(StoreError::InvalidInput("ManagedRun ProviderAttempt is deferred"));
+		},
+	};
+	let (conversation_revision, turn_revision) = expected_conversation_turn_revisions;
+	let conversation_revision = conversation_revision.ok_or(StoreError::InvalidInput(
+		"Conversation ProviderAttempt requires a Conversation revision",
+	))?;
+	let turn_revision = turn_revision
+		.ok_or(StoreError::InvalidInput("Conversation ProviderAttempt requires a Turn revision"))?;
+
+	if conversation_revision <= 0 || turn_revision != 1 {
+		return Err(StoreError::InvalidInput("Conversation ProviderAttempt revision is invalid"));
+	}
+
+	Ok(ConversationTurnFence { conversation_id, conversation_revision, turn_id, turn_revision })
+}
+
+fn read_prepared_attempt_authority(
+	transaction: &Transaction<'_>,
+	preparation: &ProviderAttemptPreparation,
+	process_generation_id: &ProcessGenerationId,
+	process_generation_revision: i64,
+	process_execution_epoch_id: &ProcessExecutionEpochId,
+	binding_key: Option<&str>,
+	fence: &ConversationTurnFence,
+) -> Result<Option<PreparedAttemptAuthority>, StoreError> {
+	transaction
+		.query_row(
+			"SELECT p.routing_decision_id,
+	        COALESCE(p.runtime_session_id, p.source_runtime_session_id), execution.revision,
+	        p.selected_account_id, p.kind, p.source_runtime_session_id
+	 FROM continuation_plans AS p
+	 JOIN routing_decisions AS d ON d.routing_decision_id = p.routing_decision_id
+	 JOIN runtime_sessions AS source
+	   ON source.runtime_session_id = p.source_runtime_session_id
+	 JOIN runtime_sessions AS execution
+	   ON execution.runtime_session_id = COALESCE(p.runtime_session_id, p.source_runtime_session_id)
+	 JOIN conversations AS c ON c.conversation_id = p.conversation_id
+	 JOIN turns AS t ON t.turn_id = p.turn_id
+	 JOIN process_generations AS g ON g.generation_id = ?1
+	 WHERE p.continuation_plan_id = ?2 AND p.conversation_id = ?3 AND p.turn_id = ?4
+	   AND c.revision = ?5 AND c.state = 'active'
+	   AND t.revision = ?6 AND t.status = 'active'
+	   AND t.runtime_session_id = execution.runtime_session_id
+	   AND g.revision = ?7 AND g.state = 'ready'
+	   AND g.execution_epoch_id = ?8 AND g.account_id = p.selected_account_id
+	   AND g.runtime_session_id = execution.runtime_session_id
+	   AND (?9 IS NULL OR execution.thread_start_binding_key = ?9)
+	   AND (
+	     (p.kind IN ('initial_thread', 'same_thread')
+	      AND execution.runtime_session_id = source.runtime_session_id
+	      AND source.state = 'active')
+	     OR
+	     (p.kind = 'context_pack_fallback' AND p.runtime_session_id = execution.runtime_session_id
+	      AND execution.state = 'active' AND source.state = 'ended'
+	      AND source.revision = p.source_runtime_session_revision + 1)
+	   )",
+			rusqlite::params![
+				process_generation_id.as_str(),
+				preparation.continuation_plan_id,
+				fence.conversation_id.as_str(),
+				fence.turn_id.as_str(),
+				fence.conversation_revision,
+				fence.turn_revision,
+				process_generation_revision,
+				process_execution_epoch_id.as_str(),
+				binding_key,
+			],
+			|row| {
+				Ok(PreparedAttemptAuthority {
+					routing_decision_id: row.get(0)?,
+					runtime_session_id: row.get(1)?,
+					runtime_session_revision: row.get(2)?,
+					account_id: row.get(3)?,
+					plan_kind: row.get(4)?,
+					source_runtime_session_id: row.get(5)?,
+				})
+			},
+		)
+		.optional()
+		.map_err(sql_error)
 }
 
 fn read_attempt(connection: &Connection, id: &str) -> Result<Option<ProviderAttempt>, StoreError> {

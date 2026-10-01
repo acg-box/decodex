@@ -1609,7 +1609,6 @@ fn advance_operation_sync(
 	)?))
 }
 
-#[allow(clippy::too_many_lines)] // Keep every account-operation commit and its takeover linkage in one transaction boundary.
 fn commit_account_operation(
 	connection: &Connection,
 	operation: &AccountOperation,
@@ -1620,193 +1619,220 @@ fn commit_account_operation(
 		return Ok(Some(rejection));
 	}
 
-	match operation.kind {
-		AccountOperationKind::Enroll | AccountOperationKind::Import => {
-			let Some(target) = operation.target.as_ref() else {
-				return Ok(Some(AccountLifecycleRejection::InvalidRequest));
-			};
+	let rejection = match operation.kind {
+		AccountOperationKind::Enroll | AccountOperationKind::Import =>
+			commit_account_enrollment(connection, operation, now)?,
+		AccountOperationKind::Refresh => commit_account_refresh(connection, operation, now)?,
+		AccountOperationKind::Logout => commit_account_logout(connection, operation, now)?,
+	};
 
-			if credential_binding_sync(connection, &operation.account_id)?.as_ref() != Some(target)
+	if rejection.is_some() {
+		return Ok(rejection);
+	}
+
+	record_reauthentication_supersession(connection, operation, now)?;
+
+	Ok(None)
+}
+
+fn commit_account_enrollment(
+	connection: &Connection,
+	operation: &AccountOperation,
+	now: i64,
+) -> Result<Option<AccountLifecycleRejection>, StoreError> {
+	let Some(target) = operation.target.as_ref() else {
+		return Ok(Some(AccountLifecycleRejection::InvalidRequest));
+	};
+
+	if credential_binding_sync(connection, &operation.account_id)?.as_ref() != Some(target) {
+		return Ok(Some(AccountLifecycleRejection::StaleAccount));
+	}
+
+	let label =
+		account_alias::for_enrollment(connection, &target.provider).map_err(StoreError::from)?;
+	let enabled = operation
+		.requested_enabled
+		.ok_or(StoreError::InvalidInput("account enablement is absent"))?;
+
+	match account_base_sync(connection, &operation.account_id)? {
+		None => {
+			if operation.expected_account_revision.is_some() || target.version.get() != 1 {
+				return Ok(Some(AccountLifecycleRejection::StaleAccount));
+			}
+
+			connection
+				.execute(
+					"INSERT INTO accounts (
+				   account_id, display_label, enabled, state, revision, provider,
+				   provider_account_id, credential_store_observation,
+				   created_at_micros, updated_at_micros, tombstoned_at_micros
+				 ) VALUES (?1, ?2, ?3, 'available', 1, ?4, ?5, 'exact', ?6, ?6, NULL)",
+					rusqlite::params![
+						operation.account_id.as_str(),
+						label,
+						enabled,
+						provider_text(target.provider.provider()),
+						target.provider.account_id(),
+						now,
+					],
+				)
+				.map_err(sql_error)?;
+		},
+		Some(account) if account.tombstoned => {
+			if operation.expected_account_revision != Some(account.revision)
+				|| provider_text(target.provider.provider()) != account.provider
+				|| target.provider.account_id() != account.provider_account_id
 			{
 				return Ok(Some(AccountLifecycleRejection::StaleAccount));
 			}
 
-			let label = account_alias::for_enrollment(connection, &target.provider)
-				.map_err(StoreError::from)?;
-			let enabled = operation
-				.requested_enabled
-				.ok_or(StoreError::InvalidInput("account enablement is absent"))?;
+			let previous = tombstone_predecessor_credential_sync(
+				connection,
+				&operation.account_id,
+				account.revision,
+				&target.provider,
+			)?;
 
-			match account_base_sync(connection, &operation.account_id)? {
-				None => {
-					if operation.expected_account_revision.is_some() || target.version.get() != 1 {
-						return Ok(Some(AccountLifecycleRejection::StaleAccount));
-					}
-
-					connection
-						.execute(
-							"INSERT INTO accounts (
-							   account_id, display_label, enabled, state, revision, provider,
-							   provider_account_id, credential_store_observation,
-							   created_at_micros, updated_at_micros, tombstoned_at_micros
-							 ) VALUES (?1, ?2, ?3, 'available', 1, ?4, ?5, 'exact', ?6, ?6, NULL)",
-							rusqlite::params![
-								operation.account_id.as_str(),
-								label,
-								enabled,
-								provider_text(target.provider.provider()),
-								target.provider.account_id(),
-								now,
-							],
-						)
-						.map_err(sql_error)?;
-				},
-				Some(account) if account.tombstoned => {
-					if operation.expected_account_revision != Some(account.revision)
-						|| provider_text(target.provider.provider()) != account.provider
-						|| target.provider.account_id() != account.provider_account_id
-					{
-						return Ok(Some(AccountLifecycleRejection::StaleAccount));
-					}
-
-					let previous = tombstone_predecessor_credential_sync(
-						connection,
-						&operation.account_id,
-						account.revision,
-						&target.provider,
-					)?;
-
-					if previous.version.successor().ok() != Some(target.version) {
-						return Ok(Some(AccountLifecycleRejection::StaleAccount));
-					}
-
-					let changed = connection
-						.execute(
-							"UPDATE accounts
-							 SET display_label = ?1, enabled = ?2, state = 'available',
-							     revision = revision + 1, provider = ?3, provider_account_id = ?4,
-							     credential_store_observation = 'exact', updated_at_micros = ?5,
-							     tombstoned_at_micros = NULL
-							 WHERE account_id = ?6 AND revision = ?7
-							   AND tombstoned_at_micros IS NOT NULL",
-							rusqlite::params![
-								label,
-								enabled,
-								provider_text(target.provider.provider()),
-								target.provider.account_id(),
-								now,
-								operation.account_id.as_str(),
-								account.revision,
-							],
-						)
-						.map_err(sql_error)?;
-
-					if changed != 1 {
-						return Ok(Some(AccountLifecycleRejection::StaleAccount));
-					}
-				},
-				Some(_) => return Ok(Some(AccountLifecycleRejection::IdentityConflict)),
-			}
-
-			let position: i64 = connection
-				.query_row("SELECT COUNT(*) FROM account_routing_order", [], |row| row.get(0))
-				.map_err(sql_error)?;
-
-			connection
-				.execute(
-					"INSERT INTO account_routing_order (account_id, position, updated_at_micros)
-					 VALUES (?1, ?2, ?3)",
-					rusqlite::params![operation.account_id.as_str(), position, now],
-				)
-				.map_err(sql_error)?;
-
-			bump_routing_revision(connection, now)?;
-		},
-		AccountOperationKind::Refresh => {
-			let Some(target) = operation.target.as_ref() else {
-				return Ok(Some(AccountLifecycleRejection::InvalidRequest));
-			};
-
-			if credential_binding_sync(connection, &operation.account_id)?.as_ref() != Some(target)
-			{
+			if previous.version.successor().ok() != Some(target.version) {
 				return Ok(Some(AccountLifecycleRejection::StaleAccount));
 			}
 
 			let changed = connection
 				.execute(
-					"UPDATE accounts SET revision = revision + 1, provider = ?1,
-					 provider_account_id = ?2, credential_store_observation = 'exact',
-					 updated_at_micros = ?3
-					 WHERE account_id = ?4 AND tombstoned_at_micros IS NULL",
+					"UPDATE accounts
+				 SET display_label = ?1, enabled = ?2, state = 'available',
+				     revision = revision + 1, provider = ?3, provider_account_id = ?4,
+				     credential_store_observation = 'exact', updated_at_micros = ?5,
+				     tombstoned_at_micros = NULL
+				 WHERE account_id = ?6 AND revision = ?7
+				   AND tombstoned_at_micros IS NOT NULL",
 					rusqlite::params![
+						label,
+						enabled,
 						provider_text(target.provider.provider()),
 						target.provider.account_id(),
 						now,
 						operation.account_id.as_str(),
+						account.revision,
 					],
 				)
 				.map_err(sql_error)?;
 
 			if changed != 1 {
-				return Ok(Some(AccountLifecycleRejection::AccountMissing));
-			}
-		},
-		AccountOperationKind::Logout => {
-			let in_use: bool = connection
-				.query_row(
-					"SELECT EXISTS (
-					   SELECT 1 FROM process_generations WHERE account_id = ?1 AND state <> 'dead'
-					 )",
-					rusqlite::params![operation.account_id.as_str()],
-					|row| row.get(0),
-				)
-				.map_err(sql_error)?;
-
-			if in_use {
-				return Ok(Some(AccountLifecycleRejection::AccountInUse));
-			}
-			if credential_binding_sync(connection, &operation.account_id)?.is_some() {
 				return Ok(Some(AccountLifecycleRejection::StaleAccount));
 			}
-
-			let changed = connection
-				.execute(
-					"UPDATE accounts SET enabled = 0, revision = revision + 1,
-					 credential_store_observation = 'missing', updated_at_micros = ?1,
-					 tombstoned_at_micros = ?1
-					 WHERE account_id = ?2 AND tombstoned_at_micros IS NULL",
-					rusqlite::params![now, operation.account_id.as_str()],
-				)
-				.map_err(sql_error)?;
-
-			if changed != 1 {
-				return Ok(Some(AccountLifecycleRejection::AccountMissing));
-			}
-
-			connection
-				.execute(
-					"DELETE FROM account_routing_order WHERE account_id = ?1",
-					rusqlite::params![operation.account_id.as_str()],
-				)
-				.map_err(sql_error)?;
-
-			compact_routing_order(connection, now)?;
-
-			connection
-				.execute(
-					"UPDATE account_routing_control
-					 SET mode = CASE WHEN fixed_account_id = ?1 THEN 'balanced' ELSE mode END,
-					     fixed_account_id = CASE WHEN fixed_account_id = ?1 THEN NULL ELSE fixed_account_id END
-					 WHERE singleton = 1",
-					rusqlite::params![operation.account_id.as_str()],
-				)
-				.map_err(sql_error)?;
-
-			bump_routing_revision(connection, now)?;
 		},
+		Some(_) => return Ok(Some(AccountLifecycleRejection::IdentityConflict)),
 	}
 
-	record_reauthentication_supersession(connection, operation, now)?;
+	let position: i64 = connection
+		.query_row("SELECT COUNT(*) FROM account_routing_order", [], |row| row.get(0))
+		.map_err(sql_error)?;
+
+	connection
+		.execute(
+			"INSERT INTO account_routing_order (account_id, position, updated_at_micros)
+		 VALUES (?1, ?2, ?3)",
+			rusqlite::params![operation.account_id.as_str(), position, now],
+		)
+		.map_err(sql_error)?;
+
+	bump_routing_revision(connection, now)?;
+
+	Ok(None)
+}
+
+fn commit_account_refresh(
+	connection: &Connection,
+	operation: &AccountOperation,
+	now: i64,
+) -> Result<Option<AccountLifecycleRejection>, StoreError> {
+	let Some(target) = operation.target.as_ref() else {
+		return Ok(Some(AccountLifecycleRejection::InvalidRequest));
+	};
+
+	if credential_binding_sync(connection, &operation.account_id)?.as_ref() != Some(target) {
+		return Ok(Some(AccountLifecycleRejection::StaleAccount));
+	}
+
+	let changed = connection
+		.execute(
+			"UPDATE accounts SET revision = revision + 1, provider = ?1,
+		 provider_account_id = ?2, credential_store_observation = 'exact',
+		 updated_at_micros = ?3
+		 WHERE account_id = ?4 AND tombstoned_at_micros IS NULL",
+			rusqlite::params![
+				provider_text(target.provider.provider()),
+				target.provider.account_id(),
+				now,
+				operation.account_id.as_str(),
+			],
+		)
+		.map_err(sql_error)?;
+
+	if changed != 1 {
+		return Ok(Some(AccountLifecycleRejection::AccountMissing));
+	}
+
+	Ok(None)
+}
+
+fn commit_account_logout(
+	connection: &Connection,
+	operation: &AccountOperation,
+	now: i64,
+) -> Result<Option<AccountLifecycleRejection>, StoreError> {
+	let in_use: bool = connection
+		.query_row(
+			"SELECT EXISTS (
+		   SELECT 1 FROM process_generations WHERE account_id = ?1 AND state <> 'dead'
+		 )",
+			rusqlite::params![operation.account_id.as_str()],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)?;
+
+	if in_use {
+		return Ok(Some(AccountLifecycleRejection::AccountInUse));
+	}
+	if credential_binding_sync(connection, &operation.account_id)?.is_some() {
+		return Ok(Some(AccountLifecycleRejection::StaleAccount));
+	}
+
+	let changed = connection
+		.execute(
+			"UPDATE accounts SET enabled = 0, revision = revision + 1,
+		 credential_store_observation = 'missing', updated_at_micros = ?1,
+		 tombstoned_at_micros = ?1
+		 WHERE account_id = ?2 AND tombstoned_at_micros IS NULL",
+			rusqlite::params![now, operation.account_id.as_str()],
+		)
+		.map_err(sql_error)?;
+
+	if changed != 1 {
+		return Ok(Some(AccountLifecycleRejection::AccountMissing));
+	}
+
+	connection
+		.execute(
+			"DELETE FROM account_routing_order WHERE account_id = ?1",
+			rusqlite::params![operation.account_id.as_str()],
+		)
+		.map_err(sql_error)?;
+
+	compact_routing_order(connection, now)?;
+
+	connection
+		.execute(
+			"UPDATE account_routing_control
+		 SET mode = CASE WHEN fixed_account_id = ?1 THEN 'balanced' ELSE mode END,
+		     fixed_account_id = CASE WHEN fixed_account_id = ?1 THEN NULL ELSE fixed_account_id END
+		 WHERE singleton = 1",
+			rusqlite::params![operation.account_id.as_str()],
+		)
+		.map_err(sql_error)?;
+
+	bump_routing_revision(connection, now)?;
 
 	Ok(None)
 }
@@ -3049,14 +3075,8 @@ mod optional_quota_tests {
 			.expect("root");
 		let store = SqliteStore::open(&root.paths()).expect("store");
 		let account = AccountId::new("10000000-0000-4000-8000-000000000001").expect("account");
-		let id = account.clone();
 
-		store.run(move |connection| {
-			connection.execute("INSERT INTO account_identities VALUES (?1,1)",[id.as_str()]).expect("identity");
-			connection.execute("INSERT INTO accounts (account_id,display_label,enabled,state,revision,provider,provider_account_id,created_at_micros,updated_at_micros) VALUES (?1,'test',1,'available',1,'chatgpt','test-provider',1,1)",[id.as_str()]).expect("account row");
-
-			Ok(())
-		}).await.expect("fixture");
+		seed_quota_account(&store, &account).await;
 
 		let now = crate::unix_micros().expect("clock");
 
@@ -3166,6 +3186,16 @@ mod optional_quota_tests {
 
 			Ok(())
 		}).await.expect("current readback");
+	}
+	async fn seed_quota_account(store: &SqliteStore, account: &AccountId) {
+		let id = account.clone();
+
+		store.run(move |connection| {
+	connection.execute("INSERT INTO account_identities VALUES (?1,1)",[id.as_str()]).expect("identity");
+	connection.execute("INSERT INTO accounts (account_id,display_label,enabled,state,revision,provider,provider_account_id,created_at_micros,updated_at_micros) VALUES (?1,'test',1,'available',1,'chatgpt','test-provider',1,1)",[id.as_str()]).expect("account row");
+
+	Ok(())
+}).await.expect("fixture");
 	}
 }
 #[cfg(test)]
