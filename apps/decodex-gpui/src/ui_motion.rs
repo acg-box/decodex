@@ -3,15 +3,14 @@ use std::time::{Duration, Instant};
 
 use gpui::{
 	AnyElement, App, Div, Element, ElementId, IntoElement, MouseButton, RenderOnce, Stateful,
-	Window, div,
+	Window,
 	prelude::{
-		FluentBuilder, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled,
+		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
+		StatefulInteractiveElement as _, Styled as _,
 	},
-	px,
 };
 #[cfg(all(target_os = "macos", not(test)))]
 use objc2::{
-	msg_send,
 	rc::Retained,
 	runtime::{AnyClass, AnyObject},
 };
@@ -41,11 +40,11 @@ impl RenderOnce for Reveal {
 			request_frame(window, cx);
 		}
 
-		div()
+		gpui::div()
 			.flex_none()
 			.overflow_hidden()
-			.when(self.horizontal, |slot| slot.w(px(extent)).h_full())
-			.when(!self.horizontal, |slot| slot.h(px(extent)).w_full())
+			.when(self.horizontal, |slot| slot.w(gpui::px(extent)).h_full())
+			.when(!self.horizontal, |slot| slot.h(gpui::px(extent)).w_full())
 			.when(extent > 0.1, |slot| slot.child(self.child))
 	}
 }
@@ -75,15 +74,15 @@ impl RenderOnce for TabReveal {
 			cx.defer(self.closed);
 		}
 
-		div()
+		gpui::div()
 			.flex_none()
-			.w(px((width + 4.0) * progress))
-			.h(px(28.0))
+			.w(gpui::px((width + 4.0) * progress))
+			.h(gpui::px(28.0))
 			.overflow_hidden()
 			.flex()
 			.items_center()
 			.child(
-				div()
+				gpui::div()
 					.flex_none()
 					.flex()
 					.items_center()
@@ -111,109 +110,11 @@ pub(crate) struct Control {
 	div: Stateful<Div>,
 	enabled: bool,
 }
-
-#[derive(IntoElement)]
-pub(crate) struct SwitchKnob {
-	id: &'static str,
-	enabled: bool,
-	child: AnyElement,
-}
-impl RenderOnce for SwitchKnob {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let target = if self.enabled { 16.0 } else { 0.0 };
-		let state = window.use_keyed_state(self.id, cx, |_, _| Tween::new(target));
-		let now = Instant::now();
-		let offset = state.update(cx, |s, _| {
-			s.target(target, now);
-
-			s.sample(now)
-		});
-
-		if state.read(cx).moving(now) {
-			request_frame(window, cx);
-		}
-
-		div().ml(px(offset)).size(px(14.0)).child(self.child)
-	}
-}
-
-#[derive(Clone)]
-struct Tween {
-	from: f32,
-	to: f32,
-	started: Instant,
-	duration: Duration,
-}
-impl Tween {
-	fn new(value: f32) -> Self {
-		Self {
-			from: value,
-			to: value,
-			started: Instant::now(),
-			duration: Duration::from_millis(200),
-		}
-	}
-
-	fn sample(&self, now: Instant) -> f32 {
-		self.sample_with_motion(now, reduced())
-	}
-
-	fn sample_with_motion(&self, now: Instant, reduced: bool) -> f32 {
-		if reduced {
-			return self.to;
-		}
-
-		let t =
-			(now.duration_since(self.started).as_secs_f32() / self.duration.as_secs_f32()).min(1.0);
-		let eased = 1.0 - (1.0 - t).powi(3);
-
-		self.from + (self.to - self.from) * eased
-	}
-
-	fn target(&mut self, value: f32, now: Instant) {
-		if self.to != value {
-			self.from = self.sample(now);
-			self.to = value;
-			self.started = now;
-		}
-	}
-
-	fn moving(&self, now: Instant) -> bool {
-		!reduced() && self.from != self.to && now.duration_since(self.started) < self.duration
-	}
-}
-
-struct Feedback {
-	hovered: bool,
-	pressed: bool,
-	opacity: Tween,
-}
-impl Feedback {
-	fn update(&mut self) {
-		self.opacity.target(
-			if self.pressed {
-				0.90
-			} else if self.hovered {
-				1.0
-			} else {
-				0.96
-			},
-			Instant::now(),
-		);
-	}
-}
-
 impl Control {
 	pub(crate) fn enabled(mut self, enabled: bool) -> Self {
 		self.enabled = enabled;
 
 		self
-	}
-}
-
-impl SmoothControl for Stateful<Div> {
-	fn smooth(self) -> Control {
-		Control { div: self, enabled: true }
 	}
 }
 
@@ -318,6 +219,250 @@ impl RenderOnce for Control {
 	}
 }
 
+#[derive(IntoElement)]
+pub(crate) struct SwitchKnob {
+	id: &'static str,
+	enabled: bool,
+	child: AnyElement,
+}
+impl RenderOnce for SwitchKnob {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let target = if self.enabled { 16.0 } else { 0.0 };
+		let state = window.use_keyed_state(self.id, cx, |_, _| Tween::new(target));
+		let now = Instant::now();
+		let offset = state.update(cx, |s, _| {
+			s.target(target, now);
+
+			s.sample(now)
+		});
+
+		if state.read(cx).moving(now) {
+			request_frame(window, cx);
+		}
+
+		gpui::div().ml(gpui::px(offset)).size(gpui::px(14.0)).child(self.child)
+	}
+}
+
+#[derive(IntoElement)]
+pub(crate) struct Disclosure {
+	id: ElementId,
+	visible: bool,
+	child: Box<dyn FnOnce(&mut App) -> AnyElement>,
+}
+impl RenderOnce for Disclosure {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let state = window.use_keyed_state(self.id, cx, |_, _| DisclosureState {
+			visible: false,
+			height: 0.0,
+			tween: Tween::new(0.0),
+		});
+		let now = Instant::now();
+		let (height, moving) = state.update(cx, |s, _| {
+			if self.visible && s.visible && s.tween.to > 0. && !s.tween.moving(now) {
+				// Once open, let inner disclosures and new content own their size.
+				// Animating both parent and child would make the parent lag behind.
+				s.tween = Tween::new(s.height);
+			} else {
+				s.tween.target(if self.visible { s.height } else { 0.0 }, now);
+			}
+
+			s.visible = self.visible;
+
+			(s.tween.sample(now), s.tween.moving(now))
+		});
+
+		if moving {
+			request_frame(window, cx);
+		}
+
+		gpui::div()
+			.w_full()
+			.h(gpui::px(height))
+			.when(self.visible && !moving && height > 0.1, |slot| slot.h_auto())
+			.flex_none()
+			.overflow_hidden()
+			.when(self.visible || height > 0.1, |slot| {
+				slot.child(
+					gpui::div()
+						.w_full()
+						.flex_none()
+						.on_children_prepainted(move |bounds, _, cx| {
+							if let Some(bounds) = bounds.first() {
+								let measured = f32::from(bounds.size.height);
+
+								state.update(cx, |s, cx| {
+									if (s.height - measured).abs() > 0.5 {
+										s.height = measured;
+
+										cx.notify();
+									}
+								});
+							}
+						})
+						.child((self.child)(cx)),
+				)
+			})
+	}
+}
+
+/// A short arrival transition, keyed by route rather than background refreshes.
+#[derive(IntoElement)]
+pub(crate) struct Arrival {
+	route: String,
+	child: AnyElement,
+}
+impl RenderOnce for Arrival {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let state = window
+			.use_keyed_state("page-arrival", cx, |_, _| (self.route.clone(), Tween::new(1.0)));
+		let now = Instant::now();
+		let (progress, moving) = state.update(cx, |s, _| {
+			if s.0 != self.route {
+				s.0 = self.route;
+				s.1 = Tween::new(0.0);
+
+				s.1.target(1.0, now);
+			}
+
+			(s.1.sample(now), s.1.moving(now))
+		});
+
+		if moving {
+			request_frame(window, cx);
+		}
+
+		gpui::div()
+			.size_full()
+			.min_h_0()
+			.relative()
+			.flex()
+			.flex_col()
+			.top(gpui::px(4.0 * (1.0 - progress)))
+			.opacity(0.85 + 0.15 * progress)
+			.child(self.child)
+	}
+}
+
+/// Fixed-anchor fallback until a whole-surface composited transition is available.
+/// Do not use per-primitive opacity or translate an already opaque card.
+#[derive(IntoElement)]
+pub(crate) struct Popover {
+	unframed: bool,
+	visible: bool,
+	child: AnyElement,
+}
+impl Popover {
+	pub(crate) fn unframed(mut self, unframed: bool) -> Self {
+		self.unframed = unframed;
+
+		self
+	}
+}
+
+impl RenderOnce for Popover {
+	fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+		if !self.visible {
+			return gpui::div().w_full().into_any_element();
+		}
+
+		gpui::div()
+			.w_full()
+			.relative()
+			.when(!self.unframed, |surface| {
+				surface.rounded(gpui::px(14.)).bg(gpui::rgb(0x29292d)).shadow(vec![
+					gpui::BoxShadow {
+						inset: false,
+						color: gpui::rgba(0x00000024).into(),
+						offset: gpui::point(gpui::px(0.), gpui::px(4.)),
+						blur_radius: gpui::px(12.),
+						spread_radius: gpui::px(-3.),
+					},
+				])
+			})
+			.child(self.child)
+			.into_any_element()
+	}
+}
+
+#[derive(Clone)]
+struct Tween {
+	from: f32,
+	to: f32,
+	started: Instant,
+	duration: Duration,
+}
+impl Tween {
+	fn new(value: f32) -> Self {
+		Self {
+			from: value,
+			to: value,
+			started: Instant::now(),
+			duration: Duration::from_millis(200),
+		}
+	}
+
+	fn sample(&self, now: Instant) -> f32 {
+		self.sample_with_motion(now, reduced())
+	}
+
+	fn sample_with_motion(&self, now: Instant, reduced: bool) -> f32 {
+		if reduced {
+			return self.to;
+		}
+
+		let t =
+			(now.duration_since(self.started).as_secs_f32() / self.duration.as_secs_f32()).min(1.0);
+		let eased = 1.0 - (1.0 - t).powi(3);
+
+		self.from + (self.to - self.from) * eased
+	}
+
+	fn target(&mut self, value: f32, now: Instant) {
+		if self.to != value {
+			self.from = self.sample(now);
+			self.to = value;
+			self.started = now;
+		}
+	}
+
+	fn moving(&self, now: Instant) -> bool {
+		!reduced() && self.from != self.to && now.duration_since(self.started) < self.duration
+	}
+}
+
+struct Feedback {
+	hovered: bool,
+	pressed: bool,
+	opacity: Tween,
+}
+impl Feedback {
+	fn update(&mut self) {
+		self.opacity.target(
+			if self.pressed {
+				0.90
+			} else if self.hovered {
+				1.0
+			} else {
+				0.96
+			},
+			Instant::now(),
+		);
+	}
+}
+
+struct DisclosureState {
+	visible: bool,
+	height: f32,
+	tween: Tween,
+}
+
+impl SmoothControl for Stateful<Div> {
+	fn smooth(self) -> Control {
+		Control { div: self, enabled: true }
+	}
+}
+
 /// Follow host reduced-motion and VoiceOver preferences without changing configuration.
 pub(crate) fn reduced() -> bool {
 	#[cfg(all(target_os = "macos", not(test)))]
@@ -325,14 +470,15 @@ pub(crate) fn reduced() -> bool {
 		// AppKit owns this process-wide preference; called from UI rendering.
 		unsafe {
 			let workspace: Retained<AnyObject> =
-				msg_send![AnyClass::get(c"NSWorkspace").expect("AppKit"), sharedWorkspace];
+				objc2::msg_send![AnyClass::get(c"NSWorkspace").expect("AppKit"), sharedWorkspace];
 			let reduce_motion: bool =
-				msg_send![&*workspace, accessibilityDisplayShouldReduceMotion];
-			let voice_over: bool = msg_send![&*workspace, isVoiceOverEnabled];
+				objc2::msg_send![&*workspace, accessibilityDisplayShouldReduceMotion];
+			let voice_over: bool = objc2::msg_send![&*workspace, isVoiceOverEnabled];
 
 			reduce_motion || voice_over
 		}
 	}
+
 	#[cfg(any(not(target_os = "macos"), test))]
 	false
 }
@@ -423,195 +569,6 @@ pub(crate) fn switch_knob(id: &'static str, enabled: bool, child: impl IntoEleme
 	SwitchKnob { id, enabled, child: child.into_any_element() }
 }
 
-#[cfg(test)]
-mod tests {
-	use crate::ui_motion::*;
-
-	#[test]
-	fn reduced_motion_finishes_an_in_progress_transition_immediately() {
-		let mut tween = Tween::new(0.0);
-		let start = Instant::now();
-
-		tween.target(192.0, start);
-
-		let middle = start + Duration::from_millis(80);
-
-		assert!(tween.sample_with_motion(middle, false) < 192.0);
-		assert_eq!(tween.sample_with_motion(middle, true), 192.0);
-
-		tween.target(0.0, middle);
-
-		assert_eq!(tween.sample_with_motion(middle, true), 0.0);
-	}
-
-	#[test]
-	fn reversing_a_transition_preserves_current_position_and_settles() {
-		let mut tween = Tween::new(0.0);
-		let start = Instant::now();
-
-		tween.target(192.0, start);
-
-		let middle = start + Duration::from_millis(80);
-		let position = tween.sample(middle);
-
-		assert!(position > 0.0 && position < 192.0);
-
-		tween.target(0.0, middle);
-
-		assert_eq!(position, tween.sample(middle));
-
-		let end = middle + Duration::from_millis(220);
-
-		assert_eq!(tween.sample(end), 0.0);
-		assert!(!tween.moving(end));
-	}
-}
-
-#[derive(IntoElement)]
-pub(crate) struct Disclosure {
-	id: ElementId,
-	visible: bool,
-	child: Box<dyn FnOnce(&mut App) -> AnyElement>,
-}
-impl RenderOnce for Disclosure {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state(self.id, cx, |_, _| DisclosureState {
-			visible: false,
-			height: 0.0,
-			tween: Tween::new(0.0),
-		});
-		let now = Instant::now();
-		let (height, moving) = state.update(cx, |s, _| {
-			if self.visible && s.visible && s.tween.to > 0. && !s.tween.moving(now) {
-				// Once open, let inner disclosures and new content own their size.
-				// Animating both parent and child would make the parent lag behind.
-				s.tween = Tween::new(s.height);
-			} else {
-				s.tween.target(if self.visible { s.height } else { 0.0 }, now);
-			}
-
-			s.visible = self.visible;
-
-			(s.tween.sample(now), s.tween.moving(now))
-		});
-
-		if moving {
-			request_frame(window, cx);
-		}
-
-		div()
-			.w_full()
-			.h(px(height))
-			.when(self.visible && !moving && height > 0.1, |slot| slot.h_auto())
-			.flex_none()
-			.overflow_hidden()
-			.when(self.visible || height > 0.1, |slot| {
-				slot.child(
-					div()
-						.w_full()
-						.flex_none()
-						.on_children_prepainted(move |bounds, _, cx| {
-							if let Some(bounds) = bounds.first() {
-								let measured = f32::from(bounds.size.height);
-
-								state.update(cx, |s, cx| {
-									if (s.height - measured).abs() > 0.5 {
-										s.height = measured;
-
-										cx.notify();
-									}
-								});
-							}
-						})
-						.child((self.child)(cx)),
-				)
-			})
-	}
-}
-
-/// A short arrival transition, keyed by route rather than background refreshes.
-#[derive(IntoElement)]
-pub(crate) struct Arrival {
-	route: String,
-	child: AnyElement,
-}
-impl RenderOnce for Arrival {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window
-			.use_keyed_state("page-arrival", cx, |_, _| (self.route.clone(), Tween::new(1.0)));
-		let now = Instant::now();
-		let (progress, moving) = state.update(cx, |s, _| {
-			if s.0 != self.route {
-				s.0 = self.route;
-				s.1 = Tween::new(0.0);
-
-				s.1.target(1.0, now);
-			}
-
-			(s.1.sample(now), s.1.moving(now))
-		});
-
-		if moving {
-			request_frame(window, cx);
-		}
-
-		div()
-			.size_full()
-			.min_h_0()
-			.relative()
-			.flex()
-			.flex_col()
-			.top(px(4.0 * (1.0 - progress)))
-			.opacity(0.85 + 0.15 * progress)
-			.child(self.child)
-	}
-}
-
-/// Fixed-anchor fallback until a whole-surface composited transition is available.
-/// Do not use per-primitive opacity or translate an already opaque card.
-#[derive(IntoElement)]
-pub(crate) struct Popover {
-	unframed: bool,
-	visible: bool,
-	child: AnyElement,
-}
-impl Popover {
-	pub(crate) fn unframed(mut self, unframed: bool) -> Self {
-		self.unframed = unframed;
-
-		self
-	}
-}
-
-impl RenderOnce for Popover {
-	fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-		if !self.visible {
-			return div().w_full().into_any_element();
-		}
-
-		div()
-			.w_full()
-			.relative()
-			.when(!self.unframed, |surface| {
-				surface.rounded(px(14.)).bg(gpui::rgb(0x29292d)).shadow(vec![gpui::BoxShadow {
-					inset: false,
-					color: gpui::rgba(0x00000024).into(),
-					offset: gpui::point(px(0.), px(4.)),
-					blur_radius: px(12.),
-					spread_radius: px(-3.),
-				}])
-			})
-			.child(self.child)
-			.into_any_element()
-	}
-}
-
-struct DisclosureState {
-	visible: bool,
-	height: f32,
-	tween: Tween,
-}
-
 pub(crate) fn disclosure(
 	id: impl Into<ElementId>,
 	visible: bool,
@@ -637,4 +594,52 @@ pub(crate) fn arrival(route: String, child: impl IntoElement) -> Arrival {
 
 pub(crate) fn popover(visible: bool, child: impl IntoElement) -> Popover {
 	Popover { visible, child: child.into_any_element(), unframed: false }
+}
+
+#[cfg(test)]
+mod tests {
+	use std::time::{Duration, Instant};
+
+	use crate::ui_motion::Tween;
+
+	#[test]
+	fn reduced_motion_finishes_an_in_progress_transition_immediately() {
+		let tween = Tween::new(0.0);
+		let start = Instant::now();
+		let mut tween = tween;
+
+		tween.target(192.0, start);
+
+		let middle = start + Duration::from_millis(80);
+
+		assert!(tween.sample_with_motion(middle, false) < 192.0);
+		assert_eq!(tween.sample_with_motion(middle, true), 192.0);
+
+		tween.target(0.0, middle);
+
+		assert_eq!(tween.sample_with_motion(middle, true), 0.0);
+	}
+
+	#[test]
+	fn reversing_a_transition_preserves_current_position_and_settles() {
+		let tween = Tween::new(0.0);
+		let start = Instant::now();
+		let mut tween = tween;
+
+		tween.target(192.0, start);
+
+		let middle = start + Duration::from_millis(80);
+		let position = tween.sample(middle);
+
+		assert!(position > 0.0 && position < 192.0);
+
+		tween.target(0.0, middle);
+
+		assert_eq!(position, tween.sample(middle));
+
+		let end = middle + Duration::from_millis(220);
+
+		assert_eq!(tween.sample(end), 0.0);
+		assert!(!tween.moving(end));
+	}
 }
