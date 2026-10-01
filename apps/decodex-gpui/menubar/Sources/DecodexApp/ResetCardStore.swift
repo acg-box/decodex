@@ -1772,7 +1772,9 @@ final class ResetCardStore {
 						?? AccountControlError.invalidResponse.localizedDescription,
 					failure: status.failure
 				)
-			case .requestingCode, .openingBrowser, .waitingForBrowser, .installing:
+			case .installing:
+				setAccountReauthenticationPhase(.installing, sessionID: presentation.sessionID)
+			case .requestingCode, .openingBrowser, .waitingForBrowser:
 				setAccountReauthenticationPhase(
 					.cancellationFailed(
 						"The login is still active. Choose Cancel again."

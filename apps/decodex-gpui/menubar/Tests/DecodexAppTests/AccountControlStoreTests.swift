@@ -1751,6 +1751,45 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(cancelCount, 1)
 	}
 
+	func testCancellationThatReachesInstallationKeepsLoginLocked() async throws {
+		let account = accountRecord(observedState: .authFailed)
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			reauthenticationStates: [.waitingForBrowser],
+			cancelReauthenticationState: .installing
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: [],
+			accountReauthenticationPollInterval: .seconds(60),
+			openLoginURL: { _ in }
+		)
+		await store.refresh()
+		store.beginAccountReauthentication(for: accountID)
+		store.selectAccountLoginMethod(.deviceCode)
+		for _ in 0 ..< 200 {
+			if store.accountReauthentication?.phase == .waitingForBrowser { break }
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		XCTAssertEqual(store.accountReauthentication?.phase, .waitingForBrowser)
+		await store.cancelAccountReauthentication()
+		let presentation = try XCTUnwrap(store.accountReauthentication)
+		XCTAssertEqual(presentation.phase, .installing)
+		XCTAssertNil(presentation.prompt)
+		XCTAssertFalse(presentation.canRequestCancellation)
+		XCTAssertFalse(presentation.canCloseWithoutCancellation)
+		await store.cancelAccountReauthentication()
+		store.closeAccountReauthentication()
+		XCTAssertEqual(store.accountReauthentication?.phase, .installing)
+		XCTAssertTrue(store.isControllingAccount(accountID))
+		let cancelCount = await client.reauthenticationCancelCount()
+		XCTAssertEqual(cancelCount, 1)
+	}
+
 	func testCancelOutcomeUnknownKeepsFailureWhileReadingBackAuthoritativeState() async throws {
 		let account = accountRecord(observedState: .authFailed)
 		let client = AccountControlStoreClient(
@@ -1952,6 +1991,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 	private var reauthenticationSessionID: String?
 	private var reauthenticationCompleted = false
 	private var reauthenticationObservationDelayReads: Int
+	private let cancelReauthenticationState: AccountReauthenticationState
 	private let cancelReauthenticationWithOutcomeUnknown: Bool
 	private let restoredEnrollmentAccountID: String?
 
@@ -1980,6 +2020,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		reauthenticationStates: [AccountReauthenticationState] = [],
 		accountLoginFailure: AccountReauthenticationFailure? = nil,
 		reauthenticationObservationDelayReads: Int = 0,
+		cancelReauthenticationState: AccountReauthenticationState = .cancelled,
 		cancelReauthenticationWithOutcomeUnknown: Bool = false,
 		restoredEnrollmentAccountID: String? = nil
 	) {
@@ -2016,6 +2057,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		self.reauthenticationStates = reauthenticationStates
 		self.accountLoginFailure = accountLoginFailure
 		self.reauthenticationObservationDelayReads = reauthenticationObservationDelayReads
+		self.cancelReauthenticationState = cancelReauthenticationState
 		self.cancelReauthenticationWithOutcomeUnknown =
 			cancelReauthenticationWithOutcomeUnknown
 		self.restoredEnrollmentAccountID = restoredEnrollmentAccountID
@@ -2592,7 +2634,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 				failure: .outcomeUnknown
 			)
 		}
-		return reauthenticationStatus(state: .cancelled, sessionID: sessionID)
+		return reauthenticationStatus(state: cancelReauthenticationState, sessionID: sessionID)
 	}
 
 	func reauthenticationStartRequest() -> AccountControlStoreReauthenticationRequest? {
