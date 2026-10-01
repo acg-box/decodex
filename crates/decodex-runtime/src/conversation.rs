@@ -107,8 +107,8 @@ use decodex_database::{
 	ReconcileStrandedConversationTurn, ReconcileStrandedConversationTurnOutcome,
 	RecordConversationNativeSettings, RecordConversationResumeRejection, RecordHistoryItem,
 	RecoverUnknownConversationTurn, RecoverUnknownConversationTurnOutcome, RoleProfileRole,
-	SqliteStore, StoreError, TerminalizeConversationTurn, TurnReservationOutcome,
-	UnknownConversationAttemptReadback,
+	RuntimeSessionThreadBindingReadback, SqliteStore, StoreError, StoredRuntimeSession,
+	TerminalizeConversationTurn, TurnReservationOutcome, UnknownConversationAttemptReadback,
 };
 use decodex_protocol::{
 	AgentCapabilitiesResult, AgentModelDto, ConversationExecutionOverrides,
@@ -1433,7 +1433,6 @@ impl ConversationRuntime {
 		.await
 	}
 
-	#[allow(clippy::too_many_lines)]
 	async fn establish_context_fallback(
 		&self,
 		command: SubmitConversationTurn,
@@ -1484,6 +1483,40 @@ impl ConversationRuntime {
 
 		let runtime_session_id = runtime_session.runtime_session_id.clone();
 		let selected_account_id = runtime_session.account_snapshot.source_account_id.clone();
+
+		self.prepare_fallback_process(FallbackEstablishment {
+			command,
+			turn_sequence,
+			decision,
+			plan,
+			prior_session,
+			working_directory,
+			conversation_revision,
+			runtime_session,
+			context_pack,
+			runtime_session_id,
+			selected_account_id,
+		})
+		.await
+	}
+
+	async fn prepare_fallback_process(
+		&self,
+		context: FallbackEstablishment,
+	) -> ConversationOutcome {
+		let FallbackEstablishment {
+			command,
+			turn_sequence,
+			decision,
+			plan,
+			prior_session,
+			working_directory,
+			conversation_revision,
+			runtime_session,
+			context_pack,
+			runtime_session_id,
+			selected_account_id,
+		} = context;
 		let created = ConversationReadback {
 			operation_key: Some(command.operation_key.clone()),
 			correlation_id: Some(command.correlation_id.clone()),
@@ -1526,6 +1559,48 @@ impl ConversationRuntime {
 			selected_account_id: selected_account_id.clone(),
 			process_generation_id: generation_id,
 		};
+
+		self.admit_fallback_process(
+			FallbackEstablishment {
+				command,
+				turn_sequence,
+				decision,
+				plan,
+				prior_session,
+				working_directory,
+				conversation_revision,
+				runtime_session,
+				context_pack,
+				runtime_session_id,
+				selected_account_id,
+			},
+			created,
+			process_request,
+			establishment,
+		)
+		.await
+	}
+
+	async fn admit_fallback_process(
+		&self,
+		context: FallbackEstablishment,
+		created: ConversationReadback,
+		process_request: PrepareConversationProcessGeneration,
+		establishment: ReconcileConversationThreadEstablishment,
+	) -> ConversationOutcome {
+		let FallbackEstablishment {
+			command,
+			turn_sequence,
+			decision,
+			plan,
+			prior_session,
+			working_directory,
+			conversation_revision,
+			runtime_session,
+			context_pack,
+			runtime_session_id,
+			selected_account_id,
+		} = context;
 		let admission = match self
 			.inner
 			.store
@@ -1587,6 +1662,48 @@ impl ConversationRuntime {
 					.await;
 			},
 		};
+
+		self.prepare_fallback_thread(
+			FallbackEstablishment {
+				command,
+				turn_sequence,
+				decision,
+				plan,
+				prior_session,
+				working_directory,
+				conversation_revision,
+				runtime_session,
+				context_pack,
+				runtime_session_id,
+				selected_account_id,
+			},
+			process,
+			created,
+			establishment,
+		)
+		.await
+	}
+
+	async fn prepare_fallback_thread(
+		&self,
+		context: FallbackEstablishment,
+		process: FencedProcess,
+		created: ConversationReadback,
+		establishment: ReconcileConversationThreadEstablishment,
+	) -> ConversationOutcome {
+		let FallbackEstablishment {
+			command,
+			turn_sequence,
+			decision,
+			plan,
+			prior_session,
+			working_directory,
+			conversation_revision,
+			runtime_session,
+			context_pack,
+			runtime_session_id,
+			selected_account_id,
+		} = context;
 		let spawned = ConversationReadback {
 			process_generation_id: Some(process.generation_id().clone()),
 			..created.clone()
@@ -1637,6 +1754,50 @@ impl ConversationRuntime {
 					.await;
 			},
 		};
+
+		self.fence_fallback_thread(
+			FallbackEstablishment {
+				command,
+				turn_sequence,
+				decision,
+				plan,
+				prior_session,
+				working_directory,
+				conversation_revision,
+				runtime_session,
+				context_pack,
+				runtime_session_id,
+				selected_account_id,
+			},
+			process,
+			spawned,
+			establishment,
+			prepared,
+		)
+		.await
+	}
+
+	async fn fence_fallback_thread(
+		&self,
+		context: FallbackEstablishment,
+		process: FencedProcess,
+		spawned: ConversationReadback,
+		establishment: ReconcileConversationThreadEstablishment,
+		prepared: PreparedThreadStart,
+	) -> ConversationOutcome {
+		let FallbackEstablishment {
+			command,
+			turn_sequence,
+			decision,
+			plan,
+			prior_session,
+			working_directory,
+			conversation_revision,
+			runtime_session,
+			context_pack,
+			runtime_session_id,
+			selected_account_id,
+		} = context;
 		let fence_key = scoped_key("thread-fence", &command.operation_key);
 		let fence = FenceRuntimeSessionThreadStart {
 			conversation_id: command.conversation_id.clone(),
@@ -1698,6 +1859,52 @@ impl ConversationRuntime {
 			runtime_session_revision: Some(fence_readback.revision),
 			..spawned
 		};
+
+		self.start_fallback_thread(
+			FallbackEstablishment {
+				command,
+				turn_sequence,
+				decision,
+				plan,
+				prior_session,
+				working_directory,
+				conversation_revision,
+				runtime_session,
+				context_pack,
+				runtime_session_id,
+				selected_account_id,
+			},
+			process,
+			fenced,
+			establishment,
+			prepared,
+			authority,
+		)
+		.await
+	}
+
+	async fn start_fallback_thread(
+		&self,
+		context: FallbackEstablishment,
+		process: FencedProcess,
+		fenced: ConversationReadback,
+		establishment: ReconcileConversationThreadEstablishment,
+		prepared: PreparedThreadStart,
+		authority: FreshRuntimeSessionThreadStart,
+	) -> ConversationOutcome {
+		let FallbackEstablishment {
+			command,
+			turn_sequence,
+			decision,
+			plan,
+			prior_session,
+			working_directory,
+			conversation_revision,
+			runtime_session,
+			context_pack,
+			runtime_session_id,
+			selected_account_id,
+		} = context;
 		let established = match self.start_thread(&process, prepared, authority).await {
 			Ok(established) if established.events.is_empty() => established,
 			Ok(_) | Err(_) => {
@@ -1755,6 +1962,47 @@ impl ConversationRuntime {
 			return self.ambiguous(fenced, ConversationAmbiguity::ThreadBind).await;
 		}
 
+		self.install_fallback_thread(
+			FallbackEstablishment {
+				command,
+				turn_sequence,
+				decision,
+				plan,
+				prior_session,
+				working_directory,
+				conversation_revision,
+				runtime_session,
+				context_pack,
+				runtime_session_id,
+				selected_account_id,
+			},
+			process,
+			established,
+			binding,
+		)
+		.await
+	}
+
+	async fn install_fallback_thread(
+		&self,
+		context: FallbackEstablishment,
+		process: FencedProcess,
+		established: EstablishedOrdinaryThread,
+		binding: RuntimeSessionThreadBindingReadback,
+	) -> ConversationOutcome {
+		let FallbackEstablishment {
+			command,
+			turn_sequence,
+			decision,
+			plan,
+			prior_session,
+			working_directory,
+			conversation_revision,
+			runtime_session,
+			context_pack,
+			runtime_session_id,
+			selected_account_id,
+		} = context;
 		let local = LocalSession {
 			execution_overrides: command.overrides,
 			operation_key: command.operation_key.clone(),
@@ -5776,7 +6024,20 @@ struct ExistingSessionPlanningInput<'a> {
 	expected: ExistingSessionExpectation<'a>,
 }
 
-#[derive(Clone)]
+struct FallbackEstablishment {
+	command: SubmitConversationTurn,
+	turn_sequence: i64,
+	decision: PersistedDecisionProvenance,
+	plan: ContinuationPlanEffect,
+	prior_session: Option<LocalSession>,
+	working_directory: String,
+	conversation_revision: i64,
+	runtime_session: StoredRuntimeSession,
+	context_pack: ContextPack,
+	runtime_session_id: RuntimeSessionId,
+	selected_account_id: AccountId,
+}
+
 struct TurnDispatch<'a> {
 	operation_key: &'a str,
 	session: LocalSession,
@@ -5791,6 +6052,7 @@ struct PreparedTurnDispatch {
 	prepared: PreparedTurnStart,
 }
 
+#[derive(Clone)]
 struct TurnContext {
 	session: LocalSession,
 	logical_turn_id: TurnId,
