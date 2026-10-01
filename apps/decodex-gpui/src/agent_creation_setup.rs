@@ -1,7 +1,10 @@
 //! Preserve pre-creation input independently of existing task execution overrides.
 use gpui::{AnyElement, KeyDownEvent};
 
-use crate::shell::agent_surface::*;
+use crate::shell::agent_surface::{
+	self, AgentSandboxDto, AgentSurface, Context, ConversationReasoningEffort, InteractiveElement,
+	IntoElement, ParentElement, Role, StatefulInteractiveElement, Styled,
+};
 use decodex_protocol::{DesktopCreationIntent, DesktopCreationSetup};
 
 pub(super) const DEFAULT_MODEL: &str = "gpt-6-astra";
@@ -68,7 +71,7 @@ impl AgentSurface {
 
 	pub(super) fn creation_effort_toggle(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.composer_manager.is_some() || self.root_id().is_some() {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		}
 
 		let label = if self.creation_inherit_effort {
@@ -77,7 +80,7 @@ impl AgentSurface {
 			"Use native reasoning"
 		};
 
-		div()
+		agent_surface::div()
 			.id("creation-native-effort")
 			.debug_selector(|| "creation-native-effort".into())
 			.role(Role::Button)

@@ -3,7 +3,14 @@ use gpui::AnyElement;
 use time::OffsetDateTime;
 use tokio::runtime::Builder;
 
-use crate::shell::agent_surface::*;
+use crate::shell::agent_surface::{
+	AgentClient, AgentSnapshotDto, AgentSurface, Context, EntityId, InteractiveElement,
+	IntoElement, ParentElement, StatefulInteractiveElement, Styled, div, muted, px,
+};
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkItemDto, AgentWorkStatusDto,
+};
 use decodex_protocol::AgentUsageEstimateResult;
 
 impl AgentSurface {
@@ -190,19 +197,26 @@ fn estimate_text(result: &AgentUsageEstimateResult) -> String {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::usage_estimates::*;
+	use std::thread;
+
+	use futures_util::{SinkExt as _, StreamExt as _};
+	#[cfg(test)] use gpui::AppContext as _;
+	use tokio_tungstenite::tungstenite::Message;
+
+	#[cfg(test)]
+	use crate::shell::agent_surface::usage_estimates::{
+		AgentDispatchStateDto, AgentSnapshotResult, AgentWorkItemDto, AgentWorkStatusDto,
+	};
+	use crate::shell::agent_surface::{
+		usage_estimates::{
+			self, AgentSnapshotDto, AgentSurface, AgentUsageEstimateResult, EntityId,
+		},
+		wire_test_support,
+	};
 	use decodex_protocol::{
 		CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
 		ServerId, ServerMessage,
 	};
-
-	use futures_util::{SinkExt as _, StreamExt as _};
-
-	use tokio_tungstenite::tungstenite::Message;
-
-	use std::thread;
-
-	use crate::shell::agent_surface::wire_test_support;
 
 	#[gpui::test]
 	fn task_usage_estimate_is_explicit_and_clears_when_task_changes(cx: &mut gpui::TestAppContext) {
@@ -238,7 +252,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.), px(1_400.)));
+			window.resize(gpui::size(usage_estimates::px(1_180.), usage_estimates::px(1_400.)));
 			window.draw(cx).clear();
 		});
 
@@ -351,12 +365,16 @@ mod tests {
 
 	#[test]
 	fn task_estimates_keep_micros_exact_and_absence_distinct_from_zero() {
-		assert_eq!(micros(9_007_199_254_740_993), "9007199254.740993");
-		assert_eq!(micros(0), "0");
-		assert_eq!(micros(1), "0.000001");
-		assert!(estimate_text(&AgentUsageEstimateResult::NotReported).contains("not reported"));
+		assert_eq!(usage_estimates::micros(9_007_199_254_740_993), "9007199254.740993");
+		assert_eq!(usage_estimates::micros(0), "0");
+		assert_eq!(usage_estimates::micros(1), "0.000001");
 		assert!(
-			estimate_text(&AgentUsageEstimateResult::Unavailable).contains("could not be read")
+			usage_estimates::estimate_text(&AgentUsageEstimateResult::NotReported)
+				.contains("not reported")
+		);
+		assert!(
+			usage_estimates::estimate_text(&AgentUsageEstimateResult::Unavailable)
+				.contains("could not be read")
 		);
 	}
 

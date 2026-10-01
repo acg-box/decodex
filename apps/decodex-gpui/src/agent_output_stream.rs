@@ -3,7 +3,9 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::watch;
 
-use crate::shell::agent_surface::*;
+use crate::shell::agent_surface::{
+	AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, Task,
+};
 use decodex_protocol::{AgentLiveMessageDto, AgentOutputResult};
 
 #[derive(Default)]
@@ -128,7 +130,11 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::output_stream::*;
+	use gpui::AppContext as _;
+
+	use crate::shell::agent_surface::output_stream::{
+		AgentLiveMessageDto, AgentSurface, OutputStream,
+	};
 
 	#[gpui::test]
 	fn output_is_visible_only_for_its_owner_and_current_turn(cx: &mut gpui::TestAppContext) {

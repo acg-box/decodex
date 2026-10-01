@@ -1,7 +1,13 @@
 //! Recover explicit branches through saved native identity; never create a second fork.
+
+#[cfg(test)] use gpui::AppContext as _;
 use tokio::sync::oneshot;
 
-use crate::shell::agent_surface::prompt_edit::*;
+#[cfg(test)] use crate::shell::agent_surface::prompt_edit::Entity;
+use crate::shell::agent_surface::prompt_edit::{
+	AgentActionDto, AgentClient, AgentSnapshotResult, AgentSurface, Context,
+	DesktopPromptEditDraft, EntityId, IdempotencyKey, Panel, PromptDraft, WireText, unique_command,
+};
 use decodex_protocol::{PromptForkBoundary, PromptForkPhase, PromptForkResult};
 
 type BranchRecovery = Result<

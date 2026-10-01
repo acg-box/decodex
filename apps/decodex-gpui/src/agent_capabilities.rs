@@ -351,11 +351,13 @@ impl AgentSurface {
 mod effort_tests;
 #[cfg(test)]
 mod tests {
+	use std::{future, thread};
+
 	use gpui::AppContext as _;
 
-	use crate::shell::agent_surface::capabilities::*;
-
-	use std::{future, thread};
+	use crate::shell::agent_surface::capabilities::{
+		AgentCapabilitiesResult, AgentModelDto, AgentSurface, ConversationReasoningEffort,
+	};
 
 	#[gpui::test]
 	fn catalog_reply_survives_unrelated_snapshot_refresh(cx: &mut gpui::TestAppContext) {

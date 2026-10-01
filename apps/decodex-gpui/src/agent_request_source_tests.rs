@@ -1,7 +1,9 @@
 //! Request readback must still belong to the pending event and service.
-use gpui::TestAppContext;
+use gpui::{AppContext as _, TestAppContext};
 
-use crate::shell::agent_surface::*;
+use crate::shell::agent_surface::{
+	AgentRequestResult, AgentSurface, EntityId, LoadState, RequestReadSource,
+};
 use decodex_protocol::{AgentPendingEventDto, AgentRequestText};
 
 #[gpui::test]

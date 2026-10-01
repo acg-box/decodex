@@ -385,7 +385,6 @@ mod tests {
 	};
 
 	use futures_util::{SinkExt as _, StreamExt as _};
-
 	use tokio_tungstenite::tungstenite::Message;
 
 	use crate::shell::agent_surface::wire_test_support;

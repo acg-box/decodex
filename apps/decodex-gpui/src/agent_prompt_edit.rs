@@ -5,10 +5,14 @@
 #[path = "agent_prompt_remove.rs"] mod removal;
 #[path = "agent_prompt_send.rs"] mod sending;
 
-use gpui::{AnyElement, Div, Subscription};
+use gpui::{AnyElement, AppContext as _, Div, Subscription};
 use tokio::sync::oneshot;
 
-use crate::shell::agent_surface::*;
+use crate::shell::agent_surface::{
+	AgentActionDto, AgentClient, AgentCommandResponse, AgentHistoryResult, AgentSnapshotDto,
+	AgentSnapshotResult, AgentSurface, ClientProfile, ComposerInput, Context, Entity, EntityId,
+	IdempotencyKey, IntoElement, ParentElement, Styled, Task, WireText, div, unique_command,
+};
 use decodex_protocol::{DesktopPromptEditDraft, PromptDraft, PromptEditPhase, PromptForkBoundary};
 use removal::Removal;
 
@@ -874,14 +878,18 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::prompt_edit::*;
-
 	use std::{
 		fs, future,
 		os::unix::fs::{MetadataExt as _, PermissionsExt as _},
 	};
 
+	use gpui::AppContext as _;
 	use tokio::sync::oneshot;
+
+	use crate::shell::agent_surface::prompt_edit::{
+		AgentSurface, ClientProfile, ComposerInput, DesktopPromptEditDraft, Entity, EntityId,
+		IdempotencyKey, Panel, PromptDraft, WireText,
+	};
 
 	fn original_input() -> PromptDraft {
 		PromptDraft::new(vec![

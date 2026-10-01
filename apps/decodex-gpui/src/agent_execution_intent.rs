@@ -1,7 +1,11 @@
 //! Task-scoped next-message choices, independent of observed native settings.
 use std::collections::BTreeMap;
 
-use crate::shell::agent_surface::*;
+use crate::shell::agent_surface::{AgentActionDto, AgentSurface, Context, ConversationModel};
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentDispatchStateDto, ConversationReasoningEffort, EntityId, HistoryText,
+};
 use decodex_protocol::{AgentExecutionOverrides, ServiceTier};
 
 #[derive(Default)]
@@ -114,7 +118,12 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::execution_intent::*;
+	use gpui::AppContext as _;
+
+	use crate::shell::agent_surface::execution_intent::{
+		AgentActionDto, AgentDispatchStateDto, AgentExecutionOverrides, AgentSurface,
+		ConversationReasoningEffort, EntityId, HistoryText,
+	};
 	fn action(surface: &AgentSurface, owner: &str) -> AgentActionDto {
 		surface.configured_send(
 			EntityId::new(owner).unwrap(),

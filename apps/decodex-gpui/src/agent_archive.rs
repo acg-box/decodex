@@ -5,7 +5,16 @@ use gpui::{AnyElement, KeyDownEvent};
 use tokio::runtime::Builder;
 use ui_theme::{BLUE, PANEL_HEADER_TINT, TEXT_MUTED};
 
-use crate::shell::agent_surface::*;
+#[cfg(test)] use crate::shell::agent_surface::AgentDispatchStateDto;
+#[cfg(test)] use crate::shell::agent_surface::AgentSnapshotDto;
+#[cfg(test)] use crate::shell::agent_surface::AgentSnapshotResult;
+#[cfg(test)] use crate::shell::agent_surface::AgentWorkStatusDto;
+use crate::shell::agent_surface::{
+	AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, AgentWorkItemDto, Context,
+	EntityId, FluentBuilder, IdempotencyKey, InteractiveElement, IntoElement, ParentElement, Role,
+	StatefulInteractiveElement, Styled, Task, WireText, div, px, rgb, rgba, ui_theme,
+	unique_command,
+};
 use decodex_protocol::AgentArchiveResult as State;
 
 #[derive(Default)]

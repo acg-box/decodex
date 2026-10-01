@@ -1,10 +1,13 @@
 //! Explicit edits to the reviewed native goal, without a second goal store.
 use std::fs::File;
 
-use gpui::{AnyElement, PathPromptOptions};
+use gpui::{AnyElement, AppContext as _, IntoElement, ParentElement, PathPromptOptions, Styled};
 use tokio::runtime::Builder;
 
-use crate::shell::agent_surface::native_goal::*;
+use crate::shell::agent_surface::native_goal::{
+	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, ComposerInput, Context,
+	Entity, EntityId, IdempotencyKey, Result, WireText,
+};
 use decodex_protocol::{AgentGoalBudgetEdit, AgentGoalEdit};
 
 pub(super) struct Editor {
@@ -53,19 +56,19 @@ impl AgentSurface {
 
 	pub(super) fn goal_edit_controls(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_goal.task.is_some() {
-			return div().into_any_element();
+			return native_goal::div().into_any_element();
 		}
 
 		let Some(Result::Available { review_token: Some(_), goal, .. }) = &self.native_goal.result
 		else {
-			return div().into_any_element();
+			return native_goal::div().into_any_element();
 		};
 
 		if self.native_goal.target != self.native_goal_target() {
-			return div().into_any_element();
+			return native_goal::div().into_any_element();
 		}
 
-		let mut panel = div().flex().flex_col().gap_2();
+		let mut panel = native_goal::div().flex().flex_col().gap_2();
 
 		if let Some(editor) = &self.native_goal.editor {
 			panel = panel
@@ -278,7 +281,7 @@ impl AgentSurface {
 			review_token: review,
 			edit,
 		};
-		let key = IdempotencyKey::new(unique_command()).expect("command identity");
+		let key = IdempotencyKey::new(native_goal::unique_command()).expect("command identity");
 		let epoch = self.native_goal.epoch;
 
 		self.native_goal.feedback = "Saving native goal…".into();

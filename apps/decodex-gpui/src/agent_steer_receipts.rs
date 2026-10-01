@@ -1,7 +1,13 @@
 //! Resolve only an exact positive receipt; pending-list absence is not evidence.
 use tokio::runtime::Builder;
 
-use crate::shell::agent_surface::*;
+use crate::shell::agent_surface::{
+	AgentClient, AgentCommandResponse, AgentSurface, ClientProfile, Context, PendingCommand,
+};
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	ConversationWorkingDirectory, EntityId, IdempotencyKey, WireText,
+};
 #[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::AgentSteerIdentity;
 use decodex_protocol::AgentSteerReceiptResult;
 
@@ -98,7 +104,13 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::steer_receipts::*;
+
+	#[cfg(any(test, feature = "visual-capture"))]
+	use crate::shell::agent_surface::steer_receipts::AgentSteerIdentity;
+	use crate::shell::agent_surface::steer_receipts::{
+		AgentSteerReceiptResult, AgentSurface, ConversationWorkingDirectory, EntityId,
+		IdempotencyKey, PendingCommand, WireText,
+	};
 
 	#[gpui::test]
 	fn exact_steer_receipt_preserves_later_edits_and_other_task_drafts(

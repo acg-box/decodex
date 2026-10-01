@@ -1,5 +1,11 @@
 //! Initial discovery changes selection, never sends or replays a message.
-use crate::conversations::*;
+#[cfg(test)] use crate::conversations::tests;
+use crate::conversations::{
+	CURRENT_VERSION, CommandPayload, ConversationInputError, ConversationModel,
+	ConversationReasoningEffort, ConversationRouteOutcome, ConversationWorkingDirectory,
+	Conversations, CorrelationId, EntityId, EntityRevision, EventEnvelope, EventPayload, QueryId,
+	QueryResultEnvelope, QueryResultPayload, ServerId,
+};
 use decodex_protocol::{
 	Channel, Cursor, InitialExecutionDefaults, InitialModelCatalogResult, InitialModelDefaults,
 	ServiceTier,

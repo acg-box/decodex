@@ -6439,11 +6439,10 @@ fn transcript_history_status(
 mod tests {
 	use gpui::{self, TestAppContext, VisualTestContext};
 
-	use crate::shell::*;
-
 	use crate::{
 		client_lifecycle::{CompatibilityReason, QuarantineReason, QuarantineRecovery},
 		conversations::{creation_defaults_tests, tests},
+		shell::*,
 	};
 
 	struct PanelControlView(Entity<Shell>);

@@ -6,12 +6,19 @@ use std::{
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};
-use gpui::TestAppContext;
+use gpui::{AppContext as _, TestAppContext};
 use tempfile::TempDir;
 use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::shell::agent_surface::native_goal::*;
+use crate::shell::agent_surface::native_goal::{
+	self, AgentSnapshotDto, AgentSurface, Context, Entity, EntityId, IntoElement, Result,
+};
+#[cfg(test)]
+use crate::shell::agent_surface::native_goal::{
+	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkItemDto, AgentWorkStatusDto,
+	ClientProfile, Render, Window,
+};
 use decodex_protocol::{
 	AgentNativeGoal, AgentNativeGoalStatus, AgentWorkKindDto, CURRENT_VERSION, ClientMessage,
 	Cursor, QueryPayload, QueryResultEnvelope, QueryResultPayload, ReconnectMode, ServerId,
@@ -109,7 +116,7 @@ fn native_goal_panel_reads_refreshes_and_switches_exact_child(cx: &mut TestAppCo
 	});
 
 	visual.update(|w, cx| {
-		w.resize(gpui::size(px(900.), px(600.)));
+		w.resize(gpui::size(native_goal::px(900.), native_goal::px(600.)));
 		w.draw(cx).clear();
 	});
 
@@ -123,9 +130,9 @@ fn native_goal_panel_reads_refreshes_and_switches_exact_child(cx: &mut TestAppCo
 	surface.update(visual, |s, cx| {
 		let result = s.native_goal.result.as_ref().unwrap();
 
-		assert!(goal_text(result).contains("Budget limited"));
-		assert!(goal_text(result).contains("Goal tokens used: 12"));
-		assert!(goal_text(result).contains("Goal elapsed: 7 seconds"));
+		assert!(native_goal::goal_text(result).contains("Budget limited"));
+		assert!(native_goal::goal_text(result).contains("Goal tokens used: 12"));
+		assert!(native_goal::goal_text(result).contains("Goal elapsed: 7 seconds"));
 
 		s.native_goal.read_at = None;
 

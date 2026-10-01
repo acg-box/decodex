@@ -16,7 +16,6 @@ use std::{
 use decodex_protocol::{ConversationHistoryPage, EntityId, HistoryCursorToken, ServerId};
 
 use serde::{Deserialize, Serialize};
-
 use sha2::{Digest as _, Sha256};
 
 use std::{mem::MaybeUninit, str};

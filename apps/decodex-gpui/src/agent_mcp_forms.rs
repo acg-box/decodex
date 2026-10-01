@@ -1,11 +1,20 @@
 //! Explicit typed replies to live MCP elicitation requests.
 use std::rc::Rc;
 
-use gpui::{AnyElement, Div, KeyDownEvent, Stateful};
+use gpui::{AnyElement, AppContext as _, Div, KeyDownEvent, Stateful};
 use reqwest::Url;
 use serde_json::{Value, json};
 
-use crate::shell::agent_surface::*;
+#[cfg(test)]
+use crate::shell::agent_surface::{
+	AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkItemDto,
+	AgentWorkStatusDto,
+};
+use crate::shell::agent_surface::{
+	AgentRequestResult, AgentSurface, ComposerInput, Context, InteractiveElement, IntoElement,
+	ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, SubmitComposer, div,
+	muted, px, rgba,
+};
 use decodex_protocol::McpFormField;
 
 impl AgentSurface {
@@ -412,27 +421,42 @@ fn mcp_account_label(value: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::mcp_forms::*;
+	use gpui::AppContext as _;
+
+	use crate::shell::agent_surface::mcp_forms::{self, AgentRequestResult, AgentSurface, Value};
+	#[cfg(test)]
+	use crate::shell::agent_surface::mcp_forms::{
+		AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkItemDto,
+		AgentWorkStatusDto,
+	};
 	use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
 
 	#[test]
 	fn account_label_uses_only_native_apps_metadata() {
-		let request = json!({"serverName":"codex_apps","_meta":{"connector_id":"calendar","link_id":" work/link "},"tool_params":{"link_id":"personal"}});
+		let request = mcp_forms::json!({"serverName":"codex_apps","_meta":{"connector_id":"calendar","link_id":" work/link "},"tool_params":{"link_id":"personal"}});
 
-		assert_eq!(mcp_account_label(&request), Some("Connected account link:  work/link ".into()));
+		assert_eq!(
+			mcp_forms::mcp_account_label(&request),
+			Some("Connected account link:  work/link ".into())
+		);
 
 		let mut other = request.clone();
 
-		other["serverName"] = json!("custom_mcp");
+		other["serverName"] = mcp_forms::json!("custom_mcp");
 
-		assert_eq!(mcp_account_label(&other), None);
+		assert_eq!(mcp_forms::mcp_account_label(&other), None);
 
 		other = request;
 
-		for link in [Value::Null, json!(" "), json!("account\nname"), json!("x".repeat(4_097))] {
+		for link in [
+			Value::Null,
+			mcp_forms::json!(" "),
+			mcp_forms::json!("account\nname"),
+			mcp_forms::json!("x".repeat(4_097)),
+		] {
 			other["_meta"]["link_id"] = link;
 
-			assert_eq!(mcp_account_label(&other), None);
+			assert_eq!(mcp_forms::mcp_account_label(&other), None);
 		}
 	}
 
@@ -455,7 +479,7 @@ mod tests {
                 pending_events:vec![AgentPendingEventDto { id:7, source_event_id:"approval".into(), work_item_id:"root".into(),event_kind:"user_input_pending".into(),created_at_micros:1,delivery_claimed:false }]
             })));
 
-            let request=AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::AgentRequestText::new(json!({"mode":"form","serverName":"codex_apps","message":"Allow this tool?","requestedSchema":null,"_meta":{"persist":["session"],"connector_id":"calendar","link_id":"work"}}).to_string()).unwrap()};
+            let request=AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::AgentRequestText::new(mcp_forms::json!({"mode":"form","serverName":"codex_apps","message":"Allow this tool?","requestedSchema":null,"_meta":{"persist":["session"],"connector_id":"calendar","link_id":"work"}}).to_string()).unwrap()};
 
             s.prepare_mcp_inputs(&request,cx);
 
@@ -472,7 +496,7 @@ mod tests {
             assert!(s.submission.command.is_none());
         });
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
+			window.resize(gpui::size(mcp_forms::px(1_180.0), mcp_forms::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 
@@ -493,8 +517,8 @@ mod tests {
 
 		for schema in [
 			Value::Null,
-			json!(true),
-			json!({"type":"object","properties":{"template":{"type":"string","oneOf":[{"const":"a","title":"A","x-openai-preview":{"src":"fixture"}}]}}}),
+			mcp_forms::json!(true),
+			mcp_forms::json!({"type":"object","properties":{"template":{"type":"string","oneOf":[{"const":"a","title":"A","x-openai-preview":{"src":"fixture"}}]}}}),
 		] {
 			surface.update(visual, |s, cx| {
 				let request = AgentRequestResult::Available {
@@ -502,7 +526,8 @@ mod tests {
 					work_id: "root".into(),
 					method: "mcpServer/elicitation/request".into(),
 					request_json: decodex_protocol::AgentRequestText::new(
-						json!({"mode":"openaiForm","requestedSchema":schema}).to_string(),
+						mcp_forms::json!({"mode":"openaiForm","requestedSchema":schema})
+							.to_string(),
 					)
 					.unwrap(),
 				};
@@ -553,7 +578,7 @@ mod tests {
                 pending_events:vec![AgentPendingEventDto { id:7, source_event_id:"approval".into(), work_item_id:"root".into(),event_kind:"user_input_pending".into(),created_at_micros:1,delivery_claimed:false }]
             })));
 
-            let request=AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::AgentRequestText::new(json!({"mode":"url","serverName":"test","message":"Sign in","url":"https://example.test/verify","elicitationId":"verification"}).to_string()).unwrap()};
+            let request=AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::AgentRequestText::new(mcp_forms::json!({"mode":"url","serverName":"test","message":"Sign in","url":"https://example.test/verify","elicitationId":"verification"}).to_string()).unwrap()};
 
             s.prepare_mcp_inputs(&request,cx);
 
@@ -562,7 +587,7 @@ mod tests {
             cx.notify();
         });
 		visual.update(|window, cx| {
-			window.resize(gpui::size(px(1_180.0), px(1_200.0)));
+			window.resize(gpui::size(mcp_forms::px(1_180.0), mcp_forms::px(1_200.0)));
 			window.draw(cx).clear();
 		});
 
@@ -593,7 +618,7 @@ mod tests {
 				work_id: "root".into(),
 				method: "mcpServer/elicitation/request".into(),
 				request_json: decodex_protocol::AgentRequestText::new(
-					json!({"mode":"url","url":"file:///tmp/private"}).to_string(),
+					mcp_forms::json!({"mode":"url","url":"file:///tmp/private"}).to_string(),
 				)
 				.unwrap(),
 			};
@@ -622,14 +647,14 @@ mod tests {
 			let surface = cx.new(AgentSurface::new);
 
 			surface.update(cx,|s,cx| {
-            let request=AgentRequestResult::Available {event_id:7,work_id:"agent".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::AgentRequestText::new(json!({"mode":mode,"requestedSchema":{"type":"object","properties":{"agree":{"type":"boolean","default":true},"name":{"type":"string"}},"required":["agree","name"]}}).to_string()).unwrap()};
+            let request=AgentRequestResult::Available {event_id:7,work_id:"agent".into(),method:"mcpServer/elicitation/request".into(),request_json:decodex_protocol::AgentRequestText::new(mcp_forms::json!({"mode":mode,"requestedSchema":{"type":"object","properties":{"agree":{"type":"boolean","default":true},"name":{"type":"string"}},"required":["agree","name"]}}).to_string()).unwrap()};
 
             s.prepare_mcp_inputs(&request,cx);s.request=Some(request.clone());s.selected=Some("agent".into());
             s.submit_mcp_form(7,cx);
 
             assert!(s.feedback.contains("required"));assert!(s.submission.command.is_none());
 
-            s.mcp_answers.insert("agree".into(),json!(false));
+            s.mcp_answers.insert("agree".into(),mcp_forms::json!(false));
             s.mcp_inputs["name"].update(cx,|input,cx|input.set_content("My name",cx));
             s.prepare_mcp_inputs(&request,cx);
 
