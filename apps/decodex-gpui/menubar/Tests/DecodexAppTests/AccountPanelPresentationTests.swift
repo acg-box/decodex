@@ -862,12 +862,12 @@ private final class AccountMotionSampler: NSObject {
 		var firstMovement: TimeInterval?
 		for (later, earlier) in zip(samples.dropFirst(), samples) where abs(later.1 - earlier.1) > 0.001 {
 			if firstMovement == nil { firstMovement = later.0 }
-			else { intervals.append((later.0 - earlier.0) * 1000) }
+			else { intervals.append((later.0 - earlier.0) * 1_000) }
 		}
 		guard !intervals.isEmpty else { return }
 		let average = intervals.reduce(0, +) / Double(intervals.count)
 		let sorted = intervals.sorted()
-		print("ACCOUNT_PRESENTATION", "startup_ms", ((firstMovement ?? began) - began) * 1000, "updates", intervals.count, "mean_hz", 1000 / average, "p95_ms", sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))], "max_ms", sorted.last!)
+		print("ACCOUNT_PRESENTATION", "startup_ms", ((firstMovement ?? began) - began) * 1_000, "updates", intervals.count, "mean_hz", 1_000 / average, "p95_ms", sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))], "max_ms", sorted.last!)
 	}
 }
 

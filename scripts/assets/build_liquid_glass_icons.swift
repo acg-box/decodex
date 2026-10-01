@@ -5,7 +5,7 @@
 import AppKit
 import Foundation
 func circle(_ x:CGFloat,_ y:CGFloat,_ r:CGFloat)->CGPath { CGPath(ellipseIn:CGRect(x:x-r,y:y-r,width:r*2,height:r*2),transform:nil) }
-let frame=CGPath(rect:CGRect(x:-2048,y:-2048,width:5120,height:5120),transform:nil)
+let frame=CGPath(rect:CGRect(x:-2_048,y:-2_048,width:5_120,height:5_120),transform:nil)
 func expand(_ shape:CGPath,_ amount:CGFloat)->CGPath { shape.union(shape.copy(strokingWithWidth:amount*2,lineCap:.round,lineJoin:.round,miterLimit:10)) }
 func inset(_ shape:CGPath,_ amount:CGFloat)->CGPath { frame.subtracting(expand(frame.subtracting(shape),amount)) }
 func closeCorners(_ shape:CGPath,_ radius:CGFloat)->CGPath { inset(expand(shape,radius),radius).normalized() }
@@ -43,8 +43,8 @@ let ring=flat.subtracting(inset(flat,72))
 let endX:CGFloat=712+136*cos(.pi/6),endY:CGFloat=564+136*sin(.pi/6)
 let cut=CGMutablePath()
 cut.move(to:CGPoint(x:710,y:endY+(710-endX)*tan(.pi/6)))
-cut.addLine(to:CGPoint(x:1300,y:endY+(1300-endX)*tan(.pi/6)))
-cut.addLine(to:CGPoint(x:1300,y:1300));cut.addLine(to:CGPoint(x:710,y:1300));cut.closeSubpath()
+cut.addLine(to:CGPoint(x:1_300,y:endY+(1_300-endX)*tan(.pi/6)))
+cut.addLine(to:CGPoint(x:1_300,y:1_300));cut.addLine(to:CGPoint(x:710,y:1_300));cut.closeSubpath()
 let opened=ring.subtracting(cut).union(circle(710,700,36)).union(circle(endX,endY,36)).normalized()
 let pts:[CGPoint]=[CGPoint(x:465,y:358),CGPoint(x:326,y:551),CGPoint(x:389,y:551),CGPoint(x:359,y:674),CGPoint(x:510,y:490),CGPoint(x:447,y:490)]
 let travel:[CGFloat]=[80,27,10,80,27,10]
@@ -202,7 +202,7 @@ for (index,name) in names.enumerated() {
         menuShapes=[flat.subtracting(menuBolt).subtracting(menuCursor)]
     }
     let bounds=iconBounds
-    let rep=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:1024,pixelsHigh:1024,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
+    let rep=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:1_024,pixelsHigh:1_024,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
     NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=NSGraphicsContext(bitmapImageRep:rep)
     let context=NSGraphicsContext.current!.cgContext
     let scale=850/max(bounds.width,bounds.height)
@@ -217,7 +217,7 @@ for (index,name) in names.enumerated() {
         let small=NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:edge,pixelsHigh:edge,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
         NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=NSGraphicsContext(bitmapImageRep:small)
         let c=NSGraphicsContext.current!.cgContext
-        let factor=CGFloat(edge)/1024,fitScale=scale*factor
+        let factor=CGFloat(edge)/1_024,fitScale=scale*factor
         c.saveGState();c.translateBy(x:CGFloat(edge)/2,y:CGFloat(edge)/2)
         c.scaleBy(x:fitScale,y:-fitScale);c.translateBy(x:-bounds.midX,y:-bounds.midY)
         c.setFillColor(NSColor.black.cgColor)

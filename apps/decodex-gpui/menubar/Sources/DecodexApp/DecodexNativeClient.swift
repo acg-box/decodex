@@ -4,7 +4,7 @@ import Foundation
 let decodexNativeClientSchema = "decodex/app-native-client/1"
 
 private let decodexNativeClientConfigSchema = "decodex/app-native-client-config/1"
-private let decodexNativeClientResponseLimit = 8 * 1024 * 1024
+private let decodexNativeClientResponseLimit = 8 * 1_024 * 1_024
 
 struct DecodexNativeRequest: Encodable, Sendable {
 	let schema = decodexNativeClientSchema
