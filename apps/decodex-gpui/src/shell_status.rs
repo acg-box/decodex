@@ -1,10 +1,27 @@
 //! One workspace notification center with dismissible current notices.
-use crate::{
-	account_profile,
-	shell::*,
-	ui_motion::{SmoothControl, popover},
-	ui_preferences,
+use std::{cell::Cell, collections::HashSet, rc::Rc, sync::atomic::AtomicU8};
+
+use gpui::{
+	self, AnyElement, Bounds, Context, InteractiveElement as _, IntoElement as _, KeyDownEvent,
+	MouseDownEvent, ParentElement as _, Pixels, Role, SharedString,
+	StatefulInteractiveElement as _, Styled as _, prelude::FluentBuilder as _,
 };
+
+use crate::{
+	account_profile::{self, AccountProfileLoadState},
+	accounts::{AccountCommandState, AccountsLoadState},
+	shell::{
+		self, ConnectionPresentation, Destination, Shell, WB_BLUE, WB_TEXT, WB_TEXT_MUTED,
+		workspace_symbols::{self, Symbol},
+	},
+	ui_motion::{self, SmoothControl},
+	ui_preferences,
+	ui_theme::{
+		self, AMBER, BLUE, CHROME_CONTROL_SIZE, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, ERROR,
+		HOVER_FILL,
+	},
+};
+use decodex_protocol::{AccountLoginState, AccountProfileResult};
 
 #[derive(Clone, Copy)]
 enum Recovery {
@@ -26,17 +43,17 @@ impl Notice {
 	}
 
 	fn new(title: &'static str, detail: impl Into<String>, recovery: Recovery) -> Self {
-		Self { title, detail: detail.into(), recovery, color: ui_theme::AMBER, identity: None }
+		Self { title, detail: detail.into(), recovery, color: AMBER, identity: None }
 	}
 
 	fn error(mut self) -> Self {
-		self.color = ui_theme::ERROR;
+		self.color = ERROR;
 
 		self
 	}
 
 	fn info(mut self) -> Self {
-		self.color = ui_theme::BLUE;
+		self.color = BLUE;
 
 		self
 	}
@@ -48,12 +65,7 @@ impl Shell {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let notices = self.notifications(connection, cx);
-		let color = notices
-			.iter()
-			.find(|n| n.color == ui_theme::ERROR)
-			.or_else(|| notices.iter().find(|n| n.color == ui_theme::AMBER))
-			.or(notices.first())
-			.map_or(WB_TEXT_MUTED, |n| n.color);
+		let color = notice_color(&notices);
 		let label = if notices.is_empty() {
 			"Status".to_owned()
 		} else {
@@ -65,21 +77,20 @@ impl Shell {
 		let native = false;
 		#[cfg(all(target_os = "macos", not(test)))]
 		let native = self.native_status.child.is_some();
-		let popup_bounds =
-			std::rc::Rc::new(std::cell::Cell::new(None::<gpui::Bounds<gpui::Pixels>>));
+		let popup_bounds = Rc::new(Cell::new(None::<Bounds<Pixels>>));
 		let outside_bounds = popup_bounds.clone();
 
-		div()
+		gpui::div()
 			.id("status-center")
-			.w(px(304.))
+			.w(gpui::px(304.))
 			.absolute()
-			.bottom(px(ui_theme::CONTROL_MARGIN))
-			.right(px(ui_theme::CONTROL_MARGIN))
+			.bottom(gpui::px(CONTROL_MARGIN))
+			.right(gpui::px(CONTROL_MARGIN))
 			.flex()
 			.flex_col()
 			.items_end()
 			.gap_2()
-			.on_mouse_down_out(cx.listener(move |s, event: &gpui::MouseDownEvent, _, cx| {
+			.on_mouse_down_out(cx.listener(move |s, event: &MouseDownEvent, _, cx| {
 				if open
 					&& !outside_bounds.get().is_some_and(|bounds| bounds.contains(&event.position))
 				{
@@ -88,7 +99,7 @@ impl Shell {
 					cx.notify();
 				}
 			}))
-			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 				if open && event.keystroke.key == "escape" {
 					s.status_open = false;
 
@@ -97,61 +108,61 @@ impl Shell {
 				}
 			}))
 			.child(
-				div()
+				gpui::div()
 					.absolute()
-					.bottom(px(ui_theme::CONTROL_GROUP_HEIGHT + ui_theme::CONTROL_MARGIN))
+					.bottom(gpui::px(CONTROL_GROUP_HEIGHT + CONTROL_MARGIN))
 					.right_0()
 					.w_full()
 					.on_children_prepainted(move |bounds, _, _| {
 						popup_bounds.set(bounds.first().copied())
 					})
-					.when(!native, |d| d.child(popover(open, panel))),
+					.when(!native, |d| d.child(ui_motion::popover(open, panel))),
 			)
 			.child(
 				ui_theme::floating_group().child(
-					div()
+					gpui::div()
 						.id("status-toggle")
 						.role(Role::Button)
 						.tab_index(0)
 						.aria_label(label.clone())
 						.aria_expanded(open)
-						.size(px(ui_theme::CHROME_CONTROL_SIZE))
+						.size(gpui::px(CHROME_CONTROL_SIZE))
 						.relative()
-						.rounded(px(6.))
+						.rounded(gpui::px(6.))
 						.flex()
 						.items_center()
 						.justify_center()
-						.text_size(px(11.))
-						.text_color(rgb(WB_TEXT_MUTED))
+						.text_size(gpui::px(11.))
+						.text_color(gpui::rgb(WB_TEXT_MUTED))
 						.cursor_pointer()
-						.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
+						.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
 						.on_click(cx.listener(move |s, _, _, cx| {
 							s.status_open = !open;
 
 							cx.notify();
 						}))
 						.child(workspace_symbols::icon(if notices.is_empty() {
-							workspace_symbols::Symbol::Bell
-						} else if color == ui_theme::ERROR {
-							workspace_symbols::Symbol::BellError
-						} else if color == ui_theme::AMBER {
-							workspace_symbols::Symbol::BellAttention
+							Symbol::Bell
+						} else if color == ERROR {
+							Symbol::BellError
+						} else if color == AMBER {
+							Symbol::BellAttention
 						} else {
-							workspace_symbols::Symbol::BellInfo
+							Symbol::BellInfo
 						}))
 						.when(count_preference(None) && !notices.is_empty(), |d| {
 							d.child(
-								div()
+								gpui::div()
 									.absolute()
-									.top(px(-4.))
-									.right(px(-5.))
-									.min_w(px(14.))
-									.h(px(14.))
-									.px(px(3.))
+									.top(gpui::px(-4.))
+									.right(gpui::px(-5.))
+									.min_w(gpui::px(14.))
+									.h(gpui::px(14.))
+									.px(gpui::px(3.))
 									.rounded_full()
-									.bg(rgb(color))
-									.text_color(rgb(0x17171a))
-									.text_size(px(9.))
+									.bg(gpui::rgb(color))
+									.text_color(gpui::rgb(0x17171a))
+									.text_size(gpui::px(9.))
 									.flex()
 									.items_center()
 									.justify_center()
@@ -219,11 +230,11 @@ impl Shell {
 			));
 		}
 
-		let mut seen = std::collections::HashSet::new();
+		let mut seen = HashSet::new();
 
 		notices.retain(|notice| seen.insert(notice.key()));
 
-		let current = notices.iter().map(Notice::key).collect::<std::collections::HashSet<_>>();
+		let current = notices.iter().map(Notice::key).collect::<HashSet<_>>();
 		let mut dismissed = self.dismissed_notifications.borrow_mut();
 
 		dismissed.retain(|key| current.contains(key));
@@ -252,13 +263,13 @@ impl Shell {
 		if let Some(rejection) = snapshot.rejection {
 			notices.push(Notice::new(
 				"Accounts",
-				account_rejection_label(rejection),
+				shell::account_rejection_label(rejection),
 				Recovery::Accounts,
 			));
 		} else if matches!(
 			snapshot.command,
 			AccountCommandState::Refused | AccountCommandState::OutcomeUnknown
-		) && let Some(detail) = account_command_label(snapshot.command)
+		) && let Some(detail) = shell::account_command_label(snapshot.command)
 		{
 			notices.push(Notice::new("Accounts", detail, Recovery::Accounts));
 		}
@@ -272,7 +283,7 @@ impl Shell {
 		) {
 			notices.push(Notice::new(
 				"Accounts",
-				accounts_load_label(snapshot.load),
+				shell::accounts_load_label(snapshot.load),
 				Recovery::Accounts,
 			));
 		}
@@ -292,7 +303,7 @@ impl Shell {
 				AccountLoginState::Failed => notices.push(
 					Notice::new(
 						"Account login",
-						account_login_status_label(status),
+						shell::account_login_status_label(status),
 						Recovery::Accounts,
 					)
 					.error(),
@@ -300,7 +311,7 @@ impl Shell {
 				AccountLoginState::Completed | AccountLoginState::Cancelled => notices.push(
 					Notice::new(
 						"Account login",
-						account_login_status_label(status),
+						shell::account_login_status_label(status),
 						Recovery::Accounts,
 					)
 					.info(),
@@ -343,7 +354,16 @@ impl Shell {
 		};
 
 		if let Some(detail) = detail {
-			let notice = Notice::new("Account profile", detail, Recovery::Accounts);
+			let mut notice = Notice::new("Account profile", detail, Recovery::Accounts);
+
+			notice.identity = self.account_profile.selected.as_ref().map(|account| {
+				format!(
+					"{}/{:?}/{detail}",
+					account.as_str(),
+					self.account_profile.selected_revision
+				)
+			});
+
 			let requires_login = match self.account_profile.result.as_ref() {
 				Some(AccountProfileResult::Cached { refresh_error, .. }) =>
 					account_profile::requires_login(*refresh_error),
@@ -362,47 +382,59 @@ impl Shell {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let notices = self.notifications(connection, cx);
-		let mut panel = div().occlude().w(px(304.)).p_3().flex().flex_col().gap_3().child(
-			div()
-				.flex()
-				.items_center()
-				.justify_between()
-				.child(div().text_size(px(12.)).text_color(rgb(WB_TEXT)).child("Notifications"))
-				.when(!notices.is_empty(), |d| {
-					d.child(
-						div()
-							.id("clear-notifications")
-							.role(Role::Button)
-							.aria_label("Clear all notifications")
-							.text_size(px(11.))
-							.text_color(rgb(WB_TEXT_MUTED))
-							.cursor_pointer()
-							.hover(|d| d.text_color(rgb(WB_TEXT)))
-							.on_click(cx.listener(|s, _, _, cx| {
-								let notices =
-									s.notifications(&connection_presentation(s.connection), cx);
-
-								s.dismissed_notifications
-									.borrow_mut()
-									.extend(notices.iter().map(Notice::key));
-								cx.notify();
-							}))
-							.child("Clear all"),
+		let mut panel =
+			gpui::div().occlude().w(gpui::px(304.)).p_3().flex().flex_col().gap_3().child(
+				gpui::div()
+					.flex()
+					.items_center()
+					.justify_between()
+					.child(
+						gpui::div()
+							.text_size(gpui::px(12.))
+							.text_color(gpui::rgb(WB_TEXT))
+							.child("Notifications"),
 					)
-				}),
-		);
+					.when(!notices.is_empty(), |d| {
+						d.child(
+							gpui::div()
+								.id("clear-notifications")
+								.role(Role::Button)
+								.aria_label("Clear all notifications")
+								.tab_index(0)
+								.text_size(gpui::px(11.))
+								.text_color(gpui::rgb(WB_TEXT_MUTED))
+								.cursor_pointer()
+								.hover(|d| d.text_color(gpui::rgb(WB_TEXT)))
+								.on_click(cx.listener(|s, _, _, cx| {
+									let notices = s.notifications(
+										&shell::connection_presentation(s.connection),
+										cx,
+									);
+
+									s.dismissed_notifications
+										.borrow_mut()
+										.extend(notices.iter().map(Notice::key));
+									cx.notify();
+								}))
+								.child("Clear all"),
+						)
+					}),
+			);
 
 		if notices.is_empty() {
 			panel = panel.child(
-				div().text_size(px(11.)).text_color(rgb(WB_TEXT_MUTED)).child("No notifications."),
+				gpui::div()
+					.text_size(gpui::px(11.))
+					.text_color(gpui::rgb(WB_TEXT_MUTED))
+					.child("No notifications."),
 			);
 		}
 
 		panel
 			.child(
-				div()
+				gpui::div()
 					.id("notification-list")
-					.max_h(px(340.))
+					.max_h(gpui::px(340.))
 					.overflow_y_scroll()
 					.flex()
 					.flex_col()
@@ -410,51 +442,50 @@ impl Shell {
 					.children(notices.into_iter().enumerate().map(|(index, notice)| {
 						let key = notice.key();
 
-						div()
+						gpui::div()
 							.flex()
 							.flex_col()
 							.gap_1()
 							.child(
-								div()
+								gpui::div()
 									.flex()
 									.items_center()
 									.justify_between()
 									.child(
-										div()
-											.text_size(px(11.))
-											.text_color(rgb(notice.color))
+										gpui::div()
+											.text_size(gpui::px(11.))
+											.text_color(gpui::rgb(notice.color))
 											.child(notice.title),
 									)
 									.child(
-										div()
+										gpui::div()
 											.id(SharedString::from(format!(
 												"dismiss-notice-{index}"
 											)))
 											.role(Role::Button)
 											.aria_label(format!("Dismiss {}", notice.title))
-											.size(px(22.))
+											.tab_index(0)
+											.size(gpui::px(22.))
 											.flex()
 											.items_center()
 											.justify_center()
-											.rounded(px(5.))
+											.rounded(gpui::px(5.))
 											.cursor_pointer()
-											.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
+											.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
 											.on_click(cx.listener(move |s, _, _, cx| {
 												s.dismissed_notifications
 													.borrow_mut()
 													.insert(key.clone());
 												cx.notify();
 											}))
-											.child(workspace_symbols::icon(
-												workspace_symbols::Symbol::Close,
-											)),
+											.child(workspace_symbols::icon(Symbol::Close)),
 									),
 							)
 							.child(
-								div()
-									.text_size(px(11.))
-									.line_height(px(17.))
-									.text_color(rgb(notice.color))
+								gpui::div()
+									.text_size(gpui::px(11.))
+									.line_height(gpui::px(17.))
+									.text_color(gpui::rgb(notice.color))
 									.child(notice.detail),
 							)
 							.when(!matches!(notice.recovery, Recovery::None), |d| {
@@ -478,20 +509,20 @@ impl Shell {
 			Recovery::LoginItems => "Open Login Items",
 		};
 
-		div()
+		gpui::div()
 			.id(SharedString::from(format!("notice-action-{index}")))
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(label)
-			.h(px(24.))
+			.h(gpui::px(24.))
 			.px_2()
-			.rounded(px(5.))
+			.rounded(gpui::px(5.))
 			.flex()
 			.items_center()
-			.text_size(px(11.))
-			.text_color(rgb(WB_BLUE))
+			.text_size(gpui::px(11.))
+			.text_color(gpui::rgb(WB_BLUE))
 			.cursor_pointer()
-			.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
+			.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
 			.on_click(cx.listener(move |s, event, window, cx| {
 				s.status_open = false;
 
@@ -516,20 +547,121 @@ impl Shell {
 }
 
 pub(crate) fn count_preference(value: Option<bool>) -> bool {
-	static VALUE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);
+	static VALUE: AtomicU8 = AtomicU8::new(u8::MAX);
 
 	ui_preferences::boolean("DecodexNotificationCount", &VALUE, value, false)
 }
 
 pub(crate) fn question_notice_preference(value: Option<bool>) -> bool {
-	static VALUE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);
+	static VALUE: AtomicU8 = AtomicU8::new(u8::MAX);
 
 	ui_preferences::boolean("DecodexQuestionNotices", &VALUE, value, true)
 }
 
+fn notice_color(notices: &[Notice]) -> u32 {
+	notices
+		.iter()
+		.find(|n| n.color == ERROR)
+		.or_else(|| notices.iter().find(|n| n.color == AMBER))
+		.or(notices.first())
+		.map_or(WB_TEXT_MUTED, |n| n.color)
+}
+
 #[cfg(test)]
 mod tests {
-	use crate::shell::status::*;
+	use std::collections::HashSet;
+
+	use gpui::{
+		self, AppContext as _, Context, Entity, IntoElement, KeyDownEvent, KeyUpEvent, Keystroke,
+		PlatformInput, Render, Subscription, TestAppContext, Window,
+	};
+
+	use crate::{
+		client_lifecycle::ConnectionView,
+		shell::{
+			self, Shell,
+			status::{Notice, Recovery},
+		},
+	};
+	use decodex_protocol::{
+		AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult, EntityId,
+		EntityRevision,
+	};
+	struct StatusFixture {
+		shell: Entity<Shell>,
+		_subscription: Subscription,
+	}
+	impl Render for StatusFixture {
+		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+			self.shell.update(cx, |s, cx| {
+				s.render_status_panel(&shell::connection_presentation(s.connection), cx)
+			})
+		}
+	}
+
+	fn check_keyboard_dismissal(cx: &mut TestAppContext, tabs: usize, clear_all: bool) {
+		let (fixture, visual) = cx.add_window_view(|window, cx| {
+			let shell = cx.new(|cx| Shell::new(window, cx, ConnectionView::Stopped));
+
+			shell.update(cx, |s, _| s.account_status = Some("Fixture account warning".into()));
+
+			let subscription = cx.observe(&shell, |_, _, cx| cx.notify());
+
+			StatusFixture { shell, _subscription: subscription }
+		});
+		let shell = fixture.read_with(visual, |f, _| f.shell.clone());
+		let initial = shell.update(visual, |s, cx| {
+			s.notifications(&shell::connection_presentation(s.connection), cx).len()
+		});
+
+		assert!(initial >= 2);
+
+		visual.update(|w, cx| {
+			w.draw(cx).clear();
+			w.blur();
+		});
+
+		for _ in 0..tabs {
+			visual.update(|w, cx| {
+				w.focus_next(cx);
+			});
+		}
+
+		visual.update(|w, cx| {
+			w.draw(cx).clear();
+
+			let keystroke = Keystroke::parse("enter").expect("activation key");
+
+			w.dispatch_event(
+				PlatformInput::KeyDown(KeyDownEvent {
+					keystroke: keystroke.clone(),
+					is_held: false,
+					prefer_character_input: false,
+				}),
+				cx,
+			);
+			w.dispatch_event(PlatformInput::KeyUp(KeyUpEvent { keystroke }), cx);
+		});
+
+		shell.update(visual, |s, cx| {
+			assert_eq!(
+				s.notifications(&shell::connection_presentation(s.connection), cx).len(),
+				if clear_all { 0 } else { initial - 1 }
+			);
+			assert_eq!(s.account_status.as_deref(), Some("Fixture account warning"));
+		});
+	}
+
+	#[gpui::test]
+	fn clear_notifications_is_keyboard_reachable(cx: &mut TestAppContext) {
+		check_keyboard_dismissal(cx, 1, true);
+	}
+
+	#[gpui::test]
+	fn dismiss_one_notification_is_keyboard_reachable(cx: &mut TestAppContext) {
+		check_keyboard_dismissal(cx, 2, false);
+	}
+
 	#[test]
 	fn question_dismissal_uses_identity_instead_of_repeated_title() {
 		let mut first = Notice::new("Question", "Choose a format", Recovery::None);
@@ -542,15 +674,13 @@ mod tests {
 
 		assert_ne!(first.key(), second.key());
 
-		let dismissed = std::collections::HashSet::from([first.key()]);
+		let dismissed = HashSet::from([first.key()]);
 
 		assert!(!dismissed.contains(&second.key()));
 	}
 
 	#[gpui::test]
-	fn independent_failures_are_collected_and_clear_with_their_source(
-		cx: &mut gpui::TestAppContext,
-	) {
+	fn independent_failures_are_collected_and_clear_with_their_source(cx: &mut TestAppContext) {
 		let (shell, visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
 
@@ -558,7 +688,7 @@ mod tests {
 			s.account_status = Some("Account change refused".into());
 			s.input_status = Some("Message was not delivered".into());
 
-			let connection = connection_presentation(s.connection);
+			let connection = shell::connection_presentation(s.connection);
 			let notices = s.notifications(&connection, cx);
 
 			assert!(
@@ -583,12 +713,12 @@ mod tests {
 		});
 	}
 	#[gpui::test]
-	fn dismissed_notice_stays_hidden_until_source_recovers(cx: &mut gpui::TestAppContext) {
+	fn dismissed_notice_stays_hidden_until_source_recovers(cx: &mut TestAppContext) {
 		let (shell, visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
 
 		shell.update(visual, |s, cx| {
-			let connection = connection_presentation(s.connection);
+			let connection = shell::connection_presentation(s.connection);
 
 			s.account_status = Some("Failed".into());
 
@@ -612,6 +742,42 @@ mod tests {
 			s.account_status = Some("Failed".into());
 
 			assert!(s.notifications(&connection, cx).iter().any(|n| n.detail == "Failed"));
+		});
+	}
+	#[gpui::test]
+	fn profile_dismissal_is_scoped_to_account_and_revision(cx: &mut TestAppContext) {
+		let (shell, visual) =
+			cx.add_window_view(|w, cx| Shell::new(w, cx, ConnectionView::Stopped));
+
+		shell.update(visual, |s, cx| {
+			s.account_profile.result = Some(AccountProfileResult::Unavailable {
+				error: AccountProfileErrorDto::Unauthorized,
+				email: AccountProfileEmailDto::Redacted,
+				plan_type: None,
+			});
+
+			let connection = shell::connection_presentation(s.connection);
+
+			for (id, revision) in [
+				("20000000-0000-4000-8000-000000000001", 1),
+				("20000000-0000-4000-8000-000000000002", 1),
+				("20000000-0000-4000-8000-000000000002", 2),
+			] {
+				s.account_profile.selected = Some(EntityId::new(id).unwrap());
+				s.account_profile.selected_revision = Some(EntityRevision(revision));
+
+				let notices = s.notifications(&connection, cx);
+				let profile = notices
+					.iter()
+					.find(|n| n.title == "Account profile")
+					.expect("a new account or revision must have its own warning");
+
+				s.dismissed_notifications.borrow_mut().insert(profile.key());
+
+				assert!(
+					!s.notifications(&connection, cx).iter().any(|n| n.title == "Account profile")
+				);
+			}
 		});
 	}
 }
