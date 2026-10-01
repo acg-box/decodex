@@ -1,12 +1,20 @@
 //! Shared config reservations cross task/account boundaries and never wake model work.
-use super::*;
-use crate::{AgentHookAttempt, AgentHookObservation, AgentHookOwner};
-use serde_json::json;
-pub(super) fn identity(n: u32) -> decodex_core::ProcessIdentity {
-	decodex_core::ProcessIdentity::new(
+use std::path::Path;
+
+use crate::{
+	AgentHookAttempt, AgentHookObservation, AgentHookOwner, EnqueueAgentEvent, SqliteStore,
+	agent_process::tests::{self, DIGEST, OTHER_DIGEST},
+};
+use decodex_core::{
+	ProcessAuthorityLossReason, ProcessBootIdentity, ProcessDeathEvidence, ProcessDeathEvidenceId,
+	ProcessDeathEvidenceKind, ProcessIdentity, ProcessStartIdentity,
+};
+
+pub(super) fn identity(n: u32) -> ProcessIdentity {
+	ProcessIdentity::new(
 		ProcessBootIdentity::new("fixture-boot").unwrap(),
 		n,
-		decodex_core::ProcessStartIdentity::new(format!("fixture-{n}")).unwrap(),
+		ProcessStartIdentity::new(format!("fixture-{n}")).unwrap(),
 		n,
 		n,
 	)
@@ -16,8 +24,8 @@ pub(super) fn owner(n: u8) -> AgentHookOwner {
 	AgentHookOwner {
 		work: if n == 1 { "root" } else { "second-root" }.into(),
 		thread: format!("thread-{n}"),
-		generation: generation_id(n).as_str().into(),
-		account: account_id(n).as_str().into(),
+		generation: tests::generation_id(n).as_str().into(),
+		account: tests::account_id(n).as_str().into(),
 	}
 }
 pub(super) fn attempt(n: u8, token: char, previous_id: Option<i64>) -> AgentHookAttempt {
@@ -26,28 +34,18 @@ pub(super) fn attempt(n: u8, token: char, previous_id: Option<i64>) -> AgentHook
 		scope: DIGEST.into(),
 		hook: "plugin-hook".into(),
 		field: "enabled".into(),
-		value: json!(false),
-		previous_value: Some(json!(true)),
+		value: serde_json::json!(false),
+		previous_value: Some(serde_json::json!(true)),
 		config_version: "before".into(),
 		review_token: token.to_string().repeat(64),
 		attempt_id: format!("attempt-{token}"),
 		previous_id,
 	}
 }
-fn observation(n: u8, value: Option<bool>) -> AgentHookObservation {
-	AgentHookObservation {
-		owner: owner(n),
-		scope: DIGEST.into(),
-		hook: "plugin-hook".into(),
-		field: "enabled".into(),
-		value: value.map(|v| json!(v)),
-		config_version: "after".into(),
-	}
-}
-pub(super) async fn setup(path: &std::path::Path) -> SqliteStore {
+pub(super) async fn setup(path: &Path) -> SqliteStore {
 	let store = SqliteStore::open_test(path).unwrap();
 
-	seed(&store).await;
+	tests::seed(&store).await;
 
 	for n in [1, 2] {
 		let owner = owner(n);
@@ -55,39 +53,55 @@ pub(super) async fn setup(path: &std::path::Path) -> SqliteStore {
 		store.bind_agent_thread(owner.work.clone(), owner.thread).await.unwrap();
 		store
 			.prepare_agent_bound_process_generation(
-				&intent(n, n),
-				&binding(n),
+				&tests::intent(n, n),
+				&tests::binding(n),
 				&owner.work,
 				&format!("owner-{n}"),
 			)
 			.await
 			.unwrap();
 		store
-			.bind_process_generation_identity(&generation_id(n), 1, &identity(122 + u32::from(n)))
+			.bind_process_generation_identity(
+				&tests::generation_id(n),
+				1,
+				&identity(122 + u32::from(n)),
+			)
 			.await
 			.unwrap();
-		store.mark_process_generation_ready(&generation_id(n), 2).await.unwrap();
+		store.mark_process_generation_ready(&tests::generation_id(n), 2).await.unwrap();
 	}
 
 	store
 }
+
+fn observation(n: u8, value: Option<bool>) -> AgentHookObservation {
+	AgentHookObservation {
+		owner: owner(n),
+		scope: DIGEST.into(),
+		hook: "plugin-hook".into(),
+		field: "enabled".into(),
+		value: value.map(|v| serde_json::json!(v)),
+		config_version: "after".into(),
+	}
+}
+
 #[tokio::test]
 async fn hook_receipts_serialize_shared_config_and_survive_restart_without_replay() {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("hooks.sqlite3");
 	let store = setup(&path).await;
 	let visible = store
-		.record_agent_observation(crate::EnqueueAgentEvent {
+		.record_agent_observation(EnqueueAgentEvent {
 			source_event_id: "visible".into(),
 			work_item_id: "root".into(),
 			event_kind: "assistant_message".into(),
-			payload: json!({"item":{"text":"visible"}}).to_string(),
+			payload: serde_json::json!({"item":{"text":"visible"}}).to_string(),
 		})
 		.await
 		.unwrap();
 	let mut noop = attempt(1, 'f', None);
 
-	noop.previous_value = Some(json!(false));
+	noop.previous_value = Some(serde_json::json!(false));
 
 	assert!(store.reserve_agent_hook_setting(noop).await.is_err());
 
@@ -193,9 +207,9 @@ async fn hook_recovery_requires_dead_writer_and_exact_config_scope() {
 
 	store
 		.mark_process_generation_death_unknown(
-			&generation_id(1),
+			&tests::generation_id(1),
 			3,
-			decodex_core::ProcessAuthorityLossReason::SupervisorRestarted,
+			ProcessAuthorityLossReason::SupervisorRestarted,
 		)
 		.await
 		.unwrap();
@@ -204,7 +218,7 @@ async fn hook_recovery_requires_dead_writer_and_exact_config_scope() {
 
 	let evidence = ProcessDeathEvidence::new(
 		ProcessDeathEvidenceId::new("50000000-0000-4000-8000-000000000001").unwrap(),
-		generation_id(1),
+		tests::generation_id(1),
 		ProcessDeathEvidenceKind::OwnedChildExit,
 		ProcessBootIdentity::new("fixture-boot").unwrap(),
 		Some(identity(123)),

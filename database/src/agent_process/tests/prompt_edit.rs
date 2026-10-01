@@ -1,5 +1,8 @@
-use super::*;
-use serde_json::json;
+use crate::{
+	AgentPromptEditAttempt, AgentVoiceCall, PrepareProcessGenerationOutcome, SqliteStore,
+	agent_process::tests::{self, DIGEST},
+};
+use decodex_core::ProcessAuthorityLossReason;
 
 #[tokio::test]
 async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_history() {
@@ -8,33 +11,41 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 		let path = dir.path().join("prompt.sqlite3");
 		let store = SqliteStore::open_test(&path).unwrap();
 
-		seed(&store).await;
+		tests::seed(&store).await;
 
 		store.bind_agent_thread("root".into(), "task".into()).await.unwrap();
 		store
-			.prepare_agent_bound_process_generation(&intent(1, 1), &binding(1), "root", "first")
+			.prepare_agent_bound_process_generation(
+				&tests::intent(1, 1),
+				&tests::binding(1),
+				"root",
+				"first",
+			)
 			.await
 			.unwrap();
-		store.bind_process_generation_identity(&generation_id(1), 1, &identity(123)).await.unwrap();
-		store.mark_process_generation_ready(&generation_id(1), 2).await.unwrap();
+		store
+			.bind_process_generation_identity(&tests::generation_id(1), 1, &tests::identity(123))
+			.await
+			.unwrap();
+		store.mark_process_generation_ready(&tests::generation_id(1), 2).await.unwrap();
 
-		let a = crate::AgentPromptEditAttempt {
+		let a = AgentPromptEditAttempt {
 			work: "root".into(),
 			thread: "task".into(),
-			generation: Some(generation_id(1).as_str().into()),
+			generation: Some(tests::generation_id(1).as_str().into()),
 			review_token: DIGEST.into(),
 			attempt_id: "first".into(),
 			before_turn_id: "edit".into(),
 			item_id: "input".into(),
 			turn_ids: vec!["prefix".into(), "edit".into()],
-			content: vec![json!({"type":"text","text":"original"})],
+			content: vec![serde_json::json!({"type":"text","text":"original"})],
 		};
 		let id = store.reserve_agent_prompt_edit(a.clone()).await.unwrap().unwrap();
-		let voice = crate::AgentVoiceCall {
+		let voice = AgentVoiceCall {
 			session_id: "voice".into(),
 			work_id: "root".into(),
 			thread_id: "task".into(),
-			generation_id: generation_id(1).as_str().into(),
+			generation_id: tests::generation_id(1).as_str().into(),
 			baseline_turn_id: None,
 		};
 
@@ -42,9 +53,9 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 
 		store
 			.mark_process_generation_death_unknown(
-				&generation_id(1),
+				&tests::generation_id(1),
 				3,
-				decodex_core::ProcessAuthorityLossReason::SupervisorRestarted,
+				ProcessAuthorityLossReason::SupervisorRestarted,
 			)
 			.await
 			.unwrap();
@@ -53,7 +64,7 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 			!store
 				.observe_agent_prompt_edit(
 					id,
-					Some(generation_id(1).as_str().into()),
+					Some(tests::generation_id(1).as_str().into()),
 					vec!["prefix".into()]
 				)
 				.await
@@ -63,43 +74,16 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 			!store
 				.observe_agent_prompt_edit(
 					id,
-					Some(generation_id(2).as_str().into()),
+					Some(tests::generation_id(2).as_str().into()),
 					a.turn_ids.clone()
 				)
 				.await
 				.unwrap()
 		);
 
-		confirm_original_process_death(&store).await;
+		tests::confirm_original_process_death(&store).await;
 
-		assert!(matches!(
-			store
-				.prepare_agent_bound_process_generation(
-					&intent(2, 2),
-					&binding(2),
-					"root",
-					"wrong-account"
-				)
-				.await
-				.unwrap(),
-			PrepareProcessGenerationOutcome::Rejected { .. }
-		));
-		assert!(matches!(
-			store
-				.prepare_agent_bound_process_generation(
-					&intent(1, 2),
-					&binding(1),
-					"root",
-					"second"
-				)
-				.await
-				.unwrap(),
-			PrepareProcessGenerationOutcome::Fresh(_)
-		));
-
-		store.bind_process_generation_identity(&generation_id(2), 1, &identity(124)).await.unwrap();
-		store.mark_process_generation_ready(&generation_id(2), 2).await.unwrap();
-
+		admit_same_account_successor(&store).await;
 		drop(store);
 
 		let store = SqliteStore::open_test(&path).unwrap();
@@ -110,7 +94,7 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 
 		assert!(
 			store
-				.observe_agent_prompt_edit(id, Some(generation_id(2).as_str().into()), turns)
+				.observe_agent_prompt_edit(id, Some(tests::generation_id(2).as_str().into()), turns)
 				.await
 				.unwrap()
 		);
@@ -128,7 +112,10 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 			assert!(store.begin_agent_dispatch("root".into()).await.is_err());
 			assert!(
 				store
-					.release_agent_prompt_edit_draft(id, Some(generation_id(2).as_str().into()))
+					.release_agent_prompt_edit_draft(
+						id,
+						Some(tests::generation_id(2).as_str().into())
+					)
 					.await
 					.unwrap()
 			);
@@ -136,4 +123,37 @@ async fn prompt_edit_recovery_requires_dead_process_and_same_account_complete_hi
 
 		assert!(store.begin_agent_dispatch("root".into()).await.is_ok());
 	}
+}
+
+async fn admit_same_account_successor(store: &SqliteStore) {
+	assert!(matches!(
+		store
+			.prepare_agent_bound_process_generation(
+				&tests::intent(2, 2),
+				&tests::binding(2),
+				"root",
+				"wrong-account"
+			)
+			.await
+			.unwrap(),
+		PrepareProcessGenerationOutcome::Rejected { .. }
+	));
+	assert!(matches!(
+		store
+			.prepare_agent_bound_process_generation(
+				&tests::intent(1, 2),
+				&tests::binding(1),
+				"root",
+				"second"
+			)
+			.await
+			.unwrap(),
+		PrepareProcessGenerationOutcome::Fresh(_)
+	));
+
+	store
+		.bind_process_generation_identity(&tests::generation_id(2), 1, &tests::identity(124))
+		.await
+		.unwrap();
+	store.mark_process_generation_ready(&tests::generation_id(2), 2).await.unwrap();
 }
