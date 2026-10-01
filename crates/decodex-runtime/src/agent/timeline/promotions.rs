@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use crate::agent::timeline::{self, Content};
+use crate::agent::timeline::{self, AgentTimelineContent};
 use decodex_codex::app_server_client::AppServerClient;
 use decodex_protocol::{AgentTimelinePage, AgentTimelinePromotedContent};
 
@@ -40,7 +40,7 @@ pub(super) async fn enrich(client: &AppServerClient, page: &mut AgentTimelinePag
 	let mut loaded = BTreeMap::new();
 
 	for entry in &page.entries {
-		if let Content::Item { turn_id, item_id, .. } = &entry.content {
+		if let AgentTimelineContent::Item { turn_id, item_id, .. } = &entry.content {
 			loaded
 				.entry((turn_id.clone(), item_id.clone()))
 				.and_modify(|value| *value = None)
@@ -48,7 +48,9 @@ pub(super) async fn enrich(client: &AppServerClient, page: &mut AgentTimelinePag
 		}
 	}
 	for (index, entry) in page.entries.iter_mut().enumerate() {
-		if let Content::Promotion { turn_id, agent_item_id, resolved, .. } = &mut entry.content {
+		if let AgentTimelineContent::Promotion { turn_id, agent_item_id, resolved, .. } =
+			&mut entry.content
+		{
 			if let Some(Some(item)) = loaded.get(&(turn_id.clone(), agent_item_id.clone())) {
 				*resolved = Some(item.clone());
 			} else {
@@ -68,15 +70,19 @@ pub(super) async fn enrich(client: &AppServerClient, page: &mut AgentTimelinePag
 				})
 				.and_then(project);
 
-			if let Content::Promotion { resolved: target, .. } = &mut page.entries[index].content {
+			if let AgentTimelineContent::Promotion { resolved: target, .. } =
+				&mut page.entries[index].content
+			{
 				*target = resolved;
 			}
 		}
 	}
 }
 
-fn project(content: Content) -> Option<AgentTimelinePromotedContent> {
-	let Content::Item { text, truncated, activity, attachments, .. } = content else { return None };
+fn project(content: AgentTimelineContent) -> Option<AgentTimelinePromotedContent> {
+	let AgentTimelineContent::Item { text, truncated, activity, attachments, .. } = content else {
+		return None;
+	};
 
 	Some(AgentTimelinePromotedContent { text, truncated, activity, attachments })
 }

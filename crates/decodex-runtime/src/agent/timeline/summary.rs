@@ -5,7 +5,7 @@ use serde_json::Value;
 use tokio::time;
 
 use crate::{
-	agent::timeline::{self, Content, ProjectionError},
+	agent::timeline::{self, AgentTimelineContent, ProjectionError},
 	agent_usage_estimate::Source,
 };
 use decodex_protocol::{AgentTimelineResult, EntityId};
@@ -36,7 +36,7 @@ pub(super) async fn read(source: &Source) -> Option<AgentTimelineResult> {
 	.flatten()
 }
 
-fn project(value: &Value) -> Result<Vec<Content>, ProjectionError> {
+fn project(value: &Value) -> Result<Vec<AgentTimelineContent>, ProjectionError> {
 	let mut items = Vec::new();
 	let mut ids = HashSet::new();
 
@@ -49,7 +49,7 @@ fn project(value: &Value) -> Result<Vec<Content>, ProjectionError> {
 			let content = timeline::ordinary(&serde_json::json!({"turnId":turn["id"],"item":item}))
 				.ok_or(ProjectionError::Malformed)?;
 
-			if let Content::Item { turn_id, item_id, .. } = &content
+			if let AgentTimelineContent::Item { turn_id, item_id, .. } = &content
 				&& !ids.insert((turn_id.clone(), item_id.clone()))
 			{
 				return Err(ProjectionError::Malformed);
@@ -76,7 +76,7 @@ mod tests {
 	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream};
 
 	use crate::{
-		agent::timeline::summary::{AgentTimelineResult, Content, Source, Value},
+		agent::timeline::summary::{AgentTimelineContent, AgentTimelineResult, Source, Value},
 		agent_usage_estimate::SourceKey,
 	};
 	use decodex_codex::app_server_client::AppServerClient;
@@ -148,10 +148,10 @@ mod tests {
 
 				assert_eq!(thread_id, "thread");
 				assert!(
-					matches!(&items[0],Content::Item{turn_id,text,..} if turn_id=="old" && text=="Question")
+					matches!(&items[0],AgentTimelineContent::Item{turn_id,text,..} if turn_id=="old" && text=="Question")
 				);
 				assert!(
-					matches!(&items[1],Content::Item{turn_id,text,..} if turn_id=="new" && text=="Final reply")
+					matches!(&items[1],AgentTimelineContent::Item{turn_id,text,..} if turn_id=="new" && text=="Final reply")
 				);
 				assert_eq!(items.len(), 2);
 			} else {
