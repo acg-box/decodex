@@ -12,7 +12,7 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tokio::{
 	sync::{Mutex, mpsc, oneshot, watch},
@@ -1103,19 +1103,19 @@ impl AgentHost {
 			return Err("Agent state changed. Review the conversation before sending.".into());
 		}
 
-		let input = json!([{"type":"text","text":text}]);
+		let input = serde_json::json!([{"type":"text","text":text}]);
 		let result = if let Some(turn) = active_turn {
 			client
 				.request(
 					"turn/steer",
-					json!({"threadId":thread,"expectedTurnId":turn,"input":input}),
+					serde_json::json!({"threadId":thread,"expectedTurnId":turn,"input":input}),
 				)
 				.await
 		} else {
 			client
 				.request(
 					"turn/start",
-					json!({"threadId":thread,"input":input,"turnTrigger":"user"}),
+					serde_json::json!({"threadId":thread,"input":input,"turnTrigger":"user"}),
 				)
 				.await
 		};
@@ -1499,7 +1499,8 @@ impl AgentHost {
 	) -> Result<String, AgentHostError> {
 		self.store
 			.enqueue_agent_event(EnqueueAgentEvent {
-				source_event_id: json!(["automation", source_event_id.as_str()]).to_string(),
+				source_event_id: serde_json::json!(["automation", source_event_id.as_str()])
+					.to_string(),
 				work_item_id: work_id.as_str().into(),
 				event_kind: "automation_result".into(),
 				payload: payload.as_str().into(),
@@ -1646,7 +1647,7 @@ impl AgentHost {
 			serde_json::to_value(&config).map_err(|_| "invalid Agent configuration")?;
 
 		if let Some(account) = &draft.account_id {
-			settings["account_id"] = json!(account.as_str());
+			settings["account_id"] = serde_json::json!(account.as_str());
 		}
 
 		let encoded =
@@ -1714,10 +1715,11 @@ impl AgentHost {
 		let _ = self
 			.store
 			.enqueue_agent_event(EnqueueAgentEvent {
-				source_event_id: json!(["agent_host", root, kind]).to_string(),
+				source_event_id: serde_json::json!(["agent_host", root, kind]).to_string(),
 				work_item_id: root.into(),
 				event_kind: kind.into(),
-				payload: json!({"recovery":"inspect persisted work before retrying"}).to_string(),
+				payload: serde_json::json!({"recovery":"inspect persisted work before retrying"})
+					.to_string(),
 			})
 			.await;
 	}
@@ -1964,7 +1966,7 @@ fn normalize_input(
 			(
 				AgentActionDto::Start(start),
 				Some(
-					json!({"execution":execution,"attachments":attachments,"taskReferences":task_references}),
+					serde_json::json!({"execution":execution,"attachments":attachments,"taskReferences":task_references}),
 				),
 			)
 		},
@@ -1980,7 +1982,7 @@ fn normalize_input(
 			(
 				AgentActionDto::Send { root_id, text },
 				Some(
-					json!({"execution":execution,"attachments":attachments,"taskReferences":task_references}),
+					serde_json::json!({"execution":execution,"attachments":attachments,"taskReferences":task_references}),
 				),
 			)
 		},
@@ -2032,7 +2034,7 @@ fn config(draft: &AgentStartDto) -> AgentConfig {
 	.into();
 
 	if draft.sandbox == AgentSandboxDto::FullAccess {
-		config.approval_policy = json!("never");
+		config.approval_policy = serde_json::json!("never");
 	}
 
 	config
@@ -2123,10 +2125,10 @@ async fn persist_input(
 ) -> Result<(), &'static str> {
 	store
   .enqueue_agent_event(EnqueueAgentEvent {
-			source_event_id: json!(["user_message", root, key]).to_string(),
+			source_event_id: serde_json::json!(["user_message", root, key]).to_string(),
 			work_item_id: root.into(),
 			event_kind: "user_message".into(),
-			payload: json!({"text":text,"source":"user","asyncQuestionReply":decodex_protocol::parse_agent_async_question_replies(text).is_some(),"options":options}).to_string(),
+			payload: serde_json::json!({"text":text,"source":"user","asyncQuestionReply":decodex_protocol::parse_agent_async_question_replies(text).is_some(),"options":options}).to_string(),
 		})
 		.await
 		.map_err(|error| match error {
@@ -2351,7 +2353,7 @@ mod tests {
 		let config = AgentConfig::new("gpt-6-astra".into(), "medium".into(), "/tmp".into());
 		let mut settings = serde_json::to_value(&config).unwrap();
 
-		settings["account_id"] = agent_host::json!("00000000-0000-4000-8000-000000000001");
+		settings["account_id"] = serde_json::json!("00000000-0000-4000-8000-000000000001");
 
 		store.bind_agent_root_settings("agent", &settings.to_string()).await.unwrap();
 
@@ -2372,7 +2374,7 @@ mod tests {
 				.is_none()
 		);
 
-		settings["account_id"] = agent_host::json!("invalid");
+		settings["account_id"] = serde_json::json!("invalid");
 
 		assert!(agent_host::decode_settings(&settings.to_string()).is_none());
 	}

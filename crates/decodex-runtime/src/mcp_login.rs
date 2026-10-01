@@ -5,7 +5,7 @@ use std::{
 };
 
 use reqwest::Url;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::{sync::Mutex, time, time::error::Elapsed};
 
 use decodex_codex::app_server_client::{AppServerClient, ClientError, ServerEvent};
@@ -129,7 +129,7 @@ impl McpLoginGateway {
 			Duration::from_secs(30),
 			source.client.request(
 				"mcpServer/oauth/login",
-				json!({"name":server_name.as_str(),"threadId":source.thread,"timeoutSecs":120}),
+				serde_json::json!({"name":server_name.as_str(),"threadId":source.thread,"timeoutSecs":120}),
 			),
 		)
 		.await;
@@ -331,10 +331,10 @@ mod tests {
 			assert_eq!(request["method"], "mcpServer/oauth/login");
 			assert_eq!(
 				request["params"],
-				mcp_login::json!({"name":"server","threadId":"native-thread","timeoutSecs":120})
+				serde_json::json!({"name":"server","threadId":"native-thread","timeoutSecs":120})
 			);
 
-			writer.write_all(format!("{}\n",mcp_login::json!({"id":request["id"],"result":{"authorizationUrl":"https://example.test/authorize?state=private-test"}})).as_bytes()).await.unwrap();
+			writer.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"result":{"authorizationUrl":"https://example.test/authorize?state=private-test"}})).as_bytes()).await.unwrap();
 
 			assert!(
 				tokio::time::timeout(Duration::from_millis(100), lines.next_line()).await.is_err(),
@@ -366,7 +366,7 @@ mod tests {
 					&generation(),
 					&ServerEvent::Notification {
 						method: "mcpServer/oauthLogin/completed".into(),
-						params: mcp_login::json!({"threadId":thread,"name":name,"success":true}),
+						params: serde_json::json!({"threadId":thread,"name":name,"success":true}),
 					},
 				)
 				.await;
@@ -375,7 +375,7 @@ mod tests {
 		let wrong = ProcessGenerationId::new("20000000-0000-4000-8000-000000000002").unwrap();
 		let completed = ServerEvent::Notification {
 			method: "mcpServer/oauthLogin/completed".into(),
-			params: mcp_login::json!({"threadId":"native-thread","name":"server","success":true}),
+			params: serde_json::json!({"threadId":"native-thread","name":"server","success":true}),
 		};
 
 		gateway.observe(&wrong, &completed).await;
@@ -474,7 +474,7 @@ mod tests {
 					.write_all(
 						format!(
 							"{}\n",
-							mcp_login::json!({"id":request["id"],"result":{"authorizationUrl":"https://example.test/authorize"}})
+							serde_json::json!({"id":request["id"],"result":{"authorizationUrl":"https://example.test/authorize"}})
 						)
 						.as_bytes(),
 					)
@@ -508,7 +508,7 @@ mod tests {
 						&generation(),
 						&ServerEvent::Notification {
 							method: "mcpServer/oauthLogin/completed".into(),
-							params: mcp_login::json!({"threadId":"native-thread","name":reported,"success":true}),
+							params: serde_json::json!({"threadId":"native-thread","name":reported,"success":true}),
 						},
 					)
 					.await;

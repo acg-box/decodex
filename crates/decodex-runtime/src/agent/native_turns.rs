@@ -86,7 +86,7 @@ impl AgentCoordinator {
 			}
 			if terminal {
 				self.record_terminal(
-					agent::json!({"threadId":thread,"turn":observed}),
+					serde_json::json!({"threadId":thread,"turn":observed}),
 					Ok(history),
 					false,
 				)

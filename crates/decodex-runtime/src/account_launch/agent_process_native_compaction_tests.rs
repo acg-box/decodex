@@ -61,13 +61,13 @@ async fn installed_native_streams_auto_compaction_and_resumes_its_checkpoint() {
 			|serial| {
 				let tokens = if serial == 0 { 250_000 } else { 100 };
 
-				json!({"input_tokens":tokens,"output_tokens":0,"total_tokens":tokens})
+				serde_json::json!({"input_tokens":tokens,"output_tokens":0,"total_tokens":tokens})
 			},
 			|serial| {
 				if serial == 1 {
-					json!({"type":"compaction","encrypted_content":SUMMARY})
+					serde_json::json!({"type":"compaction","encrypted_content":SUMMARY})
 				} else {
-					json!({"type":"message","role":"assistant","id":format!("reply-{serial}"),"content":[{"type":"output_text","text":"Done"}]})
+					serde_json::json!({"type":"message","role":"assistant","id":format!("reply-{serial}"),"content":[{"type":"output_text","text":"Done"}]})
 				}
 			},
 		));
@@ -78,7 +78,7 @@ async fn installed_native_streams_auto_compaction_and_resumes_its_checkpoint() {
 		let mut session = NativeSession::start(&binary, home.path());
 
 		time::timeout(Duration::from_secs(60), async {
-			let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
+			let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
 			let thread = started["thread"]["id"].as_str().unwrap().to_owned();
 
 			start_turn(&session.client, &thread, "Remember the original user request.").await;
@@ -99,7 +99,7 @@ async fn installed_native_streams_auto_compaction_and_resumes_its_checkpoint() {
 
 			let mut reopened = NativeSession::start(&binary, home.path());
 
-			reopened.client.thread_resume(json!({"threadId":thread,"excludeTurns":true})).await.unwrap();
+			reopened.client.thread_resume(serde_json::json!({"threadId":thread,"excludeTurns":true})).await.unwrap();
 
 			start_turn(&reopened.client, &thread, "Continue after restart.").await;
 
@@ -128,9 +128,9 @@ async fn installed_native_preserves_prompt_before_compaction_error_and_after_res
 		requests.clone(),
 		None,
 		None,
-		|_| json!({"input_tokens":250_000,"output_tokens":0,"total_tokens":250_000}),
+		|_| serde_json::json!({"input_tokens":250_000,"output_tokens":0,"total_tokens":250_000}),
 		// An ordinary message is invalid output for remote compaction.
-		|serial| json!({"type":"message","role":"assistant","id":format!("reply-{serial}"),"content":[{"type":"output_text","text":"Not a compaction checkpoint"}]}),
+		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("reply-{serial}"),"content":[{"type":"output_text","text":"Not a compaction checkpoint"}]}),
 	));
 
 	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\nmodel_auto_compact_token_limit = 200000\ncli_auth_credentials_store = \"file\"\n[features]\nremote_compaction_v2 = false\nenable_request_compression = false\n[model_providers.fixture]\nname = \"OpenAI\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
@@ -138,13 +138,13 @@ async fn installed_native_preserves_prompt_before_compaction_error_and_after_res
 	const PROMPT: &str = "Keep this incoming prompt exactly once after compaction fails.";
 	time::timeout(Duration::from_secs(60), async {
 		let mut session = NativeSession::start(&binary, home.path());
-		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
+		let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
 		let thread = started["thread"]["id"].as_str().unwrap().to_owned();
 
 		start_turn(&session.client, &thread, "Build history for compaction.").await;
 		completed(&mut session, &thread).await;
 
-		let turn = session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":PROMPT}]})).await.unwrap();
+		let turn = session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":PROMPT}]})).await.unwrap();
 		let turn = turn["turn"]["id"].as_str().unwrap().to_owned();
 		let mut inputs = 0;
 		let mut errors = 0;
@@ -188,7 +188,7 @@ async fn installed_native_preserves_prompt_before_compaction_error_and_after_res
 
 async fn start_turn(client: &AppServerClient, thread: &str, text: &str) {
 	client
-		.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":text}]}))
+		.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":text}]}))
 		.await
 		.expect("native turn start");
 }
@@ -202,8 +202,10 @@ async fn completed(session: &mut NativeSession, thread: &str) -> Vec<(String, Va
 				if (method == "item/started" || method == "item/completed")
 					&& params["item"]["type"] == "contextCompaction"
 				{
-					compactions
-						.push((method.clone(), json!([params["turnId"], params["item"]["id"]])));
+					compactions.push((
+						method.clone(),
+						serde_json::json!([params["turnId"], params["item"]["id"]]),
+					));
 				}
 
 				assert_ne!(method, "error", "native failure: {params}");

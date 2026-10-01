@@ -3,17 +3,17 @@ use decodex_core::DecodexRoot;
 use decodex_protocol::NativeAgentsResult;
 
 fn child(thread: &str, parent: &str) -> Value {
-	json!({"thread":{"id":thread,"parentThreadId":parent,"source":{"subAgent":{"thread_spawn":{"parent_thread_id":parent}}},"canAcceptDirectInput":false}})
+	serde_json::json!({"thread":{"id":thread,"parentThreadId":parent,"source":{"subAgent":{"thread_spawn":{"parent_thread_id":parent}}},"canAcceptDirectInput":false}})
 }
 
 #[tokio::test]
 async fn native_child_reconnect_and_peer_resolution_require_exact_child_request() {
 	let (mut agent, mut sent, _directory) =
-		fixture_with_history(json!({"child":child("child","opaque thread/1")})).await;
+		fixture_with_history(serde_json::json!({"child":child("child","opaque thread/1")})).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
-	let params = json!({"threadId":"child","turnId":"child-turn","questions":[]});
+	let params = serde_json::json!({"threadId":"child","turnId":"child-turn","questions":[]});
 	let request = || ServerEvent::Request {
 		id: RequestId::Number(71),
 		method: "item/tool/requestUserInput".into(),
@@ -29,7 +29,9 @@ async fn native_child_reconnect_and_peer_resolution_require_exact_child_request(
 
 	while sent.try_recv().is_ok() {}
 
-	assert!(reconnected.respond_pending_event(old, json!({"answers":{}})).await.is_err());
+	assert!(
+		reconnected.respond_pending_event(old, serde_json::json!({"answers":{}})).await.is_err()
+	);
 	assert!(sent.try_recv().is_err());
 
 	reconnected.handle_event(request()).await.unwrap();
@@ -42,7 +44,7 @@ async fn native_child_reconnect_and_peer_resolution_require_exact_child_request(
 		reconnected
 			.handle_event(ServerEvent::Notification {
 				method: "serverRequest/resolved".into(),
-				params: json!({"threadId":thread,"requestId":71}),
+				params: serde_json::json!({"threadId":thread,"requestId":71}),
 			})
 			.await
 			.unwrap();
@@ -53,7 +55,9 @@ async fn native_child_reconnect_and_peer_resolution_require_exact_child_request(
 		);
 	}
 
-	assert!(reconnected.respond_pending_event(new, json!({"answers":{}})).await.is_err());
+	assert!(
+		reconnected.respond_pending_event(new, serde_json::json!({"answers":{}})).await.is_err()
+	);
 	assert_eq!(
 		agent.store.get_agent_inbox_event(new).await.unwrap().disposition,
 		Some(AgentDisposition::Resolved)
@@ -62,18 +66,16 @@ async fn native_child_reconnect_and_peer_resolution_require_exact_child_request(
 
 #[tokio::test]
 async fn nested_native_approval_keeps_child_identity_and_resolves_once() {
-	let history =
-		json!({"child":child("child","opaque thread/1"),"grandchild":child("grandchild","child")});
+	let history = serde_json::json!({"child":child("child","opaque thread/1"),"grandchild":child("grandchild","child")});
 	let (mut agent, _old_sent, directory) = fixture_with_history(history.clone()).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
-	let params =
-		json!({"threadId":"grandchild","turnId":"child-turn","itemId":"command","command":"pwd"});
+	let params = serde_json::json!({"threadId":"grandchild","turnId":"child-turn","itemId":"command","command":"pwd"});
 	let mut sent = attach_request_transport(
 		&mut agent,
 		history,
-		json!({"id":71,"method":"item/commandExecution/requestApproval","params":params}),
+		serde_json::json!({"id":71,"method":"item/commandExecution/requestApproval","params":params}),
 	)
 	.await;
 	let event_id = agent.pending_requests[&RequestId::Number(71)];
@@ -88,7 +90,7 @@ async fn nested_native_approval_keeps_child_identity_and_resolves_once() {
 
 	while sent.try_recv().is_ok() {}
 
-	agent.respond_pending_event(event_id, json!({"decision":"decline"})).await.unwrap();
+	agent.respond_pending_event(event_id, serde_json::json!({"decision":"decline"})).await.unwrap();
 
 	let mut replies = Vec::new();
 
@@ -100,8 +102,13 @@ async fn nested_native_approval_keeps_child_identity_and_resolves_once() {
 		}
 	}
 
-	assert_eq!(replies, vec![json!({"id":71,"result":{"decision":"decline"}})]);
-	assert!(agent.respond_pending_event(event_id, json!({"decision":"accept"})).await.is_err());
+	assert_eq!(replies, vec![serde_json::json!({"id":71,"result":{"decision":"decline"}})]);
+	assert!(
+		agent
+			.respond_pending_event(event_id, serde_json::json!({"decision":"accept"}))
+			.await
+			.is_err()
+	);
 
 	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 	let reopened = SqliteStore::open(&root.paths()).unwrap();
@@ -119,10 +126,11 @@ async fn unowned_fork_mismatched_readback_and_cyclic_children_do_not_gain_author
 		child("child", "unowned"),
 		child("other", "opaque thread/1"),
 		child("child", "child"),
-		json!({"thread":{"id":"child","parentThreadId":"opaque thread/1","source":"appServer"}}),
-		json!({"thread":{"id":"child","parentThreadId":"opaque thread/1","source":{"subAgent":{"thread_spawn":{"parent_thread_id":"different"}}}}}),
+		serde_json::json!({"thread":{"id":"child","parentThreadId":"opaque thread/1","source":"appServer"}}),
+		serde_json::json!({"thread":{"id":"child","parentThreadId":"opaque thread/1","source":{"subAgent":{"thread_spawn":{"parent_thread_id":"different"}}}}}),
 	] {
-		let (mut agent, mut sent, _directory) = fixture_with_history(json!({"child":native})).await;
+		let (mut agent, mut sent, _directory) =
+			fixture_with_history(serde_json::json!({"child":native})).await;
 
 		agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -133,7 +141,7 @@ async fn unowned_fork_mismatched_readback_and_cyclic_children_do_not_gain_author
 				.handle_event(ServerEvent::Request {
 					id: RequestId::Number(71),
 					method: "item/commandExecution/requestApproval".into(),
-					params: json!({"threadId":"child","turnId":"turn"})
+					params: serde_json::json!({"threadId":"child","turnId":"turn"})
 				})
 				.await
 				.is_err()
@@ -149,13 +157,13 @@ async fn unowned_fork_mismatched_readback_and_cyclic_children_do_not_gain_author
 #[tokio::test]
 async fn native_children_do_not_inherit_agent_management_tools() {
 	let (mut agent, mut sent, _directory) =
-		fixture_with_history(json!({"child":child("child","opaque thread/1")})).await;
+		fixture_with_history(serde_json::json!({"child":child("child","opaque thread/1")})).await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 
 	while sent.try_recv().is_ok() {}
 
-	agent.handle_event(ServerEvent::Request {id:RequestId::Number(71),method:"item/tool/call".into(),params:json!({"threadId":"child","turnId":"opaque turn/1","tool":"agent_create_work","arguments":{"id":"forbidden","prompt":"execute"}})}).await.unwrap();
+	agent.handle_event(ServerEvent::Request {id:RequestId::Number(71),method:"item/tool/call".into(),params:serde_json::json!({"threadId":"child","turnId":"opaque turn/1","tool":"agent_create_work","arguments":{"id":"forbidden","prompt":"execute"}})}).await.unwrap();
 
 	assert!(agent.pending_requests.is_empty());
 	assert!(agent.store.get_agent_work_item("forbidden".into()).await.is_err());
@@ -180,10 +188,12 @@ async fn native_children_do_not_inherit_agent_management_tools() {
 async fn native_agent_inspection_requires_exact_ancestry_and_never_starts_work() {
 	let mut native = child("child", "opaque thread/1");
 
-	native["thread"]["turns"] = json!([]);
+	native["thread"]["turns"] = serde_json::json!([]);
 
-	let (mut agent, mut sent, _directory) =
-		fixture_with_history(json!({"child":native,"foreign":child("foreign","unrelated")})).await;
+	let (mut agent, mut sent, _directory) = fixture_with_history(
+		serde_json::json!({"child":native,"foreign":child("foreign","unrelated")}),
+	)
+	.await;
 
 	agent.start_agent("agent", "Coordinate").await.unwrap();
 

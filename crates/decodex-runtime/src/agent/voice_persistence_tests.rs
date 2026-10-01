@@ -18,7 +18,7 @@ async fn disconnected_voice_preserves_received_tail_without_replay() {
 
 	agent.voice_event(&ServerEvent::Notification {
 		method: "thread/realtime/transcript/delta".into(),
-		params: json!({"threadId":"opaque thread/1","role":"user","delta":"Received before disconnect."}),
+		params: serde_json::json!({"threadId":"opaque thread/1","role":"user","delta":"Received before disconnect."}),
 	}).await.expect("received delta");
 	agent
 		.voice_event(&ServerEvent::Closed(ClientError::Closed))
@@ -56,7 +56,7 @@ async fn disconnected_voice_preserves_received_tail_without_replay() {
 }
 
 async fn fixture() -> (AgentCoordinator, UnboundedReceiver<Value>, TempDir, rusqlite::Connection) {
-	fixture_with_history(json!({})).await
+	fixture_with_history(serde_json::json!({})).await
 }
 
 async fn fixture_with_history(
@@ -105,7 +105,7 @@ async fn failed_transcript_write_preserves_text_sequence_and_finality_until_save
 		agent
 			.voice_event(&ServerEvent::Notification {
 				method: "thread/realtime/transcript/delta".into(),
-				params: json!({"threadId":"opaque thread/1","role":"user","delta":"Provisional words."}),
+				params: serde_json::json!({"threadId":"opaque thread/1","role":"user","delta":"Provisional words."}),
 			})
 			.await
 			.expect("received words");
@@ -113,11 +113,11 @@ async fn failed_transcript_write_preserves_text_sequence_and_finality_until_save
 
 		let closed = ServerEvent::Notification {
 			method: "thread/realtime/closed".into(),
-			params: json!({"threadId":"opaque thread/1"}),
+			params: serde_json::json!({"threadId":"opaque thread/1"}),
 		};
 		let completion = ServerEvent::Notification {
 			method: "thread/realtime/transcript/done".into(),
-			params: json!({"threadId":"opaque thread/1","role":"user","text":"Corrected final words."}),
+			params: serde_json::json!({"threadId":"opaque thread/1","role":"user","text":"Corrected final words."}),
 		};
 
 		assert!(agent.voice_event(if finalized { &completion } else { &closed }).await.is_err());
@@ -163,7 +163,7 @@ async fn long_voice_transcripts_keep_utf8_suffix_and_never_claim_truncated_final
 			agent
 				.voice_event(&ServerEvent::Notification {
 					method: "thread/realtime/transcript/done".into(),
-					params: json!({"threadId":"opaque thread/1","role":"user","text":prefix.clone()+suffix}),
+					params: serde_json::json!({"threadId":"opaque thread/1","role":"user","text":prefix.clone()+suffix}),
 				})
 				.await
 				.expect("bounded final transcript");
@@ -172,7 +172,7 @@ async fn long_voice_transcripts_keep_utf8_suffix_and_never_claim_truncated_final
 				agent
 					.voice_event(&ServerEvent::Notification {
 						method: "thread/realtime/transcript/delta".into(),
-						params: json!({"threadId":"opaque thread/1","role":"user","delta":text}),
+						params: serde_json::json!({"threadId":"opaque thread/1","role":"user","delta":text}),
 					})
 					.await
 					.expect("bounded delta");
@@ -208,7 +208,7 @@ async fn precaution_stop_preserves_text_before_retiring_the_call() {
 
 	agent.voice_event(&ServerEvent::Notification {
 		method: "thread/realtime/transcript/delta".into(),
-		params: json!({"threadId":"opaque thread/1","role":"user","delta":"Received before native precaution."}),
+		params: serde_json::json!({"threadId":"opaque thread/1","role":"user","delta":"Received before native precaution."}),
 	}).await.expect("received delta");
 	agent.stop_voice_for_precaution("opaque thread/1").await.expect("native stop acknowledged");
 
@@ -254,7 +254,7 @@ async fn precaution_storage_failure_does_not_prevent_native_stop() {
 	agent
 		.voice_event(&ServerEvent::Notification {
 			method: "thread/realtime/closed".into(),
-			params: json!({"threadId":"opaque thread/1"}),
+			params: serde_json::json!({"threadId":"opaque thread/1"}),
 		})
 		.await
 		.expect("native closure saves retained text");
@@ -302,7 +302,7 @@ async fn voice_start_rejects_independent_manager_before_native_requests() {
 #[tokio::test]
 async fn cold_voice_recovery_keeps_original_generation_and_never_replays_input() {
 	for same_generation_first in [false, true] {
-		let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[
+		let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[
 		{"id":"before-call","status":"completed","items":[]},
 		{"id":"opaque turn/1","status":"completed","items":[]},
 		{"id":"spoken-turn","status":"completed","items":[
@@ -394,13 +394,13 @@ async fn delayed_or_empty_voice_final_preserves_newer_received_text() {
 			for (method, params) in [
 				(
 					"thread/realtime/transcript/delta",
-					json!({"threadId":"opaque thread/1","role":role,"delta":delta}),
+					serde_json::json!({"threadId":"opaque thread/1","role":role,"delta":delta}),
 				),
 				(
 					"thread/realtime/transcript/done",
-					json!({"threadId":"opaque thread/1","role":role,"text":final_text}),
+					serde_json::json!({"threadId":"opaque thread/1","role":role,"text":final_text}),
 				),
-				("thread/realtime/closed", json!({"threadId":"opaque thread/1"})),
+				("thread/realtime/closed", serde_json::json!({"threadId":"opaque thread/1"})),
 			] {
 				agent
 					.voice_event(&ServerEvent::Notification { method: method.into(), params })

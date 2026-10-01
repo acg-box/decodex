@@ -99,7 +99,8 @@ async fn local_question_refusal_releases_only_the_exact_pending_answer() {
 			source_event_id: "reply".into(),
 			work_item_id: "agent".into(),
 			event_kind: "async_question_answer".into(),
-			payload: json!({"text":"My answer","asyncQuestionId":"question"}).to_string(),
+			payload: serde_json::json!({"text":"My answer","asyncQuestionId":"question"})
+				.to_string(),
 		})
 		.await
 		.unwrap();

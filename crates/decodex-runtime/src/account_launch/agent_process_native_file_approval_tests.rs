@@ -34,12 +34,12 @@ async fn installed_native_file_approval_saves_live_diff_before_history_and_decli
 		calls.clone(),
 		None,
 		None,
-		Some(json!({"input_tokens":0,"output_tokens":0,"total_tokens":0})),
+		Some(serde_json::json!({"input_tokens":0,"output_tokens":0,"total_tokens":0})),
 		move |serial| {
 			if serial == 0 {
-				json!({"type":"custom_tool_call","name":"apply_patch","call_id":"native-patch","input":patch})
+				serde_json::json!({"type":"custom_tool_call","name":"apply_patch","call_id":"native-patch","input":patch})
 			} else {
-				json!({"type":"message","id":"done","role":"assistant","content":[{"type":"output_text","text":"Done"}]})
+				serde_json::json!({"type":"message","id":"done","role":"assistant","content":[{"type":"output_text","text":"Done"}]})
 			}
 		},
 	));
@@ -89,13 +89,13 @@ async fn installed_native_file_approval_saves_live_diff_before_history_and_decli
 
 				assert!(diff.len() > 90_000 && diff.contains("REQUIRED FILE SUFFIX"));
 
-				let history = session.client.thread_read(json!({"threadId":params["threadId"],"includeTurns":true})).await.unwrap();
+				let history = session.client.thread_read(serde_json::json!({"threadId":params["threadId"],"includeTurns":true})).await.unwrap();
 
 				assert!(!history.to_string().contains("REQUIRED FILE SUFFIX"), "qualify live evidence rather than history fallback");
 
-				agent.respond_pending_event(event.id, json!({"decision":"decline"})).await.unwrap();
+				agent.respond_pending_event(event.id, serde_json::json!({"decision":"decline"})).await.unwrap();
 
-				assert!(agent.respond_pending_event(event.id, json!({"decision":"accept"})).await.is_err());
+				assert!(agent.respond_pending_event(event.id, serde_json::json!({"decision":"accept"})).await.is_err());
 
 				approved_event = Some(event.id);
 			}

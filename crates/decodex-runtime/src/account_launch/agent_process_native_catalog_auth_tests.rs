@@ -44,7 +44,7 @@ impl AuthSession {
 			child.stdin.take().expect("stdin"),
 		);
 
-		client.initialize(json!({"clientInfo":{"name":"decodex_catalog_auth_fixture","version":"0.1"},"capabilities":{"experimentalApi":true}})).await.expect("initialize");
+		client.initialize(serde_json::json!({"clientInfo":{"name":"decodex_catalog_auth_fixture","version":"0.1"},"capabilities":{"experimentalApi":true}})).await.expect("initialize");
 
 		Self { client, events, child }
 	}
@@ -52,7 +52,7 @@ impl AuthSession {
 
 fn token(account: &str, serial: u8) -> String {
 	let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none","typ":"JWT"}"#);
-	let claims = json!({"email":"fixture@example.invalid","serial":serial,"https://api.openai.com/auth":{"chatgpt_user_id":"fixture-user","chatgpt_account_id":account,"chatgpt_plan_type":"pro"}});
+	let claims = serde_json::json!({"email":"fixture@example.invalid","serial":serial,"https://api.openai.com/auth":{"chatgpt_user_id":"fixture-user","chatgpt_account_id":account,"chatgpt_plan_type":"pro"}});
 
 	format!(
 		"{header}.{}.c2lnbmF0dXJl",
@@ -77,24 +77,24 @@ fn response(
 	if target.starts_with("/models?") {
 		assert!(matches!(account, FIRST | SECOND));
 
-		calls.lock().expect("calls").push(json!({"kind":"catalog","account":account}));
+		calls.lock().expect("calls").push(serde_json::json!({"kind":"catalog","account":account}));
 
 		let mut model = effort::fixture_model("catalog-auth-model", "high");
 
-		model["model_messages"]["instructions_template"] = json!(instructions(account));
-		model["context_window"] = json!(context_window(account));
-		model["max_context_window"] = json!(context_window(account));
-		model["effective_context_window_percent"] = json!(100);
+		model["model_messages"]["instructions_template"] = serde_json::json!(instructions(account));
+		model["context_window"] = serde_json::json!(context_window(account));
+		model["max_context_window"] = serde_json::json!(context_window(account));
+		model["effective_context_window_percent"] = serde_json::json!(100);
 
-		("application/json", json!({"models":[model]}).to_string())
+		("application/json", serde_json::json!({"models":[model]}).to_string())
 	} else if target == "/responses" {
 		calls.lock().expect("calls").push(
-			json!({"kind":"inference","account":account,"instructions":body["instructions"]}),
+			serde_json::json!({"kind":"inference","account":account,"instructions":body["instructions"]}),
 		);
 
 		let frames = [
-			json!({"type":"response.created","response":{"id":"fixture"}}),
-			json!({"type":"response.completed","response":{"id":"fixture","usage":{"input_tokens":1,"output_tokens":0,"total_tokens":1}}}),
+			serde_json::json!({"type":"response.created","response":{"id":"fixture"}}),
+			serde_json::json!({"type":"response.completed","response":{"id":"fixture","usage":{"input_tokens":1,"output_tokens":0,"total_tokens":1}}}),
 		];
 
 		(
@@ -105,9 +105,9 @@ fn response(
 				.collect(),
 		)
 	} else if target.contains("/accounts/check") {
-		("application/json",json!({"accounts":[{"id":account,"workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"}]}).to_string())
+		("application/json",serde_json::json!({"accounts":[{"id":account,"workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"}]}).to_string())
 	} else if target.contains("/settings/user") {
-		("application/json", json!({"commit_attribution_enabled":false}).to_string())
+		("application/json", serde_json::json!({"commit_attribution_enabled":false}).to_string())
 	} else {
 		panic!("unexpected native fixture route: {target}")
 	}
@@ -133,7 +133,7 @@ async fn qualify() {
 
 	login(&session, FIRST, 1).await;
 
-	let started = session.client.thread_start(json!({"cwd":home.path(),"model":"catalog-auth-model","approvalPolicy":"never","sandbox":"read-only"})).await.expect("thread");
+	let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"model":"catalog-auth-model","approvalPolicy":"never","sandbox":"read-only"})).await.expect("thread");
 	let thread = started["thread"]["id"].as_str().expect("thread id");
 
 	assert_eq!(run_turn(&mut session, thread).await, context_window(FIRST));
@@ -197,7 +197,7 @@ async fn qualify() {
 }
 
 async fn login(session: &AuthSession, account: &str, serial: u8) {
-	session.client.request("account/login/start",json!({"type":"chatgptAuthTokens","accessToken":token(account,serial),"chatgptAccountId":account,"chatgptPlanType":"pro"})).await.expect("synthetic login");
+	session.client.request("account/login/start",serde_json::json!({"type":"chatgptAuthTokens","accessToken":token(account,serial),"chatgptAccountId":account,"chatgptPlanType":"pro"})).await.expect("synthetic login");
 }
 
 async fn run_turn(session: &mut AuthSession, thread: &str) -> u64 {
@@ -206,7 +206,7 @@ async fn run_turn(session: &mut AuthSession, thread: &str) -> u64 {
 	session
 		.client
 		.turn_start(
-			json!({"threadId":thread,"input":[{"type":"text","text":"Return fixture result"}]}),
+			serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Return fixture result"}]}),
 		)
 		.await
 		.expect("turn");
@@ -318,21 +318,21 @@ async fn installed_login_policy_reports_and_enforces_running_restrictions() {
             fs::write(&config,format!("forced_login_method=\"{method}\"\nchatgpt_base_url=\"http://{address}/backend-api\"\nmodel_provider=\"fixture\"\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nrequires_openai_auth=true\nsupports_websockets=false\n")).expect("config");
 
             let mut session = AuthSession::start(&binary,home.path()).await;
-            let before = session.client.request("configRequirements/read",json!({})).await.expect("requirements");
+            let before = session.client.request("configRequirements/read",serde_json::json!({})).await.expect("requirements");
 
-            assert_eq!(before["requirements"]["allowedLoginMethods"],json!([method]));
+            assert_eq!(before["requirements"]["allowedLoginMethods"],serde_json::json!([method]));
             // Changing disk config cannot rewrite the running authentication manager's policy.
             let changed = fs::read_to_string(&config).expect("config").replace(&format!("forced_login_method=\"{method}\""),"");
 
             fs::write(&config,changed).expect("changed config");
 
-            let after = session.client.request("configRequirements/read",json!({})).await.expect("running requirements");
+            let after = session.client.request("configRequirements/read",serde_json::json!({})).await.expect("running requirements");
 
-            assert_eq!(after["requirements"]["allowedLoginMethods"],json!([method]));
+            assert_eq!(after["requirements"]["allowedLoginMethods"],serde_json::json!([method]));
 
             let prohibited = if method=="api" {
-                json!({"type":"chatgptAuthTokens","accessToken":token(FIRST,1),"chatgptAccountId":FIRST,"chatgptPlanType":"pro"})
-            } else { json!({"type":"apiKey","apiKey":"synthetic-prohibited-key"}) };
+                serde_json::json!({"type":"chatgptAuthTokens","accessToken":token(FIRST,1),"chatgptAccountId":FIRST,"chatgptPlanType":"pro"})
+            } else { serde_json::json!({"type":"apiKey","apiKey":"synthetic-prohibited-key"}) };
 
             assert!(matches!(session.client.request("account/login/start",prohibited).await,Err(decodex_codex::app_server_client::ClientError::Remote(_))));
             assert!(calls.lock().expect("calls").is_empty(),"prohibited login must not fetch models or start inference");

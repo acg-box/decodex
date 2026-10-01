@@ -71,11 +71,11 @@ async fn native_active_goal_on_unloaded_thread_resumes_without_local_turn_submis
    assert_eq!(work.dispatch_state, decodex_database::AgentDispatchState::Idle);
 
    if phase < 2 {
-    agent.client.request("thread/goal/set", json!({"threadId":thread,"objective":"Persisted cold goal","status":if phase == 1 {"active"} else {"paused"},"tokenBudget":1})).await.unwrap();
+    agent.client.request("thread/goal/set", serde_json::json!({"threadId":thread,"objective":"Persisted cold goal","status":if phase == 1 {"active"} else {"paused"},"tokenBudget":1})).await.unwrap();
 
     assert_eq!(calls.load(Ordering::Acquire), 1);
    } else {
-    assert_eq!(agent.client.request("thread/goal/get",json!({"threadId":thread})).await.unwrap()["goal"]["status"],"active");
+    assert_eq!(agent.client.request("thread/goal/get",serde_json::json!({"threadId":thread})).await.unwrap()["goal"]["status"],"active");
     assert_eq!(calls.load(Ordering::Acquire), 1);
 
     agent.recover_persisted().await.unwrap();
@@ -124,25 +124,26 @@ async fn finish(agent: &mut AgentCoordinator, events: &mut Receiver<ServerEvent>
 #[tokio::test]
 async fn goal_recovery_hydrates_only_exact_active_unloaded_thread() {
 	for goal in [
-		json!({"threadId":"opaque thread/1","status":"active"}),
-		json!({"threadId":"opaque thread/1","status":"paused"}),
-		json!({"threadId":"opaque thread/1","status":"blocked"}),
-		json!({"threadId":"opaque thread/1","status":"budgetLimited"}),
-		json!({"threadId":"opaque thread/1","status":"usageLimited"}),
-		json!({"threadId":"opaque thread/1","status":"complete"}),
-		json!({"threadId":"foreign","status":"active"}),
+		serde_json::json!({"threadId":"opaque thread/1","status":"active"}),
+		serde_json::json!({"threadId":"opaque thread/1","status":"paused"}),
+		serde_json::json!({"threadId":"opaque thread/1","status":"blocked"}),
+		serde_json::json!({"threadId":"opaque thread/1","status":"budgetLimited"}),
+		serde_json::json!({"threadId":"opaque thread/1","status":"usageLimited"}),
+		serde_json::json!({"threadId":"opaque thread/1","status":"complete"}),
+		serde_json::json!({"threadId":"foreign","status":"active"}),
 		Value::Null,
 	] {
 		let mut goal = goal;
 
 		if let Some(object) = goal.as_object_mut() {
-			for (key, value) in json!({"objective":"Fixture goal","tokenBudget":null,"tokensUsed":0,"timeUsedSeconds":0,"createdAt":1,"updatedAt":1}).as_object().unwrap() {
+			for (key, value) in serde_json::json!({"objective":"Fixture goal","tokenBudget":null,"tokensUsed":0,"timeUsedSeconds":0,"createdAt":1,"updatedAt":1}).as_object().unwrap() {
                 object.insert(key.clone(), value.clone());
             }
 		}
 
 		let expected = goal["threadId"] == "opaque thread/1" && goal["status"] == "active";
-		let (mut agent, mut sent, _home) = fixture_with_history(json!({"_goal":goal})).await;
+		let (mut agent, mut sent, _home) =
+			fixture_with_history(serde_json::json!({"_goal":goal})).await;
 
 		agent.start_agent("agent", "Initial input").await.unwrap();
 
@@ -168,7 +169,7 @@ async fn goal_recovery_hydrates_only_exact_active_unloaded_thread() {
 
 				assert_eq!(
 					request["params"],
-					json!({"threadId":"opaque thread/1","excludeTurns":true,"experimentalRawEvents":true})
+					serde_json::json!({"threadId":"opaque thread/1","excludeTurns":true,"experimentalRawEvents":true})
 				);
 			}
 		}
@@ -184,9 +185,9 @@ async fn goal_recovery_hydrates_only_exact_active_unloaded_thread() {
 
 #[tokio::test]
 async fn native_goal_capacity_failure_does_not_create_a_local_retry() {
-	let failure = json!({"id":"native-turn","status":"failed","error":{"message":"Capacity unavailable","codexErrorInfo":"serverOverloaded"},"items":[]});
+	let failure = serde_json::json!({"id":"native-turn","status":"failed","error":{"message":"Capacity unavailable","codexErrorInfo":"serverOverloaded"},"items":[]});
 	let (mut agent, mut sent, _home) = fixture_with_history(
-		json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[failure]}}}),
+		serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[failure]}}}),
 	)
 	.await;
 
@@ -199,14 +200,14 @@ async fn native_goal_capacity_failure_does_not_create_a_local_retry() {
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "turn/started".into(),
-			params: json!({"threadId":"opaque thread/1","turn":{"id":"native-turn","status":"inProgress"}}),
+			params: serde_json::json!({"threadId":"opaque thread/1","turn":{"id":"native-turn","status":"inProgress"}}),
 		})
 		.await
 		.unwrap();
 	agent
 		.handle_event(ServerEvent::Notification {
 			method: "turn/completed".into(),
-			params: json!({"threadId":"opaque thread/1","turn":failure}),
+			params: serde_json::json!({"threadId":"opaque thread/1","turn":failure}),
 		})
 		.await
 		.unwrap();

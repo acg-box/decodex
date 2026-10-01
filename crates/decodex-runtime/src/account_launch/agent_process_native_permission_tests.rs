@@ -41,7 +41,7 @@ async fn qualify(running: bool) {
 		backend = Some(tokio::spawn(serve(listener.take().expect("listener"), calls.clone())));
 	}
 
-	fs::write(root.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\napprovals_reviewer=\"user\"\n[model_providers.fixture]\nname=\"Isolated permission fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[permissions.scoped.filesystem]\n\":root\"=\"read\"\n{}=\"write\"\n{}=\"deny\"\n",json!(workspace.join("writable")),json!(workspace.join("writable/private")))).expect("fixture config");
+	fs::write(root.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\napprovals_reviewer=\"user\"\n[model_providers.fixture]\nname=\"Isolated permission fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[permissions.scoped.filesystem]\n\":root\"=\"read\"\n{}=\"write\"\n{}=\"deny\"\n",serde_json::json!(workspace.join("writable")),serde_json::json!(workspace.join("writable/private")))).expect("fixture config");
 
 	let mut session = NativeSession::start(&binary, &root);
 	let profiles = session
@@ -53,7 +53,7 @@ async fn qualify(running: bool) {
 	assert!(profiles.iter().any(|p| p.id == "scoped" && p.allowed));
 	assert!(profiles.iter().any(|p| p.id == ":read-only" && p.allowed));
 
-	let started=session.client.thread_start(json!({"cwd":workspace,"permissions":":read-only","approvalPolicy":"on-request","approvalsReviewer":"user"})).await.expect("native thread");
+	let started=session.client.thread_start(serde_json::json!({"cwd":workspace,"permissions":":read-only","approvalPolicy":"on-request","approvalsReviewer":"user"})).await.expect("native thread");
 	let thread = started["thread"]["id"].as_str().expect("thread").to_owned();
 	let initial =
 		NativeTaskPermissions::from_thread_response(&started).expect("initial permission facts");
@@ -164,7 +164,7 @@ async fn start_turn(session: &mut NativeSession, thread: &str) {
 	session
 		.client
 		.turn_start(
-			json!({"threadId":thread,"input":[{"type":"text","text":"Return a fixture answer"}]}),
+			serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Return a fixture answer"}]}),
 		)
 		.await
 		.expect("initial fixture turn");
@@ -195,7 +195,7 @@ async fn verify_restart(
 	let reopened = NativeSession::start(binary, root);
 	let resumed = reopened
 		.client
-		.thread_resume(json!({"threadId":thread,"excludeTurns":true}))
+		.thread_resume(serde_json::json!({"threadId":thread,"excludeTurns":true}))
 		.await
 		.expect("resume exact thread without defaults");
 

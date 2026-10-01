@@ -8,16 +8,19 @@ fn latest_eight_answered_exchanges_and_pending_correction_exclude_tool_and_reaso
 
 	for n in 0..10 {
 		items.push(
-			json!({"type":"userMessage","content":[{"type":"text","text":format!("question-{n}")}]}),
+			serde_json::json!({"type":"userMessage","content":[{"type":"text","text":format!("question-{n}")}]}),
 		);
-		items.push(json!({"type":"functionCallOutput","text":"PRIVATE_TOOL"}));
-		items.push(json!({"type":"reasoning","text":"PRIVATE_REASONING"}));
-		items.push(json!({"type":"agentMessage","text":format!("answer-{n}")}));
+		items.push(serde_json::json!({"type":"functionCallOutput","text":"PRIVATE_TOOL"}));
+		items.push(serde_json::json!({"type":"reasoning","text":"PRIVATE_REASONING"}));
+		items.push(serde_json::json!({"type":"agentMessage","text":format!("answer-{n}")}));
 	}
 
-	items
-		.push(json!({"type":"userMessage","content":[{"type":"text","text":"latest correction"}]}));
-	items.push(json!({"type":"userMessage","content":[{"type":"text","text":"steer detail"}]}));
+	items.push(
+		serde_json::json!({"type":"userMessage","content":[{"type":"text","text":"latest correction"}]}),
+	);
+	items.push(
+		serde_json::json!({"type":"userMessage","content":[{"type":"text","text":"steer detail"}]}),
+	);
 
 	let mut messages = visible(&items).expect("visible fixture");
 
@@ -67,13 +70,12 @@ fn unicode_excerpt_keeps_answer_and_latest_correction_ends_within_full_prompt_bu
 
 #[test]
 fn media_is_described_without_payloads_and_internal_voice_handoff_is_not_summarized() {
-	let image =
-		json!({"type":"userMessage","content":[{"type":"image","url":"data:PRIVATE_IMAGE"}]});
+	let image = serde_json::json!({"type":"userMessage","content":[{"type":"image","url":"data:PRIVATE_IMAGE"}]});
 	let projected = visible(&[image]).expect("visible media placeholder");
 
 	assert_eq!(projected[0].text, "[Image attachment]");
 
-	let handoff = json!({"type":"userMessage","content":[{"type":"text","text":"<realtime_delegation><input>PRIVATE_INTERNAL_HANDOFF</input></realtime_delegation>","textElements":[]}]});
+	let handoff = serde_json::json!({"type":"userMessage","content":[{"type":"text","text":"<realtime_delegation><input>PRIVATE_INTERNAL_HANDOFF</input></realtime_delegation>","textElements":[]}]});
 
 	assert!(visible(&[handoff]).is_err());
 }
@@ -81,12 +83,12 @@ fn media_is_described_without_payloads_and_internal_voice_handoff_is_not_summari
 #[test]
 fn voice_history_skips_internal_handoff_but_keeps_native_task_output_and_anchor() {
 	let mut recent = Recent { voice: true, ..Default::default() };
-	let items = json!([
+	let items = serde_json::json!([
 	 {"type":"userMessage","content":[{"type":"text","text":"<realtime_delegation><input>PRIVATE_INTERNAL_HANDOFF</input></realtime_delegation>"}]},
 	 {"type":"agentMessage","text":"The task was tested, not installed."}
 	]);
 
-	recent.push(&json!({"id":"native-output","status":"completed"}), &items).unwrap();
+	recent.push(&serde_json::json!({"id":"native-output","status":"completed"}), &items).unwrap();
 
 	let history = recent.finish().unwrap();
 	let rendered = excerpts::render(&history.exchanges);
@@ -108,19 +110,22 @@ async fn native_turn_and_item_pages_are_joined_without_model_requests() {
 		let (read, mut write) = io::split(remote);
 		let mut lines = BufReader::new(read).lines();
 		let replies = [
-			("thread/read", json!({"thread":{"id":"source","historyMode":"paginated"}})),
-			("thread/turns/list", json!({"data":[],"nextCursor":"older"})),
+			(
+				"thread/read",
+				serde_json::json!({"thread":{"id":"source","historyMode":"paginated"}}),
+			),
+			("thread/turns/list", serde_json::json!({"data":[],"nextCursor":"older"})),
 			(
 				"thread/turns/list",
-				json!({"data":[{"id":"turn","status":"completed"}],"nextCursor":null}),
+				serde_json::json!({"data":[{"id":"turn","status":"completed"}],"nextCursor":null}),
 			),
 			(
 				"thread/items/list",
-				json!({"data":[{"turnId":"turn","item":{"id":"user","type":"userMessage","content":[{"type":"text","text":"Keep the current goal"}]}}],"nextCursor":"more"}),
+				serde_json::json!({"data":[{"turnId":"turn","item":{"id":"user","type":"userMessage","content":[{"type":"text","text":"Keep the current goal"}]}}],"nextCursor":"more"}),
 			),
 			(
 				"thread/items/list",
-				json!({"data":[{"turnId":"turn","item":{"id":"answer","type":"agentMessage","text":"Tested; not deployed"}}],"nextCursor":null}),
+				serde_json::json!({"data":[{"turnId":"turn","item":{"id":"answer","type":"agentMessage","text":"Tested; not deployed"}}],"nextCursor":null}),
 			),
 		];
 
@@ -140,7 +145,10 @@ async fn native_turn_and_item_pages_are_joined_without_model_requests() {
 			}
 
 			write
-				.write_all(format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes())
+				.write_all(
+					format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
+						.as_bytes(),
+				)
 				.await
 				.expect("reply");
 		}

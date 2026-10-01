@@ -33,14 +33,14 @@ async fn installed_capacity_retry_retains_selected_model_after_process_and_store
 		|n| {
 			if n == 0 {
 				return vec![
-					json!({"type":"response.failed","response":{"id":"overload","error":{"code":"server_is_overloaded","message":"Selected model is at capacity."}}}),
+					serde_json::json!({"type":"response.failed","response":{"id":"overload","error":{"code":"server_is_overloaded","message":"Selected model is at capacity."}}}),
 				];
 			}
 
 			vec![
-				json!({"type":"response.created","response":{"id":"recovered"}}),
-				json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":"Done."}]}}),
-				json!({"type":"response.completed","response":{"id":"recovered","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}),
+				serde_json::json!({"type":"response.created","response":{"id":"recovered"}}),
+				serde_json::json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":"Done."}]}}),
+				serde_json::json!({"type":"response.completed","response":{"id":"recovered","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}),
 			]
 		},
 	));
@@ -58,7 +58,7 @@ async fn installed_capacity_retry_retains_selected_model_after_process_and_store
 		.await
 		.expect("reserve root");
 
-	store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:"capacity-user-input".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),payload:json!({"text":"capacity-fixture-input","options":{"execution":{"model":"gpt-5.6-terra","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string()}).await.expect("selected input");
+	store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:"capacity-user-input".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),payload:serde_json::json!({"text":"capacity-fixture-input","options":{"execution":{"model":"gpt-5.6-terra","reasoning_effort":"medium","fast":false},"attachments":[]}}).to_string()}).await.expect("selected input");
 
 	time::timeout(Duration::from_secs(30), async {
 		agent.wake_pending().await.expect("selected turn");
@@ -131,7 +131,7 @@ async fn effort_only_followup(
 	events: &mut Receiver<ServerEvent>,
 	bodies: &std::sync::Mutex<Vec<Value>>,
 ) {
-	store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:"effort-only-after-recovery".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),payload:json!({"text":"next-fixture-input","options":{"execution":{"reasoning_effort":"low"},"attachments":[]}}).to_string()}).await.expect("partial user choice");
+	store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:"effort-only-after-recovery".into(),work_item_id:"agent".into(),event_kind:"user_message".into(),payload:serde_json::json!({"text":"next-fixture-input","options":{"execution":{"reasoning_effort":"low"},"attachments":[]}}).to_string()}).await.expect("partial user choice");
 
 	time::timeout(Duration::from_secs(30), async {
 		agent.wake_pending().await.expect("partial selection dispatch");
@@ -206,7 +206,7 @@ async fn native_error_classification(code: &'static str, expected: &str, request
 		None,
 		move |_| {
 			vec![
-				json!({"type":"response.failed","response":{"id":"limited","error":{"code":code,"message":"Please try again in 0.01s."}}}),
+				serde_json::json!({"type":"response.failed","response":{"id":"limited","error":{"code":code,"message":"Please try again in 0.01s."}}}),
 			]
 		},
 	));
@@ -227,7 +227,7 @@ async fn native_error_classification(code: &'static str, expected: &str, request
 			source_event_id: "input".into(),
 			work_item_id: "agent".into(),
 			event_kind: "user_message".into(),
-			payload: json!({"text":"Return fixture answer."}).to_string(),
+			payload: serde_json::json!({"text":"Return fixture answer."}).to_string(),
 		})
 		.await
 		.expect("input");

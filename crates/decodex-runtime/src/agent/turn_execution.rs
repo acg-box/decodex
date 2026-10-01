@@ -1,5 +1,5 @@
 //! Retain the requested selection, rather than substituting startup defaults on retry.
-use crate::agent::{self, AgentCoordinator, AgentError, ClientError, HistoryGuard, Value};
+use crate::agent::{AgentCoordinator, AgentError, ClientError, HistoryGuard, Value};
 use decodex_database::{AgentTurnExecution, AgentWorkItem};
 
 impl AgentCoordinator {
@@ -21,12 +21,12 @@ impl AgentCoordinator {
 			if params.get("model").is_none() {
 				let Some(model) = settings.model else { return Ok(None) };
 
-				params["model"] = agent::json!(model);
+				params["model"] = serde_json::json!(model);
 			}
 			if params.get("effort").is_none()
 				&& let Some(effort) = settings.reasoning_effort
 			{
-				params["effort"] = agent::json!(effort);
+				params["effort"] = serde_json::json!(effort);
 			}
 		}
 		if !guard.is_live() {

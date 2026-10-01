@@ -2,7 +2,7 @@
 use std::{fs::OpenOptions, future::Future, io::Read, path::Path, time::Duration};
 
 use base64::{Engine, engine::general_purpose::STANDARD};
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tokio::{task, time};
 
@@ -263,7 +263,7 @@ fn chunk(key: &SourceKey, request: &AgentMediaRequest, mime: String, bytes: Vec<
 	let mut hash = Sha256::new();
 	// Structured fields bind every source transition and the exact native attachment.
 	hash.update(
-		serde_json::to_vec(&json!([
+		serde_json::to_vec(&serde_json::json!([
 			key.generation.as_str(),
 			key.account.as_str(),
 			key.revision,

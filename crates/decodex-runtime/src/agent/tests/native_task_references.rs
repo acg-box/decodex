@@ -81,7 +81,7 @@ fn response_item(body: &Value, serial: usize, witness: &Mutex<bool>) -> Value {
 			.expect("native prompt lost typed references");
 		let references: Value = serde_json::from_str(metadata.lines().next().unwrap()).unwrap();
 
-		return json!({"type":"function_call","id":"call-reference","call_id":"read-reference","name":"agent_read_work","arguments":json!({"id":references[0]["workId"],"threadId":references[0]["threadId"]}).to_string()});
+		return serde_json::json!({"type":"function_call","id":"call-reference","call_id":"read-reference","name":"agent_read_work","arguments":serde_json::json!({"id":references[0]["workId"],"threadId":references[0]["threadId"]}).to_string()});
 	}
 
 	message(
@@ -95,7 +95,7 @@ fn response_item(body: &Value, serial: usize, witness: &Mutex<bool>) -> Value {
 }
 
 fn message(serial: usize, text: &str) -> Value {
-	json!({"type":"message","role":"assistant","id":format!("message-{serial}"),"content":[{"type":"output_text","text":text}]})
+	serde_json::json!({"type":"message","role":"assistant","id":format!("message-{serial}"),"content":[{"type":"output_text","text":text}]})
 }
 
 #[tokio::test]
@@ -118,9 +118,9 @@ async fn native_task_reference_round_trip() {
 			let item = response_item(&body, serial, &witness);
 			let id = format!("response-{serial}");
 			let frames = [
-				json!({"type":"response.created","response":{"id":id}}),
-				json!({"type":"response.output_item.done","item":item}),
-				json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
+				serde_json::json!({"type":"response.created","response":{"id":id}}),
+				serde_json::json!({"type":"response.output_item.done","item":item}),
+				serde_json::json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
 			];
 			let body = frames
 				.iter()
@@ -159,7 +159,7 @@ async fn native_task_reference_round_trip() {
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.display().to_string());
 
 	config.sandbox = "read-only".into();
-	config.approval_policy = json!("never");
+	config.approval_policy = serde_json::json!("never");
 
 	let mut agent = AgentCoordinator::new(store.clone(), client, config).unwrap();
 	let outcome = AssertUnwindSafe(time::timeout(Duration::from_secs(90), async {
@@ -177,9 +177,9 @@ async fn native_task_reference_round_trip() {
 		drain_work(&mut agent,&mut events,"target").await;
 
 		let before = store.get_agent_work_item("target".into()).await.unwrap();
-		let references = json!([{"workId":"target","threadId":target.codex_thread_id,"title":"Selected target"}]);
+		let references = serde_json::json!([{"workId":"target","threadId":target.codex_thread_id,"title":"Selected target"}]);
 
-		store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:"reference-request".into(),work_item_id:"root".into(),event_kind:"user_message".into(),payload:json!({"text":"REFERENCE_TRIGGER","source":"user","options":{"attachments":[],"taskReferences":references}}).to_string()}).await.unwrap();
+		store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:"reference-request".into(),work_item_id:"root".into(),event_kind:"user_message".into(),payload:serde_json::json!({"text":"REFERENCE_TRIGGER","source":"user","options":{"attachments":[],"taskReferences":references}}).to_string()}).await.unwrap();
 		agent.wake_pending().await.unwrap();
 
 		drain_work(&mut agent,&mut events,"root").await;

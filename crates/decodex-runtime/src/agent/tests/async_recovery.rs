@@ -14,7 +14,7 @@ async fn native_changes_during_question_rebuild_preserve_recovery_until_fresh_re
 
 		agent.start_agent("agent", "Coordinate").await.unwrap();
 
-		let question = json!({"id":"retained-question","type":"agentMessage","delivery":"async","questions":[{"title":"Continue?"}]});
+		let question = serde_json::json!({"id":"retained-question","type":"agentMessage","delivery":"async","questions":[{"title":"Continue?"}]});
 
 		agent.observe_async_question_item("opaque thread/1", "old", &question).await.unwrap();
 
@@ -22,7 +22,7 @@ async fn native_changes_during_question_rebuild_preserve_recovery_until_fresh_re
 			source_event_id: "pending-answer".into(),
 			work_item_id: "agent".into(),
 			event_kind: "async_question_answer".into(),
-			payload: json!({"text":"Yes","asyncQuestionId":decodex_protocol::agent_async_question_id("retained-question",0)}).to_string(),
+			payload: serde_json::json!({"text":"Yes","asyncQuestionId":decodex_protocol::agent_async_question_id("retained-question",0)}).to_string(),
 		}).await.unwrap();
 
 		agent.store.queue_agent_async_reconnection().await.unwrap();
@@ -49,16 +49,16 @@ async fn native_changes_during_question_rebuild_preserve_recovery_until_fresh_re
 					}
 
 					let notification = if change == "revert" {
-						json!({"method":"thread/reverted","params":{"threadId":"opaque thread/1"}})
+						serde_json::json!({"method":"thread/reverted","params":{"threadId":"opaque thread/1"}})
 					} else {
-						json!({"method":"item/completed","params":{"threadId":"opaque thread/1","turnId":"new","item":{"id":"new-prompt","type":"userMessage","content":[{"type":"text","text":"A new task"}]}}})
+						serde_json::json!({"method":"item/completed","params":{"threadId":"opaque thread/1","turnId":"new","item":{"id":"new-prompt","type":"userMessage","content":[{"type":"text","text":"A new task"}]}}})
 					};
 
 					incoming.send(Ok(notification)).await.unwrap();
 				}
 				// A stale complete read with no questions would delete the retained card and
 				// answer.
-				incoming.send(Ok(json!({"id":request["id"],"result":{"thread":{"id":"opaque thread/1","historyMode":"legacy","turns":[{"id":"old","status":"completed","items":[]}]}}}))).await.unwrap();
+				incoming.send(Ok(serde_json::json!({"id":request["id"],"result":{"thread":{"id":"opaque thread/1","historyMode":"legacy","turns":[{"id":"old","status":"completed","items":[]}]}}}))).await.unwrap();
 			}
 
 			let _ = finished.await;
@@ -79,7 +79,7 @@ async fn native_changes_during_question_rebuild_preserve_recovery_until_fresh_re
 		assert!(agent.store.get_agent_inbox_event(queued.id).await.unwrap().disposition.is_none());
 		assert!(sent.try_recv().is_err());
 
-		let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"old","status":"completed","items":[question]}]}}});
+		let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","turns":[{"id":"old","status":"completed","items":[question]}]}}});
 		let (mut fresh, mut reads, _other_directory) = fixture_with_history(history).await;
 
 		fresh.store = agent.store.clone();
@@ -108,7 +108,7 @@ async fn only_live_item_events_mark_question_arrivals() {
 
 	while sent.try_recv().is_ok() {}
 
-	let question = |id: &str| json!({"id":id,"type":"agentMessage","delivery":"async","questions":[{"title":"Continue?"}]});
+	let question = |id: &str| serde_json::json!({"id":id,"type":"agentMessage","delivery":"async","questions":[{"title":"Continue?"}]});
 
 	agent
 		.observe_async_question_item("opaque thread/1", "old", &question("history"))
@@ -119,7 +119,7 @@ async fn only_live_item_events_mark_question_arrivals() {
 		agent
 			.handle_event(ServerEvent::Notification {
 				method: "item/completed".into(),
-				params: json!({"threadId":"opaque thread/1","turnId":"old","item":question(id)}),
+				params: serde_json::json!({"threadId":"opaque thread/1","turnId":"old","item":question(id)}),
 			})
 			.await
 			.unwrap();

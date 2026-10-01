@@ -47,7 +47,10 @@ async fn installed_native_config_reads_preserve_folder_trust_without_granting_it
 	for index in [0, 1, 2, 0] {
 		let result = session
 			.client
-			.request("config/read", json!({"cwd":directories[index],"includeLayers":true}))
+			.request(
+				"config/read",
+				serde_json::json!({"cwd":directories[index],"includeLayers":true}),
+			)
 			.await
 			.unwrap();
 
@@ -67,7 +70,7 @@ async fn installed_native_config_reads_preserve_folder_trust_without_granting_it
 
 	assert_eq!(fs::read_to_string(home.join("config.toml")).unwrap(), config);
 
-	let started = session.client.thread_start(json!({"cwd":directories[0],"model":"gpt-5.6-sol","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
+	let started = session.client.thread_start(serde_json::json!({"cwd":directories[0],"model":"gpt-5.6-sol","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
 
 	assert_eq!(started["reasoningEffort"], "low");
 
@@ -75,7 +78,9 @@ async fn installed_native_config_reads_preserve_folder_trust_without_granting_it
 
 	session
 		.client
-		.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Say done"}]}))
+		.turn_start(
+			serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Say done"}]}),
+		)
 		.await
 		.unwrap();
 
@@ -100,14 +105,17 @@ async fn installed_native_config_reads_preserve_folder_trust_without_granting_it
 
 	let current = session
 		.client
-		.request("config/read", json!({"cwd":directories[0],"includeLayers":true}))
+		.request("config/read", serde_json::json!({"cwd":directories[0],"includeLayers":true}))
 		.await
 		.unwrap();
 
 	assert_eq!(current["config"]["model_reasoning_effort"], "high");
 
-	let resumed =
-		session.client.thread_resume(json!({"threadId":thread,"excludeTurns":true})).await.unwrap();
+	let resumed = session
+		.client
+		.thread_resume(serde_json::json!({"threadId":thread,"excludeTurns":true}))
+		.await
+		.unwrap();
 
 	assert_eq!(
 		resumed["reasoningEffort"], "low",

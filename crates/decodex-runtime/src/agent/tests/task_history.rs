@@ -8,8 +8,8 @@ use decodex_protocol::WireText;
 
 #[test]
 fn saved_task_references_are_rendered_on_queued_native_turn_input() {
-	let mut params = json!({"input":[{"type":"text","text":"Compare it"}]});
-	let payload=json!({"options":{"attachments":[],"taskReferences":[{"workId":"target","threadId":"native-thread","title":"Reference title"}]}}).to_string();
+	let mut params = serde_json::json!({"input":[{"type":"text","text":"Compare it"}]});
+	let payload=serde_json::json!({"options":{"attachments":[],"taskReferences":[{"workId":"target","threadId":"native-thread","title":"Reference title"}]}}).to_string();
 
 	apply_message_options(&mut params, &payload).unwrap();
 
@@ -19,7 +19,7 @@ fn saved_task_references_are_rendered_on_queued_native_turn_input() {
 
 #[tokio::test]
 async fn task_history_reads_live_evidence_without_dispatch_or_resume() {
-	let history = json!({"opaque thread/2":{"thread":{"id":"opaque thread/2",
+	let history = serde_json::json!({"opaque thread/2":{"thread":{"id":"opaque thread/2",
 		"historyMode":"paginated","turns":[{"id":"native-turn","status":"completed","items":[
 		{"id":"answer","type":"agentMessage","text":"native evidence","phase":"final_answer"},
 		{"id":"tool","type":"commandExecution","command":"test","aggregatedOutput":"raw output"},
@@ -31,7 +31,7 @@ async fn task_history_reads_live_evidence_without_dispatch_or_resume() {
 
 	while sent.try_recv().is_ok() {}
 
-	let mut args = json!({"id":"worker","threadId":worker.codex_thread_id});
+	let mut args = serde_json::json!({"id":"worker","threadId":worker.codex_thread_id});
 	let page = agent.read_work_history(&manager, &args).await.unwrap();
 
 	assert_eq!(page["turns"][0]["items"][0]["text"], "native evidence");
@@ -39,7 +39,7 @@ async fn task_history_reads_live_evidence_without_dispatch_or_resume() {
 	assert!(!page.to_string().contains("PRIVATE_MEDIA"));
 	assert_eq!(page["turns"][0]["items"][2]["truncated"], true);
 
-	args["includeOutputs"] = json!(true);
+	args["includeOutputs"] = serde_json::json!(true);
 
 	let page = agent.read_work_history(&manager, &args).await.unwrap();
 
@@ -68,16 +68,16 @@ async fn task_history_denies_foreign_scope_stale_binding_and_worker_authority() 
 
 	while sent.try_recv().is_ok() {}
 
-	let args = json!({"id":"worker","threadId":worker.codex_thread_id});
+	let args = serde_json::json!({"id":"worker","threadId":worker.codex_thread_id});
 
 	assert!(agent.read_work_history(&manager, &args).await.is_err());
 	assert!(agent.read_work_history(&worker, &args).await.is_err());
 
-	let stale = json!({"id":"worker","threadId":"old-thread"});
+	let stale = serde_json::json!({"id":"worker","threadId":"old-thread"});
 
 	assert!(agent.read_work_history(&child, &stale).await.is_err());
 
-	for invalid in [json!(0), json!(6), json!("3")] {
+	for invalid in [serde_json::json!(0), serde_json::json!(6), serde_json::json!("3")] {
 		let mut invalid_args = args.clone();
 
 		invalid_args["turnLimit"] = invalid;
@@ -90,7 +90,7 @@ async fn task_history_denies_foreign_scope_stale_binding_and_worker_authority() 
 
 #[tokio::test]
 async fn upgraded_manager_can_read_previous_thread_after_store_reopen() {
-	let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1",
+	let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1",
 		"historyMode":"paginated","turns":[{"id":"old-turn","status":"completed","items":[
 		{"id":"old-answer","type":"agentMessage","text":"before upgrade"}]}]}}});
 	let (mut agent, _sent, directory) = fixture_with_history(history).await;
@@ -118,12 +118,15 @@ async fn upgraded_manager_can_read_previous_thread_after_store_reopen() {
 	agent.store = SqliteStore::open(&root.paths()).unwrap();
 
 	let page = agent
-		.read_work_history(&current, &json!({"id":"agent","threadId":"opaque thread/1"}))
+		.read_work_history(
+			&current,
+			&serde_json::json!({"id":"agent","threadId":"opaque thread/1"}),
+		)
 		.await
 		.unwrap();
 
 	assert_eq!(page["turns"][0]["items"][0]["text"], "before upgrade");
-	assert_eq!(page["previousThreadIds"], json!(["opaque thread/1"]));
+	assert_eq!(page["previousThreadIds"], serde_json::json!(["opaque thread/1"]));
 	assert_eq!(
 		agent.store.get_agent_work_item("agent".into()).await.unwrap().codex_thread_id,
 		current.codex_thread_id
@@ -132,7 +135,7 @@ async fn upgraded_manager_can_read_previous_thread_after_store_reopen() {
 
 #[tokio::test]
 async fn explicit_delivered_reference_reads_only_selected_foreign_thread() {
-	let history = json!({"opaque thread/3":{"thread":{"id":"opaque thread/3",
+	let history = serde_json::json!({"opaque thread/3":{"thread":{"id":"opaque thread/3",
 		"historyMode":"paginated","turns":[{"id":"target-turn","status":"completed","items":[
 		{"id":"result","type":"agentMessage","text":"selected evidence"}]}]}}});
 	let (mut agent, mut sent, _directory) = fixture_with_history(history).await;
@@ -141,13 +144,13 @@ async fn explicit_delivered_reference_reads_only_selected_foreign_thread() {
 	agent.create_manager("agent", "child", "Manage", None).await.unwrap();
 
 	let target = agent.create_worker("child", "target", "Investigate").await.unwrap();
-	let args = json!({"id":"target","threadId":target.codex_thread_id});
+	let args = serde_json::json!({"id":"target","threadId":target.codex_thread_id});
 
 	while sent.try_recv().is_ok() {}
 
 	assert!(agent.read_work_history(&root, &args).await.is_err());
 
-	let payload = json!({"text":"Read selected task","source":"user","options":{"taskReferences":[
+	let payload = serde_json::json!({"text":"Read selected task","source":"user","options":{"taskReferences":[
 		{"workId":"target","threadId":target.codex_thread_id,"title":"Selected task"}
 	]}})
 	.to_string();
@@ -187,10 +190,10 @@ async fn explicit_delivered_reference_reads_only_selected_foreign_thread() {
 	let page = agent.read_work_history(&root, &args).await.unwrap();
 
 	assert_eq!(page["turns"][0]["items"][0]["text"], "selected evidence");
-	assert_eq!(page["previousThreadIds"], json!([]));
+	assert_eq!(page["previousThreadIds"], serde_json::json!([]));
 	assert!(
 		agent
-			.read_work_history(&root, &json!({"id":"target","threadId":"unselected"}))
+			.read_work_history(&root, &serde_json::json!({"id":"target","threadId":"unselected"}))
 			.await
 			.is_err()
 	);
@@ -247,7 +250,7 @@ async fn native_steer_carries_typed_reference_and_only_acknowledgment_grants_rea
 	)
 	.unwrap();
 
-	assert_eq!(rendered, json!(references));
+	assert_eq!(rendered, serde_json::json!(references));
 	assert!(metadata.contains("untrusted evidence"));
 	assert!(
 		agent
@@ -326,7 +329,7 @@ async fn stale_reference_and_old_running_tools_reject_before_native_steer() {
 
 #[tokio::test]
 async fn native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources() {
-	let history = json!({"_search":{"data":[
+	let history = serde_json::json!({"_search":{"data":[
 		{"thread":{"id":"opaque thread/1","name":"Root"},"snippet":"matched body"},
 		{"thread":{"id":"foreign-thread","name":"PRIVATE_TITLE"},"snippet":"PRIVATE_BODY"}
 
@@ -338,7 +341,7 @@ async fn native_search_filters_foreign_work_and_preserves_cursor_and_exact_sourc
 	while sent.try_recv().is_ok() {}
 
 	let page = agent
-		.read_work_history(&manager, &json!({"searchTerm":"matched","archived":true}))
+		.read_work_history(&manager, &serde_json::json!({"searchTerm":"matched","archived":true}))
 		.await
 		.unwrap();
 
@@ -350,7 +353,7 @@ async fn native_search_filters_foreign_work_and_preserves_cursor_and_exact_sourc
 	let hits = agent
 		.read_work_history(
 			&manager,
-			&json!({"id":"agent","threadId":manager.codex_thread_id,"searchTerm":"matched"}),
+			&serde_json::json!({"id":"agent","threadId":manager.codex_thread_id,"searchTerm":"matched"}),
 		)
 		.await
 		.unwrap();
@@ -373,17 +376,19 @@ async fn native_search_filters_foreign_work_and_preserves_cursor_and_exact_sourc
 
 #[tokio::test]
 async fn native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors() {
-	let (mut agent, _sent, _directory) = fixture_with_history(json!({"_search":{"data":[
+	let (mut agent, _sent, _directory) =
+		fixture_with_history(serde_json::json!({"_search":{"data":[
 		{"thread":{"id":"foreign-thread"},"snippet":"hidden"}],"nextCursor":"more"}}))
-	.await;
+		.await;
 	let manager = agent.start_agent("agent", "Coordinate").await.unwrap();
-	let page = agent.read_work_history(&manager, &json!({"searchTerm":"term"})).await.unwrap();
+	let page =
+		agent.read_work_history(&manager, &serde_json::json!({"searchTerm":"term"})).await.unwrap();
 
-	assert_eq!(page["matches"], json!([]));
+	assert_eq!(page["matches"], serde_json::json!([]));
 	assert_eq!(page["nextCursor"], "more");
 	assert!(
 		agent
-			.read_work_history(&manager, &json!({"searchTerm":"term","cursor":"more"}))
+			.read_work_history(&manager, &serde_json::json!({"searchTerm":"term","cursor":"more"}))
 			.await
 			.is_err()
 	);
@@ -402,15 +407,23 @@ async fn native_occurrence_search_rejects_foreign_scope_before_rpc() {
 		agent
 			.read_work_history(
 				&manager,
-				&json!({"id":"worker","threadId":worker.codex_thread_id,"searchTerm":"secret"})
+				&serde_json::json!({"id":"worker","threadId":worker.codex_thread_id,"searchTerm":"secret"})
 			)
 			.await
 			.is_err()
 	);
-	assert!(agent.read_work_history(&worker, &json!({"searchTerm":"secret"})).await.is_err());
 	assert!(
 		agent
-			.read_work_history(&manager, &json!({"threadId":"foreign","searchTerm":"secret"}))
+			.read_work_history(&worker, &serde_json::json!({"searchTerm":"secret"}))
+			.await
+			.is_err()
+	);
+	assert!(
+		agent
+			.read_work_history(
+				&manager,
+				&serde_json::json!({"threadId":"foreign","searchTerm":"secret"})
+			)
 			.await
 			.is_err()
 	);

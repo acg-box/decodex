@@ -7,7 +7,7 @@ use decodex_core::DecodexRoot;
 async fn lost_steer_reply_is_resolved_by_exact_live_or_cold_receipt_without_replay() {
 	for mode in ["live", "running", "idle"] {
 		let (mut agent, mut sent, directory) =
-			fixture_with_history(json!({"_steer_disconnect":true})).await;
+			fixture_with_history(serde_json::json!({"_steer_disconnect":true})).await;
 
 		agent.start_agent("agent", "Supplement").await.unwrap();
 
@@ -31,7 +31,7 @@ async fn lost_steer_reply_is_resolved_by_exact_live_or_cold_receipt_without_repl
 			.find(|e| e.event_kind == "steer_pending")
 			.unwrap()
 			.id;
-		let receipt = |id: &str| json!({"id":format!("item-{id}"),"type":"userMessage","clientId":id,"content":[]});
+		let receipt = |id: &str| serde_json::json!({"id":format!("item-{id}"),"type":"userMessage","clientId":id,"content":[]});
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 		if mode != "live" {
@@ -45,7 +45,7 @@ async fn lost_steer_reply_is_resolved_by_exact_live_or_cold_receipt_without_repl
 
 			drop(agent);
 
-			let history = json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":if mode == "idle" {"idle"} else {"active"}},"turns":[{"id":"opaque turn/1","status":if mode == "idle" {"completed"} else {"inProgress"},"items":[receipt("older-submission"),receipt("exact-submission")]}]}}});
+			let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","status":{"type":if mode == "idle" {"idle"} else {"active"}},"turns":[{"id":"opaque turn/1","status":if mode == "idle" {"completed"} else {"inProgress"},"items":[receipt("older-submission"),receipt("exact-submission")]}]}}});
 			let (mut recovered, mut calls, _new_directory) = fixture_with_history(history).await;
 
 			recovered.store = SqliteStore::open(&root.paths()).unwrap();
@@ -68,7 +68,7 @@ async fn lost_steer_reply_is_resolved_by_exact_live_or_cold_receipt_without_repl
 				agent
 					.handle_event(ServerEvent::Notification {
 						method: "item/completed".into(),
-						params: json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":receipt(id)}),
+						params: serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":receipt(id)}),
 					})
 					.await
 					.unwrap();
@@ -84,7 +84,7 @@ async fn lost_steer_reply_is_resolved_by_exact_live_or_cold_receipt_without_repl
 
 		let reopened = SqliteStore::open(&root.paths()).unwrap();
 		let (rows, _) = reopened.read_agent_transcript("agent".into(), None, 100).await.unwrap();
-		let expected_receipt = json!(["steer_receipt", pending]).to_string();
+		let expected_receipt = serde_json::json!(["steer_receipt", pending]).to_string();
 
 		assert_eq!(
 			rows.iter().filter(|e| e.source_event_id == expected_receipt).count(),

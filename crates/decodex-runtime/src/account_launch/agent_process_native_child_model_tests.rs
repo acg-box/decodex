@@ -6,7 +6,7 @@ use tokio::{net::TcpListener, time};
 use crate::account_launch::agent_process::native_tests::reviewer::store::live_model::*;
 
 fn catalog(home: &Path) -> String {
-	let models: Vec<_> = ["gpt-5.6-sol", "gpt-5.6-terra"].into_iter().map(|slug| json!({
+	let models: Vec<_> = ["gpt-5.6-sol", "gpt-5.6-terra"].into_iter().map(|slug| serde_json::json!({
 		"slug":slug,"display_name":slug,"description":"Synthetic model",
 		"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low","description":"Low"},{"effort":"high","description":"High"}],
 		"shell_type":"shell_command","visibility":"list","minimal_client_version":"0.1.0",
@@ -19,8 +19,11 @@ fn catalog(home: &Path) -> String {
 	})).collect();
 	let path = home.join("models.json");
 
-	fs::write(&path, serde_json::to_vec(&json!({"models":models})).expect("catalog JSON"))
-		.expect("write fixture catalog");
+	fs::write(
+		&path,
+		serde_json::to_vec(&serde_json::json!({"models":models})).expect("catalog JSON"),
+	)
+	.expect("write fixture catalog");
 
 	format!("model_catalog_json={}\n", serde_json::to_string(&path).expect("catalog path"))
 }
@@ -59,14 +62,14 @@ async fn qualify_child_model(check_catalog: bool) {
 		calls.clone(),
 		None,
 		Some(bodies.clone()),
-		Some(json!({"input_tokens":1,"output_tokens":1,"total_tokens":2})),
+		Some(serde_json::json!({"input_tokens":1,"output_tokens":1,"total_tokens":2})),
 		|serial| {
 			if serial == 0 {
-				json!({"type":"function_call","name":"pause_fixture","arguments":"{}","call_id":"pause"})
+				serde_json::json!({"type":"function_call","name":"pause_fixture","arguments":"{}","call_id":"pause"})
 			} else if serial == 1 {
-				json!({"type":"function_call","namespace":"collaboration","name":"spawn_agent","call_id":"spawn-updated","arguments":json!({"task_name":"settings_child","fork_turns":"none","message":"CHILD_CAPTURED_SETTINGS"}).to_string()})
+				serde_json::json!({"type":"function_call","namespace":"collaboration","name":"spawn_agent","call_id":"spawn-updated","arguments":serde_json::json!({"task_name":"settings_child","fork_turns":"none","message":"CHILD_CAPTURED_SETTINGS"}).to_string()})
 			} else {
-				json!({"type":"message","role":"assistant","id":format!("done-{serial}"),"content":[{"type":"output_text","text":"Done"}]})
+				serde_json::json!({"type":"message","role":"assistant","id":format!("done-{serial}"),"content":[{"type":"output_text","text":"Done"}]})
 			}
 		},
 	));
@@ -76,9 +79,9 @@ async fn qualify_child_model(check_catalog: bool) {
 
 	time::timeout(Duration::from_secs(60), async {
         let mut session = NativeSession::start(&binary, home.path());
-        let start = session.client.thread_start(json!({"cwd":home.path(),"model":"gpt-5.6-sol","approvalPolicy":"never","sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Pause the isolated test","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native fixture");
+        let start = session.client.thread_start(serde_json::json!({"cwd":home.path(),"model":"gpt-5.6-sol","approvalPolicy":"never","sandbox":"read-only","dynamicTools":[{"name":"pause_fixture","description":"Pause the isolated test","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native fixture");
         let thread = start["thread"]["id"].as_str().expect("native fixture").to_owned();
-        let turn = session.client.turn_start(json!({"threadId":thread,"effort":"low","input":[{"type":"text","text":"Pause, then create the isolated child."}]})).await.expect("native fixture");
+        let turn = session.client.turn_start(serde_json::json!({"threadId":thread,"effort":"low","input":[{"type":"text","text":"Pause, then create the isolated child."}]})).await.expect("native fixture");
         let turn = turn["turn"]["id"].as_str().expect("native fixture");
         let (id, method, params) = super::super::super::next_request(&mut session.events).await;
 
@@ -93,7 +96,7 @@ async fn qualify_child_model(check_catalog: bool) {
 
         assert_eq!(calls.load(Ordering::Acquire), 1);
 
-        session.client.respond_guarded(id, json!({"contentItems":[{"type":"inputText","text":"Continue"}],"success":true}), guard).await.expect("native fixture");
+        session.client.respond_guarded(id, serde_json::json!({"contentItems":[{"type":"inputText","text":"Continue"}],"success":true}), guard).await.expect("native fixture");
 
         let mut completed = HashSet::new();
 

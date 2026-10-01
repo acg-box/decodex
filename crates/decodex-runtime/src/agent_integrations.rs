@@ -1,7 +1,7 @@
 //! Read each integration source independently, scoped to the native task directory.
 use std::{collections::HashSet, path::Path, time::Duration};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use decodex_codex::app_server_client::{AppServerClient, ClientError};
@@ -82,14 +82,14 @@ pub(crate) fn project_plugins(result: Result<Value, ClientError>) -> AgentPlugin
 pub(crate) async fn read(client: &AppServerClient, thread: &str) -> AgentIntegrationsResult {
 	let result = time::timeout(Duration::from_secs(35), async {
 		let guard = client.thread_settings_guard(thread)?;
-		let before = client.thread_read(json!({"threadId":thread})).await.ok()?;
+		let before = client.thread_read(serde_json::json!({"threadId":thread})).await.ok()?;
 		let cwd = thread_cwd(&before, thread)?.to_owned();
 		let (mcp, plugins, apps) = tokio::join!(
 			client.mcp_server_statuses(thread),
 			client.installed_plugins_for_directory(&cwd),
 			client.installed_apps_for_thread(thread, false)
 		);
-		let after = client.thread_read(json!({"threadId":thread})).await.ok()?;
+		let after = client.thread_read(serde_json::json!({"threadId":thread})).await.ok()?;
 
 		if !guard.is_live() || thread_cwd(&after, thread) != Some(cwd.as_str()) {
 			return None;
@@ -255,7 +255,7 @@ mod tests {
 
 	#[test]
 	fn initialized_server_presentation_uses_public_fields_without_fetching_icons() {
-		let info = agent_integrations::json!({"name":"server-id","title":"Reference docs","version":"1.2","description":"Read documentation","websiteUrl":"https://example.invalid","icons":[{"src":"PRIVATE_ICON"}],"private":"PRIVATE_METADATA"});
+		let info = serde_json::json!({"name":"server-id","title":"Reference docs","version":"1.2","description":"Read documentation","websiteUrl":"https://example.invalid","icons":[{"src":"PRIVATE_ICON"}],"private":"PRIVATE_METADATA"});
 
 		assert_eq!(
 			agent_integrations::server_presentation(&info).as_deref(),
@@ -263,24 +263,22 @@ mod tests {
 		);
 		assert_eq!(
 			agent_integrations::server_presentation(
-				&agent_integrations::json!({"name":"server-id","version":"1"})
+				&serde_json::json!({"name":"server-id","version":"1"})
 			)
 			.as_deref(),
 			Some("server-id · 1")
 		);
 		assert!(agent_integrations::server_presentation(&Value::Null).is_none());
 		assert!(
-			agent_integrations::server_presentation(
-				&agent_integrations::json!({"title":"Partial"})
-			)
-			.is_none()
+			agent_integrations::server_presentation(&serde_json::json!({"title":"Partial"}))
+				.is_none()
 		);
 	}
 
 	#[test]
 	fn failed_discovery_and_plugin_policy_are_not_readiness() {
 		let mcp = agent_integrations::project_mcp(Ok(vec![
-			agent_integrations::json!({"name":"server","runtimeStatus":"authenticationRequired","authStatus":"notLoggedIn","tools":{},"toolsError":"Discovery failed","resources":[],"resourceTemplates":[],"serverCapabilities":{"tools":{},"resources":{},"extensions":{"openai/settings":{"readTool":"settings.read","updateTool":"private-fixture-value"}}}}),
+			serde_json::json!({"name":"server","runtimeStatus":"authenticationRequired","authStatus":"notLoggedIn","tools":{},"toolsError":"Discovery failed","resources":[],"resourceTemplates":[],"serverCapabilities":{"tools":{},"resources":{},"extensions":{"openai/settings":{"readTool":"settings.read","updateTool":"private-fixture-value"}}}}),
 		]));
 		let AgentMcpInventory::Available { servers } = mcp else {
 			panic!("inventory");
@@ -296,7 +294,7 @@ mod tests {
 		assert!(!serde_json::to_string(&servers).unwrap().contains("private-fixture-value"));
 
 		let plugins = agent_integrations::project_plugins(Ok(
-			agent_integrations::json!({"marketplaces":[{"plugins":[{"id":"example@market","name":"Example","installed":true,"enabled":false,"availability":"DISABLED_BY_ADMIN","disabledReason":"disabled_by_admin"}]}],"marketplaceLoadErrors":[{"message":"Another marketplace failed"}]}),
+			serde_json::json!({"marketplaces":[{"plugins":[{"id":"example@market","name":"Example","installed":true,"enabled":false,"availability":"DISABLED_BY_ADMIN","disabledReason":"disabled_by_admin"}]}],"marketplaceLoadErrors":[{"message":"Another marketplace failed"}]}),
 		));
 		let AgentPluginInventory::Available { plugins, errors } = plugins else {
 			panic!("catalog");
@@ -318,7 +316,7 @@ mod tests {
 
 	#[test]
 	fn apps_project_runtime_eligibility_and_keep_inventory_bounded() {
-		let row = agent_integrations::json!({"id":"connector","runtimeName":"Calendar","enabled":true,"callable":false});
+		let row = serde_json::json!({"id":"connector","runtimeName":"Calendar","enabled":true,"callable":false});
 		let AgentAppInventory::Available { apps } =
 			agent_integrations::project_apps(Ok(vec![row.clone()]))
 		else {
@@ -368,42 +366,39 @@ mod tests {
 								let target =
 									if scenario == "settings" { "thread" } else { "another" };
 
-								writer.write_all(format!("{}\n", agent_integrations::json!({"method":"thread/settings/updated","params":{"threadId":target,"threadSettings":{"cwd":"/repo"}}})).as_bytes()).await.unwrap();
+								writer.write_all(format!("{}\n", serde_json::json!({"method":"thread/settings/updated","params":{"threadId":target,"threadSettings":{"cwd":"/repo"}}})).as_bytes()).await.unwrap();
 							}
 
 							assert_eq!(request["params"]["threadId"], "thread");
 
-							agent_integrations::json!({"thread":{"id":"thread","cwd":if scenario == "directory" && metadata==2 {"/different"} else {"/repo"}}})
+							serde_json::json!({"thread":{"id":"thread","cwd":if scenario == "directory" && metadata==2 {"/different"} else {"/repo"}}})
 						},
 						"mcpServerStatus/list" => {
 							assert_eq!(request["params"]["threadId"], "thread");
 
-							agent_integrations::json!({"data":[],"nextCursor":null})
+							serde_json::json!({"data":[],"nextCursor":null})
 						},
 						"app/installed" => {
 							assert_eq!(
 								request["params"],
-								agent_integrations::json!({"threadId":"thread","forceRefresh":false})
+								serde_json::json!({"threadId":"thread","forceRefresh":false})
 							);
 
-							agent_integrations::json!({"apps":[]})
+							serde_json::json!({"apps":[]})
 						},
 						"plugin/installed" => {
-							assert_eq!(
-								request["params"]["cwds"],
-								agent_integrations::json!(["/repo"])
-							);
+							assert_eq!(request["params"]["cwds"], serde_json::json!(["/repo"]));
 
-							agent_integrations::json!({"marketplaces":[],"marketplaceLoadErrors":[]})
+							serde_json::json!({"marketplaces":[],"marketplaceLoadErrors":[]})
 						},
 						_ => panic!("unexpected request"),
 					};
 					let reply = if request["method"] == "app/installed"
 						&& scenario.starts_with("apps_")
 					{
-						agent_integrations::json!({"id":request["id"],"error":{"code":if scenario == "apps_unsupported" {-32_601} else {-32_603},"message":"Fixture Apps failure"}})
+						serde_json::json!({"id":request["id"],"error":{"code":if scenario == "apps_unsupported" {-32_601} else {-32_603},"message":"Fixture Apps failure"}})
 					} else {
-						agent_integrations::json!({"id":request["id"],"result":result})
+						serde_json::json!({"id":request["id"],"result":result})
 					};
 
 					writer.write_all(format!("{reply}\n").as_bytes()).await.unwrap();

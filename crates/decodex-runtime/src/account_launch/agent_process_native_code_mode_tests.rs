@@ -23,16 +23,16 @@ async fn installed_native_code_mode_yielded_cells_keep_their_outputs() {
 		calls.clone(),
 		None,
 		Some(bodies.clone()),
-		Some(json!({"input_tokens":1,"output_tokens":1,"total_tokens":2})),
+		Some(serde_json::json!({"input_tokens":1,"output_tokens":1,"total_tokens":2})),
 		|serial| match serial {
 			0 =>
-				json!({"type":"custom_tool_call","name":"exec","call_id":"first-cell","input":"// @exec: {\"yield_time_ms\": 1}\nclearTimeout(setTimeout(() => text('cancelled timer output'), 25)); await new Promise(resolve => setTimeout(resolve, 500)); notify('first notice'); text('first output');"}),
+				serde_json::json!({"type":"custom_tool_call","name":"exec","call_id":"first-cell","input":"// @exec: {\"yield_time_ms\": 1}\nclearTimeout(setTimeout(() => text('cancelled timer output'), 25)); await new Promise(resolve => setTimeout(resolve, 500)); notify('first notice'); text('first output');"}),
 			1 =>
-				json!({"type":"custom_tool_call","name":"exec","call_id":"second-cell","input":"notify('second notice'); text('second output'); setTimeout(() => text('late timer output'), 25);"}),
+				serde_json::json!({"type":"custom_tool_call","name":"exec","call_id":"second-cell","input":"notify('second notice'); text('second output'); setTimeout(() => text('late timer output'), 25);"}),
 			2 =>
-				json!({"type":"function_call","name":"wait","call_id":"first-wait","arguments":"{\"cell_id\":\"1\",\"yield_time_ms\":10000}"}),
+				serde_json::json!({"type":"function_call","name":"wait","call_id":"first-wait","arguments":"{\"cell_id\":\"1\",\"yield_time_ms\":10000}"}),
 			_ =>
-				json!({"type":"message","role":"assistant","id":"done","content":[{"type":"output_text","text":"Done"}]}),
+				serde_json::json!({"type":"message","role":"assistant","id":"done","content":[{"type":"output_text","text":"Done"}]}),
 		},
 	));
 
@@ -45,7 +45,7 @@ async fn installed_native_code_mode_yielded_cells_keep_their_outputs() {
 	time::timeout(Duration::from_secs(30), async {
 		let start = session
 			.client
-			.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}))
+			.thread_start(serde_json::json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}))
 			.await
 			.unwrap();
 		let thread = start["thread"]["id"].as_str().unwrap();
@@ -53,7 +53,7 @@ async fn installed_native_code_mode_yielded_cells_keep_their_outputs() {
 		session
 			.client
 			.turn_start(
-				json!({"threadId":thread,"input":[{"type":"text","text":"Run the local Code Mode fixture"}]}),
+				serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Run the local Code Mode fixture"}]}),
 			)
 			.await
 			.unwrap();
@@ -148,14 +148,14 @@ async fn installed_native_delayed_mcp_keeps_original_turn_after_restart() {
 		calls.clone(),
 		None,
 		Some(bodies.clone()),
-		Some(json!({"input_tokens":1,"output_tokens":1,"total_tokens":2})),
+		Some(serde_json::json!({"input_tokens":1,"output_tokens":1,"total_tokens":2})),
 		|serial| match serial {
 			0 =>
-				json!({"type":"custom_tool_call","name":"exec","call_id":"delayed-cell","id":"originating-code-cell","input":"// @exec: {\"yield_time_ms\": 1}\ntext(await tools.mcp__fixture__hold({})); text(await tools.mcp__fixture__hold({}));"}),
+				serde_json::json!({"type":"custom_tool_call","name":"exec","call_id":"delayed-cell","id":"originating-code-cell","input":"// @exec: {\"yield_time_ms\": 1}\ntext(await tools.mcp__fixture__hold({})); text(await tools.mcp__fixture__hold({}));"}),
 			2 =>
-				json!({"type":"function_call","name":"wait","call_id":"wait-delayed","arguments":"{\"cell_id\":\"1\",\"yield_time_ms\":10000}"}),
+				serde_json::json!({"type":"function_call","name":"wait","call_id":"wait-delayed","arguments":"{\"cell_id\":\"1\",\"yield_time_ms\":10000}"}),
 			_ =>
-				json!({"type":"message","role":"assistant","id":format!("done-{serial}"),"content":[{"type":"output_text","text":"Done"}]}),
+				serde_json::json!({"type":"message","role":"assistant","id":format!("done-{serial}"),"content":[{"type":"output_text","text":"Done"}]}),
 		},
 	));
 
@@ -166,13 +166,13 @@ async fn installed_native_delayed_mcp_keeps_original_turn_after_restart() {
 
 	let mut session = NativeSession::start(&binary, home.path());
 	let (thread, first_turn, item_ids, before) = time::timeout(Duration::from_secs(30), async {
-        let start = session.client.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
+        let start = session.client.thread_start(serde_json::json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
         let thread = start["thread"]["id"].as_str().unwrap().to_owned();
         let mut first_turn = String::new();
         let mut item_ids = Vec::new();
 
         for phase in 0..2 {
-            let response = session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":if phase==0 {"Start delayed MCP"} else {"Wait for prior MCP"}}]})).await.unwrap();
+            let response = session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":if phase==0 {"Start delayed MCP"} else {"Wait for prior MCP"}}]})).await.unwrap();
             let turn = response["turn"]["id"].as_str().unwrap();
 
             if phase==0 { first_turn = turn.into(); }

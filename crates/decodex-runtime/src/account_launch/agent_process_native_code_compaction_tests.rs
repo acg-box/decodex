@@ -32,18 +32,18 @@ async fn installed_native_code_mode_metadata_reaches_compaction() {
 			|serial| {
 				let tokens = if serial == 1 { 250_000 } else { 100 };
 
-				json!({"input_tokens":tokens,"output_tokens":0,"total_tokens":tokens})
+				serde_json::json!({"input_tokens":tokens,"output_tokens":0,"total_tokens":tokens})
 			},
 			move |serial| match serial {
 				0 =>
-					json!({"type":"custom_tool_call","name":"exec","call_id":"code-cell","id":"code-item","input":code}),
-				2 => json!({"type":"compaction","encrypted_content":SUMMARY}),
+					serde_json::json!({"type":"custom_tool_call","name":"exec","call_id":"code-cell","id":"code-item","input":code}),
+				2 => serde_json::json!({"type":"compaction","encrypted_content":SUMMARY}),
 				_ =>
-					json!({"type":"message","role":"assistant","id":format!("reply-{serial}"),"content":[{"type":"output_text","text":"Done"}]}),
+					serde_json::json!({"type":"message","role":"assistant","id":format!("reply-{serial}"),"content":[{"type":"output_text","text":"Done"}]}),
 			},
 		));
 
-		fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\nmodel_auto_compact_token_limit=200000\ncli_auth_credentials_store=\"file\"\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[features]\ncode_mode=true\nexecuted_tool_call_metadata=true\nremote_compaction_v2=false\nenable_request_compression=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{}]\n",json!(fixture),json!(gate))).unwrap();
+		fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\nmodel_auto_compact_token_limit=200000\ncli_auth_credentials_store=\"file\"\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[features]\ncode_mode=true\nexecuted_tool_call_metadata=true\nremote_compaction_v2=false\nenable_request_compression=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{}]\n",serde_json::json!(fixture),serde_json::json!(gate))).unwrap();
 
 		let mut session = NativeSession::start(&binary, home.path());
 
@@ -51,7 +51,7 @@ async fn installed_native_code_mode_metadata_reaches_compaction() {
 			let started = session
 				.client
 				.thread_start(
-					json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}),
+					serde_json::json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}),
 				)
 				.await
 				.unwrap();
@@ -120,7 +120,7 @@ async fn installed_native_code_mode_metadata_reaches_compaction() {
 			let mut cold = NativeSession::start(&binary, home.path());
 
 			cold.client
-				.thread_resume(json!({"threadId":thread,"excludeTurns":true}))
+				.thread_resume(serde_json::json!({"threadId":thread,"excludeTurns":true}))
 				.await
 				.unwrap();
 

@@ -83,13 +83,13 @@ async fn qualify(cold: bool) {
 			"agent".into(),
 			turn.clone(),
 			key.into(),
-			json!({"text":"Identical fixture input","source":"user"}).to_string(),
+			serde_json::json!({"text":"Identical fixture input","source":"user"}).to_string(),
 		)
 		.await
 		.expect("native steering fixture operation");
 	// Deliberately do not settle the durable attempt from the RPC reply. Only a
 	// real native receipt may resolve this saved uncertain state.
-	let reply = session.client.turn_steer(json!({"threadId":thread_id,"expectedTurnId":turn,"clientUserMessageId":key,"input":[{"type":"text","text":"Identical fixture input","text_elements":[]}]})).await.expect("native steering fixture operation");
+	let reply = session.client.turn_steer(serde_json::json!({"threadId":thread_id,"expectedTurnId":turn,"clientUserMessageId":key,"input":[{"type":"text","text":"Identical fixture input","text_elements":[]}]})).await.expect("native steering fixture operation");
 
 	assert_eq!(reply["turnId"], turn);
 	assert!(
@@ -254,9 +254,9 @@ async fn serve(
 		}
 
 		let frames = [
-			json!({"type":"response.created","response":{"id":format!("response-{serial}")}}),
-			json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Fixture complete."}]}}),
-			json!({"type":"response.completed","response":{"id":format!("response-{serial}"),"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}),
+			serde_json::json!({"type":"response.created","response":{"id":format!("response-{serial}")}}),
+			serde_json::json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Fixture complete."}]}}),
+			serde_json::json!({"type":"response.completed","response":{"id":format!("response-{serial}"),"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}),
 		];
 		let data = frames
 			.iter()

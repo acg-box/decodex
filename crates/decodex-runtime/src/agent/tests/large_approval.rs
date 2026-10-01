@@ -6,7 +6,7 @@ async fn large_user_approval_keeps_complete_request_without_breaking_the_coordin
 	let (mut coordinator, _sent, directory) = fixture().await;
 	let root = coordinator.start_agent("agent", "Coordinate").await.unwrap();
 	let command = format!("true # {} REQUIRED ACTION SUFFIX", "界".repeat(100_000));
-	let params = json!({"threadId":root.codex_thread_id,"turnId":root.active_turn_id,
+	let params = serde_json::json!({"threadId":root.codex_thread_id,"turnId":root.active_turn_id,
 		"itemId":"large-command","command":command,"cwd":"/tmp",
 		"availableDecisions":["accept","decline"]});
 
@@ -44,7 +44,7 @@ async fn large_user_approval_keeps_complete_request_without_breaking_the_coordin
 
 	assert!(coordinator.store.enqueue_agent_event(changed).await.is_err());
 
-	let mcp = json!({"threadId":root.codex_thread_id,"turnId":root.active_turn_id,
+	let mcp = serde_json::json!({"threadId":root.codex_thread_id,"turnId":root.active_turn_id,
 		"mode":"form","serverName":"fixture","message":"Approve the complete tool action",
 		"requestedSchema":{"type":"object","properties":{}},
 		"_meta":{"codex_approval_kind":"tool_call","tool_params":{"command":command}}});

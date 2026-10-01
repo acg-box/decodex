@@ -66,7 +66,7 @@ async fn native_goal_turn_preserves_separate_user_input_delivery() {
 				source_event_id: "unsent-goal-input".into(),
 				work_item_id: "agent".into(),
 				event_kind: "user_message".into(),
-				payload: json!({"text":"Pending local input","source":"user"}).to_string(),
+				payload: serde_json::json!({"text":"Pending local input","source":"user"}).to_string(),
 			})
 			.await
 			.unwrap();
@@ -75,7 +75,7 @@ async fn native_goal_turn_preserves_separate_user_input_delivery() {
 			.client
 			.request(
 				"thread/goal/set",
-				json!({"threadId":thread,"objective":"Fixture goal","status":"active","tokenBudget":1}),
+				serde_json::json!({"threadId":thread,"objective":"Fixture goal","status":"active","tokenBudget":1}),
 			)
 			.await
 			.unwrap();
@@ -85,7 +85,7 @@ async fn native_goal_turn_preserves_separate_user_input_delivery() {
 		assert_ne!(Some(&automatic), initial.active_turn_id.as_ref());
 
 		let goal =
-			agent.client.request("thread/goal/get", json!({"threadId":thread})).await.unwrap();
+			agent.client.request("thread/goal/get", serde_json::json!({"threadId":thread})).await.unwrap();
 
 		assert_eq!(goal["goal"]["status"], "budgetLimited");
 
@@ -108,7 +108,7 @@ async fn native_goal_turn_preserves_separate_user_input_delivery() {
 		agent
 			.handle_event(ServerEvent::Notification {
 				method: "turn/started".into(),
-				params: json!({"threadId":thread,"turn":{"id":automatic,"status":"inProgress"}}),
+				params: serde_json::json!({"threadId":thread,"turn":{"id":automatic,"status":"inProgress"}}),
 			})
 			.await
 			.unwrap();
@@ -139,8 +139,12 @@ async fn recover_missed_goal_turn(
 	thread: &str,
 	gate: &tokio::sync::Notify,
 ) {
-	agent.client.request("thread/goal/clear", json!({"threadId":thread})).await.unwrap();
-	agent.client.request("thread/goal/set", json!({"threadId":thread,"objective":"Missed native goal turn","status":"active","tokenBudget":1})).await.unwrap();
+	agent
+		.client
+		.request("thread/goal/clear", serde_json::json!({"threadId":thread}))
+		.await
+		.unwrap();
+	agent.client.request("thread/goal/set", serde_json::json!({"threadId":thread,"objective":"Missed native goal turn","status":"active","tokenBudget":1})).await.unwrap();
 
 	let missed = loop {
 		if let ServerEvent::Notification { method, params } = events.recv().await.unwrap()
@@ -247,7 +251,11 @@ async fn continue_with_pending_input(
 	thread: &str,
 	gate: &tokio::sync::Notify,
 ) {
-	agent.client.request("thread/goal/clear", json!({"threadId":thread})).await.unwrap();
+	agent
+		.client
+		.request("thread/goal/clear", serde_json::json!({"threadId":thread}))
+		.await
+		.unwrap();
 
 	let pending = agent
 		.store
@@ -255,12 +263,13 @@ async fn continue_with_pending_input(
 			source_event_id: "ongoing-goal-input".into(),
 			work_item_id: "agent".into(),
 			event_kind: "user_message".into(),
-			payload: json!({"text":"Input during ongoing goal","source":"user"}).to_string(),
+			payload: serde_json::json!({"text":"Input during ongoing goal","source":"user"})
+				.to_string(),
 		})
 		.await
 		.unwrap();
 
-	agent.client.request("thread/goal/set", json!({"threadId":thread,"objective":"Continue while accepting input","status":"active","tokenBudget":6})).await.unwrap();
+	agent.client.request("thread/goal/set", serde_json::json!({"threadId":thread,"objective":"Continue while accepting input","status":"active","tokenBudget":6})).await.unwrap();
 
 	let (completion, started, first, continuing) =
 		hold_completion_until_next_start(agent, events).await;
@@ -310,8 +319,11 @@ async fn continue_with_pending_input(
 		1
 	);
 	assert_eq!(
-		agent.client.request("thread/goal/get", json!({"threadId":thread})).await.unwrap()["goal"]
-			["status"],
+		agent
+			.client
+			.request("thread/goal/get", serde_json::json!({"threadId":thread}))
+			.await
+			.unwrap()["goal"]["status"],
 		"budgetLimited"
 	);
 	assert_eq!(

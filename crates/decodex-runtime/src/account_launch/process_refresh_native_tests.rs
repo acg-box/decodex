@@ -14,7 +14,7 @@ use decodex_codex::app_server_client::{AppServerClient, ClientError, RequestId, 
 
 fn token(serial: u8) -> String {
 	let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none","typ":"JWT"}"#);
-	let claims = json!({"email":"fixture@example.invalid","serial":serial,"https://api.openai.com/auth":{"chatgpt_user_id":"fixture-user","chatgpt_account_id":PROVIDER,"chatgpt_plan_type":"pro"}});
+	let claims = serde_json::json!({"email":"fixture@example.invalid","serial":serial,"https://api.openai.com/auth":{"chatgpt_user_id":"fixture-user","chatgpt_account_id":PROVIDER,"chatgpt_plan_type":"pro"}});
 
 	format!(
 		"{header}.{}.c2lnbmF0dXJl",
@@ -40,12 +40,12 @@ async fn start(binary: &OsStr, home: &Path) -> (AppServerClient, Receiver<Server
 		child.stdin.take().expect("stdin"),
 	);
 
-	client.initialize(json!({"clientInfo":{"name":"decodex_refresh_fixture","version":"0.1"},"capabilities":{"experimentalApi":true}})).await.expect("initialize");
+	client.initialize(serde_json::json!({"clientInfo":{"name":"decodex_refresh_fixture","version":"0.1"},"capabilities":{"experimentalApi":true}})).await.expect("initialize");
 
 	(client, events, child)
 }
 async fn login(client: &AppServerClient, access: &str) {
-	client.request("account/login/start",json!({"type":"chatgptAuthTokens","accessToken":access,"chatgptAccountId":PROVIDER,"chatgptPlanType":"pro"})).await.unwrap_or_else(|error| {if let ClientError::Remote(remote)=error {panic!("external fixture login: {}",remote.message.replace(access,"[synthetic-token]"));}panic!("external fixture transport");});
+	client.request("account/login/start",serde_json::json!({"type":"chatgptAuthTokens","accessToken":access,"chatgptAccountId":PROVIDER,"chatgptPlanType":"pro"})).await.unwrap_or_else(|error| {if let ClientError::Remote(remote)=error {panic!("external fixture login: {}",remote.message.replace(access,"[synthetic-token]"));}panic!("external fixture transport");});
 }
 async fn turn(
 	client: &AppServerClient,
@@ -58,7 +58,7 @@ async fn turn(
 	let target = thread.to_owned();
 	let dispatch = tokio::spawn(async move {
 		copy.turn_start(
-			json!({"threadId":target,"input":[{"type":"text","text":"Return fixture result"}]}),
+			serde_json::json!({"threadId":target,"input":[{"type":"text","text":"Return fixture result"}]}),
 		)
 		.await
 	});
@@ -69,7 +69,7 @@ async fn turn(
 				assert_eq!(method, "account/chatgptAuthTokens/refresh");
 
 				let RequestId::Number(number) = id else { panic!("native callback numeric id") };
-				let request = json!({"id":number,"method":method,"params":params});
+				let request = serde_json::json!({"id":number,"method":method,"params":params});
 				let response =
 					handle(binding, u64::try_from(number).expect("callback id"), &method, &request)
 						.expect("production callback");
@@ -139,7 +139,9 @@ async fn qualify(fail: bool) {
 	login(&client, &initial).await;
 
 	let started = client
-		.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}))
+		.thread_start(
+			serde_json::json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}),
+		)
 		.await
 		.expect("start thread");
 	let thread = started["thread"]["id"].as_str().expect("thread").to_owned();
@@ -168,7 +170,10 @@ async fn qualify(fail: bool) {
 
 	login(&client, &refreshed).await;
 
-	client.thread_resume(json!({"threadId":thread})).await.expect("resume exact thread");
+	client
+		.thread_resume(serde_json::json!({"threadId":thread}))
+		.await
+		.expect("resume exact thread");
 
 	turn(&client, &mut events, &thread, &binding, !fail).await;
 
@@ -229,12 +234,16 @@ async fn serve(
 			seen.lock().expect("observations").push(fresh);
 
 			if !fresh {
-				(401, "application/json", json!({"error":{"message":"unauthorized"}}).to_string())
+				(
+					401,
+					"application/json",
+					serde_json::json!({"error":{"message":"unauthorized"}}).to_string(),
+				)
 			} else {
 				let frames = [
-					json!({"type":"response.created","response":{"id":"refresh-fixture"}}),
-					json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"fixture-message","content":[{"type":"output_text","text":"Fixture success"}]}}),
-					json!({"type":"response.completed","response":{"id":"refresh-fixture","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}),
+					serde_json::json!({"type":"response.created","response":{"id":"refresh-fixture"}}),
+					serde_json::json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"fixture-message","content":[{"type":"output_text","text":"Fixture success"}]}}),
+					serde_json::json!({"type":"response.completed","response":{"id":"refresh-fixture","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}),
 				];
 
 				(
@@ -252,9 +261,13 @@ async fn serve(
 				)
 			}
 		} else if first.contains("/accounts/check") {
-			(200,"application/json",json!({"accounts":[{"id":PROVIDER,"workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"}]}).to_string())
+			(200,"application/json",serde_json::json!({"accounts":[{"id":PROVIDER,"workspace_backend_origin":"https://chatgpt.com","account_routing_override":"NO_CONSTRAINT"}]}).to_string())
 		} else if first.contains("/settings/user") {
-			(200, "application/json", json!({"commit_attribution_enabled":false}).to_string())
+			(
+				200,
+				"application/json",
+				serde_json::json!({"commit_attribution_enabled":false}).to_string(),
+			)
 		} else {
 			(404, "application/json", "{}".into())
 		};

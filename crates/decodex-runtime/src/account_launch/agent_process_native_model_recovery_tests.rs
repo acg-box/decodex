@@ -14,7 +14,7 @@ fn assert_resumed_settings(resumed: &Value, mode: &str) {
 	assert_eq!(resumed["reasoningEffort"], "medium");
 	assert_eq!(
 		resumed["collaborationMode"],
-		json!({
+		serde_json::json!({
 			"mode": mode,
 			"settings": {
 				"model": "gpt-5.6-terra",
@@ -58,8 +58,8 @@ async fn qualify(mode: &str, preserve_tier: bool) {
 		Arc::clone(&count),
 		None,
 		Some(Arc::clone(&requests)),
-		|_| json!({"input_tokens":1,"output_tokens":1,"total_tokens":2}),
-		|serial| json!({"type":"message","role":"assistant","id":format!("message-{serial}"),"content":[{"type":"output_text","text":"Fixture done."}]}),
+		|_| serde_json::json!({"input_tokens":1,"output_tokens":1,"total_tokens":2}),
+		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("message-{serial}"),"content":[{"type":"output_text","text":"Fixture done."}]}),
 	));
 
 	fs::write(home.path().join("config.toml"),format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\n[model_providers.fixture]\nname = \"Local recovery fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).expect("isolated model configuration");
@@ -75,13 +75,13 @@ async fn qualify(mode: &str, preserve_tier: bool) {
 	);
 
 	let thread = time::timeout(Duration::from_secs(30), async {
-		let started = session.client.thread_start(json!({"cwd":home.path(),"model":"gpt-5.6-sol","approvalPolicy":"on-request","approvalsReviewer":"user","sandbox":"read-only"})).await.expect("native task");
+		let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"model":"gpt-5.6-sol","approvalPolicy":"on-request","approvalsReviewer":"user","sandbox":"read-only"})).await.expect("native task");
 		let thread = started["thread"]["id"].as_str().expect("native thread");
 		let initial = NativeTaskModelSettings::from_thread_response(&started).expect("complete native start settings");
 
 		assert_eq!(initial.model,"gpt-5.6-sol");
 
-		session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Return fixture done."}],
+		session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Return fixture done."}],
 			"collaborationMode":{"mode":mode,"settings":{"model":"gpt-5.6-sol","reasoning_effort":"medium","developer_instructions":"Keep this exact mode instruction."}}})).await.expect("one fixture turn");
 
 		loop {
@@ -114,7 +114,7 @@ async fn qualify(mode: &str, preserve_tier: bool) {
 
 		let expected_tier = if preserve_tier { initial.service_tier.as_deref() } else { Some("default") };
 
-		assert_eq!(settings["serviceTier"], json!(expected_tier));
+		assert_eq!(settings["serviceTier"], serde_json::json!(expected_tier));
 
 		let published = NativeTaskModelSettings::from_notification(&settings).expect("complete native publication");
 
@@ -138,7 +138,7 @@ async fn qualify(mode: &str, preserve_tier: bool) {
 	let resumed = time::timeout(
 		Duration::from_secs(20),
 		reopened.client.thread_resume(
-			json!({"threadId":thread,"excludeTurns":true,"experimentalRawEvents":true}),
+			serde_json::json!({"threadId":thread,"excludeTurns":true,"experimentalRawEvents":true}),
 		),
 	)
 	.await
@@ -157,7 +157,7 @@ async fn qualify(mode: &str, preserve_tier: bool) {
 		reopened
 			.client
 			.turn_start(
-				json!({"threadId":thread,"input":[{"type":"text","text":"Return another fixture response."}]}),
+				serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Return another fixture response."}]}),
 			)
 			.await
 			.expect("explicit continuation");

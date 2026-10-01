@@ -6,7 +6,7 @@ use std::sync::{
 	atomic::{AtomicUsize, Ordering},
 };
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::account_launch::process::*;
 use decodex_codex::schema::ACCOUNT_REFRESH_CALLBACK_METHOD;
@@ -122,7 +122,7 @@ fn pat_bound_child_cannot_invoke_the_oauth_refresh_owner() {
 		&binding,
 		17,
 		method,
-		&json!({"id":17,"method":method,"params":{"reason":"unauthorized"}}),
+		&serde_json::json!({"id":17,"method":method,"params":{"reason":"unauthorized"}}),
 	)
 	.unwrap();
 
@@ -139,9 +139,10 @@ fn refresh_owner_preserves_optional_fields_and_rejects_wrong_identity_before_rep
 	const METHOD: &str = "account/chatgptAuthTokens/refresh";
 
 	for (provider, fail) in [(PROVIDER, false), (PROVIDER, true), ("other-account", false)] {
-		for previous in [None, Some(json!(null)), Some(json!(PROVIDER))] {
+		for previous in [None, Some(serde_json::json!(null)), Some(serde_json::json!(PROVIDER))] {
 			let (binding, calls) = binding("synthetic-nonsecret-token", provider, fail);
-			let mut request = json!({"id":17,"method":METHOD,"params":{"reason":"unauthorized"}});
+			let mut request =
+				serde_json::json!({"id":17,"method":METHOD,"params":{"reason":"unauthorized"}});
 
 			if let Some(previous) = previous {
 				request["params"]["previousAccountId"] = previous;
@@ -173,14 +174,15 @@ fn refresh_owner_preserves_optional_fields_and_rejects_wrong_identity_before_rep
 	}
 	for mutation in ["id", "method", "reason", "empty_previous", "bad_previous"] {
 		let (binding, calls) = binding("synthetic-nonsecret-token", PROVIDER, false);
-		let mut request = json!({"id":17,"method":METHOD,"params":{"reason":"unauthorized"}});
+		let mut request =
+			serde_json::json!({"id":17,"method":METHOD,"params":{"reason":"unauthorized"}});
 
 		match mutation {
-			"id" => request["id"] = json!(18),
-			"method" => request["method"] = json!("other"),
-			"reason" => request["params"]["reason"] = json!("other"),
-			"empty_previous" => request["params"]["previousAccountId"] = json!(""),
-			_ => request["params"]["previousAccountId"] = json!(false),
+			"id" => request["id"] = serde_json::json!(18),
+			"method" => request["method"] = serde_json::json!("other"),
+			"reason" => request["params"]["reason"] = serde_json::json!("other"),
+			"empty_previous" => request["params"]["previousAccountId"] = serde_json::json!(""),
+			_ => request["params"]["previousAccountId"] = serde_json::json!(false),
 		}
 
 		assert!(handle(&binding, 17, METHOD, &request).is_err());

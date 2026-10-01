@@ -61,7 +61,7 @@ async fn qualify(
 		requested.or(configured),
 		Some(bodies.clone()),
 		None,
-		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native ordinary answer"}]}),
+		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native ordinary answer"}]}),
 	));
 	let model_name = if inherit { "fixture-selected" } else { "gpt-5.6-sol" };
 	let mut model = effort::fixture_model(model_name, "provider-effort");
@@ -69,24 +69,24 @@ async fn qualify(
 	model["default_reasoning_level"] = Value::Null;
 
 	if tier_override {
-		model["service_tiers"] =
-			json!([{ "id":"flex", "name":"Flex", "description":"Synthetic Flex capability" }]);
+		model["service_tiers"] = serde_json::json!([{ "id":"flex", "name":"Flex", "description":"Synthetic Flex capability" }]);
 	}
 
 	let catalog = home.path().join("models.json");
 
 	fs::write(
 		&catalog,
-		serde_json::to_vec(&json!({"models":[model]})).expect("native ordinary effort fixture"),
+		serde_json::to_vec(&serde_json::json!({"models":[model]}))
+			.expect("native ordinary effort fixture"),
 	)
 	.expect("native ordinary effort fixture");
 	// Use a different thread tier so an ignored per-turn override fails the wire assertion.
 	let configured_tier = if tier_override { "default" } else { "flex" };
 	let reasoning = configured
-		.map(|value| format!("model_reasoning_effort={}\n", json!(value)))
+		.map(|value| format!("model_reasoning_effort={}\n", serde_json::json!(value)))
 		.unwrap_or_default();
 
-	fs::write(home.path().join("config.toml"), format!("{reasoning}model={}\nservice_tier=\"{configured_tier}\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nfast_mode=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(model_name),json!(catalog))).expect("native ordinary effort fixture");
+	fs::write(home.path().join("config.toml"), format!("{reasoning}model={}\nservice_tier=\"{configured_tier}\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\n[features]\nfast_mode=false\nenable_request_compression=false\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",serde_json::json!(model_name),serde_json::json!(catalog))).expect("native ordinary effort fixture");
 
 	let mut session = NativeSession::start(&binary, home.path());
 	let start = ConversationThreadStartRequest::new(
@@ -99,13 +99,16 @@ async fn qualify(
 	.inherit_service_tier();
 	let mut wire = serde_json::to_value(start).expect("native start wire");
 
-	wire["approvalPolicy"] = json!("never");
-	wire["sandbox"] = json!("read-only");
+	wire["approvalPolicy"] = serde_json::json!("never");
+	wire["sandbox"] = serde_json::json!("read-only");
 
 	let started = session.client.thread_start(wire).await.expect("native ordinary effort fixture");
 
 	if inherit {
-		assert_eq!(started["serviceTier"], if tier_override { Value::Null } else { json!("flex") });
+		assert_eq!(
+			started["serviceTier"],
+			if tier_override { Value::Null } else { serde_json::json!("flex") }
+		);
 	}
 
 	let id = started["thread"]["id"].as_str().expect("native ordinary effort fixture").to_owned();
@@ -169,7 +172,7 @@ async fn qualify(
 	assert!(!backend.is_finished(), "backend effort assertions must pass");
 
 	for body in bodies.lock().expect("captured inference bodies").iter() {
-		assert_eq!(body["reasoning"]["effort"], json!(requested.or(configured)));
+		assert_eq!(body["reasoning"]["effort"], serde_json::json!(requested.or(configured)));
 
 		if inherit {
 			assert_eq!(body["model"], model_name);
@@ -205,7 +208,7 @@ async fn send(
 	if inherit && tier_override {
 		wire.as_object_mut()
 			.expect("native turn object")
-			.insert("serviceTierForTurn".into(), json!("flex"));
+			.insert("serviceTierForTurn".into(), serde_json::json!("flex"));
 	}
 
 	let turn = session.client.turn_start(wire).await.expect("native ordinary effort fixture");
@@ -230,7 +233,7 @@ async fn send(
 async fn assert_readback(session: &NativeSession, thread_id: &str, client_id: &str, turn_id: &str) {
 	let response = session
 		.client
-		.thread_read(json!({"threadId":thread_id,"includeTurns":true}))
+		.thread_read(serde_json::json!({"threadId":thread_id,"includeTurns":true}))
 		.await
 		.expect("read native persisted history");
 	let thread: ProtocolThread = serde_json::from_value(response["thread"].clone())

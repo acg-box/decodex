@@ -2,7 +2,7 @@
 
 use std::cmp::Reverse;
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 const MAX_BYTES: usize = 48_000;
 
@@ -15,14 +15,14 @@ pub(super) fn terminal(params: &Value) -> Value {
 		let classification =
 			error.get("codexErrorInfo").filter(|value| value.to_string().len() <= 1_024).cloned();
 
-		error = json!({"message":message.chars().take(512).collect::<String>(),"truncated":true});
+		error = serde_json::json!({"message":message.chars().take(512).collect::<String>(),"truncated":true});
 
 		if let Some(classification) = classification {
 			error["codexErrorInfo"] = classification;
 		}
 	}
 
-	let mut retained = json!({"id":turn["id"],"status":turn["status"],"error":error});
+	let mut retained = serde_json::json!({"id":turn["id"],"status":turn["status"],"error":error});
 
 	for field in ["startedAt", "completedAt", "durationMs"] {
 		retained[field] = turn[field].as_i64().filter(|value| *value >= 0).into();
@@ -35,7 +35,7 @@ pub(super) fn terminal(params: &Value) -> Value {
 			fields.iter().any(|(key, value)| retained.get(key) != Some(value))
 		});
 
-	json!({"threadId":params["threadId"],"turn":retained,"detailsOmitted":omitted})
+	serde_json::json!({"threadId":params["threadId"],"turn":retained,"detailsOmitted":omitted})
 }
 
 /// Recover only the final assistant item from an explicit native completion summary.
@@ -112,7 +112,7 @@ pub(super) fn usage(params: &Value) -> Option<Value> {
 	let usage = &params["tokenUsage"];
 	let count = |path: &str| usage.pointer(path)?.as_i64().filter(|value| *value >= 0);
 
-	Some(json!({
+	Some(serde_json::json!({
 		"input_tokens": count("/total/inputTokens")?,
 		"output_tokens": count("/total/outputTokens")?,
 		"context_tokens": count("/last/totalTokens")?,
@@ -124,11 +124,11 @@ fn truncate_message(item: &Value, budget: usize) -> Option<Value> {
 	let text = item["text"].as_str()?;
 	let mut message = item.clone();
 
-	message["text"] = json!("");
+	message["text"] = serde_json::json!("");
 
 	if message.to_string().len() > budget {
 		// Oversized metadata must not hide an otherwise readable result.
-		message = json!({"type":"agentMessage","text":""});
+		message = serde_json::json!({"type":"agentMessage","text":""});
 	}
 	if message.to_string().len() > budget {
 		return None;
@@ -145,7 +145,7 @@ fn truncate_message(item: &Value, budget: usize) -> Option<Value> {
 			end -= 1;
 		}
 
-		message["text"] = json!(&text[..end]);
+		message["text"] = serde_json::json!(&text[..end]);
 
 		if message.to_string().len() <= budget {
 			low = middle;
@@ -157,7 +157,7 @@ fn truncate_message(item: &Value, budget: usize) -> Option<Value> {
 		low -= 1;
 	}
 
-	message["text"] = json!(&text[..low]);
+	message["text"] = serde_json::json!(&text[..low]);
 
 	Some(message)
 }
@@ -169,7 +169,7 @@ mod tests {
 	#[test]
 	fn long_error_keeps_provider_classification_without_partial_steer() {
 		let output = result_messages::terminal(
-			&result_messages::json!({"threadId":"thread","turn":{"id":"turn","status":"failed","error":{"message":"Stopped","codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"x".repeat(8_000),"steer":{"message":"User must acknowledge this"}}}}}),
+			&serde_json::json!({"threadId":"thread","turn":{"id":"turn","status":"failed","error":{"message":"Stopped","codexErrorInfo":"misalignmentPolicyViolation","misalignment":{"detailedExplanation":"x".repeat(8_000),"steer":{"message":"User must acknowledge this"}}}}}),
 		);
 
 		assert_eq!(output["turn"]["error"]["codexErrorInfo"], "misalignmentPolicyViolation");
@@ -180,11 +180,10 @@ mod tests {
 
 	#[test]
 	fn terminal_retains_native_times_without_inventing_replay_times() {
-		let value =
-			result_messages::terminal(&result_messages::json!({"threadId":"thread","turn":{
-				"id":"turn","status":"completed","error":null,
-				"startedAt":1_700_000_000,"completedAt":1_700_000_125,"durationMs":125_000
-			}}));
+		let value = result_messages::terminal(&serde_json::json!({"threadId":"thread","turn":{
+			"id":"turn","status":"completed","error":null,
+			"startedAt":1_700_000_000,"completedAt":1_700_000_125,"durationMs":125_000
+		}}));
 
 		assert_eq!(value["turn"]["startedAt"], 1_700_000_000);
 		assert_eq!(value["turn"]["completedAt"], 1_700_000_125);
@@ -192,7 +191,7 @@ mod tests {
 		assert_eq!(value["detailsOmitted"], false);
 
 		let old = result_messages::terminal(
-			&result_messages::json!({"turn":{"id":"old","status":"completed"}}),
+			&serde_json::json!({"turn":{"id":"old","status":"completed"}}),
 		);
 
 		assert!(old["turn"]["startedAt"].is_null());
@@ -200,12 +199,12 @@ mod tests {
 		assert!(old["turn"]["durationMs"].is_null());
 
 		for invalid in [
-			result_messages::json!(-1),
-			result_messages::json!("x".repeat(70_000)),
-			result_messages::json!({"unexpected":true}),
+			serde_json::json!(-1),
+			serde_json::json!("x".repeat(70_000)),
+			serde_json::json!({"unexpected":true}),
 		] {
 			let bounded = result_messages::terminal(
-				&result_messages::json!({"turn":{"id":"turn","startedAt":invalid,
+				&serde_json::json!({"turn":{"id":"turn","startedAt":invalid,
 				"completedAt":invalid,"durationMs":invalid}}),
 			);
 
@@ -219,7 +218,7 @@ mod tests {
 
 	#[test]
 	fn final_report_survives_large_commentary_and_keeps_chronological_order() {
-		let turn = result_messages::json!({"items":[
+		let turn = serde_json::json!({"items":[
 			{"type":"agentMessage","phase":"commentary","text":"x".repeat(60_000)},
 			{"type":"agentMessage","phase":"final_answer","text":"Verified final result"}
 		]});
@@ -233,7 +232,8 @@ mod tests {
 	#[test]
 	fn long_escaped_multibyte_output_remains_structured_readable_and_bounded() {
 		let text = "界🙂\"\\\n\u{0001}".repeat(12_000);
-		let turn = result_messages::json!({"items":[{"type":"agentMessage","id":"message-1","text":text}]});
+		let turn =
+			serde_json::json!({"items":[{"type":"agentMessage","id":"message-1","text":text}]});
 		let (messages, truncated) = result_messages::collect(Some(&turn));
 
 		assert!(truncated);
@@ -254,10 +254,10 @@ mod tests {
 	#[test]
 	fn combined_evidence_fits_store_limit_with_maximum_escaped_ids_and_error() {
 		let id = "\u{0001}".repeat(512);
-		let turn = result_messages::json!({"id":id,"status":"failed","error":{"message":"e".repeat(4_000)},
+		let turn = serde_json::json!({"id":id,"status":"failed","error":{"message":"e".repeat(4_000)},
 			"items":[{"type":"agentMessage","text":"界\"".repeat(MAX_BYTES)}]});
 		let (messages, truncated) = result_messages::collect(Some(&turn));
-		let evidence = result_messages::json!({"terminal":result_messages::terminal(&result_messages::json!({"threadId":id,"turn":turn})),
+		let evidence = serde_json::json!({"terminal":result_messages::terminal(&serde_json::json!({"threadId":id,"turn":turn})),
 			"threadReadback":{"threadId":id,"turnId":id,"assistantMessages":messages,
 			"truncated":truncated,"exactTurnReadback":true}});
 
@@ -266,7 +266,7 @@ mod tests {
 
 	#[test]
 	fn ordinary_messages_keep_fields_and_non_assistant_items_are_excluded() {
-		let turn = result_messages::json!({"items":[
+		let turn = serde_json::json!({"items":[
 			{"type":"commandExecution","text":"not assistant"},
 			{"type":"agentMessage","id":"one","text":"first","phase":"commentary"},
 			{"type":"agentMessage","id":"two","text":"done","phase":"final_answer"}
@@ -280,13 +280,13 @@ mod tests {
 
 	#[test]
 	fn oversized_metadata_preserves_text_and_many_messages_obey_array_budget() {
-		let turn = result_messages::json!({"items":[{"type":"agentMessage","id":"x".repeat(MAX_BYTES),"text":"useful result"}]});
+		let turn = serde_json::json!({"items":[{"type":"agentMessage","id":"x".repeat(MAX_BYTES),"text":"useful result"}]});
 		let (messages, truncated) = result_messages::collect(Some(&turn));
 
 		assert!(truncated);
 		assert_eq!(messages[0]["text"], "useful result");
 
-		let turn = result_messages::json!({"items":vec![result_messages::json!({"type":"agentMessage","text":"done"}); 2_000]});
+		let turn = serde_json::json!({"items":vec![serde_json::json!({"type":"agentMessage","text":"done"}); 2_000]});
 		let (messages, truncated) = result_messages::collect(Some(&turn));
 
 		assert!(truncated);

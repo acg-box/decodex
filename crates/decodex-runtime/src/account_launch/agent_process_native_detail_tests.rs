@@ -45,12 +45,12 @@ async fn installed_native_patch_pages_survive_cold_restart_without_replay() {
 		requests.clone(),
 		None,
 		None,
-		|_| json!({"input_tokens":0,"output_tokens":0,"total_tokens":0}),
+		|_| serde_json::json!({"input_tokens":0,"output_tokens":0,"total_tokens":0}),
 		move |serial| {
 			if serial == 0 {
-				json!({"type":"custom_tool_call","name":"apply_patch","input":patch,"call_id":"large-patch"})
+				serde_json::json!({"type":"custom_tool_call","name":"apply_patch","input":patch,"call_id":"large-patch"})
 			} else {
-				json!({"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":"Patch complete"}]})
+				serde_json::json!({"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":"Patch complete"}]})
 			}
 		},
 	));
@@ -59,9 +59,9 @@ async fn installed_native_patch_pages_survive_cold_restart_without_replay() {
 
 	let mut session = NativeSession::start(&binary, home.path());
 	let (thread, turn, item, text, cursor) = time::timeout(Duration::from_secs(60), async {
-		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"workspace-write"})).await.unwrap();
+		let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"workspace-write"})).await.unwrap();
 		let thread = started["thread"]["id"].as_str().unwrap().to_owned();
-		let turn = session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Create the fixture patch."}]})).await.unwrap();
+		let turn = session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Create the fixture patch."}]})).await.unwrap();
 		let turn = turn["turn"]["id"].as_str().unwrap().to_owned();
 
 		loop {

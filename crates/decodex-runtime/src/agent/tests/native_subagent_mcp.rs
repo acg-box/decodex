@@ -17,10 +17,10 @@ fn mcp_response(body: &Value, serial: usize) -> Value {
 		.any(|i| i["type"] == "function_call_output" && i["call_id"] == "child-mcp");
 
 	if is_child(body) && !answered {
-		return json!({"type":"function_call","id":"child-mcp","call_id":"child-mcp","namespace":"mcp__fixture","name":"ask","arguments":"{}"});
+		return serde_json::json!({"type":"function_call","id":"child-mcp","call_id":"child-mcp","namespace":"mcp__fixture","name":"ask","arguments":"{}"});
 	}
 
-	json!({"type":"message","role":"assistant","id":format!("done-{serial}"),"content":[{"type":"output_text","text":"DONE"}]})
+	serde_json::json!({"type":"message","role":"assistant","id":format!("done-{serial}"),"content":[{"type":"output_text","text":"DONE"}]})
 }
 
 #[tokio::test]
@@ -28,9 +28,10 @@ fn mcp_response(body: &Value, serial: usize) -> Value {
 async fn native_child_mcp_input_preserves_policy_and_exact_request() {
 	let mut failures = 0;
 
-	for marker in
-		[json!({"codex_approval_kind":"browser_auth"}), json!({"codex_requires_user_input":true})]
-	{
+	for marker in [
+		serde_json::json!({"codex_approval_kind":"browser_auth"}),
+		serde_json::json!({"codex_requires_user_input":true}),
+	] {
 		for interactive in [false, true] {
 			if AssertUnwindSafe(qualify(marker.clone(), interactive)).catch_unwind().await.is_err()
 			{
@@ -56,7 +57,7 @@ async fn qualify(marker: Value, interactive: bool) {
 	let (requests_tx, mut requests_rx) = mpsc::unbounded_channel();
 	let backend = tokio::spawn(serve_with_response(listener, requests_tx, mcp_response));
 
-	fs::write(home.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2=true\n[model_providers.fixture]\nname=\"Isolated MCP child\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{},{},{}]\nrequired=true\ndefault_tools_approval_mode=\"approve\"\n",json!(script),json!(record),json!(marker.to_string()),json!(interactive.to_string()))).expect("config");
+	fs::write(home.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2=true\n[model_providers.fixture]\nname=\"Isolated MCP child\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{},{},{}]\nrequired=true\ndefault_tools_approval_mode=\"approve\"\n",serde_json::json!(script),serde_json::json!(record),serde_json::json!(marker.to_string()),serde_json::json!(interactive.to_string()))).expect("config");
 
 	let (mut agent, _, _store_home) = fixture().await;
 	let mut command = Command::new(binary);
@@ -76,7 +77,8 @@ async fn qualify(marker: Value, interactive: bool) {
 	agent.config =
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.display().to_string());
 	agent.config.sandbox = if interactive { "read-only" } else { "danger-full-access" }.into();
-	agent.config.approval_policy = json!(if interactive { "on-request" } else { "never" });
+	agent.config.approval_policy =
+		serde_json::json!(if interactive { "on-request" } else { "never" });
 
 	let outcome=AssertUnwindSafe(time::timeout(Duration::from_secs(60),async{
  agent.initialize().await.expect("initialize");
@@ -113,9 +115,9 @@ async fn qualify(marker: Value, interactive: bool) {
    assert_eq!(payload["params"],params);
    assert_eq!(payload["ownerThreadId"],root);
 
-   agent.respond_permission(id,json!({"action":"accept","content":{"answer":"continue"}})).await.expect("exact child reply");
+   agent.respond_permission(id,serde_json::json!({"action":"accept","content":{"answer":"continue"}})).await.expect("exact child reply");
 
-   assert!(agent.respond_pending_event(event_id,json!({"action":"decline"})).await.is_err(),"reply cannot be repeated");
+   assert!(agent.respond_pending_event(event_id,serde_json::json!({"action":"decline"})).await.is_err(),"reply cannot be repeated");
   }
 
   if done {break;}
@@ -126,7 +128,7 @@ async fn qualify(marker: Value, interactive: bool) {
 
  let result:Value=serde_json::from_slice(&fs::read(&record).expect("native MCP result")).expect("result JSON");
 
- assert_eq!(result["result"],json!({"action":"accept","content":if interactive {json!({"answer":"continue"})} else {json!({})}}),"marker={marker}, native reply={result}");
+ assert_eq!(result["result"],serde_json::json!({"action":"accept","content":if interactive {serde_json::json!({"answer":"continue"})} else {serde_json::json!({})}}),"marker={marker}, native reply={result}");
 
  let mut child_calls=0;
  let mut continuations=0;

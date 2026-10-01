@@ -20,14 +20,14 @@ async fn installed_guardian_preserves_native_image_profile_after_restart() {
 		requests.clone(),
 		None,
 		Some(bodies.clone()),
-		Some(json!({"input_tokens":0,"output_tokens":0,"total_tokens":0})),
+		Some(serde_json::json!({"input_tokens":0,"output_tokens":0,"total_tokens":0})),
 		|serial| match serial {
 			1 =>
-				json!({"type":"function_call","name":"exec_command","call_id":"image-review","arguments":json!({"cmd":"exit 0","sandbox_permissions":"require_escalated","justification":"Isolated image evidence test"}).to_string()}),
+				serde_json::json!({"type":"function_call","name":"exec_command","call_id":"image-review","arguments":serde_json::json!({"cmd":"exit 0","sandbox_permissions":"require_escalated","justification":"Isolated image evidence test"}).to_string()}),
 			2 =>
-				json!({"type":"message","role":"assistant","id":"review","content":[{"type":"output_text","text":"{\"outcome\":\"deny\"}"}]}),
+				serde_json::json!({"type":"message","role":"assistant","id":"review","content":[{"type":"output_text","text":"{\"outcome\":\"deny\"}"}]}),
 			_ =>
-				json!({"type":"message","role":"assistant","id":"done","content":[{"type":"output_text","text":"Done"}]}),
+				serde_json::json!({"type":"message","role":"assistant","id":"done","content":[{"type":"output_text","text":"Done"}]}),
 		},
 	));
 
@@ -35,10 +35,10 @@ async fn installed_guardian_preserves_native_image_profile_after_restart() {
 
 	time::timeout(Duration::from_secs(60), async {
 		let mut session = NativeSession::start(&binary, home.path());
-		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":"read-only"})).await.unwrap();
+		let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":"read-only"})).await.unwrap();
 		let thread = started["thread"]["id"].as_str().unwrap().to_owned();
 
-		session.client.turn_start(json!({"threadId":thread,"input":[
+		session.client.turn_start(serde_json::json!({"threadId":thread,"input":[
 			{"type":"text","text":"Keep the working tree unchanged. These images are evidence."},
 			{"type":"image","fileId":"file_guardian_first","detail":"original"},
 			{"type":"image","fileId":"file_guardian_second","detail":"high"}
@@ -50,11 +50,11 @@ async fn installed_guardian_preserves_native_image_profile_after_restart() {
 
 		let mut session = NativeSession::start(&binary, home.path());
 
-		session.client.thread_resume(json!({"threadId":thread,"excludeTurns":true})).await.unwrap();
+		session.client.thread_resume(serde_json::json!({"threadId":thread,"excludeTurns":true})).await.unwrap();
 
 		assert_eq!(requests.load(Ordering::Acquire), 1, "resume must not infer");
 
-		session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Review the isolated command using the saved evidence."}]})).await.unwrap();
+		session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Review the isolated command using the saved evidence."}]})).await.unwrap();
 
 		assert!(finish(&mut session).await);
 

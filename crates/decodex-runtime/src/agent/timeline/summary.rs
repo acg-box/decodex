@@ -1,7 +1,7 @@
 //! Incomplete display recovery without inventing native timeline positions.
 use std::{collections::HashSet, time::Duration};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::{
@@ -46,7 +46,7 @@ fn project(value: &Value) -> Result<Vec<Content>, ProjectionError> {
 				continue;
 			}
 
-			let content = timeline::ordinary(&json!({"turnId":turn["id"],"item":item}))
+			let content = timeline::ordinary(&serde_json::json!({"turnId":turn["id"],"item":item}))
 				.ok_or(ProjectionError::Malformed)?;
 
 			if let Content::Item { turn_id, item_id, .. } = &content
@@ -76,7 +76,7 @@ mod tests {
 	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	use crate::{
-		agent::timeline::summary::{self, AgentTimelineResult, Content, Source, Value},
+		agent::timeline::summary::{AgentTimelineResult, Content, Source, Value},
 		agent_usage_estimate::SourceKey,
 	};
 	use decodex_codex::app_server_client::AppServerClient;
@@ -104,21 +104,21 @@ mod tests {
 
 					let mut response = match method {
 						"thread/read" =>
-							summary::json!({"result":{"thread":{"id":"thread","historyMode":"paginated"}}}),
+							serde_json::json!({"result":{"thread":{"id":"thread","historyMode":"paginated"}}}),
 						"thread/timeline/list" =>
-							summary::json!({"error":{"code":-32_603,"message":"history unavailable"}}),
+							serde_json::json!({"error":{"code":-32_603,"message":"history unavailable"}}),
 						"thread/turns/list" => {
 							assert_eq!(
 								request["params"],
-								summary::json!({"threadId":"thread","cursor":null,"limit":100,"sortDirection":"desc","itemsView":"summary"})
+								serde_json::json!({"threadId":"thread","cursor":null,"limit":100,"sortDirection":"desc","itemsView":"summary"})
 							);
 
 							observed.store(1, Ordering::Release);
 
 							if case == "both_fail" {
-								summary::json!({"error":{"code":-32_603,"message":"summary unavailable"}})
+								serde_json::json!({"error":{"code":-32_603,"message":"summary unavailable"}})
 							} else {
-								summary::json!({"result":{"data":[
+								serde_json::json!({"result":{"data":[
                                 {"id":"new","itemsView":"summary","items":[{"id":"answer","type":"agentMessage","text":"Final reply"}]},
                                 {"id":"old","itemsView":"summary","items":[{"id":"prompt","type":"userMessage","content":[{"type":"text","text":"Question"}]}]}
                             ],"nextCursor":"must-not-use"}})

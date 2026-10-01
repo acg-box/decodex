@@ -138,12 +138,12 @@ async fn qualify(home: &Path) {
 	fs::write(
 		&catalog,
 		serde_json::to_vec(
-			&json!({"models":[effort::fixture_model("cold-native-model", "provider-effort")]}),
+			&serde_json::json!({"models":[effort::fixture_model("cold-native-model", "provider-effort")]}),
 		)
 		.expect("catalog"),
 	)
 	.expect("catalog");
-	fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=true\nsupports_websockets=false\n", json!(catalog))).expect("fixture config");
+	fs::write(native_home.join("config.toml"), format!("model=\"cold-native-model\"\nmodel_reasoning_effort=\"provider-effort\"\nmodel_catalog_json={}\nmodel_provider=\"fixture\"\nchatgpt_base_url=\"http://{address}/backend-api\"\ncli_auth_credentials_store=\"file\"\n[features]\nenable_request_compression=false\napps=false\nremote_plugins=false\n[analytics]\nenabled=false\n[model_providers.fixture]\nname=\"Isolated fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=true\nsupports_websockets=false\n", serde_json::json!(catalog))).expect("fixture config");
 
 	let root = DecodexRoot::new(home.join(if interactive { ".decodex" } else { "product" }))
 		.expect("fixture root");
@@ -729,7 +729,7 @@ async fn qualify_native_prompt_revert(
 	home: &Path,
 ) {
 	let before = native
-		.request("thread/resume", json!({"threadId":thread,"excludeTurns":true}))
+		.request("thread/resume", serde_json::json!({"threadId":thread,"excludeTurns":true}))
 		.await
 		.expect("native settings");
 	let headers = native.thread_turns_since(thread, None).await.expect("all native turns");
@@ -795,7 +795,7 @@ async fn qualify_native_prompt_revert(
 	);
 
 	let after = native
-		.request("thread/resume", json!({"threadId":thread,"excludeTurns":true}))
+		.request("thread/resume", serde_json::json!({"threadId":thread,"excludeTurns":true}))
 		.await
 		.expect("retained settings");
 
@@ -830,7 +830,7 @@ async fn qualify_native_prompt_revert(
 	assert_eq!(requests.load(Ordering::Acquire), count, "acknowledgement must not send the draft");
 
 	let relative = PromptDraft::new(vec![
-		json!({"type":"localImage","path":"images/photo.png","detail":"original"}),
+		serde_json::json!({"type":"localImage","path":"images/photo.png","detail":"original"}),
 	])
 	.expect("native recap fixture");
 	let resolved = client
@@ -915,7 +915,8 @@ async fn qualify_canonical_prompt_send(
 	requests: &std::sync::atomic::AtomicUsize,
 ) {
 	let text = format!("Edited canonical input: {} END-OF-FULL-INPUT", "x".repeat(70_000));
-	let input = PromptDraft::new(vec![json!({"type":"text","text":text})]).expect("full input");
+	let input =
+		PromptDraft::new(vec![serde_json::json!({"type":"text","text":text})]).expect("full input");
 	let execution = AgentExecutionOverrides::default();
 	let count = requests.load(Ordering::Acquire);
 

@@ -15,7 +15,7 @@ use decodex_protocol::NativeAgentsResult;
 
 fn response(body: &Value, serial: usize) -> Value {
 	if serial == 1 {
-		return json!({"type":"function_call","id":"spawn","call_id":"spawn","namespace":"collaboration","name":"spawn_agent","arguments":json!({"task_name":"child","message":"CHILD_APPROVAL","fork_turns":"none"}).to_string()});
+		return serde_json::json!({"type":"function_call","id":"spawn","call_id":"spawn","namespace":"collaboration","name":"spawn_agent","arguments":serde_json::json!({"task_name":"child","message":"CHILD_APPROVAL","fork_turns":"none"}).to_string()});
 	}
 
 	let input = body["input"].as_array().unwrap();
@@ -25,10 +25,10 @@ fn response(body: &Value, serial: usize) -> Value {
 		.any(|v| v["type"] == "function_call_output" && v["call_id"] == "child-command");
 
 	if child && !answered {
-		return json!({"type":"function_call","id":"child-command","call_id":"child-command","namespace":"functions","name":"exec_command","arguments":json!({"cmd":"printf child-fixture","sandbox_permissions":"require_escalated","justification":"Isolated approval fixture"}).to_string()});
+		return serde_json::json!({"type":"function_call","id":"child-command","call_id":"child-command","namespace":"functions","name":"exec_command","arguments":serde_json::json!({"cmd":"printf child-fixture","sandbox_permissions":"require_escalated","justification":"Isolated approval fixture"}).to_string()});
 	}
 
-	json!({"type":"message","role":"assistant","id":format!("message-{serial}"),"content":[{"type":"output_text","text":"DONE"}]})
+	serde_json::json!({"type":"message","role":"assistant","id":format!("message-{serial}"),"content":[{"type":"output_text","text":"DONE"}]})
 }
 
 fn is_child(body: &Value) -> bool {
@@ -109,8 +109,8 @@ async fn native_child_approval_round_trip() {
 
 				assert_eq!(payload["params"]["threadId"],child);
 				// A root setting update must reach the next step of the already running child.
-				agent.client.request("thread/settings/update",json!({"threadId":root,"serviceTier":null})).await.unwrap();
-				agent.respond_pending_event(pending,json!({"decision":"decline"})).await.unwrap();
+				agent.client.request("thread/settings/update",serde_json::json!({"threadId":root,"serviceTier":null})).await.unwrap();
+				agent.respond_pending_event(pending,serde_json::json!({"decision":"decline"})).await.unwrap();
 
 				approved_child = Some(child);
 				event_id = Some(pending);
@@ -180,9 +180,9 @@ async fn serve_with_response(
 		let item = response_fn(&body, serial);
 		let id = format!("fixture-{serial}");
 		let frames = [
-			json!({"type":"response.created","response":{"id":id}}),
-			json!({"type":"response.output_item.done","item":item}),
-			json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
+			serde_json::json!({"type":"response.created","response":{"id":id}}),
+			serde_json::json!({"type":"response.output_item.done","item":item}),
+			serde_json::json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}),
 		];
 		let data = frames
 			.iter()

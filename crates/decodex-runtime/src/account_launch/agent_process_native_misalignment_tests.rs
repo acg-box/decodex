@@ -67,7 +67,7 @@ async fn installed_native_continuation_uses_live_details_and_rejects_restart_aut
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.path().display().to_string());
 
 	config.sandbox = "read-only".into();
-	config.approval_policy = json!("never");
+	config.approval_policy = serde_json::json!("never");
 
 	let mut agent =
 		AgentCoordinator::new(store.clone(), session.client.clone(), config.clone()).unwrap();
@@ -224,13 +224,13 @@ async fn serve(listener: tokio::net::TcpListener, requests: Arc<Mutex<Vec<Value>
 			requests.len()
 		};
 		let id = format!("fixture-{serial}");
-		let mut frames = vec![json!({"type":"response.created","response":{"id":id}})];
+		let mut frames = vec![serde_json::json!({"type":"response.created","response":{"id":id}})];
 
 		if serial == 2 {
-			frames.push(json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"done","content":[{"type":"output_text","text":"Done within scope."}]}}));
-			frames.push(json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}));
+			frames.push(serde_json::json!({"type":"response.output_item.done","item":{"type":"message","role":"assistant","id":"done","content":[{"type":"output_text","text":"Done within scope."}]}}));
+			frames.push(serde_json::json!({"type":"response.completed","response":{"id":id,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}));
 		} else {
-			frames.push(json!({"type":"response.failed","response":{"id":id,"status":"failed","error":{"code":"misalignment_policy_violation","message":"Fixture precaution.","misalignment":{"error_type":"fixture_scope","detailed_explanation":EXPLANATION,"steer":{"message":STEER}}}}}));
+			frames.push(serde_json::json!({"type":"response.failed","response":{"id":id,"status":"failed","error":{"code":"misalignment_policy_violation","message":"Fixture precaution.","misalignment":{"error_type":"fixture_scope","detailed_explanation":EXPLANATION,"steer":{"message":STEER}}}}}));
 		}
 
 		let data = frames

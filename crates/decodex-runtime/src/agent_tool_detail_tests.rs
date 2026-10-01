@@ -1,13 +1,13 @@
 use crate::agent_detail::*;
 
 fn history(item: Value) -> Value {
-	json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[item]}]}})
+	serde_json::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[item]}]}})
 }
 
 #[test]
 fn complete_mcp_results_survive_paging_with_resources_and_failure_tail() {
 	let long = "界".repeat(12_000);
-	let item = json!({"id":"item","type":"mcpToolCall","server":"docs","tool":"read","status":"failed","result":{"content":[
+	let item = serde_json::json!({"id":"item","type":"mcpToolCall","server":"docs","tool":"read","status":"failed","result":{"content":[
 		{"type":"text","text":long},
 		{"type":"resource_link","uri":"https://example.test/result","name":"report","description":"Result report"},
 		{"type":"resource","resource":{"uri":"file:///report.txt","mimeType":"text/plain","text":"embedded body"}},
@@ -59,7 +59,7 @@ fn complete_mcp_results_survive_paging_with_resources_and_failure_tail() {
 
 #[test]
 fn structured_only_result_and_public_siblings_remain_visible() {
-	let item = json!({"id":"item","type":"mcpToolCall","tool":"read","result":{"content":[
+	let item = serde_json::json!({"id":"item","type":"mcpToolCall","tool":"read","result":{"content":[
 		{"type":"text","text":"Bearer fixture-private-access-token-123456789"},
 		{"type":"text","text":"Public result"}
 	],"structuredContent":{"count":3,"items":["one","two","three"]},"_meta":{"private":"META_DO_NOT_RENDER"}}});
@@ -71,14 +71,14 @@ fn structured_only_result_and_public_siblings_remain_visible() {
 	assert!(text.contains("three"));
 	assert!(!text.contains("DO_NOT_RENDER"));
 
-	let item = json!({"id":"item","type":"mcpToolCall","result":{"content":[],"structuredContent":{"count":0}}});
+	let item = serde_json::json!({"id":"item","type":"mcpToolCall","result":{"content":[],"structuredContent":{"count":0}}});
 
 	assert!(project_text(&history(item), "thread", "turn", "item").unwrap().contains("count"));
 }
 
 #[test]
 fn dynamic_media_and_malformed_blocks_do_not_disappear() {
-	let item = json!({"id":"item","type":"dynamicToolCall","namespace":"fixture","tool":"read","success":false,"contentItems":[
+	let item = serde_json::json!({"id":"item","type":"dynamicToolCall","namespace":"fixture","tool":"read","success":false,"contentItems":[
 		{"type":"inputText","text":"Text result"},
 		{"type":"inputImage","imageUrl":"data:image/png;base64,RAW_DO_NOT_RENDER"},
 		{"type":"inputAudio","audioUrl":"data:audio/wav;base64,RAW_DO_NOT_RENDER"},
@@ -103,7 +103,7 @@ fn dynamic_media_and_malformed_blocks_do_not_disappear() {
 #[test]
 fn standalone_result_details_retain_long_text_without_media_or_encrypted_bodies() {
 	let long = "界".repeat(12_000);
-	let item = json!({"id":"item","type":"functionCallOutput","name":"result","namespace":"tools","output":[
+	let item = serde_json::json!({"id":"item","type":"functionCallOutput","name":"result","namespace":"tools","output":[
 	 {"type":"input_text","text":long},
 	 {"type":"input_image","image_url":"data:image/png;base64,RAW_DO_NOT_RENDER"},
 	 {"type":"encrypted_content","encrypted_content":"RAW_DO_NOT_RENDER"},
@@ -143,7 +143,7 @@ fn standalone_result_details_retain_long_text_without_media_or_encrypted_bodies(
 
 	let mut scalar = item;
 
-	scalar["output"] = json!("Plain result");
+	scalar["output"] = serde_json::json!("Plain result");
 
 	assert!(
 		project_text(&history(scalar), "thread", "turn", "item").unwrap().ends_with("Plain result")
@@ -152,13 +152,13 @@ fn standalone_result_details_retain_long_text_without_media_or_encrypted_bodies(
 
 #[test]
 fn image_path_and_app_context_are_descriptive_native_evidence() {
-	let item = json!({"id":"item","type":"imageView","path":"/remote/image.png"});
+	let item = serde_json::json!({"id":"item","type":"imageView","path":"/remote/image.png"});
 	let text = project_text(&history(item), "thread", "turn", "item").unwrap();
 
 	assert!(text.contains("/remote/image.png"));
 	assert!(text.contains("does not identify the executor"));
 
-	let item = json!({"id":"item","type":"mcpToolCall","appContext":{
+	let item = serde_json::json!({"id":"item","type":"mcpToolCall","appContext":{
   "connectorId":"app-fixture","appName":"Calendar","actionName":"Read event",
   "linkId":"link-fixture","resourceUri":"ui://event","private":"RAW_DO_NOT_RENDER"
  },"arguments":{"link_id":"ARGUMENT_MUST_NOT_AUTHORIZE"},"result":{"content":[{"type":"text","text":"Event found"}]}});
@@ -184,7 +184,8 @@ fn image_path_and_app_context_are_descriptive_native_evidence() {
 
 	let mut partial = item;
 
-	partial["appContext"] = json!({"appName":"Calendar","linkId":false,"resourceUri":null});
+	partial["appContext"] =
+		serde_json::json!({"appName":"Calendar","linkId":false,"resourceUri":null});
 
 	let text = project_text(&history(partial), "thread", "turn", "item").unwrap();
 
@@ -195,7 +196,7 @@ fn image_path_and_app_context_are_descriptive_native_evidence() {
 
 #[test]
 fn dynamic_inputs_are_readable_without_exposing_sensitive_arguments() {
-	let item = json!({"id":"item","type":"dynamicToolCall","tool":"read","arguments":{"path":"src/main.rs","lines":10},"contentItems":[{"type":"text","text":"Result"}]});
+	let item = serde_json::json!({"id":"item","type":"dynamicToolCall","tool":"read","arguments":{"path":"src/main.rs","lines":10},"contentItems":[{"type":"text","text":"Result"}]});
 	let text = project_text(&history(item.clone()), "thread", "turn", "item").unwrap();
 
 	assert!(text.contains("Input\n{\n"));
@@ -203,7 +204,8 @@ fn dynamic_inputs_are_readable_without_exposing_sensitive_arguments() {
 
 	let mut sensitive = item;
 
-	sensitive["arguments"] = json!({"token":"Bearer fixture-private-access-token-123456789"});
+	sensitive["arguments"] =
+		serde_json::json!({"token":"Bearer fixture-private-access-token-123456789"});
 
 	let text = project_text(&history(sensitive), "thread", "turn", "item").unwrap();
 

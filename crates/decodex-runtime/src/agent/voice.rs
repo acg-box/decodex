@@ -1,8 +1,6 @@
 //! Bind native live voice to the existing Agent and observe its real task turns.
 use crate::{
-	agent::{
-		AgentCoordinator, AgentError, ClientError, ServerEvent, Value, exact, json, resume_error,
-	},
+	agent::{AgentCoordinator, AgentError, ClientError, ServerEvent, Value, exact, resume_error},
 	agent_voice::{self, VoiceGateway},
 };
 use decodex_database::{AgentVoiceCall, SqliteStore};
@@ -91,8 +89,10 @@ impl AgentCoordinator {
 		);
 		// Retire local microphone authority even if native stop acknowledgment is lost.
 		let persisted = self.store.retire_agent_misalignment_voice(thread.into()).await;
-		let result =
-			self.client.request("thread/realtime/stop", json!({"threadId":active_thread})).await;
+		let result = self
+			.client
+			.request("thread/realtime/stop", serde_json::json!({"threadId":active_thread}))
+			.await;
 		// Retain the session until the durable cause and transcript tails are saved.
 		voice.save_transcript_tails(&self.store, &id).await?;
 
@@ -174,7 +174,7 @@ impl AgentCoordinator {
 				if !self.loaded_threads.contains(&thread) {
 					let mut params = Self::resume_params(&thread);
 
-					params["config"]["features.realtime_conversation"] = json!(true);
+					params["config"]["features.realtime_conversation"] = serde_json::json!(true);
 
 					let resumed = self
 						.client
@@ -209,7 +209,7 @@ impl AgentCoordinator {
 				self.voice.as_mut().expect("voice host").session =
 					Some((session_id.as_str().into(), thread.clone()));
 
-				let mut params = json!({
+				let mut params = serde_json::json!({
 					"threadId":thread,"version":"v3","outputModality":"audio","voice":selected_voice,
 					"includeStartupContext":true,"flushTranscriptTailOnSessionEnd":true,
 					"prompt":"Continue this Agent conversation by voice. Wait for the user's new spoken request before starting new work. Use the existing conversation and its tools when the user asks for work.",
@@ -217,13 +217,13 @@ impl AgentCoordinator {
 				});
 
 				if let Some(model) = options.model {
-					params["model"] = json!(model.as_str());
+					params["model"] = serde_json::json!(model.as_str());
 				}
 				if let Some(instructions) = options.start_instructions {
-					params["realtimeStartInstructions"] = json!(instructions.as_str());
+					params["realtimeStartInstructions"] = serde_json::json!(instructions.as_str());
 				}
 				if let Some(instructions) = options.end_instructions {
-					params["realtimeEndInstructions"] = json!(instructions.as_str());
+					params["realtimeEndInstructions"] = serde_json::json!(instructions.as_str());
 				}
 
 				let result = self.client.request("thread/realtime/start", params).await;
@@ -257,7 +257,7 @@ impl AgentCoordinator {
 				self.client
 					.request(
 						"thread/realtime/appendSpeech",
-						json!({
+						serde_json::json!({
 							"threadId":thread, "text":text.as_str()
 						}),
 					)
@@ -272,7 +272,9 @@ impl AgentCoordinator {
 					.filter(|(id, _)| id == session_id.as_str());
 
 				if let Some((_, thread)) = session {
-					self.client.request("thread/realtime/stop", json!({"threadId":thread})).await?;
+					self.client
+						.request("thread/realtime/stop", serde_json::json!({"threadId":thread}))
+						.await?;
 				}
 			},
 			AgentVoiceRequest::Poll { .. } => {},
@@ -433,7 +435,7 @@ impl AgentCoordinator {
 						Some("completed" | "failed" | "interrupted")
 					) {
 					self.record_terminal(
-						json!({"threadId":call.thread_id,"turn":turn}),
+						serde_json::json!({"threadId":call.thread_id,"turn":turn}),
 						self.client
 							.thread_read_turn(&call.thread_id, exact(turn, "/id")?.as_str())
 							.await,
@@ -493,13 +495,14 @@ mod tests {
 
 	use crate::agent::{
 		tests,
-		voice::{self, AgentVoicePhase, AgentVoiceRequest, ServerEvent, VoiceGateway, VoiceSdp},
+		voice::{AgentVoicePhase, AgentVoiceRequest, ServerEvent, VoiceGateway, VoiceSdp},
 	};
 	use decodex_protocol::{EntityId, HistoryText};
 
 	#[tokio::test]
 	async fn selected_speech_uses_only_the_existing_native_call() {
-		let (mut agent, mut sent, _directory) = tests::fixture_with_history(voice::json!({})).await;
+		let (mut agent, mut sent, _directory) =
+			tests::fixture_with_history(serde_json::json!({})).await;
 
 		agent.start_agent("agent", "Coordinate").await.unwrap();
 		agent.attach_voice_host("generation".into(), VoiceGateway::new());
@@ -527,7 +530,7 @@ mod tests {
 		assert_eq!(frames[0]["method"], "thread/realtime/appendSpeech");
 		assert_eq!(
 			frames[0]["params"],
-			voice::json!({"threadId":"opaque thread/1","text":"Selected reply"})
+			serde_json::json!({"threadId":"opaque thread/1","text":"Selected reply"})
 		);
 
 		agent.voice.as_mut().unwrap().precaution_retired = true;
@@ -541,9 +544,10 @@ mod tests {
 		use decodex_protocol::EntityId;
 
 		for disconnected in [false, true] {
-			let (mut agent, mut sent, directory) =
-				tests::fixture_with_history(voice::json!({"_voice_stop_disconnect":disconnected}))
-					.await;
+			let (mut agent, mut sent, directory) = tests::fixture_with_history(
+				serde_json::json!({"_voice_stop_disconnect":disconnected}),
+			)
+			.await;
 
 			agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -576,7 +580,7 @@ mod tests {
 					.observe_misalignment(
 						"opaque thread/1",
 						"opaque turn/1",
-						&voice::json!({"codexErrorInfo":"misalignmentPolicyViolation"})
+						&serde_json::json!({"codexErrorInfo":"misalignmentPolicyViolation"})
 					)
 					.await
 					.is_err()
@@ -585,7 +589,7 @@ mod tests {
 			agent
 				.voice_event(&ServerEvent::Notification {
 					method: "thread/realtime/sdp".into(),
-					params: voice::json!({"threadId":"opaque thread/1","sdp":"late-answer"}),
+					params: serde_json::json!({"threadId":"opaque thread/1","sdp":"late-answer"}),
 				})
 				.await
 				.unwrap();
@@ -614,9 +618,10 @@ mod tests {
 		use decodex_protocol::{AgentVoicePhase, AgentVoiceRequest, EntityId, VoiceSdp};
 
 		for disconnected in [false, true] {
-			let (mut agent, mut sent, directory) =
-				tests::fixture_with_history(voice::json!({"_voice_stop_disconnect":disconnected}))
-					.await;
+			let (mut agent, mut sent, directory) = tests::fixture_with_history(
+				serde_json::json!({"_voice_stop_disconnect":disconnected}),
+			)
+			.await;
 
 			agent.start_agent("agent", "Coordinate").await.unwrap();
 
@@ -642,14 +647,14 @@ mod tests {
 				.observe_misalignment(
 					"opaque thread/1",
 					"opaque turn/1",
-					&voice::json!({"codexErrorInfo":"misalignmentPolicyViolation"}),
+					&serde_json::json!({"codexErrorInfo":"misalignmentPolicyViolation"}),
 				)
 				.await
 				.unwrap();
 			agent
 				.voice_event(&ServerEvent::Notification {
 					method: "thread/realtime/sdp".into(),
-					params: voice::json!({"threadId":"opaque thread/1","sdp":"late-answer"}),
+					params: serde_json::json!({"threadId":"opaque thread/1","sdp":"late-answer"}),
 				})
 				.await
 				.unwrap();

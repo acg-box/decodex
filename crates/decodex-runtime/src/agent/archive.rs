@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tokio::time;
 
-use crate::agent::{self, AgentCoordinator, AgentError, ClientError};
+use crate::agent::{AgentCoordinator, AgentError, ClientError};
 use decodex_codex::app_server_client::ThreadArchiveState;
 
 impl AgentCoordinator {
@@ -113,7 +113,7 @@ impl AgentCoordinator {
 			}
 
 			self.record_terminal(
-				agent::json!({"threadId":thread,"turn":exact_turn}),
+				serde_json::json!({"threadId":thread,"turn":exact_turn}),
 				Ok(history),
 				false,
 			)

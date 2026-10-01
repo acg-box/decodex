@@ -42,7 +42,7 @@ async fn qualify(explicit: bool, enabled: bool) {
 	fs::write(home.path().join("config.toml"),format!("model=\"catalog-model\"\nmodel_provider=\"fixture\"\n[features]\nenable_request_compression=false\napi_key_model_discovery={enabled}\n[model_providers.fixture]\nname=\"OpenAI\"\nbase_url=\"http://{inference_address}\"\n{catalog_setting}wire_api=\"responses\"\nrequires_openai_auth=true\nsupports_websockets=false\n")).expect("config");
 	fs::write(
 		home.path().join("auth.json"),
-		json!({"OPENAI_API_KEY":"synthetic-catalog-token"}).to_string(),
+		serde_json::json!({"OPENAI_API_KEY":"synthetic-catalog-token"}).to_string(),
 	)
 	.expect("synthetic API-key auth");
 
@@ -104,7 +104,7 @@ async fn qualify_inference(
 	let response = session
 		.client
 		.thread_start(
-			json!({"cwd":home,"model":"catalog-model","approvalPolicy":"never","sandbox":"read-only"}),
+			serde_json::json!({"cwd":home,"model":"catalog-model","approvalPolicy":"never","sandbox":"read-only"}),
 		)
 		.await
 		.expect("thread");
@@ -113,7 +113,7 @@ async fn qualify_inference(
 	session
 		.client
 		.turn_start(
-			json!({"threadId":thread,"input":[{"type":"text","text":"Return fixture output"}]}),
+			serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Return fixture output"}]}),
 		)
 		.await
 		.expect("turn");
@@ -187,7 +187,10 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<Mutex<Vec<Value>>>,
 			serde_json::from_slice(&bytes).expect("JSON")
 		};
 
-		calls.lock().expect("calls").push(json!({"method":method,"target":target,"body":body}));
+		calls
+			.lock()
+			.expect("calls")
+			.push(serde_json::json!({"method":method,"target":target,"body":body}));
 
 		let (content_type, response) = if method == "GET" {
 			assert!(target.starts_with(if explicit { "/provider-catalog?" } else { "/models?" }));
@@ -199,17 +202,18 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<Mutex<Vec<Value>>>,
 
 			let mut model = effort::fixture_model("catalog-model", "high");
 
-			model["model_messages"]["instructions_template"] = json!(instructions(explicit));
+			model["model_messages"]["instructions_template"] =
+				serde_json::json!(instructions(explicit));
 
-			("application/json", json!({"models":[model]}).to_string())
+			("application/json", serde_json::json!({"models":[model]}).to_string())
 		} else {
 			assert!(!explicit);
 			assert_eq!(method, "POST");
 			assert_eq!(target, "/responses");
 
 			let frames = [
-				json!({"type":"response.created","response":{"id":"fixture"}}),
-				json!({"type":"response.completed","response":{"id":"fixture","usage":{"input_tokens":1,"output_tokens":0,"total_tokens":1}}}),
+				serde_json::json!({"type":"response.created","response":{"id":"fixture"}}),
+				serde_json::json!({"type":"response.completed","response":{"id":"fixture","usage":{"input_tokens":1,"output_tokens":0,"total_tokens":1}}}),
 			];
 
 			(

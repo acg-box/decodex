@@ -30,9 +30,9 @@ async fn installed_native_usage_restores_agent_baseline_after_cold_resume() {
 		|serial| {
 			let count = serial + 1;
 
-			json!({"input_tokens":10*count,"output_tokens":2*count,"total_tokens":12*count})
+			serde_json::json!({"input_tokens":10*count,"output_tokens":2*count,"total_tokens":12*count})
 		},
-		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native usage answer"}]}),
+		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Native usage answer"}]}),
 	));
 
 	fs::write(home.path().join("config.toml"), format!("model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\n[model_providers.fixture]\nname = \"Isolated usage fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n")).unwrap();
@@ -46,7 +46,7 @@ async fn installed_native_usage_restores_agent_baseline_after_cold_resume() {
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.path().display().to_string());
 
 	config.sandbox = "read-only".into();
-	config.approval_policy = json!("never");
+	config.approval_policy = serde_json::json!("never");
 
 	let mut session = NativeSession::start(&binary, home.path());
 	let mut agent =

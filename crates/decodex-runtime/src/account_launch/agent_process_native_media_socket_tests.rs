@@ -70,7 +70,7 @@ pub(super) async fn check(
 	assert_eq!(runtime.agent_input_directory(&generation).as_deref(), home.to_str());
 	// Simulate native input from another client, preserving native relative paths.
 	let started = native
-		.turn_start(json!({"threadId":thread,"cwd":thread_directory,"input":[
+		.turn_start(serde_json::json!({"threadId":thread,"cwd":thread_directory,"input":[
 			{"type":"text","text":"Inspect the fixture media."},
 			{"type":"localImage","path":"fixture.png"},
 			{"type":"localAudio","path":"fixture.wav"}
@@ -126,7 +126,9 @@ pub(super) async fn check(
 			assert!(chunks > 1);
 		}
 
-		evidence.push(json!({"index":index,"mime":mime,"bytes":bytes.len(),"chunks":chunks}));
+		evidence.push(
+			serde_json::json!({"index":index,"mime":mime,"bytes":bytes.len(),"chunks":chunks}),
+		);
 
 		request.offset = 0;
 		request.fingerprint = None;
@@ -152,7 +154,7 @@ pub(super) async fn check(
 	fs::write(
 		home.join("media-evidence.json"),
 		serde_json::to_vec_pretty(
-			&json!({"thread":thread,"turn":turn,"item":item,"reads":evidence,"model_requests":before}),
+			&serde_json::json!({"thread":thread,"turn":turn,"item":item,"reads":evidence,"model_requests":before}),
 		)
 		.expect("native media fixture"),
 	)

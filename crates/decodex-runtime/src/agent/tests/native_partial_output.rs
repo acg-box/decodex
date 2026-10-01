@@ -53,7 +53,7 @@ async fn interrupted(plan: bool) {
 	let result = AssertUnwindSafe(time::timeout(Duration::from_secs(30), async {
         agent.initialize().await.unwrap();
 
-        let response = agent.client.thread_start(json!({"model":"gpt-5.6-sol","cwd":path,"approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
+        let response = agent.client.thread_start(serde_json::json!({"model":"gpt-5.6-sol","cwd":path,"approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
         let thread = response["thread"]["id"].as_str().unwrap();
 
         AgentCoordinator::reserve_root(&agent.store,"agent","Partial output").await.unwrap();
@@ -61,9 +61,9 @@ async fn interrupted(plan: bool) {
         agent.store.bind_agent_thread("agent".into(),thread.into()).await.unwrap();
         agent.store.begin_agent_dispatch("agent".into()).await.unwrap();
 
-        let mut params = json!({"threadId":thread,"input":[{"type":"text","text":"Write the fixture response.","text_elements":[]}]});
+        let mut params = serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Write the fixture response.","text_elements":[]}]});
 
-        if plan { params["collaborationMode"] = json!({"mode":"plan","settings":{"model":"gpt-5.6-sol","reasoning_effort":"medium","developer_instructions":null}}); }
+        if plan { params["collaborationMode"] = serde_json::json!({"mode":"plan","settings":{"model":"gpt-5.6-sol","reasoning_effort":"medium","developer_instructions":null}}); }
 
         let started = agent.client.turn_start(params).await.unwrap();
         let turn = started["turn"]["id"].as_str().unwrap();
@@ -84,7 +84,7 @@ async fn interrupted(plan: bool) {
                 let live = agent.store.read_agent_output("agent".into()).await.unwrap();
 
                 if live.iter().any(|row|row.text==PARTIAL) {
-                    agent.client.turn_interrupt(json!({"threadId":thread,"turnId":turn})).await.unwrap();
+                    agent.client.turn_interrupt(serde_json::json!({"threadId":thread,"turnId":turn})).await.unwrap();
 
                     interrupted = true;
                 }
@@ -126,9 +126,9 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>, plan:
 
 		let text = if plan { format!("<proposed_plan>\n{PARTIAL}") } else { PARTIAL.into() };
 		let frames = [
-			json!({"type":"response.created","response":{"id":"partial-response"}}),
-			json!({"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant","id":"partial-item","phase":"final_answer","content":[]}}),
-			json!({"type":"response.output_text.delta","item_id":"partial-item","output_index":0,"content_index":0,"delta":text}),
+			serde_json::json!({"type":"response.created","response":{"id":"partial-response"}}),
+			serde_json::json!({"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant","id":"partial-item","phase":"final_answer","content":[]}}),
+			serde_json::json!({"type":"response.output_text.delta","item_id":"partial-item","output_index":0,"content_index":0,"delta":text}),
 		];
 		let body = frames
 			.iter()

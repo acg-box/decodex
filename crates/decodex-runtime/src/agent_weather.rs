@@ -7,7 +7,7 @@ use std::{
 	time::Duration,
 };
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::{task, time};
 
 use crate::agent_host::AgentHost;
@@ -47,7 +47,7 @@ impl AgentHost {
 		};
 		let Ok(Ok(readback)) = time::timeout(
 			Duration::from_secs(2),
-			client.thread_read(json!({"threadId":thread,"includeTurns":false})),
+			client.thread_read(serde_json::json!({"threadId":thread,"includeTurns":false})),
 		)
 		.await
 		else {
@@ -260,9 +260,9 @@ mod tests {
 			include_str!("../../../apps/decodex-gpui/examples/fixtures/singapore-weather.txt");
 
 		for record in [
-			weather::json!({"type":"session_meta","payload":{"id":"thread-a"}}),
-			weather::json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}),
-			weather::json!({"type":"response_item","payload":{"type":"custom_tool_call_output","output":[{"type":"input_text","text":fixture}]}}),
+			serde_json::json!({"type":"session_meta","payload":{"id":"thread-a"}}),
+			serde_json::json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}),
+			serde_json::json!({"type":"response_item","payload":{"type":"custom_tool_call_output","output":[{"type":"input_text","text":fixture}]}}),
 		] {
 			writeln!(file, "{record}").unwrap();
 		}

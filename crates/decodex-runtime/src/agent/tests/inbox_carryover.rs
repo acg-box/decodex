@@ -56,7 +56,7 @@ async fn large_wake_batch_preserves_whole_events_and_leaves_remainder_unclaimed(
 	assert!(!inbox.is_empty());
 	assert_eq!(inbox[0].id, events[40].id);
 	assert!(inbox.len() < 40);
-	assert!(json!(inbox).to_string().len() <= MAX_WAKE_BATCH_BYTES);
+	assert!(serde_json::json!(inbox).to_string().len() <= MAX_WAKE_BATCH_BYTES);
 
 	for (index, event) in events.iter().enumerate() {
 		let saved = coordinator.store.get_agent_inbox_event(event.id).await.unwrap();
@@ -82,7 +82,7 @@ async fn large_wake_batch_preserves_whole_events_and_leaves_remainder_unclaimed(
 	}
 
 	assert_eq!(starts.len(), 1);
-	assert_eq!(starts[0]["params"]["threadId"], json!(agent.codex_thread_id));
+	assert_eq!(starts[0]["params"]["threadId"], serde_json::json!(agent.codex_thread_id));
 }
 
 #[tokio::test]
@@ -120,17 +120,23 @@ async fn later_wake_carries_unhandled_evidence_without_replaying_worker() {
 	while sent.try_recv().is_ok() {}
 
 	coordinator
-		.ingest_automation_result("new-signal", "agent", json!({"result":"Check outstanding work"}))
+		.ingest_automation_result(
+			"new-signal",
+			"agent",
+			serde_json::json!({"result":"Check outstanding work"}),
+		)
 		.await
 		.unwrap();
 
 	let agent = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
-	let inbox =
-		coordinator.tool(&agent, &json!({"tool":"agent_list_work","arguments":{}})).await.unwrap();
+	let inbox = coordinator
+		.tool(&agent, &serde_json::json!({"tool":"agent_list_work","arguments":{}}))
+		.await
+		.unwrap();
 
 	assert!(inbox["inbox"].as_array().unwrap().iter().any(|entry| entry["id"] == event.id));
 
-	coordinator.tool(&agent, &json!({"tool":"agent_disposition","arguments":{"id":"worker","status":"resolved","eventIds":[event.id],"summary":"Accepted saved evidence"}})).await.unwrap();
+	coordinator.tool(&agent, &serde_json::json!({"tool":"agent_disposition","arguments":{"id":"worker","status":"resolved","eventIds":[event.id],"summary":"Accepted saved evidence"}})).await.unwrap();
 
 	let saved = coordinator.store.get_agent_inbox_event(event.id).await.unwrap();
 
@@ -149,7 +155,7 @@ async fn later_wake_carries_unhandled_evidence_without_replaying_worker() {
 	}
 
 	assert_eq!(starts.len(), 1);
-	assert_eq!(starts[0]["params"]["threadId"], json!(agent.codex_thread_id));
+	assert_eq!(starts[0]["params"]["threadId"], serde_json::json!(agent.codex_thread_id));
 }
 
 #[tokio::test]
@@ -181,12 +187,14 @@ async fn user_turn_preserves_plain_text_and_can_inspect_earlier_unhandled_result
 	coordinator.wake_pending().await.unwrap();
 
 	let agent = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
-	let inbox =
-		coordinator.tool(&agent, &json!({"tool":"agent_list_work","arguments":{}})).await.unwrap();
+	let inbox = coordinator
+		.tool(&agent, &serde_json::json!({"tool":"agent_list_work","arguments":{}}))
+		.await
+		.unwrap();
 
 	assert!(inbox["inbox"].as_array().unwrap().iter().any(|entry| entry["id"] == event.id));
 
-	coordinator.tool(&agent, &json!({"tool":"agent_disposition","arguments":{"id":"worker","status":"resolved","eventIds":[event.id],"summary":"Accepted existing evidence"}})).await.unwrap();
+	coordinator.tool(&agent, &serde_json::json!({"tool":"agent_disposition","arguments":{"id":"worker","status":"resolved","eventIds":[event.id],"summary":"Accepted existing evidence"}})).await.unwrap();
 
 	let mut starts = Vec::new();
 
@@ -220,7 +228,7 @@ async fn exhausted_account_pause_preserves_input_without_dispatch() {
 			source_event_id: "paused-input".into(),
 			work_item_id: "agent".into(),
 			event_kind: "user_message".into(),
-			payload: json!({"text":"Continue"}).to_string(),
+			payload: serde_json::json!({"text":"Continue"}).to_string(),
 		})
 		.await
 		.unwrap();

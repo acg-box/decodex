@@ -14,9 +14,9 @@ fn setup(root: &Path, address: SocketAddr) {
 	fs::create_dir(root.join(".git")).expect("repository");
 	fs::create_dir_all(root.join(".agents/plugins")).expect("marketplace");
 	fs::write(plugin.join(".codex-plugin/plugin.json"), r#"{"name":"sample"}"#).expect("manifest");
-	fs::write(plugin.join("hooks/hooks.json"),json!({"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"echo isolated-plugin-hook"}]}]}}).to_string()).expect("hook");
-	fs::write(root.join(".agents/plugins/marketplace.json"),json!({"name":"test","plugins":[{"name":"sample","source":{"source":"local","path":"./plugins/cache/test/sample/local"}}]}).to_string()).expect("marketplace");
-	fs::write(root.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nplugins=true\nhooks=true\n[plugins.\"sample@test\"]\nenabled=true\n[projects.{}]\ntrust_level=\"trusted\"\n[model_providers.fixture]\nname=\"Isolated plugin fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",json!(root))).expect("config");
+	fs::write(plugin.join("hooks/hooks.json"),serde_json::json!({"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"echo isolated-plugin-hook"}]}]}}).to_string()).expect("hook");
+	fs::write(root.join(".agents/plugins/marketplace.json"),serde_json::json!({"name":"test","plugins":[{"name":"sample","source":{"source":"local","path":"./plugins/cache/test/sample/local"}}]}).to_string()).expect("marketplace");
+	fs::write(root.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[features]\nplugins=true\nhooks=true\n[plugins.\"sample@test\"]\nenabled=true\n[projects.{}]\ntrust_level=\"trusted\"\n[model_providers.fixture]\nname=\"Isolated plugin fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n",serde_json::json!(root))).expect("config");
 }
 
 #[tokio::test]
@@ -38,7 +38,9 @@ async fn qualify_hooks() {
 	let mut session = NativeSession::start(&binary, &root);
 	let started = session
 		.client
-		.thread_start(json!({"cwd":root,"approvalPolicy":"never","sandbox":"read-only"}))
+		.thread_start(
+			serde_json::json!({"cwd":root,"approvalPolicy":"never","sandbox":"read-only"}),
+		)
 		.await
 		.expect("thread");
 	let thread = started["thread"]["id"].as_str().expect("thread id").to_owned();
@@ -57,7 +59,7 @@ async fn qualify_hooks() {
 
 	let mut session = NativeSession::start(&binary, &root);
 
-	session.client.thread_resume(json!({"threadId":thread})).await.expect("resume");
+	session.client.thread_resume(serde_json::json!({"threadId":thread})).await.expect("resume");
 
 	assert_eq!(turn(&mut session, &thread).await, 0, "disabled setting survives restart");
 
@@ -69,13 +71,17 @@ async fn qualify_hooks() {
 		"enable does not require new trust for unchanged content"
 	);
 
-	fs::write(root.join("plugins/cache/test/sample/local/hooks/hooks.json"),json!({"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"echo modified-isolated-plugin-hook"}]}]}}).to_string()).expect("modify fixture hook");
+	fs::write(root.join("plugins/cache/test/sample/local/hooks/hooks.json"),serde_json::json!({"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"echo modified-isolated-plugin-hook"}]}]}}).to_string()).expect("modify fixture hook");
 
 	drop(session);
 
 	let mut session = NativeSession::start(&binary, &root);
 
-	session.client.thread_resume(json!({"threadId":thread})).await.expect("resume modified");
+	session
+		.client
+		.thread_resume(serde_json::json!({"threadId":thread}))
+		.await
+		.expect("resume modified");
 
 	let review =
 		session.client.hook_settings(root.to_str().expect("cwd")).await.expect("modified review");
@@ -123,7 +129,7 @@ async fn turn(session: &mut NativeSession, thread: &str) -> usize {
 	let started = session
 		.client
 		.turn_start(
-			json!({"threadId":thread,"input":[{"type":"text","text":"Finish the isolated fixture turn"}]}),
+			serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Finish the isolated fixture turn"}]}),
 		)
 		.await
 		.expect("turn");

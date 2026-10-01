@@ -25,12 +25,12 @@ async fn installed_native_replaces_empty_tool_audio_without_losing_other_output(
 		requests.clone(),
 		None,
 		Some(bodies.clone()),
-		Some(json!({"input_tokens":0,"output_tokens":0,"total_tokens":0})),
+		Some(serde_json::json!({"input_tokens":0,"output_tokens":0,"total_tokens":0})),
 		|serial| {
 			if serial == 0 {
-				json!({"type":"function_call","name":"audio_fixture","arguments":"{}","call_id":"audio"})
+				serde_json::json!({"type":"function_call","name":"audio_fixture","arguments":"{}","call_id":"audio"})
 			} else {
-				json!({"type":"message","role":"assistant","id":"done","content":[{"type":"output_text","text":"Done"}]})
+				serde_json::json!({"type":"message","role":"assistant","id":"done","content":[{"type":"output_text","text":"Done"}]})
 			}
 		},
 	));
@@ -40,10 +40,10 @@ async fn installed_native_replaces_empty_tool_audio_without_losing_other_output(
 	let mut session = NativeSession::start(&binary, home.path());
 
 	time::timeout(Duration::from_secs(60), async {
-		let started = session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only","dynamicTools":[{"name":"audio_fixture","description":"Return fixture audio","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native thread");
+		let started = session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only","dynamicTools":[{"name":"audio_fixture","description":"Return fixture audio","inputSchema":{"type":"object","properties":{}}}]})).await.expect("native thread");
 		let thread = started["thread"]["id"].as_str().expect("thread id");
 
-		session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":"Read the fixture output."}]})).await.expect("native turn");
+		session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Read the fixture output."}]})).await.expect("native turn");
 
 		let mut answered = false;
 
@@ -53,7 +53,7 @@ async fn installed_native_replaces_empty_tool_audio_without_losing_other_output(
 					assert_eq!(method, "item/tool/call");
 					assert!(!answered);
 
-					session.client.respond(id,json!({"contentItems":[{"type":"inputText","text":"before-audio"},{"type":"inputAudio","audioUrl":"data:audio/wav;base64,"},{"type":"inputText","text":"after-audio"}],"success":true})).await.expect("fixture tool response");
+					session.client.respond(id,serde_json::json!({"contentItems":[{"type":"inputText","text":"before-audio"},{"type":"inputAudio","audioUrl":"data:audio/wav;base64,"},{"type":"inputText","text":"after-audio"}],"success":true})).await.expect("fixture tool response");
 
 					answered = true;
 				},
@@ -76,7 +76,7 @@ async fn installed_native_replaces_empty_tool_audio_without_losing_other_output(
 			.find(|item| item["type"] == "function_call_output" && item["call_id"] == "audio")
 			.expect("tool output");
 
-		assert_eq!(output["output"], json!([
+		assert_eq!(output["output"], serde_json::json!([
 			{"type":"input_text","text":"before-audio"},
 			{"type":"input_text","text":"audio content omitted because it could not be processed"},
 			{"type":"input_text","text":"after-audio"}

@@ -13,7 +13,6 @@ use std::{
 };
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use serde_json::json;
 use tokio::{sync::Notify, task, time};
 
 use crate::{
@@ -68,14 +67,14 @@ fn isolated_home() -> PathBuf {
 }
 
 fn credential_file(home: &Path) -> PathBuf {
-	let claims = json!({"email":"fixture@example.test","exp":4102444800_u64,
+	let claims = serde_json::json!({"email":"fixture@example.test","exp":4102444800_u64,
 		"https://api.openai.com/auth":{"chatgpt_account_id":"workspace-fixture","chatgpt_user_id":"user-fixture","chatgpt_plan_type":"team"}});
 	let token = format!(
 		"{}.{}.fixture-signature",
 		URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#),
 		URL_SAFE_NO_PAD.encode(claims.to_string())
 	);
-	let value = json!({"auth_mode":"chatgpt","tokens":{"access_token":token,"id_token":token,
+	let value = serde_json::json!({"auth_mode":"chatgpt","tokens":{"access_token":token,"id_token":token,
 		"refresh_token":"fixture-only","account_id":"workspace-fixture"},"last_refresh":"2026-09-21T15:00:00Z"});
 	let path = home.join("synthetic-credential.json");
 	let mut file = OpenOptions::new()
@@ -122,7 +121,7 @@ async fn enroll(
 			|result| {
 				assert!(result.is_ok(), "synthetic account enrollment failed");
 
-				Ok(json!({"enrolled":true}))
+				Ok(serde_json::json!({"enrolled":true}))
 			},
 		)
 		.await

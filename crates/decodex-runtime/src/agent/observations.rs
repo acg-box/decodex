@@ -348,7 +348,7 @@ impl AgentCoordinator {
 					return Ok(());
 				}
 
-				let value = agent::json!({"threadId":thread,"turnId":turn,"tokenUsage":usage});
+				let value = serde_json::json!({"threadId":thread,"turnId":turn,"tokenUsage":usage});
 
 				("token_usage", value.clone(), value)
 			},
@@ -358,15 +358,15 @@ impl AgentCoordinator {
 			{
 				let item_id = agent::exact(params, "/item/id")?;
 				let (messages, truncated) =
-					result_messages::collect(Some(&agent::json!({"items":[params["item"]]})));
+					result_messages::collect(Some(&serde_json::json!({"items":[params["item"]]})));
 				let Some(item) = messages.first() else {
 					return Ok(());
 				};
 
 				(
 					"assistant_message",
-					agent::json!([thread, turn, item_id]),
-					agent::json!({"threadId":thread,"turnId":turn,"item":item,"truncated":truncated}),
+					serde_json::json!([thread, turn, item_id]),
+					serde_json::json!({"threadId":thread,"turnId":turn,"item":item,"truncated":truncated}),
 				)
 			},
 			"item/completed" if params["item"]["type"] == "contextCompaction" => {
@@ -374,8 +374,8 @@ impl AgentCoordinator {
 
 				(
 					"context_compacted",
-					agent::json!([thread, turn, item_id]),
-					agent::json!({"threadId":thread,"turnId":turn,"itemId":item_id}),
+					serde_json::json!([thread, turn, item_id]),
+					serde_json::json!({"threadId":thread,"turnId":turn,"itemId":item_id}),
 				)
 			},
 			_ => return Ok(()),

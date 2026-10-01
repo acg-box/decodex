@@ -4,10 +4,10 @@ use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use crate::agent_detail::*;
 
 fn detail(mut item: Value) -> (String, bool) {
-	item["id"] = json!("i");
-	item["type"] = json!("webSearch");
+	item["id"] = serde_json::json!("i");
+	item["type"] = serde_json::json!("webSearch");
 
-	let history = json!({"thread":{"id":"t","turns":[{"id":"u","items":[item]}]}});
+	let history = serde_json::json!({"thread":{"id":"t","turns":[{"id":"u","items":[item]}]}});
 	let Some(AgentActivityDetailResult::Available { text, truncated, .. }) =
 		page(&project_text(&history, "t", "u", "i").unwrap(), "scope", None)
 	else {
@@ -20,18 +20,21 @@ fn detail(mut item: Value) -> (String, bool) {
 #[test]
 fn actions_preserve_queries_urls_and_find_patterns() {
 	for (action, expected) in [
-		(json!({"type":"search","query":"one","queries":["one","two",""]}), "one\n\ntwo"),
 		(
-			json!({"type":"openPage","url":"https://example.com/full/path"}),
+			serde_json::json!({"type":"search","query":"one","queries":["one","two",""]}),
+			"one\n\ntwo",
+		),
+		(
+			serde_json::json!({"type":"openPage","url":"https://example.com/full/path"}),
 			"https://example.com/full/path",
 		),
 		(
-			json!({"type":"findInPage","url":"https://example.com","pattern":"界"}),
+			serde_json::json!({"type":"findInPage","url":"https://example.com","pattern":"界"}),
 			"https://example.com\n\n界",
 		),
-		(json!({"type":"other"}), "legacy"),
+		(serde_json::json!({"type":"other"}), "legacy"),
 	] {
-		let (text, truncated) = detail(json!({"query":"legacy","action":action}));
+		let (text, truncated) = detail(serde_json::json!({"query":"legacy","action":action}));
 
 		assert_eq!(text, format!("{expected}\n\nResults not reported."));
 		assert!(!truncated);
@@ -40,25 +43,25 @@ fn actions_preserve_queries_urls_and_find_patterns() {
 
 #[test]
 fn results_keep_unknown_empty_error_and_future_fields_distinct() {
-	assert_eq!(detail(json!({"results":null})).0, "Results not reported.");
-	assert_eq!(detail(json!({"results":[]})).0, "No results returned.");
+	assert_eq!(detail(serde_json::json!({"results":null})).0, "Results not reported.");
+	assert_eq!(detail(serde_json::json!({"results":[]})).0, "No results returned.");
 
-	let result =
-		json!({"url":"https://example.com","error":{"status":404},"future":{"content":"kept"}});
+	let result = serde_json::json!({"url":"https://example.com","error":{"status":404},"future":{"content":"kept"}});
 
-	assert_eq!(detail(json!({"results":[result.clone()]})).0, result.to_string());
+	assert_eq!(detail(serde_json::json!({"results":[result.clone()]})).0, result.to_string());
 }
 
 #[test]
 fn results_are_redacted_before_utf8_display_limit() {
 	let (text, _) = detail(
-		json!({"results":[{"url":"https://example.com/?token=synthetic-secret"},{"content":"public result"}]}),
+		serde_json::json!({"results":[{"url":"https://example.com/?token=synthetic-secret"},{"content":"public result"}]}),
 	);
 
 	assert!(!text.contains("synthetic-secret"));
 	assert!(text.contains("public result"));
 
-	let (text, truncated) = detail(json!({"results":[{"content":"界".repeat(10_000)}]}));
+	let (text, truncated) =
+		detail(serde_json::json!({"results":[{"content":"界".repeat(10_000)}]}));
 
 	assert!(truncated);
 	assert!(text.len() <= 8 * 1_024);
@@ -67,7 +70,7 @@ fn results_are_redacted_before_utf8_display_limit() {
 #[test]
 fn complete_patch_pages_preserve_unicode_and_reject_changed_evidence() {
 	let diff = format!("{}\nfinal patch line", "+界🙂e\u{301}\n".repeat(9_000));
-	let history = json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{
+	let history = serde_json::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{
 		"id":"patch","type":"fileChange","changes":[{"path":"file.rs","kind":{"type":"update"},"diff":diff}]
 	}]}]}});
 	let text = project_text(&history, "thread", "turn", "patch").unwrap();
@@ -125,11 +128,14 @@ async fn paginated_native_history_preserves_page_action_and_result_error() {
 		let mut lines = BufReader::new(reader).lines();
 
 		for (method, result) in [
-			("thread/read", json!({"thread":{"id":"thread","historyMode":"paginated"}})),
-			("thread/turns/list", json!({"data":[{"id":"turn"}],"nextCursor":null})),
+			(
+				"thread/read",
+				serde_json::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
+			),
+			("thread/turns/list", serde_json::json!({"data":[{"id":"turn"}],"nextCursor":null})),
 			(
 				"thread/items/list",
-				json!({"data":[{"turnId":"turn","item":{"id":"web","type":"webSearch","query":"","action":{"type":"findInPage","url":"https://example.com","pattern":"needle"},"results":[{"error":{"status":404}}]}}],"nextCursor":null}),
+				serde_json::json!({"data":[{"turnId":"turn","item":{"id":"web","type":"webSearch","query":"","action":{"type":"findInPage","url":"https://example.com","pattern":"needle"},"results":[{"error":{"status":404}}]}}],"nextCursor":null}),
 			),
 		] {
 			let request: Value =
@@ -139,7 +145,10 @@ async fn paginated_native_history_preserves_page_action_and_result_error() {
 			assert_eq!(request["params"]["threadId"], "thread");
 
 			writer
-				.write_all(format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes())
+				.write_all(
+					format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
+						.as_bytes(),
+				)
 				.await
 				.unwrap();
 		}

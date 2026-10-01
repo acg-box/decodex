@@ -1,7 +1,7 @@
 //! Project enabled native skills for explicit use; never install or enable candidates.
 use std::{future::Future, path::Path, time::Duration};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::agent_usage_estimate::Source;
@@ -78,7 +78,11 @@ where
 {
 	let Some(before) = source().await else { return AgentSkillsResult::Unavailable };
 	let observed = time::timeout(Duration::from_secs(20), async {
-		let native = before.client.thread_read(json!({"threadId":before.key.thread})).await.ok()?;
+		let native = before
+			.client
+			.thread_read(serde_json::json!({"threadId":before.key.thread}))
+			.await
+			.ok()?;
 
 		if native["thread"]["id"] != before.key.thread {
 			return None;
@@ -87,7 +91,7 @@ where
 		let cwd = native["thread"]["cwd"].as_str()?;
 		let value = before
 			.client
-			.request("skills/list", json!({"cwds":[cwd],"forceReload":true}))
+			.request("skills/list", serde_json::json!({"cwds":[cwd],"forceReload":true}))
 			.await
 			.ok()?;
 
@@ -120,11 +124,11 @@ mod tests {
 	use crate::agent_skills::{self};
 	#[test]
 	fn skills_filter_full_inventory_before_bounding_and_keep_exact_paths() {
-		let mut skills:Vec<_>=(0..60).map(|index|agent_skills::json!({"name":format!("skill-{index:02}"),"path":format!("/skills (local)/{index}/SKILL.md"),"description":"Fixture skill","enabled":true})).collect();
+		let mut skills:Vec<_>=(0..60).map(|index|serde_json::json!({"name":format!("skill-{index:02}"),"path":format!("/skills (local)/{index}/SKILL.md"),"description":"Fixture skill","enabled":true})).collect();
 
-		skills.push(agent_skills::json!({"name":"disabled","path":"/skills/disabled/SKILL.md","description":"Fixture","enabled":false}));
+		skills.push(serde_json::json!({"name":"disabled","path":"/skills/disabled/SKILL.md","description":"Fixture","enabled":false}));
 
-		let response = agent_skills::json!({"data":[{"cwd":"/project","skills":skills,"errors":[{"message":"not projected"}]}]});
+		let response = serde_json::json!({"data":[{"cwd":"/project","skills":skills,"errors":[{"message":"not projected"}]}]});
 		let page = agent_skills::project(&response, "/project", "").unwrap();
 
 		assert_eq!(page.skills.len(), 50);

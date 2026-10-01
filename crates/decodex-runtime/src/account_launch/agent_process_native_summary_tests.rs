@@ -19,11 +19,11 @@ async fn installed_native_summary_history_is_read_only_and_survives_restart() {
 
 	let mut session = NativeSession::start(&binary, home.path());
 	let thread=time::timeout(Duration::from_secs(30),async {
-        let started=session.client.thread_start(json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.expect("start");
+        let started=session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.expect("start");
         let thread=started["thread"]["id"].as_str().expect("thread").to_owned();
 
         for text in ["First prompt","Second prompt"] {
-            let turn=session.client.turn_start(json!({"threadId":thread,"input":[{"type":"text","text":text}]})).await.expect("turn");
+            let turn=session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":text}]})).await.expect("turn");
             let turn=turn["turn"]["id"].as_str().expect("turn ID");
 
             loop {
@@ -51,7 +51,7 @@ async fn installed_native_summary_history_is_read_only_and_survives_restart() {
 
 	let latest = cold.client.thread_history_summary(&thread, 1).await.expect("bounded read");
 
-	assert_eq!(latest["turns"], json!([turns[1]]));
+	assert_eq!(latest["turns"], serde_json::json!([turns[1]]));
 	assert_eq!(calls.load(std::sync::atomic::Ordering::Acquire), 2);
 
 	drop(cold);

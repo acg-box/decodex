@@ -1,7 +1,7 @@
 //! Resolve native voice references through the existing bounded exact-turn history adapter.
 use std::collections::BTreeMap;
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::agent::timeline::{Content, ordinary};
 use decodex_codex::app_server_client::AppServerClient;
@@ -63,7 +63,7 @@ pub(super) async fn enrich(client: &AppServerClient, page: &mut AgentTimelinePag
 
 		for (index, item) in references {
 			let resolved = exact_item(&history, &page.thread_id, &turn, &item)
-				.and_then(|item| ordinary(&json!({"turnId":turn,"item":item})))
+				.and_then(|item| ordinary(&serde_json::json!({"turnId":turn,"item":item})))
 				.and_then(project);
 
 			if let Content::Promotion { resolved: target, .. } = &mut page.entries[index].content {

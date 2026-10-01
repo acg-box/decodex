@@ -43,17 +43,19 @@ async fn qualify() {
 		child.stdin.take().expect("native goal fixture"),
 	);
 
-	client.initialize(json!({"clientInfo":{"name":"decodex_goal_fixture","version":"0.1"},"capabilities":{"experimentalApi":true}})).await.expect("native goal fixture");
+	client.initialize(serde_json::json!({"clientInfo":{"name":"decodex_goal_fixture","version":"0.1"},"capabilities":{"experimentalApi":true}})).await.expect("native goal fixture");
 
 	let started = client
-		.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}))
+		.thread_start(
+			serde_json::json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}),
+		)
 		.await
 		.expect("native goal fixture");
 	let thread = started["thread"]["id"].as_str().expect("native goal fixture").to_owned();
 
 	assert_eq!(client.thread_goal(&thread).await.expect("native goal fixture"), None);
 
-	let set=client.request("thread/goal/set",json!({"threadId":thread,"objective":"Observe a paused native goal","status":"paused","tokenBudget":12_345})).await.expect("native goal fixture");
+	let set=client.request("thread/goal/set",serde_json::json!({"threadId":thread,"objective":"Observe a paused native goal","status":"paused","tokenBudget":12_345})).await.expect("native goal fixture");
 	let before =
 		client.thread_goal(&thread).await.expect("native goal fixture").expect("native goal");
 
@@ -84,7 +86,7 @@ async fn qualify() {
 	);
 
 	client
-		.request("thread/goal/clear", json!({"threadId":thread}))
+		.request("thread/goal/clear", serde_json::json!({"threadId":thread}))
 		.await
 		.expect("native goal fixture");
 
@@ -93,7 +95,7 @@ async fn qualify() {
 	client
 		.request(
 			"thread/goal/set",
-			json!({"threadId":thread,"objective":before.objective,"status":"paused","tokenBudget":null}),
+			serde_json::json!({"threadId":thread,"objective":before.objective,"status":"paused","tokenBudget":null}),
 		)
 		.await
 		.expect("native goal fixture");
@@ -174,15 +176,17 @@ async fn qualify_active() {
 		child.stdin.take().expect("native goal fixture"),
 	);
 
-	client.initialize(json!({"clientInfo":{"name":"decodex_goal_fixture","version":"0.1"},"capabilities":{"experimentalApi":true}})).await.expect("native goal fixture");
+	client.initialize(serde_json::json!({"clientInfo":{"name":"decodex_goal_fixture","version":"0.1"},"capabilities":{"experimentalApi":true}})).await.expect("native goal fixture");
 
 	let started = client
-		.thread_start(json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}))
+		.thread_start(
+			serde_json::json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only"}),
+		)
 		.await
 		.expect("start thread");
 	let thread = started["thread"]["id"].as_str().expect("thread").to_owned();
 
-	client.request("thread/goal/set",json!({"threadId":thread,"objective":"Return a short fixture answer","status":"active","tokenBudget":1})).await.expect("activate goal");
+	client.request("thread/goal/set",serde_json::json!({"threadId":thread,"objective":"Return a short fixture answer","status":"active","tokenBudget":1})).await.expect("activate goal");
 	// Hold the fake provider until the active goal has accumulated a whole second.
 	time::sleep(Duration::from_millis(1_200)).await;
 
@@ -192,9 +196,9 @@ async fn qualify_active() {
 		None,
 		None,
 		Some(
-			json!({"input_tokens":20,"input_tokens_details":{"cached_tokens":4},"output_tokens":10,"output_tokens_details":{"reasoning_tokens":2},"total_tokens":30}),
+			serde_json::json!({"input_tokens":20,"input_tokens_details":{"cached_tokens":4},"output_tokens":10,"output_tokens_details":{"reasoning_tokens":2},"total_tokens":30}),
 		),
-		|serial| json!({"type":"message","role":"assistant","id":format!("goal-answer-{serial}"),"content":[{"type":"output_text","text":"Fixture result"}]}),
+		|serial| serde_json::json!({"type":"message","role":"assistant","id":format!("goal-answer-{serial}"),"content":[{"type":"output_text","text":"Fixture result"}]}),
 	));
 	let observed = loop {
 		let event = events.recv().await.expect("goal event");
