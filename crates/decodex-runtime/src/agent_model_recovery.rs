@@ -1,28 +1,31 @@
 //! Automatic ordinary fallback uses the existing model journal and native settings owner.
-use crate::{AgentError, agent_usage_estimate::Source};
+use std::future::Future;
+
+use sha2::{Digest as _, Sha256};
+use tokio::sync::mpsc::Receiver;
+
+use crate::{AgentError, agent_capabilities, agent_usage_estimate::Source};
 use decodex_codex::app_server_client::{
-	NativeRecoveryAuth, NativeTaskModelSettings, ServerEvent, ThreadModelRecoveryUpdate,
+	ClientError, HistoryGuard, NativeRecoveryAuth, NativeTaskModelSettings, ServerEvent,
+	ThreadModelRecoveryUpdate,
 };
 use decodex_database::{AgentModelAttempt, AgentModelRecoveryContext, SqliteStore};
 use decodex_protocol::{
 	AccountRecoveryResult, AgentCapabilitiesResult, AgentModelDto, EntityId, EntityRevision,
 };
-use sha2::{Digest as _, Sha256};
-
-use crate::agent_capabilities;
 
 /// Evaluate one exact source. The Agent actor owns scheduling and drains native events.
 pub(crate) async fn recover_ordinary_model<F, Fut, B, BFut>(
 	store: &SqliteStore,
 	source: F,
 	banner: B,
-	events: &tokio::sync::mpsc::Receiver<ServerEvent>,
+	events: &Receiver<ServerEvent>,
 ) -> Result<(), AgentError>
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 	B: Fn(EntityId, EntityRevision) -> BFut,
-	BFut: std::future::Future<Output = AccountRecoveryResult>,
+	BFut: Future<Output = AccountRecoveryResult>,
 {
 	if !events.is_empty() {
 		return Ok(());
@@ -125,12 +128,11 @@ where
 	let state = match before.client.queue_thread_model_recovery(&update, guard).await {
 		Ok(_) => "queued",
 		Err(
-			decodex_codex::app_server_client::ClientError::StaleHistory
-			| decodex_codex::app_server_client::ClientError::RequestTooLarge
-			| decodex_codex::app_server_client::ClientError::RequestQueueFull,
+			ClientError::StaleHistory
+			| ClientError::RequestTooLarge
+			| ClientError::RequestQueueFull,
 		) => "rejected",
-		Err(decodex_codex::app_server_client::ClientError::Remote(ref error))
-			if matches!(error.code, -32_602..=-32_600) =>
+		Err(ClientError::Remote(ref error)) if matches!(error.code, -32_602..=-32_600) =>
 			"rejected",
 		Err(_) => "unknown",
 	};
@@ -190,10 +192,7 @@ fn prepare_recovery(
 
 // A guard captured after a notification is live even while the actor's journal is stale.
 // Native metadata replies are read after earlier notifications have entered this queue.
-fn recovery_source_ready(
-	guard: &decodex_codex::app_server_client::HistoryGuard,
-	events: &tokio::sync::mpsc::Receiver<decodex_codex::app_server_client::ServerEvent>,
-) -> bool {
+fn recovery_source_ready(guard: &HistoryGuard, events: &Receiver<ServerEvent>) -> bool {
 	guard.is_live() && events.is_empty()
 }
 
@@ -233,12 +232,15 @@ fn target_settings(
 #[cfg(test)]
 mod tests {
 	use serde_json::{self, Value};
-	use tokio::{io, time};
+	use tokio::{
+		io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+		time,
+	};
 
 	use crate::agent_models::recovery::{
 		self, AgentModelDto, NativeRecoveryAuth, NativeTaskModelSettings,
 	};
-	use decodex_codex::app_server_client::AppServerClient;
+	use decodex_codex::app_server_client::{AppServerClient, ServerEvent};
 
 	fn target() -> AgentModelDto {
 		AgentModelDto {
@@ -342,8 +344,6 @@ mod tests {
 	}
 	#[tokio::test]
 	async fn queued_native_settings_block_a_guard_captured_after_notification() {
-		use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
-
 		let (local, remote) = io::duplex(4_096);
 		let (reader, writer) = io::split(local);
 		let (client, mut events) = AppServerClient::from_io(reader, writer);
@@ -390,7 +390,7 @@ mod tests {
 		let event = events.recv().await.unwrap();
 
 		assert!(
-			matches!(event, decodex_codex::app_server_client::ServerEvent::Notification { method, .. } if method == "thread/settings/updated")
+			matches!(event, ServerEvent::Notification { method, .. } if method == "thread/settings/updated")
 		);
 		assert!(recovery::recovery_source_ready(&guard, &events));
 
