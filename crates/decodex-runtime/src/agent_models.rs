@@ -3,21 +3,25 @@
 
 pub(crate) use recovery::recover_ordinary_model;
 
-use crate::agent_usage_estimate::Source;
+use std::{future::Future, time::Duration};
 
-use decodex_codex::app_server_client::{
-	ClientError, HistoryGuard, NativeTaskModelSettings, ThreadModelSelection,
-};
-
-use decodex_database::{AgentModelAttempt, SqliteStore};
-
-use decodex_protocol::{
-	AgentCapabilitiesResult, ConversationModel, ConversationReasoningEffort, EntityId, WireText,
-};
-
+use serde_json::Value;
 use sha2::{Digest as _, Sha256};
+use tokio::time;
 
-use crate::agent_host::AgentHostError::{Rejected, Unknown};
+use crate::{agent_capabilities, agent_host::AgentHostError, agent_usage_estimate::Source};
+use decodex_codex::app_server_client::{
+	AppServerClient, ClientError, HistoryGuard, NativeTaskModelSettings, ThreadModelSelection,
+};
+use decodex_database::{
+	AgentDispatchState, AgentManualModelSource, AgentModelAttempt, AgentModelHistory,
+	AgentWorkItem, AgentWorkStatus, SqliteStore, StoreError,
+};
+use decodex_protocol::{
+	AgentCapabilitiesResult, AgentModelDto, AgentModelOutcome, AgentModelResponse,
+	AgentModelSelectionReceipt, AgentModelSelectionState, ConversationModel,
+	ConversationReasoningEffort, EntityId, WireText,
+};
 
 pub(crate) struct Change<'a> {
 	pub thread: &'a str,
@@ -28,58 +32,53 @@ pub(crate) struct Change<'a> {
 }
 
 struct Inspection {
-	state: decodex_protocol::AgentModelSelectionState,
+	state: AgentModelSelectionState,
 	settings_event: i64,
 	guard: Option<HistoryGuard>,
 }
 
-pub(crate) async fn read<F, Fut>(
-	store: &SqliteStore,
-	source: F,
-) -> decodex_protocol::AgentModelSelectionState
+pub(crate) async fn read<F, Fut>(store: &SqliteStore, source: F) -> AgentModelSelectionState
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
 	let Some(before) = source().await else {
-		return decodex_protocol::AgentModelSelectionState::Unavailable;
+		return AgentModelSelectionState::Unavailable;
 	};
-	let result = tokio::time::timeout(std::time::Duration::from_secs(30), inspect(store, &before))
-		.await
-		.ok()
-		.flatten();
+	let result =
+		time::timeout(Duration::from_secs(30), inspect(store, &before)).await.ok().flatten();
 
 	if source().await.is_none_or(|after| after.key != before.key) {
-		return decodex_protocol::AgentModelSelectionState::Unavailable;
+		return AgentModelSelectionState::Unavailable;
 	}
 
 	result
 		.filter(|r| r.guard.as_ref().is_none_or(HistoryGuard::is_live))
-		.map_or(decodex_protocol::AgentModelSelectionState::Unavailable, |r| r.state)
+		.map_or(AgentModelSelectionState::Unavailable, |r| r.state)
 }
 
 pub(crate) async fn write<F, Fut>(
 	store: &SqliteStore,
 	source: F,
 	change: Change<'_>,
-) -> Result<(), crate::agent_host::AgentHostError>
+) -> Result<(), AgentHostError>
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
-	let before = source().await.ok_or(Rejected("The task source is unavailable."))?;
+	let before =
+		source().await.ok_or(AgentHostError::Rejected("The task source is unavailable."))?;
 
 	if before.key.thread != change.thread {
-		return Err(Rejected("The task thread changed. Refresh model settings."));
+		return Err(AgentHostError::Rejected("The task thread changed. Refresh model settings."));
 	}
 
-	let inspected =
-		tokio::time::timeout(std::time::Duration::from_secs(30), inspect(store, &before))
-			.await
-			.ok()
-			.flatten()
-			.ok_or(Rejected("Current model selection is unavailable."))?;
-	let decodex_protocol::AgentModelSelectionState::Available {
+	let inspected = time::timeout(Duration::from_secs(30), inspect(store, &before))
+		.await
+		.ok()
+		.flatten()
+		.ok_or(AgentHostError::Rejected("Current model selection is unavailable."))?;
+	let AgentModelSelectionState::Available {
 		review_token,
 		model_provider,
 		effort,
@@ -88,7 +87,7 @@ where
 		..
 	} = &inspected.state
 	else {
-		return Err(Rejected("A model selection remains unconfirmed."));
+		return Err(AgentHostError::Rejected("A model selection remains unconfirmed."));
 	};
 	let advertised = models.iter().any(|model| {
 		model.model.as_str() == change.model
@@ -96,18 +95,22 @@ where
 	});
 
 	if review_token.as_str() != change.review || !can_update || !advertised {
-		return Err(Rejected("The reviewed model selection changed. Refresh the task."));
+		return Err(AgentHostError::Rejected(
+			"The reviewed model selection changed. Refresh the task.",
+		));
 	}
 
 	let selected_effort = change.effort.map(str::to_owned);
 	let expected_effort =
 		selected_effort.clone().or_else(|| effort.as_ref().map(|e| e.as_str().to_owned()));
 	let selection = ThreadModelSelection::new(change.thread, change.model, selected_effort)
-		.map_err(|_| Rejected("Invalid model selection."))?;
-	let guard = inspected.guard.ok_or(Rejected("Current model evidence is unavailable."))?;
+		.map_err(|_| AgentHostError::Rejected("Invalid model selection."))?;
+	let guard = inspected
+		.guard
+		.ok_or(AgentHostError::Rejected("Current model evidence is unavailable."))?;
 
 	if !guard.is_live() || source().await.is_none_or(|after| after.key != before.key) {
-		return Err(Rejected("The task source changed before selection."));
+		return Err(AgentHostError::Rejected("The task source changed before selection."));
 	}
 
 	let attempt = AgentModelAttempt {
@@ -120,7 +123,7 @@ where
 		effort: expected_effort,
 		review_token: change.review.into(),
 		attempt_id: change.attempt_id.into(),
-		manual_source: Some(decodex_database::AgentManualModelSource {
+		manual_source: Some(AgentManualModelSource {
 			account: before.key.account.as_str().into(),
 			account_revision: before.key.revision,
 		}),
@@ -129,8 +132,14 @@ where
 	let reservation = store
 		.reserve_agent_model_selection(attempt.clone())
 		.await
-		.map_err(|_| Unknown("The selection reservation is unconfirmed. Refresh saved state."))?
-		.ok_or(Rejected("This review was used or the task is no longer editable."))?;
+		.map_err(|_| {
+			AgentHostError::Unknown(
+				"The selection reservation is unconfirmed. Refresh saved state.",
+			)
+		})?
+		.ok_or(AgentHostError::Rejected(
+			"This review was used or the task is no longer editable.",
+		))?;
 	let response = if !guard.is_live() || source().await.is_none_or(|after| after.key != before.key)
 	{
 		Err(ClientError::StaleHistory)
@@ -153,13 +162,18 @@ where
 		.await
 		.unwrap_or(false)
 	{
-		return Err(Unknown("The selection result could not be saved. It will not be retried."));
+		return Err(AgentHostError::Unknown(
+			"The selection result could not be saved. It will not be retried.",
+		));
 	}
 
 	match state {
 		"queued" => Ok(()),
-		"rejected" => Err(Rejected("Native policy or changed source rejected the selection.")),
-		_ => Err(Unknown("Model selection is unconfirmed. It will not be retried automatically.")),
+		"rejected" =>
+			Err(AgentHostError::Rejected("Native policy or changed source rejected the selection.")),
+		_ => Err(AgentHostError::Unknown(
+			"Model selection is unconfirmed. It will not be retried automatically.",
+		)),
 	}
 }
 
@@ -167,10 +181,10 @@ where
 /// settling a selection. Receipt settlement records an observation, not request causation.
 pub(crate) async fn persist_current(
 	store: &SqliteStore,
-	client: &decodex_codex::app_server_client::AppServerClient,
+	client: &AppServerClient,
 	thread: &str,
 	generation: Option<String>,
-) -> Result<(), decodex_database::StoreError> {
+) -> Result<(), StoreError> {
 	let observed = client.configured_task_models(thread);
 	let current = observed.as_ref().is_some_and(|(_, guard)| guard.is_live());
 	let settings_revision = observed.as_ref().and_then(|(_, guard)| guard.settings_revision());
@@ -183,10 +197,7 @@ pub(crate) async fn persist_current(
 		settings_revision,
 		settings
 	]);
-	let digest: String = Sha256::digest(identity.to_string().as_bytes())
-		.iter()
-		.map(|b| format!("{b:02x}"))
-		.collect();
+	let digest: String = digest_identity(&identity);
 
 	if current {
 		store
@@ -199,14 +210,18 @@ pub(crate) async fn persist_current(
 	Ok(())
 }
 
-fn outcome(value: &str) -> Option<decodex_protocol::AgentModelOutcome> {
+fn digest_identity(identity: &Value) -> String {
+	Sha256::digest(identity.to_string().as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn outcome(value: &str) -> Option<AgentModelOutcome> {
 	Some(match value {
-		"reserved" => decodex_protocol::AgentModelOutcome::Reserved,
-		"queued" => decodex_protocol::AgentModelOutcome::Queued,
-		"unknown" => decodex_protocol::AgentModelOutcome::Unknown,
-		"rejected" => decodex_protocol::AgentModelOutcome::Rejected,
-		"target_observed" => decodex_protocol::AgentModelOutcome::TargetObserved,
-		"superseded" => decodex_protocol::AgentModelOutcome::Superseded,
+		"reserved" => AgentModelOutcome::Reserved,
+		"queued" => AgentModelOutcome::Queued,
+		"unknown" => AgentModelOutcome::Unknown,
+		"rejected" => AgentModelOutcome::Rejected,
+		"target_observed" => AgentModelOutcome::TargetObserved,
+		"superseded" => AgentModelOutcome::Superseded,
 		_ => return None,
 	})
 }
@@ -214,11 +229,11 @@ fn outcome(value: &str) -> Option<decodex_protocol::AgentModelOutcome> {
 fn pending(
 	model: &str,
 	effort: Option<&str>,
-	state: decodex_protocol::AgentModelOutcome,
-	last_receipt: Option<decodex_protocol::AgentModelSelectionReceipt>,
+	state: AgentModelOutcome,
+	last_receipt: Option<AgentModelSelectionReceipt>,
 ) -> Option<Inspection> {
 	Some(Inspection {
-		state: decodex_protocol::AgentModelSelectionState::Pending {
+		state: AgentModelSelectionState::Pending {
 			model: ConversationModel::new(model).ok()?,
 			effort: effort.map(ConversationReasoningEffort::new).transpose().ok()?,
 			state,
@@ -229,18 +244,16 @@ fn pending(
 	})
 }
 
-fn historical_receipt(
-	history: &decodex_database::AgentModelHistory,
-) -> Option<decodex_protocol::AgentModelSelectionReceipt> {
-	Some(decodex_protocol::AgentModelSelectionReceipt {
+fn historical_receipt(history: &AgentModelHistory) -> Option<AgentModelSelectionReceipt> {
+	Some(AgentModelSelectionReceipt {
 		model: ConversationModel::new(history.model.clone()).ok()?,
 		effort: history.effort.as_deref().map(ConversationReasoningEffort::new).transpose().ok()?,
 		manual: history.manual,
 		response: match history.response.as_str() {
-			"reserved" => decodex_protocol::AgentModelResponse::Reserved,
-			"queued" => decodex_protocol::AgentModelResponse::Queued,
-			"rejected" => decodex_protocol::AgentModelResponse::Rejected,
-			"unknown" => decodex_protocol::AgentModelResponse::Unknown,
+			"reserved" => AgentModelResponse::Reserved,
+			"queued" => AgentModelResponse::Queued,
+			"rejected" => AgentModelResponse::Rejected,
+			"unknown" => AgentModelResponse::Unknown,
 			_ => return None,
 		},
 		target_observed: history.target_observed,
@@ -251,7 +264,7 @@ fn historical_receipt(
 async fn selection_editable(
 	store: &SqliteStore,
 	source: &Source,
-	work: &decodex_database::AgentWorkItem,
+	work: &AgentWorkItem,
 ) -> Option<bool> {
 	let k = &source.key;
 	let permission_pending = store
@@ -261,11 +274,10 @@ async fn selection_editable(
 		.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown"));
 
 	Some(
-		((work.dispatch_state == decodex_database::AgentDispatchState::Idle
-			&& work.active_turn_id.is_none())
-			|| (work.dispatch_state == decodex_database::AgentDispatchState::Running
+		((work.dispatch_state == AgentDispatchState::Idle && work.active_turn_id.is_none())
+			|| (work.dispatch_state == AgentDispatchState::Running
 				&& work.active_turn_id.is_some()))
-			&& work.status != decodex_database::AgentWorkStatus::Resolved
+			&& work.status != AgentWorkStatus::Resolved
 			&& !permission_pending
 			&& !store
 				.agent_plugin_receipt(k.work.clone(), k.thread.clone())
@@ -327,9 +339,9 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 		&& matches!(
 			last_outcome,
 			Some(
-				decodex_protocol::AgentModelOutcome::Reserved
-					| decodex_protocol::AgentModelOutcome::Queued
-					| decodex_protocol::AgentModelOutcome::Unknown
+				AgentModelOutcome::Reserved
+					| AgentModelOutcome::Queued
+					| AgentModelOutcome::Unknown
 			)
 		) {
 		return pending(
@@ -352,18 +364,7 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 		return None;
 	}
 
-	let AgentCapabilitiesResult::Available { mut models, .. } =
-		crate::agent_capabilities::read(&source.client).await
-	else {
-		return None;
-	};
-
-	models.retain(|model| model.model.as_str() != "gpt-reserve");
-
-	if !guard.is_live() {
-		return None;
-	}
-
+	let models = reviewable_models(source, &guard).await?;
 	let can_update = selection_editable(store, source, &work).await?;
 	let identity = serde_json::json!([
 		k.work,
@@ -381,15 +382,12 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 		last_receipt,
 		can_update
 	]);
-	let token: String = Sha256::digest(identity.to_string().as_bytes())
-		.iter()
-		.map(|b| format!("{b:02x}"))
-		.collect();
+	let token: String = digest_identity(&identity);
 
 	Some(Inspection {
 		settings_event: saved.id,
 		guard: Some(guard),
-		state: decodex_protocol::AgentModelSelectionState::Available {
+		state: AgentModelSelectionState::Available {
 			work_id: EntityId::new(k.work.clone()).ok()?,
 			thread_id: EntityId::new(k.thread.clone()).ok()?,
 			review_token: WireText::new(token).ok()?,
@@ -407,4 +405,20 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 			last_receipt,
 		},
 	})
+}
+
+async fn reviewable_models(source: &Source, guard: &HistoryGuard) -> Option<Vec<AgentModelDto>> {
+	let AgentCapabilitiesResult::Available { mut models, .. } =
+		agent_capabilities::read(&source.client).await
+	else {
+		return None;
+	};
+
+	models.retain(|model| model.model.as_str() != "gpt-reserve");
+
+	if !guard.is_live() {
+		return None;
+	}
+
+	Some(models)
 }
