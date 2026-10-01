@@ -4,7 +4,7 @@ use crate::{
 	agent_voice::{self, VoiceGateway},
 };
 use decodex_database::{AgentVoiceCall, SqliteStore};
-use decodex_protocol::{AgentVoicePhase, AgentVoiceRequest, VoiceSdp};
+use decodex_protocol::{AgentVoiceOptions, AgentVoicePhase, AgentVoiceRequest, EntityId, VoiceSdp};
 
 const TRANSCRIPT_TAIL_BYTES: usize = 32_768;
 
@@ -149,94 +149,7 @@ impl AgentCoordinator {
 	) -> Result<(), AgentError> {
 		match request {
 			AgentVoiceRequest::Start { session_id, work_id, offer, options } => {
-				if self.store.agent_misalignment(work_id.as_str().into()).await?.is_some() {
-					return Err(AgentError::Invalid(
-						"This conversation is paused for provider findings.".into(),
-					));
-				}
-				if !self.is_manager(work_id.as_str()).await? {
-					return Err(AgentError::Invalid("voice requires a Agent".into()));
-				}
-
-				let item = self.store.get_agent_work_item(work_id.as_str().into()).await?;
-
-				if !matches!(
-					item.dispatch_state,
-					decodex_database::AgentDispatchState::Idle
-						| decodex_database::AgentDispatchState::Running
-				) {
-					return Err(AgentError::Busy);
-				}
-
-				let thread = item
-					.codex_thread_id
-					.ok_or_else(|| AgentError::Invalid("Agent thread is not ready".into()))?;
-				let generation = self.owned_voice_generation(work_id.as_str(), &thread).await?;
-
-				if !self.loaded_threads.contains(&thread) {
-					let mut params = Self::resume_params(&thread);
-
-					params["config"]["features.realtime_conversation"] = serde_json::json!(true);
-
-					let resumed = self
-						.client
-						.thread_resume(params)
-						.await
-						.map_err(|error| agent::resume_error(error, &thread))?;
-
-					if agent::exact(&resumed, "/thread/id")? != thread {
-						return Err(AgentError::Invalid("voice thread differs".into()));
-					}
-
-					self.loaded_threads.insert(thread.clone());
-				}
-
-				let selected_voice = self.client.realtime_voice_for_thread(&thread).await?;
-				let baseline = self.client.thread_latest_turn_id(&thread).await?;
-
-				self.store
-					.begin_agent_voice_call(AgentVoiceCall {
-						session_id: session_id.as_str().into(),
-						work_id: work_id.as_str().into(),
-						thread_id: thread.clone(),
-						generation_id: generation,
-						baseline_turn_id: baseline,
-					})
-					.await?;
-
-				self.voice.as_mut().expect("voice host").answer_seen = false;
-				self.voice.as_mut().expect("voice host").precaution_retired = false;
-				self.voice.as_mut().expect("voice host").transcript_tail = Default::default();
-				self.voice.as_mut().expect("voice host").transcript_complete = Default::default();
-				self.voice.as_mut().expect("voice host").session =
-					Some((session_id.as_str().into(), thread.clone()));
-
-				let mut params = serde_json::json!({
-					"threadId":thread,"version":"v3","outputModality":"audio","voice":selected_voice,
-					"includeStartupContext":true,"flushTranscriptTailOnSessionEnd":true,
-					"prompt":"Continue this Agent conversation by voice. Wait for the user's new spoken request before starting new work. Use the existing conversation and its tools when the user asks for work.",
-					"transport":{"type":"webrtc","sdp":offer.as_str()}
-				});
-
-				if let Some(model) = options.model {
-					params["model"] = serde_json::json!(model.as_str());
-				}
-				if let Some(instructions) = options.start_instructions {
-					params["realtimeStartInstructions"] = serde_json::json!(instructions.as_str());
-				}
-				if let Some(instructions) = options.end_instructions {
-					params["realtimeEndInstructions"] = serde_json::json!(instructions.as_str());
-				}
-
-				let result = self.client.request("thread/realtime/start", params).await;
-
-				if matches!(&result, Err(ClientError::Remote(_))) {
-					self.store.close_agent_voice_call(session_id.as_str().into()).await?;
-
-					self.voice.as_mut().expect("voice host").session = None;
-				}
-
-				result?;
+				self.start_voice(session_id, work_id, offer, options).await?;
 			},
 			AgentVoiceRequest::Speak { session_id, text } => {
 				let voice = self.voice.as_ref().filter(|v| v.answer_seen && !v.precaution_retired);
@@ -281,6 +194,105 @@ impl AgentCoordinator {
 			},
 			AgentVoiceRequest::Poll { .. } => {},
 		}
+
+		Ok(())
+	}
+
+	async fn start_voice(
+		&mut self,
+		session_id: EntityId,
+		work_id: EntityId,
+		offer: VoiceSdp,
+		options: AgentVoiceOptions,
+	) -> Result<(), AgentError> {
+		if self.store.agent_misalignment(work_id.as_str().into()).await?.is_some() {
+			return Err(AgentError::Invalid(
+				"This conversation is paused for provider findings.".into(),
+			));
+		}
+		if !self.is_manager(work_id.as_str()).await? {
+			return Err(AgentError::Invalid("voice requires a Agent".into()));
+		}
+
+		let item = self.store.get_agent_work_item(work_id.as_str().into()).await?;
+
+		if !matches!(
+			item.dispatch_state,
+			decodex_database::AgentDispatchState::Idle
+				| decodex_database::AgentDispatchState::Running
+		) {
+			return Err(AgentError::Busy);
+		}
+
+		let thread = item
+			.codex_thread_id
+			.ok_or_else(|| AgentError::Invalid("Agent thread is not ready".into()))?;
+		let generation = self.owned_voice_generation(work_id.as_str(), &thread).await?;
+
+		if !self.loaded_threads.contains(&thread) {
+			let mut params = Self::resume_params(&thread);
+
+			params["config"]["features.realtime_conversation"] = serde_json::json!(true);
+
+			let resumed = self
+				.client
+				.thread_resume(params)
+				.await
+				.map_err(|error| agent::resume_error(error, &thread))?;
+
+			if agent::exact(&resumed, "/thread/id")? != thread {
+				return Err(AgentError::Invalid("voice thread differs".into()));
+			}
+
+			self.loaded_threads.insert(thread.clone());
+		}
+
+		let selected_voice = self.client.realtime_voice_for_thread(&thread).await?;
+		let baseline = self.client.thread_latest_turn_id(&thread).await?;
+
+		self.store
+			.begin_agent_voice_call(AgentVoiceCall {
+				session_id: session_id.as_str().into(),
+				work_id: work_id.as_str().into(),
+				thread_id: thread.clone(),
+				generation_id: generation,
+				baseline_turn_id: baseline,
+			})
+			.await?;
+
+		self.voice.as_mut().expect("voice host").answer_seen = false;
+		self.voice.as_mut().expect("voice host").precaution_retired = false;
+		self.voice.as_mut().expect("voice host").transcript_tail = Default::default();
+		self.voice.as_mut().expect("voice host").transcript_complete = Default::default();
+		self.voice.as_mut().expect("voice host").session =
+			Some((session_id.as_str().into(), thread.clone()));
+
+		let mut params = serde_json::json!({
+			"threadId":thread,"version":"v3","outputModality":"audio","voice":selected_voice,
+			"includeStartupContext":true,"flushTranscriptTailOnSessionEnd":true,
+			"prompt":"Continue this Agent conversation by voice. Wait for the user's new spoken request before starting new work. Use the existing conversation and its tools when the user asks for work.",
+			"transport":{"type":"webrtc","sdp":offer.as_str()}
+		});
+
+		if let Some(model) = options.model {
+			params["model"] = serde_json::json!(model.as_str());
+		}
+		if let Some(instructions) = options.start_instructions {
+			params["realtimeStartInstructions"] = serde_json::json!(instructions.as_str());
+		}
+		if let Some(instructions) = options.end_instructions {
+			params["realtimeEndInstructions"] = serde_json::json!(instructions.as_str());
+		}
+
+		let result = self.client.request("thread/realtime/start", params).await;
+
+		if matches!(&result, Err(ClientError::Remote(_))) {
+			self.store.close_agent_voice_call(session_id.as_str().into()).await?;
+
+			self.voice.as_mut().expect("voice host").session = None;
+		}
+
+		result?;
 
 		Ok(())
 	}
@@ -546,8 +558,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn precaution_storage_failure_still_retires_voice_and_requests_native_stop() {
-		use decodex_protocol::EntityId;
-
 		for disconnected in [false, true] {
 			let (mut agent, mut sent, directory) = tests::fixture_with_history(
 				serde_json::json!({"_voice_stop_disconnect":disconnected}),
@@ -620,8 +630,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn misalignment_retires_voice_even_when_stop_acknowledgment_is_lost() {
-		use decodex_protocol::{AgentVoicePhase, AgentVoiceRequest, EntityId, VoiceSdp};
-
 		for disconnected in [false, true] {
 			let (mut agent, mut sent, directory) = tests::fixture_with_history(
 				serde_json::json!({"_voice_stop_disconnect":disconnected}),
