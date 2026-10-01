@@ -1,16 +1,19 @@
 //! On-demand native evidence, without a second tool-output store.
 #[path = "agent_tool_detail.rs"] mod tool_detail;
 
-use decodex_codex::app_server_client::AppServerClient;
-
-use decodex_protocol::{AgentActivityDetailCursor, AgentActivityDetailResult};
+use std::{future::Future, time::Duration};
 
 use serde_json::Value;
-
 use sha2::{Digest as _, Sha256};
 use tokio::time;
 
-use crate::agent::{image_generation, timeline::tool_output};
+use crate::{
+	agent::{image_generation, timeline::tool_output},
+	agent_usage_estimate::Source,
+};
+use decodex_codex::app_server_client::AppServerClient;
+use decodex_core::MAX_NATIVE_MESSAGE_BYTES;
+use decodex_protocol::{AgentActivityDetailCursor, AgentActivityDetailResult, WireText};
 
 pub(crate) fn saved_file_changes(payload: &Value) -> Option<String> {
 	let params = &payload["params"];
@@ -57,13 +60,13 @@ pub(crate) async fn read_bound<F, Fut>(
 ) -> AgentActivityDetailResult
 where
 	F: Fn() -> Fut,
-	Fut: std::future::Future<Output = Option<crate::agent_usage_estimate::Source>>,
+	Fut: Future<Output = Option<Source>>,
 {
 	let Some(before) = source().await else {
 		return AgentActivityDetailResult::Unavailable;
 	};
 	let history = time::timeout(
-		std::time::Duration::from_secs(8),
+		Duration::from_secs(8),
 		before.client.thread_read_turn(&before.key.thread, turn),
 	)
 	.await;
@@ -100,8 +103,7 @@ pub(crate) async fn read_file_changes(
 	item: &str,
 ) -> AgentActivityDetailResult {
 	let Ok(Ok(history)) =
-		time::timeout(std::time::Duration::from_secs(8), client.thread_read_turn(thread, turn))
-			.await
+		time::timeout(Duration::from_secs(8), client.thread_read_turn(thread, turn)).await
 	else {
 		return AgentActivityDetailResult::Unavailable;
 	};
@@ -202,7 +204,7 @@ fn project(
 ) -> Option<AgentActivityDetailResult> {
 	let text = project_text(history, thread, turn, item)?;
 
-	if text.len() > decodex_core::MAX_NATIVE_MESSAGE_BYTES {
+	if text.len() > MAX_NATIVE_MESSAGE_BYTES {
 		return None;
 	}
 
@@ -290,7 +292,7 @@ fn page(
 		.then(|| {
 			Some(AgentActivityDetailCursor {
 				offset: u32::try_from(end).ok()?,
-				fingerprint: decodex_protocol::WireText::new(fingerprint).ok()?,
+				fingerprint: WireText::new(fingerprint).ok()?,
 			})
 		})
 		.flatten();

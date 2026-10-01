@@ -32,18 +32,30 @@
 #[path = "tests/task_history.rs"] mod task_history;
 #[path = "tests/unsent_input.rs"] mod unsent_input;
 
-use crate::agent::*;
+use std::{iter, slice, time::Duration};
 
-use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
-
-use decodex_protocol::{AgentRequestedDecision, requested_decision_response};
-
-use std::{iter, slice};
-
+use rusqlite::Connection;
+use tempfile::TempDir;
 use timeline::metrics;
-use tokio::{sync::mpsc, task, time};
+use tokio::{
+	io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream, WriteHalf},
+	sync::{
+		mpsc,
+		mpsc::{UnboundedReceiver, UnboundedSender},
+	},
+	task, time,
+};
 
-use crate::{agent::misalignment, application};
+use crate::{
+	agent::{AgentInputExtras, async_projection::Projection, misalignment, *},
+	application,
+};
+use decodex_core::DecodexRoot;
+use decodex_database::{AgentMisalignment, AgentOutputUpdate};
+use decodex_protocol::{
+	AgentActivityDto, AgentAsyncQuestionDto, AgentRequestedDecision, AgentTimelineContent,
+	requested_decision_response,
+};
 
 struct FixtureFaults {
 	resume_failures: u64,
@@ -55,7 +67,7 @@ impl FixtureFaults {
 		&mut self,
 		request: &Value,
 		history: &Value,
-		writer: &mut tokio::io::WriteHalf<tokio::io::DuplexStream>,
+		writer: &mut WriteHalf<DuplexStream>,
 	) -> Option<bool> {
 		if request["method"] == "turn/start"
 			&& (history["_turn_draining"] == true
@@ -186,11 +198,9 @@ impl FixtureFaults {
 
 pub(super) async fn fixture_with_history(
 	history: Value,
-) -> (AgentCoordinator, tokio::sync::mpsc::UnboundedReceiver<Value>, tempfile::TempDir) {
+) -> (AgentCoordinator, UnboundedReceiver<Value>, TempDir) {
 	let directory = tempfile::tempdir().unwrap();
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 	root.paths().ensure_layout().unwrap();
 
@@ -299,10 +309,7 @@ fn steering_receipt_preserves_turn_settings_when_carried_as_evidence() {
 	assert_eq!(params["input"][0]["type"], "localImage");
 }
 
-fn live_review_token(
-	agent: &AgentCoordinator,
-	review: &decodex_database::AgentMisalignment,
-) -> String {
+fn live_review_token(agent: &AgentCoordinator, review: &AgentMisalignment) -> String {
 	let (_, guard) =
 		agent.client.live_misalignment_review(&review.thread_id, &review.turn_id).unwrap();
 
@@ -426,10 +433,8 @@ async fn subagent_activity_survives_parent_completion_and_restart_without_waking
 
 				write.write_all(format!("{wire}\n").as_bytes()).await.unwrap();
 
-				let event = time::timeout(std::time::Duration::from_secs(2), events.recv())
-					.await
-					.unwrap()
-					.unwrap();
+				let event =
+					time::timeout(Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
 
 				agent.handle_event(event).await.unwrap();
 			}
@@ -442,15 +447,13 @@ async fn subagent_activity_survives_parent_completion_and_restart_without_waking
 
 	assert!(sent.try_recv().is_err());
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 	drop(agent);
 
 	let store = SqliteStore::open(&root.paths()).unwrap();
 	let (history, _) = store.read_agent_transcript("agent".into(), None, 32).await.unwrap();
-	let activities: Vec<decodex_protocol::AgentActivityDto> = history
+	let activities: Vec<AgentActivityDto> = history
 		.iter()
 		.filter(|e| e.event_kind == "activity_completed")
 		.map(|e| serde_json::from_str(&e.payload).unwrap())
@@ -518,15 +521,13 @@ async fn native_activity_duration_pairs_exact_receipts_and_survives_restart() {
 		}
 	}
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 	drop(agent);
 
 	let store = SqliteStore::open(&root.paths()).unwrap();
 	let (history, _) = store.read_agent_transcript("agent".into(), None, 32).await.unwrap();
-	let activities: Vec<decodex_protocol::AgentActivityDto> = history
+	let activities: Vec<AgentActivityDto> = history
 		.iter()
 		.filter(|event| event.event_kind == "activity_completed")
 		.map(|event| serde_json::from_str(&event.payload).unwrap())
@@ -559,8 +560,7 @@ async fn native_activity_duration_pairs_exact_receipts_and_survives_restart() {
 			.entries
 			.iter()
 			.find_map(|entry| match &entry.content {
-				decodex_protocol::AgentTimelineContent::Item { item_id, activity, .. }
-					if item_id == id =>
+				AgentTimelineContent::Item { item_id, activity, .. } if item_id == id =>
 					activity.as_ref(),
 				_ => None,
 			})
@@ -574,7 +574,7 @@ async fn native_activity_duration_pairs_exact_receipts_and_survives_restart() {
 	metrics::enrich(&store, "agent", &mut other).await.unwrap();
 
 	assert!(
-		matches!(&other.entries[0].content, decodex_protocol::AgentTimelineContent::Item { activity: Some(activity), .. } if activity.duration_ms.is_none())
+		matches!(&other.entries[0].content, AgentTimelineContent::Item{ activity: Some(activity), .. } if activity.duration_ms.is_none())
 	);
 	assert!(store.list_agent_wake_events("agent".into(), 32).await.unwrap().is_empty());
 }
@@ -618,8 +618,7 @@ async fn strict_review_notice_is_turn_bound_and_does_not_wake_or_stop_execution(
 
 		write.write_all(format!("{wire}\n").as_bytes()).await.unwrap();
 
-		let event =
-			time::timeout(std::time::Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
+		let event = time::timeout(Duration::from_secs(2), events.recv()).await.unwrap().unwrap();
 
 		coordinator.handle_event(event).await.unwrap();
 	}
@@ -729,8 +728,7 @@ async fn asynchronous_questions_and_usage_are_observed_without_completing_or_wak
 	);
 }
 
-async fn fixture()
--> (AgentCoordinator, tokio::sync::mpsc::UnboundedReceiver<Value>, tempfile::TempDir) {
+async fn fixture() -> (AgentCoordinator, UnboundedReceiver<Value>, TempDir) {
 	fixture_with_history(serde_json::json!({})).await
 }
 
@@ -739,7 +737,7 @@ async fn attach_request_transport(
 	agent: &mut AgentCoordinator,
 	history: Value,
 	request: Value,
-) -> tokio::sync::mpsc::UnboundedReceiver<Value> {
+) -> UnboundedReceiver<Value> {
 	let (local, mut remote) = io::duplex(65_536);
 	let (reader, writer) = io::split(local);
 	let (client, mut events) = AppServerClient::from_io(reader, writer);
@@ -771,7 +769,7 @@ async fn emit_fixture_review_events(
 	request: &Value,
 	history: &Value,
 	turns: u64,
-	writer: &mut tokio::io::WriteHalf<tokio::io::DuplexStream>,
+	writer: &mut WriteHalf<DuplexStream>,
 ) {
 	if request["method"] == "thread/read"
 		&& request["params"]["includeTurns"] != false
@@ -790,11 +788,7 @@ async fn emit_fixture_review_events(
 	}
 }
 
-async fn serve_fixture(
-	server_io: tokio::io::DuplexStream,
-	history: Value,
-	sent: tokio::sync::mpsc::UnboundedSender<Value>,
-) {
+async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedSender<Value>) {
 	let (reader, mut writer) = io::split(server_io);
 	let mut lines = BufReader::new(reader).lines();
 	let mut threads = 0;
@@ -1057,10 +1051,8 @@ async fn failed_dependency_write_cannot_leave_dispatchable_work() {
 		.await
 		.unwrap();
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
-	let db = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+	let db = Connection::open(root.paths().product_database_file()).unwrap();
 
 	db.execute_batch("CREATE TRIGGER fail_second_dependency BEFORE INSERT ON agent_dependencies WHEN NEW.work_item_id='dependent' AND NEW.depends_on_id='waiting' BEGIN SELECT RAISE(ABORT, 'fixture dependency write failure'); END;").unwrap();
 
@@ -1281,9 +1273,7 @@ async fn failed_thread_start_remains_unknown_without_retry() {
 	));
 
 	let paths =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap()
-			.paths();
+		DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap().paths();
 
 	drop(coordinator);
 
@@ -1923,9 +1913,7 @@ async fn unknown_dispatch_and_unprocessed_events_survive_restart() {
 	complete(&mut coordinator, "first").await;
 
 	let paths =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap()
-			.paths();
+		DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap().paths();
 
 	coordinator.store.begin_agent_dispatch("first".into()).await.unwrap();
 	coordinator.store.mark_agent_dispatch_unknown("first".into()).await.unwrap();
@@ -1969,7 +1957,7 @@ async fn live_output_is_turn_bound_bounded_and_replaced_by_final_history() {
 	coordinator.handle_event(event(turn, "Hello ")).await.unwrap();
 
 	let (next, observed) =
-		time::timeout(std::time::Duration::from_secs(1), observer).await.unwrap().unwrap().unwrap();
+		time::timeout(Duration::from_secs(1), observer).await.unwrap().unwrap().unwrap();
 
 	assert!(next > revision);
 	assert_eq!(observed[0].text, "Hello ");
@@ -2086,10 +2074,8 @@ async fn legacy_manager_keeps_native_thread_without_replaying_saved_input() {
 		.await
 		.unwrap();
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
-	let db = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+	let db = Connection::open(root.paths().product_database_file()).unwrap();
 
 	db.execute("DELETE FROM agent_tool_versions WHERE work_id='agent'", []).unwrap();
 
@@ -2212,9 +2198,7 @@ async fn usage_is_source_bound_persistent_and_does_not_wake_managers() {
 	coordinator.handle_event(event(turn, 999)).await.unwrap();
 
 	let paths =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap()
-			.paths();
+		DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap().paths();
 
 	drop(coordinator);
 
@@ -2554,8 +2538,7 @@ async fn native_activity_notifications_reach_history_without_agent_delivery() {
 
 	assert_eq!(receipts.len(), 1);
 
-	let activity: decodex_protocol::AgentActivityDto =
-		serde_json::from_str(&receipts[0].payload).unwrap();
+	let activity: AgentActivityDto = serde_json::from_str(&receipts[0].payload).unwrap();
 
 	assert_eq!(activity.label, "Compacting context");
 	assert_eq!(activity.status, "completed");
@@ -2614,9 +2597,7 @@ async fn native_revert_retires_exact_thread_requests_without_replies_or_replay()
 	assert!(!agent.pending_requests.contains_key(&id));
 	assert!(agent.store.read_agent_output("agent".into()).await.unwrap().is_empty());
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 	let reopened = SqliteStore::open(&root.paths()).unwrap();
 
 	assert!(reopened.read_agent_output("agent".into()).await.unwrap().is_empty());
@@ -2704,7 +2685,7 @@ async fn async_question_answers_survive_replay_and_reopening_without_waking_work
 
 	let first_id = decodex_protocol::agent_async_question_id("questions", 0);
 	let reply = decodex_protocol::agent_async_question_reply(
-		&decodex_protocol::AgentAsyncQuestionDto {
+		&AgentAsyncQuestionDto {
 			arrived_live: false,
 			id: first_id.clone(),
 			title: "Same".into(),
@@ -2744,9 +2725,7 @@ async fn async_question_answers_survive_replay_and_reopening_without_waking_work
 	);
 
 	let paths =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap()
-			.paths();
+		DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap().paths();
 	let reopened = SqliteStore::open(&paths).unwrap();
 
 	assert_eq!(reopened.read_agent_async_questions("agent".into()).await.unwrap().len(), 1);
@@ -2770,7 +2749,7 @@ async fn async_question_answers_survive_replay_and_reopening_without_waking_work
 async fn async_question_upgrade_reads_native_history_and_preserves_later_questions() {
 	let question = |id: &str| serde_json::json!({"id":id,"type":"agentMessage","delivery":"async","text":"Question","questions":[{"title":"Which?","options":["A","B"]}]});
 	let answer = decodex_protocol::agent_async_question_reply(
-		&decodex_protocol::AgentAsyncQuestionDto {
+		&AgentAsyncQuestionDto {
 			arrived_live: false,
 			id: decodex_protocol::agent_async_question_id("answered", 0),
 			title: "Which?".into(),
@@ -2786,10 +2765,8 @@ async fn async_question_upgrade_reads_native_history_and_preserves_later_questio
 
 	while sent.try_recv().is_ok() {}
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
-	let db = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+	let db = Connection::open(root.paths().product_database_file()).unwrap();
 
 	db.execute(
 		"INSERT INTO agent_async_recovery(work_id,thread_id) VALUES('agent','opaque thread/1')",
@@ -2920,7 +2897,7 @@ async fn other_client_input_blocks_question_writes_before_owner_observation() {
 
 		incoming.send(Ok(serde_json::json!({"method":"item/completed","params":{"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{"id":"input","type":"userMessage","content":[{"type":"text","text":text}]}}}))).await.unwrap();
 
-		time::timeout(std::time::Duration::from_secs(2), async {
+		time::timeout(Duration::from_secs(2), async {
 			while client.question_revision() == 0 {
 				task::yield_now().await;
 			}
@@ -2975,7 +2952,7 @@ async fn transport_revert_blocks_old_question_before_coordinator_reads_notificat
 		.await
 		.unwrap();
 
-	time::timeout(std::time::Duration::from_secs(2), async {
+	time::timeout(Duration::from_secs(2), async {
 		while client.history_revision() == 0 {
 			task::yield_now().await;
 		}
@@ -3015,11 +2992,9 @@ async fn stale_history_guard_prevents_async_turn_and_steer_without_unknown_recei
 			agent.handle_event(ServerEvent::Notification {method:"turn/completed".into(),params:serde_json::json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
 		}
 		if !running {
-			let root = decodex_core::DecodexRoot::new(
-				directory.path().canonicalize().unwrap().join("root"),
-			)
-			.unwrap();
-			let db = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+			let root =
+				DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+			let db = Connection::open(root.paths().product_database_file()).unwrap();
 
 			db.execute("UPDATE agent_work_items SET status='wait',next_check_at_micros=9999999999999999 WHERE id='agent'",[]).unwrap();
 		}
@@ -3043,7 +3018,7 @@ async fn stale_history_guard_prevents_async_turn_and_steer_without_unknown_recei
 					"opaque turn/1",
 					"stale-answer",
 					"answer",
-					super::AgentInputExtras { attachments: &[], task_references: &[] },
+					AgentInputExtras { attachments: &[], task_references: &[] },
 					Some(("question", guard)),
 				)
 				.await
@@ -3122,10 +3097,8 @@ async fn async_revert_marker_survives_reopen_and_preserves_uncertain_deliveries(
 		ids.push(event.id);
 	}
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
-	let db = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+	let db = Connection::open(root.paths().product_database_file()).unwrap();
 
 	db.execute(
 		"UPDATE agent_inbox_events SET delivered_turn_id='',delivery_work_item_id='agent' WHERE id=?1",
@@ -3196,10 +3169,8 @@ async fn incomplete_async_recovery_hides_cards_until_a_later_complete_read() {
 
 	agent.observe_async_question_item("opaque thread/1", "old", &item).await.unwrap();
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
-	let db = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+	let db = Connection::open(root.paths().product_database_file()).unwrap();
 
 	db.execute(
 		"INSERT INTO agent_async_recovery(work_id,thread_id) VALUES('agent','opaque thread/1')",
@@ -3354,10 +3325,8 @@ async fn rejected_or_uncertain_async_answers_keep_question_and_do_not_queue_retr
 		);
 
 		if uncertain {
-			let root = decodex_core::DecodexRoot::new(
-				directory.path().canonicalize().unwrap().join("root"),
-			)
-			.unwrap();
+			let root =
+				DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 			let (mut reopened, mut reopened_sent, _other) = fixture().await;
 
 			reopened.store = SqliteStore::open(&root.paths()).unwrap();
@@ -3431,10 +3400,8 @@ async fn async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade() {
 	agent.observe_async_question_item("opaque thread/1","opaque turn/1",&serde_json::json!({"id":"question","type":"agentMessage","delivery":"async","questions":[{"title":"Which?"}]})).await.unwrap();
 	agent.store.complete_agent_turn("agent".into(), "opaque turn/1".into()).await.unwrap();
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
-	let db = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+	let db = Connection::open(root.paths().product_database_file()).unwrap();
 
 	db.execute("DELETE FROM agent_tool_versions WHERE work_id='agent'", []).unwrap();
 
@@ -3528,9 +3495,7 @@ async fn misalignment_precaution_survives_reopen_and_blocks_ordinary_dispatch() 
 	assert!(agent.continue_worker("agent", "Continue").await.is_err());
 	assert!(sent.try_recv().is_err());
 
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 	let reopened = SqliteStore::open(&root.paths()).unwrap();
 
 	assert_eq!(reopened.agent_misalignment("agent".into()).await.unwrap(), Some(saved));
@@ -3640,10 +3605,8 @@ async fn misalignment_stale_rejected_and_uncertain_continuations_keep_precaution
 		assert_eq!(starts, usize::from(!["changed", "reverted"].contains(&outcome)));
 
 		if outcome == "uncertain" {
-			let root = decodex_core::DecodexRoot::new(
-				directory.path().canonicalize().unwrap().join("root"),
-			)
-			.unwrap();
+			let root =
+				DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 			let (mut reopened, mut requests, _other) = fixture().await;
 
 			reopened.store = SqliteStore::open(&root.paths()).unwrap();
@@ -3666,9 +3629,7 @@ async fn misalignment_saved_details_cannot_authorize_a_reconnected_transport() {
 	agent.store.complete_agent_turn("agent".into(), "opaque turn/1".into()).await.unwrap();
 
 	let review = agent.store.agent_misalignment("agent".into()).await.unwrap().unwrap();
-	let root =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
 	drop(agent);
 
@@ -3724,9 +3685,7 @@ async fn idle_thread_recovery_restores_only_latest_misalignment_failure() {
 
 		assert_eq!(precaution.is_some(), stopped || (known && !has_old));
 
-		let root =
-			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-				.unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 		let reopened = SqliteStore::open(&root.paths()).unwrap();
 
 		assert_eq!(reopened.agent_misalignment("agent".into()).await.unwrap(), precaution);
@@ -3942,9 +3901,7 @@ async fn async_question_skip_is_source_bound_durable_and_never_a_native_answer()
 	assert!(agent.answer_async_question("agent", &first, "Must not send", "key").await.is_err());
 
 	let paths =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap()
-			.paths();
+		DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap().paths();
 	let reopened = SqliteStore::open(&paths).unwrap();
 
 	assert_eq!(
@@ -3952,7 +3909,7 @@ async fn async_question_skip_is_source_bound_durable_and_never_a_native_answer()
 		second
 	);
 
-	let db = rusqlite::Connection::open(paths.product_database_file()).unwrap();
+	let db = Connection::open(paths.product_database_file()).unwrap();
 
 	assert_eq!(
 		db.query_row("SELECT count(*) FROM agent_async_answers", [], |row| row.get::<_, i64>(0))
@@ -4008,7 +3965,7 @@ async fn skipped_question_survives_rebuild_only_while_native_content_is_unchange
 	for (step, expected) in [(0, 0), (1, 1), (2, 0)] {
 		agent.skip_async_question("agent", "opaque thread/1", &id).await.unwrap();
 
-		let mut projection = super::async_projection::Projection::default();
+		let mut projection = Projection::default();
 
 		if step == 1 {
 			item["questions"][0]["title"] = serde_json::json!("Changed?");
@@ -4033,9 +3990,7 @@ async fn skipped_question_survives_rebuild_only_while_native_content_is_unchange
 				.unwrap()
 		);
 
-		let root =
-			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-				.unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 		let reopened = SqliteStore::open(&root.paths()).unwrap();
 
 		assert_eq!(
@@ -4086,9 +4041,7 @@ async fn unfinished_native_text_keeps_source_and_display_only_status_after_reope
 		params: serde_json::json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"interrupted","items":[]}}),
 	}).await.unwrap();
 
-		let root =
-			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-				.unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 		let reopened = SqliteStore::open(&root.paths()).unwrap();
 		let events = reopened.read_agent_transcript("agent".into(), None, 32).await.unwrap().0;
 		let rendered = application::render_agent_history_for_test(events);
@@ -4202,13 +4155,11 @@ async fn live_plan_finality_and_kind_survive_restart() {
 	drop(coordinator);
 
 	let paths =
-		decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap().join("root"))
-			.unwrap()
-			.paths();
+		DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap().paths();
 	let store = SqliteStore::open(&paths).unwrap();
 
 	store
-		.update_agent_output_record(decodex_database::AgentOutputUpdate {
+		.update_agent_output_record(AgentOutputUpdate {
 			thread_id: thread.clone(),
 			turn_id: turn.clone(),
 			item_id: "plan".into(),

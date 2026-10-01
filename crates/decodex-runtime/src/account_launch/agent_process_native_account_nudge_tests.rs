@@ -1,17 +1,25 @@
 //! Exercise native notifications through the retained bridge with synthetic credentials.
-use crate::account_launch::agent_process::native_tests::NativeSession;
+use std::{
+	env,
+	fs::{self, OpenOptions},
+	io::Write as _,
+	os::unix::fs::OpenOptionsExt as _,
+	path::Path,
+	sync::Arc,
+	time::Duration,
+};
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use tokio::{
+	io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader},
+	net::TcpStream,
+	sync::Notify,
+	task::JoinSet,
+	time,
+};
 
+use crate::account_launch::agent_process::native_tests::NativeSession;
 use decodex_codex::app_server_client::{AccountNudgeCreditType, AccountNudgeOutcome};
-
-use std::{io::Write as _, os::unix::fs::OpenOptionsExt as _, time::Duration};
-
-use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader};
-
-use std::{env, fs};
-
-use tokio::time;
 
 pub(crate) async fn serve_notification(
 	listener: &tokio::net::TcpListener,
@@ -25,9 +33,9 @@ pub(crate) async fn serve_notification_with_gate(
 	listener: &tokio::net::TcpListener,
 	status: &str,
 	purpose: AccountNudgeCreditType,
-	gate: Option<std::sync::Arc<(tokio::sync::Notify, tokio::sync::Notify)>>,
+	gate: Option<Arc<(Notify, Notify)>>,
 ) {
-	let mut connections = tokio::task::JoinSet::new();
+	let mut connections = JoinSet::new();
 
 	loop {
 		tokio::select! {
@@ -43,7 +51,7 @@ pub(crate) async fn serve_notification_with_gate(
 	}
 }
 
-fn write_fixture_credentials(home: &std::path::Path) {
+fn write_fixture_credentials(home: &Path) {
 	let claims = serde_json::json!({"email":"fixture@example.test","exp":4102444800_u64,
 		"https://api.openai.com/auth":{"chatgpt_account_id":"workspace-fixture",
 		"chatgpt_user_id":"user-fixture","chatgpt_plan_type":"team"}});
@@ -55,7 +63,7 @@ fn write_fixture_credentials(home: &std::path::Path) {
 	let auth = serde_json::json!({"auth_mode":"chatgpt","tokens":{"id_token":token,
 		"access_token":"fixture-only","refresh_token":"fixture-only","account_id":"workspace-fixture"},
 		"last_refresh":"2026-09-21T15:00:00Z"});
-	let mut file = std::fs::OpenOptions::new()
+	let mut file = OpenOptions::new()
 		.write(true)
 		.create_new(true)
 		.mode(0o600)
@@ -198,10 +206,10 @@ async fn installed_native_account_nudge_crosses_bridge_without_retry() {
 }
 
 async fn handle_request(
-	stream: tokio::net::TcpStream,
+	stream: TcpStream,
 	status: String,
 	purpose: AccountNudgeCreditType,
-	gate: Option<std::sync::Arc<(tokio::sync::Notify, tokio::sync::Notify)>>,
+	gate: Option<Arc<(Notify, Notify)>>,
 ) -> bool {
 	let mut stream = BufReader::new(stream);
 	let mut line = String::new();
