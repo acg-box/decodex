@@ -1,6 +1,8 @@
 //! Route integration setup to Codex without installing or authorizing in Decodex.
-use super::{mcp_forms::mcp_button, *};
+use gpui::AnyElement;
 use serde_json::{Value, json};
+
+use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
 
 impl AgentSurface {
 	pub(super) fn installation_panel(
@@ -8,7 +10,7 @@ impl AgentSurface {
 		event: i64,
 		_value: &Value,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let mut panel =
 			div().id("installation-suggestion").flex().flex_col().gap_2().child(
 				"Configure this integration in Codex for this account, then retry the task.",
@@ -31,13 +33,13 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::install::*;
+	use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
+
 	#[gpui::test]
 	fn setup_request_can_be_declined_without_an_install_or_accept_action(
 		cx: &mut gpui::TestAppContext,
 	) {
-		use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		surface.update(visual, |s, _| {

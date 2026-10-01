@@ -1,9 +1,16 @@
 //! Lost send replies are reconciled through read-only receipts, with one submission.
-use super::*;
+use crate::shell::agent_surface::drafts::storage::*;
 use decodex_protocol::*;
-use futures_util::{SinkExt, StreamExt};
-use std::os::unix::fs::PermissionsExt;
+use futures_util::{SinkExt as _, StreamExt as _};
+use std::os::unix::fs::PermissionsExt as _;
 use tokio_tungstenite::tungstenite::Message;
+
+use std::{fs, sync::mpsc, thread};
+
+use tokio::time;
+
+use crate::shell::agent_surface::drafts::tests;
+
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 struct View {
 	surface: Entity<AgentSurface>,
@@ -19,7 +26,7 @@ impl Render for View {
 fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut gpui::TestAppContext) {
 	cx.background_executor.allow_parking();
 
-	let (service, profile, _) = super::super::tests::profiles();
+	let (service, profile, _) = tests::profiles();
 	let directory = tempfile::tempdir().unwrap();
 	let store =
 		ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -27,14 +34,14 @@ fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut gpui::TestAppCon
 	let socket_path = service.path().join("server/decodex.sock");
 	let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
 
-	std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+	fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600)).unwrap();
 
 	listener.set_nonblocking(true).unwrap();
 
 	let scope = profile.draft_scope_key();
 	let inspect = store.clone();
 	let inspect_scope = scope.clone();
-	let (unknown, unknown_reply) = std::sync::mpsc::channel();
+	let (unknown, unknown_reply) = mpsc::channel();
 	let server = spawn_server(listener, inspect, inspect_scope, unknown);
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
@@ -139,7 +146,7 @@ fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut gpui::TestAppCon
 			}
 		}
 
-		std::thread::sleep(std::time::Duration::from_millis(5));
+		thread::sleep(std::time::Duration::from_millis(5));
 	}
 
 	server.join().unwrap();
@@ -161,12 +168,12 @@ fn spawn_server(
 	inspect_scope: String,
 	unknown: std::sync::mpsc::Sender<()>,
 ) -> std::thread::JoinHandle<()> {
-	std::thread::spawn(move || {
+	thread::spawn(move || {
 		tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(
 			async {
 				let listener = tokio::net::UnixListener::from_std(listener).unwrap();
 
-				tokio::time::timeout(std::time::Duration::from_secs(10), async {
+				time::timeout(std::time::Duration::from_secs(10), async {
 					let mut submitted = None;
 
 					for step in 0..5 {

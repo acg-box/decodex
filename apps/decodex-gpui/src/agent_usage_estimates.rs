@@ -1,13 +1,13 @@
 //! Read native account-scoped task estimates on explicit user request.
-use super::*;
+use gpui::AnyElement;
+use time::OffsetDateTime;
+use tokio::runtime::Builder;
+
+use crate::shell::agent_surface::*;
 use decodex_protocol::AgentUsageEstimateResult;
 
 impl AgentSurface {
-	pub(super) fn usage_estimate_panel(
-		&self,
-		work: &str,
-		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	pub(super) fn usage_estimate_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		let owner = work.to_owned();
 		let mut panel = div().flex().flex_col().gap_2().child(
 			div().debug_selector(|| "task-usage-toggle".into()).child(self.workspace_action(
@@ -108,8 +108,7 @@ impl AgentSurface {
 
 		let work = work.to_owned();
 		let request = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime.block_on(AgentClient::new(profile).usage_estimate(work_id)).ok()
 		});
@@ -152,7 +151,7 @@ fn estimate_text(result: &AgentUsageEstimateResult) -> String {
 		}
 		.into();
 	};
-	let observed = time::OffsetDateTime::from_unix_timestamp(*observed_at_micros / 1_000_000)
+	let observed = OffsetDateTime::from_unix_timestamp(*observed_at_micros / 1_000_000)
 		.ok()
 		.map(|t| {
 			format!(
@@ -191,7 +190,20 @@ fn estimate_text(result: &AgentUsageEstimateResult) -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::usage_estimates::*;
+	use decodex_protocol::{
+		CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
+		ServerId, ServerMessage,
+	};
+
+	use futures_util::{SinkExt as _, StreamExt as _};
+
+	use tokio_tungstenite::tungstenite::Message;
+
+	use std::thread;
+
+	use crate::shell::agent_surface::wire_test_support;
+
 	#[gpui::test]
 	fn task_usage_estimate_is_explicit_and_clears_when_task_changes(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -230,7 +242,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		std::thread::sleep(std::time::Duration::from_millis(220));
+		thread::sleep(std::time::Duration::from_millis(220));
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
@@ -349,44 +361,33 @@ mod tests {
 	}
 	#[gpui::test]
 	fn unrelated_refresh_does_not_strand_an_estimate_read(cx: &mut gpui::TestAppContext) {
-		use decodex_protocol::{
-			CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
-			ServerId, ServerMessage,
-		};
+		let (_directory, profile, server) = wire_test_support::fixture(|listener| async move {
+			let mut socket = wire_test_support::accept(&listener).await;
+			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+				panic!("query")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
+				panic!("read only")
+			};
 
-		use futures_util::{SinkExt, StreamExt};
+			assert!(
+				matches!(query.payload, QueryPayload::GetAgentUsageEstimate { work_id } if work_id.as_str() == "agent")
+			);
 
-		use tokio_tungstenite::tungstenite::Message;
+			let reply = ServerMessage::QueryResult(QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
+				query_id: query.query_id,
+				payload: QueryResultPayload::AgentUsageEstimate(
+					AgentUsageEstimateResult::NotReported,
+				),
+			});
 
-		let (_directory, profile, server) = super::super::wire_test_support::fixture(
-			|listener| async move {
-				let mut socket = super::super::wire_test_support::accept(&listener).await;
-				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-					panic!("query")
-				};
-				let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
-					panic!("read only")
-				};
-
-				assert!(
-					matches!(query.payload, QueryPayload::GetAgentUsageEstimate { work_id } if work_id.as_str() == "agent")
-				);
-
-				let reply = ServerMessage::QueryResult(QueryResultEnvelope {
-					version: CURRENT_VERSION,
-					server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
-					query_id: query.query_id,
-					payload: QueryResultPayload::AgentUsageEstimate(
-						AgentUsageEstimateResult::NotReported,
-					),
-				});
-
-				socket
-					.send(Message::Text(serde_json::to_string(&reply).unwrap().into()))
-					.await
-					.unwrap();
-			},
-		);
+			socket
+				.send(Message::Text(serde_json::to_string(&reply).unwrap().into()))
+				.await
+				.unwrap();
+		});
 		let surface = cx.new(AgentSurface::new);
 
 		surface.update(cx, |s, cx| {

@@ -1,8 +1,11 @@
 //! Request readback must still belong to the pending event and service.
-use super::*;
+use gpui::TestAppContext;
+
+use crate::shell::agent_surface::*;
+use decodex_protocol::{AgentPendingEventDto, AgentRequestText};
 
 #[gpui::test]
-fn delayed_request_reply_requires_current_pending_source(cx: &mut gpui::TestAppContext) {
+fn delayed_request_reply_requires_current_pending_source(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	for change in
@@ -14,7 +17,7 @@ fn delayed_request_reply_requires_current_pending_source(cx: &mut gpui::TestAppC
 			s.request = None;
 
 			let work = s.selected.clone().unwrap();
-			let event = decodex_protocol::AgentPendingEventDto {
+			let event = AgentPendingEventDto {
 				id: 902,
 				source_event_id: "pending-source".into(),
 				work_item_id: work.clone(),
@@ -53,8 +56,7 @@ fn delayed_request_reply_requires_current_pending_source(cx: &mut gpui::TestAppC
 				event_id: 902,
 				work_id: work,
 				method: "item/tool/requestUserInput".into(),
-				request_json: decodex_protocol::AgentRequestText::new("{\"questions\":[]}")
-					.unwrap(),
+				request_json: AgentRequestText::new("{\"questions\":[]}").unwrap(),
 			};
 
 			s.finish_request(source, result, cx);

@@ -1,7 +1,11 @@
 //! Explicit task model selection with source-bound review and durable result readback.
-use super::{mcp_forms::mcp_button, *};
+use gpui::AnyElement;
+use tokio::runtime::Builder;
+
+use crate::shell::agent_surface::{mcp_forms::mcp_button, model_settings, *};
 use decodex_protocol::{
-	AgentModelOutcome as Outcome, AgentModelSelectionState as State, ConversationModel,
+	AgentModelDto, AgentModelOutcome as Outcome, AgentModelSelectionReceipt,
+	AgentModelSelectionState as State, ClientFailure, ConversationModel,
 	ConversationReasoningEffort,
 };
 
@@ -149,8 +153,7 @@ impl AgentSurface {
 
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 		let future = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
 			let state =
@@ -174,10 +177,7 @@ impl AgentSurface {
 		epoch: u64,
 		binding: (&str, &str, &EntityId),
 		saving: bool,
-		result: Option<(
-			Option<Result<AgentCommandResponse, decodex_protocol::ClientFailure>>,
-			State,
-		)>,
+		result: Option<(Option<Result<AgentCommandResponse, ClientFailure>>, State)>,
 		cx: &mut Context<Self>,
 	) {
 		let (work, thread, source) = binding;
@@ -237,7 +237,7 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		if work.codex_thread_id.is_none()
 			|| self.native_agents.selected.is_some()
 			|| !self.command_connection_ready()
@@ -332,9 +332,9 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		model: &ConversationModel,
 		current_effort: Option<&ConversationReasoningEffort>,
-		models: &[decodex_protocol::AgentModelDto],
+		models: &[AgentModelDto],
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let mut panel = div().flex().flex_col().gap_2();
 		let mut choices = div()
 			.id("task-model-choices")
@@ -349,7 +349,7 @@ impl AgentSurface {
 
 			choices = choices.child(mcp_button(
 				format!("task-model-{index}"),
-				super::model_settings::model_choice_label(model),
+				model_settings::model_choice_label(model),
 				false,
 				cx,
 				move |s, cx| s.choose_task_model(selected.clone(), cx),
@@ -421,7 +421,7 @@ fn label(state: Outcome) -> &'static str {
 	}
 }
 
-fn history_label(receipt: &decodex_protocol::AgentModelSelectionReceipt) -> String {
+fn history_label(receipt: &AgentModelSelectionReceipt) -> String {
 	use decodex_protocol::AgentModelResponse as Response;
 
 	let response = match receipt.response {

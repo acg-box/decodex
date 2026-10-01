@@ -1,12 +1,7 @@
 //! Cached host-local presentation preferences.
-pub(crate) fn boolean(
-	key: &str,
-	cache: &std::sync::atomic::AtomicU8,
-	value: Option<bool>,
-	default: bool,
-) -> bool {
-	use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU8, Ordering};
 
+pub(crate) fn boolean(key: &str, cache: &AtomicU8, value: Option<bool>, default: bool) -> bool {
 	if let Some(value) = value {
 		stored_boolean(key, Some(value), default);
 

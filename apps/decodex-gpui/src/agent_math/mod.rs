@@ -9,9 +9,9 @@
 
 #[path = "render.rs"] mod render;
 
-use pulldown_cmark::{Event, Options, Parser, Tag};
-
 use std::{borrow::Cow, ops::Range};
+
+use pulldown_cmark::{Event, Options, Parser, Tag};
 
 const MAX_MATH_BYTES: usize = 4_096;
 

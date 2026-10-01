@@ -1,16 +1,18 @@
 //! Ordinary UI uses the existing shared writer and never restores a send queue.
-use super::{Context, Shell};
-use decodex_protocol::DesktopOrdinaryDraft;
+use gpui::AnyElement;
+
+use crate::shell::{Context, Shell};
+use decodex_protocol::{
+	CommandEnvelope, CommandPayload, ConversationCreationReceiptRequest, DesktopOrdinaryDraft,
+};
 
 impl Shell {
 	pub(super) fn open_recorded_creation(
 		&mut self,
-		command: &decodex_protocol::CommandEnvelope,
+		command: &CommandEnvelope,
 		cx: &mut Context<Self>,
 	) {
-		let Some(request) =
-			decodex_protocol::ConversationCreationReceiptRequest::from_command(command)
-		else {
+		let Some(request) = ConversationCreationReceiptRequest::from_command(command) else {
 			return;
 		};
 		let Some(current) = self.conversations.ordinary_draft(self.composer.read(cx).content())
@@ -157,10 +159,7 @@ impl Shell {
 }
 
 /// Inspect original creation requests without replaying input or clearing delivery records.
-pub(super) fn creation_receipt_controls(
-	shell: &Shell,
-	cx: &mut Context<Shell>,
-) -> gpui::AnyElement {
+pub(super) fn creation_receipt_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	use decodex_protocol::{CommandPayload, ConversationCreationReceiptResult as Receipt};
 
 	use gpui::{
@@ -227,7 +226,7 @@ pub(super) fn creation_receipt_controls(
 }
 
 /// Query and acknowledge terminal provider evidence without resubmission.
-fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyElement {
+fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	use decodex_protocol::{
 		CommandPayload, ConversationTurnOutcomeResult as Result,
 		ConversationTurnOutcomeState as Outcome,
@@ -334,9 +333,7 @@ fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyEle
 }
 
 /// Acknowledge observed control state without claiming delivery or replaying the command.
-fn control_state_controls(shell: &Shell, cx: &mut Context<Shell>) -> gpui::AnyElement {
-	use decodex_protocol::CommandPayload;
-
+fn control_state_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	use gpui::{
 		InteractiveElement as _, IntoElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _, div,

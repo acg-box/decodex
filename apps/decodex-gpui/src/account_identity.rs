@@ -1,13 +1,18 @@
 //! Explicit, in-memory email reveal for the account list.
-use super::*;
+use std::collections::HashMap;
+
+use gpui::Task;
+use tokio::runtime::Builder;
+
+use crate::shell::*;
 use decodex_protocol::{AccountClient, AccountProfileEmailDto, EntityRevision};
 
 #[derive(Default)]
 pub(super) struct Emails {
 	pub(super) visible: bool,
 	epoch: u64,
-	values: std::collections::HashMap<EntityId, (EntityRevision, String)>,
-	task: Option<gpui::Task<()>>,
+	values: HashMap<EntityId, (EntityRevision, String)>,
+	task: Option<Task<()>>,
 }
 impl Emails {
 	pub(super) fn get(&self, account: &AccountDto) -> Option<String> {
@@ -54,10 +59,7 @@ impl Shell {
 				let response = cx
 					.background_executor()
 					.spawn(async move {
-						let runtime = tokio::runtime::Builder::new_current_thread()
-							.enable_all()
-							.build()
-							.ok()?;
+						let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 						runtime.block_on(AccountClient::new(profile).profile(query_id, true)).ok()
 					})
@@ -96,7 +98,7 @@ impl Shell {
 }
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::account_identity::*;
 	#[test]
 	fn hide_discards_revealed_addresses_and_invalidates_pending_reads() {
 		let mut state = Emails::default();

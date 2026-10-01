@@ -1,13 +1,21 @@
 //! Desktop lifecycle for optional recaps; the service retains inference ownership.
-use super::*;
+use std::{
+	collections::BTreeSet,
+	mem,
+	time::{Duration, Instant},
+};
 
-use std::time::{Duration, Instant};
+use gpui::Subscription;
+use tokio::{runtime::Builder, time};
+
+use crate::shell::agent_surface::recap::*;
+use decodex_protocol::{AgentTimelineContent, AgentTimelineResult};
 
 const DELAY: Duration = Duration::from_secs(30 * 60);
 const RETRY: Duration = Duration::from_secs(30);
 
 pub(crate) struct Automatic {
-	subscription: Option<gpui::Subscription>,
+	subscription: Option<Subscription>,
 	focused: bool,
 	enabled: bool,
 	away: Option<Instant>,
@@ -179,8 +187,7 @@ impl AgentSurface {
 			return;
 		}
 		if self.recap.automatic && !self.automatic_recap.candidate.is_empty() {
-			self.automatic_recap.last_recapped =
-				std::mem::take(&mut self.automatic_recap.candidate);
+			self.automatic_recap.last_recapped = mem::take(&mut self.automatic_recap.candidate);
 			self.automatic_recap.result = Some(id.as_str().into());
 			self.automatic_recap.baseline = None;
 		} else {
@@ -308,8 +315,7 @@ impl AgentSurface {
 
 		let copy = source.clone();
 		let read = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime.block_on(read_progress(profile, &copy.work, &copy.thread))
 		});
@@ -363,7 +369,7 @@ fn has_new_progress(current: &[String], previous: &[String]) -> bool {
 }
 
 async fn read_progress(profile: ClientProfile, work: &str, thread: &str) -> Option<Vec<String>> {
-	tokio::time::timeout(Duration::from_secs(25), read_progress_inner(profile, work, thread))
+	time::timeout(Duration::from_secs(25), read_progress_inner(profile, work, thread))
 		.await
 		.ok()
 		.flatten()
@@ -374,11 +380,9 @@ async fn read_progress_inner(
 	work: &str,
 	thread: &str,
 ) -> Option<Vec<String>> {
-	use decodex_protocol::{AgentTimelineContent, AgentTimelineResult};
-
 	let client = AgentClient::new(profile);
 	let mut cursor = None;
-	let mut seen = std::collections::BTreeSet::new();
+	let mut seen = BTreeSet::new();
 	let mut account = None;
 	let mut completed = Vec::new();
 
@@ -434,7 +438,12 @@ async fn read_progress_inner(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::recap::automatic::*;
+
+	use std::future;
+
+	use crate::shell::agent_surface::drafts::tests;
+
 	#[test]
 	fn deadline_requires_opt_in_and_thirty_minutes_after_latest_activity() {
 		let now = Instant::now();
@@ -497,7 +506,7 @@ mod tests {
 
 				s.recap.cancel = Some(cancel);
 				s.recap.automatic = automatic;
-				s.recap.task = Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+				s.recap.task = Some(cx.spawn(async |_, _| future::pending::<()>().await));
 
 				s.recap_focus(true);
 
@@ -607,8 +616,7 @@ mod tests {
 
 				let epoch = s.automatic_recap.epoch;
 
-				s.automatic_recap.task =
-					Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+				s.automatic_recap.task = Some(cx.spawn(async |_, _| future::pending::<()>().await));
 
 				let mut next = s.snapshot.clone().unwrap();
 
@@ -677,8 +685,7 @@ mod tests {
 
 			let epoch = s.automatic_recap.epoch;
 
-			s.automatic_recap.task =
-				Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+			s.automatic_recap.task = Some(cx.spawn(async |_, _| future::pending::<()>().await));
 			s.generation += 1;
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(s.snapshot.clone().unwrap())));
@@ -699,7 +706,7 @@ mod tests {
 
 	#[gpui::test]
 	fn stale_connection_cannot_read_progress_or_generate_recap(cx: &mut gpui::TestAppContext) {
-		let (_root, profile, _) = super::super::super::drafts::tests::profiles();
+		let (_root, profile, _) = tests::profiles();
 		let surface = cx.new(AgentSurface::new);
 
 		surface.update(cx, |s, cx| {

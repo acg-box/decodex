@@ -1,9 +1,20 @@
 //! User-requested Markdown export; loaded excerpts are explicit alternatives.
-use super::*;
-use std::{io::Write, os::unix::fs::OpenOptionsExt, path::Path};
+use std::{
+	env,
+	fs::OpenOptions,
+	io::Write as _,
+	os::unix::fs::OpenOptionsExt as _,
+	path::{Path, PathBuf},
+};
+
+use gpui::{AnyElement, ClipboardItem};
+use tokio::runtime::Builder;
+
+use crate::shell::agent_surface::*;
+use decodex_protocol::AgentTimelineContent;
 
 impl AgentSurface {
-	pub(super) fn transcript_panel(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn transcript_panel(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_goal_target().is_none() {
 			return div().into_any_element();
 		}
@@ -48,13 +59,7 @@ impl AgentSurface {
 			.is_some_and(|b| (&b.work, &b.thread) == (&target.0, &target.1))
 		{
 			for item in self.native_history.visible_export_items() {
-				if let decodex_protocol::AgentTimelineContent::Item {
-					kind,
-					text: body,
-					truncated,
-					..
-				} = item
-				{
+				if let AgentTimelineContent::Item { kind, text: body, truncated, .. } = item {
 					if body.is_empty() {
 						continue;
 					}
@@ -109,8 +114,7 @@ impl AgentSurface {
 			return;
 		}
 
-		let directory =
-			std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_else(|| "/tmp".into());
+		let directory = env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| "/tmp".into());
 		let destination = save.then(|| {
 			cx.prompt_for_new_path(
 				&directory,
@@ -133,7 +137,7 @@ impl AgentSurface {
 			let result = cx.background_executor().spawn(async move {
 				if let Some(text)=excerpt {return Ok(text);}
 
-				let runtime=tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|_|())?;
+				let runtime=Builder::new_current_thread().enable_all().build().map_err(|_|())?;
 
 				runtime.block_on(AgentClient::new(profile).transcript(work,thread)).map_err(|_|())
 			}).await;
@@ -153,7 +157,7 @@ impl AgentSurface {
 			let saved = if let Some(path)=path {
 				cx.background_executor().spawn(async move {write_transcript(&path,&text)}).await
 			} else {
-				let _=surface.update(cx,|_,cx|cx.write_to_clipboard(gpui::ClipboardItem::new_string(text)));Ok(())
+				let _=surface.update(cx,|_,cx|cx.write_to_clipboard(ClipboardItem::new_string(text)));Ok(())
 			};
 			let _=surface.update(cx,|s,cx| {
 				s.transcript_busy=false;
@@ -166,7 +170,7 @@ impl AgentSurface {
 	}
 }
 fn write_transcript(path: &Path, text: &str) -> Result<(), &'static str> {
-	let mut file = std::fs::OpenOptions::new()
+	let mut file = OpenOptions::new()
 		.write(true)
 		.create_new(true)
 		.mode(0o600)
@@ -180,7 +184,10 @@ fn write_transcript(path: &Path, text: &str) -> Result<(), &'static str> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::transcript::*;
+
+	use std::fs;
+
 	#[test]
 	fn transcript_file_preserves_markdown_and_does_not_overwrite() {
 		let directory = tempfile::tempdir().unwrap();
@@ -189,8 +196,8 @@ mod tests {
 
 		write_transcript(&file, text).unwrap();
 
-		assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+		assert_eq!(fs::read_to_string(&file).unwrap(), text);
 		assert!(write_transcript(&file, "replacement").is_err());
-		assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+		assert_eq!(fs::read_to_string(&file).unwrap(), text);
 	}
 }

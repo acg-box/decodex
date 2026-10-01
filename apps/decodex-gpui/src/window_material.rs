@@ -1,7 +1,7 @@
 //! Window material policy. Platform details stay behind one application interface.
 #[cfg(all(target_os = "macos", not(test)))]
 mod macos {
-	use super::{GlassStyle, Window, WindowBackgroundAppearance};
+	use crate::ui_theme::window_material::{GlassStyle, Window, WindowBackgroundAppearance};
 
 	use objc2::{msg_send, rc::Retained, runtime::AnyClass};
 
@@ -108,9 +108,12 @@ mod macos {
 	}
 }
 
-use gpui::{Window, WindowBackgroundAppearance};
+use std::{
+	env,
+	sync::atomic::{AtomicU8, Ordering},
+};
 
-use std::sync::atomic::{AtomicU8, Ordering};
+use gpui::{App, Window, WindowBackgroundAppearance};
 
 static STYLE: AtomicU8 = AtomicU8::new(2);
 
@@ -128,7 +131,7 @@ impl GlassStyle {
 			return if cached == 1 { Self::Clear } else { Self::Regular };
 		}
 		#[allow(unused_mut)]
-		let mut clear = std::env::var("DECODEX_GLASS_STYLE").as_deref() == Ok("clear");
+		let mut clear = env::var("DECODEX_GLASS_STYLE").as_deref() == Ok("clear");
 		#[cfg(all(target_os = "macos", not(test)))]
 		if std::env::var_os("DECODEX_GLASS_STYLE").is_none() {
 			clear = macos::saved_clear();
@@ -139,7 +142,7 @@ impl GlassStyle {
 		if clear { Self::Clear } else { Self::Regular }
 	}
 
-	pub(crate) fn select(self, cx: &mut gpui::App) {
+	pub(crate) fn select(self, cx: &mut App) {
 		STYLE.store(u8::from(self == Self::Clear), Ordering::Relaxed);
 		#[cfg(all(target_os = "macos", not(test)))]
 		macos::save_clear(self == Self::Clear);

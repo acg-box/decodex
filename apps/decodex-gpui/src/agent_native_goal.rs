@@ -1,11 +1,15 @@
 //! Native goal observations do not change Agent coordination state.
 #[path = "agent_goal_editor.rs"] mod editor;
 
-use super::*;
-
-use decodex_protocol::AgentNativeGoalResult as Result;
-
 use std::time::Instant;
+
+use gpui::AnyElement;
+use time::OffsetDateTime;
+use tokio::runtime::Builder;
+
+use crate::shell::agent_surface::*;
+use decodex_protocol::AgentNativeGoalResult as Result;
+use editor::Editor;
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -14,7 +18,7 @@ pub(super) struct Panel {
 	task: Option<Task<()>>,
 	epoch: u64,
 	read_at: Option<Instant>,
-	editor: Option<editor::Editor>,
+	editor: Option<Editor>,
 	feedback: String,
 }
 
@@ -89,8 +93,7 @@ impl AgentSurface {
 
 		let epoch = self.native_goal.epoch;
 		let request = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime.block_on(AgentClient::new(profile).native_goal(work_id, thread_id)).ok()
 		});
@@ -123,7 +126,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn native_goal_panel(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn native_goal_panel(&self, cx: &mut Context<Self>) -> AnyElement {
 		if !self.command_connection_ready() || self.native_goal_target().is_none() {
 			return div().into_any_element();
 		}
@@ -169,10 +172,9 @@ fn goal_text(result: &Result) -> String {
 			let budget = goal
 				.token_budget
 				.map_or_else(|| "No token budget".into(), |v| format!("Token budget: {v}"));
-			let observed =
-				time::OffsetDateTime::from_unix_timestamp(*observed_at_micros / 1_000_000)
-					.map(|v| format!("{:02}:{:02}:{:02} UTC", v.hour(), v.minute(), v.second()))
-					.unwrap_or_else(|_| "unknown time".into());
+			let observed = OffsetDateTime::from_unix_timestamp(*observed_at_micros / 1_000_000)
+				.map(|v| format!("{:02}:{:02}:{:02} UTC", v.hour(), v.minute(), v.second()))
+				.unwrap_or_else(|_| "unknown time".into());
 
 			format!(
 				"Native goal · {status}\n{}{}\n{budget}\nGoal tokens used: {}\nGoal elapsed: {} seconds\nRead at {observed}. Refreshes while this task is selected.",

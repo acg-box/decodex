@@ -1,7 +1,11 @@
 //! Compact saved-activity metrics and daily usage, matching the menu-bar disclosure.
-use super::{AccountProfileResult, ControlTooltip, Shell, WB_BLUE, WB_TEXT_FAINT, WB_TEXT_MUTED};
+use gpui::{self, AnyElement, SharedString, prelude::*};
 
-use gpui::{AnyElement, div, prelude::*, px, rgb, rgba};
+use crate::shell::{
+	AccountProfileResult, ControlTooltip, Shell, WB_BLUE, WB_TEXT_FAINT, WB_TEXT_MUTED,
+	agent_surface,
+};
+use decodex_protocol::{AccountProfileDto, EntityId};
 
 #[cfg(any(test, feature = "visual-capture"))]
 impl Shell {
@@ -45,23 +49,23 @@ impl Shell {
 	}
 }
 
-pub(super) fn panel(shell: &Shell, account: &decodex_protocol::EntityId) -> AnyElement {
+pub(super) fn panel(shell: &Shell, account: &EntityId) -> AnyElement {
 	let snapshot = shell.account_activity.get(account).map(|(snapshot, _)| snapshot);
-	let mut content = div()
-		.id(gpui::SharedString::from(format!("account-activity-{}", account.as_str())))
+	let mut content = gpui::div()
+		.id(SharedString::from(format!("account-activity-{}", account.as_str())))
 		.debug_selector({
 			let account = account.clone();
 
 			move || format!("account-activity-{}", account.as_str())
 		})
 		.w_full()
-		.px(px(14.))
-		.py(px(6.))
+		.px(gpui::px(14.))
+		.py(gpui::px(6.))
 		.flex()
 		.flex_col()
-		.gap(px(6.))
-		.text_size(px(11.))
-		.text_color(rgb(WB_TEXT_MUTED));
+		.gap(gpui::px(6.))
+		.text_size(gpui::px(11.))
+		.text_color(gpui::rgb(WB_TEXT_MUTED));
 	let profile = match snapshot.and_then(|s| s.result.as_ref()) {
 		Some(
 			AccountProfileResult::Current(profile) | AccountProfileResult::Cached { profile, .. },
@@ -70,46 +74,46 @@ pub(super) fn panel(shell: &Shell, account: &decodex_protocol::EntityId) -> AnyE
 			return if snapshot.is_none() {
 				content.child("Loading activity…").into_any_element()
 			} else {
-				div().into_any_element()
+				gpui::div().into_any_element()
 			};
 		},
 	};
 
 	content = content.child(
-		div()
+		gpui::div()
 			.flex()
 			.flex_wrap()
 			.gap_3()
-			.children(metrics(profile).into_iter().map(|fact| div().child(fact))),
+			.children(metrics(profile).into_iter().map(|fact| gpui::div().child(fact))),
 	);
 
 	if !profile.daily_usage.is_empty() {
 		let peak = profile.daily_usage.iter().map(|day| day.tokens).max().unwrap_or(1).max(1);
 
 		content = content.child(
-			div()
+			gpui::div()
 				.id("account-activity-chart")
 				.debug_selector(|| "account-activity-chart".into())
-				.h(px(20.))
+				.h(gpui::px(20.))
 				.w_full()
 				.flex()
 				.items_end()
-				.gap(px(1.5))
+				.gap(gpui::px(1.5))
 				.border_b_1()
-				.border_color(rgba(0xffffff16))
+				.border_color(gpui::rgba(0xffffff16))
 				.children(profile.daily_usage.iter().enumerate().map(|(index, day)| {
 					let tip = format!("{}: {} tokens", day.start_date.as_str(), day.tokens);
 
-					div()
+					gpui::div()
 						.id(("account-activity-day", index))
 						.flex_1()
-						.h(px(if day.tokens == 0 {
+						.h(gpui::px(if day.tokens == 0 {
 							1.
 						} else {
 							(20. * (day.tokens as f32 / peak as f32).sqrt()).max(2.)
 						}))
-						.rounded(px(1.5))
-						.bg(rgb(if day.tokens == 0 { WB_TEXT_FAINT } else { WB_BLUE }))
+						.rounded(gpui::px(1.5))
+						.bg(gpui::rgb(if day.tokens == 0 { WB_TEXT_FAINT } else { WB_BLUE }))
 						.tooltip(move |_, cx| cx.new(|_| ControlTooltip(tip.clone())).into())
 				})),
 		);
@@ -118,14 +122,14 @@ pub(super) fn panel(shell: &Shell, account: &decodex_protocol::EntityId) -> AnyE
 	content.into_any_element()
 }
 
-fn metrics(profile: &decodex_protocol::AccountProfileDto) -> Vec<String> {
+fn metrics(profile: &AccountProfileDto) -> Vec<String> {
 	let mut metrics = Vec::new();
 
 	if let Some(value) = profile.lifetime_tokens {
-		metrics.push(format!("total {}", super::agent_surface::compact_tokens(value)));
+		metrics.push(format!("total {}", agent_surface::compact_tokens(value)));
 	}
 	if let Some(value) = profile.peak_daily_tokens {
-		metrics.push(format!("peak {}", super::agent_surface::compact_tokens(value)));
+		metrics.push(format!("peak {}", agent_surface::compact_tokens(value)));
 	}
 
 	match (profile.current_streak_days, profile.longest_streak_days) {

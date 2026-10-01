@@ -1,13 +1,24 @@
 //! Native composition boundary for the existing Agent composer.
-use super::AgentSurface;
-use crate::ui_theme::{
-	self,
-	native_glass_panel::{self, GlassPanel},
-};
+use std::time::Duration;
+
 use gpui::{
-	AnyElement, AnyWindowHandle, Bounds, Context, Entity, Focusable, Pixels, Render, Subscription,
-	Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div,
-	point, prelude::*, px, size,
+	self, Action, AnyElement, AnyWindowHandle, App, Bounds, Context, Entity, Focusable,
+	MouseButton, Pixels, Render, Subscription, Window, WindowBackgroundAppearance, WindowBounds,
+	WindowHandle, WindowKind, WindowOptions, prelude::*,
+};
+
+use crate::{
+	shell::{
+		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, GrowPanel, GrowPanels,
+		NavigateBack, NavigateForward, ResetPanel, ResetPanels, ShrinkPanel, ShrinkPanels,
+		ToggleGraph, ToggleInspector, ToggleSidebar, agent_surface::AgentSurface,
+	},
+	ui_motion,
+	ui_theme::{
+		BODY_SIZE, FONT_FAMILY, TEXT,
+		native_glass_panel::{self, GlassPanel},
+		window_material::GlassStyle,
+	},
 };
 
 pub(super) struct NativeComposer {
@@ -46,14 +57,14 @@ impl Render for ComposerPanel {
 		let parent = self.parent;
 		let focus_owner = self.owner.clone();
 
-		div()
+		gpui::div()
 			.w_full()
-			.font_family(ui_theme::FONT_FAMILY)
-			.on_mouse_down(gpui::MouseButton::Left, move |_, _, cx| {
-				forward(parent, &super::super::DismissStatus, cx);
+			.font_family(FONT_FAMILY)
+			.on_mouse_down(MouseButton::Left, move |_, _, cx| {
+				forward(parent, &DismissStatus, cx);
 			})
-			.text_size(px(ui_theme::BODY_SIZE))
-			.text_color(gpui::rgb(ui_theme::TEXT))
+			.text_size(gpui::px(BODY_SIZE))
+			.text_color(gpui::rgb(TEXT))
 			.on_children_prepainted(move |bounds, _, cx| {
 				if let Some(bounds) = bounds.first() {
 					let height = f32::from(bounds.size.height).max(42.);
@@ -70,36 +81,20 @@ impl Render for ComposerPanel {
 			.capture_any_mouse_down(move |_, _, cx| {
 				focus_owner.update(cx, |s, _| s.focused_panel = None);
 			})
-			.on_action(move |action: &super::super::ActivateAgent, _, cx| {
-				forward(parent, action, cx)
-			})
-			.on_action(move |action: &super::super::ActivateHealth, _, cx| {
-				forward(parent, action, cx)
-			})
-			.on_action(move |action: &super::super::ActivateSettings, _, cx| {
-				forward(parent, action, cx)
-			})
-			.on_action(move |action: &super::super::ToggleSidebar, _, cx| {
-				forward(parent, action, cx)
-			})
-			.on_action(move |action: &super::super::ToggleInspector, _, cx| {
-				forward(parent, action, cx)
-			})
-			.on_action(move |action: &super::super::ShrinkPanel, _, cx| forward(parent, action, cx))
-			.on_action(move |action: &super::super::GrowPanel, _, cx| forward(parent, action, cx))
-			.on_action(move |action: &super::super::ResetPanel, _, cx| forward(parent, action, cx))
-			.on_action(move |action: &super::super::ShrinkPanels, _, cx| {
-				forward(parent, action, cx)
-			})
-			.on_action(move |action: &super::super::GrowPanels, _, cx| forward(parent, action, cx))
-			.on_action(move |action: &super::super::ResetPanels, _, cx| forward(parent, action, cx))
-			.on_action(move |action: &super::super::ToggleGraph, _, cx| forward(parent, action, cx))
-			.on_action(move |action: &super::super::NavigateBack, _, cx| {
-				forward(parent, action, cx)
-			})
-			.on_action(move |action: &super::super::NavigateForward, _, cx| {
-				forward(parent, action, cx)
-			})
+			.on_action(move |action: &ActivateAgent, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &ActivateHealth, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &ActivateSettings, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &ToggleSidebar, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &ToggleInspector, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &ShrinkPanel, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &GrowPanel, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &ResetPanel, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &ShrinkPanels, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &GrowPanels, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &ResetPanels, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &ToggleGraph, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &NavigateBack, _, cx| forward(parent, action, cx))
+			.on_action(move |action: &NavigateForward, _, cx| forward(parent, action, cx))
 			.child(capsule)
 	}
 }
@@ -127,13 +122,13 @@ impl AgentSurface {
 		let now = std::time::Instant::now();
 
 		if !requested {
-			self.native_composer.resume_after = Some(now + std::time::Duration::from_millis(200));
+			self.native_composer.resume_after = Some(now + Duration::from_millis(200));
 		}
 
 		let settling = self.native_composer.resume_after.is_some_and(|until| until > now);
 
 		if requested && settling {
-			crate::ui_motion::request_frame(window, cx);
+			ui_motion::request_frame(window, cx);
 		}
 
 		let enabled = requested && !settling && !self.native_composer.failed;
@@ -208,10 +203,7 @@ impl AgentSurface {
 				let _ = child.update(cx, |panel, window, cx| {
 					if let Some(glass) = &mut panel.glass {
 						if enabled && let Some(bounds) = bounds {
-							glass.set_style(
-								ui_theme::window_material::GlassStyle::configured()
-									== ui_theme::window_material::GlassStyle::Clear,
-							);
+							glass.set_style(GlassStyle::configured() == GlassStyle::Clear);
 
 							if glass.place(bounds) {
 								window.bounds_changed(cx);
@@ -238,19 +230,19 @@ impl AgentSurface {
 			|_, _, _, _| {},
 		);
 
-		div()
+		gpui::div()
 			.w_full()
 			.px_4()
-			.pt(px(12.))
-			.pb(px(20.))
+			.pt(gpui::px(12.))
+			.pb(gpui::px(20.))
 			.flex()
 			.justify_center()
 			.child(
-				div()
+				gpui::div()
 					.relative()
 					.w_full()
-					.max_w(px(820.))
-					.h(px(self.native_composer.height))
+					.max_w(gpui::px(820.))
+					.h(gpui::px(self.native_composer.height))
 					.child(anchor.absolute().size_full())
 					.child(self.render_composer_popover(cx)),
 			)
@@ -258,7 +250,7 @@ impl AgentSurface {
 	}
 }
 
-fn forward(parent: AnyWindowHandle, action: &dyn gpui::Action, cx: &mut gpui::App) {
+fn forward(parent: AnyWindowHandle, action: &dyn Action, cx: &mut App) {
 	let action = action.boxed_clone();
 
 	cx.defer(move |cx| {
@@ -271,7 +263,7 @@ fn forward(parent: AnyWindowHandle, action: &dyn gpui::Action, cx: &mut gpui::Ap
 fn create_panel(
 	owner: Entity<AgentSurface>,
 	parent_window: &mut Window,
-	cx: &mut gpui::App,
+	cx: &mut App,
 ) -> Option<WindowHandle<ComposerPanel>> {
 	let parent = parent_window.window_handle();
 	let child = cx
@@ -280,8 +272,8 @@ fn create_panel(
 				kind: WindowKind::Normal,
 				titlebar: None,
 				window_bounds: Some(WindowBounds::Windowed(Bounds::new(
-					point(px(0.), px(0.)),
-					size(px(600.), px(42.)),
+					gpui::point(gpui::px(0.), gpui::px(0.)),
+					gpui::size(gpui::px(600.), gpui::px(42.)),
 				))),
 				window_background: WindowBackgroundAppearance::Transparent,
 				show: false,

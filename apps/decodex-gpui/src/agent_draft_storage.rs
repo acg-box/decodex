@@ -2,14 +2,19 @@
 #[path = "agent_ordinary_storage.rs"] mod ordinary;
 #[path = "agent_draft_recovery.rs"] mod recovery;
 
-use super::*;
-
-use decodex_protocol::{
-	ClientDraftStore, DesktopComposerDraft, DesktopDraftDocument, DesktopPendingDraft,
-	DesktopProfileDraft,
+use std::{
+	collections::BTreeSet,
+	iter,
+	time::{Duration, Instant},
 };
 
-use std::time::Duration;
+use execution_intent::Intents;
+
+use crate::shell::agent_surface::drafts::*;
+use decodex_protocol::{
+	AgentSteerIdentity, ClientDraftStore, DesktopComposerDraft, DesktopDraftDocument,
+	DesktopPendingDraft, DesktopProfileDraft, DesktopPromptEditDraft,
+};
 
 // Preserve absence separately from a failed bounded conversion.
 trait TransposeOption<T> {
@@ -114,7 +119,7 @@ impl AgentSurface {
 	pub(in super::super) fn clear_prepared_prompt_record(
 		&mut self,
 		profile: &ClientProfile,
-		pending: &decodex_protocol::DesktopPromptEditDraft,
+		pending: &DesktopPromptEditDraft,
 	) -> bool {
 		let Some(saved) = self
 			.draft_profiles
@@ -138,10 +143,10 @@ impl AgentSurface {
 
 	pub(in super::super) fn settle_prompt_send(
 		&mut self,
-		expected: &decodex_protocol::DesktopPromptEditDraft,
+		expected: &DesktopPromptEditDraft,
 		accepted: bool,
 		cx: &mut Context<Self>,
-	) -> Result<Option<decodex_protocol::DesktopPromptEditDraft>, &'static str> {
+	) -> Result<Option<DesktopPromptEditDraft>, &'static str> {
 		expected.send_identity()?;
 
 		let scope =
@@ -193,10 +198,7 @@ impl AgentSurface {
 		}
 	}
 
-	pub(in super::super) fn prompt_editor_saved(
-		&self,
-		expected: &decodex_protocol::DesktopPromptEditDraft,
-	) -> bool {
+	pub(in super::super) fn prompt_editor_saved(&self, expected: &DesktopPromptEditDraft) -> bool {
 		let Some(profile) = &self.profile else {
 			return false;
 		};
@@ -220,10 +222,10 @@ impl AgentSurface {
 
 	pub(in super::super) fn renew_prompt_editor(
 		&mut self,
-		previous: &decodex_protocol::DesktopPromptEditDraft,
-		fresh: &decodex_protocol::DesktopPromptEditDraft,
+		previous: &DesktopPromptEditDraft,
+		fresh: &DesktopPromptEditDraft,
 		cx: &mut Context<Self>,
-	) -> Result<decodex_protocol::DesktopPromptEditDraft, &'static str> {
+	) -> Result<DesktopPromptEditDraft, &'static str> {
 		if self.selected.as_deref() != Some(previous.work_id.as_str())
 			|| !self.saved_prompt_editors(previous.work_id.as_str()).contains(previous)
 		{
@@ -258,10 +260,7 @@ impl AgentSurface {
 		Ok(renewed)
 	}
 
-	pub(in super::super) fn saved_prompt_editors(
-		&self,
-		work: &str,
-	) -> Vec<decodex_protocol::DesktopPromptEditDraft> {
+	pub(in super::super) fn saved_prompt_editors(&self, work: &str) -> Vec<DesktopPromptEditDraft> {
 		let Some(profile) = &self.profile else {
 			return Vec::new();
 		};
@@ -288,7 +287,7 @@ impl AgentSurface {
 
 	pub(in super::super) fn discard_prompt_editor(
 		&mut self,
-		draft: &decodex_protocol::DesktopPromptEditDraft,
+		draft: &DesktopPromptEditDraft,
 		cx: &mut Context<Self>,
 	) -> Result<(), &'static str> {
 		if self.selected.as_deref() != Some(draft.work_id.as_str())
@@ -322,7 +321,7 @@ impl AgentSurface {
 
 	pub(in super::super) fn stage_prompt_editor(
 		&mut self,
-		draft: decodex_protocol::DesktopPromptEditDraft,
+		draft: DesktopPromptEditDraft,
 		cx: &mut Context<Self>,
 	) -> Result<(), &'static str> {
 		let scope =
@@ -385,15 +384,14 @@ impl AgentSurface {
 		let retained = cx.entity();
 
 		cx.spawn(async move |_, cx| {
-			let deadline = std::time::Instant::now() + Duration::from_secs(5);
+			let deadline = Instant::now() + Duration::from_secs(5);
 
 			loop {
 				let result = retained.update(cx, |surface, cx| {
 					surface.save_draft_document(cx);
 
 					let storage = &mut surface.draft_profiles.storage;
-					let result = if storage.error.is_some() || std::time::Instant::now() >= deadline
-					{
+					let result = if storage.error.is_some() || Instant::now() >= deadline {
 						Some(false)
 					} else if storage.task.is_none() && storage.document == storage.saved {
 						Some(true)
@@ -458,7 +456,7 @@ impl AgentSurface {
 
 		match self.capture_draft_document(cx) {
 			Some(draft) => {
-				for composer in std::iter::once(&draft.composer).chain(draft.parked.values()) {
+				for composer in iter::once(&draft.composer).chain(draft.parked.values()) {
 					if let (Some(work), Some(thread)) = (&composer.work_id, &composer.thread_id) {
 						self.draft_profiles
 							.threads
@@ -517,10 +515,7 @@ impl AgentSurface {
 		self.draft_profiles.storage.document.recovered.push(copy.clone());
 	}
 
-	pub(in super::super) fn resolve_steer_draft_copies(
-		&mut self,
-		identity: &decodex_protocol::AgentSteerIdentity,
-	) {
+	pub(in super::super) fn resolve_steer_draft_copies(&mut self, identity: &AgentSteerIdentity) {
 		let scope = self.draft_profiles.active.as_ref().map(ClientProfile::draft_scope_key);
 
 		for copy in &mut self.draft_profiles.storage.document.recovered {
@@ -621,7 +616,7 @@ impl AgentSurface {
 			})
 		};
 		let mut parked = BTreeMap::new();
-		let owners: std::collections::BTreeSet<_> = self
+		let owners: BTreeSet<_> = self
 			.draft_profiles
 			.texts
 			.keys()
@@ -802,10 +797,7 @@ impl Drafts {
 			references: saved.composer.references,
 			uncertain: saved.uncertain,
 			restored_questions: saved.questions,
-			execution: execution_intent::Intents::from_saved(
-				saved.execution_revision,
-				saved.execution,
-			),
+			execution: Intents::from_saved(saved.execution_revision, saved.execution),
 			..Default::default()
 		};
 
@@ -902,7 +894,12 @@ mod prompt_handback_tests;
 mod prompt_send_tests;
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::drafts::storage::*;
+
+	use std::os::unix::fs::OpenOptionsExt as _;
+
+	use crate::shell::agent_surface::drafts::tests;
+
 	#[test]
 	fn unconfirmed_publication_requires_a_successful_save_before_acknowledgement() {
 		let directory = tempfile::tempdir().unwrap();
@@ -925,8 +922,6 @@ mod tests {
 
 	#[test]
 	fn unconfirmed_publication_retains_busy_and_different_snapshots() {
-		use std::os::unix::fs::OpenOptionsExt;
-
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
 		let store = ClientDraftStore::open_at(&root).unwrap();
@@ -966,7 +961,7 @@ mod tests {
 	fn prompt_send_acceptance_retains_full_copy_and_clears_only_exact_editor(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let (_service, profile, _) = super::super::tests::profiles();
+		let (_service, profile, _) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -1059,7 +1054,7 @@ mod tests {
 
 	#[gpui::test]
 	fn prompt_handback_requires_the_exact_saved_draft_and_profile(cx: &mut gpui::TestAppContext) {
-		let (_service, profile, other) = super::super::tests::profiles();
+		let (_service, profile, other) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -1123,7 +1118,7 @@ mod tests {
 
 	#[gpui::test]
 	fn exact_receipt_settles_only_matching_saved_copies(cx: &mut gpui::TestAppContext) {
-		let (_service, profile, other) = super::super::tests::profiles();
+		let (_service, profile, other) = tests::profiles();
 		let surface = cx.new(AgentSurface::new);
 
 		surface.update(cx, |s, cx| {
@@ -1172,7 +1167,7 @@ mod tests {
 
 	#[gpui::test]
 	fn cold_reopen_keeps_inflight_original_after_later_edit(cx: &mut gpui::TestAppContext) {
-		let (_service, profile, _) = super::super::tests::profiles();
+		let (_service, profile, _) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -1231,7 +1226,7 @@ mod tests {
 
 	#[gpui::test]
 	fn failed_send_keeps_original_copy_and_new_editor_after_reopen(cx: &mut gpui::TestAppContext) {
-		let (_service, profile, _) = super::super::tests::profiles();
+		let (_service, profile, _) = tests::profiles();
 
 		for unknown in [false, true] {
 			let directory = tempfile::tempdir().unwrap();
@@ -1305,7 +1300,7 @@ mod tests {
 
 	#[gpui::test]
 	fn cold_unbound_draft_reopens_and_moves_only_to_first_profile(cx: &mut gpui::TestAppContext) {
-		let (_service, profile, other) = super::super::tests::profiles();
+		let (_service, profile, other) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
 		let store = ClientDraftStore::open_at(&root).unwrap();
@@ -1373,7 +1368,7 @@ mod tests {
 	fn cold_quit_flush_saves_latest_edit_and_checks_again_before_exit(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let (_service, profile, _) = super::super::tests::profiles();
+		let (_service, profile, _) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -1415,7 +1410,7 @@ mod tests {
 
 	#[gpui::test]
 	fn cold_quit_conflict_retains_window_input(cx: &mut gpui::TestAppContext) {
-		let (_service, profile, _) = super::super::tests::profiles();
+		let (_service, profile, _) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -1453,7 +1448,7 @@ mod tests {
 	fn cold_accepted_command_publishes_cleanup_without_waiting_for_poll(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let (_service, profile, _) = super::super::tests::profiles();
+		let (_service, profile, _) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -1525,9 +1520,7 @@ mod tests {
 	fn cold_dispatch_busy_writer_retries_without_dispatch_or_losing_edits(
 		cx: &mut gpui::TestAppContext,
 	) {
-		use std::os::unix::fs::OpenOptionsExt;
-
-		let (_service, profile, _) = super::super::tests::profiles();
+		let (_service, profile, _) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
 		let store = ClientDraftStore::open_at(&root).unwrap();
@@ -1591,7 +1584,7 @@ mod tests {
 	fn cold_dispatch_waits_for_existing_save_and_clears_definite_failure(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let (_service, profile, _) = super::super::tests::profiles();
+		let (_service, profile, _) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -1646,7 +1639,7 @@ mod tests {
 
 	#[gpui::test]
 	fn cold_dispatch_profile_change_cancels_before_network(cx: &mut gpui::TestAppContext) {
-		let (_service, profile, other) = super::super::tests::profiles();
+		let (_service, profile, other) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -1688,7 +1681,7 @@ mod tests {
 
 	#[gpui::test]
 	fn cold_dispatch_save_conflict_never_starts_network_task(cx: &mut gpui::TestAppContext) {
-		let (_service, profile, _) = super::super::tests::profiles();
+		let (_service, profile, _) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -1726,7 +1719,7 @@ mod tests {
 
 	#[gpui::test]
 	fn cold_drafts_restore_primary_input_and_keep_questions_pending(cx: &mut gpui::TestAppContext) {
-		let (_service, profile, _) = super::super::tests::profiles();
+		let (_service, profile, _) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
 		let store = ClientDraftStore::open_at(&root).unwrap();
@@ -1798,7 +1791,7 @@ mod tests {
 
 	#[gpui::test]
 	fn cold_draft_conflict_keeps_disk_and_current_input(cx: &mut gpui::TestAppContext) {
-		let (_service, profile, _) = super::super::tests::profiles();
+		let (_service, profile, _) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -1830,18 +1823,16 @@ mod tests {
 mod creation_tests;
 #[cfg(test)]
 mod ordinary_owner_tests {
-	use super::*;
+	use crate::{
+		client_lifecycle::ConnectionView,
+		conversations::{creation_defaults_tests, tests},
+		shell::{Destination, Shell, agent_surface::drafts::storage::*},
+	};
 
 	#[gpui::test]
 	fn ordinary_creation_acceptance_saves_the_new_owner_and_later_editor(
 		cx: &mut gpui::TestAppContext,
 	) {
-		use crate::{
-			client_lifecycle::ConnectionView,
-			conversations::tests::{catalog_conversations, take_ready_command},
-			shell::{Destination, Shell},
-		};
-
 		for later in ["Original input", "Later unsent input"] {
 			let (_service, profile, _) = super::super::tests::profiles();
 			let directory = tempfile::tempdir().unwrap();
@@ -1849,7 +1840,7 @@ mod ordinary_owner_tests {
 				&directory.path().canonicalize().unwrap().join("desktop"),
 			)
 			.unwrap();
-			let (conversations, server, mut task) = catalog_conversations();
+			let (conversations, server, mut task) = tests::catalog_conversations();
 
 			conversations.begin_new();
 
@@ -1871,7 +1862,7 @@ mod ordinary_owner_tests {
 				s.synchronize_conversations(cx);
 			});
 
-			crate::conversations::creation_defaults_tests::reply_defaults(
+			creation_defaults_tests::reply_defaults(
 				&conversations,
 				&server,
 				decodex_protocol::InitialModelDefaults {
@@ -1900,7 +1891,7 @@ mod ordinary_owner_tests {
 			visual.run_until_parked();
 
 			let original =
-				take_ready_command(&conversations, &server).expect("saved creation command");
+				tests::take_ready_command(&conversations, &server).expect("saved creation command");
 			let decodex_protocol::CommandPayload::CreateConversation { conversation_id, .. } =
 				&original.payload
 			else {
@@ -1941,7 +1932,7 @@ mod ordinary_owner_tests {
 			assert_eq!(draft.composer.text, if later == "Original input" { "" } else { later });
 			assert!(draft.unconfirmed.is_empty());
 			assert!(draft.new_conversation.is_none());
-			assert!(take_ready_command(&conversations, &server).is_none());
+			assert!(tests::take_ready_command(&conversations, &server).is_none());
 		}
 	}
 
@@ -1958,18 +1949,14 @@ mod ordinary_owner_tests {
 	}
 
 	fn exercise_ordinary_competing_writer(cx: &mut gpui::TestAppContext, cancel: bool) {
-		use crate::{
-			client_lifecycle::ConnectionView,
-			conversations::tests::{catalog_conversations, take_ready_command},
-			shell::Shell,
-		};
+		use crate::{client_lifecycle::ConnectionView, shell::Shell};
 
 		let (_service, profile, _) = super::super::tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
 				.unwrap();
-		let (conversations, server, _) = catalog_conversations();
+		let (conversations, server, _) = tests::catalog_conversations();
 		let (shell, visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
 
@@ -2011,7 +1998,7 @@ mod ordinary_owner_tests {
 		shell.update(visual, |s, cx| s.sync_ordinary_drafts(cx));
 		visual.run_until_parked();
 
-		assert!(take_ready_command(&conversations, &server).is_none());
+		assert!(tests::take_ready_command(&conversations, &server).is_none());
 
 		shell.update(visual, |s, cx| {
 			assert!(s.agent.read(cx).ordinary_draft_notice().is_some());
@@ -2047,7 +2034,7 @@ mod ordinary_owner_tests {
 				agent.keep_both_drafts(cx);
 			});
 
-			assert!(take_ready_command(&conversations, &server).is_none());
+			assert!(tests::take_ready_command(&conversations, &server).is_none());
 		});
 		visual.run_until_parked();
 
@@ -2074,11 +2061,11 @@ mod ordinary_owner_tests {
 
 		if cancel {
 			assert!(records.iter().all(|record| record.unconfirmed.is_empty()));
-			assert!(take_ready_command(&conversations, &server).is_none());
+			assert!(tests::take_ready_command(&conversations, &server).is_none());
 		} else {
 			assert_eq!(local.unconfirmed.len(), 1);
 			assert_eq!(
-				take_ready_command(&conversations, &server),
+				tests::take_ready_command(&conversations, &server),
 				Some(local.unconfirmed[0].clone())
 			);
 		}
@@ -2086,18 +2073,14 @@ mod ordinary_owner_tests {
 
 	#[gpui::test]
 	fn ordinary_live_restore_keeps_both_and_saves_later_input(cx: &mut gpui::TestAppContext) {
-		use crate::{
-			client_lifecycle::ConnectionView,
-			conversations::tests::{catalog_conversations, take_ready_command},
-			shell::Shell,
-		};
+		use crate::{client_lifecycle::ConnectionView, shell::Shell};
 
 		let (_service, profile, _) = super::super::tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
 				.unwrap();
-		let (conversations, server, _) = catalog_conversations();
+		let (conversations, server, _) = tests::catalog_conversations();
 		let (shell, visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
 
@@ -2121,7 +2104,7 @@ mod ordinary_owner_tests {
 		shell.update(visual, |s, cx| {
 			s.sync_ordinary_drafts(cx);
 
-			assert!(take_ready_command(&conversations, &server).is_none());
+			assert!(tests::take_ready_command(&conversations, &server).is_none());
 
 			s.agent.update(cx, |agent, _| {
 				let record = agent
@@ -2160,7 +2143,7 @@ mod ordinary_owner_tests {
 				})
 		}));
 		assert_eq!(
-			take_ready_command(&conversations, &server),
+			tests::take_ready_command(&conversations, &server),
 			Some(active.unconfirmed[0].clone())
 		);
 	}

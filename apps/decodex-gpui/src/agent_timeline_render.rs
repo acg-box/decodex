@@ -1,11 +1,23 @@
 //! Render native history without converting provider IDs into local inbox IDs.
-use super::{
-	AgentSurface, AgentTimelineEntry, AgentWorkItemDto, Content, Context, FluentBuilder,
-	InteractiveElement, IntoElement, ParentElement, SharedString, Styled, div, key, markdown,
-	muted,
-};
+use gpui::{AnyElement, Div, KeyDownEvent, PathBuilder, Role, StatefulInteractiveElement as _};
 
-use gpui::StatefulInteractiveElement as _;
+use crate::{
+	shell::{
+		agent_surface::{
+			native_timeline::{
+				self, AgentHistoryResult, AgentSurface, AgentTimelineEntry, AgentWorkItemDto,
+				Content, Context, FluentBuilder, InteractiveElement, IntoElement, ParentElement,
+				SharedString, Styled, key, markdown,
+			},
+			response_metrics::ResponseMetrics,
+			text_reveal::StreamingText,
+		},
+		workspace_symbols,
+	},
+	ui_loading,
+	ui_theme::{HOVER_FILL, TEXT_MUTED, USER_MESSAGE_ACTION_SIZE},
+};
+use decodex_protocol::{AgentLiveMessageDto, AgentTimelineAttachment};
 
 impl AgentSurface {
 	pub(super) fn native_summary_row(
@@ -13,22 +25,22 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		item: &Content,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let Content::Item { turn_id, item_id, kind, text, truncated, attachments, .. } = item
 		else {
-			return div().into_any_element();
+			return native_timeline::div().into_any_element();
 		};
 		let identity =
 			serde_json::json!(["summary", work.id, work.codex_thread_id, turn_id, item_id])
 				.to_string();
-		let mut row = div()
+		let mut row = native_timeline::div()
 			.w_full()
 			.min_w_0()
 			.flex()
 			.flex_col()
 			.gap_1()
 			.debug_selector(|| "native-summary-message".into())
-			.child(muted(if kind == "userMessage" { "You" } else { "Assistant" }))
+			.child(native_timeline::muted(if kind == "userMessage" { "You" } else { "Assistant" }))
 			.child(markdown::render(text, &identity));
 
 		for attachment in attachments {
@@ -36,7 +48,9 @@ impl AgentSurface {
 		}
 
 		if *truncated {
-			row = row.child(muted("Some content was omitted from this history preview."));
+			row = row.child(native_timeline::muted(
+				"Some content was omitted from this history preview.",
+			));
 		}
 		if kind == "agentMessage" && !text.is_empty() {
 			row = row.child(markdown::response_copy_button(
@@ -59,7 +73,7 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		entry: &AgentTimelineEntry,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let identity = serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string();
 		let selector = format!("native-history-{identity}");
 		let content = self.native_timeline_content(work, entry, &identity, cx);
@@ -70,7 +84,7 @@ impl AgentSurface {
 		let content = self.anchored_native_history_entry(work, entry, content);
 		let content = self.native_scroll_row(work, entry, content, cx);
 
-		div()
+		native_timeline::div()
 			.debug_selector(move || selector)
 			.id(SharedString::from(identity.clone()))
 			.w_full()
@@ -118,8 +132,8 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		turn: &str,
 		item: &str,
-	) -> Option<&decodex_protocol::AgentLiveMessageDto> {
-		let (_, super::AgentHistoryResult::Available { live, .. }) =
+	) -> Option<&AgentLiveMessageDto> {
+		let (_, AgentHistoryResult::Available { live, .. }) =
 			self.history.as_ref().filter(|(id, _)| id == &work.id)?
 		else {
 			return None;
@@ -151,15 +165,13 @@ impl AgentSurface {
 		let saved =
 			self.history.as_ref().filter(|(id, _)| id == &work.id).and_then(|(_, history)| {
 				match history {
-					super::AgentHistoryResult::Available { entries, .. } =>
-						entries.iter().find(|entry| {
-							matches!(
-								(kind, entry.kind.as_str()),
-								("userMessage", "user" | "instruction")
-									| ("agentMessage", "assistant")
-							) && entry.turn_id.as_deref() == Some(turn_id)
-								&& entry.text == text
-						}),
+					AgentHistoryResult::Available { entries, .. } => entries.iter().find(|entry| {
+						matches!(
+							(kind, entry.kind.as_str()),
+							("userMessage", "user" | "instruction") | ("agentMessage", "assistant")
+						) && entry.turn_id.as_deref() == Some(turn_id)
+							&& entry.text == text
+					}),
 					_ => None,
 				}
 			});
@@ -203,18 +215,24 @@ impl AgentSurface {
 		entry: &AgentTimelineEntry,
 		identity: &str,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
-		let row = div().w_full().min_w_0().flex().flex_col().gap_1();
+	) -> AnyElement {
+		let row = native_timeline::div().w_full().min_w_0().flex().flex_col().gap_1();
 
 		match &entry.content {
 			content @ Content::Item { .. } => self.native_item_content(work, content, identity, cx),
 			Content::Speech { role, text, truncated, .. } => row
-				.child(muted(if role == "user" { "You · Voice" } else { "Assistant · Voice" }))
+				.child(native_timeline::muted(if role == "user" {
+					"You · Voice"
+				} else {
+					"Assistant · Voice"
+				}))
 				.child(text.clone())
-				.when(*truncated, |r| r.child(muted("Voice transcript shortened.")))
+				.when(*truncated, |r| {
+					r.child(native_timeline::muted("Voice transcript shortened."))
+				})
 				.into_any_element(),
 			Content::VoiceBoundary { kind, outcome, .. } => row
-				.child(muted(if kind == "realtimeSessionStarted" {
+				.child(native_timeline::muted(if kind == "realtimeSessionStarted" {
 					"Voice conversation started"
 				} else if outcome.as_deref() == Some("failed") {
 					"Voice conversation failed"
@@ -231,14 +249,18 @@ impl AgentSurface {
 				.when(
 					*completed && matches!(status.as_deref(), Some("interrupted" | "failed")),
 					|row| {
-						row.child(muted(if status.as_deref() == Some("interrupted") {
-							"Stopped"
-						} else {
-							"Failed"
-						}))
+						row.child(native_timeline::muted(
+							if status.as_deref() == Some("interrupted") {
+								"Stopped"
+							} else {
+								"Failed"
+							},
+						))
 					},
 				)
-				.children(error.as_ref().map(|error| div().child(error.message.clone())))
+				.children(
+					error.as_ref().map(|error| native_timeline::div().child(error.message.clone())),
+				)
 				.into_any_element()
 			},
 			content @ Content::Promotion { .. } =>
@@ -251,12 +273,12 @@ impl AgentSurface {
 		boundary: &Content,
 		identity: &str,
 		_cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let Content::TurnBoundary { duration_ms, status, usage, .. } = boundary else {
-			return div().into_any_element();
+			return native_timeline::div().into_any_element();
 		};
 
-		super::super::response_metrics::ResponseMetrics {
+		ResponseMetrics {
 			key: identity.into(),
 			duration_ms: *duration_ms,
 			status: status.clone(),
@@ -271,7 +293,7 @@ impl AgentSurface {
 		content: &Content,
 		identity: &str,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let Content::Item {
 			app_ui,
 			text,
@@ -305,29 +327,28 @@ impl AgentSurface {
 			return if let Some(action) =
 				self.voice_read_action(&work.id, identity, text, truncated || draft.is_some(), cx)
 			{
-				div().child(body).child(action).into_any_element()
+				native_timeline::div().child(body).child(action).into_any_element()
 			} else {
 				body
 			};
 		}
 		if matches!(kind.as_str(), "userMessage" | "agentMessage") {
 			let message = self.native_message_entry(work, turn_id, text, kind);
-			let mut body = div().debug_selector(|| "native-promotion-content".into());
+			let mut body =
+				native_timeline::div().debug_selector(|| "native-promotion-content".into());
 
 			for attachment in attachments {
 				body = body.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
 			}
 
 			body = if draft.is_some() {
-				body.child(super::super::text_reveal::StreamingText {
-					text: text.into(),
-					key: identity.into(),
-				})
-				.child(markdown::response_copy_button(
-					&format!("copy-response-{identity}"),
-					"Copy response",
-					text.to_owned(),
-				))
+				body.child(StreamingText { text: text.into(), key: identity.into() }).child(
+					markdown::response_copy_button(
+						&format!("copy-response-{identity}"),
+						"Copy response",
+						text.to_owned(),
+					),
+				)
 			} else {
 				let last_reply = self.native_history.entries.iter().rev().find_map(|entry| {
 					match &entry.content {
@@ -353,7 +374,9 @@ impl AgentSurface {
 				body = body.child(action);
 			}
 			if truncated {
-				body = body.child(muted("Some content was omitted from this history preview."));
+				body = body.child(native_timeline::muted(
+					"Some content was omitted from this history preview.",
+				));
 			}
 			if kind == "userMessage" {
 				body = self.native_prompt_row(work, content, identity, body, cx);
@@ -376,11 +399,11 @@ impl AgentSurface {
 		text: &str,
 		truncated: bool,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let Content::Item { kind, turn_id, item_id, attachments, activity, .. } = content else {
 			unreachable!("item text renderer")
 		};
-		let row = div().w_full().min_w_0().flex().flex_col().gap_1();
+		let row = native_timeline::div().w_full().min_w_0().flex().flex_col().gap_1();
 		let label = match kind.as_str() {
 			"userMessage" => "You",
 			"agentMessage" => "Assistant",
@@ -389,7 +412,7 @@ impl AgentSurface {
 			"functionCallOutput" => "Tool result",
 			_ => kind,
 		};
-		let mut row = row.when(kind != "reasoning", |row| row.child(muted(label)));
+		let mut row = row.when(kind != "reasoning", |row| row.child(native_timeline::muted(label)));
 
 		for attachment in attachments {
 			row = row.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
@@ -402,7 +425,7 @@ impl AgentSurface {
 				_ => "native-promotion-content",
 			};
 
-			row = row.child(div().debug_selector(move || selector.into()).child(
+			row = row.child(native_timeline::div().debug_selector(move || selector.into()).child(
 				if kind == "reasoning" {
 					markdown::render_process(text, identity)
 				} else {
@@ -411,7 +434,9 @@ impl AgentSurface {
 			));
 		}
 		if truncated {
-			row = row.child(muted("Some content was omitted from this history preview."));
+			row = row.child(native_timeline::muted(
+				"Some content was omitted from this history preview.",
+			));
 		}
 		if matches!(kind.as_str(), "agentMessage" | "plan") && !text.is_empty() {
 			row = row.child(markdown::response_copy_button(
@@ -438,9 +463,9 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		content: &Content,
 		identity: &str,
-		body: gpui::Div,
+		body: Div,
 		cx: &mut Context<Self>,
-	) -> gpui::Div {
+	) -> Div {
 		let Content::Item { turn_id, item_id, .. } = content else {
 			unreachable!("prompt renderer")
 		};
@@ -449,12 +474,12 @@ impl AgentSurface {
 			(work.id.clone(), thread.clone(), turn_id.clone(), item_id.clone());
 		let group: SharedString = format!("history-input-{identity}").into();
 		let keyboard_source = (owner.clone(), thread.clone(), turn.clone(), item.clone());
-		let edit = div()
+		let edit = native_timeline::div()
 			.id(SharedString::from(format!("review-prompt-{identity}")))
-			.role(gpui::Role::Button)
+			.role(Role::Button)
 			.tab_index(0)
 			.aria_label("Edit message")
-			.size(gpui::px(crate::ui_theme::USER_MESSAGE_ACTION_SIZE))
+			.size(gpui::px(USER_MESSAGE_ACTION_SIZE))
 			.flex()
 			.items_center()
 			.justify_center()
@@ -463,11 +488,11 @@ impl AgentSurface {
 			.group_hover(group.clone(), |style| style.opacity(1.))
 			.focus(|style| style.opacity(1.))
 			.cursor_pointer()
-			.hover(|style| style.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)))
+			.hover(|style| style.bg(gpui::rgba(HOVER_FILL)))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.review_prompt(&owner, &thread, &turn, &item, cx);
 			}))
-			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 				if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					let (owner, thread, turn, item) = &keyboard_source;
 
@@ -480,7 +505,7 @@ impl AgentSurface {
 					|_, _, _| (),
 					|bounds, _, window, _| {
 						let point = |x, y| bounds.origin + gpui::point(gpui::px(x), gpui::px(y));
-						let mut path = gpui::PathBuilder::stroke(gpui::px(1.1));
+						let mut path = PathBuilder::stroke(gpui::px(1.1));
 
 						path.move_to(point(2., 9.));
 						path.line_to(point(9., 2.));
@@ -492,14 +517,14 @@ impl AgentSurface {
 						path.line_to(point(10., 7.));
 
 						if let Ok(path) = path.build() {
-							window.paint_path(path, gpui::rgb(crate::ui_theme::TEXT_MUTED));
+							window.paint_path(path, gpui::rgb(TEXT_MUTED));
 						}
 					},
 				)
 				.size(gpui::px(14.)),
 			);
 
-		body.group(group).child(div().flex().justify_end().child(edit))
+		body.group(group).child(native_timeline::div().flex().justify_end().child(edit))
 	}
 
 	fn native_activity_content(
@@ -508,7 +533,7 @@ impl AgentSurface {
 		content: &Content,
 		identity: &str,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let Content::Item { activity: Some(activity), kind, turn_id, item_id, .. } = content else {
 			unreachable!("activity renderer")
 		};
@@ -529,7 +554,7 @@ impl AgentSurface {
 			"running" => "◌",
 			_ => "✓",
 		};
-		let row = div()
+		let row = native_timeline::div()
 			.w_full()
 			.min_w_0()
 			.flex()
@@ -539,10 +564,10 @@ impl AgentSurface {
 			.rounded(gpui::px(6.))
 			.text_size(gpui::px(12.))
 			.line_height(gpui::px(18.))
-			.text_color(gpui::rgb(crate::ui_theme::TEXT_MUTED))
+			.text_color(gpui::rgb(TEXT_MUTED))
 			.child(
 				// Status glyph advances differ; reserve one stable column for every state.
-				div()
+				native_timeline::div()
 					.w(gpui::px(16.))
 					.h(gpui::px(18.))
 					.flex_none()
@@ -550,15 +575,18 @@ impl AgentSurface {
 					.items_center()
 					.justify_center()
 					.child(if activity.status == "running" {
-						crate::ui_loading::loading("").into_any_element()
+						ui_loading::loading("").into_any_element()
 					} else {
-						div().child(symbol).into_any_element()
+						native_timeline::div().child(symbol).into_any_element()
 					}),
 			)
-			.child(div().flex_1().min_w_0().text_ellipsis().child(label))
+			.child(native_timeline::div().flex_1().min_w_0().text_ellipsis().child(label))
 			.when_some(activity.plugin_id.clone(), |d, plugin| {
 				d.child(
-					div().max_w(gpui::px(140.)).text_ellipsis().child(format!("Plugin: {plugin}")),
+					native_timeline::div()
+						.max_w(gpui::px(140.))
+						.text_ellipsis()
+						.child(format!("Plugin: {plugin}")),
 				)
 			})
 			.when(activity.read_only_hint == Some(true), |d| d.child("Read-only hint"))
@@ -573,11 +601,11 @@ impl AgentSurface {
 				})
 			})
 			.child(
-				div()
+				native_timeline::div()
 					.debug_selector(|| "tool-chevron-bounds".into())
 					.flex_none()
 					.size(gpui::px(12.))
-					.child(crate::shell::workspace_symbols::process_chevron(
+					.child(workspace_symbols::process_chevron(
 						SharedString::from(format!("tool-chevron-{identity}")),
 						expanded,
 					)),
@@ -592,13 +620,13 @@ impl AgentSurface {
 		content: &Content,
 		identity: &str,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let Content::Promotion { turn_id, agent_item_id, presentation, index, resolved, .. } =
 			content
 		else {
 			unreachable!("promotion renderer")
 		};
-		let row = div().w_full().min_w_0().flex().flex_col().gap_1();
+		let row = native_timeline::div().w_full().min_w_0().flex().flex_col().gap_1();
 		let target = resolved
 			.as_ref()
 			.map(|item| {
@@ -632,7 +660,7 @@ impl AgentSurface {
 
 				matches.next().is_none().then_some(first)
 			});
-		let mut row = row.child(muted("Shared during voice conversation"));
+		let mut row = row.child(native_timeline::muted("Shared during voice conversation"));
 
 		match target {
 			Some((text, truncated, activity, attachments)) => {
@@ -647,19 +675,19 @@ impl AgentSurface {
 				}
 
 				if presentation == "inlineVisualization" {
-					row = row.child(muted(&format!(
+					row = row.child(native_timeline::muted(&format!(
 						"Visualization {} is in the referenced message.",
 						u64::from(index.unwrap_or_default()) + 1
 					)));
 				} else if !text.is_empty() {
 					row = row.child(
-						div()
+						native_timeline::div()
 							.debug_selector(|| "native-promotion-content".into())
 							.child(markdown::render(text, identity)),
 					);
 				}
 				if truncated {
-					row = row.child(muted("Shared content preview shortened."));
+					row = row.child(native_timeline::muted("Shared content preview shortened."));
 				}
 
 				if let Some(activity) = activity {
@@ -668,9 +696,11 @@ impl AgentSurface {
 			},
 			_ =>
 				row = row.child(
-					div().debug_selector(|| "native-promotion-unavailable".into()).child(muted(
-						"Referenced result is temporarily unavailable. History refresh will retry.",
-					)),
+					native_timeline::div()
+						.debug_selector(|| "native-promotion-unavailable".into())
+						.child(native_timeline::muted(
+							"Referenced result is temporarily unavailable. History refresh will retry.",
+						)),
 				),
 		}
 
@@ -679,13 +709,13 @@ impl AgentSurface {
 }
 
 /// Keep the guide gutter inside the available transcript width in both rendering paths.
-pub(super) fn process_indent(content: impl IntoElement) -> gpui::AnyElement {
-	div()
+pub(super) fn process_indent(content: impl IntoElement) -> AnyElement {
+	native_timeline::div()
 		.w_full()
 		.min_w_0()
 		.pl(gpui::px(8.))
 		.child(
-			div()
+			native_timeline::div()
 				.w_full()
 				.min_w_0()
 				.border_l_1()
@@ -696,7 +726,7 @@ pub(super) fn process_indent(content: impl IntoElement) -> gpui::AnyElement {
 		.into_any_element()
 }
 
-pub(super) fn attachment_caption(attachment: &decodex_protocol::AgentTimelineAttachment) -> String {
+pub(super) fn attachment_caption(attachment: &AgentTimelineAttachment) -> String {
 	let kind = match attachment.kind.as_str() {
 		"image" | "localImage" | "imageView" | "imageGeneration" | "inputImage" => "Image",
 		"audio" | "localAudio" | "inputAudio" => "Audio",
@@ -711,10 +741,15 @@ pub(super) fn attachment_caption(attachment: &decodex_protocol::AgentTimelineAtt
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::shell::agent_surface::native_timeline::{Binding, Timeline};
+	use std::thread;
+
+	use gpui::{self, AppContext};
+
+	use crate::shell::agent_surface::native_timeline::{
+		Binding, Timeline,
+		render::{AgentSurface, AgentTimelineEntry, Content, Context},
+	};
 	use decodex_protocol::AgentTimelinePage;
-	use gpui::{AppContext, px, size};
 
 	#[gpui::test]
 	fn native_weather_does_not_require_a_duplicate_local_message(cx: &mut gpui::TestAppContext) {
@@ -831,7 +866,7 @@ mod tests {
 	fn native_answer_stays_copyable_during_streaming(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(size(px(1_400.), px(1_400.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
 
 		let original = "Draft response\n\n$$\n\\frac{a}{b}";
 		let selector = surface.update(visual, |s, cx| {
@@ -1039,7 +1074,7 @@ mod tests {
 	fn live_plan_and_reasoning_wait_for_exact_native_items(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(size(px(1_400.), px(1_400.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
 
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -1218,7 +1253,7 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(size(px(1_400.), px(1_400.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
 
 		let selectors = surface.update(visual, prepare_rendered_history);
 
@@ -1226,7 +1261,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 		// Settle the workspace's sidebar entrance before measuring the footer.
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
@@ -1237,7 +1272,7 @@ mod tests {
 			.map(|selector| visual.debug_bounds(Box::leak(selector.into_boxed_str())).unwrap())
 			.collect::<Vec<_>>();
 
-		assert!(bounds.iter().all(|bounds| bounds.size.height > px(0.)));
+		assert!(bounds.iter().all(|bounds| bounds.size.height > gpui::px(0.)));
 		assert!(bounds.windows(2).all(|pair| pair[0].bottom() <= pair[1].top()));
 		assert!(visual.debug_bounds("native-turn-usage").is_none());
 
@@ -1255,7 +1290,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		std::thread::sleep(std::time::Duration::from_millis(220));
+		thread::sleep(std::time::Duration::from_millis(220));
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
@@ -1269,7 +1304,7 @@ mod tests {
 		assert!(visual.debug_bounds("native-turn-usage").is_some());
 
 		visual.simulate_mouse_move(
-			gpui::point(px(1_390.), px(1_390.)),
+			gpui::point(gpui::px(1_390.), gpui::px(1_390.)),
 			gpui::MouseButton::Left,
 			Default::default(),
 		);
@@ -1325,7 +1360,7 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(size(px(1_400.), px(1_400.)));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
 
 		let original = "## Draft\n\n$$\n\\frac{a}{b}";
 

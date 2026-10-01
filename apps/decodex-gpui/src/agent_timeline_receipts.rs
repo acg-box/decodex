@@ -1,23 +1,31 @@
 //! Keep local delivery evidence separate from canonical conversation rows.
-use super::{
-	AgentHistoryResult, AgentSurface, AgentWorkItemDto, Content, Context, IntoElement,
-	ParentElement, Styled, auth_recovery_entry, div, markdown, muted,
+use std::collections::BTreeMap;
+
+use gpui::{AnyElement, InteractiveElement, StatefulInteractiveElement};
+
+use crate::{
+	shell::agent_surface::{
+		native_timeline::{
+			self, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Content, Context,
+			IntoElement, ParentElement, Styled, markdown,
+		},
+		progress,
+	},
+	ui_loading,
 };
-use decodex_protocol::AgentHistoryEntryDto;
-use gpui::{InteractiveElement, StatefulInteractiveElement};
+use decodex_protocol::{
+	AgentHistoryEntryDto, AgentHistorySourceDto, AgentLiveMessageDto, AgentLiveMessageKind,
+	AgentTimelineEntry,
+};
 
 impl AgentSurface {
-	fn earlier_local_records(
-		&self,
-		available: bool,
-		cx: &mut Context<Self>,
-	) -> Option<gpui::AnyElement> {
+	fn earlier_local_records(&self, available: bool, cx: &mut Context<Self>) -> Option<AnyElement> {
 		available.then(|| {
 			if self.loading_older {
-				return crate::ui_loading::loading("Loading earlier records").into_any_element();
+				return ui_loading::loading("Loading earlier records").into_any_element();
 			}
 
-			div()
+			native_timeline::div()
 				.id("native-earlier-local-records")
 				.debug_selector(|| "native-earlier-local-records".into())
 				.cursor_pointer()
@@ -32,8 +40,8 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		diagnostics: bool,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
-		let mut panel = div().flex().flex_col().gap_2();
+	) -> AnyElement {
+		let mut panel = native_timeline::div().flex().flex_col().gap_2();
 
 		if !diagnostics {
 			panel = panel.child(self.native_input_receipts_panel(work, cx));
@@ -43,7 +51,7 @@ impl AgentSurface {
 			self.history.as_ref().filter(|(id, _)| id == &work.id)
 		else {
 			return panel
-				.child(muted("Local delivery records are unavailable. Retrying…"))
+				.child(native_timeline::muted("Local delivery records are unavailable. Retrying…"))
 				.into_any_element();
 		};
 		let cursor = self.older_history.get(&work.id).map_or(*next_before, |(_, cursor)| *cursor);
@@ -62,7 +70,7 @@ impl AgentSurface {
 			panel = panel.children(self.earlier_local_records(cursor.is_some(), cx));
 		}
 
-		let mut saved = std::collections::BTreeMap::new();
+		let mut saved = BTreeMap::new();
 
 		if let Some((older, _)) = self.older_history.get(&work.id) {
 			for entry in older {
@@ -78,7 +86,7 @@ impl AgentSurface {
 			{
 				continue;
 			}
-			if super::super::progress::checklist_superseded(entry, saved.values().copied()) {
+			if progress::checklist_superseded(entry, saved.values().copied()) {
 				continue;
 			}
 			if entry.kind == "auth_recovery" {
@@ -89,7 +97,7 @@ impl AgentSurface {
 					continue;
 				}
 
-				panel = panel.child(auth_recovery_entry(entry));
+				panel = panel.child(native_timeline::auth_recovery_entry(entry));
 
 				continue;
 			}
@@ -121,7 +129,7 @@ impl AgentSurface {
 				continue;
 			}
 
-			let mut row = div()
+			let mut row = native_timeline::div()
 				.debug_selector({
 					let id = entry.id;
 					let kind = match entry.kind.as_str() {
@@ -135,7 +143,7 @@ impl AgentSurface {
 				.flex()
 				.flex_col()
 				.gap_1()
-				.child(muted(label))
+				.child(native_timeline::muted(label))
 				.child(markdown::render(&entry.text, &format!("receipt-{}", entry.id)));
 
 			if matches!(entry.kind.as_str(), "partial_answer" | "partial_plan") {
@@ -147,7 +155,7 @@ impl AgentSurface {
 			}
 			if entry.kind == "capacity_retry_pending" {
 				row = row.child(
-					div()
+					native_timeline::div()
 						.debug_selector(|| "capacity-retry-cancel".into())
 						.child(self.capacity_retry_control(work.id.clone(), entry.id, cx)),
 				);
@@ -168,12 +176,16 @@ impl AgentSurface {
 		records_key: String,
 		expanded: bool,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
-		div()
+	) -> AnyElement {
+		native_timeline::div()
 			.id("local-records-toggle")
 			.cursor_pointer()
 			.text_size(gpui::px(11.))
-			.child(muted(if expanded { "Diagnostics ⌄" } else { "Diagnostics ›" }))
+			.child(native_timeline::muted(if expanded {
+				"Diagnostics ⌄"
+			} else {
+				"Diagnostics ›"
+			}))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				if !s.expanded_records.remove(&records_key) {
 					s.expanded_records.insert(records_key.clone());
@@ -184,10 +196,7 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn native_live_receipts(
-		&self,
-		live: &[decodex_protocol::AgentLiveMessageDto],
-	) -> Vec<gpui::AnyElement> {
+	fn native_live_receipts(&self, live: &[AgentLiveMessageDto]) -> Vec<AnyElement> {
 		let mut rows = Vec::new();
 
 		for message in live {
@@ -202,35 +211,31 @@ impl AgentSurface {
 			}
 
 			rows.push(
-				div()
+				native_timeline::div()
 					.debug_selector({
 						let selector = match message.kind {
-							decodex_protocol::AgentLiveMessageKind::ReasoningSummary =>
+							AgentLiveMessageKind::ReasoningSummary =>
 								"native-live-reasoning-summary",
-							decodex_protocol::AgentLiveMessageKind::Plan => "native-live-plan",
-							decodex_protocol::AgentLiveMessageKind::AgentMessage =>
-								"native-live-output",
+							AgentLiveMessageKind::Plan => "native-live-plan",
+							AgentLiveMessageKind::AgentMessage => "native-live-output",
 						};
 
 						move || selector.into()
 					})
-					.child(muted(match message.kind {
-						decodex_protocol::AgentLiveMessageKind::ReasoningSummary =>
-							"Reasoning summary",
-						decodex_protocol::AgentLiveMessageKind::AgentMessage =>
-							"Assistant · In progress",
-						decodex_protocol::AgentLiveMessageKind::Plan =>
-							"Proposed plan · In progress",
+					.child(native_timeline::muted(match message.kind {
+						AgentLiveMessageKind::ReasoningSummary => "Reasoning summary",
+						AgentLiveMessageKind::AgentMessage => "Assistant · In progress",
+						AgentLiveMessageKind::Plan => "Proposed plan · In progress",
 					}))
 					.child(markdown::render(
 						&message.text,
 						&format!("live-{}-{}", message.turn_id, message.item_id),
 					))
-					.children(
-						message
-							.truncated
-							.then(|| muted("Partial output shortened; waiting for saved result.")),
-					)
+					.children(message.truncated.then(|| {
+						native_timeline::muted(
+							"Partial output shortened; waiting for saved result.",
+						)
+					}))
 					.into_any_element(),
 			);
 		}
@@ -240,9 +245,9 @@ impl AgentSurface {
 }
 
 fn partial_replaced(
-	source: &decodex_protocol::AgentHistorySourceDto,
+	source: &AgentHistorySourceDto,
 	thread: Option<&str>,
-	entries: &[decodex_protocol::AgentTimelineEntry],
+	entries: &[AgentTimelineEntry],
 	expected_kind: &str,
 ) -> bool {
 	thread == Some(source.thread_id.as_str()) && entries.iter().any(|entry| matches!(
@@ -295,7 +300,9 @@ fn receipt_label(entry: &AgentHistoryEntryDto) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::native_timeline::receipts::{
+		self, AgentHistoryEntryDto, AgentHistoryResult, AgentSurface, Content,
+	};
 	#[gpui::test]
 	fn unfinished_output_is_visible_in_saved_and_native_views(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -523,35 +530,35 @@ mod tests {
 			created_at_micros: 1,
 		};
 
-		assert_eq!(receipt_label(&entry), Some("Local input · Delivery not confirmed"));
+		assert_eq!(receipts::receipt_label(&entry), Some("Local input · Delivery not confirmed"));
 
 		entry.receipt.as_mut().unwrap().delivered_turn_id = Some("native-turn".into());
 
-		assert_eq!(receipt_label(&entry), None);
+		assert_eq!(receipts::receipt_label(&entry), None);
 
 		entry.receipt = None;
 
-		assert_eq!(receipt_label(&entry), None);
+		assert_eq!(receipts::receipt_label(&entry), None);
 
 		entry.kind = "unsent_input".into();
 
-		assert_eq!(receipt_label(&entry), Some("Local input · Not sent"));
+		assert_eq!(receipts::receipt_label(&entry), Some("Local input · Not sent"));
 
 		entry.kind = "capacity_retry_pending".into();
 
-		assert_eq!(receipt_label(&entry), Some("Automatic retry"));
+		assert_eq!(receipts::receipt_label(&entry), Some("Automatic retry"));
 
 		entry.kind = "execution_notice".into();
 
-		assert_eq!(receipt_label(&entry), Some("Execution notice"));
+		assert_eq!(receipts::receipt_label(&entry), Some("Execution notice"));
 
 		entry.text = "Codex warning: Under-development features enabled: chronicle.".into();
 
-		assert_eq!(receipt_label(&entry), None);
+		assert_eq!(receipts::receipt_label(&entry), None);
 
 		entry.text = "Codex warning: Previous instructions retained".into();
 
-		assert_eq!(receipt_label(&entry), Some("Execution notice"));
+		assert_eq!(receipts::receipt_label(&entry), Some("Execution notice"));
 	}
 	#[test]
 	fn partial_replacement_requires_complete_exact_native_content() {
@@ -587,13 +594,18 @@ mod tests {
 			(Some("thread"), "turn", "item", "Final plan", true, false),
 		] {
 			assert_eq!(
-				partial_replaced(&source, thread, &[item(turn, id, text, truncated)], "plan"),
+				receipts::partial_replaced(
+					&source,
+					thread,
+					&[item(turn, id, text, truncated)],
+					"plan"
+				),
 				expected
 			);
 		}
 
-		assert!(!partial_replaced(&source, Some("thread"), &[], "plan"));
-		assert!(!partial_replaced(
+		assert!(!receipts::partial_replaced(&source, Some("thread"), &[], "plan"));
+		assert!(!receipts::partial_replaced(
 			&source,
 			Some("thread"),
 			&[item("turn", "item", "Final plan", false)],
@@ -613,6 +625,6 @@ mod tests {
 			},
 		};
 
-		assert!(!partial_replaced(&source, Some("thread"), &[terminal], "plan"));
+		assert!(!receipts::partial_replaced(&source, Some("thread"), &[terminal], "plan"));
 	}
 }

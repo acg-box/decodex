@@ -2,14 +2,15 @@
 
 use std::{
 	collections::VecDeque,
-	sync::{Arc, Mutex, MutexGuard},
+	sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
 
 use tokio::sync::Notify;
 
 use decodex_protocol::{
-	AccountProfileEmailDto, AccountProfileResult, CURRENT_VERSION, EntityId, EntityRevision,
-	QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId,
+	AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult, CURRENT_VERSION,
+	EntityId, EntityRevision, QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope,
+	QueryResultPayload, ServerId,
 };
 
 /// Bounded selected-profile state rendered by Accounts.
@@ -268,7 +269,7 @@ impl AccountProfileController {
 	}
 
 	fn lock(&self) -> MutexGuard<'_, State> {
-		self.inner.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+		self.inner.state.lock().unwrap_or_else(PoisonError::into_inner)
 	}
 }
 
@@ -391,7 +392,7 @@ pub(crate) enum AccountProfileRouteOutcome {
 
 /// Only definitive authentication failures require another login; a busy or
 /// temporarily unavailable credential remains a recoverable warning.
-pub(crate) fn requires_login(error: decodex_protocol::AccountProfileErrorDto) -> bool {
+pub(crate) fn requires_login(error: AccountProfileErrorDto) -> bool {
 	use decodex_protocol::AccountProfileErrorDto::*;
 
 	matches!(error, RefreshRejected | RefreshAmbiguous | AccessRejectedAfterRefresh | Unauthorized)
@@ -414,17 +415,17 @@ fn profile_matches(
 
 #[cfg(test)]
 mod tests {
-	use decodex_protocol::{
-		AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult, CURRENT_VERSION,
-		EntityId, QueryResultEnvelope, QueryResultPayload, ServerId,
+	use crate::account_profile::{
+		AccountProfileController, AccountProfileLoadState, AccountProfileRouteOutcome,
 	};
-
-	use super::{AccountProfileController, AccountProfileLoadState, AccountProfileRouteOutcome};
+	use decodex_protocol::{
+		AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult,
+		CURRENT_VERSION, EntityId, EntityRevision, QueryPayload, QueryResultEnvelope,
+		QueryResultPayload, ServerId,
+	};
 
 	#[tokio::test]
 	async fn activity_reads_reject_old_revisions_and_then_wait_for_observation() {
-		use decodex_protocol::{AccountProfileDto, EntityRevision, QueryPayload};
-
 		let controller = AccountProfileController::production();
 		let server = ServerId::new("10000000-0000-4000-8000-000000000001").unwrap();
 		let account = EntityId::new("20000000-0000-4000-8000-000000000001").unwrap();

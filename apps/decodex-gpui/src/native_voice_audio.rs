@@ -1,20 +1,26 @@
 //! Apple voice processing with a direct, bounded PCM path to the native transport.
-use block2::RcBlock;
-use objc2::{AnyThread, rc::Retained, runtime::Bool};
-use objc2_avf_audio::{
-	AVAudioEngine, AVAudioFormat, AVAudioSinkNode, AVAudioSourceNode,
-	AVAudioVoiceProcessingOtherAudioDuckingConfiguration as Ducking,
-	AVAudioVoiceProcessingOtherAudioDuckingLevel as DuckingLevel,
-};
-use objc2_core_audio_types::{AudioBufferList, AudioTimeStamp};
-use rtrb::{Consumer, Producer, RingBuffer};
 use std::{
 	ptr::NonNull,
+	rc::Rc,
+	slice,
 	sync::{
 		Arc, Mutex,
 		atomic::{AtomicU32, Ordering},
 	},
 };
+
+use block2::RcBlock;
+use objc2::{AnyThread, rc::Retained, runtime::Bool};
+use objc2_audio_toolbox::{
+	AudioUnitSetProperty, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global,
+};
+use objc2_avf_audio::{
+	AVAudioEngine, AVAudioFormat, AVAudioSinkNode, AVAudioSourceNode,
+	AVAudioVoiceProcessingOtherAudioDuckingConfiguration,
+	AVAudioVoiceProcessingOtherAudioDuckingLevel,
+};
+use objc2_core_audio_types::{AudioBufferList, AudioTimeStamp};
+use rtrb::{Consumer, Producer, RingBuffer};
 
 pub(super) struct Pcm {
 	pub(super) captured: Consumer<f32>,
@@ -26,7 +32,7 @@ pub(super) struct Device {
 	sink: Retained<AVAudioSinkNode>,
 	source: Retained<AVAudioSourceNode>,
 	level: Arc<AtomicU32>,
-	_thread: std::marker::PhantomData<std::rc::Rc<()>>,
+	_thread: std::marker::PhantomData<Rc<()>>,
 }
 impl Device {
 	/// Call after microphone authorization and retain this owner on its creating thread. A zero ID
@@ -55,9 +61,8 @@ impl Device {
 					return -50;
 				}
 
-				let samples = unsafe {
-					std::slice::from_raw_parts(buffer.mData.cast::<f32>(), count as usize)
-				};
+				let samples =
+					unsafe { slice::from_raw_parts(buffer.mData.cast::<f32>(), count as usize) };
 
 				if let Ok(mut capture) = capture.try_lock() {
 					let mut energy = 0.0;
@@ -99,7 +104,7 @@ impl Device {
 				}
 
 				let samples = unsafe {
-					std::slice::from_raw_parts_mut(buffer.mData.cast::<f32>(), count as usize)
+					slice::from_raw_parts_mut(buffer.mData.cast::<f32>(), count as usize)
 				};
 
 				samples.fill(0.0);
@@ -124,17 +129,14 @@ impl Device {
 			let input = engine.inputNode();
 
 			input.setVoiceProcessingEnabled_error(true).map_err(|_| ())?;
-			input.setVoiceProcessingOtherAudioDuckingConfiguration(Ducking {
-				enableAdvancedDucking: Bool::NO,
-				duckingLevel: DuckingLevel::Min,
-			});
+			input.setVoiceProcessingOtherAudioDuckingConfiguration(
+				AVAudioVoiceProcessingOtherAudioDuckingConfiguration {
+					enableAdvancedDucking: Bool::NO,
+					duckingLevel: AVAudioVoiceProcessingOtherAudioDuckingLevel::Min,
+				},
+			);
 
 			if device != 0 {
-				use objc2_audio_toolbox::{
-					AudioUnitSetProperty, kAudioOutputUnitProperty_CurrentDevice,
-					kAudioUnitScope_Global,
-				};
-
 				let unit = input.audioUnit();
 
 				if unit.is_null()
@@ -204,7 +206,10 @@ impl Drop for Device {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::thread;
+
+	use crate::shell::agent_surface::voice::audio::Device;
+
 	#[test]
 	#[ignore = "Requires authorized microphone and a working macOS audio device"]
 	fn hardware_voice_processing_captures_and_renders_on_one_engine() {
@@ -220,7 +225,7 @@ mod tests {
 				supplied += 1;
 			}
 
-			std::thread::sleep(std::time::Duration::from_millis(10));
+			thread::sleep(std::time::Duration::from_millis(10));
 		}
 
 		assert!(device.running());

@@ -1,6 +1,8 @@
 //! Compact, expandable native execution receipts in the continuous conversation.
-use super::*;
+use gpui::{AnyElement, KeyDownEvent};
+use ui_theme::TEXT_MUTED;
 
+use crate::shell::agent_surface::*;
 use decodex_protocol::{AgentActivityDto, AgentHistoryEntryDto};
 
 impl AgentSurface {
@@ -39,7 +41,7 @@ impl AgentSurface {
 		entries: Vec<&AgentHistoryEntryDto>,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> Vec<gpui::AnyElement> {
+	) -> Vec<AnyElement> {
 		let mut result = Vec::new();
 		let mut pending: Vec<&AgentActivityDto> = Vec::new();
 
@@ -106,7 +108,7 @@ impl AgentSurface {
 		items: &[&AgentActivityDto],
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let first = items[0];
 		let key = progress_key(&work.id, &first.turn_id, &first.item_id);
 		let expanded = self.expanded_progress.contains(&key);
@@ -175,7 +177,7 @@ impl AgentSurface {
 			.w_full()
 			.max_w(px(560.))
 			.text_size(px(11.))
-			.text_color(rgb(ui_theme::TEXT_MUTED))
+			.text_color(rgb(TEXT_MUTED))
 			.child(
 				div()
 					.id("progress-toggle")
@@ -191,7 +193,7 @@ impl AgentSurface {
 						s.toggle_progress(&toggle_key, cx);
 					}))
 					.aria_expanded(expanded)
-					.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+					.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 							s.toggle_progress(&keyboard_key, cx);
 							cx.stop_propagation();
@@ -320,10 +322,10 @@ fn progress_key(work: &str, turn: &str, item: &str) -> String {
 #[cfg(test)]
 mod tests {
 
+	use crate::shell::agent_surface::progress::{AgentHistoryResult, AgentSurface};
+
 	#[gpui::test]
 	fn compaction_status_remains_visible_while_sending(cx: &mut gpui::TestAppContext) {
-		use super::{AgentHistoryResult, AgentSurface};
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		surface.update(visual, |s, cx| {
@@ -374,7 +376,9 @@ mod tests {
 	}
 	#[gpui::test]
 	fn live_compaction_yields_only_to_its_completion_or_turn_end(cx: &mut gpui::TestAppContext) {
-		use super::{AgentDispatchStateDto, AgentHistoryResult, AgentSurface};
+		use crate::shell::agent_surface::progress::{
+			AgentDispatchStateDto, AgentHistoryResult, AgentSurface,
+		};
 
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 

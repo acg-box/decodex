@@ -5,9 +5,12 @@
 #[path = "agent_prompt_remove.rs"] mod removal;
 #[path = "agent_prompt_send.rs"] mod sending;
 
-use super::*;
+use gpui::{AnyElement, Div, Subscription};
+use tokio::sync::oneshot;
 
-use decodex_protocol::{DesktopPromptEditDraft, PromptDraft, PromptEditPhase};
+use crate::shell::agent_surface::*;
+use decodex_protocol::{DesktopPromptEditDraft, PromptDraft, PromptEditPhase, PromptForkBoundary};
+use removal::Removal;
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -17,10 +20,10 @@ pub(super) struct Panel {
 	thread: String,
 	draft: Option<DesktopPromptEditDraft>,
 	editors: Vec<(usize, Entity<ComposerInput>)>,
-	subscriptions: Vec<gpui::Subscription>,
+	subscriptions: Vec<Subscription>,
 	task: Option<Task<()>>,
 	feedback: String,
-	removal: Option<removal::Removal>,
+	removal: Option<Removal>,
 	confirmation: Option<DesktopPromptEditDraft>,
 	prepared_send: Option<(ClientProfile, DesktopPromptEditDraft)>,
 }
@@ -136,7 +139,7 @@ impl AgentSurface {
 		let expected_execution = execution.clone();
 		let key = self.prompt_edit.key.clone();
 		let draft = expected.clone();
-		let (send, receive) = tokio::sync::oneshot::channel();
+		let (send, receive) = oneshot::channel();
 		let started =
 			std::thread::Builder::new().name("prompt-preflight-io".into()).spawn(move || {
 				let result = (|| {
@@ -227,7 +230,7 @@ impl AgentSurface {
 		};
 		let key = self.prompt_edit.key.clone();
 		let original = expected.clone();
-		let (send, receive) = tokio::sync::oneshot::channel();
+		let (send, receive) = oneshot::channel();
 		let started =
 			std::thread::Builder::new().name("prompt-recovery-io".into()).spawn(move || {
 				let result = (|| {
@@ -413,7 +416,7 @@ impl AgentSurface {
 			..Default::default()
 		};
 
-		let (send, receive) = tokio::sync::oneshot::channel();
+		let (send, receive) = oneshot::channel();
 		let request_key = key.clone();
 		let started =
 			std::thread::Builder::new().name("prompt-review-io".into()).spawn(move || {
@@ -603,7 +606,7 @@ impl AgentSurface {
 		Ok(())
 	}
 
-	pub(super) fn prompt_edit_panel(&self, work: &str, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn prompt_edit_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		let mut saved = div().w_full().min_w_0().flex_none().flex().flex_col().gap_2();
 
 		for draft in self.saved_prompt_editors(work) {
@@ -686,10 +689,10 @@ impl AgentSurface {
 
 	fn prompt_edit_actions(
 		&self,
-		mut panel: gpui::Div,
+		mut panel: Div,
 		draft: &DesktopPromptEditDraft,
 		cx: &mut Context<Self>,
-	) -> gpui::Div {
+	) -> Div {
 		if draft.receipt_id.is_some() && !draft.handback_pending {
 			let expected = draft.clone();
 			let checking = draft.pending_send.is_some();
@@ -803,11 +806,7 @@ impl AgentSurface {
 		panel
 	}
 
-	fn prompt_confirmation_actions(
-		&self,
-		mut panel: gpui::Div,
-		cx: &mut Context<Self>,
-	) -> gpui::Div {
+	fn prompt_confirmation_actions(&self, mut panel: Div, cx: &mut Context<Self>) -> Div {
 		if let Some(expected) = &self.prompt_edit.confirmation {
 			let original = expected.clone();
 			let branch = expected.clone();
@@ -823,7 +822,7 @@ impl AgentSurface {
 						move |s, cx| {
 							s.confirm_prompt_branch(
 								branch.clone(),
-								decodex_protocol::PromptForkBoundary::BeforeInput,
+								PromptForkBoundary::BeforeInput,
 								cx,
 							)
 						},
@@ -835,7 +834,7 @@ impl AgentSurface {
 						move |s, cx| {
 							s.confirm_prompt_branch(
 								after.clone(),
-								decodex_protocol::PromptForkBoundary::AfterTurn,
+								PromptForkBoundary::AfterTurn,
 								cx,
 							)
 						},
@@ -875,8 +874,14 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use std::os::unix::fs::{MetadataExt, PermissionsExt};
+	use crate::shell::agent_surface::prompt_edit::*;
+	use std::{
+		fs, future,
+		os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+	};
+
+	use tokio::sync::oneshot;
+
 	fn original_input() -> PromptDraft {
 		PromptDraft::new(vec![
 			serde_json::json!({"type":"text","text":"Original"}),
@@ -951,15 +956,14 @@ mod tests {
 		let root = tempfile::tempdir().unwrap();
 		let path = root.path().canonicalize().unwrap();
 
-		std::fs::create_dir(path.join("server")).unwrap();
-		std::fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700))
-			.unwrap();
+		fs::create_dir(path.join("server")).unwrap();
+		fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700)).unwrap();
 
-		let uid = std::fs::metadata(&path).unwrap().uid();
+		let uid = fs::metadata(&path).unwrap().uid();
 		let config = path.join("config.toml");
 
-		std::fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
-		std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o600)).unwrap();
+		fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
+		fs::set_permissions(&config, std::fs::Permissions::from_mode(0o600)).unwrap();
 
 		let profile = ClientProfile::load(&path, None).unwrap();
 		let surface = cx.new(AgentSurface::new);
@@ -1068,11 +1072,11 @@ mod tests {
 
 			s.prompt_edit.prepared_send = Some((s.profile.clone().unwrap(), sending.clone()));
 
-			let (permit, receive) = tokio::sync::oneshot::channel::<()>();
+			let (permit, receive) = oneshot::channel::<()>();
 
 			canceled_permit = Some(receive);
 			s.prompt_edit.task = Some(cx.spawn(async move |_, _| {
-				std::future::pending::<()>().await;
+				future::pending::<()>().await;
 
 				drop(permit);
 			}));

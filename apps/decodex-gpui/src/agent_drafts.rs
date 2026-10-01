@@ -1,13 +1,24 @@
 //! Keep editable input and uncertain submission state with its exact service profile.
 #[path = "agent_draft_storage.rs"] mod storage;
 
-use super::*;
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	mem,
+};
 
-use std::{collections::BTreeMap, mem};
+use async_questions::ChoiceDraft;
+use execution_intent::Intents;
+
+use crate::shell::agent_surface::{send_preview::Preview, *};
+use decodex_protocol::{
+	AgentAttachmentDto, AgentTaskReferenceDto, AgentWorkKindDto, DesktopCreationSetup,
+	DesktopQuestionDraft,
+};
+use storage::Storage;
 
 #[derive(Default)]
 pub(super) struct SubmissionState {
-	pub(super) previews: Vec<super::send_preview::Preview>,
+	pub(super) previews: Vec<Preview>,
 	pub(super) waiting: Option<QueuedCommand>,
 	pub(super) unconfirmed: Vec<IdempotencyKey>,
 	pub(super) command: Option<Task<()>>,
@@ -17,34 +28,34 @@ pub(super) struct SubmissionState {
 
 #[derive(Default)]
 pub(super) struct Profiles {
-	storage: storage::Storage,
+	storage: Storage,
 	threads: BTreeMap<String, String>,
-	pub(super) execution: execution_intent::Intents,
+	pub(super) execution: Intents,
 	pub(super) texts: BTreeMap<String, String>,
-	pub(super) files: BTreeMap<String, Vec<decodex_protocol::AgentAttachmentDto>>,
-	pub(super) tasks: BTreeMap<String, Vec<decodex_protocol::AgentTaskReferenceDto>>,
+	pub(super) files: BTreeMap<String, Vec<AgentAttachmentDto>>,
+	pub(super) tasks: BTreeMap<String, Vec<AgentTaskReferenceDto>>,
 	active: Option<ClientProfile>,
 	saved: Vec<(ClientProfile, Drafts)>,
 }
 
 #[derive(Default)]
 struct Drafts {
-	creation: Option<decodex_protocol::DesktopCreationSetup>,
+	creation: Option<DesktopCreationSetup>,
 	unconfirmed: Vec<IdempotencyKey>,
 	threads: BTreeMap<String, String>,
-	restored_questions: Vec<decodex_protocol::DesktopQuestionDraft>,
+	restored_questions: Vec<DesktopQuestionDraft>,
 	question_inputs: BTreeMap<(String, String), Entity<ComposerInput>>,
-	question_choices: BTreeMap<(String, String), async_questions::ChoiceDraft>,
+	question_choices: BTreeMap<(String, String), ChoiceDraft>,
 	question_threads: BTreeMap<String, String>,
-	collapsed_questions: std::collections::BTreeSet<String>,
-	execution: execution_intent::Intents,
+	collapsed_questions: BTreeSet<String>,
+	execution: Intents,
 	text: String,
 	manager: Option<String>,
-	attachments: Vec<decodex_protocol::AgentAttachmentDto>,
-	references: Vec<decodex_protocol::AgentTaskReferenceDto>,
+	attachments: Vec<AgentAttachmentDto>,
+	references: Vec<AgentTaskReferenceDto>,
 	texts: BTreeMap<String, String>,
-	files: BTreeMap<String, Vec<decodex_protocol::AgentAttachmentDto>>,
-	tasks: BTreeMap<String, Vec<decodex_protocol::AgentTaskReferenceDto>>,
+	files: BTreeMap<String, Vec<AgentAttachmentDto>>,
+	tasks: BTreeMap<String, Vec<AgentTaskReferenceDto>>,
 	uncertain: bool,
 	steer_pending: Option<PendingCommand>,
 	feedback: String,
@@ -61,8 +72,7 @@ impl AgentSurface {
 							.threads
 							.get(owner)
 							.is_none_or(|thread| work.codex_thread_id.as_ref() == Some(thread))
-						&& (work.parent_goal_id.is_none()
-							|| work.kind == decodex_protocol::AgentWorkKindDto::Manager)
+						&& (work.parent_goal_id.is_none() || work.kind == AgentWorkKindDto::Manager)
 				})
 			})
 		})
@@ -178,22 +188,24 @@ impl AgentSurface {
 
 #[cfg(test)]
 pub(super) mod tests {
-	use super::*;
-	use std::os::unix::fs::{MetadataExt, PermissionsExt};
+	use crate::shell::agent_surface::drafts::*;
+	use std::{
+		fs,
+		os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+	};
 
 	pub(in super::super) fn profiles() -> (tempfile::TempDir, ClientProfile, ClientProfile) {
 		let root = tempfile::tempdir_in("/tmp").unwrap();
 		let path = root.path().canonicalize().unwrap();
 
-		std::fs::create_dir(path.join("server")).unwrap();
-		std::fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700))
-			.unwrap();
+		fs::create_dir(path.join("server")).unwrap();
+		fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700)).unwrap();
 
-		let uid = std::fs::metadata(&path).unwrap().uid();
+		let uid = fs::metadata(&path).unwrap().uid();
 		let config = path.join("config.toml");
 
-		std::fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
-		std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
+		fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
+		fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
 
 		let first = ClientProfile::load(&path, None).unwrap();
 		let second = first.clone().with_expected_server_id(

@@ -2,9 +2,8 @@
 // Copyright OpenAI. Licensed under Apache-2.0; see LICENSE-APACHE.
 //! Class and ER grammars, preserving members, endpoint cardinalities, and relationship kinds.
 
-use super::{
-	Direction, Edge, Graph, MAX_EDGES, RenderError,
-	parse::{check_label, identifier},
+use crate::shell::agent_surface::markdown::mermaid::{
+	Direction, Edge, Graph, MAX_EDGES, Node, RenderError, state,
 };
 
 #[expect(
@@ -13,7 +12,7 @@ use super::{
 )]
 pub(super) fn parse(header: &str, body: &[&str]) -> Result<Graph, RenderError> {
 	if matches!(header, "stateDiagram" | "stateDiagram-v2") {
-		return super::state::parse(body);
+		return state::parse(body);
 	}
 
 	let er = header == "erDiagram";
@@ -29,11 +28,11 @@ pub(super) fn parse(header: &str, body: &[&str]) -> Result<Graph, RenderError> {
 				let member = if er {
 					attribute(line)?
 				} else {
-					check_label(line)?;
+					crate::shell::agent_surface::markdown::mermaid::parse::check_label(line)?;
 
 					line.to_owned()
 				};
-				let node: &mut super::Node = &mut graph.nodes[index];
+				let node: &mut Node = &mut graph.nodes[index];
 
 				if node.members.len() == 16 {
 					return Err(RenderError::Limit);
@@ -57,7 +56,7 @@ pub(super) fn parse(header: &str, body: &[&str]) -> Result<Graph, RenderError> {
 
 		let declaration = !er && line.starts_with("class ");
 		let mut rest = line.strip_prefix("class ").filter(|_| !er).unwrap_or(line);
-		let id = identifier(&mut rest)?;
+		let id = crate::shell::agent_surface::markdown::mermaid::parse::identifier(&mut rest)?;
 
 		rest = rest.trim_start();
 
@@ -87,7 +86,7 @@ pub(super) fn parse(header: &str, body: &[&str]) -> Result<Graph, RenderError> {
 		if !er && let Some(member) = rest.strip_prefix(':').filter(|text| !text.starts_with("::")) {
 			let member = member.trim();
 
-			check_label(member)?;
+			crate::shell::agent_surface::markdown::mermaid::parse::check_label(member)?;
 
 			if graph.nodes[from].members.len() == 16 {
 				return Err(RenderError::Limit);
@@ -164,7 +163,8 @@ pub(super) fn parse(header: &str, body: &[&str]) -> Result<Graph, RenderError> {
 
 			(source_tip, target_tip, source_card, target_card)
 		};
-		let to = graph.node(identifier(&mut rest)?)?;
+		let to = graph
+			.node(crate::shell::agent_surface::markdown::mermaid::parse::identifier(&mut rest)?)?;
 
 		rest = rest.trim();
 
@@ -172,7 +172,7 @@ pub(super) fn parse(header: &str, body: &[&str]) -> Result<Graph, RenderError> {
 			if let Some(label) = rest.strip_prefix(':').filter(|text| !text.starts_with("::")) {
 				let label = label.trim();
 
-				check_label(label)?;
+				crate::shell::agent_surface::markdown::mermaid::parse::check_label(label)?;
 
 				label.to_owned()
 			} else if !rest.is_empty() || er {
@@ -219,7 +219,7 @@ fn cardinality(rest: &mut &str) -> Result<String, RenderError> {
 	if let Some(after) = rest.strip_prefix('"') {
 		let (value, after) = after.split_once('"').ok_or(RenderError::Unsupported)?;
 
-		check_label(value)?;
+		crate::shell::agent_surface::markdown::mermaid::parse::check_label(value)?;
 
 		*rest = after;
 
@@ -231,17 +231,17 @@ fn cardinality(rest: &mut &str) -> Result<String, RenderError> {
 
 fn attribute(line: &str) -> Result<String, RenderError> {
 	let mut rest = line;
-	let data_type = identifier(&mut rest)?;
+	let data_type = crate::shell::agent_surface::markdown::mermaid::parse::identifier(&mut rest)?;
 
 	if !rest.starts_with(char::is_whitespace) {
 		return Err(RenderError::Unsupported);
 	}
 
-	let name = identifier(&mut rest)?;
+	let name = crate::shell::agent_surface::markdown::mermaid::parse::identifier(&mut rest)?;
 	let (keys, comment) = if let Some((keys, comment)) = rest.trim().split_once('"') {
 		let comment = comment.strip_suffix('"').ok_or(RenderError::Unsupported)?;
 
-		check_label(comment)?;
+		crate::shell::agent_surface::markdown::mermaid::parse::check_label(comment)?;
 
 		(keys.trim(), Some(comment))
 	} else {
@@ -264,7 +264,7 @@ fn attribute(line: &str) -> Result<String, RenderError> {
 		result.push_str(comment);
 	}
 
-	check_label(&result)?;
+	crate::shell::agent_surface::markdown::mermaid::parse::check_label(&result)?;
 
 	Ok(result)
 }

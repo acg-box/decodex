@@ -1,9 +1,12 @@
 //! One retained daemon observation wait per session, shared across profile selections.
 
-use super::{
-	AccountProfileRouteOutcome, CURRENT_VERSION, QueryEnvelope, QueryId, QueryPayload,
-	QueryResultEnvelope, QueryResultPayload, ServerId, SessionBinding, State,
+use std::mem;
+
+use crate::account_profile::{
+	AccountProfileController, AccountProfileRouteOutcome, CURRENT_VERSION, QueryEnvelope, QueryId,
+	QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId, SessionBinding, State,
 };
+use decodex_protocol::{AccountObservationSignal, ClientFailure};
 
 impl State {
 	pub(super) fn start_observation(&mut self, binding: SessionBinding) -> Option<QueryEnvelope> {
@@ -27,8 +30,7 @@ impl State {
 			query_id,
 			payload: QueryPayload::WaitForAccountObservation {
 				after_generation: self.observation_generation,
-				request_refresh: std::mem::take(&mut self.request_observation_refresh)
-					.then_some(true),
+				request_refresh: mem::take(&mut self.request_observation_refresh).then_some(true),
 			},
 		})
 	}
@@ -67,13 +69,13 @@ impl State {
 	}
 }
 
-impl super::AccountProfileController {
+impl AccountProfileController {
 	pub(crate) fn finish_observation(
 		&self,
 		generation: u64,
 		server_id: &ServerId,
 		query: QueryEnvelope,
-		result: Result<decodex_protocol::AccountObservationSignal, decodex_protocol::ClientFailure>,
+		result: Result<AccountObservationSignal, ClientFailure>,
 	) {
 		match result {
 			Ok(signal) => {

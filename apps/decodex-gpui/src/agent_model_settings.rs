@@ -1,11 +1,15 @@
 //! Source-checked native observations with explicit next-message choices kept separate.
-use super::{mcp_forms::mcp_button, *};
+use std::collections::BTreeMap;
 
-use decodex_protocol::AgentModelSettingsResult as State;
+use gpui::AnyElement;
+use tokio::runtime::Builder;
+
+use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
+use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto, AgentModelSettingsResult as State};
 
 #[derive(Default)]
 pub(super) struct Panel {
-	observations: std::collections::BTreeMap<String, State>,
+	observations: BTreeMap<String, State>,
 	work: Option<String>,
 	task: Option<Task<()>>,
 	read_at: Option<std::time::Instant>,
@@ -29,7 +33,7 @@ impl AgentSurface {
 	pub(super) fn composer_model_label(&self, cx: &Context<Self>) -> String {
 		let Some(model) = self.composer_model_value(cx) else { return "Task model".into() };
 
-		if let Some(decodex_protocol::AgentCapabilitiesResult::Available { models, .. }) =
+		if let Some(AgentCapabilitiesResult::Available { models, .. }) =
 			self.current_model_catalog(cx)
 			&& let Some(entry) = models.iter().find(|entry| entry.model.as_str() == model)
 		{
@@ -133,7 +137,7 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let owner = work.id.clone();
 		let mut panel = div().flex().flex_col().gap_2().child(mcp_button(
 			"native-model-settings-read".into(),
@@ -208,8 +212,7 @@ impl AgentSurface {
 
 		let work = work.to_owned();
 		let future = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime.block_on(AgentClient::new(profile).model_settings(work_id)).ok()
 		});
@@ -255,7 +258,7 @@ impl AgentSurface {
 }
 
 /// Display native specialty only in choices; compact current-model controls keep their name.
-pub(super) fn model_choice_label(model: &decodex_protocol::AgentModelDto) -> String {
+pub(super) fn model_choice_label(model: &AgentModelDto) -> String {
 	match model.specialty.as_deref() {
 		Some("cyber") => format!("{} · Cybersecurity", model.name),
 		Some(specialty) => format!("{} · {specialty}", model.name),

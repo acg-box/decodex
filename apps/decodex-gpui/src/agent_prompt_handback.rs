@@ -1,5 +1,10 @@
 //! Acknowledge only a saved draft and freshly applied history presentation.
-use super::*;
+use std::time::{Duration, Instant};
+
+use tokio::sync::oneshot;
+
+use crate::shell::agent_surface::prompt_edit::*;
+use decodex_protocol::AgentTimelineResult;
 
 impl AgentSurface {
 	pub(super) fn handback_prompt_editor(
@@ -22,9 +27,9 @@ impl AgentSurface {
 		};
 		let original = expected.clone();
 		let panel_key = self.prompt_edit.key.clone();
-		let (loaded, load) = tokio::sync::oneshot::channel();
-		let (permit, permitted) = tokio::sync::oneshot::channel();
-		let (completed, completion) = tokio::sync::oneshot::channel();
+		let (loaded, load) = oneshot::channel();
+		let (permit, permitted) = oneshot::channel();
+		let (completed, completion) = oneshot::channel();
 		let started =
 			std::thread::Builder::new().name("prompt-handback-io".into()).spawn(move || {
 				let Ok(runtime) =
@@ -114,12 +119,12 @@ impl AgentSurface {
 				}
 			}).ok().flatten();
 			let Some(pending) = pending else { return; };
-			let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+			let deadline = Instant::now() + Duration::from_secs(5);
 
 			loop {
 				let ready = surface.update(cx, |s, cx| {
 					if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() { return Some(false); }
-					if s.prompt_edit.draft.as_ref() != Some(&pending) || !s.command_connection_ready() || std::time::Instant::now() >= deadline {
+					if s.prompt_edit.draft.as_ref() != Some(&pending) || !s.command_connection_ready() || Instant::now() >= deadline {
 						s.prompt_edit.task = None; s.prompt_edit.feedback = "Draft handback was not sent. Keep this draft and restore it again.".into(); cx.notify(); return Some(false);
 					}
 					if s.prompt_editor_saved(&pending) { return Some(true); }
@@ -129,7 +134,7 @@ impl AgentSurface {
 
 				if let Some(ready) = ready { if !ready { return; } break; }
 
-				cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
+				cx.background_executor().timer(Duration::from_millis(50)).await;
 			}
 
 			if permit.send(()).is_err() { return; }
@@ -158,10 +163,7 @@ impl AgentSurface {
 async fn load_restored_history(
 	client: &AgentClient,
 	original: &DesktopPromptEditDraft,
-) -> Result<
-	(DesktopPromptEditDraft, AgentHistoryResult, decodex_protocol::AgentTimelineResult),
-	&'static str,
-> {
+) -> Result<(DesktopPromptEditDraft, AgentHistoryResult, AgentTimelineResult), &'static str> {
 	let _ = client
 		.execute(
 			AgentActionDto::RecoverPromptEdit {

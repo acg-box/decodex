@@ -1,14 +1,16 @@
 //! A small pixel cloud for live work. The clock follows one conversation's active state.
-use gpui::{
-	App, Background, Bounds, Image, ImageFormat, IntoElement, PathBuilder, Pixels, RenderOnce,
-	Role, SharedString, Window, canvas, div, img, linear_color_stop, linear_gradient, point,
-	prelude::*, px, rgb, rgba, size,
-};
-
 use std::{
+	f32::consts::PI,
 	sync::{Arc, LazyLock},
 	time::Instant,
 };
+
+use gpui::{
+	self, App, Background, Bounds, Image, ImageFormat, IntoElement, PathBuilder, Pixels,
+	RenderOnce, Role, SharedString, Window, prelude::*,
+};
+
+use crate::{ui_motion, ui_theme::TEXT_MUTED};
 
 // Use the approved logo silhouette, including its lightning and cursor cutouts.
 static CLOUD: LazyLock<Arc<Image>> = LazyLock::new(|| {
@@ -45,46 +47,46 @@ impl RenderOnce for Working {
 				s.ended.map(|t| now.duration_since(t).as_secs_f32()),
 			)
 		});
-		let reduced = crate::ui_motion::reduced();
+		let reduced = ui_motion::reduced();
 		let visible = elapsed.is_some() && closing.is_none_or(|t| t < 0.35 && !reduced);
 
 		if !visible {
-			return div().into_any_element();
+			return gpui::div().into_any_element();
 		}
 		if !reduced {
-			crate::ui_motion::request_frame(window, cx);
+			ui_motion::request_frame(window, cx);
 		}
 
 		let time = elapsed.unwrap_or_default();
 		let settle = closing.map_or(1., |t| (1. - t / 0.35).clamp(0., 1.));
 
-		div()
+		gpui::div()
 			.id("pixel-work-status")
 			.role(Role::Status)
 			.aria_label("Working")
 			.flex()
 			.items_center()
-			.gap(px(8.))
-			.h(px(24. * settle))
-			.text_size(px(12.))
-			.line_height(px(18.))
-			.text_color(rgb(crate::ui_theme::TEXT_MUTED))
+			.gap(gpui::px(8.))
+			.h(gpui::px(24. * settle))
+			.text_size(gpui::px(12.))
+			.line_height(gpui::px(18.))
+			.text_color(gpui::rgb(TEXT_MUTED))
 			.child(
-				div()
+				gpui::div()
 					.relative()
-					.w(px(32.))
-					.h(px(24.))
+					.w(gpui::px(32.))
+					.h(gpui::px(24.))
 					.flex_none()
 					.child(
-						img(CLOUD.clone())
+						gpui::img(CLOUD.clone())
 							.absolute()
 							.top_0()
 							.left_0()
-							.size(px(24.))
+							.size(gpui::px(24.))
 							.opacity(0.9 * settle),
 					)
 					.child(
-						canvas(
+						gpui::canvas(
 							|_, _, _| (),
 							move |bounds, _, window, _| {
 								for index in 0..10 {
@@ -92,29 +94,35 @@ impl RenderOnce for Working {
 										particle(if reduced { 1.4 } else { time }, index);
 									let alpha = alpha * settle;
 									let b = Bounds::new(
-										bounds.origin + point(px(x), px(y)),
-										size(px(edge), px(edge)),
+										bounds.origin + gpui::point(gpui::px(x), gpui::px(y)),
+										gpui::size(gpui::px(edge), gpui::px(edge)),
 									);
 
 									paint_particle(
 										window,
 										b,
-										linear_gradient(
+										gpui::linear_gradient(
 											155.,
-											linear_color_stop(rgba(0xe8f3f8ff).opacity(alpha), 0.),
-											linear_color_stop(
-												rgba(0x9ec8d9ff).opacity(alpha * 0.7),
+											gpui::linear_color_stop(
+												gpui::rgba(0xe8f3f8ff).opacity(alpha),
+												0.,
+											),
+											gpui::linear_color_stop(
+												gpui::rgba(0x9ec8d9ff).opacity(alpha * 0.7),
 												1.,
 											),
 										),
 									);
 
-									let rim = Bounds::new(b.origin, size(b.size.width, px(0.35)));
+									let rim = Bounds::new(
+										b.origin,
+										gpui::size(b.size.width, gpui::px(0.35)),
+									);
 
 									paint_particle(
 										window,
 										rim,
-										rgba(0xf1fcffff).opacity(alpha * 0.55).into(),
+										gpui::rgba(0xf1fcffff).opacity(alpha * 0.55).into(),
 									);
 								}
 							},
@@ -123,7 +131,7 @@ impl RenderOnce for Working {
 						.size_full(),
 					),
 			)
-			.child(div().opacity(settle).child("Working"))
+			.child(gpui::div().opacity(settle).child("Working"))
 			.into_any_element()
 	}
 }
@@ -147,8 +155,7 @@ fn particle(time: f32, index: usize) -> (f32, f32, f32, f32) {
 	let lane = (index % 4) as f32;
 	let seed = ((index * 7) % 11) as f32 / 10.;
 	let x = 11.3 + lane * 1.77 + p * (7. + seed * 3.);
-	let y = 6.2 + lane * 1.77 - p * (5. + seed * 3.)
-		+ (p * std::f32::consts::PI).sin() * 0.7 * (seed - 0.5);
+	let y = 6.2 + lane * 1.77 - p * (5. + seed * 3.) + (p * PI).sin() * 0.7 * (seed - 0.5);
 	let alpha = smooth(p / 0.12) * (1. - smooth((p - 0.55) / 0.45)) * (0.6 + seed * 0.35);
 
 	(x, y, 1.5, alpha)
@@ -161,9 +168,9 @@ fn paint_particle(window: &mut Window, bounds: Bounds<Pixels>, color: Background
 	path.add_polygon(
 		&[
 			bounds.origin,
-			bounds.origin + point(bounds.size.width, px(0.)),
-			bounds.origin + point(bounds.size.width, bounds.size.height),
-			bounds.origin + point(px(0.), bounds.size.height),
+			bounds.origin + gpui::point(bounds.size.width, gpui::px(0.)),
+			bounds.origin + gpui::point(bounds.size.width, bounds.size.height),
+			bounds.origin + gpui::point(gpui::px(0.), bounds.size.height),
 		],
 		true,
 	);

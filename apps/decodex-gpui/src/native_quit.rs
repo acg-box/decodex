@@ -1,16 +1,16 @@
 //! Defer AppKit termination without replacing GPUI's delegate or lifecycle hooks.
+use std::{
+	ffi::c_void,
+	mem, ptr,
+	sync::atomic::{AtomicBool, Ordering},
+};
+
 use objc2::{
-	MainThreadMarker,
+	MainThreadMarker, ffi,
 	runtime::{AnyClass, AnyObject, Imp, Sel},
 	sel,
 };
-
 use objc2_app_kit::NSApplication;
-
-use std::{
-	ffi::c_void,
-	sync::atomic::{AtomicBool, Ordering},
-};
 
 thread_local! {
 	static REQUEST_HANDLER: std::cell::RefCell<Option<RequestHandler>> = const { std::cell::RefCell::new(None) };
@@ -62,7 +62,7 @@ pub(crate) fn request() {
 	// selector, not a main-dispatch-queue block which would prevent queued GPUI
 	// futures from running until that nested loop has already returned.
 	unsafe {
-		let _: () = objc2::msg_send![&*application, performSelector: sel!(terminate:), withObject: std::ptr::null::<AnyObject>(), afterDelay: 0.0_f64];
+		let _: () = objc2::msg_send![&*application, performSelector: sel!(terminate:), withObject: ptr::null::<AnyObject>(), afterDelay: 0.0_f64];
 	}
 }
 
@@ -100,12 +100,12 @@ fn install_on_class(class: &AnyClass) -> bool {
 	// macOS uses a 64-bit NSUInteger result, followed by self, selector, and sender.
 	// Only add the absent optional method; never replace an existing implementation.
 	unsafe {
-		let implementation: Imp = std::mem::transmute::<
+		let implementation: Imp = mem::transmute::<
 			extern "C-unwind" fn(*mut AnyObject, Sel, *mut AnyObject) -> usize,
 			Imp,
 		>(should_terminate);
 
-		objc2::ffi::class_addMethod(
+		ffi::class_addMethod(
 			(class as *const AnyClass).cast_mut(),
 			selector,
 			implementation,
@@ -120,11 +120,7 @@ extern "C-unwind" fn should_terminate(_: *mut AnyObject, _: Sel, _: *mut AnyObje
 		REQUESTED.store(true, Ordering::SeqCst);
 		// Queue once outside AppKit's delegate call and any active GPUI borrow.
 		unsafe {
-			dispatch_async_f(
-				std::ptr::addr_of!(_dispatch_main_q),
-				std::ptr::null_mut(),
-				notify_request,
-			);
+			dispatch_async_f(std::ptr::addr_of!(_dispatch_main_q), ptr::null_mut(), notify_request);
 		}
 	}
 
@@ -154,36 +150,43 @@ unsafe extern "C" {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use objc2::{ClassType, msg_send, runtime::ClassBuilder};
+	use std::ptr;
+
+	use objc2::{self, ClassType, runtime::ClassBuilder};
 	use objc2_foundation::NSObject;
+
+	use crate::native_quit::{self, AWAITING_REPLY, AnyObject, Ordering};
 
 	#[test]
 	fn native_quit_adds_only_missing_delegate_method_and_coalesces_requests() {
 		let class =
 			ClassBuilder::new(c"DecodexQuitDelegateFixture", NSObject::class()).unwrap().register();
-		let original = class.instance_method(sel!(description)).unwrap().implementation();
+		let original =
+			class.instance_method(native_quit::sel!(description)).unwrap().implementation();
 
-		assert!(install_on_class(class));
-		assert!(!install_on_class(class), "never overwrite an existing delegate decision");
-		assert!(std::ptr::fn_addr_eq(
+		assert!(native_quit::install_on_class(class));
+		assert!(
+			!native_quit::install_on_class(class),
+			"never overwrite an existing delegate decision"
+		);
+		assert!(ptr::fn_addr_eq(
 			original,
-			class.instance_method(sel!(description)).unwrap().implementation()
+			class.instance_method(native_quit::sel!(description)).unwrap().implementation()
 		));
 
-		let instance: objc2::rc::Retained<NSObject> = unsafe { msg_send![class, new] };
+		let instance: objc2::rc::Retained<NSObject> = unsafe { objc2::msg_send![class, new] };
 
 		for _ in 0..2 {
 			let response: usize = unsafe {
-				msg_send![&*instance, applicationShouldTerminate: std::ptr::null::<AnyObject>()]
+				objc2::msg_send![&*instance, applicationShouldTerminate: ptr::null::<AnyObject>()]
 			};
 
 			assert_eq!(response, 2);
 		}
 
-		assert!(awaiting_reply());
-		assert!(take_request());
-		assert!(!take_request());
+		assert!(native_quit::awaiting_reply());
+		assert!(native_quit::take_request());
+		assert!(!native_quit::take_request());
 
 		AWAITING_REPLY.store(false, Ordering::SeqCst);
 	}

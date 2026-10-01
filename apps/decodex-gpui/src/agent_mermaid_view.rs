@@ -1,5 +1,8 @@
 //! Native diagram presentation with source copy and complete-source fallback.
-use super::*;
+use mermaid::Role;
+use ui_theme::{BLUE, TEXT_MUTED};
+
+use crate::shell::agent_surface::{markdown::*, selectable_text::SelectableText};
 
 // Adapted from the upstream closing-fence check; see agent_mermaid/NOTICE.md.
 pub(super) fn has_closing_fence(input: &str, range: Range<usize>, content_end: usize) -> bool {
@@ -47,7 +50,7 @@ pub(super) fn render(children: &[Node], key: &str) -> Option<AnyElement> {
 					.items_start()
 					.overflow_x_scroll()
 					.whitespace_nowrap()
-					.child(super::super::selectable_text::SelectableText {
+					.child(SelectableText {
 						key: format!("mermaid-text-{key}"),
 						text: out.text,
 						highlights: out.highlights,
@@ -74,9 +77,9 @@ fn diagram(source: &str) -> Option<Inline> {
 			out.text.push_str(&span.text);
 
 			let color = match span.role {
-				mermaid::Role::Node => Some(rgb(ui_theme::BLUE).into()),
-				mermaid::Role::Edge => Some(rgb(ui_theme::TEXT_MUTED).into()),
-				mermaid::Role::Text => None,
+				Role::Node => Some(rgb(BLUE).into()),
+				Role::Edge => Some(rgb(TEXT_MUTED).into()),
+				Role::Text => None,
 			};
 
 			out.highlights

@@ -1,5 +1,9 @@
 //! Nonblocking model questions are explicit user messages, not approval callbacks.
-use super::*;
+use crate::shell::agent_surface::*;
+
+use std::mem;
+
+use gpui::Focusable;
 
 #[derive(Default)]
 pub(super) struct ChoiceDraft {
@@ -102,7 +106,7 @@ impl AgentSurface {
 			return;
 		};
 
-		for saved in std::mem::take(&mut self.restored_question_drafts) {
+		for saved in mem::take(&mut self.restored_question_drafts) {
 			if saved.work_id.as_str() != work {
 				self.restored_question_drafts.push(saved);
 
@@ -222,8 +226,6 @@ impl AgentSurface {
 		state.selected = option.map(str::to_owned);
 
 		if option.is_none() {
-			use gpui::Focusable;
-
 			window.focus(&input.focus_handle(cx), cx);
 		}
 
@@ -411,8 +413,6 @@ impl AgentSurface {
 	}
 
 	fn toggle_async_questions(&mut self, work: &str, window: &mut Window, cx: &mut Context<Self>) {
-		use gpui::Focusable;
-
 		if !self.collapsed_async_questions.remove(work) {
 			self.collapsed_async_questions.insert(work.into());
 			window.focus(&self.composer.focus_handle(cx), cx);
@@ -593,7 +593,10 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::async_questions::*;
+
+	use gpui::Focusable;
+
 	#[gpui::test]
 	fn async_cold_restore_waits_for_history_and_prunes_resolved_questions(
 		cx: &mut gpui::TestAppContext,
@@ -741,8 +744,6 @@ mod tests {
 	fn async_option_click_and_explicit_submission_preserve_unaccepted_draft(
 		cx: &mut gpui::TestAppContext,
 	) {
-		use gpui::Focusable;
-
 		cx.update(crate::composer_input::bind_keys);
 
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -856,8 +857,6 @@ mod tests {
 
 	#[gpui::test]
 	fn collapsed_questions_preserve_both_drafts_and_never_send(cx: &mut gpui::TestAppContext) {
-		use gpui::Focusable;
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		surface.update(visual, |s, cx| {
@@ -1001,8 +1000,6 @@ mod tests {
 
 	#[gpui::test]
 	fn held_enter_cannot_submit_an_async_answer(cx: &mut gpui::TestAppContext) {
-		use gpui::Focusable;
-
 		cx.update(crate::composer_input::bind_keys);
 
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));

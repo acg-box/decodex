@@ -28,7 +28,7 @@ const TEXT: u32 = ui_theme::TEXT;
 const TEXT_MUTED: u32 = ui_theme::TEXT_MUTED;
 const BLUE: u32 = ui_theme::BLUE;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) enum SettingsCategory {
 	#[default]
 	General,
@@ -929,7 +929,7 @@ fn quote_attribution() -> impl IntoElement {
 mod tests {
 	use gpui::{TestAppContext, size};
 
-	use super::*;
+	use crate::settings_surface::*;
 
 	#[gpui::test]
 	fn refresh_reads_external_login_item_changes(cx: &mut TestAppContext) {

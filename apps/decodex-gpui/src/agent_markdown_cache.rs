@@ -1,5 +1,5 @@
 //! Reuse immutable parsing across scroll frames; streaming text has a new key.
-use super::*;
+use crate::shell::agent_surface::markdown::*;
 
 thread_local! {
 	static DOCUMENTS: RefCell<Cache> = RefCell::new(Cache::default());
@@ -65,13 +65,13 @@ pub(super) fn document(text: &str) -> Rc<Document> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::markdown::cache::*;
+
+	use std::{hint, time::Instant};
 
 	#[test]
 	#[ignore = "Manual parsing benchmark; not a display FPS measurement"]
 	fn repeated_transcript_parsing_benchmark() {
-		use std::{hint::black_box, time::Instant};
-
 		let messages: Vec<_> = (0..32).map(|i| format!(
 			"## Response {i}\n\n{}", "Read **the result**, then review `src/main.rs`.\n\n- First item\n- Second item\n\n".repeat(12)
 		)).collect();
@@ -79,8 +79,8 @@ mod tests {
 
 		for _ in 0..60 {
 			for text in &messages {
-				black_box(parse(black_box(text)));
-				black_box(parse_plain_text(black_box(text)));
+				hint::black_box(parse(hint::black_box(text)));
+				hint::black_box(parse_plain_text(hint::black_box(text)));
 			}
 		}
 
@@ -90,10 +90,10 @@ mod tests {
 
 		for _ in 0..60 {
 			for text in &messages {
-				let document = cache.document(black_box(text));
+				let document = cache.document(hint::black_box(text));
 
-				black_box(document.nodes.get_or_init(|| parse(text)));
-				black_box(document.plain.get_or_init(|| parse_plain_text(text)));
+				hint::black_box(document.nodes.get_or_init(|| parse(text)));
+				hint::black_box(document.plain.get_or_init(|| parse_plain_text(text)));
 			}
 		}
 

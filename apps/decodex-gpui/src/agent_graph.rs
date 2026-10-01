@@ -1,6 +1,7 @@
 //! Bounded, deterministic projection of Agent dependency facts into canvas space.
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::shell::agent_surface::ui_theme::{self, BLUE, GREEN, TEXT_MUTED};
 use decodex_protocol::{
 	AgentDispatchStateDto, AgentSnapshotDto, AgentWorkItemDto, AgentWorkStatusDto,
 };
@@ -130,18 +131,16 @@ impl Layout {
 }
 
 pub(super) fn state(work: &AgentWorkItemDto) -> (&'static str, u32) {
-	use super::ui_theme;
-
 	match work.dispatch_state {
 		AgentDispatchStateDto::Unknown => ("Needs attention", ui_theme::AMBER),
-		AgentDispatchStateDto::Running => ("Running", ui_theme::GREEN),
-		AgentDispatchStateDto::Dispatching => ("Starting", ui_theme::BLUE),
+		AgentDispatchStateDto::Running => ("Running", GREEN),
+		AgentDispatchStateDto::Dispatching => ("Starting", BLUE),
 		AgentDispatchStateDto::Idle => match work.status {
-			AgentWorkStatusDto::Resolved => ("Resolved", ui_theme::TEXT_MUTED),
+			AgentWorkStatusDto::Resolved => ("Resolved", TEXT_MUTED),
 			AgentWorkStatusDto::UserDecision => ("Needs you", ui_theme::AMBER),
-			AgentWorkStatusDto::Wait => ("Waiting", ui_theme::TEXT_MUTED),
-			AgentWorkStatusDto::FollowUp => ("Follow-up", ui_theme::BLUE),
-			AgentWorkStatusDto::Open => ("Open", ui_theme::TEXT_MUTED),
+			AgentWorkStatusDto::Wait => ("Waiting", TEXT_MUTED),
+			AgentWorkStatusDto::FollowUp => ("Follow-up", BLUE),
+			AgentWorkStatusDto::Open => ("Open", TEXT_MUTED),
 		},
 	}
 }

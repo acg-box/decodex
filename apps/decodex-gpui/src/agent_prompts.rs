@@ -1,5 +1,16 @@
 //! Cached ZenQuotes prompts with a curated, attributed offline collection.
-use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::atomic::Ordering};
+use std::{
+	collections::{BTreeSet, hash_map::RandomState},
+	env, fs,
+	hash::BuildHasher,
+	io::Read as _,
+	process,
+	sync::atomic::Ordering,
+	time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
+use reqwest::{blocking::Client, redirect::Policy};
+use serde::{Deserialize, Serialize};
 
 static CURATED: std::sync::LazyLock<Vec<Quote>> = std::sync::LazyLock::new(|| {
 	serde_json::from_str(include_str!("../../../assets/quotes/zenquotes-curated.json"))
@@ -10,7 +21,7 @@ static QUOTES: std::sync::LazyLock<std::sync::Mutex<Vec<Quote>>> = std::sync::La
 });
 static LAST_TEXT: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub(super) struct Quote {
 	pub q: String,
 	pub a: String,
@@ -21,7 +32,7 @@ impl Quote {
 	}
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct Cache {
 	fetched: u64,
 	quotes: Vec<Quote>,
@@ -69,18 +80,15 @@ pub(super) fn refresh_cache() -> bool {
 }
 
 fn cache_path() -> Option<std::path::PathBuf> {
-	Some(
-		std::path::PathBuf::from(std::env::var_os("HOME")?)
-			.join("Library/Caches/Decodex/quotes.json"),
-	)
+	Some(std::path::PathBuf::from(env::var_os("HOME")?).join("Library/Caches/Decodex/quotes.json"))
 }
 
 fn now() -> u64 {
-	std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()
+	SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
 }
 
 fn filter_quotes(quotes: Vec<Quote>) -> Vec<Quote> {
-	let mut seen = std::collections::BTreeSet::new();
+	let mut seen = BTreeSet::new();
 
 	quotes
 		.into_iter()
@@ -103,11 +111,11 @@ fn filter_quotes(quotes: Vec<Quote>) -> Vec<Quote> {
 fn read_cache() -> Option<Cache> {
 	let path = cache_path()?;
 
-	if std::fs::metadata(&path).ok()?.len() > 128 * 1_024 {
+	if fs::metadata(&path).ok()?.len() > 128 * 1_024 {
 		return None;
 	}
 
-	let mut cache: Cache = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
+	let mut cache: Cache = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
 
 	cache.quotes = filter_quotes(cache.quotes);
 
@@ -115,16 +123,10 @@ fn read_cache() -> Option<Cache> {
 }
 
 fn fetch_cache() -> Option<()> {
-	let client = reqwest::blocking::Client::builder()
-		.timeout(std::time::Duration::from_secs(6))
-		.redirect(reqwest::redirect::Policy::none())
-		.build()
-		.ok()?;
+	let client =
+		Client::builder().timeout(Duration::from_secs(6)).redirect(Policy::none()).build().ok()?;
 	let response =
 		client.get("https://zenquotes.io/api/quotes").send().ok()?.error_for_status().ok()?;
-
-	use std::io::Read;
-
 	let mut bytes = Vec::new();
 
 	response.take(128 * 1_024 + 1).read_to_end(&mut bytes).ok()?;
@@ -144,23 +146,23 @@ fn fetch_cache() -> Option<()> {
 	let cache = Cache { fetched: now(), quotes };
 	let path = cache_path()?;
 
-	std::fs::create_dir_all(path.parent()?).ok()?;
+	fs::create_dir_all(path.parent()?).ok()?;
 
-	let staging = path.with_extension(format!("{}.tmp", std::process::id()));
+	let staging = path.with_extension(format!("{}.tmp", process::id()));
 
-	std::fs::write(&staging, serde_json::to_vec(&cache).ok()?).ok()?;
-	std::fs::rename(staging, path).ok()?;
+	fs::write(&staging, serde_json::to_vec(&cache).ok()?).ok()?;
+	fs::rename(staging, path).ok()?;
 
 	Some(())
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::prompts::{self, CURATED, Quote};
 	#[test]
 	fn remote_quotes_reject_markup_long_text_and_duplicates() {
 		let quote = |q: &str, a: &str| Quote { q: q.into(), a: a.into() };
-		let result = filter_quotes(vec![
+		let result = prompts::filter_quotes(vec![
 			quote("Keep asking questions.", "Example"),
 			quote("Keep asking questions.", "Example"),
 			quote("<script>bad</script>", "Example"),
@@ -173,13 +175,13 @@ mod tests {
 	#[test]
 	#[ignore = "Requires the public ZenQuotes service; run explicitly for live integration verification"]
 	fn live_quote_cache_fetch() {
-		assert!(refresh_cache());
-		assert!(read_cache().is_some());
+		assert!(prompts::refresh_cache());
+		assert!(prompts::read_cache().is_some());
 
-		let text = next();
+		let text = prompts::next();
 
 		assert!(text.contains(" — "));
-		assert_ne!(next(), text);
+		assert_ne!(prompts::next(), text);
 	}
 
 	#[test]
@@ -190,8 +192,8 @@ mod tests {
 			assert!(quote.display().ends_with(&quote.a));
 		}
 
-		let first = next();
+		let first = prompts::next();
 
-		assert_ne!(next(), first);
+		assert_ne!(prompts::next(), first);
 	}
 }

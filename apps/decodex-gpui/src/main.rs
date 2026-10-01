@@ -32,20 +32,14 @@ mod ui_scroll;
 mod ui_theme;
 mod ui_working;
 
-#[cfg(target_os = "macos")] use objc2_foundation as _;
-
-#[cfg(target_os = "macos")] use objc2 as _;
-
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use gpui::{
-	App, AppContext as _, Bounds, WindowBackgroundAppearance, WindowBounds, WindowHandle,
-	WindowOptions, point, px, size,
+	self, App, AppContext as _, Bounds, Global, KeyBinding, Menu, MenuItem, SystemMenuType,
+	TitlebarOptions, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowOptions,
 };
-
-use gpui_platform::application;
-
-use decodex_protocol::{ClientFailure, ClientProfile};
+#[cfg(target_os = "macos")] use objc2 as _;
+#[cfg(target_os = "macos")] use objc2_foundation as _;
 
 use crate::{
 	account_login::AccountLoginController,
@@ -54,6 +48,10 @@ use crate::{
 	},
 	shell::Shell,
 };
+use composer_input::{Copy, Cut, Paste, SelectAll};
+use decodex_protocol::{ClientFailure, ClientProfile};
+use shell::SettingsWindow;
+use ui_theme::window_material;
 
 gpui::actions!(
 	decodex_application,
@@ -73,12 +71,12 @@ gpui::actions!(
 
 #[derive(Default)]
 struct QuitPreflight(bool);
-impl gpui::Global for QuitPreflight {}
+impl Global for QuitPreflight {}
 
 fn main() {
 	frame_trace::start();
 
-	let application = application();
+	let application = gpui_platform::application();
 	let main_window: Rc<RefCell<Option<WindowHandle<Shell>>>> = Rc::new(RefCell::new(None));
 
 	application.on_reopen({
@@ -109,19 +107,19 @@ fn main() {
 
 		let (initial_connection, lifecycle, account_login) =
 			compose_lifecycle(profile, bundled_daemon);
-		let bounds = Bounds::centered(None, size(px(1_248.0), px(840.0)), cx);
+		let bounds = Bounds::centered(None, gpui::size(gpui::px(1_248.0), gpui::px(840.0)), cx);
 		let window = cx
 			.open_window(
 				WindowOptions {
-					titlebar: Some(gpui::TitlebarOptions {
+					titlebar: Some(TitlebarOptions {
 						title: Some("Decodex".into()),
 						appears_transparent: true,
-						traffic_light_position: Some(point(px(14.0), px(14.0))),
+						traffic_light_position: Some(gpui::point(gpui::px(14.0), gpui::px(14.0))),
 					}),
 					window_background: WindowBackgroundAppearance::Blurred,
 					app_owns_titlebar_drag: true,
 					window_bounds: Some(WindowBounds::Windowed(bounds)),
-					window_min_size: Some(size(px(1_180.0), px(720.0))),
+					window_min_size: Some(gpui::size(gpui::px(1_180.0), gpui::px(720.0))),
 					focus: false,
 					show: false,
 					..Default::default()
@@ -140,7 +138,7 @@ fn main() {
 
 		window
 			.update(cx, |_, window, _| {
-				ui_theme::window_material::configure(window);
+				window_material::configure(window);
 			})
 			.expect("configure window material");
 
@@ -288,9 +286,9 @@ fn schedule_window_control_alignment(window: &gpui::Window) {
 			if let Some(button) = native.standardWindowButton(NSWindowButton::CloseButton) {
 				let center_y = ui_theme::CONTROL_MARGIN + ui_theme::CONTROL_GROUP_HEIGHT / 2.0;
 
-				window.set_traffic_light_position(point(
-					px(16.0),
-					px(center_y - button.frame().size.height as f32 / 2.0),
+				window.set_traffic_light_position(gpui::point(
+					gpui::px(16.0),
+					gpui::px(center_y - button.frame().size.height as f32 / 2.0),
 				));
 			}
 		}
@@ -369,7 +367,7 @@ fn hide_main_window(cx: &mut App) {
 	let settings = cx
 		.windows()
 		.into_iter()
-		.filter_map(|w| w.downcast::<shell::SettingsWindow>())
+		.filter_map(|w| w.downcast::<SettingsWindow>())
 		.find(|w| w.is_active(cx) == Some(true));
 
 	if let Some(window) = settings {
@@ -458,8 +456,6 @@ fn request_saved_quit(cx: &mut App) {
 }
 
 fn install_application_menu(cx: &mut App) {
-	use gpui::{KeyBinding, Menu, MenuItem, SystemMenuType};
-
 	cx.bind_keys([
 		KeyBinding::new("cmd-q", Quit, None),
 		KeyBinding::new("cmd-w", CloseWindow, None),
@@ -489,10 +485,10 @@ fn install_application_menu(cx: &mut App) {
 		]),
 		Menu::new("File").items([MenuItem::action("Close Window", CloseWindow)]),
 		Menu::new("Edit").items([
-			MenuItem::action("Cut", composer_input::Cut),
-			MenuItem::action("Copy", composer_input::Copy),
-			MenuItem::action("Paste", composer_input::Paste),
-			MenuItem::action("Select All", composer_input::SelectAll),
+			MenuItem::action("Cut", Cut),
+			MenuItem::action("Copy", Copy),
+			MenuItem::action("Paste", Paste),
+			MenuItem::action("Select All", SelectAll),
 		]),
 		Menu::new("Window").items([MenuItem::action("Minimize", Minimize)]),
 	]);

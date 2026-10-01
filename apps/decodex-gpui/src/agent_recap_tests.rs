@@ -1,16 +1,26 @@
 //! Recap transport tests use a synthetic same-UID socket, not a model provider.
-use super::*;
-
-use decodex_protocol::{
-	CURRENT_VERSION, ClientMessage, CommandPayload, Cursor, QueryPayload, QueryResultEnvelope,
-	QueryResultPayload, ReconnectMode, ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
+use std::{
+	fs,
+	fs::Permissions,
+	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+	thread,
+	thread::JoinHandle,
+	time::Duration,
 };
 
-use futures_util::{SinkExt, StreamExt};
-
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
-
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::TestAppContext;
+use tempfile::TempDir;
+use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::recap::*;
+use decodex_protocol::{
+	CURRENT_VERSION, ClientMessage, CommandError, CommandOutcome, CommandPayload, CommandReceipt,
+	CommandResultEnvelope, Cursor, QueryPayload, QueryResultEnvelope, QueryResultPayload,
+	ReceiptDisposition, ReconnectMode, ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
+	TaskRecap,
+};
 
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
@@ -28,40 +38,37 @@ impl Render for RecapPanel {
 fn fixture(
 	generate: bool,
 	rejection: Option<&'static str>,
-) -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<AgentActionDto>>) {
+) -> (TempDir, ClientProfile, JoinHandle<Vec<AgentActionDto>>) {
 	let root = tempfile::tempdir_in("/tmp").unwrap();
 	let path = root.path().canonicalize().unwrap();
 	let server = path.join("server");
 
-	std::fs::create_dir(&server).unwrap();
-	std::fs::set_permissions(&server, std::fs::Permissions::from_mode(0o700)).unwrap();
+	fs::create_dir(&server).unwrap();
+	fs::set_permissions(&server, Permissions::from_mode(0o700)).unwrap();
 
-	let uid = std::fs::metadata(&path).unwrap().uid();
+	let uid = fs::metadata(&path).unwrap().uid();
 	let config = path.join("config.toml");
 
-	std::fs::write(&config,format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"{SERVER}\"\n")).unwrap();
-	std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
+	fs::write(&config,format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"{SERVER}\"\n")).unwrap();
+	fs::set_permissions(config, Permissions::from_mode(0o600)).unwrap();
 
 	let socket_path = server.join("decodex.sock");
 	let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
 
-	std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+	fs::set_permissions(socket_path, Permissions::from_mode(0o600)).unwrap();
 
 	listener.set_nonblocking(true).unwrap();
 
 	let profile = ClientProfile::load(&path, None).unwrap();
-	let thread = std::thread::spawn(move || {
-		let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	let thread = thread::spawn(move || {
+		let runtime = Builder::new_current_thread().enable_all().build().unwrap();
 
 		runtime.block_on(async {
 			let listener = tokio::net::UnixListener::from_std(listener).unwrap();
 
-			tokio::time::timeout(
-				std::time::Duration::from_secs(15),
-				serve(listener, generate, rejection),
-			)
-			.await
-			.unwrap()
+			time::timeout(Duration::from_secs(15), serve(listener, generate, rejection))
+				.await
+				.unwrap()
 		})
 	});
 
@@ -71,7 +78,7 @@ fn fixture(
 #[test]
 fn lost_recap_reply_is_read_back_and_cancelled_by_exact_request_without_replay() {
 	let (_root, profile, server) = fixture(true, None);
-	let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	let runtime = Builder::new_current_thread().enable_all().build().unwrap();
 
 	runtime.block_on(async {
 		let (cancel, cancellation) = watch::channel(false);
@@ -85,16 +92,13 @@ fn lost_recap_reply_is_read_back_and_cancelled_by_exact_request_without_replay()
 			updates,
 		));
 
-		tokio::time::timeout(std::time::Duration::from_secs(10), results.changed())
-			.await
-			.unwrap()
-			.unwrap();
+		time::timeout(Duration::from_secs(10), results.changed()).await.unwrap().unwrap();
 
 		assert_eq!(results.borrow().as_ref().unwrap().0.as_ref().unwrap().phase, Phase::Pending);
 		// Closing the panel drops its sender while the native request is pending.
 		drop(cancel);
 
-		tokio::time::timeout(std::time::Duration::from_secs(10), worker).await.unwrap().unwrap();
+		time::timeout(Duration::from_secs(10), worker).await.unwrap().unwrap();
 
 		assert!(results.borrow().as_ref().unwrap().0.is_none());
 	});
@@ -103,7 +107,7 @@ fn lost_recap_reply_is_read_back_and_cancelled_by_exact_request_without_replay()
 }
 
 #[gpui::test]
-fn recap_renders_plain_result_and_hides_it_after_source_changes(cx: &mut gpui::TestAppContext) {
+fn recap_renders_plain_result_and_hides_it_after_source_changes(cx: &mut TestAppContext) {
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
 
@@ -126,7 +130,7 @@ fn recap_renders_plain_result_and_hides_it_after_source_changes(cx: &mut gpui::T
 				thread_id: Some(WireText::new("thread").unwrap()),
 				request_id: Some(WireText::new("request").unwrap()),
 				phase: Phase::Ready,
-				recap: Some(decodex_protocol::TaskRecap {
+				recap: Some(TaskRecap {
 					summary: WireText::new("First batch complete.").unwrap(),
 					next_action: None,
 				}),
@@ -170,7 +174,7 @@ fn recap_renders_plain_result_and_hides_it_after_source_changes(cx: &mut gpui::T
 #[test]
 fn opening_a_cold_recap_only_reads_and_does_not_start_inference() {
 	let (_root, profile, server) = fixture(false, None);
-	let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	let runtime = Builder::new_current_thread().enable_all().build().unwrap();
 
 	runtime.block_on(async {
 		let (_cancel, cancellation) = watch::channel(false);
@@ -196,14 +200,14 @@ fn opening_a_cold_recap_only_reads_and_does_not_start_inference() {
 fn active_voice_rejection_is_shown_without_retrying_generation() {
 	let message = "Finish the voice conversation before generating a recap";
 	let (_root, profile, server) = fixture(true, Some(message));
-	let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	let runtime = Builder::new_current_thread().enable_all().build().unwrap();
 
 	runtime.block_on(async {
 		let (_cancel, cancellation) = watch::channel(false);
 		let (updates, results) = watch::channel(None);
 
-		tokio::time::timeout(
-			std::time::Duration::from_secs(5),
+		time::timeout(
+			Duration::from_secs(5),
 			request::run(
 				profile,
 				EntityId::new("root").unwrap(),
@@ -227,7 +231,7 @@ fn active_voice_rejection_is_shown_without_retrying_generation() {
 }
 
 #[gpui::test]
-fn recap_opens_outside_transcript_and_reports_a_missing_connection(cx: &mut gpui::TestAppContext) {
+fn recap_opens_outside_transcript_and_reports_a_missing_connection(cx: &mut TestAppContext) {
 	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 	visual.simulate_resize(gpui::size(px(1_400.), px(900.)));
@@ -237,7 +241,7 @@ fn recap_opens_outside_transcript_and_reports_a_missing_connection(cx: &mut gpui
 	});
 	visual.update(|window, cx| window.draw(cx).clear());
 
-	std::thread::sleep(std::time::Duration::from_millis(240));
+	thread::sleep(Duration::from_millis(240));
 
 	visual.update(|window, cx| window.draw(cx).clear());
 
@@ -257,7 +261,7 @@ fn recap_opens_outside_transcript_and_reports_a_missing_connection(cx: &mut gpui
 
 	visual.update(|window, cx| window.draw(cx).clear());
 
-	std::thread::sleep(std::time::Duration::from_millis(240));
+	thread::sleep(Duration::from_millis(240));
 
 	visual.update(|window, cx| window.draw(cx).clear());
 
@@ -310,12 +314,12 @@ async fn serve(
 		match serde_json::from_str::<ClientMessage>(&text).unwrap() {
 			ClientMessage::Command(command) => {
 				if let Some(message) = rejection {
-					let receipt = ServerMessage::CommandReceipt(decodex_protocol::CommandReceipt {
+					let receipt = ServerMessage::CommandReceipt(CommandReceipt {
 						version: CURRENT_VERSION,
 						server_id: ServerId::new(SERVER).unwrap(),
 						client_command_id: command.client_command_id.clone(),
 						idempotency_key: command.idempotency_key.clone(),
-						disposition: decodex_protocol::ReceiptDisposition::Executed,
+						disposition: ReceiptDisposition::Executed,
 						original_client_command_id: command.client_command_id.clone(),
 					});
 
@@ -324,19 +328,18 @@ async fn serve(
 						.await
 						.unwrap();
 
-					let result =
-						ServerMessage::CommandResult(decodex_protocol::CommandResultEnvelope {
-							version: CURRENT_VERSION,
-							server_id: ServerId::new(SERVER).unwrap(),
-							client_command_id: command.client_command_id,
-							idempotency_key: command.idempotency_key,
-							outcome: decodex_protocol::CommandOutcome::Rejected,
-							entity_revision: None,
-							payload: None,
-							error: Some(decodex_protocol::CommandError::ApplicationUnavailable {
-								message: WireText::new(message).unwrap(),
-							}),
-						});
+					let result = ServerMessage::CommandResult(CommandResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER).unwrap(),
+						client_command_id: command.client_command_id,
+						idempotency_key: command.idempotency_key,
+						outcome: CommandOutcome::Rejected,
+						entity_revision: None,
+						payload: None,
+						error: Some(CommandError::ApplicationUnavailable {
+							message: WireText::new(message).unwrap(),
+						}),
+					});
 
 					socket
 						.send(Message::Text(serde_json::to_string(&result).unwrap().into()))

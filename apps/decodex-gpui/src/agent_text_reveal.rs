@@ -1,24 +1,25 @@
 //! Frame-paced presentation of received text. Never delays transport or stores output.
-use super::*;
-
 use std::time::Instant;
 
+use gpui::{App, RenderOnce};
 use unicode_segmentation::UnicodeSegmentation;
+
+use crate::{shell::agent_surface::*, ui_motion};
 
 #[derive(gpui::IntoElement)]
 pub(super) struct StreamingText {
 	pub text: String,
 	pub key: String,
 }
-impl gpui::RenderOnce for StreamingText {
-	fn render(self, window: &mut Window, cx: &mut gpui::App) -> impl IntoElement {
+impl RenderOnce for StreamingText {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(SharedString::from(self.key.clone()), cx, |_, _| {
 			Reveal::new(Instant::now())
 		});
 		let (end, moving) = state.update(cx, |state, _| state.sample(&self.text, Instant::now()));
 
 		if moving {
-			crate::ui_motion::request_frame(window, cx);
+			ui_motion::request_frame(window, cx);
 		}
 
 		markdown::render(&markdown::response_text(&self.text[..end]), &self.key)
@@ -72,7 +73,7 @@ impl Reveal {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::text_reveal::*;
 	use std::time::Duration;
 	#[test]
 	fn bursts_reveal_on_frames_without_splitting_graphemes_and_then_stop() {

@@ -1,6 +1,7 @@
 //! Recover explicit branches through saved native identity; never create a second fork.
-use super::*;
+use tokio::sync::oneshot;
 
+use crate::shell::agent_surface::prompt_edit::*;
 use decodex_protocol::{PromptForkBoundary, PromptForkPhase, PromptForkResult};
 
 type BranchRecovery = Result<
@@ -25,7 +26,7 @@ impl AgentSurface {
 		let Some(profile) = self.profile.clone() else { return };
 		let key = self.prompt_edit.key.clone();
 		let original = expected.clone();
-		let (send, receive) = tokio::sync::oneshot::channel();
+		let (send, receive) = oneshot::channel();
 		let started =
 			std::thread::Builder::new().name("prompt-fork-recovery".into()).spawn(move || {
 				let result = (|| {

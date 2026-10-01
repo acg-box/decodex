@@ -4,7 +4,7 @@ use std::{
 	cmp::Ordering,
 	collections::{BTreeMap, BTreeSet},
 	ffi::{CStr, CString},
-	fs::File,
+	fs::{self, File},
 	io,
 	os::{
 		fd::{AsRawFd as _, FromRawFd as _, IntoRawFd as _, RawFd},
@@ -18,6 +18,8 @@ use decodex_protocol::{ConversationHistoryPage, EntityId, HistoryCursorToken, Se
 use serde::{Deserialize, Serialize};
 
 use sha2::{Digest as _, Sha256};
+
+use std::str;
 
 const CACHE_DIRECTORY_NAME: &CStr = c"history-page-cache-v1";
 const LOCK_NAME: &CStr = c"lock";
@@ -54,7 +56,7 @@ trait FaultInjector {
 	fn check(&self, edge: DurabilityEdge) -> Result<(), CacheFailure>;
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum CacheRequestKey {
 	Head,
@@ -612,7 +614,7 @@ impl CacheFailure {
 	}
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 struct AuthorityIdentity {
 	stable_server_id: ServerId,
 	protocol_major: u16,
@@ -620,7 +622,7 @@ struct AuthorityIdentity {
 	cache_schema_generation: u32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 struct PageIdentity {
 	authority: AuthorityIdentity,
 	conversation_id: EntityId,
@@ -628,7 +630,7 @@ struct PageIdentity {
 	page_sha256: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 struct IndexEntry {
 	identity: PageIdentity,
 	fresh_received_at_unix_seconds: i64,
@@ -637,7 +639,7 @@ struct IndexEntry {
 	byte_length: u32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 struct CacheIndex {
 	schema_id: String,
 	entries: Vec<IndexEntry>,
@@ -744,7 +746,7 @@ fn load_validated_cache_state(
 			continue;
 		}
 
-		let digest = std::str::from_utf8(&name)
+		let digest = str::from_utf8(&name)
 			.map_err(|_| CacheFailure::new(CacheDiagnostic::UnsafeShape))?
 			.to_owned();
 		let (_, metadata) = read_validated_page(pages, &digest)?;
@@ -1496,7 +1498,7 @@ fn open_or_create_absolute_parent(path: &Path) -> Result<File, CacheFailure> {
 
 	let cache_parent_leaf = CString::new(cache_parent_leaf.as_bytes())
 		.map_err(|_| CacheFailure::new(CacheDiagnostic::InvalidInput))?;
-	let resolved_external_base = std::fs::canonicalize(external_base).map_err(|_| io_failure())?;
+	let resolved_external_base = fs::canonicalize(external_base).map_err(|_| io_failure())?;
 	let mut resolved_components = resolved_external_base.components();
 
 	if !matches!(resolved_components.next(), Some(Component::RootDir)) {
@@ -1963,17 +1965,21 @@ fn io_failure() -> CacheFailure {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-
 	use std::{
-		fs,
+		env, fs,
 		os::unix::fs::{PermissionsExt as _, symlink},
 		path::PathBuf,
 	};
 
-	use decodex_protocol::CURRENT_VERSION;
-
 	use tempfile::TempDir;
+
+	use crate::history_pager::page_cache::{
+		self, CACHE_SCHEMA_GENERATION, CacheAuthority, CacheDiagnostic, CacheFailure, CacheIndex,
+		CacheLookup, CacheRequest, CacheRequestKey, ConversationHistoryPage, DurabilityEdge,
+		EntityId, FRESH_ELIGIBILITY_SECONDS, FaultInjector, HistoryCursorToken, HistoryPageCache,
+		IndexEntry, NoFaults, Ordering, PageIdentity, ServerId,
+	};
+	use decodex_protocol::CURRENT_VERSION;
 
 	#[derive(Clone, Copy, Debug)]
 	enum ParentExpectation {
@@ -2008,7 +2014,7 @@ mod tests {
 	}
 
 	fn host_temp_fixture() -> TempDir {
-		TempDir::new_in(std::env::temp_dir())
+		TempDir::new_in(env::temp_dir())
 			.expect("host temporary directory accepts an isolated fixture")
 	}
 
@@ -2092,7 +2098,7 @@ mod tests {
 			pages.entries.push(entry("bounded-pages", request_key, number, u64::from(number)));
 		}
 
-		evict_to_bounds(&mut pages, NOW).expect("page bounds evict deterministically");
+		page_cache::evict_to_bounds(&mut pages, NOW).expect("page bounds evict deterministically");
 
 		let mut retained_recencies =
 			pages.entries.iter().map(|entry| entry.recency).collect::<Vec<_>>();
@@ -2125,12 +2131,12 @@ mod tests {
 			));
 		}
 
-		assert_eq!(conversation_count(&conversations), 9);
+		assert_eq!(page_cache::conversation_count(&conversations), 9);
 
-		evict_to_bounds(&mut conversations, NOW)
+		page_cache::evict_to_bounds(&mut conversations, NOW)
 			.expect("conversation bounds evict deterministically");
 
-		assert_eq!(conversation_count(&conversations), 8);
+		assert_eq!(page_cache::conversation_count(&conversations), 8);
 		assert_eq!(conversations.entries.len(), 8);
 		assert!(
 			conversations
@@ -2150,8 +2156,11 @@ mod tests {
 				.cmp(higher_identity.identity.page_sha256.as_bytes()),
 			Ordering::Less,
 		);
-		assert_eq!(eviction_order(&lower_identity, &higher_identity), Ordering::Less,);
-		assert_eq!(eviction_order(&higher_identity, &lower_identity), Ordering::Greater,);
+		assert_eq!(page_cache::eviction_order(&lower_identity, &higher_identity), Ordering::Less,);
+		assert_eq!(
+			page_cache::eviction_order(&higher_identity, &lower_identity),
+			Ordering::Greater,
+		);
 	}
 
 	#[test]
@@ -2311,7 +2320,7 @@ mod tests {
 			HistoryPageCache::open(&parent, CACHE_SCHEMA_GENERATION).expect("cache opens");
 
 		assert_eq!(serialized_bytes.as_slice(), expected_bytes);
-		assert_eq!(sha256_hex(expected_bytes), expected_digest);
+		assert_eq!(page_cache::sha256_hex(expected_bytes), expected_digest);
 
 		publish(&mut cache, &request, &page, fresh_received_at);
 
@@ -2374,7 +2383,7 @@ mod tests {
 			let candidate = page("candidate-next");
 			let fresh_received_at = 20_000;
 			let (candidate_bytes, candidate_digest) =
-				page_bytes_and_digest(&candidate).expect("candidate page is bounded");
+				page_cache::page_bytes_and_digest(&candidate).expect("candidate page is bounded");
 			let mut cache =
 				HistoryPageCache::open(&parent, CACHE_SCHEMA_GENERATION).expect("cache opens");
 

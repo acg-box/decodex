@@ -1,6 +1,8 @@
 //! Connector-level visibility preferences, separate from account approval settings.
-use super::{mcp_forms::mcp_button, *};
+use gpui::AnyElement;
+use tokio::runtime::Builder;
 
+use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
 use decodex_protocol::{AgentAppExposureResult as State, AgentToolExposureSurface as Surface};
 
 #[derive(Default)]
@@ -107,8 +109,7 @@ impl AgentSurface {
 
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 		let future = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
 			let state = runtime
@@ -147,11 +148,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn app_exposure_panel(
-		&self,
-		work: &str,
-		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	pub(super) fn app_exposure_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		let Some((owner, connector)) = &self.app_exposure.owner else {
 			return div().into_any_element();
 		};

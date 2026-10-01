@@ -1,7 +1,10 @@
 //! Cold setup survives disk, profile changes and uncertain creation without replay.
-use super::*;
+use gpui::TestAppContext;
+
+use crate::shell::agent_surface::drafts::{storage::*, tests};
 use decodex_protocol::{
-	AgentSandboxDto, ConversationReasoningEffort, DesktopCreationSetup, ServiceTier,
+	AgentSandboxDto, ConversationReasoningEffort, ConversationWorkingDirectory,
+	DesktopCreationSetup, ServiceTier,
 };
 
 fn choose(
@@ -22,10 +25,8 @@ fn choose(
 }
 
 #[gpui::test]
-fn creation_setup_survives_cold_reopen_without_a_message_or_auto_send(
-	cx: &mut gpui::TestAppContext,
-) {
-	let (_service, profile, other) = super::super::tests::profiles();
+fn creation_setup_survives_cold_reopen_without_a_message_or_auto_send(cx: &mut TestAppContext) {
+	let (_service, profile, other) = tests::profiles();
 	let directory = tempfile::tempdir().unwrap();
 	let store =
 		ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -74,7 +75,7 @@ fn creation_setup_survives_cold_reopen_without_a_message_or_auto_send(
 }
 
 #[gpui::test]
-fn unbound_creation_edits_survive_reopen(cx: &mut gpui::TestAppContext) {
+fn unbound_creation_edits_survive_reopen(cx: &mut TestAppContext) {
 	let directory = tempfile::tempdir().unwrap();
 	let store =
 		ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -110,8 +111,8 @@ fn unbound_creation_edits_survive_reopen(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
-fn uncertain_creation_keeps_original_setup_and_later_edits_separate(cx: &mut gpui::TestAppContext) {
-	let (_service, profile, _) = super::super::tests::profiles();
+fn uncertain_creation_keeps_original_setup_and_later_edits_separate(cx: &mut TestAppContext) {
+	let (_service, profile, _) = tests::profiles();
 	let directory = tempfile::tempdir().unwrap();
 	let store =
 		ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -172,7 +173,7 @@ fn uncertain_creation_keeps_original_setup_and_later_edits_separate(cx: &mut gpu
 }
 
 #[gpui::test]
-fn restored_empty_directory_is_not_replaced_by_shell_prefill(cx: &mut gpui::TestAppContext) {
+fn restored_empty_directory_is_not_replaced_by_shell_prefill(cx: &mut TestAppContext) {
 	let directory = tempfile::tempdir().unwrap();
 	let store =
 		ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -182,11 +183,7 @@ fn restored_empty_directory_is_not_replaced_by_shell_prefill(cx: &mut gpui::Test
 	surface.update(cx, |s, cx| {
 		s.draft_profiles.storage = Storage::open(Ok(store.clone()));
 
-		s.seed_context(
-			Some(decodex_protocol::ConversationWorkingDirectory::new("/tmp").unwrap()),
-			vec![],
-			cx,
-		);
+		s.seed_context(Some(ConversationWorkingDirectory::new("/tmp").unwrap()), vec![], cx);
 		s.cwd.update(cx, |input, cx| input.set_content("", cx));
 
 		assert!(s.creation_setup(cx).is_some(), "empty edit still belongs to the saved setup");
@@ -204,7 +201,7 @@ fn restored_empty_directory_is_not_replaced_by_shell_prefill(cx: &mut gpui::Test
 
 		s.restore_unbound_draft(cx);
 		s.seed_context(
-			Some(decodex_protocol::ConversationWorkingDirectory::new("/replacement").unwrap()),
+			Some(ConversationWorkingDirectory::new("/replacement").unwrap()),
 			vec![],
 			cx,
 		);

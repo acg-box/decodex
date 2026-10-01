@@ -1,6 +1,9 @@
 //! Choose native search defaults without changing loaded conversations.
-use super::{mcp_forms::mcp_button, *};
-use decodex_protocol::AgentSearchSettingsResult as State;
+use gpui::AnyElement;
+use tokio::runtime::Builder;
+
+use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
+use decodex_protocol::{AgentSearchSettingsResult as State, ClientFailure};
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -84,8 +87,7 @@ impl AgentSurface {
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 		let query_owner = owner.clone();
 		let future = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
 			let state =
@@ -119,11 +121,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn search_settings_panel(
-		&self,
-		work: &str,
-		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	pub(super) fn search_settings_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_agents.selected.is_some() {
 			return div().into_any_element();
 		}
@@ -220,7 +218,7 @@ impl AgentSurface {
 
 fn feedback(
 	mode: Option<&WireText>,
-	outcome: Option<&Result<AgentCommandResponse, decodex_protocol::ClientFailure>>,
+	outcome: Option<&Result<AgentCommandResponse, ClientFailure>>,
 	state: &State,
 ) -> &'static str {
 	match (mode, outcome, state) {

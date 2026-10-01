@@ -1,14 +1,18 @@
 //! Hook clicks cross the public socket; lost replies trigger reads, not retries.
-use super::{super::wire_test_support::SERVER, *};
+use std::thread::JoinHandle;
 
-use decodex_protocol::{
-	CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
-	QueryResultPayload, ServerId, ServerMessage,
-};
-
-use futures_util::{SinkExt, StreamExt};
-
+use crate::shell::agent_surface::{hooks::*, wire_test_support::SERVER};
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::TestAppContext;
+use tempfile::TempDir;
+use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::wire_test_support;
+use decodex_protocol::{
+	AgentHookEditReceipt, AgentWorkKindDto, CURRENT_VERSION, ClientMessage, CommandPayload,
+	QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId, ServerMessage,
+};
 
 struct HookView {
 	surface: Entity<AgentSurface>,
@@ -19,10 +23,8 @@ impl Render for HookView {
 	}
 }
 
-fn fixture(
-	restore: bool,
-) -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<AgentActionDto>>) {
-	super::super::wire_test_support::fixture(move |listener| serve(listener, restore))
+fn fixture(restore: bool) -> (TempDir, ClientProfile, JoinHandle<Vec<AgentActionDto>>) {
+	wire_test_support::fixture(move |listener| serve(listener, restore))
 }
 
 fn available() -> State {
@@ -51,7 +53,7 @@ fn work() -> AgentWorkItemDto {
 	AgentWorkItemDto {
 		id: "root".into(),
 		parent_goal_id: None,
-		kind: decodex_protocol::AgentWorkKindDto::Goal,
+		kind: AgentWorkKindDto::Goal,
 		title: "Root".into(),
 		codex_thread_id: Some("thread".into()),
 		active_turn_id: None,
@@ -74,7 +76,7 @@ fn snapshot() -> AgentSnapshotDto {
 }
 
 #[gpui::test]
-fn hook_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut gpui::TestAppContext) {
+fn hook_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppContext) {
 	for restore in [false, true] {
 		let (_dir, profile, server) = fixture(restore);
 		let (view, visual) = cx.add_window_view(|_, cx| {
@@ -139,7 +141,7 @@ fn hook_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut gpui::Tes
 }
 
 #[gpui::test]
-fn hook_review_is_invalidated_on_task_or_source_transition(cx: &mut gpui::TestAppContext) {
+fn hook_review_is_invalidated_on_task_or_source_transition(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	for change in ["thread", "running", "removed", "source"] {
@@ -173,8 +175,8 @@ fn hook_review_is_invalidated_on_task_or_source_transition(cx: &mut gpui::TestAp
 }
 
 #[gpui::test]
-fn child_navigation_and_disconnect_cannot_edit_parent_hooks(cx: &mut gpui::TestAppContext) {
-	let (_root, profile, server) = super::super::wire_test_support::fixture(|_| async {});
+fn child_navigation_and_disconnect_cannot_edit_parent_hooks(cx: &mut TestAppContext) {
+	let (_root, profile, server) = wire_test_support::fixture(|_| async {});
 
 	server.join().unwrap();
 
@@ -211,7 +213,7 @@ fn child_navigation_and_disconnect_cannot_edit_parent_hooks(cx: &mut gpui::TestA
 }
 
 #[gpui::test]
-fn running_hook_setting_controls_follow_current_service_eligibility(cx: &mut gpui::TestAppContext) {
+fn running_hook_setting_controls_follow_current_service_eligibility(cx: &mut TestAppContext) {
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
 
@@ -256,7 +258,7 @@ fn running_hook_setting_controls_follow_current_service_eligibility(cx: &mut gpu
 }
 
 #[gpui::test]
-fn managed_and_unknown_hooks_cannot_offer_consent_actions(cx: &mut gpui::TestAppContext) {
+fn managed_and_unknown_hooks_cannot_offer_consent_actions(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	surface.update(cx, |s, _| {
@@ -288,7 +290,7 @@ fn managed_and_unknown_hooks_cannot_offer_consent_actions(cx: &mut gpui::TestApp
 }
 
 #[gpui::test]
-fn ordinary_refresh_keeps_hook_read_and_write_readback(cx: &mut gpui::TestAppContext) {
+fn ordinary_refresh_keeps_hook_read_and_write_readback(cx: &mut TestAppContext) {
 	let (_dir, profile, server) = fixture(false);
 	let surface = cx.new(AgentSurface::new);
 
@@ -330,7 +332,7 @@ fn ordinary_refresh_keeps_hook_read_and_write_readback(cx: &mut gpui::TestAppCon
 }
 
 #[gpui::test]
-fn disconnect_invalidates_hook_review_before_same_source_reconnect(cx: &mut gpui::TestAppContext) {
+fn disconnect_invalidates_hook_review_before_same_source_reconnect(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	surface.update(cx, |s, cx| {
@@ -353,11 +355,11 @@ fn disconnect_invalidates_hook_review_before_same_source_reconnect(cx: &mut gpui
 	});
 }
 
-async fn serve(listener: tokio::net::UnixListener, restore: bool) -> Vec<AgentActionDto> {
+async fn serve(listener: UnixListener, restore: bool) -> Vec<AgentActionDto> {
 	let mut actions = Vec::new();
 
 	for index in 0..3 {
-		let mut socket = super::super::wire_test_support::accept(&listener).await;
+		let mut socket = wire_test_support::accept(&listener).await;
 		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 			panic!("text request")
 		};
@@ -406,7 +408,7 @@ async fn serve(listener: tokio::net::UnixListener, restore: bool) -> Vec<AgentAc
 			}
 			if index == 2 {
 				*can_update = false;
-				*last_edit = Some(Box::new(decodex_protocol::AgentHookEditReceipt {
+				*last_edit = Some(Box::new(AgentHookEditReceipt {
 					outcome: "unknown".into(),
 					hook: WireText::new("fixture-hook").unwrap(),
 					work_id: EntityId::new("other-task").unwrap(),

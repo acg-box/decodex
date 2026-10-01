@@ -1,5 +1,11 @@
 //! Explicit restoration of a native archived task, using fresh desired-state readback.
-use super::*;
+use std::{rc::Rc, time::Duration};
+
+use gpui::{AnyElement, KeyDownEvent};
+use tokio::runtime::Builder;
+use ui_theme::{BLUE, PANEL_HEADER_TINT, TEXT_MUTED};
+
+use crate::shell::agent_surface::*;
 use decodex_protocol::AgentArchiveResult as State;
 
 #[derive(Default)]
@@ -58,11 +64,7 @@ impl AgentSurface {
 		if self.archive.request.is_some() || self.archive.mutation.is_some() {
 			return;
 		}
-		if !force
-			&& self
-				.archive
-				.last_read
-				.is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(15))
+		if !force && self.archive.last_read.is_some_and(|at| at.elapsed() < Duration::from_secs(15))
 		{
 			return;
 		}
@@ -83,8 +85,7 @@ impl AgentSurface {
 		// Keep the archived reading view stable while checking. The request guard
 		// disables Unarchive until this read completes.
 		let request = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime.block_on(AgentClient::new(profile).archive_state(work_id)).ok()
 		});
@@ -158,8 +159,7 @@ impl AgentSurface {
 		self.archive.feedback = "Restoring the original task…".into();
 
 		let request = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let expected_thread = thread_id.as_str().to_owned();
 			let result = runtime.block_on(client.execute(
@@ -227,7 +227,7 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		if self.archive.owner.as_deref() != Some(&work.id) {
 			return div().into_any_element();
 		}
@@ -249,7 +249,7 @@ impl AgentSurface {
 			.items_center()
 			.justify_between()
 			.gap_3()
-			.bg(rgba(ui_theme::PANEL_HEADER_TINT))
+			.bg(rgba(PANEL_HEADER_TINT))
 			.text_size(px(11.))
 			.child(
 				div()
@@ -259,7 +259,7 @@ impl AgentSurface {
 					.child(if restoring { "Unarchiving…" } else { "Archived" })
 					.child(
 						div()
-							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.text_color(rgb(TEXT_MUTED))
 							.child("History is available. Unarchive to continue."),
 					),
 			)
@@ -285,8 +285,8 @@ fn button(
 	label: &'static str,
 	cx: &mut Context<AgentSurface>,
 	action: impl Fn(&mut AgentSurface, &mut Context<AgentSurface>) + 'static,
-) -> gpui::AnyElement {
-	let action = std::rc::Rc::new(action);
+) -> AnyElement {
+	let action = Rc::new(action);
 	let click = action.clone();
 
 	div()
@@ -296,10 +296,10 @@ fn button(
 		.tab_index(0)
 		.aria_label(label)
 		.cursor_pointer()
-		.text_color(rgb(ui_theme::BLUE))
+		.text_color(rgb(BLUE))
 		.py_1()
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
-		.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 				cx.stop_propagation();
 
@@ -312,7 +312,10 @@ fn button(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::archive::*;
+
+	use std::future;
+
 	#[gpui::test]
 	fn snapshot_refresh_does_not_strand_archive_read(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -323,7 +326,7 @@ mod tests {
 
 			let epoch = s.archive.epoch;
 
-			s.archive.request = Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+			s.archive.request = Some(cx.spawn(async |_, _| future::pending::<()>().await));
 			s.generation += 1; // An unrelated snapshot request starts before the archive reply.
 
 			assert!(s.complete_archive_read(
@@ -469,7 +472,7 @@ mod tests {
 }
 #[cfg(test)]
 mod background_read_tests {
-	use super::*;
+	use crate::shell::agent_surface::archive::*;
 	#[test]
 	fn transient_read_does_not_flash_error_or_replace_known_state() {
 		let mut panel = Panel::default();

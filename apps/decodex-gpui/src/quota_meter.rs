@@ -5,6 +5,8 @@ use gpui::{App, IntoElement, RenderOnce, Window, div, prelude::*, px, rgb, rgba}
 
 use std::time::{Duration, Instant};
 
+use crate::ui_motion;
+
 pub(super) const FILL_DURATION: Duration = Duration::from_millis(850);
 
 #[derive(Clone)]
@@ -44,7 +46,7 @@ pub(super) struct QuotaMeter {
 impl RenderOnce for QuotaMeter {
 	fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
 		let now = Instant::now();
-		let reduced = crate::ui_motion::reduced();
+		let reduced = ui_motion::reduced();
 		let animated = self.fill.as_ref().and_then(|fill| fill.remaining(self.quota, now, reduced));
 		let observed = animated.or_else(|| remaining(self.quota));
 		let value = observed.unwrap_or(0.0).clamp(0.0, 100.0);
@@ -187,7 +189,7 @@ fn reset_time(micros: i64) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::quota_meter::*;
 	#[test]
 	fn quota_bands_match_the_menu_bar_contract() {
 		let cases: serde_json::Value = serde_json::from_str(include_str!(

@@ -1,9 +1,25 @@
 //! Compact, anchored navigation through saved conversation turns.
-use super::*;
+use std::{
+	cell::Cell,
+	collections::{BTreeMap, BTreeSet},
+	fmt::{Display, Formatter},
+	rc::Rc,
+};
 
-use gpui::{AnyElement, canvas, point, size};
+use gpui::{
+	AnyElement, KeyDownEvent, Pixels, Role, ScrollHandle, ScrollWheelEvent, canvas, point, size,
+};
+use ui_theme::{BLUE, BODY_LINE_HEIGHT, SURFACE_OVERLAY_MATERIAL, TEXT, TEXT_MUTED};
 
-use std::{cell::Cell, collections::BTreeMap, rc::Rc};
+use crate::{
+	shell::{
+		agent_surface::{native_timeline, *},
+		workspace_symbols,
+		workspace_symbols::Symbol,
+	},
+	ui_motion, ui_scroll,
+};
+use decodex_protocol::{AgentHistoryEntryDto, AgentTimelineEntry};
 
 const HISTORY_ANCHOR_INSET: f32 = 56.0;
 
@@ -13,15 +29,15 @@ pub(super) enum HistoryKey {
 	Native { thread: String, position: u64, kind: u8, id: String },
 }
 impl HistoryKey {
-	pub(super) fn native(thread: &str, entry: &decodex_protocol::AgentTimelineEntry) -> Self {
-		let (position, kind, id) = super::native_timeline::key(entry);
+	pub(super) fn native(thread: &str, entry: &AgentTimelineEntry) -> Self {
+		let (position, kind, id) = native_timeline::key(entry);
 
 		Self::Native { thread: thread.into(), position, kind, id: id.into() }
 	}
 }
 
-impl std::fmt::Display for HistoryKey {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for HistoryKey {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Self::Local(id) => write!(f, "{id}"),
 			Self::Native { thread, position, kind, id } =>
@@ -115,7 +131,7 @@ impl AgentSurface {
 
 	pub(super) fn anchored_history_entry(
 		&self,
-		entry: &decodex_protocol::AgentHistoryEntryDto,
+		entry: &AgentHistoryEntryDto,
 		work: &str,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
@@ -147,7 +163,7 @@ impl AgentSurface {
 
 		self.transcript_scroll.entry(binding.work.clone()).or_default();
 
-		let mut retained = std::collections::BTreeSet::new();
+		let mut retained = BTreeSet::new();
 		let mut current = None;
 
 		for entry in &self.native_history.entries {
@@ -193,7 +209,7 @@ impl AgentSurface {
 	pub(super) fn anchored_native_history_entry(
 		&self,
 		work: &AgentWorkItemDto,
-		entry: &decodex_protocol::AgentTimelineEntry,
+		entry: &AgentTimelineEntry,
 		row: AnyElement,
 	) -> AnyElement {
 		self.anchor_history_row(
@@ -224,7 +240,7 @@ impl AgentSurface {
 					if (position.get() - measured).abs() > 0.5 {
 						position.set(measured);
 
-						crate::ui_motion::request_frame(window, cx);
+						ui_motion::request_frame(window, cx);
 					}
 				}
 			})
@@ -256,12 +272,8 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn scroll_history(
-		&mut self,
-		event: &gpui::ScrollWheelEvent,
-		cx: &mut Context<Self>,
-	) {
-		let delta = event.delta.pixel_delta(px(ui_theme::BODY_LINE_HEIGHT));
+	pub(super) fn scroll_history(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
+		let delta = event.delta.pixel_delta(px(BODY_LINE_HEIGHT));
 		// macOS also sends phase-only and horizontal gesture events. They do
 		// not move the transcript and must not cancel its current scroll state.
 		if delta.y == px(0.) {
@@ -276,7 +288,7 @@ impl AgentSurface {
 		self.history_selected = None;
 
 		if let Some(scroll) = self.selected.as_ref().and_then(|id| self.transcript_scroll.get(id)) {
-			let smooth = crate::ui_scroll::smooth(event.delta);
+			let smooth = ui_scroll::smooth(event.delta);
 
 			if smooth {
 				let now = std::time::Instant::now();
@@ -327,7 +339,7 @@ impl AgentSurface {
 			if self.selected.as_ref() != Some(&wheel.work) {
 				self.wheel_scroll = None;
 			} else if let Some(scroll) = self.transcript_scroll.get(&wheel.work) {
-				let (offset, moving) = if crate::ui_scroll::enabled() {
+				let (offset, moving) = if ui_scroll::enabled() {
 					wheel.motion.sample(std::time::Instant::now())
 				} else {
 					(wheel.motion.to, false)
@@ -337,7 +349,7 @@ impl AgentSurface {
 				scroll.set_offset(point(px(0.), px(offset)));
 
 				if moving {
-					crate::ui_motion::request_frame(window, cx);
+					ui_motion::request_frame(window, cx);
 
 					cx.notify();
 				} else {
@@ -384,7 +396,7 @@ impl AgentSurface {
 		}
 
 		if t < 1.0 {
-			crate::ui_motion::request_frame(window, cx);
+			ui_motion::request_frame(window, cx);
 
 			cx.notify();
 		} else {
@@ -499,26 +511,18 @@ impl AgentSurface {
 					AgentDispatchStateDto::Dispatching | AgentDispatchStateDto::Running
 				) && !self.thread_in_use(&work.id)
 			});
-		let width = crate::ui_motion::value(
-			"jump-latest-width",
-			if working { 56. } else { 28. },
-			window,
-			cx,
-		);
+		let width =
+			ui_motion::value("jump-latest-width", if working { 56. } else { 28. }, window, cx);
 		let clock =
 			window.use_keyed_state("jump-latest-clock", cx, |_, _| std::time::Instant::now());
 		let phase = clock.read(cx).elapsed().as_secs_f32() * 4.;
 
 		if visible && working {
-			crate::ui_motion::request_frame(window, cx);
+			ui_motion::request_frame(window, cx);
 		}
 
-		let opacity = crate::ui_motion::value(
-			"jump-latest-opacity",
-			if visible { 1. } else { 0. },
-			window,
-			cx,
-		);
+		let opacity =
+			ui_motion::value("jump-latest-opacity", if visible { 1. } else { 0. }, window, cx);
 
 		div()
 			.absolute()
@@ -537,7 +541,7 @@ impl AgentSurface {
 						.id("jump-to-latest")
 						.debug_selector(|| "jump-to-latest".into())
 						.occlude()
-						.role(gpui::Role::Button)
+						.role(Role::Button)
 						.aria_label(if working {
 							"Working · Jump to latest message"
 						} else {
@@ -547,7 +551,7 @@ impl AgentSurface {
 						.h(px(28.))
 						.w(px(width))
 						.rounded_full()
-						.bg(rgba(ui_theme::SURFACE_OVERLAY_MATERIAL))
+						.bg(rgba(SURFACE_OVERLAY_MATERIAL))
 						.flex()
 						.items_center()
 						.justify_center()
@@ -556,7 +560,7 @@ impl AgentSurface {
 						.cursor_pointer()
 						.hover(|d| d.bg(rgba(0x302d397c)))
 						.on_click(cx.listener(|s, _, _, cx| s.jump_to_latest(cx)))
-						.on_key_down(cx.listener(|s, e: &gpui::KeyDownEvent, _, cx| {
+						.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 							if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 								s.jump_to_latest(cx);
 								cx.stop_propagation();
@@ -565,20 +569,13 @@ impl AgentSurface {
 						.when(working, |d| {
 							d.child(div().flex().items_center().gap(px(2.)).children((0..3).map(
 								|i| {
-									div()
-										.size(px(3.))
-										.rounded_full()
-										.bg(rgb(ui_theme::BLUE))
-										.opacity(
-											0.35 + 0.65 * ((phase - i as f32 * 0.7).sin() + 1.)
-												/ 2.,
-										)
+									div().size(px(3.)).rounded_full().bg(rgb(BLUE)).opacity(
+										0.35 + 0.65 * ((phase - i as f32 * 0.7).sin() + 1.) / 2.,
+									)
 								},
 							)))
 						})
-						.child(super::super::workspace_symbols::icon(
-							super::super::workspace_symbols::Symbol::ArrowDown,
-						)),
+						.child(workspace_symbols::icon(Symbol::ArrowDown)),
 				)
 			})
 			.into_any_element()
@@ -591,7 +588,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		// History nodes are transient while switching agents. Only the explicit
 		// visibility control may resize the rail and move the transcript.
-		crate::ui_motion::reveal(
+		ui_motion::reveal(
 			"history-rail-reveal",
 			if self.timeline_visible { 44.0 } else { 0.0 },
 			true,
@@ -600,7 +597,7 @@ impl AgentSurface {
 		.into_any_element()
 	}
 
-	fn active_history_index(&self, scroll: &gpui::ScrollHandle) -> usize {
+	fn active_history_index(&self, scroll: &ScrollHandle) -> usize {
 		let last = self.history_marks.len().saturating_sub(1);
 		let at_end = scroll.max_offset().y > px(0.)
 			&& (scroll.offset().y + scroll.max_offset().y).abs() < px(1.);
@@ -640,7 +637,7 @@ impl AgentSurface {
 		});
 		let last = positions.len() - 1;
 		let current = self.active_history_index(&scroll);
-		let active_position = crate::ui_motion::value(
+		let active_position = ui_motion::value(
 			SharedString::from(format!(
 				"rail-active-{}",
 				self.selected.as_deref().unwrap_or_default()
@@ -663,7 +660,7 @@ impl AgentSurface {
 			.overflow_hidden();
 
 		for (index, (id, mark)) in self.history_marks.iter().enumerate() {
-			let influence = crate::ui_motion::value(
+			let influence = ui_motion::value(
 				SharedString::from(format!(
 					"rail-magnify-{}-{id}",
 					self.selected.as_deref().unwrap_or_default()
@@ -700,7 +697,7 @@ impl AgentSurface {
 					.on_click(cx.listener(move |s, _, _, cx| {
 						s.jump_to_history(id.clone(), cx);
 					}))
-					.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+					.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 						if event.keystroke.key == "enter" || event.keystroke.key == "space" {
 							s.jump_to_history(keyboard_id.clone(), cx);
 							cx.stop_propagation();
@@ -714,9 +711,9 @@ impl AgentSurface {
 								let activity =
 									(1. - (index as f32 - active_position).abs()).clamp(0., 1.);
 								let color = if working && index == last {
-									rgb(ui_theme::BLUE)
+									rgb(BLUE)
 								} else {
-									rgba((ui_theme::TEXT << 8) | (100. + 155. * activity) as u32)
+									rgba((TEXT << 8) | (100. + 155. * activity) as u32)
 								};
 								let width = 7.0 + influence * 16.0;
 								let height = 2.0 + influence;
@@ -745,7 +742,7 @@ impl AgentSurface {
 #[derive(Clone)]
 pub(super) struct HistoryMark {
 	pub(super) position: Rc<Cell<f32>>,
-	hit_bounds: Rc<Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
+	hit_bounds: Rc<Cell<Option<gpui::Bounds<Pixels>>>>,
 	question: String,
 	time: String,
 	answer: String,
@@ -787,16 +784,10 @@ impl Render for HistoryPreview {
 			.gap_2()
 			.text_size(px(12.0))
 			.line_height(px(18.0))
-			.child(
-				div()
-					.text_size(px(10.0))
-					.text_color(rgb(ui_theme::TEXT_MUTED))
-					.child(self.0.time.clone()),
-			)
-			.child(div().text_color(rgb(ui_theme::TEXT)).child(self.0.question.clone()))
+			.child(div().text_size(px(10.0)).text_color(rgb(TEXT_MUTED)).child(self.0.time.clone()))
+			.child(div().text_color(rgb(TEXT)).child(self.0.question.clone()))
 			.when(!self.0.answer.is_empty(), |panel| {
-				panel
-					.child(div().text_color(rgb(ui_theme::TEXT_MUTED)).child(self.0.answer.clone()))
+				panel.child(div().text_color(rgb(TEXT_MUTED)).child(self.0.answer.clone()))
 			})
 	}
 }
@@ -830,7 +821,10 @@ fn current_mark(positions: &[f32], offset: f32) -> usize {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::activity::*;
+
+	use std::thread;
+
 	#[gpui::test]
 	fn agent_loading_keeps_transcript_horizontal_bounds(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -845,7 +839,7 @@ mod tests {
 
 		visual.update(|w, cx| w.draw(cx).clear());
 
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|w, cx| w.draw(cx).clear());
 
@@ -860,7 +854,7 @@ mod tests {
 			});
 
 			for delay in [0, 100, 140] {
-				std::thread::sleep(std::time::Duration::from_millis(delay));
+				thread::sleep(std::time::Duration::from_millis(delay));
 
 				visual.update(|w, cx| w.draw(cx).clear());
 
@@ -882,7 +876,7 @@ mod tests {
 
 		visual.update(|w, cx| w.draw(cx).clear());
 
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|w, cx| w.draw(cx).clear());
 
@@ -1004,7 +998,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
@@ -1146,7 +1140,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
@@ -1308,7 +1302,7 @@ mod tests {
 			w.draw(cx).clear();
 		});
 
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
@@ -1552,7 +1546,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 		// Panel animation uses wall time, including in optimized test builds.
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| window.draw(cx).clear());
 
@@ -1717,7 +1711,7 @@ mod tests {
 			cx.notify();
 		});
 		// Let time-based panel transitions settle before checking the final scroll extent.
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		for _ in 0..40 {
 			visual.update(|window, cx| window.draw(cx).clear());
@@ -1759,7 +1753,7 @@ mod tests {
 			assert!(!s.history_follow_paused.contains("agent"));
 		});
 		// Let time-based panel transitions settle before checking the final scroll extent.
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		for _ in 0..40 {
 			visual.update(|window, cx| window.draw(cx).clear());
@@ -1809,7 +1803,7 @@ mod tests {
 			assert_eq!(s.active_history_index(&scroll), s.history_marks.len() - 1);
 		});
 		// Let time-based panel transitions settle before checking the final scroll extent.
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		for _ in 0..40 {
 			visual.update(|w, cx| w.draw(cx).clear());

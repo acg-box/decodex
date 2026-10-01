@@ -1,7 +1,9 @@
 // Adapted from openai/codex at 595cc91e8cbb1c2ca822d0311dcf12709410c582.
 // Copyright OpenAI. Licensed under Apache-2.0; see LICENSE-APACHE.
-use super::{RenderError, render};
+use crate::shell::agent_surface::markdown::mermaid::{self, RenderError};
 use unicode_width::UnicodeWidthStr;
+
+use crate::shell::agent_surface::markdown::mermaid::Role;
 
 #[test]
 fn branches_merges_and_retry_loop() {
@@ -9,7 +11,7 @@ fn branches_merges_and_retry_loop() {
 
 	super::assert_snapshot(
 		"branches_merges_and_retry_loop",
-		&render(source, 100).expect("valid upstream diagram fixture"),
+		&mermaid::render(source, 100).expect("valid upstream diagram fixture"),
 	);
 }
 
@@ -41,7 +43,7 @@ fn rejects_partial_or_unsupported_input() {
 		"flowchart TD; A -->|yes┐| B",
 	] {
 		assert_eq!(
-			render(source, /* max_width */ 100),
+			mermaid::render(source, /* max_width */ 100),
 			Err(RenderError::Unsupported),
 			"{source:?}"
 		);
@@ -56,17 +58,17 @@ fn source_graph_and_width_limits() {
 		format!("graph TD; {}", (0..17).map(|n| format!("N{n};")).collect::<String>()),
 		format!("graph TD; {}", "A-->B;".repeat(25)),
 	] {
-		assert_eq!(render(&source, /* max_width */ 200), Err(RenderError::Limit));
+		assert_eq!(mermaid::render(&source, /* max_width */ 200), Err(RenderError::Limit));
 	}
 
-	let output =
-		render("graph TD; A --> B", /* max_width */ 100).expect("valid upstream diagram fixture");
+	let output = mermaid::render("graph TD; A --> B", /* max_width */ 100)
+		.expect("valid upstream diagram fixture");
 	let width =
 		output.lines().map(UnicodeWidthStr::width).max().expect("valid upstream diagram fixture");
 
-	assert_eq!(render("graph TD; A --> B", width), Ok(output));
-	assert_eq!(render("graph TD; A --> B", width - 1), Err(RenderError::TooWide));
-	assert_eq!(render("graph TD; A", /* max_width */ 0), Err(RenderError::TooWide));
+	assert_eq!(mermaid::render("graph TD; A --> B", width), Ok(output));
+	assert_eq!(mermaid::render("graph TD; A --> B", width - 1), Err(RenderError::TooWide));
+	assert_eq!(mermaid::render("graph TD; A", /* max_width */ 0), Err(RenderError::TooWide));
 }
 
 #[test]
@@ -91,7 +93,8 @@ fn reconstruct_every_edge_from_rendered_paths() {
 			}
 		}
 
-		let output = render(&source, /* max_width */ 100).expect("valid upstream diagram fixture");
+		let output =
+			mermaid::render(&source, /* max_width */ 100).expect("valid upstream diagram fixture");
 		let mut rows =
 			output.lines().map(|line| line.chars().collect::<Vec<_>>()).collect::<Vec<_>>();
 
@@ -181,8 +184,6 @@ fn reconstruct_every_edge_from_rendered_paths() {
 
 #[test]
 fn semantic_spans_distinguish_labels_from_matching_endpoint_glyphs() {
-	use super::Role;
-
 	let lines = super::render_spans("sequenceDiagram; A-xB: x", /* max_width */ 100)
 		.expect("valid upstream diagram fixture");
 	let roles = lines
@@ -225,15 +226,15 @@ fn stadium_shapes_references_and_widths() {
 		let source = format!(
 			"flowchart {direction}; A; A([开始]); A([开始]) --> B[Work] --> C{{Done?}}; C --> A"
 		);
-		let output = render(&source, 100).expect("mixed stadium flowchart");
+		let output = mermaid::render(&source, 100).expect("mixed stadium flowchart");
 
 		assert!(output.contains('╭') && output.contains('╯'));
 		assert!(output.contains('┌') && output.contains('◇'));
 
 		let width = output.lines().map(UnicodeWidthStr::width).max().expect("rendered lines");
 
-		assert_eq!(render(&source, width), Ok(output));
-		assert_eq!(render(&source, width - 1), Err(RenderError::TooWide));
+		assert_eq!(mermaid::render(&source, width), Ok(output));
+		assert_eq!(mermaid::render(&source, width - 1), Err(RenderError::TooWide));
 	}
 	for source in [
 		"A([unclosed]",
@@ -246,11 +247,14 @@ fn stadium_shapes_references_and_widths() {
 		"A([label]) trailing",
 	] {
 		assert_eq!(
-			render(&format!("flowchart TD; {source}"), 100),
+			mermaid::render(&format!("flowchart TD; {source}"), 100),
 			Err(RenderError::Unsupported),
 			"{source}"
 		);
 	}
 
-	assert_eq!(render(&format!("graph TD; A([{}])", "x".repeat(41)), 100), Err(RenderError::Limit));
+	assert_eq!(
+		mermaid::render(&format!("graph TD; A([{}])", "x".repeat(41)), 100),
+		Err(RenderError::Limit)
+	);
 }

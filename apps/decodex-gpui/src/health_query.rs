@@ -2,7 +2,7 @@
 
 use std::{
 	collections::VecDeque,
-	sync::{Arc, Mutex, MutexGuard},
+	sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
 
 use tokio::sync::Notify;
@@ -244,7 +244,7 @@ impl HealthQuery {
 	}
 
 	fn lock(&self) -> MutexGuard<'_, QueryState> {
-		self.inner.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+		self.inner.state.lock().unwrap_or_else(PoisonError::into_inner)
 	}
 }
 
@@ -414,12 +414,13 @@ pub(crate) enum HealthRouteOutcome {
 
 #[cfg(test)]
 mod tests {
+	use crate::health_query::{
+		HealthDispatch, HealthLoadState, HealthQuery, HealthRouteOutcome, HealthSnapshot,
+	};
 	use decodex_protocol::{
 		CURRENT_VERSION, DoctorCheck, DoctorComponent, DoctorReport, DoctorStatus, QueryEnvelope,
 		QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId,
 	};
-
-	use super::{HealthDispatch, HealthLoadState, HealthQuery, HealthRouteOutcome, HealthSnapshot};
 
 	fn server(value: &str) -> ServerId {
 		ServerId::new(value).expect("fixture server ID must be bounded")

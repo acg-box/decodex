@@ -1,5 +1,5 @@
 //! Explicit typed replies to live MCP elicitation requests.
-use super::*;
+use crate::shell::agent_surface::*;
 use serde_json::{Value, json};
 
 impl AgentSurface {
@@ -413,7 +413,9 @@ fn mcp_account_label(value: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::mcp_forms::*;
+	use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
+
 	#[test]
 	fn account_label_uses_only_native_apps_metadata() {
 		let request = json!({"serverName":"codex_apps","_meta":{"connector_id":"calendar","link_id":" work/link "},"tool_params":{"link_id":"personal"}});
@@ -438,8 +440,6 @@ mod tests {
 	fn approval_renders_only_offered_persistence_and_rejects_stale_scope(
 		cx: &mut gpui::TestAppContext,
 	) {
-		use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		surface.update(visual, |s, cx| {
@@ -538,8 +538,6 @@ mod tests {
 
 	#[gpui::test]
 	fn url_open_requires_separate_explicit_confirmation(cx: &mut gpui::TestAppContext) {
-		use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		surface.update(visual, |s, cx| {

@@ -1,6 +1,15 @@
 //! Explicit history confirmation waits for the existing local draft writer.
-use super::*;
-type ConfirmationReply = Result<AgentCommandResponse, decodex_protocol::ClientFailure>;
+use std::{fs, fs::File, path::Path, time::Duration};
+
+use tokio::sync::{
+	oneshot,
+	oneshot::{Receiver, Sender, error::RecvError},
+};
+
+use crate::shell::agent_surface::prompt_edit::*;
+use decodex_protocol::{AgentExecutionOverrides, ClientFailure, PromptForkIntent};
+
+type ConfirmationReply = Result<AgentCommandResponse, ClientFailure>;
 
 impl AgentSurface {
 	pub(super) fn confirm_prompt_editor(
@@ -44,7 +53,7 @@ impl AgentSurface {
 			};
 
 			if let Some(boundary) = boundary {
-				pending.fork = Some(decodex_protocol::PromptForkIntent {
+				pending.fork = Some(PromptForkIntent {
 					target_work_id: EntityId::new(unique_command())
 						.expect("bounded branch identity"),
 					boundary,
@@ -57,9 +66,9 @@ impl AgentSurface {
 		let expected_execution = execution.clone();
 		let worker_draft = pending.clone();
 		let panel_key = self.prompt_edit.key.clone();
-		let (checked, check) = tokio::sync::oneshot::channel();
-		let (permit, permitted) = tokio::sync::oneshot::channel();
-		let (completed, completion) = tokio::sync::oneshot::channel();
+		let (checked, check) = oneshot::channel();
+		let (permit, permitted) = oneshot::channel();
+		let (completed, completion) = oneshot::channel();
 		let started =
 			std::thread::Builder::new().name("prompt-confirm-io".into()).spawn(move || {
 				let Ok(runtime) =
@@ -111,7 +120,7 @@ impl AgentSurface {
 				return;
 			}
 
-			let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+			let deadline = std::time::Instant::now() + Duration::from_secs(5);
 
 			loop {
 				let ready = surface
@@ -138,7 +147,7 @@ impl AgentSurface {
 					break;
 				}
 
-				cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
+				cx.background_executor().timer(Duration::from_millis(50)).await;
 			}
 
 			if permit.send(()).is_err() {
@@ -171,7 +180,7 @@ impl AgentSurface {
 		&mut self,
 		pending: &DesktopPromptEditDraft,
 		resuming: bool,
-		result: Result<ConfirmationReply, tokio::sync::oneshot::error::RecvError>,
+		result: Result<ConfirmationReply, RecvError>,
 		cx: &mut Context<Self>,
 	) {
 		self.prompt_edit.task = None;
@@ -213,7 +222,7 @@ impl AgentSurface {
 	fn prompt_confirmation_ready(
 		&mut self,
 		pending: &DesktopPromptEditDraft,
-		expected_execution: &decodex_protocol::AgentExecutionOverrides,
+		expected_execution: &AgentExecutionOverrides,
 		resuming: bool,
 		deadline: std::time::Instant,
 		cx: &mut Context<Self>,
@@ -243,7 +252,7 @@ impl AgentSurface {
 		&mut self,
 		expected: &DesktopPromptEditDraft,
 		pending: &DesktopPromptEditDraft,
-		expected_execution: &decodex_protocol::AgentExecutionOverrides,
+		expected_execution: &AgentExecutionOverrides,
 		checked: Result<(), &'static str>,
 		cx: &mut Context<Self>,
 	) -> bool {
@@ -323,15 +332,14 @@ pub(super) fn readable_local_media(input: &PromptDraft) -> Result<(), &'static s
 		}
 
 		let path = part["path"].as_str().ok_or("A local media path is missing")?;
-		let path = std::path::Path::new(path);
+		let path = Path::new(path);
 
 		if !path.is_absolute() {
 			return Err(
 				"A local media path is relative. Use Check edited input to resolve and save its location before continuing.",
 			);
 		}
-		if !std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file())
-			|| std::fs::File::open(path).is_err()
+		if !fs::metadata(path).is_ok_and(|metadata| metadata.is_file()) || File::open(path).is_err()
 		{
 			return Err("A local media file is unavailable. History was not changed.");
 		}
@@ -343,12 +351,8 @@ pub(super) fn readable_local_media(input: &PromptDraft) -> Result<(), &'static s
 async fn confirm_worker(
 	client: AgentClient,
 	worker_draft: DesktopPromptEditDraft,
-	execution: decodex_protocol::AgentExecutionOverrides,
-	channels: (
-		tokio::sync::oneshot::Sender<Result<(), &'static str>>,
-		tokio::sync::oneshot::Receiver<()>,
-		tokio::sync::oneshot::Sender<ConfirmationReply>,
-	),
+	execution: AgentExecutionOverrides,
+	channels: (Sender<Result<(), &'static str>>, Receiver<()>, Sender<ConfirmationReply>),
 ) {
 	let (checked, permitted, completed) = channels;
 	let result = if worker_draft
@@ -401,13 +405,16 @@ async fn confirm_worker(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::prompt_edit::confirmation::*;
+
+	use std::fs;
+
 	#[test]
 	fn prompt_confirm_media_check_rejects_missing_or_nonfile_paths() {
 		let directory = tempfile::tempdir().unwrap();
 		let file = directory.path().join("image.png");
 
-		std::fs::write(&file, b"fixture").unwrap();
+		fs::write(&file, b"fixture").unwrap();
 
 		for kind in ["localImage", "localAudio"] {
 			let input =

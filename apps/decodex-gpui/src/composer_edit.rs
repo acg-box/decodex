@@ -1,10 +1,11 @@
 //! Undo and redo for the conversation draft.
-use super::{ComposerInput, Context, Range, Redo, Undo, Window};
+use crate::composer_input::{ComposerInput, Context, Range, Redo, Undo, Window};
+use decodex_protocol::PromptDraft;
 
 #[derive(Clone)]
 pub(super) struct Snapshot {
 	content: String,
-	native_part: Option<decodex_protocol::PromptDraft>,
+	native_part: Option<PromptDraft>,
 	bytes: usize,
 	primary: Range<usize>,
 }

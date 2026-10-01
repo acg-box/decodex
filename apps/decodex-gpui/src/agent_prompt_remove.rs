@@ -1,7 +1,9 @@
 //! Explicit local input removal. No history mutation or submission occurs here.
-use super::*;
+use std::{collections::BTreeSet, path::Path};
 
-use std::collections::BTreeSet;
+use gpui::AnyElement;
+
+use crate::shell::agent_surface::{mcp_forms, prompt_edit::*};
 
 pub(super) struct Removal {
 	pub(super) key: String,
@@ -98,10 +100,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(in super::super) fn prompt_removal_panel(
-		&self,
-		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	pub(in super::super) fn prompt_removal_panel(&self, cx: &mut Context<Self>) -> AnyElement {
 		let Some(removal) = &self.prompt_edit.removal else {
 			return div().into_any_element();
 		};
@@ -150,7 +149,7 @@ impl AgentSurface {
 				let identity = (part_index, element_index);
 				let key = removal.key.clone();
 
-				panel = panel.child(super::super::mcp_forms::mcp_button(
+				panel = panel.child(mcp_forms::mcp_button(
 					format!("prompt-remove-marker-{part_index}-{element_index}"),
 					title,
 					removal.markers.contains(&identity),
@@ -207,7 +206,7 @@ pub(super) fn label(input: &PromptDraft, index: usize) -> String {
 		"image" => part["fileId"].as_str(),
 		"localImage" | "localAudio" => part["path"]
 			.as_str()
-			.and_then(|path| std::path::Path::new(path).file_name())
+			.and_then(|path| Path::new(path).file_name())
 			.and_then(|name| name.to_str()),
 		_ => None,
 	};

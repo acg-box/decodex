@@ -1,7 +1,10 @@
 //! One cancellable observation connection for the visible managed conversation.
-use super::*;
-use decodex_protocol::{AgentLiveMessageDto, AgentOutputResult};
 use std::time::{Duration, Instant};
+
+use tokio::sync::watch;
+
+use crate::shell::agent_surface::*;
+use decodex_protocol::{AgentLiveMessageDto, AgentOutputResult};
 
 #[derive(Default)]
 pub(super) struct OutputStream {
@@ -36,7 +39,7 @@ impl AgentSurface {
 		let Ok(work) = EntityId::new(owner.clone()) else {
 			return;
 		};
-		let (sender, mut receiver) = tokio::sync::watch::channel(None);
+		let (sender, mut receiver) = watch::channel(None);
 
 		if std::thread::Builder::new()
 			.name("agent-output-io".into())
@@ -125,7 +128,7 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::output_stream::*;
 	#[gpui::test]
 	fn output_is_visible_only_for_its_owner_and_current_turn(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);

@@ -1,5 +1,10 @@
 //! Provider request forms bound to the exact persisted request event.
-use super::*;
+use gpui::{AnyElement, Div, KeyDownEvent};
+use serde_json::{Map, Value};
+use ui_theme::BLUE;
+
+use crate::{shell::agent_surface::*, ui_theme::HOVER_FILL};
+use decodex_protocol::MAX_HISTORY_INLINE_BYTES;
 
 #[derive(Default)]
 pub(super) struct RequestReader {
@@ -31,7 +36,7 @@ pub(super) struct QuestionTimer {
 	disabled: bool,
 }
 impl QuestionTimer {
-	fn new(value: &serde_json::Value, now: std::time::Instant) -> Self {
+	fn new(value: &Value, now: std::time::Instant) -> Self {
 		Self { started: now, disabled: value["isBlocking"].as_bool() != Some(false) }
 	}
 
@@ -73,7 +78,7 @@ impl AgentSurface {
 
 		if let AgentRequestResult::Available { event_id, method, request_json, .. } = request
 			&& method == "item/tool/requestUserInput"
-			&& let Ok(value) = serde_json::from_str::<serde_json::Value>(request_json.as_str())
+			&& let Ok(value) = serde_json::from_str::<Value>(request_json.as_str())
 		{
 			self.question_timers
 				.entry(*event_id)
@@ -108,7 +113,7 @@ impl AgentSurface {
 		snapshot: &AgentSnapshotDto,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let Some(AgentRequestResult::Available { work_id, event_id, method, request_json }) =
 			&self.request
 		else {
@@ -120,9 +125,8 @@ impl AgentSurface {
 			return div().into_any_element();
 		}
 
-		let large = request_json.as_str().len() > decodex_protocol::MAX_HISTORY_INLINE_BYTES;
-		let value: serde_json::Value =
-			serde_json::from_str(request_json.as_str()).unwrap_or_default();
+		let large = request_json.as_str().len() > MAX_HISTORY_INLINE_BYTES;
+		let value: Value = serde_json::from_str(request_json.as_str()).unwrap_or_default();
 
 		if method == "mcpServer/elicitation/request" {
 			return if large {
@@ -170,7 +174,7 @@ impl AgentSurface {
 					.tab_index(0)
 					.aria_label("Send answers")
 					.cursor_pointer()
-					.text_color(rgb(ui_theme::BLUE))
+					.text_color(rgb(BLUE))
 					.on_click(cx.listener(|s, _, _, cx| s.submit_answers(cx)))
 					.child("Send answers")
 					.smooth(),
@@ -192,7 +196,7 @@ impl AgentSurface {
 		panel.into_any_element()
 	}
 
-	fn large_request_panel(&self, event: i64, text: &str, cx: &mut Context<Self>) -> gpui::Div {
+	fn large_request_panel(&self, event: i64, text: &str, cx: &mut Context<Self>) -> Div {
 		let offset = self.request_reader.offset.min(text.len());
 		let mut end = offset.saturating_add(8_192).min(text.len());
 
@@ -229,7 +233,7 @@ impl AgentSurface {
 
 			panel = panel.child(div().id(id).debug_selector(move || id.into())
 				.role(Role::Button).tab_index(0).aria_label(label).cursor_pointer().child(label)
-				.on_key_down(cx.listener(move |s, key: &gpui::KeyDownEvent, _, cx| {
+				.on_key_down(cx.listener(move |s, key: &KeyDownEvent, _, cx| {
 					if ["enter", "space"].contains(&key.keystroke.key.as_str()) && s.generation == generation
 						&& matches!(&s.request, Some(AgentRequestResult::Available { event_id, .. }) if *event_id == event) {
 						cx.stop_propagation();
@@ -262,12 +266,12 @@ impl AgentSurface {
 
 	fn approval_request_panel(
 		&self,
-		mut panel: gpui::Div,
+		mut panel: Div,
 		method: &str,
 		request_json: &str,
-		value: &serde_json::Value,
+		value: &Value,
 		cx: &mut Context<Self>,
-	) -> gpui::Div {
+	) -> Div {
 		let (heading, selector) = if method == "item/fileChange/requestApproval" {
 			("Allow file changes?", "approval-kind-file-change")
 		} else if method == "item/permissions/requestApproval" {
@@ -445,7 +449,7 @@ impl AgentSurface {
 	fn submit_answers(&mut self, cx: &mut Context<Self>) {
 		self.snooze_question_timeout();
 
-		let mut answers = serde_json::Map::new();
+		let mut answers = Map::new();
 
 		for (id, input) in &self.question_inputs {
 			let text = input.read(cx).content().trim();
@@ -502,11 +506,7 @@ impl AgentSurface {
 		}
 	}
 
-	fn question_form(
-		&self,
-		question: &serde_json::Value,
-		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	fn question_form(&self, question: &Value, cx: &mut Context<Self>) -> AnyElement {
 		let id = question["id"].as_str().unwrap_or_default();
 		let mut row = div()
 			.flex()
@@ -555,9 +555,9 @@ impl AgentSurface {
 		&self,
 		id: &str,
 		label: &'static str,
-		response: serde_json::Value,
+		response: Value,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let event = match &self.request {
 			Some(AgentRequestResult::Available { event_id, .. }) => *event_id,
 			_ => 0,
@@ -579,8 +579,8 @@ impl AgentSurface {
 			.items_center()
 			.rounded(px(5.0))
 			.cursor_pointer()
-			.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
-			.text_color(rgb(ui_theme::BLUE))
+			.hover(|s| s.bg(rgba(HOVER_FILL)))
+			.text_color(rgb(BLUE))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				if s.generation == generation && s.request_reader.revision == revision
 					&& matches!(&s.request, Some(AgentRequestResult::Available { event_id, .. }) if *event_id == event) {
@@ -593,22 +593,28 @@ impl AgentSurface {
 	}
 }
 
-fn permission_summary(value: &serde_json::Value) -> String {
+fn permission_summary(value: &Value) -> String {
 	// Preserve the exact requested paths and access modes, including newer provider fields.
 	serde_json::to_string_pretty(value).unwrap_or_else(|_| "Access details unavailable".into())
 }
 
 #[cfg(test)]
 mod timing_tests {
-	use super::QuestionTimer;
-	use serde_json::json;
-	use std::time::{Duration, Instant};
+	use std::{
+		thread,
+		time::{Duration, Instant},
+	};
+
+	use crate::shell::agent_surface::requests::QuestionTimer;
+	use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
 
 	#[test]
 	fn nonblocking_timeout_has_grace_countdown_and_single_empty_response_claim() {
 		let start = Instant::now();
-		let mut timer =
-			QuestionTimer::new(&json!({"isBlocking":false,"autoResolutionMs":1}), start);
+		let mut timer = QuestionTimer::new(
+			&serde_json::json!({"isBlocking":false,"autoResolutionMs":1}),
+			start,
+		);
 
 		assert_eq!(timer.remaining(start + Duration::from_secs(59)), None);
 		assert_eq!(timer.remaining(start + Duration::from_secs(60)), Some(60));
@@ -623,17 +629,17 @@ mod timing_tests {
 		let start = Instant::now();
 
 		for value in [
-			json!({}),
-			json!({"isBlocking":true}),
-			json!({"isBlocking":"false"}),
-			json!({"autoResolutionMs":1}),
+			serde_json::json!({}),
+			serde_json::json!({"isBlocking":true}),
+			serde_json::json!({"isBlocking":"false"}),
+			serde_json::json!({"autoResolutionMs":1}),
 		] {
 			assert!(
 				!QuestionTimer::new(&value, start).claim_expired(start + Duration::from_secs(500))
 			);
 		}
 
-		let mut timer = QuestionTimer::new(&json!({"isBlocking":false}), start);
+		let mut timer = QuestionTimer::new(&serde_json::json!({"isBlocking":false}), start);
 
 		timer.disabled = true;
 
@@ -641,7 +647,7 @@ mod timing_tests {
 	}
 	#[gpui::test]
 	fn large_request_reader_navigates_and_rejects_stale_sections(cx: &mut gpui::TestAppContext) {
-		use super::*;
+		use crate::shell::agent_surface::requests::*;
 
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
@@ -652,7 +658,7 @@ mod timing_tests {
 
 			s.snapshot.as_mut().unwrap().pending_events = vec![decodex_protocol::AgentPendingEventDto { id:902, source_event_id:"large".into(),work_item_id:work.clone(),event_kind:"permission_pending".into(),created_at_micros:1,delivery_claimed:false }];
 
-			let request = AgentRequestResult::Available { event_id:902,work_id:work,method:"item/commandExecution/requestApproval".into(),request_json:decodex_protocol::AgentRequestText::new(json!({"command":"echo 界🙂".repeat(2_000),"availableDecisions":["accept","decline"]}).to_string()).unwrap() };
+			let request = AgentRequestResult::Available { event_id:902,work_id:work,method:"item/commandExecution/requestApproval".into(),request_json:decodex_protocol::AgentRequestText::new(serde_json::json!({"command":"echo 界🙂".repeat(2_000),"availableDecisions":["accept","decline"]}).to_string()).unwrap() };
 
 			s.prepare_question_inputs(&request,cx); s.request = Some(request);
 		});
@@ -663,7 +669,7 @@ mod timing_tests {
 		});
 		// Let the fixture's dock-close animation settle before choosing a
 		// scroll offset and clicking the request pagination control.
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
@@ -725,7 +731,7 @@ mod timing_tests {
 	fn large_permission_grant_reaches_dispatch_without_copying_reply(
 		cx: &mut gpui::TestAppContext,
 	) {
-		use super::*;
+		use crate::shell::agent_surface::requests::*;
 
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
@@ -751,7 +757,7 @@ mod timing_tests {
 				work_id: work,
 				method: "item/permissions/requestApproval".into(),
 				request_json: decodex_protocol::AgentRequestText::new(
-					json!({"permissions":{"fileSystem":{"write":["/tmp/界".repeat(10_000)]}}})
+					serde_json::json!({"permissions":{"fileSystem":{"write":["/tmp/界".repeat(10_000)]}}})
 						.to_string(),
 				)
 				.unwrap(),
@@ -811,9 +817,7 @@ mod timing_tests {
 
 	#[gpui::test]
 	fn question_option_interaction_snoozes_only_its_request(cx: &mut gpui::TestAppContext) {
-		use super::*;
-
-		use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
+		use crate::shell::agent_surface::requests::*;
 
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
@@ -830,13 +834,13 @@ mod timing_tests {
                 pending_events:vec![AgentPendingEventDto { id:7, source_event_id:"question".into(), work_item_id:"root".into(),event_kind:"user_input_pending".into(),created_at_micros:1,delivery_claimed:false }]
             })));
 
-            let request=AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"item/tool/requestUserInput".into(),request_json:decodex_protocol::AgentRequestText::new(json!({"isBlocking":false,"questions":[{"id":"format","question":"Which format?","options":[{"label":"PDF","description":"Document"}]}]}).to_string()).unwrap()};
+            let request=AgentRequestResult::Available {event_id:7,work_id:"root".into(),method:"item/tool/requestUserInput".into(),request_json:decodex_protocol::AgentRequestText::new(serde_json::json!({"isBlocking":false,"questions":[{"id":"format","question":"Which format?","options":[{"label":"PDF","description":"Document"}]}]}).to_string()).unwrap()};
 
             s.prepare_question_inputs(&request,cx);
 
             s.question_timers.get_mut(&7).unwrap().started = Instant::now() - Duration::from_secs(61);
 
-            s.question_timers.insert(8, QuestionTimer::new(&json!({"isBlocking":false}),Instant::now()));
+            s.question_timers.insert(8, QuestionTimer::new(&serde_json::json!({"isBlocking":false}),Instant::now()));
 
             s.request=Some(request);
         });
@@ -884,7 +888,7 @@ mod timing_tests {
 	}
 	#[gpui::test]
 	fn approval_panels_show_only_the_native_executor(cx: &mut gpui::TestAppContext) {
-		use super::*;
+		use crate::shell::agent_surface::requests::*;
 
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
@@ -907,7 +911,7 @@ mod timing_tests {
 				}];
 				s.request = Some(AgentRequestResult::Available {
 					event_id:902, work_id:work, method:method.into(),
-					request_json:decodex_protocol::AgentRequestText::new(json!({"environmentId":environment,"cwd":cwd,"permissions":{"network":{"enabled":true}}}).to_string()).unwrap(),
+					request_json:decodex_protocol::AgentRequestText::new(serde_json::json!({"environmentId":environment,"cwd":cwd,"permissions":{"network":{"enabled":true}}}).to_string()).unwrap(),
 				});
 
 				cx.notify();
@@ -938,7 +942,7 @@ mod timing_tests {
 	fn terminal_input_approval_is_distinct_from_new_and_legacy_commands(
 		cx: &mut gpui::TestAppContext,
 	) {
-		use super::*;
+		use crate::shell::agent_surface::requests::*;
 
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
@@ -955,9 +959,9 @@ mod timing_tests {
 					event_kind: "permission_pending".into(), created_at_micros: 1, delivery_claimed: false,
 				}];
 
-				let mut value = json!({"command":"confirm\n", "cwd":"/workspace", "availableDecisions":["accept","decline"]});
+				let mut value = serde_json::json!({"command":"confirm\n", "cwd":"/workspace", "availableDecisions":["accept","decline"]});
 
-				if let Some(kind) = kind { value["kind"] = json!(kind); }
+				if let Some(kind) = kind { value["kind"] = serde_json::json!(kind); }
 
 				s.request = Some(AgentRequestResult::Available {
 					event_id: 901, work_id: work, method: "item/commandExecution/requestApproval".into(),

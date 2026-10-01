@@ -1,10 +1,12 @@
 //! Diagram integration: closed fences, literal fallback, resizing and source copy.
-use super::*;
+use gpui::{Modifiers, Render, ScrollDelta, ScrollWheelEvent, TestAppContext};
+
+use crate::shell::agent_surface::markdown::mermaid_view::*;
 
 struct Preview {
 	text: String,
 }
-impl gpui::Render for Preview {
+impl Render for Preview {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 		super::super::render(&self.text, "diagram-preview")
 	}
@@ -77,7 +79,7 @@ fn streaming_and_unsupported_blocks_keep_complete_literal_source() {
 }
 
 #[gpui::test]
-fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut gpui::TestAppContext) {
+fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut TestAppContext) {
 	let source =
 		"flowchart LR; A([Request with a longer label]) --> B[Reply with a longer label]  \r\n";
 	let (preview, visual) =
@@ -103,9 +105,9 @@ fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut gpui::Test
 		previous_size = Some(text.size);
 
 		if width == 160. {
-			visual.simulate_event(gpui::ScrollWheelEvent {
+			visual.simulate_event(ScrollWheelEvent {
 				position: bounds.center(),
-				delta: gpui::ScrollDelta::Pixels(gpui::point(px(-60.), px(0.))),
+				delta: ScrollDelta::Pixels(gpui::point(px(-60.), px(0.))),
 				..Default::default()
 			});
 			visual.update(|window, cx| {
@@ -121,7 +123,7 @@ fn mermaid_view_scrolls_without_wrapping_and_copies_original(cx: &mut gpui::Test
 
 	let button = visual.debug_bounds("mermaid-copy-diagram-preview-0").expect("source copy");
 
-	visual.simulate_click(button.center(), gpui::Modifiers::default());
+	visual.simulate_click(button.center(), Modifiers::default());
 	visual.update(|_, cx| {
 		assert_eq!(cx.read_from_clipboard().and_then(|item| item.text()), Some(source.into()));
 	});

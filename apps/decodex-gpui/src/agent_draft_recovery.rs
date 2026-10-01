@@ -1,8 +1,9 @@
 //! Explicit conflict reconciliation; copies retain exact service ownership.
 #[path = "agent_draft_export.rs"] mod export;
 
-use super::{AgentSurface, Context, DesktopDraftDocument, Drafts, SaveFailure, publish_document};
-
+use crate::shell::agent_surface::drafts::storage::{
+	AgentSurface, Context, DesktopDraftDocument, Drafts, SaveFailure, publish_document,
+};
 use decodex_protocol::{ClientProfile, DesktopRecoveredDraft};
 
 impl AgentSurface {
@@ -281,18 +282,20 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::{
-		super::{
-			ClientDraftStore, DesktopComposerDraft, DesktopProfileDraft, IdempotencyKey, Storage,
-		},
-		*,
+	use crate::shell::agent_surface::drafts::storage::{
+		ClientDraftStore, DesktopComposerDraft, DesktopProfileDraft, IdempotencyKey, Storage,
+		recovery::*,
 	};
+
+	use std::thread;
+
+	use crate::shell::agent_surface::drafts::tests;
 
 	#[gpui::test]
 	fn full_copy_capacity_requires_confirmed_removal_and_retains_current_input(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let (_service, profile, _) = super::super::super::tests::profiles();
+		let (_service, profile, _) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -365,7 +368,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
@@ -411,7 +414,7 @@ mod tests {
 	fn restore_copy_click_preserves_unsaved_editor_and_isolates_profile(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let (_service, profile, other) = super::super::super::tests::profiles();
+		let (_service, profile, other) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -468,7 +471,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
@@ -537,7 +540,7 @@ mod tests {
 	fn keep_both_preserves_later_edits_and_refreshes_inactive_profiles(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let (_service, first, second) = super::super::super::tests::profiles();
+		let (_service, first, second) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -606,7 +609,7 @@ mod tests {
 	fn keep_both_resolves_seed_conflict_without_repeating_it_after_restart(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let (_service, profile, _) = super::super::super::tests::profiles();
+		let (_service, profile, _) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
 			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -654,7 +657,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear();

@@ -1,9 +1,16 @@
 //! Confirmation crosses the socket only after the exact local record is durable.
-use super::*;
-use decodex_protocol::*;
-use futures_util::{SinkExt, StreamExt};
-use std::os::unix::fs::PermissionsExt;
+use std::{
+	fs, fs::Permissions, os::unix::fs::PermissionsExt as _, sync::mpsc, thread, time::Duration,
+};
+
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::TestAppContext;
+use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::drafts::{storage::*, tests};
+use decodex_protocol::*;
+
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 struct View {
 	surface: Entity<AgentSurface>,
@@ -16,21 +23,21 @@ impl Render for View {
 }
 
 #[gpui::test]
-fn confirmation_waits_for_disk_and_keeps_the_main_composer(cx: &mut gpui::TestAppContext) {
+fn confirmation_waits_for_disk_and_keeps_the_main_composer(cx: &mut TestAppContext) {
 	run_confirmation(cx, None);
 }
 #[gpui::test]
-fn branch_confirmation_saves_choice_before_native_dispatch(cx: &mut gpui::TestAppContext) {
+fn branch_confirmation_saves_choice_before_native_dispatch(cx: &mut TestAppContext) {
 	run_confirmation(cx, Some(PromptForkBoundary::BeforeInput));
 }
 #[gpui::test]
-fn branch_after_turn_needs_no_input_preflight(cx: &mut gpui::TestAppContext) {
+fn branch_after_turn_needs_no_input_preflight(cx: &mut TestAppContext) {
 	run_confirmation(cx, Some(PromptForkBoundary::AfterTurn));
 }
-fn run_confirmation(cx: &mut gpui::TestAppContext, boundary: Option<PromptForkBoundary>) {
+fn run_confirmation(cx: &mut TestAppContext, boundary: Option<PromptForkBoundary>) {
 	cx.background_executor.allow_parking();
 
-	let (service, profile, _) = super::super::tests::profiles();
+	let (service, profile, _) = tests::profiles();
 	let directory = tempfile::tempdir().unwrap();
 	let store =
 		ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -38,18 +45,18 @@ fn run_confirmation(cx: &mut gpui::TestAppContext, boundary: Option<PromptForkBo
 	let socket_path = service.path().join("server/decodex.sock");
 	let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
 
-	std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+	fs::set_permissions(socket_path, Permissions::from_mode(0o600)).unwrap();
 
 	listener.set_nonblocking(true).unwrap();
 
 	let inspect = store.clone();
 	let scope = profile.draft_scope_key();
-	let (done, finished) = std::sync::mpsc::channel();
-	let server = std::thread::spawn(move || {
-		tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+	let (done, finished) = mpsc::channel();
+	let server = thread::spawn(move || {
+		Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
 			let listener = tokio::net::UnixListener::from_std(listener).unwrap();
 
-			tokio::time::timeout(std::time::Duration::from_secs(10), async {
+			time::timeout(Duration::from_secs(10), async {
 				for step in (0..4).filter(|step| boundary != Some(PromptForkBoundary::AfterTurn) || *step != 2) {
 					let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap().0).await.unwrap();
 					let _ = socket.next().await;
@@ -145,20 +152,20 @@ fn run_confirmation(cx: &mut gpui::TestAppContext, boundary: Option<PromptForkBo
 				break;
 			}
 
-			std::thread::sleep(std::time::Duration::from_millis(5));
+			thread::sleep(Duration::from_millis(5));
 		}
 
 		visual.simulate_click(bounds.expect("confirmation control").center(), Default::default());
 	}
 	for _ in 0..300 {
 		visual.run_until_parked();
-		visual.executor().advance_clock(std::time::Duration::from_millis(50));
+		visual.executor().advance_clock(Duration::from_millis(50));
 
 		if finished.try_recv().is_ok() {
 			break;
 		}
 
-		std::thread::sleep(std::time::Duration::from_millis(5));
+		thread::sleep(Duration::from_millis(5));
 	}
 
 	server.join().unwrap();

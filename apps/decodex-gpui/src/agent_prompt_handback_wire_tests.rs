@@ -1,9 +1,25 @@
 //! Handback requires saved input and refreshed presentation before acknowledgement.
-use super::*;
-use decodex_protocol::*;
-use futures_util::{SinkExt, StreamExt};
-use std::os::unix::fs::PermissionsExt;
+use std::{
+	fs,
+	fs::Permissions,
+	os::unix::fs::PermissionsExt as _,
+	sync::{
+		mpsc,
+		mpsc::{Receiver, Sender},
+	},
+	thread,
+	thread::JoinHandle,
+	time::Duration,
+};
+
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::TestAppContext;
+use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::drafts::{storage::*, tests};
+use decodex_protocol::*;
+
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 struct View {
 	surface: Entity<AgentSurface>,
@@ -16,10 +32,10 @@ impl Render for View {
 }
 
 #[gpui::test]
-fn prompt_handback_saves_and_refreshes_before_acknowledgement(cx: &mut gpui::TestAppContext) {
+fn prompt_handback_saves_and_refreshes_before_acknowledgement(cx: &mut TestAppContext) {
 	cx.background_executor.allow_parking();
 
-	let (service, profile, _) = super::super::tests::profiles();
+	let (service, profile, _) = tests::profiles();
 	let directory = tempfile::tempdir().unwrap();
 	let store =
 		ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
@@ -27,15 +43,15 @@ fn prompt_handback_saves_and_refreshes_before_acknowledgement(cx: &mut gpui::Tes
 	let socket_path = service.path().join("server/decodex.sock");
 	let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
 
-	std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+	fs::set_permissions(socket_path, Permissions::from_mode(0o600)).unwrap();
 
 	listener.set_nonblocking(true).unwrap();
 
 	let scope = profile.draft_scope_key();
 	let inspect = store.clone();
 	let inspect_scope = scope.clone();
-	let (acknowledged, acknowledgement) = std::sync::mpsc::channel();
-	let (checked, check) = std::sync::mpsc::channel();
+	let (acknowledged, acknowledgement) = mpsc::channel();
+	let (checked, check) = mpsc::channel();
 	let server = spawn_server(listener, inspect, inspect_scope, acknowledged, check);
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
@@ -120,7 +136,7 @@ fn prompt_handback_saves_and_refreshes_before_acknowledgement(cx: &mut gpui::Tes
 
 	for _ in 0..400 {
 		visual.run_until_parked();
-		visual.executor().advance_clock(std::time::Duration::from_millis(20));
+		visual.executor().advance_clock(Duration::from_millis(20));
 
 		if acknowledgement.try_recv().is_ok() {
 			surface.read_with(visual, |s, _| {
@@ -147,7 +163,7 @@ fn prompt_handback_saves_and_refreshes_before_acknowledgement(cx: &mut gpui::Tes
 			break;
 		}
 
-		std::thread::sleep(std::time::Duration::from_millis(5));
+		thread::sleep(Duration::from_millis(5));
 	}
 
 	server.join().unwrap();
@@ -171,15 +187,15 @@ fn spawn_server(
 	listener: std::os::unix::net::UnixListener,
 	inspect: ClientDraftStore,
 	inspect_scope: String,
-	acknowledged: std::sync::mpsc::Sender<()>,
-	check: std::sync::mpsc::Receiver<()>,
-) -> std::thread::JoinHandle<()> {
-	std::thread::spawn(move || {
-		tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(
+	acknowledged: Sender<()>,
+	check: Receiver<()>,
+) -> JoinHandle<()> {
+	thread::spawn(move || {
+		Builder::new_current_thread().enable_all().build().unwrap().block_on(
 			async {
 				let listener = tokio::net::UnixListener::from_std(listener).unwrap();
 
-				tokio::time::timeout(std::time::Duration::from_secs(10), async {
+				time::timeout(Duration::from_secs(10), async {
 
 					for step in 0..6 {
 						let mut socket =
@@ -234,7 +250,7 @@ fn spawn_server(
 										assert_eq!(disk.profiles[&inspect_scope].composer.text, "Unrelated main input");
 
 										acknowledged.send(()).unwrap();
-										check.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+										check.recv_timeout(Duration::from_secs(5)).unwrap();
 									},
 									_ => panic!("unexpected mutation at step {step}"),
 								}

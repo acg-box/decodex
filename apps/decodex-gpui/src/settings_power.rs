@@ -1,5 +1,7 @@
 //! Host-owned macOS sleep policy. Never stores a competing application preference.
-use super::*;
+use gpui::{AnyElement, KeyDownEvent, Task};
+
+use crate::settings_surface::*;
 
 #[derive(Default)]
 pub(super) struct PowerSettings {
@@ -7,7 +9,7 @@ pub(super) struct PowerSettings {
 	pub pending: bool,
 	pub error: Option<String>,
 	pub checked: Option<std::time::Instant>,
-	pub task: Option<gpui::Task<()>>,
+	pub task: Option<Task<()>>,
 }
 
 impl SettingsSurface {
@@ -60,7 +62,7 @@ impl SettingsSurface {
 		cx.notify();
 	}
 
-	pub(super) fn power_control(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn power_control(&self, cx: &mut Context<Self>) -> AnyElement {
 		if !cfg!(target_os = "macos") {
 			return div().into_any_element();
 		}
@@ -104,7 +106,7 @@ impl SettingsSurface {
 							.on_click(
 								cx.listener(move |s, _, _, cx| s.power_request(Some(!enabled), cx)),
 							)
-							.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
+							.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 								if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 									s.power_request(Some(!enabled), cx);
 									cx.stop_propagation();
@@ -203,7 +205,7 @@ fn set(_: bool) -> Result<bool, String> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::settings_surface::power::*;
 	#[test]
 	fn reads_only_the_global_sleep_policy() {
 		assert_eq!(

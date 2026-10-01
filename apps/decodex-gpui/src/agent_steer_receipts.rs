@@ -1,5 +1,7 @@
 //! Resolve only an exact positive receipt; pending-list absence is not evidence.
-use super::*;
+use tokio::runtime::Builder;
+
+use crate::shell::agent_surface::*;
 #[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::AgentSteerIdentity;
 use decodex_protocol::AgentSteerReceiptResult;
 
@@ -17,8 +19,7 @@ impl AgentSurface {
 		let Some(profile) = self.profile.clone() else { return };
 		let epoch = self.command_epoch;
 		let request = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime.block_on(AgentClient::new(profile).steer_receipt(identity)).ok()
 		});
@@ -97,7 +98,7 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::steer_receipts::*;
 
 	#[gpui::test]
 	fn exact_steer_receipt_preserves_later_edits_and_other_task_drafts(

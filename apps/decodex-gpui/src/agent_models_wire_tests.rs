@@ -1,14 +1,18 @@
 //! Model clicks cross the public socket; lost replies trigger reads, not retries.
-use super::{super::wire_test_support::SERVER, *};
+use std::thread::JoinHandle;
 
-use decodex_protocol::{
-	CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
-	QueryResultPayload, ServerId, ServerMessage,
-};
-
-use futures_util::{SinkExt, StreamExt};
-
+use crate::shell::agent_surface::{models::*, wire_test_support::SERVER};
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::TestAppContext;
+use tempfile::TempDir;
+use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::wire_test_support;
+use decodex_protocol::{
+	AgentModelResponse, AgentModelSettingsResult, AgentWorkKindDto, CURRENT_VERSION, ClientMessage,
+	CommandPayload, QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId, ServerMessage,
+};
 
 const EFFORT: &str = "future-provider-reasoning-effort-over-32-bytes";
 
@@ -30,8 +34,8 @@ impl Render for ModelView {
 fn fixture(
 	preserve: bool,
 	confirmed: bool,
-) -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<AgentActionDto>>) {
-	super::super::wire_test_support::fixture(move |listener| serve(listener, preserve, confirmed))
+) -> (TempDir, ClientProfile, JoinHandle<Vec<AgentActionDto>>) {
+	wire_test_support::fixture(move |listener| serve(listener, preserve, confirmed))
 }
 
 fn receipt(preserve: bool, confirmed: bool) -> decodex_protocol::AgentModelSelectionReceipt {
@@ -44,7 +48,7 @@ fn receipt(preserve: bool, confirmed: bool) -> decodex_protocol::AgentModelSelec
 			Some(ConversationReasoningEffort::new(EFFORT).unwrap())
 		},
 		manual: true,
-		response: decodex_protocol::AgentModelResponse::Unknown,
+		response: AgentModelResponse::Unknown,
 		target_observed: confirmed,
 		reconciled: false,
 	}
@@ -89,7 +93,7 @@ fn work() -> AgentWorkItemDto {
 	AgentWorkItemDto {
 		id: "root".into(),
 		parent_goal_id: None,
-		kind: decodex_protocol::AgentWorkKindDto::Goal,
+		kind: AgentWorkKindDto::Goal,
 		title: "Root".into(),
 		codex_thread_id: Some("thread".into()),
 		active_turn_id: None,
@@ -112,7 +116,7 @@ fn snapshot() -> AgentSnapshotDto {
 }
 
 #[gpui::test]
-fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut gpui::TestAppContext) {
+fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppContext) {
 	for (preserve, confirmed) in [(false, false), (true, false), (false, true), (true, true)] {
 		let (_dir, profile, server) = fixture(preserve, confirmed);
 		let (view, visual) = cx.add_window_view(|_, cx| {
@@ -226,7 +230,7 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut gpui::Te
 }
 
 #[gpui::test]
-fn model_review_is_invalidated_on_task_or_source_transition(cx: &mut gpui::TestAppContext) {
+fn model_review_is_invalidated_on_task_or_source_transition(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	for change in ["thread", "turn", "running", "removed", "source", "resolved"] {
@@ -266,8 +270,8 @@ fn model_review_is_invalidated_on_task_or_source_transition(cx: &mut gpui::TestA
 }
 
 #[gpui::test]
-fn child_navigation_and_disconnect_cannot_edit_parent_models(cx: &mut gpui::TestAppContext) {
-	let (_root, profile, server) = super::super::wire_test_support::fixture(|_| async {});
+fn child_navigation_and_disconnect_cannot_edit_parent_models(cx: &mut TestAppContext) {
+	let (_root, profile, server) = wire_test_support::fixture(|_| async {});
 
 	server.join().unwrap();
 
@@ -304,7 +308,7 @@ fn child_navigation_and_disconnect_cannot_edit_parent_models(cx: &mut gpui::Test
 }
 
 #[gpui::test]
-fn running_task_model_controls_follow_current_service_eligibility(cx: &mut gpui::TestAppContext) {
+fn running_task_model_controls_follow_current_service_eligibility(cx: &mut TestAppContext) {
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
 
@@ -349,7 +353,7 @@ fn running_task_model_controls_follow_current_service_eligibility(cx: &mut gpui:
 }
 
 #[gpui::test]
-fn late_model_read_cannot_attach_to_a_changed_task(cx: &mut gpui::TestAppContext) {
+fn late_model_read_cannot_attach_to_a_changed_task(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	for changed_source in [false, true] {
@@ -386,7 +390,7 @@ fn late_model_read_cannot_attach_to_a_changed_task(cx: &mut gpui::TestAppContext
 
 #[gpui::test]
 fn model_history_renders_automatic_reconciliation_without_claiming_delivery(
-	cx: &mut gpui::TestAppContext,
+	cx: &mut TestAppContext,
 ) {
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
@@ -435,7 +439,7 @@ fn model_history_renders_automatic_reconciliation_without_claiming_delivery(
 }
 
 #[gpui::test]
-fn ordinary_refresh_keeps_task_model_read_and_selection_receipt(cx: &mut gpui::TestAppContext) {
+fn ordinary_refresh_keeps_task_model_read_and_selection_receipt(cx: &mut TestAppContext) {
 	for (preserve, confirmed) in [(false, false), (true, false), (false, true), (true, true)] {
 		let (_dir, profile, server) = fixture(preserve, confirmed);
 		let surface = cx.new(AgentSurface::new);
@@ -513,9 +517,7 @@ fn ordinary_refresh_keeps_task_model_read_and_selection_receipt(cx: &mut gpui::T
 }
 
 #[gpui::test]
-fn disconnect_invalidates_task_model_review_before_same_source_reconnect(
-	cx: &mut gpui::TestAppContext,
-) {
+fn disconnect_invalidates_task_model_review_before_same_source_reconnect(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	surface.update(cx, |s, cx| {
@@ -540,15 +542,11 @@ fn disconnect_invalidates_task_model_review_before_same_source_reconnect(
 	});
 }
 
-async fn serve(
-	listener: tokio::net::UnixListener,
-	preserve: bool,
-	confirmed: bool,
-) -> Vec<AgentActionDto> {
+async fn serve(listener: UnixListener, preserve: bool, confirmed: bool) -> Vec<AgentActionDto> {
 	let mut actions = Vec::new();
 
 	for index in 0..4 {
-		let mut socket = super::super::wire_test_support::accept(&listener).await;
+		let mut socket = wire_test_support::accept(&listener).await;
 		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 			panic!("text request")
 		};
@@ -588,7 +586,7 @@ async fn serve(
 
 			assert_eq!(work_id.as_str(), "root");
 
-			let state = decodex_protocol::AgentModelSettingsResult::Available {
+			let state = AgentModelSettingsResult::Available {
 				work_id,
 				thread_id: EntityId::new("thread").unwrap(),
 				account_id: EntityId::new("account").unwrap(),

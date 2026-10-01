@@ -1,10 +1,15 @@
 //! Keep notifications above native composer windows without moving the editor.
-use super::{Shell, connection_presentation};
-use crate::ui_theme::{self, native_glass_panel::GlassPanel};
 use gpui::{
-	AnyWindowHandle, Bounds, Context, Entity, Render, Subscription, Window,
-	WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowOptions, div, point, prelude::*,
-	px, size,
+	self, AnyWindowHandle, App, Bounds, Context, Entity, Render, Subscription, Window,
+	WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowOptions, prelude::*,
+};
+
+use crate::{
+	shell::{self, Shell},
+	ui_motion,
+	ui_theme::{
+		CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, FONT_FAMILY, TEXT, native_glass_panel::GlassPanel,
+	},
 };
 
 #[derive(Default)]
@@ -22,14 +27,15 @@ pub(super) struct StatusPanel {
 impl Render for StatusPanel {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let owner = self.owner.clone();
-		let panel = owner
-			.update(cx, |s, cx| s.render_status_panel(&connection_presentation(s.connection), cx));
+		let panel = owner.update(cx, |s, cx| {
+			s.render_status_panel(&shell::connection_presentation(s.connection), cx)
+		});
 
-		div()
+		gpui::div()
 			.w_full()
-			.p(px(12.))
-			.font_family(ui_theme::FONT_FAMILY)
-			.text_color(gpui::rgb(ui_theme::TEXT))
+			.p(gpui::px(12.))
+			.font_family(FONT_FAMILY)
+			.text_color(gpui::rgb(TEXT))
 			.on_key_down({
 				let owner = owner.clone();
 
@@ -57,16 +63,16 @@ impl Render for StatusPanel {
 				}
 			})
 			.child(
-				div()
+				gpui::div()
 					.w_full()
-					.rounded(px(14.))
+					.rounded(gpui::px(14.))
 					.bg(gpui::rgb(0x29292d))
 					.shadow(vec![gpui::BoxShadow {
 						inset: false,
 						color: gpui::rgba(0x00000024).into(),
-						offset: point(px(0.), px(4.)),
-						blur_radius: px(12.),
-						spread_radius: px(-3.),
+						offset: gpui::point(gpui::px(0.), gpui::px(4.)),
+						blur_radius: gpui::px(12.),
+						spread_radius: gpui::px(-3.),
 					}])
 					.child(panel),
 			)
@@ -77,27 +83,21 @@ impl Shell {
 	pub(super) fn prepare_native_status(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		// Drive the fade from the visible parent: AppKit stops the display link
 		// of a fully transparent or hidden child window.
-		let opacity = crate::ui_motion::native_presence(
-			"status-native-opacity",
-			self.status_open,
-			window,
-			cx,
-		);
+		let opacity =
+			ui_motion::native_presence("status-native-opacity", self.status_open, window, cx);
 
 		if let Some(child) = self.native_status.child {
 			let viewport = window.viewport_size();
 			let height = self.native_status.height.max(48.);
 			let bounds = Bounds::new(
-				point(
-					viewport.width - px(328. + ui_theme::CONTROL_MARGIN - 12.),
+				gpui::point(
+					viewport.width - gpui::px(328. + CONTROL_MARGIN - 12.),
 					viewport.height
-						- px(ui_theme::CONTROL_MARGIN
-							+ ui_theme::CONTROL_GROUP_HEIGHT
-							+ ui_theme::CONTROL_MARGIN
-							- 12.
-							+ height),
+						- gpui::px(
+							CONTROL_MARGIN + CONTROL_GROUP_HEIGHT + CONTROL_MARGIN - 12. + height,
+						),
 				),
-				size(px(328.), px(height)),
+				gpui::size(gpui::px(328.), gpui::px(height)),
 			);
 
 			cx.defer(move |cx| {
@@ -145,15 +145,15 @@ fn create(
 	owner: Entity<Shell>,
 	parent: AnyWindowHandle,
 	window: &mut Window,
-	cx: &mut gpui::App,
+	cx: &mut App,
 ) -> Option<WindowHandle<StatusPanel>> {
 	let child = cx
 		.open_window(
 			WindowOptions {
 				titlebar: None,
 				window_bounds: Some(WindowBounds::Windowed(Bounds::new(
-					point(px(0.), px(0.)),
-					size(px(328.), px(240.)),
+					gpui::point(gpui::px(0.), gpui::px(0.)),
+					gpui::size(gpui::px(328.), gpui::px(240.)),
 				))),
 				window_background: WindowBackgroundAppearance::Transparent,
 				show: false,

@@ -1,11 +1,23 @@
 //! Preserve a visible native row after pagination, independently of user-message rail marks.
-use super::{
-	AgentSurface, AgentTimelineEntry, AgentTimelinePage, AgentWorkItemDto, Binding, Context, key,
+use std::{
+	cell::RefCell,
+	collections::{BTreeMap, BTreeSet},
+	mem,
+	rc::Rc,
+	time::Duration,
 };
 
-use gpui::{AnyElement, InteractiveElement, IntoElement, ParentElement, Styled, div, point, px};
+use gpui::{
+	self, AnyElement, InteractiveElement, IntoElement, ParentElement, Styled, Window, point, px,
+};
 
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use crate::shell::agent_surface::{
+	activity::HistoryKey,
+	native_timeline::{
+		AgentSurface, AgentTimelineEntry, AgentTimelinePage, AgentWorkItemDto, Binding, Context,
+		key,
+	},
+};
 
 type RowKey = (u64, u8, String);
 
@@ -51,11 +63,11 @@ impl Viewport {
 	}
 
 	pub(super) fn take_latest_request(&self) -> bool {
-		std::mem::take(&mut self.0.borrow_mut().latest_requested)
+		mem::take(&mut self.0.borrow_mut().latest_requested)
 	}
 
 	pub(super) fn retain(&self, entries: &[AgentTimelineEntry]) {
-		let keys = entries.iter().map(row_key).collect::<std::collections::BTreeSet<_>>();
+		let keys = entries.iter().map(row_key).collect::<BTreeSet<_>>();
 		let mut state = self.0.borrow_mut();
 
 		state.rows.retain(|key, _| keys.contains(key));
@@ -88,7 +100,7 @@ impl Viewport {
 #[derive(Default)]
 struct Geometry {
 	rows: BTreeMap<RowKey, (f32, f32)>,
-	folded: std::collections::BTreeSet<RowKey>,
+	folded: BTreeSet<RowKey>,
 	layout: Option<Layout>,
 	pinned: Option<RowKey>,
 	pending: Option<Anchor>,
@@ -150,7 +162,7 @@ struct Anchor {
 }
 
 impl AgentSurface {
-	pub(in super::super) fn prepare_history_layout(&self, window: &gpui::Window) {
+	pub(in super::super) fn prepare_history_layout(&self, window: &Window) {
 		let width = self
 			.selected
 			.as_ref()
@@ -183,8 +195,7 @@ impl AgentSurface {
 		let mut state = self.native_history.viewport.0.borrow_mut();
 		let key = row_key(entry);
 
-		state.process_motion_until =
-			Some(std::time::Instant::now() + std::time::Duration::from_millis(240));
+		state.process_motion_until = Some(std::time::Instant::now() + Duration::from_millis(240));
 
 		if let (Some((top, _)), Some(scroll)) =
 			(state.rows.get(&key), self.transcript_scroll.get(work))
@@ -201,11 +212,7 @@ impl AgentSurface {
 		self.wheel_scroll = None;
 	}
 
-	pub(super) fn prepare_process_folds(
-		&self,
-		_work: &AgentWorkItemDto,
-		hidden: &std::collections::BTreeSet<usize>,
-	) {
+	pub(super) fn prepare_process_folds(&self, _work: &AgentWorkItemDto, hidden: &BTreeSet<usize>) {
 		let folded = hidden.iter().map(|i| row_key(&self.native_history.entries[*i])).collect();
 		let mut state = self.native_history.viewport.0.borrow_mut();
 
@@ -273,7 +280,7 @@ impl AgentSurface {
 
 				let mark = self
 					.history_marks
-					.get(&super::super::activity::HistoryKey::native(
+					.get(&HistoryKey::native(
 						work.codex_thread_id.as_deref().unwrap_or_default(),
 						entry,
 					))
@@ -285,11 +292,11 @@ impl AgentSurface {
 
 		height = (height - ROW_GAP).max(0.);
 
-		div()
+		gpui::div()
 			.w_full()
 			.flex_none()
 			.debug_selector(|| "native-history-spacer".into())
-			.child(div().h(px(height)))
+			.child(gpui::div().h(px(height)))
 			.on_children_prepainted(move |bounds, _, _| {
 				let Some(bounds) = bounds.first() else { return };
 				let top = f32::from(bounds.origin.y - scroll.bounds().origin.y - scroll.offset().y);
@@ -323,7 +330,7 @@ impl AgentSurface {
 		let selection = geometry.clone();
 		let selected_key = key.clone();
 
-		div()
+		gpui::div()
 			.w_full()
 			.min_w_0()
 			.flex_none()
@@ -376,12 +383,16 @@ fn row_key(entry: &AgentTimelineEntry) -> RowKey {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use decodex_protocol::AgentTimelineContent as Content;
+	use std::{future, thread};
+
+	use crate::shell::agent_surface::native_timeline::scroll::{
+		self, AgentSurface, AgentTimelineEntry, AgentTimelinePage, Anchor, Binding, Geometry,
+		Layout, Viewport,
+	};
 
 	#[test]
 	fn disclosure_anchor_tracks_each_layout_until_motion_finishes() {
-		let key = row_key(&row(1));
+		let key = scroll::row_key(&row(1));
 		let mut geometry = Geometry {
 			pending: Some(Anchor {
 				key: key.clone(),
@@ -410,7 +421,7 @@ mod tests {
 	fn row(position: u64) -> AgentTimelineEntry {
 		AgentTimelineEntry {
 			position,
-			content: Content::Item {
+			content: decodex_protocol::AgentTimelineContent::Item {
 				phase: None,
 				app_ui: false,
 				turn_id: "turn".into(),
@@ -429,14 +440,14 @@ mod tests {
 		let viewport = Viewport::default();
 		let entry = row(1);
 
-		viewport.0.borrow_mut().measure(row_key(&entry), 5_000., 700.);
+		viewport.0.borrow_mut().measure(scroll::row_key(&entry), 5_000., 700.);
 
 		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), Some(700.));
 		assert_eq!(viewport.offscreen_height(&entry, -4_000., 900.), None);
 		assert_eq!(viewport.offscreen_height(&entry, -5_800., 900.), None);
 		assert_eq!(viewport.offscreen_height(&entry, -7_000., 900.), Some(700.));
 
-		viewport.0.borrow_mut().pinned = Some(row_key(&entry));
+		viewport.0.borrow_mut().pinned = Some(scroll::row_key(&entry));
 
 		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), None);
 	}
@@ -459,7 +470,7 @@ mod tests {
 
 		let entry = row(1);
 
-		viewport.0.borrow_mut().measure(row_key(&entry), 5_000., 700.);
+		viewport.0.borrow_mut().measure(scroll::row_key(&entry), 5_000., 700.);
 		viewport.prepare_layout(layout);
 
 		assert_eq!(viewport.offscreen_height(&entry, 0., 900.), Some(700.));
@@ -485,7 +496,7 @@ mod tests {
 		] {
 			let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-			visual.simulate_resize(gpui::size(px(1_400.), px(500.)));
+			visual.simulate_resize(gpui::size(scroll::px(1_400.), scroll::px(500.)));
 
 			let binding = surface.update(visual, |s, cx| {
 				s.visual_workspace_fixture(cx);
@@ -548,7 +559,10 @@ mod tests {
 			if cancel {
 				visual.simulate_event(gpui::ScrollWheelEvent {
 					position: scroll.bounds().center(),
-					delta: gpui::ScrollDelta::Pixels(point(px(0.), px(-40.))),
+					delta: gpui::ScrollDelta::Pixels(scroll::point(
+						scroll::px(0.),
+						scroll::px(-40.),
+					)),
 					..Default::default()
 				});
 			}
@@ -585,14 +599,14 @@ mod tests {
 			let scroll =
 				surface.read_with(visual, |s, _| s.transcript_scroll[&binding.work].clone());
 
-			assert!(scroll.max_offset().y > px(1_000.));
+			assert!(scroll.max_offset().y > scroll::px(1_000.));
 
 			let distance = (scroll.offset().y + scroll.max_offset().y).abs();
 
 			if cancel {
-				assert!(distance > px(100.));
+				assert!(distance > scroll::px(100.));
 			} else {
-				assert!(distance < px(1.), "summary={summary} cold={cold}: {distance:?}");
+				assert!(distance < scroll::px(1.), "summary={summary} cold={cold}: {distance:?}");
 			}
 		}
 	}
@@ -601,7 +615,7 @@ mod tests {
 	fn background_refresh_keeps_history_height_and_reading_position(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(px(1_400.), px(700.)));
+		visual.simulate_resize(gpui::size(scroll::px(1_400.), scroll::px(700.)));
 
 		let work = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -645,7 +659,7 @@ mod tests {
 		});
 		// The fixture closes the initially reserved dock. Measure refreshes only
 		// after that independent panel animation has settled.
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
@@ -653,7 +667,7 @@ mod tests {
 
 		let scroll = surface.read_with(visual, |s, _| s.transcript_scroll[&work].clone());
 
-		scroll.set_offset(point(px(0.), px(-300.)));
+		scroll.set_offset(scroll::point(scroll::px(0.), scroll::px(-300.)));
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
 		});
@@ -664,7 +678,7 @@ mod tests {
 		for pending in [true, false, true, false] {
 			surface.update(visual, |s, cx| {
 				s.native_history.task =
-					pending.then(|| cx.spawn(async |_, _| std::future::pending::<()>().await));
+					pending.then(|| cx.spawn(async |_, _| future::pending::<()>().await));
 
 				cx.notify();
 			});
@@ -689,7 +703,7 @@ mod tests {
 	#[test]
 	fn evicted_rows_and_obsolete_layout_callbacks_cannot_move_the_viewport() {
 		let viewport = Viewport::default();
-		let key = row_key(&row(10));
+		let key = scroll::row_key(&row(10));
 
 		viewport.0.borrow_mut().measure(key.clone(), 100., 300.);
 		viewport.capture(-150., 400.);
@@ -718,7 +732,7 @@ mod tests {
 		let short = |position| {
 			let mut entry = row(position);
 
-			if let Content::Item { text, .. } = &mut entry.content {
+			if let decodex_protocol::AgentTimelineContent::Item { text, .. } = &mut entry.content {
 				*text = "Agent message.".into();
 			}
 
@@ -726,7 +740,7 @@ mod tests {
 		};
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(px(1_400.), px(500.)));
+		visual.simulate_resize(gpui::size(scroll::px(1_400.), scroll::px(500.)));
 
 		let binding = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -771,12 +785,13 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		let key = row_key(&row(11));
+		let key = scroll::row_key(&row(11));
 
 		surface.update(visual, |s, cx| {
 			let top = s.native_history.viewport.0.borrow().rows[&key].0;
 
-			s.transcript_scroll[&binding.work].set_offset(point(px(0.), px(40. - top)));
+			s.transcript_scroll[&binding.work]
+				.set_offset(scroll::point(scroll::px(0.), scroll::px(40. - top)));
 			cx.notify();
 		});
 
@@ -822,7 +837,7 @@ mod tests {
 			assert!((after - before).abs() < 1., "trim moved row from {before} to {after}");
 			assert_eq!(s.native_history.entries.len(), 1_000);
 			assert_eq!(geometry.rows.len(), 1_000);
-			assert!(!geometry.rows.contains_key(&row_key(&row(1_009))));
+			assert!(!geometry.rows.contains_key(&scroll::row_key(&row(1_009))));
 		});
 	}
 
@@ -832,7 +847,7 @@ mod tests {
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.simulate_resize(gpui::size(px(1_400.), px(500.)));
+		visual.simulate_resize(gpui::size(scroll::px(1_400.), scroll::px(500.)));
 
 		let binding = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -877,14 +892,15 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		let key = row_key(&row(11));
+		let key = scroll::row_key(&row(11));
 
 		surface.update(visual, |s, cx| {
 			assert!(s.history_marks.is_empty());
 
 			let top = s.native_history.viewport.0.borrow().rows[&key].0;
 
-			s.transcript_scroll[&binding.work].set_offset(point(px(0.), px(40. - top)));
+			s.transcript_scroll[&binding.work]
+				.set_offset(scroll::point(scroll::px(0.), scroll::px(40. - top)));
 			cx.notify();
 		});
 

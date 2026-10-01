@@ -1,5 +1,14 @@
 //! Explicit canonical send. Unknown results are reconciled by reads, never replayed.
-use super::*;
+use std::time::Duration;
+
+use tokio::sync::{
+	oneshot,
+	oneshot::{Receiver, Sender},
+};
+
+use crate::shell::agent_surface::prompt_edit::{confirmation, *};
+use decodex_protocol::{AgentExecutionOverrides, PromptInputUpload};
+
 #[derive(Clone, Copy)]
 enum Outcome {
 	Accepted,
@@ -27,9 +36,9 @@ impl AgentSurface {
 		let worker_draft = expected.clone();
 		let panel_key = self.prompt_edit.key.clone();
 		let command_key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
-		let (staged, stage) = tokio::sync::oneshot::channel();
-		let (permit, permitted) = tokio::sync::oneshot::channel();
-		let (completed, completion) = tokio::sync::oneshot::channel();
+		let (staged, stage) = oneshot::channel();
+		let (permit, permitted) = oneshot::channel();
+		let (completed, completion) = oneshot::channel();
 		let started = std::thread::Builder::new().name("prompt-send-io".into()).spawn(move || {
 			let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build()
 			else {
@@ -115,7 +124,7 @@ impl AgentSurface {
 			let Some(pending) = pending else {
 				return;
 			};
-			let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+			let deadline = std::time::Instant::now() + Duration::from_secs(5);
 
 			loop {
 				let ready = surface
@@ -132,7 +141,7 @@ impl AgentSurface {
 					break;
 				}
 
-				cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
+				cx.background_executor().timer(Duration::from_millis(50)).await;
 			}
 
 			if permit.send(()).is_err() {
@@ -248,14 +257,10 @@ impl AgentSurface {
 async fn send_worker(
 	client: AgentClient,
 	worker_draft: DesktopPromptEditDraft,
-	execution: decodex_protocol::AgentExecutionOverrides,
+	execution: AgentExecutionOverrides,
 	command_key: IdempotencyKey,
 	checking: bool,
-	channels: (
-		tokio::sync::oneshot::Sender<Result<DesktopPromptEditDraft, &'static str>>,
-		tokio::sync::oneshot::Receiver<()>,
-		tokio::sync::oneshot::Sender<Outcome>,
-	),
+	channels: (Sender<Result<DesktopPromptEditDraft, &'static str>>, Receiver<()>, Sender<Outcome>),
 ) {
 	let (staged, permitted, completed) = channels;
 	let result = async {
@@ -263,7 +268,7 @@ async fn send_worker(
 			return Ok(worker_draft);
 		}
 
-		super::confirmation::readable_local_media(&worker_draft.input)?;
+		confirmation::readable_local_media(&worker_draft.input)?;
 
 		client
 			.preflight_prompt_input(
@@ -277,7 +282,7 @@ async fn send_worker(
 
 		let receipt = worker_draft.receipt_id.ok_or("Missing edit receipt")?;
 		let hash = worker_draft.input.fingerprint()?;
-		let upload = decodex_protocol::PromptInputUpload {
+		let upload = PromptInputUpload {
 			work_id: worker_draft.work_id.clone(),
 			thread_id: worker_draft.thread_id.clone(),
 			edit_receipt_id: receipt,

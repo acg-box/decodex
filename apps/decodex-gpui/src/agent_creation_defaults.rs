@@ -1,7 +1,6 @@
 //! Resolve native defaults without converting observations into user intent.
-use super::*;
-use crate::creation_defaults::resolve;
-use decodex_protocol::InitialExecutionDefaults;
+use crate::{creation_defaults::resolve, shell::agent_surface::*};
+use decodex_protocol::{InitialExecutionDefaults, InitialModelCatalogResult, ServiceTier};
 
 impl AgentSurface {
 	pub(super) fn creation_defaults_need_refresh(&self, cx: &Context<Self>) -> bool {
@@ -17,7 +16,7 @@ impl AgentSurface {
 			return true;
 		}
 
-		let Some(decodex_protocol::InitialModelCatalogResult::Available {
+		let Some(InitialModelCatalogResult::Available {
 			defaults: Some(defaults),
 			working_directory,
 			account_id,
@@ -50,7 +49,7 @@ impl AgentSurface {
 			return;
 		}
 
-		let Some(decodex_protocol::InitialModelCatalogResult::Available {
+		let Some(InitialModelCatalogResult::Available {
 			defaults: Some(defaults),
 			working_directory,
 			account_id,
@@ -78,7 +77,7 @@ impl AgentSurface {
 				service_tier: self
 					.service_tier
 					.clone()
-					.or_else(|| Some(decodex_protocol::ServiceTier::from_fast(self.fast))),
+					.or_else(|| Some(ServiceTier::from_fast(self.fast))),
 			},
 		);
 
@@ -104,8 +103,7 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::creation_defaults::resolve;
+	use crate::{creation_defaults, shell::agent_surface::creation_defaults::*};
 	use decodex_protocol::{
 		DesktopCreationIntent, InitialModelCatalogResult, InitialModelDefaults, ServiceTier,
 	};
@@ -272,7 +270,7 @@ mod tests {
 
 	#[test]
 	fn explicit_model_keeps_native_effort_nullable_and_tier_independent() {
-		let selected = resolve(
+		let selected = creation_defaults::resolve(
 			&defaults(),
 			&DesktopCreationIntent { model: true, reasoning: false, service_tier: false },
 			InitialExecutionDefaults {

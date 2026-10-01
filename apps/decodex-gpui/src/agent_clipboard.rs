@@ -1,18 +1,21 @@
 //! Rich response copies reuse the displayed Markdown tree and keep source text intact.
-use super::{Kind, Node, parse};
+use gpui::{App, ClipboardItem};
+use reqwest::Url;
+
+use crate::shell::agent_surface::markdown::{self, Kind, Node};
 
 pub(super) fn html(text: &str) -> String {
 	let mut output = String::new();
 
-	for node in parse(text) {
+	for node in markdown::parse(text) {
 		render(&node, &mut output);
 	}
 
 	output
 }
 
-pub(super) fn copy(text: String, rich: bool, cx: &mut gpui::App) {
-	cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.clone()));
+pub(super) fn copy(text: String, rich: bool, cx: &mut App) {
+	cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
 
 	if rich {
 		let markup = html(&text);
@@ -66,7 +69,7 @@ fn render(node: &Node, output: &mut String) {
 		},
 		Kind::InlineCode => ("<code>".into(), "</code>".into()),
 		Kind::Link(destination) => {
-			let web = reqwest::Url::parse(destination).ok().filter(|url| {
+			let web = Url::parse(destination).ok().filter(|url| {
 				["http", "https"].contains(&url.scheme()) && url.host_str().is_some()
 			});
 
@@ -127,7 +130,7 @@ fn append_html_to_board(board: &objc2::runtime::AnyObject, text: &str, html: &st
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::markdown::clipboard::{self};
 	#[cfg(target_os = "macos")]
 	#[test]
 	fn native_pasteboard_keeps_both_formats_and_preserves_replaced_content() {
@@ -153,9 +156,9 @@ mod tests {
 
 			assert!(set);
 
-			let markup = html(original);
+			let markup = clipboard::html(original);
 
-			append_html_to_board(&board, original, &markup);
+			clipboard::append_html_to_board(&board, original, &markup);
 
 			let plain: Option<Retained<NSString>> = msg_send![&*board, stringForType: &*plain_type];
 			let rich: Option<Retained<NSString>> = msg_send![&*board, stringForType: &*html_type];
@@ -167,7 +170,7 @@ mod tests {
 			let other = NSString::from_str("replacement");
 			let _: bool = msg_send![&*board, setString: &*other, forType: &*plain_type];
 
-			append_html_to_board(&board, original, "<p>stale</p>");
+			clipboard::append_html_to_board(&board, original, "<p>stale</p>");
 
 			let rich: Option<Retained<NSString>> = msg_send![&*board, stringForType: &*html_type];
 
@@ -178,7 +181,7 @@ mod tests {
 	}
 	#[test]
 	fn response_html_keeps_formatting_and_inert_content() {
-		let rendered = html(
+		let rendered = clipboard::html(
 			"# Title\n\n**Bold** *italic* ~~old~~ `a<b`\n\n<script>x</script>\n\n![alt](https://test/image)\n\n[local](/tmp/a) [bad](javascript:alert(1)) [web](https://example.com)\n\n| A | B |\n|---|---|\n| x | y |\n",
 		);
 

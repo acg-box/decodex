@@ -1,7 +1,7 @@
 //! Resolve settings for an editor without borrowing another conversation's choices.
-use super::{
-	ConversationQueryPurpose, ConversationRouteOutcome, ConversationSummary, Conversations,
-	QueryPayload, QueryResultPayload, State,
+use crate::conversations::{
+	CatalogSource, ConversationQueryPurpose, ConversationRouteOutcome, ConversationSummary,
+	Conversations, QueryPayload, QueryResultPayload, State,
 };
 use decodex_protocol::ConversationModelSettingsResult;
 
@@ -65,7 +65,7 @@ impl State {
 	}
 
 	pub(super) fn ordinary_execution_ready(&self) -> bool {
-		if matches!(&self.catalog_source, Some(super::CatalogSource::Review { .. }))
+		if matches!(&self.catalog_source, Some(CatalogSource::Review { .. }))
 			&& self.current_catalog().is_some()
 		{
 			return true;
@@ -128,7 +128,12 @@ impl State {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::conversations::{
+		model_settings::{
+			ConversationModelSettingsResult, ConversationRouteOutcome, QueryResultPayload,
+		},
+		tests,
+	};
 	use decodex_protocol::{ConversationModel, EntityRevision, ServiceTier};
 
 	fn observed(model: &str) -> QueryResultPayload {
@@ -142,8 +147,7 @@ mod tests {
 
 	#[test]
 	fn observed_defaults_refresh_but_explicit_choices_survive_restore_and_reconnect() {
-		let (conversations, server, mut source) =
-			crate::conversations::tests::connected_conversations();
+		let (conversations, server, mut source) = tests::connected_conversations();
 
 		{
 			let mut state = conversations.lock();
@@ -233,7 +237,7 @@ mod tests {
 	}
 	#[test]
 	fn model_choice_keeps_its_required_effort_adjustment_during_a_native_read() {
-		let (conversations, _, source) = crate::conversations::tests::connected_conversations();
+		let (conversations, _, source) = tests::connected_conversations();
 
 		{
 			let mut state = conversations.lock();
@@ -261,8 +265,7 @@ mod tests {
 
 	#[test]
 	fn cold_settings_never_reuse_another_editors_unknown_tier() {
-		let (conversations, server_id, source) =
-			crate::conversations::tests::connected_conversations();
+		let (conversations, server_id, source) = tests::connected_conversations();
 		let mut reply = observed("cold-native-model");
 		let QueryResultPayload::ConversationModelSettings(
 			ConversationModelSettingsResult::Available { requested_service_tier, .. },
@@ -314,7 +317,7 @@ mod tests {
 
 	#[test]
 	fn reverted_selection_cannot_admit_an_old_settings_reply() {
-		let (conversations, _, source) = crate::conversations::tests::connected_conversations();
+		let (conversations, _, source) = tests::connected_conversations();
 		let epoch = conversations.lock().catalog_epoch;
 		let mut other = source.clone();
 

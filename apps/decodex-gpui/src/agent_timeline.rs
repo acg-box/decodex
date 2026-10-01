@@ -6,11 +6,22 @@
 #[path = "agent_timeline_render.rs"] mod render;
 #[path = "agent_timeline_scroll.rs"] mod scroll;
 
-use super::*;
+use std::{collections::BTreeSet, mem, time::Duration};
 
-use decodex_protocol::{AgentTimelineContent as Content, AgentTimelineEntry, AgentTimelinePage};
+use gpui::{AnyElement, Div};
+use tokio::runtime::Builder;
 
-use std::collections::BTreeSet;
+use crate::{
+	shell::agent_surface::{text_reveal::StreamingText, *},
+	ui_loading, ui_motion,
+};
+use decodex_protocol::{
+	AgentTimelineContent as Content, AgentTimelineContent, AgentTimelineEntry, AgentTimelinePage,
+	WeatherForecast,
+};
+use inputs::InputReceipts;
+use media::Preview;
+use scroll::{ROW_GAP, Viewport};
 
 impl AgentSurface {
 	pub(super) fn restore_prompt_presentation(
@@ -169,10 +180,10 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let owner = work.id.clone();
 		let thread = work.codex_thread_id.clone();
-		let mut panel = div().flex().flex_col().gap(px(scroll::ROW_GAP)).child(
+		let mut panel = div().flex().flex_col().gap(px(ROW_GAP)).child(
 			div().debug_selector(|| "native-latest-action".into()).child(self.workspace_action(
 				"native-timeline-refresh".into(),
 				"Latest native history".into(),
@@ -187,7 +198,7 @@ impl AgentSurface {
 		// Reserve the first-load state before the request starts, but retain
 		// existing history during background refreshes and fallback retries.
 		if self.native_history_loading(work) {
-			panel = panel.child(crate::ui_loading::conversation("Loading conversation"));
+			panel = panel.child(ui_loading::conversation("Loading conversation"));
 		}
 		if self.native_history.requested.as_ref().is_some_and(|(id, thread)| {
 			id == &work.id && Some(thread) == work.codex_thread_id.as_ref()
@@ -262,9 +273,9 @@ impl AgentSurface {
 				for message in messages.iter().filter(|message| {
                     work.active_turn_id.as_deref() == Some(&message.turn_id)
                         && !self.native_history.entries.iter().any(|entry| matches!(&entry.content,
-                            decodex_protocol::AgentTimelineContent::Item { turn_id, item_id, .. } if turn_id == &message.turn_id && item_id == &message.item_id))
+                            AgentTimelineContent::Item{ turn_id, item_id, .. } if turn_id == &message.turn_id && item_id == &message.item_id))
                 }) {
-                    panel = panel.child(super::text_reveal::StreamingText {
+                    panel = panel.child(StreamingText {
                         text: message.text.clone(),
                         key: format!("native-draft-{}-{}-{}", work.id, message.turn_id, message.item_id),
                     });
@@ -277,10 +288,10 @@ impl AgentSurface {
 
 	fn append_native_history_rows(
 		&self,
-		mut panel: gpui::Div,
+		mut panel: Div,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::Div {
+	) -> Div {
 		let groups =
 			groups::groups(&self.native_history.entries, &self.native_history.expanded_turns);
 		let mut collapsed = BTreeSet::new();
@@ -303,8 +314,7 @@ impl AgentSurface {
 
 			if let Some(group) = headers.get(&index) {
 				if !hidden.is_empty() {
-					panel =
-						panel.child(self.native_history_spacer(work, std::mem::take(&mut hidden)));
+					panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
 				}
 
 				let owner = cx.entity();
@@ -316,7 +326,7 @@ impl AgentSurface {
 					.w_full()
 					.debug_selector(|| "turn-process-block".into())
 					.children(header)
-					.child(crate::ui_motion::disclosure_lazy(
+					.child(ui_motion::disclosure_lazy(
 						SharedString::from(format!(
 							"turn-process-body-{}-{}-{}",
 							work.id,
@@ -368,7 +378,7 @@ impl AgentSurface {
 			}
 
 			if !hidden.is_empty() {
-				panel = panel.child(self.native_history_spacer(work, std::mem::take(&mut hidden)));
+				panel = panel.child(self.native_history_spacer(work, mem::take(&mut hidden)));
 			}
 
 			panel = panel.child(self.native_timeline_row(work, entry, cx));
@@ -489,8 +499,7 @@ impl AgentSurface {
 
 		let sent_cursor = cursor.clone();
 		let request = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime
 				.block_on(AgentClient::new(profile).timeline(
@@ -583,15 +592,15 @@ pub(super) struct Binding {
 
 #[derive(Default)]
 pub(super) struct Timeline {
-	preview: media::Preview,
-	input_receipts: inputs::InputReceipts,
+	preview: Preview,
+	input_receipts: InputReceipts,
 	pub task: Option<Task<()>>,
 	pub epoch: u64,
 	pub revision: u64,
 	pub binding: Option<Binding>,
 	pub entries: Vec<AgentTimelineEntry>,
 	pub safety_buffering_turn_id: Option<String>,
-	pub weather: std::collections::BTreeMap<String, Vec<decodex_protocol::WeatherForecast>>,
+	pub weather: std::collections::BTreeMap<String, Vec<WeatherForecast>>,
 	summary: Vec<Content>,
 	pub older_cursor: Option<String>,
 	pub opening_session: Option<String>,
@@ -603,7 +612,7 @@ pub(super) struct Timeline {
 	browsing_window: bool,
 	show_saved: bool,
 	expanded_turns: BTreeSet<String>,
-	viewport: scroll::Viewport,
+	viewport: Viewport,
 	notice: Option<&'static str>,
 	seen_cursors: BTreeSet<String>,
 }
@@ -657,7 +666,7 @@ impl Timeline {
 			(5_u64 << self.failures.saturating_sub(1).min(3)).min(30)
 		};
 
-		self.retry_at = Some(now + std::time::Duration::from_secs(delay));
+		self.retry_at = Some(now + Duration::from_secs(delay));
 		self.notice = Some(if self.unsupported {
 			"This thread does not support native history. Saved local history remains available."
 		} else {
@@ -673,7 +682,7 @@ impl Timeline {
 
 		self.recovered();
 
-		self.retry_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+		self.retry_at = Some(std::time::Instant::now() + Duration::from_secs(30));
 		self.notice = Some(
 			"Showing up to 100 recent prompts and final replies. Intermediate messages and tool activity are unavailable.",
 		);
@@ -869,7 +878,10 @@ fn valid_entries(entries: &[AgentTimelineEntry]) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::native_timeline::*;
+
+	use std::future;
+
 	#[gpui::test]
 	fn pending_native_read_does_not_flash_local_records(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -890,7 +902,7 @@ mod tests {
 
 			work.codex_thread_id = Some("thread".into());
 			s.native_history.requested = Some((work.id.clone(), "thread".into()));
-			s.native_history.task = Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+			s.native_history.task = Some(cx.spawn(async |_, _| future::pending::<()>().await));
 
 			cx.notify();
 		});
@@ -918,7 +930,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			s.native_history.failed(None, std::time::Instant::now());
 
-			s.native_history.task = Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+			s.native_history.task = Some(cx.spawn(async |_, _| future::pending::<()>().await));
 
 			cx.notify();
 		});

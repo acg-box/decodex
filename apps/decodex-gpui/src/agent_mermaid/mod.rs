@@ -25,7 +25,7 @@ const MAX_LABEL: usize = 40;
 const MAX_CELLS: usize = 64 * 1_024;
 
 /// A diagram cannot be faithfully represented by this bounded prototype.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RenderError {
 	/// Syntax or text is outside the explicitly supported subset.
 	Unsupported,
@@ -46,7 +46,7 @@ impl fmt::Display for RenderError {
 	}
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum Direction {
 	#[default]
 	Down,
@@ -66,14 +66,14 @@ impl Direction {
 	}
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq, PartialEq)]
 enum Shape {
 	Rectangle,
 	Decision,
 	Stadium,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq, PartialEq)]
 struct Node {
 	id: String,
 	label: String,
@@ -82,7 +82,7 @@ struct Node {
 	members: Vec<String>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq, PartialEq)]
 struct Edge {
 	from: usize,
 	to: usize,
@@ -106,7 +106,7 @@ impl Edge {
 	}
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Eq, PartialEq)]
 struct Graph {
 	direction: Direction,
 	nodes: Vec<Node>,

@@ -364,7 +364,7 @@ pub(crate) unsafe fn symbol<T: Copy>(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::native_menu_bar::{LaunchAtLoginState, NativeMenuBarHost};
 
 	#[test]
 	fn simulated_bridge_applies_visibility_idempotently() {

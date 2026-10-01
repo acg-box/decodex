@@ -1,13 +1,16 @@
 //! Compact response statistics with hover details, independent of transcript layout.
-use super::{compact_tokens, ui_theme};
-
-use decodex_protocol::AgentTurnUsageDto;
+use std::f32::consts::TAU;
 
 use gpui::{
-	Anchor, AnyElement, App, Bounds, BoxShadow, Div, FontWeight, IntoElement, PathBuilder, Pixels,
-	RenderOnce, SharedString, Window, anchored, canvas, deferred, div, point, prelude::*, px, rgb,
-	rgba,
+	self, Anchor, AnyElement, App, Bounds, BoxShadow, Div, FontWeight, IntoElement, PathBuilder,
+	Pixels, RenderOnce, SharedString, Window, prelude::*,
 };
+
+use crate::shell::agent_surface::{
+	self,
+	ui_theme::{CAPTION_SIZE, TEXT, TEXT_MUTED},
+};
+use decodex_protocol::AgentTurnUsageDto;
 
 #[derive(IntoElement)]
 pub(super) struct ResponseMetrics {
@@ -32,46 +35,46 @@ impl RenderOnce for ResponseMetrics {
 		let panel = if open {
 			details_panel(&self.key, duration, self.usage.as_ref())
 		} else {
-			div().into_any_element()
+			gpui::div().into_any_element()
 		};
 		let hover_state = state.clone();
 		let measure = state.clone();
 
-		div()
+		gpui::div()
 			.id(SharedString::from(format!("response-metrics-{}", self.key)))
 			.debug_selector(|| "turn-metrics-hover".into())
 			.relative()
 			.cursor_default()
 			.flex_none()
 			.whitespace_nowrap()
-			.h(px(24.))
+			.h(gpui::px(24.))
 			.flex()
 			.items_center()
-			.gap(px(6.))
-			.text_size(px(ui_theme::CAPTION_SIZE))
-			.text_color(rgb(ui_theme::TEXT_MUTED))
+			.gap(gpui::px(6.))
+			.text_size(gpui::px(CAPTION_SIZE))
+			.text_color(gpui::rgb(TEXT_MUTED))
 			.when(!label.is_empty(), |d| {
 				d.child(
-					div()
+					gpui::div()
 						.flex()
 						.items_center()
-						.gap(px(3.))
+						.gap(gpui::px(3.))
 						.when(has_duration, |d| d.child(duration_icon()))
 						.child(label),
 				)
 			})
 			.when_some(self.usage, |d, u| {
 				d.child(
-					div()
+					gpui::div()
 						.flex()
 						.items_center()
-						.gap(px(6.))
-						.child(format!("↑ {}", compact_tokens(u.input_tokens)))
-						.child(format!("↓ {}", compact_tokens(u.output_tokens))),
+						.gap(gpui::px(6.))
+						.child(format!("↑ {}", agent_surface::compact_tokens(u.input_tokens)))
+						.child(format!("↓ {}", agent_surface::compact_tokens(u.output_tokens))),
 				)
 			})
 			.when(has_details, |d| {
-				d.hover(|d| d.text_color(rgb(ui_theme::TEXT)))
+				d.hover(|d| d.text_color(gpui::rgb(TEXT)))
 					.on_hover(move |hovered, _, cx| {
 						hover_state.update(cx, |state, cx| {
 							state.0 = *hovered;
@@ -80,7 +83,7 @@ impl RenderOnce for ResponseMetrics {
 						});
 					})
 					.child(
-						canvas(
+						gpui::canvas(
 							move |bounds, _, cx| {
 								measure.update(cx, |state, _| state.1 = bounds);
 							},
@@ -91,12 +94,12 @@ impl RenderOnce for ResponseMetrics {
 					)
 					.when(open, |d| {
 						d.child(
-							deferred(
-								anchored()
+							gpui::deferred(
+								gpui::anchored()
 									.anchor(Anchor::BottomLeft)
 									.position(anchor)
-									.offset(point(px(0.), px(-6.)))
-									.snap_to_window_with_margin(px(8.))
+									.offset(gpui::point(gpui::px(0.), gpui::px(-6.)))
+									.snap_to_window_with_margin(gpui::px(8.))
 									.child(panel),
 							)
 							.with_priority(4),
@@ -107,31 +110,32 @@ impl RenderOnce for ResponseMetrics {
 }
 
 fn row(label: &'static str, value: impl Into<SharedString>) -> Div {
-	div()
+	gpui::div()
 		.flex()
 		.items_center()
 		.justify_between()
-		.gap(px(16.))
-		.child(div().text_color(rgb(ui_theme::TEXT_MUTED)).child(label))
-		.child(div().text_color(rgb(ui_theme::TEXT)).child(value.into()))
+		.gap(gpui::px(16.))
+		.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(label))
+		.child(gpui::div().text_color(gpui::rgb(TEXT)).child(value.into()))
 }
 
 fn usage_row(label: &'static str, input: Option<u64>, output: Option<u64>) -> Div {
-	div()
+	gpui::div()
 		.flex()
 		.items_center()
-		.h(px(22.))
-		.child(div().flex_1().text_color(rgb(ui_theme::TEXT_MUTED)).child(label))
+		.h(gpui::px(22.))
+		.child(gpui::div().flex_1().text_color(gpui::rgb(TEXT_MUTED)).child(label))
 		.children([input, output].into_iter().map(|value| {
-			div()
-				.w(px(58.))
-				.text_right()
-				.child(value.map(compact_tokens).unwrap_or_else(|| "—".into()))
+			gpui::div().w(gpui::px(58.)).text_right().child(
+				value
+					.map(crate::shell::agent_surface::compact_tokens)
+					.unwrap_or_else(|| "—".into()),
+			)
 		}))
 }
 
 fn number(label: &'static str, value: Option<u64>) -> Option<Div> {
-	value.map(|value| row(label, compact_tokens(value)))
+	value.map(|value| row(label, agent_surface::compact_tokens(value)))
 }
 
 fn duration_label(ms: u64) -> String {
@@ -145,15 +149,18 @@ fn duration_label(ms: u64) -> String {
 }
 
 fn duration_icon() -> impl IntoElement {
-	canvas(
+	gpui::canvas(
 		|_, _, _| (),
 		|bounds, _, window, _| {
-			let mut path = PathBuilder::stroke(px(1.));
+			let mut path = PathBuilder::stroke(gpui::px(1.));
 
 			for step in 0..=32 {
-				let angle = step as f32 * std::f32::consts::TAU / 32.;
+				let angle = step as f32 * TAU / 32.;
 				let p = bounds.origin
-					+ point(px(5.5 + 4.25 * angle.cos()), px(5.5 + 4.25 * angle.sin()));
+					+ gpui::point(
+						gpui::px(5.5 + 4.25 * angle.cos()),
+						gpui::px(5.5 + 4.25 * angle.sin()),
+					);
 
 				if step == 0 {
 					path.move_to(p);
@@ -162,16 +169,16 @@ fn duration_icon() -> impl IntoElement {
 				}
 			}
 
-			path.move_to(bounds.origin + point(px(5.5), px(2.5)));
-			path.line_to(bounds.origin + point(px(5.5), px(5.5)));
-			path.line_to(bounds.origin + point(px(7.5), px(6.5)));
+			path.move_to(bounds.origin + gpui::point(gpui::px(5.5), gpui::px(2.5)));
+			path.line_to(bounds.origin + gpui::point(gpui::px(5.5), gpui::px(5.5)));
+			path.line_to(bounds.origin + gpui::point(gpui::px(7.5), gpui::px(6.5)));
 
 			if let Ok(path) = path.build() {
-				window.paint_path(path, rgb(ui_theme::TEXT_MUTED));
+				window.paint_path(path, gpui::rgb(TEXT_MUTED));
 			}
 		},
 	)
-	.size(px(11.))
+	.size(gpui::px(11.))
 	.flex_none()
 }
 
@@ -180,48 +187,55 @@ fn details_panel(
 	duration: Option<String>,
 	usage: Option<&AgentTurnUsageDto>,
 ) -> AnyElement {
-	let mut panel = div()
+	let mut panel = gpui::div()
 		.id(SharedString::from(format!("response-detail-panel-{}", key)))
 		.debug_selector(|| "native-turn-usage".into())
 		.occlude()
 		.cursor_default()
 		.on_click(|_, _, cx| cx.stop_propagation())
-		.w(px(272.))
+		.w(gpui::px(272.))
 		.whitespace_normal()
-		.p(px(14.))
-		.rounded(px(12.))
-		.bg(rgb(0x29292d))
-		.text_size(px(12.))
-		.line_height(px(15.))
+		.p(gpui::px(14.))
+		.rounded(gpui::px(12.))
+		.bg(gpui::rgb(0x29292d))
+		.text_size(gpui::px(12.))
+		.line_height(gpui::px(15.))
 		.flex()
 		.flex_col()
-		.gap(px(2.))
+		.gap(gpui::px(2.))
 		.shadow(vec![BoxShadow {
 			inset: false,
-			color: rgba(0x00000024).into(),
-			offset: point(px(0.), px(4.)),
-			blur_radius: px(12.),
-			spread_radius: px(-3.),
+			color: gpui::rgba(0x00000024).into(),
+			offset: gpui::point(gpui::px(0.), gpui::px(4.)),
+			blur_radius: gpui::px(12.),
+			spread_radius: gpui::px(-3.),
 		}]);
 
 	panel = panel.child(
-		div()
+		gpui::div()
 			.flex()
 			.justify_between()
-			.mb(px(8.))
-			.child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child("Turn details"))
-			.child(div().text_color(rgb(ui_theme::TEXT_MUTED)).child(duration.unwrap_or_default())),
+			.mb(gpui::px(8.))
+			.child(
+				gpui::div()
+					.text_size(gpui::px(13.))
+					.font_weight(FontWeight::MEDIUM)
+					.child("Turn details"),
+			)
+			.child(
+				gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(duration.unwrap_or_default()),
+			),
 	);
 
 	if let Some(usage) = usage {
 		panel = panel
 			.child(
-				div()
+				gpui::div()
 					.flex()
 					.justify_end()
-					.text_color(rgb(ui_theme::TEXT_MUTED))
-					.child(div().w(px(58.)).text_right().child("Input"))
-					.child(div().w(px(58.)).text_right().child("Output")),
+					.text_color(gpui::rgb(TEXT_MUTED))
+					.child(gpui::div().w(gpui::px(58.)).text_right().child("Input"))
+					.child(gpui::div().w(gpui::px(58.)).text_right().child("Output")),
 			)
 			.child(usage_row("This turn", Some(usage.input_tokens), Some(usage.output_tokens)));
 
@@ -241,7 +255,7 @@ fn details_panel(
 			}
 
 			panel = panel
-				.child(div().h(px(6.)))
+				.child(gpui::div().h(gpui::px(6.)))
 				.children(number("Model responses", details.responses))
 				.children(number("Conversation total", details.thread_total))
 				.children(number("Context capacity", details.context_capacity));

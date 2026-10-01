@@ -1,5 +1,8 @@
 //! Current unconfirmed input pages are independent of both transcript cursors.
-use super::*;
+use gpui::AnyElement;
+use tokio::runtime::Builder;
+
+use crate::{shell::agent_surface::native_timeline::*, ui_loading};
 use decodex_protocol::AgentInputReceiptsResult;
 
 #[derive(Default)]
@@ -36,8 +39,7 @@ impl AgentSurface {
 		let epoch = self.native_history.epoch;
 		let after = self.native_history.input_receipts.after;
 		let request = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime.block_on(AgentClient::new(profile).input_receipts(work_id, after)).ok()
 		});
@@ -80,7 +82,7 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let state = &self.native_history.input_receipts;
 		let mut panel = div().flex().flex_col().gap_2();
 
@@ -144,7 +146,7 @@ impl AgentSurface {
 					panel = panel.child(muted("No remaining unconfirmed inputs on this page."));
 				}
 			},
-			None => panel = panel.child(crate::ui_loading::loading("Loading delivery records")),
+			None => panel = panel.child(ui_loading::loading("Loading delivery records")),
 			_ => panel = panel.child(muted("Local delivery records could not be read. Retrying…")),
 		}
 
@@ -154,7 +156,7 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::native_timeline::inputs::*;
 	use decodex_protocol::{AgentHistoryEntryDto, AgentHistoryReceiptDto, AgentTimelinePage};
 	fn page(work: &str, id: Option<i64>, next_after: Option<i64>) -> AgentInputReceiptsResult {
 		AgentInputReceiptsResult::Available {

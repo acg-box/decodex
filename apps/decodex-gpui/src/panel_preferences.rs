@@ -1,7 +1,10 @@
 //! Host-local default dimensions. Runtime resizing does not change these defaults.
 use std::sync::atomic::{AtomicU32, Ordering};
+
+use gpui::App;
+
 static DEFAULTS: AtomicU32 = AtomicU32::new(0);
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct PanelDefaults {
 	pub sidebar: u16,
 	pub dock: u16,
@@ -22,7 +25,7 @@ impl PanelDefaults {
 		}
 	}
 
-	pub fn select(self, cx: &mut gpui::App) {
+	pub fn select(self, cx: &mut App) {
 		let value =
 			u32::from(self.sidebar.clamp(160, 480)) | (u32::from(self.dock.clamp(120, 480)) << 16);
 

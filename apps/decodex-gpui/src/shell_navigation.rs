@@ -1,5 +1,9 @@
 //! Local navigation history. Traversal restores a view; it never replays a command.
-use super::*;
+use gpui::KeyDownEvent;
+use ui_theme::CHROME_CONTROL_SIZE;
+use workspace_symbols::Symbol;
+
+use crate::{shell::*, ui_theme::HOVER_FILL};
 
 pub(super) struct NavigationHistory {
 	entries: Vec<Location>,
@@ -91,7 +95,7 @@ impl Shell {
 			})
 			.when(enabled, |el| el.tab_index(0))
 			.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
-			.size(px(ui_theme::CHROME_CONTROL_SIZE))
+			.size(px(CHROME_CONTROL_SIZE))
 			.flex_none()
 			.flex()
 			.items_center()
@@ -99,9 +103,7 @@ impl Shell {
 			.rounded(px(5.0))
 			.occlude()
 			.when(!enabled, |el| el.opacity(0.25))
-			.when(enabled, |el| {
-				el.cursor_pointer().hover(|el| el.bg(rgba(crate::ui_theme::HOVER_FILL)))
-			})
+			.when(enabled, |el| el.cursor_pointer().hover(|el| el.bg(rgba(HOVER_FILL))))
 			.on_mouse_down(MouseButton::Left, |_, window, cx| {
 				window.prevent_default();
 				cx.stop_propagation();
@@ -113,17 +115,13 @@ impl Shell {
 
 				cx.stop_propagation();
 			}))
-			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 				if enabled && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					s.navigate_history(forward, cx);
 					cx.stop_propagation();
 				}
 			}))
-			.child(workspace_symbols::icon(if forward {
-				workspace_symbols::Symbol::Forward
-			} else {
-				workspace_symbols::Symbol::Back
-			}))
+			.child(workspace_symbols::icon(if forward { Symbol::Forward } else { Symbol::Back }))
 			.smooth()
 			.enabled(enabled)
 			.into_any_element()
@@ -132,7 +130,7 @@ impl Shell {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::navigation::*;
 	#[test]
 	fn new_navigation_replaces_the_forward_branch_and_deduplicates_refreshes() {
 		let mut history = NavigationHistory::new();

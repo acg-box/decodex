@@ -6,18 +6,24 @@
 #[path = "agent_mermaid/mod.rs"] mod mermaid;
 #[path = "agent_mermaid_view.rs"] mod mermaid_view;
 
-use super::*;
-
-use gpui::{AnyElement, FontStyle, HighlightStyle};
-
-use pulldown_cmark::{Event, Options, Parser, Tag};
-
 use std::{
 	cell::{OnceCell, RefCell},
 	collections::HashMap,
 	ops::Range,
 	rc::Rc,
+	slice,
+	time::Duration,
 };
+
+use gpui::{
+	AnyElement, App, FontStyle, HighlightStyle, KeyDownEvent, PathBuilder, RenderOnce,
+	StrikethroughStyle,
+};
+use pulldown_cmark::{Event, Options, Parser, Tag};
+use ui_theme::{BLUE, BODY_LINE_HEIGHT, BODY_SIZE, TEXT_MUTED};
+
+use crate::{shell::agent_surface::*, ui_motion, ui_theme::HOVER_FILL};
+use math::MathMarkdown;
 
 #[derive(Clone, Debug)]
 enum Kind {
@@ -61,8 +67,8 @@ struct CopyButton {
 	text: String,
 	rich: bool,
 }
-impl gpui::RenderOnce for CopyButton {
-	fn render(self, window: &mut Window, cx: &mut gpui::App) -> impl IntoElement {
+impl RenderOnce for CopyButton {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		use crate::ui_motion::SmoothControl as _;
 
 		let state = window.use_keyed_state(
@@ -70,11 +76,10 @@ impl gpui::RenderOnce for CopyButton {
 			cx,
 			|_, _| None::<std::time::Instant>,
 		);
-		let copied =
-			state.read(cx).is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(1_200));
+		let copied = state.read(cx).is_some_and(|at| at.elapsed() < Duration::from_millis(1_200));
 
 		if copied {
-			crate::ui_motion::request_frame(window, cx);
+			ui_motion::request_frame(window, cx);
 		}
 
 		let click_state = state.clone();
@@ -93,7 +98,7 @@ impl gpui::RenderOnce for CopyButton {
 			.justify_center()
 			.rounded(px(6.))
 			.cursor_pointer()
-			.hover(|s| s.bg(rgba(crate::ui_theme::HOVER_FILL)))
+			.hover(|s| s.bg(rgba(HOVER_FILL)))
 			.on_click(move |_, _, cx| {
 				clipboard::copy(click_text.clone(), self.rich, cx);
 
@@ -103,7 +108,7 @@ impl gpui::RenderOnce for CopyButton {
 					cx.notify();
 				});
 			})
-			.on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(move |event: &KeyDownEvent, _, cx| {
 				if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					clipboard::copy(self.text.clone(), self.rich, cx);
 
@@ -120,7 +125,7 @@ impl gpui::RenderOnce for CopyButton {
 				gpui::canvas(
 					|_, _, _| (),
 					move |bounds, _, window, _| {
-						let mut path = gpui::PathBuilder::stroke(px(1.1));
+						let mut path = PathBuilder::stroke(px(1.1));
 						let point = |x: f32, y: f32| {
 							bounds.origin + gpui::point(px(x * 0.75), px(y * 0.75))
 						};
@@ -141,10 +146,7 @@ impl gpui::RenderOnce for CopyButton {
 						}
 
 						if let Ok(path) = path.build() {
-							window.paint_path(
-								path,
-								rgb(if copied { ui_theme::BLUE } else { ui_theme::TEXT_MUTED }),
-							);
+							window.paint_path(path, rgb(if copied { BLUE } else { TEXT_MUTED }));
 						}
 					},
 				)
@@ -251,7 +253,7 @@ pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 		.gap_1()
 		.text_size(px(12.))
 		.line_height(px(19.))
-		.text_color(rgb(ui_theme::TEXT_MUTED))
+		.text_color(rgb(TEXT_MUTED))
 		.children(document.nodes.get_or_init(|| parse(text)).iter().enumerate().map(|(i, node)| {
 			let key = format!("{key}-{i}");
 
@@ -290,8 +292,8 @@ pub(super) fn render(text: &str, key: &str) -> AnyElement {
 		.flex()
 		.flex_col()
 		.gap_2()
-		.text_size(px(ui_theme::BODY_SIZE))
-		.line_height(px(ui_theme::BODY_LINE_HEIGHT))
+		.text_size(px(BODY_SIZE))
+		.line_height(px(BODY_LINE_HEIGHT))
 		.children(
 			document
 				.nodes
@@ -331,7 +333,7 @@ fn parse(text: &str) -> Vec<Node> {
 	let mut flattened = 0;
 	let options =
 		Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
-	let math = math::MathMarkdown::new(text, options, None);
+	let math = MathMarkdown::new(text, options, None);
 
 	for (event, range) in math.events(Parser::new_ext(&math.markdown, options).into_offset_iter()) {
 		match event {
@@ -428,10 +430,10 @@ fn append_inline(nodes: &[Node], style: HighlightStyle, link: Option<&str>, out:
 					Kind::Strong => next.font_weight = Some(FontWeight::BOLD),
 					Kind::Emphasis => next.font_style = Some(FontStyle::Italic),
 					Kind::InlineCode => next.background_color = Some(rgba(0xffffff12).into()),
-					Kind::Link(_) => next.color = Some(rgb(ui_theme::BLUE).into()),
+					Kind::Link(_) => next.color = Some(rgb(BLUE).into()),
 					Kind::Strike =>
 						next.strikethrough =
-							Some(gpui::StrikethroughStyle { thickness: px(1.0), color: None }),
+							Some(StrikethroughStyle { thickness: px(1.0), color: None }),
 					_ => {},
 				}
 
@@ -485,7 +487,7 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 	let Node::Block(kind, children) = node else {
 		return match node {
 			Node::Rule => div().h(px(1.0)).my_2().bg(rgba(0xffffff18)).into_any_element(),
-			_ => div().child(inline(std::slice::from_ref(node), key)).into_any_element(),
+			_ => div().child(inline(slice::from_ref(node), key)).into_any_element(),
 		};
 	};
 
@@ -555,16 +557,12 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 				div()
 					.flex()
 					.gap_2()
-					.child(
-						div()
-							.w(px(24.0))
-							.flex_shrink_0()
-							.text_color(rgb(ui_theme::TEXT_MUTED))
-							.child(start.map_or_else(
-								|| "•".into(),
-								|start| format!("{}.", start + index as u64),
-							)),
-					)
+					.child(div().w(px(24.0)).flex_shrink_0().text_color(rgb(TEXT_MUTED)).child(
+						start.map_or_else(
+							|| "•".into(),
+							|start| format!("{}.", start + index as u64),
+						),
+					))
 					.child(
 						div()
 							.flex_1()
@@ -589,9 +587,7 @@ fn render_node(node: &Node, key: &str) -> AnyElement {
 			.flex()
 			.flex_col()
 			.gap_2()
-			.when(matches!(kind, Kind::Quote), |d| {
-				d.pl_3().border_l_2().border_color(rgb(ui_theme::BLUE))
-			})
+			.when(matches!(kind, Kind::Quote), |d| d.pl_3().border_l_2().border_color(rgb(BLUE)))
 			.when(matches!(kind, Kind::Table), |d| {
 				d.border_1().border_color(rgba(0xffffff12)).rounded_md()
 			})
@@ -667,7 +663,7 @@ fn parse_plain_text(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::markdown::*;
 
 	struct CopyPreview {
 		text: String,

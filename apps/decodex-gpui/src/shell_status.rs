@@ -1,6 +1,10 @@
 //! One workspace notification center with dismissible current notices.
-use super::*;
-use crate::ui_motion::{SmoothControl, popover};
+use crate::{
+	account_profile,
+	shell::*,
+	ui_motion::{SmoothControl, popover},
+	ui_preferences,
+};
 
 #[derive(Clone, Copy)]
 enum Recovery {
@@ -324,13 +328,13 @@ impl Shell {
 	fn profile_notifications(&self, notices: &mut Vec<Notice>) {
 		let detail = match self.account_profile.result.as_ref() {
 			Some(AccountProfileResult::Cached { refresh_error, .. }) =>
-				Some(if crate::account_profile::requires_login(*refresh_error) {
+				Some(if account_profile::requires_login(*refresh_error) {
 					"Sign in again to update your activity."
 				} else {
 					"Your activity couldn’t be updated. Try again later."
 				}),
 			Some(AccountProfileResult::Unavailable { error, .. }) =>
-				Some(if crate::account_profile::requires_login(*error) {
+				Some(if account_profile::requires_login(*error) {
 					"Sign in again to view your activity."
 				} else {
 					"Your activity couldn’t be loaded. Try again later."
@@ -342,9 +346,9 @@ impl Shell {
 			let notice = Notice::new("Account profile", detail, Recovery::Accounts);
 			let requires_login = match self.account_profile.result.as_ref() {
 				Some(AccountProfileResult::Cached { refresh_error, .. }) =>
-					crate::account_profile::requires_login(*refresh_error),
+					account_profile::requires_login(*refresh_error),
 				Some(AccountProfileResult::Unavailable { error, .. }) =>
-					crate::account_profile::requires_login(*error),
+					account_profile::requires_login(*error),
 				_ => false,
 			};
 
@@ -514,18 +518,18 @@ impl Shell {
 pub(crate) fn count_preference(value: Option<bool>) -> bool {
 	static VALUE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);
 
-	crate::ui_preferences::boolean("DecodexNotificationCount", &VALUE, value, false)
+	ui_preferences::boolean("DecodexNotificationCount", &VALUE, value, false)
 }
 
 pub(crate) fn question_notice_preference(value: Option<bool>) -> bool {
 	static VALUE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);
 
-	crate::ui_preferences::boolean("DecodexQuestionNotices", &VALUE, value, true)
+	ui_preferences::boolean("DecodexQuestionNotices", &VALUE, value, true)
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::status::*;
 	#[test]
 	fn question_dismissal_uses_identity_instead_of_repeated_title() {
 		let mut first = Notice::new("Question", "Choose a format", Recovery::None);

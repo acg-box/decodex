@@ -1,6 +1,9 @@
 //! Shared hook consent and readback. Effective trust is distinct from durable write outcomes.
-use super::{mcp_forms::mcp_button, *};
-use decodex_protocol::{AgentHookChange as Change, AgentHookSettingsState as State};
+use gpui::AnyElement;
+use tokio::runtime::Builder;
+
+use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
+use decodex_protocol::{AgentHookChange as Change, AgentHookDto, AgentHookSettingsState as State};
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -133,8 +136,7 @@ impl AgentSurface {
 
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 		let future = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
 			let state =
@@ -201,7 +203,7 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		if work.codex_thread_id.is_none()
 			|| self.native_agents.selected.is_some()
 			|| !self.command_connection_ready()
@@ -324,7 +326,7 @@ impl AgentSurface {
 		panel.into_any_element()
 	}
 }
-fn editable(hook: &decodex_protocol::AgentHookDto) -> bool {
+fn editable(hook: &AgentHookDto) -> bool {
 	!hook.managed && matches!(hook.trust_status.as_str(), "trusted" | "modified" | "untrusted")
 }
 #[cfg(test)]

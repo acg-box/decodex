@@ -1,8 +1,13 @@
 //! Live question notices for the observed conversation; history is never an arrival.
-use super::{AgentHistoryResult, AgentSurface, LoadState};
-#[cfg(test)] use decodex_protocol::{AgentAsyncQuestionDto, EntityId};
 use std::collections::{BTreeMap, BTreeSet};
+
 use unicode_segmentation::UnicodeSegmentation as _;
+
+use crate::{
+	shell,
+	shell::agent_surface::{AgentHistoryResult, AgentSurface, LoadState},
+};
+#[cfg(test)] use decodex_protocol::{AgentAsyncQuestionDto, EntityId};
 
 #[derive(Default)]
 pub(super) struct QuestionNotices {
@@ -106,11 +111,11 @@ impl AgentSurface {
 	}
 
 	pub(super) fn observe_question_notices(&mut self, history: &AgentHistoryResult) {
-		self.question_notices.observe(history, crate::shell::question_notice_preference(None));
+		self.question_notices.observe(history, shell::question_notice_preference(None));
 	}
 
 	pub(crate) fn question_arrival_notice(&self) -> Option<(String, String)> {
-		if !crate::shell::question_notice_preference(None) {
+		if !shell::question_notice_preference(None) {
 			return None;
 		}
 
@@ -126,8 +131,12 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use gpui::AppContext as _;
+
+	use crate::shell::agent_surface::question_notices::{
+		AgentAsyncQuestionDto, AgentHistoryResult, AgentSurface, EntityId, LoadState,
+		QuestionNotices,
+	};
 	fn history(questions: Vec<AgentAsyncQuestionDto>) -> AgentHistoryResult {
 		AgentHistoryResult::Available {
 			questions,

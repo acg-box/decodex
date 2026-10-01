@@ -1,8 +1,15 @@
 //! Exact saved action reviews and explicit approval submission, independent of execution.
-use super::*;
+use std::{collections::BTreeMap, rc::Rc};
+
+use gpui::{AnyElement, Div, KeyDownEvent};
+use tokio::runtime::Builder;
+use ui_theme::BLUE;
+
+use crate::{shell::agent_surface::*, ui_loading};
 use decodex_protocol::{
-	AgentGuardianDetailResult as Detail, AgentGuardianReviewsResult as Reviews,
-	AgentGuardianStatus as Status, AgentGuardianSubmission as Submission,
+	AgentGuardianDetailResult as Detail, AgentGuardianReviewDto,
+	AgentGuardianReviewsResult as Reviews, AgentGuardianStatus as Status,
+	AgentGuardianSubmission as Submission,
 };
 
 #[derive(Default)]
@@ -13,7 +20,7 @@ pub(super) struct Panel {
 	epoch: u64,
 	expanded: bool,
 	reviewed: Option<(i64, String)>,
-	pending: std::collections::BTreeMap<i64, String>,
+	pending: BTreeMap<i64, String>,
 	stale: bool,
 	pub(super) feedback: String,
 	request: Option<Task<()>>,
@@ -164,8 +171,7 @@ impl AgentSurface {
 		let epoch = self.guardian.epoch;
 		let before = self.guardian.before;
 		let request = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime.block_on(AgentClient::new(profile).guardian_reviews(work_id, before)).ok()
 		});
@@ -277,10 +283,7 @@ impl AgentSurface {
 		self.guardian.mutation_key = Some(submitted_key.clone());
 
 		let request = cx.background_executor().spawn(async move {
-			let runtime = tokio::runtime::Builder::new_current_thread()
-				.enable_all()
-				.build()
-				.map_err(|_| ())?;
+			let runtime = Builder::new_current_thread().enable_all().build().map_err(|_| ())?;
 
 			runtime
 				.block_on(AgentClient::new(profile).execute(
@@ -327,7 +330,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	fn guardian_detail_complete(&self, review: &decodex_protocol::AgentGuardianReviewDto) -> bool {
+	fn guardian_detail_complete(&self, review: &AgentGuardianReviewDto) -> bool {
 		!review.details_paged
 			|| self.guardian.detail.as_ref().is_some_and(|detail| {
 				detail.row == review.row_id && detail.digest == review.digest && detail.complete
@@ -379,8 +382,7 @@ impl AgentSurface {
 		let serial = self.guardian.detail_serial;
 		let epoch = self.guardian.epoch;
 		let request = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime
 				.block_on(AgentClient::new(profile).guardian_detail(
@@ -422,7 +424,7 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		if self.guardian.owner.as_deref() != Some(&work.id) {
 			return div().into_any_element();
 		}
@@ -505,9 +507,9 @@ impl AgentSurface {
 
 	fn guardian_detail_panel(
 		&self,
-		review: &decodex_protocol::AgentGuardianReviewDto,
+		review: &AgentGuardianReviewDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let row = review.row_id;
 		let digest = review.digest.clone();
 		let reader = self.guardian.detail.as_ref().filter(|d| d.row == row && d.digest == digest);
@@ -571,7 +573,7 @@ impl AgentSurface {
 		}
 
 		if self.guardian.detail_request.is_some() {
-			panel = panel.child(crate::ui_loading::loading("Loading review"));
+			panel = panel.child(ui_loading::loading("Loading review"));
 		}
 
 		panel.into_any_element()
@@ -580,9 +582,9 @@ impl AgentSurface {
 	fn guardian_review_card(
 		&self,
 		work: &AgentWorkItemDto,
-		review: &decodex_protocol::AgentGuardianReviewDto,
+		review: &AgentGuardianReviewDto,
 		cx: &mut Context<Self>,
-	) -> gpui::Div {
+	) -> Div {
 		let state = match review.status {
 			Status::InProgress => "No final review result received",
 			Status::Approved => "Allowed by Codex review",
@@ -681,8 +683,8 @@ fn button(
 	label: String,
 	cx: &mut Context<AgentSurface>,
 	action: impl Fn(&mut AgentSurface, &mut Context<AgentSurface>) + 'static,
-) -> gpui::AnyElement {
-	let action = std::rc::Rc::new(action);
+) -> AnyElement {
+	let action = Rc::new(action);
 	let click = action.clone();
 
 	div()
@@ -692,10 +694,10 @@ fn button(
 		.tab_index(0)
 		.aria_label(label.clone())
 		.cursor_pointer()
-		.text_color(rgb(ui_theme::BLUE))
+		.text_color(rgb(BLUE))
 		.py_1()
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
-		.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 				cx.stop_propagation();
 
@@ -708,7 +710,17 @@ fn button(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::guardian::*;
+	use decodex_protocol::{
+		CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
+		QueryResultPayload, ServerId, ServerMessage,
+	};
+
+	use futures_util::{SinkExt as _, StreamExt as _};
+
+	use tokio_tungstenite::tungstenite::Message;
+
+	use crate::shell::agent_surface::wire_test_support;
 
 	#[gpui::test]
 	fn paged_guardian_action_requires_every_page_and_discards_changed_evidence(
@@ -974,87 +986,76 @@ mod tests {
 	fn ordinary_refresh_keeps_guardian_list_details_and_submission_receipt(
 		cx: &mut gpui::TestAppContext,
 	) {
-		use decodex_protocol::{
-			CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
-			QueryResultPayload, ServerId, ServerMessage,
-		};
+		let (_dir, profile, server) = wire_test_support::fixture(|listener| async move {
+			for index in 0..4 {
+				let mut socket = wire_test_support::accept(&listener).await;
+				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+					panic!("text request")
+				};
+				let request: ClientMessage = serde_json::from_str(&text).unwrap();
 
-		use futures_util::{SinkExt, StreamExt};
-
-		use tokio_tungstenite::tungstenite::Message;
-
-		let (_dir, profile, server) = super::super::wire_test_support::fixture(
-			|listener| async move {
-				for index in 0..4 {
-					let mut socket = super::super::wire_test_support::accept(&listener).await;
-					let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-						panic!("text request")
+				if index == 2 {
+					let ClientMessage::Command(command) = request else {
+						panic!("one explicit submission")
 					};
-					let request: ClientMessage = serde_json::from_str(&text).unwrap();
+					let CommandPayload::Agent { action } = command.payload else {
+						panic!("Agent action")
+					};
 
-					if index == 2 {
-						let ClientMessage::Command(command) = request else {
-							panic!("one explicit submission")
-						};
-						let CommandPayload::Agent { action } = command.payload else {
-							panic!("Agent action")
-						};
+					assert!(
+						matches!(&*action, AgentActionDto::ApproveGuardianDenial { work_id, review_row: 1, review_digest } if work_id.as_str() == "root" && review_digest.as_str() == "original")
+					);
 
-						assert!(
-							matches!(&*action, AgentActionDto::ApproveGuardianDenial { work_id, review_row: 1, review_digest } if work_id.as_str() == "root" && review_digest.as_str() == "original")
-						);
+					socket.close(None).await.unwrap();
 
-						socket.close(None).await.unwrap();
+					continue;
+				}
 
-						continue;
+				let ClientMessage::Query(query) = request else {
+					panic!("readback, not another approval")
+				};
+				let payload = if index == 1 {
+					assert!(
+						matches!(&query.payload, QueryPayload::GetAgentGuardianDetail { work_id, review_row: 1, review_digest, offset: 0 } if work_id.as_str() == "root" && review_digest.as_str() == "original")
+					);
+
+					QueryResultPayload::AgentGuardianDetail(Detail::Available {
+						row_id: 1,
+						digest: "original".into(),
+						offset: 0,
+						text: "whole".into(),
+						total_bytes: 5,
+						next_offset: None,
+					})
+				} else {
+					assert!(
+						matches!(&query.payload, QueryPayload::GetAgentGuardianReviews { work_id, before: None } if work_id.as_str() == "root")
+					);
+
+					let mut saved = review();
+
+					saved.details_paged = true;
+
+					if index == 3 {
+						saved.submission = Some(Submission::Pending);
+						saved.can_approve = false;
 					}
 
-					let ClientMessage::Query(query) = request else {
-						panic!("readback, not another approval")
-					};
-					let payload = if index == 1 {
-						assert!(
-							matches!(&query.payload, QueryPayload::GetAgentGuardianDetail { work_id, review_row: 1, review_digest, offset: 0 } if work_id.as_str() == "root" && review_digest.as_str() == "original")
-						);
+					QueryResultPayload::AgentGuardianReviews(page(saved))
+				};
+				let response = ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
+					query_id: query.query_id,
+					payload,
+				});
 
-						QueryResultPayload::AgentGuardianDetail(Detail::Available {
-							row_id: 1,
-							digest: "original".into(),
-							offset: 0,
-							text: "whole".into(),
-							total_bytes: 5,
-							next_offset: None,
-						})
-					} else {
-						assert!(
-							matches!(&query.payload, QueryPayload::GetAgentGuardianReviews { work_id, before: None } if work_id.as_str() == "root")
-						);
-
-						let mut saved = review();
-
-						saved.details_paged = true;
-
-						if index == 3 {
-							saved.submission = Some(Submission::Pending);
-							saved.can_approve = false;
-						}
-
-						QueryResultPayload::AgentGuardianReviews(page(saved))
-					};
-					let response = ServerMessage::QueryResult(QueryResultEnvelope {
-						version: CURRENT_VERSION,
-						server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
-						query_id: query.query_id,
-						payload,
-					});
-
-					socket
-						.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
-						.await
-						.unwrap();
-				}
-			},
-		);
+				socket
+					.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
+					.await
+					.unwrap();
+			}
+		});
 		let surface = cx.new(AgentSurface::new);
 
 		surface.update(cx, |s, _| {
@@ -1155,73 +1156,68 @@ mod tests {
 			ServerId, ServerMessage,
 		};
 
-		use futures_util::{SinkExt, StreamExt};
+		let (_dir, profile, server) = wire_test_support::fixture(|listener| async move {
+			let (mut lists, mut details) = (0, 0);
 
-		use tokio_tungstenite::tungstenite::Message;
+			for _ in 0..2 {
+				let mut socket = wire_test_support::accept(&listener).await;
+				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+					panic!("text query")
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
+					panic!("readback only")
+				};
+				let payload = match &query.payload {
+					QueryPayload::GetAgentGuardianDetail {
+						work_id,
+						review_row: 1,
+						review_digest,
+						offset: 0,
+					} => {
+						assert_eq!(work_id.as_str(), "root");
+						assert_eq!(review_digest.as_str(), "original");
 
-		let (_dir, profile, server) =
-			super::super::wire_test_support::fixture(|listener| async move {
-				let (mut lists, mut details) = (0, 0);
+						details += 1;
 
-				for _ in 0..2 {
-					let mut socket = super::super::wire_test_support::accept(&listener).await;
-					let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-						panic!("text query")
-					};
-					let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
-						panic!("readback only")
-					};
-					let payload = match &query.payload {
-						QueryPayload::GetAgentGuardianDetail {
-							work_id,
-							review_row: 1,
-							review_digest,
+						QueryResultPayload::AgentGuardianDetail(Detail::Available {
+							row_id: 1,
+							digest: "original".into(),
 							offset: 0,
-						} => {
-							assert_eq!(work_id.as_str(), "root");
-							assert_eq!(review_digest.as_str(), "original");
+							text: "whole".into(),
+							total_bytes: 5,
+							next_offset: None,
+						})
+					},
+					QueryPayload::GetAgentGuardianReviews { work_id, before: None } => {
+						assert_eq!(work_id.as_str(), "root");
 
-							details += 1;
+						lists += 1;
 
-							QueryResultPayload::AgentGuardianDetail(Detail::Available {
-								row_id: 1,
-								digest: "original".into(),
-								offset: 0,
-								text: "whole".into(),
-								total_bytes: 5,
-								next_offset: None,
-							})
-						},
-						QueryPayload::GetAgentGuardianReviews { work_id, before: None } => {
-							assert_eq!(work_id.as_str(), "root");
+						let mut saved = review();
 
-							lists += 1;
+						saved.details_paged = true;
+						saved.submission = Some(Submission::Pending);
+						saved.can_approve = false;
 
-							let mut saved = review();
+						QueryResultPayload::AgentGuardianReviews(page(saved))
+					},
+					_ => panic!("exact review readback"),
+				};
+				let response = ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
+					query_id: query.query_id,
+					payload,
+				});
 
-							saved.details_paged = true;
-							saved.submission = Some(Submission::Pending);
-							saved.can_approve = false;
+				socket
+					.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
+					.await
+					.unwrap();
+			}
 
-							QueryResultPayload::AgentGuardianReviews(page(saved))
-						},
-						_ => panic!("exact review readback"),
-					};
-					let response = ServerMessage::QueryResult(QueryResultEnvelope {
-						version: CURRENT_VERSION,
-						server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
-						query_id: query.query_id,
-						payload,
-					});
-
-					socket
-						.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
-						.await
-						.unwrap();
-				}
-
-				assert_eq!((lists, details), (1, 1));
-			});
+			assert_eq!((lists, details), (1, 1));
+		});
 		let surface = cx.new(AgentSurface::new);
 
 		surface.update(cx, |s, cx| {

@@ -18,7 +18,7 @@ pub(crate) use status::{
 	count_preference as notification_count_preference, question_notice_preference,
 };
 
-use crate::ui_motion::SmoothControl;
+use crate::ui_motion::{self, SmoothControl};
 
 use agent_surface::AgentSurface;
 
@@ -66,9 +66,15 @@ use crate::{
 	desktop_settings::{DesktopSettingsController, DesktopSettingsSnapshot},
 	health_query::{HealthLoadState, HealthQuery, HealthSnapshot},
 	history_pager::{HistoryLoadState, HistoryPageSource, HistoryPager, HistorySnapshot},
-	settings_surface::SettingsSurface,
-	ui_theme,
+	settings_surface::{SettingsCategory, SettingsSurface},
+	ui_theme::{self, window_material},
 };
+
+use std::array;
+
+use tokio::time;
+
+use crate::ui_loading;
 
 actions!(
 	decodex_shell,
@@ -300,7 +306,7 @@ impl Shell {
 			connection,
 			root_focus,
 			destination_focus,
-			settings_focus: std::array::from_fn(|index| {
+			settings_focus: array::from_fn(|index| {
 				cx.focus_handle().tab_index(index as isize).tab_stop(true)
 			}),
 			refresh_focus,
@@ -1251,7 +1257,7 @@ impl Shell {
 						return;
 					}
 
-					tokio::time::sleep(Duration::from_millis(350)).await;
+					time::sleep(Duration::from_millis(350)).await;
 
 					let next = if task_cancellation.load(Ordering::Acquire) {
 						controller.cancel(session_id).await
@@ -1848,7 +1854,7 @@ impl Render for Shell {
 			destination_content(self, presentation, self.refresh_focus.clone(), window, cx);
 
 		root.relative()
-			.child(crate::ui_motion::arrival(route, content))
+			.child(ui_motion::arrival(route, content))
 			.child(controls)
 			.child(gpui::deferred(status).priority(3))
 		// Keep global notifications above deferred composer menus throughout dismissal.
@@ -3287,7 +3293,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				.flex()
 				.flex_col()
 				.child(row)
-				.child(crate::ui_motion::disclosure(
+				.child(ui_motion::disclosure(
 					SharedString::from(format!(
 						"account-expansion-{}",
 						account.account_id.as_str()
@@ -3385,8 +3391,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 									snapshot.load,
 									AccountsLoadState::NeverRequested | AccountsLoadState::Loading
 								) {
-									crate::ui_loading::loading("Loading accounts")
-										.into_any_element()
+									ui_loading::loading("Loading accounts").into_any_element()
 								} else {
 									div()
 										.text_size(px(11.))
@@ -4309,7 +4314,7 @@ fn animated_horizontal_panel_slot(
 	full_width: f32,
 	panel: AnyElement,
 ) -> AnyElement {
-	if crate::ui_motion::reduced() {
+	if ui_motion::reduced() {
 		let width = px(if visible { full_width } else { 0. });
 
 		return div()
@@ -5580,8 +5585,6 @@ fn settings_navigation(
 				.child("Settings"),
 		);
 
-	use crate::settings_surface::SettingsCategory;
-
 	for (section_index, (destination, category, label)) in [
 		(Destination::Settings, Some(SettingsCategory::General), "General"),
 		(Destination::Settings, Some(SettingsCategory::Appearance), "Appearance"),
@@ -5752,11 +5755,9 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 			move |window, cx| {
 				cx.new(|cx| {
 					{
-						window.on_next_frame(|window, _| {
-							ui_theme::window_material::configure(window)
-						});
+						window.on_next_frame(|window, _| window_material::configure(window));
 						cx.observe_window_appearance(window, |_, window, _| {
-							ui_theme::window_material::configure(window)
+							window_material::configure(window)
 						})
 						.detach();
 					}
@@ -6444,11 +6445,14 @@ fn transcript_history_status(
 
 #[cfg(test)]
 mod tests {
-	use gpui::{TestAppContext, VisualTestContext, size};
+	use gpui::{self, TestAppContext, VisualTestContext};
 
-	use super::*;
+	use crate::shell::*;
 
-	use crate::client_lifecycle::{CompatibilityReason, QuarantineReason, QuarantineRecovery};
+	use crate::{
+		client_lifecycle::{CompatibilityReason, QuarantineReason, QuarantineRecovery},
+		conversations::{creation_defaults_tests, tests},
+	};
 
 	struct PanelControlView(Entity<Shell>);
 
@@ -6544,7 +6548,7 @@ mod tests {
 			});
 
 			visual.update(|window, cx| {
-				window.resize(size(px(1_440.), px(1_000.)));
+				window.resize(gpui::size(px(1_440.), px(1_000.)));
 				window.draw(cx).clear();
 			});
 
@@ -7085,8 +7089,7 @@ mod tests {
 			(Outcome::Failed, "Original message", "Original message"),
 			(Outcome::NotSubmitted, "Original message", "Original message"),
 		] {
-			let (conversations, server, _original) =
-				crate::conversations::tests::recorded_turn_fixture(outcome);
+			let (conversations, server, _original) = tests::recorded_turn_fixture(outcome);
 
 			shell.update(visual, |s, cx| {
 				s.conversations = conversations.clone();
@@ -7100,7 +7103,7 @@ mod tests {
 			});
 
 			visual.update(|window, cx| {
-				window.resize(size(px(1_440.), px(1_000.)));
+				window.resize(gpui::size(px(1_440.), px(1_000.)));
 				window.draw(cx).clear();
 			});
 
@@ -7114,9 +7117,7 @@ mod tests {
 				assert!(s.conversations.ordinary_turn_outcomes().is_empty());
 			});
 
-			assert!(
-				crate::conversations::tests::take_ready_command(&conversations, &server).is_none()
-			);
+			assert!(tests::take_ready_command(&conversations, &server).is_none());
 		}
 	}
 
@@ -7125,8 +7126,7 @@ mod tests {
 		let (shell, visual) = open_shell(cx);
 
 		for text in ["Original creation input", "Later unsent input"] {
-			let (conversations, server, original) =
-				crate::conversations::tests::recorded_creation_fixture(text);
+			let (conversations, server, original) = tests::recorded_creation_fixture(text);
 
 			shell.update(visual, |s, cx| {
 				s.conversations = conversations.clone();
@@ -7140,7 +7140,7 @@ mod tests {
 			});
 
 			visual.update(|window, cx| {
-				window.resize(size(px(1_440.), px(1_000.)));
+				window.resize(gpui::size(px(1_440.), px(1_000.)));
 				window.draw(cx).clear();
 			});
 
@@ -7170,9 +7170,7 @@ mod tests {
 			});
 			// The shared writer consumes acknowledgements during synchronization.
 			assert!(conversations.confirmed_ordinary_commands().is_empty());
-			assert!(
-				crate::conversations::tests::take_ready_command(&conversations, &server).is_none()
-			);
+			assert!(tests::take_ready_command(&conversations, &server).is_none());
 		}
 	}
 
@@ -7181,7 +7179,7 @@ mod tests {
 		cx: &mut TestAppContext,
 	) {
 		let (shell, visual) = open_shell(cx);
-		let (conversations, server, _) = crate::conversations::tests::catalog_conversations();
+		let (conversations, server, _) = tests::catalog_conversations();
 
 		conversations.begin_new();
 
@@ -7197,7 +7195,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(size(px(1_440.), px(1_000.)));
+			window.resize(gpui::size(px(1_440.), px(1_000.)));
 			window.draw(cx).clear();
 		});
 
@@ -7211,7 +7209,7 @@ mod tests {
 			assert_eq!(s.composer.read(cx).content(), "Keep my input");
 		});
 
-		crate::conversations::creation_defaults_tests::reply_defaults(
+		creation_defaults_tests::reply_defaults(
 			&conversations,
 			&server,
 			decodex_protocol::InitialModelDefaults {
@@ -7239,7 +7237,7 @@ mod tests {
 
 		visual.simulate_click(send.center(), gpui::Modifiers::default());
 
-		let command = crate::conversations::tests::dispatched_command(&conversations, &server);
+		let command = tests::dispatched_command(&conversations, &server);
 		let decodex_protocol::CommandPayload::CreateConversation { message, execution, .. } =
 			command.payload
 		else {
@@ -7257,7 +7255,7 @@ mod tests {
 		cx: &mut TestAppContext,
 	) {
 		let (shell, visual) = open_shell(cx);
-		let (conversations, server_id, _) = crate::conversations::tests::catalog_conversations();
+		let (conversations, server_id, _) = tests::catalog_conversations();
 
 		shell.update(visual, |s, cx| {
 			s.conversations = conversations.clone();
@@ -7269,7 +7267,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(size(px(1_440.), px(1_000.)));
+			window.resize(gpui::size(px(1_440.), px(1_000.)));
 			window.draw(cx).clear();
 		});
 
@@ -7289,7 +7287,7 @@ mod tests {
 
 		conversations.submit("Use the selected tier").unwrap();
 
-		let command = crate::conversations::tests::dispatched_command(&conversations, &server_id);
+		let command = tests::dispatched_command(&conversations, &server_id);
 		let encoded = serde_json::to_value(command).unwrap();
 
 		assert!(encoded.to_string().contains("ultrafast"));
@@ -7579,8 +7577,7 @@ mod tests {
 	#[gpui::test]
 	fn model_review_clicks_preserve_later_composer_draft(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
-		let (conversations, server_id, review) =
-			crate::conversations::tests::model_review_fixture();
+		let (conversations, server_id, review) = tests::model_review_fixture();
 
 		shell.update(visual, |s, cx| {
 			s.select_destination(Destination::Conversations, cx);
@@ -7593,7 +7590,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(size(px(1_440.), px(1_000.)));
+			window.resize(gpui::size(px(1_440.), px(1_000.)));
 			window.draw(cx).clear();
 		});
 
@@ -7604,8 +7601,7 @@ mod tests {
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 
 		let dispatch =
-			crate::conversations::tests::take_fixture_dispatch(&conversations, &server_id)
-				.expect("review query");
+			tests::take_fixture_dispatch(&conversations, &server_id).expect("review query");
 		let query = dispatch.query().expect("click only queries");
 
 		assert!(matches!(
@@ -7629,8 +7625,7 @@ mod tests {
 		);
 
 		assert!(
-			crate::conversations::tests::take_fixture_dispatch(&conversations, &server_id)
-				.is_none(),
+			tests::take_fixture_dispatch(&conversations, &server_id).is_none(),
 			"discovery cannot start"
 		);
 
@@ -7653,9 +7648,8 @@ mod tests {
 
 		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 
-		let dispatch =
-			crate::conversations::tests::take_fixture_dispatch(&conversations, &server_id)
-				.expect("explicit confirmation");
+		let dispatch = tests::take_fixture_dispatch(&conversations, &server_id)
+			.expect("explicit confirmation");
 		let command = dispatch.command().expect("confirmation command").clone();
 
 		assert!(
@@ -7705,7 +7699,7 @@ mod tests {
 		cx: &mut TestAppContext,
 	) {
 		let (shell, visual) = open_shell(cx);
-		let conversations = crate::conversations::tests::native_settings_fixture();
+		let conversations = tests::native_settings_fixture();
 		let execution = conversations.snapshot().execution.clone();
 
 		shell.update(visual, |s, cx| {
@@ -7723,7 +7717,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(size(px(1_440.), px(1_000.)));
+			window.resize(gpui::size(px(1_440.), px(1_000.)));
 			window.draw(cx).clear();
 		});
 		visual.executor().advance_clock(ui_theme::MOTION_PANEL + Duration::from_millis(24));

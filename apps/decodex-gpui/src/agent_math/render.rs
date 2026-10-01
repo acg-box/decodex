@@ -5,6 +5,7 @@
 //! Accents apply only to single graphemes so their scope survives terminal rendering.
 
 use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 const MAX_ROWS: usize = 16;
 const MAX_COLUMNS: usize = 256;
@@ -333,7 +334,7 @@ impl MathParser<'_> {
 }
 
 pub(super) fn display_width(text: &str) -> usize {
-	unicode_width::UnicodeWidthStr::width(text)
+	UnicodeWidthStr::width(text)
 		+ text.chars().filter(|ch| matches!(ch, '\u{FF9E}' | '\u{FF9F}')).count()
 }
 

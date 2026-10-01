@@ -1,10 +1,12 @@
 //! Display-paced wheel motion. Precise trackpad deltas retain native momentum.
+use std::time::Instant;
+
 use gpui::{
 	App, Div, ElementId, IntoElement, RenderOnce, ScrollDelta, ScrollHandle, Stateful, Window,
 	point, prelude::*, px,
 };
 
-use std::time::Instant;
+use crate::{ui_motion, ui_preferences, ui_theme::BODY_LINE_HEIGHT};
 
 pub(crate) trait SmoothScrollArea {
 	fn smooth_scroll(self, id: impl Into<ElementId>) -> ScrollArea;
@@ -81,7 +83,7 @@ impl RenderOnce for ScrollArea {
 				));
 
 				if moving {
-					crate::ui_motion::request_frame(window, cx);
+					ui_motion::request_frame(window, cx);
 
 					cx.notify();
 				} else {
@@ -94,7 +96,7 @@ impl RenderOnce for ScrollArea {
 
 		self.content.overflow_hidden().track_scroll(&scroll).on_scroll_wheel(
 			move |event, _window, cx| {
-				let delta = event.delta.pixel_delta(px(crate::ui_theme::BODY_LINE_HEIGHT)).y;
+				let delta = event.delta.pixel_delta(px(BODY_LINE_HEIGHT)).y;
 
 				if delta == px(0.) {
 					return;
@@ -145,11 +147,11 @@ impl SmoothScrollArea for Stateful<Div> {
 pub(crate) fn preference(value: Option<bool>) -> bool {
 	static VALUE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);
 
-	crate::ui_preferences::boolean("DecodexSmoothScrolling", &VALUE, value, true)
+	ui_preferences::boolean("DecodexSmoothScrolling", &VALUE, value, true)
 }
 
 pub(crate) fn enabled() -> bool {
-	preference(None) && !crate::ui_motion::reduced()
+	preference(None) && !ui_motion::reduced()
 }
 
 pub(crate) fn smooth(delta: ScrollDelta) -> bool {
@@ -162,7 +164,7 @@ fn should_smooth(delta: ScrollDelta, enabled: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::ui_scroll::*;
 
 	use std::time::Duration;
 

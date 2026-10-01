@@ -1,7 +1,8 @@
 //! Preserve pre-creation input independently of existing task execution overrides.
-use super::*;
+use gpui::{AnyElement, KeyDownEvent};
 
-use decodex_protocol::DesktopCreationSetup;
+use crate::shell::agent_surface::*;
+use decodex_protocol::{DesktopCreationIntent, DesktopCreationSetup};
 
 pub(super) const DEFAULT_MODEL: &str = "gpt-6-astra";
 
@@ -43,12 +44,11 @@ impl AgentSurface {
 
 		self.effort = setup.reasoning_effort.clone();
 		self.creation_inherit_effort = setup.inherit_effort;
-		self.creation_intent =
-			setup.intent.clone().unwrap_or(decodex_protocol::DesktopCreationIntent {
-				model: true,
-				reasoning: true,
-				service_tier: true,
-			});
+		self.creation_intent = setup.intent.clone().unwrap_or(DesktopCreationIntent {
+			model: true,
+			reasoning: true,
+			service_tier: true,
+		});
 		self.creation_defaults = None;
 		self.creation_defaults_applied = setup.defaults_applied;
 		self.fast = setup.fast;
@@ -66,7 +66,7 @@ impl AgentSurface {
 		(!self.creation_inherit_effort).then(|| self.effort.clone())
 	}
 
-	pub(super) fn creation_effort_toggle(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn creation_effort_toggle(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.composer_manager.is_some() || self.root_id().is_some() {
 			return div().into_any_element();
 		}
@@ -88,7 +88,7 @@ impl AgentSurface {
 			.py_1()
 			.child("Auto")
 			.on_click(cx.listener(|s, _, _, cx| s.toggle_creation_effort(cx)))
-			.on_key_down(cx.listener(|s, event: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
 				if !event.is_held && matches!(event.keystroke.key.as_str(), "enter" | "space") {
 					s.toggle_creation_effort(cx);
 					cx.stop_propagation();

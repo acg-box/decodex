@@ -1,11 +1,17 @@
 //! Subscription dictation edits a draft; only the ordinary Send action starts work.
-use super::{voice::Media, *};
+use crate::shell::agent_surface::{voice::Media, *};
 use decodex_protocol::{DictationBuffer, DictationPhase, DictationRequest, DictationStatus};
 use gpui::AnyElement;
 use std::{
 	collections::VecDeque,
+	future::{Future, poll_fn},
+	task::Poll,
 	time::{Duration, Instant},
 };
+
+use gpui::{AsyncApp, Task, WeakEntity};
+use tokio::runtime::Builder;
+use ui_theme::{BLUE, TEXT_MUTED};
 
 pub(super) struct DictationUi {
 	media: Media,
@@ -72,8 +78,7 @@ impl AgentSurface {
 				let Some(request) = request else { break };
 				let profile = profile.clone();
 				let response = cx.background_executor().spawn(async move {
-					let runtime =
-						tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+					let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 					runtime.block_on(AgentClient::new(profile).dictation(request)).ok()
 				});
@@ -94,9 +99,7 @@ impl AgentSurface {
 
 			cx.background_executor()
 				.spawn(async move {
-					if let Ok(runtime) =
-						tokio::runtime::Builder::new_current_thread().enable_all().build()
-					{
+					if let Ok(runtime) = Builder::new_current_thread().enable_all().build() {
 						let _ = runtime.block_on(
 							AgentClient::new(profile)
 								.dictation(DictationRequest::Cancel { session_id: id }),
@@ -280,14 +283,14 @@ impl AgentSurface {
 				.items_center()
 				.gap(px(8.))
 				.text_size(px(11.))
-				.text_color(rgb(ui_theme::TEXT_MUTED))
+				.text_color(rgb(TEXT_MUTED))
 				.child(div().h(px(12.)).w(px(26.)).flex().items_center().gap(px(2.)).children(
 					(0..5).map(|i| {
 						div()
 							.w(px(2.))
 							.h(px(3. + d.level * 9. * (1. - (i as f32 - 2.).abs() / 4.)))
 							.rounded_full()
-							.bg(rgb(ui_theme::BLUE))
+							.bg(rgb(BLUE))
 					}),
 				))
 				.child(
@@ -327,15 +330,10 @@ fn merge_draft(original: &str, transcript: &str) -> String {
 }
 // A subscription handshake must not block capture events or the listening indicator.
 async fn await_response(
-	response: gpui::Task<Option<DictationStatus>>,
-	surface: &gpui::WeakEntity<AgentSurface>,
-	cx: &mut gpui::AsyncApp,
+	response: Task<Option<DictationStatus>>,
+	surface: &WeakEntity<AgentSurface>,
+	cx: &mut AsyncApp,
 ) -> Option<DictationStatus> {
-	use std::{
-		future::{Future, poll_fn},
-		task::Poll,
-	};
-
 	let mut response = Box::pin(response);
 
 	loop {
@@ -365,7 +363,10 @@ async fn await_response(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::dictation::*;
+
+	use std::future;
+
 	#[test]
 	fn provisional_revisions_replace_only_the_dictated_suffix() {
 		let original = "Keep this draft\n";
@@ -447,7 +448,7 @@ mod tests {
 			s.composer.update(cx, |input, cx| input.set_content("Manual edit", cx));
 
 			cx.spawn(async move |surface, cx| {
-				let request = cx.background_executor().spawn(std::future::pending());
+				let request = cx.background_executor().spawn(future::pending());
 
 				await_response(request, &surface, cx).await
 			})

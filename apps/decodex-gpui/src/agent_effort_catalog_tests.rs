@@ -1,25 +1,32 @@
 //! Catalog refresh preserves user intent; empty choices do not block creation.
-use super::{
-	super::{AgentActionDto, ClientProfile, LoadState},
-	*,
+use std::{
+	fs,
+	fs::Permissions,
+	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+	thread,
+	thread::JoinHandle,
+	time::Duration,
 };
 
-use decodex_protocol::{
-	CURRENT_VERSION, ClientMessage, CommandPayload, ConversationModel, Cursor, ReconnectMode,
-	ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
-};
-
-use futures_util::{SinkExt, StreamExt};
-
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
-
+use crate::shell::agent_surface::{AgentActionDto, ClientProfile, LoadState, capabilities::*};
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::{Context, Entity, Render, TestAppContext, Window};
+use tempfile::TempDir;
+use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
 
+use decodex_protocol::{
+	CURRENT_VERSION, ClientMessage, CommandPayload, ConversationModel,
+	ConversationWorkingDirectory, Cursor, EntityId, InitialExecutionDefaults,
+	InitialModelCatalogResult, InitialModelDefaults, ReconnectMode, ServerId, ServerMessage,
+	ServerWelcome, ServiceTier, SnapshotEnvelope,
+};
+
 struct EffortView {
-	surface: gpui::Entity<AgentSurface>,
+	surface: Entity<AgentSurface>,
 }
-impl gpui::Render for EffortView {
-	fn render(&mut self, _: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
+impl Render for EffortView {
+	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.surface.update(cx, |s, cx| {
 			gpui::div().child(s.creation_effort_toggle(cx)).child(s.effort_scale(cx))
 		})
@@ -47,9 +54,7 @@ fn catalog(efforts: Vec<ConversationReasoningEffort>) -> AgentCapabilitiesResult
 }
 
 #[gpui::test]
-fn catalog_refresh_preserves_explicit_effort_until_user_selects_model(
-	cx: &mut gpui::TestAppContext,
-) {
+fn catalog_refresh_preserves_explicit_effort_until_user_selects_model(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	surface.update(cx, |s, cx| {
@@ -85,32 +90,32 @@ fn catalog_refresh_preserves_explicit_effort_until_user_selects_model(
 	});
 }
 
-fn profile() -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<AgentActionDto>) {
+fn profile() -> (TempDir, ClientProfile, JoinHandle<AgentActionDto>) {
 	let root = tempfile::tempdir_in("/tmp").unwrap();
 	let path = root.path().canonicalize().unwrap();
 
-	std::fs::create_dir(path.join("server")).unwrap();
-	std::fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700)).unwrap();
+	fs::create_dir(path.join("server")).unwrap();
+	fs::set_permissions(path.join("server"), Permissions::from_mode(0o700)).unwrap();
 
-	let uid = std::fs::metadata(&path).unwrap().uid();
+	let uid = fs::metadata(&path).unwrap().uid();
 	let config = path.join("config.toml");
 
-	std::fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
-	std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
+	fs::write(&config, format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"\n")).unwrap();
+	fs::set_permissions(config, Permissions::from_mode(0o600)).unwrap();
 
 	let profile = ClientProfile::load(&path, None).unwrap();
 	let socket = path.join("server/decodex.sock");
 	let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
 
-	std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600)).unwrap();
+	fs::set_permissions(socket, Permissions::from_mode(0o600)).unwrap();
 
 	listener.set_nonblocking(true).unwrap();
 
-	let server = std::thread::spawn(move || {
-		let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	let server = thread::spawn(move || {
+		let runtime = Builder::new_current_thread().enable_all().build().unwrap();
 
 		runtime.block_on(async {
-			tokio::time::timeout(std::time::Duration::from_secs(5), async {
+			time::timeout(Duration::from_secs(5), async {
 				let listener = tokio::net::UnixListener::from_std(listener).unwrap();
 				let mut socket =
 					tokio_tungstenite::accept_async(listener.accept().await.unwrap().0)
@@ -163,9 +168,7 @@ fn profile() -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Agent
 }
 
 #[gpui::test]
-fn cold_creation_keeps_configured_effort_when_catalog_has_no_choices(
-	cx: &mut gpui::TestAppContext,
-) {
+fn cold_creation_keeps_configured_effort_when_catalog_has_no_choices(cx: &mut TestAppContext) {
 	let (_directory, profile, server) = profile();
 	let surface = cx.new(AgentSurface::new);
 
@@ -209,7 +212,7 @@ fn cold_creation_keeps_configured_effort_when_catalog_has_no_choices(
 }
 
 #[gpui::test]
-fn empty_effort_catalog_renders_configured_value_without_slider(cx: &mut gpui::TestAppContext) {
+fn empty_effort_catalog_renders_configured_value_without_slider(cx: &mut TestAppContext) {
 	let (_view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
 
@@ -232,7 +235,7 @@ fn empty_effort_catalog_renders_configured_value_without_slider(cx: &mut gpui::T
 
 #[gpui::test]
 fn native_reasoning_click_preserves_inheritance_in_both_public_start_fields(
-	cx: &mut gpui::TestAppContext,
+	cx: &mut TestAppContext,
 ) {
 	let (_directory, profile, server) = profile();
 	let surface = cx.new(AgentSurface::new);
@@ -288,7 +291,7 @@ fn native_reasoning_click_preserves_inheritance_in_both_public_start_fields(
 
 #[gpui::test]
 fn configured_defaults_reach_both_creation_fields_without_freezing_inherited_effort(
-	cx: &mut gpui::TestAppContext,
+	cx: &mut TestAppContext,
 ) {
 	let (_directory, profile, server) = profile();
 	let surface = cx.new(AgentSurface::new);
@@ -302,16 +305,16 @@ fn configured_defaults_reach_both_creation_fields_without_freezing_inherited_eff
 		s.composer.update(cx, |input, cx| input.set_content("Use native defaults", cx));
 
 		s.capabilities = Some(catalog(vec![]));
-		s.creation_defaults = Some(decodex_protocol::InitialModelCatalogResult::Available {
-			account_id: decodex_protocol::EntityId::new("account").unwrap(),
+		s.creation_defaults = Some(InitialModelCatalogResult::Available {
+			account_id: EntityId::new("account").unwrap(),
 			account_revision: 1,
-			working_directory: decodex_protocol::ConversationWorkingDirectory::new("/tmp").unwrap(),
+			working_directory: ConversationWorkingDirectory::new("/tmp").unwrap(),
 			models: vec![],
-			defaults: Some(Box::new(decodex_protocol::InitialModelDefaults {
-				configured: decodex_protocol::InitialExecutionDefaults {
+			defaults: Some(Box::new(InitialModelDefaults {
+				configured: InitialExecutionDefaults {
 					model: Some(ConversationModel::new("configured-model").unwrap()),
 					reasoning_effort: None,
-					service_tier: Some(decodex_protocol::ServiceTier::new("flex").unwrap()),
+					service_tier: Some(ServiceTier::new("flex").unwrap()),
 				},
 				managed: Default::default(),
 				catalog_model: None,

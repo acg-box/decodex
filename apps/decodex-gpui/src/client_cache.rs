@@ -8,7 +8,7 @@ use std::{
 	collections::{BTreeMap, BTreeSet},
 	fmt::{Display, Formatter},
 	fs::{self, DirBuilder, File, Metadata, OpenOptions},
-	io::{self, ErrorKind},
+	io::{self, ErrorKind, Read, Write},
 	path::{Component, Path, PathBuf},
 };
 
@@ -1436,14 +1436,14 @@ fn copy_verified(
 	}
 
 	let read_limit = expected_length.checked_add(1).ok_or(CacheError::BoundsExceeded)?;
-	let mut input = std::io::Read::take(File::open(source)?, read_limit);
+	let mut input = Read::take(File::open(source)?, read_limit);
 	let mut output = open_new_private_file(destination)?;
 	let mut hasher = Sha256::new();
 	let mut length = 0_u64;
 	let mut buffer = [0_u8; COPY_BUFFER_BYTES];
 
 	loop {
-		let read = std::io::Read::read(&mut input, &mut buffer)?;
+		let read = Read::read(&mut input, &mut buffer)?;
 
 		if read == 0 {
 			break;
@@ -1459,7 +1459,7 @@ fn copy_verified(
 
 		hasher.update(&buffer[..read]);
 
-		std::io::Write::write_all(&mut output, &buffer[..read])?;
+		Write::write_all(&mut output, &buffer[..read])?;
 	}
 
 	if length != expected_length || encode_digest(hasher.finalize().as_slice()) != expected_digest {
@@ -1493,13 +1493,13 @@ fn verify_file(
 	}
 
 	let read_limit = expected_length.checked_add(1).ok_or(CacheError::BoundsExceeded)?;
-	let mut file = std::io::Read::take(File::open(path)?, read_limit);
+	let mut file = Read::take(File::open(path)?, read_limit);
 	let mut hasher = Sha256::new();
 	let mut length = 0_u64;
 	let mut buffer = [0_u8; COPY_BUFFER_BYTES];
 
 	loop {
-		let read = std::io::Read::read(&mut file, &mut buffer)?;
+		let read = Read::read(&mut file, &mut buffer)?;
 
 		if read == 0 {
 			break;
@@ -1739,12 +1739,12 @@ fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>, CacheError> {
 
 	let mut bytes =
 		Vec::with_capacity(usize::try_from(length).map_err(|_| CacheError::InvalidMetadata)?);
-	let mut reader = std::io::Read::take(
+	let mut reader = Read::take(
 		File::open(path)?,
 		u64::try_from(limit + 1).map_err(|_| CacheError::InvalidMetadata)?,
 	);
 
-	std::io::Read::read_to_end(&mut reader, &mut bytes)?;
+	Read::read_to_end(&mut reader, &mut bytes)?;
 
 	if bytes.len() > limit {
 		return Err(CacheError::InvalidMetadata);
@@ -1756,7 +1756,7 @@ fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>, CacheError> {
 fn write_new_synced(path: &Path, bytes: &[u8]) -> Result<(), CacheError> {
 	let mut file = open_new_private_file(path)?;
 
-	std::io::Write::write_all(&mut file, bytes)?;
+	Write::write_all(&mut file, bytes)?;
 
 	file.sync_all()?;
 
