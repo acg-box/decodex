@@ -3,9 +3,7 @@ use std::time::Instant;
 
 use gpui::{
 	App, Div, ElementId, IntoElement, RenderOnce, ScrollDelta, ScrollHandle, Stateful, Window,
-	point,
-	prelude::{InteractiveElement, StatefulInteractiveElement, Styled},
-	px,
+	prelude::{InteractiveElement as _, StatefulInteractiveElement as _, Styled as _},
 };
 
 use crate::{ui_motion, ui_preferences, ui_theme::BODY_LINE_HEIGHT};
@@ -55,6 +53,7 @@ impl Motion {
 
 		self.from = current;
 		self.to = (base + delta).clamp(-maximum.max(0.), 0.);
+
 		// A newly reached boundary must not inherit enough velocity to overshoot.
 		let limit = 32. * (self.to - self.from).abs();
 
@@ -79,9 +78,9 @@ impl RenderOnce for ScrollArea {
 				let (offset, moving) =
 					if enabled() { motion.sample(Instant::now()) } else { (motion.to, false) };
 
-				s.scroll.set_offset(point(
-					px(0.),
-					px(offset.clamp(-f32::from(s.scroll.max_offset().y).max(0.), 0.)),
+				s.scroll.set_offset(gpui::point(
+					gpui::px(0.),
+					gpui::px(offset.clamp(-f32::from(s.scroll.max_offset().y).max(0.), 0.)),
 				));
 
 				if moving {
@@ -98,9 +97,9 @@ impl RenderOnce for ScrollArea {
 
 		self.content.overflow_hidden().track_scroll(&scroll).on_scroll_wheel(
 			move |event, _window, cx| {
-				let delta = event.delta.pixel_delta(px(BODY_LINE_HEIGHT)).y;
+				let delta = event.delta.pixel_delta(gpui::px(BODY_LINE_HEIGHT)).y;
 
-				if delta == px(0.) {
+				if delta == gpui::px(0.) {
 					return;
 				}
 
@@ -120,9 +119,9 @@ impl RenderOnce for ScrollArea {
 					} else {
 						s.motion = None;
 
-						s.scroll.set_offset(point(
-							px(0.),
-							px((current + f32::from(delta)).clamp(-maximum, 0.)),
+						s.scroll.set_offset(gpui::point(
+							gpui::px(0.),
+							gpui::px((current + f32::from(delta)).clamp(-maximum, 0.)),
 						));
 					}
 				});
@@ -166,15 +165,20 @@ fn should_smooth(delta: ScrollDelta, enabled: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use crate::ui_scroll::*;
+	use std::time::{Duration, Instant};
 
-	use std::time::Duration;
+	use gpui::{self, ScrollDelta};
+
+	use crate::ui_scroll::{self, Motion};
 
 	#[test]
 	fn disabling_motion_is_immediate_and_precise_gestures_are_never_resmoothed() {
-		assert!(should_smooth(ScrollDelta::Lines(point(0., -1.)), true));
-		assert!(!should_smooth(ScrollDelta::Lines(point(0., -1.)), false));
-		assert!(!should_smooth(ScrollDelta::Pixels(point(px(0.), px(-0.25))), true));
+		assert!(ui_scroll::should_smooth(ScrollDelta::Lines(gpui::point(0., -1.)), true));
+		assert!(!ui_scroll::should_smooth(ScrollDelta::Lines(gpui::point(0., -1.)), false));
+		assert!(!ui_scroll::should_smooth(
+			ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-0.25))),
+			true
+		));
 	}
 
 	#[test]
