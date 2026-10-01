@@ -9,9 +9,9 @@ use tokio::{runtime::Handle, sync::oneshot, task, time};
 use crate::{
 	agent_capabilities::ModelCatalogPages,
 	conversation::{
-		self, AccountBinding, AccountId, AccountProcessCredential, AttestedAppServerLaunch,
-		AttestedProcessChild, ConversationCredentialVault, ConversationRefreshCallback,
-		ConversationRuntime, ProcessAccountRefreshCallback, ProcessGenerationId,
+		self, AccountBinding, AccountId, AccountProcessCredential, AccountRefreshCallback,
+		AttestedAppServerLaunch, AttestedProcessChild, ConversationCredentialVault,
+		ConversationRefreshCallback, ConversationRuntime, ProcessGenerationId,
 		SelectedWorkingDirectory,
 	},
 };
@@ -117,16 +117,15 @@ impl ConversationRuntime {
 		}
 
 		let runtime = self.clone();
-		let callback: Arc<dyn ProcessAccountRefreshCallback> =
-			Arc::new(ConversationRefreshCallback {
-				accounts: self.inner.accounts.clone(),
-				runtime: Handle::current(),
-				generation_id: ProcessGenerationId::new(conversation::derived_uuid(
-					"model-catalog-process",
-					&[key, account.as_str()],
-				))
-				.ok()?,
-			});
+		let callback: Arc<dyn AccountRefreshCallback> = Arc::new(ConversationRefreshCallback {
+			accounts: self.inner.accounts.clone(),
+			runtime: Handle::current(),
+			generation_id: ProcessGenerationId::new(conversation::derived_uuid(
+				"model-catalog-process",
+				&[key, account.as_str()],
+			))
+			.ok()?,
+		});
 		let source = account.clone();
 		let directory = request.working_directory.as_str().to_owned();
 		let value = task::spawn_blocking(move || {
@@ -170,7 +169,7 @@ impl ConversationRuntime {
 		revision: i64,
 		directory: &str,
 		credential: AccountProcessCredential,
-		callback: Arc<dyn ProcessAccountRefreshCallback>,
+		callback: Arc<dyn AccountRefreshCallback>,
 		read: impl FnOnce(&mut AttestedProcessChild) -> Option<T>,
 	) -> Option<T> {
 		let selected = Arc::new(SelectedWorkingDirectory::acquire(directory).ok()?);

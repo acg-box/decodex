@@ -4,8 +4,8 @@ use std::{sync::Arc, time::Duration};
 use tokio::{runtime::Handle, sync::oneshot, task, time};
 
 use crate::conversation::{
-	self, ConversationId, ConversationRefreshCallback, ConversationRuntime,
-	ProcessAccountRefreshCallback, ProcessGenerationId,
+	self, AccountRefreshCallback, ConversationId, ConversationRefreshCallback, ConversationRuntime,
+	ProcessGenerationId,
 	model_settings::{self, ResultDto},
 };
 
@@ -61,16 +61,15 @@ impl ConversationRuntime {
 		.await
 		.ok()?
 		.ok()?;
-		let callback: Arc<dyn ProcessAccountRefreshCallback> =
-			Arc::new(ConversationRefreshCallback {
-				accounts: self.inner.accounts.clone(),
-				runtime: Handle::current(),
-				generation_id: ProcessGenerationId::new(conversation::derived_uuid(
-					"cold-model-settings-process",
-					&[key, account.as_str()],
-				))
-				.ok()?,
-			});
+		let callback: Arc<dyn AccountRefreshCallback> = Arc::new(ConversationRefreshCallback {
+			accounts: self.inner.accounts.clone(),
+			runtime: Handle::current(),
+			generation_id: ProcessGenerationId::new(conversation::derived_uuid(
+				"cold-model-settings-process",
+				&[key, account.as_str()],
+			))
+			.ok()?,
+		});
 		let runtime = self.clone();
 		let read_account = account.clone();
 		let directory = request.working_directory.clone();

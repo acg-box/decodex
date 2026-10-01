@@ -4,6 +4,7 @@
 //! RuntimeSession, ProcessGeneration, and ProviderAttempt. This module retains only bounded
 //! daemon-local process and active-turn handles.
 
+#[path = "conversation/account_nudge.rs"] mod account_nudge;
 mod execution_overrides;
 mod model_catalog;
 mod model_settings;
@@ -48,8 +49,7 @@ use crate::{
 	account_launch::{
 		CapacityExhausted, RunnerCapacity,
 		process::{
-			self, AccountBinding, AccountIdentity,
-			AccountRefreshCallback as ProcessAccountRefreshCallback, AttestedAppServerLaunch,
+			self, AccountBinding, AccountIdentity, AccountRefreshCallback, AttestedAppServerLaunch,
 			AttestedAppServerProfile, AttestedProcessChild, ChatgptRefreshProjection,
 			ConversationPreSpawnCheck, ConversationProcessError, ConversationProcessEvent,
 			ConversationRejectionReason, CredentialProjection, CredentialVault,
@@ -286,12 +286,9 @@ impl ConversationRuntime {
 			.and_then(|process| process.client.clone())
 	}
 
-	pub(crate) async fn model_capabilities(
-		&self,
-		conversation: &str,
-	) -> decodex_protocol::AgentCapabilitiesResult {
+	pub(crate) async fn model_capabilities(&self, conversation: &str) -> AgentCapabilitiesResult {
 		if self.is_shutting_down() {
-			return decodex_protocol::AgentCapabilitiesResult::Unavailable;
+			return AgentCapabilitiesResult::Unavailable;
 		}
 
 		let idle = {
@@ -324,7 +321,7 @@ impl ConversationRuntime {
 				.await
 				.ok()
 				.and_then(Result::ok)
-				.unwrap_or(decodex_protocol::AgentCapabilitiesResult::Unavailable);
+				.unwrap_or(AgentCapabilitiesResult::Unavailable);
 		}
 
 		self.active_model_capabilities(conversation).await
@@ -334,7 +331,7 @@ impl ConversationRuntime {
 		&self,
 		conversation: String,
 		session: LocalSession,
-	) -> decodex_protocol::AgentCapabilitiesResult {
+	) -> AgentCapabilitiesResult {
 		let before =
 			self.inner.accounts.inspect(&session.account_id).await.ok().map(|v| v.account.revision);
 		let control = self.inner.process_generations.clone();
@@ -342,9 +339,9 @@ impl ConversationRuntime {
 		let result = if before.is_some() {
 			task::spawn_blocking(move || {
 				control.with_fenced_child(&process, |child| {
+					let deadline = Instant::now() + Duration::from_secs(8);
 					let mut pages = ModelCatalogPages::default();
 					let mut cursor = None;
-					let deadline = Instant::now() + Duration::from_secs(8);
 
 					for _ in 0..8 {
 						if Instant::now() >= deadline {
@@ -397,10 +394,7 @@ impl ConversationRuntime {
 		})
 	}
 
-	async fn active_model_capabilities(
-		&self,
-		conversation: &str,
-	) -> decodex_protocol::AgentCapabilitiesResult {
+	async fn active_model_capabilities(&self, conversation: &str) -> AgentCapabilitiesResult {
 		let (source, commands) = {
 			let local = self.local();
 			let Some(LocalTask { state: LocalTaskState::Active { session, commands, .. }, .. }) =
@@ -3954,7 +3948,7 @@ impl ConversationRuntime {
 				SelectedWorkingDirectory::acquire(&working_directory)
 					.map_err(|()| ConversationControlOutcome::Unavailable)?,
 			);
-			let callback: Arc<dyn ProcessAccountRefreshCallback> =
+			let callback: Arc<dyn AccountRefreshCallback> =
 				Arc::new(ConversationRefreshCallback { accounts, runtime, generation_id });
 			let binding =
 				AccountBinding::shared_home_bound(account_id.clone(), credential.binding, callback)
@@ -4320,12 +4314,11 @@ impl ConversationRuntime {
 	) -> Result<FencedProcess, ConversationManualRecovery> {
 		let agent_requests = matches!(&admission, AccountLaunchAdmission::Agent { .. });
 		let generation_id = admission.generation_id();
-		let callback: Arc<dyn ProcessAccountRefreshCallback> =
-			Arc::new(ConversationRefreshCallback {
-				accounts: Arc::clone(&self.inner.accounts),
-				runtime: tokio::runtime::Handle::current(),
-				generation_id: generation_id.clone(),
-			});
+		let callback: Arc<dyn AccountRefreshCallback> = Arc::new(ConversationRefreshCallback {
+			accounts: Arc::clone(&self.inner.accounts),
+			runtime: tokio::runtime::Handle::current(),
+			generation_id: generation_id.clone(),
+		});
 		let profile = self.inner.launch_profile.clone();
 		let capacity = Arc::clone(&self.inner.capacity);
 		let working_directory = working_directory.to_owned();
@@ -4374,7 +4367,7 @@ impl ConversationRuntime {
 			})
 			.await
 			.map_err(|_| ConversationManualRecovery::ProcessUnavailable)??;
-		let mut process = match admission {
+		let process = match admission {
 			AccountLaunchAdmission::Conversation(admission) =>
 				process::spawn_admitted_conversation_process(
 					&self.inner.process_generations,
@@ -4408,6 +4401,15 @@ impl ConversationRuntime {
 
 		drop(launch_guard);
 
+		self.initialize_account_process(process, vault, agent_requests).await
+	}
+
+	async fn initialize_account_process(
+		&self,
+		mut process: FencedProcess,
+		vault: ConversationCredentialVault,
+		agent_requests: bool,
+	) -> Result<FencedProcess, ConversationManualRecovery> {
 		let process_for_init = process.clone();
 		let control = self.inner.process_generations.clone();
 		let initialized = task::spawn_blocking(move || {
@@ -5771,7 +5773,7 @@ struct ConversationRefreshCallback {
 	runtime: tokio::runtime::Handle,
 	generation_id: ProcessGenerationId,
 }
-impl ProcessAccountRefreshCallback for ConversationRefreshCallback {
+impl AccountRefreshCallback for ConversationRefreshCallback {
 	fn refresh(
 		&self,
 		account_id: &AccountId,
@@ -6261,6 +6263,23 @@ fn run_event_worker(
 	}
 }
 
+fn forward_worker_events(
+	events: Vec<ConversationProcessEvent>,
+	output: &tokio::sync::mpsc::Sender<WorkerOutput>,
+) -> Result<bool, ConversationProcessError> {
+	let mut terminal = false;
+
+	for event in events {
+		terminal |= matches!(&event, ConversationProcessEvent::TurnCompleted { .. });
+
+		output
+			.blocking_send(WorkerOutput::Event(event))
+			.map_err(|_| ConversationProcessError::Unavailable)?;
+	}
+
+	Ok(terminal)
+}
+
 fn run_event_loop(
 	child: &mut AttestedProcessChild,
 	thread_id: String,
@@ -6287,16 +6306,7 @@ fn run_event_loop(
 		match commands.try_recv() {
 			Ok(WorkerCommand::ModelSettings(reply)) => {
 				let (result, events) = child.read_ordinary_model_settings(thread_id.as_str());
-				let mut terminal = false;
-
-				for event in events {
-					terminal |= matches!(&event, ConversationProcessEvent::TurnCompleted { .. });
-
-					output
-						.blocking_send(WorkerOutput::Event(event))
-						.map_err(|_| ConversationProcessError::Unavailable)?;
-				}
-
+				let terminal = forward_worker_events(events, output)?;
 				let _ = reply.send(result.ok().flatten());
 
 				if terminal {
@@ -6314,16 +6324,7 @@ fn run_event_loop(
 					}
 
 					let (page, events) = child.read_ordinary_model_page(cursor.as_deref());
-					let mut terminal = false;
-
-					for event in events {
-						terminal |=
-							matches!(&event, ConversationProcessEvent::TurnCompleted { .. });
-
-						output
-							.blocking_send(WorkerOutput::Event(event))
-							.map_err(|_| ConversationProcessError::Unavailable)?;
-					}
+					let terminal = forward_worker_events(events, output)?;
 
 					if terminal {
 						let _ = reply.send(None);
@@ -6557,13 +6558,13 @@ fn turn_reservation_is_integrity_failure(error: &StoreError) -> bool {
 	matches!(error, StoreError::Incompatible(_) | StoreError::UnsafeHostPath)
 }
 
-fn store_outcome(error: decodex_database::StoreError) -> ConversationOutcome {
+fn store_outcome(error: StoreError) -> ConversationOutcome {
 	match error {
-		decodex_database::StoreError::IdempotencyConflict
-		| decodex_database::StoreError::OperationIdConflict
-		| decodex_database::StoreError::RevisionConflict { .. }
-		| decodex_database::StoreError::InvalidInput(_)
-		| decodex_database::StoreError::CredentialRejected => ConversationOutcome::Conflict,
+		StoreError::IdempotencyConflict
+		| StoreError::OperationIdConflict
+		| StoreError::RevisionConflict { .. }
+		| StoreError::InvalidInput(_)
+		| StoreError::CredentialRejected => ConversationOutcome::Conflict,
 		_ => ConversationOutcome::Unavailable,
 	}
 }
@@ -6913,7 +6914,7 @@ mod tests {
 			store
 				.read_conversation_creation_receipt(&command.creation_identity().unwrap(), &id)
 				.await,
-			Err(super::StoreError::IdempotencyConflict)
+			Err(decodex_database::StoreError::IdempotencyConflict)
 		));
 	}
 
@@ -7000,4 +7001,3 @@ mod tests {
 		assert!(!super::agent_retirement_retry(None, "agent").unwrap());
 	}
 }
-#[path = "conversation/account_nudge.rs"] mod account_nudge;
