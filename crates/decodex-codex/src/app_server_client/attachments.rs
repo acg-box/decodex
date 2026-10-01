@@ -2,7 +2,7 @@
 use std::{collections::HashSet, time::Duration};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError, MAX_FRAME_BYTES};
@@ -64,7 +64,7 @@ impl AppServerClient {
 				let page = self
 					.request(
 						"thread/attachment/list",
-						json!({"threadId":thread,"cursor":cursor,"limit":100}),
+						serde_json::json!({"threadId":thread,"cursor":cursor,"limit":100}),
 					)
 					.await?;
 
@@ -131,7 +131,7 @@ impl AppServerClient {
 			Duration::from_secs(30),
 			self.request(
 				"thread/attachment/add",
-				json!({"threadId":thread,"attachmentType":kind,"identityKey":key,"payload":payload}),
+				serde_json::json!({"threadId":thread,"attachmentType":kind,"identityKey":key,"payload":payload}),
 			),
 		)
 		.await
@@ -166,13 +166,13 @@ impl AppServerClient {
 			Duration::from_secs(30),
 			self.request(
 				"thread/attachment/remove",
-				json!({"threadId":thread,"attachmentType":kind,"identityKey":key}),
+				serde_json::json!({"threadId":thread,"attachmentType":kind,"identityKey":key}),
 			),
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
 
-		if response != json!({}) {
+		if response != serde_json::json!({}) {
 			return Err(ClientError::InvalidFrame);
 		}
 
@@ -214,11 +214,11 @@ mod tests {
 	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	use crate::app_server_client::attachments::{
-		self, AppServerClient, ClientError, ThreadAttachmentAddOutcome, Value,
+		AppServerClient, ClientError, ThreadAttachmentAddOutcome, Value,
 	};
 
 	fn attachment(id: &str, key: &str) -> Value {
-		attachments::json!({"id":id,"attachmentType":"example.resource","identityKey":key,"payload":{"title":"Original"},"createdAt":1})
+		serde_json::json!({"id":id,"attachmentType":"example.resource","identityKey":key,"payload":{"title":"Original"},"createdAt":1})
 	}
 
 	fn fixture(replies: Vec<Value>) -> (AppServerClient, tokio::task::JoinHandle<Vec<Value>>) {
@@ -249,10 +249,10 @@ mod tests {
 	#[tokio::test]
 	async fn list_and_mutations_keep_exact_identity_and_existing_payload() {
 		let (client, server) = fixture(vec![
-			attachments::json!({"result":{"data":[attachment("a","one")],"nextCursor":"opaque/next"}}),
-			attachments::json!({"result":{"data":[attachment("b","two")],"nextCursor":null}}),
-			attachments::json!({"result":{"outcome":"existing","attachment":attachment("a","one")}}),
-			attachments::json!({"result":{}}),
+			serde_json::json!({"result":{"data":[attachment("a","one")],"nextCursor":"opaque/next"}}),
+			serde_json::json!({"result":{"data":[attachment("b","two")],"nextCursor":null}}),
+			serde_json::json!({"result":{"outcome":"existing","attachment":attachment("a","one")}}),
+			serde_json::json!({"result":{}}),
 		]);
 		let rows = client.thread_attachments("thread/exact").await.unwrap();
 
@@ -264,13 +264,13 @@ mod tests {
 				"thread/exact",
 				"example.resource",
 				"one",
-				attachments::json!({"title":"Replacement"}),
+				serde_json::json!({"title":"Replacement"}),
 			)
 			.await
 			.unwrap();
 
 		assert_eq!(receipt.outcome, ThreadAttachmentAddOutcome::Existing);
-		assert_eq!(receipt.attachment.payload, attachments::json!({"title":"Original"}));
+		assert_eq!(receipt.attachment.payload, serde_json::json!({"title":"Original"}));
 
 		client.remove_thread_attachment("thread/exact", "example.resource", "one").await.unwrap();
 
@@ -290,13 +290,13 @@ mod tests {
 	#[tokio::test]
 	async fn incomplete_or_duplicate_pages_are_not_partial_success() {
 		for second in [
-			attachments::json!({"data":[attachment("a","one")],"nextCursor":null}),
-			attachments::json!({"data":[],"nextCursor":"again"}),
-			attachments::json!({"data":[]}),
+			serde_json::json!({"data":[attachment("a","one")],"nextCursor":null}),
+			serde_json::json!({"data":[],"nextCursor":"again"}),
+			serde_json::json!({"data":[]}),
 		] {
 			let (client, server) = fixture(vec![
-				attachments::json!({"result":{"data":[attachment("a","one")],"nextCursor":"again"}}),
-				attachments::json!({"result":second}),
+				serde_json::json!({"result":{"data":[attachment("a","one")],"nextCursor":"again"}}),
+				serde_json::json!({"result":second}),
 			]);
 
 			assert!(matches!(
@@ -310,7 +310,7 @@ mod tests {
 	#[tokio::test]
 	async fn unsupported_store_is_not_empty_and_mutations_do_not_retry() {
 		let (client, server) = fixture(vec![
-			attachments::json!({"error":{"code":-32_601,"message":"unsupported store"}}),
+			serde_json::json!({"error":{"code":-32_601,"message":"unsupported store"}}),
 		]);
 
 		assert!(
@@ -319,12 +319,12 @@ mod tests {
 		assert_eq!(server.await.unwrap().len(), 1);
 
 		let (client, server) = fixture(vec![
-			attachments::json!({"result":{"outcome":"created","attachment":attachment("a","wrong-key")}}),
+			serde_json::json!({"result":{"outcome":"created","attachment":attachment("a","wrong-key")}}),
 		]);
 
 		assert!(matches!(
 			client
-				.add_thread_attachment("thread", "example.resource", "one", attachments::json!({}))
+				.add_thread_attachment("thread", "example.resource", "one", serde_json::json!({}))
 				.await,
 			Err(ClientError::InvalidFrame)
 		));

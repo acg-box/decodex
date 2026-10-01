@@ -2,7 +2,7 @@
 use std::{collections::HashSet, path::Path, time::Duration};
 
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
@@ -45,9 +45,9 @@ impl HookSettingsReview {
 
 		let (field, value) = match change {
 			HookSettingsChange::Trust => ("trusted_hash", hook["currentHash"].clone()),
-			HookSettingsChange::Enabled(enabled) => ("enabled", json!(enabled)),
+			HookSettingsChange::Enabled(enabled) => ("enabled", serde_json::json!(enabled)),
 		};
-		let params = json!({"edits":[{"keyPath":format!("hooks.state.{}.{field}",json!(key)),"value":value,"mergeStrategy":"replace"}],"expectedVersion":self.version,"reloadUserConfig":true});
+		let params = serde_json::json!({"edits":[{"keyPath":format!("hooks.state.{}.{field}",serde_json::json!(key)),"value":value,"mergeStrategy":"replace"}],"expectedVersion":self.version,"reloadUserConfig":true});
 
 		if !is_hook_settings_write(&params) {
 			return Err(ClientError::InvalidFrame);
@@ -98,8 +98,9 @@ impl AppServerClient {
 		}
 
 		time::timeout(Duration::from_secs(30), async {
-			let config =
-				self.request("config/read", json!({"cwd":cwd,"includeLayers":true})).await?;
+			let config = self
+				.request("config/read", serde_json::json!({"cwd":cwd,"includeLayers":true}))
+				.await?;
 			let layers = config["layers"].as_array().ok_or(ClientError::InvalidFrame)?;
 			// config/read returns highest precedence first; native writes select the active user
 			// layer.
@@ -120,7 +121,7 @@ impl AppServerClient {
 			}
 
 			let saved_hooks = layer["config"]["hooks"]["state"].clone();
-			let response = self.request("hooks/list", json!({"cwds":[cwd]})).await?;
+			let response = self.request("hooks/list", serde_json::json!({"cwds":[cwd]})).await?;
 			let entries = response["data"].as_array().ok_or(ClientError::InvalidFrame)?;
 
 			if entries.len() != 1 || entries[0]["cwd"] != cwd {
@@ -175,7 +176,7 @@ pub fn is_hook_settings_write(params: &Value) -> bool {
 
 	if write.edits.len() != 1
 		|| !write.reload_user_config
-		|| bounded_text(&json!(write.expected_version), 4_096).is_err()
+		|| bounded_text(&serde_json::json!(write.expected_version), 4_096).is_err()
 	{
 		return false;
 	}
@@ -188,7 +189,7 @@ pub fn is_hook_settings_write(params: &Value) -> bool {
 	};
 	let Ok(key) = serde_json::from_str::<String>(quoted) else { return false };
 
-	if bounded_text(&json!(key), 4_096).is_err()
+	if bounded_text(&serde_json::json!(key), 4_096).is_err()
 		|| serde_json::to_string(&key).ok().as_deref() != Some(quoted)
 		|| edit.merge_strategy != "replace"
 	{

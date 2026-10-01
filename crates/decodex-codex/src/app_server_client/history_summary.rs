@@ -1,7 +1,7 @@
 //! Display-only summaries. Never use these pages to reconcile execution.
 use std::{collections::HashSet, time::Duration};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError};
@@ -19,13 +19,13 @@ impl AppServerClient {
 		}
 
 		time::timeout(Duration::from_secs(10), async {
-            let metadata = self.thread_read(json!({"threadId":thread})).await?;
+            let metadata = self.thread_read(serde_json::json!({"threadId":thread})).await?;
 
             if metadata["thread"]["id"] != thread || metadata["thread"]["historyMode"] != "paginated" {
                 return Err(ClientError::InvalidFrame);
             }
 
-            let page = self.request("thread/turns/list", json!({"threadId":thread,"cursor":null,"limit":limit,"sortDirection":"desc","itemsView":"summary"})).await?;
+            let page = self.request("thread/turns/list", serde_json::json!({"threadId":thread,"cursor":null,"limit":limit,"sortDirection":"desc","itemsView":"summary"})).await?;
             let turns = page["data"].as_array().ok_or(ClientError::InvalidFrame)?;
 
             if turns.len() > limit as usize { return Err(ClientError::CapacityExceeded); }
@@ -40,7 +40,7 @@ impl AppServerClient {
                 }
             }
 
-            Ok(json!({"threadId":thread,"turns":turns.iter().rev().collect::<Vec<_>>()}))
+            Ok(serde_json::json!({"threadId":thread,"turns":turns.iter().rev().collect::<Vec<_>>()}))
         }).await.map_err(|_| ClientError::Io)?
 	}
 }
@@ -49,29 +49,27 @@ impl AppServerClient {
 mod tests {
 	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
-	use crate::app_server_client::history_summary::{self, AppServerClient, Value};
+	use crate::app_server_client::history_summary::{AppServerClient, Value};
 
 	#[tokio::test]
 	async fn summary_rejects_wrong_identity_legacy_and_incomplete_pages() {
 		for (metadata, page) in [
-			(history_summary::json!({"id":"wrong","historyMode":"paginated"}), None),
-			(history_summary::json!({"id":"thread","historyMode":"legacy"}), None),
+			(serde_json::json!({"id":"wrong","historyMode":"paginated"}), None),
+			(serde_json::json!({"id":"thread","historyMode":"legacy"}), None),
 			(
-				history_summary::json!({"id":"thread","historyMode":"paginated"}),
+				serde_json::json!({"id":"thread","historyMode":"paginated"}),
+				Some(serde_json::json!({"data":[{"id":"t","items":[],"itemsView":"notLoaded"}]})),
+			),
+			(
+				serde_json::json!({"id":"thread","historyMode":"paginated"}),
 				Some(
-					history_summary::json!({"data":[{"id":"t","items":[],"itemsView":"notLoaded"}]}),
+					serde_json::json!({"data":[{"id":"t","items":[],"itemsView":"summary"},{"id":"t","items":[],"itemsView":"summary"}]}),
 				),
 			),
 			(
-				history_summary::json!({"id":"thread","historyMode":"paginated"}),
+				serde_json::json!({"id":"thread","historyMode":"paginated"}),
 				Some(
-					history_summary::json!({"data":[{"id":"t","items":[],"itemsView":"summary"},{"id":"t","items":[],"itemsView":"summary"}]}),
-				),
-			),
-			(
-				history_summary::json!({"id":"thread","historyMode":"paginated"}),
-				Some(
-					history_summary::json!({"data":vec![history_summary::json!({"id":"t","items":[],"itemsView":"summary"});101]}),
+					serde_json::json!({"data":vec![serde_json::json!({"id":"t","items":[],"itemsView":"summary"});101]}),
 				),
 			),
 		] {
@@ -81,8 +79,7 @@ mod tests {
 			let server = tokio::spawn(async move {
 				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
-				let mut replies =
-					vec![("thread/read", history_summary::json!({"thread":metadata}))];
+				let mut replies = vec![("thread/read", serde_json::json!({"thread":metadata}))];
 
 				if let Some(page) = page {
 					replies.push(("thread/turns/list", page));
@@ -98,11 +95,8 @@ mod tests {
 
 					writer
 						.write_all(
-							format!(
-								"{}\n",
-								history_summary::json!({"id":request["id"],"result":value})
-							)
-							.as_bytes(),
+							format!("{}\n", serde_json::json!({"id":request["id"],"result":value}))
+								.as_bytes(),
 						)
 						.await
 						.expect("reply");
@@ -126,13 +120,13 @@ mod tests {
 			for (method, expected, result) in [
 				(
 					"thread/read",
-					history_summary::json!({"threadId":"thread"}),
-					history_summary::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
+					serde_json::json!({"threadId":"thread"}),
+					serde_json::json!({"thread":{"id":"thread","historyMode":"paginated"}}),
 				),
 				(
 					"thread/turns/list",
-					history_summary::json!({"threadId":"thread","cursor":null,"limit":2,"sortDirection":"desc","itemsView":"summary"}),
-					history_summary::json!({"data":[{"id":"new","itemsView":"summary","items":[]},{"id":"old","itemsView":"summary","items":[]}],"nextCursor":"full-history-cursor-must-not-escape"}),
+					serde_json::json!({"threadId":"thread","cursor":null,"limit":2,"sortDirection":"desc","itemsView":"summary"}),
+					serde_json::json!({"data":[{"id":"new","itemsView":"summary","items":[]},{"id":"old","itemsView":"summary","items":[]}],"nextCursor":"full-history-cursor-must-not-escape"}),
 				),
 			] {
 				let request: Value = serde_json::from_str(
@@ -145,11 +139,8 @@ mod tests {
 
 				writer
 					.write_all(
-						format!(
-							"{}\n",
-							history_summary::json!({"id":request["id"],"result":result})
-						)
-						.as_bytes(),
+						format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
+							.as_bytes(),
 					)
 					.await
 					.expect("response");

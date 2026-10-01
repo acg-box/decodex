@@ -5,16 +5,16 @@ use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use crate::app_server_client::{app_link_settings::tests, app_tool_exposure::*};
 
 fn config(preference: Value, version: &str) -> Value {
-	let user = json!({"apps":{"connector.with.dot":{"omit_tools_from":preference,
+	let user = serde_json::json!({"apps":{"connector.with.dot":{"omit_tools_from":preference,
   "links":{"work":{"default_tools_approval_mode":"prompt"}}}},"secret":"private-fixture-value"});
 
-	json!({"config":{"apps":{"connector.with.dot":{"omit_tools_from":["direct"]}}},
+	serde_json::json!({"config":{"apps":{"connector.with.dot":{"omit_tools_from":["direct"]}}},
   "layers":[{"name":{"type":"user","file":"/fixture/config.toml"},"version":version,"config":user}]})
 }
 
 #[test]
 fn connector_scope_cannot_escape_into_account_policy_or_unknown_writes() {
-	let params = json!({"filePath":"/fixture/config.toml","expectedVersion":"v1","reloadUserConfig":true,
+	let params = serde_json::json!({"filePath":"/fixture/config.toml","expectedVersion":"v1","reloadUserConfig":true,
   "edits":[{"keyPath":"apps.\"a.\\\"quoted\\\\id\".omit_tools_from","value":[],"mergeStrategy":"replace"}]});
 
 	assert!(is_app_tool_exposure_write(&params));
@@ -27,11 +27,15 @@ fn connector_scope_cannot_escape_into_account_policy_or_unknown_writes() {
 	] {
 		let mut changed = params.clone();
 
-		changed["edits"][0]["keyPath"] = json!(path);
+		changed["edits"][0]["keyPath"] = serde_json::json!(path);
 
 		assert!(!is_app_tool_exposure_write(&changed));
 	}
-	for value in [json!(["direct", "direct"]), json!(["future"]), json!(true)] {
+	for value in [
+		serde_json::json!(["direct", "direct"]),
+		serde_json::json!(["future"]),
+		serde_json::json!(true),
+	] {
 		let mut changed = params.clone();
 
 		changed["edits"][0]["value"] = value;
@@ -45,14 +49,14 @@ fn connector_scope_cannot_escape_into_account_policy_or_unknown_writes() {
 
 	assert!(!is_app_tool_exposure_write(&missing));
 	assert_eq!(
-		omissions(&json!({"apps":{"a":{"omit_tools_from":["future"]}}}), "a").unwrap(),
+		omissions(&serde_json::json!({"apps":{"a":{"omit_tools_from":["future"]}}}), "a").unwrap(),
 		Some(vec!["future".into()])
 	);
 
 	for malformed in [
-		json!({"apps":false}),
-		json!({"apps":{"a":[]}}),
-		json!({"apps":{"a":{"omit_tools_from":[false]}}}),
+		serde_json::json!({"apps":false}),
+		serde_json::json!({"apps":{"a":[]}}),
+		serde_json::json!({"apps":{"a":{"omit_tools_from":[false]}}}),
 	] {
 		assert!(omissions(&malformed, "a").is_err());
 	}
@@ -77,25 +81,29 @@ async fn connector_edits_keep_inheritance_separate_and_preserve_native_scope() {
 					assert!(is_app_tool_exposure_write(&request["params"]));
 					assert_eq!(
 						request["params"],
-						json!({"filePath":"/fixture/config.toml","expectedVersion":"v1","reloadUserConfig":true,
+						serde_json::json!({"filePath":"/fixture/config.toml","expectedVersion":"v1","reloadUserConfig":true,
       "edits":[{"keyPath":"apps.\"connector.with.dot\".omit_tools_from","value":expected,"mergeStrategy":"replace"}]})
 					);
 
-					json!({"status":"okOverridden","filePath":"/fixture/config.toml","version":"v2"})
+					serde_json::json!({"status":"okOverridden","filePath":"/fixture/config.toml","version":"v2"})
 				} else {
 					assert_eq!(request["method"], "config/read");
-					assert_eq!(request["params"], json!({"cwd":"/fixture","includeLayers":true}));
+					assert_eq!(
+						request["params"],
+						serde_json::json!({"cwd":"/fixture","includeLayers":true})
+					);
 
 					if index == 0 {
-						config(json!(["code_mode"]), "v1")
+						config(serde_json::json!(["code_mode"]), "v1")
 					} else {
-						config(json!(expected), "v2")
+						config(serde_json::json!(expected), "v2")
 					}
 				};
 
 				writer
 					.write_all(
-						format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes(),
+						format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
+							.as_bytes(),
 					)
 					.await
 					.unwrap();
@@ -132,8 +140,11 @@ async fn source_changes_and_connection_loss_never_replay_a_connector_edit() {
 
 		writer
 			.write_all(
-				format!("{}\n", json!({"id":request["id"],"result":config(json!(null),"v1")}))
-					.as_bytes(),
+				format!(
+					"{}\n",
+					serde_json::json!({"id":request["id"],"result":config(serde_json::json!(null),"v1")})
+				)
+				.as_bytes(),
 			)
 			.await
 			.unwrap();

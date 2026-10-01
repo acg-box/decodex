@@ -9,18 +9,18 @@ use crate::app_server_client::realtime_preferences::*;
 
 #[test]
 fn voice_write_bridge_accepts_only_one_conditional_preference() {
-	let valid = json!({"filePath":"/tmp/config.toml","expectedVersion":"v1","reloadUserConfig":false,
+	let valid = serde_json::json!({"filePath":"/tmp/config.toml","expectedVersion":"v1","reloadUserConfig":false,
 		"edits":[{"keyPath":"realtime.voice","value":"juniper","mergeStrategy":"replace"}]});
 
 	assert!(is_realtime_voice_write(&valid));
 
 	for (pointer, value) in [
-		("/reloadUserConfig", json!(true)),
-		("/filePath", json!("relative")),
-		("/expectedVersion", json!(null)),
-		("/edits/0/keyPath", json!("sandbox_mode")),
-		("/edits/0/value", json!(null)),
-		("/edits/0/mergeStrategy", json!("upsert")),
+		("/reloadUserConfig", serde_json::json!(true)),
+		("/filePath", serde_json::json!("relative")),
+		("/expectedVersion", serde_json::json!(null)),
+		("/edits/0/keyPath", serde_json::json!("sandbox_mode")),
+		("/edits/0/value", serde_json::json!(null)),
+		("/edits/0/mergeStrategy", serde_json::json!("upsert")),
 	] {
 		let mut changed = valid.clone();
 
@@ -60,8 +60,10 @@ async fn native(home: &Path) -> (AppServerClient, Child) {
 	tokio::spawn(async move { while events.recv().await.is_some() {} });
 
 	client
-		.initialize(json!({"clientInfo":{"name":"decodex_voice_settings_test","version":"0.1"},
-		"capabilities":{"experimentalApi":true}}))
+		.initialize(
+			serde_json::json!({"clientInfo":{"name":"decodex_voice_settings_test","version":"0.1"},
+		"capabilities":{"experimentalApi":true}}),
+		)
 		.await
 		.unwrap();
 

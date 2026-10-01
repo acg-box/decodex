@@ -14,12 +14,13 @@ fn options() -> TemporaryStructuredOptions {
 
 #[test]
 fn isolation_disables_effective_and_observed_mcp_without_mutating_configuration() {
-	let effective = json!({"mcp_servers":{"native":{"required":true,"command":"must-not-run"}}});
+	let effective =
+		serde_json::json!({"mcp_servers":{"native":{"required":true,"command":"must-not-run"}}});
 	let config = isolation_config(&effective, &["observed".into()]).unwrap();
 
 	assert_eq!(
 		config["mcp_servers"],
-		json!({"native":{"enabled":false},"observed":{"enabled":false}})
+		serde_json::json!({"native":{"enabled":false},"observed":{"enabled":false}})
 	);
 	assert_eq!(config["features.shell_tool"], false);
 	assert_eq!(config["features.plugins"], false);
@@ -27,20 +28,20 @@ fn isolation_disables_effective_and_observed_mcp_without_mutating_configuration(
 	assert_eq!(config["skills.include_instructions"], false);
 	assert_eq!(config["web_search"], "disabled");
 	assert_eq!(effective["mcp_servers"]["native"]["required"], true);
-	assert!(isolation_config(&json!({"mcp_servers":[]}), &[]).is_err());
+	assert!(isolation_config(&serde_json::json!({"mcp_servers":[]}), &[]).is_err());
 }
 
 fn message(thread: &str, turn: &str, text: &str) -> ServerEvent {
 	ServerEvent::Notification {
 		method: "item/completed".into(),
-		params: json!({"threadId":thread,"turnId":turn,"item":{"type":"agentMessage","text":text}}),
+		params: serde_json::json!({"threadId":thread,"turnId":turn,"item":{"type":"agentMessage","text":text}}),
 	}
 }
 
 fn completed(thread: &str, turn: &str, status: &str) -> ServerEvent {
 	ServerEvent::Notification {
 		method: "turn/completed".into(),
-		params: json!({"threadId":thread,"turn":{"id":turn,"status":status}}),
+		params: serde_json::json!({"threadId":thread,"turn":{"id":turn,"status":status}}),
 	}
 }
 
@@ -61,7 +62,8 @@ async fn temporary_permissions_override_builtin_defaults_but_preserve_custom_pro
 				assert_eq!(req["method"], method);
 
 				let result = match method {
-					"config/read" => json!({"config":{"default_permissions":":workspace"}}),
+					"config/read" =>
+						serde_json::json!({"config":{"default_permissions":":workspace"}}),
 					"thread/start" => {
 						let params = &req["params"];
 
@@ -75,14 +77,17 @@ async fn temporary_permissions_override_builtin_defaults_but_preserve_custom_pro
 							assert_eq!(params["config"]["default_permissions"], ":read-only");
 						}
 
-						json!({"thread":{"id":"temporary","ephemeral":true},
+						serde_json::json!({"thread":{"id":"temporary","ephemeral":true},
 							"sandbox":{"type":"readOnly"},"activePermissionProfile":{"id":profile}})
 					},
-					_ => json!({"status":"unsubscribed"}),
+					_ => serde_json::json!({"status":"unsubscribed"}),
 				};
 
 				write
-					.write_all(format!("{}\n", json!({"id":req["id"],"result":result})).as_bytes())
+					.write_all(
+						format!("{}\n", serde_json::json!({"id":req["id"],"result":result}))
+							.as_bytes(),
+					)
 					.await
 					.unwrap();
 			}
@@ -147,35 +152,37 @@ async fn cancellation_waits_for_turn_identity_then_interrupts_and_detaches() {
 			assert_eq!(req["method"], method);
 
 			let result = match method {
-				"config/read" => json!({"config":{"mcp_servers":{}}}),
+				"config/read" => serde_json::json!({"config":{"mcp_servers":{}}}),
 				"thread/start" => {
 					assert_eq!(req["params"]["ephemeral"], true);
-					assert_eq!(req["params"]["dynamicTools"], json!([]));
+					assert_eq!(req["params"]["dynamicTools"], serde_json::json!([]));
 
-					json!({"thread":{"id":"temporary","ephemeral":true},"sandbox":{"type":"readOnly"}})
+					serde_json::json!({"thread":{"id":"temporary","ephemeral":true},"sandbox":{"type":"readOnly"}})
 				},
 				"turn/start" => {
 					cancel.send(true).unwrap();
 
-					json!({"turn":{"id":"exact-turn"}})
+					serde_json::json!({"turn":{"id":"exact-turn"}})
 				},
 				"turn/interrupt" => {
 					assert_eq!(
 						req["params"],
-						json!({"threadId":"temporary","turnId":"exact-turn"})
+						serde_json::json!({"threadId":"temporary","turnId":"exact-turn"})
 					);
 
-					json!({})
+					serde_json::json!({})
 				},
 				_ => {
 					assert_eq!(req["params"]["threadId"], "temporary");
 
-					json!({"status":"unsubscribed"})
+					serde_json::json!({"status":"unsubscribed"})
 				},
 			};
 
 			write
-				.write_all(format!("{}\n", json!({"id":req["id"],"result":result})).as_bytes())
+				.write_all(
+					format!("{}\n", serde_json::json!({"id":req["id"],"result":result})).as_bytes(),
+				)
 				.await
 				.unwrap();
 		}
@@ -183,7 +190,10 @@ async fn cancellation_waits_for_turn_identity_then_interrupts_and_detaches() {
 	let thread = client.start_temporary_structured(options()).await.unwrap();
 
 	assert!(
-		thread.run("summary".into(), json!({"type":"object"}), None, events, watch).await.is_err()
+		thread
+			.run("summary".into(), serde_json::json!({"type":"object"}), None, events, watch)
+			.await
+			.is_err()
 	);
 
 	server.await.unwrap();
@@ -206,14 +216,17 @@ async fn rejected_permissions_and_pre_cancelled_requests_detach_without_inferenc
 				assert_eq!(req["method"], method);
 
 				let result = match method {
-					"config/read" => json!({"config":{}}),
+					"config/read" => serde_json::json!({"config":{}}),
 					"thread/start" =>
-						json!({"thread":{"id":"temporary","ephemeral":true},"sandbox":{"type":if invalid {"dangerFullAccess"} else {"readOnly"}}}),
-					_ => json!({"status":"unsubscribed"}),
+						serde_json::json!({"thread":{"id":"temporary","ephemeral":true},"sandbox":{"type":if invalid {"dangerFullAccess"} else {"readOnly"}}}),
+					_ => serde_json::json!({"status":"unsubscribed"}),
 				};
 
 				write
-					.write_all(format!("{}\n", json!({"id":req["id"],"result":result})).as_bytes())
+					.write_all(
+						format!("{}\n", serde_json::json!({"id":req["id"],"result":result}))
+							.as_bytes(),
+					)
 					.await
 					.unwrap();
 			}
@@ -228,7 +241,7 @@ async fn rejected_permissions_and_pre_cancelled_requests_detach_without_inferenc
 			assert!(
 				thread
 					.unwrap()
-					.run("summary".into(), json!({}), None, events, watch)
+					.run("summary".into(), serde_json::json!({}), None, events, watch)
 					.await
 					.is_err()
 			);

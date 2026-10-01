@@ -5,7 +5,7 @@ use std::{
 	time::Duration,
 };
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError};
@@ -67,7 +67,7 @@ impl AppServerClient {
 
 		time::timeout(
 			Duration::from_secs(30),
-			self.request("config/read", json!({"cwd":cwd,"includeLayers":true})),
+			self.request("config/read", serde_json::json!({"cwd":cwd,"includeLayers":true})),
 		)
 		.await
 		.map_err(|_| ClientError::Io)?

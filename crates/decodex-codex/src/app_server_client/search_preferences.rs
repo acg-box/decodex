@@ -1,7 +1,7 @@
 //! Native web-search defaults. Existing loaded threads retain their search configuration.
 use std::{path::Path, time::Duration};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::{sync::mpsc::Sender, time};
 
 use crate::app_server_client::{AppServerClient, ClientError, Outbound};
@@ -28,9 +28,16 @@ impl NativeSearchSettings {
 		use sha2::{Digest as _, Sha256};
 
 		Sha256::digest(
-			json!([self.cwd, self.file, self.version, self.modes, self.effective, self.preference])
-				.to_string()
-				.as_bytes(),
+			serde_json::json!([
+				self.cwd,
+				self.file,
+				self.version,
+				self.modes,
+				self.effective,
+				self.preference
+			])
+			.to_string()
+			.as_bytes(),
 		)
 		.iter()
 		.map(|byte| format!("{byte:02x}"))
@@ -46,8 +53,9 @@ impl AppServerClient {
 		}
 
 		time::timeout(Duration::from_secs(15), async {
-			let config =
-				self.request("config/read", json!({"cwd":cwd,"includeLayers":true})).await?;
+			let config = self
+				.request("config/read", serde_json::json!({"cwd":cwd,"includeLayers":true}))
+				.await?;
 			let user = config["layers"]
 				.as_array()
 				.ok_or(ClientError::InvalidFrame)?
@@ -66,7 +74,8 @@ impl AppServerClient {
 			}
 
 			let version = string(&user["version"])?;
-			let requirements = self.request("configRequirements/read", json!({})).await?;
+			let requirements =
+				self.request("configRequirements/read", serde_json::json!({})).await?;
 			let requirements = requirements.get("requirements").ok_or(ClientError::InvalidFrame)?;
 			let allowed = &requirements["allowedWebSearchModes"];
 			let modes = match allowed {
@@ -114,7 +123,7 @@ impl AppServerClient {
 			Duration::from_secs(15),
 			self.request(
 				"config/batchWrite",
-				json!({
+				serde_json::json!({
 					"filePath":observed.file,"expectedVersion":observed.version,"reloadUserConfig":false,
 					"edits":[{"keyPath":"web_search","value":mode,"mergeStrategy":"replace"}]
 				}),
@@ -166,7 +175,7 @@ mod tests {
 	use crate::app_server_client::search_preferences::{self};
 	#[test]
 	fn search_write_permits_only_a_reviewed_default_without_reload_or_other_edits() {
-		let valid = search_preferences::json!({"filePath":"/home/config.toml","expectedVersion":"v1","reloadUserConfig":false,"edits":[{"keyPath":"web_search","value":"indexed","mergeStrategy":"replace"}]});
+		let valid = serde_json::json!({"filePath":"/home/config.toml","expectedVersion":"v1","reloadUserConfig":false,"edits":[{"keyPath":"web_search","value":"indexed","mergeStrategy":"replace"}]});
 
 		assert!(search_preferences::is_search_mode_write(&valid));
 
@@ -180,20 +189,19 @@ mod tests {
 
 		let mut changed = valid.clone();
 
-		changed["reloadUserConfig"] = search_preferences::json!(true);
+		changed["reloadUserConfig"] = serde_json::json!(true);
 
 		assert!(!search_preferences::is_search_mode_write(&changed));
 
 		let mut changed = valid.clone();
 
-		changed["edits"][0]["keyPath"] =
-			search_preferences::json!("features.standalone_web_search");
+		changed["edits"][0]["keyPath"] = serde_json::json!("features.standalone_web_search");
 
 		assert!(!search_preferences::is_search_mode_write(&changed));
 
 		let mut changed = valid.clone();
 
-		changed["edits"][0]["value"] = search_preferences::json!("future-mode");
+		changed["edits"][0]["value"] = serde_json::json!("future-mode");
 
 		assert!(!search_preferences::is_search_mode_write(&changed));
 	}

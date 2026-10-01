@@ -6,7 +6,7 @@ fn review() -> HookSettingsReview {
 		version: "version-one".into(),
 		file: "/home/config.toml".into(),
 		saved_hooks: Value::Null,
-		inventory: json!({"cwd":"/repo","warnings":["partial"],"errors":[],"hooks":[{"key":"plugin.\"quoted\"\\path","currentHash":"hash-one","isManaged":false,"enabled":true,"trustStatus":"untrusted","eventName":"UserPromptSubmit","handlerType":"command","command":"echo fixture","sourcePath":"/repo/hooks.json"}]}),
+		inventory: serde_json::json!({"cwd":"/repo","warnings":["partial"],"errors":[],"hooks":[{"key":"plugin.\"quoted\"\\path","currentHash":"hash-one","isManaged":false,"enabled":true,"trustStatus":"untrusted","eventName":"UserPromptSubmit","handlerType":"command","command":"echo fixture","sourcePath":"/repo/hooks.json"}]}),
 	}
 }
 #[test]
@@ -22,8 +22,8 @@ fn edits_preserve_exact_keys_and_cannot_expand_into_other_config() {
 	assert!(is_hook_settings_write(&params));
 
 	for (field, value) in [
-		("filePath", json!("/other")),
-		("reloadUserConfig", json!(false)),
+		("filePath", serde_json::json!("/other")),
+		("reloadUserConfig", serde_json::json!(false)),
 		("expectedVersion", Value::Null),
 	] {
 		let mut invalid = params.clone();
@@ -40,14 +40,14 @@ fn edits_preserve_exact_keys_and_cannot_expand_into_other_config() {
 	] {
 		let mut invalid = params.clone();
 
-		invalid["edits"][0]["keyPath"] = json!(path);
+		invalid["edits"][0]["keyPath"] = serde_json::json!(path);
 
 		assert!(!is_hook_settings_write(&invalid));
 	}
 
 	let mut managed = review.clone();
 
-	managed.inventory["hooks"][0]["isManaged"] = json!(true);
+	managed.inventory["hooks"][0]["isManaged"] = serde_json::json!(true);
 
 	assert!(managed.change(key, HookSettingsChange::Enabled(false)).is_err());
 
@@ -56,7 +56,7 @@ fn edits_preserve_exact_keys_and_cannot_expand_into_other_config() {
 	duplicate["hooks"].as_array_mut().unwrap().push(review.inventory["hooks"][0].clone());
 
 	assert!(validate_inventory(&duplicate).is_err());
-	assert_eq!(review.inventory["warnings"], json!(["partial"]));
+	assert_eq!(review.inventory["warnings"], serde_json::json!(["partial"]));
 }
 
 #[tokio::test]
@@ -84,7 +84,7 @@ async fn config_write_preserves_override_and_does_not_replay_lost_reply() {
 			assert_eq!(request["params"]["edits"][0]["value"], false);
 
 			if let Some(status) = status {
-				w.write_all(format!("{}\n",json!({"id":request["id"],"result":{"status":status,"version":"two","filePath":"/home/config.toml"}})).as_bytes()).await.unwrap();
+				w.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"result":{"status":status,"version":"two","filePath":"/home/config.toml"}})).as_bytes()).await.unwrap();
 
 				assert!(
 					tokio::time::timeout(std::time::Duration::from_millis(50), lines.next_line())
@@ -117,10 +117,11 @@ async fn review_uses_highest_user_layer_and_preserves_raw_saved_override() {
 
 		assert_eq!(read["method"], "config/read");
 
-		let layers = json!([{"name":{"type":"user","profile":"work","file":"/home/work.config.toml"},"version":"profile-version","config":{"hooks":{"state":{"selected":{"enabled":false}}}}},{"name":{"type":"user","file":"/home/config.toml"},"version":"base-version","config":{"hooks":{"state":{"selected":{"enabled":true}}}}}]);
+		let layers = serde_json::json!([{"name":{"type":"user","profile":"work","file":"/home/work.config.toml"},"version":"profile-version","config":{"hooks":{"state":{"selected":{"enabled":false}}}}},{"name":{"type":"user","file":"/home/config.toml"},"version":"base-version","config":{"hooks":{"state":{"selected":{"enabled":true}}}}}]);
 
 		w.write_all(
-			format!("{}\n", json!({"id":read["id"],"result":{"layers":layers}})).as_bytes(),
+			format!("{}\n", serde_json::json!({"id":read["id"],"result":{"layers":layers}}))
+				.as_bytes(),
 		)
 		.await
 		.unwrap();
@@ -130,8 +131,11 @@ async fn review_uses_highest_user_layer_and_preserves_raw_saved_override() {
 		assert_eq!(list["method"], "hooks/list");
 
 		w.write_all(
-			format!("{}\n", json!({"id":list["id"],"result":{"data":[review().inventory]}}))
-				.as_bytes(),
+			format!(
+				"{}\n",
+				serde_json::json!({"id":list["id"],"result":{"data":[review().inventory]}})
+			)
+			.as_bytes(),
 		)
 		.await
 		.unwrap();

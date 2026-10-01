@@ -2,7 +2,7 @@
 use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError};
@@ -51,10 +51,11 @@ impl AppServerClient {
 		}
 
 		time::timeout(Duration::from_secs(8), async {
-			let configured =
-				self.request("config/read", json!({"cwd":cwd,"includeLayers":false})).await?;
+			let configured = self
+				.request("config/read", serde_json::json!({"cwd":cwd,"includeLayers":false}))
+				.await?;
 			let configured = NativeExecutionDefaults::from_config_response(&configured)?;
-			let managed = self.request("configRequirements/read", json!({})).await?;
+			let managed = self.request("configRequirements/read", serde_json::json!({})).await?;
 
 			Ok(NativeModelDefaults {
 				configured,
@@ -120,8 +121,8 @@ mod tests {
 	};
 	#[test]
 	fn projection_preserves_sources_and_omits_unrelated_sensitive_fields() {
-		let configured=model_defaults::project(&model_defaults::json!({"config":{"model":"project-model","model_reasoning_effort":"future-effort","service_tier":"flex","model_providers":{"secret":"never-public"}}}),false).unwrap();
-		let managed=model_defaults::project(&model_defaults::json!({"requirements":{"models":{"newThread":{"model":"managed-model","modelReasoningEffort":"low","serviceTier":"default"}}}}),true).unwrap();
+		let configured=model_defaults::project(&serde_json::json!({"config":{"model":"project-model","model_reasoning_effort":"future-effort","service_tier":"flex","model_providers":{"secret":"never-public"}}}),false).unwrap();
+		let managed=model_defaults::project(&serde_json::json!({"requirements":{"models":{"newThread":{"model":"managed-model","modelReasoningEffort":"low","serviceTier":"default"}}}}),true).unwrap();
 
 		assert_eq!(configured.model.as_deref(), Some("project-model"));
 		assert_eq!(configured.reasoning_effort.as_deref(), Some("future-effort"));
@@ -130,26 +131,26 @@ mod tests {
 		assert_eq!(managed.reasoning_effort.as_deref(), Some("low"));
 		assert!(!serde_json::to_string(&configured).unwrap().contains("never-public"));
 		assert_eq!(
-			model_defaults::project(&model_defaults::json!({"requirements":null}), true).unwrap(),
+			model_defaults::project(&serde_json::json!({"requirements":null}), true).unwrap(),
 			NativeExecutionDefaults::default()
 		);
 		assert_eq!(
-			model_defaults::project(&model_defaults::json!({"config":{}}), false).unwrap(),
+			model_defaults::project(&serde_json::json!({"config":{}}), false).unwrap(),
 			NativeExecutionDefaults::default()
 		);
 
 		for invalid in [
-			model_defaults::json!({}),
-			model_defaults::json!({"config":null}),
-			model_defaults::json!({"config":{"model":42}}),
-			model_defaults::json!({"config":{"service_tier":"\n"}}),
+			serde_json::json!({}),
+			serde_json::json!({"config":null}),
+			serde_json::json!({"config":{"model":42}}),
+			serde_json::json!({"config":{"service_tier":"\n"}}),
 		] {
 			assert!(model_defaults::project(&invalid, false).is_err());
 		}
 		for invalid in [
-			model_defaults::json!({}),
-			model_defaults::json!({"requirements":[]}),
-			model_defaults::json!({"requirements":{"models":{"newThread":42}}}),
+			serde_json::json!({}),
+			serde_json::json!({"requirements":[]}),
+			serde_json::json!({"requirements":{"models":{"newThread":42}}}),
 		] {
 			assert!(model_defaults::project(&invalid, true).is_err());
 		}
@@ -166,13 +167,13 @@ mod tests {
 			for (method, params, result) in [
 				(
 					"config/read",
-					model_defaults::json!({"cwd":"/workspace/saved","includeLayers":false}),
-					model_defaults::json!({"config":{"model":"project"}}),
+					serde_json::json!({"cwd":"/workspace/saved","includeLayers":false}),
+					serde_json::json!({"config":{"model":"project"}}),
 				),
 				(
 					"configRequirements/read",
-					model_defaults::json!({}),
-					model_defaults::json!({"requirements":{"models":{"newThread":{"model":"managed"}}}}),
+					serde_json::json!({}),
+					serde_json::json!({"requirements":{"models":{"newThread":{"model":"managed"}}}}),
 				),
 			] {
 				let request: Value =
@@ -182,7 +183,7 @@ mod tests {
 				assert_eq!(request["params"], params);
 
 				w.write_all(
-					format!("{}\n", model_defaults::json!({"id":request["id"],"result":result}))
+					format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
 						.as_bytes(),
 				)
 				.await

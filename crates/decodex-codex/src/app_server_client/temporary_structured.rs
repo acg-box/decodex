@@ -1,7 +1,7 @@
 //! Isolated native structured requests for task recaps. The runtime owns event routing.
 use std::{collections::BTreeSet, path::Path, time::Duration};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::{
 	sync::{mpsc, watch},
 	time,
@@ -41,7 +41,7 @@ impl TemporaryStructuredThread {
 	async fn detach(&self) -> Result<(), ClientError> {
 		let response = time::timeout(
 			DEADLINE,
-			self.client.request("thread/unsubscribe", json!({"threadId":self.id})),
+			self.client.request("thread/unsubscribe", serde_json::json!({"threadId":self.id})),
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
@@ -74,11 +74,11 @@ impl TemporaryStructuredThread {
 				return Err(ClientError::Closed);
 			}
 
-			let mut params = json!({"threadId":self.id,"input":[{"type":"text","text":prompt}],
+			let mut params = serde_json::json!({"threadId":self.id,"input":[{"type":"text","text":prompt}],
 				"outputSchema":output_schema});
 
 			if let Some(effort) = effort {
-				params["effort"] = json!(effort);
+				params["effort"] = serde_json::json!(effort);
 			}
 			// Do not drop turn/start on cancellation: the returned ID owns interruption.
 			let started = self.client.turn_start(params).await?;
@@ -109,7 +109,7 @@ impl TemporaryStructuredThread {
 		{
 			let _ = time::timeout(
 				DEADLINE,
-				self.client.turn_interrupt(json!({"threadId":self.id,"turnId":turn})),
+				self.client.turn_interrupt(serde_json::json!({"threadId":self.id,"turnId":turn})),
 			)
 			.await;
 		}
@@ -139,23 +139,26 @@ impl AppServerClient {
 
 		let config = time::timeout(
 			DEADLINE,
-			self.request("config/read", json!({"cwd":options.cwd,"includeLayers":false})),
+			self.request(
+				"config/read",
+				serde_json::json!({"cwd":options.cwd,"includeLayers":false}),
+			),
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
 		let config = isolation_config(&config["config"], &options.mcp_server_names)?;
 		let profile = options.active_permission_profile.filter(|id| !id.starts_with(':'));
-		let mut params = json!({"model":options.model,"modelProvider":options.model_provider,
+		let mut params = serde_json::json!({"model":options.model,"modelProvider":options.model_provider,
 			"cwd":options.cwd,"approvalPolicy":"never","runtimeWorkspaceRoots":[],
 			"ephemeral":true,"threadSource":"system","environments":[],
 			"dynamicTools":[],"selectedCapabilityRoots":[],"config":config});
 
 		if let Some(profile) = &profile {
-			params["permissions"] = json!(profile);
+			params["permissions"] = serde_json::json!(profile);
 		} else {
-			params["sandbox"] = json!("read-only");
+			params["sandbox"] = serde_json::json!("read-only");
 			// Managed profile defaults take precedence over the legacy sandbox override.
-			params["config"]["default_permissions"] = json!(":read-only");
+			params["config"]["default_permissions"] = serde_json::json!(":read-only");
 		}
 
 		let response = time::timeout(DEADLINE, self.thread_start(params))
@@ -195,8 +198,8 @@ fn isolation_config(effective: &Value, known: &[String]) -> Result<Value, Client
 		_ => return Err(ClientError::InvalidFrame),
 	}
 
-	let mut config = json!({"web_search":"disabled","mcp_servers": names.into_iter()
-		.map(|name|(name,json!({"enabled":false}))).collect::<serde_json::Map<_,_>>()});
+	let mut config = serde_json::json!({"web_search":"disabled","mcp_servers": names.into_iter()
+		.map(|name|(name,serde_json::json!({"enabled":false}))).collect::<serde_json::Map<_,_>>()});
 
 	for key in [
 		"agents.enabled",
@@ -227,7 +230,7 @@ fn isolation_config(effective: &Value, known: &[String]) -> Result<Value, Client
 		"tools.experimental_request_user_input.enabled",
 		"tools.update_plan.enabled",
 	] {
-		config[key] = json!(false);
+		config[key] = serde_json::json!(false);
 	}
 
 	Ok(config)

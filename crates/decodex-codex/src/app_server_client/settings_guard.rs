@@ -187,7 +187,6 @@ mod transport_tests {
 #[cfg(test)]
 mod combined_tests {
 	use crate::app_server_client::{AppServerClient, ServerEvent, server_requests::ServerRequests};
-	use serde_json::json;
 
 	#[test]
 	fn settings_constraint_retains_question_revision_and_connection_identity() {
@@ -199,7 +198,7 @@ mod combined_tests {
 		requests
 			.observe(&ServerEvent::Notification {
 				method: "thread/settings/updated".into(),
-				params: json!({"threadId":"other"}),
+				params: serde_json::json!({"threadId":"other"}),
 			})
 			.unwrap();
 
@@ -208,7 +207,7 @@ mod combined_tests {
 		requests
 			.observe(&ServerEvent::Notification {
 				method: "item/completed".into(),
-				params: json!({"threadId":"task","turnId":"turn","item":{"id":"input","type":"userMessage"}}),
+				params: serde_json::json!({"threadId":"task","turnId":"turn","item":{"id":"input","type":"userMessage"}}),
 			})
 			.unwrap();
 
@@ -222,7 +221,7 @@ mod combined_tests {
 		requests
 			.observe(&ServerEvent::Notification {
 				method: "thread/settings/updated".into(),
-				params: json!({"threadId":"task"}),
+				params: serde_json::json!({"threadId":"task"}),
 			})
 			.unwrap();
 

@@ -96,6 +96,28 @@ impl LiveReviews {
 	}
 }
 
+#[derive(Clone)]
+pub(super) struct LiveReviewGuard {
+	reviews: LiveReviews,
+	thread: String,
+	serial: u64,
+}
+impl LiveReviewGuard {
+	pub(super) fn identity(&self) -> Option<String> {
+		let state = self.reviews.0.lock().ok()?;
+
+		state.entries.get(&self.thread).filter(|entry| entry.serial == self.serial)?;
+
+		Some(format!("{}:{}", state.identity, self.serial))
+	}
+
+	pub(super) fn is_live(&self) -> bool {
+		self.reviews.0.lock().is_ok_and(|state| {
+			state.entries.get(&self.thread).is_some_and(|entry| entry.serial == self.serial)
+		})
+	}
+}
+
 struct State {
 	identity: String,
 	next: u64,
@@ -114,6 +136,12 @@ impl Default for State {
 			entries: HashMap::new(),
 		}
 	}
+}
+
+struct Entry {
+	turn: String,
+	serial: u64,
+	error: Value,
 }
 
 #[cfg(test)]
@@ -236,31 +264,4 @@ mod tests {
 		assert!(!guard.is_live());
 		assert!(client.live_misalignment_review("thread", "failed").is_none());
 	}
-}
-#[derive(Clone)]
-pub(super) struct LiveReviewGuard {
-	reviews: LiveReviews,
-	thread: String,
-	serial: u64,
-}
-impl LiveReviewGuard {
-	pub(super) fn identity(&self) -> Option<String> {
-		let state = self.reviews.0.lock().ok()?;
-
-		state.entries.get(&self.thread).filter(|entry| entry.serial == self.serial)?;
-
-		Some(format!("{}:{}", state.identity, self.serial))
-	}
-
-	pub(super) fn is_live(&self) -> bool {
-		self.reviews.0.lock().is_ok_and(|state| {
-			state.entries.get(&self.thread).is_some_and(|entry| entry.serial == self.serial)
-		})
-	}
-}
-
-struct Entry {
-	turn: String,
-	serial: u64,
-	error: Value,
 }

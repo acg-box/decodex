@@ -2,7 +2,7 @@
 use std::{collections::HashSet, path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
@@ -64,7 +64,7 @@ impl AppServerClient {
 				let page = self
 					.request(
 						"permissionProfile/list",
-						json!({
+						serde_json::json!({
 							"cwd":cwd,"limit":100,"cursor":cursor
 						}),
 					)
@@ -137,20 +137,6 @@ impl AppServerClient {
 	}
 }
 
-/// Validate the narrow shape accepted by the retained process bridge.
-pub fn is_thread_permission_selection(value: &Value) -> bool {
-	serde_json::from_value::<ThreadPermissionSelection>(value.clone())
-		.is_ok_and(|selection| selection.valid())
-}
-
-fn bounded(value: &str, limit: usize) -> bool {
-	!value.trim().is_empty() && value.len() <= limit && !value.chars().any(char::is_control)
-}
-
-#[cfg(test)]
-#[path = "permissions_tests.rs"]
-mod tests;
-
 /// Native saved permission facts. These observations do not authorize a new operation.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -210,3 +196,17 @@ impl NativeTaskPermissions {
 		})
 	}
 }
+
+/// Validate the narrow shape accepted by the retained process bridge.
+pub fn is_thread_permission_selection(value: &Value) -> bool {
+	serde_json::from_value::<ThreadPermissionSelection>(value.clone())
+		.is_ok_and(|selection| selection.valid())
+}
+
+fn bounded(value: &str, limit: usize) -> bool {
+	!value.trim().is_empty() && value.len() <= limit && !value.chars().any(char::is_control)
+}
+
+#[cfg(test)]
+#[path = "permissions_tests.rs"]
+mod tests;

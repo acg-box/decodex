@@ -1,7 +1,7 @@
 //! Exact-thread archive membership. Native thread/read has no archived field.
 use std::{collections::HashSet, time::Duration};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::time;
 
 use crate::app_server_client::{AppServerClient, ClientError, MAX_FRAME_BYTES};
@@ -29,12 +29,16 @@ impl AppServerClient {
 		valid_id(thread)?;
 
 		time::timeout(Duration::from_secs(8), async {
-			let before = self.thread_read(json!({"threadId":thread,"includeTurns":false})).await?;
+			let before = self
+				.thread_read(serde_json::json!({"threadId":thread,"includeTurns":false}))
+				.await?;
 			let cwd = archive_directory(&before, thread)?;
 			let mut budget = MAX_FRAME_BYTES;
 			let archived = self.archive_membership(thread, cwd, true, &mut budget).await?;
 			let active = self.archive_membership(thread, cwd, false, &mut budget).await?;
-			let after = self.thread_read(json!({"threadId":thread,"includeTurns":false})).await?;
+			let after = self
+				.thread_read(serde_json::json!({"threadId":thread,"includeTurns":false}))
+				.await?;
 
 			if archive_directory(&after, thread)? != cwd {
 				return Ok(ThreadArchiveState::Changed);
@@ -63,7 +67,7 @@ impl AppServerClient {
 		let mut ids = HashSet::new();
 
 		for _ in 0..100 {
-			let page = self.request("thread/list", json!({
+			let page = self.request("thread/list", serde_json::json!({
 				"archived":archived,"cursor":cursor,"limit":100,"modelProviders":[],"cwd":cwd,
                 // Archive membership is native state; do not rescan every rollout on each UI poll.
                 "useStateDbOnly":true,
@@ -123,7 +127,7 @@ impl AppServerClient {
 
 		let response = time::timeout(
 			Duration::from_secs(8),
-			self.request("thread/unarchive", json!({"threadId":thread})),
+			self.request("thread/unarchive", serde_json::json!({"threadId":thread})),
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
@@ -160,11 +164,11 @@ mod tests {
 	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 	use crate::app_server_client::archive::{
-		self, AppServerClient, ClientError, ThreadArchiveState, Value,
+		AppServerClient, ClientError, ThreadArchiveState, Value,
 	};
 
 	fn page(ids: &[&str], next: Value) -> Value {
-		archive::json!({"data":ids.iter().map(|id|archive::json!({"id":id})).collect::<Vec<_>>(),"nextCursor":next})
+		serde_json::json!({"data":ids.iter().map(|id|serde_json::json!({"id":id})).collect::<Vec<_>>(),"nextCursor":next})
 	}
 
 	async fn inspect(pages: Vec<Value>) -> Result<ThreadArchiveState, ClientError> {
@@ -193,10 +197,10 @@ mod tests {
 
 					reads += 1;
 
-					archive::json!({"thread":{"id":"target","cwd":if reads==1 {before} else {after}}})
+					serde_json::json!({"thread":{"id":"target","cwd":if reads==1 {before} else {after}}})
 				} else {
 					assert_eq!(request["method"], "thread/list");
-					assert_eq!(request["params"]["modelProviders"], archive::json!([]));
+					assert_eq!(request["params"]["modelProviders"], serde_json::json!([]));
 					assert_eq!(request["params"]["sourceKinds"].as_array().unwrap().len(), 10);
 					assert_eq!(request["params"]["limit"], 100);
 					assert_eq!(request["params"]["cwd"], before);
@@ -210,7 +214,8 @@ mod tests {
 				};
 
 				w.write_all(
-					format!("{}\n", archive::json!({"id":request["id"],"result":page})).as_bytes(),
+					format!("{}\n", serde_json::json!({"id":request["id"],"result":page}))
+						.as_bytes(),
 				)
 				.await
 				.unwrap();
@@ -258,7 +263,7 @@ mod tests {
 
 		assert_eq!(
 			inspect(vec![
-				page(&["first"], archive::json!("next")),
+				page(&["first"], serde_json::json!("next")),
 				page(&["target"], Value::Null),
 				page(&[], Value::Null)
 			])
@@ -271,14 +276,17 @@ mod tests {
 	#[tokio::test]
 	async fn incomplete_and_malformed_lists_never_become_active_or_missing() {
 		for pages in [
-			vec![archive::json!({"data":[]})],
-			vec![page(&[], archive::json!(""))],
+			vec![serde_json::json!({"data":[]})],
+			vec![page(&[], serde_json::json!(""))],
 			vec![page(&["same", "same"], Value::Null)],
 			vec![
-				page(&["first"], archive::json!("loop")),
-				page(&["second"], archive::json!("loop")),
+				page(&["first"], serde_json::json!("loop")),
+				page(&["second"], serde_json::json!("loop")),
 			],
-			vec![page(&["target"], Value::Null), archive::json!({"data":null,"nextCursor":null})],
+			vec![
+				page(&["target"], Value::Null),
+				serde_json::json!({"data":null,"nextCursor":null}),
+			],
 		] {
 			assert!(matches!(inspect(pages).await, Err(ClientError::InvalidFrame)));
 		}
@@ -298,12 +306,12 @@ mod tests {
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 
 			assert_eq!(request["method"], "thread/unarchive");
-			assert_eq!(request["params"], archive::json!({"threadId":"target"}));
+			assert_eq!(request["params"], serde_json::json!({"threadId":"target"}));
 
 			w.write_all(
 				format!(
 					"{}\n",
-					archive::json!({"id":request["id"],"result":{"thread":{"id":"foreign"}}})
+					serde_json::json!({"id":request["id"],"result":{"thread":{"id":"foreign"}}})
 				)
 				.as_bytes(),
 			)

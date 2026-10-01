@@ -12,18 +12,10 @@ use serde::Serialize;
 use crate::app_server_client::settings_guard::SettingsGuard;
 #[derive(Clone)]
 pub(super) struct SettingsObservations<T>(Arc<Mutex<HashMap<String, Entry<T>>>>, Arc<AtomicU64>);
-impl<T> Default for SettingsObservations<T> {
-	fn default() -> Self {
-		Self(Arc::new(Mutex::new(HashMap::new())), Arc::new(AtomicU64::new(0)))
-	}
-}
-struct Entry<T> {
-	settings: Option<T>,
-	guard: Option<SettingsGuard>,
-	active_turn: Option<String>,
-	bytes: usize,
-}
-impl<T: Clone + Serialize> SettingsObservations<T> {
+impl<T> SettingsObservations<T>
+where
+	T: Clone + Serialize,
+{
 	pub(super) fn revision(&self) -> u64 {
 		self.1.load(Ordering::Acquire)
 	}
@@ -146,4 +138,17 @@ impl<T: Clone + Serialize> SettingsObservations<T> {
 			rows.clear();
 		}
 	}
+}
+
+impl<T> Default for SettingsObservations<T> {
+	fn default() -> Self {
+		Self(Arc::new(Mutex::new(HashMap::new())), Arc::new(AtomicU64::new(0)))
+	}
+}
+
+struct Entry<T> {
+	settings: Option<T>,
+	guard: Option<SettingsGuard>,
+	active_turn: Option<String>,
+	bytes: usize,
 }

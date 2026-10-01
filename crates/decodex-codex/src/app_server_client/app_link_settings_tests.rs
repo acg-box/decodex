@@ -33,8 +33,10 @@ pub(crate) async fn native(home: &Path) -> (AppServerClient, Child) {
 	});
 
 	client
-		.initialize(json!({"clientInfo":{"name":"decodex_link_settings_test","version":"0.1"},
-			"capabilities":{"experimentalApi":true}}))
+		.initialize(
+			serde_json::json!({"clientInfo":{"name":"decodex_link_settings_test","version":"0.1"},
+			"capabilities":{"experimentalApi":true}}),
+		)
 		.await
 		.unwrap();
 

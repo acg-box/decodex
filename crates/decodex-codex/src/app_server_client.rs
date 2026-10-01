@@ -84,7 +84,7 @@ pub use self::{
 
 use serde::{Deserialize, Serialize};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use std::{
 	collections::HashMap,
@@ -302,7 +302,7 @@ impl AppServerClient {
 	/// Check the complete JSON-RPC request before an earlier related side effect.
 	/// Reserve the longest positive numeric ID used by this transport.
 	pub fn preflight_request(method: &str, params: &Value) -> Result<(), ClientError> {
-		let envelope = json!({"id":i64::MAX,"method":method,"params":params});
+		let envelope = serde_json::json!({"id":i64::MAX,"method":method,"params":params});
 		let bytes = serde_json::to_vec(&envelope).map_err(|_| ClientError::InvalidFrame)?;
 
 		if bytes.len() > MAX_FRAME_BYTES {
@@ -639,7 +639,7 @@ impl AppServerClient {
 
 		self.outbound
 			.send(Outbound::Message {
-				value: json!({"id":id,"result":result}),
+				value: serde_json::json!({"id":id,"result":result}),
 				reply,
 				guard: Some(Guard::Request(guard)),
 			})
@@ -699,17 +699,17 @@ impl AppServerClient {
 
 	/// Send a notification without allocating a request identity.
 	pub async fn notify(&self, method: &str, params: Value) -> Result<(), ClientError> {
-		self.message(json!({"method": method, "params": params})).await
+		self.message(serde_json::json!({"method": method, "params": params})).await
 	}
 
 	/// Return a result for one exact server request.
 	pub async fn respond(&self, id: RequestId, result: Value) -> Result<(), ClientError> {
-		self.message(json!({"id": id, "result": result})).await
+		self.message(serde_json::json!({"id": id, "result": result})).await
 	}
 
 	/// Return an explicit error for one exact server request.
 	pub async fn respond_error(&self, id: RequestId, error: RpcError) -> Result<(), ClientError> {
-		self.message(json!({"id": id, "error": error})).await
+		self.message(serde_json::json!({"id": id, "error": error})).await
 	}
 
 	/// Request a new independent provider thread.
@@ -852,10 +852,10 @@ fn dispatch(
 	})
 }
 
-async fn write_frame<W: AsyncWrite + Unpin>(
-	writer: &mut W,
-	value: Value,
-) -> Result<(), ClientError> {
+async fn write_frame<W>(writer: &mut W, value: Value) -> Result<(), ClientError>
+where
+	W: AsyncWrite + Unpin,
+{
 	let mut bytes = serde_json::to_vec(&value).map_err(|_| ClientError::InvalidFrame)?;
 
 	if bytes.len() > MAX_FRAME_BYTES {
@@ -992,7 +992,7 @@ async fn run_frames(
 							"thread/resume"=>params["threadId"].as_str().and_then(|thread|server_requests.thread_settings_guard(thread).map(|guard|PermissionHydration::Resume{thread:thread.into(),guard})),
 							_=>None,
 						};
-						let result = writer.write(json!({"id": id, "method": method, "params": params})).await;
+						let result = writer.write(serde_json::json!({"id": id, "method": method, "params": params})).await;
 						let refusal = match &result {
 							Err(ClientError::FrameTooLarge) => Some(ClientError::RequestTooLarge),
 							Err(ClientError::CapacityExceeded) => Some(ClientError::RequestQueueFull),
@@ -1108,7 +1108,7 @@ mod tests {
 
 		app_server_client::write_frame(
 			&mut writer,
-			app_server_client::json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"origin"}}}),
+			serde_json::json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"origin"}}}),
 		)
 		.await
 		.unwrap();
@@ -1117,18 +1117,19 @@ mod tests {
 
 		app_server_client::write_frame(
 			&mut writer,
-			app_server_client::json!({"method":"turn/started","params":{"threadId":"thread","turn":{"id":"successor"}}}),
+			serde_json::json!({"method":"turn/started","params":{"threadId":"thread","turn":{"id":"successor"}}}),
 		)
 		.await
 		.unwrap();
 
 		let _ = events.recv().await.unwrap();
 		let id = RequestId::String("late-approval".into());
-		let params = app_server_client::json!({"threadId":"thread","turnId":"origin","serverName":"codex_apps"});
+		let params =
+			serde_json::json!({"threadId":"thread","turnId":"origin","serverName":"codex_apps"});
 
 		app_server_client::write_frame(
 			&mut writer,
-			app_server_client::json!({"id":id,"method":"mcpServer/elicitation/request","params":params}),
+			serde_json::json!({"id":id,"method":"mcpServer/elicitation/request","params":params}),
 		)
 		.await
 		.unwrap();
@@ -1141,7 +1142,7 @@ mod tests {
 
 		let mut changed = params.clone();
 
-		changed["turnId"] = app_server_client::json!("successor");
+		changed["turnId"] = serde_json::json!("successor");
 
 		assert!(
 			client.server_request_guard(&id, "mcpServer/elicitation/request", &changed).is_none()
@@ -1149,7 +1150,7 @@ mod tests {
 
 		app_server_client::write_frame(
 			&mut writer,
-			app_server_client::json!({"method":"serverRequest/resolved","params":{"threadId":"thread","requestId":id}}),
+			serde_json::json!({"method":"serverRequest/resolved","params":{"threadId":"thread","requestId":id}}),
 		)
 		.await
 		.unwrap();
@@ -1159,7 +1160,7 @@ mod tests {
 		assert!(!guard.is_live());
 		assert!(
 			client
-				.respond_guarded(id, app_server_client::json!({"action":"accept"}), guard)
+				.respond_guarded(id, serde_json::json!({"action":"accept"}), guard)
 				.await
 				.is_err()
 		);
@@ -1181,10 +1182,10 @@ mod tests {
 		let history = client.history_guard(0).unwrap();
 		let question = client.question_guard(0).unwrap();
 
-		incoming.send(Ok(app_server_client::json!({"method":"item/completed","params":{"threadId":"thread","turnId":"turn","item":{"id":"input","type":"userMessage","content":[{"type":"text","text":"new input"}]}}}))).await.unwrap();
+		incoming.send(Ok(serde_json::json!({"method":"item/completed","params":{"threadId":"thread","turnId":"turn","item":{"id":"input","type":"userMessage","content":[{"type":"text","text":"new input"}]}}}))).await.unwrap();
 
 		assert!(matches!(
-			client.request_with_history("turn/steer", app_server_client::json!({}), question).await,
+			client.request_with_history("turn/steer", serde_json::json!({}), question).await,
 			Err(ClientError::StaleHistory)
 		));
 		assert!(writes.try_recv().is_err());
@@ -1204,18 +1205,14 @@ mod tests {
 
 		incoming
 			.send(Ok(
-				app_server_client::json!({"method":"thread/reverted","params":{"threadId":"thread"}}),
+				serde_json::json!({"method":"thread/reverted","params":{"threadId":"thread"}}),
 			))
 			.await
 			.unwrap();
 
 		assert!(matches!(
 			client
-				.request_with_history(
-					"turn/start",
-					app_server_client::json!({"threadId":"thread"}),
-					guard
-				)
+				.request_with_history("turn/start", serde_json::json!({"threadId":"thread"}), guard)
 				.await,
 			Err(ClientError::StaleHistory)
 		));
@@ -1228,7 +1225,7 @@ mod tests {
 			client
 				.request_with_history(
 					"turn/steer",
-					app_server_client::json!({}),
+					serde_json::json!({}),
 					other.history_guard(0).unwrap()
 				)
 				.await,
@@ -1239,19 +1236,13 @@ mod tests {
 		let live = client.history_guard(1).unwrap();
 		let request = tokio::spawn(async move {
 			client
-				.request_with_history(
-					"turn/start",
-					app_server_client::json!({"threadId":"thread"}),
-					live,
-				)
+				.request_with_history("turn/start", serde_json::json!({"threadId":"thread"}), live)
 				.await
 		});
 		let wire = writes.recv().await.unwrap();
 
 		incoming
-			.send(Ok(
-				app_server_client::json!({"id":wire["id"],"result":{"turn":{"id":"accepted"}}}),
-			))
+			.send(Ok(serde_json::json!({"id":wire["id"],"result":{"turn":{"id":"accepted"}}})))
 			.await
 			.unwrap();
 
@@ -1264,11 +1255,11 @@ mod tests {
 			let (client, mut events, mut reader, mut writer) = connection();
 			let id = RequestId::String("suggestion".into());
 			let params =
-				app_server_client::json!({"threadId":"thread","turnId":"turn","message":"Install"});
+				serde_json::json!({"threadId":"thread","turnId":"turn","message":"Install"});
 
 			app_server_client::write_frame(
 				&mut writer,
-				app_server_client::json!({"id":id,"method":"mcpServer/elicitation/request","params":params}),
+				serde_json::json!({"id":id,"method":"mcpServer/elicitation/request","params":params}),
 			)
 			.await
 			.unwrap();
@@ -1282,7 +1273,7 @@ mod tests {
 					.server_request_guard(
 						&id,
 						"mcpServer/elicitation/request",
-						&app_server_client::json!({"threadId":"other"})
+						&serde_json::json!({"threadId":"other"})
 					)
 					.is_none()
 			);
@@ -1290,21 +1281,21 @@ mod tests {
 			let rpc = {
 				let client = client.clone();
 
-				tokio::spawn(async move {
-					client.request("plugin/list", app_server_client::json!({})).await
-				})
+				tokio::spawn(
+					async move { client.request("plugin/list", serde_json::json!({})).await },
+				)
 			};
 			let request = read(&mut reader).await;
 
 			app_server_client::write_frame(
 				&mut writer,
-				app_server_client::json!({"method":method,"params":{"threadId":"other","requestId":id}}),
+				serde_json::json!({"method":method,"params":{"threadId":"other","requestId":id}}),
 			)
 			.await
 			.unwrap();
 			app_server_client::write_frame(
 				&mut writer,
-				app_server_client::json!({"id":request["id"],"result":{}}),
+				serde_json::json!({"id":request["id"],"result":{}}),
 			)
 			.await
 			.unwrap();
@@ -1317,21 +1308,21 @@ mod tests {
 			let rpc = {
 				let client = client.clone();
 
-				tokio::spawn(async move {
-					client.request("plugin/read", app_server_client::json!({})).await
-				})
+				tokio::spawn(
+					async move { client.request("plugin/read", serde_json::json!({})).await },
+				)
 			};
 			let request = read(&mut reader).await;
 
 			app_server_client::write_frame(
 				&mut writer,
-				app_server_client::json!({"method":method,"params":{"threadId":"thread","requestId":id}}),
+				serde_json::json!({"method":method,"params":{"threadId":"thread","requestId":id}}),
 			)
 			.await
 			.unwrap();
 			app_server_client::write_frame(
 				&mut writer,
-				app_server_client::json!({"id":request["id"],"result":{}}),
+				serde_json::json!({"id":request["id"],"result":{}}),
 			)
 			.await
 			.unwrap();
@@ -1342,13 +1333,13 @@ mod tests {
 			assert_eq!(client.history_revision(), 2 * u64::from(method == "thread/reverted"));
 			assert!(
 				client
-					.request_guarded("plugin/install", app_server_client::json!({}), guard.clone())
+					.request_guarded("plugin/install", serde_json::json!({}), guard.clone())
 					.await
 					.is_err()
 			);
 			assert!(
 				client
-					.respond_guarded(id, app_server_client::json!({"action":"accept"}), guard)
+					.respond_guarded(id, serde_json::json!({"action":"accept"}), guard)
 					.await
 					.is_err()
 			);
@@ -1369,38 +1360,39 @@ mod tests {
 		let (client, mut events, mut reader, mut writer) = connection();
 		let parent = client.clone();
 		let first = tokio::spawn(async move {
-			parent.turn_start(app_server_client::json!({"threadId":"parent"})).await
+			parent.turn_start(serde_json::json!({"threadId":"parent"})).await
 		});
 		let first_wire = read(&mut reader).await;
 		let peer = client.clone();
-		let second = tokio::spawn(async move {
-			peer.turn_start(app_server_client::json!({"threadId":"peer"})).await
-		});
+		let second =
+			tokio::spawn(
+				async move { peer.turn_start(serde_json::json!({"threadId":"peer"})).await },
+			);
 		let second_wire = read(&mut reader).await;
 
 		assert_ne!(first_wire["id"], second_wire["id"]);
 
 		app_server_client::write_frame(
 			&mut writer,
-			app_server_client::json!({"id": second_wire["id"], "result":{"turn":{"id":"peer-turn"}}}),
+			serde_json::json!({"id": second_wire["id"], "result":{"turn":{"id":"peer-turn"}}}),
 		)
 		.await
 		.unwrap();
 		app_server_client::write_frame(
 			&mut writer,
-			app_server_client::json!({"method":"turn/completed","params":{"threadId":"parent"}}),
+			serde_json::json!({"method":"turn/completed","params":{"threadId":"parent"}}),
 		)
 		.await
 		.unwrap();
 		app_server_client::write_frame(
 			&mut writer,
-			app_server_client::json!({"method":"item/agentMessage/delta","params":{"threadId":"peer","delta":"still working"}}),
+			serde_json::json!({"method":"item/agentMessage/delta","params":{"threadId":"peer","delta":"still working"}}),
 		)
 		.await
 		.unwrap();
 		app_server_client::write_frame(
 			&mut writer,
-			app_server_client::json!({"id": first_wire["id"], "result":{"turn":{"id":"parent-turn"}}}),
+			serde_json::json!({"id": first_wire["id"], "result":{"turn":{"id":"parent-turn"}}}),
 		)
 		.await
 		.unwrap();
@@ -1418,7 +1410,7 @@ mod tests {
 		let next = tokio::spawn(async move {
 			next_client
 				.turn_steer(
-					app_server_client::json!({"threadId":"peer","expectedTurnId":"peer-turn","input":[]}),
+					serde_json::json!({"threadId":"peer","expectedTurnId":"peer-turn","input":[]}),
 				)
 				.await
 		});
@@ -1428,7 +1420,7 @@ mod tests {
 
 		app_server_client::write_frame(
 			&mut writer,
-			app_server_client::json!({"id":next_wire["id"],"result":{}}),
+			serde_json::json!({"id":next_wire["id"],"result":{}}),
 		)
 		.await
 		.unwrap();
@@ -1441,7 +1433,7 @@ mod tests {
 	async fn approval_requests_are_preserved_and_only_explicitly_answered() {
 		let (client, mut events, mut reader, mut writer) = connection();
 
-		app_server_client::write_frame(&mut writer, app_server_client::json!({"id":"approval-1","method":"item/commandExecution/requestApproval","params":{"threadId":"peer","command":"echo test"}})).await.unwrap();
+		app_server_client::write_frame(&mut writer, serde_json::json!({"id":"approval-1","method":"item/commandExecution/requestApproval","params":{"threadId":"peer","command":"echo test"}})).await.unwrap();
 
 		let event = events.recv().await.unwrap();
 		let ServerEvent::Request { id, method, params } = event else {
@@ -1455,11 +1447,11 @@ mod tests {
 
 		assert!(time::timeout(Duration::from_millis(20), reader.read(&mut byte)).await.is_err());
 
-		client.respond(id, app_server_client::json!({"decision":"decline"})).await.unwrap();
+		client.respond(id, serde_json::json!({"decision":"decline"})).await.unwrap();
 
 		assert_eq!(
 			read(&mut reader).await,
-			app_server_client::json!({"id":"approval-1","result":{"decision":"decline"}})
+			serde_json::json!({"id":"approval-1","result":{"decision":"decline"}})
 		);
 
 		client.shutdown().await.unwrap();
@@ -1470,14 +1462,14 @@ mod tests {
 		let (client, mut events, mut reader, writer) = connection();
 		let first_client = client.clone();
 		let first = tokio::spawn(async move {
-			first_client.thread_read(app_server_client::json!({"threadId":"one"})).await
+			first_client.thread_read(serde_json::json!({"threadId":"one"})).await
 		});
 
 		read(&mut reader).await;
 
 		let second_client = client.clone();
 		let second = tokio::spawn(async move {
-			second_client.turn_start(app_server_client::json!({"threadId":"two"})).await
+			second_client.turn_start(serde_json::json!({"threadId":"two"})).await
 		});
 
 		read(&mut reader).await;
@@ -1491,7 +1483,7 @@ mod tests {
 		assert!(matches!(second.await.unwrap(), Err(ClientError::Closed)));
 		assert!(matches!(events.recv().await, Some(ServerEvent::Closed(ClientError::Closed))));
 		assert!(matches!(
-			client.thread_start(app_server_client::json!({})).await,
+			client.thread_start(serde_json::json!({})).await,
 			Err(ClientError::Closed)
 		));
 	}
@@ -1501,12 +1493,12 @@ mod tests {
 		let (client, mut events, mut reader, mut writer) = connection();
 		let requester = client.clone();
 		let request =
-			tokio::spawn(async move { requester.thread_start(app_server_client::json!({})).await });
+			tokio::spawn(async move { requester.thread_start(serde_json::json!({})).await });
 		let wire = read(&mut reader).await;
 
 		app_server_client::write_frame(
 			&mut writer,
-			app_server_client::json!({"id":wire["id"], "result":{}, "error":{"code":1,"message":"private"}}),
+			serde_json::json!({"id":wire["id"], "result":{}, "error":{"code":1,"message":"private"}}),
 		)
 		.await
 		.unwrap();
@@ -1525,19 +1517,20 @@ mod tests {
 		let (client, _events) = AppServerClient::from_framed(41, frames, outgoing).unwrap();
 		let first_client = client.clone();
 		let first = tokio::spawn(async move {
-			first_client.thread_read(app_server_client::json!({"threadId":"one"})).await
+			first_client.thread_read(serde_json::json!({"threadId":"one"})).await
 		});
 		let frame = requests.recv().await.unwrap();
 
 		assert_eq!(frame["id"], 41);
 
-		incoming.send(Ok(app_server_client::json!({"id":41,"result":{}}))).await.unwrap();
+		incoming.send(Ok(serde_json::json!({"id":41,"result":{}}))).await.unwrap();
 		first.await.unwrap().unwrap();
 
 		let peer = client.clone();
-		let pending = tokio::spawn(async move {
-			peer.turn_start(app_server_client::json!({"threadId":"two"})).await
-		});
+		let pending =
+			tokio::spawn(
+				async move { peer.turn_start(serde_json::json!({"threadId":"two"})).await },
+			);
 
 		assert_eq!(requests.recv().await.unwrap()["id"], 42);
 
@@ -1545,7 +1538,7 @@ mod tests {
 
 		assert!(matches!(pending.await.unwrap(), Err(ClientError::Closed)));
 		assert!(matches!(
-			client.thread_start(app_server_client::json!({})).await,
+			client.thread_start(serde_json::json!({})).await,
 			Err(ClientError::Closed)
 		));
 	}
@@ -1554,19 +1547,18 @@ mod tests {
 	async fn oversized_request_preserves_pending_requests_and_connection() {
 		let (client, mut events, mut reader, mut writer) = connection();
 		let peer = client.clone();
-		let pending =
-			tokio::spawn(async move { peer.thread_read(app_server_client::json!({})).await });
+		let pending = tokio::spawn(async move { peer.thread_read(serde_json::json!({})).await });
 		let request = read(&mut reader).await;
 
 		assert!(matches!(
-			client.turn_start(app_server_client::json!({"text":"x".repeat(MAX_FRAME_BYTES)})).await,
+			client.turn_start(serde_json::json!({"text":"x".repeat(MAX_FRAME_BYTES)})).await,
 			Err(ClientError::RequestTooLarge)
 		));
 		assert!(!pending.is_finished());
 
 		app_server_client::write_frame(
 			&mut writer,
-			app_server_client::json!({"id":request["id"],"result":{"retained":true}}),
+			serde_json::json!({"id":request["id"],"result":{"retained":true}}),
 		)
 		.await
 		.unwrap();
@@ -1574,15 +1566,14 @@ mod tests {
 		assert_eq!(pending.await.unwrap().unwrap()["retained"], true);
 
 		let peer = client.clone();
-		let next =
-			tokio::spawn(async move { peer.thread_read(app_server_client::json!({})).await });
+		let next = tokio::spawn(async move { peer.thread_read(serde_json::json!({})).await });
 		let request = read(&mut reader).await;
 
 		assert_eq!(request["method"], "thread/read");
 
 		app_server_client::write_frame(
 			&mut writer,
-			app_server_client::json!({"id":request["id"],"result":{}}),
+			serde_json::json!({"id":request["id"],"result":{}}),
 		)
 		.await
 		.unwrap();
@@ -1600,19 +1591,18 @@ mod tests {
 		let (outgoing, mut requests) = mpsc::channel(4);
 		let (client, mut events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
 		let peer = client.clone();
-		let pending =
-			tokio::spawn(async move { peer.thread_read(app_server_client::json!({})).await });
+		let pending = tokio::spawn(async move { peer.thread_read(serde_json::json!({})).await });
 		let request = requests.recv().await.unwrap();
 
 		assert!(matches!(
-			client.turn_start(app_server_client::json!({"text":"x".repeat(MAX_FRAME_BYTES)})).await,
+			client.turn_start(serde_json::json!({"text":"x".repeat(MAX_FRAME_BYTES)})).await,
 			Err(ClientError::RequestTooLarge)
 		));
 		assert!(requests.try_recv().is_err());
 		assert!(!pending.is_finished());
 
 		incoming
-			.send(Ok(app_server_client::json!({"id":request["id"],"result":{"retained":true}})))
+			.send(Ok(serde_json::json!({"id":request["id"],"result":{"retained":true}})))
 			.await
 			.unwrap();
 
@@ -1628,9 +1618,10 @@ mod tests {
 		let (outgoing, mut requests) = mpsc::channel(1);
 		let (client, mut events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
 		let peer = client.clone();
-		let first = tokio::spawn(async move {
-			peer.turn_start(app_server_client::json!({"threadId":"first"})).await
-		});
+		let first =
+			tokio::spawn(
+				async move { peer.turn_start(serde_json::json!({"threadId":"first"})).await },
+			);
 
 		time::timeout(Duration::from_secs(2), async {
 			while requests.is_empty() {
@@ -1641,7 +1632,7 @@ mod tests {
 		.unwrap();
 
 		assert!(matches!(
-			client.turn_start(app_server_client::json!({"threadId":"refused"})).await,
+			client.turn_start(serde_json::json!({"threadId":"refused"})).await,
 			Err(ClientError::RequestQueueFull)
 		));
 		assert!(!first.is_finished());
@@ -1651,9 +1642,7 @@ mod tests {
 		assert_eq!(request["params"]["threadId"], "first");
 
 		incoming
-			.send(Ok(
-				app_server_client::json!({"id":request["id"],"result":{"turn":{"id":"accepted"}}}),
-			))
+			.send(Ok(serde_json::json!({"id":request["id"],"result":{"turn":{"id":"accepted"}}})))
 			.await
 			.unwrap();
 		first.await.unwrap().unwrap();
@@ -1661,7 +1650,7 @@ mod tests {
 		assert!(events.try_recv().is_err());
 
 		let next = tokio::spawn(async move {
-			client.turn_start(app_server_client::json!({"threadId":"uncertain"})).await
+			client.turn_start(serde_json::json!({"threadId":"uncertain"})).await
 		});
 
 		requests.recv().await.unwrap();
@@ -1683,21 +1672,20 @@ mod tests {
 
 		for _ in 0..MAX_PENDING_REQUESTS {
 			let peer = client.clone();
-			let task =
-				tokio::spawn(async move { peer.thread_read(app_server_client::json!({})).await });
+			let task = tokio::spawn(async move { peer.thread_read(serde_json::json!({})).await });
 			let request = requests.recv().await.unwrap();
 
 			pending.push((request["id"].clone(), task));
 		}
 
 		assert!(matches!(
-			client.turn_start(app_server_client::json!({})).await,
+			client.turn_start(serde_json::json!({})).await,
 			Err(ClientError::RequestQueueFull)
 		));
 		assert!(requests.try_recv().is_err());
 
 		for (id, task) in pending {
-			incoming.send(Ok(app_server_client::json!({"id":id,"result":{}}))).await.unwrap();
+			incoming.send(Ok(serde_json::json!({"id":id,"result":{}}))).await.unwrap();
 			task.await.unwrap().unwrap();
 		}
 
@@ -1709,10 +1697,10 @@ mod tests {
 	#[tokio::test]
 	async fn exact_frame_body_limit_excludes_the_line_delimiter() {
 		let (client, mut events, _reader, mut writer) = connection();
-		let mut frame = app_server_client::json!({"method":"tick","params":{"text":""}});
+		let mut frame = serde_json::json!({"method":"tick","params":{"text":""}});
 		let overhead = serde_json::to_vec(&frame).unwrap().len();
 
-		frame["params"]["text"] = app_server_client::json!("x".repeat(MAX_FRAME_BYTES - overhead));
+		frame["params"]["text"] = serde_json::json!("x".repeat(MAX_FRAME_BYTES - overhead));
 
 		app_server_client::write_frame(&mut writer, frame).await.unwrap();
 
@@ -1746,15 +1734,14 @@ mod tests {
 	#[tokio::test]
 	async fn event_overflow_closes_connection_with_explicit_failure() {
 		let (client, mut events, mut reader, mut writer) = connection();
-		let request =
-			tokio::spawn(async move { client.turn_start(app_server_client::json!({})).await });
+		let request = tokio::spawn(async move { client.turn_start(serde_json::json!({})).await });
 
 		read(&mut reader).await;
 
 		for _ in 0..=MAX_BUFFERED_EVENTS {
 			app_server_client::write_frame(
 				&mut writer,
-				app_server_client::json!({"method":"tick","params":{}}),
+				serde_json::json!({"method":"tick","params":{}}),
 			)
 			.await
 			.unwrap();
@@ -1809,15 +1796,15 @@ mod tests {
 		let (client, mut events, mut process) = AppServerClient::spawn(&mut command).unwrap();
 		let mut created_threads = Vec::new();
 		let result = time::timeout(Duration::from_secs(120), async {
-            client.initialize(app_server_client::json!({"clientInfo":{"name":"decodex-transport-smoke","version":"0.1.0"},"capabilities":{"experimentalApi":true}})).await?;
+            client.initialize(serde_json::json!({"clientInfo":{"name":"decodex-transport-smoke","version":"0.1.0"},"capabilities":{"experimentalApi":true}})).await?;
 
-            let models = client.request("model/list", app_server_client::json!({})).await?;
+            let models = client.request("model/list", serde_json::json!({})).await?;
 
             if !models["data"].as_array().is_some_and(|models| models.iter().any(|entry| entry["model"] == model)) {
                 return Err(ClientError::InvalidFrame);
             }
 
-            let params = app_server_client::json!({"model":model,"cwd":cwd,"sandbox":"read-only","approvalPolicy":"never","historyMode":"paginated","config":{"model_reasoning_effort":"medium"}});
+            let params = serde_json::json!({"model":model,"cwd":cwd,"sandbox":"read-only","approvalPolicy":"never","historyMode":"paginated","config":{"model_reasoning_effort":"medium"}});
             let (one, two) = tokio::try_join!(client.thread_start(params.clone()), client.thread_start(params))?;
 
             for thread in [&one, &two] {
@@ -1833,9 +1820,9 @@ mod tests {
 
             if one == two { return Err(ClientError::InvalidFrame); }
 
-            let input = app_server_client::json!([{"type":"text","text":"Reply with exactly OK. Do not use any tools."}]);
+            let input = serde_json::json!([{"type":"text","text":"Reply with exactly OK. Do not use any tools."}]);
 
-            tokio::try_join!(client.turn_start(app_server_client::json!({"threadId":one,"input":input,"effort":"medium"})), client.turn_start(app_server_client::json!({"threadId":two,"input":input,"effort":"medium"})))?;
+            tokio::try_join!(client.turn_start(serde_json::json!({"threadId":one,"input":input,"effort":"medium"})), client.turn_start(serde_json::json!({"threadId":two,"input":input,"effort":"medium"})))?;
 
             let mut completed = std::collections::HashSet::new();
             let mut usage_seen = std::collections::HashSet::new();
@@ -1877,16 +1864,13 @@ mod tests {
                 }
             }
 
-            client.thread_read(app_server_client::json!({"threadId":two})).await?;
+            client.thread_read(serde_json::json!({"threadId":two})).await?;
 
             Ok::<_, ClientError>(())
         }).await;
 
 		for thread in created_threads {
-			client
-				.request("thread/archive", app_server_client::json!({"threadId":thread}))
-				.await
-				.unwrap();
+			client.request("thread/archive", serde_json::json!({"threadId":thread})).await.unwrap();
 		}
 
 		process.shutdown().await.unwrap();
@@ -1904,7 +1888,7 @@ mod tests {
 		command.arg("app-server");
 
 		let (client, _events, mut process) = AppServerClient::spawn(&mut command).unwrap();
-		let result = time::timeout(Duration::from_secs(15), client.initialize(app_server_client::json!({"clientInfo":{"name":"decodex-transport-smoke","version":"0.1.0"},"capabilities":{"experimentalApi":true}}))).await;
+		let result = time::timeout(Duration::from_secs(15), client.initialize(serde_json::json!({"clientInfo":{"name":"decodex-transport-smoke","version":"0.1.0"},"capabilities":{"experimentalApi":true}}))).await;
 
 		process.shutdown().await.unwrap();
 

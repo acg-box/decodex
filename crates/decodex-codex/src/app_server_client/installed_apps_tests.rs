@@ -4,7 +4,7 @@ use crate::app_server_client::integrations::*;
 
 #[tokio::test]
 async fn installed_state_preserves_disabled_and_non_callable_apps() {
-	let rows = json!([
+	let rows = serde_json::json!([
 		{"id":"disabled","runtimeName":null,"enabled":false,"callable":false},
 		{"id":"no-tools","runtimeName":"Empty","enabled":true,"callable":false},
 		{"id":"ready","enabled":true,"callable":true}
@@ -24,12 +24,13 @@ async fn installed_state_preserves_disabled_and_non_callable_apps() {
 			assert_eq!(request["method"], "app/installed");
 			assert_eq!(
 				request["params"],
-				json!({"threadId":"exact-thread","forceRefresh":refresh})
+				serde_json::json!({"threadId":"exact-thread","forceRefresh":refresh})
 			);
 
 			writer
 				.write_all(
-					format!("{}\n", json!({"id":request["id"],"result":{"apps":rows}})).as_bytes(),
+					format!("{}\n", serde_json::json!({"id":request["id"],"result":{"apps":rows}}))
+						.as_bytes(),
 				)
 				.await
 				.unwrap();
@@ -38,7 +39,9 @@ async fn installed_state_preserves_disabled_and_non_callable_apps() {
 
 	for refresh in [false, true] {
 		assert_eq!(
-			json!(client.installed_apps_for_thread("exact-thread", refresh).await.unwrap()),
+			serde_json::json!(
+				client.installed_apps_for_thread("exact-thread", refresh).await.unwrap()
+			),
 			expected
 		);
 	}

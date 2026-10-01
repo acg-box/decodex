@@ -22,7 +22,7 @@ fn selection_cannot_carry_unrelated_policy_or_configuration() {
 	for key in ["model", "config", "sandbox", "cwd", "approvalPolicy", "approvalsReviewer"] {
 		let mut bad = wire.clone();
 
-		bad[key] = json!("unexpected");
+		bad[key] = serde_json::json!("unexpected");
 
 		assert!(!is_thread_permission_selection(&bad));
 	}
@@ -33,7 +33,7 @@ fn selection_cannot_carry_unrelated_policy_or_configuration() {
 
 #[test]
 fn permission_projection_keeps_native_facts_without_copying_unrelated_instructions() {
-	let value = json!({"cwd":"/native","activePermissionProfile":{"id":"scoped"},
+	let value = serde_json::json!({"cwd":"/native","activePermissionProfile":{"id":"scoped"},
 		"approvalPolicy":{"reject":{"sandbox_approval":true}},"approvalsReviewer":"auto_review",
 		"sandboxPolicy":{"type":"readOnly"},"developerInstructions":"private unrelated instructions"});
 	let observed = NativeTaskPermissions::from_notification(&value).unwrap();
@@ -57,7 +57,7 @@ fn permission_projection_keeps_native_facts_without_copying_unrelated_instructio
 
 	let mut malformed = value.clone();
 
-	malformed["activePermissionProfile"] = json!({});
+	malformed["activePermissionProfile"] = serde_json::json!({});
 
 	assert!(NativeTaskPermissions::from_notification(&malformed).is_none());
 
@@ -69,7 +69,7 @@ fn permission_projection_keeps_native_facts_without_copying_unrelated_instructio
 }
 
 fn permission_facts(profile: &str) -> Value {
-	json!({"cwd":"/native", "activePermissionProfile":{"id":profile},
+	serde_json::json!({"cwd":"/native", "activePermissionProfile":{"id":profile},
 		"approvalPolicy":"on-request", "approvalsReviewer":"user",
 		"sandboxPolicy":{"type":"readOnly"}})
 }
@@ -80,7 +80,7 @@ fn wire_publication_invalidates_old_authority_before_owner_consumption() {
 	let (events, mut receiver) = mpsc::channel(8);
 	let mut pending = HashMap::new();
 	let publish = |facts: Value| {
-		json!({"method":"thread/settings/updated",
+		serde_json::json!({"method":"thread/settings/updated",
 		"params":{"threadId":"task", "threadSettings":facts}})
 	};
 
@@ -102,7 +102,7 @@ fn wire_publication_invalidates_old_authority_before_owner_consumption() {
 	assert_eq!(receiver.len(), 2);
 
 	app_server_client::dispatch(
-		publish(json!({"cwd":"/native"})),
+		publish(serde_json::json!({"cwd":"/native"})),
 		&mut pending,
 		&events,
 		&requests,
@@ -133,17 +133,17 @@ fn late_hydration_cannot_restore_invalidated_or_foreign_permission_facts() {
 				RequestId::Number(1),
 				PendingReply { reply, permissions: Some(hydration) },
 			)]);
-			let facts = if malformed { json!({}) } else { permission_facts("new") };
+			let facts = if malformed { serde_json::json!({}) } else { permission_facts("new") };
 
-			app_server_client::dispatch(json!({"method":"thread/settings/updated", "params":{"threadId":"task", "threadSettings":facts}}), &mut pending, &events, &requests).unwrap();
+			app_server_client::dispatch(serde_json::json!({"method":"thread/settings/updated", "params":{"threadId":"task", "threadSettings":facts}}), &mut pending, &events, &requests).unwrap();
 
 			let mut old = permission_facts("old");
 
 			old["sandbox"] = old["sandboxPolicy"].take();
-			old["thread"] = json!({"id":"task"});
+			old["thread"] = serde_json::json!({"id":"task"});
 
 			app_server_client::dispatch(
-				json!({"id":1,"result":old}),
+				serde_json::json!({"id":1,"result":old}),
 				&mut pending,
 				&events,
 				&requests,
@@ -174,10 +174,10 @@ fn late_hydration_cannot_restore_invalidated_or_foreign_permission_facts() {
 	let mut response = permission_facts("foreign");
 
 	response["sandbox"] = response["sandboxPolicy"].take();
-	response["thread"] = json!({"id":"other"});
+	response["thread"] = serde_json::json!({"id":"other"});
 
 	app_server_client::dispatch(
-		json!({"id":1,"result":response}),
+		serde_json::json!({"id":1,"result":response}),
 		&mut pending,
 		&events,
 		&requests,
@@ -204,7 +204,7 @@ fn permission_cache_is_bounded_and_connection_close_revokes_authority() {
 
 	let (_, old_guard) = requests.permission_observation("task-0").unwrap();
 
-	response["activePermissionProfile"] = json!({"id":"replacement"});
+	response["activePermissionProfile"] = serde_json::json!({"id":"replacement"});
 
 	requests.observe_permission_hydration("task-0", &response);
 
@@ -224,7 +224,7 @@ fn idle_permission_facts_return_only_after_exact_turn_completion_without_revivin
 		let requests = ServerRequests::default();
 		let (events, _receiver) = mpsc::channel(8);
 		let mut pending = HashMap::new();
-		let publish = |facts: Value| json!({"method":"thread/settings/updated","params":{"threadId":"task","threadSettings":facts}});
+		let publish = |facts: Value| serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"task","threadSettings":facts}});
 
 		app_server_client::dispatch(
 			publish(permission_facts("old")),
@@ -237,7 +237,7 @@ fn idle_permission_facts_return_only_after_exact_turn_completion_without_revivin
 		let (_, old_guard) = requests.permission_observation("task").unwrap();
 
 		app_server_client::dispatch(
-			json!({"method":"turn/started","params":{"threadId":"task","turn":{"id":"active"}}}),
+			serde_json::json!({"method":"turn/started","params":{"threadId":"task","turn":{"id":"active"}}}),
 			&mut pending,
 			&events,
 			&requests,
@@ -261,9 +261,13 @@ fn idle_permission_facts_return_only_after_exact_turn_completion_without_revivin
 				&requests,
 			)
 			.unwrap(),
-			"malformed" =>
-				app_server_client::dispatch(publish(json!({})), &mut pending, &events, &requests)
-					.unwrap(),
+			"malformed" => app_server_client::dispatch(
+				publish(serde_json::json!({})),
+				&mut pending,
+				&events,
+				&requests,
+			)
+			.unwrap(),
 			_ => {},
 		}
 
@@ -285,7 +289,7 @@ fn idle_permission_facts_return_only_after_exact_turn_completion_without_revivin
 		assert!(requests.permission_observation("task").is_none());
 
 		app_server_client::dispatch(
-			json!({"method":"turn/completed","params":{"threadId":"task","turn":{"id":"older"}}}),
+			serde_json::json!({"method":"turn/completed","params":{"threadId":"task","turn":{"id":"older"}}}),
 			&mut pending,
 			&events,
 			&requests,
@@ -295,7 +299,7 @@ fn idle_permission_facts_return_only_after_exact_turn_completion_without_revivin
 		assert!(requests.permission_observation("task").is_none());
 
 		app_server_client::dispatch(
-			json!({"method":"turn/completed","params":{"threadId":"task","turn":{"id":"active"}}}),
+			serde_json::json!({"method":"turn/completed","params":{"threadId":"task","turn":{"id":"active"}}}),
 			&mut pending,
 			&events,
 			&requests,
@@ -325,7 +329,7 @@ fn permission_lifecycle_revokes_facts_and_pending_resume_hydration() {
 		let mut facts = permission_facts("scoped");
 
 		facts["sandbox"] = facts["sandboxPolicy"].take();
-		facts["thread"] = json!({"id":"task"});
+		facts["thread"] = serde_json::json!({"id":"task"});
 
 		requests.observe_permission_hydration("task", &facts);
 
@@ -335,7 +339,7 @@ fn permission_lifecycle_revokes_facts_and_pending_resume_hydration() {
 		requests
 			.observe(&ServerEvent::Notification {
 				method: method.into(),
-				params: json!({"threadId":"task"}),
+				params: serde_json::json!({"threadId":"task"}),
 			})
 			.unwrap();
 
@@ -376,8 +380,8 @@ async fn replies(responses: Vec<Value>) -> (AppServerClient, JoinHandle<Vec<Valu
 #[tokio::test]
 async fn paged_catalog_preserves_disabled_profiles_and_native_cwd() {
 	let (client, server) = replies(vec![
-		json!({"result":{"data":[{"id":"scoped","allowed":true,"description":"Scope"}],"nextCursor":"page-2"}}),
-		json!({"result":{"data":[{"id":":full-access","allowed":false}]}}),
+		serde_json::json!({"result":{"data":[{"id":"scoped","allowed":true,"description":"Scope"}],"nextCursor":"page-2"}}),
+		serde_json::json!({"result":{"data":[{"id":":full-access","allowed":false}]}}),
 	]).await;
 	let rows = client.permission_profiles("/native/project").await.unwrap();
 
@@ -400,14 +404,14 @@ async fn paged_catalog_preserves_disabled_profiles_and_native_cwd() {
 #[tokio::test]
 async fn invalid_or_incomplete_catalog_never_returns_partial_success() {
 	for second in [
-		json!({"result":{"data":[],"nextCursor":"next"}}),
-		json!({"result":{"data":[{"id":"scoped","allowed":true}],"nextCursor":null}}),
-		json!({"result":{"data":[{"id":"other"}],"nextCursor":null}}),
-		json!({"result":{"data":[],"nextCursor":false}}),
-		json!({"error":{"code":-32_601,"message":"unsupported"}}),
+		serde_json::json!({"result":{"data":[],"nextCursor":"next"}}),
+		serde_json::json!({"result":{"data":[{"id":"scoped","allowed":true}],"nextCursor":null}}),
+		serde_json::json!({"result":{"data":[{"id":"other"}],"nextCursor":null}}),
+		serde_json::json!({"result":{"data":[],"nextCursor":false}}),
+		serde_json::json!({"error":{"code":-32_601,"message":"unsupported"}}),
 	] {
 		let (client, server) = replies(vec![
-			json!({"result":{"data":[{"id":"scoped","allowed":true}],"nextCursor":"next"}}),
+			serde_json::json!({"result":{"data":[{"id":"scoped","allowed":true}],"nextCursor":"next"}}),
 			second,
 		])
 		.await;
@@ -420,11 +424,11 @@ async fn invalid_or_incomplete_catalog_never_returns_partial_success() {
 #[tokio::test]
 async fn selection_ack_is_only_queued_and_errors_are_not_retried() {
 	for response in [
-		json!({"result":{}}),
-		json!({"result":{"applied":true}}),
-		json!({"error":{"code":-32_602,"message":"profile unavailable"}}),
+		serde_json::json!({"result":{}}),
+		serde_json::json!({"result":{"applied":true}}),
+		serde_json::json!({"error":{"code":-32_602,"message":"profile unavailable"}}),
 	] {
-		let expected = response == json!({"result":{}});
+		let expected = response == serde_json::json!({"result":{}});
 		let (client, server) = replies(vec![response]).await;
 		let guard = client.history_guard(0).unwrap();
 		let result = client
@@ -439,7 +443,10 @@ async fn selection_ack_is_only_queued_and_errors_are_not_retried() {
 		let requests = server.await.unwrap();
 
 		assert_eq!(requests.len(), 1);
-		assert_eq!(requests[0]["params"], json!({"threadId":"thread","permissions":"scoped"}));
+		assert_eq!(
+			requests[0]["params"],
+			serde_json::json!({"threadId":"thread","permissions":"scoped"})
+		);
 	}
 }
 
@@ -452,16 +459,18 @@ async fn newer_wire_settings_reject_permission_write_before_owner_drain() {
 	let mut lines = BufReader::new(reader).lines();
 	let owned_client = client.clone();
 	let hydrate = tokio::spawn(async move {
-		owned_client.request("thread/resume", json!({"threadId":"task"})).await
+		owned_client.request("thread/resume", serde_json::json!({"threadId":"task"})).await
 	});
 	let request: Value = serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 	let mut facts = permission_facts("old");
 
 	facts["sandbox"] = facts["sandboxPolicy"].take();
-	facts["thread"] = json!({"id":"task"});
+	facts["thread"] = serde_json::json!({"id":"task"});
 
 	writer
-		.write_all(format!("{}\n", json!({"id":request["id"],"result":facts})).as_bytes())
+		.write_all(
+			format!("{}\n", serde_json::json!({"id":request["id"],"result":facts})).as_bytes(),
+		)
 		.await
 		.unwrap();
 	hydrate.await.unwrap().unwrap();
@@ -469,10 +478,12 @@ async fn newer_wire_settings_reject_permission_write_before_owner_drain() {
 	let (_, old_guard) = client.observed_task_permissions("task").unwrap();
 	let barrier_client = client.clone();
 	let barrier =
-		tokio::spawn(async move { barrier_client.request("test/barrier", json!({})).await });
+		tokio::spawn(
+			async move { barrier_client.request("test/barrier", serde_json::json!({})).await },
+		);
 	let request: Value = serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
 
-	writer.write_all(format!("{}\n{}\n", json!({"method":"thread/settings/updated","params":{"threadId":"task","threadSettings":permission_facts("new")}}), json!({"id":request["id"],"result":{}})).as_bytes()).await.unwrap();
+	writer.write_all(format!("{}\n{}\n", serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"task","threadSettings":permission_facts("new")}}), serde_json::json!({"id":request["id"],"result":{}})).as_bytes()).await.unwrap();
 	barrier.await.unwrap().unwrap();
 
 	assert_eq!(events.len(), 1);

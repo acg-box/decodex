@@ -2,7 +2,7 @@
 use std::{num::NonZeroUsize, path::Path};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use url::Url;
 
 use crate::{
@@ -92,24 +92,24 @@ impl Action {
 	fn into_core(self) -> Option<Value> {
 		Some(match self {
 			Self::Command { source, command, cwd } =>
-				json!({"type":"command","source":source.core(),"command":command,"cwd":cwd}),
+				serde_json::json!({"type":"command","source":source.core(),"command":command,"cwd":cwd}),
 			Self::Execve { source, program, argv, cwd } => {
 				if !Path::new(&cwd).is_absolute() {
 					return None;
 				}
 
-				json!({"type":"execve","source":source.core(),"program":program,"argv":argv,"cwd":cwd})
+				serde_json::json!({"type":"execve","source":source.core(),"program":program,"argv":argv,"cwd":cwd})
 			},
 			Self::WriteStdin { approval_id, process_id, stdin, cwd } =>
-				json!({"type":"write_stdin","approval_id":approval_id,"process_id":process_id,"stdin":stdin,"cwd":native_path_uri(&cwd)?}),
+				serde_json::json!({"type":"write_stdin","approval_id":approval_id,"process_id":process_id,"stdin":stdin,"cwd":native_path_uri(&cwd)?}),
 			Self::ApplyPatch { cwd, files } =>
-				json!({"type":"apply_patch","cwd":cwd,"files":files}),
+				serde_json::json!({"type":"apply_patch","cwd":cwd,"files":files}),
 			Self::NetworkAccess { target, host, protocol, port } =>
-				json!({"type":"network_access","target":target,"host":host,"protocol":protocol.core(),"port":port}),
+				serde_json::json!({"type":"network_access","target":target,"host":host,"protocol":protocol.core(),"port":port}),
 			Self::McpToolCall { server, tool_name, connector_id, connector_name, tool_title } =>
-				json!({"type":"mcp_tool_call","server":server,"tool_name":tool_name,"connector_id":connector_id,"connector_name":connector_name,"tool_title":tool_title}),
+				serde_json::json!({"type":"mcp_tool_call","server":server,"tool_name":tool_name,"connector_id":connector_id,"connector_name":connector_name,"tool_title":tool_title}),
 			Self::RequestPermissions { reason, permissions } =>
-				json!({"type":"request_permissions","reason":reason,"permissions":permissions.into_core()?}),
+				serde_json::json!({"type":"request_permissions","reason":reason,"permissions":permissions.into_core()?}),
 		})
 	}
 }
@@ -178,10 +178,10 @@ impl Permissions {
 					native_path_uri(path)?;
 				}
 
-				output.push(json!({"path":entry.path,"access":entry.access}));
+				output.push(serde_json::json!({"path":entry.path,"access":entry.access}));
 			}
 
-			Some(json!({"entries":output,"glob_scan_max_depth":fs.glob_scan_max_depth}))
+			Some(serde_json::json!({"entries":output,"glob_scan_max_depth":fs.glob_scan_max_depth}))
 		});
 		let filesystem = match filesystem {
 			Some(value) => Some(value?),
@@ -189,7 +189,7 @@ impl Permissions {
 		};
 
 		Some(
-			json!({"network":self.network.map(|n|json!({"enabled":n.enabled})),"file_system":filesystem}),
+			serde_json::json!({"network":self.network.map(|n|serde_json::json!({"enabled":n.enabled})),"file_system":filesystem}),
 		)
 	}
 }
@@ -249,7 +249,7 @@ pub fn core_denial_event(observation: &GuardianReview) -> Option<Value> {
 	}
 
 	let action: Action = serde_json::from_value(event["action"].clone()).ok()?;
-	let converted = json!({
+	let converted = serde_json::json!({
 		"id":review.review_id,"target_item_id":review.target_item_id,
 		"turn_id":review.turn_id,"started_at_ms":review.started_at_ms,
 		"completed_at_ms":review.completed_at_ms,"status":"denied",
@@ -261,7 +261,7 @@ pub fn core_denial_event(observation: &GuardianReview) -> Option<Value> {
 	// Check the complete native frame before the service reserves a submission.
 	AppServerClient::preflight_request(
 		"thread/approveGuardianDeniedAction",
-		&json!({"threadId":review.thread_id,"event":&converted}),
+		&serde_json::json!({"threadId":review.thread_id,"event":&converted}),
 	)
 	.ok()?;
 
@@ -326,11 +326,11 @@ mod tests {
 	use crate::guardian::approval::{self, Value};
 	#[test]
 	fn a_retained_review_that_cannot_fit_its_approval_frame_is_not_submittable() {
-		let mut event = approval::json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"exact rationale"},"action":{"type":"command","source":"shell","command":"","cwd":"/tmp"}});
+		let mut event = serde_json::json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"exact rationale"},"action":{"type":"command","source":"shell","command":"","cwd":"/tmp"}});
 		let overhead = serde_json::to_vec(&event).unwrap().len();
 
 		event["action"]["command"] =
-			approval::json!("x".repeat(crate::guardian::MAX_REVIEW_BYTES - overhead - 1));
+			serde_json::json!("x".repeat(crate::guardian::MAX_REVIEW_BYTES - overhead - 1));
 
 		let observed =
 			approval::decode_review("item/autoApprovalReview/completed", &event).unwrap();
@@ -338,7 +338,7 @@ mod tests {
 		assert!(approval::core_denial_event(&observed).is_none());
 	}
 	fn convert(action: Value) -> Option<Value> {
-		let event = approval::json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"exact rationale"},"action":action});
+		let event = serde_json::json!({"threadId":"thread","turnId":"turn","reviewId":"review","targetItemId":null,"startedAtMs":1,"completedAtMs":2,"decisionSource":"agent","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"exact rationale"},"action":action});
 
 		approval::core_denial_event(&approval::decode_review(
 			"item/autoApprovalReview/completed",
@@ -349,32 +349,32 @@ mod tests {
 	fn maps_all_native_actions_without_rewriting_arbitrary_strings() {
 		let cases = [
 			(
-				approval::json!({"type":"command","source":"unifiedExec","command":"echo toolName","cwd":"/tmp"}),
-				approval::json!({"type":"command","source":"unified_exec","command":"echo toolName","cwd":"/tmp"}),
+				serde_json::json!({"type":"command","source":"unifiedExec","command":"echo toolName","cwd":"/tmp"}),
+				serde_json::json!({"type":"command","source":"unified_exec","command":"echo toolName","cwd":"/tmp"}),
 			),
 			(
-				approval::json!({"type":"execve","source":"shell","program":"/bin/echo","argv":["echo","toolName"],"cwd":"/tmp"}),
-				approval::json!({"type":"execve","source":"shell","program":"/bin/echo","argv":["echo","toolName"],"cwd":"/tmp"}),
+				serde_json::json!({"type":"execve","source":"shell","program":"/bin/echo","argv":["echo","toolName"],"cwd":"/tmp"}),
+				serde_json::json!({"type":"execve","source":"shell","program":"/bin/echo","argv":["echo","toolName"],"cwd":"/tmp"}),
 			),
 			(
-				approval::json!({"type":"writeStdin","approvalId":"child","processId":"terminal","stdin":"toolName\n","cwd":"/tmp/a #/%/中文/"}),
-				approval::json!({"type":"write_stdin","approval_id":"child","process_id":"terminal","stdin":"toolName\n","cwd":"file:///tmp/a%20%23/%25/%E4%B8%AD%E6%96%87/"}),
+				serde_json::json!({"type":"writeStdin","approvalId":"child","processId":"terminal","stdin":"toolName\n","cwd":"/tmp/a #/%/中文/"}),
+				serde_json::json!({"type":"write_stdin","approval_id":"child","process_id":"terminal","stdin":"toolName\n","cwd":"file:///tmp/a%20%23/%25/%E4%B8%AD%E6%96%87/"}),
 			),
 			(
-				approval::json!({"type":"applyPatch","cwd":"/tmp","files":["/tmp/toolName"]}),
-				approval::json!({"type":"apply_patch","cwd":"/tmp","files":["/tmp/toolName"]}),
+				serde_json::json!({"type":"applyPatch","cwd":"/tmp","files":["/tmp/toolName"]}),
+				serde_json::json!({"type":"apply_patch","cwd":"/tmp","files":["/tmp/toolName"]}),
 			),
 			(
-				approval::json!({"type":"networkAccess","target":"target","host":"example.test","protocol":"socks5Tcp","port":443}),
-				approval::json!({"type":"network_access","target":"target","host":"example.test","protocol":"socks5_tcp","port":443}),
+				serde_json::json!({"type":"networkAccess","target":"target","host":"example.test","protocol":"socks5Tcp","port":443}),
+				serde_json::json!({"type":"network_access","target":"target","host":"example.test","protocol":"socks5_tcp","port":443}),
 			),
 			(
-				approval::json!({"type":"mcpToolCall","server":"server","toolName":"toolName","connectorId":"connector","connectorName":null,"toolTitle":"Title"}),
-				approval::json!({"type":"mcp_tool_call","server":"server","tool_name":"toolName","connector_id":"connector","connector_name":null,"tool_title":"Title"}),
+				serde_json::json!({"type":"mcpToolCall","server":"server","toolName":"toolName","connectorId":"connector","connectorName":null,"toolTitle":"Title"}),
+				serde_json::json!({"type":"mcp_tool_call","server":"server","tool_name":"toolName","connector_id":"connector","connector_name":null,"tool_title":"Title"}),
 			),
 			(
-				approval::json!({"type":"requestPermissions","reason":"toolName","permissions":{"network":{"enabled":true},"fileSystem":{"read":["/tmp/a"],"write":["/tmp/b"]}}}),
-				approval::json!({"type":"request_permissions","reason":"toolName","permissions":{"network":{"enabled":true},"file_system":{"entries":[{"path":{"type":"path","path":"/tmp/a"},"access":"read"},{"path":{"type":"path","path":"/tmp/b"},"access":"write"}],"glob_scan_max_depth":null}}}),
+				serde_json::json!({"type":"requestPermissions","reason":"toolName","permissions":{"network":{"enabled":true},"fileSystem":{"read":["/tmp/a"],"write":["/tmp/b"]}}}),
+				serde_json::json!({"type":"request_permissions","reason":"toolName","permissions":{"network":{"enabled":true},"file_system":{"entries":[{"path":{"type":"path","path":"/tmp/a"},"access":"read"},{"path":{"type":"path","path":"/tmp/b"},"access":"write"}],"glob_scan_max_depth":null}}}),
 			),
 		];
 
@@ -391,27 +391,27 @@ mod tests {
 
 	#[test]
 	fn explicit_permission_entries_preserve_denies_globs_and_unknown_special_paths() {
-		let entries = approval::json!([
+		let entries = serde_json::json!([
 			{"path":{"type":"path","path":"/tmp/private"},"access":"deny"},
 			{"path":{"type":"glob_pattern","pattern":"**/toolName"},"access":"read"},
 			{"path":{"type":"special","value":{"kind":"unknown","path":":future","subpath":"toolName"}},"access":"write"}
 		]);
-		let mut action = approval::json!({"type":"requestPermissions","reason":null,"permissions":{"fileSystem":{"read":["/ignored"],"write":["/also-ignored"],"entries":entries,"globScanMaxDepth":3}}});
+		let mut action = serde_json::json!({"type":"requestPermissions","reason":null,"permissions":{"fileSystem":{"read":["/ignored"],"write":["/also-ignored"],"entries":entries,"globScanMaxDepth":3}}});
 		let core = convert(action.clone()).unwrap();
 
 		assert_eq!(
 			core["action"]["permissions"]["file_system"],
-			approval::json!({"entries":entries,"glob_scan_max_depth":3})
+			serde_json::json!({"entries":entries,"glob_scan_max_depth":3})
 		);
 
-		action["permissions"]["fileSystem"]["entries"] = approval::json!([]);
+		action["permissions"]["fileSystem"]["entries"] = serde_json::json!([]);
 
 		assert_eq!(
 			convert(action.clone()).unwrap()["action"]["permissions"]["file_system"]["entries"],
-			approval::json!([])
+			serde_json::json!([])
 		);
 
-		action["permissions"]["fileSystem"]["globScanMaxDepth"] = approval::json!(0);
+		action["permissions"]["fileSystem"]["globScanMaxDepth"] = serde_json::json!(0);
 
 		assert!(convert(action).is_none());
 	}
@@ -419,10 +419,10 @@ mod tests {
 	#[test]
 	fn refuses_unknown_fields_variants_and_lossy_path_conversion() {
 		for action in [
-			approval::json!({"type":"command","source":"shell","command":"echo x","cwd":"/tmp","futurePolicy":true}),
-			approval::json!({"type":"futureAction"}),
-			approval::json!({"type":"requestPermissions","permissions":{"futurePermission":true}}),
-			approval::json!({"type":"writeStdin","approvalId":"a","processId":"p","stdin":"x","cwd":"relative"}),
+			serde_json::json!({"type":"command","source":"shell","command":"echo x","cwd":"/tmp","futurePolicy":true}),
+			serde_json::json!({"type":"futureAction"}),
+			serde_json::json!({"type":"requestPermissions","permissions":{"futurePermission":true}}),
+			serde_json::json!({"type":"writeStdin","approvalId":"a","processId":"p","stdin":"x","cwd":"relative"}),
 		] {
 			assert!(convert(action).is_none());
 		}

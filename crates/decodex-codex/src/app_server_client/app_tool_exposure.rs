@@ -1,10 +1,9 @@
 //! Connector-level exposure preferences. Native Codex owns tool filtering and approvals.
 use crate::app_server_client::{
-	AppServerClient, ClientError, HistoryGuard, Outbound,
-	app_link_settings::{quoted_key, required_string, take_quoted_key, valid_identity},
+	AppServerClient, ClientError, HistoryGuard, Outbound, app_link_settings,
 };
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use std::{path::Path, time::Duration};
 
@@ -38,8 +37,14 @@ impl AppToolExposureSettings {
 	pub fn fingerprint(&self) -> String {
 		use sha2::{Digest as _, Sha256};
 
-		let facts =
-			json!([self.cwd, self.app, self.file, self.version, self.effective, self.preference]);
+		let facts = serde_json::json!([
+			self.cwd,
+			self.app,
+			self.file,
+			self.version,
+			self.effective,
+			self.preference
+		]);
 
 		Sha256::digest(facts.to_string().as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
 	}
@@ -68,13 +73,16 @@ impl AppServerClient {
 		cwd: &str,
 		app: &str,
 	) -> Result<AppToolExposureSettings, ClientError> {
-		if !Path::new(cwd).is_absolute() || !valid_identity(app) || app == "_default" {
+		if !Path::new(cwd).is_absolute()
+			|| !app_link_settings::valid_identity(app)
+			|| app == "_default"
+		{
 			return Err(ClientError::InvalidFrame);
 		}
 
 		let value = tokio::time::timeout(
 			Duration::from_secs(15),
-			self.request("config/read", json!({"cwd":cwd,"includeLayers":true})),
+			self.request("config/read", serde_json::json!({"cwd":cwd,"includeLayers":true})),
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
@@ -87,7 +95,7 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		let file = required_string(&user["name"]["file"])?;
+		let file = app_link_settings::required_string(&user["name"]["file"])?;
 
 		if !Path::new(&file).is_absolute() {
 			return Err(ClientError::InvalidFrame);
@@ -98,7 +106,7 @@ impl AppServerClient {
 			cwd: cwd.into(),
 			app: app.into(),
 			file,
-			version: required_string(&user["version"])?,
+			version: app_link_settings::required_string(&user["version"])?,
 			effective: omissions(&value["config"], app)?,
 			preference: omissions(&user["config"], app)?,
 		})
@@ -119,8 +127,8 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		let params = json!({"filePath":observed.file,"expectedVersion":observed.version,"reloadUserConfig":true,
-			"edits":[{"keyPath":format!("apps.{}.omit_tools_from",quoted_key(&observed.app)),"value":preference,"mergeStrategy":"replace"}]});
+		let params = serde_json::json!({"filePath":observed.file,"expectedVersion":observed.version,"reloadUserConfig":true,
+			"edits":[{"keyPath":format!("apps.{}.omit_tools_from",app_link_settings::quoted_key(&observed.app)),"value":preference,"mergeStrategy":"replace"}]});
 		let receipt = tokio::time::timeout(
 			Duration::from_secs(15),
 			self.request_with_history("config/batchWrite", params, guard),
@@ -133,7 +141,9 @@ impl AppServerClient {
 			_ => return Err(ClientError::InvalidFrame),
 		};
 
-		if receipt["filePath"] != observed.file || required_string(&receipt["version"]).is_err() {
+		if receipt["filePath"] != observed.file
+			|| app_link_settings::required_string(&receipt["version"]).is_err()
+		{
 			return Err(ClientError::InvalidFrame);
 		}
 
@@ -148,7 +158,7 @@ pub fn is_app_tool_exposure_write(params: &Value) -> bool {
 	if !params.as_object().is_some_and(|p| p.len() == 4)
 		|| params["reloadUserConfig"] != true
 		|| !params["filePath"].as_str().is_some_and(|p| Path::new(p).is_absolute())
-		|| required_string(&params["expectedVersion"]).is_err()
+		|| app_link_settings::required_string(&params["expectedVersion"]).is_err()
 	{
 		return false;
 	}
@@ -165,11 +175,12 @@ pub fn is_app_tool_exposure_write(params: &Value) -> bool {
 	let Some(path) = edit["keyPath"].as_str().and_then(|p| p.strip_prefix("apps.")) else {
 		return false;
 	};
-	let Some((app, field)) = take_quoted_key(path) else {
+	let Some((app, field)) = app_link_settings::take_quoted_key(path) else {
 		return false;
 	};
 
-	if !valid_identity(&app) || app == "_default" || field != ".omit_tools_from" {
+	if !app_link_settings::valid_identity(&app) || app == "_default" || field != ".omit_tools_from"
+	{
 		return false;
 	}
 
@@ -203,7 +214,10 @@ fn omissions(config: &Value, app: &str) -> Result<Option<Vec<String>>, ClientErr
 		None | Some(Value::Null) => Ok(None),
 		Some(Value::Array(values)) if values.len() <= 16 => {
 			// Preserve future values for display. Never silently discard an unknown restriction.
-			let values = values.iter().map(required_string).collect::<Result<Vec<_>, _>>()?;
+			let values = values
+				.iter()
+				.map(app_link_settings::required_string)
+				.collect::<Result<Vec<_>, _>>()?;
 
 			if values.iter().collect::<std::collections::HashSet<_>>().len() != values.len() {
 				return Err(ClientError::InvalidFrame);
