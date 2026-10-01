@@ -330,6 +330,7 @@ pub(super) mod tests {
 			assert!(s.submission.command.is_none() && !s.uncertain);
 		});
 	}
+
 	#[gpui::test]
 	fn async_editors_survive_disconnect_and_profile_round_trip(cx: &mut gpui::TestAppContext) {
 		let (_root, first, second) = profiles();

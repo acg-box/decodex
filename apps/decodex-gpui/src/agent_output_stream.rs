@@ -129,6 +129,7 @@ impl AgentSurface {
 #[cfg(test)]
 mod tests {
 	use crate::shell::agent_surface::output_stream::*;
+
 	#[gpui::test]
 	fn output_is_visible_only_for_its_owner_and_current_turn(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);

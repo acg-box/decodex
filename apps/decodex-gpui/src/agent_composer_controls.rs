@@ -1,23 +1,22 @@
 //! Composer-specific visual controls. Exact values remain visible and keyboard accessible.
 #[path = "agent_effort_slider.rs"] mod effort_slider;
 
-use crate::shell::agent_surface::composer::{
-	AgentSurface, SmoothControl,
-	ui_theme::{self, CANVAS, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED},
-};
+use std::cmp::Reverse;
 
 use gpui::{
-	Context, Role, SharedString, div,
+	AnyElement, App, Context, KeyDownEvent, PathBuilder, RenderOnce, Role, SharedString, Window,
+	div,
 	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
 	px, rgb, rgba,
 };
 
-use crate::{shell::agent_surface::composer::model_settings, ui_loading, ui_motion};
-
-use std::cmp::Reverse;
-
-use gpui::{AnyElement, App, KeyDownEvent, PathBuilder, RenderOnce, Window};
-
+use crate::{
+	shell::agent_surface::composer::{
+		AgentSurface, SmoothControl, model_settings,
+		ui_theme::{self, CANVAS, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED},
+	},
+	ui_loading, ui_motion,
+};
 use decodex_protocol::AgentCapabilitiesResult;
 
 const LEVELS: [(&str, &str); 9] = [

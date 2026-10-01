@@ -199,7 +199,6 @@ mod tests {
 	struct Preview {
 		text: String,
 	}
-
 	impl gpui::Render for Preview {
 		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 			SelectableText {

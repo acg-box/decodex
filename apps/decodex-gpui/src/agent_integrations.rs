@@ -454,6 +454,7 @@ mod tests {
 			assert!(!app_inventory_text(&state).contains("No installed Apps"));
 		}
 	}
+
 	#[gpui::test]
 	fn ordinary_refresh_keeps_integration_status_read(cx: &mut gpui::TestAppContext) {
 		let (_dir, profile, server) = wire_test_support::fixture(|listener| async move {

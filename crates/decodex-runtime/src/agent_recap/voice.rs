@@ -125,6 +125,7 @@ mod tests {
 #[cfg(test)]
 mod missing_tests {
 	use crate::agent_recap::voice::{self, AgentVoiceHistory, excerpts, history};
+
 	#[test]
 	fn missing_voice_transcript_is_disclosed_instead_of_inferred_empty() {
 		let native = history::History {

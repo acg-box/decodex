@@ -820,6 +820,7 @@ mod tests {
 #[cfg(test)]
 mod app_ui_projection_tests {
 	use crate::agent::timeline::{self, AgentTimelineContent};
+
 	#[test]
 	fn retired_app_metadata_keeps_the_tool_result_without_a_viewer() {
 		for (kind, metadata, expected) in [

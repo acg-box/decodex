@@ -1224,7 +1224,6 @@ mod tests {
 		Ordinary(tempfile::TempDir),
 		Sandboxed(PinnedSandboxFixtureHome),
 	}
-
 	impl FixtureHome {
 		fn path(&self) -> &Path {
 			match self {

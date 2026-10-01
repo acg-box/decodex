@@ -450,6 +450,7 @@ mod tests {
 
 		assert!(visual.debug_bounds("native-media-preview").is_none());
 	}
+
 	#[gpui::test]
 	fn delayed_preview_cannot_replace_a_new_view_after_leaving_and_returning(
 		cx: &mut gpui::TestAppContext,

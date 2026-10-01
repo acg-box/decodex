@@ -6439,7 +6439,6 @@ mod tests {
 	};
 
 	struct PanelControlView(Entity<Shell>);
-
 	impl Render for PanelControlView {
 		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 			self.0.update(cx, |shell, cx| agent_panel_control(shell, 0, cx))

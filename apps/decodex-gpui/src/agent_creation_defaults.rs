@@ -107,6 +107,7 @@ mod tests {
 	use decodex_protocol::{
 		DesktopCreationIntent, InitialModelCatalogResult, InitialModelDefaults, ServiceTier,
 	};
+
 	fn defaults() -> InitialModelDefaults {
 		InitialModelDefaults {
 			configured: InitialExecutionDefaults {

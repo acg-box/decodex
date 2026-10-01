@@ -519,6 +519,7 @@ mod tests {
 			assert!(s.resources_task.is_none());
 		});
 	}
+
 	#[gpui::test]
 	fn ordinary_refresh_keeps_resource_mutation_readback_without_retry(
 		cx: &mut gpui::TestAppContext,

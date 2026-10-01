@@ -2131,7 +2131,6 @@ mod tests {
 	use std::thread;
 
 	struct ActionView(gpui::Entity<AgentSurface>);
-
 	impl Render for ActionView {
 		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 			self.0.update(cx, |s, cx| {

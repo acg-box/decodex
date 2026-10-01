@@ -435,6 +435,7 @@ mod tests {
 			assert_eq!(mcp_account_label(&other), None);
 		}
 	}
+
 	#[gpui::test]
 	fn approval_renders_only_offered_persistence_and_rejects_stale_scope(
 		cx: &mut gpui::TestAppContext,

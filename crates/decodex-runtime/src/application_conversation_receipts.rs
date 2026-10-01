@@ -61,6 +61,7 @@ mod tests {
 		self, ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
 		ConversationId, CreateConversation, EntityId, EntityRevision, ProductStore,
 	};
+
 	#[tokio::test]
 	async fn creation_query_distinguishes_exact_local_record_from_missing_and_conflict() {
 		let temp = tempfile::tempdir().unwrap();

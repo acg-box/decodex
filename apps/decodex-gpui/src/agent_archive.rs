@@ -362,6 +362,7 @@ mod tests {
 
 		assert_eq!(bind_readback(state.clone(), "original"), state);
 	}
+
 	#[gpui::test]
 	fn archive_read_only_applies_only_to_the_selected_confirmed_thread(
 		cx: &mut gpui::TestAppContext,
@@ -473,6 +474,7 @@ mod tests {
 #[cfg(test)]
 mod background_read_tests {
 	use crate::shell::agent_surface::archive::*;
+
 	#[test]
 	fn transient_read_does_not_flash_error_or_replace_known_state() {
 		let mut panel = Panel::default();

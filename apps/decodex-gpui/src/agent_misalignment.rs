@@ -122,6 +122,7 @@ impl AgentSurface {
 #[cfg(test)]
 mod tests {
 	use crate::shell::agent_surface::misalignment::*;
+
 	#[gpui::test]
 	fn review_requires_second_click_and_stale_findings_cannot_continue(
 		cx: &mut gpui::TestAppContext,

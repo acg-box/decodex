@@ -143,6 +143,7 @@ fn cost(key: &Key, item: &str) -> usize {
 mod tests {
 
 	use crate::agent::file_changes::PendingFileChanges;
+
 	#[test]
 	fn evidence_is_bound_to_connection_and_released_after_commit_or_lifecycle_end() {
 		let mut state = PendingFileChanges::default();

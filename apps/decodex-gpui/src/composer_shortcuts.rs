@@ -190,6 +190,7 @@ pub(super) fn bind_actions(input: Stateful<Div>, cx: &mut Context<ComposerInput>
 #[cfg(test)]
 mod tests {
 	use crate::composer_input::shortcuts::*;
+
 	#[gpui::test]
 	fn editing_keys_preserve_other_lines_and_support_undo(cx: &mut gpui::TestAppContext) {
 		cx.update(super::super::bind_keys);

@@ -82,6 +82,7 @@ mod tests {
 			assert!(native_diagnostics::project(&value).is_none());
 		}
 	}
+
 	#[tokio::test]
 	async fn diagnostic_read_does_not_start_a_process_and_rejects_changed_generation() {
 		assert_eq!(native_diagnostics::read(|| None).await, NativeProcessDiagnostics::Inactive);

@@ -964,6 +964,7 @@ mod multiline_tests {
 			assert!(input.last_bounds.unwrap().size.height <= px(ui_theme::BODY_LINE_HEIGHT * 7.0));
 		});
 	}
+
 	#[gpui::test]
 	fn obscured_unicode_mouse_selection_keeps_valid_text_boundaries(cx: &mut gpui::TestAppContext) {
 		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));

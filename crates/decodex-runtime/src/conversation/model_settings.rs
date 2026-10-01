@@ -198,6 +198,7 @@ mod tests {
 			child.shutdown().unwrap();
 		}
 	}
+
 	#[test]
 	fn active_settings_read_delivers_completion_once_on_success_and_rejection() {
 		for mode in ["exact-settings-valid", "exact-settings-rejected"] {

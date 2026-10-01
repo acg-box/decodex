@@ -158,6 +158,7 @@ impl AgentSurface {
 mod tests {
 	use crate::shell::agent_surface::native_timeline::inputs::*;
 	use decodex_protocol::{AgentHistoryEntryDto, AgentHistoryReceiptDto, AgentTimelinePage};
+
 	fn page(work: &str, id: Option<i64>, next_after: Option<i64>) -> AgentInputReceiptsResult {
 		AgentInputReceiptsResult::Available {
 			work_id: EntityId::new(work).unwrap(),

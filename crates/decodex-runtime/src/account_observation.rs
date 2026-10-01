@@ -1661,6 +1661,7 @@ mod recovery_cache_tests {
 		AccountId, AccountObservationOutcome, AccountObservationState, CachedAccountBanner,
 	};
 	use decodex_codex::AccountApiBannerState;
+
 	#[test]
 	fn invalidated_generation_cannot_restore_recovery_and_failures_expire_it() {
 		let account = AccountId::new("10000000-0000-4000-8000-000000000001").unwrap();
