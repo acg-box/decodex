@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use rusqlite::{self, Connection, Error, OptionalExtension as _, TransactionBehavior};
+use rusqlite::{self, Connection, Error, OptionalExtension as _, Transaction, TransactionBehavior};
 use serde_json::{self, Value};
 
 use crate::{
@@ -65,6 +65,16 @@ pub struct CodexAccountCapabilityAttestation {
 }
 
 pub struct AccountCommandReceiptLease(CommandReservation);
+
+struct StoredCommandReceipt {
+	request: String,
+	operation: String,
+	stored_entity: String,
+	revision: Option<i64>,
+	state: String,
+	response: Option<String>,
+	expires: Option<i64>,
+}
 
 struct CommandReservation {
 	protocol: &'static str,
@@ -1135,6 +1145,32 @@ pub(crate) fn sql_error(_error: Error) -> StoreError {
 	StoreError::Database(DatabaseError::Unavailable)
 }
 
+fn read_command_receipt(
+	transaction: &Transaction<'_>,
+	key: &str,
+) -> Result<Option<StoredCommandReceipt>, StoreError> {
+	transaction
+		.query_row(
+			"SELECT request_sha256, operation, entity_id, expected_revision, state,
+		        response_json, claim_expires_at_micros
+		 FROM command_receipts WHERE protocol = ?1 AND idempotency_key = ?2",
+			rusqlite::params![ACCOUNT_COMMAND_PROTOCOL, key],
+			|row| {
+				Ok(StoredCommandReceipt {
+					request: row.get(0)?,
+					operation: row.get(1)?,
+					stored_entity: row.get(2)?,
+					revision: row.get(3)?,
+					state: row.get(4)?,
+					response: row.get(5)?,
+					expires: row.get(6)?,
+				})
+			},
+		)
+		.optional()
+		.map_err(sql_error)
+}
+
 fn reserve_command_sync(
 	connection: &mut Connection,
 	command: CommandIdentity,
@@ -1160,29 +1196,18 @@ fn reserve_command_sync(
 		return Err(StoreError::IdempotencyConflict);
 	}
 
-	let existing = transaction
-		.query_row(
-			"SELECT request_sha256, operation, entity_id, expected_revision, state,
-			        response_json, claim_expires_at_micros
-			 FROM command_receipts WHERE protocol = ?1 AND idempotency_key = ?2",
-			rusqlite::params![ACCOUNT_COMMAND_PROTOCOL, command.key],
-			|row| {
-				Ok((
-					row.get::<_, String>(0)?,
-					row.get::<_, String>(1)?,
-					row.get::<_, String>(2)?,
-					row.get::<_, Option<i64>>(3)?,
-					row.get::<_, String>(4)?,
-					row.get::<_, Option<String>>(5)?,
-					row.get::<_, Option<i64>>(6)?,
-				))
-			},
-		)
-		.optional()
-		.map_err(sql_error)?;
+	let existing = read_command_receipt(&transaction, &command.key)?;
 	let receipt_exists = existing.is_some();
 
-	if let Some((request, operation, stored_entity, revision, state, response, expires)) = existing
+	if let Some(StoredCommandReceipt {
+		request,
+		operation,
+		stored_entity,
+		revision,
+		state,
+		response,
+		expires,
+	}) = existing
 	{
 		if request != command.request_hash
 			|| operation != kind.as_str()
