@@ -1,10 +1,11 @@
 //! Finish a local input only with its exact positive non-submission receipt.
-use crate::{StoreError, account_lifecycle::sql_error};
+use rusqlite::Transaction;
+
+use crate::{StoreError, account_lifecycle, conversations};
 use decodex_core::{
 	ProviderAttempt, ProviderAttemptConsumer, ProviderEvidenceSource, ProviderPositiveEvidence,
 	ProviderTerminalOutcome,
 };
-use rusqlite::{Transaction, params};
 
 pub(crate) fn finalize(
 	connection: &Transaction<'_>,
@@ -36,7 +37,7 @@ pub(crate) fn finalize(
 		   AND NOT EXISTS(SELECT 1 FROM history_items h WHERE h.turn_id=?1 AND h.status='streaming')
 		   AND NOT EXISTS(SELECT 1 FROM provider_attempts p WHERE p.turn_id=?1
 		                  AND p.attempt_id<>?6 AND p.state NOT IN ('canceled','not_submitted'))",
-			params![
+			rusqlite::params![
 				turn_id.as_str(),
 				conversation_id.as_str(),
 				attempt.runtime_session_id.as_str(),
@@ -45,10 +46,12 @@ pub(crate) fn finalize(
 				attempt.attempt_id.as_str()
 			],
 		)
-		.map_err(sql_error)?;
+		.map_err(account_lifecycle::sql_error)?;
 
 	if changed == 0 {
-		return Err(super::incompatible("non-submission does not match the active local input"));
+		return Err(conversations::incompatible(
+			"non-submission does not match the active local input",
+		));
 	}
 
 	let metadata = serde_json::json!({
@@ -63,10 +66,10 @@ pub(crate) fn finalize(
 		 role,status,media_type,inline_text,metadata_json,revision,created_at_micros,updated_at_micros)
 		 VALUES(?1,?2,?3,(SELECT coalesce(max(sequence),0)+1 FROM history_items WHERE conversation_id=?2),
 		 'status','user','failed','text/plain',?4,?5,1,?6,?6)",
-		params![evidence.evidence_id.as_str(),conversation_id.as_str(),turn_id.as_str(),
+		rusqlite::params![evidence.evidence_id.as_str(),conversation_id.as_str(),turn_id.as_str(),
 		        "Codex confirmed that this input was not submitted. Reconnect and send again. Your input remains in history.",
 		        metadata,now],
-	).map_err(sql_error)?;
+	).map_err(account_lifecycle::sql_error)?;
 
-	super::touch_conversation(connection, conversation_id, now)
+	conversations::touch_conversation(connection, conversation_id, now)
 }
