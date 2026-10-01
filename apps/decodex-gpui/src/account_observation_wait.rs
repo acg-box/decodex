@@ -1,9 +1,15 @@
 //! A cancellable independent socket wait; never blocks the retained ingress reader.
+use std::{
+	future::{self, Future},
+	pin::Pin,
+	time::Duration,
+};
+
+use tokio::time;
+
 use decodex_protocol::{
 	AccountClient, AccountObservationSignal, ClientFailure, QueryEnvelope, QueryPayload,
 };
-
-use std::{future::Future, pin::Pin};
 
 pub(super) type Wait = Pin<Box<dyn Future<Output = Outcome> + Send>>;
 
@@ -23,7 +29,7 @@ pub(super) fn start(client: AccountClient, query: QueryEnvelope) -> Wait {
 		};
 
 		if result.is_err() {
-			tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+			time::sleep(Duration::from_secs(1)).await;
 		}
 
 		(query, result)
@@ -33,17 +39,21 @@ pub(super) fn start(client: AccountClient, query: QueryEnvelope) -> Wait {
 pub(super) async fn poll(wait: &mut Option<Wait>) -> Outcome {
 	match wait {
 		Some(wait) => wait.await,
-		None => std::future::pending().await,
+		None => future::pending().await,
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use std::sync::{
-		Arc,
-		atomic::{AtomicUsize, Ordering},
+	use std::{
+		future,
+		sync::{
+			Arc,
+			atomic::{AtomicUsize, Ordering},
+		},
 	};
+
+	use crate::client_lifecycle::account_observation::{self, Wait};
 
 	struct Lifetime(Arc<AtomicUsize>);
 	impl Drop for Lifetime {
@@ -63,15 +73,15 @@ mod tests {
 
 			let _lifetime = Lifetime(dropped);
 
-			std::future::pending().await
+			future::pending().await
 		}));
 
 		for _ in 0..10 {
 			tokio::select! {
 				biased;
 
-				_ = poll(&mut wait) => panic!("wait must remain pending"),
-				() = std::future::ready(()) => {},
+				_ = account_observation::poll(&mut wait) => panic!("wait must remain pending"),
+				() = future::ready(()) => {},
 			}
 		}
 

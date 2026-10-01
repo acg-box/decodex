@@ -1,7 +1,8 @@
 //! Task-scoped next-message choices, independent of observed native settings.
-use super::*;
-use decodex_protocol::AgentExecutionOverrides;
 use std::collections::BTreeMap;
+
+use crate::shell::agent_surface::*;
+use decodex_protocol::{AgentExecutionOverrides, ServiceTier};
 
 #[derive(Default)]
 pub(super) struct Intents {
@@ -67,10 +68,7 @@ impl AgentSurface {
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
 		let Ok(model) = ConversationModel::new(self.model.read(cx).content()) else { return };
 		let effort = self.effort.clone();
-		let tier = self
-			.service_tier
-			.clone()
-			.unwrap_or_else(|| decodex_protocol::ServiceTier::from_fast(self.fast));
+		let tier = self.service_tier.clone().unwrap_or_else(|| ServiceTier::from_fast(self.fast));
 
 		self.draft_profiles.execution.change(owner, |choice| {
 			choice.model = Some(model);
@@ -105,10 +103,7 @@ impl AgentSurface {
 		}
 
 		let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) else { return };
-		let tier = self
-			.service_tier
-			.clone()
-			.unwrap_or_else(|| decodex_protocol::ServiceTier::from_fast(self.fast));
+		let tier = self.service_tier.clone().unwrap_or_else(|| ServiceTier::from_fast(self.fast));
 
 		self.draft_profiles.execution.change(owner, |choice| {
 			choice.service_tier = Some(tier);
@@ -119,7 +114,7 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::execution_intent::*;
 	fn action(surface: &AgentSurface, owner: &str) -> AgentActionDto {
 		surface.configured_send(
 			EntityId::new(owner).unwrap(),

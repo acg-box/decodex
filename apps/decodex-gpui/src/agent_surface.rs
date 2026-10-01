@@ -2592,11 +2592,13 @@ mod request_source_tests;
 mod wire_test_support;
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::*;
 
 	use decodex_protocol::AgentWorkKindDto;
 
 	use gpui::Focusable;
+
+	use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 
 	struct BubbleGeometry {
 		text: String,
@@ -3092,8 +3094,6 @@ mod tests {
 
 	#[gpui::test]
 	fn offline_commands_preserve_editable_draft_and_attachments(cx: &mut gpui::TestAppContext) {
-		use std::os::unix::fs::{MetadataExt, PermissionsExt};
-
 		let root = tempfile::tempdir_in("/tmp").unwrap();
 		let path = root.path().canonicalize().unwrap();
 

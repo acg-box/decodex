@@ -1,14 +1,18 @@
 //! Rendered model reads cross the public socket without sending mutations.
-use super::{super::wire_test_support::SERVER, *};
+use std::thread::JoinHandle;
 
-use decodex_protocol::{
-	CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
-	ServerId, ServerMessage,
-};
-
-use futures_util::{SinkExt, StreamExt};
-
+use crate::shell::agent_surface::{model_settings::*, wire_test_support::SERVER};
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::TestAppContext;
+use tempfile::TempDir;
+use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::wire_test_support;
+use decodex_protocol::{
+	AgentCapabilitiesResult, AgentModelDto, AgentWorkKindDto, CURRENT_VERSION, ClientMessage,
+	QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId, ServerMessage,
+};
 
 struct SettingsView {
 	surface: Entity<AgentSurface>,
@@ -19,15 +23,15 @@ impl Render for SettingsView {
 	}
 }
 
-fn fixture() -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<()>) {
-	super::super::wire_test_support::fixture(serve)
+fn fixture() -> (TempDir, ClientProfile, JoinHandle<()>) {
+	wire_test_support::fixture(serve)
 }
 
 fn work() -> AgentWorkItemDto {
 	AgentWorkItemDto {
 		id: "root".into(),
 		parent_goal_id: None,
-		kind: decodex_protocol::AgentWorkKindDto::Goal,
+		kind: AgentWorkKindDto::Goal,
 		title: "Root".into(),
 		codex_thread_id: Some("thread".into()),
 		active_turn_id: None,
@@ -50,9 +54,7 @@ fn snapshot() -> AgentSnapshotDto {
 }
 
 #[gpui::test]
-fn model_settings_click_refreshes_idle_task_and_rejects_foreign_reply(
-	cx: &mut gpui::TestAppContext,
-) {
+fn model_settings_click_refreshes_idle_task_and_rejects_foreign_reply(cx: &mut TestAppContext) {
 	let (_dir, profile, server) = fixture();
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
@@ -109,7 +111,7 @@ fn model_settings_click_refreshes_idle_task_and_rejects_foreign_reply(
 }
 
 #[gpui::test]
-fn model_settings_snapshot_identity_aba_requires_a_fresh_read(cx: &mut gpui::TestAppContext) {
+fn model_settings_snapshot_identity_aba_requires_a_fresh_read(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	for change in ["thread", "turn", "running", "removed", "source"] {
@@ -144,7 +146,7 @@ fn model_settings_snapshot_identity_aba_requires_a_fresh_read(cx: &mut gpui::Tes
 }
 
 #[gpui::test]
-fn observed_settings_do_not_replace_newer_manual_intent(cx: &mut gpui::TestAppContext) {
+fn observed_settings_do_not_replace_newer_manual_intent(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	surface.update(cx, |s, cx| {
@@ -190,9 +192,7 @@ fn observed_settings_do_not_replace_newer_manual_intent(cx: &mut gpui::TestAppCo
 }
 
 #[gpui::test]
-fn a_new_explicit_model_uses_its_own_capabilities_not_the_observed_model(
-	cx: &mut gpui::TestAppContext,
-) {
+fn a_new_explicit_model_uses_its_own_capabilities_not_the_observed_model(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	surface.update(cx, |s, cx| {
@@ -212,14 +212,14 @@ fn a_new_explicit_model_uses_its_own_capabilities_not_the_observed_model(
 			},
 		);
 
-		s.capabilities = Some(decodex_protocol::AgentCapabilitiesResult::Available {
+		s.capabilities = Some(AgentCapabilitiesResult::Available {
 			memory_enabled: None,
 			models: [
 				("old-native-model", ConversationReasoningEffort::High),
 				("new-choice", ConversationReasoningEffort::Low),
 			]
 			.into_iter()
-			.map(|(model, effort)| decodex_protocol::AgentModelDto {
+			.map(|(model, effort)| AgentModelDto {
 				model: ConversationModel::new(model).unwrap(),
 				name: model.into(),
 				efforts: vec![effort.clone()],
@@ -248,9 +248,7 @@ fn a_new_explicit_model_uses_its_own_capabilities_not_the_observed_model(
 }
 
 #[gpui::test]
-fn inspecting_a_worker_does_not_replace_the_composers_model_observation(
-	cx: &mut gpui::TestAppContext,
-) {
+fn inspecting_a_worker_does_not_replace_the_composers_model_observation(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	surface.update(cx, |s, cx| {
@@ -284,7 +282,7 @@ fn inspecting_a_worker_does_not_replace_the_composers_model_observation(
 
 #[gpui::test]
 fn unavailable_service_clears_model_observations_but_detail_close_keeps_them(
-	cx: &mut gpui::TestAppContext,
+	cx: &mut TestAppContext,
 ) {
 	let surface = cx.new(AgentSurface::new);
 
@@ -320,7 +318,7 @@ fn unavailable_service_clears_model_observations_but_detail_close_keeps_them(
 }
 
 #[gpui::test]
-fn ordinary_snapshot_refresh_keeps_model_settings_read(cx: &mut gpui::TestAppContext) {
+fn ordinary_snapshot_refresh_keeps_model_settings_read(cx: &mut TestAppContext) {
 	let (_dir, profile, server) = fixture();
 	let surface = cx.new(AgentSurface::new);
 
@@ -355,10 +353,8 @@ fn ordinary_snapshot_refresh_keeps_model_settings_read(cx: &mut gpui::TestAppCon
 }
 
 #[gpui::test]
-fn missing_native_binding_reports_unavailable_without_starting_a_read(
-	cx: &mut gpui::TestAppContext,
-) {
-	let (_dir, profile, server) = super::super::wire_test_support::fixture(|_| async {});
+fn missing_native_binding_reports_unavailable_without_starting_a_read(cx: &mut TestAppContext) {
+	let (_dir, profile, server) = wire_test_support::fixture(|_| async {});
 
 	server.join().unwrap();
 
@@ -392,9 +388,9 @@ fn missing_native_binding_reports_unavailable_without_starting_a_read(
 	}
 }
 
-async fn serve(listener: tokio::net::UnixListener) {
+async fn serve(listener: UnixListener) {
 	for index in 0..4 {
-		let mut socket = super::super::wire_test_support::accept(&listener).await;
+		let mut socket = wire_test_support::accept(&listener).await;
 		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 			panic!("text query")
 		};

@@ -1,10 +1,12 @@
 //! Product behavior tests for upstream math parsing and source-preserving copy.
-use super::*;
+use gpui::{Modifiers, Render, ScrollDelta, ScrollWheelEvent, TestAppContext};
+
+use crate::shell::agent_surface::markdown::*;
 
 struct Preview {
 	text: String,
 }
-impl gpui::Render for Preview {
+impl Render for Preview {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 		super::render(&self.text, "math-preview")
 	}
@@ -82,7 +84,7 @@ fn growing_display_stays_literal_until_closed_and_bounds_preserve_following_text
 }
 
 #[gpui::test]
-fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut gpui::TestAppContext) {
+fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext) {
 	let source = r"$$\frac{a+b+c+d+e+f+g+h+i+j+k+l+m+n+o+p}{g+h}$$";
 	let (_, visual) = cx.add_window_view(|_, _| Preview { text: source.into() });
 	let mut previous_size = None;
@@ -106,9 +108,9 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut gpui::TestAppCo
 		previous_size = Some(text.size);
 
 		if width == 120. {
-			visual.simulate_event(gpui::ScrollWheelEvent {
+			visual.simulate_event(ScrollWheelEvent {
 				position: bounds.center(),
-				delta: gpui::ScrollDelta::Pixels(gpui::point(px(-60.), px(0.))),
+				delta: ScrollDelta::Pixels(gpui::point(px(-60.), px(0.))),
 				..Default::default()
 			});
 			visual.update(|window, cx| {
@@ -123,9 +125,9 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut gpui::TestAppCo
 				"long formula must remain horizontally accessible"
 			);
 
-			visual.simulate_event(gpui::ScrollWheelEvent {
+			visual.simulate_event(ScrollWheelEvent {
 				position: bounds.center(),
-				delta: gpui::ScrollDelta::Pixels(gpui::point(px(60.), px(0.))),
+				delta: ScrollDelta::Pixels(gpui::point(px(60.), px(0.))),
 				..Default::default()
 			});
 			visual.update(|window, cx| {
@@ -135,7 +137,7 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut gpui::TestAppCo
 
 		let copy = visual.debug_bounds("math-copy-math-preview-0-formula-0").expect("copy");
 
-		visual.simulate_click(copy.center(), gpui::Modifiers::default());
+		visual.simulate_click(copy.center(), Modifiers::default());
 		visual.update(|_, cx| {
 			assert_eq!(cx.read_from_clipboard().and_then(|v| v.text()), Some(source.into()))
 		});

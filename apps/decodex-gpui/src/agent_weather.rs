@@ -4,9 +4,11 @@ use gpui::{
 	rgb, rgba,
 };
 
+use decodex_protocol::WeatherForecast;
+
 #[derive(IntoElement)]
 struct WeatherCard {
-	weather: decodex_protocol::WeatherForecast,
+	weather: WeatherForecast,
 	key: String,
 }
 impl RenderOnce for WeatherCard {
@@ -141,7 +143,7 @@ impl PageMotion {
 	}
 }
 
-pub(super) fn render(weather: &decodex_protocol::WeatherForecast, key: &str) -> AnyElement {
+pub(super) fn render(weather: &WeatherForecast, key: &str) -> AnyElement {
 	WeatherCard { weather: weather.clone(), key: key.into() }.into_any_element()
 }
 
@@ -182,7 +184,7 @@ fn weather_hour(key: &str, i: usize, hour: &str, condition: &str, t: i32) -> Any
 		.into_any_element()
 }
 
-fn weather_header(weather: &decodex_protocol::WeatherForecast) -> AnyElement {
+fn weather_header(weather: &WeatherForecast) -> AnyElement {
 	let location = weather.location.split(", ").next().unwrap_or(&weather.location);
 
 	div()
@@ -235,7 +237,9 @@ mod tests {
 
 	use core::prelude::v1::test;
 
-	use gpui::{Context, Modifiers, Render, ScrollDelta, ScrollWheelEvent, size};
+	use gpui::{self, Context, Modifiers, Render, ScrollDelta, ScrollWheelEvent};
+
+	use std::thread;
 
 	struct Parent {
 		bubbled: std::rc::Rc<std::cell::Cell<usize>>,
@@ -279,7 +283,7 @@ mod tests {
 		let (_, visual) = cx.add_window_view(|_, _| Parent { bubbled: bubbled.clone() });
 
 		visual.update(|window, cx| {
-			window.resize(size(px(600.), px(400.)));
+			window.resize(gpui::size(px(600.), px(400.)));
 			window.draw(cx).clear();
 		});
 
@@ -324,7 +328,7 @@ mod tests {
 
 		let first_frame = visual.debug_bounds("weather-hour-0").unwrap().origin.x;
 
-		std::thread::sleep(std::time::Duration::from_millis(100));
+		thread::sleep(std::time::Duration::from_millis(100));
 
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
@@ -334,7 +338,7 @@ mod tests {
 
 		assert!(middle < first_frame);
 
-		std::thread::sleep(std::time::Duration::from_millis(180));
+		thread::sleep(std::time::Duration::from_millis(180));
 
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
@@ -353,7 +357,7 @@ mod tests {
 
 		assert!(visual.debug_bounds("weather-hour-0").is_some());
 
-		std::thread::sleep(std::time::Duration::from_millis(280));
+		thread::sleep(std::time::Duration::from_millis(280));
 
 		visual.update(|w, cx| {
 			w.draw(cx).clear();

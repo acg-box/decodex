@@ -2,9 +2,8 @@
 // Copyright OpenAI. Licensed under Apache-2.0; see LICENSE-APACHE.
 //! Flat state machines, with distinct initial/final pseudostates and labeled transitions.
 
-use super::{
+use crate::shell::agent_surface::markdown::mermaid::{
 	Direction, Edge, Graph, MAX_EDGES, RenderError,
-	parse::{check_label, identifier},
 };
 
 pub(super) fn parse(body: &[&str]) -> Result<Graph, RenderError> {
@@ -32,11 +31,13 @@ pub(super) fn parse(body: &[&str]) -> Result<Graph, RenderError> {
 		if let Some(after) = rest.strip_prefix("state \"") {
 			let (label, after) = after.split_once('"').ok_or(RenderError::Unsupported)?;
 
-			check_label(label)?;
+			crate::shell::agent_surface::markdown::mermaid::parse::check_label(label)?;
 
 			rest = after.trim_start().strip_prefix("as ").ok_or(RenderError::Unsupported)?;
 
-			let index = graph.node(identifier(&mut rest)?)?;
+			let index = graph.node(
+				crate::shell::agent_surface::markdown::mermaid::parse::identifier(&mut rest)?,
+			)?;
 
 			if !rest.trim().is_empty() || graph.nodes[index].declared {
 				return Err(RenderError::Unsupported);
@@ -57,7 +58,7 @@ pub(super) fn parse(body: &[&str]) -> Result<Graph, RenderError> {
 
 			index
 		} else {
-			let id = identifier(&mut rest)?;
+			let id = crate::shell::agent_surface::markdown::mermaid::parse::identifier(&mut rest)?;
 
 			if (id.eq_ignore_ascii_case("accTitle") || id.eq_ignore_ascii_case("accDescr"))
 				&& rest.trim_start().starts_with(':')
@@ -81,7 +82,7 @@ pub(super) fn parse(body: &[&str]) -> Result<Graph, RenderError> {
 
 			let description = description.trim();
 
-			check_label(description)?;
+			crate::shell::agent_surface::markdown::mermaid::parse::check_label(description)?;
 
 			if graph.nodes[from].members.len() == 16 {
 				return Err(RenderError::Limit);
@@ -103,14 +104,16 @@ pub(super) fn parse(body: &[&str]) -> Result<Graph, RenderError> {
 
 			index
 		} else {
-			graph.node(identifier(&mut rest)?)?
+			graph.node(crate::shell::agent_surface::markdown::mermaid::parse::identifier(
+				&mut rest,
+			)?)?
 		};
 		let label = if let Some(label) =
 			rest.trim().strip_prefix(':').filter(|text| !text.starts_with("::"))
 		{
 			let label = label.trim();
 
-			check_label(label)?;
+			crate::shell::agent_surface::markdown::mermaid::parse::check_label(label)?;
 
 			label.to_owned()
 		} else if rest.trim().is_empty() {

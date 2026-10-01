@@ -1,10 +1,16 @@
 //! Discrete reasoning slider. Values come from the selected model's capabilities.
-use super::{
+use crate::shell::agent_surface::composer::controls::{
 	AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Role,
-	StatefulInteractiveElement, Styled, div, level_label, px, rgb, rgba, ui_theme,
+	StatefulInteractiveElement, Styled, div, level_label, px, rgb, rgba, ui_theme::TEXT,
 };
 
 use gpui::{MouseButton, canvas, relative};
+
+use crate::ui_motion;
+
+use gpui::{
+	AnyElement, App, KeyDownEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent, RenderOnce, Window,
+};
 
 impl AgentSurface {
 	pub(crate) fn set_effort_position(&mut self, position: f32, cx: &mut Context<Self>) {
@@ -23,17 +29,17 @@ impl AgentSurface {
 		}
 	}
 
-	fn configured_effort_label(&self) -> gpui::AnyElement {
+	fn configured_effort_label(&self) -> AnyElement {
 		div()
 			.id("reasoning-configured")
 			.debug_selector(|| "reasoning-configured".into())
 			.text_size(px(12.))
-			.text_color(rgb(ui_theme::TEXT))
+			.text_color(rgb(TEXT))
 			.child(format!("{} · configured", level_label(&self.composer_effort_value())))
 			.into_any_element()
 	}
 
-	pub(crate) fn effort_scale(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(crate) fn effort_scale(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.root_id().is_none() && self.creation_inherit_effort {
 			return div().child("Inherited from native configuration").into_any_element();
 		}
@@ -41,7 +47,7 @@ impl AgentSurface {
 		self.explicit_effort_scale(cx)
 	}
 
-	fn explicit_effort_scale(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	fn explicit_effort_scale(&self, cx: &mut Context<Self>) -> AnyElement {
 		let levels = self.model_efforts(cx);
 		let count = levels.len();
 
@@ -67,7 +73,7 @@ impl AgentSurface {
 					.flex_none()
 					.text_size(px(12.))
 					.whitespace_nowrap()
-					.text_color(rgb(ui_theme::TEXT))
+					.text_color(rgb(TEXT))
 					.child(level_label(&self.composer_effort_value())),
 			)
 			.child(
@@ -87,7 +93,7 @@ impl AgentSurface {
 					.cursor_pointer()
 					.on_mouse_down(
 						MouseButton::Left,
-						cx.listener(move |s, e: &gpui::MouseDownEvent, window, cx| {
+						cx.listener(move |s, e: &MouseDownEvent, window, cx| {
 							window.focus(&s.effort_focus, cx);
 
 							let Some(bounds) = s.effort_track_bounds else {
@@ -102,7 +108,7 @@ impl AgentSurface {
 							cx.stop_propagation();
 						}),
 					)
-					.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
+					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 						let levels = s.model_efforts(cx);
 						let current = levels.iter().position(|v| *v == s.effort).unwrap_or(0);
 						let next = match e.keystroke.key.as_str() {
@@ -132,33 +138,31 @@ impl AgentSurface {
 							move |_, _, window, _| {
 								let movement = events.clone();
 
-								window.on_mouse_event(
-									move |e: &gpui::MouseMoveEvent, phase, _, cx| {
-										if !phase.bubble() {
-											return;
-										}
+								window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
+									if !phase.bubble() {
+										return;
+									}
 
-										let _ = movement.update(cx, |s, cx| {
-											if let Some((left, width)) = s.effort_drag {
-												if e.pressed_button == Some(MouseButton::Left) {
-													s.set_effort_position(
-														(f32::from(e.position.x) - left) / width,
-														cx,
-													);
-												} else {
-													s.effort_drag = None;
-													s.effort_pointer = None;
+									let _ = movement.update(cx, |s, cx| {
+										if let Some((left, width)) = s.effort_drag {
+											if e.pressed_button == Some(MouseButton::Left) {
+												s.set_effort_position(
+													(f32::from(e.position.x) - left) / width,
+													cx,
+												);
+											} else {
+												s.effort_drag = None;
+												s.effort_pointer = None;
 
-													cx.notify();
-												}
+												cx.notify();
 											}
-										});
-									},
-								);
+										}
+									});
+								});
 
 								let release = events.clone();
 
-								window.on_mouse_event(move |_: &gpui::MouseUpEvent, _, _, cx| {
+								window.on_mouse_event(move |_: &MouseUpEvent, _, _, cx| {
 									let _ = release.update(cx, |s, cx| {
 										if s.effort_drag.take().is_some() {
 											s.effort_pointer = None;
@@ -184,23 +188,14 @@ struct SliderTrack {
 	dragging: bool,
 	count: usize,
 }
-impl gpui::RenderOnce for SliderTrack {
-	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
-		let fraction = crate::ui_motion::direct_value(
-			"reasoning-thumb",
-			self.fraction,
-			self.dragging,
-			window,
-			cx,
-		);
+impl RenderOnce for SliderTrack {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let fraction =
+			ui_motion::direct_value("reasoning-thumb", self.fraction, self.dragging, window, cx);
 		let hover = window.use_keyed_state("reasoning-hover-state", cx, |_, _| false);
 		let active = *hover.read(cx) || self.dragging;
-		let feedback = crate::ui_motion::value(
-			"reasoning-hover-motion",
-			if active { 1. } else { 0. },
-			window,
-			cx,
-		);
+		let feedback =
+			ui_motion::value("reasoning-hover-motion", if active { 1. } else { 0. }, window, cx);
 		let thumb = 12. + 2. * feedback;
 
 		div()
@@ -264,12 +259,16 @@ fn index_at(position: f32, count: usize) -> usize {
 }
 #[cfg(test)]
 mod tests {
-	use super::{index_at, *};
+	use crate::shell::agent_surface::composer::controls::effort_slider::{index_at, *};
+	use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto};
+
+	use gpui::AppContext;
+
+	use std::thread;
+
 	#[gpui::test]
 	fn real_slider_drag_and_outside_dismiss(cx: &mut gpui::TestAppContext) {
 		use crate::shell::agent_surface::ConversationReasoningEffort as Effort;
-
-		use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto};
 
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
@@ -306,7 +305,7 @@ mod tests {
 		});
 
 		for _ in 0..2 {
-			std::thread::sleep(std::time::Duration::from_millis(200));
+			thread::sleep(std::time::Duration::from_millis(200));
 
 			visual.update(|w, cx| {
 				w.draw(cx).clear();
@@ -380,8 +379,6 @@ mod tests {
 		use decodex_protocol::{
 			AgentCapabilitiesResult, AgentModelDto, ConversationModel, ConversationReasoningEffort,
 		};
-
-		use gpui::AppContext;
 
 		let surface = cx.new(AgentSurface::new);
 

@@ -1,12 +1,16 @@
 //! Observe native descendants without creating duplicate local workers.
-use super::*;
-
-use decodex_protocol::{NativeAgentDto, NativeAgentsResult};
-
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	time::{Duration, Instant},
 };
+
+use agent_tree::DISCLOSURE;
+use gpui::AnyElement;
+use tokio::runtime::Builder;
+use ui_theme::{AGENT_CHAT_OVERLAY, CAPTION_SIZE, TEXT_MUTED, TREE_ROW_HEIGHT};
+
+use crate::{shell::agent_surface::*, ui_loading, ui_motion};
+use decodex_protocol::{NativeAgentDto, NativeAgentsResult};
 
 #[derive(Default)]
 pub(super) struct NativeAgents {
@@ -120,9 +124,7 @@ impl AgentSurface {
 
 			if !owners.is_empty() {
 				let read = cx.background_executor().spawn(async move {
-					let Ok(runtime) =
-						tokio::runtime::Builder::new_current_thread().enable_all().build()
-					else {
+					let Ok(runtime) = Builder::new_current_thread().enable_all().build() else {
 						return Vec::new();
 					};
 
@@ -247,8 +249,7 @@ impl AgentSurface {
 		};
 		let target = (owner.clone(), thread.clone());
 		let read = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime
 				.block_on(AgentClient::new(profile).native_agents(
@@ -285,7 +286,7 @@ impl AgentSurface {
 		parent: &str,
 		depth: usize,
 		cx: &mut Context<Self>,
-	) -> (gpui::AnyElement, usize) {
+	) -> (AnyElement, usize) {
 		let mut rows = div().flex().flex_col();
 		let mut count = 0;
 
@@ -328,7 +329,7 @@ impl AgentSurface {
 			.child(if has_children {
 				self.tree_toggle(key.clone(), &label, expanded, cx)
 			} else {
-				div().w(px(agent_tree::DISCLOSURE)).flex_none().into_any_element()
+				div().w(px(DISCLOSURE)).flex_none().into_any_element()
 			})
 			.child(div().flex_1().min_w_0().child(self.workspace_action(
 				format!("native-agent-open-{thread}"),
@@ -338,16 +339,16 @@ impl AgentSurface {
 			)))
 			.child(
 				div()
-					.text_size(px(ui_theme::CAPTION_SIZE))
+					.text_size(px(CAPTION_SIZE))
 					.flex_none()
-					.text_color(rgb(ui_theme::TEXT_MUTED))
+					.text_color(rgb(TEXT_MUTED))
 					.child(format!("L{depth} · {}", agent.status)),
 			);
 			let (children, n) = self.native_branches(owner, &agent.thread_id, depth + 1, cx);
 
-			rows = rows.child(row).child(crate::ui_motion::reveal(
+			rows = rows.child(row).child(ui_motion::reveal(
 				SharedString::from(format!("tree-children-{key}")),
-				if expanded { n as f32 * ui_theme::TREE_ROW_HEIGHT } else { 0. },
+				if expanded { n as f32 * TREE_ROW_HEIGHT } else { 0. },
 				false,
 				agent_tree::tree_children(depth).child(children),
 			));
@@ -357,7 +358,7 @@ impl AgentSurface {
 		(rows.into_any_element(), count)
 	}
 
-	fn native_agent_transcript(&self, thread: &str) -> (gpui::AnyElement, bool) {
+	fn native_agent_transcript(&self, thread: &str) -> (AnyElement, bool) {
 		let mut body = div()
 			.id("native-agent-transcript")
 			.flex_1()
@@ -398,14 +399,14 @@ impl AgentSurface {
 					);
 				}
 			},
-			None => body = body.child(crate::ui_loading::conversation("Loading conversation")),
+			None => body = body.child(ui_loading::conversation("Loading conversation")),
 			_ => body = body.child(muted("This agent's conversation is unavailable. Retrying…")),
 		}
 
 		(body.into_any_element(), can_input)
 	}
 
-	pub(super) fn native_agent_view(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn native_agent_view(&self, cx: &mut Context<Self>) -> AnyElement {
 		let Some((owner, thread)) = &self.native_agents.selected else {
 			return div().into_any_element();
 		};
@@ -433,7 +434,7 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.rounded(px(14.))
-			.bg(rgba(ui_theme::AGENT_CHAT_OVERLAY))
+			.bg(rgba(AGENT_CHAT_OVERLAY))
 			.child(
 				div()
 					.h(px(36.))
@@ -561,8 +562,7 @@ impl AgentSurface {
 		self.native_agents.feedback = "Sending…".into();
 
 		let send = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime
 				.block_on(AgentClient::new(profile).execute(
@@ -640,7 +640,19 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::native_agents::*;
+	use decodex_protocol::{
+		CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
+		ServerId, ServerMessage,
+	};
+
+	use futures_util::{SinkExt as _, StreamExt as _};
+
+	use tokio_tungstenite::tungstenite::Message;
+
+	use std::future;
+
+	use crate::shell::agent_surface::wire_test_support;
 
 	fn conversation(thread: &str) -> NativeAgentsResult {
 		NativeAgentsResult::Conversation {
@@ -681,10 +693,9 @@ mod tests {
 					}],
 				);
 
-				s.native_agents.task =
-					Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+				s.native_agents.task = Some(cx.spawn(async |_, _| future::pending::<()>().await));
 				s.native_agents.detail_task =
-					Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+					Some(cx.spawn(async |_, _| future::pending::<()>().await));
 
 				let mut next = s.snapshot.clone().unwrap();
 
@@ -732,46 +743,34 @@ mod tests {
 
 	#[gpui::test]
 	fn detail_read_survives_refresh_and_rejects_foreign_thread(cx: &mut gpui::TestAppContext) {
-		use decodex_protocol::{
-			CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
-			ServerId, ServerMessage,
-		};
-
-		use futures_util::{SinkExt, StreamExt};
-
-		use tokio_tungstenite::tungstenite::Message;
-
 		for foreign in [false, true] {
-			let (_root, profile, server) = super::super::wire_test_support::fixture(
-				move |listener| async move {
-					let mut socket = super::super::wire_test_support::accept(&listener).await;
-					let request: ClientMessage = serde_json::from_str(
-						socket.next().await.unwrap().unwrap().to_text().unwrap(),
-					)
-					.unwrap();
-					let ClientMessage::Query(query) = request else { panic!("read only") };
-
-					assert!(
-						matches!(query.payload, QueryPayload::GetNativeAgents { ref work_id, thread_id: Some(ref thread), cursor: None } if work_id.as_str() == "agent" && thread.as_str() == "child")
-					);
-
-					let response = ServerMessage::QueryResult(QueryResultEnvelope {
-						version: CURRENT_VERSION,
-						server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
-						query_id: query.query_id,
-						payload: QueryResultPayload::NativeAgents(conversation(if foreign {
-							"foreign"
-						} else {
-							"child"
-						})),
-					});
-
-					socket
-						.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
-						.await
+			let (_root, profile, server) = wire_test_support::fixture(move |listener| async move {
+				let mut socket = wire_test_support::accept(&listener).await;
+				let request: ClientMessage =
+					serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap())
 						.unwrap();
-				},
-			);
+				let ClientMessage::Query(query) = request else { panic!("read only") };
+
+				assert!(
+					matches!(query.payload, QueryPayload::GetNativeAgents { ref work_id, thread_id: Some(ref thread), cursor: None } if work_id.as_str() == "agent" && thread.as_str() == "child")
+				);
+
+				let response = ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::NativeAgents(conversation(if foreign {
+						"foreign"
+					} else {
+						"child"
+					})),
+				});
+
+				socket
+					.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
+					.await
+					.unwrap();
+			});
 			let surface = cx.new(AgentSurface::new);
 
 			surface.update(cx, |s, cx| {
@@ -806,7 +805,7 @@ mod tests {
 	fn cancelled_send_preserves_scoped_draft_and_ignores_late_acceptance(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let (_root, profile, server) = super::super::wire_test_support::fixture(|_| async {});
+		let (_root, profile, server) = wire_test_support::fixture(|_| async {});
 
 		server.join().unwrap();
 
@@ -827,8 +826,7 @@ mod tests {
 			s.native_agents.input = Some(input.clone());
 			s.native_agents.detail = Some(conversation("child"));
 			s.native_agents.pending = Some(target.clone());
-			s.native_agents.send_task =
-				Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+			s.native_agents.send_task = Some(cx.spawn(async |_, _| future::pending::<()>().await));
 
 			s.bind_profile(None, cx);
 
@@ -881,23 +879,19 @@ mod tests {
 	fn native_send_lost_reply_is_not_repeated_after_refresh(cx: &mut gpui::TestAppContext) {
 		use decodex_protocol::{ClientMessage, CommandPayload};
 
-		use futures_util::StreamExt;
+		let (_root, profile, server) = wire_test_support::fixture(|listener| async move {
+			let mut socket = wire_test_support::accept(&listener).await;
+			let request: ClientMessage =
+				serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap())
+					.unwrap();
+			let ClientMessage::Command(command) = request else { panic!("one message") };
 
-		let (_root, profile, server) = super::super::wire_test_support::fixture(
-			|listener| async move {
-				let mut socket = super::super::wire_test_support::accept(&listener).await;
-				let request: ClientMessage =
-					serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap())
-						.unwrap();
-				let ClientMessage::Command(command) = request else { panic!("one message") };
+			assert!(
+				matches!(command.payload, CommandPayload::Agent { action } if matches!(*action, AgentActionDto::NativeAgentInput { ref work_id, ref thread_id, ref text, expected_turn: None } if work_id.as_str() == "agent" && thread_id.as_str() == "child" && text.as_str() == "Follow up"))
+			);
 
-				assert!(
-					matches!(command.payload, CommandPayload::Agent { action } if matches!(*action, AgentActionDto::NativeAgentInput { ref work_id, ref thread_id, ref text, expected_turn: None } if work_id.as_str() == "agent" && thread_id.as_str() == "child" && text.as_str() == "Follow up"))
-				);
-
-				drop(socket);
-			},
-		);
+			drop(socket);
+		});
 		let surface = cx.new(AgentSurface::new);
 
 		surface.update(cx, |s, cx| {
@@ -945,7 +939,7 @@ mod tests {
 
 	#[gpui::test]
 	fn accepted_send_clears_only_its_unchanged_draft(cx: &mut gpui::TestAppContext) {
-		let (_root, profile, server) = super::super::wire_test_support::fixture(|_| async {});
+		let (_root, profile, server) = wire_test_support::fixture(|_| async {});
 
 		server.join().unwrap();
 
@@ -990,7 +984,7 @@ mod tests {
 	}
 	#[gpui::test]
 	fn refusal_before_dispatch_keeps_the_draft_available(cx: &mut gpui::TestAppContext) {
-		let (_root, profile, server) = super::super::wire_test_support::fixture(|_| async {});
+		let (_root, profile, server) = wire_test_support::fixture(|_| async {});
 
 		server.join().unwrap(); // The local endpoint is gone before any command can be sent.
 

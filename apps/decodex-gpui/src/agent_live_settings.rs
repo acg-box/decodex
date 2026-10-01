@@ -1,6 +1,12 @@
 //! Explicit current-turn settings, separate from future defaults and pending approvals.
-use super::{mcp_forms::mcp_button, *};
-use decodex_protocol::{AgentLiveReviewerState as State, AgentReviewer as Reviewer};
+use gpui::AnyElement;
+use tokio::runtime::Builder;
+
+use crate::shell::agent_surface::{mcp_forms::mcp_button, model_settings, *};
+use decodex_protocol::{
+	AgentLiveReviewerOutcome, AgentLiveReviewerState as State, AgentModelDto,
+	AgentReviewer as Reviewer,
+};
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -24,7 +30,7 @@ impl Edit {
 		work: &EntityId,
 		turn: &EntityId,
 		review: &WireText,
-		models: Option<&[decodex_protocol::AgentModelDto]>,
+		models: Option<&[AgentModelDto]>,
 	) -> Option<AgentActionDto> {
 		Some(match self {
 			Self::Reviewer(reviewer) => AgentActionDto::SetLiveReviewer {
@@ -164,8 +170,7 @@ impl AgentSurface {
 
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 		let future = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
 			let state =
@@ -210,7 +215,7 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		if self.native_agents.selected.is_some() || !self.command_connection_ready() {
 			return div().into_any_element();
 		}
@@ -303,9 +308,9 @@ impl AgentSurface {
 	fn live_model_controls(
 		&self,
 		work: &AgentWorkItemDto,
-		models: &[decodex_protocol::AgentModelDto],
+		models: &[AgentModelDto],
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let mut panel = div().flex().flex_col().gap_2().child(mcp_button(
 			"live-model-open".into(),
 			"Change model and effort…".into(),
@@ -341,7 +346,7 @@ impl AgentSurface {
 
 			choices = choices.child(mcp_button(
 				format!("live-model-choice-{index}"),
-				super::model_settings::model_choice_label(model),
+				model_settings::model_choice_label(model),
 				false,
 				cx,
 				move |s, cx| {
@@ -405,7 +410,7 @@ impl AgentSurface {
 	}
 }
 
-fn outcome_label(outcome: decodex_protocol::AgentLiveReviewerOutcome) -> &'static str {
+fn outcome_label(outcome: AgentLiveReviewerOutcome) -> &'static str {
 	use decodex_protocol::AgentLiveReviewerOutcome as O;
 
 	match outcome {

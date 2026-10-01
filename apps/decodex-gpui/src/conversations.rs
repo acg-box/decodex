@@ -9,27 +9,33 @@ pub(crate) use control_recovery::ControlObservation;
 
 use std::{
 	collections::VecDeque,
+	env, mem, process,
 	sync::{
-		Arc, Mutex, MutexGuard,
+		Arc, Mutex, MutexGuard, PoisonError,
 		atomic::{AtomicU64, Ordering},
 	},
 	time::{SystemTime, UNIX_EPOCH},
 };
 
 use sha2::{Digest, Sha256};
-
 use tokio::sync::Notify;
 
+use crate::creation_defaults;
 use decodex_protocol::{
-	CURRENT_VERSION, CausationId, ClientCommandId, CommandEnvelope, CommandError, CommandOutcome,
-	CommandPayload, CommandReceipt, CommandResultEnvelope, ConversationExecutionSettings,
+	AgentCapabilitiesResult, AgentModelDto, CURRENT_VERSION, CausationId, ClientCommandId,
+	CommandEnvelope, CommandError, CommandOutcome, CommandPayload, CommandReceipt,
+	CommandResultEnvelope, ConversationExecutionOverrides, ConversationExecutionSettings,
 	ConversationHistoryPage, ConversationListCursor, ConversationListResult, ConversationListSize,
 	ConversationModel, ConversationReasoningEffort, ConversationRecoveryAction, ConversationResult,
-	ConversationState, ConversationSummary, ConversationWorkingDirectory, CorrelationId, EntityId,
-	EntityRevision, EventEnvelope, EventPayload, HistoryText, IdempotencyKey, QueryEnvelope,
-	QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition,
-	ResultPayload, ServerId,
+	ConversationState, ConversationSummary, ConversationWorkingDirectory, CorrelationId,
+	DesktopCreationIntent, EntityId, EntityRevision, EventEnvelope, EventPayload, HistoryText,
+	IdempotencyKey, InitialExecutionDefaults, InitialModelCatalogRequest,
+	InitialModelCatalogResult, InitialModelDefaults, ModelCatalogPurpose, QueryEnvelope, QueryId,
+	QueryPayload, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ResultPayload,
+	ServerId,
 };
+use drafts::DeliveryDrafts;
+use model_settings::Observation;
 
 pub(crate) const CONVERSATION_MODELS: &[&str] =
 	&["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4"];
@@ -67,7 +73,7 @@ pub(crate) struct ConversationsSnapshot {
 	pub(crate) live_deltas: Vec<ConversationLiveDelta>,
 	pub(crate) can_submit: bool,
 	pub(crate) execution: ConversationExecutionSettings,
-	pub(crate) catalog: Option<Vec<decodex_protocol::AgentModelDto>>,
+	pub(crate) catalog: Option<Vec<AgentModelDto>>,
 	pub(crate) initial_defaults_ready: bool,
 	pub(crate) model_settings_ready: bool,
 }
@@ -108,8 +114,8 @@ impl Conversations {
 	}
 
 	pub(crate) fn production() -> Self {
-		let configured_working_directory = std::env::var(CONVERSATION_WORKING_DIRECTORY_ENV).ok();
-		let home = std::env::var("HOME").ok();
+		let configured_working_directory = env::var(CONVERSATION_WORKING_DIRECTORY_ENV).ok();
+		let home = env::var("HOME").ok();
 
 		Self {
 			inner: Arc::new(ConversationsInner {
@@ -325,9 +331,9 @@ impl Conversations {
 
 			(
 				QueryPayload::GetInitialModelCatalog {
-					request: decodex_protocol::InitialModelCatalogRequest {
+					request: InitialModelCatalogRequest {
 						working_directory: working_directory.clone(),
-						purpose: decodex_protocol::ModelCatalogPurpose::Conversation,
+						purpose: ModelCatalogPurpose::Conversation,
 						account_id: None,
 					},
 				},
@@ -622,7 +628,7 @@ impl Conversations {
 
 			state.execution.clone()
 		};
-		let overrides = Some(decodex_protocol::ConversationExecutionOverrides {
+		let overrides = Some(ConversationExecutionOverrides {
 			model: state.creation_intent.model,
 			reasoning: state.creation_intent.reasoning,
 			service_tier: state.creation_intent.service_tier,
@@ -711,7 +717,7 @@ impl Conversations {
 	fn queue_command(
 		&self,
 		payload: CommandPayload,
-		expected_revision: Option<decodex_protocol::EntityRevision>,
+		expected_revision: Option<EntityRevision>,
 		select_after_acceptance: Option<EntityId>,
 		feedback_visible: bool,
 	) -> Result<(), ConversationInputError> {
@@ -1046,7 +1052,7 @@ impl Conversations {
 					state.initial_defaults_ready = false;
 
 					if let QueryResultPayload::InitialModelCatalog(
-						decodex_protocol::InitialModelCatalogResult::Available {
+						InitialModelCatalogResult::Available {
 							account_id,
 							account_revision,
 							working_directory: actual,
@@ -1081,7 +1087,7 @@ impl Conversations {
 					state.catalog_source = Some(CatalogSource::Conversation(source));
 					state.catalog = match &result.payload {
 						QueryResultPayload::ConversationCapabilities(
-							decodex_protocol::AgentCapabilitiesResult::Available { models, .. },
+							AgentCapabilitiesResult::Available { models, .. },
 						) => Some(models.clone()),
 						_ => None,
 					};
@@ -1419,7 +1425,7 @@ impl Conversations {
 	}
 
 	fn lock(&self) -> MutexGuard<'_, State> {
-		self.inner.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+		self.inner.state.lock().unwrap_or_else(PoisonError::into_inner)
 	}
 }
 
@@ -1436,17 +1442,17 @@ struct SessionBinding {
 }
 
 struct State {
-	delivery: drafts::DeliveryDrafts,
-	catalog: Option<Vec<decodex_protocol::AgentModelDto>>,
+	delivery: DeliveryDrafts,
+	catalog: Option<Vec<AgentModelDto>>,
 	catalog_epoch: u64,
 	catalog_source: Option<CatalogSource>,
-	initial_defaults: Option<Box<decodex_protocol::InitialModelDefaults>>,
+	initial_defaults: Option<Box<InitialModelDefaults>>,
 	initial_defaults_requested: bool,
-	execution_source: Option<model_settings::Observation>,
+	execution_source: Option<Observation>,
 	execution_choice_owner: Option<EntityId>,
 	model_settings_requested: Option<Box<ConversationSummary>>,
 	initial_defaults_ready: bool,
-	creation_intent: decodex_protocol::DesktopCreationIntent,
+	creation_intent: DesktopCreationIntent,
 	session: Option<SessionBinding>,
 	active: bool,
 	load: ConversationsLoadState,
@@ -1504,12 +1510,8 @@ impl State {
 			return;
 		}
 
-		let decodex_protocol::InitialModelCatalogResult::Available {
-			account_id,
-			account_revision,
-			models,
-			..
-		} = &review.catalog
+		let InitialModelCatalogResult::Available { account_id, account_revision, models, .. } =
+			&review.catalog
 		else {
 			return;
 		};
@@ -1559,10 +1561,10 @@ impl State {
 			return;
 		}
 
-		let resolved = crate::creation_defaults::resolve(
+		let resolved = creation_defaults::resolve(
 			defaults,
 			&self.creation_intent,
-			decodex_protocol::InitialExecutionDefaults {
+			InitialExecutionDefaults {
 				model: Some(self.execution.model.clone()),
 				reasoning_effort: self.execution.reasoning_effort.clone(),
 				service_tier: Some(self.execution.effective_service_tier()),
@@ -1581,7 +1583,7 @@ impl State {
 }
 
 impl State {
-	fn current_catalog(&self) -> Option<&Vec<decodex_protocol::AgentModelDto>> {
+	fn current_catalog(&self) -> Option<&Vec<AgentModelDto>> {
 		let current = match &self.catalog_source {
 			Some(CatalogSource::Review { task: source, .. })
 			| Some(CatalogSource::Conversation(source)) => self.selected_task() == Some(source.as_ref()),
@@ -1888,7 +1890,7 @@ impl State {
 					None => {
 						self.next_list_cursor = None;
 
-						let tasks = std::mem::take(&mut self.list_accumulator);
+						let tasks = mem::take(&mut self.list_accumulator);
 
 						self.replace_tasks(tasks);
 
@@ -2666,7 +2668,7 @@ fn canonical_uuid_v4() -> Result<String, ConversationInputError> {
 		.as_nanos();
 	let mut digest = Sha256::new();
 
-	digest.update(std::process::id().to_be_bytes());
+	digest.update(process::id().to_be_bytes());
 	digest.update(nanos.to_be_bytes());
 	digest.update(sequence.to_be_bytes());
 
@@ -2793,9 +2795,19 @@ fn task_can_replace(existing: &ConversationSummary, task: &ConversationSummary) 
 
 #[cfg(test)]
 pub(crate) mod tests {
+	use crate::conversations::{
+		self, Arc, CURRENT_VERSION, CatalogSource, CommandEnvelope, CommandError, CommandOutcome,
+		CommandPayload, CommandReceipt, CommandResultEnvelope, ConversationCommandState,
+		ConversationDispatch, ConversationExecutionSettings, ConversationInputError,
+		ConversationListCursor, ConversationListResult, ConversationLiveDelta, ConversationModel,
+		ConversationReasoningEffort, ConversationRecoveryAction, ConversationRefreshState,
+		ConversationResult, ConversationRouteOutcome, ConversationState, ConversationSummary,
+		ConversationWorkingDirectory, Conversations, ConversationsInner, ConversationsLoadState,
+		EntityId, EventEnvelope, EventPayload, HistoryText, IdempotencyKey, MAX_LIVE_DELTA_BYTES,
+		Mutex, Notify, QueryEnvelope, QueryPayload, QueryResultEnvelope, QueryResultPayload,
+		ReceiptDisposition, ResultPayload, ServerId, State,
+	};
 	use decodex_protocol::{ConversationListPage, EntityRevision};
-
-	use super::*;
 
 	pub(crate) fn recorded_turn_fixture(
 		outcome: decodex_protocol::ConversationTurnOutcomeState,
@@ -2931,7 +2943,7 @@ pub(crate) mod tests {
 	) {
 		let dispatch = controller.try_take_dispatch(1, server).expect("check query");
 		let query = dispatch.query().expect("read only");
-		let target = command_conversation_id(&original.payload);
+		let target = conversations::command_conversation_id(&original.payload);
 
 		assert_eq!(
 			query.payload,
@@ -3309,7 +3321,7 @@ pub(crate) mod tests {
 
 	#[test]
 	fn explicit_production_working_directory_overrides_home() {
-		let working_directory = production_working_directory(
+		let working_directory = conversations::production_working_directory(
 			Some("/private/tmp/decodex-empty-project".to_owned()),
 			Some("/Users/tester".to_owned()),
 		)
@@ -3321,7 +3333,7 @@ pub(crate) mod tests {
 	#[test]
 	fn production_working_directory_uses_home_without_an_override() {
 		let working_directory =
-			production_working_directory(None, Some("/Users/tester".to_owned()))
+			conversations::production_working_directory(None, Some("/Users/tester".to_owned()))
 				.expect("home working directory is valid");
 
 		assert_eq!(working_directory.as_str(), "/Users/tester");
@@ -3329,7 +3341,7 @@ pub(crate) mod tests {
 
 	#[test]
 	fn invalid_explicit_production_working_directory_does_not_fall_back() {
-		let working_directory = production_working_directory(
+		let working_directory = conversations::production_working_directory(
 			Some("relative/project".to_owned()),
 			Some("/Users/tester".to_owned()),
 		);
@@ -3351,8 +3363,8 @@ pub(crate) mod tests {
 		)
 		.expect("outcome-unknown Conversation");
 
-		assert!(task_needs_reconciliation(&task));
-		assert!(!task_accepts_turn(&task));
+		assert!(conversations::task_needs_reconciliation(&task));
+		assert!(!conversations::task_accepts_turn(&task));
 	}
 
 	#[test]
@@ -3886,8 +3898,11 @@ pub(crate) mod tests {
 			task.state = ConversationState::ManualRecovery;
 			task.recovery_action = Some(action);
 
-			assert!(task_needs_reconciliation(&task));
-			assert!(task_recovery_command(&task).is_none(), "no routing successor or replay");
+			assert!(conversations::task_needs_reconciliation(&task));
+			assert!(
+				conversations::task_recovery_command(&task).is_none(),
+				"no routing successor or replay"
+			);
 
 			conversations.lock().tasks = vec![task.clone()];
 

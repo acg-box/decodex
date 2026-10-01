@@ -1,13 +1,24 @@
 //! Composer-specific visual controls. Exact values remain visible and keyboard accessible.
 #[path = "agent_effort_slider.rs"] mod effort_slider;
 
-use super::{AgentSurface, SmoothControl, ui_theme};
+use crate::shell::agent_surface::composer::{
+	AgentSurface, SmoothControl,
+	ui_theme::{self, CANVAS, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED},
+};
 
 use gpui::{
 	Context, Role, SharedString, div,
 	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
 	px, rgb, rgba,
 };
+
+use crate::{shell::agent_surface::composer::model_settings, ui_loading, ui_motion};
+
+use std::cmp::Reverse;
+
+use gpui::{AnyElement, App, KeyDownEvent, PathBuilder, RenderOnce, Window};
+
+use decodex_protocol::AgentCapabilitiesResult;
 
 const LEVELS: [(&str, &str); 9] = [
 	("none", "None"),
@@ -22,11 +33,11 @@ const LEVELS: [(&str, &str); 9] = [
 ];
 
 impl AgentSurface {
-	pub(super) fn model_palette(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn model_palette(&self, cx: &mut Context<Self>) -> AnyElement {
 		self.catalog_model_palette(cx)
 	}
 
-	fn catalog_model_palette(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	fn catalog_model_palette(&self, cx: &mut Context<Self>) -> AnyElement {
 		let mut palette = div()
 			.id("native-model-palette")
 			.max_h(px(240.))
@@ -35,25 +46,25 @@ impl AgentSurface {
 			.flex_col()
 			.gap(px(2.));
 		let models = match self.current_model_catalog(cx) {
-			Some(decodex_protocol::AgentCapabilitiesResult::Available { models, .. }) => models,
+			Some(AgentCapabilitiesResult::Available { models, .. }) => models,
 			_ if self.capability_task.is_some() =>
 				return palette
 					.min_h(px(64.))
-					.child(crate::ui_loading::loading("Loading models"))
+					.child(ui_loading::loading("Loading models"))
 					.into_any_element(),
 			_ =>
 				return palette
 					.child(
 						div()
 							.text_size(px(11.))
-							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.text_color(rgb(TEXT_MUTED))
 							.child("Model options are unavailable. Reopen to retry."),
 					)
 					.into_any_element(),
 		};
 		let mut models: Vec<_> = models.iter().collect();
 
-		models.sort_by_key(|entry| std::cmp::Reverse(model_version(entry.model.as_str())));
+		models.sort_by_key(|entry| Reverse(model_version(entry.model.as_str())));
 
 		for pair in models.chunks(1) {
 			let mut row = div().flex().gap(px(2.));
@@ -62,7 +73,7 @@ impl AgentSurface {
 				let model = entry.model.as_str().to_owned();
 				let click_model = model.clone();
 				let selected = self.composer_model_value(cx).as_deref() == Some(model.as_str());
-				let full = super::model_settings::model_choice_label(entry);
+				let full = model_settings::model_choice_label(entry);
 
 				row = row.child(
 					div()
@@ -81,17 +92,13 @@ impl AgentSurface {
 						.justify_between()
 						.cursor_pointer()
 						.hover(move |d| {
-							d.bg(rgba(if selected {
-								ui_theme::SELECTED_HOVER_FILL
-							} else {
-								ui_theme::HOVER_FILL
-							}))
-							.text_color(rgb(ui_theme::TEXT))
+							d.bg(rgba(if selected { SELECTED_HOVER_FILL } else { HOVER_FILL }))
+								.text_color(rgb(TEXT))
 						})
 						.on_click(cx.listener(move |s, _, _, cx| {
 							s.select_composer_option("model", &click_model, cx)
 						}))
-						.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+						.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 							if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 								s.select_composer_option("model", &model, cx);
 								cx.stop_propagation();
@@ -110,7 +117,7 @@ impl AgentSurface {
 							div()
 								.w(px(16.))
 								.text_size(px(13.))
-								.text_color(rgb(ui_theme::TEXT_MUTED))
+								.text_color(rgb(TEXT_MUTED))
 								.child(if selected { "✓" } else { "" }),
 						)
 						.smooth(),
@@ -124,7 +131,7 @@ impl AgentSurface {
 	}
 }
 
-pub(super) fn effort_indicator(level: &str) -> gpui::AnyElement {
+pub(super) fn effort_indicator(level: &str) -> AnyElement {
 	div()
 		.flex()
 		.items_center()
@@ -133,7 +140,7 @@ pub(super) fn effort_indicator(level: &str) -> gpui::AnyElement {
 		.into_any_element()
 }
 
-pub(super) fn live_mark() -> gpui::AnyElement {
+pub(super) fn live_mark() -> AnyElement {
 	div()
 		.size(px(16.))
 		.flex()
@@ -151,7 +158,7 @@ pub(super) fn launch_mark() -> impl IntoElement {
 	gpui::canvas(
 		|_, _, _| (),
 		|bounds, _, window, _| {
-			let mut path = gpui::PathBuilder::stroke(px(1.5));
+			let mut path = PathBuilder::stroke(px(1.5));
 			let origin = bounds.origin;
 
 			path.move_to(origin + gpui::point(px(8.), px(13.)));
@@ -161,7 +168,7 @@ pub(super) fn launch_mark() -> impl IntoElement {
 			path.line_to(origin + gpui::point(px(13.), px(8.)));
 
 			if let Ok(path) = path.build() {
-				window.paint_path(path, rgb(ui_theme::TEXT));
+				window.paint_path(path, rgb(TEXT));
 			}
 		},
 	)
@@ -207,16 +214,12 @@ pub(super) struct StopMark {
 	pub armed: bool,
 	pub pending: bool,
 }
-impl gpui::RenderOnce for StopMark {
-	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
-		let strength = crate::ui_motion::value(
-			"stop-confirmation",
-			if self.armed { 1. } else { 0. },
-			window,
-			cx,
-		);
+impl RenderOnce for StopMark {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let strength =
+			ui_motion::value("stop-confirmation", if self.armed { 1. } else { 0. }, window, cx);
 		let pending =
-			crate::ui_motion::value("stop-pending", if self.pending { 1. } else { 0. }, window, cx);
+			ui_motion::value("stop-pending", if self.pending { 1. } else { 0. }, window, cx);
 
 		div()
 			.size(px(16.))
@@ -235,7 +238,7 @@ impl gpui::RenderOnce for StopMark {
 				div()
 					.size(px(9.))
 					.rounded(px(2.))
-					.bg(rgb(ui_theme::CANVAS))
+					.bg(rgb(CANVAS))
 					.opacity(0.9 - pending * 0.35)
 					.child(
 						div()
@@ -262,8 +265,8 @@ pub(super) struct PrimaryMark {
 	pub armed: bool,
 	pub pending: bool,
 }
-impl gpui::RenderOnce for PrimaryMark {
-	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
+impl RenderOnce for PrimaryMark {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let mut row = div().size(px(16.)).relative();
 
 		for (id, mode, glyph) in [
@@ -276,8 +279,7 @@ impl gpui::RenderOnce for PrimaryMark {
 			("primary-send", PrimaryMode::Send, launch_mark().into_any_element()),
 			("primary-done", PrimaryMode::Done, div().child("✓").into_any_element()),
 		] {
-			let opacity =
-				crate::ui_motion::value(id, if self.mode == mode { 1. } else { 0. }, window, cx);
+			let opacity = ui_motion::value(id, if self.mode == mode { 1. } else { 0. }, window, cx);
 
 			row = row.child(
 				div()

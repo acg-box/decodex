@@ -1,13 +1,15 @@
 //! Read-only rich text with native hit testing and clipboard selection.
-use super::*;
-use gpui::{App, IntoElement, MouseButton, RenderOnce, StyledText};
-use std::ops::Range;
+use std::{ops::Range, path::Path};
+
+use gpui::{App, HighlightStyle, IntoElement, KeyDownEvent, MouseButton, RenderOnce, StyledText};
+
+use crate::shell::agent_surface::{markdown, *};
 
 #[derive(IntoElement)]
 pub(super) struct SelectableText {
 	pub key: String,
 	pub text: String,
-	pub highlights: Vec<(Range<usize>, gpui::HighlightStyle)>,
+	pub highlights: Vec<(Range<usize>, HighlightStyle)>,
 	pub links: Vec<(Range<usize>, String)>,
 }
 impl RenderOnce for SelectableText {
@@ -108,16 +110,16 @@ impl RenderOnce for SelectableText {
 					{
 						cx.open_url(url);
 					} else if url.starts_with('/') {
-						let path = super::markdown::without_line_column(url);
+						let path = markdown::without_line_column(url);
 
-						cx.reveal_path(std::path::Path::new(path));
+						cx.reveal_path(Path::new(path));
 					}
 				}
 			})
 			.on_mouse_up_out(MouseButton::Left, move |_, _, cx| {
 				state.update(cx, |s, _| s.dragging = false);
 			})
-			.on_key_down(move |event: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(move |event: &KeyDownEvent, _, cx| {
 				if event.keystroke.modifiers.platform && event.keystroke.key == "c" {
 					let s = key_state.read(cx);
 					let range = s.range(&self.text);
@@ -156,9 +158,9 @@ impl Selection {
 }
 fn selection_highlights(
 	length: usize,
-	highlights: Vec<(Range<usize>, gpui::HighlightStyle)>,
+	highlights: Vec<(Range<usize>, HighlightStyle)>,
 	selection: Range<usize>,
-) -> Vec<(Range<usize>, gpui::HighlightStyle)> {
+) -> Vec<(Range<usize>, HighlightStyle)> {
 	let mut boundaries = vec![0, length];
 
 	for (range, _) in &highlights {
@@ -192,7 +194,7 @@ fn selection_highlights(
 }
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::selectable_text::*;
 
 	struct Preview {
 		text: String,

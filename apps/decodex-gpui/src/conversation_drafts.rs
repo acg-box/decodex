@@ -1,14 +1,16 @@
 //! Shared-store handoff for ordinary editors and original delivery identities.
-use super::{
-	CommandEnvelope, CommandOutcome, CommandResultEnvelope, ConversationCommandState,
-	ConversationQueryPurpose, ConversationRouteOutcome, Conversations, EntityId, InFlightCommand,
-	State, accepted_archive_result, accepted_result_task,
+use std::{collections::BTreeMap, mem};
+
+use crate::conversations::{
+	self, CommandEnvelope, CommandOutcome, CommandResultEnvelope, ControlObservation,
+	ConversationCommandState, ConversationQueryPurpose, ConversationRouteOutcome, Conversations,
+	EntityId, InFlightCommand, RoutingSuccessorReconciliation, State,
 };
 use decodex_protocol::{
-	ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
-	DesktopOrdinaryComposerDraft, DesktopOrdinaryDraft, QueryPayload, QueryResultPayload,
+	CommandError, ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
+	ConversationTurnOutcomeResult, DesktopOrdinaryComposerDraft, DesktopOrdinaryDraft,
+	QueryPayload, QueryResultPayload,
 };
-use std::collections::BTreeMap;
 
 #[derive(Default)]
 pub(super) struct DeliveryDrafts {
@@ -16,9 +18,8 @@ pub(super) struct DeliveryDrafts {
 	pub(super) saved: Vec<CommandEnvelope>,
 	pub(super) unconfirmed: Vec<CommandEnvelope>,
 	pub(super) confirmed: Vec<CommandEnvelope>,
-	pub(super) turn_readbacks:
-		Vec<(CommandEnvelope, decodex_protocol::ConversationTurnOutcomeResult)>,
-	pub(super) control_readbacks: Vec<(CommandEnvelope, super::ControlObservation)>,
+	pub(super) turn_readbacks: Vec<(CommandEnvelope, ConversationTurnOutcomeResult)>,
+	pub(super) control_readbacks: Vec<(CommandEnvelope, ControlObservation)>,
 	pub(super) readbacks: Vec<(CommandEnvelope, ConversationCreationReceiptResult)>,
 	parked: BTreeMap<String, DesktopOrdinaryComposerDraft>,
 	new_conversation: Option<DesktopOrdinaryComposerDraft>,
@@ -237,10 +238,8 @@ impl Conversations {
 		state.delivery.new_conversation = draft.new_conversation.clone();
 		state.delivery.unconfirmed = draft.unconfirmed.clone();
 
-		let mut successors = draft
-			.unconfirmed
-			.iter()
-			.filter_map(super::RoutingSuccessorReconciliation::from_command);
+		let mut successors =
+			draft.unconfirmed.iter().filter_map(RoutingSuccessorReconciliation::from_command);
 		let first = successors.next();
 
 		state.routing_successor_reconciliation =
@@ -301,7 +300,7 @@ impl Conversations {
 	}
 
 	pub(crate) fn confirmed_ordinary_commands(&self) -> Vec<CommandEnvelope> {
-		std::mem::take(&mut self.lock().delivery.confirmed)
+		mem::take(&mut self.lock().delivery.confirmed)
 	}
 }
 
@@ -345,11 +344,11 @@ impl State {
 		let terminal = match result.outcome {
 			CommandOutcome::Succeeded =>
 				result.error.is_none()
-					&& (accepted_archive_result(in_flight, result).is_some()
-						|| accepted_result_task(in_flight, result).is_some()),
+					&& (conversations::accepted_archive_result(in_flight, result).is_some()
+						|| conversations::accepted_result_task(in_flight, result).is_some()),
 			CommandOutcome::Rejected =>
 				result.error.is_some()
-					&& result.error != Some(decodex_protocol::CommandError::AcceptanceUnknown)
+					&& result.error != Some(CommandError::AcceptanceUnknown)
 					&& result.payload.is_none(),
 			CommandOutcome::AcceptanceUnknown => false,
 		};

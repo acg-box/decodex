@@ -1,6 +1,9 @@
 //! Initial discovery changes selection, never sends or replays a message.
-use super::*;
-use decodex_protocol::{InitialExecutionDefaults, InitialModelCatalogResult, InitialModelDefaults};
+use crate::conversations::*;
+use decodex_protocol::{
+	Channel, Cursor, InitialExecutionDefaults, InitialModelCatalogResult, InitialModelDefaults,
+	ServiceTier,
+};
 
 pub(super) fn install_defaults(
 	conversations: &Conversations,
@@ -50,7 +53,7 @@ fn defaults() -> InitialModelDefaults {
 		configured: InitialExecutionDefaults {
 			model: Some(ConversationModel::new("configured-model").unwrap()),
 			reasoning_effort: None,
-			service_tier: Some(decodex_protocol::ServiceTier::new("flex").unwrap()),
+			service_tier: Some(ServiceTier::new("flex").unwrap()),
 		},
 		managed: InitialExecutionDefaults {
 			model: Some(ConversationModel::new("managed-model").unwrap()),
@@ -125,7 +128,7 @@ fn explicit_reasoning_opts_out_of_managed_model_and_survives_refresh() {
 
 	assert_eq!(conversations.snapshot().execution.model.as_str(), "configured-model");
 
-	conversations.select_service_tier(decodex_protocol::ServiceTier::standard());
+	conversations.select_service_tier(ServiceTier::standard());
 
 	install_defaults(&conversations, &server, defaults());
 
@@ -151,8 +154,8 @@ fn account_event_invalidates_default_source_and_stale_reply_cannot_restore_it() 
 	conversations.apply_event(&EventEnvelope {
 		version: CURRENT_VERSION,
 		server_id: server.clone(),
-		cursor: decodex_protocol::Cursor(1),
-		channel: decodex_protocol::Channel::AccountsHealth,
+		cursor: Cursor(1),
+		channel: Channel::AccountsHealth,
 		entity_id: EntityId::new("10000000-0000-4000-8000-000000000001").unwrap(),
 		entity_revision: EntityRevision(2),
 		correlation_id: CorrelationId::new("change").unwrap(),

@@ -1,6 +1,7 @@
 //! Rendered edits preserve inherited omissions until an explicit save.
-use super::*;
+use gpui::TestAppContext;
 
+use crate::shell::agent_surface::app_exposure::*;
 use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
 
 struct ExposureView {
@@ -13,7 +14,7 @@ impl Render for ExposureView {
 }
 
 #[gpui::test]
-fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut gpui::TestAppContext) {
+fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut TestAppContext) {
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
 

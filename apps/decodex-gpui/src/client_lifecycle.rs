@@ -1,7 +1,10 @@
 //! Private bounded composition of the retained session and disposable client cache.
 
+#[path = "account_observation_wait.rs"] mod account_observation;
+
 use std::{
 	collections::{HashMap, HashSet},
+	env,
 	path::{Path, PathBuf},
 	sync::{
 		Arc,
@@ -11,15 +14,7 @@ use std::{
 	time::Duration,
 };
 
-use tokio::sync::Notify;
-
-use decodex_protocol::{
-	ApplicationConfirmation, CURRENT_VERSION, ClientFailure, CommandEnvelope, CommandReceipt,
-	CommandResultEnvelope, Cursor, EntityId, EntityRevision, EventEnvelope, EventPayload,
-	QueryEnvelope, QueryResultEnvelope, RetainedSession, RetainedSessionConfig,
-	RetainedSessionFailure, ServerId, SessionCancellation, SessionCheckpoint, SessionDelivery,
-	SnapshotEnvelope, SnapshotItem,
-};
+use tokio::{sync::Notify, time};
 
 use crate::{
 	account_profile::{AccountProfileController, AccountProfileRouteOutcome},
@@ -34,6 +29,14 @@ use crate::{
 	},
 	health_query::{HealthDispatch, HealthQuery, HealthRouteOutcome},
 	history_pager::{HistoryDispatch, HistoryPager, HistoryRouteOutcome},
+};
+use account_observation::Wait;
+use decodex_protocol::{
+	AccountObservationSignal, ApplicationConfirmation, CURRENT_VERSION, ClientFailure,
+	CommandEnvelope, CommandReceipt, CommandResultEnvelope, Cursor, EntityId, EntityRevision,
+	EventEnvelope, EventPayload, QueryEnvelope, QueryPayload, QueryResultEnvelope, RetainedSession,
+	RetainedSessionConfig, RetainedSessionFailure, ServerId, SessionCancellation,
+	SessionCheckpoint, SessionDelivery, SnapshotEnvelope, SnapshotItem,
 };
 
 const RETRY_DELAYS: [Duration; 4] = [
@@ -164,9 +167,7 @@ enum SessionStep<C> {
 	Delivery(Box<Result<Delivery<C>, RetainedSessionFailure>>),
 	Account(AccountDispatch),
 	AccountProfile(QueryEnvelope),
-	AccountObservation(
-		(QueryEnvelope, Result<decodex_protocol::AccountObservationSignal, ClientFailure>),
-	),
+	AccountObservation((QueryEnvelope, Result<AccountObservationSignal, ClientFailure>)),
 	DesktopSettings(DesktopSettingsDispatch),
 	Health(HealthDispatch),
 	History(HistoryDispatch),
@@ -245,7 +246,7 @@ pub(crate) struct ClientLifecycle {
 impl ClientLifecycle {
 	/// Construct the production lifecycle without exposing disposable-cache policy to the shell.
 	pub(crate) fn production(config: RetainedSessionConfig) -> Result<Self, LifecycleBuildError> {
-		Self::production_with_temp_dir(config, &std::env::temp_dir())
+		Self::production_with_temp_dir(config, &env::temp_dir())
 	}
 
 	fn production_with_temp_dir(
@@ -474,7 +475,7 @@ impl ClientLifecycle {
 	where
 		I: LifecycleIo,
 	{
-		let mut observation: Option<account_observation::Wait> = None;
+		let mut observation: Option<Wait> = None;
 
 		loop {
 			let accounts = self.accounts.clone();
@@ -550,10 +551,7 @@ impl ClientLifecycle {
 					);
 				},
 				SessionStep::AccountProfile(query) => {
-					if matches!(
-						query.payload,
-						decodex_protocol::QueryPayload::WaitForAccountObservation { .. }
-					) {
+					if matches!(query.payload, QueryPayload::WaitForAccountObservation { .. }) {
 						observation =
 							Some(account_observation::start(self.config.account_client(), query));
 
@@ -1254,7 +1252,7 @@ impl LifecycleIo for TokioIo {
 		cancellation: &LifecycleCancellation,
 	) -> Result<(), RetainedSessionFailure> {
 		tokio::select! {
-			() = tokio::time::sleep(delay) => Ok(()),
+			() = time::sleep(delay) => Ok(()),
 			() = cancellation.cancelled() => Err(RetainedSessionFailure::Cancelled),
 		}
 	}
@@ -1375,8 +1373,6 @@ fn snapshot_identity(item: &SnapshotItem) -> (EntityId, EntityRevision) {
 fn next_cursor(cursor: Cursor) -> Option<Cursor> {
 	cursor.0.checked_add(1).map(Cursor)
 }
-
-#[path = "account_observation_wait.rs"] mod account_observation;
 #[cfg(test)]
 #[path = "client_lifecycle/tests.rs"]
 mod tests;

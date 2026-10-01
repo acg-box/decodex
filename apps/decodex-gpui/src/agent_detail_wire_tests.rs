@@ -1,14 +1,18 @@
 //! Rendered detail continuation through the public same-UID query contract.
-use super::{super::wire_test_support::SERVER, *};
+use std::{thread, thread::JoinHandle, time::Duration};
 
-use decodex_protocol::{
-	CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
-	ServerId, ServerMessage,
-};
-
-use futures_util::{SinkExt, StreamExt};
-
+use crate::shell::agent_surface::{detail::*, wire_test_support::SERVER};
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::TestAppContext;
+use tempfile::TempDir;
+use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::wire_test_support;
+use decodex_protocol::{
+	AgentWorkKindDto, CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope,
+	QueryResultPayload, ServerId, ServerMessage,
+};
 
 struct DetailView {
 	surface: Entity<AgentSurface>,
@@ -38,15 +42,15 @@ impl Render for DetailView {
 	}
 }
 
-fn fixture() -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<usize>) {
-	super::super::wire_test_support::fixture(serve)
+fn fixture() -> (TempDir, ClientProfile, JoinHandle<usize>) {
+	wire_test_support::fixture(serve)
 }
 
 fn work() -> AgentWorkItemDto {
 	AgentWorkItemDto {
 		id: "work".into(),
 		parent_goal_id: None,
-		kind: decodex_protocol::AgentWorkKindDto::Manager,
+		kind: AgentWorkKindDto::Manager,
 		title: "Manager".into(),
 		codex_thread_id: Some("thread".into()),
 		active_turn_id: None,
@@ -60,7 +64,7 @@ fn work() -> AgentWorkItemDto {
 
 #[gpui::test]
 fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
-	cx: &mut gpui::TestAppContext,
+	cx: &mut TestAppContext,
 ) {
 	for kind in [
 		"fileChange",
@@ -103,7 +107,7 @@ fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
 			w.draw(cx).clear();
 		});
 
-		std::thread::sleep(std::time::Duration::from_millis(250));
+		thread::sleep(Duration::from_millis(250));
 
 		visual.update(|w, cx| {
 			w.draw(cx).clear();
@@ -136,9 +140,9 @@ fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
 	}
 }
 
-async fn serve(listener: tokio::net::UnixListener) -> usize {
+async fn serve(listener: UnixListener) -> usize {
 	for index in 0..2 {
-		let mut socket = super::super::wire_test_support::accept(&listener).await;
+		let mut socket = wire_test_support::accept(&listener).await;
 		let Message::Text(text) = socket.next().await.unwrap().unwrap() else { panic!("query") };
 		let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
 			panic!("query")

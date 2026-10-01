@@ -1,9 +1,20 @@
 //! Compact conversation inspection, independent of transcript layout.
-use super::{
-	AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, FluentBuilder, FontWeight,
-	InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement,
-	Styled, div, graph, markdown, muted, next_check_text, px, rgb, rgba, ui_theme,
+use crate::{
+	shell::agent_surface::{
+		self, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, FluentBuilder, FontWeight,
+		InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement,
+		Styled, graph, markdown, ui_theme::TEXT,
+	},
+	ui_loading,
 };
+
+use decodex_protocol::AgentResourcesResult;
+
+use gpui::{AnyElement, Div, MouseDownEvent};
+use reqwest::Url;
+use serde_json::Value;
+
+use crate::ui_theme::HOVER_FILL;
 
 impl AgentSurface {
 	pub(super) fn inspection_card(
@@ -12,22 +23,22 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
-		div()
+		agent_surface::div()
 			.id("work-inspection-scroll")
 			.debug_selector(|| "work-inspection-scroll".into())
 			.occlude()
-			.max_h(px(380.))
+			.max_h(agent_surface::px(380.))
 			.overflow_y_scroll()
-			.rounded(px(18.))
-			.bg(rgb(0x29292e))
-			.p(px(16.))
-			.text_size(px(12.))
-			.line_height(px(18.))
-			.text_color(rgb(ui_theme::TEXT))
+			.rounded(agent_surface::px(18.))
+			.bg(agent_surface::rgb(0x29292e))
+			.p(agent_surface::px(16.))
+			.text_size(agent_surface::px(12.))
+			.line_height(agent_surface::px(18.))
+			.text_color(agent_surface::rgb(TEXT))
 			.flex()
 			.flex_col()
-			.gap(px(14.))
-			.on_mouse_down_out(cx.listener(|s, event: &gpui::MouseDownEvent, _, cx| {
+			.gap(agent_surface::px(14.))
+			.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, _, cx| {
 				if s.menu_trigger_bounds
 					.get("inspect-work")
 					.is_some_and(|bounds| bounds.contains(&event.position))
@@ -40,12 +51,16 @@ impl AgentSurface {
 				cx.notify();
 			}))
 			.child(
-				div()
+				agent_surface::div()
 					.flex()
 					.items_center()
 					.justify_between()
-					.child(div().font_weight(FontWeight::MEDIUM).child(self.work_label(work)))
-					.child(muted(graph::state_in(snapshot, work).0)),
+					.child(
+						agent_surface::div()
+							.font_weight(FontWeight::MEDIUM)
+							.child(self.work_label(work)),
+					)
+					.child(agent_surface::muted(graph::state_in(snapshot, work).0)),
 			)
 			.child(self.recap_panel(&work.id, cx))
 			.child(self.inspection_resources(&work.id, cx))
@@ -55,15 +70,18 @@ impl AgentSurface {
 			})
 			.child(self.inspection_relations(snapshot, work, cx))
 			.when_some(work.next_check_at_micros, |panel, due| {
-				panel.child(muted(format!("Next check · {}", next_check_text(due))))
+				panel.child(agent_surface::muted(format!(
+					"Next check · {}",
+					agent_surface::next_check_text(due)
+				)))
 			})
 			.when_some(work.codex_thread_id.as_ref(), |panel, thread| {
 				panel.child(
-					div()
+					agent_surface::div()
 						.flex()
 						.items_center()
 						.justify_between()
-						.child(muted("Conversation reference"))
+						.child(agent_surface::muted("Conversation reference"))
 						.child(markdown::copy_button(
 							&format!("work-reference-{}", work.id),
 							"Copy task reference",
@@ -78,8 +96,8 @@ impl AgentSurface {
 		snapshot: &AgentSnapshotDto,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::Div {
-		let mut panel = div().flex().flex_col().gap(px(4.));
+	) -> Div {
+		let mut panel = agent_surface::div().flex().flex_col().gap(agent_surface::px(4.));
 
 		for (label, id) in snapshot
 			.dependencies
@@ -103,7 +121,7 @@ impl AgentSurface {
 			let selector = format!("inspection-{label}-{id}");
 
 			panel = panel.child(
-				div()
+				agent_surface::div()
 					.debug_selector(move || selector.clone())
 					.child(self.relation(label, snapshot, id, cx)),
 			);
@@ -112,49 +130,46 @@ impl AgentSurface {
 		panel
 	}
 
-	fn inspection_resources(&self, work: &str, cx: &mut Context<Self>) -> gpui::AnyElement {
-		use decodex_protocol::AgentResourcesResult;
-
-		let mut rows = div().flex().flex_col().gap(px(4.));
+	fn inspection_resources(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
+		let mut rows = agent_surface::div().flex().flex_col().gap(agent_surface::px(4.));
 
 		match self.resources.as_ref().filter(|(owner, _)| owner == work).map(|(_, result)| result) {
 			Some(Some(AgentResourcesResult::Available { resources })) =>
 				for resource in resources {
-					let payload = serde_json::from_str::<serde_json::Value>(&resource.payload_json)
-						.unwrap_or_default();
+					let payload =
+						serde_json::from_str::<Value>(&resource.payload_json).unwrap_or_default();
 					let title = payload["title"]
 						.as_str()
 						.or_else(|| payload["name"].as_str())
 						.unwrap_or(&resource.identity_key)
 						.to_owned();
-					let link = payload["url"]
-						.as_str()
-						.and_then(|url| reqwest::Url::parse(url).ok())
-						.filter(|url| {
+					let link = payload["url"].as_str().and_then(|url| Url::parse(url).ok()).filter(
+						|url| {
 							matches!(url.scheme(), "http" | "https")
 								&& url.username().is_empty()
 								&& url.password().is_none()
-						});
-					let mut row = div()
+						},
+					);
+					let mut row = agent_surface::div()
 						.id(SharedString::from(format!("inspection-resource-{}", resource.id)))
-						.px(px(8.))
-						.py(px(7.))
-						.rounded(px(8.))
+						.px(agent_surface::px(8.))
+						.py(agent_surface::px(7.))
+						.rounded(agent_surface::px(8.))
 						.child(title);
 
 					if let Some(link) = link {
 						row = row
 							.cursor_pointer()
-							.hover(|row| row.bg(rgba(crate::ui_theme::HOVER_FILL)))
+							.hover(|row| row.bg(agent_surface::rgba(HOVER_FILL)))
 							.on_click(cx.listener(move |_, _, _, cx| cx.open_url(link.as_str())));
 					}
 
 					rows = rows.child(row);
 				},
-			Some(None) => rows = rows.child(crate::ui_loading::loading("Loading records")),
+			Some(None) => rows = rows.child(ui_loading::loading("Loading records")),
 			Some(Some(
 				AgentResourcesResult::Unavailable | AgentResourcesResult::CapacityExceeded,
-			)) => rows = rows.child(muted("Records are unavailable.")),
+			)) => rows = rows.child(agent_surface::muted("Records are unavailable.")),
 			_ => {},
 		}
 
@@ -164,7 +179,10 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::thread;
+
+	use crate::shell::agent_surface::inspection::AgentSurface;
+
 	#[gpui::test]
 	fn inspection_retains_dependencies_outside_the_current_graph_scope(
 		cx: &mut gpui::TestAppContext,
@@ -213,7 +231,7 @@ mod tests {
 			visual.update(|window, cx| window.draw(cx).clear());
 		}
 
-		std::thread::sleep(std::time::Duration::from_millis(250));
+		thread::sleep(std::time::Duration::from_millis(250));
 
 		visual.update(|window, cx| window.draw(cx).clear());
 

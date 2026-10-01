@@ -1,16 +1,24 @@
 //! Read-only progress qualification through the same-UID protocol client.
-use super::*;
-
-use decodex_protocol::{
-	CURRENT_VERSION, ClientMessage, Cursor, QueryPayload, QueryResultEnvelope, QueryResultPayload,
-	ReconnectMode, ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
+use std::{
+	fs,
+	fs::Permissions,
+	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+	thread,
+	thread::JoinHandle,
 };
 
-use futures_util::{SinkExt, StreamExt};
-
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
-
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::TestAppContext;
+use tempfile::TempDir;
+use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::recap::automatic::*;
+use decodex_protocol::{
+	AgentTimelineContent, AgentTimelinePage, AgentTimelineResult, CURRENT_VERSION, ClientMessage,
+	CommandPayload, Cursor, QueryPayload, QueryResultEnvelope, QueryResultPayload, ReconnectMode,
+	ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
+};
 
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
@@ -25,7 +33,7 @@ impl Render for EmptyView {
 fn automatic_progress_uses_exact_completed_turns_across_pages_and_refuses_account_changes() {
 	for changed_account in [false, true] {
 		let (_root, profile, server) = fixture(changed_account, false);
-		let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+		let runtime = Builder::new_current_thread().enable_all().build().unwrap();
 		let progress = runtime.block_on(read_progress(profile, "work", "thread"));
 
 		if changed_account {
@@ -38,37 +46,34 @@ fn automatic_progress_uses_exact_completed_turns_across_pages_and_refuses_accoun
 	}
 }
 
-fn fixture(
-	changed_account: bool,
-	driver: bool,
-) -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<usize>) {
+fn fixture(changed_account: bool, driver: bool) -> (TempDir, ClientProfile, JoinHandle<usize>) {
 	let root = tempfile::tempdir().unwrap();
 	let path = root.path().canonicalize().unwrap();
 
-	std::fs::create_dir(path.join("server")).unwrap();
-	std::fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700)).unwrap();
+	fs::create_dir(path.join("server")).unwrap();
+	fs::set_permissions(path.join("server"), Permissions::from_mode(0o700)).unwrap();
 
-	let uid = std::fs::metadata(&path).unwrap().uid();
+	let uid = fs::metadata(&path).unwrap().uid();
 	let config = path.join("config.toml");
 
-	std::fs::write(&config,format!("version=1\nactive_profile=\"local\"\ncache={{}}\n[profiles.local]\nkind=\"local\"\npolicy=\"same_uid\"\nservice_owner_uid={uid}\nexpected_server_identity=\"{SERVER}\"\n")).unwrap();
-	std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
+	fs::write(&config,format!("version=1\nactive_profile=\"local\"\ncache={{}}\n[profiles.local]\nkind=\"local\"\npolicy=\"same_uid\"\nservice_owner_uid={uid}\nexpected_server_identity=\"{SERVER}\"\n")).unwrap();
+	fs::set_permissions(config, Permissions::from_mode(0o600)).unwrap();
 
 	let socket = path.join("server/decodex.sock");
 	let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
 
-	std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600)).unwrap();
+	fs::set_permissions(socket, Permissions::from_mode(0o600)).unwrap();
 
 	listener.set_nonblocking(true).unwrap();
 
 	let profile = ClientProfile::load(&path, None).unwrap();
-	let server = std::thread::spawn(move || {
-		let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	let server = thread::spawn(move || {
+		let runtime = Builder::new_current_thread().enable_all().build().unwrap();
 
 		runtime.block_on(async {
 			let listener = tokio::net::UnixListener::from_std(listener).unwrap();
 
-			tokio::time::timeout(Duration::from_secs(10), async {
+			time::timeout(Duration::from_secs(10), async {
 				serve(&listener, changed_account).await;
 
 				if driver { serve_generation(&listener).await } else { 0 }
@@ -84,7 +89,7 @@ fn fixture(
 fn boundary(position: u64, turn: &str, status: &str) -> decodex_protocol::AgentTimelineEntry {
 	decodex_protocol::AgentTimelineEntry {
 		position,
-		content: decodex_protocol::AgentTimelineContent::TurnBoundary {
+		content: AgentTimelineContent::TurnBoundary {
 			turn_id: turn.into(),
 			completed: true,
 			status: Some(status.into()),
@@ -110,7 +115,7 @@ fn only_two_new_completed_turns_allow_another_recap() {
 
 #[gpui::test]
 fn automatic_driver_generates_once_after_progress_and_cancels_exact_request_on_focus(
-	cx: &mut gpui::TestAppContext,
+	cx: &mut TestAppContext,
 ) {
 	// This fixture uses real socket I/O and the production recap I/O thread.
 	cx.background_executor.allow_parking();
@@ -169,7 +174,7 @@ fn automatic_driver_generates_once_after_progress_and_cancels_exact_request_on_f
 
 		assert!(Instant::now() < deadline, "automatic request reached service");
 
-		std::thread::sleep(Duration::from_millis(10));
+		thread::sleep(Duration::from_millis(10));
 	}
 
 	surface.update(visual, |s, _| s.recap_focus(true));
@@ -179,7 +184,7 @@ fn automatic_driver_generates_once_after_progress_and_cancels_exact_request_on_f
 
 		assert!(Instant::now() < deadline, "exact cancellation reached service");
 
-		std::thread::sleep(Duration::from_millis(10));
+		thread::sleep(Duration::from_millis(10));
 	}
 
 	assert_eq!(server.join().unwrap(), 2);
@@ -240,25 +245,23 @@ async fn serve(listener: &tokio::net::UnixListener, changed_account: bool) {
 			version: CURRENT_VERSION,
 			server_id: ServerId::new(SERVER).unwrap(),
 			query_id: query.query_id,
-			payload: QueryResultPayload::AgentTimeline(
-				decodex_protocol::AgentTimelineResult::Available {
-					work_id,
-					account_id: EntityId::new(if page_index == 1 && changed_account {
-						"other"
-					} else {
-						"account"
-					})
-					.unwrap(),
-					page: decodex_protocol::AgentTimelinePage {
-						thread_id: "thread".into(),
-						entries,
-						next_cursor: (page_index == 0).then(|| "older".into()),
-						weather: Default::default(),
-						safety_buffering_turn_id: None,
-						active_realtime_session_at_page_start: None,
-					},
+			payload: QueryResultPayload::AgentTimeline(AgentTimelineResult::Available {
+				work_id,
+				account_id: EntityId::new(if page_index == 1 && changed_account {
+					"other"
+				} else {
+					"account"
+				})
+				.unwrap(),
+				page: AgentTimelinePage {
+					thread_id: "thread".into(),
+					entries,
+					next_cursor: (page_index == 0).then(|| "older".into()),
+					weather: Default::default(),
+					safety_buffering_turn_id: None,
+					active_realtime_session_at_page_start: None,
 				},
-			),
+			}),
 		});
 
 		socket.send(Message::Text(serde_json::to_string(&result).unwrap().into())).await.unwrap();
@@ -299,7 +302,7 @@ async fn serve_generation(listener: &tokio::net::UnixListener) -> usize {
 
 		match serde_json::from_str::<ClientMessage>(&text).unwrap() {
 			ClientMessage::Command(command) => {
-				let decodex_protocol::CommandPayload::Agent { action } = command.payload else {
+				let CommandPayload::Agent { action } = command.payload else {
 					panic!("recap command")
 				};
 

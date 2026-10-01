@@ -2,9 +2,22 @@
 #[path = "agent_composer_controls.rs"] mod controls;
 #[path = "agent_task_references.rs"] mod task_references;
 
-use super::*;
+use crate::shell::agent_surface::*;
 
 use decodex_protocol::AgentAttachmentDto;
+
+use std::env;
+
+use tokio::time;
+
+use crate::{shell::workspace_symbols, ui_motion};
+
+use crate::shell::workspace_symbols::{Symbol, icon};
+
+use std::{
+	io::Write,
+	os::unix::fs::{DirBuilderExt, OpenOptionsExt},
+};
 
 struct ComposerTip(String);
 impl Render for ComposerTip {
@@ -210,7 +223,7 @@ impl AgentSurface {
 
                         if ended { break; }
 
-                        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+                        time::sleep(std::time::Duration::from_millis(80)).await;
 
                         snapshot = client.query().await.ok();
                     }
@@ -451,7 +464,7 @@ impl AgentSurface {
 							232.
 						}))
 						.child(
-							crate::ui_motion::popover(
+							ui_motion::popover(
 								self.composer_menu.is_some(),
 								self.composer_options(cx)
 									.unwrap_or_else(|| div().into_any_element()),
@@ -558,7 +571,7 @@ impl AgentSurface {
 						|s, window, cx| s.open_audio_menu(window, cx),
 						cx,
 					))
-					.child(crate::ui_motion::disclosure(
+					.child(ui_motion::disclosure(
 						"microphone-devices-disclosure",
 						self.composer_menu == Some("microphone"),
 						div().pl(px(26.)).child(self.audio_palette(cx)),
@@ -772,8 +785,6 @@ impl AgentSurface {
 		label: String,
 		cx: &Context<Self>,
 	) -> gpui::AnyElement {
-		use super::super::workspace_symbols::{Symbol, icon};
-
 		match id {
 			"send" => controls::PrimaryMark {
 				mode: if self.dictation.is_some() {
@@ -815,7 +826,7 @@ impl AgentSurface {
 						.text_color(rgb(ui_theme::TEXT_MUTED))
 						.child(label),
 				)
-				.child(super::super::workspace_symbols::disclosure_chevron(
+				.child(workspace_symbols::disclosure_chevron(
 					"microphone-chevron",
 					self.composer_menu == Some("microphone"),
 				))
@@ -1161,13 +1172,8 @@ impl AgentSurface {
 }
 
 fn save_clipboard_image(image: &gpui::Image) -> std::io::Result<std::path::PathBuf> {
-	use std::{
-		io::Write,
-		os::unix::fs::{DirBuilderExt, OpenOptionsExt},
-	};
-
-	let home = std::env::var_os("HOME")
-		.ok_or_else(|| std::io::Error::other("Home directory unavailable"))?;
+	let home =
+		env::var_os("HOME").ok_or_else(|| std::io::Error::other("Home directory unavailable"))?;
 	let dir = std::path::PathBuf::from(home).join(".decodex/attachments");
 
 	std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&dir)?;
@@ -1227,14 +1233,16 @@ fn context_ring(fraction: f32) -> impl IntoElement {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::composer::*;
+
+	use std::fs;
 
 	#[gpui::test]
 	fn attachment_picker_keeps_the_opening_draft_owner(cx: &mut gpui::TestAppContext) {
 		let directory = tempfile::tempdir().unwrap();
 		let file = directory.path().join("reference.txt");
 
-		std::fs::write(&file, "Fixture reference").unwrap();
+		fs::write(&file, "Fixture reference").unwrap();
 
 		for change in ["none", "edit", "selection", "manager", "profile", "cancel"] {
 			let surface = cx.new(AgentSurface::new);
@@ -1297,11 +1305,11 @@ mod tests {
 		let directory = tempfile::tempdir().unwrap();
 		let folder = directory.path().join("notes.png");
 
-		std::fs::create_dir(&folder).unwrap();
+		fs::create_dir(&folder).unwrap();
 
 		let file = directory.path().join("reference.txt");
 
-		std::fs::write(&file, "Fixture reference").unwrap();
+		fs::write(&file, "Fixture reference").unwrap();
 
 		let surface = cx.new(AgentSurface::new);
 

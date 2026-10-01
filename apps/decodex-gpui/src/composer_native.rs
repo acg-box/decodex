@@ -1,5 +1,8 @@
 //! Restore a native text part without dropping its markers or undo metadata.
-use super::*;
+use serde_json::Value;
+
+use crate::composer_input::*;
+use decodex_protocol::PromptDraft;
 
 pub(super) const MAX_NATIVE_EDITOR_BYTES: usize = 8 * 1_024 * 1_024;
 
@@ -7,7 +10,7 @@ impl ComposerInput {
 	/// Install one complete canonical text part. Other parts stay with the prompt owner.
 	pub(crate) fn set_native_part(
 		&mut self,
-		part: serde_json::Value,
+		part: Value,
 		cx: &mut Context<Self>,
 	) -> Result<(), &'static str> {
 		if part["type"].as_str() != Some("text") {
@@ -21,7 +24,7 @@ impl ComposerInput {
 		}
 
 		let text = text.to_owned();
-		let native = decodex_protocol::PromptDraft::new(vec![part])?;
+		let native = PromptDraft::new(vec![part])?;
 
 		self.content = text;
 		self.native_part = Some(native);
@@ -38,15 +41,14 @@ impl ComposerInput {
 	}
 
 	/// Current native text and marker state for durable draft capture.
-	pub(crate) fn native_part(&self) -> Option<&serde_json::Value> {
+	pub(crate) fn native_part(&self) -> Option<&Value> {
 		self.native_part.as_ref().map(|part| &part.parts()[0])
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
+	use crate::composer_input::native::*;
 
 	#[gpui::test]
 	fn large_native_edits_keep_a_bounded_undo_history(cx: &mut gpui::TestAppContext) {
@@ -54,7 +56,10 @@ mod tests {
 
 		input.update(cx, |input, cx| {
 			input
-				.set_native_part(json!({"type":"text","text":"x".repeat(3 * 1_024 * 1_024)}), cx)
+				.set_native_part(
+					serde_json::json!({"type":"text","text":"x".repeat(3 * 1_024 * 1_024)}),
+					cx,
+				)
 				.unwrap();
 
 			for replacement in ["a", "b", "c", "d", "e"] {
@@ -70,7 +75,7 @@ mod tests {
 	#[gpui::test]
 	fn native_editor_restores_long_text_and_undoes_marker_offsets(cx: &mut gpui::TestAppContext) {
 		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
-		let original = json!({"type":"text","text":format!("你 $skill {}", "tail".repeat(5_000)),"text_elements":[{"byteRange":{"start":4,"end":10},"placeholder":"$skill"}],"extension":"retain"});
+		let original = serde_json::json!({"type":"text","text":format!("你 $skill {}", "tail".repeat(5_000)),"text_elements":[{"byteRange":{"start":4,"end":10},"placeholder":"$skill"}],"extension":"retain"});
 
 		input.update(visual, |input, cx| {
 			input.set_native_part(original.clone(), cx).unwrap();

@@ -1,8 +1,12 @@
 //! Explicit edits to the reviewed native goal, without a second goal store.
-use super::*;
-use decodex_protocol::{
-	AgentGoalBudgetEdit as Budget, AgentGoalEdit, AgentNativeGoalStatus as Status,
-};
+use std::fs::File;
+
+use gpui::{AnyElement, PathPromptOptions};
+use tokio::runtime::Builder;
+
+use crate::shell::agent_surface::native_goal::*;
+use decodex_protocol::{AgentGoalBudgetEdit, AgentGoalEdit};
+
 pub(super) struct Editor {
 	target: (String, String),
 	review: WireText,
@@ -47,7 +51,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn goal_edit_controls(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn goal_edit_controls(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_goal.task.is_some() {
 			return div().into_any_element();
 		}
@@ -106,11 +110,12 @@ impl AgentSurface {
 			));
 
 			if let Some(goal) = goal {
-				let (label, status) = if goal.status == Status::Active {
-					("Pause goal", Status::Paused)
-				} else {
-					("Resume goal", Status::Active)
-				};
+				let (label, status) =
+					if goal.status == decodex_protocol::AgentNativeGoalStatus::Active {
+						("Pause goal", decodex_protocol::AgentNativeGoalStatus::Paused)
+					} else {
+						("Resume goal", decodex_protocol::AgentNativeGoalStatus::Active)
+					};
 
 				panel = panel.child(self.workspace_action(
 					"goal-status".into(),
@@ -128,7 +133,7 @@ impl AgentSurface {
 		let Some(editor) = &self.native_goal.editor else { return };
 		let target = editor.target.clone();
 		let input = editor.objective.clone();
-		let selected = cx.prompt_for_paths(gpui::PathPromptOptions {
+		let selected = cx.prompt_for_paths(PathPromptOptions {
 			files: true,
 			directories: false,
 			multiple: false,
@@ -143,7 +148,7 @@ impl AgentSurface {
 				.spawn(async move {
 					use std::io::Read as _;
 
-					let mut file = std::fs::File::open(path).map_err(|_| ())?;
+					let mut file = File::open(path).map_err(|_| ())?;
 					let mut bytes = Vec::new();
 
 					file.by_ref().take(64 * 1_024 + 1).read_to_end(&mut bytes).map_err(|_| ())?;
@@ -197,9 +202,9 @@ impl AgentSurface {
 		}
 
 		let budget = if budget == editor.original_budget {
-			Budget::Keep
+			AgentGoalBudgetEdit::Keep
 		} else if budget.is_empty() {
-			Budget::Reset
+			AgentGoalBudgetEdit::Reset
 		} else {
 			let Some(tokens) = budget.parse::<i64>().ok().filter(|tokens| *tokens > 0) else {
 				self.native_goal.feedback = "Enter a positive whole-number token budget.".into();
@@ -209,12 +214,12 @@ impl AgentSurface {
 				return;
 			};
 
-			Budget::Set(tokens)
+			AgentGoalBudgetEdit::Set(tokens)
 		};
 		let status = if start {
-			Some(Status::Active)
+			Some(decodex_protocol::AgentNativeGoalStatus::Active)
 		} else if editor.new_goal {
-			Some(Status::Paused)
+			Some(decodex_protocol::AgentNativeGoalStatus::Paused)
 		} else {
 			None
 		};
@@ -227,7 +232,11 @@ impl AgentSurface {
 		);
 	}
 
-	fn change_goal_status(&mut self, status: Status, cx: &mut Context<Self>) {
+	fn change_goal_status(
+		&mut self,
+		status: decodex_protocol::AgentNativeGoalStatus,
+		cx: &mut Context<Self>,
+	) {
 		let Some(Result::Available { review_token: Some(review), .. }) = &self.native_goal.result
 		else {
 			return;
@@ -237,7 +246,11 @@ impl AgentSurface {
 		self.submit_goal_edit(
 			target,
 			review.clone(),
-			AgentGoalEdit { objective: None, status: Some(status), budget: Budget::Keep },
+			AgentGoalEdit {
+				objective: None,
+				status: Some(status),
+				budget: AgentGoalBudgetEdit::Keep,
+			},
 			cx,
 		);
 	}
@@ -271,8 +284,7 @@ impl AgentSurface {
 		self.native_goal.feedback = "Saving native goal…".into();
 
 		let task = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = runtime.block_on(client.execute(action, key));
 			let read =

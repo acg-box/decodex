@@ -1,8 +1,14 @@
 //! Ephemeral sending bubbles. Durable records remain owned by the service.
-use super::*;
+use std::{cell::Cell, mem};
+
+use gpui::AnyElement;
+use ui_theme::USER_MESSAGE_ACTION_SIZE;
+
+use crate::shell::agent_surface::*;
+use decodex_protocol::{AgentHistoryEntryDto, AgentTimelineContent};
 
 pub(super) struct Preview {
-	recorded: std::cell::Cell<bool>,
+	recorded: Cell<bool>,
 	key: String,
 	owner: String,
 	text: String,
@@ -23,7 +29,7 @@ impl AgentSurface {
 			return;
 		}
 
-		let retained = std::mem::take(&mut self.submission.previews);
+		let retained = mem::take(&mut self.submission.previews);
 
 		self.submission.previews =
 			retained.into_iter().filter(|p| !self.preview_recorded(p)).collect();
@@ -92,7 +98,7 @@ impl AgentSurface {
 
 		if native && !self.native_history.summary_only() {
 			return self.native_history.entries.iter().filter(|e| preview.native_after.is_none_or(|position| e.position > position) && matches!(&e.content,
-                decodex_protocol::AgentTimelineContent::Item { kind, text, .. } if kind == "userMessage" && text == &preview.text)).count() >= preview.native_ordinal;
+                AgentTimelineContent::Item{ kind, text, .. } if kind == "userMessage" && text == &preview.text)).count() >= preview.native_ordinal;
 		}
 
 		let history = self
@@ -120,13 +126,13 @@ impl AgentSurface {
 			.any(|p| p.owner == work && p.text == text && id > p.local_after)
 	}
 
-	pub(super) fn send_previews(&self, work: &str) -> Vec<gpui::AnyElement> {
+	pub(super) fn send_previews(&self, work: &str) -> Vec<AnyElement> {
 		self.submission
 			.previews
 			.iter()
 			.filter(|p| p.owner == work && !self.preview_recorded(p))
 			.map(|p| {
-				let entry = decodex_protocol::AgentHistoryEntryDto {
+				let entry = AgentHistoryEntryDto {
 					id: 0,
 					kind: "user".into(),
 					text: p.text.clone(),
@@ -148,7 +154,7 @@ impl AgentSurface {
 				div()
 					.debug_selector(|| "sending-message-preview".into())
 					.child(history_entry_with_key(&entry, &format!("sending-{}", p.key)))
-					.when(native, |row| row.child(div().h(px(ui_theme::USER_MESSAGE_ACTION_SIZE))))
+					.when(native, |row| row.child(div().h(px(USER_MESSAGE_ACTION_SIZE))))
 					.into_any_element()
 			})
 			.collect()
@@ -157,7 +163,10 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::send_preview::*;
+
+	use std::thread;
+
 	#[gpui::test]
 	fn native_echo_replaces_preview_without_changing_bubble_bounds(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -197,7 +206,7 @@ mod tests {
 
 		visual.update(|w, cx| w.draw(cx).clear());
 
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|w, cx| w.draw(cx).clear());
 

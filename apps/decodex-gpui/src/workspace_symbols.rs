@@ -1,7 +1,15 @@
 //! Native macOS SF Symbols, rendered at 3x and embedded for bundle-independent use.
-use std::sync::{Arc, LazyLock};
+use std::{
+	f32::consts::FRAC_PI_2,
+	sync::{Arc, LazyLock},
+};
 
-use gpui::{AnyElement, Image, ImageFormat, img, prelude::*, px};
+use gpui::{
+	self, AnyElement, App, ElementId, Image, ImageFormat, PathBuilder, RenderOnce, Window,
+	prelude::*,
+};
+
+use crate::{ui_motion, ui_theme::TEXT_MUTED};
 
 static IMAGES: LazyLock<[Arc<Image>; 33]> = LazyLock::new(|| {
 	let sources: [&[u8]; 33] = [
@@ -84,27 +92,32 @@ pub(super) struct DisclosureChevron {
 	id: &'static str,
 	expanded: bool,
 }
-impl gpui::RenderOnce for DisclosureChevron {
-	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
-		let progress =
-			crate::ui_motion::value(self.id, if self.expanded { 1. } else { 0. }, window, cx);
+impl RenderOnce for DisclosureChevron {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let progress = ui_motion::value(self.id, if self.expanded { 1. } else { 0. }, window, cx);
 
 		gpui::canvas(
 			|_, _, _| (),
 			move |bounds, _, window, _| {
 				let direction = 1. - 2. * progress;
-				let mut path = gpui::PathBuilder::stroke(px(1.2));
+				let mut path = PathBuilder::stroke(gpui::px(1.2));
 
-				path.move_to(bounds.origin + gpui::point(px(2.), px(6. - 2. * direction)));
-				path.line_to(bounds.origin + gpui::point(px(6.), px(6. + 2. * direction)));
-				path.line_to(bounds.origin + gpui::point(px(10.), px(6. - 2. * direction)));
+				path.move_to(
+					bounds.origin + gpui::point(gpui::px(2.), gpui::px(6. - 2. * direction)),
+				);
+				path.line_to(
+					bounds.origin + gpui::point(gpui::px(6.), gpui::px(6. + 2. * direction)),
+				);
+				path.line_to(
+					bounds.origin + gpui::point(gpui::px(10.), gpui::px(6. - 2. * direction)),
+				);
 
 				if let Ok(path) = path.build() {
-					window.paint_path(path, gpui::rgb(crate::ui_theme::TEXT_MUTED));
+					window.paint_path(path, gpui::rgb(TEXT_MUTED));
 				}
 			},
 		)
-		.size(px(12.))
+		.size(gpui::px(12.))
 		.flex_none()
 	}
 }
@@ -112,25 +125,24 @@ impl gpui::RenderOnce for DisclosureChevron {
 /// A single centered chevron rotates instead of exchanging font glyphs.
 #[derive(gpui::IntoElement)]
 pub(super) struct ProcessChevron {
-	id: gpui::ElementId,
+	id: ElementId,
 	expanded: bool,
 }
-impl gpui::RenderOnce for ProcessChevron {
-	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
-		let progress =
-			crate::ui_motion::value(self.id, if self.expanded { 1. } else { 0. }, window, cx);
-		let angle = progress * std::f32::consts::FRAC_PI_2;
+impl RenderOnce for ProcessChevron {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let progress = ui_motion::value(self.id, if self.expanded { 1. } else { 0. }, window, cx);
+		let angle = progress * FRAC_PI_2;
 
 		gpui::canvas(
 			|_, _, _| (),
 			move |bounds, _, window, _| {
-				let mut path = gpui::PathBuilder::stroke(px(1.4));
+				let mut path = PathBuilder::stroke(gpui::px(1.4));
 
 				for (i, (x, y)) in [(-2., -3.5), (1.5, 0.), (-2., 3.5)].into_iter().enumerate() {
 					let point = bounds.center()
 						+ gpui::point(
-							px(x * angle.cos() - y * angle.sin()),
-							px(x * angle.sin() + y * angle.cos()),
+							gpui::px(x * angle.cos() - y * angle.sin()),
+							gpui::px(x * angle.sin() + y * angle.cos()),
 						);
 
 					if i == 0 {
@@ -145,7 +157,7 @@ impl gpui::RenderOnce for ProcessChevron {
 				}
 			},
 		)
-		.size(px(12.))
+		.size(gpui::px(12.))
 		.flex_none()
 	}
 }
@@ -157,13 +169,13 @@ pub(super) fn icon(symbol: Symbol) -> AnyElement {
 		_ => 16.0,
 	};
 
-	img(IMAGES[symbol as usize].clone()).size(px(size)).flex_none().into_any_element()
+	gpui::img(IMAGES[symbol as usize].clone()).size(gpui::px(size)).flex_none().into_any_element()
 }
 
 pub(super) fn disclosure_chevron(id: &'static str, expanded: bool) -> DisclosureChevron {
 	DisclosureChevron { id, expanded }
 }
 
-pub(super) fn process_chevron(id: impl Into<gpui::ElementId>, expanded: bool) -> ProcessChevron {
+pub(super) fn process_chevron(id: impl Into<ElementId>, expanded: bool) -> ProcessChevron {
 	ProcessChevron { id: id.into(), expanded }
 }

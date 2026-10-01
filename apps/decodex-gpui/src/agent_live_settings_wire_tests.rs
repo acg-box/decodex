@@ -1,14 +1,19 @@
 //! Rendered current-turn reviewer changes cross the public same-UID socket.
-use super::{super::wire_test_support::SERVER, *};
+use std::thread::JoinHandle;
 
-use decodex_protocol::{
-	CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
-	QueryResultPayload, ServerId, ServerMessage,
-};
-
-use futures_util::{SinkExt, StreamExt};
-
+use crate::shell::agent_surface::{live_settings::*, wire_test_support::SERVER};
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::TestAppContext;
+use tempfile::TempDir;
+use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::wire_test_support;
+use decodex_protocol::{
+	AgentLiveModelSelection, AgentLiveReviewerOutcome, AgentWorkKindDto, CURRENT_VERSION,
+	ClientMessage, CommandPayload, ConversationModel, ConversationReasoningEffort, QueryPayload,
+	QueryResultEnvelope, QueryResultPayload, ServerId, ServerMessage,
+};
 
 struct ReviewerView {
 	surface: Entity<AgentSurface>,
@@ -19,10 +24,8 @@ impl Render for ReviewerView {
 	}
 }
 
-fn fixture(
-	model: bool,
-) -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<AgentActionDto>>) {
-	super::super::wire_test_support::fixture(move |listener| serve(listener, model))
+fn fixture(model: bool) -> (TempDir, ClientProfile, JoinHandle<Vec<AgentActionDto>>) {
+	wire_test_support::fixture(move |listener| serve(listener, model))
 }
 
 fn live_state(index: usize, model: bool) -> State {
@@ -32,24 +35,24 @@ fn live_state(index: usize, model: bool) -> State {
 		review_token: WireText::new(if index == 0 { "a" } else { "b" }.repeat(64)).unwrap(),
 		can_update: true,
 		last_reviewer: (index != 0 && !model).then_some(Reviewer::User),
-		last_model: (model && index != 0).then(|| decodex_protocol::AgentLiveModelSelection {
-			model: decodex_protocol::ConversationModel::new("selected").unwrap(),
-			effort: decodex_protocol::ConversationReasoningEffort::High,
+		last_model: (model && index != 0).then(|| AgentLiveModelSelection {
+			model: ConversationModel::new("selected").unwrap(),
+			effort: ConversationReasoningEffort::High,
 		}),
 		model_choices: model.then(|| vec![model_choice()]),
-		last_outcome: (index != 0).then_some(decodex_protocol::AgentLiveReviewerOutcome::Unknown),
+		last_outcome: (index != 0).then_some(AgentLiveReviewerOutcome::Unknown),
 	}
 }
 
 fn model_choice() -> decodex_protocol::AgentModelDto {
 	decodex_protocol::AgentModelDto {
-		model: decodex_protocol::ConversationModel::new("selected").unwrap(),
+		model: ConversationModel::new("selected").unwrap(),
 		name: "Selected".into(),
 		efforts: vec![
 			decodex_protocol::ConversationReasoningEffort::Low,
 			decodex_protocol::ConversationReasoningEffort::High,
 		],
-		default_effort: Some(decodex_protocol::ConversationReasoningEffort::Low),
+		default_effort: Some(ConversationReasoningEffort::Low),
 		supports_fast: false,
 		service_tiers: vec![],
 		default_service_tier: None,
@@ -65,7 +68,7 @@ fn work() -> AgentWorkItemDto {
 	AgentWorkItemDto {
 		id: "root".into(),
 		parent_goal_id: None,
-		kind: decodex_protocol::AgentWorkKindDto::Goal,
+		kind: AgentWorkKindDto::Goal,
 		title: "Root".into(),
 		codex_thread_id: Some("thread".into()),
 		active_turn_id: Some("turn".into()),
@@ -78,9 +81,7 @@ fn work() -> AgentWorkItemDto {
 }
 
 #[gpui::test]
-fn reviewed_live_turn_is_invalidated_even_if_the_old_identity_returns(
-	cx: &mut gpui::TestAppContext,
-) {
+fn reviewed_live_turn_is_invalidated_even_if_the_old_identity_returns(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	for change in ["thread", "turn", "idle", "removed", "source"] {
@@ -131,16 +132,16 @@ fn reviewed_live_turn_is_invalidated_even_if_the_old_identity_returns(
 }
 
 #[gpui::test]
-fn reviewer_click_sends_exact_turn_once_and_reads_unknown_receipt(cx: &mut gpui::TestAppContext) {
+fn reviewer_click_sends_exact_turn_once_and_reads_unknown_receipt(cx: &mut TestAppContext) {
 	exercise_live_settings(cx, false);
 }
 
 #[gpui::test]
-fn model_click_sends_exact_turn_once_and_reads_unknown_receipt(cx: &mut gpui::TestAppContext) {
+fn model_click_sends_exact_turn_once_and_reads_unknown_receipt(cx: &mut TestAppContext) {
 	exercise_live_settings(cx, true);
 }
 
-fn exercise_live_settings(cx: &mut gpui::TestAppContext, model: bool) {
+fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 	let (_dir, profile, server) = fixture(model);
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
@@ -224,9 +225,9 @@ fn exercise_live_settings(cx: &mut gpui::TestAppContext, model: bool) {
 			"root".into(),
 			"turn".into(),
 			Some(if model {
-				Edit::Model(decodex_protocol::AgentLiveModelSelection {
-					model: decodex_protocol::ConversationModel::new("selected").unwrap(),
-					effort: decodex_protocol::ConversationReasoningEffort::High,
+				Edit::Model(AgentLiveModelSelection {
+					model: ConversationModel::new("selected").unwrap(),
+					effort: ConversationReasoningEffort::High,
 				})
 			} else {
 				Edit::Reviewer(Reviewer::User)
@@ -252,8 +253,8 @@ fn exercise_live_settings(cx: &mut gpui::TestAppContext, model: bool) {
 }
 
 #[gpui::test]
-fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut gpui::TestAppContext) {
-	let (_root, profile, server) = super::super::wire_test_support::fixture(|_| async {});
+fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut TestAppContext) {
+	let (_root, profile, server) = wire_test_support::fixture(|_| async {});
 
 	server.join().unwrap();
 
@@ -317,9 +318,7 @@ fn running_snapshot() -> AgentSnapshotDto {
 }
 
 #[gpui::test]
-fn ordinary_refresh_keeps_live_settings_read_and_publication_receipt(
-	cx: &mut gpui::TestAppContext,
-) {
+fn ordinary_refresh_keeps_live_settings_read_and_publication_receipt(cx: &mut TestAppContext) {
 	for model in [false, true] {
 		let (_dir, profile, server) = fixture(model);
 		let surface = cx.new(AgentSurface::new);
@@ -331,9 +330,9 @@ fn ordinary_refresh_keeps_live_settings_read_and_publication_receipt(
 		});
 
 		let edit = if model {
-			Edit::Model(decodex_protocol::AgentLiveModelSelection {
-				model: decodex_protocol::ConversationModel::new("selected").unwrap(),
-				effort: decodex_protocol::ConversationReasoningEffort::High,
+			Edit::Model(AgentLiveModelSelection {
+				model: ConversationModel::new("selected").unwrap(),
+				effort: ConversationReasoningEffort::High,
 			})
 		} else {
 			Edit::Reviewer(Reviewer::User)
@@ -379,7 +378,7 @@ fn ordinary_refresh_keeps_live_settings_read_and_publication_receipt(
 }
 
 #[gpui::test]
-fn disconnect_invalidates_live_review_before_same_turn_reconnect(cx: &mut gpui::TestAppContext) {
+fn disconnect_invalidates_live_review_before_same_turn_reconnect(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	surface.update(cx, |s, cx| {
@@ -402,11 +401,11 @@ fn disconnect_invalidates_live_review_before_same_turn_reconnect(cx: &mut gpui::
 	});
 }
 
-async fn serve(listener: tokio::net::UnixListener, model: bool) -> Vec<AgentActionDto> {
+async fn serve(listener: UnixListener, model: bool) -> Vec<AgentActionDto> {
 	let mut actions = Vec::new();
 
 	for index in 0..3 {
-		let mut socket = super::super::wire_test_support::accept(&listener).await;
+		let mut socket = wire_test_support::accept(&listener).await;
 		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 			panic!("text request")
 		};

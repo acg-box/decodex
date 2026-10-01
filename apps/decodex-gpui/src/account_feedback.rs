@@ -1,5 +1,5 @@
 //! Account warnings occupy an icon; their explanation opens only on activation.
-use super::*;
+use crate::{account_profile, shell::*};
 
 #[derive(IntoElement)]
 pub(super) struct AccountFeedback {
@@ -113,7 +113,7 @@ pub(super) fn for_account(shell: &Shell, account: &AccountDto) -> Option<(String
 		};
 
 		if let Some(error) = error {
-			return Some(if crate::account_profile::requires_login(error) {
+			return Some(if account_profile::requires_login(error) {
 				("Sign in again to update your activity.".into(), ui_theme::ERROR)
 			} else {
 				("Your activity couldn’t be updated. Try again later.".into(), ui_theme::AMBER)
@@ -143,9 +143,8 @@ pub(super) fn for_account(shell: &Shell, account: &AccountDto) -> Option<(String
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::client_lifecycle::ConnectionView;
-	use gpui::{Modifiers, TestAppContext, point, size};
+	use crate::{client_lifecycle::ConnectionView, shell::account_feedback::*};
+	use gpui::{self, Modifiers, TestAppContext};
 
 	#[gpui::test]
 	fn warnings_open_on_click_and_close_outside_without_changing_account_state(
@@ -165,7 +164,7 @@ mod tests {
 		});
 
 		visual.update(|w, cx| {
-			w.resize(size(px(1_440.), px(1_000.)));
+			w.resize(gpui::size(px(1_440.), px(1_000.)));
 			w.draw(cx).clear();
 		});
 
@@ -190,7 +189,7 @@ mod tests {
 			assert_eq!(visual.debug_bounds("account-card-0").unwrap().size.height, height);
 
 			shell.read_with(visual, |s, _| assert!(s.expanded_accounts.is_empty()));
-			visual.simulate_click(point(px(5.), px(5.)), Modifiers::default());
+			visual.simulate_click(gpui::point(px(5.), px(5.)), Modifiers::default());
 			visual.update(|w, cx| {
 				w.draw(cx).clear();
 			});

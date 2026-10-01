@@ -1,5 +1,8 @@
 //! Review provider findings before an explicit, source-bound continuation.
-use super::*;
+use gpui::{AnyElement, KeyDownEvent};
+
+use crate::shell::agent_surface::*;
+use decodex_protocol::WireText;
 
 impl AgentSurface {
 	fn acknowledge_misalignment(&mut self, work: &str, digest: &str, cx: &mut Context<Self>) {
@@ -18,9 +21,7 @@ impl AgentSurface {
 			return;
 		}
 
-		let (Ok(work_id), Ok(review_id)) =
-			(EntityId::new(work), decodex_protocol::WireText::new(digest))
-		else {
+		let (Ok(work_id), Ok(review_id)) = (EntityId::new(work), WireText::new(digest)) else {
 			return;
 		};
 
@@ -31,7 +32,7 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let Some((owner, AgentHistoryResult::Available { misalignment: Some(review), .. })) =
 			&self.history
 		else {
@@ -65,7 +66,7 @@ impl AgentSurface {
 
 							cx.notify();
 						}))
-						.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+						.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 							if matches!(event.keystroke.key.as_str(), "enter" | "space") {
 								s.misalignment_reviewed = Some(keyboard_identity.clone());
 
@@ -104,7 +105,7 @@ impl AgentSurface {
 					.on_click(cx.listener(move |s, _, _, cx| {
 						s.acknowledge_misalignment(&owner, &digest, cx)
 					}))
-					.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+					.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 						if matches!(event.keystroke.key.as_str(), "enter" | "space") {
 							s.acknowledge_misalignment(&keyboard_owner, &keyboard_digest, cx);
 							cx.stop_propagation();
@@ -120,7 +121,7 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::misalignment::*;
 	#[gpui::test]
 	fn review_requires_second_click_and_stale_findings_cannot_continue(
 		cx: &mut gpui::TestAppContext,

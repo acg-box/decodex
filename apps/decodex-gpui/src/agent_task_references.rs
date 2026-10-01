@@ -1,5 +1,8 @@
 //! Explicit task selection and per-manager composer drafts.
-use super::*;
+use gpui::{AnyElement, KeyDownEvent};
+use ui_theme::TEXT_MUTED;
+
+use crate::{shell::agent_surface::composer::*, ui_theme::HOVER_FILL};
 use decodex_protocol::AgentTaskReferenceDto;
 
 impl AgentSurface {
@@ -67,7 +70,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn task_reference_options(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn task_reference_options(&self, cx: &mut Context<Self>) -> AnyElement {
 		let query = self.task_reference_search.read(cx).content().trim().to_lowercase();
 		let mut list = div()
 			.id("task-reference-results")
@@ -115,7 +118,7 @@ impl AgentSurface {
 						.py_1()
 						.rounded(px(6.))
 						.cursor_pointer()
-						.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
+						.hover(|d| d.bg(rgba(HOVER_FILL)))
 						.child(
 							div()
 								.text_size(px(12.))
@@ -126,13 +129,13 @@ impl AgentSurface {
 						.child(
 							div()
 								.text_size(px(10.))
-								.text_color(rgb(ui_theme::TEXT_MUTED))
+								.text_color(rgb(TEXT_MUTED))
 								.child(work.id.clone()),
 						)
 						.on_click(cx.listener(move |s, _, _, cx| {
 							s.select_task_reference(clicked.clone(), cx)
 						}))
-						.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
+						.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 							if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 								s.select_task_reference(reference.clone(), cx);
 								cx.stop_propagation();
@@ -157,14 +160,14 @@ impl AgentSurface {
 			.child(
 				div()
 					.text_size(px(10.))
-					.text_color(rgb(ui_theme::TEXT_MUTED))
+					.text_color(rgb(TEXT_MUTED))
 					.child("Sending grants read access to the selected task history."),
 			)
 			.child(list)
 			.into_any_element()
 	}
 
-	pub(super) fn task_reference_row(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+	pub(super) fn task_reference_row(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
 		if self.task_references.is_empty() {
 			return None;
 		}
@@ -211,7 +214,7 @@ impl AgentSurface {
 						s.task_references.retain(|r| r != &clicked);
 						cx.notify();
 					}))
-					.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
+					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 						if ["enter", "space", "backspace"].contains(&e.keystroke.key.as_str()) {
 							s.task_references.retain(|r| r != &remove);
 							cx.notify();
@@ -228,7 +231,9 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::composer::task_references::*;
+
+	use std::{slice, thread};
 
 	fn reference(id: &str) -> AgentTaskReferenceDto {
 		AgentTaskReferenceDto {
@@ -258,7 +263,7 @@ mod tests {
 
 			assert_eq!(s.task_references.len(), 2);
 
-			s.clear_sent_task_references(std::slice::from_ref(&first), true, None);
+			s.clear_sent_task_references(slice::from_ref(&first), true, None);
 
 			assert_eq!(s.task_references, vec![later.clone()]);
 
@@ -320,7 +325,7 @@ mod tests {
 		});
 		visual.simulate_keystrokes("v e r i f y");
 
-		std::thread::sleep(std::time::Duration::from_millis(220));
+		thread::sleep(std::time::Duration::from_millis(220));
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear();

@@ -2,13 +2,13 @@
 // Copyright OpenAI. Licensed under Apache-2.0; see LICENSE-APACHE.
 //! Bounded sequence timelines with ordered messages and explicitly nested control fragments.
 
-use super::{
-	RenderError, Span,
-	draw::put_text,
-	output::{Cell, finish},
-	parse::{check_label, identifier},
-};
 use unicode_width::UnicodeWidthStr;
+
+use crate::shell::agent_surface::markdown::mermaid::{
+	MAX_CELLS, RenderError, Span, draw,
+	output::{self, Cell},
+	parse::{self},
+};
 
 #[derive(Debug)]
 enum Event {
@@ -36,9 +36,9 @@ pub(super) fn render(body: &[&str], max_width: usize) -> Result<Vec<Vec<Span>>, 
 		{
 			rest = after;
 
-			let id = identifier(&mut rest)?;
+			let id = parse::identifier(&mut rest)?;
 			let label = if let Some(label) = rest.trim_start().strip_prefix("as ") {
-				check_label(label)?;
+				parse::check_label(label)?;
 
 				label
 			} else if rest.trim().is_empty() {
@@ -77,13 +77,13 @@ pub(super) fn render(body: &[&str], max_width: usize) -> Result<Vec<Vec<Span>>, 
 
 			*branched = true;
 
-			check_label(text)?;
+			parse::check_label(text)?;
 
 			Event::Branch(format!("else {text}"))
 		} else if let Some((kind @ ("loop" | "alt" | "opt" | "critical" | "break"), text)) =
 			line.split_once(' ')
 		{
-			check_label(text)?;
+			parse::check_label(text)?;
 
 			if blocks.len() == 4 {
 				return Err(RenderError::Limit);
@@ -97,21 +97,21 @@ pub(super) fn render(body: &[&str], max_width: usize) -> Result<Vec<Vec<Span>>, 
 		{
 			rest = after;
 
-			let left = participant(&mut people, identifier(&mut rest)?)?;
+			let left = participant(&mut people, parse::identifier(&mut rest)?)?;
 			let right = if let Some(after) = rest.trim_start().strip_prefix(',') {
 				rest = after;
 
-				participant(&mut people, identifier(&mut rest)?)?
+				participant(&mut people, parse::identifier(&mut rest)?)?
 			} else {
 				left
 			};
 			let text = rest.trim_start().strip_prefix(':').ok_or(RenderError::Unsupported)?.trim();
 
-			check_label(text)?;
+			parse::check_label(text)?;
 
 			Event::Note { left: left.min(right), right: left.max(right), text: text.to_owned() }
 		} else {
-			let from = participant(&mut people, identifier(&mut rest)?)?;
+			let from = participant(&mut people, parse::identifier(&mut rest)?)?;
 
 			rest = rest.trim_start();
 
@@ -134,10 +134,10 @@ pub(super) fn render(body: &[&str], max_width: usize) -> Result<Vec<Vec<Span>>, 
 			}
 
 			let (dashed, arrow) = operator.ok_or(RenderError::Unsupported)?;
-			let to = participant(&mut people, identifier(&mut rest)?)?;
+			let to = participant(&mut people, parse::identifier(&mut rest)?)?;
 			let text = rest.trim_start().strip_prefix(':').ok_or(RenderError::Unsupported)?.trim();
 
-			check_label(text)?;
+			parse::check_label(text)?;
 
 			Event::Message { from, to, text: text.to_owned(), dashed, arrow }
 		};
@@ -170,7 +170,7 @@ pub(super) fn render(body: &[&str], max_width: usize) -> Result<Vec<Vec<Span>>, 
 	let last = centers[people.len() - 1];
 	let width = (last + box_width - box_width / 2 + 10).max(last + text_width + 14);
 
-	if width * (3 + 4 * events.len()) > super::MAX_CELLS {
+	if width * (3 + 4 * events.len()) > MAX_CELLS {
 		return Err(RenderError::Limit);
 	}
 
@@ -191,7 +191,7 @@ pub(super) fn render(body: &[&str], max_width: usize) -> Result<Vec<Vec<Span>>, 
 		rows[1][left] = Cell::node('│');
 		rows[1][right] = Cell::node('│');
 
-		put_text(&mut rows[1], left + 2, name)?;
+		draw::put_text(&mut rows[1], left + 2, name)?;
 	}
 
 	let mut depth = 0;
@@ -221,7 +221,7 @@ pub(super) fn render(body: &[&str], max_width: usize) -> Result<Vec<Vec<Span>>, 
 				let arrow = if a >= b && arrow == '▶' { '◀' } else { arrow };
 				let stroke = if dashed { '┄' } else { '─' };
 
-				put_text(&mut rows[top], a.min(b) + 2, &text)?;
+				draw::put_text(&mut rows[top], a.min(b) + 2, &text)?;
 
 				if a == b {
 					rows[top + 1][a..a + 4].fill(Cell::edge(stroke));
@@ -264,7 +264,7 @@ pub(super) fn render(body: &[&str], max_width: usize) -> Result<Vec<Vec<Span>>, 
 				rows[top + 1][start] = Cell::node('│');
 				rows[top + 1][end] = Cell::node('│');
 
-				put_text(&mut rows[top + 1], start + 2, &label)?;
+				draw::put_text(&mut rows[top + 1], start + 2, &label)?;
 			},
 			Event::Open(label) | Event::Branch(label) => {
 				let opening = !label.starts_with("else ");
@@ -281,7 +281,7 @@ pub(super) fn render(body: &[&str], max_width: usize) -> Result<Vec<Vec<Span>>, 
 				rows[top][left] = Cell::node(if opening { '┌' } else { '├' });
 				rows[top][right] = Cell::node(if opening { '┐' } else { '┤' });
 
-				put_text(&mut rows[top], left + 2, &label)?;
+				draw::put_text(&mut rows[top], left + 2, &label)?;
 
 				for row in &mut rows[top + 1..top + 3] {
 					row[left] = Cell::node('│');
@@ -314,7 +314,7 @@ pub(super) fn render(body: &[&str], max_width: usize) -> Result<Vec<Vec<Span>>, 
 		return Err(RenderError::TooWide);
 	}
 
-	Ok(finish(rows))
+	Ok(output::finish(rows))
 }
 
 fn participant(people: &mut Vec<(String, String, bool)>, id: &str) -> Result<usize, RenderError> {

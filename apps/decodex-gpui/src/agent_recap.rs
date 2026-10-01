@@ -4,7 +4,7 @@
 
 pub(super) use automatic::Automatic;
 
-use super::{mcp_forms::mcp_button, *};
+use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
 
 use decodex_protocol::{TaskRecapPhase as Phase, TaskRecapStatus};
 

@@ -1,24 +1,24 @@
 //! Host-local insertion cursor preferences and low-frequency blink lifecycle.
-use super::ComposerInput;
-
-use gpui::{App, Context, Subscription, Task, Window};
-
 use std::{
 	ops::Range,
 	sync::atomic::{AtomicU8, Ordering},
 	time::Duration,
 };
 
+use gpui::{App, Context, Subscription, Task, Window, WindowId};
+
+use crate::composer_input::ComposerInput;
+
 static PREFERENCE: AtomicU8 = AtomicU8::new(u8::MAX);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Shape {
 	Bar,
 	Block,
 	Underline,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct Preference {
 	pub shape: Shape,
 	pub blinking: bool,
@@ -73,7 +73,7 @@ pub(super) struct Cursor {
 	selection: Range<usize>,
 	length: usize,
 	timer: Option<Task<()>>,
-	window: Option<gpui::WindowId>,
+	window: Option<WindowId>,
 	subscriptions: Vec<Subscription>,
 }
 impl Cursor {
@@ -192,7 +192,7 @@ fn saved() -> Option<u8> {
 fn save(_: u8) {}
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::composer_input::cursor::{self, Preference, Shape};
 
 	#[test]
 	fn saved_cursor_choices_round_trip() {
@@ -207,9 +207,9 @@ mod tests {
 
 	#[test]
 	fn retained_focus_in_an_inactive_window_never_shows_a_caret() {
-		assert!(!eligible(true, false, true));
-		assert!(!eligible(false, true, true));
-		assert!(!eligible(true, true, false));
-		assert!(eligible(true, true, true));
+		assert!(!cursor::eligible(true, false, true));
+		assert!(!cursor::eligible(false, true, true));
+		assert!(!cursor::eligible(true, true, false));
+		assert!(cursor::eligible(true, true, true));
 	}
 }

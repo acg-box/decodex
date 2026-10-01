@@ -1,24 +1,28 @@
 //! Inline account Reset Cards. The service owns receipts and recovery.
-use super::{
-	ControlTooltip, Destination, Shell, account_needs_login, account_row_action,
-	quota_meter::ResetFill,
-};
-
-use decodex_protocol::{
-	AccountResetCardOperationResult, ClientProfile, EntityId, EntityRevision, IdempotencyKey,
-	ResetCardClient, ResetCardConsumeResponse, ResetCardDescriptorDto, ResetCardInventoryResult,
-	ResetCardOperationResult, ResetCardOutcome,
-};
-
-use gpui::{AnyElement, Context, div, prelude::*, px, rgb, rgba};
-
 use std::{
 	collections::HashMap,
+	future::Future,
+	process,
 	sync::{
 		atomic::{AtomicU64, Ordering},
 		mpsc::{self, Receiver},
 	},
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
+
+use gpui::{AnyElement, Context, SharedString, div, prelude::*, px, rgb, rgba};
+use time::OffsetDateTime;
+use tokio::runtime::Builder;
+
+use crate::shell::{
+	ControlTooltip, Destination, Shell, WB_AMBER, WB_TEXT_MUTED, account_needs_login,
+	account_row_action, quota_meter, quota_meter::ResetFill, workspace_symbols,
+	workspace_symbols::Symbol,
+};
+use decodex_protocol::{
+	AccountDto, AccountResetCardOperationResult, ClientProfile, EntityId, EntityRevision,
+	IdempotencyKey, ResetCardClient, ResetCardConsumeResponse, ResetCardDescriptorDto,
+	ResetCardInventoryResult, ResetCardOperationResult, ResetCardOutcome,
 };
 
 const CONFIRMATION_WINDOW: Duration = Duration::from_secs(5);
@@ -113,10 +117,7 @@ struct Update {
 }
 
 impl Shell {
-	pub(super) fn reset_fill_for(
-		&self,
-		account: &decodex_protocol::AccountDto,
-	) -> Option<ResetFill> {
+	pub(super) fn reset_fill_for(&self, account: &AccountDto) -> Option<ResetFill> {
 		self.reset_cards
 			.fills
 			.get(&account.account_id)
@@ -136,7 +137,7 @@ impl Shell {
                 && matches!(&row.inventory, Some(ResetCardInventoryResult::Available { account_revision, details_complete: true, cards, .. })
                     if *account_revision == revision && cards.iter().any(|card| card.descriptor == descriptor))
         }) && self.accounts.accounts.iter().any(|row| row.account_id == account && row.account_revision == revision && !account_needs_login(row))
-            && descriptor.expires_at_unix_seconds().is_none_or(|expiry| expiry > time::OffsetDateTime::now_utc().unix_timestamp());
+            && descriptor.expires_at_unix_seconds().is_none_or(|expiry| expiry > OffsetDateTime::now_utc().unix_timestamp());
 
 		if !eligible {
 			return;
@@ -166,7 +167,7 @@ impl Shell {
 		};
 		let Ok(key) = IdempotencyKey::new(format!(
 			"decodex-reset-{}-{}-{}",
-			std::process::id(),
+			process::id(),
 			timestamp.as_nanos(),
 			NEXT_CONFIRMATION.fetch_add(1, Ordering::Relaxed)
 		)) else {
@@ -230,7 +231,7 @@ impl Shell {
 		&mut self,
 		account: EntityId,
 		cx: &mut Context<Self>,
-		work: impl std::future::Future<Output = Update> + Send + 'static,
+		work: impl Future<Output = Update> + Send + 'static,
 	) {
 		let (sender, receiver) = mpsc::channel();
 
@@ -238,17 +239,16 @@ impl Shell {
 		self.reset_cards.updates = Some(receiver);
 		cx.background_executor()
 			.spawn(async move {
-				let result =
-					match tokio::runtime::Builder::new_current_thread().enable_all().build() {
-						Ok(runtime) => runtime.block_on(work),
-						Err(_) => Update {
-							completed_reset: None,
-							inventory: None,
-							blocked: true,
-							pending_key: None,
-							message: "Reset Cards are temporarily unavailable.".into(),
-						},
-					};
+				let result = match Builder::new_current_thread().enable_all().build() {
+					Ok(runtime) => runtime.block_on(work),
+					Err(_) => Update {
+						completed_reset: None,
+						inventory: None,
+						blocked: true,
+						pending_key: None,
+						message: "Reset Cards are temporarily unavailable.".into(),
+					},
+				};
 				let _ = sender.send((account, result));
 			})
 			.detach();
@@ -270,7 +270,7 @@ impl Shell {
 				{
 					fill.started = Instant::now();
 					fill.confirmed_at_micros =
-						(time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000) as i64;
+						(OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000) as i64;
 
 					self.reset_cards.fills.insert(account.clone(), fill);
 
@@ -376,7 +376,7 @@ impl Shell {
 
 pub(super) fn row(
 	shell: &Shell,
-	account: &decodex_protocol::AccountDto,
+	account: &AccountDto,
 	cx: &mut Context<Shell>,
 ) -> Option<AnyElement> {
 	let state = shell.reset_cards.rows.get(&account.account_id)?;
@@ -404,7 +404,7 @@ pub(super) fn row(
 	}
 
 	let mut strip = div()
-		.id(gpui::SharedString::from(format!("reset-cards-{}", account.account_id.as_str())))
+		.id(SharedString::from(format!("reset-cards-{}", account.account_id.as_str())))
 		.w_full()
 		.flex()
 		.flex_wrap()
@@ -412,7 +412,7 @@ pub(super) fn row(
 		.gap_1()
 		.px(px(14.))
 		.pb(px(4.))
-		.child(super::workspace_symbols::icon(super::workspace_symbols::Symbol::ResetCards));
+		.child(workspace_symbols::icon(Symbol::ResetCards));
 
 	for (index, descriptor) in descriptors.into_iter().enumerate() {
 		let account_id = account.account_id.clone();
@@ -442,7 +442,7 @@ pub(super) fn row(
 			&& !used
 			&& descriptor
 				.expires_at_unix_seconds()
-				.is_none_or(|expiry| expiry > time::OffsetDateTime::now_utc().unix_timestamp());
+				.is_none_or(|expiry| expiry > OffsetDateTime::now_utc().unix_timestamp());
 		let tip = if state.blocked {
 			state.message.clone()
 		} else {
@@ -453,17 +453,13 @@ pub(super) fn row(
 			account_row_action("reset-card", index, "Use Reset Card", "", enabled)
 				.border_1()
 				.border_color(rgba(0xffffff26))
-				.id(gpui::SharedString::from(format!("reset-card-{}-{index}", account_id.as_str())))
+				.id(SharedString::from(format!("reset-card-{}-{index}", account_id.as_str())))
 				.debug_selector({
 					let id = account_id.clone();
 
 					move || format!("reset-card-{}-{index}", id.as_str())
 				})
-				.text_color(rgb(if armed.is_some() {
-					super::WB_AMBER
-				} else {
-					super::WB_TEXT_MUTED
-				}))
+				.text_color(rgb(if armed.is_some() { WB_AMBER } else { WB_TEXT_MUTED }))
 				.tooltip(move |_, cx| cx.new(|_| ControlTooltip(tip.clone())).into())
 				.child(title)
 				.on_click(cx.listener(move |shell, _, _, cx| {
@@ -519,7 +515,7 @@ fn operation_presentation(
 }
 
 fn date(seconds: i64) -> String {
-	super::quota_meter::local_date_time(seconds).unwrap_or_else(|| "Unknown expiry".into())
+	quota_meter::local_date_time(seconds).unwrap_or_else(|| "Unknown expiry".into())
 }
 
 async fn load(
@@ -554,7 +550,7 @@ async fn load(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::reset_cards::*;
 	#[test]
 	fn missing_or_ambiguous_receipts_block_new_redemption() {
 		assert!(operation_presentation(None, false).0);
@@ -597,9 +593,11 @@ mod tests {
 }
 #[cfg(test)]
 mod render_tests {
-	use super::*;
-	use crate::client_lifecycle::ConnectionView;
-	use gpui::{Modifiers, TestAppContext, size};
+	use crate::{client_lifecycle::ConnectionView, shell::reset_cards::*};
+	use gpui::{self, Modifiers, TestAppContext};
+
+	use std::thread;
+
 	#[gpui::test]
 	fn quota_columns_remain_aligned_when_one_window_is_unavailable(cx: &mut TestAppContext) {
 		let (shell, visual) =
@@ -615,7 +613,7 @@ mod render_tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(size(px(1_248.), px(840.)));
+			window.resize(gpui::size(px(1_248.), px(840.)));
 			window.draw(cx).clear();
 		});
 
@@ -667,7 +665,7 @@ mod render_tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(size(px(1_248.), px(840.)));
+			window.resize(gpui::size(px(1_248.), px(840.)));
 			window.draw(cx).clear();
 		});
 
@@ -693,7 +691,7 @@ mod render_tests {
 				window.draw(cx).clear();
 			});
 
-			std::thread::sleep(Duration::from_millis(250));
+			thread::sleep(Duration::from_millis(250));
 
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
@@ -739,11 +737,11 @@ mod render_tests {
 		});
 
 		visual.update(|window, cx| {
-			window.resize(size(px(1_440.), px(1_000.)));
+			window.resize(gpui::size(px(1_440.), px(1_000.)));
 			window.draw(cx).clear();
 		});
 
-		std::thread::sleep(Duration::from_millis(250));
+		thread::sleep(Duration::from_millis(250));
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear();
@@ -775,7 +773,7 @@ mod render_tests {
 			window.draw(cx).clear();
 		});
 
-		std::thread::sleep(Duration::from_millis(250));
+		thread::sleep(Duration::from_millis(250));
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear();

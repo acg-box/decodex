@@ -1,5 +1,12 @@
 //! Wrapped text geometry shared by painting, selection, and native input methods.
-use super::*;
+use core::panic::Location;
+use std::mem;
+
+use cursor::{Preference, Shape};
+use gpui::TextAlign;
+use ui_theme::{BODY_LINE_HEIGHT, BODY_SIZE};
+
+use crate::composer_input::*;
 
 pub(super) struct ComposerTextElement {
 	pub(super) input: Entity<ComposerInput>,
@@ -20,7 +27,7 @@ impl Element for ComposerTextElement {
 		None
 	}
 
-	fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+	fn source_location(&self) -> Option<&'static Location<'static>> {
 		None
 	}
 
@@ -50,10 +57,7 @@ impl Element for ComposerTextElement {
 
 				size(
 					width,
-					height(&lines).clamp(
-						px(ui_theme::BODY_LINE_HEIGHT),
-						px(ui_theme::BODY_LINE_HEIGHT * limit),
-					),
+					height(&lines).clamp(px(BODY_LINE_HEIGHT), px(BODY_LINE_HEIGHT * limit)),
 				)
 			}),
 			(),
@@ -78,7 +82,7 @@ impl Element for ComposerTextElement {
 		} else {
 			input
 				.text_offset
-				.max(caret + px(ui_theme::BODY_LINE_HEIGHT) - bounds.size.height)
+				.max(caret + px(BODY_LINE_HEIGHT) - bounds.size.height)
 				.min(caret)
 				.clamp(px(0.0), max)
 		};
@@ -105,7 +109,7 @@ impl Element for ComposerTextElement {
 				window.is_window_active(),
 				input.selected_range.is_empty(),
 			);
-		let cursor_shape = cursor::Preference::configured().shape;
+		let cursor_shape = Preference::configured().shape;
 		let next = next_boundary(&input.content, input.cursor_offset());
 		let gutter = px(0.);
 		let origin = bounds.origin + point(gutter, -state.offset);
@@ -116,7 +120,7 @@ impl Element for ComposerTextElement {
 		let mut start = 0;
 
 		for line in &state.lines {
-			let line_height = px(ui_theme::BODY_LINE_HEIGHT);
+			let line_height = px(BODY_LINE_HEIGHT);
 			let rows = line.wrap_boundaries().len() + 1;
 
 			for row in 0..rows {
@@ -157,7 +161,7 @@ impl Element for ComposerTextElement {
 			let _ = line.paint(
 				origin + point(px(0.0), y),
 				line_height,
-				gpui::TextAlign::Left,
+				TextAlign::Left,
 				None,
 				window,
 				cx,
@@ -173,21 +177,15 @@ impl Element for ComposerTextElement {
 			let width = if next.y == caret.y && next.x > caret.x {
 				next.x - caret.x
 			} else {
-				px(ui_theme::BODY_SIZE * 0.6)
+				px(BODY_SIZE * 0.6)
 			};
 			let (offset, extent, color) = match cursor_shape {
-				cursor::Shape::Bar => (
-					point(px(0.), px(0.)),
-					size(px(1.5), px(ui_theme::BODY_LINE_HEIGHT)),
-					rgba(0xe5e7ebff),
-				),
-				cursor::Shape::Block => (
-					point(px(0.), px(0.)),
-					size(width, px(ui_theme::BODY_LINE_HEIGHT)),
-					rgba(0xe5e7eb55),
-				),
-				cursor::Shape::Underline => (
-					point(px(0.), px(ui_theme::BODY_LINE_HEIGHT - 2.)),
+				Shape::Bar =>
+					(point(px(0.), px(0.)), size(px(1.5), px(BODY_LINE_HEIGHT)), rgba(0xe5e7ebff)),
+				Shape::Block =>
+					(point(px(0.), px(0.)), size(width, px(BODY_LINE_HEIGHT)), rgba(0xe5e7eb55)),
+				Shape::Underline => (
+					point(px(0.), px(BODY_LINE_HEIGHT - 2.)),
 					size(width, px(2.)),
 					rgba(0xe5e7ebff),
 				),
@@ -197,7 +195,7 @@ impl Element for ComposerTextElement {
 		}
 
 		self.input.update(cx, |input, _| {
-			input.last_layout = Some(std::mem::take(&mut state.lines));
+			input.last_layout = Some(mem::take(&mut state.lines));
 			input.last_bounds = Some(Bounds::new(
 				bounds.origin + point(gutter, px(0.0)),
 				size(bounds.size.width - gutter, bounds.size.height),
@@ -219,13 +217,13 @@ pub(super) fn position_at(lines: &[WrappedLine], index: usize) -> Point<Pixels> 
 	for line in lines {
 		if index <= start + line.len() {
 			return line
-				.position_for_index(index - start, px(ui_theme::BODY_LINE_HEIGHT))
+				.position_for_index(index - start, px(BODY_LINE_HEIGHT))
 				.unwrap_or_default()
 				+ point(px(0.0), y);
 		}
 
 		start += line.len() + 1;
-		y += line.size(px(ui_theme::BODY_LINE_HEIGHT)).height;
+		y += line.size(px(BODY_LINE_HEIGHT)).height;
 	}
 
 	point(px(0.0), y)
@@ -236,14 +234,14 @@ pub(super) fn index_at(lines: &[WrappedLine], position: Point<Pixels>) -> usize 
 	let mut y = px(0.0);
 
 	for line in lines {
-		let next = y + line.size(px(ui_theme::BODY_LINE_HEIGHT)).height;
+		let next = y + line.size(px(BODY_LINE_HEIGHT)).height;
 
 		if position.y < next {
 			return start
 				+ line
 					.closest_index_for_position(
 						point(position.x, (position.y - y).max(px(0.0))),
-						px(ui_theme::BODY_LINE_HEIGHT),
+						px(BODY_LINE_HEIGHT),
 					)
 					.unwrap_or_else(|index| index);
 		}
@@ -256,7 +254,7 @@ pub(super) fn index_at(lines: &[WrappedLine], position: Point<Pixels>) -> usize 
 }
 
 fn height(lines: &[WrappedLine]) -> Pixels {
-	lines.iter().map(|line| line.size(px(ui_theme::BODY_LINE_HEIGHT)).height).sum()
+	lines.iter().map(|line| line.size(px(BODY_LINE_HEIGHT)).height).sum()
 }
 
 fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLine> {

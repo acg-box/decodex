@@ -1,15 +1,24 @@
-use super::*;
-
-use decodex_protocol::{
-	CURRENT_VERSION, ClientMessage, Cursor, QueryPayload, QueryResultEnvelope, QueryResultPayload,
-	ReconnectMode, ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
+use std::{
+	fs,
+	fs::Permissions,
+	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+	thread,
+	thread::JoinHandle,
+	time::Duration,
 };
 
-use futures_util::{SinkExt, StreamExt};
-
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
-
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::TestAppContext;
+use tempfile::TempDir;
+use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::native_goal::*;
+use decodex_protocol::{
+	AgentNativeGoal, AgentNativeGoalStatus, AgentWorkKindDto, CURRENT_VERSION, ClientMessage,
+	Cursor, QueryPayload, QueryResultEnvelope, QueryResultPayload, ReconnectMode, ServerId,
+	ServerMessage, ServerWelcome, SnapshotEnvelope,
+};
 
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
@@ -22,35 +31,35 @@ impl Render for GoalView {
 	}
 }
 
-fn fixture() -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<()>) {
+fn fixture() -> (TempDir, ClientProfile, JoinHandle<()>) {
 	let root = tempfile::tempdir_in("/tmp").unwrap();
 	let path = root.path().canonicalize().unwrap();
 	let server = path.join("server");
 
-	std::fs::create_dir(&server).unwrap();
-	std::fs::set_permissions(&server, std::fs::Permissions::from_mode(0o700)).unwrap();
+	fs::create_dir(&server).unwrap();
+	fs::set_permissions(&server, Permissions::from_mode(0o700)).unwrap();
 
-	let uid = std::fs::metadata(&path).unwrap().uid();
+	let uid = fs::metadata(&path).unwrap().uid();
 	let config = path.join("config.toml");
 
-	std::fs::write(&config,format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"{SERVER}\"\n")).unwrap();
-	std::fs::set_permissions(config, std::fs::Permissions::from_mode(0o600)).unwrap();
+	fs::write(&config,format!("version = 1\nactive_profile = \"local\"\ncache = {{}}\n[profiles.local]\nkind = \"local\"\npolicy = \"same_uid\"\nservice_owner_uid = {uid}\nexpected_server_identity = \"{SERVER}\"\n")).unwrap();
+	fs::set_permissions(config, Permissions::from_mode(0o600)).unwrap();
 
 	let socket_path = server.join("decodex.sock");
 	let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
 
-	std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+	fs::set_permissions(socket_path, Permissions::from_mode(0o600)).unwrap();
 
 	listener.set_nonblocking(true).unwrap();
 
 	let profile = ClientProfile::load(&path, None).unwrap();
-	let thread = std::thread::spawn(move || {
-		let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	let thread = thread::spawn(move || {
+		let runtime = Builder::new_current_thread().enable_all().build().unwrap();
 
 		runtime.block_on(async {
 			let listener = tokio::net::UnixListener::from_std(listener).unwrap();
 
-			tokio::time::timeout(std::time::Duration::from_secs(5), serve(listener)).await.unwrap()
+			time::timeout(Duration::from_secs(5), serve(listener)).await.unwrap()
 		})
 	});
 
@@ -61,7 +70,7 @@ fn work() -> AgentWorkItemDto {
 	AgentWorkItemDto {
 		id: "root".into(),
 		parent_goal_id: None,
-		kind: decodex_protocol::AgentWorkKindDto::Goal,
+		kind: AgentWorkKindDto::Goal,
 		title: "Root".into(),
 		codex_thread_id: Some("thread".into()),
 		active_turn_id: Some("turn".into()),
@@ -84,7 +93,7 @@ fn snapshot() -> AgentSnapshotDto {
 }
 
 #[gpui::test]
-fn native_goal_panel_reads_refreshes_and_switches_exact_child(cx: &mut gpui::TestAppContext) {
+fn native_goal_panel_reads_refreshes_and_switches_exact_child(cx: &mut TestAppContext) {
 	let (_dir, profile, server) = fixture();
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
@@ -155,7 +164,7 @@ fn native_goal_panel_reads_refreshes_and_switches_exact_child(cx: &mut gpui::Tes
 
 #[gpui::test]
 fn native_goal_observation_does_not_return_after_source_or_thread_restoration(
-	cx: &mut gpui::TestAppContext,
+	cx: &mut TestAppContext,
 ) {
 	let surface = cx.new(AgentSurface::new);
 
@@ -233,11 +242,11 @@ async fn serve(listener: tokio::net::UnixListener) {
 		assert_eq!(thread_id.as_str(), target);
 
 		let returned = if index == 3 { "wrong-thread" } else { target };
-		let goal = (index != 1).then(|| decodex_protocol::AgentNativeGoal {
+		let goal = (index != 1).then(|| AgentNativeGoal {
 			thread_id: returned.into(),
 			objective: format!("{target} objective"),
 			objective_truncated: false,
-			status: decodex_protocol::AgentNativeGoalStatus::BudgetLimited,
+			status: AgentNativeGoalStatus::BudgetLimited,
 			token_budget: Some(11),
 			tokens_used: 12,
 			time_used_seconds: 7,

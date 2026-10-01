@@ -1,9 +1,11 @@
 //! Content bounds and direct manipulation for the Agent workspace.
-use super::*;
+use crate::shell::agent_surface::*;
 
 use gpui::{AnyElement, MouseButton, MouseMoveEvent};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+use crate::ui_motion;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Panel {
 	Left,
 	Right,
@@ -123,7 +125,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let width = sidebar_width(self.sidebar_width, window.viewport_size().width.into());
-		let fraction = crate::ui_motion::value(
+		let fraction = ui_motion::value(
 			"agent-sidebar-visibility",
 			if self.sidebar_visible && wide { 1.0 } else { 0.0 },
 			window,
@@ -234,7 +236,7 @@ fn sidebar_width(requested: f32, viewport: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::workspace_size::*;
 	#[gpui::test]
 	fn sidebar_drag_tracks_pointer_and_stops_on_release(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));

@@ -1,5 +1,10 @@
 //! Task-scoped native integration observations; discovery never grants capability.
-use super::*;
+use std::rc::Rc;
+
+use gpui::{AnyElement, KeyDownEvent};
+use tokio::runtime::Builder;
+
+use crate::{shell::agent_surface::*, ui_loading};
 use decodex_protocol::{
 	AgentAppInventory, AgentIntegrationsResult, AgentMcpInventory, AgentPluginInventory,
 };
@@ -82,11 +87,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn integrations_panel(
-		&self,
-		work: &str,
-		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	pub(super) fn integrations_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		let opened = self.integrations.as_ref().filter(|(owner, _)| owner == work);
 		let work_id = work.to_owned();
 		let mut panel = div().flex().flex_col().gap_2().child(integration_button(
@@ -141,7 +142,7 @@ impl AgentSurface {
 			panel = panel.child(self.app_exposure_panel(work, cx));
 
 			let text = match result {
-				None => crate::ui_loading::loading("Loading tools and plugins").into_any_element(),
+				None => ui_loading::loading("Loading tools and plugins").into_any_element(),
 				Some(result) => div().child(integration_text(result)).into_any_element(),
 			};
 
@@ -176,8 +177,7 @@ impl AgentSurface {
 		let work = work.to_owned();
 		let requested = work.clone();
 		let query = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime
 				.block_on(AgentClient::new(profile).integrations(EntityId::new(requested).ok()?))
@@ -321,10 +321,10 @@ fn integration_button(
 	label: impl Into<String>,
 	cx: &mut Context<AgentSurface>,
 	action: impl Fn(&mut AgentSurface, &mut Context<AgentSurface>) + 'static,
-) -> gpui::AnyElement {
+) -> AnyElement {
 	let id = id.into();
 	let label = label.into();
-	let action = std::rc::Rc::new(action);
+	let action = Rc::new(action);
 	let click = action.clone();
 
 	div()
@@ -335,7 +335,7 @@ fn integration_button(
 		.aria_label(label.clone())
 		.cursor_pointer()
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
-		.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 				cx.stop_propagation();
 
@@ -378,7 +378,18 @@ fn app_inventory_text(inventory: &AgentAppInventory) -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::integrations::*;
+	use decodex_protocol::{
+		CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
+		ServerId, ServerMessage,
+	};
+
+	use futures_util::{SinkExt as _, StreamExt as _};
+
+	use tokio_tungstenite::tungstenite::Message;
+
+	use crate::shell::agent_surface::wire_test_support;
+
 	#[test]
 	fn incomplete_plugin_discovery_and_mcp_failure_never_render_as_empty_success() {
 		let text = integration_text(&AgentIntegrationsResult::Available {
@@ -445,44 +456,33 @@ mod tests {
 	}
 	#[gpui::test]
 	fn ordinary_refresh_keeps_integration_status_read(cx: &mut gpui::TestAppContext) {
-		use decodex_protocol::{
-			CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
-			ServerId, ServerMessage,
-		};
+		let (_dir, profile, server) = wire_test_support::fixture(|listener| async move {
+			let mut socket = wire_test_support::accept(&listener).await;
+			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+				panic!("text query")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
+				panic!("read only")
+			};
 
-		use futures_util::{SinkExt, StreamExt};
+			assert!(
+				matches!(query.payload, QueryPayload::GetAgentIntegrations { ref work_id } if work_id.as_str() == "agent")
+			);
 
-		use tokio_tungstenite::tungstenite::Message;
+			let response = ServerMessage::QueryResult(QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
+				query_id: query.query_id,
+				payload: QueryResultPayload::AgentIntegrations(
+					AgentIntegrationsResult::CapacityExceeded,
+				),
+			});
 
-		let (_dir, profile, server) = super::super::wire_test_support::fixture(
-			|listener| async move {
-				let mut socket = super::super::wire_test_support::accept(&listener).await;
-				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-					panic!("text query")
-				};
-				let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
-					panic!("read only")
-				};
-
-				assert!(
-					matches!(query.payload, QueryPayload::GetAgentIntegrations { ref work_id } if work_id.as_str() == "agent")
-				);
-
-				let response = ServerMessage::QueryResult(QueryResultEnvelope {
-					version: CURRENT_VERSION,
-					server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
-					query_id: query.query_id,
-					payload: QueryResultPayload::AgentIntegrations(
-						AgentIntegrationsResult::CapacityExceeded,
-					),
-				});
-
-				socket
-					.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
-					.await
-					.unwrap();
-			},
-		);
+			socket
+				.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
+				.await
+				.unwrap();
+		});
 		let surface = cx.new(AgentSurface::new);
 
 		surface.update(cx, |s, cx| {

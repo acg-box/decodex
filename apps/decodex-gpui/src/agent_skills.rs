@@ -1,7 +1,13 @@
 //! Select native skill references for the existing composer and draft owner.
-use super::*;
+use gpui::AnyElement;
+use tokio::runtime::Builder;
+use ui_theme::TEXT_MUTED;
 
-use decodex_protocol::{AgentSkillDto, AgentSkillsResult, AgentSkillsTarget};
+use crate::shell::agent_surface::*;
+use decodex_protocol::{
+	AgentAttachmentDto, AgentSkillDto, AgentSkillsResult, AgentSkillsTarget, AgentWorkKindDto,
+	InitialModelCatalogRequest, ModelCatalogPurpose,
+};
 
 #[derive(Default)]
 pub(super) struct Picker {
@@ -31,7 +37,7 @@ impl AgentSurface {
 				.iter()
 				.find(|work| {
 					Some(&work.id) == self.composer_manager.as_ref().or(self.selected.as_ref())
-						&& work.kind == decodex_protocol::AgentWorkKindDto::Manager
+						&& work.kind == AgentWorkKindDto::Manager
 				})
 				.or_else(|| snapshot.work_items.iter().find(|work| work.parent_goal_id.is_none()))
 		});
@@ -49,12 +55,12 @@ impl AgentSurface {
 
 			(
 				AgentSkillsTarget::New {
-					request: decodex_protocol::InitialModelCatalogRequest {
+					request: InitialModelCatalogRequest {
 						working_directory: ConversationWorkingDirectory::new(
 							self.cwd.read(cx).content().trim(),
 						)
 						.ok()?,
-						purpose: decodex_protocol::ModelCatalogPurpose::Agent,
+						purpose: ModelCatalogPurpose::Agent,
 						account_id: if account.is_empty() {
 							None
 						} else {
@@ -122,8 +128,7 @@ impl AgentSurface {
 
 		let target = source.target.clone();
 		let pending = cx.background_executor().spawn(async move {
-			let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build()
-			else {
+			let Ok(runtime) = Builder::new_current_thread().enable_all().build() else {
 				return AgentSkillsResult::Unavailable;
 			};
 
@@ -165,7 +170,7 @@ impl AgentSurface {
 		if self.attachments.len() >= 16 {
 			self.feedback = "Select at most 16 files, folders or skills.".into();
 		} else {
-			let attachment = decodex_protocol::AgentAttachmentDto {
+			let attachment = AgentAttachmentDto {
 				path: skill.path.clone(),
 				image: false,
 				skill_name: Some(skill.name.clone()),
@@ -181,7 +186,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn skill_options(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn skill_options(&self, cx: &mut Context<Self>) -> AnyElement {
 		let mut panel = div().flex().flex_col().gap_2().on_action(cx.listener(
 			|s, _: &SubmitComposer, _, cx| {
 				s.load_skills(cx);
@@ -240,14 +245,14 @@ impl AgentSurface {
 						div()
 							.px_2()
 							.text_size(px(10.))
-							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.text_color(rgb(TEXT_MUTED))
 							.child(skill.description.as_str().to_owned()),
 					)
 					.child(
 						div()
 							.px_2()
 							.text_size(px(9.))
-							.text_color(rgb(ui_theme::TEXT_MUTED))
+							.text_color(rgb(TEXT_MUTED))
 							.child(skill.path.as_str().to_owned()),
 					),
 			);
@@ -273,7 +278,7 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::skills::*;
 	use gpui::Focusable as _;
 	struct SkillPanel(Entity<AgentSurface>);
 	impl Render for SkillPanel {

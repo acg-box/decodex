@@ -2,8 +2,15 @@
 use std::time::{Duration, Instant};
 
 use gpui::{
-	App, Div, Element, ElementId, IntoElement, MouseButton, RenderOnce, Stateful, Window, div,
-	prelude::*, px,
+	AnyElement, App, Div, Element, ElementId, IntoElement, MouseButton, RenderOnce, Stateful,
+	Window, div, prelude::*, px,
+};
+
+#[cfg(all(target_os = "macos", not(test)))]
+use objc2::{
+	msg_send,
+	rc::Retained,
+	runtime::{AnyClass, AnyObject},
 };
 
 pub(crate) trait SmoothControl {
@@ -15,7 +22,7 @@ pub(crate) struct Reveal {
 	id: ElementId,
 	extent: f32,
 	horizontal: bool,
-	child: gpui::AnyElement,
+	child: AnyElement,
 }
 impl RenderOnce for Reveal {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -45,7 +52,7 @@ impl RenderOnce for Reveal {
 pub(crate) struct TabReveal {
 	pub id: ElementId,
 	pub visible: bool,
-	pub child: gpui::AnyElement,
+	pub child: AnyElement,
 	pub closed: Box<dyn FnOnce(&mut App)>,
 }
 impl RenderOnce for TabReveal {
@@ -106,7 +113,7 @@ pub(crate) struct Control {
 pub(crate) struct SwitchKnob {
 	id: &'static str,
 	enabled: bool,
-	child: gpui::AnyElement,
+	child: AnyElement,
 }
 impl RenderOnce for SwitchKnob {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -312,11 +319,6 @@ impl RenderOnce for Control {
 pub(crate) fn reduced() -> bool {
 	#[cfg(all(target_os = "macos", not(test)))]
 	{
-		use objc2::{
-			msg_send,
-			rc::Retained,
-			runtime::{AnyClass, AnyObject},
-		};
 		// AppKit owns this process-wide preference; called from UI rendering.
 		unsafe {
 			let workspace: Retained<AnyObject> =
@@ -420,7 +422,7 @@ pub(crate) fn switch_knob(id: &'static str, enabled: bool, child: impl IntoEleme
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::ui_motion::*;
 
 	#[test]
 	fn reduced_motion_finishes_an_in_progress_transition_immediately() {
@@ -466,7 +468,7 @@ mod tests {
 pub(crate) struct Disclosure {
 	id: ElementId,
 	visible: bool,
-	child: Box<dyn FnOnce(&mut App) -> gpui::AnyElement>,
+	child: Box<dyn FnOnce(&mut App) -> AnyElement>,
 }
 impl RenderOnce for Disclosure {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -528,7 +530,7 @@ impl RenderOnce for Disclosure {
 #[derive(IntoElement)]
 pub(crate) struct Arrival {
 	route: String,
-	child: gpui::AnyElement,
+	child: AnyElement,
 }
 impl RenderOnce for Arrival {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -568,7 +570,7 @@ impl RenderOnce for Arrival {
 pub(crate) struct Popover {
 	unframed: bool,
 	visible: bool,
-	child: gpui::AnyElement,
+	child: AnyElement,
 }
 impl Popover {
 	pub(crate) fn unframed(mut self, unframed: bool) -> Self {
@@ -621,7 +623,7 @@ pub(crate) fn disclosure(
 pub(crate) fn disclosure_lazy(
 	id: impl Into<ElementId>,
 	visible: bool,
-	child: impl FnOnce(&mut App) -> gpui::AnyElement + 'static,
+	child: impl FnOnce(&mut App) -> AnyElement + 'static,
 ) -> Disclosure {
 	Disclosure { id: id.into(), visible, child: Box::new(child) }
 }

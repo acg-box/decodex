@@ -1,6 +1,16 @@
 //! Expand exact worker tool evidence in place, without leaving the conversation.
-use super::*;
-use decodex_protocol::{AgentActivityDetailCursor, AgentActivityDetailResult, AgentActivityDto};
+use gpui::{AnyElement, Div, KeyDownEvent};
+use tokio::runtime::Builder;
+use ui_theme::{TEXT, TEXT_MUTED};
+
+use crate::{
+	shell::agent_surface::{selectable_text::SelectableText, *},
+	ui_loading,
+	ui_theme::HOVER_FILL,
+};
+use decodex_protocol::{
+	AgentActivityDetailCursor, AgentActivityDetailResult, AgentActivityDto, AgentTimelineContent,
+};
 
 #[derive(Default)]
 pub(super) struct ActivityDetailState {
@@ -55,9 +65,9 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		item: &AgentActivityDto,
-		row: gpui::Div,
+		row: Div,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		if ![
 			"commandExecution",
 			"fileChange",
@@ -118,11 +128,11 @@ impl AgentSurface {
 					.aria_label(format!("Inspect {}", item.label))
 					.aria_expanded(expanded)
 					.cursor_pointer()
-					.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
+					.hover(|d| d.bg(rgba(HOVER_FILL)))
 					.on_click(
 						cx.listener(move |s, _, _, cx| s.toggle_activity_detail(click.clone(), cx)),
 					)
-					.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+					.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 							s.toggle_activity_detail(ids.clone(), cx);
 							cx.stop_propagation();
@@ -148,23 +158,21 @@ impl AgentSurface {
 					.font_family("Menlo")
 					.text_size(px(11.5))
 					.line_height(px(16.))
-					.text_color(rgb(ui_theme::TEXT))
+					.text_color(rgb(TEXT))
 					.child(body)
 					.child(metadata_toggle)
 					.child(disclosure(
 						SharedString::from(format!("tool-reference-body-{key}")),
 						metadata_open,
-						div().mt(px(6.)).text_color(rgb(ui_theme::TEXT_MUTED)).child(
-							super::selectable_text::SelectableText {
-								key: format!("detail-metadata-{key}"),
-								text: format!(
-									"{} · {}\nTurn {}\nCall {}",
-									item.kind, item.status, item.turn_id, item.item_id
-								),
-								highlights: Vec::new(),
-								links: Vec::new(),
-							},
-						),
+						div().mt(px(6.)).text_color(rgb(TEXT_MUTED)).child(SelectableText {
+							key: format!("detail-metadata-{key}"),
+							text: format!(
+								"{} · {}\nTurn {}\nCall {}",
+								item.kind, item.status, item.turn_id, item.item_id
+							),
+							highlights: Vec::new(),
+							links: Vec::new(),
+						}),
 					)),
 			))
 			.into_any_element()
@@ -176,14 +184,14 @@ impl AgentSurface {
 		key: &str,
 		result: Option<&AgentActivityDetailResult>,
 		cx: &mut Context<Self>,
-	) -> gpui::Div {
+	) -> Div {
 		match result {
 			Some(AgentActivityDetailResult::Available { text, offset, next, .. }) => {
 				let first_ids = ids.clone();
 				let next_ids = ids.clone();
 
 				div()
-					.child(super::selectable_text::SelectableText {
+					.child(SelectableText {
 						key: format!("detail-text-{key}-{offset}"),
 						text: text.clone(),
 						highlights: Vec::new(),
@@ -216,7 +224,7 @@ impl AgentSurface {
 			},
 			Some(AgentActivityDetailResult::Unavailable) =>
 				div().child("Source details are unavailable. Collapse and reopen to retry."),
-			None => div().child(crate::ui_loading::loading("Loading details")),
+			None => div().child(ui_loading::loading("Loading details")),
 		}
 	}
 
@@ -231,8 +239,16 @@ impl AgentSurface {
 
 		self.history_navigation = None;
 
-		if let Some(entry) = self.native_history.entries.iter().find(|entry| matches!(&entry.content,
-			decodex_protocol::AgentTimelineContent::Item { turn_id, item_id, .. } if turn_id == &ids.1 && item_id == &ids.2)).cloned() {
+		if let Some(entry) = self
+			.native_history
+			.entries
+			.iter()
+			.find(|entry| {
+				matches!(&entry.content,
+			AgentTimelineContent::Item{ turn_id, item_id, .. } if turn_id == &ids.1 && item_id == &ids.2)
+			})
+			.cloned()
+		{
 			self.anchor_process_toggle(&ids.0, &entry);
 		}
 
@@ -281,8 +297,7 @@ impl AgentSurface {
 		};
 		let expected_ids = ids.clone();
 		let request = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 			runtime
 				.block_on(AgentClient::new(profile).activity_detail(
@@ -309,7 +324,9 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::detail::*;
+
+	use std::thread;
 
 	fn prepare_tool_history(s: &mut AgentSurface, cx: &mut Context<AgentSurface>) {
 		s.visual_workspace_fixture(cx);
@@ -370,7 +387,7 @@ mod tests {
 		surface.update(visual, prepare_tool_history);
 		visual.update(|w, cx| w.draw(cx).clear());
 
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|w, cx| w.draw(cx).clear());
 
@@ -406,7 +423,7 @@ mod tests {
 
 		visual.update(|w, cx| w.draw(cx).clear());
 
-		std::thread::sleep(std::time::Duration::from_millis(300));
+		thread::sleep(std::time::Duration::from_millis(300));
 
 		visual.update(|w, cx| w.draw(cx).clear());
 
@@ -471,7 +488,7 @@ mod tests {
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|w, cx| w.draw(cx).clear());
 
-		std::thread::sleep(std::time::Duration::from_millis(250));
+		thread::sleep(std::time::Duration::from_millis(250));
 
 		visual.update(|w, cx| w.draw(cx).clear());
 

@@ -856,7 +856,7 @@ fn bounded_input(value: &str, maximum_bytes: usize) -> String {
 
 #[cfg(test)]
 mod multiline_tests {
-	use super::*;
+	use crate::composer_input::*;
 
 	#[gpui::test]
 	fn pasted_tabs_preserve_indentation_and_undo(cx: &mut gpui::TestAppContext) {

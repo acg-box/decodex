@@ -1,22 +1,21 @@
 //! Observe the original provider attempt without replaying a saved message.
-use super::{
+use crate::conversations::{
 	CommandEnvelope, ConversationCommandState, ConversationQueryPurpose, ConversationRouteOutcome,
 	Conversations, State,
 };
-use decodex_protocol::{
-	ConversationTurnOutcomeRequest as Request, ConversationTurnOutcomeResult as Result,
-	ConversationTurnOutcomeState as Outcome, QueryPayload, QueryResultPayload,
-};
+use decodex_protocol::{ConversationTurnOutcomeRequest, QueryPayload, QueryResultPayload};
 
 impl Conversations {
-	pub(crate) fn ordinary_turn_outcomes(&self) -> Vec<(CommandEnvelope, Option<Result>)> {
+	pub(crate) fn ordinary_turn_outcomes(
+		&self,
+	) -> Vec<(CommandEnvelope, Option<decodex_protocol::ConversationTurnOutcomeResult>)> {
 		let state = self.lock();
 
 		state
 			.delivery
 			.unconfirmed
 			.iter()
-			.filter(|command| Request::from_command(command).is_some())
+			.filter(|command| ConversationTurnOutcomeRequest::from_command(command).is_some())
 			.map(|command| {
 				(
 					command.clone(),
@@ -32,7 +31,9 @@ impl Conversations {
 	}
 
 	pub(crate) fn check_ordinary_turn(&self, command: &CommandEnvelope) -> bool {
-		let Some(request) = Request::from_command(command) else { return false };
+		let Some(request) = ConversationTurnOutcomeRequest::from_command(command) else {
+			return false;
+		};
 		let mut state = self.lock();
 
 		if !state.delivery.unconfirmed.contains(command) {
@@ -57,7 +58,10 @@ impl Conversations {
 		queued
 	}
 
-	pub(crate) fn acknowledge_ordinary_turn(&self, command: &CommandEnvelope) -> Option<Outcome> {
+	pub(crate) fn acknowledge_ordinary_turn(
+		&self,
+		command: &CommandEnvelope,
+	) -> Option<decodex_protocol::ConversationTurnOutcomeState> {
 		let mut state = self.lock();
 
 		if state.pending_command.is_some()
@@ -73,9 +77,11 @@ impl Conversations {
 			}
 
 			match result {
-				Result::Observed {
+				decodex_protocol::ConversationTurnOutcomeResult::Observed {
 					outcome:
-						outcome @ (Outcome::Completed | Outcome::Failed | Outcome::NotSubmitted),
+						outcome @ (decodex_protocol::ConversationTurnOutcomeState::Completed
+						| decodex_protocol::ConversationTurnOutcomeState::Failed
+						| decodex_protocol::ConversationTurnOutcomeState::NotSubmitted),
 					..
 				} => Some(*outcome),
 				_ => None,
@@ -99,7 +105,7 @@ impl State {
 		command: &CommandEnvelope,
 		payload: &QueryResultPayload,
 	) -> (ConversationRouteOutcome, bool) {
-		let Some(request) = Request::from_command(command) else {
+		let Some(request) = ConversationTurnOutcomeRequest::from_command(command) else {
 			return (ConversationRouteOutcome::Refused, false);
 		};
 
@@ -109,10 +115,14 @@ impl State {
 
 		let result = match payload {
 			QueryResultPayload::ConversationTurnOutcome(result) => result.clone(),
-			_ => Result::Unavailable,
+			_ => decodex_protocol::ConversationTurnOutcomeResult::Unavailable,
 		};
 
-		if let Result::Observed { conversation_id, turn_id, .. } = &result
+		if let decodex_protocol::ConversationTurnOutcomeResult::Observed {
+			conversation_id,
+			turn_id,
+			..
+		} = &result
 			&& (conversation_id != &request.conversation_id || turn_id != &request.turn_id)
 		{
 			return (ConversationRouteOutcome::Refused, false);

@@ -1,14 +1,18 @@
 //! Exercise search selection across the same-UID service socket with a lost save reply.
-use super::{super::wire_test_support::SERVER, *};
+use std::thread::JoinHandle;
 
+use crate::shell::agent_surface::{search_settings::*, wire_test_support::SERVER};
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::TestAppContext;
+use tempfile::TempDir;
+use tokio::net::UnixListener;
+use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::wire_test_support;
 use decodex_protocol::{
 	CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
 	QueryResultPayload, ServerId, ServerMessage,
 };
-
-use futures_util::{SinkExt, StreamExt};
-
-use tokio_tungstenite::tungstenite::Message;
 
 struct SearchPanel(Entity<AgentSurface>);
 impl Render for SearchPanel {
@@ -17,13 +21,13 @@ impl Render for SearchPanel {
 	}
 }
 
-fn fixture() -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<AgentActionDto>>) {
-	super::super::wire_test_support::fixture(serve)
+fn fixture() -> (TempDir, ClientProfile, JoinHandle<Vec<AgentActionDto>>) {
+	wire_test_support::fixture(serve)
 }
 
 #[gpui::test]
 fn search_picker_sends_once_then_reads_effective_override_after_lost_reply(
-	cx: &mut gpui::TestAppContext,
+	cx: &mut TestAppContext,
 ) {
 	let (_directory, profile, server) = fixture();
 	let (view, visual) = cx.add_window_view(|_, cx| {
@@ -67,11 +71,11 @@ fn search_picker_sends_once_then_reads_effective_override_after_lost_reply(
     });
 }
 
-async fn serve(listener: tokio::net::UnixListener) -> Vec<AgentActionDto> {
+async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 	let mut actions = Vec::new();
 
 	for index in 0..3 {
-		let mut socket = super::super::wire_test_support::accept(&listener).await;
+		let mut socket = wire_test_support::accept(&listener).await;
 		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 			panic!("text request")
 		};

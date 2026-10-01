@@ -1,6 +1,7 @@
 //! Read-only presentation of native review directives; stored Markdown stays intact.
-use super::{Kind, Node};
 use std::collections::HashMap;
+
+use crate::shell::agent_surface::markdown::{Kind, Node};
 
 pub(super) fn nodes(source: &str) -> Option<Vec<Node>> {
 	source.trim().lines().map(comment).collect()
@@ -106,7 +107,7 @@ fn attributes(mut source: &str) -> Option<HashMap<String, String>> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::markdown::code_comments::{self, Node};
 	fn text(nodes: &[Node]) -> String {
 		nodes
 			.iter()
@@ -134,7 +135,10 @@ mod tests {
 		assert!(text(&super::super::parse(&format!("`{source}`"))).contains("::code-comment"));
 
 		for (offset, _) in source.char_indices().skip(1) {
-			assert!(nodes(&source[..offset]).is_none(), "incomplete directive at {offset}");
+			assert!(
+				code_comments::nodes(&source[..offset]).is_none(),
+				"incomplete directive at {offset}"
+			);
 		}
 	}
 	#[test]
@@ -150,7 +154,7 @@ mod tests {
 			r#"::code-comment{title="" body="Body" file="a"}"#,
 			r#"::code-comment{title="A" title="B" body="Body" file="a"}"#,
 		] {
-			assert!(nodes(source).is_none());
+			assert!(code_comments::nodes(source).is_none());
 			assert!(text(&super::super::parse(source)).contains("::code-comment"));
 		}
 	}

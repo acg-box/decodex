@@ -1,7 +1,16 @@
 //! One native WebRTC call. PCM runs independently of GPUI and service signaling.
-use super::audio::Pcm;
+use std::{
+	future,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+		mpsc::{self, SyncSender},
+	},
+};
+
 use futures_util::StreamExt as _;
 use libwebrtc::{
+	RtcError,
 	audio_frame::AudioFrame,
 	audio_source::{AudioSourceOptions, native::NativeAudioSource},
 	audio_stream::native::NativeAudioStream,
@@ -14,16 +23,13 @@ use libwebrtc::{
 	},
 	session_description::{SdpType, SessionDescription},
 };
-use serde_json::{Value, json};
-use std::sync::{
-	Arc,
-	atomic::{AtomicBool, Ordering},
-	mpsc,
-};
+use serde_json::{self, Value};
 use tokio::{
 	sync::{mpsc as channel, oneshot},
-	time::{Duration, Instant},
+	time::{self, Duration, Instant, MissedTickBehavior},
 };
+
+use crate::shell::agent_surface::voice::audio::Pcm;
 
 #[cfg(test)]
 type OfferPause = (oneshot::Sender<()>, oneshot::Receiver<()>);
@@ -62,7 +68,7 @@ impl Transport {
 					tokio::runtime::Builder::new_current_thread().enable_time().build()
 				else {
 					output.send(
-						json!({"type":"error","message":"The native audio runtime could not start."}),
+						serde_json::json!({"type":"error","message":"The native audio runtime could not start."}),
 					);
 
 					return;
@@ -87,7 +93,7 @@ impl Transport {
 	pub(super) fn poll(&self) -> Option<Value> {
 		self.events.try_recv().ok().or_else(|| {
 			self.overflow.swap(false, Ordering::AcqRel).then(
-				|| json!({"type":"error","message":"Audio updates could not be delivered. The call stopped."}),
+				|| serde_json::json!({"type":"error","message":"Audio updates could not be delivered. The call stopped."}),
 			)
 		})
 	}
@@ -102,7 +108,7 @@ impl Drop for Transport {
 
 #[derive(Clone)]
 struct Events {
-	sender: mpsc::SyncSender<Value>,
+	sender: SyncSender<Value>,
 	overflow: Arc<AtomicBool>,
 }
 impl Events {
@@ -137,7 +143,9 @@ async fn run(
 	let peer = match factory.create_peer_connection(config) {
 		Ok(peer) => Peer(peer),
 		Err(_) => {
-			events.send(json!({"type":"error","message":"The audio connection could not start."}));
+			events.send(
+				serde_json::json!({"type":"error","message":"The audio connection could not start."}),
+			);
 
 			return;
 		},
@@ -156,7 +164,7 @@ async fn run(
 	.await;
 	// Let the UI stop its audio device without waiting for native network teardown.
 	if let Err(message) = result {
-		events.send(json!({"type":"error","message":message}));
+		events.send(serde_json::json!({"type":"error","message":message}));
 	}
 }
 
@@ -205,11 +213,11 @@ async fn run_media(
 						| "turn.delta"
 				)
 			) {
-			captions.send(json!({"type":"caption","event":value}));
+			captions.send(serde_json::json!({"type":"caption","event":value}));
 		}
 	})));
 
-	let offer = tokio::time::timeout(Duration::from_secs(10), async {
+	let offer = time::timeout(Duration::from_secs(10), async {
 		let options = || OfferOptions { offer_to_receive_audio: true, ..Default::default() };
 		let offer = peer.0.create_offer(options()).await?;
 		#[cfg(test)]
@@ -226,7 +234,7 @@ async fn run_media(
 
 		while peer.0.ice_gathering_state() != IceGatheringState::Complete && Instant::now() < until
 		{
-			tokio::time::sleep(Duration::from_millis(20)).await;
+			time::sleep(Duration::from_millis(20)).await;
 		}
 		// The binding exposes only current (not pending) SDP. Regenerate through libwebrtc
 		// to include gathered candidates while retaining the same ICE credentials.
@@ -234,7 +242,7 @@ async fn run_media(
 
 		peer.0.set_local_description(offer.clone()).await?;
 
-		Ok::<_, libwebrtc::RtcError>(offer.to_string())
+		Ok::<_, RtcError>(offer.to_string())
 	})
 	.await
 	.map_err(|_| "The audio offer timed out.")?
@@ -244,14 +252,14 @@ async fn run_media(
 		let _ = pcm.captured.pop();
 	}
 
-	events.send(json!({"type":"offer","sdp":offer}));
+	events.send(serde_json::json!({"type":"offer","sdp":offer}));
 
 	let deadline = Instant::now() + Duration::from_secs(30);
 	let mut announced = false;
 	let mut remote: Option<NativeAudioStream> = None;
-	let mut clock = tokio::time::interval(Duration::from_millis(10));
+	let mut clock = time::interval(Duration::from_millis(10));
 
-	clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+	clock.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
 	let mut frame = AudioFrame::new(48_000, 1, 480);
 
@@ -269,7 +277,7 @@ async fn run_media(
 			Some(track) = incoming.recv() => remote = Some(NativeAudioStream::new(track, 48_000, 1)),
 			decoded = async { match &mut remote {
 				Some(stream) => stream.next().await,
-				None => std::future::pending().await,
+				None => future::pending().await,
 			}} => {
 				let Some(decoded) = decoded else { return Err("The remote audio track ended."); };
 
@@ -280,7 +288,7 @@ async fn run_media(
 
 				let connected = peer.0.connection_state() == PeerConnectionState::Connected && data.state() == DataChannelState::Open;
 
-				if !announced && connected { announced = true; events.send(json!({"type":"connected"})); }
+				if !announced && connected { announced = true; events.send(serde_json::json!({"type":"connected"})); }
 				if matches!(peer.0.connection_state(), PeerConnectionState::Failed | PeerConnectionState::Disconnected | PeerConnectionState::Closed)
 					|| matches!(data.state(), DataChannelState::Closed | DataChannelState::Closing) {
 					return Err("The audio connection was lost.");
@@ -302,11 +310,22 @@ async fn run_media(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use libwebrtc::peer_connection::AnswerOptions;
+	use futures_util::StreamExt as _;
+	use libwebrtc::{
+		peer_connection::AnswerOptions,
+		peer_connection_factory::native::PeerConnectionFactoryExt as _,
+	};
+	use tokio::time;
+
+	use crate::shell::agent_surface::voice::transport::{
+		AudioFrame, AudioSourceOptions, Command, ContinualGatheringPolicy, Duration,
+		IceGatheringState, MediaStreamTrack, NativeAudioSource, NativeAudioStream, Pcm, Peer,
+		PeerConnectionFactory, RtcConfiguration, SdpType, SessionDescription, Transport, Value,
+		channel, oneshot,
+	};
 
 	async fn event(transport: &Transport, kind: &str) -> Value {
-		tokio::time::timeout(Duration::from_secs(15), async {
+		time::timeout(Duration::from_secs(15), async {
 			loop {
 				if let Some(value) = transport.poll() {
 					assert_ne!(value["type"], "error", "{value}");
@@ -316,7 +335,7 @@ mod tests {
 					}
 				}
 
-				tokio::time::sleep(Duration::from_millis(10)).await;
+				time::sleep(Duration::from_millis(10)).await;
 			}
 		})
 		.await
@@ -327,7 +346,7 @@ mod tests {
 
 		for index in 0..50 {
 			let frame =
-				tokio::time::timeout(Duration::from_secs(5), stream.next()).await.unwrap().unwrap();
+				time::timeout(Duration::from_secs(5), stream.next()).await.unwrap().unwrap();
 
 			if index >= 30 {
 				sum += frame.data.iter().map(|&v| f64::from(v).powi(2)).sum::<f64>();
@@ -360,9 +379,9 @@ mod tests {
 
 			drop(transport);
 
-			tokio::time::timeout(Duration::from_secs(3), async {
+			time::timeout(Duration::from_secs(3), async {
 				while !input.is_abandoned() || !output.is_abandoned() {
-					tokio::time::sleep(Duration::from_millis(10)).await;
+					time::sleep(Duration::from_millis(10)).await;
 				}
 			})
 			.await
@@ -379,15 +398,15 @@ mod tests {
 		let transport =
 			Transport::start_inner(Pcm { captured, playback }, Some((entered, continued))).unwrap();
 
-		tokio::time::timeout(Duration::from_secs(15), paused).await.unwrap().unwrap();
+		time::timeout(Duration::from_secs(15), paused).await.unwrap().unwrap();
 
 		assert!(transport.poll().is_none(), "paused offer must not reach signaling");
 
 		drop(transport);
 
-		tokio::time::timeout(Duration::from_secs(3), async {
+		time::timeout(Duration::from_secs(3), async {
 			while !input.is_abandoned() || !output.is_abandoned() {
-				tokio::time::sleep(Duration::from_millis(10)).await;
+				time::sleep(Duration::from_millis(10)).await;
 			}
 		})
 		.await
@@ -405,9 +424,9 @@ mod tests {
 
 		drop(next);
 
-		tokio::time::timeout(Duration::from_secs(3), async {
+		time::timeout(Duration::from_secs(3), async {
 			while !input.is_abandoned() || !output.is_abandoned() {
-				tokio::time::sleep(Duration::from_millis(10)).await;
+				time::sleep(Duration::from_millis(10)).await;
 			}
 		})
 		.await
@@ -415,7 +434,7 @@ mod tests {
 	}
 
 	async fn call_lifecycle(close_remote_channel: bool) {
-		tokio::time::timeout(Duration::from_secs(45), async {
+		time::timeout(Duration::from_secs(45), async {
 			let (mut input, captured) = rtrb::RingBuffer::new(4_800);
 			let (playback, mut output) = rtrb::RingBuffer::new(4_800);
 			let transport = Transport::start(Pcm { captured, playback }).unwrap();
@@ -469,7 +488,7 @@ mod tests {
 				.unwrap();
 
 			while peer.0.ice_gathering_state() != IceGatheringState::Complete {
-				tokio::time::sleep(Duration::from_millis(10)).await;
+				time::sleep(Duration::from_millis(10)).await;
 			}
 
 			assert!(
@@ -507,7 +526,7 @@ mod tests {
 
 					source.capture_frame(&frame).await.unwrap();
 
-					tokio::time::sleep(Duration::from_millis(10)).await;
+					time::sleep(Duration::from_millis(10)).await;
 				}
 			});
 			let initially_muted = energy(&mut stream).await;
@@ -539,7 +558,7 @@ mod tests {
 			if close_remote_channel {
 				data.close();
 
-				let failure = tokio::time::timeout(Duration::from_secs(3), async {
+				let failure = time::timeout(Duration::from_secs(3), async {
 					loop {
 						if let Some(value) = transport.poll()
 							&& value["type"] == "error"
@@ -547,7 +566,7 @@ mod tests {
 							break value;
 						}
 
-						tokio::time::sleep(Duration::from_millis(10)).await;
+						time::sleep(Duration::from_millis(10)).await;
 					}
 				})
 				.await
@@ -558,9 +577,9 @@ mod tests {
 				drop(transport);
 			}
 
-			tokio::time::timeout(Duration::from_secs(3), async {
+			time::timeout(Duration::from_secs(3), async {
 				while !output.is_abandoned() {
-					tokio::time::sleep(Duration::from_millis(10)).await;
+					time::sleep(Duration::from_millis(10)).await;
 				}
 			})
 			.await

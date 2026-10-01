@@ -1,14 +1,18 @@
 //! Exercise voice selection across the same-UID service socket with a lost save reply.
-use super::{super::wire_test_support::SERVER, *};
+use std::{future, thread::JoinHandle};
 
+use crate::shell::agent_surface::{voice_settings::*, wire_test_support::SERVER};
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::TestAppContext;
+use tempfile::TempDir;
+use tokio::net::UnixListener;
+use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::wire_test_support;
 use decodex_protocol::{
 	CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
 	QueryResultPayload, ServerId, ServerMessage,
 };
-
-use futures_util::{SinkExt, StreamExt};
-
-use tokio_tungstenite::tungstenite::Message;
 
 struct VoicePanel(Entity<AgentSurface>);
 impl Render for VoicePanel {
@@ -17,14 +21,12 @@ impl Render for VoicePanel {
 	}
 }
 
-fn fixture() -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<AgentActionDto>>) {
-	super::super::wire_test_support::fixture(serve)
+fn fixture() -> (TempDir, ClientProfile, JoinHandle<Vec<AgentActionDto>>) {
+	wire_test_support::fixture(serve)
 }
 
 #[gpui::test]
-fn voice_picker_sends_once_then_reads_effective_override_after_lost_reply(
-	cx: &mut gpui::TestAppContext,
-) {
+fn voice_picker_sends_once_then_reads_effective_override_after_lost_reply(cx: &mut TestAppContext) {
 	let (_directory, profile, server) = fixture();
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
@@ -68,7 +70,7 @@ fn voice_picker_sends_once_then_reads_effective_override_after_lost_reply(
 }
 
 #[gpui::test]
-fn changed_native_source_retires_voice_panel_epoch(cx: &mut gpui::TestAppContext) {
+fn changed_native_source_retires_voice_panel_epoch(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	surface.update(cx, |s, cx| {
@@ -92,7 +94,7 @@ fn changed_native_source_retires_voice_panel_epoch(cx: &mut gpui::TestAppContext
 
 #[gpui::test]
 fn voice_call_options_are_bound_to_work_and_runtime_and_keep_blank_defaults(
-	cx: &mut gpui::TestAppContext,
+	cx: &mut TestAppContext,
 ) {
 	let surface = cx.new(AgentSurface::new);
 
@@ -127,7 +129,7 @@ fn voice_call_options_are_bound_to_work_and_runtime_and_keep_blank_defaults(
 }
 
 #[gpui::test]
-fn changing_pages_retires_pending_voice_settings(cx: &mut gpui::TestAppContext) {
+fn changing_pages_retires_pending_voice_settings(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
 	surface.update(cx, |s, cx| {
@@ -146,7 +148,7 @@ fn changing_pages_retires_pending_voice_settings(cx: &mut gpui::TestAppContext) 
 			.clone();
 
 		s.voice_settings.work = Some(old);
-		s.voice_settings.task = Some(cx.spawn(async |_, _| std::future::pending().await));
+		s.voice_settings.task = Some(cx.spawn(async |_, _| future::pending().await));
 
 		let epoch = s.voice_settings.epoch;
 
@@ -162,11 +164,11 @@ fn changing_pages_retires_pending_voice_settings(cx: &mut gpui::TestAppContext) 
 	});
 }
 
-async fn serve(listener: tokio::net::UnixListener) -> Vec<AgentActionDto> {
+async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 	let mut actions = Vec::new();
 
 	for index in 0..3 {
-		let mut socket = super::super::wire_test_support::accept(&listener).await;
+		let mut socket = wire_test_support::accept(&listener).await;
 		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 			panic!("text request")
 		};

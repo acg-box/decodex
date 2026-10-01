@@ -4,12 +4,12 @@
 //!
 //! Routes never share segments. Crossings are explicitly marked; labels occupy reserved gutters.
 
-use super::{
-	Direction, Graph, RenderError, Role, Span,
-	output::{Cell, finish},
-};
-
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
+use crate::shell::agent_surface::markdown::mermaid::{
+	Direction, Graph, MAX_CELLS, RenderError, Role, Shape, Span,
+	output::{self, Cell},
+};
 
 struct Canvas {
 	cells: Vec<Vec<Cell>>,
@@ -44,7 +44,7 @@ pub(super) fn render(graph: &Graph, max_width: usize) -> Result<Vec<Vec<Span>>, 
 		.nodes
 		.iter()
 		.map(|node| {
-			let mut lines = vec![if node.shape == super::Shape::Decision {
+			let mut lines = vec![if node.shape == Shape::Decision {
 				format!("◇ {}", node.label)
 			} else {
 				node.label.clone()
@@ -120,7 +120,7 @@ pub(super) fn render(graph: &Graph, max_width: usize) -> Result<Vec<Vec<Span>>, 
 	if width > max_width {
 		return Err(RenderError::TooWide);
 	}
-	if width * height > super::MAX_CELLS {
+	if width * height > MAX_CELLS {
 		return Err(RenderError::Limit);
 	}
 
@@ -130,8 +130,8 @@ pub(super) fn render(graph: &Graph, max_width: usize) -> Result<Vec<Vec<Span>>, 
 		let start = starts[i];
 		let end = start + sizes[i] - 1;
 		let [top_left, top_right, bottom_left, bottom_right] = match graph.nodes[i].shape {
-			super::Shape::Stadium => ['╭', '╮', '╰', '╯'],
-			super::Shape::Rectangle | super::Shape::Decision => ['┌', '┐', '└', '┘'],
+			Shape::Stadium => ['╭', '╮', '╰', '╯'],
+			Shape::Rectangle | Shape::Decision => ['┌', '┐', '└', '┘'],
 		};
 
 		canvas.set(0, start, Cell::node(top_left));
@@ -207,7 +207,7 @@ pub(super) fn render(graph: &Graph, max_width: usize) -> Result<Vec<Vec<Span>>, 
 		}
 	}
 
-	Ok(finish(canvas.cells))
+	Ok(output::finish(canvas.cells))
 }
 
 pub(super) fn put_text(row: &mut [Cell], mut column: usize, text: &str) -> Result<(), RenderError> {

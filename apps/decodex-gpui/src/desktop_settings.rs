@@ -1,8 +1,9 @@
 //! Presentation-neutral GPUI controller for daemon-owned desktop settings.
 
 use std::{
+	process,
 	sync::{
-		Arc, Mutex, MutexGuard,
+		Arc, Mutex, MutexGuard, PoisonError,
 		atomic::{AtomicU64, Ordering},
 	},
 	time::{SystemTime, UNIX_EPOCH},
@@ -471,7 +472,7 @@ impl DesktopSettingsController {
 	}
 
 	fn lock(&self) -> MutexGuard<'_, State> {
-		self.inner.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+		self.inner.state.lock().unwrap_or_else(PoisonError::into_inner)
 	}
 }
 
@@ -664,7 +665,7 @@ fn canonical_uuid_v4() -> Result<String, DesktopSettingsInputError> {
 		.as_nanos();
 	let mut digest = Sha256::new();
 
-	digest.update(std::process::id().to_be_bytes());
+	digest.update(process::id().to_be_bytes());
 	digest.update(sequence.to_be_bytes());
 	digest.update(nanos.to_be_bytes());
 
@@ -698,15 +699,14 @@ fn canonical_uuid_v4() -> Result<String, DesktopSettingsInputError> {
 
 #[cfg(test)]
 mod tests {
+	use crate::desktop_settings::{
+		DesktopSettingsCommandState, DesktopSettingsController, DesktopSettingsDispatch,
+		DesktopSettingsLoadState, DesktopSettingsRouteOutcome,
+	};
 	use decodex_protocol::{
 		CURRENT_VERSION, CommandOutcome, CommandReceipt, CommandResultEnvelope, DesktopSettingsDto,
 		DesktopSettingsResult, EntityRevision, QueryResultEnvelope, QueryResultPayload,
 		ReceiptDisposition, ResultPayload, ServerId,
-	};
-
-	use super::{
-		DesktopSettingsCommandState, DesktopSettingsController, DesktopSettingsDispatch,
-		DesktopSettingsLoadState, DesktopSettingsRouteOutcome,
 	};
 
 	fn server() -> ServerId {

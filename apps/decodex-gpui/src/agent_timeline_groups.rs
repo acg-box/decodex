@@ -1,9 +1,19 @@
 //! Present completed native turns without discarding their process records.
-use super::{AgentSurface, AgentTimelineEntry, Content};
-
-use gpui::{AnyElement, Context, Role, SharedString, div, prelude::*, px, rgb};
-
 use std::collections::{BTreeMap, BTreeSet};
+
+use gpui::{
+	AnyElement, Context, FontWeight, KeyDownEvent, Role, SharedString, div, prelude::*, px, rgb,
+};
+
+use crate::{
+	shell::{
+		agent_surface::native_timeline::{
+			AgentSurface, AgentTimelineEntry, AgentWorkItemDto, Content,
+		},
+		workspace_symbols,
+	},
+	ui_theme::{TEXT, TEXT_MUTED},
+};
 
 pub(super) struct Group {
 	pub turn: String,
@@ -16,7 +26,7 @@ pub(super) struct Group {
 impl AgentSurface {
 	pub(super) fn turn_process_header(
 		&self,
-		work: &super::AgentWorkItemDto,
+		work: &AgentWorkItemDto,
 		group: &Group,
 		entry: &AgentTimelineEntry,
 		cx: &mut Context<Self>,
@@ -41,12 +51,12 @@ impl AgentSurface {
 			.gap(px(6.))
 			.py(px(5.))
 			.text_size(px(13.))
-			.font_weight(gpui::FontWeight::NORMAL)
+			.font_weight(FontWeight::NORMAL)
 			.line_height(px(18.))
-			.text_color(rgb(crate::ui_theme::TEXT_MUTED))
-			.hover(|s| s.text_color(rgb(crate::ui_theme::TEXT)))
+			.text_color(rgb(TEXT_MUTED))
+			.hover(|s| s.text_color(rgb(TEXT)))
 			.child(earlier_messages_label(group.count))
-			.child(crate::shell::workspace_symbols::process_chevron(
+			.child(workspace_symbols::process_chevron(
 				SharedString::from(format!("turn-chevron-{identity}")),
 				expanded,
 			))
@@ -59,7 +69,7 @@ impl AgentSurface {
 
 				cx.notify();
 			}))
-			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 				if ["enter", "space"].contains(&event.keystroke.key.as_str()) && !event.is_held {
 					s.anchor_process_toggle(&keyboard.0, &keyboard.1);
 
@@ -179,7 +189,10 @@ fn earlier_messages_label(count: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::native_timeline::{Binding, Timeline, groups::*};
+
+	use std::thread;
+
 	fn message(index: u64, kind: &str, phase: Option<&str>) -> AgentTimelineEntry {
 		AgentTimelineEntry {
 			position: index,
@@ -321,8 +334,6 @@ mod tests {
 	fn completed_process_can_be_opened_without_replacing_the_final_reply(
 		cx: &mut gpui::TestAppContext,
 	) {
-		use super::super::{Binding, Timeline};
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(px(1_400.), px(1_400.)));
@@ -373,7 +384,7 @@ mod tests {
 
 		visual.update(|w, cx| w.draw(cx).clear());
 
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|w, cx| w.draw(cx).clear());
 
@@ -396,7 +407,7 @@ mod tests {
 			"refresh preserves an explicit expansion"
 		);
 
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|w, cx| w.draw(cx).clear());
 
@@ -428,7 +439,7 @@ mod tests {
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(|w, cx| w.draw(cx).clear());
 
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|w, cx| w.draw(cx).clear());
 

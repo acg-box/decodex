@@ -3,7 +3,7 @@
 //! Semantic spans for theme-independent diagram output; drawing cells never contain ANSI escapes.
 
 /// The diagram element a caller can style with its own theme.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Role {
 	/// Node borders and junctions.
 	Node,
@@ -14,7 +14,7 @@ pub enum Role {
 }
 
 /// Adjacent characters with one semantic role, independent of terminal styling.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Span {
 	/// Literal display text.
 	pub text: String,

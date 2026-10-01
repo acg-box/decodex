@@ -1,5 +1,10 @@
 //! One submission followed by read-only polling; never replay an uncertain command.
-use super::*;
+use tokio::time;
+use watch::{Receiver, Sender};
+
+use crate::shell::agent_surface::recap::*;
+use decodex_protocol::CommandError;
+
 type Update = Option<(Option<TaskRecapStatus>, String)>;
 
 pub(super) async fn run(
@@ -7,8 +12,8 @@ pub(super) async fn run(
 	owner: EntityId,
 	thread: WireText,
 	generate: bool,
-	mut cancellation: watch::Receiver<bool>,
-	updates: watch::Sender<Update>,
+	mut cancellation: Receiver<bool>,
+	updates: Sender<Update>,
 ) {
 	if *cancellation.borrow() || cancellation.has_changed().is_err() {
 		return;
@@ -29,8 +34,7 @@ pub(super) async fn run(
 
 		if let Ok(AgentCommandResponse::Rejected { error }) = outcome {
 			let feedback = match error {
-				decodex_protocol::CommandError::ApplicationUnavailable { message } =>
-					message.as_str().to_owned(),
+				CommandError::ApplicationUnavailable { message } => message.as_str().to_owned(),
 				_ => "The recap request was not accepted. Refresh to review its current state."
 					.into(),
 			};
@@ -88,7 +92,7 @@ pub(super) async fn run(
 
 				tokio::select! {
 					_ = cancellation.changed() => {},
-					_ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {},
+					_ = time::sleep(std::time::Duration::from_secs(2)) => {},
 				}
 
 				continue;
@@ -115,7 +119,7 @@ pub(super) async fn run(
 
 		tokio::select! {
 			_ = cancellation.changed() => {},
-			_ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {},
+			_ = time::sleep(std::time::Duration::from_secs(1)) => {},
 		}
 	}
 }

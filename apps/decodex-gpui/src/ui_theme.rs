@@ -10,6 +10,8 @@ pub(crate) mod native_glass_panel;
 
 use std::time::Duration;
 
+use gpui::{self, Div, IntoElement, Styled};
+
 pub(crate) const FONT_FAMILY: &str = ".SystemUIFont";
 pub(crate) const BODY_SIZE: f32 = 12.5;
 pub(crate) const CAPTION_SIZE: f32 = 10.5;
@@ -62,47 +64,52 @@ pub(crate) const AMBER: u32 = 0xe0b56f;
 pub(crate) const ERROR: u32 = 0xef4444;
 pub(crate) const MOTION_PANEL: Duration = Duration::from_millis(240);
 
-pub(crate) fn floating_group() -> gpui::Div {
-	use gpui::{Styled, div, px, rgba};
-
-	div()
-		.h(px(CONTROL_GROUP_HEIGHT))
+pub(crate) fn floating_group() -> Div {
+	gpui::div()
+		.h(gpui::px(CONTROL_GROUP_HEIGHT))
 		.flex_none()
 		.px_1()
 		.flex()
 		.items_center()
 		.gap_1()
-		.rounded(px(CONTROL_RADIUS))
-		.bg(rgba(TOPBAR_MATERIAL))
+		.rounded(gpui::px(CONTROL_RADIUS))
+		.bg(gpui::rgba(TOPBAR_MATERIAL))
 		.border_1()
-		.border_color(rgba(0xffffff12))
+		.border_color(gpui::rgba(0xffffff12))
 }
 
-pub(crate) fn settings_header_inset() -> gpui::Div {
-	use gpui::{Styled, div, px};
+pub(crate) fn settings_header_inset() -> Div {
+	use gpui::Styled;
 
-	div().px(px(SETTINGS_INSET)).pt(px(SETTINGS_TOP)).flex().justify_center()
+	gpui::div().px(gpui::px(SETTINGS_INSET)).pt(gpui::px(SETTINGS_TOP)).flex().justify_center()
 }
 
-pub(crate) fn settings_row() -> gpui::Div {
-	use gpui::{Styled, div, px};
+pub(crate) fn settings_row() -> Div {
+	use gpui::Styled;
 
-	div().w_full().min_h(px(44.0)).px(px(12.0)).py(px(7.0)).flex().items_center().gap(px(16.0))
+	gpui::div()
+		.w_full()
+		.min_h(gpui::px(44.0))
+		.px(gpui::px(12.0))
+		.py(gpui::px(7.0))
+		.flex()
+		.items_center()
+		.gap(gpui::px(16.0))
 }
 
-pub(crate) fn settings_title(title: &'static str) -> impl gpui::IntoElement {
+pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
 	use gpui::{
-		FontWeight, Role, div,
+		FontWeight, Role,
 		prelude::{InteractiveElement, ParentElement, StatefulInteractiveElement, Styled},
-		px, rgb,
+		rgb,
 	};
 
-	div()
+	gpui::div()
 		.id(title)
 		.role(Role::Heading)
 		.aria_level(1)
 		.aria_label(title)
-		.text_size(px(HEADING_SIZE))
+		.text_size(gpui::px(HEADING_SIZE))
 		.font_weight(FontWeight::SEMIBOLD)
 		.text_color(rgb(TEXT))
 		.child(title)

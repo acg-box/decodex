@@ -1,23 +1,24 @@
 //! Exercise real Preview clicks through the same-UID local WebSocket protocol.
-use super::*;
+use std::thread::JoinHandle;
 
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::TestAppContext;
+use tempfile::TempDir;
+use tokio::net::UnixListener;
+use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::native_timeline::{
+	media::*, wire_test_support, wire_test_support::SERVER,
+};
 use decodex_protocol::{
 	AgentTimelineAttachment, AgentTimelineAttachmentSource, AgentTimelinePage, CURRENT_VERSION,
 	ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId, ServerMessage,
 };
 
-use futures_util::{SinkExt, StreamExt};
-
-use tokio_tungstenite::tungstenite::Message;
-
-use super::super::wire_test_support::SERVER;
-
 const PNG: &[u8] = include_bytes!("../../../assets/workspace-symbols/plus.png");
 
-fn fixture(
-	mode: &'static str,
-) -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<AgentMediaRequest>>) {
-	super::super::wire_test_support::fixture(move |listener| serve(listener, mode))
+fn fixture(mode: &'static str) -> (TempDir, ClientProfile, JoinHandle<Vec<AgentMediaRequest>>) {
+	wire_test_support::fixture(move |listener| serve(listener, mode))
 }
 
 fn prepare(
@@ -83,9 +84,7 @@ fn prepare(
 }
 
 #[gpui::test]
-fn preview_click_reads_real_local_chunks_and_rejects_changed_account(
-	cx: &mut gpui::TestAppContext,
-) {
+fn preview_click_reads_real_local_chunks_and_rejects_changed_account(cx: &mut TestAppContext) {
 	for mode in ["complete", "account", "unavailable"] {
 		let (_root, profile, server) = fixture(mode);
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -120,12 +119,12 @@ fn preview_click_reads_real_local_chunks_and_rejects_changed_account(
 	}
 }
 
-async fn serve(listener: tokio::net::UnixListener, mode: &str) -> Vec<AgentMediaRequest> {
+async fn serve(listener: UnixListener, mode: &str) -> Vec<AgentMediaRequest> {
 	let mut requests = Vec::new();
 
 	while requests.len() < if mode == "complete" { 2 } else { 1 } {
 		let index = requests.len();
-		let mut socket = super::super::wire_test_support::accept(&listener).await;
+		let mut socket = wire_test_support::accept(&listener).await;
 		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 			panic!("text query")
 		};

@@ -1,8 +1,8 @@
 //! Observe current control targets without replaying their original commands.
-use super::{
+use crate::conversations::{
 	CommandEnvelope, CommandPayload, ConversationCommandState, ConversationQueryPurpose,
 	ConversationResult, ConversationRouteOutcome, ConversationSummary, Conversations, EntityId,
-	QueryPayload, QueryResultPayload, State,
+	QueryPayload, QueryResultPayload, RoutingSuccessorReconciliation, State,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -108,7 +108,7 @@ impl Conversations {
 
 		state.confirm_delivery(command);
 
-		if super::RoutingSuccessorReconciliation::from_command(command)
+		if RoutingSuccessorReconciliation::from_command(command)
 			.as_ref()
 			.is_some_and(|saved| state.routing_successor_reconciliation.as_ref() == Some(saved))
 		{
@@ -269,16 +269,20 @@ fn observe(
 
 #[cfg(test)]
 mod tests {
-	use super::{CommandEnvelope, CommandPayload, ControlObservation, ConversationResult, observe};
-	use crate::conversations::tests::{connected_conversations, dispatched_command};
+	use crate::conversations::{
+		control_recovery::{
+			self, CommandEnvelope, CommandPayload, ControlObservation, ConversationResult,
+		},
+		tests::{self},
+	};
 	use decodex_protocol::{ConversationState, ConversationSummary, EntityRevision};
 
 	fn fixture() -> (CommandEnvelope, ConversationSummary) {
-		let (controller, server, task) = connected_conversations();
+		let (controller, server, task) = tests::connected_conversations();
 
 		controller.submit("Preserved input").expect("submit");
 
-		let mut command = dispatched_command(&controller, &server);
+		let mut command = tests::dispatched_command(&controller, &server);
 		let CommandPayload::SubmitConversationTurn { conversation_id, turn_id, .. } =
 			command.payload
 		else {
@@ -296,7 +300,11 @@ mod tests {
 		let target = task.conversation_id.clone();
 
 		assert_eq!(
-			observe(&command, &target, &ConversationResult::Available(task.clone())),
+			control_recovery::observe(
+				&command,
+				&target,
+				&ConversationResult::Available(task.clone())
+			),
 			ControlObservation::Unavailable
 		);
 
@@ -304,14 +312,18 @@ mod tests {
 		task.state = ConversationState::OutcomeUnknown;
 
 		assert_eq!(
-			observe(&command, &target, &ConversationResult::Available(task.clone())),
+			control_recovery::observe(
+				&command,
+				&target,
+				&ConversationResult::Available(task.clone())
+			),
 			ControlObservation::Unavailable
 		);
 
 		task.state = ConversationState::Ready;
 
 		assert_eq!(
-			observe(&command, &target, &ConversationResult::Available(task)),
+			control_recovery::observe(&command, &target, &ConversationResult::Available(task)),
 			ControlObservation::TurnInactive
 		);
 	}
@@ -324,7 +336,7 @@ mod tests {
 		command.payload = CommandPayload::ArchiveConversation { conversation_id: target.clone() };
 
 		assert_eq!(
-			observe(&command, &target, &ConversationResult::NotFound),
+			control_recovery::observe(&command, &target, &ConversationResult::NotFound),
 			ControlObservation::Missing
 		);
 
@@ -336,16 +348,16 @@ mod tests {
 				conversation_revision: EntityRevision(revision),
 			};
 
-			assert_eq!(observe(&command, &target, &result), expected);
+			assert_eq!(control_recovery::observe(&command, &target, &result), expected);
 		}
 	}
 	#[test]
 	fn control_acknowledgement_preserves_unrelated_input_and_never_replays() {
-		let (controller, server, task) = connected_conversations();
+		let (controller, server, task) = tests::connected_conversations();
 
 		controller.submit("Preserved input").expect("submit");
 
-		let input = dispatched_command(&controller, &server);
+		let input = tests::dispatched_command(&controller, &server);
 
 		controller.session_ended(1);
 
@@ -354,7 +366,7 @@ mod tests {
 
 		draft.unconfirmed.push(control.clone());
 
-		let (restored, server, _) = connected_conversations();
+		let (restored, server, _) = tests::connected_conversations();
 
 		assert!(restored.restore_ordinary_draft(&draft));
 		assert!(!restored.acknowledge_ordinary_control(&control));
@@ -395,9 +407,7 @@ mod tests {
 	}
 	#[test]
 	fn changed_target_and_disconnection_invalidate_control_observations() {
-		use crate::conversations::tests::{recorded_archive_fixture, reply_archive_check};
-
-		let (controller, server, original) = recorded_archive_fixture();
+		let (controller, server, original) = tests::recorded_archive_fixture();
 
 		assert!(controller.check_ordinary_control(&original));
 
@@ -426,7 +436,7 @@ mod tests {
 		assert!(!controller.acknowledge_ordinary_control(&original));
 		assert!(controller.check_ordinary_control(&original));
 
-		reply_archive_check(&controller, &server, &original);
+		tests::reply_archive_check(&controller, &server, &original);
 
 		assert!(controller.ordinary_control_states()[0].1.expect("observation").can_acknowledge());
 
@@ -457,7 +467,11 @@ mod tests {
 				current.state = state;
 
 				assert_eq!(
-					observe(&command, &target, &ConversationResult::Available(current.clone())),
+					control_recovery::observe(
+						&command,
+						&target,
+						&ConversationResult::Available(current.clone())
+					),
 					expected
 				);
 			}
@@ -471,7 +485,10 @@ mod tests {
 			conversation_revision: EntityRevision(2),
 		};
 
-		assert_eq!(observe(&command, &target, &archived), ControlObservation::Conflict);
+		assert_eq!(
+			control_recovery::observe(&command, &target, &archived),
+			ControlObservation::Conflict
+		);
 
 		for (revision, expected) in
 			[(2, ControlObservation::RoutingAdvanced), (3, ControlObservation::Conflict)]
@@ -486,7 +503,7 @@ mod tests {
 				successor_conversation_revision: EntityRevision(7),
 			};
 
-			assert_eq!(observe(&command, &target, &redirect), expected);
+			assert_eq!(control_recovery::observe(&command, &target, &redirect), expected);
 		}
 	}
 }

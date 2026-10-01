@@ -22,6 +22,8 @@ use decodex_protocol::{ClientProfile, ProfileKind};
 
 use gpui::{App, AppContext as _, Context, Entity, Global, Subscription};
 
+use crate::client_lifecycle::AppOwnedDaemonRecovery;
+
 const MAX_RECOVERY_RESTARTS: u8 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -147,7 +149,7 @@ impl BundledDaemonSupervisor {
 	}
 }
 
-impl crate::client_lifecycle::AppOwnedDaemonRecovery for BundledDaemonSupervisor {
+impl AppOwnedDaemonRecovery for BundledDaemonSupervisor {
 	fn recover_transport(&self) -> bool {
 		self.recover_transport()
 	}
@@ -350,16 +352,21 @@ fn set_close_on_exec(raw_fd: i32, enabled: bool) -> io::Result<()> {
 mod tests {
 	use std::{
 		fs,
-		os::unix::fs::PermissionsExt as _,
+		os::{
+			fd::AsRawFd,
+			unix::fs::{MetadataExt as _, PermissionsExt as _},
+		},
 		process::Child,
 		time::{Duration, Instant},
 	};
 
-	use decodex_protocol::DoctorClient;
-
 	use tempfile::TempDir;
 
-	use super::*;
+	use crate::bundled_daemon::{
+		self, BundledDaemonFailure, BundledDaemonSupervisor, ClientProfile, Command, Path, PathBuf,
+		Stdio,
+	};
+	use decodex_protocol::DoctorClient;
 
 	#[cfg(target_os = "macos")]
 	struct ProcessFixture {
@@ -427,7 +434,7 @@ max_entry_bytes = 65536
 			);
 
 			assert!(
-				is_executable_regular_file(
+				bundled_daemon::is_executable_regular_file(
 					&fs::symlink_metadata(&daemon).expect("read real decodex test binary")
 				),
 				"process fixture requires an executable real decodex binary"
@@ -499,11 +506,11 @@ max_entry_bytes = 65536
 		let executable = Path::new("/Applications/Decodex.app/Contents/MacOS/decodex-gpui");
 
 		assert_eq!(
-			bundled_daemon_path(executable).expect("resolve bundled daemon"),
+			bundled_daemon::bundled_daemon_path(executable).expect("resolve bundled daemon"),
 			Path::new("/Applications/Decodex.app/Contents/Helpers/decodex"),
 		);
 		assert_eq!(
-			bundled_daemon_path(Path::new("/tmp/decodex-gpui")),
+			bundled_daemon::bundled_daemon_path(Path::new("/tmp/decodex-gpui")),
 			Err(BundledDaemonFailure::NotBundled),
 		);
 	}
@@ -511,7 +518,7 @@ max_entry_bytes = 65536
 	#[cfg(target_os = "macos")]
 	#[test]
 	fn lifetime_child_fd_is_inherited_but_parent_fd_is_not() {
-		let (parent, child) = lifetime_channel().expect("create lifetime channel");
+		let (parent, child) = bundled_daemon::lifetime_channel().expect("create lifetime channel");
 		// SAFETY: `fcntl` only reads descriptor flags.
 		let parent_flags = unsafe { libc::fcntl(parent.as_raw_fd(), libc::F_GETFD) };
 		// SAFETY: same read for the child endpoint.

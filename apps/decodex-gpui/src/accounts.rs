@@ -1,15 +1,15 @@
 //! Presentation-neutral ownership of the bounded GPUI account-pool surface.
 
 use std::{
+	process,
 	sync::{
-		Arc, Mutex, MutexGuard,
+		Arc, Mutex, MutexGuard, PoisonError,
 		atomic::{AtomicU64, Ordering},
 	},
 	time::{SystemTime, UNIX_EPOCH},
 };
 
 use sha2::{Digest, Sha256};
-
 use tokio::sync::Notify;
 
 use decodex_protocol::{
@@ -575,7 +575,7 @@ impl AccountsController {
 	}
 
 	fn lock(&self) -> MutexGuard<'_, State> {
-		self.inner.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+		self.inner.state.lock().unwrap_or_else(PoisonError::into_inner)
 	}
 }
 
@@ -907,7 +907,7 @@ pub(crate) fn canonical_uuid_v4() -> Result<String, AccountInputError> {
 		.as_nanos();
 	let mut digest = Sha256::new();
 
-	digest.update(std::process::id().to_be_bytes());
+	digest.update(process::id().to_be_bytes());
 	digest.update(nanos.to_be_bytes());
 	digest.update(sequence.to_be_bytes());
 
@@ -953,12 +953,17 @@ fn command_identity() -> Result<CommandIdentity, AccountInputError> {
 
 #[cfg(test)]
 mod tests {
+	use crate::accounts::{
+		AccountDispatch, AccountDto, AccountInputError, AccountRouteOutcome,
+		AccountRoutingControlDto, AccountSelectionModeDto, AccountsController, AccountsLoadState,
+		AccountsResult, CURRENT_VERSION, CommandOutcome, CommandPayload, CommandResultEnvelope,
+		CorrelationId, EntityId, EntityRevision, EventEnvelope, EventPayload, QueryPayload,
+		QueryResultEnvelope, QueryResultPayload, ResultPayload, ServerId,
+	};
 	use decodex_protocol::{
 		AccountLifecycleReadinessDto, AccountObservedStateDto, AccountQuotaStateDto,
 		AccountQuotaWindowDto, Sha256Digest, WireText,
 	};
-
-	use super::*;
 
 	fn server() -> ServerId {
 		ServerId::new("018f0f9e-7b6e-4a31-8f4c-1d2e3f405162")

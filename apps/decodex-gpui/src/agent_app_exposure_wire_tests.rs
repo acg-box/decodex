@@ -1,15 +1,19 @@
 //! Real account settings clicks across the same-UID socket; no native provider is mocked as
 //! delivered.
-use super::{super::wire_test_support::SERVER, *};
+use std::thread::JoinHandle;
 
-use decodex_protocol::{
-	CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
-	QueryResultPayload, ServerId, ServerMessage,
-};
-
-use futures_util::{SinkExt, StreamExt};
-
+use crate::shell::agent_surface::{app_exposure::*, wire_test_support::SERVER};
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::TestAppContext;
+use tempfile::TempDir;
+use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::wire_test_support;
+use decodex_protocol::{
+	AgentPendingEventDto, AgentWorkKindDto, CURRENT_VERSION, ClientMessage, CommandPayload,
+	QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId, ServerMessage,
+};
 
 struct ExposureView {
 	surface: Entity<AgentSurface>,
@@ -20,12 +24,12 @@ impl Render for ExposureView {
 	}
 }
 
-fn fixture() -> (tempfile::TempDir, ClientProfile, std::thread::JoinHandle<Vec<AgentActionDto>>) {
-	super::super::wire_test_support::fixture(serve)
+fn fixture() -> (TempDir, ClientProfile, JoinHandle<Vec<AgentActionDto>>) {
+	wire_test_support::fixture(serve)
 }
 
 #[gpui::test]
-fn app_exposure_click_sends_once_and_reads_after_lost_reply(cx: &mut gpui::TestAppContext) {
+fn app_exposure_click_sends_once_and_reads_after_lost_reply(cx: &mut TestAppContext) {
 	let (_directory, profile, server) = fixture();
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
@@ -73,8 +77,6 @@ fn app_exposure_click_sends_once_and_reads_after_lost_reply(cx: &mut gpui::TestA
 }
 
 fn snapshot() -> AgentSnapshotDto {
-	use decodex_protocol::{AgentPendingEventDto, AgentWorkKindDto};
-
 	AgentSnapshotDto {
 		runtime_source: Some(EntityId::new("native-source").unwrap()),
 		workspaces: vec![],
@@ -104,7 +106,7 @@ fn snapshot() -> AgentSnapshotDto {
 }
 
 #[gpui::test]
-fn ordinary_refresh_keeps_app_exposure_read_and_write_readback(cx: &mut gpui::TestAppContext) {
+fn ordinary_refresh_keeps_app_exposure_read_and_write_readback(cx: &mut TestAppContext) {
 	let (_dir, profile, server) = fixture();
 	let surface = cx.new(AgentSurface::new);
 
@@ -152,11 +154,11 @@ fn ordinary_refresh_keeps_app_exposure_read_and_write_readback(cx: &mut gpui::Te
 	assert_eq!(server.join().unwrap().len(), 1, "an uncertain write must not be retried");
 }
 
-async fn serve(listener: tokio::net::UnixListener) -> Vec<AgentActionDto> {
+async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 	let mut actions = Vec::new();
 
 	for index in 0..3 {
-		let mut socket = super::super::wire_test_support::accept(&listener).await;
+		let mut socket = wire_test_support::accept(&listener).await;
 		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
 			panic!("text request")
 		};

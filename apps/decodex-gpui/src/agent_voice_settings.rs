@@ -1,6 +1,9 @@
 //! Select the next call's voice without changing a live audio session.
-use super::{mcp_forms::mcp_button, *};
-use decodex_protocol::AgentVoiceSettingsResult as State;
+use gpui::AnyElement;
+use tokio::runtime::Builder;
+
+use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
+use decodex_protocol::{AgentVoiceSettingsResult as State, ClientFailure, HistoryText};
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -56,17 +59,17 @@ impl AgentSurface {
 				.transpose()
 				.map_err(|_| "The realtime model name is too long.")?,
 			start_instructions: value(&next.start)
-				.map(decodex_protocol::HistoryText::new)
+				.map(HistoryText::new)
 				.transpose()
 				.map_err(|_| "The voice start instructions are too long.")?,
 			end_instructions: value(&next.end)
-				.map(decodex_protocol::HistoryText::new)
+				.map(HistoryText::new)
 				.transpose()
 				.map_err(|_| "The voice end instructions are too long.")?,
 		})
 	}
 
-	fn advanced_voice_options(&self, work: &str, cx: &mut Context<Self>) -> gpui::AnyElement {
+	fn advanced_voice_options(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		if self.voice_option_target(work).is_none() {
 			return div().into_any_element();
 		}
@@ -201,8 +204,7 @@ impl AgentSurface {
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 		let query_owner = owner.clone();
 		let future = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
 			let state =
@@ -236,11 +238,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn voice_settings_panel(
-		&self,
-		work: &str,
-		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	pub(super) fn voice_settings_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_agents.selected.is_some() {
 			return div().into_any_element();
 		}
@@ -330,7 +328,7 @@ impl AgentSurface {
 
 fn feedback(
 	voice: Option<&WireText>,
-	outcome: Option<&Result<AgentCommandResponse, decodex_protocol::ClientFailure>>,
+	outcome: Option<&Result<AgentCommandResponse, ClientFailure>>,
 	state: &State,
 ) -> &'static str {
 	match (voice, outcome, state) {

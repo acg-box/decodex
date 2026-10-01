@@ -2,8 +2,9 @@
 // Copyright OpenAI. Licensed under Apache-2.0; see LICENSE-APACHE.
 //! End-to-end grammar, topology, and rendered output checks for each supported family.
 
-use super::{RenderError, render};
 use unicode_width::UnicodeWidthStr;
+
+use crate::shell::agent_surface::markdown::mermaid::{self, RenderError};
 
 const SEQUENCE: &str = "sequenceDiagram
     actor U as Buyer
@@ -92,15 +93,16 @@ const ER: &str = "erDiagram
 #[test]
 fn complex_families() {
 	for (name, source) in [("sequence", SEQUENCE), ("state", STATE), ("class", CLASS), ("er", ER)] {
-		let output = render(source, /* max_width */ 180).expect("valid upstream diagram fixture");
+		let output =
+			mermaid::render(source, /* max_width */ 180).expect("valid upstream diagram fixture");
 		let width = output
 			.lines()
 			.map(UnicodeWidthStr::width)
 			.max()
 			.expect("valid upstream diagram fixture");
 
-		assert_eq!(render(source, width), Ok(output.clone()));
-		assert_eq!(render(source, width - 1), Err(RenderError::TooWide));
+		assert_eq!(mermaid::render(source, width), Ok(output.clone()));
+		assert_eq!(mermaid::render(source, width - 1), Err(RenderError::TooWide));
 
 		super::assert_snapshot(name, &output);
 	}
@@ -112,7 +114,8 @@ fn unicode_labels_and_later_declarations() {
 		let source = format!(
 			"%% heading\ngraph {direction}; A -->|准备| B; A[请求]; B{{Réponse?}}; B -->|retry| A; B --> C[Ship 🚀]"
 		);
-		let output = render(&source, /* max_width */ 160).expect("valid upstream diagram fixture");
+		let output =
+			mermaid::render(&source, /* max_width */ 160).expect("valid upstream diagram fixture");
 
 		for label in ["请求", "Réponse?", "Ship 🚀", "准备", "retry"] {
 			assert!(output.contains(label), "{direction}: {label}");
@@ -124,8 +127,8 @@ fn unicode_labels_and_later_declarations() {
 			.max()
 			.expect("valid upstream diagram fixture");
 
-		assert_eq!(render(&source, width), Ok(output.clone()));
-		assert_eq!(render(&source, width - 1), Err(RenderError::TooWide));
+		assert_eq!(mermaid::render(&source, width), Ok(output.clone()));
+		assert_eq!(mermaid::render(&source, width - 1), Err(RenderError::TooWide));
 
 		if direction == "LR" {
 			super::assert_snapshot("LR", &output);
@@ -149,7 +152,7 @@ fn class_relationship_endpoints() {
 		("--o", '─', '◇', false),
 		("--|>", '─', '◁', false),
 	] {
-		let output = render(
+		let output = mermaid::render(
 			&format!("classDiagram; A \"one\" {operator} \"many\" B : uses"),
 			/* max_width */ 100,
 		)
@@ -170,9 +173,11 @@ fn er_cardinalities() {
 		for (right, target_card) in
 			[("||", "1"), ("o|", "0..1"), ("|{", "1..many"), ("o{", "0..many")]
 		{
-			let output =
-				render(&format!("erDiagram; A {left}--{right} B : owns"), /* max_width */ 100)
-					.expect("valid upstream diagram fixture");
+			let output = mermaid::render(
+				&format!("erDiagram; A {left}--{right} B : owns"),
+				/* max_width */ 100,
+			)
+			.expect("valid upstream diagram fixture");
 			let ports = output.lines().filter(|line| line.contains('├')).collect::<Vec<_>>();
 
 			assert!(ports[0].contains(&format!("({source_card}) owns")));
@@ -216,7 +221,11 @@ fn rejects_incomplete_and_unsupported_families() {
 		"erDiagram; A ||--|| B:::highlight : owns",
 		"%%{init: {}}%%\nclassDiagram; class A",
 	] {
-		assert_eq!(render(source, /* max_width */ 200), Err(RenderError::Unsupported), "{source}");
+		assert_eq!(
+			mermaid::render(source, /* max_width */ 200),
+			Err(RenderError::Unsupported),
+			"{source}"
+		);
 	}
 }
 
@@ -229,7 +238,7 @@ fn metadata_names_and_style_text_remain_valid_in_content() {
 		"erDiagram; A ||--|| B: ::: literal",
 		"stateDiagram-v2; A: text ::: literal; A --> B: ::: literal",
 	] {
-		assert!(render(source, /* max_width */ 200).is_ok(), "{source}");
+		assert!(mermaid::render(source, /* max_width */ 200).is_ok(), "{source}");
 	}
 }
 
@@ -247,7 +256,7 @@ fn family_limits() {
 		format!("stateDiagram-v2; {}", "A --> B;".repeat(25)),
 	] {
 		assert_eq!(
-			render(&source, /* max_width */ usize::MAX),
+			mermaid::render(&source, /* max_width */ usize::MAX),
 			Err(RenderError::Limit),
 			"{source}"
 		);
@@ -259,7 +268,7 @@ fn truncated_sources_and_terminal_widths() {
 	// Exercise incomplete streamed source at every UTF-8 boundary, including inside control blocks.
 	for source in [SEQUENCE, STATE, CLASS, ER, "sequenceDiagram; A->>B: 请求"] {
 		for end in source.char_indices().map(|(index, _)| index) {
-			if let Ok(output) = render(&source[..end], /* max_width */ 180) {
+			if let Ok(output) = mermaid::render(&source[..end], /* max_width */ 180) {
 				assert!(output.lines().all(|line| line.width() <= 180));
 				assert!(!output.chars().any(|ch| ch.is_control() && ch != '\n'));
 			}
@@ -270,15 +279,16 @@ fn truncated_sources_and_terminal_widths() {
 		"sequenceDiagram; A->>A: self",
 		"sequenceDiagram; Note over A: memo",
 	] {
-		let output = render(source, /* max_width */ 100).expect("valid upstream diagram fixture");
+		let output =
+			mermaid::render(source, /* max_width */ 100).expect("valid upstream diagram fixture");
 		let width = output
 			.lines()
 			.map(UnicodeWidthStr::width)
 			.max()
 			.expect("valid upstream diagram fixture");
 
-		assert_eq!(render(source, width), Ok(output));
-		assert_eq!(render(source, width - 1), Err(RenderError::TooWide));
+		assert_eq!(mermaid::render(source, width), Ok(output));
+		assert_eq!(mermaid::render(source, width - 1), Err(RenderError::TooWide));
 	}
 }
 
@@ -293,7 +303,7 @@ fn sequence_arrows_preserve_sender_recipient_and_style() {
 		("--x", 'x', 'x', true),
 	] {
 		for (from, to, tip) in [("A", "B", forward), ("B", "A", reverse), ("B", "B", reverse)] {
-			let output = render(
+			let output = mermaid::render(
 				&format!(
 					"sequenceDiagram; participant A; participant B; {from}{operator}{to}: msg"
 				),
@@ -325,6 +335,6 @@ fn canvas_limit_applies_even_with_unlimited_caller_width() {
 	);
 
 	for source in [graph, sequence] {
-		assert_eq!(render(&source, /* max_width */ usize::MAX), Err(RenderError::Limit));
+		assert_eq!(mermaid::render(&source, /* max_width */ usize::MAX), Err(RenderError::Limit));
 	}
 }

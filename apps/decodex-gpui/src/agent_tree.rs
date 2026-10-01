@@ -1,9 +1,11 @@
 //! Agent ownership tree, separate from work dependencies in the graph.
-use super::*;
+use crate::shell::agent_surface::*;
 
 use crate::ui_scroll::SmoothScrollArea;
 
 use gpui::AnyElement;
+
+use crate::ui_motion;
 
 pub(super) const DISCLOSURE: f32 = 18.;
 
@@ -182,7 +184,7 @@ impl AgentSurface {
 				.flex()
 				.flex_col()
 				.child(row)
-				.child(crate::ui_motion::reveal(
+				.child(ui_motion::reveal(
 					SharedString::from(format!("agent-children-{}", work.id)),
 					if expanded { count as f32 * ui_theme::TREE_ROW_HEIGHT } else { 0.0 },
 					false,
@@ -245,7 +247,7 @@ fn chevron(id: String, expanded: bool) -> impl IntoElement {
 	gpui::canvas(
 		|_, _, _| (),
 		move |bounds, _, window, cx| {
-			let angle = crate::ui_motion::value(
+			let angle = ui_motion::value(
 				SharedString::from(id.clone()),
 				if expanded { std::f32::consts::FRAC_PI_2 } else { 0. },
 				window,
@@ -283,7 +285,10 @@ fn children<'a>(snapshot: &'a AgentSnapshotDto, parent: &str) -> Vec<&'a AgentWo
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::agent_tree::*;
+
+	use std::thread;
+
 	#[gpui::test]
 	fn native_tree_disclosure_uses_its_own_hit_target(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -327,7 +332,7 @@ mod tests {
 			w.draw(cx).clear();
 		});
 		// Hit-test the settled sidebar, after its entrance animation.
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|w, cx| {
 			w.draw(cx).clear();

@@ -1,7 +1,13 @@
 //! One explicit native image preview, bounded and tied to the selected source.
-use super::*;
-use decodex_protocol::{AgentMediaRequest, AgentMediaResult};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
+
+use gpui::{AnyElement, ImageFormat, ObjectFit};
+use tokio::{runtime::Builder, time};
+
+use crate::{shell::agent_surface::native_timeline::*, ui_loading};
+use decodex_protocol::{
+	AgentMediaRequest, AgentMediaResult, AgentTimelineAttachment, AgentTimelineAttachmentSource,
+};
 
 #[derive(Default)]
 pub(super) struct Preview {
@@ -63,17 +69,16 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		turn: &str,
 		item: &str,
-		attachment: &decodex_protocol::AgentTimelineAttachment,
+		attachment: &AgentTimelineAttachment,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let caption = render::attachment_caption(attachment);
 		let Some(request) = media_request(work, turn, item, attachment.index) else {
 			return muted(caption).into_any_element();
 		};
 		let preview = &self.native_history.preview;
 		let selected = preview.request.as_ref() == Some(&request);
-		let can_preview = attachment.source
-			!= decodex_protocol::AgentTimelineAttachmentSource::Unknown
+		let can_preview = attachment.source != AgentTimelineAttachmentSource::Unknown
 			&& matches!(
 				attachment.kind.as_str(),
 				"image" | "localImage" | "imageView" | "imageGeneration" | "inputImage"
@@ -97,12 +102,12 @@ impl AgentSurface {
 						.debug_selector(|| "native-media-preview".into())
 						.max_w_full()
 						.max_h(gpui::px(420.0))
-						.object_fit(gpui::ObjectFit::Contain),
+						.object_fit(ObjectFit::Contain),
 				);
 			}
 
 			if preview.task.is_some() {
-				row = row.child(crate::ui_loading::loading("Loading image"));
+				row = row.child(ui_loading::loading("Loading image"));
 			} else if let Some(notice) = preview.notice {
 				row = row.child(muted(notice));
 			}
@@ -141,14 +146,14 @@ impl AgentSurface {
 		let epoch = self.native_history.epoch;
 		let account = binding.account.clone();
 		let read = cx.background_executor().spawn(async move {
-			let runtime = tokio::runtime::Builder::new_current_thread()
+			let runtime = Builder::new_current_thread()
 				.enable_all()
 				.build()
 				.map_err(|_| "Image could not be loaded.")?;
 
 			runtime.block_on(async {
-				tokio::time::timeout(
-					std::time::Duration::from_secs(60),
+				time::timeout(
+					Duration::from_secs(60),
 					load(&AgentClient::new(profile), request, &account),
 				)
 				.await
@@ -254,10 +259,10 @@ async fn load(
 
 		if all.len() == total_bytes as usize {
 			let format = match mime_type.as_str() {
-				"image/png" => gpui::ImageFormat::Png,
-				"image/jpeg" => gpui::ImageFormat::Jpeg,
-				"image/webp" => gpui::ImageFormat::Webp,
-				"image/gif" => gpui::ImageFormat::Gif,
+				"image/png" => ImageFormat::Png,
+				"image/jpeg" => ImageFormat::Jpeg,
+				"image/webp" => ImageFormat::Webp,
+				"image/gif" => ImageFormat::Gif,
 				_ => return Err("This content is not a supported image."),
 			};
 
@@ -271,11 +276,12 @@ async fn load(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::native_timeline::media::*;
 	use decodex_protocol::{
 		AgentTimelineAttachment, AgentTimelineAttachmentSource, AgentTimelinePage,
 	};
-	use gpui::{px, size};
+	use gpui::{self};
+	use tokio::sync::oneshot;
 
 	#[gpui::test]
 	fn runtime_source_change_clears_history_and_rejects_same_account_late_preview(
@@ -349,7 +355,7 @@ mod tests {
 	fn loaded_image_preview_is_removed_when_native_account_changes(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
-		visual.update(|window, _| window.resize(size(px(1_000.), px(700.))));
+		visual.update(|window, _| window.resize(gpui::size(gpui::px(1_000.), gpui::px(700.))));
 
 		let (binding, page, serial) = surface.update(visual, |surface, cx| {
 			surface.visual_workspace_fixture(cx);
@@ -449,7 +455,7 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		let (send, receive) = tokio::sync::oneshot::channel();
+		let (send, receive) = oneshot::channel();
 		let (task, original, other, binding, page) = surface.update(visual, |surface, cx| {
 			surface.visual_workspace_fixture(cx);
 

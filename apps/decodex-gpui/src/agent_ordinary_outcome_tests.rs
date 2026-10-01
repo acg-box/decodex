@@ -1,27 +1,31 @@
 //! Exercise outcome acknowledgement through the shared writer and cold restoration.
-use super::*;
+use gpui::{Modifiers, TestAppContext};
+
 use crate::{
 	client_lifecycle::ConnectionView,
-	conversations::tests::{recorded_turn_fixture, reply_recorded_turn, take_ready_command},
-	shell::{Destination, Shell},
+	conversations::tests,
+	shell::{Destination, Shell, agent_surface::drafts::storage::*},
 };
-use decodex_protocol::{ConversationTurnOutcomeState as Outcome, DesktopRecoveredDraft};
+use decodex_protocol::{
+	CommandPayload, ConversationReasoningEffort, ConversationTurnOutcomeState,
+	DesktopCreationIntent, DesktopRecoveredDraft, EntityId,
+};
 
 #[gpui::test]
-fn acknowledged_turn_stays_removed_after_store_reopen(cx: &mut gpui::TestAppContext) {
+fn acknowledged_turn_stays_removed_after_store_reopen(cx: &mut TestAppContext) {
 	for (outcome, text, expected, other_owner) in [
-		(Outcome::Completed, "Original message", "", false),
-		(Outcome::Completed, "Original message", "Original message", true),
-		(Outcome::Completed, "Later message", "Later message", false),
-		(Outcome::Failed, "Original message", "Original message", false),
-		(Outcome::NotSubmitted, "Original message", "Original message", false),
+		(ConversationTurnOutcomeState::Completed, "Original message", "", false),
+		(ConversationTurnOutcomeState::Completed, "Original message", "Original message", true),
+		(ConversationTurnOutcomeState::Completed, "Later message", "Later message", false),
+		(ConversationTurnOutcomeState::Failed, "Original message", "Original message", false),
+		(ConversationTurnOutcomeState::NotSubmitted, "Original message", "Original message", false),
 	] {
 		let (_service, profile, other) = super::super::tests::profiles();
 		let scope = profile.draft_scope_key();
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
 		let store = ClientDraftStore::open_at(&root).unwrap();
-		let (conversations, server, original) = recorded_turn_fixture(outcome);
+		let (conversations, server, original) = tests::recorded_turn_fixture(outcome);
 		let mut draft = conversations.ordinary_draft(text).unwrap();
 
 		if other_owner {
@@ -29,9 +33,8 @@ fn acknowledged_turn_stays_removed_after_store_reopen(cx: &mut gpui::TestAppCont
 
 			draft.parked.insert(editor.conversation_id.as_ref().unwrap().as_str().into(), editor);
 
-			draft.composer.conversation_id = Some(
-				decodex_protocol::EntityId::new("30000000-0000-4000-8000-000000000099").unwrap(),
-			);
+			draft.composer.conversation_id =
+				Some(EntityId::new("30000000-0000-4000-8000-000000000099").unwrap());
 		}
 
 		let mut saved_profile = DesktopProfileDraft::default();
@@ -70,7 +73,7 @@ fn acknowledged_turn_stays_removed_after_store_reopen(cx: &mut gpui::TestAppCont
 			assert_eq!(s.composer.read(cx).content(), text);
 		});
 
-		reply_recorded_turn(&conversations, &server, &original, outcome);
+		tests::reply_recorded_turn(&conversations, &server, &original, outcome);
 
 		shell.update(visual, |s, cx| s.synchronize_conversations(cx));
 		visual.run_until_parked();
@@ -81,10 +84,10 @@ fn acknowledged_turn_stays_removed_after_store_reopen(cx: &mut gpui::TestAppCont
 
 		let button = visual.debug_bounds("ordinary-turn-acknowledge-0").unwrap();
 
-		visual.simulate_click(button.center(), gpui::Modifiers::default());
+		visual.simulate_click(button.center(), Modifiers::default());
 		visual.run_until_parked();
 
-		assert!(take_ready_command(&conversations, &server).is_none());
+		assert!(tests::take_ready_command(&conversations, &server).is_none());
 
 		let reopened = ClientDraftStore::open_at(&root).unwrap();
 		let saved = DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
@@ -107,7 +110,7 @@ fn acknowledged_turn_stays_removed_after_store_reopen(cx: &mut gpui::TestAppCont
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
 
 		cold.update(cold_visual, |s, cx| {
-			s.conversations = recorded_turn_fixture(Outcome::Unknown).0;
+			s.conversations = tests::recorded_turn_fixture(ConversationTurnOutcomeState::Unknown).0;
 			s.reset_cards.profile = Some(profile.clone());
 			s.agent.update(cx, |agent, cx| {
 				agent.draft_profiles.storage = Storage::open(Ok(reopened));
@@ -124,17 +127,13 @@ fn acknowledged_turn_stays_removed_after_store_reopen(cx: &mut gpui::TestAppCont
 }
 
 #[gpui::test]
-fn inherited_ordinary_choices_survive_storage_and_rendered_send(cx: &mut gpui::TestAppContext) {
-	use crate::conversations::tests::{connected_conversations, reply_native_model_settings};
-
-	use decodex_protocol::{CommandPayload, ConversationReasoningEffort, DesktopCreationIntent};
-
+fn inherited_ordinary_choices_survive_storage_and_rendered_send(cx: &mut TestAppContext) {
 	let (_service, profile, _) = super::super::tests::profiles();
 	let scope = profile.draft_scope_key();
 	let directory = tempfile::tempdir().unwrap();
 	let root = directory.path().canonicalize().unwrap().join("desktop");
 	let store = ClientDraftStore::open_at(&root).unwrap();
-	let (conversations, server, _) = connected_conversations();
+	let (conversations, server, _) = tests::connected_conversations();
 	let mut draft = conversations.ordinary_draft("Native continuation").unwrap();
 
 	draft.composer.creation_intent =
@@ -168,7 +167,7 @@ fn inherited_ordinary_choices_survive_storage_and_rendered_send(cx: &mut gpui::T
 		);
 	});
 
-	reply_native_model_settings(&conversations, &server);
+	tests::reply_native_model_settings(&conversations, &server);
 
 	shell.update(visual, |s, cx| s.synchronize_conversations(cx));
 	visual.run_until_parked();
@@ -179,10 +178,11 @@ fn inherited_ordinary_choices_survive_storage_and_rendered_send(cx: &mut gpui::T
 
 	let button = visual.debug_bounds("conversation-send").unwrap();
 
-	visual.simulate_click(button.center(), gpui::Modifiers::default());
+	visual.simulate_click(button.center(), Modifiers::default());
 	visual.run_until_parked();
 
-	let original = take_ready_command(&conversations, &server).expect("saved rendered submission");
+	let original =
+		tests::take_ready_command(&conversations, &server).expect("saved rendered submission");
 	let CommandPayload::SubmitConversationTurn { execution, overrides: Some(intent), .. } =
 		&original.payload
 	else {
@@ -198,7 +198,7 @@ fn inherited_ordinary_choices_survive_storage_and_rendered_send(cx: &mut gpui::T
 
 	assert_eq!(saved.profiles[&scope].ordinary["/tmp"].unconfirmed, vec![original.clone()]);
 
-	let (restored, restored_server, _) = connected_conversations();
+	let (restored, restored_server, _) = tests::connected_conversations();
 	let (cold, cold_visual) =
 		cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
 
@@ -219,17 +219,13 @@ fn inherited_ordinary_choices_survive_storage_and_rendered_send(cx: &mut gpui::T
 
 	assert_eq!(restored.ordinary_draft("Native continuation").unwrap().unconfirmed, vec![original]);
 	assert!(
-		take_ready_command(&restored, &restored_server).is_none(),
+		tests::take_ready_command(&restored, &restored_server).is_none(),
 		"restart never replays the saved command"
 	);
 }
 
 #[gpui::test]
-fn acknowledged_archive_stays_removed_after_store_reopen(cx: &mut gpui::TestAppContext) {
-	use crate::conversations::tests::{
-		prepare_control_check, recorded_archive_fixture, reply_archive_check,
-	};
-
+fn acknowledged_archive_stays_removed_after_store_reopen(cx: &mut TestAppContext) {
 	let text = "Later unsent text";
 	let expected = text;
 
@@ -239,7 +235,7 @@ fn acknowledged_archive_stays_removed_after_store_reopen(cx: &mut gpui::TestAppC
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
 		let store = ClientDraftStore::open_at(&root).unwrap();
-		let (conversations, server, original) = recorded_archive_fixture();
+		let (conversations, server, original) = tests::recorded_archive_fixture();
 		let draft = conversations.ordinary_draft(text).unwrap();
 		let mut saved_profile = DesktopProfileDraft::default();
 
@@ -277,7 +273,7 @@ fn acknowledged_archive_stays_removed_after_store_reopen(cx: &mut gpui::TestAppC
 			assert_eq!(s.composer.read(cx).content(), text);
 		});
 
-		prepare_control_check(&conversations);
+		tests::prepare_control_check(&conversations);
 
 		shell.update(visual, |s, cx| s.synchronize_conversations(cx));
 		visual.run_until_parked();
@@ -290,9 +286,9 @@ fn acknowledged_archive_stays_removed_after_store_reopen(cx: &mut gpui::TestAppC
 
 		let check = visual.debug_bounds("ordinary-control-check-0").unwrap();
 
-		visual.simulate_click(check.center(), gpui::Modifiers::default());
+		visual.simulate_click(check.center(), Modifiers::default());
 
-		reply_archive_check(&conversations, &server, &original);
+		tests::reply_archive_check(&conversations, &server, &original);
 
 		shell.update(visual, |s, cx| s.synchronize_conversations(cx));
 		visual.run_until_parked();
@@ -302,10 +298,10 @@ fn acknowledged_archive_stays_removed_after_store_reopen(cx: &mut gpui::TestAppC
 
 		let button = visual.debug_bounds("ordinary-control-acknowledge-0").unwrap();
 
-		visual.simulate_click(button.center(), gpui::Modifiers::default());
+		visual.simulate_click(button.center(), Modifiers::default());
 		visual.run_until_parked();
 
-		assert!(take_ready_command(&conversations, &server).is_none());
+		assert!(tests::take_ready_command(&conversations, &server).is_none());
 
 		let reopened = ClientDraftStore::open_at(&root).unwrap();
 		let saved = DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
@@ -328,7 +324,7 @@ fn acknowledged_archive_stays_removed_after_store_reopen(cx: &mut gpui::TestAppC
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
 
 		cold.update(cold_visual, |s, cx| {
-			s.conversations = recorded_archive_fixture().0;
+			s.conversations = tests::recorded_archive_fixture().0;
 			s.reset_cards.profile = Some(profile.clone());
 			s.agent.update(cx, |agent, cx| {
 				agent.draft_profiles.storage = Storage::open(Ok(reopened));
@@ -345,13 +341,7 @@ fn acknowledged_archive_stays_removed_after_store_reopen(cx: &mut gpui::TestAppC
 }
 
 #[gpui::test]
-fn acknowledged_routing_control_preserves_other_records_after_restart(
-	cx: &mut gpui::TestAppContext,
-) {
-	use crate::conversations::tests::{
-		prepare_control_check, recorded_routing_fixture, reply_routing_check,
-	};
-
+fn acknowledged_routing_control_preserves_other_records_after_restart(cx: &mut TestAppContext) {
 	let text = "Later unsent text";
 	let expected = text;
 
@@ -361,9 +351,9 @@ fn acknowledged_routing_control_preserves_other_records_after_restart(
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
 		let store = ClientDraftStore::open_at(&root).unwrap();
-		let (conversations, server, original) = recorded_routing_fixture(kind);
+		let (conversations, server, original) = tests::recorded_routing_fixture(kind);
 		let mut draft = conversations.ordinary_draft(text).unwrap();
-		let unrelated = recorded_routing_fixture((kind + 1) % 3).2;
+		let unrelated = tests::recorded_routing_fixture((kind + 1) % 3).2;
 
 		draft.unconfirmed.push(unrelated.clone());
 
@@ -414,11 +404,11 @@ fn acknowledged_routing_control_preserves_other_records_after_restart(
 
 		let check = visual.debug_bounds("ordinary-control-check-0").unwrap();
 
-		prepare_control_check(&conversations);
+		tests::prepare_control_check(&conversations);
 
-		visual.simulate_click(check.center(), gpui::Modifiers::default());
+		visual.simulate_click(check.center(), Modifiers::default());
 
-		reply_routing_check(&conversations, &server, &original);
+		tests::reply_routing_check(&conversations, &server, &original);
 
 		shell.update(visual, |s, cx| s.synchronize_conversations(cx));
 		visual.run_until_parked();
@@ -428,10 +418,10 @@ fn acknowledged_routing_control_preserves_other_records_after_restart(
 
 		let button = visual.debug_bounds("ordinary-control-acknowledge-0").unwrap();
 
-		visual.simulate_click(button.center(), gpui::Modifiers::default());
+		visual.simulate_click(button.center(), Modifiers::default());
 		visual.run_until_parked();
 
-		assert!(take_ready_command(&conversations, &server).is_none());
+		assert!(tests::take_ready_command(&conversations, &server).is_none());
 
 		let reopened = ClientDraftStore::open_at(&root).unwrap();
 		let saved = DesktopDraftDocument::decode(&reopened.load().unwrap().payload).unwrap();
@@ -454,7 +444,7 @@ fn acknowledged_routing_control_preserves_other_records_after_restart(
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
 
 		cold.update(cold_visual, |s, cx| {
-			s.conversations = recorded_routing_fixture(kind).0;
+			s.conversations = tests::recorded_routing_fixture(kind).0;
 			s.reset_cards.profile = Some(profile.clone());
 			s.agent.update(cx, |agent, cx| {
 				agent.draft_profiles.storage = Storage::open(Ok(reopened));
@@ -472,7 +462,7 @@ fn acknowledged_routing_control_preserves_other_records_after_restart(
 }
 
 #[gpui::test]
-fn ordinary_input_without_service_is_not_reported_safe_to_quit(cx: &mut gpui::TestAppContext) {
+fn ordinary_input_without_service_is_not_reported_safe_to_quit(cx: &mut TestAppContext) {
 	let directory = tempfile::tempdir().unwrap();
 	let root = directory.path().canonicalize().unwrap().join("desktop");
 	let store = ClientDraftStore::open_at(&root).unwrap();
@@ -496,7 +486,7 @@ fn ordinary_input_without_service_is_not_reported_safe_to_quit(cx: &mut gpui::Te
 }
 
 #[gpui::test]
-fn ordinary_unbound_input_reopens_without_execution_authority(cx: &mut gpui::TestAppContext) {
+fn ordinary_unbound_input_reopens_without_execution_authority(cx: &mut TestAppContext) {
 	let directory = tempfile::tempdir().unwrap();
 	let root = directory.path().canonicalize().unwrap().join("desktop");
 	let store = ClientDraftStore::open_at(&root).unwrap();
@@ -542,7 +532,7 @@ fn ordinary_unbound_input_reopens_without_execution_authority(cx: &mut gpui::Tes
 }
 
 #[gpui::test]
-fn ordinary_first_profile_adopts_cold_input(cx: &mut gpui::TestAppContext) {
+fn ordinary_first_profile_adopts_cold_input(cx: &mut TestAppContext) {
 	let (_service, profile, _) = super::super::tests::profiles();
 	let directory = tempfile::tempdir().unwrap();
 	let root = directory.path().canonicalize().unwrap().join("desktop");

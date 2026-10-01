@@ -62,14 +62,28 @@ use objc2 as _;
 
 use std::path::PathBuf;
 
-use gpui::{AppContext as _, VisualTestAppContext, px, size};
+use gpui::{self, AnyWindowHandle, AppContext as _, VisualTestAppContext};
 
 use crate::shell::{Destination, Shell, agent_surface::AgentSurface};
 
 #[cfg(target_os = "macos")] use {objc2_app_kit as _, objc2_foundation as _};
 
+use std::{io::Error, path::Path, time::Duration};
+
+use gpui::{ScrollDelta, ScrollWheelEvent, WindowHandle};
+use serde_json::Value;
+use tokio::runtime::Builder;
+
+use decodex_protocol::{
+	AgentClient, AgentMediaRequest, AgentSnapshotResult, AgentSteerIdentity, ClientFailure,
+	EntityId,
+};
+use ui_theme::MOTION_PANEL;
+
+use std::{env, fs, thread};
+
 type ServiceProjection = (
-	decodex_protocol::AgentSnapshotResult,
+	AgentSnapshotResult,
 	Option<String>,
 	Option<decodex_protocol::AgentHistoryResult>,
 	Option<decodex_protocol::AgentRequestResult>,
@@ -78,12 +92,12 @@ type ServiceProjection = (
 );
 
 fn main() -> gpui::Result<()> {
-	let output = std::env::var_os("DECODEX_VISUAL_OUTPUT")
+	let output = env::var_os("DECODEX_VISUAL_OUTPUT")
 		.map(PathBuf::from)
 		.unwrap_or_else(|| PathBuf::from("target/visual-tests/codex-workbench.png"));
 
 	if let Some(parent) = output.parent() {
-		std::fs::create_dir_all(parent)?;
+		fs::create_dir_all(parent)?;
 	}
 
 	let mut cx = VisualTestAppContext::new(gpui_platform::current_platform(false));
@@ -91,30 +105,30 @@ fn main() -> gpui::Result<()> {
 	cx.update(shell::bind_keys);
 
 	let destination = capture_destination();
-	let left_sidebar_visible = std::env::var("DECODEX_VISUAL_SIDEBAR").as_deref() != Ok("hidden");
-	let inspector_visible = std::env::var("DECODEX_VISUAL_CONTEXT").as_deref() != Ok("hidden");
-	let panel_motion = std::env::var("DECODEX_VISUAL_PANEL_MOTION").ok();
-	let send_message = std::env::var("DECODEX_VISUAL_AGENT_SEND").ok();
-	let steer_receipt = std::env::var("DECODEX_VISUAL_AGENT_STEER_RECEIPT").ok();
-	let live_media = std::env::var_os("DECODEX_VISUAL_MEDIA").is_some();
-	let automatic_recap = std::env::var_os("DECODEX_VISUAL_AUTO_RECAP").is_some();
+	let left_sidebar_visible = env::var("DECODEX_VISUAL_SIDEBAR").as_deref() != Ok("hidden");
+	let inspector_visible = env::var("DECODEX_VISUAL_CONTEXT").as_deref() != Ok("hidden");
+	let panel_motion = env::var("DECODEX_VISUAL_PANEL_MOTION").ok();
+	let send_message = env::var("DECODEX_VISUAL_AGENT_SEND").ok();
+	let steer_receipt = env::var("DECODEX_VISUAL_AGENT_STEER_RECEIPT").ok();
+	let live_media = env::var_os("DECODEX_VISUAL_MEDIA").is_some();
+	let automatic_recap = env::var_os("DECODEX_VISUAL_AUTO_RECAP").is_some();
 
 	if (send_message.is_some() || steer_receipt.is_some() || automatic_recap || live_media)
-		&& std::env::var_os("DECODEX_VISUAL_AGENT_ROOT").is_none()
+		&& env::var_os("DECODEX_VISUAL_AGENT_ROOT").is_none()
 	{
-		return Err(std::io::Error::other("Command capture requires a disposable root").into());
+		return Err(Error::other("Command capture requires a disposable root").into());
 	}
 
 	let integrations = layout_fixtures()?;
 	// The explicit root supplies protocol evidence; command probes require their own flags.
 	// Never use the installed profile as an implicit screenshot source.
-	let service_projection = std::env::var_os("DECODEX_VISUAL_AGENT_ROOT")
+	let service_projection = env::var_os("DECODEX_VISUAL_AGENT_ROOT")
 		.map(|root| {
 			read_service_projection(PathBuf::from(root), &output, automatic_recap || live_media)
 		})
 		.transpose()?;
-	let window: gpui::AnyWindowHandle = if integrations {
-		cx.open_offscreen_window(size(px(1_180.0), px(1_400.0)), |_, cx| {
+	let window: AnyWindowHandle = if integrations {
+		cx.open_offscreen_window(gpui::size(gpui::px(1_180.0), gpui::px(1_400.0)), |_, cx| {
 			cx.new(|cx| {
 				let mut surface = AgentSurface::new(cx);
 
@@ -127,21 +141,21 @@ fn main() -> gpui::Result<()> {
 	} else if let Some((snapshot, selected, history, request, guardian, profile)) =
 		service_projection
 	{
-		let handle = cx.open_offscreen_window(size(px(1_248.0), px(840.0)), |_, cx| {
-			cx.new(|cx| {
-				let mut surface =
-					AgentSurface::visual_from_service(snapshot, selected, history, request, cx);
+		let handle =
+			cx.open_offscreen_window(gpui::size(gpui::px(1_248.0), gpui::px(840.0)), |_, cx| {
+				cx.new(|cx| {
+					let mut surface =
+						AgentSurface::visual_from_service(snapshot, selected, history, request, cx);
 
-				surface.visual_guardian_reviews(guardian);
+					surface.visual_guardian_reviews(guardian);
 
-				surface
-			})
-		})?;
+					surface
+				})
+			})?;
 
 		if live_media {
-			let root = PathBuf::from(
-				std::env::var_os("DECODEX_VISUAL_AGENT_ROOT").expect("explicit root"),
-			);
+			let root =
+				PathBuf::from(env::var_os("DECODEX_VISUAL_AGENT_ROOT").expect("explicit root"));
 
 			prove_media(&mut cx, handle, profile.clone(), &root, &output)?;
 		}
@@ -158,7 +172,7 @@ fn main() -> gpui::Result<()> {
 
 		handle.into()
 	} else {
-		cx.open_offscreen_window(size(px(1_248.0), px(840.0)), |window, cx| {
+		cx.open_offscreen_window(gpui::size(gpui::px(1_248.0), gpui::px(840.0)), |window, cx| {
 			cx.new(|cx| {
 				Shell::visual_destination(
 					destination,
@@ -180,9 +194,9 @@ fn main() -> gpui::Result<()> {
 	// animation, then wait on the same clock that drives it.
 	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
 
-	std::thread::sleep(ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40));
+	thread::sleep(MOTION_PANEL + Duration::from_millis(40));
 
-	cx.advance_clock(std::time::Duration::from_millis(16));
+	cx.advance_clock(Duration::from_millis(16));
 	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
 	cx.run_until_parked();
 
@@ -207,16 +221,16 @@ fn main() -> gpui::Result<()> {
 
 fn capture_integrations(
 	cx: &mut VisualTestAppContext,
-	window: gpui::AnyWindowHandle,
-	output: &std::path::Path,
+	window: AnyWindowHandle,
+	output: &Path,
 ) -> gpui::Result<()> {
 	cx.capture_screenshot(window)?.save(output.with_extension("top.png"))?;
 	// The isolated 1180-pixel-wide fixture puts the status viewport below its controls.
 	cx.simulate_event(
 		window,
-		gpui::ScrollWheelEvent {
-			position: gpui::point(px(450.), px(620.)),
-			delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(-460.))),
+		ScrollWheelEvent {
+			position: gpui::point(gpui::px(450.), gpui::px(620.)),
+			delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-460.))),
 			..Default::default()
 		},
 	);
@@ -226,13 +240,10 @@ fn capture_integrations(
 }
 
 fn layout_fixtures() -> gpui::Result<bool> {
-	let integrations = std::env::var_os("DECODEX_VISUAL_INTEGRATIONS").is_some();
+	let integrations = env::var_os("DECODEX_VISUAL_INTEGRATIONS").is_some();
 
-	if integrations && std::env::var_os("DECODEX_VISUAL_AGENT_ROOT").is_some() {
-		return Err(std::io::Error::other(
-			"Integration layout fixture cannot use a service source",
-		)
-		.into());
+	if integrations && env::var_os("DECODEX_VISUAL_AGENT_ROOT").is_some() {
+		return Err(Error::other("Integration layout fixture cannot use a service source").into());
 	}
 
 	Ok(integrations)
@@ -240,32 +251,32 @@ fn layout_fixtures() -> gpui::Result<bool> {
 
 fn read_service_projection(
 	root: PathBuf,
-	output: &std::path::Path,
+	output: &Path,
 	require_fixture: bool,
 ) -> gpui::Result<ServiceProjection> {
 	if require_fixture
 		&& root
 			.parent()
-			.and_then(|parent| std::fs::read_to_string(parent.join(".decodex-recap-fixture")).ok())
+			.and_then(|parent| fs::read_to_string(parent.join(".decodex-recap-fixture")).ok())
 			.as_deref()
 			!= Some("isolated-recap\n")
 	{
-		return Err(std::io::Error::other(
+		return Err(Error::other(
 			"Automatic recap capture requires the isolated native fixture marker",
 		)
 		.into());
 	}
 
 	let profile = decodex_protocol::ClientProfile::load(&root, None)
-		.map_err(|error| std::io::Error::other(format!("capture profile: {error:?}")))?;
-	let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
-	let client = decodex_protocol::AgentClient::new(profile.clone());
+		.map_err(|error| Error::other(format!("capture profile: {error:?}")))?;
+	let runtime = Builder::new_current_thread().enable_all().build()?;
+	let client = AgentClient::new(profile.clone());
 	let snapshot = runtime
 		.block_on(client.query())
-		.map_err(|error| std::io::Error::other(format!("capture snapshot: {error:?}")))?;
+		.map_err(|error| Error::other(format!("capture snapshot: {error:?}")))?;
 	let selected = match &snapshot {
 		decodex_protocol::AgentSnapshotResult::Available(snapshot) =>
-			std::env::var("DECODEX_VISUAL_AGENT_WORK")
+			env::var("DECODEX_VISUAL_AGENT_WORK")
 				.ok()
 				.filter(|id| snapshot.work_items.iter().any(|work| &work.id == id))
 				.or_else(|| {
@@ -278,7 +289,7 @@ fn read_service_projection(
 		_ => None,
 	};
 	let history = selected.as_ref().map(|id| {
-		let id = decodex_protocol::EntityId::new(id.clone()).expect("validated snapshot identity");
+		let id = EntityId::new(id.clone()).expect("validated snapshot identity");
 
 		runtime
 			.block_on(client.history(id))
@@ -302,14 +313,13 @@ fn read_service_projection(
 	};
 	let guardian = selected.as_ref().map(|id| {
 		runtime
-			.block_on(client.guardian_reviews(
-				decodex_protocol::EntityId::new(id.clone()).expect("validated work"),
-				None,
-			))
+			.block_on(
+				client.guardian_reviews(EntityId::new(id.clone()).expect("validated work"), None),
+			)
 			.unwrap_or(decodex_protocol::AgentGuardianReviewsResult::Unavailable)
 	});
 
-	std::fs::write(
+	fs::write(
 		output.with_extension("evidence.json"),
 		serde_json::to_vec_pretty(
 			&serde_json::json!({"source_root": &root, "observed_at_micros": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_micros(), "snapshot": &snapshot, "selected": &selected, "history": &history, "request": &request,"guardian":&guardian}),
@@ -321,7 +331,7 @@ fn read_service_projection(
 
 fn animate_panel_motion(
 	cx: &mut VisualTestAppContext,
-	window: gpui::AnyWindowHandle,
+	window: AnyWindowHandle,
 	panel_motion: &str,
 ) -> gpui::Result<()> {
 	let keys = match panel_motion {
@@ -339,9 +349,9 @@ fn animate_panel_motion(
 		// until approximately the midpoint before taking the evidence frame.
 		cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
 
-		std::thread::sleep(ui_theme::MOTION_PANEL / 2);
+		thread::sleep(MOTION_PANEL / 2);
 
-		cx.advance_clock(std::time::Duration::from_millis(16));
+		cx.advance_clock(Duration::from_millis(16));
 		cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
 		cx.run_until_parked();
 	}
@@ -352,19 +362,18 @@ fn animate_panel_motion(
 // Sample dismissal over the real composer, including its Live button.
 fn capture_status_dismissal(
 	cx: &mut VisualTestAppContext,
-	window: gpui::AnyWindowHandle,
+	window: AnyWindowHandle,
 ) -> gpui::Result<()> {
-	let Some(delay) = std::env::var("DECODEX_VISUAL_STATUS_CLOSE_MS")
-		.ok()
-		.and_then(|value| value.parse::<u64>().ok())
+	let Some(delay) =
+		env::var("DECODEX_VISUAL_STATUS_CLOSE_MS").ok().and_then(|value| value.parse::<u64>().ok())
 	else {
 		return Ok(());
 	};
 
-	cx.simulate_click(window, gpui::point(px(1_200.), px(815.)), Default::default());
+	cx.simulate_click(window, gpui::point(gpui::px(1_200.), gpui::px(815.)), Default::default());
 	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
 
-	std::thread::sleep(std::time::Duration::from_millis(delay));
+	thread::sleep(Duration::from_millis(delay));
 
 	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
 
@@ -398,7 +407,7 @@ fn verify_native_composer_focus(
 		);
 	})?;
 
-	cx.simulate_click(window, gpui::point(px(500.), px(790.)), Default::default());
+	cx.simulate_click(window, gpui::point(gpui::px(500.), gpui::px(790.)), Default::default());
 
 	cx.update_window(window, |_, window, _| {
 		let handle =
@@ -422,13 +431,13 @@ fn verify_native_composer_focus(
 
 fn capture_interactions(
 	cx: &mut VisualTestAppContext,
-	window: gpui::AnyWindowHandle,
+	window: AnyWindowHandle,
 ) -> gpui::Result<()> {
 	#[cfg(target_os = "macos")]
 	verify_native_composer_focus(cx, window)?;
 	capture_status_dismissal(cx, window)?;
 
-	let Ok(value) = std::env::var("DECODEX_VISUAL_HOVER") else {
+	let Ok(value) = env::var("DECODEX_VISUAL_HOVER") else {
 		return Ok(());
 	};
 	let Some((x, y)) = value.split_once(',') else {
@@ -438,12 +447,12 @@ fn capture_interactions(
 		return Ok(());
 	};
 
-	cx.simulate_mouse_move(window, gpui::point(px(x), px(y)), None, Default::default());
-	cx.advance_clock(std::time::Duration::from_secs(1));
+	cx.simulate_mouse_move(window, gpui::point(gpui::px(x), gpui::px(y)), None, Default::default());
+	cx.advance_clock(Duration::from_secs(1));
 	cx.run_until_parked();
 	cx.update_window(window, |_, window, cx| window.draw(cx).clear())?;
 
-	std::thread::sleep(ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40));
+	thread::sleep(MOTION_PANEL + Duration::from_millis(40));
 
 	cx.update_window(window, |_, window, cx| {
 		window.refresh();
@@ -454,7 +463,7 @@ fn capture_interactions(
 }
 
 fn capture_destination() -> Destination {
-	match std::env::var("DECODEX_VISUAL_DESTINATION").as_deref() {
+	match env::var("DECODEX_VISUAL_DESTINATION").as_deref() {
 		Ok("agent") => Destination::Agent,
 		Ok("accounts") => Destination::Accounts,
 		Ok("health") => Destination::Health,
@@ -465,10 +474,10 @@ fn capture_destination() -> Destination {
 
 fn prove_composer_send(
 	cx: &mut VisualTestAppContext,
-	handle: gpui::WindowHandle<AgentSurface>,
+	handle: WindowHandle<AgentSurface>,
 	profile: decodex_protocol::ClientProfile,
 	message: &str,
-	output: &std::path::Path,
+	output: &Path,
 ) -> gpui::Result<()> {
 	cx.background_executor.allow_parking();
 
@@ -492,7 +501,7 @@ fn prove_composer_send(
 	for _ in 0..40 {
 		cx.run_until_parked();
 
-		std::thread::sleep(std::time::Duration::from_millis(500));
+		thread::sleep(Duration::from_millis(500));
 
 		cx.update_window(handle.into(), |view, _, cx| {
 			view.downcast::<AgentSurface>()
@@ -507,7 +516,7 @@ fn prove_composer_send(
 				.update(cx, |surface, cx| surface.visual_send_evidence(cx))
 		})?;
 
-		std::fs::write(
+		fs::write(
 			output.with_extension("send.json"),
 			serde_json::to_vec_pretty(
 				&serde_json::json!({"submitted_message":message,"interaction":"ComposerInput Enter","before":before,"result":evidence}),
@@ -515,21 +524,21 @@ fn prove_composer_send(
 		)?;
 
 		if evidence["uncertain"] == true {
-			return Err(std::io::Error::other("Composer send acceptance is unknown").into());
+			return Err(Error::other("Composer send acceptance is unknown").into());
 		}
 		if composer_send_answered(&before, &evidence, message) {
 			return Ok(());
 		}
 	}
 
-	Err(std::io::Error::other("Composer send did not receive its UI_READY reply").into())
+	Err(Error::other("Composer send did not receive its UI_READY reply").into())
 }
 
 fn prove_automatic_recap(
 	cx: &mut VisualTestAppContext,
-	handle: gpui::WindowHandle<AgentSurface>,
+	handle: WindowHandle<AgentSurface>,
 	profile: decodex_protocol::ClientProfile,
-	output: &std::path::Path,
+	output: &Path,
 ) -> gpui::Result<()> {
 	// This capture intentionally combines deterministic UI scheduling with real service I/O.
 	cx.background_executor.allow_parking();
@@ -554,38 +563,38 @@ fn prove_automatic_recap(
 				.update(cx, AgentSurface::visual_automatic_recap_evidence)
 		})?;
 
-		std::fs::write(output.with_extension("recap.json"), serde_json::to_vec_pretty(&evidence)?)?;
+		fs::write(output.with_extension("recap.json"), serde_json::to_vec_pretty(&evidence)?)?;
 
 		if evidence["automatic"] == true && evidence["state"]["phase"] == "ready" {
 			return Ok(());
 		}
 
-		std::thread::sleep(std::time::Duration::from_millis(250));
+		thread::sleep(Duration::from_millis(250));
 	}
 
-	Err(std::io::Error::other("Automatic recap did not reach Ready in the isolated capture").into())
+	Err(Error::other("Automatic recap did not reach Ready in the isolated capture").into())
 }
 
 fn prove_media(
 	cx: &mut VisualTestAppContext,
-	handle: gpui::WindowHandle<AgentSurface>,
+	handle: WindowHandle<AgentSurface>,
 	profile: decodex_protocol::ClientProfile,
-	root: &std::path::Path,
-	output: &std::path::Path,
+	root: &Path,
+	output: &Path,
 ) -> gpui::Result<()> {
-	let request: decodex_protocol::AgentMediaRequest = serde_json::from_slice(&std::fs::read(
+	let request: AgentMediaRequest = serde_json::from_slice(&fs::read(
 		root.parent().expect("fixture parent").join("media-source.json"),
 	)?)?;
-	let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
-	let client = decodex_protocol::AgentClient::new(profile.clone());
+	let runtime = Builder::new_current_thread().enable_all().build()?;
+	let client = AgentClient::new(profile.clone());
 	let (history, timeline) = runtime
 		.block_on(async {
-			Ok::<_, decodex_protocol::ClientFailure>((
+			Ok::<_, ClientFailure>((
 				client.history(request.work_id.clone()).await?,
 				client.timeline(request.work_id.clone(), request.thread_id.clone(), None).await?,
 			))
 		})
-		.map_err(|error| std::io::Error::other(format!("media source: {error:?}")))?;
+		.map_err(|error| Error::other(format!("media source: {error:?}")))?;
 
 	cx.background_executor.allow_parking();
 	cx.update_window(handle.into(), |view, _, cx| {
@@ -593,7 +602,7 @@ fn prove_media(
 			surface.visual_preview_native_media(profile, request, history, timeline, cx)
 		})
 	})?
-	.map_err(std::io::Error::other)?;
+	.map_err(Error::other)?;
 
 	for _ in 0..80 {
 		cx.run_until_parked();
@@ -604,7 +613,7 @@ fn prove_media(
 			view.downcast::<AgentSurface>().expect("Agent capture").read(cx).visual_media_evidence()
 		})?;
 
-		std::fs::write(output.with_extension("media.json"), serde_json::to_vec_pretty(&evidence)?)?;
+		fs::write(output.with_extension("media.json"), serde_json::to_vec_pretty(&evidence)?)?;
 
 		if evidence["imageLoaded"] == true {
 			return Ok(());
@@ -613,25 +622,25 @@ fn prove_media(
 		if let Some(notice) =
 			evidence["notice"].as_str().filter(|notice| *notice != "Loading image…")
 		{
-			return Err(std::io::Error::other(notice.to_owned()).into());
+			return Err(Error::other(notice.to_owned()).into());
 		}
 
-		std::thread::sleep(std::time::Duration::from_millis(100));
+		thread::sleep(Duration::from_millis(100));
 
-		cx.advance_clock(std::time::Duration::from_millis(100));
+		cx.advance_clock(Duration::from_millis(100));
 	}
 
-	Err(std::io::Error::other("Native media preview did not load").into())
+	Err(Error::other("Native media preview did not load").into())
 }
 
 fn prove_steer_receipt(
 	cx: &mut VisualTestAppContext,
-	handle: gpui::WindowHandle<AgentSurface>,
+	handle: WindowHandle<AgentSurface>,
 	profile: decodex_protocol::ClientProfile,
 	identity: &str,
-	output: &std::path::Path,
+	output: &Path,
 ) -> gpui::Result<()> {
-	let identity: decodex_protocol::AgentSteerIdentity = serde_json::from_str(identity)?;
+	let identity: AgentSteerIdentity = serde_json::from_str(identity)?;
 	let before = cx.update_window(handle.into(), |view, window, cx| {
 		let evidence = view.downcast::<AgentSurface>().expect("Agent capture root").update(
 			cx,
@@ -648,7 +657,7 @@ fn prove_steer_receipt(
 	})?;
 
 	if before["uncertain"] != true {
-		return Err(std::io::Error::other("fixture uncertainty was not established").into());
+		return Err(Error::other("fixture uncertainty was not established").into());
 	}
 
 	for _ in 0..40 {
@@ -659,7 +668,7 @@ fn prove_steer_receipt(
 		})?;
 		cx.run_until_parked();
 
-		std::thread::sleep(std::time::Duration::from_millis(250));
+		thread::sleep(Duration::from_millis(250));
 
 		cx.run_until_parked();
 
@@ -673,10 +682,10 @@ fn prove_steer_receipt(
 
 		if after["uncertain"] == false {
 			if after["draft"] != "Later draft retained." {
-				return Err(std::io::Error::other("receipt overwrote the later draft").into());
+				return Err(Error::other("receipt overwrote the later draft").into());
 			}
 
-			std::fs::write(
+			fs::write(
 				output.with_extension("steer.json"),
 				serde_json::to_vec_pretty(
 					&serde_json::json!({"identity":identity,"before":before,"after":after}),
@@ -687,14 +696,10 @@ fn prove_steer_receipt(
 		}
 	}
 
-	Err(std::io::Error::other("exact receipt did not settle UI uncertainty").into())
+	Err(Error::other("exact receipt did not settle UI uncertainty").into())
 }
 
-fn composer_send_answered(
-	before: &serde_json::Value,
-	evidence: &serde_json::Value,
-	message: &str,
-) -> bool {
+fn composer_send_answered(before: &Value, evidence: &Value, message: &str) -> bool {
 	if evidence["uncertain"] != false || evidence["sending"] != false || evidence["draft"] != "" {
 		return false;
 	}
@@ -738,11 +743,10 @@ fn composer_send_answered(
 
 #[cfg(test)]
 mod capture_send_tests {
-	use super::composer_send_answered;
-	use serde_json::{Value, json};
+	use serde_json::{self, Value};
 
 	fn evidence() -> Value {
-		json!({"draft":"", "sending":false, "uncertain":false, "feedback":"",
+		serde_json::json!({"draft":"", "sending":false, "uncertain":false, "feedback":"",
 		"history":["manager", {"outcome":"available", "entries":[
 			{"id":1,"kind":"user","text":"Reply UI_READY", "turn_id":"turn"},
 			{"id":2,"kind":"assistant","text":"UI_READY", "turn_id":"turn"}
@@ -751,64 +755,70 @@ mod capture_send_tests {
 
 	#[test]
 	fn capture_send_accepts_current_history_without_obsolete_feedback() {
-		let before = json!({"history":["manager", {"outcome":"available", "entries":[]}]});
+		let before =
+			serde_json::json!({"history":["manager", {"outcome":"available", "entries":[]}]});
 
-		assert!(composer_send_answered(&before, &evidence(), "Reply UI_READY"));
+		assert!(crate::composer_send_answered(&before, &evidence(), "Reply UI_READY"));
 
 		let mut after = evidence();
 
 		after["history"][1]["entries"][0]["turn_id"] = Value::Null;
-		after["history"][1]["entries"][0]["receipt"] = json!({"delivered_turn_id":"turn"});
+		after["history"][1]["entries"][0]["receipt"] =
+			serde_json::json!({"delivered_turn_id":"turn"});
 
-		assert!(composer_send_answered(&before, &after, "Reply UI_READY"));
+		assert!(crate::composer_send_answered(&before, &after, "Reply UI_READY"));
 	}
 
 	#[test]
 	fn capture_send_rejects_old_or_unrelated_answers() {
 		let mut after = evidence();
 
-		after["feedback"] = json!("Accepted by service");
+		after["feedback"] = serde_json::json!("Accepted by service");
 
-		assert!(!composer_send_answered(&after, &after, "Reply UI_READY"));
+		assert!(!crate::composer_send_answered(&after, &after, "Reply UI_READY"));
 
 		let mut before = evidence();
 
 		before["history"][1]["entries"].as_array_mut().unwrap().remove(0);
 
-		assert!(!composer_send_answered(&before, &after, "Reply UI_READY"));
+		assert!(!crate::composer_send_answered(&before, &after, "Reply UI_READY"));
 
-		let before = json!({"history":["manager", {"outcome":"available", "entries":[]}]});
+		let before =
+			serde_json::json!({"history":["manager", {"outcome":"available", "entries":[]}]});
 
-		after["history"][1]["entries"][1]["turn_id"] = json!("other-turn");
+		after["history"][1]["entries"][1]["turn_id"] = serde_json::json!("other-turn");
 
-		assert!(!composer_send_answered(&before, &after, "Reply UI_READY"));
+		assert!(!crate::composer_send_answered(&before, &after, "Reply UI_READY"));
 	}
 
 	#[test]
 	fn capture_send_requires_settled_delivery_and_same_owner() {
-		let before = json!({"history":["manager", {"outcome":"available", "entries":[]}]});
+		let before =
+			serde_json::json!({"history":["manager", {"outcome":"available", "entries":[]}]});
 
-		for (field, value) in
-			[("uncertain", json!(true)), ("sending", json!(true)), ("draft", json!("retained"))]
-		{
+		for (field, value) in [
+			("uncertain", serde_json::json!(true)),
+			("sending", serde_json::json!(true)),
+			("draft", serde_json::json!("retained")),
+		] {
 			let mut after = evidence();
 
 			after[field] = value;
 
-			assert!(!composer_send_answered(&before, &after, "Reply UI_READY"));
+			assert!(!crate::composer_send_answered(&before, &after, "Reply UI_READY"));
 		}
 
-		assert!(!composer_send_answered(&Value::Null, &evidence(), "Reply UI_READY"));
+		assert!(!crate::composer_send_answered(&Value::Null, &evidence(), "Reply UI_READY"));
 
 		let mut after = evidence();
 
 		after["history"][1]["entries"][0]["turn_id"] = Value::Null;
 
-		assert!(!composer_send_answered(&before, &after, "Reply UI_READY"));
+		assert!(!crate::composer_send_answered(&before, &after, "Reply UI_READY"));
 
 		after = evidence();
-		after["history"][0] = json!("other-manager");
+		after["history"][0] = serde_json::json!("other-manager");
 
-		assert!(!composer_send_answered(&before, &after, "Reply UI_READY"));
+		assert!(!crate::composer_send_answered(&before, &after, "Reply UI_READY"));
 	}
 }

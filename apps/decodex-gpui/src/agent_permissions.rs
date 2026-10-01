@@ -1,5 +1,8 @@
 //! Saved task permission profiles; current-turn reviewer controls remain separate.
-use super::{mcp_forms::mcp_button, *};
+use gpui::AnyElement;
+use tokio::runtime::Builder;
+
+use crate::shell::agent_surface::{mcp_forms::mcp_button, *};
 use decodex_protocol::{AgentPermissionOutcome as Outcome, AgentPermissionState as State};
 
 #[derive(Default)]
@@ -128,8 +131,7 @@ impl AgentSurface {
 
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
 		let future = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
 			let state =
@@ -195,7 +197,7 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		if work.codex_thread_id.is_none()
 			|| self.native_agents.selected.is_some()
 			|| !self.command_connection_ready()

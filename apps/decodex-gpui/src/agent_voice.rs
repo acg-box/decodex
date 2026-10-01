@@ -6,18 +6,21 @@ mod audio;
 #[path = "native_voice_transport.rs"]
 mod transport;
 
-use super::*;
+use std::{collections::BTreeSet, time::Duration};
 
-use decodex_protocol::{AgentVoicePhase, AgentVoiceRequest, VoiceSdp};
-
+use gpui::{AnyElement, KeyDownEvent};
 use raw_window_handle as _;
-
 use serde_json::{Value, json};
+use tokio::runtime::Builder;
+use ui_theme::{BLUE, TEXT_MUTED};
 
-use std::time::Duration;
+use crate::{shell::agent_surface::*, ui_motion, ui_theme::HOVER_FILL};
+use decodex_protocol::{
+	AgentVoiceOptions, AgentVoicePhase, AgentVoiceRequest, AgentVoiceStatus, HistoryText, VoiceSdp,
+};
 
 pub(super) struct VoiceUi {
-	options: decodex_protocol::AgentVoiceOptions,
+	options: AgentVoiceOptions,
 	media: Media,
 	session: EntityId,
 	work: EntityId,
@@ -28,7 +31,7 @@ pub(super) struct VoiceUi {
 	connection_status: String,
 	muted: bool,
 	captions: Vec<Caption>,
-	matched_receipts: std::collections::BTreeSet<i64>,
+	matched_receipts: BTreeSet<i64>,
 	levels: std::collections::VecDeque<f32>,
 	follow: bool,
 }
@@ -235,7 +238,7 @@ pub(super) struct CaptionHistory {
 	session: EntityId,
 	work: EntityId,
 	captions: Vec<Caption>,
-	matched_receipts: std::collections::BTreeSet<i64>,
+	matched_receipts: BTreeSet<i64>,
 }
 
 #[derive(Clone, Debug)]
@@ -260,7 +263,7 @@ impl AgentSurface {
 		text: &str,
 		partial: bool,
 		cx: &mut Context<Self>,
-	) -> Option<gpui::AnyElement> {
+	) -> Option<AnyElement> {
 		let voice = self.voice.as_ref().filter(|v| {
 			v.work.as_str() == work && v.connected && v.answered && v.request.is_none()
 		})?;
@@ -300,7 +303,7 @@ impl AgentSurface {
 			return;
 		}
 
-		match decodex_protocol::HistoryText::new(text) {
+		match HistoryText::new(text) {
 			Ok(text) => {
 				voice.request =
 					Some(AgentVoiceRequest::Speak { session_id: session.clone(), text });
@@ -389,8 +392,7 @@ impl AgentSurface {
 
 					cx.background_executor()
 						.spawn(async move {
-							if let Ok(runtime) =
-								tokio::runtime::Builder::new_current_thread().enable_all().build()
+							if let Ok(runtime) = Builder::new_current_thread().enable_all().build()
 							{
 								let _ =
 									runtime
@@ -409,10 +411,8 @@ impl AgentSurface {
 					let result = cx
 						.background_executor()
 						.spawn(async move {
-							let runtime = tokio::runtime::Builder::new_current_thread()
-								.enable_all()
-								.build()
-								.ok()?;
+							let runtime =
+								Builder::new_current_thread().enable_all().build().ok()?;
 
 							runtime.block_on(AgentClient::new(profile).voice(request)).ok()
 						})
@@ -500,7 +500,7 @@ impl AgentSurface {
 	fn apply_voice_response(
 		&mut self,
 		session: &EntityId,
-		status: Option<decodex_protocol::AgentVoiceStatus>,
+		status: Option<AgentVoiceStatus>,
 		cx: &mut Context<Self>,
 	) {
 		if !self.voice.as_ref().is_some_and(|voice| &voice.session == session) {
@@ -520,11 +520,7 @@ impl AgentSurface {
 		}
 	}
 
-	fn apply_voice_status(
-		&mut self,
-		status: decodex_protocol::AgentVoiceStatus,
-		cx: &mut Context<Self>,
-	) {
+	fn apply_voice_status(&mut self, status: AgentVoiceStatus, cx: &mut Context<Self>) {
 		let Some(voice) = self.voice.as_mut().filter(|v| v.session == status.session_id) else {
 			return;
 		};
@@ -588,7 +584,7 @@ impl AgentSurface {
 		cx.notify();
 	}
 
-	pub(super) fn audio_palette(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn audio_palette(&self, cx: &mut Context<Self>) -> AnyElement {
 		let mut inputs = vec![String::new()];
 
 		inputs.extend(self.audio_inputs.clone());
@@ -621,8 +617,8 @@ impl AgentSurface {
 					.text_size(px(12.))
 					.child(div().flex_1().min_w_0().text_ellipsis().child(label))
 					.child(div().w(px(12.)).child(if selected { "✓" } else { "" }))
-					.hover(|d| d.bg(rgba(crate::ui_theme::HOVER_FILL)))
-					.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
+					.hover(|d| d.bg(rgba(HOVER_FILL)))
+					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 						if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 							s.audio_input = keyboard_input.clone();
 
@@ -644,7 +640,7 @@ impl AgentSurface {
 		&self,
 		window: &mut Window,
 		cx: &mut Context<Self>,
-	) -> Option<gpui::AnyElement> {
+	) -> Option<AnyElement> {
 		let voice = self.voice.as_ref()?;
 
 		Some(
@@ -656,7 +652,7 @@ impl AgentSurface {
 				.justify_center()
 				.gap(px(3.))
 				.children(voice.levels.iter().enumerate().map(|(i, level)| {
-					let height = crate::ui_motion::value(
+					let height = ui_motion::value(
 						("live-wave-height", i),
 						if voice.muted { 2. } else { 2. + level * 40. },
 						window,
@@ -668,13 +664,13 @@ impl AgentSurface {
 						.w(px(3.))
 						.h(px(height))
 						.rounded_full()
-						.bg(rgb(if voice.muted { ui_theme::TEXT_MUTED } else { ui_theme::BLUE }))
+						.bg(rgb(if voice.muted { TEXT_MUTED } else { BLUE }))
 				}))
 				.into_any_element(),
 		)
 	}
 
-	pub(super) fn voice_toolbar(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+	pub(super) fn voice_toolbar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
 		let voice = self.voice.as_ref()?;
 		let label = if !voice.connected {
 			voice.connection_status.as_str()
@@ -691,7 +687,7 @@ impl AgentSurface {
 				.items_center()
 				.gap(px(8.))
 				.text_size(px(11.))
-				.text_color(rgb(ui_theme::TEXT_MUTED))
+				.text_color(rgb(TEXT_MUTED))
 				.child(
 					div()
 						.id("voice-status")
@@ -781,7 +777,7 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn live_chat_caption(&self, work: &str) -> Option<gpui::AnyElement> {
+	pub(super) fn live_chat_caption(&self, work: &str) -> Option<AnyElement> {
 		let captions = self
 			.retired_voice_captions
 			.iter()
@@ -841,13 +837,13 @@ impl AgentSurface {
 		let target = -f32::from(scroll.max_offset().y);
 
 		if (target - current).abs() > 0.5 {
-			let reduced = crate::ui_motion::reduced();
+			let reduced = ui_motion::reduced();
 			let next = if reduced { target } else { current + (target - current) * 0.24 };
 
 			scroll.set_offset(gpui::point(px(0.), px(next)));
 
 			if !reduced {
-				crate::ui_motion::request_frame(window, cx);
+				ui_motion::request_frame(window, cx);
 			}
 
 			cx.notify();
@@ -864,7 +860,7 @@ impl AgentSurface {
 fn reconcile_captions(
 	session: &EntityId,
 	captions: &mut Vec<Caption>,
-	matched: &mut std::collections::BTreeSet<i64>,
+	matched: &mut BTreeSet<i64>,
 	entries: &[decodex_protocol::AgentHistoryEntryDto],
 ) {
 	captions.retain(|caption| {
@@ -1049,7 +1045,7 @@ fn bound_caption(caption: &mut Caption) {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::voice::*;
 
 	use gpui::{EntityInputHandler as _, Focusable as _};
 

@@ -1,6 +1,6 @@
 //! Ordinary records share Agent's existing atomic desktop writer.
-use super::{AgentSurface, Context};
-use decodex_protocol::{CommandEnvelope, DesktopOrdinaryDraft};
+use crate::shell::agent_surface::drafts::storage::{AgentSurface, Context};
+use decodex_protocol::{CommandEnvelope, DesktopOrdinaryDraft, DesktopRecoveredDraft};
 
 impl AgentSurface {
 	pub(in super::super) fn adopt_unbound_ordinary(&mut self, scope: &str) {
@@ -27,7 +27,7 @@ impl AgentSurface {
 		let scope = profile.draft_scope_key();
 		let storage = &mut self.draft_profiles.storage;
 		let Some(draft) = storage.document.profiles.get(&scope).cloned() else { return };
-		let copy = decodex_protocol::DesktopRecoveredDraft { scope: Some(scope), draft };
+		let copy = DesktopRecoveredDraft { scope: Some(scope), draft };
 
 		if !storage.document.recovered.contains(&copy) {
 			storage.document.recovered.push(copy);

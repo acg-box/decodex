@@ -1,5 +1,12 @@
 //! Native task resource inspection, refreshed only while the selected panel is open.
-use super::*;
+use std::{rc::Rc, time::Duration};
+
+use gpui::{AnyElement, Div, KeyDownEvent};
+use reqwest::Url;
+use serde_json::Value;
+use tokio::runtime::Builder;
+
+use crate::{shell::agent_surface::*, ui_loading};
 use decodex_protocol::AgentResourcesResult;
 
 impl AgentSurface {
@@ -33,7 +40,7 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn resources_panel(&self, work: &str, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn resources_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		let opened = self.resources.as_ref().filter(|(owner, _)| owner == work);
 		let click = work.to_owned();
 		let key = click.clone();
@@ -47,7 +54,7 @@ impl AgentSurface {
 				.aria_expanded(opened.is_some())
 				.cursor_pointer()
 				.on_click(cx.listener(move |s, _, _, cx| s.toggle_resources(&click, cx)))
-				.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+				.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 					if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 						cx.stop_propagation();
 						s.toggle_resources(&key, cx);
@@ -58,7 +65,7 @@ impl AgentSurface {
 
 		if let Some((_, result)) = opened {
 			let body = match result {
-				None => div().child(crate::ui_loading::loading("Loading resources")),
+				None => div().child(ui_loading::loading("Loading resources")),
 				Some(AgentResourcesResult::Unsupported) =>
 					div().child("This Codex provider does not support task resources."),
 				Some(AgentResourcesResult::Unavailable) =>
@@ -76,9 +83,8 @@ impl AgentSurface {
 						let owner = work.to_owned();
 						let kind = resource.attachment_type.clone();
 						let key = resource.identity_key.clone();
-						let payload =
-							serde_json::from_str::<serde_json::Value>(&resource.payload_json)
-								.unwrap_or_default();
+						let payload = serde_json::from_str::<Value>(&resource.payload_json)
+							.unwrap_or_default();
 						let title = payload["title"]
 							.as_str()
 							.or_else(|| payload["name"].as_str())
@@ -86,7 +92,7 @@ impl AgentSurface {
 							.to_owned();
 						let link = payload["url"]
 							.as_str()
-							.and_then(|url| reqwest::Url::parse(url).ok())
+							.and_then(|url| Url::parse(url).ok())
 							.filter(|url| {
 								matches!(url.scheme(), "http" | "https")
 									&& url.username().is_empty()
@@ -162,7 +168,7 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn resource_editor(&self, work: &str, cx: &mut Context<Self>) -> gpui::Div {
+	fn resource_editor(&self, work: &str, cx: &mut Context<Self>) -> Div {
 		let add_work = work.to_owned();
 
 		div()
@@ -218,8 +224,7 @@ impl AgentSurface {
 		let read_work = work.clone();
 		let expected = action.clone();
 		let request = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let result = runtime.block_on(client.execute(action, key)).ok();
 			let readback = runtime.block_on(client.resources(EntityId::new(read_work).ok()?)).ok();
@@ -286,10 +291,7 @@ impl AgentSurface {
 				let result = cx
 					.background_executor()
 					.spawn(async move {
-						let runtime = tokio::runtime::Builder::new_current_thread()
-							.enable_all()
-							.build()
-							.ok()?;
+						let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 
 						runtime
 							.block_on(
@@ -325,7 +327,7 @@ impl AgentSurface {
 					break;
 				}
 
-				cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
+				cx.background_executor().timer(Duration::from_secs(5)).await;
 			}
 		}));
 
@@ -340,14 +342,14 @@ fn resource_change_observed(action: &AgentActionDto, result: &AgentResourcesResu
 
 	match action {
 		AgentActionDto::AddResourceLink { url, .. } => {
-			let Ok(url) = reqwest::Url::parse(url.as_str()) else {
+			let Ok(url) = Url::parse(url.as_str()) else {
 				return false;
 			};
 
 			resources.iter().any(|resource| {
 				resource.attachment_type == "decodex.link"
 					&& !resource.payload_omitted
-					&& serde_json::from_str::<serde_json::Value>(&resource.payload_json)
+					&& serde_json::from_str::<Value>(&resource.payload_json)
 						.ok()
 						.is_some_and(|payload| payload["url"].as_str() == Some(url.as_str()))
 			})
@@ -366,8 +368,8 @@ fn resource_button(
 	label: String,
 	cx: &mut Context<AgentSurface>,
 	action: impl Fn(&mut AgentSurface, &mut Context<AgentSurface>) + 'static,
-) -> gpui::AnyElement {
-	let action = std::rc::Rc::new(action);
+) -> AnyElement {
+	let action = Rc::new(action);
 	let click = action.clone();
 
 	div()
@@ -379,7 +381,7 @@ fn resource_button(
 		.p_2()
 		.cursor_pointer()
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
-		.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 				cx.stop_propagation();
 
@@ -392,7 +394,20 @@ fn resource_button(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::resources::*;
+	use decodex_protocol::{
+		CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
+		QueryResultPayload, ServerId, ServerMessage,
+	};
+
+	use futures_util::{SinkExt as _, StreamExt as _};
+
+	use tokio_tungstenite::tungstenite::Message;
+
+	use std::{future, thread};
+
+	use crate::shell::agent_surface::wire_test_support;
+
 	#[test]
 	fn mutation_readback_requires_complete_list_and_exact_resource() {
 		let add = AgentActionDto::AddResourceLink {
@@ -482,7 +497,7 @@ mod tests {
 		});
 
 		for _ in 0..2 {
-			std::thread::sleep(std::time::Duration::from_millis(200));
+			thread::sleep(std::time::Duration::from_millis(200));
 
 			visual.update(|window, cx| {
 				window.draw(cx).clear();
@@ -508,68 +523,56 @@ mod tests {
 	fn ordinary_refresh_keeps_resource_mutation_readback_without_retry(
 		cx: &mut gpui::TestAppContext,
 	) {
-		use decodex_protocol::{
-			CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
-			QueryResultPayload, ServerId, ServerMessage,
-		};
-
-		use futures_util::{SinkExt, StreamExt};
-
-		use tokio_tungstenite::tungstenite::Message;
-
 		for remove in [false, true] {
-			let (_dir, profile, server) = super::super::wire_test_support::fixture(
-				move |listener| async move {
-					for index in 0..2 {
-						let mut socket = super::super::wire_test_support::accept(&listener).await;
-						let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-							panic!("text request")
+			let (_dir, profile, server) = wire_test_support::fixture(move |listener| async move {
+				for index in 0..2 {
+					let mut socket = wire_test_support::accept(&listener).await;
+					let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+						panic!("text request")
+					};
+					let request: ClientMessage = serde_json::from_str(&text).unwrap();
+
+					if index == 0 {
+						let ClientMessage::Command(command) = request else {
+							panic!("one resource command")
 						};
-						let request: ClientMessage = serde_json::from_str(&text).unwrap();
-
-						if index == 0 {
-							let ClientMessage::Command(command) = request else {
-								panic!("one resource command")
-							};
-							let CommandPayload::Agent { action } = command.payload else {
-								panic!("Agent action")
-							};
-
-							assert!(
-								matches!(&*action, AgentActionDto::RemoveResource { work_id, .. } if remove && work_id.as_str() == "agent")
-									|| matches!(&*action, AgentActionDto::AddResourceLink { work_id, .. } if !remove && work_id.as_str() == "agent")
-							);
-
-							socket.close(None).await.unwrap();
-
-							continue;
-						}
-
-						let ClientMessage::Query(query) = request else {
-							panic!("readback, never retry")
+						let CommandPayload::Agent { action } = command.payload else {
+							panic!("Agent action")
 						};
 
 						assert!(
-							matches!(query.payload, QueryPayload::GetAgentResources { ref work_id } if work_id.as_str() == "agent")
+							matches!(&*action, AgentActionDto::RemoveResource { work_id, .. } if remove && work_id.as_str() == "agent")
+								|| matches!(&*action, AgentActionDto::AddResourceLink { work_id, .. } if !remove && work_id.as_str() == "agent")
 						);
 
-						let response = ServerMessage::QueryResult(QueryResultEnvelope {
-							version: CURRENT_VERSION,
-							server_id: ServerId::new(super::super::wire_test_support::SERVER)
-								.unwrap(),
-							query_id: query.query_id,
-							payload: QueryResultPayload::AgentResources(
-								AgentResourcesResult::Available { resources: vec![] },
-							),
-						});
+						socket.close(None).await.unwrap();
 
-						socket
-							.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
-							.await
-							.unwrap();
+						continue;
 					}
-				},
-			);
+
+					let ClientMessage::Query(query) = request else {
+						panic!("readback, never retry")
+					};
+
+					assert!(
+						matches!(query.payload, QueryPayload::GetAgentResources { ref work_id } if work_id.as_str() == "agent")
+					);
+
+					let response = ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::AgentResources(
+							AgentResourcesResult::Available { resources: vec![] },
+						),
+					});
+
+					socket
+						.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
+						.await
+						.unwrap();
+				}
+			});
 			let surface = cx.new(AgentSurface::new);
 
 			surface.update(cx, |s, cx| {
@@ -640,7 +643,7 @@ mod tests {
 
 					if pending {
 						s.resource_mutation_task =
-							Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+							Some(cx.spawn(async |_, _| future::pending::<()>().await));
 					}
 
 					let mut next = original.clone();

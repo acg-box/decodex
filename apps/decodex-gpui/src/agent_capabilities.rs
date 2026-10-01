@@ -1,7 +1,17 @@
 //! Runtime model catalog. Loading metadata never sends a conversation message.
-use super::{AgentClient, AgentSurface, Context};
-use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto, ConversationReasoningEffort};
-use gpui::prelude::*;
+use std::time::Instant;
+
+use gpui::{AnyElement, SharedString, prelude::*};
+use tokio::runtime::Builder;
+
+use crate::{
+	shell::agent_surface::{AgentClient, AgentSurface, Context},
+	ui_theme::{HOVER_FILL, SELECTED_HOVER_FILL},
+};
+use decodex_protocol::{
+	AgentCapabilitiesResult, AgentModelDto, ConversationReasoningEffort,
+	ConversationWorkingDirectory, InitialModelCatalogRequest, ModelCatalogPurpose, ServiceTier,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct CatalogContext {
@@ -12,27 +22,21 @@ pub(super) struct CatalogContext {
 }
 
 impl AgentSurface {
-	pub(super) fn service_tier_picker(&self, cx: &Context<Self>) -> gpui::AnyElement {
+	pub(super) fn service_tier_picker(&self, cx: &Context<Self>) -> AnyElement {
 		let mut panel = gpui::div().id("service-tier-picker").flex().items_center().gap_1();
 		let supports_fast = self.selected_model(cx).is_some_and(|model| model.supports_fast);
 		let tiers = [
-			(decodex_protocol::ServiceTier::standard(), "Standard", true),
-			(decodex_protocol::ServiceTier::from_fast(true), "Fast", supports_fast),
+			(ServiceTier::standard(), "Standard", true),
+			(ServiceTier::from_fast(true), "Fast", supports_fast),
 		];
 		let selected = if let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id())
 		{
 			self.draft_profiles.execution.choice(&owner).selected_service_tier()
 		} else {
-			Some(
-				self.service_tier
-					.clone()
-					.unwrap_or_else(|| decodex_protocol::ServiceTier::from_fast(self.fast)),
-			)
+			Some(self.service_tier.clone().unwrap_or_else(|| ServiceTier::from_fast(self.fast)))
 		};
 		let selected = selected.unwrap_or_else(|| {
-			self.service_tier
-				.clone()
-				.unwrap_or_else(|| decodex_protocol::ServiceTier::from_fast(self.fast))
+			self.service_tier.clone().unwrap_or_else(|| ServiceTier::from_fast(self.fast))
 		});
 
 		for (id, label, available) in tiers {
@@ -40,7 +44,7 @@ impl AgentSurface {
 
 			panel = panel.child(
 				gpui::div()
-					.id(gpui::SharedString::from(format!("tier-{}", id.as_str())))
+					.id(SharedString::from(format!("tier-{}", id.as_str())))
 					.debug_selector({
 						let label = format!("tier-{}", id.as_str());
 
@@ -55,11 +59,7 @@ impl AgentSurface {
 					.rounded(gpui::px(8.))
 					.bg(gpui::rgba(if chosen { 0xffffff16 } else { 0x00000000 }))
 					.hover(move |s| {
-						s.bg(gpui::rgba(if chosen {
-							crate::ui_theme::SELECTED_HOVER_FILL
-						} else {
-							crate::ui_theme::HOVER_FILL
-						}))
+						s.bg(gpui::rgba(if chosen { SELECTED_HOVER_FILL } else { HOVER_FILL }))
 					})
 					.on_click(cx.listener(move |s, _, _, cx| {
 						if available {
@@ -130,7 +130,7 @@ impl AgentSurface {
 			None
 		} else {
 			let Ok(working_directory) =
-				decodex_protocol::ConversationWorkingDirectory::new(context.directory.clone())
+				ConversationWorkingDirectory::new(context.directory.clone())
 			else {
 				return;
 			};
@@ -144,20 +144,19 @@ impl AgentSurface {
 				Some(account)
 			};
 
-			Some(decodex_protocol::InitialModelCatalogRequest {
+			Some(InitialModelCatalogRequest {
 				working_directory,
 				account_id,
-				purpose: decodex_protocol::ModelCatalogPurpose::Agent,
+				purpose: ModelCatalogPurpose::Agent,
 			})
 		};
 
-		self.capabilities_checked = Some(std::time::Instant::now());
+		self.capabilities_checked = Some(Instant::now());
 		self.capability_generation += 1;
 
 		let generation = self.capability_generation;
 		let request = cx.background_executor().spawn(async move {
-			let runtime =
-				tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 
 			if let Some(request) = cold_request {
@@ -268,7 +267,7 @@ impl AgentSurface {
 				!matches!(selected.as_str(), "default" | "flex")
 					&& !model.service_tiers.iter().any(|tier| &tier.id == selected)
 			}) {
-				self.service_tier = Some(decodex_protocol::ServiceTier::standard());
+				self.service_tier = Some(ServiceTier::standard());
 				self.fast = false;
 			}
 		}
@@ -307,13 +306,7 @@ impl AgentSurface {
 			.as_ref()
 			.map_or(self.creation_effort(), |choice| choice.reasoning_effort.clone());
 		let tier = choice.as_ref().map_or_else(
-			|| {
-				Some(
-					self.service_tier
-						.clone()
-						.unwrap_or_else(|| decodex_protocol::ServiceTier::from_fast(self.fast)),
-				)
-			},
+			|| Some(self.service_tier.clone().unwrap_or_else(|| ServiceTier::from_fast(self.fast))),
 			|choice| choice.selected_service_tier(),
 		);
 		let Some(model) = self.selected_model(cx) else {
@@ -352,7 +345,10 @@ impl AgentSurface {
 mod effort_tests;
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::capabilities::*;
+
+	use std::{future, thread};
+
 	#[gpui::test]
 	fn catalog_reply_survives_unrelated_snapshot_refresh(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -363,7 +359,7 @@ mod tests {
 			let context = surface.catalog_context(cx).unwrap();
 
 			surface.capability_generation = 7;
-			surface.capability_task = Some(cx.spawn(async |_, _| std::future::pending().await));
+			surface.capability_task = Some(cx.spawn(async |_, _| future::pending().await));
 			surface.generation += 1;
 
 			surface.finish_capabilities(
@@ -414,7 +410,7 @@ mod tests {
 
 			let new_generation = surface.capability_generation;
 
-			surface.capability_task = Some(cx.spawn(async |_, _| std::future::pending().await));
+			surface.capability_task = Some(cx.spawn(async |_, _| future::pending().await));
 
 			surface.finish_capabilities(
 				4,
@@ -441,13 +437,13 @@ mod tests {
 			let context = s.catalog_context(cx).unwrap();
 
 			s.capability_generation = 7;
-			s.capability_task = Some(cx.spawn(async |_, _| std::future::pending().await));
+			s.capability_task = Some(cx.spawn(async |_, _| future::pending().await));
 
 			s.mark_stale(cx);
 
 			assert!(s.capability_task.is_none());
 
-			s.capability_task = Some(cx.spawn(async |_, _| std::future::pending().await));
+			s.capability_task = Some(cx.spawn(async |_, _| future::pending().await));
 
 			s.finish_capabilities(
 				7,
@@ -512,7 +508,7 @@ mod tests {
 			window.draw(cx).clear();
 		});
 		// The popover uses a real-time entrance translation; click its settled bounds.
-		std::thread::sleep(std::time::Duration::from_millis(220));
+		thread::sleep(std::time::Duration::from_millis(220));
 
 		visual.update(|window, cx| {
 			window.draw(cx).clear();

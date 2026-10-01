@@ -1,5 +1,5 @@
 //! Standard text navigation and deletion; no editor modes or extra UI.
-use super::*;
+use crate::composer_input::*;
 
 actions!(
 	decodex_composer_input,
@@ -189,7 +189,7 @@ pub(super) fn bind_actions(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::composer_input::shortcuts::*;
 	#[gpui::test]
 	fn editing_keys_preserve_other_lines_and_support_undo(cx: &mut gpui::TestAppContext) {
 		cx.update(super::super::bind_keys);

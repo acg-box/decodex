@@ -22,6 +22,10 @@ use self::page_cache::{
 	CacheRequest, CommittedCachePublication, HistoryPageCache, PreparedCachePublication,
 };
 
+use std::mem;
+
+use decodex_protocol::HistoryItemDto;
+
 const MAX_CANCELLED_REQUESTS: usize = 8;
 const MAX_INVALIDATED_CONVERSATIONS: usize = 64;
 const PRODUCTION_MAX_PAGE_BYTES: usize = 256 * 1_024;
@@ -1349,7 +1353,7 @@ impl ActiveView {
 				})
 				.flatten();
 			let duplicate = retained.or_else(|| {
-				accepted.iter().find(|retained: &&decodex_protocol::HistoryItemDto| {
+				accepted.iter().find(|retained: &&HistoryItemDto| {
 					retained.history_item_id == item.history_item_id
 				})
 			});
@@ -1377,7 +1381,7 @@ impl ActiveView {
 
 		for retained in self.pages.iter().take(visible_index.saturating_add(1)) {
 			for item in &retained.page.items {
-				if !items.iter().any(|existing: &decodex_protocol::HistoryItemDto| {
+				if !items.iter().any(|existing: &HistoryItemDto| {
 					existing.history_item_id == item.history_item_id
 				}) {
 					items.push(item.clone());
@@ -1742,7 +1746,7 @@ impl PageCacheOwner {
 	}
 
 	fn commit_publication(&mut self, prepared: PreparedCachePublication) -> PageCacheCommitResult {
-		let mut cache = match std::mem::replace(self, Self::Disabled) {
+		let mut cache = match mem::replace(self, Self::Disabled) {
 			Self::Enabled(cache) => cache,
 			owner => {
 				*self = owner;
@@ -1886,8 +1890,20 @@ fn history_availability(error: HistoryQueryError) -> HistoryAvailability {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::env;
+
 	use tempfile::TempDir;
+
+	use crate::history_pager::{
+		self, CURRENT_VERSION, CacheAuthority, CacheRequest, ConversationHistoryPage,
+		ConversationHistoryResult, EntityId, HistoryClosedReason, HistoryCursorObservation,
+		HistoryCursorToken, HistoryDispatch, HistoryLoadState, HistoryNavigationResult,
+		HistoryPageCache, HistoryPageSource, HistoryPager, HistoryPagerLimits, HistoryQueryError,
+		HistoryRetryReason, HistoryRouteOutcome, HistoryStaleCancellation, HistoryStaleReason,
+		MAX_HISTORY_PAGE_SIZE, PRODUCTION_MAX_PAGE_BYTES, PRODUCTION_MAX_WINDOW_BYTES,
+		PRODUCTION_MAX_WINDOW_ITEMS, PRODUCTION_MAX_WINDOW_PAGES, PageCacheOwner, Path,
+		QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId,
+	};
 
 	const SESSION_GENERATION: u64 = 7;
 	const TEST_CACHE_SCHEMA_GENERATION: u32 = 1;
@@ -1953,7 +1969,7 @@ mod tests {
 			.prepare_publication(
 				&request,
 				page,
-				current_unix_seconds().expect("current wall time is representable"),
+				history_pager::current_unix_seconds().expect("current wall time is representable"),
 			)
 			.expect("cached head prepares");
 		let committed = match cache.commit_publication(prepared) {
@@ -1985,7 +2001,7 @@ mod tests {
 
 	#[test]
 	fn cached_head_requires_sent_lookup_and_fresh_response_for_topology() {
-		let temporary = TempDir::new_in(std::env::temp_dir())
+		let temporary = TempDir::new_in(env::temp_dir())
 			.expect("host temporary directory accepts an isolated fixture");
 		let cache_parent = temporary.path().join("cache-parent");
 		let server_id = server("server-cache-flow");
@@ -2108,7 +2124,7 @@ mod tests {
 
 	#[test]
 	fn terminal_event_invalidates_cached_head_until_fresh_response() {
-		let temporary = TempDir::new_in(std::env::temp_dir())
+		let temporary = TempDir::new_in(env::temp_dir())
 			.expect("host temporary directory accepts an isolated fixture");
 		let cache_parent = temporary.path().join("cache-parent");
 		let server_id = server("server-invalidated-cache");

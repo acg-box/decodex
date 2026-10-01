@@ -2,39 +2,48 @@
 
 use std::{
 	collections::VecDeque,
-	fs,
+	fs::{self, Permissions},
+	future,
 	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
 	path::{Path, PathBuf},
+	pin::Pin,
 	sync::{
 		Arc, Mutex,
 		atomic::{AtomicUsize, Ordering},
 	},
+	task::Poll,
 	time::Duration,
 };
 
-use crate::history_pager::HistoryPager;
-
+use gpui::TestAppContext;
 use tempfile::TempDir;
-
-use decodex_protocol::{
-	CURRENT_VERSION, Channel, ClientProfile, CommandEnvelope, ConversationHistoryPage,
-	ConversationHistoryResult, ConversationState, CorrelationId, Cursor, DoctorReport, EntityId,
-	EntityRevision, EventEnvelope, EventPayload, HistoryCursorToken, QueryEnvelope, QueryPayload,
-	QueryResultEnvelope, QueryResultPayload, RetainedSessionConfig, RetainedSessionFailure,
-	ServerId, ServerInstanceId, SessionCheckpoint, SnapshotEnvelope, SnapshotItem, WireText,
+use tokio::{
+	task,
+	time::{self, Instant},
 };
 
 use crate::{
 	client_lifecycle::{
-		AppOwnedDaemonRecovery, AppliedEntity, CLIENT_CACHE_SCHEMA_GENERATION, CacheAuthority,
-		CacheError, CacheLimits, ClientCache, ClientLifecycle, CompatibilityReason, ConnectionView,
-		Delivery, LifecycleBuildError, LifecycleCancellation, LifecycleIo, QuarantineReason,
-		QuarantineRecovery, RunResult, production_cache_parent,
+		self, AppOwnedDaemonRecovery, AppliedEntity, CLIENT_CACHE_SCHEMA_GENERATION,
+		CacheAuthority, CacheError, CacheLimits, ClientCache, ClientLifecycle, CompatibilityReason,
+		ConnectionView, Delivery, LifecycleBuildError, LifecycleCancellation, LifecycleIo,
+		QuarantineReason, QuarantineRecovery, RunResult,
 	},
+	conversations::{ConversationCommandState, Conversations, ConversationsLoadState},
 	history_pager::{
 		HistoryCacheProbeEvent, HistoryCursorObservation, HistoryDispatch, HistoryLoadState,
-		HistoryNavigationResult, HistoryPageSource, HistoryRetryReason, HistoryStaleReason,
+		HistoryNavigationResult, HistoryPageSource, HistoryPager, HistoryRetryReason,
+		HistoryStaleReason,
 	},
+	shell::{self, Shell},
+};
+use decodex_protocol::{
+	CURRENT_VERSION, Channel, ClientProfile, CommandEnvelope, ConversationHistoryPage,
+	ConversationHistoryResult, ConversationState, ConversationSummary, ConversationTitle,
+	CorrelationId, Cursor, DoctorReport, EntityId, EntityRevision, EventEnvelope, EventPayload,
+	HistoryCursorToken, ProviderThreadId, QueryEnvelope, QueryPayload, QueryResultEnvelope,
+	QueryResultPayload, RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerInstanceId,
+	SessionCheckpoint, SnapshotEnvelope, SnapshotItem, WireText,
 };
 
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
@@ -289,7 +298,7 @@ impl LifecycleIo for FakeIo {
 
 	async fn connect(
 		&mut self,
-		_config: &decodex_protocol::RetainedSessionConfig,
+		_config: &RetainedSessionConfig,
 		checkpoint: Option<SessionCheckpoint>,
 		cancellation: &LifecycleCancellation,
 	) -> Result<Option<SessionCheckpoint>, RetainedSessionFailure> {
@@ -475,12 +484,13 @@ fn production_cache_parent_normalizes_only_fixed_platform_prefix() {
 		.expect("arbitrary temporary directory alias is created");
 
 	assert_eq!(
-		production_cache_parent(&physical_temp).expect("physical temporary directory is accepted"),
+		client_lifecycle::production_cache_parent(&physical_temp)
+			.expect("physical temporary directory is accepted"),
 		physical_temp.join("box.acg.decodex")
 	);
 
-	let aliased_cache_parent =
-		production_cache_parent(&arbitrary_alias).expect("non-platform alias remains lexical");
+	let aliased_cache_parent = client_lifecycle::production_cache_parent(&arbitrary_alias)
+		.expect("non-platform alias remains lexical");
 
 	assert_eq!(
 		aliased_cache_parent,
@@ -499,8 +509,6 @@ fn production_cache_parent_normalizes_only_fixed_platform_prefix() {
 
 	#[cfg(target_os = "macos")]
 	{
-		use crate::client_lifecycle::normalize_macos_var_prefix;
-
 		fn reject_drifted_mapping() -> Result<(), CacheError> {
 			Err(CacheError::UnsafeRoot)
 		}
@@ -508,18 +516,19 @@ fn production_cache_parent_normalizes_only_fixed_platform_prefix() {
 		let logical_temp = Path::new("/var/folders/decodex-test/T");
 
 		assert_eq!(
-			production_cache_parent(logical_temp).expect("fixed macOS mapping is valid"),
+			client_lifecycle::production_cache_parent(logical_temp)
+				.expect("fixed macOS mapping is valid"),
 			Path::new("/private/var/folders/decodex-test/T/box.acg.decodex")
 		);
 		assert_eq!(
-			normalize_macos_var_prefix(logical_temp, reject_drifted_mapping),
+			client_lifecycle::normalize_macos_var_prefix(logical_temp, reject_drifted_mapping),
 			Err(LifecycleBuildError::Cache(CacheError::UnsafeRoot))
 		);
 	}
 
 	#[cfg(not(target_os = "macos"))]
 	assert_eq!(
-		production_cache_parent(Path::new("/var/folders/decodex-test/T"))
+		client_lifecycle::production_cache_parent(Path::new("/var/folders/decodex-test/T"))
 			.expect("non-macOS temporary path remains lexical"),
 		Path::new("/var/folders/decodex-test/T/box.acg.decodex")
 	);
@@ -547,10 +556,8 @@ fn production_client_cache_authority_tracks_the_current_protocol() {
 
 #[gpui::test]
 fn production_owner_keeps_the_session_after_window_close_and_stops_only_on_app_quit(
-	cx: &mut gpui::TestAppContext,
+	cx: &mut TestAppContext,
 ) {
-	use crate::shell::{Shell, retain_lifecycle_task};
-
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
@@ -567,7 +574,7 @@ fn production_owner_keeps_the_session_after_window_close_and_stops_only_on_app_q
 		lifecycle.run_with_io(&mut io).await
 	});
 	let owner = visual.update(|_, cx| {
-		retain_lifecycle_task(shell.downgrade(), cancellation, views, background, cx)
+		shell::retain_lifecycle_task(shell.downgrade(), cancellation, views, background, cx)
 	});
 
 	visual.run_until_parked();
@@ -721,9 +728,9 @@ fn retained_config(cache_parent: &Path, server_id: &str) -> RetainedSessionConfi
 	let server_root = transport_root.join("server");
 
 	fs::create_dir_all(&server_root).expect("fixed local transport namespace is available");
-	fs::set_permissions(&transport_root, fs::Permissions::from_mode(0o700))
+	fs::set_permissions(&transport_root, Permissions::from_mode(0o700))
 		.expect("transport root is owner-only");
-	fs::set_permissions(&server_root, fs::Permissions::from_mode(0o700))
+	fs::set_permissions(&server_root, Permissions::from_mode(0o700))
 		.expect("transport server directory is owner-only");
 
 	let service_owner_uid =
@@ -743,7 +750,7 @@ expected_server_identity = "{server_id}"
 	let config_path = transport_root.join("config.toml");
 
 	fs::write(&config_path, config).expect("fixture client configuration is written");
-	fs::set_permissions(&config_path, fs::Permissions::from_mode(0o600))
+	fs::set_permissions(&config_path, Permissions::from_mode(0o600))
 		.expect("fixture client configuration is owner-only");
 
 	ClientProfile::load(&transport_root, None)
@@ -978,8 +985,8 @@ async fn fake_session_await_cancellation_survives_a_dropped_receive() {
 	io.connect(&config, None, &cancellation).await.expect("fake session connects");
 
 	let mut receive = Box::pin(io.next());
-	let poll = std::future::poll_fn(|context| {
-		std::task::Poll::Ready(std::future::Future::poll(receive.as_mut(), context))
+	let poll = future::poll_fn(|context| {
+		Poll::Ready(std::future::Future::poll(receive.as_mut(), context))
 	})
 	.await;
 
@@ -1160,7 +1167,7 @@ async fn history_cache_io_begins_only_after_send_and_fresh_admission() {
 
 		tokio::select! {
 			result = &mut run => panic!("lifecycle stopped before cache lookup: {result:?}"),
-			_ = tokio::task::yield_now() => {},
+			_ = task::yield_now() => {},
 		}
 	}
 
@@ -1247,7 +1254,7 @@ async fn pending_history_send_blocks_replacement_until_settlement() {
 	for _ in 0..4 {
 		tokio::select! {
 			result = &mut run => panic!("lifecycle stopped with send unresolved: {result:?}"),
-			_ = tokio::task::yield_now() => {},
+			_ = task::yield_now() => {},
 		}
 	}
 
@@ -1286,7 +1293,7 @@ async fn pending_history_send_blocks_replacement_until_settlement() {
 
 		tokio::select! {
 			result = &mut run => panic!("lifecycle stopped before replacement result: {result:?}"),
-			_ = tokio::task::yield_now() => {},
+			_ = task::yield_now() => {},
 		}
 	}
 
@@ -1510,7 +1517,7 @@ async fn history_cache_failure_phases_preserve_fresh_page_and_client_cache_autho
 			HistoryCacheFailurePhase::ParentResolution => {
 				fs::set_permissions(
 					root.parent().expect("cache parent has an external base"),
-					fs::Permissions::from_mode(0o770),
+					Permissions::from_mode(0o770),
 				)
 				.expect("external base is made unsafe");
 
@@ -1518,7 +1525,7 @@ async fn history_cache_failure_phases_preserve_fresh_page_and_client_cache_autho
 			},
 			HistoryCacheFailurePhase::InitialValidation => {
 				fs::create_dir(&history_root).expect("history cache root is created");
-				fs::set_permissions(&history_root, fs::Permissions::from_mode(0o755))
+				fs::set_permissions(&history_root, Permissions::from_mode(0o755))
 					.expect("history cache root is made unsafe");
 
 				pager.lookup_sent_request(&send);
@@ -1580,7 +1587,7 @@ async fn history_cache_failure_phases_preserve_fresh_page_and_client_cache_autho
 		if matches!(phase, HistoryCacheFailurePhase::ParentResolution) {
 			fs::set_permissions(
 				root.parent().expect("cache parent has an external base"),
-				fs::Permissions::from_mode(0o700),
+				Permissions::from_mode(0o700),
 			)
 			.expect("external base permissions are restored");
 		}
@@ -2258,8 +2265,6 @@ async fn transient_incompatible_and_stable_identity_failures_are_distinct() {
 #[tokio::test]
 #[ignore = "requires the user's live Decodex daemon and creates two conversations plus one later turn"]
 async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
-	use crate::conversations::{ConversationCommandState, ConversationsLoadState};
-
 	let mut lifecycle = configured_live_lifecycle();
 	let conversations = lifecycle.conversations();
 	let history = lifecycle.history_pager();
@@ -2271,7 +2276,7 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 
 	tokio::pin!(run);
 
-	let ready_deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+	let ready_deadline = Instant::now() + Duration::from_secs(20);
 
 	loop {
 		let snapshot = conversations.snapshot();
@@ -2284,7 +2289,7 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 
 		tokio::select! {
 			result = &mut run => panic!("live lifecycle stopped before Conversations became ready: {result:?}"),
-			() = tokio::time::sleep(Duration::from_millis(50)) => {},
+			() = time::sleep(Duration::from_millis(50)) => {},
 		}
 	}
 
@@ -2299,7 +2304,7 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 			))
 			.expect("the live composer command is accepted for dispatch");
 
-		let accepted_deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+		let accepted_deadline = Instant::now() + Duration::from_secs(120);
 		let conversation_id = loop {
 			let snapshot = conversations.snapshot();
 
@@ -2338,13 +2343,13 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 
 			tokio::select! {
 				result = &mut run => panic!("live lifecycle stopped before command acceptance: {result:?}"),
-				() = tokio::time::sleep(Duration::from_millis(50)) => {},
+				() = time::sleep(Duration::from_millis(50)) => {},
 			}
 		};
 
 		history.open(conversation_id.clone()).expect("the accepted conversation history opens");
 
-		let history_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+		let history_deadline = Instant::now() + Duration::from_secs(30);
 		let mut advanced_visible_items = 0;
 		let history_items = loop {
 			let snapshot = history.snapshot();
@@ -2381,7 +2386,7 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 
 			tokio::select! {
 				result = &mut run => panic!("live lifecycle stopped before history readback: {result:?}"),
-				() = tokio::time::sleep(Duration::from_millis(50)) => {},
+				() = time::sleep(Duration::from_millis(50)) => {},
 			}
 		};
 
@@ -2402,7 +2407,7 @@ async fn live_daemon_accepts_sequential_conversations_and_returns_history() {
 
 	cancellation.cancel();
 
-	let result = tokio::time::timeout(Duration::from_secs(5), &mut run)
+	let result = time::timeout(Duration::from_secs(5), &mut run)
 		.await
 		.expect("live lifecycle stops after cancellation");
 
@@ -2428,7 +2433,7 @@ async fn live_daemon_reconciles_archived_conversations() {
 
 	tokio::pin!(run);
 
-	let ready_deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+	let ready_deadline = Instant::now() + Duration::from_secs(20);
 	let initial_count = loop {
 		let snapshot = conversations.snapshot();
 
@@ -2440,13 +2445,13 @@ async fn live_daemon_reconciles_archived_conversations() {
 
 		tokio::select! {
 			result = &mut run => panic!("live lifecycle stopped before Conversations became ready: {result:?}"),
-			() = tokio::time::sleep(Duration::from_millis(50)) => {},
+			() = time::sleep(Duration::from_millis(50)) => {},
 		}
 	};
 
 	conversations.refresh_all().expect("the live provider reconciliation starts");
 
-	let refresh_deadline = tokio::time::Instant::now() + Duration::from_secs(600);
+	let refresh_deadline = Instant::now() + Duration::from_secs(600);
 	let (checked, archived, failed) = loop {
 		let snapshot = conversations.snapshot();
 
@@ -2468,7 +2473,7 @@ async fn live_daemon_reconciles_archived_conversations() {
 
 		tokio::select! {
 			result = &mut run => panic!("live lifecycle stopped during provider reconciliation: {result:?}"),
-			() = tokio::time::sleep(Duration::from_millis(50)) => {},
+			() = time::sleep(Duration::from_millis(50)) => {},
 		}
 	};
 	let final_count = conversations.snapshot().tasks.len();
@@ -2481,7 +2486,7 @@ async fn live_daemon_reconciles_archived_conversations() {
 
 	cancellation.cancel();
 
-	let result = tokio::time::timeout(Duration::from_secs(5), &mut run)
+	let result = time::timeout(Duration::from_secs(5), &mut run)
 		.await
 		.expect("live lifecycle stops after cancellation");
 
@@ -2489,9 +2494,9 @@ async fn live_daemon_reconciles_archived_conversations() {
 }
 
 async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
-	conversations: &crate::conversations::Conversations,
+	conversations: &Conversations,
 	history: &HistoryPager,
-	mut run: std::pin::Pin<&mut F>,
+	mut run: Pin<&mut F>,
 	first_conversation: EntityId,
 	first_history_items: usize,
 ) {
@@ -2509,7 +2514,7 @@ async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
 		.submit("Reply briefly with: Decodex same-thread rehydration is working.")
 		.expect("the later live turn is accepted for dispatch");
 
-	let continuation_deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+	let continuation_deadline = Instant::now() + Duration::from_secs(120);
 
 	loop {
 		let snapshot = conversations.snapshot();
@@ -2546,13 +2551,13 @@ async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
 
 		tokio::select! {
 			result = &mut run => panic!("live lifecycle stopped before the later turn completed: {result:?}"),
-			() = tokio::time::sleep(Duration::from_millis(50)) => {},
+			() = time::sleep(Duration::from_millis(50)) => {},
 		}
 	}
 
 	history.open(first_conversation.clone()).expect("the rehydrated conversation history opens");
 
-	let continuation_history_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+	let continuation_history_deadline = Instant::now() + Duration::from_secs(30);
 	let mut advanced_visible_items = 0;
 
 	loop {
@@ -2592,7 +2597,7 @@ async fn verify_live_rehydration<F: std::future::Future<Output = RunResult>>(
 
 		tokio::select! {
 			result = &mut run => panic!("live lifecycle stopped before rehydrated history readback: {result:?}"),
-			() = tokio::time::sleep(Duration::from_millis(50)) => {},
+			() = time::sleep(Duration::from_millis(50)) => {},
 		}
 	}
 }
@@ -2615,16 +2620,16 @@ async fn history_events_refresh_only_their_open_conversation() {
 		notice.channel = Channel::ConversationStream;
 		notice.payload = if changed {
 			EventPayload::ConversationChanged {
-				conversation: decodex_protocol::ConversationSummary::new(
+				conversation: ConversationSummary::new(
 					entity(target),
-					decodex_protocol::ConversationTitle::new("Recovered task").unwrap(),
-					Some(decodex_protocol::ProviderThreadId::new("native-thread").unwrap()),
+					ConversationTitle::new("Recovered task").unwrap(),
+					Some(ProviderThreadId::new("native-thread").unwrap()),
 					None,
 					EntityRevision(1),
 					1,
 					Some(entity("20000000-0000-4000-8000-000000000001")),
 					Some(EntityRevision(1)),
-					decodex_protocol::ConversationState::Ready,
+					ConversationState::Ready,
 					None,
 					None,
 				)

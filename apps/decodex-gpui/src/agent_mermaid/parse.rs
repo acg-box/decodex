@@ -2,9 +2,11 @@
 // Copyright OpenAI. Licensed under Apache-2.0; see LICENSE-APACHE.
 //! Strict parser for a small flowchart grammar; every non-comment byte must be consumed.
 
-use super::{Direction, Edge, Graph, MAX_EDGES, MAX_LABEL, RenderError, Shape};
-
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
+use crate::shell::agent_surface::markdown::mermaid::{
+	Direction, Edge, Graph, MAX_EDGES, MAX_LABEL, RenderError, Shape,
+};
 
 pub(super) fn parse(header: &str, body: &[&str]) -> Result<Graph, RenderError> {
 	let tokens = header.split_whitespace().collect::<Vec<_>>();

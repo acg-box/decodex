@@ -1,12 +1,18 @@
 //! Conversation-first desktop presentation. All displayed work comes from the service.
-use super::*;
+use crate::shell::agent_surface::*;
 
 use crate::{
-	ui_motion::{SmoothControl, reveal},
+	ui_motion::{self, SmoothControl, reveal},
 	ui_scroll::SmoothScrollArea,
 };
 
 use gpui::{AnyElement, MouseButton, PathBuilder, canvas, point};
+
+use std::mem;
+
+use crate::{shell::agent_surface::creation_setup, ui_loading};
+
+use crate::shell::workspace_symbols::{self, Symbol};
 
 const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
 
@@ -143,10 +149,10 @@ impl AgentSurface {
 				if let Some(previous) = previous {
 					self.draft_profiles
 						.tasks
-						.insert(previous.clone(), std::mem::take(&mut self.task_references));
+						.insert(previous.clone(), mem::take(&mut self.task_references));
 					self.draft_profiles
 						.files
-						.insert(previous.clone(), std::mem::take(&mut self.attachments));
+						.insert(previous.clone(), mem::take(&mut self.attachments));
 					self.draft_profiles
 						.texts
 						.insert(previous, self.composer.read(cx).content().into());
@@ -554,7 +560,7 @@ impl AgentSurface {
 						.group_hover(group, |style| style.opacity(1.))
 						.focus(|style| style.opacity(1.))
 						.hover(|style| style.bg(rgba(0xffffff10)))
-						.child(super::super::workspace_symbols::icon(
+						.child(workspace_symbols::icon(
 							super::super::workspace_symbols::Symbol::Close,
 						))
 						.on_click(cx.listener(move |s, _, _, cx| s.close_page(&close, cx)))
@@ -676,9 +682,7 @@ impl AgentSurface {
 				.gap(px(8.))
 				.text_size(px(12.))
 				.text_color(rgb(ui_theme::TEXT_MUTED))
-				.child(super::super::workspace_symbols::icon(
-					super::super::workspace_symbols::Symbol::Lock,
-				))
+				.child(workspace_symbols::icon(super::super::workspace_symbols::Symbol::Lock))
 				.child(THREAD_LOCKED_MESSAGE)
 				.into_any_element();
 		}
@@ -744,7 +748,7 @@ impl AgentSurface {
 							.text_color(rgb(ui_theme::TEXT_MUTED))
 							.hover(|s| s.text_color(rgb(ui_theme::TEXT)))
 							.child("Details")
-							.child(super::super::workspace_symbols::disclosure_chevron(
+							.child(workspace_symbols::disclosure_chevron(
 								"connection-details-chevron",
 								self.connection_details_expanded,
 							))
@@ -761,7 +765,7 @@ impl AgentSurface {
 					),
 				)
 			})
-			.child(crate::ui_motion::disclosure(
+			.child(ui_motion::disclosure(
 				"connection-diagnostic",
 				self.connection_details_expanded && detail.is_some(),
 				div()
@@ -875,7 +879,7 @@ impl AgentSurface {
 			}
 		} else if self.snapshot.is_none() {
 			transcript = transcript.child(div().size_full().flex().items_center().child(
-				crate::ui_loading::conversation(
+				ui_loading::conversation(
 					if matches!(self.state, LoadState::Unavailable | LoadState::Stale) {
 						"Connecting to workspace"
 					} else {
@@ -954,7 +958,7 @@ impl AgentSurface {
 				.child(self.workspace_followup(work, cx));
 		}
 
-		let presence = crate::ui_motion::value(
+		let presence = ui_motion::value(
 			"work-details-presence",
 			if self.details_visible { 1. } else { 0. },
 			window,
@@ -1025,8 +1029,7 @@ impl AgentSurface {
 	}
 
 	fn prepare_workspace_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-		self.graph_display_zoom =
-			crate::ui_motion::value("agent-graph-zoom", self.graph_zoom, window, cx);
+		self.graph_display_zoom = ui_motion::value("agent-graph-zoom", self.graph_zoom, window, cx);
 
 		if self.older_scroll_anchor.is_none() {
 			self.prefetch_older_history(cx);
@@ -1048,7 +1051,7 @@ impl AgentSurface {
 			if (target - current).abs() > 0.5 {
 				scroll.set_offset(point(px(0.), px(current + (target - current) * 0.22)));
 
-				crate::ui_motion::request_frame(window, cx);
+				ui_motion::request_frame(window, cx);
 
 				cx.notify();
 			} else {
@@ -1897,7 +1900,7 @@ impl AgentSurface {
 						.child(format!("Preview: {preview}"))
 						.when_some(ordinary_preview, |element, preview| element.child(preview))
 						.when_some(copy.draft.composer.creation.as_ref(), |element, setup| {
-							element.child(super::creation_setup::summary(setup))
+							element.child(creation_setup::summary(setup))
 						})
 						.child(self.draft_copy_controls(index, copy, cx)),
 				);
@@ -2108,8 +2111,6 @@ pub(super) fn selected_history_available(surface: &AgentSurface) -> bool {
 }
 
 fn panel_icon(id: &str) -> Option<AnyElement> {
-	use super::super::workspace_symbols::{self, Symbol};
-
 	let symbol = match id {
 		"workspace-sidebar" => Symbol::Sidebar,
 		"workspace-graph" => Symbol::Graph,
@@ -2129,7 +2130,9 @@ fn panel_icon(id: &str) -> Option<AnyElement> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::workspace::*;
+
+	use std::thread;
 
 	struct ActionView(gpui::Entity<AgentSurface>);
 
@@ -2504,7 +2507,7 @@ mod tests {
 		surface.update(visual, |s, cx| s.close_page("verify", cx));
 		visual.update(|w, cx| w.draw(cx).clear());
 		// Wait only for deferred removal; visual smoothness is not a unit-test claim.
-		std::thread::sleep(std::time::Duration::from_millis(240));
+		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|w, cx| w.draw(cx).clear());
 		visual.run_until_parked();
