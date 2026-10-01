@@ -76,6 +76,20 @@ struct PersistedContextSourceManifest {
 	artifact_revision: Option<u64>,
 }
 
+struct InitialContinuationAuthority {
+	conversation_id: String,
+	turn_id: String,
+	account_id: String,
+	account_revision: i64,
+	account_display_label: String,
+	account_observed_state: String,
+	profile_revision: i64,
+	model: String,
+	reasoning_effort: String,
+	service_tier: String,
+	instructions: String,
+}
+
 struct ExistingContinuationAuthority {
 	conversation_id: String,
 	turn_id: String,
@@ -105,7 +119,6 @@ struct ExistingContinuationAuthority {
 
 impl SqliteStore {
 	/// Consume one selected initial decision and create one starting RuntimeSession.
-	#[allow(clippy::too_many_lines)] // Keep one atomic continuation-plan transaction together.
 	pub async fn plan_initial_thread_continuation(
 		&self,
 		idempotency_key: &str,
@@ -147,42 +160,7 @@ impl SqliteStore {
 				return Ok(ContinuationCommandOutcome::Success(effect));
 			}
 
-			let authority = transaction
-				.query_row(
-					"SELECT d.conversation_id, d.turn_id, d.account_id, d.account_revision,
-				        a.display_label, a.state, p.revision, p.model, p.reasoning_effort,
-				        p.service_tier, p.instructions
-				 FROM routing_decisions AS d
-				 JOIN conversations AS c ON c.conversation_id = d.conversation_id
-				 JOIN accounts AS a ON a.account_id = d.account_id
-				 JOIN role_profiles AS p ON p.role = 'task'
-				 WHERE d.routing_decision_id = ?1
-				   AND d.authority_shape = 'conversation_account_registry'
-				   AND d.decision_kind = 'selected' AND c.state = 'active'
-				   AND c.revision = ?2 AND d.conversation_revision = ?2
-				   AND d.account_revision = a.revision",
-					rusqlite::params![
-						request.routing_decision_id,
-						request.expected_conversation_revision
-					],
-					|row| {
-						Ok((
-							row.get::<_, String>(0)?,
-							row.get::<_, String>(1)?,
-							row.get::<_, String>(2)?,
-							row.get::<_, i64>(3)?,
-							row.get::<_, String>(4)?,
-							row.get::<_, String>(5)?,
-							row.get::<_, i64>(6)?,
-							row.get::<_, String>(7)?,
-							row.get::<_, String>(8)?,
-							row.get::<_, String>(9)?,
-							row.get::<_, String>(10)?,
-						))
-					},
-				)
-				.optional()
-				.map_err(sql_error)?;
+			let authority = read_initial_continuation_authority(&transaction, &request)?;
 			let Some(authority) = authority else {
 				return Ok(ContinuationCommandOutcome::Rejected(
 					ContinuationRejection::MissingDecision,
@@ -190,57 +168,8 @@ impl SqliteStore {
 			};
 			let runtime_session_id = RuntimeSessionId::new(account_lifecycle::random_uuid_v4()?)
 				.map_err(|_| incompatible("generated RuntimeSession identity"))?;
-			let account_snapshot_id = account_lifecycle::random_uuid_v4()?;
-			let profile_snapshot_id = account_lifecycle::random_uuid_v4()?;
-			let instructions_sha256 = Sha256::digest(authority.10.as_bytes())
-				.iter()
-				.map(|byte| format!("{byte:02x}"))
-				.collect::<String>();
-			let credential_binding_json: String = transaction
-				.query_row(
-					"SELECT json_object(
-				   'schema_version', schema_version, 'credential_version', credential_version,
-				   'fingerprint', fingerprint, 'writer_operation_id', writer_operation_id,
-				   'provider', provider, 'provider_account_id', provider_account_id
-				 ) FROM account_credentials WHERE account_id = ?1",
-					rusqlite::params![authority.2],
-					|row| row.get(0),
-				)
-				.map_err(sql_error)?;
-			let now = crate::unix_micros().map_err(StoreError::from)?;
+			let now = insert_initial_session(&transaction, &authority, &runtime_session_id)?;
 
-			transaction
-				.execute(
-					"INSERT INTO runtime_sessions (
-				   runtime_session_id, conversation_id, account_id, account_revision,
-				   account_snapshot_id, account_display_label, account_observed_state,
-				   credential_binding_json, profile_snapshot_id, profile_revision, profile_role,
-				   model, reasoning_effort, instructions, service_tier, instructions_sha256,
-				   profile_provenance, state, revision, created_at_micros, updated_at_micros
-				 ) VALUES (
-				   ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'task', ?11, ?12, ?13,
-				   ?14, ?15, NULL, 'starting', 1, ?16, ?16
-				 )",
-					rusqlite::params![
-						runtime_session_id.as_str(),
-						authority.0,
-						authority.2,
-						authority.3,
-						account_snapshot_id,
-						authority.4,
-						authority.5,
-						credential_binding_json,
-						profile_snapshot_id,
-						authority.6,
-						authority.7,
-						authority.8,
-						authority.10,
-						authority.9,
-						instructions_sha256,
-						now,
-					],
-				)
-				.map_err(sql_error)?;
 			transaction
 				.execute(
 					"INSERT INTO continuation_plans (
@@ -254,11 +183,11 @@ impl SqliteStore {
 						request.operation_id,
 						key,
 						request_sha,
-						authority.0,
-						authority.1,
+						authority.conversation_id,
+						authority.turn_id,
 						request.routing_decision_id,
 						runtime_session_id.as_str(),
-						authority.2,
+						authority.account_id,
 						now,
 					],
 				)
@@ -342,19 +271,7 @@ impl SqliteStore {
 					now,
 				)?;
 			} else {
-				let fallback_allowed = authority.has_acknowledged_turn
-					&& match authority.latest_attempt_state.as_deref() {
-						Some("unknown") => authority.latest_unknown_is_recoverable,
-						Some("not_submitted" | "canceled") => true,
-						_ => false,
-					};
-
-				if !fallback_allowed
-					|| fallback_pack.conversation_id().as_str()
-						!= authority.conversation_id.as_str()
-					|| fallback_pack.possible_side_effects() != PossibleSideEffects::Unknown
-					|| authority.profile_role != "task"
-				{
+				if !can_plan_context_fallback(&authority, &fallback_pack) {
 					return Ok(ContinuationCommandOutcome::Rejected(
 						ContinuationRejection::SameThreadUnavailable,
 					));
@@ -383,20 +300,7 @@ impl SqliteStore {
 
 				insert_fallback_session(&transaction, &request, &authority, now)?;
 
-				let turn_changed = transaction
-					.execute(
-						"UPDATE turns SET runtime_session_id = ?1, updated_at_micros = ?5
-						 WHERE turn_id = ?2 AND conversation_id = ?3 AND runtime_session_id = ?4
-						   AND status = 'active' AND revision = 1",
-						rusqlite::params![
-							request.fallback_runtime_session_id,
-							authority.turn_id,
-							authority.conversation_id,
-							authority.source_runtime_session_id,
-							now,
-						],
-					)
-					.map_err(sql_error)?;
+				let turn_changed = bind_fallback_turn(&transaction, &request, &authority, now)?;
 
 				if turn_changed != 1 {
 					return Ok(ContinuationCommandOutcome::Rejected(
@@ -415,6 +319,144 @@ impl SqliteStore {
 		})
 		.await
 	}
+}
+
+fn insert_initial_session(
+	transaction: &Transaction<'_>,
+	authority: &InitialContinuationAuthority,
+	runtime_session_id: &RuntimeSessionId,
+) -> Result<i64, StoreError> {
+	let account_snapshot_id = account_lifecycle::random_uuid_v4()?;
+	let profile_snapshot_id = account_lifecycle::random_uuid_v4()?;
+	let instructions_sha256 = Sha256::digest(authority.instructions.as_bytes())
+		.iter()
+		.map(|byte| format!("{byte:02x}"))
+		.collect::<String>();
+	let credential_binding_json: String = transaction
+		.query_row(
+			"SELECT json_object(
+	   'schema_version', schema_version, 'credential_version', credential_version,
+	   'fingerprint', fingerprint, 'writer_operation_id', writer_operation_id,
+	   'provider', provider, 'provider_account_id', provider_account_id
+	 ) FROM account_credentials WHERE account_id = ?1",
+			rusqlite::params![authority.account_id],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)?;
+	let now = crate::unix_micros().map_err(StoreError::from)?;
+
+	transaction
+		.execute(
+			"INSERT INTO runtime_sessions (
+	   runtime_session_id, conversation_id, account_id, account_revision,
+	   account_snapshot_id, account_display_label, account_observed_state,
+	   credential_binding_json, profile_snapshot_id, profile_revision, profile_role,
+	   model, reasoning_effort, instructions, service_tier, instructions_sha256,
+	   profile_provenance, state, revision, created_at_micros, updated_at_micros
+	 ) VALUES (
+	   ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'task', ?11, ?12, ?13,
+	   ?14, ?15, NULL, 'starting', 1, ?16, ?16
+	 )",
+			rusqlite::params![
+				runtime_session_id.as_str(),
+				authority.conversation_id,
+				authority.account_id,
+				authority.account_revision,
+				account_snapshot_id,
+				authority.account_display_label,
+				authority.account_observed_state,
+				credential_binding_json,
+				profile_snapshot_id,
+				authority.profile_revision,
+				authority.model,
+				authority.reasoning_effort,
+				authority.instructions,
+				authority.service_tier,
+				instructions_sha256,
+				now,
+			],
+		)
+		.map_err(sql_error)?;
+
+	Ok(now)
+}
+
+fn can_plan_context_fallback(
+	authority: &ExistingContinuationAuthority,
+	fallback_pack: &ContextPack,
+) -> bool {
+	let fallback_allowed = authority.has_acknowledged_turn
+		&& match authority.latest_attempt_state.as_deref() {
+			Some("unknown") => authority.latest_unknown_is_recoverable,
+			Some("not_submitted" | "canceled") => true,
+			_ => false,
+		};
+
+	fallback_allowed
+		&& fallback_pack.conversation_id().as_str() == authority.conversation_id.as_str()
+		&& fallback_pack.possible_side_effects() == PossibleSideEffects::Unknown
+		&& authority.profile_role == "task"
+}
+
+fn read_initial_continuation_authority(
+	transaction: &Transaction<'_>,
+	request: &PlanInitialThreadContinuation,
+) -> Result<Option<InitialContinuationAuthority>, StoreError> {
+	transaction
+		.query_row(
+			"SELECT d.conversation_id, d.turn_id, d.account_id, d.account_revision,
+	        a.display_label, a.state, p.revision, p.model, p.reasoning_effort,
+	        p.service_tier, p.instructions
+	 FROM routing_decisions AS d
+	 JOIN conversations AS c ON c.conversation_id = d.conversation_id
+	 JOIN accounts AS a ON a.account_id = d.account_id
+	 JOIN role_profiles AS p ON p.role = 'task'
+	 WHERE d.routing_decision_id = ?1
+	   AND d.authority_shape = 'conversation_account_registry'
+	   AND d.decision_kind = 'selected' AND c.state = 'active'
+	   AND c.revision = ?2 AND d.conversation_revision = ?2
+	   AND d.account_revision = a.revision",
+			rusqlite::params![request.routing_decision_id, request.expected_conversation_revision],
+			|row| {
+				Ok(InitialContinuationAuthority {
+					conversation_id: row.get(0)?,
+					turn_id: row.get(1)?,
+					account_id: row.get(2)?,
+					account_revision: row.get(3)?,
+					account_display_label: row.get(4)?,
+					account_observed_state: row.get(5)?,
+					profile_revision: row.get(6)?,
+					model: row.get(7)?,
+					reasoning_effort: row.get(8)?,
+					service_tier: row.get(9)?,
+					instructions: row.get(10)?,
+				})
+			},
+		)
+		.optional()
+		.map_err(sql_error)
+}
+
+fn bind_fallback_turn(
+	transaction: &Transaction<'_>,
+	request: &PlanContinuation,
+	authority: &ExistingContinuationAuthority,
+	now: i64,
+) -> Result<usize, StoreError> {
+	transaction
+		.execute(
+			"UPDATE turns SET runtime_session_id = ?1, updated_at_micros = ?5
+		 WHERE turn_id = ?2 AND conversation_id = ?3 AND runtime_session_id = ?4
+		   AND status = 'active' AND revision = 1",
+			rusqlite::params![
+				request.fallback_runtime_session_id,
+				authority.turn_id,
+				authority.conversation_id,
+				authority.source_runtime_session_id,
+				now,
+			],
+		)
+		.map_err(sql_error)
 }
 
 fn end_fallback_source(
