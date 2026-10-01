@@ -1,5 +1,14 @@
 //! Review notices require a ready current process, including after a restart.
-use super::*;
+use serde_json::Value;
+
+use crate::{
+	SqliteStore,
+	agent_process::tests::{self, DIGEST},
+};
+use decodex_core::{
+	ProcessBootIdentity, ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
+	ProcessIdentity, ProcessStartIdentity,
+};
 
 #[tokio::test]
 async fn strict_review_notices_reject_old_processes_and_survive_reopen() {
@@ -7,15 +16,15 @@ async fn strict_review_notices_reject_old_processes_and_survive_reopen() {
 	let path = directory.path().join("guardian-notices.sqlite3");
 	let mut store = SqliteStore::open_test(&path).unwrap();
 
-	seed(&store).await;
+	tests::seed(&store).await;
 
 	store.bind_agent_thread("root".into(), "thread".into()).await.unwrap();
 
 	for generation in [1, 2] {
 		store
 			.prepare_agent_bound_process_generation(
-				&intent(1, generation),
-				&binding(1),
+				&tests::intent(1, generation),
+				&tests::binding(1),
 				"root",
 				&format!("admit-{generation}"),
 			)
@@ -27,13 +36,13 @@ async fn strict_review_notices_reject_old_processes_and_survive_reopen() {
 
 		store.acknowledge_agent_dispatch("root".into(), turn.clone()).await.unwrap();
 
-		let id = generation_id(generation).as_str().to_owned();
-		let identity = decodex_core::ProcessIdentity::new(
+		let id = tests::generation_id(generation).as_str().to_owned();
+		let identity = ProcessIdentity::new(
 			ProcessBootIdentity::new("fixture-boot").unwrap(),
-			1234,
-			decodex_core::ProcessStartIdentity::new(format!("start-{generation}")).unwrap(),
-			1234,
-			1234,
+			1_234,
+			ProcessStartIdentity::new(format!("start-{generation}")).unwrap(),
+			1_234,
+			1_234,
 		)
 		.unwrap();
 
@@ -42,12 +51,12 @@ async fn strict_review_notices_reject_old_processes_and_survive_reopen() {
 			.await
 			.unwrap();
 		store
-			.bind_process_generation_identity(&generation_id(generation), 1, &identity)
+			.bind_process_generation_identity(&tests::generation_id(generation), 1, &identity)
 			.await
 			.unwrap();
-		store.mark_process_generation_ready(&generation_id(generation), 2).await.unwrap();
+		store.mark_process_generation_ready(&tests::generation_id(generation), 2).await.unwrap();
 
-		for owner in [None, Some(generation_id(3 - generation).as_str().into())] {
+		for owner in [None, Some(tests::generation_id(3 - generation).as_str().into())] {
 			store
 				.record_agent_strict_review("thread".into(), turn.clone(), 20, owner)
 				.await
@@ -75,7 +84,7 @@ async fn strict_review_notices_reject_old_processes_and_survive_reopen() {
 		let death = ProcessDeathEvidence::new(
 			ProcessDeathEvidenceId::new(format!("50000000-0000-4000-8000-{generation:012}"))
 				.unwrap(),
-			generation_id(generation),
+			tests::generation_id(generation),
 			ProcessDeathEvidenceKind::OwnedChildExit,
 			ProcessBootIdentity::new("fixture-boot").unwrap(),
 			Some(identity),
@@ -106,7 +115,7 @@ async fn assert_notice_count(store: &SqliteStore, count: usize) {
 	assert_eq!(notices.len(), count);
 
 	for notice in notices {
-		let payload: serde_json::Value = serde_json::from_str(&notice.payload).unwrap();
+		let payload: Value = serde_json::from_str(&notice.payload).unwrap();
 
 		assert_eq!(payload["startedAtMs"], 30);
 	}
