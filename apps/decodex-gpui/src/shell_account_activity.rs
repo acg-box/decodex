@@ -1,19 +1,21 @@
 //! Compact saved-activity metrics and daily usage, matching the menu-bar disclosure.
-use gpui::{self, AnyElement, SharedString, prelude::*};
+#[cfg(any(test, feature = "visual-capture"))] use std::time::Instant;
 
-use crate::shell::{
-	AccountProfileResult, ControlTooltip, Shell, WB_BLUE, WB_TEXT_FAINT, WB_TEXT_MUTED,
-	agent_surface,
+use gpui::{
+	self, AnyElement, AppContext as _, InteractiveElement as _, IntoElement as _,
+	ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
 };
-use decodex_protocol::{AccountProfileDto, EntityId};
+
+#[cfg(any(test, feature = "visual-capture"))]
+use crate::account_profile::AccountProfileLoadState;
+use crate::shell::{ControlTooltip, Shell, WB_BLUE, WB_TEXT_FAINT, WB_TEXT_MUTED, agent_surface};
+use decodex_protocol::{AccountDto, AccountProfileDto, AccountProfileResult};
+#[cfg(any(test, feature = "visual-capture"))]
+use decodex_protocol::{AccountProfileDailyUsageDto, AccountProfileEmailDto, WireText};
 
 #[cfg(any(test, feature = "visual-capture"))]
 impl Shell {
 	pub(super) fn seed_account_activity(&mut self) {
-		use decodex_protocol::{
-			AccountProfileDailyUsageDto, AccountProfileDto, AccountProfileEmailDto, WireText,
-		};
-
 		for account in &self.accounts.accounts {
 			let profile = AccountProfileDto {
 				account_id: account.account_id.clone(),
@@ -40,17 +42,21 @@ impl Shell {
 
 			snapshot.selected = Some(account.account_id.clone());
 			snapshot.selected_revision = Some(account.account_revision);
-			snapshot.load = crate::account_profile::AccountProfileLoadState::Ready;
+			snapshot.load = AccountProfileLoadState::Ready;
 			snapshot.result = Some(AccountProfileResult::Current(Box::new(profile)));
 
-			self.account_activity
-				.insert(account.account_id.clone(), (snapshot, std::time::Instant::now()));
+			self.account_activity.insert(account.account_id.clone(), (snapshot, Instant::now()));
 		}
 	}
 }
 
-pub(super) fn panel(shell: &Shell, account: &EntityId) -> AnyElement {
-	let snapshot = shell.account_activity.get(account).map(|(snapshot, _)| snapshot);
+pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
+	let snapshot = shell
+		.account_activity
+		.get(&account.account_id)
+		.map(|(snapshot, _)| snapshot)
+		.filter(|snapshot| snapshot.selected_revision == Some(account.account_revision));
+	let account = &account.account_id;
 	let mut content = gpui::div()
 		.id(SharedString::from(format!("account-activity-{}", account.as_str())))
 		.debug_selector({
@@ -152,4 +158,70 @@ fn metrics(profile: &AccountProfileDto) -> Vec<String> {
 	}
 
 	metrics
+}
+
+#[cfg(test)]
+mod tests {
+	use gpui::TestAppContext;
+
+	use crate::{
+		client_lifecycle::ConnectionView,
+		shell::{Destination, Shell},
+	};
+
+	#[gpui::test]
+	fn activity_chart_waits_for_the_current_account_revision(cx: &mut TestAppContext) {
+		let (shell, visual) =
+			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+
+		shell.update(visual, |s, cx| {
+			s.visual_accounts_and_health();
+
+			s.selected = Destination::Accounts;
+
+			let id = s.accounts.accounts[0].account_id.clone();
+
+			s.expanded_accounts.insert(id.clone());
+			cx.notify();
+		});
+
+		visual.update(|w, cx| {
+			w.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
+			w.draw(cx).clear();
+		});
+
+		assert!(visual.debug_bounds("account-activity-chart").is_some());
+
+		shell.update(visual, |s, cx| {
+			s.accounts.accounts[0].account_revision.0 += 1;
+
+			cx.notify();
+		});
+
+		visual.update(|w, cx| {
+			w.draw(cx).clear();
+		});
+
+		assert!(
+			visual.debug_bounds("account-activity-chart").is_none(),
+			"old-revision usage must not be rendered for the current account"
+		);
+		assert!(
+			visual.debug_bounds("account-activity-70000000-0000-4000-8000-000000000001").is_some(),
+			"retain the loading panel while current activity is unavailable"
+		);
+
+		shell.update(visual, |s, cx| {
+			s.seed_account_activity();
+			cx.notify();
+		});
+		visual.update(|w, cx| {
+			w.draw(cx).clear();
+		});
+
+		assert!(
+			visual.debug_bounds("account-activity-chart").is_some(),
+			"current-revision activity can be shown again"
+		);
+	}
 }
