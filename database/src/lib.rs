@@ -173,7 +173,9 @@ pub use self::{
 	},
 };
 
+#[cfg(test)] use std::fs::OpenOptions;
 #[cfg(unix)] use std::os::unix::fs::MetadataExt as _;
+#[cfg(all(test, unix))] use std::os::unix::fs::OpenOptionsExt as _;
 use std::{
 	fs::File,
 	path::{Path, PathBuf},
@@ -184,24 +186,19 @@ use std::{
 	time::{SystemTime, UNIX_EPOCH},
 };
 
-use decodex_core::{Availability, DecodexPaths, ProductState};
 use rusqlite::{Connection, OpenFlags};
+use tokio::{
+	sync::watch::{self, Sender},
+	task,
+};
+
+use decodex_core::{Availability, DecodexPaths, ProductState};
 
 /// One concrete, daemon-owned local product store.
 #[derive(Clone)]
 pub struct SqliteStore {
 	inner: Arc<StoreInner>,
 }
-
-struct StoreInner {
-	agent_output_revision: tokio::sync::watch::Sender<u64>,
-	connection: Mutex<Connection>,
-	path: PathBuf,
-	closed: AtomicBool,
-	#[cfg(unix)]
-	_identity_guard: File,
-}
-
 impl SqliteStore {
 	/// Open or initialize the fixed owner-private Decodex product database.
 	pub fn open(paths: &DecodexPaths) -> Result<Self, DatabaseError> {
@@ -237,7 +234,7 @@ impl SqliteStore {
 
 		Ok(Self {
 			inner: Arc::new(StoreInner {
-				agent_output_revision: tokio::sync::watch::channel(0).0,
+				agent_output_revision: watch::channel(0).0,
 				connection: Mutex::new(connection),
 				path,
 				closed: AtomicBool::new(false),
@@ -255,7 +252,7 @@ impl SqliteStore {
 
 		Ok(Self {
 			inner: Arc::new(StoreInner {
-				agent_output_revision: tokio::sync::watch::channel(0).0,
+				agent_output_revision: watch::channel(0).0,
 				connection: Mutex::new(connection),
 				path,
 				closed: AtomicBool::new(false),
@@ -267,7 +264,7 @@ impl SqliteStore {
 	pub async fn revalidate(&self) -> Result<(), DatabaseError> {
 		let store = self.clone();
 
-		tokio::task::spawn_blocking(move || {
+		task::spawn_blocking(move || {
 			store.with_connection(|connection| migrations::verify(connection))
 		})
 		.await
@@ -309,7 +306,7 @@ impl SqliteStore {
 	{
 		let inner = Arc::clone(&self.inner);
 
-		tokio::task::spawn_blocking(move || {
+		task::spawn_blocking(move || {
 			if inner.closed.load(Ordering::Acquire) {
 				return Err(StoreError::from(DatabaseError::Closed));
 			}
@@ -328,9 +325,6 @@ impl SqliteStore {
 
 	#[cfg(test)]
 	fn open_test(path: &Path) -> Result<Self, DatabaseError> {
-		use std::fs::OpenOptions;
-		#[cfg(unix)] use std::os::unix::fs::OpenOptionsExt as _;
-
 		let mut options = OpenOptions::new();
 
 		options.read(true).write(true).create(true);
@@ -338,8 +332,10 @@ impl SqliteStore {
 		options.mode(0o600);
 
 		let guard = options.open(path).map_err(|_| DatabaseError::UnsafePath)?;
+
 		#[cfg(unix)]
 		return Self::open_verified(path.to_path_buf(), guard);
+
 		#[cfg(not(unix))]
 		{
 			drop(guard);
@@ -359,14 +355,13 @@ impl ProductState for SqliteStore {
 	}
 }
 
-fn open_connection(path: &Path) -> Result<Connection, DatabaseError> {
-	let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
-		| OpenFlags::SQLITE_OPEN_CREATE
-		| OpenFlags::SQLITE_OPEN_NO_MUTEX
-		| OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
-		| OpenFlags::SQLITE_OPEN_NOFOLLOW;
-
-	Connection::open_with_flags(path, flags).map_err(error::sqlite_error)
+struct StoreInner {
+	agent_output_revision: Sender<u64>,
+	connection: Mutex<Connection>,
+	path: PathBuf,
+	closed: AtomicBool,
+	#[cfg(unix)]
+	_identity_guard: File,
 }
 
 pub(crate) fn unix_micros() -> Result<i64, DatabaseError> {
@@ -376,6 +371,16 @@ pub(crate) fn unix_micros() -> Result<i64, DatabaseError> {
 		.and_then(|duration| i64::try_from(duration.as_micros()).ok())
 		.filter(|value| *value > 0)
 		.ok_or(DatabaseError::Unavailable)
+}
+
+fn open_connection(path: &Path) -> Result<Connection, DatabaseError> {
+	let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
+		| OpenFlags::SQLITE_OPEN_CREATE
+		| OpenFlags::SQLITE_OPEN_NO_MUTEX
+		| OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+		| OpenFlags::SQLITE_OPEN_NOFOLLOW;
+
+	Connection::open_with_flags(path, flags).map_err(error::sqlite_error)
 }
 
 #[cfg(test)]
