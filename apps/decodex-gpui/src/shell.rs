@@ -3304,7 +3304,7 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 						.flex()
 						.flex_col()
 						.gap_1()
-						.child(account_activity::panel(shell, &account.account_id))
+						.child(account_activity::panel(shell, account))
 						.children(reset_cards::row(shell, account, cx)),
 				))
 				.into_any_element()
