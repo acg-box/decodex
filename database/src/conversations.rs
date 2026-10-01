@@ -1,20 +1,18 @@
 //! Ordinary Conversation conversations, turns, and normalized history.
-#[cfg(test)]
-#[path = "conversations/snapshot_tests.rs"]
-mod snapshot_tests;
 
+pub(crate) mod non_submission;
+
+mod initial_model_source;
 mod native_settings;
+mod resume_rejection;
+
+pub use initial_model_source::{
+	InitialModelReviewOutcome, InitialModelSource, ReviewInitialModelSettings,
+};
 pub use native_settings::{
 	ConversationNativeSettings, ConversationNativeSettingsObservation,
 	RecordConversationNativeSettings,
 };
-
-mod initial_model_source;
-pub(crate) mod non_submission;
-pub use initial_model_source::{
-	InitialModelReviewOutcome, InitialModelSource, ReviewInitialModelSettings,
-};
-mod resume_rejection;
 pub use resume_rejection::{ConversationResumeRejection, RecordConversationResumeRejection};
 
 use decodex_core::{
@@ -34,47 +32,6 @@ use crate::{
 	account_lifecycle::{random_uuid_v4, sql_error},
 	unix_micros,
 };
-
-fn unknown_recovery_authority(
-	transaction: &Transaction<'_>,
-	request: &RecoverUnknownConversationTurn,
-) -> Result<bool, StoreError> {
-	transaction
-		.query_row(
-			"SELECT EXISTS (
-			 SELECT 1 FROM conversations AS c
-			 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
-			 JOIN turns AS t ON t.runtime_session_id = s.runtime_session_id
-			 JOIN provider_attempts AS p ON p.turn_id = t.turn_id
-			 JOIN process_generations AS pg ON pg.generation_id = p.process_generation_id
-			 JOIN process_generation_death_evidence AS d
-			   ON d.generation_id = pg.generation_id AND d.evidence_id = pg.death_evidence_id
-			 WHERE c.conversation_id = ?1 AND c.kind = 'ordinary_task' AND c.state = 'active'
-			   AND c.revision = ?2 AND s.runtime_session_id = ?3 AND s.state = 'active'
-			   AND s.revision = ?4 AND t.turn_id = ?5 AND t.role = 'user'
-			   AND t.status = 'active' AND t.revision = ?6 AND p.attempt_id = ?7
-			   AND p.state = 'unknown' AND p.revision = ?8
-			   AND p.process_generation_id = ?9 AND pg.state = 'dead'
-			   AND NOT EXISTS (
-			     SELECT 1 FROM history_items AS h
-			     WHERE h.turn_id = t.turn_id AND h.status = 'streaming'
-			   )
-			 )",
-			params![
-				request.conversation_id.as_str(),
-				request.expected_conversation_revision,
-				request.runtime_session_id.as_str(),
-				request.expected_runtime_session_revision,
-				request.user_turn_id.as_str(),
-				request.expected_user_turn_revision,
-				request.attempt_id.as_str(),
-				request.expected_attempt_revision,
-				request.process_generation_id.as_str(),
-			],
-			|row| row.get(0),
-		)
-		.map_err(sql_error)
-}
 
 const MAX_PAGE_SIZE: u16 = 100;
 const MAX_RECOVERED_ASSISTANT_BYTES: usize = 256 * 1_024;
@@ -118,7 +75,7 @@ pub struct ArchiveConversationRecord {
 }
 
 /// Durable archived projection returned by the atomic local close.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ArchivedConversationRecord {
 	pub conversation_id: ConversationId,
 	pub conversation_revision: i64,
@@ -219,7 +176,7 @@ pub struct RecoverUnknownConversationTurn {
 	pub history_item_id: HistoryItemId,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct RecoveredUnknownConversationTurn {
 	pub turn_revision: i64,
 }
@@ -240,7 +197,6 @@ pub struct ConversationAssistantPrefixReadback {
 	pub text: String,
 	pub next_ordinal: i32,
 }
-
 impl std::fmt::Debug for ConversationAssistantPrefixReadback {
 	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		formatter
@@ -261,7 +217,7 @@ pub struct CreateConversationRoutingSuccessor {
 	pub expected_source_revision: i64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ConversationRoutingSuccessor {
 	pub source_conversation_id: ConversationId,
 	pub source_revision: i64,
@@ -277,14 +233,14 @@ pub enum ConversationRoutingSuccessorOutcome {
 	Rejected { code: String, replayed: bool },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct StoredConversation {
 	pub conversation_id: ConversationId,
 	pub title: String,
 	pub revision: i64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct TurnReservationReadback {
 	pub turn_id: TurnId,
 	pub sequence: i64,
@@ -306,7 +262,7 @@ pub struct AdmitInitialConversationTurn {
 	pub message: RecordHistoryItem,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct InitialConversationTurnAdmissionReadback {
 	pub routing_decision_id: String,
 	pub continuation_plan_id: String,
@@ -314,7 +270,7 @@ pub struct InitialConversationTurnAdmissionReadback {
 	pub history_item_id: HistoryItemId,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InitialConversationTurnAdmissionRejection {
 	InvalidInput,
@@ -347,7 +303,7 @@ pub struct TerminalizeConversationTurn {
 	pub provider_turn_id: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ConversationTerminalizationReadback {
 	pub runtime_session_revision: i64,
 	pub user_turn_revision: i64,
@@ -453,7 +409,6 @@ pub struct RecordHistoryItem {
 pub struct HistoryCursor {
 	sequence: i64,
 }
-
 impl HistoryCursor {
 	pub fn encode(&self) -> String {
 		format!("v1:{}", self.sequence)
@@ -494,7 +449,7 @@ pub struct HistoryPage {
 	pub next_cursor: Option<HistoryCursor>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct HistoryReceipt {
 	history_item_id: String,
 }
@@ -502,6 +457,16 @@ struct HistoryReceipt {
 struct Payload {
 	inline_text: Option<String>,
 	blob_hash: Option<String>,
+}
+
+struct StoredTurnShape {
+	conversation_id: String,
+	runtime_session_id: Option<String>,
+	sequence: i64,
+	role: String,
+	possible_side_effects: String,
+	status: String,
+	revision: i64,
 }
 
 impl SqliteStore {
@@ -1660,939 +1625,6 @@ impl SqliteStore {
 	}
 }
 
-fn validate_conversation_conversation(create: &CreateConversationRecord) -> Result<(), StoreError> {
-	if create.initial_model_source.as_ref().is_some_and(|source| source.account_revision <= 0)
-		|| create.title.is_empty()
-		|| create.title.len() > 512
-		|| create.message.is_empty()
-		|| create.message.len() > 16_384
-		|| create.working_directory.is_empty()
-		|| create.working_directory.len() > 4_096
-		|| !create.working_directory.starts_with('/')
-		|| create.working_directory.chars().any(char::is_control)
-	{
-		return Err(StoreError::InvalidInput(
-			"initial Conversation Conversation request is invalid",
-		));
-	}
-
-	validate_initial_execution(&create.model, create.reasoning_effort.as_deref())?;
-	credential_negative(&create.title)?;
-
-	credential_negative(&create.message)
-}
-
-fn validate_initial_execution(
-	model: &str,
-	reasoning_effort: Option<&str>,
-) -> Result<(), StoreError> {
-	if model.is_empty()
-		|| model.len() > 128
-		|| model.chars().any(char::is_control)
-		|| reasoning_effort.is_some_and(|effort| {
-			effort.is_empty() || effort.len() > 128 || effort.chars().any(char::is_control)
-		}) {
-		return Err(StoreError::InvalidInput("initial model settings are invalid"));
-	}
-
-	Ok(())
-}
-
-fn validate_initial_admission(request: &AdmitInitialConversationTurn) -> Result<(), StoreError> {
-	let message = &request.message;
-
-	if request.expected_conversation_revision <= 0
-		|| request.expected_runtime_session_revision != 1
-		|| message.turn_sequence != 1
-		|| message.turn_role != TurnRole::User
-		|| message.possible_side_effects != PossibleSideEffects::Unknown
-		|| message.ordinal != 0
-		|| message.kind != HistoryItemKind::Message
-		|| message.status != ItemStatus::Completed
-		|| message.expected_revision.is_some()
-		|| message.artifact.is_some()
-	{
-		return Err(StoreError::InvalidInput("initial Conversation admission shape is invalid"));
-	}
-
-	validate_history_item(message)
-}
-
-fn validate_terminalization(request: &TerminalizeConversationTurn) -> Result<(), StoreError> {
-	if request.expected_conversation_revision <= 0
-		|| request.expected_runtime_session_revision <= 0
-		|| request.expected_user_turn_revision <= 0
-		|| request.expected_provider_attempt_revision <= 0
-		|| request.assistant_turn.as_ref().is_some_and(|(_, revision)| *revision <= 0)
-		|| request.provider_thread_id.is_empty()
-		|| request.provider_thread_id.len() > decodex_core::MAX_PROVIDER_THREAD_ID_BYTES
-		|| request.provider_turn_id.is_empty()
-		|| request.provider_turn_id.len() > 256
-	{
-		return Err(StoreError::InvalidInput(
-			"Conversation terminalization coordinates are invalid",
-		));
-	}
-
-	Ok(())
-}
-
-fn validate_history_item(mutation: &RecordHistoryItem) -> Result<(), StoreError> {
-	if mutation.turn_sequence <= 0
-		|| mutation.ordinal < 0
-		|| mutation.text.len() > MAX_BLOB_BYTES
-		|| mutation.expected_revision.is_some_and(|revision| revision <= 0)
-		|| !matches!(mutation.turn_role, TurnRole::User | TurnRole::Assistant)
-		|| mutation.artifact.is_some()
-	{
-		return Err(StoreError::InvalidInput(
-			"history item is invalid for the local Conversation slice",
-		));
-	}
-
-	credential_negative(&mutation.text)?;
-
-	serde_json::to_string(&mutation.metadata)
-		.map_err(|_| StoreError::InvalidInput("history metadata is invalid"))?;
-
-	Ok(())
-}
-
-fn publish_payload(blob_store: &BlobStore, text: &str) -> Result<Payload, StoreError> {
-	if text.len() <= MAX_INLINE_HISTORY_BYTES {
-		return Ok(Payload { inline_text: Some(text.to_owned()), blob_hash: None });
-	}
-
-	let hash = blob_store.put(text.as_bytes())?;
-
-	Ok(Payload { inline_text: None, blob_hash: Some(hash.to_hex()) })
-}
-
-fn insert_turn(
-	transaction: &Transaction<'_>,
-	mutation: &RecordHistoryItem,
-	now: i64,
-) -> Result<(), StoreError> {
-	transaction
-		.execute(
-			"INSERT INTO turns (
-		 turn_id, conversation_id, runtime_session_id, sequence, role, possible_side_effects,
-		 status, revision, created_at_micros, updated_at_micros
-		 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', 1, ?7, ?7)",
-			params![
-				mutation.turn_id.as_str(),
-				mutation.conversation_id.as_str(),
-				mutation.runtime_session_id.as_str(),
-				mutation.turn_sequence,
-				turn_role_text(mutation.turn_role),
-				side_effect_text(mutation.possible_side_effects),
-				now,
-			],
-		)
-		.map_err(sql_error)?;
-
-	Ok(())
-}
-
-fn insert_history(
-	transaction: &Transaction<'_>,
-	mutation: &RecordHistoryItem,
-	payload: &Payload,
-	now: i64,
-) -> Result<(), StoreError> {
-	let sequence: i64 = transaction
-		.query_row(
-			"SELECT COALESCE(MAX(sequence), 0) + 1 FROM history_items WHERE conversation_id = ?1",
-			params![mutation.conversation_id.as_str()],
-			|row| row.get(0),
-		)
-		.map_err(sql_error)?;
-
-	transaction
-		.execute(
-			"INSERT INTO history_items (
-		 history_item_id, conversation_id, turn_id, sequence, kind, role, status,
-		 media_type, inline_text, blob_sha256, metadata_json, revision,
-		 created_at_micros, updated_at_micros
-		 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1, ?12, ?12)",
-			params![
-				mutation.history_item_id.as_str(),
-				mutation.conversation_id.as_str(),
-				mutation.turn_id.as_str(),
-				sequence,
-				history_kind_text(mutation.kind),
-				turn_role_text(mutation.turn_role),
-				item_status_text(mutation.status),
-				mutation.media_type.as_str(),
-				payload.inline_text,
-				payload.blob_hash,
-				metadata_json(&mutation.metadata)?,
-				now,
-			],
-		)
-		.map_err(sql_error)?;
-
-	Ok(())
-}
-
-struct StoredTurnShape {
-	conversation_id: String,
-	runtime_session_id: Option<String>,
-	sequence: i64,
-	role: String,
-	possible_side_effects: String,
-	status: String,
-	revision: i64,
-}
-
-fn read_turn(
-	transaction: &Transaction<'_>,
-	turn_id: &TurnId,
-) -> Result<Option<StoredTurnShape>, StoreError> {
-	transaction.query_row(
-		"SELECT conversation_id, runtime_session_id, sequence, role, possible_side_effects, status, revision
-		 FROM turns WHERE turn_id = ?1",
-		params![turn_id.as_str()],
-		|row| Ok(StoredTurnShape {
-			conversation_id: row.get(0)?, runtime_session_id: row.get(1)?, sequence: row.get(2)?,
-			role: row.get(3)?, possible_side_effects: row.get(4)?, status: row.get(5)?, revision: row.get(6)?,
-		}),
-	).optional().map_err(sql_error)
-}
-
-fn validate_existing_turn(
-	turn: &StoredTurnShape,
-	mutation: &RecordHistoryItem,
-) -> Result<(), StoreError> {
-	if turn.conversation_id != mutation.conversation_id.as_str()
-		|| turn.runtime_session_id.as_deref() != Some(mutation.runtime_session_id.as_str())
-		|| turn.sequence != mutation.turn_sequence
-		|| turn.role != turn_role_text(mutation.turn_role)
-		|| turn.possible_side_effects != side_effect_text(mutation.possible_side_effects)
-		|| turn.status != "active"
-		|| turn.revision != 1
-	{
-		return Err(incompatible("history Turn authority"));
-	}
-
-	Ok(())
-}
-
-fn history_exists(
-	transaction: &Transaction<'_>,
-	history_item_id: &HistoryItemId,
-) -> Result<bool, StoreError> {
-	transaction
-		.query_row(
-			"SELECT EXISTS (SELECT 1 FROM history_items WHERE history_item_id = ?1)",
-			params![history_item_id.as_str()],
-			|row| row.get(0),
-		)
-		.map_err(sql_error)
-}
-
-fn read_history_entry(
-	transaction: &Transaction<'_>,
-	history_item_id: &str,
-) -> Result<Option<HistoryEntry>, StoreError> {
-	transaction
-		.query_row(
-			"SELECT h.history_item_id, h.turn_id, t.runtime_session_id, t.role,
-		 t.possible_side_effects, h.kind, h.status, h.inline_text, h.blob_sha256,
-		 h.media_type, h.metadata_json, h.revision, h.sequence
-		 FROM history_items AS h JOIN turns AS t USING (turn_id)
-		 WHERE h.history_item_id = ?1",
-			params![history_item_id],
-			read_history_row,
-		)
-		.optional()
-		.map_err(sql_error)
-}
-
-fn read_history_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<HistoryEntry> {
-	let blob_hash = row
-		.get::<_, Option<String>>(8)?
-		.map(|value| BlobHash::parse(&value).map_err(|_| rusqlite::Error::InvalidQuery))
-		.transpose()?;
-	let media_type = HistoryMediaType::new(row.get::<_, String>(9)?)
-		.map_err(|_| rusqlite::Error::InvalidQuery)?;
-	let metadata = serde_json::from_str::<HistoryMetadata>(&row.get::<_, String>(10)?)
-		.map_err(|_| rusqlite::Error::InvalidQuery)?;
-
-	Ok(HistoryEntry {
-		history_item_id: row.get(0)?,
-		turn_id: row.get(1)?,
-		runtime_session_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-		turn_role: parse_turn_role(&row.get::<_, String>(3)?)
-			.map_err(|_| rusqlite::Error::InvalidQuery)?,
-		possible_side_effects: parse_side_effect(&row.get::<_, String>(4)?)
-			.map_err(|_| rusqlite::Error::InvalidQuery)?,
-		kind: parse_history_kind(&row.get::<_, String>(5)?)
-			.map_err(|_| rusqlite::Error::InvalidQuery)?,
-		status: parse_item_status(&row.get::<_, String>(6)?)
-			.map_err(|_| rusqlite::Error::InvalidQuery)?,
-		inline_text: row.get(7)?,
-		blob_hash,
-		blob_byte_length: None,
-		media_type,
-		metadata,
-		artifact: None,
-		revision: row.get(11)?,
-	})
-}
-
-fn hydrate_history_blob(
-	blob_store: &BlobStore,
-	entry: &mut HistoryEntry,
-) -> Result<(), StoreError> {
-	if let Some(hash) = entry.blob_hash {
-		let bytes = blob_store.read(hash)?;
-
-		entry.blob_byte_length =
-			Some(u64::try_from(bytes.len()).map_err(|_| incompatible("history blob length"))?);
-	}
-
-	Ok(())
-}
-
-fn verify_history_blob(blob_store: &BlobStore, entry: &HistoryEntry) -> Result<(), StoreError> {
-	if let Some(hash) = entry.blob_hash {
-		let bytes = blob_store.read(hash)?;
-
-		if entry.inline_text.is_some() || bytes.len() > MAX_BLOB_BYTES {
-			return Err(incompatible("history blob"));
-		}
-	} else if entry.inline_text.is_none() {
-		return Err(incompatible("history payload"));
-	}
-
-	Ok(())
-}
-
-fn metadata_json(metadata: &HistoryMetadata) -> Result<String, StoreError> {
-	serde_json::to_string(metadata)
-		.map_err(|_| StoreError::InvalidInput("history metadata is invalid"))
-}
-
-fn touch_conversation(
-	transaction: &Transaction<'_>,
-	id: &ConversationId,
-	now: i64,
-) -> Result<(), StoreError> {
-	let changed = transaction.execute(
-		"UPDATE conversations SET updated_at_micros = ?2 WHERE conversation_id = ?1 AND state = 'active'",
-		params![id.as_str(), now],
-	).map_err(sql_error)?;
-
-	if changed != 1 {
-		return Err(incompatible("Conversation activity owner"));
-	}
-
-	Ok(())
-}
-
-fn read_receipt(
-	transaction: &Transaction<'_>,
-	command: &CommandIdentity,
-	operation: &str,
-	entity_id: &str,
-) -> Result<Option<String>, StoreError> {
-	read_runtime_receipt(transaction, &command.key, &command.request_hash, operation, entity_id)
-}
-
-fn read_runtime_receipt(
-	transaction: &Transaction<'_>,
-	key: &str,
-	request_sha: &str,
-	operation: &str,
-	entity_id: &str,
-) -> Result<Option<String>, StoreError> {
-	let row = transaction
-		.query_row(
-			"SELECT request_sha256, operation, entity_id, response_json
-		 FROM runtime_command_receipts WHERE idempotency_key = ?1",
-			params![key],
-			|row| {
-				Ok((
-					row.get::<_, String>(0)?,
-					row.get::<_, String>(1)?,
-					row.get::<_, String>(2)?,
-					row.get::<_, String>(3)?,
-				))
-			},
-		)
-		.optional()
-		.map_err(sql_error)?;
-	let Some((stored_sha, stored_operation, stored_entity, response)) = row else {
-		return Ok(None);
-	};
-
-	if stored_sha != request_sha || stored_operation != operation || stored_entity != entity_id {
-		return Err(StoreError::IdempotencyConflict);
-	}
-
-	Ok(Some(response))
-}
-
-fn write_receipt(
-	transaction: &Transaction<'_>,
-	command: &CommandIdentity,
-	operation: &str,
-	entity_id: &str,
-	response_json: &str,
-	completed_at_micros: i64,
-) -> Result<(), StoreError> {
-	write_runtime_receipt(
-		transaction,
-		&command.key,
-		&command.request_hash,
-		operation,
-		entity_id,
-		response_json,
-		completed_at_micros,
-	)
-}
-
-fn write_runtime_receipt(
-	transaction: &Transaction<'_>,
-	key: &str,
-	request_sha: &str,
-	operation: &str,
-	entity_id: &str,
-	response_json: &str,
-	completed_at_micros: i64,
-) -> Result<(), StoreError> {
-	transaction
-		.execute(
-			"INSERT INTO runtime_command_receipts (
-		 idempotency_key, request_sha256, operation, entity_id, response_json, completed_at_micros
-		 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-			params![key, request_sha, operation, entity_id, response_json, completed_at_micros],
-		)
-		.map_err(sql_error)?;
-
-	Ok(())
-}
-
-fn read_routing_successor(
-	transaction: &Transaction<'_>,
-	source_id: &ConversationId,
-	successor_id: &str,
-) -> Result<ConversationRoutingSuccessor, StoreError> {
-	let row = transaction
-		.query_row(
-			"SELECT s.revision, n.revision, r.source_routing_decision_id
-		 FROM conversation_routing_successors AS r
-		 JOIN conversations AS s ON s.conversation_id = r.source_conversation_id
-		 JOIN conversations AS n ON n.conversation_id = r.successor_conversation_id
-		 WHERE r.source_conversation_id = ?1 AND r.successor_conversation_id = ?2",
-			params![source_id.as_str(), successor_id],
-			|row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)),
-		)
-		.map_err(sql_error)?;
-
-	Ok(ConversationRoutingSuccessor {
-		source_conversation_id: source_id.clone(),
-		source_revision: row.0,
-		successor_conversation_id: ConversationId::new(successor_id.to_owned())
-			.map_err(|_| incompatible("routing successor identity"))?,
-		successor_revision: row.1,
-		source_routing_decision_id: row.2,
-	})
-}
-
-#[allow(clippy::too_many_lines)] // Keep the complete projection read and invariant checks together.
-fn conversation_projection(
-	connection: &rusqlite::Connection,
-	row: (String, String, i64, i64),
-) -> Result<OrdinaryTaskConversationProjection, StoreError> {
-	let conversation_id = ConversationId::new(row.0)
-		.map_err(|_| incompatible("ordinary Task Conversation identity"))?;
-
-	if row.1 == "archived" {
-		let successor = connection
-			.query_row(
-				"SELECT r.successor_conversation_id, c.revision
-			 FROM conversation_routing_successors AS r
-			 JOIN conversations AS c ON c.conversation_id = r.successor_conversation_id
-			 WHERE r.source_conversation_id = ?1",
-				params![conversation_id.as_str()],
-				|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
-			)
-			.optional()
-			.map_err(sql_error)?;
-
-		return match successor {
-			Some(successor) => Ok(OrdinaryTaskConversationProjection::RoutingSuccessorRedirect {
-				source_conversation_id: conversation_id,
-				source_revision: row.2,
-				successor_conversation_id: ConversationId::new(successor.0)
-					.map_err(|_| incompatible("routing successor identity"))?,
-				successor_conversation_revision: successor.1,
-			}),
-			None => Ok(OrdinaryTaskConversationProjection::Archived {
-				conversation_id,
-				conversation_revision: row.2,
-			}),
-		};
-	}
-	if row.1 != "active" || row.2 <= 0 || row.3 <= 0 {
-		return Err(incompatible("ordinary Task Conversation lifecycle"));
-	}
-
-	let presentation = connection
-		.query_row(
-			"SELECT c.title, q.message, item.program_id, item.work_item_id, item.title,
-			 item.instructions, item.state, item.revision, q.working_directory
-			 FROM conversations AS c
-			 JOIN quick_task_requests AS q USING (conversation_id)
-			 LEFT JOIN program_work_item_executions AS execution USING (conversation_id)
-			 LEFT JOIN program_work_items AS item USING (work_item_id)
-			 WHERE c.conversation_id = ?1",
-			params![conversation_id.as_str()],
-			|row| {
-				Ok((
-					row.get::<_, String>(0)?,
-					row.get::<_, String>(1)?,
-					row.get::<_, Option<String>>(2)?,
-					row.get::<_, Option<String>>(3)?,
-					row.get::<_, Option<String>>(4)?,
-					row.get::<_, Option<String>>(5)?,
-					row.get::<_, Option<String>>(6)?,
-					row.get::<_, Option<i64>>(7)?,
-					row.get::<_, String>(8)?,
-				))
-			},
-		)
-		.map_err(sql_error)?;
-	let program_work_item = match (
-		presentation.2,
-		presentation.3,
-		presentation.4,
-		presentation.5,
-		presentation.6,
-		presentation.7,
-	) {
-		(None, None, None, None, None, None) => None,
-		(
-			Some(program_id),
-			Some(work_item_id),
-			Some(title),
-			Some(instructions),
-			Some(state),
-			Some(revision),
-		) => Some(ProgramWorkItemContextReadback {
-			program_id: ProgramId::new(program_id)
-				.map_err(|_| incompatible("Program binding identity"))?,
-			work_item_id: WorkItemId::new(work_item_id)
-				.map_err(|_| incompatible("Program WorkItem binding identity"))?,
-			title,
-			instructions,
-			state: crate::program_cycles::parse_work_item_state_sql(&state).map_err(sql_error)?,
-			revision: u64::try_from(revision)
-				.ok()
-				.filter(|revision| *revision > 0)
-				.ok_or_else(|| incompatible("Program WorkItem binding revision"))?,
-		}),
-		_ => return Err(incompatible("Program WorkItem binding projection")),
-	};
-	let fallback_title = bounded_conversation_title(&presentation.1);
-	let title = program_work_item.as_ref().map_or_else(
-		|| conversation_display_title(&presentation.0, &presentation.1),
-		|work_item| safe_display_title(&work_item.title, &fallback_title),
-	);
-	let session = connection
-		.query_row(
-			"SELECT runtime_session_id, revision, state, has_acknowledged_turn, codex_thread_id
-		 FROM runtime_sessions WHERE conversation_id = ?1 AND state IN ('starting', 'active')",
-			params![conversation_id.as_str()],
-			|row| {
-				Ok((
-					row.get::<_, String>(0)?,
-					row.get::<_, i64>(1)?,
-					row.get::<_, String>(2)?,
-					row.get::<_, bool>(3)?,
-					row.get::<_, Option<String>>(4)?,
-				))
-			},
-		)
-		.optional()
-		.map_err(sql_error)?;
-	let route = connection
-		.query_row(
-			"SELECT routing_decision_id, decision_kind, quota_classification
-		 FROM routing_decisions WHERE conversation_id = ?1
-		 ORDER BY created_at_micros DESC LIMIT 1",
-			params![conversation_id.as_str()],
-			|row| {
-				Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
-			},
-		)
-		.optional()
-		.map_err(sql_error)?;
-	let active_turn = connection
-		.query_row(
-			"SELECT turn_id, revision FROM turns
-		 WHERE conversation_id = ?1 AND role = 'user' AND status = 'active'
-		 ORDER BY sequence DESC LIMIT 1",
-			params![conversation_id.as_str()],
-			|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
-		)
-		.optional()
-		.map_err(sql_error)?;
-	let has_admitted_user_turn: bool = connection
-		.query_row(
-			"SELECT EXISTS (SELECT 1 FROM turns WHERE conversation_id = ?1 AND role = 'user')",
-			params![conversation_id.as_str()],
-			|row| row.get(0),
-		)
-		.map_err(sql_error)?;
-	let has_active_provider_attempt: bool = connection
-		.query_row(
-			"SELECT EXISTS (SELECT 1 FROM provider_attempts WHERE conversation_id = ?1
-		 AND state IN ('prepared', 'dispatch_authorized'))",
-			params![conversation_id.as_str()],
-			|row| row.get(0),
-		)
-		.map_err(sql_error)?;
-	let has_unknown_provider_attempt: bool = connection
-		.query_row(
-			"SELECT EXISTS (
-		 SELECT 1 FROM provider_attempts AS p JOIN turns AS t ON t.turn_id = p.turn_id
-		 WHERE p.conversation_id = ?1 AND p.state = 'unknown' AND t.status = 'active'
-		 )",
-			params![conversation_id.as_str()],
-			|row| row.get(0),
-		)
-		.map_err(sql_error)?;
-	let (
-		runtime_session_id,
-		runtime_session_revision,
-		runtime_session_state,
-		has_acknowledged_turn,
-		codex_thread_id,
-	) = match session {
-		Some((id, revision, state, acknowledged, codex_thread_id)) => (
-			Some(RuntimeSessionId::new(id).map_err(|_| incompatible("RuntimeSession identity"))?),
-			Some(revision),
-			Some(parse_runtime_session_state(&state)?),
-			acknowledged,
-			codex_thread_id,
-		),
-		None => (None, None, None, false, None),
-	};
-	let routing_decision_id = route.as_ref().map(|value| value.0.clone());
-	let model_source_review_required: bool = connection.query_row(
-        "SELECT COALESCE((SELECT model_source_review_required FROM quick_task_requests WHERE conversation_id = ?1), 0)",
-        params![conversation_id.as_str()], |row| row.get(0),
-    ).map_err(sql_error)?;
-	let pre_session_state = if runtime_session_id.is_some() {
-		None
-	} else {
-		Some(match route.as_ref() {
-			None if model_source_review_required =>
-				OrdinaryTaskPreSessionState::ModelSettingsReviewRequired,
-			None => OrdinaryTaskPreSessionState::RoutingPending,
-			Some((_, decision, _)) if decision == "selected" =>
-				OrdinaryTaskPreSessionState::EstablishmentPending,
-			Some((_, _, quota)) if quota == "known_depleted" =>
-				OrdinaryTaskPreSessionState::QuotaExhausted,
-			Some(_) => OrdinaryTaskPreSessionState::NoRoute,
-		})
-	};
-	let native_settings = match (&runtime_session_id, &codex_thread_id) {
-		(Some(session), Some(thread)) =>
-			native_settings::read(connection, session.as_str(), thread)?.map(Box::new),
-		_ => None,
-	};
-
-	Ok(OrdinaryTaskConversationProjection::Current(OrdinaryTaskConversationReadback {
-		original_working_directory: presentation.8,
-		native_settings,
-		conversation_id,
-		title,
-		conversation_revision: row.2,
-		runtime_session_id,
-		runtime_session_revision,
-		runtime_session_state,
-		codex_thread_id,
-		program_work_item,
-		has_acknowledged_turn,
-		active_turn_id: active_turn
-			.as_ref()
-			.map(|turn| TurnId::new(turn.0.clone()))
-			.transpose()
-			.map_err(|_| incompatible("active Turn identity"))?,
-		active_turn_revision: active_turn.map(|turn| turn.1),
-		has_admitted_user_turn,
-		has_active_provider_attempt,
-		has_unknown_provider_attempt,
-		pre_session_state,
-		routing_decision_id,
-		updated_at_micros: row.3,
-	}))
-}
-
-/// Derive one normalized, bounded, credential-negative title from the first user request.
-pub fn bounded_conversation_title(message: &str) -> String {
-	let normalized = message.split_whitespace().collect::<Vec<_>>().join(" ");
-
-	safe_display_title(&normalized, "Private conversation")
-}
-
-fn conversation_display_title(persisted: &str, first_request: &str) -> String {
-	let persisted = persisted.split_whitespace().collect::<Vec<_>>().join(" ");
-	let generic = persisted.eq_ignore_ascii_case("quick task")
-		|| persisted.eq_ignore_ascii_case("program work")
-		|| persisted.eq_ignore_ascii_case("conversation");
-
-	if generic || persisted.is_empty() {
-		bounded_conversation_title(first_request)
-	} else {
-		safe_display_title(&persisted, &bounded_conversation_title(first_request))
-	}
-}
-
-fn safe_display_title(value: &str, fallback: &str) -> String {
-	let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
-
-	if value.is_empty()
-		|| value.chars().any(char::is_control)
-		|| contains_credential_material(&value)
-	{
-		return fallback.to_owned();
-	}
-
-	truncate_utf8(&value, MAX_CONVERSATION_TITLE_BYTES).to_owned()
-}
-
-fn truncate_utf8(value: &str, max_bytes: usize) -> &str {
-	if value.len() <= max_bytes {
-		return value;
-	}
-
-	let mut end = max_bytes;
-
-	while !value.is_char_boundary(end) {
-		end -= 1;
-	}
-
-	value[..end].trim_end()
-}
-
-fn turn_matches(
-	transaction: &Transaction<'_>,
-	turn_id: &TurnId,
-	conversation_id: &ConversationId,
-	runtime_session_id: &RuntimeSessionId,
-	revision: i64,
-	role: TurnRole,
-) -> Result<bool, StoreError> {
-	transaction
-		.query_row(
-			"SELECT EXISTS (
-		 SELECT 1 FROM turns WHERE turn_id = ?1 AND conversation_id = ?2
-		 AND runtime_session_id = ?3 AND revision = ?4 AND role = ?5 AND status = 'active'
-		 )",
-			params![
-				turn_id.as_str(),
-				conversation_id.as_str(),
-				runtime_session_id.as_str(),
-				revision,
-				turn_role_text(role)
-			],
-			|row| row.get(0),
-		)
-		.map_err(sql_error)
-}
-
-fn initial_admission_digest(request: &AdmitInitialConversationTurn, payload: &Payload) -> String {
-	digest(&[
-		&request.expected_conversation_revision.to_string(),
-		&request.expected_runtime_session_revision.to_string(),
-		&request.continuation_plan_id,
-		request.message.conversation_id.as_str(),
-		request.message.runtime_session_id.as_str(),
-		request.message.turn_id.as_str(),
-		request.message.history_item_id.as_str(),
-		payload.inline_text.as_deref().unwrap_or_default(),
-		payload.blob_hash.as_deref().unwrap_or_default(),
-	])
-}
-
-fn terminalization_digest(request: &TerminalizeConversationTurn) -> String {
-	let assistant_id =
-		request.assistant_turn.as_ref().map(|value| value.0.as_str()).unwrap_or_default();
-	let assistant_revision =
-		request.assistant_turn.as_ref().map(|value| value.1.to_string()).unwrap_or_default();
-
-	digest(&[
-		request.conversation_id.as_str(),
-		&request.expected_conversation_revision.to_string(),
-		request.runtime_session_id.as_str(),
-		&request.expected_runtime_session_revision.to_string(),
-		request.user_turn_id.as_str(),
-		&request.expected_user_turn_revision.to_string(),
-		assistant_id,
-		&assistant_revision,
-		request.provider_attempt_id.as_str(),
-		&request.expected_provider_attempt_revision.to_string(),
-		request.provider_evidence_id.as_str(),
-		provider_outcome_text(request.provider_outcome),
-		&request.provider_thread_id,
-		&request.provider_turn_id,
-	])
-}
-
-fn digest(parts: &[&str]) -> String {
-	let mut hasher = Sha256::new();
-
-	for part in parts {
-		hasher.update((part.len() as u64).to_be_bytes());
-		hasher.update(part.as_bytes());
-	}
-
-	hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-fn validate_key(value: &str) -> Result<(), StoreError> {
-	if value.is_empty() || value.len() > 256 || decodex_core::contains_credential_material(value) {
-		return Err(StoreError::InvalidInput("idempotency key is invalid"));
-	}
-
-	Ok(())
-}
-
-fn credential_negative(value: &str) -> Result<(), StoreError> {
-	if decodex_core::contains_credential_material(value) {
-		Err(StoreError::CredentialRejected)
-	} else {
-		Ok(())
-	}
-}
-
-const fn turn_role_text(value: TurnRole) -> &'static str {
-	match value {
-		TurnRole::User => "user",
-		TurnRole::Assistant => "assistant",
-		TurnRole::System => "system",
-		TurnRole::Tool => "tool",
-	}
-}
-
-fn parse_turn_role(value: &str) -> Result<TurnRole, StoreError> {
-	match value {
-		"user" => Ok(TurnRole::User),
-		"assistant" => Ok(TurnRole::Assistant),
-		_ => Err(incompatible("history role")),
-	}
-}
-
-const fn side_effect_text(value: PossibleSideEffects) -> &'static str {
-	match value {
-		PossibleSideEffects::None => "none",
-		PossibleSideEffects::Possible => "possible",
-		PossibleSideEffects::Unknown => "unknown",
-	}
-}
-
-fn parse_side_effect(value: &str) -> Result<PossibleSideEffects, StoreError> {
-	match value {
-		"none" => Ok(PossibleSideEffects::None),
-		"possible" => Ok(PossibleSideEffects::Possible),
-		"unknown" => Ok(PossibleSideEffects::Unknown),
-		_ => Err(incompatible("side-effect classification")),
-	}
-}
-
-const fn history_kind_text(value: HistoryItemKind) -> &'static str {
-	match value {
-		HistoryItemKind::Message => "message",
-		HistoryItemKind::Reasoning => "reasoning",
-		HistoryItemKind::ToolCall => "tool_call",
-		HistoryItemKind::ToolResult => "tool_result",
-		HistoryItemKind::Artifact => "artifact",
-		HistoryItemKind::Status => "status",
-	}
-}
-
-fn parse_history_kind(value: &str) -> Result<HistoryItemKind, StoreError> {
-	match value {
-		"message" => Ok(HistoryItemKind::Message),
-		"reasoning" => Ok(HistoryItemKind::Reasoning),
-		"tool_call" => Ok(HistoryItemKind::ToolCall),
-		"tool_result" => Ok(HistoryItemKind::ToolResult),
-		"artifact" => Ok(HistoryItemKind::Artifact),
-		"status" => Ok(HistoryItemKind::Status),
-		_ => Err(incompatible("history kind")),
-	}
-}
-
-const fn item_status_text(value: ItemStatus) -> &'static str {
-	match value {
-		ItemStatus::Streaming => "streaming",
-		ItemStatus::Completed => "completed",
-		ItemStatus::Failed => "failed",
-	}
-}
-
-fn parse_item_status(value: &str) -> Result<ItemStatus, StoreError> {
-	match value {
-		"streaming" => Ok(ItemStatus::Streaming),
-		"completed" => Ok(ItemStatus::Completed),
-		"failed" => Ok(ItemStatus::Failed),
-		_ => Err(incompatible("history status")),
-	}
-}
-
-const fn turn_status_text(value: TurnStatus) -> &'static str {
-	match value {
-		TurnStatus::Active => "active",
-		TurnStatus::Completed => "completed",
-		TurnStatus::Failed => "failed",
-	}
-}
-
-fn parse_turn_status(value: &str) -> Result<TurnStatus, StoreError> {
-	match value {
-		"active" => Ok(TurnStatus::Active),
-		"completed" => Ok(TurnStatus::Completed),
-		"failed" => Ok(TurnStatus::Failed),
-		_ => Err(incompatible("Turn status")),
-	}
-}
-
-fn parse_runtime_session_state(value: &str) -> Result<RuntimeSessionState, StoreError> {
-	match value {
-		"starting" => Ok(RuntimeSessionState::Starting),
-		"active" => Ok(RuntimeSessionState::Active),
-		"ended" => Ok(RuntimeSessionState::Ended),
-		"diverged" => Ok(RuntimeSessionState::Diverged),
-		_ => Err(incompatible("RuntimeSession state")),
-	}
-}
-
-const fn provider_outcome_text(value: ProviderTerminalOutcome) -> &'static str {
-	match value {
-		ProviderTerminalOutcome::Succeeded => "succeeded",
-		ProviderTerminalOutcome::FailedDefinitive => "failed_definitive",
-		ProviderTerminalOutcome::NotSubmitted => "not_submitted",
-	}
-}
-
-fn parse_provider_outcome(value: &str) -> Result<ProviderTerminalOutcome, StoreError> {
-	match value {
-		"succeeded" => Ok(ProviderTerminalOutcome::Succeeded),
-		"failed_definitive" => Ok(ProviderTerminalOutcome::FailedDefinitive),
-		"not_submitted" => Ok(ProviderTerminalOutcome::NotSubmitted),
-		_ => Err(incompatible("provider outcome")),
-	}
-}
-
-fn incompatible(reason: &'static str) -> StoreError {
-	StoreError::Incompatible(format!("stored {reason} is malformed"))
-}
-
 impl SqliteStore {
 	#[allow(clippy::too_many_lines)] // Keep one atomic turn-and-history terminalization together.
 	pub async fn terminalize_conversation_turn(
@@ -3291,6 +2323,974 @@ impl SqliteStore {
 		.await
 	}
 }
+
+/// Derive one normalized, bounded, credential-negative title from the first user request.
+pub fn bounded_conversation_title(message: &str) -> String {
+	let normalized = message.split_whitespace().collect::<Vec<_>>().join(" ");
+
+	safe_display_title(&normalized, "Private conversation")
+}
+
+fn unknown_recovery_authority(
+	transaction: &Transaction<'_>,
+	request: &RecoverUnknownConversationTurn,
+) -> Result<bool, StoreError> {
+	transaction
+		.query_row(
+			"SELECT EXISTS (
+			 SELECT 1 FROM conversations AS c
+			 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
+			 JOIN turns AS t ON t.runtime_session_id = s.runtime_session_id
+			 JOIN provider_attempts AS p ON p.turn_id = t.turn_id
+			 JOIN process_generations AS pg ON pg.generation_id = p.process_generation_id
+			 JOIN process_generation_death_evidence AS d
+			   ON d.generation_id = pg.generation_id AND d.evidence_id = pg.death_evidence_id
+			 WHERE c.conversation_id = ?1 AND c.kind = 'ordinary_task' AND c.state = 'active'
+			   AND c.revision = ?2 AND s.runtime_session_id = ?3 AND s.state = 'active'
+			   AND s.revision = ?4 AND t.turn_id = ?5 AND t.role = 'user'
+			   AND t.status = 'active' AND t.revision = ?6 AND p.attempt_id = ?7
+			   AND p.state = 'unknown' AND p.revision = ?8
+			   AND p.process_generation_id = ?9 AND pg.state = 'dead'
+			   AND NOT EXISTS (
+			     SELECT 1 FROM history_items AS h
+			     WHERE h.turn_id = t.turn_id AND h.status = 'streaming'
+			   )
+			 )",
+			params![
+				request.conversation_id.as_str(),
+				request.expected_conversation_revision,
+				request.runtime_session_id.as_str(),
+				request.expected_runtime_session_revision,
+				request.user_turn_id.as_str(),
+				request.expected_user_turn_revision,
+				request.attempt_id.as_str(),
+				request.expected_attempt_revision,
+				request.process_generation_id.as_str(),
+			],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)
+}
+
+fn validate_conversation_conversation(create: &CreateConversationRecord) -> Result<(), StoreError> {
+	if create.initial_model_source.as_ref().is_some_and(|source| source.account_revision <= 0)
+		|| create.title.is_empty()
+		|| create.title.len() > 512
+		|| create.message.is_empty()
+		|| create.message.len() > 16_384
+		|| create.working_directory.is_empty()
+		|| create.working_directory.len() > 4_096
+		|| !create.working_directory.starts_with('/')
+		|| create.working_directory.chars().any(char::is_control)
+	{
+		return Err(StoreError::InvalidInput(
+			"initial Conversation Conversation request is invalid",
+		));
+	}
+
+	validate_initial_execution(&create.model, create.reasoning_effort.as_deref())?;
+	credential_negative(&create.title)?;
+
+	credential_negative(&create.message)
+}
+
+fn validate_initial_execution(
+	model: &str,
+	reasoning_effort: Option<&str>,
+) -> Result<(), StoreError> {
+	if model.is_empty()
+		|| model.len() > 128
+		|| model.chars().any(char::is_control)
+		|| reasoning_effort.is_some_and(|effort| {
+			effort.is_empty() || effort.len() > 128 || effort.chars().any(char::is_control)
+		}) {
+		return Err(StoreError::InvalidInput("initial model settings are invalid"));
+	}
+
+	Ok(())
+}
+
+fn validate_initial_admission(request: &AdmitInitialConversationTurn) -> Result<(), StoreError> {
+	let message = &request.message;
+
+	if request.expected_conversation_revision <= 0
+		|| request.expected_runtime_session_revision != 1
+		|| message.turn_sequence != 1
+		|| message.turn_role != TurnRole::User
+		|| message.possible_side_effects != PossibleSideEffects::Unknown
+		|| message.ordinal != 0
+		|| message.kind != HistoryItemKind::Message
+		|| message.status != ItemStatus::Completed
+		|| message.expected_revision.is_some()
+		|| message.artifact.is_some()
+	{
+		return Err(StoreError::InvalidInput("initial Conversation admission shape is invalid"));
+	}
+
+	validate_history_item(message)
+}
+
+fn validate_terminalization(request: &TerminalizeConversationTurn) -> Result<(), StoreError> {
+	if request.expected_conversation_revision <= 0
+		|| request.expected_runtime_session_revision <= 0
+		|| request.expected_user_turn_revision <= 0
+		|| request.expected_provider_attempt_revision <= 0
+		|| request.assistant_turn.as_ref().is_some_and(|(_, revision)| *revision <= 0)
+		|| request.provider_thread_id.is_empty()
+		|| request.provider_thread_id.len() > decodex_core::MAX_PROVIDER_THREAD_ID_BYTES
+		|| request.provider_turn_id.is_empty()
+		|| request.provider_turn_id.len() > 256
+	{
+		return Err(StoreError::InvalidInput(
+			"Conversation terminalization coordinates are invalid",
+		));
+	}
+
+	Ok(())
+}
+
+fn validate_history_item(mutation: &RecordHistoryItem) -> Result<(), StoreError> {
+	if mutation.turn_sequence <= 0
+		|| mutation.ordinal < 0
+		|| mutation.text.len() > MAX_BLOB_BYTES
+		|| mutation.expected_revision.is_some_and(|revision| revision <= 0)
+		|| !matches!(mutation.turn_role, TurnRole::User | TurnRole::Assistant)
+		|| mutation.artifact.is_some()
+	{
+		return Err(StoreError::InvalidInput(
+			"history item is invalid for the local Conversation slice",
+		));
+	}
+
+	credential_negative(&mutation.text)?;
+
+	serde_json::to_string(&mutation.metadata)
+		.map_err(|_| StoreError::InvalidInput("history metadata is invalid"))?;
+
+	Ok(())
+}
+
+fn publish_payload(blob_store: &BlobStore, text: &str) -> Result<Payload, StoreError> {
+	if text.len() <= MAX_INLINE_HISTORY_BYTES {
+		return Ok(Payload { inline_text: Some(text.to_owned()), blob_hash: None });
+	}
+
+	let hash = blob_store.put(text.as_bytes())?;
+
+	Ok(Payload { inline_text: None, blob_hash: Some(hash.to_hex()) })
+}
+
+fn insert_turn(
+	transaction: &Transaction<'_>,
+	mutation: &RecordHistoryItem,
+	now: i64,
+) -> Result<(), StoreError> {
+	transaction
+		.execute(
+			"INSERT INTO turns (
+		 turn_id, conversation_id, runtime_session_id, sequence, role, possible_side_effects,
+		 status, revision, created_at_micros, updated_at_micros
+		 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', 1, ?7, ?7)",
+			params![
+				mutation.turn_id.as_str(),
+				mutation.conversation_id.as_str(),
+				mutation.runtime_session_id.as_str(),
+				mutation.turn_sequence,
+				turn_role_text(mutation.turn_role),
+				side_effect_text(mutation.possible_side_effects),
+				now,
+			],
+		)
+		.map_err(sql_error)?;
+
+	Ok(())
+}
+
+fn insert_history(
+	transaction: &Transaction<'_>,
+	mutation: &RecordHistoryItem,
+	payload: &Payload,
+	now: i64,
+) -> Result<(), StoreError> {
+	let sequence: i64 = transaction
+		.query_row(
+			"SELECT COALESCE(MAX(sequence), 0) + 1 FROM history_items WHERE conversation_id = ?1",
+			params![mutation.conversation_id.as_str()],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)?;
+
+	transaction
+		.execute(
+			"INSERT INTO history_items (
+		 history_item_id, conversation_id, turn_id, sequence, kind, role, status,
+		 media_type, inline_text, blob_sha256, metadata_json, revision,
+		 created_at_micros, updated_at_micros
+		 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1, ?12, ?12)",
+			params![
+				mutation.history_item_id.as_str(),
+				mutation.conversation_id.as_str(),
+				mutation.turn_id.as_str(),
+				sequence,
+				history_kind_text(mutation.kind),
+				turn_role_text(mutation.turn_role),
+				item_status_text(mutation.status),
+				mutation.media_type.as_str(),
+				payload.inline_text,
+				payload.blob_hash,
+				metadata_json(&mutation.metadata)?,
+				now,
+			],
+		)
+		.map_err(sql_error)?;
+
+	Ok(())
+}
+
+fn read_turn(
+	transaction: &Transaction<'_>,
+	turn_id: &TurnId,
+) -> Result<Option<StoredTurnShape>, StoreError> {
+	transaction.query_row(
+		"SELECT conversation_id, runtime_session_id, sequence, role, possible_side_effects, status, revision
+		 FROM turns WHERE turn_id = ?1",
+		params![turn_id.as_str()],
+		|row| Ok(StoredTurnShape {
+			conversation_id: row.get(0)?, runtime_session_id: row.get(1)?, sequence: row.get(2)?,
+			role: row.get(3)?, possible_side_effects: row.get(4)?, status: row.get(5)?, revision: row.get(6)?,
+		}),
+	).optional().map_err(sql_error)
+}
+
+fn validate_existing_turn(
+	turn: &StoredTurnShape,
+	mutation: &RecordHistoryItem,
+) -> Result<(), StoreError> {
+	if turn.conversation_id != mutation.conversation_id.as_str()
+		|| turn.runtime_session_id.as_deref() != Some(mutation.runtime_session_id.as_str())
+		|| turn.sequence != mutation.turn_sequence
+		|| turn.role != turn_role_text(mutation.turn_role)
+		|| turn.possible_side_effects != side_effect_text(mutation.possible_side_effects)
+		|| turn.status != "active"
+		|| turn.revision != 1
+	{
+		return Err(incompatible("history Turn authority"));
+	}
+
+	Ok(())
+}
+
+fn history_exists(
+	transaction: &Transaction<'_>,
+	history_item_id: &HistoryItemId,
+) -> Result<bool, StoreError> {
+	transaction
+		.query_row(
+			"SELECT EXISTS (SELECT 1 FROM history_items WHERE history_item_id = ?1)",
+			params![history_item_id.as_str()],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)
+}
+
+fn read_history_entry(
+	transaction: &Transaction<'_>,
+	history_item_id: &str,
+) -> Result<Option<HistoryEntry>, StoreError> {
+	transaction
+		.query_row(
+			"SELECT h.history_item_id, h.turn_id, t.runtime_session_id, t.role,
+		 t.possible_side_effects, h.kind, h.status, h.inline_text, h.blob_sha256,
+		 h.media_type, h.metadata_json, h.revision, h.sequence
+		 FROM history_items AS h JOIN turns AS t USING (turn_id)
+		 WHERE h.history_item_id = ?1",
+			params![history_item_id],
+			read_history_row,
+		)
+		.optional()
+		.map_err(sql_error)
+}
+
+fn read_history_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<HistoryEntry> {
+	let blob_hash = row
+		.get::<_, Option<String>>(8)?
+		.map(|value| BlobHash::parse(&value).map_err(|_| rusqlite::Error::InvalidQuery))
+		.transpose()?;
+	let media_type = HistoryMediaType::new(row.get::<_, String>(9)?)
+		.map_err(|_| rusqlite::Error::InvalidQuery)?;
+	let metadata = serde_json::from_str::<HistoryMetadata>(&row.get::<_, String>(10)?)
+		.map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+	Ok(HistoryEntry {
+		history_item_id: row.get(0)?,
+		turn_id: row.get(1)?,
+		runtime_session_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+		turn_role: parse_turn_role(&row.get::<_, String>(3)?)
+			.map_err(|_| rusqlite::Error::InvalidQuery)?,
+		possible_side_effects: parse_side_effect(&row.get::<_, String>(4)?)
+			.map_err(|_| rusqlite::Error::InvalidQuery)?,
+		kind: parse_history_kind(&row.get::<_, String>(5)?)
+			.map_err(|_| rusqlite::Error::InvalidQuery)?,
+		status: parse_item_status(&row.get::<_, String>(6)?)
+			.map_err(|_| rusqlite::Error::InvalidQuery)?,
+		inline_text: row.get(7)?,
+		blob_hash,
+		blob_byte_length: None,
+		media_type,
+		metadata,
+		artifact: None,
+		revision: row.get(11)?,
+	})
+}
+
+fn hydrate_history_blob(
+	blob_store: &BlobStore,
+	entry: &mut HistoryEntry,
+) -> Result<(), StoreError> {
+	if let Some(hash) = entry.blob_hash {
+		let bytes = blob_store.read(hash)?;
+
+		entry.blob_byte_length =
+			Some(u64::try_from(bytes.len()).map_err(|_| incompatible("history blob length"))?);
+	}
+
+	Ok(())
+}
+
+fn verify_history_blob(blob_store: &BlobStore, entry: &HistoryEntry) -> Result<(), StoreError> {
+	if let Some(hash) = entry.blob_hash {
+		let bytes = blob_store.read(hash)?;
+
+		if entry.inline_text.is_some() || bytes.len() > MAX_BLOB_BYTES {
+			return Err(incompatible("history blob"));
+		}
+	} else if entry.inline_text.is_none() {
+		return Err(incompatible("history payload"));
+	}
+
+	Ok(())
+}
+
+fn metadata_json(metadata: &HistoryMetadata) -> Result<String, StoreError> {
+	serde_json::to_string(metadata)
+		.map_err(|_| StoreError::InvalidInput("history metadata is invalid"))
+}
+
+fn touch_conversation(
+	transaction: &Transaction<'_>,
+	id: &ConversationId,
+	now: i64,
+) -> Result<(), StoreError> {
+	let changed = transaction.execute(
+		"UPDATE conversations SET updated_at_micros = ?2 WHERE conversation_id = ?1 AND state = 'active'",
+		params![id.as_str(), now],
+	).map_err(sql_error)?;
+
+	if changed != 1 {
+		return Err(incompatible("Conversation activity owner"));
+	}
+
+	Ok(())
+}
+
+fn read_receipt(
+	transaction: &Transaction<'_>,
+	command: &CommandIdentity,
+	operation: &str,
+	entity_id: &str,
+) -> Result<Option<String>, StoreError> {
+	read_runtime_receipt(transaction, &command.key, &command.request_hash, operation, entity_id)
+}
+
+fn read_runtime_receipt(
+	transaction: &Transaction<'_>,
+	key: &str,
+	request_sha: &str,
+	operation: &str,
+	entity_id: &str,
+) -> Result<Option<String>, StoreError> {
+	let row = transaction
+		.query_row(
+			"SELECT request_sha256, operation, entity_id, response_json
+		 FROM runtime_command_receipts WHERE idempotency_key = ?1",
+			params![key],
+			|row| {
+				Ok((
+					row.get::<_, String>(0)?,
+					row.get::<_, String>(1)?,
+					row.get::<_, String>(2)?,
+					row.get::<_, String>(3)?,
+				))
+			},
+		)
+		.optional()
+		.map_err(sql_error)?;
+	let Some((stored_sha, stored_operation, stored_entity, response)) = row else {
+		return Ok(None);
+	};
+
+	if stored_sha != request_sha || stored_operation != operation || stored_entity != entity_id {
+		return Err(StoreError::IdempotencyConflict);
+	}
+
+	Ok(Some(response))
+}
+
+fn write_receipt(
+	transaction: &Transaction<'_>,
+	command: &CommandIdentity,
+	operation: &str,
+	entity_id: &str,
+	response_json: &str,
+	completed_at_micros: i64,
+) -> Result<(), StoreError> {
+	write_runtime_receipt(
+		transaction,
+		&command.key,
+		&command.request_hash,
+		operation,
+		entity_id,
+		response_json,
+		completed_at_micros,
+	)
+}
+
+fn write_runtime_receipt(
+	transaction: &Transaction<'_>,
+	key: &str,
+	request_sha: &str,
+	operation: &str,
+	entity_id: &str,
+	response_json: &str,
+	completed_at_micros: i64,
+) -> Result<(), StoreError> {
+	transaction
+		.execute(
+			"INSERT INTO runtime_command_receipts (
+		 idempotency_key, request_sha256, operation, entity_id, response_json, completed_at_micros
+		 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+			params![key, request_sha, operation, entity_id, response_json, completed_at_micros],
+		)
+		.map_err(sql_error)?;
+
+	Ok(())
+}
+
+fn read_routing_successor(
+	transaction: &Transaction<'_>,
+	source_id: &ConversationId,
+	successor_id: &str,
+) -> Result<ConversationRoutingSuccessor, StoreError> {
+	let row = transaction
+		.query_row(
+			"SELECT s.revision, n.revision, r.source_routing_decision_id
+		 FROM conversation_routing_successors AS r
+		 JOIN conversations AS s ON s.conversation_id = r.source_conversation_id
+		 JOIN conversations AS n ON n.conversation_id = r.successor_conversation_id
+		 WHERE r.source_conversation_id = ?1 AND r.successor_conversation_id = ?2",
+			params![source_id.as_str(), successor_id],
+			|row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)),
+		)
+		.map_err(sql_error)?;
+
+	Ok(ConversationRoutingSuccessor {
+		source_conversation_id: source_id.clone(),
+		source_revision: row.0,
+		successor_conversation_id: ConversationId::new(successor_id.to_owned())
+			.map_err(|_| incompatible("routing successor identity"))?,
+		successor_revision: row.1,
+		source_routing_decision_id: row.2,
+	})
+}
+
+#[allow(clippy::too_many_lines)] // Keep the complete projection read and invariant checks together.
+fn conversation_projection(
+	connection: &rusqlite::Connection,
+	row: (String, String, i64, i64),
+) -> Result<OrdinaryTaskConversationProjection, StoreError> {
+	let conversation_id = ConversationId::new(row.0)
+		.map_err(|_| incompatible("ordinary Task Conversation identity"))?;
+
+	if row.1 == "archived" {
+		let successor = connection
+			.query_row(
+				"SELECT r.successor_conversation_id, c.revision
+			 FROM conversation_routing_successors AS r
+			 JOIN conversations AS c ON c.conversation_id = r.successor_conversation_id
+			 WHERE r.source_conversation_id = ?1",
+				params![conversation_id.as_str()],
+				|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+			)
+			.optional()
+			.map_err(sql_error)?;
+
+		return match successor {
+			Some(successor) => Ok(OrdinaryTaskConversationProjection::RoutingSuccessorRedirect {
+				source_conversation_id: conversation_id,
+				source_revision: row.2,
+				successor_conversation_id: ConversationId::new(successor.0)
+					.map_err(|_| incompatible("routing successor identity"))?,
+				successor_conversation_revision: successor.1,
+			}),
+			None => Ok(OrdinaryTaskConversationProjection::Archived {
+				conversation_id,
+				conversation_revision: row.2,
+			}),
+		};
+	}
+	if row.1 != "active" || row.2 <= 0 || row.3 <= 0 {
+		return Err(incompatible("ordinary Task Conversation lifecycle"));
+	}
+
+	let presentation = connection
+		.query_row(
+			"SELECT c.title, q.message, item.program_id, item.work_item_id, item.title,
+			 item.instructions, item.state, item.revision, q.working_directory
+			 FROM conversations AS c
+			 JOIN quick_task_requests AS q USING (conversation_id)
+			 LEFT JOIN program_work_item_executions AS execution USING (conversation_id)
+			 LEFT JOIN program_work_items AS item USING (work_item_id)
+			 WHERE c.conversation_id = ?1",
+			params![conversation_id.as_str()],
+			|row| {
+				Ok((
+					row.get::<_, String>(0)?,
+					row.get::<_, String>(1)?,
+					row.get::<_, Option<String>>(2)?,
+					row.get::<_, Option<String>>(3)?,
+					row.get::<_, Option<String>>(4)?,
+					row.get::<_, Option<String>>(5)?,
+					row.get::<_, Option<String>>(6)?,
+					row.get::<_, Option<i64>>(7)?,
+					row.get::<_, String>(8)?,
+				))
+			},
+		)
+		.map_err(sql_error)?;
+	let program_work_item = match (
+		presentation.2,
+		presentation.3,
+		presentation.4,
+		presentation.5,
+		presentation.6,
+		presentation.7,
+	) {
+		(None, None, None, None, None, None) => None,
+		(
+			Some(program_id),
+			Some(work_item_id),
+			Some(title),
+			Some(instructions),
+			Some(state),
+			Some(revision),
+		) => Some(ProgramWorkItemContextReadback {
+			program_id: ProgramId::new(program_id)
+				.map_err(|_| incompatible("Program binding identity"))?,
+			work_item_id: WorkItemId::new(work_item_id)
+				.map_err(|_| incompatible("Program WorkItem binding identity"))?,
+			title,
+			instructions,
+			state: crate::program_cycles::parse_work_item_state_sql(&state).map_err(sql_error)?,
+			revision: u64::try_from(revision)
+				.ok()
+				.filter(|revision| *revision > 0)
+				.ok_or_else(|| incompatible("Program WorkItem binding revision"))?,
+		}),
+		_ => return Err(incompatible("Program WorkItem binding projection")),
+	};
+	let fallback_title = bounded_conversation_title(&presentation.1);
+	let title = program_work_item.as_ref().map_or_else(
+		|| conversation_display_title(&presentation.0, &presentation.1),
+		|work_item| safe_display_title(&work_item.title, &fallback_title),
+	);
+	let session = connection
+		.query_row(
+			"SELECT runtime_session_id, revision, state, has_acknowledged_turn, codex_thread_id
+		 FROM runtime_sessions WHERE conversation_id = ?1 AND state IN ('starting', 'active')",
+			params![conversation_id.as_str()],
+			|row| {
+				Ok((
+					row.get::<_, String>(0)?,
+					row.get::<_, i64>(1)?,
+					row.get::<_, String>(2)?,
+					row.get::<_, bool>(3)?,
+					row.get::<_, Option<String>>(4)?,
+				))
+			},
+		)
+		.optional()
+		.map_err(sql_error)?;
+	let route = connection
+		.query_row(
+			"SELECT routing_decision_id, decision_kind, quota_classification
+		 FROM routing_decisions WHERE conversation_id = ?1
+		 ORDER BY created_at_micros DESC LIMIT 1",
+			params![conversation_id.as_str()],
+			|row| {
+				Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+			},
+		)
+		.optional()
+		.map_err(sql_error)?;
+	let active_turn = connection
+		.query_row(
+			"SELECT turn_id, revision FROM turns
+		 WHERE conversation_id = ?1 AND role = 'user' AND status = 'active'
+		 ORDER BY sequence DESC LIMIT 1",
+			params![conversation_id.as_str()],
+			|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+		)
+		.optional()
+		.map_err(sql_error)?;
+	let has_admitted_user_turn: bool = connection
+		.query_row(
+			"SELECT EXISTS (SELECT 1 FROM turns WHERE conversation_id = ?1 AND role = 'user')",
+			params![conversation_id.as_str()],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)?;
+	let has_active_provider_attempt: bool = connection
+		.query_row(
+			"SELECT EXISTS (SELECT 1 FROM provider_attempts WHERE conversation_id = ?1
+		 AND state IN ('prepared', 'dispatch_authorized'))",
+			params![conversation_id.as_str()],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)?;
+	let has_unknown_provider_attempt: bool = connection
+		.query_row(
+			"SELECT EXISTS (
+		 SELECT 1 FROM provider_attempts AS p JOIN turns AS t ON t.turn_id = p.turn_id
+		 WHERE p.conversation_id = ?1 AND p.state = 'unknown' AND t.status = 'active'
+		 )",
+			params![conversation_id.as_str()],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)?;
+	let (
+		runtime_session_id,
+		runtime_session_revision,
+		runtime_session_state,
+		has_acknowledged_turn,
+		codex_thread_id,
+	) = match session {
+		Some((id, revision, state, acknowledged, codex_thread_id)) => (
+			Some(RuntimeSessionId::new(id).map_err(|_| incompatible("RuntimeSession identity"))?),
+			Some(revision),
+			Some(parse_runtime_session_state(&state)?),
+			acknowledged,
+			codex_thread_id,
+		),
+		None => (None, None, None, false, None),
+	};
+	let routing_decision_id = route.as_ref().map(|value| value.0.clone());
+	let model_source_review_required: bool = connection.query_row(
+        "SELECT COALESCE((SELECT model_source_review_required FROM quick_task_requests WHERE conversation_id = ?1), 0)",
+        params![conversation_id.as_str()], |row| row.get(0),
+    ).map_err(sql_error)?;
+	let pre_session_state = if runtime_session_id.is_some() {
+		None
+	} else {
+		Some(match route.as_ref() {
+			None if model_source_review_required =>
+				OrdinaryTaskPreSessionState::ModelSettingsReviewRequired,
+			None => OrdinaryTaskPreSessionState::RoutingPending,
+			Some((_, decision, _)) if decision == "selected" =>
+				OrdinaryTaskPreSessionState::EstablishmentPending,
+			Some((_, _, quota)) if quota == "known_depleted" =>
+				OrdinaryTaskPreSessionState::QuotaExhausted,
+			Some(_) => OrdinaryTaskPreSessionState::NoRoute,
+		})
+	};
+	let native_settings = match (&runtime_session_id, &codex_thread_id) {
+		(Some(session), Some(thread)) =>
+			native_settings::read(connection, session.as_str(), thread)?.map(Box::new),
+		_ => None,
+	};
+
+	Ok(OrdinaryTaskConversationProjection::Current(OrdinaryTaskConversationReadback {
+		original_working_directory: presentation.8,
+		native_settings,
+		conversation_id,
+		title,
+		conversation_revision: row.2,
+		runtime_session_id,
+		runtime_session_revision,
+		runtime_session_state,
+		codex_thread_id,
+		program_work_item,
+		has_acknowledged_turn,
+		active_turn_id: active_turn
+			.as_ref()
+			.map(|turn| TurnId::new(turn.0.clone()))
+			.transpose()
+			.map_err(|_| incompatible("active Turn identity"))?,
+		active_turn_revision: active_turn.map(|turn| turn.1),
+		has_admitted_user_turn,
+		has_active_provider_attempt,
+		has_unknown_provider_attempt,
+		pre_session_state,
+		routing_decision_id,
+		updated_at_micros: row.3,
+	}))
+}
+
+fn conversation_display_title(persisted: &str, first_request: &str) -> String {
+	let persisted = persisted.split_whitespace().collect::<Vec<_>>().join(" ");
+	let generic = persisted.eq_ignore_ascii_case("quick task")
+		|| persisted.eq_ignore_ascii_case("program work")
+		|| persisted.eq_ignore_ascii_case("conversation");
+
+	if generic || persisted.is_empty() {
+		bounded_conversation_title(first_request)
+	} else {
+		safe_display_title(&persisted, &bounded_conversation_title(first_request))
+	}
+}
+
+fn safe_display_title(value: &str, fallback: &str) -> String {
+	let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
+
+	if value.is_empty()
+		|| value.chars().any(char::is_control)
+		|| contains_credential_material(&value)
+	{
+		return fallback.to_owned();
+	}
+
+	truncate_utf8(&value, MAX_CONVERSATION_TITLE_BYTES).to_owned()
+}
+
+fn truncate_utf8(value: &str, max_bytes: usize) -> &str {
+	if value.len() <= max_bytes {
+		return value;
+	}
+
+	let mut end = max_bytes;
+
+	while !value.is_char_boundary(end) {
+		end -= 1;
+	}
+
+	value[..end].trim_end()
+}
+
+fn turn_matches(
+	transaction: &Transaction<'_>,
+	turn_id: &TurnId,
+	conversation_id: &ConversationId,
+	runtime_session_id: &RuntimeSessionId,
+	revision: i64,
+	role: TurnRole,
+) -> Result<bool, StoreError> {
+	transaction
+		.query_row(
+			"SELECT EXISTS (
+		 SELECT 1 FROM turns WHERE turn_id = ?1 AND conversation_id = ?2
+		 AND runtime_session_id = ?3 AND revision = ?4 AND role = ?5 AND status = 'active'
+		 )",
+			params![
+				turn_id.as_str(),
+				conversation_id.as_str(),
+				runtime_session_id.as_str(),
+				revision,
+				turn_role_text(role)
+			],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)
+}
+
+fn initial_admission_digest(request: &AdmitInitialConversationTurn, payload: &Payload) -> String {
+	digest(&[
+		&request.expected_conversation_revision.to_string(),
+		&request.expected_runtime_session_revision.to_string(),
+		&request.continuation_plan_id,
+		request.message.conversation_id.as_str(),
+		request.message.runtime_session_id.as_str(),
+		request.message.turn_id.as_str(),
+		request.message.history_item_id.as_str(),
+		payload.inline_text.as_deref().unwrap_or_default(),
+		payload.blob_hash.as_deref().unwrap_or_default(),
+	])
+}
+
+fn terminalization_digest(request: &TerminalizeConversationTurn) -> String {
+	let assistant_id =
+		request.assistant_turn.as_ref().map(|value| value.0.as_str()).unwrap_or_default();
+	let assistant_revision =
+		request.assistant_turn.as_ref().map(|value| value.1.to_string()).unwrap_or_default();
+
+	digest(&[
+		request.conversation_id.as_str(),
+		&request.expected_conversation_revision.to_string(),
+		request.runtime_session_id.as_str(),
+		&request.expected_runtime_session_revision.to_string(),
+		request.user_turn_id.as_str(),
+		&request.expected_user_turn_revision.to_string(),
+		assistant_id,
+		&assistant_revision,
+		request.provider_attempt_id.as_str(),
+		&request.expected_provider_attempt_revision.to_string(),
+		request.provider_evidence_id.as_str(),
+		provider_outcome_text(request.provider_outcome),
+		&request.provider_thread_id,
+		&request.provider_turn_id,
+	])
+}
+
+fn digest(parts: &[&str]) -> String {
+	let mut hasher = Sha256::new();
+
+	for part in parts {
+		hasher.update((part.len() as u64).to_be_bytes());
+		hasher.update(part.as_bytes());
+	}
+
+	hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn validate_key(value: &str) -> Result<(), StoreError> {
+	if value.is_empty() || value.len() > 256 || decodex_core::contains_credential_material(value) {
+		return Err(StoreError::InvalidInput("idempotency key is invalid"));
+	}
+
+	Ok(())
+}
+
+fn credential_negative(value: &str) -> Result<(), StoreError> {
+	if decodex_core::contains_credential_material(value) {
+		Err(StoreError::CredentialRejected)
+	} else {
+		Ok(())
+	}
+}
+
+const fn turn_role_text(value: TurnRole) -> &'static str {
+	match value {
+		TurnRole::User => "user",
+		TurnRole::Assistant => "assistant",
+		TurnRole::System => "system",
+		TurnRole::Tool => "tool",
+	}
+}
+
+fn parse_turn_role(value: &str) -> Result<TurnRole, StoreError> {
+	match value {
+		"user" => Ok(TurnRole::User),
+		"assistant" => Ok(TurnRole::Assistant),
+		_ => Err(incompatible("history role")),
+	}
+}
+
+const fn side_effect_text(value: PossibleSideEffects) -> &'static str {
+	match value {
+		PossibleSideEffects::None => "none",
+		PossibleSideEffects::Possible => "possible",
+		PossibleSideEffects::Unknown => "unknown",
+	}
+}
+
+fn parse_side_effect(value: &str) -> Result<PossibleSideEffects, StoreError> {
+	match value {
+		"none" => Ok(PossibleSideEffects::None),
+		"possible" => Ok(PossibleSideEffects::Possible),
+		"unknown" => Ok(PossibleSideEffects::Unknown),
+		_ => Err(incompatible("side-effect classification")),
+	}
+}
+
+const fn history_kind_text(value: HistoryItemKind) -> &'static str {
+	match value {
+		HistoryItemKind::Message => "message",
+		HistoryItemKind::Reasoning => "reasoning",
+		HistoryItemKind::ToolCall => "tool_call",
+		HistoryItemKind::ToolResult => "tool_result",
+		HistoryItemKind::Artifact => "artifact",
+		HistoryItemKind::Status => "status",
+	}
+}
+
+fn parse_history_kind(value: &str) -> Result<HistoryItemKind, StoreError> {
+	match value {
+		"message" => Ok(HistoryItemKind::Message),
+		"reasoning" => Ok(HistoryItemKind::Reasoning),
+		"tool_call" => Ok(HistoryItemKind::ToolCall),
+		"tool_result" => Ok(HistoryItemKind::ToolResult),
+		"artifact" => Ok(HistoryItemKind::Artifact),
+		"status" => Ok(HistoryItemKind::Status),
+		_ => Err(incompatible("history kind")),
+	}
+}
+
+const fn item_status_text(value: ItemStatus) -> &'static str {
+	match value {
+		ItemStatus::Streaming => "streaming",
+		ItemStatus::Completed => "completed",
+		ItemStatus::Failed => "failed",
+	}
+}
+
+fn parse_item_status(value: &str) -> Result<ItemStatus, StoreError> {
+	match value {
+		"streaming" => Ok(ItemStatus::Streaming),
+		"completed" => Ok(ItemStatus::Completed),
+		"failed" => Ok(ItemStatus::Failed),
+		_ => Err(incompatible("history status")),
+	}
+}
+
+const fn turn_status_text(value: TurnStatus) -> &'static str {
+	match value {
+		TurnStatus::Active => "active",
+		TurnStatus::Completed => "completed",
+		TurnStatus::Failed => "failed",
+	}
+}
+
+fn parse_turn_status(value: &str) -> Result<TurnStatus, StoreError> {
+	match value {
+		"active" => Ok(TurnStatus::Active),
+		"completed" => Ok(TurnStatus::Completed),
+		"failed" => Ok(TurnStatus::Failed),
+		_ => Err(incompatible("Turn status")),
+	}
+}
+
+fn parse_runtime_session_state(value: &str) -> Result<RuntimeSessionState, StoreError> {
+	match value {
+		"starting" => Ok(RuntimeSessionState::Starting),
+		"active" => Ok(RuntimeSessionState::Active),
+		"ended" => Ok(RuntimeSessionState::Ended),
+		"diverged" => Ok(RuntimeSessionState::Diverged),
+		_ => Err(incompatible("RuntimeSession state")),
+	}
+}
+
+const fn provider_outcome_text(value: ProviderTerminalOutcome) -> &'static str {
+	match value {
+		ProviderTerminalOutcome::Succeeded => "succeeded",
+		ProviderTerminalOutcome::FailedDefinitive => "failed_definitive",
+		ProviderTerminalOutcome::NotSubmitted => "not_submitted",
+	}
+}
+
+fn parse_provider_outcome(value: &str) -> Result<ProviderTerminalOutcome, StoreError> {
+	match value {
+		"succeeded" => Ok(ProviderTerminalOutcome::Succeeded),
+		"failed_definitive" => Ok(ProviderTerminalOutcome::FailedDefinitive),
+		"not_submitted" => Ok(ProviderTerminalOutcome::NotSubmitted),
+		_ => Err(incompatible("provider outcome")),
+	}
+}
+
+fn incompatible(reason: &'static str) -> StoreError {
+	StoreError::Incompatible(format!("stored {reason} is malformed"))
+}
+
+#[cfg(test)]
+#[path = "conversations/snapshot_tests.rs"]
+mod snapshot_tests;
 
 #[cfg(test)]
 mod archive_tests {
