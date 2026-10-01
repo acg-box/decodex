@@ -461,6 +461,13 @@ struct Payload {
 	blob_hash: Option<String>,
 }
 
+struct ConversationActivity {
+	active_turn: Option<(String, i64)>,
+	has_admitted_user_turn: bool,
+	has_active_provider_attempt: bool,
+	has_unknown_provider_attempt: bool,
+}
+
 struct StoredTurnShape {
 	conversation_id: String,
 	runtime_session_id: Option<String>,
@@ -2843,44 +2850,42 @@ fn read_routing_successor(
 }
 
 #[allow(clippy::too_many_lines)] // Keep the complete projection read and invariant checks together.
-fn conversation_projection(
+fn archived_conversation_projection(
 	connection: &Connection,
-	row: (String, String, i64, i64),
+	conversation_id: ConversationId,
+	conversation_revision: i64,
 ) -> Result<OrdinaryTaskConversationProjection, StoreError> {
-	let conversation_id = ConversationId::new(row.0)
-		.map_err(|_| incompatible("ordinary Task Conversation identity"))?;
-
-	if row.1 == "archived" {
-		let successor = connection
-			.query_row(
-				"SELECT r.successor_conversation_id, c.revision
+	let successor = connection
+		.query_row(
+			"SELECT r.successor_conversation_id, c.revision
 			 FROM conversation_routing_successors AS r
 			 JOIN conversations AS c ON c.conversation_id = r.successor_conversation_id
 			 WHERE r.source_conversation_id = ?1",
-				rusqlite::params![conversation_id.as_str()],
-				|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
-			)
-			.optional()
-			.map_err(account_lifecycle::sql_error)?;
+			rusqlite::params![conversation_id.as_str()],
+			|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+		)
+		.optional()
+		.map_err(account_lifecycle::sql_error)?;
 
-		return match successor {
-			Some(successor) => Ok(OrdinaryTaskConversationProjection::RoutingSuccessorRedirect {
-				source_conversation_id: conversation_id,
-				source_revision: row.2,
-				successor_conversation_id: ConversationId::new(successor.0)
-					.map_err(|_| incompatible("routing successor identity"))?,
-				successor_conversation_revision: successor.1,
-			}),
-			None => Ok(OrdinaryTaskConversationProjection::Archived {
-				conversation_id,
-				conversation_revision: row.2,
-			}),
-		};
+	match successor {
+		Some(successor) => Ok(OrdinaryTaskConversationProjection::RoutingSuccessorRedirect {
+			source_conversation_id: conversation_id,
+			source_revision: conversation_revision,
+			successor_conversation_id: ConversationId::new(successor.0)
+				.map_err(|_| incompatible("routing successor identity"))?,
+			successor_conversation_revision: successor.1,
+		}),
+		None => Ok(OrdinaryTaskConversationProjection::Archived {
+			conversation_id,
+			conversation_revision,
+		}),
 	}
-	if row.1 != "active" || row.2 <= 0 || row.3 <= 0 {
-		return Err(incompatible("ordinary Task Conversation lifecycle"));
-	}
+}
 
+fn read_conversation_presentation(
+	connection: &Connection,
+	conversation_id: &ConversationId,
+) -> Result<(String, Option<ProgramWorkItemContextReadback>, String), StoreError> {
 	let presentation = connection
 		.query_row(
 			"SELECT c.title, q.message, item.program_id, item.work_item_id, item.title,
@@ -2943,35 +2948,14 @@ fn conversation_projection(
 		|| conversation_display_title(&presentation.0, &presentation.1),
 		|work_item| safe_display_title(&work_item.title, &fallback_title),
 	);
-	let session = connection
-		.query_row(
-			"SELECT runtime_session_id, revision, state, has_acknowledged_turn, codex_thread_id
-		 FROM runtime_sessions WHERE conversation_id = ?1 AND state IN ('starting', 'active')",
-			rusqlite::params![conversation_id.as_str()],
-			|row| {
-				Ok((
-					row.get::<_, String>(0)?,
-					row.get::<_, i64>(1)?,
-					row.get::<_, String>(2)?,
-					row.get::<_, bool>(3)?,
-					row.get::<_, Option<String>>(4)?,
-				))
-			},
-		)
-		.optional()
-		.map_err(account_lifecycle::sql_error)?;
-	let route = connection
-		.query_row(
-			"SELECT routing_decision_id, decision_kind, quota_classification
-		 FROM routing_decisions WHERE conversation_id = ?1
-		 ORDER BY created_at_micros DESC LIMIT 1",
-			rusqlite::params![conversation_id.as_str()],
-			|row| {
-				Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
-			},
-		)
-		.optional()
-		.map_err(account_lifecycle::sql_error)?;
+
+	Ok((title, program_work_item, presentation.8))
+}
+
+fn read_conversation_activity(
+	connection: &Connection,
+	conversation_id: &ConversationId,
+) -> Result<ConversationActivity, StoreError> {
 	let active_turn = connection
 		.query_row(
 			"SELECT turn_id, revision FROM turns
@@ -3007,6 +2991,66 @@ fn conversation_projection(
 			|row| row.get(0),
 		)
 		.map_err(account_lifecycle::sql_error)?;
+
+	Ok(ConversationActivity {
+		active_turn,
+		has_admitted_user_turn,
+		has_active_provider_attempt,
+		has_unknown_provider_attempt,
+	})
+}
+
+fn conversation_projection(
+	connection: &Connection,
+	row: (String, String, i64, i64),
+) -> Result<OrdinaryTaskConversationProjection, StoreError> {
+	let conversation_id = ConversationId::new(row.0)
+		.map_err(|_| incompatible("ordinary Task Conversation identity"))?;
+
+	if row.1 == "archived" {
+		return archived_conversation_projection(connection, conversation_id, row.2);
+	}
+	if row.1 != "active" || row.2 <= 0 || row.3 <= 0 {
+		return Err(incompatible("ordinary Task Conversation lifecycle"));
+	}
+
+	let (title, program_work_item, original_working_directory) =
+		read_conversation_presentation(connection, &conversation_id)?;
+	let session = connection
+		.query_row(
+			"SELECT runtime_session_id, revision, state, has_acknowledged_turn, codex_thread_id
+		 FROM runtime_sessions WHERE conversation_id = ?1 AND state IN ('starting', 'active')",
+			rusqlite::params![conversation_id.as_str()],
+			|row| {
+				Ok((
+					row.get::<_, String>(0)?,
+					row.get::<_, i64>(1)?,
+					row.get::<_, String>(2)?,
+					row.get::<_, bool>(3)?,
+					row.get::<_, Option<String>>(4)?,
+				))
+			},
+		)
+		.optional()
+		.map_err(account_lifecycle::sql_error)?;
+	let route = connection
+		.query_row(
+			"SELECT routing_decision_id, decision_kind, quota_classification
+		 FROM routing_decisions WHERE conversation_id = ?1
+		 ORDER BY created_at_micros DESC LIMIT 1",
+			rusqlite::params![conversation_id.as_str()],
+			|row| {
+				Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+			},
+		)
+		.optional()
+		.map_err(account_lifecycle::sql_error)?;
+	let ConversationActivity {
+		active_turn,
+		has_admitted_user_turn,
+		has_active_provider_attempt,
+		has_unknown_provider_attempt,
+	} = read_conversation_activity(connection, &conversation_id)?;
 	let (
 		runtime_session_id,
 		runtime_session_revision,
@@ -3049,7 +3093,7 @@ fn conversation_projection(
 	};
 
 	Ok(OrdinaryTaskConversationProjection::Current(OrdinaryTaskConversationReadback {
-		original_working_directory: presentation.8,
+		original_working_directory,
 		native_settings,
 		conversation_id,
 		title,
