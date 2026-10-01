@@ -385,14 +385,22 @@ fn open_connection(path: &Path) -> Result<Connection, DatabaseError> {
 
 #[cfg(test)]
 mod tests {
-	use std::fs;
-	#[cfg(unix)] use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _, symlink};
+	#[cfg(unix)] use std::os::unix::{
+		self,
+		fs::{MetadataExt as _, PermissionsExt as _},
+	};
+	use std::{fs, path::Path};
 
 	use rusqlite::Connection;
-	use serde_json::json;
-	use tempfile::tempdir;
 	use zeroize::Zeroizing;
 
+	use crate::{
+		AccountCommandKind, AccountCommandReceiptClaim, AccountLifecycleMutationOutcome,
+		AccountOperationPreparation, AgentDispatchState, AgentWorkItem, AgentWorkKind,
+		AgentWorkStatus, CodexAccountCapabilityAttestation, CommandIdentity, CredentialKey,
+		CredentialRecord, DatabaseError, RoutingControlOutcome, SqliteStore, StoreError, error,
+		migrations,
+	};
 	use decodex_core::{
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
 		AccountOperationPhase, AccountProvider, AccountQuotaDisposition,
@@ -400,30 +408,23 @@ mod tests {
 		CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
 	};
 
-	use super::{
-		AccountCommandKind, AccountCommandReceiptClaim, AccountLifecycleMutationOutcome,
-		AccountOperationPreparation, CodexAccountCapabilityAttestation, CommandIdentity,
-		CredentialKey, CredentialRecord, DatabaseError, SqliteStore, StoreError, migrations,
-		unix_micros,
-	};
-
-	pub(crate) async fn bound_agent_store(path: &std::path::Path) -> SqliteStore {
+	pub(crate) async fn bound_agent_store(path: &Path) -> SqliteStore {
 		let store = SqliteStore::open_test(path).unwrap();
 
 		store
-			.create_agent_work_item(crate::AgentWorkItem {
+			.create_agent_work_item(AgentWorkItem {
 				id: "work".into(),
 				parent_goal_id: None,
-				kind: crate::AgentWorkKind::Goal,
+				kind: AgentWorkKind::Goal,
 				title: "Fixture".into(),
 				instructions: "Fixture".into(),
 				codex_thread_id: None,
-				status: crate::AgentWorkStatus::Open,
+				status: AgentWorkStatus::Open,
 				next_check_at_micros: None,
 				created_at_micros: 1,
 				updated_at_micros: 1,
 				active_turn_id: None,
-				dispatch_state: crate::AgentDispatchState::Idle,
+				dispatch_state: AgentDispatchState::Idle,
 			})
 			.await
 			.unwrap();
@@ -460,7 +461,7 @@ mod tests {
 						 VALUES (?1, 1)",
 						rusqlite::params![ACCOUNT],
 					)
-					.map_err(super::error::sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 				connection
 					.execute(
 						"INSERT INTO account_operations (
@@ -471,7 +472,7 @@ mod tests {
 						           'provider-account', 'Account', 1, 1, 1)",
 						rusqlite::params![operation, ACCOUNT],
 					)
-					.map_err(super::error::sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				Ok(())
 			})
@@ -496,20 +497,20 @@ mod tests {
 
 	#[test]
 	fn initializes_and_reopens_exact_versioned_schema() {
-		let directory = tempdir().expect("temporary directory");
+		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
 		let migrations: Vec<(i64, String)> = store
 			.with_connection(|connection| {
 				let mut statement = connection
 					.prepare("SELECT version, sha256 FROM schema_migrations ORDER BY version")
-					.map_err(super::error::sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				statement
 					.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-					.map_err(super::error::sqlite_error)?
+					.map_err(error::sqlite_error)?
 					.collect::<Result<Vec<_>, _>>()
-					.map_err(super::error::sqlite_error)
+					.map_err(error::sqlite_error)
 			})
 			.expect("read migration ledger");
 
@@ -529,7 +530,7 @@ mod tests {
 
 	#[test]
 	fn rejects_a_forged_migration_digest() {
-		let directory = tempdir().expect("temporary directory");
+		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
 
@@ -540,7 +541,7 @@ mod tests {
 						"UPDATE schema_migrations SET sha256 = ?1 WHERE version = 48",
 						rusqlite::params![DIGEST_ONE],
 					)
-					.map_err(super::error::sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				Ok(())
 			})
@@ -553,7 +554,7 @@ mod tests {
 
 	#[test]
 	fn credential_compare_and_swap_is_exact_and_debug_is_redacted() {
-		let directory = tempdir().expect("temporary directory");
+		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
 
@@ -582,7 +583,7 @@ mod tests {
 						 WHERE operation_id = ?1",
 						rusqlite::params![OPERATION_ONE],
 					)
-					.map_err(super::error::sqlite_error)?;
+					.map_err(error::sqlite_error)?;
 
 				Ok(())
 			})
@@ -622,7 +623,7 @@ mod tests {
 	#[tokio::test]
 	#[allow(clippy::too_many_lines)] // One full persistence-and-reopen contract is easier to audit together.
 	async fn account_lifecycle_routing_receipts_and_restart_are_durable() {
-		let directory = tempdir().expect("temporary directory");
+		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
 		let (account_id, operation_id, provider, binding) = account_fixture();
@@ -718,7 +719,7 @@ mod tests {
 			.await
 			.expect("set fixed account");
 		let fixed_revision = match routed {
-			super::RoutingControlOutcome::Updated { routing } => {
+			RoutingControlOutcome::Updated { routing } => {
 				assert_eq!(routing.mode, AccountSelectionMode::Fixed(account_id.clone()));
 
 				routing.revision
@@ -728,7 +729,7 @@ mod tests {
 
 		assert!(fixed_revision > routing.revision);
 
-		let observed = unix_micros().expect("current time");
+		let observed = crate::unix_micros().expect("current time");
 
 		store
 			.observe_account_quota_error(
@@ -770,7 +771,7 @@ mod tests {
 				panic!("new command replayed")
 			},
 		};
-		let response = json!({ "status": "ok", "revision": 1 });
+		let response = serde_json::json!({ "status": "ok", "revision": 1 });
 
 		store.complete_account_command(lease, &response).await.expect("complete command");
 
@@ -818,7 +819,7 @@ mod tests {
 		else {
 			panic!("diagnostic command must be owned");
 		};
-		let rejected = json!({"outcome":"rejected"});
+		let rejected = serde_json::json!({"outcome":"rejected"});
 
 		store
 			.complete_account_command_with_diagnostic(
@@ -848,7 +849,7 @@ mod tests {
 
 		assert_eq!(
 			serde_json::from_str::<serde_json::Value>(&diagnostic).unwrap(),
-			json!({"stage":"initial_read","cause":"UnsafePath"})
+			serde_json::json!({"stage":"initial_read","cause":"UnsafePath"})
 		);
 		assert!(
 			matches!(reopened.reserve_account_command(&diagnostic_command, AccountCommandKind::SetEnabled, account_id.as_str(), Some(1)).await.unwrap(), AccountCommandReceiptClaim::Replayed(value) if value == rejected)
@@ -868,7 +869,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn recovery_phase_requires_one_bounded_recovery_code() {
-		let directory = tempdir().expect("temporary directory");
+		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
 		let operation_id = AccountOperationId::new(OPERATION_ONE).expect("operation identity");
@@ -889,7 +890,7 @@ mod tests {
 	#[tokio::test]
 	#[allow(clippy::too_many_lines)] // One complete persisted takeover regression is easier to audit than split fixture phases.
 	async fn verified_reauthentication_can_replace_a_targetless_ambiguous_refresh() {
-		let directory = tempdir().expect("temporary directory");
+		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
 		let (account_id, enrollment_id, provider, current) = account_fixture();
@@ -1088,7 +1089,7 @@ mod tests {
 
 	#[test]
 	fn foreign_keys_reject_an_unowned_execution_edge() {
-		let directory = tempdir().expect("temporary directory");
+		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
 		let result = store.with_connection(|connection| {
@@ -1105,7 +1106,7 @@ mod tests {
 					[],
 				)
 				.map(|_| ())
-				.map_err(super::error::sqlite_error)
+				.map_err(error::sqlite_error)
 		});
 
 		assert_eq!(result, Err(DatabaseError::Unavailable));
@@ -1114,7 +1115,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	fn database_and_wal_files_are_owner_private_and_symlink_open_is_rejected() {
-		let directory = tempdir().expect("temporary directory");
+		let directory = tempfile::tempdir().expect("temporary directory");
 
 		fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))
 			.expect("private temporary directory");
@@ -1126,9 +1127,7 @@ mod tests {
 
 		store
 			.with_connection(|connection| {
-				connection
-					.execute_batch("BEGIN IMMEDIATE; COMMIT;")
-					.map_err(super::error::sqlite_error)
+				connection.execute_batch("BEGIN IMMEDIATE; COMMIT;").map_err(error::sqlite_error)
 			})
 			.expect("touch WAL");
 
@@ -1142,7 +1141,7 @@ mod tests {
 
 		let link = directory.path().join("linked.sqlite3");
 
-		symlink(&path, &link).expect("create symlink");
+		unix::fs::symlink(&path, &link).expect("create symlink");
 
 		assert!(
 			Connection::open_with_flags(
