@@ -4,46 +4,44 @@ mod personal_access_token;
 
 use std::{
 	collections::HashMap,
-	error::Error,
-	fmt::{Debug, Display, Formatter},
+	fmt::{Debug, Display, Formatter, Write as _},
 	io::Read as _,
+	mem,
 	sync::{
-		Arc, Mutex,
+		Arc,
 		atomic::{AtomicBool, AtomicU64, Ordering},
 	},
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use decodex_core::{
-	self, AccountId, AccountLifecycleReadiness, AccountOperation, AccountOperationId,
-	AccountOperationKind, AccountOperationPhase, AccountProvider, AccountRecord,
-	AccountSelectionMode, AccountSelectionRecovery, CredentialBinding, CredentialVersion,
-	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationState, ProviderIdentity,
-};
-
-use decodex_database::{
-	AccountAdministrationOutcome, AccountCommandReceiptLease, AccountEnrollmentResolution,
-	AccountLifecycleMutationOutcome, AccountOperationPreparation, AccountStoreObservation,
-	CodexAccountCapabilityAttestation, RoutingControlOutcome, SqliteStore, StoreError,
-};
-
+use reqwest::blocking::Response;
 use serde::{Deserialize, Serialize};
-
 use serde_json::Value;
-
 use sha2::{Digest as _, Sha256};
-
-use tokio::sync::OwnedMutexGuard;
-
-use zeroize::{self, Zeroize, ZeroizeOnDrop};
+use tokio::{sync::OwnedMutexGuard, task};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::{
-	account_import::{self, CredentialImportError, ImportedCredential},
+	account_import::{self, CredentialImportError, CredentialSource, ImportedCredential},
 	auth_projection::{CodexAuthProjectionError, SharedCodexAuthSnapshot, SharedCodexAuthVersion},
 	host_credentials::{
 		CredentialSecretBundle, CredentialStoreError, HostCredentialStore, StoredCredential,
 	},
 	shared_auth_coordinator::{CodexLiveness, SharedAuthCoordinator, StableSharedAuthRead},
+};
+use decodex_core::{
+	AccountId, AccountLifecycleReadiness, AccountOperation, AccountOperationId,
+	AccountOperationKind, AccountOperationPhase, AccountProvider, AccountQuotaDisposition,
+	AccountQuotaObservationError, AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord,
+	AccountRoutingControl, AccountSelectionMode, AccountSelectionRecovery, AccountUsageObservation,
+	CredentialBinding, CredentialStoreSchemaVersion, CredentialVersion,
+	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationState, ProviderIdentity,
+};
+use decodex_database::{
+	AccountAdministrationOutcome, AccountCommandReceiptLease, AccountEnrollmentResolution,
+	AccountLifecycleMutationOutcome, AccountLifecycleRejection, AccountOperationPreparation,
+	AccountStoreObservation, CodexAccountCapabilityAttestation, RoutingControlOutcome, SqliteStore,
+	StoreError,
 };
 
 #[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
@@ -79,7 +77,7 @@ pub(crate) struct CredentialRefreshResult {
 #[derive(Clone)]
 pub(crate) struct AccountRouteCommit {
 	pub(crate) account: AccountRecord,
-	pub(crate) routing: decodex_core::AccountRoutingControl,
+	pub(crate) routing: AccountRoutingControl,
 	pub(crate) projection_digest: String,
 }
 
@@ -269,9 +267,9 @@ pub struct AccountService {
 	refresher: Arc<dyn CredentialRefreshPort>,
 	shared_auth: Arc<SharedAuthCoordinator>,
 	routing_lock: tokio::sync::Mutex<()>,
-	account_locks: Mutex<HashMap<AccountId, Arc<tokio::sync::Mutex<()>>>>,
+	account_locks: std::sync::Mutex<HashMap<AccountId, Arc<tokio::sync::Mutex<()>>>>,
 	callback_ready: AtomicBool,
-	callback_profile_sha256: Mutex<Option<String>>,
+	callback_profile_sha256: std::sync::Mutex<Option<String>>,
 }
 impl AccountService {
 	/// Assemble one coordinator from its three narrow infrastructure ports.
@@ -286,9 +284,9 @@ impl AccountService {
 			refresher,
 			shared_auth: Arc::new(SharedAuthCoordinator::production()),
 			routing_lock: tokio::sync::Mutex::new(()),
-			account_locks: Mutex::new(HashMap::new()),
+			account_locks: std::sync::Mutex::new(HashMap::new()),
 			callback_ready: AtomicBool::new(false),
-			callback_profile_sha256: Mutex::new(None),
+			callback_profile_sha256: std::sync::Mutex::new(None),
 		}
 	}
 
@@ -345,9 +343,7 @@ impl AccountService {
 	}
 
 	/// Read only the credential-negative deterministic routing controls.
-	pub async fn routing_control(
-		&self,
-	) -> Result<decodex_core::AccountRoutingControl, AccountLifecycleError> {
+	pub async fn routing_control(&self) -> Result<AccountRoutingControl, AccountLifecycleError> {
 		Ok(self.store.read_account_routing_control().await?)
 	}
 
@@ -366,9 +362,11 @@ impl AccountService {
 				continue;
 			}
 
-			let Some(binding) = account.credential.as_ref().filter(|binding| {
-				binding.schema_version == decodex_core::CredentialStoreSchemaVersion::V2
-			}) else {
+			let Some(binding) = account
+				.credential
+				.as_ref()
+				.filter(|binding| binding.schema_version == CredentialStoreSchemaVersion::V2)
+			else {
 				continue;
 			};
 			let Ok(stored) = self.credentials.read_exact(&account.account_id, binding) else {
@@ -1587,7 +1585,7 @@ impl AccountService {
 		}
 
 		let refresher = Arc::clone(&self.refresher);
-		let (result, stored) = tokio::task::spawn_blocking(move || {
+		let (result, stored) = task::spawn_blocking(move || {
 			let result = refresher.refresh(stored.bundle());
 
 			(result, stored)
@@ -1612,17 +1610,16 @@ impl AccountService {
 		current: &CredentialBinding,
 		stored: StoredCredential,
 	) -> Result<RefreshResolution, CredentialRefreshError> {
-		let imported = personal_access_token::resolve_import(Ok(
-			crate::account_import::CredentialSource::PersonalAccessToken(zeroize::Zeroizing::new(
-				stored.bundle().access_token().to_owned(),
-			)),
-		))
-		.await
-		.map_err(|error| match error {
-			CredentialImportError::InvalidCredential | CredentialImportError::ProviderMismatch =>
-				CredentialRefreshError::Rejected,
-			_ => CredentialRefreshError::Unavailable,
-		})?;
+		let imported =
+			personal_access_token::resolve_import(Ok(CredentialSource::PersonalAccessToken(
+				Zeroizing::new(stored.bundle().access_token().to_owned()),
+			)))
+			.await
+			.map_err(|error| match error {
+				CredentialImportError::InvalidCredential
+				| CredentialImportError::ProviderMismatch => CredentialRefreshError::Rejected,
+				_ => CredentialRefreshError::Unavailable,
+			})?;
 
 		if imported.provider != current.provider
 			|| imported.bundle.personal_access_token_user_id()
@@ -3362,7 +3359,7 @@ impl AccountService {
 	pub async fn observe_quota(
 		&self,
 		account_id: &AccountId,
-		fact: decodex_core::AccountQuotaWindow,
+		fact: AccountQuotaWindow,
 		observed_at_unix_micros: i64,
 	) -> Result<(), AccountLifecycleError> {
 		Ok(self.store.observe_account_quota(account_id, fact, observed_at_unix_micros).await?)
@@ -3372,8 +3369,8 @@ impl AccountService {
 	pub(crate) async fn observe_usage(
 		&self,
 		account_id: &AccountId,
-		observation: decodex_core::AccountUsageObservation,
-		windows: [Option<decodex_core::AccountQuotaWindowObservation>; 2],
+		observation: AccountUsageObservation,
+		windows: [Option<AccountQuotaWindowObservation>; 2],
 	) -> Result<bool, AccountLifecycleError> {
 		Ok(self.store.observe_account_usage(account_id, observation, windows).await?)
 	}
@@ -3383,7 +3380,7 @@ impl AccountService {
 		&self,
 		account_id: &AccountId,
 		duration_minutes: u32,
-		error: decodex_core::AccountQuotaObservationError,
+		error: AccountQuotaObservationError,
 		observed_at_unix_micros: i64,
 	) -> Result<(), AccountLifecycleError> {
 		Ok(self
@@ -4829,7 +4826,7 @@ pub enum CredentialRefreshError {
 	/// The provider effect outcome cannot be proved.
 	Ambiguous,
 }
-impl Error for CredentialRefreshError {}
+impl std::error::Error for CredentialRefreshError {}
 
 impl Display for CredentialRefreshError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
@@ -4872,7 +4869,7 @@ pub enum AccountLifecycleError {
 	/// The provider refresh adapter failed.
 	Refresh(CredentialRefreshError),
 	/// The product store rejected a finite lifecycle transition.
-	OperationRejected(decodex_database::AccountLifecycleRejection),
+	OperationRejected(AccountLifecycleRejection),
 	/// A derived lifecycle gate is not ready.
 	NotReady(AccountLifecycleReadiness),
 	/// Administrative disablement blocks new work.
@@ -4906,7 +4903,7 @@ pub enum AccountLifecycleError {
 	/// Exact shared auth readback did not match.
 	AuthReadbackMismatch,
 }
-impl Error for AccountLifecycleError {}
+impl std::error::Error for AccountLifecycleError {}
 
 impl Display for AccountLifecycleError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
@@ -5022,8 +5019,6 @@ fn codex_auth_projection_digest(account: &AccountRecord, binding: &CredentialBin
 	let mut encoded = String::with_capacity(64);
 
 	for byte in digest {
-		use std::fmt::Write as _;
-
 		write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
 	}
 
@@ -5107,9 +5102,9 @@ fn operation_id_from_digest(digest: &[u8]) -> Result<AccountOperationId, Account
 	.map_err(|_| AccountLifecycleError::InvalidOperation)
 }
 
-fn classify_refresh_http_response(response: reqwest::blocking::Response) -> CredentialRefreshError {
+fn classify_refresh_http_response(response: Response) -> CredentialRefreshError {
 	let status = response.status();
-	let mut body = zeroize::Zeroizing::new(Vec::new());
+	let mut body = Zeroizing::new(Vec::new());
 	let _ = response.take(MAX_REFRESH_ERROR_BODY_BYTES + 1).read_to_end(&mut body);
 
 	classify_refresh_http_failure(status, &body)
@@ -5195,19 +5190,19 @@ fn credential_refresh_result(
 		.access_token
 		.take()
 		.filter(|value| !value.is_empty())
-		.map(zeroize::Zeroizing::new)
+		.map(Zeroizing::new)
 		.ok_or(CredentialRefreshError::Ambiguous)?;
 	let mut refresh_token = refreshed
 		.refresh_token
 		.take()
 		.or_else(|| current.refresh_token().map(str::to_owned))
-		.map(zeroize::Zeroizing::new)
+		.map(Zeroizing::new)
 		.ok_or(CredentialRefreshError::Rejected)?;
 	let mut id_token = refreshed
 		.id_token
 		.take()
 		.filter(|value| !value.is_empty())
-		.map(zeroize::Zeroizing::new)
+		.map(Zeroizing::new)
 		.ok_or(CredentialRefreshError::Ambiguous)?;
 	let identity = account_import::decode_chatgpt_identity(&id_token)
 		.map_err(|_| CredentialRefreshError::Ambiguous)?;
@@ -5225,9 +5220,9 @@ fn credential_refresh_result(
 	}
 
 	let bundle = CredentialSecretBundle::chatgpt(
-		std::mem::take(&mut *access_token),
-		std::mem::take(&mut *refresh_token),
-		Some(std::mem::take(&mut *id_token)),
+		mem::take(&mut *access_token),
+		mem::take(&mut *refresh_token),
+		Some(mem::take(&mut *id_token)),
 		identity.plan_type,
 		identity.provider_email,
 		token_type,
@@ -5263,7 +5258,7 @@ fn quota_selection_score(
 		// Authoritative permission can outlive a displayed window or accompany credits-only
 		// accounts. Missing utilization ranks last; it must not veto known permission.
 		let five = match account.five_hour_quota.disposition {
-			decodex_core::AccountQuotaDisposition::NotApplicable => 0,
+			AccountQuotaDisposition::NotApplicable => 0,
 			_ => account.five_hour_quota.current().map_or(100, |fact| fact.used_percent),
 		};
 		let seven = account.seven_day_quota.current().map_or(100, |fact| fact.used_percent);
@@ -5279,10 +5274,8 @@ fn quota_selection_score(
 		.filter(|fact| fact.resets_at_unix_micros > now)
 		.ok_or(AccountSelectionRecovery::RefreshQuota)?;
 	let five = match account.five_hour_quota.disposition {
-		decodex_core::AccountQuotaDisposition::Current(fact)
-			if fact.resets_at_unix_micros > now =>
-			Some(fact),
-		decodex_core::AccountQuotaDisposition::NotApplicable
+		AccountQuotaDisposition::Current(fact) if fact.resets_at_unix_micros > now => Some(fact),
+		AccountQuotaDisposition::NotApplicable
 			if account
 				.five_hour_quota
 				.observed_at_unix_micros
@@ -5319,7 +5312,7 @@ const fn refresh_owner_is_busy(
 }
 
 fn account_lock_for(
-	locks: &Mutex<HashMap<AccountId, Arc<tokio::sync::Mutex<()>>>>,
+	locks: &std::sync::Mutex<HashMap<AccountId, Arc<tokio::sync::Mutex<()>>>>,
 	account_id: &AccountId,
 ) -> Result<Arc<tokio::sync::Mutex<()>>, AccountLifecycleError> {
 	let mut locks = locks.lock().map_err(|_| AccountLifecycleError::CoordinatorUnavailable)?;
@@ -5662,43 +5655,6 @@ const fn store_error_observation(
 
 #[cfg(test)]
 mod tests {
-	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-
-	use decodex_core::{
-		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
-		AccountOperationPhase, AccountProvider, AccountQuotaWindow, AccountQuotaWindowObservation,
-		AccountRecord, AccountState, CredentialBinding, CredentialFingerprint,
-		CredentialStoreSchemaVersion, CredentialVersion, DecodexRoot,
-		ProcessGenerationAccountBinding, ProviderIdentity,
-	};
-
-	use decodex_database::{
-		AccountCommandKind, AccountCommandReceiptClaim, AccountLifecycleMutationOutcome,
-		AccountOperationPreparation, CommandIdentity, SqliteStore,
-	};
-
-	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
-	use crate::account_service;
-
-	use crate::account_service::{
-		AccountLifecycleError, AccountService, CodexAuthProjectionError, CredentialImportError,
-		CredentialRefreshError, CredentialRefreshPort, CredentialRefreshResult,
-		CredentialSecretBundle, CredentialStoreError, HostCredentialStore, ImportedCredential,
-		PROVIDER_REFRESH_OUTCOME_UNKNOWN, PreparedRefreshReconciliation,
-		ReauthenticationReplayDisposition, RefreshResponse,
-		classify_prepared_refresh_reconciliation, classify_reauthentication_replay,
-		classify_refresh_http_failure, classify_refresh_http_response,
-		classify_refresh_transport_failure, codex_auth_projection_digest,
-		credential_refresh_result, matching_shared_refresh, projection_binding,
-		reauthentication_current, reauthentication_target, recover_rejected_refresh_from_shared,
-		refresh_owner_is_busy, refreshed_credential_target,
-		require_refreshed_access_token_for_observation, resolve_reauthentication_store_effect,
-		stable_account_alias,
-	};
-
-	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
-	use crate::account_service::REFRESH_ENDPOINT;
-
 	use std::{
 		collections::HashMap,
 		fs,
@@ -5706,15 +5662,29 @@ mod tests {
 		net::TcpListener,
 		os::unix::fs::PermissionsExt as _,
 		sync::{
-			Arc, Mutex,
+			Arc,
 			atomic::{AtomicUsize, Ordering},
 		},
+		thread,
 		time::Duration,
 	};
 
+	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+	use reqwest::blocking::{self, Response};
 	use tokio::time;
+	use zeroize::Zeroizing;
 
+	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
+	use crate::account_service::REFRESH_ENDPOINT;
 	use crate::{
+		account_observation::AccountObservationService,
+		account_service::{
+			self, AccountLifecycleError, AccountService, CodexAuthProjectionError,
+			CredentialImportError, CredentialRefreshError, CredentialRefreshPort,
+			CredentialRefreshResult, CredentialSecretBundle, CredentialStoreError,
+			HostCredentialStore, ImportedCredential, PROVIDER_REFRESH_OUTCOME_UNKNOWN,
+			PreparedRefreshReconciliation, ReauthenticationReplayDisposition, RefreshResponse,
+		},
 		auth_projection::{
 			SharedCodexAuthFileStamp, SharedCodexAuthSnapshot, SharedCodexAuthVersion,
 		},
@@ -5724,15 +5694,31 @@ mod tests {
 			SharedAuthFilePort,
 		},
 	};
-	use decodex_core::AccountSelectionRecovery;
-
-	use crate::account_observation::AccountObservationService;
+	use decodex_codex::AccountApiUsage;
+	use decodex_core::{
+		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
+		AccountOperationPhase, AccountProvider, AccountQuotaDisposition,
+		AccountQuotaObservationError, AccountQuotaWindow, AccountQuotaWindowObservation,
+		AccountRecord, AccountSelectionRecovery, AccountState, AccountUsageObservation,
+		CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion,
+		DecodexRoot, ProcessGenerationAccountBinding, ProviderIdentity,
+	};
+	use decodex_database::{
+		AccountCommandKind, AccountCommandReceiptClaim, AccountLifecycleMutationOutcome,
+		AccountOperationPreparation, CommandIdentity, SqliteStore,
+	};
+	use decodex_protocol::{
+		AccountRecoveryAction, AccountRecoveryDestination, AccountRecoveryPreparation, EntityId,
+		EntityRevision,
+	};
 
 	const OBSERVED_AT_MICROS: i64 = 1_000_000;
 
 	struct UnusedCredentialRefresher;
 
-	struct OneRefresh(Mutex<Option<Result<CredentialRefreshResult, CredentialRefreshError>>>);
+	struct OneRefresh(
+		std::sync::Mutex<Option<Result<CredentialRefreshResult, CredentialRefreshError>>>,
+	);
 
 	struct FixedLiveness(CodexLiveness);
 
@@ -5744,7 +5730,7 @@ mod tests {
 	}
 
 	struct RefreshRaceSharedAuthFile {
-		state: Mutex<RefreshRaceState>,
+		state: std::sync::Mutex<RefreshRaceState>,
 		project_attempts: AtomicUsize,
 	}
 
@@ -5808,7 +5794,7 @@ mod tests {
 	impl RefreshRaceSharedAuthFile {
 		fn new(provider_account_id: &str, bundle: CredentialSecretBundle) -> Self {
 			Self {
-				state: Mutex::new(RefreshRaceState {
+				state: std::sync::Mutex::new(RefreshRaceState {
 					provider: ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id)
 						.expect("provider identity"),
 					bundle,
@@ -5862,7 +5848,7 @@ mod tests {
 			if state.bundle.is_personal_access_token() {
 				return Ok(SharedCodexAuthSnapshot::PersonalAccessToken {
 					version,
-					token: zeroize::Zeroizing::new(state.bundle.access_token().to_owned()),
+					token: Zeroizing::new(state.bundle.access_token().to_owned()),
 				});
 			}
 
@@ -5944,25 +5930,33 @@ mod tests {
 			Err(AccountLifecycleError::InvalidOperation)
 		));
 		assert!(matches!(
-			require_refreshed_access_token_for_observation(Some(now + 500), now, minimum_validity),
+			account_service::require_refreshed_access_token_for_observation(
+				Some(now + 500),
+				now,
+				minimum_validity
+			),
 			Err(AccountLifecycleError::Refresh(CredentialRefreshError::Unavailable))
 		));
 		assert!(
-			require_refreshed_access_token_for_observation(Some(now + 501), now, minimum_validity)
-				.is_ok()
+			account_service::require_refreshed_access_token_for_observation(
+				Some(now + 501),
+				now,
+				minimum_validity
+			)
+			.is_ok()
 		);
 	}
 
 	#[test]
 	fn observation_refresh_never_ignores_an_unproved_generation_owner() {
 		for liveness in [CodexLiveness::Quiescent, CodexLiveness::MayBeRunning] {
-			assert!(refresh_owner_is_busy(
+			assert!(account_service::refresh_owner_is_busy(
 				super::SharedFamilyRefreshPolicy::Observation,
 				false,
 				false,
 				liveness,
 			));
-			assert!(!refresh_owner_is_busy(
+			assert!(!account_service::refresh_owner_is_busy(
 				super::SharedFamilyRefreshPolicy::Observation,
 				false,
 				true,
@@ -5986,7 +5980,7 @@ mod tests {
 				serde_json::json!({"code":code}),
 			] {
 				assert_eq!(
-					classify_refresh_http_failure(
+					account_service::classify_refresh_http_failure(
 						reqwest::StatusCode::BAD_REQUEST,
 						value.to_string().as_bytes()
 					),
@@ -6003,13 +5997,16 @@ mod tests {
 			br#"{"error":"invalid_grant""#.as_slice(),
 		] {
 			assert_eq!(
-				classify_refresh_http_failure(reqwest::StatusCode::BAD_REQUEST, body),
+				account_service::classify_refresh_http_failure(
+					reqwest::StatusCode::BAD_REQUEST,
+					body
+				),
 				CredentialRefreshError::Unavailable
 			);
 		}
 
 		assert_eq!(
-			classify_refresh_http_failure(
+			account_service::classify_refresh_http_failure(
 				reqwest::StatusCode::BAD_GATEWAY,
 				br#"{"error":"invalid_grant"}"#
 			),
@@ -6022,7 +6019,10 @@ mod tests {
 		);
 
 		assert_eq!(
-			classify_refresh_http_failure(reqwest::StatusCode::BAD_REQUEST, oversized.as_bytes()),
+			account_service::classify_refresh_http_failure(
+				reqwest::StatusCode::BAD_REQUEST,
+				oversized.as_bytes()
+			),
 			CredentialRefreshError::Unavailable
 		);
 	}
@@ -6030,14 +6030,14 @@ mod tests {
 	#[test]
 	fn oauth_http_failures_distinguish_invalid_login_from_temporary_responses() {
 		assert_eq!(
-			classify_refresh_http_failure(
+			account_service::classify_refresh_http_failure(
 				reqwest::StatusCode::BAD_REQUEST,
 				br#"{"error":"invalid_grant"}"#,
 			),
 			CredentialRefreshError::Rejected
 		);
 		assert_eq!(
-			classify_refresh_http_failure(reqwest::StatusCode::UNAUTHORIZED, b""),
+			account_service::classify_refresh_http_failure(reqwest::StatusCode::UNAUTHORIZED, b""),
 			CredentialRefreshError::Rejected
 		);
 
@@ -6046,7 +6046,7 @@ mod tests {
 			(reqwest::StatusCode::BAD_REQUEST, br#"{"error":"invalid_request"}"#.as_slice()),
 		] {
 			assert_eq!(
-				classify_refresh_http_failure(status, body),
+				account_service::classify_refresh_http_failure(status, body),
 				CredentialRefreshError::Unavailable
 			);
 		}
@@ -6056,7 +6056,7 @@ mod tests {
 			reqwest::StatusCode::GATEWAY_TIMEOUT,
 		] {
 			assert_eq!(
-				classify_refresh_http_failure(status, b"upstream outcome unknown"),
+				account_service::classify_refresh_http_failure(status, b"upstream outcome unknown"),
 				CredentialRefreshError::Ambiguous
 			);
 		}
@@ -6064,12 +6064,12 @@ mod tests {
 
 	#[test]
 	fn scripted_oauth_responses_drive_the_adapter_classification_boundary() {
-		fn response(status: &str, body: &str) -> reqwest::blocking::Response {
+		fn response(status: &str, body: &str) -> Response {
 			let listener = TcpListener::bind("127.0.0.1:0").expect("scripted response listener");
 			let address = listener.local_addr().expect("scripted response address");
 			let status = status.to_owned();
 			let body = body.to_owned();
-			let server = std::thread::spawn(move || {
+			let server = thread::spawn(move || {
 				let (mut stream, _) = listener.accept().expect("accept scripted request");
 				let mut request = [0_u8; 1_024];
 				let _ = stream.read(&mut request).expect("read scripted request");
@@ -6081,7 +6081,7 @@ mod tests {
 				)
 				.expect("write scripted response");
 			});
-			let response = reqwest::blocking::get(format!("http://{address}/oauth/token"))
+			let response = blocking::get(format!("http://{address}/oauth/token"))
 				.expect("read scripted response");
 
 			server.join().expect("scripted response server");
@@ -6090,21 +6090,24 @@ mod tests {
 		}
 
 		assert_eq!(
-			classify_refresh_http_response(response(
+			account_service::classify_refresh_http_response(response(
 				"400 Bad Request",
 				r#"{"error":{"code":"INVALID_GRANT"}}"#,
 			)),
 			CredentialRefreshError::Rejected
 		);
 		assert_eq!(
-			classify_refresh_http_response(response(
+			account_service::classify_refresh_http_response(response(
 				"429 Too Many Requests",
 				r#"{"error":"rate_limit"}"#,
 			)),
 			CredentialRefreshError::Unavailable
 		);
 		assert_eq!(
-			classify_refresh_http_response(response("504 Gateway Timeout", "upstream timeout")),
+			account_service::classify_refresh_http_response(response(
+				"504 Gateway Timeout",
+				"upstream timeout"
+			)),
 			CredentialRefreshError::Ambiguous
 		);
 	}
@@ -6126,13 +6129,13 @@ mod tests {
 			.expect_err("connection is refused before dispatch");
 
 		assert_eq!(
-			classify_refresh_transport_failure(&refused_error),
+			account_service::classify_refresh_transport_failure(&refused_error),
 			CredentialRefreshError::Unavailable
 		);
 
 		let dropped = TcpListener::bind("127.0.0.1:0").expect("response-loss listener");
 		let dropped_address = dropped.local_addr().expect("response-loss address");
-		let server = std::thread::spawn(move || {
+		let server = thread::spawn(move || {
 			let (mut stream, _) = dropped.accept().expect("accept dispatched request");
 			let mut request = [0_u8; 1_024];
 			let _ = stream.read(&mut request).expect("read dispatched request");
@@ -6146,7 +6149,7 @@ mod tests {
 		server.join().expect("response-loss server");
 
 		assert_eq!(
-			classify_refresh_transport_failure(&dropped_error),
+			account_service::classify_refresh_transport_failure(&dropped_error),
 			CredentialRefreshError::Ambiguous
 		);
 	}
@@ -6157,16 +6160,21 @@ mod tests {
 		let operation_id = AccountOperationId::new("10000000-0000-4000-8000-000000000097").unwrap();
 		let current = binding("reauth-provider", 7);
 		let imported = imported("reauth-provider", "new-access", 3_000_000);
-		let target =
-			reauthentication_target(&current, &account_id, &operation_id, &imported).unwrap();
+		let target = account_service::reauthentication_target(
+			&current,
+			&account_id,
+			&operation_id,
+			&imported,
+		)
+		.unwrap();
 
 		assert_eq!(target.version.get(), 8);
 		assert_eq!(target.provider, current.provider);
 		assert_eq!(target.writer_operation_id, operation_id);
 		assert_ne!(target.fingerprint, current.fingerprint);
-		assert_eq!(resolve_reauthentication_store_effect(Ok(()), false), Ok(()));
+		assert_eq!(account_service::resolve_reauthentication_store_effect(Ok(()), false), Ok(()));
 		assert_eq!(
-			resolve_reauthentication_store_effect(
+			account_service::resolve_reauthentication_store_effect(
 				Err(super::CredentialStoreError::VersionConflict),
 				true
 			),
@@ -6182,14 +6190,19 @@ mod tests {
 		let mismatched = imported("other-provider", "new-access", 3_000_000);
 
 		assert!(matches!(
-			reauthentication_target(&current, &account_id, &operation_id, &mismatched),
+			account_service::reauthentication_target(
+				&current,
+				&account_id,
+				&operation_id,
+				&mismatched
+			),
 			Err(AccountLifecycleError::ProviderMismatch)
 		));
 
 		let account = projection_account(Some(current.clone()));
 
 		assert!(matches!(
-			reauthentication_current(&account, account.revision + 1),
+			account_service::reauthentication_current(&account, account.revision + 1),
 			Err(AccountLifecycleError::StaleAccount)
 		));
 		assert_eq!(account.credential.as_ref(), Some(&current));
@@ -6208,7 +6221,7 @@ mod tests {
 			AccountOperationPhase::Committed,
 		] {
 			assert_eq!(
-				classify_reauthentication_replay(
+				account_service::classify_reauthentication_replay(
 					phase,
 					Some(&expected),
 					Some(&target),
@@ -6223,7 +6236,7 @@ mod tests {
 		}
 
 		assert_eq!(
-			classify_reauthentication_replay(
+			account_service::classify_reauthentication_replay(
 				AccountOperationPhase::Prepared,
 				Some(&expected),
 				Some(&target),
@@ -6238,7 +6251,7 @@ mod tests {
 			ReauthenticationReplayDisposition::Cancel
 		);
 		assert_eq!(
-			classify_reauthentication_replay(
+			account_service::classify_reauthentication_replay(
 				AccountOperationPhase::Cancelled,
 				Some(&expected),
 				Some(&target),
@@ -6247,7 +6260,7 @@ mod tests {
 			ReauthenticationReplayDisposition::Cancel
 		);
 		assert_eq!(
-			classify_reauthentication_replay(
+			account_service::classify_reauthentication_replay(
 				AccountOperationPhase::RecoveryRequired,
 				Some(&expected),
 				Some(&target),
@@ -6256,7 +6269,7 @@ mod tests {
 			ReauthenticationReplayDisposition::Recover
 		);
 		assert_eq!(
-			classify_reauthentication_replay(
+			account_service::classify_reauthentication_replay(
 				AccountOperationPhase::Prepared,
 				Some(&expected),
 				Some(&target),
@@ -6271,14 +6284,17 @@ mod tests {
 		let expected = binding("reauth-provider", 7);
 		let target = binding("reauth-provider", 8);
 		let mut reads = 0_u8;
-		let disposition =
-			classify_prepared_refresh_reconciliation(Some(&expected), Some(&target), |binding| {
+		let disposition = account_service::classify_prepared_refresh_reconciliation(
+			Some(&expected),
+			Some(&target),
+			|binding| {
 				reads += 1;
 
 				assert_eq!(binding, &target);
 
 				Ok(())
-			});
+			},
+		);
 
 		assert_eq!(disposition, PreparedRefreshReconciliation::StoreApplied);
 		assert_eq!(reads, 1);
@@ -6289,8 +6305,10 @@ mod tests {
 		let expected = binding("reauth-provider", 7);
 		let target = binding("reauth-provider", 8);
 		let mut reads = Vec::new();
-		let exact_expected =
-			classify_prepared_refresh_reconciliation(Some(&expected), Some(&target), |binding| {
+		let exact_expected = account_service::classify_prepared_refresh_reconciliation(
+			Some(&expected),
+			Some(&target),
+			|binding| {
 				reads.push(binding.version.get());
 
 				if binding == &target {
@@ -6298,15 +6316,17 @@ mod tests {
 				} else {
 					Ok(())
 				}
-			});
+			},
+		);
 
 		assert_eq!(exact_expected, PreparedRefreshReconciliation::NotApplied);
 		assert_eq!(reads, vec![8, 7]);
 
-		let absent =
-			classify_prepared_refresh_reconciliation(Some(&expected), Some(&target), |_| {
-				Err(super::CredentialStoreError::NotFound)
-			});
+		let absent = account_service::classify_prepared_refresh_reconciliation(
+			Some(&expected),
+			Some(&target),
+			|_| Err(super::CredentialStoreError::NotFound),
+		);
 
 		assert_eq!(absent, PreparedRefreshReconciliation::RecoveryRequired);
 	}
@@ -6316,21 +6336,25 @@ mod tests {
 	{
 		let expected = binding("reauth-provider", 7);
 		let target = binding("reauth-provider", 8);
-		let ambiguous =
-			classify_prepared_refresh_reconciliation(Some(&expected), Some(&target), |binding| {
+		let ambiguous = account_service::classify_prepared_refresh_reconciliation(
+			Some(&expected),
+			Some(&target),
+			|binding| {
 				if binding == &target {
 					Err(super::CredentialStoreError::VersionConflict)
 				} else {
 					Err(super::CredentialStoreError::FingerprintMismatch)
 				}
-			});
+			},
+		);
 
 		assert_eq!(ambiguous, PreparedRefreshReconciliation::RecoveryRequired);
 
-		let unavailable =
-			classify_prepared_refresh_reconciliation(Some(&expected), Some(&target), |_| {
-				Err(super::CredentialStoreError::Unavailable)
-			});
+		let unavailable = account_service::classify_prepared_refresh_reconciliation(
+			Some(&expected),
+			Some(&target),
+			|_| Err(super::CredentialStoreError::Unavailable),
+		);
 
 		assert_eq!(unavailable, PreparedRefreshReconciliation::RecoveryRequired);
 	}
@@ -6338,9 +6362,11 @@ mod tests {
 	#[test]
 	fn ordinary_prepared_refresh_startup_still_cancels_without_reading_the_store() {
 		let expected = binding("refresh-provider", 7);
-		let disposition = classify_prepared_refresh_reconciliation(Some(&expected), None, |_| {
-			panic!("ordinary refresh Prepared has no store effect to inspect")
-		});
+		let disposition = account_service::classify_prepared_refresh_reconciliation(
+			Some(&expected),
+			None,
+			|_| panic!("ordinary refresh Prepared has no store effect to inspect"),
+		);
 
 		assert_eq!(disposition, PreparedRefreshReconciliation::NotApplied);
 	}
@@ -6376,16 +6402,20 @@ mod tests {
 	fn codex_projection_digest_changes_with_only_credential_negative_binding_state() {
 		let first = projection_account(Some(binding("projection-provider", 3)));
 		let first_binding = first.credential.as_ref().unwrap();
-		let first_digest = codex_auth_projection_digest(&first, first_binding);
+		let first_digest = account_service::codex_auth_projection_digest(&first, first_binding);
 		let mut revised = first.clone();
 
 		revised.revision += 1;
 
-		let revised_digest =
-			codex_auth_projection_digest(&revised, revised.credential.as_ref().unwrap());
+		let revised_digest = account_service::codex_auth_projection_digest(
+			&revised,
+			revised.credential.as_ref().unwrap(),
+		);
 		let versioned = projection_account(Some(binding("projection-provider", 4)));
-		let versioned_digest =
-			codex_auth_projection_digest(&versioned, versioned.credential.as_ref().unwrap());
+		let versioned_digest = account_service::codex_auth_projection_digest(
+			&versioned,
+			versioned.credential.as_ref().unwrap(),
+		);
 
 		assert_eq!(first_digest.len(), 64);
 		assert_ne!(first_digest, revised_digest);
@@ -6567,16 +6597,12 @@ mod tests {
 
 	#[test]
 	fn ordinary_usage_permission_controls_routing_without_rewriting_utilization() {
-		use decodex_core::{
-			AccountQuotaDisposition as D, AccountSelectionRecovery, AccountUsageObservation,
-		};
-
 		let mut account = projection_account(None);
 
 		account.five_hour_quota.observed_at_unix_micros = Some(900);
-		account.five_hour_quota.disposition = D::NotApplicable;
+		account.five_hour_quota.disposition = AccountQuotaDisposition::NotApplicable;
 		account.seven_day_quota.disposition =
-			D::Current(AccountQuotaWindow::new(10_080, 0, i64::MAX).unwrap());
+			AccountQuotaDisposition::Current(AccountQuotaWindow::new(10_080, 0, i64::MAX).unwrap());
 
 		let observation = AccountUsageObservation {
 			account_revision: account.revision,
@@ -6592,8 +6618,9 @@ mod tests {
 			Err(AccountSelectionRecovery::RefreshQuota)
 		);
 
-		account.seven_day_quota.disposition =
-			D::Current(AccountQuotaWindow::new(10_080, 100, i64::MAX).unwrap());
+		account.seven_day_quota.disposition = AccountQuotaDisposition::Current(
+			AccountQuotaWindow::new(10_080, 100, i64::MAX).unwrap(),
+		);
 		account.usage_observation =
 			Some(AccountUsageObservation { ordinary_usage_allowed: Some(true), ..observation });
 
@@ -6634,7 +6661,7 @@ mod tests {
 	#[test]
 	fn paid_capacity_routes_without_window_data_but_respects_account_limits() {
 		let mut account = projection_account(None);
-		let mut observation = decodex_core::AccountUsageObservation {
+		let mut observation = AccountUsageObservation {
 			account_revision: account.revision,
 			observed_at_unix_micros: 900,
 			ordinary_usage_allowed: Some(false),
@@ -6668,39 +6695,39 @@ mod tests {
 
 	#[test]
 	fn optional_five_hour_absence_keeps_weekly_and_known_exhaustion_gates() {
-		use decodex_core::{AccountQuotaDisposition as D, AccountSelectionRecovery};
-
 		let mut account = projection_account(None);
 
 		account.five_hour_quota.observed_at_unix_micros = Some(900);
-		account.five_hour_quota.disposition = D::NotApplicable;
+		account.five_hour_quota.disposition = AccountQuotaDisposition::NotApplicable;
 
 		let weekly = AccountQuotaWindow::new(10_080, 8, 2_000_000).unwrap();
 
-		account.seven_day_quota.disposition = D::Current(weekly);
+		account.seven_day_quota.disposition = AccountQuotaDisposition::Current(weekly);
 
 		assert_eq!(super::quota_selection_score(&account, 1_000), Ok((8, 0)));
 
-		account.seven_day_quota.disposition =
-			D::Current(AccountQuotaWindow::new(10_080, 100, 2_000_000).unwrap());
+		account.seven_day_quota.disposition = AccountQuotaDisposition::Current(
+			AccountQuotaWindow::new(10_080, 100, 2_000_000).unwrap(),
+		);
 
 		assert_eq!(
 			super::quota_selection_score(&account, 1_000),
 			Err(AccountSelectionRecovery::RefreshQuota)
 		);
 
-		account.seven_day_quota.disposition = D::Current(weekly);
+		account.seven_day_quota.disposition = AccountQuotaDisposition::Current(weekly);
 		account.five_hour_quota.disposition =
-			D::Current(AccountQuotaWindow::new(300, 100, 2_000_000).unwrap());
+			AccountQuotaDisposition::Current(AccountQuotaWindow::new(300, 100, 2_000_000).unwrap());
 
 		assert_eq!(
 			super::quota_selection_score(&account, 1_000),
 			Err(AccountSelectionRecovery::RefreshQuota)
 		);
 
-		for disposition in
-			[D::Unknown, D::Error(decodex_core::AccountQuotaObservationError::ProviderUnavailable)]
-		{
+		for disposition in [
+			AccountQuotaDisposition::Unknown,
+			AccountQuotaDisposition::Error(AccountQuotaObservationError::ProviderUnavailable),
+		] {
 			account.five_hour_quota.disposition = disposition;
 
 			assert_eq!(
@@ -6709,7 +6736,7 @@ mod tests {
 			);
 		}
 
-		account.five_hour_quota.disposition = D::NotApplicable;
+		account.five_hour_quota.disposition = AccountQuotaDisposition::NotApplicable;
 		account.five_hour_quota.observed_at_unix_micros = None;
 
 		assert_eq!(
@@ -6718,7 +6745,7 @@ mod tests {
 		);
 
 		account.five_hour_quota.observed_at_unix_micros = Some(900);
-		account.seven_day_quota.disposition = D::Unknown;
+		account.seven_day_quota.disposition = AccountQuotaDisposition::Unknown;
 
 		assert_eq!(
 			super::quota_selection_score(&account, 1_000),
@@ -6731,12 +6758,15 @@ mod tests {
 		let exact = projection_account(Some(binding("projection-provider", 3)));
 
 		assert_eq!(
-			projection_binding(&exact, 9).unwrap().provider.account_id(),
+			account_service::projection_binding(&exact, 9).unwrap().provider.account_id(),
 			"projection-provider",
 		);
-		assert!(matches!(projection_binding(&exact, 8), Err(AccountLifecycleError::StaleAccount)));
 		assert!(matches!(
-			projection_binding(&projection_account(None), 9),
+			account_service::projection_binding(&exact, 8),
+			Err(AccountLifecycleError::StaleAccount)
+		));
+		assert!(matches!(
+			account_service::projection_binding(&projection_account(None), 9),
 			Err(AccountLifecycleError::CredentialAbsent)
 		));
 
@@ -6745,7 +6775,7 @@ mod tests {
 		disabled.enabled = false;
 
 		assert!(matches!(
-			projection_binding(&disabled, 9),
+			account_service::projection_binding(&disabled, 9),
 			Err(AccountLifecycleError::AccountDisabled)
 		));
 
@@ -6755,7 +6785,7 @@ mod tests {
 		tombstoned.lifecycle_readiness = AccountLifecycleReadiness::Tombstoned;
 
 		assert!(matches!(
-			projection_binding(&tombstoned, 9),
+			account_service::projection_binding(&tombstoned, 9),
 			Err(AccountLifecycleError::NotReady(AccountLifecycleReadiness::Tombstoned))
 		));
 	}
@@ -6763,7 +6793,7 @@ mod tests {
 	#[test]
 	fn same_provider_shared_credential_is_selected_with_exact_successor_binding() {
 		let current = binding("shared-provider-account", 7);
-		let selected = matching_shared_refresh(
+		let selected = account_service::matching_shared_refresh(
 			&current,
 			&current_bundle(),
 			OBSERVED_AT_MICROS,
@@ -6776,8 +6806,13 @@ mod tests {
 
 		let account_id = AccountId::new("20000000-0000-4000-8000-000000000010").unwrap();
 		let operation_id = AccountOperationId::new("30000000-0000-4000-8000-000000000010").unwrap();
-		let target =
-			refreshed_credential_target(&current, &account_id, &operation_id, &selected).unwrap();
+		let target = account_service::refreshed_credential_target(
+			&current,
+			&account_id,
+			&operation_id,
+			&selected,
+		)
+		.unwrap();
 
 		assert_eq!(target.provider, current.provider);
 		assert_eq!(target.version.get(), 8);
@@ -6789,7 +6824,7 @@ mod tests {
 		let provider_account_id = "expected-provider-account";
 		let current = binding(provider_account_id, 7);
 		let current_bundle = shared_bundle(provider_account_id, "current-access", 2_000_000);
-		let recovered = recover_rejected_refresh_from_shared(
+		let recovered = account_service::recover_rejected_refresh_from_shared(
 			&current,
 			&current_bundle,
 			OBSERVED_AT_MICROS,
@@ -6799,7 +6834,7 @@ mod tests {
 
 		assert_eq!(recovered.returned_provider, current.provider);
 		assert!(matches!(
-			recover_rejected_refresh_from_shared(
+			account_service::recover_rejected_refresh_from_shared(
 				&current,
 				&current_bundle,
 				OBSERVED_AT_MICROS,
@@ -6808,7 +6843,7 @@ mod tests {
 			Err(CredentialRefreshError::Rejected)
 		));
 		assert!(matches!(
-			recover_rejected_refresh_from_shared(
+			account_service::recover_rejected_refresh_from_shared(
 				&current,
 				&current_bundle,
 				OBSERVED_AT_MICROS,
@@ -6823,7 +6858,7 @@ mod tests {
 		let current = binding("expected-provider-account", 7);
 
 		assert!(
-			matching_shared_refresh(
+			account_service::matching_shared_refresh(
 				&current,
 				&current_bundle(),
 				OBSERVED_AT_MICROS,
@@ -6838,7 +6873,7 @@ mod tests {
 		let current = binding("expected-provider-account", 7);
 
 		assert!(
-			matching_shared_refresh(
+			account_service::matching_shared_refresh(
 				&current,
 				&current_bundle(),
 				OBSERVED_AT_MICROS,
@@ -6855,7 +6890,7 @@ mod tests {
 		let current_bundle = shared_bundle(provider_account_id, "same-access", 3_000_000);
 
 		assert!(
-			matching_shared_refresh(
+			account_service::matching_shared_refresh(
 				&current,
 				&current_bundle,
 				OBSERVED_AT_MICROS,
@@ -6864,7 +6899,7 @@ mod tests {
 			.is_none()
 		);
 
-		let same_expiry_rotation = matching_shared_refresh(
+		let same_expiry_rotation = account_service::matching_shared_refresh(
 			&current,
 			&current_bundle,
 			OBSERVED_AT_MICROS,
@@ -6874,7 +6909,7 @@ mod tests {
 
 		assert_eq!(same_expiry_rotation.bundle.access_token(), "rotated-access");
 		assert!(
-			matching_shared_refresh(
+			account_service::matching_shared_refresh(
 				&current,
 				&current_bundle,
 				OBSERVED_AT_MICROS,
@@ -6883,7 +6918,7 @@ mod tests {
 			.is_none()
 		);
 		assert!(
-			matching_shared_refresh(
+			account_service::matching_shared_refresh(
 				&current,
 				&current_bundle,
 				OBSERVED_AT_MICROS,
@@ -6897,7 +6932,7 @@ mod tests {
 	fn fresh_refresh_identity_and_target_come_only_from_returned_id_token() {
 		let current = current_bundle();
 		let fresh_id_token = identity_token("fresh-provider-account", "fresh@example.test", "pro");
-		let refreshed = credential_refresh_result(
+		let refreshed = account_service::credential_refresh_result(
 			&current,
 			response(Some(fresh_id_token.clone())),
 			OBSERVED_AT_MICROS,
@@ -6917,7 +6952,7 @@ mod tests {
 
 		let account_id = AccountId::new("20000000-0000-4000-8000-000000000001").unwrap();
 		let operation_id = AccountOperationId::new("30000000-0000-4000-8000-000000000001").unwrap();
-		let target = refreshed_credential_target(
+		let target = account_service::refreshed_credential_target(
 			&binding("fresh-provider-account", 7),
 			&account_id,
 			&operation_id,
@@ -6948,7 +6983,7 @@ mod tests {
 			[None, Some(String::new()), Some("not-a-jwt".to_owned()), Some(malformed_claims)]
 		{
 			assert!(matches!(
-				credential_refresh_result(
+				account_service::credential_refresh_result(
 					&current_bundle(),
 					response(id_token),
 					OBSERVED_AT_MICROS,
@@ -6960,7 +6995,7 @@ mod tests {
 
 	#[test]
 	fn returned_provider_mismatch_precedes_target_construction_and_uses_fixed_recovery_code() {
-		let refreshed = credential_refresh_result(
+		let refreshed = account_service::credential_refresh_result(
 			&current_bundle(),
 			response(Some(identity_token("fresh-provider-account", "fresh@example.test", "pro"))),
 			OBSERVED_AT_MICROS,
@@ -6970,7 +7005,7 @@ mod tests {
 		let operation_id = AccountOperationId::new("30000000-0000-4000-8000-000000000002").unwrap();
 
 		assert!(matches!(
-			refreshed_credential_target(
+			account_service::refreshed_credential_target(
 				&binding("old-provider-account", u64::MAX),
 				&account_id,
 				&operation_id,
@@ -6979,6 +7014,14 @@ mod tests {
 			Err(AccountLifecycleError::ProviderMismatch)
 		));
 		assert_eq!(PROVIDER_REFRESH_OUTCOME_UNKNOWN, "provider_refresh_outcome_unknown");
+	}
+
+	fn recovery_usage(title: &str) -> AccountApiUsage {
+		decodex_codex::decode_account_api_usage(serde_json::json!({
+			"account_id":"observed-account","user_id":"fixture-user","plan_type":"team",
+			"rate_limit":{},"rate_limit_upsell":{"banner_type":"limit","title":title,
+			"description":"Ask your workspace owner","ctas":[{"action":"notify_owner","label":"Notify owner"}]}
+		}).to_string().as_bytes()).unwrap()
 	}
 
 	#[tokio::test]
@@ -7136,7 +7179,7 @@ mod tests {
 
 		let unknown = SharedCodexAuthSnapshot::PersonalAccessToken {
 			version: snapshot.version().clone(),
-			token: zeroize::Zeroizing::new("unimported-external-pat".into()),
+			token: Zeroizing::new("unimported-external-pat".into()),
 		};
 
 		assert!(matches!(
@@ -7149,8 +7192,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn quiescent_route_distinguishes_unknown_source_and_conflicting_credential() {
-		use decodex_database::{AccountCommandKind, AccountCommandReceiptClaim, CommandIdentity};
-
 		for conflict in [false, true] {
 			let (_directory, store, service, account_id, shared) =
 				independently_owned_observation_service(Err(CredentialRefreshError::Unavailable))
@@ -7257,7 +7298,7 @@ mod tests {
 					operation_id: enrollment_id.clone(),
 					account_id: account_id.clone(),
 					kind: AccountOperationKind::Enroll,
-					display_label: Some(stable_account_alias(&provider)),
+					display_label: Some(account_service::stable_account_alias(&provider)),
 					enabled: Some(true),
 					expected_account_revision: None,
 					expected: None,
@@ -7303,7 +7344,7 @@ mod tests {
 		let service = AccountService::new(
 			store.clone(),
 			credentials,
-			Arc::new(OneRefresh(Mutex::new(Some(refresh)))),
+			Arc::new(OneRefresh(std::sync::Mutex::new(Some(refresh)))),
 		)
 		.with_shared_auth_coordinator(test_coordinator(
 			Arc::clone(&shared) as Arc<dyn SharedAuthFilePort>,
@@ -7327,29 +7368,17 @@ mod tests {
 
 	#[tokio::test]
 	async fn recovery_preparation_rechecks_current_account_revision_and_observation() {
-		use decodex_protocol::{
-			AccountRecoveryAction as A, AccountRecoveryDestination as D,
-			AccountRecoveryPreparation as P, EntityId, EntityRevision,
-		};
-
 		let (_directory, store, service, account, shared) =
 			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
 		let service = Arc::new(service);
 		let revision = service.inspect(&account).await.unwrap().account.revision;
 		let observations = AccountObservationService::new(Arc::clone(&service), None, None, None);
-		let usage = |title: &str| {
-			decodex_codex::decode_account_api_usage(serde_json::json!({
-			"account_id":"observed-account","user_id":"fixture-user","plan_type":"team",
-			"rate_limit":{},"rate_limit_upsell":{"banner_type":"limit","title":title,
-			"description":"Ask your workspace owner","ctas":[{"action":"notify_owner","label":"Notify owner"}]}
-		}).to_string().as_bytes()).unwrap()
-		};
 
 		observations
 			.cache_recovery_fixture(
 				account.clone(),
 				revision,
-				usage("Limit reached"),
+				recovery_usage("Limit reached"),
 				"observed-account",
 				"fixture-user",
 			)
@@ -7359,13 +7388,18 @@ mod tests {
 		let source = observations.recovery(&entity, EntityRevision(revision as u64)).await;
 
 		assert!(matches!(
-			observations.prepare_recovery(&source, A::NotifyOwner).await,
-			P::Ready { destination: D::RequestCredits, .. }
+			observations.prepare_recovery(&source, AccountRecoveryAction::NotifyOwner).await,
+			AccountRecoveryPreparation::Ready {
+				destination: AccountRecoveryDestination::RequestCredits,
+				..
+			}
 		));
 		assert!(
 			matches!(
-				observations.prepare_recovery(&source, A::RequestIncrease).await,
-				P::Unavailable
+				observations
+					.prepare_recovery(&source, AccountRecoveryAction::RequestIncrease)
+					.await,
+				AccountRecoveryPreparation::Unavailable
 			),
 			"unoffered action must not be substituted"
 		);
@@ -7373,30 +7407,36 @@ mod tests {
 		observations.invalidate_account(&account).await;
 
 		assert!(matches!(
-			observations.prepare_recovery(&source, A::NotifyOwner).await,
-			P::Unavailable
+			observations.prepare_recovery(&source, AccountRecoveryAction::NotifyOwner).await,
+			AccountRecoveryPreparation::Unavailable
 		));
 
 		observations
 			.cache_recovery_fixture(
 				account.clone(),
 				revision,
-				usage("New limit"),
+				recovery_usage("New limit"),
 				"observed-account",
 				"fixture-user",
 			)
 			.await;
 
 		assert!(
-			matches!(observations.prepare_recovery(&source, A::NotifyOwner).await, P::Unavailable),
+			matches!(
+				observations.prepare_recovery(&source, AccountRecoveryAction::NotifyOwner).await,
+				AccountRecoveryPreparation::Unavailable
+			),
 			"changed copy invalidates an old click even at the same account revision"
 		);
 
 		let current = observations.recovery(&entity, EntityRevision(revision as u64)).await;
 
 		assert!(matches!(
-			observations.prepare_recovery(&current, A::NotifyOwner).await,
-			P::Ready { destination: D::RequestCredits, .. }
+			observations.prepare_recovery(&current, AccountRecoveryAction::NotifyOwner).await,
+			AccountRecoveryPreparation::Ready {
+				destination: AccountRecoveryDestination::RequestCredits,
+				..
+			}
 		));
 
 		let identity =
@@ -7426,8 +7466,8 @@ mod tests {
 		assert!(!disabled.enabled);
 		assert!(disabled.revision > revision);
 		assert!(matches!(
-			observations.prepare_recovery(&current, A::NotifyOwner).await,
-			P::Unavailable
+			observations.prepare_recovery(&current, AccountRecoveryAction::NotifyOwner).await,
+			AccountRecoveryPreparation::Unavailable
 		));
 		assert!(matches!(
 			service.process_credential(&account, revision).await,
@@ -7437,8 +7477,8 @@ mod tests {
 		let restarted = AccountObservationService::new(service, None, None, None);
 
 		assert!(matches!(
-			restarted.prepare_recovery(&current, A::NotifyOwner).await,
-			P::Unavailable
+			restarted.prepare_recovery(&current, AccountRecoveryAction::NotifyOwner).await,
+			AccountRecoveryPreparation::Unavailable
 		));
 		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
 	}
@@ -7506,7 +7546,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn rejected_observation_refresh_requires_exact_relogin_without_retrying() {
-		let rejection = classify_refresh_http_failure(
+		let rejection = account_service::classify_refresh_http_failure(
 			reqwest::StatusCode::BAD_REQUEST,
 			br#"{"error":{"code":"INVALID_GRANT"}}"#,
 		);
@@ -7737,7 +7777,7 @@ mod tests {
 					operation_id: enrollment_operation.clone(),
 					account_id: account_id.clone(),
 					kind: AccountOperationKind::Enroll,
-					display_label: Some(stable_account_alias(&provider)),
+					display_label: Some(account_service::stable_account_alias(&provider)),
 					enabled: Some(true),
 					expected_account_revision: None,
 					expected: None,
@@ -8066,7 +8106,7 @@ mod tests {
 					operation_id: existing_operation.clone(),
 					account_id: existing_account.clone(),
 					kind: AccountOperationKind::Enroll,
-					display_label: Some(stable_account_alias(&provider)),
+					display_label: Some(account_service::stable_account_alias(&provider)),
 					enabled: Some(true),
 					expected_account_revision: None,
 					expected: None,
@@ -8290,7 +8330,7 @@ mod tests {
 					operation_id: legacy_operation.clone(),
 					account_id: legacy_account.clone(),
 					kind: AccountOperationKind::Enroll,
-					display_label: Some(stable_account_alias(&provider)),
+					display_label: Some(account_service::stable_account_alias(&provider)),
 					enabled: Some(true),
 					expected_account_revision: None,
 					expected: None,
@@ -8866,7 +8906,7 @@ mod tests {
 							operation_id: operation_id.clone(),
 							account_id: account_id.clone(),
 							kind,
-							display_label: Some(stable_account_alias(&provider)),
+							display_label: Some(account_service::stable_account_alias(&provider)),
 							enabled: Some(true),
 							expected_account_revision: Some(tombstone.revision),
 							expected: None,
@@ -8985,7 +9025,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn one_account_lock_serializes_projection_and_revision_writers() {
-		let locks = Mutex::new(HashMap::new());
+		let locks = std::sync::Mutex::new(HashMap::new());
 		let account_id = AccountId::new("20000000-0000-4000-8000-000000000098").unwrap();
 		let first = account_service::account_lock_for(&locks, &account_id).unwrap();
 		let second = account_service::account_lock_for(&locks, &account_id).unwrap();
@@ -9003,8 +9043,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn agent_routes_stick_until_exhausted_then_choose_available_capacity() {
-		use decodex_core::AccountQuotaDisposition as D;
-
 		let (_, _, service, _, _) =
 			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
 		let mut accounts = Vec::new();
@@ -9014,10 +9052,11 @@ mod tests {
 
 			account.account_id =
 				AccountId::new(format!("20000000-0000-4000-8000-{number:012}")).unwrap();
-			account.five_hour_quota.disposition = D::NotApplicable;
+			account.five_hour_quota.disposition = AccountQuotaDisposition::NotApplicable;
 			account.five_hour_quota.observed_at_unix_micros = Some(900);
-			account.seven_day_quota.disposition =
-				D::Current(AccountQuotaWindow::new(10_080, usage, 2_000_000).unwrap());
+			account.seven_day_quota.disposition = AccountQuotaDisposition::Current(
+				AccountQuotaWindow::new(10_080, usage, 2_000_000).unwrap(),
+			);
 
 			accounts.push(account);
 		}
@@ -9032,8 +9071,9 @@ mod tests {
 			ids[0]
 		);
 
-		accounts[0].seven_day_quota.disposition =
-			D::Current(AccountQuotaWindow::new(10_080, 100, 2_000_000).unwrap());
+		accounts[0].seven_day_quota.disposition = AccountQuotaDisposition::Current(
+			AccountQuotaWindow::new(10_080, 100, 2_000_000).unwrap(),
+		);
 
 		assert_eq!(
 			service
@@ -9058,7 +9098,7 @@ mod tests {
 		assert!(service.agent_route_candidate(&accounts, &ids, Some(&ids[0]), 1_000).is_none());
 
 		accounts[1].lifecycle_readiness = AccountLifecycleReadiness::Ready;
-		accounts[1].seven_day_quota.disposition = D::Unknown;
+		accounts[1].seven_day_quota.disposition = AccountQuotaDisposition::Unknown;
 
 		assert!(service.agent_route_candidate(&accounts, &ids, Some(&ids[0]), 1_000).is_none());
 	}
