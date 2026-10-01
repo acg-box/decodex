@@ -44,6 +44,7 @@ async fn retired_auth_recovery_ignores_notifications_and_preserves_saved_history
 		rows.iter().filter(|row| row.event_kind.starts_with("auth_recovery_")).collect();
 
 	assert!(receipts.is_empty());
+
 	// Load a receipt saved before retirement. No production writer remains.
 	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 
@@ -73,6 +74,7 @@ async fn retired_auth_recovery_ignores_notifications_and_preserves_saved_history
 	agent.wake_pending().await.unwrap();
 
 	assert!(sent.try_recv().is_err());
+
 	// A lost connection cannot manufacture recovery success from an earlier start.
 	drop(write);
 	drop(agent);

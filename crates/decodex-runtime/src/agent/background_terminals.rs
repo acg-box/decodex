@@ -24,6 +24,7 @@ impl AgentCoordinator {
 			.iter()
 			.find(|work| work.id == id)
 			.ok_or_else(|| AgentError::Invalid("work is unavailable".into()))?;
+
 		// A read-only task reference does not grant control of another task's processes.
 		if !(work.id == agent.id || agent::belongs_to(work, &agent.id, &all, &managers))
 			|| work.codex_thread_id.as_deref() != Some(thread.as_str())

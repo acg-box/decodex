@@ -451,6 +451,7 @@ mod tests {
 
 		assert_eq!(projected.entries.len(), 2);
 		assert!(!serde_json::to_string(&projected).unwrap().contains("\"voice\""));
+
 		// A later page can omit the marker and contain a typed completion after it.
 		page["data"] = serde_json::json!([row(4, "typed"), row(5, "voice")]);
 

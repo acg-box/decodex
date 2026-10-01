@@ -411,6 +411,7 @@ impl AgentCoordinator {
 
 	async fn work_thread_params(&self, item: &AgentWorkItem) -> Result<Value, AgentError> {
 		let mut params = self.thread_params(self.is_manager(&item.id).await?);
+
 		// start_agent creates the personal user root; subordinate managers and workers
 		// must not inherit its eligibility for full-access user-input forms.
 		if item.parent_goal_id.is_none() {
@@ -512,6 +513,7 @@ impl AgentCoordinator {
 
 			return None;
 		}
+
 		// Only usage hydration requests this one-row descending summary. An empty
 		// page is known-empty; omission on an older server still uses bounded history.
 		let initial = response
@@ -539,6 +541,7 @@ impl AgentCoordinator {
 				.filter_map(|turn| turn["id"].as_str().map(str::to_owned))
 				.collect()
 		});
+
 		// Legacy responses omit the bootstrap page. Read only their latest turn.
 		if !has_initial
 			&& turns.is_empty()
@@ -652,6 +655,7 @@ impl AgentCoordinator {
 			.ok_or_else(|| {
 				AgentError::Rejected("Native request has changed or is no longer pending.".into())
 			})?;
+
 		// The transport consumes only the exact original request guard before writing.
 		self.client.respond_guarded(request_id.clone(), response, guard).await?;
 		self.pending_requests.remove(&request_id);
@@ -1002,6 +1006,7 @@ impl AgentCoordinator {
 					.is_some_and(|payload| payload.pointer("/options/canonicalInput").is_some());
 			exact_question_target |= event.event_kind == "async_question_answer";
 		}
+
 		// Question answers and edited input belong to an existing native thread.
 		// Do not create a new thread for these events.
 		let item = if exact_question_target || exact_prompt_target {
@@ -1020,6 +1025,7 @@ impl AgentCoordinator {
 		if item.dispatch_state != AgentDispatchState::Idle {
 			return Err(AgentError::Busy);
 		}
+
 		// Resume is idempotent hydration of the exact thread, never a turn retry.
 		self.hydrate_dispatch_thread(thread).await?;
 
@@ -1056,6 +1062,7 @@ impl AgentCoordinator {
 				.begin_agent_dispatch_with_input(item.id.clone(), events, instruction)
 				.await?;
 		}
+
 		// The durable dispatch fence owns both effects. An uncertain injection must
 		// never be retried: native injection does not deduplicate response-item IDs.
 		let mut external_attempted = false;
@@ -1224,10 +1231,12 @@ impl AgentCoordinator {
 				external.push(wake_evidence(&event));
 			}
 		}
+
 		// Direct root input comes from the user. Delegation, scheduled wakes and
 		// capacity continuations retain application tool authority, including after
 		// deferred dispatch or recovery. Never fall back to user input on rejection.
 		let direct_root_input = events.is_empty() && item.parent_goal_id.is_none() && !retry;
+
 		// Native recovery uses a new retry turn; steering never changes an active trigger.
 		params["turnTrigger"] = serde_json::json!(if retry {
 			"retry"
@@ -1583,6 +1592,7 @@ impl AgentCoordinator {
 			},
 			_ => return Ok(false),
 		};
+
 		// Async question items can use agentMessage without a text body.
 		if completed && !params["item"]["text"].is_string() {
 			return Ok(false);
@@ -1836,6 +1846,7 @@ impl AgentCoordinator {
 		if item.active_turn_id.as_ref() != Some(&turn) {
 			return Ok(());
 		}
+
 		// Store the exact provider terminal payload before clearing active ownership.
 		let history = self.client.thread_read_turn(&thread, &turn).await;
 
@@ -2194,6 +2205,7 @@ impl AgentCoordinator {
 		if now < 0 {
 			return Err(AgentError::Invalid("invalid due-check time".into()));
 		}
+
 		// Fresh input takes precedence over a saved retry, including after restart.
 		self.wake_pending().await?;
 
@@ -2270,6 +2282,7 @@ impl AgentCoordinator {
 			if voice_calls.iter().any(|call| call.work_id == agent.id) {
 				continue;
 			}
+
 			// Release a finite batch of already-authorized dependent work. The host's
 			// ordinary due-check tick can release the next batch without a model wake.
 			self.release_ready_workers(&agent.id).await?;
@@ -2307,6 +2320,7 @@ impl AgentCoordinator {
 			if !batch.iter().any(|event| event.delivered_turn_id.is_none()) {
 				continue;
 			}
+
 			// Delivery is fenced before RPC. Failure remains visible and is never
 			// retried automatically, including after a service restart.
 			self.dispatch_with_events(

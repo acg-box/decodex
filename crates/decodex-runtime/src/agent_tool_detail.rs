@@ -73,6 +73,7 @@ fn content_parts(block: &Value, parts: &mut Vec<String>) {
 			let image = matches!(block["type"].as_str(), Some("image" | "inputImage"));
 
 			parts.push(if image { "Returned image" } else { "Returned audio" }.into());
+
 			// Code-mode blocks can include useful text alongside media.
 			append_text(parts, &block["text"]);
 		},

@@ -107,6 +107,7 @@ impl KernelExitWitness {
 		if self.positive_exit.load(Ordering::Acquire) {
 			return Ok(Some(self.kind));
 		}
+
 		#[cfg(target_os = "linux")]
 		{
 			let mut descriptor =
@@ -127,7 +128,6 @@ impl KernelExitWitness {
 
 			return Ok(None);
 		}
-
 		#[cfg(target_os = "macos")]
 		{
 			let mut event = MaybeUninit::<libc::kevent>::uninit();
@@ -185,7 +185,6 @@ pub(crate) fn current_boot_identity() -> Result<ProcessBootIdentity, ProcessPlat
 		return ProcessBootIdentity::new(format!("linux:{}", value.trim()))
 			.map_err(|_| ProcessPlatformError::BootIdentity(invalid_identity()));
 	}
-
 	#[cfg(target_os = "macos")]
 	{
 		let boot_session_uuid =
@@ -279,7 +278,6 @@ pub(crate) fn inspect_process_identity(
 		.map(Some)
 		.map_err(|_| ProcessPlatformError::ProcessIdentity(invalid_identity()))
 	}
-
 	#[cfg(target_os = "macos")]
 	{
 		let pid = i32::try_from(process_id)
@@ -298,6 +296,7 @@ pub(crate) fn inspect_process_identity(
 		if result != size {
 			return Err(ProcessPlatformError::ProcessIdentity(io::Error::last_os_error()));
 		}
+
 		// SAFETY: `proc_pidinfo` returned the complete fixed-size structure.
 		let info = unsafe { info.assume_init() };
 		// SAFETY: `getsid` performs a read-only process lookup.
@@ -328,7 +327,6 @@ pub(crate) fn inspect_process_identity(
 		.map(Some)
 		.map_err(|_| ProcessPlatformError::ProcessIdentity(invalid_identity()))
 	}
-
 	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 	{
 		let _ = (process_id, boot_id);
@@ -369,12 +367,12 @@ pub(crate) fn attach_exit_witness(
 
 			return Err(ProcessPlatformError::Observation(error));
 		}
+
 		// SAFETY: successful `pidfd_open` returns a new owned descriptor.
 		let descriptor = unsafe { OwnedFd::from_raw_fd(raw as i32) };
 
 		(descriptor, ProcessDeathEvidenceKind::LinuxPidfdExit)
 	};
-
 	#[cfg(target_os = "macos")]
 	let (descriptor, kind) = {
 		// SAFETY: `kqueue` returns a new descriptor on success.
@@ -383,6 +381,7 @@ pub(crate) fn attach_exit_witness(
 		if raw == -1 {
 			return Err(ProcessPlatformError::Observation(io::Error::last_os_error()));
 		}
+
 		// SAFETY: the successful result is a new owned descriptor.
 		let descriptor = unsafe { OwnedFd::from_raw_fd(raw) };
 		let change = libc::kevent {
@@ -717,6 +716,7 @@ mod tests {
 		drop(child.stdin.take());
 
 		child.wait().unwrap();
+
 		// The leader is gone, but its sleeping child still holds the group.
 		assert!(!super::macos_kernel_confirms_gone(&identity).unwrap());
 

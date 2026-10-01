@@ -167,6 +167,7 @@ async fn large_guardian_details_survive_native_wire_restart_and_exact_paging() {
 			Detail::Unavailable
 		);
 	}
+
 	// A second writer conflicts with the saved action. An earlier page digest must stop working.
 	event["action"]["command"] = serde_json::json!("different action");
 
@@ -227,6 +228,7 @@ async fn guardian_observations_are_monotonic_bound_durable_and_do_not_wake_work(
 	deliver(&mut agent, review("network", "denied")).await;
 	deliver(&mut agent, review("network", "denied")).await;
 	deliver(&mut agent, review("network", "inProgress")).await;
+
 	// A second lifecycle with the same target item must remain independent.
 	for id in ["execve-a", "execve-b"] {
 		let mut value = review(id, "denied");
@@ -254,6 +256,7 @@ async fn guardian_observations_are_monotonic_bound_durable_and_do_not_wake_work(
 	assert_eq!(work.dispatch_state, decodex_database::AgentDispatchState::Running);
 
 	agent.handle_event(ServerEvent::Notification {method:"turn/completed".into(), params:serde_json::json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}})}).await.unwrap();
+
 	// Native completion may be processed after the owning turn's terminal event.
 	deliver(&mut agent, review("late", "approved")).await;
 
@@ -317,6 +320,7 @@ async fn conflicting_guardian_evidence_retains_original_and_invalidates_approval
 	assert_eq!(rows.len(), 1);
 	assert!(rows[0].conflicted);
 	assert_eq!(serde_json::from_str::<Value>(&rows[0].event_json).unwrap(), original);
+
 	// A second terminal status must never turn the previous denial into approval.
 	deliver(&mut agent, review("another", "denied")).await;
 	deliver(&mut agent, review("another", "approved")).await;

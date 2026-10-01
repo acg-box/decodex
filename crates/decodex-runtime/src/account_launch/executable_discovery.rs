@@ -10,6 +10,7 @@ pub(super) fn find(requested: &Path) -> Option<PathBuf> {
 	let applications = Vec::new();
 	#[cfg(target_os = "macos")]
 	let mut applications = Vec::new();
+
 	#[cfg(target_os = "macos")]
 	if requested == Path::new("codex") {
 		if let Some(home) = env::var_os("HOME").filter(|home| !home.is_empty()) {

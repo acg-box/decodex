@@ -248,6 +248,7 @@ impl ProcessGenerationControl {
 		};
 
 		owned_process.revision = stopping.revision;
+
 		// Give the original child a bounded EOF shutdown before signaling its group.
 		// This lets Codex dispose thread-owned tools instead of orphaning their helpers.
 		let started = Instant::now();
@@ -752,6 +753,7 @@ impl ProcessGenerationControl {
 				observation: ProcessGenerationObservation::SameBootUnbound,
 			});
 		};
+
 		#[cfg(target_os = "macos")]
 		if process_platform::macos_kernel_confirms_gone(identity)
 			.map_err(|_| ProcessSupervisorError::Platform)?
@@ -868,6 +870,7 @@ impl ProcessGenerationControl {
 				{
 					return Ok(None);
 				}
+
 				// A lost bind response can leave the original `Child` owned while the durable
 				// generation remains unbound. The owned wait still proves that generation's child
 				// exited, but the evidence must not claim identity facts that did not commit.

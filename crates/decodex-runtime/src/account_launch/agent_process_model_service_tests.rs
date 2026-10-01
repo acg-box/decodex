@@ -394,6 +394,7 @@ async fn legacy_model_request_blocks_current_service_mutations_without_native_wr
 			.state,
 		"unknown"
 	);
+
 	// Historical confirmation must stay visible even after native settings change again.
 	let connection = Connection::open(owned.root.paths().product_database_file()).unwrap();
 

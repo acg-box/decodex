@@ -570,6 +570,7 @@ fn disposable_profile() -> SmokeResult<(TempDir, DecodexRoot)> {
 
 	let mut file =
 		OpenOptions::new().write(true).create_new(true).mode(0o600).open(paths.config_file())?;
+
 	// SAFETY: geteuid reads the current user's numeric identity.
 	write!(
 		file,

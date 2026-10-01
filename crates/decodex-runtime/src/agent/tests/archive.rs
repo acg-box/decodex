@@ -117,6 +117,7 @@ async fn restoration_reconciles_only_exact_positive_terminal_history_after_reope
 
 	agent.start_agent("agent", "Initial").await.unwrap();
 	agent.store.mark_agent_dispatch_unknown("agent".into()).await.unwrap();
+
 	// Reopen the durable owner while retaining the fixture transport; native state
 	// still owns the archive flag, and exact saved turn identity owns recovery.
 	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();

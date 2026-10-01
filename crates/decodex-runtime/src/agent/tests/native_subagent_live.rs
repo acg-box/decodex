@@ -108,6 +108,7 @@ async fn native_child_approval_round_trip() {
 				let payload: Value = serde_json::from_str(&saved.payload).unwrap();
 
 				assert_eq!(payload["params"]["threadId"],child);
+
 				// A root setting update must reach the next step of the already running child.
 				agent.client.request("thread/settings/update",serde_json::json!({"threadId":root,"serviceTier":null})).await.unwrap();
 				agent.respond_pending_event(pending,serde_json::json!({"decision":"decline"})).await.unwrap();

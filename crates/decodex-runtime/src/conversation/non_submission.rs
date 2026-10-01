@@ -55,6 +55,7 @@ impl ConversationRuntime {
 				.ambiguous_session(session, turn_id, ConversationAmbiguity::TurnFinalization)
 				.await;
 		}
+
 		// Read the revision changed by the evidence transaction before publishing recovery.
 		match self
 			.inner
@@ -87,6 +88,7 @@ impl ConversationRuntime {
 			.expect("derived UUID is valid"),
 		})
 		.await;
+
 		// Preserve the admitted process until the user's explicit recovery action.
 		self.recover(readback, ConversationManualRecovery::ProcessUnavailable).await
 	}

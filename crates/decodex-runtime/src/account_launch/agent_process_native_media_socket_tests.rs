@@ -21,6 +21,7 @@ pub(super) async fn check(
 	let png = include_bytes!("../../../../assets/workspace-symbols/plus.png");
 
 	fs::write(home.join("fixture.png"), png).expect("native media fixture");
+
 	// A complete two-second PCM WAV forces several public chunks.
 	let mut wav = b"RIFF".to_vec();
 
@@ -68,6 +69,7 @@ pub(super) async fn check(
 	let (generation, ..) = runtime.agent_usage_source().await.expect("native media fixture");
 
 	assert_eq!(runtime.agent_input_directory(&generation).as_deref(), home.to_str());
+
 	// Simulate native input from another client, preserving native relative paths.
 	let started = native
 		.turn_start(serde_json::json!({"threadId":thread,"cwd":thread_directory,"input":[

@@ -66,6 +66,7 @@ async fn denied_group_signal_cleans_members_and_keeps_escalation_available() {
 			}
 
 			assert_eq!(pid, member);
+
 			// SAFETY: this PID is our fixture's current group member.
 			if unsafe { libc::kill(pid, signal) } == 0 {
 				Ok(())

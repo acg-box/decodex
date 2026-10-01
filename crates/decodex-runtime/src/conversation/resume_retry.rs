@@ -22,6 +22,7 @@ where
 		) {
 			break;
 		}
+
 		// No supervisor lock is held while waiting. The closure fences each send.
 		time::sleep(Duration::from_secs(delay)).await;
 

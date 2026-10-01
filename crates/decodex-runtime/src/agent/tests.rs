@@ -664,6 +664,7 @@ async fn asynchronous_questions_and_usage_are_observed_without_completing_or_wak
 			.await
 			.unwrap();
 	}
+
 	// Freeform async updates use final_answer without completing the active turn.
 	let update = serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{
 		"id":"freeform-update","type":"agentMessage","delivery":"async",
@@ -2714,6 +2715,7 @@ async fn async_question_answers_survive_replay_and_reopening_without_waking_work
 	.unwrap();
 	let response = serde_json::json!({"type":"userMessage","id":"answer","content":[{"type":"text","text":reply.as_str()}]});
 	let questions = serde_json::json!({"type":"agentMessage","delivery":"async","id":"questions","text":"Choose","questions":[{"title":"Same","options":["A","B"]},{"title":"Same","options":["A","B"]}]});
+
 	// A committed answer can arrive before the corresponding history item.
 	for item in [response, questions.clone(), questions.clone()] {
 		coordinator
@@ -2748,6 +2750,7 @@ async fn async_question_answers_survive_replay_and_reopening_without_waking_work
 	let reopened = SqliteStore::open(&paths).unwrap();
 
 	assert_eq!(reopened.read_agent_async_questions("agent".into()).await.unwrap().len(), 1);
+
 	// Older desktop replies identify the source message and resolve all its questions.
 	reopened
 		.resolve_agent_async_questions("opaque thread/1".into(), vec!["questions".into()])
@@ -3963,6 +3966,7 @@ async fn async_question_skip_is_source_bound_durable_and_never_a_native_answer()
 	);
 	assert!(agent.store.list_pending_agent_events(100).await.unwrap().is_empty());
 	assert!(sent.try_recv().is_err());
+
 	// Recovery and transport-uncertain answers cannot be hidden by a skip.
 	reopened
 		.request_agent_async_recovery("opaque thread/1".into(), "skip-source".into())

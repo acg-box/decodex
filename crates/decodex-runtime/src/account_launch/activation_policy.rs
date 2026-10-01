@@ -76,6 +76,7 @@ impl ActivationPolicy {
 				_ => return Err(()),
 			}
 		};
+
 		// Change only the origin of the existing activation endpoint. Account APIs keep
 		// their separate account backend; no provider URL or thread is created here.
 		responses_url.set_path("/backend-api/codex/responses");

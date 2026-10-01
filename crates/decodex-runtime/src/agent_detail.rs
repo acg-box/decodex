@@ -278,6 +278,7 @@ fn page(
 	{
 		return None;
 	}
+
 	// Eight KiB stays within a public frame even if every byte needs JSON escaping.
 	let mut end = (offset + 8 * 1_024).min(text.len());
 

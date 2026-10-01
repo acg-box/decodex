@@ -546,6 +546,7 @@ impl ConversationRuntime {
 
 			agent_retirement_retry(slot.as_ref(), &request.root_id)?
 		};
+
 		// A prior close can outlive its bounded wait. Recheck only the revoked
 		// owner's exact death authority; never replace a live or foreign owner.
 		if retry_retirement && !self.retire_agent_slot().await {
@@ -6976,6 +6977,7 @@ mod tests {
 			.unwrap(),
 			client: None,
 		};
+
 		// A failed retirement retains this slot: later checks must still request
 		// exact retirement, not treat the existing slot as a permanent conflict.
 		for _ in 0..3 {

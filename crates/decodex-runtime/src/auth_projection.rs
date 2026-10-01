@@ -395,6 +395,7 @@ fn project_shared_codex_auth_with_precondition_at(
 		None,
 		fault,
 	)?;
+
 	#[cfg(test)]
 	if fault == ProjectionFault::AfterRenamePathRevalidation {
 		return Err(after_projection_error(mutation, CodexAuthProjectionError::Unavailable));
@@ -482,6 +483,7 @@ fn project_to_directory_inner(
 		TemporaryEntry { directory: directory.as_raw_fd(), name: temporary_name, renamed: false };
 
 	temporary.write_all(&encoded).map_err(|_| CodexAuthProjectionError::Unavailable)?;
+
 	#[cfg(test)]
 	if fault == ProjectionFault::AfterTemporaryWrite {
 		return Err(CodexAuthProjectionError::Unavailable);
@@ -504,6 +506,7 @@ fn project_to_directory_inner(
 	{
 		return Err(CodexAuthProjectionError::SourceChanged);
 	}
+
 	#[cfg(test)]
 	if fault == ProjectionFault::BeforeRename {
 		return Err(CodexAuthProjectionError::Unavailable);
@@ -532,12 +535,14 @@ fn project_to_directory_inner(
 
 	set_exact_mode(&projected).map_err(|_| CodexAuthProjectionError::OutcomeUnknown)?;
 	validate_target_file(&projected).map_err(|_| CodexAuthProjectionError::OutcomeUnknown)?;
+
 	#[cfg(test)]
 	if fault == ProjectionFault::AfterRenameFileSync {
 		return Err(CodexAuthProjectionError::OutcomeUnknown);
 	}
 
 	projected.sync_all().map_err(|_| CodexAuthProjectionError::OutcomeUnknown)?;
+
 	#[cfg(test)]
 	if fault == ProjectionFault::AfterRenameReadback {
 		return Err(CodexAuthProjectionError::OutcomeUnknown);
@@ -545,6 +550,7 @@ fn project_to_directory_inner(
 
 	readback_exact(&mut projected, &encoded)
 		.map_err(|_| CodexAuthProjectionError::OutcomeUnknown)?;
+
 	#[cfg(test)]
 	if fault == ProjectionFault::AfterRenameParentSync {
 		return Err(CodexAuthProjectionError::OutcomeUnknown);
@@ -591,6 +597,7 @@ fn encode_auth(
 
 	let id_token = id_token.ok_or(CodexAuthProjectionError::MissingIdentityToken)?;
 	#[derive(Serialize)]
+
 	struct Tokens<'a> {
 		id_token: &'a str,
 		access_token: &'a str,

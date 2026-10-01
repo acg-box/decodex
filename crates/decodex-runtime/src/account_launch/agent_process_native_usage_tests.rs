@@ -71,6 +71,7 @@ async fn installed_native_usage_restores_agent_baseline_after_cold_resume() {
 	drop(store);
 
 	let store = SqliteStore::open(&root.paths()).unwrap();
+
 	// A disconnected reader can have no trustworthy local baseline.
 	store.validate_agent_usage_resume(thread.clone(), None).await.unwrap();
 

@@ -374,6 +374,7 @@ mod tests {
 					.is_err()
 			);
 		});
+
 		// The transport has published a settings event, but the Agent reducer has not consumed it.
 		client.native_recovery_auth(client.history_guard(0).unwrap()).await.unwrap();
 

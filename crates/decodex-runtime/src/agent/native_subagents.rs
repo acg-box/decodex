@@ -43,6 +43,7 @@ pub(crate) async fn request_owner(
 
 			let parent =
 				agent::exact(&native, "/thread/source/subAgent/thread_spawn/parent_thread_id")?;
+
 			// Forks and independently created workers do not establish native child authority.
 			if native["thread"]["parentThreadId"].as_str() != Some(&parent) {
 				break;

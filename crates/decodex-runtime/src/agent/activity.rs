@@ -114,6 +114,7 @@ fn authentication_required(item: &Value) -> bool {
 	if item["status"] != "failed" {
 		return false;
 	}
+
 	// Native MCP uses a string for local expiry and an array for HTTP challenges.
 	// Only project the reconnect signal, never challenge URLs or transport details.
 	let valid = |value: &Value| value.as_str().is_some_and(|text| !text.trim().is_empty());

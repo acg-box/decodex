@@ -43,6 +43,7 @@ impl RuntimeSkillRoots {
 		let Some(roots) = &self.0 else {
 			return Ok(());
 		};
+
 		// Native owns discovery, watching, and replacement. Never edit plugin configuration.
 		match time::timeout(
 			Duration::from_secs(15),
@@ -97,6 +98,7 @@ mod tests {
 
 				w.write_all(format!("{response}\n").as_bytes()).await.unwrap();
 			});
+
 			// An absent setting makes no native request, so the first request is the explicit
 			// setup.
 			RuntimeSkillRoots::parse(None).unwrap().apply(&client).await.unwrap();

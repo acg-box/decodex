@@ -54,6 +54,7 @@ impl AgentCoordinator {
 				{
 					continue;
 				}
+
 				// Join an already active native thread, without any execution-setting override.
 				let Ok(resumed) = self.client.thread_resume(Self::resume_params(&thread)).await
 				else {
@@ -111,6 +112,7 @@ impl AgentCoordinator {
 		if goal.status != NativeThreadGoalStatus::Active {
 			return Ok(());
 		}
+
 		// Hydrate native goal ownership; only the native scheduler admits continuation.
 		// Do not reapply initial settings or submit a synthetic local input.
 		if let Ok(resumed) = self.client.thread_resume(Self::resume_params(thread)).await

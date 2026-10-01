@@ -77,6 +77,7 @@ async fn qualify() {
 			break;
 		}
 	}
+
 	// A second native process reads the persisted source through the production bridge.
 	let observer = NativeSession::start(&binary, home.path());
 
@@ -187,6 +188,7 @@ async fn qualify_active() {
 	let thread = started["thread"]["id"].as_str().expect("thread").to_owned();
 
 	client.request("thread/goal/set",serde_json::json!({"threadId":thread,"objective":"Return a short fixture answer","status":"active","tokenBudget":1})).await.expect("activate goal");
+
 	// Hold the fake provider until the active goal has accumulated a whole second.
 	time::sleep(Duration::from_millis(1_200)).await;
 
@@ -211,6 +213,7 @@ async fn qualify_active() {
 			break params["goal"].clone();
 		}
 	};
+
 	// Budget-limited time must stop advancing, and no new inference may start.
 	time::sleep(Duration::from_millis(1_200)).await;
 

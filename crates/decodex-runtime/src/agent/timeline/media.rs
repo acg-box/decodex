@@ -261,6 +261,7 @@ fn sniff(bytes: &[u8]) -> Option<&'static str> {
 
 fn chunk(key: &SourceKey, request: &AgentMediaRequest, mime: String, bytes: Vec<u8>) -> Result {
 	let mut hash = Sha256::new();
+
 	// Structured fields bind every source transition and the exact native attachment.
 	hash.update(
 		serde_json::to_vec(&serde_json::json!([
@@ -327,6 +328,7 @@ async fn resolve(
 			if original.is_absolute() {
 				return local_media(path).await;
 			}
+
 			// Relative user input is interpreted by the admitted native process,
 			// not by this service or a child thread's configured directory.
 			let base = directory

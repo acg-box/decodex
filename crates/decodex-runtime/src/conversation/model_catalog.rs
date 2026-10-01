@@ -42,6 +42,7 @@ impl ConversationRuntime {
 
 		let runtime = self.clone();
 		let key = key.to_owned();
+
 		// The runtime owns completion and cleanup even when the requesting client leaves.
 		workers.spawn(async move {
 			let _permit = permit;
@@ -197,6 +198,7 @@ impl ConversationRuntime {
 		drop(credential.launch_guard);
 
 		let result = if initialized.is_ok() { read(&mut child) } else { None };
+
 		// Cleanup failure cannot produce a successful catalog observation.
 		child.shutdown().ok()?;
 		selected.revalidate().ok()?;

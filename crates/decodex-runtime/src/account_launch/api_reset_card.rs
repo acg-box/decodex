@@ -82,6 +82,7 @@ impl ApiResetCardRuntime {
 		if revision <= 0 {
 			return Err(ResetCardServiceError::InvalidRequest);
 		}
+
 		// Durable replay precedes current account/provider checks, including after logout.
 		if let Some(old) =
 			self.0.store.reset_card_operation(key.to_owned()).await.map_err(map_store)?
@@ -218,6 +219,7 @@ impl ApiResetCardRuntime {
 		) else {
 			return;
 		};
+
 		// Commit the no-retry barrier BEFORE the request can leave this process.
 		if !matches!(self.0.store.begin_reset_card_send(operation.key.clone()).await, Ok(true)) {
 			return;
