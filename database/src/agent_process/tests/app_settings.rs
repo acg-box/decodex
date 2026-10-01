@@ -1,36 +1,24 @@
 //! Request-scoped app edits share native file arbitration with hooks, without approving tools.
-use super::{
-	hooks::{identity, owner, setup},
-	*,
-};
 use crate::{
 	AgentAppSettingsAttempt, AgentAppSettingsObservation, AgentConfigReceipt, EnqueueAgentEvent,
+	SqliteStore,
+	agent_process::tests::{self, DIGEST, OTHER_DIGEST, hooks},
 };
-use serde_json::json;
+use decodex_core::{
+	ProcessAuthorityLossReason, ProcessBootIdentity, ProcessDeathEvidence, ProcessDeathEvidenceId,
+	ProcessDeathEvidenceKind,
+};
 
-async fn request(store: &SqliteStore, n: u8, child: bool) -> i64 {
-	let o = owner(n);
-
-	store.enqueue_agent_event(EnqueueAgentEvent {
-        source_event_id:format!("app-request-{n}-{child}"),work_item_id:o.work,
-        event_kind:"server_request_pending".into(),
-        payload:json!({"id":format!("approval-{n}"),"ownerThreadId":o.thread,
-            "method":"mcpServer/elicitation/request","params":{"threadId":if child {"native-child"} else {&o.thread},
-            "turnId":"previous-originating-turn","serverName":"codex_apps",
-            "_meta":{"connector_id":"calendar","link_id":" work.link ","source":"connector"},
-            "tool_params":{"link_id":"untrusted-other-link"}}}).to_string()
-    }).await.unwrap().id
-}
 fn attempt(n: u8, event: i64, token: char, previous: Option<i64>) -> AgentAppSettingsAttempt {
 	AgentAppSettingsAttempt {
-		owner: owner(n),
+		owner: hooks::owner(n),
 		request_event_id: Some(event),
 		scope: DIGEST.into(),
 		connector: "calendar".into(),
 		link: " work.link ".into(),
 		field: "default_tools_approval_mode".into(),
-		value: Some(json!("approve")),
-		previous_value: Some(json!("prompt")),
+		value: Some(serde_json::json!("approve")),
+		previous_value: Some(serde_json::json!("prompt")),
 		config_version: "before".into(),
 		review_token: token.to_string().repeat(64),
 		attempt_id: format!("attempt-{token}"),
@@ -39,21 +27,35 @@ fn attempt(n: u8, event: i64, token: char, previous: Option<i64>) -> AgentAppSet
 }
 fn observation(n: u8, value: Option<&str>) -> AgentAppSettingsObservation {
 	AgentAppSettingsObservation {
-		owner: owner(n),
+		owner: hooks::owner(n),
 		scope: DIGEST.into(),
 		connector: "calendar".into(),
 		link: " work.link ".into(),
 		field: "default_tools_approval_mode".into(),
-		value: value.map(|v| json!(v)),
+		value: value.map(|v| serde_json::json!(v)),
 		config_version: "after".into(),
 	}
+}
+
+async fn request(store: &SqliteStore, n: u8, child: bool) -> i64 {
+	let o = hooks::owner(n);
+
+	store.enqueue_agent_event(EnqueueAgentEvent {
+        source_event_id:format!("app-request-{n}-{child}"),work_item_id:o.work,
+        event_kind:"server_request_pending".into(),
+        payload:serde_json::json!({"id":format!("approval-{n}"),"ownerThreadId":o.thread,
+            "method":"mcpServer/elicitation/request","params":{"threadId":if child {"native-child"} else {&o.thread},
+            "turnId":"previous-originating-turn","serverName":"codex_apps",
+            "_meta":{"connector_id":"calendar","link_id":" work.link ","source":"connector"},
+            "tool_params":{"link_id":"untrusted-other-link"}}}).to_string()
+    }).await.unwrap().id
 }
 
 #[tokio::test]
 async fn app_review_is_exact_single_use_and_does_not_answer_pending_request() {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("apps.sqlite3");
-	let store = setup(&path).await;
+	let store = hooks::setup(&path).await;
 	let event = request(&store, 1, false).await;
 	let mut wrong = attempt(1, event, 'a', None);
 
@@ -63,7 +65,7 @@ async fn app_review_is_exact_single_use_and_does_not_answer_pending_request() {
 
 	let mut wrong = attempt(1, event, 'a', None);
 
-	wrong.owner.account = owner(2).account;
+	wrong.owner.account = hooks::owner(2).account;
 
 	assert!(store.reserve_agent_app_settings_attempt(wrong).await.is_err());
 
@@ -123,7 +125,7 @@ async fn app_review_is_exact_single_use_and_does_not_answer_pending_request() {
 	let mut replay = attempt(1, event, 'a', Some(id));
 
 	replay.field = "approvals_reviewer".into();
-	replay.value = Some(json!("user"));
+	replay.value = Some(serde_json::json!("user"));
 	replay.previous_value = None;
 
 	assert!(
@@ -165,7 +167,7 @@ async fn app_review_is_exact_single_use_and_does_not_answer_pending_request() {
 #[tokio::test]
 async fn app_and_hook_writes_share_one_file_across_accounts() {
 	let dir = tempfile::tempdir().unwrap();
-	let store = setup(&dir.path().join("shared.sqlite3")).await;
+	let store = hooks::setup(&dir.path().join("shared.sqlite3")).await;
 	let event = request(&store, 2, false).await;
 	let hook =
 		store.reserve_agent_hook_setting(hooks::attempt(1, 'a', None)).await.unwrap().unwrap();
@@ -260,12 +262,12 @@ async fn app_and_hook_writes_share_one_file_across_accounts() {
 async fn app_removal_recovery_requires_exact_target_or_dead_writer() {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("recovery.sqlite3");
-	let store = setup(&path).await;
+	let store = hooks::setup(&path).await;
 	let event = request(&store, 1, false).await;
 	let mut removal = attempt(1, event, 'a', None);
 
 	removal.value = None;
-	removal.previous_value = Some(json!("future-mode"));
+	removal.previous_value = Some(serde_json::json!("future-mode"));
 
 	let id = store.reserve_agent_app_settings_attempt(removal.clone()).await.unwrap().unwrap();
 
@@ -297,9 +299,9 @@ async fn app_removal_recovery_requires_exact_target_or_dead_writer() {
 
 	store
 		.mark_process_generation_death_unknown(
-			&generation_id(1),
+			&tests::generation_id(1),
 			3,
-			decodex_core::ProcessAuthorityLossReason::SupervisorRestarted,
+			ProcessAuthorityLossReason::SupervisorRestarted,
 		)
 		.await
 		.unwrap();
@@ -310,10 +312,10 @@ async fn app_removal_recovery_requires_exact_target_or_dead_writer() {
 
 	let evidence = ProcessDeathEvidence::new(
 		ProcessDeathEvidenceId::new("50000000-0000-4000-8000-000000000001").unwrap(),
-		generation_id(1),
+		tests::generation_id(1),
 		ProcessDeathEvidenceKind::OwnedChildExit,
 		ProcessBootIdentity::new("fixture-boot").unwrap(),
-		Some(identity(123)),
+		Some(hooks::identity(123)),
 		DIGEST,
 	)
 	.unwrap();
@@ -359,7 +361,7 @@ async fn app_removal_recovery_requires_exact_target_or_dead_writer() {
 async fn concurrent_app_and_hook_reservations_have_only_one_winner() {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("concurrent.sqlite3");
-	let store = setup(&path).await;
+	let store = hooks::setup(&path).await;
 	let other = SqliteStore::open_test(&path).unwrap();
 	let event = request(&store, 2, false).await;
 	let (hook, app) = tokio::join!(
@@ -378,13 +380,13 @@ async fn concurrent_app_and_hook_reservations_have_only_one_winner() {
 async fn saved_connection_edits_reuse_receipts_without_requiring_another_tool_request() {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("saved-apps.sqlite3");
-	let store = setup(&path).await;
+	let store = hooks::setup(&path).await;
 	let event = request(&store, 1, false).await;
 	let original = attempt(1, event, 'a', None);
 
 	assert_eq!(
 		serde_json::to_value(&original).unwrap()["request_event_id"],
-		json!(event),
+		serde_json::json!(event),
 		"keep prior request receipt format"
 	);
 
@@ -404,12 +406,12 @@ async fn saved_connection_edits_reuse_receipts_without_requiring_another_tool_re
 	let mut saved = attempt(2, event, 'b', Some(first));
 
 	saved.request_event_id = None;
-	saved.previous_value = Some(json!("approve"));
+	saved.previous_value = Some(serde_json::json!("approve"));
 	saved.value = None;
 
 	let mut foreign = saved.clone();
 
-	foreign.owner.account = owner(1).account;
+	foreign.owner.account = hooks::owner(1).account;
 
 	assert!(store.reserve_agent_app_settings_attempt(foreign).await.is_err());
 
@@ -450,7 +452,7 @@ async fn connector_exposure_shares_config_arbitration_and_recovers_after_reopen(
 async fn exposure_recovery(hook_first: bool) {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("exposure.sqlite3");
-	let store = setup(&path).await;
+	let store = hooks::setup(&path).await;
 	let mut exposure = attempt(1, 0, 'a', None);
 
 	exposure.request_event_id = None;
@@ -458,7 +460,7 @@ async fn exposure_recovery(hook_first: bool) {
 	exposure.link.clear();
 
 	exposure.field = "omit_tools_from".into();
-	exposure.value = Some(json!([]));
+	exposure.value = Some(serde_json::json!([]));
 	exposure.previous_value = None;
 
 	for field in ["approvals_reviewer", "default_tools_approval_mode"] {
@@ -477,9 +479,10 @@ async fn exposure_recovery(hook_first: bool) {
 
 	let mut invalid = exposure.clone();
 
-	invalid.value = Some(json!(["future"]));
+	invalid.value = Some(serde_json::json!(["future"]));
 
 	assert!(store.reserve_agent_app_settings_attempt(invalid).await.is_err());
+
 	// The separate race test covers exclusion. Exercise both recovery orders here.
 	let previous_hook = if hook_first {
 		let id =
@@ -520,7 +523,7 @@ async fn exposure_recovery(hook_first: bool) {
 	let store = SqliteStore::open_test(&path).unwrap();
 	let r = store.agent_app_settings_receipt(DIGEST.into()).await.unwrap().unwrap();
 
-	assert_eq!(r.attempt.value, Some(json!([])));
+	assert_eq!(r.attempt.value, Some(serde_json::json!([])));
 	assert_eq!(r.state, "reserved");
 
 	let mut observed = observation(1, None);
@@ -539,7 +542,7 @@ async fn exposure_recovery(hook_first: bool) {
 	observed.link.clear();
 
 	observed.field = "omit_tools_from".into();
-	observed.value = Some(json!([]));
+	observed.value = Some(serde_json::json!([]));
 
 	assert!(store.observe_agent_app_settings(id, observed).await.unwrap());
 
