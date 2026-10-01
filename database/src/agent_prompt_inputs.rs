@@ -1,7 +1,9 @@
 //! Immutable canonical input. Admission and dispatch remain with the existing Agent owner.
-use crate::{SqliteStore, StoreError, error::sqlite_error, unix_micros};
-use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior, params};
+use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior};
 use serde_json::Value;
+
+use crate::{SqliteStore, StoreError, agent_prompt_edit, error};
+use decodex_core::{BlobHash, MAX_NATIVE_MESSAGE_BYTES};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AgentPromptInput {
@@ -11,35 +13,6 @@ pub struct AgentPromptInput {
 	pub edit_receipt_id: i64,
 	pub sha256: String,
 	pub content: Vec<Value>,
-}
-
-fn read(
-	c: &Connection,
-	id: i64,
-	work: &str,
-	thread: &str,
-) -> Result<Option<AgentPromptInput>, StoreError> {
-	let row: Option<(i64, String, String)> = c.query_row(
-		"SELECT edit_receipt_id,sha256,content FROM agent_prompt_inputs WHERE id=?1 AND work_item_id=?2 AND thread_id=?3",
-		params![id,work,thread], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
-	).optional().map_err(sqlite_error)?;
-
-	row.map(|(edit_receipt_id, sha256, content)| {
-		if decodex_core::BlobHash::digest(content.as_bytes()).to_hex() != sha256 {
-			return Err(StoreError::InvalidInput("saved prompt input digest does not match"));
-		}
-
-		Ok(AgentPromptInput {
-			id,
-			work: work.into(),
-			thread: thread.into(),
-			edit_receipt_id,
-			sha256,
-			content: serde_json::from_str(&content)
-				.map_err(|_| StoreError::InvalidInput("saved prompt input is invalid"))?,
-		})
-	})
-	.transpose()
 }
 
 impl SqliteStore {
@@ -53,7 +26,7 @@ impl SqliteStore {
 	) -> Result<Option<i64>, StoreError> {
 		self.run(move |c| {
 			let source = serde_json::json!(["user_message",work,command_key]).to_string();
-			let row: Option<(i64,String)> = c.query_row("SELECT id,payload FROM agent_inbox_events WHERE source_event_id=?1 AND work_item_id=?2 AND event_kind='user_message'", params![source,work], |r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(sqlite_error)?;
+			let row: Option<(i64,String)> = c.query_row("SELECT id,payload FROM agent_inbox_events WHERE source_event_id=?1 AND work_item_id=?2 AND event_kind='user_message'", rusqlite::params![source,work], |r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(error::sqlite_error)?;
 			let Some((id,payload)) = row else { return Ok(None); };
 			let payload: Value = serde_json::from_str(&payload).map_err(|_|StoreError::InvalidInput("invalid input receipt"))?;
 
@@ -71,7 +44,7 @@ impl SqliteStore {
 		total_bytes: i64,
 	) -> Result<Option<i64>, StoreError> {
 		self.run(move |c| {
-			c.query_row("SELECT id FROM agent_prompt_inputs WHERE work_item_id=?1 AND thread_id=?2 AND edit_receipt_id=?3 AND sha256=?4 AND length(CAST(content AS BLOB))=?5", params![work,thread,edit_receipt_id,sha256,total_bytes], |r|r.get(0)).optional().map_err(|error|sqlite_error(error).into())
+			c.query_row("SELECT id FROM agent_prompt_inputs WHERE work_item_id=?1 AND thread_id=?2 AND edit_receipt_id=?3 AND sha256=?4 AND length(CAST(content AS BLOB))=?5", rusqlite::params![work,thread,edit_receipt_id,sha256,total_bytes], |r|r.get(0)).optional().map_err(|error|error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -95,29 +68,29 @@ impl SqliteStore {
 		let encoded = serde_json::to_string(&content)
 			.map_err(|_| StoreError::InvalidInput("invalid canonical input"))?;
 
-		if encoded.len() > decodex_core::MAX_NATIVE_MESSAGE_BYTES {
+		if encoded.len() > MAX_NATIVE_MESSAGE_BYTES {
 			return Err(StoreError::InvalidInput("canonical input is too large"));
 		}
 
-		let hash = decodex_core::BlobHash::digest(encoded.as_bytes()).to_hex();
+		let hash = BlobHash::digest(encoded.as_bytes()).to_hex();
 
 		self.run(move |c| {
-			let tx = c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
-			let receipt = crate::agent_prompt_edit::receipt(&tx, edit_receipt_id)?.ok_or(StoreError::InvalidInput("prompt edit receipt is missing"))?;
-			let bound: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2)", params![work,thread], |r| r.get(0)).map_err(sqlite_error)?;
+			let tx = c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
+			let receipt = agent_prompt_edit::receipt(&tx, edit_receipt_id)?.ok_or(StoreError::InvalidInput("prompt edit receipt is missing"))?;
+			let bound: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2)", rusqlite::params![work,thread], |r| r.get(0)).map_err(error::sqlite_error)?;
 
 			if !bound || receipt.attempt.work != work || receipt.attempt.thread != thread || !matches!(receipt.state.as_str(), "applied" | "draft_restored") {
 				return Err(StoreError::InvalidInput("prompt input does not belong to an applied edit"));
 			}
 
-			tx.execute("INSERT INTO agent_prompt_inputs(work_item_id,thread_id,edit_receipt_id,sha256,content,created_at_micros) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(edit_receipt_id,sha256) DO NOTHING", params![work,thread,edit_receipt_id,hash,encoded,unix_micros()?]).map_err(sqlite_error)?;
+			tx.execute("INSERT INTO agent_prompt_inputs(work_item_id,thread_id,edit_receipt_id,sha256,content,created_at_micros) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(edit_receipt_id,sha256) DO NOTHING", rusqlite::params![work,thread,edit_receipt_id,hash,encoded,crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
-			let id = tx.query_row("SELECT id FROM agent_prompt_inputs WHERE edit_receipt_id=?1 AND sha256=?2", params![edit_receipt_id,hash], |r|r.get(0)).map_err(sqlite_error)?;
+			let id = tx.query_row("SELECT id FROM agent_prompt_inputs WHERE edit_receipt_id=?1 AND sha256=?2", rusqlite::params![edit_receipt_id,hash], |r|r.get(0)).map_err(error::sqlite_error)?;
 			let saved = read(&tx,id,&work,&thread)?.ok_or(StoreError::InvalidInput("prompt input source changed"))?;
 
 			if saved.content != content { return Err(StoreError::InvalidInput("prompt input content changed")); }
 
-			tx.commit().map_err(sqlite_error)?;
+			tx.commit().map_err(error::sqlite_error)?;
 
 			Ok(saved)
 		}).await
@@ -155,8 +128,8 @@ pub(crate) fn validate_queued_input(
 		.ok_or(StoreError::InvalidInput("invalid edit receipt"))?;
 	let hash =
 		reference["sha256"].as_str().ok_or(StoreError::InvalidInput("invalid input digest"))?;
-	let valid: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM agent_prompt_inputs i JOIN agent_work_items w ON w.id=i.work_item_id AND w.codex_thread_id=i.thread_id WHERE i.id=?1 AND i.work_item_id=?2 AND i.thread_id=?3 AND i.edit_receipt_id=?4 AND i.sha256=?5)", params![id,work,thread,receipt_id,hash], |r|r.get(0)).map_err(sqlite_error)?;
-	let receipt = crate::agent_prompt_edit::receipt(c, receipt_id)?
+	let valid: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM agent_prompt_inputs i JOIN agent_work_items w ON w.id=i.work_item_id AND w.codex_thread_id=i.thread_id WHERE i.id=?1 AND i.work_item_id=?2 AND i.thread_id=?3 AND i.edit_receipt_id=?4 AND i.sha256=?5)", rusqlite::params![id,work,thread,receipt_id,hash], |r|r.get(0)).map_err(error::sqlite_error)?;
+	let receipt = agent_prompt_edit::receipt(c, receipt_id)?
 		.ok_or(StoreError::InvalidInput("edit receipt is missing"))?;
 
 	if !valid || receipt.state != "draft_restored" {
@@ -164,4 +137,33 @@ pub(crate) fn validate_queued_input(
 	}
 
 	Ok(())
+}
+
+fn read(
+	c: &Connection,
+	id: i64,
+	work: &str,
+	thread: &str,
+) -> Result<Option<AgentPromptInput>, StoreError> {
+	let row: Option<(i64, String, String)> = c.query_row(
+		"SELECT edit_receipt_id,sha256,content FROM agent_prompt_inputs WHERE id=?1 AND work_item_id=?2 AND thread_id=?3",
+		rusqlite::params![id,work,thread], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
+	).optional().map_err(error::sqlite_error)?;
+
+	row.map(|(edit_receipt_id, sha256, content)| {
+		if BlobHash::digest(content.as_bytes()).to_hex() != sha256 {
+			return Err(StoreError::InvalidInput("saved prompt input digest does not match"));
+		}
+
+		Ok(AgentPromptInput {
+			id,
+			work: work.into(),
+			thread: thread.into(),
+			edit_receipt_id,
+			sha256,
+			content: serde_json::from_str(&content)
+				.map_err(|_| StoreError::InvalidInput("saved prompt input is invalid"))?,
+		})
+	})
+	.transpose()
 }
