@@ -3760,7 +3760,6 @@ impl AccountService {
 	}
 
 	/// Apply one manual recovery command and commit its phase/result projection atomically.
-	#[allow(clippy::too_many_lines)] // Keep every finite manual-recovery branch in one auditable sequence.
 	pub(crate) async fn recover_operation_command<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
@@ -3787,13 +3786,12 @@ impl AccountService {
 		};
 		let lock = self.lock_for(&initial.account_id)?;
 		let _guard = lock.lock().await;
-		let mut build_response = Some(build_response);
 		let Some(operation) = self.store.read_account_operation(operation_id).await? else {
 			return self
 				.complete_recovery_command_error(
 					lease,
 					AccountLifecycleError::InvalidOperation,
-					build_response.take().expect("builder is retained"),
+					build_response,
 				)
 				.await;
 		};
@@ -3803,7 +3801,7 @@ impl AccountService {
 				.complete_recovery_command_error(
 					lease,
 					AccountLifecycleError::InvalidOperation,
-					build_response.take().expect("builder is retained"),
+					build_response,
 				)
 				.await;
 		}
@@ -3820,7 +3818,7 @@ impl AccountService {
 					.complete_recovery_command_error(
 						lease,
 						AccountLifecycleError::InvalidOperation,
-						build_response.take().expect("builder is retained"),
+						build_response,
 					)
 					.await;
 			},
@@ -3836,7 +3834,7 @@ impl AccountService {
 					operation.phase,
 					None,
 					outcome,
-					build_response.take().expect("builder is retained"),
+					build_response,
 				)
 				.await;
 		}
@@ -3848,58 +3846,13 @@ impl AccountService {
 				.complete_recovery_command_error(
 					lease,
 					AccountLifecycleError::StaleAccount,
-					build_response.take().expect("builder is retained"),
+					build_response,
 				)
 				.await;
 		}
 		if action == AccountManualRecoveryAction::CancelBeforeEffect {
-			let proven = match (operation.phase, operation.kind) {
-				(
-					AccountOperationPhase::Prepared,
-					AccountOperationKind::Enroll | AccountOperationKind::Import,
-				)
-				| (
-					AccountOperationPhase::RecoveryRequired,
-					AccountOperationKind::Enroll | AccountOperationKind::Import,
-				) => operation.target.as_ref().is_some_and(|target| {
-					matches!(
-						self.credentials.read_exact(&operation.account_id, target),
-						Err(CredentialStoreError::NotFound)
-					)
-				}),
-				(
-					AccountOperationPhase::Prepared,
-					AccountOperationKind::Refresh | AccountOperationKind::Logout,
-				) => operation.expected.as_ref().is_some_and(|expected| {
-					self.credentials.read_exact(&operation.account_id, expected).is_ok()
-				}),
-				(AccountOperationPhase::RecoveryRequired, AccountOperationKind::Logout) =>
-					operation.expected.as_ref().is_some_and(|expected| {
-						self.credentials.read_exact(&operation.account_id, expected).is_ok()
-					}),
-				(AccountOperationPhase::RecoveryRequired, AccountOperationKind::Refresh)
-					if operation.recovery_operation_id.is_some() =>
-					operation.expected.as_ref().is_some_and(|expected| {
-						self.credentials.read_exact(&operation.account_id, expected).is_ok()
-					}),
-				_ => false,
-			};
-			let (target, outcome) = if proven {
-				(AccountOperationPhase::Cancelled, AccountManualRecoveryOutcome::Cancelled)
-			} else {
-				(operation.phase, AccountManualRecoveryOutcome::StillRequiresRecovery)
-			};
-
 			return self
-				.complete_recovery_operation_command(
-					lease,
-					operation_id,
-					operation.phase,
-					target,
-					None,
-					outcome,
-					build_response.take().expect("builder is retained"),
-				)
+				.cancel_recovery_before_effect(lease, operation_id, &operation, build_response)
 				.await;
 		}
 		if operation.phase == AccountOperationPhase::StoreApplied {
@@ -3911,11 +3864,91 @@ impl AccountService {
 					AccountOperationPhase::Committed,
 					None,
 					AccountManualRecoveryOutcome::Committed,
-					build_response.take().expect("builder is retained"),
+					build_response,
 				)
 				.await;
 		}
 
+		self.reconcile_recovery_command(lease, operation_id, &operation, build_response).await
+	}
+
+	async fn cancel_recovery_before_effect<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		operation_id: &AccountOperationId,
+		operation: &AccountOperation,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(
+				Result<(AccountManualRecoveryOutcome, &AccountRecord), AccountLifecycleError>,
+			) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
+		let proven = match (operation.phase, operation.kind) {
+			(
+				AccountOperationPhase::Prepared,
+				AccountOperationKind::Enroll | AccountOperationKind::Import,
+			)
+			| (
+				AccountOperationPhase::RecoveryRequired,
+				AccountOperationKind::Enroll | AccountOperationKind::Import,
+			) => operation.target.as_ref().is_some_and(|target| {
+				matches!(
+					self.credentials.read_exact(&operation.account_id, target),
+					Err(CredentialStoreError::NotFound)
+				)
+			}),
+			(
+				AccountOperationPhase::Prepared,
+				AccountOperationKind::Refresh | AccountOperationKind::Logout,
+			) => operation.expected.as_ref().is_some_and(|expected| {
+				self.credentials.read_exact(&operation.account_id, expected).is_ok()
+			}),
+			(AccountOperationPhase::RecoveryRequired, AccountOperationKind::Logout) =>
+				operation.expected.as_ref().is_some_and(|expected| {
+					self.credentials.read_exact(&operation.account_id, expected).is_ok()
+				}),
+			(AccountOperationPhase::RecoveryRequired, AccountOperationKind::Refresh)
+				if operation.recovery_operation_id.is_some() =>
+				operation.expected.as_ref().is_some_and(|expected| {
+					self.credentials.read_exact(&operation.account_id, expected).is_ok()
+				}),
+			_ => false,
+		};
+		let (target, outcome) = if proven {
+			(AccountOperationPhase::Cancelled, AccountManualRecoveryOutcome::Cancelled)
+		} else {
+			(operation.phase, AccountManualRecoveryOutcome::StillRequiresRecovery)
+		};
+
+		self.complete_recovery_operation_command(
+			lease,
+			operation_id,
+			operation.phase,
+			target,
+			None,
+			outcome,
+			build_response,
+		)
+		.await
+	}
+
+	async fn reconcile_recovery_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		operation_id: &AccountOperationId,
+		operation: &AccountOperation,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(
+				Result<(AccountManualRecoveryOutcome, &AccountRecord), AccountLifecycleError>,
+			) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
 		let (proven_applied, proven_not_applied) = match operation.kind {
 			AccountOperationKind::Refresh if operation.phase == AccountOperationPhase::Prepared =>
 				match classify_prepared_refresh_reconciliation(
@@ -3977,17 +4010,43 @@ impl AccountService {
 					AccountOperationPhase::Committed,
 					None,
 					AccountManualRecoveryOutcome::Committed,
-					build_response.take().expect("builder is retained"),
+					build_response,
 				)
 				.await;
 		}
+
+		self.complete_unproved_recovery(
+			lease,
+			operation_id,
+			operation,
+			proven_not_applied,
+			build_response,
+		)
+		.await
+	}
+
+	async fn complete_unproved_recovery<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		operation_id: &AccountOperationId,
+		operation: &AccountOperation,
+		proven_not_applied: bool,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(
+				Result<(AccountManualRecoveryOutcome, &AccountRecord), AccountLifecycleError>,
+			) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
 		if operation.kind == AccountOperationKind::Logout {
 			let Some(expected) = operation.expected.as_ref() else {
 				return self
 					.complete_recovery_command_error(
 						lease,
 						AccountLifecycleError::InvalidOperation,
-						build_response.take().expect("builder is retained"),
+						build_response,
 					)
 					.await;
 			};
@@ -4013,7 +4072,7 @@ impl AccountService {
 							AccountOperationPhase::Committed,
 							None,
 							AccountManualRecoveryOutcome::Committed,
-							build_response.take().expect("builder is retained"),
+							build_response,
 						)
 						.await;
 				},
@@ -4029,7 +4088,7 @@ impl AccountService {
 					AccountOperationPhase::Cancelled,
 					None,
 					AccountManualRecoveryOutcome::Cancelled,
-					build_response.take().expect("builder is retained"),
+					build_response,
 				)
 				.await;
 		}
@@ -4057,7 +4116,7 @@ impl AccountService {
 				&& operation.phase != AccountOperationPhase::RecoveryRequired)
 				.then_some(recovery_code),
 			AccountManualRecoveryOutcome::StillRequiresRecovery,
-			build_response.take().expect("builder is retained"),
+			build_response,
 		)
 		.await
 	}
