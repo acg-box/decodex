@@ -1,8 +1,9 @@
 //! Durable manual reset-card intents. An uncertain send is never automatically replayed.
 
-use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior, params};
+use rusqlite::{self, Connection, OptionalExtension as _, TransactionBehavior};
 
 use crate::{SqliteStore, StoreError, error::sqlite_error};
+use decodex_core::AccountId;
 
 /// Private daemon ledger record. Do not log or expose the provider credit identifier.
 #[derive(Clone, Eq, PartialEq)]
@@ -48,12 +49,12 @@ impl SqliteStore {
 		if operation.key.is_empty()
 			|| operation.key.len() > 256
 			|| operation.key.chars().any(char::is_control)
-			|| decodex_core::AccountId::new(operation.account_id.clone()).is_err()
+			|| AccountId::new(operation.account_id.clone()).is_err()
 			|| operation.account_revision <= 0
 			|| operation.granted_at < 0
 			|| operation.expires_at.is_some_and(|expiry| expiry <= operation.granted_at)
 			|| operation.exact_credit_id.as_ref().is_none_or(|id| {
-				id.is_empty() || id.len() > 1024 || id.chars().any(char::is_control)
+				id.is_empty() || id.len() > 1_024 || id.chars().any(char::is_control)
 			})
 			|| operation.state != "prepared"
 			|| operation.outcome.is_some()
@@ -86,7 +87,7 @@ impl SqliteStore {
                 "INSERT INTO reset_card_operations
                  (idempotency_key,account_id,account_revision,granted_at,expires_at,exact_credit_id,state)
                  VALUES(?1,?2,?3,?4,?5,?6,'prepared')",
-                params![operation.key,operation.account_id,operation.account_revision,
+                rusqlite::params![operation.key,operation.account_id,operation.account_revision,
                     operation.granted_at,operation.expires_at,operation.exact_credit_id],
             ).map_err(sqlite_error)?;
             tx.commit().map_err(sqlite_error)?;
@@ -144,7 +145,7 @@ impl SqliteStore {
 				.execute(
 					"UPDATE reset_card_operations SET outcome=?2
                  WHERE idempotency_key=?1 AND state='sending' AND outcome IS NULL",
-					params![key, outcome],
+					rusqlite::params![key, outcome],
 				)
 				.map_err(sqlite_error)?;
 
@@ -184,7 +185,7 @@ impl SqliteStore {
 		self.run(move |db| {
 			let changed = db.execute(
                 "UPDATE reset_card_operations SET state='failed',failure=?2,exact_credit_id=NULL
-                 WHERE idempotency_key=?1 AND state='prepared'", params![key,failure],
+                 WHERE idempotency_key=?1 AND state='prepared'", rusqlite::params![key,failure],
             ).map_err(sqlite_error)?;
 
 			if changed != 1 {

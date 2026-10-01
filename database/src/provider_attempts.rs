@@ -1,5 +1,11 @@
 //! Sole durable writer for provider-attempt preparation, dispatch fencing, and evidence.
 
+use rusqlite::{self, Connection, OptionalExtension as _, Transaction, TransactionBehavior};
+
+use crate::{
+	RuntimeSessionThreadBindingReadback, SqliteStore, StoreError, account_lifecycle::sql_error,
+	conversations::non_submission, runtime_sessions,
+};
 use decodex_core::{
 	AccountId, ConversationId, ProcessExecutionEpochId, ProcessGenerationId, ProviderAttempt,
 	ProviderAttemptConsumer, ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState,
@@ -7,30 +13,42 @@ use decodex_core::{
 	ProviderPositiveEvidence, ProviderRequestId, ProviderRequestKey, ProviderRequestKeys,
 	RuntimeSessionId, TurnId,
 };
-use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
 
-use crate::{
-	RuntimeSessionThreadBindingReadback, SqliteStore, StoreError, account_lifecycle::sql_error,
-	runtime_sessions::digest, unix_micros,
-};
+#[allow(clippy::type_complexity)]
+type AttemptRow = (
+	String,
+	String,
+	String,
+	String,
+	String,
+	String,
+	i64,
+	String,
+	String,
+	i64,
+	String,
+	String,
+	String,
+	Option<String>,
+	Option<String>,
+	Option<String>,
+	Option<String>,
+	String,
+	Option<String>,
+	Option<String>,
+	i64,
+	i64,
+	i64,
+);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeSessionBindingReceipt {
 	idempotency_key: String,
 }
-
 impl RuntimeSessionBindingReceipt {
 	pub fn from_binding(binding: &RuntimeSessionThreadBindingReadback) -> Self {
 		Self { idempotency_key: binding.binding_idempotency_key.clone() }
 	}
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct ConversationTurnFence {
-	conversation_id: ConversationId,
-	conversation_revision: i64,
-	turn_id: TurnId,
-	turn_revision: i64,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -40,7 +58,6 @@ pub struct FreshPreparedProviderAttempt {
 	prepared_at_micros: i64,
 	conversation_turn_fence: Option<ConversationTurnFence>,
 }
-
 impl FreshPreparedProviderAttempt {
 	pub fn attempt_id(&self) -> &ProviderAttemptId {
 		&self.attempt_id
@@ -63,7 +80,6 @@ pub struct FreshProviderDispatchFence {
 	process_generation_revision: i64,
 	authorized_at_micros: i64,
 }
-
 impl FreshProviderDispatchFence {
 	pub fn attempt_id(&self) -> &ProviderAttemptId {
 		&self.attempt_id
@@ -93,39 +109,12 @@ pub struct ProviderAttemptMutation {
 	pub recorded_at_micros: i64,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProviderAttemptRejection {
-	IdentityConflict,
-	AuthorityUnavailable,
-	GenerationUnavailable,
-	ConsumerUnavailable,
-	InvalidInput,
-	AttemptMissing,
-	StaleAttempt,
-	EvidenceConflict,
-	InvalidEvidence,
-	EvidenceMismatch,
-}
-
 #[derive(Debug, Eq, PartialEq)]
-pub enum PrepareProviderAttemptOutcome {
-	Fresh(FreshPreparedProviderAttempt),
-	Replayed(ProviderAttemptMutation),
-	Rejected { rejection: ProviderAttemptRejection, actual: ProviderAttemptMutation },
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum AuthorizeProviderDispatchOutcome {
-	Fresh(FreshProviderDispatchFence),
-	Replayed(ProviderAttemptMutation),
-	Rejected { rejection: ProviderAttemptRejection, actual: ProviderAttemptMutation },
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ProviderAttemptMutationOutcome {
-	Applied(ProviderAttemptMutation),
-	Replayed(ProviderAttemptMutation),
-	Rejected { rejection: ProviderAttemptRejection, actual: ProviderAttemptMutation },
+struct ConversationTurnFence {
+	conversation_id: ConversationId,
+	conversation_revision: i64,
+	turn_id: TurnId,
+	turn_revision: i64,
 }
 
 impl SqliteStore {
@@ -234,7 +223,7 @@ impl SqliteStore {
 				      AND execution.state = 'active' AND source.state = 'ended'
 				      AND source.revision = p.source_runtime_session_revision + 1)
 				   )",
-					params![
+					rusqlite::params![
 						process_generation_id.as_str(),
 						preparation.continuation_plan_id,
 						conversation_id.as_str(),
@@ -290,7 +279,7 @@ impl SqliteStore {
 
 			let (idempotency, correlation) = provider_keys(&preparation.provider_keys);
 			let (predecessor, acknowledgement) = duplicate_risk(&preparation.duplicate_risk);
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 
 			transaction
 				.execute(
@@ -305,7 +294,7 @@ impl SqliteStore {
 				   ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
 				   ?14, ?15, ?16, ?17, 'prepared', 1, ?18, ?18
 				 )",
-					params![
+					rusqlite::params![
 						preparation.attempt_id.as_str(),
 						conversation_id.as_str(),
 						turn_id.as_str(),
@@ -377,7 +366,7 @@ impl SqliteStore {
 				.query_row(
 					"SELECT EXISTS (SELECT 1 FROM process_generations WHERE generation_id = ?1
 				 AND revision = ?2 AND state = 'ready')",
-					params![process_generation_id.as_str(), process_generation_revision],
+					rusqlite::params![process_generation_id.as_str(), process_generation_revision],
 					|row| row.get(0),
 				)
 				.map_err(sql_error)?;
@@ -386,7 +375,7 @@ impl SqliteStore {
 					"SELECT EXISTS (SELECT 1 FROM conversations AS c JOIN turns AS t USING (conversation_id)
 					 WHERE c.conversation_id = ?1 AND c.revision = ?2 AND c.state = 'active'
 					 AND t.turn_id = ?3 AND t.revision = ?4 AND t.status = 'active')",
-					params![fence.conversation_id.as_str(), fence.conversation_revision,
+					rusqlite::params![fence.conversation_id.as_str(), fence.conversation_revision,
 						fence.turn_id.as_str(), fence.turn_revision], |row| row.get::<_, bool>(0),
 				).unwrap_or(false)
 			});
@@ -404,14 +393,14 @@ impl SqliteStore {
 				});
 			}
 
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 			let revision = prepared.revision + 1;
 
 			transaction
 				.execute(
 					"UPDATE provider_attempts SET state = 'dispatch_authorized', revision = ?1,
 				 updated_at_micros = ?2 WHERE attempt_id = ?3",
-					params![revision, now, prepared.attempt_id.as_str()],
+					rusqlite::params![revision, now, prepared.attempt_id.as_str()],
 				)
 				.map_err(sql_error)?;
 			transaction.commit().map_err(sql_error)?;
@@ -503,7 +492,7 @@ impl SqliteStore {
 				return Ok(rejected(ProviderAttemptRejection::EvidenceMismatch, &current));
 			}
 
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 
 			transaction
 				.execute(
@@ -512,7 +501,7 @@ impl SqliteStore {
 				 provider_receipt_id, provider_thread_id, provider_turn_id, witness_sha256,
 				 observed_at_micros
 				 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-					params![
+					rusqlite::params![
 						evidence.evidence_id.as_str(),
 						evidence.attempt_id.as_str(),
 						evidence.request_id.as_str(),
@@ -535,7 +524,7 @@ impl SqliteStore {
 					"UPDATE provider_attempts SET state = ?1, unknown_reason = NULL,
 				 terminal_evidence_id = ?2, revision = ?3, updated_at_micros = ?4
 				 WHERE attempt_id = ?5",
-					params![
+					rusqlite::params![
 						evidence.outcome.as_sql(),
 						evidence.evidence_id.as_str(),
 						revision,
@@ -545,7 +534,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 
-			crate::conversations::non_submission::finalize(&transaction, &current, &evidence, now)?;
+			non_submission::finalize(&transaction, &current, &evidence, now)?;
 
 			transaction.commit().map_err(sql_error)?;
 
@@ -560,12 +549,12 @@ impl SqliteStore {
 
 	pub async fn project_provider_attempts_after_supervisor_loss(&self) -> Result<u64, StoreError> {
 		self.run(move |connection| {
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 			let changed = connection.execute(
 				"UPDATE provider_attempts SET state = 'unknown', unknown_reason = 'restore_projection',
 				 revision = revision + 1, updated_at_micros = ?1
 				 WHERE state IN ('prepared', 'dispatch_authorized')",
-				params![now],
+				rusqlite::params![now],
 			).map_err(sql_error)?;
 
 			u64::try_from(changed).map_err(|_| incompatible("attempt projection count"))
@@ -599,7 +588,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			let ids = statement
-				.query_map(params![account, state, after, i64::from(limit)], |row| {
+				.query_map(rusqlite::params![account, state, after, i64::from(limit)], |row| {
 					row.get::<_, String>(0)
 				})
 				.map_err(sql_error)?
@@ -646,7 +635,7 @@ impl SqliteStore {
 			 AND e.request_id = a.request_id AND e.outcome = a.state
 			 AND (e.provider_key = a.provider_idempotency_key OR e.provider_key = a.provider_correlation_key)
 			)",
-					params![id.as_str(), revision, state, request.as_str()],
+					rusqlite::params![id.as_str(), revision, state, request.as_str()],
 					|row| row.get(0),
 				)
 				.map_err(sql_error)
@@ -694,13 +683,13 @@ impl SqliteStore {
 			}
 
 			let revision = expected_revision + 1;
-			let now = unix_micros().map_err(StoreError::from)?;
+			let now = crate::unix_micros().map_err(StoreError::from)?;
 
 			transaction
 				.execute(
 					"UPDATE provider_attempts SET state = ?1, unknown_reason = ?2,
 				 revision = ?3, updated_at_micros = ?4 WHERE attempt_id = ?5",
-					params![
+					rusqlite::params![
 						target_state.as_sql(),
 						reason.map(ProviderAttemptUnknownReason::as_sql),
 						revision,
@@ -721,10 +710,42 @@ impl SqliteStore {
 	}
 }
 
-fn read_attempt(
-	connection: &rusqlite::Connection,
-	id: &str,
-) -> Result<Option<ProviderAttempt>, StoreError> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderAttemptRejection {
+	IdentityConflict,
+	AuthorityUnavailable,
+	GenerationUnavailable,
+	ConsumerUnavailable,
+	InvalidInput,
+	AttemptMissing,
+	StaleAttempt,
+	EvidenceConflict,
+	InvalidEvidence,
+	EvidenceMismatch,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum PrepareProviderAttemptOutcome {
+	Fresh(FreshPreparedProviderAttempt),
+	Replayed(ProviderAttemptMutation),
+	Rejected { rejection: ProviderAttemptRejection, actual: ProviderAttemptMutation },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum AuthorizeProviderDispatchOutcome {
+	Fresh(FreshProviderDispatchFence),
+	Replayed(ProviderAttemptMutation),
+	Rejected { rejection: ProviderAttemptRejection, actual: ProviderAttemptMutation },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProviderAttemptMutationOutcome {
+	Applied(ProviderAttemptMutation),
+	Replayed(ProviderAttemptMutation),
+	Rejected { rejection: ProviderAttemptRejection, actual: ProviderAttemptMutation },
+}
+
+fn read_attempt(connection: &Connection, id: &str) -> Result<Option<ProviderAttempt>, StoreError> {
 	connection
 		.query_row(
 			"SELECT attempt_id, conversation_id, turn_id, continuation_plan_id,
@@ -735,7 +756,7 @@ fn read_attempt(
 		        state, unknown_reason, terminal_evidence_id, revision,
 		        created_at_micros, updated_at_micros
 		 FROM provider_attempts WHERE attempt_id = ?1",
-			params![id],
+			rusqlite::params![id],
 			|row| {
 				Ok((
 					row.get::<_, String>(0)?,
@@ -769,33 +790,6 @@ fn read_attempt(
 		.map(parse_attempt_row)
 		.transpose()
 }
-
-#[allow(clippy::type_complexity)]
-type AttemptRow = (
-	String,
-	String,
-	String,
-	String,
-	String,
-	String,
-	i64,
-	String,
-	String,
-	i64,
-	String,
-	String,
-	String,
-	Option<String>,
-	Option<String>,
-	Option<String>,
-	Option<String>,
-	String,
-	Option<String>,
-	Option<String>,
-	i64,
-	i64,
-	i64,
-);
 
 fn parse_attempt_row(row: AttemptRow) -> Result<ProviderAttempt, StoreError> {
 	let idempotency = row
@@ -857,7 +851,7 @@ fn parse_attempt_row(row: AttemptRow) -> Result<ProviderAttempt, StoreError> {
 }
 
 fn positive_evidence_matches(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	evidence: &ProviderPositiveEvidence,
 ) -> Result<bool, StoreError> {
 	connection
@@ -869,7 +863,7 @@ fn positive_evidence_matches(
               AND provider_receipt_id IS ?7 AND provider_thread_id IS ?8
               AND provider_turn_id IS ?9 AND witness_sha256 = ?10
         )",
-			params![
+			rusqlite::params![
 				evidence.evidence_id.as_str(),
 				evidence.attempt_id.as_str(),
 				evidence.request_id.as_str(),
@@ -904,7 +898,7 @@ fn duplicate_risk(risk: &ProviderDuplicateRisk) -> (Option<&str>, Option<&str>) 
 }
 
 fn duplicate_risk_matches_plan(
-	transaction: &rusqlite::Transaction<'_>,
+	transaction: &Transaction<'_>,
 	risk: &ProviderDuplicateRisk,
 	conversation_id: &ConversationId,
 	turn_id: &TurnId,
@@ -923,7 +917,7 @@ fn duplicate_risk_matches_plan(
 				 SELECT 1 FROM provider_attempts
 				 WHERE runtime_session_id = ?1 AND state = 'unknown'
 				 )",
-				params![source_runtime_session_id],
+				rusqlite::params![source_runtime_session_id],
 				|row| row.get(0),
 			)
 			.map_err(sql_error),
@@ -932,7 +926,7 @@ fn duplicate_risk_matches_plan(
 			acknowledgement_digest,
 		} => {
 			if acknowledgement_digest
-				!= &digest(&[
+				!= &runtime_sessions::digest(&[
 					"silent-recovery-successor",
 					predecessor_attempt_id.as_str(),
 					turn_id.as_str(),
@@ -962,7 +956,7 @@ fn duplicate_risk_matches_plan(
 				     ORDER BY latest.created_at_micros DESC, latest.attempt_id DESC LIMIT 1
 				   )
 				 )",
-					params![
+					rusqlite::params![
 						predecessor_attempt_id.as_str(),
 						conversation_id.as_str(),
 						source_runtime_session_id,

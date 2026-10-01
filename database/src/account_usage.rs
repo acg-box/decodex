@@ -1,24 +1,12 @@
 //! Atomic, revision-bound direct usage observations.
 
-use decodex_core::{
-	AccountId, AccountQuotaDisposition, AccountQuotaWindowObservation, AccountUsageObservation,
-};
-use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior, params};
+use rusqlite::{self, Connection, OptionalExtension as _, TransactionBehavior};
 
 use crate::{SqliteStore, StoreError, error::sqlite_error};
-
-pub(crate) fn read_usage_observation(
-	connection: &Connection,
-	account_id: &AccountId,
-) -> Result<Option<AccountUsageObservation>, StoreError> {
-	Ok(connection.query_row(
-		"SELECT account_revision, observed_at_micros, ordinary_usage_allowed, has_credits, unlimited_credits, spend_control_reached, rate_limit_reached FROM account_usage_observations WHERE account_id=?1",
-		[account_id.as_str()], |row| Ok(AccountUsageObservation {
-			account_revision: row.get(0)?, observed_at_unix_micros: row.get(1)?, ordinary_usage_allowed: row.get(2)?,
-			conditions: decodex_core::AccountUsageConditions { has_credits: row.get(3)?, unlimited_credits: row.get(4)?, spend_control_reached: row.get(5)?, rate_limit_reached: row.get(6)? },
-		})
-	).optional().map_err(sqlite_error)?)
-}
+use decodex_core::{
+	AccountId, AccountQuotaDisposition, AccountQuotaWindowObservation, AccountUsageConditions,
+	AccountUsageObservation,
+};
 
 impl SqliteStore {
 	/// Commit permission and fresh windows together, only for the exact current account revision.
@@ -39,7 +27,7 @@ impl SqliteStore {
 			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
 			let current: bool = tx.query_row(
 				"SELECT EXISTS(SELECT 1 FROM accounts WHERE account_id=?1 AND revision=?2 AND tombstoned_at_micros IS NULL)",
-				params![account_id.as_str(), observation.account_revision], |row| row.get(0)).map_err(sqlite_error)?;
+				rusqlite::params![account_id.as_str(), observation.account_revision], |row| row.get(0)).map_err(sqlite_error)?;
 
 			if !current { return Ok(false); }
 
@@ -55,23 +43,36 @@ impl SqliteStore {
 
 			for (index, window) in windows.into_iter().enumerate() {
 				if let Some(window) = window {
-					write_window(&tx, &account_id, observation.observed_at_unix_micros, if index == 0 { 300 } else { 10080 }, window)?;
+					write_window(&tx, &account_id, observation.observed_at_unix_micros, if index == 0 { 300 } else { 10_080 }, window)?;
 				}
 			}
 
 			tx.execute("INSERT INTO account_usage_observations(account_id,account_revision,observed_at_micros,ordinary_usage_allowed,has_credits,unlimited_credits,spend_control_reached,rate_limit_reached)
 			 VALUES (?1,?2,?3,?4,?5,?6,?7,?8) ON CONFLICT(account_id) DO UPDATE SET account_revision=excluded.account_revision,
 			 observed_at_micros=excluded.observed_at_micros,ordinary_usage_allowed=excluded.ordinary_usage_allowed,has_credits=excluded.has_credits,unlimited_credits=excluded.unlimited_credits,spend_control_reached=excluded.spend_control_reached,rate_limit_reached=excluded.rate_limit_reached",
-			 params![account_id.as_str(), observation.account_revision, observation.observed_at_unix_micros, observation.ordinary_usage_allowed, observation.conditions.has_credits, observation.conditions.unlimited_credits, observation.conditions.spend_control_reached, observation.conditions.rate_limit_reached]).map_err(sqlite_error)?;
+			 rusqlite::params![account_id.as_str(), observation.account_revision, observation.observed_at_unix_micros, observation.ordinary_usage_allowed, observation.conditions.has_credits, observation.conditions.unlimited_credits, observation.conditions.spend_control_reached, observation.conditions.rate_limit_reached]).map_err(sqlite_error)?;
 			tx.execute("UPDATE accounts SET state=CASE WHEN ?2=0 THEN 'depleted' WHEN ?2=1 THEN 'available'
 			 WHEN EXISTS(SELECT 1 FROM account_quota_facts WHERE account_id=?1 AND error_code IS NULL AND used_percent>=100)
 			 THEN 'depleted' ELSE 'available' END, updated_at_micros=?3 WHERE account_id=?1",
-			 params![account_id.as_str(), observation.conditions.ordinary_requests_allowed(observation.ordinary_usage_allowed), observation.observed_at_unix_micros]).map_err(sqlite_error)?;
+			 rusqlite::params![account_id.as_str(), observation.conditions.ordinary_requests_allowed(observation.ordinary_usage_allowed), observation.observed_at_unix_micros]).map_err(sqlite_error)?;
 			tx.commit().map_err(sqlite_error)?;
 
 			Ok(true)
 		}).await
 	}
+}
+
+pub(crate) fn read_usage_observation(
+	connection: &Connection,
+	account_id: &AccountId,
+) -> Result<Option<AccountUsageObservation>, StoreError> {
+	Ok(connection.query_row(
+		"SELECT account_revision, observed_at_micros, ordinary_usage_allowed, has_credits, unlimited_credits, spend_control_reached, rate_limit_reached FROM account_usage_observations WHERE account_id=?1",
+		[account_id.as_str()], |row| Ok(AccountUsageObservation {
+			account_revision: row.get(0)?, observed_at_unix_micros: row.get(1)?, ordinary_usage_allowed: row.get(2)?,
+			conditions: AccountUsageConditions { has_credits: row.get(3)?, unlimited_credits: row.get(4)?, spend_control_reached: row.get(5)?, rate_limit_reached: row.get(6)? },
+		})
+	).optional().map_err(sqlite_error)?)
 }
 
 fn write_window(
@@ -96,16 +97,16 @@ fn write_window(
 	 VALUES (?1,?2,?3,?4,NULL,?5,?6) ON CONFLICT(account_id,duration_minutes) DO UPDATE SET used_percent=excluded.used_percent,
 	 resets_at_micros=excluded.resets_at_micros,error_code=NULL,observed_at_micros=excluded.observed_at_micros,not_applicable=excluded.not_applicable
 	 WHERE excluded.observed_at_micros >= account_quota_facts.observed_at_micros",
-	 params![account_id.as_str(), i64::from(duration), used, resets, now, absent]).map_err(sqlite_error)?;
+	 rusqlite::params![account_id.as_str(), i64::from(duration), used, resets, now, absent]).map_err(sqlite_error)?;
 
 	if changed == 1 { Ok(()) } else { Err(StoreError::InvalidInput("older usage window")) }
 }
 
 #[cfg(test)]
 mod tests {
-	use super::{
-		AccountId, AccountQuotaDisposition, AccountQuotaWindowObservation, AccountUsageObservation,
-		SqliteStore, read_usage_observation,
+	use crate::account_usage::{
+		self, AccountId, AccountQuotaDisposition, AccountQuotaWindowObservation,
+		AccountUsageObservation, SqliteStore,
 	};
 	use decodex_core::{AccountQuotaWindow, DecodexRoot};
 
@@ -142,7 +143,10 @@ mod tests {
 
 		reopened
 			.run(move |connection| {
-				assert_eq!(read_usage_observation(connection, &account)?, Some(observation));
+				assert_eq!(
+					account_usage::read_usage_observation(connection, &account)?,
+					Some(observation)
+				);
 
 				let state: String = connection
 					.query_row("SELECT state FROM accounts", [], |row| row.get(0))
@@ -178,10 +182,10 @@ mod tests {
 			conditions: Default::default(),
 		};
 		let window = AccountQuotaWindowObservation {
-			duration_minutes: 10080,
+			duration_minutes: 10_080,
 			observed_at_unix_micros: Some(100),
 			disposition: AccountQuotaDisposition::Current(
-				AccountQuotaWindow::new(10080, 0, i64::MAX).unwrap(),
+				AccountQuotaWindow::new(10_080, 0, i64::MAX).unwrap(),
 			),
 		};
 
@@ -194,7 +198,10 @@ mod tests {
 
 		reopened
 			.run(move |connection| {
-				assert_eq!(read_usage_observation(connection, &id)?, Some(observation));
+				assert_eq!(
+					account_usage::read_usage_observation(connection, &id)?,
+					Some(observation)
+				);
 
 				let state: String = connection
 					.query_row("SELECT state FROM accounts", [], |row| row.get(0))
@@ -253,7 +260,10 @@ mod tests {
 
 		reopened
 			.run(move |connection| {
-				assert_eq!(read_usage_observation(connection, &id)?, Some(successor));
+				assert_eq!(
+					account_usage::read_usage_observation(connection, &id)?,
+					Some(successor)
+				);
 
 				let count: i64 = connection
 					.query_row("SELECT count(*) FROM account_quota_facts", [], |row| row.get(0))
@@ -302,7 +312,7 @@ mod tests {
 		store
 			.run(move |connection| {
 				assert_eq!(
-					read_usage_observation(connection, &account)?,
+					account_usage::read_usage_observation(connection, &account)?,
 					Some(successor),
 					"invalid window rolls back the entire observation"
 				);

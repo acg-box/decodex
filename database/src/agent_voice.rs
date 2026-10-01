@@ -1,6 +1,9 @@
 //! Durable authorization for native live voice. Signaling stays in runtime memory.
-use crate::{DatabaseError, SqliteStore, StoreError, error::sqlite_error, unix_micros};
-use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
+use rusqlite::{self, OptionalExtension as _, TransactionBehavior};
+
+use crate::{
+	DatabaseError, SqliteStore, StoreError, agent_process, agent_prompt_edit, error::sqlite_error,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AgentVoiceCall {
@@ -21,7 +24,7 @@ impl SqliteStore {
 		text: String,
 		complete: bool,
 	) -> Result<(), StoreError> {
-		if !["user", "assistant"].contains(&role.as_str()) || text.len() > 32768 {
+		if !["user", "assistant"].contains(&role.as_str()) || text.len() > 32_768 {
 			return Err(StoreError::InvalidInput("invalid voice transcript"));
 		}
 
@@ -29,10 +32,10 @@ impl SqliteStore {
             let work:String=connection.query_row("SELECT work_id FROM agent_voice_calls WHERE session_id=?1",[&session],|r|r.get(0)).map_err(sqlite_error)?;
             let source=serde_json::json!(["voice_transcript",session,sequence]).to_string();
             let payload=serde_json::json!({"text":text,"source":"voice","complete":complete}).to_string();
-            let now=unix_micros()?;
+            let now=crate::unix_micros()?;
 
             connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros)
-                VALUES(?1,?2,?3,?4,?5,'resolved','Recorded live voice transcript.',?5)",params![source,work,format!("voice_{role}"),payload,now]).map_err(sqlite_error)?;
+                VALUES(?1,?2,?3,?4,?5,'resolved','Recorded live voice transcript.',?5)",rusqlite::params![source,work,format!("voice_{role}"),payload,now]).map_err(sqlite_error)?;
 
             Ok(())
         }).await
@@ -54,13 +57,13 @@ impl SqliteStore {
             let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
             let bound:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items
                 WHERE id=?1 AND codex_thread_id=?2 AND dispatch_state IN ('idle','running'))",
-                params![call.work_id,call.thread_id],|r|r.get(0)).map_err(sqlite_error)?;
+                rusqlite::params![call.work_id,call.thread_id],|r|r.get(0)).map_err(sqlite_error)?;
 
-            if !bound || !crate::agent_process::owns_work(&tx,&call.work_id,Some(&call.generation_id))?
-                || crate::agent_prompt_edit::pending(&tx,&call.work_id)? { return Err(DatabaseError::Conflict.into()); }
+            if !bound || !agent_process::owns_work(&tx,&call.work_id,Some(&call.generation_id))?
+                || agent_prompt_edit::pending(&tx,&call.work_id)? { return Err(DatabaseError::Conflict.into()); }
 
             tx.execute("INSERT INTO agent_voice_calls(session_id,work_id,thread_id,generation_id,baseline_turn_id,created_at_micros)
-                VALUES(?1,?2,?3,?4,?5,?6)",params![call.session_id,call.work_id,call.thread_id,call.generation_id,call.baseline_turn_id,unix_micros()?]).map_err(sqlite_error)?;
+                VALUES(?1,?2,?3,?4,?5,?6)",rusqlite::params![call.session_id,call.work_id,call.thread_id,call.generation_id,call.baseline_turn_id,crate::unix_micros()?]).map_err(sqlite_error)?;
             tx.commit().map_err(sqlite_error)?;
 
             Ok(())
@@ -75,7 +78,7 @@ impl SqliteStore {
 				.execute(
 					"UPDATE agent_voice_calls SET closed_at_micros=max(created_at_micros,?2)
                 WHERE session_id=?1 AND closed_at_micros IS NULL",
-					params![session_id, unix_micros()?],
+					rusqlite::params![session_id, crate::unix_micros()?],
 				)
 				.map_err(sqlite_error)?;
 
@@ -132,14 +135,14 @@ impl SqliteStore {
             let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
             let work:Option<String>=tx.query_row("SELECT work_id FROM agent_voice_calls
                 WHERE thread_id=?1 AND generation_id=?2 ORDER BY created_at_micros DESC LIMIT 1",
-                params![thread,generation],|row|row.get(0)).optional().map_err(sqlite_error)?;
+                rusqlite::params![thread,generation],|row|row.get(0)).optional().map_err(sqlite_error)?;
             let Some(work)=work else {return Ok(false)};
             let old:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_voice_observed_turns WHERE generation_id=?1 AND thread_id=?2 AND turn_id=?3)
-                OR EXISTS(SELECT 1 FROM agent_voice_calls WHERE generation_id=?1 AND thread_id=?2 AND baseline_turn_id=?3)",params![generation,thread,turn],|r|r.get(0)).map_err(sqlite_error)?;
+                OR EXISTS(SELECT 1 FROM agent_voice_calls WHERE generation_id=?1 AND thread_id=?2 AND baseline_turn_id=?3)",rusqlite::params![generation,thread,turn],|r|r.get(0)).map_err(sqlite_error)?;
 
             if old {return Ok(false)}
 
-            tx.execute("INSERT INTO agent_voice_observed_turns VALUES(?1,?2,?3)",params![generation,thread,turn]).map_err(sqlite_error)?;
+            tx.execute("INSERT INTO agent_voice_observed_turns VALUES(?1,?2,?3)",rusqlite::params![generation,thread,turn]).map_err(sqlite_error)?;
 
             let (state,active):(String,Option<String>)=tx.query_row("SELECT dispatch_state,active_turn_id FROM agent_work_items WHERE id=?1",[&work],|r|Ok((r.get(0)?,r.get(1)?))).map_err(sqlite_error)?;
 
@@ -147,7 +150,7 @@ impl SqliteStore {
             if state!="idle" {return Err(DatabaseError::Conflict.into())}
 
             tx.execute("UPDATE agent_work_items SET dispatch_state='running',active_turn_id=?2,status='open',next_check_at_micros=NULL,
-                updated_at_micros=max(updated_at_micros,?3) WHERE id=?1",params![work,turn,unix_micros()?]).map_err(sqlite_error)?;
+                updated_at_micros=max(updated_at_micros,?3) WHERE id=?1",rusqlite::params![work,turn,crate::unix_micros()?]).map_err(sqlite_error)?;
             tx.commit().map_err(sqlite_error)?;
 
             Ok(true)

@@ -1,21 +1,24 @@
-use super::{
-	APPLICATION_ID, MIGRATIONS, configure, migrate, migration_digest, schema_inventory, verify,
-};
-use rusqlite::{Connection, params};
+use rusqlite::{self, Connection};
+
+use crate::migrations::{self, APPLICATION_ID, MIGRATIONS};
 
 #[test]
 fn voice_precaution_upgrade_preserves_unknown_legacy_cause() {
 	let directory = tempfile::tempdir().unwrap();
 	let mut connection = Connection::open(directory.path().join("voice.sqlite3")).unwrap();
 
-	configure(&connection).unwrap();
+	migrations::configure(&connection).unwrap();
 
 	for migration in &MIGRATIONS[..1] {
 		connection.execute_batch(migration.sql).unwrap();
 		connection
 			.execute(
 				"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
-				params![migration.version, migration.name, migration_digest(migration.sql)],
+				rusqlite::params![
+					migration.version,
+					migration.name,
+					migrations::migration_digest(migration.sql)
+				],
 			)
 			.unwrap();
 	}
@@ -27,10 +30,10 @@ fn voice_precaution_upgrade_preserves_unknown_legacy_cause() {
 		.execute("INSERT INTO agent_misalignment VALUES('work','thread','turn','{}',1)", [])
 		.unwrap();
 
-	let original = schema_inventory(&connection).unwrap();
+	let original = migrations::schema_inventory(&connection).unwrap();
 
-	migrate(&mut connection).unwrap();
-	verify(&connection).unwrap();
+	migrations::migrate(&mut connection).unwrap();
+	migrations::verify(&connection).unwrap();
 
 	let saved: (String, String, String, i64, bool) = connection
 		.query_row(
@@ -41,7 +44,7 @@ fn voice_precaution_upgrade_preserves_unknown_legacy_cause() {
 		.unwrap();
 
 	assert_eq!(
-		schema_inventory(&connection)
+		migrations::schema_inventory(&connection)
 			.unwrap()
 			.into_iter()
 			.filter(|r| !matches!(
@@ -70,6 +73,6 @@ fn voice_precaution_upgrade_preserves_unknown_legacy_cause() {
 	assert_eq!(saved, ("thread".into(), "turn".into(), "{}".into(), 1, true));
 	assert!(connection.execute("UPDATE agent_misalignment SET retired_voice=2", []).is_err());
 
-	migrate(&mut connection).unwrap();
-	verify(&connection).unwrap();
+	migrations::migrate(&mut connection).unwrap();
+	migrations::verify(&connection).unwrap();
 }

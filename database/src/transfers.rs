@@ -2,18 +2,18 @@
 
 use std::{
 	collections::BTreeSet,
+	error::Error,
 	fmt::{Debug, Display, Formatter},
 };
 
+use rusqlite::{self, Connection, OptionalExtension as _, TransactionBehavior};
+
+use crate::{CredentialRecord, DatabaseError, SqliteStore, error};
 use decodex_core::{
 	AccountProvider, AccountQuotaDisposition, AccountQuotaObservationError,
 	AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl, AccountSelectionMode,
 	AccountState, CredentialBinding,
 };
-use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior, params};
-use serde_json::json;
-
-use crate::{CredentialRecord, DatabaseError, SqliteStore, error::sqlite_error, unix_micros};
 
 const MAX_ACCOUNTS: usize = 512;
 
@@ -22,7 +22,6 @@ pub struct LocalAccountTransfer {
 	pub account: AccountRecord,
 	pub credential: CredentialRecord,
 }
-
 impl Debug for LocalAccountTransfer {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter
@@ -39,7 +38,6 @@ pub struct LocalAccountTransferBatch {
 	pub accounts: Vec<LocalAccountTransfer>,
 	pub routing: AccountRoutingControl,
 }
-
 impl Debug for LocalAccountTransferBatch {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter
@@ -65,7 +63,6 @@ pub enum LocalAccountTransferError {
 	TargetNotFresh,
 	Database(DatabaseError),
 }
-
 impl Display for LocalAccountTransferError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(match self {
@@ -76,7 +73,7 @@ impl Display for LocalAccountTransferError {
 	}
 }
 
-impl std::error::Error for LocalAccountTransferError {}
+impl Error for LocalAccountTransferError {}
 
 impl From<DatabaseError> for LocalAccountTransferError {
 	fn from(value: DatabaseError) -> Self {
@@ -117,7 +114,7 @@ fn import_sync(
 ) -> Result<LocalAccountTransferOutcome, LocalAccountTransferError> {
 	let transaction = connection
 		.transaction_with_behavior(TransactionBehavior::Immediate)
-		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+		.map_err(|error| LocalAccountTransferError::Database(error::sqlite_error(error)))?;
 	let prior = transaction
 		.query_row(
 			"SELECT source_sha256, account_count FROM local_account_transfers WHERE singleton = 1",
@@ -125,7 +122,7 @@ fn import_sync(
 			|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
 		)
 		.optional()
-		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+		.map_err(|error| LocalAccountTransferError::Database(error::sqlite_error(error)))?;
 
 	if let Some((source_sha256, account_count)) = prior {
 		let expected_count = i64::try_from(batch.accounts.len())
@@ -137,7 +134,7 @@ fn import_sync(
 
 		let actual_count: i64 = transaction
 			.query_row("SELECT COUNT(*) FROM accounts", [], |row| row.get(0))
-			.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+			.map_err(|error| LocalAccountTransferError::Database(error::sqlite_error(error)))?;
 
 		if actual_count != expected_count {
 			return Err(LocalAccountTransferError::TargetNotFresh);
@@ -145,7 +142,7 @@ fn import_sync(
 
 		transaction
 			.commit()
-			.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+			.map_err(|error| LocalAccountTransferError::Database(error::sqlite_error(error)))?;
 
 		return Ok(LocalAccountTransferOutcome::Replayed {
 			account_count: u16::try_from(expected_count)
@@ -157,7 +154,7 @@ fn import_sync(
 		return Err(LocalAccountTransferError::TargetNotFresh);
 	}
 
-	let now = unix_micros().map_err(LocalAccountTransferError::Database)?;
+	let now = crate::unix_micros().map_err(LocalAccountTransferError::Database)?;
 
 	for transferred in &batch.accounts {
 		insert_account(&transaction, transferred, now)?;
@@ -167,13 +164,13 @@ fn import_sync(
 			.execute(
 				"INSERT INTO account_routing_order (account_id, position, updated_at_micros)
 				 VALUES (?1, ?2, ?3)",
-				params![
+				rusqlite::params![
 					account_id.as_str(),
 					i64::try_from(position).map_err(|_| LocalAccountTransferError::InvalidInput)?,
 					now,
 				],
 			)
-			.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+			.map_err(|error| LocalAccountTransferError::Database(error::sqlite_error(error)))?;
 	}
 
 	let (mode, fixed_account_id) = match &batch.routing.mode {
@@ -186,25 +183,25 @@ fn import_sync(
 			"UPDATE account_routing_control
 			 SET mode = ?1, fixed_account_id = ?2, revision = ?3, updated_at_micros = ?4
 			 WHERE singleton = 1",
-			params![mode, fixed_account_id, batch.routing.revision, now],
+			rusqlite::params![mode, fixed_account_id, batch.routing.revision, now],
 		)
-		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+		.map_err(|error| LocalAccountTransferError::Database(error::sqlite_error(error)))?;
 	transaction
 		.execute(
 			"INSERT INTO local_account_transfers
 			 (singleton, source_sha256, account_count, imported_at_micros)
 			 VALUES (1, ?1, ?2, ?3)",
-			params![
+			rusqlite::params![
 				batch.source_sha256,
 				i64::try_from(batch.accounts.len())
 					.map_err(|_| LocalAccountTransferError::InvalidInput)?,
 				now,
 			],
 		)
-		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+		.map_err(|error| LocalAccountTransferError::Database(error::sqlite_error(error)))?;
 	transaction
 		.commit()
-		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+		.map_err(|error| LocalAccountTransferError::Database(error::sqlite_error(error)))?;
 
 	Ok(LocalAccountTransferOutcome::Imported {
 		account_count: u16::try_from(batch.accounts.len())
@@ -225,7 +222,7 @@ fn mutable_target_rows(connection: &Connection) -> Result<i64, LocalAccountTrans
 			[],
 			|row| row.get(0),
 		)
-		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))
+		.map_err(|error| LocalAccountTransferError::Database(error::sqlite_error(error)))
 }
 
 fn insert_account(
@@ -235,7 +232,7 @@ fn insert_account(
 ) -> Result<(), LocalAccountTransferError> {
 	let account = &transferred.account;
 	let binding = account.credential.as_ref().ok_or(LocalAccountTransferError::InvalidInput)?;
-	let target_json = serde_json::to_string(&json!({
+	let target_json = serde_json::to_string(&serde_json::json!({
 		"schema_version": binding.schema_version.get(),
 		"credential_version": binding.version.get(),
 		"fingerprint": binding.fingerprint.as_str(),
@@ -248,9 +245,9 @@ fn insert_account(
 	connection
 		.execute(
 			"INSERT INTO account_identities (account_id, created_at_micros) VALUES (?1, ?2)",
-			params![account.account_id.as_str(), now],
+			rusqlite::params![account.account_id.as_str(), now],
 		)
-		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+		.map_err(|error| LocalAccountTransferError::Database(error::sqlite_error(error)))?;
 	connection
 		.execute(
 			"INSERT INTO account_operations (
@@ -260,7 +257,7 @@ fn insert_account(
 			   recovery_code, created_at_micros, updated_at_micros, completed_at_micros
 			 ) VALUES (?1, ?2, 'import', 'committed', NULL, NULL, ?3, ?4, ?5, ?6, ?7,
 			           NULL, ?8, ?8, ?8)",
-			params![
+			rusqlite::params![
 				binding.writer_operation_id.as_str(),
 				account.account_id.as_str(),
 				target_json,
@@ -271,7 +268,7 @@ fn insert_account(
 				now,
 			],
 		)
-		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+		.map_err(|error| LocalAccountTransferError::Database(error::sqlite_error(error)))?;
 	connection
 		.execute(
 			"INSERT INTO accounts (
@@ -279,7 +276,7 @@ fn insert_account(
 			   provider_account_id, credential_store_observation,
 			   created_at_micros, updated_at_micros, tombstoned_at_micros
 			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'exact', ?8, ?8, NULL)",
-			params![
+			rusqlite::params![
 				account.account_id.as_str(),
 				account.label,
 				account.enabled,
@@ -290,14 +287,14 @@ fn insert_account(
 				now,
 			],
 		)
-		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+		.map_err(|error| LocalAccountTransferError::Database(error::sqlite_error(error)))?;
 	connection
 		.execute(
 			"INSERT INTO account_credentials (
 			   account_id, schema_version, credential_version, fingerprint,
 			   writer_operation_id, provider, provider_account_id, payload, updated_at_micros
 			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-			params![
+			rusqlite::params![
 				transferred.credential.key.account_id,
 				i64::from(transferred.credential.key.schema_version),
 				i64::try_from(transferred.credential.key.credential_version)
@@ -310,7 +307,7 @@ fn insert_account(
 				now,
 			],
 		)
-		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+		.map_err(|error| LocalAccountTransferError::Database(error::sqlite_error(error)))?;
 
 	insert_quota(connection, account.account_id.as_str(), account.five_hour_quota)?;
 
@@ -354,7 +351,7 @@ fn insert_quota(
 			   account_id, duration_minutes, used_percent, resets_at_micros, error_code,
 			   observed_at_micros, not_applicable
 			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-			params![
+			rusqlite::params![
 				account_id,
 				i64::from(observation.duration_minutes),
 				used_percent,
@@ -364,7 +361,7 @@ fn insert_quota(
 				matches!(observation.disposition, AccountQuotaDisposition::NotApplicable),
 			],
 		)
-		.map_err(|error| LocalAccountTransferError::Database(sqlite_error(error)))?;
+		.map_err(|error| LocalAccountTransferError::Database(error::sqlite_error(error)))?;
 
 	Ok(())
 }
@@ -396,7 +393,7 @@ fn validate_batch(batch: &LocalAccountTransferBatch) -> Result<(), LocalAccountT
 			|| account.tombstoned
 			|| account.unsettled_operation.is_some()
 			|| transferred.credential.payload.is_empty()
-			|| transferred.credential.payload.len() > 1024 * 1024
+			|| transferred.credential.payload.len() > 1_024 * 1_024
 			|| !account_ids.insert(account.account_id.as_str())
 			|| !providers.insert(binding.provider.account_id())
 			|| !writers.insert(binding.writer_operation_id.as_str())
@@ -469,15 +466,19 @@ const fn quota_error_text(error: AccountQuotaObservationError) -> &'static str {
 
 #[cfg(test)]
 mod optional_quota_tests {
-	use super::{AccountQuotaDisposition, AccountQuotaWindowObservation, insert_quota};
+	use crate::{
+		migrations,
+		transfers::{self, AccountQuotaDisposition, AccountQuotaWindowObservation},
+	};
+
 	#[test]
 	fn optional_quota_transfer_preserves_positive_absence_marker() {
 		let directory = tempfile::tempdir().expect("temporary database");
 		let mut connection =
 			rusqlite::Connection::open(directory.path().join("transfer.sqlite3")).expect("open");
 
-		crate::migrations::configure(&connection).expect("configure");
-		crate::migrations::migrate(&mut connection).expect("migrate");
+		migrations::configure(&connection).expect("configure");
+		migrations::migrate(&mut connection).expect("migrate");
 
 		let id = "10000000-0000-4000-8000-000000000001";
 
@@ -489,16 +490,16 @@ mod optional_quota_tests {
 			disposition: AccountQuotaDisposition::NotApplicable,
 		};
 
-		insert_quota(&connection, id, observation).expect("transfer absence");
+		transfers::insert_quota(&connection, id, observation).expect("transfer absence");
 
 		let result:(Option<i64>,Option<i64>,Option<String>,i64,i64)=connection.query_row("SELECT used_percent,resets_at_micros,error_code,observed_at_micros,not_applicable FROM account_quota_facts",[],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?))).expect("readback");
 
 		assert_eq!(result, (None, None, None, 12, 1));
 		assert!(
-			insert_quota(
+			transfers::insert_quota(
 				&connection,
 				id,
-				AccountQuotaWindowObservation { duration_minutes: 10080, ..observation }
+				AccountQuotaWindowObservation { duration_minutes: 10_080, ..observation }
 			)
 			.is_err()
 		);

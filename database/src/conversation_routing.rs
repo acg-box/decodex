@@ -1,23 +1,22 @@
 //! Durable account routing for ordinary Conversation conversations.
 
-use decodex_core::{
-	AccountId, AccountLifecycleReadiness, AccountQuotaDisposition, AccountQuotaObservationError,
-	AccountQuotaWindowObservation, AccountRecord, AccountRegistryQuotaFact,
-	AccountRegistryQuotaObservation, AccountRegistryRoutingDecision,
-	AccountRegistryRoutingDecisionKind, AccountRegistryRoutingMember,
-	AccountRegistryRoutingSnapshot, AccountSelectionMode, AccountState, ConversationId,
-	ExecutionConsumer, QuotaWindowClass, RoutingBlocker, RoutingCommandOutcome,
-	RoutingDecisionCause, RoutingRejection, RuntimeSessionId, TurnId,
-	decide_account_registry_routing,
-};
-use rusqlite::{OptionalExtension as _, Transaction, TransactionBehavior, params};
-use serde_json::{Value, json};
+use rusqlite::{self, Connection, OptionalExtension as _, Transaction, TransactionBehavior};
+use serde_json::{self, Value};
 use sha2::{Digest as _, Sha256};
 
 use crate::{
 	SqliteStore, StoreError,
-	account_lifecycle::{random_uuid_v4, read_account_registry_sync, sql_error},
-	unix_micros,
+	account_lifecycle::{self, sql_error},
+};
+use decodex_core::{
+	ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS, AccountId, AccountLifecycleReadiness,
+	AccountQuotaDisposition, AccountQuotaObservationError, AccountQuotaWindowObservation,
+	AccountRecord, AccountRegistryQuotaFact, AccountRegistryQuotaObservation,
+	AccountRegistryRoutingDecision, AccountRegistryRoutingDecisionKind,
+	AccountRegistryRoutingMember, AccountRegistryRoutingSnapshot, AccountSelectionMode,
+	AccountState, ConversationId, ExecutionConsumer, QuotaWindowClass, RoutingBlocker,
+	RoutingCommandOutcome, RoutingDecisionCause, RoutingRejection, RuntimeSessionId, TurnId,
+	decide_account_registry_routing,
 };
 
 /// Exact Conversation coordinates for its sole initial account route.
@@ -98,7 +97,7 @@ impl SqliteStore {
 				.query_row(
 					"SELECT request_sha256, routing_decision_id FROM routing_decisions
 					 WHERE idempotency_key = ?1",
-					params![key],
+					rusqlite::params![key],
 					|row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
 				)
 				.optional()
@@ -122,7 +121,7 @@ impl SqliteStore {
 					   JOIN quick_task_requests AS q USING (conversation_id)
 					   WHERE c.conversation_id = ?1 AND c.revision = ?2 AND c.state = 'active'
 					 )",
-					params![
+					rusqlite::params![
 						request.conversation_id.as_str(),
 						request.expected_conversation_revision
 					],
@@ -144,7 +143,7 @@ impl SqliteStore {
 					   WHERE conversation_id = ?1
 					     AND authority_shape = 'conversation_account_registry'
 					 )",
-					params![request.conversation_id.as_str()],
+					rusqlite::params![request.conversation_id.as_str()],
 					|row| row.get(0),
 				)
 				.map_err(sql_error)?;
@@ -159,7 +158,7 @@ impl SqliteStore {
 			let review_required: bool = transaction
 				.query_row(
 					"SELECT model_source_review_required FROM quick_task_requests WHERE conversation_id = ?1",
-					params![request.conversation_id.as_str()],
+					rusqlite::params![request.conversation_id.as_str()],
 					|row| row.get(0),
 				)
 				.map_err(sql_error)?;
@@ -171,7 +170,7 @@ impl SqliteStore {
 				}));
 			}
 
-			let accounts = read_account_registry_sync(&transaction, None, 512)?;
+			let accounts = account_lifecycle::read_account_registry_sync(&transaction, None, 512)?;
 
 			if accounts.is_empty() {
 				return Ok(ConversationInitialRouteOutcome::Rejected(RoutingRejection {
@@ -186,9 +185,9 @@ impl SqliteStore {
 					row.get(0)
 				})
 				.map_err(sql_error)?;
-			let decided_at_micros = unix_micros().map_err(StoreError::from)?;
+			let decided_at_micros = crate::unix_micros().map_err(StoreError::from)?;
 			let snapshot = build_snapshot(
-				random_uuid_v4()?,
+				account_lifecycle::random_uuid_v4()?,
 				routing_revision,
 				mode,
 				profile_revision,
@@ -199,9 +198,9 @@ impl SqliteStore {
 				decide_account_registry_routing(&snapshot, decided_at_micros).map_err(|_| {
 					StoreError::Incompatible("routing snapshot is incomplete".to_owned())
 				})?;
-			let decision_id = random_uuid_v4()?;
-			let operation_id = random_uuid_v4()?;
-			let turn_id = TurnId::new(random_uuid_v4()?)
+			let decision_id = account_lifecycle::random_uuid_v4()?;
+			let operation_id = account_lifecycle::random_uuid_v4()?;
+			let turn_id = TurnId::new(account_lifecycle::random_uuid_v4()?)
 				.map_err(|_| StoreError::Incompatible("generated Turn identity".to_owned()))?;
 			let account_revision = decision.selected_account_id.as_ref().and_then(|selected| {
 				accounts
@@ -216,7 +215,7 @@ impl SqliteStore {
 						"SELECT model_source_account_id IS NULL OR
 					   (model_source_account_id = ?2 AND model_source_account_revision = ?3)
 					 FROM quick_task_requests WHERE conversation_id = ?1",
-						params![
+						rusqlite::params![
 							request.conversation_id.as_str(),
 							selected.as_str(),
 							account_revision
@@ -229,12 +228,12 @@ impl SqliteStore {
 					transaction
 						.execute(
 							"UPDATE quick_task_requests SET model_source_review_required = 1 WHERE conversation_id = ?1",
-							params![request.conversation_id.as_str()],
+							rusqlite::params![request.conversation_id.as_str()],
 						)
 						.map_err(sql_error)?;
                     transaction.execute(
                         "UPDATE conversations SET updated_at_micros = MAX(updated_at_micros + 1, ?2) WHERE conversation_id = ?1",
-                        params![request.conversation_id.as_str(), decided_at_micros],
+                        rusqlite::params![request.conversation_id.as_str(), decided_at_micros],
                     ).map_err(sql_error)?;
 					transaction.commit().map_err(sql_error)?;
 
@@ -259,7 +258,7 @@ impl SqliteStore {
 					   ?1, ?2, ?3, ?4, 'conversation_account_registry', ?5, ?6, ?7,
 					   ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17
 					 )",
-					params![
+					rusqlite::params![
 						decision_id,
 						operation_id,
 						key,
@@ -317,7 +316,7 @@ impl SqliteStore {
 					"SELECT routing_decision_id FROM routing_decisions
 					 WHERE conversation_id = ?1
 					   AND authority_shape = 'conversation_account_registry'",
-					params![conversation_id.as_str()],
+					rusqlite::params![conversation_id.as_str()],
 					|row| row.get::<_, String>(0),
 				)
 				.optional()
@@ -358,7 +357,7 @@ impl SqliteStore {
 				.query_row(
 					"SELECT request_sha256, routing_decision_id FROM routing_decisions
 					 WHERE idempotency_key = ?1",
-					params![key],
+					rusqlite::params![key],
 					|row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
 				)
 				.optional()
@@ -393,7 +392,7 @@ impl SqliteStore {
 					       AND t.conversation_id = c.conversation_id
 					       AND t.runtime_session_id = s.runtime_session_id AND t.status = 'active'
 					   )",
-					params![
+					rusqlite::params![
 						request.source_runtime_session_id.as_str(),
 						request.conversation_id.as_str(),
 						request.expected_source_runtime_session_revision,
@@ -429,8 +428,8 @@ impl SqliteStore {
 					code: "authority_unavailable".to_owned(),
 				}));
 			};
-			let decision_id = random_uuid_v4()?;
-			let decided_at_micros = unix_micros().map_err(StoreError::from)?;
+			let decision_id = account_lifecycle::random_uuid_v4()?;
+			let decided_at_micros = crate::unix_micros().map_err(StoreError::from)?;
 
 			transaction
 				.execute(
@@ -445,7 +444,7 @@ impl SqliteStore {
 					   ?1, ?2, ?3, ?4, 'conversation_continuation', ?5, ?6, ?7,
 					   ?8, ?9, ?10, ?11, 'selected', ?12, ?13, ?14, 'unknown', '[]', '[]', ?15
 					 )",
-					params![
+					rusqlite::params![
 						decision_id,
 						request.operation_id,
 						key,
@@ -637,7 +636,7 @@ fn read_routing_control(
 }
 
 fn read_initial_route_by_id(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	decision_id: &str,
 ) -> Result<ConversationInitialRoute, StoreError> {
 	let row = connection
@@ -648,7 +647,7 @@ fn read_initial_route_by_id(
 			 FROM routing_decisions
 			 WHERE routing_decision_id = ?1
 			   AND authority_shape = 'conversation_account_registry'",
-			params![decision_id],
+			rusqlite::params![decision_id],
 			|row| {
 				Ok((
 					row.get::<_, String>(0)?,
@@ -710,7 +709,7 @@ fn read_initial_route_by_id(
 }
 
 fn read_continuation_binding(
-	connection: &rusqlite::Connection,
+	connection: &Connection,
 	decision_id: &str,
 ) -> Result<ConversationContinuationBinding, StoreError> {
 	let row = connection
@@ -725,7 +724,7 @@ fn read_continuation_binding(
 			   ON initial.conversation_id = d.conversation_id
 			  AND initial.authority_shape = 'conversation_account_registry'
 			 WHERE d.routing_decision_id = ?1 AND d.authority_shape = 'conversation_continuation'",
-			params![decision_id],
+			rusqlite::params![decision_id],
 			|row| {
 				Ok((
 					row.get::<_, String>(0)?,
@@ -770,20 +769,20 @@ fn read_continuation_binding(
 
 fn serialize_snapshot(snapshot: &AccountRegistryRoutingSnapshot) -> Result<Value, StoreError> {
 	let mode = match &snapshot.mode {
-		AccountSelectionMode::Balanced => json!({ "kind": "balanced" }),
-		AccountSelectionMode::Fixed(account) => json!({
+		AccountSelectionMode::Balanced => serde_json::json!({ "kind": "balanced" }),
+		AccountSelectionMode::Fixed(account) => serde_json::json!({
 			"kind": "fixed",
 			"account_id": account.as_str(),
 		}),
 	};
 
-	Ok(json!({
+	Ok(serde_json::json!({
 		"snapshot_id": snapshot.snapshot_id,
 		"routing_revision": snapshot.routing_revision,
 		"mode": mode,
 		"task_role_profile_revision": snapshot.task_role_profile_revision,
 		"resolved_at_micros": snapshot.resolved_at_micros,
-		"members": snapshot.members.iter().map(|member| json!({
+		"members": snapshot.members.iter().map(|member| serde_json::json!({
 			"position": member.position,
 			"account_id": member.account_id.as_str(),
 			"account_revision": member.account_revision,
@@ -791,19 +790,19 @@ fn serialize_snapshot(snapshot: &AccountRegistryRoutingSnapshot) -> Result<Value
 		})).collect::<Vec<_>>(),
 		"quota_facts": snapshot.quota_facts.iter().map(|fact| {
 			let observation = match fact.observation {
-				AccountRegistryQuotaObservation::Missing => json!({ "kind": "missing" }),
-				AccountRegistryQuotaObservation::NotApplicable { observed_at_micros } => json!({ "kind": "not_applicable", "observed_at_micros": observed_at_micros }),
-				AccountRegistryQuotaObservation::Current { used_percent, observed_at_micros, resets_at_micros } => json!({
+				AccountRegistryQuotaObservation::Missing => serde_json::json!({ "kind": "missing" }),
+				AccountRegistryQuotaObservation::NotApplicable { observed_at_micros } => serde_json::json!({ "kind": "not_applicable", "observed_at_micros": observed_at_micros }),
+				AccountRegistryQuotaObservation::Current { used_percent, observed_at_micros, resets_at_micros } => serde_json::json!({
 					"kind": "current", "used_percent": used_percent,
 					"observed_at_micros": observed_at_micros, "resets_at_micros": resets_at_micros,
 				}),
-				AccountRegistryQuotaObservation::ObservationError { error, observed_at_micros } => json!({
+				AccountRegistryQuotaObservation::ObservationError { error, observed_at_micros } => serde_json::json!({
 					"kind": "error", "error": quota_error_text(error),
 					"observed_at_micros": observed_at_micros,
 				}),
 			};
 
-			json!({
+			serde_json::json!({
 				"account_id": fact.account_id.as_str(),
 				"window": window_text(fact.window),
 				"duration_minutes": fact.duration_minutes,
@@ -921,7 +920,7 @@ fn serialize_causes(causes: &[RoutingDecisionCause]) -> Value {
 		causes
 			.iter()
 			.map(|cause| {
-				json!({
+				serde_json::json!({
 					"account_id": cause.account_id.as_str(), "blocker": cause.blocker.as_sql(),
 				})
 			})
@@ -952,7 +951,7 @@ fn serialize_exclusions(exclusions: &[decodex_core::AccountRegistryRoutingExclus
 		exclusions
 			.iter()
 			.map(|exclusion| {
-				json!({
+				serde_json::json!({
 					"account_id": exclusion.account_id.as_str(),
 					"member_position": exclusion.member_position,
 					"window": window_text(exclusion.window),
@@ -1009,9 +1008,8 @@ fn quota_classification(
 		return "unknown";
 	};
 	let now = snapshot.resolved_at_micros;
-	let fresh = |observed| {
-		observed <= now && now - observed <= decodex_core::ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS
-	};
+	let fresh =
+		|observed| observed <= now && now - observed <= ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS;
 	let complete = snapshot.quota_facts.iter().filter(|fact| &fact.account_id == account).all(
 		|fact| match fact.observation {
 			AccountRegistryQuotaObservation::Current {
@@ -1124,10 +1122,10 @@ fn incompatible(reason: &'static str) -> StoreError {
 
 #[cfg(test)]
 mod tests {
-	use super::{
-		AccountId, AccountRegistryQuotaFact, AccountRegistryQuotaObservation,
+	use crate::conversation_routing::{
+		self, AccountId, AccountRegistryQuotaFact, AccountRegistryQuotaObservation,
 		AccountRegistryRoutingMember, AccountRegistryRoutingSnapshot, AccountSelectionMode,
-		QuotaWindowClass, decide_account_registry_routing, quota_classification,
+		QuotaWindowClass,
 	};
 
 	#[test]
@@ -1178,15 +1176,16 @@ mod tests {
 					AccountRegistryQuotaFact {
 						account_id: account.clone(),
 						window: QuotaWindowClass::SevenDay,
-						duration_minutes: 10080,
+						duration_minutes: 10_080,
 						observation: current(now, now + 1),
 					},
 				],
 			};
-			let decision = decide_account_registry_routing(&snapshot, now).unwrap();
+			let decision =
+				conversation_routing::decide_account_registry_routing(&snapshot, now).unwrap();
 
 			assert_eq!(decision.selected_account_id.as_ref(), Some(&account));
-			assert_eq!(quota_classification(&decision, &snapshot), expected);
+			assert_eq!(conversation_routing::quota_classification(&decision, &snapshot), expected);
 		}
 	}
 }

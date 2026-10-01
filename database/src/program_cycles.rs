@@ -2,18 +2,18 @@
 
 use std::collections::HashSet;
 
-use crate::{SqliteStore, StoreError};
-use decodex_core::{
-	ConversationId, ObjectiveId, ObjectiveState, ProgramClaimId, ProgramEvidenceId,
-	ProgramEvidenceKind, ProgramId, ProgramObservationId, ProgramProposalId,
-	ProgramReviewClassification, ProgramReviewId, ProgramState, WorkItemId, WorkItemState,
-	contains_credential_material,
-};
-use rusqlite::{Connection, OptionalExtension as _, params};
+use rusqlite::{self, Connection, OptionalExtension as _, Row};
 use serde::{Deserialize, Serialize};
 
+use crate::{DatabaseError, SqliteStore, StoreError};
+use decodex_core::{
+	self, ConversationId, ObjectiveId, ObjectiveState, ProgramClaimId, ProgramEvidenceId,
+	ProgramEvidenceKind, ProgramId, ProgramObservationId, ProgramProposalId,
+	ProgramReviewClassification, ProgramReviewId, ProgramState, WorkItemId, WorkItemState,
+};
+
 const MAX_LIST_ITEMS: usize = 32;
-const MAX_TEXT_BYTES: usize = 4096;
+const MAX_TEXT_BYTES: usize = 4_096;
 
 /// Exact identity selected from the daemon-owned built-in Domain Pack registry.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -195,7 +195,7 @@ impl SqliteStore {
 				)
 				.map_err(sql_error)?;
 			let rows = statement
-				.query_map(params![i64::try_from(limit).unwrap_or(64)], |row| {
+				.query_map(rusqlite::params![i64::try_from(limit).unwrap_or(64)], |row| {
 					Ok((
 						row.get::<_, String>(0)?,
 						row.get::<_, String>(1)?,
@@ -222,6 +222,15 @@ impl SqliteStore {
 			.collect()
 		})
 		.await
+	}
+}
+
+pub(crate) fn parse_work_item_state_sql(value: &str) -> rusqlite::Result<WorkItemState> {
+	match value {
+		"ready" => Ok(WorkItemState::Ready),
+		"running" => Ok(WorkItemState::Running),
+		"done" => Ok(WorkItemState::Done),
+		_ => Err(rusqlite::Error::InvalidQuery),
 	}
 }
 
@@ -261,9 +270,9 @@ fn validate_text(value: &str, limit: usize) -> Result<(), StoreError> {
 	if value.is_empty()
 		|| value.len() > limit
 		|| value.chars().any(char::is_control)
-		|| contains_credential_material(value)
+		|| decodex_core::contains_credential_material(value)
 	{
-		return Err(if contains_credential_material(value) {
+		return Err(if decodex_core::contains_credential_material(value) {
 			StoreError::CredentialRejected
 		} else {
 			StoreError::InvalidInput("Program text is invalid")
@@ -299,7 +308,7 @@ fn read_program_cycle(
 		.query_row(
 			"SELECT name, purpose, non_goals_json, review_policy, state, revision,
 		 created_at_micros, updated_at_micros FROM programs WHERE program_id = ?1",
-			params![program_id.as_str()],
+			rusqlite::params![program_id.as_str()],
 			|row| {
 				Ok((
 					row.get::<_, String>(0)?,
@@ -335,7 +344,7 @@ fn read_program_cycle(
 		.query_row(
 			"SELECT pack_id, pack_version, pack_digest, bound_at_micros
 			 FROM program_domain_pack_bindings WHERE program_id = ?1",
-			params![program_id.as_str()],
+			rusqlite::params![program_id.as_str()],
 			|row| {
 				Ok(ProgramDomainPackBinding {
 					pack_id: row.get(0)?,
@@ -601,10 +610,11 @@ fn query_rows<T>(
 	connection: &Connection,
 	sql: &str,
 	program_id: &str,
-	mut map: impl FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
+	mut map: impl FnMut(&Row<'_>) -> rusqlite::Result<T>,
 ) -> Result<Vec<T>, StoreError> {
 	let mut statement = connection.prepare(sql).map_err(sql_error)?;
-	let rows = statement.query_map(params![program_id], |row| map(row)).map_err(sql_error)?;
+	let rows =
+		statement.query_map(rusqlite::params![program_id], |row| map(row)).map_err(sql_error)?;
 
 	rows.collect::<Result<Vec<_>, _>>().map_err(sql_error)
 }
@@ -636,15 +646,6 @@ fn parse_objective_state_sql(value: &str) -> rusqlite::Result<ObjectiveState> {
 		"active" => Ok(ObjectiveState::Active),
 		"achieved" => Ok(ObjectiveState::Achieved),
 		"abandoned" => Ok(ObjectiveState::Abandoned),
-		_ => Err(rusqlite::Error::InvalidQuery),
-	}
-}
-
-pub(crate) fn parse_work_item_state_sql(value: &str) -> rusqlite::Result<WorkItemState> {
-	match value {
-		"ready" => Ok(WorkItemState::Ready),
-		"running" => Ok(WorkItemState::Running),
-		"done" => Ok(WorkItemState::Done),
 		_ => Err(rusqlite::Error::InvalidQuery),
 	}
 }
@@ -689,7 +690,7 @@ fn positive_time_sql(value: i64) -> rusqlite::Result<i64> {
 }
 
 fn sql_error(_error: rusqlite::Error) -> StoreError {
-	StoreError::Database(crate::DatabaseError::Unavailable)
+	StoreError::Database(DatabaseError::Unavailable)
 }
 
 fn incompatible(subject: &str) -> StoreError {

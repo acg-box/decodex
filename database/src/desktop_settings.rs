@@ -1,6 +1,6 @@
 //! Daemon-owned persistent desktop presentation settings.
 
-use rusqlite::{Connection, TransactionBehavior, params};
+use rusqlite::{self, Connection, TransactionBehavior};
 
 use crate::{SqliteStore, StoreError, error::sqlite_error};
 
@@ -69,7 +69,7 @@ impl SqliteStore {
 					"UPDATE desktop_settings
 					 SET show_in_menu_bar = ?1, revision = ?2, auto_activate_quota = ?4, auto_recap = ?5
 					 WHERE singleton = 1 AND revision = ?3",
-					params![
+					rusqlite::params![
 						show_in_menu_bar,
 						revision,
 						expected_revision,
@@ -118,13 +118,12 @@ fn read_desktop_settings(connection: &Connection) -> Result<DesktopSettings, Sto
 
 #[cfg(test)]
 mod tests {
-	use tempfile::tempdir;
 
 	use crate::{SqliteStore, StoreError};
 
 	#[tokio::test]
 	async fn automatic_recap_preference_preserves_other_settings_and_survives_reopen() {
-		let dir = tempdir().expect("test directory");
+		let dir = tempfile::tempdir().expect("test directory");
 		let path = dir.path().join("settings.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("store");
 
@@ -163,7 +162,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn menu_bar_changes_preserve_enabled_quota_activation() {
-		let dir = tempdir().expect("test directory");
+		let dir = tempfile::tempdir().expect("test directory");
 		let store = SqliteStore::open_test(&dir.path().join("settings.sqlite3")).expect("store");
 
 		assert!(store.read_desktop_settings().await.expect("defaults").auto_activate_quota);
@@ -190,7 +189,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn desktop_menu_bar_preference_is_revision_guarded_and_survives_reopen() {
-		let directory = tempdir().expect("temporary directory");
+		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
 		let initial = store.read_desktop_settings().await.expect("read default settings");

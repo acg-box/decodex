@@ -1,9 +1,9 @@
 use std::fmt::{Debug, Formatter};
 
-use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
+use rusqlite::{self, OptionalExtension as _, TransactionBehavior, ffi::SQLITE_CONSTRAINT_UNIQUE};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
-use crate::{DatabaseError, SqliteStore, error::sqlite_error, unix_micros};
+use crate::{DatabaseError, SqliteStore, error};
 
 /// Credential-negative key used for exact compare-and-swap operations.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -24,7 +24,6 @@ pub struct CredentialRecord {
 	pub key: CredentialKey,
 	pub payload: Zeroizing<Vec<u8>>,
 }
-
 impl Debug for CredentialRecord {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter
@@ -38,18 +37,18 @@ impl Debug for CredentialRecord {
 impl SqliteStore {
 	pub fn create_credential(&self, record: CredentialRecord) -> Result<(), DatabaseError> {
 		self.with_connection(|connection| {
-			let now = unix_micros()?;
+			let now = crate::unix_micros()?;
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
-				.map_err(sqlite_error)?;
+				.map_err(crate::error::sqlite_error)?;
 
 			transaction
 				.execute(
 					"INSERT OR IGNORE INTO account_identities (account_id, created_at_micros)
 					 VALUES (?1, ?2)",
-					params![record.key.account_id, now],
+					rusqlite::params![record.key.account_id, now],
 				)
-				.map_err(sqlite_error)?;
+				.map_err(crate::error::sqlite_error)?;
 
 			let inserted = transaction
 				.execute(
@@ -58,7 +57,7 @@ impl SqliteStore {
 					   writer_operation_id, provider, provider_account_id, payload, updated_at_micros
 					 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
 					 ON CONFLICT(account_id) DO NOTHING",
-					params![
+					rusqlite::params![
 						record.key.account_id,
 						i64::from(record.key.schema_version),
 						i64::try_from(record.key.credential_version)
@@ -73,16 +72,16 @@ impl SqliteStore {
 				)
 				.map_err(|error| match error {
 					rusqlite::Error::SqliteFailure(inner, _)
-						if inner.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE =>
+						if inner.extended_code == SQLITE_CONSTRAINT_UNIQUE =>
 						DatabaseError::Conflict,
-					_ => sqlite_error(error),
+					_ => error::sqlite_error(error),
 				})?;
 
 			if inserted != 1 {
 				return Err(DatabaseError::AlreadyExists);
 			}
 
-			transaction.commit().map_err(sqlite_error)
+			transaction.commit().map_err(crate::error::sqlite_error)
 		})
 	}
 
@@ -93,7 +92,7 @@ impl SqliteStore {
 					"SELECT schema_version, credential_version, fingerprint, writer_operation_id,
 					        provider, provider_account_id, payload
 					 FROM account_credentials WHERE account_id = ?1",
-					params![account_id],
+					rusqlite::params![account_id],
 					|row| {
 						let version = row.get::<_, i64>(1)?;
 						let schema = row.get::<_, i64>(0)?;
@@ -110,7 +109,7 @@ impl SqliteStore {
 					},
 				)
 				.optional()
-				.map_err(sqlite_error)?
+				.map_err(crate::error::sqlite_error)?
 				.map(
 					|(
 						schema,
@@ -165,7 +164,7 @@ impl SqliteStore {
 					 WHERE account_id = ?9 AND schema_version = ?10 AND credential_version = ?11
 					   AND fingerprint = ?12 AND writer_operation_id = ?13
 					   AND provider = ?14 AND provider_account_id = ?15",
-					params![
+					rusqlite::params![
 						i64::from(target.key.schema_version),
 						i64::try_from(target.key.credential_version)
 							.map_err(|_| DatabaseError::Conflict)?,
@@ -174,7 +173,7 @@ impl SqliteStore {
 						target.key.provider,
 						target.key.provider_account_id,
 						target.payload.as_slice(),
-						unix_micros()?,
+						crate::unix_micros()?,
 						expected.account_id,
 						i64::from(expected.schema_version),
 						i64::try_from(expected.credential_version)
@@ -185,7 +184,7 @@ impl SqliteStore {
 						expected.provider_account_id,
 					],
 				)
-				.map_err(sqlite_error)?;
+				.map_err(crate::error::sqlite_error)?;
 
 			if changed == 1 { Ok(()) } else { Err(DatabaseError::Conflict) }
 		})
@@ -199,7 +198,7 @@ impl SqliteStore {
 					 WHERE account_id = ?1 AND schema_version = ?2 AND credential_version = ?3
 					   AND fingerprint = ?4 AND writer_operation_id = ?5
 					   AND provider = ?6 AND provider_account_id = ?7",
-					params![
+					rusqlite::params![
 						expected.account_id,
 						i64::from(expected.schema_version),
 						i64::try_from(expected.credential_version)
@@ -210,7 +209,7 @@ impl SqliteStore {
 						expected.provider_account_id,
 					],
 				)
-				.map_err(sqlite_error)?;
+				.map_err(crate::error::sqlite_error)?;
 
 			if changed == 1 { Ok(()) } else { Err(DatabaseError::NotFound) }
 		})

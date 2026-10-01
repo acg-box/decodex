@@ -1,5 +1,6 @@
-use super::{APPLICATION_ID, MIGRATIONS, configure, migrate, migration_digest, verify};
-use rusqlite::{Connection, params};
+use rusqlite::{self, Connection};
+
+use crate::migrations::{self, APPLICATION_ID, MIGRATIONS};
 
 type LegacyRequest =
 	(String, String, String, Option<String>, Option<String>, Option<String>, Option<i64>, bool);
@@ -10,14 +11,18 @@ fn initial_source_upgrade_preserves_requests_and_enforces_paired_identity() {
 	let mut connection =
 		Connection::open(directory.path().join("upgrade.sqlite3")).expect("database");
 
-	configure(&connection).expect("configure");
+	migrations::configure(&connection).expect("configure");
 
 	for migration in &MIGRATIONS[..1] {
 		connection.execute_batch(migration.sql).expect("old migration");
 		connection
 			.execute(
 				"INSERT INTO schema_migrations(version,name,sha256,applied_at_micros) VALUES(?1,?2,?3,1)",
-				params![migration.version, migration.name, migration_digest(migration.sql)],
+				rusqlite::params![
+					migration.version,
+					migration.name,
+					migrations::migration_digest(migration.sql)
+				],
 			)
 			.expect("migration receipt");
 	}
@@ -31,8 +36,8 @@ fn initial_source_upgrade_preserves_requests_and_enforces_paired_identity() {
          VALUES('50000000-0000-4000-8000-000000000001','original','original','60000000-0000-4000-8000-000000000001','Keep original input','/saved/directory',1,'native-model',NULL,NULL);"
     ).expect("legacy request");
 
-	migrate(&mut connection).expect("upgrade");
-	verify(&connection).expect("verify upgrade");
+	migrations::migrate(&mut connection).expect("upgrade");
+	migrations::verify(&connection).expect("verify upgrade");
 
 	let retained: LegacyRequest = connection.query_row(
         "SELECT message,working_directory,model,reasoning_effort,service_tier,model_source_account_id,model_source_account_revision,model_source_review_required FROM quick_task_requests",
@@ -65,7 +70,7 @@ fn initial_source_upgrade_preserves_requests_and_enforces_paired_identity() {
 
 	connection.execute("UPDATE quick_task_requests SET model_source_account_id='30000000-0000-4000-8000-000000000003',model_source_account_revision=9,model_source_review_required=1", []).expect("paired source");
 
-	migrate(&mut connection).expect("idempotent migration");
+	migrations::migrate(&mut connection).expect("idempotent migration");
 
 	let state: (i64, bool) = connection
 		.query_row(

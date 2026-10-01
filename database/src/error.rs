@@ -1,10 +1,3 @@
-use std::{
-	error::Error,
-	fmt::{Display, Formatter},
-};
-
-use decodex_core::StorageError;
-
 /// Redacted product-database failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatabaseError {
@@ -25,9 +18,8 @@ pub enum DatabaseError {
 	/// Stored bounded data cannot be decoded or violates its declared metadata.
 	Corrupt,
 }
-
-impl Display for DatabaseError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+impl std::fmt::Display for DatabaseError {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(match self {
 			Self::Unavailable => "product database unavailable",
 			Self::Incompatible => "product database incompatible",
@@ -41,11 +33,7 @@ impl Display for DatabaseError {
 	}
 }
 
-impl Error for DatabaseError {}
-
-pub(crate) fn sqlite_error(_error: rusqlite::Error) -> DatabaseError {
-	DatabaseError::Unavailable
-}
+impl std::error::Error for DatabaseError {}
 
 /// Typed failures from the local product-state boundary.
 #[derive(Debug)]
@@ -61,13 +49,12 @@ pub enum StoreError {
 	AgentThreadInUse,
 	InvalidInput(&'static str),
 	CapacityExhausted(&'static str),
-	Blob(StorageError),
+	Blob(decodex_core::StorageError),
 }
-
-impl Display for StoreError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+impl std::fmt::Display for StoreError {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Self::Database(error) => Display::fmt(error, formatter),
+			Self::Database(error) => std::fmt::Display::fmt(error, formatter),
 			Self::Incompatible(_) => formatter.write_str("incompatible product database state"),
 			Self::UnsafeHostPath => formatter.write_str("unsafe product database path"),
 			Self::IdempotencyConflict =>
@@ -91,7 +78,7 @@ impl Display for StoreError {
 	}
 }
 
-impl Error for StoreError {}
+impl std::error::Error for StoreError {}
 
 impl From<DatabaseError> for StoreError {
 	fn from(error: DatabaseError) -> Self {
@@ -103,8 +90,8 @@ impl From<DatabaseError> for StoreError {
 	}
 }
 
-impl From<StorageError> for StoreError {
-	fn from(error: StorageError) -> Self {
+impl From<decodex_core::StorageError> for StoreError {
+	fn from(error: decodex_core::StorageError) -> Self {
 		Self::Blob(error)
 	}
 }
@@ -117,4 +104,8 @@ pub enum BootstrapFailure {
 	Incompatible,
 	UnsafeAuthority,
 	UnsafeHostPath,
+}
+
+pub(crate) fn sqlite_error(_error: rusqlite::Error) -> DatabaseError {
+	DatabaseError::Unavailable
 }
