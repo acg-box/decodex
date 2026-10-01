@@ -975,35 +975,7 @@ impl SqliteStore {
 				return Ok(ArchiveConversationOutcome::Replayed(archived));
 			}
 
-			let authority = transaction
-				.query_row(
-					"SELECT c.revision, s.revision,
-					        EXISTS (SELECT 1 FROM turns AS t WHERE t.conversation_id = c.conversation_id
-					                AND t.status = 'active'),
-					        EXISTS (SELECT 1 FROM provider_attempts AS p
-					                JOIN turns AS pending ON pending.turn_id = p.turn_id
-					                WHERE p.conversation_id = c.conversation_id
-					                  AND p.state IN ('prepared', 'dispatch_authorized', 'unknown')
-					                  AND pending.status = 'active')
-					 FROM conversations AS c
-					 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
-					 WHERE c.conversation_id = ?1 AND c.kind = 'ordinary_task' AND c.state = 'active'
-					   AND s.runtime_session_id = ?2 AND s.state = 'active'",
-					rusqlite::params![
-						request.conversation_id.as_str(),
-						request.runtime_session_id.as_str()
-					],
-					|row| {
-						Ok((
-							row.get::<_, i64>(0)?,
-							row.get::<_, i64>(1)?,
-							row.get::<_, bool>(2)?,
-							row.get::<_, bool>(3)?,
-						))
-					},
-				)
-				.optional()
-				.map_err(account_lifecycle::sql_error)?;
+			let authority = read_archive_authority(&transaction, &request)?;
 			let Some((conversation_revision, session_revision, active_turn, active_attempt)) =
 				authority
 			else {
@@ -1635,7 +1607,6 @@ impl SqliteStore {
 }
 
 impl SqliteStore {
-	#[allow(clippy::too_many_lines)] // Keep one atomic turn-and-history terminalization together.
 	pub async fn terminalize_conversation_turn(
 		&self,
 		idempotency_key: &str,
@@ -1668,74 +1639,7 @@ impl SqliteStore {
 				return Ok(ConversationTerminalizationOutcome::Replayed(readback));
 			}
 
-			let expected_state = match request.provider_outcome {
-				ProviderTerminalOutcome::Succeeded => "succeeded",
-				ProviderTerminalOutcome::FailedDefinitive => "failed_definitive",
-				ProviderTerminalOutcome::NotSubmitted => "not_submitted",
-			};
-			let attempt_matches: bool = transaction
-				.query_row(
-					"SELECT EXISTS (
-				   SELECT 1 FROM provider_attempts AS p
-				   JOIN provider_attempt_positive_evidence AS e ON e.attempt_id = p.attempt_id
-				   WHERE p.attempt_id = ?1 AND p.conversation_id = ?2 AND p.turn_id = ?3
-				     AND p.runtime_session_id = ?4 AND p.revision = ?5 AND p.state = ?6
-				     AND e.evidence_id = ?7 AND e.provider_thread_id = ?8
-				     AND e.provider_turn_id = ?9
-				 )",
-					rusqlite::params![
-						request.provider_attempt_id.as_str(),
-						request.conversation_id.as_str(),
-						request.user_turn_id.as_str(),
-						request.runtime_session_id.as_str(),
-						request.expected_provider_attempt_revision,
-						expected_state,
-						request.provider_evidence_id.as_str(),
-						request.provider_thread_id,
-						request.provider_turn_id,
-					],
-					|row| row.get(0),
-				)
-				.map_err(account_lifecycle::sql_error)?;
-			let session_matches: bool = transaction
-				.query_row(
-					"SELECT EXISTS (
-				   SELECT 1 FROM runtime_sessions AS s JOIN conversations AS c USING (conversation_id)
-				   WHERE s.runtime_session_id = ?1 AND s.conversation_id = ?2
-				     AND s.revision = ?3 AND s.state = 'active' AND s.codex_thread_id = ?4
-				     AND c.revision = ?5 AND c.state = 'active'
-				 )",
-					rusqlite::params![
-						request.runtime_session_id.as_str(),
-						request.conversation_id.as_str(),
-						request.expected_runtime_session_revision,
-						request.provider_thread_id,
-						request.expected_conversation_revision,
-					],
-					|row| row.get(0),
-				)
-				.map_err(account_lifecycle::sql_error)?;
-			let user_matches = turn_matches(
-				&transaction,
-				&request.user_turn_id,
-				&request.conversation_id,
-				&request.runtime_session_id,
-				request.expected_user_turn_revision,
-				TurnRole::User,
-			)?;
-			let assistant_matches =
-				request.assistant_turn.as_ref().map_or(Ok(true), |(id, revision)| {
-					turn_matches(
-						&transaction,
-						id,
-						&request.conversation_id,
-						&request.runtime_session_id,
-						*revision,
-						TurnRole::Assistant,
-					)
-				})?;
-
-			if !attempt_matches || !session_matches || !user_matches || !assistant_matches {
+			if !terminalization_authority_matches(&transaction, &request)? {
 				return Ok(ConversationTerminalizationOutcome::Rejected);
 			}
 
@@ -2351,6 +2255,115 @@ pub fn bounded_conversation_title(message: &str) -> String {
 	let normalized = message.split_whitespace().collect::<Vec<_>>().join(" ");
 
 	safe_display_title(&normalized, "Private conversation")
+}
+
+fn read_archive_authority(
+	transaction: &Transaction<'_>,
+	request: &ArchiveConversationRecord,
+) -> Result<Option<(i64, i64, bool, bool)>, StoreError> {
+	transaction
+		.query_row(
+			"SELECT c.revision, s.revision,
+					        EXISTS (SELECT 1 FROM turns AS t WHERE t.conversation_id = c.conversation_id
+					                AND t.status = 'active'),
+					        EXISTS (SELECT 1 FROM provider_attempts AS p
+					                JOIN turns AS pending ON pending.turn_id = p.turn_id
+					                WHERE p.conversation_id = c.conversation_id
+					                  AND p.state IN ('prepared', 'dispatch_authorized', 'unknown')
+					                  AND pending.status = 'active')
+					 FROM conversations AS c
+					 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
+					 WHERE c.conversation_id = ?1 AND c.kind = 'ordinary_task' AND c.state = 'active'
+					   AND s.runtime_session_id = ?2 AND s.state = 'active'",
+			rusqlite::params![
+				request.conversation_id.as_str(),
+				request.runtime_session_id.as_str()
+			],
+			|row| {
+				Ok((
+					row.get::<_, i64>(0)?,
+					row.get::<_, i64>(1)?,
+					row.get::<_, bool>(2)?,
+					row.get::<_, bool>(3)?,
+				))
+			},
+		)
+		.optional()
+		.map_err(account_lifecycle::sql_error)
+}
+
+fn terminalization_authority_matches(
+	transaction: &Transaction<'_>,
+	request: &TerminalizeConversationTurn,
+) -> Result<bool, StoreError> {
+	let expected_state = match request.provider_outcome {
+		ProviderTerminalOutcome::Succeeded => "succeeded",
+		ProviderTerminalOutcome::FailedDefinitive => "failed_definitive",
+		ProviderTerminalOutcome::NotSubmitted => "not_submitted",
+	};
+	let attempt_matches: bool = transaction
+		.query_row(
+			"SELECT EXISTS (
+				   SELECT 1 FROM provider_attempts AS p
+				   JOIN provider_attempt_positive_evidence AS e ON e.attempt_id = p.attempt_id
+				   WHERE p.attempt_id = ?1 AND p.conversation_id = ?2 AND p.turn_id = ?3
+				     AND p.runtime_session_id = ?4 AND p.revision = ?5 AND p.state = ?6
+				     AND e.evidence_id = ?7 AND e.provider_thread_id = ?8
+				     AND e.provider_turn_id = ?9
+				 )",
+			rusqlite::params![
+				request.provider_attempt_id.as_str(),
+				request.conversation_id.as_str(),
+				request.user_turn_id.as_str(),
+				request.runtime_session_id.as_str(),
+				request.expected_provider_attempt_revision,
+				expected_state,
+				request.provider_evidence_id.as_str(),
+				request.provider_thread_id,
+				request.provider_turn_id,
+			],
+			|row| row.get(0),
+		)
+		.map_err(account_lifecycle::sql_error)?;
+	let session_matches: bool = transaction
+		.query_row(
+			"SELECT EXISTS (
+				   SELECT 1 FROM runtime_sessions AS s JOIN conversations AS c USING (conversation_id)
+				   WHERE s.runtime_session_id = ?1 AND s.conversation_id = ?2
+				     AND s.revision = ?3 AND s.state = 'active' AND s.codex_thread_id = ?4
+				     AND c.revision = ?5 AND c.state = 'active'
+				 )",
+			rusqlite::params![
+				request.runtime_session_id.as_str(),
+				request.conversation_id.as_str(),
+				request.expected_runtime_session_revision,
+				request.provider_thread_id,
+				request.expected_conversation_revision,
+			],
+			|row| row.get(0),
+		)
+		.map_err(account_lifecycle::sql_error)?;
+	let user_matches = turn_matches(
+		transaction,
+		&request.user_turn_id,
+		&request.conversation_id,
+		&request.runtime_session_id,
+		request.expected_user_turn_revision,
+		TurnRole::User,
+	)?;
+	let assistant_matches =
+		request.assistant_turn.as_ref().map_or(Ok(true), |(id, revision)| {
+			turn_matches(
+				transaction,
+				id,
+				&request.conversation_id,
+				&request.runtime_session_id,
+				*revision,
+				TurnRole::Assistant,
+			)
+		})?;
+
+	Ok(attempt_matches && session_matches && user_matches && assistant_matches)
 }
 
 fn unknown_recovery_authority(
