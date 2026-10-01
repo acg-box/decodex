@@ -5,9 +5,9 @@ use tokio::runtime::Builder;
 #[cfg(test)] use crate::shell::agent_surface::Render;
 #[cfg(test)] use crate::shell::agent_surface::Window;
 use crate::shell::agent_surface::{
-	AgentClient, AgentSurface, ComposerInput, Context, ConversationWorkingDirectory, Entity,
+	self, AgentClient, AgentSurface, ComposerInput, Context, ConversationWorkingDirectory, Entity,
 	EntityId, InteractiveElement, IntoElement, LoadState, ParentElement,
-	StatefulInteractiveElement, Styled, SubmitComposer, Task, WireText, div, muted, px, rgb,
+	StatefulInteractiveElement, Styled, SubmitComposer, Task, WireText, div, px,
 	ui_theme::TEXT_MUTED,
 };
 use decodex_protocol::{
@@ -212,7 +212,9 @@ impl AgentSurface {
 		));
 
 		if self.skills.task.is_some() {
-			return panel.child(muted("Reading available skills…")).into_any_element();
+			return panel
+				.child(agent_surface::muted("Reading available skills…"))
+				.into_any_element();
 		}
 
 		let Some(source) = self
@@ -222,12 +224,14 @@ impl AgentSurface {
 			.filter(|source| self.skill_source(cx).as_ref() == Some(*source))
 		else {
 			return panel
-				.child(muted("Choose an available conversation or project, then refresh skills."))
+				.child(agent_surface::muted(
+					"Choose an available conversation or project, then refresh skills.",
+				))
 				.into_any_element();
 		};
 		let Some(AgentSkillsResult::Available { page, .. }) = &self.skills.state else {
 			return panel
-				.child(muted("Skills are unavailable. Find skills to try again."))
+				.child(agent_surface::muted("Skills are unavailable. Find skills to try again."))
 				.into_any_element();
 		};
 		let mut list =
@@ -251,31 +255,33 @@ impl AgentSurface {
 						div()
 							.px_2()
 							.text_size(px(10.))
-							.text_color(rgb(TEXT_MUTED))
+							.text_color(agent_surface::rgb(TEXT_MUTED))
 							.child(skill.description.as_str().to_owned()),
 					)
 					.child(
 						div()
 							.px_2()
 							.text_size(px(9.))
-							.text_color(rgb(TEXT_MUTED))
+							.text_color(agent_surface::rgb(TEXT_MUTED))
 							.child(skill.path.as_str().to_owned()),
 					),
 			);
 		}
 
 		if page.skills.is_empty() {
-			list = list.child(muted("No matching enabled skills."));
+			list = list.child(agent_surface::muted("No matching enabled skills."));
 		}
 
 		panel = panel.child(list);
 
 		if page.truncated {
-			panel = panel.child(muted("More skills match. Refine your search."));
+			panel = panel.child(agent_surface::muted("More skills match. Refine your search."));
 		}
 		if page.errors > 0 {
-			panel = panel
-				.child(muted(format!("Codex reported {} skill discovery errors.", page.errors)));
+			panel = panel.child(agent_surface::muted(format!(
+				"Codex reported {} skill discovery errors.",
+				page.errors
+			)));
 		}
 
 		panel.into_any_element()
@@ -284,14 +290,19 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::skills::*;
-	use gpui::Focusable as _;
+	use gpui::{AppContext as _, Focusable as _, InteractiveElement, ParentElement};
+
+	use crate::shell::agent_surface::skills::{
+		self, AgentSkillDto, AgentSkillsResult, AgentSurface, ComposerInput, Context,
+		ConversationWorkingDirectory, Entity, EntityId, IntoElement, SubmitComposer, WireText,
+	};
+	#[cfg(test)] use crate::shell::agent_surface::skills::{Render, Window};
 	struct SkillPanel(Entity<AgentSurface>);
 	impl Render for SkillPanel {
 		fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 			let panel = self.0.update(cx, |s, cx| s.skill_options(cx));
 
-			div().child(panel).on_action(|_: &SubmitComposer, _, _| {
+			skills::div().child(panel).on_action(|_: &SubmitComposer, _, _| {
 				panic!("skill search must not submit the main composer")
 			})
 		}
@@ -335,7 +346,7 @@ mod tests {
 		let surface = view.read_with(visual, |v, _| v.0.clone());
 
 		visual.update(|w, cx| {
-			w.resize(gpui::size(px(380.), px(500.)));
+			w.resize(gpui::size(skills::px(380.), skills::px(500.)));
 			w.draw(cx).clear();
 		});
 

@@ -2,9 +2,8 @@
 use gpui::{AnyElement, KeyDownEvent};
 
 use crate::shell::agent_surface::{
-	AgentActionDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context, EntityId,
-	InteractiveElement, IntoElement, ParentElement, Role, StatefulInteractiveElement, Styled, div,
-	muted, px, rgba,
+	self, AgentActionDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context, EntityId,
+	InteractiveElement, IntoElement, ParentElement, Role, StatefulInteractiveElement, Styled, px,
 };
 #[cfg(test)]
 use crate::shell::agent_surface::{
@@ -44,16 +43,16 @@ impl AgentSurface {
 		let Some((owner, AgentHistoryResult::Available { misalignment: Some(review), .. })) =
 			&self.history
 		else {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		};
 
 		if owner != &work.id {
-			return div().into_any_element();
+			return agent_surface::div().into_any_element();
 		}
 
-		let mut panel=div().p_3().rounded(px(8.0)).border_1().border_color(rgba(0xffffff30)).flex().flex_col().gap_3()
+		let mut panel=agent_surface::div().p_3().rounded(px(8.0)).border_1().border_color(agent_surface::rgba(0xffffff30)).flex().flex_col().gap_3()
             .child("Conversation paused as a precaution")
-            .child(muted("Codex could not confirm that the agent was following your instructions. Review the findings before continuing."));
+            .child(agent_surface::muted("Codex could not confirm that the agent was following your instructions. Review the findings before continuing."));
 		let identity = (work.id.clone(), review.review_id.clone());
 
 		if self.misalignment_reviewed.as_ref() != Some(&identity) {
@@ -61,7 +60,7 @@ impl AgentSurface {
 
 			return panel
 				.child(
-					div()
+					agent_surface::div()
 						.id("misalignment-review")
 						.debug_selector(|| "misalignment-review".into())
 						.role(Role::Button)
@@ -102,7 +101,7 @@ impl AgentSurface {
 			let keyboard_digest = digest.clone();
 
 			panel = panel.child(
-				div()
+				agent_surface::div()
 					.id("misalignment-continue")
 					.debug_selector(|| "misalignment-continue".into())
 					.role(Role::Button)

@@ -5,15 +5,15 @@ use gpui::{AnyElement, AppContext as _, Div, KeyDownEvent, Stateful};
 use reqwest::Url;
 use serde_json::{Value, json};
 
+use crate::shell::agent_surface::{
+	self, AgentRequestResult, AgentSurface, ComposerInput, Context, InteractiveElement,
+	IntoElement, ParentElement, Role, SharedString, StatefulInteractiveElement, Styled,
+	SubmitComposer, px,
+};
 #[cfg(test)]
 use crate::shell::agent_surface::{
 	AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkItemDto,
 	AgentWorkStatusDto,
-};
-use crate::shell::agent_surface::{
-	AgentRequestResult, AgentSurface, ComposerInput, Context, InteractiveElement, IntoElement,
-	ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, SubmitComposer, div,
-	muted, px, rgba,
 };
 use decodex_protocol::McpFormField;
 
@@ -152,7 +152,7 @@ impl AgentSurface {
 			return self.installation_panel(event, value, cx);
 		}
 
-		let mut panel = div()
+		let mut panel = agent_surface::div()
 			.id("mcp-form-panel")
 			.flex()
 			.flex_col()
@@ -169,8 +169,9 @@ impl AgentSurface {
 			);
 
 		if let Some(account) = mcp_account_label(value) {
-			panel =
-				panel.child(div().debug_selector(|| "mcp-account-context".into()).child(account));
+			panel = panel.child(
+				agent_surface::div().debug_selector(|| "mcp-account-context".into()).child(account),
+			);
 		}
 		if let Some(params) = value
 			.pointer("/_meta/tool_params_display")
@@ -227,7 +228,7 @@ impl AgentSurface {
 			},
 			Err(message) =>
 				if value["mode"] != "url" {
-					panel = panel.child(muted(message));
+					panel = panel.child(agent_surface::muted(message));
 				},
 		}
 
@@ -309,8 +310,9 @@ impl AgentSurface {
 					));
 				}
 			} else {
-				panel =
-					panel.child(muted("A valid HTTP or HTTPS verification link is unavailable."));
+				panel = panel.child(agent_surface::muted(
+					"A valid HTTP or HTTPS verification link is unavailable.",
+				));
 			}
 		}
 
@@ -318,17 +320,17 @@ impl AgentSurface {
 	}
 
 	fn mcp_field_row(&self, event: i64, field: McpFormField, cx: &mut Context<Self>) -> Div {
-		let mut row = div().flex().flex_col().gap_2().child(format!(
+		let mut row = agent_surface::div().flex().flex_col().gap_2().child(format!(
 			"{}{}",
 			field.title,
 			if field.required { " *" } else { "" }
 		));
 
 		if let Some(description) = field.description {
-			row = row.child(muted(description));
+			row = row.child(agent_surface::muted(description));
 		}
 		if let Some(input) = self.mcp_inputs.get(&field.id) {
-			row = row.child(div().h(px(40.0)).child(input.clone()));
+			row = row.child(agent_surface::div().h(px(40.0)).child(input.clone()));
 		}
 
 		for (index, choice) in field.choices.into_iter().enumerate() {
@@ -385,7 +387,7 @@ pub(super) fn mcp_button(
 	let action = Rc::new(action);
 	let click = action.clone();
 
-	div()
+	agent_surface::div()
 		.id(SharedString::from(id.clone()))
 		.debug_selector(move || id)
 		.role(Role::Button)
@@ -393,7 +395,7 @@ pub(super) fn mcp_button(
 		.aria_label(label.clone())
 		.p_2()
 		.rounded(px(5.0))
-		.bg(rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
+		.bg(agent_surface::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
 		.cursor_pointer()
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
 		.on_key_down(cx.listener(move |s, key: &KeyDownEvent, _, cx| {

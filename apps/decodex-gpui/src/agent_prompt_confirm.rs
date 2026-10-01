@@ -8,8 +8,8 @@ use std::{
 use tokio::sync::oneshot::{self, Receiver, Sender, error::RecvError};
 
 use crate::shell::agent_surface::prompt_edit::{
-	AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, Context,
-	DesktopPromptEditDraft, EntityId, IdempotencyKey, PromptDraft, unique_command,
+	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, Context,
+	DesktopPromptEditDraft, EntityId, IdempotencyKey, PromptDraft,
 };
 use decodex_protocol::{AgentExecutionOverrides, ClientFailure, PromptForkIntent};
 
@@ -51,14 +51,15 @@ impl AgentSurface {
 			expected.clone()
 		} else {
 			let Ok(mut pending) = expected.begin_confirmation(
-				IdempotencyKey::new(unique_command()).expect("bounded command identity"),
+				IdempotencyKey::new(prompt_edit::unique_command())
+					.expect("bounded command identity"),
 			) else {
 				return;
 			};
 
 			if let Some(boundary) = boundary {
 				pending.fork = Some(PromptForkIntent {
-					target_work_id: EntityId::new(unique_command())
+					target_work_id: EntityId::new(prompt_edit::unique_command())
 						.expect("bounded branch identity"),
 					boundary,
 				});
@@ -409,9 +410,9 @@ async fn confirm_worker(
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::prompt_edit::confirmation::*;
-
 	use std::fs;
+
+	use crate::shell::agent_surface::prompt_edit::confirmation::{self, PromptDraft};
 
 	#[test]
 	fn prompt_confirm_media_check_rejects_missing_or_nonfile_paths() {
@@ -424,7 +425,7 @@ mod tests {
 			let input =
 				PromptDraft::new(vec![serde_json::json!({"type":kind,"path":file})]).unwrap();
 
-			assert!(readable_local_media(&input).is_ok());
+			assert!(confirmation::readable_local_media(&input).is_ok());
 
 			for path in [
 				directory.path().to_path_buf(),
@@ -434,7 +435,7 @@ mod tests {
 				let input =
 					PromptDraft::new(vec![serde_json::json!({"type":kind,"path":path})]).unwrap();
 
-				assert!(readable_local_media(&input).is_err());
+				assert!(confirmation::readable_local_media(&input).is_err());
 			}
 		}
 	}

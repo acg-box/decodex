@@ -4,8 +4,8 @@ use time::OffsetDateTime;
 use tokio::runtime::Builder;
 
 use crate::shell::agent_surface::{
-	AgentClient, AgentSnapshotDto, AgentSurface, Context, EntityId, InteractiveElement,
-	IntoElement, ParentElement, StatefulInteractiveElement, Styled, div, muted, px,
+	self, AgentClient, AgentSnapshotDto, AgentSurface, Context, EntityId, InteractiveElement,
+	IntoElement, ParentElement, StatefulInteractiveElement, Styled, px,
 };
 #[cfg(test)]
 use crate::shell::agent_surface::{
@@ -16,28 +16,30 @@ use decodex_protocol::AgentUsageEstimateResult;
 impl AgentSurface {
 	pub(super) fn usage_estimate_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
 		let owner = work.to_owned();
-		let mut panel = div().flex().flex_col().gap_2().child(
-			div().debug_selector(|| "task-usage-toggle".into()).child(self.workspace_action(
-				"task-usage-toggle".into(),
-				"Usage estimate".into(),
-				move |s, cx| {
-					if s.usage_estimate.as_ref().is_some_and(|(work, _)| work == &owner) {
-						s.clear_usage_estimate();
-						cx.notify();
-					} else {
-						s.load_usage_estimate(&owner, cx);
-					}
-				},
-				cx,
-			)),
+		let mut panel = agent_surface::div().flex().flex_col().gap_2().child(
+			agent_surface::div().debug_selector(|| "task-usage-toggle".into()).child(
+				self.workspace_action(
+					"task-usage-toggle".into(),
+					"Usage estimate".into(),
+					move |s, cx| {
+						if s.usage_estimate.as_ref().is_some_and(|(work, _)| work == &owner) {
+							s.clear_usage_estimate();
+							cx.notify();
+						} else {
+							s.load_usage_estimate(&owner, cx);
+						}
+					},
+					cx,
+				),
+			),
 		);
 
 		if let Some((_, result)) = self.usage_estimate.as_ref().filter(|(owner, _)| owner == work) {
 			let refresh = work.to_owned();
 
 			panel=panel.child(self.workspace_action("task-usage-refresh".into(),"Refresh estimate".into(),move|s,cx|s.load_usage_estimate(&refresh,cx),cx))
-				.child(muted("Backend estimate for the account shown below. It can lag recent activity and is not a final bill or remaining quota."))
-				.child(div().id("task-usage-details").debug_selector(||"task-usage-details".into()).max_h(px(320.)).overflow_y_scroll()
+				.child(agent_surface::muted("Backend estimate for the account shown below. It can lag recent activity and is not a final bill or remaining quota."))
+				.child(agent_surface::div().id("task-usage-details").debug_selector(||"task-usage-details".into()).max_h(px(320.)).overflow_y_scroll()
 					.child(result.as_ref().map(estimate_text).unwrap_or_else(||"Reading estimate…".into())));
 		}
 
