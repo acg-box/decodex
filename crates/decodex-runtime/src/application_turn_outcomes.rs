@@ -1,6 +1,5 @@
 //! Observe existing provider-attempt authority without creating an execution journal.
-use super::ProductStore;
-use crate::conversation::ordinary_provider_attempt_id;
+use crate::{application::ProductStore, conversation::ordinary_provider_attempt_id};
 use decodex_core::{ConversationId, ProviderAttemptConsumer, ProviderAttemptState, TurnId};
 use decodex_protocol::{
 	ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult as ResultDto,
@@ -67,13 +66,18 @@ fn project_state(state: ProviderAttemptState, terminal_evidence: bool) -> Option
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::application::turn_outcomes::{
+		self, ConversationTurnOutcomeRequest, ProductStore, ProviderAttemptState, ResultDto,
+		StateDto, TurnId,
+	};
 	#[test]
 	fn outcome_lookup_preserves_the_existing_attempt_identity() {
 		let turn = TurnId::new("50000000-0000-4000-8000-000000000001").unwrap();
 
 		assert_eq!(
-			ordinary_provider_attempt_id("original-submission", &turn).unwrap().as_str(),
+			turn_outcomes::ordinary_provider_attempt_id("original-submission", &turn)
+				.unwrap()
+				.as_str(),
 			"7dc84ac4-d679-42cd-8f43-235a20459b8d"
 		);
 	}
@@ -87,14 +91,20 @@ mod tests {
 			(Source::FailedDefinitive, StateDto::Failed),
 			(Source::NotSubmitted, StateDto::NotSubmitted),
 		] {
-			assert_eq!(project_state(source, false), None);
-			assert_eq!(project_state(source, true), Some(expected));
+			assert_eq!(turn_outcomes::project_state(source, false), None);
+			assert_eq!(turn_outcomes::project_state(source, true), Some(expected));
 		}
 
-		assert_eq!(project_state(Source::Unknown, false), Some(StateDto::Unknown));
-		assert_eq!(project_state(Source::Prepared, false), Some(StateDto::Pending));
-		assert_eq!(project_state(Source::DispatchAuthorized, false), Some(StateDto::Pending));
-		assert_eq!(project_state(Source::Canceled, false), Some(StateDto::NotSubmitted));
+		assert_eq!(turn_outcomes::project_state(Source::Unknown, false), Some(StateDto::Unknown));
+		assert_eq!(turn_outcomes::project_state(Source::Prepared, false), Some(StateDto::Pending));
+		assert_eq!(
+			turn_outcomes::project_state(Source::DispatchAuthorized, false),
+			Some(StateDto::Pending)
+		);
+		assert_eq!(
+			turn_outcomes::project_state(Source::Canceled, false),
+			Some(StateDto::NotSubmitted)
+		);
 	}
 	#[tokio::test]
 	async fn missing_attempt_is_not_reported_as_not_submitted() {
@@ -112,7 +122,7 @@ mod tests {
 		};
 
 		assert_eq!(
-			query_turn_outcome(&ProductStore::Available(store), &request).await,
+			turn_outcomes::query_turn_outcome(&ProductStore::Available(store), &request).await,
 			ResultDto::NotRecorded
 		);
 	}

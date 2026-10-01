@@ -1,5 +1,10 @@
 //! Opt-in interactive signed desktop acceptance against the isolated real service.
-use std::{env, fs, fs::OpenOptions, path::Path, sync::atomic::AtomicUsize};
+use std::{
+	env,
+	fs::{self, OpenOptions},
+	path::Path,
+	sync::atomic::AtomicUsize,
+};
 
 use tokio::{process::Command, time};
 

@@ -1,10 +1,10 @@
 //! Installed Guardian must receive verified user restrictions after a native process restart.
 use std::{env, fs, sync::Mutex};
 
-use crate::account_launch::agent_process::native_tests::{reviewer::*, serve_fixture_usage};
 use tokio::{net::TcpListener, time};
 
-use decodex_codex::{guardian, guardian::ReviewStatus};
+use crate::account_launch::agent_process::native_tests::{self, reviewer::*};
+use decodex_codex::guardian::{self, ReviewStatus};
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated Guardian evidence restart"]
@@ -15,7 +15,7 @@ async fn installed_guardian_retains_answer_after_compaction_and_restart() {
 	let address = listener.local_addr().unwrap();
 	let requests = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture_usage(
+	let backend = tokio::spawn(native_tests::serve_fixture_usage(
 		listener,
 		requests.clone(),
 		None,

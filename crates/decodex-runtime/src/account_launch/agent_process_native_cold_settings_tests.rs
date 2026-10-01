@@ -3,8 +3,8 @@
 #[path = "agent_process_native_runtime_submit_tests.rs"] mod submit;
 
 use std::{
-	env, fs,
-	fs::OpenOptions,
+	env,
+	fs::{self, OpenOptions},
 	path::{Path, PathBuf},
 };
 

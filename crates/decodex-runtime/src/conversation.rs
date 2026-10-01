@@ -13,9 +13,11 @@ mod skill_catalog;
 
 use std::{
 	collections::BTreeMap,
+	error::Error,
 	ffi::{CStr, CString, OsStr},
-	fmt::{Debug, Formatter},
+	fmt::{Debug, Display, Formatter},
 	fs::{File, Metadata},
+	future::Future,
 	mem::{self, MaybeUninit},
 	os::{
 		fd::{AsRawFd as _, FromRawFd as _},
@@ -23,56 +25,42 @@ use std::{
 	},
 	path::{Component, Path, PathBuf},
 	ptr,
-	sync::{Arc, Mutex, PoisonError, mpsc},
-	time::{Duration, Instant},
+	sync::{
+		Arc, MutexGuard, PoisonError,
+		atomic::Ordering,
+		mpsc,
+		mpsc::{SyncSender, TryRecvError, TrySendError},
+	},
+	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use decodex_codex::{
-	ArchiveReconciliationOutcome, ConversationThreadResumeRequest, ConversationThreadStartRequest,
-	ConversationTurnInput, ConversationTurnInterruptRequest, ConversationTurnStartRequest,
-	ConversationTurnStatus, ExactSubmittedTurnReadback, ExactThreadId, ExactThreadReadResult,
-	MAX_CONVERSATION_INPUT_BYTES, TurnStatus,
-};
-
-use decodex_core::{
-	self, AccountId, AccountLifecycleReadiness, AccountOperationId, ContextPack, ContextPackInput,
-	ContextPackPolicy, ContextPackSource, ContextSourceKind, ContinuationRejection, ConversationId,
-	ExecutionConsumer, HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata,
-	ItemStatus, MAX_CONTEXT_PACK_BYTES, MAX_CONTEXT_RECENT_ITEMS, MIN_CONTEXT_PACK_BYTES,
-	PinnedContextSource, PossibleSideEffects, ProcessExecutionAuthorization,
-	ProcessGenerationAccountBinding, ProcessGenerationId, ProviderAttemptConsumer,
-	ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState, ProviderDuplicateRisk,
-	ProviderEvidenceId, ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId,
-	ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome, RuntimeSessionId,
-	RuntimeSessionState, TurnId, TurnRole,
-};
-
-use decodex_database::{
-	self, AdmitInitialConversationTurn, ArchiveConversationOutcome, ArchiveConversationRecord,
-	ArchiveLocalConversationOutcome, ArchiveLocalConversationRecord,
-	AuthorizeProviderDispatchOutcome, BindRuntimeSessionThreadOutcome, CommandIdentity,
-	ConversationTerminalizationOutcome, ConversationThreadEstablishmentReadback,
-	CreateConversationRecord, FenceRuntimeSessionThreadStart,
-	FenceRuntimeSessionThreadStartOutcome, FreshConversationProcessGeneration,
-	InitialConversationTurnAdmissionOutcome, OrdinaryRuntimeSessionResumeReadback,
-	PendingConversationTerminalizationReadback, PrepareConversationProcessGeneration,
-	PrepareConversationProcessGenerationOutcome, ProviderAttemptMutationOutcome,
-	ReconcileConversationThreadEstablishment, ReconcileStrandedConversationTurn,
-	ReconcileStrandedConversationTurnOutcome, RecordHistoryItem, RecoverUnknownConversationTurn,
-	RecoverUnknownConversationTurnOutcome, RoleProfileRole, SqliteStore, StoreError,
-	TerminalizeConversationTurn, TurnReservationOutcome, UnknownConversationAttemptReadback,
-};
-
-use decodex_protocol::{ConversationUnavailableReason, HistoryText, MAX_HISTORY_INLINE_BYTES};
-
+use libc::{ERANGE, O_CLOEXEC, O_DIRECTORY, O_NOFOLLOW, O_RDONLY, passwd};
 use sha2::{Digest as _, Sha256};
-
-use tokio::task::{self, JoinSet};
+use tokio::{
+	sync::{oneshot, watch},
+	task::{self, JoinSet},
+	time,
+};
 
 use crate::{
 	ProcessGenerationControl, ProviderAttemptControl, ProviderAttemptReconciliation,
-	account_launch::{CapacityExhausted, RunnerCapacity},
-	account_service::{AccountLifecycleError, AccountProcessCredential, AccountService},
+	StoredCredential,
+	account_launch::{
+		CapacityExhausted, RunnerCapacity,
+		process::{
+			self, AccountBinding, AccountIdentity,
+			AccountRefreshCallback as ProcessAccountRefreshCallback, AttestedAppServerLaunch,
+			AttestedAppServerProfile, AttestedProcessChild, ChatgptRefreshProjection,
+			ConversationPreSpawnCheck, ConversationProcessError, ConversationProcessEvent,
+			ConversationRejectionReason, CredentialProjection, CredentialVault,
+			CredentialVaultError, EstablishedOrdinaryThread, PreparedThreadStart,
+			PreparedTurnStart, ResumedOrdinaryThread, StartedOrdinaryTurn,
+		},
+	},
+	account_service::{
+		AccountLifecycleError, AccountProcessCredential, AccountSelectionResult, AccountService,
+	},
+	agent_capabilities::ModelCatalogPages,
 	process_supervisor::{FencedProcess, ProcessGenerationTermination},
 	provider_attempt_service::{
 		FreshRuntimeSessionResume, ProviderAttemptRuntimeAuthority, RuntimeSessionResumeRequest,
@@ -84,23 +72,49 @@ use crate::{
 		PostProcessCommand, PostProcessOutcome, PreProcessOutcome,
 	},
 };
-
-use crate::account_launch::process::{
-	self, AccountBinding, AccountIdentity, AccountRefreshCallback as ProcessAccountRefreshCallback,
-	AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild,
-	ChatgptRefreshProjection, ConversationPreSpawnCheck, ConversationProcessError,
-	ConversationProcessEvent, ConversationRejectionReason, CredentialProjection, CredentialVault,
-	CredentialVaultError, EstablishedOrdinaryThread, PreparedThreadStart, PreparedTurnStart,
-	ResumedOrdinaryThread, StartedOrdinaryTurn,
+use decodex_codex::{
+	self, ArchiveReconciliationOutcome, ConversationThreadResumeRequest,
+	ConversationThreadStartRequest, ConversationTurnInput, ConversationTurnInterruptRequest,
+	ConversationTurnStartRequest, ConversationTurnStatus, ExactSubmittedTurnReadback,
+	ExactThreadId, ExactThreadReadResult, ExactTurnId, MAX_CONVERSATION_INPUT_BYTES,
+	app_server_client::{AppServerClient, NativeThreadModelSettings, ServerEvent},
 };
-
-use decodex_protocol::AgentCapabilitiesResult;
+use decodex_core::{
+	self, AccountId, AccountLifecycleReadiness, AccountOperationId, BlobStore, ContextPack,
+	ContextPackInput, ContextPackPolicy, ContextPackSource, ContextSourceKind,
+	ContinuationPlanKind, ContinuationRejection, ConversationId, ExecutionConsumer, HistoryItemId,
+	HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus, MAX_CONTEXT_PACK_BYTES,
+	MAX_CONTEXT_RECENT_ITEMS, MIN_CONTEXT_PACK_BYTES, PinnedContextSource, PossibleSideEffects,
+	ProcessExecutionAuthorization, ProcessGenerationAccountBinding, ProcessGenerationId,
+	ProviderAttemptConsumer, ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState,
+	ProviderDuplicateRisk, ProviderEvidenceId, ProviderEvidenceSource, ProviderPositiveEvidence,
+	ProviderRequestId, ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome,
+	RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole,
+};
+use decodex_database::{
+	self, AdmitInitialConversationTurn, ArchiveConversationOutcome, ArchiveConversationRecord,
+	ArchiveLocalConversationOutcome, ArchiveLocalConversationRecord,
+	AuthorizeProviderDispatchOutcome, BindRuntimeSessionThreadOutcome, CommandIdentity,
+	ContinuationPlanEffect, ConversationNativeSettings, ConversationRequest,
+	ConversationTerminalizationOutcome, ConversationThreadEstablishmentReadback,
+	CreateConversationRecord, FenceRuntimeSessionThreadStart,
+	FenceRuntimeSessionThreadStartOutcome, FreshConversationProcessGeneration,
+	FreshProviderDispatchFence, FreshRuntimeSessionThreadStart,
+	InitialConversationTurnAdmissionOutcome, InitialModelSource,
+	OrdinaryRuntimeSessionResumeReadback, PendingConversationTerminalizationReadback,
+	PrepareConversationProcessGeneration, PrepareConversationProcessGenerationOutcome,
+	ProviderAttemptMutationOutcome, ReconcileConversationThreadEstablishment,
+	ReconcileStrandedConversationTurn, ReconcileStrandedConversationTurnOutcome,
+	RecordConversationNativeSettings, RecordConversationResumeRejection, RecordHistoryItem,
+	RecoverUnknownConversationTurn, RecoverUnknownConversationTurnOutcome, RoleProfileRole,
+	SqliteStore, StoreError, TerminalizeConversationTurn, TurnReservationOutcome,
+	UnknownConversationAttemptReadback,
+};
+use decodex_protocol::{
+	AgentCapabilitiesResult, AgentModelDto, ConversationExecutionOverrides,
+	ConversationUnavailableReason, HistoryText, MAX_HISTORY_INLINE_BYTES,
+};
 use execution_overrides::inherit_resume_settings;
-
-use tokio::{
-	sync::{oneshot, watch},
-	time,
-};
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
 const TURN_TIMEOUT: Duration = Duration::from_secs(30 * 60);
@@ -123,7 +137,7 @@ pub(crate) struct ConversationExecutionSettings {
 
 /// First ordinary Turn input. Selected settings survive pre-session recovery.
 pub(crate) struct CreateConversation {
-	pub initial_model_source: Option<decodex_database::InitialModelSource>,
+	pub initial_model_source: Option<InitialModelSource>,
 	pub operation_key: String,
 	pub correlation_id: String,
 	pub causation_id: Option<String>,
@@ -182,7 +196,7 @@ pub(crate) struct SubmitConversationTurn {
 	pub message: String,
 	pub working_directory: String,
 	pub execution: ConversationExecutionSettings,
-	pub overrides: Option<decodex_protocol::ConversationExecutionOverrides>,
+	pub overrides: Option<ConversationExecutionOverrides>,
 }
 
 /// Explicit selected-thread reconciliation request.
@@ -229,7 +243,7 @@ impl ConversationRuntime {
 	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new(
 		store: SqliteStore,
-		blob_store: decodex_core::BlobStore,
+		blob_store: BlobStore,
 		accounts: Arc<AccountService>,
 		process_generations: ProcessGenerationControl,
 		provider_attempts: ProviderAttemptControl,
@@ -250,20 +264,20 @@ impl ConversationRuntime {
 				execution_authorization,
 				launch_profile,
 				capacity,
-				local: Mutex::new(BTreeMap::new()),
+				local: std::sync::Mutex::new(BTreeMap::new()),
 				events,
 				event_receiver: tokio::sync::Mutex::new(event_receiver),
 				event_stream_closed,
 				workers: tokio::sync::Mutex::new(JoinSet::new()),
 				shutting_down: Arc::new(std::sync::atomic::AtomicBool::new(false)),
 				agent_launch: tokio::sync::Mutex::new(()),
-				agent_process: Mutex::new(None),
+				agent_process: std::sync::Mutex::new(None),
 				initial_catalog: Arc::new(tokio::sync::Mutex::new(())),
 			}),
 		}
 	}
 
-	pub(crate) fn agent_client(&self) -> Option<decodex_codex::app_server_client::AppServerClient> {
+	pub(crate) fn agent_client(&self) -> Option<AppServerClient> {
 		self.inner
 			.agent_process
 			.lock()
@@ -328,7 +342,7 @@ impl ConversationRuntime {
 		let result = if before.is_some() {
 			task::spawn_blocking(move || {
 				control.with_fenced_child(&process, |child| {
-					let mut pages = crate::agent_capabilities::ModelCatalogPages::default();
+					let mut pages = ModelCatalogPages::default();
 					let mut cursor = None;
 					let deadline = Instant::now() + Duration::from_secs(8);
 
@@ -427,9 +441,7 @@ impl ConversationRuntime {
 		AgentCapabilitiesResult::Available { models, memory_enabled: None }
 	}
 
-	pub(crate) fn agent_catalog_client(
-		&self,
-	) -> Option<(ProcessGenerationId, decodex_codex::app_server_client::AppServerClient)> {
+	pub(crate) fn agent_catalog_client(&self) -> Option<(ProcessGenerationId, AppServerClient)> {
 		self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner).as_ref().and_then(
 			|process| process.client.clone().map(|client| (process.generation_id.clone(), client)),
 		)
@@ -447,12 +459,7 @@ impl ConversationRuntime {
 	/// Bind account-scoped observations to retained process admission and credential revision.
 	pub(crate) async fn agent_usage_source(
 		&self,
-	) -> Option<(
-		ProcessGenerationId,
-		AccountId,
-		i64,
-		decodex_codex::app_server_client::AppServerClient,
-	)> {
+	) -> Option<(ProcessGenerationId, AccountId, i64, AppServerClient)> {
 		let (root, generation, client) = {
 			let slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner);
 			let process = slot.as_ref()?;
@@ -481,7 +488,7 @@ impl ConversationRuntime {
 		let Ok(inspection) = self.inner.accounts.inspect(&binding.account_id).await else {
 			return false;
 		};
-		let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else {
+		let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
 			return false;
 		};
 
@@ -499,7 +506,7 @@ impl ConversationRuntime {
 		&self,
 		account: Option<&AccountId>,
 		now: i64,
-	) -> Result<crate::account_service::AccountSelectionResult, AgentLaunchError> {
+	) -> Result<AccountSelectionResult, AgentLaunchError> {
 		match self.inner.accounts.select_agent_route(account, now).await {
 			Ok(selected) => Ok(selected),
 			Err(failure) => {
@@ -556,8 +563,8 @@ impl ConversationRuntime {
 			.map(|binding| &binding.account_id)
 			.or(request.account_id.as_ref())
 			.cloned();
-		let now = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
+		let now = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
 			.map_err(|_| AgentLaunchError::Unavailable)?
 			.as_micros();
 		let now = i64::try_from(now).map_err(|_| AgentLaunchError::Unavailable)?;
@@ -951,7 +958,7 @@ impl ConversationRuntime {
 		};
 
 		if plan.plan.consumer != consumer
-			|| plan.plan.kind != decodex_core::ContinuationPlanKind::InitialThread
+			|| plan.plan.kind != ContinuationPlanKind::InitialThread
 			|| plan.plan.source_runtime_session_id != session.runtime_session_id
 			|| plan.plan.source_runtime_session_revision != session.revision
 			|| session.conversation_id != command.conversation_id
@@ -1437,7 +1444,7 @@ impl ConversationRuntime {
 		command: SubmitConversationTurn,
 		turn_sequence: i64,
 		decision: PersistedDecisionProvenance,
-		plan: decodex_database::ContinuationPlanEffect,
+		plan: ContinuationPlanEffect,
 		prior_session: Option<LocalSession>,
 	) -> ConversationOutcome {
 		let working_directory = command.working_directory.clone();
@@ -1451,7 +1458,7 @@ impl ConversationRuntime {
 			return ConversationOutcome::Conflict;
 		};
 
-		if plan.plan.kind != decodex_core::ContinuationPlanKind::ContextPackFallback
+		if plan.plan.kind != ContinuationPlanKind::ContextPackFallback
 			|| plan.plan.consumer
 				!= (ExecutionConsumer::ConversationTurn {
 					conversation_id: command.conversation_id.clone(),
@@ -1931,10 +1938,8 @@ impl ConversationRuntime {
 	async fn plan_existing_session(
 		&self,
 		input: ExistingSessionPlanningInput<'_>,
-	) -> Result<
-		(PersistedDecisionProvenance, decodex_database::ContinuationPlanEffect),
-		ExistingSessionPlanningRefusal,
-	> {
+	) -> Result<(PersistedDecisionProvenance, ContinuationPlanEffect), ExistingSessionPlanningRefusal>
+	{
 		let ExistingSessionPlanningInput { operation_key, consumer, message_bytes, expected } =
 			input;
 		let (conversation_id, turn_id) = match &consumer {
@@ -1978,11 +1983,11 @@ impl ConversationRuntime {
 					&& plan.plan.source_runtime_session_revision
 						== expected.runtime_session_revision
 					&& match plan.plan.kind {
-						decodex_core::ContinuationPlanKind::SameThread =>
+						ContinuationPlanKind::SameThread =>
 							plan.plan.codex_thread_id.as_deref() == Some(expected.thread_id)
 								&& plan.runtime_session.is_none()
 								&& plan.fallback_context_pack.is_none(),
-						decodex_core::ContinuationPlanKind::ContextPackFallback =>
+						ContinuationPlanKind::ContextPackFallback =>
 							plan.runtime_session.as_ref().is_some_and(|session| {
 								session.conversation_id == plan.plan.conversation_id
 									&& session.state == RuntimeSessionState::Starting
@@ -1991,7 +1996,7 @@ impl ConversationRuntime {
 									&& session.account_snapshot.source_account_id
 										== plan.plan.selected_account_id
 							}) && plan.fallback_context_pack.is_some(),
-						decodex_core::ContinuationPlanKind::InitialThread => false,
+						ContinuationPlanKind::InitialThread => false,
 					} =>
 				Ok((decision, plan)),
 			PreProcessOutcome::Planned { .. } => Err(ExistingSessionPlanningRefusal::Conflict),
@@ -2014,25 +2019,23 @@ impl ConversationRuntime {
 	async fn save_native_settings(
 		&self,
 		session: &LocalSession,
-		settings: decodex_database::ConversationNativeSettings,
+		settings: ConversationNativeSettings,
 		response_id: i64,
 		response_sha256: &str,
 	) -> Result<(), ()> {
 		match self
 			.inner
 			.store
-			.record_conversation_native_settings(
-				&decodex_database::RecordConversationNativeSettings {
-					runtime_session_id: session.runtime_session_id.clone(),
-					expected_session_revision: session.runtime_session_revision,
-					codex_thread_id: session.codex_thread_id.clone(),
-					process_generation_id: session.process.generation_id().clone(),
-					expected_process_revision: session.process.revision(),
-					response_id,
-					response_sha256: response_sha256.to_owned(),
-					settings,
-				},
-			)
+			.record_conversation_native_settings(&RecordConversationNativeSettings {
+				runtime_session_id: session.runtime_session_id.clone(),
+				expected_session_revision: session.runtime_session_revision,
+				codex_thread_id: session.codex_thread_id.clone(),
+				process_generation_id: session.process.generation_id().clone(),
+				expected_process_revision: session.process.revision(),
+				response_id,
+				response_sha256: response_sha256.to_owned(),
+				settings,
+			})
 			.await
 		{
 			Ok(true) => Ok(()),
@@ -2255,7 +2258,7 @@ impl ConversationRuntime {
 			},
 		};
 
-		if plan.plan.kind == decodex_core::ContinuationPlanKind::ContextPackFallback {
+		if plan.plan.kind == ContinuationPlanKind::ContextPackFallback {
 			return self
 				.establish_context_fallback(command, sequence, decision, plan, Some(session))
 				.await;
@@ -2315,8 +2318,8 @@ impl ConversationRuntime {
 	async fn dispatch_turn(
 		&self,
 		operation_key: &str,
-		decision: crate::routing_orchestration::PersistedDecisionProvenance,
-		plan: decodex_database::ContinuationPlanEffect,
+		decision: PersistedDecisionProvenance,
+		plan: ContinuationPlanEffect,
 		session: LocalSession,
 		turn_id: TurnId,
 		turn_sequence: i64,
@@ -2730,9 +2733,9 @@ impl ConversationRuntime {
 
 		if started.status != ConversationTurnStatus::InProgress {
 			let status = match started.status {
-				ConversationTurnStatus::Completed => TurnStatus::Completed,
-				ConversationTurnStatus::Interrupted => TurnStatus::Interrupted,
-				ConversationTurnStatus::Failed => TurnStatus::Failed,
+				ConversationTurnStatus::Completed => decodex_codex::TurnStatus::Completed,
+				ConversationTurnStatus::Interrupted => decodex_codex::TurnStatus::Interrupted,
+				ConversationTurnStatus::Failed => decodex_codex::TurnStatus::Failed,
 				ConversationTurnStatus::InProgress => unreachable!(),
 			};
 			let handled = self
@@ -2994,16 +2997,17 @@ impl ConversationRuntime {
 	async fn finish_positive_turn(
 		&self,
 		context: &TurnContext,
-		status: TurnStatus,
+		status: decodex_codex::TurnStatus,
 		witness_digest: String,
 		has_assistant_turn: bool,
 	) -> Result<(), ()> {
 		let (terminal, outcome) = match status {
-			TurnStatus::Completed =>
+			decodex_codex::TurnStatus::Completed =>
 				(ConversationTerminalState::Succeeded, ProviderTerminalOutcome::Succeeded),
-			TurnStatus::Interrupted | TurnStatus::Failed =>
+			decodex_codex::TurnStatus::Interrupted | decodex_codex::TurnStatus::Failed =>
 				(ConversationTerminalState::Failed, ProviderTerminalOutcome::FailedDefinitive),
-			TurnStatus::InProgress | TurnStatus::Unknown => return Err(()),
+			decodex_codex::TurnStatus::InProgress | decodex_codex::TurnStatus::Unknown =>
+				return Err(()),
 		};
 		let evidence_id = ProviderEvidenceId::new(derived_uuid(
 			"provider-evidence",
@@ -3134,8 +3138,8 @@ impl ConversationRuntime {
 
 				match commands.try_send(WorkerCommand::Interrupt) {
 					Ok(()) => ConversationOutcome::InterruptRequested(readback),
-					Err(mpsc::TrySendError::Full(_)) => ConversationOutcome::Busy(readback),
-					Err(mpsc::TrySendError::Disconnected(_)) => ConversationOutcome::Unknown {
+					Err(TrySendError::Full(_)) => ConversationOutcome::Busy(readback),
+					Err(TrySendError::Disconnected(_)) => ConversationOutcome::Unknown {
 						readback,
 						ambiguity: ConversationAmbiguity::ActiveTurn,
 					},
@@ -3288,7 +3292,7 @@ impl ConversationRuntime {
 		&self,
 		command: &ControlConversation,
 	) -> Result<
-		(OrdinaryRuntimeSessionResumeReadback, decodex_database::ConversationRequest),
+		(OrdinaryRuntimeSessionResumeReadback, ConversationRequest),
 		ConversationControlOutcome,
 	> {
 		if self.is_shutting_down()
@@ -4037,7 +4041,7 @@ impl ConversationRuntime {
 	}
 
 	pub(crate) fn begin_shutdown(&self) {
-		self.inner.shutting_down.store(true, std::sync::atomic::Ordering::Release);
+		self.inner.shutting_down.store(true, Ordering::Release);
 
 		if let Some(client) = self
 			.inner
@@ -4173,7 +4177,7 @@ impl ConversationRuntime {
 		&self,
 		process: &FencedProcess,
 		prepared: PreparedThreadStart,
-		authority: decodex_database::FreshRuntimeSessionThreadStart,
+		authority: FreshRuntimeSessionThreadStart,
 	) -> Result<EstablishedOrdinaryThread, ConversationProcessError> {
 		let fence = authority.readback();
 
@@ -4252,7 +4256,7 @@ impl ConversationRuntime {
 		&self,
 		process: &FencedProcess,
 		prepared: PreparedTurnStart,
-		authority: decodex_database::FreshProviderDispatchFence,
+		authority: FreshProviderDispatchFence,
 	) -> Result<StartedOrdinaryTurn, ConversationProcessError> {
 		let control = self.inner.process_generations.clone();
 		let process = process.clone();
@@ -4522,7 +4526,7 @@ impl ConversationRuntime {
 			Err(outcome) => return *outcome,
 		};
 
-		if planned.plan.plan.kind == decodex_core::ContinuationPlanKind::ContextPackFallback {
+		if planned.plan.plan.kind == ContinuationPlanKind::ContextPackFallback {
 			let RehydratedTurnPlan { admission, decision, plan } = planned;
 
 			return self
@@ -5086,7 +5090,7 @@ impl ConversationRuntime {
 		session: LocalSession,
 		turn_id: TurnId,
 		attempt_id: ProviderAttemptId,
-		commands: mpsc::SyncSender<WorkerCommand>,
+		commands: SyncSender<WorkerCommand>,
 	) -> bool {
 		let mut local = self.local();
 		let Some(task) = local.get_mut(session.conversation_id.as_str()) else {
@@ -5289,7 +5293,7 @@ impl ConversationRuntime {
 		reason: ConversationRejectionReason,
 		witness_digest: String,
 	) -> ConversationOutcome {
-		let record = decodex_database::RecordConversationResumeRejection {
+		let record = RecordConversationResumeRejection {
 			conversation_id: session.conversation_id.clone(),
 			runtime_session_id: session.runtime_session_id.clone(),
 			expected_session_revision: session.runtime_session_revision,
@@ -5493,10 +5497,10 @@ impl ConversationRuntime {
 	}
 
 	fn is_shutting_down(&self) -> bool {
-		self.inner.shutting_down.load(std::sync::atomic::Ordering::Acquire)
+		self.inner.shutting_down.load(Ordering::Acquire)
 	}
 
-	fn local(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, LocalTask>> {
+	fn local(&self) -> MutexGuard<'_, BTreeMap<String, LocalTask>> {
 		self.inner.local.lock().unwrap_or_else(PoisonError::into_inner)
 	}
 }
@@ -5510,8 +5514,8 @@ pub(crate) struct StartAgentProcess {
 
 /// Already authenticated and initialized; the runtime retains process ownership.
 pub(crate) struct AgentConnection {
-	pub client: decodex_codex::app_server_client::AppServerClient,
-	pub events: tokio::sync::mpsc::Receiver<decodex_codex::app_server_client::ServerEvent>,
+	pub client: AppServerClient,
+	pub events: tokio::sync::mpsc::Receiver<ServerEvent>,
 	pub account_id: AccountId,
 	pub process_generation_id: ProcessGenerationId,
 }
@@ -5607,21 +5611,21 @@ struct InitialConversationExecution {
 
 struct ConversationRuntimeInner {
 	store: SqliteStore,
-	blob_store: decodex_core::BlobStore,
+	blob_store: BlobStore,
 	accounts: Arc<AccountService>,
 	process_generations: ProcessGenerationControl,
 	provider_attempts: ProviderAttemptControl,
 	execution_authorization: ProcessExecutionAuthorization,
 	launch_profile: AttestedAppServerProfile,
 	capacity: Arc<RunnerCapacity>,
-	local: Mutex<BTreeMap<String, LocalTask>>,
+	local: std::sync::Mutex<BTreeMap<String, LocalTask>>,
 	events: tokio::sync::mpsc::Sender<ConversationOutcome>,
 	event_receiver: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<ConversationOutcome>>,
 	event_stream_closed: tokio::sync::watch::Sender<bool>,
 	workers: tokio::sync::Mutex<JoinSet<()>>,
 	shutting_down: Arc<std::sync::atomic::AtomicBool>,
 	agent_launch: tokio::sync::Mutex<()>,
-	agent_process: Mutex<Option<RetainedAgentProcess>>,
+	agent_process: std::sync::Mutex<Option<RetainedAgentProcess>>,
 	initial_catalog: Arc<tokio::sync::Mutex<()>>,
 }
 
@@ -5629,7 +5633,7 @@ struct RetainedAgentProcess {
 	root_id: String,
 	working_directory: String,
 	generation_id: ProcessGenerationId,
-	client: Option<decodex_codex::app_server_client::AppServerClient>,
+	client: Option<AppServerClient>,
 }
 
 struct LocalTask {
@@ -5657,7 +5661,7 @@ struct LocalSession {
 	working_directory: String,
 	instructions: String,
 	next_user_sequence: i64,
-	execution_overrides: Option<decodex_protocol::ConversationExecutionOverrides>,
+	execution_overrides: Option<ConversationExecutionOverrides>,
 }
 
 struct ExistingSessionExpectation<'a> {
@@ -5702,7 +5706,7 @@ struct RehydratedTurnAdmission {
 struct RehydratedTurnPlan {
 	admission: RehydratedTurnAdmission,
 	decision: PersistedDecisionProvenance,
-	plan: decodex_database::ContinuationPlanEffect,
+	plan: ContinuationPlanEffect,
 }
 
 struct RehydratedAccountRevision {
@@ -5719,14 +5723,14 @@ struct RehydratedProcessAdmission {
 
 struct RehydratedProcessLaunch {
 	decision: PersistedDecisionProvenance,
-	plan: decodex_database::ContinuationPlanEffect,
+	plan: ContinuationPlanEffect,
 	session: LocalSession,
 	sequence: i64,
 }
 
 struct ConversationCredentialVault {
 	account_id: AccountId,
-	stored: crate::StoredCredential,
+	stored: StoredCredential,
 }
 impl Debug for ConversationCredentialVault {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
@@ -5935,7 +5939,7 @@ pub(crate) enum AgentLaunchError {
 	AccountSelection(decodex_core::AccountSelectionRecovery),
 	Process(ConversationManualRecovery),
 }
-impl std::fmt::Display for AgentLaunchError {
+impl Display for AgentLaunchError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Self::QuotaDepleted => formatter.write_str("This Agent's account has reached its usage limit. Conversation history is preserved. Check Accounts for the reset time."),
@@ -5952,7 +5956,7 @@ impl std::fmt::Display for AgentLaunchError {
 	}
 }
 
-impl std::error::Error for AgentLaunchError {}
+impl Error for AgentLaunchError {}
 
 /// Typed Conversation readiness projected by daemon bootstrap and Doctor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -5995,7 +5999,7 @@ enum LocalTaskState {
 		session: LocalSession,
 		turn_id: TurnId,
 		attempt_id: ProviderAttemptId,
-		commands: mpsc::SyncSender<WorkerCommand>,
+		commands: SyncSender<WorkerCommand>,
 	},
 	Recovery {
 		readback: ConversationReadback,
@@ -6004,14 +6008,10 @@ enum LocalTaskState {
 }
 
 enum WorkerCommand {
-	ModelSettings(
-		tokio::sync::oneshot::Sender<
-			Option<decodex_codex::app_server_client::NativeThreadModelSettings>,
-		>,
-	),
+	ModelSettings(tokio::sync::oneshot::Sender<Option<NativeThreadModelSettings>>),
 	Interrupt,
 	Shutdown,
-	ModelCatalog(tokio::sync::oneshot::Sender<Option<Vec<decodex_protocol::AgentModelDto>>>),
+	ModelCatalog(tokio::sync::oneshot::Sender<Option<Vec<AgentModelDto>>>),
 }
 
 enum WorkerOutput {
@@ -6092,7 +6092,7 @@ fn effective_user_home(effective_uid: u32) -> Result<PathBuf, ()> {
 	let mut buffer_len = INITIAL_PASSWD_BUFFER_BYTES;
 
 	loop {
-		let mut entry = MaybeUninit::<libc::passwd>::zeroed();
+		let mut entry = MaybeUninit::<passwd>::zeroed();
 		let mut result = ptr::null_mut();
 		let mut buffer = vec![0_u8; buffer_len];
 		let status = unsafe {
@@ -6105,7 +6105,7 @@ fn effective_user_home(effective_uid: u32) -> Result<PathBuf, ()> {
 			)
 		};
 
-		if status == libc::ERANGE && buffer_len < MAX_PASSWD_BUFFER_BYTES {
+		if status == ERANGE && buffer_len < MAX_PASSWD_BUFFER_BYTES {
 			buffer_len = buffer_len.saturating_mul(2).min(MAX_PASSWD_BUFFER_BYTES);
 
 			continue;
@@ -6174,12 +6174,8 @@ fn validate_selected_component(
 
 fn open_selected_directory(path: &Path) -> Result<File, ()> {
 	let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| ())?;
-	let descriptor = unsafe {
-		libc::open(
-			path.as_ptr(),
-			libc::O_RDONLY | libc::O_CLOEXEC | libc::O_DIRECTORY | libc::O_NOFOLLOW,
-		)
-	};
+	let descriptor =
+		unsafe { libc::open(path.as_ptr(), O_RDONLY | O_CLOEXEC | O_DIRECTORY | O_NOFOLLOW) };
 
 	selected_directory_from_descriptor(descriptor)
 }
@@ -6190,7 +6186,7 @@ fn open_selected_directory_at(parent: &File, name: &OsStr) -> Result<File, ()> {
 		libc::openat(
 			parent.as_raw_fd(),
 			name.as_ptr(),
-			libc::O_RDONLY | libc::O_CLOEXEC | libc::O_DIRECTORY | libc::O_NOFOLLOW,
+			O_RDONLY | O_CLOEXEC | O_DIRECTORY | O_NOFOLLOW,
 		)
 	};
 
@@ -6274,12 +6270,12 @@ fn run_event_loop(
 ) -> Result<(), ConversationProcessError> {
 	let thread_id =
 		ExactThreadId::new(thread_id).map_err(|_| ConversationProcessError::Incompatible)?;
-	let provider_turn_id = decodex_codex::ExactTurnId::new(provider_turn_id)
-		.map_err(|_| ConversationProcessError::Incompatible)?;
+	let provider_turn_id =
+		ExactTurnId::new(provider_turn_id).map_err(|_| ConversationProcessError::Incompatible)?;
 	let deadline = Instant::now() + TURN_TIMEOUT;
 
 	loop {
-		if shutting_down.load(std::sync::atomic::Ordering::Acquire) || Instant::now() >= deadline {
+		if shutting_down.load(Ordering::Acquire) || Instant::now() >= deadline {
 			let request =
 				ConversationTurnInterruptRequest::new(thread_id.clone(), provider_turn_id.clone());
 			let _ = child.interrupt_ordinary_turn(&request);
@@ -6307,7 +6303,7 @@ fn run_event_loop(
 				}
 			},
 			Ok(WorkerCommand::ModelCatalog(reply)) => {
-				let mut pages = crate::agent_capabilities::ModelCatalogPages::default();
+				let mut pages = ModelCatalogPages::default();
 				let mut cursor = None;
 				let mut complete = false;
 
@@ -6375,8 +6371,8 @@ fn run_event_loop(
 
 				return Err(ConversationProcessError::Unavailable);
 			},
-			Err(mpsc::TryRecvError::Empty) => {},
-			Err(mpsc::TryRecvError::Disconnected) => {
+			Err(TryRecvError::Empty) => {},
+			Err(TryRecvError::Disconnected) => {
 				let request = ConversationTurnInterruptRequest::new(
 					thread_id.clone(),
 					provider_turn_id.clone(),
@@ -6673,8 +6669,8 @@ fn derived_uuid(scope: &str, parts: &[&str]) -> String {
 }
 
 // The caller holds agent_launch across this operation.
-async fn retire_agent_process_slot<F: std::future::Future<Output = bool>>(
-	slot: &Mutex<Option<RetainedAgentProcess>>,
+async fn retire_agent_process_slot<F: Future<Output = bool>>(
+	slot: &std::sync::Mutex<Option<RetainedAgentProcess>>,
 	retire: impl FnOnce(ProcessGenerationId) -> F,
 ) -> bool {
 	let generation = {

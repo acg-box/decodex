@@ -1,8 +1,5 @@
 //! Native web actions and opaque results survive the exact-item detail projection.
-use tokio::{
-	io,
-	io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
-};
+use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 
 use crate::agent_detail::*;
 

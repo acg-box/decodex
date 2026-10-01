@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use sha2::{Digest as _, Sha256};
-use tokio::{time, time::Instant};
+use tokio::time::{self, Instant};
 
 use crate::agent::{
 	self, AgentCoordinator, AgentError, EnqueueAgentEvent, Value, async_projection::Projection,

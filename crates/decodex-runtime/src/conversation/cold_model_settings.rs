@@ -1,12 +1,13 @@
 //! Inspect persisted native settings through the existing bounded metadata process owner.
 use std::{sync::Arc, time::Duration};
 
-use crate::conversation::{
-	ConversationId, ConversationRefreshCallback, ConversationRuntime,
-	ProcessAccountRefreshCallback, ProcessGenerationId, derived_uuid,
-	model_settings::{ResultDto, project},
-};
 use tokio::{runtime::Handle, sync::oneshot, task, time};
+
+use crate::conversation::{
+	self, ConversationId, ConversationRefreshCallback, ConversationRuntime,
+	ProcessAccountRefreshCallback, ProcessGenerationId,
+	model_settings::{self, ResultDto},
+};
 
 impl ConversationRuntime {
 	pub(super) async fn cold_model_settings(&self, key: &str, conversation: &str) -> ResultDto {
@@ -64,7 +65,7 @@ impl ConversationRuntime {
 			Arc::new(ConversationRefreshCallback {
 				accounts: self.inner.accounts.clone(),
 				runtime: Handle::current(),
-				generation_id: ProcessGenerationId::new(derived_uuid(
+				generation_id: ProcessGenerationId::new(conversation::derived_uuid(
 					"cold-model-settings-process",
 					&[key, account.as_str()],
 				))
@@ -106,6 +107,6 @@ impl ConversationRuntime {
 			return None;
 		}
 		// Neither the initial request nor thread/read proves the last requested tier.
-		project(settings, None)
+		model_settings::project(settings, None)
 	}
 }

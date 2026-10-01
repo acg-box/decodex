@@ -1,7 +1,11 @@
 //! Native wire publications reach the existing durable settings owners without dispatch.
 use std::time::Duration;
 
-use tokio::{io, io::DuplexStream, sync::mpsc::Receiver, time};
+use tokio::{
+	io::{self, DuplexStream},
+	sync::mpsc::Receiver,
+	time,
+};
 
 use crate::agent::tests::*;
 use decodex_codex::app_server_client::{NativeTaskModelSettings, NativeTaskPermissions};

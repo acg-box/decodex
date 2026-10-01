@@ -1,5 +1,5 @@
 //! Real same-UID transport proof for cold, read-only creation recovery.
-use std::{fs, fs::Permissions};
+use std::fs::{self, Permissions};
 
 use crate::{
 	ProtocolServer, ServerConfig,

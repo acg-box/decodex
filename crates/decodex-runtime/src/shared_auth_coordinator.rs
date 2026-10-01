@@ -2,13 +2,12 @@
 #![cfg_attr(all(feature = "process-acceptance-fixture", debug_assertions), allow(dead_code))]
 
 use std::sync::{Arc, Mutex};
-
 #[cfg(target_os = "macos")]
 use std::{
 	collections::{HashMap, HashSet},
 	ffi::{OsStr, OsString, c_void},
 	fs,
-	mem::{MaybeUninit, size_of},
+	mem::{self, MaybeUninit},
 	os::unix::ffi::{OsStrExt as _, OsStringExt as _},
 	path::{Path, PathBuf},
 };
@@ -17,9 +16,8 @@ use std::{
 
 use crate::{
 	auth_projection::{
-		CodexAuthProjectionError, SharedCodexAuthFileStamp, SharedCodexAuthSnapshot,
-		SharedCodexAuthVersion, project_shared_codex_auth_cas, read_shared_codex_auth_snapshot,
-		read_shared_codex_auth_stamp,
+		self, CodexAuthProjectionError, SharedCodexAuthFileStamp, SharedCodexAuthSnapshot,
+		SharedCodexAuthVersion,
 	},
 	host_credentials::CredentialSecretBundle,
 };
@@ -232,14 +230,14 @@ impl SharedAuthCoordinator {
 struct ProductionSharedAuthFile;
 impl SharedAuthFilePort for ProductionSharedAuthFile {
 	fn stamp(&self) -> Result<SharedCodexAuthFileStamp, CodexAuthProjectionError> {
-		read_shared_codex_auth_stamp()
+		auth_projection::read_shared_codex_auth_stamp()
 	}
 
 	fn read(
 		&self,
 		expected: &SharedCodexAuthFileStamp,
 	) -> Result<SharedCodexAuthSnapshot, CodexAuthProjectionError> {
-		read_shared_codex_auth_snapshot(expected)
+		auth_projection::read_shared_codex_auth_snapshot(expected)
 	}
 
 	fn project(
@@ -248,7 +246,7 @@ impl SharedAuthFilePort for ProductionSharedAuthFile {
 		provider_account_id: &str,
 		expected: &SharedCodexAuthVersion,
 	) -> Result<(), CodexAuthProjectionError> {
-		project_shared_codex_auth_cas(bundle, provider_account_id, expected)
+		auth_projection::project_shared_codex_auth_cas(bundle, provider_account_id, expected)
 	}
 }
 
@@ -563,7 +561,7 @@ fn read_macos_process_auth_environment(
 	// environment entries. That decodes as no HOME evidence and therefore remains fail-closed.
 	let mut argmax_mib = [libc::CTL_KERN, libc::KERN_ARGMAX];
 	let mut argmax: libc::c_int = 0;
-	let mut argmax_length = size_of::<libc::c_int>();
+	let mut argmax_length = mem::size_of::<libc::c_int>();
 	let measured = unsafe {
 		libc::sysctl(
 			argmax_mib.as_mut_ptr(),
@@ -583,8 +581,8 @@ fn read_macos_process_auth_environment(
 		return MacosProcessField::Unavailable;
 	};
 
-	if argmax_length != size_of::<libc::c_int>()
-		|| length < size_of::<libc::c_int>()
+	if argmax_length != mem::size_of::<libc::c_int>()
+		|| length < mem::size_of::<libc::c_int>()
 		|| length > MAX_PROCESS_ENVIRONMENT_BYTES
 	{
 		return MacosProcessField::Unavailable;
@@ -607,7 +605,7 @@ fn read_macos_process_auth_environment(
 	if read == -1 {
 		return macos_process_read_failure();
 	}
-	if returned < size_of::<libc::c_int>() || returned > bytes.len() {
+	if returned < mem::size_of::<libc::c_int>() || returned > bytes.len() {
 		return MacosProcessField::Unavailable;
 	}
 
@@ -627,14 +625,15 @@ fn macos_process_read_failure<T>() -> MacosProcessField<T> {
 
 #[cfg(target_os = "macos")]
 fn parse_macos_process_auth_environment(bytes: &[u8]) -> Option<MacosProcessAuthEnvironment> {
-	let argc = libc::c_int::from_ne_bytes(bytes.get(..size_of::<libc::c_int>())?.try_into().ok()?);
+	let argc =
+		libc::c_int::from_ne_bytes(bytes.get(..mem::size_of::<libc::c_int>())?.try_into().ok()?);
 	let argc = usize::try_from(argc).ok()?;
 
 	if argc > 4_096 {
 		return None;
 	}
 
-	let mut remaining = &bytes[size_of::<libc::c_int>()..];
+	let mut remaining = &bytes[mem::size_of::<libc::c_int>()..];
 
 	remaining = skip_macos_process_entry(remaining)?;
 	remaining = skip_nul_padding(remaining);
@@ -865,25 +864,32 @@ fn path_is_official_shared_codex(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	#[cfg(target_os = "macos")]
+	use crate::shared_auth_coordinator::{
+		self, CodexAuthHomeEvidence, CodexAuthOwnerBlocker, CodexAuthOwnerKind, CodexLiveness,
+		CodexLivenessObservation, MacosCodexHomeRelation, MacosProcessField,
+		MacosProcessObservation, OsStr, OsString, Path, PathBuf, fs,
+	};
 
 	#[cfg(target_os = "macos")]
 	#[test]
 	fn codex_path_matcher_covers_current_and_legacy_apps_without_generic_helpers() {
-		assert!(process_name_looks_like_codex(OsStr::new("ChatGPT")));
-		assert!(process_name_looks_like_codex(OsStr::new("codex")));
-		assert!(!process_name_looks_like_codex(OsStr::new("launchd")));
-		assert!(path_looks_like_codex(Path::new(
+		assert!(shared_auth_coordinator::process_name_looks_like_codex(OsStr::new("ChatGPT")));
+		assert!(shared_auth_coordinator::process_name_looks_like_codex(OsStr::new("codex")));
+		assert!(!shared_auth_coordinator::process_name_looks_like_codex(OsStr::new("launchd")));
+		assert!(shared_auth_coordinator::path_looks_like_codex(Path::new(
 			"/Applications/ChatGPT.app/Contents/MacOS/ChatGPT",
 		)));
-		assert!(path_looks_like_codex(Path::new(
+		assert!(shared_auth_coordinator::path_looks_like_codex(Path::new(
 			"/Applications/ChatGPT.app/Contents/Resources/codex",
 		)));
-		assert!(path_looks_like_codex(Path::new("/Applications/Codex.app/Contents/MacOS/Codex",)));
-		assert!(path_looks_like_codex(Path::new(
+		assert!(shared_auth_coordinator::path_looks_like_codex(Path::new(
+			"/Applications/Codex.app/Contents/MacOS/Codex",
+		)));
+		assert!(shared_auth_coordinator::path_looks_like_codex(Path::new(
 			"/Applications/Codex.app/Contents/Resources/codex",
 		)));
-		assert!(!path_looks_like_codex(Path::new(
+		assert!(!shared_auth_coordinator::path_looks_like_codex(Path::new(
 			"/Applications/ChatGPT.app/Contents/Frameworks/ChatGPT Helper.app/Contents/MacOS/ChatGPT Helper",
 		)));
 	}
@@ -925,7 +931,7 @@ mod tests {
 		)];
 
 		assert_eq!(
-			classify_macos_codex_liveness(10, &observations),
+			shared_auth_coordinator::classify_macos_codex_liveness(10, &observations),
 			CodexLivenessObservation::Quiescent
 		);
 	}
@@ -942,7 +948,7 @@ mod tests {
 		)];
 
 		assert_eq!(
-			classify_macos_codex_liveness(10, &observations),
+			shared_auth_coordinator::classify_macos_codex_liveness(10, &observations),
 			CodexLivenessObservation::Blocked {
 				blockers: vec![CodexAuthOwnerBlocker {
 					pid: 20,
@@ -965,9 +971,12 @@ mod tests {
 			MacosProcessField::Vanished,
 		)];
 
-		assert_eq!(classify_macos_codex_liveness(10, &[]), CodexLivenessObservation::Quiescent);
 		assert_eq!(
-			classify_macos_codex_liveness(10, &observations),
+			shared_auth_coordinator::classify_macos_codex_liveness(10, &[]),
+			CodexLivenessObservation::Quiescent
+		);
+		assert_eq!(
+			shared_auth_coordinator::classify_macos_codex_liveness(10, &observations),
 			CodexLivenessObservation::Quiescent
 		);
 	}
@@ -991,7 +1000,7 @@ mod tests {
 				MacosProcessField::Value(MacosCodexHomeRelation::Shared),
 			),
 		];
-		let observation = classify_macos_codex_liveness(10, &observations);
+		let observation = shared_auth_coordinator::classify_macos_codex_liveness(10, &observations);
 
 		assert_eq!(observation.state(), CodexLiveness::MayBeRunning);
 
@@ -1025,7 +1034,7 @@ mod tests {
 		];
 
 		assert_eq!(
-			classify_macos_codex_liveness(10, &observations),
+			shared_auth_coordinator::classify_macos_codex_liveness(10, &observations),
 			CodexLivenessObservation::Quiescent
 		);
 	}
@@ -1042,7 +1051,7 @@ mod tests {
 		)];
 
 		assert_eq!(
-			classify_macos_codex_liveness(10, &observations),
+			shared_auth_coordinator::classify_macos_codex_liveness(10, &observations),
 			CodexLivenessObservation::Quiescent
 		);
 	}
@@ -1063,7 +1072,7 @@ mod tests {
 			})
 			.collect::<Vec<_>>();
 		let CodexLivenessObservation::Blocked { blockers, omitted } =
-			classify_macos_codex_liveness(10, &observations)
+			shared_auth_coordinator::classify_macos_codex_liveness(10, &observations)
 		else {
 			panic!("shared-home Codex processes must block")
 		};
@@ -1087,7 +1096,8 @@ mod tests {
 		bytes.extend_from_slice(b"HOME=/Users/test\0");
 		bytes.extend_from_slice(b"CODEX_HOME=/tmp/isolated-codex\0");
 
-		let parsed = parse_macos_process_auth_environment(&bytes).expect("parse environment");
+		let parsed = shared_auth_coordinator::parse_macos_process_auth_environment(&bytes)
+			.expect("parse environment");
 
 		assert_eq!(parsed.home.as_deref(), Some(OsStr::new("/Users/test")));
 		assert_eq!(parsed.codex_home.as_deref(), Some(OsStr::new("/tmp/isolated-codex")));
@@ -1106,15 +1116,18 @@ mod tests {
 		std::os::unix::fs::symlink(&shared, &linked).expect("linked home");
 
 		assert_eq!(
-			classify_macos_codex_home(&linked, &shared),
+			shared_auth_coordinator::classify_macos_codex_home(&linked, &shared),
 			MacosProcessField::Value(MacosCodexHomeRelation::Shared)
 		);
 		assert_eq!(
-			classify_macos_codex_home(&isolated, &shared),
+			shared_auth_coordinator::classify_macos_codex_home(&isolated, &shared),
 			MacosProcessField::Value(MacosCodexHomeRelation::Isolated)
 		);
 		assert_eq!(
-			classify_macos_codex_home(&root.path().join("missing"), &shared),
+			shared_auth_coordinator::classify_macos_codex_home(
+				&root.path().join("missing"),
+				&shared
+			),
 			MacosProcessField::Unavailable
 		);
 	}

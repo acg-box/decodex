@@ -1,7 +1,7 @@
 //! Qualify opt-in native checklist notifications and their history boundary.
 use std::{
-	env, fs, panic,
-	panic::AssertUnwindSafe,
+	env, fs,
+	panic::{self, AssertUnwindSafe},
 	sync::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},

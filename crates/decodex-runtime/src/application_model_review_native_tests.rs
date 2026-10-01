@@ -2,8 +2,8 @@
 #[path = "application_model_review_confirmation_tests.rs"] mod confirmation;
 
 use std::{
-	env, fs,
-	fs::OpenOptions,
+	env,
+	fs::{self, OpenOptions},
 	path::Path,
 	time::{SystemTime, UNIX_EPOCH},
 };
