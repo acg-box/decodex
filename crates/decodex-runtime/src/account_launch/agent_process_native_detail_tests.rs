@@ -4,7 +4,9 @@ use std::{env, fs, sync::atomic::AtomicUsize};
 use tokio::{net::TcpListener, time};
 
 use crate::{
-	account_launch::agent_process::native_tests::*,
+	account_launch::agent_process::native_tests::{
+		self, AppServerClient, Arc, Duration, NativeSession, Ordering, ServerEvent,
+	},
 	agent_detail,
 	agent_usage_estimate::{Source, SourceKey},
 };
@@ -40,7 +42,7 @@ async fn installed_native_patch_pages_survive_cold_restart_without_replay() {
 		"*** Begin Patch\n*** Add File: large.txt\n{}*** End Patch",
 		body.lines().map(|line| format!("+{line}\n")).collect::<String>()
 	);
-	let backend = tokio::spawn(serve_fixture_usage(
+	let backend = tokio::spawn(native_tests::serve_fixture_usage(
 		listener,
 		requests.clone(),
 		None,

@@ -6,7 +6,13 @@ use std::{
 
 use tokio::{net::TcpListener, time};
 
-use crate::account_launch::{agent_process::native_tests::*, process, protocol::ProtocolThread};
+use crate::account_launch::{
+	agent_process::native_tests::{
+		self, Arc, Duration, NativeSession, Ordering, ServerEvent, Value, effort,
+	},
+	process,
+	protocol::ProtocolThread,
+};
 use decodex_codex::{
 	self, ConversationThreadResumeRequest, ConversationThreadStartRequest, ConversationTurnInput,
 	ConversationTurnStartRequest, ExactThreadId,
@@ -55,7 +61,7 @@ async fn qualify(
 	let address = listener.local_addr().expect("native ordinary effort fixture");
 	let requests = Arc::new(AtomicUsize::new(0));
 	let bodies = Arc::new(Mutex::new(Vec::new()));
-	let backend = tokio::spawn(serve_fixture(
+	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		requests.clone(),
 		requested.or(configured),
