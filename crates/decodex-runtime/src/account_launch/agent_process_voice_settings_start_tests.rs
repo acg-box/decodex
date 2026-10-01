@@ -162,6 +162,7 @@ async fn installed_native_voice_reads_project_override_and_refreshed_user_defaul
 	);
 
 	fs::write(home.path().join("config.toml"), config("future_voice")).unwrap();
+
 	// This installed server rejects an unknown configured enum; propagate its read failure.
 	assert!(session.client.realtime_voice_for_thread(thread).await.is_err());
 

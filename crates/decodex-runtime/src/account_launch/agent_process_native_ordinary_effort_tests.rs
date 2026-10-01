@@ -80,6 +80,7 @@ async fn qualify(
 			.expect("native ordinary effort fixture"),
 	)
 	.expect("native ordinary effort fixture");
+
 	// Use a different thread tier so an ignored per-turn override fails the wire assertion.
 	let configured_tier = if tier_override { "default" } else { "flex" };
 	let reasoning = configured

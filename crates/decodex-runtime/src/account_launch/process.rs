@@ -203,6 +203,7 @@ impl ChatgptRefreshProjection {
 		plan_type: Option<String>,
 	) -> Result<Self, CredentialVaultError> {
 		let access_token = Zeroizing::new(access_token);
+
 		if access_token.is_empty()
 			|| provider_account_id.is_empty()
 			|| provider_account_id.len() > 512
@@ -210,6 +211,7 @@ impl ChatgptRefreshProjection {
 		{
 			return Err(CredentialVaultError::ProjectionRejected);
 		}
+
 		Ok(Self { access_token, provider_account_id, plan_type })
 	}
 }
@@ -1639,6 +1641,7 @@ impl AttestedProcessChild {
 		let mut wire = self.process.prepare_conversation_request("thread/resume", request)?;
 
 		wire.resume_thread_id = Some(request.thread_id().as_str().to_owned());
+
 		// A refused attempt can still observe turn events. Include them in the
 		// eventual resume result so the caller cannot mistake it for an idle thread.
 		let mut events = self.process.deferred_conversation_events.drain(..).collect();
@@ -1880,6 +1883,7 @@ impl CredentialProjection<'_> {
 		{
 			return Err(CredentialVaultError::ProjectionRejected);
 		}
+
 		#[derive(Deserialize)]
 		#[serde(rename_all = "camelCase")]
 		struct Status {
@@ -3976,9 +3980,11 @@ impl ExactBuildLaunchCapability {
 		if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
 			return Err(SupervisionError::LaunchCapabilityUnavailable);
 		}
+
 		let exact_args = command.app_server_args.len() == 2
 			&& command.app_server_args[0].as_os_str() == OsStr::new("app-server")
 			&& command.app_server_args[1].as_os_str() == OsStr::new("--stdio");
+
 		if !exact_args {
 			return Err(SupervisionError::LaunchCapabilityUnavailable);
 		}
@@ -4634,7 +4640,6 @@ fn spawn_attested_protocol_process(
 			protocol_limit_exceeded,
 		))
 	}
-
 	#[cfg(not(target_os = "macos"))]
 	{
 		let mut process = configured_attested_app_server_process(command, binding, capability)?;
@@ -6282,7 +6287,6 @@ pub(crate) mod tests {
 			command.schema_args,
 			command.working_directory,
 		);
-
 		#[cfg(target_os = "macos")]
 		let command = command.with_spawn_path_for_test(spawn_path);
 
@@ -7529,6 +7533,7 @@ pub(crate) mod tests {
 		let directory = TempDir::new_in(parent.path()).unwrap();
 		let directory_path = directory.path().to_owned();
 		let image = directory_path.join("verified-codex-image");
+
 		// Model a source whose copied bytes no longer pass native format validation.
 		fs::write(&image, b"invalid copied image").unwrap();
 		fs::set_permissions(&image, fs::Permissions::from_mode(0o500)).unwrap();
@@ -7537,6 +7542,7 @@ pub(crate) mod tests {
 		let result = process::finalize_executable_snapshot(directory, image.clone(), &metadata);
 		let left_image = image.exists();
 		let left_directory = directory_path.exists();
+
 		// Clean the known test artifact even when the pre-fix regression fails.
 		if left_image {
 			process::set_snapshot_immutable(&image, false).unwrap();

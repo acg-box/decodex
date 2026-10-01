@@ -15,6 +15,7 @@ pub(super) fn signal_group(
 		result => return result,
 	};
 	let mut members = group_members(group)?;
+
 	// Signal the leader last so it can reap children that exit during cleanup.
 	members.sort_unstable_by_key(|pid| *pid == group);
 
@@ -26,6 +27,7 @@ pub(super) fn signal_group(
 			delivered |= signal_target(pid, signal).is_ok();
 		}
 	}
+
 	// Delivery is not death evidence. The supervisor still requires an exact exit and
 	// group quiescence; partial delivery must permit its bounded SIGKILL escalation.
 	if delivered { Ok(()) } else { Err(group_error) }

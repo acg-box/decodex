@@ -136,6 +136,7 @@ impl AttestedCodeIdentity {
 		}
 
 		let mut architectures = vec![unique[..usize::from(unique_len)].to_vec()];
+
 		// A universal system binary can have several native subtypes. Security's
 		// default static slice need not be the slice selected by posix_spawn.
 		// Each allowed slice must independently match the captured reference.
@@ -473,6 +474,7 @@ impl SpawnAttributes {
 
 	fn set_attested_flags(&mut self) -> io::Result<()> {
 		let mut default_signals = std::mem::MaybeUninit::<libc::sigset_t>::uninit();
+
 		// SAFETY: sigemptyset initializes the complete output object before it is read.
 		if unsafe { libc::sigemptyset(default_signals.as_mut_ptr()) } != 0 {
 			return Err(io::Error::last_os_error());
@@ -481,6 +483,7 @@ impl SpawnAttributes {
 		if unsafe { libc::sigaddset(default_signals.as_mut_ptr(), libc::SIGPIPE) } != 0 {
 			return Err(io::Error::last_os_error());
 		}
+
 		// SAFETY: both the spawn attributes and complete signal set are initialized and live.
 		let result =
 			unsafe { libc::posix_spawnattr_setsigdefault(&mut self.0, default_signals.as_ptr()) };
@@ -780,6 +783,7 @@ fn static_architecture_identity(path: &Path, architecture: &str) -> io::Result<O
 	if raw.is_null() {
 		return Err(invalid_data("empty architecture code object"));
 	}
+
 	// SAFETY: success transfers one retained SecStaticCode reference to this owner.
 	let code = unsafe { SecStaticCode::wrap_under_create_rule(raw as _) };
 
@@ -892,6 +896,7 @@ fn copy_main_executable(code: *const c_void) -> io::Result<PathBuf> {
 	if unsafe { CFGetTypeID(value as CFTypeRef) } != unsafe { CFURLGetTypeID() } {
 		return Err(invalid_data("signed executable path is not a URL"));
 	}
+
 	// SAFETY: the type check establishes a CFURL. Get Rule retains it independently.
 	let url = unsafe { CFURL::wrap_under_get_rule(value as CFURLRef) };
 	let path = url.to_path().ok_or_else(|| invalid_data("signed executable URL is malformed"))?;

@@ -238,6 +238,7 @@ async fn serve_realtime(
 	}
 
 	socket.close(None).await.expect("normal realtime close");
+
 	// Drain the peer close handshake and queued client frames before dropping TCP.
 	// Otherwise unread session updates can turn a normal close into a connection reset.
 	// Native Codex may drop its transport after receiving our Close without replying.

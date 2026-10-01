@@ -221,6 +221,7 @@ async fn qualify(running: bool, no_effort_choices: bool, explicit_effort: bool) 
 	assert_eq!(session.client.observed_task_models(&thread).expect("resume hydration").0, selected);
 
 	run_turn(&mut session, &thread).await;
+
 	// Native omission preserves effort instead of selecting a local default.
 	let (_, guard) =
 		session.client.observed_task_models(&thread).expect("native model fixture operation");

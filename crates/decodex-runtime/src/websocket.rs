@@ -2713,6 +2713,7 @@ impl PublicationState {
 					deadline_classified: reason == SessionSealReason::Deadline,
 				},
 			);
+
 			// Publish the first-wins reason before FIFO closure wakes the session writer.
 			let _ = seal_sender.send(reason);
 

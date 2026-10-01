@@ -4891,6 +4891,7 @@ fn completed_agent_history(
 	}
 
 	let (message_kind, mut text) = agent_assistant_history(value, has_more);
+
 	// Capacity handling is process state, not an assistant response. Keep the
 	// original provider error in the persisted event rather than stacking it
 	// with a contradictory instruction to change models during an active retry.
@@ -5794,6 +5795,7 @@ mod history_receipt_tests {
 		assert_eq!(receipt.event_kind, "async_question_answer");
 		assert!(!receipt.disposed);
 		assert!(receipt.delivered_turn_id.is_none());
+
 		// A claimed or uncertain dispatch uses an empty native turn fence in the store.
 		event.delivered_turn_id = Some(String::new());
 
@@ -7008,6 +7010,7 @@ mod tests {
 		assert_eq!(entries.iter().map(|entry| entry.id).collect::<Vec<_>>(), ids[32..]);
 		assert!(next_after.is_none() && shortened);
 		assert!(entries.last().unwrap().text.ends_with('界'));
+
 		// A separate client acknowledges/disposes records; a fresh query must remove both.
 		let other = reopened.clone();
 

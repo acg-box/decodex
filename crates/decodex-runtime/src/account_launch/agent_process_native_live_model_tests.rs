@@ -95,6 +95,7 @@ async fn qualify_live_model(enabled: bool) {
         let receipt=reopened.agent_live_settings_receipt("root".into(),thread.clone(),turn.into()).await.expect("native live-model fixture");
 
         if enabled {assert_eq!(receipt.expect("native live-model fixture").outcome,"applied");} else {assert!(receipt.is_none());}
+
         // Another native client reads persisted task defaults without resuming or sending input.
         let observer=NativeSession::start(&binary,home.path());
         let settings=observer.client.thread_model_settings(&thread,observer.client.history_guard(0).expect("native live-model fixture")).await.expect("native live-model fixture").expect("native live-model fixture");

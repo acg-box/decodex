@@ -139,6 +139,7 @@ async fn qualify() {
 	assert_eq!(run_turn(&mut session, thread).await, context_window(FIRST));
 
 	let mut expected_accounts = vec![FIRST];
+
 	// Do not fetch a catalog before the next turn: qualify native refresh first.
 	for (account, serial) in [(SECOND, 1), (FIRST, 2)] {
 		login(&session, account, serial).await;
@@ -321,6 +322,7 @@ async fn installed_login_policy_reports_and_enforces_running_restrictions() {
             let before = session.client.request("configRequirements/read",serde_json::json!({})).await.expect("requirements");
 
             assert_eq!(before["requirements"]["allowedLoginMethods"],serde_json::json!([method]));
+
             // Changing disk config cannot rewrite the running authentication manager's policy.
             let changed = fs::read_to_string(&config).expect("config").replace(&format!("forced_login_method=\"{method}\""),"");
 

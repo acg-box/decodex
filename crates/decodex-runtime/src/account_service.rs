@@ -2606,6 +2606,7 @@ impl AccountService {
 		callback_generation: Option<(&ProcessGenerationId, &ProcessGenerationAccountBinding)>,
 	) -> Result<ChatgptTokenProjection, AccountLifecycleError> {
 		let stored = self.credentials.read_exact(account_id, binding)?;
+
 		// The refresh state machine mirrors a successor only when it proved that this exact
 		// account bundle was the shared source. This projection helper itself stays file-agnostic.
 		if let Some((generation_id, process_binding)) = callback_generation {
@@ -5163,7 +5164,6 @@ fn refresh_endpoint() -> Result<String, CredentialRefreshError> {
 	{
 		process_acceptance_fixture_endpoint().ok_or(CredentialRefreshError::Unavailable)
 	}
-
 	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
 	{
 		Ok(REFRESH_ENDPOINT.to_owned())
@@ -5270,6 +5270,7 @@ fn quota_selection_score(
 
 		return Ok((five.max(seven), five));
 	}
+
 	// All callers use the store's fresh AccountRecord projection: expired absence
 	// is returned as Unknown, just as expired numerical facts are returned as Stale.
 	let seven = account
@@ -5293,6 +5294,7 @@ fn quota_selection_score(
 	if seven.used_percent >= 100 || five.is_some_and(|fact| fact.used_percent >= 100) {
 		return Err(AccountSelectionRecovery::RefreshQuota);
 	}
+
 	// An absent limit has no utilization to rank; weekly utilization still counts.
 	let five_usage = five.map_or(0, |fact| fact.used_percent);
 

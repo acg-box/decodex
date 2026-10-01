@@ -150,6 +150,7 @@ impl McpLoginGateway {
 		}) else {
 			return status(request, McpLoginPhase::Disconnected, "The sign-in connection changed.");
 		};
+
 		// Completion can arrive before the initiating RPC reply; never overwrite it.
 		if session.status.phase != McpLoginPhase::Starting {
 			return project(session, request);

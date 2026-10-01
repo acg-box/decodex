@@ -1001,6 +1001,7 @@ fn retain_last_good_inventory(
 			&& !next.details_complete =>
 		{
 			let mut retained = current.clone();
+
 			// The provider exposes quota and Reset Card details through separate reads. A partial
 			// detail read must not replace the last coherent public inventory. Keep that complete
 			// inventory visible while still publishing the newer independent quota facts. Reset

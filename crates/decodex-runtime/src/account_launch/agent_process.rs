@@ -158,6 +158,7 @@ fn finish_bridge(
 	// Release stdin before a potentially blocked terminal event delivery. EOF lets
 	// Codex shut down its threads and helpers even if the consumer stopped polling.
 	drop(writer);
+
 	// Preserve queued evidence before transport EOF. Revocation closes the client
 	// separately, including when an AccountService callback is still pending.
 	let _ = terminal.blocking_send(Err(result.err().unwrap_or(ClientError::Closed)));

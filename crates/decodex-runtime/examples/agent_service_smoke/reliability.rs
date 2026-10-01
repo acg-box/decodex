@@ -246,6 +246,7 @@ fn disconnect_owned_child(root: &DecodexRoot, expected: &Generation) -> SmokeRes
 	if read != size {
 		return Err("exact process metadata is unavailable".into());
 	}
+
 	// SAFETY: proc_pidinfo returned the entire fixed-size structure.
 	let info = unsafe { info.assume_init() };
 	let start = format!("macos-time:{}:{}", info.pbi_start_tvsec, info.pbi_start_tvusec);
@@ -265,6 +266,7 @@ fn disconnect_owned_child(root: &DecodexRoot, expected: &Generation) -> SmokeRes
 		"QUALIFICATION_EVIDENCE {}",
 		serde_json::json!({"kind":"disconnect_owned_child","profile":root.as_path(),"generationId":expected.id,"pid":expected.pid,"parentPid":info.pbi_ppid,"startId":start})
 	);
+
 	// SAFETY: the exact persisted generation, start identity, user, direct parent,
 	// process group and session were verified immediately above. Signal one PID only.
 	if unsafe { libc::kill(expected.pid, libc::SIGTERM) } != 0 {

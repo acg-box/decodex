@@ -151,6 +151,7 @@ async fn qualify(mode: &str, preserve_tier: bool) {
 
 	assert_eq!(count.load(Ordering::Acquire), 1, "cold hydration must not replay input");
 	assert_eq!(fs::read(home.path().join("config.toml")).expect("defaults after resume"), saved);
+
 	// A new user request with no model overrides must use the recovered task
 	// settings rather than the process-level defaults from config.toml.
 	time::timeout(Duration::from_secs(20), async {

@@ -137,6 +137,7 @@ impl AgentHost {
 		if !bound {
 			return decodex_protocol::PromptInputUploadStatus::Unavailable { upload };
 		}
+
 		// Check the current receipt before reporting reusable data for this source.
 		let valid = self
 			.store

@@ -21,6 +21,7 @@ impl ConversationRuntime {
 		if request.purpose != ModelCatalogPurpose::Agent {
 			return AgentSkillsResult::Unavailable;
 		}
+
 		// Opening the attachment menu also refreshes the model catalog. Wait for that
 		// shared metadata owner instead of reporting a spurious unavailable skill list.
 		let started = Instant::now();

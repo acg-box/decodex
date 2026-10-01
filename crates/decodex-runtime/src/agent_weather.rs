@@ -95,6 +95,7 @@ impl AgentHost {
 			.collect();
 
 		page.weather = self.weather_for_turns(&page.thread_id, &turns).await.into_iter().collect();
+
 		// Preserve the native page's existing wire budget; prose remains readable if a card cannot
 		// fit.
 		while !page.weather.is_empty()

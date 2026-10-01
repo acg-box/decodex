@@ -137,6 +137,7 @@ async fn serve(listener: tokio::net::TcpListener, calls: Arc<AtomicUsize>, plan:
 
 		socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 1000000\r\nConnection: close\r\n\r\n{body}").as_bytes()).await.unwrap();
 		socket.flush().await.unwrap();
+
 		// Keep the provider stream unfinished until the test explicitly interrupts it.
 		future::pending::<()>().await;
 	}

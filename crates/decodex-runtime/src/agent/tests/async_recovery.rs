@@ -56,6 +56,7 @@ async fn native_changes_during_question_rebuild_preserve_recovery_until_fresh_re
 
 					incoming.send(Ok(notification)).await.unwrap();
 				}
+
 				// A stale complete read with no questions would delete the retained card and
 				// answer.
 				incoming.send(Ok(serde_json::json!({"id":request["id"],"result":{"thread":{"id":"opaque thread/1","historyMode":"legacy","turns":[{"id":"old","status":"completed","items":[]}]}}}))).await.unwrap();

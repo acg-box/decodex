@@ -312,6 +312,7 @@ async fn cold_voice_recovery_keeps_original_generation_and_never_replays_input()
 		agent.store.complete_agent_turn("root".into(), "opaque turn/1".into()).await.unwrap();
 
 		let original = agent.voice.as_ref().unwrap().generation.clone();
+
 		// A transport retry in the original generation may observe history, but cannot close
 		// authority.
 		if same_generation_first {
@@ -326,6 +327,7 @@ async fn cold_voice_recovery_keeps_original_generation_and_never_replays_input()
 			AgentCoordinator::new(reopened, agent.client.clone(), agent.config.clone()).unwrap();
 
 		drop(agent);
+
 		// The host supplies a newly admitted generation; process admission is tested separately.
 		cold.attach_voice_host("new-admitted-generation".into(), VoiceGateway::new());
 		cold.recover_voice_calls().await.unwrap();

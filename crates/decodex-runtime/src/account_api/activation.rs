@@ -48,6 +48,7 @@ impl AccountApiRuntime {
 		{
 			return observation;
 		}
+
 		// The optional native profile supplies model routing policy; account health is independent.
 		let Some(profile) = self.activation_profile.clone() else {
 			return observation;
@@ -100,6 +101,7 @@ impl AccountApiRuntime {
 			.header("Accept", "text/event-stream")
 			.json(&activation_request());
 		let outcome = send_activation(request).await;
+
 		// Do not retain the credential lock while querying again.
 		drop(credential);
 
@@ -116,6 +118,7 @@ impl AccountApiRuntime {
 			},
 			ActivationOutcome::Unknown => {},
 		}
+
 		// Read the provider's reset time even on ambiguous transport termination; never resend
 		// just because a completed minimal request still rounds to 0 percent used.
 		self.observe_account(account_id).await
@@ -185,6 +188,7 @@ fn can_activate(inventory: &AccountApiInventory, now: i64) -> bool {
 	{
 		return false;
 	}
+
 	// This probe activates an included weekly window. Existing paid credits alone
 	// do not override an explicit refusal of included usage for this synthetic request.
 	// The identity-checked provider decision is independent of displayed utilization.
@@ -215,6 +219,7 @@ async fn send_activation(request: RequestBuilder) -> ActivationOutcome {
 			return ActivationOutcome::Rejected,
 		Err(_) => return ActivationOutcome::Unknown,
 	};
+
 	// 5xx can occur after acceptance. Only explicit client rejection permits a later retry.
 	if response.status().is_client_error() {
 		return ActivationOutcome::Rejected;

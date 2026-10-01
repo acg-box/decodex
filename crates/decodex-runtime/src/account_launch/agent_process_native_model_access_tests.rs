@@ -1,9 +1,27 @@
-use std::{env, fs, sync::atomic::AtomicUsize};
+use std::{env, fs, path::Path, sync::atomic::AtomicUsize};
 
 use tokio::{io::BufReader, net::TcpListener, time};
 
 use crate::{account_launch::agent_process::native_tests::*, agent_capabilities};
 use decodex_protocol::AgentCapabilitiesResult;
+
+fn assert_cached_access(home: &Path, native_programs: &Value, expected: &Option<Vec<String>>) {
+	let saved: Value = serde_json::from_slice(
+		&fs::read(home.join("models_cache.json")).expect("read native model cache"),
+	)
+	.expect("decode native model cache");
+
+	assert_eq!(
+		saved["models"][0]["available_access_programs"],
+		if native_programs.is_null() {
+			Value::Null
+		} else if expected.as_ref().expect("expected access programs").is_empty() {
+			serde_json::json!({"cyber":[]})
+		} else {
+			serde_json::json!({"cyber":["standard","daybreak_blue"]})
+		}
+	);
+}
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native model access metadata"]
@@ -88,6 +106,7 @@ async fn installed_native_model_access_metadata_refreshes_after_cold_restart() {
 
 		let before_fetches = fetches.load(Ordering::Acquire);
 		let session = NativeSession::start(&binary, home.path());
+
 		// Startup can serve the existing native cache before its online refresh completes.
 		// Observe the refreshed value rather than treating first-read cache data as a grant.
 		time::timeout(Duration::from_secs(8), async {
@@ -109,20 +128,7 @@ async fn installed_native_model_access_metadata_refreshes_after_cold_restart() {
 		.await
 		.expect("native catalog must publish refreshed access metadata");
 
-		let saved: Value =
-			serde_json::from_slice(&fs::read(home.path().join("models_cache.json")).unwrap())
-				.unwrap();
-
-		assert_eq!(
-			saved["models"][0]["available_access_programs"],
-			if native_programs.is_null() {
-				Value::Null
-			} else if expected.as_ref().unwrap().is_empty() {
-				serde_json::json!({"cyber":[]})
-			} else {
-				serde_json::json!({"cyber":["standard","daybreak_blue"]})
-			}
-		);
+		assert_cached_access(home.path(), &native_programs, &expected);
 	}
 
 	server.abort();

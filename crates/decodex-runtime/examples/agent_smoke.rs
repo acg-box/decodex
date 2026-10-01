@@ -80,6 +80,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 				break;
 			}
 		}
+
 		// The original Agent turn has ended; independent work now starts on the same connection.
 		agent.create_worker("smoke-agent", "smoke-a", "Reply with exactly RESULT_A. Do not use any tools.").await?;
 		agent.create_worker("smoke-agent", "smoke-b", "Reply with exactly RESULT_B. Do not use any tools.").await?;

@@ -206,6 +206,7 @@ async fn app_exposure_host_binds_inventory_source_and_durable_attempt() {
 
 	assert_eq!(receipt.state, "unknown");
 	assert_eq!(receipt.attempt.attempt_id, "uncertain");
+
 	// A persisted claim remains consumed even when a client invents a new command ID.
 	let mut replay = receipt.attempt;
 

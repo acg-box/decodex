@@ -60,6 +60,7 @@ fn assert_preserved_native_settings(before: &Value, after: &Value) {
 	] {
 		assert_eq!(after[field], before[field], "preserve {field}");
 	}
+
 	// Fixed upstream ModelInfo::service_tier_for_request omits both null and default.
 	// Native restoration can materialize the current step's default tier in resume metadata.
 	let request_tier = |value: &serde_json::Value| {
@@ -161,6 +162,7 @@ async fn qualify(home: &Path) {
 	observe_fixture_quota(&accounts, &account).await;
 
 	let directory = home.to_owned();
+
 	// This mode prepares accounts only. It does not qualify recap behavior.
 	if env::var_os("DECODEX_TEST_ACCOUNT_SEED_ONLY").is_some() {
 		assert_eq!(requests.load(Ordering::Acquire), 0, "account seed cannot infer");

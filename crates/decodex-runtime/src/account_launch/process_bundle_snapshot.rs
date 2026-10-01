@@ -150,6 +150,7 @@ mod tests {
 		fs::write(&info, "modified metadata").unwrap();
 
 		assert!(AttestedCodeIdentity::capture(&snapshot.execution_path(), &image).is_err());
+
 		// The retained signed context is independent of later changes to the source bundle.
 		AttestedCodeIdentity::capture(&snapshot.execution_path(), &snapshot.execution_path())
 			.unwrap();

@@ -48,6 +48,7 @@ mod macos {
 
 		pub(crate) fn command(&mut self, value: Value) -> bool {
 			let Ok(value) = CString::new(value.to_string()) else { return false };
+
 			// SAFETY: retained native stream, serialized by its owner; native code copies data.
 			unsafe { (self.api.command)(self.host, value.as_ptr()) }
 		}
@@ -86,6 +87,7 @@ mod macos {
 		use std::os::unix::ffi::OsStrExt as _;
 
 		let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| ())?;
+
 		// SAFETY: fixed library in this signed application's Contents/Frameworks directory.
 		// Keep it loaded because URLSession completes cancellation asynchronously.
 		unsafe {

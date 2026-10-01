@@ -86,6 +86,7 @@ async fn qualify() {
 			serde_json::from_str::<Value>(&value).expect("native temporary fixture")["summary"],
 			"Fixture recap"
 		);
+
 		// Unsubscribe detaches this connection; it is not an immediate thread shutdown.
 		let _ = stop.send(());
 

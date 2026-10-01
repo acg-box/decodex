@@ -183,6 +183,7 @@ async fn installed_native_account_nudge_crosses_bridge_without_retry() {
 
 		assert_eq!(actual, expected);
 	}
+
 	// Keep the bridge alive while checking that no fourth request follows the failure.
 	assert!(
 		time::timeout(

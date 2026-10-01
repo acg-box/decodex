@@ -178,6 +178,7 @@ async fn qualify(home: &Path) {
 	}
 
 	drop(native);
+
 	// The saved fixture turn did not need authentication. The production reader
 	// uses the enrolled ChatGPT account and must admit native token projection.
 	let config = native_home.join("config.toml");

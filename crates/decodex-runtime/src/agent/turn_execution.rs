@@ -16,6 +16,7 @@ impl AgentCoordinator {
 			else {
 				return Ok(None);
 			};
+
 			// Bind inherited fields from the native task, never startup defaults.
 			// Preserve every deliberate field in a partial user selection.
 			if params.get("model").is_none() {

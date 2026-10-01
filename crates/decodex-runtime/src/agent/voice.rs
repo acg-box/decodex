@@ -87,12 +87,14 @@ impl AgentCoordinator {
 			None,
 			Some("Conversation paused. Review the provider findings before continuing."),
 		);
+
 		// Retire local microphone authority even if native stop acknowledgment is lost.
 		let persisted = self.store.retire_agent_misalignment_voice(thread.into()).await;
 		let result = self
 			.client
 			.request("thread/realtime/stop", serde_json::json!({"threadId":active_thread}))
 			.await;
+
 		// Retain the session until the durable cause and transcript tails are saved.
 		voice.save_transcript_tails(&self.store, &id).await?;
 
@@ -343,6 +345,7 @@ impl AgentCoordinator {
 					if text.is_empty() {
 						return Ok(());
 					}
+
 					// Native V3 can publish an old final after newer speech deltas.
 					// Preserve that received suffix, but do not mark it finalized.
 					let delayed = voice.transcript_tail[index].len() > text.len()
@@ -376,6 +379,7 @@ impl AgentCoordinator {
 				);
 
 				voice.gateway.update(&id, AgentVoicePhase::Failed, None, Some(detail));
+
 				// Without a remote answer no client audio can reach this call.
 				if !voice.answer_seen {
 					self.store.close_agent_voice_call(id).await?;
@@ -444,6 +448,7 @@ impl AgentCoordinator {
 					.await?;
 				}
 			}
+
 			// A new admitted process can exist only after the old generation is positively dead.
 			let changed_generation =
 				self.voice.as_ref().is_some_and(|v| v.generation != call.generation_id);
@@ -677,6 +682,7 @@ mod tests {
 			)
 			.unwrap();
 			let reopened = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+
 			// Even fully current later-turn evidence cannot clear a voice-retired precaution.
 			reopened
 				.reconcile_agent_misalignment("agent".into(), review.clone(), || true)

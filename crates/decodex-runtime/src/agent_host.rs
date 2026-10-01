@@ -931,6 +931,7 @@ impl AgentHost {
 		while let Ok(request) = requests.try_recv() {
 			let _ = request.reply.send(Err(AgentHostError::Rejected("Agent service is stopped")));
 		}
+
 		// Attach can be cancelled before `active` is assigned. Close the persisted
 		// root as well so its admitted process cannot escape the actor lifecycle.
 		let root = match active {
@@ -1013,6 +1014,7 @@ impl AgentHost {
 		let root = root.clone();
 
 		*active = None;
+
 		// Existing process death must be positively established before the store permits
 		// another account. No uncertain or active turn is replayed during this handover.
 		if self.runtime.close_agent_connection(&root).await.is_ok() {
@@ -1657,6 +1659,7 @@ impl AgentHost {
 			.bind_agent_root_settings(&root, &encoded)
 			.await
 			.map_err(|_| "Agent configuration differs from its saved execution context")?;
+
 		// Persist the user input before any external process or thread effect.
 		persist_input(&self.store, &root, key, draft.prompt.as_str(), input_options).await?;
 
@@ -2283,6 +2286,7 @@ mod tests {
 		schedule.restore_if_due(&mut active, deadline, async { Some("original-owner") }).await;
 
 		assert_eq!(active, Some("original-owner"));
+
 		// An attached owner cannot be replaced by another timer tick.
 		schedule
 			.restore_if_due(&mut active, schedule.next, async {
@@ -2524,6 +2528,7 @@ mod tests {
 		drop(store);
 
 		let store = SqliteStore::open(&root.paths()).unwrap();
+
 		// A retried command cannot duplicate the crash-surviving input.
 		agent_host::persist_input(
 			&store,

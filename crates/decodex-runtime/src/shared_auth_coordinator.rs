@@ -283,6 +283,7 @@ impl CodexLivenessPort for ProductionCodexLiveness {
 				observe_macos_codex_liveness()
 			}
 		}
+
 		#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
 		{
 			observe_macos_codex_liveness()

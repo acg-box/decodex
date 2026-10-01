@@ -606,6 +606,7 @@ fn teardown_process_group(
 
 		sleep_bounded(deadline);
 	}
+
 	// One final nonblocking observation at the deadline; never call blocking `wait` or `join`.
 	poll_status(child, &mut status);
 

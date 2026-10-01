@@ -57,6 +57,7 @@ pub(super) fn native_entrypoint(path: PathBuf) -> Result<PathBuf, SupervisionErr
 		) {
 		return Err(unavailable());
 	}
+
 	// Keep the executable inside its original bundle so native resource lookup
 	// and provisioning remain intact. The caller snapshots and attests this image.
 	package.join("CodexCLI.app/Contents/MacOS/codex").canonicalize().map_err(|_| unavailable())

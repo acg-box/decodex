@@ -327,12 +327,14 @@ async fn local_reads_reject_relative_paths_and_non_files() {
 	let directory = tempfile::tempdir().unwrap();
 
 	assert_eq!(local_media(directory.path().to_str().unwrap()).await, Err(Result::Unsupported));
+
 	#[cfg(unix)]
 	{
 		use std::ffi::CString;
 
 		let path = directory.path().join("pipe");
 		let native = CString::new(path.as_os_str().as_encoded_bytes()).unwrap();
+
 		// Fixture-only FIFO demonstrates that opening an attachment cannot block waiting for a
 		// writer.
 		assert_eq!(unsafe { libc::mkfifo(native.as_ptr(), 0o600) }, 0);

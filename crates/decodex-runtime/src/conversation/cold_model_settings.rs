@@ -106,6 +106,7 @@ impl ConversationRuntime {
 		if self.local().contains_key(conversation) {
 			return None;
 		}
+
 		// Neither the initial request nor thread/read proves the last requested tier.
 		model_settings::project(settings, None)
 	}

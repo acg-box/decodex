@@ -85,6 +85,7 @@ pub(super) async fn qualify(
 					break;
 				}
 			}
+
 			// Discard the first command publication; native lifecycle events still run.
 			app.execute(&command).await.expect("repeat confirmation");
 
