@@ -1,20 +1,18 @@
 //! Catalog refresh preserves user intent; empty choices do not block creation.
 use std::{
-	fs,
-	fs::Permissions,
+	fs::{self, Permissions},
 	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
-	thread,
-	thread::JoinHandle,
+	thread::{self, JoinHandle},
 	time::Duration,
 };
 
-use crate::shell::agent_surface::{AgentActionDto, ClientProfile, LoadState, capabilities::*};
 use futures_util::{SinkExt as _, StreamExt as _};
 use gpui::{Context, Entity, Render, TestAppContext, Window};
 use tempfile::TempDir;
 use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
 
+use crate::shell::agent_surface::{AgentActionDto, ClientProfile, LoadState, capabilities::*};
 use decodex_protocol::{
 	CURRENT_VERSION, ClientMessage, CommandPayload, ConversationModel,
 	ConversationWorkingDirectory, Cursor, EntityId, InitialExecutionDefaults,

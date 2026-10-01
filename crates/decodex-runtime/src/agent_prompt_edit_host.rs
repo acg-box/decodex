@@ -401,6 +401,7 @@ fn fragment(
 #[cfg(test)]
 mod tests {
 	use crate::agent_host::prompt_edit::{self, AgentPromptEditAttempt};
+
 	#[test]
 	fn canonical_fragments_preserve_unicode_and_fit_the_transport() {
 		let a = AgentPromptEditAttempt {

@@ -875,6 +875,7 @@ impl AgentSurface {
 #[cfg(test)]
 mod tests {
 	use crate::shell::agent_surface::prompt_edit::*;
+
 	use std::{
 		fs, future,
 		os::unix::fs::{MetadataExt as _, PermissionsExt as _},

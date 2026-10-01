@@ -92,6 +92,7 @@ mod tests {
 		self, AGENT_APP_UI_RECEIPT_CHUNK_BYTES, AgentAppUiReceiptRequest, AgentAppUiReceiptResult,
 		EntityId,
 	};
+
 	#[test]
 	fn result_chunks_cannot_mix_saved_outcomes() {
 		let mut request = AgentAppUiReceiptRequest {

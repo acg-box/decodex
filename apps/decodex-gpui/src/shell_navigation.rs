@@ -131,6 +131,7 @@ impl Shell {
 #[cfg(test)]
 mod tests {
 	use crate::shell::navigation::*;
+
 	#[test]
 	fn new_navigation_replaces_the_forward_branch_and_deduplicates_refreshes() {
 		let mut history = NavigationHistory::new();

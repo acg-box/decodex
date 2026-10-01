@@ -668,7 +668,6 @@ mod tests {
 	struct CopyPreview {
 		text: String,
 	}
-
 	impl gpui::Render for CopyPreview {
 		fn render(
 			&mut self,

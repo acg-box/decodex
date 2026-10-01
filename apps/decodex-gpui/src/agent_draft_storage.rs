@@ -2147,6 +2147,7 @@ mod ordinary_owner_tests {
 			Some(active.unconfirmed[0].clone())
 		);
 	}
+
 	#[gpui::test]
 	fn agent_capture_and_profile_switch_preserve_ordinary_edits(cx: &mut gpui::TestAppContext) {
 		let (_root, first, second) = super::super::tests::profiles();

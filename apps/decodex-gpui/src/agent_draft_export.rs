@@ -70,6 +70,7 @@ mod tests {
 	use crate::shell::agent_surface::drafts::storage::recovery::export::{
 		self, DesktopDraftDocument, DesktopRecoveredDraft,
 	};
+
 	#[test]
 	fn exported_copy_round_trips_and_never_overwrites_existing_files() {
 		let root = tempfile::tempdir().unwrap();

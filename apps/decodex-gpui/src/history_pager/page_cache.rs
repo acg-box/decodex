@@ -1989,7 +1989,6 @@ mod tests {
 	}
 
 	struct FailAt(DurabilityEdge);
-
 	impl FaultInjector for FailAt {
 		fn check(&self, edge: DurabilityEdge) -> Result<(), CacheFailure> {
 			if edge == self.0 {

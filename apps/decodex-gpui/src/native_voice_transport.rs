@@ -341,6 +341,7 @@ mod tests {
 		.await
 		.expect("native media event")
 	}
+
 	async fn energy(stream: &mut NativeAudioStream) -> f64 {
 		let mut sum = 0.0;
 

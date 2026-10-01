@@ -1,14 +1,16 @@
 //! Rendered detail continuation through the public same-UID query contract.
-use std::{thread, thread::JoinHandle, time::Duration};
+use std::{
+	thread::{self, JoinHandle},
+	time::Duration,
+};
 
-use crate::shell::agent_surface::{detail::*, wire_test_support::SERVER};
 use futures_util::{SinkExt as _, StreamExt as _};
 use gpui::TestAppContext;
 use tempfile::TempDir;
 use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::shell::agent_surface::wire_test_support;
+use crate::shell::agent_surface::{detail::*, wire_test_support, wire_test_support::SERVER};
 use decodex_protocol::{
 	AgentWorkKindDto, CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope,
 	QueryResultPayload, ServerId, ServerMessage,

@@ -235,6 +235,7 @@ mod tests {
 		assert!(conversations.snapshot().model_settings_ready);
 		assert_eq!(conversations.snapshot().execution.model, selected);
 	}
+
 	#[test]
 	fn model_choice_keeps_its_required_effort_adjustment_during_a_native_read() {
 		let (conversations, _, source) = tests::connected_conversations();

@@ -141,7 +141,6 @@ fn main() {
 				window_material::configure(window);
 			})
 			.expect("configure window material");
-
 		#[cfg(target_os = "macos")]
 		window
 			.update(cx, |_, window, cx| {

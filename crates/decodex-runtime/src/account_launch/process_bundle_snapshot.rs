@@ -155,6 +155,7 @@ mod tests {
 		AttestedCodeIdentity::capture(&snapshot.execution_path(), &snapshot.execution_path())
 			.unwrap();
 	}
+
 	#[test]
 	fn bundle_context_rejects_links_outside_the_bundle() {
 		let home = TempDir::new().unwrap();

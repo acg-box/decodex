@@ -18,6 +18,7 @@ mod tests {
 		self, BundledDaemonFailure, BundledDaemonSupervisor, ClientProfile, Command, Path, PathBuf,
 		Stdio,
 	};
+
 	use decodex_protocol::DoctorClient;
 
 	struct ProcessFixture {
@@ -378,7 +379,6 @@ impl BundledDaemonSupervisor {
 		}
 
 		state.restarts += 1;
-
 		#[cfg(target_os = "macos")]
 		{
 			if let Some(guard) = state.guard.take() {

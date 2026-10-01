@@ -231,6 +231,7 @@ mod tests {
 	use crate::agent_voice::{
 		AgentVoicePhase, AgentVoiceRequest, EntityId, VoiceGateway, VoiceSdp, WireText,
 	};
+
 	#[tokio::test]
 	async fn failure_survives_cleanup_before_poll_without_another_stop() {
 		let gateway = VoiceGateway::new();

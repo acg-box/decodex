@@ -244,7 +244,6 @@ mod tests {
 	struct Parent {
 		bubbled: std::rc::Rc<std::cell::Cell<usize>>,
 	}
-
 	impl Render for Parent {
 		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 			let count = self.bubbled.clone();

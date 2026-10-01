@@ -2616,7 +2616,6 @@ mod tests {
 		text: String,
 		bounds: std::rc::Rc<std::cell::RefCell<Vec<gpui::Bounds<gpui::Pixels>>>>,
 	}
-
 	impl gpui::Render for BubbleGeometry {
 		fn render(
 			&mut self,

@@ -303,6 +303,7 @@ mod tests {
 			assert!(!s.stop_button(cx));
 		});
 	}
+
 	#[gpui::test]
 	fn real_picker_search_select_remove_and_manager_drafts(cx: &mut gpui::TestAppContext) {
 		use gpui::Focusable as _;

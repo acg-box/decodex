@@ -359,6 +359,7 @@ mod tests {
 			estimate_text(&AgentUsageEstimateResult::Unavailable).contains("could not be read")
 		);
 	}
+
 	#[gpui::test]
 	fn unrelated_refresh_does_not_strand_an_estimate_read(cx: &mut gpui::TestAppContext) {
 		let (_directory, profile, server) = wire_test_support::fixture(|listener| async move {

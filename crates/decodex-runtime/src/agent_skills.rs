@@ -122,6 +122,7 @@ where
 #[cfg(test)]
 mod tests {
 	use crate::agent_skills::{self};
+
 	#[test]
 	fn skills_filter_full_inventory_before_bounding_and_keep_exact_paths() {
 		let mut skills:Vec<_>=(0..60).map(|index|serde_json::json!({"name":format!("skill-{index:02}"),"path":format!("/skills (local)/{index}/SKILL.md"),"description":"Fixture skill","enabled":true})).collect();

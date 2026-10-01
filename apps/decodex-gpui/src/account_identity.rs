@@ -99,6 +99,7 @@ impl Shell {
 #[cfg(test)]
 mod tests {
 	use crate::shell::account_identity::*;
+
 	#[test]
 	fn hide_discards_revealed_addresses_and_invalidates_pending_reads() {
 		let mut state = Emails::default();

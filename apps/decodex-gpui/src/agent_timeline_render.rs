@@ -1354,6 +1354,7 @@ mod tests {
 
 		assert!(visual.debug_bounds("native-promotion-unavailable").is_some());
 	}
+
 	#[gpui::test]
 	fn unfinished_plan_stays_copyable_until_exact_native_history_is_complete(
 		cx: &mut gpui::TestAppContext,

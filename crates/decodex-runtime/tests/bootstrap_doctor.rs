@@ -2,26 +2,23 @@
 #![allow(unused_crate_dependencies)]
 
 #[cfg(unix)] use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
-
-use std::{fs, fs::OpenOptions, io::Write as _};
+use std::{
+	fs::{self, OpenOptions},
+	io::Write as _,
+};
 
 use futures_util::{SinkExt as _, StreamExt as _};
-
 use tempfile::TempDir;
-
 use tokio::io::{AsyncRead, AsyncWrite};
-
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 
 use decodex_core::{Availability, DecodexRoot, LocalTrustPolicy};
-
 use decodex_protocol::{
 	AppServerCapability, CURRENT_VERSION, ClientHello, ClientMessage, ConversationHistoryResult,
 	DoctorComponent, DoctorIssue, DoctorStatus, EntityId, HistoryQueryError,
 	LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream, ProtocolVersion,
 	QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, Refusal, ServerId, ServerMessage,
 };
-
 use decodex_runtime::{ServerConfig, ServiceBootstrap, ServiceComposition};
 
 // Handshake metadata only. The stream is already admitted by the local authority.

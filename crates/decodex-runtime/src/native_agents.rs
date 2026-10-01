@@ -159,6 +159,7 @@ fn conversation(value: &Value, thread: &str) -> Option<NativeAgentsResult> {
 #[cfg(test)]
 mod tests {
 	use crate::native_agents::{self, NativeAgentsResult};
+
 	#[test]
 	fn native_preview_keeps_roles_and_does_not_guess_input_capability() {
 		let v = serde_json::json!({"thread":{"id":"child","turns":[{"id":"t","status":"inProgress","items":[{"id":"u","type":"userMessage","content":[{"text":"Check"}]},{"id":"a","type":"agentMessage","text":"Result"}]}]}});

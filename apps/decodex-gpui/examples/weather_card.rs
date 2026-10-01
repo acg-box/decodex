@@ -103,6 +103,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
 	use crate::*;
+
 	#[::core::prelude::v1::test]
 	fn saved_weather_is_parsed_and_copied_without_control_markers() {
 		let forecast = Forecast::parse(include_str!("fixtures/singapore-weather.txt")).unwrap();

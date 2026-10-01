@@ -206,6 +206,7 @@ fn set(_: bool) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
 	use crate::settings_surface::power::*;
+
 	#[test]
 	fn reads_only_the_global_sleep_policy() {
 		assert_eq!(
