@@ -335,6 +335,7 @@ fn ordinary_snapshot_refresh_keeps_model_settings_read(cx: &mut TestAppContext) 
 			s.read_model_settings("root", cx);
 
 			assert!(s.model_settings.task.is_some());
+
 			// A normal refresh advances its request generation without changing the binding.
 			s.generation += 1;
 

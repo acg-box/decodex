@@ -515,6 +515,7 @@ mod tests {
 			window.resize(gpui::size(gpui::px(1_280.), gpui::px(1_400.)));
 			window.draw(cx).clear();
 		});
+
 		// The popover uses a real-time entrance translation; click its settled bounds.
 		thread::sleep(std::time::Duration::from_millis(220));
 

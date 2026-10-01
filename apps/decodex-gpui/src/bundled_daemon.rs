@@ -363,6 +363,7 @@ impl BundledDaemonSupervisor {
 				state: Mutex::new(SupervisorState { guard: Some(guard), restarts: 0 }),
 			})))
 		}
+
 		#[cfg(not(target_os = "macos"))]
 		{
 			Err(BundledDaemonFailure::UnsupportedPlatform)
@@ -394,6 +395,7 @@ impl BundledDaemonSupervisor {
 				Err(_) => state.restarts < MAX_RECOVERY_RESTARTS,
 			}
 		}
+
 		#[cfg(not(target_os = "macos"))]
 		{
 			false
@@ -521,6 +523,7 @@ impl BundledDaemonGuard {
 
 			std::thread::sleep(std::time::Duration::from_millis(25));
 		}
+
 		// This handle names only the child spawned with our private lifetime channel.
 		let _ = child.kill();
 		let _ = child.wait();
@@ -606,12 +609,14 @@ fn is_executable_regular_file(metadata: &Metadata) -> bool {
 #[cfg(target_os = "macos")]
 fn lifetime_channel() -> io::Result<(UnixStream, OwnedFd)> {
 	let mut descriptors = [-1_i32; 2];
+
 	// SAFETY: `descriptors` has room for the two fds written by `socketpair`.
 	if unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, descriptors.as_mut_ptr()) }
 		!= 0
 	{
 		return Err(io::Error::last_os_error());
 	}
+
 	// SAFETY: successful `socketpair` returned two uniquely owned live descriptors.
 	let parent = unsafe { OwnedFd::from_raw_fd(descriptors[0]) };
 	// SAFETY: same ownership transfer for the second descriptor.
@@ -634,6 +639,7 @@ fn set_close_on_exec(raw_fd: i32, enabled: bool) -> io::Result<()> {
 	}
 
 	let updated = if enabled { flags | libc::FD_CLOEXEC } else { flags & !libc::FD_CLOEXEC };
+
 	// SAFETY: `updated` changes only the close-on-exec descriptor flag.
 	if unsafe { libc::fcntl(raw_fd, libc::F_SETFD, updated) } != 0 {
 		return Err(io::Error::last_os_error());

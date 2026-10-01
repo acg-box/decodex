@@ -127,6 +127,7 @@ fn ordinary_refresh_keeps_app_exposure_read_and_write_readback(cx: &mut TestAppC
 			s.update_app_exposure("root", "calendar", save, cx);
 
 			assert!(s.app_exposure.task.is_some());
+
 			// Advance the snapshot generation before this operation can complete.
 			s.generation += 1;
 

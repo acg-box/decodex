@@ -122,6 +122,7 @@ impl Device {
 				0
 			},
 		);
+
 		// Engine configuration and lifetime operations remain on the creating thread.
 		// Blocks only access bounded queues; they do not allocate, wait or touch UI state.
 		unsafe {

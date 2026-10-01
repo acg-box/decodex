@@ -309,6 +309,7 @@ fn ordinary_refresh_keeps_hook_read_and_write_readback(cx: &mut TestAppContext) 
 			s.update_hook_settings("root".into(), selection, cx);
 
 			assert!(s.hook_settings.task.is_some());
+
 			// Advance the snapshot generation before the operation can complete.
 			s.generation += 1;
 

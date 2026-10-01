@@ -132,6 +132,7 @@ async fn run(
 	#[cfg(test)] offer_pause: Option<OfferPause>,
 ) {
 	let factory = PeerConnectionFactory::default();
+
 	// Apple owns capture, playback and DSP. No second audio device or processing chain.
 	factory.set_adm_recording_enabled(false);
 	factory.set_adm_playout_enabled(false);
@@ -162,6 +163,7 @@ async fn run(
 		offer_pause,
 	)
 	.await;
+
 	// Let the UI stop its audio device without waiting for native network teardown.
 	if let Err(message) = result {
 		events.send(serde_json::json!({"type":"error","message":message}));
@@ -220,6 +222,7 @@ async fn run_media(
 	let offer = time::timeout(Duration::from_secs(10), async {
 		let options = || OfferOptions { offer_to_receive_audio: true, ..Default::default() };
 		let offer = peer.0.create_offer(options()).await?;
+
 		#[cfg(test)]
 		if let Some((entered, resume)) = offer_pause {
 			// Hold the native offer before applying it; cancellation must discard this
@@ -236,6 +239,7 @@ async fn run_media(
 		{
 			time::sleep(Duration::from_millis(20)).await;
 		}
+
 		// The binding exposes only current (not pending) SDP. Regenerate through libwebrtc
 		// to include gathered candidates while retaining the same ICE credentials.
 		let offer = peer.0.create_offer(options()).await?;
@@ -247,6 +251,7 @@ async fn run_media(
 	.await
 	.map_err(|_| "The audio offer timed out.")?
 	.map_err(|_| "The audio offer could not be created.")?;
+
 	// Discard pre-connection capture accumulated while gathering ICE.
 	for _ in 0..pcm.captured.slots() {
 		let _ = pcm.captured.pop();

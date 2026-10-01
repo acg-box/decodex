@@ -167,6 +167,7 @@ pub(super) fn render(graph: &Graph, max_width: usize) -> Result<Vec<Vec<Span>>, 
 			(offset(edge.from, ports[i].0), offset(edge.to, ports[i].1))
 		})
 		.collect::<Vec<_>>();
+
 	// Paint lanes first so every crossing is independent of iteration order.
 	for (i, edge) in graph.edges.iter().enumerate() {
 		let (source, target) = endpoints[i];

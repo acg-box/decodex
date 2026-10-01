@@ -27,6 +27,7 @@ impl ComposerInput {
 			}
 
 			self.undo.push(self.snapshot());
+
 			// Large restored inputs must not turn 100 undo entries into gigabytes.
 			let mut bytes: usize = self.undo.iter().map(|snapshot| snapshot.bytes).sum();
 

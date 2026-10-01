@@ -19,8 +19,10 @@ pub(super) fn copy(text: String, rich: bool, cx: &mut App) {
 
 	if rich {
 		let markup = html(&text);
+
 		#[cfg(all(target_os = "macos", not(test)))]
 		append_native_html(&text, &markup);
+
 		#[cfg(any(not(target_os = "macos"), test))]
 		let _ = markup;
 	}
@@ -98,6 +100,7 @@ fn append_native_html(text: &str, html: &str) {
 		rc::Retained,
 		runtime::{AnyClass, AnyObject},
 	};
+
 	// SAFETY: AppKit's general pasteboard and NSString arguments live through each
 	// synchronous call. This runs on GPUI's UI thread after its plain-text write.
 	unsafe {
@@ -116,6 +119,7 @@ fn append_html_to_board(board: &objc2::runtime::AnyObject, text: &str, html: &st
 
 	let plain_type = NSString::from_str("public.utf8-plain-text");
 	let html_type = NSString::from_str("public.html");
+
 	// SAFETY: The caller supplies an NSPasteboard; all strings are retained for
 	// the duration of the calls. Preserve a clipboard replaced since the copy.
 	unsafe {
@@ -141,6 +145,7 @@ mod tests {
 		};
 
 		use objc2_foundation::NSString;
+
 		// SAFETY: Use an isolated named pasteboard, never the user's clipboard.
 		unsafe {
 			let board: Retained<AnyObject> = msg_send![

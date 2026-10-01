@@ -184,6 +184,7 @@ fn main() {
 		if launched_as_login_item {
 			#[cfg(target_os = "macos")]
 			hide_main_window(cx);
+
 			#[cfg(not(target_os = "macos"))]
 			cx.hide();
 		} else {
@@ -196,8 +197,10 @@ fn activate_main_window(window: &WindowHandle<Shell>, cx: &mut App) {
 	window
 		.update(cx, |_, window, _| window.activate_window())
 		.expect("activate the retained Decodex window");
+
 	#[cfg(target_os = "macos")]
 	activate_native_application();
+
 	#[cfg(not(target_os = "macos"))]
 	cx.activate(true);
 }
@@ -251,6 +254,7 @@ fn configure_pointer_tracking(window: &gpui::Window) {
 	if view.trackingAreas().iter().any(|area| area.options() == options) {
 		return;
 	}
+
 	// Route plain movement directly to GPUIView, independent of the first responder.
 	// GPUI still resolves the hovered control and its cursor inside the view.
 	let tracking = unsafe {
@@ -374,12 +378,14 @@ fn hide_main_window(cx: &mut App) {
 
 		return;
 	}
+
 	#[cfg(target_os = "macos")]
 	{
 		let _ = cx;
 
 		order_out_native_windows();
 	}
+
 	#[cfg(not(target_os = "macos"))]
 	cx.hide();
 }
@@ -425,10 +431,12 @@ fn request_saved_quit(cx: &mut App) {
 					.update(cx, |shell, _, cx| shell.drafts_ready_for_quit(cx))
 					.unwrap_or(false);
 			}
+
 			#[cfg(target_os = "macos")]
 			let native = native_quit::awaiting_reply();
 			#[cfg(not(target_os = "macos"))]
 			let native = false;
+
 			#[cfg(target_os = "macos")]
 			if native {
 				native_quit::reply(saved);
@@ -437,6 +445,7 @@ fn request_saved_quit(cx: &mut App) {
 				if !native {
 					#[cfg(target_os = "macos")]
 					native_quit::request();
+
 					#[cfg(not(target_os = "macos"))]
 					cx.quit();
 				}

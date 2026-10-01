@@ -1851,6 +1851,7 @@ impl Render for Shell {
 		});
 
 		let controls = floating_window_controls(self, &presentation, window, cx);
+
 		#[cfg(all(target_os = "macos", not(test)))]
 		self.prepare_native_status(window, cx);
 
@@ -5756,6 +5757,7 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 
 					cx.on_release(move |settings: &mut SettingsWindow, cx| {
 						let owner = settings.owner.downgrade();
+
 						// Run after AppKit has removed Settings so it cannot win key focus back.
 						cx.defer(move |cx| {
 							let Some(owner) = owner.upgrade() else {
@@ -7157,6 +7159,7 @@ mod tests {
 					"missing task must first be read back"
 				);
 			});
+
 			// The shared writer consumes acknowledgements during synchronization.
 			assert!(conversations.confirmed_ordinary_commands().is_empty());
 			assert!(tests::take_ready_command(&conversations, &server).is_none());

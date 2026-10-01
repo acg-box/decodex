@@ -362,6 +362,7 @@ impl HistoryPager {
 		let Some(mut page_cache) = self.try_lock_page_cache() else {
 			return;
 		};
+
 		#[cfg(test)]
 		self.record_cache_probe_event(HistoryCacheProbeEvent::LookupStarted);
 
@@ -654,6 +655,7 @@ impl HistoryPager {
 
 			return;
 		};
+
 		#[cfg(test)]
 		self.record_cache_probe_event(HistoryCacheProbeEvent::PublicationStarted);
 

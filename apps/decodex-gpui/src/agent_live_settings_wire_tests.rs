@@ -347,6 +347,7 @@ fn ordinary_refresh_keeps_live_settings_read_and_publication_receipt(cx: &mut Te
 				s.update_live_settings("root".into(), "turn".into(), selection, cx);
 
 				assert!(s.live_reviewer.task.is_some());
+
 				// Advance the snapshot generation before this operation can complete.
 				s.generation += 1;
 

@@ -82,6 +82,7 @@ impl AgentSurface {
 		);
 
 		self.creation_defaults_applied = true;
+
 		// Keep incomplete explicit edits visible, but never manufacture a native default model.
 		if !self.creation_intent.model {
 			let Some(model) = selected.model else { return };
@@ -198,6 +199,7 @@ mod tests {
 			assert_eq!(s.model.read(cx).content(), "managed");
 			assert_eq!(s.creation_effort(), Some(ConversationReasoningEffort::Low));
 			assert!(!s.creation_intent.model && !s.creation_intent.reasoning);
+
 			// Selecting effort opts out of the managed model, not just managed effort.
 			s.effort = ConversationReasoningEffort::High;
 

@@ -156,6 +156,7 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 			steps.entry(turn_id).or_default().push(index);
 		}
 	}
+
 	// Keep interleaved user messages and interactive items in source order.
 	steps
 		.into_iter()

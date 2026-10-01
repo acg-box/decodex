@@ -323,6 +323,7 @@ impl AgentSurface {
 		if !self.guardian.finish_submission(row, key, result) {
 			return;
 		}
+
 		// Refreshing this list does not invalidate an exact saved-detail read.
 		self.guardian.request = None;
 
@@ -1234,6 +1235,7 @@ mod tests {
 			s.load_guardian_detail(1, "original".into(), 0, cx);
 
 			assert!(s.guardian.detail_request.is_some());
+
 			// Settle the submission before the detail future can deliver its response.
 			s.finish_guardian_submission(
 				"root",
