@@ -1,8 +1,11 @@
 //! Source-bound, non-waking native settings observations in the existing event journal.
-use crate::{SqliteStore, StoreError, agent_process::owns_work, error::sqlite_error, unix_micros};
-use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
-use serde_json::{Value, json};
+use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior};
+use serde_json::Value;
 use sha2::{Digest as _, Sha256};
+
+use crate::{
+	SqliteStore, StoreError, agent_models, agent_permissions, agent_plugins, agent_process, error,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AgentTaskSettingsObservation {
@@ -28,7 +31,7 @@ impl Kind {
 
 	fn observe(
 		self,
-		connection: &rusqlite::Connection,
+		connection: &Connection,
 		work: &str,
 		thread: &str,
 		generation: Option<&str>,
@@ -36,7 +39,7 @@ impl Kind {
 		settings: Option<&Value>,
 	) -> Result<(), StoreError> {
 		match self {
-			Self::Permissions => crate::agent_permissions::observe(
+			Self::Permissions => agent_permissions::observe(
 				connection,
 				work,
 				thread,
@@ -44,35 +47,12 @@ impl Kind {
 				observation,
 				settings,
 			),
-			Self::Plugins => crate::agent_plugins::observe(
-				connection,
-				work,
-				thread,
-				generation,
-				observation,
-				settings,
-			),
-			Self::Models => crate::agent_models::observe(
-				connection,
-				work,
-				thread,
-				generation,
-				observation,
-				settings,
-			),
+			Self::Plugins =>
+				agent_plugins::observe(connection, work, thread, generation, observation, settings),
+			Self::Models =>
+				agent_models::observe(connection, work, thread, generation, observation, settings),
 		}
 	}
-}
-
-fn latest(
-	connection: &rusqlite::Connection,
-	work: &str,
-	thread: &str,
-	generation: Option<&str>,
-	kind: Kind,
-) -> Result<Option<AgentTaskSettingsObservation>, StoreError> {
-	connection.query_row("SELECT id,json_extract(payload,'$.settings'),json_extract(payload,'$.sourceDigest') FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind=?4 AND json_extract(payload,'$.threadId')=?2 AND json_extract(payload,'$.generationId') IS ?3 ORDER BY id DESC LIMIT 1",
-		params![work,thread,generation,kind.event()], |row| Ok(AgentTaskSettingsObservation {id:row.get(0)?,settings_json:row.get(1)?,source_digest:row.get(2)?})).optional().map_err(|e| sqlite_error(e).into())
 }
 
 impl SqliteStore {
@@ -99,7 +79,7 @@ impl SqliteStore {
 
 		let settings = settings
 			.map(|s| {
-				if s.len() > 65536 {
+				if s.len() > 65_536 {
 					return Err(StoreError::InvalidInput("native settings exceed bound"));
 				}
 
@@ -111,11 +91,11 @@ impl SqliteStore {
 			.transpose()?;
 
 		self.run(move |connection| {
-			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sqlite_error)?;
-			let (work,count): (Option<String>,i64) = tx.query_row("SELECT MIN(id),COUNT(*) FROM agent_work_items WHERE codex_thread_id=?1",[&thread],|r|Ok((r.get(0)?,r.get(1)?))).map_err(sqlite_error)?;
+			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
+			let (work,count): (Option<String>,i64) = tx.query_row("SELECT MIN(id),COUNT(*) FROM agent_work_items WHERE codex_thread_id=?1",[&thread],|r|Ok((r.get(0)?,r.get(1)?))).map_err(error::sqlite_error)?;
 			let Some(work) = work.filter(|_|count==1) else { return Ok(None); };
 
-			if !owns_work(&tx,&work,generation.as_deref())? { return Ok(None); }
+			if !agent_process::owns_work(&tx,&work,generation.as_deref())? { return Ok(None); }
 
 			let previous = latest(&tx,&work,&thread,generation.as_deref(),kind)?;
 
@@ -126,21 +106,21 @@ impl SqliteStore {
 			if let Some(previous) = &previous && previous.settings_json == encoded && previous.source_digest == source_digest {
 				if publication {kind.observe(&tx,&work,&thread,generation.as_deref(),previous.id,settings.as_ref())?;}
 
-				tx.commit().map_err(sqlite_error)?; return Ok(Some(previous.id));
+				tx.commit().map_err(error::sqlite_error)?; return Ok(Some(previous.id));
 			}
 
-			let payload = json!({"threadId":thread,"generationId":generation,"sourceDigest":source_digest,"settings":settings});
-			let identity = json!([kind.event(), work, previous.as_ref().map(|p|p.id), payload]);
+			let payload = serde_json::json!({"threadId":thread,"generationId":generation,"sourceDigest":source_digest,"settings":settings});
+			let identity = serde_json::json!([kind.event(), work, previous.as_ref().map(|p|p.id), payload]);
 			let digest:String = Sha256::digest(identity.to_string().as_bytes()).iter().map(|b|format!("{b:02x}")).collect();
-			let now=unix_micros()?;
+			let now=crate::unix_micros()?;
 
-			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,?5,?3,?4,'resolved','native observation',?4)",params![format!("native-task-settings:{digest}"),work,payload.to_string(),now,kind.event()]).map_err(sqlite_error)?;
+			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,?5,?3,?4,'resolved','native observation',?4)",rusqlite::params![format!("native-task-settings:{digest}"),work,payload.to_string(),now,kind.event()]).map_err(error::sqlite_error)?;
 
 			let id=tx.last_insert_rowid();
 
 			if publication {kind.observe(&tx,&work,&thread,generation.as_deref(),id,settings.as_ref())?;}
 
-			tx.commit().map_err(sqlite_error)?; Ok(Some(id))
+			tx.commit().map_err(error::sqlite_error)?; Ok(Some(id))
 		}).await
 	}
 
@@ -299,25 +279,36 @@ impl SqliteStore {
 		kind: Kind,
 	) -> Result<Option<AgentTaskSettingsObservation>, StoreError> {
 		self.run(move |connection| {
-			let tx = connection.transaction().map_err(sqlite_error)?;
+			let tx = connection.transaction().map_err(error::sqlite_error)?;
 			let bound: bool = tx
 				.query_row(
 					"SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE id=?1 AND codex_thread_id=?2)",
-					params![work, thread],
+					rusqlite::params![work, thread],
 					|r| r.get(0),
 				)
-				.map_err(sqlite_error)?;
+				.map_err(error::sqlite_error)?;
 
-			if !bound || !owns_work(&tx, &work, generation.as_deref())? {
+			if !bound || !agent_process::owns_work(&tx, &work, generation.as_deref())? {
 				return Ok(None);
 			}
 
 			let result = latest(&tx, &work, &thread, generation.as_deref(), kind)?;
 
-			tx.commit().map_err(sqlite_error)?;
+			tx.commit().map_err(error::sqlite_error)?;
 
 			Ok(result)
 		})
 		.await
 	}
+}
+
+fn latest(
+	connection: &Connection,
+	work: &str,
+	thread: &str,
+	generation: Option<&str>,
+	kind: Kind,
+) -> Result<Option<AgentTaskSettingsObservation>, StoreError> {
+	connection.query_row("SELECT id,json_extract(payload,'$.settings'),json_extract(payload,'$.sourceDigest') FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind=?4 AND json_extract(payload,'$.threadId')=?2 AND json_extract(payload,'$.generationId') IS ?3 ORDER BY id DESC LIMIT 1",
+		rusqlite::params![work,thread,generation,kind.event()], |row| Ok(AgentTaskSettingsObservation {id:row.get(0)?,settings_json:row.get(1)?,source_digest:row.get(2)?})).optional().map_err(|e| error::sqlite_error(e).into())
 }
