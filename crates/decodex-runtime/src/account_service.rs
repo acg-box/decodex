@@ -1214,7 +1214,7 @@ impl AccountService {
 		.await
 	}
 
-	#[allow(clippy::too_many_arguments, clippy::too_many_lines)] // Keep provider resolution, credential effect, and journal completion in one auditable sequence.
+	#[allow(clippy::too_many_arguments)] // The receipt, enrollment identity, credential bundle, and response builder are independent inputs.
 	async fn install_credentials_command<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
@@ -1343,13 +1343,28 @@ impl AccountService {
 			)?;
 		}
 
+		self.complete_credential_install(lease, &operation_id, phase, build_response).await
+	}
+
+	async fn complete_credential_install<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		operation_id: &AccountOperationId,
+		phase: AccountOperationPhase,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
 		match phase {
 			AccountOperationPhase::Prepared
 			| AccountOperationPhase::StoreApplied
 			| AccountOperationPhase::Committed =>
 				self.complete_account_operation_success(
 					lease,
-					&operation_id,
+					operation_id,
 					AccountOperationPhase::StoreApplied,
 					AccountOperationPhase::Committed,
 					build_response,
@@ -1358,7 +1373,7 @@ impl AccountService {
 			AccountOperationPhase::Cancelled =>
 				self.complete_account_operation_error(
 					lease,
-					&operation_id,
+					operation_id,
 					AccountOperationPhase::Cancelled,
 					AccountOperationPhase::Cancelled,
 					None,
@@ -1370,7 +1385,7 @@ impl AccountService {
 			| AccountOperationPhase::ProviderEffectPending =>
 				self.complete_account_operation_error(
 					lease,
-					&operation_id,
+					operation_id,
 					phase,
 					phase,
 					None,
@@ -2899,7 +2914,6 @@ impl AccountService {
 	}
 
 	/// Delete one exact host bundle and atomically commit the tombstone with its command result.
-	#[allow(clippy::too_many_lines)] // Keep the journaled delete and tombstone transitions in one auditable sequence.
 	pub(crate) async fn logout_command<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
@@ -2915,7 +2929,6 @@ impl AccountService {
 	{
 		let lock = self.lock_for(account_id)?;
 		let _guard = lock.lock().await;
-		let mut build_response = Some(build_response);
 		let mut phase = None;
 		let mut expected = None;
 
@@ -2925,13 +2938,7 @@ impl AccountService {
 				account_id,
 				AccountOperationKind::Logout,
 			) {
-				return self
-					.complete_account_command_error(
-						lease,
-						error,
-						build_response.take().expect("builder is retained"),
-					)
-					.await;
+				return self.complete_account_command_error(lease, error, build_response).await;
 			}
 
 			phase = Some(operation.phase);
@@ -2942,13 +2949,7 @@ impl AccountService {
 			let account = match self.load_account(account_id).await {
 				Ok(account) => account,
 				Err(error) => {
-					return self
-						.complete_account_command_error(
-							lease,
-							error,
-							build_response.take().expect("builder is retained"),
-						)
-						.await;
+					return self.complete_account_command_error(lease, error, build_response).await;
 				},
 			};
 			let credential = match account.credential.clone() {
@@ -2958,7 +2959,7 @@ impl AccountService {
 						.complete_account_command_error(
 							lease,
 							AccountLifecycleError::CredentialAbsent,
-							build_response.take().expect("builder is retained"),
+							build_response,
 						)
 						.await;
 				},
@@ -2983,7 +2984,7 @@ impl AccountService {
 						.complete_account_command_error(
 							lease,
 							AccountLifecycleError::OperationRejected(rejection),
-							build_response.take().expect("builder is retained"),
+							build_response,
 						)
 						.await;
 				},
@@ -2994,15 +2995,40 @@ impl AccountService {
 
 		let phase = phase.expect("logout preparation or replay has one phase");
 
+		self.complete_logout_command(
+			lease,
+			&operation_id,
+			account_id,
+			phase,
+			expected,
+			build_response,
+		)
+		.await
+	}
+
+	async fn complete_logout_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		operation_id: &AccountOperationId,
+		account_id: &AccountId,
+		phase: AccountOperationPhase,
+		expected: Option<CredentialBinding>,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
 		match phase {
 			AccountOperationPhase::Committed | AccountOperationPhase::StoreApplied => {
 				return self
 					.complete_account_operation_success(
 						lease,
-						&operation_id,
+						operation_id,
 						AccountOperationPhase::StoreApplied,
 						AccountOperationPhase::Committed,
-						build_response.take().expect("builder is retained"),
+						build_response,
 					)
 					.await;
 			},
@@ -3010,12 +3036,12 @@ impl AccountService {
 				return self
 					.complete_account_operation_error(
 						lease,
-						&operation_id,
+						operation_id,
 						phase,
 						phase,
 						None,
 						AccountLifecycleError::InvalidOperation,
-						build_response.take().expect("builder is retained"),
+						build_response,
 					)
 					.await;
 			},
@@ -3024,14 +3050,14 @@ impl AccountService {
 				return self
 					.complete_account_operation_error(
 						lease,
-						&operation_id,
+						operation_id,
 						phase,
 						phase,
 						None,
 						AccountLifecycleError::NotReady(
 							AccountLifecycleReadiness::OperationUnsettled,
 						),
-						build_response.take().expect("builder is retained"),
+						build_response,
 					)
 					.await;
 			},
@@ -3042,12 +3068,12 @@ impl AccountService {
 			return self
 				.complete_account_operation_error(
 					lease,
-					&operation_id,
+					operation_id,
 					AccountOperationPhase::Prepared,
 					AccountOperationPhase::RecoveryRequired,
 					Some("credential_logout_reconciliation"),
 					AccountLifecycleError::InvalidOperation,
-					build_response.take().expect("builder is retained"),
+					build_response,
 				)
 				.await;
 		};
@@ -3058,12 +3084,12 @@ impl AccountService {
 			return self
 				.complete_account_operation_error(
 					lease,
-					&operation_id,
+					operation_id,
 					AccountOperationPhase::Prepared,
 					AccountOperationPhase::RecoveryRequired,
 					Some("credential_delete_failed"),
 					error.into(),
-					build_response.take().expect("builder is retained"),
+					build_response,
 				)
 				.await;
 		}
@@ -3071,7 +3097,7 @@ impl AccountService {
 		accepted_phase(
 			self.store
 				.advance_account_operation(
-					&operation_id,
+					operation_id,
 					AccountOperationPhase::Prepared,
 					AccountOperationPhase::StoreApplied,
 					None,
@@ -3081,10 +3107,10 @@ impl AccountService {
 
 		self.complete_account_operation_success(
 			lease,
-			&operation_id,
+			operation_id,
 			AccountOperationPhase::StoreApplied,
 			AccountOperationPhase::Committed,
-			build_response.take().expect("builder is retained"),
+			build_response,
 		)
 		.await
 	}
