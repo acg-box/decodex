@@ -34,6 +34,20 @@ final class ResetCardUseConfirmationTests: XCTestCase {
 		XCTAssertTrue(confirmation.isSubmitting(target))
 	}
 
+	func testExpiredSecondTapRearmsInsteadOfSubmittingWhenCountdownIsDelayed() throws {
+		let target = try makeTarget(expiresAt: 200)
+		let start = ContinuousClock.now
+		for elapsed in [Duration.seconds(5), .seconds(6)] {
+			var confirmation = ResetCardUseConfirmation()
+			XCTAssertNil(confirmation.tap(target, now: start, makeIdempotencyKey: { "old" }))
+			XCTAssertNil(confirmation.tap(target, now: start.advanced(by: elapsed), makeIdempotencyKey: { "new" }))
+			XCTAssertFalse(confirmation.isSubmitting)
+			XCTAssertEqual(confirmation.armedAttempt?.idempotencyKey, "new")
+			let submitted = confirmation.tap(target, now: start.advanced(by: elapsed + .seconds(1)))
+			XCTAssertEqual(submitted?.idempotencyKey, "new")
+		}
+	}
+
 	func testSubmittedAttemptDisarmsWhileDurableStatusRemainsPending() throws {
 		let target = try makeTarget(expiresAt: 200)
 		var confirmation = ResetCardUseConfirmation()

@@ -38,6 +38,8 @@ struct ResetCardUseCompletion: Equatable, Sendable {
 }
 
 struct ResetCardUseConfirmation: Equatable {
+	static let windowSeconds = 5
+	private(set) var deadline: ContinuousClock.Instant?
 	private(set) var armedAttempt: ResetCardUseAttempt?
 	private(set) var isSubmitting = false
 
@@ -55,17 +57,20 @@ struct ResetCardUseConfirmation: Equatable {
 
 	mutating func tap(
 		_ target: ResetCardUseTarget,
+		now: ContinuousClock.Instant = .now,
 		makeIdempotencyKey: () -> String = { UUID().uuidString.lowercased() }
 	) -> ResetCardUseAttempt? {
 		guard isSubmitting == false else {
 			return nil
 		}
 
-		if let armedAttempt, armedAttempt.target == target {
+		if let armedAttempt, armedAttempt.target == target,
+			let deadline, now < deadline {
 			isSubmitting = true
 			return armedAttempt
 		}
 
+		deadline = now.advanced(by: .seconds(Self.windowSeconds))
 		armedAttempt = ResetCardUseAttempt(
 			target: target,
 			idempotencyKey: makeIdempotencyKey()
@@ -84,6 +89,7 @@ struct ResetCardUseConfirmation: Equatable {
 
 		isSubmitting = false
 		armedAttempt = nil
+		deadline = nil
 	}
 
 	@discardableResult
@@ -93,6 +99,7 @@ struct ResetCardUseConfirmation: Equatable {
 		}
 
 		armedAttempt = nil
+		deadline = nil
 		return true
 	}
 
@@ -102,6 +109,7 @@ struct ResetCardUseConfirmation: Equatable {
 		}
 
 		armedAttempt = nil
+		deadline = nil
 	}
 
 	mutating func retainOnly(_ targets: Set<ResetCardUseTarget>) {
@@ -111,6 +119,7 @@ struct ResetCardUseConfirmation: Equatable {
 
 		if let armedAttempt, targets.contains(armedAttempt.target) == false {
 			self.armedAttempt = nil
+			deadline = nil
 		}
 	}
 }
